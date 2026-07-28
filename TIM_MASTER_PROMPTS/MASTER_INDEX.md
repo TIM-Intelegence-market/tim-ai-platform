@@ -8,11 +8,13 @@ Before using any Master Prompt, read and apply, in this order:
 
 1. [`TIM_CONSTITUTION.md`](../TIM_CONSTITUTION.md) — Band 1;
 2. [`TIM_ENGINEERING_GOVERNANCE.md`](../TIM_ENGINEERING_GOVERNANCE.md) —
-   Band 2.
+   Band 2;
+3. [`TIM_SYSTEM_ARCHITECTURE.md`](../TIM_SYSTEM_ARCHITECTURE.md) — Band 3.
 
-Band 1 has precedence over Band 2; both have precedence over every Master
-Prompt. A Master Prompt may narrow its scope but must not weaken their safety,
-evidence, test, lifecycle or governance rules.
+Band 1 has precedence over Band 2, and Band 2 over Band 3. All three have
+precedence over every Master Prompt. A Master Prompt may narrow its scope but
+must not weaken their safety, evidence, test, lifecycle, governance or
+architecture rules.
 
 | Prompt | Scope |
 |---|---|
