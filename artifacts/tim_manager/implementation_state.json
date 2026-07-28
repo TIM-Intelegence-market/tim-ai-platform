@@ -1,6 +1,6 @@
 {
   "implementation_id": "tim-im-v1-20260728",
-  "current_phase": "complete",
+  "current_phase": "release_complete",
   "completed_tasks": [
     "authoritative_repository_discovery",
     "verified_backup_and_restore",
@@ -19,24 +19,32 @@
     "documentation",
     "full_regression",
     "protected_hash_comparison",
-    "final_implementation_report"
+    "final_implementation_report",
+    "standalone_repository_initialization",
+    "repository_policy",
+    "tim_im_v1_architecture_freeze",
+    "tim_v2_architecture_baseline",
+    "tim_v2_roadmap",
+    "release_verification",
+    "annotated_release_tag"
   ],
   "pending_tasks": [],
   "blockers": [],
-  "repository_status": "unversioned",
-  "repository_commit": null,
-  "authoritative_git_repository": false,
+  "repository_status": "versioned",
+  "repository_commit": "f1b267e650ace8fb4d50e01496ac50b593887e3f",
+  "authoritative_git_repository": true,
   "content_manifest_hash": "22b258c5fd8eac5e4d3cff0ef648b96c1ce00665c6b11e58a7f5e2b491a10c1b",
   "parent_git_context": {
-    "git_root": "/Users/tim",
+    "git_root": "/Users/tim/Documents/TIM/tim",
     "branch": "main",
-    "commit": "a418894d33ba2426afe0f31d119332043bddd406",
-    "project_path_tracked": false,
-    "context_only": true
+    "commit": "f1b267e650ace8fb4d50e01496ac50b593887e3f",
+    "project_path_tracked": true,
+    "context_only": false
   },
-  "last_verified_commit": null,
+  "last_verified_commit": "f1b267e650ace8fb4d50e01496ac50b593887e3f",
+  "release_tag": "tim-im-v1.0.0",
   "last_test_run": "237 passed, 145 warnings; TIM-IM subset 58 passed, 1 warning; mandatory acceptance 20 passed, 0 XFAIL/skipped, 1 warning",
   "last_successful_command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider -q",
-  "next_safe_action": "Operate the locally accepted TIM-IM read-only; treat Workspace-Agent connectivity and repository initialization as separate external work.",
-  "updated_at_utc": "2026-07-28T09:41:41Z"
+  "next_safe_action": "Keep TIM-IM V1 frozen at tim-im-v1.0.0; begin V2 only after its Definition of Ready is satisfied.",
+  "updated_at_utc": "2026-07-28T10:08:11Z"
 }

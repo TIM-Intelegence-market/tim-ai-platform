@@ -4,6 +4,13 @@ Prüfdatum: 2026-07-28
 Prüfobjekt: `/Users/tim/Documents/TIM/tim`  
 Abnahmestatus: **PASS**
 
+Release-Engineering-Nachtrag: Dieser Bericht dokumentiert die technische
+Abnahme unmittelbar vor der Repository-Initialisierung. Seit dem
+Foundation-Auftrag besitzt TIM ein eigenes autoritatives Repository unter
+`/Users/tim/Documents/TIM/tim`. Der historische Akzeptanz-Snapshot bleibt
+unverändert; die aktuelle Release-Autorität wird durch
+`refs/tags/tim-im-v1.0.0` bestimmt.
+
 ## 1. Begründung des Status
 
 Die lokale technische Abnahme ist vollständig erfüllt:

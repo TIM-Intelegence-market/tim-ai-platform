@@ -171,14 +171,15 @@ def test_identical_evidence_has_identical_snapshot_id() -> None:
     assert first["content_manifest_hash"] == second["content_manifest_hash"]
 
 
-def test_untracked_parent_git_is_context_only() -> None:
+def test_repository_git_authority_matches_project_root() -> None:
     metadata = GitAdapter().metadata()
-    assert metadata["project_tracked"] is False
-    assert metadata["repository_status"] == "unversioned"
-    assert metadata["repository_commit"] is None
-    assert metadata["authoritative_git_repository"] is False
-    assert metadata["parent_git_context"]["context_only"] is True
-    assert metadata["parent_git_context"]["commit"]
+    assert metadata["project_tracked"] is True
+    assert metadata["repository_status"] == "versioned"
+    assert metadata["repository_commit"]
+    assert metadata["authoritative_git_repository"] is True
+    assert metadata["parent_git_context"]["context_only"] is False
+    assert metadata["parent_git_context"]["git_root"] == str(Path(__file__).resolve().parents[2])
+    assert metadata["parent_git_context"]["commit"] == metadata["repository_commit"]
 
 
 def test_global_progress_is_not_invented() -> None:
