@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "effective_from": "2026-07-27T00:00:00+00:00",
+  "core_owner": "TIM Project Owner (human)",
+  "scientific_release_authority": "Independent Scientific Reviewer (human)",
+  "runtime_operator": "TIM Operations",
+  "integrity_auditor": "Independent Integrity Auditor",
+  "rule": "TIM software may report evidence but may never approve its own scientific readiness or release.",
+  "mode": "OBSERVE",
+  "provenance": "TIM_GOVERNANCE_DOCUMENT"
+}

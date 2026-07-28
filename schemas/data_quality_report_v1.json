@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tim/data_quality_report_v1",
+  "title": "TIM Data Quality Report V1",
+  "type": "object",
+  "required": ["generated_at", "records_checked", "valid_records", "duplicate_records", "issues", "provenance_counts", "quality_score", "input_hash"],
+  "properties": {
+    "generated_at": {"type": "string", "format": "date-time"},
+    "records_checked": {"type": "integer", "minimum": 0},
+    "valid_records": {"type": "integer", "minimum": 0},
+    "duplicate_records": {"type": "integer", "minimum": 0},
+    "issues": {"type": "array"},
+    "provenance_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "quality_score": {"type": "integer", "minimum": 0, "maximum": 100},
+    "input_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "additionalProperties": false
+}

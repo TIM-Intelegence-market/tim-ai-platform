@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "write_allowlist": [
+    "artifacts/tim_manager/**",
+    "config/tim_manager/**",
+    "docs/tim_manager/**",
+    "schemas/tim_manager/**",
+    "src/tim_manager/**",
+    "tests/tim_manager/**"
+  ],
+  "protected_paths": [
+    "data/**",
+    "research/results/**",
+    "backtests/results/**",
+    "artifacts/provenance/**",
+    "artifacts/historical/**",
+    "artifacts/audits/**",
+    "output/**",
+    "production/**",
+    "live/**",
+    "secrets/**",
+    ".env",
+    ".env.*",
+    "**/*api_key*",
+    "**/*secret*",
+    "**/*private_key*",
+    "**/*wallet*"
+  ],
+  "symlink_policy": "deny_escape",
+  "default_write_policy": "deny"
+}

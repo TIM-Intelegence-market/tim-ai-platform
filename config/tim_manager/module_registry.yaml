@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "global_weighting": null,
+  "modules": [
+    {"module_id": "market_data", "name": "Market Data", "evidence_globs": ["src/data_ingestion/*.py", "tests/test_agg_trade_persistence.py"], "acceptance_criteria": [{"criterion_id": "implementation_present", "required": true}, {"criterion_id": "test_present", "required": true}]},
+    {"module_id": "data_quality", "name": "Data Quality", "evidence_globs": ["src/quality/*.py", "tests/test_data_quality.py"], "acceptance_criteria": [{"criterion_id": "implementation_present", "required": true}, {"criterion_id": "test_present", "required": true}]},
+    {"module_id": "orderflow", "name": "Orderflow", "evidence_globs": ["src/orderflow/*.py", "tests/test_orderflow_*.py"], "acceptance_criteria": [{"criterion_id": "implementation_present", "required": true}, {"criterion_id": "test_present", "required": true}]},
+    {"module_id": "research", "name": "Research", "evidence_globs": ["src/research/*.py", "tests/test_research_*.py"], "acceptance_criteria": [{"criterion_id": "implementation_present", "required": true}, {"criterion_id": "test_present", "required": true}]},
+    {"module_id": "dashboard", "name": "Dashboard", "evidence_globs": ["src/dashboard/*.py", "tests/test_dashboard.py"], "acceptance_criteria": [{"criterion_id": "implementation_present", "required": true}, {"criterion_id": "test_present", "required": true}]},
+    {"module_id": "tim_manager", "name": "TIM Intelligence Manager", "evidence_globs": ["src/tim_manager/*.py", "tests/tim_manager/**/*.py"], "acceptance_criteria": [{"criterion_id": "implementation_present", "required": true}, {"criterion_id": "test_present", "required": true}]}
+  ]
+}

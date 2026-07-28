@@ -1,0 +1,31 @@
+{
+  "records": [
+    {
+      "record_type": "trade",
+      "data": {
+        "symbol": "BTCUSDT",
+        "price": 68420,
+        "quantity": 0.25,
+        "event_time": "2026-01-01T11:59:00+00:00",
+        "trade_id": 1001,
+        "buyer_is_maker": false
+      }
+    },
+    {
+      "record_type": "candle",
+      "data": {
+        "symbol": "BTCUSDT",
+        "timeframe": "1m",
+        "open_time": "2026-01-01T11:58:00+00:00",
+        "close_time": "2026-01-01T11:59:00+00:00",
+        "open": 68400,
+        "high": 68450,
+        "low": 68390,
+        "close": 68420,
+        "volume": 12.5,
+        "trade_count": 30,
+        "closed": true
+      }
+    }
+  ]
+}

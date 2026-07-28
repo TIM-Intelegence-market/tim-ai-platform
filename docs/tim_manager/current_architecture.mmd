@@ -1,0 +1,15 @@
+flowchart TD
+  Sources["TIM repository sources"] --> Registry["Source Registry"]
+  Registry --> Adapters["Read-only Adapters"]
+  Adapters --> Scanner["Incremental Scanner"]
+  Scanner --> Records["Canonical Artifact Records"]
+  Records --> Events["Append-only Project Events"]
+  Records --> Store["SQLite + FTS5"]
+  Events --> Snapshot["Canonical Project Snapshot"]
+  Store --> Snapshot
+  Snapshot --> Reports["Management Reports"]
+  Snapshot --> CLI["Read-only CLI"]
+  Snapshot --> MCP["Read-only MCP"]
+  Store --> Search["Deterministic Search"]
+  Search --> CLI
+  Search --> MCP

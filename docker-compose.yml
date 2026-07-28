@@ -1,0 +1,20 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: tim
+      POSTGRES_USER: tim
+      POSTGRES_PASSWORD: tim_local_only
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - tim_timescale_data:/var/lib/postgresql/data
+      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tim -d tim"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  tim_timescale_data:

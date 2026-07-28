@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tim://schemas/artifact_record/1.0",
+  "title": "TIM Intelligence Manager Artifact Record",
+  "type": "object",
+  "required": ["artifact_id", "source_id", "normalized_path", "classification", "content_hash", "size_bytes", "observed_at", "provenance"],
+  "properties": {
+    "artifact_id": {"type": "string", "format": "uuid"},
+    "source_id": {"type": "string"},
+    "normalized_path": {"type": "string"},
+    "classification": {"type": "string"},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "size_bytes": {"type": "integer", "minimum": 0},
+    "observed_at": {"type": "string"},
+    "provenance": {"type": "object"}
+  },
+  "additionalProperties": true
+}

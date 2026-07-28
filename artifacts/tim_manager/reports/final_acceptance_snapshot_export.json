@@ -1,0 +1,3870 @@
+{
+  "artifacts": [
+    {
+      "artifact_id": "fba3d2db-80c9-55c1-8a12-9665a2f8a713",
+      "classification": "unknown",
+      "content_hash": "938f5f609234c4ed4d0b32cfc7ba3d97d68ccddc031a1dde399d2c585a67c10b",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "CHANGELOG.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "70c8bc54-b093-56a9-a91b-38f5151ed562",
+      "classification": "unknown",
+      "content_hash": "8ca1007af700fb7e9e34642772a3a826ecbae7b0b24bc217a0e00f3f6224070f",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "README.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "6c33cb23-0bc5-52af-8c8b-b420fffab9d1",
+      "classification": "unknown",
+      "content_hash": "0e2379152b9b5cf7def51d7fab7542bd1c787faf3f4a3ef6fe063447c7347a17",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_COVERAGE_GAP_REGISTER.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "c5ba491c-b74e-5a27-a794-b00f9ec63349",
+      "classification": "unknown",
+      "content_hash": "87986c2ae31fefd3b7398ffd905de863e40e3ccb9054b6cee467e66cce7119cb",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_COVERAGE_REMEDIATION_PLAN.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "1d64bff8-5de2-5896-9cc0-b86c6634ab38",
+      "classification": "unknown",
+      "content_hash": "aea5146038f7b6078af46b05a96b950d5dd7f50ee004ca5d1e6b3a8a9b9ad117",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_COVERAGE_ROOT_CAUSE_ANALYSIS.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "615c439c-c58a-5567-8095-3589f55ae9e3",
+      "classification": "unknown",
+      "content_hash": "5eb54f3c703dd25d72859161ad41ff266ab4d0ebff7420b4f5c56cf37617ff2c",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_COVERAGE_VALIDATION.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "16dd5d34-a97c-56a8-9d6b-94294c7783e6",
+      "classification": "unknown",
+      "content_hash": "e46b666cc8d7e8ee9f50df0c8292dc2425e76142b5e40f7ed8060f85fa0542ea",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_DATA_SOURCE_FORENSICS.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "20588d77-e255-568e-804d-5df84fc649d1",
+      "classification": "unknown",
+      "content_hash": "48805f92ca161a6007a4912494c9ac602f67303441823af9bfda864489a10e6f",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_GAP_CLASSIFICATION_REGISTER.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "35054e76-ae86-52f6-969e-50997caea71e",
+      "classification": "unknown",
+      "content_hash": "a0189a91c30b05fddfa3ad5524137a24c0bae3b4469adedd3dcf5870a20fcacc",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_HASH_CONTRACT_SPECIFICATION_V2.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d468e24d-fd35-5419-81f0-f6709e29c5b5",
+      "classification": "unknown",
+      "content_hash": "b4c1563f1be878b31b98ddd7273da9244b316e7fa16880f9b449b3ab9ae06a3a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_MISSING_INPUT_FORENSICS_REPORT.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "97e540d4-e018-55e6-a2be-51dce8a26404",
+      "classification": "unknown",
+      "content_hash": "e3cdf9f20c5ab5a9c27a2cb825141daa67f570461835e056c24bd91ed2413881",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_OUTPUT_HASH_ROOT_CAUSE_REPORT.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "a36fe1e9-6d64-51dc-b410-4771eb7e4a7e",
+      "classification": "unknown",
+      "content_hash": "7e2684a9ea50de1d256cddbe146a9b8c2ff4c040a2f276b5c5cd6a2f65446be1",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_P0_002_VALIDATION.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "566a5b17-05f2-56ce-95de-76561e87d7a2",
+      "classification": "unknown",
+      "content_hash": "65d56a1bcc6a10cacf837c3b7221a13dc5b502d7ac26d785088725105f4facd1",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_P0_003_VALIDATION.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "711970f2-08fd-56eb-90a0-4822bf0b27d4",
+      "classification": "unknown",
+      "content_hash": "3e45fc99a3c0065317210c8202b4adc97e650438255c106cc91b0682a613c89c",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_TRANSPORT_RELIABILITY_REPORT.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "cba5871d-6b5e-593d-9b6b-ac588db8ce83",
+      "classification": "unknown",
+      "content_hash": "e661ab2c430ac39e5c340b33676f333f77b4eb10b4a1b75f940a654d9c4c145d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_TRANSPORT_REQUIREMENTS_V2.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "6049b117-1719-501c-b85f-7fad82b1c063",
+      "classification": "unknown",
+      "content_hash": "3b9bbfa9ffb6530dcf8292071e25e3dc3f9a07807c72a6eda99a3e262c44fe9a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_V2_BLOCKER_REGISTER.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e1e16a4a-06fb-5f85-b1a7-9edd8e915344",
+      "classification": "unknown",
+      "content_hash": "1d62545c64b93e480e00ab3497a6c2fd8cf154729b5664c227c5e6d99c5508b5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_V2_GOVERNANCE_APPROVAL_WORKFLOW.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "9e94b9cb-c6dc-5a35-87cf-711ccceca934",
+      "classification": "unknown",
+      "content_hash": "f76eb333c90308076db8195e46e08a8f5441256cca3a4bc9f52eb5576062084f",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_V2_RACI_MATRIX.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e52055ca-c327-56ab-92c5-32f8cbf1b07d",
+      "classification": "unknown",
+      "content_hash": "696ad64f88441d65ac5c857ecdc60e73a1d1983bc611b8113a0b97291666f1f5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_V2_READINESS_CHECKLIST.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "a8ece94f-a1c6-5e5f-8141-36ed7ebd6423",
+      "classification": "unknown",
+      "content_hash": "c3eb2e623eaa52ebf3540031097adca666a7781fa8f4e1256c828cd4791d27e2",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_V2_REMEDIATION_PROGRAM.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "ab487cc8-ff87-5c94-987e-33b67dbe618d",
+      "classification": "unknown",
+      "content_hash": "64803129d1f16a7659c49b845f3f19b40659a4dab4dc248fec380cd4940d3bc8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_V2_SCIENTIFIC_READINESS_ASSESSMENT.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "1711c68a-170f-5e7a-92e1-bb63f0130383",
+      "classification": "unknown",
+      "content_hash": "b8d8a14709dbe4174416e981e0f5f2606fc2aaf0e0989b8f76abebe6a407ca5d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "TIM_WEBSOCKET_FAILURE_ANALYSIS.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "21858fa3-ca17-52a4-a50a-59df6b6f2ff6",
+      "classification": "artifact",
+      "content_hash": "66a9f90c27bae11ea782bfd73ac0015141f5326bfc6d9d7632fd14474a7a904d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "generated_artifact",
+        "structured_keys": [
+          "added",
+          "classification",
+          "configuration_changes",
+          "core_changes",
+          "database_changes",
+          "deleted",
+          "modified",
+          "persisted_data_rewritten",
+          "run_id",
+          "runtime_restarted",
+          "schema_changes",
+          "synthetic_market_evidence_created"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "artifacts/audits/tim_v1_change_manifest.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f56c2f13-111a-5d55-9c77-8bc8cc9c227d",
+      "classification": "artifact",
+      "content_hash": "c97eb92b2c19a166f782a4756795ded3c13ea3c98e6b1ee4006ec30c1d613fc0",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "generated_artifact",
+        "structured_keys": [
+          "edges",
+          "mode",
+          "nodes",
+          "prohibited_edges_verified_absent",
+          "run_id"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "artifacts/audits/tim_v1_data_flow_graph.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "44192e03-4ea8-5fd1-a658-f6a671faf0df",
+      "classification": "artifact",
+      "content_hash": "ed8930419408df38323fe8ce2700ea93576fe47101ea896ded1e364b8aaae630",
+      "metadata": {
+        "invalid_jsonl_lines": 0,
+        "parser_errors": [],
+        "source_tier": "generated_artifact"
+      },
+      "normalized_path": "artifacts/audits/tim_v1_pipeline_runs.jsonl",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5a5dcd2b-01fb-5689-9d3b-5849d43774b9",
+      "classification": "artifact",
+      "content_hash": "25eae52a47d76f6b1073d784cc9546bc861cb114cfd66c68f90d6941d7fc13ef",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "generated_artifact",
+        "structured_keys": [
+          "environment",
+          "fixture_classification",
+          "hashes",
+          "runs",
+          "stable",
+          "stage_hashes",
+          "status"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "artifacts/audits/tim_v1_validation_results.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "595ee70d-9458-54f3-ac52-f0424576f8b4",
+      "classification": "artifact",
+      "content_hash": "2ad9725ad45be1fca54a0879c1cca2e69912dfd5615c98c24eafcaecd41793e0",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "generated_artifact",
+        "structured_keys": [
+          "backup",
+          "backup_inventory_sha256",
+          "classification",
+          "core_mutated",
+          "database_mutated",
+          "fixture",
+          "mode",
+          "orders_executed",
+          "run_id",
+          "trading_enabled"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "artifacts/provenance/TIM-V1-UNFREEZE-20260727T170852Z.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "478fac2b-f11b-5a3f-aa3d-a289fda2464d",
+      "classification": "configuration",
+      "content_hash": "82bfe439178299adc5bca0ac1de17614a3fd5fe6ed72a110861f88af9d014ca6",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "configuration",
+        "structured_keys": [
+          "allowed_changes",
+          "components",
+          "core_name",
+          "core_version",
+          "operating_mode",
+          "phase_5",
+          "prohibited_changes",
+          "purpose",
+          "status",
+          "version_isolation_policy"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "config/core_manifest.json",
+      "source_id": "configuration",
+      "status": "active"
+    },
+    {
+      "artifact_id": "31846b09-3c58-5043-910b-d903b1909c78",
+      "classification": "configuration",
+      "content_hash": "d95226c35e3874d572636c9ec781c27f823367b6c1effc04bbd6a333fc990e87",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "configuration",
+        "structured_keys": [
+          "core_owner",
+          "effective_from",
+          "integrity_auditor",
+          "mode",
+          "provenance",
+          "rule",
+          "runtime_operator",
+          "schema_version",
+          "scientific_release_authority"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "config/governance_roles.json",
+      "source_id": "configuration",
+      "status": "active"
+    },
+    {
+      "artifact_id": "746329d3-1b42-5f50-81af-b47bb96d053a",
+      "classification": "research",
+      "content_hash": "6620681264615c88d58702cf773a0a938fc0ea227d394f162d3dbfa7613391fb",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact",
+        "structured_keys": [
+          "artifact_hash",
+          "artifacts",
+          "artifacts_checked",
+          "artifacts_failed",
+          "artifacts_passed",
+          "audit_hash",
+          "component_versions",
+          "core_version",
+          "dataset_hash",
+          "generated_at",
+          "generation_timestamp",
+          "generator_version",
+          "issues",
+          "mode",
+          "read_only",
+          "schema_version",
+          "status",
+          "validation_status"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "data/research/audit/latest.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "c7222fb4-d041-57e8-be3d-8cda69b064db",
+      "classification": "research",
+      "content_hash": "03e8471ad2d0a0c70273050e7c1eb78a26dc896688243d1197ba1b85ddc2e278",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact"
+      },
+      "normalized_path": "data/research/insights/README.md",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "c164f8de-c4c7-5c11-b35e-d972dd35e9b8",
+      "classification": "research",
+      "content_hash": "cdec7b8f68fd26b6bb6b18ea212ceffb1b41e8257e80c7aee76571b8c964a7db",
+      "metadata": {
+        "invalid_jsonl_lines": 0,
+        "parser_errors": [],
+        "source_tier": "scientific_artifact"
+      },
+      "normalized_path": "data/research/module_a_cache.jsonl",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "27b957fe-a9d4-591e-9bdd-77b2087e53a0",
+      "classification": "research",
+      "content_hash": "9d0fb2516b94c84b83721ffaf07bec8a837d0cc7554810d09ccc3ca177e3ace2",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact"
+      },
+      "normalized_path": "data/research/module_b_reports/tim-b-2e181f832cd06cca_research_report.md",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "a3f0dec3-b610-5b5d-b06a-334fca1e1499",
+      "classification": "research",
+      "content_hash": "54bd65ad87689e7b1b734d5477da13c0aaf3fb5a7ac4670cda5bc60984eefe77",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact",
+        "structured_keys": [
+          "artifact_hash",
+          "file",
+          "generator_version",
+          "input_hash",
+          "metadata_file",
+          "mode",
+          "module",
+          "provenance",
+          "query",
+          "report_id",
+          "report_source",
+          "report_type",
+          "schema_version",
+          "sources",
+          "timestamp",
+          "tone",
+          "word_count"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "data/research/module_b_reports/tim-b-2e181f832cd06cca_research_report.md.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "de0816a1-59f1-5f54-86b4-81f09def6585",
+      "classification": "research",
+      "content_hash": "e746fb778a951fcb747e38a7264cd9191496515f0b956cf8d0e499f8056aa6e0",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact"
+      },
+      "normalized_path": "data/research/module_b_reports/tim-b-3b6006bbc923dc9a_research_report.md",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "bc2a9329-1c24-5527-ba80-ed1a660c911c",
+      "classification": "research",
+      "content_hash": "4723cfefd74b9f536e38b1a89df24c6ac7511b2157a366567778332c283d41e2",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact",
+        "structured_keys": [
+          "artifact_hash",
+          "file",
+          "generator_version",
+          "input_hash",
+          "metadata_file",
+          "mode",
+          "module",
+          "provenance",
+          "query",
+          "report_id",
+          "report_source",
+          "report_type",
+          "schema_version",
+          "sources",
+          "timestamp",
+          "tone",
+          "word_count"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "data/research/module_b_reports/tim-b-3b6006bbc923dc9a_research_report.md.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d7ad6a92-71e3-57da-9fc8-0ca4ce9fe920",
+      "classification": "research",
+      "content_hash": "07c4c64ff304d1dabf4fda9a260e562151206b915a2088e8a98fa56fcbbcdfb0",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact"
+      },
+      "normalized_path": "data/research/module_b_reports/tim-b-9a14ac4540b46443_research_report.md",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "849eab32-410a-5997-9aff-2b0bdb04e760",
+      "classification": "research",
+      "content_hash": "5895984051050548442962adb94d12ede718aee12523ef26f85251fb5f52ea87",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact",
+        "structured_keys": [
+          "artifact_hash",
+          "file",
+          "generator_version",
+          "input_hash",
+          "metadata_file",
+          "mode",
+          "module",
+          "provenance",
+          "query",
+          "report_id",
+          "report_source",
+          "report_type",
+          "schema_version",
+          "sources",
+          "timestamp",
+          "tone",
+          "word_count"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "data/research/module_b_reports/tim-b-9a14ac4540b46443_research_report.md.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "a65a8284-35ca-50fd-aa9f-2a6114d7f67b",
+      "classification": "research",
+      "content_hash": "eff0ce873d63d9398cf8b51f646c62ad7681bdd93ae7938fd6ed99ac1c6701d4",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact",
+        "structured_keys": [
+          "artifact_hash",
+          "audit_hash",
+          "audit_status",
+          "checks",
+          "dataset_hash",
+          "generated_at",
+          "generation_timestamp",
+          "generator_version",
+          "input_hash",
+          "issues",
+          "known_data_gaps",
+          "mode",
+          "read_only_sources",
+          "records_checked",
+          "report_hash",
+          "schema_version",
+          "status",
+          "validation_status"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "data/research/quality/latest.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "1b5ae4ab-9c3e-5b0b-8c4d-e784c36b2acb",
+      "classification": "research",
+      "content_hash": "81fb9617b01ddd2f9dcf6651a0a433b8a9641052d6152d9c4541344b0aa0ada3",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact",
+        "structured_keys": [
+          "artifact_hash",
+          "core_manifest_hash",
+          "counts",
+          "coverage",
+          "data_quality",
+          "dataset_hash",
+          "future_research_recommendations",
+          "generated_at",
+          "generation_timestamp",
+          "generator_version",
+          "known_limitations",
+          "mode",
+          "open_points",
+          "replay",
+          "research_results",
+          "review_criteria",
+          "safety",
+          "schema_version",
+          "scientific_health",
+          "snapshot_hash",
+          "snapshot_month",
+          "snapshot_name",
+          "snapshot_status",
+          "validation_status",
+          "versions"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "data/research/snapshots/2026-07.in_progress.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "fb397eec-64cd-578a-9d42-8edbc0412cda",
+      "classification": "research",
+      "content_hash": "7a5cd3100f26c8b5d0fe3cbaa27facc3fe53a58c30272486eef9dca65e485dc0",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact"
+      },
+      "normalized_path": "data/research/snapshots/2026-07.in_progress.md",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "6ba85a19-20ef-526a-8937-df496560fd2c",
+      "classification": "research",
+      "content_hash": "924fee6298a2cf66b3fdd55ed01d71f5f655c357cf5101a87c27daf058d4f34c",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact"
+      },
+      "normalized_path": "data/research/snapshots/README.md",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "99aa8949-68c0-5f7d-b19a-835b2195fdf0",
+      "classification": "research",
+      "content_hash": "070b4a1813526d482a6d3aec487711a90f99cbc516d7ba2d3665ad74e6e36814",
+      "metadata": {
+        "invalid_jsonl_lines": 0,
+        "parser_errors": [],
+        "source_tier": "scientific_artifact"
+      },
+      "normalized_path": "data/research/snapshots/scientific_maturity_history.jsonl",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "66a73a5e-9abb-5f34-a301-b7994748f552",
+      "classification": "research",
+      "content_hash": "7b682c57521f766c90e18900e490892d0faec2def4e3dbd65343e8380ab2ef6a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact",
+        "structured_keys": [
+          "artifact_hash",
+          "blocking_criteria",
+          "continuous_coverage_percent",
+          "continuous_expected_1m_intervals",
+          "continuous_missing_1m_intervals",
+          "continuous_persisted_1m_intervals",
+          "continuous_window_end",
+          "continuous_window_start",
+          "criteria",
+          "dataset_hash",
+          "eligible_for_scientific_review",
+          "forward_only_status",
+          "generated_at",
+          "generation_timestamp",
+          "generator_version",
+          "measured_validated_cases_per_day",
+          "measured_validated_cases_per_hour",
+          "mode",
+          "new_artifact_provenance_status",
+          "nonbinding_projected_1000_case_time",
+          "observation_count",
+          "observe_only_status",
+          "open_case_count",
+          "output_hash",
+          "projection_notice",
+          "provenance",
+          "readiness_status",
+          "regression_test_status",
+          "remaining_case_count",
+          "replay_status",
+          "required_case_count",
+          "schema_version",
+          "scientific_health_status",
+          "snapshot_id",
+          "unresolved_new_gap_count",
+          "v2_approved",
+          "validated_case_count",
+          "validated_case_progress_percent",
+          "validation_status"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "data/research/status/tim_v1_readiness.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "015d6f6f-e1bf-5786-9916-a46df0988d2f",
+      "classification": "research",
+      "content_hash": "85809cf63b0abbd1a93dcb6f091f8494c4e6de73ec0e23d0102983e7191bcd4a",
+      "metadata": {
+        "invalid_jsonl_lines": 0,
+        "parser_errors": [],
+        "source_tier": "scientific_artifact"
+      },
+      "normalized_path": "data/research/trigger_events.jsonl",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "831df096-9761-5282-9c9f-34bcda5f9aed",
+      "classification": "research",
+      "content_hash": "ad8ca1aa2ec7ebea6a25b2646631d970891f5aa08b2841f64b27c1063e5ed41d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact",
+        "structured_keys": [
+          "processed",
+          "updated_at"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "data/research/trigger_state.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "519ddf45-6bdf-5bd7-ad87-d2469c57b58e",
+      "classification": "research",
+      "content_hash": "a6106817b737ec61ca060715e617f168c48b4067fe538b2b865343058dec3400",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "scientific_artifact",
+        "structured_keys": [
+          "core_modified",
+          "coverage",
+          "data_gap",
+          "database_schema_modified",
+          "mode",
+          "read_only",
+          "report_version",
+          "scientific_completion",
+          "snapshot_at",
+          "validation_audit"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "data/research/validation/tim_v1_scientific_validation.json",
+      "source_id": "structured_reports",
+      "status": "active"
+    },
+    {
+      "artifact_id": "97a9c1a3-b0e8-5a61-9329-b71a794f71f8",
+      "classification": "documentation",
+      "content_hash": "f505fc82c1764ca83fb6c5b7217d84160a19c9635b24bddcec3f827050c1a02d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/AGG_TRADE_PERSISTENCE.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "0e8f0333-011c-5b8a-a96f-bc7b11e911b3",
+      "classification": "documentation",
+      "content_hash": "5e5e183d01db4b219c5987250316f93c69867644c92238454dd11fd2186e73e3",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/AUDIT_FINDINGS_CLOSURE_2026-07-20.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "2c263bac-a655-522e-987c-c2570a5eec7e",
+      "classification": "documentation",
+      "content_hash": "b2253398797363da7ecd3e591669cdf9bbbd7d760744ef7fff112c05794aed56",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/BENCHMARKS.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "500fb253-2928-583e-90ee-2b19b042060c",
+      "classification": "documentation",
+      "content_hash": "7648defb115e54b26cc3941a51162c4e5280c9b34ef29bbeec440e53f546917d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/DASHBOARD_RESEARCH_UI_V2.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "77afd8f2-ad76-598d-aa9d-8c99295dded1",
+      "classification": "documentation",
+      "content_hash": "c7a99469fe7c5e51934faeeeb129a6da7ce83d853576c840f7e74efe04f81f6d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/DATA_QUALITY.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5f0bcf24-14c6-5721-9608-c01a2fd08ed8",
+      "classification": "documentation",
+      "content_hash": "15d560f06c01276ce4d02f2ab6fc26c77bac0792e0c2493ee5afb036417b1d08",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/GPT_RESEARCHER_COMPATIBILITY.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3ea6ace1-7f54-559e-b047-5a4240cbe78d",
+      "classification": "documentation",
+      "content_hash": "094fcc9782b0c05a053532e71f181c52f5326f9f6a461527b6fb869719e2d5ca",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/INDEPENDENT_ADVERSARIAL_AUDIT_2026-07-20.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "17144f90-68ad-5e7e-8b04-cd264a91bf85",
+      "classification": "documentation",
+      "content_hash": "27fa2a2a1166a9d8e4bfee3de6f1f85c561f13691aa2f048837f5e7a5faa3dc8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/OPERATIONAL_VALIDATION.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "8ad7e7cd-8ca3-52f0-bdf7-710fc4b144de",
+      "classification": "documentation",
+      "content_hash": "02f7a1a55bcaa4af70723619070d998f594e5039ee7282552b068535d5c753e2",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/ORDERFLOW_METRICS_PHASE2.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "83f8ca63-13af-5924-a2df-0fa2c85aa0cd",
+      "classification": "documentation",
+      "content_hash": "8c1e25e89645eb7facf38b2626b51d957abced8a5189bda61b303171e71e9020",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/ORDERFLOW_RESEARCH_PHASE3.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "18ba2d52-7933-57de-afe9-e8ea7fc1724d",
+      "classification": "documentation",
+      "content_hash": "7f9964712fbcdee136fdf99c2ccd336f7771d556b35b0a2b05d0d84ae66789c3",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/ORDERFLOW_VALIDATION_PHASE4.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "69698ff7-c292-5f8f-bf55-4e3d6057b222",
+      "classification": "documentation",
+      "content_hash": "a019306d0e6a939405d28d12a4e35c2e3da30ca93aa15e8ae79f0909f11fa42a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/POSTGRES_SETUP.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "c9f4b58e-bfab-5cd5-bdf9-8eda111f4a56",
+      "classification": "documentation",
+      "content_hash": "20bace205a18bd52cf9ad34baf34993b98ea9879b111efd7c6aedfff3f52eb11",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/RESEARCH_ANALYTICS.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "06ede44f-6622-599a-bdca-922ac66667fd",
+      "classification": "documentation",
+      "content_hash": "65389feab50ff8bb0b21bf11058c7c991391fb1cbc22cff3badbd7c3a525413c",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/RESEARCH_INSIGHTS_ENGINE.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "955e63d5-2569-550e-9dfd-a894d736aa57",
+      "classification": "documentation",
+      "content_hash": "52ef8add1a72fbc2cc81e54f72984da9f80106da4114b71a8b4c1fcc8d77522c",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/RESEARCH_OPERATIONS.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3742b235-b4f8-539c-9866-fb5ee1b8c14d",
+      "classification": "documentation",
+      "content_hash": "93c8a55d864fce006fceba0e57f2e39e244f66435f1135d53a9fd69c6d1511f3",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/RESEARCH_SNAPSHOT_PROTOCOL.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "049e90d7-c50b-543d-ad82-9ef06ca03fbb",
+      "classification": "documentation",
+      "content_hash": "3f303bdd8dd1163614c0be9c462b2db0abd05d2f88eebba64d2dd0a0ef6827f7",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_72H_ACCEPTANCE_REPORT.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "a6a1cec8-f0fa-5971-be50-346d984e0135",
+      "classification": "documentation",
+      "content_hash": "29ef1f65ff5953e603d5e9d6019e061138b7099718971a1388f54a897452edcb",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_CORE_1_0_FREEZE.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "54df5f7a-80e8-5110-bf3f-6e1fd9b28f80",
+      "classification": "documentation",
+      "content_hash": "f84488e9fb53386f3fecf75d655cc37ad25892d13e12441e341de74cb099c3bb",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_DATA_QUALITY_GATING.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5982406d-c363-55cb-aee0-508a817d0d6f",
+      "classification": "documentation",
+      "content_hash": "99e74eeb64ced4d32832e72c43f4c0a84d0851df8e06a68887304162a54187bc",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_FINAL_SCIENTIFIC_RECONCILIATION_REPORT.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e865eb6f-9aaf-5e63-9e4b-70a5e5b9ed2c",
+      "classification": "documentation",
+      "content_hash": "ae6250e979dcc49458c031aaf919f27cd31efa9d9316fdf184253e4dadc28128",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_HEALTH_CENTER_ARCHITECTURE.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d1b24224-ffd6-5656-a139-2f5115d1185b",
+      "classification": "documentation",
+      "content_hash": "3e321c7a69e273fc5c87ebd56e9e229daee76b1689b894982d163bce8deba97e",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_HEALTH_CENTER_RECOVERY_REPORT_2026-07-27.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "fe8a3314-1877-5447-b061-bff85eb97fd1",
+      "classification": "documentation",
+      "content_hash": "ec028516566e40a2b1fd7c67a8e371ba13de74c095234924941c1ce65d40d9d7",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_HEALTH_CENTER_VALIDATION_REPORT.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5671a434-eeb2-5f4b-acef-ad285bfbdf00",
+      "classification": "documentation",
+      "content_hash": "6d1a1a7bd80be1fe4c4192dfa81c669d20e36fabcbb54065040310cc50f671e8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_SIGNAL_RESEARCH_UI_CONTRACT.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5c67ce5f-de2b-5540-8382-25ef4e73b373",
+      "classification": "documentation",
+      "content_hash": "8a88bf9c02d3d07347b98575c5283d230ea8585db9e7ad2c65cb282b51e06e0f",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_V1_LIVE_STATUS.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d44cc89a-f354-5767-b203-9d5b75f28830",
+      "classification": "documentation",
+      "content_hash": "ca0fefc622437f4e8f68cc652f97f683483b5a3a5cd1bc54f40837c640cb1b79",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/TIM_V1_SCIENTIFIC_VALIDATION_2026-07-23.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "facc29dd-bfb2-57e8-9454-8cbb5fae0d2c",
+      "classification": "documentation",
+      "content_hash": "3a384e711ba6114d5514b3abea3c13796a4e0e3a603d22c67075dfba56eed671",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/VALIDATION_REPORT_2026-07-19.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "fb64f74a-907e-5b82-b8a9-64fdda2438f5",
+      "classification": "documentation",
+      "content_hash": "036f31fe538e833b2af5afcdef122830102fb08e73b78619ac5f4adc54db0baf",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/VALIDATION_REPORT_PHASE1.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "8d1a59a1-e3a2-5aaa-be8e-a47c436e375b",
+      "classification": "documentation",
+      "content_hash": "c6196618f2b80073cb0e66b4f975ec856711823c1969d23c0e89913d23ed6fba",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/VISION_2030.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "841afa73-4ebe-55b1-a2f0-e397ee10ac42",
+      "classification": "documentation",
+      "content_hash": "5bceeb0ec8abd61201b0edc71e7c0de496ccb8f5a93ef9eebd5d17bee6840bbd",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/audits/tim_v1_backup_restore_report.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "43de31c7-d418-5817-989d-7e63ded77b38",
+      "classification": "documentation",
+      "content_hash": "b36585403cbc54a58fefc1d8db7e218b0dee1171d9a3bc33b9714e6b0784db52",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/audits/tim_v1_baseline_comparison.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "bed68598-44d1-508c-8758-372651218a0f",
+      "classification": "documentation",
+      "content_hash": "122f289d7341a9d0a36b599dcc1415329c7baa4d92398c8ad134483e9b601b24",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/audits/tim_v1_data_flow_map.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f92168ca-4392-5ffa-a2eb-698f2b9dddd3",
+      "classification": "documentation",
+      "content_hash": "cce563d9b37b7fd7f8c1435028f276b7b0f365325ba94268be7f45f2ae0f8578",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/audits/tim_v1_final_audit_report.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "8ae66ea7-51d0-5490-b96c-09d270c9fe20",
+      "classification": "documentation",
+      "content_hash": "b031be68fc7a92e35bcded8d384f7427b4fbc3ea99def7768e1efbbf930c751a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/audits/tim_v1_lookahead_audit.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "03aacf82-63e0-5067-89f3-04f0b6b9e5f5",
+      "classification": "documentation",
+      "content_hash": "0680fcec33968120b7a41ce6e12b4fce0c391b8c5014e2ee763db70e1010723b",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/audits/tim_v1_reproducibility_report.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "824041dc-2c7d-59c9-8989-feedc5ab925c",
+      "classification": "documentation",
+      "content_hash": "d8a5097e25e13ab3ee54a74e7ba0bb397e839f88fa3dfdb0cc1c074c5b988a08",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/audits/tim_v1_risk_register.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "6a5d7657-3678-5bcf-bfcc-c29c7b0bcb23",
+      "classification": "documentation",
+      "content_hash": "20fbca7fe09460d774cf5f65ba4e41f5bbb4d9b8d00c9641096b4a8fe1d0d304",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/audits/tim_v1_schema_registry.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "be1903fc-ed16-5389-8f4c-c20ca2c046ef",
+      "classification": "documentation",
+      "content_hash": "5b941cdb4af3b2050bcfadac74d5648bd0e24a892d501ccb41015588254ce692",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/audits/tim_v1_system_inventory.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "977510a7-efbb-561d-90e3-f0908c0ed03a",
+      "classification": "documentation",
+      "content_hash": "643e1ec231855bb6c48ff7df14e5c850bd3c9e7b87101fc270ed2d46da28576d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/autonomous_trader/AUTONOMY_LEVELS.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "58882b3b-b55a-51b5-83b1-316a2a53e159",
+      "classification": "documentation",
+      "content_hash": "3816f7976f9c178087d7abacd79cbfcc2918de78fd6aec2be2368a3c86422279",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/autonomous_trader/CURRENT_STATE_ASSESSMENT.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "538609a2-4e66-522f-8e8a-9479ff4919cb",
+      "classification": "documentation",
+      "content_hash": "1ca9b71e8477eda07873a50a27450c0ef8efbe750172f01608cec7fc62a79938",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/autonomous_trader/DATA_READINESS_MATRIX.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d47955e9-7e5d-52e2-bea9-50e6bbd61eac",
+      "classification": "documentation",
+      "content_hash": "5a06fff72e2f060719976eb27828c23cd9ca9277454a59d6fa1ccd0f16fb4264",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/autonomous_trader/IMPLEMENTATION_ROADMAP.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "261826ea-78ba-5a52-a0d3-27b5d11bfea5",
+      "classification": "documentation",
+      "content_hash": "5d6341d7ce786786721ef0e7d0052197bf873a4b40032833a0126ede90b51d30",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/autonomous_trader/LIVE_EXECUTION_RISK_REGISTER.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f3d228d5-564e-5d53-8e5b-00832cfb05ca",
+      "classification": "documentation",
+      "content_hash": "ec9b37115b99328b1086fba83440e26dddbab80ba56adb1e28537d8ddc361b16",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/autonomous_trader/SPRINT_01_SPECIFICATION.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "9ebb9132-f853-5804-bb5b-297b477606aa",
+      "classification": "documentation",
+      "content_hash": "b44d74cc319860c610f3ecd861d4eefbfb9163c76eb8a73fa96cc9c59170b024",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/autonomous_trader/STRATEGY_READINESS_MATRIX.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "7ff7c75c-057f-508b-8d0d-ac8a0784b79e",
+      "classification": "documentation",
+      "content_hash": "e08383187ad7d484b7f70d43af8d1b40988bf948eff9f427af53a84585ff4b07",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/autonomous_trader/TARGET_ARCHITECTURE.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "df96aa34-90e8-5036-9de3-940bb8f8d050",
+      "classification": "documentation",
+      "content_hash": "6a139ab70ac841b4c828da40c8d01b1b841a840a18dfdebd6ebff8e96e410c3b",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "documentation"
+      },
+      "normalized_path": "docs/autonomous_trader/TEST_READINESS_MATRIX.md",
+      "source_id": "documentation",
+      "status": "active"
+    },
+    {
+      "artifact_id": "9dea3d1b-7192-525d-b3ca-eee17dc93a52",
+      "classification": "unknown",
+      "content_hash": "b8c407ca05c0c7ebea648b02c6474e4e1e2e2cd67ac6d30bb3b209ebfebb5d74",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "unknown"
+      },
+      "normalized_path": "main.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "eb819189-ad89-582d-a344-b75de9614135",
+      "classification": "schema",
+      "content_hash": "79295bc5043a5c29db5110d3504593dac410b64b903b2a94ddbe311ee617e696",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "configuration",
+        "structured_keys": [
+          "$id",
+          "$schema",
+          "additionalProperties",
+          "properties",
+          "required",
+          "title",
+          "type"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "schemas/data_quality_report_v1.json",
+      "source_id": "configuration",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5bbcb283-bb8f-5b8a-afd5-c4924a1da9cb",
+      "classification": "schema",
+      "content_hash": "e3e60cf588b57d984382dba804cea1631b2fe29856ec8a30c0107be9f187a1f5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "configuration",
+        "structured_keys": [
+          "$id",
+          "$schema",
+          "additionalProperties",
+          "properties",
+          "required",
+          "title",
+          "type"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "schemas/tim_manager/artifact_record.schema.json",
+      "source_id": "configuration",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3055aad8-a7e0-58d2-bd0b-9c1793f53841",
+      "classification": "schema",
+      "content_hash": "f25daea6e733d026b203ecf381c55a65870f6ea3a4c9caa666911d52ae6366be",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "configuration",
+        "structured_keys": [
+          "$id",
+          "$schema",
+          "additionalProperties",
+          "properties",
+          "required",
+          "title",
+          "type"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "schemas/tim_manager/project_event.schema.json",
+      "source_id": "configuration",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f088d6b8-851f-5795-85ed-e77822f8955b",
+      "classification": "schema",
+      "content_hash": "a9b041f7eb5497a2ff8263f89d637af350f7e01eafffa5913b67fa74be64b8d3",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "configuration",
+        "structured_keys": [
+          "$defs",
+          "$id",
+          "$schema",
+          "additionalProperties",
+          "properties",
+          "required",
+          "title",
+          "type"
+        ],
+        "valid_json": true
+      },
+      "normalized_path": "schemas/tim_manager/project_snapshot.schema.json",
+      "source_id": "configuration",
+      "status": "active"
+    },
+    {
+      "artifact_id": "278cdf79-b290-5b55-b111-dcbae426e9e5",
+      "classification": "source_code",
+      "content_hash": "92d274ea85a587ab274a5bc25af595a8d2251f6a7b8101869f62b0de5fb5996f",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d7b741cc-0d7a-57f2-9cf1-a3c6019db139",
+      "classification": "source_code",
+      "content_hash": "842bf034b4040d91788d4f0c206e6eb884222df7f35bdc2e16b5642758dffac4",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/acceptance/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "0fcf3b98-5a6c-5ce2-b826-8e48e0f958fd",
+      "classification": "source_code",
+      "content_hash": "2b6a2fedfd8b37de6802af6f32ad8baca2700bfbe28224aebf6b0d30d9351b2b",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/acceptance/monitor.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f01bba1d-c833-5c61-8fc3-24155db7654a",
+      "classification": "source_code",
+      "content_hash": "131f0df41cef2d0beaccf36ed878afefe6211ea6a3ca0d8ce072c2bc81a6f15f",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/analysis/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "dc09f228-7ba6-5cb5-9feb-ce8a9a171286",
+      "classification": "source_code",
+      "content_hash": "b2315d1f1e43baa0dd66b5d5bdcf4506e6087550540d6c1190bfaaf69d3df957",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/analysis/bos_detector.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "7dacd338-a78e-56fe-b8c8-badcc24d861c",
+      "classification": "source_code",
+      "content_hash": "32025afe97f9edfd906806d350e51ec4d27d7f0d95ba0e9db8d87557e8a2e382",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/analysis/bronxc_rules.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "ebb613dc-bbee-541f-b518-bd698f225d6c",
+      "classification": "source_code",
+      "content_hash": "d9bdeeeacf0169d2cf6e4e55a96c9ef3bc7ec91af63e4300dd40c454d137d3a3",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/analytics/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "b55a7e4b-804b-51bb-a245-d291f18d1ac7",
+      "classification": "source_code",
+      "content_hash": "d1257ac976996e52b0c33c44a78c85f50af7d6e1b7b259aca5a017dcfa3f4b69",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/analytics/research.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "80004f01-d5bb-5f11-bb26-bb7a927cb171",
+      "classification": "source_code",
+      "content_hash": "e4cf1608724d30001a0aabe0e6cac845eb6a8151525c4cf4f7bc3a5d4d5d0103",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/assistant/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "8b573cee-27bb-5ad1-a4cb-d8d554b8e875",
+      "classification": "source_code",
+      "content_hash": "a65c9758a5887cdb4310dcaba8ff28a942a53d9add94009a602d40ab5f65a36e",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/assistant/short_term.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f8deaf06-1bde-5a58-9792-4b599b4e394a",
+      "classification": "source_code",
+      "content_hash": "f8c3d8149edd019122ee1262c37bf7798311bdafac0d451bd9d8794cbd941623",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/benchmark/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "2cdcd443-5e38-5ade-ac45-1db6dda211a6",
+      "classification": "source_code",
+      "content_hash": "534e82cc442682c22e7bc6cf9c4f0754cd19d2c67a63ffd9670b1182e041560a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/benchmark/suite.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "df52ae61-c82a-54f9-aea1-f1c390a892c1",
+      "classification": "source_code",
+      "content_hash": "8252f12f78f7cb7db17c521899303201553fb73e6cd96289b99a457b009aff6c",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/dashboard/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d8126f96-47e0-5e63-a045-c4f175b29846",
+      "classification": "source_code",
+      "content_hash": "d6503f16b87319c464baf9cf5176a00fd61d9dd7efd70ba3a72d95f98744786e",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/dashboard/app.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d449f3c8-279e-552f-b6c8-d84f8eea9bb4",
+      "classification": "source_code",
+      "content_hash": "e35aefe2d5a57fd3b558df4c9d6101d93f55d66c4f6d3a4f6ab3547c23aa9eb8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/data_ingestion/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "dc27be57-f9e9-5f43-8f73-9ce5f7120997",
+      "classification": "source_code",
+      "content_hash": "44b1deb2d95eaaed05afddfab038fd944192cf2c2e7653c5d31c1a9db6b54a5b",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/data_ingestion/aggregator.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3e38b431-2e72-5662-b54e-1542cef9675b",
+      "classification": "source_code",
+      "content_hash": "d39ddbec81ae23e093b41bb93e3a338fb8997051a0b87fe2a5b2d6ed243baf11",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/data_ingestion/binance_ws.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "4546ea0a-9440-5040-bc75-fdba7f72c8a3",
+      "classification": "source_code",
+      "content_hash": "7674c491eb1d7686d04da60f4f97863d11adc96277962c8c6f6a1bae88e20f6f",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/database/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "ed520de5-e058-534c-98f5-11391f8e74d0",
+      "classification": "source_code",
+      "content_hash": "a34f4738465d5424244825fd42a006123ac26072f5839f365b4e22c367885a3b",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/database/connection.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "c8275764-bdee-5b75-9914-0c6af334fb52",
+      "classification": "source_code",
+      "content_hash": "c6251c5427b822999d5a4081548fdce7ac0d6051bd5cc105c3a0ddff95f1e8f5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/database/repository.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d009904b-bff6-5ef1-9889-87b4e1ab94ad",
+      "classification": "source_code",
+      "content_hash": "3a92c3d0da7201b1b0577c1777f87b955b543c09a63afdf86eaff9982626d53d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/insights/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d7a20808-7be4-5b34-8c96-68c4b757290f",
+      "classification": "source_code",
+      "content_hash": "4be09d375e335c54f8c2f6f108db902e303c80e8b7c1554f8e3046bb5e98e99f",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/insights/engine.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e233e3f8-67ac-5a63-b32d-711fc3111bc1",
+      "classification": "source_code",
+      "content_hash": "556c37331b132662581b6508425d59b173da7ce2d8671d1f7ae15eb54a7a3a96",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/knowledge/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "cec400bd-3705-553b-b670-1d8072db3767",
+      "classification": "source_code",
+      "content_hash": "abd8e9a46d0b49ae46d62f19697e9db42cfd1c1e9d6dec8e22db3689741f0a90",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/knowledge/goathub.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e955a9ef-f9ec-5396-b5b6-ce809471f981",
+      "classification": "source_code",
+      "content_hash": "c8cb04974273fed6d562f56ed3f6a065dd9c24677f57f6eedad6ec7a6631aaf9",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/llm/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "c0a1c2d2-88c8-5f82-9c1d-13c3544550af",
+      "classification": "source_code",
+      "content_hash": "48787345f9450cbdc73ba3b1dc215b0bb6d5abd69ba8c7fe9e3d80e00415fc2b",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/llm/ollama_client.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f2b9e73f-2cf8-5208-9dba-8ebbc856624d",
+      "classification": "source_code",
+      "content_hash": "355c89e3577c6807c185858073f1b91e41b5dee45cb65b8efc990f97740fb9a0",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/llm/prompts.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "2ec850dc-490e-542f-b93e-4c4c447e340a",
+      "classification": "source_code",
+      "content_hash": "bd457fa699d26782ae61bd4fdc5c580e0bbb6c8d560ca5a8a67f453f5a91b286",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/longterm/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e9ac55fd-6e70-5a07-b621-ba961cc419d0",
+      "classification": "source_code",
+      "content_hash": "694ed5a3c18f7e143411bf7da3c90cda5a5971fa56de1c5ace49a9773941d45c",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/longterm/intelligence.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "c10577f0-ee8a-524e-a950-55d7ba17210f",
+      "classification": "source_code",
+      "content_hash": "e87b203d50dc0219bc9785726fdb7a34ef4907c1bba7357af9e83a420d089e69",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/memory/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "28d05833-cc16-581c-bb71-c45150eac991",
+      "classification": "source_code",
+      "content_hash": "24537c7747ec435ac050fbba83df725dab1c7ca0652b936a844f56a37496fd99",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/memory/market_memory.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "0e1e69c1-13ea-52f6-9b85-5296572a6773",
+      "classification": "source_code",
+      "content_hash": "efd235a371372c67f5417f8aee7f6883f26dcccdf3f4303a25a198ce132470d9",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/models/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "b4142572-1ac2-54dc-af62-e54088a7686b",
+      "classification": "source_code",
+      "content_hash": "aad8324ce21cdd448af4342005257e7b13e2ab302a9fe2907ac471270efe3522",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/models/market_data.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d2cd9ce3-2138-5ece-9828-66779293a8f7",
+      "classification": "source_code",
+      "content_hash": "6a5afce3f22082d75f6eca87c457db755a8450a7cc5b22253db07d71bbba74eb",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/news/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "ec85b114-7eb3-5a82-adce-671de5bc79d6",
+      "classification": "source_code",
+      "content_hash": "468892a8ffeb25f6e8a7e9c2560143e56891003a5452d485ada44704899a8055",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/news/intelligence.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e66e3858-4e15-5775-a780-e8d83464d1fe",
+      "classification": "source_code",
+      "content_hash": "34cd46cfb7137a10dbbf4f18090ff56e804cc506a6054249108e1501a2d0285d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/observation/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "be7f10f6-189f-5c2e-a532-e4811a7748e0",
+      "classification": "source_code",
+      "content_hash": "cb701bd36fc9885eb71ad8200122ab46424051eb069048330dbb51cb4146455e",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/observation/engine.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "af85ba48-271f-592f-bb16-10bc4a3609e9",
+      "classification": "source_code",
+      "content_hash": "ba0df26fbd9e0ca481418db91d668f8ab12ebfba5c3744466ca9d4d4ea89ed67",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/operational/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "a880d4e6-b222-57c2-bf6c-c97350ba9fec",
+      "classification": "source_code",
+      "content_hash": "1a465346a33c6692f17f693664522d59da07172423167430c3065375a652d451",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/operational/health.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "d53ac07d-9516-5bfa-92fc-f006310597b0",
+      "classification": "source_code",
+      "content_hash": "565b8cb16b1047b78f6bf888070251a337b47b9d2a59fed2f671f33493ba22b3",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/operational/logging.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3fe1b8f0-3735-54bf-9e0a-1932be849b7c",
+      "classification": "source_code",
+      "content_hash": "c0353346ad2aef73466417b4262ef12162ed27ac2deaf21406b85f74f58dfbdf",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/operational/metrics.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "4b3c1812-a0ca-5471-947a-01c08b63a2b0",
+      "classification": "source_code",
+      "content_hash": "3eadda0a40336aa0922e1dd0b421782641d32395ba0e6106369059aa1cfd84b5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/operational/research_cycle_check.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "36f076f6-b079-52ba-83f9-0f58eb5bb508",
+      "classification": "source_code",
+      "content_hash": "3f6ad4529d2a35fdfa7e44170a3543bcfffe4bcacb2271c286886e170f1080d6",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/operational/research_health.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3956839e-90ce-5e13-a66f-4259da2a43eb",
+      "classification": "source_code",
+      "content_hash": "336fa9d4ebf655ea8144d94c354dc10bba13ac8b8d66524e9fae0cd8a40d9fdf",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/operational/runner.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "b88890c9-5c55-53ab-8247-43ac4c86d719",
+      "classification": "source_code",
+      "content_hash": "b8a1d3d0705fe63115e6086434c4bce58a5f72a79cf7de4bd4c2d96c9b1d6d57",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/orderflow/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3b1a82ef-b2b1-5f6a-9da4-9d80b231695f",
+      "classification": "source_code",
+      "content_hash": "d052dd2b25ae237b22db047af3341b293bdf752a86dcb74a43f1e37036b5e59e",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/orderflow/metrics.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "10f9fd12-6d23-5f99-ad76-0d053abba1e8",
+      "classification": "source_code",
+      "content_hash": "ba52b285a2eb6c2fbff7b3d9ccdb5d2a77881a61c668f73661cdaaba4f392729",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/orderflow/observations.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "bbae2838-51ff-5b59-9214-d0d992e72bcf",
+      "classification": "source_code",
+      "content_hash": "f50a7388a53a6e224a27815b8dd769c58cdd3fef957555be1653a9ba622fe1cf",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/orderflow/validation.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "fa89f484-ecd2-5531-9937-c8ffa533f39e",
+      "classification": "source_code",
+      "content_hash": "7bb3824b5097b8f6c65fae918a0940b3a42623186a582b51c0a037acef098aa8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/paper/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3edcfede-38a2-53ad-90ef-184a93631aac",
+      "classification": "source_code",
+      "content_hash": "8ab3b793aeceaf8846d11e87ce855dac8dc1ce6841e893f9df754645cda345ec",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/paper/automation.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "56a191d2-9af7-50fc-ac10-cf8502fbf7ce",
+      "classification": "source_code",
+      "content_hash": "04f627d75c918a881b9a038e129a1c9605fd465814549237ca4be71632f4b5d9",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/quality/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f441489b-867a-5294-a463-b131a67bccde",
+      "classification": "source_code",
+      "content_hash": "07d79bf522aa99223f36dbe9e37d4124ea0520759fa84b3c4ef3aa021f01711c",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/quality/framework.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "736d04ef-6a46-5819-92b8-ad0c0ed16293",
+      "classification": "source_code",
+      "content_hash": "edc526e93322626c3c8ce67403d835f06c8ef27425d6f71c08ce6b75e9e9c20d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "ccf0fd25-9954-5235-b545-29bdeef3205e",
+      "classification": "source_code",
+      "content_hash": "dce094b02d0aed05c8b26d075dbb4b626d3a72705c881cb65255e28e3896c4dd",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/case_engine.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "aa8a8647-2542-57ea-a021-c73a1bd8afc5",
+      "classification": "source_code",
+      "content_hash": "31133fade59bcac90f0a19771aeb871f8b9744b9e195c1dd0ddc03ecedfab650",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/config.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "fa2cbb0d-3d58-5261-a9e1-43708369ae36",
+      "classification": "source_code",
+      "content_hash": "8c7cd6a261b017ad74f6aaf039163808ae5ef56c851158c0c148698b82ab9c50",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/module_a/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3c26ce01-3b1f-5c8e-90ef-5eddab8099ef",
+      "classification": "source_code",
+      "content_hash": "626fab296f1c55e01b1115967561c848da37d06c63b21b90ebb0def379af153b",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/module_a/agent.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "46d740f2-5aab-52d9-9f62-2bf8944e4253",
+      "classification": "source_code",
+      "content_hash": "f0cde61290f282e69761e2008bb5d1511a2caa3e1c38779cf89c6dcaf9120cef",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/module_a/graph.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "be09d846-3fa1-57d8-bdbf-064607e1bc40",
+      "classification": "source_code",
+      "content_hash": "ee0e7eda74441f0f1a5a0745efaf93af6af5e15700ae3c0fbd603bd21fd23894",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/module_a/prompts.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "1c4e9b6c-c7ee-51fe-a629-6c1a163348b0",
+      "classification": "source_code",
+      "content_hash": "5a3dea1698b4247bc9f97bba229ef24929bff3f520079d2822dabaea1c095f5e",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/module_a/tools.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5abbc57c-0bcb-54a6-aa21-16bd735403c7",
+      "classification": "source_code",
+      "content_hash": "e2347d7fce85d69abbcf375fac8778920b4a91733a1b886a0988e3e5e9bb59bd",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/module_b/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "19d1e7a0-b09f-5966-9115-405a0abfad9a",
+      "classification": "source_code",
+      "content_hash": "14583a2b850917685f9f406429e525bf44c7ed98245a66588e9c098ccee3f254",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/module_b/agent.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "9f7e3aa4-ebd2-5cff-b1d2-16adb3d4c239",
+      "classification": "source_code",
+      "content_hash": "eaaca7b88b247812b3240472371e19e8e37e4471fb4662e9f8d79171d974e6fb",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/module_b/config.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "ca2526ae-cc6b-5761-8713-0a6336f95f4e",
+      "classification": "source_code",
+      "content_hash": "f8e2121a69c2e09bd36a9393355472c7a37253aa5a83098caa24e8f129a573a0",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/router.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "29a42be0-a3f0-5d57-8401-c0eacbc47368",
+      "classification": "source_code",
+      "content_hash": "c85740885afb571be386d2a66aaf8365ea136b02644cea2fe95ad5404a8d0dd3",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research/trigger.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "b9abffb7-74ed-5ad4-83fa-45035e4e1ee2",
+      "classification": "source_code",
+      "content_hash": "8fe42c95a9882ceb666e6fa4772a338b0423a28df3b477615acc967060837369",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research_ops/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "43ec492a-5f47-57b4-a23c-36446dc35cd9",
+      "classification": "source_code",
+      "content_hash": "71a7c42557833e2aa0b85d228424f1aad30f2a15560e7259f66749c8d0ba099a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research_ops/audit.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "ab63dac5-283e-5935-8670-ec08c8397e71",
+      "classification": "source_code",
+      "content_hash": "bb173cb1cb1524142a2a66a684f58f82fa3e68bc233fe5b53ae2666ea43174e2",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research_ops/quality.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "2cb81cf4-3480-543e-85ea-793e091b8def",
+      "classification": "source_code",
+      "content_hash": "c653b806cc1785ede5087e0487b34a404feabfcaba26c5f652d25d00885795f6",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/research_ops/snapshot.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "b1451327-777b-5ccc-bd3a-7ba582682714",
+      "classification": "source_code",
+      "content_hash": "825945f9ac700b0972b1269e8d139cbd7bac494ee03043bfc4e2cda3b639c30e",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/sources/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "eebbc622-8c14-5c8f-b69a-7202f9cad2de",
+      "classification": "source_code",
+      "content_hash": "7651c869bc49d3de25ab140e16ca24c4355b48213b1015dc5eda1ca43212f9ab",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/sources/passive.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "6f3e444b-4f19-594b-a33f-a5b01efa1122",
+      "classification": "source_code",
+      "content_hash": "491f902d494bde23d8106d084d2236acf2708b0ad5e5391a8fc66c186a563262",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/__init__.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "58f275bb-fb99-58b2-8665-f66d366a2c6e",
+      "classification": "source_code",
+      "content_hash": "582618e745feef21ed625350dd1ab56e84a50115a5e1a80bb6d8f0d21ca9b48d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/adapters.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "4c0460e9-2e5a-5722-a663-a7571a842b0c",
+      "classification": "source_code",
+      "content_hash": "a5192bdba32908959b8eef5930da78bbfa95cd99b402d05d27eb28ed56c4af89",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/cli.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e7c3d969-18b1-5772-bc76-182865e7e901",
+      "classification": "source_code",
+      "content_hash": "e5a3d2e7a15c9196d5a44bb8c02bf43bec1c0df80a1faae6144c002594d4b7a5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/config.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "aeabc5db-6c0c-53dd-8222-52977ebab30b",
+      "classification": "source_code",
+      "content_hash": "96d572c210a99c853a140e25e1b1f083c4249a411e645dfd902f5902df938f51",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/contradictions.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e08fd5bb-afe2-579d-aff2-7781d0916e94",
+      "classification": "source_code",
+      "content_hash": "f2adc64f014c248ff41bb9979551a64967d1f4606fa6d67da2358c5b17953d49",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/mcp_server.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "2dc646a7-b126-5b3a-bcbf-f925f3a06c4c",
+      "classification": "source_code",
+      "content_hash": "bb4ece0b98e8305ca1baba09670e4e881221e4854f4de3ac0379fbd591b90bb3",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/models.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "724d07fe-ebf1-545d-804f-26da72cb4bb4",
+      "classification": "source_code",
+      "content_hash": "7726b72ded959151f327b094a038e75b116e03bc2880610e5fe7ec2e853ffc14",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/query.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "27775bce-2bc4-57ab-9462-bc2347476d85",
+      "classification": "source_code",
+      "content_hash": "66c829de0b801861c7236fe9e6e0f22546165d4f28270cc113304eaea43bd47a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/reporting.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "de506544-c9c8-58af-9298-77e46b09d0ee",
+      "classification": "source_code",
+      "content_hash": "1a4bf36266b7c8eab6c639190f34e6424fc5458a7f33d9e6a9c068719fb17caa",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/scanner.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "0cead4c9-3d73-58b0-a13f-72ee69dc0c01",
+      "classification": "source_code",
+      "content_hash": "ec6751b2db431d9f7acdac6f25788953dd0f949efd2fff3063f2dee28c9ddd57",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/security.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "bac24c55-09db-5771-ad5d-a49d00ee63ce",
+      "classification": "source_code",
+      "content_hash": "be30ca8911f821483297065bc3b9b3adb4b4206ea9e8a7cded24e7a929598942",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/state.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3b864135-872f-536b-9c11-395dab07d036",
+      "classification": "source_code",
+      "content_hash": "9b81051098852e8948efcdf8405a5528dc7e0b3ba49c3fb91e9b26fbee3606c6",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "implementation"
+      },
+      "normalized_path": "src/tim_manager/storage.py",
+      "source_id": "source_code",
+      "status": "active"
+    },
+    {
+      "artifact_id": "599d9e45-beb9-52bc-a592-b6af9de99fc9",
+      "classification": "test",
+      "content_hash": "a9e200dfbc7af02b4f4e2cd17e3339fd88b8259ba6261709a06ce265c6322653",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/__init__.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3b05e443-95f2-57e9-8fe2-53e2f84bcd09",
+      "classification": "test",
+      "content_hash": "ba1f5f1dae82985e3459a45d51ede7b14406eec27c711cc18fc87bc48087ca52",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/smoke_binance.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "b9331a5a-2568-5fc4-8bde-da39bf99d522",
+      "classification": "test",
+      "content_hash": "4d762f83951fdd939c73a4cdda3ebfc92062877d11d0570c5fff3cd190d675bc",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_acceptance.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f44dfbe7-9147-5b56-9df6-d8b7591dc415",
+      "classification": "test",
+      "content_hash": "a870487c4b98465758bfa2941617f6e974a0c369dbfacd76ac48b7d982d7b9a5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_agg_trade_persistence.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "7181d62c-0d12-5320-945c-8cef00ba2540",
+      "classification": "test",
+      "content_hash": "a77564f817c264a55b8512275d0bf4792ebf294c3e9328f0ac07d1c4e1c0b484",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_aggregator.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f27cdfc1-069c-54ca-8e58-2ea46238147a",
+      "classification": "test",
+      "content_hash": "bd5842a29bd3d878e726f0d28055d81e32e588091b9fc4a59c2d0f1cbb4381a9",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_atomic_persistence.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "31df067e-dde9-57e9-8377-88979d066127",
+      "classification": "test",
+      "content_hash": "d8116d00cf094167b22febc2f25edfd73243a1be883d6c9f595b1baf3f639549",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_benchmark_suite.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "96e7a27e-4cd2-5327-8b31-6efbe932ae92",
+      "classification": "test",
+      "content_hash": "045a959a2cd994c7a531f9e59249a0c2d08170dcfd6a0e8a1ed43ca952741c49",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_binance_ws.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "71d2769d-fd88-5d11-ad41-fe9789c75ea2",
+      "classification": "test",
+      "content_hash": "a1a4487342b4352a72fdfac69766f16f13b62c4d953277d99c338195e2b60ed5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_bos_detector.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "16176ba8-6eca-5cf2-8a2f-669cd800d971",
+      "classification": "test",
+      "content_hash": "6dffef81842ff1819aa20d666caa4c4b3847ac5aa205a3bca4daff4d07245153",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_broncx_rules.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "b8763b21-a533-54c0-b24b-605671e9067e",
+      "classification": "test",
+      "content_hash": "704581bbccdaf3d96056f0b25faff209f11774590f7ff92dd2213505980aaec5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_dashboard.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "beeca2ef-6d9c-57c7-86d2-586da843004d",
+      "classification": "test",
+      "content_hash": "0de9d21163fbbfd0f732e8a4e5c12858b89afff221c35d31da6180f0f46c8edf",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_data_quality.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "727c01a6-e4e9-558c-b57d-f34bf3fffbc8",
+      "classification": "test",
+      "content_hash": "b930fc45334ba0f45adbd30b20ac5fc87a8b05a120abede93957718c335a49ee",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_goathub_knowledge.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "96d533e8-031f-524a-8c63-c22d6f9cc03c",
+      "classification": "test",
+      "content_hash": "63854baa5a2b1aacf742a594d7624876df69436ebe3e944d0a8ecf8a0ad7adae",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_longterm_intelligence.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "b6aa5fac-10ce-55a3-ac06-7b2791fa77dd",
+      "classification": "test",
+      "content_hash": "bb3dfde3171543b399695ff79742e2fc3f15b4f222973feef3d39f405d05f998",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_market_memory.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "36f9293c-3bf6-533d-9d67-22f2d72d0093",
+      "classification": "test",
+      "content_hash": "32b59bda63db0dcbe894fd61f776a8f56ecf21e430a851ff67007d29f15545d8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_news_intelligence.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "c006385f-5ae1-5073-95b8-b4cea53bb597",
+      "classification": "test",
+      "content_hash": "271c847510986ab3bbad4bb7f4359b2ca8f67bd4bce21e5e293056387a90b0e8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_observation_engine.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "f7270e98-8d8f-5c0b-b34e-95d2398c9b42",
+      "classification": "test",
+      "content_hash": "62a87d5de75d3e1ad6d0712bf6ec795c0b5d0b9e6004917e24a48b460258f840",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_observation_id_uniqueness.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5db78971-51a5-5620-b22d-9b597c368f42",
+      "classification": "test",
+      "content_hash": "9b1b75ccc751bbb0a53d37a0326a58d7019366c5d0f7bf65f68c6e744d815d9a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_ollama_health.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "28098b22-6e17-5c48-993c-ddd431ff4eaa",
+      "classification": "test",
+      "content_hash": "2acfb22313022bdb5a4709dd8ff28a2d559331acc6754bd4056d17c823b4f29e",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_ollama_policy.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "919a85db-034b-56d5-93db-acdc5f66b4d4",
+      "classification": "test",
+      "content_hash": "b0e5f04d5a43607df86b5059788086f1740cda2317f85ff505b608667411bf20",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_operational_validation.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5dbaacb0-f3a8-549d-bdc1-68326dd4fd83",
+      "classification": "test",
+      "content_hash": "9c62310dd6afbdf9775adeb0d556a71c7709ffeb5a580d56f4a1d4e260576a74",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_orderflow_metrics.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "8e851acf-cbae-5374-88aa-306ae2f80766",
+      "classification": "test",
+      "content_hash": "de7565f8f206a2f68678caeda2d6740cd00fe0b88865a32060628d385104c86a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_orderflow_observations.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3b3d4bf2-4cea-53bb-b36a-2388eb720821",
+      "classification": "test",
+      "content_hash": "70ce6d806f93169189dded344e5297b96084ec470c7e49d7037f7d2272d84545",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_orderflow_validation.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "8659d6cb-c6d3-5702-9790-d0d51f33408d",
+      "classification": "test",
+      "content_hash": "b0736d1be3a74351d952666920f012f8410d462a8f56b241dd899041fe450f83",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_paper_automation.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "71b35fdb-8067-5c93-8420-7270ac32223d",
+      "classification": "test",
+      "content_hash": "11e976fae9ed35a2560f5b9e78cd44d58bba741013b9b630acfba9d0dc90965d",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_passive_sources.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "042d1c08-b83b-5d48-bc9a-d58f41a56333",
+      "classification": "test",
+      "content_hash": "11591a8033ee106169685142e22bf6e696eceecf15f48a7acb188bc9ced21cf8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_repository_governance.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "c0fbb224-ef0b-5b19-98fd-4dc61b63bfdd",
+      "classification": "test",
+      "content_hash": "0fdb4d77255f8f601b7ade9773d0a5d3a562b6ac4cd4bee441fde24e4d638337",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_repository_json.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "85dbed39-8e8f-53af-88cf-fc54131ba536",
+      "classification": "test",
+      "content_hash": "b416becf267da24261d372a39ea5d3939fe21a40d986448fed58441c80161369",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_analytics.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "20ef5744-143f-576f-91ff-b33fae13295f",
+      "classification": "test",
+      "content_hash": "4f72a2479899e671b205a89aff870294e85e3fabe466c7465f9847aaa7a973ff",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_cases.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "9c2eecc3-a0a0-5d2c-af64-a5a7dbe10de9",
+      "classification": "test",
+      "content_hash": "49e769333bc5bf0790eba045a8fee92267259b7af06e3c38f431de81dabaee5b",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_cycle_check.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "76e741a8-7bd7-5779-8aa0-ded87e56693f",
+      "classification": "test",
+      "content_hash": "b6e1d3818a4cd24cdd270d47de92b799bfe33a7b8688a78f8eae7fe015a0f0f5",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_health_integrity.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "2048fa48-baff-57f3-9399-522431187558",
+      "classification": "test",
+      "content_hash": "bb257bcc540510b0ecca1cc53642433d1ed4e72d946a38ed64859686c3dca572",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_insights.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "1eae7cf9-2d5b-555a-bc37-b9ed114a3cf5",
+      "classification": "test",
+      "content_hash": "0a331efe2a67c4b21da4fbeda7199b15bdb8f4afea8ef6b773630241bf1374bc",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_module_a.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "7def65d2-84c0-5d59-89ac-ae65eb1e4e43",
+      "classification": "test",
+      "content_hash": "576d5e5510e0b3ca4bd6aee99b5a67a22de71fe9df557d7cc56cb7f7af3c8611",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_module_b.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "fb0190a4-7397-5dbc-aebb-88cfbdaf1079",
+      "classification": "test",
+      "content_hash": "4389fad69a6bd99338a1b48dc7dbd609994aeff9dc5cdf56b7aeeb5e6a42f9a2",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_modules.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "dd2d832a-0e69-5dff-8c08-6534347bf806",
+      "classification": "test",
+      "content_hash": "e4c1b2f3999f8d81a70e953ef1396ee24943581894ec8b47d8b1440e03402d83",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_operations.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "5dc351ee-4e46-5e25-9121-2740cd4778e1",
+      "classification": "test",
+      "content_hash": "f0738262bfadd406bc91f76460ee60585a5598b5605b5958cea331fef23426d8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_research_router.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "e55e35b1-e9c6-58f8-b558-5d105b8537ce",
+      "classification": "test",
+      "content_hash": "17aa7c40ba5071a5924480a354de1cb9adf9c4650e796ab2477946a02649de06",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_restart_persisted_cases.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "16a75717-fe10-5491-9e75-1657f3218bd6",
+      "classification": "test",
+      "content_hash": "23a85567467093a2ee79efda7fba84d65a5fdc48adedb90b7ee93b677624cf8a",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_short_term_assistant.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "befd92ce-1a9e-5448-9dbb-d6d1fcac8ecc",
+      "classification": "test",
+      "content_hash": "874cb9b2758633c49e472ddfc8080a74196264abaf6203831bb04f1f9a754e65",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/test_tim_v1_pipeline_audit.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "2e80eab2-f55b-50e4-887c-8efcc711f8e3",
+      "classification": "test",
+      "content_hash": "72d05176561e99c0aedeadb1584562341c00f8dde9d3fef34c7d782b96c060d8",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/tim_manager/__init__.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "1c76a531-cd38-5f33-9d9e-edb2e5120573",
+      "classification": "test",
+      "content_hash": "39bf8801abfc17995e1112ba2b77f70dfdc473987e90fe37cc73f230c6633114",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/tim_manager/test_acceptance.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "73d1e2db-12bb-570e-ac19-d4331ffa4605",
+      "classification": "test",
+      "content_hash": "d537a0fa5d7581d5f4f562606a7fb508cc40abb477ce4ab84fa6752bd6565545",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/tim_manager/test_contradictions.py",
+      "source_id": "tests",
+      "status": "active"
+    },
+    {
+      "artifact_id": "3bdd5f44-9373-5344-8362-fc2119781a87",
+      "classification": "test",
+      "content_hash": "12fbcf9eee059ec3757dfe535b3477c422f4bebb2ecd2d1438d179d73424ee9e",
+      "metadata": {
+        "parser_errors": [],
+        "source_tier": "executable_evidence"
+      },
+      "normalized_path": "tests/tim_manager/test_mandatory_acceptance.py",
+      "source_id": "tests",
+      "status": "active"
+    }
+  ],
+  "authoritative_git_repository": false,
+  "config_hash": "9b28f58f545d7861e01dd3411ba2732c828c5085fd7b37b37e3eca2944fc3817",
+  "content_manifest_hash": "22b258c5fd8eac5e4d3cff0ef648b96c1ce00665c6b11e58a7f5e2b491a10c1b",
+  "contradictions": [],
+  "coverage": {
+    "configured_sources": 7,
+    "global_progress": null,
+    "global_progress_reason": "No explicit module weighting is configured.",
+    "missing_required_sources": 0,
+    "reachable_sources": 5
+  },
+  "data_gaps": [],
+  "data_quality_summary": {
+    "parser_errors": 0,
+    "scan_errors": 0
+  },
+  "decisions": [],
+  "evaluations": [],
+  "experiments": [],
+  "generated_at_utc": "2026-07-28T09:41:22.195960+00:00",
+  "known_unknowns": [],
+  "module_states": [
+    {
+      "acceptance_criteria": [
+        {
+          "criterion_id": "implementation_present",
+          "required": true
+        },
+        {
+          "criterion_id": "test_present",
+          "required": true
+        }
+      ],
+      "blocked_criteria": [],
+      "calculation_method": "all configured required criteria require repository evidence; tests are detected, not executed by scanner",
+      "evidence_refs": [
+        "3e38b431-2e72-5662-b54e-1542cef9675b",
+        "d449f3c8-279e-552f-b6c8-d84f8eea9bb4",
+        "dc27be57-f9e9-5f43-8f73-9ce5f7120997",
+        "f44dfbe7-9147-5b56-9df6-d8b7591dc415"
+      ],
+      "failed_criteria": [],
+      "last_changed_at": null,
+      "module_id": "market_data",
+      "name": "Market Data",
+      "phase": "evidence_scan",
+      "risks": [],
+      "status": "verified",
+      "verified_criteria": [
+        "implementation_present",
+        "test_present"
+      ]
+    },
+    {
+      "acceptance_criteria": [
+        {
+          "criterion_id": "implementation_present",
+          "required": true
+        },
+        {
+          "criterion_id": "test_present",
+          "required": true
+        }
+      ],
+      "blocked_criteria": [],
+      "calculation_method": "all configured required criteria require repository evidence; tests are detected, not executed by scanner",
+      "evidence_refs": [
+        "56a191d2-9af7-50fc-ac10-cf8502fbf7ce",
+        "beeca2ef-6d9c-57c7-86d2-586da843004d",
+        "f441489b-867a-5294-a463-b131a67bccde"
+      ],
+      "failed_criteria": [],
+      "last_changed_at": null,
+      "module_id": "data_quality",
+      "name": "Data Quality",
+      "phase": "evidence_scan",
+      "risks": [],
+      "status": "verified",
+      "verified_criteria": [
+        "implementation_present",
+        "test_present"
+      ]
+    },
+    {
+      "acceptance_criteria": [
+        {
+          "criterion_id": "implementation_present",
+          "required": true
+        },
+        {
+          "criterion_id": "test_present",
+          "required": true
+        }
+      ],
+      "blocked_criteria": [],
+      "calculation_method": "all configured required criteria require repository evidence; tests are detected, not executed by scanner",
+      "evidence_refs": [
+        "10f9fd12-6d23-5f99-ad76-0d053abba1e8",
+        "3b1a82ef-b2b1-5f6a-9da4-9d80b231695f",
+        "3b3d4bf2-4cea-53bb-b36a-2388eb720821",
+        "5dbaacb0-f3a8-549d-bdc1-68326dd4fd83",
+        "8e851acf-cbae-5374-88aa-306ae2f80766",
+        "b88890c9-5c55-53ab-8247-43ac4c86d719",
+        "bbae2838-51ff-5b59-9214-d0d992e72bcf"
+      ],
+      "failed_criteria": [],
+      "last_changed_at": null,
+      "module_id": "orderflow",
+      "name": "Orderflow",
+      "phase": "evidence_scan",
+      "risks": [],
+      "status": "verified",
+      "verified_criteria": [
+        "implementation_present",
+        "test_present"
+      ]
+    },
+    {
+      "acceptance_criteria": [
+        {
+          "criterion_id": "implementation_present",
+          "required": true
+        },
+        {
+          "criterion_id": "test_present",
+          "required": true
+        }
+      ],
+      "blocked_criteria": [],
+      "calculation_method": "all configured required criteria require repository evidence; tests are detected, not executed by scanner",
+      "evidence_refs": [
+        "1eae7cf9-2d5b-555a-bc37-b9ed114a3cf5",
+        "2048fa48-baff-57f3-9399-522431187558",
+        "20ef5744-143f-576f-91ff-b33fae13295f",
+        "29a42be0-a3f0-5d57-8401-c0eacbc47368",
+        "5dc351ee-4e46-5e25-9121-2740cd4778e1",
+        "736d04ef-6a46-5819-92b8-ad0c0ed16293",
+        "76e741a8-7bd7-5779-8aa0-ded87e56693f",
+        "7def65d2-84c0-5d59-89ac-ae65eb1e4e43",
+        "85dbed39-8e8f-53af-88cf-fc54131ba536",
+        "9c2eecc3-a0a0-5d2c-af64-a5a7dbe10de9",
+        "aa8a8647-2542-57ea-a021-c73a1bd8afc5",
+        "ca2526ae-cc6b-5761-8713-0a6336f95f4e",
+        "ccf0fd25-9954-5235-b545-29bdeef3205e",
+        "dd2d832a-0e69-5dff-8c08-6534347bf806",
+        "fb0190a4-7397-5dbc-aebb-88cfbdaf1079"
+      ],
+      "failed_criteria": [],
+      "last_changed_at": null,
+      "module_id": "research",
+      "name": "Research",
+      "phase": "evidence_scan",
+      "risks": [],
+      "status": "verified",
+      "verified_criteria": [
+        "implementation_present",
+        "test_present"
+      ]
+    },
+    {
+      "acceptance_criteria": [
+        {
+          "criterion_id": "implementation_present",
+          "required": true
+        },
+        {
+          "criterion_id": "test_present",
+          "required": true
+        }
+      ],
+      "blocked_criteria": [],
+      "calculation_method": "all configured required criteria require repository evidence; tests are detected, not executed by scanner",
+      "evidence_refs": [
+        "b8763b21-a533-54c0-b24b-605671e9067e",
+        "d8126f96-47e0-5e63-a045-c4f175b29846",
+        "df52ae61-c82a-54f9-aea1-f1c390a892c1"
+      ],
+      "failed_criteria": [],
+      "last_changed_at": null,
+      "module_id": "dashboard",
+      "name": "Dashboard",
+      "phase": "evidence_scan",
+      "risks": [],
+      "status": "verified",
+      "verified_criteria": [
+        "implementation_present",
+        "test_present"
+      ]
+    },
+    {
+      "acceptance_criteria": [
+        {
+          "criterion_id": "implementation_present",
+          "required": true
+        },
+        {
+          "criterion_id": "test_present",
+          "required": true
+        }
+      ],
+      "blocked_criteria": [],
+      "calculation_method": "all configured required criteria require repository evidence; tests are detected, not executed by scanner",
+      "evidence_refs": [
+        "0cead4c9-3d73-58b0-a13f-72ee69dc0c01",
+        "1c76a531-cd38-5f33-9d9e-edb2e5120573",
+        "27775bce-2bc4-57ab-9462-bc2347476d85",
+        "2dc646a7-b126-5b3a-bcbf-f925f3a06c4c",
+        "2e80eab2-f55b-50e4-887c-8efcc711f8e3",
+        "3b864135-872f-536b-9c11-395dab07d036",
+        "3bdd5f44-9373-5344-8362-fc2119781a87",
+        "4c0460e9-2e5a-5722-a663-a7571a842b0c",
+        "58f275bb-fb99-58b2-8665-f66d366a2c6e",
+        "6f3e444b-4f19-594b-a33f-a5b01efa1122",
+        "724d07fe-ebf1-545d-804f-26da72cb4bb4",
+        "73d1e2db-12bb-570e-ac19-d4331ffa4605",
+        "aeabc5db-6c0c-53dd-8222-52977ebab30b",
+        "bac24c55-09db-5771-ad5d-a49d00ee63ce",
+        "de506544-c9c8-58af-9298-77e46b09d0ee",
+        "e08fd5bb-afe2-579d-aff2-7781d0916e94",
+        "e7c3d969-18b1-5772-bc76-182865e7e901"
+      ],
+      "failed_criteria": [],
+      "last_changed_at": null,
+      "module_id": "tim_manager",
+      "name": "TIM Intelligence Manager",
+      "phase": "evidence_scan",
+      "risks": [],
+      "status": "verified",
+      "verified_criteria": [
+        "implementation_present",
+        "test_present"
+      ]
+    }
+  ],
+  "open_decisions": [],
+  "parent_git_context": {
+    "branch": "main",
+    "commit": "a418894d33ba2426afe0f31d119332043bddd406",
+    "context_only": true,
+    "git_root": "/Users/tim",
+    "project_path_tracked": false
+  },
+  "provenance": {
+    "authoritative_git_repository": false,
+    "config_hash": "9b28f58f545d7861e01dd3411ba2732c828c5085fd7b37b37e3eca2944fc3817",
+    "content_manifest_hash": "22b258c5fd8eac5e4d3cff0ef648b96c1ce00665c6b11e58a7f5e2b491a10c1b",
+    "generated_at_utc": "2026-07-28T09:41:22.195960+00:00",
+    "generation_method": "deterministic_state_builder",
+    "manager_version": "1.0.0",
+    "model_used": null,
+    "parent_git_context": {
+      "branch": "main",
+      "commit": "a418894d33ba2426afe0f31d119332043bddd406",
+      "context_only": true,
+      "git_root": "/Users/tim",
+      "project_path_tracked": false
+    },
+    "repository_commit": null,
+    "repository_dirty": null,
+    "repository_status": "unversioned",
+    "scan_id": "148146d3-4ed2-5897-b1f7-f5b562adf70e",
+    "schema_version": "1.1",
+    "snapshot_hash": "b9da01d0bec0798f968c6cb0eeea3fce31f3fa49cbbcd19373fd2952e21f0a77",
+    "source_artifact_ids": [
+      "fba3d2db-80c9-55c1-8a12-9665a2f8a713",
+      "70c8bc54-b093-56a9-a91b-38f5151ed562",
+      "6c33cb23-0bc5-52af-8c8b-b420fffab9d1",
+      "c5ba491c-b74e-5a27-a794-b00f9ec63349",
+      "1d64bff8-5de2-5896-9cc0-b86c6634ab38",
+      "615c439c-c58a-5567-8095-3589f55ae9e3",
+      "16dd5d34-a97c-56a8-9d6b-94294c7783e6",
+      "20588d77-e255-568e-804d-5df84fc649d1",
+      "35054e76-ae86-52f6-969e-50997caea71e",
+      "d468e24d-fd35-5419-81f0-f6709e29c5b5",
+      "97e540d4-e018-55e6-a2be-51dce8a26404",
+      "a36fe1e9-6d64-51dc-b410-4771eb7e4a7e",
+      "566a5b17-05f2-56ce-95de-76561e87d7a2",
+      "711970f2-08fd-56eb-90a0-4822bf0b27d4",
+      "cba5871d-6b5e-593d-9b6b-ac588db8ce83",
+      "6049b117-1719-501c-b85f-7fad82b1c063",
+      "e1e16a4a-06fb-5f85-b1a7-9edd8e915344",
+      "9e94b9cb-c6dc-5a35-87cf-711ccceca934",
+      "e52055ca-c327-56ab-92c5-32f8cbf1b07d",
+      "a8ece94f-a1c6-5e5f-8141-36ed7ebd6423",
+      "ab487cc8-ff87-5c94-987e-33b67dbe618d",
+      "1711c68a-170f-5e7a-92e1-bb63f0130383",
+      "21858fa3-ca17-52a4-a50a-59df6b6f2ff6",
+      "f56c2f13-111a-5d55-9c77-8bc8cc9c227d",
+      "44192e03-4ea8-5fd1-a658-f6a671faf0df",
+      "5a5dcd2b-01fb-5689-9d3b-5849d43774b9",
+      "595ee70d-9458-54f3-ac52-f0424576f8b4",
+      "478fac2b-f11b-5a3f-aa3d-a289fda2464d",
+      "31846b09-3c58-5043-910b-d903b1909c78",
+      "746329d3-1b42-5f50-81af-b47bb96d053a",
+      "c7222fb4-d041-57e8-be3d-8cda69b064db",
+      "c164f8de-c4c7-5c11-b35e-d972dd35e9b8",
+      "27b957fe-a9d4-591e-9bdd-77b2087e53a0",
+      "a3f0dec3-b610-5b5d-b06a-334fca1e1499",
+      "de0816a1-59f1-5f54-86b4-81f09def6585",
+      "bc2a9329-1c24-5527-ba80-ed1a660c911c",
+      "d7ad6a92-71e3-57da-9fc8-0ca4ce9fe920",
+      "849eab32-410a-5997-9aff-2b0bdb04e760",
+      "a65a8284-35ca-50fd-aa9f-2a6114d7f67b",
+      "1b5ae4ab-9c3e-5b0b-8c4d-e784c36b2acb",
+      "fb397eec-64cd-578a-9d42-8edbc0412cda",
+      "6ba85a19-20ef-526a-8937-df496560fd2c",
+      "99aa8949-68c0-5f7d-b19a-835b2195fdf0",
+      "66a73a5e-9abb-5f34-a301-b7994748f552",
+      "015d6f6f-e1bf-5786-9916-a46df0988d2f",
+      "831df096-9761-5282-9c9f-34bcda5f9aed",
+      "519ddf45-6bdf-5bd7-ad87-d2469c57b58e",
+      "97a9c1a3-b0e8-5a61-9329-b71a794f71f8",
+      "0e8f0333-011c-5b8a-a96f-bc7b11e911b3",
+      "2c263bac-a655-522e-987c-c2570a5eec7e",
+      "500fb253-2928-583e-90ee-2b19b042060c",
+      "77afd8f2-ad76-598d-aa9d-8c99295dded1",
+      "5f0bcf24-14c6-5721-9608-c01a2fd08ed8",
+      "3ea6ace1-7f54-559e-b047-5a4240cbe78d",
+      "17144f90-68ad-5e7e-8b04-cd264a91bf85",
+      "8ad7e7cd-8ca3-52f0-bdf7-710fc4b144de",
+      "83f8ca63-13af-5924-a2df-0fa2c85aa0cd",
+      "18ba2d52-7933-57de-afe9-e8ea7fc1724d",
+      "69698ff7-c292-5f8f-bf55-4e3d6057b222",
+      "c9f4b58e-bfab-5cd5-bdf9-8eda111f4a56",
+      "06ede44f-6622-599a-bdca-922ac66667fd",
+      "955e63d5-2569-550e-9dfd-a894d736aa57",
+      "3742b235-b4f8-539c-9866-fb5ee1b8c14d",
+      "049e90d7-c50b-543d-ad82-9ef06ca03fbb",
+      "a6a1cec8-f0fa-5971-be50-346d984e0135",
+      "54df5f7a-80e8-5110-bf3f-6e1fd9b28f80",
+      "5982406d-c363-55cb-aee0-508a817d0d6f",
+      "e865eb6f-9aaf-5e63-9e4b-70a5e5b9ed2c",
+      "d1b24224-ffd6-5656-a139-2f5115d1185b",
+      "fe8a3314-1877-5447-b061-bff85eb97fd1",
+      "5671a434-eeb2-5f4b-acef-ad285bfbdf00",
+      "5c67ce5f-de2b-5540-8382-25ef4e73b373",
+      "d44cc89a-f354-5767-b203-9d5b75f28830",
+      "facc29dd-bfb2-57e8-9454-8cbb5fae0d2c",
+      "fb64f74a-907e-5b82-b8a9-64fdda2438f5",
+      "8d1a59a1-e3a2-5aaa-be8e-a47c436e375b",
+      "841afa73-4ebe-55b1-a2f0-e397ee10ac42",
+      "43de31c7-d418-5817-989d-7e63ded77b38",
+      "bed68598-44d1-508c-8758-372651218a0f",
+      "f92168ca-4392-5ffa-a2eb-698f2b9dddd3",
+      "8ae66ea7-51d0-5490-b96c-09d270c9fe20",
+      "03aacf82-63e0-5067-89f3-04f0b6b9e5f5",
+      "824041dc-2c7d-59c9-8989-feedc5ab925c",
+      "6a5d7657-3678-5bcf-bfcc-c29c7b0bcb23",
+      "be1903fc-ed16-5389-8f4c-c20ca2c046ef",
+      "977510a7-efbb-561d-90e3-f0908c0ed03a",
+      "58882b3b-b55a-51b5-83b1-316a2a53e159",
+      "538609a2-4e66-522f-8e8a-9479ff4919cb",
+      "d47955e9-7e5d-52e2-bea9-50e6bbd61eac",
+      "261826ea-78ba-5a52-a0d3-27b5d11bfea5",
+      "f3d228d5-564e-5d53-8e5b-00832cfb05ca",
+      "9ebb9132-f853-5804-bb5b-297b477606aa",
+      "7ff7c75c-057f-508b-8d0d-ac8a0784b79e",
+      "df96aa34-90e8-5036-9de3-940bb8f8d050",
+      "9dea3d1b-7192-525d-b3ca-eee17dc93a52",
+      "eb819189-ad89-582d-a344-b75de9614135",
+      "5bbcb283-bb8f-5b8a-afd5-c4924a1da9cb",
+      "3055aad8-a7e0-58d2-bd0b-9c1793f53841",
+      "f088d6b8-851f-5795-85ed-e77822f8955b",
+      "278cdf79-b290-5b55-b111-dcbae426e9e5",
+      "d7b741cc-0d7a-57f2-9cf1-a3c6019db139",
+      "0fcf3b98-5a6c-5ce2-b826-8e48e0f958fd",
+      "f01bba1d-c833-5c61-8fc3-24155db7654a",
+      "dc09f228-7ba6-5cb5-9feb-ce8a9a171286",
+      "7dacd338-a78e-56fe-b8c8-badcc24d861c",
+      "ebb613dc-bbee-541f-b518-bd698f225d6c",
+      "b55a7e4b-804b-51bb-a245-d291f18d1ac7",
+      "80004f01-d5bb-5f11-bb26-bb7a927cb171",
+      "8b573cee-27bb-5ad1-a4cb-d8d554b8e875",
+      "f8deaf06-1bde-5a58-9792-4b599b4e394a",
+      "2cdcd443-5e38-5ade-ac45-1db6dda211a6",
+      "df52ae61-c82a-54f9-aea1-f1c390a892c1",
+      "d8126f96-47e0-5e63-a045-c4f175b29846",
+      "d449f3c8-279e-552f-b6c8-d84f8eea9bb4",
+      "dc27be57-f9e9-5f43-8f73-9ce5f7120997",
+      "3e38b431-2e72-5662-b54e-1542cef9675b",
+      "4546ea0a-9440-5040-bc75-fdba7f72c8a3",
+      "ed520de5-e058-534c-98f5-11391f8e74d0",
+      "c8275764-bdee-5b75-9914-0c6af334fb52",
+      "d009904b-bff6-5ef1-9889-87b4e1ab94ad",
+      "d7a20808-7be4-5b34-8c96-68c4b757290f",
+      "e233e3f8-67ac-5a63-b32d-711fc3111bc1",
+      "cec400bd-3705-553b-b670-1d8072db3767",
+      "e955a9ef-f9ec-5396-b5b6-ce809471f981",
+      "c0a1c2d2-88c8-5f82-9c1d-13c3544550af",
+      "f2b9e73f-2cf8-5208-9dba-8ebbc856624d",
+      "2ec850dc-490e-542f-b93e-4c4c447e340a",
+      "e9ac55fd-6e70-5a07-b621-ba961cc419d0",
+      "c10577f0-ee8a-524e-a950-55d7ba17210f",
+      "28d05833-cc16-581c-bb71-c45150eac991",
+      "0e1e69c1-13ea-52f6-9b85-5296572a6773",
+      "b4142572-1ac2-54dc-af62-e54088a7686b",
+      "d2cd9ce3-2138-5ece-9828-66779293a8f7",
+      "ec85b114-7eb3-5a82-adce-671de5bc79d6",
+      "e66e3858-4e15-5775-a780-e8d83464d1fe",
+      "be7f10f6-189f-5c2e-a532-e4811a7748e0",
+      "af85ba48-271f-592f-bb16-10bc4a3609e9",
+      "a880d4e6-b222-57c2-bf6c-c97350ba9fec",
+      "d53ac07d-9516-5bfa-92fc-f006310597b0",
+      "3fe1b8f0-3735-54bf-9e0a-1932be849b7c",
+      "4b3c1812-a0ca-5471-947a-01c08b63a2b0",
+      "36f076f6-b079-52ba-83f9-0f58eb5bb508",
+      "3956839e-90ce-5e13-a66f-4259da2a43eb",
+      "b88890c9-5c55-53ab-8247-43ac4c86d719",
+      "3b1a82ef-b2b1-5f6a-9da4-9d80b231695f",
+      "10f9fd12-6d23-5f99-ad76-0d053abba1e8",
+      "bbae2838-51ff-5b59-9214-d0d992e72bcf",
+      "fa89f484-ecd2-5531-9937-c8ffa533f39e",
+      "3edcfede-38a2-53ad-90ef-184a93631aac",
+      "56a191d2-9af7-50fc-ac10-cf8502fbf7ce",
+      "f441489b-867a-5294-a463-b131a67bccde",
+      "736d04ef-6a46-5819-92b8-ad0c0ed16293",
+      "ccf0fd25-9954-5235-b545-29bdeef3205e",
+      "aa8a8647-2542-57ea-a021-c73a1bd8afc5",
+      "fa2cbb0d-3d58-5261-a9e1-43708369ae36",
+      "3c26ce01-3b1f-5c8e-90ef-5eddab8099ef",
+      "46d740f2-5aab-52d9-9f62-2bf8944e4253",
+      "be09d846-3fa1-57d8-bdbf-064607e1bc40",
+      "1c4e9b6c-c7ee-51fe-a629-6c1a163348b0",
+      "5abbc57c-0bcb-54a6-aa21-16bd735403c7",
+      "19d1e7a0-b09f-5966-9115-405a0abfad9a",
+      "9f7e3aa4-ebd2-5cff-b1d2-16adb3d4c239",
+      "ca2526ae-cc6b-5761-8713-0a6336f95f4e",
+      "29a42be0-a3f0-5d57-8401-c0eacbc47368",
+      "b9abffb7-74ed-5ad4-83fa-45035e4e1ee2",
+      "43ec492a-5f47-57b4-a23c-36446dc35cd9",
+      "ab63dac5-283e-5935-8670-ec08c8397e71",
+      "2cb81cf4-3480-543e-85ea-793e091b8def",
+      "b1451327-777b-5ccc-bd3a-7ba582682714",
+      "eebbc622-8c14-5c8f-b69a-7202f9cad2de",
+      "6f3e444b-4f19-594b-a33f-a5b01efa1122",
+      "58f275bb-fb99-58b2-8665-f66d366a2c6e",
+      "4c0460e9-2e5a-5722-a663-a7571a842b0c",
+      "e7c3d969-18b1-5772-bc76-182865e7e901",
+      "aeabc5db-6c0c-53dd-8222-52977ebab30b",
+      "e08fd5bb-afe2-579d-aff2-7781d0916e94",
+      "2dc646a7-b126-5b3a-bcbf-f925f3a06c4c",
+      "724d07fe-ebf1-545d-804f-26da72cb4bb4",
+      "27775bce-2bc4-57ab-9462-bc2347476d85",
+      "de506544-c9c8-58af-9298-77e46b09d0ee",
+      "0cead4c9-3d73-58b0-a13f-72ee69dc0c01",
+      "bac24c55-09db-5771-ad5d-a49d00ee63ce",
+      "3b864135-872f-536b-9c11-395dab07d036",
+      "599d9e45-beb9-52bc-a592-b6af9de99fc9",
+      "3b05e443-95f2-57e9-8fe2-53e2f84bcd09",
+      "b9331a5a-2568-5fc4-8bde-da39bf99d522",
+      "f44dfbe7-9147-5b56-9df6-d8b7591dc415",
+      "7181d62c-0d12-5320-945c-8cef00ba2540",
+      "f27cdfc1-069c-54ca-8e58-2ea46238147a",
+      "31df067e-dde9-57e9-8377-88979d066127",
+      "96e7a27e-4cd2-5327-8b31-6efbe932ae92",
+      "71d2769d-fd88-5d11-ad41-fe9789c75ea2",
+      "16176ba8-6eca-5cf2-8a2f-669cd800d971",
+      "b8763b21-a533-54c0-b24b-605671e9067e",
+      "beeca2ef-6d9c-57c7-86d2-586da843004d",
+      "727c01a6-e4e9-558c-b57d-f34bf3fffbc8",
+      "96d533e8-031f-524a-8c63-c22d6f9cc03c",
+      "b6aa5fac-10ce-55a3-ac06-7b2791fa77dd",
+      "36f9293c-3bf6-533d-9d67-22f2d72d0093",
+      "c006385f-5ae1-5073-95b8-b4cea53bb597",
+      "f7270e98-8d8f-5c0b-b34e-95d2398c9b42",
+      "5db78971-51a5-5620-b22d-9b597c368f42",
+      "28098b22-6e17-5c48-993c-ddd431ff4eaa",
+      "919a85db-034b-56d5-93db-acdc5f66b4d4",
+      "5dbaacb0-f3a8-549d-bdc1-68326dd4fd83",
+      "8e851acf-cbae-5374-88aa-306ae2f80766",
+      "3b3d4bf2-4cea-53bb-b36a-2388eb720821",
+      "8659d6cb-c6d3-5702-9790-d0d51f33408d",
+      "71b35fdb-8067-5c93-8420-7270ac32223d",
+      "042d1c08-b83b-5d48-bc9a-d58f41a56333",
+      "c0fbb224-ef0b-5b19-98fd-4dc61b63bfdd",
+      "85dbed39-8e8f-53af-88cf-fc54131ba536",
+      "20ef5744-143f-576f-91ff-b33fae13295f",
+      "9c2eecc3-a0a0-5d2c-af64-a5a7dbe10de9",
+      "76e741a8-7bd7-5779-8aa0-ded87e56693f",
+      "2048fa48-baff-57f3-9399-522431187558",
+      "1eae7cf9-2d5b-555a-bc37-b9ed114a3cf5",
+      "7def65d2-84c0-5d59-89ac-ae65eb1e4e43",
+      "fb0190a4-7397-5dbc-aebb-88cfbdaf1079",
+      "dd2d832a-0e69-5dff-8c08-6534347bf806",
+      "5dc351ee-4e46-5e25-9121-2740cd4778e1",
+      "e55e35b1-e9c6-58f8-b558-5d105b8537ce",
+      "16a75717-fe10-5491-9e75-1657f3218bd6",
+      "befd92ce-1a9e-5448-9dbb-d6d1fcac8ecc",
+      "2e80eab2-f55b-50e4-887c-8efcc711f8e3",
+      "1c76a531-cd38-5f33-9d9e-edb2e5120573",
+      "73d1e2db-12bb-570e-ac19-d4331ffa4605",
+      "3bdd5f44-9373-5344-8362-fc2119781a87"
+    ],
+    "source_hashes": [
+      "938f5f609234c4ed4d0b32cfc7ba3d97d68ccddc031a1dde399d2c585a67c10b",
+      "8ca1007af700fb7e9e34642772a3a826ecbae7b0b24bc217a0e00f3f6224070f",
+      "0e2379152b9b5cf7def51d7fab7542bd1c787faf3f4a3ef6fe063447c7347a17",
+      "87986c2ae31fefd3b7398ffd905de863e40e3ccb9054b6cee467e66cce7119cb",
+      "aea5146038f7b6078af46b05a96b950d5dd7f50ee004ca5d1e6b3a8a9b9ad117",
+      "5eb54f3c703dd25d72859161ad41ff266ab4d0ebff7420b4f5c56cf37617ff2c",
+      "e46b666cc8d7e8ee9f50df0c8292dc2425e76142b5e40f7ed8060f85fa0542ea",
+      "48805f92ca161a6007a4912494c9ac602f67303441823af9bfda864489a10e6f",
+      "a0189a91c30b05fddfa3ad5524137a24c0bae3b4469adedd3dcf5870a20fcacc",
+      "b4c1563f1be878b31b98ddd7273da9244b316e7fa16880f9b449b3ab9ae06a3a",
+      "e3cdf9f20c5ab5a9c27a2cb825141daa67f570461835e056c24bd91ed2413881",
+      "7e2684a9ea50de1d256cddbe146a9b8c2ff4c040a2f276b5c5cd6a2f65446be1",
+      "65d56a1bcc6a10cacf837c3b7221a13dc5b502d7ac26d785088725105f4facd1",
+      "3e45fc99a3c0065317210c8202b4adc97e650438255c106cc91b0682a613c89c",
+      "e661ab2c430ac39e5c340b33676f333f77b4eb10b4a1b75f940a654d9c4c145d",
+      "3b9bbfa9ffb6530dcf8292071e25e3dc3f9a07807c72a6eda99a3e262c44fe9a",
+      "1d62545c64b93e480e00ab3497a6c2fd8cf154729b5664c227c5e6d99c5508b5",
+      "f76eb333c90308076db8195e46e08a8f5441256cca3a4bc9f52eb5576062084f",
+      "696ad64f88441d65ac5c857ecdc60e73a1d1983bc611b8113a0b97291666f1f5",
+      "c3eb2e623eaa52ebf3540031097adca666a7781fa8f4e1256c828cd4791d27e2",
+      "64803129d1f16a7659c49b845f3f19b40659a4dab4dc248fec380cd4940d3bc8",
+      "b8d8a14709dbe4174416e981e0f5f2606fc2aaf0e0989b8f76abebe6a407ca5d",
+      "66a9f90c27bae11ea782bfd73ac0015141f5326bfc6d9d7632fd14474a7a904d",
+      "c97eb92b2c19a166f782a4756795ded3c13ea3c98e6b1ee4006ec30c1d613fc0",
+      "ed8930419408df38323fe8ce2700ea93576fe47101ea896ded1e364b8aaae630",
+      "25eae52a47d76f6b1073d784cc9546bc861cb114cfd66c68f90d6941d7fc13ef",
+      "2ad9725ad45be1fca54a0879c1cca2e69912dfd5615c98c24eafcaecd41793e0",
+      "82bfe439178299adc5bca0ac1de17614a3fd5fe6ed72a110861f88af9d014ca6",
+      "d95226c35e3874d572636c9ec781c27f823367b6c1effc04bbd6a333fc990e87",
+      "6620681264615c88d58702cf773a0a938fc0ea227d394f162d3dbfa7613391fb",
+      "03e8471ad2d0a0c70273050e7c1eb78a26dc896688243d1197ba1b85ddc2e278",
+      "cdec7b8f68fd26b6bb6b18ea212ceffb1b41e8257e80c7aee76571b8c964a7db",
+      "9d0fb2516b94c84b83721ffaf07bec8a837d0cc7554810d09ccc3ca177e3ace2",
+      "54bd65ad87689e7b1b734d5477da13c0aaf3fb5a7ac4670cda5bc60984eefe77",
+      "e746fb778a951fcb747e38a7264cd9191496515f0b956cf8d0e499f8056aa6e0",
+      "4723cfefd74b9f536e38b1a89df24c6ac7511b2157a366567778332c283d41e2",
+      "07c4c64ff304d1dabf4fda9a260e562151206b915a2088e8a98fa56fcbbcdfb0",
+      "5895984051050548442962adb94d12ede718aee12523ef26f85251fb5f52ea87",
+      "eff0ce873d63d9398cf8b51f646c62ad7681bdd93ae7938fd6ed99ac1c6701d4",
+      "81fb9617b01ddd2f9dcf6651a0a433b8a9641052d6152d9c4541344b0aa0ada3",
+      "7a5cd3100f26c8b5d0fe3cbaa27facc3fe53a58c30272486eef9dca65e485dc0",
+      "924fee6298a2cf66b3fdd55ed01d71f5f655c357cf5101a87c27daf058d4f34c",
+      "070b4a1813526d482a6d3aec487711a90f99cbc516d7ba2d3665ad74e6e36814",
+      "7b682c57521f766c90e18900e490892d0faec2def4e3dbd65343e8380ab2ef6a",
+      "85809cf63b0abbd1a93dcb6f091f8494c4e6de73ec0e23d0102983e7191bcd4a",
+      "ad8ca1aa2ec7ebea6a25b2646631d970891f5aa08b2841f64b27c1063e5ed41d",
+      "a6106817b737ec61ca060715e617f168c48b4067fe538b2b865343058dec3400",
+      "f505fc82c1764ca83fb6c5b7217d84160a19c9635b24bddcec3f827050c1a02d",
+      "5e5e183d01db4b219c5987250316f93c69867644c92238454dd11fd2186e73e3",
+      "b2253398797363da7ecd3e591669cdf9bbbd7d760744ef7fff112c05794aed56",
+      "7648defb115e54b26cc3941a51162c4e5280c9b34ef29bbeec440e53f546917d",
+      "c7a99469fe7c5e51934faeeeb129a6da7ce83d853576c840f7e74efe04f81f6d",
+      "15d560f06c01276ce4d02f2ab6fc26c77bac0792e0c2493ee5afb036417b1d08",
+      "094fcc9782b0c05a053532e71f181c52f5326f9f6a461527b6fb869719e2d5ca",
+      "27fa2a2a1166a9d8e4bfee3de6f1f85c561f13691aa2f048837f5e7a5faa3dc8",
+      "02f7a1a55bcaa4af70723619070d998f594e5039ee7282552b068535d5c753e2",
+      "8c1e25e89645eb7facf38b2626b51d957abced8a5189bda61b303171e71e9020",
+      "7f9964712fbcdee136fdf99c2ccd336f7771d556b35b0a2b05d0d84ae66789c3",
+      "a019306d0e6a939405d28d12a4e35c2e3da30ca93aa15e8ae79f0909f11fa42a",
+      "20bace205a18bd52cf9ad34baf34993b98ea9879b111efd7c6aedfff3f52eb11",
+      "65389feab50ff8bb0b21bf11058c7c991391fb1cbc22cff3badbd7c3a525413c",
+      "52ef8add1a72fbc2cc81e54f72984da9f80106da4114b71a8b4c1fcc8d77522c",
+      "93c8a55d864fce006fceba0e57f2e39e244f66435f1135d53a9fd69c6d1511f3",
+      "3f303bdd8dd1163614c0be9c462b2db0abd05d2f88eebba64d2dd0a0ef6827f7",
+      "29ef1f65ff5953e603d5e9d6019e061138b7099718971a1388f54a897452edcb",
+      "f84488e9fb53386f3fecf75d655cc37ad25892d13e12441e341de74cb099c3bb",
+      "99e74eeb64ced4d32832e72c43f4c0a84d0851df8e06a68887304162a54187bc",
+      "ae6250e979dcc49458c031aaf919f27cd31efa9d9316fdf184253e4dadc28128",
+      "3e321c7a69e273fc5c87ebd56e9e229daee76b1689b894982d163bce8deba97e",
+      "ec028516566e40a2b1fd7c67a8e371ba13de74c095234924941c1ce65d40d9d7",
+      "6d1a1a7bd80be1fe4c4192dfa81c669d20e36fabcbb54065040310cc50f671e8",
+      "8a88bf9c02d3d07347b98575c5283d230ea8585db9e7ad2c65cb282b51e06e0f",
+      "ca0fefc622437f4e8f68cc652f97f683483b5a3a5cd1bc54f40837c640cb1b79",
+      "3a384e711ba6114d5514b3abea3c13796a4e0e3a603d22c67075dfba56eed671",
+      "036f31fe538e833b2af5afcdef122830102fb08e73b78619ac5f4adc54db0baf",
+      "c6196618f2b80073cb0e66b4f975ec856711823c1969d23c0e89913d23ed6fba",
+      "5bceeb0ec8abd61201b0edc71e7c0de496ccb8f5a93ef9eebd5d17bee6840bbd",
+      "b36585403cbc54a58fefc1d8db7e218b0dee1171d9a3bc33b9714e6b0784db52",
+      "122f289d7341a9d0a36b599dcc1415329c7baa4d92398c8ad134483e9b601b24",
+      "cce563d9b37b7fd7f8c1435028f276b7b0f365325ba94268be7f45f2ae0f8578",
+      "b031be68fc7a92e35bcded8d384f7427b4fbc3ea99def7768e1efbbf930c751a",
+      "0680fcec33968120b7a41ce6e12b4fce0c391b8c5014e2ee763db70e1010723b",
+      "d8a5097e25e13ab3ee54a74e7ba0bb397e839f88fa3dfdb0cc1c074c5b988a08",
+      "20fbca7fe09460d774cf5f65ba4e41f5bbb4d9b8d00c9641096b4a8fe1d0d304",
+      "5b941cdb4af3b2050bcfadac74d5648bd0e24a892d501ccb41015588254ce692",
+      "643e1ec231855bb6c48ff7df14e5c850bd3c9e7b87101fc270ed2d46da28576d",
+      "3816f7976f9c178087d7abacd79cbfcc2918de78fd6aec2be2368a3c86422279",
+      "1ca9b71e8477eda07873a50a27450c0ef8efbe750172f01608cec7fc62a79938",
+      "5a06fff72e2f060719976eb27828c23cd9ca9277454a59d6fa1ccd0f16fb4264",
+      "5d6341d7ce786786721ef0e7d0052197bf873a4b40032833a0126ede90b51d30",
+      "ec9b37115b99328b1086fba83440e26dddbab80ba56adb1e28537d8ddc361b16",
+      "b44d74cc319860c610f3ecd861d4eefbfb9163c76eb8a73fa96cc9c59170b024",
+      "e08383187ad7d484b7f70d43af8d1b40988bf948eff9f427af53a84585ff4b07",
+      "6a139ab70ac841b4c828da40c8d01b1b841a840a18dfdebd6ebff8e96e410c3b",
+      "b8c407ca05c0c7ebea648b02c6474e4e1e2e2cd67ac6d30bb3b209ebfebb5d74",
+      "79295bc5043a5c29db5110d3504593dac410b64b903b2a94ddbe311ee617e696",
+      "e3e60cf588b57d984382dba804cea1631b2fe29856ec8a30c0107be9f187a1f5",
+      "f25daea6e733d026b203ecf381c55a65870f6ea3a4c9caa666911d52ae6366be",
+      "a9b041f7eb5497a2ff8263f89d637af350f7e01eafffa5913b67fa74be64b8d3",
+      "92d274ea85a587ab274a5bc25af595a8d2251f6a7b8101869f62b0de5fb5996f",
+      "842bf034b4040d91788d4f0c206e6eb884222df7f35bdc2e16b5642758dffac4",
+      "2b6a2fedfd8b37de6802af6f32ad8baca2700bfbe28224aebf6b0d30d9351b2b",
+      "131f0df41cef2d0beaccf36ed878afefe6211ea6a3ca0d8ce072c2bc81a6f15f",
+      "b2315d1f1e43baa0dd66b5d5bdcf4506e6087550540d6c1190bfaaf69d3df957",
+      "32025afe97f9edfd906806d350e51ec4d27d7f0d95ba0e9db8d87557e8a2e382",
+      "d9bdeeeacf0169d2cf6e4e55a96c9ef3bc7ec91af63e4300dd40c454d137d3a3",
+      "d1257ac976996e52b0c33c44a78c85f50af7d6e1b7b259aca5a017dcfa3f4b69",
+      "e4cf1608724d30001a0aabe0e6cac845eb6a8151525c4cf4f7bc3a5d4d5d0103",
+      "a65c9758a5887cdb4310dcaba8ff28a942a53d9add94009a602d40ab5f65a36e",
+      "f8c3d8149edd019122ee1262c37bf7798311bdafac0d451bd9d8794cbd941623",
+      "534e82cc442682c22e7bc6cf9c4f0754cd19d2c67a63ffd9670b1182e041560a",
+      "8252f12f78f7cb7db17c521899303201553fb73e6cd96289b99a457b009aff6c",
+      "d6503f16b87319c464baf9cf5176a00fd61d9dd7efd70ba3a72d95f98744786e",
+      "e35aefe2d5a57fd3b558df4c9d6101d93f55d66c4f6d3a4f6ab3547c23aa9eb8",
+      "44b1deb2d95eaaed05afddfab038fd944192cf2c2e7653c5d31c1a9db6b54a5b",
+      "d39ddbec81ae23e093b41bb93e3a338fb8997051a0b87fe2a5b2d6ed243baf11",
+      "7674c491eb1d7686d04da60f4f97863d11adc96277962c8c6f6a1bae88e20f6f",
+      "a34f4738465d5424244825fd42a006123ac26072f5839f365b4e22c367885a3b",
+      "c6251c5427b822999d5a4081548fdce7ac0d6051bd5cc105c3a0ddff95f1e8f5",
+      "3a92c3d0da7201b1b0577c1777f87b955b543c09a63afdf86eaff9982626d53d",
+      "4be09d375e335c54f8c2f6f108db902e303c80e8b7c1554f8e3046bb5e98e99f",
+      "556c37331b132662581b6508425d59b173da7ce2d8671d1f7ae15eb54a7a3a96",
+      "abd8e9a46d0b49ae46d62f19697e9db42cfd1c1e9d6dec8e22db3689741f0a90",
+      "c8cb04974273fed6d562f56ed3f6a065dd9c24677f57f6eedad6ec7a6631aaf9",
+      "48787345f9450cbdc73ba3b1dc215b0bb6d5abd69ba8c7fe9e3d80e00415fc2b",
+      "355c89e3577c6807c185858073f1b91e41b5dee45cb65b8efc990f97740fb9a0",
+      "bd457fa699d26782ae61bd4fdc5c580e0bbb6c8d560ca5a8a67f453f5a91b286",
+      "694ed5a3c18f7e143411bf7da3c90cda5a5971fa56de1c5ace49a9773941d45c",
+      "e87b203d50dc0219bc9785726fdb7a34ef4907c1bba7357af9e83a420d089e69",
+      "24537c7747ec435ac050fbba83df725dab1c7ca0652b936a844f56a37496fd99",
+      "efd235a371372c67f5417f8aee7f6883f26dcccdf3f4303a25a198ce132470d9",
+      "aad8324ce21cdd448af4342005257e7b13e2ab302a9fe2907ac471270efe3522",
+      "6a5afce3f22082d75f6eca87c457db755a8450a7cc5b22253db07d71bbba74eb",
+      "468892a8ffeb25f6e8a7e9c2560143e56891003a5452d485ada44704899a8055",
+      "34cd46cfb7137a10dbbf4f18090ff56e804cc506a6054249108e1501a2d0285d",
+      "cb701bd36fc9885eb71ad8200122ab46424051eb069048330dbb51cb4146455e",
+      "ba0df26fbd9e0ca481418db91d668f8ab12ebfba5c3744466ca9d4d4ea89ed67",
+      "1a465346a33c6692f17f693664522d59da07172423167430c3065375a652d451",
+      "565b8cb16b1047b78f6bf888070251a337b47b9d2a59fed2f671f33493ba22b3",
+      "c0353346ad2aef73466417b4262ef12162ed27ac2deaf21406b85f74f58dfbdf",
+      "3eadda0a40336aa0922e1dd0b421782641d32395ba0e6106369059aa1cfd84b5",
+      "3f6ad4529d2a35fdfa7e44170a3543bcfffe4bcacb2271c286886e170f1080d6",
+      "336fa9d4ebf655ea8144d94c354dc10bba13ac8b8d66524e9fae0cd8a40d9fdf",
+      "b8a1d3d0705fe63115e6086434c4bce58a5f72a79cf7de4bd4c2d96c9b1d6d57",
+      "d052dd2b25ae237b22db047af3341b293bdf752a86dcb74a43f1e37036b5e59e",
+      "ba52b285a2eb6c2fbff7b3d9ccdb5d2a77881a61c668f73661cdaaba4f392729",
+      "f50a7388a53a6e224a27815b8dd769c58cdd3fef957555be1653a9ba622fe1cf",
+      "7bb3824b5097b8f6c65fae918a0940b3a42623186a582b51c0a037acef098aa8",
+      "8ab3b793aeceaf8846d11e87ce855dac8dc1ce6841e893f9df754645cda345ec",
+      "04f627d75c918a881b9a038e129a1c9605fd465814549237ca4be71632f4b5d9",
+      "07d79bf522aa99223f36dbe9e37d4124ea0520759fa84b3c4ef3aa021f01711c",
+      "edc526e93322626c3c8ce67403d835f06c8ef27425d6f71c08ce6b75e9e9c20d",
+      "dce094b02d0aed05c8b26d075dbb4b626d3a72705c881cb65255e28e3896c4dd",
+      "31133fade59bcac90f0a19771aeb871f8b9744b9e195c1dd0ddc03ecedfab650",
+      "8c7cd6a261b017ad74f6aaf039163808ae5ef56c851158c0c148698b82ab9c50",
+      "626fab296f1c55e01b1115967561c848da37d06c63b21b90ebb0def379af153b",
+      "f0cde61290f282e69761e2008bb5d1511a2caa3e1c38779cf89c6dcaf9120cef",
+      "ee0e7eda74441f0f1a5a0745efaf93af6af5e15700ae3c0fbd603bd21fd23894",
+      "5a3dea1698b4247bc9f97bba229ef24929bff3f520079d2822dabaea1c095f5e",
+      "e2347d7fce85d69abbcf375fac8778920b4a91733a1b886a0988e3e5e9bb59bd",
+      "14583a2b850917685f9f406429e525bf44c7ed98245a66588e9c098ccee3f254",
+      "eaaca7b88b247812b3240472371e19e8e37e4471fb4662e9f8d79171d974e6fb",
+      "f8e2121a69c2e09bd36a9393355472c7a37253aa5a83098caa24e8f129a573a0",
+      "c85740885afb571be386d2a66aaf8365ea136b02644cea2fe95ad5404a8d0dd3",
+      "8fe42c95a9882ceb666e6fa4772a338b0423a28df3b477615acc967060837369",
+      "71a7c42557833e2aa0b85d228424f1aad30f2a15560e7259f66749c8d0ba099a",
+      "bb173cb1cb1524142a2a66a684f58f82fa3e68bc233fe5b53ae2666ea43174e2",
+      "c653b806cc1785ede5087e0487b34a404feabfcaba26c5f652d25d00885795f6",
+      "825945f9ac700b0972b1269e8d139cbd7bac494ee03043bfc4e2cda3b639c30e",
+      "7651c869bc49d3de25ab140e16ca24c4355b48213b1015dc5eda1ca43212f9ab",
+      "491f902d494bde23d8106d084d2236acf2708b0ad5e5391a8fc66c186a563262",
+      "582618e745feef21ed625350dd1ab56e84a50115a5e1a80bb6d8f0d21ca9b48d",
+      "a5192bdba32908959b8eef5930da78bbfa95cd99b402d05d27eb28ed56c4af89",
+      "e5a3d2e7a15c9196d5a44bb8c02bf43bec1c0df80a1faae6144c002594d4b7a5",
+      "96d572c210a99c853a140e25e1b1f083c4249a411e645dfd902f5902df938f51",
+      "f2adc64f014c248ff41bb9979551a64967d1f4606fa6d67da2358c5b17953d49",
+      "bb4ece0b98e8305ca1baba09670e4e881221e4854f4de3ac0379fbd591b90bb3",
+      "7726b72ded959151f327b094a038e75b116e03bc2880610e5fe7ec2e853ffc14",
+      "66c829de0b801861c7236fe9e6e0f22546165d4f28270cc113304eaea43bd47a",
+      "1a4bf36266b7c8eab6c639190f34e6424fc5458a7f33d9e6a9c068719fb17caa",
+      "ec6751b2db431d9f7acdac6f25788953dd0f949efd2fff3063f2dee28c9ddd57",
+      "be30ca8911f821483297065bc3b9b3adb4b4206ea9e8a7cded24e7a929598942",
+      "9b81051098852e8948efcdf8405a5528dc7e0b3ba49c3fb91e9b26fbee3606c6",
+      "a9e200dfbc7af02b4f4e2cd17e3339fd88b8259ba6261709a06ce265c6322653",
+      "ba1f5f1dae82985e3459a45d51ede7b14406eec27c711cc18fc87bc48087ca52",
+      "4d762f83951fdd939c73a4cdda3ebfc92062877d11d0570c5fff3cd190d675bc",
+      "a870487c4b98465758bfa2941617f6e974a0c369dbfacd76ac48b7d982d7b9a5",
+      "a77564f817c264a55b8512275d0bf4792ebf294c3e9328f0ac07d1c4e1c0b484",
+      "bd5842a29bd3d878e726f0d28055d81e32e588091b9fc4a59c2d0f1cbb4381a9",
+      "d8116d00cf094167b22febc2f25edfd73243a1be883d6c9f595b1baf3f639549",
+      "045a959a2cd994c7a531f9e59249a0c2d08170dcfd6a0e8a1ed43ca952741c49",
+      "a1a4487342b4352a72fdfac69766f16f13b62c4d953277d99c338195e2b60ed5",
+      "6dffef81842ff1819aa20d666caa4c4b3847ac5aa205a3bca4daff4d07245153",
+      "704581bbccdaf3d96056f0b25faff209f11774590f7ff92dd2213505980aaec5",
+      "0de9d21163fbbfd0f732e8a4e5c12858b89afff221c35d31da6180f0f46c8edf",
+      "b930fc45334ba0f45adbd30b20ac5fc87a8b05a120abede93957718c335a49ee",
+      "63854baa5a2b1aacf742a594d7624876df69436ebe3e944d0a8ecf8a0ad7adae",
+      "bb3dfde3171543b399695ff79742e2fc3f15b4f222973feef3d39f405d05f998",
+      "32b59bda63db0dcbe894fd61f776a8f56ecf21e430a851ff67007d29f15545d8",
+      "271c847510986ab3bbad4bb7f4359b2ca8f67bd4bce21e5e293056387a90b0e8",
+      "62a87d5de75d3e1ad6d0712bf6ec795c0b5d0b9e6004917e24a48b460258f840",
+      "9b1b75ccc751bbb0a53d37a0326a58d7019366c5d0f7bf65f68c6e744d815d9a",
+      "2acfb22313022bdb5a4709dd8ff28a2d559331acc6754bd4056d17c823b4f29e",
+      "b0e5f04d5a43607df86b5059788086f1740cda2317f85ff505b608667411bf20",
+      "9c62310dd6afbdf9775adeb0d556a71c7709ffeb5a580d56f4a1d4e260576a74",
+      "de7565f8f206a2f68678caeda2d6740cd00fe0b88865a32060628d385104c86a",
+      "70ce6d806f93169189dded344e5297b96084ec470c7e49d7037f7d2272d84545",
+      "b0736d1be3a74351d952666920f012f8410d462a8f56b241dd899041fe450f83",
+      "11e976fae9ed35a2560f5b9e78cd44d58bba741013b9b630acfba9d0dc90965d",
+      "11591a8033ee106169685142e22bf6e696eceecf15f48a7acb188bc9ced21cf8",
+      "0fdb4d77255f8f601b7ade9773d0a5d3a562b6ac4cd4bee441fde24e4d638337",
+      "b416becf267da24261d372a39ea5d3939fe21a40d986448fed58441c80161369",
+      "4f72a2479899e671b205a89aff870294e85e3fabe466c7465f9847aaa7a973ff",
+      "49e769333bc5bf0790eba045a8fee92267259b7af06e3c38f431de81dabaee5b",
+      "b6e1d3818a4cd24cdd270d47de92b799bfe33a7b8688a78f8eae7fe015a0f0f5",
+      "bb257bcc540510b0ecca1cc53642433d1ed4e72d946a38ed64859686c3dca572",
+      "0a331efe2a67c4b21da4fbeda7199b15bdb8f4afea8ef6b773630241bf1374bc",
+      "576d5e5510e0b3ca4bd6aee99b5a67a22de71fe9df557d7cc56cb7f7af3c8611",
+      "4389fad69a6bd99338a1b48dc7dbd609994aeff9dc5cdf56b7aeeb5e6a42f9a2",
+      "e4c1b2f3999f8d81a70e953ef1396ee24943581894ec8b47d8b1440e03402d83",
+      "f0738262bfadd406bc91f76460ee60585a5598b5605b5958cea331fef23426d8",
+      "17aa7c40ba5071a5924480a354de1cb9adf9c4650e796ab2477946a02649de06",
+      "23a85567467093a2ee79efda7fba84d65a5fdc48adedb90b7ee93b677624cf8a",
+      "874cb9b2758633c49e472ddfc8080a74196264abaf6203831bb04f1f9a754e65",
+      "72d05176561e99c0aedeadb1584562341c00f8dde9d3fef34c7d782b96c060d8",
+      "39bf8801abfc17995e1112ba2b77f70dfdc473987e90fe37cc73f230c6633114",
+      "d537a0fa5d7581d5f4f562606a7fb508cc40abb477ce4ab84fa6752bd6565545",
+      "12fbcf9eee059ec3757dfe535b3477c422f4bebb2ecd2d1438d179d73424ee9e"
+    ]
+  },
+  "recent_changes": [],
+  "repository_commit": null,
+  "repository_dirty": null,
+  "repository_status": "unversioned",
+  "risks": [],
+  "schema_version": "1.1",
+  "snapshot_id": "43312fa2-a863-5f56-9765-0d7a224239be",
+  "source_health": [
+    {
+      "configured_at": null,
+      "errors": [],
+      "freshness_status": "current",
+      "last_scan_at": "2026-07-28T09:41:22.195960+00:00",
+      "last_success_at": "2026-07-28T09:41:22.195960+00:00",
+      "read_only": true,
+      "required": true,
+      "source_id": "source_code",
+      "source_type": "filesystem",
+      "status": "reachable",
+      "trust_class": "repository_source"
+    },
+    {
+      "configured_at": null,
+      "errors": [],
+      "freshness_status": "current",
+      "last_scan_at": "2026-07-28T09:41:22.195960+00:00",
+      "last_success_at": "2026-07-28T09:41:22.195960+00:00",
+      "read_only": true,
+      "required": true,
+      "source_id": "tests",
+      "source_type": "filesystem",
+      "status": "reachable",
+      "trust_class": "executable_test"
+    },
+    {
+      "configured_at": null,
+      "errors": [],
+      "freshness_status": "current",
+      "last_scan_at": "2026-07-28T09:41:22.195960+00:00",
+      "last_success_at": "2026-07-28T09:41:22.195960+00:00",
+      "read_only": true,
+      "required": true,
+      "source_id": "documentation",
+      "source_type": "filesystem",
+      "status": "reachable",
+      "trust_class": "internal_documentation"
+    },
+    {
+      "configured_at": null,
+      "errors": [],
+      "freshness_status": "current",
+      "last_scan_at": "2026-07-28T09:41:22.195960+00:00",
+      "last_success_at": "2026-07-28T09:41:22.195960+00:00",
+      "read_only": true,
+      "required": true,
+      "source_id": "configuration",
+      "source_type": "filesystem",
+      "status": "reachable",
+      "trust_class": "repository_configuration"
+    },
+    {
+      "configured_at": null,
+      "errors": [],
+      "freshness_status": "current",
+      "last_scan_at": "2026-07-28T09:41:22.195960+00:00",
+      "last_success_at": "2026-07-28T09:41:22.195960+00:00",
+      "read_only": true,
+      "required": false,
+      "source_id": "structured_reports",
+      "source_type": "filesystem",
+      "status": "reachable",
+      "trust_class": "structured_artifact"
+    },
+    {
+      "configured_at": null,
+      "errors": [],
+      "freshness_status": "unknown",
+      "last_scan_at": "2026-07-28T09:41:22.195960+00:00",
+      "last_success_at": null,
+      "read_only": true,
+      "required": false,
+      "source_id": "git_history",
+      "source_type": "git",
+      "status": "not_found",
+      "trust_class": "repository_metadata"
+    },
+    {
+      "configured_at": null,
+      "errors": [],
+      "freshness_status": "not_applicable",
+      "last_scan_at": "2026-07-28T09:41:22.195960+00:00",
+      "last_success_at": null,
+      "read_only": true,
+      "required": false,
+      "source_id": "github_metadata",
+      "source_type": "github",
+      "status": "disabled",
+      "trust_class": "external_metadata"
+    }
+  ]
+}

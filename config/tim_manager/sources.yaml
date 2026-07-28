@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "sources": [
+    {"source_id": "source_code", "adapter": "filesystem", "enabled": true, "required": true, "roots": ["src", "main.py"], "include": ["**/*.py", "*.py"], "exclude": ["**/__pycache__/**"], "trust_class": "repository_source", "write_policy": "read_only", "max_file_size_mb": 5, "freshness_policy": {"expected_update_interval_hours": 720}},
+    {"source_id": "tests", "adapter": "filesystem", "enabled": true, "required": true, "roots": ["tests"], "include": ["**/*.py"], "exclude": ["**/__pycache__/**"], "trust_class": "executable_test", "write_policy": "read_only", "max_file_size_mb": 5, "freshness_policy": {"expected_update_interval_hours": 720}},
+    {"source_id": "documentation", "adapter": "filesystem", "enabled": true, "required": true, "roots": ["docs", "."], "include": ["**/*.md", "*.md"], "exclude": ["backups/**", "artifacts/tim_manager/**", "docs/tim_manager/**"], "trust_class": "internal_documentation", "write_policy": "read_only", "max_file_size_mb": 20, "freshness_policy": {"expected_update_interval_hours": 2160}},
+    {"source_id": "configuration", "adapter": "filesystem", "enabled": true, "required": true, "roots": ["config", "schemas"], "include": ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.sql"], "exclude": ["config/tim_manager/**"], "trust_class": "repository_configuration", "write_policy": "read_only", "max_file_size_mb": 20, "freshness_policy": {"expected_update_interval_hours": 2160}},
+    {"source_id": "structured_reports", "adapter": "filesystem", "enabled": true, "required": false, "roots": ["artifacts", "data/research"], "include": ["**/*.json", "**/*.jsonl", "**/*.md"], "exclude": ["artifacts/tim_manager/**"], "trust_class": "structured_artifact", "write_policy": "read_only", "max_file_size_mb": 20, "freshness_policy": {"expected_update_interval_hours": 720}},
+    {"source_id": "git_history", "adapter": "git", "enabled": true, "required": false, "roots": ["."], "include": [], "exclude": [], "trust_class": "repository_metadata", "write_policy": "read_only", "max_file_size_mb": 0, "freshness_policy": {"expected_update_interval_hours": 720}},
+    {"source_id": "github_metadata", "adapter": "github", "enabled": false, "required": false, "roots": [], "include": [], "exclude": [], "trust_class": "external_metadata", "write_policy": "read_only", "max_file_size_mb": 0, "freshness_policy": {"expected_update_interval_hours": 168}}
+  ]
+}

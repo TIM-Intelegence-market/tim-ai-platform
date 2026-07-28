@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tim://schemas/project_snapshot/1.1",
+  "title": "TIM Intelligence Manager Project Snapshot",
+  "type": "object",
+  "required": ["schema_version", "snapshot_id", "generated_at_utc", "repository_status", "repository_commit", "authoritative_git_repository", "content_manifest_hash", "config_hash", "source_health", "module_states", "risks", "contradictions", "data_gaps", "known_unknowns", "provenance"],
+  "properties": {
+    "schema_version": {"enum": ["1.0", "1.1"]},
+    "snapshot_id": {"type": "string", "format": "uuid"},
+    "generated_at_utc": {"type": "string"},
+    "repository_status": {"enum": ["versioned", "unversioned"]},
+    "repository_commit": {"type": ["string", "null"]},
+    "authoritative_git_repository": {"type": "boolean"},
+    "repository_dirty": {"type": ["boolean", "null"]},
+    "parent_git_context": {"type": "object"},
+    "content_manifest_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "config_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_health": {"type": "array"},
+    "module_states": {"type": "array"},
+    "risks": {"type": "array"},
+    "contradictions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/contradiction"}
+    },
+    "data_gaps": {"type": "array"},
+    "known_unknowns": {"type": "array", "items": {"type": "string"}},
+    "provenance": {"type": "object"}
+  },
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "required": ["claim_id", "subject", "predicate", "value", "claim_type", "status", "evidence_refs"],
+      "properties": {
+        "claim_id": {"type": "string", "format": "uuid"},
+        "subject": {"type": "string", "minLength": 1},
+        "predicate": {"type": "string", "minLength": 1},
+        "value": {},
+        "claim_type": {
+          "enum": ["observed_fact", "validated_result", "research_observation", "model_inference", "agent_interpretation", "human_decision", "recommendation", "unknown"]
+        },
+        "status": {"enum": ["active", "superseded"]},
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "valid_at": {"type": ["string", "null"]},
+        "valid_from": {"type": ["string", "null"]},
+        "valid_to": {"type": ["string", "null"]},
+        "superseded_by": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "contradiction": {
+      "type": "object",
+      "required": ["contradiction_id", "subject", "predicate", "claims", "severity", "resolution_status", "contradiction_type", "temporal_resolution", "contradicting_claims_preserved"],
+      "properties": {
+        "contradiction_id": {"type": "string", "format": "uuid"},
+        "subject": {"type": "string", "minLength": 1},
+        "predicate": {"type": "string", "minLength": 1},
+        "claims": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/claim"}
+        },
+        "severity": {"enum": ["low", "medium", "high"]},
+        "resolution_status": {"enum": ["unresolved", "provisionally_resolved", "resolved"]},
+        "contradiction_type": {"enum": ["direct_fact_conflict", "interpretation_conflict"]},
+        "temporal_resolution": {"enum": ["overlapping", "unknown"]},
+        "preferred_claim_id": {"type": ["string", "null"]},
+        "preference_reason": {"type": ["string", "null"]},
+        "contradicting_claims_preserved": {"const": true}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

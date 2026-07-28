@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "case_id": "bullish_bos_v1",
+      "timeframe": "1m",
+      "candles": [[100,100,95,98,10],[98,105,97,102,10],[102,110,98,104,10],[104,106,99,103,10],[103,104,98,102,10],[102,109,101,109,10],[109,113,108,112,10]],
+      "expected": ["BOS_BULLISH"]
+    },
+    {
+      "case_id": "bearish_bos_v1",
+      "timeframe": "1m",
+      "candles": [[108,110,105,108,10],[108,109,101,104,10],[104,108,95,99,10],[99,107,99,102,10],[102,108,100,103,10],[103,104,96,96,10],[96,97,90,92,10]],
+      "expected": ["BOS_BEARISH"]
+    },
+    {
+      "case_id": "rejection_v1",
+      "timeframe": "1m",
+      "candles": [[100,102,98,101,10],[100,102,98,101,10],[100,102,98,101,10],[100,102,98,101,10],[100,102,98,101,10],[100,106,99,100.2,20]],
+      "expected": ["REJECTION","ABSORPTION_CONTEXT"]
+    },
+    {
+      "case_id": "failed_continuation_v1",
+      "timeframe": "1m",
+      "candles": [[100,102,98,101,10],[101,103,99,102,10],[102,104,100,103,10],[103,105,101,104,10],[104,110,103,109,10],[109,109.5,104,105,10]],
+      "expected": ["FAILED_CONTINUATION"]
+    }
+  ],
+  "assistant_cases": [
+    {"case_id":"multi_timeframe_conflict_v1","observations":[["BOS_BULLISH","5m"],["BOS_BEARISH","15m"]],"expected_conflict":true}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "output_root": "artifacts/tim_manager/reports",
+  "include_source_references": true,
+  "include_unknowns": true,
+  "global_progress_enabled": false
+}

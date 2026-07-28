@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "repository_status": "unversioned",
+  "repository_commit": null,
+  "authoritative_git_repository": false,
+  "content_manifest_hash": "22b258c5fd8eac5e4d3cff0ef648b96c1ce00665c6b11e58a7f5e2b491a10c1b",
+  "parent_git_context": {
+    "git_root": "/Users/tim",
+    "branch": "main",
+    "commit": "a418894d33ba2426afe0f31d119332043bddd406",
+    "project_path_tracked": false,
+    "context_only": true
+  },
+  "base_commit": null,
+  "branch": null,
+  "branch_limitation": "TIM is untracked inside a user-wide repository; no global branch switch was performed.",
+  "changes": [
+    {"path": "src/tim_manager/**", "change_type": "add", "reason": "Isolated TIM Intelligence Manager implementation including deterministic S11 contradiction detection", "affects_scientific_behavior": false, "affects_protected_data": false, "tests": ["tests/tim_manager"], "rollback": "Remove the isolated TIM-IM directory after preserving outputs."},
+    {"path": "config/tim_manager/**", "change_type": "add", "reason": "Read-only source and security contracts", "affects_scientific_behavior": false, "affects_protected_data": false, "tests": ["tests/tim_manager"], "rollback": "Remove TIM-IM configuration."},
+    {"path": "artifacts/tim_manager/**", "change_type": "add", "reason": "Isolated indexes, events, snapshots and reports", "affects_scientific_behavior": false, "affects_protected_data": false, "tests": ["tests/tim_manager"], "rollback": "Remove generated TIM-IM artifacts."},
+    {"path": "docs/tim_manager/**", "change_type": "add", "reason": "Operations and governance documentation", "affects_scientific_behavior": false, "affects_protected_data": false, "tests": [], "rollback": "Remove TIM-IM documentation."},
+    {"path": "schemas/tim_manager/**", "change_type": "add", "reason": "Portable canonical schemas", "affects_scientific_behavior": false, "affects_protected_data": false, "tests": ["tests/tim_manager"], "rollback": "Remove TIM-IM schemas."},
+    {"path": "tests/tim_manager/**", "change_type": "add", "reason": "Acceptance, security, determinism and S11 contradiction regression tests", "affects_scientific_behavior": false, "affects_protected_data": false, "tests": ["tests/tim_manager"], "rollback": "Remove TIM-IM tests."}
+  ]
+}

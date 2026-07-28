@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "network_default": "disabled",
+  "routes": {
+    "deterministic_extraction": {"preferred": "none", "fallback": "none"},
+    "classification": {"preferred": "none", "fallback": "none"},
+    "summarization": {"preferred": "local", "fallback": "disabled"},
+    "query_answering": {"preferred": "deterministic", "fallback": "disabled"},
+    "contradiction_review": {"preferred": "deterministic", "fallback": "disabled"},
+    "architecture_analysis": {"preferred": "disabled", "fallback": "local"}
+  }
+}

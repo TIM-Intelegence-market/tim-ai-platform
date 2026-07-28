@@ -1,0 +1,66 @@
+# Changelog
+
+## TIM Core 1.0 Freeze
+
+- Declared the implemented Core component set frozen in OBSERVE-only mode.
+- Added a machine-readable version and change-policy manifest.
+- Added a deterministic monthly research snapshot protocol with explicit data
+  coverage and version-isolation requirements.
+- No runtime, market-rule, threshold, outcome, or validation behaviour changed.
+
+## Research Insights Engine (external to Core)
+
+- Added deterministic, retrospective statistics over copied persisted
+  orderflow research data.
+- Added strict version partitions, sample labels, TEST_ONLY exclusions, quality
+  warnings, stable hashes, and JSON/CSV/Markdown exports.
+- Added the read-only `/insights` dashboard page. The engine remains
+  `NOT_YET_ELIGIBLE` while Core 1.0 evidence gates are unmet.
+
+## Research Operations (external to Core)
+
+- Added a read-only Research Audit Engine for artifact, hash, provenance,
+  version, schema, timestamp, and documentation checks.
+- Added deterministic Research Quality reporting without repair or inference.
+- Added reproducible monthly snapshots with explicit `IN_PROGRESS` status for
+  active months, persisted database counts, 1-minute candle coverage, replay
+  status, known limitations, and stable hashes.
+
+## 2026-07-19 — Intelligence V1 specifications
+
+### Added
+
+- Versioned deterministic Observation Engine with stable IDs, provenance, rule versions and input hashes.
+- Historical Market Memory with transparent, future-safe similarity search.
+- Reproducible Research Cases with evidence, missing evidence, outcomes and rule versions.
+- Local Human Assistant Dashboard V1 with HTML and JSON state endpoints.
+- Authorized-record News Intelligence with deterministic historical linking.
+- GoatHub Knowledge search with explicit authorization, line citations and content hashes.
+- Descriptive Long-Term Intelligence for market, dominance, sector and macro context.
+- OBSERVE-only Short-Term Assistant that exposes evidence, conflicts and missing context.
+- Disabled-by-default, TEST_ONLY Paper Automation journal with nonzero costs and delayed evaluation.
+- Vision 2030 governance and evolution roadmap.
+
+### Safety
+
+- No private exchange endpoints, credentials, account access, wallet access, real orders or execution.
+- Models remain explanation-only and cannot create observations, rules or actions.
+- News and knowledge inputs require provenance; knowledge requires explicit authorization.
+- Paper evaluation cannot be instantiated as non-test operation.
+
+### Passive continuation
+
+- Added manually invoked, read-only local connectors for News and GoatHub knowledge.
+- Added explicit host/path allowlists, file-size bounds, atomic manifests, content hashes, snapshots and deduplication.
+- Retention remains dry-run only; no source or evidence deletion is performed.
+# 2026-07-20 — Operational validation and data quality
+
+- Added restart-safe 72-hour OBSERVE validator with structured JSONL logging.
+- Added CPU, RSS, disk, database, dashboard, and required-file health metrics.
+- Added deterministic quality validation with duplicate, timestamp, provenance,
+  and observation metadata checks.
+- Added explicit completeness, freshness, integrity, candle-gap, report schema,
+  and reproducible CLI validation.
+- Added permanent versioned research benchmarks and comparison reports.
+- Added an idempotent local PostgreSQL 18 bootstrap with explicit TimescaleDB
+  verification and no stored administrator credential.

@@ -1,0 +1,33 @@
+{
+  "core_name": "TIM Core",
+  "core_version": "1.0.0",
+  "status": "FROZEN",
+  "operating_mode": "OBSERVE",
+  "purpose": "Deterministic market research",
+  "components": {
+    "agg_trade_persistence": "1.0.0",
+    "orderflow_metrics": "1.0.0",
+    "orderflow_observations": "1.0.0",
+    "orderflow_validation": "1.0.0",
+    "research_analytics": "1.0.0",
+    "dashboard": "2.1.0"
+  },
+  "allowed_changes": [
+    "reproducible_bugfix",
+    "integrity_correction",
+    "security_correction",
+    "documentation",
+    "monitoring",
+    "scientific_methodology"
+  ],
+  "prohibited_changes": [
+    "new_observation_rule",
+    "new_data_source",
+    "threshold_change",
+    "outcome_definition_change",
+    "validation_logic_change",
+    "core_functional_extension"
+  ],
+  "version_isolation_policy": "Data from different Core, rule, metric, or validation versions must be analyzed separately.",
+  "phase_5": "LOCKED"
+}

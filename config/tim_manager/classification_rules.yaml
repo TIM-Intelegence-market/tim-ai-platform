@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "rules": [
+    {"pattern": "tests/**", "classification": "test", "source_tier": "executable_evidence"},
+    {"pattern": "docs/**", "classification": "documentation", "source_tier": "documentation"},
+    {"pattern": "schemas/**", "classification": "schema", "source_tier": "configuration"},
+    {"pattern": "config/**", "classification": "configuration", "source_tier": "configuration"},
+    {"pattern": "src/**", "classification": "source_code", "source_tier": "implementation"},
+    {"pattern": "artifacts/**", "classification": "artifact", "source_tier": "generated_artifact"},
+    {"pattern": "data/research/**", "classification": "research", "source_tier": "scientific_artifact"},
+    {"pattern": "**/*.md", "classification": "documentation", "source_tier": "documentation"}
+  ]
+}
