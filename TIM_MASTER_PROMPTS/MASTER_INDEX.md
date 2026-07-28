@@ -4,10 +4,15 @@ Status: governance library for future, bounded work packages.
 
 ## Authoritative precedence
 
-Before using any Master Prompt, read and apply
-[`TIM_CONSTITUTION.md`](../TIM_CONSTITUTION.md). The Constitution is the
-highest repository-level engineering policy. A Master Prompt may narrow its
-scope but must not weaken its safety, evidence, test or lifecycle rules.
+Before using any Master Prompt, read and apply, in this order:
+
+1. [`TIM_CONSTITUTION.md`](../TIM_CONSTITUTION.md) — Band 1;
+2. [`TIM_ENGINEERING_GOVERNANCE.md`](../TIM_ENGINEERING_GOVERNANCE.md) —
+   Band 2.
+
+Band 1 has precedence over Band 2; both have precedence over every Master
+Prompt. A Master Prompt may narrow its scope but must not weaken their safety,
+evidence, test, lifecycle or governance rules.
 
 | Prompt | Scope |
 |---|---|
