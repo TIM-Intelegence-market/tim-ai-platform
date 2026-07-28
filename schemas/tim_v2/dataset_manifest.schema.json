@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tim-v2/dataset-manifest/1.0.0",
+  "title": "TIM V2 Dataset Manifest",
+  "type": "object",
+  "required": ["dataset_id", "version", "schema_version", "content_sha256", "source_uri", "source_authorized", "license_name", "sensitivity", "event_time", "observation_time", "publication_time", "quality", "retention_policy"],
+  "properties": {
+    "dataset_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{2,63}$"},
+    "version": {"type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"},
+    "schema_version": {"type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"},
+    "content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_uri": {"type": "string", "minLength": 1},
+    "source_authorized": {"type": "boolean"},
+    "license_name": {"type": "string", "minLength": 1},
+    "sensitivity": {"type": "string", "minLength": 1},
+    "event_time": {"$ref": "#/$defs/time_range"},
+    "observation_time": {"$ref": "#/$defs/time_range"},
+    "publication_time": {"$ref": "#/$defs/time_range"},
+    "quality": {"$ref": "#/$defs/quality"},
+    "retention_policy": {"type": "string", "minLength": 1},
+    "lineage": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "supersedes": {"type": ["string", "null"]},
+    "metadata": {"type": "object", "additionalProperties": {"type": "string"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "time_range": {"type": "object", "required": ["start", "end"], "properties": {"start": {"type": "string", "format": "date-time"}, "end": {"type": "string", "format": "date-time"}}, "additionalProperties": false},
+    "quality": {"type": "object", "required": ["record_count", "missing_record_count", "duplicate_record_count", "coverage_percent"], "properties": {"record_count": {"type": "integer", "minimum": 0}, "missing_record_count": {"type": "integer", "minimum": 0}, "duplicate_record_count": {"type": "integer", "minimum": 0}, "coverage_percent": {"type": "number", "minimum": 0, "maximum": 100}}, "additionalProperties": false}
+  }
+}
