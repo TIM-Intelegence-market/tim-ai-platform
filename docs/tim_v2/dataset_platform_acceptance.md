@@ -1,6 +1,6 @@
 # TIM V2 Dataset Platform - final acceptance
 
-Status: REQUIRES LIMITED REMEDIATION
+Status: PASS
 
 ## Scope and protection boundary
 
@@ -50,20 +50,23 @@ identical manifests with different field order and whitespace. A semantic
 version change produces a different hash. The registry has no event stream;
 the second identical registration does not create a second entry.
 
-## Known warning and blocker
+## Known warning and remediation
 
 The targeted test run emits one existing `pytest-asyncio` deprecation warning
 about `asyncio.get_event_loop_policy` under Python 3.14.6.
 
-The required full TIM test suite was started repeatedly with `.venv/bin/python
--m pytest -q --disable-warnings`, including an isolated temporary capture
-directory. The execution interface did not return a final summary/exit status
-or a retained capture log. Under the acceptance instruction, this incomplete
-evidence cannot be counted as a PASS. No functional failure is attributed to
-the Dataset Platform from the targeted tests.
+The controlled runner `scripts/run_full_test_suite.py` records stdout, stderr,
+JUnit XML and JSON summary in `artifacts/test_reports/`. The full suite completed
+with exit code 0: 251 passed, 0 failed, 0 skipped, 0 XFAIL/XPASS, 3 warnings and
+34.276 seconds. Its JSON summary has `complete: true`.
+
+The earlier incomplete runs were an execution-interface capture limitation for
+long foreground commands, not a demonstrated pytest hang. A persistent PTY
+session allowed the same runner to finish normally. No functional failure is
+attributed to the Dataset Platform.
 
 ## Final decision
 
-REQUIRES LIMITED REMEDIATION. The sole blocker is a complete, controlled full
-suite run with recorded exit code, pass/fail/skip/XFAIL counts, warnings and
-runtime. No further platform work is authorized by this report.
+PASS. The required controlled full-suite evidence, targeted Dataset evidence,
+Doctor/Validate checks and protected-scope evidence are complete. No further
+platform work is authorized by this report.
