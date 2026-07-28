@@ -26,3 +26,11 @@ remains a declared external identity until a future authorized verifier exists.
 
 No ingestion, persistence, data migration, feature calculation, research run,
 knowledge write, simulation, broker connection or order behavior is included.
+
+## Acceptance hardening
+
+The registry accepts a strict JSON manifest decoder with unknown-field rejection
+and rejects file-scheme, traversal-style source references before any source can
+be opened. Repeating an identical registration is idempotent; a changed manifest
+using the same dataset-version key is rejected. See
+`dataset_platform_acceptance.md` for the final verification evidence.

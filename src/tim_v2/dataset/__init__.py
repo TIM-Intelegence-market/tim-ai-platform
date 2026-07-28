@@ -1,6 +1,6 @@
 """Dataset catalog contracts; deliberately no data ingestion or storage."""
 
-from .models import DatasetVersion, QualityMetrics, TimeRange, ValidationState
+from .models import DatasetVersion, QualityMetrics, TimeRange, ValidationState, dataset_from_manifest_json
 from .registry import DatasetRegistry, RegistrationResult
 
 __all__ = [
@@ -10,4 +10,5 @@ __all__ = [
     "RegistrationResult",
     "TimeRange",
     "ValidationState",
+    "dataset_from_manifest_json",
 ]

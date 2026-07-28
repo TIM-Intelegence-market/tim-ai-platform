@@ -2,7 +2,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.tim_v2.dataset import DatasetRegistry, DatasetVersion, QualityMetrics, TimeRange, ValidationState
+import json
+
+from src.tim_v2.dataset import DatasetRegistry, DatasetVersion, QualityMetrics, TimeRange, ValidationState, dataset_from_manifest_json
 
 
 NOW = datetime(2026, 7, 28, 12, tzinfo=timezone.utc)
@@ -62,8 +64,49 @@ def test_registered_lineage_and_supersession_are_valid() -> None:
     assert second.state is ValidationState.VALID
 
 
-def test_duplicate_version_is_rejected_without_overwrite() -> None:
+def test_identical_registration_is_idempotent_but_changed_version_is_rejected() -> None:
     registry = DatasetRegistry()
-    registry.register(dataset())
+    first = registry.register(dataset())
+    assert registry.register(dataset()) is first
     with pytest.raises(ValueError, match="already registered"):
-        registry.register(dataset())
+        registry.register(dataset(version="1.0.0", source_authorized=False))
+
+
+def test_canonical_manifest_ignores_whitespace_and_field_order() -> None:
+    payload = dataset().manifest_payload()
+    first = dataset_from_manifest_json(json.dumps(payload, separators=(",", ":")))
+    second = dataset_from_manifest_json(json.dumps(dict(reversed(list(payload.items()))), indent=2))
+    assert first.manifest_sha256() == second.manifest_sha256()
+
+
+def test_semantic_manifest_change_changes_hash_and_old_version_is_unchanged() -> None:
+    original = dataset()
+    changed = dataset(version="1.0.1")
+    assert original.manifest_sha256() != changed.manifest_sha256()
+    assert original.version == "1.0.0"
+
+
+@pytest.mark.parametrize("raw, code", [
+    ("{", "MANIFEST_JSON_INVALID"),
+    ('{"unexpected": true}', "MANIFEST_UNKNOWN_FIELDS"),
+])
+def test_malformed_or_unknown_manifest_is_rejected(raw: str, code: str) -> None:
+    with pytest.raises(ValueError, match=code):
+        dataset_from_manifest_json(raw)
+
+
+@pytest.mark.parametrize("source_uri, issue", [
+    ("file:///tmp/../secret", "SOURCE_URI_SCHEME_FORBIDDEN"),
+    ("s3://authoritative/../../outside", "SOURCE_URI_PATH_TRAVERSAL"),
+])
+def test_path_and_symlink_style_file_uris_are_not_opened_and_are_quarantined(source_uri: str, issue: str) -> None:
+    result = DatasetRegistry().register(DatasetVersion(**{**dataset().__dict__, "source_uri": source_uri}))
+    assert result.state is ValidationState.QUARANTINED
+    assert issue in result.issues
+
+
+def test_cyclic_lineage_is_quarantined() -> None:
+    registry = DatasetRegistry()
+    first = registry.register(dataset(lineage=("btc_spot_ticks@1.0.1",)))
+    second = registry.register(dataset(version="1.0.1", lineage=(first.dataset.key,)))
+    assert "LINEAGE_CYCLE" in second.issues

@@ -12,11 +12,18 @@ from enum import StrEnum
 import hashlib
 import json
 import re
+from urllib.parse import urlparse
 
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 DATASET_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
+ALLOWED_MANIFEST_FIELDS = frozenset({
+    "dataset_id", "version", "schema_version", "content_sha256", "source_uri",
+    "source_authorized", "license_name", "sensitivity", "event_time",
+    "observation_time", "publication_time", "quality", "retention_policy",
+    "lineage", "supersedes", "metadata",
+})
 
 
 class ValidationState(StrEnum):
@@ -104,6 +111,12 @@ class DatasetVersion:
             problems.append("CONTENT_HASH_INVALID")
         if not self.source_uri.strip():
             problems.append("SOURCE_URI_REQUIRED")
+        else:
+            parsed = urlparse(self.source_uri)
+            if parsed.scheme not in {"https", "s3", "urn"}:
+                problems.append("SOURCE_URI_SCHEME_FORBIDDEN")
+            if ".." in parsed.path.split("/"):
+                problems.append("SOURCE_URI_PATH_TRAVERSAL")
         if not self.source_authorized:
             problems.append("SOURCE_UNAUTHORIZED")
         if not self.license_name.strip():
@@ -124,3 +137,42 @@ class DatasetVersion:
         if len(set(self.lineage)) != len(self.lineage):
             problems.append("LINEAGE_DUPLICATE_REFERENCE")
         return tuple(problems)
+
+
+def dataset_from_manifest_json(raw: str) -> DatasetVersion:
+    """Decode one strict metadata manifest without opening its source URI."""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("MANIFEST_JSON_INVALID") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("MANIFEST_OBJECT_REQUIRED")
+    unknown = set(payload) - ALLOWED_MANIFEST_FIELDS
+    if unknown:
+        raise ValueError(f"MANIFEST_UNKNOWN_FIELDS:{','.join(sorted(unknown))}")
+    required = ALLOWED_MANIFEST_FIELDS - {"lineage", "supersedes", "metadata"}
+    missing = required - set(payload)
+    if missing:
+        raise ValueError(f"MANIFEST_REQUIRED_FIELDS_MISSING:{','.join(sorted(missing))}")
+    try:
+        def time_range(value: object) -> TimeRange:
+            if not isinstance(value, dict) or set(value) != {"start", "end"}:
+                raise ValueError("MANIFEST_TIME_RANGE_INVALID")
+            return TimeRange(datetime.fromisoformat(value["start"]), datetime.fromisoformat(value["end"]))
+
+        quality = payload["quality"]
+        if not isinstance(quality, dict) or set(quality) != {"record_count", "missing_record_count", "duplicate_record_count", "coverage_percent"}:
+            raise ValueError("MANIFEST_QUALITY_INVALID")
+        return DatasetVersion(
+            dataset_id=payload["dataset_id"], version=payload["version"], schema_version=payload["schema_version"],
+            content_sha256=payload["content_sha256"], source_uri=payload["source_uri"], source_authorized=payload["source_authorized"],
+            license_name=payload["license_name"], sensitivity=payload["sensitivity"],
+            event_time=time_range(payload["event_time"]), observation_time=time_range(payload["observation_time"]),
+            publication_time=time_range(payload["publication_time"]), quality=QualityMetrics(**quality),
+            retention_policy=payload["retention_policy"], lineage=tuple(payload.get("lineage", [])),
+            supersedes=payload.get("supersedes"), metadata=payload.get("metadata", {}),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith("MANIFEST_"):
+            raise
+        raise ValueError("MANIFEST_FIELDS_INVALID") from exc
