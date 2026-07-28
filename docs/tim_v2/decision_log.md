@@ -46,3 +46,48 @@ Decision: arbitrary prose and model text do not automatically become canonical
 claims.
 Reason: prevent hallucinated or injected state.
 Status: inherited from TIM-IM V1.
+
+## D-008 — Contracts before runtime
+
+Decision: V2.0 defines domain, dataset, knowledge, feature, evaluation,
+simulation and agent contracts before their runtime implementations.
+Reason: stable ownership, schema and failure behavior are prerequisites for
+reproducible implementation and review.
+Status: accepted.
+
+## D-009 — Immutable versions, append-only history
+
+Decision: datasets, research results and material knowledge records are
+versioned rather than edited in place; corrections supersede prior records.
+Reason: scientific traceability requires preserving the original assertion and
+the reason it changed.
+Status: accepted.
+
+## D-010 — Time is a first-class contract
+
+Decision: event, observation, publication and processing time are distinct
+fields whenever applicable.
+Reason: collapsing them makes lookahead leakage and historical reconstruction
+unreviewable.
+Status: accepted.
+
+## D-011 — Derived retrieval is non-canonical
+
+Decision: RAG/search indexes are disposable projections of structured,
+provenance-bearing records.
+Reason: index drift or model retrieval must not alter scientific truth.
+Status: accepted.
+
+## D-012 — Privilege is separated from intelligence
+
+Decision: agents, dashboards and MCP may read or propose within their grants;
+authorization for mutation, promotion and any future execution is separate.
+Reason: a capable assistant is not an approval authority.
+Status: accepted.
+
+## D-013 — Simulation is a promotion domain, not execution
+
+Decision: replay, historical simulation, paper and shadow are separately
+gated future domains, and V2.0 implements none of them.
+Reason: evidence from one mode cannot establish authorization for another.
+Status: accepted.

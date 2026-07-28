@@ -44,6 +44,7 @@ flowchart TB
     subgraph Foundation["Foundation"]
         Core["Core"]
         Infrastructure["Infrastructure"]
+        Developer["Developer Platform"]
         Security["Security"]
         Governance["Governance"]
         Configuration["Configuration"]
@@ -274,6 +275,39 @@ flowchart LR
     Compare -->|no| Escalate["Human incident and rollback decision"]
 ```
 
+## 13. Package and lifecycle rules
+
+```mermaid
+flowchart TB
+    Contracts["tim_v2.contracts\nversioned envelopes"]
+    Domains["tim_v2.domains\npure domain records"] --> Contracts
+    Services["tim_v2.services\nuse-case orchestration"] --> Domains
+    Adapters["tim_v2.adapters\nstores, sources, MCP"] --> Services
+    Apps["tim_v2.apps\nUI and future workers"] --> Services
+    Tests["tests\ncontract + integration"] --> Apps
+    Tests --> Adapters
+```
+
+The diagram is a future package rule, not an instruction to create packages in
+V2.0. Dependencies point toward contracts and domains; contracts do not import
+adapters, applications or execution capabilities.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Proposed
+    Proposed --> Validated: schema/provenance valid
+    Proposed --> Quarantined: invalid or unsafe
+    Validated --> Reviewed: owner review
+    Reviewed --> Accepted: governance rule met
+    Reviewed --> Rejected: evidence insufficient
+    Accepted --> Superseded: successor version
+    Quarantined --> [*]
+    Rejected --> [*]
+```
+
+This lifecycle applies to versioned data, research and knowledge artifacts as
+appropriate. Acceptance is not an execution authorization.
+
 ## Module registry baseline
 
 | Module | Responsibility | May depend on | Must not do |
@@ -297,6 +331,7 @@ flowchart LR
 | Shadow | live-data observation, no orders | Paper, Decision | submit orders |
 | Evaluation | scientific and operational gates | Research, Strategies | rewrite results |
 | Decision | evidence-backed recommendations and approvals | Evaluation, Risk, Governance | call execution directly |
+| Developer Platform | reproducible build, quality and release contracts | Core, Infrastructure, Governance | alter frozen behavior implicitly |
 | RAG | derived retrieval indexes | Knowledge | become source of truth |
 | Memory | scoped retained context | Knowledge, Governance | store secrets by default |
 | Agents | bounded specialized workflows | TIM-IM, Routing | self-authorize |
