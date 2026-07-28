@@ -44,12 +44,14 @@ git status --short
 git rev-parse --show-toplevel
 git branch --show-current
 git show --no-patch --format=fuller tim-im-v1.0.0
-git tag -v tim-im-v1.0.0
+git cat-file -t refs/tags/tim-im-v1.0.0
+git fsck --no-dangling
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/verify_release_foundation.py
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider -q
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m src.tim_manager.cli doctor
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m src.tim_manager.cli validate
 ```
 
-`git tag -v` verifies object integrity and annotation display; it does not
-claim a cryptographic signature because no signing key was configured.
+`git cat-file` verifies that the ref is an annotated tag object; `git fsck`
+verifies repository object integrity. No cryptographic tag signature is
+claimed because no signing key was configured.
