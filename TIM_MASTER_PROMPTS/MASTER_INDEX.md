@@ -10,12 +10,13 @@ Before using any Master Prompt, read and apply, in this order:
 2. [`TIM_ENGINEERING_GOVERNANCE.md`](../TIM_ENGINEERING_GOVERNANCE.md) —
    Band 2;
 3. [`TIM_SYSTEM_ARCHITECTURE.md`](../TIM_SYSTEM_ARCHITECTURE.md) — Band 3;
-4. [`TIM_CANONICAL_DATA_MODEL.md`](../TIM_CANONICAL_DATA_MODEL.md) — Band 4.
+4. [`TIM_CANONICAL_DATA_MODEL.md`](../TIM_CANONICAL_DATA_MODEL.md) — Band 4;
+5. [`TIM_AI_AGENT_CONSTITUTION.md`](../TIM_AI_AGENT_CONSTITUTION.md) — Band 5.
 
-Precedence follows the numbered order above. All four bands have precedence
+Precedence follows the numbered order above. All five bands have precedence
 over every Master Prompt. A Master Prompt may narrow its scope but must not
 weaken their safety, evidence, test, lifecycle, governance, architecture or
-canonical-data rules.
+canonical-data and AI-governance rules.
 
 | Prompt | Scope |
 |---|---|
