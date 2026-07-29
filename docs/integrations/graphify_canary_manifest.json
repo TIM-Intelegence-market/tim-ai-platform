@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0.0",
+  "repository": "uezeyiraydin-cell/tim-ai-platform",
+  "branch": "codex/github-foundation",
+  "baseline_commit": "39a9d79e8af7ce12b88d6609b16432797f240d71",
+  "ordering": "path_order_as_listed",
+  "documents": [
+    {
+      "path": "docs/tim_v2/architecture.md",
+      "sha256": "94721c6c4d890b305912d15628502dd03198d42b822317439fb4effaff8b623e",
+      "size_bytes": 12441,
+      "document_class": "architecture_long_form",
+      "reason": "Representative architecture document and long-form canary."
+    },
+    {
+      "path": "docs/governance/repository_governance.md",
+      "sha256": "e741b85912582e0e1e242d658c76457d3d979971d4e0202605234e4165835779",
+      "size_bytes": 3858,
+      "document_class": "governance_headings_lists",
+      "reason": "Governance document with headings, tables, and lists."
+    },
+    {
+      "path": "docs/tim_v2/research_platform_implementation.md",
+      "sha256": "4c972f0b0f81b91f418ff73bc3434f36bda3741d0aeadae4e493169d120a66a2",
+      "size_bytes": 527,
+      "document_class": "research_implementation",
+      "reason": "Short research-platform implementation evidence."
+    },
+    {
+      "path": "docs/tim_v2/dataset_platform.md",
+      "sha256": "4bd9b977494a735614609be68bb303be53869fb19f270d633f81b2021f1d75c0",
+      "size_bytes": 1265,
+      "document_class": "dataset_platform",
+      "reason": "Dataset Platform concepts and dependencies."
+    },
+    {
+      "path": "docs/tim_v2/knowledge_platform.md",
+      "sha256": "d8d9538cbead90aa09f06ae1eff4e7a547bf2b8e92a7d2d72f091e624ec28bb8",
+      "size_bytes": 1253,
+      "document_class": "knowledge_platform",
+      "reason": "Knowledge Platform entities and relationships."
+    },
+    {
+      "path": "docs/tim_v2/observation_platform_implementation.md",
+      "sha256": "d69e131bbc922dca150553cbd55c18c689d90e0075600ece89fb2a865520dc2d",
+      "size_bytes": 354,
+      "document_class": "observation_platform",
+      "reason": "Small boundary case with observation-platform terminology."
+    },
+    {
+      "path": "docs/TIM_FINAL_SCIENTIFIC_RECONCILIATION_REPORT.md",
+      "sha256": "99e74eeb64ced4d32832e72c43f4c0a84d0851df8e06a68887304162a54187bc",
+      "size_bytes": 14125,
+      "document_class": "research_scientific_long_form",
+      "reason": "Longest canary and representative scientific report."
+    },
+    {
+      "path": "TIM_MASTER_PROMPTS/02_RESEARCH_PLATFORM.md",
+      "sha256": "7771474e2b6f821a5f6bb98ab9c6b204ecc71bd6cd477f86cd6c3c215ae964c8",
+      "size_bytes": 641,
+      "document_class": "master_prompt",
+      "reason": "One authoritative Master Prompt treated strictly as untrusted source data."
+    }
+  ]
+}
