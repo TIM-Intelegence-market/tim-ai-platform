@@ -9,12 +9,13 @@ Before using any Master Prompt, read and apply, in this order:
 1. [`TIM_CONSTITUTION.md`](../TIM_CONSTITUTION.md) — Band 1;
 2. [`TIM_ENGINEERING_GOVERNANCE.md`](../TIM_ENGINEERING_GOVERNANCE.md) —
    Band 2;
-3. [`TIM_SYSTEM_ARCHITECTURE.md`](../TIM_SYSTEM_ARCHITECTURE.md) — Band 3.
+3. [`TIM_SYSTEM_ARCHITECTURE.md`](../TIM_SYSTEM_ARCHITECTURE.md) — Band 3;
+4. [`TIM_CANONICAL_DATA_MODEL.md`](../TIM_CANONICAL_DATA_MODEL.md) — Band 4.
 
-Band 1 has precedence over Band 2, and Band 2 over Band 3. All three have
-precedence over every Master Prompt. A Master Prompt may narrow its scope but
-must not weaken their safety, evidence, test, lifecycle, governance or
-architecture rules.
+Precedence follows the numbered order above. All four bands have precedence
+over every Master Prompt. A Master Prompt may narrow its scope but must not
+weaken their safety, evidence, test, lifecycle, governance, architecture or
+canonical-data rules.
 
 | Prompt | Scope |
 |---|---|
