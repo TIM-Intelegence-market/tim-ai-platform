@@ -17,12 +17,15 @@ Before using any Master Prompt, read and apply, in this order:
 7. [`TIM_DEVELOPMENT_LIFECYCLE_QUALITY_GATES.md`](../TIM_DEVELOPMENT_LIFECYCLE_QUALITY_GATES.md)
    — Band 7;
 8. [`TIM_SCIENTIFIC_RESEARCH_EVALUATION_CONSTITUTION.md`](../TIM_SCIENTIFIC_RESEARCH_EVALUATION_CONSTITUTION.md)
-   — Band 8.
+   — Band 8;
+9. [`TIM_PRODUCTION_OPERATIONS_CONSTITUTION.md`](../TIM_PRODUCTION_OPERATIONS_CONSTITUTION.md)
+   — Band 9.
 
-Precedence follows the numbered order above. All eight bands have precedence
+Precedence follows the numbered order above. All nine bands have precedence
 over every Master Prompt. A Master Prompt may narrow its scope but must not
 weaken their safety, evidence, test, lifecycle, governance, architecture or
-canonical-data, AI-governance, security and quality-gate rules.
+canonical-data, AI-governance, security, quality-gate, scientific or
+production-operations rules.
 
 | Prompt | Scope |
 |---|---|
