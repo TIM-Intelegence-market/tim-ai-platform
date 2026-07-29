@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tim.local/schemas/tim_manager/workspace_gateway_request.schema.json",
+  "title": "TIM Workspace Gateway Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "operation",
+    "query",
+    "parameters",
+    "requested_at_utc",
+    "client_id",
+    "max_results"
+  ],
+  "properties": {
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "operation": {
+      "enum": [
+        "search_repository_graph",
+        "get_graph_node",
+        "get_node_neighbors",
+        "get_graph_community",
+        "get_graph_statistics",
+        "get_shortest_path",
+        "get_central_nodes",
+        "health_check"
+      ]
+    },
+    "query": {"type": "string", "maxLength": 4096},
+    "parameters": {"type": "object"},
+    "requested_at_utc": {"type": "string", "format": "date-time"},
+    "client_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "max_results": {"type": "integer", "minimum": 1, "maximum": 20}
+  }
+}

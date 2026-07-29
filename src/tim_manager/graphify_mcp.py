@@ -651,6 +651,14 @@ class GraphifyReadOnlyClient:
     def get_graph_health(self) -> GraphifyResult:
         return self._call("graph_stats", {})
 
+    def get_shortest_path(self, source: str, target: str) -> GraphifyResult:
+        return self._call(
+            "shortest_path", {"source": source, "target": target, "max_hops": 8}
+        )
+
+    def get_central_nodes(self, top_n: int) -> GraphifyResult:
+        return self._call("god_nodes", {"top_n": top_n})
+
     def close(self) -> None:
         self.transport.close()
 

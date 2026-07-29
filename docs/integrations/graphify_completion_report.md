@@ -1,5 +1,14 @@
 # Graphify Integration Completion Report
 
+## Workspace Agent controlled gateway follow-up
+
+The local Workspace Gateway is implemented on
+`codex/workspace-agent-graphify`. It is disabled by default and adds a second,
+narrower read-only boundary before the existing TIM Manager Graphify client.
+Its status is **LOCAL PASS — EXTERNAL CONNECTION PENDING**. No Workspace Custom
+MCP App or Secure MCP Tunnel is configured, so no real Workspace Agent
+connection is claimed. Semantic document indexing remains NO-GO.
+
 Date: 2026-07-29
 
 ## Status

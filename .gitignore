@@ -21,6 +21,7 @@ output/
 *.sqlite
 *.sqlite3
 *.db
+config/workspace_agent/graphify_gateway.local.yaml
 
 # Graphify outputs are reviewable repository artifacts; local caches and
 # provider-specific cost records are not versioned.
