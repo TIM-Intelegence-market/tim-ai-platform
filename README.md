@@ -2,6 +2,19 @@
 
 TIM provides a local, observation-only BTCUSDT research pipeline: public Binance aggregate trades, deterministic multi-timeframe candle aggregation, TimescaleDB persistence, BOS and Broncx context observations, plus optional explanation-only Ollama summaries.
 
+## Repository governance
+
+TIM is maintained as a standalone repository. Contributions must use a review
+branch and a pull request; direct changes to `main` are not permitted. Start
+with [CONTRIBUTING.md](CONTRIBUTING.md), report security issues according to
+[SECURITY.md](SECURITY.md), and consult
+[docs/governance/repository_governance.md](docs/governance/repository_governance.md)
+for branch, review, merge, and release rules.
+
+The local repository is authoritative for the current source state. A GitHub
+remote has not yet been configured, so no external repository, branch
+protection, or hosted integration is claimed.
+
 ## Week 2 research layer
 
 - **Observation Engine:** central versioned event layer with stable UUIDs, input hashes, rule IDs, rule versions, provenance, and restart deduplication.

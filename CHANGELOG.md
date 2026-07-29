@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — repository foundation
+
+- Prepared contribution, security, conduct, Git governance, AI access, release,
+  and Graphify indexing policies.
+- Added a platform-neutral knowledge-graph metadata schema and index policy.
+- No runtime, research, trading, historical-data, or accepted-platform behavior
+  changed.
+- GitHub publication, branch protection, tags, and releases remain pending.
+
 ## TIM Core 1.0 Freeze
 
 - Declared the implemented Core component set frozen in OBSERVE-only mode.
