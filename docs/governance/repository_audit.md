@@ -18,6 +18,19 @@ Consequently, an authoritative GitHub repository, hosted branch protection,
 GitHub security settings, pushes, and pull requests were not technically
 available or claimed.
 
+## Publication update — 2026-07-29
+
+After the local audit and explicit owner authorization, the authoritative TIM
+repository was connected to the private GitHub repository
+`uezeyiraydin-cell/tim-ai-platform`. The branch
+`codex/github-foundation` was pushed and its remote commit was verified against
+the local commit.
+
+The remote default branch `main` still contains the separately created initial
+placeholder commit. It is not the authoritative TIM source state and was not
+merged, replaced, or force-pushed. The published TIM source is identified by
+the `codex/github-foundation` branch and its exact commit.
+
 ## Inventory
 
 | Item | Observed state |
@@ -27,8 +40,10 @@ available or claimed.
 | Foundation base | `codex/tim-constitution` |
 | Base commit | `ede37eeb3be22a6026491efb60c14585f2b12f7c` |
 | Working tree before foundation | Clean |
-| Remotes | None |
-| GitHub authentication | Not configured |
+| Remotes at initial audit | None |
+| GitHub authentication at initial audit | Not configured |
+| Authorized remote after publication | `https://github.com/uezeyiraydin-cell/tim-ai-platform.git` |
+| Repository visibility after publication | Private |
 | Tracked files | 388 |
 | Tracked file bytes | 2,276,518 |
 | Git object database | 697 loose objects, about 3.50 MiB |

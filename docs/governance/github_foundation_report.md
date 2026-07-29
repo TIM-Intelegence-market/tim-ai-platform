@@ -6,13 +6,17 @@ Branch: `codex/github-foundation`
 
 Base: `ede37eeb3be22a6026491efb60c14585f2b12f7c`
 
-Status: **PASS — LOCAL FOUNDATION PREPARED**
+Status: **PASS — PRIVATE GITHUB FOUNDATION PUBLISHED**
 
 ## 1. Repository status
 
-TIM is an independent local Git repository. No remote and no authenticated
-GitHub host were available. The work prepares, but does not claim to create, an
-authoritative GitHub repository. The parent repository is not TIM provenance.
+TIM is an independent Git repository connected to the private GitHub repository
+`uezeyiraydin-cell/tim-ai-platform`. The reviewed TIM source was first published
+on `codex/github-foundation`; local and remote commit hashes were compared
+directly. The parent repository is not TIM provenance.
+
+The remote `main` branch was not modified and still contains the separate
+GitHub placeholder commit. It must not be treated as the reviewed TIM state.
 
 ## 2. Changes
 
@@ -69,6 +73,10 @@ release was performed.
 | Knowledge-graph schema syntax | `python3 -m json.tool schemas/integrations/knowledge_graph_entity.schema.json` | 0 | PASS |
 | Diff formatting | `git diff --check` | 0 | PASS |
 | Protected-scope review | Changed-path comparison against the base commit | 0 | PASS; no protected path changed |
+| Initial branch push | `git push -u origin codex/github-foundation` | 0 | PASS |
+| Remote commit comparison | Local `git rev-parse HEAD` against `git ls-remote` | 0 | PASS; `d750c4a484b24c2b88cae43140708745281b9a0e` matched |
+| Remote tree inspection | GitHub repository tree API | 0 | PASS; 400 files, complete tree, required files present |
+| Hosted branch protection | GitHub branch API | 0 | NOT CONFIGURED; `protected=false` |
 
 The complete suite reported 145 `pytest-asyncio` deprecation warnings concerning
 event-loop policy APIs scheduled for removal in Python 3.16. They are known
@@ -82,8 +90,7 @@ Graphify policy/schema are in scope.
 
 ## 9. Open points
 
-- Create and authenticate the owner-approved GitHub repository.
-- Select repository name, organization/account, visibility, and license.
+- Select and add the owner-approved repository license.
 - Name maintainers and CODEOWNERS.
 - Enable and verify hosted branch/security controls and CI.
 - Decide and implement the fixed local database credential remediation in a
@@ -101,7 +108,7 @@ foundation preparation**: audit, structure, Git governance, AI access, Graphify,
 security review, protected-scope verification, and all required validation
 passed.
 
-This PASS does not claim an external GitHub repository or live Graphify
-integration. GitHub creation, authentication, remote configuration, push,
-hosted controls, Graphify connection, merge, tag, and release were not
-performed.
+This PASS confirms the private GitHub repository connection and publication of
+the Foundation branch. It does not claim a live Graphify integration or hosted
+security enforcement. Graphify connection, branch protection, merge, tag, and
+release were not performed.

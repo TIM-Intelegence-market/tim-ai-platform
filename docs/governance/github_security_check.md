@@ -4,7 +4,7 @@ Date: 2026-07-29
 
 Scope: tracked content and publication controls for the TIM repository
 
-Status: **REQUIRES EXTERNAL ACTIVATION**
+Status: **REMOTE CONNECTED — HOSTED CONTROLS PENDING**
 
 ## Local checks
 
@@ -28,9 +28,9 @@ first push.
 
 | Control | State |
 |---|---|
-| GitHub remote | NOT CONFIGURED |
-| Authenticated GitHub access | NOT CONFIGURED |
-| Repository visibility | NOT APPLICABLE / NOT CREATED |
+| GitHub remote | CONFIGURED: `uezeyiraydin-cell/tim-ai-platform` |
+| Authenticated GitHub access | VERIFIED for repository publication |
+| Repository visibility | PRIVATE |
 | Branch protection | PREPARED IN POLICY, NOT ENFORCED |
 | Required status checks | NOT CONFIGURED |
 | Secret scanning / push protection | NOT CONFIGURED |
@@ -53,3 +53,14 @@ first push.
 
 No remote security control is reported as passing until it is queried from the
 actual GitHub repository.
+
+## Publication verification — 2026-07-29
+
+The branch `codex/github-foundation` was published after explicit owner
+authorization. Local and remote commit hashes matched, the returned Git tree
+was complete (`truncated=false`), and the required governance and Graphify
+documents were present. The branch-protection API reported `protected=false`;
+therefore protection remains an open control rather than a PASS.
+
+The remote default branch `main` was not modified and still represents the
+initial GitHub placeholder, not the reviewed TIM source state.
