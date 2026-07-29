@@ -6,9 +6,14 @@ The intended information flow is:
 
 `GitHub → Graphify → Knowledge Graph → TIM Manager`
 
-This document prepares a safe, platform-neutral indexing contract. No Graphify
-service, credential, webhook, GitHub application, ingestion job, or TIM Manager
-connection was configured or tested by this work.
+This document defines a safe, platform-neutral indexing contract. On
+2026-07-29, the official local Graphify CLI was installed and a deterministic
+code graph was built from the GitHub-tracked Foundation branch. No hosted
+Graphify service, credential, webhook, GitHub application, or TIM Manager
+workspace connection was configured.
+
+Current status: `LOCAL CODE GRAPH BUILT; FULL DOCUMENT INDEX FAILED
+VALIDATION`. See `graphify_validation.md`.
 
 ## Index policy
 
@@ -81,5 +86,5 @@ protection and vendor-retention review before activation.
 8. Record the client, repository, commit, configuration hash, test evidence,
    operator, and date.
 
-Until every step is evidenced, the integration status is `PREPARED, NOT
-CONNECTED`.
+Until every step is evidenced, the integration status is `PARTIAL, NOT
+ACCEPTED`.
