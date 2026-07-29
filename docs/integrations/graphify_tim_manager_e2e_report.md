@@ -2,47 +2,54 @@
 
 Date: 2026-07-29
 
-Status: **FAIL — NOT EXECUTED THROUGH TIM MANAGER**
+Status: **PASS**
 
-## Blocking discovery
+Transport: local stdio
 
-TIM Manager does not contain an MCP client layer. It exposes its own local MCP
-server and documents example configurations for external clients only.
-Therefore Graphify cannot be connected to TIM Manager without implementing a
-new client/adapter, which this task is required to stop rather than invent.
+Client: TIM Manager `GraphifyReadOnlyClient`
 
-## Server-only evidence
+Graph: static codegraph only
 
-The existing Graphify server independently:
+Graph SHA-256:
+`60b11531c8cdbce3786d66f35cf4a5b649c95824271e1aed7682ff2b1702d513`
 
-- starts locally;
-- completes MCP initialization;
-- exposes ten tools;
-- answers graph statistics and codegraph queries;
-- contains 1,573 codegraph nodes and 3,355 relationships.
+## Scenarios
 
-This evidence is not a TIM Manager connection.
+Commands use:
 
-## Required end-to-end scenarios
+`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m src.tim_manager.cli graphify --enable`
 
-| ID | Scenario | Result | Reason |
-|---|---|---|---|
-| 1 | Constitution status | NOT RUN | no TIM Manager client; codegraph has no docs |
-| 2 | Band 11 status | NOT RUN | same blocker |
-| 3 | Scientific Review verdict | NOT RUN | same blocker |
-| 4 | Architecture Review verdict | NOT RUN | same blocker |
-| 5 | Trading Readiness verdict | NOT RUN | same blocker |
-| 6 | Dataset Platform documentation | NOT RUN | semantic Gate 1 failed |
-| 7 | Knowledge Platform dependencies | NOT RUN through TIM Manager | codegraph query works only server-side |
-| 8 | Graphify integration policy | NOT RUN | documentation not semantically indexed |
-| 9 | Excluded path unavailable | PASS at graph level | zero excluded source paths in graph |
-| 10 | Adversarial instruction remains data | DESIGN ONLY | no runtime client boundary exists |
+| ID | Tool / input | Exit | Runtime | Result / provenance | Security and actual behavior |
+|---|---|---:|---:|---|---|
+| 01 | `query_graph`: `TIM Intelligence Manager scanner` | 0 | 832 ms | 1 bounded block, 16 source paths, truncation explicit | PASS; code components only |
+| 02 | `query_graph`: `DatasetRegistry dataset platform` | 0 | 713 ms | 1 block, 4 source paths | PASS; Dataset code/tests located |
+| 03 | `query_graph`: `KnowledgeRegistry dependencies` | 0 | 688 ms | 1 block, 3 source paths | PASS; Knowledge dependencies located |
+| 04 | `query_graph`: `ResearchRegistry research platform` | 0 | 701 ms | 1 block, 4 source paths | PASS; Research code/tests located |
+| 05 | `query_graph`: `Graphify integration schema` | 0 | 690 ms | 1 block, 4 source paths | PASS; only content present in frozen codegraph |
+| 06 | `get_neighbors`: `KnowledgeRegistry` | 0 | 641 ms | 1 block, normalized module/test paths | PASS; module-to-test relationship visible |
+| 07 | `get_community`: `8` | 0 | 676 ms | 46-node community, normalized source paths | PASS; bounded community result |
+| 08 | `get_node`: unknown identifier | 0 | 655 ms | explicit not-found text; no source; warning | PASS; no invented node |
+| 09 | denied `list_prs` request | nonzero | 86 ms | no MCP dispatch | PASS; structured `tool_not_allowlisted` log |
+| 10 | prompt-injection text as search input | 0 | 654 ms | retrieval result remains untrusted text | PASS; no Git/tool/trading action |
+| 11 | excluded-path terms | 0 | 751 ms | `No matching nodes found`; no source paths | PASS; excluded content unavailable |
+| 12 | kill server, call, close, create new client | 0 | 1,650 ms | termination detected; new handshake succeeds | PASS; safe recovery without retry storm |
 
-## Integrity
+## Repeated query
 
-No end-to-end test was simulated. No command, Git action, governance change, or
-file write was attributed to TIM Manager. The required integration design and
-trust boundary are documented separately.
+Two independent `KnowledgeRegistry` queries were normalized by removing only
+per-request UUID, timestamp, and the hash of raw order variance. The remaining
+validated results were byte-identical:
 
-Gate 2 cannot pass until an approved read-only client adapter exists and all ten
-scenarios are executed through that actual client.
+`63a6c57c3616a8403606f2358811f02144c86a11773c84818c7ec80adcb5f576`
+
+The graph remained byte-identical before and after. Query logging was disabled,
+and no repository command or global agent configuration was executed or
+modified.
+
+## Scope distinction
+
+- codegraph: operational;
+- Graphify MCP server: operational locally;
+- TIM Manager MCP client: connected and read-only locally;
+- semantic document index: unavailable / NO-GO and not used;
+- ChatGPT Workspace Agent: not connected and not part of this acceptance.

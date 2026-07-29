@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tim.local/schemas/tim_manager/graphify_mcp_config.schema.json",
+  "title": "TIM Manager Graphify MCP Client Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "enabled",
+    "transport",
+    "server_name",
+    "command",
+    "arguments",
+    "working_directory",
+    "graph_path",
+    "expected_graph_hash",
+    "read_only",
+    "allowed_tools",
+    "startup_timeout_seconds",
+    "request_timeout_seconds",
+    "shutdown_timeout_seconds",
+    "max_result_bytes",
+    "max_results",
+    "trust_class",
+    "require_provenance",
+    "allow_shell_interpolation",
+    "allow_unknown_tools",
+    "allow_writes"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "enabled": {"type": "boolean", "default": false},
+    "transport": {"const": "stdio"},
+    "server_name": {"const": "tim-graphify-readonly"},
+    "command": {"type": "string", "pattern": "^/"},
+    "arguments": {"type": "array", "items": {"type": "string"}},
+    "working_directory": {"type": "string", "pattern": "^/"},
+    "graph_path": {"type": "string", "pattern": "^/.+/graph\\.json$"},
+    "expected_graph_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "read_only": {"const": true},
+    "allowed_tools": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "query_graph",
+          "get_node",
+          "get_neighbors",
+          "get_community",
+          "god_nodes",
+          "graph_stats",
+          "shortest_path"
+        ]
+      }
+    },
+    "startup_timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+    "request_timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+    "shutdown_timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+    "max_result_bytes": {"type": "integer", "minimum": 1024, "maximum": 1048576},
+    "max_results": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "trust_class": {"const": "untrusted_retrieval"},
+    "require_provenance": {"const": true},
+    "allow_shell_interpolation": {"const": false},
+    "allow_unknown_tools": {"const": false},
+    "allow_writes": {"const": false}
+  }
+}

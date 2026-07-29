@@ -2,47 +2,40 @@
 
 Date: 2026-07-29
 
-Runtime: Graphify 0.9.29 with isolated `mcp 1.29.0`
+Runtime: Graphify `0.9.29`
 
-Transport tested: local loopback HTTP for inventory; preferred future client
-transport is stdio.
+Observed protocol: `2025-11-25`
 
-Graphify exposes no MCP `outputSchema`; every tool returns an MCP text-content
-envelope. Consumers must treat output as untrusted text and preserve cited
-source fields.
+Transport: local stdio
 
-| Tool | Purpose | Required input | Output | Classification | Risk | TIM Manager exposure |
+Observed tools: 10
+
+Declared MCP output schemas: none
+
+Every server-side input schema also contains optional `project_path`. TIM
+Manager never exposes or forwards this argument; the fixed codegraph is chosen
+by the process configuration.
+
+| Tool | Real input schema | Output | Classification | Risk | Client status | Reason |
 |---|---|---|---|---|---|---|
-| `query_graph` | BFS/DFS graph search | `question` | cited node/edge text | Read/query; query logging is opt-in and disabled | Medium: untrusted text, variable result size | Allow only through wrapper with fixed graph, budgets, no `project_path` |
-| `get_node` | Node details | `label` | node metadata text | Read | Low | Allow through wrapper |
-| `get_neighbors` | Direct relationships | `label` | relationship text | Read | Medium: result expansion | Allow with fixed budget |
-| `get_community` | Community members | `community_id` | member/source text | Read | Medium: broad result | Allow with fixed budget |
-| `god_nodes` | Most connected nodes | none | ranked text | Read | Low | Allow with bounded `top_n` |
-| `graph_stats` | Graph counts/confidence | none | summary text | Read | Low | Allow |
-| `shortest_path` | Path between concepts | `source`, `target` | path text | Read | Low | Allow with bounded hops |
-| `list_prs` | GitHub PR inventory/impact | none | remote GitHub text | External network read | Medium: expands scope beyond local graph | Deny |
-| `get_pr_impact` | PR file/graph impact | `pr_number` | remote GitHub and graph text | External network read | Medium: invokes authenticated `gh` | Deny |
-| `triage_prs` | PR review prioritization | none | remote GitHub and graph text | External network read | High: governance-adjacent recommendations | Deny |
+| `query_graph` | required `question`; optional `context_filter`, `depth`, `mode`, `token_budget`, server `project_path` | unstructured MCP text | local read/query | medium | **ALLOW** | bounded traversal and tokens; `project_path` removed |
+| `get_node` | required `label`; server `project_path` | unstructured MCP text | local read | low | **ALLOW** | fixed graph and validated text result |
+| `get_neighbors` | required `label`; optional `relation_filter`, `token_budget`, server `project_path` | unstructured MCP text | local read/query | medium | **ALLOW** | bounded result; source references extracted |
+| `get_community` | required `community_id`; optional `token_budget`, server `project_path` | unstructured MCP text | local read/query | medium | **ALLOW** | bounded result; source references extracted |
+| `god_nodes` | optional `top_n`, server `project_path` | unstructured MCP text | local read | low | **ALLOW** | `top_n` capped client-side |
+| `graph_stats` | server `project_path` only | unstructured MCP text | local read | low | **ALLOW** | health/count query; fixed graph |
+| `shortest_path` | required `source`, `target`; optional `max_hops`, server `project_path` | unstructured MCP text | local read/query | low | **ALLOW** | maximum hops capped |
+| `list_prs` | optional `base`, `repo`, `project_path` | unstructured MCP text | authenticated network read | medium | **DENY** | invokes GitHub access outside the local graph |
+| `get_pr_impact` | required `pr_number`; optional `repo`, `project_path` | unstructured MCP text | authenticated network read | medium | **DENY** | invokes GitHub access and broadens scope |
+| `triage_prs` | optional `base`, `repo`, `project_path` | unstructured MCP text | network/governance-adjacent analysis | high | **DENY** | remote access and prioritization are outside retrieval scope |
 
-## Input-schema concern
+## Client-side enforcement
 
-Graphify injects optional `project_path` into every tool. This allows a caller
-to select another local directory containing `graphify-out/graph.json`. Even
-though the operation is a read, that authority is broader than TIM Manager
-needs. A strict adapter must remove this field and hard-code:
+The allowlist is exact and unknown tools fail closed. There is no generic CLI
+passthrough. Arguments are checked against a per-tool schema before transport,
+and the transport independently rejects `project_path`. Query logging is
+disabled in the child environment. Denials produce structured security logs.
 
-`/Users/tim/Documents/TIM/tim/graphify-out/graph.json`
-
-## State-change review
-
-The seven core graph tools read the in-memory graph. `query_graph` can write an
-optional plaintext query log only when Graphify query logging is explicitly
-enabled; the future adapter must set `GRAPHIFY_QUERY_LOG_DISABLE=1`.
-
-CLI queries can create a `graphify-out/cache/last_query_stamp`, but this is not
-part of the MCP query handler. The three PR tools execute authenticated,
-read-oriented GitHub commands and are excluded to keep the connection local.
-
-No tool should be exposed directly. The required seven-tool allowlist, argument
-filter, output bound, fixed graph path, and disabled query log require a
-read-only adapter before TIM Manager use.
+The server's lack of output schemas is compensated by a validated TIM result
+contract, maximum response bytes, text-content checks, error-state checks,
+secret redaction, source-reference extraction, and graph-hash provenance.
