@@ -32,6 +32,8 @@ graphify-out/.graphify_root
 
 # Generated and historical runtime artifacts are not source-controlled.
 artifacts/*
+!artifacts/v2_readiness/
+!artifacts/v2_readiness/**
 !artifacts/tim_manager/
 artifacts/tim_manager/*
 !artifacts/tim_manager/change_manifest.json

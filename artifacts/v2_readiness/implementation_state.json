@@ -1,0 +1,19 @@
+{
+  "program_id": "TIM-V2-FINAL-READINESS-20260801",
+  "current_phase": "PHASE_0_BASELINE_COMPLETE_BRANCH_PENDING",
+  "completed_phases": ["0.1", "0.2", "0.3"],
+  "failed_gates": ["BASELINE_FULL_SUITE_ISOLATION"],
+  "external_blockers": ["SECURE_MCP_WORKSPACE_ASSOCIATION"],
+  "manual_gates": ["PROSPECTIVE_WINDOW_APPROVAL", "MANUAL_SCIENTIFIC_REVIEW", "RELEASE_AUTHORITY_SIGNATURE"],
+  "last_verified_commit": "9d0077af6d6b0af98758edf49c182f4a18914c0d",
+  "last_successful_command": ".venv/bin/python -m pytest -q tests/tim_manager/test_workspace_gateway.py tests/tim_manager/test_graphify_mcp_client.py",
+  "last_test_summary": {
+    "targeted": {"passed": 55, "errors": 0, "warnings": 1},
+    "full_suite": {"passed": 324, "errors": 2, "warnings": 145}
+  },
+  "coverage_current": 0.67346,
+  "coverage_target": 0.95,
+  "open_gap_count": 283,
+  "next_safe_action": "Create codex/v2-final-readiness from verified runtime commit and implement isolated deterministic audit tooling.",
+  "updated_at_utc": "2026-08-01T15:05:40Z"
+}
