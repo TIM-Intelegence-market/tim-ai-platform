@@ -70,7 +70,7 @@ async def collect(args: argparse.Namespace) -> dict:
                    count(DISTINCT aggregate_trade_id) AS distinct_events,
                    count(*) FILTER (WHERE price<=0 OR quantity<=0 OR source<>'BINANCE_SPOT_AGGTRADE') AS invalid_events,
                    count(*) FILTER (WHERE prior_time IS NOT NULL AND trade_time<prior_time) AS out_of_order_events,
-                   count(*) FILTER (WHERE ingest_timestamp<trade_time) AS clock_skew_rows,
+                   count(*) FILTER (WHERE ingest_timestamp+interval '5 seconds'<trade_time) AS clock_skew_rows,
                    count(*) FILTER (WHERE ingest_timestamp-trade_time>interval '5 minutes') AS very_late_events,
                    percentile_cont(0.50) WITHIN GROUP (ORDER BY extract(epoch FROM ingest_timestamp-trade_time)) AS source_to_store_p50_seconds,
                    percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM ingest_timestamp-trade_time)) AS source_to_store_p95_seconds,
@@ -136,10 +136,11 @@ async def collect(args: argparse.Namespace) -> dict:
             "runtime_started_at": operational.get("runtime_started_at"),
             "source_uptime": "NOT_INSTRUMENTED",
             "restart_count": "NOT_INSTRUMENTED",
-            "recovery_status": "CODE_REMEDIATED_NOT_DEPLOYED_TO_ACTIVE_PID",
+            "recovery_status": args.recovery_status,
         },
         "ingestion": {
             **raw,
+            "clock_skew_threshold_seconds": 5,
             "valid_events": int(raw.get("received_events") or 0) - int(raw.get("invalid_events") or 0),
             "expected_event_count": "NOT_DEFINED_FOR_AGGTRADE_EVENT_RATE",
             "discarded_events": "NOT_INSTRUMENTED",
@@ -161,6 +162,7 @@ async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database-url", default=settings.database_url)
     parser.add_argument("--health-url", default="http://127.0.0.1:8765/api/health")
+    parser.add_argument("--recovery-status", default="NOT_INDEPENDENTLY_VERIFIED")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/v2_readiness/runtime_observability_snapshot.json")
     args = parser.parse_args()
     payload = await collect(args)

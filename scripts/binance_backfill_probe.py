@@ -73,17 +73,21 @@ def probe(day: date, timeout: float) -> dict[str, Any]:
     except (HTTPError, URLError, TimeoutError, ValueError, UnicodeDecodeError) as exc:
         return {
             **base,
-            "availability": "UNAVAILABLE_OR_UNVERIFIED",
+            "archive_availability": "NOT_PROBED",
+            "checksum_sidecar_available": False,
+            "checksum_sidecar_status": "UNAVAILABLE_OR_UNVERIFIED",
             "probe_error_type": type(exc).__name__,
             "official_sha256": None,
         }
     return {
         **base,
-        "availability": "AVAILABLE_CHECKSUM_SIDECAR_VERIFIED",
+        "archive_availability": "NOT_PROBED",
+        "checksum_sidecar_available": True,
+        "checksum_sidecar_status": "AVAILABLE_AND_FILENAME_BOUND_CHECKSUM_PARSED",
         "official_sha256": digest,
         "sidecar_sha256": hashlib.sha256(sidecar.encode("ascii")).hexdigest(),
         "last_modified": headers.get("last-modified"),
-        "content_length": int(headers["content-length"]) if headers.get("content-length", "").isdigit() else None,
+        "sidecar_content_length": int(headers["content-length"]) if headers.get("content-length", "").isdigit() else None,
     }
 
 
@@ -115,7 +119,7 @@ def main() -> int:
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     atomic_write(args.output, payload)
-    available = sum(item["availability"].startswith("AVAILABLE") for item in entries)
+    available = sum(bool(item["checksum_sidecar_available"]) for item in entries)
     print(json.dumps({"available": available, "total": len(entries), "output": str(args.output)}, sort_keys=True))
     return 0
 

@@ -443,6 +443,11 @@ async def collect(args: argparse.Namespace) -> dict[str, Any]:
         "database_snapshot": snapshot,
         "database_version": database_version,
         "mode": "OBSERVE",
+        "clock_skew_semantics": {
+            "field": "data_manifest.raw_quality.clock_skew_rows",
+            "definition": "trade_time is later than ingest_timestamp",
+            "threshold_seconds": 0,
+        },
         "product_calculation": product.to_dict(),
         "independent_audit_calculation": audit.to_dict(),
         "audit_tolerance": 0.0,
