@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import html
 import hashlib
 import ipaddress
@@ -13,13 +14,15 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from src.analytics.research import ResearchAnalyticsEngine
+from src.dashboard.operations import OPERATIONS_PAGES, build_operations_snapshot, render_operations_page
 from src.insights import ResearchInsightsEngine
 from src.research.router import ResearchRouter
 
 
-DASHBOARD_VERSION = "2.2.1"
+DASHBOARD_VERSION = "3.0.0"
 VISIBLE_LIMIT = 50
 ORDERFLOW_VISIBLE_LIMIT = 100
+MAX_RESPONSE_BYTES = 2_000_000
 ALLOWED_TIMELINE_EVENTS = {
     "RUNTIME_START",
     "VALIDATION_CYCLE",
@@ -45,6 +48,17 @@ def _require_loopback_host(host: str) -> str:
     if not address.is_loopback:
         raise ValueError("dashboard host must be loopback-only")
     return host
+
+
+def _is_loopback_request_host(value: str | None) -> bool:
+    """Reject DNS-rebinding style Host headers before serving local evidence."""
+    if not value or any(character.isspace() for character in value) or any(character in value for character in "@/?#\\"):
+        return False
+    try:
+        hostname = urlparse(f"//{value}").hostname
+        return bool(hostname and _require_loopback_host(hostname))
+    except (ValueError, TypeError):
+        return False
 
 
 def _safe(value: Any, fallback: str = "—") -> str:
@@ -123,6 +137,9 @@ class DashboardState:
     quality_path: Path = field(default_factory=lambda: Path("data/research/quality/latest.json"))
     core_manifest_path: Path = field(default_factory=lambda: Path("config/core_manifest.json"))
     governance_roles_path: Path = field(default_factory=lambda: Path("config/governance_roles.json"))
+    completion_artifacts_path: Path = field(default_factory=lambda: Path("artifacts/v2_completion"))
+    legacy_readiness_artifacts_path: Path = field(default_factory=lambda: Path("artifacts/v2_readiness"))
+    operational_watchdog_path: Path = field(default_factory=lambda: Path("data/operational/watchdog_status.json"))
     runtime_started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     lock: threading.Lock = field(default_factory=threading.Lock)
     _timeline_mtime_ns: int = field(default=-1, init=False)
@@ -237,7 +254,7 @@ class DashboardState:
             "ollama_enabled": bool(system_health.get("ollama_enabled", False)),
             "ollama_availability": str(system_health.get("ollama_availability", "DISABLED_BY_POLICY")),
         }
-        return {
+        snapshot = {
                 "timestamp": generated_at.isoformat(),
                 "mode": "OBSERVE",
                 "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC",
@@ -263,6 +280,13 @@ class DashboardState:
                 "governance_roles": self._read_dict(self.governance_roles_path),
                 "safety": "RESEARCH ONLY — NO ORDERS OR EXECUTION",
         }
+        snapshot["operations"] = build_operations_snapshot(
+            snapshot,
+            self.completion_artifacts_path,
+            self.legacy_readiness_artifacts_path,
+            self.operational_watchdog_path,
+        )
+        return snapshot
 
     def analytics(self) -> dict[str, Any]:
         with self.lock:
@@ -1063,6 +1087,31 @@ CSS = r"""
 """
 
 EXTRA_CSS = r"""
+.topbar{position:sticky;inset:auto;top:0}
+.topbar__inner{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;padding-bottom:8px}
+.brand{flex:0 0 auto;padding-top:6px}
+.nav{grid-column:1/-1;grid-row:2;min-width:0}
+.nav a{font-size:12px}
+.live{grid-column:2;grid-row:1;border:1px solid #66531f;background:#493b19;padding:8px 10px}
+.live:hover{background:#5a491f}.badge--paused{color:var(--muted);border-color:var(--line);background:var(--panel2)}
+.legacy-nav{max-width:1480px;margin:0 auto;padding:0 24px 8px;color:var(--muted)}
+.legacy-nav summary{cursor:pointer;width:max-content;max-width:100%;font-size:11px;padding:5px 0}
+.legacy-nav nav{display:flex;flex-wrap:wrap;gap:6px;padding:4px 0}
+.legacy-nav a{font-size:11px;color:var(--muted);padding:5px 8px;border:1px solid var(--line);border-radius:999px}
+.legacy-nav a.active,.legacy-nav a:hover{color:var(--text);background:var(--panel2);text-decoration:none}
+.shell{padding-top:22px;min-height:calc(100vh - 180px)}
+.footer{max-width:1480px;margin:0 auto;padding:0 24px 28px;color:var(--muted);font-size:11px}
+.skip-link{position:fixed;z-index:100;left:12px;top:8px;transform:translateY(-160%);background:var(--text);color:var(--bg);padding:10px 14px;border-radius:8px;font-weight:800}
+.skip-link:focus{transform:translateY(0)}
+:where(a,button,input,select,textarea,summary):focus-visible{outline:3px solid #9bc4ff;outline-offset:3px}
+caption{text-align:left;padding:10px 12px;color:var(--muted);font-size:12px;background:#0b1728}
+.eyebrow{margin:0 0 8px!important;color:var(--blue)!important;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+.operations-hero{align-items:center;padding:20px;border:1px solid var(--line);border-radius:var(--radius);background:radial-gradient(circle at 90% 0,#173e5b 0,transparent 38%),linear-gradient(145deg,#12243a,#0c1828)}
+.operations-hero h1{max-width:850px}.safety-stack{display:flex;gap:7px;align-items:flex-end;flex-direction:column}.operations-boundary{padding:12px 14px;border:1px solid #28624b;border-radius:10px;background:#10261f;letter-spacing:.04em}
+.operations-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.operations-card{position:relative;overflow:hidden}.operations-card:before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--line)}
+.operations-card:has(.badge--green):before{background:var(--green)}.operations-card:has(.badge--yellow):before{background:var(--yellow)}.operations-card:has(.badge--red):before{background:var(--red)}
+.operations-card .card__value,.operations-card .card__note{overflow-wrap:anywhere}.metric-value{display:block;margin-top:8px;font-size:20px}.quick-links{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.quick-links h2{width:100%}.quick-links a{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#0b1728}
+.health-card summary{min-height:44px}
 .health-card{padding:0;overflow:hidden}
 .health-card summary{list-style:none;cursor:pointer;padding:17px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
 .health-card summary::-webkit-details-marker{display:none}
@@ -1082,7 +1131,12 @@ EXTRA_CSS = r"""
 .status-note b{color:var(--text)}
 .health-section-meta{display:flex;flex-direction:column;align-items:flex-end;gap:7px;color:var(--muted);font-size:11px;text-align:right}
 .health-scope-note{margin-top:16px}
+@media(max-width:1180px){.operations-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){.operations-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.topbar__inner{grid-template-columns:1fr;padding-inline:16px}.brand{grid-column:1;grid-row:1}.live{display:block;grid-column:1;grid-row:2;justify-self:stretch;margin:4px 0}.nav{grid-column:1;grid-row:3}.legacy-nav{padding-inline:16px}.shell{padding:18px 16px 30px}.safety-stack{align-items:flex-start}.operations-hero{display:block}.safety-stack{margin-top:16px;flex-direction:row;flex-wrap:wrap}}
 @media(max-width:680px){.health-section-meta{align-items:flex-start;text-align:left}.panel__head{align-items:flex-start;flex-direction:column}}
+@media(max-width:520px){.operations-grid{grid-template-columns:1fr}.nav{display:flex;overflow-x:auto;flex-wrap:nowrap;padding-bottom:6px;scrollbar-width:thin}.nav a{white-space:nowrap}.legacy-nav nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.legacy-nav a{text-align:center}.brand small{font-size:8px}.live{font-size:10px;max-width:100%;white-space:normal;text-align:left}.operations-hero{padding:16px}.operations-hero h1{font-size:25px}.footer{padding-inline:16px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+@media(forced-colors:active){.badge,.card,.panel,.operations-hero{border:1px solid CanvasText}.operations-card:before{display:none}}
 """
 
 
@@ -1142,10 +1196,50 @@ AUTO_REFRESH_SCRIPT = r"""
 """
 
 
+def _content_security_policy() -> str:
+    style = CSS + EXTRA_CSS
+    script = AUTO_REFRESH_SCRIPT.split("<script>", 1)[1].rsplit("</script>", 1)[0]
+    style_hash = base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()
+    script_hash = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
+    return (
+        "default-src 'none'; "
+        f"style-src 'sha256-{style_hash}'; "
+        f"script-src 'sha256-{script_hash}'; "
+        "connect-src 'self'; img-src 'self' data:; font-src 'none'; "
+        "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
+
+
 def _layout(title: str, page: str, body: str) -> str:
-    links = [("Overview", "/"), ("Observations", "/observations"), ("Research Cases", "/cases"), ("Orderflow", "/orderflow"), ("Signal Research", "/signals"), ("Analytics", "/analytics"), ("Insights", "/insights"), ("Health Center", "/health"), ("Data Quality Exceptions", "/exceptions"), ("Timeline", "/timeline"), ("Research", "/research")]
-    nav = "".join(f"<a href='{href}' class='{'active' if page == key else ''}'>{key}</a>" for key, href in links)
-    return f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><header class='topbar'><div class='topbar__inner'><a class='brand' href='/'>TIM<small>TRANSPARENT INTELLIGENCE FOR MARKETS</small></a><nav class='nav'>{nav}</nav><div id='tim-status' class='live badge--yellow'>● Startet…</div></div></header><main class='shell'>{body}</main>{AUTO_REFRESH_SCRIPT}</body></html>"""
+    primary_links = [
+        ("Overview", "/"),
+        ("Security", "/security"),
+        ("Runtime", "/runtime"),
+        ("Data Quality", "/data-quality"),
+        ("Gap Explorer", "/gaps"),
+        ("Qualification Campaign", "/qualification"),
+        ("Research & Independent Cases", "/independent-cases"),
+        ("V2 Readiness", "/v2-readiness"),
+        ("Graphify & MCP", "/mcp"),
+        ("Audit & Evidence", "/audit-evidence"),
+    ]
+    legacy_links = [
+        ("Observations", "/observations"), ("Research Cases", "/cases"), ("Orderflow", "/orderflow"),
+        ("Signal Research", "/signals"), ("Analytics", "/analytics"), ("Insights", "/insights"),
+        ("Health Center", "/health"), ("Data Quality Exceptions", "/exceptions"),
+        ("Timeline", "/timeline"), ("Research", "/research"),
+    ]
+    nav = "".join(
+        f"<a href='{href}' class='{'active' if page == key else ''}'"
+        f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
+        for key, href in primary_links
+    )
+    legacy_nav = "".join(
+        f"<a href='{href}' class='{'active' if page == key else ''}'"
+        f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
+        for key, href in legacy_links
+    )
+    return f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav><button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div><details class='legacy-nav'><summary>Vertiefende Research-Ansichten</summary><nav aria-label='Vertiefende Research-Ansichten'>{legacy_nav}</nav></details></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT}</body></html>"""
 
 
 def _hero(title: str, text: str) -> str:
@@ -1155,6 +1249,8 @@ def _hero(title: str, text: str) -> str:
 def render(state: DashboardState, page: str = "Overview", selected_id: str | None = None) -> str:
     data = state.snapshot()
     validator = data["validator"]
+    if page in OPERATIONS_PAGES and page != "Overview":
+        return _layout(page, page, render_operations_page(page, data["operations"]))
     if page == "Orderflow":
         with state.lock:
             total_orderflow=len(state.orderflow_observations)
@@ -1240,7 +1336,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         return _health_timeline_page(data)
     if page == "Research":
         research = validator.get("research_health", {})
-        body = _hero("Research Workspace", "Lokale, dokumentierte TIM-Evidenz. Keine automatische Websuche.") + f"<div class='grid'><article class='card'><div class='card__label'>Research Integrity</div><div class='card__value'><span class='badge badge--{_status(research.get('level')).lower()}'>{_safe(research.get('level'))}</span></div><div class='card__note'>{research.get('trigger_duplicates', 0)} Trigger-Duplikate</div></article><article class='card'><div class='card__label'>Mode</div><div class='card__value'>OBSERVE</div><div class='card__note'>Keine Multi-Agent-Ausführung</div></article></div><section class='panel'><div class='research-grid'><div><h2>Module A · Schnell</h2><label for='quick-query'>Pattern oder Frage</label><input id='quick-query' maxlength='500' placeholder='Dokumentierte Rejection-Muster prüfen'><button id='quick-run'>Schnell-Recherche</button><div id='quick-results'></div></div><div><h2>Module B · Bericht</h2><label for='deep-query'>Fragestellung</label><textarea id='deep-query' maxlength='2000' placeholder='Lokalen Evidenzbericht erstellen'></textarea><label for='report-type'>Report-Typ</label><select id='report-type'><option value='research_report'>Standard Report</option><option value='deep'>Deep Research (lokal)</option></select><button id='deep-run'>Bericht erstellen</button><div id='deep-results'></div></div></div></section>"
+        body = _hero("Research Evidence", "Lokale, dokumentierte TIM-Evidenz ohne schreibende UI-Aktionen.") + f"<div class='grid'><article class='card'><div class='card__label'>Research Integrity</div><div class='card__value'><span class='badge badge--{_status(research.get('level')).lower()}'>{_safe(research.get('level'))}</span></div><div class='card__note'>{_safe(research.get('trigger_duplicates', 0))} Trigger-Duplikate</div></article><article class='card'><div class='card__label'>Mode</div><div class='card__value'>OBSERVE</div><div class='card__note'>Keine Multi-Agent-Ausführung</div></article></div><section class='panel'><div class='panel__head'><h2>Read-only Research Index</h2><span class='badge badge--green'>NO WRITE CONTROLS</span></div><p>Die Control-Center-Oberfläche erzeugt, verändert oder signiert keine Research-Artefakte. Persistierte Evidenz bleibt über die spezialisierten Ansichten lesbar.</p><div class='quick-links'><a href='/observations'>Observations</a><a href='/cases'>Research Cases</a><a href='/signals'>Signal Research</a><a href='/analytics'>Analytics</a><a href='/insights'>Insights</a></div></section>"
         return _layout("Research Workspace", page, body)
     readiness = data["readiness"]
     audit = data.get("research_audit", {})
@@ -1285,7 +1381,8 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
     case_preview = "".join(_case_row(item) for item in reversed(data["research_cases"][-5:])) or "<tr><td colspan='8' class='empty'>No research cases yet</td></tr>"
     readiness=data["readiness"];criteria_rows="".join(f"<tr><td>{_safe(name)}</td><td><span class='badge badge--{_status(status).lower()}'>{_safe(status)}</span></td></tr>" for name,status in sorted(readiness.get("criteria",{}).items())) or "<tr><td colspan='2' class='empty'>Statusdatei noch nicht verfügbar.</td></tr>"
     readiness_panel=f"<section class='panel'><div class='panel__head'><h2>Scientific Data Progress &amp; V2 Readiness</h2><span class='badge badge--{_status(readiness.get('readiness_status')).lower()}'>{_safe(readiness.get('readiness_status'))}</span></div><div class='grid'><article class='card'><div class='card__label'>Validierte Cases</div><div class='card__value'>{_safe(readiness.get('validated_case_count'))} / {_safe(readiness.get('required_case_count'))}</div><div class='card__note'>{_safe(readiness.get('validated_case_progress_percent'))}% · {_safe(readiness.get('remaining_case_count'))} verbleibend</div></article><article class='card'><div class='card__label'>Offene Cases</div><div class='card__value'>{_safe(readiness.get('open_case_count'))}</div><div class='card__note'>{_safe(readiness.get('observation_count'))} Observationen gesamt</div></article><article class='card'><div class='card__label'>Neue Continuous Coverage</div><div class='card__value'>{_safe(readiness.get('continuous_coverage_percent'))}%</div><div class='card__note'>{_safe(readiness.get('continuous_persisted_1m_intervals'))} / {_safe(readiness.get('continuous_expected_1m_intervals'))} Minuten</div></article><article class='card'><div class='card__label'>Gemessener Verlauf</div><div class='card__value'>{_safe(readiness.get('measured_validated_cases_per_hour'))}/h</div><div class='card__note'>{_safe(readiness.get('measured_validated_cases_per_day'))}/Tag · Hochrechnung unverbindlich: {_safe(readiness.get('nonbinding_projected_1000_case_time'))}</div></article></div><details class='readiness'><summary>Alle Freigabekriterien anzeigen</summary><div class='table-wrap'><table><thead><tr><th>Freigabekriterium</th><th>Status</th></tr></thead><tbody>{criteria_rows}</tbody></table></div></details><p class='count-scope'>TIM startet V2 niemals automatisch. Die endgültige Freigabe erfordert einen manuellen Evolution Review.</p></section>"
-    body = _hero("TIM Research Dashboard", "Research Overview · deterministischer Systemzustand und aktuelle Research-Aktivität.") + f"<p class='observe'>OBSERVE MODE • {data['safety']}</p>{readiness_panel}<section class='panel'><div class='panel__head'><h2>Market Status</h2><span class='badge badge--green'>{_safe(data['market_status'].get('status'))}</span></div><p class='count-scope'><b>Zählerbereich:</b> sichtbarer letzter Ausschnitt, keine Gesamtzahlen. Sichtbare Candles: <span id='candles-count'>{len(data['candles'])}</span> · Sichtbare Observations: <span id='obs-count'>{len(data['observations'])}</span> · Sichtbare Cases: <span id='cases-count'>{len(data['research_cases'])}</span></p></section><div class='grid'>{card_html}<article class='card'><div class='card__label'>Research Module</div><div class='card__value'><span id='research-health' class='badge badge--{_status(validator.get('research_health',{}).get('level')).lower()}'>{_safe(validator.get('research_health',{}).get('level'))}</span></div><div class='card__note'><a href='/research'>Research Workspace öffnen →</a></div></article></div><section class='panel'><div class='panel__head'><h2>Active Observations</h2><a href='/observations'>Alle öffnen →</a></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Observation Type</th><th>Rule Version</th><th>Evidence Score</th><th>Provenance</th><th>Status</th></tr></thead><tbody id='observations-body'>{recent_obs}</tbody></table></div></section><section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><a href='/cases'>Alle öffnen →</a></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{case_preview}</tbody></table></div></section><section class='panel'><h2>News</h2><p class='muted'>Keine autorisierte News-Ingestion aktiv. Es werden keine Nachrichten erfunden oder ergänzt.</p></section>"
+    research_overview = _hero("TIM Research Dashboard", "Research Overview · deterministischer Systemzustand und aktuelle Research-Aktivität.") + f"<p class='observe'>OBSERVE MODE • {data['safety']}</p>{readiness_panel}<section class='panel'><div class='panel__head'><h2>Market Status</h2><span class='badge badge--green'>{_safe(data['market_status'].get('status'))}</span></div><p class='count-scope'><b>Zählerbereich:</b> sichtbarer letzter Ausschnitt, keine Gesamtzahlen. Sichtbare Candles: <span id='candles-count'>{len(data['candles'])}</span> · Sichtbare Observations: <span id='obs-count'>{len(data['observations'])}</span> · Sichtbare Cases: <span id='cases-count'>{len(data['research_cases'])}</span></p></section><div class='grid'>{card_html}<article class='card'><div class='card__label'>Research Module</div><div class='card__value'><span id='research-health' class='badge badge--{_status(validator.get('research_health',{}).get('level')).lower()}'>{_safe(validator.get('research_health',{}).get('level'))}</span></div><div class='card__note'><a href='/research'>Research Workspace öffnen →</a></div></article></div><section class='panel'><div class='panel__head'><h2>Active Observations</h2><a href='/observations'>Alle öffnen →</a></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Observation Type</th><th>Rule Version</th><th>Evidence Score</th><th>Provenance</th><th>Status</th></tr></thead><tbody id='observations-body'>{recent_obs}</tbody></table></div></section><section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><a href='/cases'>Alle öffnen →</a></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{case_preview}</tbody></table></div></section><section class='panel'><h2>News</h2><p class='muted'>Keine autorisierte News-Ingestion aktiv. Es werden keine Nachrichten erfunden oder ergänzt.</p></section>"
+    body = render_operations_page("Overview", data["operations"]) + "<details class='panel readiness'><summary>Vertiefende Research-Übersicht anzeigen</summary>" + research_overview + "</details>"
     return _layout("Research Overview", page, body)
 
 
@@ -1299,20 +1396,35 @@ class DashboardServer:
 
         class Handler(BaseHTTPRequestHandler):
             def respond(self, status: int, payload: bytes, content_type: str) -> None:
+                if len(payload) > MAX_RESPONSE_BYTES:
+                    status = 413
+                    payload = b'{"error":"response exceeds dashboard limit"}'
+                    content_type = "application/json"
                 self.send_response(status)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(payload)))
                 self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")
+                self.send_header("Content-Security-Policy", _content_security_policy())
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+                self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+                self.send_header("Cross-Origin-Resource-Policy", "same-origin")
                 self.end_headers()
                 self.wfile.write(payload)
 
             def do_GET(self):
+                if not _is_loopback_request_host(self.headers.get("Host")):
+                    return self.respond(421, b'{"error":"loopback Host header required"}', "application/json")
                 parsed = urlparse(self.path)
                 path, query = parsed.path, parse_qs(parsed.query)
                 if path == "/api/state":
                     return self.respond(200, json.dumps(outer.state.snapshot()).encode(), "application/json")
+                if path == "/api/operations":
+                    return self.respond(200, json.dumps(outer.state.snapshot()["operations"], sort_keys=True).encode(), "application/json")
                 if path == "/api/health":
                     snapshot = outer.state.snapshot()
                     payload = {
@@ -1354,7 +1466,18 @@ class DashboardServer:
                         return self.respond(404, b'{"error":"not found"}', "application/json")
                     formatter, content_type = exports[extension]
                     return self.respond(200, formatter(insights).encode(), content_type)
-                pages = {"/": "Overview", "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow", "/signals": "Signal Research", "/analytics": "Analytics", "/insights": "Insights", "/health": "Health Center", "/exceptions": "Data Quality Exceptions", "/timeline": "Timeline", "/research": "Research"}
+                pages = {
+                    "/": "Overview", "/security": "Security", "/runtime": "Runtime",
+                    "/data-quality": "Data Quality", "/gaps": "Gap Explorer",
+                    "/qualification": "Qualification Campaign",
+                    "/independent-cases": "Research & Independent Cases",
+                    "/v2-readiness": "V2 Readiness", "/mcp": "Graphify & MCP",
+                    "/audit-evidence": "Audit & Evidence",
+                    "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow",
+                    "/signals": "Signal Research", "/analytics": "Analytics", "/insights": "Insights",
+                    "/health": "Health Center", "/exceptions": "Data Quality Exceptions",
+                    "/timeline": "Timeline", "/research": "Research",
+                }
                 if path in pages:
                     page = render(outer.state, pages[path], query.get("id", [None])[0])
                     return self.respond(200, page.encode(), "text/html; charset=utf-8")
@@ -1376,10 +1499,14 @@ class DashboardServer:
                 return self.respond(404, b'{"error":"not found"}', "application/json")
 
             def do_POST(self):
+                if not _is_loopback_request_host(self.headers.get("Host")):
+                    return self.respond(421, b'{"error":"loopback Host header required"}', "application/json")
                 path = urlparse(self.path).path
                 if path not in {"/api/research/quick", "/api/research/deep"}:
                     return self.respond(404, b'{"error":"not found"}', "application/json")
                 try:
+                    if self.headers.get_content_type() != "application/json":
+                        raise ValueError("Content-Type must be application/json")
                     size = int(self.headers.get("Content-Length", "0"))
                     if size < 2 or size > 8192:
                         raise ValueError("request body must be between 2 and 8192 bytes")
