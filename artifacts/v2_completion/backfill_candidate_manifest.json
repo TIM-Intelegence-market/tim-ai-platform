@@ -1,0 +1,2830 @@
+{
+  "archives": [
+    {
+      "archive_rows": 666391,
+      "candidate_minute_count": 430,
+      "candidate_payload": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_candidate/V2_BACKFILL_CANDIDATE_V1/BTCUSDT-aggTrades-2026-07-23.gap_rows.csv.gz",
+      "candidate_payload_sha256": "e630c4060b5115900701be347b010124f523c412c30b0c83c268f2f0862a790f",
+      "candidate_payload_size_bytes": 2284221,
+      "candidate_rows": 147857,
+      "checksum_validation": "PASS",
+      "data_type": "BINANCE_SPOT_AGGTRADES",
+      "downloaded_at_utc": "2026-08-01T21:14:27.918568Z",
+      "duplicate_or_out_of_order_ids": 0,
+      "file_size_bytes": 10052030,
+      "filename": "BTCUSDT-aggTrades-2026-07-23.zip",
+      "first_aggregate_trade_id": 4020681191,
+      "import_version": "TIM_V2_BACKFILL_IMPORT_V1",
+      "invalid_rows": 0,
+      "last_aggregate_trade_id": 4021347581,
+      "market": "BINANCE_SPOT",
+      "official_checksum": "41bc12fd9a76230c4929cbf541e61c4d32a91c21aaa5db577556a6d22a50bf41",
+      "parser_version": "TIM_BINANCE_AGGTRADES_CSV_V1",
+      "period_end_utc": "2026-07-24T00:00:00Z",
+      "period_start_utc": "2026-07-23T00:00:00Z",
+      "quarantine_path": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_quarantine/BTCUSDT-aggTrades-2026-07-23.zip",
+      "readiness_counted": false,
+      "schema": "1.0.0",
+      "sha256": "41bc12fd9a76230c4929cbf541e61c4d32a91c21aaa5db577556a6d22a50bf41",
+      "sidecar_last_modified": "Fri, 24 Jul 2026 10:22:29 GMT",
+      "status": "IMPORTED_TO_IMMUTABLE_CANDIDATE",
+      "symbol": "BTCUSDT",
+      "url": "https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2026-07-23.zip"
+    },
+    {
+      "archive_rows": 762859,
+      "candidate_minute_count": 138,
+      "candidate_payload": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_candidate/V2_BACKFILL_CANDIDATE_V1/BTCUSDT-aggTrades-2026-07-27.gap_rows.csv.gz",
+      "candidate_payload_sha256": "e5c3b0a06b083b6d2ac4343499e24ce027926de68d34919fab6089ade0e60d79",
+      "candidate_payload_size_bytes": 1169202,
+      "candidate_rows": 75600,
+      "checksum_validation": "PASS",
+      "data_type": "BINANCE_SPOT_AGGTRADES",
+      "downloaded_at_utc": "2026-08-01T21:14:35.078427Z",
+      "duplicate_or_out_of_order_ids": 0,
+      "file_size_bytes": 11449364,
+      "filename": "BTCUSDT-aggTrades-2026-07-27.zip",
+      "first_aggregate_trade_id": 4022743640,
+      "import_version": "TIM_V2_BACKFILL_IMPORT_V1",
+      "invalid_rows": 0,
+      "last_aggregate_trade_id": 4023506498,
+      "market": "BINANCE_SPOT",
+      "official_checksum": "08cdfd084e73e1152439034a2c3c3f0032795d386aa5c197e4fc6f6e0499a2c9",
+      "parser_version": "TIM_BINANCE_AGGTRADES_CSV_V1",
+      "period_end_utc": "2026-07-28T00:00:00Z",
+      "period_start_utc": "2026-07-27T00:00:00Z",
+      "quarantine_path": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_quarantine/BTCUSDT-aggTrades-2026-07-27.zip",
+      "readiness_counted": false,
+      "schema": "1.0.0",
+      "sha256": "08cdfd084e73e1152439034a2c3c3f0032795d386aa5c197e4fc6f6e0499a2c9",
+      "sidecar_last_modified": "Tue, 28 Jul 2026 02:02:10 GMT",
+      "status": "IMPORTED_TO_IMMUTABLE_CANDIDATE",
+      "symbol": "BTCUSDT",
+      "url": "https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2026-07-27.zip"
+    },
+    {
+      "archive_rows": 699417,
+      "candidate_minute_count": 116,
+      "candidate_payload": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_candidate/V2_BACKFILL_CANDIDATE_V1/BTCUSDT-aggTrades-2026-07-28.gap_rows.csv.gz",
+      "candidate_payload_sha256": "62281bb22e1ab76b7413b925e88459f27cbd22cb5179c1b395f8fa3732f40dfa",
+      "candidate_payload_size_bytes": 620279,
+      "candidate_rows": 40741,
+      "checksum_validation": "PASS",
+      "data_type": "BINANCE_SPOT_AGGTRADES",
+      "downloaded_at_utc": "2026-08-01T21:14:41.729201Z",
+      "duplicate_or_out_of_order_ids": 0,
+      "file_size_bytes": 10509433,
+      "filename": "BTCUSDT-aggTrades-2026-07-28.zip",
+      "first_aggregate_trade_id": 4023506499,
+      "import_version": "TIM_V2_BACKFILL_IMPORT_V1",
+      "invalid_rows": 0,
+      "last_aggregate_trade_id": 4024205915,
+      "market": "BINANCE_SPOT",
+      "official_checksum": "4f3ad11e5bc1f2f97f394fbd0e18e11862a1472f805886828e9288cb79c41f18",
+      "parser_version": "TIM_BINANCE_AGGTRADES_CSV_V1",
+      "period_end_utc": "2026-07-29T00:00:00Z",
+      "period_start_utc": "2026-07-28T00:00:00Z",
+      "quarantine_path": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_quarantine/BTCUSDT-aggTrades-2026-07-28.zip",
+      "readiness_counted": false,
+      "schema": "1.0.0",
+      "sha256": "4f3ad11e5bc1f2f97f394fbd0e18e11862a1472f805886828e9288cb79c41f18",
+      "sidecar_last_modified": "Wed, 29 Jul 2026 01:52:32 GMT",
+      "status": "IMPORTED_TO_IMMUTABLE_CANDIDATE",
+      "symbol": "BTCUSDT",
+      "url": "https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2026-07-28.zip"
+    },
+    {
+      "archive_rows": 1002463,
+      "candidate_minute_count": 719,
+      "candidate_payload": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_candidate/V2_BACKFILL_CANDIDATE_V1/BTCUSDT-aggTrades-2026-07-29.gap_rows.csv.gz",
+      "candidate_payload_sha256": "365dc97fa5b2c066fb2f11d0f03cedcb0eea23f5c0e85ce38673f788991fa736",
+      "candidate_payload_size_bytes": 6987939,
+      "candidate_rows": 459982,
+      "checksum_validation": "PASS",
+      "data_type": "BINANCE_SPOT_AGGTRADES",
+      "downloaded_at_utc": "2026-08-01T21:14:47.675037Z",
+      "duplicate_or_out_of_order_ids": 0,
+      "file_size_bytes": 15084661,
+      "filename": "BTCUSDT-aggTrades-2026-07-29.zip",
+      "first_aggregate_trade_id": 4024205916,
+      "import_version": "TIM_V2_BACKFILL_IMPORT_V1",
+      "invalid_rows": 0,
+      "last_aggregate_trade_id": 4025208378,
+      "market": "BINANCE_SPOT",
+      "official_checksum": "c81c5ed4a88eb05cd2e504e1aabc85c9a585d14fa0cb691d20a99e309012d27d",
+      "parser_version": "TIM_BINANCE_AGGTRADES_CSV_V1",
+      "period_end_utc": "2026-07-30T00:00:00Z",
+      "period_start_utc": "2026-07-29T00:00:00Z",
+      "quarantine_path": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_quarantine/BTCUSDT-aggTrades-2026-07-29.zip",
+      "readiness_counted": false,
+      "schema": "1.0.0",
+      "sha256": "c81c5ed4a88eb05cd2e504e1aabc85c9a585d14fa0cb691d20a99e309012d27d",
+      "sidecar_last_modified": "Thu, 30 Jul 2026 01:53:52 GMT",
+      "status": "IMPORTED_TO_IMMUTABLE_CANDIDATE",
+      "symbol": "BTCUSDT",
+      "url": "https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2026-07-29.zip"
+    },
+    {
+      "archive_rows": 1438074,
+      "candidate_minute_count": 1168,
+      "candidate_payload": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_candidate/V2_BACKFILL_CANDIDATE_V1/BTCUSDT-aggTrades-2026-07-30.gap_rows.csv.gz",
+      "candidate_payload_sha256": "bce71b09051162a350218b3c8cd6dc60e6f519c4e8309811de995b3ac91b7f24",
+      "candidate_payload_size_bytes": 19001810,
+      "candidate_rows": 1254826,
+      "checksum_validation": "PASS",
+      "data_type": "BINANCE_SPOT_AGGTRADES",
+      "downloaded_at_utc": "2026-08-01T21:14:59.668017Z",
+      "duplicate_or_out_of_order_ids": 0,
+      "file_size_bytes": 21634936,
+      "filename": "BTCUSDT-aggTrades-2026-07-30.zip",
+      "first_aggregate_trade_id": 4025208379,
+      "import_version": "TIM_V2_BACKFILL_IMPORT_V1",
+      "invalid_rows": 0,
+      "last_aggregate_trade_id": 4026646452,
+      "market": "BINANCE_SPOT",
+      "official_checksum": "752fd9ebb87d04b9b528620b0d4ffb4bd6d0c669b9222a45ec277c3bb972e584",
+      "parser_version": "TIM_BINANCE_AGGTRADES_CSV_V1",
+      "period_end_utc": "2026-07-31T00:00:00Z",
+      "period_start_utc": "2026-07-30T00:00:00Z",
+      "quarantine_path": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_quarantine/BTCUSDT-aggTrades-2026-07-30.zip",
+      "readiness_counted": false,
+      "schema": "1.0.0",
+      "sha256": "752fd9ebb87d04b9b528620b0d4ffb4bd6d0c669b9222a45ec277c3bb972e584",
+      "sidecar_last_modified": "Fri, 31 Jul 2026 02:06:50 GMT",
+      "status": "IMPORTED_TO_IMMUTABLE_CANDIDATE",
+      "symbol": "BTCUSDT",
+      "url": "https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2026-07-30.zip"
+    },
+    {
+      "archive_rows": 774544,
+      "candidate_minute_count": 1186,
+      "candidate_payload": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_candidate/V2_BACKFILL_CANDIDATE_V1/BTCUSDT-aggTrades-2026-07-31.gap_rows.csv.gz",
+      "candidate_payload_sha256": "66568f305bcaed4c8d412bbfcbc0118eab515d2b0170c1c55788419fa12d0a3b",
+      "candidate_payload_size_bytes": 9375683,
+      "candidate_rows": 632566,
+      "checksum_validation": "PASS",
+      "data_type": "BINANCE_SPOT_AGGTRADES",
+      "downloaded_at_utc": "2026-08-01T21:15:20.109415Z",
+      "duplicate_or_out_of_order_ids": 0,
+      "file_size_bytes": 11322149,
+      "filename": "BTCUSDT-aggTrades-2026-07-31.zip",
+      "first_aggregate_trade_id": 4026646453,
+      "import_version": "TIM_V2_BACKFILL_IMPORT_V1",
+      "invalid_rows": 0,
+      "last_aggregate_trade_id": 4027420996,
+      "market": "BINANCE_SPOT",
+      "official_checksum": "15dcb1d47546f14576a4a465ceafff1fed244beab1dc91dbf087aabfc220e014",
+      "parser_version": "TIM_BINANCE_AGGTRADES_CSV_V1",
+      "period_end_utc": "2026-08-01T00:00:00Z",
+      "period_start_utc": "2026-07-31T00:00:00Z",
+      "quarantine_path": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_quarantine/BTCUSDT-aggTrades-2026-07-31.zip",
+      "readiness_counted": false,
+      "schema": "1.0.0",
+      "sha256": "15dcb1d47546f14576a4a465ceafff1fed244beab1dc91dbf087aabfc220e014",
+      "sidecar_last_modified": "Sat, 01 Aug 2026 02:36:50 GMT",
+      "status": "IMPORTED_TO_IMMUTABLE_CANDIDATE",
+      "symbol": "BTCUSDT",
+      "url": "https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2026-07-31.zip"
+    },
+    {
+      "api_endpoint": "https://api.binance.com/api/v3/aggTrades",
+      "api_fetched_at_utc": "2026-08-01T21:15:33.453330Z",
+      "api_pages": 132,
+      "api_query_scope": {
+        "end_time_utc": "2026-08-01T14:43:00Z",
+        "start_time_utc": "2026-08-01T00:00:00Z",
+        "symbol": "BTCUSDT"
+      },
+      "api_response_sha256_chain": "461c86c99da324bb0bc9dae16d0292037edd3245748b2c073253a110f4dba7dd",
+      "api_rows": 131721,
+      "api_used_weight_1m_max_observed": 324,
+      "archive_error_type": "HTTPError",
+      "candidate_minute_count": 843,
+      "candidate_payload": "/Users/tim/Documents/TIM/tim/data/v2_completion/backfill_candidate/V2_BACKFILL_CANDIDATE_V1/BTCUSDT-aggTrades-2026-08-01.api_gap_rows.csv.gz",
+      "candidate_payload_sha256": "77d85eb2c480be826c7cb335605ea8236274005fdb830e678d0376b6a3310f80",
+      "candidate_payload_size_bytes": 1822377,
+      "candidate_rows": 124943,
+      "checksum_validation": "NOT_APPLICABLE_API_RESPONSE_HASH_CHAIN_USED",
+      "data_type": "BINANCE_SPOT_AGGTRADES",
+      "downloaded_at_utc": "2026-08-01T21:15:33.453330Z",
+      "duplicate_or_out_of_order_ids": 0,
+      "file_size_bytes": null,
+      "filename": "BTCUSDT-aggTrades-2026-08-01.zip",
+      "first_aggregate_trade_id": 4027420997,
+      "import_version": "TIM_V2_BACKFILL_IMPORT_V1",
+      "invalid_rows": 0,
+      "last_aggregate_trade_id": 4027552717,
+      "market": "BINANCE_SPOT",
+      "official_checksum": null,
+      "parser_version": "TIM_BINANCE_AGGTRADES_CSV_V1",
+      "period_end_utc": "2026-08-02T00:00:00Z",
+      "period_start_utc": "2026-08-01T00:00:00Z",
+      "readiness_counted": false,
+      "schema": "1.0.0",
+      "sha256": null,
+      "status": "ARCHIVE_UNAVAILABLE_PUBLIC_API_FALLBACK_IMPORTED",
+      "symbol": "BTCUSDT",
+      "url": "https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2026-08-01.zip"
+    }
+  ],
+  "candidate_gap_recovery_coverage": 1.0,
+  "candidate_minutes": 4600,
+  "completed_at_utc": "2026-08-01T21:16:48.864732Z",
+  "coverage_metrics": {
+    "backfill_candidate": {
+      "candidate_gap_minutes": 4600,
+      "gap_minutes": 4600,
+      "gap_recovery_coverage": 1.0
+    },
+    "backfill_eligible_if_governance_approved": {
+      "coverage": 1.0,
+      "expected_minutes": 14447,
+      "gate_status": "PASS",
+      "valid_minutes": 14447
+    },
+    "frozen_live_capture": {
+      "coverage": 0.681595,
+      "expected_minutes": 14447,
+      "valid_minutes": 9847
+    },
+    "prospective_qualification": {
+      "coverage": null,
+      "status": "NOT_STARTED_SECURITY_GATE_FAILED"
+    },
+    "window_end_utc": "2026-08-01T21:01:00Z",
+    "window_start_utc": "2026-07-22T20:14:00Z"
+  },
+  "created_at_utc": "2026-08-01T21:14:27.121252Z",
+  "data_type": "AGGTRADES_FOR_MISSING_CLOSED_ONE_MINUTE_WINDOWS",
+  "database_rows_written": 0,
+  "dataset_id": "V2_BACKFILL_CANDIDATE_V1",
+  "dataset_properties": [
+    "IMMUTABLE",
+    "APPEND_ONLY",
+    "SEPARATE_FROM_FROZEN_V1",
+    "NO_AUTOMATIC_PROMOTION"
+  ],
+  "frozen_rows_modified": 0,
+  "gap_ledger_rows": 283,
+  "gap_mapping": [
+    {
+      "candidate_minutes": 5,
+      "expected_minutes": 5,
+      "gap_id": "gap-19c6bf2f7120ef8f0db9b73b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-64ec60788956fa3a49f2c2b9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-e32d7bfa56c081c4508f85cb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-e208639e4425f5d88be0848c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 6,
+      "expected_minutes": 6,
+      "gap_id": "gap-f8f34b0c2d73275543ffc887",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-d27a39e7c1f34a29b5aa5eb1",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-5cca6762210c8c8332a307cd",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-9741d15202d739b25bf070fa",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 7,
+      "expected_minutes": 7,
+      "gap_id": "gap-33960e7c325f7c3abf685d4d",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-198c6adab223d4c9a1da5d42",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-331858ab3c19d46106ec8aaa",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 13,
+      "expected_minutes": 13,
+      "gap_id": "gap-021bb928735b6ee1b0137113",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-75e2bac13438bc9e26774370",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-87387d007b9f90e957813fd1",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-e1b4ba58faab52be5556eb99",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-ace50a51f7b049a9d0622abb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 4,
+      "expected_minutes": 4,
+      "gap_id": "gap-165c404ba6c451450809d0b1",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-b2f7da41fe0f5f9249513a0f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-6c9539ba3a7e72d13bea233f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-c4bf9dbb7bec772057e67a56",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 7,
+      "expected_minutes": 7,
+      "gap_id": "gap-95dd9029ec1744c6c0465318",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-081e28b83024fa181e75bca3",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-86a2a3e06c4aacad142b391b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-5c9e41eb5c000e02a6360479",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-5ba67ae40b7de7ad04d90c8e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-bb6bffba5c0d37ed353d55f4",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-ebcf9f28ede87745ad41c3b5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-17940c00af2572e62d1e67e7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-a264765e2d88b847f003b757",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-6f431f09f9967582e0ce99a5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-3854569a7509ad0b1e7a20b5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-fcad13feb8fc2b0ab5d580c8",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 6,
+      "expected_minutes": 6,
+      "gap_id": "gap-5d390a7610d8b2a5980f71cf",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 138,
+      "expected_minutes": 138,
+      "gap_id": "gap-f27de668d6044585625b4d7c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-3ee913fdcf038a67dbf0cfce",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-78b892a8966dc6b0a323d63c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-c0efc31a90ff68316c994617",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-2fe0fb54c396724569ee4cd5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-b55118fd4df7315bc334f458",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-060dcd0b17db3b968d9e57bb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 11,
+      "expected_minutes": 11,
+      "gap_id": "gap-a31596104bd0b83b6dc6b301",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-765ab15cf46ec0518876fc8b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-3ae9083cd01044108d6a6acb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-27384ef723d2b31862a3b53e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-59ffaec896972360072ba7e2",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-28238a4c90c237062c93803b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 10,
+      "expected_minutes": 10,
+      "gap_id": "gap-2f7aea5309669e1fbecfdfd7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 13,
+      "expected_minutes": 13,
+      "gap_id": "gap-3aef06cc5f23590f79f6c3d4",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 4,
+      "expected_minutes": 4,
+      "gap_id": "gap-34052788f405f51de9ef037e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-b548bb83ffb0f27e32d67380",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-bf755b01ddcfd8912fb205e7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-fb327dd1afcd07d49062a9f8",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-36c578b476969c8ca2237f26",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-b405bca4be57391c25076218",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-1e3c9852d2523a7dbd56f3eb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-7ba2be8dc69325454f03c02a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 3,
+      "expected_minutes": 3,
+      "gap_id": "gap-be3c079763702e82b013281e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-88b55dbe9d05a5a653b5f17e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-9f11b93ecf16eb05869031a7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-cafcf08a07c61c056867b53a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-b4fe15589ac171885ae03184",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-3393a0ded033b2cdb46a1289",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-78e05423f68454928103a2d0",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-26c223e9ce0199683dcd013c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 4,
+      "expected_minutes": 4,
+      "gap_id": "gap-6a158bea28e8d1fd54d8630b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-2432adcfb0e4bb453492ae7f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-d9dce0f3f45611a56bb4decc",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-b7cfd0d364bc30768e5f5bf3",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-9e857571050a3cf31d818d24",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-ac78b5aad007b8c513cd6f10",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-2d05988c48bac3718af824f9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-97704417208ea5c40a54ba2f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-646381e260859dc7258218df",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 11,
+      "expected_minutes": 11,
+      "gap_id": "gap-88a57a0be6faea5038e7f4f4",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 5,
+      "expected_minutes": 5,
+      "gap_id": "gap-aa49dc84a6d17de9067d38c9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 4,
+      "expected_minutes": 4,
+      "gap_id": "gap-c23ef4e9b39a9e864b353ed7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-b76942dbb04bbe52e98727aa",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-afe429a36a2e0d4783c87e68",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-55ffc02f68f0ae89abc001a3",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-ed8db26ecf9875ac4348fd78",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-38dcc6ad38289501452b6ec9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-e2b5e9a91d980cc6d26fffdd",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-4ba38322f800a5226273d2c4",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 5,
+      "expected_minutes": 5,
+      "gap_id": "gap-01be74e8e20fb8cfacfff449",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-fba29cdbca2c89bd60927baa",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-50f802f85602ed4e074aee22",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-dd65d9162d9b2de83e3f726b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 4,
+      "expected_minutes": 4,
+      "gap_id": "gap-fe7b24a122c9d38553116cf6",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-175749185f55e9c52e6e6e6d",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-82621c3333732cba0ded6b62",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-d1ab30c4db5238cd0b3f6f37",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-a747cfd182fc3da7f970b682",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-118e021b6239e038375893f9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-cc4439426ab64ce20f37d691",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-887597e6480269de47d571f4",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-d01245f4a41a82981e6320be",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-8cdba767435396e7d0f2dc57",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-289827c9f3530cf07eb4e893",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-02e4f9e22db9073fb0de4660",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-bb1f98576554d13c20faa37d",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-fbafc40c04371e3f9af1e40c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-427b903a5087a50c2dd79520",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-e031581df7cd5000f42de79a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-307395c6e5e8adbf49de0e34",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-b315ec3dc68ec3b989d9f85a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-d4fbc656fcde613e0d82d8cd",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-a934ebe0efe5fbe064f54721",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-6d50fba39a2ce19cd4cc37eb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-8f5002b88817bfa1ce4787de",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 11,
+      "expected_minutes": 11,
+      "gap_id": "gap-b9dde6cbfeb7701b39633ee3",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-bccf011550fb64f78387c50b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-8d00a95d8fa5ddded127ab81",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-2ae2867fbbd3a9bbc4ca63c5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 4,
+      "expected_minutes": 4,
+      "gap_id": "gap-069d945f7a7ba9fb69f3b457",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-080b4f9fb273e9a60b2cfbb8",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-f6e9b8f06c95c2ae7e802db2",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-2b78a7fb085aeb8c5133cda2",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-d7864880f03c85bceb483ca5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-a92135c7c4ce1a780de362b8",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-5a3065e3aeb6d13ec3eae868",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-a4a4d861a1cccdf17268c782",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-315adaba030d3df55b71ad59",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-6bb48859bb895fc1e6dd2a13",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-9714101776030f261f3e9f00",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-b36b9a4b65f4647f1a45caa5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-57de3fdd766f6fcfd5147826",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-a1bfcff474958952dbe57ae3",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-445631cc26bec9e7f73d9adb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-adcb276b0d4e72ded3cfa422",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-3bba519269706be8d600c177",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-e184bf21e06eeadf8e1ec369",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-4065c72d1ee0f4a45961c403",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-c18c85362245d2384218c339",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-10720de3d0b4cc011098ed87",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-ce5bf7c483d5af48be8f7de0",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-98e78697ba2b58f72ee758fe",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-fdd0d31016dbe2796ac9ac5e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 11,
+      "expected_minutes": 11,
+      "gap_id": "gap-d0bbc44363b13d04f6a61e61",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-b9fd1fe4a74b8690c98d01d7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-b56f145d518e76145c9fdfc9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-67085be1c29d9c55e0ec9f2b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-ae0a92b4eb7f25d96119f4c7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-e2a932b2ba21561fa4e60aad",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-6cbcaba4eb56d5dbc103bb7b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-b753f7186f39fb7740cb95b7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-15aa4bf7e73805b02fc1463d",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-34fd070fdc29752f51ada68a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-a82de485b07a122c130b35cc",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-9eae68991229830eac8c8dbe",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-2229ef8d41212022d78795bb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-37fbe3aa0aefb2a90652ae4a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-ac20c08f6d98e9cd7fe5354b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-01b5eb1a60399307a287a6d3",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-df39dc9ba62a57c06cfde280",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-424dfd341adcad780a2fce9d",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-221c774614208867124bd9f9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-21aa6296a896459c8cfde673",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 11,
+      "expected_minutes": 11,
+      "gap_id": "gap-af9d67fedf090fe4f04928b8",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-0d5de992e48d1d8ed60426a4",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-c07765b41b6ffa510d4c80ca",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-553cc0a138fcef2280e30fe5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-d8c9943eb3a7bf309c58baaa",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-f374b6a655d64543d4e9515e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-cc04e21504df6309abc78c30",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-745f7a3c742955184e4dc653",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 10,
+      "expected_minutes": 10,
+      "gap_id": "gap-4854486eabe9abdc3873904f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-bc5f7c814167e506a3b3a76f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-7f286b54af6ee3622cb11b54",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-5e95e2ad8d233b9707939b6b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 1,
+      "expected_minutes": 1,
+      "gap_id": "gap-ca494bc5045c468626621f0f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 7,
+      "expected_minutes": 7,
+      "gap_id": "gap-925b2311a2e7e62e1f30cfc1",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-6d25adb0eea62acdfa3246fd",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-9b4789daebbfd852701280ed",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-98475662f9292a3f585eff1c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-c176afcad7a4699d9f1b761c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-c3441a447e3cc3e2d40fecdf",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-01657bf6ddc3dfa5187771f7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-4151bd2afcf3e55fa6882d0b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-19d7003a79dd543a0fdc8f08",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 4,
+      "expected_minutes": 4,
+      "gap_id": "gap-35c9de86a3a1422b05a082dd",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-7298b7de942685063cfbb083",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-dffca97e32783674ad17844f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 10,
+      "expected_minutes": 10,
+      "gap_id": "gap-591240dcb85729b219e6f26b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-790fa74ec67895384d523f20",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-81b3d2f9defd1648940acb10",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-0533aaa5690bd01ec0e60c54",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-134dfe834f1738111bb1cf6f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-97ecc2eb4bb97944200ffd20",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-67a01d5f808631909573f8e7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-ade5d52c88ed1a8f8c78b6bb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-f92109c0789f90a55e6f1e11",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-45f2944f7a71af92716e7c7c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-45a09b6c22b9bc7235ea0707",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-a44758dd386e61355d23c7f1",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-e7140db112fbdb601e07787e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 5,
+      "expected_minutes": 5,
+      "gap_id": "gap-c6a0eabd8df7f67e3b610bba",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-f19519dcae12aa8882a05d04",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-8f8bf5a597f0dc22ccebc79d",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-090ac22bb55eb7acf13f3c38",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-b9b2fabc896b9aebd00d67e4",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-f6ebc6d6d7ded5a0f8688641",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-8afdf8a34ed76fd349e579c9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-655915d66cc06c93be964481",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 10,
+      "expected_minutes": 10,
+      "gap_id": "gap-b0cd7f787c491586dc5a4f88",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-6d2cdae70512f2bbac23ffff",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-4c5e1cb0fbfb98bac6c32842",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-8274d5f70c1c99092a6327c9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 6,
+      "expected_minutes": 6,
+      "gap_id": "gap-80875d5743f35130cd99b57d",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-55fe90411bbf9ce91aaee93a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 12,
+      "expected_minutes": 12,
+      "gap_id": "gap-4451d8ffe72c68a68e11545f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-bbd59254564c91fab1069582",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-8ce19a60065ba64878c1c89e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-ad25ed2a2d2d5eb907810b19",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-af8344d66c4de6dd9354afc7",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-ff00f71911f19850dc67858f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-48ce75dc4655e2d968741a4e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-bac2aaae0717fcf52ddc4360",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 2,
+      "expected_minutes": 2,
+      "gap_id": "gap-93ae694eb0c143489045557c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-3324af11de20af30ddf0955d",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-eb762f6baed81bfb1b70e752",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-202a27c8fd48e69ac2af2154",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-30d8fc37d6fd843cb0a433b5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-24a2f9d47bf65edc28761e31",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-17a68cf4b3caee9e883f559b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-aa775e47fd9426d62858c1f2",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-156224142070f1dd01c634f1",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-3a643b134cc476ecda5e044c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-d927d46e99b2647bd324780e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-1b79c9f758da51cb2bf4795c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-2c406e864a4a5af264d26a92",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-f2f570c447f4b189f7f7b936",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-aece2376ed32783dd07abb9c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-32b3b523088e52e5ac4b6eeb",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-01192c4ea9b88fa6cac0c908",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-104576532e9a8da0c6839b8b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-d76534406be101ad1f969087",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-170dc8b78d508f616414c082",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-b3464baea3d6661aa1a81cf0",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-58682d4d19cb96410365aa2c",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-2272be799801702983af24a5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-a3e493c696fc03349dea5988",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 11,
+      "expected_minutes": 11,
+      "gap_id": "gap-026a6a1cc688314cef7d8687",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-5234c1d65d228ab476c4853e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-ac8103c2798a9dda8dff28d6",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-60dc8fd6af0a3ab2608d2253",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 7,
+      "expected_minutes": 7,
+      "gap_id": "gap-f5b8908b136f48003e3041c2",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-d2f1db738c62eef0eb06f9a1",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-3b28194102f132ee18fc8976",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-60c8ce88212baf61830c7c03",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-2532456675d9a0e77807655a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-1f7603dd0a21189b5a98bb0f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 17,
+      "expected_minutes": 17,
+      "gap_id": "gap-8a34e437c26bd5301c75d8e9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-dabf3451684c8597fe0f3a17",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 7,
+      "expected_minutes": 7,
+      "gap_id": "gap-feeb430e2915cfd42d036656",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-e5aa054cfd866eba1f4b2ad5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-ecddc7c19a7cde31e01d8744",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-6dac82891748033ab45863c5",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 11,
+      "expected_minutes": 11,
+      "gap_id": "gap-f5a47d3da7302817570b5802",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-eb4d02b7b6496bc68e3755c4",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 12,
+      "expected_minutes": 12,
+      "gap_id": "gap-58f7e651450d9b0da16744b1",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-d847edebcadb7d0d170dd0de",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 9,
+      "expected_minutes": 9,
+      "gap_id": "gap-68bf903c98272efbdf2298b6",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 13,
+      "expected_minutes": 13,
+      "gap_id": "gap-cbc4794e55a1479129afd3e9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-f730d199baac876640851072",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-86a74b4f630590215510dbe9",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 13,
+      "expected_minutes": 13,
+      "gap_id": "gap-b30836b224d8ca25fd0bed04",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-7c1d681f3606dc1a8190c783",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-29c0b7cafdb9164f9f012220",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 8,
+      "expected_minutes": 8,
+      "gap_id": "gap-7f0e6995e10e552e63b7b53a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-7178e4cc356f33d9fcd05af2",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 1,
+      "expected_minutes": 1,
+      "gap_id": "gap-96c62b03e99e350e0f0e99f6",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-337f9ecdffd46c9235ad277f",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-e095f7eff857b068144e19e8",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-47d68510678f01ccfeffaa25",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-181f4e291d1d4488dbf772d3",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-cfdd201c292721bfea165888",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-fb321603af30821814502bea",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 3,
+      "expected_minutes": 3,
+      "gap_id": "gap-b5646eaccc03be4491dae839",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 16,
+      "expected_minutes": 16,
+      "gap_id": "gap-ba52a06879d9542097c2054e",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 14,
+      "expected_minutes": 14,
+      "gap_id": "gap-43331b30e2c0241611ecfd07",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 15,
+      "expected_minutes": 15,
+      "gap_id": "gap-75eb268c5b5c1cfae46fda0b",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 13,
+      "expected_minutes": 13,
+      "gap_id": "gap-09bffc810e668d48ae2da84a",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    },
+    {
+      "candidate_minutes": 685,
+      "expected_minutes": 685,
+      "gap_id": "gap-525cea638000d7e71cdf9a52",
+      "remaining_minutes": 0,
+      "root_cause": "PROCESS_DOWNTIME",
+      "severity": "P1",
+      "status": "CANDIDATE_COMPLETE"
+    }
+  ],
+  "gap_minutes": 4600,
+  "governance_disposition": "CANDIDATE_READY_FOR_HUMAN_DATASET_GOVERNANCE_REVIEW_NOT_PROMOTED",
+  "manifest_hash": "5443d833426c39e787c2cc312de445004eb6512fa285eb2c6888899b23cdfd99",
+  "market": "BINANCE_SPOT",
+  "readiness_counted": false,
+  "remaining_gap_minutes": 0,
+  "schema_version": "1.0.0",
+  "source_authority": [
+    "OFFICIAL_BINANCE_VISION_PUBLIC_SPOT_ARCHIVES",
+    "OFFICIAL_BINANCE_PUBLIC_MARKET_DATA_API"
+  ],
+  "symbol": "BTCUSDT"
+}
