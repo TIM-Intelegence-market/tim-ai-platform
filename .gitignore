@@ -34,6 +34,8 @@ graphify-out/.graphify_root
 artifacts/*
 !artifacts/v2_readiness/
 !artifacts/v2_readiness/**
+!artifacts/v2_completion/
+!artifacts/v2_completion/**
 !artifacts/tim_manager/
 artifacts/tim_manager/*
 !artifacts/tim_manager/change_manifest.json

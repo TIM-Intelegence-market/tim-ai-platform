@@ -1,0 +1,23 @@
+{
+  "captured_at_utc": "2026-08-01T21:01:45.552323Z",
+  "ipv4_wildcard_detected": true,
+  "ipv6_wildcard_detected": true,
+  "lan_probe": {
+    "error_type": null,
+    "host": "192.168.10.177",
+    "port": 5432,
+    "reachable": true,
+    "tested_at_utc": "2026-08-01T21:01:49.276203Z"
+  },
+  "listen_addresses": "*",
+  "localhost_probe": {
+    "error_type": null,
+    "host": "127.0.0.1",
+    "port": 5432,
+    "reachable": true,
+    "tested_at_utc": "2026-08-01T21:01:49.274833Z"
+  },
+  "port": 5432,
+  "result": "FAIL",
+  "ssl": "off"
+}
