@@ -24,9 +24,25 @@ def test_partial_then_complete_validation_and_case_closure():
 
 
 def test_sideways_threshold_is_explicit_and_replay_stable():
-    trades=[trade(0,0,100),trade(1,30,100.1)]
+    trades=[trade(0,0,100),trade(1,5,100),trade(2,15,100),trade(3,30,100.1)]
     engine=OrderflowValidationEngine();first=engine.validate(OBS,trades,AT+timedelta(minutes=30));second=engine.validate(OBS,list(reversed(trades)),AT+timedelta(minutes=30))
     assert first==second and first.outcome=="PRICE_SIDEWAYS"
+
+
+def test_validation_never_marks_incomplete_horizons_or_source_gap_complete():
+    engine=OrderflowValidationEngine()
+    missing_horizons=engine.validate(
+        OBS,
+        [trade(0,0,100),trade(1,30,101)],
+        AT+timedelta(minutes=30),
+    )
+    assert missing_horizons and not missing_horizons.complete and missing_horizons.outcome is None
+    source_gap=engine.validate(
+        OBS,
+        [trade(0,0,100),trade(1,5,100),trade(3,15,100),trade(4,30,101)],
+        AT+timedelta(minutes=30),
+    )
+    assert source_gap and not source_gap.complete and source_gap.outcome is None
 
 
 def test_no_future_horizon_or_missing_baseline_is_invented():
@@ -34,6 +50,14 @@ def test_no_future_horizon_or_missing_baseline_is_invented():
     assert engine.validate(OBS,[trade(1,5,101)],AT+timedelta(minutes=5)) is None
     value=engine.validate(OBS,[trade(0,0,100),trade(1,5,101),trade(2,30,90)],AT+timedelta(minutes=5))
     assert value and [item.minutes for item in value.horizons]==[5]
+
+
+def test_future_rows_cannot_change_a_validation_at_the_cutoff():
+    engine=OrderflowValidationEngine()
+    at_cut=[trade(0,0,100),trade(1,5,101)]
+    first=engine.validate(OBS,at_cut,AT+timedelta(minutes=5))
+    replay=engine.validate(OBS,at_cut+[trade(999,30,1)],AT+timedelta(minutes=5))
+    assert first==replay
 
 
 def test_validation_has_no_prediction_probability_or_confidence():

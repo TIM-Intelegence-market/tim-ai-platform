@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import hashlib
+import ipaddress
 import json
 import threading
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -30,6 +31,20 @@ ALLOWED_TIMELINE_EVENTS = {
     "DATA_GAP",
     "RESTART",
 }
+
+
+def _require_loopback_host(host: str) -> str:
+    """Reject dashboard binds that could expose the research UI off-host."""
+    normalized = host.strip().lower()
+    if normalized == "localhost":
+        return host
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError as exc:
+        raise ValueError("dashboard host must be an explicit loopback address") from exc
+    if not address.is_loopback:
+        raise ValueError("dashboard host must be loopback-only")
+    return host
 
 
 def _safe(value: Any, fallback: str = "—") -> str:
@@ -1276,6 +1291,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
 
 class DashboardServer:
     def __init__(self, state: DashboardState, host: str = "127.0.0.1", port: int = 8765, research_router: ResearchRouter | None = None) -> None:
+        host = _require_loopback_host(host)
         self.state, self.host, self.port = state, host, port
         self.research_router = research_router or ResearchRouter()
         self.research_lock = threading.Lock()

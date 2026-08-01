@@ -129,8 +129,17 @@ class TIMApplication:
         persisted_cases=await self.repository.recent_research_cases(settings.symbol,1000)
         persisted_orderflow=await self.repository.recent_orderflow_observations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_observations") else []
         persisted_validations=await self.repository.recent_orderflow_validations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_validations") else []
-        current_bucket=await self.repository.agg_trades_since(settings.symbol,bucket_start(datetime.now(timezone.utc),"1h")) if hasattr(self.repository,"agg_trades_since") else []
-        for trade in current_bucket:self.aggregator.add_trade(trade)
+        # Rebuild from the oldest latest persisted candle, rather than merely
+        # the current hour. This preserves a raw trade bucket that was active
+        # when the prior process stopped and idempotently repairs any completed
+        # candles yielded during replay before live streaming resumes.
+        latest_persisted=[candles[-1].open_time for candles in self.history.values() if candles]
+        recovery_start=min(latest_persisted) if latest_persisted else bucket_start(datetime.now(timezone.utc),"1h")
+        recovery_trades=await self.repository.agg_trades_since(settings.symbol,recovery_start) if hasattr(self.repository,"agg_trades_since") else []
+        for trade in recovery_trades:
+            for recovered in self.aggregator.add_trade(trade):
+                if hasattr(self.repository,"upsert_candle"):
+                    await self.repository.upsert_candle(recovered)
         self.cases.cases={case.case_id:case for case in persisted_cases}
         self.observations.restore_seen([str(item.observation_id) for item in historical])
         with self.dashboard_state.lock:

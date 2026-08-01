@@ -37,7 +37,11 @@ def agg_trade_hash(trade:Trade)->str:
 def _validate_candle_for_persistence(candle:Candle,now:datetime|None=None)->None:
     current=now or datetime.now(timezone.utc)
     if candle.timeframe not in ALLOWED_TIMEFRAMES:raise ValueError(f"Unsupported candle timeframe: {candle.timeframe}")
-    if candle.open_time>current or candle.close_time>current:raise ValueError("Future candle timestamps are not allowed")
+    # Binance can deliver the first trade of a new bucket a few milliseconds
+    # before the local wall clock reaches the prior bucket's close boundary.
+    # The open time must already be historical; only the close boundary gets a
+    # narrow, explicit skew tolerance.
+    if candle.open_time>current or candle.close_time>current+timedelta(seconds=1):raise ValueError("Future candle timestamps are not allowed")
 
 
 def _validate_observation_for_persistence(observation:Observation,now:datetime|None=None)->None:

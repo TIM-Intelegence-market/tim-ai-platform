@@ -74,6 +74,12 @@ def test_dashboard_serves_html_and_json() -> None:
         server.stop()
 
 
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "example.com"])
+def test_dashboard_rejects_non_loopback_bind(host: str) -> None:
+    with pytest.raises(ValueError, match="loopback"):
+        DashboardServer(DashboardState(), host=host, port=0)
+
+
 def test_api_contract_uses_real_tim_field_names(tmp_path: Path) -> None:
     data=populated_state(tmp_path).snapshot()
     assert set(("timestamp","mode","provenance","candles","observations","research_cases","validator"))<=data.keys()
