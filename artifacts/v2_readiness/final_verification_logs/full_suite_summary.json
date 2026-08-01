@@ -1,0 +1,24 @@
+{
+  "command": "/Users/tim/Documents/TIM/tim/.venv/bin/python -m pytest -q --junitxml=/Users/tim/Documents/TIM/tim/artifacts/test_reports/v2_final_scope_corrected.junit.xml",
+  "complete": true,
+  "database_isolation": {
+    "cleaned": true,
+    "created": true,
+    "production_schema_used_by_tests": false,
+    "schema": "tim_v2_final_scope_corrected_20260801"
+  },
+  "duration_seconds": 35.591,
+  "exit_code": 0,
+  "failed": 0,
+  "finished_at": "2026-08-01T16:18:35.012329+00:00",
+  "passed": 362,
+  "pytest_version": "pytest 8.4.2",
+  "python_version": "3.14.6",
+  "skipped": 0,
+  "started_at": "2026-08-01T16:17:59.907776+00:00",
+  "temporary_directory": "/var/folders/0k/xr_qg7k55210_v3cz99l1zsw0000gn/T/tim-pytest-o8n9_o7e",
+  "timed_out": false,
+  "warnings": 154,
+  "xfailed": 0,
+  "xpassed": 0
+}

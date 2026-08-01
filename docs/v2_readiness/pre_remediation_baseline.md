@@ -28,7 +28,7 @@ This baseline is a read-only checkpoint. It does not approve V2, alter Core
 | PostgreSQL | `127.0.0.1:5432`, PostgreSQL 18.4 | ACCEPTING CONNECTIONS |
 | Ollama service | `127.0.0.1:11434`, four local models | RUNNING, DISABLED BY TIM POLICY |
 | TIM mode | API, manifest, schema constraints | OBSERVE-only |
-| Queue | direct await, depth 0 | HEALTHY |
+| Queue | API reports direct await and depth 0; no application queue/backpressure telemetry | NOT INSTRUMENTED |
 
 No listener was found on `0.0.0.0:8765`. The application contains no
 authenticated exchange endpoint, broker, wallet, order, position, or capital

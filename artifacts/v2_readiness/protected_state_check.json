@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0.0",
+  "checked_at_utc": "2026-08-01T16:22:47Z",
+  "baseline_reference": "artifacts/v2_readiness/baseline_manifest.json#immutable_artifacts",
+  "status": "PASS_EXACT_HASH_MATCH",
+  "tracked_worktree_changes_in_protected_paths": 0,
+  "artifacts": {
+    "config/core_manifest.json": {
+      "baseline_sha256": "82bfe439178299adc5bca0ac1de17614a3fd5fe6ed72a110861f88af9d014ca6",
+      "final_sha256": "82bfe439178299adc5bca0ac1de17614a3fd5fe6ed72a110861f88af9d014ca6",
+      "match": true
+    },
+    "TIM_V2_READINESS_CHECKLIST.md": {
+      "baseline_sha256": "696ad64f88441d65ac5c857ecdc60e73a1d1983bc611b8113a0b97291666f1f5",
+      "final_sha256": "696ad64f88441d65ac5c857ecdc60e73a1d1983bc611b8113a0b97291666f1f5",
+      "match": true
+    },
+    "data/research/snapshots/2026-07.in_progress.json": {
+      "baseline_sha256": "81fb9617b01ddd2f9dcf6651a0a433b8a9641052d6152d9c4541344b0aa0ada3",
+      "final_sha256": "81fb9617b01ddd2f9dcf6651a0a433b8a9641052d6152d9c4541344b0aa0ada3",
+      "match": true
+    },
+    "data/research/status/tim_v1_readiness.json": {
+      "baseline_sha256": "7b682c57521f766c90e18900e490892d0faec2def4e3dbd65343e8380ab2ef6a",
+      "final_sha256": "7b682c57521f766c90e18900e490892d0faec2def4e3dbd65343e8380ab2ef6a",
+      "match": true
+    },
+    "data/operational/state.json": {
+      "baseline_sha256": "1d609ae732431b4101e7e37bf75f59d266ba9f5663de110f69325e6cae53a7a6",
+      "final_sha256": "1d609ae732431b4101e7e37bf75f59d266ba9f5663de110f69325e6cae53a7a6",
+      "match": true
+    },
+    "data/operational/validation_report.json": {
+      "baseline_sha256": "1f515a2ca2772efff41c20cc45201584e1f1c9f52c22123f5fdce7abd2b7446e",
+      "final_sha256": "1f515a2ca2772efff41c20cc45201584e1f1c9f52c22123f5fdce7abd2b7446e",
+      "match": true
+    },
+    "graphify-out/graph.json": {
+      "baseline_sha256": "60b11531c8cdbce3786d66f35cf4a5b649c95824271e1aed7682ff2b1702d513",
+      "final_sha256": "60b11531c8cdbce3786d66f35cf4a5b649c95824271e1aed7682ff2b1702d513",
+      "match": true
+    }
+  }
+}

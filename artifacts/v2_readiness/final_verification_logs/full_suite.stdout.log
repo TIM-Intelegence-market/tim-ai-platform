@@ -1,0 +1,121 @@
+........................................................................ [ 19%]
+........................................................................ [ 39%]
+........................................................................ [ 59%]
+........................................................................ [ 79%]
+........................................................................ [ 99%]
+..                                                                       [100%]
+=============================== warnings summary ===============================
+tests/test_acceptance.py::test_health_matrix_green_for_healthy_hour
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+tests/test_agg_trade_persistence.py: 3 warnings
+tests/test_atomic_persistence.py: 1 warning
+tests/test_observation_id_uniqueness.py: 1 warning
+tests/test_orderflow_metrics.py: 1 warning
+tests/test_orderflow_observations.py: 1 warning
+tests/test_research_health_integrity.py: 1 warning
+tests/test_research_module_b.py: 1 warning
+tests/test_research_modules.py: 5 warnings
+tests/test_research_router.py: 1 warning
+tests/test_restart_persisted_cases.py: 2 warnings
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:874: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+tests/test_agg_trade_persistence.py: 3 warnings
+tests/test_atomic_persistence.py: 1 warning
+tests/test_observation_id_uniqueness.py: 1 warning
+tests/test_orderflow_metrics.py: 1 warning
+tests/test_orderflow_observations.py: 1 warning
+tests/test_research_health_integrity.py: 1 warning
+tests/test_research_module_b.py: 1 warning
+tests/test_research_modules.py: 5 warnings
+tests/test_research_router.py: 1 warning
+tests/test_restart_persisted_cases.py: 2 warnings
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:772: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+tests/test_agg_trade_persistence.py: 3 warnings
+tests/test_atomic_persistence.py: 1 warning
+tests/test_observation_id_uniqueness.py: 1 warning
+tests/test_orderflow_metrics.py: 1 warning
+tests/test_orderflow_observations.py: 1 warning
+tests/test_research_health_integrity.py: 1 warning
+tests/test_research_module_b.py: 1 warning
+tests/test_research_modules.py: 5 warnings
+tests/test_research_router.py: 1 warning
+tests/test_restart_persisted_cases.py: 2 warnings
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:777: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+tests/test_agg_trade_persistence.py: 3 warnings
+tests/test_atomic_persistence.py: 1 warning
+tests/test_observation_id_uniqueness.py: 1 warning
+tests/test_orderflow_metrics.py: 1 warning
+tests/test_orderflow_observations.py: 1 warning
+tests/test_research_health_integrity.py: 1 warning
+tests/test_research_module_b.py: 1 warning
+tests/test_research_modules.py: 5 warnings
+tests/test_research_router.py: 1 warning
+tests/test_restart_persisted_cases.py: 2 warnings
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:1183: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+tests/test_agg_trade_persistence.py: 3 warnings
+tests/test_atomic_persistence.py: 1 warning
+tests/test_observation_id_uniqueness.py: 1 warning
+tests/test_orderflow_metrics.py: 1 warning
+tests/test_orderflow_observations.py: 1 warning
+tests/test_research_health_integrity.py: 1 warning
+tests/test_research_module_b.py: 1 warning
+tests/test_research_modules.py: 5 warnings
+tests/test_research_router.py: 1 warning
+tests/test_restart_persisted_cases.py: 2 warnings
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:889: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+tests/test_agg_trade_persistence.py: 3 warnings
+tests/test_atomic_persistence.py: 1 warning
+tests/test_observation_id_uniqueness.py: 1 warning
+tests/test_orderflow_metrics.py: 1 warning
+tests/test_orderflow_observations.py: 1 warning
+tests/test_research_health_integrity.py: 1 warning
+tests/test_research_module_b.py: 1 warning
+tests/test_research_modules.py: 5 warnings
+tests/test_research_router.py: 1 warning
+tests/test_restart_persisted_cases.py: 2 warnings
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:794: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+tests/test_agg_trade_persistence.py: 3 warnings
+tests/test_atomic_persistence.py: 1 warning
+tests/test_observation_id_uniqueness.py: 1 warning
+tests/test_orderflow_metrics.py: 1 warning
+tests/test_orderflow_observations.py: 1 warning
+tests/test_research_health_integrity.py: 1 warning
+tests/test_research_module_b.py: 1 warning
+tests/test_research_modules.py: 5 warnings
+tests/test_research_router.py: 1 warning
+tests/test_restart_persisted_cases.py: 2 warnings
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:942: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+tests/test_agg_trade_persistence.py: 3 warnings
+tests/test_atomic_persistence.py: 1 warning
+tests/test_observation_id_uniqueness.py: 1 warning
+tests/test_orderflow_metrics.py: 1 warning
+tests/test_orderflow_observations.py: 1 warning
+tests/test_research_health_integrity.py: 1 warning
+tests/test_research_module_b.py: 1 warning
+tests/test_research_modules.py: 5 warnings
+tests/test_research_router.py: 1 warning
+tests/test_restart_persisted_cases.py: 2 warnings
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:966: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+tests/test_agg_trade_persistence.py: 3 warnings
+tests/test_atomic_persistence.py: 1 warning
+tests/test_observation_id_uniqueness.py: 1 warning
+tests/test_orderflow_metrics.py: 1 warning
+tests/test_orderflow_observations.py: 1 warning
+tests/test_research_health_integrity.py: 1 warning
+tests/test_research_module_b.py: 1 warning
+tests/test_research_modules.py: 5 warnings
+tests/test_research_router.py: 1 warning
+tests/test_restart_persisted_cases.py: 2 warnings
+  /Users/tim/Documents/New project/tim/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:978: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /Users/tim/Documents/TIM/tim/artifacts/test_reports/v2_final_scope_corrected.junit.xml -
+362 passed, 154 warnings in 34.26s

@@ -1,0 +1,29 @@
+2026-08-01T16:18:45Z
+COMMAND=.venv/bin/python -m src.tim_manager.cli doctor
+{
+  "status": "PASS",
+  "checks": {
+    "config": true,
+    "project_root": true,
+    "storage_parent": true,
+    "protected_write_check": true,
+    "snapshot": true,
+    "mcp": true,
+    "external_models": "optional_disabled"
+  }
+}
+DOCTOR_EXIT=0
+COMMAND=.venv/bin/python -m src.tim_manager.cli validate
+{
+  "status": "PASS",
+  "checks": {
+    "config": true,
+    "project_root": true,
+    "storage_parent": true,
+    "protected_write_check": true,
+    "snapshot": true,
+    "mcp": true,
+    "external_models": "optional_disabled"
+  }
+}
+VALIDATE_EXIT=0
