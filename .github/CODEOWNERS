@@ -1,0 +1,21 @@
+# TIM CODEOWNERS
+# Phase 10 — CODEOWNERS & PR template (v2.0)
+
+# Default owner for all files (repository owner, User plan account)
+* @uezeyiraydin-cell
+
+# Security-sensitive paths require the repository owner's review
+SECURITY.md @uezeyiraydin-cell
+TIM_SECURITY_ZERO_TRUST_CONSTITUTION.md @uezeyiraydin-cell
+config/ @uezeyiraydin-cell
+scripts/ @uezeyiraydin-cell
+
+# GitHub toolchain configuration
+.github/workflows/ @uezeyiraydin-cell
+.github/dependabot.yml @uezeyiraydin-cell
+.github/CODEOWNERS @uezeyiraydin-cell
+codecov.yml @uezeyiraydin-cell
+sonar-project.properties @uezeyiraydin-cell
+
+# Database schema and migrations are protected (OBSERVE-only guarantees)
+src/database/ @uezeyiraydin-cell
