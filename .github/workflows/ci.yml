@@ -37,7 +37,7 @@ jobs:
           TIM_ALLOW_DATABASE_URL_ENV_FOR_TESTS: "true"
       - name: Upload coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           files: coverage.xml
           flags: unittests
