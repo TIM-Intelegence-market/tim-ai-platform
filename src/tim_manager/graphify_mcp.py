@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import select
+import shutil
 import subprocess
 import time
 import uuid
@@ -15,6 +16,64 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .config import PROJECT_ROOT, load_config
+from .config_paths import (
+    REPO_ROOT_PLACEHOLDER,
+    RepositoryPathError,
+    repository_path,
+)
+
+
+def _resolve_portable_paths(value: dict[str, Any]) -> dict[str, Any]:
+    """Resolve repository-placeholder paths inside a copied config dict.
+
+    Only the documented path-bearing fields are rewritten; everything else is
+    left byte-identical. Path resolution never happens inside config files.
+    """
+    resolved = dict(value)
+    for field in ("working_directory", "graph_path"):
+        spec = resolved.get(field)
+        if isinstance(spec, str):
+            resolved[field] = str(repository_path(spec))
+    command = resolved.get("command")
+    if isinstance(command, str):
+        resolved["command"] = _resolve_command(command)
+    arguments = resolved.get("arguments")
+    if isinstance(arguments, list):
+        resolved["arguments"] = [
+            str(repository_path(item)) if isinstance(item, str) and REPO_ROOT_PLACEHOLDER in item else item
+            for item in arguments
+        ]
+    return resolved
+
+
+def _resolve_command(command: str) -> str:
+    """Resolve a configured command portably.
+
+    Priority:
+      1. explicit environment variable ``TIM_GRAPHIFY_MCP_BIN``,
+      2. repository placeholder (absolute, inside the repository),
+      3. ``shutil.which`` lookup on PATH for a bare executable name,
+      4. verbatim absolute path (security-checked when it uses a placeholder).
+
+    The gateway is disabled by default, so an unavailable executable only
+    surfaces as a client-side ``GraphifyClientError`` at connect time; config
+    loading never fails merely because a host tool is absent.
+    """
+    env_value = os.environ.get("TIM_GRAPHIFY_MCP_BIN", "").strip()
+    if env_value:
+        resolved = Path(env_value).expanduser()
+        if not resolved.is_absolute():
+            raise GraphifyConfigurationError("TIM_GRAPHIFY_MCP_BIN must be absolute")
+        return str(resolved.resolve())
+    if REPO_ROOT_PLACEHOLDER in command:
+        return str(repository_path(command))
+    stripped = command.strip()
+    if stripped and not Path(stripped).is_absolute():
+        found = shutil.which(stripped)
+        if found:
+            return found
+        return str(Path(PROJECT_ROOT / ".venv" / "bin" / stripped).resolve())
+    return command
 
 
 LOGGER = logging.getLogger("tim_manager.graphify_mcp")
@@ -152,6 +211,7 @@ class GraphifyMCPConfig:
             for name in numeric_fields
         ):
             raise GraphifyConfigurationError("timeouts and bounds must be numeric")
+        value = _resolve_portable_paths(value)
         config = cls(
             enabled=value["enabled"],
             transport=value["transport"],
