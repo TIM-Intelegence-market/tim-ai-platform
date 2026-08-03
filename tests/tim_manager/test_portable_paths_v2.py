@@ -15,7 +15,7 @@ from src.tim_manager.config_paths import (
 def test_repository_root_is_portable_and_absolute() -> None:
     root = repository_root()
     assert root.is_absolute()
-    assert root.name == "tim"
+    assert (root / ".git").exists() or (root / "main.py").exists()
 
 
 def test_placeholder_resolves_to_repository_root() -> None:

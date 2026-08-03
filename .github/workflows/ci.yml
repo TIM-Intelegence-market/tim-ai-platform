@@ -17,6 +17,20 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: tim
+          POSTGRES_USER: tim
+          POSTGRES_PASSWORD: tim_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tim -d tim"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,6 +49,8 @@ jobs:
         env:
           TIM_RUNTIME_ENV: test
           TIM_ALLOW_DATABASE_URL_ENV_FOR_TESTS: "true"
+          TIM_DATABASE_SECRET_PROVIDER: url-env
+          TIM_DATABASE_URL: postgresql://tim:tim_ci_only@127.0.0.1:5432/tim
       - name: Upload coverage to Codecov
         if: success()
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
