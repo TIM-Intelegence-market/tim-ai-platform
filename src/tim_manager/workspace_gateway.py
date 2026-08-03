@@ -379,6 +379,8 @@ class WorkspaceRequest:
         normalized_query = self.query.lower().replace("\\", "/")
         if any(marker in normalized_query for marker in EXCLUDED_PATH_MARKERS):
             raise WorkspaceGatewayPolicyError("query targets an excluded path")
+        if ".." in normalized_query.split("/"):
+            raise WorkspaceGatewayPolicyError("query contains a parent directory traversal")
         if not 1 <= self.max_results <= min(20, config.max_results):
             raise WorkspaceGatewayPolicyError("max_results exceeds policy")
         try:
