@@ -50,3 +50,27 @@ def test_candle_close_boundary_allows_one_second_clock_skew_only():
     too_early=Candle("BTCUSDT","1m",opened,NOW+timedelta(seconds=2),100,101,99,100,1,1)
     with pytest.raises(ValueError,match="Future candle"):
         _validate_candle_for_persistence(too_early,NOW)
+
+
+@pytest.mark.asyncio
+async def test_recent_candles_excludes_invalid_persisted_ohlc_rows():
+    class Connection:
+        async def fetch(self, query, *arguments):
+            assert "high >= open" in query
+            assert "low <= close" in query
+            return []
+
+    class Acquire:
+        async def __aenter__(self):
+            return Connection()
+
+        async def __aexit__(self, *_arguments):
+            return None
+
+    class DatabaseStub:
+        def acquire(self):
+            return Acquire()
+
+    from src.database.repository import MarketRepository
+
+    assert await MarketRepository(DatabaseStub()).recent_candles("BTCUSDT", "1h", 500) == []

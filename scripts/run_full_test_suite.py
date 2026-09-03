@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config.settings import settings
+from src.database.safety import require_safe_test_database
 
 
 def repository_root() -> Path:
@@ -60,6 +60,11 @@ def pytest_warning_count(output: str) -> int:
 
 ISOLATED_SCHEMA_PATTERN = re.compile(r"^[a-z][a-z0-9_]{2,62}$")
 PROTECTED_SCHEMAS = {"public", "pg_catalog", "information_schema"}
+ISOLATED_TEST_FLAGS = {
+    "TIM_DATABASE_SECRET_PROVIDER": "url-env",
+    "TIM_RUNTIME_ENV": "test",
+    "TIM_ALLOW_DATABASE_URL_ENV_FOR_TESTS": "true",
+}
 
 
 def validate_isolated_schema(schema: str) -> None:
@@ -73,6 +78,39 @@ def isolated_database_url(database_url: str, schema: str) -> str:
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
     query["options"] = f"-csearch_path={schema}"
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
+
+
+def resolve_test_database_url(env: dict[str, str], isolated_schema: str | None) -> str:
+    """Resolve lazily, allowing an explicit URL only for an isolated test schema."""
+
+    explicit = env.get("TIM_DURABLE_TEST_DATABASE_URL")
+    if explicit is None:
+        raise ValueError("TIM_DURABLE_TEST_DATABASE_URL is required; runtime database fallback is forbidden")
+    if not isolated_schema:
+        raise ValueError("TIM_DURABLE_TEST_DATABASE_URL is accepted by the suite runner only with --isolated-schema")
+    parsed = urlsplit(explicit)
+    try:
+        port = parsed.port or 5432
+    except ValueError as exc:
+        raise ValueError("isolated test database URL is invalid") from exc
+    if (
+        parsed.scheme not in {"postgres", "postgresql"}
+        or parsed.hostname not in {"127.0.0.1", "::1", "localhost"}
+        or not parsed.username
+        or parsed.password is None
+        or not parsed.path.lstrip("/")
+        or not 1 <= port <= 65535
+    ):
+        raise ValueError("isolated test database URL must be a credentialed loopback PostgreSQL URL")
+    require_safe_test_database(explicit, {**env, "TIM_RUNTIME_ENV": "test"})
+    return explicit
+
+
+def isolated_child_environment(env: dict[str, str], database_url: str) -> dict[str, str]:
+    child = dict(env)
+    child.update(ISOLATED_TEST_FLAGS)
+    child["TIM_DURABLE_TEST_DATABASE_URL"] = database_url
+    return child
 
 
 async def create_isolated_schema(database_url: str, schema: str) -> None:
@@ -117,13 +155,13 @@ def main() -> int:
     tmpdir = Path(tempfile.mkdtemp(prefix="tim-pytest-"))
     env = os.environ.copy()
     env.update({"TMPDIR": str(tmpdir), "TMP": str(tmpdir), "TEMP": str(tmpdir)})
-    base_database_url = env.get("TIM_DATABASE_URL", settings.database_url)
+    base_database_url = resolve_test_database_url(env, args.isolated_schema)
     isolated_schema_created = False
     isolated_schema_cleaned = False
     if args.isolated_schema:
         asyncio.run(create_isolated_schema(base_database_url, args.isolated_schema))
         isolated_schema_created = True
-        env["TIM_DATABASE_URL"] = isolated_database_url(base_database_url, args.isolated_schema)
+        env = isolated_child_environment(env, isolated_database_url(base_database_url, args.isolated_schema))
     command = [sys.executable, "-m", "pytest", "-q", f"--junitxml={junit}", *args.pytest_args]
     started = datetime.now(timezone.utc)
     started_monotonic = time.monotonic()

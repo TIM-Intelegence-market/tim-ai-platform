@@ -82,13 +82,15 @@ and unnecessary churn in accepted components.
   generated artifacts are ignored.
 - No tracked file was at least 5 MiB.
 - Pattern review found no committed private key or production token.
-- `docker-compose.yml` and `scripts/setup_postgres.sh` contain the documented
-  fixed value `tim_local_only` for a loopback-only development database. It is
-  not a production secret, but it is a reusable credential and is a security
-  debt item. It was not changed because runtime paths are outside this
-  governance-only scope.
-- `scripts/reset_postgres_password.sh` reads an administrator password
-  interactively and does not persist it in the repository.
+- Historical audit finding: `docker-compose.yml`, `config/settings.py` and
+  `scripts/setup_postgres.sh` contained
+  `@REDACTED_LEGACY_DATABASE_CREDENTIAL@`, a fixed reusable database
+  credential. The literal is intentionally omitted. Current source now uses a
+  fail-closed Secret Provider and the history finding remains documented; the
+  live credential still requires legitimate PostgreSQL-admin rotation and a
+  negative test before the risk can be closed.
+- `scripts/reset_postgres_password.sh` now prepares a private Keychain/SCRAM
+  handoff without printing or persisting a plaintext credential in Git.
 - `src/tim_manager/security.py` contains secret-detection rules, not secrets.
 
 ## Risks and recommendations
@@ -98,8 +100,9 @@ and unnecessary churn in accepted components.
 2. Resolve the licensing decision before public distribution. No license is
    granted merely because source is visible, and no license was invented by
    this audit.
-3. Replace the fixed local database password in a separately approved runtime
-   security change and verify compatibility.
+3. Complete the prepared administrator rotation, test rejection of the legacy
+   credential and verify the Keychain-backed runtime before closing the
+   historical credential finding.
 4. Enable branch protection, secret scanning, dependency review, and private
    vulnerability reporting after GitHub creation.
 5. Confirm data classification before connecting Graphify. Metadata-only areas

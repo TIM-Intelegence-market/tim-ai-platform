@@ -1,0 +1,154 @@
+{
+  "abort_conditions": [
+    "postgresql_lan_exposure",
+    "observe_only_violation",
+    "trading_action_count_nonzero",
+    "unrecoverable_cursor_or_outbox_integrity_failure",
+    "unbounded_or_silent_queue_loss",
+    "protected_state_change"
+  ],
+  "blocking_start_gates": [
+    "postgresql_security",
+    "safe_stop",
+    "durable_ingestion",
+    "durable_cursor",
+    "durable_outbox",
+    "watchdog",
+    "log_rotation",
+    "full_suite",
+    "configuration_and_commit_frozen"
+  ],
+  "campaign_status": "NOT_STARTED_START_GATE_BLOCKED",
+  "case_target": 1000,
+  "configuration_hash": "82bfe439178299adc5bca0ac1de17614a3fd5fe6ed72a110861f88af9d014ca6",
+  "coverage_target": 0.95,
+  "daily_manifest_policy": "ONE_IMMUTABLE_MANIFEST_PER_UTC_DAY_AFTER_REAL_START",
+  "daily_manifests_written": 0,
+  "data_type": "PUBLIC_AGGTRADES_DERIVED_CLOSED_1M_AND_CANONICAL_CASE_UNITS",
+  "dataset_id": "V2_PROSPECTIVE_QUALIFICATION_V1",
+  "dataset_schema_version": "1.0.0",
+  "duration": {
+    "completion_still_requires": [
+      "coverage_at_least_95_percent",
+      "1000_quality_valid_non_overlapping_units",
+      "negative_and_neutral_controls",
+      "required_regime_coverage",
+      "replay_lookahead_leakage_and_determinism_pass",
+      "real_human_review_and_approval"
+    ],
+    "empirical_projection_minutes": 48480,
+    "empirical_reference_minutes_per_strict_unit": 48.479866,
+    "mathematical_lower_bound_duration": "20 days, 20:00:00",
+    "mathematical_lower_bound_minutes": 30000,
+    "pre_registered_minimum_days": 34,
+    "pre_registered_minimum_minutes": 48960,
+    "rule": "MAX_1000_X_30M_NON_OVERLAP_AND_CURRENT_STRICT_UNIT_RATE_ROUNDED_UP_TO_FULL_UTC_DAY"
+  },
+  "exclusion_rules": [
+    "incomplete_5_15_30_minute_horizons",
+    "source_gap_overlap",
+    "missing_or_non_closed_case",
+    "case_outcome_mismatch",
+    "incomplete_provenance",
+    "duplicate_or_near_duplicate_source_window",
+    "look_ahead_or_leakage_detected"
+  ],
+  "expected_end_utc": null,
+  "frequency": "PT1M",
+  "gap_rules": {
+    "incident_required": true,
+    "missing_minute": "EXPECTED_CLOSED_1M_WITHOUT_VALID_SOURCE_BACKED_CANDLE",
+    "no_fill": [
+      "synthetic",
+      "interpolation",
+      "forward_fill",
+      "cross_market_substitution"
+    ]
+  },
+  "generated_at_utc": "2026-08-01T21:17:12.299100Z",
+  "human_approval": false,
+  "independent_unit": "STRICT_NON_OVERLAPPING_PT30M_SOURCE_WINDOW_V1",
+  "market": "BINANCE_SPOT",
+  "preregistration_hash": "f73c6706368edd8282ae2f7e922c9b148a78c4ca2ab7409a3627dcb82cb3b2d9",
+  "quality_rules": [
+    "public_binance_spot_source_only",
+    "transactionally_persisted_raw_event_cursor_and_outbox",
+    "deterministic_hash_bound_inputs_and_outputs",
+    "positive_negative_and_neutral_control_sampling",
+    "volatility_liquidity_session_weekday_regime_strata"
+  ],
+  "readiness_counted": false,
+  "restart_rules": [
+    "use_scripts_timctl_only",
+    "persist_cursor_and_checkpoint_before_stop",
+    "resume_open_outbox_before_live_ingress",
+    "catch_up_public_data_before_live_continuation",
+    "append_incident_and_daily_manifest"
+  ],
+  "retrospective_start_prohibited": true,
+  "reviewer_requirements": {
+    "automated_signature_prohibited": true,
+    "inter_rater_conflict_resolution_required": true,
+    "minimum_reviewers": 2,
+    "release_authority_signature_required": true,
+    "reviewer_identity_required": true,
+    "timestamp_and_rationale_required": true
+  },
+  "schema_version": "1.0.0",
+  "software_commit": "d2af4a3d36502bfb15910f800a6dffec40811194",
+  "start_gates": [
+    {
+      "evidence": "artifacts/v2_completion/postgres_listener_before.json",
+      "name": "postgresql_security",
+      "status": "FAIL"
+    },
+    {
+      "evidence": "artifacts/v2_completion/safe_stop_test.json",
+      "name": "safe_stop",
+      "status": "PENDING"
+    },
+    {
+      "evidence": "final runtime acceptance not yet complete",
+      "name": "durable_ingestion",
+      "status": "PENDING"
+    },
+    {
+      "evidence": "artifacts/v2_completion/durable_cursor_state.json",
+      "name": "durable_cursor",
+      "status": "PENDING"
+    },
+    {
+      "evidence": "artifacts/v2_completion/queue_metrics.json",
+      "name": "durable_outbox",
+      "status": "PENDING"
+    },
+    {
+      "evidence": "artifacts/v2_completion/watchdog_status.json",
+      "name": "watchdog",
+      "status": "PENDING"
+    },
+    {
+      "evidence": "final log-retention acceptance not yet complete",
+      "name": "log_rotation",
+      "status": "PENDING"
+    },
+    {
+      "evidence": "artifacts/v2_completion/baseline_manifest.json",
+      "name": "observe_only",
+      "status": "PASS"
+    },
+    {
+      "evidence": "artifacts/v2_completion/final_test_summary.json",
+      "name": "full_suite",
+      "status": "PENDING"
+    },
+    {
+      "evidence": "candidate implementation commit d2af4a3d36502bfb15910f800a6dffec40811194",
+      "name": "configuration_and_commit_frozen",
+      "status": "PENDING"
+    }
+  ],
+  "start_utc": null,
+  "symbol": "BTCUSDT",
+  "trading_approved": false
+}

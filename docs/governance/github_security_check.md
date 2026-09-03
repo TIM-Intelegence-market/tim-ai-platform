@@ -16,7 +16,7 @@ Status: **REMOTE CONNECTED — HOSTED CONTROLS PENDING**
 | Ignored local sensitive/runtime paths | PASS | `.env*`, data, output, logs, DBs, caches, swap and generated runtime artifacts |
 | Large tracked raw files | PASS | No tracked file at least 5 MiB |
 | Personal data | NO EVIDENCE FOUND | Pattern and path review only; not a legal data inventory |
-| Fixed local database credential | RISK | `tim_local_only` exists in local setup files; loopback development use, not suitable as a production secret |
+| Fixed local database credential | HISTORICAL RISK — ROTATION PENDING | Current source no longer contains the literal; history contains `@REDACTED_LEGACY_DATABASE_CREDENTIAL@`. PostgreSQL-admin rotation and negative verification remain mandatory. |
 | Repository license | NOT CONFIGURED | Owner legal decision required |
 
 The scan was intentionally non-destructive and did not print suspected secret

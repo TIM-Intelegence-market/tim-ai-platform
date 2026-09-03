@@ -21,13 +21,13 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: tim
+          POSTGRES_DB: tim_test
           POSTGRES_USER: tim
           POSTGRES_PASSWORD: tim_ci_only
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U tim -d tim"
+          --health-cmd "pg_isready -U tim -d tim_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -50,7 +50,7 @@ jobs:
           TIM_RUNTIME_ENV: test
           TIM_ALLOW_DATABASE_URL_ENV_FOR_TESTS: "true"
           TIM_DATABASE_SECRET_PROVIDER: url-env
-          TIM_DATABASE_URL: postgresql://tim:tim_ci_only@127.0.0.1:5432/tim
+          TIM_DURABLE_TEST_DATABASE_URL: postgresql://tim:tim_ci_only@127.0.0.1:5432/tim_test
       - name: Upload coverage to Codecov
         if: success()
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac

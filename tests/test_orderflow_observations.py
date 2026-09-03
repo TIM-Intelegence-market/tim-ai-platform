@@ -1,6 +1,7 @@
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import os
 
 import pytest
 
@@ -46,12 +47,14 @@ def test_non_adjacent_windows_are_rejected():
 
 @pytest.mark.asyncio
 async def test_observation_and_case_persistence_is_atomic_and_idempotent(monkeypatch):
-    from config.settings import settings
     from src.database.connection import Database
     from src.database.repository import MarketRepository
     previous=metric();current=metric(START+timedelta(minutes=1),buy_count=10,sell_count=3,aggressive_buy_volume=Decimal("3"),aggressive_sell_volume=Decimal("1"),total_volume=Decimal("4"),net_delta=Decimal("2"),cumulative_delta=Decimal("2"),buy_sell_ratio=Decimal("3"),source_hash="b"*64)
     observation=OrderflowObservationEngine().evaluate(previous,current)[0];case=OrderflowResearchCaseEngine().create(observation)
-    database=Database(settings.database_url);await database.connect();await database.initialize_schema();repository=MarketRepository(database)
+    database_url = os.getenv("TIM_DURABLE_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("isolated durable-ingestion PostgreSQL URL not provided")
+    database=Database(database_url);await database.connect();await database.initialize_schema();repository=MarketRepository(database)
     async with database.acquire() as con:
         await con.execute("DELETE FROM research_cases WHERE case_id=$1",case.case_id);await con.execute("DELETE FROM orderflow_observations WHERE observation_id=$1",observation.observation_id)
     original=repository._upsert_case

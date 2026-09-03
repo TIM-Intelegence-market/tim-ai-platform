@@ -17,6 +17,9 @@ from src.analytics.research import ResearchAnalyticsEngine
 from src.dashboard.operations import OPERATIONS_PAGES, build_operations_snapshot, render_operations_page
 from src.insights import ResearchInsightsEngine
 from src.research.router import ResearchRouter
+from src.llm.ollama_client import OllamaClient
+from src.llm.prompts import observation_prompt
+from config.settings import settings
 
 
 DASHBOARD_VERSION = "3.0.0"
@@ -1489,6 +1492,56 @@ class DashboardServer:
                     cid = unquote(path.removeprefix("/api/cases/"))
                     item = next((entry for entry in outer.state.snapshot()["research_cases"] if str(entry.get("case_id")) == cid), None)
                     return self.respond(200 if item else 404, json.dumps(item or {"error": "case not found"}).encode(), "application/json")
+                if path == "/api/rag":
+                    q = (query.get("q", [""])[0] or "").strip().lower()
+                    if not q:
+                        return self.respond(400, b'{"error":"q query param required"}', "application/json")
+                    snap = outer.state.snapshot()
+                    # RAG über Research Cases + Market Memory (active_observations)
+                    scored = []
+                    for obs in snap["active_observations"][-100:]:
+                        text = f"{obs.get('kind','')} {obs.get('summary','')} {obs.get('rule_id','')}".lower()
+                        score = sum(1 for tok in q.split() if tok in text) / max(1, len(q.split()))
+                        if score > 0:
+                            scored.append((score, obs))
+                    scored.sort(key=lambda x: x[0], reverse=True)
+                    top_obs = [o for _, o in scored[:5]]
+                    # auch Cases durchsuchen
+                    case_hits = []
+                    for case in snap["research_cases"][-50:]:
+                        text = f"{case.get('case_id','')} {' '.join(case.get('observation_ids',[]))} {' '.join(case.get('missing_evidence',[]))}".lower()
+                        if any(tok in text for tok in q.split()):
+                            case_hits.append(case)
+                            if len(case_hits) >= 5:
+                                break
+                    payload = {"query": q, "observations": top_obs, "cases": case_hits[:5], "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC", "graphify": "enabled" if Path("graphify-out/graph.json").exists() else "disabled", "omniroute": "http://localhost:20128/v1"}
+                    return self.respond(200, json.dumps(payload).encode(), "application/json")
+                if path == "/api/llm/explain":
+                    q = (query.get("q", [""])[0] or "").strip()
+                    obs_id = (query.get("observation_id", [""])[0] or "").strip()
+                    snap = outer.state.snapshot()
+                    # finde Observation
+                    obs = None
+                    if obs_id:
+                        obs = next((o for o in snap["active_observations"] if str(o.get("observation_id")) == obs_id), None)
+                    if not obs and snap["active_observations"]:
+                        obs = snap["active_observations"][-1]
+                    if not obs:
+                        return self.respond(404, b'{"error":"no observation for LLM"}', "application/json")
+                    # LLM via Ollama/OmniRoute wenn enabled, sonst Fallback
+                    import asyncio as _asyncio
+                    try:
+                        if not settings.enable_ollama:
+                            raise RuntimeError("Ollama disabled by policy")
+                        client = OllamaClient(settings.ollama_url, settings.ollama_model)
+                        # auch OmniRoute als fallback testen (20128)
+                        prompt = observation_prompt(type("O",(),obs)()) if False else f"Erkläre TIM Observation {obs.get('kind')} {obs.get('summary')} OBSERVE-only, keine Handlungsempfehlung. Query: {q}"
+                        # sync call via asyncio
+                        result = _asyncio.run(client.generate_json(prompt)) if hasattr(client, 'generate_json') else {"explanation": "LLM disabled"}
+                        payload = {"observation": obs, "llm": result, "model": settings.ollama_model, "via": settings.ollama_url, "omniroute": "http://localhost:20128/v1"}
+                    except Exception as exc:
+                        payload = {"observation": obs, "llm": {"explanation": f"LLM unavailable: {type(exc).__name__}: {exc}", "fallback": f"Observation {obs.get('kind')} {obs.get('summary')} — Provenance {obs.get('provenance')}"}, "model": settings.ollama_model, "via": "fallback", "omniroute": "http://localhost:20128/v1"}
+                    return self.respond(200, json.dumps(payload).encode(), "application/json")
                 if path.startswith("/reports/"):
                     name = Path(unquote(path.removeprefix("/reports/"))).name
                     root = outer.research_router.config.report_root.resolve()

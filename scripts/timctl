@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import plistlib
+import re
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from urllib.error import URLError
+from urllib.request import urlopen
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from config.secrets import DatabaseSecretResolver, SecretProviderError  # noqa: E402
+from config.settings import settings  # noqa: E402
+
+
+class RuntimeControlError(RuntimeError):
+    pass
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def atomic_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, sort_keys=True, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def run(command: list[str], *, timeout: float = 15) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=ROOT,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeControlError(f"required local command failed: {Path(command[0]).name}") from exc
+
+
+class RuntimeControl:
+    def __init__(self) -> None:
+        test_mode = os.getenv("TIMCTL_TEST_MODE", "false").lower() == "true"
+        configured_plist = os.getenv("TIMCTL_PLIST_PATH") if test_mode else None
+        self.plist_path = Path(configured_plist or Path.home() / "Library/LaunchAgents/com.tim.runtime.plist")
+        self.launchctl = os.getenv("TIMCTL_LAUNCHCTL", "/bin/launchctl") if test_mode else "/bin/launchctl"
+        self.netstat = os.getenv("TIMCTL_NETSTAT", "/usr/sbin/netstat") if test_mode else "/usr/sbin/netstat"
+        self.ps = os.getenv("TIMCTL_PS", "/bin/ps") if test_mode else "/bin/ps"
+        self.dashboard_port = int(os.getenv("TIM_DASHBOARD_PORT", "8765"))
+        self.database_port = settings.database_port
+        self.launch_domain = f"gui/{os.getuid()}"
+        self.plist = self._load_plist()
+        self.label = str(self.plist["Label"])
+        self.target = f"{self.launch_domain}/{self.label}"
+        self.runtime_python = str(self.plist["ProgramArguments"][0])
+        self.ingestion_control = ROOT / "scripts/tim_ingestion_control.py"
+
+    def _load_plist(self) -> dict[str, Any]:
+        try:
+            metadata = self.plist_path.stat()
+            with self.plist_path.open("rb") as handle:
+                value = plistlib.load(handle)
+        except (OSError, plistlib.InvalidFileException) as exc:
+            raise RuntimeControlError("TIM launchd plist is missing or invalid") from exc
+        if metadata.st_uid != os.getuid() or metadata.st_mode & 0o022:
+            raise RuntimeControlError("TIM launchd plist ownership or permissions are unsafe")
+        if not isinstance(value, dict) or not isinstance(value.get("Label"), str):
+            raise RuntimeControlError("TIM launchd plist has no valid Label")
+        arguments = value.get("ProgramArguments")
+        if not isinstance(arguments, list) or str(ROOT / "main.py") not in {str(item) for item in arguments}:
+            raise RuntimeControlError("launchd plist is not the TIM runtime service")
+        if Path(str(value.get("WorkingDirectory", ""))).resolve() != ROOT:
+            raise RuntimeControlError("launchd plist has the wrong working directory")
+        return value
+
+    def _launchctl(self, *arguments: str, timeout: float = 20) -> subprocess.CompletedProcess[str]:
+        return run([self.launchctl, *arguments], timeout=timeout)
+
+    def service_status(self) -> dict[str, Any]:
+        result = self._launchctl("print", self.target)
+        if result.returncode != 0:
+            return {"loaded": False, "state": "STOPPED", "pid": None}
+        state_match = re.search(r"^\s*state = ([^\n]+)", result.stdout, re.MULTILINE)
+        pid_match = re.search(r"^\s*pid = (\d+)", result.stdout, re.MULTILINE)
+        return {
+            "loaded": True,
+            "state": state_match.group(1).strip().upper() if state_match else "LOADED",
+            "pid": int(pid_match.group(1)) if pid_match else None,
+        }
+
+    def listeners(self, port: int) -> dict[str, Any]:
+        result = run([self.netstat, "-an", "-p", "tcp"])
+        if result.returncode != 0:
+            return {"status": "UNKNOWN", "addresses": [], "unsafe": True}
+        addresses: list[str] = []
+        for line in result.stdout.splitlines():
+            if "LISTEN" not in line:
+                continue
+            columns = line.split()
+            local = next(
+                (
+                    value
+                    for value in columns
+                    if value.endswith(f".{port}") or value.endswith(f":{port}")
+                ),
+                None,
+            )
+            if local:
+                addresses.append(local)
+        unsafe = any(
+            address.startswith(("*.", "0.0.0.0.", "0.0.0.0:", "::.", ":::"))
+            or address in {f"[::]:{port}", f"*.{port}"}
+            for address in addresses
+        )
+        return {
+            "status": "LISTENING" if addresses else "CLOSED",
+            "addresses": sorted(set(addresses)),
+            "unsafe": unsafe,
+        }
+
+    def static_observe_gate(self) -> dict[str, Any]:
+        try:
+            manifest = json.loads((ROOT / "config/core_manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise RuntimeControlError("OBSERVE manifest is unavailable") from exc
+        valid = manifest.get("status") == "FROZEN" and manifest.get("operating_mode") == "OBSERVE"
+        if not valid:
+            raise RuntimeControlError("OBSERVE-only core gate failed")
+        return {"status": "PASS", "mode": "OBSERVE", "core": "FROZEN", "execution_enabled": False}
+
+    def secret_gate(self) -> dict[str, str]:
+        try:
+            return DatabaseSecretResolver().status(settings.database_endpoint)
+        except SecretProviderError as exc:
+            raise RuntimeControlError(str(exc)) from exc
+
+    def database_boundary_gate(self) -> dict[str, Any]:
+        listeners = self.listeners(self.database_port)
+        if listeners["status"] != "LISTENING":
+            raise RuntimeControlError("PostgreSQL listener is unavailable")
+        if listeners["unsafe"]:
+            raise RuntimeControlError("PostgreSQL is exposed beyond loopback")
+        non_loopback = [
+            address
+            for address in listeners["addresses"]
+            if not any(token in address for token in ("127.0.0.1", "::1", "localhost"))
+        ]
+        if non_loopback:
+            raise RuntimeControlError("PostgreSQL listener boundary cannot be proven loopback-only")
+        return {"status": "PASS", "listeners": listeners["addresses"]}
+
+    def dashboard_health(self) -> dict[str, Any]:
+        try:
+            with urlopen(f"http://127.0.0.1:{self.dashboard_port}/api/health", timeout=3) as response:
+                if response.status != 200:
+                    raise RuntimeControlError("TIM dashboard health returned a non-success status")
+                payload = json.loads(response.read(1024 * 1024))
+        except (OSError, URLError, ValueError) as exc:
+            raise RuntimeControlError("TIM dashboard health is unavailable") from exc
+        observe_only = payload.get("mode") == "OBSERVE" and payload.get("governance", {}).get("observe_only") is True
+        if not observe_only:
+            raise RuntimeControlError("running TIM dashboard does not prove OBSERVE-only")
+        return {
+            "status": "PASS",
+            "mode": "OBSERVE",
+            "observe_only": True,
+            "operational": payload.get("operational", {}),
+            "timestamp": payload.get("timestamp"),
+        }
+
+    def _caffeinate_for_pid(self, pid: int | None) -> list[int]:
+        if pid is None:
+            return []
+        result = run([self.ps, "-axo", "pid=,command="])
+        matches: list[int] = []
+        expression = re.compile(rf"(?:^|\s)-w\s+{pid}(?:\s|$)")
+        for line in result.stdout.splitlines():
+            if "caffeinate" not in line or not expression.search(line):
+                continue
+            try:
+                matches.append(int(line.strip().split(maxsplit=1)[0]))
+            except (ValueError, IndexError):
+                continue
+        return matches
+
+    def ingestion_gate(self, command: str, *, timeout: float = 30) -> dict[str, Any]:
+        if command not in {"status", "bootstrap", "checkpoint"} or not self.ingestion_control.is_file():
+            raise RuntimeControlError("durable ingestion control is unavailable")
+        result = run(
+            [self.runtime_python, str(self.ingestion_control), command, "--timeout", str(timeout)],
+            timeout=timeout + 10,
+        )
+        try:
+            payload = json.loads(result.stdout)
+        except ValueError as exc:
+            raise RuntimeControlError("durable ingestion control returned invalid evidence") from exc
+        if result.returncode != 0:
+            raise RuntimeControlError(
+                f"durable ingestion {command} gate failed ({payload.get('status', 'UNKNOWN')})"
+            )
+        if payload.get("mode") != "OBSERVE" or payload.get("trading_actions") != 0:
+            raise RuntimeControlError("durable ingestion violated the OBSERVE-only gate")
+        return payload
+
+    def _wait(self, predicate, timeout: float) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.25)
+        return predicate()
+
+    def verify_stopped(self, *, prior_pid: int | None = None) -> dict[str, Any]:
+        if prior_pid is None:
+            try:
+                prior = json.loads((ROOT / "data/runtime/last_safe_stop.json").read_text(encoding="utf-8"))
+                if prior.get("launchd_target") == self.target:
+                    candidate = prior.get("prior_runtime_pid_resolved_from_launchd")
+                    prior_pid = candidate if isinstance(candidate, int) else None
+            except (OSError, ValueError):
+                prior_pid = None
+        service = self.service_status()
+        port = self.listeners(self.dashboard_port)
+        guards = self._caffeinate_for_pid(prior_pid)
+        passed = not service["loaded"] and port["status"] == "CLOSED" and not guards
+        result = {
+            "status": "PASS" if passed else "FAIL",
+            "service_loaded": service["loaded"],
+            "dashboard_port": port["status"],
+            "caffeinate_guards": len(guards),
+        }
+        if not passed:
+            raise RuntimeControlError(f"TIM is not fully stopped: {json.dumps(result, sort_keys=True)}")
+        return result
+
+    def verify_running(self) -> dict[str, Any]:
+        observe = self.static_observe_gate()
+        secret = self.secret_gate()
+        database = self.database_boundary_gate()
+        ingestion = self.ingestion_gate("status", timeout=10)
+        service = self.service_status()
+        if not service["loaded"] or service["state"] != "RUNNING":
+            raise RuntimeControlError("TIM launchd service is not running")
+        dashboard_listener = self.listeners(self.dashboard_port)
+        if dashboard_listener["status"] != "LISTENING" or dashboard_listener["unsafe"]:
+            raise RuntimeControlError("TIM dashboard is not proven loopback-only")
+        if any(
+            not any(token in address for token in ("127.0.0.1", "::1", "localhost"))
+            for address in dashboard_listener["addresses"]
+        ):
+            raise RuntimeControlError("TIM dashboard has a non-loopback listener")
+        health = self.dashboard_health()
+        return {
+            "status": "PASS",
+            "service": service["state"],
+            "dashboard": health["status"],
+            "dashboard_binding": dashboard_listener["addresses"],
+            "mode": "OBSERVE",
+            "execution_enabled": False,
+            "observe_gate": observe,
+            "secret_provider": secret,
+            "database_boundary": database,
+            "durable_ingestion": ingestion,
+        }
+
+    def status(self) -> dict[str, Any]:
+        service = self.service_status()
+        return {
+            "timestamp": utc_now(),
+            "launchd_target": self.target,
+            "service": service,
+            "dashboard_listener": self.listeners(self.dashboard_port),
+            "database_listener": self.listeners(self.database_port),
+            "mode_gate": self.static_observe_gate(),
+        }
+
+    def safe_stop(self) -> dict[str, Any]:
+        requested_at = utc_now()
+        observe = self.static_observe_gate()
+        secret = self.secret_gate()
+        durable_before = self.ingestion_gate("status", timeout=10)
+        service = self.service_status()
+        prior_pid = service["pid"]
+        pre_health: dict[str, Any] | None = None
+        if service["loaded"]:
+            try:
+                pre_health = self.dashboard_health()
+            except RuntimeControlError:
+                pre_health = None
+            result = self._launchctl("bootout", self.launch_domain, str(self.plist_path), timeout=30)
+            if result.returncode != 0 and self.service_status()["loaded"]:
+                raise RuntimeControlError("launchd refused to boot out the TIM runtime")
+        stopped = self._wait(
+            lambda: not self.service_status()["loaded"]
+            and self.listeners(self.dashboard_port)["status"] == "CLOSED"
+            and not self._caffeinate_for_pid(prior_pid),
+            30,
+        )
+        if not stopped:
+            raise RuntimeControlError("TIM safe stop timed out")
+        verified = self.verify_stopped(prior_pid=prior_pid)
+        checkpoint = self.ingestion_gate("checkpoint", timeout=30)
+        operational = (pre_health or {}).get("operational", {})
+        queue_depth = operational.get("queue_depth")
+        queue_state = "DRAINED" if queue_depth == 0 else "DURABLY_CHECKPOINTED"
+        payload = {
+            "schema_version": "1.0.0",
+            "command": "safe-stop",
+            "requested_at": requested_at,
+            "completed_at": utc_now(),
+            "status": "PASS",
+            "launchd_target": self.target,
+            "prior_runtime_pid_resolved_from_launchd": prior_pid,
+            "observe_gate": observe,
+            "secret_provider": secret,
+            "durable_ingestion_before_stop": durable_before,
+            "ingress": "STOPPED_WITH_RUNTIME",
+            "raw_write": "GRACEFUL_PROCESS_EXIT",
+            "queue_outbox": queue_state,
+            "durable_ingestion_checkpoint": checkpoint,
+            "cursor": "HASH_AND_VERSION_VALIDATED",
+            "research_side_effects": "GRACEFUL_PROCESS_EXIT",
+            "verification": verified,
+            "trading_actions": 0,
+        }
+        atomic_json(ROOT / "data/runtime/last_safe_stop.json", payload)
+        return payload
+
+    def start(self) -> dict[str, Any]:
+        preflight = {
+            "observe": self.static_observe_gate(),
+            "secret_provider": self.secret_gate(),
+            "database_boundary": self.database_boundary_gate(),
+            "durable_ingestion": self.ingestion_gate("bootstrap", timeout=10),
+        }
+        service = self.service_status()
+        if not service["loaded"]:
+            result = self._launchctl("bootstrap", self.launch_domain, str(self.plist_path), timeout=30)
+            if result.returncode != 0:
+                raise RuntimeControlError("launchd refused to bootstrap the TIM runtime")
+        elif service["state"] != "RUNNING":
+            result = self._launchctl("kickstart", self.target, timeout=30)
+            if result.returncode != 0:
+                raise RuntimeControlError("launchd refused to start the TIM runtime")
+        if not self._wait(
+            lambda: self.service_status()["state"] == "RUNNING" and self.listeners(self.dashboard_port)["status"] == "LISTENING",
+            30,
+        ):
+            raise RuntimeControlError("TIM safe start timed out")
+        verified = self.verify_running()
+        payload = {
+            "schema_version": "1.0.0",
+            "command": "start",
+            "completed_at": utc_now(),
+            "status": "PASS",
+            "preflight": preflight,
+            "verification": verified,
+            "trading_actions": 0,
+        }
+        atomic_json(ROOT / "data/runtime/last_safe_start.json", payload)
+        return payload
+
+
+def emit(payload: dict[str, Any]) -> None:
+    print(json.dumps(payload, sort_keys=True, indent=2))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Canonical TIM OBSERVE-only runtime control")
+    parser.add_argument(
+        "command",
+        choices=("status", "start", "stop", "restart", "health", "safe-stop", "verify-stopped", "verify-running"),
+    )
+    args = parser.parse_args(argv)
+    try:
+        control = RuntimeControl()
+        if args.command == "status":
+            payload = control.status()
+        elif args.command == "health":
+            payload = control.dashboard_health()
+        elif args.command in {"stop", "safe-stop"}:
+            payload = control.safe_stop()
+        elif args.command == "start":
+            payload = control.start()
+        elif args.command == "restart":
+            stopped = control.safe_stop()
+            payload = {"stop": stopped, "start": control.start(), "status": "PASS"}
+        elif args.command == "verify-stopped":
+            payload = control.verify_stopped()
+        else:
+            payload = control.verify_running()
+        emit(payload)
+        return 0
+    except RuntimeControlError as exc:
+        emit({"status": "BLOCKED", "command": args.command, "reason": str(exc), "timestamp": utc_now()})
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

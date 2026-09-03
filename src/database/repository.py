@@ -150,7 +150,7 @@ class MarketRepository:
         _validate_candle_for_persistence(candle)
         query = """INSERT INTO candles(symbol,timeframe,open_time,close_time,open,high,low,close,volume,trade_count,closed)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-        ON CONFLICT(symbol,timeframe,open_time) DO UPDATE SET close_time=EXCLUDED.close_time,high=EXCLUDED.high,
+        ON CONFLICT(symbol,timeframe,open_time) DO UPDATE SET close_time=EXCLUDED.close_time,open=EXCLUDED.open,high=EXCLUDED.high,
         low=EXCLUDED.low,close=EXCLUDED.close,volume=EXCLUDED.volume,trade_count=EXCLUDED.trade_count,closed=EXCLUDED.closed"""
         async with self.database.acquire() as con:
             await con.execute(query, candle.symbol, candle.timeframe, candle.open_time, candle.close_time, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.trade_count, candle.closed)
@@ -193,7 +193,16 @@ class MarketRepository:
 
     async def recent_candles(self, symbol: str, timeframe: str, limit: int = 200) -> list[Candle]:
         async with self.database.acquire() as con:
-            rows = await con.fetch("SELECT * FROM candles WHERE symbol=$1 AND timeframe=$2 ORDER BY open_time DESC LIMIT $3", symbol, timeframe, limit)
+            rows = await con.fetch(
+                """SELECT * FROM candles
+                WHERE symbol=$1 AND timeframe=$2
+                  AND high >= open AND high >= close AND high >= low
+                  AND low <= open AND low <= close AND low <= high
+                ORDER BY open_time DESC LIMIT $3""",
+                symbol,
+                timeframe,
+                limit,
+            )
         return [Candle(**dict(row)) for row in reversed(rows)]
 
     async def recent_observations(self, symbol: str, limit: int = 100) -> list[Observation]:
