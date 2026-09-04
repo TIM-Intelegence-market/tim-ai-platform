@@ -69,7 +69,10 @@ class TIMApplication:
             "CANDLE_V1",
             self.process_persisted_trade,
             batch_size=1,
-            lease_seconds=60,
+            # Hour-boundary enrichment has measured production runtimes up to
+            # 169 seconds. Keep the lease above that verified maximum so a
+            # healthy in-flight item cannot be reclaimed as an expired lease.
+            lease_seconds=300,
             strict_order=True,
         )
         self.stream = BinanceTradeStream(

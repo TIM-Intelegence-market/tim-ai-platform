@@ -172,6 +172,7 @@ async def test_real_runtime_reader_commits_before_separate_worker_enriches(datab
 
     monkeypatch.setattr(main, "settings", replace(main.settings, dashboard_port=0))
     app = main.TIMApplication()
+    assert app.enrichment_worker.lease_seconds == 300
     await app.database.connect()
     try:
         await app.restore_persisted_state()
