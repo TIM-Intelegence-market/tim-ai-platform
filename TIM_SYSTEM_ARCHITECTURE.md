@@ -242,3 +242,12 @@ Bei Fehlern gilt:
 
 Architekturänderungen erfordern Design Review, dokumentierte Begründung,
 Kompatibilitätsanalyse und Aktualisierung dieses Dokuments.
+# Mission orchestration addendum
+
+`src/orchestration` is the fail-closed control plane above existing headless
+ingestion, recovery, validation, and collection components. Its persistent state
+machine owns mission ordering and per-process locking; read-only health probes
+provide facts, deterministic gates authorize transitions, and append-only
+receipts/reports provide auditability. AI helpers and Graphify are advisory
+observers and never authorize a state transition or trading action. See
+`docs/TIM_ORCHESTRATOR.md` for the operational contract.

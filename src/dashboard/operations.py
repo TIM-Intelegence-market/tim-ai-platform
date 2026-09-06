@@ -584,6 +584,35 @@ def _dataset_section(data: dict[str, Any]) -> str:
     )
 
 
+def _market_contexts() -> str:
+    """Reserve explicit, non-prescriptive horizons for future intelligence.
+
+    These cards intentionally expose availability only. They must never infer a
+    direction, confidence, or trading action from incomplete research evidence.
+    """
+    horizons = (
+        ("SHORT", "Intraday structure", "60s · 1m · 5m", "Microstructure, flow and immediate regime"),
+        ("MID", "Session context", "15m · 1h · 4h", "Momentum, participation and session continuity"),
+        ("LONG", "Structural context", "1D · 1W", "Regime, macro context and durable market structure"),
+    )
+    cards = "".join(
+        "<article class='horizon-card'>"
+        f"<div class='horizon-card__head'><span class='horizon-key'>{_safe(key)}</span>"
+        "<span class='badge badge--paused'>AWAITING INTELLIGENCE</span></div>"
+        f"<h3>{_safe(title)}</h3><p class='horizon-timeframes'>{_safe(timeframes)}</p>"
+        f"<p>{_safe(description)}</p><div class='horizon-track' aria-hidden='true'><span></span></div>"
+        "</article>"
+        for key, title, timeframes, description in horizons
+    )
+    return (
+        "<section class='panel context-panel'><div class='panel__head'><div>"
+        "<p class='eyebrow'>MARKET CONTEXT</p><h2>Intelligence horizons</h2>"
+        "<p class='section-copy'>Clear separation of analysis windows. No directional signal is generated.</p>"
+        "</div><span class='badge badge--paused'>PREPARED · INACTIVE</span></div>"
+        f"<div class='horizon-grid'>{cards}</div></section>"
+    )
+
+
 def _overview(data: dict[str, Any]) -> str:
     security = data["security"]
     runtime = data["runtime"]
@@ -606,8 +635,10 @@ def _overview(data: dict[str, Any]) -> str:
     ]
     return (
         _hero(data["product"], "Sicherheits-, Laufzeit-, Daten- und Wissenschaftsstatus aus persistierter Evidenz.")
-        + "<p class='observe operations-boundary'>READ-ONLY · NO ORDERS · NO SHELL · NO GIT · NO SECRETS</p>"
-        + "<div class='grid operations-grid'>" + "".join(headline) + "</div>"
+        + "<div class='terminal-strip' aria-label='Systemgrenzen'><span><i class='status-dot status-dot--green'></i>READ-ONLY</span><span>NO ORDERS</span><span>NO SHELL</span><span>NO GIT</span><span>NO SECRETS</span><strong>EXECUTION DISABLED</strong></div>"
+        + "<section class='overview-section'><div class='section-heading'><div><p class='eyebrow'>OPERATIONAL HEALTH</p><h2>System control plane</h2></div><p>Live runtime and persisted evidence at a glance.</p></div>"
+        + "<div class='grid operations-grid operations-grid--overview'>" + "".join(headline) + "</div></section>"
+        + _market_contexts()
         + _dataset_section(data)
     )
 

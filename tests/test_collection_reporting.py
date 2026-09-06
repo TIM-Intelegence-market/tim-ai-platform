@@ -45,6 +45,22 @@ def test_complete_collection_is_deterministic_and_ready() -> None:
     assert first["trading_actions"] == 0
 
 
+def test_classified_open_gap_is_visible_and_limited_not_failed() -> None:
+    value = facts()
+    value["gaps"] = [{
+        "gap_id": "canonical-1",
+        "status": "CLASSIFIED",
+        "reason": "RECOVERABLE_BACKFILL",
+        "category": "RECOVERABLE_BACKFILL",
+    }]
+    result = CollectionReportBuilder().build(value)
+    assert result["checks"]["gaps_classified"] == "PASS"
+    assert result["checks"]["known_open_gaps"] == "WARN"
+    assert result["quality_status"] == "WARN"
+    assert result["decision_status"] == "LIMITED"
+    assert result["tim_autonomous_collection_ready"] is False
+
+
 def test_incomplete_collection_fails_closed_with_no_decision() -> None:
     value = facts()
     value["counts"]["events_processed"] = 99

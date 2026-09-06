@@ -102,6 +102,19 @@ def test_a11y_reduced_motion_and_forced_colors_invariants(tmp_path: Path) -> Non
     assert "Zum Hauptinhalt springen" in page
 
 
+def test_overview_separates_future_intelligence_horizons_without_signals(tmp_path: Path) -> None:
+    page = render(_empty_state(tmp_path), "Overview")
+    for horizon, windows in (
+        ("SHORT", "60s · 1m · 5m"),
+        ("MID", "15m · 1h · 4h"),
+        ("LONG", "1D · 1W"),
+    ):
+        assert horizon in page
+        assert windows in page
+    assert page.count("AWAITING INTELLIGENCE") == 3
+    assert "No directional signal is generated." in page
+
+
 class _InlineHandlerParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()

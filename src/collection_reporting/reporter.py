@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from .accounting import accounting_checks
+
 
 _COLLECTION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _ACTIVE_STATUSES = ("PENDING", "RETRY", "PROCESSING", "QUARANTINED")
@@ -59,8 +61,8 @@ class CollectionReportBuilder:
     auditable and the same input always produces the same result hash.
     """
 
-    schema_version = "1.0.0"
-    generator_version = "1.0.0"
+    schema_version = "2.0.0"
+    generator_version = "2.0.0"
 
     def build(self, facts: Mapping[str, Any]) -> dict[str, Any]:
         source = deepcopy(dict(facts))
@@ -106,6 +108,7 @@ class CollectionReportBuilder:
             "status_counts": status_counts,
             "gaps": gaps,
             "metrics": deepcopy(source.get("metrics", {})),
+            "accounting": deepcopy(source.get("accounting", {})),
             "findings": deepcopy(source.get("findings", [])),
             "limitations": sorted({str(item) for item in source.get("limitations", [])}),
             "checks": checks,
@@ -158,11 +161,16 @@ class CollectionReportBuilder:
         return {**result, "report_dir": str(target), "manifest": manifest, "resumed": False}
 
     @staticmethod
-    def _counts(value: Any) -> dict[str, int]:
+    def _counts(value: Any) -> dict[str, int | None]:
         if not isinstance(value, Mapping):
             raise CollectionReportError("counts object is required")
         required = ("events_received", "events_unique", "events_processed", "duplicates", "invalid_events")
-        return {name: _count(value.get(name), f"counts.{name}") for name in required}
+        if any(name not in value for name in required):
+            raise CollectionReportError("counts is missing required fields; use explicit null for unknown ingress counts")
+        result = {name: (None if value.get(name) is None and name in {"events_received", "duplicates", "invalid_events"}
+                         else _count(value.get(name), f"counts.{name}")) for name in required}
+        result["rejected_events"] = None if value.get("rejected_events", 0) is None else _count(value.get("rejected_events", 0), "counts.rejected_events")
+        return result
 
     @staticmethod
     def _status_counts(value: Any) -> dict[str, int]:
@@ -184,18 +192,25 @@ class CollectionReportBuilder:
     @staticmethod
     def _checks(source: Mapping[str, Any], counts: Mapping[str, int], statuses: Mapping[str, int], gaps: list[dict[str, Any]]) -> dict[str, str]:
         received = counts["events_received"]
-        accounted = counts["events_unique"] + counts["duplicates"] + counts["invalid_events"]
-        open_gaps = [item for item in gaps if str(item["status"]).upper() not in {"RESOLVED", "IRREPARABLE_DOCUMENTED"}]
+        terms = [counts[name] for name in ("events_unique", "duplicates", "invalid_events", "rejected_events")]
+        accounted = sum(terms) if all(term is not None for term in terms) else None
+        terminal = {"RESOLVED", "IRREPARABLE_DOCUMENTED"}
+        open_gaps = [item for item in gaps if str(item["status"]).upper() not in terminal]
+        unclassified_gaps = [
+            item for item in open_gaps
+            if str(item.get("category", "UNKNOWN")).upper() == "UNKNOWN"
+        ]
         determinism = source.get("determinism", {})
         preflight = source.get("preflight", {})
-        return {
-            "counts_accounted": "PASS" if received == accounted else "FAIL",
+        checks = {
+            "counts_accounted": "PASS" if received is not None and received == accounted and source.get("metrics_scoped") is True else "FAIL",
             "all_unique_events_processed": "PASS" if counts["events_processed"] == counts["events_unique"] else "FAIL",
             "queue_drained": "PASS" if sum(statuses[name] for name in _ACTIVE_STATUSES) == 0 else "WARN",
             "no_processing_leases": "PASS" if statuses["PROCESSING"] == 0 else "FAIL",
             "no_terminal_blockers": "PASS" if statuses["QUARANTINED"] == 0 else "FAIL",
             "no_retries": "PASS" if statuses["RETRY"] == 0 else "WARN",
-            "gaps_classified": "PASS" if not open_gaps else "FAIL",
+            "gaps_classified": "PASS" if not unclassified_gaps else "FAIL",
+            "known_open_gaps": "WARN" if open_gaps else "PASS",
             "deterministic_replay": "PASS" if determinism.get("status") == "PASS" and determinism.get("first_hash") == determinism.get("second_hash") and bool(determinism.get("first_hash")) else "FAIL",
             "database_healthy": "PASS" if preflight.get("database") == "PASS" else "FAIL",
             "single_main_process": "PASS" if preflight.get("main_processes") == 1 else "FAIL",
@@ -205,6 +220,9 @@ class CollectionReportBuilder:
             "no_orphaned_leases": "PASS" if preflight.get("orphaned_leases", 0) == 0 else "FAIL",
             "collection_metrics_scoped": "PASS" if source.get("metrics_scoped") is True else "WARN",
         }
+        if source.get("accounting"):
+            checks.update(accounting_checks(source["accounting"], counts, str(source["collection_id"])))
+        return checks
 
     def _artifact_bytes(self, result: Mapping[str, Any]) -> dict[str, bytes]:
         quality = {
