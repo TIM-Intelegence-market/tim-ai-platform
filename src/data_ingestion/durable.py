@@ -526,6 +526,17 @@ class DurableIngestionStore:
             row = await self._cursor_row(connection, symbol)
         return CursorState.from_row(row) if row else None
 
+    async def approved_live_cutover(self, symbol: str, cursor_id: int | None, first_live_id: int) -> bool:
+        """Allow exactly the documented discontinuity, never a later reconnect."""
+        if cursor_id is None:
+            return False
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """SELECT baseline_cursor_id,first_live_trade_id FROM live_cutover_receipts
+                   WHERE symbol=$1 ORDER BY created_at DESC LIMIT 1""", symbol
+            )
+        return bool(row and cursor_id == row["baseline_cursor_id"] and first_live_id >= row["first_live_trade_id"])
+
     async def bootstrap_cursor(self, symbol: str) -> CursorState | None:
         """Create the first cursor from immutable legacy raw data, if present."""
         async with self.database.acquire() as connection:
@@ -619,7 +630,7 @@ class DurableIngestionStore:
                            AND NOT EXISTS (
                                SELECT 1 FROM ingestion_outbox blocker
                                WHERE blocker.worker_name=ingestion_outbox.worker_name
-                               AND blocker.status<>'COMPLETED'
+                               AND blocker.status=ANY($4::text[])
                                AND (blocker.aggregate_trade_id,blocker.created_at,blocker.outbox_id)
                                    < (ingestion_outbox.aggregate_trade_id,ingestion_outbox.created_at,ingestion_outbox.outbox_id)
                            )""" if strict_order else ""
@@ -638,6 +649,7 @@ class DurableIngestionStore:
                     worker_name,
                     limit,
                     lease_seconds,
+                    list(ACTIVE_OUTBOX_STATUSES),
                 )
         return [OutboxItem.from_row(row) for row in rows]
 
@@ -1162,10 +1174,10 @@ class DurableIngestionStore:
         async with self.database.acquire() as connection:
             rows = await connection.fetch("SELECT metric_name,numeric_value,updated_at FROM ingestion_metrics")
             queue = await connection.fetchrow(
-                """SELECT count(*) FILTER (WHERE status=ANY($1::text[])) AS depth,
-                   EXTRACT(EPOCH FROM (clock_timestamp()-(min(created_at) FILTER (WHERE status=ANY($1::text[]))))) AS oldest_age,
+                """SELECT count(*) AS depth,
+                   EXTRACT(EPOCH FROM (clock_timestamp()-min(created_at))) AS oldest_age,
                    count(*) FILTER (WHERE status='QUARANTINED') AS quarantined
-                   FROM ingestion_outbox""",
+                   FROM ingestion_outbox WHERE status=ANY($1::text[])""",
                 list(ACTIVE_OUTBOX_STATUSES),
             )
             gaps = await connection.fetchrow(

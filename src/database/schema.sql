@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS ingestion_outbox (
     outbox_id TEXT PRIMARY KEY CHECK (outbox_id ~ '^[0-9a-f]{64}$'), worker_name TEXT NOT NULL CHECK (worker_name IN ('CANDLE_V1','FEATURE_V1','OBSERVATION_V1','RESEARCH_TRIGGER_V1')),
     idempotency_key TEXT NOT NULL CHECK (idempotency_key ~ '^[0-9a-f]{64}$'), source TEXT NOT NULL CHECK (source = 'BINANCE'),
     market TEXT NOT NULL CHECK (market = 'SPOT'), symbol TEXT NOT NULL, data_type TEXT NOT NULL CHECK (data_type = 'AGG_TRADE'), aggregate_trade_id BIGINT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PROCESSING','RETRY','COMPLETED','QUARANTINED')),
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PROCESSING','RETRY','COMPLETED','QUARANTINED','DEFERRED')),
     attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0), max_attempts INTEGER NOT NULL DEFAULT 5 CHECK (max_attempts > 0),
     last_error TEXT, started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ,
     available_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(), lease_expires_at TIMESTAMPTZ,

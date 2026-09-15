@@ -24,6 +24,11 @@ class DurableIngress:
                 cursor = await self.store.get_cursor(trade.symbol)
                 last_trade_id = cursor.last_aggregate_trade_id if cursor is not None else None
                 if last_trade_id is not None and trade.trade_id > last_trade_id + 1:
+                    if await self.store.approved_live_cutover(trade.symbol, last_trade_id, trade.trade_id):
+                        # The receipt is immutable and the old outbox is deferred;
+                        # ingest_trade records the explicit discontinuity before it
+                        # advances the live cursor.
+                        return await self.store.ingest_trade(trade)
                     if self.catchup is None:
                         raise DurableIngestionError(
                             "live trade gap is fail-closed until public catch-up is configured"
@@ -62,6 +67,13 @@ class DurableIngress:
     async def recover_before_resume(self, first_live_trade: Trade) -> None:
         if self.catchup is None or first_live_trade.trade_id is None:
             raise DurableIngestionError("live resume is fail-closed until public catch-up is configured")
+        cursor = await self.store.get_cursor(first_live_trade.symbol)
+        if await self.store.approved_live_cutover(
+            first_live_trade.symbol,
+            cursor.last_aggregate_trade_id if cursor else None,
+            first_live_trade.trade_id,
+        ):
+            return
         result = await self.catchup.recover_before(first_live_trade.symbol, first_live_trade.trade_id)
         if result.status not in {"COMPLETE", "NO_GAP", "NO_CURSOR"}:
             raise DurableIngestionError(f"live resume blocked by incomplete catch-up: {result.reason}")
