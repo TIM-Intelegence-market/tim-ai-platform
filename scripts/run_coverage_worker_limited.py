@@ -9,7 +9,8 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LIMIT_PERCENT = 160  # 20% of this Mac's eight logical CPUs.
+# This Mac exposes eight logical CPUs; 800 is cpulimit's full-machine ceiling.
+LIMIT_PERCENT = 800
 
 
 def main() -> int:
