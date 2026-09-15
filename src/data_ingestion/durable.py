@@ -626,6 +626,30 @@ class DurableIngestionStore:
                        WHERE worker_name=$1 AND status='PROCESSING' AND lease_expires_at<clock_timestamp()""",
                     worker_name,
                 )
+                if strict_order:
+                    # A strict worker can only ever claim the oldest active
+                    # record.  Selecting that head directly is equivalent to
+                    # the former NOT EXISTS anti-join, but remains bounded as
+                    # a live catch-up queue grows.
+                    head = await connection.fetchrow(
+                        """SELECT * FROM ingestion_outbox
+                           WHERE worker_name=$1 AND status=ANY($2::text[])
+                           ORDER BY aggregate_trade_id,created_at,outbox_id
+                           FOR UPDATE SKIP LOCKED LIMIT 1""",
+                        worker_name,
+                        list(ACTIVE_OUTBOX_STATUSES),
+                    )
+                    if head is None or head["status"] not in {"PENDING", "RETRY"} or head["available_at"] > datetime.now(timezone.utc):
+                        return []
+                    row = await connection.fetchrow(
+                        """UPDATE ingestion_outbox SET status='PROCESSING',attempts=attempts+1,
+                                   started_at=clock_timestamp(),lease_expires_at=clock_timestamp()+($2*interval '1 second'),
+                                   updated_at=clock_timestamp()
+                           WHERE outbox_id=$1 RETURNING *""",
+                        head["outbox_id"],
+                        lease_seconds,
+                    )
+                    return [OutboxItem.from_row(row)] if row is not None else []
                 ordering_guard = """
                            AND NOT EXISTS (
                                SELECT 1 FROM ingestion_outbox blocker
