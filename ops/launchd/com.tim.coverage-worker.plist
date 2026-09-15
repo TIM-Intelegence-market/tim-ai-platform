@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.tim.coverage-worker</string><key>UserName</key><string>tim-user</string>
+  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim</string>
+  <key>ProgramArguments</key><array><string>/Users/tim/Documents/TIM/tim/.venv/bin/python</string><string>/Users/tim/Documents/TIM/tim/scripts/run_coverage_worker_limited.py</string></array>
+  <key>ProcessType</key><string>Background</string><key>Nice</key><integer>20</integer><key>StartInterval</key><integer>900</integer>
+  <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/coverage_worker.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/coverage_worker.err.log</string>
+</dict></plist>

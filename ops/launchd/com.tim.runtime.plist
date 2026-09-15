@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.tim.runtime</string>
+  <key>UserName</key><string>tim-user</string>
+  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim</string>
+  <key>ProgramArguments</key><array><string>/Users/tim/Documents/TIM/tim/.venv/bin/python</string><string>/Users/tim/Documents/TIM/tim/main.py</string><string>--init-schema</string></array>
+  <key>EnvironmentVariables</key><dict>
+    <key>HOME</key><string>/Users/tim</string><key>TIM_ENABLE_OLLAMA</key><string>false</string>
+    <key>TIM_OLLAMA_MODEL</key><string>qwen2.5:7b</string><key>TIM_OLLAMA_URL</key><string>http://127.0.0.1:11434</string>
+    <key>TIM_OMNIROUTE_ENABLED</key><string>true</string><key>OMNIROUTE_BASE_URL</key><string>http://localhost:20128/v1</string>
+  </dict>
+  <key>KeepAlive</key><true/><key>RunAtLoad</key><true/><key>ProcessType</key><string>Background</string><key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/runtime_launchd.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/runtime_launchd.err.log</string>
+</dict></plist>
