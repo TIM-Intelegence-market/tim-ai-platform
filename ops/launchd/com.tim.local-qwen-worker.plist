@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.tim.local-qwen-worker</string><key>UserName</key><string>tim-user</string>
+  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim-local-qwen</string>
+  <key>ProgramArguments</key><array><string>/Users/tim/Documents/TIM/tim/.venv/bin/python</string><string>/Users/tim/Documents/TIM/tim-local-qwen/scripts/run_local_qwen_daemon.py</string><string>--repo-root</string><string>/Users/tim/Documents/TIM/tim-local-qwen</string><string>--state-root</string><string>/Users/tim/Library/Application Support/TIM/local-first</string><string>--model</string><string>qwen2.5-coder:7b</string><string>--fallback-models</string><string>qwen2.5:7b</string><string>--interval</string><string>5.0</string></array>
+  <key>EnvironmentVariables</key><dict><key>HOME</key><string>/Users/tim</string><key>PYTHONPATH</key><string>/Users/tim/Documents/TIM/tim-local-qwen</string><key>OLLAMA_BASE_URL</key><string>http://127.0.0.1:11434</string><key>OLLAMA_MODEL</key><string>qwen2.5-coder:7b</string><key>TIM_QWEN_FALLBACK_MODELS</key><string>qwen2.5:7b</string><key>TIM_LOCAL_PATCH_SANDBOX</key><string>1</string><key>TIM_BLOCKER_AUTO_WAIT</key><string>0</string><key>TIM_LIVE_TRADING</key><string>0</string><key>TIM_EXECUTION_ENABLED</key><string>0</string></dict>
+  <key>KeepAlive</key><true/><key>RunAtLoad</key><true/><key>ProcessType</key><string>Background</string><key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/Users/tim/Library/Logs/TIM/local-first.out.log</string><key>StandardErrorPath</key><string>/Users/tim/Library/Logs/TIM/local-first.err.log</string>
+</dict></plist>

@@ -11,10 +11,12 @@ if [[ ! -f "/Users/tim/Library/Application Support/TIM/database-password" ]]; th
   print -u2 'Dienst-Schlüssel fehlt. Zuerst ohne sudo ausführen: .venv/bin/python scripts/provision_tim_daemon_secret.py'
   exit 2
 fi
-for name in com.tim.runtime com.tim.coverage-worker; do
+for name in com.tim.runtime com.tim.coverage-worker com.tim.local-qwen-worker; do
   launchctl bootout "gui/$USER_ID/$name" 2>/dev/null || true
 done
-for name in com.tim.awake com.tim.ollama com.tim.runtime com.tim.coverage-worker; do
+launchctl bootout system/com.tim.ollama 2>/dev/null || true
+rm -f /Library/LaunchDaemons/com.tim.ollama.plist
+for name in com.tim.awake com.tim.runtime com.tim.coverage-worker com.tim.local-qwen-worker; do
   launchctl bootout system/$name 2>/dev/null || true
   install -o root -g wheel -m 644 "$ROOT/ops/launchd/$name.plist" "/Library/LaunchDaemons/$name.plist"
   launchctl bootstrap system "/Library/LaunchDaemons/$name.plist"
