@@ -7,6 +7,10 @@ if [[ $EUID -ne 0 ]]; then
 fi
 ROOT=/Users/tim/Documents/TIM/tim
 USER_ID=$(id -u tim-user)
+if [[ ! -f "/Users/tim/Library/Application Support/TIM/database-password" ]]; then
+  print -u2 'Dienst-Schlüssel fehlt. Zuerst ohne sudo ausführen: .venv/bin/python scripts/provision_tim_daemon_secret.py'
+  exit 2
+fi
 for name in com.tim.runtime com.tim.coverage-worker; do
   launchctl bootout "gui/$USER_ID/$name" 2>/dev/null || true
 done
