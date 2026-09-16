@@ -127,13 +127,15 @@ class MarketRepository:
         """Return validation work relevant to the current live replay window.
 
         Old incomplete observations remain durably recorded for the offline
-        reconciliation path. Re-validating them on every newly closed candle
-        makes live catch-up repeatedly scan historical agg-trades and can
-        starve current capture. Four hours comfortably covers ordinary replay
-        lag while bounding the live-only cost.
+        reconciliation path. A live observation needs its full 30-minute
+        outcome horizon before it is evaluated; after that, a persisted final
+        validation is immutable input for offline reconciliation. Re-reading
+        either category on every candle makes live catch-up repeatedly scan
+        historical agg-trades and can starve current capture. Four hours
+        comfortably covers ordinary replay lag while bounding live-only cost.
         """
         oldest_live_candidate=as_of-timedelta(hours=4)
-        async with self.database.acquire() as con:rows=await con.fetch("SELECT o.* FROM orderflow_observations o LEFT JOIN orderflow_validations v USING(observation_id) WHERE o.symbol=$1 AND o.observed_at<=$2 AND o.observed_at>=$3 AND COALESCE(v.complete,false)=false ORDER BY o.observed_at,o.observation_id LIMIT $4",symbol,as_of-timedelta(minutes=5),oldest_live_candidate,limit)
+        async with self.database.acquire() as con:rows=await con.fetch("SELECT o.* FROM orderflow_observations o LEFT JOIN orderflow_validations v USING(observation_id) WHERE o.symbol=$1 AND o.observed_at<=$2 AND o.observed_at>=$3 AND (v.observation_id IS NULL OR v.validated_through < o.observed_at + interval '30 minutes') ORDER BY o.observed_at,o.observation_id LIMIT $4",symbol,as_of-timedelta(minutes=30),oldest_live_candidate,limit)
         return [{**dict(row),"observed_at":row["observed_at"].isoformat(),"evidence":_json_value(row["evidence"],list)} for row in rows]
 
     async def agg_trades_for_validation(self,symbol:str,observed_at:datetime,end:datetime)->list[Trade]:
