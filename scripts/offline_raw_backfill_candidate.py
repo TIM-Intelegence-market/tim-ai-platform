@@ -35,14 +35,18 @@ async def main() -> int:
     manifest = root / "manifest.json"
     if payload.exists() or manifest.exists():
         raise SystemExit("immutable candidate already exists; verify it instead of overwriting")
-    root.mkdir(parents=True, exist_ok=False)
+    root.mkdir(parents=True, exist_ok=True)
     temporary = payload.with_suffix(".partial")
     client = PublicBinanceAggTradeClient(minimum_interval=0.1)
-    expected = args.from_id
-    count = 0
+    expected, count = args.from_id, 0
     digest = hashlib.sha256()
     try:
-        with temporary.open("wb") as handle:
+        if temporary.exists():
+            with temporary.open("rb") as prior:
+                for line in prior:
+                    row=json.loads(line); digest.update(line); count += 1; expected=int(row["aggregate_trade_id"])+1
+            if count and expected <= args.from_id: raise RuntimeError("invalid checkpoint")
+        with temporary.open("ab") as handle:
             while expected <= args.to_id:
                 batch = await client.fetch(args.symbol, expected, limit=min(1000, args.to_id - expected + 1))
                 if not batch or batch[0].trade_id != expected:
@@ -60,8 +64,7 @@ async def main() -> int:
         print(json.dumps(value, sort_keys=True))
         return 0
     except Exception:
-        temporary.unlink(missing_ok=True)
-        root.rmdir()
+        # Preserve a verified prefix so a later run resumes at its next ID.
         raise
 
 
