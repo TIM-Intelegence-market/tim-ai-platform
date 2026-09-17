@@ -112,7 +112,7 @@ def test_overview_separates_future_intelligence_horizons_without_signals(tmp_pat
         assert horizon in page
         assert windows in page
     assert page.count("AWAITING INTELLIGENCE") == 3
-    assert "No directional signal is generated." in page
+    assert "No directional signal" in page
 
 
 class _InlineHandlerParser(HTMLParser):
@@ -127,8 +127,8 @@ class _InlineHandlerParser(HTMLParser):
 
 
 @pytest.mark.parametrize("page_name", [
-    "Overview", "Security", "Runtime", "Data Quality", "Gap Explorer",
-    "Qualification Campaign", "Research & Independent Cases", "V2 Readiness",
+    "Overview", "Security", "Runtime", "Data Quality", "Incidents & Gaps",
+    "Qualification", "Independent Cases", "V2 Readiness",
     "Graphify & MCP", "Audit & Evidence", "Research", "Health Center",
 ])
 def test_no_inline_event_handlers_on_any_page(tmp_path: Path, page_name: str) -> None:

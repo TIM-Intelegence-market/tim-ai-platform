@@ -10,13 +10,13 @@ from src.dashboard.app import DashboardServer, DashboardState, render
 
 
 OPERATIONS_ROUTES = {
-    "/": "TIM OPERATIONS &amp; RESEARCH CONTROL CENTER",
+    "/": "Operations Overview",
     "/security": "Security",
     "/runtime": "Runtime",
     "/data-quality": "Data Quality",
-    "/gaps": "Gap Explorer",
-    "/qualification": "Qualification Campaign",
-    "/independent-cases": "Research &amp; Independent Cases",
+    "/gaps": "Incidents &amp; Gaps",
+    "/qualification": "Qualification",
+    "/independent-cases": "Independent Cases",
     "/v2-readiness": "V2 Readiness",
     "/mcp": "Graphify &amp; MCP",
     "/audit-evidence": "Audit &amp; Evidence",
@@ -140,22 +140,26 @@ def test_control_center_has_exact_ten_primary_pages_and_explicit_safety_boundary
     assert page.count("aria-current='page'") == 1
     for invariant in ("OBSERVE-ONLY", "TRADING LOCKED", "EXECUTION DISABLED", "NO SHELL", "NO GIT", "NO SECRETS"):
         assert invariant in page
-    assert "PostgreSQL Security" in page
-    assert "Collector Freshness" in page
-    assert "Offene P0 / P1 Gaps" in page
+    assert "PostgreSQL security gate" in page
+    assert "Freshness" in page
+    assert "Open P0 data gaps" in page
     assert "PENDING HUMAN APPROVAL" in page
+    assert "TRADING</span><b data-sev='fail'>LOCKED</b>" in page
+    assert "Needs attention" in page
+    assert "Source to readiness" in page
+    assert "No directional signal" in page
 
 
 @pytest.mark.parametrize("page,title", [
-    ("Security", "PostgreSQL Listener vorher"),
-    ("Runtime", "Source-to-Store Latency"),
-    ("Data Quality", "Coverage darf nicht vermischt werden"),
-    ("Gap Explorer", "Root Cause"),
-    ("Qualification Campaign", "Latest immutable daily manifest"),
-    ("Research & Independent Cases", "Qualification Independent Cases"),
+    ("Security", "Credential rotation"),
+    ("Runtime", "source to store latency"),
+    ("Data Quality", "Separated evidence rooms"),
+    ("Incidents & Gaps", "Root cause"),
+    ("Qualification", "Latest immutable daily manifest"),
+    ("Independent Cases", "Manual review"),
     ("V2 Readiness", "PENDING HUMAN APPROVAL"),
-    ("Graphify & MCP", "Support Case ID"),
-    ("Audit & Evidence", "Protected State"),
+    ("Graphify & MCP", "Tunnel permissions"),
+    ("Audit & Evidence", "Protected state"),
 ])
 def test_each_operations_page_renders_required_real_or_unavailable_state(tmp_path: Path, page: str, title: str) -> None:
     markup = render(_state(tmp_path), page)
