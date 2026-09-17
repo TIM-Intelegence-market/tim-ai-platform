@@ -55,6 +55,13 @@ class CursorStore:
             return None
         return SimpleNamespace(last_aggregate_trade_id=self.last_trade_id)
 
+    async def approved_live_cutover(self, _symbol: str, _cursor_id, _first_live_id) -> bool:
+        # No documented cutover receipt in tests: always take the fail-closed
+        # catch-up path. Required by DurableIngress since live-cutover support
+        # was added; without it the same-connection gap path raises
+        # AttributeError and the mocked stream reconnects forever.
+        return False
+
     async def ingest_trade(self, trade):
         self.order.append(("ingest", trade.trade_id))
         self.ingested.append(trade.trade_id)
@@ -242,3 +249,50 @@ async def test_incomplete_same_connection_catchup_rejects_jump_and_reconnects(
         and fields["error_type"] == DurableIngestionError.__name__
         for name, fields in events
     )
+
+
+@pytest.mark.asyncio
+async def test_ingress_store_interface_prevents_reconnect_hang(monkeypatch) -> None:
+    """Regression: a store fake missing DurableIngress-required methods used to
+    raise inside the trade handler, so stream.stop() was never reached and the
+    mocked stream reconnected to an exhausted socket forever (hang at
+    binance_ws run loop). The interface assertion fails fast on future drift;
+    the functional run below proves termination with the intended final state."""
+    order: list[tuple] = []
+    store = CursorStore(order)
+    for method in ("get_cursor", "approved_live_cutover", "ingest_trade", "record_metric"):
+        assert callable(getattr(store, method, None)), "store fake must implement %s" % method
+    ingress = DurableIngress(store, catchup=CompletingCatchUp(store))
+    context = Context(Socket([raw(20), raw(22)]))
+    connect_calls = 0
+
+    def connect(*_args, **_kwargs):
+        nonlocal connect_calls
+        connect_calls += 1
+        if connect_calls > 1:
+            # Fail fast instead of hanging: CancelledError propagates through
+            # BinanceTradeStream.run() (it only catches Exception), so an
+            # unexpected reconnect ends the test immediately with a clear error
+            # rather than looping on an exhausted mock socket forever.
+            raise asyncio.CancelledError("unexpected reconnect: run loop did not terminate")
+        return context
+
+    monkeypatch.setattr("src.data_ingestion.binance_ws.websockets.connect", connect)
+    stream = None
+
+    async def handle(trade):
+        await ingress(trade)
+        if trade.trade_id == 22:
+            stream.stop()
+
+    stream = BinanceTradeStream("wss://stream.binance.com/ws", "BTCUSDT", handle)
+    await stream.run()
+
+    assert connect_calls == 1
+    assert order == [
+        ("ingest", 20),
+        ("catchup", 21, 21, "SAME_CONNECTION_TRADE_ID_GAP"),
+        ("ingest", 21),
+        ("ingest", 22),
+    ]
+    assert store.last_trade_id == 22
