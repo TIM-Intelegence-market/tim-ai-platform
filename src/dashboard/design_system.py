@@ -42,7 +42,7 @@ def severity(status: Any) -> str:
         return "unknown"
     if text in {"DISABLED", "DISABLED BY POLICY", "PAUSED", "OBSERVE", "OBSERVE-ONLY", "AWAITING INTELLIGENCE", "PREPARED · INACTIVE"} or text.startswith("DISABLED"):
         return "disabled"
-    if "FAIL" in text or text in {"ERROR", "RED", "CRITICAL", "EXPOSED"} or "ERROR" in text:
+    if "FAIL" in text or text in {"ERROR", "RED", "CRITICAL", "EXPOSED", "LOCKED"} or "ERROR" in text:
         return "fail"
     if "BLOCKED" in text or "ADMIN ACTION REQUIRED" in text or "EXTERNAL ACTION REQUIRED" in text:
         return "blocked"
@@ -50,7 +50,7 @@ def severity(status: Any) -> str:
         return "degraded"
     if text in {"PASS", "ACTIVE", "RUNNING", "GREEN", "HEALTHY", "OK", "COMPLETED", "COMPLETE", "FROZEN", "CONNECTED", "MEASURED"} or text.startswith("PASS"):
         return "ok"
-    if "TIME GATE" in text or "PENDING HUMAN APPROVAL" in text or text in {"SCHEDULED", "WAITING"}:
+    if "TIME GATE" in text or "PENDING HUMAN APPROVAL" in text or "HUMAN ACTION REQUIRED" in text or "HUMAN_ACTION_REQUIRED" in text or text in {"SCHEDULED", "WAITING"}:
         return "info"
     if "NOT APPROVED" in text or "INSUFFICIENT" in text or "NOT READY" in text or "NOT_READY" in text:
         return "warn"

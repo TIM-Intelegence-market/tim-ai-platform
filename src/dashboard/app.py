@@ -146,6 +146,8 @@ class DashboardState:
     legacy_readiness_artifacts_path: Path = field(default_factory=lambda: Path("artifacts/v2_readiness"))
     operational_watchdog_path: Path = field(default_factory=lambda: Path("data/operational/watchdog_status.json"))
     live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))
+    gate_model_path: Path = field(default_factory=lambda: Path("data/research/status/current_gate_model.json"))
+    phase_c_checkpoint_path: Path = field(default_factory=lambda: Path("/tmp/phase_c_checkpoint.json"))
     runtime_started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     lock: threading.Lock = field(default_factory=threading.Lock)
     _timeline_mtime_ns: int = field(default=-1, init=False)
@@ -211,6 +213,46 @@ class DashboardState:
             return value if isinstance(value, dict) else {}
         except (OSError, ValueError, TypeError):
             return {}
+
+    def _gate_model(self) -> dict[str, Any]:
+        """Read the operator-owned current gate model (read-only, fail-open).
+
+        The dashboard never authors gate states. An absent or oversized file
+        renders every bound gate as UNAVAILABLE instead of a substitute value.
+        """
+        try:
+            raw = self.gate_model_path.read_text(encoding="utf-8")
+            if len(raw) > 262_144:
+                return {}
+            model = json.loads(raw)
+        except (OSError, ValueError, TypeError):
+            return {}
+        if not isinstance(model, dict):
+            return {}
+        # Live supplement: Phase C checkpoint progress (read-only, optional).
+        checkpoint = self._phase_c_progress()
+        if checkpoint and isinstance(model.get("bands"), dict):
+            for gate in model["bands"].get("data_pipeline", []):
+                if isinstance(gate, dict) and gate.get("live_checkpoint") and gate.get("id") == "PHASE_C_HISTORICAL_EXTENSION":
+                    gate["checkpoint"] = checkpoint
+        return model
+
+    def _phase_c_progress(self) -> dict[str, Any]:
+        try:
+            info = self.phase_c_checkpoint_path.stat()
+            if info.st_size > 65_536:
+                return {}
+            state = json.loads(self.phase_c_checkpoint_path.read_text())
+        except (OSError, ValueError, TypeError):
+            return {}
+        if not isinstance(state, dict):
+            return {}
+        return {
+            "trades": state.get("trades"),
+            "pages": state.get("pages"),
+            "last_id": state.get("last_id"),
+            "checkpoint_mtime": datetime.fromtimestamp(info.st_mtime, tz=timezone.utc).isoformat(),
+        }
 
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
@@ -285,6 +327,7 @@ class DashboardState:
                 "core_manifest": self._read_dict(self.core_manifest_path),
                 "governance_roles": self._read_dict(self.governance_roles_path),
                 "live_cutover": self._read_dict(self.live_cutover_path),
+                "gate_model": self._gate_model(),
                 "safety": "RESEARCH ONLY — NO ORDERS OR EXECUTION",
         }
         snapshot["operations"] = build_operations_snapshot(
@@ -1185,8 +1228,17 @@ AUTO_REFRESH_SCRIPT = r"""
     hdr('st-queue', typeof op.queue_depth === 'number' ? (op.queue_depth === 0 ? 'ok' : 'warn') : 'unknown', typeof op.queue_depth === 'number' ? op.queue_depth + ' EV' : 'UNKNOWN');
     const rolling = (data.operations && data.operations.datasets ? data.operations.datasets : []).slice(-1)[0] || {};
     hdr('st-data-quality', rolling.status ? (String(rolling.status).indexOf('FAIL') >= 0 ? 'fail' : String(rolling.status).indexOf('PASS') === 0 ? 'ok' : 'warn') : 'unknown', rolling.coverage || 'UNKNOWN');
-    const rs = String((data.readiness && data.readiness.readiness_status) || 'UNKNOWN');
-    hdr('st-research', rs.indexOf('NOT_READY') >= 0 ? 'warn' : (rs === 'READY_FOR_V2' || rs === 'READY') ? 'ok' : rs === 'UNKNOWN' ? 'unknown' : 'warn', rs.indexOf('NOT_READY') >= 0 ? 'NOT READY' : rs === 'READY_FOR_V2' ? 'READY' : rs === 'UNKNOWN' ? 'UNKNOWN' : rs);
+    const rg = (data.gate_model && data.gate_model.bands && data.gate_model.bands.research_readiness ? data.gate_model.bands.research_readiness : []).map(g => String((g && g.status) || '').toUpperCase()).filter(Boolean);
+    let rSev = 'unknown', rLabel = 'UNKNOWN';
+    if (rg.length && !rg.includes('FAIL') && rg.every(s => s === 'PASS')) { rSev = 'ok'; rLabel = 'READY'; }
+    else if (rg.length && rg.every(s => s === 'NO_EVIDENCE')) { rSev = 'unknown'; rLabel = 'UNKNOWN'; }
+    else if (rg.length && (rg.includes('PASS') || rg.includes('IN_PROGRESS') || rg.includes('LIMITED'))) { rSev = 'warn'; rLabel = 'PARTIAL'; }
+    else {
+      const rs = String((data.readiness && data.readiness.readiness_status) || 'UNKNOWN');
+      rSev = rs.indexOf('NOT_READY') >= 0 ? 'warn' : (rs === 'READY_FOR_V2' || rs === 'READY') ? 'ok' : rs === 'UNKNOWN' ? 'unknown' : 'warn';
+      rLabel = rs.indexOf('NOT_READY') >= 0 ? 'NOT READY' : rs === 'READY_FOR_V2' ? 'READY' : rs === 'UNKNOWN' ? 'UNKNOWN' : rs;
+    }
+    hdr('st-research', rSev, rLabel);
     set('runtime', data.validator?.started_at ? countdown(new Date(Date.now()+(Date.now()-new Date(data.validator.started_at).getTime())).toISOString()) : '—');
     set('acceptance-countdown', data.validator?.deadline ? countdown(data.validator.deadline) : '—');
     set('acceptance-state', `${text(data.validator?.acceptance?.status).toUpperCase()} • ${text(data.validator?.health_monitor?.level)}`);
@@ -1309,15 +1361,25 @@ def _strip_states(data: dict[str, Any]) -> list[tuple[str, str, str, str]]:
     quality_text = str(rolling.get("coverage") or "UNKNOWN")
     quality_state = (_severity_of(quality_status), quality_text)
 
-    readiness_status = str(data.get("readiness", {}).get("readiness_status", "UNKNOWN")).upper()
-    if "NOT_READY" in readiness_status:
-        research_state = ("warn", "NOT READY")
-    elif readiness_status in ("READY_FOR_V2", "READY"):
+    bands = (data.get("gate_model") or {}).get("bands") or {}
+    research_gates = [str(g.get("status", "")).upper() for g in (bands.get("research_readiness") or []) if isinstance(g, dict)]
+    research_gates = [s for s in research_gates if s]
+    if research_gates and "FAIL" not in research_gates and all(s == "PASS" for s in research_gates):
         research_state = ("ok", "READY")
-    elif readiness_status == "UNKNOWN":
+    elif research_gates and all(s == "NO_EVIDENCE" for s in research_gates):
         research_state = ("unknown", "UNKNOWN")
+    elif research_gates and ("PASS" in research_gates or "IN_PROGRESS" in research_gates or "LIMITED" in research_gates):
+        research_state = ("warn", "PARTIAL")
     else:
-        research_state = ("warn", readiness_status)
+        readiness_status = str(data.get("readiness", {}).get("readiness_status", "UNKNOWN")).upper()
+        if "NOT_READY" in readiness_status:
+            research_state = ("warn", "NOT READY")
+        elif readiness_status in ("READY_FOR_V2", "READY"):
+            research_state = ("ok", "READY")
+        elif readiness_status == "UNKNOWN":
+            research_state = ("unknown", "UNKNOWN")
+        else:
+            research_state = ("warn", readiness_status)
     return [
         ("SYSTEM",) + system,
         ("LIVE DATA",) + data_state,

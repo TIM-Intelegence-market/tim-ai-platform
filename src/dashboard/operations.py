@@ -535,6 +535,7 @@ def build_operations_snapshot(
             "queue_depth": live.get("queue_depth"),
             "queue_model": live.get("queue_model"),
         },
+        "gate_model": base.get("gate_model", {}),
         "sources": sources,
     }
 
@@ -965,24 +966,131 @@ def _cases(data: dict[str, Any]) -> str:
     )
 
 
+def _gate_bands(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Read the operator-owned current gate model from the operations contract."""
+    model = data.get("gate_model") or {}
+    bands = model.get("bands")
+    return bands if isinstance(bands, dict) else {}
+
+
+def _gate_age_days(checked_at: Any) -> float | None:
+    from datetime import datetime
+
+    try:
+        parsed = datetime.fromisoformat(str(checked_at).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    from datetime import timezone
+
+    return max((datetime.now(timezone.utc) - parsed).total_seconds() / 86_400.0, 0.0)
+
+
+def _gate_rows_from_model(gates: list[dict[str, Any]], stale_after_days: float) -> str:
+    rows = []
+    for gate in gates or []:
+        if not isinstance(gate, dict):
+            continue
+        checked_at = gate.get("checked_at")
+        age = _gate_age_days(checked_at)
+        open_human_state = str(gate.get("status", "")).upper().replace("_", " ") in {
+            "HUMAN ACTION REQUIRED", "PENDING HUMAN APPROVAL", "TIME GATE", "PENDING",
+        }
+        stale = (
+            gate.get("status") not in (None, "NO_EVIDENCE")
+            and not open_human_state
+            and age is not None
+            and age > stale_after_days
+        )
+        evidence = gate.get("evidence")
+        note_parts = [gate.get("note")] if gate.get("note") else []
+        if evidence:
+            note_parts.append(f"Evidence: {evidence}")
+        if checked_at:
+            note_parts.append(f"checked {checked_at}")
+        note_html = "<br>".join(f"<small>{_safe(part)}</small>" for part in note_parts if part)
+        checkpoint = gate.get("checkpoint")
+        checkpoint_html = ""
+        if isinstance(checkpoint, dict) and checkpoint.get("trades") is not None:
+            checkpoint_html = (
+                f"<span class='mono'>live checkpoint: {_safe(checkpoint.get('trades'))} trades · "
+                f"{_safe(checkpoint.get('pages'))} pages · state {_safe(checkpoint.get('checkpoint_mtime'))}</span><br>"
+            )
+        status_chip = evidence_chip("STALE" if stale else gate.get("status"))
+        if gate.get("status") in (None, "", "NO_EVIDENCE"):
+            status_chip = evidence_chip("UNAVAILABLE", raw=gate.get("status") or UNAVAILABLE)
+        stale_note = "<small>STALE — älter als das Aktualitätsfenster; nicht als aktueller Wert lesen.</small><br>" if stale else ""
+        rows.append(
+            "<div class='statusrow'>"
+            f"<dt>{_safe(gate.get('id'))}{note_html}</dt>"
+            f"<dd>{stale_note}{checkpoint_html if checkpoint_html else ''}</dd>"
+            f"<dd style='text-align:right'>{status_chip}</dd></div>"
+        )
+    return f"<dl class='statusrows'>{''.join(rows)}</dl>" if rows else (
+        "<div class='attention attention--empty'>Gate model not loaded — every bound gate stays UNAVAILABLE until data/research/status/current_gate_model.json exists.</div>"
+    )
+
+
 def _readiness(data: dict[str, Any]) -> str:
     readiness = data["readiness"]
     horizons = _horizons(data)
+    bands = _gate_bands(data)
+    stale_after_days = float((data.get("gate_model") or {}).get("stale_after_days") or 14)
+    archived = (data.get("gate_model") or {}).get("archived_snapshots") or []
+
+    system_health = bands.get("system_health") or []
+    runtime_rows = status_rows([
+        ("Runtime process", "live operational health", data["live"].get("status") or UNAVAILABLE,
+         f"status {data['live'].get('status', UNAVAILABLE)} · db {data['live'].get('database', UNAVAILABLE)} · stream {data['live'].get('stream', UNAVAILABLE)}",
+         f"freshness {data['live'].get('data_age_seconds', UNAVAILABLE)}s · uptime {_duration_between(data['live'].get('runtime_started_at'), data['live'].get('checked_at'))}"),
+    ])
+    system_body = runtime_rows + _gate_rows_from_model(system_health, stale_after_days)
+
+    trading_band = bands.get("trading") or []
+    trading_rows = status_rows([
+        ("Mode", "running runtime mode", "PASS" if (data.get("mode") or "OBSERVE") == "OBSERVE" else "FAIL", data.get("mode") or UNAVAILABLE, "/api/state mode"),
+        ("Trading actions", "executed trading actions across recorded evidence", "PASS" if data["security"]["trading_actions"]["value"] == 0 else "FAIL", _metric_value(data["security"]["trading_actions"]), str(data["security"]["trading_actions"]["source"])),
+    ]) + _gate_rows_from_model(trading_band, stale_after_days)
+
+    governance_band = bands.get("governance") or []
+    pending_human = [g for g in readiness["gates"] if "PENDING HUMAN" in str(g.get("status", "")).upper()]
+    governance_body = _gate_rows_from_model(governance_band, stale_after_days)
+    if pending_human:
+        governance_body += (
+            "<p class='cc-note'>Offene menschliche Freigaben (aus dem archivierten Snapshot, weiter unverändert): "
+            + ", ".join(_safe(g.get("name") or g.get("id")) for g in pending_human)
+            + ".</p>"
+        )
+
+    archived_note = "; ".join(
+        f"{_safe(item.get('label') or item.get('id'))} {_safe(item.get('status'))} (frozen {_safe((item.get('frozen_at') or '')[:10])})"
+        for item in archived if isinstance(item, dict)
+    )
+    archived_rows = gate_rows(readiness["gates"]) or "<div class='attention attention--empty'>No archived gate rows available.</div>"
+    stale_callout = (
+        "<div class='safety-callout' style='border-left-color:var(--info);background:var(--info-soft);color:#bfdaff'><b>STALE:</b> "
+        + (_safe(archived_note) if archived_note else "No archived snapshot registered.")
+        + " Diese Werte beschreiben den Cut-off-Zustand vom 01.08.2026 und bleiben unverändert dokumentiert. Sie sind keine aktuellen Runtime-FAILs.</div>"
+    )
     return (
-        page_head("V2 Readiness", "Individual gates without an artificial total percentage; readiness is reported per gate.", generated_at=data.get("generated_at_utc"))
-        + section(
-            "Gate matrix",
-            f"V2 gates · overall {readiness['status']}",
-            gate_rows(readiness["gates"]) or "<div class='attention attention--empty'>No gate evidence available.</div>",
-            note="Allowed gate states: PASS · FAIL · BLOCKED · PENDING HUMAN APPROVAL · TIME GATE · EXTERNAL ACTION REQUIRED.",
-            badge=evidence_chip(readiness["status"]),
-        )
-        + section(
-            "Horizon readiness",
-            "SHORT · MID · LONG",
-            horizon_panel(horizons),
-            note="Per-horizon intelligence evidence is not produced by the current build. Dimensions stay NOT AVAILABLE until real evidence exists.",
-        )
+        page_head("V2 Readiness", "Current gate model first, archived governance snapshots explicitly labelled stale. PENDING HUMAN APPROVAL is a governance state, not a technical failure.", generated_at=data.get("generated_at_utc"))
+        + section("Band 1 · System health", "Runtime, determinism, autonomy capability", system_body,
+                  note="PASS requires evidence. Gates without a machine-readable source render UNAVAILABLE, never PASS.")
+        + section("Band 2 · Data pipeline", "Data basis, quality scope, live ingestion, historical extension",
+                  _gate_rows_from_model(bands.get("data_pipeline") or [], stale_after_days),
+                  note="Current-collection quality and global legacy quality are reported separately and must not be merged.")
+        + section("Band 3 · Research readiness", "SHORT · MID · LONG",
+                  _gate_rows_from_model(bands.get("research_readiness") or [], stale_after_days)
+                  + f"<div style='margin-top:14px'>{horizon_panel(horizons)}</div>",
+                  note="Horizon dimension detail below; per-horizon intelligence evidence stays NOT AVAILABLE until real evidence exists.")
+        + section("Band 4 · Governance / human approval", "States that only humans can close", governance_body,
+                  note="PENDING HUMAN APPROVAL and TIME GATE are expected governance states — shown blue, not red. No agent may self-approve.")
+        + section("Band 5 · Trading authorization", "Execution path", trading_rows,
+                  note="TRADING stays LOCKED until a human release authority signs the opposite; no UI element can change this.")
+        + section("Archived snapshots", "Frozen governance evidence — not current failures",
+                  stale_callout
+                  + f"<div style='margin-top:14px'>{archived_rows}</div>",
+                  note="Allowed snapshot gate states: PASS · FAIL · BLOCKED · PENDING HUMAN APPROVAL · TIME GATE · EXTERNAL ACTION REQUIRED.",
+                  badge="<span class='sev sev--unknown'>STALE SNAPSHOT</span>")
     )
 
 
