@@ -14,6 +14,8 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from src.analytics.research import ResearchAnalyticsEngine
+from src.dashboard import design_system
+from src.dashboard.design_system import severity as _severity_of
 from src.dashboard.operations import OPERATIONS_PAGES, build_operations_snapshot, render_operations_page
 from src.insights import ResearchInsightsEngine
 from src.research.router import ResearchRouter
@@ -860,7 +862,8 @@ def _signal_research_page(state: DashboardState, data: dict[str, Any], selected_
         + selected_detail
         + context_matrix
         + retrospective
-        + exceptions
+        + exceptions,
+        strip=_strip_states(data),
     )
 
 
@@ -881,7 +884,8 @@ def _data_quality_exceptions_page(data: dict[str, Any]) -> str:
         + f"<div class='grid'>{cards}</div>"
         + "<section class='panel'><div class='panel__head'><h2>Exceptions Register</h2><span class='badge badge--red'>GATED</span></div><div class='table-wrap'><table><thead><tr><th>Component</th><th>Status</th><th>Reason Code</th><th>Reason Text</th><th>Time Window</th><th>Provenance</th><th>Linked Report</th><th>Linked Blocker</th></tr></thead><tbody>"
         + exceptions_rows
-        + "</tbody></table></div></section>"
+        + "</tbody></table></div></section>",
+        strip=_strip_states(data),
     )
 
 
@@ -1155,6 +1159,8 @@ caption{text-align:left;padding:11px 13px;color:var(--muted);font-size:11px;back
 @media(forced-colors:active){.badge,.card,.panel,.operations-hero{border:1px solid CanvasText}.operations-card:before{display:none}}
 """
 
+EXTRA_CSS = EXTRA_CSS + design_system.COMPONENT_CSS
+
 
 AUTO_REFRESH_SCRIPT = r"""
 <script>
@@ -1169,6 +1175,18 @@ AUTO_REFRESH_SCRIPT = r"""
   function status(kind, message) { const el=byId('tim-status'); if(!el)return; el.className=`live badge--${kind}`;el.textContent=`● ${message}`; }
   function countdown(deadline) { const seconds=Math.max(0,Math.floor((new Date(deadline).getTime()-Date.now())/1000));return `${Math.floor(seconds/3600)}h ${String(Math.floor((seconds%3600)/60)).padStart(2,'0')}m ${String(seconds%60).padStart(2,'0')}s`; }
   function update(data) {
+    const hdr = (id, sev, label) => { const el = byId(id); if (el) { el.textContent = label; el.dataset.sev = sev; } };
+    const op = data.operational_health || {};
+    const ageSeconds = op.data_age_seconds;
+    const isFresh = typeof ageSeconds === 'number' && ageSeconds >= 0 && ageSeconds <= 120;
+    const stream = String(op.stream || 'UNKNOWN').toUpperCase();
+    hdr('st-system', op.status === 'GREEN' ? 'ok' : op.status === 'RED' ? 'fail' : op.status === 'YELLOW' ? 'warn' : 'unknown', op.status === 'GREEN' ? 'RUNNING' : op.status === 'RED' ? 'IMPAIRED' : op.status === 'YELLOW' ? 'DEGRADED' : 'UNKNOWN');
+    hdr('st-live-data', stream === 'GREEN' ? (isFresh ? 'ok' : 'warn') : stream === 'RED' ? 'fail' : 'unknown', stream === 'GREEN' ? (isFresh ? 'LIVE' : 'STALE') : stream === 'RED' ? 'DOWN' : 'UNKNOWN');
+    hdr('st-queue', typeof op.queue_depth === 'number' ? (op.queue_depth === 0 ? 'ok' : 'warn') : 'unknown', typeof op.queue_depth === 'number' ? op.queue_depth + ' EV' : 'UNKNOWN');
+    const rolling = (data.operations && data.operations.datasets ? data.operations.datasets : []).slice(-1)[0] || {};
+    hdr('st-data-quality', rolling.status ? (String(rolling.status).indexOf('FAIL') >= 0 ? 'fail' : String(rolling.status).indexOf('PASS') === 0 ? 'ok' : 'warn') : 'unknown', rolling.coverage || 'UNKNOWN');
+    const rs = String((data.readiness && data.readiness.readiness_status) || 'UNKNOWN');
+    hdr('st-research', rs.indexOf('NOT_READY') >= 0 ? 'warn' : (rs === 'READY_FOR_V2' || rs === 'READY') ? 'ok' : rs === 'UNKNOWN' ? 'unknown' : 'warn', rs.indexOf('NOT_READY') >= 0 ? 'NOT READY' : rs === 'READY_FOR_V2' ? 'READY' : rs === 'UNKNOWN' ? 'UNKNOWN' : rs);
     set('runtime', data.validator?.started_at ? countdown(new Date(Date.now()+(Date.now()-new Date(data.validator.started_at).getTime())).toISOString()) : '—');
     set('acceptance-countdown', data.validator?.deadline ? countdown(data.validator.deadline) : '—');
     set('acceptance-state', `${text(data.validator?.acceptance?.status).toUpperCase()} • ${text(data.validator?.health_monitor?.level)}`);
@@ -1226,36 +1244,123 @@ def _content_security_policy() -> str:
     )
 
 
-def _layout(title: str, page: str, body: str) -> str:
-    primary_links = [
+NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
+    ("OPERATIONS", [
         ("Overview", "/"),
-        ("Security", "/security"),
         ("Runtime", "/runtime"),
         ("Data Quality", "/data-quality"),
-        ("Gap Explorer", "/gaps"),
-        ("Qualification Campaign", "/qualification"),
-        ("Research & Independent Cases", "/independent-cases"),
+        ("Incidents & Gaps", "/gaps"),
+    ]),
+    ("RESEARCH", [
+        ("Independent Cases", "/independent-cases"),
+        ("Qualification", "/qualification"),
+    ]),
+    ("READINESS", [
         ("V2 Readiness", "/v2-readiness"),
+    ]),
+    ("INTELLIGENCE", [
         ("Graphify & MCP", "/mcp"),
+    ]),
+    ("SYSTEM", [
+        ("Security", "/security"),
         ("Audit & Evidence", "/audit-evidence"),
+    ]),
+]
+
+
+def _strip_states(data: dict[str, Any]) -> list[tuple[str, str, str, str]]:
+    """Derive global header states strictly from the live snapshot.
+
+    Values mirror the AUTO_REFRESH_SCRIPT derivation; a state without
+    evidence renders as UNKNOWN, never as a healthy substitute.
+    """
+    live = data.get("operational_health", {})
+    status = str(live.get("status", "UNKNOWN")).upper()
+    if status == "GREEN":
+        system = ("ok", "RUNNING")
+    elif status == "RED":
+        system = ("fail", "IMPAIRED")
+    elif status == "YELLOW":
+        system = ("warn", "DEGRADED")
+    else:
+        system = ("unknown", "UNKNOWN")
+
+    stream = str(live.get("stream", "UNKNOWN")).upper()
+    age = live.get("data_age_seconds")
+    fresh = isinstance(age, (int, float)) and 0 <= age <= 120
+    if stream == "GREEN" and fresh:
+        data_state = ("ok", "LIVE")
+    elif stream == "GREEN":
+        data_state = ("warn", "STALE")
+    elif stream in ("RED", "FAIL"):
+        data_state = ("fail", "DOWN")
+    else:
+        data_state = ("unknown", "UNKNOWN")
+
+    queue_depth = live.get("queue_depth")
+    if isinstance(queue_depth, int):
+        queue_state = ("ok", f"{queue_depth} EV") if queue_depth == 0 else ("warn", f"{queue_depth} EV")
+    else:
+        queue_state = ("unknown", "UNKNOWN")
+
+    datasets = data.get("operations", {}).get("datasets") or []
+    rolling = datasets[-1] if datasets else {}
+    quality_status = rolling.get("status")
+    quality_text = str(rolling.get("coverage") or "UNKNOWN")
+    quality_state = (_severity_of(quality_status), quality_text)
+
+    readiness_status = str(data.get("readiness", {}).get("readiness_status", "UNKNOWN")).upper()
+    if "NOT_READY" in readiness_status:
+        research_state = ("warn", "NOT READY")
+    elif readiness_status in ("READY_FOR_V2", "READY"):
+        research_state = ("ok", "READY")
+    elif readiness_status == "UNKNOWN":
+        research_state = ("unknown", "UNKNOWN")
+    else:
+        research_state = ("warn", readiness_status)
+    return [
+        ("SYSTEM",) + system,
+        ("LIVE DATA",) + data_state,
+        ("QUEUE",) + queue_state,
+        ("DATA QUALITY",) + quality_state,
+        ("RESEARCH",) + research_state,
     ]
+
+
+def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, str]] | None = None) -> str:
+    nav_parts = []
+    for group_label, links in NAV_GROUPS:
+        items = "".join(
+            f"<a href='{href}' class='{'active' if page == key else ''}'"
+            f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
+            for key, href in links
+        )
+        nav_parts.append(f"<div class='nav__group'><p class='nav__label'>{_safe(group_label)}</p>{items}</div>")
+    nav = "".join(nav_parts)
+
+    strip_rows = "".join(
+        f"<div class='status-matrix__row{' status-matrix__row--locked' if label == 'TRADING' else ''}'>"
+        f"<span>{_safe(label)}</span><b id='st-{_safe(label.lower().replace(' ', '-'))}' data-sev='{sev}'>{_safe(value)}</b></div>"
+        for label, sev, value in (strip or [])
+    )
+    trading_row = (
+        "<div class='status-matrix__row status-matrix__row--locked'>"
+        "<span>TRADING</span><b data-sev='fail'>LOCKED</b></div>"
+    )
+    matrix = f"<dl class='status-matrix' aria-label='Globaler Systemstatus'>{strip_rows}{trading_row}</dl>" if strip else ""
+
     legacy_links = [
         ("Observations", "/observations"), ("Research Cases", "/cases"), ("Orderflow", "/orderflow"),
         ("Signal Research", "/signals"), ("Analytics", "/analytics"), ("Insights", "/insights"),
         ("Health Center", "/health"), ("Data Quality Exceptions", "/exceptions"),
         ("Timeline", "/timeline"), ("Research", "/research"),
     ]
-    nav = "".join(
-        f"<a href='{href}' class='{'active' if page == key else ''}'"
-        f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
-        for key, href in primary_links
-    )
     legacy_nav = "".join(
         f"<a href='{href}' class='{'active' if page == key else ''}'"
         f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
         for key, href in legacy_links
     )
-    return f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav><button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div><details class='legacy-nav'><summary>Vertiefende Research-Ansichten</summary><nav aria-label='Vertiefende Research-Ansichten'>{legacy_nav}</nav></details></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT}</body></html>"""
+    return f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav>{matrix}<button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div><details class='legacy-nav'><summary>Vertiefende Research-Ansichten</summary><nav aria-label='Vertiefende Research-Ansichten'>{legacy_nav}</nav></details></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT}</body></html>"""
 
 
 def _hero(title: str, text: str) -> str:
@@ -1266,7 +1371,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
     data = state.snapshot()
     validator = data["validator"]
     if page in OPERATIONS_PAGES and page != "Overview":
-        return _layout(page, page, render_operations_page(page, data["operations"]))
+        return _layout(page, page, render_operations_page(page, data["operations"]), strip=_strip_states(data))
     if page == "Orderflow":
         with state.lock:
             total_orderflow=len(state.orderflow_observations)
@@ -1279,7 +1384,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
             validation=validations.get(str(selected.get("observation_id")),{})
             detail=f"<section class='panel'><div class='panel__head'><h2>Observation &amp; Outcome Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>ID</dt><dd class='mono'>{_safe(selected.get('observation_id'))}</dd><dt>Beschreibung</dt><dd>{_safe(selected.get('summary'))}</dd><dt>Rule Version</dt><dd>{_safe(selected.get('rule_version'))}</dd><dt>Input Hash</dt><dd class='mono'>{_safe(selected.get('input_hash'))}</dd><dt>Outcome</dt><dd>{_safe(validation.get('outcome') or 'PENDING')}</dd><dt>Validated Through</dt><dd>{_safe(validation.get('validated_through'))}</dd></dl><div><h3>Evidenzbedingungen</h3><pre class='code'>{_json_block(selected.get('evidence'))}</pre><h3>5/15/30-Minuten-Verlauf</h3><pre class='code'>{_json_block(validation.get('horizons',[]))}</pre></div></div></section>"
         body=_hero("Orderflow Research","Deterministische Beschreibungen und nachgelagerte 5/15/30-Minuten-Outcomes.")+f"<section class='panel'><div class='panel__head'><h2>Persistierte Orderflow-Observations</h2><span class='count-scope'>neueste {len(observations)} von {total_orderflow}</span></div><div class='filters'><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. STRONG_BUYER_ACTIVITY'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='1.0.0'></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option></select></div></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Type</th><th>Timeframe</th><th>Evidence</th><th>Horizonte</th><th>Outcome</th><th>Rule Version</th></tr></thead><tbody>{rows}</tbody></table></div><p class='count-scope'>Der sichtbare Ausschnitt ist bewusst auf {ORDERFLOW_VISIBLE_LIMIT} Einträge begrenzt. Outcomes dokumentieren beobachtete Preisentwicklung; keine Prognose.</p></section>{detail}"
-        return _layout("Orderflow Research",page,body)
+        return _layout("Orderflow Research",page,body,strip=_strip_states(data))
     if page == "Signal Research":
         return _signal_research_page(state, data, selected_id)
     if page == "Analytics":
@@ -1296,7 +1401,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         body += f"<section class='panel'><h2>Rule Analytics</h2><div class='table-wrap'><table><thead><tr><th>Rule</th><th>Version</th><th>Anzahl</th><th>Erstes Auftreten</th><th>Letztes Auftreten</th><th>Ø Dauer s</th><th>Ø Timeframes/Case</th><th>Häufigste Missing Evidence</th><th>Häufigste Outcomes</th><th>Confirmed</th><th>Invalidiert</th><th>Closed</th><th>Ø Lifetime s</th></tr></thead><tbody>{rules}</tbody></table></div></section>"
         body += f"<section class='panel'><h2>Case Cluster</h2><div class='table-wrap'><table><thead><tr><th>Observation Type</th><th>Rule Version</th><th>Outcome</th><th>Missing Evidence</th><th>Gespeicherter Evidence Score</th><th>Timeframe</th><th>Anzahl</th></tr></thead><tbody>{clusters}</tbody></table></div><p class='count-scope'>Evidence Score ist ausschließlich der persistierte Wert; Analytics berechnet keinen neuen Score.</p></section>"
         body += f"<div class='research-grid'><section class='panel'><h2>Cases pro Tag</h2><div class='table-wrap'><table><thead><tr><th>Tag (UTC)</th><th>Anzahl</th></tr></thead><tbody>{days}</tbody></table></div></section><section class='panel'><h2>Cases pro Stunde</h2><div class='table-wrap'><table><thead><tr><th>Stunde (UTC)</th><th>Anzahl</th></tr></thead><tbody>{hours}</tbody></table></div></section><section class='panel'><h2>Observation-Häufigkeit</h2><div class='table-wrap'><table><thead><tr><th>Observation Type</th><th>Anzahl</th></tr></thead><tbody>{obs_frequency}</tbody></table></div></section><section class='panel'><h2>Outcome-Häufigkeit</h2><div class='table-wrap'><table><thead><tr><th>Outcome</th><th>Anzahl</th></tr></thead><tbody>{outcome_frequency}</tbody></table></div></section></div><section class='panel'><h2>Data Quality Analytics</h2><div class='grid'>{quality}</div></section>"
-        return _layout("Research Analytics", page, body)
+        return _layout("Research Analytics", page, body, strip=_strip_states(data))
     if page == "Insights":
         insights = state.insights()
         badge = "green" if insights["eligibility_status"] == "ELIGIBLE" else "yellow"
@@ -1322,7 +1427,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         body += f"<section class='panel'><h2>Outcome-Verteilungen</h2><div class='table-wrap'><table><thead><tr><th>Observation</th><th>Rule</th><th>N vollständig</th><th>Price Increased</th><th>Price Decreased</th><th>Price Sideways</th><th>Sample</th></tr></thead><tbody>{outcome_rows}</tbody></table></div></section>"
         body += f"<section class='panel'><h2>Folgeverläufe</h2><p class='count-scope'>Mittelwert wird stets zusammen mit Median und N dargestellt. Keine kausale Interpretation.</p><div class='table-wrap'><table><thead><tr><th>Observation</th><th>Horizont</th><th>N</th><th>Median Preis %</th><th>Mittel Preis %</th><th>Q25 / Q75</th><th>Median Delta</th><th>Mittel Delta</th></tr></thead><tbody>{''.join(followup_rows)}</tbody></table></div></section>"
         body += f"<section class='panel'><h2>Evidenzkombinationen</h2><div class='table-wrap'><table><thead><tr><th>Observation</th><th>Anzahl</th><th>Rule</th><th>Evidenz</th><th>Outcomes I / D / S</th><th>Sample</th></tr></thead><tbody>{combination_rows}</tbody></table></div></section><section class='panel'><h2>Market Sessions (UTC)</h2><p class='count-scope'>ASIA 00–08 · EUROPE 08–16 · USA 16–24 UTC. Feste deskriptive Einteilung.</p><div class='table-wrap'><table><thead><tr><th>Session</th><th>Observations</th></tr></thead><tbody>{session_rows}</tbody></table></div></section>"
-        return _layout("Research Insights", page, body)
+        return _layout("Research Insights", page, body, strip=_strip_states(data))
     if page == "Observations":
         selected = next((item for item in data["observations"] if str(item.get("observation_id")) == str(selected_id)), None)
         rows = "".join(_observation_row(item, data["research_cases"]) for item in reversed(data["observations"])) or "<tr><td colspan='7' class='empty'>No observations yet</td></tr>"
@@ -1331,7 +1436,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
             case = _case_for_observation(selected, data["research_cases"])
             detail = f"<section class='panel'><div class='panel__head'><h2>Observation Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>Observation ID</dt><dd class='mono'>{_safe(selected.get('observation_id'))}</dd><dt>Timestamp</dt><dd>{_safe(selected.get('observed_at'))}</dd><dt>Type</dt><dd>{_safe(selected.get('kind'))}</dd><dt>Rule</dt><dd>{_safe(selected.get('rule_id'))} · {_safe(selected.get('rule_version'))}</dd><dt>Provenance</dt><dd>{_safe(selected.get('provenance'))}</dd><dt>Research Case</dt><dd>{_safe(case.get('case_id') if case else None)}</dd><dt>Hash</dt><dd class='mono'>{_safe(selected.get('input_hash'))}</dd></dl><div><h3>Evidence / Rohdaten</h3><pre class='code'>{_json_block(selected.get('evidence'))}</pre></div></div><h3>Vollständige Observation</h3><pre class='code'>{_json_block(selected)}</pre></section>"
         body = _hero("Observation Explorer", "Deterministische Beobachtungen mit Evidenz und Provenance.") + f"<section class='panel'><div class='panel__head'><h2>Active Observations</h2><span class='count-scope'>sichtbarer Ausschnitt: {len(data['observations'])}</span></div><div class='filters'><div><label>Status</label><select id='filter-status'><option value=''>Alle</option><option>OPEN</option><option>MONITORING</option><option>CONFIRMED</option><option>INVALIDATED</option><option>CLOSED</option><option>UNASSIGNED</option></select></div><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. REJECTION'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='z. B. 1.0.0'></div></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Observation Type</th><th>Rule Version</th><th>Evidence Score</th><th>Provenance</th><th>Status</th></tr></thead><tbody id='observations-body'>{rows}</tbody></table></div><p class='count-scope'>Evidence Score entspricht der gespeicherten deterministischen Confidence; keine neue Bewertung wird erzeugt.</p></section>{detail}"
-        return _layout("Observation Explorer", page, body)
+        return _layout("Observation Explorer", page, body, strip=_strip_states(data))
     if page == "Research Cases":
         selected = next((item for item in data["research_cases"] if str(item.get("case_id")) == str(selected_id)), None)
         rows = "".join(_case_row(item) for item in reversed(data["research_cases"])) or "<tr><td colspan='8' class='empty'>No research cases yet</td></tr>"
@@ -1340,12 +1445,12 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
             timeline = "".join(f"<li><time>{_safe(item.get('observed_at'))}</time><span class='tag'>{_safe(item.get('kind'))}</span><span class='mono'>{_safe(_short(item.get('observation_id'), 14))}</span></li>" for item in selected.get("evidence", [])) or "<li class='empty'>Keine Evidenz-Timeline.</li>"
             detail = f"<section class='panel'><div class='panel__head'><h2>Case Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>Case ID</dt><dd class='mono'>{_safe(selected.get('case_id'))}</dd><dt>Status</dt><dd>{_safe(selected.get('status'))}</dd><dt>Dauer</dt><dd>{_safe(_duration(selected.get('opened_at'),selected.get('updated_at')))}</dd><dt>Outcome</dt><dd>{_safe(selected.get('outcome'))}</dd><dt>Missing Evidence</dt><dd>{_safe(', '.join(selected.get('missing_evidence', [])))}</dd></dl><div><h3>Timeline</h3><ul class='timeline'>{timeline}</ul></div></div></section>"
         body = _hero("Research Case Explorer", "Case-Lifecycle, fehlende Evidenz und reproduzierbare Timeline.") + f"<section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><span class='count-scope'>sichtbarer Ausschnitt: {len(data['research_cases'])}</span></div><div class='filters'><div><label>Status</label><select id='filter-status'><option value=''>Alle</option><option>OPEN</option><option>MONITORING</option><option>CONFIRMED</option><option>INVALIDATED</option><option>CLOSED</option></select></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option><option value='30'>30 Tage</option></select></div><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. BOS'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='z. B. 1.0.0'></div></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{rows}</tbody></table></div></section>{detail}"
-        return _layout("Research Case Explorer", page, body)
+        return _layout("Research Case Explorer", page, body, strip=_strip_states(data))
     if page == "Health Center":
         body = _hero("Health Center", "Zentrales Diagnosezentrum für Betrieb, Wissenschaft und Governance.")
         body += "<p class='count-scope'>Karten öffnen, um Ursache, Zeitpunkt, Evidenz, Auswirkung und nächsten Schritt zu sehen. Statuswerte werden nicht synthetisch ergänzt.</p>"
         body += _health_center_sections(data)
-        return _layout("Health Center", page, body)
+        return _layout("Health Center", page, body, strip=_strip_states(data))
     if page == "Data Quality Exceptions":
         return _data_quality_exceptions_page(data)
     if page == "Timeline":
@@ -1353,7 +1458,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
     if page == "Research":
         research = validator.get("research_health", {})
         body = _hero("Research Evidence", "Lokale, dokumentierte TIM-Evidenz ohne schreibende UI-Aktionen.") + f"<div class='grid'><article class='card'><div class='card__label'>Research Integrity</div><div class='card__value'><span class='badge badge--{_status(research.get('level')).lower()}'>{_safe(research.get('level'))}</span></div><div class='card__note'>{_safe(research.get('trigger_duplicates', 0))} Trigger-Duplikate</div></article><article class='card'><div class='card__label'>Mode</div><div class='card__value'>OBSERVE</div><div class='card__note'>Keine Multi-Agent-Ausführung</div></article></div><section class='panel'><div class='panel__head'><h2>Read-only Research Index</h2><span class='badge badge--green'>NO WRITE CONTROLS</span></div><p>Die Control-Center-Oberfläche erzeugt, verändert oder signiert keine Research-Artefakte. Persistierte Evidenz bleibt über die spezialisierten Ansichten lesbar.</p><div class='quick-links'><a href='/observations'>Observations</a><a href='/cases'>Research Cases</a><a href='/signals'>Signal Research</a><a href='/analytics'>Analytics</a><a href='/insights'>Insights</a></div></section>"
-        return _layout("Research Workspace", page, body)
+        return _layout("Research Workspace", page, body, strip=_strip_states(data))
     readiness = data["readiness"]
     audit = data.get("research_audit", {})
     quality = data.get("research_quality", {})
@@ -1399,7 +1504,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
     readiness_panel=f"<section class='panel'><div class='panel__head'><h2>Scientific Data Progress &amp; V2 Readiness</h2><span class='badge badge--{_status(readiness.get('readiness_status')).lower()}'>{_safe(readiness.get('readiness_status'))}</span></div><div class='grid'><article class='card'><div class='card__label'>Validierte Cases</div><div class='card__value'>{_safe(readiness.get('validated_case_count'))} / {_safe(readiness.get('required_case_count'))}</div><div class='card__note'>{_safe(readiness.get('validated_case_progress_percent'))}% · {_safe(readiness.get('remaining_case_count'))} verbleibend</div></article><article class='card'><div class='card__label'>Offene Cases</div><div class='card__value'>{_safe(readiness.get('open_case_count'))}</div><div class='card__note'>{_safe(readiness.get('observation_count'))} Observationen gesamt</div></article><article class='card'><div class='card__label'>Neue Continuous Coverage</div><div class='card__value'>{_safe(readiness.get('continuous_coverage_percent'))}%</div><div class='card__note'>{_safe(readiness.get('continuous_persisted_1m_intervals'))} / {_safe(readiness.get('continuous_expected_1m_intervals'))} Minuten</div></article><article class='card'><div class='card__label'>Gemessener Verlauf</div><div class='card__value'>{_safe(readiness.get('measured_validated_cases_per_hour'))}/h</div><div class='card__note'>{_safe(readiness.get('measured_validated_cases_per_day'))}/Tag · Hochrechnung unverbindlich: {_safe(readiness.get('nonbinding_projected_1000_case_time'))}</div></article></div><details class='readiness'><summary>Alle Freigabekriterien anzeigen</summary><div class='table-wrap'><table><thead><tr><th>Freigabekriterium</th><th>Status</th></tr></thead><tbody>{criteria_rows}</tbody></table></div></details><p class='count-scope'>TIM startet V2 niemals automatisch. Die endgültige Freigabe erfordert einen manuellen Evolution Review.</p></section>"
     research_overview = _hero("TIM Research Dashboard", "Research Overview · deterministischer Systemzustand und aktuelle Research-Aktivität.") + f"<p class='observe'>OBSERVE MODE • {data['safety']}</p>{readiness_panel}<section class='panel'><div class='panel__head'><h2>Market Status</h2><span class='badge badge--green'>{_safe(data['market_status'].get('status'))}</span></div><p class='count-scope'><b>Zählerbereich:</b> sichtbarer letzter Ausschnitt, keine Gesamtzahlen. Sichtbare Candles: <span id='candles-count'>{len(data['candles'])}</span> · Sichtbare Observations: <span id='obs-count'>{len(data['observations'])}</span> · Sichtbare Cases: <span id='cases-count'>{len(data['research_cases'])}</span></p></section><div class='grid'>{card_html}<article class='card'><div class='card__label'>Research Module</div><div class='card__value'><span id='research-health' class='badge badge--{_status(validator.get('research_health',{}).get('level')).lower()}'>{_safe(validator.get('research_health',{}).get('level'))}</span></div><div class='card__note'><a href='/research'>Research Workspace öffnen →</a></div></article></div><section class='panel'><div class='panel__head'><h2>Active Observations</h2><a href='/observations'>Alle öffnen →</a></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Observation Type</th><th>Rule Version</th><th>Evidence Score</th><th>Provenance</th><th>Status</th></tr></thead><tbody id='observations-body'>{recent_obs}</tbody></table></div></section><section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><a href='/cases'>Alle öffnen →</a></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{case_preview}</tbody></table></div></section><section class='panel'><h2>News</h2><p class='muted'>Keine autorisierte News-Ingestion aktiv. Es werden keine Nachrichten erfunden oder ergänzt.</p></section>"
     body = render_operations_page("Overview", data["operations"]) + "<details class='panel readiness'><summary>Vertiefende Research-Übersicht anzeigen</summary>" + research_overview + "</details>"
-    return _layout("Research Overview", page, body)
+    return _layout("Research Overview", page, body, strip=_strip_states(data))
 
 
 class DashboardServer:
@@ -1484,9 +1589,9 @@ class DashboardServer:
                     return self.respond(200, formatter(insights).encode(), content_type)
                 pages = {
                     "/": "Overview", "/security": "Security", "/runtime": "Runtime",
-                    "/data-quality": "Data Quality", "/gaps": "Gap Explorer",
-                    "/qualification": "Qualification Campaign",
-                    "/independent-cases": "Research & Independent Cases",
+                    "/data-quality": "Data Quality", "/gaps": "Incidents & Gaps",
+                    "/qualification": "Qualification",
+                    "/independent-cases": "Independent Cases",
                     "/v2-readiness": "V2 Readiness", "/mcp": "Graphify & MCP",
                     "/audit-evidence": "Audit & Evidence",
                     "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow",

@@ -522,280 +522,516 @@ def build_operations_snapshot(
             "protected_state": _normalized_status(_first(protected, "status", "result", default=_first(tests, "protected_state.status"))),
             "last_incident": last_incident or UNAVAILABLE,
             "sources": audit_sources,
+            "incidents": list(reversed(incidents[-20:])),
+        },
+        "live": {
+            "database": live.get("database"),
+            "stream": live.get("stream"),
+            "status": live.get("status"),
+            "last_data_at": live.get("last_data_at"),
+            "data_age_seconds": live.get("data_age_seconds"),
+            "checked_at": live.get("checked_at"),
+            "runtime_started_at": live.get("runtime_started_at"),
+            "queue_depth": live.get("queue_depth"),
+            "queue_model": live.get("queue_model"),
         },
         "sources": sources,
     }
 
 
-def _badge(status: Any) -> str:
-    normalized = _normalized_status(status)
-    return f"<span class='badge badge--{_status_class(normalized)}'>{_safe(normalized)}</span>"
+"""Control Center page renderers (UI-V3).
+
+Presentation layer only: every value shown here comes from the operations
+contract produced by :func:`build_operations_snapshot` or is explicitly
+rendered as UNAVAILABLE. Severity classification lives in
+``src.dashboard.design_system`` so identical states look identical everywhere.
+"""
+
+from src.dashboard.design_system import (
+    UNAVAILABLE,
+    attention_list,
+    cell_state,
+    attention_row,
+    chip,
+    coverage_rows,
+    evidence_chip,
+    gate_rows,
+    horizon_panel,
+    incident_card,
+    metric_strip,
+    page_head,
+    pipeline,
+    section,
+    severity,
+    state_banner,
+    status_rows,
+)
 
 
-def _card(label: str, value: Any, note: Any, *, status: Any = None) -> str:
-    if status is None:
-        shown = _safe(value)
-    else:
-        suffix = f"<span class='metric-value'>{_safe(value)}</span>" if value not in (None, "") else ""
-        shown = _badge(status) + suffix
-    return (
-        "<article class='card operations-card'>"
-        f"<div class='card__label'>{_safe(label)}</div>"
-        f"<div class='card__value'>{shown}</div>"
-        f"<div class='card__note'>{_safe(note)}</div></article>"
-    )
+def _short_time(value: Any) -> str:
+    text = str(value) if value not in (None, "") else ""
+    return text[:19].replace("T", " ") if len(text) >= 19 else (text or UNAVAILABLE)
 
 
-def _hero(title: str, text: str) -> str:
-    return (
-        "<div class='hero operations-hero'><div>"
-        f"<p class='eyebrow'>TIM CONTROL CENTER</p><h1>{_safe(title)}</h1><p>{_safe(text)}</p>"
-        "</div><div class='safety-stack' aria-label='Sicherheitsmodus'>"
-        "<span class='badge badge--green'>OBSERVE-ONLY</span>"
-        "<span class='badge badge--green'>TRADING LOCKED</span>"
-        "<span class='badge badge--green'>EXECUTION DISABLED</span></div></div>"
-    )
+def _human_duration(seconds: Any) -> str:
+    if not isinstance(seconds, (int, float)) or seconds < 0:
+        return UNAVAILABLE
+    seconds = int(seconds)
+    if seconds < 90:
+        return f"{seconds}s"
+    minutes = seconds // 60
+    if minutes < 90:
+        return f"{minutes}m"
+    hours = minutes // 60
+    if hours < 36:
+        return f"{hours}h {minutes % 60}m"
+    days = hours // 24
+    return f"{days}d {hours % 24}h"
 
 
-def _source_note(source: Any) -> str:
-    return f"Quelle: {_safe(source)}"
+def _metric_value(metric: dict[str, Any], *, unit: bool = True) -> str:
+    value = metric.get("value", UNAVAILABLE)
+    suffix = f" {metric['unit']}" if unit and metric.get("unit") and value != UNAVAILABLE else ""
+    return f"{value}{suffix}"
 
 
-def _metric_cards(metrics: dict[str, Any], definitions: Iterable[tuple[str, str]]) -> str:
-    cards = []
-    for key, label in definitions:
-        metric = metrics.get(key, {})
-        value = metric.get("value", UNAVAILABLE)
-        unit = metric.get("unit")
-        shown = f"{value} {unit}" if unit and value != UNAVAILABLE else value
-        cards.append(_card(label, shown, _source_note(metric.get("source", UNAVAILABLE)), status=metric.get("status")))
-    return "<div class='grid operations-grid'>" + "".join(cards) + "</div>"
+def _duration_between(start: Any, end: Any) -> str:
+    from datetime import datetime
+
+    def _parse(value: Any) -> Any:
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+
+    parsed_start, parsed_end = _parse(start), _parse(end)
+    if not parsed_start or not parsed_end:
+        return UNAVAILABLE
+    return _human_duration((parsed_end - parsed_start).total_seconds())
 
 
-def _dataset_section(data: dict[str, Any]) -> str:
-    cards = []
-    for item in data["datasets"]:
-        note = f"{item['observed']} / {item['expected']} · {_source_note(item['source'])}"
-        cards.append(_card(item["label"], item["coverage"], note, status=item["status"]))
-    return (
-        "<section class='panel'><div class='panel__head'><div><p class='eyebrow'>GETRENNTE DATENSÄTZE</p>"
-        "<h2>Coverage darf nicht vermischt werden</h2></div><span class='badge badge--yellow'>5 EVIDENZRÄUME</span></div>"
-        "<div class='grid operations-grid'>" + "".join(cards) + "</div></section>"
-    )
+def _attention_rows(data: dict[str, Any]) -> list[str]:
+    """Derive the active problem list strictly from persisted/live evidence.
 
-
-def _market_contexts() -> str:
-    """Reserve explicit, non-prescriptive horizons for future intelligence.
-
-    These cards intentionally expose availability only. They must never infer a
-    direction, confidence, or trading action from incomplete research evidence.
+    Only states that are not validated-healthy produce rows; archived findings
+    are labelled as historical instead of being presented as current failures.
     """
-    horizons = (
-        ("SHORT", "Intraday structure", "60s · 1m · 5m", "Microstructure, flow and immediate regime"),
-        ("MID", "Session context", "15m · 1h · 4h", "Momentum, participation and session continuity"),
-        ("LONG", "Structural context", "1D · 1W", "Regime, macro context and durable market structure"),
-    )
-    cards = "".join(
-        "<article class='horizon-card'>"
-        f"<div class='horizon-card__head'><span class='horizon-key'>{_safe(key)}</span>"
-        "<span class='badge badge--paused'>AWAITING INTELLIGENCE</span></div>"
-        f"<h3>{_safe(title)}</h3><p class='horizon-timeframes'>{_safe(timeframes)}</p>"
-        f"<p>{_safe(description)}</p><div class='horizon-track' aria-hidden='true'><span></span></div>"
-        "</article>"
-        for key, title, timeframes, description in horizons
-    )
-    return (
-        "<section class='panel context-panel'><div class='panel__head'><div>"
-        "<p class='eyebrow'>MARKET CONTEXT</p><h2>Intelligence horizons</h2>"
-        "<p class='section-copy'>Clear separation of analysis windows. No directional signal is generated.</p>"
-        "</div><span class='badge badge--paused'>PREPARED · INACTIVE</span></div>"
-        f"<div class='horizon-grid'>{cards}</div></section>"
-    )
-
-
-def _overview(data: dict[str, Any]) -> str:
+    live = data.get("live", {})
     security = data["security"]
     runtime = data["runtime"]
     cases = data["independent_cases"]
     gaps = data["gaps"]
+    readiness = data["readiness"]
+    mcp = data["mcp"]
     audit = data["audit"]
-    headline = [
-        _card("PostgreSQL Security", "", _source_note(security["listener_after"]["source"]), status=security["status"]),
-        _card("Runtime Health", "", _source_note(runtime["collector_freshness"]["source"]), status=runtime["status"]),
-        _card("Collector Freshness", runtime["collector_freshness"]["value"], "Sekunden seit letzter persistierter Marktdatenzeit", status=runtime["collector_freshness"]["status"]),
-        _card("Queue Health", runtime["queue_depth"]["value"], _source_note(runtime["queue_depth"]["source"]), status=runtime["queue_depth"]["status"]),
-        _card("Cursor Health", runtime["cursor_age"]["value"], _source_note(runtime["cursor_age"]["source"]), status=runtime["cursor_age"]["status"]),
-        _card("Offene P0 / P1 Gaps", f"{gaps['p0']} / {gaps['p1']}", f"{gaps['total_loaded']} geladen · {gaps['scope']}"),
-        _card("Independent Cases", cases["qualification"], f"Ziel {cases['required']} · Qualification", status=cases["status"]),
-        _card("Manual Review", "", "Keine maschinelle Freigabe", status=cases["manual_review"]),
-        _card("V2 Status", "", _source_note(data["readiness"]["source"]), status=data["readiness"]["status"]),
-        _card("MCP Status", "", f"Case ID: {data['mcp']['case_id']}", status=data["mcp"]["status"]),
-        _card("Letzter Test", audit["last_test"], f"{audit['passed']} pass · {audit['failed']} fail", status=audit["test_status"]),
-        _card("Letzter Incident", audit["last_incident"] if isinstance(audit["last_incident"], str) else audit["last_incident"].get("event", UNAVAILABLE), "Persistierte Runtime-Timeline"),
+    rows: list[tuple[int, str]] = []
+
+    def add(status: Any, title: str, detail: str, source: str = "") -> None:
+        key = severity(status)
+        if key == "ok":
+            return
+        weight = {"fail": 0, "blocked": 1, "degraded": 2, "warn": 3, "info": 4, "unknown": 5, "disabled": 6}[key]
+        rows.append((weight, attention_row(status, title, detail, source)))
+
+    if security["status"] not in ("PASS",) and severity(security["status"]) != "ok":
+        add(security["status"], "PostgreSQL security gate", str(security["status"]), str(security["listener_after"]["source"]))
+    if severity(live.get("stream")) != "ok":
+        add(live.get("stream", UNAVAILABLE), "Live market data stream", f"stream={live.get('stream', UNAVAILABLE)} · last data {live.get('last_data_at') or UNAVAILABLE}", "/api/state operational_health.stream")
+    if runtime["cursor_age"]["value"] == UNAVAILABLE:
+        add(UNAVAILABLE, "Cursor age not instrumented", "No durable cursor age evidence is loaded; queue/database continuity cannot be verified from the dashboard.", str(runtime["cursor_age"]["source"]))
+    if severity(runtime["queue_depth"]["status"]) not in ("ok", "unknown") :
+        add(runtime["queue_depth"]["status"], "Queue health degraded", f"depth={runtime['queue_depth']['value']}", str(runtime["queue_depth"]["source"]))
+    if isinstance(gaps["p0"], int) and gaps["p0"] > 0:
+        add("FAIL", "Open P0 data gaps", f"{gaps['p0']} P0 · {gaps['p1']} P1 · {gaps['total_loaded']} loaded ({gaps['scope']})", str(gaps["source"]))
+    elif isinstance(gaps["p1"], int) and gaps["p1"] > 0:
+        add("WARN", "Open P1 data gaps", f"{gaps['p1']} P1 · {gaps['total_loaded']} loaded ({gaps['scope']})", str(gaps["source"]))
+    if severity(cases["status"]) != "ok":
+        add(cases["status"], "Independent qualification cases", f"{cases['qualification']} of {cases['required']} required independent cases", str(cases["source"]))
+    if cases["manual_review"] == "PENDING HUMAN APPROVAL":
+        add("PENDING HUMAN APPROVAL", "Manual scientific review pending", "No machine-side approval exists; a real human review is required before qualification counts.", str(cases["source"]))
+    if severity(readiness["status"]) != "ok":
+        add(readiness["status"], "V2 readiness gate", str(readiness["status"]), str(readiness["source"]))
+    if severity(mcp["status"]) == "blocked":
+        add(mcp["status"], "MCP external action required", f"support case {mcp['case_id']}", str(mcp["source"]))
+    last_incident = audit.get("last_incident")
+    if isinstance(last_incident, dict) and last_incident:
+        add("WARN", "Runtime incident in bounded timeline", str(last_incident.get("event", UNAVAILABLE)), "see Incidents & Gaps")
+    rows.sort(key=lambda item: item[0])
+    return [row for _, row in rows[:12]]
+
+
+def _pipeline_stages(data: dict[str, Any]) -> list[tuple[str, Any, str, str]]:
+    live = data.get("live", {})
+    runtime = data["runtime"]
+    cases = data["independent_cases"]
+    readiness = data["readiness"]
+    freshness = live.get("data_age_seconds")
+    fresh = isinstance(freshness, (int, float)) and 0 <= freshness <= 120
+    candle_status = "PASS" if fresh and live.get("stream") == "GREEN" else ("WARN" if live.get("stream") == "GREEN" else "FAIL")
+    rolling = data["datasets"][-1]
+    return [
+        ("Source", live.get("stream", UNAVAILABLE), "public market feed", f"stream={live.get('stream', UNAVAILABLE)}"),
+        ("Ingest", runtime["collector_freshness"]["status"], _metric_value(runtime["collector_freshness"]), "seconds since last persisted market time"),
+        ("Queue", runtime["queue_depth"]["status"], f"{runtime['queue_depth']['value']} ev", str(live.get("queue_model") or runtime["queue_depth"]["source"])),
+        ("Persist", live.get("database", UNAVAILABLE), "durable outbox", f"database={live.get('database', UNAVAILABLE)}"),
+        ("Cursor", runtime["cursor_age"]["status"], _metric_value(runtime["cursor_age"]), "durable cursor age"),
+        ("Candles", candle_status, _short_time(live.get("last_data_at")), "latest persisted candle close"),
+        ("Quality", rolling.get("status", UNAVAILABLE), f"rolling {rolling.get('coverage', UNAVAILABLE)}", "rolling 1440m coverage gate"),
+        ("Research", cases["status"], f"{cases['qualification']} / {cases['required']} cases", "independent qualification"),
+        ("Readiness", readiness["status"], "V2 gate matrix", f"{len(readiness['gates'])} gates"),
     ]
+
+
+def _horizons(data: dict[str, Any]) -> list[tuple[str, str, str, str, list[tuple[str, Any]]]]:
+    """Explicit, non-prescriptive analysis horizons.
+
+    The current build persists no per-horizon feature/qualification evidence,
+    so every dimension is reported as NOT AVAILABLE instead of being inferred.
+    """
+    horizons = []
+    for key, name, timeframes, description in (
+        ("SHORT", "Intraday structure", "60s · 1m · 5m", "Microstructure, flow and immediate regime"),
+        ("MID", "Session context", "15m · 1h · 4h", "Momentum, participation and session continuity"),
+        ("LONG", "Structural context", "1D · 1W", "Regime, macro context and durable market structure"),
+    ):
+        horizons.append((key, name, timeframes, description, [
+            ("Data", "NOT AVAILABLE"),
+            ("Features", "NOT AVAILABLE"),
+            ("Quality", "NOT AVAILABLE"),
+            ("Qualification", "NOT AVAILABLE"),
+            ("Readiness", "AWAITING INTELLIGENCE"),
+        ]))
+    return horizons
+
+
+def _overview(data: dict[str, Any]) -> str:
+    live = data.get("live", {})
+    runtime = data["runtime"]
+    cases = data["independent_cases"]
+    readiness = data["readiness"]
+    audit = data["audit"]
+
+    status_word = {"GREEN": "RUNNING", "YELLOW": "DEGRADED", "RED": "IMPAIRED"}.get(
+        str(live.get("status", "")).upper(), "STATE UNKNOWN"
+    )
+    freshness = live.get("data_age_seconds")
+    stream_raw = live.get("stream", UNAVAILABLE)
+    fresh = isinstance(freshness, (int, float)) and 0 <= freshness <= 120
+    if stream_raw == "GREEN" and fresh:
+        data_label = "LIVE"
+    elif stream_raw == "GREEN":
+        data_label = "STALE"
+    elif stream_raw in ("RED", "FAIL"):
+        data_label = "DOWN"
+    else:
+        data_label = "UNKNOWN"
+
+    level1 = state_banner(
+        live.get("status", UNAVAILABLE),
+        status_word,
+        f"Live operational state at { _short_time(live.get('checked_at')) } UTC · OBSERVE mode, no execution path",
+        metrics=[
+            ("Live data", data_label, f"stream={stream_raw}"),
+            ("Freshness", f"{freshness}s" if isinstance(freshness, (int, float)) else UNAVAILABLE, "since last persisted market time"),
+            ("Queue", f"{live.get('queue_depth')} events" if live.get("queue_depth") is not None else UNAVAILABLE, str(live.get("queue_model") or "")),
+            ("Database", live.get("database", UNAVAILABLE), "postgres write path"),
+            ("Last event", _short_time(live.get("last_data_at")), "latest persisted candle close"),
+            ("Uptime", _duration_between(live.get("runtime_started_at"), live.get("checked_at")), "current runtime process"),
+        ],
+    )
+
+    level2 = section(
+        "Active problems",
+        "Needs attention",
+        attention_list(_attention_rows(data), "No active problem detected from the currently loaded evidence."),
+        note="Derived only from loaded evidence. Absent evidence is listed as unavailable instead of being silently ignored.",
+    )
+
+    level3 = section(
+        "Pipeline",
+        "Source to readiness",
+        pipeline(_pipeline_stages(data)),
+        note="Each stage shows its current evidence-backed state. Stages without instrumentation show UNKNOWN, never a substitute value.",
+    )
+
+    gate_summary = gate_rows(readiness["gates"][:6])
+    gate_link = f"<p class='cc-note'>All {len(readiness['gates'])} gates, blockers and owners: <a href='/v2-readiness'>V2 Readiness →</a></p>"
+    horizon_body = horizon_panel(_horizons(data))
+    qualification_strip = metric_strip([
+        ("Qualification cases", cases["qualification"], f"of {cases['required']} required", cases["status"]),
+        ("Frozen scope", cases["frozen"], "historical gate scope", None),
+        ("Current audit", cases["current"], "strict independent units", None),
+        ("Manual review", cases["manual_review"], "no machine approval", cases["manual_review"]),
+    ])
+    level4 = section(
+        "Research readiness",
+        "Horizons and gates",
+        horizon_body
+        + f"<div style='margin-top:14px'>{qualification_strip}</div>"
+        + f"<div style='margin-top:14px'>{gate_summary}{gate_link}</div>",
+        note="Research readiness is reported separately from runtime health. No directional signal, forecast or trading recommendation is generated.",
+        meta=f"readiness gate {readiness['status']}",
+    )
+
+    evidence_strip = metric_strip([
+        ("Last full test", audit["last_test"], "", audit["test_status"]),
+        ("Test result", f"{audit['passed']} pass / {audit['failed']} fail", "", None),
+        ("Last incident", str((audit.get("last_incident") or {}).get("event", UNAVAILABLE)) if isinstance(audit.get("last_incident"), dict) else str(audit.get("last_incident", UNAVAILABLE)), "", None),
+        ("Data spaces", str(len(data["datasets"])), "coverage rooms", None),
+    ])
+    evidence = section(
+        "Latest evidence",
+        "Tests, incidents and datasets",
+        evidence_strip
+        + "<p class='cc-note'>Details: <a href='/gaps'>Incidents & Gaps →</a> · <a href='/data-quality'>Data Quality →</a> · <a href='/audit-evidence'>Audit & Evidence →</a></p>",
+    )
+
     return (
-        _hero(data["product"], "Sicherheits-, Laufzeit-, Daten- und Wissenschaftsstatus aus persistierter Evidenz.")
-        + "<div class='terminal-strip' aria-label='Systemgrenzen'><span><i class='status-dot status-dot--green'></i>READ-ONLY</span><span>NO ORDERS</span><span>NO SHELL</span><span>NO GIT</span><span>NO SECRETS</span><strong>EXECUTION DISABLED</strong></div>"
-        + "<section class='overview-section'><div class='section-heading'><div><p class='eyebrow'>OPERATIONAL HEALTH</p><h2>System control plane</h2></div><p>Live runtime and persisted evidence at a glance.</p></div>"
-        + "<div class='grid operations-grid operations-grid--overview'>" + "".join(headline) + "</div></section>"
-        + _market_contexts()
-        + _dataset_section(data)
+        page_head("Operations Overview", "Immediate system health, active problems, pipeline state and research readiness from persisted evidence.", generated_at=data.get("generated_at_utc"))
+        + level1 + level2 + level3 + level4 + evidence
     )
 
 
 def _security(data: dict[str, Any]) -> str:
-    metrics = data["security"]
-    return (
-        _hero("Security", "Fail-closed Status der lokalen Betriebsgrenze; ohne Secrets.")
-        + _metric_cards(metrics, (
-            ("listener_before", "PostgreSQL Listener vorher"),
-            ("listener_after", "PostgreSQL Listener nachher"),
-            ("lan_exposure", "LAN Exposure Test"),
-            ("hba", "HBA Status"),
-            ("credential_rotation", "Credential Rotation"),
-            ("secret_provider", "Secret Provider"),
-            ("dashboard_binding", "Dashboard Binding"),
-            ("observe_only", "OBSERVE-only"),
-            ("trading_actions", "Trading Action Count"),
-            ("safe_stop", "Safe Stop Status"),
-        ))
-        + f"<section class='panel'><h2>Letzter Security-Test</h2><p class='mono'>{_safe(metrics['last_test'])}</p>"
-          "<p class='count-scope'>Fehlende oder nicht aktuelle Evidenz bleibt UNAVAILABLE und wird nicht als PASS interpretiert.</p></section>"
+    security = data["security"]
+    rows = status_rows([
+        ("Listener before hardening", "recorded listener state", security["listener_before"]["status"], _metric_value(security["listener_before"]), str(security["listener_before"]["source"])),
+        ("Listener after hardening", "current binding evidence", security["listener_after"]["status"], _metric_value(security["listener_after"]), str(security["listener_after"]["source"])),
+        ("LAN exposure", "external reachability test", security["lan_exposure"]["status"], _metric_value(security["lan_exposure"]), str(security["lan_exposure"]["source"])),
+        ("HBA configuration", "host-based access rules", security["hba"]["status"], _metric_value(security["hba"]), str(security["hba"]["source"])),
+        ("Credential rotation", "fail-closed migration evidence", security["credential_rotation"]["status"], _metric_value(security["credential_rotation"]), str(security["credential_rotation"]["source"])),
+        ("Secret provider", "no secrets in UI or repo", security["secret_provider"]["status"], _metric_value(security["secret_provider"]), str(security["secret_provider"]["source"])),
+        ("Dashboard binding", "loopback-only HTTP server", security["dashboard_binding"]["status"], _metric_value(security["dashboard_binding"]), str(security["dashboard_binding"]["source"])),
+        ("OBSERVE mode", "mode of the running runtime", security["observe_only"]["status"], _metric_value(security["observe_only"]), "/api/state mode"),
+        ("Trading actions", "executed trading actions", security["trading_actions"]["status"], _metric_value(security["trading_actions"]), str(security["trading_actions"]["source"])),
+        ("Safe stop", "controlled shutdown test", security["safe_stop"]["status"], _metric_value(security["safe_stop"]), str(security["safe_stop"]["source"])),
+    ])
+    body = (
+        page_head("Security", "Fail-closed state of the local operating boundary. Secrets are never rendered.", generated_at=data.get("generated_at_utc"))
+        + section("Security gate", "Boundary status", rows, note="Missing or stale evidence stays UNAVAILABLE and is never interpreted as PASS.")
     )
+    return body
 
 
 def _runtime(data: dict[str, Any]) -> str:
+    runtime = data["runtime"]
+
+    def strip(*keys: str) -> str:
+        return metric_strip([
+            (key.replace("_", " "), runtime[key]["value"], runtime[key].get("unit"), runtime[key]["status"])
+            for key in keys
+        ])
+
+    process = section("Process", "Runtime process", strip("processes", "uptime", "restarts", "watchdog"))
+    queue = section("Queue & throughput", "Live event flow", strip("queue_depth", "queue_age", "receive_rate", "persist_rate"))
+    integrity = section("Integrity counters", "Delivery quality", strip("drop_count", "duplicate_count", "late_count"))
+    latency = section("Latency", "End-to-end timing", strip("source_to_store_latency", "event_loop_lag", "cursor_age"))
+    storage = section("Storage", "Disk and logs", strip("disk", "logs"))
+    cursor_detail = runtime.get("cursor") or {}
+    cursor_rows = status_rows([
+        ("Durable cursor", "persisted cursor record", runtime["cursor_age"]["status"], runtime["cursor_age"]["value"], str(runtime["cursor_age"]["source"])),
+    ]) if not cursor_detail else ""
+    collector = status_rows([
+        ("Collector freshness", "live measurement", runtime["collector_freshness"]["status"], _metric_value(runtime["collector_freshness"]), str(runtime["collector_freshness"]["source"])),
+    ])
     return (
-        _hero("Runtime", "Echte, quellengebundene Messungen. Fehlende Instrumentierung bleibt sichtbar.")
-        + _metric_cards(data["runtime"], (
-            ("processes", "Prozesse"), ("uptime", "Uptime"), ("restarts", "Restarts"),
-            ("queue_depth", "Queue Depth"), ("queue_age", "Queue Age"), ("cursor_age", "Cursor Age"),
-            ("receive_rate", "Receive Rate"), ("persist_rate", "Persist Rate"), ("drop_count", "Drop Count"),
-            ("duplicate_count", "Duplicate Count"), ("late_count", "Late Count"),
-            ("source_to_store_latency", "Source-to-Store Latency"), ("event_loop_lag", "Event Loop Lag"),
-            ("disk", "Disk"), ("logs", "Logs & Rotation"), ("watchdog", "Watchdog"),
-        ))
+        page_head("Runtime", "Real, source-bound measurements. Missing instrumentation stays visible as UNAVAILABLE.", generated_at=data.get("generated_at_utc"))
+        + section("Live input", "Collector freshness", collector)
+        + f"<div class='split'>{process}{queue}</div>"
+        + f"<div class='split'>{integrity}{latency}</div>"
+        + storage
+        + (f"<div style='margin-top:14px'>{cursor_rows}</div>" if cursor_rows else "")
     )
 
 
 def _data_quality(data: dict[str, Any]) -> str:
     gaps = data["gaps"]
+    gap_strip = metric_strip([
+        ("Open P0 gaps", gaps["p0"], "severity P0", "FAIL" if isinstance(gaps["p0"], int) and gaps["p0"] else "PASS"),
+        ("Open P1 gaps", gaps["p1"], "severity P1", "FAIL" if isinstance(gaps["p1"], int) and gaps["p1"] else "PASS"),
+        ("Loaded gap records", gaps["total_loaded"], f"bounded at {gaps['bounded_at']}", None),
+        ("Gap evidence scope", gaps["scope"], "", None),
+    ])
+    datasets = section(
+        "Dataset coverage",
+        "Separated evidence rooms",
+        coverage_rows(data["datasets"]),
+        note="Coverage rooms are never mixed. Each row keeps its own observed/expected window and source path.",
+        meta=f"{len(data['datasets'])} evidence rooms",
+    )
+    freshness = status_rows([
+        ("Collector freshness", "live pipeline measurement", data["runtime"]["collector_freshness"]["status"], _metric_value(data["runtime"]["collector_freshness"]), str(data["runtime"]["collector_freshness"]["source"])),
+        ("Gap inventory", "persisted gap ledger", "MEASURED", f"{gaps['total_loaded']} rows", str(gaps["source"])),
+    ])
     return (
-        _hero("Data Quality", "Getrennte Datenräume, Provenienz und offene Lücken.")
-        + _dataset_section(data)
-        + "<div class='grid operations-grid'>"
-        + _card("Offene P0 Gaps", gaps["p0"], _source_note(gaps["source"]), status="FAIL" if gaps["p0"] else "PASS")
-        + _card("Offene P1 Gaps", gaps["p1"], _source_note(gaps["source"]), status="FAIL" if gaps["p1"] else "PASS")
-        + _card("Gap Scope", gaps["scope"], f"Antwort begrenzt auf {gaps['bounded_at']} Einträge")
-        + "</div>"
+        page_head("Data Quality", "Can the persisted data be trusted? Coverage, gaps and live freshness from separate evidence rooms.", generated_at=data.get("generated_at_utc"))
+        + section("Live freshness", "Current pipeline state", freshness)
+        + datasets
+        + section("Gap register", "Open data gaps", gap_strip,
+                  note="Gap rows list cause, repairability and backfill status per window.")
+        + "<p class='cc-note'>Full register with evidence: <a href='/gaps'>Incidents & Gaps →</a></p>"
     )
 
 
-def _gap_explorer(data: dict[str, Any]) -> str:
+def _incidents(data: dict[str, Any]) -> str:
     gaps = data["gaps"]
-    rows = []
+    audit = data["audit"]
+    incidents = audit.get("incidents") or []
+    incident_rows = "".join(
+        "<tr>"
+        f"<td class='mono'>{_safe(item.get('timestamp_utc') or item.get('ts') or UNAVAILABLE)}</td>"
+        f"<td>{evidence_chip(item.get('severity') or 'WARN')}</td>"
+        f"<td class='mono'>{_safe(item.get('event', UNAVAILABLE))}</td>"
+        f"<td>{_safe(item.get('component_id', UNAVAILABLE))}</td>"
+        f"<td>{_safe(item.get('reason_code', UNAVAILABLE))}</td>"
+        "</tr>"
+        for item in incidents[:20]
+    ) or "<tr><td colspan='5' class='empty'>No incident in the bounded timeline window.</td></tr>"
+    gap_rows = []
     for item in gaps["rows"]:
         evidence = item["evidence"] if isinstance(item["evidence"], str) else ", ".join(str(value) for value in item["evidence"])
-        rows.append(
+        if len(evidence) > 160:
+            evidence = evidence[:157] + "…"
+        gap_rows.append(
             "<tr>"
-            f"<td class='mono'>{_safe(item['id'])}</td><td>{_safe(item['start'])}</td><td>{_safe(item['end'])}</td>"
-            f"<td>{_badge(item['priority'])}</td><td>{_safe(item['root_cause'])}</td><td>{_safe(item['repairability'])}</td>"
-            f"<td>{_safe(item['backfill_candidate'])}</td><td>{_safe(item['provenance'])}</td><td>{_badge(item['status'])}</td>"
+            f"<td class='mono'>{_safe(item['id'])}</td>"
+            f"<td class='mono'>{_safe(item['start'])}<br><span class='muted'>→ {_safe(item['end'])}</span></td>"
+            f"<td>{cell_state(item['priority'])}</td>"
+            f"<td>{_safe(item['root_cause'])}<br><span class='muted'>{_safe(item['provenance'])}</span></td>"
+            f"<td>{_safe(item['repairability'])}<br><span class='muted'>backfill: {_safe(item['backfill_candidate'])}</span></td>"
+            f"<td>{cell_state(item['status'])}</td>"
             f"<td>{_safe(evidence)}</td></tr>"
         )
-    body = "".join(rows) or "<tr><td colspan='10' class='empty'>Keine Gap-Evidenz verfügbar.</td></tr>"
+    gap_body = "".join(gap_rows) or "<tr><td colspan='9' class='empty'>No gap evidence available.</td></tr>"
     return (
-        _hero("Gap Explorer", "Read-only Timeline und Ursachenregister; keine Rekonstruktion.")
-        + f"<section class='panel'><div class='panel__head'><h2>Gap Inventory</h2><span class='badge badge--yellow'>{gaps['total_loaded']} · {_safe(gaps['scope'])}</span></div>"
-          "<div class='table-wrap'><table><caption>Persistierte Datenlücken mit Ursachen- und Reparaturstatus</caption>"
-          "<thead><tr><th>ID</th><th>Start UTC</th><th>Ende UTC</th><th>Priorität</th><th>Root Cause</th><th>Repairability</th><th>Backfill Candidate</th><th>Provenienz</th><th>Status</th><th>Evidenz</th></tr></thead>"
-        + f"<tbody>{body}</tbody></table></div><p class='count-scope'>{_source_note(gaps['source'])} · maximal {gaps['bounded_at']} Einträge je Antwort.</p></section>"
+        page_head("Incidents & Gaps", "Active and historical incidents plus the persisted data-gap register; diagnosis without reconstruction.", generated_at=data.get("generated_at_utc"))
+        + section("Latest incident", "Most recent recorded incident", incident_card(audit.get("last_incident")),
+                  note="Sourced from the bounded runtime timeline. Historical findings stay frozen and are not counted as current failures.")
+        + f"<section class='panel'><div class='panel__head'><h2>Incident timeline</h2><span class='badge badge--snapshot'>BOUNDED · NEWEST FIRST</span></div>"
+          "<div class='table-wrap'><table><caption>Incidents from the persisted runtime timeline</caption>"
+          "<thead><tr><th>Timestamp UTC</th><th>Severity</th><th>Event</th><th>Component</th><th>Reason</th></tr></thead>"
+          f"<tbody>{incident_rows}</tbody></table></div></section>"
+        + f"<section class='panel'><div class='panel__head'><h2>Gap inventory</h2><span class='badge badge--yellow'>{gaps['total_loaded']} · {_safe(gaps['scope'])}</span></div>"
+          "<div class='table-wrap'><table style='min-width:1080px;table-layout:fixed'><caption>Persisted data gaps with cause and repair status</caption>"
+          "<colgroup><col style='width:185px'><col style='width:150px'><col style='width:84px'><col style='width:165px'><col style='width:195px'><col style='width:124px'><col></colgroup>"
+          "<thead><tr><th>ID</th><th>Window UTC</th><th>Priority</th><th>Root cause · Provenance</th><th>Repairability · Backfill</th><th>Status</th><th>Evidence</th></tr></thead>"
+          + f"<tbody>{gap_body}</tbody></table></div><p class='count-scope'>Quelle: {_safe(gaps['source'])} · Antwort auf maximal {gaps['bounded_at']} Einträge begrenzt.</p></section>"
     )
 
 
 def _qualification(data: dict[str, Any]) -> str:
     campaign = data["qualification"]
+    strip = metric_strip([
+        ("Campaign status", None, "", campaign["status"]),
+        ("Campaign ID", campaign["campaign_id"], "preregistered identity", None),
+        ("Preregistered at", _short_time(campaign["preregistered_at"]), "no retroactive definition", None),
+        ("Started at", _short_time(campaign["started_at"]), "only after all technical gates", None),
+    ])
     return (
-        _hero("Qualification Campaign", "Vorregistrierter, prospektiver Evidenzraum mit unveränderlichen Tagesmanifesten.")
-        + "<div class='grid operations-grid'>"
-        + _card("Campaign Status", "", _source_note(campaign["source"]), status=campaign["status"])
-        + _card("Campaign ID", campaign["campaign_id"], "Vorregistrierte Identität")
-        + _card("Preregistered", campaign["preregistered_at"], "Keine rückwirkende Definition")
-        + _card("Started", campaign["started_at"], "Start nur nach allen technischen Gates")
-        + "</div>"
-        + _dataset_section(data)
-        + f"<section class='panel'><h2>Latest immutable daily manifest</h2><p class='mono'>{_safe(campaign['latest_manifest'])}</p></section>"
+        page_head("Qualification", "Pre-registered prospective evidence space with immutable daily manifests.", generated_at=data.get("generated_at_utc"))
+        + section("Campaign", "Qualification campaign", strip)
+        + section(
+            "Dataset coverage",
+            "Separated evidence rooms",
+            coverage_rows(data["datasets"]),
+            note="The qualification campaign consumes only the approved dataset room; frozen and candidate rooms stay separate.",
+        )
+        + f"<section class='panel'><h2>Latest immutable daily manifest</h2><p class='mono'>{_safe(campaign['latest_manifest'])}</p>"
+          f"<p class='count-scope'>Preregistration: {_safe(campaign['source'])}</p></section>"
     )
 
 
 def _cases(data: dict[str, Any]) -> str:
     cases = data["independent_cases"]
+    strip = metric_strip([
+        ("Frozen scope", cases["frozen"], "historical gate scope", None),
+        ("Current audit", cases["current"], "strict independent units", None),
+        ("Qualification", cases["qualification"], f"of {cases['required']} required", cases["status"]),
+        ("Negative / controls", cases["negative_controls"], "no synthetic additions", None),
+    ])
+    rows = status_rows([
+        ("Gate status", "scientific gate", cases["status"], cases["status"], str(cases["source"])),
+        ("Regime coverage", "pre-registered strata", None, cases["regime_coverage"], ""),
+        ("Manual review", "real human verification required", cases["manual_review"], cases["manual_review"], ""),
+        ("Human approval", "no self-approval by TIM", cases["human_approval"], cases["human_approval"], ""),
+    ])
     return (
-        _hero("Research & Independent Cases", "Unabhängige Einheiten, Kontrollen, Regime und menschliche Prüfung.")
-        + "<div class='grid operations-grid'>"
-        + _card("Frozen Independent Cases", cases["frozen"], "Historischer unveränderlicher Gate-Scope", status=cases["status"])
-        + _card("Current Independent Cases", cases["current"], "Aktueller wissenschaftlicher Audit")
-        + _card("Qualification Independent Cases", cases["qualification"], "Nur genehmigte Prospektivkampagne")
-        + _card("Required Cases", cases["required"], "Gate-Minimum")
-        + _card("Negative / Control Cases", cases["negative_controls"], "Keine synthetische Ergänzung")
-        + _card("Regime Coverage", cases["regime_coverage"], "Vorregistrierte Strata")
-        + _card("Manual Review", "", "Reale menschliche Prüfung erforderlich", status=cases["manual_review"])
-        + _card("Human Approval", "", "Keine Selbstfreigabe durch TIM", status=cases["human_approval"])
-        + "</div>"
-        + "<section class='panel quick-links'><h2>Read-only Forschungsansichten</h2>"
+        page_head("Independent Cases", "Independent units, controls, regimes and human review for scientific qualification.", generated_at=data.get("generated_at_utc"))
+        + section("Case counts", "Independent case scope", strip)
+        + section("Gate evidence", "Scientific gate state", rows)
+        + "<section class='panel quick-links'><h2>Read-only research views</h2>"
           "<a href='/observations'>Observations</a><a href='/cases'>Research Cases</a><a href='/signals'>Signal Research</a>"
           "<a href='/analytics'>Analytics</a><a href='/insights'>Insights</a></section>"
     )
 
 
 def _readiness(data: dict[str, Any]) -> str:
-    rows = []
-    for gate in data["readiness"]["gates"]:
-        evidence = gate["evidence"] if isinstance(gate["evidence"], str) else ", ".join(str(value) for value in gate["evidence"])
-        rows.append(
-            f"<tr><td class='mono'>{_safe(gate['id'])}</td><td>{_safe(gate['name'])}</td><td>{_badge(gate['status'])}</td>"
-            f"<td>{_safe(gate['limitation'])}</td><td>{_safe(gate['owner'])}</td><td>{_safe(evidence)}</td></tr>"
-        )
-    body = "".join(rows) or "<tr><td colspan='6' class='empty'>Keine Gate-Evidenz verfügbar.</td></tr>"
+    readiness = data["readiness"]
+    horizons = _horizons(data)
     return (
-        _hero("V2 Readiness", "Einzelgates ohne künstliche Gesamtprozentzahl.")
-        + f"<section class='panel'><div class='panel__head'><h2>V2 Gate Matrix</h2>{_badge(data['readiness']['status'])}</div>"
-          "<div class='table-wrap'><table><caption>Readiness-Gates und reale Blocker</caption><thead><tr><th>Gate</th><th>Name</th><th>Status</th><th>Blocker / Limit</th><th>Zuständig</th><th>Evidenz</th></tr></thead>"
-        + f"<tbody>{body}</tbody></table></div><p class='count-scope'>Zulässige Zustände: PASS · FAIL · BLOCKED · PENDING HUMAN APPROVAL · TIME GATE · EXTERNAL ACTION REQUIRED.</p></section>"
+        page_head("V2 Readiness", "Individual gates without an artificial total percentage; readiness is reported per gate.", generated_at=data.get("generated_at_utc"))
+        + section(
+            "Gate matrix",
+            f"V2 gates · overall {readiness['status']}",
+            gate_rows(readiness["gates"]) or "<div class='attention attention--empty'>No gate evidence available.</div>",
+            note="Allowed gate states: PASS · FAIL · BLOCKED · PENDING HUMAN APPROVAL · TIME GATE · EXTERNAL ACTION REQUIRED.",
+            badge=evidence_chip(readiness["status"]),
+        )
+        + section(
+            "Horizon readiness",
+            "SHORT · MID · LONG",
+            horizon_panel(horizons),
+            note="Per-horizon intelligence evidence is not produced by the current build. Dimensions stay NOT AVAILABLE until real evidence exists.",
+        )
     )
 
 
 def _mcp(data: dict[str, Any]) -> str:
     mcp = data["mcp"]
+    rows = status_rows([
+        ("Secure MCP", "external support path", mcp["status"], mcp["status"], str(mcp["source"])),
+        ("Support case", "UNAVAILABLE means no documented case", None, mcp["case_id"], ""),
+        ("Workspace", "external state", None, mcp["workspace"], ""),
+        ("Developer mode", "external state", None, mcp["developer_mode"], ""),
+        ("Tunnel permissions", "read · manage · use checked separately", None, mcp["tunnel_permissions"], ""),
+    ])
     return (
-        _hero("Graphify & MCP", "Getrennter externer Supportpfad; kein Bestandteil der V2-Core-Freigabe.")
-        + "<div class='grid operations-grid'>"
-        + _card("Secure MCP", "", _source_note(mcp["source"]), status=mcp["status"])
-        + _card("Support Case ID", mcp["case_id"], "UNAVAILABLE bedeutet: kein belegter Fall")
-        + _card("Workspace", mcp["workspace"], "Externer Zustand")
-        + _card("Developer Mode", mcp["developer_mode"], "Externer Zustand")
-        + _card("Tunnel Permissions", mcp["tunnel_permissions"], "Read · Manage · Use getrennt prüfen")
-        + "</div><section class='panel safety-callout'><b>Trennung:</b> MCP-Status kann die Security-, Daten- oder Science-Gates von TIM nicht überschreiben.</section>"
+        page_head("Graphify & MCP", "Separate external support path; never part of the V2 core release gate.", generated_at=data.get("generated_at_utc"))
+        + section("MCP status", "External integration", rows)
+        + "<section class='panel safety-callout'><b>Separation:</b> the MCP status cannot override TIM security, data or science gates.</section>"
     )
 
 
 def _audit(data: dict[str, Any]) -> str:
     audit = data["audit"]
+    strip = metric_strip([
+        ("Full suite", f"{audit['passed']} pass / {audit['failed']} fail", f"warnings: {audit['warnings']}", audit["test_status"]),
+        ("Doctor", None, "repository diagnostics", audit["doctor"]),
+        ("Validate", None, "repository contract", audit["validate"]),
+        ("Protected state", None, "protected artifacts", audit["protected_state"]),
+    ])
     source_rows = "".join(
-        f"<tr><td class='mono'>{_safe(item['path'])}</td><td>{_badge('PASS' if item['available'] else UNAVAILABLE)}</td><td>{_safe(item['scope'])}</td></tr>"
+        f"<tr><td class='mono'>{_safe(item['path'])}</td><td>{evidence_chip('PASS' if item['available'] else UNAVAILABLE)}</td><td>{_safe(item['scope'])}</td></tr>"
         for item in audit["sources"]
-    ) or "<tr><td colspan='3' class='empty'>Keine Completion-Evidenz verfügbar.</td></tr>"
+    ) or "<tr><td colspan='3' class='empty'>No completion evidence available.</td></tr>"
+    incidents = audit.get("incidents") or []
+    incident_links = "".join(
+        f"<tr><td class='mono'>{_safe(item.get('timestamp_utc') or UNAVAILABLE)}</td><td>{evidence_chip(item.get('severity') or 'WARN')}</td>"
+        f"<td class='mono'>{_safe(item.get('event', UNAVAILABLE))}</td><td>{_safe(item.get('component_id', UNAVAILABLE))}</td></tr>"
+        for item in incidents[:10]
+    ) or "<tr><td colspan='4' class='empty'>No incident in the bounded timeline window.</td></tr>"
     return (
-        _hero("Audit & Evidence", "Tests, Protected State, Vorfälle und quellengebundene Evidenz.")
-        + "<div class='grid operations-grid'>"
-        + _card("Full Suite", f"{audit['passed']} pass / {audit['failed']} fail", f"Warnungen: {audit['warnings']}", status=audit["test_status"])
-        + _card("Doctor", "", "Repository-Diagnose", status=audit["doctor"])
-        + _card("Validate", "", "Repository-Vertrag", status=audit["validate"])
-        + _card("Protected State", "", "Geschützte Artefakte", status=audit["protected_state"])
-        + "</div>"
-        + f"<section class='panel'><h2>Letzter Test</h2><p class='mono'>{_safe(audit['last_test'])}</p><h2>Letzter Incident</h2><pre class='code'>{_safe(json.dumps(audit['last_incident'], ensure_ascii=False, sort_keys=True))}</pre></section>"
-        + "<section class='panel'><div class='table-wrap'><table><caption>Geladene, read-only Evidenzquellen</caption><thead><tr><th>Quelle</th><th>Verfügbar</th><th>Scope</th></tr></thead>"
-        + f"<tbody>{source_rows}</tbody></table></div></section>"
+        page_head("Audit & Evidence", "Tests, protected state, incidents and source-bound evidence for traceability.", generated_at=data.get("generated_at_utc"))
+        + section("Last test run", "Test evidence", strip
+                  + f"<p class='cc-note'>Last finished test: <span class='mono'>{_safe(audit['last_test'])}</span></p>")
+        + section("Incidents", "Recorded incidents", incident_card(audit.get("last_incident"))
+                  + f"<div class='table-wrap' style='margin-top:12px'><table><caption>Bounded incident timeline</caption>"
+                    "<thead><tr><th>Timestamp UTC</th><th>Severity</th><th>Event</th><th>Component</th></tr></thead>"
+                    f"<tbody>{incident_links}</tbody></table></div>",
+                  note="Every UI state traces to a source path listed below.")
+        + "<section class='panel'><div class='table-wrap'><table><caption>Loaded read-only evidence sources</caption>"
+          "<thead><tr><th>Source</th><th>Available</th><th>Scope</th></tr></thead>"
+          f"<tbody>{source_rows}</tbody></table></div></section>"
     )
 
 
@@ -804,9 +1040,9 @@ OPERATIONS_PAGES = {
     "Security": _security,
     "Runtime": _runtime,
     "Data Quality": _data_quality,
-    "Gap Explorer": _gap_explorer,
-    "Qualification Campaign": _qualification,
-    "Research & Independent Cases": _cases,
+    "Incidents & Gaps": _incidents,
+    "Qualification": _qualification,
+    "Independent Cases": _cases,
     "V2 Readiness": _readiness,
     "Graphify & MCP": _mcp,
     "Audit & Evidence": _audit,
