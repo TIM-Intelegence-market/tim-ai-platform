@@ -658,19 +658,13 @@ class DurableIngestionStore:
                         lease_seconds,
                     )
                     return [OutboxItem.from_row(row)] if row is not None else []
-                ordering_guard = """
-                           AND NOT EXISTS (
-                               SELECT 1 FROM ingestion_outbox blocker
-                               WHERE blocker.worker_name=ingestion_outbox.worker_name
-                               AND blocker.status=ANY($4::text[])
-                               AND (blocker.aggregate_trade_id,blocker.created_at,blocker.outbox_id)
-                                   < (ingestion_outbox.aggregate_trade_id,ingestion_outbox.created_at,ingestion_outbox.outbox_id)
-                           )""" if strict_order else ""
+                # Non-strict path: strict_order=True returns early above, so no
+                # head-of-line guard applies here. Claim eligible rows bounded
+                # by limit; status, availability, leases and attempts stay intact.
                 rows = await connection.fetch(
                     """WITH candidates AS (
                            SELECT outbox_id FROM ingestion_outbox
                            WHERE worker_name=$1 AND status IN ('PENDING','RETRY') AND available_at<=clock_timestamp()
-                    """ + ordering_guard + """
                            ORDER BY aggregate_trade_id,created_at,outbox_id FOR UPDATE SKIP LOCKED LIMIT $2
                        )
                        UPDATE ingestion_outbox AS work SET status='PROCESSING',attempts=work.attempts+1,
@@ -681,7 +675,6 @@ class DurableIngestionStore:
                     worker_name,
                     limit,
                     lease_seconds,
-                    list(ACTIVE_OUTBOX_STATUSES),
                 )
         return [OutboxItem.from_row(row) for row in rows]
 
