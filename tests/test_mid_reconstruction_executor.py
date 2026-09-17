@@ -38,6 +38,8 @@ class Args:
         self.database_url = kwargs.get("database_url", DATABASE_URL)
         self.execute = kwargs.get("execute", False)
         self.canary = kwargs.get("canary", False)
+        self.manifest = kwargs.get("manifest", None)
+        self.scope = kwargs.get("scope", None)
 
 
 @pytest_asyncio.fixture
@@ -117,3 +119,73 @@ async def test_execute_idempotent_and_conflict_aborts(database, monkeypatch) -> 
     assert await main_async(Args(execute=True)) == 3
     async with database.acquire() as conn:
         assert await conn.fetchval("SELECT COUNT(*) FROM candles WHERE symbol=$1", SYMBOL) == written
+
+
+def _manifest_doc(tmp_path, chunks, scope="mid-hole-sep01-sep15"):
+    import hashlib
+    import json
+
+    doc = {
+        "reconstruction_id": "mid-test",
+        "symbol": "BTCUSDT",
+        "authorized_scope": scope,
+        "scope_from": "2026-09-10T12:00:00+00:00",
+        "scope_to": "2026-09-10T13:10:00+00:00",
+        "chunks": chunks,
+    }
+    doc["manifest_hash"] = hashlib.sha256(
+        json.dumps({k: v for k, v in doc.items() if k != "manifest_hash"}, sort_keys=True).encode()
+    ).hexdigest()
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(doc))
+    return str(path)
+
+
+class ManifestArgs:
+    def __init__(self, manifest, database_url, scope="mid-hole-sep01-sep15"):
+        self.manifest = manifest
+        self.scope = scope
+        self.database_url = database_url
+        self.execute = True
+
+
+@pytest.mark.asyncio
+async def test_manifest_mode_writes_resume_and_rejects_tamper(database, tmp_path, monkeypatch) -> None:
+    from scripts.mid_history_reconstruction import main_async
+
+    monkeypatch.setenv("TIM_RECONSTRUCTION_TEST_MODE", "1")
+    chunks = [
+        {"id": 0, "from": "2026-09-10T12:00:00+00:00", "to": "2026-09-10T13:00:00+00:00",
+         "expected_counts": {"1m": 60, "5m": 12, "15m": 4, "1h": 1}},
+        {"id": 1, "from": "2026-09-10T13:00:00+00:00", "to": "2026-09-10T13:05:00+00:00",
+         "expected_counts": {"1m": 5, "5m": 1}},
+    ]
+    path = _manifest_doc(tmp_path, chunks)
+    assert await main_async(ManifestArgs(path, DATABASE_URL)) == 0
+    # resume: second run skips both DONE chunks with zero new writes
+    assert await main_async(ManifestArgs(path, DATABASE_URL)) == 0
+    # tampered manifest is rejected before any database work
+    import json
+
+    doc = json.loads(open(path).read())
+    doc["chunks"][0]["to"] = "2026-09-10T12:31:00+00:00"
+    open(path, "w").write(json.dumps(doc))
+    assert await main_async(ManifestArgs(path, DATABASE_URL)) == 2
+    # wrong scope is rejected
+    assert await main_async(ManifestArgs(path, DATABASE_URL, scope="other")) == 2
+
+
+@pytest.mark.asyncio
+async def test_misaligned_range_start_is_rejected(database, tmp_path, monkeypatch) -> None:
+    """A chunk starting mid-bucket would persist corrupt partial OHLC."""
+    from scripts.mid_history_reconstruction import main_async
+
+    monkeypatch.setenv("TIM_RECONSTRUCTION_TEST_MODE", "1")
+    chunks = [
+        {"id": 0, "from": "2026-09-10T12:30:00+00:00", "to": "2026-09-10T13:00:00+00:00",
+         "expected_counts": {"1m": 30}},
+    ]
+    path = _manifest_doc(tmp_path, chunks)
+    assert await main_async(ManifestArgs(path, DATABASE_URL)) == 2
+    async with database.acquire() as conn:
+        assert await conn.fetchval("SELECT COUNT(*) FROM candles WHERE symbol='BTCUSDT'") == 0

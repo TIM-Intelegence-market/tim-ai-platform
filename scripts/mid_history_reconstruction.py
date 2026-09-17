@@ -30,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data_ingestion.aggregator import CandleAggregator
+from src.data_ingestion.aggregator import CandleAggregator, TIMEFRAME_SECONDS
 from src.database.connection import Database
 from src.models.market_data import Trade
 
@@ -164,7 +164,70 @@ async def classify(conn, by_tf: dict, end: datetime) -> dict:
     return {"verdicts": verdicts}
 
 
+async def execute_range(database, symbol: str, start: datetime, end: datetime,
+                      execute: bool, expected_counts: dict | None = None,
+                      reconstruction_id: str = "mid-custom") -> dict:
+    """Replay one bounded range with guarded writes. Raises ReconstructionError
+    on any rejection; returns result dict on success (including dry-run).
+
+    The range start must align to every persisted timeframe boundary.
+    Otherwise the first bucket of a timeframe would open mid-bucket on a
+    fresh aggregator and persist corrupt partial OHLC. (Chunks step in
+    multiples of all timeframes, so aligned starts are always available.)
+    Unaligned tail buckets at `end` simply stay open by the tail rule.
+    """
+    epoch = int(start.timestamp())
+    for timeframe in TIMEFRAMES:
+        if epoch % TIMEFRAME_SECONDS[timeframe] != 0:
+            raise ReconstructionError(
+                "range start not aligned to %s boundary" % timeframe)
+    async with database.acquire() as conn:
+        trades = await load_trades(conn, symbol, start, end)
+    if not trades:
+        raise ReconstructionError("empty raw input")
+    raw_hash = hashlib.sha256(
+        ("%d|%d|%d" % (len(trades), trades[0].trade_id, trades[-1].trade_id)).encode()
+    ).hexdigest()
+    by_tf = replay_candles(trades)
+    counts = {tf: len(by_tf.get(tf, [])) for tf in TIMEFRAMES}
+    if expected_counts is not None:
+        for tf, expected in expected_counts.items():
+            if counts.get(tf, 0) != expected:
+                raise ReconstructionError(
+                    "unexpected count %s=%d expected=%d" % (tf, counts.get(tf, 0), expected))
+    async with database.acquire() as conn:
+        plan = await classify(conn, by_tf, end)
+    inserts = [v for v in plan["verdicts"] if v["action"] == "INSERT"]
+    noops = [v for v in plan["verdicts"] if v["action"] == "NOOP"]
+    conflicts = [v for v in plan["verdicts"] if v["action"] == "CONFLICT"]
+    if conflicts:
+        first = conflicts[0]["candle"]
+        raise HistoricalConflict("conflict %s %s %s: zero writes" % (
+            first.symbol, first.timeframe, first.open_time.isoformat()))
+    if len(inserts) + len(noops) != sum(counts.values()):
+        raise ReconstructionError("verdicts do not account all computed candles")
+    if not execute:
+        return {"reconstruction_id": reconstruction_id, "dry_run": True,
+                "raw_trades": len(trades), "raw_hash": raw_hash, "counts": counts,
+                "inserts": 0, "noops": len(noops)}
+    async with database.acquire() as conn:
+        async with conn.transaction():
+            for verdict in inserts:
+                c = verdict["candle"]
+                await conn.execute(
+                    "INSERT INTO candles(symbol,timeframe,open_time,close_time,open,high,low,close,"
+                    "volume,trade_count,closed) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+                    c.symbol, c.timeframe, c.open_time, c.close_time, c.open, c.high,
+                    c.low, c.close, c.volume, c.trade_count, c.closed,
+                )
+    return {"reconstruction_id": reconstruction_id, "dry_run": False,
+            "raw_trades": len(trades), "raw_hash": raw_hash, "counts": counts,
+            "inserts": len(inserts), "noops": len(noops)}
+
+
 async def main_async(args) -> int:
+    if args.manifest:
+        return await main_manifest(args)
     symbol = args.symbol
     if symbol not in SYMBOL_ALLOWLIST:
         print("REJECTED: unexpected symbol %r" % symbol, flush=True)
@@ -191,63 +254,88 @@ async def main_async(args) -> int:
     database = Database(args.database_url, min_size=1, max_size=2)
     await database.connect()
     try:
-        async with database.acquire() as conn:
-            trades = await load_trades(conn, symbol, start, end)
-        if not trades:
-            print("REJECTED: empty raw input", flush=True)
-            return 2
-        raw_hash = hashlib.sha256(
-            ("%d|%d|%d" % (len(trades), trades[0].trade_id, trades[-1].trade_id)).encode()
-        ).hexdigest()
-        by_tf = replay_candles(trades)
-        counts = {tf: len(by_tf.get(tf, [])) for tf in TIMEFRAMES}
-        manifest = {
-            "reconstruction_id": "mid-canary-20260915-0900" if is_canary else "mid-custom",
-            "symbol": symbol,
-            "from": start.isoformat(),
-            "to": end.isoformat(),
-            "raw_trades": len(trades),
-            "raw_hash": raw_hash,
-            "counts": counts,
-            "expected_writes": sum(counts.values()),
-            "dry_run": not writing,
-        }
-        if is_canary:
-            for tf, expected in CANARY_EXPECTED.items():
-                if counts.get(tf, 0) != expected:
-                    print("REJECTED: unexpected canary count %s=%d expected=%d" % (
-                        tf, counts.get(tf, 0), expected), flush=True)
-                    return 2
-        print("MANIFEST " + json.dumps(manifest, sort_keys=True), flush=True)
-
-        async with database.acquire() as conn:
-            plan = await classify(conn, by_tf, end)
-        inserts = [v for v in plan["verdicts"] if v["action"] == "INSERT"]
-        noops = [v for v in plan["verdicts"] if v["action"] == "NOOP"]
-        conflicts = [v for v in plan["verdicts"] if v["action"] == "CONFLICT"]
-        print("PLAN inserts=%d noops=%d conflicts=%d" % (len(inserts), len(noops), len(conflicts)), flush=True)
-        if conflicts:
-            first = conflicts[0]["candle"]
-            print("HISTORICAL_CONFLICT %s %s %s: aborting, zero writes" % (
-                first.symbol, first.timeframe, first.open_time.isoformat()), flush=True)
+        expected = dict(CANARY_EXPECTED) if is_canary else None
+        try:
+            result = await execute_range(
+                database, symbol, start, end, writing, expected,
+                "mid-canary-20260915-0900" if is_canary else "mid-custom")
+        except HistoricalConflict as error:
+            print("HISTORICAL_CONFLICT %s: aborting, zero writes" % error, flush=True)
             return 3
+        except ReconstructionError as error:
+            print("REJECTED: %s" % error, flush=True)
+            return 2
+        print("MANIFEST " + json.dumps({
+            "reconstruction_id": result["reconstruction_id"], "symbol": symbol,
+            "from": start.isoformat(), "to": end.isoformat(),
+            "raw_trades": result["raw_trades"], "raw_hash": result["raw_hash"],
+            "counts": result["counts"], "expected_writes": sum(result["counts"].values()),
+            "dry_run": not writing}, sort_keys=True), flush=True)
         if not writing:
             print("DRY_RUN_OK zero writes performed", flush=True)
             return 0
-        if len(inserts) + len(noops) != manifest["expected_writes"]:
-            print("REJECTED: verdicts do not account all computed candles", flush=True)
-            return 2
-        async with database.acquire() as conn:
-            async with conn.transaction():
-                for verdict in inserts:
-                    c = verdict["candle"]
-                    await conn.execute(
-                        "INSERT INTO candles(symbol,timeframe,open_time,close_time,open,high,low,close,"
-                        "volume,trade_count,closed) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
-                        c.symbol, c.timeframe, c.open_time, c.close_time, c.open, c.high,
-                        c.low, c.close, c.volume, c.trade_count, c.closed,
-                    )
-        print("WROTE inserts=%d noops=%d" % (len(inserts), len(noops)), flush=True)
+        print("WROTE inserts=%d noops=%d" % (result["inserts"], result["noops"]), flush=True)
+        return 0
+    finally:
+        await database.close()
+
+
+async def main_manifest(args) -> int:
+    manifest_path = Path(args.manifest)
+    manifest = json.loads(manifest_path.read_text())
+    digest = hashlib.sha256(json.dumps(
+        {k: v for k, v in manifest.items() if k != "manifest_hash"},
+        sort_keys=True).encode()).hexdigest()
+    if manifest.get("manifest_hash") != digest:
+        print("MANIFEST_HASH_MISMATCH", flush=True)
+        return 2
+    if args.scope != manifest.get("authorized_scope"):
+        print("REJECTED: scope mismatch (pass --scope exactly as authorized)", flush=True)
+        return 2
+    try:
+        scope_from = parse_ts(manifest["scope_from"])
+        scope_to = parse_ts(manifest["scope_to"])
+    except (KeyError, ReconstructionError) as error:
+        print("REJECTED: bad scope window: %s" % error, flush=True)
+        return 2
+    checkpoint_path = Path(str(manifest_path) + ".checkpoint.json")
+    checkpoint: dict = {}
+    if checkpoint_path.exists():
+        checkpoint = json.loads(checkpoint_path.read_text())
+
+    database = Database(args.database_url, min_size=1, max_size=2)
+    await database.connect()
+    try:
+        for chunk in manifest["chunks"]:
+            cid = chunk["id"]
+            state = checkpoint.get(cid, {})
+            if state.get("status") == "CHUNK_DONE":
+                print("SKIP_DONE chunk=%d" % cid, flush=True)
+                continue
+            start = parse_ts(chunk["from"])
+            end = parse_ts(chunk["to"])
+            if not (scope_from <= start and end <= scope_to):
+                print("REJECTED: chunk %d outside authorized scope" % cid, flush=True)
+                return 2
+            t0 = datetime.now(timezone.utc)
+            try:
+                result = await execute_range(
+                    database, manifest["symbol"], start, end, args.execute,
+                    chunk.get("expected_counts"), manifest["reconstruction_id"])
+            except HistoricalConflict as error:
+                print("CHUNK_CONFLICT chunk=%d %s: aborting" % (cid, error), flush=True)
+                return 3
+            except ReconstructionError as error:
+                print("CHUNK_REJECTED chunk=%d %s: aborting" % (cid, error), flush=True)
+                return 2
+            checkpoint[cid] = {"status": "CHUNK_DONE",
+                               "inserts": result["inserts"], "noops": result["noops"],
+                               "raw_hash": result["raw_hash"],
+                               "ms": int((datetime.now(timezone.utc) - t0).total_seconds() * 1000)}
+            checkpoint_path.write_text(json.dumps(checkpoint, indent=1))
+            print("CHUNK_DONE id=%d inserts=%d noops=%d ms=%d" % (
+                cid, result["inserts"], result["noops"], checkpoint[cid]["ms"]), flush=True)
+        print("MANIFEST_DONE chunks=%d" % len(manifest["chunks"]), flush=True)
         return 0
     finally:
         await database.close()
@@ -261,6 +349,8 @@ def main() -> int:
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--execute", action="store_true", help="perform writes (canary range only)")
     parser.add_argument("--canary", action="store_true", help="use the fixed authorized canary range")
+    parser.add_argument("--manifest", default=None, help="hash-verified chunk manifest for bounded runs")
+    parser.add_argument("--scope", default=None, help="must match the manifest authorized_scope exactly")
     args = parser.parse_args()
     if args.canary:
         args.from_time = CANARY_FROM.isoformat()
