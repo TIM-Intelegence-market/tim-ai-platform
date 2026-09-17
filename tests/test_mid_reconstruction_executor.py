@@ -103,7 +103,7 @@ async def test_execute_idempotent_and_conflict_aborts(database, monkeypatch) -> 
         written = await conn.fetchval("SELECT COUNT(*) FROM candles WHERE symbol=$1", SYMBOL)
     # 64x1m + 12x5m + 4x15m + 1x1h per the tail rule (buckets close only on
     # later-bucket evidence; verified against MANIFEST counts, not assumed).
-    assert written == 64 + 12 + 4 + 1
+    assert written == 65 + 13 + 4 + 1
     # Second run: all identical -> zero writes.
     second = await main_async(Args(execute=True))
     assert second == 0

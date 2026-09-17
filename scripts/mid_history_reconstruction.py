@@ -98,11 +98,33 @@ async def load_trades(conn, symbol: str, start: datetime, end: datetime):
         "ORDER BY aggregate_trade_id",
         symbol, start, end,
     )
-    return [
+    trades = [
         Trade(r["symbol"], r["price"], r["quantity"], r["trade_time"],
               r["aggregate_trade_id"], r["buyer_is_maker"])
         for r in rows
     ]
+    # Bucket-closure evidence: in-range tail buckets ([.., end)) complete only
+    # on later evidence. Read the single first trade at/after `end` (read-only)
+    # so tails close exactly as the live engine would have closed them. That
+    # trade opens out-of-range buckets that can never complete here and are
+    # never persisted. Bounded: abort if the next evidence is over 1h away.
+    if trades:
+        tail = await conn.fetch(
+            "SELECT symbol,price,quantity,trade_time,aggregate_trade_id,buyer_is_maker "
+            "FROM agg_trades WHERE symbol=$1 AND trade_time >= $2 "
+            "ORDER BY aggregate_trade_id LIMIT 1",
+            symbol, end,
+        )
+        if not tail:
+            raise ReconstructionError("no closing evidence at/after range end")
+        if (tail[0]["trade_time"] - end).total_seconds() > 3600:
+            raise ReconstructionError("closing evidence too far past range end")
+        first = tail[0]
+        trades.append(Trade(
+            first["symbol"], first["price"], first["quantity"], first["trade_time"],
+            first["aggregate_trade_id"], first["buyer_is_maker"],
+        ))
+    return trades
 
 
 def replay_candles(trades) -> dict[str, list]:
@@ -114,13 +136,20 @@ def replay_candles(trades) -> dict[str, list]:
     return by_tf
 
 
-async def classify(conn, by_tf: dict) -> dict:
-    """Read-only verdict per candle: INSERT / NOOP / CONFLICT. No writes."""
+async def classify(conn, by_tf: dict, end: datetime) -> dict:
+    """Read-only verdict per candle: INSERT / NOOP / CONFLICT. No writes.
+
+    Only buckets fully inside [start, end) are eligible. Buckets opened by
+    the closing-evidence trade (open_time >= end) can never complete in this
+    run and are excluded from verdicts and counts.
+    """
     verdicts: list[dict] = []
     for timeframe, candles in by_tf.items():
         if timeframe not in TIMEFRAMES:
             raise ReconstructionError("unexpected timeframe: %r" % timeframe)
         for candle in candles:
+            if candle.open_time >= end:
+                continue
             row = await conn.fetchrow(
                 "SELECT open,high,low,close,volume,trade_count,close_time,closed FROM candles "
                 "WHERE symbol=$1 AND timeframe=$2 AND open_time=$3",
@@ -192,7 +221,7 @@ async def main_async(args) -> int:
         print("MANIFEST " + json.dumps(manifest, sort_keys=True), flush=True)
 
         async with database.acquire() as conn:
-            plan = await classify(conn, by_tf)
+            plan = await classify(conn, by_tf, end)
         inserts = [v for v in plan["verdicts"] if v["action"] == "INSERT"]
         noops = [v for v in plan["verdicts"] if v["action"] == "NOOP"]
         conflicts = [v for v in plan["verdicts"] if v["action"] == "CONFLICT"]
