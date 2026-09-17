@@ -155,7 +155,7 @@ class TIMApplication:
             observations = self.observations.evaluate(history)
             for observation in observations:
                 case = self.cases.ingest(observation)
-                await self.repository.save_observation_with_case(observation,case)
+                await self._save_observation_tolerant(observation,case)
                 self.memory.remember(observation)
                 triggered = await self.research_trigger.handle(observation)
                 if triggered is not None:
@@ -191,6 +191,26 @@ class TIMApplication:
                     self.dashboard_state.orderflow_observations.append(observation.to_dict())
                     del self.dashboard_state.orderflow_observations[:-500]
                     self.dashboard_state.research_cases=[item.to_dict() for item in self.cases.cases.values()]
+
+    async def _save_observation_tolerant(self, observation: Observation, case) -> None:
+        """Save once; on input-hash mismatch rebuild once from refreshed state.
+
+        A concurrent historical write can land between observation build and
+        the save-time re-read. Rebuild exactly once from refreshed history and
+        save current truth instead. A second mismatch raises through the normal
+        fail path (fail-closed preserved; attempts semantics unchanged because
+        this all happens inside one claim).
+        """
+        try:
+            await self.repository.save_observation_with_case(observation, case)
+            return
+        except ValueError as error:
+            if "input_hash does not match persisted candle input" not in str(error):
+                raise
+        await self.restore_persisted_state(reset=False)
+        for candidate in self.observations.evaluate(self.history[observation.timeframe]):
+            await self.repository.save_observation_with_case(
+                candidate, self.cases.ingest(candidate))
 
     async def validate_pending_orderflow(self,as_of:datetime)->None:
         for observation in await self.repository.pending_orderflow_observations(settings.symbol,as_of):

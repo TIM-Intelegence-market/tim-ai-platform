@@ -25,7 +25,7 @@ import hashlib
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -36,6 +36,10 @@ from src.models.market_data import Trade
 
 SYMBOL_ALLOWLIST = ("BTCUSDT",)
 TIMEFRAMES = ("1m", "5m", "15m", "1h")
+# Trailing observation window that live validation re-reads: the history cap
+# and the validation query both use the most recent 500 candles. The 1h
+# window (500h) dominates all smaller persisted timeframes.
+LIVE_TRAILING_SECONDS = 500 * 3600
 CANARY_FROM = datetime(2026, 9, 15, 9, 0, tzinfo=timezone.utc)
 CANARY_TO = datetime(2026, 9, 15, 10, 0, tzinfo=timezone.utc)
 CANARY_EXPECTED = {"1m": 60, "5m": 12, "15m": 4, "1h": 1}
@@ -59,8 +63,18 @@ def parse_ts(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def candle_key(symbol: str, timeframe: str, open_time: datetime) -> tuple:
-    return (symbol, timeframe, open_time.isoformat())
+def chunk_overlaps_live_window(start: datetime, end: datetime, now: datetime) -> bool:
+    """True if [start, end) intersects the live trailing observation window.
+
+    Pure function (unit-tested). A historical write inside this window can
+    land between a live observation build and its save-time re-read, the exact
+    race that quarantined trade 4066218117. Refusal is the mechanical phase
+    separation; pass --allow-live-overlap only deliberately (logged loudly).
+    The canary micro-scope is exempt by explicit design (fixed 77 rows,
+    single transaction, reviewed).
+    """
+    window_start = now - timedelta(seconds=LIVE_TRAILING_SECONDS)
+    return start < now and end > window_start
 
 
 def volume_matches(existing: float, computed: float) -> bool:
@@ -306,6 +320,9 @@ async def main_manifest(args) -> int:
     database = Database(args.database_url, min_size=1, max_size=2)
     await database.connect()
     try:
+        if args.execute and args.allow_live_overlap:
+            print("OVERLAP_ALLOWED: chunks may intersect the live trailing window; "
+                  "live enrichment must be paused or monitored", flush=True)
         for chunk in manifest["chunks"]:
             cid = chunk["id"]
             state = checkpoint.get(cid, {})
@@ -316,6 +333,11 @@ async def main_manifest(args) -> int:
             end = parse_ts(chunk["to"])
             if not (scope_from <= start and end <= scope_to):
                 print("REJECTED: chunk %d outside authorized scope" % cid, flush=True)
+                return 2
+            if args.execute and not args.allow_live_overlap and chunk_overlaps_live_window(
+                    start, end, datetime.now(timezone.utc)):
+                print("REJECTED: chunk %d overlaps the live trailing observation window; "
+                      "pass --allow-live-overlap only deliberately (phase separation rule)" % cid, flush=True)
                 return 2
             t0 = datetime.now(timezone.utc)
             try:
@@ -351,6 +373,9 @@ def main() -> int:
     parser.add_argument("--canary", action="store_true", help="use the fixed authorized canary range")
     parser.add_argument("--manifest", default=None, help="hash-verified chunk manifest for bounded runs")
     parser.add_argument("--scope", default=None, help="must match the manifest authorized_scope exactly")
+    parser.add_argument("--allow-live-overlap", action="store_true",
+                        help="permit chunks overlapping the live trailing window (logged loudly; "
+                             "use only with live enrichment paused or monitored)")
     args = parser.parse_args()
     if args.canary:
         args.from_time = CANARY_FROM.isoformat()
