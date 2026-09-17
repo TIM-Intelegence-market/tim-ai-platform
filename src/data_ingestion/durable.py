@@ -194,15 +194,23 @@ class DurableIngestionStore:
         queue_capacity: int = 50_000,
         max_attempts: int = 5,
         worker_version: str = WORKER_VERSION,
+        # Calibrated 2026-09-17 against production: verifying the 100 oldest
+        # gaps (150k-274k-trade spans) takes ~110s, always exceeding the 30s
+        # command timeout. Oldest-first at ~1.1s per ancient gap means 10 fit
+        # in ~11s worst case, leaving margin for backfill inside one recovery.
+        resolve_verify_limit: int = 10,
     ) -> None:
         if queue_capacity < 1:
             raise ValueError("queue_capacity must be positive")
         if max_attempts < 1:
             raise ValueError("max_attempts must be positive")
+        if resolve_verify_limit < 1:
+            raise ValueError("resolve_verify_limit must be positive")
         self.database = database
         self.queue_capacity = queue_capacity
         self.max_attempts = max_attempts
         self.worker_version = worker_version
+        self.resolve_verify_limit = resolve_verify_limit
 
     @staticmethod
     async def _increment(
@@ -1128,18 +1136,26 @@ class DurableIngestionStore:
         return [dict(row) for row in rows]
 
     async def resolve_gaps_through(self, symbol: str, aggregate_trade_id: int) -> int:
+        # Bounded oldest-first verification: the gap table can hold far more
+        # candidates than fit into one command timeout. Verify at most
+        # resolve_verify_limit rows per call; the predicate per gap is unchanged.
         async with self.database.acquire() as connection:
             async with connection.transaction():
                 rows = await connection.fetch(
                     """UPDATE ingestion_gap_incidents SET status='RESOLVED',resolved_at=clock_timestamp(),updated_at=clock_timestamp()
-                       WHERE symbol=$1 AND status IN ('OPEN','CATCHING_UP') AND missing_to_id<=$2
-                       AND missing_from_id IS NOT NULL AND missing_to_id IS NOT NULL
+                       WHERE gap_id IN (
+                           SELECT gap_id FROM ingestion_gap_incidents
+                           WHERE symbol=$1 AND status IN ('OPEN','CATCHING_UP') AND missing_to_id<=$2
+                           AND missing_from_id IS NOT NULL AND missing_to_id IS NOT NULL
+                           ORDER BY detected_at,gap_id LIMIT $3
+                       )
                        AND (SELECT count(*) FROM agg_trades raw WHERE raw.symbol=ingestion_gap_incidents.symbol
                             AND raw.aggregate_trade_id BETWEEN ingestion_gap_incidents.missing_from_id
                             AND ingestion_gap_incidents.missing_to_id)=(missing_to_id-missing_from_id+1)
                        RETURNING gap_id""",
                     symbol,
                     aggregate_trade_id,
+                    self.resolve_verify_limit,
                 )
                 remaining = int(
                     await connection.fetchval(

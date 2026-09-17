@@ -250,15 +250,24 @@ class CatchUpCoordinator:
             if expected <= end_id and reason is None:
                 reason = f"bounded catch-up page limit {self.max_pages} reached"
         except (PublicDataError, QueueCapacityError, OSError, TimeoutError) as error:
-            reason = str(error)
+            reason = str(error) or type(error).__name__
         except Exception as error:
             reason = f"{type(error).__name__}: {error}"
 
         if expected > end_id:
-            resolved = await self.store.resolve_gaps_through(symbol, end_id)
+            try:
+                resolved = await self.store.resolve_gaps_through(symbol, end_id)
+            except (OSError, TimeoutError) as error:
+                # Verification only: a slow gap table must degrade to OPEN,
+                # never escape as a bare error that kills the stream loop.
+                resolved = 0
+                reason = str(error) or type(error).__name__
+            except Exception as error:
+                resolved = 0
+                reason = f"{type(error).__name__}: {error}"
             if resolved > 0:
                 return CatchUpResult("COMPLETE", symbol, start_id, end_id, persisted, duplicates, pages)
-            reason = "persisted range failed independent completeness verification"
+            reason = reason or "persisted range failed independent completeness verification"
 
         await self.store.set_gap_status(gap_id, "OPEN", error=reason)
         await self.store.record_metric("catchup_failure_total")
