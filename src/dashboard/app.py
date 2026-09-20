@@ -197,6 +197,11 @@ class DashboardState:
         validator = self._validator()
         active = sum(str(case.get("status", "OPEN")).upper() not in {"CLOSED", "INVALIDATED"} for case in all_cases)
         closed = sum(str(case.get("status", "")).upper() == "CLOSED" for case in all_cases)
+        by_status: dict[str, int] = {}
+        for case in all_cases:
+            key = str(case.get("status") or "OPEN").upper()
+            by_status[key] = by_status.get(key, 0) + 1
+        collecting = sum(by_status.get(status, 0) for status in ("OPEN", "MONITORING", "COLLECTING_EVIDENCE"))
         generated_at = datetime.now(timezone.utc)
         last_data_at = next(
             (item.get("close_time") or item.get("open_time") for item in reversed(candles) if item.get("close_time") or item.get("open_time")),
@@ -229,7 +234,15 @@ class DashboardState:
                 "dashboard_version": DASHBOARD_VERSION,
                 "count_scope": "VISIBLE_RECENT_WINDOW",
                 "visible_counts": {"candles": len(candles), "observations": len(observations), "research_cases": len(cases)},
-                "case_counts": {"active": active, "closed": closed, "total": len(all_cases)},
+                "case_counts": {"active": active, "closed": closed, "total": len(all_cases),
+                                "by_status": dict(sorted(by_status.items())),
+                                "confirmed": by_status.get("CONFIRMED", 0),
+                                "collecting_evidence": collecting,
+                                "open": by_status.get("OPEN", 0),
+                                "monitoring": by_status.get("MONITORING", 0),
+                                "ready_for_review": by_status.get("READY_FOR_REVIEW", 0),
+                                "rejected": by_status.get("REJECTED", 0),
+                                "quarantined": by_status.get("QUARANTINED", 0)},
                 "candles": candles,
                 "observations": observations,
                 "active_observations": observations,
@@ -311,6 +324,57 @@ def _observation_row(item: dict[str, Any], cases: list[dict[str, Any]]) -> str:
         f"<td><span class='tag'>{_safe(item.get('kind'))}</span></td><td class='mono'>{_safe(item.get('rule_version'))}</td>"
         f"<td>{_safe(evidence_score)}</td><td>{_safe(item.get('provenance'))}</td><td><span class='badge badge--{_status(status).lower()}'>{_safe(status)}</span></td></tr>"
     )
+
+
+def _research_cases_collection(snapshot: dict[str, Any], query: dict[str, list[str]], stats_only: bool = False) -> dict[str, Any]:
+    """Read-only Research Case collection: filters (no implicit CONFIRMED
+    restriction), real per-status stats, cursor pagination. OBSERVE-only."""
+    cases = [dict(item) for item in snapshot.get("research_cases", [])]
+    by_status: dict[str, int] = {}
+    for item in cases:
+        key = str(item.get("status") or "OPEN").upper()
+        by_status[key] = by_status.get(key, 0) + 1
+    missing: dict[str, int] = {}
+    for item in cases:
+        for reason in item.get("missing_evidence", []) or []:
+            missing[str(reason)] = missing.get(str(reason), 0) + 1
+    stats = {"total": len(cases), "by_status": dict(sorted(by_status.items())),
+             "confirmed": by_status.get("CONFIRMED", 0),
+             "pending_outcome": sum(1 for item in cases if not item.get("outcome")),
+             "missing_evidence": dict(sorted(missing.items()))}
+    if stats_only:
+        return {"stats": stats, "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC"}
+    status = (query.get("status", [""])[0] or "").upper()
+    if status and status != "ALL":
+        cases = [item for item in cases if str(item.get("status") or "").upper() == status]
+    timeframe = (query.get("timeframe", [""])[0] or "")
+    if timeframe:
+        cases = [item for item in cases if str(item.get("timeframe", "")) == timeframe]
+    otype = (query.get("observation_type", [""])[0] or "")
+    if otype:
+        cases = [item for item in cases if any(str(ev.get("kind", "")) == otype for ev in item.get("evidence", []) or [])]
+    rule = (query.get("rule_version", [""])[0] or "")
+    if rule:
+        cases = [item for item in cases if rule in set(str(v) for v in (item.get("rule_versions", {}) or {}).values())]
+    instrument = (query.get("instrument", [""])[0] or "")
+    if instrument:
+        cases = [item for item in cases if str(item.get("symbol", "")) == instrument]
+    try:
+        limit = max(1, min(200, int((query.get("limit", ["50"])[0] or "50"))))
+    except ValueError:
+        limit = 50
+    cursor = (query.get("cursor", [""])[0] or "")
+    start = 0
+    if cursor:
+        for index, item in enumerate(cases):
+            if str(item.get("case_id")) == cursor:
+                start = index + 1
+                break
+    window = cases[start:start + limit]
+    return {"cases": window, "stats": stats,
+            "pagination": {"limit": limit, "returned": len(window), "total_matching": len(cases),
+                           "next_cursor": str(window[-1].get("case_id", "")) if len(window) == limit and start + limit < len(cases) else None},
+            "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC"}
 
 
 def _case_row(item: dict[str, Any]) -> str:
@@ -1207,12 +1271,34 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         return _layout("Observation Explorer", page, body)
     if page == "Research Cases":
         selected = next((item for item in data["research_cases"] if str(item.get("case_id")) == str(selected_id)), None)
-        rows = "".join(_case_row(item) for item in reversed(data["research_cases"])) or "<tr><td colspan='8' class='empty'>No research cases yet</td></tr>"
+        rows = "".join(_case_row(item) for item in reversed(data["research_cases"])) or "<tr><td colspan='8' class='empty'>keine materialisierten Research Cases vorhanden</td></tr>"
+        counts = data.get("case_counts", {})
+        confirmed = int(counts.get("confirmed", 0) or 0)
+        collecting = int(counts.get("collecting_evidence", 0) or 0)
+        total = int(counts.get("total", 0) or 0)
+        if confirmed == 0 and collecting > 0:
+            progress = f"0 confirmed, aber {collecting} collecting evidence"
+        elif total == 0:
+            progress = "0 confirmed, 0 collecting evidence — derzeit keine materialisierten Research Cases"
+        else:
+            progress = f"{confirmed} confirmed · {collecting} collecting evidence · {total} total"
+        summary = (
+            "<div class='grid case-status-summary'>"
+            f"<article class='card'><div class='card__label'>Confirmed</div><div class='card__value'>{confirmed}</div><div class='card__note'>wissenschaftlich bestätigte Cases</div></article>"
+            f"<article class='card'><div class='card__label'>Collecting Evidence</div><div class='card__value'>{collecting}</div><div class='card__note'>OPEN / MONITORING / COLLECTING_EVIDENCE</div></article>"
+            f"<article class='card'><div class='card__label'>Total Cases</div><div class='card__value'>{total}</div><div class='card__note'>persistierte Research Cases</div></article>"
+            "</div>"
+            f"<p class='observe case-progress'>{_safe(progress)}</p>"
+        )
         detail = ""
         if selected:
             timeline = "".join(f"<li><time>{_safe(item.get('observed_at'))}</time><span class='tag'>{_safe(item.get('kind'))}</span><span class='mono'>{_safe(_short(item.get('observation_id'), 14))}</span></li>" for item in selected.get("evidence", [])) or "<li class='empty'>Keine Evidenz-Timeline.</li>"
-            detail = f"<section class='panel'><div class='panel__head'><h2>Case Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>Case ID</dt><dd class='mono'>{_safe(selected.get('case_id'))}</dd><dt>Status</dt><dd>{_safe(selected.get('status'))}</dd><dt>Dauer</dt><dd>{_safe(_duration(selected.get('opened_at'),selected.get('updated_at')))}</dd><dt>Outcome</dt><dd>{_safe(selected.get('outcome'))}</dd><dt>Missing Evidence</dt><dd>{_safe(', '.join(selected.get('missing_evidence', [])))}</dd></dl><div><h3>Timeline</h3><ul class='timeline'>{timeline}</ul></div></div></section>"
-        body = _hero("Research Case Explorer", "Case-Lifecycle, fehlende Evidenz und reproduzierbare Timeline.") + f"<section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><span class='count-scope'>sichtbarer Ausschnitt: {len(data['research_cases'])}</span></div><div class='filters'><div><label>Status</label><select id='filter-status'><option value=''>Alle</option><option>OPEN</option><option>MONITORING</option><option>CONFIRMED</option><option>INVALIDATED</option><option>CLOSED</option></select></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option><option value='30'>30 Tage</option></select></div><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. BOS'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='z. B. 1.0.0'></div></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{rows}</tbody></table></div></section>{detail}"
+            reviews = "".join(f"<li><time>{_safe(item.get('at'))}</time><span class='tag'>{_safe(item.get('to'))}</span><span>{_safe(item.get('reason'))}</span></li>" for item in selected.get("review_history", []) or []) or "<li class='empty'>Noch kein Review.</li>"
+            case_hash = hashlib.sha256(json.dumps({"case_id": selected.get("case_id"), "observation_ids": selected.get("observation_ids", []), "rule_versions": selected.get("rule_versions", {})}, sort_keys=True).encode()).hexdigest()[:16]
+            rules = ", ".join(f"{key}:{value}" for key, value in sorted((selected.get("rule_versions", {}) or {}).items())) or "—"
+            detail = f"<section class='panel'><div class='panel__head'><h2>Case Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>Case ID</dt><dd class='mono'>{_safe(selected.get('case_id'))}</dd><dt>Status</dt><dd>{_safe(selected.get('status'))}</dd><dt>Dauer</dt><dd>{_safe(_duration(selected.get('opened_at'),selected.get('updated_at')))}</dd><dt>Outcome</dt><dd>{_safe(selected.get('outcome'))}</dd><dt>Missing Evidence</dt><dd>{_safe(', '.join(selected.get('missing_evidence', [])))}</dd><dt>Rule Versions</dt><dd class='mono'>{_safe(rules)}</dd><dt>Case Hash</dt><dd class='mono'>casehash:{_safe(case_hash)}</dd></dl><div><h3>Timeline</h3><ul class='timeline'>{timeline}</ul><h3>Review History</h3><ul class='timeline'>{reviews}</ul></div></div></section>"
+        stand = f"<p class='count-scope'>Datenstand: {_safe(data.get('timestamp'))} · Builder: ResearchCaseEngine/30min-Fenster · Quelle: OBSERVE-only Laufzeit</p>"
+        body = _hero("Research Case Explorer", "Case-Lifecycle, fehlende Evidenz und reproduzierbare Timeline.") + f"<section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><span class='count-scope'>sichtbarer Ausschnitt: {len(data['research_cases'])}</span></div>" + summary + f"<div class='filters'><div><label>Status</label><select id='filter-status'><option value='' selected>Alle aktiven / alle Status</option><option>OPEN</option><option>MONITORING</option><option>COLLECTING_EVIDENCE</option><option>READY_FOR_REVIEW</option><option>CONFIRMED</option><option>REJECTED</option><option>QUARANTINED</option><option>INVALIDATED</option><option>CLOSED</option></select></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option><option value='30'>30 Tage</option></select></div><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. BOS'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='z. B. 1.0.0'></div></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{rows}</tbody></table></div>{stand}</section>{detail}"
         return _layout("Research Case Explorer", page, body)
     if page == "Health Center":
         body = _hero("Health Center", "Zentrales Diagnosezentrum für Betrieb, Wissenschaft und Governance.")
@@ -1348,7 +1434,19 @@ class DashboardServer:
                     return self.respond(200 if item else 404, json.dumps(item or {"error": "observation not found"}).encode(), "application/json")
                 if path.startswith("/api/cases/"):
                     cid = unquote(path.removeprefix("/api/cases/"))
-                    item = next((entry for entry in outer.state.snapshot()["research_cases"] if str(entry.get("case_id")) == cid), None)
+                    with outer.state.lock:
+                        full_cases = [dict(entry) for entry in outer.state.research_cases]
+                    item = next((entry for entry in full_cases if str(entry.get("case_id")) == cid), None)
+                    return self.respond(200 if item else 404, json.dumps(item or {"error": "case not found"}).encode(), "application/json")
+                if path == "/api/research-cases" or path == "/api/research-cases/stats":
+                    with outer.state.lock:
+                        full = {"research_cases": [dict(entry) for entry in outer.state.research_cases]}
+                    return self.respond(200, json.dumps(_research_cases_collection(full, query, stats_only=(path == "/api/research-cases/stats"))).encode(), "application/json")
+                if path.startswith("/api/research-cases/"):
+                    cid = unquote(path.removeprefix("/api/research-cases/"))
+                    with outer.state.lock:
+                        full_cases = [dict(entry) for entry in outer.state.research_cases]
+                    item = next((entry for entry in full_cases if str(entry.get("case_id")) == cid), None)
                     return self.respond(200 if item else 404, json.dumps(item or {"error": "case not found"}).encode(), "application/json")
                 if path.startswith("/reports/"):
                     name = Path(unquote(path.removeprefix("/reports/"))).name
