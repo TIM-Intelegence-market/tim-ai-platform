@@ -5,7 +5,7 @@
 ```bash
 cd <tim worktree>
 .venv/bin/python -m src.graph_mcp.cli --root . \
-    --vault "/Users/tim/Documents/TIM/TIM OBSIDIAN" refresh-all
+    --vault "$TIM_GRAPH_MCP_VAULT" refresh-all
 ```
 
 `refresh-all` = refresh-code (incremental, content-hash skip) +
@@ -24,7 +24,7 @@ all add/update/remove counters 0.
 ## Run the MCP server
 
 ```bash
-TIM_GRAPH_MCP_ROOT=. TIM_GRAPH_MCP_VAULT="/Users/tim/Documents/TIM/TIM OBSIDIAN" \
+TIM_GRAPH_MCP_ROOT=. TIM_GRAPH_MCP_VAULT="$TIM_GRAPH_MCP_VAULT" \
   .venv/bin/python -m src.graph_mcp.mcp_server
 ```
 

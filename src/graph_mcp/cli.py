@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -12,8 +13,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.graph_mcp import export as export_module  # noqa: E402
 from src.graph_mcp.mcp_server import build_service  # noqa: E402
 
-DEFAULT_VAULT = "/Users/tim/Documents/TIM/TIM OBSIDIAN"
-DEFAULT_KI_TOOLS = str(Path.home() / "Desktop/KI TOOLS")
+# Portable resolution: explicit --vault CLI arg wins, then
+# TIM_GRAPH_MCP_VAULT, else vaultless (None — the service supports
+# vault=None; vault-dependent queries report honestly instead of
+# guessing a machine-specific default).
+DEFAULT_VAULT = os.environ.get("TIM_GRAPH_MCP_VAULT", "")
+DEFAULT_KI_TOOLS = os.environ.get("TIM_GRAPH_MCP_KI_TOOLS",
+                                  str(Path.home() / "Desktop/KI TOOLS"))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,8 +49,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = Path(args.root).resolve()
-    service = build_service(root, Path(args.db), vault=Path(args.vault),
-                            ki_tools=Path(args.ki_tools))
+    service = build_service(root, Path(args.db),
+                            vault=Path(args.vault) if args.vault else None,
+                            ki_tools=Path(args.ki_tools) if args.ki_tools else None)
     if args.command == "refresh-all":
         results = [service.refresh_code(), service.refresh_docs(),
                    service.refresh_runtime_readonly()]

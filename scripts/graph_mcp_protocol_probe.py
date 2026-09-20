@@ -1,24 +1,39 @@
 #!/usr/bin/env python3
 """R11 MCP protocol acceptance probe: starts the real server over stdio and
 exercises initialize / tools/list / tools/call (valid + invalid). Exits 0 on
-PASS, 1 on any FAIL. No TIM production surface is touched."""
+PASS, 1 on any FAIL. No TIM production surface is touched.
+
+Portable configuration (no machine-specific defaults):
+  TIM_GRAPH_MCP_ROOT   repo root under test (default: this repo, derived
+                       from the script location)
+  TIM_GRAPH_MCP_PY     python interpreter (default: the running interpreter)
+  TIM_GRAPH_MCP_DB     graph store (default: <root>/.runtime/graph/graph.sqlite)
+  TIM_GRAPH_MCP_VAULT  vault (optional; omitted when empty)
+"""
 import json
 import os
 import select
 import subprocess
 import sys
+from pathlib import Path
 
-ROOT = "/Users/tim/Documents/TIM/worktrees/glm-graph-mcp"
-PY = "/Users/tim/Documents/TIM/tim/.venv/bin/python"
+ROOT = os.environ.get("TIM_GRAPH_MCP_ROOT",
+                      str(Path(__file__).resolve().parents[1]))
+PY = os.environ.get("TIM_GRAPH_MCP_PY", sys.executable)
+DB = os.environ.get("TIM_GRAPH_MCP_DB",
+                    str(Path(ROOT) / ".runtime/graph/graph.sqlite"))
+VAULT = os.environ.get("TIM_GRAPH_MCP_VAULT", "")
+
+env = {**os.environ,
+       "TIM_GRAPH_MCP_ROOT": ROOT,
+       "TIM_GRAPH_MCP_DB": DB}
+if VAULT:
+    env["TIM_GRAPH_MCP_VAULT"] = VAULT
 
 proc = subprocess.Popen(
     [PY, "-m", "src.graph_mcp.mcp_server"],
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-    text=True, bufsize=1, cwd=ROOT,
-    env={**os.environ,
-         "TIM_GRAPH_MCP_ROOT": ROOT,
-         "TIM_GRAPH_MCP_DB": f"{ROOT}/.runtime/graph/graph.sqlite",
-         "TIM_GRAPH_MCP_VAULT": "/Users/tim/Documents/TIM/TIM OBSIDIAN"})
+    text=True, bufsize=1, cwd=ROOT, env=env)
 
 
 def send(payload: dict, expect_response: bool = True, timeout: float = 20.0) -> dict | None:

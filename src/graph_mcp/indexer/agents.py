@@ -24,7 +24,7 @@ AGENTS: tuple[dict, ...] = (
     {"id": "ollama", "name": "Ollama", "role": "local model runtime :11434",
      "evidence": "KI TOOLS context-mode SKILL; gate mission"},
     {"id": "graphify", "name": "Graphify", "role": "architecture/relationship visualization",
-     "evidence": "graphify-out artifacts; /Users/tim/.local/bin/graphify"},
+     "evidence": "graphify-out artifacts; graphify CLI (project PATH, e.g. ~/.local/bin/graphify)"},
     {"id": "obsidian", "name": "Obsidian", "role": "persistent human-readable knowledge layer",
      "evidence": "TIM OBSIDIAN vault"},
 )
