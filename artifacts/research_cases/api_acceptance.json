@@ -1,0 +1,81 @@
+{
+ "collection": {
+  "cases": [
+   {
+    "case_id": "case_a",
+    "status": "OPEN",
+    "timeframe": "1m",
+    "symbol": "BTCUSDT",
+    "observation_ids": [
+     "o1"
+    ],
+    "evidence": [
+     {
+      "kind": "BOS_BULLISH"
+     }
+    ],
+    "missing_evidence": [
+     "x"
+    ],
+    "outcome": null,
+    "rule_versions": {
+     "bos": "1.0.0"
+    }
+   },
+   {
+    "case_id": "case_b",
+    "status": "CONFIRMED",
+    "timeframe": "5m",
+    "symbol": "BTCUSDT",
+    "observation_ids": [
+     "o2"
+    ],
+    "evidence": [
+     {
+      "kind": "REJECTION"
+     }
+    ],
+    "missing_evidence": [],
+    "outcome": "documented",
+    "rule_versions": {
+     "bronxc": "1.0.0"
+    }
+   }
+  ],
+  "stats": {
+   "total": 2,
+   "by_status": {
+    "CONFIRMED": 1,
+    "OPEN": 1
+   },
+   "confirmed": 1,
+   "pending_outcome": 1,
+   "missing_evidence": {
+    "x": 1
+   }
+  },
+  "pagination": {
+   "limit": 50,
+   "returned": 2,
+   "total_matching": 2,
+   "next_cursor": null
+  },
+  "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC"
+ },
+ "stats": {
+  "stats": {
+   "total": 2,
+   "by_status": {
+    "CONFIRMED": 1,
+    "OPEN": 1
+   },
+   "confirmed": 1,
+   "pending_outcome": 1,
+   "missing_evidence": {
+    "x": 1
+   }
+  },
+  "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC"
+ },
+ "detail": "route-tested-live-in-e2e"
+}

@@ -1,0 +1,9 @@
+{
+ "mode": "validate",
+ "persisted_cases": 3,
+ "persisted_observations": 3,
+ "statuses": [
+  "OPEN"
+ ],
+ "manifest_hash": "6092f14ffa8e978007f2f53095a04d68ea42d034866226b2bbf06de4aa544890"
+}

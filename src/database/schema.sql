@@ -168,3 +168,11 @@ CREATE TABLE IF NOT EXISTS research_cases (
     documentation TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS research_cases_lookup_idx ON research_cases (symbol, status, updated_at DESC);
+
+-- Research Case Explorer lifecycle (idempotent evolution):
+-- review history per case + full domain status vocabulary. Safe to
+-- re-run: column is added only if missing; the CHECK is replaced
+-- atomically and keeps every legacy status valid.
+ALTER TABLE research_cases ADD COLUMN IF NOT EXISTS review_history JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE research_cases DROP CONSTRAINT IF EXISTS research_cases_status_check;
+ALTER TABLE research_cases ADD CONSTRAINT research_cases_status_check CHECK (status IN ('OPEN','MONITORING','COLLECTING_EVIDENCE','READY_FOR_REVIEW','CONFIRMED','REJECTED','QUARANTINED','INVALIDATED','CLOSED'));
