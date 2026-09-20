@@ -21,9 +21,21 @@ output/
 *.sqlite
 *.sqlite3
 *.db
+config/workspace_agent/graphify_gateway.local.yaml
+
+# Graphify outputs are reviewable repository artifacts; local caches and
+# provider-specific cost records are not versioned.
+graphify-out/cache/
+graphify-out/cost.json
+graphify-out/.graphify_python
+graphify-out/.graphify_root
 
 # Generated and historical runtime artifacts are not source-controlled.
 artifacts/*
+!artifacts/v2_readiness/
+!artifacts/v2_readiness/**
+!artifacts/v2_completion/
+!artifacts/v2_completion/**
 !artifacts/tim_manager/
 artifacts/tim_manager/*
 !artifacts/tim_manager/change_manifest.json
@@ -34,3 +46,10 @@ artifacts/tim_manager/reports/*
 !artifacts/tim_manager/reports/final_verification_probe_results.md
 !artifacts/tim_manager/reports/final_verification_probes.py
 !artifacts/tim_manager/reports/mandatory_acceptance.junit.xml
+
+# GitHub security & quality toolchain evidence is reviewable repository
+# documentation; only its locally generated caches and tokens are not.
+!artifacts/github_toolchain/
+!artifacts/github_toolchain/**
+.runtime/
+.serena/

@@ -72,7 +72,8 @@ class GraphService:
         started = time.monotonic()
         results = [ObsidianIndexer(self.vault).index() if self.vault else None,
                    RecipeIndexer(self.root).index(),
-                   AgentIndexer(self.ki_tools, self.vault).index()]
+                   AgentIndexer(self.ki_tools, self.vault,
+                                graph_mcp_present=(self.root / 'src' / 'graph_mcp').is_dir()).index()]
         metrics: dict[str, Any] = {"mode": "refresh_docs"}
         totals = {"nodes_added": 0, "nodes_updated": 0, "nodes_removed": 0,
                   "edges_added": 0, "edges_removed": 0}
@@ -180,7 +181,8 @@ class GraphService:
     def dependents(self, node_id: str, limit: int | None = None) -> dict[str, Any]:
         return self.neighbors(node_id, direction="in",
                               edge_types=["DEPENDS_ON", "IMPORTS", "REQUIRES",
-                                          "READS", "WRITES", "TESTS", "CALLS"],
+                                          "READS", "WRITES", "TESTS", "CALLS",
+                                          "DEFINES"],
                               limit=limit)
 
     def path(self, source: str, target: str, max_depth: int | None = None) -> dict[str, Any]:
