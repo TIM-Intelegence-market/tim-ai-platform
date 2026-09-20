@@ -27,6 +27,10 @@ AGENTS: tuple[dict, ...] = (
      "evidence": "graphify-out artifacts; graphify CLI (project PATH, e.g. ~/.local/bin/graphify)"},
     {"id": "obsidian", "name": "Obsidian", "role": "persistent human-readable knowledge layer",
      "evidence": "TIM OBSIDIAN vault"},
+    {"id": "serena", "name": "Serena",
+     "role": "semantic code intelligence (symbol lookup, references, "
+             "precise navigation, scoped edits)",
+     "evidence": "serena 2.0.0.dev0 process; KI TOOLS serena role 2026-09-18"},
 )
 KI_TOOLS_PACKAGES: tuple[str, ...] = ("caveman", "ponytail", "context-mode", "RTK")
 AVAILABILITY_CHECKS = {
@@ -45,9 +49,33 @@ def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
 class AgentIndexer:
     source = "agents"
 
-    def __init__(self, ki_tools: Path | None = None, vault: Path | None = None) -> None:
+    def __init__(self, ki_tools: Path | None = None, vault: Path | None = None,
+                 graph_mcp_present: bool = False) -> None:
         self.ki_tools = Path(ki_tools) if ki_tools else None
         self.vault = Path(vault) if vault else None
+        self.graph_mcp_present = graph_mcp_present
+
+    def _serena_relations(self, result: IndexResult) -> None:
+        """Serena integration edges (agent-infrastructure-v1, 2026-09-18),
+        emitted only when the Graph MCP service is part of the indexed tree
+        (no dangling endpoints by construction). Only evidenced relations:
+        GLM used Serena live (acceptance + controlled edit), OpenCode's
+        profile routes Serena as preferred tool, and the bridge connects
+        Serena to the Graph MCP service."""
+        serena_id = stable_id("agent", "serena")
+        result.edges.append(Edge(
+            stable_id("agent", "zcode-glm"), serena_id, EdgeType.USES_TOOL,
+            {"resolution_method": "mission_usage"},
+            evidence=["agent_infra_acceptance.py PASS 2026-09-18",
+                      "controlled edit via serena replace_content 2026-09-18"]).record())
+        result.edges.append(Edge(
+            stable_id("agent", "opencode"), serena_id, EdgeType.USES_TOOL,
+            {"resolution_method": "agent_profile"},
+            evidence=["OpenCode profile preferred_tools (Step 17)"]).record())
+        result.edges.append(Edge(
+            serena_id, stable_id("service", "graph_mcp"), EdgeType.RELATED_TO,
+            {"resolution_method": "stable_id_bridge"},
+            evidence=["src/agent_infra/bridge.py; SERENA_GRAPH_BRIDGE=PASS"]).record())
 
     def _vault_tool_notes(self) -> dict[str, str]:
         """Frontmatter-typed `tool` notes keyed by note title -> vault path.
@@ -87,6 +115,12 @@ class AgentIndexer:
                 graphify_bin = Path.home() / ".local/bin/graphify"
                 if graphify_bin.is_file():
                     availability = "AVAILABLE"
+            elif agent["id"] == "serena":
+                import subprocess
+                probe = subprocess.run(["pgrep", "-f", "serena start-mcp-server"],
+                                       capture_output=True)
+                if probe.returncode == 0:
+                    availability = "AVAILABLE"
             node_id = stable_id("agent", agent["id"])
             result.nodes.append(Node(
                 node_id, NodeType.AGENT, agent["name"], src, "",
@@ -114,6 +148,8 @@ class AgentIndexer:
                         opencode_id, tool_id, EdgeType.USES_TOOL,
                         {"resolution_method": "ki_tools_readme"},
                         evidence=["KI TOOLS/README.md"]).record())
+        if self.graph_mcp_present:
+            self._serena_relations(result)
         result.metrics.update({"AGENTS": len(AGENTS),
                                "NODES_ADDED": len(result.nodes),
                                "EDGES_ADDED": len(result.edges)})
