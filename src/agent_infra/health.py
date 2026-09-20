@@ -17,14 +17,43 @@ from typing import Callable
 
 from src.agent_infra.router import AVAILABLE, UNKNOWN, UNAVAILABLE
 
-VAULT = Path(os.environ.get("TIM_OBSIDIAN_VAULT", ""))
-if not str(VAULT):
-    VAULT = Path.home() / "Documents/TIM/TIM OBSIDIAN"
+_VAULT = os.environ.get("TIM_OBSIDIAN_VAULT", "")
+VAULT = Path(_VAULT) if _VAULT else Path.home() / "Documents/TIM/TIM OBSIDIAN"
 GRAPH_STORE = Path(".runtime/graph/graph.sqlite")
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def probe_opencode() -> tuple[str, str]:
+    """OpenCode executor presence (desktop-aware, read-only, fail-closed).
+
+    AVAILABLE only when the OpenCode Desktop execution context is
+    actually evidenced: ``OPENCODE_CLIENT=desktop`` plus a validated
+    project marker (``OPENCODE_PROJECT_ROOT/.agents/skills/``, else
+    CWD-relative ``.agents/skills/``).
+    No shell ``opencode`` binary is required; none is inspected.
+    No private app data is read — only env + project-relative paths.
+    This probe reports EXECUTOR presence for routing; it grants no
+    write authority (the router never grants any)."""
+    client = os.environ.get("OPENCODE_CLIENT", "")
+    if client != "desktop":
+        if client:
+            return UNKNOWN, (f"OPENCODE_CLIENT={client!r} is not the "
+                             "known desktop marker — state unknown")
+        return UNAVAILABLE, "no OPENCODE_CLIENT evidence in environment"
+    project = os.environ.get("OPENCODE_PROJECT_ROOT", "")
+    marker = (Path(project) / ".agents/skills" if project
+              else Path(".agents/skills"))
+    if marker.is_dir():
+        skills = sum(1 for _ in marker.iterdir())
+        return AVAILABLE, (f"OPENCODE_CLIENT=desktop + project marker "
+                           f"{marker}/ ({skills} entries)")
+    return UNKNOWN, ("OPENCODE_CLIENT=desktop but no project-local "
+                     ".agents/skills/ found "
+                     f"({marker} missing) — executor context "
+                     "unconfirmed")
 
 
 def probe_serena() -> tuple[str, str]:
@@ -105,9 +134,9 @@ def probe_native_search() -> tuple[str, str]:
 
 
 def probe_pytest() -> tuple[str, str]:
-    venv = Path(os.environ.get("TIM_PLATFORM_VENV", ""))
-    if not str(venv):
-        venv = (Path.home() / "Documents/TIM/tim/.venv/bin/python")
+    _venv = os.environ.get("TIM_PLATFORM_VENV", "")
+    venv = (Path(_venv) if _venv
+            else Path.home() / "Documents/TIM/tim/.venv/bin/python")
     if venv.exists():
         return AVAILABLE, f"pytest via {venv}"
     return UNAVAILABLE, "platform venv missing"
@@ -121,6 +150,7 @@ class ToolHealthRegistry:
         "Obsidian": probe_obsidian,
         "Qwen": probe_qwen,
         "Ollama": probe_ollama,
+        "OpenCode": probe_opencode,
         "NativeSearch": probe_native_search,
         "pytest": probe_pytest,
     }
