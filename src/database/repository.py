@@ -178,10 +178,10 @@ class MarketRepository:
 
     @staticmethod
     async def _upsert_case(con,case:ResearchCase)->None:
-        query="""INSERT INTO research_cases(case_id,symbol,timeframe,opened_at,updated_at,status,observation_ids,evidence,missing_evidence,outcome,rule_versions,documentation)
-        VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11::jsonb,$12)
-        ON CONFLICT(case_id) DO UPDATE SET updated_at=EXCLUDED.updated_at,status=EXCLUDED.status,observation_ids=EXCLUDED.observation_ids,evidence=EXCLUDED.evidence,missing_evidence=EXCLUDED.missing_evidence,outcome=EXCLUDED.outcome,rule_versions=EXCLUDED.rule_versions,documentation=EXCLUDED.documentation"""
-        await con.execute(query,case.case_id,case.symbol,case.timeframe,case.opened_at,case.updated_at,case.status,json.dumps(case.observation_ids),json.dumps(case.evidence),json.dumps(case.missing_evidence),case.outcome,json.dumps(case.rule_versions),case.documentation)
+        query="""INSERT INTO research_cases(case_id,symbol,timeframe,opened_at,updated_at,status,observation_ids,evidence,missing_evidence,outcome,rule_versions,documentation,review_history)
+        VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11::jsonb,$12,$13::jsonb)
+        ON CONFLICT(case_id) DO UPDATE SET updated_at=EXCLUDED.updated_at,status=EXCLUDED.status,observation_ids=EXCLUDED.observation_ids,evidence=EXCLUDED.evidence,missing_evidence=EXCLUDED.missing_evidence,outcome=EXCLUDED.outcome,rule_versions=EXCLUDED.rule_versions,documentation=EXCLUDED.documentation,review_history=EXCLUDED.review_history"""
+        await con.execute(query,case.case_id,case.symbol,case.timeframe,case.opened_at,case.updated_at,case.status,json.dumps(case.observation_ids),json.dumps(case.evidence),json.dumps(case.missing_evidence),case.outcome,json.dumps(case.rule_versions),case.documentation,json.dumps(getattr(case,"review_history",[])))
 
     async def upsert_research_case(self, case: ResearchCase) -> None:
         async with self.database.acquire() as con:
@@ -200,4 +200,4 @@ class MarketRepository:
     async def recent_research_cases(self,symbol:str,limit:int=1000)->list[ResearchCase]:
         async with self.database.acquire() as con:
             rows=await con.fetch("SELECT * FROM research_cases WHERE symbol=$1 ORDER BY updated_at DESC LIMIT $2",symbol,limit)
-        return [ResearchCase(case_id=row["case_id"],symbol=row["symbol"],timeframe=row["timeframe"],opened_at=row["opened_at"],updated_at=row["updated_at"],status=row["status"],observation_ids=_json_value(row["observation_ids"],list),evidence=_json_value(row["evidence"],list),missing_evidence=_json_value(row["missing_evidence"],list),outcome=row["outcome"],rule_versions=_json_value(row["rule_versions"],dict),documentation=row["documentation"]) for row in rows]
+        return [ResearchCase(case_id=row["case_id"],symbol=row["symbol"],timeframe=row["timeframe"],opened_at=row["opened_at"],updated_at=row["updated_at"],status=row["status"],observation_ids=_json_value(row["observation_ids"],list),evidence=_json_value(row["evidence"],list),missing_evidence=_json_value(row["missing_evidence"],list),outcome=row["outcome"],rule_versions=_json_value(row["rule_versions"],dict),documentation=row["documentation"],review_history=_json_value(row.get("review_history",[]),list)) for row in rows]

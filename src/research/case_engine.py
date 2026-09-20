@@ -8,6 +8,33 @@ from typing import Iterable
 from src.models.market_data import Observation, ObservationKind
 
 
+MISSING_REASONS = (
+    "Outcome horizon not closed",
+    "Gap überlappt Case",
+    "zu wenige Observations",
+    "Rule Version fehlt",
+    "Replay nicht abgeschlossen",
+    "Control/Negative Evidence fehlt",
+    "Data Quality unter Schwelle",
+    "Manual Review pending",
+)
+
+# Forward-only lifecycle. Terminal: CLOSED. QUARANTINED is terminal for
+# defective observations (never delete, always explain).
+_TRANSITIONS = {
+    "OPEN": ("COLLECTING_EVIDENCE", "QUARANTINED"),
+    "COLLECTING_EVIDENCE": ("READY_FOR_REVIEW", "QUARANTINED"),
+    "READY_FOR_REVIEW": ("CONFIRMED", "REJECTED", "QUARANTINED"),
+    "CONFIRMED": ("CLOSED",),
+    "REJECTED": ("CLOSED",),
+    "QUARANTINED": (),
+    "CLOSED": (),
+    # Legacy states remain readable; new transitions do not originate here.
+    "MONITORING": ("COLLECTING_EVIDENCE", "QUARANTINED"),
+    "INVALIDATED": ("CLOSED",),
+}
+
+
 @dataclass(slots=True)
 class ResearchCase:
     case_id: str
@@ -22,9 +49,10 @@ class ResearchCase:
     outcome: str | None = None
     rule_versions: dict[str, str] = field(default_factory=dict)
     documentation: str = "Research container only; not a setup, signal, or prediction."
+    review_history: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {"case_id": self.case_id, "symbol": self.symbol, "timeframe": self.timeframe, "opened_at": self.opened_at.isoformat(), "updated_at": self.updated_at.isoformat(), "status": self.status, "observation_ids": self.observation_ids, "evidence": self.evidence, "missing_evidence": self.missing_evidence, "outcome": self.outcome, "rule_versions": self.rule_versions, "documentation": self.documentation}
+        return {"case_id": self.case_id, "symbol": self.symbol, "timeframe": self.timeframe, "opened_at": self.opened_at.isoformat(), "updated_at": self.updated_at.isoformat(), "status": self.status, "observation_ids": self.observation_ids, "evidence": self.evidence, "missing_evidence": self.missing_evidence, "outcome": self.outcome, "rule_versions": self.rule_versions, "documentation": self.documentation, "review_history": self.review_history}
 
 
 class ResearchCaseEngine:
@@ -67,3 +95,36 @@ class ResearchCaseEngine:
             raise ValueError("Invalid research-case closure")
         case.status, case.outcome, case.updated_at = "CLOSED", outcome, observed_at
         return case
+
+    def transition(self, case_id: str, to_status: str, observed_at: datetime, reason: str) -> ResearchCase:
+        """Forward-only lifecycle transition with recorded justification."""
+        case = self.cases[case_id]
+        allowed = _TRANSITIONS.get(case.status, ())
+        if to_status not in allowed or observed_at < case.updated_at:
+            raise ValueError(f"Invalid transition {case.status} -> {to_status}")
+        if not reason:
+            raise ValueError("Transition requires a reason")
+        case.status = to_status
+        case.updated_at = observed_at
+        case.review_history.append({"at": observed_at.isoformat(), "to": to_status, "reason": reason})
+        return case
+
+    def confirm(self, case_id: str, observed_at: datetime, reviewer: str) -> ResearchCase:
+        """CONFIRMED only with full scientific criteria; else ValueError
+        naming the first unmet criterion (never silently confirm)."""
+        case = self.cases[case_id]
+        if case.missing_evidence:
+            raise ValueError(f"Cannot confirm: missing {case.missing_evidence[0]}")
+        if not case.outcome:
+            raise ValueError("Cannot confirm: Outcome horizon not closed")
+        if not case.rule_versions:
+            raise ValueError("Cannot confirm: Rule Version fehlt")
+        if case.status != "READY_FOR_REVIEW":
+            raise ValueError(f"Cannot confirm from status {case.status}: Manual Review pending")
+        if not reviewer:
+            raise ValueError("Cannot confirm: reviewer required")
+        return self.transition(case_id, "CONFIRMED", observed_at, f"reviewer={reviewer}; criteria complete")
+
+    def quarantine(self, case_id: str, observed_at: datetime, reason: str) -> ResearchCase:
+        """Defective observations are quarantined, never deleted."""
+        return self.transition(case_id, "QUARANTINED", observed_at, reason)
