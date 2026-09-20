@@ -1,0 +1,18 @@
+{
+ "cards_1440x900": true,
+ "rows_1440x900": true,
+ "filter_1440x900": true,
+ "stand_1440x900": true,
+ "api_1440x900": true,
+ "stats_1440x900": true,
+ "detail_1440x900": true,
+ "cards_1920x1080": true,
+ "rows_1920x1080": true,
+ "filter_1920x1080": true,
+ "stand_1920x1080": true,
+ "api_1920x1080": true,
+ "stats_1920x1080": true,
+ "detail_1920x1080": true,
+ "no_console_errors": true,
+ "no_failed_requests": true
+}

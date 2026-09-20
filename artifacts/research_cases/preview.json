@@ -1,0 +1,35 @@
+{
+ "mode": "dry-run",
+ "windows": 3,
+ "observations": 3,
+ "cases": 3,
+ "cases_detail": [
+  {
+   "case_id": "case_8918f05520f57944",
+   "status": "OPEN",
+   "observations": 1,
+   "missing": [
+    "level_reaction_context",
+    "continuation_context"
+   ]
+  },
+  {
+   "case_id": "case_caf8b813febc0206",
+   "status": "OPEN",
+   "observations": 1,
+   "missing": [
+    "structure_confirmation",
+    "continuation_context"
+   ]
+  },
+  {
+   "case_id": "case_956af23de8daaca3",
+   "status": "OPEN",
+   "observations": 1,
+   "missing": [
+    "structure_confirmation",
+    "level_reaction_context"
+   ]
+  }
+ ]
+}

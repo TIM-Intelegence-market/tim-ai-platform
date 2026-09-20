@@ -1,0 +1,13 @@
+{
+ "mode": "apply",
+ "windows": 3,
+ "observations": 3,
+ "cases": 3,
+ "case_ids": [
+  "case_8918f05520f57944",
+  "case_956af23de8daaca3",
+  "case_caf8b813febc0206"
+ ],
+ "manifest_hash": "6092f14ffa8e978007f2f53095a04d68ea42d034866226b2bbf06de4aa544890",
+ "idempotent_rerun_expected": "0 changes"
+}

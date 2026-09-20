@@ -1,0 +1,5 @@
+{
+ "scope": "test-db materialization windows 2026-01-05..07",
+ "excluded_observations": [],
+ "note": "all 3 fixture observations case-eligible; no exclusions"
+}
