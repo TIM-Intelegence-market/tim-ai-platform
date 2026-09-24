@@ -102,6 +102,7 @@ def _state(tmp_path: Path) -> DashboardState:
         completion_artifacts_path=completion,
         legacy_readiness_artifacts_path=legacy,
         operational_watchdog_path=tmp_path / "no-watchdog.json",
+        rolling_liveness_path=tmp_path / "no-rolling-liveness.json",
         system_health={"database": "connected", "stream": "running", "queue_depth": 0},
     )
 

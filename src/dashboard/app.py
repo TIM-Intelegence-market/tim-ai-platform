@@ -145,6 +145,7 @@ class DashboardState:
     completion_artifacts_path: Path = field(default_factory=lambda: Path("artifacts/v2_completion"))
     legacy_readiness_artifacts_path: Path = field(default_factory=lambda: Path("artifacts/v2_readiness"))
     operational_watchdog_path: Path = field(default_factory=lambda: Path("data/operational/watchdog_status.json"))
+    rolling_liveness_path: Path = field(default_factory=lambda: Path("data/operational/rolling_liveness.json"))
     live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))
     gate_model_path: Path = field(default_factory=lambda: Path("data/research/status/current_gate_model.json"))
     phase_c_checkpoint_path: Path = field(default_factory=lambda: Path("/tmp/phase_c_checkpoint.json"))
@@ -335,6 +336,7 @@ class DashboardState:
             self.completion_artifacts_path,
             self.legacy_readiness_artifacts_path,
             self.operational_watchdog_path,
+            self.rolling_liveness_path,
         )
         return snapshot
 

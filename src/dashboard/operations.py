@@ -179,6 +179,7 @@ def build_operations_snapshot(
     completion_root: Path = Path("artifacts/v2_completion"),
     legacy_root: Path = Path("artifacts/v2_readiness"),
     live_watchdog_path: Path = Path("data/operational/watchdog_status.json"),
+    rolling_liveness_path: Path = Path("data/operational/rolling_liveness.json"),
 ) -> dict[str, Any]:
     """Build a bounded, read-only control-center contract from persisted evidence.
 
@@ -410,6 +411,12 @@ def build_operations_snapshot(
         frozen_source,
     )
     rolling_record = _first(legacy_coverage, "product_calculation.rolling.PT1440M", "dimensions.rolling.PT1440M", default={})
+    rolling_source = sources["legacy/coverage_final.json"]["path"]
+    rolling_live = _read_json(rolling_liveness_path)
+    if isinstance(rolling_live, dict) and rolling_live.get("valid_observations") is not None:
+        # Fresh DB-derived rolling window wins over the frozen August baseline.
+        rolling_record = rolling_live
+        rolling_source = str(rolling_liveness_path)
     backfill_status = _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.gate_status", "status", "gate_status", "governance_disposition")
     if _normalized_status(backfill_status) == "PASS" and backfill.get("readiness_counted") is False:
         backfill_status = "CANDIDATE PASS — NOT APPROVED"
@@ -418,7 +425,7 @@ def build_operations_snapshot(
         _coverage_card("Backfill Candidate", _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.coverage", "coverage", "coverage_percent", "candidate.coverage"), _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.valid_minutes", "valid_observations", "candidate.valid_observations", "imported_rows"), _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.expected_minutes", "expected_observations", "candidate.expected_observations"), backfill_status, sources["backfill_candidate_manifest.json"]["path"]),
         _coverage_card("Approved Qualification Dataset", _first(daily, "approved_dataset.coverage", "qualification_dataset.coverage", default=_first(prereg, "approved_dataset.coverage")), _first(daily, "approved_dataset.valid_observations", "qualification_dataset.valid_observations"), _first(daily, "approved_dataset.expected_observations", "qualification_dataset.expected_observations"), _first(daily, "approved_dataset.status", "qualification_dataset.status", default=_first(prereg, "approved_dataset.status")), daily_source),
         _coverage_card("Prospective Qualification Campaign", _first(daily, "metrics.coverage", "coverage", "coverage_percent", "campaign.coverage", default=_first(prereg, "campaign.coverage")), _first(daily, "metrics.valid_observations", "valid_observations", "campaign.valid_observations"), _first(daily, "metrics.expected_observations", "expected_observations", "campaign.expected_observations"), _first(daily, "status", "campaign.status", default=_first(prereg, "campaign_status", "status", default=_first(backfill, "coverage_metrics.prospective_qualification.status"))), daily_source if daily else sources["qualification_preregistration.json"]["path"]),
-        _coverage_card("Rolling Liveness", _first(rolling_record, "coverage", "coverage_percent"), _first(rolling_record, "valid_observations"), _first(rolling_record, "expected_observations"), _first(rolling_record, "status", default=live.get("stream")), sources["legacy/coverage_final.json"]["path"]),
+        _coverage_card("Rolling Liveness", _first(rolling_record, "coverage", "coverage_percent"), _first(rolling_record, "valid_observations"), _first(rolling_record, "expected_observations"), _first(rolling_record, "status", default=live.get("stream")), rolling_source),
     ]
 
     current_cases = _first(independent, "current.strict_independent_cases", "current.strict_independent_units", "current.strict_independent_30m_windows", "strict_independent_cases", default=_first(legacy_cases, "current_cutoff_audit.strict_independent_30m_windows"))
