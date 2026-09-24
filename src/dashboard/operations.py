@@ -427,6 +427,10 @@ def build_operations_snapshot(
         _coverage_card("Prospective Qualification Campaign", _first(daily, "metrics.coverage", "coverage", "coverage_percent", "campaign.coverage", default=_first(prereg, "campaign.coverage")), _first(daily, "metrics.valid_observations", "valid_observations", "campaign.valid_observations"), _first(daily, "metrics.expected_observations", "expected_observations", "campaign.expected_observations"), _first(daily, "status", "campaign.status", default=_first(prereg, "campaign_status", "status", default=_first(backfill, "coverage_metrics.prospective_qualification.status"))), daily_source if daily else sources["qualification_preregistration.json"]["path"]),
         _coverage_card("Rolling Liveness", _first(rolling_record, "coverage", "coverage_percent"), _first(rolling_record, "valid_observations"), _first(rolling_record, "expected_observations"), _first(rolling_record, "status", default=live.get("stream")), rolling_source),
     ]
+    # Frozen capture is immutable historical evidence: its FAIL is a recorded
+    # fact, not an open repair task. Label it as such so the room reads as
+    # historical/superseded rather than actionable.
+    datasets[0]["disposition"] = "HISTORICAL / IMMUTABLE — frozen window, SUPERSEDED for coverage purposes, NOT APPROVAL SOURCE"
 
     current_cases = _first(independent, "current.strict_independent_cases", "current.strict_independent_units", "current.strict_independent_30m_windows", "strict_independent_cases", default=_first(legacy_cases, "current_cutoff_audit.strict_independent_30m_windows"))
     frozen_cases = _first(independent, "frozen.strict_independent_cases", "frozen.strict_independent_units", "frozen_strict_independent_cases", default=_first(implementation, "frozen_strict_independent_cases", default=_first(legacy_cases, "frozen_cutoff_audit.strict_independent_30m_windows")))

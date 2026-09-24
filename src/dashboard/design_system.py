@@ -372,7 +372,9 @@ def coverage_rows(datasets: Iterable[dict[str, Any]]) -> str:
         out.append(
             "<div class='coverage__row'>"
             f"<div class='coverage__name'>{_esc(item.get('label'))}"
-            f"<small>{_esc(item.get('source'))}</small></div>"
+            f"<small>{_esc(item.get('source'))}</small>"
+            + (f"<small class='disposition'>{_esc(item.get('disposition'))}</small>" if item.get("disposition") else "")
+            + "</div>"
             f"<div><div class='coverage__nums'>{_esc(percent_text)} · {_esc(item.get('observed'))} / {_esc(item.get('expected'))}</div>"
             f"<div class='coverage__bar coverage__bar--{key}'{width}><span></span></div></div>"
             f"<div>{evidence_chip(item.get('status'))}</div></div>"
