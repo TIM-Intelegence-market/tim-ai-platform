@@ -1,0 +1,29 @@
+name: TIM Priority Board
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  prioritize:
+    runs-on: ubuntu-latest
+    env:
+      PRIORITY_BOARD_TITLE: TIM Priority Board
+      PRIORITY_BOARD_MARKER: TIM_PRIORITY_BOARD_V1
+      PRIORITY_TIMEZONE_LABEL: Europe/Berlin
+      TOP_N: "5"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prioritize TIM GitHub work
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/tim_priority_agent.py | tee -a "$GITHUB_STEP_SUMMARY"
