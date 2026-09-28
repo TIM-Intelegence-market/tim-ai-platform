@@ -66,7 +66,7 @@ async def database_context(started_at:datetime,as_of:datetime)->dict:
         cases=await connection.fetchrow("SELECT count(*) n,count(*) FILTER (WHERE jsonb_array_length(evidence)>0 AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(evidence) e WHERE COALESCE(e->>'provenance','')<>'PUBLIC_MARKET_DATA_DETERMINISTIC')) with_provenance,(SELECT COALESCE(sum(jsonb_array_length(evidence)),0) FROM research_cases) evidence_total,(SELECT count(*) FROM research_cases r,jsonb_array_elements(r.evidence) e WHERE e->>'provenance'='PUBLIC_MARKET_DATA_DETERMINISTIC') evidence_valid FROM research_cases")
         invalid=await connection.fetchval("SELECT count(*) FROM candles WHERE low>LEAST(open,close) OR high<GREATEST(open,close) OR close_time<=open_time")
     finally:await connection.close()
-    source=(ROOT/"src/dashboard/app.py").read_text();api_status=0;api_latency=999999.0
+    source="".join(path.read_text() for path in sorted((ROOT/"src/dashboard").rglob("*")) if path.suffix in {".py",".html",".js",".css"});api_status=0;api_latency=999999.0
     try:
         started=time.monotonic()
         with urlopen("http://127.0.0.1:8765/api/state",timeout=3) as response:api_status=response.status;json.loads(response.read())

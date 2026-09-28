@@ -1,0 +1,21 @@
+
+.health-card{padding:0;overflow:hidden}
+.health-card summary{list-style:none;cursor:pointer;padding:17px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.health-card summary::-webkit-details-marker{display:none}
+.health-card summary strong{display:block;font-size:18px;margin-top:9px}
+.health-card[open] summary{border-bottom:1px solid var(--line)}
+.diagnostic{padding:15px 17px;background:#0a1524}
+.diagnostic dl{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px}
+.diagnostic dt{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.diagnostic dd{margin:4px 0 0;overflow-wrap:anywhere}
+.contract-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.queue-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.meta-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.signal-header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.signal-kicker{display:flex;gap:8px;flex-wrap:wrap}
+.signal-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0b1728;color:var(--text);font-size:12px}
+.status-note{font-size:11px;color:var(--muted);margin-top:4px}
+.status-note b{color:var(--text)}
+.health-section-meta{display:flex;flex-direction:column;align-items:flex-end;gap:7px;color:var(--muted);font-size:11px;text-align:right}
+.health-scope-note{margin-top:16px}
+@media(max-width:680px){.health-section-meta{align-items:flex-start;text-align:left}.panel__head{align-items:flex-start;flex-direction:column}}
