@@ -28,6 +28,7 @@ Bei Planung, Review, Übergaben oder neuen Playbooks dort nachlesen.
 - `bauplan`: größere Aufgabe vor jeder Änderung planen und auf Go warten.
 - `adversariale-pruefung`: Änderung unabhängig auf Fehler, Sonderfälle und Sicherheit prüfen.
 - `fertig-pruefung`: Paket gegen seine Erfolgskriterien abnehmen.
+- `canary`: Warnzeichen für ein volles Kontextfenster setzen (nur auf Anfrage, Satz nie hier eintragen).
 
 Status aller 45 Bibliothekseinträge: `ai-resources/source-register.md`.
 
