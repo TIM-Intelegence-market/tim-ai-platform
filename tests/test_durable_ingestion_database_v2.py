@@ -7,11 +7,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import pytest_asyncio
 
-from src.data_ingestion.durable import (
-    DurableIngestionStore,
-    QueueCapacityError,
-    cursor_hash,
-)
+from src.data_ingestion.durable import DurableIngestionStore, cursor_hash
 from src.database.connection import Database
 from src.models.market_data import Trade
 
@@ -97,18 +93,19 @@ async def test_failure_after_cursor_write_rolls_back_raw_cursor_and_outbox(datab
 
 
 @pytest.mark.asyncio
-async def test_queue_overflow_rejects_without_half_persistence_and_records_gap(database) -> None:
+async def test_queue_overflow_defers_worker_but_never_rejects_raw_persistence(database) -> None:
     store = DurableIngestionStore(database, queue_capacity=1)
     await store.ingest_trade(trade("DURABLEC", 300))
-    with pytest.raises(QueueCapacityError):
-        await store.ingest_trade(trade("DURABLEC", 301, 1))
+    deferred = await store.ingest_trade(trade("DURABLEC", 301, 1))
+    assert deferred.raw_inserted and deferred.outbox_inserted
+    assert deferred.queue_depth == 1
     async with database.acquire() as connection:
-        assert await connection.fetchval("SELECT count(*) FROM agg_trades WHERE symbol='DURABLEC'") == 1
-        assert await connection.fetchval("SELECT last_aggregate_trade_id FROM ingestion_cursors WHERE symbol='DURABLEC'") == 300
-        gap = await connection.fetchrow(
-            "SELECT reason,status FROM ingestion_gap_incidents WHERE symbol='DURABLEC'"
-        )
-    assert dict(gap) == {"reason": "OUTBOX_CAPACITY", "status": "OPEN"}
+        assert await connection.fetchval("SELECT count(*) FROM agg_trades WHERE symbol='DURABLEC'") == 2
+        assert await connection.fetchval("SELECT last_aggregate_trade_id FROM ingestion_cursors WHERE symbol='DURABLEC'") == 301
+        assert await connection.fetchval(
+            "SELECT status FROM ingestion_outbox WHERE symbol='DURABLEC' AND aggregate_trade_id=301"
+        ) == "DEFERRED"
+        assert await connection.fetchval("SELECT count(*) FROM ingestion_gap_incidents WHERE symbol='DURABLEC'") == 0
 
 
 @pytest.mark.asyncio
@@ -197,3 +194,24 @@ async def test_real_runtime_reader_commits_before_separate_worker_enriches(datab
     finally:
         await app.database.close()
         app.dashboard.server.server_close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('statuses', [[], ['COMPLETED'], ['PENDING', 'PROCESSING', 'RETRY', 'QUARANTINED', 'COMPLETED']])
+async def test_metrics_queue_population_and_oldest_ignore_completed(database, statuses):
+    store = DurableIngestionStore(database)
+    for i, status in enumerate(statuses):
+        await store.ingest_trade(trade('METRICS', 100 + i, i))
+        async with database.acquire() as connection:
+            await connection.execute("UPDATE ingestion_outbox SET status=$1,created_at=$2,completed_at=CASE WHEN $1='COMPLETED' THEN now() END,output_hash=CASE WHEN $1='COMPLETED' THEN repeat('0',64) END WHERE aggregate_trade_id=$3", status, BASE + timedelta(seconds=i), 100+i)
+    before = datetime.now(timezone.utc)
+    result = await store.metrics_snapshot('METRICS')
+    after = datetime.now(timezone.utc)
+    active = [i for i, status in enumerate(statuses) if status != 'COMPLETED']
+    assert result['queue_depth'] == len(active)
+    assert result['queue_quarantined'] == statuses.count('QUARANTINED')
+    if active:
+        oldest = BASE + timedelta(seconds=min(active))
+        assert (before-oldest).total_seconds() <= result['queue_oldest_age'] <= (after-oldest).total_seconds()
+    else:
+        assert result['queue_oldest_age'] is None

@@ -141,6 +141,7 @@ def test_uninstrumented_cursor_stage_stays_unknown(tmp_path: Path) -> None:
     empty.mkdir(parents=True, exist_ok=True)
     state = DashboardState(
         completion_artifacts_path=empty,
+        operational_watchdog_path=tmp_path / "no-watchdog.json",
         system_health={"database": "connected", "stream": "running"},
     )
     operations = state.snapshot()["operations"]
@@ -310,3 +311,47 @@ def test_open_human_gate_states_are_never_marked_stale(tmp_path: Path) -> None:
     assert "GOVERNANCE_STATE" in page
     governance_row = page.split("GOVERNANCE_STATE", 1)[1][:600]
     assert "STALE —" not in governance_row
+
+
+def test_trading_actions_without_instrumentation_render_unknown_not_fail(tmp_path: Path) -> None:
+    completion = tmp_path / "completion"
+    _write_json(completion, "implementation_state.json", {"trading_action_count": 0})
+    gate_path = tmp_path / "gate.json"
+    _gate_model(gate_path)
+    # No queue metrics file, no watchdog: trading action evidence is absent.
+    (completion / "queue_metrics.json").unlink(missing_ok=True)
+    state = DashboardState(
+        completion_artifacts_path=completion,
+        gate_model_path=gate_path,
+        phase_c_checkpoint_path=tmp_path / "no-phase-c.json",
+        operational_watchdog_path=tmp_path / "no-watchdog.json",
+        system_health={"database": "connected", "stream": "running", "queue_depth": 0},
+    )
+    page = render(state, "V2 Readiness")
+    band5 = page.split("Band 5 · Trading authorization", 1)[1].split("Archived snapshots", 1)[0]
+    assert "UNAVAILABLE" in band5
+    # Missing evidence must never look like a red technical failure. The window
+    # ends before the gate-model TRADING row, whose LOCKED chip is intentionally red.
+    band5_after_chip = band5.split("Trading actions", 1)[1].split("<dt>TRADING<", 1)[0]
+    assert "sev--fail" not in band5_after_chip
+
+
+def test_in_progress_gate_with_fresh_checkpoint_is_never_stale(tmp_path: Path) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    completion = tmp_path / "completion"
+    _write_json(completion, "implementation_state.json", {"trading_action_count": 0})
+    gate_path = tmp_path / "gate.json"
+    _gate_model(gate_path, checked_at="2026-07-01T00:00:00+00:00")  # far beyond the window
+    checkpoint = tmp_path / "phase_c_checkpoint.json"
+    checkpoint.write_text(json.dumps({"last_id": 7, "pages": 1, "trades": 1000}), encoding="utf-8")
+    state = DashboardState(
+        completion_artifacts_path=completion,
+        gate_model_path=gate_path,
+        phase_c_checkpoint_path=checkpoint,
+        system_health={"database": "connected", "stream": "running", "queue_depth": 0},
+    )
+    page = render(state, "V2 Readiness")
+    phase_row = page.split("PHASE_C_HISTORICAL_EXTENSION", 1)[1].split("</dl>", 1)[0]
+    assert "live checkpoint: 1000 trades" in phase_row
+    assert "STALE —" not in phase_row

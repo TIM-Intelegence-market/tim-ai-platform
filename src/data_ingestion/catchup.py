@@ -256,7 +256,13 @@ class CatchUpCoordinator:
 
         if expected > end_id:
             try:
-                resolved = await self.store.resolve_gaps_through(symbol, end_id)
+                # Verify the exact incident we have just filled.  Older,
+                # governance-held evidence gaps must never block the live
+                # reconnect path from proving its own complete range.
+                resolve_exact = getattr(self.store, "resolve_gap", None)
+                resolved = await resolve_exact(gap_id) if resolve_exact is not None else bool(
+                    await self.store.resolve_gaps_through(symbol, end_id)
+                )
             except (OSError, TimeoutError) as error:
                 # Verification only: a slow gap table must degrade to OPEN,
                 # never escape as a bare error that kills the stream loop.
@@ -265,7 +271,7 @@ class CatchUpCoordinator:
             except Exception as error:
                 resolved = 0
                 reason = f"{type(error).__name__}: {error}"
-            if resolved > 0:
+            if resolved:
                 return CatchUpResult("COMPLETE", symbol, start_id, end_id, persisted, duplicates, pages)
             reason = reason or "persisted range failed independent completeness verification"
 

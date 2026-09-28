@@ -30,7 +30,12 @@ def _validate_agg_trade_for_persistence(trade:Trade,now:datetime|None=None)->Non
 
 def agg_trade_hash(trade:Trade)->str:
     _validate_agg_trade_for_persistence(trade,trade.event_time)
-    payload={"aggregate_trade_id":trade.trade_id,"buyer_is_maker":trade.buyer_is_maker,"price":trade.price,"quantity":trade.quantity,"source":AGG_TRADE_SOURCE,"symbol":trade.symbol,"trade_time":trade.event_time.isoformat()}
+    # Binance aggTrade event times are authoritative only to milliseconds.  A
+    # legacy collector persisted some equivalent events with sub-millisecond
+    # clock residue, which must not turn an otherwise identical replay into an
+    # immutable-payload conflict during bounded catch-up.
+    event_time=trade.event_time.replace(microsecond=(trade.event_time.microsecond // 1000) * 1000)
+    payload={"aggregate_trade_id":trade.trade_id,"buyer_is_maker":trade.buyer_is_maker,"price":trade.price,"quantity":trade.quantity,"source":AGG_TRADE_SOURCE,"symbol":trade.symbol,"trade_time":event_time.isoformat()}
     return hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(",",":"),ensure_ascii=False).encode()).hexdigest()
 
 

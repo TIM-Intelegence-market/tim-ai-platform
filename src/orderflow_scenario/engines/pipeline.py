@@ -21,6 +21,7 @@ from typing import Any, Sequence
 from src.models.market_data import Candle, Trade
 
 from ..audit import AuditBuilder, analysis_id_for
+from ..explanation import build_setup_explanation
 from ..config import OrderflowScenarioConfig, default_config
 from ..domain import (
     AnalysisOutput,
@@ -242,6 +243,10 @@ class Pipeline:
         audit.add_engine("market_state", "1.0.0", market_state.to_dict())
         audit.add_engine("orderflow", "1.0.0", orderflow.to_dict())
         audit.add_engine("scenarios", "1.0.0", [s.to_dict() for s in scenarios])
+        audit.add_engine(
+            "setup_explanation", "1.0.0",
+            build_setup_explanation(levels if quality.status != "INSUFFICIENT_DATA" else self._levels_from_candles(inputs.candles, inputs.price_now), market_state, orderflow, quality, scenarios),
+        )
         audit_payload = audit.build(mode=self.config.mode.value, kill_switch_enabled=self.config.kill_switch_enabled and inputs.kill_switch_enabled, timestamp=observed_at)
 
         analysis = AnalysisOutput(

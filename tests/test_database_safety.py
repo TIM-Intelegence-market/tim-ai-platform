@@ -61,3 +61,35 @@ def test_migration_target_mismatch_is_rejected() -> None:
     env = {"TIM_RUNTIME_ENV": "test", "TIM_DURABLE_TEST_DATABASE_URL": ISOLATED}
     with pytest.raises(DatabaseSafetyError, match="does not match"):
         require_safe_test_database(PRODUCTION, env)
+
+
+def test_runtime_url_identity_rejected_despite_test_like_name():
+    target = 'postgresql://test:fixture@localhost:55432/tim_test'
+    env = {'TIM_RUNTIME_ENV': 'test', 'TIM_DURABLE_TEST_DATABASE_URL': target,
+           'TIM_DATABASE_URL': 'postgresql://runtime:other@127.0.0.1:55432/tim_test'}
+    with pytest.raises(DatabaseSafetyError, match='runtime'):
+        require_safe_test_database(target, env)
+
+
+@pytest.mark.parametrize('query', ['host=production', 'dbname=tim', 'port=5432'])
+def test_connection_override_query_rejected(query):
+    url = ISOLATED + '?' + query
+    with pytest.raises(DatabaseSafetyError):
+        require_safe_test_database(url, {'TIM_DURABLE_TEST_DATABASE_URL': url})
+
+
+def test_encoded_production_database_name_is_rejected():
+    url = 'postgresql://role:fixture@localhost/%74im'
+    with pytest.raises(DatabaseSafetyError):
+        require_safe_test_database(url, {'TIM_DURABLE_TEST_DATABASE_URL': url})
+
+
+def test_isolated_search_path_option_remains_supported():
+    url = ISOLATED + '?options=-csearch_path%3Dtim_test_run'
+    assert require_safe_test_database(url, {'TIM_DURABLE_TEST_DATABASE_URL': url}).database == 'tim_governance_test'
+
+
+def test_zero_port_rejected():
+    url = 'postgresql://role:fixture@localhost:0/tim_test'
+    with pytest.raises(DatabaseSafetyError):
+        require_safe_test_database(url, {'TIM_DURABLE_TEST_DATABASE_URL': url})

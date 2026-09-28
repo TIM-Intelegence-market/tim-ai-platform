@@ -38,11 +38,13 @@ class DemoTrade:
 @dataclass(slots=True)
 class DemoPortfolio:
     starting_balance: float = 10000.0
-    balance: float = 10000.0
+    balance: float | None = None
     equity_curve: list[dict] = None  # [{evaluated_at, balance}]
     trades: list[DemoTrade] = None
 
     def __post_init__(self):
+        if self.balance is None:
+            self.balance = self.starting_balance
         if self.equity_curve is None:
             self.equity_curve = [{"evaluated_at": datetime.now(timezone.utc).isoformat(), "balance": self.balance, "event": "START"}]
         if self.trades is None:

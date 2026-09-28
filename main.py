@@ -90,6 +90,14 @@ class TIMApplication:
             self.dashboard_state.system_health["queue_depth"] = result.queue_depth
             self.dashboard_state.system_health["cursor_trade_id"] = result.cursor.last_aggregate_trade_id
             self.dashboard_state.system_health["recovery_state"] = result.cursor.recovery_state
+            # The durable cursor is updated before the asynchronous enrichment
+            # worker.  It is therefore the authoritative liveness signal for
+            # the market-data stream; completed candles can legitimately lag
+            # while the outbox is being processed.
+            self.dashboard_state.system_health["last_raw_persisted_at"] = (
+                result.cursor.last_persisted_at.isoformat()
+                if result.cursor.last_persisted_at else None
+            )
 
     async def on_trade(self, trade: Trade) -> None:
         """Compatibility alias: live ingress is persistence-only."""

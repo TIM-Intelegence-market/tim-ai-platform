@@ -133,6 +133,13 @@ def test_operations_contract_never_conflates_coverage_or_invents_queue_metrics(t
     assert uninstrumented["runtime"]["queue_depth"]["status"] == "UNAVAILABLE"
 
 
+def test_data_quality_coverage_rows_render_evidence_values_not_template_literals(tmp_path: Path) -> None:
+    page = render(_state(tmp_path), "Data Quality")
+    assert "68.115% · 9827 / 14427" in page
+    assert "{_esc(percent_text)}" not in page
+    assert "{_esc(item.get('observed'))}" not in page
+
+
 def test_control_center_has_exact_ten_primary_pages_and_explicit_safety_boundary(tmp_path: Path) -> None:
     page = render(_state(tmp_path))
     for route, title in OPERATIONS_ROUTES.items():

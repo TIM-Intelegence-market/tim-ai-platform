@@ -98,6 +98,19 @@ def test_live_health_requires_fresh_market_data(tmp_path: Path) -> None:
     assert data["operational_health"]["status"]!="GREEN"
 
 
+def test_live_health_uses_fresh_durable_cursor_when_candles_lag(tmp_path: Path) -> None:
+    state=populated_state(tmp_path)
+    state.system_health={
+        "database":"connected",
+        "stream":"running",
+        "last_raw_persisted_at":datetime.now(timezone.utc).isoformat(),
+    }
+    health=state.snapshot()["operational_health"]
+    assert health["stream"]=="GREEN"
+    assert health["status"]=="GREEN"
+    assert health["data_freshness_source"]=="DURABLE_RAW_CURSOR"
+
+
 def test_future_timestamp_is_not_reported_as_fresh() -> None:
     assert _age_seconds("2999-01-01T00:00:00+00:00")=="INVALID:FUTURE_TIMESTAMP"
 

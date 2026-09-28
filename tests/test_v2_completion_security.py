@@ -120,8 +120,11 @@ def test_keychain_write_passes_secret_only_on_stdin(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(prepare_tim_credential.subprocess, "run", fake_run)
     prepare_tim_credential.store_keychain("fixture-only", "com.tim.database", "tim")
     assert "fixture-only" not in captured["command"]
-    assert captured["command"][-1] == "-w"
-    assert captured["input"] == "fixture-only\n"
+    assert captured["command"][-2] == "-I"
+    assert Path(captured["command"][-1]).name == "keychain_stdin.py"
+    assert json.loads(captured["input"]) == {
+        "password": "fixture-only", "service": "com.tim.database", "account": "tim"
+    }
 
 
 def test_prepared_handoff_is_private_and_contains_no_plaintext(

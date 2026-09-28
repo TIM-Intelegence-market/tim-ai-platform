@@ -129,7 +129,7 @@ td .sev:before{display:inline-block;vertical-align:middle}
 .attention__row:last-child{border-bottom:0}
 .attention__row>.sev{margin-top:2px;flex:none;min-width:86px;justify-content:center}
 .attention__body{flex:1;min-width:0}
-.attention__title{font-weight:750;font-size:13.5px}
+.attention__title{margin:0;font-weight:750;font-size:13.5px}
 .attention__detail{margin:3px 0 0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
 .attention__source{margin:3px 0 0;color:var(--muted);font:10.5px var(--font-mono);overflow-wrap:anywhere}
 .attention--empty{padding:26px;text-align:center;color:var(--muted)}
@@ -169,12 +169,12 @@ td .sev:before{display:inline-block;vertical-align:middle}
 .coverage__name{font-weight:700;font-size:13px}
 .coverage__name small{display:block;color:var(--muted);font-weight:500;font-size:11px;margin-top:2px;font-family:var(--font-mono);overflow-wrap:anywhere}
 .coverage__bar{height:6px;border-radius:3px;background:var(--surface-soft);overflow:hidden;margin-top:7px}
-.coverage__bar span{display:block;height:100%;border-radius:3px;background:var(--unknown)}
-.coverage__bar--ok span{background:var(--ok)}
-.coverage__bar--warn span{background:var(--warn)}
-.coverage__bar--fail span{background:var(--fail)}
-.coverage__bar--blocked span{background:var(--blocked)}
-.coverage__bar--degraded span{background:var(--degraded)}
+.cov-fill{display:block;width:0;height:100%;border-radius:3px;background:var(--unknown);transition:width .3s ease}
+.coverage__bar--ok .cov-fill{background:var(--ok)}
+.coverage__bar--warn .cov-fill{background:var(--warn)}
+.coverage__bar--fail .cov-fill{background:var(--fail)}
+.coverage__bar--blocked .cov-fill{background:var(--blocked)}
+.coverage__bar--degraded .cov-fill{background:var(--degraded)}
 .coverage__nums{font:12px var(--font-mono);color:var(--text-soft);text-align:right;white-space:nowrap}
 .coverage__nums small{display:block;color:var(--muted);font-size:10.5px}
 .incident{border:1px solid var(--fail-line);border-radius:var(--radius-m);background:linear-gradient(150deg,rgba(52,23,32,.35),rgba(12,17,24,.98));padding:16px 18px}
@@ -214,8 +214,16 @@ td{overflow-wrap:break-word}
 .status-matrix__row b[data-sev="disabled"]{color:var(--disabled)}
 .status-matrix__row--locked b{color:var(--fail)!important}
 @media(max-width:820px){.nav__group{display:contents}.nav__label{display:none}}
+.statusrow__state{text-align:right}
+.cc-note--flush{margin-top:0}
+.block-gap{margin-top:14px}
+.block-gap-sm{margin-top:12px}
+.table--gaps{min-width:1080px;table-layout:fixed}
+.u-col-185{width:185px}.u-col-165{width:165px}.u-col-195{width:195px}.u-col-150{width:150px}.u-col-124{width:124px}.u-col-84{width:84px}
+.safety-callout--info{border-left-color:var(--info);background:var(--info-soft);color:#bfdaff}
+.setup-chart{padding:14px;overflow:hidden}.setup-chart svg{display:block;width:100%;height:auto;min-height:250px}.setup-chart text{fill:var(--muted);font:11px var(--font-mono)}.setup-chart__frame{fill:#0b1017;stroke:var(--line);stroke-width:1}.setup-chart__line{fill:none;stroke:var(--cyan);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-"""
+""" + "".join(f".cov-fill--{percent}{{width:{percent}%}}" for percent in range(101))
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +305,7 @@ def attention_row(kind: str, title: str, detail: str, source: str = "") -> str:
     return (
         "<div class='attention__row'>"
         f"{chip(kind)}"
-        f"<div class='attention__body'><p class='attention__title' style='margin:0'>{_esc(title)}</p>"
+        f"<div class='attention__body'><p class='attention__title'>{_esc(title)}</p>"
         f"<p class='attention__detail'>{_esc(detail)}</p>{source_html}</div></div>"
     )
 
@@ -332,7 +340,7 @@ def status_rows(rows: Iterable[tuple[str, str, Any, str, str]]) -> str:
             "<div class='statusrow'>"
             f"<dt>{_esc(label)}{label_note_html}</dt>"
             f"<dd>{_esc(value) if value not in (None, '') else UNAVAILABLE}{note_html}</dd>"
-            f"<dd style='text-align:right'>{evidence_chip(status)}</dd></div>"
+            f"<dd class='statusrow__state'>{evidence_chip(status)}</dd></div>"
         )
     return f"<dl class='statusrows'>{''.join(out)}</dl>"
 
@@ -363,10 +371,10 @@ def coverage_rows(datasets: Iterable[dict[str, Any]]) -> str:
     for item in datasets:
         key = severity(item.get("status"))
         percent_text = str(item.get("coverage", UNAVAILABLE))
-        width = ""
+        fill_class = ""
         try:
             number = float(str(percent_text).rstrip("%"))
-            width = f" style='width:{min(max(number, 0), 100):.1f}%'"
+            fill_class = f" cov-fill--{int(round(min(max(number, 0), 100)))}"
         except ValueError:
             pass
         out.append(
@@ -376,7 +384,7 @@ def coverage_rows(datasets: Iterable[dict[str, Any]]) -> str:
             + (f"<small class='disposition'>{_esc(item.get('disposition'))}</small>" if item.get("disposition") else "")
             + "</div>"
             f"<div><div class='coverage__nums'>{_esc(percent_text)} · {_esc(item.get('observed'))} / {_esc(item.get('expected'))}</div>"
-            f"<div class='coverage__bar coverage__bar--{key}'{width}><span></span></div></div>"
+            f"<div class='coverage__bar coverage__bar--{key}'><span class='cov-fill{fill_class}'></span></div></div>"
             f"<div>{evidence_chip(item.get('status'))}</div></div>"
         )
     return f"<div class='coverage'>{''.join(out)}</div>"
@@ -430,7 +438,7 @@ def horizon_panel(horizons: Iterable[tuple[str, str, str, str, list[tuple[str, A
             f"<div class='horizon__head'><div><h3>{_esc(name)}</h3>"
             f"<span class='horizon__tf'>{_esc(timeframes)}</span></div>"
             f"<span class='horizon__key'>{_esc(key)}</span></div>"
-            f"<p class='cc-note' style='margin-top:0'>{_esc(description)}</p>"
+            f"<p class='cc-note cc-note--flush'>{_esc(description)}</p>"
             f"<table><tbody>{dim_rows}</tbody></table></article>"
         )
     return f"<div class='hgroup'>{''.join(cards)}</div>"

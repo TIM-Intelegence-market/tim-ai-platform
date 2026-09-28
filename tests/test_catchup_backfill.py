@@ -38,6 +38,9 @@ class FakeStore:
         class R: raw_inserted: bool; duplicate: bool
         return R(inserted, not inserted)
     async def resolve_gaps_through(self, _s, _tid): return 1
+    async def resolve_gap(self, gap_id):
+        self.gaps[gap_id] = "RESOLVED"
+        return True
 
 
 @pytest.mark.asyncio
@@ -90,3 +93,16 @@ async def test_backfill_respects_queue_capacity_and_leaves_open_on_rate_limit():
     assert r.status == "OPEN"
     assert "rate limit" in r.reason.lower()
     assert store.persisted == set()
+
+
+@pytest.mark.asyncio
+async def test_current_gap_verification_does_not_wait_for_legacy_gap_resolution():
+    async def transport(url, _h, _t):
+        start = int(parse_qs(urlsplit(url).query)["fromId"][0])
+        return HttpResponse(200, {}, json.dumps([item(start)]).encode())
+
+    store = FakeStore(100)
+    client = PublicBinanceAggTradeClient(transport=transport, minimum_interval=0)
+    result = await CatchUpCoordinator(store, client, max_pages=1, page_limit=1).recover_before("BTCUSDT", 102)
+    assert result.status == "COMPLETE"
+    assert store.gaps["b" * 64] == "RESOLVED"

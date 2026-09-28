@@ -279,10 +279,14 @@ class DashboardState:
         active = sum(str(case.get("status", "OPEN")).upper() not in {"CLOSED", "INVALIDATED"} for case in all_cases)
         closed = sum(str(case.get("status", "")).upper() == "CLOSED" for case in all_cases)
         generated_at = datetime.now(timezone.utc)
-        last_data_at = next(
+        last_candle_at = next(
             (item.get("close_time") or item.get("open_time") for item in reversed(candles) if item.get("close_time") or item.get("open_time")),
             None,
         )
+        # Raw persistence happens before candle enrichment.  A backlog in the
+        # latter must not report a healthy, continuously persisted live stream
+        # as stale merely because the most recently completed candle is older.
+        last_data_at = system_health.get("last_raw_persisted_at") or last_candle_at
         parsed_last_data = _parse_time(last_data_at)
         data_age = int((generated_at - parsed_last_data).total_seconds()) if parsed_last_data else None
         stream_running = str(system_health.get("stream", "")).lower() == "running"
@@ -295,6 +299,8 @@ class DashboardState:
             "dashboard": "GREEN",
             "runtime": "GREEN",
             "last_data_at": last_data_at,
+            "last_candle_at": last_candle_at,
+            "data_freshness_source": "DURABLE_RAW_CURSOR" if system_health.get("last_raw_persisted_at") else "COMPLETED_CANDLE",
             "data_age_seconds": data_age if data_age is not None else "MISSING:last_data_at",
             "checked_at": generated_at.isoformat(),
             "runtime_started_at": self.runtime_started_at,
@@ -1072,7 +1078,7 @@ def _health_center_sections(data: dict[str, Any]) -> str:
         mk("capture_process", "Capture Process", "Operational Health", "GREEN" if live.get("stream") == "GREEN" and live.get("database") == "GREEN" else "RED", "INFO", _required("capture_process", data.get("system_health", {}).get("stream")), "CAPTURE_PROCESS", "TIM erfasst öffentliche Marktdaten deterministisch.", ["system_health.stream", "database.latest_health"], observed_since_utc=data.get("timestamp"), last_checked_utc=data.get("timestamp"), linked_report="data/operational/state.json", recommended_next_action="Bei Störung den Transportpfad und Persistenzpfad prüfen.", operational_impact="Rohdatenaufnahme", scientific_impact="Kontinuität der Eingangsdaten", governance_impact="Keine automatische Rekonstruktion", freshness_seconds=_age_seconds(data.get("timestamp")), provenance=data.get("provenance"), source_hash=data.get("research_audit", {}).get("audit_hash"), technical_cause="Beobachteter Capture-Prozess.", affected_windows=data.get("timestamp"), affected_artifacts="data/operational/state.json", status_history=[str(data.get("timestamp"))], historical_development="Capture pipeline", open_blockers=blocker_names, known_limitations=["Kein Side-channel capture"]),
         mk("websocket_connectivity", "WebSocket Connectivity", "Operational Health", live.get("stream", "UNKNOWN"), "INFO" if data.get("system_health", {}).get("stream") == "running" else "CRITICAL", _required("websocket_connectivity", data.get("system_health", {}).get("stream")), "WEBSOCKET_CONNECTIVITY", "Verbindung zum öffentlichen WebSocket-Stream.", ["system_health.stream"], observed_since_utc=data.get("timestamp"), last_checked_utc=data.get("timestamp"), linked_report="data/operational/state.json", recommended_next_action="Reconnect- und Timeout-Logs prüfen.", operational_impact="Transportstabilität", scientific_impact="Lückenfreie Beobachtung", governance_impact="Betrieb nur bei stabiler Verbindung", freshness_seconds=_age_seconds(data.get("timestamp")), provenance=data.get("provenance"), source_hash=data.get("research_audit", {}).get("audit_hash"), technical_cause="Transportstatus des Streams.", affected_windows=data.get("timestamp"), affected_artifacts="data/operational/state.json", status_history=[str(data.get("timestamp"))], historical_development="Transport layer", open_blockers=blocker_names, known_limitations=["Kein externes Failover"]),
         mk("persistency", "Persistency", "Operational Health", live.get("database", "UNKNOWN"), "INFO" if live.get("database") == "GREEN" else "CRITICAL", str(data.get("system_health", {}).get("database") or "UNKNOWN"), "PERSISTENCY", "Aktueller Persistenzstatus der laufenden Runtime.", [f"database={data.get('system_health', {}).get('database', 'MISSING:database_status')}", f"last_data_at={live.get('last_data_at', 'MISSING:last_data_at')}"], observed_since_utc=live.get("last_data_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Letzten erfolgreichen Write und DB-Status prüfen.", operational_impact="Datenhaltung", scientific_impact="Persistierte Reproduzierbarkeit", governance_impact="Keine Schreibfehler toleriert", freshness_seconds=live.get("data_age_seconds"), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Aktueller DB-Status plus letzte persistierte Candle.", affected_windows=live.get("last_data_at"), affected_artifacts="/api/health", status_history=[str(live.get("last_data_at"))], historical_development="Aktuelle Persistenz; historischer Validator separat", open_blockers=blocker_names, known_limitations=["Kein Backfill"]),
-        mk("queue", "Live Queue", "Operational Health", "GREEN" if int(live.get('queue_depth', 0)) == 0 else "YELLOW", "INFO", f"{live.get('queue_depth', 0)} aktive Live-Events · historischer Backfill getrennt", "LIVE_QUEUE", "Nur aktive Live-Events zählen gegen die Runtime-Kapazität. Historische Cutover-Events bleiben als DEFERRED offline erhalten.", [f"queue_depth={live.get('queue_depth', 0)}", f"queue_model={live.get('queue_model', 'POSTGRES_DURABLE_OUTBOX_V1')}"], observed_since_utc=live.get("runtime_started_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Bei steigender Live-Queue Stream und Worker prüfen; Deferred Backfill separat bearbeiten.", operational_impact="Aktueller Stream bleibt vom historischen Backfill entkoppelt", scientific_impact="Live-Fenster und historische Lücken bleiben unterscheidbar", governance_impact="Keine historische Arbeit wird stillschweigend verworfen", freshness_seconds=_age_seconds(live.get("checked_at")), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Audited Live-Cutover mit separatem Offline-Backfill.", affected_windows=live.get("checked_at"), affected_artifacts="artifacts/operations/live_cutover.json", status_history=[str(live.get("checked_at"))], historical_development="Live Cutover", open_blockers=blocker_names, known_limitations=["Historischer Backfill ist nicht Teil der Live-Queue"]),
+        mk("queue", "Live Queue", "Operational Health", "GREEN" if int(live.get('queue_depth', 0)) == 0 else "YELLOW", "INFO", f"{live.get('queue_depth', 0)} wartende Nachrichten · historischer Backfill getrennt", "LIVE_QUEUE", "Nur aktive Live-Events zählen gegen die Runtime-Kapazität. Historische Cutover-Events bleiben als DEFERRED offline erhalten.", [f"queue_depth={live.get('queue_depth', 0)}", f"queue_model={live.get('queue_model', 'POSTGRES_DURABLE_OUTBOX_V1')}"], observed_since_utc=live.get("runtime_started_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Bei steigender Live-Queue Stream und Worker prüfen; Deferred Backfill separat bearbeiten.", operational_impact="Aktueller Stream bleibt vom historischen Backfill entkoppelt", scientific_impact="Live-Fenster und historische Lücken bleiben unterscheidbar", governance_impact="Keine historische Arbeit wird stillschweigend verworfen", freshness_seconds=_age_seconds(live.get("checked_at")), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Audited Live-Cutover mit separatem Offline-Backfill.", affected_windows=live.get("checked_at"), affected_artifacts="artifacts/operations/live_cutover.json", status_history=[str(live.get("checked_at"))], historical_development="Live Cutover", open_blockers=blocker_names, known_limitations=["Historischer Backfill ist nicht Teil der Live-Queue"]),
         mk("storage", "Storage", "Operational Health", live.get("database", "UNKNOWN"), "INFO" if latest.get("database", {}).get("status") == "HEALTHY" else "HIGH", "Persistente Datenspeicherung", "STORAGE", "Storage-Betrieb wird über Datenbank- und Qualitätsstatus abgeleitet.", ["database.latest_health", "research_quality.latest"], observed_since_utc=data.get("timestamp"), last_checked_utc=data.get("timestamp"), linked_report="data/research/quality/latest.json", recommended_next_action="Max RSS und DB-Persistenz beobachten.", operational_impact="Speicher- und Persistenzpfad", scientific_impact="Artefaktstabilität", governance_impact="Betriebsgrenze der Persistenz", freshness_seconds=_age_seconds(data.get("timestamp")), provenance=data.get("provenance"), source_hash=data.get("research_quality", {}).get("report_hash"), technical_cause="Storage über persistente DB repräsentiert.", affected_windows=data.get("timestamp"), affected_artifacts="data/research/quality/latest.json", status_history=[str(data.get("timestamp"))], historical_development="Storage layer", open_blockers=blocker_names, known_limitations=["Kein dedizierter Storage-Monitor"], affected_artifact_count=2),
         mk("runtime", "Runtime", "Operational Health", live.get("runtime", "UNKNOWN"), "INFO", _duration(live.get("runtime_started_at"), data.get("timestamp")), "RUNTIME", "Laufzeit des aktuell antwortenden TIM-Prozesses.", [f"runtime_started_at={live.get('runtime_started_at', 'MISSING:runtime_started_at')}", f"checked_at={live.get('checked_at', 'MISSING:checked_at')}"], observed_since_utc=live.get("runtime_started_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Ungeplante Neustarts im Timeline-Register untersuchen.", operational_impact="Lebenszeichen der Anwendung", scientific_impact="Kontinuierlicher Beobachtungsraum", governance_impact="Core Freeze bleibt unverändert", freshness_seconds=_age_seconds(live.get("checked_at")), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Aktuell antwortender Dashboard-/Runtime-Prozess.", affected_windows=live.get("runtime_started_at"), affected_artifacts="/api/health", status_history=[str(live.get("runtime_started_at"))], historical_development="Aktuelle Runtime; Acceptance-Laufzeit separat", open_blockers=blocker_names, known_limitations=["Prozessstartzeit ist instanzlokal"]),
         mk("ollama_availability", "Ollama Availability", "Operational Health", "GREEN" if live.get("ollama_availability") in {"AVAILABLE", "DISABLED_BY_POLICY"} else "RED", "INFO" if live.get("ollama_availability") in {"AVAILABLE", "DISABLED_BY_POLICY"} else "WARNING", "Optional deaktiviert · Core nicht abhängig" if live.get("ollama_availability") == "DISABLED_BY_POLICY" else str(live.get("ollama_availability", "UNAVAILABLE")), "OLLAMA_AVAILABILITY", "Ollama ist optional. Deaktivierung gemäß Konfiguration ist ein gesunder Zustand; bei Aktivierung wird die lokale API beim Start geprüft.", [f"enabled={live.get('ollama_enabled', False)}", f"availability={live.get('ollama_availability', 'DISABLED_BY_POLICY')}"], observed_since_utc=live.get("runtime_started_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Nur bei aktiviertem und UNAVAILABLE gemeldetem Ollama den lokalen Dienst prüfen.", operational_impact="Kein Einfluss auf Marktdatenerfassung", scientific_impact="Optionale Erklärungen, keine Regel- oder Persistenzabhängigkeit", governance_impact="Ollama bleibt außerhalb des deterministischen Core", freshness_seconds=_age_seconds(live.get("checked_at")), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Expliziter Konfigurations- und Startzeitstatus.", affected_windows=live.get("checked_at"), affected_artifacts="config/settings.py", status_history=[str(live.get("checked_at"))], historical_development="Optionales lokales Modell", open_blockers=blocker_names, known_limitations=["Keine periodische Modell-Inferenz als Health-Probe"]),
@@ -1156,11 +1162,19 @@ CSS = r"""
 
 EXTRA_CSS = r"""
 .live{border:1px solid #5b471d;background:#2a210f;padding:10px 11px}.live:hover{background:#352a12}.badge--paused{color:var(--muted);border-color:var(--line-strong);background:var(--surface-soft)}
-.legacy-nav{position:fixed;z-index:11;left:16px;bottom:68px;width:214px;color:var(--muted)}
+.topbar{overflow:hidden}
+.topbar__inner{overflow-y:auto;scrollbar-width:thin;overscroll-behavior:contain}
+.legacy-nav{margin:14px 0 0;color:var(--muted)}
 .legacy-nav summary{cursor:pointer;width:100%;padding:9px 10px;border-top:1px solid var(--line);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
-.legacy-nav nav{max-height:210px;overflow:auto;display:grid;gap:3px;padding:6px;background:var(--rail);border:1px solid var(--line);border-radius:8px}
+.legacy-nav nav{max-height:240px;overflow:auto;display:grid;gap:3px;padding:6px;background:var(--rail);border:1px solid var(--line);border-radius:8px}
 .legacy-nav a{font-size:11px;color:var(--muted);padding:7px 8px;border-radius:5px}
 .legacy-nav a.active,.legacy-nav a:hover{color:var(--text);background:var(--surface-soft);text-decoration:none}
+.table-wrap{max-height:min(920px,80vh)}
+.errwrap{max-width:760px;margin:64px auto;padding:0 20px}
+.errbox{background:linear-gradient(150deg,rgba(19,26,36,.96),rgba(12,17,24,.98));border:1px solid var(--red);border-radius:10px;padding:26px 28px;box-shadow:var(--shadow)}
+.errbox h1{margin:14px 0 10px;font-size:24px;letter-spacing:-.02em}
+.errbox p{margin:8px 0;color:var(--muted)}
+.errbox code{font-family:ui-monospace,Menlo,monospace;color:var(--text-soft);overflow-wrap:anywhere}
 .shell{min-height:calc(100vh - 72px)}
 .footer{margin-left:246px;max-width:1680px;padding:0 32px 28px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
 .skip-link{position:fixed;z-index:100;left:12px;top:8px;transform:translateY(-160%);background:var(--text);color:var(--bg);padding:10px 14px;border-radius:8px;font-weight:800}
@@ -1196,8 +1210,8 @@ caption{text-align:left;padding:11px 13px;color:var(--muted);font-size:11px;back
 .terminal-strip{display:flex;align-items:center;gap:0;margin:0 0 24px;border:1px solid var(--line);border-radius:8px;background:#0b1118;overflow:hidden}.terminal-strip span,.terminal-strip strong{padding:9px 13px;border-right:1px solid var(--line);font:10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.05em;color:var(--muted)}.terminal-strip strong{margin-left:auto;border:0;color:var(--green)}.status-dot{display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%}.status-dot--green{background:var(--green);box-shadow:0 0 8px rgba(53,211,154,.55)}
 .overview-section{margin-top:28px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:14px}.section-heading p{margin:0;color:var(--muted);font-size:12px}.section-copy{margin:6px 0 0;color:var(--muted)}.operations-grid--overview .operations-card:nth-child(-n+5){min-height:142px}
 .context-panel{margin-top:28px}.horizon-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.horizon-card{position:relative;min-height:190px;padding:18px;background:#0a1017;border:1px solid var(--line);border-radius:8px;overflow:hidden}.horizon-card:after{content:"";position:absolute;inset:auto -15% -55% 30%;height:130px;background:radial-gradient(circle,rgba(81,199,217,.1),transparent 65%)}.horizon-card__head{display:flex;align-items:center;justify-content:space-between;gap:10px}.horizon-key{font:800 12px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;color:var(--cyan)}.horizon-card h3{margin:25px 0 3px;font-size:18px}.horizon-card p{margin:0;color:var(--muted);font-size:12px}.horizon-timeframes{color:var(--text-soft)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important}.horizon-track{position:absolute;left:18px;right:18px;bottom:18px;height:3px;background:var(--surface-soft)}.horizon-track span{display:block;width:24%;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));opacity:.55}
-@media(max-width:1180px){.operations-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.topbar{width:220px}.shell,.footer{margin-left:220px}.horizon-grid{grid-template-columns:1fr}.horizon-card{min-height:160px}.legacy-nav{width:188px}}
-@media(max-width:820px){.topbar{position:sticky;inset:auto;top:0;width:auto;border:0;border-bottom:1px solid var(--line)}.topbar__inner{height:auto;padding:13px 16px}.brand{padding:0 0 11px;border:0}.brand small{display:inline;margin-left:10px}.nav{flex-direction:row;overflow-x:auto;padding:3px 0 7px}.nav a{white-space:nowrap}.live{margin-top:6px}.legacy-nav{position:static;width:auto;margin:0;padding:0 16px 8px;background:var(--rail)}.legacy-nav summary{border:0;padding:5px 0}.legacy-nav nav{display:flex;flex-wrap:wrap}.shell,.footer{margin-left:0}.shell{padding:24px 18px 34px}.footer{padding-inline:18px}.operations-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.safety-stack{align-items:flex-start}.operations-hero{display:block}.safety-stack{margin-top:18px;flex-direction:row;flex-wrap:wrap}.terminal-strip{overflow-x:auto}.terminal-strip span,.terminal-strip strong{white-space:nowrap}.terminal-strip strong{margin-left:0}.section-heading{align-items:flex-start;flex-direction:column}}
+@media(max-width:1180px){.operations-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.topbar{width:220px}.shell,.footer{margin-left:220px}.horizon-grid{grid-template-columns:1fr}.horizon-card{min-height:160px}}
+@media(max-width:820px){.topbar{position:sticky;inset:auto;top:0;width:auto;border:0;border-bottom:1px solid var(--line)}.topbar__inner{height:auto;padding:13px 16px;overflow:visible}.brand{padding:0 0 11px;border:0}.brand small{display:inline;margin-left:10px}.nav{flex-direction:row;overflow-x:auto;padding:3px 0 7px}.nav a{white-space:nowrap}.live{margin-top:6px}.legacy-nav{margin:6px 0 0}.legacy-nav summary{border:0;padding:5px 0}.legacy-nav nav{display:flex;flex-wrap:wrap;max-height:none}.status-matrix{grid-template-columns:1fr 1fr}.shell,.footer{margin-left:0}.shell{padding:24px 18px 34px}.footer{padding-inline:18px}.operations-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.safety-stack{align-items:flex-start}.operations-hero{display:block}.safety-stack{margin-top:18px;flex-direction:row;flex-wrap:wrap}.terminal-strip{overflow-x:auto}.terminal-strip span,.terminal-strip strong{white-space:nowrap}.terminal-strip strong{margin-left:0}.section-heading{align-items:flex-start;flex-direction:column}}
 @media(max-width:680px){.health-section-meta{align-items:flex-start;text-align:left}.panel__head{align-items:flex-start;flex-direction:column}}
 @media(max-width:520px){.operations-grid,.horizon-grid{grid-template-columns:1fr}.brand small{display:block;margin-left:17px;font-size:8px}.live{font-size:10px;max-width:100%}.operations-hero{padding:19px}.operations-hero h1{font-size:26px}.panel{padding:17px}.footer{padding-inline:16px}.terminal-strip span:nth-child(4),.terminal-strip span:nth-child(5){display:none}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
@@ -1213,7 +1227,7 @@ AUTO_REFRESH_SCRIPT = r"""
   'use strict';
   const INTERVAL_MS = 5000;
   const MAX_RETRIES = 3;
-  let timer = null, retries = 0, healthSignature = null;
+  let timer = null, retries = 0, healthSignature = null, setupSignature = null, setupRefreshTimer = null;
   const byId = id => document.getElementById(id);
   const text = value => value === null || value === undefined || value === '' ? '—' : String(value);
   function set(id, value) { const node=byId(id); if(node) node.textContent=text(value); }
@@ -1251,12 +1265,24 @@ AUTO_REFRESH_SCRIPT = r"""
     set('case-active', data.case_counts?.active || 0);set('case-closed',data.case_counts?.closed || 0);
     const health=String(data.operational_health?.status || 'UNKNOWN').toLowerCase();
     const badge=health==='green'?'green':health==='red'?'red':'yellow';
-    const label=health==='green'?'Live':health==='red'?'Betriebsstörung':'Betriebsstatus unvollständig';
-    status(badge, `${label} • sichtbarer Ausschnitt: ${data.visible_counts?.candles || 0} Candles • ${data.visible_counts?.observations || 0} Beobachtungen • ${new Date().toLocaleTimeString('de-DE')}`);
+    const label=health==='green'?'Live':health==='red'?'Betriebsstörung':'Status unvollständig';
+    status(badge, `${label} · sichtbarer Ausschnitt: ${data.visible_counts?.candles || 0} Candles · ${data.visible_counts?.observations || 0} Beob. · ${new Date().toLocaleTimeString('de-DE')}`);
     if(location.pathname==='/health'){
       const signature=JSON.stringify([data.operational_health?.status,data.operational_health?.database,data.operational_health?.stream,data.operational_health?.dashboard,data.operational_health?.runtime,data.operational_health?.last_data_at,data.validator?.status,data.validator?.last_cycle_at,data.readiness?.readiness_status]);
       if(healthSignature!==null && healthSignature!==signature){ location.reload(); return; }
       healthSignature=signature;
+    }
+    if(location.pathname==='/setup-path'){
+      // This page is server-rendered because every conclusion must remain tied to
+      // one governed snapshot.  Reload only when its input changed; polling the
+      // status badge alone would otherwise make the analysis cards look frozen.
+      const lastCandle=(data.candles||[]).slice(-1)[0]||{};
+      const signature=JSON.stringify([op.last_data_at,data.visible_counts?.candles,lastCandle.timestamp||lastCandle.time||lastCandle.close,data.research_quality?.validation_status,data.case_counts?.closed]);
+      if(setupSignature!==null && setupSignature!==signature && !setupRefreshTimer){
+        status('yellow','Neue Daten erkannt – aktualisiere Analyse…');
+        setupRefreshTimer=setTimeout(()=>location.reload(),400);
+      }
+      setupSignature=signature;
     }
   }
   async function poll() {
@@ -1313,6 +1339,7 @@ NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("V2 Readiness", "/v2-readiness"),
     ]),
     ("INTELLIGENCE", [
+        ("Setup Path", "/setup-path"),
         ("Graphify & MCP", "/mcp"),
     ]),
     ("SYSTEM", [
@@ -1391,6 +1418,29 @@ def _strip_states(data: dict[str, Any]) -> list[tuple[str, str, str, str]]:
     ]
 
 
+def _error_page(page: str, exc: Exception) -> str:
+    """Bounded degradation page: a page that cannot render stays explorable.
+
+    The message is operator-facing (loopback-only surface) and names the page,
+    the exception type and its message so a malformed persisted record can be
+    traced without exposing stack traces.
+    """
+    return (
+        "<!doctype html><html lang='de'><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='color-scheme' content='dark'>"
+        f"<title>{_safe(page)} · Render-Fehler · TIM</title>"
+        f"<style>{CSS}{EXTRA_CSS}</style></head><body><div class='errwrap'><div class='errbox'>"
+        "<span class='badge badge--red'>RENDER FEHLER</span>"
+        f"<h1>{_safe(page)} konnte nicht gerendert werden</h1>"
+        f"<p>Die Seite <code>{_safe(page)}</code> ist auf einen ungültigen persistierten Datensatz gestoßen. "
+        "Andere Seiten bleiben verfügbar; es wurden keine Daten verändert.</p>"
+        f"<p><code>{type(exc).__name__}: {_safe(str(exc))}</code></p>"
+        "<p><a href='/'>Zur Übersicht zurückkehren</a></p>"
+        "</div></div></body></html>"
+    )
+
+
 def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, str]] | None = None) -> str:
     nav_parts = []
     for group_label, links in NAV_GROUPS:
@@ -1424,16 +1474,60 @@ def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, s
         f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
         for key, href in legacy_links
     )
-    return f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav>{matrix}<button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div><details class='legacy-nav'><summary>Vertiefende Research-Ansichten</summary><nav aria-label='Vertiefende Research-Ansichten'>{legacy_nav}</nav></details></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT}</body></html>"""
+    return f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav>{matrix}<details class='legacy-nav'><summary>Vertiefende Research-Ansichten</summary><nav aria-label='Vertiefende Research-Ansichten'>{legacy_nav}</nav></details><button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT}</body></html>"""
 
 
 def _hero(title: str, text: str) -> str:
     return f"<div class='hero'><div><h1>{_safe(title)}</h1><p>{_safe(text)}</p></div><div class='observe'>OBSERVE • READ-ONLY</div></div>"
 
 
+def _number(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _setup_chart(candles: list[dict[str, Any]]) -> str:
+    closes = [value for item in candles[-30:] if (value := _number(item.get("close"))) is not None]
+    if len(closes) < 2:
+        return "<p class='empty'>Kein ausreichend vollständiger Candle-Verlauf für ein Chartbild.</p>"
+    low, high = min(closes), max(closes)
+    spread = max(high - low, high * 0.001)
+    points = " ".join(f"{40 + i * 600 / (len(closes) - 1):.1f},{26 + (high - value) * 210 / spread:.1f}" for i, value in enumerate(closes))
+    return f"<svg viewBox='0 0 680 280' role='img' aria-label='BTCUSDT Schlusskurse, sichtbares Zeitfenster'><rect x='40' y='26' width='600' height='210' class='setup-chart__frame'/><polyline points='{points}' class='setup-chart__line'/><text x='40' y='18'>{_safe(f'{high:,.2f}')}</text><text x='40' y='258'>{_safe(f'{low:,.2f}')}</text><text x='640' y='258' text-anchor='end'>letzter Schluss {_safe(f'{closes[-1]:,.2f}')}</text></svg>"
+
+
+def _setup_path_page(data: dict[str, Any]) -> str:
+    candles = [item for item in data.get("candles", []) if isinstance(item, dict)]
+    health, quality = data.get("operational_health", {}), data.get("research_quality", {})
+    fresh, enough = health.get("status") == "GREEN", len(candles) >= 20
+    quality_status = str(quality.get("validation_status") or quality.get("status") or "UNKNOWN").upper()
+    quality_ok = quality_status in {"PASS", "VALID", "GREEN", "OK"}
+    gate = "PASS" if fresh and enough and quality_ok else "BLOCKED"
+    status = _severity_of(gate)
+    latest = _number(candles[-1].get("close")) if candles else None
+    def rng(items: list[dict[str, Any]]) -> str:
+        values = [value for item in items if (value := _number(item.get("close"))) is not None]
+        return f"{min(values):,.2f} – {max(values):,.2f}" if values else "UNAVAILABLE"
+    cases = data.get("case_counts", {})
+    missing = sorted({str(x) for case in data.get("research_cases", []) for x in case.get("missing_evidence", []) if x})
+    body = _hero("Setup Path", "Erklärte BTC-Analyse mit Daten-Governance, drei Zeithorizonten und rückgekoppelter Fehlerprüfung.")
+    body += "<p class='cc-note' aria-live='polite'>Live-Synchronisierung aktiv: Der Analysepfad wird bei neuen Daten automatisch aus einem konsistenten Snapshot neu aufgebaut.</p>"
+    gate_reason = "Frische Daten, mindestens 20 Candles und bestätigte Datenqualität verfügbar." if gate == "PASS" else "Setup-Vorschläge gesperrt: Frische, ausreichende Candle-Historie oder bestätigte Datenqualität fehlt."
+    body += f"<section class='state-banner state-banner--{status}'><div class='state-banner__primary'><span class='sev sev--{status}'>{gate}</span><h2 class='state-banner__state'>Analyse-Gate</h2><p class='state-banner__sub'>{_safe(gate_reason)}</p></div><dl class='state-banner__metrics'><div class='state-banner__metric'><dt>Provenance</dt><dd>{_safe(data.get('provenance'))}</dd></div><div class='state-banner__metric'><dt>Data age</dt><dd>{_safe(health.get('data_age_seconds'))}<small>Sekunden</small></dd></div><div class='state-banner__metric'><dt>Quality</dt><dd>{_safe(quality_status)}</dd></div></dl></section>"
+    body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Zeitkontext</p><h2>Short, Mid und Long Term</h2><p class='cc-section__note'>Die Horizonte werden nicht zu einem unqualifizierten Score zusammengezogen.</p></div></div><div class='hgroup'><article class='horizon'><div class='horizon__head'><div><p class='horizon__key'>SHORT</p><h3>Aktuelle Reaktion</h3></div><span class='sev sev--{status}'>{gate}</span></div><table><tr><td>Letzter Schluss</td><td>{_safe(f'{latest:,.2f}' if latest is not None else 'UNAVAILABLE')}</td></tr><tr><td>Belege</td><td>Struktur, Delta/Footprint falls vorhanden</td></tr></table></article><article class='horizon'><div class='horizon__head'><div><p class='horizon__key'>MID</p><h3>Range &amp; Location</h3></div><span class='sev sev--{'ok' if enough else 'unknown'}'>{'PASS' if enough else 'UNKNOWN'}</span></div><table><tr><td>20-Candle-Range</td><td>{_safe(rng(candles[-20:]))}</td></tr><tr><td>Belege</td><td>Support, Resistance, Fib, Value</td></tr></table></article><article class='horizon'><div class='horizon__head'><div><p class='horizon__key'>LONG</p><h3>Übergeordneter Kontext</h3></div><span class='sev sev--unknown'>REQUIRED</span></div><table><tr><td>Sichtbare Range</td><td>{_safe(rng(candles))}</td></tr><tr><td>Belege</td><td>HTF-Struktur, Value-Migration, Regime</td></tr></table></article></div></section>"
+    body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Erklärtes Chartbild</p><h2>Beobachtete Schlusskurse</h2><p class='cc-section__note'>Jüngste {len(candles[-30:])} gespeicherte Candles. Keine Zukunftswerte.</p></div></div><div class='cc-surface setup-chart'>{_setup_chart(candles)}</div></section>"
+    body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Setup-Pfad</p><h2>Von Daten zu einer überprüfbaren Hypothese</h2></div></div><div class='pipeline'><div class='pipeline__stage'><b>1 · Governance</b><span class='sev sev--{status}'>{gate}</span><span class='pipeline__value'>Quelle, Frische, Vollständigkeit</span></div><div class='pipeline__stage'><b>2 · Kontext</b><span class='sev sev--unknown'>REQUIRED</span><span class='pipeline__value'>HTF, Regime, Value</span></div><div class='pipeline__stage'><b>3 · Location</b><span class='sev sev--unknown'>REQUIRED</span><span class='pipeline__value'>Support, Resistance, Fib</span></div><div class='pipeline__stage'><b>4 · Beweis</b><span class='sev sev--unknown'>REQUIRED</span><span class='pipeline__value'>Structure, Delta, Absorption</span></div><div class='pipeline__stage'><b>5 · Reflexion</b><span class='sev sev--info'>LOGGED</span><span class='pipeline__value'>Outcome, Fehlerkategorie, Review</span></div></div><p class='cc-note'>Absorption wird nur nach belegter aggressiver Ausführung und fehlendem Preisfortschritt angezeigt. Ohne Footprint-, Delta- oder Value-Profile-Daten bleibt die Aussage UNAVAILABLE.</p></section>"
+    body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Lernen &amp; Reparatur</p><h2>Feedback aus abgeschlossenen Research Cases</h2><p class='cc-section__note'>Fehler werden als Daten-, Kontext-, Location-, Struktur-, Orderflow- oder Confirmation-Problem protokolliert; Regeln ändern sich nicht automatisch.</p></div></div><div class='metricstrip'><dl class='metricstrip__item'><dt>Research Cases</dt><dd>{_safe(cases.get('total'))}</dd></dl><dl class='metricstrip__item'><dt>Geschlossen</dt><dd>{_safe(cases.get('closed'))}</dd></dl><dl class='metricstrip__item'><dt>Fehlende Evidenz</dt><dd>{len(missing)}<small>{_safe(', '.join(missing[:2]) or 'keine dokumentiert')}</small></dd></dl></div></section>"
+    return _layout("Setup Path", "Setup Path", body, strip=_strip_states(data))
+
+
 def render(state: DashboardState, page: str = "Overview", selected_id: str | None = None) -> str:
     data = state.snapshot()
     validator = data["validator"]
+    if page == "Setup Path":
+        return _setup_path_page(data)
     if page in OPERATIONS_PAGES and page != "Overview":
         return _layout(page, page, render_operations_page(page, data["operations"]), strip=_strip_states(data))
     if page == "Orderflow":
@@ -1657,6 +1751,7 @@ class DashboardServer:
                     "/qualification": "Qualification",
                     "/independent-cases": "Independent Cases",
                     "/v2-readiness": "V2 Readiness", "/mcp": "Graphify & MCP",
+                    "/setup-path": "Setup Path",
                     "/audit-evidence": "Audit & Evidence",
                     "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow",
                     "/signals": "Signal Research", "/analytics": "Analytics", "/insights": "Insights",
@@ -1664,7 +1759,10 @@ class DashboardServer:
                     "/timeline": "Timeline", "/research": "Research",
                 }
                 if path in pages:
-                    page = render(outer.state, pages[path], query.get("id", [None])[0])
+                    try:
+                        page = render(outer.state, pages[path], query.get("id", [None])[0])
+                    except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                        return self.respond(500, _error_page(pages[path], exc).encode(), "text/html; charset=utf-8")
                     return self.respond(200, page.encode(), "text/html; charset=utf-8")
                 if path.startswith("/api/observations/"):
                     oid = unquote(path.removeprefix("/api/observations/"))

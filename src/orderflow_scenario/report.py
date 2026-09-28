@@ -50,6 +50,18 @@ def build_report(analysis: AnalysisOutput) -> str:
     for scenario in analysis.scenarios:
         sections.append("\n" + _scenario_status_line(scenario))
 
+    explanation = next((item["result"] for item in analysis.audit.get("engines", []) if item.get("engine") == "setup_explanation"), None)
+    if explanation:
+        facts = explanation["facts"]
+        sections.append("\nEVIDENZKETTE:")
+        sections.append("  Support: " + (", ".join(f"{k}={v}" for k, v in facts["supports"].items()) or "nicht vorhanden") + ".")
+        sections.append("  Resistance: " + (", ".join(f"{k}={v}" for k, v in facts["resistances"].items()) or "nicht vorhanden") + ".")
+        sections.append("  Fibonacci: " + (", ".join(f"{k}={v}" for k, v in facts["fibonacci_retracements"].items()) or "nicht berechenbar") + ".")
+        sections.append("  Absorption: " + facts["absorption_status"] + ".")
+        missing = explanation["missing_evidence"]
+        if missing:
+            sections.append("  Fehlende Belege: " + ", ".join(missing) + ".")
+
     decision = analysis.decision
     sections.append("\nENTSCHEIDUNG:")
     if decision.status == DecisionStatus.NO_TRADE:

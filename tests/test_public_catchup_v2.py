@@ -60,6 +60,10 @@ class FakeStore:
     async def resolve_gaps_through(self, _symbol, _trade_id):
         return 1
 
+    async def resolve_gap(self, gap_id):
+        self.gaps[gap_id] = "RESOLVED"
+        return True
+
 
 def response_item(trade_id: int) -> dict:
     return {"a": trade_id, "p": "100.0", "q": "0.5", "T": 1767225600000 + trade_id, "m": False}

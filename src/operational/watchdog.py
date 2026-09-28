@@ -26,6 +26,18 @@ class WatchdogThresholds:
     log_warning_bytes: int = 8 * 1024 * 1024
 
 
+# Only failures that a clean TIM restart can plausibly resolve are eligible for
+# automatic recovery. Governance, security, historical-data and capacity
+# findings remain visible but must never cause a restart loop.
+RESTARTABLE_CHECKS = frozenset({
+    "runtime_process",
+    "dashboard",
+    "collector_freshness",
+    "data_age",
+    "cursor_age",
+})
+
+
 def _check(status: str, value: Any, reason: str) -> dict[str, Any]:
     return {"status": status, "value": value, "reason": reason}
 
@@ -37,6 +49,14 @@ def evaluate_watchdog(observed: dict[str, Any], thresholds: WatchdogThresholds) 
         "GREEN" if observed.get("runtime_running") is True else "RED",
         observed.get("runtime_running"),
         "launchd reports the canonical TIM service running",
+    )
+    collector_count = observed.get("collector_process_count")
+    collector_pids = observed.get("collector_pids")
+    runtime_pid = observed.get("runtime_pid")
+    checks["single_collector"] = _check(
+        "GREEN" if collector_count == 1 and collector_pids == [runtime_pid] else "RED",
+        {"count": collector_count, "pids": collector_pids},
+        "exactly one canonical TIM collector process must be active",
     )
     checks["dashboard"] = _check(
         "GREEN" if observed.get("dashboard_healthy") is True else "RED",
@@ -124,6 +144,17 @@ def evaluate_watchdog(observed: dict[str, Any], thresholds: WatchdogThresholds) 
     }
 
 
+def restartable_failures(report: dict[str, Any]) -> tuple[str, ...]:
+    """Return only runtime failures that a controlled restart may repair."""
+    checks = report.get("checks")
+    if not isinstance(checks, dict):
+        return ()
+    return tuple(
+        name for name in sorted(RESTARTABLE_CHECKS)
+        if isinstance(checks.get(name), dict) and checks[name].get("status") == "RED"
+    )
+
+
 class IndependentWatchdog:
     """Read-only collector independent from the TIM collector process."""
 
@@ -159,9 +190,29 @@ class IndependentWatchdog:
         except (OSError, ValueError, asyncio.TimeoutError):
             payload = {}
         service = payload.get("service", {}) if isinstance(payload, dict) else {}
+        runtime_pid = service.get("pid")
+        collector_pids: list[int] = []
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "/bin/ps", "-axo", "pid=,command=", stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=5)
+            canonical_main = str(self.root / "main.py")
+            for line in stdout.decode("utf-8", errors="replace").splitlines():
+                if canonical_main not in line:
+                    continue
+                try:
+                    collector_pids.append(int(line.strip().split(maxsplit=1)[0]))
+                except (ValueError, IndexError):
+                    continue
+        except (OSError, asyncio.TimeoutError):
+            collector_pids = []
         return {
             "runtime_running": service.get("loaded") is True and service.get("state") == "RUNNING",
-            "runtime_pid": service.get("pid"),
+            "runtime_pid": runtime_pid,
+            "collector_process_count": len(collector_pids),
+            "collector_pids": sorted(collector_pids),
         }
 
     async def _dashboard(self) -> dict[str, Any]:

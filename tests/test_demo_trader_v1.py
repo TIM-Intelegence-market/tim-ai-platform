@@ -26,6 +26,11 @@ def test_demo_trader_long_generates_trade():
     exported = trader.export_bilanz()
     assert exported.exists()
 
+
+def test_demo_portfolio_uses_configured_starting_balance() -> None:
+    portfolio = DemoPortfolio(starting_balance=100)
+    assert portfolio.balance == 100
+
 def test_demo_trader_flat_no_trade():
     policy = PaperPolicy(policy_id="demo_v1", enabled=True, test_only=True)
     trader = DemoTrader(policy, DemoPortfolio())

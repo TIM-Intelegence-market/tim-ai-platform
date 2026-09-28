@@ -278,6 +278,10 @@ def build_operations_snapshot(
         if watchdog_trading_actions is not None
         else sources["legacy/runtime_observability_snapshot.json"]["path"]
     )
+    # A bare "0 trading actions" count is only substantiated when continuity
+    # evidence (queue metrics, durable cursor) or a runtime-observed count
+    # exists; otherwise the claim renders UNAVAILABLE instead of PASS.
+    trading_action_continuity = bool(queue) or bool(cursor) or watchdog_trading_actions is not None
     lan_after = _first(listener_after, "lan_test.status", "lan_probe.reachable", "lan_exposure_test", "lan_test")
     lan_before = _first(listener_before, "lan_test.status", "lan_probe.reachable", "lan_exposure_test", "lan_test")
     if lan_after is not None:
@@ -327,11 +331,14 @@ def build_operations_snapshot(
         ),
         "dashboard_binding": _metric("127.0.0.1 only", "DashboardServer._require_loopback_host", status="PASS"),
         "observe_only": _metric(base.get("mode"), "/api/state mode", status=base.get("mode") == "OBSERVE"),
-        "trading_actions": _metric(
-            trading_action_value,
-            trading_action_source,
-            status=(trading_action_value == 0) if trading_action_value is not None else None,
-        ),
+        "trading_actions": {
+            **_metric(
+                trading_action_value,
+                trading_action_source,
+                status=(trading_action_value == 0) if trading_action_value is not None else None,
+            ),
+            "continuity": trading_action_continuity,
+        },
         "safe_stop": _metric(
             _first(safe_stop, "status", "safe_stop_status", "result"),
             sources["safe_stop_test.json"]["path"],
@@ -779,8 +786,8 @@ def _overview(data: dict[str, Any]) -> str:
         "Research readiness",
         "Horizons and gates",
         horizon_body
-        + f"<div style='margin-top:14px'>{qualification_strip}</div>"
-        + f"<div style='margin-top:14px'>{gate_summary}{gate_link}</div>",
+        + f"<div class='block-gap'>{qualification_strip}</div>"
+        + f"<div class='block-gap'>{gate_summary}{gate_link}</div>",
         note="Research readiness is reported separately from runtime health. No directional signal, forecast or trading recommendation is generated.",
         meta=f"readiness gate {readiness['status']}",
     )
@@ -852,7 +859,7 @@ def _runtime(data: dict[str, Any]) -> str:
         + f"<div class='split'>{process}{queue}</div>"
         + f"<div class='split'>{integrity}{latency}</div>"
         + storage
-        + (f"<div style='margin-top:14px'>{cursor_rows}</div>" if cursor_rows else "")
+        + (f"<div class='block-gap'>{cursor_rows}</div>" if cursor_rows else "")
     )
 
 
@@ -924,8 +931,8 @@ def _incidents(data: dict[str, Any]) -> str:
           "<thead><tr><th>Timestamp UTC</th><th>Severity</th><th>Event</th><th>Component</th><th>Reason</th></tr></thead>"
           f"<tbody>{incident_rows}</tbody></table></div></section>"
         + f"<section class='panel'><div class='panel__head'><h2>Gap inventory</h2><span class='badge badge--yellow'>{gaps['total_loaded']} · {_safe(gaps['scope'])}</span></div>"
-          "<div class='table-wrap'><table style='min-width:1080px;table-layout:fixed'><caption>Persisted data gaps with cause and repair status</caption>"
-          "<colgroup><col style='width:185px'><col style='width:150px'><col style='width:84px'><col style='width:165px'><col style='width:195px'><col style='width:124px'><col></colgroup>"
+          "<div class='table-wrap'><table class='table--gaps'><caption>Persisted data gaps with cause and repair status</caption>"
+          "<colgroup><col class='u-col-185'><col class='u-col-150'><col class='u-col-84'><col class='u-col-165'><col class='u-col-195'><col class='u-col-124'><col></colgroup>"
           "<thead><tr><th>ID</th><th>Window UTC</th><th>Priority</th><th>Root cause · Provenance</th><th>Repairability · Backfill</th><th>Status</th><th>Evidence</th></tr></thead>"
           + f"<tbody>{gap_body}</tbody></table></div><p class='count-scope'>Quelle: {_safe(gaps['source'])} · Antwort auf maximal {gaps['bounded_at']} Einträge begrenzt.</p></section>"
     )
@@ -1006,9 +1013,25 @@ def _gate_rows_from_model(gates: list[dict[str, Any]], stale_after_days: float) 
         open_human_state = str(gate.get("status", "")).upper().replace("_", " ") in {
             "HUMAN ACTION REQUIRED", "PENDING HUMAN APPROVAL", "TIME GATE", "PENDING",
         }
+        checkpoint = gate.get("checkpoint")
+        checkpoint_html = ""
+        checkpoint_fresh = False
+        if isinstance(checkpoint, dict) and checkpoint.get("trades") is not None:
+            checkpoint_html = (
+                f"<span class='mono'>live checkpoint: {_safe(checkpoint.get('trades'))} trades · "
+                f"{_safe(checkpoint.get('pages'))} pages · state {_safe(checkpoint.get('checkpoint_mtime'))}</span><br>"
+            )
+            from datetime import datetime, timezone
+
+            try:
+                checkpoint_age = (datetime.now(timezone.utc) - datetime.fromisoformat(str(checkpoint.get("checkpoint_mtime")))).total_seconds()
+                checkpoint_fresh = 0 <= checkpoint_age <= 3600
+            except (TypeError, ValueError):
+                checkpoint_fresh = False
         stale = (
             gate.get("status") not in (None, "NO_EVIDENCE")
             and not open_human_state
+            and not checkpoint_fresh
             and age is not None
             and age > stale_after_days
         )
@@ -1019,13 +1042,6 @@ def _gate_rows_from_model(gates: list[dict[str, Any]], stale_after_days: float) 
         if checked_at:
             note_parts.append(f"checked {checked_at}")
         note_html = "<br>".join(f"<small>{_safe(part)}</small>" for part in note_parts if part)
-        checkpoint = gate.get("checkpoint")
-        checkpoint_html = ""
-        if isinstance(checkpoint, dict) and checkpoint.get("trades") is not None:
-            checkpoint_html = (
-                f"<span class='mono'>live checkpoint: {_safe(checkpoint.get('trades'))} trades · "
-                f"{_safe(checkpoint.get('pages'))} pages · state {_safe(checkpoint.get('checkpoint_mtime'))}</span><br>"
-            )
         status_chip = evidence_chip("STALE" if stale else gate.get("status"))
         if gate.get("status") in (None, "", "NO_EVIDENCE"):
             status_chip = evidence_chip("UNAVAILABLE", raw=gate.get("status") or UNAVAILABLE)
@@ -1034,7 +1050,7 @@ def _gate_rows_from_model(gates: list[dict[str, Any]], stale_after_days: float) 
             "<div class='statusrow'>"
             f"<dt>{_safe(gate.get('id'))}{note_html}</dt>"
             f"<dd>{stale_note}{checkpoint_html if checkpoint_html else ''}</dd>"
-            f"<dd style='text-align:right'>{status_chip}</dd></div>"
+            f"<dd class='statusrow__state'>{status_chip}</dd></div>"
         )
     return f"<dl class='statusrows'>{''.join(rows)}</dl>" if rows else (
         "<div class='attention attention--empty'>Gate model not loaded — every bound gate stays UNAVAILABLE until data/research/status/current_gate_model.json exists.</div>"
@@ -1057,9 +1073,17 @@ def _readiness(data: dict[str, Any]) -> str:
     system_body = runtime_rows + _gate_rows_from_model(system_health, stale_after_days)
 
     trading_band = bands.get("trading") or []
+    trading_value = data["security"]["trading_actions"]["value"]
+    trading_substantiated = bool(data["security"]["trading_actions"].get("continuity"))
+    if isinstance(trading_value, (int, float)) and trading_value > 0:
+        trading_state = "FAIL"
+    elif trading_value == 0 and trading_substantiated:
+        trading_state = "PASS"
+    else:
+        trading_state = UNAVAILABLE
     trading_rows = status_rows([
         ("Mode", "running runtime mode", "PASS" if (data.get("mode") or "OBSERVE") == "OBSERVE" else "FAIL", data.get("mode") or UNAVAILABLE, "/api/state mode"),
-        ("Trading actions", "executed trading actions across recorded evidence", "PASS" if data["security"]["trading_actions"]["value"] == 0 else "FAIL", _metric_value(data["security"]["trading_actions"]), str(data["security"]["trading_actions"]["source"])),
+        ("Trading actions", "executed trading actions across recorded evidence", trading_state, _metric_value(data["security"]["trading_actions"]), str(data["security"]["trading_actions"]["source"])),
     ]) + _gate_rows_from_model(trading_band, stale_after_days)
 
     governance_band = bands.get("governance") or []
@@ -1078,7 +1102,7 @@ def _readiness(data: dict[str, Any]) -> str:
     )
     archived_rows = gate_rows(readiness["gates"]) or "<div class='attention attention--empty'>No archived gate rows available.</div>"
     stale_callout = (
-        "<div class='safety-callout' style='border-left-color:var(--info);background:var(--info-soft);color:#bfdaff'><b>STALE:</b> "
+        "<div class='safety-callout safety-callout--info'><b>STALE:</b> "
         + (_safe(archived_note) if archived_note else "No archived snapshot registered.")
         + " Diese Werte beschreiben den Cut-off-Zustand vom 01.08.2026 und bleiben unverändert dokumentiert. Sie sind keine aktuellen Runtime-FAILs.</div>"
     )
@@ -1091,7 +1115,7 @@ def _readiness(data: dict[str, Any]) -> str:
                   note="Current-collection quality and global legacy quality are reported separately and must not be merged.")
         + section("Band 3 · Research readiness", "SHORT · MID · LONG",
                   _gate_rows_from_model(bands.get("research_readiness") or [], stale_after_days)
-                  + f"<div style='margin-top:14px'>{horizon_panel(horizons)}</div>",
+                  + f"<div class='block-gap'>{horizon_panel(horizons)}</div>",
                   note="Horizon dimension detail below; per-horizon intelligence evidence stays NOT AVAILABLE until real evidence exists.")
         + section("Band 4 · Governance / human approval", "States that only humans can close", governance_body,
                   note="PENDING HUMAN APPROVAL and TIME GATE are expected governance states — shown blue, not red. No agent may self-approve.")
@@ -1099,7 +1123,7 @@ def _readiness(data: dict[str, Any]) -> str:
                   note="TRADING stays LOCKED until a human release authority signs the opposite; no UI element can change this.")
         + section("Archived snapshots", "Frozen governance evidence — not current failures",
                   stale_callout
-                  + f"<div style='margin-top:14px'>{archived_rows}</div>",
+                  + f"<div class='block-gap'>{archived_rows}</div>",
                   note="Allowed snapshot gate states: PASS · FAIL · BLOCKED · PENDING HUMAN APPROVAL · TIME GATE · EXTERNAL ACTION REQUIRED.",
                   badge="<span class='sev sev--unknown'>STALE SNAPSHOT</span>")
     )
@@ -1144,7 +1168,7 @@ def _audit(data: dict[str, Any]) -> str:
         + section("Last test run", "Test evidence", strip
                   + f"<p class='cc-note'>Last finished test: <span class='mono'>{_safe(audit['last_test'])}</span></p>")
         + section("Incidents", "Recorded incidents", incident_card(audit.get("last_incident"))
-                  + f"<div class='table-wrap' style='margin-top:12px'><table><caption>Bounded incident timeline</caption>"
+                  + f"<div class='table-wrap block-gap-sm'><table><caption>Bounded incident timeline</caption>"
                     "<thead><tr><th>Timestamp UTC</th><th>Severity</th><th>Event</th><th>Component</th></tr></thead>"
                     f"<tbody>{incident_links}</tbody></table></div>",
                   note="Every UI state traces to a source path listed below.")

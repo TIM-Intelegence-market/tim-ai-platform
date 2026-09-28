@@ -12,7 +12,7 @@ from src.paper.demo_trader_v1 import DemoTrader, DemoPortfolio
 def main():
     p = argparse.ArgumentParser(description="Demo-Trader Bilanz export (TEST_ONLY)")
     p.add_argument("--date", default=datetime.now(timezone.utc).date().isoformat())
-    p.add_argument("--starting-balance", type=float, default=10000.0)
+    p.add_argument("--starting-balance", type=float, default=100.0)
     args = p.parse_args()
     policy = PaperPolicy(policy_id="demo_v1", enabled=True, test_only=True)
     portfolio = DemoPortfolio(starting_balance=args.starting_balance)

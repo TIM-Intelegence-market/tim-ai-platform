@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TIM Bugfixer sanitized event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["timestamp", "component", "exception", "message", "code", "stack"],
+  "properties": {
+    "timestamp": {"type": "string", "format": "date-time", "description": "Canonical UTC ISO-8601; normalized before constructing Event"},
+    "component": {"type": "string", "maxLength": 65536},
+    "exception": {"type": "string", "maxLength": 65536},
+    "message": {"type": "string", "minLength": 1, "maxLength": 65536},
+    "code": {"type": "string", "maxLength": 65536},
+    "stack": {"type": "string", "maxLength": 65536}
+  }
+}

@@ -31,7 +31,24 @@ async def build(symbol: str) -> dict[str, object]:
                    AND missing_from_id IS NOT NULL AND missing_to_id IS NOT NULL""", symbol,
             )
             if not bounds or not bounds["raw_markers"]:
-                return {"symbol": symbol, "raw_markers": 0, "ranges": [], "unknown_gaps": 0}
+                payload = {
+                    "schema_version": "1.0.0",
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "mode": "OBSERVE",
+                    "read_only_database": True,
+                    "database_rows_written": 0,
+                    "symbol": symbol,
+                    "raw_markers": 0,
+                    "canonical_ranges": 0,
+                    "classified_gaps": 0,
+                    "unknown_gaps": 0,
+                    "missing_records": 0,
+                    "ranges": [],
+                }
+                hash_payload = dict(payload)
+                hash_payload.pop("generated_at")
+                payload["classification_hash"] = digest(hash_payload)
+                return payload
             holes = await connection.fetch(
                 """WITH ordered AS (
                        SELECT aggregate_trade_id,lag(aggregate_trade_id) OVER (ORDER BY aggregate_trade_id) prior

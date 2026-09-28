@@ -56,21 +56,15 @@ def atomic_private_json(path: Path, payload: dict[str, object]) -> None:
             pass
 
 
+KEYCHAIN_STDIN_HELPER = Path(__file__).with_name("keychain_stdin.py")
+
+
 def store_keychain(password: str, service: str, account: str) -> None:
-    command = [
-        "/usr/bin/security",
-        "add-generic-password",
-        "-U",
-        "-s",
-        service,
-        "-a",
-        account,
-        "-w",
-        password,
-    ]
+    command = [sys.executable, "-I", str(KEYCHAIN_STDIN_HELPER)]
     try:
         result = subprocess.run(
             command,
+            input=json.dumps({"password": password, "service": service, "account": account}),
             text=True,
             capture_output=True,
             check=False,

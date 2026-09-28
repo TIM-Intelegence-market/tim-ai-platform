@@ -55,7 +55,7 @@ def test_denied_directories_are_rejected() -> None:
             repository_path(REPO_ROOT_PLACEHOLDER + sub)
 
 
-def test_graphify_config_is_portable() -> None:
+def test_graphify_config_is_portable(graphify_disabled_config) -> None:
     from src.tim_manager.graphify_mcp import GraphifyMCPConfig
 
     config = GraphifyMCPConfig.load()

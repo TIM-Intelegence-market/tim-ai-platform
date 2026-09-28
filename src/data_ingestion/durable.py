@@ -180,9 +180,10 @@ def outbox_identity(symbol: str, aggregate_trade_id: int, worker_name: str) -> t
 class DurableIngestionStore:
     """Transactional raw-event, cursor, gap-ledger and bounded-outbox store.
 
-    The class deliberately exposes no order or execution operation. Queue overflow
-    commits only a degraded/gap incident and rejects the event, so there can be no
-    raw record without its cursor and first worker item.
+    The class deliberately exposes no order or execution operation. Downstream
+    CANDLE_V1 pressure must never reject a validated raw market event: raw data
+    and its cursor are the durable source of truth, while non-essential legacy
+    worker work is explicitly deferred until capacity is available.
     """
 
     _QUEUE_LOCK_KEY = 0x54494D4F55544258
@@ -360,7 +361,6 @@ class DurableIngestionStore:
         assert trade.trade_id is not None
         input_hash = agg_trade_hash(trade)
         outbox_id, idempotency_key = outbox_identity(trade.symbol, trade.trade_id, first_worker)
-        capacity_rejected = False
 
         async with self.database.acquire() as connection:
             async with connection.transaction():
@@ -395,32 +395,16 @@ class DurableIngestionStore:
                         )
                         cursor_row = await self._cursor_row(connection, trade.symbol, lock=True)
 
-                if not existing_work and queue_depth >= self.queue_capacity:
-                    await self._record_gap_on_connection(
+                defer_outbox = not existing_work and queue_depth >= self.queue_capacity
+                if defer_outbox:
+                    await self._increment(
                         connection,
-                        symbol=trade.symbol,
-                        missing_from_id=trade.trade_id,
-                        missing_to_id=trade.trade_id,
-                        reason="OUTBOX_CAPACITY",
-                        gap_started_at=trade.event_time,
-                        gap_ended_at=trade.event_time,
-                        details={"capacity": self.queue_capacity, "queue_depth": queue_depth},
+                        "outbox_deferred_total",
+                        metadata={"worker": first_worker, "capacity": self.queue_capacity},
                     )
-                    if cursor_row:
-                        await self._write_cursor(
-                            connection,
-                            symbol=trade.symbol,
-                            trade_id=cursor_row["last_aggregate_trade_id"],
-                            event_time=cursor_row["last_event_time"],
-                            persisted_at=cursor_row["last_persisted_at"],
-                            recovery_state="DEGRADED",
-                        )
-                    await self._increment(connection, "rejected_total")
-                    await self._increment(connection, "reject_reason:OUTBOX_CAPACITY")
-                    await self._increment(connection, "gap_total")
-                    await self._gauge(connection, "queue_depth", queue_depth)
-                    capacity_rejected = True
-                else:
+                # Raw persistence, cursor progress and gap detection are always
+                # atomic, independent of downstream worker capacity.
+                if True:
                     inserted_row = await connection.fetchrow(
                         """INSERT INTO agg_trades(
                                symbol,aggregate_trade_id,trade_time,price,quantity,buyer_is_maker,source)
@@ -475,11 +459,12 @@ class DurableIngestionStore:
                         )
                         await self._increment(connection, "gap_total")
 
+                    outbox_status = "DEFERRED" if defer_outbox else "PENDING"
                     status = await connection.execute(
                         """INSERT INTO ingestion_outbox(
                                outbox_id,worker_name,idempotency_key,source,market,symbol,data_type,
-                               aggregate_trade_id,input_hash,worker_version,max_attempts)
-                           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                               aggregate_trade_id,input_hash,worker_version,max_attempts,status)
+                           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                            ON CONFLICT(worker_name,idempotency_key) DO NOTHING""",
                         outbox_id,
                         first_worker,
@@ -492,6 +477,7 @@ class DurableIngestionStore:
                         input_hash,
                         self.worker_version,
                         self.max_attempts,
+                        outbox_status,
                     )
                     outbox_inserted = status == "INSERT 0 1"
                     if prior_id is None or trade.trade_id > prior_id:
@@ -506,16 +492,11 @@ class DurableIngestionStore:
                             recovery_state=recovery_state,
                         )
 
-                    queue_depth += int(outbox_inserted)
+                    queue_depth += int(outbox_inserted and outbox_status in ACTIVE_OUTBOX_STATUSES)
                     await self._gauge(connection, "queue_depth", queue_depth)
                     await self._maximum(connection, "queue_high_water", queue_depth)
                     latency = max(0.0, (datetime.now(timezone.utc) - trade.event_time).total_seconds())
                     await self._gauge(connection, "source_to_store_latency", latency)
-
-            if capacity_rejected:
-                raise QueueCapacityError(
-                    f"durable outbox capacity {self.queue_capacity} reached; event rejected for catch-up"
-                )
 
             current = await self._cursor_row(connection, trade.symbol)
             assert current is not None
@@ -1167,6 +1148,50 @@ class DurableIngestionStore:
                         recovery_state="NORMAL",
                     )
         return len(rows)
+
+    async def resolve_gap(self, gap_id: str) -> bool:
+        """Resolve exactly one verified gap without waiting behind legacy gaps.
+
+        A live reconnect may create a small current gap while older, governed
+        evidence gaps remain deliberately open.  Resolving by cursor position
+        would make the current repair look incomplete merely because those
+        unrelated older rows sort first.  This predicate verifies every ID in
+        the named range and changes only that incident.
+        """
+        async with self.database.acquire() as connection:
+            async with connection.transaction():
+                row = await connection.fetchrow(
+                    """UPDATE ingestion_gap_incidents SET status='RESOLVED',resolved_at=clock_timestamp(),
+                       updated_at=clock_timestamp(),last_error=NULL
+                       WHERE gap_id=$1 AND status IN ('OPEN','CATCHING_UP')
+                       AND missing_from_id IS NOT NULL AND missing_to_id IS NOT NULL
+                       AND (SELECT count(*) FROM agg_trades raw
+                            WHERE raw.symbol=ingestion_gap_incidents.symbol
+                              AND raw.aggregate_trade_id BETWEEN ingestion_gap_incidents.missing_from_id
+                                  AND ingestion_gap_incidents.missing_to_id)
+                           =(missing_to_id-missing_from_id+1)
+                       RETURNING symbol""",
+                    gap_id,
+                )
+                if row is None:
+                    return False
+                symbol = str(row["symbol"])
+                remaining = int(await connection.fetchval(
+                    "SELECT count(*) FROM ingestion_gap_incidents WHERE symbol=$1 AND status IN ('OPEN','CATCHING_UP')",
+                    symbol,
+                ))
+                if remaining == 0:
+                    cursor = await self._cursor_row(connection, symbol, lock=True)
+                    if cursor:
+                        await self._write_cursor(
+                            connection,
+                            symbol=symbol,
+                            trade_id=cursor["last_aggregate_trade_id"],
+                            event_time=cursor["last_event_time"],
+                            persisted_at=cursor["last_persisted_at"],
+                            recovery_state="NORMAL",
+                        )
+        return True
 
     async def set_recovery_state(self, symbol: str, recovery_state: str) -> None:
         if recovery_state not in {"NORMAL", "GAP_DETECTED", "CATCHING_UP", "DEGRADED"}:

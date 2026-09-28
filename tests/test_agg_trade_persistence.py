@@ -73,3 +73,11 @@ def test_hash_is_stable_and_governance_rejects_invalid_records():
         _validate_agg_trade_for_persistence(Trade(SYMBOL, 100, 1, BASE, 1, None))
     with pytest.raises(ValueError, match="Future"):
         _validate_agg_trade_for_persistence(Trade(SYMBOL, 100, 1, datetime.now(timezone.utc)+timedelta(minutes=1), 1, False))
+
+
+def test_hash_treats_sub_millisecond_legacy_residue_as_the_same_binance_event():
+    millisecond = BASE + timedelta(milliseconds=123)
+    legacy_residue = millisecond.replace(microsecond=123_958)
+    canonical = Trade(SYMBOL, 100, 1, millisecond, 31, False)
+    legacy = Trade(SYMBOL, 100, 1, legacy_residue, 31, False)
+    assert agg_trade_hash(canonical) == agg_trade_hash(legacy)

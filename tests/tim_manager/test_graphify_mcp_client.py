@@ -71,7 +71,7 @@ def config(**updates: Any) -> GraphifyMCPConfig:
     return replace(GraphifyMCPConfig.load(), enabled=True, **updates)
 
 
-def test_configuration_is_valid_and_disabled_by_default() -> None:
+def test_configuration_is_valid_and_disabled_by_default(graphify_disabled_config) -> None:
     loaded = GraphifyMCPConfig.load()
     assert loaded.enabled is False
     assert loaded.read_only is True
@@ -81,7 +81,7 @@ def test_configuration_is_valid_and_disabled_by_default() -> None:
     assert set(loaded.allowed_tools) == GRAPHIFY_LOCAL_TOOLS
 
 
-def test_disabled_client_requires_explicit_enable() -> None:
+def test_disabled_client_requires_explicit_enable(graphify_disabled_config) -> None:
     with pytest.raises(GraphifyConfigurationError, match="disabled"):
         GraphifyReadOnlyClient()
 
@@ -359,3 +359,21 @@ def test_global_configuration_paths_are_not_part_of_client_config() -> None:
 def test_graph_file_digest_uses_bytes_not_metadata() -> None:
     expected = hashlib.sha256(GRAPH_PATH.read_bytes()).hexdigest()
     assert sha256_file(GRAPH_PATH) == expected
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_configured_activation_is_preserved_and_enforced(monkeypatch, enabled):
+    import src.tim_manager.graphify_mcp as graphify
+    raw = graphify.load_config("graphify_mcp.yaml")
+    raw["enabled"] = enabled
+    monkeypatch.setattr(graphify, "load_config", lambda name: raw)
+    loaded = GraphifyMCPConfig.load()
+    assert loaded.enabled is enabled
+    if enabled:
+        client = GraphifyReadOnlyClient(loaded, FakeTransport())
+        assert client.config.enabled is True
+    else:
+        with pytest.raises(GraphifyConfigurationError, match="disabled"):
+            GraphifyReadOnlyClient(loaded, FakeTransport())
+        client = GraphifyReadOnlyClient(loaded, FakeTransport(), enabled_override=True)
+        assert client.config.enabled is False  # invocation permission does not rewrite configuration

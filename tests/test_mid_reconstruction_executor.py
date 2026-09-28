@@ -142,11 +142,12 @@ def _manifest_doc(tmp_path, chunks, scope="mid-hole-sep01-sep15"):
 
 
 class ManifestArgs:
-    def __init__(self, manifest, database_url, scope="mid-hole-sep01-sep15"):
+    def __init__(self, manifest, database_url, scope="mid-hole-sep01-sep15", allow_overlap=False):
         self.manifest = manifest
         self.scope = scope
         self.database_url = database_url
         self.execute = True
+        self.allow_live_overlap = allow_overlap
 
 
 @pytest.mark.asyncio
@@ -161,9 +162,9 @@ async def test_manifest_mode_writes_resume_and_rejects_tamper(database, tmp_path
          "expected_counts": {"1m": 5, "5m": 1}},
     ]
     path = _manifest_doc(tmp_path, chunks)
-    assert await main_async(ManifestArgs(path, DATABASE_URL)) == 0
+    assert await main_async(ManifestArgs(path, DATABASE_URL, allow_overlap=True)) == 0
     # resume: second run skips both DONE chunks with zero new writes
-    assert await main_async(ManifestArgs(path, DATABASE_URL)) == 0
+    assert await main_async(ManifestArgs(path, DATABASE_URL, allow_overlap=True)) == 0
     # tampered manifest is rejected before any database work
     import json
 
@@ -184,6 +185,39 @@ async def test_misaligned_range_start_is_rejected(database, tmp_path, monkeypatc
     chunks = [
         {"id": 0, "from": "2026-09-10T12:30:00+00:00", "to": "2026-09-10T13:00:00+00:00",
          "expected_counts": {"1m": 30}},
+    ]
+    path = _manifest_doc(tmp_path, chunks)
+    assert await main_async(ManifestArgs(path, DATABASE_URL)) == 2
+    async with database.acquire() as conn:
+        assert await conn.fetchval("SELECT COUNT(*) FROM candles WHERE symbol='BTCUSDT'") == 0
+
+
+def test_overlap_predicate_boundaries() -> None:
+    from datetime import datetime, timezone
+
+    from scripts.mid_history_reconstruction import chunk_overlaps_live_window
+
+    now = datetime(2026, 9, 17, 12, 0, tzinfo=timezone.utc)
+    # 500h window starts 2026-08-27T16:00Z.
+    assert chunk_overlaps_live_window(
+        datetime(2026, 9, 1, tzinfo=timezone.utc),
+        datetime(2026, 9, 2, tzinfo=timezone.utc), now) is True
+    assert chunk_overlaps_live_window(
+        datetime(2026, 7, 1, tzinfo=timezone.utc),
+        datetime(2026, 7, 2, tzinfo=timezone.utc), now) is False
+    assert chunk_overlaps_live_window(
+        datetime(2026, 9, 18, tzinfo=timezone.utc),
+        datetime(2026, 9, 19, tzinfo=timezone.utc), now) is False
+
+
+@pytest.mark.asyncio
+async def test_manifest_refuses_live_overlap_without_flag(database, tmp_path, monkeypatch) -> None:
+    from scripts.mid_history_reconstruction import main_async
+
+    monkeypatch.setenv("TIM_RECONSTRUCTION_TEST_MODE", "1")
+    chunks = [
+        {"id": 0, "from": "2026-09-10T12:00:00+00:00", "to": "2026-09-10T13:00:00+00:00",
+         "expected_counts": {"1m": 60, "5m": 12, "15m": 4, "1h": 1}},
     ]
     path = _manifest_doc(tmp_path, chunks)
     assert await main_async(ManifestArgs(path, DATABASE_URL)) == 2
