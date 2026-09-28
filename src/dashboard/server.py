@@ -4,10 +4,13 @@ import json
 import threading
 from dataclasses import asdict, is_dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 from src.analytics.research import ResearchAnalyticsEngine
 from src.insights import ResearchInsightsEngine
+from src.research.case_export import build_case_export, to_html as case_export_html, to_json as case_export_json
+from src.research.retrospective import case_retrospective
 from src.research.router import ResearchRouter
 from src.llm.ollama_client import OllamaClient
 from src.llm.prompts import observation_prompt
@@ -17,6 +20,7 @@ from src.dashboard.api import _research_cases_collection
 from src.dashboard.constants import MAX_RESPONSE_BYTES
 from src.dashboard.layout import _content_security_policy, _error_page
 from src.dashboard.security import _is_loopback_request_host, _require_loopback_host
+from src.dashboard.pages.pilot import render_pilot
 from src.dashboard.state import DashboardState
 from src.dashboard.views import render
 
@@ -100,6 +104,28 @@ class DashboardServer:
                         return self.respond(404, b'{"error":"not found"}', "application/json")
                     formatter, content_type = exports[extension]
                     return self.respond(200, formatter(insights).encode(), content_type)
+                if path == "/pilot":
+                    return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8")
+                if path == "/api/orderflow/history":
+                    with outer.state.lock:
+                        history = {"observations": [dict(item) for item in outer.state.orderflow_observations], "validations": [dict(item) for item in outer.state.orderflow_validations]}
+                    return self.respond(200, json.dumps(history, default=str).encode(), "application/json")
+                if path.startswith("/exports/case/"):
+                    cid, _, extension = unquote(path.removeprefix("/exports/case/")).rpartition(".")
+                    with outer.state.lock:
+                        item = next((dict(entry) for entry in outer.state.research_cases if str(entry.get("case_id")) == cid), None)
+                        orderflow_observations = [dict(entry) for entry in outer.state.orderflow_observations]
+                        orderflow_validations = [dict(entry) for entry in outer.state.orderflow_validations]
+                    if item is None or extension not in {"json", "html"}:
+                        return self.respond(404, b'{"error":"case not found"}', "application/json")
+                    try:
+                        retrospective = case_retrospective(item, orderflow_observations, orderflow_validations) or None
+                    except Exception:  # malformed stored data must not break the page
+                        retrospective = None
+                    export = build_case_export(item, exported_at=datetime.now(timezone.utc), retrospective=retrospective)
+                    if extension == "json":
+                        return self.respond(200, case_export_json(export).encode(), "application/json")
+                    return self.respond(200, case_export_html(export).encode(), "text/html; charset=utf-8")
                 pages = {
                     "/": "Overview", "/security": "Security", "/runtime": "Runtime",
                     "/data-quality": "Data Quality", "/gaps": "Incidents & Gaps",

@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 from src.dashboard.operations import OPERATIONS_PAGES, render_operations_page
 
-from src.dashboard.components import _case_for_observation, _case_row, _observation_row
+from src.dashboard.components import _case_for_observation, _case_proof_panel, _case_row, _observation_row
 from src.dashboard.constants import DASHBOARD_VERSION, ORDERFLOW_VISIBLE_LIMIT
 from src.dashboard.helpers import _duration, _json_block, _parse_time, _safe, _short, _status
 from src.dashboard.layout import _hero, _layout, _strip_states
@@ -114,6 +114,10 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
             case_hash = hashlib.sha256(json.dumps({"case_id": selected.get("case_id"), "observation_ids": selected.get("observation_ids", []), "rule_versions": selected.get("rule_versions", {})}, sort_keys=True).encode()).hexdigest()[:16]
             rules = ", ".join(f"{key}:{value}" for key, value in sorted((selected.get("rule_versions", {}) or {}).items())) or "—"
             detail = f"<section class='panel'><div class='panel__head'><h2>Case Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>Case ID</dt><dd class='mono'>{_safe(selected.get('case_id'))}</dd><dt>Status</dt><dd>{_safe(selected.get('status'))}</dd><dt>Dauer</dt><dd>{_safe(_duration(selected.get('opened_at'),selected.get('updated_at')))}</dd><dt>Outcome</dt><dd>{_safe(selected.get('outcome'))}</dd><dt>Missing Evidence</dt><dd>{_safe(', '.join(selected.get('missing_evidence', [])))}</dd><dt>Rule Versions</dt><dd class='mono'>{_safe(rules)}</dd><dt>Case Hash</dt><dd class='mono'>casehash:{_safe(case_hash)}</dd></dl><div><h3>Timeline</h3><ul class='timeline'>{timeline}</ul><h3>Review History</h3><ul class='timeline'>{reviews}</ul></div></div></section>"
+            with state.lock:
+                orderflow_observations = [dict(item) for item in state.orderflow_observations]
+                orderflow_validations = [dict(item) for item in state.orderflow_validations]
+            detail += _case_proof_panel(selected, orderflow_observations, orderflow_validations)
         stand = f"<p class='count-scope'>Datenstand: {_safe(data.get('timestamp'))} · Builder: ResearchCaseEngine/30min-Fenster · Quelle: OBSERVE-only Laufzeit</p>"
         body = _hero("Research Case Explorer", "Case-Lifecycle, fehlende Evidenz und reproduzierbare Timeline.") + f"<section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><span class='count-scope'>sichtbarer Ausschnitt: {len(data['research_cases'])}</span></div>" + summary + f"<div class='filters'><div><label>Status</label><select id='filter-status'><option value='' selected>Alle aktiven / alle Status</option><option>OPEN</option><option>MONITORING</option><option>COLLECTING_EVIDENCE</option><option>READY_FOR_REVIEW</option><option>CONFIRMED</option><option>REJECTED</option><option>QUARANTINED</option><option>INVALIDATED</option><option>CLOSED</option></select></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option><option value='30'>30 Tage</option></select></div><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. BOS'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='z. B. 1.0.0'></div></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{rows}</tbody></table></div>{stand}</section>{detail}"
         return _layout("Research Case Explorer", page, body, strip=_strip_states(data))

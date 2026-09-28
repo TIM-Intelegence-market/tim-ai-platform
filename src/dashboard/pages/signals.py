@@ -25,13 +25,6 @@ def _signal_research_page(state: DashboardState, data: dict[str, Any], selected_
     quality_summary = data.get("research_quality", {}).get("validation_status") or data.get("readiness", {}).get("validation_status") or "UNKNOWN"
     open_validations = sum(1 for item in validations if not item.get("complete"))
     completed_cases = sum(1 for item in cases if str(item.get("status", "")).upper() == "CLOSED")
-    signal_note = "AggTrades · Orderflow Metrics · Signal Research. Kein Trading-Signal, keine Buy-/Sell-, Long-/Short-Entscheidung, keine Ausführung."
-    top = (
-        "<section class='panel'><div class='signal-header'><div><h2>Globaler Forschungsstatus</h2>"
-        "<div class='signal-kicker'><span class='signal-pill'>OBSERVE</span><span class='signal-pill'>READ-ONLY</span><span class='signal-pill'>RESEARCH ONLY</span></div>"
-        f"<p class='count-scope'>Symbol { _safe(symbol) } · Stream {_safe(stream_status)} · letzte Erfassung UTC {_safe(last_capture)} · Datenfrische {_safe(freshness)}s</p>"
-        f"</div><div class='status-note'><b>Pipeline-Version:</b> {_safe(pipeline_version)}<br><b>Aktuelle Rule-Version:</b> {_safe(latest_rule)}<br><span class='muted'>{_safe(signal_note)}</span></div></div></section>"
-    )
     summary_grid = (
         "<div class='meta-grid'>"
         f"<article class='card'><div class='card__label'>Sichtbare Observations</div><div class='card__value'>{counts['shown']}</div><div class='card__note'>Persistierter Ausschnitt</div></article>"
@@ -39,14 +32,6 @@ def _signal_research_page(state: DashboardState, data: dict[str, Any], selected_
         f"<article class='card'><div class='card__label'>Abgeschlossene Research Cases</div><div class='card__value'>{completed_cases}</div><div class='card__note'>Retrospektiv geschlossen</div></article>"
         f"<article class='card'><div class='card__label'>Data Quality Summary</div><div class='card__value'>{_safe(quality_summary)}</div><div class='card__note'>Read-only Gate</div></article>"
         f"<article class='card'><div class='card__label'>Modus</div><div class='card__value'>OBSERVE</div><div class='card__note'>No trading / no signals</div></article>"
-        "</div>"
-    )
-    queue_grid = (
-        "<div class='queue-grid'>"
-        f"<article class='card'><div class='card__label'>Live Research Queue</div><div class='card__value'>{summary['shown'] - summary['validated']}</div><div class='card__note'>Neue oder unvollständige Observations</div></article>"
-        f"<article class='card'><div class='card__label'>Validation Queue</div><div class='card__value'>{summary['awaiting']}</div><div class='card__note'>5m / 15m / 30m offen</div></article>"
-        f"<article class='card'><div class='card__label'>Completed Research Cases</div><div class='card__value'>{completed_cases}</div><div class='card__note'>Abgeschlossene Fälle</div></article>"
-        f"<article class='card'><div class='card__label'>Data Quality Exceptions</div><div class='card__value'>{len(exception_items)}</div><div class='card__note'>Aus der Diagnose-Ansicht</div></article>"
         "</div>"
     )
     selected_detail = ""
@@ -112,7 +97,7 @@ def _signal_research_page(state: DashboardState, data: dict[str, Any], selected_
         "<section class='panel'><div class='signal-header'><div><h2>Globaler Forschungsstatus</h2>"
         "<div class='signal-kicker'><span class='signal-pill'>OBSERVE</span><span class='signal-pill'>READ-ONLY</span><span class='signal-pill'>RESEARCH ONLY</span></div>"
         f"<p class='count-scope'>Symbol {_safe(symbol)} · Stream {_safe(stream_status)} · letzte Erfassung UTC {_safe(last_capture)} · Datenfrische {_safe(freshness)}s</p>"
-        "</div><div class='status-note'><b>Pipeline-Version:</b> {_safe(pipeline_version)}<br><b>Aktuelle Rule-Version:</b> {_safe(latest_rule)}<br><b>Offene Validierungen:</b> {_safe(open_validations)}<br><b>Abgeschlossene Research Cases:</b> {_safe(completed_cases)}<br><span class='muted'>AggTrades · Orderflow Metrics · Signal Research · Kein Trading-Signal · keine Buy-/Sell-, Long-/Short-Entscheidung · keine Ausführung</span></div></div></section>"
+        f"</div><div class='status-note'><b>Pipeline-Version:</b> {_safe(pipeline_version)}<br><b>Aktuelle Rule-Version:</b> {_safe(latest_rule)}<br><b>Offene Validierungen:</b> {_safe(open_validations)}<br><b>Abgeschlossene Research Cases:</b> {_safe(completed_cases)}<br><span class='muted'>AggTrades · Orderflow Metrics · Signal Research · Kein Trading-Signal · keine Buy-/Sell-, Long-/Short-Entscheidung · keine Ausführung</span></div></div></section>"
     )
     return _layout(
         "Signal Research",
@@ -120,7 +105,6 @@ def _signal_research_page(state: DashboardState, data: dict[str, Any], selected_
         _hero("Signal Research", "Gefilterter Orderflow-Evidenzpfad für manuelle Forschung.")
         + top
         + summary_grid
-        + queue_grid
         + areas
         + evidence_table
         + selected_detail

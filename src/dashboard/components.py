@@ -4,8 +4,10 @@ import html
 import hashlib
 import json
 from typing import Any
+from urllib.parse import quote
 
-from src.dashboard.helpers import _duration, _required, _safe, _short, _status, _status_level
+from src.research.retrospective import case_retrospective
+from src.dashboard.helpers import _case_status, _duration, _required, _safe, _short, _status, _status_level
 
 def _case_for_observation(observation: dict[str, Any], cases: list[dict[str, Any]]) -> dict[str, Any] | None:
     if observation.get("research_case_id"):
@@ -30,13 +32,14 @@ def _observation_row(item: dict[str, Any], cases: list[dict[str, Any]]) -> str:
 
 def _case_row(item: dict[str, Any]) -> str:
     opened, updated = item.get("opened_at"), item.get("updated_at")
-    kinds = sorted({str(ev.get("kind")) for ev in item.get("evidence", []) if ev.get("kind")})
-    rules = ", ".join(f"{key}:{value}" for key, value in sorted(item.get("rule_versions", {}).items()))
+    kinds = sorted({str(ev.get("kind")) for ev in item.get("evidence") or [] if isinstance(ev, dict) and ev.get("kind")})
+    rules = ", ".join(f"{key}:{value}" for key, value in sorted((item.get("rule_versions") or {}).items()))
     case_id = str(item.get("case_id", ""))
+    proof_href = html.escape("/exports/case/" + quote(case_id, safe=""), quote=True)
     return (
         f"<tr data-status='{_safe(item.get('status'))}' data-type='{_safe(' '.join(kinds))}' data-rule='{_safe(rules)}' data-time='{_safe(updated)}'>"
-        f"<td><a href='/cases?id={html.escape(case_id, quote=True)}' class='mono'>{_safe(_short(case_id, 18))}</a></td>"
-        f"<td><span class='badge badge--{_status(item.get('status')).lower()}'>{_safe(item.get('status'))}</span></td>"
+        f"<td><a href='/cases?id={html.escape(case_id, quote=True)}' class='mono'>{_safe(_short(case_id, 18))}</a> <a class='tag' href='{proof_href}.html' title='Prüfbarer Research-Beleg'>Beleg</a></td>"
+        f"<td><span class='badge badge--{_case_status(item.get('status'))}'>{_safe(item.get('status'))}</span></td>"
         f"<td>{_safe(_duration(opened, updated))}</td><td>{len(item.get('observation_ids', []))}</td><td>{_safe(item.get('outcome'))}</td>"
         f"<td>{_safe(', '.join(item.get('missing_evidence', [])))}</td><td>{_safe(', '.join(kinds))}</td><td class='mono'>{_safe(rules)}</td></tr>"
     )
@@ -397,3 +400,31 @@ def _retrospective_outcome_rows(validations: list[dict[str, Any]]) -> str:
     if not rows:
         rows.append("<tr><td colspan='10' class='empty'>Keine retrospektiv validierten Horizonte vorhanden.</td></tr>")
     return "".join(rows)
+
+
+def _case_proof_panel(case: dict[str, Any], observations: list[dict[str, Any]], validations: list[dict[str, Any]]) -> str:
+    """Links to the verifiable export and the RETROSPECTIVE block for one research case."""
+    case_id = str(case.get("case_id", ""))
+    href = "/exports/case/" + quote(case_id, safe="")
+    try:
+        blocks = case_retrospective(case, observations, validations)
+    except Exception:  # malformed stored data must not break the page
+        blocks = []
+    if blocks:
+        items = "".join(
+            f"<li><b>{_safe(block.get('observation_type'))}</b> · Regel {_safe(block.get('rule_version'))} · n={_safe(block.get('sample_size'))}: "
+            + (", ".join(f"{_safe(name)} {_safe(count)}" for name, count in (block.get("outcomes") or {}).items()) + ". " if block.get("outcomes") else "")
+            + f"<span class='muted'>{_safe(block.get('note'))} {_safe(block.get('basis'), '')}</span></li>"
+            for block in blocks
+        )
+        retro = f"<h3>Rückblick <span class='badge badge--snapshot'>{_safe(blocks[0].get('label'))}</span></h3><ul class='retro'>{items}</ul>"
+    else:
+        retro = "<p class='muted'>Kein Rückblick: nur für Orderflow-Fälle mit Regelversion verfügbar.</p>"
+    return (
+        "<section class='panel'><div class='panel__head'><h2>Prüfbarer Beleg</h2><span class='badge badge--green'>READ-ONLY</span></div>"
+        "<p>Der Beleg enthält diesen Fall mit SHA-256-Hash und lässt sich unabhängig prüfen "
+        "(<span class='mono'>scripts/verify_case.py</span>). Research-Beleg: keine Empfehlung, keine Prognose, kein Handelssignal.</p>"
+        f"<p><a class='tag' href='{html.escape(href, quote=True)}.html' target='_blank' rel='noopener'>Beleg öffnen (HTML)</a> "
+        f"<a class='tag' href='{html.escape(href, quote=True)}.json'>Beleg (JSON)</a></p>"
+        f"{retro}</section>"
+    )

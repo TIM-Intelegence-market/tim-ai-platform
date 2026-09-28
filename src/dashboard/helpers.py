@@ -57,6 +57,19 @@ def _status(value: Any) -> str:
     return "RED"
 
 
+CASE_STATUS_BADGE = {
+    "OPEN": "yellow", "COLLECTING_EVIDENCE": "yellow", "READY_FOR_REVIEW": "yellow", "MONITORING": "yellow",
+    "CONFIRMED": "green",
+    "CLOSED": "snapshot", "REJECTED": "snapshot", "INVALIDATED": "snapshot",
+    "QUARANTINED": "red",
+}
+
+
+def _case_status(value: Any) -> str:
+    """Badge class for the research-case lifecycle: progress is not an error, closure is neutral."""
+    return CASE_STATUS_BADGE.get(str(value or "").upper(), "red")
+
+
 def _required(field: str, value: Any) -> str:
     if value in (None, "", [], {}, ()):
         return f"MISSING:{field}"
