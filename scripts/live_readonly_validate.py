@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import asyncpg
 import json
-import subprocess
 import sys
 import threading
 import time
@@ -24,15 +23,17 @@ PORT = 18767
 LIMIT = 2000
 
 
-def prod_password() -> str:
-    return subprocess.run(
-        ["security", "find-generic-password", "-s", "com.tim.database",
-         "-a", "tim", "-w"], capture_output=True, text=True).stdout.strip()
+def prod_database_url() -> str:
+    """Same secret source as the runtime (config/secrets.py): honours
+    TIM_DATABASE_SECRET_PROVIDER (keychain, pgpass or file) and the endpoint
+    settings. The URL is never printed."""
+    from config.settings import settings
+
+    return settings.database_url
 
 
 async def load_window() -> tuple[list[dict], dict]:
-    con = await asyncpg.connect(host="127.0.0.1", port=5432, database="tim",
-                                user="tim", password=prod_password(), timeout=10)
+    con = await asyncpg.connect(prod_database_url(), timeout=10)
     await con.execute("START TRANSACTION READ ONLY")
     try:
         totals = await con.fetch("SELECT status, count(*) AS n FROM research_cases GROUP BY status")
