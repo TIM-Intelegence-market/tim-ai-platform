@@ -7,7 +7,7 @@ TIM provides a local, observation-only BTCUSDT research pipeline: public Binance
 - **Observation Engine:** central versioned event layer with stable UUIDs, input hashes, rule IDs, rule versions, provenance, and restart deduplication.
 - **Market Memory:** deterministic historical memory with transparent Jaccard feature overlap. Future observations are excluded from similarity results; similarity is not a prediction.
 - **Research Cases:** groups observations into fixed 30-minute research containers, records evidence and rule versions, and explicitly lists missing evidence. Outcomes must be documented after the case evidence and cannot be backdated.
-- **Human Dashboard V1:** read-only market status, active observations, research cases, missing evidence, system health, memory status, and an explicitly inactive news placeholder. HTML and JSON are available locally at `http://127.0.0.1:8765/` and `/api/state` while TIM is running.
+- **Human Dashboard V1:** read-only market status, active observations, research cases, missing evidence, system health, memory status, and an explicitly inactive news placeholder. HTML and JSON are available locally at `http://127.0.0.1:8765/` and `/api/state` while TIM is running. Since Dashboard 3.0 (see `docs/DASHBOARD_V3.md`) the UI is German, grouped into Überblick · Forschung · Betrieb · Werkzeuge, with verifiable case proofs at `/exports/case/<id>.html` and a local pilot view at `/pilot`.
 
 All Week 2 components remain research-only. They contain no trading, prediction, order, account, wallet, or execution path.
 
