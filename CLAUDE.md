@@ -22,13 +22,21 @@ Bei Planung, Review, Übergaben oder neuen Playbooks dort nachlesen.
 
 ## Skills in diesem Repo
 
+Originale aus der Bibliothek (Quelle und Grenzen je Skill in `HERKUNFT.md`):
+
 - `beirat`: Idee/Plan aus fünf Rollen prüfen, Urteil MACHEN / UMBAUEN / LASSEN.
 - `session-handoff`: Übergabedatei für einen neuen Chat erstellen.
+- `vormachen-vorbereitung`: Record-&-Replay-Aufnahme in ChatGPT/Codex vorbereiten.
+- `humanizer`, `humanizer-de`: Text auf KI-Muster prüfen und in eigener Stimme neu schreiben.
+- `seiten-check`: eigene Webseite auf typische Sicherheitslücken prüfen (nur eigene Domains).
+- `canary`: Warnzeichen für ein volles Kontextfenster setzen (nur auf Anfrage, Satz nie hier eintragen).
+
+Aus `ai-resources/KI-Ressourcen.md` abgeleitet:
+
 - `playbook-erstellen`: wiederkehrende Aufgabe per Interview in ein Skill-Playbook überführen.
 - `bauplan`: größere Aufgabe vor jeder Änderung planen und auf Go warten.
 - `adversariale-pruefung`: Änderung unabhängig auf Fehler, Sonderfälle und Sicherheit prüfen.
 - `fertig-pruefung`: Paket gegen seine Erfolgskriterien abnehmen.
-- `canary`: Warnzeichen für ein volles Kontextfenster setzen (nur auf Anfrage, Satz nie hier eintragen).
 
 Status aller 45 Bibliothekseinträge: `ai-resources/source-register.md`.
 
