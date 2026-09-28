@@ -16,7 +16,7 @@ Für jedes künftig übernommene Original ergänzen: Version/Datum, Lizenz, Prü
 | 4 | SAMMLUNG – öffentliche Prompts | nicht installiert: Original fehlt | [Link](https://titusharmann.com/prompt-sammlung.html?q=oben) |
 | 5 | BRANDS – Designsysteme für Websites | nicht installiert: Original fehlt | [Link](https://titusharmann.com/designsysteme.html?q=oben) |
 | 6 | SOCIAL – Claude mit Social-Kanälen | nicht installiert: Original fehlt | [Link](https://titusharmann.com/social-bestaetigt.html?q=oben) |
-| 7 | CANARY – Kontextfenster-Warnzeichen | nicht installiert: Original fehlt | [Link](https://titusharmann.com/canary-bestaetigt.html?q=oben) |
+| 7 | CANARY – Kontextfenster-Warnzeichen | `canary` (Original-ZIP vom 21.09.2026, geprüft 28.09.2026: nur Text, keine Skripte oder Zugriffe) | [Link](https://titusharmann.com/canary-bestaetigt.html?q=oben) |
 | 8 | PLUGIN – vier Plugins vor Vibe-Coding | nicht installiert: Original fehlt | [Link](https://titusharmann.com/vier-plugins.html?q=oben) |
 | 9 | KANZLEI – 13 Legal-Plugins | nicht installiert: Original fehlt | [Link](https://titusharmann.com/legal-plugins.html?q=oben) |
 | 10 | GRAPH – Agenten-Graph | nicht installiert: Original fehlt | [Link](https://titusharmann.com/erster-graph.html?q=oben) |
