@@ -16,7 +16,7 @@ from typing import Any
 from urllib.parse import quote
 
 from src.dashboard.helpers import _case_status, _safe
-from src.dashboard.layout import CSS
+from src.dashboard.layout import CSS, EXTRA_CSS
 from src.dashboard.state import DashboardState
 from src.research.case_export import DISCLAIMER
 from src.research.retrospective import case_retrospective
@@ -76,8 +76,10 @@ def render_pilot(state: DashboardState) -> str:
     )
     return (
         "<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-        f"<title>Research-Belege · TIM</title><style>{CSS}.pilot-grid{{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}}"
-        "@media (max-width:760px){.pilot-grid{grid-template-columns:minmax(0,1fr)}}.retro{margin:4px 0 8px;padding-left:18px}</style></head>"
+        f"<title>Research-Belege · TIM</title><style>{CSS}{EXTRA_CSS}.pilot-grid{{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}}"
+        ".topbar{position:static;width:auto;border-right:0;border-bottom:1px solid var(--line)}.topbar__inner{height:auto;padding:14px 24px;flex-direction:row;align-items:center;justify-content:space-between;gap:12px}"
+        ".brand{padding:0;border:0}.shell,.footer{margin-left:auto;margin-right:auto}"
+        "@media (max-width:760px){.pilot-grid{grid-template-columns:minmax(0,1fr)}.shell{padding:20px 16px 40px}}.retro{margin:4px 0 8px;padding-left:18px}</style></head>"
         "<body><header class='topbar'><div class='topbar__inner'><span class='brand'>TIM<small>TRANSPARENT INTELLIGENCE FOR MARKETS</small></span>"
         "<span class='tag'>Pilotansicht</span></div></header>"
         f"<main class='shell'>{body}</main></body></html>"

@@ -17,7 +17,7 @@ machine-readable source of truth is `config/core_manifest.json`.
 | Orderflow Observations | 1.0.0 |
 | Orderflow Validation | 1.0.0 |
 | Research Analytics | 1.0.0 |
-| Dashboard | 3.0.0 (see addendum 2026-09-28) |
+| Dashboard | 4.1.0 (see addenda 2026-09-28) |
 
 The dashboard is recorded as `2.1.0` because this is the version declared by
 the running implementation at freeze time. Re-labelling it as `2.0.0` would
@@ -82,3 +82,21 @@ been changed after the freeze without a manifest update. Both now read `3.0.0`.
 Because `config/core_manifest.json` changed, research snapshots created after
 this date carry a different `core_manifest_hash`; research data itself is not
 affected and needs no re-analysis.
+
+## Addendum 2026-09-28: Dashboard 4.1.0 (Zusammenführung)
+
+**Decision by the owner (2026-09-28):** the live runtime (branch
+`opencode/rolling-liveness-ops-fix`, PR #87, plus the previously uncommitted
+live state saved as `opencode/live-snapshot-2026-09-28`) and `platform-main`
+are merged. The live runtime already declared `DASHBOARD_VERSION = "4.0.0"`
+("Control Center") while its manifest still recorded `2.1.0`; `platform-main`
+recorded `3.0.0`. The merged dashboard is `4.1.0`: the Control Center layout
+and all its pages, APIs and security layer (loopback-only bind, Host check,
+security headers, response size limit, hash-based CSP) plus the Dashboard 3.0
+additions (German labels, lifecycle badges, case proof export, orderflow
+history API, retrospective, local pilot view). The CSP is now computed per HTML
+response from the inline blocks it contains; `unsafe-inline` stays forbidden.
+
+Unchanged and still frozen: `core_version` 1.0.0, rules, thresholds, metrics,
+validation, outcomes, persistence and research data. As with 3.0.0, the
+`core_manifest_hash` of snapshots created after this date differs.

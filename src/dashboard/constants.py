@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-DASHBOARD_VERSION = "4.0.0"
+DASHBOARD_VERSION = "4.1.0"
 
 
 VISIBLE_LIMIT = 50

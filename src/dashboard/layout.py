@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 from typing import Any
 from src.dashboard import design_system
 from src.dashboard.design_system import severity as _severity_of
 from pathlib import Path
 
 from src.dashboard.helpers import _safe
+from src.dashboard.i18n import translate_html
 
 _ASSETS = Path(__file__).resolve().parent / "assets"
 
@@ -35,27 +37,70 @@ def _content_security_policy() -> str:
     )
 
 
+_INLINE_STYLE = re.compile(r"<style(?:\s[^>]*)?>(.*?)</style>", re.S | re.I)
+_INLINE_SCRIPT = re.compile(r"<script(\s[^>]*)?>(.*?)</script>", re.S | re.I)
+_SCRIPT_TYPE = re.compile(r"""\btype\s*=\s*['"]?([^'"\s>]+)""", re.I)
+_JS_TYPES = {"", "text/javascript", "application/javascript", "module"}
+
+
+def _sources(blocks: list[str]) -> str:
+    hashes = dict.fromkeys("'sha256-" + base64.b64encode(hashlib.sha256(block.encode()).digest()).decode() + "'" for block in blocks)
+    return " ".join(hashes) or "'none'"
+
+
+def _content_security_policy_for(page: str) -> str:
+    """CSP for one HTML response: only the inline style and script blocks it contains may run.
+
+    Data blocks such as ``<script type='text/plain'>`` are not executable and get no hash.
+    For a standard dashboard page the result equals ``_content_security_policy()``.
+    """
+    styles = _INLINE_STYLE.findall(page)
+    scripts = []
+    for attrs, body in _INLINE_SCRIPT.findall(page):
+        kind = _SCRIPT_TYPE.search(attrs or "")
+        if (kind.group(1).lower() if kind else "") in _JS_TYPES:
+            scripts.append(body)
+    return (
+        "default-src 'none'; "
+        f"style-src {_sources(styles)}; "
+        f"script-src {_sources(scripts)}; "
+        "connect-src 'self'; img-src 'self' data:; font-src 'none'; "
+        "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
+
+
 NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
-    ("OPERATIONS", [
+    ("BETRIEB", [
         ("Overview", "/"),
         ("Runtime", "/runtime"),
         ("Data Quality", "/data-quality"),
         ("Incidents & Gaps", "/gaps"),
+        ("Health Center", "/health"),
+        ("Data Quality Exceptions", "/exceptions"),
+        ("Timeline", "/timeline"),
     ]),
-    ("RESEARCH", [
+    ("FORSCHUNG", [
+        ("Observations", "/observations"),
+        ("Research Cases", "/cases"),
+        ("Orderflow", "/orderflow"),
+        ("Signal Research", "/signals"),
+        ("Analytics", "/analytics"),
+        ("Insights", "/insights"),
         ("Independent Cases", "/independent-cases"),
         ("Qualification", "/qualification"),
-    ]),
-    ("READINESS", [
-        ("V2 Readiness", "/v2-readiness"),
-    ]),
-    ("INTELLIGENCE", [
         ("Setup Path", "/setup-path"),
-        ("Graphify & MCP", "/mcp"),
+    ]),
+    ("FREIGABE", [
+        ("V2 Readiness", "/v2-readiness"),
     ]),
     ("SYSTEM", [
         ("Security", "/security"),
         ("Audit & Evidence", "/audit-evidence"),
+        ("Graphify & MCP", "/mcp"),
+    ]),
+    ("WERKZEUGE", [
+        ("Research", "/research"),
+        ("Pilotansicht", "/pilot"),
     ]),
 ]
 
@@ -174,18 +219,7 @@ def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, s
     )
     matrix = f"<dl class='status-matrix' aria-label='Globaler Systemstatus'>{strip_rows}{trading_row}</dl>" if strip else ""
 
-    legacy_links = [
-        ("Observations", "/observations"), ("Research Cases", "/cases"), ("Orderflow", "/orderflow"),
-        ("Signal Research", "/signals"), ("Analytics", "/analytics"), ("Insights", "/insights"),
-        ("Health Center", "/health"), ("Data Quality Exceptions", "/exceptions"),
-        ("Timeline", "/timeline"), ("Research", "/research"),
-    ]
-    legacy_nav = "".join(
-        f"<a href='{href}' class='{'active' if page == key else ''}'"
-        f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
-        for key, href in legacy_links
-    )
-    return f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav>{matrix}<details class='legacy-nav'><summary>Vertiefende Research-Ansichten</summary><nav aria-label='Vertiefende Research-Ansichten'>{legacy_nav}</nav></details><button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT}</body></html>"""
+    return translate_html(f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav>{matrix}<button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT}</body></html>""")
 
 
 def _hero(title: str, text: str) -> str:

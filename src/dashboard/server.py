@@ -18,7 +18,7 @@ from config.settings import settings
 
 from src.dashboard.api import _research_cases_collection
 from src.dashboard.constants import MAX_RESPONSE_BYTES
-from src.dashboard.layout import _content_security_policy, _error_page
+from src.dashboard.layout import _content_security_policy, _content_security_policy_for, _error_page
 from src.dashboard.security import _is_loopback_request_host, _require_loopback_host
 from src.dashboard.pages.pilot import render_pilot
 from src.dashboard.state import DashboardState
@@ -44,7 +44,8 @@ class DashboardServer:
                 self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")
-                self.send_header("Content-Security-Policy", _content_security_policy())
+                html_page = content_type.startswith("text/html")
+                self.send_header("Content-Security-Policy", _content_security_policy_for(payload.decode("utf-8", "replace")) if html_page else _content_security_policy())
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("X-Frame-Options", "DENY")
                 self.send_header("Referrer-Policy", "no-referrer")
