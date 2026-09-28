@@ -1,0 +1,24 @@
+{
+  "command": "/Users/tim/Documents/TIM/tim/.venv/bin/python -m pytest -q --junitxml=/Users/tim/Documents/TIM/tim/artifacts/test_reports/v2_mcp.junit.xml tests/tim_manager/test_graphify_mcp_client.py tests/tim_manager/test_workspace_gateway.py",
+  "complete": true,
+  "database_isolation": {
+    "cleaned": true,
+    "created": true,
+    "production_schema_used_by_tests": false,
+    "schema": "tim_v2_mcp_20260801"
+  },
+  "duration_seconds": 4.755,
+  "exit_code": 0,
+  "failed": 0,
+  "finished_at": "2026-08-01T15:44:34.389118+00:00",
+  "passed": 55,
+  "pytest_version": "pytest 8.4.2",
+  "python_version": "3.14.6",
+  "skipped": 0,
+  "started_at": "2026-08-01T15:44:30.096878+00:00",
+  "temporary_directory": "/var/folders/0k/xr_qg7k55210_v3cz99l1zsw0000gn/T/tim-pytest-4m_wjm2k",
+  "timed_out": false,
+  "warnings": 1,
+  "xfailed": 0,
+  "xpassed": 0
+}

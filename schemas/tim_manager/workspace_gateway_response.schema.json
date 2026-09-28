@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tim.local/schemas/tim_manager/workspace_gateway_response.schema.json",
+  "title": "TIM Workspace Gateway Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "status",
+    "operation",
+    "generated_at_utc",
+    "source",
+    "trust_class",
+    "graph_hash",
+    "tool_name",
+    "results",
+    "source_refs",
+    "warnings",
+    "truncated",
+    "raw_response_hash",
+    "authorization"
+  ],
+  "properties": {
+    "request_id": {"type": "string"},
+    "status": {"enum": ["success", "partial", "denied", "error"]},
+    "operation": {"type": "string"},
+    "generated_at_utc": {"type": "string", "format": "date-time"},
+    "source": {"const": "tim-manager-graphify"},
+    "trust_class": {"const": "untrusted_retrieval"},
+    "graph_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "tool_name": {"type": "string"},
+    "results": {"type": "array"},
+    "source_refs": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "truncated": {"type": "boolean"},
+    "raw_response_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["read_only", "policy"],
+      "properties": {
+        "read_only": {"const": true},
+        "policy": {"const": "workspace-and-tim-manager-double-allowlist"}
+      }
+    }
+  }
+}

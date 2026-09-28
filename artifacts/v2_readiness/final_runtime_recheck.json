@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0.0",
+  "captured_at_utc": "2026-08-01T15:59:25.361892Z",
+  "read_only_check": true,
+  "http_status": 200,
+  "mode": "OBSERVE",
+  "governance": {
+    "observe_only": true,
+    "core_status": "FROZEN",
+    "readiness_status": "NOT_READY_FOR_V2",
+    "historical_audit_status": "FAIL",
+    "historical_quality_status": "FAIL"
+  },
+  "runtime": {
+    "service": "com.tim.runtime",
+    "pid": 19210,
+    "started_at_utc": "2026-08-01T15:46:41.333608Z",
+    "status": "GREEN",
+    "stream": "GREEN",
+    "database": "GREEN",
+    "dashboard": "GREEN",
+    "last_data_at_utc": "2026-08-01T15:59:00Z",
+    "data_age_seconds": 25
+  },
+  "dashboard": {
+    "listener": "127.0.0.1:8765",
+    "loopback_health_probe": "PASS",
+    "non_loopback_configuration": "FAIL_CLOSED_BY_CODE_AND_TEST"
+  },
+  "postgresql": {
+    "listener_ipv4": "WILDCARD_PORT_5432",
+    "listener_ipv6": "WILDCARD_PORT_5432",
+    "lan_tcp_probe": "SUCCEEDED",
+    "security_gate": "FAIL_P1"
+  },
+  "sleep_guard": {
+    "pid": 19228,
+    "command_scope": "CAFFEINATE_WAIT_FOR_RUNTIME_PID_19210",
+    "prevent_system_sleep": true,
+    "prevent_user_idle_system_sleep": true,
+    "disposition": "REVERSIBLE_MITIGATION_NOT_DURABLE_RELIABILITY_CONTROL"
+  },
+  "ollama": {
+    "listener": "127.0.0.1:11434",
+    "tim_enabled": false,
+    "tim_policy": "DISABLED_BY_POLICY",
+    "tim_connection_observed": false
+  },
+  "trading_actions_emitted": 0,
+  "overall_runtime_gate": "FAIL",
+  "overall_security_gate": "FAIL"
+}

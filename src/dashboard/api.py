@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 def _research_cases_collection(snapshot: dict[str, Any], query: dict[str, list[str]], stats_only: bool = False) -> dict[str, Any]:
     """Read-only Research Case collection: filters (no implicit CONFIRMED
     restriction), real per-status stats, cursor pagination. OBSERVE-only."""

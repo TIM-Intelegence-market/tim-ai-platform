@@ -30,14 +30,23 @@ def _validate_agg_trade_for_persistence(trade:Trade,now:datetime|None=None)->Non
 
 def agg_trade_hash(trade:Trade)->str:
     _validate_agg_trade_for_persistence(trade,trade.event_time)
-    payload={"aggregate_trade_id":trade.trade_id,"buyer_is_maker":trade.buyer_is_maker,"price":trade.price,"quantity":trade.quantity,"source":AGG_TRADE_SOURCE,"symbol":trade.symbol,"trade_time":trade.event_time.isoformat()}
+    # Binance aggTrade event times are authoritative only to milliseconds.  A
+    # legacy collector persisted some equivalent events with sub-millisecond
+    # clock residue, which must not turn an otherwise identical replay into an
+    # immutable-payload conflict during bounded catch-up.
+    event_time=trade.event_time.replace(microsecond=(trade.event_time.microsecond // 1000) * 1000)
+    payload={"aggregate_trade_id":trade.trade_id,"buyer_is_maker":trade.buyer_is_maker,"price":trade.price,"quantity":trade.quantity,"source":AGG_TRADE_SOURCE,"symbol":trade.symbol,"trade_time":event_time.isoformat()}
     return hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(",",":"),ensure_ascii=False).encode()).hexdigest()
 
 
 def _validate_candle_for_persistence(candle:Candle,now:datetime|None=None)->None:
     current=now or datetime.now(timezone.utc)
     if candle.timeframe not in ALLOWED_TIMEFRAMES:raise ValueError(f"Unsupported candle timeframe: {candle.timeframe}")
-    if candle.open_time>current or candle.close_time>current:raise ValueError("Future candle timestamps are not allowed")
+    # Binance can deliver the first trade of a new bucket a few milliseconds
+    # before the local wall clock reaches the prior bucket's close boundary.
+    # The open time must already be historical; only the close boundary gets a
+    # narrow, explicit skew tolerance.
+    if candle.open_time>current or candle.close_time>current+timedelta(seconds=1):raise ValueError("Future candle timestamps are not allowed")
 
 
 def _validate_observation_for_persistence(observation:Observation,now:datetime|None=None)->None:
@@ -120,7 +129,18 @@ class MarketRepository:
         return [{**dict(row),"observed_at":row["observed_at"].isoformat(),"evidence":_json_value(row["evidence"],list)} for row in rows]
 
     async def pending_orderflow_observations(self,symbol:str,as_of:datetime,limit:int=500)->list[dict]:
-        async with self.database.acquire() as con:rows=await con.fetch("SELECT o.* FROM orderflow_observations o LEFT JOIN orderflow_validations v USING(observation_id) WHERE o.symbol=$1 AND o.observed_at<=$2 AND COALESCE(v.complete,false)=false ORDER BY o.observed_at,o.observation_id LIMIT $3",symbol,as_of-timedelta(minutes=5),limit)
+        """Return validation work relevant to the current live replay window.
+
+        Old incomplete observations remain durably recorded for the offline
+        reconciliation path. A live observation needs its full 30-minute
+        outcome horizon before it is evaluated; after that, a persisted final
+        validation is immutable input for offline reconciliation. Re-reading
+        either category on every candle makes live catch-up repeatedly scan
+        historical agg-trades and can starve current capture. Four hours
+        comfortably covers ordinary replay lag while bounding live-only cost.
+        """
+        oldest_live_candidate=as_of-timedelta(hours=4)
+        async with self.database.acquire() as con:rows=await con.fetch("SELECT o.* FROM orderflow_observations o LEFT JOIN orderflow_validations v USING(observation_id) WHERE o.symbol=$1 AND o.observed_at<=$2 AND o.observed_at>=$3 AND (v.observation_id IS NULL OR v.validated_through < o.observed_at + interval '30 minutes') ORDER BY o.observed_at,o.observation_id LIMIT $4",symbol,as_of-timedelta(minutes=30),oldest_live_candidate,limit)
         return [{**dict(row),"observed_at":row["observed_at"].isoformat(),"evidence":_json_value(row["evidence"],list)} for row in rows]
 
     async def agg_trades_for_validation(self,symbol:str,observed_at:datetime,end:datetime)->list[Trade]:
@@ -146,7 +166,7 @@ class MarketRepository:
         _validate_candle_for_persistence(candle)
         query = """INSERT INTO candles(symbol,timeframe,open_time,close_time,open,high,low,close,volume,trade_count,closed)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-        ON CONFLICT(symbol,timeframe,open_time) DO UPDATE SET close_time=EXCLUDED.close_time,high=EXCLUDED.high,
+        ON CONFLICT(symbol,timeframe,open_time) DO UPDATE SET close_time=EXCLUDED.close_time,open=EXCLUDED.open,high=EXCLUDED.high,
         low=EXCLUDED.low,close=EXCLUDED.close,volume=EXCLUDED.volume,trade_count=EXCLUDED.trade_count,closed=EXCLUDED.closed"""
         async with self.database.acquire() as con:
             await con.execute(query, candle.symbol, candle.timeframe, candle.open_time, candle.close_time, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.trade_count, candle.closed)
@@ -189,7 +209,16 @@ class MarketRepository:
 
     async def recent_candles(self, symbol: str, timeframe: str, limit: int = 200) -> list[Candle]:
         async with self.database.acquire() as con:
-            rows = await con.fetch("SELECT * FROM candles WHERE symbol=$1 AND timeframe=$2 ORDER BY open_time DESC LIMIT $3", symbol, timeframe, limit)
+            rows = await con.fetch(
+                """SELECT * FROM candles
+                WHERE symbol=$1 AND timeframe=$2
+                  AND high >= open AND high >= close AND high >= low
+                  AND low <= open AND low <= close AND low <= high
+                ORDER BY open_time DESC LIMIT $3""",
+                symbol,
+                timeframe,
+                limit,
+            )
         return [Candle(**dict(row)) for row in reversed(rows)]
 
     async def recent_observations(self, symbol: str, limit: int = 100) -> list[Observation]:

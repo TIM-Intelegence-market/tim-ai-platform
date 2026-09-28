@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.0.0",
+  "program_id": "TIM-V2-FINAL-READINESS-20260801",
+  "evidence_commit": "106c6d24f16c15b7e3656ec2eaa3914f22986224",
+  "mode": "OBSERVE",
+  "started_at_utc": "2026-08-01T15:42:40.223983Z",
+  "finished_at_utc": "2026-08-01T16:18:45Z",
+  "versions": {
+    "python": "3.14.6",
+    "pytest": "8.4.2",
+    "postgresql": "18.4"
+  },
+  "database_test_isolation": {
+    "method": "disposable PostgreSQL schema selected through search_path",
+    "production_schema_used": false,
+    "final_schema": "tim_v2_final_scope_corrected_20260801",
+    "created": true,
+    "removed_after_run": true
+  },
+  "focused_suites": [
+    {
+      "name": "data_quality",
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0,
+      "xpassed": 0,
+      "warnings": 37,
+      "exit_code": 0,
+      "evidence": "final_verification_logs/data_quality_summary.json"
+    },
+    {
+      "name": "science",
+      "passed": 68,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0,
+      "xpassed": 0,
+      "warnings": 73,
+      "exit_code": 0,
+      "evidence": "final_verification_logs/science_summary.json"
+    },
+    {
+      "name": "runtime_recovery",
+      "passed": 59,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0,
+      "xpassed": 0,
+      "warnings": 19,
+      "exit_code": 0,
+      "evidence": "final_verification_logs/runtime_summary.json"
+    },
+    {
+      "name": "mcp_graphify",
+      "passed": 55,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0,
+      "xpassed": 0,
+      "warnings": 1,
+      "exit_code": 0,
+      "evidence": "final_verification_logs/mcp_summary.json"
+    },
+    {
+      "name": "tim_im",
+      "passed": 113,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0,
+      "xpassed": 0,
+      "warnings": 1,
+      "exit_code": 0,
+      "evidence": "final_verification_logs/tim_im_summary.json"
+    }
+  ],
+  "full_suite": {
+    "command": ".venv/bin/python scripts/run_full_test_suite.py --timeout-seconds 600 --label v2_final_scope_corrected --isolated-schema tim_v2_final_scope_corrected_20260801",
+    "started_at_utc": "2026-08-01T16:17:59.907776Z",
+    "finished_at_utc": "2026-08-01T16:18:35.012329Z",
+    "duration_seconds": 35.591,
+    "exit_code": 0,
+    "passed": 362,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "xpassed": 0,
+    "warnings": 154,
+    "timed_out": false,
+    "junit": "final_verification_junit.xml",
+    "stdout": "final_verification_logs/full_suite.stdout.log",
+    "stderr": "final_verification_logs/full_suite.stderr.log"
+  },
+  "evidence_generator_checks": {
+    "focused_tests": {
+      "passed": 22,
+      "failed": 0,
+      "warnings": 1,
+      "scope": "backfill, case audit, coverage and observability monitor"
+    },
+    "manual_sample_builder_idempotent": true,
+    "manual_sample_hash_reproduced": true,
+    "backfill_probe_schema_mock_passed": true,
+    "backfill_manifest_hash_reproduced": true,
+    "script_compilation_passed": true
+  },
+  "doctor": {
+    "command": ".venv/bin/python -m src.tim_manager.cli doctor",
+    "exit_code": 0,
+    "status": "PASS"
+  },
+  "validate": {
+    "command": ".venv/bin/python -m src.tim_manager.cli validate",
+    "exit_code": 0,
+    "status": "PASS"
+  },
+  "determinism": {
+    "coverage_runs": 2,
+    "coverage_product_hash_equal": true,
+    "coverage_audit_hash_equal": true,
+    "coverage_percent": "67.346",
+    "scientific_replay_runs": 2,
+    "scientific_replay_hash_equal": true,
+    "scientific_replay_hash": "152e1f61a3c141782b28e22670ba29ea102d37daf98946a1c5970524263f4182",
+    "scientific_replay_strata_passed": 24
+  },
+  "readiness_measurements": {
+    "coverage_target": 0.95,
+    "coverage_actual": 0.673458,
+    "coverage_gate": "FAIL",
+    "gap_ranges": 283,
+    "missing_minutes": 4600,
+    "frozen_strict_independent_cases": 14,
+    "case_gate": "FAIL"
+  },
+  "protected_state": {
+    "status": "PASS_EXACT_HASH_MATCH",
+    "checked_artifacts": 7,
+    "hash_mismatches": 0,
+    "evidence": "protected_state_check.json"
+  },
+  "runtime": {
+    "pid": 19210,
+    "controlled_restart": "PASS_BOUNDED",
+    "dashboard": "127.0.0.1:8765",
+    "collector": "GREEN",
+    "trading_actions": 0
+  },
+  "warnings": {
+    "count": 154,
+    "class": "pytest-asyncio/Python-3.14 event-loop policy deprecations",
+    "readiness_effect": "NON_BLOCKING_TECHNICAL_DEBT"
+  },
+  "overall_test_status": "PASS",
+  "overall_v2_status": "FAIL"
+}

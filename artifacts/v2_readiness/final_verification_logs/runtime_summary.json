@@ -1,0 +1,24 @@
+{
+  "command": "/Users/tim/Documents/TIM/tim/.venv/bin/python -m pytest -q --junitxml=/Users/tim/Documents/TIM/tim/artifacts/test_reports/v2_runtime.junit.xml tests/test_binance_ws.py tests/test_dashboard.py tests/test_restart_persisted_cases.py tests/test_operational_validation.py tests/test_ollama_policy.py tests/test_paper_automation.py tests/test_repository_governance.py",
+  "complete": true,
+  "database_isolation": {
+    "cleaned": true,
+    "created": true,
+    "production_schema_used_by_tests": false,
+    "schema": "tim_v2_runtime_20260801"
+  },
+  "duration_seconds": 8.244,
+  "exit_code": 0,
+  "failed": 0,
+  "finished_at": "2026-08-01T15:44:29.475200+00:00",
+  "passed": 59,
+  "pytest_version": "pytest 8.4.2",
+  "python_version": "3.14.6",
+  "skipped": 0,
+  "started_at": "2026-08-01T15:44:21.716569+00:00",
+  "temporary_directory": "/var/folders/0k/xr_qg7k55210_v3cz99l1zsw0000gn/T/tim-pytest-o99jujzy",
+  "timed_out": false,
+  "warnings": 19,
+  "xfailed": 0,
+  "xpassed": 0
+}

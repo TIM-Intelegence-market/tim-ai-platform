@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {"id": "NETWORK_TIMEOUT_V1", "category": "NETWORK", "exception": "TimeoutError",
+     "risk": "LOW", "autonomy": "A1", "action": "bounded_reconnect",
+     "verification": ["connection_restored", "no_data_gap"]},
+    {"id": "LAUNCHD_LOG_PATH_V1", "category": "CONFIGURATION", "exception": "",
+     "risk": "MEDIUM", "autonomy": "A2", "action": "review_log_path_permissions",
+     "verification": ["isolated_reproduction", "path_access_verified", "restart_review"]}
+  ]
+}

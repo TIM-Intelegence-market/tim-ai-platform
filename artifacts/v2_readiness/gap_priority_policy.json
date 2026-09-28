@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "program_id": "TIM-V2-FINAL-READINESS-20260801",
+  "status": "GOVERNANCE_AMBIGUITY_OPEN_FAIL_CLOSED",
+  "qualifying_window_approved": false,
+  "machine_range_classification": {
+    "rule": "Without a pre-approved prospective qualifying scientific window, persisted historical ranges are classified P1.",
+    "open_p0_ranges": 0,
+    "open_p1_ranges": 283,
+    "open_p1_minutes": 4600
+  },
+  "governance_blocker_classification": {
+    "blocker_id": "V2-B02",
+    "priority": "P0",
+    "status": "OPEN",
+    "reason": "The binding blocker register assigns DATA_GAP disposition P0 regardless of individual historical range labels."
+  },
+  "ambiguity": {
+    "candidate_ranges_if_frozen_published_window_is_deemed_qualifying": 33,
+    "candidate_minutes": 430,
+    "reason": "The blocker register uses the phrase frozen qualifying window, while the remediation plan and V2-B01 measures require a prospectively defined qualifying interval.",
+    "required_resolution": "A human Governance and Integrity decision must declare the qualifying interval before any range priority is accepted."
+  },
+  "fail_closed_effect": "No readiness gate is promoted. V2-B02 remains an open P0 blocker, and every range overlapping a later approved qualifying interval must be reclassified P0 until independently disposed."
+}

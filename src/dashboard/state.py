@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from src.analytics.research import ResearchAnalyticsEngine
+from src.dashboard.operations import build_operations_snapshot
 from src.insights import ResearchInsightsEngine
 
 from src.dashboard.constants import ALLOWED_TIMELINE_EVENTS, DASHBOARD_VERSION, VISIBLE_LIMIT
@@ -37,6 +38,13 @@ class DashboardState:
     quality_path: Path = field(default_factory=lambda: Path("data/research/quality/latest.json"))
     core_manifest_path: Path = field(default_factory=lambda: Path("config/core_manifest.json"))
     governance_roles_path: Path = field(default_factory=lambda: Path("config/governance_roles.json"))
+    completion_artifacts_path: Path = field(default_factory=lambda: Path("artifacts/v2_completion"))
+    legacy_readiness_artifacts_path: Path = field(default_factory=lambda: Path("artifacts/v2_readiness"))
+    operational_watchdog_path: Path = field(default_factory=lambda: Path("data/operational/watchdog_status.json"))
+    rolling_liveness_path: Path = field(default_factory=lambda: Path("data/operational/rolling_liveness.json"))
+    live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))
+    gate_model_path: Path = field(default_factory=lambda: Path("data/research/status/current_gate_model.json"))
+    phase_c_checkpoint_path: Path = field(default_factory=lambda: Path("/tmp/phase_c_checkpoint.json"))
     runtime_started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     lock: threading.Lock = field(default_factory=threading.Lock)
     _timeline_mtime_ns: int = field(default=-1, init=False)
@@ -103,6 +111,46 @@ class DashboardState:
         except (OSError, ValueError, TypeError):
             return {}
 
+    def _gate_model(self) -> dict[str, Any]:
+        """Read the operator-owned current gate model (read-only, fail-open).
+
+        The dashboard never authors gate states. An absent or oversized file
+        renders every bound gate as UNAVAILABLE instead of a substitute value.
+        """
+        try:
+            raw = self.gate_model_path.read_text(encoding="utf-8")
+            if len(raw) > 262_144:
+                return {}
+            model = json.loads(raw)
+        except (OSError, ValueError, TypeError):
+            return {}
+        if not isinstance(model, dict):
+            return {}
+        # Live supplement: Phase C checkpoint progress (read-only, optional).
+        checkpoint = self._phase_c_progress()
+        if checkpoint and isinstance(model.get("bands"), dict):
+            for gate in model["bands"].get("data_pipeline", []):
+                if isinstance(gate, dict) and gate.get("live_checkpoint") and gate.get("id") == "PHASE_C_HISTORICAL_EXTENSION":
+                    gate["checkpoint"] = checkpoint
+        return model
+
+    def _phase_c_progress(self) -> dict[str, Any]:
+        try:
+            info = self.phase_c_checkpoint_path.stat()
+            if info.st_size > 65_536:
+                return {}
+            state = json.loads(self.phase_c_checkpoint_path.read_text())
+        except (OSError, ValueError, TypeError):
+            return {}
+        if not isinstance(state, dict):
+            return {}
+        return {
+            "trades": state.get("trades"),
+            "pages": state.get("pages"),
+            "last_id": state.get("last_id"),
+            "checkpoint_mtime": datetime.fromtimestamp(info.st_mtime, tz=timezone.utc).isoformat(),
+        }
+
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
             observations = [dict(item) for item in self.active_observations[-VISIBLE_LIMIT:]]
@@ -132,10 +180,14 @@ class DashboardState:
             by_status[key] = by_status.get(key, 0) + 1
         collecting = sum(by_status.get(status, 0) for status in ("OPEN", "MONITORING", "COLLECTING_EVIDENCE"))
         generated_at = datetime.now(timezone.utc)
-        last_data_at = next(
+        last_candle_at = next(
             (item.get("close_time") or item.get("open_time") for item in reversed(candles) if item.get("close_time") or item.get("open_time")),
             None,
         )
+        # Raw persistence happens before candle enrichment.  A backlog in the
+        # latter must not report a healthy, continuously persisted live stream
+        # as stale merely because the most recently completed candle is older.
+        last_data_at = system_health.get("last_raw_persisted_at") or last_candle_at
         parsed_last_data = _parse_time(last_data_at)
         data_age = int((generated_at - parsed_last_data).total_seconds()) if parsed_last_data else None
         stream_running = str(system_health.get("stream", "")).lower() == "running"
@@ -148,6 +200,8 @@ class DashboardState:
             "dashboard": "GREEN",
             "runtime": "GREEN",
             "last_data_at": last_data_at,
+            "last_candle_at": last_candle_at,
+            "data_freshness_source": "DURABLE_RAW_CURSOR" if system_health.get("last_raw_persisted_at") else "COMPLETED_CANDLE",
             "data_age_seconds": data_age if data_age is not None else "MISSING:last_data_at",
             "checked_at": generated_at.isoformat(),
             "runtime_started_at": self.runtime_started_at,
@@ -156,7 +210,7 @@ class DashboardState:
             "ollama_enabled": bool(system_health.get("ollama_enabled", False)),
             "ollama_availability": str(system_health.get("ollama_availability", "DISABLED_BY_POLICY")),
         }
-        return {
+        snapshot = {
                 "timestamp": generated_at.isoformat(),
                 "mode": "OBSERVE",
                 "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC",
@@ -188,8 +242,18 @@ class DashboardState:
                 "research_quality": self._read_dict(self.quality_path),
                 "core_manifest": self._read_dict(self.core_manifest_path),
                 "governance_roles": self._read_dict(self.governance_roles_path),
+                "live_cutover": self._read_dict(self.live_cutover_path),
+                "gate_model": self._gate_model(),
                 "safety": "RESEARCH ONLY — NO ORDERS OR EXECUTION",
         }
+        snapshot["operations"] = build_operations_snapshot(
+            snapshot,
+            self.completion_artifacts_path,
+            self.legacy_readiness_artifacts_path,
+            self.operational_watchdog_path,
+            self.rolling_liveness_path,
+        )
+        return snapshot
 
     def analytics(self) -> dict[str, Any]:
         with self.lock:

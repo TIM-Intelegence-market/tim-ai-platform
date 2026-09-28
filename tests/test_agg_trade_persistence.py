@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta, timezone
+import os
 
 import pytest
 import pytest_asyncio
 
-from config.settings import settings
 from src.data_ingestion.aggregator import CandleAggregator
 from src.database.connection import Database
 from src.database.repository import MarketRepository, _validate_agg_trade_for_persistence, agg_trade_hash
@@ -20,7 +20,10 @@ def trade(trade_id: int, seconds: int = 0, price: float = 100.0) -> Trade:
 
 @pytest_asyncio.fixture
 async def repository():
-    database = Database(settings.database_url)
+    database_url = os.getenv("TIM_DURABLE_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("isolated durable-ingestion PostgreSQL URL not provided")
+    database = Database(database_url)
     await database.connect(); await database.initialize_schema()
     repo = MarketRepository(database)
     async with database.acquire() as connection:
@@ -70,3 +73,11 @@ def test_hash_is_stable_and_governance_rejects_invalid_records():
         _validate_agg_trade_for_persistence(Trade(SYMBOL, 100, 1, BASE, 1, None))
     with pytest.raises(ValueError, match="Future"):
         _validate_agg_trade_for_persistence(Trade(SYMBOL, 100, 1, datetime.now(timezone.utc)+timedelta(minutes=1), 1, False))
+
+
+def test_hash_treats_sub_millisecond_legacy_residue_as_the_same_binance_event():
+    millisecond = BASE + timedelta(milliseconds=123)
+    legacy_residue = millisecond.replace(microsecond=123_958)
+    canonical = Trade(SYMBOL, 100, 1, millisecond, 31, False)
+    legacy = Trade(SYMBOL, 100, 1, legacy_residue, 31, False)
+    assert agg_trade_hash(canonical) == agg_trade_hash(legacy)

@@ -6,9 +6,8 @@ from typing import Any
 from src.dashboard.components import _quality_exception_rows, _retrospective_outcome_rows, _signal_context_rows
 from src.dashboard.constants import DASHBOARD_VERSION, ORDERFLOW_VISIBLE_LIMIT
 from src.dashboard.helpers import _age_seconds, _json_block, _required, _safe, _short
-from src.dashboard.layout import _hero, _layout
+from src.dashboard.layout import _hero, _layout, _strip_states
 from src.dashboard.state import DashboardState
-
 
 def _signal_research_page(state: DashboardState, data: dict[str, Any], selected_id: str | None) -> str:
     rows, counts, summary, cases, active = _signal_research_rows(state, data)
@@ -111,7 +110,8 @@ def _signal_research_page(state: DashboardState, data: dict[str, Any], selected_
         + selected_detail
         + context_matrix
         + retrospective
-        + exceptions
+        + exceptions,
+        strip=_strip_states(data),
     )
 
 

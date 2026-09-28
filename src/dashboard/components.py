@@ -9,7 +9,6 @@ from urllib.parse import quote
 from src.research.retrospective import case_retrospective
 from src.dashboard.helpers import _case_status, _duration, _required, _safe, _short, _status, _status_level
 
-
 def _case_for_observation(observation: dict[str, Any], cases: list[dict[str, Any]]) -> dict[str, Any] | None:
     if observation.get("research_case_id"):
         return {"case_id": observation.get("research_case_id"), "status": observation.get("research_case_status", "OPEN")}

@@ -1,0 +1,260 @@
+{
+  "schema_version": "1.0.0",
+  "program_id": "TIM-V2-FINAL-READINESS-20260801",
+  "generated_at_utc": "2026-08-01T15:23:21Z",
+  "forensic_cutoff_utc": "2026-08-01T15:15:27.258264Z",
+  "status": "FORENSIC_CAUSE_EVIDENCE_REVIEW_OPEN",
+  "readiness_effect": "V2_B02_REMAINS_OPEN",
+  "scope": {
+    "symbol": "BTCUSDT",
+    "timeframe": "1m",
+    "start_inclusive_utc": "2026-07-22T20:14:00Z",
+    "end_exclusive_utc": "2026-08-01T15:15:00Z",
+    "expected_minutes": 14101,
+    "observed_distinct_closed_minutes": 9501,
+    "missing_minutes": 4600,
+    "canonical_missing_ranges": 283,
+    "longest_missing_range_minutes": 685,
+    "transaction_mode": "POSTGRESQL_REPEATABLE_READ_READ_ONLY"
+  },
+  "intervals": [
+    {
+      "start_utc": "2026-07-27T06:59:00Z",
+      "end_utc": "2026-07-27T09:17:00Z",
+      "root_cause_class": "PROCESS_DOWNTIME",
+      "root_cause_status": "CONFIRMED",
+      "evidence": ["last reboot", "data/operational/runtime_launchd.err.log"]
+    },
+    {
+      "start_utc": "2026-08-01T03:18:00Z",
+      "end_utc": "2026-08-01T14:43:00Z",
+      "root_cause_class": "PROCESS_DOWNTIME",
+      "root_cause_status": "CONFIRMED",
+      "evidence": ["last reboot", "launchd PID 552 start time"]
+    }
+  ],
+  "count_semantics": {
+    "frozen_quality_known_data_gap_event_rows": 367,
+    "readiness_new_gap_event_rows": 63,
+    "frozen_canonical_minute_ranges": 33,
+    "current_canonical_minute_ranges": 283,
+    "warning": "EVENT_ROW_COUNTS_ARE_NOT_CANONICAL_RANGE_COUNTS"
+  },
+  "taxonomy_mapping": {
+    "canonical_ledger_root_cause_class": "PROCESS_DOWNTIME",
+    "source_evidence_classes_mapped_to_process_downtime": [
+      "LOCAL_HOST_SLEEP_AND_STREAM_DISCONNECT",
+      "LOCAL_HOST_SLEEP",
+      "LOCAL_HOST_SLEEP_BOUNDARY",
+      "HOST_SHUTDOWN_OR_REBOOT",
+      "COLLECTOR_OR_PROCESS_ABSENCE"
+    ],
+    "status_mapping": {
+      "CONFIRMED": "Two exact intervals have direct reboot/runtime evidence.",
+      "PROBABLE": "SUPPORTED or boundary-qualified mutable host evidence without independent signed disposition."
+    },
+    "readiness_effect": "Taxonomy normalization does not close or downgrade a gap."
+  },
+  "range_allocation": {
+    "frozen": {
+      "ranges": 33,
+      "minutes": 430,
+      "cause": "LOCAL_HOST_SLEEP_AND_STREAM_DISCONNECT",
+      "evidence_status": "SUPPORTED_BY_EXISTING_REPORTS",
+      "evidence": [
+        {
+          "path": "TIM_TRANSPORT_RELIABILITY_REPORT.md",
+          "sha256": "3e45fc99a3c0065317210c8202b4adc97e650438255c106cc91b0682a613c89c"
+        },
+        {
+          "path": "TIM_WEBSOCKET_FAILURE_ANALYSIS.md",
+          "sha256": "b8d8a14709dbe4174416e981e0f5f2606fc2aaf0e0989b8f76abebe6a407ca5d"
+        },
+        {
+          "path": "TIM_COVERAGE_ROOT_CAUSE_ANALYSIS.md",
+          "sha256": "aea5146038f7b6078af46b05a96b950d5dd7f50ee004ca5d1e6b3a8a9b9ad117"
+        }
+      ]
+    },
+    "post_frozen": {
+      "ranges": 250,
+      "minutes": 4170,
+      "classes": [
+        {
+          "cause": "LOCAL_HOST_SLEEP",
+          "ranges": 244,
+          "minutes": 3333,
+          "minimum_range_overlap_ratio": 0.9,
+          "evidence_command": "pmset -g log",
+          "evidence_mutable": true,
+          "status": "SUPPORTED"
+        },
+        {
+          "cause": "LOCAL_HOST_SLEEP_BOUNDARY",
+          "ranges": 4,
+          "minutes": 14,
+          "evidence_command": "pmset -g log",
+          "evidence_mutable": true,
+          "status": "SUPPORTED_WITH_BOUNDARY_QUALIFICATION"
+        },
+        {
+          "cause": "HOST_OR_PROCESS_DOWNTIME",
+          "ranges": 1,
+          "minutes": 138,
+          "start_inclusive_utc": "2026-07-27T06:59:00Z",
+          "end_exclusive_utc": "2026-07-27T09:17:00Z",
+          "host_reboot_local": "2026-07-27T10:56:00+02:00",
+          "runtime_resume_evidence_local": "2026-07-27T11:16:59.985+02:00",
+          "evidence_commands": [
+            "last reboot",
+            "runtime log inspection"
+          ],
+          "status": "SUPPORTED"
+        },
+        {
+          "cause": "HOST_SHUTDOWN_REBOOT_AND_PROCESS_DOWNTIME",
+          "ranges": 1,
+          "minutes": 685,
+          "start_inclusive_utc": "2026-08-01T03:18:00Z",
+          "end_exclusive_utc": "2026-08-01T14:43:00Z",
+          "host_shutdown_local": "2026-08-01T05:18:00+02:00",
+          "host_reboot_local": "2026-08-01T16:42:00+02:00",
+          "tim_runtime_start_local": "2026-08-01T16:43:33+02:00",
+          "tim_pid_at_inspection": 552,
+          "evidence_commands": [
+            "last reboot",
+            "ps -p 552 -o pid=,lstart=,command="
+          ],
+          "status": "SUPPORTED"
+        }
+      ],
+      "arithmetic_check": {
+        "ranges": "244 + 4 + 1 + 1 = 250",
+        "minutes": "3333 + 14 + 138 + 685 = 4170",
+        "status": "CONSISTENT"
+      }
+    },
+    "total_arithmetic_check": {
+      "ranges": "33 + 250 = 283",
+      "minutes": "430 + 4170 = 4600",
+      "status": "CONSISTENT"
+    }
+  },
+  "source_boundary": {
+    "missing_minutes_without_persisted_aggtrades": 4597,
+    "missing_minutes_with_persisted_aggtrades_but_no_closed_candle": 3,
+    "interpretation": "DOMINANT_FAILURE_AT_OR_BEFORE_COLLECTION_WITH_THREE_ADDITIONAL_CANDLE_PERSISTENCE_FAILURES"
+  },
+  "candle_persistence_anomalies": [
+    {
+      "minute_utc": "2026-07-27T06:59:00Z",
+      "raw_trade_count": 155,
+      "minimum_aggregate_trade_id": 4022922860,
+      "maximum_aggregate_trade_id": 4022923014,
+      "candle_present": false,
+      "cause": "ACTIVE_IN_MEMORY_BUCKET_NOT_DURABLY_FLUSHED_BEFORE_DOWNTIME",
+      "status": "SUPPORTED"
+    },
+    {
+      "minute_utc": "2026-07-27T09:16:00Z",
+      "raw_trade_count": 41,
+      "minimum_aggregate_trade_id": 4022998419,
+      "maximum_aggregate_trade_id": 4022998459,
+      "candle_present": false,
+      "cause": "CLOCK_BOUNDARY_VALIDATION_WITH_NONATOMIC_AGGREGATOR_ADVANCE",
+      "runtime_log": {
+        "path": "data/operational/runtime_launchd.err.log",
+        "line": 12060,
+        "timestamp_local": "2026-07-27T11:16:59.985+02:00",
+        "message": "Malformed Binance message skipped: Future candle timestamps are not allowed",
+        "mutable": true
+      },
+      "status": "SUPPORTED"
+    },
+    {
+      "minute_utc": "2026-08-01T03:18:00Z",
+      "raw_trade_count": 13,
+      "minimum_aggregate_trade_id": 4027457348,
+      "maximum_aggregate_trade_id": 4027457360,
+      "candle_present": false,
+      "cause": "ACTIVE_IN_MEMORY_BUCKET_NOT_DURABLY_FLUSHED_BEFORE_SHUTDOWN",
+      "status": "SUPPORTED"
+    }
+  ],
+  "implementation_evidence": [
+    {
+      "path": "src/data_ingestion/binance_ws.py",
+      "source_commit": "5382e9cc399fea6f2f5a535d6b612f139768ad4f",
+      "lines": "37-59",
+      "finding": "WebSocket reconnect is forward-only and has no aggregate-trade-ID catch-up."
+    },
+    {
+      "path": "src/data_ingestion/aggregator.py",
+      "source_commit": "5382e9cc399fea6f2f5a535d6b612f139768ad4f",
+      "lines": "62-81",
+      "finding": "Active candle is in memory; state advances before returned candle persistence is confirmed."
+    },
+    {
+      "path": "main.py",
+      "source_commit": "5382e9cc399fea6f2f5a535d6b612f139768ad4f",
+      "lines": "57-64",
+      "finding": "Raw persistence, aggregator mutation, and candle persistence are separate operations."
+    },
+    {
+      "path": "main.py",
+      "source_commit": "5382e9cc399fea6f2f5a535d6b612f139768ad4f",
+      "lines": "123-148",
+      "finding": "Restart restoration replays only the current hour."
+    },
+    {
+      "path": "src/database/repository.py",
+      "source_commit": "5382e9cc399fea6f2f5a535d6b612f139768ad4f",
+      "lines": "37-40",
+      "finding": "A candle close timestamp fractionally ahead of wall clock is rejected."
+    }
+  ],
+  "concurrent_working_tree_remediation": {
+    "observed": true,
+    "changes": [
+      "Restart replay expanded beyond the current hour.",
+      "Candle close-time validation given a one-second skew tolerance."
+    ],
+    "validated_by_this_audit": false,
+    "runtime_restarted_by_this_audit": false,
+    "readiness_gate_effect": "NONE_UNTIL_TESTED_AND_INDEPENDENTLY_VERIFIED"
+  },
+  "root_cause_classes": [
+    "LOCAL_HOST_SLEEP",
+    "HOST_OR_PROCESS_DOWN",
+    "NO_SEQUENCE_CATCHUP",
+    "IN_MEMORY_UNFLUSHED_BUCKET",
+    "CLOCK_BOUNDARY_VALIDATION_WITH_NONATOMIC_ADVANCE"
+  ],
+  "closure_requirements": [
+    "APPEND_ONLY_283_RANGE_CANONICAL_LEDGER",
+    "DURABLE_LAST_AGGREGATE_TRADE_ID_AND_DETERMINISTIC_CATCHUP",
+    "RETRY_SAFE_CANDLE_PERSISTENCE",
+    "RESTART_REPLAY_FROM_LAST_DURABLE_BOUNDARY",
+    "CLOCK_BOUNDARY_RETRY_OR_SCHEDULING",
+    "APPROVED_HOST_AVAILABILITY_POLICY",
+    "INDEPENDENT_HUMAN_RECONCILIATION_AND_SIGNATURE"
+  ],
+  "limitations": [
+    "Current pmset evidence is a mutable rotating OS log and is summarized here rather than embedded as a complete immutable range ledger.",
+    "Existing frozen reports preserve the earlier sleep correlation; current pmset rotation may no longer contain every historical interval.",
+    "Cause allocation is technical forensic evidence, not a human-approved blocker disposition.",
+    "No backfill, reconstruction, database write, or runtime restart was performed to create this artifact."
+  ],
+  "backfill": {
+    "included": false,
+    "classification": "SEPARATE_GOVERNANCE_CONFLICTED_WORKSTREAM",
+    "can_retroactively_prove_collector_uptime": false
+  },
+  "final_disposition": {
+    "all_ranges_have_supported_technical_cause_class": true,
+    "canonical_signed_ledger_present": false,
+    "independent_reviewer_signature_present": false,
+    "v2_b02_status": "OPEN",
+    "readiness_pass": false
+  }
+}

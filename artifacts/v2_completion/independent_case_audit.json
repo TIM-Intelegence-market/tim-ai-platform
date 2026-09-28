@@ -1,0 +1,85 @@
+{
+  "audit_hash": "5127bf27ba5e4c70e1284058f7fdd25fe33029a4af5a17463d56598eac66a48d",
+  "audit_method": "STRICT_30M_NON_OVERLAPPING_QUALITY_SCREEN_V1",
+  "canonical_independent_unit": {
+    "data_completeness": "EVERY_EXPECTED_SOURCE_BACKED_MINUTE_PRESENT",
+    "end": "START_PLUS_PT30M",
+    "gap_exposure": "MUST_BE_FALSE",
+    "label": "PRE_REGISTERED_CLASS_ONLY",
+    "non_overlap": "NEXT_START_GREATER_THAN_OR_EQUAL_PRIOR_END",
+    "observation_id": "REQUIRED_FOR_POSITIVE_LABELS_NULL_ALLOWED_FOR_CONTROLS",
+    "provenance": "HASH_BOUND_PUBLIC_SOURCE_AND_SOFTWARE_VERSION",
+    "regime": [
+      "volatility",
+      "liquidity",
+      "session",
+      "weekday",
+      "trend_or_range"
+    ],
+    "reviewer": "REAL_ID_REQUIRED_FOR_HUMAN_GATE",
+    "sample_class": [
+      "NEGATIVE",
+      "NEUTRAL_CONTROL",
+      "POSITIVE"
+    ],
+    "source_window": "BINANCE_SPOT_BTCUSDT_PUBLIC_AGGTRADES",
+    "start": "UTC_TIMEZONE_AWARE"
+  },
+  "current": {
+    "audit_hash": "c247abf23f3f3fbd1a8a695499bfd4fffe9303c51a8ef606e54c072024e9f2eb",
+    "cutoff_utc": "2026-08-01T21:01:00Z",
+    "gate_status": "FAIL",
+    "quality_eligible_labels": 19998,
+    "raw_complete_labels": 22225,
+    "required_units": 1000,
+    "strict_independent_units": 298,
+    "unique_source_windows": 8620
+  },
+  "current_negative_or_control_sampling": "ABSENT",
+  "frozen": {
+    "audit_hash": "5b904567fdafdec9da215264e6505c8ca6e16e3423db69b4370c8cded074c94c",
+    "gate_status": "FAIL",
+    "quality_eligible_labels": 910,
+    "raw_complete_labels": 1339,
+    "required_units": 1000,
+    "strict_independent_units": 14,
+    "unique_source_windows": 378
+  },
+  "frozen_negative_or_control_sampling": "ABSENT",
+  "human_approval": false,
+  "manual_review_status": "PENDING_REAL_HUMAN_REVIEW",
+  "qualification": {
+    "campaign_status": "NOT_STARTED_START_GATE_BLOCKED",
+    "dataset_id": "V2_PROSPECTIVE_QUALIFICATION_V1",
+    "gate_status": "TIME_GATE_NOT_STARTED",
+    "required_units": 1000,
+    "strict_independent_units": 0
+  },
+  "sampling_requirements": {
+    "cherry_picking_prohibited": true,
+    "near_duplicate_input_hashes_prohibited": true,
+    "non_overlap": true,
+    "required_classes": [
+      "NEGATIVE",
+      "NEUTRAL_CONTROL",
+      "POSITIVE"
+    ],
+    "required_strata": [
+      "volatility_regime",
+      "liquidity_regime",
+      "utc_session",
+      "weekday",
+      "trend_or_range_if_preregistered"
+    ],
+    "time_blocked": true
+  },
+  "schema_version": "1.0.0",
+  "scientific_gate": "FAIL",
+  "scientific_gate_reasons": [
+    "qualification_independent_units_below_1000",
+    "qualification_campaign_not_started",
+    "negative_and_neutral_controls_not_yet_collected",
+    "real_human_review_absent",
+    "real_human_approval_absent"
+  ]
+}

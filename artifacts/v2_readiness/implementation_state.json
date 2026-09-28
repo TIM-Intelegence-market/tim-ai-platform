@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0.0",
+  "program_id": "TIM-V2-FINAL-READINESS-20260801",
+  "current_phase": "PHASE_22_COMPLETE_FAIL_SAFETY_OR_DATA_INTEGRITY",
+  "phase_execution_semantics": "All phases were executed or explicitly dispositioned; phase completion does not imply gate approval.",
+  "completed_phases": [
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11",
+    "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22"
+  ],
+  "failed_gates": [
+    "V2-B01_CONTINUOUS_COVERAGE",
+    "V2-B02_DATA_GAP_DISPOSITION",
+    "V2-B03_ARTIFACT_AUDIT",
+    "V2-B04_RESEARCH_QUALITY",
+    "TECH_RUNTIME_RELIABILITY",
+    "TECH_SECURITY_SAFE_STATE"
+  ],
+  "external_blockers": [
+    "SECURE_MCP_WORKSPACE_ASSOCIATION",
+    "POSTGRESQL_ADMIN_AUTHORITY_REQUIRED"
+  ],
+  "manual_gates": [
+    "PROSPECTIVE_WINDOW_AND_APPEND_ONLY_DATASET_APPROVAL",
+    "MANUAL_SCIENTIFIC_REVIEW",
+    "HC_1_0_GOVERNANCE_APPROVAL",
+    "NAMED_RACI_ACCEPTANCE",
+    "RELEASE_AUTHORITY_SIGNATURE"
+  ],
+  "overall_status": "FAIL — SAFETY OR DATA INTEGRITY",
+  "v2_core_status": "NOT READY — DATA OR SCIENCE GATE FAILED",
+  "secure_mcp_status": "BLOCKED — EXTERNAL OPENAI ACTION REQUIRED",
+  "mode": "OBSERVE",
+  "trading_approved": false,
+  "v2_approved": false,
+  "manual_scientific_approval_present": false,
+  "last_verified_commit": "106c6d24f16c15b7e3656ec2eaa3914f22986224",
+  "last_verified_commit_role": "final code/evidence-generator commit used by the complete disposable-schema verification",
+  "last_successful_commands": [
+    ".venv/bin/python -m src.tim_manager.cli doctor",
+    ".venv/bin/python -m src.tim_manager.cli validate"
+  ],
+  "last_test_summary": {
+    "full_suite": {
+      "passed": 362,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0,
+      "xpassed": 0,
+      "warnings": 154,
+      "database_isolation": "DISPOSABLE_SCHEMA_PRODUCTION_SCHEMA_NOT_USED"
+    },
+    "focused": {
+      "data_quality_passed": 38,
+      "science_passed": 68,
+      "runtime_recovery_passed": 59,
+      "mcp_graphify_passed": 55,
+      "tim_im_passed": 113
+    },
+    "doctor": "PASS",
+    "validate": "PASS"
+  },
+  "coverage_current": 0.673458,
+  "coverage_target": 0.95,
+  "coverage_window_start_utc": "2026-07-22T20:14:00Z",
+  "coverage_window_end_exclusive_utc": "2026-08-01T15:01:00Z",
+  "open_gap_count": 283,
+  "open_gap_minutes": 4600,
+  "open_gap_p0_range_count": 0,
+  "open_gap_p1_range_count": 283,
+  "p0_candidate_range_count_under_ambiguous_frozen_window_wording": 33,
+  "v2_b02_blocker_priority": "P0",
+  "gap_priority_policy": "artifacts/v2_readiness/gap_priority_policy.json",
+  "frozen_strict_independent_cases": 14,
+  "required_independent_cases": 1000,
+  "runtime_pid_at_evidence_cutoff": 19210,
+  "runtime_started_at_utc": "2026-08-01T15:46:41.333608Z",
+  "next_safe_action": "An authorized PostgreSQL administrator must bind port 5432 to loopback, review pg_hba/firewall, rotate the TIM database credential and remove the tracked default, restart safely, then verify loopback success and LAN refusal.",
+  "updated_at_utc": "2026-08-01T16:18:45Z"
+}

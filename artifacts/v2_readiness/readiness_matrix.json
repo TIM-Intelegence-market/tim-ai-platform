@@ -1,0 +1,441 @@
+{
+  "schema_version": "1.0.0",
+  "program_id": "TIM-V2-FINAL-READINESS-20260801",
+  "generated_at_utc": "2026-08-01T15:23:21Z",
+  "snapshot_evidence_cutoff_utc": "2026-08-01T15:23:21Z",
+  "cross_references_annotated_at_utc": "2026-08-01T16:10:21Z",
+  "artifact_status": "SUPERSEDED_PHASE_18_FORENSIC_SNAPSHOT",
+  "superseded_by": "artifacts/v2_readiness/v2_readiness_matrix_final.json",
+  "repository": {
+    "branch": "codex/v2-final-readiness",
+    "commit_at_authoring": "5382e9cc399fea6f2f5a535d6b612f139768ad4f",
+    "mode": "OBSERVE",
+    "core_version": "1.0",
+    "core_frozen": true
+  },
+  "authority": {
+    "artifact_role": "INTERMEDIATE_DERIVED_READINESS_MATRIX",
+    "automatic_approval_prohibited": true,
+    "existing_decision_vocabulary": [
+      "NOT READY",
+      "CONDITIONALLY READY",
+      "READY FOR V2 PLANNING"
+    ],
+    "v2_ready_vocabulary_conflict": "OPEN",
+    "sources": [
+      {
+        "path": "TIM_CONSTITUTION.md",
+        "sha256": "830f6f6873991277349c2561a254727aa921eebdfcefa154d7228cd143732e87"
+      },
+      {
+        "path": "TIM_ENGINEERING_GOVERNANCE.md",
+        "sha256": "a7a2e344811dfe7be29f09e12f91b0f6d7dc3d090254291d00128c4b64ce8820"
+      },
+      {
+        "path": "TIM_V2_READINESS_CHECKLIST.md",
+        "sha256": "696ad64f88441d65ac5c857ecdc60e73a1d1983bc611b8113a0b97291666f1f5"
+      },
+      {
+        "path": "TIM_V2_GOVERNANCE_APPROVAL_WORKFLOW.md",
+        "sha256": "1d62545c64b93e480e00ab3497a6c2fd8cf154729b5664c227c5e6d99c5508b5"
+      },
+      {
+        "path": "TIM_V2_BLOCKER_REGISTER.md",
+        "sha256": "3b9bbfa9ffb6530dcf8292071e25e3dc3f9a07807c72a6eda99a3e262c44fe9a"
+      },
+      {
+        "path": "TIM_V2_REMEDIATION_PROGRAM.md",
+        "sha256": "c3eb2e623eaa52ebf3540031097adca666a7781fa8f4e1256c828cd4791d27e2"
+      }
+    ]
+  },
+  "evidence_cutoffs": {
+    "published_frozen_utc": "2026-07-23T14:27:42.127641Z",
+    "program_baseline_utc": "2026-08-01T15:00:43.767881Z",
+    "coverage_forensic_transaction_utc": "2026-08-01T15:15:03.034086Z",
+    "gap_forensic_transaction_utc": "2026-08-01T15:15:27.258264Z",
+    "case_forensic_transaction_utc": "2026-08-01T15:15:54.067395Z"
+  },
+  "overall": {
+    "decision": "NOT_READY",
+    "readiness_gate": "FAIL",
+    "v2_approved": false,
+    "v2_planning_approved": false,
+    "v2_implementation_approved": false,
+    "release_approved": false,
+    "trading_approved": false,
+    "human_release_authority_signature_present": false
+  },
+  "coverage": {
+    "primary_definition": {
+      "symbol": "BTCUSDT",
+      "timeframe": "1m",
+      "object": "DISTINCT_PERSISTED_CLOSED_CANDLE_OPEN_TIME",
+      "interval_semantics": "START_INCLUSIVE_END_EXCLUSIVE_UTC",
+      "gate_percent": "95.000",
+      "rounding": "DECIMAL_ROUND_HALF_EVEN_3DP",
+      "synthetic_or_interpolated_minutes_allowed": false
+    },
+    "published_frozen": {
+      "evidence_class": "AUTHORITATIVE_HISTORICAL_GATE",
+      "start_inclusive_utc": "2026-07-22T20:14:00Z",
+      "end_exclusive_utc": "2026-07-23T14:27:00Z",
+      "expected_minutes": 1093,
+      "observed_distinct_minutes": 663,
+      "missing_minutes": 430,
+      "coverage_percent_unrounded": "60.658737419945",
+      "coverage_percent_published": "60.659",
+      "status": "FAIL",
+      "source_path": "data/research/status/tim_v1_readiness.json",
+      "source_sha256": "7b682c57521f766c90e18900e490892d0faec2def4e3dbd65343e8380ab2ef6a"
+    },
+    "program_baseline_diagnostic": {
+      "evidence_class": "CURRENT_DIAGNOSTIC_NOT_QUALIFYING_INTERVAL",
+      "start_inclusive_utc": "2026-07-22T20:14:00Z",
+      "end_inclusive_utc_as_reported": "2026-08-01T15:00:00Z",
+      "boundary_semantics": "SOURCE_REPORTED_END_INCLUSIVE",
+      "expected_minutes": 14087,
+      "observed_distinct_minutes": 9487,
+      "missing_minutes": 4600,
+      "coverage_percent": "67.346",
+      "canonical_gap_ranges": 283,
+      "longest_gap_minutes": 685,
+      "status": "FAIL",
+      "boundary_discrepancy": "Coverage block reports end inclusive 15:00Z while relation summary reports latest candle 14:59Z.",
+      "source_path": "artifacts/v2_readiness/baseline_manifest.json",
+      "source_sha256": "5aadcac34a7326ab668ac574d7fa910d8a742adb8013f01ba1c3ca232f5a1ee0"
+    },
+    "forensic_current_diagnostic": {
+      "evidence_class": "CURRENT_DIAGNOSTIC_READ_ONLY_REPEATABLE_READ",
+      "start_inclusive_utc": "2026-07-22T20:14:00Z",
+      "end_exclusive_utc": "2026-08-01T15:15:00Z",
+      "expected_minutes": 14101,
+      "observed_distinct_minutes": 9501,
+      "missing_minutes": 4600,
+      "coverage_percent": "67.378200",
+      "canonical_gap_ranges": 283,
+      "longest_gap_minutes": 685,
+      "status": "FAIL",
+      "qualifying_interval_approved": false
+    },
+    "august_monitoring_diagnostic": {
+      "evidence_class": "MONTH_DERIVED_MONITORING_ONLY",
+      "start_inclusive_utc": "2026-08-01T00:08:00Z",
+      "end_exclusive_utc": "2026-08-01T15:15:00Z",
+      "expected_minutes": 907,
+      "observed_distinct_minutes": 71,
+      "missing_minutes": 836,
+      "coverage_percent": "7.828004",
+      "status": "FAIL",
+      "qualifying_interval_approved": false
+    },
+    "prospective_qualifying_run": {
+      "approved": false,
+      "minimum_duration_approved": false,
+      "immutable_cutoff_present": false,
+      "status": "NOT_STARTED"
+    },
+    "gate_status": "FAIL"
+  },
+  "data_gap_evidence": {
+    "frozen_canonical_ranges": 33,
+    "frozen_missing_minutes": 430,
+    "current_canonical_ranges": 283,
+    "current_missing_minutes": 4600,
+    "post_frozen_ranges": 250,
+    "post_frozen_missing_minutes": 4170,
+    "raw_gap_log_rows_frozen_quality_artifact": 367,
+    "readiness_new_gap_event_rows": 63,
+    "canonical_signed_ledger_present": false,
+    "range_causes_forensically_allocated": true,
+    "independent_human_verification_present": false,
+    "status": "OPEN"
+  },
+  "data_quality": {
+    "artifact_audit": {
+      "status": "FAIL",
+      "artifacts_checked": 15,
+      "artifacts_passed": 13,
+      "artifacts_failed": 2,
+      "source_path": "data/research/audit/latest.json",
+      "source_sha256": "6620681264615c88d58702cf773a0a938fc0ea227d394f162d3dbfa7613391fb"
+    },
+    "research_quality": {
+      "status": "FAIL",
+      "records_checked": 7479,
+      "known_data_gap_event_rows": 367,
+      "source_path": "data/research/quality/latest.json",
+      "source_sha256": "eff0ce873d63d9398cf8b51f646c62ad7681bdd93ae7938fd6ed99ac1c6701d4"
+    },
+    "aggtrade_sequence": {
+      "rows": 4009771,
+      "distinct_ids": 4009771,
+      "minimum_id": 4020624599,
+      "maximum_id": 4027557716,
+      "missing_ids_inside_span": 2923347,
+      "sequence_coverage_percent": "57.835032",
+      "status": "FAIL"
+    },
+    "validated_case_audit": {
+      "frozen_rows": 1339,
+      "unique_observation_ids": 1339,
+      "unique_validation_hashes": 1339,
+      "unique_input_hashes": 1339,
+      "distinct_observed_timestamps": 554,
+      "adjacent_30m_overlap_pairs": 1338,
+      "adjacent_pairs_total": 1338,
+      "greedy_nonoverlapping_30m_sensitivity": 30,
+      "late_completions_in_original_observation_window": 59,
+      "human_reviewer_fields_present": false,
+      "regime_fields_present": false,
+      "approved_independence_rule_present": false,
+      "at_least_1000_after_quality_filter_demonstrated": false,
+      "status": "FAIL_OR_UNKNOWN_PENDING_RULE_APPROVAL"
+    }
+  },
+  "backfill": {
+    "official_binance_spot_aggtrades_technically_feasible": true,
+    "included_in_any_reported_coverage": false,
+    "governance_status": "CONFLICT",
+    "authorized_for_readiness_acceptance": false,
+    "required_scope": "ISOLATED_APPEND_ONLY_VERSIONED_V2_EVIDENCE",
+    "frozen_v1_mutation_allowed": false,
+    "ohlcv_substitution_allowed": false
+  },
+  "secure_mcp": {
+    "classification": "SEPARATE_INTEGRATION_CONCERN",
+    "tim_core_readiness_gate": false,
+    "used_to_pass_or_fail_core_scientific_readiness": false
+  },
+  "concurrent_uncommitted_remediation_at_snapshot_cutoff": {
+    "observed": true,
+    "coverage_or_gap_gate_promoted": false,
+    "reason": "At this 15:23Z snapshot only, working-tree runtime fixes had not yet been restarted or qualification-tested; final status is recorded in v2_readiness_matrix_final.json."
+  },
+  "gates": [
+    {
+      "gate_id": "V2-B01",
+      "name": "Continuous Coverage",
+      "required": true,
+      "current_status": "fail",
+      "acceptance_rule": "Coverage is at least 95.000% for the complete predefined interval; numerator, denominator, boundaries and gaps are reproducible and contain no reconstruction.",
+      "authoritative_source": "TIM_V2_BLOCKER_REGISTER.md — V2-B01; TIM_V2_READINESS_CHECKLIST.md — section B",
+      "evidence_refs": ["artifacts/v2_readiness/coverage_final.json", "artifacts/v2_readiness/coverage_definition.json", "docs/v2_readiness/data_coverage_acceptance.md"],
+      "owner": "Scientific Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "V2-B02",
+      "name": "DATA_GAP disposition",
+      "required": true,
+      "current_status": "fail",
+      "acceptance_rule": "Every unique gap has evidence, reproducible boundaries, cause status and disposition; the final qualifying interval has zero unresolved new gaps.",
+      "authoritative_source": "TIM_V2_BLOCKER_REGISTER.md — V2-B02; TIM_V2_READINESS_CHECKLIST.md — section C",
+      "evidence_refs": ["artifacts/v2_readiness/data_gap_ledger.jsonl", "artifacts/v2_readiness/system_downtime_evidence.json", "docs/v2_readiness/data_gap_root_cause_analysis.md"],
+      "owner": "Integrity Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "V2-B03",
+      "name": "Artifact Audit",
+      "required": true,
+      "current_status": "fail",
+      "acceptance_rule": "Every audit issue has a governance-approved disposition and independent verification; no FAIL is manually overwritten.",
+      "authoritative_source": "TIM_V2_BLOCKER_REGISTER.md — V2-B03; TIM_V2_READINESS_CHECKLIST.md — section D",
+      "evidence_refs": ["data/research/audit/latest.json", "docs/v2_readiness/independent_data_quality_review.md"],
+      "owner": "Integrity Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "V2-B04",
+      "name": "Research Quality",
+      "required": true,
+      "current_status": "fail",
+      "acceptance_rule": "Required quality metrics are reproducible and all P0 quality issues are independently verified or formally retained as explicit limitations.",
+      "authoritative_source": "TIM_V2_BLOCKER_REGISTER.md — V2-B04; TIM_V2_READINESS_CHECKLIST.md — section E",
+      "evidence_refs": ["data/research/quality/latest.json", "artifacts/v2_readiness/validated_case_audit.json", "docs/v2_readiness/validated_case_quality_report.md"],
+      "owner": "QA Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "V2-B05",
+      "name": "Historical Provenance",
+      "required": true,
+      "current_status": "blocked",
+      "acceptance_rule": "All records in a prospectively approved V2 scope have complete provenance; legacy deficiencies remain immutable and classified without retroactive metadata.",
+      "authoritative_source": "TIM_V2_BLOCKER_REGISTER.md — V2-B05; TIM_V2_READINESS_CHECKLIST.md — section F",
+      "evidence_refs": ["artifacts/v2_readiness/backfill_source_probe.json", "docs/v2_readiness/data_coverage_methodology.md"],
+      "owner": "Research Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "V2-B06",
+      "name": "Manual Scientific Review",
+      "required": true,
+      "current_status": "pending",
+      "acceptance_rule": "An authorized human panel reviews the immutable evidence pack and records a signed decision with scope, limitations and dissent.",
+      "authoritative_source": "TIM_V2_BLOCKER_REGISTER.md — V2-B06; TIM_V2_READINESS_CHECKLIST.md — section I",
+      "evidence_refs": ["docs/v2_readiness/manual_scientific_review_packet.md", "docs/v2_readiness/manual_scientific_approval_form.md"],
+      "owner": "Scientific Lead and Independent Scientific Reviewer (unassigned human holders)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "V2-B07",
+      "name": "HC-1.0 Governance",
+      "required": true,
+      "current_status": "pending",
+      "acceptance_rule": "The exact HC-1.0 contract version is signed by the human Release Authority with immutable revision and verification evidence.",
+      "authoritative_source": "TIM_V2_BLOCKER_REGISTER.md — V2-B07; TIM_V2_READINESS_CHECKLIST.md — section G",
+      "evidence_refs": ["TIM_HASH_CONTRACT_SPECIFICATION_V2.md", "TIM_V2_GOVERNANCE_APPROVAL_WORKFLOW.md"],
+      "owner": "Governance Lead and human Release Authority (unassigned holders)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "V2-B08",
+      "name": "Responsibility and Independence",
+      "required": true,
+      "current_status": "pending",
+      "acceptance_rule": "Named human holders accept all RACI roles, declare conflicts and satisfy segregation-of-duties rules.",
+      "authoritative_source": "TIM_V2_BLOCKER_REGISTER.md — V2-B08; TIM_V2_READINESS_CHECKLIST.md — section H",
+      "evidence_refs": ["TIM_V2_RACI_MATRIX.md", "config/governance_roles.json"],
+      "owner": "Governance Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-A",
+      "name": "Evidence Freeze",
+      "required": true,
+      "current_status": "pending",
+      "acceptance_rule": "A reviewer verifies a complete immutable evidence pack, cut-off and SHA-256 inventory.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section A",
+      "evidence_refs": ["artifacts/v2_readiness/baseline_manifest.json", "artifacts/v2_readiness/final_test_summary.json"],
+      "owner": "Independent Integrity Auditor (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-B",
+      "name": "Continuous Coverage Verification",
+      "required": true,
+      "current_status": "fail",
+      "acceptance_rule": "All section-B items are evidenced and V2-B01 is at least VERIFIED.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section B",
+      "evidence_refs": ["artifacts/v2_readiness/coverage_final.json"],
+      "owner": "Integrity Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-C",
+      "name": "DATA_GAP Verification",
+      "required": true,
+      "current_status": "fail",
+      "acceptance_rule": "All section-C items are evidenced, unresolved qualifying-window gaps are zero and V2-B02 is at least VERIFIED.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section C",
+      "evidence_refs": ["artifacts/v2_readiness/data_gap_ledger.jsonl"],
+      "owner": "Integrity Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-D",
+      "name": "Artifact Audit Verification",
+      "required": true,
+      "current_status": "fail",
+      "acceptance_rule": "All section-D items are independently verified and V2-B03 is at least VERIFIED.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section D",
+      "evidence_refs": ["data/research/audit/latest.json"],
+      "owner": "Independent Integrity Auditor (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-E",
+      "name": "Research Quality Verification",
+      "required": true,
+      "current_status": "fail",
+      "acceptance_rule": "All section-E quality, replay, provenance and gap items are verified and V2-B04 is at least VERIFIED.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section E",
+      "evidence_refs": ["data/research/quality/latest.json", "docs/v2_readiness/observation_research_integrity_review.md"],
+      "owner": "QA Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-F",
+      "name": "Historical Provenance Verification",
+      "required": true,
+      "current_status": "blocked",
+      "acceptance_rule": "A prospective V2 evidence boundary and complete new-scope provenance are approved without changing legacy hashes.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section F",
+      "evidence_refs": ["artifacts/v2_readiness/backfill_source_probe.json"],
+      "owner": "Research Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-G",
+      "name": "HC-1.0 Governance Verification",
+      "required": true,
+      "current_status": "pending",
+      "acceptance_rule": "All section-G contract and conformance requirements are reviewed and signed by the Release Authority.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section G",
+      "evidence_refs": ["TIM_HASH_CONTRACT_SPECIFICATION_V2.md"],
+      "owner": "Human Release Authority (unassigned holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-H",
+      "name": "Responsibility and Independence Verification",
+      "required": true,
+      "current_status": "pending",
+      "acceptance_rule": "All named holders and segregation rules in section H are accepted and verified.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section H",
+      "evidence_refs": ["TIM_V2_RACI_MATRIX.md", "config/governance_roles.json"],
+      "owner": "Governance Lead (unassigned human holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-I",
+      "name": "Manual Scientific Review Verification",
+      "required": true,
+      "current_status": "pending",
+      "acceptance_rule": "The authorized human review is completed and signed after all prerequisite blocker evidence is verified.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section I",
+      "evidence_refs": ["docs/v2_readiness/manual_scientific_approval_form.md"],
+      "owner": "Independent Scientific Reviewer (human; unassigned)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    },
+    {
+      "gate_id": "CHECKLIST-J",
+      "name": "Final Readiness Assessment",
+      "required": true,
+      "current_status": "fail",
+      "acceptance_rule": "All blockers are explicitly disposed, machine and human evidence agree, and the human Release Authority signs the exact scoped decision.",
+      "authoritative_source": "TIM_V2_READINESS_CHECKLIST.md — section J",
+      "evidence_refs": ["docs/v2_readiness/final_v2_readiness_report.md", "artifacts/v2_readiness/v2_readiness_matrix_final.json"],
+      "owner": "Human Release Authority (unassigned holder)",
+      "external_dependency": false,
+      "manual_approval_required": true
+    }
+  ],
+  "supporting_documents": [
+    "docs/v2_readiness/authoritative_readiness_definition.md",
+    "docs/v2_readiness/data_coverage_methodology.md",
+    "docs/v2_readiness/data_gap_root_cause_analysis.md",
+    "docs/v2_readiness/data_coverage_acceptance.md",
+    "docs/v2_readiness/independent_data_quality_review.md",
+    "artifacts/v2_readiness/system_downtime_evidence.json"
+  ]
+}

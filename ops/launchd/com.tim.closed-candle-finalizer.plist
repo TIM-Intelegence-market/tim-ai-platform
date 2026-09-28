@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.tim.closed-candle-finalizer</string>
+  <key>ProgramArguments</key><array>
+    <string>/Users/tim/Documents/TIM/tim/.venv/bin/python</string>
+    <string>/Users/tim/Documents/TIM/tim/scripts/finalize_closed_1m_candles.py</string>
+    <string>--lookback-minutes</string><string>90</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>/Users/tim</string>
+    <key>TIM_DATABASE_SECRET_PROVIDER</key><string>file</string>
+    <key>TIM_DATABASE_SECRET_FILE</key><string>/Users/tim/Library/Application Support/TIM/database-password</string>
+  </dict>
+  <key>StartInterval</key><integer>15</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/closed_candle_finalizer.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/closed_candle_finalizer.err.log</string>
+</dict></plist>

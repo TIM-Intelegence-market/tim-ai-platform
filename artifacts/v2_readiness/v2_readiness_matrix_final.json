@@ -1,0 +1,198 @@
+{
+  "schema_version": "1.0.0",
+  "program_id": "TIM-V2-FINAL-READINESS-20260801",
+  "evidence_cutoff_utc": "2026-08-01T16:18:45Z",
+  "evidence_commit": "106c6d24f16c15b7e3656ec2eaa3914f22986224",
+  "mode": "OBSERVE",
+  "overall_status": "FAIL — SAFETY OR DATA INTEGRITY",
+  "v2_core_status": "NOT READY — DATA OR SCIENCE GATE FAILED",
+  "secure_mcp_status": "BLOCKED — EXTERNAL OPENAI ACTION REQUIRED",
+  "trading_approved": false,
+  "v2_approved": false,
+  "manual_scientific_approval_present": false,
+  "gates": [
+    {
+      "gate_id": "V2-B01",
+      "name": "Continuous Coverage",
+      "status": "FAIL",
+      "acceptance_rule": "At least 95.000% over the unchanged qualifying interval with independent agreement.",
+      "evidence": ["coverage_final.json", "coverage_definition.json"],
+      "test": "17 coverage/case-audit tests PASS; product and audit hashes agree twice",
+      "commit": "dba8b61",
+      "open_limitation": "67.346%, 9,487/14,087; 4,600 missing minutes.",
+      "reviewer_requirement": "Scientific Lead and independent Integrity Lead"
+    },
+    {
+      "gate_id": "V2-B02",
+      "name": "DATA_GAP disposition",
+      "status": "FAIL",
+      "acceptance_rule": "Every gap disposed and zero unresolved gaps in the qualifying interval.",
+      "evidence": ["data_gap_ledger.jsonl", "gap_priority_policy.json", "system_downtime_evidence.json"],
+      "test": "Deterministic IDs/range collapse/root-cause tests PASS",
+      "commit": "dba8b61",
+      "open_limitation": "V2-B02 remains an OPEN P0 governance blocker. The machine ledger labels 283 historical ranges P1 because no prospective qualifying window is approved; 33 frozen-window ranges are P0 candidates under conflicting governance wording. Two causes are confirmed and 281 probable.",
+      "reviewer_requirement": "Integrity Lead and QA"
+    },
+    {
+      "gate_id": "V2-B03",
+      "name": "Artifact Audit",
+      "status": "FAIL",
+      "acceptance_rule": "Every audit issue independently disposed without rewriting historical FAIL evidence.",
+      "evidence": ["../../data/research/audit/latest.json", "../../docs/v2_readiness/independent_data_quality_review.md"],
+      "test": "Historical artifact remains 13/15 PASS",
+      "commit": "not closed",
+      "open_limitation": "Two historical artifact classes remain failed/unapproved.",
+      "reviewer_requirement": "Independent Integrity Auditor"
+    },
+    {
+      "gate_id": "V2-B04",
+      "name": "Research Quality",
+      "status": "FAIL",
+      "acceptance_rule": "Quality, independence, bias, provenance and regime requirements pass.",
+      "evidence": ["validated_case_audit.json", "../../docs/v2_readiness/validated_case_quality_report.md"],
+      "test": "68/68 science tests and 24/24 replay strata PASS",
+      "commit": "dba8b61 and 5e6d9bb",
+      "open_limitation": "Frozen 1,339 labels yield 910 quality labels, 378 unique windows and only 14 strict non-overlapping units.",
+      "reviewer_requirement": "QA Lead and independent Scientific Reviewer"
+    },
+    {
+      "gate_id": "V2-B05",
+      "name": "Historical Provenance",
+      "status": "BLOCKED",
+      "acceptance_rule": "Prospective scope has 100% lineage and legacy history remains immutable.",
+      "evidence": ["backfill_source_probe.json", "../../docs/v2_readiness/data_coverage_methodology.md"],
+      "test": "Official checksum-sidecar probe 10/10; import count zero",
+      "commit": "dba8b61",
+      "open_limitation": "Ten filename-bound checksum sidecars are available, but raw archive payload availability and integrity were not probed. Any download/import remains governance-blocked for a separate append-only V2 dataset.",
+      "reviewer_requirement": "Research Lead and human Governance Lead"
+    },
+    {
+      "gate_id": "V2-B06",
+      "name": "Manual Scientific Review",
+      "status": "PENDING HUMAN APPROVAL",
+      "acceptance_rule": "Authorized human reviewers sign one allowed decision over the immutable packet.",
+      "evidence": ["../../docs/v2_readiness/manual_scientific_review_packet.md", "../../docs/v2_readiness/manual_scientific_approval_form.md", "manual_review_sample_manifest.json"],
+      "test": "Governance assertions: approval=false, reviewer/signature empty",
+      "commit": "40a8bc4",
+      "open_limitation": "No human review or signature exists.",
+      "reviewer_requirement": "Independent Scientific Reviewer (human)"
+    },
+    {
+      "gate_id": "V2-B07",
+      "name": "HC-1.0 Governance",
+      "status": "PENDING HUMAN APPROVAL",
+      "acceptance_rule": "Exact HC-1.0 contract decision is signed by the Release Authority.",
+      "evidence": ["../../TIM_HASH_CONTRACT_SPECIFICATION_V2.md", "../../TIM_V2_GOVERNANCE_APPROVAL_WORKFLOW.md"],
+      "test": "No signature detected",
+      "commit": "not closed",
+      "open_limitation": "Governance decision absent.",
+      "reviewer_requirement": "Human Release Authority"
+    },
+    {
+      "gate_id": "V2-B08",
+      "name": "Responsibility and Independence",
+      "status": "PENDING HUMAN APPROVAL",
+      "acceptance_rule": "Named human holders accept all RACI roles and conflicts.",
+      "evidence": ["../../TIM_V2_RACI_MATRIX.md", "../../config/governance_roles.json"],
+      "test": "All authoritative checklist reviewer rows remain UNASSIGNED",
+      "commit": "not closed",
+      "open_limitation": "Named holders/signatories absent.",
+      "reviewer_requirement": "Governance Lead"
+    },
+    {
+      "gate_id": "TECH-REPLAY",
+      "name": "Deterministic scientific sample replay",
+      "status": "PASS",
+      "acceptance_rule": "Two fixed-cut replays produce equal hashes with no future data or trading action.",
+      "evidence": ["scientific_replay_run_1.json", "scientific_replay_run_2.json"],
+      "test": "24/24 strata twice; identical replay hash",
+      "commit": "dba8b61 and 5e6d9bb",
+      "open_limitation": "The current-cut sample is separate from the frozen gate population; its hash covers selected cases only and does not bind raw trades, case provenance, independence or human approval.",
+      "reviewer_requirement": "Human reviewer still required for scientific decision"
+    },
+    {
+      "gate_id": "TECH-RUNTIME",
+      "name": "Runtime Reliability",
+      "status": "FAIL",
+      "acceptance_rule": "Lossless restart, durable source catch-up, continuous observability, queue safety and log retention pass.",
+      "evidence": ["runtime_observability_snapshot.json", "../../docs/v2_readiness/runtime_reliability_report.md"],
+      "test": "59/59 focused runtime tests and one controlled restart PASS",
+      "commit": "5e6d9bb",
+      "open_limitation": "No durable exchange catch-up cursor, real queue/backpressure metrics, watchdog or log rotation.",
+      "reviewer_requirement": "Independent Operational Reviewer"
+    },
+    {
+      "gate_id": "TECH-SECURITY",
+      "name": "Security and Safe State",
+      "status": "FAIL",
+      "acceptance_rule": "OBSERVE-only, loopback-only services, secret handling and safe deactivation all pass.",
+      "evidence": ["../../docs/v2_readiness/security_and_safe_state_acceptance.md"],
+      "test": "Dashboard negative bind tests and 55 MCP tests PASS",
+      "commit": "5e6d9bb",
+      "open_limitation": "PostgreSQL listens on LAN with SSL off and a tracked default credential; admin authority is required to close it.",
+      "reviewer_requirement": "Principal Security Reviewer and database administrator"
+    },
+    {
+      "gate_id": "TECH-DOCTOR",
+      "name": "Doctor",
+      "status": "PASS",
+      "acceptance_rule": "Doctor exits zero with all required checks true.",
+      "evidence": ["final_verification_logs/doctor_validate.log"],
+      "test": "Exit 0, PASS",
+      "commit": "106c6d2",
+      "open_limitation": "Does not measure scientific coverage.",
+      "reviewer_requirement": "None for machine result"
+    },
+    {
+      "gate_id": "TECH-VALIDATE",
+      "name": "Validate",
+      "status": "PASS",
+      "acceptance_rule": "Validate exits zero with all required checks true.",
+      "evidence": ["final_verification_logs/doctor_validate.log"],
+      "test": "Exit 0, PASS",
+      "commit": "106c6d2",
+      "open_limitation": "Does not replace scientific review.",
+      "reviewer_requirement": "None for machine result"
+    },
+    {
+      "gate_id": "TECH-FULL-SUITE",
+      "name": "Complete Test Suite",
+      "status": "PASS",
+      "acceptance_rule": "Complete isolated suite has zero failures, skips, XFAIL and XPASS.",
+      "evidence": ["final_test_summary.json", "final_verification_junit.xml"],
+      "test": "362 passed; 0 failed/skipped/XFAIL/XPASS; 154 deprecation warnings",
+      "commit": "106c6d2",
+      "open_limitation": "Warnings are non-blocking technical debt.",
+      "reviewer_requirement": "QA review"
+    },
+    {
+      "gate_id": "INTEGRATION-MCP",
+      "name": "Secure MCP External Connection",
+      "status": "NOT APPLICABLE",
+      "acceptance_rule": "Separate integration gate; not a TIM V2 Core gate.",
+      "evidence": ["../../docs/v2_readiness/mcp_external_blocker_status.md"],
+      "test": "55/55 local tests PASS; external connection not attempted",
+      "commit": "9d0077a",
+      "open_limitation": "External workspace/organization association and authenticated support case absent.",
+      "reviewer_requirement": "OpenAI support/admin action"
+    }
+  ],
+  "checklist_sections": {
+    "A": "PENDING HUMAN APPROVAL",
+    "B": "FAIL",
+    "C": "FAIL",
+    "D": "FAIL",
+    "E": "FAIL",
+    "F": "BLOCKED",
+    "G": "PENDING HUMAN APPROVAL",
+    "H": "PENDING HUMAN APPROVAL",
+    "I": "PENDING HUMAN APPROVAL",
+    "J": "FAIL"
+  },
+  "final_blockers": [
+    "PostgreSQL LAN exposure and tracked default credential",
+    "Coverage 67.346% below 95%; V2-B02 is P0 OPEN and 283 machine-ledger ranges remain undisposed",
+    "Only 14 strict independent frozen-case windows versus 1,000 required",
+    "Human scientific review, HC-1.0 approval and named RACI signatories absent"
+  ]
+}

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 
-DASHBOARD_VERSION = "3.0.0"
+DASHBOARD_VERSION = "4.1.0"
 
 
 VISIBLE_LIMIT = 50
 
 
 ORDERFLOW_VISIBLE_LIMIT = 100
+
+
+HISTORY_LIMIT = 2000  # /api/orderflow/history: newest observations and validations each
+MAX_RESPONSE_BYTES = 2_000_000
 
 
 ALLOWED_TIMELINE_EVENTS = {

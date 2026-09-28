@@ -1,0 +1,52 @@
+schema_version: "1.0.0"
+status: "prepared_not_connected"
+default_action: exclude
+
+full_content:
+  - "docs/**"
+  - "TIM_MASTER_PROMPTS/**"
+  - "schemas/**"
+  - "src/**"
+  - "tests/**"
+  - "config/**"
+
+metadata_only:
+  - "artifacts/**"
+  - "research/results/**"
+  - "datasets/**"
+
+exclude:
+  - ".git/**"
+  - ".env"
+  - ".env.*"
+  - "**/secrets/**"
+  - "**/keys/**"
+  - "**/wallet/**"
+  - "**/private/**"
+  - "**/backups/**"
+  - "**/raw_data/**"
+  - "data/**"
+  - "output/**"
+  - "**/*.log"
+  - "**/*.db"
+  - "**/*.sqlite"
+  - "**/*.sqlite3"
+  - "**/__pycache__/**"
+  - ".pytest_cache/**"
+  - ".venv/**"
+  - ".venv-research/**"
+
+precedence:
+  - exclude
+  - metadata_only
+  - full_content
+
+required_metadata:
+  - id
+  - name
+  - entity_type
+  - version
+  - source
+  - source_hash
+  - observed_at
+  - relationships

@@ -1,9 +1,9 @@
 from datetime import datetime,timedelta,timezone
+import os
 from uuid import uuid4
 
 import pytest
 
-from config.settings import settings
 from src.database.connection import Database
 from src.database.repository import MarketRepository
 from src.models.market_data import Candle,Observation,ObservationKind
@@ -13,7 +13,10 @@ from src.research.case_engine import ResearchCaseEngine
 
 @pytest.mark.asyncio
 async def test_observation_rolls_back_when_case_persistence_fails(monkeypatch):
-    database=Database(settings.database_url);await database.connect();repository=MarketRepository(database)
+    database_url = os.getenv("TIM_DURABLE_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("isolated durable-ingestion PostgreSQL URL not provided")
+    database=Database(database_url);await database.connect();repository=MarketRepository(database)
     opened=datetime.now(timezone.utc)-timedelta(days=2);candle=Candle("AUDITTEST","1m",opened,opened+timedelta(minutes=1),100.0,101.0,99.0,100.0,1.0,1)
     await repository.upsert_candle(candle)
     observation=Observation(ObservationKind.REJECTION,"AUDITTEST","1m",candle.close_time,"TEST_ONLY atomicity",50,{"test_only":True},provenance="PUBLIC_MARKET_DATA_DETERMINISTIC",rule_id="bronxc",rule_version="1.0.0",input_hash=candle_input_hash([candle]),observation_id=uuid4())

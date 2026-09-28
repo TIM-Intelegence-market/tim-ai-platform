@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import html
 import json
+from dataclasses import field
 from datetime import datetime, timezone
 from typing import Any
-
 
 def _safe(value: Any, fallback: str = "—") -> str:
     if value is None or value == "":
@@ -83,3 +83,10 @@ def _status_level(value: Any, severity: str = "WARNING") -> tuple[str, str]:
     if normalized in {"YELLOW", "WARNING", "WAITING", "MONITORING", "DEGRADED", "PARTIAL", "NOT_READY_FOR_V2", "OPEN", "OPEN_ISSUES"}:
         return "YELLOW", severity
     return "RED", "CRITICAL" if severity in {"HIGH", "CRITICAL"} else severity
+
+
+def _number(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

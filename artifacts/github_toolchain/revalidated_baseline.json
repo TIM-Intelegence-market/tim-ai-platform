@@ -1,0 +1,67 @@
+{
+  "program": "TIM-GITHUB-SECURITY-QUALITY-TOOLCHAIN-2.0",
+  "phase": "REVALIDATED_BASELINE",
+  "captured_at_utc": "2026-08-03T12:53:00Z",
+  "repository": {
+    "local_root": "/Users/tim/Documents/TIM/tim",
+    "github": "uezeyiraydin-cell/tim-ai-platform",
+    "visibility": "private",
+    "owner_type": "User",
+    "owner_login": "uezeyiraydin-cell",
+    "default_branch": "main",
+    "viewer_permission": "ADMIN",
+    "merge_strategy": {"merge_commit": true, "squash": true, "rebase": true}
+  },
+  "git": {
+    "work_branch": "opencode/github-security-quality",
+    "base_branch": "codex/v2-finish-first",
+    "expected_head": "079063f",
+    "actual_head": "079063f",
+    "head_matches_expected": true,
+    "reset_performed": false,
+    "staged_files": 0,
+    "modified_files": 15,
+    "untracked_files": 39,
+    "upstream_configured": false
+  },
+  "auth": {
+    "gh_authenticated": true,
+    "login": "uezeyiraydin-cell",
+    "scopes": ["gist", "read:org", "repo", "workflow"]
+  },
+  "live_security_features": {
+    "repository_rulesets": {"status": "BLOCKED", "reason": "Upgrade to GitHub Pro or make this repository public (403)"},
+    "branch_protection": {"status": "BLOCKED", "reason": "Upgrade to GitHub Pro or make this repository public (403)"},
+    "secret_scanning": {"status": "BLOCKED", "reason": "Not available on plan (404)"},
+    "secret_scanning_push_protection": {"status": "BLOCKED", "reason": "Not available on plan (404)"},
+    "code_scanning_default_setup": {"status": "BLOCKED", "reason": "Not available on plan (404)"},
+    "dependabot_alerts": {"status": "ENABLED", "via": "PUT vulnerability-alerts -> 204"},
+    "automated_security_fixes": {"status": "ENABLED", "enabled": true, "paused": false},
+    "vulnerability_alerts": {"status": "ENABLED", "http": "204"},
+    "actions_permissions": {"enabled": true, "allowed_actions": "selected"},
+    "selected_actions": {"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": []},
+    "webhooks": [],
+    "installed_apps_repo_scope": []
+  },
+  "ci_coverage": {
+    "test_framework": "pytest",
+    "full_suite_command": "scripts/run_full_test_suite.py",
+    "prior_suite": {"passed": 362, "failed": 0, "warnings": 154},
+    "doctor": "PASS (prior)",
+    "validate": "PASS (prior)",
+    "coverage_tool": null,
+    "coverage_xml_present": false,
+    "junit_present": true,
+    "workflows_dir": false,
+    "dependabot_config": false,
+    "codeql_config": false,
+    "codecov_config": false,
+    "sonar_config": false,
+    "codeowners": false,
+    "pr_template": true
+  },
+  "protected_scope": {
+    "v2_finish_first_modified": ["TIM_Postgres_Setup.command","TIM_Reset_Postgres_Password.command","config/settings.py","docker-compose.yml","docs/governance/github_security_check.md","docs/governance/repository_audit.md","main.py","scripts/reset_postgres_password.sh","scripts/run_full_test_suite.py","scripts/setup_postgres.sh","src/data_ingestion/__init__.py","src/data_ingestion/binance_ws.py","src/database/schema.sql","src/operational/logging.py","tests/test_full_suite_runner_isolation.py"]
+  },
+  "status": "REVALIDATED_BASELINE_COMPLETE"
+}

@@ -1,0 +1,410 @@
+{
+  "audit_agreement": true,
+  "audit_tolerance": 0.0,
+  "calculation_code_hash": "b771fdcff840f0494dcf82c1f6e969dec5e968efeeae383d6c3a49cb18d896ae",
+  "clock_skew_semantics": {
+    "definition": "trade_time is later than ingest_timestamp",
+    "field": "data_manifest.raw_quality.clock_skew_rows",
+    "threshold_seconds": 0
+  },
+  "data_manifest": {
+    "candle_quality": {
+      "distinct_open_times": 9487,
+      "invalid_rows": 0,
+      "non_closed_rows": 0,
+      "total_rows": 9487
+    },
+    "case_rows": 21474,
+    "coverage_window": {
+      "end_utc": "2026-08-01T15:01:00Z",
+      "start_utc": "2026-07-22T20:14:00Z"
+    },
+    "database": {
+      "database": "tim",
+      "host": "127.0.0.1",
+      "port": 5432,
+      "scheme": "postgresql"
+    },
+    "raw_quality": {
+      "clock_skew_rows": 4834,
+      "distinct_ids": 4008026,
+      "first_time": "2026-07-22T20:14:08.336000Z",
+      "invalid_rows": 0,
+      "last_time": "2026-08-01T15:00:59.188000Z",
+      "max_id": 4027556021,
+      "max_lag_seconds": "999.951363",
+      "min_id": 4020624655,
+      "over_five_minute_lag_rows": 5100,
+      "rows": 4008026
+    },
+    "raw_sequence_gap_ranges": 304,
+    "raw_sequence_missing_ids": 2923341,
+    "snapshot": "(4606156, 4606156, ())"
+  },
+  "data_manifest_hash": "4121b12cfc223a5d0020d105e522e34ec50682d477b275827d4d3d83f9918e5d",
+  "database_snapshot": "(4606156, 4606156, ())",
+  "database_version": "PostgreSQL 18.4 on x86_64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit",
+  "dimensions": {
+    "date_partitions": [
+      {
+        "coverage": 1.0,
+        "end_utc": "2026-07-23T00:00:00Z",
+        "expected": 226,
+        "missing": 0,
+        "observed": 226,
+        "start_utc": "2026-07-22T20:14:00Z",
+        "utc_date": "2026-07-22"
+      },
+      {
+        "coverage": 0.701389,
+        "end_utc": "2026-07-24T00:00:00Z",
+        "expected": 1440,
+        "missing": 430,
+        "observed": 1010,
+        "start_utc": "2026-07-23T00:00:00Z",
+        "utc_date": "2026-07-23"
+      },
+      {
+        "coverage": 1.0,
+        "end_utc": "2026-07-25T00:00:00Z",
+        "expected": 1440,
+        "missing": 0,
+        "observed": 1440,
+        "start_utc": "2026-07-24T00:00:00Z",
+        "utc_date": "2026-07-24"
+      },
+      {
+        "coverage": 1.0,
+        "end_utc": "2026-07-26T00:00:00Z",
+        "expected": 1440,
+        "missing": 0,
+        "observed": 1440,
+        "start_utc": "2026-07-25T00:00:00Z",
+        "utc_date": "2026-07-25"
+      },
+      {
+        "coverage": 1.0,
+        "end_utc": "2026-07-27T00:00:00Z",
+        "expected": 1440,
+        "missing": 0,
+        "observed": 1440,
+        "start_utc": "2026-07-26T00:00:00Z",
+        "utc_date": "2026-07-26"
+      },
+      {
+        "coverage": 0.904167,
+        "end_utc": "2026-07-28T00:00:00Z",
+        "expected": 1440,
+        "missing": 138,
+        "observed": 1302,
+        "start_utc": "2026-07-27T00:00:00Z",
+        "utc_date": "2026-07-27"
+      },
+      {
+        "coverage": 0.919444,
+        "end_utc": "2026-07-29T00:00:00Z",
+        "expected": 1440,
+        "missing": 116,
+        "observed": 1324,
+        "start_utc": "2026-07-28T00:00:00Z",
+        "utc_date": "2026-07-28"
+      },
+      {
+        "coverage": 0.500694,
+        "end_utc": "2026-07-30T00:00:00Z",
+        "expected": 1440,
+        "missing": 719,
+        "observed": 721,
+        "start_utc": "2026-07-29T00:00:00Z",
+        "utc_date": "2026-07-29"
+      },
+      {
+        "coverage": 0.188889,
+        "end_utc": "2026-07-31T00:00:00Z",
+        "expected": 1440,
+        "missing": 1168,
+        "observed": 272,
+        "start_utc": "2026-07-30T00:00:00Z",
+        "utc_date": "2026-07-30"
+      },
+      {
+        "coverage": 0.176389,
+        "end_utc": "2026-08-01T00:00:00Z",
+        "expected": 1440,
+        "missing": 1186,
+        "observed": 254,
+        "start_utc": "2026-07-31T00:00:00Z",
+        "utc_date": "2026-07-31"
+      },
+      {
+        "coverage": 0.064373,
+        "end_utc": "2026-08-01T15:01:00Z",
+        "expected": 901,
+        "missing": 843,
+        "observed": 58,
+        "start_utc": "2026-08-01T00:00:00Z",
+        "utc_date": "2026-08-01"
+      }
+    ],
+    "end_to_end": {
+      "candle_minutes_with_raw_aggtrade_evidence": 9487,
+      "coverage": 0.673458,
+      "expected_minutes": 14087
+    },
+    "event_sequence": {
+      "coverage": 0.578245,
+      "distinct_persisted_aggregate_trade_ids": 4008026,
+      "expected_aggregate_trade_ids_between_bounds": 6931367,
+      "gap_ranges": 304,
+      "missing_aggregate_trade_ids": 2923341
+    },
+    "field_completeness": {
+      "candle_invalid_rows": 0,
+      "raw_clock_skew_rows": 4834,
+      "raw_invalid_rows": 0
+    },
+    "persistence": {
+      "coverage": 0.673458,
+      "distinct_closed_candle_minutes": 9487,
+      "duplicates": 0
+    },
+    "rolling": {
+      "PT10080M": {
+        "calculation_method": "PRODUCT_EXPECTED_SET_V1",
+        "closed_only": true,
+        "coverage": 0.58631,
+        "coverage_percent": "58.631",
+        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+        "duplicates_excluded": 0,
+        "excluded_intervals": [],
+        "expected_interval": "PT1M",
+        "expected_observations": 10080,
+        "instrument": "BTCUSDT",
+        "invalid_observations": 0,
+        "market": "BINANCE_SPOT",
+        "metric_name": "tim_closed_1m_continuous_coverage_rolling_10080m",
+        "metric_version": "2.0.0",
+        "missing_observations": 4170,
+        "result_hash": "a772a11602bb2d7fb53b13309c9980adbdacce26ed54cda93d5ab7b51a1d4d5a",
+        "status": "FAIL",
+        "synthetic_observations": 0,
+        "target": 0.95,
+        "valid_observations": 5910,
+        "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+        "window_end_utc": "2026-08-01T15:01:00Z",
+        "window_start_utc": "2026-07-25T15:01:00Z"
+      },
+      "PT1440M": {
+        "calculation_method": "PRODUCT_EXPECTED_SET_V1",
+        "closed_only": true,
+        "coverage": 0.077083,
+        "coverage_percent": "7.708",
+        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+        "duplicates_excluded": 0,
+        "excluded_intervals": [],
+        "expected_interval": "PT1M",
+        "expected_observations": 1440,
+        "instrument": "BTCUSDT",
+        "invalid_observations": 0,
+        "market": "BINANCE_SPOT",
+        "metric_name": "tim_closed_1m_continuous_coverage_rolling_1440m",
+        "metric_version": "2.0.0",
+        "missing_observations": 1329,
+        "result_hash": "63cdda93079d786409c51250aada032e0e8b44d74c5ccfde17c35ac05bfa1caf",
+        "status": "FAIL",
+        "synthetic_observations": 0,
+        "target": 0.95,
+        "valid_observations": 111,
+        "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+        "window_end_utc": "2026-08-01T15:01:00Z",
+        "window_start_utc": "2026-07-31T15:01:00Z"
+      },
+      "PT60M": {
+        "calculation_method": "PRODUCT_EXPECTED_SET_V1",
+        "closed_only": true,
+        "coverage": 0.3,
+        "coverage_percent": "30.000",
+        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+        "duplicates_excluded": 0,
+        "excluded_intervals": [],
+        "expected_interval": "PT1M",
+        "expected_observations": 60,
+        "instrument": "BTCUSDT",
+        "invalid_observations": 0,
+        "market": "BINANCE_SPOT",
+        "metric_name": "tim_closed_1m_continuous_coverage_rolling_60m",
+        "metric_version": "2.0.0",
+        "missing_observations": 42,
+        "result_hash": "8b1d2201707a333bfeca6ba226c01698fd7b7a2db9f31249926cd5e494f476eb",
+        "status": "FAIL",
+        "synthetic_observations": 0,
+        "target": 0.95,
+        "valid_observations": 18,
+        "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+        "window_end_utc": "2026-08-01T15:01:00Z",
+        "window_start_utc": "2026-08-01T14:01:00Z"
+      }
+    },
+    "schema_validated": {
+      "coverage": 0.673458,
+      "invalid_candles": 0,
+      "valid_closed_candles": 9487
+    },
+    "source_availability": {
+      "coverage": 0.673671,
+      "expected_minutes": 14087,
+      "minutes_with_persisted_aggtrades": 9490
+    },
+    "temporal": {
+      "calculation_method": "PRODUCT_EXPECTED_SET_V1",
+      "closed_only": true,
+      "coverage": 0.673458,
+      "coverage_percent": "67.346",
+      "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+      "duplicates_excluded": 0,
+      "excluded_intervals": [],
+      "expected_interval": "PT1M",
+      "expected_observations": 14087,
+      "instrument": "BTCUSDT",
+      "invalid_observations": 0,
+      "market": "BINANCE_SPOT",
+      "metric_name": "tim_closed_1m_continuous_coverage",
+      "metric_version": "2.0.0",
+      "missing_observations": 4600,
+      "result_hash": "2fcd9c0871dd906afd64e4eab4dbe1d055909f1bbad6d16a69986d023533d65c",
+      "status": "FAIL",
+      "synthetic_observations": 0,
+      "target": 0.95,
+      "valid_observations": 9487,
+      "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+      "window_end_utc": "2026-08-01T15:01:00Z",
+      "window_start_utc": "2026-07-22T20:14:00Z"
+    }
+  },
+  "evidence_cutoff_utc": "2026-08-01T15:01:00Z",
+  "frozen_published_reproduction": {
+    "audit": {
+      "calculation_method": "AUDIT_SORTED_MERGE_V1",
+      "closed_only": true,
+      "coverage": 0.606587,
+      "coverage_percent": "60.659",
+      "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+      "duplicates_excluded": 0,
+      "excluded_intervals": [],
+      "expected_interval": "PT1M",
+      "expected_observations": 1093,
+      "instrument": "BTCUSDT",
+      "invalid_observations": 0,
+      "market": "BINANCE_SPOT",
+      "metric_name": "tim_closed_1m_continuous_coverage",
+      "metric_version": "2.0.0",
+      "missing_observations": 430,
+      "result_hash": "28c220c5eacb9cffa621f05f825d798b082d58e36c05d662c1c8b82d6ca08135",
+      "status": "FAIL",
+      "synthetic_observations": 0,
+      "target": 0.95,
+      "valid_observations": 663,
+      "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+      "window_end_utc": "2026-07-23T14:27:00Z",
+      "window_start_utc": "2026-07-22T20:14:00Z"
+    },
+    "expected_published_percent": "60.659",
+    "product": {
+      "calculation_method": "PRODUCT_EXPECTED_SET_V1",
+      "closed_only": true,
+      "coverage": 0.606587,
+      "coverage_percent": "60.659",
+      "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+      "duplicates_excluded": 0,
+      "excluded_intervals": [],
+      "expected_interval": "PT1M",
+      "expected_observations": 1093,
+      "instrument": "BTCUSDT",
+      "invalid_observations": 0,
+      "market": "BINANCE_SPOT",
+      "metric_name": "tim_closed_1m_continuous_coverage",
+      "metric_version": "2.0.0",
+      "missing_observations": 430,
+      "result_hash": "80915f0a7fab46b9cb3b3db621443f951f20f33ae21c17764a2721c8878868f8",
+      "status": "FAIL",
+      "synthetic_observations": 0,
+      "target": 0.95,
+      "valid_observations": 663,
+      "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+      "window_end_utc": "2026-07-23T14:27:00Z",
+      "window_start_utc": "2026-07-22T20:14:00Z"
+    },
+    "reproduced": true
+  },
+  "gap_summary": {
+    "missing_minutes": 4600,
+    "ranges": 283,
+    "root_cause_class": {
+      "PROCESS_DOWNTIME": 283
+    },
+    "root_cause_status": {
+      "CONFIRMED": 2,
+      "PROBABLE": 281
+    },
+    "severity": {
+      "P1": 283
+    }
+  },
+  "gate_status": "FAIL",
+  "generated_at_utc": "2026-08-01T15:40:37.833594Z",
+  "gap_priority_policy": "artifacts/v2_readiness/gap_priority_policy.json",
+  "independent_audit_calculation": {
+    "calculation_method": "AUDIT_SORTED_MERGE_V1",
+    "closed_only": true,
+    "coverage": 0.673458,
+    "coverage_percent": "67.346",
+    "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+    "duplicates_excluded": 0,
+    "excluded_intervals": [],
+    "expected_interval": "PT1M",
+    "expected_observations": 14087,
+    "instrument": "BTCUSDT",
+    "invalid_observations": 0,
+    "market": "BINANCE_SPOT",
+    "metric_name": "tim_closed_1m_continuous_coverage",
+    "metric_version": "2.0.0",
+    "missing_observations": 4600,
+    "result_hash": "135bed40a2b3858d16bfd8f6f78a11adf4152f0e58aca75942a3757e1f4d0891",
+    "status": "FAIL",
+    "synthetic_observations": 0,
+    "target": 0.95,
+    "valid_observations": 9487,
+    "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+    "window_end_utc": "2026-08-01T15:01:00Z",
+    "window_start_utc": "2026-07-22T20:14:00Z"
+  },
+  "mode": "OBSERVE",
+  "product_calculation": {
+    "calculation_method": "PRODUCT_EXPECTED_SET_V1",
+    "closed_only": true,
+    "coverage": 0.673458,
+    "coverage_percent": "67.346",
+    "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+    "duplicates_excluded": 0,
+    "excluded_intervals": [],
+    "expected_interval": "PT1M",
+    "expected_observations": 14087,
+    "instrument": "BTCUSDT",
+    "invalid_observations": 0,
+    "market": "BINANCE_SPOT",
+    "metric_name": "tim_closed_1m_continuous_coverage",
+    "metric_version": "2.0.0",
+    "missing_observations": 4600,
+    "result_hash": "2fcd9c0871dd906afd64e4eab4dbe1d055909f1bbad6d16a69986d023533d65c",
+    "status": "FAIL",
+    "synthetic_observations": 0,
+    "target": 0.95,
+    "valid_observations": 9487,
+    "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+    "window_end_utc": "2026-08-01T15:01:00Z",
+    "window_start_utc": "2026-07-22T20:14:00Z"
+  },
+  "schema_version": "1.0.0",
+  "trading_approved": false,
+  "v2_approved": false
+}

@@ -1,0 +1,24 @@
+{
+  "command": "/Users/tim/Documents/TIM/tim/.venv/bin/python -m pytest -q --junitxml=/Users/tim/Documents/TIM/tim/artifacts/test_reports/v2_tim_im.junit.xml tests/tim_manager",
+  "complete": true,
+  "database_isolation": {
+    "cleaned": true,
+    "created": true,
+    "production_schema_used_by_tests": false,
+    "schema": "tim_v2_tim_im_20260801"
+  },
+  "duration_seconds": 25.77,
+  "exit_code": 0,
+  "failed": 0,
+  "finished_at": "2026-08-01T15:45:00.260531+00:00",
+  "passed": 113,
+  "pytest_version": "pytest 8.4.2",
+  "python_version": "3.14.6",
+  "skipped": 0,
+  "started_at": "2026-08-01T15:44:34.987833+00:00",
+  "temporary_directory": "/var/folders/0k/xr_qg7k55210_v3cz99l1zsw0000gn/T/tim-pytest-oiou4asl",
+  "timed_out": false,
+  "warnings": 1,
+  "xfailed": 0,
+  "xpassed": 0
+}

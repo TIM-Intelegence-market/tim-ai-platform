@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tim.continuous-coverage</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/tim/Documents/TIM/tim/.venv/bin/python</string>
+    <string>/Users/tim/Documents/TIM/tim/scripts/continuous_coverage_campaign.py</string>
+    <string>--declaration</string><string>/Users/tim/Documents/TIM/tim/artifacts/continuous_coverage/campaign_20260924T0913Z.json</string>
+    <string>--status</string><string>/Users/tim/Documents/TIM/tim/artifacts/continuous_coverage/status_20260924T0913Z.json</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>/Users/tim</string>
+    <key>TIM_DATABASE_SECRET_PROVIDER</key><string>file</string>
+    <key>TIM_DATABASE_SECRET_FILE</key><string>/Users/tim/Library/Application Support/TIM/database-password</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>60</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/continuous_coverage_launchd.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/continuous_coverage_launchd.err.log</string>
+</dict>
+</plist>

@@ -37,6 +37,46 @@ def doctor() -> dict:
     return {"status": "PASS" if all(value is True or value == "optional_disabled" for value in checks.values()) else "FAIL", "checks": checks}
 
 
+def _graphify_command(args: argparse.Namespace) -> int:
+    from .graphify_mcp import GraphifyMCPConfig, GraphifyReadOnlyClient
+
+    config = GraphifyMCPConfig.load()
+    if args.graphify_command == "status":
+        print(
+            json.dumps(
+                {
+                    "enabled_by_default": config.enabled,
+                    "transport": config.transport,
+                    "server_name": config.server_name,
+                    "read_only": config.read_only,
+                    "trust_class": config.trust_class,
+                    "graph_hash": config.expected_graph_hash,
+                    "allowed_tools": list(config.allowed_tools),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    with GraphifyReadOnlyClient(config, enabled_override=args.enable) as client:
+        if args.graphify_command == "tools":
+            payload = {"tools": client.list_tools()}
+        elif args.graphify_command == "search":
+            payload = client.search_codegraph(args.value).to_dict()
+        elif args.graphify_command == "node":
+            payload = client.inspect_node(args.value).to_dict()
+        elif args.graphify_command == "relationships":
+            payload = client.inspect_relationships(args.value).to_dict()
+        elif args.graphify_command == "community":
+            payload = client.inspect_community(args.community_id).to_dict()
+        elif args.graphify_command == "health":
+            payload = client.get_graph_health().to_dict()
+        else:
+            raise ValueError("unknown Graphify command")
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tim-manager")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -47,6 +87,24 @@ def main(argv: list[str] | None = None) -> int:
     diff_parser = sub.add_parser("diff"); diff_parser.add_argument("old"); diff_parser.add_argument("new")
     export_parser = sub.add_parser("export"); export_parser.add_argument("--output", required=True)
     sub.add_parser("serve-mcp")
+    graphify_parser = sub.add_parser("graphify")
+    graphify_parser.add_argument(
+        "--enable",
+        action="store_true",
+        help="explicitly enable the disabled-by-default local client for this invocation",
+    )
+    graphify_sub = graphify_parser.add_subparsers(dest="graphify_command", required=True)
+    graphify_sub.add_parser("status")
+    graphify_sub.add_parser("tools")
+    graphify_sub.add_parser("health")
+    graphify_search = graphify_sub.add_parser("search")
+    graphify_search.add_argument("value")
+    graphify_node = graphify_sub.add_parser("node")
+    graphify_node.add_argument("value")
+    graphify_relationships = graphify_sub.add_parser("relationships")
+    graphify_relationships.add_argument("value")
+    graphify_community = graphify_sub.add_parser("community")
+    graphify_community.add_argument("community_id", type=int)
     args = parser.parse_args(argv)
     try:
         if args.command == "init":
@@ -79,7 +137,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "serve-mcp":
             from .mcp_server import serve
             serve(); return 0
-    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        if args.command == "graphify":
+            return _graphify_command(args)
+    except (FileNotFoundError, ValueError, PermissionError, RuntimeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     return 1
@@ -87,4 +147,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

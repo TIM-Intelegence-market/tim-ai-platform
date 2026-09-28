@@ -39,13 +39,15 @@ def test_catalog_has_no_empty_or_identical_noise() -> None:
 
 
 def test_navigation_is_grouped_and_marks_current_page() -> None:
-    assert [group for group, _ in NAV_GROUPS] == ["Overview", "Forschung", "Betrieb", "Werkzeuge"]
+    # Dashboard 4.1: one Control Center navigation holds every live page plus the pilot view.
+    assert [group for group, _ in NAV_GROUPS] == ["BETRIEB", "FORSCHUNG", "FREIGABE", "SYSTEM", "WERKZEUGE"]
     routes = [href for _, links in NAV_GROUPS for _, href in links]
-    assert len(routes) == len(set(routes)) == 12 and "/pilot" in routes
+    assert len(routes) == len(set(routes)) == 22 and "/pilot" in routes
     page = render(DashboardState(), "Research Cases")
-    assert "<details class='navgroup active'><summary>Forschung</summary>" in page
+    assert "<p class='nav__label'>FORSCHUNG</p>" in page
     assert "<a href='/cases' class='active' aria-current='page'>Research-Fälle</a>" in page
-    assert "class='menu-toggle'" in page and "aria-label='Hauptnavigation'" in page
+    assert page.count("aria-current='page'") == 1 and "aria-label='Hauptnavigation'" in page
+    assert ">Recherche-Werkzeug</a>" in page  # menu label of /research differs from the generic "Forschung"
 
 
 def test_safety_markers_stay_visible_after_redesign() -> None:
@@ -76,7 +78,8 @@ def test_no_page_leaks_unrendered_template_code() -> None:
 def test_signal_research_shows_each_queue_card_once() -> None:
     page = render(DashboardState(), "Signal Research")
     assert page.count("Aktuelle Research-Warteschlange") == 1
-    assert "<b>Pipeline-Version:</b> 3.0.0" in page
+    from src.dashboard.constants import DASHBOARD_VERSION
+    assert f"<b>Pipeline-Version:</b> {DASHBOARD_VERSION}" in page
 
 
 # --- P4: proof export, orderflow history API, retrospective on case detail ---------------------------------
@@ -256,3 +259,71 @@ def test_export_script_survives_dashboard_without_history_api(tmp_path: Path) ->
     assert result.returncode == 0 and "Warnung" in result.stderr
     export = json.loads((tmp_path / "case_old.json").read_text())
     assert verify_case_export(export) and "retrospective" not in export
+
+
+# --- 4.1 security review: CSP is fixed per route, stored data never becomes allowed code ---------
+
+
+def _fetch(port: int, path: str):
+    import http.client
+
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    connection.request("GET", path, headers={"Host": f"127.0.0.1:{port}"})
+    response = connection.getresponse()
+    return response.status, response.getheader("Content-Security-Policy"), response.read().decode()
+
+
+def test_stored_markup_is_escaped_and_never_whitelisted_by_the_csp(tmp_path) -> None:
+    from src.dashboard.app import _content_security_policy
+
+    validator = tmp_path / "state.json"
+    validator.write_text(json.dumps({"status": "x'><script>alert(1)</script>", "health_monitor": {"level": "y'><style>*{}</style>"}}))
+    server = DashboardServer(DashboardState(validator_path=validator), port=0)
+    server.start()
+    try:
+        status, csp, page = _fetch(server.server.server_address[1], "/")
+    finally:
+        server.stop()
+    assert status == 200
+    assert "<script>alert(1)</script>" not in page and "<style>*{}</style>" not in page
+    assert csp == _content_security_policy()
+
+
+def test_pilot_and_proof_pages_get_their_fixed_policies() -> None:
+    from src.dashboard.pages.pilot import PILOT_CSP
+
+    server = DashboardServer(_orderflow_state(), port=0)
+    server.start()
+    try:
+        port = server.server.server_address[1]
+        status, csp, _ = _fetch(port, "/pilot")
+        assert status == 200 and csp == PILOT_CSP and "script-src 'none'" in csp
+        status, csp, page = _fetch(port, "/exports/case/case_ofproof.html")
+        assert status == 200 and "unsafe-inline" not in csp and "script-src 'sha256-" in csp
+        assert page.count("<script>") == 1  # the verifier; the payload block is type='text/plain'
+    finally:
+        server.stop()
+
+
+def test_proof_policy_fails_closed_when_blocks_were_injected() -> None:
+    from src.dashboard.layout import _content_security_policy_for
+
+    page = "<style>a{}</style><script>ok()</script><script type='text/plain'>data</script>"
+    assert "script-src 'sha256-" in _content_security_policy_for(page)
+    injected = page + "<script>evil()</script>"
+    assert "style-src 'none'; script-src 'none'" in _content_security_policy_for(injected)
+
+
+def test_orderflow_history_is_bounded() -> None:
+    from src.dashboard.constants import HISTORY_LIMIT
+
+    items = [{"observation_id": f"o{i}"} for i in range(HISTORY_LIMIT + 5)]
+    server = DashboardServer(DashboardState(orderflow_observations=list(items), orderflow_validations=list(items)), port=0)
+    server.start()
+    try:
+        status, _, body = _fetch(server.server.server_address[1], "/api/orderflow/history")
+    finally:
+        server.stop()
+    history = json.loads(body)
+    assert status == 200 and len(history["observations"]) == len(history["validations"]) == HISTORY_LIMIT
+    assert history["validations"][-1]["observation_id"] == f"o{HISTORY_LIMIT + 4}"

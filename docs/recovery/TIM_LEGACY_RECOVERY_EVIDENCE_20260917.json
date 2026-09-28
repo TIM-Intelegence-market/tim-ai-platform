@@ -1,0 +1,440 @@
+{
+ "artifact": "TIM_LEGACY_RECOVERY_EVIDENCE",
+ "artifact_version": 1,
+ "recovery_id": "tim-legacy-20260917-01",
+ "archived_at": "2026-09-17T10:30:42.762444+00:00",
+ "symbol": "BTCUSDT",
+ "git_head": "48b09c4",
+ "code_version": "resolve_verify_limit=10+containment",
+ "full_manifest_hash": "ed6aeae99ac56c6d2d5450b93744e2772392b72328321b256fed89629a5e556c",
+ "verify_limit_live": 10,
+ "gate_a": {
+  "merged_ranges": 26,
+  "verified_complete": 26,
+  "incidents_mapped": 102755
+ },
+ "canary": {
+  "range": "bc97713a0769",
+  "expected_rows": 1,
+  "actual_rows": 1,
+  "status": "PASS"
+ },
+ "execution": {
+  "batches_total": 231,
+  "batches_pass": 231,
+  "batches_fail": 0,
+  "targeted_incidents": 102755,
+  "successfully_updated": 102755,
+  "ranges_done": 26
+ },
+ "final_accounting": {
+  "open_before": 102755,
+  "open_after": 0,
+  "resolved_before": 25,
+  "resolved_after": 102780,
+  "exact": true
+ },
+ "trade_immutability": {
+  "agg_trades_updates": 0,
+  "agg_trades_deletes": 0,
+  "method": "pg_stat_user_tables + min/max"
+ },
+ "live_runtime": {
+  "process_count": 1,
+  "ws_disconnect_delta": 0,
+  "trading": "disabled"
+ },
+ "ranges": [
+  {
+   "merged_range_id": "bb6d33234aa8a1e78562b663310ff3ab1c4b805a45c165e18c91d5e393331564",
+   "start_trade_id": 4029821214,
+   "end_trade_id": 4064029994,
+   "expected_span": 34208781,
+   "actual_count": 34208781,
+   "incident_count": 102722,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 54022,
+    "OUTBOX_CAPACITY": 48700
+   },
+   "verification_hash": "bb1ad7df9ac6fe39099bcb0d3af740713a01ab44725bb3aeef44e9d785b263f3",
+   "verify_seconds": 4.18,
+   "status": "RANGE_DONE",
+   "resolved_count": 102722
+  },
+  {
+   "merged_range_id": "c499e11456055d65c38e44f8edd0e27f5bbc3eb232ff0e3f8d62d458d3409d05",
+   "start_trade_id": 4064120647,
+   "end_trade_id": 4065015655,
+   "expected_span": 895009,
+   "actual_count": 895009,
+   "incident_count": 9,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 9
+   },
+   "verification_hash": "b9f91b0c58f60fae715c3b3f813d23d6de2044df4e5199d4955c33b33f62aaad",
+   "verify_seconds": 0.1,
+   "status": "RANGE_DONE",
+   "resolved_count": 9
+  },
+  {
+   "merged_range_id": "bc97713a0769b7d8ef9d44ee14a8440004caa12870516c8f29c0cfac465d47d9",
+   "start_trade_id": 4066026344,
+   "end_trade_id": 4066026905,
+   "expected_span": 562,
+   "actual_count": 562,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "455de9c7400da93782454f41591bf18aee9290f48f59c8d515e5a83f6099d213",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "1d67b8e39485d4167af37075a511e25dee01d885c1ba0c33657c5de152946d85",
+   "start_trade_id": 4066026906,
+   "end_trade_id": 4066027112,
+   "expected_span": 207,
+   "actual_count": 207,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "52c025be4c9d8197c95737450fe5c4e1a55ee9d114c4c7b685248606dca96cd7",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "c59720c5fe039703fc1f768d2ec96a21b38e3e31245e06c4cd1f212818e9c17c",
+   "start_trade_id": 4066027113,
+   "end_trade_id": 4066027269,
+   "expected_span": 157,
+   "actual_count": 157,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "edaecb0d2fd8609631b99d339a416937253a9660584bf52b82d117061e96d638",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "df2ccbdb09455507abf93f9fb3bcabde2db39e3059b881985f37129436d64cf9",
+   "start_trade_id": 4066027270,
+   "end_trade_id": 4066027828,
+   "expected_span": 559,
+   "actual_count": 559,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "de5a37a5435fecd9e2880abd083dfa5ebccb321be5dd1825a11353b14b3901bc",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "0e2e89c6ccb7274fa8bd61198184ef77d6f52ebe5b467603d824a783e26a1b1a",
+   "start_trade_id": 4066027829,
+   "end_trade_id": 4066028402,
+   "expected_span": 574,
+   "actual_count": 574,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "4bd45ed1e6e2f8b3c5477f5a92df3cff61992e1013a715c7327fb4a8e2be0fbc",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "be096d9736e22fd07f964f341df4b2bc7f53e60c13b4100c3a4b4106a0b2bd26",
+   "start_trade_id": 4066028403,
+   "end_trade_id": 4066028644,
+   "expected_span": 242,
+   "actual_count": 242,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "b15e899c2c5d15e8dd22dfe33d6d39fda128eade40189a3974ebd1f4097fabef",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "bf35f43fa338f08dac5d21cef6ad26bd2a9ee9ac39b6d3d487de72b884a32d32",
+   "start_trade_id": 4066028645,
+   "end_trade_id": 4066028791,
+   "expected_span": 147,
+   "actual_count": 147,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "0a389dd8f185ec867b65ec0f7ec3fa344d22e443ba066f6df7f9170520c51d96",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "6f992088e33d066c0e676f5a805070b6cbe4584fdc45ef541a12bcf9b8471f68",
+   "start_trade_id": 4066028792,
+   "end_trade_id": 4066029230,
+   "expected_span": 439,
+   "actual_count": 439,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "e2349cf8498399ded0065fc59fa3cffeb870605fb8e82ec45dbbbff9da214d7b",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "a7eb8bd93029aad042e3b9aabb529c4c6aaefa62f2fd0bdd01f94c2d0f120f3f",
+   "start_trade_id": 4066029231,
+   "end_trade_id": 4066029604,
+   "expected_span": 374,
+   "actual_count": 374,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "8dc4be20f3e90eab694e0caab2afd750f8f9d31b44d4c8ba289ca10cab6602b8",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "2ce82281cf9ba41c8fe843f7d21c08bf98b6f5f4bf90dd328ccfa3c47e9f0639",
+   "start_trade_id": 4066029605,
+   "end_trade_id": 4066029870,
+   "expected_span": 266,
+   "actual_count": 266,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "38aab71587dbf63a4a4ff01ef5b4eda1b5beff35f993af4b95cbe6cdcf66a995",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "c946131221263617f533b0daa6b9c5cd8b8cd34f7590490eda8df1c786d8b893",
+   "start_trade_id": 4066029871,
+   "end_trade_id": 4066030171,
+   "expected_span": 301,
+   "actual_count": 301,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "b051f72a743bbffec281ff0de3ead910c71abfe89d4bf7ad00eff70b7ba419fa",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "071626e22c9223a9ef514615069a3f0d45972d37e9d3614dab2b8eee5ff51d1c",
+   "start_trade_id": 4066030172,
+   "end_trade_id": 4066030351,
+   "expected_span": 180,
+   "actual_count": 180,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "74a8e8371a8d2d336dd85f746d9d9f60bb0e30f185b6075d939a51ec29b6333a",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "a249d8514217e5c137481b97935bc434ba60e595b935603288f174d7c89e5047",
+   "start_trade_id": 4066030352,
+   "end_trade_id": 4066030511,
+   "expected_span": 160,
+   "actual_count": 160,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "a3cf439963dc0f7787aaf1c6e3b5b7d4bfd0fa0ce10a4e04afa6e12082620061",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "7d41acc57554ae229b8ce1359d3d9fbe27ff1abe86ee465dd84d964367457cfa",
+   "start_trade_id": 4066030512,
+   "end_trade_id": 4066030585,
+   "expected_span": 74,
+   "actual_count": 74,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "d0d8ebf4ace42b0bb734a65ea320802c8430d6236178df4605275fe5e83377c6",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "47cedcce19844ab61f62be662d17b30bea39de20cc0ae6406ab0daed871dbe0a",
+   "start_trade_id": 4066030586,
+   "end_trade_id": 4066030767,
+   "expected_span": 182,
+   "actual_count": 182,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "b718d14c10753b2da41307049a8e0160fb41538c90857612463c22f7de1a3862",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "74568a40c0255d0694f932d25392be3c0c01638f6ec0fa0ce6dd7bd257af7d83",
+   "start_trade_id": 4066030768,
+   "end_trade_id": 4066030866,
+   "expected_span": 99,
+   "actual_count": 99,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "6c1f510bca4a81bcbd43b520a287a9dbe2d1f502d3c8bb55f53f40fbe38654a0",
+   "verify_seconds": 0.05,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "e4dec5836a904549adba37e8f99295b49d3090776549d61a0d54e1035494fee1",
+   "start_trade_id": 4066030867,
+   "end_trade_id": 4066031430,
+   "expected_span": 564,
+   "actual_count": 564,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "793ec46c3ca557c1ea474e6505be986f1ed5591c525cc427d5be3b85de4a7f81",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "3769ee71be6c85969c11451f91234c399f94695df8e1fb2d635d2d9fb6a83d77",
+   "start_trade_id": 4066031431,
+   "end_trade_id": 4066031677,
+   "expected_span": 247,
+   "actual_count": 247,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "54dba4e3f21c550963078d528a958dec233a1de9dfeb933f07282d4e11126649",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "d6a8b61f0395ef8e3820c4b75b1ee0af34dd3d87adf64df6c80ef3cb4e2a62eb",
+   "start_trade_id": 4066031678,
+   "end_trade_id": 4066031915,
+   "expected_span": 238,
+   "actual_count": 238,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "3f23ce8c5d9fce2aec14ee3bbc465801f60f836163019960bd6f75b1005a0524",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "eed2677e4001c3b875f4abeb429c58e2b4f28fbd048b1703d1c11c039c8d51eb",
+   "start_trade_id": 4066031916,
+   "end_trade_id": 4066032105,
+   "expected_span": 190,
+   "actual_count": 190,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "d7692e6f97667c50d77c0b330f6e8b4bfe7820bd7d5ffbcde54e248bfc388f0a",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "07bf37ef13bf08b05aac70ef8406736a5fb69bb0c41c251a426ad296e5ab81cd",
+   "start_trade_id": 4066032106,
+   "end_trade_id": 4066032600,
+   "expected_span": 495,
+   "actual_count": 495,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "803c13fa237e9ccd961152dbb0700f17b94c2b33b529a600fb0cee7a20bbc7e9",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "de0829e031376fcd8fcdfb8852ea54c6309158a16893a65c9162ce7289473bc6",
+   "start_trade_id": 4066032601,
+   "end_trade_id": 4066033076,
+   "expected_span": 476,
+   "actual_count": 476,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "74d5e030e181cadcf1dad4384f2b65339358c33db92776e6f2bcc7f7106c6cf1",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "20f527ae0d79b1cd077267f0fb28d936f9c0c2b9ab2ebf3ae7621d8eca1b4ee6",
+   "start_trade_id": 4066033077,
+   "end_trade_id": 4066033828,
+   "expected_span": 752,
+   "actual_count": 752,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "f198ba388aa850e42070f5ae1ca8d9013cd265a58b8d6c46e8d02e7c35bd8dbf",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  },
+  {
+   "merged_range_id": "658aa9f9fdede2861eeb9d2bc82691f8351662e322b46468e460bc71b3fce2a7",
+   "start_trade_id": 4066033829,
+   "end_trade_id": 4066034271,
+   "expected_span": 443,
+   "actual_count": 443,
+   "incident_count": 1,
+   "reason_counts": {
+    "DISCONNECT_OR_RECONNECT_GAP": 1
+   },
+   "verification_hash": "b2fa52e5354cc44b022ed456c931def3956ca4f0bb770356be9d19db4a01db75",
+   "verify_seconds": 0.0,
+   "status": "RANGE_DONE",
+   "resolved_count": 1
+  }
+ ]
+}
