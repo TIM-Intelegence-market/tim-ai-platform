@@ -20,7 +20,7 @@ protection, or hosted integration is claimed.
 - **Observation Engine:** central versioned event layer with stable UUIDs, input hashes, rule IDs, rule versions, provenance, and restart deduplication.
 - **Market Memory:** deterministic historical memory with transparent Jaccard feature overlap. Future observations are excluded from similarity results; similarity is not a prediction.
 - **Research Cases:** groups observations into fixed 30-minute research containers, records evidence and rule versions, and explicitly lists missing evidence. Outcomes must be documented after the case evidence and cannot be backdated.
-- **Human Dashboard V1:** read-only market status, active observations, research cases, missing evidence, system health, memory status, and an explicitly inactive news placeholder. HTML and JSON are available locally at `http://127.0.0.1:8765/` and `/api/state` while TIM is running. Since Dashboard 3.0 (see `docs/DASHBOARD_V3.md`) the UI is German, grouped into Überblick · Forschung · Betrieb · Werkzeuge, with verifiable case proofs at `/exports/case/<id>.html` and a local pilot view at `/pilot`.
+- **Human Dashboard V1:** read-only market status, active observations, research cases, missing evidence, system health, memory status, and an explicitly inactive news placeholder. HTML and JSON are available locally at `http://127.0.0.1:8765/` and `/api/state` while TIM is running. Dashboard 4.1 (see `docs/DASHBOARD.md`) is the live Control Center with German labels, grouped into Betrieb · Forschung · Freigabe · System · Werkzeuge, with verifiable case proofs at `/exports/case/<id>.html` and a local pilot view at `/pilot`.
 
 All Week 2 components remain research-only. They contain no trading, prediction, order, account, wallet, or execution path.
 
@@ -58,7 +58,7 @@ python -m venv .venv
 
 Configuration uses `TIM_` environment variables defined in `config/settings.py`. Ollama is disabled by default. The service uses no API key, private exchange endpoint, account, wallet, order, or execution path.
 
-Dashboard binding can be changed with `TIM_DASHBOARD_HOST` and `TIM_DASHBOARD_PORT`. Keep the host on `127.0.0.1` unless you explicitly intend to expose the research dashboard to a trusted network.
+Dashboard binding can be changed with `TIM_DASHBOARD_HOST` and `TIM_DASHBOARD_PORT`. The host must be a loopback address: the dashboard refuses to bind elsewhere and answers requests with a non-loopback `Host` header with 421.
 
 ## Test
 
