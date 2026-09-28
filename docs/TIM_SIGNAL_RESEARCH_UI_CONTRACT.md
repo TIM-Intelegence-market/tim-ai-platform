@@ -68,3 +68,21 @@ sortiert. Sichtbare Einträge sind bewusst begrenzt; der Rest bleibt im Persiste
 ## Read-only Contract
 
 Die UI darf ausschließlich vorhandene Artefakte anzeigen. Sie darf keine neuen Beobachtungen, Cases oder Bewertungen erzeugen.
+
+## Retrospektive Häufigkeiten im Fall-Export
+
+Gilt für den prüfbaren Fall-Export (`src/research/case_export.py`, `src/research/retrospective.py`).
+Das Dashboard bleibt davon unberührt.
+
+- Gezählt werden nur frühere, vollständig validierte Orderflow-Observations mit gleicher
+  `observation_type`, gleicher `rule_version` und gleicher `validation_version`.
+  Versionen werden nie zusammengelegt.
+- Ein Fall zählt nur, wenn sein Ausgang zum Stichtag (`as_of` = Eröffnung des Research Case)
+  bereits bekannt war: Beobachtung, alle Horizont-Zielzeiten und `validated_through` liegen
+  vor dem Stichtag. Die eigenen Observations des Case sind ausgeschlossen. `TEST_ONLY`-Daten
+  sind ausgeschlossen.
+- Unter 10 vergleichbaren Fällen werden keine Häufigkeiten angezeigt.
+- Ausgabe nur als Anzahl je Outcome (`PRICE_INCREASED`, `PRICE_DECREASED`, `PRICE_SIDEWAYS`),
+  Label `RETROSPECTIVE`, Hinweis „Keine Prognose, keine Empfehlung, kein Signal".
+  Keine Wahrscheinlichkeiten, keine Richtungsaussage, kein Ranking.
+- Der Block ist Teil des gehashten Exports; jede Änderung macht den `output_hash` ungültig.

@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Any
 
 from src.research.case_engine import ResearchCase
+from src.research.retrospective import LABEL as RETRO_LABEL
 from src.research_ops.audit import SHA256, canonical, digest
 
 
@@ -24,20 +25,23 @@ ARTIFACT = "tim_research_case"
 DISCLAIMER = "Research-Beleg: keine Empfehlung, keine Prognose, kein Handelssignal."
 
 
-def build_case_export(case: ResearchCase | dict[str, Any], *, exported_at: datetime) -> dict[str, Any]:
+def build_case_export(case: ResearchCase | dict[str, Any], *, exported_at: datetime, retrospective: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     if exported_at.tzinfo is None:
         raise ValueError("exported_at must be timezone-aware")
     payload = case.to_dict() if isinstance(case, ResearchCase) else dict(case)
     if not payload.get("case_id"):
         raise ValueError("case_id required")
     # Round-trip through canonical JSON so the stored artifact equals what was hashed.
-    export = json.loads(canonical({
+    body = {
         "artifact": ARTIFACT,
         "schema_version": SCHEMA_VERSION,
         "exported_at": exported_at.isoformat(),
         "disclaimer": DISCLAIMER,
         "case": payload,
-    }))
+    }
+    if retrospective is not None:
+        body["retrospective"] = retrospective
+    export = json.loads(canonical(body))
     export["output_hash"] = digest(export)
     return export
 
@@ -73,6 +77,13 @@ def to_html(export: dict[str, Any]) -> str:
     ) or "<tr><td colspan='4'>keine</td></tr>"
     missing = "".join(f"<li>{_e(item)}</li>" for item in case.get("missing_evidence", [])) or "<li>keine</li>"
     rules = "".join(f"<li class='mono'>{_e(rule)} = {_e(version)}</li>" for rule, version in sorted(case.get("rule_versions", {}).items())) or "<li>keine</li>"
+    retro = "".join(
+        f"<li><b>{_e(item.get('observation_type'))}</b> (Regel {_e(item.get('rule_version'))}, n={_e(item.get('sample_size'))}): "
+        + (", ".join(f"{_e(name)} {_e(count)}" for name, count in item["outcomes"].items()) + ". " if item.get("outcomes") else "")
+        + f"{_e(item.get('note'))}</li>"
+        for item in export.get("retrospective", [])
+    )
+    retro_section = f"<h2>Rückblick ({_e(RETRO_LABEL)})</h2><ul>{retro}</ul>" if retro else ""
     facts = _rows([
         ("Case", case.get("case_id")), ("Symbol", case.get("symbol")), ("Timeframe", case.get("timeframe")),
         ("Eröffnet", case.get("opened_at")), ("Aktualisiert", case.get("updated_at")), ("Status", case.get("status")),
@@ -98,6 +109,7 @@ th{{color:var(--muted);font-weight:500;width:160px}} .mono{{font-family:ui-monos
 <h2>Belege</h2><div class='scroll'><table><tr><th>Zeit</th><th>Art</th><th>Observation</th><th>Input-Hash</th></tr>{evidence}</table></div>
 <h2>Fehlende Belege</h2><ul>{missing}</ul>
 <h2>Regelversionen</h2><ul>{rules}</ul>
+{retro_section}
 </div>
 <h2>Prüfung</h2>
 <p>Output-Hash (SHA-256): <span id='hash' class='mono'>{_e(export.get('output_hash'))}</span></p>
@@ -124,6 +136,7 @@ const ev=(c.evidence||[]).map(e=>[[e.observed_at],[e.kind],[e.observation_id,'mo
 const sc=h('div',undefined,'scroll');sc.append(table(['Zeit','Art','Observation','Input-Hash'],ev.length?ev:[[['keine']]]));
 box.append(h('p',d.disclaimer,'note'),h('h2','Fall'),table(null,facts.map(([k,v])=>[[k,'',true],[v]])),h('h2','Belege'),sc,
 h('h2','Fehlende Belege'),list(c.missing_evidence||[]),h('h2','Regelversionen'),list(Object.keys(c.rule_versions||{{}}).sort().map(k=>k+' = '+c.rule_versions[k]),'mono'));
+if(d.retrospective&&d.retrospective.length){{box.append(h('h2','Rückblick ('+d.retrospective[0].label+')'),list(d.retrospective.map(r=>r.observation_type+' (Regel '+r.rule_version+', n='+r.sample_size+'): '+(r.outcomes?Object.entries(r.outcomes).map(([k,v])=>k+' '+v).join(', ')+'. ':'')+r.note)));}}
 el.textContent='✓ Inhalt stimmt mit dem Hash überein.';el.className='note ok';
 }}catch(e){{el.textContent='Browser-Prüfung hier nicht verfügbar – angezeigter Inhalt ist ungeprüft, bitte mit dem Skript prüfen.';el.className='note bad';}}
 }})();
