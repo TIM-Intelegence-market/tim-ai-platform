@@ -326,6 +326,7 @@ def test_s14_prompt_injection_document_is_passive_data(tmp_path: Path) -> None:
     assert errors == []
 
 
+@pytest.mark.local_env
 def test_s15_protected_paths_remain_unchanged() -> None:
     protected = Path("artifacts/provenance/TIM-V1-UNFREEZE-20260727T170852Z.json").resolve()
     before = protected.read_bytes()
@@ -386,6 +387,7 @@ def test_s18_snapshot_and_export_validate(
     assert set(schema["required"]) <= set(exported)
 
 
+@pytest.mark.local_env
 def test_s19_cli_returns_meaningful_exit_codes(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

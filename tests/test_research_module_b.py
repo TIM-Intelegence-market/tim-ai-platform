@@ -7,6 +7,7 @@ from src.research.module_b.agent import run_deep_research
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_env
 async def test_module_b_local_report_and_isolated_gpt_researcher(tmp_path:Path)->None:
     result=await run_deep_research("review",{"evidence":[{"source":"TIM","provenance":"PUBLIC_MARKET_DATA_DETERMINISTIC","summary":"documented evidence"}]},reports_dir=tmp_path)
     assert result["module"]=="B" and result["mode"]=="OBSERVE"

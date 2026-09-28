@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from src.operational.health import HealthChecker
 from src.operational.logging import StructuredLog
 from src.operational.metrics import MetricsCollector
@@ -86,6 +88,7 @@ def test_research_health_is_observe_only_and_reports_missing_runtime(tmp_path:Pa
     assert result["checks"]["metadata_complete"] is False
 
 
+@pytest.mark.local_env
 def test_live_research_monitor_matrix_is_green()->None:
     root=Path(__file__).resolve().parents[1];result=ResearchHealthChecker(root).check()
     assert result["level"]=="GREEN"
