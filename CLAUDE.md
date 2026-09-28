@@ -24,6 +24,12 @@ Bei Planung, Review, Übergaben oder neuen Playbooks dort nachlesen.
 
 - `beirat`: Idee/Plan aus fünf Rollen prüfen, Urteil MACHEN / UMBAUEN / LASSEN.
 - `session-handoff`: Übergabedatei für einen neuen Chat erstellen.
+- `playbook-erstellen`: wiederkehrende Aufgabe per Interview in ein Skill-Playbook überführen.
+- `bauplan`: größere Aufgabe vor jeder Änderung planen und auf Go warten.
+- `adversariale-pruefung`: Änderung unabhängig auf Fehler, Sonderfälle und Sicherheit prüfen.
+- `fertig-pruefung`: Paket gegen seine Erfolgskriterien abnehmen.
+
+Status aller 45 Bibliothekseinträge: `ai-resources/source-register.md`.
 
 ## Offene Einrichtung
 
