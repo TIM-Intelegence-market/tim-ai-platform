@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 from datetime import datetime, timezone
 from src.dashboard.operations import OPERATIONS_PAGES, render_operations_page
@@ -156,6 +157,8 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         f"Audit {_safe(audit.get('status'))} · Quality {_safe(quality.get('status'))}"
     )
     validator_level = str(validator.get("status") or validator.get("health_monitor", {}).get("level") or "UNKNOWN").upper()
+    # Levels come from operator JSON files and are used in class attributes and text: escape them.
+    health_level, data_quality_level, validator_level = (html.escape(level, quote=True) for level in (health_level, data_quality_level, validator_level))
     validator_note = (
         f"{_safe(validator.get('cycles', 0))} persistierte Zyklen · "
         f"letzte Prüfung {_safe(validator.get('research_last_check'))}"

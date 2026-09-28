@@ -12,8 +12,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
-  checks: write
 
 jobs:
   test:
@@ -72,10 +70,6 @@ jobs:
 
   codeql:
     runs-on: ubuntu-latest
-    # Code scanning is not enabled in the repository settings yet, so the upload
-    # fails with a configuration error. Enable it under Settings → Code security,
-    # then remove this line so CodeQL findings block again.
-    continue-on-error: true
     permissions:
       contents: read
       security-events: write
@@ -85,4 +79,16 @@ jobs:
       - uses: github/codeql-action/init@v3
         with:
           languages: python
+      # Code scanning is not enabled in the repository settings yet, so uploading
+      # fails with a configuration error. The analysis still runs and its SARIF is
+      # kept as an artifact. After enabling code scanning (Settings → Code security),
+      # drop `upload: never` and the artifact step.
       - uses: github/codeql-action/analyze@v3
+        with:
+          upload: never
+          output: codeql-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeql-sarif
+          path: codeql-results

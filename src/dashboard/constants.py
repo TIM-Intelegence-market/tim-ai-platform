@@ -10,6 +10,7 @@ VISIBLE_LIMIT = 50
 ORDERFLOW_VISIBLE_LIMIT = 100
 
 
+HISTORY_LIMIT = 2000  # /api/orderflow/history: newest observations and validations each
 MAX_RESPONSE_BYTES = 2_000_000
 
 

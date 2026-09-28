@@ -259,3 +259,71 @@ def test_export_script_survives_dashboard_without_history_api(tmp_path: Path) ->
     assert result.returncode == 0 and "Warnung" in result.stderr
     export = json.loads((tmp_path / "case_old.json").read_text())
     assert verify_case_export(export) and "retrospective" not in export
+
+
+# --- 4.1 security review: CSP is fixed per route, stored data never becomes allowed code ---------
+
+
+def _fetch(port: int, path: str):
+    import http.client
+
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    connection.request("GET", path, headers={"Host": f"127.0.0.1:{port}"})
+    response = connection.getresponse()
+    return response.status, response.getheader("Content-Security-Policy"), response.read().decode()
+
+
+def test_stored_markup_is_escaped_and_never_whitelisted_by_the_csp(tmp_path) -> None:
+    from src.dashboard.app import _content_security_policy
+
+    validator = tmp_path / "state.json"
+    validator.write_text(json.dumps({"status": "x'><script>alert(1)</script>", "health_monitor": {"level": "y'><style>*{}</style>"}}))
+    server = DashboardServer(DashboardState(validator_path=validator), port=0)
+    server.start()
+    try:
+        status, csp, page = _fetch(server.server.server_address[1], "/")
+    finally:
+        server.stop()
+    assert status == 200
+    assert "<script>alert(1)</script>" not in page and "<style>*{}</style>" not in page
+    assert csp == _content_security_policy()
+
+
+def test_pilot_and_proof_pages_get_their_fixed_policies() -> None:
+    from src.dashboard.pages.pilot import PILOT_CSP
+
+    server = DashboardServer(_orderflow_state(), port=0)
+    server.start()
+    try:
+        port = server.server.server_address[1]
+        status, csp, _ = _fetch(port, "/pilot")
+        assert status == 200 and csp == PILOT_CSP and "script-src 'none'" in csp
+        status, csp, page = _fetch(port, "/exports/case/case_ofproof.html")
+        assert status == 200 and "unsafe-inline" not in csp and "script-src 'sha256-" in csp
+        assert page.count("<script>") == 1  # the verifier; the payload block is type='text/plain'
+    finally:
+        server.stop()
+
+
+def test_proof_policy_fails_closed_when_blocks_were_injected() -> None:
+    from src.dashboard.layout import _content_security_policy_for
+
+    page = "<style>a{}</style><script>ok()</script><script type='text/plain'>data</script>"
+    assert "script-src 'sha256-" in _content_security_policy_for(page)
+    injected = page + "<script>evil()</script>"
+    assert "style-src 'none'; script-src 'none'" in _content_security_policy_for(injected)
+
+
+def test_orderflow_history_is_bounded() -> None:
+    from src.dashboard.constants import HISTORY_LIMIT
+
+    items = [{"observation_id": f"o{i}"} for i in range(HISTORY_LIMIT + 5)]
+    server = DashboardServer(DashboardState(orderflow_observations=list(items), orderflow_validations=list(items)), port=0)
+    server.start()
+    try:
+        status, _, body = _fetch(server.server.server_address[1], "/api/orderflow/history")
+    finally:
+        server.stop()
+    history = json.loads(body)
+    assert status == 200 and len(history["observations"]) == len(history["validations"]) == HISTORY_LIMIT
+    assert history["validations"][-1]["observation_id"] == f"o{HISTORY_LIMIT + 4}"

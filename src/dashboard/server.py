@@ -17,10 +17,10 @@ from src.llm.prompts import observation_prompt
 from config.settings import settings
 
 from src.dashboard.api import _research_cases_collection
-from src.dashboard.constants import MAX_RESPONSE_BYTES
+from src.dashboard.constants import HISTORY_LIMIT, MAX_RESPONSE_BYTES
 from src.dashboard.layout import _content_security_policy, _content_security_policy_for, _error_page
 from src.dashboard.security import _is_loopback_request_host, _require_loopback_host
-from src.dashboard.pages.pilot import render_pilot
+from src.dashboard.pages.pilot import PILOT_CSP, render_pilot
 from src.dashboard.state import DashboardState
 from src.dashboard.views import render
 
@@ -33,7 +33,7 @@ class DashboardServer:
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
-            def respond(self, status: int, payload: bytes, content_type: str) -> None:
+            def respond(self, status: int, payload: bytes, content_type: str, csp: str | None = None) -> None:
                 if len(payload) > MAX_RESPONSE_BYTES:
                     status = 413
                     payload = b'{"error":"response exceeds dashboard limit"}'
@@ -44,8 +44,7 @@ class DashboardServer:
                 self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")
-                html_page = content_type.startswith("text/html")
-                self.send_header("Content-Security-Policy", _content_security_policy_for(payload.decode("utf-8", "replace")) if html_page else _content_security_policy())
+                self.send_header("Content-Security-Policy", csp or _content_security_policy())
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("X-Frame-Options", "DENY")
                 self.send_header("Referrer-Policy", "no-referrer")
@@ -106,10 +105,11 @@ class DashboardServer:
                     formatter, content_type = exports[extension]
                     return self.respond(200, formatter(insights).encode(), content_type)
                 if path == "/pilot":
-                    return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8")
+                    return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8", csp=PILOT_CSP)
                 if path == "/api/orderflow/history":
                     with outer.state.lock:
-                        history = {"observations": [dict(item) for item in outer.state.orderflow_observations], "validations": [dict(item) for item in outer.state.orderflow_validations]}
+                        # Bounded like the visible observation window: the runtime keeps appending validations.
+                        history = {"observations": [dict(item) for item in outer.state.orderflow_observations[-HISTORY_LIMIT:]], "validations": [dict(item) for item in outer.state.orderflow_validations[-HISTORY_LIMIT:]]}
                     return self.respond(200, json.dumps(history, default=str).encode(), "application/json")
                 if path.startswith("/exports/case/"):
                     cid, _, extension = unquote(path.removeprefix("/exports/case/")).rpartition(".")
@@ -126,7 +126,8 @@ class DashboardServer:
                     export = build_case_export(item, exported_at=datetime.now(timezone.utc), retrospective=retrospective)
                     if extension == "json":
                         return self.respond(200, case_export_json(export).encode(), "application/json")
-                    return self.respond(200, case_export_html(export).encode(), "text/html; charset=utf-8")
+                    proof_page = case_export_html(export)
+                    return self.respond(200, proof_page.encode(), "text/html; charset=utf-8", csp=_content_security_policy_for(proof_page))
                 pages = {
                     "/": "Overview", "/security": "Security", "/runtime": "Runtime",
                     "/data-quality": "Data Quality", "/gaps": "Incidents & Gaps",

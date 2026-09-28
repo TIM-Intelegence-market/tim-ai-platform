@@ -48,18 +48,8 @@ def _sources(blocks: list[str]) -> str:
     return " ".join(hashes) or "'none'"
 
 
-def _content_security_policy_for(page: str) -> str:
-    """CSP for one HTML response: only the inline style and script blocks it contains may run.
-
-    Data blocks such as ``<script type='text/plain'>`` are not executable and get no hash.
-    For a standard dashboard page the result equals ``_content_security_policy()``.
-    """
-    styles = _INLINE_STYLE.findall(page)
-    scripts = []
-    for attrs, body in _INLINE_SCRIPT.findall(page):
-        kind = _SCRIPT_TYPE.search(attrs or "")
-        if (kind.group(1).lower() if kind else "") in _JS_TYPES:
-            scripts.append(body)
+def _policy(styles: list[str], scripts: list[str]) -> str:
+    """CSP that allows exactly the given inline style and script texts (SHA-256), never unsafe-inline."""
     return (
         "default-src 'none'; "
         f"style-src {_sources(styles)}; "
@@ -67,6 +57,25 @@ def _content_security_policy_for(page: str) -> str:
         "connect-src 'self'; img-src 'self' data:; font-src 'none'; "
         "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     )
+
+
+def _content_security_policy_for(page: str) -> str:
+    """CSP for a generated standalone document with exactly one style and one script block.
+
+    Only for templates whose blocks carry no stored data (the case proof page). Data blocks such
+    as ``<script type='text/plain'>`` are not executable and get no hash. If the page holds more
+    than one executable script or style block, something was injected: fail closed and allow
+    none. Dashboard pages never use this; they get the fixed ``_content_security_policy()``.
+    """
+    styles = _INLINE_STYLE.findall(page)
+    scripts = []
+    for attrs, body in _INLINE_SCRIPT.findall(page):
+        kind = _SCRIPT_TYPE.search(attrs or "")
+        if (kind.group(1).lower() if kind else "") in _JS_TYPES:
+            scripts.append(body)
+    if len(styles) > 1 or len(scripts) > 1:
+        return _policy([], [])
+    return _policy(styles, scripts)
 
 
 NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [

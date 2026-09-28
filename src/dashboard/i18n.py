@@ -274,11 +274,11 @@ def _translate_text(segment: str) -> str:
     return lead + html.escape(target + suffix, quote=False) + tail
 
 
-_DATA_TAGS = {"td", "dd", "pre", "code", "option"}
+_DATA_TAGS = {"td", "dd", "pre", "code", "option", "strong"}
 _START_TAG = re.compile(r"<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>")
 _END_TAG = re.compile(r"</([a-zA-Z][a-zA-Z0-9]*)\s*>")
 _VOID = {"br", "hr", "img", "input", "meta", "link", "source", "wbr"}
-_MONO = re.compile(r"""class\s*=\s*['"][^'"]*\b(?:mono|tag|badge)\b""")
+_MONO = re.compile(r"""class\s*=\s*['"][^'"]*\b(?:mono|tag|badge|card__value)\b""")
 
 
 def translate_html(page: str) -> str:
