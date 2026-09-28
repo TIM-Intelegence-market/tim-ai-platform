@@ -16,7 +16,7 @@ from src.insights import ResearchInsightsEngine
 from src.research.router import ResearchRouter
 
 
-DASHBOARD_VERSION = "2.2.1"
+DASHBOARD_VERSION = "3.0.0"
 VISIBLE_LIMIT = 50
 ORDERFLOW_VISIBLE_LIMIT = 100
 ALLOWED_TIMELINE_EVENTS = {
