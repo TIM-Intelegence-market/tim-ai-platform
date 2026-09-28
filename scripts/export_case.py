@@ -6,8 +6,10 @@ locally running dashboard. Read-only; writes only into --out.
 
     python3 scripts/export_case.py case_abc123 --out exports/
     python3 scripts/export_case.py --file case.json --out exports/
-    python3 scripts/export_case.py case_abc123 --history history.json   # adds RETROSPECTIVE block
+    python3 scripts/export_case.py case_abc123 --history history.json   # history from a file
 
+With a case_id the RETROSPECTIVE history is fetched from the dashboard
+(/api/orderflow/history) unless --history or --no-history is given.
 history.json: {"observations": [...orderflow observations...], "validations": [...orderflow validations...]}
 """
 
@@ -35,6 +37,7 @@ def main() -> int:
     parser.add_argument("--dashboard", default="http://127.0.0.1:8765")
     parser.add_argument("--out", type=Path, default=Path("exports"))
     parser.add_argument("--history", type=Path, help="orderflow observations + validations for the RETROSPECTIVE block")
+    parser.add_argument("--no-history", action="store_true", help="export without RETROSPECTIVE block")
     args = parser.parse_args()
     if args.file:
         case = json.loads(args.file.read_text(encoding="utf-8"))
@@ -43,10 +46,21 @@ def main() -> int:
             case = json.loads(response.read())
     else:
         parser.error("case_id or --file required")
-    retrospective = None
+    history = None
     if args.history:
         history = json.loads(args.history.read_text(encoding="utf-8"))
-        retrospective = case_retrospective(case, history.get("observations", []), history.get("validations", []))
+    elif args.case_id and not args.file and not args.no_history:
+        try:
+            with urlopen(f"{args.dashboard}/api/orderflow/history", timeout=10) as response:
+                history = json.loads(response.read())
+        except (OSError, ValueError) as exc:  # older dashboard (404) or unreachable
+            print(f"Warnung: kein Orderflow-Verlauf ({exc}); Export ohne Rückblick.", file=sys.stderr)
+    retrospective = None
+    if history is not None and not args.no_history:
+        try:
+            retrospective = case_retrospective(case, history.get("observations", []), history.get("validations", [])) or None
+        except Exception as exc:  # malformed history must not block the export
+            print(f"Warnung: Rückblick nicht berechenbar ({exc}); Export ohne Rückblick.", file=sys.stderr)
     export = build_case_export(case, exported_at=datetime.now(timezone.utc), retrospective=retrospective)
     if not re.fullmatch(r"[A-Za-z0-9_-]+", str(export["case"]["case_id"])):
         parser.error("case_id contains characters not allowed in a file name")

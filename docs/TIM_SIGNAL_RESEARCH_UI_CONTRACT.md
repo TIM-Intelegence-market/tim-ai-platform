@@ -86,3 +86,5 @@ Das Dashboard bleibt davon unberührt.
   Label `RETROSPECTIVE`, Hinweis „Keine Prognose, keine Empfehlung, kein Signal".
   Keine Wahrscheinlichkeiten, keine Richtungsaussage, kein Ranking.
 - Der Block ist Teil des gehashten Exports; jede Änderung macht den `output_hash` ungültig.
+- Jeder Block nennt seine Grundlage (`basis`): die Anzahl der Orderflow-Beobachtungen im
+  geladenen Verlauf. Der Rückblick beansprucht nicht, die vollständige Historie abzudecken.

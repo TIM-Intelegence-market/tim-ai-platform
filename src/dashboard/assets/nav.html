@@ -1,0 +1,16 @@
+<script>
+(() => {
+  'use strict';
+  const groups = [...document.querySelectorAll('.navgroup')];
+  const onDesktop = () => window.matchMedia('(min-width: 761px)').matches;
+  groups.forEach(group => group.addEventListener('toggle', () => {
+    if (group.open && onDesktop()) groups.forEach(other => { if (other !== group) other.open = false; });
+  }));
+  document.addEventListener('click', event => {
+    if (onDesktop() && !event.target.closest('.navgroup')) groups.forEach(group => { group.open = false; });
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') groups.forEach(group => { group.open = false; });
+  });
+})();
+</script>

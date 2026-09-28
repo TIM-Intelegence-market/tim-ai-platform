@@ -1,0 +1,53 @@
+
+<script>
+(() => {
+  'use strict';
+  const INTERVAL_MS = 5000;
+  const MAX_RETRIES = 3;
+  let timer = null, retries = 0, healthSignature = null;
+  const byId = id => document.getElementById(id);
+  const text = value => value === null || value === undefined || value === '' ? '—' : String(value);
+  function set(id, value) { const node=byId(id); if(node) node.textContent=text(value); }
+  function status(kind, message) { const el=byId('tim-status'); if(!el)return; el.className=`live badge--${kind}`;el.textContent=`● ${message}`; }
+  function countdown(deadline) { const seconds=Math.max(0,Math.floor((new Date(deadline).getTime()-Date.now())/1000));return `${Math.floor(seconds/3600)}h ${String(Math.floor((seconds%3600)/60)).padStart(2,'0')}m ${String(seconds%60).padStart(2,'0')}s`; }
+  function update(data) {
+    set('runtime', data.validator?.started_at ? countdown(new Date(Date.now()+(Date.now()-new Date(data.validator.started_at).getTime())).toISOString()) : '—');
+    set('acceptance-countdown', data.validator?.deadline ? countdown(data.validator.deadline) : '—');
+    set('acceptance-state', `${text(data.validator?.acceptance?.status).toUpperCase()} • ${text(data.validator?.health_monitor?.level)}`);
+    set('validator-cycles', data.validator?.cycles || 0);
+    set('visible-candles', data.visible_counts?.candles || 0);
+    set('visible-observations', data.visible_counts?.observations || 0);
+    set('memory-observations', data.memory_status?.observations || data.visible_counts?.observations || 0);
+    set('case-active', data.case_counts?.active || 0);set('case-closed',data.case_counts?.closed || 0);
+    const health=String(data.operational_health?.status || 'UNKNOWN').toLowerCase();
+    const badge=health==='green'?'green':health==='red'?'red':'yellow';
+    const label=health==='green'?'Live':health==='red'?'Betriebsstörung':'Betriebsstatus unvollständig';
+    status(badge, `${label} • sichtbarer Ausschnitt: ${data.visible_counts?.candles || 0} Candles • ${data.visible_counts?.observations || 0} Beobachtungen • ${new Date().toLocaleTimeString('de-DE')}`);
+    if(location.pathname==='/health'){
+      const signature=JSON.stringify([data.operational_health?.status,data.operational_health?.database,data.operational_health?.stream,data.operational_health?.dashboard,data.operational_health?.runtime,data.operational_health?.last_data_at,data.validator?.status,data.validator?.last_cycle_at,data.readiness?.readiness_status]);
+      if(healthSignature!==null && healthSignature!==signature){ location.reload(); return; }
+      healthSignature=signature;
+    }
+  }
+  async function poll() {
+    if(document.hidden)return;status('yellow','Aktualisiere…');
+    const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),8000);
+    try{const response=await fetch('/api/state',{signal:controller.signal,cache:'no-store'});if(!response.ok)throw new Error(`HTTP ${response.status}`);update(await response.json());retries=0;}
+    catch(error){retries+=1;status(retries>=MAX_RETRIES?'red':'yellow',retries>=MAX_RETRIES?`Verbindung verloren – automatischer Wiederherstellungsversuch ${retries-MAX_RETRIES+1}`:`Temporärer Fehler ${retries}/${MAX_RETRIES}`);}
+    finally{clearTimeout(timeout);clearTimeout(timer);if(!document.hidden)timer=setTimeout(poll,retries?2000:INTERVAL_MS);}
+  }
+  document.addEventListener('visibilitychange', () => {
+    clearTimeout(timer);
+    if (document.hidden) status('paused', 'Pausiert – Tab im Hintergrund');
+    else { retries = 0; poll(); }
+  });
+  const live=byId('tim-status');if(live)live.addEventListener('click',poll);
+  const filter=()=>{const statusValue=byId('filter-status')?.value||'',typeValue=(byId('filter-type')?.value||'').toLowerCase(),ruleValue=(byId('filter-rule')?.value||'').toLowerCase(),period=byId('filter-period')?.value||'';document.querySelectorAll('tbody tr[data-status]').forEach(row=>{let ok=!statusValue||row.dataset.status===statusValue;ok=ok&&(!typeValue||(row.dataset.type||'').toLowerCase().includes(typeValue));ok=ok&&(!ruleValue||(row.dataset.rule||'').toLowerCase().includes(ruleValue));if(ok&&period&&row.dataset.time){const age=Date.now()-new Date(row.dataset.time).getTime();ok=age<=Number(period)*86400000;}row.hidden=!ok;});};
+  document.querySelectorAll('.filters input,.filters select').forEach(node=>node.addEventListener('input',filter));
+  function showResearch(target,data,deep=false){const box=byId(target);if(!box)return;box.replaceChildren();const pre=document.createElement('pre');pre.className='code';pre.textContent=data.error||(!data.result?'Kein Ergebnis':deep?`Report: ${data.result.report_id||'—'}\n${data.result.word_count||0} Wörter • ${data.result.sources||0} Quellen`:`${data.result.summary||''}\nPatterns: ${(data.result.patterns||[]).join(', ')||'keine'}`);box.appendChild(pre);if(deep&&data.result?.download_url){const link=document.createElement('a');link.href=data.result.download_url;link.textContent='Markdown-Bericht öffnen';link.target='_blank';link.rel='noopener';box.appendChild(link);}}
+  async function research(endpoint,query,target,extra={}){const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,...extra})});showResearch(target,await response.json(),endpoint.endsWith('/deep'));}
+  byId('quick-run')?.addEventListener('click',()=>research('/api/research/quick',byId('quick-query').value,'quick-results'));
+  byId('deep-run')?.addEventListener('click',()=>research('/api/research/deep',byId('deep-query').value,'deep-results',{type:byId('report-type').value}));
+  poll();
+})();
+</script>

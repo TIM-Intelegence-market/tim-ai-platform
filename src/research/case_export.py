@@ -80,7 +80,7 @@ def to_html(export: dict[str, Any]) -> str:
     retro = "".join(
         f"<li><b>{_e(item.get('observation_type'))}</b> (Regel {_e(item.get('rule_version'))}, n={_e(item.get('sample_size'))}): "
         + (", ".join(f"{_e(name)} {_e(count)}" for name, count in item["outcomes"].items()) + ". " if item.get("outcomes") else "")
-        + f"{_e(item.get('note'))}</li>"
+        + f"{_e(item.get('note'))} {_e(item.get('basis', ''))}</li>"
         for item in export.get("retrospective", [])
     )
     retro_section = f"<h2>Rückblick ({_e(RETRO_LABEL)})</h2><ul>{retro}</ul>" if retro else ""
@@ -136,7 +136,7 @@ const ev=(c.evidence||[]).map(e=>[[e.observed_at],[e.kind],[e.observation_id,'mo
 const sc=h('div',undefined,'scroll');sc.append(table(['Zeit','Art','Observation','Input-Hash'],ev.length?ev:[[['keine']]]));
 box.append(h('p',d.disclaimer,'note'),h('h2','Fall'),table(null,facts.map(([k,v])=>[[k,'',true],[v]])),h('h2','Belege'),sc,
 h('h2','Fehlende Belege'),list(c.missing_evidence||[]),h('h2','Regelversionen'),list(Object.keys(c.rule_versions||{{}}).sort().map(k=>k+' = '+c.rule_versions[k]),'mono'));
-if(d.retrospective&&d.retrospective.length){{box.append(h('h2','Rückblick ('+d.retrospective[0].label+')'),list(d.retrospective.map(r=>r.observation_type+' (Regel '+r.rule_version+', n='+r.sample_size+'): '+(r.outcomes?Object.entries(r.outcomes).map(([k,v])=>k+' '+v).join(', ')+'. ':'')+r.note)));}}
+if(d.retrospective&&d.retrospective.length){{box.append(h('h2','Rückblick ('+d.retrospective[0].label+')'),list(d.retrospective.map(r=>r.observation_type+' (Regel '+r.rule_version+', n='+r.sample_size+'): '+(r.outcomes?Object.entries(r.outcomes).map(([k,v])=>k+' '+v).join(', ')+'. ':'')+r.note+(r.basis?' '+r.basis:''))));}}
 el.textContent='✓ Inhalt stimmt mit dem Hash überein.';el.className='note ok';
 }}catch(e){{el.textContent='Browser-Prüfung hier nicht verfügbar – angezeigter Inhalt ist ungeprüft, bitte mit dem Skript prüfen.';el.className='note bad';}}
 }})();

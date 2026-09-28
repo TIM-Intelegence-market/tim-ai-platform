@@ -10,7 +10,7 @@
     "orderflow_observations": "1.0.0",
     "orderflow_validation": "1.0.0",
     "research_analytics": "1.0.0",
-    "dashboard": "2.1.0"
+    "dashboard": "3.0.0"
   },
   "allowed_changes": [
     "reproducible_bugfix",

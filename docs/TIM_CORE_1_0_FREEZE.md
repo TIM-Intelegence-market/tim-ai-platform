@@ -17,7 +17,7 @@ machine-readable source of truth is `config/core_manifest.json`.
 | Orderflow Observations | 1.0.0 |
 | Orderflow Validation | 1.0.0 |
 | Research Analytics | 1.0.0 |
-| Dashboard | 2.1.0 |
+| Dashboard | 3.0.0 (see addendum 2026-09-28) |
 
 The dashboard is recorded as `2.1.0` because this is the version declared by
 the running implementation at freeze time. Re-labelling it as `2.0.0` would
@@ -62,3 +62,23 @@ and define the next Core version before development resumes.
 TIM Core 1.0 now advances through the quality, coverage, and reproducibility of
 observed data—not through additional features. It remains read-only and does
 not create orders, trading signals, or execution paths.
+
+## Addendum 2026-09-28: Dashboard 3.0.0
+
+**Decision by the owner (2026-09-28):** the dashboard component is released
+from the freeze for a full redesign as version `3.0.0`. Scope of the release:
+presentation, navigation, code structure of `src/dashboard/`, a verifiable
+case export route, a read-only orderflow history API, a retrospective view on
+case detail and a local-only pilot view.
+
+Unchanged and still frozen: `core_version` 1.0.0, observation rules, thresholds,
+metrics, orderflow validation logic, outcome definitions, persistence and all
+research data. The dashboard stays OBSERVE-only and read-only; no order,
+signal or execution path is added. Existing `/api/*` contracts stay compatible.
+
+Version history note: the running code declared `DASHBOARD_VERSION = "2.2.1"`
+while this manifest still recorded `2.1.0`, i.e. the dashboard had already
+been changed after the freeze without a manifest update. Both now read `3.0.0`.
+Because `config/core_manifest.json` changed, research snapshots created after
+this date carry a different `core_manifest_hash`; research data itself is not
+affected and needs no re-analysis.
