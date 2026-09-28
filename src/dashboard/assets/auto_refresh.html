@@ -4,13 +4,34 @@
   'use strict';
   const INTERVAL_MS = 5000;
   const MAX_RETRIES = 3;
-  let timer = null, retries = 0, healthSignature = null;
+  let timer = null, retries = 0, healthSignature = null, setupSignature = null, setupRefreshTimer = null;
   const byId = id => document.getElementById(id);
   const text = value => value === null || value === undefined || value === '' ? '—' : String(value);
   function set(id, value) { const node=byId(id); if(node) node.textContent=text(value); }
   function status(kind, message) { const el=byId('tim-status'); if(!el)return; el.className=`live badge--${kind}`;el.textContent=`● ${message}`; }
   function countdown(deadline) { const seconds=Math.max(0,Math.floor((new Date(deadline).getTime()-Date.now())/1000));return `${Math.floor(seconds/3600)}h ${String(Math.floor((seconds%3600)/60)).padStart(2,'0')}m ${String(seconds%60).padStart(2,'0')}s`; }
   function update(data) {
+    const hdr = (id, sev, label) => { const el = byId(id); if (el) { el.textContent = label; el.dataset.sev = sev; } };
+    const op = data.operational_health || {};
+    const ageSeconds = op.data_age_seconds;
+    const isFresh = typeof ageSeconds === 'number' && ageSeconds >= 0 && ageSeconds <= 120;
+    const stream = String(op.stream || 'UNKNOWN').toUpperCase();
+    hdr('st-system', op.status === 'GREEN' ? 'ok' : op.status === 'RED' ? 'fail' : op.status === 'YELLOW' ? 'warn' : 'unknown', op.status === 'GREEN' ? 'RUNNING' : op.status === 'RED' ? 'IMPAIRED' : op.status === 'YELLOW' ? 'DEGRADED' : 'UNKNOWN');
+    hdr('st-live-data', stream === 'GREEN' ? (isFresh ? 'ok' : 'warn') : stream === 'RED' ? 'fail' : 'unknown', stream === 'GREEN' ? (isFresh ? 'LIVE' : 'STALE') : stream === 'RED' ? 'DOWN' : 'UNKNOWN');
+    hdr('st-queue', typeof op.queue_depth === 'number' ? (op.queue_depth === 0 ? 'ok' : 'warn') : 'unknown', typeof op.queue_depth === 'number' ? op.queue_depth + ' EV' : 'UNKNOWN');
+    const rolling = (data.operations && data.operations.datasets ? data.operations.datasets : []).slice(-1)[0] || {};
+    hdr('st-data-quality', rolling.status ? (String(rolling.status).indexOf('FAIL') >= 0 ? 'fail' : String(rolling.status).indexOf('PASS') === 0 ? 'ok' : 'warn') : 'unknown', rolling.coverage || 'UNKNOWN');
+    const rg = (data.gate_model && data.gate_model.bands && data.gate_model.bands.research_readiness ? data.gate_model.bands.research_readiness : []).map(g => String((g && g.status) || '').toUpperCase()).filter(Boolean);
+    let rSev = 'unknown', rLabel = 'UNKNOWN';
+    if (rg.length && !rg.includes('FAIL') && rg.every(s => s === 'PASS')) { rSev = 'ok'; rLabel = 'READY'; }
+    else if (rg.length && rg.every(s => s === 'NO_EVIDENCE')) { rSev = 'unknown'; rLabel = 'UNKNOWN'; }
+    else if (rg.length && (rg.includes('PASS') || rg.includes('IN_PROGRESS') || rg.includes('LIMITED'))) { rSev = 'warn'; rLabel = 'PARTIAL'; }
+    else {
+      const rs = String((data.readiness && data.readiness.readiness_status) || 'UNKNOWN');
+      rSev = rs.indexOf('NOT_READY') >= 0 ? 'warn' : (rs === 'READY_FOR_V2' || rs === 'READY') ? 'ok' : rs === 'UNKNOWN' ? 'unknown' : 'warn';
+      rLabel = rs.indexOf('NOT_READY') >= 0 ? 'NOT READY' : rs === 'READY_FOR_V2' ? 'READY' : rs === 'UNKNOWN' ? 'UNKNOWN' : rs;
+    }
+    hdr('st-research', rSev, rLabel);
     set('runtime', data.validator?.started_at ? countdown(new Date(Date.now()+(Date.now()-new Date(data.validator.started_at).getTime())).toISOString()) : '—');
     set('acceptance-countdown', data.validator?.deadline ? countdown(data.validator.deadline) : '—');
     set('acceptance-state', `${text(data.validator?.acceptance?.status).toUpperCase()} • ${text(data.validator?.health_monitor?.level)}`);
@@ -21,12 +42,24 @@
     set('case-active', data.case_counts?.active || 0);set('case-closed',data.case_counts?.closed || 0);
     const health=String(data.operational_health?.status || 'UNKNOWN').toLowerCase();
     const badge=health==='green'?'green':health==='red'?'red':'yellow';
-    const label=health==='green'?'Live':health==='red'?'Betriebsstörung':'Betriebsstatus unvollständig';
-    status(badge, `${label} • sichtbarer Ausschnitt: ${data.visible_counts?.candles || 0} Candles • ${data.visible_counts?.observations || 0} Beobachtungen • ${new Date().toLocaleTimeString('de-DE')}`);
+    const label=health==='green'?'Live':health==='red'?'Betriebsstörung':'Status unvollständig';
+    status(badge, `${label} · sichtbarer Ausschnitt: ${data.visible_counts?.candles || 0} Candles · ${data.visible_counts?.observations || 0} Beob. · ${new Date().toLocaleTimeString('de-DE')}`);
     if(location.pathname==='/health'){
       const signature=JSON.stringify([data.operational_health?.status,data.operational_health?.database,data.operational_health?.stream,data.operational_health?.dashboard,data.operational_health?.runtime,data.operational_health?.last_data_at,data.validator?.status,data.validator?.last_cycle_at,data.readiness?.readiness_status]);
       if(healthSignature!==null && healthSignature!==signature){ location.reload(); return; }
       healthSignature=signature;
+    }
+    if(location.pathname==='/setup-path'){
+      // This page is server-rendered because every conclusion must remain tied to
+      // one governed snapshot.  Reload only when its input changed; polling the
+      // status badge alone would otherwise make the analysis cards look frozen.
+      const lastCandle=(data.candles||[]).slice(-1)[0]||{};
+      const signature=JSON.stringify([op.last_data_at,data.visible_counts?.candles,lastCandle.timestamp||lastCandle.time||lastCandle.close,data.research_quality?.validation_status,data.case_counts?.closed]);
+      if(setupSignature!==null && setupSignature!==signature && !setupRefreshTimer){
+        status('yellow','Neue Daten erkannt – aktualisiere Analyse…');
+        setupRefreshTimer=setTimeout(()=>location.reload(),400);
+      }
+      setupSignature=signature;
     }
   }
   async function poll() {
