@@ -23,7 +23,7 @@ NAV_GROUPS = (
     ("Overview", (("Overview", "/"),)),
     ("Forschung", (("Observations", "/observations"), ("Research Cases", "/cases"), ("Orderflow", "/orderflow"), ("Signal Research", "/signals"), ("Analytics", "/analytics"), ("Insights", "/insights"))),
     ("Betrieb", (("Health Center", "/health"), ("Data Quality Exceptions", "/exceptions"), ("Timeline", "/timeline"))),
-    ("Werkzeuge", (("Research", "/research"),)),
+    ("Werkzeuge", (("Research", "/research"), ("Pilotansicht", "/pilot"))),
 )
 
 

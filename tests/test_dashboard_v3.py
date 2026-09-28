@@ -37,7 +37,7 @@ def test_catalog_has_no_empty_or_identical_noise() -> None:
 def test_navigation_is_grouped_and_marks_current_page() -> None:
     assert [group for group, _ in NAV_GROUPS] == ["Overview", "Forschung", "Betrieb", "Werkzeuge"]
     routes = [href for _, links in NAV_GROUPS for _, href in links]
-    assert len(routes) == len(set(routes)) == 11
+    assert len(routes) == len(set(routes)) == 12 and "/pilot" in routes
     page = render(DashboardState(), "Research Cases")
     assert "<details class='navgroup active'><summary>Forschung</summary>" in page
     assert "<a href='/cases' class='active' aria-current='page'>Research-Fälle</a>" in page
@@ -153,3 +153,40 @@ def test_export_script_fetches_history_from_dashboard(server, tmp_path: Path) ->
     assert verify_case_export(export) and export["retrospective"][0]["sample_size"] == 12
     subprocess.run(run + ["--no-history"], check=True, capture_output=True)
     assert "retrospective" not in json.loads((tmp_path / "case_ofproof.json").read_text())
+
+
+# --- P5: pilot view shows only allowlisted data ------------------------------------------------------------
+SECRET = "INTERNAL_MARKER_X9"
+
+
+def _pilot_state(tmp_path: Path) -> DashboardState:
+    state = _orderflow_state()
+    case = state.research_cases[0]
+    case.update({"documentation": f"{SECRET} doc", "review_history": [{"at": OPENED.isoformat(), "to": "OPEN", "reason": f"{SECRET} reason"}],
+                 "missing_evidence": [f"{SECRET}_missing"]})
+    case["evidence"][0]["provenance"] = f"{SECRET}_provenance"
+    case["evidence"][0]["input_hash"] = "e" * 64
+    validator = tmp_path / "state.json"
+    validator.write_text(json.dumps({"status": "RUNNING", "cycles": 7, "started_at": f"{SECRET}"}))
+    state.validator_path = validator
+    state.system_health = {"database": f"{SECRET}_db", "stream": f"{SECRET}_stream"}
+    state.market_status = {"status": f"{SECRET}_market"}
+    return state
+
+
+def test_pilot_view_renders_only_allowlisted_fields(tmp_path: Path) -> None:
+    from src.dashboard.pages.pilot import PILOT_CASE_FIELDS, render_pilot
+    assert PILOT_CASE_FIELDS == ("case_id", "symbol", "timeframe", "opened_at", "status", "outcome")
+    page = render_pilot(_pilot_state(tmp_path))
+    assert SECRET not in page
+    assert "e" * 64 not in page  # no input hashes
+    for internal in ("/api/", "tim-status", "Systemzustand", "validator", "Validator", "config/", "data/", "events", "Hauptnavigation", "fetch("):
+        assert internal not in page, internal
+    assert "case_ofproof" in page and "sammelt Belege" in page and "RETROSPECTIVE" in page
+    assert "href='/exports/case/case_ofproof.html'" in page
+    assert "keine Empfehlung, keine Prognose" in page
+
+
+def test_pilot_route_is_served(server) -> None:
+    status, body = _get(server + "/pilot")
+    assert status == 200 and b"TIM Research-Belege" in body and b"<script" not in body

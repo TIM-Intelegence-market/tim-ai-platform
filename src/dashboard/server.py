@@ -14,6 +14,7 @@ from src.research.retrospective import case_retrospective
 from src.research.router import ResearchRouter
 
 from src.dashboard.api import _research_cases_collection
+from src.dashboard.pages.pilot import render_pilot
 from src.dashboard.state import DashboardState
 from src.dashboard.views import render
 
@@ -82,6 +83,8 @@ class DashboardServer:
                         return self.respond(404, b'{"error":"not found"}', "application/json")
                     formatter, content_type = exports[extension]
                     return self.respond(200, formatter(insights).encode(), content_type)
+                if path == "/pilot":
+                    return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8")
                 if path == "/api/orderflow/history":
                     with outer.state.lock:
                         history = {"observations": [dict(item) for item in outer.state.orderflow_observations], "validations": [dict(item) for item in outer.state.orderflow_validations]}
