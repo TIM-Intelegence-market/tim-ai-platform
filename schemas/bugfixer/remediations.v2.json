@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "entries": [
+    {
+      "remediation_id": "NETWORK_TIMEOUT",
+      "version": "2.0.0",
+      "matching_rules": {
+        "fingerprint": "",
+        "category": "NETWORK",
+        "exception": "TimeoutError"
+      },
+      "confidence": 0.95,
+      "risk": "LOW",
+      "autonomy_level": "A1",
+      "preconditions": ["known_transient_disconnect", "strict_order_preserved", "durable_backlog_preserved"],
+      "actions": ["bounded_reconnect"],
+      "forbidden_actions": [
+        "delete_production_data", "truncate_production_data", "clear_queue", "clear_outbox",
+        "reset_attempts", "skip_events", "disable_strict_ordering", "disable_determinism",
+        "disable_lookahead_safety", "test_production_database", "mutate_production_test_data",
+        "invent_data_gaps", "expose_secrets", "enable_live_trading", "enable_execution", "create_real_orders"
+      ],
+      "rollback": ["stop_recovery_attempt", "retain_durable_backlog", "preserve_evidence"],
+      "targeted_tests": ["bounded_reconnect_restores_transport", "retry_budget_preserved"],
+      "runtime_verification": ["connection_restored", "ingestion_progress_observed"],
+      "integrity_verification": ["no_data_gap", "strict_order_preserved", "no_duplicate_side_effect"],
+      "recurrence_check": ["no_repeat_disconnect_in_declared_window"]
+    },
+    {
+      "remediation_id": "LAUNCHD_LOG_PATH",
+      "version": "2.0.0",
+      "matching_rules": {
+        "fingerprint": "",
+        "category": "CONFIGURATION",
+        "exception": ""
+      },
+      "confidence": 0.95,
+      "risk": "MEDIUM",
+      "autonomy_level": "A2",
+      "preconditions": ["log_path_root_cause_verified", "isolated_reproduction_passed", "rollback_reviewed"],
+      "actions": ["review_log_path_permissions"],
+      "forbidden_actions": [
+        "delete_production_data", "truncate_production_data", "clear_queue", "clear_outbox",
+        "reset_attempts", "skip_events", "disable_strict_ordering", "disable_determinism",
+        "disable_lookahead_safety", "test_production_database", "mutate_production_test_data",
+        "invent_data_gaps", "expose_secrets", "enable_live_trading", "enable_execution", "create_real_orders"
+      ],
+      "rollback": ["retain_previous_configuration", "preserve_evidence"],
+      "targeted_tests": ["log_directory_access_verified", "launchd_config_validation_passed"],
+      "runtime_verification": ["service_log_path_access_observed"],
+      "integrity_verification": ["configuration_scope_preserved", "durable_backlog_preserved"],
+      "recurrence_check": ["no_repeat_ex_config_in_declared_window"]
+    }
+  ]
+}

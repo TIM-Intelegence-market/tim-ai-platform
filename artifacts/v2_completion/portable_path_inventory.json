@@ -1,0 +1,121 @@
+{
+  "program_id": "TIM-V2-COMPLETION-PROGRAM-20260803",
+  "phase": "PROGRAM_1_PORTABLE_PATH_INVENTORY",
+  "captured_at_utc": "2026-08-03T13:52:00Z",
+  "scope": [
+    "config",
+    "src",
+    "scripts",
+    "tests",
+    ".github",
+    "main.py",
+    "docker-compose.yml"
+  ],
+  "patterns": [
+    "users_abs",
+    "home_abs",
+    "drive_abs",
+    "tilde_home",
+    "tilde_library"
+  ],
+  "items": [
+    {
+      "file": "config/secrets.py",
+      "line": 150,
+      "pattern": "tilde_home",
+      "snippet": "default = \"~/Library/Application Support/TIM/database-password\"",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "config/secrets.py",
+      "line": 150,
+      "pattern": "tilde_library",
+      "snippet": "default = \"~/Library/Application Support/TIM/database-password\"",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "scripts/admin/prepare_tim_credential.py",
+      "line": 208,
+      "pattern": "tilde_home",
+      "snippet": "default = Path(\"~/Library/Application Support/TIM/postgres-admin-handoff.json\")",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "scripts/admin/prepare_tim_credential.py",
+      "line": 225,
+      "pattern": "tilde_home",
+      "snippet": "default=Path(\"~/Library/Application Support/TIM/postgres-hardening-verification.json\"),",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "scripts/admin/prepare_tim_credential.py",
+      "line": 208,
+      "pattern": "tilde_library",
+      "snippet": "default = Path(\"~/Library/Application Support/TIM/postgres-admin-handoff.json\")",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "scripts/admin/prepare_tim_credential.py",
+      "line": 225,
+      "pattern": "tilde_library",
+      "snippet": "default=Path(\"~/Library/Application Support/TIM/postgres-hardening-verification.json\"),",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "scripts/admin/verify_postgres_hardening.py",
+      "line": 121,
+      "pattern": "tilde_home",
+      "snippet": "default=Path(\"~/Library/Application Support/TIM/postgres-admin-handoff.json\"),",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "scripts/admin/verify_postgres_hardening.py",
+      "line": 126,
+      "pattern": "tilde_home",
+      "snippet": "default=Path(\"~/Library/Application Support/TIM/postgres-hardening-verification.json\"),",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "scripts/admin/verify_postgres_hardening.py",
+      "line": 121,
+      "pattern": "tilde_library",
+      "snippet": "default=Path(\"~/Library/Application Support/TIM/postgres-admin-handoff.json\"),",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "scripts/admin/verify_postgres_hardening.py",
+      "line": 126,
+      "pattern": "tilde_library",
+      "snippet": "default=Path(\"~/Library/Application Support/TIM/postgres-hardening-verification.json\"),",
+      "classification": "HOST_CONFIG_SAFE"
+    },
+    {
+      "file": "tests/tim_manager/test_portable_paths_v2.py",
+      "line": 39,
+      "pattern": "users_abs",
+      "snippet": "repository_path(\"/Users/tim/.ssh/id_rsa\")",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "file": "tests/tim_manager/test_portable_paths_v2.py",
+      "line": 78,
+      "pattern": "users_abs",
+      "snippet": "assert \"/Users/\" not in raw",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "file": "tests/tim_manager/test_portable_paths_v2.py",
+      "line": 79,
+      "pattern": "home_abs",
+      "snippet": "assert \"/home/\" not in raw",
+      "classification": "TEST_FIXTURE"
+    }
+  ],
+  "must_replace_remaining": [],
+  "conclusion": "PORTABLE",
+  "notes": [
+    "graphify_mcp.yaml was the only runtime host-bound config; now uses @TIM_REPO_ROOT@ placeholder.",
+    "~/... entries are HOME-relative credential-handoff defaults (config/secrets.py, scripts/admin/*); portable across machines and not runtime path coupling.",
+    "test assertions referencing /Users/ or /home/ are TEST_FIXTURE negative tests."
+  ]
+}

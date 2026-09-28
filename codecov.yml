@@ -1,0 +1,48 @@
+# TIM Codecov configuration
+# Phase 4 — Codecov integration (v2.0)
+codecov:
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: false
+  allow_coverage_offsets: true
+
+coverage:
+  status:
+    project:
+      default:
+        target: 60%
+        threshold: 2%
+        base: auto
+        if_ci_failed: error
+        informational: false
+    patch:
+      default:
+        target: 60%
+        threshold: 5%
+        base: auto
+        informational: false
+    changes: false
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: true
+      loop: true
+      method: false
+      macro: false
+
+ignore:
+  - "scripts/"
+  - "tests/"
+  - "config/"
+  - "*.command"
+  - "src/database/migrations/"
+  - "docs/"
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+  hide_project_coverage: false

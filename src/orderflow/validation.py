@@ -37,7 +37,10 @@ class OrderflowValidationEngine:
     def validate(self,observation:dict[str,Any],trades:Iterable[Trade],as_of:datetime)->OrderflowValidation|None:
         observed_at=datetime.fromisoformat(str(observation["observed_at"]).replace("Z","+00:00"))
         if observed_at.tzinfo is None or as_of.tzinfo is None:raise ValueError("Validation timestamps must be timezone-aware")
-        ordered=sorted(trades,key=lambda item:(item.event_time,item.trade_id if item.trade_id is not None else -1))
+        ordered=sorted(
+            (item for item in trades if item.event_time<=as_of),
+            key=lambda item:(item.event_time,item.trade_id if item.trade_id is not None else -1),
+        )
         identities=[(item.symbol,item.trade_id) for item in ordered]
         if len(identities)!=len(set(identities)):raise ValueError("Duplicate aggTrade in validation input")
         symbol=str(observation["symbol"])
@@ -55,7 +58,14 @@ class OrderflowValidationEngine:
             canonical=[[item.symbol,item.trade_id,item.event_time.isoformat(),str(item.price),str(item.quantity),item.buyer_is_maker] for item in subsequent]
             digest=hashlib.sha256(json.dumps({"observation_hash":observation["input_hash"],"minutes":minutes,"trades":canonical},separators=(",",":"),sort_keys=True).encode()).hexdigest()
             results.append(HorizonResult(minutes,target,price,change,buy-sell,len(subsequent),digest))
-        complete=any(item.minutes==30 for item in results);outcome=None
+        returned_horizons={item.minutes for item in results}
+        sequence_complete=all(
+            left.trade_id is not None
+            and right.trade_id is not None
+            and right.trade_id==left.trade_id+1
+            for left,right in zip(ordered,ordered[1:])
+        )
+        complete=set(HORIZONS).issubset(returned_horizons) and sequence_complete;outcome=None
         if complete:
             final=next(item for item in results if item.minutes==30)
             outcome="PRICE_INCREASED" if final.price_change_percent>SIDEWAYS_THRESHOLD_PERCENT else "PRICE_DECREASED" if final.price_change_percent<-SIDEWAYS_THRESHOLD_PERCENT else "PRICE_SIDEWAYS"

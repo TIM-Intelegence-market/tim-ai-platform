@@ -4,8 +4,8 @@ cd "$(dirname "$0")" || exit 1
 status=$?
 echo
 if [[ $status -eq 0 ]]; then
-  echo "PostgreSQL ist bereit. TIM kann jetzt mit folgendem Befehl gestartet werden:"
-  echo ".venv/bin/python main.py --init-schema"
+  echo "Das private Credential-Handoff ist vorbereitet."
+  echo "PostgreSQL ist noch nicht freigegeben; jetzt scripts/admin/README.md abarbeiten."
 else
   echo "Setup wurde mit Status $status beendet. Die Meldung oben bleibt sichtbar."
 fi

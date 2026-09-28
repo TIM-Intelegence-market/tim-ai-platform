@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "enabled": true,
+  "transport": "stdio",
+  "server_name": "tim-graphify-readonly",
+  "command": "graphify-mcp",
+  "arguments": [
+    "@TIM_REPO_ROOT@/graphify-out/graph.json"
+  ],
+  "working_directory": "@TIM_REPO_ROOT@",
+  "graph_path": "@TIM_REPO_ROOT@/graphify-out/graph.json",
+  "expected_graph_hash": "370a978370dae5710011b90b74574b2a277250960c319acbfaec893c04ccdff7",
+  "read_only": true,
+  "allowed_tools": [
+    "query_graph",
+    "get_node",
+    "get_neighbors",
+    "get_community",
+    "god_nodes",
+    "graph_stats",
+    "shortest_path"
+  ],
+  "startup_timeout_seconds": 15,
+  "request_timeout_seconds": 30,
+  "shutdown_timeout_seconds": 10,
+  "max_result_bytes": 262144,
+  "max_results": 100,
+  "trust_class": "untrusted_retrieval",
+  "require_provenance": true,
+  "allow_shell_interpolation": false,
+  "allow_unknown_tools": false,
+  "allow_writes": false
+}

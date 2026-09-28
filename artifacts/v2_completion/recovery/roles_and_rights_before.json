@@ -1,0 +1,181 @@
+{
+  "captured_at_utc": "2026-08-01T21:01:45.552323Z",
+  "databases": [
+    {
+      "datallowconn": true,
+      "datname": "postgres",
+      "owner": "postgres"
+    },
+    {
+      "datallowconn": true,
+      "datname": "tim",
+      "owner": "tim"
+    }
+  ],
+  "password_hashes_captured": false,
+  "password_values_captured": false,
+  "roles": [
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_checkpoint",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_create_subscription",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_database_owner",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_execute_server_program",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_maintain",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_monitor",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_read_all_data",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_read_all_settings",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_read_all_stats",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_read_server_files",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_signal_autovacuum_worker",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_signal_backend",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_stat_scan_tables",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_use_reserved_connections",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_write_all_data",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "pg_write_server_files",
+      "rolreplication": false,
+      "rolsuper": false
+    },
+    {
+      "rolbypassrls": true,
+      "rolcanlogin": true,
+      "rolcreatedb": true,
+      "rolcreaterole": true,
+      "rolname": "postgres",
+      "rolreplication": true,
+      "rolsuper": true
+    },
+    {
+      "rolbypassrls": false,
+      "rolcanlogin": true,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolname": "tim",
+      "rolreplication": false,
+      "rolsuper": false
+    }
+  ]
+}

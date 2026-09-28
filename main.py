@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 import hashlib
 import logging
 import signal
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from config.settings import settings
 from src.data_ingestion.aggregator import CandleAggregator
 from src.data_ingestion.aggregator import bucket_start
 from src.data_ingestion.binance_ws import BinanceTradeStream
+from src.data_ingestion.catchup import CatchUpCoordinator, PublicBinanceAggTradeClient
+from src.data_ingestion.durable import DurableIngestionStore, DurableOutboxWorker, OutboxItem
+from src.data_ingestion.ingress import DurableIngress
+from src.data_ingestion.recovery import PersistedTradeReplayService
 from src.dashboard.app import DashboardServer, DashboardState
 from src.database.connection import Database
 from src.database.repository import MarketRepository
@@ -23,6 +29,7 @@ from src.observation.engine import ObservationEngine
 from src.orderflow.metrics import OrderflowMetricsService
 from src.orderflow.observations import OrderflowObservationEngine, OrderflowResearchCaseEngine
 from src.orderflow.validation import OrderflowValidationEngine
+from src.operational.logging import StructuredLog
 from src.research.case_engine import ResearchCaseEngine
 from src.research.trigger import ResearchTrigger
 
@@ -33,6 +40,9 @@ class TIMApplication:
     def __init__(self) -> None:
         self.database = Database(settings.database_url)
         self.repository = MarketRepository(self.database)
+        self.durable_store = DurableIngestionStore(self.database)
+        self.catchup = CatchUpCoordinator(self.durable_store, PublicBinanceAggTradeClient())
+        self.durable_ingress = DurableIngress(self.durable_store, catchup=self.catchup)
         self.aggregator = CandleAggregator(settings.timeframes)
         self.observations = ObservationEngine()
         self.memory = MarketMemory()
@@ -46,32 +56,114 @@ class TIMApplication:
         self.dashboard_state = DashboardState()
         self.dashboard_state.system_health.update({
             "queue_depth": 0,
-            "queue_model": "DIRECT_AWAIT_NO_APPLICATION_QUEUE",
+            "queue_model": "POSTGRES_DURABLE_OUTBOX_V1",
             "ollama_enabled": settings.enable_ollama,
             "ollama_availability": "PENDING" if settings.enable_ollama else "DISABLED_BY_POLICY",
         })
         self.dashboard = DashboardServer(self.dashboard_state, settings.dashboard_host, settings.dashboard_port)
         self.history: dict[str, list[Candle]] = {timeframe: [] for timeframe in settings.timeframes}
-        self.stream = BinanceTradeStream(settings.binance_ws_url, settings.symbol, self.on_trade)
+        self.queue_log = StructuredLog(Path("data/operational/queue.jsonl"))
+        self.worker_stop = asyncio.Event()
+        self.enrichment_worker = DurableOutboxWorker(
+            self.durable_store,
+            "CANDLE_V1",
+            self.process_persisted_trade,
+            batch_size=1,
+            # Hour-boundary enrichment has measured production runtimes up to
+            # 169 seconds. Keep the lease above that verified maximum so a
+            # healthy in-flight item cannot be reclaimed as an expired lease.
+            lease_seconds=300,
+            strict_order=True,
+        )
+        self.stream = BinanceTradeStream(
+            settings.binance_ws_url,
+            settings.symbol,
+            self.ingest_trade,
+            stream_event_handler=self.durable_ingress.on_stream_event,
+            recovery_handler=self.durable_ingress.recover_before_resume,
+            recovery_on_connect=True,
+        )
+
+    async def ingest_trade(self, trade: Trade) -> None:
+        result = await self.durable_ingress(trade)
+        with self.dashboard_state.lock:
+            self.dashboard_state.system_health["queue_depth"] = result.queue_depth
+            self.dashboard_state.system_health["cursor_trade_id"] = result.cursor.last_aggregate_trade_id
+            self.dashboard_state.system_health["recovery_state"] = result.cursor.recovery_state
+            # The durable cursor is updated before the asynchronous enrichment
+            # worker.  It is therefore the authoritative liveness signal for
+            # the market-data stream; completed candles can legitimately lag
+            # while the outbox is being processed.
+            self.dashboard_state.system_health["last_raw_persisted_at"] = (
+                result.cursor.last_persisted_at.isoformat()
+                if result.cursor.last_persisted_at else None
+            )
 
     async def on_trade(self, trade: Trade) -> None:
-        if not await self.repository.insert_agg_trade(trade):
-            return
-        for candle in self.aggregator.add_trade(trade):
+        """Compatibility alias: live ingress is persistence-only."""
+        await self.ingest_trade(trade)
+
+    async def process_persisted_trade(self, item: OutboxItem, trade: Trade) -> dict:
+        """Run enrichment outside the WebSocket reader for one durable raw event."""
+        try:
+            completed = await self._enrich_trade(trade)
+        except asyncio.CancelledError:
+            await asyncio.shield(self.restore_persisted_state(reset=True))
+            raise
+        except ValueError as error:
+            if str(error) not in {
+                "Out-of-order trade rejected",
+                "Trade belongs to an already closed candle",
+            }:
+                await self.restore_persisted_state(reset=True)
+                raise
+            completed = await self._replay_persisted_trade(item, trade)
+        except Exception:
+            await self.restore_persisted_state(reset=True)
+            raise
+        return {
+            "mode": "OBSERVE",
+            "idempotency_key": item.idempotency_key,
+            "aggregate_trade_id": trade.trade_id,
+            "completed_candles": completed,
+            "trading_actions": 0,
+        }
+
+    async def _replay_persisted_trade(self, item: OutboxItem, trade: Trade) -> list[dict]:
+        """Repair candle state from persisted chronological input, isolated from live state."""
+        return await PersistedTradeReplayService(self.durable_store, self.repository).replay(item, trade)
+
+    async def _enrich_trade(self, trade: Trade) -> list[dict]:
+        candidate_aggregator = copy.deepcopy(self.aggregator)
+        completed_summary: list[dict] = []
+        for candle in candidate_aggregator.add_trade(trade):
             await self.repository.upsert_candle(candle)
             if candle.timeframe=="1m":
                 await self.process_orderflow_window(candle.open_time,candle.close_time)
                 await self.validate_pending_orderflow(candle.close_time)
             history = self.history[candle.timeframe]
+            history[:] = [
+                existing for existing in history
+                if not (existing.symbol == candle.symbol and existing.open_time == candle.open_time)
+            ]
             history.append(candle)
+            history.sort(key=lambda existing: existing.open_time)
             del history[:-500]
             with self.dashboard_state.lock:
+                self.dashboard_state.recent_candles[:] = [
+                    existing for existing in self.dashboard_state.recent_candles
+                    if not (
+                        existing.get("symbol") == candle.symbol
+                        and existing.get("timeframe") == candle.timeframe
+                        and existing.get("open_time") == candle.open_time.isoformat()
+                    )
+                ]
                 self.dashboard_state.recent_candles.append({"symbol":candle.symbol,"timeframe":candle.timeframe,"open_time":candle.open_time.isoformat(),"close_time":candle.close_time.isoformat(),"open":candle.open,"high":candle.high,"low":candle.low,"close":candle.close,"volume":candle.volume,"trade_count":candle.trade_count,"provenance":"PUBLIC_MARKET_DATA"})
                 del self.dashboard_state.recent_candles[:-50]
             observations = self.observations.evaluate(history)
             for observation in observations:
                 case = self.cases.ingest(observation)
-                await self.repository.save_observation_with_case(observation,case)
+                await self._save_observation_tolerant(observation,case)
                 self.memory.remember(observation)
                 triggered = await self.research_trigger.handle(observation)
                 if triggered is not None:
@@ -85,6 +177,16 @@ class TIMApplication:
                 log.info("%s", observation.to_dict())
                 if triggered is not None:log.info("Research trigger: %s", asdict(triggered))
                 await self.explain(observation)
+            completed_summary.append(
+                {
+                    "symbol": candle.symbol,
+                    "timeframe": candle.timeframe,
+                    "open_time": candle.open_time.isoformat(),
+                    "close_time": candle.close_time.isoformat(),
+                }
+            )
+        self.aggregator = candidate_aggregator
+        return completed_summary
 
     async def process_orderflow_window(self,start:datetime,end:datetime)->None:
         metrics=await self.orderflow_metrics.calculate_series(settings.symbol,start-(end-start),end,int((end-start).total_seconds()))
@@ -97,6 +199,26 @@ class TIMApplication:
                     self.dashboard_state.orderflow_observations.append(observation.to_dict())
                     del self.dashboard_state.orderflow_observations[:-500]
                     self.dashboard_state.research_cases=[item.to_dict() for item in self.cases.cases.values()]
+
+    async def _save_observation_tolerant(self, observation: Observation, case) -> None:
+        """Save once; on input-hash mismatch rebuild once from refreshed state.
+
+        A concurrent historical write can land between observation build and
+        the save-time re-read. Rebuild exactly once from refreshed history and
+        save current truth instead. A second mismatch raises through the normal
+        fail path (fail-closed preserved; attempts semantics unchanged because
+        this all happens inside one claim).
+        """
+        try:
+            await self.repository.save_observation_with_case(observation, case)
+            return
+        except ValueError as error:
+            if "input_hash does not match persisted candle input" not in str(error):
+                raise
+        await self.restore_persisted_state(reset=False)
+        for candidate in self.observations.evaluate(self.history[observation.timeframe]):
+            await self.repository.save_observation_with_case(
+                candidate, self.cases.ingest(candidate))
 
     async def validate_pending_orderflow(self,as_of:datetime)->None:
         for observation in await self.repository.pending_orderflow_observations(settings.symbol,as_of):
@@ -120,7 +242,14 @@ class TIMApplication:
         except Exception as exc:
             log.warning("Optional Ollama explanation unavailable: %s", exc)
 
-    async def restore_persisted_state(self)->None:
+    async def restore_persisted_state(self, *, reset: bool = False)->None:
+        if reset:
+            self.aggregator = CandleAggregator(settings.timeframes)
+            self.observations = ObservationEngine()
+            self.memory = MarketMemory()
+            self.cases = ResearchCaseEngine()
+            self.research_trigger = ResearchTrigger()
+            self.history = {timeframe: [] for timeframe in settings.timeframes}
         for timeframe in settings.timeframes:
             self.history[timeframe]=await self.repository.recent_candles(settings.symbol,timeframe,500)
         recent_dashboard_candles=sorted((candle for candles in self.history.values() for candle in candles),key=lambda candle:candle.close_time)[-50:]
@@ -129,8 +258,20 @@ class TIMApplication:
         persisted_cases=await self.repository.recent_research_cases(settings.symbol,1000)
         persisted_orderflow=await self.repository.recent_orderflow_observations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_observations") else []
         persisted_validations=await self.repository.recent_orderflow_validations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_validations") else []
-        current_bucket=await self.repository.agg_trades_since(settings.symbol,bucket_start(datetime.now(timezone.utc),"1h")) if hasattr(self.repository,"agg_trades_since") else []
-        for trade in current_bucket:self.aggregator.add_trade(trade)
+        # Rebuild from the oldest latest persisted candle, rather than merely
+        # the current hour. This preserves a raw trade bucket that was active
+        # when the prior process stopped and idempotently repairs any completed
+        # candles yielded during replay before live streaming resumes.
+        latest_persisted=[candles[-1].open_time for candles in self.history.values() if candles]
+        recovery_start=min(latest_persisted) if latest_persisted else bucket_start(datetime.now(timezone.utc),"1h")
+        if hasattr(self, "durable_store") and hasattr(self.durable_store, "processed_trades_since"):
+            recovery_trades = await self.durable_store.processed_trades_since(settings.symbol, recovery_start)
+        else:
+            recovery_trades=await self.repository.agg_trades_since(settings.symbol,recovery_start) if hasattr(self.repository,"agg_trades_since") else []
+        for trade in recovery_trades:
+            for recovered in self.aggregator.add_trade(trade):
+                if hasattr(self.repository,"upsert_candle"):
+                    await self.repository.upsert_candle(recovered)
         self.cases.cases={case.case_id:case for case in persisted_cases}
         self.observations.restore_seen([str(item.observation_id) for item in historical])
         with self.dashboard_state.lock:
@@ -147,6 +288,82 @@ class TIMApplication:
             await self.process_orderflow_window(latest_complete-timedelta(minutes=1),latest_complete)
             await self.validate_pending_orderflow(latest_complete)
 
+    async def _refresh_ingestion_health(self) -> dict:
+        metrics = await self.durable_store.metrics_snapshot(settings.symbol)
+        with self.dashboard_state.lock:
+            self.dashboard_state.system_health.update(
+                {
+                    "queue_depth": metrics["queue_depth"],
+                    "queue_high_water": metrics["queue_high_water"],
+                    "queue_oldest_age": metrics["queue_oldest_age"],
+                    "cursor_age": metrics["cursor_age"],
+                    "recovery_state": metrics["recovery_state"],
+                    "duplicate_total": metrics["duplicate_total"],
+                    "out_of_order_total": metrics["out_of_order_total"],
+                }
+            )
+        return metrics
+
+    async def _worker_loop(self) -> None:
+        loop = asyncio.get_running_loop()
+        next_probe = loop.time()
+        while not self.worker_stop.is_set():
+            try:
+                result = await self.enrichment_worker.run_once()
+                metrics = await self._refresh_ingestion_health()
+                terminal_blocked = result.get("status") == "TERMINAL_BLOCKED"
+                if terminal_blocked:
+                    with self.dashboard_state.lock:
+                        self.dashboard_state.system_health["worker"] = "TERMINAL_BLOCKED"
+                        self.dashboard_state.system_health["terminal_blocker"] = result["terminal_blocker"]
+                self.queue_log.write(
+                    "OUTBOX_WORKER_CYCLE",
+                    mode="OBSERVE",
+                    trading_actions=0,
+                    worker="CANDLE_V1",
+                    result=result,
+                    queue_depth=metrics["queue_depth"],
+                    queue_oldest_age=metrics["queue_oldest_age"],
+                    recovery_state=metrics["recovery_state"],
+                    severity="ERROR" if terminal_blocked else "INFO",
+                    rate_limit_seconds=60.0 if not result["claimed"] else 0.0,
+                    rate_limit_key=(
+                        f"TERMINAL_BLOCKED:{result['terminal_blocker']['outbox_id']}"
+                        if terminal_blocked else "OUTBOX_WORKER_IDLE"
+                    ) if not result["claimed"] else None,
+                )
+                if result["claimed"]:
+                    continue
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                with self.dashboard_state.lock:
+                    self.dashboard_state.system_health["worker"] = "DEGRADED"
+                    self.dashboard_state.system_health["worker_error_type"] = type(error).__name__
+                self.queue_log.write(
+                    "OUTBOX_WORKER_UNAVAILABLE",
+                    severity="ERROR",
+                    mode="OBSERVE",
+                    trading_actions=0,
+                    error_type=type(error).__name__,
+                    rate_limit_seconds=30.0,
+                    rate_limit_key=f"OUTBOX_WORKER_UNAVAILABLE:{type(error).__name__}:{error}",
+                )
+            next_probe += 0.25
+            delay = max(0.0, next_probe - loop.time())
+            await asyncio.sleep(delay)
+            lag = max(0.0, loop.time() - next_probe)
+            await self.durable_store.record_metric("event_loop_lag", lag, kind="GAUGE")
+            if lag > 1.0:
+                next_probe = loop.time()
+
+    async def recover_quarantined(self, outbox_id: str) -> dict:
+        """Explicit single-record recovery entrypoint; never scans other quarantines."""
+        result = await self.enrichment_worker.recover_one(outbox_id)
+        if result["status"] == "COMPLETED":
+            await self.restore_persisted_state(reset=True)
+        return result
+
     async def run(self, initialize_schema: bool = False) -> None:
         await self.database.connect()
         with self.dashboard_state.lock:
@@ -157,13 +374,25 @@ class TIMApplication:
                 self.dashboard_state.system_health["ollama_availability"] = "AVAILABLE" if available else "UNAVAILABLE"
         if initialize_schema:
             await self.database.initialize_schema()
+        await self.durable_store.bootstrap_cursor(settings.symbol)
+        await self.durable_store.record_metric("restart_total")
         await self.restore_persisted_state()
         self.dashboard.start()
+        worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
             await self.stream.run()
         finally:
+            self.worker_stop.set()
+            try:
+                await asyncio.wait_for(worker_task, timeout=30)
+            except TimeoutError:
+                worker_task.cancel()
+                try:
+                    await worker_task
+                except asyncio.CancelledError:
+                    pass
             self.dashboard.stop()
             await self.database.close()
 

@@ -1,0 +1,82 @@
+{
+  "alerts": [
+    {
+      "action": "OBSERVE_ONLY_NO_TRADING_ACTION",
+      "code": "COVERAGE_BELOW_TARGET",
+      "reason": "Authoritative closed-1m coverage is below 0.95",
+      "severity": "P1"
+    },
+    {
+      "action": "OBSERVE_ONLY_NO_TRADING_ACTION",
+      "code": "OPEN_P1_GAP",
+      "reason": "At least one material coverage or replay gap is open",
+      "severity": "P1"
+    }
+  ],
+  "captured_at_utc": "2026-08-01T15:48:40.303692Z",
+  "collector": {
+    "recovery_status": "CONTROLLED_RESTART_PASS_SOURCE_CATCHUP_STILL_OPEN",
+    "restart_count": "NOT_INSTRUMENTED",
+    "runtime_started_at": "2026-08-01T15:46:41.333608+00:00",
+    "source_uptime": "NOT_INSTRUMENTED",
+    "status": "GREEN"
+  },
+  "coverage": {
+    "calculation_method": "PRODUCT_EXPECTED_SET_V1",
+    "closed_only": true,
+    "coverage": 0.674544,
+    "coverage_percent": "67.454",
+    "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+    "duplicates_excluded": 0,
+    "excluded_intervals": [],
+    "expected_interval": "PT1M",
+    "expected_observations": 14134,
+    "instrument": "BTCUSDT",
+    "invalid_observations": 0,
+    "market": "BINANCE_SPOT",
+    "metric_name": "tim_closed_1m_continuous_coverage",
+    "metric_version": "2.0.0",
+    "missing_observations": 4600,
+    "result_hash": "9ca1f5d49394373a976292352f580d9887ff0b7cb62141da864c28e1ff6af1f5",
+    "status": "FAIL",
+    "synthetic_observations": 0,
+    "target": 0.95,
+    "valid_observations": 9534,
+    "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+    "window_end_utc": "2026-08-01T15:48:00Z",
+    "window_start_utc": "2026-07-22T20:14:00Z"
+  },
+  "database_snapshot": "(4607712, 4607712, ())",
+  "ingestion": {
+    "backpressure": "NOT_INSTRUMENTED",
+    "clock_skew_rows": 0,
+    "clock_skew_threshold_seconds": 5,
+    "discard_reasons": "NOT_INSTRUMENTED",
+    "discarded_events": "NOT_INSTRUMENTED",
+    "distinct_events": 4013977,
+    "duplicate_attempts": "NOT_INSTRUMENTED_PRIMARY_KEY_PREVENTS_PERSISTED_DUPLICATES",
+    "expected_event_count": "NOT_DEFINED_FOR_AGGTRADE_EVENT_RATE",
+    "invalid_events": 0,
+    "last_source_event_utc": "2026-08-01T15:47:59.783000Z",
+    "out_of_order_events": 0,
+    "parse_latency": "NOT_INSTRUMENTED",
+    "queue_depth": 0,
+    "queue_model": "DIRECT_AWAIT_NO_APPLICATION_QUEUE",
+    "received_events": 4013977,
+    "source_to_store_max_seconds": "999.951363",
+    "source_to_store_p50_seconds": 0.108592,
+    "source_to_store_p95_seconds": 1.7570151999999999,
+    "source_to_store_p99_seconds": 5.292494319999996,
+    "valid_events": 4013977,
+    "very_late_events": 5100,
+    "write_latency": "NOT_INSTRUMENTED"
+  },
+  "measurement_window": {
+    "end_utc": "2026-08-01T15:48:00Z",
+    "start_utc": "2026-07-22T20:14:00Z"
+  },
+  "mode": "OBSERVE",
+  "persistence_invalid_rows": 0,
+  "schema_version": "1.0.0",
+  "trading_actions_emitted": 0
+}

@@ -41,3 +41,36 @@ def test_observation_hash_is_recomputed_from_persisted_candles():
     candles=[candle()];valid=observation(input_hash=candle_input_hash(candles))
     _validate_observation_input_hash(valid,candles)
     with pytest.raises(ValueError,match="does not match"):_validate_observation_input_hash(observation(input_hash="f"*64),candles)
+
+
+def test_candle_close_boundary_allows_one_second_clock_skew_only():
+    opened=NOW-timedelta(minutes=1)
+    boundary=Candle("BTCUSDT","1m",opened,NOW+timedelta(milliseconds=15),100,101,99,100,1,1)
+    _validate_candle_for_persistence(boundary,NOW)
+    too_early=Candle("BTCUSDT","1m",opened,NOW+timedelta(seconds=2),100,101,99,100,1,1)
+    with pytest.raises(ValueError,match="Future candle"):
+        _validate_candle_for_persistence(too_early,NOW)
+
+
+@pytest.mark.asyncio
+async def test_recent_candles_excludes_invalid_persisted_ohlc_rows():
+    class Connection:
+        async def fetch(self, query, *arguments):
+            assert "high >= open" in query
+            assert "low <= close" in query
+            return []
+
+    class Acquire:
+        async def __aenter__(self):
+            return Connection()
+
+        async def __aexit__(self, *_arguments):
+            return None
+
+    class DatabaseStub:
+        def acquire(self):
+            return Acquire()
+
+    from src.database.repository import MarketRepository
+
+    assert await MarketRepository(DatabaseStub()).recent_candles("BTCUSDT", "1h", 500) == []

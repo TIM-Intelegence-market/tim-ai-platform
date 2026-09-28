@@ -4,9 +4,12 @@ services:
     environment:
       POSTGRES_DB: tim
       POSTGRES_USER: tim
-      POSTGRES_PASSWORD: tim_local_only
+      POSTGRES_PASSWORD_FILE: /run/secrets/tim_database_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
     ports:
       - "127.0.0.1:5432:5432"
+    secrets:
+      - tim_database_password
     volumes:
       - tim_timescale_data:/var/lib/postgresql/data
       - ./src/database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
@@ -18,3 +21,7 @@ services:
 
 volumes:
   tim_timescale_data:
+
+secrets:
+  tim_database_password:
+    file: ${TIM_DATABASE_SECRET_FILE:?Set TIM_DATABASE_SECRET_FILE to a private 0600 password file}

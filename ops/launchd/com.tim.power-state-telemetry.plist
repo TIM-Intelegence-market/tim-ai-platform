@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.tim.power-state-telemetry</string>
+  <key>ProgramArguments</key><array>
+    <string>/Users/tim/Documents/TIM/tim/.venv/bin/python</string>
+    <string>/Users/tim/Documents/TIM/tim/scripts/tim_power_state_telemetry.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim</string>
+  <key>StartInterval</key><integer>60</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/power_state_telemetry.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/power_state_telemetry.err.log</string>
+</dict></plist>

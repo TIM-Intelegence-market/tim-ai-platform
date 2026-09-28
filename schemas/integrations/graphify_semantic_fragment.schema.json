@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tim.local/schemas/integrations/graphify_semantic_fragment.schema.json",
+  "title": "TIM Graphify Semantic Fragment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "nodes",
+    "edges",
+    "hyperedges",
+    "input_tokens",
+    "output_tokens"
+  ],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "file_type",
+          "source_file",
+          "source_location",
+          "source_url",
+          "captured_at",
+          "author",
+          "contributor"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9_:-]*$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file_type": {
+            "enum": [
+              "code",
+              "document",
+              "paper",
+              "image",
+              "rationale",
+              "concept"
+            ]
+          },
+          "source_file": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          },
+          "source_location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "captured_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contributor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "target",
+          "relation",
+          "confidence",
+          "confidence_score",
+          "source_file",
+          "source_location",
+          "weight"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "relation": {
+            "enum": [
+              "calls",
+              "implements",
+              "references",
+              "cites",
+              "conceptually_related_to",
+              "shares_data_with",
+              "semantically_similar_to"
+            ]
+          },
+          "confidence": {
+            "enum": [
+              "EXTRACTED",
+              "INFERRED",
+              "AMBIGUOUS"
+            ]
+          },
+          "confidence_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "source_file": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "hyperedges": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "nodes",
+          "relation",
+          "confidence",
+          "confidence_score",
+          "source_file"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nodes": {
+            "type": "array",
+            "minItems": 3,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "relation": {
+            "enum": [
+              "participate_in",
+              "implement",
+              "form"
+            ]
+          },
+          "confidence": {
+            "enum": [
+              "EXTRACTED",
+              "INFERRED"
+            ]
+          },
+          "confidence_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "source_file": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "input_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "output_tokens": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

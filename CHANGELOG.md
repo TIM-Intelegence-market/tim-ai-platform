@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased — repository foundation
+
+- Prepared contribution, security, conduct, Git governance, AI access, release,
+  and Graphify indexing policies.
+- Added a platform-neutral knowledge-graph metadata schema and index policy.
+- No runtime, research, trading, historical-data, or accepted-platform behavior
+  changed.
+- GitHub publication, branch protection, tags, and releases remain pending.
+
+## UI V3 — Operations & Research Control Center redesign
+
+- Added `src/dashboard/design_system.py`: centralized semantic severity system
+  (ok / info / warn / degraded / fail / blocked / unknown / disabled) with
+  reusable presentation primitives (status chips, state banner, attention list,
+  pipeline, status rows, metric strips, coverage rows, gate rows, horizons).
+- Redesigned the global shell: grouped navigation (OPERATIONS / RESEARCH /
+  READINESS / INTELLIGENCE / SYSTEM), a persistent global status matrix
+  (SYSTEM, LIVE DATA, QUEUE, DATA QUALITY, RESEARCH, TRADING LOCKED) that is
+  server-rendered and refreshed by the existing 5-second poll, and a cleaner
+  safety strip.
+- Rebuilt all ten operations pages on the new primitives; the Overview now
+  answers in order: primary system state, active problems, pipeline health,
+  research readiness (SHORT/MID/LONG + V2 gates). Missing evidence renders as
+  UNAVAILABLE and is never shown as a value.
+- Renamed pages/routes only in label: Gap Explorer → Incidents & Gaps,
+  Qualification Campaign → Qualification, Research & Independent Cases →
+  Independent Cases (URLs unchanged).
+- Additive operations-contract keys: `live` (pass-through of live operational
+  states) and `audit.incidents` (bounded, newest-first incident list). Existing
+  contract semantics are unchanged; read-only/trading-locked guard keys are
+  untouched.
+- No trading, execution, ingestion, database, or research-artifact behavior
+  was modified. The UI remains read-only OBSERVE evidence.
+
 ## TIM Core 1.0 Freeze
 
 - Declared the implemented Core component set frozen in OBSERVE-only mode.

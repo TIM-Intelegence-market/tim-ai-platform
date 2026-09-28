@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tim.local/schema/orderflow_scenario/analysis_output_v1.json",
+  "title": "TIM Orderflow Scenario Analysis Output",
+  "description": "Machine-readable output of the Orderflow Scenario and Trade Decision Manager. Contains no live-order instructions and never asserts realized profitability.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "analysis_id",
+    "timestamp",
+    "symbol",
+    "venue",
+    "market_type",
+    "timeframe",
+    "mode",
+    "data_quality",
+    "market_state",
+    "auction_state",
+    "orderflow",
+    "scenarios",
+    "decision",
+    "report_text",
+    "audit"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "analysis_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "symbol": { "type": "string" },
+    "venue": { "type": "string" },
+    "market_type": { "type": "string" },
+    "timeframe": { "type": "string" },
+    "mode": {
+      "type": "string",
+      "enum": ["OBSERVE", "RESEARCH", "SIMULATE", "PAPER", "SHADOW"]
+    },
+    "data_quality": {
+      "type": "object",
+      "required": ["status", "confidence", "missing_fields", "estimated_fields", "problems"],
+      "properties": {
+        "status": { "type": "string", "enum": ["PASS", "PARTIAL", "INSUFFICIENT_DATA"] },
+        "confidence": { "type": "string", "pattern": "^[0-9.]+$" },
+        "missing_fields": { "type": "array", "items": { "type": "string" } },
+        "estimated_fields": { "type": "array", "items": { "type": "string" } },
+        "problems": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "market_state": {
+      "type": "object",
+      "required": ["primary", "secondary", "evidence", "conflicts", "confidence", "missing_data", "invalidation_conditions"],
+      "properties": {
+        "primary": { "type": "string" },
+        "secondary": { "type": "array", "items": { "type": "string" } },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "conflicts": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "string" },
+        "missing_data": { "type": "array", "items": { "type": "string" } },
+        "invalidation_conditions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "auction_state": {
+      "type": "object",
+      "required": ["primary", "secondary", "evidence", "confidence"],
+      "properties": {
+        "primary": { "type": "string" },
+        "secondary": { "type": "array", "items": { "type": "string" } },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "string" }
+      }
+    },
+    "orderflow": {
+      "type": "object",
+      "required": ["aggressive_side", "price_response", "absorption_hypothesis", "absorption_confirmed", "open_interest_interpretation", "statements", "confidence", "missing_data"],
+      "properties": {
+        "aggressive_side": { "type": "string" },
+        "price_response": { "type": "string" },
+        "absorption_hypothesis": { "type": ["string", "null"] },
+        "absorption_confirmed": { "type": "boolean" },
+        "open_interest_interpretation": { "type": ["string", "null"] },
+        "confidence": { "type": "string" },
+        "statements": { "type": "array", "items": { "type": "object" } },
+        "missing_data": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "scenarios": { "type": "array", "items": { "type": "object" } },
+    "decision": {
+      "type": "object",
+      "required": ["status", "reason_codes", "missing_confirmations", "next_observation"],
+      "properties": {
+        "status": { "type": "string", "enum": ["NO_TRADE", "TRADE_PLAN"] },
+        "reason_codes": { "type": "array", "items": { "type": "string" } },
+        "missing_confirmations": { "type": "array", "items": { "type": "string" } },
+        "next_observation": { "type": "array", "items": { "type": "string" } },
+        "trade_plan": { "type": ["object", "null"] },
+        "risk": { "type": ["object", "null"] }
+      }
+    },
+    "report_text": { "type": "string" },
+    "audit": {
+      "type": "object",
+      "required": ["mode", "kill_switch_enabled", "inputs", "live_execution"],
+      "properties": {
+        "mode": { "type": "string" },
+        "kill_switch_enabled": { "type": "boolean" },
+        "live_execution": { "type": "boolean", "const": false },
+        "inputs": { "type": "array", "items": { "type": "object" } },
+        "engines": { "type": "array", "items": { "type": "object" } }
+      }
+    }
+  }
+}

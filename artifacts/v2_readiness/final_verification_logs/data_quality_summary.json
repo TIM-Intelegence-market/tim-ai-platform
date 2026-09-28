@@ -1,0 +1,24 @@
+{
+  "command": "/Users/tim/Documents/TIM/tim/.venv/bin/python -m pytest -q --junitxml=/Users/tim/Documents/TIM/tim/artifacts/test_reports/v2_data_quality.junit.xml tests/test_v2_readiness_coverage.py tests/test_v2_readiness_backfill.py tests/test_v2_readiness_monitor.py tests/test_v2_readiness_case_audit.py tests/test_agg_trade_persistence.py tests/test_atomic_persistence.py tests/test_repository_governance.py tests/test_aggregator.py",
+  "complete": true,
+  "database_isolation": {
+    "cleaned": true,
+    "created": true,
+    "production_schema_used_by_tests": false,
+    "schema": "tim_v2_data_quality_20260801"
+  },
+  "duration_seconds": 1.443,
+  "exit_code": 0,
+  "failed": 0,
+  "finished_at": "2026-08-01T15:44:19.115867+00:00",
+  "passed": 38,
+  "pytest_version": "pytest 8.4.2",
+  "python_version": "3.14.6",
+  "skipped": 0,
+  "started_at": "2026-08-01T15:44:18.141174+00:00",
+  "temporary_directory": "/var/folders/0k/xr_qg7k55210_v3cz99l1zsw0000gn/T/tim-pytest-lpfuwruy",
+  "timed_out": false,
+  "warnings": 37,
+  "xfailed": 0,
+  "xpassed": 0
+}

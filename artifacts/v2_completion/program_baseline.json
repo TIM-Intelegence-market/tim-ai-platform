@@ -1,0 +1,65 @@
+{
+  "program_id": "TIM-V2-COMPLETION-PROGRAM-20260803",
+  "phase": "PHASE_0_BASELINE",
+  "captured_at_utc": "2026-08-03T13:44:58Z",
+  "schema_version": "1.0.0",
+  "repository": {
+    "root": "/Users/tim/Documents/TIM/tim",
+    "github": "uezeyiraydin-cell/tim-ai-platform",
+    "remote": "https://github.com/uezeyiraydin-cell/tim-ai-platform.git"
+  },
+  "branch": {
+    "program": "opencode/v2-completion-program",
+    "source": "opencode/github-security-quality",
+    "base": "codex/v2-finish-first",
+    "head": "35749731183be65aa191de80b572eab4e04ec482",
+    "merge_base": "079063fa0301f979a53da4de4b35dffc9b95a7a6"
+  },
+  "working_tree": {
+    "modified": 15,
+    "untracked": 37,
+    "staged": 0
+  },
+  "runtime": {
+    "tim_main_pid": 19210,
+    "main_args": "--init-schema",
+    "dashboard": {
+      "url": "http://127.0.0.1:8765",
+      "reachable": true,
+      "version": "2.2.1",
+      "binding": "loopback"
+    },
+    "mode": "OBSERVE",
+    "safety": "RESEARCH ONLY - NO ORDERS OR EXECUTION",
+    "case_counts": {"active": 591, "closed": 7514, "total": 8105},
+    "postgres_5432_listener": false,
+    "keychain_db_secret": "UNAVAILABLE",
+    "ollama": {"reachable": true, "models": ["llama3.2:latest"]},
+    "omniroute": {"url": "http://127.0.0.1:20128", "reachable": false},
+    "graphify_gateway": {"enabled": false, "auth": "secure_mcp_tunnel_required"}
+  },
+  "observe_only": {
+    "core_manifest_operating_mode": "OBSERVE",
+    "trading_action_count": 0,
+    "trading_enabled": false,
+    "verified": true
+  },
+  "blockers": [
+    "config.secrets.SecretProviderError: macOS Keychain database secret is unavailable",
+    "CI test-job collection failure: config/tim_manager/graphify_mcp.yaml hardcodes /Users/tim/Documents/TIM/tim",
+    "CodeQL SARIF upload blocked: Code Scanning not enabled (Free plan)",
+    "Codecov upload gated on test job + external account pending"
+  ],
+  "starting_defects": [
+    "config/tim_manager/graphify_mcp.yaml contains host-specific absolute path",
+    "V2 config fails portability under GitHub Actions checkout path"
+  ],
+  "program_order": [
+    "1_Portable_Path_Remediation",
+    "2_Professional_Dashboard_V2",
+    "3_Data_Quality_and_95_Percent_Coverage",
+    "4_Scientific_Readiness",
+    "5_Secure_MCP_Completion"
+  ],
+  "status": "BASELINE_CAPTURED"
+}

@@ -1,0 +1,2744 @@
+{
+  "captured_at_utc": "2026-08-01T21:01:45.608125Z",
+  "columns": [
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "agg_trades",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "aggregate_trade_id",
+      "data_type": "bigint",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "agg_trades",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "trade_time",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "agg_trades",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "price",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "agg_trades",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "quantity",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "agg_trades",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "buyer_is_maker",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "agg_trades",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "source",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "agg_trades",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "clock_timestamp()",
+      "column_name": "ingest_timestamp",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "agg_trades",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "timeframe",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "open_time",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "close_time",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "open",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "high",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "low",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "close",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "volume",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "trade_count",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "ordinal_position": 10,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "true",
+      "column_name": "closed",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "candles",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "observation_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "observed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "now()",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "kind",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "timeframe",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "summary",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "confidence",
+      "data_type": "smallint",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "'{}'::jsonb",
+      "column_name": "evidence",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "source",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 10,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "provenance",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "1",
+      "column_name": "observation_version",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "ordinal_position": 12,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "'unassigned'::text",
+      "column_name": "rule_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 13,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "'1.0.0'::text",
+      "column_name": "rule_version",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 14,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "''::text",
+      "column_name": "input_hash",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 15,
+      "table_name": "observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "observation_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "kind",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "timeframe",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "observed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "summary",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "evidence",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "rule_version",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "input_hash",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "provenance",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 10,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "mode",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "orderflow_observations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "observation_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "observed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "baseline_price",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "horizons",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "complete",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "outcome",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "ordinal_position": 7,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "validation_hash",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "validated_through",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "validation_version",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 10,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "mode",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "orderflow_validations",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "case_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "timeframe",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "opened_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "'[]'::jsonb",
+      "column_name": "observation_ids",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "'[]'::jsonb",
+      "column_name": "evidence",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "'[]'::jsonb",
+      "column_name": "missing_evidence",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "outcome",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "ordinal_position": 10,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": "'{}'::jsonb",
+      "column_name": "rule_versions",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "documentation",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 12,
+      "table_name": "research_cases",
+      "table_schema": "public"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "agg_trades",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "aggregate_trade_id",
+      "data_type": "bigint",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "agg_trades",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "trade_time",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "agg_trades",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "price",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "agg_trades",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "quantity",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "agg_trades",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "buyer_is_maker",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "agg_trades",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "source",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "agg_trades",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "clock_timestamp()",
+      "column_name": "ingest_timestamp",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "agg_trades",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "timeframe",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "open_time",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "close_time",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "open",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "high",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "low",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "close",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "volume",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "trade_count",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "ordinal_position": 10,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "true",
+      "column_name": "closed",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "candles",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "observation_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "observed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "now()",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "kind",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "timeframe",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "summary",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "confidence",
+      "data_type": "smallint",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "'{}'::jsonb",
+      "column_name": "evidence",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "source",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 10,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "provenance",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "1",
+      "column_name": "observation_version",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "ordinal_position": 12,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "'unassigned'::text",
+      "column_name": "rule_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 13,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "'1.0.0'::text",
+      "column_name": "rule_version",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 14,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "''::text",
+      "column_name": "input_hash",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 15,
+      "table_name": "observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "observation_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "kind",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "timeframe",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "observed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "summary",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "evidence",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "rule_version",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "input_hash",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "provenance",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 10,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "mode",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "orderflow_observations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "observation_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "observed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "baseline_price",
+      "data_type": "double precision",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "horizons",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "complete",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "outcome",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "ordinal_position": 7,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "validation_hash",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "validated_through",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "validation_version",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 10,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "mode",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "orderflow_validations",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "case_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 1,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "symbol",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 2,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "timeframe",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 3,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "opened_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 4,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "ordinal_position": 5,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 6,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "'[]'::jsonb",
+      "column_name": "observation_ids",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 7,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "'[]'::jsonb",
+      "column_name": "evidence",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 8,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "'[]'::jsonb",
+      "column_name": "missing_evidence",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 9,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "outcome",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "ordinal_position": 10,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": "'{}'::jsonb",
+      "column_name": "rule_versions",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "ordinal_position": 11,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    },
+    {
+      "column_default": null,
+      "column_name": "documentation",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "ordinal_position": 12,
+      "table_name": "research_cases",
+      "table_schema": "tim_v2_test"
+    }
+  ],
+  "constraints": [
+    {
+      "constraint_name": "agg_trades_aggregate_trade_id_check",
+      "constraint_type": "c",
+      "definition": "CHECK (aggregate_trade_id >= 0)",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_aggregate_trade_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL aggregate_trade_id",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_buyer_is_maker_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL buyer_is_maker",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_ingest_timestamp_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL ingest_timestamp",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (symbol, aggregate_trade_id)",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_price_check",
+      "constraint_type": "c",
+      "definition": "CHECK (price > 0::double precision)",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_price_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL price",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_quantity_check",
+      "constraint_type": "c",
+      "definition": "CHECK (quantity > 0::double precision)",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_quantity_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL quantity",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_source_check",
+      "constraint_type": "c",
+      "definition": "CHECK (source = 'BINANCE_SPOT_AGGTRADE'::text)",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_source_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL source",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_trade_time_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL trade_time",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "candles_close_check",
+      "constraint_type": "c",
+      "definition": "CHECK (close > 0::double precision)",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_close_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL close",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_close_time_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL close_time",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_closed_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL closed",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_high_check",
+      "constraint_type": "c",
+      "definition": "CHECK (high > 0::double precision)",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_high_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL high",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_low_check",
+      "constraint_type": "c",
+      "definition": "CHECK (low > 0::double precision)",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_low_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL low",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_open_check",
+      "constraint_type": "c",
+      "definition": "CHECK (open > 0::double precision)",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_open_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL open",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_open_time_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL open_time",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (symbol, timeframe, open_time)",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_timeframe_allowed",
+      "constraint_type": "c",
+      "definition": "CHECK (timeframe = ANY (ARRAY['1m'::text, '5m'::text, '15m'::text, '1h'::text]))",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_timeframe_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL timeframe",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_trade_count_check",
+      "constraint_type": "c",
+      "definition": "CHECK (trade_count >= 0)",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_trade_count_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL trade_count",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_volume_check",
+      "constraint_type": "c",
+      "definition": "CHECK (volume >= 0::double precision)",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_volume_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL volume",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "observations_confidence_check",
+      "constraint_type": "c",
+      "definition": "CHECK (confidence >= 0 AND confidence <= 100)",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_confidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL confidence",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_created_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL created_at",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_evidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL evidence",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_input_hash_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL input_hash",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_input_hash_sha256",
+      "constraint_type": "c",
+      "definition": "CHECK (input_hash ~ '^[0-9a-f]{64}$'::text)",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_kind_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL kind",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_observation_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_id",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_observation_version_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_version",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_observed_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observed_at",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (observation_id)",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_provenance_allowed",
+      "constraint_type": "c",
+      "definition": "CHECK (provenance = 'PUBLIC_MARKET_DATA_DETERMINISTIC'::text)",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_provenance_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL provenance",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_rule_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL rule_id",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_rule_version_allowed",
+      "constraint_type": "c",
+      "definition": "CHECK (rule_id = 'bos'::text AND rule_version = '1.0.0'::text OR rule_id = 'bronxc'::text AND rule_version = '1.0.0'::text)",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_rule_version_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL rule_version",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_source_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL source",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_summary_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL summary",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_timeframe_allowed",
+      "constraint_type": "c",
+      "definition": "CHECK (timeframe = ANY (ARRAY['1m'::text, '5m'::text, '15m'::text, '1h'::text]))",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_timeframe_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL timeframe",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_evidence_check",
+      "constraint_type": "c",
+      "definition": "CHECK (jsonb_array_length(evidence) >= 2)",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_evidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL evidence",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_input_hash_check",
+      "constraint_type": "c",
+      "definition": "CHECK (input_hash ~ '^[0-9a-f]{64}$'::text)",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_input_hash_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL input_hash",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_kind_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL kind",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_mode_check",
+      "constraint_type": "c",
+      "definition": "CHECK (mode = 'OBSERVE'::text)",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_mode_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL mode",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_observation_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_id",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_observed_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observed_at",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (observation_id)",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_provenance_check",
+      "constraint_type": "c",
+      "definition": "CHECK (provenance = 'BINANCE_SPOT_AGGTRADE_DETERMINISTIC'::text)",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_provenance_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL provenance",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_rule_version_check",
+      "constraint_type": "c",
+      "definition": "CHECK (rule_version = '1.0.0'::text)",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_rule_version_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL rule_version",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_summary_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL summary",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_timeframe_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL timeframe",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_validations_baseline_price_check",
+      "constraint_type": "c",
+      "definition": "CHECK (baseline_price > 0::double precision)",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_baseline_price_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL baseline_price",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_complete_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL complete",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_horizons_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL horizons",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_mode_check",
+      "constraint_type": "c",
+      "definition": "CHECK (mode = 'OBSERVE'::text)",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_mode_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL mode",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_observation_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (observation_id) REFERENCES orderflow_observations(observation_id) ON DELETE CASCADE",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_observation_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_id",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_observed_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observed_at",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_outcome_check",
+      "constraint_type": "c",
+      "definition": "CHECK (outcome = ANY (ARRAY['PRICE_INCREASED'::text, 'PRICE_DECREASED'::text, 'PRICE_SIDEWAYS'::text]))",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (observation_id)",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validated_through_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL validated_through",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validation_hash_check",
+      "constraint_type": "c",
+      "definition": "CHECK (validation_hash ~ '^[0-9a-f]{64}$'::text)",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validation_hash_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL validation_hash",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validation_version_check",
+      "constraint_type": "c",
+      "definition": "CHECK (validation_version = '1.0.0'::text)",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validation_version_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL validation_version",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "research_cases_case_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL case_id",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_documentation_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL documentation",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_evidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL evidence",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_missing_evidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL missing_evidence",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_observation_ids_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_ids",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_opened_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL opened_at",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (case_id)",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_rule_versions_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL rule_versions",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_status_check",
+      "constraint_type": "c",
+      "definition": "CHECK (status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text]))",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_status_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL status",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_timeframe_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL timeframe",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_updated_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL updated_at",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "agg_trades_aggregate_trade_id_check",
+      "constraint_type": "c",
+      "definition": "CHECK (aggregate_trade_id >= 0)",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_aggregate_trade_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL aggregate_trade_id",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_buyer_is_maker_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL buyer_is_maker",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_ingest_timestamp_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL ingest_timestamp",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (symbol, aggregate_trade_id)",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_price_check",
+      "constraint_type": "c",
+      "definition": "CHECK (price > 0::double precision)",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_price_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL price",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_quantity_check",
+      "constraint_type": "c",
+      "definition": "CHECK (quantity > 0::double precision)",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_quantity_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL quantity",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_source_check",
+      "constraint_type": "c",
+      "definition": "CHECK (source = 'BINANCE_SPOT_AGGTRADE'::text)",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_source_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL source",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "agg_trades_trade_time_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL trade_time",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "constraint_name": "candles_close_check",
+      "constraint_type": "c",
+      "definition": "CHECK (close > 0::double precision)",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_close_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL close",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_close_time_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL close_time",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_closed_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL closed",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_high_check",
+      "constraint_type": "c",
+      "definition": "CHECK (high > 0::double precision)",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_high_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL high",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_low_check",
+      "constraint_type": "c",
+      "definition": "CHECK (low > 0::double precision)",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_low_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL low",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_open_check",
+      "constraint_type": "c",
+      "definition": "CHECK (open > 0::double precision)",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_open_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL open",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_open_time_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL open_time",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (symbol, timeframe, open_time)",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_timeframe_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL timeframe",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_trade_count_check",
+      "constraint_type": "c",
+      "definition": "CHECK (trade_count >= 0)",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_trade_count_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL trade_count",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_volume_check",
+      "constraint_type": "c",
+      "definition": "CHECK (volume >= 0::double precision)",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "candles_volume_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL volume",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "constraint_name": "observations_confidence_check",
+      "constraint_type": "c",
+      "definition": "CHECK (confidence >= 0 AND confidence <= 100)",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_confidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL confidence",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_created_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL created_at",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_evidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL evidence",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_input_hash_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL input_hash",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_kind_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL kind",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_observation_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_id",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_observation_version_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_version",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_observed_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observed_at",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (observation_id)",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_provenance_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL provenance",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_rule_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL rule_id",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_rule_version_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL rule_version",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_source_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL source",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_summary_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL summary",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "observations_timeframe_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL timeframe",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_evidence_check",
+      "constraint_type": "c",
+      "definition": "CHECK (jsonb_array_length(evidence) >= 2)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_evidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL evidence",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_input_hash_check",
+      "constraint_type": "c",
+      "definition": "CHECK (input_hash ~ '^[0-9a-f]{64}$'::text)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_input_hash_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL input_hash",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_kind_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL kind",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_mode_check",
+      "constraint_type": "c",
+      "definition": "CHECK (mode = 'OBSERVE'::text)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_mode_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL mode",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_observation_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_id",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_observed_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observed_at",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (observation_id)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_provenance_check",
+      "constraint_type": "c",
+      "definition": "CHECK (provenance = 'BINANCE_SPOT_AGGTRADE_DETERMINISTIC'::text)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_provenance_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL provenance",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_rule_version_check",
+      "constraint_type": "c",
+      "definition": "CHECK (rule_version = '1.0.0'::text)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_rule_version_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL rule_version",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_summary_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL summary",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_observations_timeframe_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL timeframe",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "constraint_name": "orderflow_validations_baseline_price_check",
+      "constraint_type": "c",
+      "definition": "CHECK (baseline_price > 0::double precision)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_baseline_price_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL baseline_price",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_complete_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL complete",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_horizons_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL horizons",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_mode_check",
+      "constraint_type": "c",
+      "definition": "CHECK (mode = 'OBSERVE'::text)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_mode_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL mode",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_observation_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (observation_id) REFERENCES tim_v2_test.orderflow_observations(observation_id) ON DELETE CASCADE",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_observation_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_id",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_observed_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observed_at",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_outcome_check",
+      "constraint_type": "c",
+      "definition": "CHECK (outcome = ANY (ARRAY['PRICE_INCREASED'::text, 'PRICE_DECREASED'::text, 'PRICE_SIDEWAYS'::text]))",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (observation_id)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validated_through_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL validated_through",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validation_hash_check",
+      "constraint_type": "c",
+      "definition": "CHECK (validation_hash ~ '^[0-9a-f]{64}$'::text)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validation_hash_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL validation_hash",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validation_version_check",
+      "constraint_type": "c",
+      "definition": "CHECK (validation_version = '1.0.0'::text)",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "orderflow_validations_validation_version_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL validation_version",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "constraint_name": "research_cases_case_id_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL case_id",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_documentation_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL documentation",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_evidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL evidence",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_missing_evidence_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL missing_evidence",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_observation_ids_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL observation_ids",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_opened_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL opened_at",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (case_id)",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_rule_versions_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL rule_versions",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_status_check",
+      "constraint_type": "c",
+      "definition": "CHECK (status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text]))",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_status_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL status",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_symbol_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL symbol",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_timeframe_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL timeframe",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "constraint_name": "research_cases_updated_at_not_null",
+      "constraint_type": "n",
+      "definition": "NOT NULL updated_at",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    }
+  ],
+  "content_sha256": "0e19611237bcc22d72deef4e52f56492675ac01eb01b89fe34ce2e98e610c797",
+  "indexes": [
+    {
+      "definition": "CREATE UNIQUE INDEX agg_trades_pkey ON public.agg_trades USING btree (symbol, aggregate_trade_id)",
+      "index_name": "agg_trades_pkey",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "definition": "CREATE INDEX agg_trades_time_idx ON public.agg_trades USING btree (symbol, trade_time DESC)",
+      "index_name": "agg_trades_time_idx",
+      "schema_name": "public",
+      "table_name": "agg_trades"
+    },
+    {
+      "definition": "CREATE INDEX candles_lookup_idx ON public.candles USING btree (symbol, timeframe, open_time DESC)",
+      "index_name": "candles_lookup_idx",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX candles_pkey ON public.candles USING btree (symbol, timeframe, open_time)",
+      "index_name": "candles_pkey",
+      "schema_name": "public",
+      "table_name": "candles"
+    },
+    {
+      "definition": "CREATE INDEX observations_lookup_idx ON public.observations USING btree (symbol, timeframe, observed_at DESC)",
+      "index_name": "observations_lookup_idx",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX observations_pkey ON public.observations USING btree (observation_id)",
+      "index_name": "observations_pkey",
+      "schema_name": "public",
+      "table_name": "observations"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX orderflow_observations_pkey ON public.orderflow_observations USING btree (observation_id)",
+      "index_name": "orderflow_observations_pkey",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "definition": "CREATE INDEX orderflow_observations_time_idx ON public.orderflow_observations USING btree (symbol, observed_at DESC)",
+      "index_name": "orderflow_observations_time_idx",
+      "schema_name": "public",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX orderflow_validations_pkey ON public.orderflow_validations USING btree (observation_id)",
+      "index_name": "orderflow_validations_pkey",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "definition": "CREATE INDEX orderflow_validations_time_idx ON public.orderflow_validations USING btree (symbol, validated_through DESC)",
+      "index_name": "orderflow_validations_time_idx",
+      "schema_name": "public",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "definition": "CREATE INDEX research_cases_lookup_idx ON public.research_cases USING btree (symbol, status, updated_at DESC)",
+      "index_name": "research_cases_lookup_idx",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX research_cases_pkey ON public.research_cases USING btree (case_id)",
+      "index_name": "research_cases_pkey",
+      "schema_name": "public",
+      "table_name": "research_cases"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX agg_trades_pkey ON tim_v2_test.agg_trades USING btree (symbol, aggregate_trade_id)",
+      "index_name": "agg_trades_pkey",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "definition": "CREATE INDEX agg_trades_time_idx ON tim_v2_test.agg_trades USING btree (symbol, trade_time DESC)",
+      "index_name": "agg_trades_time_idx",
+      "schema_name": "tim_v2_test",
+      "table_name": "agg_trades"
+    },
+    {
+      "definition": "CREATE INDEX candles_lookup_idx ON tim_v2_test.candles USING btree (symbol, timeframe, open_time DESC)",
+      "index_name": "candles_lookup_idx",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX candles_pkey ON tim_v2_test.candles USING btree (symbol, timeframe, open_time)",
+      "index_name": "candles_pkey",
+      "schema_name": "tim_v2_test",
+      "table_name": "candles"
+    },
+    {
+      "definition": "CREATE INDEX observations_lookup_idx ON tim_v2_test.observations USING btree (symbol, timeframe, observed_at DESC)",
+      "index_name": "observations_lookup_idx",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX observations_pkey ON tim_v2_test.observations USING btree (observation_id)",
+      "index_name": "observations_pkey",
+      "schema_name": "tim_v2_test",
+      "table_name": "observations"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX orderflow_observations_pkey ON tim_v2_test.orderflow_observations USING btree (observation_id)",
+      "index_name": "orderflow_observations_pkey",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "definition": "CREATE INDEX orderflow_observations_time_idx ON tim_v2_test.orderflow_observations USING btree (symbol, observed_at DESC)",
+      "index_name": "orderflow_observations_time_idx",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_observations"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX orderflow_validations_pkey ON tim_v2_test.orderflow_validations USING btree (observation_id)",
+      "index_name": "orderflow_validations_pkey",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "definition": "CREATE INDEX orderflow_validations_time_idx ON tim_v2_test.orderflow_validations USING btree (symbol, validated_through DESC)",
+      "index_name": "orderflow_validations_time_idx",
+      "schema_name": "tim_v2_test",
+      "table_name": "orderflow_validations"
+    },
+    {
+      "definition": "CREATE INDEX research_cases_lookup_idx ON tim_v2_test.research_cases USING btree (symbol, status, updated_at DESC)",
+      "index_name": "research_cases_lookup_idx",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX research_cases_pkey ON tim_v2_test.research_cases USING btree (case_id)",
+      "index_name": "research_cases_pkey",
+      "schema_name": "tim_v2_test",
+      "table_name": "research_cases"
+    }
+  ],
+  "schema_dump_format": "INFORMATION_SCHEMA_AND_PG_CATALOG_JSON_V1"
+}

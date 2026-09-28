@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "checked_at_utc": "2026-08-01T21:21:19.978Z",
+  "workstream": "SECURE_MCP_EXTERNAL",
+  "status": "BLOCKED — EXTERNAL OPENAI ACTION REQUIRED",
+  "core_gate_relationship": "SEPARATE_WORKSTREAM_NOT_A_COVERAGE_OR_SCIENCE_EXCEPTION",
+  "support_surface": {
+    "url": "https://help.openai.com/en",
+    "title": "OpenAI Help Center",
+    "authenticated": false,
+    "login_link_present": true,
+    "support_login_prompt_present": true
+  },
+  "existing_ticket_search": "UNAVAILABLE_WITHOUT_AUTHENTICATED_SUPPORT_SESSION",
+  "support_dossier_prepared": true,
+  "support_dossier": "docs/integrations/secure_mcp_support_dossier.md",
+  "support_ticket_submitted": false,
+  "ticket_submission_count_this_program": 0,
+  "case_id": null,
+  "dossier_transmitted": false,
+  "credentials_or_cookies_captured": false,
+  "duplicate_ticket_prohibited": true,
+  "local_graphify_enabled": false,
+  "local_workspace_gateway_enabled": false,
+  "public_mcp_listener": false,
+  "next_action_owner": "Authorized human signed into the existing OpenAI Help Center account",
+  "next_action": "Search for an existing TIM association case; only if none exists, submit the single redacted dossier and record the returned case ID."
+}

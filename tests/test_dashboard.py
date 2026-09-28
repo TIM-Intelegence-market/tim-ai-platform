@@ -74,6 +74,12 @@ def test_dashboard_serves_html_and_json() -> None:
         server.stop()
 
 
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "example.com"])
+def test_dashboard_rejects_non_loopback_bind(host: str) -> None:
+    with pytest.raises(ValueError, match="loopback"):
+        DashboardServer(DashboardState(), host=host, port=0)
+
+
 def test_api_contract_uses_real_tim_field_names(tmp_path: Path) -> None:
     data=populated_state(tmp_path).snapshot()
     assert set(("timestamp","mode","provenance","candles","observations","research_cases","validator"))<=data.keys()
@@ -90,6 +96,19 @@ def test_live_health_requires_fresh_market_data(tmp_path: Path) -> None:
     data=state.snapshot()
     assert data["operational_health"]["stream"]=="RED"
     assert data["operational_health"]["status"]!="GREEN"
+
+
+def test_live_health_uses_fresh_durable_cursor_when_candles_lag(tmp_path: Path) -> None:
+    state=populated_state(tmp_path)
+    state.system_health={
+        "database":"connected",
+        "stream":"running",
+        "last_raw_persisted_at":datetime.now(timezone.utc).isoformat(),
+    }
+    health=state.snapshot()["operational_health"]
+    assert health["stream"]=="GREEN"
+    assert health["status"]=="GREEN"
+    assert health["data_freshness_source"]=="DURABLE_RAW_CURSOR"
 
 
 def test_future_timestamp_is_not_reported_as_fresh() -> None:

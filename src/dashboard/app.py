@@ -1,19 +1,1880 @@
-"""Compatibility layer: the dashboard now lives in several modules.
-
-Existing imports such as ``from src.dashboard.app import DashboardServer`` keep working.
-"""
-
 from __future__ import annotations
 
-from src.dashboard.constants import DASHBOARD_VERSION, VISIBLE_LIMIT, ORDERFLOW_VISIBLE_LIMIT, ALLOWED_TIMELINE_EVENTS  # noqa: F401
-from src.dashboard.helpers import CASE_STATUS_BADGE, _case_status, _safe, _short, _parse_time, _duration, _age_seconds, _json_block, _status, _required, _status_level  # noqa: F401
-from src.dashboard.state import DashboardState  # noqa: F401
-from src.dashboard.api import _research_cases_collection  # noqa: F401
-from src.dashboard.components import _case_for_observation, _observation_row, _case_row, _issue_windows, _card_markup, _diagnostic_card, _timeline_rows, _quality_exception_rows, _signal_context_rows, _retrospective_outcome_rows  # noqa: F401
-from src.dashboard.pages.signals import _signal_research_page, _signal_research_rows  # noqa: F401
-from src.dashboard.pages.operations import _data_quality_exceptions_page, _health_timeline_page, _health_center_sections  # noqa: F401
-from src.dashboard.layout import CSS, AUTO_REFRESH_SCRIPT, NAV_GROUPS, NAV_SCRIPT, _nav, _layout, _hero  # noqa: F401
-from src.dashboard.views import render  # noqa: F401
-from src.dashboard.server import DashboardServer  # noqa: F401
+import base64
+import html
+import hashlib
+import ipaddress
+import json
+import threading
+from dataclasses import asdict, dataclass, field, is_dataclass
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
 
-__all__ = ["ALLOWED_TIMELINE_EVENTS", "AUTO_REFRESH_SCRIPT", "CSS", "DASHBOARD_VERSION", "DashboardServer", "DashboardState", "NAV_GROUPS", "NAV_SCRIPT", "ORDERFLOW_VISIBLE_LIMIT", "VISIBLE_LIMIT", "_age_seconds", "CASE_STATUS_BADGE", "_card_markup", "_case_for_observation", "_case_status", "_case_row", "_data_quality_exceptions_page", "_diagnostic_card", "_duration", "_health_center_sections", "_health_timeline_page", "_hero", "_issue_windows", "_json_block", "_layout", "_nav", "_observation_row", "_parse_time", "_quality_exception_rows", "_required", "_research_cases_collection", "_retrospective_outcome_rows", "_safe", "_short", "_signal_context_rows", "_signal_research_page", "_signal_research_rows", "_status", "_status_level", "_timeline_rows", "render"]
+from src.analytics.research import ResearchAnalyticsEngine
+from src.dashboard import design_system
+from src.dashboard.design_system import severity as _severity_of
+from src.dashboard.operations import OPERATIONS_PAGES, build_operations_snapshot, render_operations_page
+from src.insights import ResearchInsightsEngine
+from src.research.router import ResearchRouter
+from src.llm.ollama_client import OllamaClient
+from src.llm.prompts import observation_prompt
+from config.settings import settings
+
+
+DASHBOARD_VERSION = "4.0.0"
+VISIBLE_LIMIT = 50
+ORDERFLOW_VISIBLE_LIMIT = 100
+MAX_RESPONSE_BYTES = 2_000_000
+ALLOWED_TIMELINE_EVENTS = {
+    "RUNTIME_START",
+    "VALIDATION_CYCLE",
+    "RESEARCH_CYCLE_CHECK",
+    "ACCEPTANCE_CHECK",
+    "CONTROLLED_API_FAILURE",
+    "UNCONTROLLED_API_FAILURE",
+    "VALIDATOR_RECOVERY",
+    "DATA_GAP",
+    "RESTART",
+}
+
+
+def _require_loopback_host(host: str) -> str:
+    """Reject dashboard binds that could expose the research UI off-host."""
+    normalized = host.strip().lower()
+    if normalized == "localhost":
+        return host
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError as exc:
+        raise ValueError("dashboard host must be an explicit loopback address") from exc
+    if not address.is_loopback:
+        raise ValueError("dashboard host must be loopback-only")
+    return host
+
+
+def _is_loopback_request_host(value: str | None) -> bool:
+    """Reject DNS-rebinding style Host headers before serving local evidence."""
+    if not value or any(character.isspace() for character in value) or any(character in value for character in "@/?#\\"):
+        return False
+    try:
+        hostname = urlparse(f"//{value}").hostname
+        return bool(hostname and _require_loopback_host(hostname))
+    except (ValueError, TypeError):
+        return False
+
+
+def _safe(value: Any, fallback: str = "—") -> str:
+    if value is None or value == "":
+        return fallback
+    return html.escape(str(value))
+
+
+def _short(value: Any, size: int = 10) -> str:
+    text = str(value or "")
+    return text[:size] if text else "—"
+
+
+def _parse_time(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _duration(start: Any, end: Any) -> str:
+    left, right = _parse_time(start), _parse_time(end)
+    if not left or not right or right < left:
+        return "—"
+    seconds = int((right - left).total_seconds())
+    days, seconds = divmod(seconds, 86400)
+    hours, seconds = divmod(seconds, 3600)
+    minutes = seconds // 60
+    return f"{days}d {hours}h {minutes}m" if days else f"{hours}h {minutes}m"
+
+
+def _age_seconds(value: Any) -> str:
+    parsed = _parse_time(value)
+    if not parsed:
+        return f"MISSING:{value!s}" if value not in (None, "") else "MISSING:freshness_seconds"
+    age = int((datetime.now(timezone.utc) - parsed).total_seconds())
+    return "INVALID:FUTURE_TIMESTAMP" if age < 0 else str(age)
+
+
+def _json_block(value: Any) -> str:
+    return _safe(json.dumps(value if value is not None else {}, indent=2, ensure_ascii=False, sort_keys=True))
+
+
+def _status(value: Any) -> str:
+    normalized = str(value or "UNKNOWN").upper()
+    if normalized in {"HEALTHY", "RUNNING", "CONNECTED", "PASS", "GREEN", "TRUE"}:
+        return "GREEN"
+    if normalized in {"WARNING", "DEGRADED", "PENDING", "WAITING", "MONITORING", "YELLOW", "OPEN_ISSUES", "NOT_READY_FOR_V2"}:
+        return "YELLOW"
+    return "RED"
+
+
+@dataclass(slots=True)
+class DashboardState:
+    market_status: dict[str, Any] = field(default_factory=lambda: {"status": "STARTING"})
+    active_observations: list[dict] = field(default_factory=list)
+    research_cases: list[dict] = field(default_factory=list)
+    orderflow_observations: list[dict] = field(default_factory=list)
+    orderflow_validations: list[dict] = field(default_factory=list)
+    system_health: dict[str, Any] = field(default_factory=lambda: {
+        "database": "unknown",
+        "stream": "unknown",
+        "queue_depth": 0,
+        "queue_model": "DIRECT_AWAIT_NO_APPLICATION_QUEUE",
+        "ollama_enabled": False,
+        "ollama_availability": "DISABLED_BY_POLICY",
+    })
+    memory_status: dict[str, Any] = field(default_factory=lambda: {"observations": 0})
+    news: dict[str, Any] = field(default_factory=lambda: {"status": "PLACEHOLDER", "items": []})
+    recent_candles: list[dict] = field(default_factory=list)
+    validator_path: Path = field(default_factory=lambda: Path("data/operational/state.json"))
+    events_path: Path = field(default_factory=lambda: Path("data/operational/events.jsonl"))
+    readiness_path: Path = field(default_factory=lambda: Path("data/research/status/tim_v1_readiness.json"))
+    audit_path: Path = field(default_factory=lambda: Path("data/research/audit/latest.json"))
+    quality_path: Path = field(default_factory=lambda: Path("data/research/quality/latest.json"))
+    core_manifest_path: Path = field(default_factory=lambda: Path("config/core_manifest.json"))
+    governance_roles_path: Path = field(default_factory=lambda: Path("config/governance_roles.json"))
+    completion_artifacts_path: Path = field(default_factory=lambda: Path("artifacts/v2_completion"))
+    legacy_readiness_artifacts_path: Path = field(default_factory=lambda: Path("artifacts/v2_readiness"))
+    operational_watchdog_path: Path = field(default_factory=lambda: Path("data/operational/watchdog_status.json"))
+    rolling_liveness_path: Path = field(default_factory=lambda: Path("data/operational/rolling_liveness.json"))
+    live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))
+    gate_model_path: Path = field(default_factory=lambda: Path("data/research/status/current_gate_model.json"))
+    phase_c_checkpoint_path: Path = field(default_factory=lambda: Path("/tmp/phase_c_checkpoint.json"))
+    runtime_started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    _timeline_mtime_ns: int = field(default=-1, init=False)
+    _timeline_cache: list[dict[str, Any]] = field(default_factory=list, init=False)
+
+    def _validator(self) -> dict[str, Any]:
+        try:
+            value = json.loads(self.validator_path.read_text())
+            return {
+                "status": value.get("status", "UNKNOWN"),
+                "cycles": int(value.get("cycles", 0)),
+                "started_at": value.get("started_at"),
+                "last_cycle_at": value.get("last_cycle_at"),
+                "deadline": value.get("deadline"),
+                "restart_count": int(value.get("restart_count", 0)),
+                "acceptance": value.get("acceptance", {"status": "monitoring"}),
+                "health_monitor": value.get("health_monitor", {}),
+                "latest_health": value.get("latest_health", {}),
+                "research_health": value.get("latest_health", {}).get("research", {}),
+            }
+        except (OSError, ValueError, TypeError):
+            return {"status": "UNAVAILABLE", "cycles": 0}
+
+    def _timeline(self, validator: dict[str, Any]) -> list[dict[str, Any]]:
+        try:
+            mtime_ns = self.events_path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = -1
+        if mtime_ns == self._timeline_mtime_ns and self._timeline_cache:
+            return list(self._timeline_cache)
+        events: list[dict[str, Any]] = []
+        started = validator.get("started_at")
+        if started:
+            events.append({"timestamp": started, "event": "RUNTIME_START", "severity": "INFO", "summary": "Persistierte TIM-Laufzeit gestartet."})
+        try:
+            lines = self.events_path.read_text().splitlines()[-250:]
+        except OSError:
+            lines = []
+        for line in lines:
+            try:
+                item = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            kind = str(item.get("event", ""))
+            if kind not in ALLOWED_TIMELINE_EVENTS or "TRADE" in kind or "ORDER" in kind:
+                continue
+            summary = item.get("overall_status") or item.get("category") or item.get("status") or item.get("severity") or "Recorded"
+            events.append({"timestamp": item.get("timestamp"), "event": kind, "severity": item.get("severity", "INFO"), "summary": summary})
+        self._timeline_mtime_ns = mtime_ns
+        self._timeline_cache = events[-50:]
+        return list(self._timeline_cache)
+
+    def readiness(self)->dict[str,Any]:
+        try:
+            value=json.loads(self.readiness_path.read_text())
+            return value if isinstance(value,dict) and value.get("mode")=="OBSERVE" else {"readiness_status":"UNAVAILABLE","criteria":{}}
+        except (OSError,ValueError,TypeError):return {"readiness_status":"UNAVAILABLE","criteria":{}}
+
+    @staticmethod
+    def _read_dict(path: Path) -> dict[str, Any]:
+        try:
+            value = json.loads(path.read_text())
+            return value if isinstance(value, dict) else {}
+        except (OSError, ValueError, TypeError):
+            return {}
+
+    def _gate_model(self) -> dict[str, Any]:
+        """Read the operator-owned current gate model (read-only, fail-open).
+
+        The dashboard never authors gate states. An absent or oversized file
+        renders every bound gate as UNAVAILABLE instead of a substitute value.
+        """
+        try:
+            raw = self.gate_model_path.read_text(encoding="utf-8")
+            if len(raw) > 262_144:
+                return {}
+            model = json.loads(raw)
+        except (OSError, ValueError, TypeError):
+            return {}
+        if not isinstance(model, dict):
+            return {}
+        # Live supplement: Phase C checkpoint progress (read-only, optional).
+        checkpoint = self._phase_c_progress()
+        if checkpoint and isinstance(model.get("bands"), dict):
+            for gate in model["bands"].get("data_pipeline", []):
+                if isinstance(gate, dict) and gate.get("live_checkpoint") and gate.get("id") == "PHASE_C_HISTORICAL_EXTENSION":
+                    gate["checkpoint"] = checkpoint
+        return model
+
+    def _phase_c_progress(self) -> dict[str, Any]:
+        try:
+            info = self.phase_c_checkpoint_path.stat()
+            if info.st_size > 65_536:
+                return {}
+            state = json.loads(self.phase_c_checkpoint_path.read_text())
+        except (OSError, ValueError, TypeError):
+            return {}
+        if not isinstance(state, dict):
+            return {}
+        return {
+            "trades": state.get("trades"),
+            "pages": state.get("pages"),
+            "last_id": state.get("last_id"),
+            "checkpoint_mtime": datetime.fromtimestamp(info.st_mtime, tz=timezone.utc).isoformat(),
+        }
+
+    def snapshot(self) -> dict[str, Any]:
+        with self.lock:
+            observations = [dict(item) for item in self.active_observations[-VISIBLE_LIMIT:]]
+            candles = list(self.recent_candles[-VISIBLE_LIMIT:])
+            cases = list(self.research_cases[-VISIBLE_LIMIT:])
+            all_cases = list(self.research_cases)
+            system_health = dict(self.system_health)
+            market_status = dict(self.market_status)
+            memory_status = dict(self.memory_status)
+            news = dict(self.news)
+        case_by_observation = {
+            str(observation_id): case
+            for case in all_cases
+            for observation_id in case.get("observation_ids", [])
+        }
+        for observation in observations:
+            related = case_by_observation.get(str(observation.get("observation_id", "")))
+            if related:
+                observation["research_case_id"] = related.get("case_id")
+                observation["research_case_status"] = related.get("status")
+        validator = self._validator()
+        active = sum(str(case.get("status", "OPEN")).upper() not in {"CLOSED", "INVALIDATED"} for case in all_cases)
+        closed = sum(str(case.get("status", "")).upper() == "CLOSED" for case in all_cases)
+        generated_at = datetime.now(timezone.utc)
+        last_candle_at = next(
+            (item.get("close_time") or item.get("open_time") for item in reversed(candles) if item.get("close_time") or item.get("open_time")),
+            None,
+        )
+        # Raw persistence happens before candle enrichment.  A backlog in the
+        # latter must not report a healthy, continuously persisted live stream
+        # as stale merely because the most recently completed candle is older.
+        last_data_at = system_health.get("last_raw_persisted_at") or last_candle_at
+        parsed_last_data = _parse_time(last_data_at)
+        data_age = int((generated_at - parsed_last_data).total_seconds()) if parsed_last_data else None
+        stream_running = str(system_health.get("stream", "")).lower() == "running"
+        database_connected = str(system_health.get("database", "")).lower() == "connected"
+        data_fresh = data_age is not None and 0 <= data_age <= 120
+        operational_health = {
+            "status": "GREEN" if stream_running and database_connected and data_fresh else "YELLOW" if database_connected else "RED",
+            "database": "GREEN" if database_connected else "RED",
+            "stream": "GREEN" if stream_running and data_fresh else "RED",
+            "dashboard": "GREEN",
+            "runtime": "GREEN",
+            "last_data_at": last_data_at,
+            "last_candle_at": last_candle_at,
+            "data_freshness_source": "DURABLE_RAW_CURSOR" if system_health.get("last_raw_persisted_at") else "COMPLETED_CANDLE",
+            "data_age_seconds": data_age if data_age is not None else "MISSING:last_data_at",
+            "checked_at": generated_at.isoformat(),
+            "runtime_started_at": self.runtime_started_at,
+            "queue_depth": int(system_health.get("queue_depth", 0)),
+            "queue_model": str(system_health.get("queue_model", "DIRECT_AWAIT_NO_APPLICATION_QUEUE")),
+            "ollama_enabled": bool(system_health.get("ollama_enabled", False)),
+            "ollama_availability": str(system_health.get("ollama_availability", "DISABLED_BY_POLICY")),
+        }
+        snapshot = {
+                "timestamp": generated_at.isoformat(),
+                "mode": "OBSERVE",
+                "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC",
+                "dashboard_version": DASHBOARD_VERSION,
+                "count_scope": "VISIBLE_RECENT_WINDOW",
+                "visible_counts": {"candles": len(candles), "observations": len(observations), "research_cases": len(cases)},
+                "case_counts": {"active": active, "closed": closed, "total": len(all_cases)},
+                "candles": candles,
+                "observations": observations,
+                "active_observations": observations,
+                "research_cases": cases,
+                "validator": validator,
+                "timeline": self._timeline(validator),
+                "system_health": system_health,
+                "operational_health": operational_health,
+                "market_status": market_status,
+                "memory_status": memory_status,
+                "news": news,
+                "readiness": self.readiness(),
+                "research_audit": self._read_dict(self.audit_path),
+                "research_quality": self._read_dict(self.quality_path),
+                "core_manifest": self._read_dict(self.core_manifest_path),
+                "governance_roles": self._read_dict(self.governance_roles_path),
+                "live_cutover": self._read_dict(self.live_cutover_path),
+                "gate_model": self._gate_model(),
+                "safety": "RESEARCH ONLY — NO ORDERS OR EXECUTION",
+        }
+        snapshot["operations"] = build_operations_snapshot(
+            snapshot,
+            self.completion_artifacts_path,
+            self.legacy_readiness_artifacts_path,
+            self.operational_watchdog_path,
+            self.rolling_liveness_path,
+        )
+        return snapshot
+
+    def analytics(self) -> dict[str, Any]:
+        with self.lock:
+            observations = [dict(item) for item in self.active_observations]
+            cases = [dict(item) for item in self.research_cases]
+        events: list[dict[str, Any]] = []
+        try:
+            lines = self.events_path.read_text().splitlines()
+        except OSError:
+            lines = []
+        for line in lines:
+            try:
+                item = json.loads(line)
+                kind = str(item.get("event", "")).upper()
+                if isinstance(item, dict) and "TRADE" not in kind and "ORDER" not in kind:
+                    events.append(item)
+            except (TypeError, ValueError):
+                continue
+        return ResearchAnalyticsEngine().analyze(observations, cases, events)
+
+    def insights(self) -> dict[str, Any]:
+        """Build retrospective insights from copied persisted state only."""
+        with self.lock:
+            observations = [dict(item) for item in self.orderflow_observations]
+            validations = [dict(item) for item in self.orderflow_validations]
+            cases = [dict(item) for item in self.research_cases]
+        try:
+            manifest = json.loads(Path("config/core_manifest.json").read_text())
+        except (OSError, ValueError, TypeError) as exc:
+            raise ValueError("frozen Core manifest is unavailable") from exc
+        validator = self._validator()
+        monitor = validator.get("health_monitor", {})
+        latest = validator.get("latest_health", {})
+        critical = list(monitor.get("critical", []))
+        quality = {
+            "coverage_percent": validator.get("acceptance", {}).get("coverage_percent"),
+            "known_data_gaps": [item for item in critical if str(item).upper() == "DATA_GAP"],
+            "integrity_errors": len([item for item in critical if str(item).upper() != "DATA_GAP"]),
+            "replay_status": latest.get("benchmark", "UNKNOWN"),
+            "source_window_complete": len(observations) < 500 and len(validations) < 500 and len(cases) < 1000,
+        }
+        return ResearchInsightsEngine().analyze(observations, validations, cases, manifest, quality)
+
+
+def _case_for_observation(observation: dict[str, Any], cases: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if observation.get("research_case_id"):
+        return {"case_id": observation.get("research_case_id"), "status": observation.get("research_case_status", "OPEN")}
+    oid = str(observation.get("observation_id", ""))
+    return next((case for case in cases if oid and oid in [str(item) for item in case.get("observation_ids", [])]), None)
+
+
+def _observation_row(item: dict[str, Any], cases: list[dict[str, Any]]) -> str:
+    case = _case_for_observation(item, cases)
+    oid = str(item.get("observation_id", ""))
+    evidence_score = item.get("confidence", "—")
+    status = str(case.get("status")) if case else "UNASSIGNED"
+    href = f"/observations?id={html.escape(oid, quote=True)}" if oid else "/observations"
+    return (
+        f"<tr data-status='{_safe(status)}' data-type='{_safe(item.get('kind'))}' data-rule='{_safe(item.get('rule_version'))}'>"
+        f"<td>{_safe(item.get('observed_at'))}</td><td><a href='{href}' class='mono'>{_safe(_short(oid, 12))}</a></td>"
+        f"<td><span class='tag'>{_safe(item.get('kind'))}</span></td><td class='mono'>{_safe(item.get('rule_version'))}</td>"
+        f"<td>{_safe(evidence_score)}</td><td>{_safe(item.get('provenance'))}</td><td><span class='badge badge--{_status(status).lower()}'>{_safe(status)}</span></td></tr>"
+    )
+
+
+def _case_row(item: dict[str, Any]) -> str:
+    opened, updated = item.get("opened_at"), item.get("updated_at")
+    kinds = sorted({str(ev.get("kind")) for ev in item.get("evidence", []) if ev.get("kind")})
+    rules = ", ".join(f"{key}:{value}" for key, value in sorted(item.get("rule_versions", {}).items()))
+    case_id = str(item.get("case_id", ""))
+    return (
+        f"<tr data-status='{_safe(item.get('status'))}' data-type='{_safe(' '.join(kinds))}' data-rule='{_safe(rules)}' data-time='{_safe(updated)}'>"
+        f"<td><a href='/cases?id={html.escape(case_id, quote=True)}' class='mono'>{_safe(_short(case_id, 18))}</a></td>"
+        f"<td><span class='badge badge--{_status(item.get('status')).lower()}'>{_safe(item.get('status'))}</span></td>"
+        f"<td>{_safe(_duration(opened, updated))}</td><td>{len(item.get('observation_ids', []))}</td><td>{_safe(item.get('outcome'))}</td>"
+        f"<td>{_safe(', '.join(item.get('missing_evidence', [])))}</td><td>{_safe(', '.join(kinds))}</td><td class='mono'>{_safe(rules)}</td></tr>"
+    )
+
+
+def _required(field: str, value: Any) -> str:
+    if value in (None, "", [], {}, ()):
+        return f"MISSING:{field}"
+    return str(value)
+
+
+def _status_level(value: Any, severity: str = "WARNING") -> tuple[str, str]:
+    normalized = str(value or "UNKNOWN").upper()
+    if normalized in {"GREEN", "HEALTHY", "RUNNING", "CONNECTED", "PASS", "COMPLETE", "COMPLETED", "AVAILABLE", "TRUE"}:
+        return "GREEN", "INFO"
+    if normalized in {"YELLOW", "WARNING", "WAITING", "MONITORING", "DEGRADED", "PARTIAL", "NOT_READY_FOR_V2", "OPEN", "OPEN_ISSUES"}:
+        return "YELLOW", severity
+    return "RED", "CRITICAL" if severity in {"HIGH", "CRITICAL"} else severity
+
+
+def _issue_windows(data: dict[str, Any]) -> list[dict[str, Any]]:
+    validator = data["validator"]
+    readiness = data.get("readiness", {})
+    quality = data.get("research_quality", {})
+    audit = data.get("research_audit", {})
+    window = {
+        "start": readiness.get("continuous_window_start") or validator.get("started_at"),
+        "end": readiness.get("continuous_window_end") or validator.get("last_cycle_at") or data.get("timestamp"),
+    }
+    rows: list[dict[str, Any]] = []
+    for issue in quality.get("issues", []):
+        if not isinstance(issue, dict):
+            continue
+        rows.append({
+            "component_id": issue.get("code", "quality"),
+            "display_name": issue.get("code", "Quality Issue"),
+            "domain": "Scientific Health",
+            "status": "RED",
+            "severity": "HIGH",
+            "short_summary": issue.get("detail", "Qualitätsabweichung dokumentiert."),
+            "reason_code": issue.get("code", "QUALITY_ISSUE"),
+            "reason_text": issue.get("detail", "Qualitätsabweichung dokumentiert."),
+            "technical_cause": issue.get("detail", "Ursache dokumentiert im Quality-Report."),
+            "scientific_meaning": "Beeinflusst Reproduzierbarkeit, Provenance oder Datenqualität.",
+            "governance_impact": "Dokumentations- und Review-Pflicht.",
+            "operational_impact": "Keine operative Korrektur im Dashboard.",
+            "observed_since_utc": quality.get("generated_at") or data.get("timestamp"),
+            "last_checked_utc": quality.get("generated_at") or data.get("timestamp"),
+            "evidence_count": 1,
+            "affected_artifact_count": 1,
+            "linked_report": "data/research/quality/latest.json",
+            "linked_blocker": "quality" if str(issue.get("code", "")).upper() != "DATA_GAP" else "continuous_coverage",
+            "recommended_next_action": "Quality-Issue im unveränderten Report prüfen.",
+            "operational_impact_text": "Keine betriebliche Änderung.",
+            "scientific_impact": "Qualitäts- oder Provenance-Befund.",
+            "governance_impact_text": "Read-only Diagnose erforderlich.",
+            "freshness_seconds": 0,
+            "provenance": issue.get("path", "PUBLIC_MARKET_DATA_DETERMINISTIC"),
+            "source_hash": quality.get("report_hash") or quality.get("artifact_hash") or "MISSING:source_hash",
+            "affected_windows": issue.get("path", "MISSING:affected_windows"),
+            "affected_artifacts": issue.get("path", "MISSING:affected_artifacts"),
+            "evidence": [issue.get("detail"), issue.get("path")],
+            "status_history": [f"{quality.get('generated_at', data.get('timestamp'))}: {issue.get('code', 'UNKNOWN')}"],
+            "historical_development": issue.get("path", "MISSING:historical_development"),
+            "open_blockers": readiness.get("blocking_criteria", []),
+            "known_limitations": ["Keine Rekonstruktion", "Kein Backfill"],
+            "linked_report_path": "data/research/quality/latest.json",
+            "window_start": window["start"],
+            "window_end": window["end"],
+        })
+    for issue in audit.get("issues", []):
+        if not isinstance(issue, dict):
+            continue
+        code = str(issue.get("code", "AUDIT_ISSUE")).upper()
+        rows.append({
+            "component_id": code,
+            "display_name": code.replace("_", " ").title(),
+            "domain": "Governance Health",
+            "status": "RED" if "HASH" in code or "DOCUMENTATION" in code else "YELLOW",
+            "severity": "HIGH" if "HASH" in code else "WARNING",
+            "short_summary": issue.get("detail", "Audit finding documented."),
+            "reason_code": code,
+            "reason_text": issue.get("detail", "Audit finding documented."),
+            "technical_cause": issue.get("detail", "Audit finding documented."),
+            "scientific_meaning": "Betroffene Artefakte müssen unverändert dokumentiert bleiben.",
+            "governance_impact": "Audit-Auflösung nur über Versionierung, nicht über Retrofix.",
+            "operational_impact": "Kein runtime fix.",
+            "observed_since_utc": audit.get("generated_at") or data.get("timestamp"),
+            "last_checked_utc": audit.get("generated_at") or data.get("timestamp"),
+            "evidence_count": 1,
+            "affected_artifact_count": 1,
+            "linked_report": "data/research/audit/latest.json",
+            "linked_blocker": "scientific_review" if "HASH" in code else "documentation",
+            "recommended_next_action": "Audit-Eintrag gegen Referenzkette prüfen.",
+            "operational_impact_text": "Nur Diagnose, keine Laufzeitänderung.",
+            "scientific_impact": "Historische Integrität und Reproduzierbarkeit.",
+            "governance_impact_text": "Future Contract / Review erforderlich.",
+            "freshness_seconds": 0,
+            "provenance": issue.get("path", "PUBLIC_MARKET_DATA_DETERMINISTIC"),
+            "source_hash": audit.get("audit_hash") or audit.get("artifact_hash") or "MISSING:source_hash",
+            "affected_windows": issue.get("path", "MISSING:affected_windows"),
+            "affected_artifacts": issue.get("path", "MISSING:affected_artifacts"),
+            "evidence": [issue.get("detail"), issue.get("path")],
+            "status_history": [f"{audit.get('generated_at', data.get('timestamp'))}: {issue.get('code', 'UNKNOWN')}"],
+            "historical_development": issue.get("path", "MISSING:historical_development"),
+            "open_blockers": readiness.get("blocking_criteria", []),
+            "known_limitations": ["Historische Artefakte unverändert", "Keine Rekonstruktion"],
+            "linked_report_path": "data/research/audit/latest.json",
+            "window_start": window["start"],
+            "window_end": window["end"],
+        })
+    for code in readiness.get("blocking_criteria", []):
+        rows.append({
+            "component_id": str(code).upper(),
+            "display_name": str(code).replace("_", " ").title(),
+            "domain": "Scientific Health",
+            "status": "YELLOW",
+            "severity": "WARNING",
+            "short_summary": f"Blocker {code} verhindert automatische Freigabe.",
+            "reason_code": str(code).upper(),
+            "reason_text": f"Persistierter Blocker {code} ist noch offen.",
+            "technical_cause": f"Blocking criterion {code} ist noch nicht PASS.",
+            "scientific_meaning": "Readiness ist nicht erreicht.",
+            "governance_impact": "Manueller Review erforderlich.",
+            "operational_impact": "Kein operative Störung, aber wissenschaftlicher Stopp.",
+            "observed_since_utc": readiness.get("generated_at") or data.get("timestamp"),
+            "last_checked_utc": readiness.get("generated_at") or data.get("timestamp"),
+            "evidence_count": 1,
+            "affected_artifact_count": 1,
+            "linked_report": "data/research/status/tim_v1_readiness.json",
+            "linked_blocker": code,
+            "recommended_next_action": "Persistiertes Blocker-Register prüfen.",
+            "operational_impact_text": "Keine Laufzeitänderung.",
+            "scientific_impact": "Ready-for-V2 bleibt offen.",
+            "governance_impact_text": "Freigabe nicht erlaubt.",
+            "freshness_seconds": 0,
+            "provenance": readiness.get("provenance", "PUBLIC_MARKET_DATA_DETERMINISTIC"),
+            "source_hash": readiness.get("artifact_hash") or "MISSING:source_hash",
+            "affected_windows": readiness.get("continuous_window_start", "MISSING:affected_windows"),
+            "affected_artifacts": "data/research/status/tim_v1_readiness.json",
+            "evidence": [code, readiness.get("generated_at")],
+            "status_history": [f"{readiness.get('generated_at', data.get('timestamp'))}: {code}"],
+            "historical_development": readiness.get("continuous_window_start", "MISSING:historical_development"),
+            "open_blockers": list(readiness.get("blocking_criteria", [])),
+            "known_limitations": ["Keine automatische Schließung", "Keine Datenrekonstruktion"],
+            "linked_report_path": "data/research/status/tim_v1_readiness.json",
+            "window_start": window["start"],
+            "window_end": window["end"],
+        })
+    return rows
+
+
+def _card_markup(record: dict[str, Any]) -> str:
+    status = str(record.get("status", "UNKNOWN")).upper()
+    level = str(record.get("severity", "WARNING")).upper()
+    archived_snapshot = bool(record.get("archived_snapshot"))
+    badge = "snapshot" if archived_snapshot else status.lower()
+    badge_text = f"ARCHIV · {status}" if archived_snapshot else status
+    details = [
+        ("component_id", record.get("component_id")),
+        ("display_name", record.get("display_name")),
+        ("domain", record.get("domain")),
+        ("status", status),
+        ("severity", level),
+        ("short_summary", record.get("short_summary")),
+        ("reason_code", record.get("reason_code")),
+        ("reason_text", record.get("reason_text")),
+        ("observed_since_utc", record.get("observed_since_utc")),
+        ("last_checked_utc", record.get("last_checked_utc")),
+        ("evidence_count", record.get("evidence_count")),
+        ("affected_artifact_count", record.get("affected_artifact_count")),
+        ("linked_report", record.get("linked_report")),
+        ("linked_blocker", record.get("linked_blocker")),
+        ("recommended_next_action", record.get("recommended_next_action")),
+        ("operational_impact", record.get("operational_impact") or record.get("operational_impact_text")),
+        ("scientific_impact", record.get("scientific_impact")),
+        ("governance_impact", record.get("governance_impact") or record.get("governance_impact_text")),
+        ("freshness_seconds", record.get("freshness_seconds")),
+        ("provenance", record.get("provenance")),
+        ("source_hash", record.get("source_hash")),
+        ("technical_cause", record.get("technical_cause")),
+        ("affected_windows", record.get("affected_windows")),
+        ("affected_artifacts", record.get("affected_artifacts")),
+        ("status_history", " | ".join(record.get("status_history", [])) if record.get("status_history") else None),
+        ("historical_development", record.get("historical_development")),
+        ("open_blockers", ", ".join(str(item) for item in record.get("open_blockers", [])) if record.get("open_blockers") else None),
+        ("known_limitations", ", ".join(str(item) for item in record.get("known_limitations", [])) if record.get("known_limitations") else None),
+        ("linked_report_path", record.get("linked_report_path")),
+    ]
+    evidence_items = record.get("evidence", [])
+    evidence_html = "".join(f"<li class='mono'>{_safe(item)}</li>" for item in evidence_items) or "<li>MISSING:evidence</li>"
+    optional_fields = {"linked_blocker", "linked_report_path", "open_blockers"}
+    detail_html = "".join(
+        f"<dt>{_safe(label)}</dt><dd class='mono'>{_safe('N/A' if label in optional_fields and value in (None, '') else _required(label, value))}</dd>"
+        for label, value in details
+    )
+    glossary = "<p class='card-glossary'>Reason · Seit · Auswirkung · Empfohlener nächster Schritt · Evidenz</p>"
+    return (
+        f"<details class='card health-card health--{badge}'>"
+        f"<summary><span><span class='card__label'>{_safe(record.get('display_name'))}</span><strong>{_safe(record.get('short_summary'))}</strong></span>"
+        f"<span class='badge badge--{badge}'>{_safe(badge_text)}</span></summary>"
+        f"<div class='diagnostic'>{glossary}<dl>{detail_html}</dl><h4>Evidenz</h4><ul>{evidence_html}</ul></div></details>"
+    )
+
+
+def _diagnostic_card(
+    name: str,
+    level: str,
+    summary: str,
+    reason: str,
+    evidence: list[str],
+    impact: str,
+    next_step: str,
+    since: Any = None,
+) -> str:
+    status, severity = _status_level(level)
+    return _card_markup(
+        {
+            "component_id": name.lower().replace(" ", "_"),
+            "display_name": name,
+            "domain": "Scientific Health" if name in {"Continuous Coverage", "Validator", "Replay", "Research Integrity", "Determinism", "Provenance", "Hash Integrity", "Data Quality", "Acceptance"} else "Operational Health",
+            "status": status,
+            "severity": severity,
+            "short_summary": summary,
+            "reason_code": name.upper().replace(" ", "_"),
+            "reason_text": reason,
+            "technical_cause": reason,
+            "scientific_meaning": impact,
+            "governance_impact": next_step,
+            "operational_impact": impact,
+            "observed_since_utc": since,
+            "last_checked_utc": since,
+            "evidence_count": len(evidence),
+            "affected_artifact_count": len(evidence),
+            "linked_report": "MISSING:linked_report",
+            "linked_blocker": "MISSING:linked_blocker",
+            "recommended_next_action": next_step,
+            "freshness_seconds": "MISSING:freshness_seconds",
+            "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC",
+            "source_hash": "MISSING:source_hash",
+            "evidence": evidence,
+            "status_history": [str(since)] if since not in (None, "") else [],
+            "known_limitations": [],
+        }
+    )
+
+
+def _timeline_rows(events: list[dict[str, Any]]) -> str:
+    component_by_event = {
+        "RUNTIME_START": "runtime",
+        "RESTART": "runtime",
+        "VALIDATION_CYCLE": "validator",
+        "RESEARCH_CYCLE_CHECK": "research_integrity",
+        "ACCEPTANCE_CHECK": "acceptance",
+        "CONTROLLED_API_FAILURE": "dashboard_api",
+        "UNCONTROLLED_API_FAILURE": "dashboard_api",
+        "VALIDATOR_RECOVERY": "validator",
+        "DATA_GAP": "data_quality",
+    }
+    status_by_event = {
+        "RUNTIME_START": "RUNNING",
+        "RESTART": "RUNNING",
+        "VALIDATION_CYCLE": "CHECKED",
+        "RESEARCH_CYCLE_CHECK": "CHECKED",
+        "ACCEPTANCE_CHECK": "CHECKED",
+        "CONTROLLED_API_FAILURE": "CONTROLLED_FAILURE",
+        "UNCONTROLLED_API_FAILURE": "UNAVAILABLE",
+        "VALIDATOR_RECOVERY": "RECOVERED",
+        "DATA_GAP": "GAP_DETECTED",
+    }
+    rows: list[str] = []
+    for idx, item in enumerate(reversed(events)):
+        timestamp = item.get("timestamp") or item.get("timestamp_utc")
+        event_type = str(item.get("event_type") or item.get("event") or "UNKNOWN")
+        component_id = item.get("component_id") or component_by_event.get(event_type, "system")
+        previous_status = item.get("previous_status") or "NOT_RECORDED"
+        new_status = item.get("new_status") or item.get("status") or status_by_event.get(event_type, "RECORDED")
+        reason_code = item.get("reason_code") or item.get("category") or event_type
+        evidence_reference = item.get("evidence_reference") or item.get("summary") or "data/operational/events.jsonl"
+        provenance = item.get("provenance") or "TIM_OPERATIONAL_EVENT"
+        source_hash = item.get("source_hash") or "N/A:LEGACY_EVENT_NOT_HASHED"
+        identity = json.dumps(
+            {"timestamp": timestamp, "event_type": event_type, "component_id": component_id, "reason_code": reason_code},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        event_id = item.get("event_id") or "evt-" + hashlib.sha256(identity.encode()).hexdigest()[:12]
+        rows.append(
+            "<tr>"
+            f"<td class='mono'>{_safe(event_id)}</td>"
+            f"<td>{_safe(_required('event_type', event_type))}</td>"
+            f"<td>{_safe(_required('timestamp_utc', timestamp))}</td>"
+            f"<td>{_safe(_required('component_id', component_id))}</td>"
+            f"<td>{_safe(previous_status)}</td>"
+            f"<td>{_safe(new_status)}</td>"
+            f"<td>{_safe(reason_code)}</td>"
+            f"<td class='mono'>{_safe(evidence_reference)}</td>"
+            f"<td>{_safe(provenance)}</td>"
+            f"<td class='mono'>{_safe(source_hash)}</td>"
+            "</tr>"
+        )
+    return "".join(rows) or "<tr><td colspan='10' class='empty'>Keine Systemereignisse verfügbar.</td></tr>"
+
+
+def _quality_exception_rows(data: dict[str, Any], *, archived: bool = False) -> tuple[str, list[dict[str, Any]]]:
+    rows = _issue_windows(data)
+    severity_order = {"CRITICAL": 0, "HIGH": 1, "WARNING": 2, "INFO": 3}
+    rows = sorted(rows, key=lambda item: (severity_order.get(str(item.get("severity", "WARNING")).upper(), 9), str(item.get("reason_code", "")), str(item.get("component_id", ""))))
+    html_rows = []
+    for item in rows:
+        source_status = str(item.get("status", "UNKNOWN")).upper()
+        display_status = "NOT_RECORDED" if archived and source_status == "UNKNOWN" else source_status
+        badge = "snapshot" if archived else _status(source_status).lower()
+        badge_text = f"ARCHIV · {display_status}" if archived else display_status
+        html_rows.append(
+            f"<tr data-status='{_safe(source_status)}' data-type='{_safe(item.get('reason_code'))}' data-rule='{_safe(item.get('linked_blocker'))}'>"
+            f"<td>{_safe(item.get('component_id'))}</td><td><span class='badge badge--{badge}'>{_safe(badge_text)}</span></td>"
+            f"<td>{_safe(item.get('reason_code'))}</td><td>{_safe(item.get('reason_text'))}</td><td>{_safe(item.get('window_start'))} → {_safe(item.get('window_end'))}</td>"
+            f"<td>{_safe(item.get('provenance'))}</td><td>{_safe(item.get('linked_report_path'))}</td><td>{_safe(item.get('linked_blocker'))}</td></tr>"
+        )
+    if not html_rows:
+        html_rows.append("<tr><td colspan='8' class='empty'>Keine Data-Quality-Exceptions dokumentiert.</td></tr>")
+    return "".join(html_rows), rows
+
+
+def _signal_context_rows(candles: list[dict[str, Any]]) -> str:
+    by_timeframe: dict[str, dict[str, Any]] = {}
+    for candle in candles:
+        timeframe = str(candle.get("timeframe", "")).lower()
+        if timeframe and timeframe not in by_timeframe:
+            by_timeframe[timeframe] = candle
+    rows = []
+    for timeframe in ("60s", "1m", "5m", "15m", "1h"):
+        candle = by_timeframe.get(timeframe) or by_timeframe.get("1m") if timeframe == "60s" else by_timeframe.get(timeframe)
+        if not candle:
+            rows.append(
+                f"<tr><td>{timeframe}</td><td>MISSING:candle_open_time_utc</td><td>MISSING:price_change_in_window</td><td>MISSING:candle_range</td><td>MISSING:volume</td><td>MISSING:delta_relation</td><td>MISSING:cvd_relation</td><td>NO_SUFFICIENT_DATA</td></tr>"
+            )
+            continue
+        open_price = candle.get("open")
+        close_price = candle.get("close")
+        high_price = candle.get("high")
+        low_price = candle.get("low")
+        change = None
+        if isinstance(open_price, (int, float)) and isinstance(close_price, (int, float)):
+            change = round(float(close_price) - float(open_price), 8)
+        candle_range = None
+        if isinstance(high_price, (int, float)) and isinstance(low_price, (int, float)):
+            candle_range = round(float(high_price) - float(low_price), 8)
+        context_state = "CONTEXT_ALIGNED" if candle.get("open_time") and candle.get("close_time") else "CONTEXT_INCOMPLETE"
+        rows.append(
+            f"<tr><td>{_safe(timeframe)}</td><td>{_safe(candle.get('open_time'))}</td><td class='mono'>{_safe(change if change is not None else 'MISSING:price_change_in_window')}</td><td class='mono'>{_safe(candle_range if candle_range is not None else 'MISSING:candle_range')}</td><td>{_safe(candle.get('volume'))}</td><td>MISSING:delta_relation</td><td>MISSING:cvd_relation</td><td>{context_state}</td></tr>"
+        )
+    return "".join(rows)
+
+
+def _retrospective_outcome_rows(validations: list[dict[str, Any]]) -> str:
+    rows: list[str] = []
+    for validation in reversed(validations[:25]):
+        horizons = validation.get("horizons", []) or []
+        for horizon in horizons:
+            minutes = horizon.get("minutes", "MISSING:minutes")
+            rows.append(
+                f"<tr><td>{_safe(validation.get('observation_id'))}</td><td>{_safe(minutes)}m</td><td>RETROSPECTIVE</td>"
+                f"<td class='mono'>{_safe(horizon.get('price_change_percent') or 'MISSING:price_change')}</td>"
+                f"<td class='mono'>{_safe(horizon.get('delta_change') or horizon.get('net_delta') or 'MISSING:delta_change')}</td>"
+                f"<td class='mono'>{_safe(horizon.get('cvd_change') or 'MISSING:cvd_change')}</td>"
+                f"<td class='mono'>{_safe(horizon.get('trade_frequency_change') or 'MISSING:trade_frequency_change')}</td>"
+                f"<td>{_safe(horizon.get('context_change') or 'MISSING:context_change')}</td>"
+                f"<td>{_safe(validation.get('outcome') or horizon.get('result') or 'MISSING:validation_result')}</td>"
+                f"<td>{_safe(validation.get('invalidation_reason') or 'MISSING:invalidation_reason')}</td></tr>"
+            )
+    if not rows:
+        rows.append("<tr><td colspan='10' class='empty'>Keine retrospektiv validierten Horizonte vorhanden.</td></tr>")
+    return "".join(rows)
+
+
+def _signal_research_page(state: DashboardState, data: dict[str, Any], selected_id: str | None) -> str:
+    rows, counts, summary, cases, active = _signal_research_rows(state, data)
+    _, exception_items = _quality_exception_rows(data)
+    with state.lock:
+        observations = [dict(item) for item in state.orderflow_observations[-ORDERFLOW_VISIBLE_LIMIT:]]
+        validations = [dict(item) for item in state.orderflow_validations]
+    selected = next((item for item in observations if str(item.get("observation_id")) == str(selected_id)), None) or (observations[0] if observations else None)
+    symbol = data.get("market_status", {}).get("symbol", "BTCUSDT")
+    stream_status = data.get("system_health", {}).get("stream", "unknown")
+    last_capture = observations[-1].get("observed_at") if observations else data.get("timestamp")
+    freshness = _age_seconds(last_capture)
+    latest_rule = (selected or {}).get("rule_version") or data.get("readiness", {}).get("schema_version", "MISSING:rule_version")
+    pipeline_version = data.get("readiness", {}).get("generator_version") or data.get("research_quality", {}).get("generator_version") or DASHBOARD_VERSION
+    quality_summary = data.get("research_quality", {}).get("validation_status") or data.get("readiness", {}).get("validation_status") or "UNKNOWN"
+    open_validations = sum(1 for item in validations if not item.get("complete"))
+    completed_cases = sum(1 for item in cases if str(item.get("status", "")).upper() == "CLOSED")
+    signal_note = "AggTrades · Orderflow Metrics · Signal Research. Kein Trading-Signal, keine Buy-/Sell-, Long-/Short-Entscheidung, keine Ausführung."
+    top = (
+        "<section class='panel'><div class='signal-header'><div><h2>Globaler Forschungsstatus</h2>"
+        "<div class='signal-kicker'><span class='signal-pill'>OBSERVE</span><span class='signal-pill'>READ-ONLY</span><span class='signal-pill'>RESEARCH ONLY</span></div>"
+        f"<p class='count-scope'>Symbol { _safe(symbol) } · Stream {_safe(stream_status)} · letzte Erfassung UTC {_safe(last_capture)} · Datenfrische {_safe(freshness)}s</p>"
+        f"</div><div class='status-note'><b>Pipeline-Version:</b> {_safe(pipeline_version)}<br><b>Aktuelle Rule-Version:</b> {_safe(latest_rule)}<br><span class='muted'>{_safe(signal_note)}</span></div></div></section>"
+    )
+    summary_grid = (
+        "<div class='meta-grid'>"
+        f"<article class='card'><div class='card__label'>Sichtbare Observations</div><div class='card__value'>{counts['shown']}</div><div class='card__note'>Persistierter Ausschnitt</div></article>"
+        f"<article class='card'><div class='card__label'>Offene Validierungen</div><div class='card__value'>{open_validations}</div><div class='card__note'>5m / 15m / 30m offen</div></article>"
+        f"<article class='card'><div class='card__label'>Abgeschlossene Research Cases</div><div class='card__value'>{completed_cases}</div><div class='card__note'>Retrospektiv geschlossen</div></article>"
+        f"<article class='card'><div class='card__label'>Data Quality Summary</div><div class='card__value'>{_safe(quality_summary)}</div><div class='card__note'>Read-only Gate</div></article>"
+        f"<article class='card'><div class='card__label'>Modus</div><div class='card__value'>OBSERVE</div><div class='card__note'>No trading / no signals</div></article>"
+        "</div>"
+    )
+    queue_grid = (
+        "<div class='queue-grid'>"
+        f"<article class='card'><div class='card__label'>Live Research Queue</div><div class='card__value'>{summary['shown'] - summary['validated']}</div><div class='card__note'>Neue oder unvollständige Observations</div></article>"
+        f"<article class='card'><div class='card__label'>Validation Queue</div><div class='card__value'>{summary['awaiting']}</div><div class='card__note'>5m / 15m / 30m offen</div></article>"
+        f"<article class='card'><div class='card__label'>Completed Research Cases</div><div class='card__value'>{completed_cases}</div><div class='card__note'>Abgeschlossene Fälle</div></article>"
+        f"<article class='card'><div class='card__label'>Data Quality Exceptions</div><div class='card__value'>{len(exception_items)}</div><div class='card__note'>Aus der Diagnose-Ansicht</div></article>"
+        "</div>"
+    )
+    selected_detail = ""
+    if selected:
+        validation = next((item for item in validations if str(item.get("observation_id")) == str(selected.get("observation_id"))), {})
+        evidence = selected.get("evidence", [])
+        evidence_names = sorted({str(value.get("metric") or value.get("name") or value.get("condition") or value.get("field") or value.get("key")) for value in evidence if isinstance(value, dict) and (value.get("metric") or value.get("name") or value.get("condition") or value.get("field") or value.get("key"))})
+        selected_detail = (
+            "<section class='panel'><div class='panel__head'><h2>Evidence Card</h2><span class='badge badge--yellow'>DETAIL</span></div>"
+            "<div class='detail-grid'><dl class='detail'>"
+            f"<dt>observation_id</dt><dd class='mono'>{_safe(selected.get('observation_id'))}</dd>"
+            f"<dt>timestamp_utc</dt><dd>{_safe(selected.get('observed_at'))}</dd>"
+            f"<dt>symbol</dt><dd>{_safe(selected.get('symbol') or symbol)}</dd>"
+            f"<dt>timeframe</dt><dd>{_safe(selected.get('timeframe'))}</dd>"
+            f"<dt>observation_type</dt><dd>{_safe(selected.get('kind'))}</dd>"
+            f"<dt>rule_id</dt><dd>{_safe(selected.get('rule_id'))}</dd>"
+            f"<dt>rule_version</dt><dd>{_safe(selected.get('rule_version'))}</dd>"
+            f"<dt>fulfilled_conditions</dt><dd>{_safe(', '.join(evidence_names) or 'MISSING:fulfilled_conditions')}</dd>"
+            f"<dt>missing_evidence</dt><dd>{_safe(', '.join(selected.get('missing_evidence', [])) or 'MISSING:missing_evidence')}</dd>"
+            f"<dt>validation_status</dt><dd>{_safe('COMPLETE' if validation.get('complete') else 'INCOMPLETE')}</dd>"
+            f"<dt>linked_research_case_id</dt><dd>{_safe(selected.get('research_case_id') or 'MISSING:linked_research_case_id')}</dd>"
+            f"<dt>integrity_status</dt><dd>{_safe(selected.get('integrity_status') or selected.get('validation_status') or 'MISSING:integrity_status')}</dd>"
+            "</dl><div><h3>Rohdaten</h3><pre class='code'>" + _json_block(selected) + "</pre><h3>Evidence</h3><pre class='code'>" + _json_block(evidence) + "</pre></div></div></section>"
+        )
+    evidence_table = (
+        "<section class='panel'><div class='panel__head'><h2>Signal Research</h2><span class='badge badge--yellow'>MANUAL RESEARCH</span></div>"
+        "<p class='safety-callout'><b>Kein Trading-Signal:</b> Diese Seite zeigt ausschließlich persistierte Evidenz und historische Validierung. Sie erzeugt keine Buy-/Sell-, Long-/Short- oder Ausführungsempfehlung.</p>"
+        "<div class='filters'><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. RISING_CVD_ACTIVITY'></div><div><label>Validierungsstatus</label><select id='filter-status'><option value=''>Alle</option><option value='VALIDATED_CONTEXT'>Validierter Kontext</option><option value='AWAITING_OUTCOME'>Outcome ausstehend</option></select></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option></select></div></div>"
+        "<div class='table-wrap'><table><thead><tr><th>Timestamp UTC</th><th>Symbol</th><th>Observation ID</th><th>Observation Type</th><th>Timeframe</th><th>Delta</th><th>CVD State</th><th>Buy/Sell Ratio</th><th>Trade Frequency</th><th>Evidence Count</th><th>Missing Evidence Count</th><th>Research Status</th><th>Validation Stage</th><th>Retrospective Outcome</th><th>Data Freshness</th><th>Integrity Status</th><th>Detail</th></tr></thead><tbody>"
+        + rows
+        + "</tbody></table></div></section>"
+    )
+    context_matrix = (
+        "<section class='panel'><div class='panel__head'><h2>Multi-Timeframe Kontextmatrix</h2><span class='badge badge--green'>DETERMINISTIC</span></div>"
+        "<div class='table-wrap'><table><thead><tr><th>Timeframe</th><th>candle_open_time_utc</th><th>price_change_in_window</th><th>candle_range</th><th>volume</th><th>delta_relation</th><th>cvd_relation</th><th>context_state</th></tr></thead><tbody>"
+        + _signal_context_rows(data.get("candles", []))
+        + "</tbody></table></div><p class='count-scope'>Kontextwerte sind rein deskriptiv. Keine Richtungsempfehlung und keine Prognose.</p></section>"
+    )
+    retrospective = (
+        "<section class='panel'><div class='panel__head'><h2>Retrospective Outcomes</h2><span class='badge badge--yellow'>RETROSPECTIVE</span></div>"
+        "<p class='count-scope'>5m-, 15m- und 30m-Outcomes tragen dauerhaft das Label RETROSPECTIVE. Keine prognostische Formulierung.</p>"
+        "<div class='table-wrap'><table><thead><tr><th>Observation ID</th><th>Horizon</th><th>Label</th><th>price_change</th><th>delta_change</th><th>cvd_change</th><th>trade_frequency_change</th><th>context_change</th><th>validation_result</th><th>invalidation_reason</th></tr></thead><tbody>"
+        + _retrospective_outcome_rows(validations)
+        + "</tbody></table></div></section>"
+    )
+    exceptions_rows, exception_items = _quality_exception_rows(data)
+    exceptions = (
+        "<section class='panel'><div class='panel__head'><h2>Data Quality Gating</h2><span class='badge badge--red'>EXCEPTIONS</span></div>"
+        f"<div class='meta-grid'><article class='card'><div class='card__label'>Current Coverage</div><div class='card__value'>{_safe(data.get('readiness', {}).get('continuous_coverage_percent'))}%</div><div class='card__note'>Continuous coverage</div></article><article class='card'><div class='card__label'>Missing Minutes</div><div class='card__value'>{_safe(data.get('readiness', {}).get('continuous_missing_1m_intervals'))}</div><div class='card__note'>Expected minutes {_safe(data.get('readiness', {}).get('continuous_expected_1m_intervals'))}</div></article><article class='card'><div class='card__label'>Gap Count</div><div class='card__value'>{_safe(data.get('readiness', {}).get('unresolved_new_gap_count'))}</div><div class='card__note'>Open blocker register</div></article><article class='card'><div class='card__label'>Missing AggTrades</div><div class='card__value'>{_safe(sum(1 for item in exception_items if 'AGG' in str(item.get('reason_code', '')).upper()))}</div><div class='card__note'>From exception register</div></article><article class='card'><div class='card__label'>Missing Validation</div><div class='card__value'>{_safe(sum(1 for item in exception_items if 'VALIDATION' in str(item.get('reason_code', '')).upper()))}</div><div class='card__note'>From exception register</div></article></div>"
+        "<div class='table-wrap'><table><thead><tr><th>Component</th><th>Status</th><th>Reason Code</th><th>Reason Text</th><th>Time Window</th><th>Provenance</th><th>Linked Report</th><th>Linked Blocker</th></tr></thead><tbody>"
+        + exceptions_rows
+        + "</tbody></table></div></section>"
+    )
+    areas = (
+        "<div class='queue-grid'>"
+        f"<article class='card'><div class='card__label'>Live Research Queue</div><div class='card__value'>{counts['shown'] - counts['validated']}</div><div class='card__note'>Neue oder unvollständige Observations</div></article>"
+        f"<article class='card'><div class='card__label'>Validation Queue</div><div class='card__value'>{counts['awaiting']}</div><div class='card__note'>5m / 15m / 30m offen</div></article>"
+        f"<article class='card'><div class='card__label'>Completed Research Cases</div><div class='card__value'>{completed_cases}</div><div class='card__note'>Abgeschlossene Fälle</div></article>"
+        f"<article class='card'><div class='card__label'>Data Quality Exceptions</div><div class='card__value'>{len(exception_items)}</div><div class='card__note'>Ausgelöste Gate-Events</div></article>"
+        "</div>"
+    )
+    top = (
+        "<section class='panel'><div class='signal-header'><div><h2>Globaler Forschungsstatus</h2>"
+        "<div class='signal-kicker'><span class='signal-pill'>OBSERVE</span><span class='signal-pill'>READ-ONLY</span><span class='signal-pill'>RESEARCH ONLY</span></div>"
+        f"<p class='count-scope'>Symbol {_safe(symbol)} · Stream {_safe(stream_status)} · letzte Erfassung UTC {_safe(last_capture)} · Datenfrische {_safe(freshness)}s</p>"
+        "</div><div class='status-note'><b>Pipeline-Version:</b> {_safe(pipeline_version)}<br><b>Aktuelle Rule-Version:</b> {_safe(latest_rule)}<br><b>Offene Validierungen:</b> {_safe(open_validations)}<br><b>Abgeschlossene Research Cases:</b> {_safe(completed_cases)}<br><span class='muted'>AggTrades · Orderflow Metrics · Signal Research · Kein Trading-Signal · keine Buy-/Sell-, Long-/Short-Entscheidung · keine Ausführung</span></div></div></section>"
+    )
+    return _layout(
+        "Signal Research",
+        "Signal Research",
+        _hero("Signal Research", "Gefilterter Orderflow-Evidenzpfad für manuelle Forschung.")
+        + top
+        + summary_grid
+        + queue_grid
+        + areas
+        + evidence_table
+        + selected_detail
+        + context_matrix
+        + retrospective
+        + exceptions,
+        strip=_strip_states(data),
+    )
+
+
+def _data_quality_exceptions_page(data: dict[str, Any]) -> str:
+    exceptions_rows, exception_items = _quality_exception_rows(data)
+    counts = {}
+    for item in exception_items:
+        counts[str(item.get("reason_code", "UNKNOWN"))] = counts.get(str(item.get("reason_code", "UNKNOWN")), 0) + 1
+    cards = "".join(
+        f"<article class='card'><div class='card__label'>{_safe(label)}</div><div class='card__value'>{count}</div><div class='card__note'>Read-only exceptions</div></article>"
+        for label, count in sorted(counts.items())
+    ) or "<article class='card'><div class='card__label'>Exceptions</div><div class='card__value'>0</div><div class='card__note'>Keine dokumentierten Exceptions</div></article>"
+    return _layout(
+        "Data Quality Exceptions",
+        "Data Quality Exceptions",
+        _hero("Data Quality Exceptions", "Read-only Sicht auf alle dokumentierten Data-Quality-Abweichungen.")
+        + "<p class='count-scope'>Nur dokumentierte Ursachen, keine automatische Rekonstruktion oder stille Korrektur.</p>"
+        + f"<div class='grid'>{cards}</div>"
+        + "<section class='panel'><div class='panel__head'><h2>Exceptions Register</h2><span class='badge badge--red'>GATED</span></div><div class='table-wrap'><table><thead><tr><th>Component</th><th>Status</th><th>Reason Code</th><th>Reason Text</th><th>Time Window</th><th>Provenance</th><th>Linked Report</th><th>Linked Blocker</th></tr></thead><tbody>"
+        + exceptions_rows
+        + "</tbody></table></div></section>",
+        strip=_strip_states(data),
+    )
+
+
+def _health_timeline_page(data: dict[str, Any]) -> str:
+    timeline = data.get("timeline", [])
+    counts = {}
+    for item in timeline:
+        counts[str(item.get("event", "UNKNOWN"))] = counts.get(str(item.get("event", "UNKNOWN")), 0) + 1
+    summary_cards = "".join(
+        f"<article class='card'><div class='card__label'>{_safe(name)}</div><div class='card__value'>{count}</div><div class='card__note'>Persisted events</div></article>"
+        for name, count in sorted(counts.items())
+    ) or "<article class='card'><div class='card__label'>Timeline Events</div><div class='card__value'>0</div><div class='card__note'>Keine Ereignisse verfügbar</div></article>"
+    return _layout(
+        "System Timeline",
+        "Timeline",
+        _hero("System Timeline", "Chronologische Runtime-, Validator-, Research- und Acceptance-Ereignisse.")
+        + f"<div class='grid'>{summary_cards}</div><section class='panel'><div class='panel__head'><h2>Health Timeline</h2><span class='badge badge--yellow'>DIAGNOSTIC TIMELINE</span></div><div class='table-wrap'><table><thead><tr><th>event_id</th><th>event_type</th><th>timestamp_utc</th><th>component_id</th><th>previous_status</th><th>new_status</th><th>reason_code</th><th>evidence_reference</th><th>provenance</th><th>source_hash</th></tr></thead><tbody>"
+        + _timeline_rows(timeline)
+        + "</tbody></table></div><p class='count-scope'>Trading- und Order-Ereignisse werden nicht dargestellt.</p></section>"
+    )
+
+
+def _signal_research_rows(state: DashboardState, data: dict[str, Any] | None = None) -> tuple[str, dict[str, int], dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Render a read-only evidence path from already persisted orderflow records."""
+    with state.lock:
+        observations = [dict(item) for item in state.orderflow_observations[-ORDERFLOW_VISIBLE_LIMIT:]]
+        validations = {str(item.get("observation_id")): dict(item) for item in state.orderflow_validations}
+        cases = [dict(item) for item in state.research_cases]
+        active = [dict(item) for item in state.active_observations]
+    counts = {"shown": len(observations), "validated": 0, "awaiting": 0}
+    rows: list[str] = []
+    for item in reversed(observations):
+        validation = validations.get(str(item.get("observation_id")), {})
+        complete = bool(validation.get("complete"))
+        counts["validated" if complete else "awaiting"] += 1
+        evidence = item.get("evidence", [])
+        evidence_names = sorted({
+            str(value.get("metric") or value.get("name") or value.get("condition") or value.get("field") or value.get("key"))
+            for value in evidence
+            if isinstance(value, dict) and (value.get("metric") or value.get("name") or value.get("condition") or value.get("field") or value.get("key"))
+        })
+        state_label = "VALIDATED_CONTEXT" if complete else "AWAITING_OUTCOME"
+        outcome = validation.get("outcome") if complete else None
+        observation_id = str(item.get("observation_id", ""))
+        delta = item.get("delta") or item.get("net_delta") or item.get("metrics", {}).get("delta")
+        cvd = item.get("cvd_state") or item.get("metrics", {}).get("cvd_state")
+        ratio = item.get("buy_sell_ratio") or item.get("metrics", {}).get("buy_sell_ratio")
+        trade_frequency = item.get("trade_frequency") or item.get("metrics", {}).get("trade_frequency")
+        freshness = item.get("freshness_seconds")
+        integrity = item.get("integrity_status") or item.get("validation_status") or ("COMPLETE" if complete else "INSUFFICIENT_EVIDENCE")
+        rows.append(
+            f"<tr data-type='{_safe(item.get('kind'))}' data-status='{state_label}' data-time='{_safe(item.get('observed_at'))}'>"
+            f"<td>{_safe(item.get('observed_at'))}</td><td>{_safe(item.get('symbol') or 'BTCUSDT')}</td><td><a class='mono' href='/signals?id={html.escape(observation_id, quote=True)}'>{_safe(_short(observation_id, 14))}</a></td>"
+            f"<td><span class='tag'>{_safe(item.get('kind'))}</span></td><td>{_safe(item.get('timeframe'))}</td><td class='mono'>{_safe(_required('delta', delta))}</td><td>{_safe(_required('cvd_state', cvd))}</td><td>{_safe(_required('buy_sell_ratio', ratio))}</td>"
+            f"<td>{_safe(_required('trade_frequency', trade_frequency))}</td><td>{len(evidence)}</td><td>{max(0, int(item.get('missing_evidence_count', len(item.get('missing_evidence', []))) or 0))}</td>"
+            f"<td>{_safe(item.get('research_status') or item.get('research_case_status') or ('VALIDATED_CONTEXT' if complete else 'AWAITING_OUTCOME'))}</td>"
+            f"<td>{_safe(state_label)}</td><td>{_safe(outcome or 'RETROSPECTIVE')}</td><td>{_safe(_required('data_freshness', freshness))}</td>"
+            f"<td><span class='badge badge--{'green' if integrity == 'COMPLETE' else 'yellow'}'>{_safe(integrity)}</span></td><td><a href='/signals?id={html.escape(observation_id, quote=True)}'>Details →</a></td></tr>"
+        )
+    if not rows:
+        rows.append("<tr><td colspan='17' class='empty'>Noch keine persistierte Orderflow-Evidenz.</td></tr>")
+    summary = {
+        "shown": len(observations),
+        "validated": counts["validated"],
+        "awaiting": counts["awaiting"],
+        "open_validations": sum(1 for item in validations.values() if not item.get("complete")),
+        "closed_cases": sum(1 for item in cases if str(item.get("status", "")).upper() == "CLOSED"),
+        "data_quality_summary": (data or {}).get("readiness", {}).get("validation_status") or (data or {}).get("research_quality", {}).get("validation_status") or "UNKNOWN",
+    }
+    return "".join(rows), counts, summary, cases, active
+
+
+def _health_center_sections(data: dict[str, Any]) -> str:
+    validator = data["validator"]
+    latest = validator.get("latest_health", {})
+    live = data.get("operational_health", {})
+    readiness = data.get("readiness", {})
+    audit = data.get("research_audit", {})
+    quality = data.get("research_quality", {})
+    criteria = readiness.get("criteria", {})
+    audit_issues = audit.get("issues", [])
+    quality_issues = quality.get("issues", [])
+    audit_issue_codes = [str(item.get("code", "UNKNOWN")) for item in audit_issues if isinstance(item, dict)]
+    quality_issue_codes = [str(item.get("code", "UNKNOWN")) for item in quality_issues if isinstance(item, dict)]
+    coverage = readiness.get("continuous_coverage_percent")
+    missing_minutes = readiness.get("continuous_missing_1m_intervals")
+    gaps = readiness.get("unresolved_new_gap_count")
+    blocker_names = list(readiness.get("blocking_criteria", []))
+    core = data.get("core_manifest", {})
+    roles = data.get("governance_roles", {})
+    validator_state = str(validator.get("status", "UNKNOWN")).upper()
+    validator_level = "GREEN" if validator_state in {"RUNNING", "HEALTHY"} else "YELLOW" if validator_state == "COMPLETED" else "RED"
+    quality_status = str(quality.get("validation_status", "UNKNOWN")).upper()
+    quality_level = "GREEN" if quality_status == "PASS" else "RED" if quality_status == "FAIL" else "UNKNOWN"
+    audit_status = str(audit.get("status", "UNKNOWN")).upper()
+    audit_level = "GREEN" if audit_status == "PASS" else "RED" if audit_status == "FAIL" else "UNKNOWN"
+
+    def mk(component_id: str, display_name: str, domain: str, status: Any, severity: str, summary: str, reason_code: str, reason_text: str, evidence: list[str], *, observed_since_utc: Any = None, last_checked_utc: Any = None, evidence_count: int | None = None, affected_artifact_count: int | None = None, linked_report: Any = None, linked_blocker: Any = None, recommended_next_action: Any = None, operational_impact: Any = None, scientific_impact: Any = None, governance_impact: Any = None, freshness_seconds: Any = None, provenance: Any = None, source_hash: Any = None, technical_cause: Any = None, affected_windows: Any = None, affected_artifacts: Any = None, status_history: list[str] | None = None, historical_development: Any = None, open_blockers: list[str] | None = None, known_limitations: list[str] | None = None) -> str:
+        return _card_markup({
+            "component_id": component_id,
+            "display_name": display_name,
+            "domain": domain,
+            "status": status,
+            "severity": severity,
+            "short_summary": summary,
+            "reason_code": reason_code,
+            "reason_text": reason_text,
+            "observed_since_utc": observed_since_utc,
+            "last_checked_utc": last_checked_utc,
+            "evidence_count": evidence_count if evidence_count is not None else len(evidence),
+            "affected_artifact_count": affected_artifact_count if affected_artifact_count is not None else len(evidence),
+            "linked_report": linked_report,
+            "linked_blocker": linked_blocker,
+            "recommended_next_action": recommended_next_action,
+            "operational_impact": operational_impact,
+            "scientific_impact": scientific_impact,
+            "governance_impact": governance_impact,
+            "freshness_seconds": freshness_seconds,
+            "provenance": provenance,
+            "source_hash": source_hash,
+            "technical_cause": technical_cause,
+            "affected_windows": affected_windows,
+            "affected_artifacts": affected_artifacts,
+            "evidence": evidence,
+            "status_history": status_history or [],
+            "historical_development": historical_development,
+            "open_blockers": open_blockers or [],
+            "known_limitations": known_limitations or [],
+            # Scientific and governance records are immutable evidence snapshots.
+            # Their original status remains visible, but must not masquerade as
+            # the current operational health of the running process.
+            "archived_snapshot": domain != "Operational Health",
+        })
+
+    operational = [
+        mk("database", "Database", "Operational Health", live.get("database", "UNKNOWN"), "INFO" if live.get("database") == "GREEN" else "CRITICAL", str(data.get("system_health", {}).get("database") or "UNKNOWN"), "DATABASE_HEALTH", "Aktueller Datenbankstatus der laufenden TIM-Runtime.", ["system_health.database", f"checked_at={live.get('checked_at', 'MISSING:checked_at')}"], observed_since_utc=live.get("checked_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Bei RED Datenbankverbindung und letzten erfolgreichen Write prüfen.", operational_impact="Speicherzugriff und Persistenz", scientific_impact="Keine Wissenschaft ohne persistente Daten", governance_impact="Betrieb nur mit intakter Persistenz", freshness_seconds=_age_seconds(live.get("checked_at")), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="In-Memory-Status der aktiven Runtime.", affected_windows=live.get("checked_at"), affected_artifacts="/api/health", status_history=[str(live.get("checked_at"))], historical_development="Aktueller Runtime-Status; historischer Validator separat", open_blockers=blocker_names, known_limitations=["Kein separater periodischer SQL-Probezyklus"]),
+        mk("stream", "Stream", "Operational Health", live.get("stream", "UNKNOWN"), "INFO" if live.get("stream") == "GREEN" else "CRITICAL", str(data.get("system_health", {}).get("stream") or "UNKNOWN"), "STREAM_STATUS", "Streamstatus plus Frische der zuletzt abgeschlossenen Candle.", [f"last_data_at={live.get('last_data_at', 'MISSING:last_data_at')}", f"data_age_seconds={live.get('data_age_seconds', 'MISSING:data_age_seconds')}"], observed_since_utc=live.get("last_data_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Transport- und Reconnect-Logs prüfen.", operational_impact="Candles und Orderflow-Inputs", scientific_impact="Zeitliche Datenabdeckung", governance_impact="Keine Rekonstruktion erlaubt", freshness_seconds=live.get("data_age_seconds"), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Streamflag und echte Datenfrische.", affected_windows=live.get("last_data_at"), affected_artifacts="/api/health", status_history=[str(live.get("last_data_at"))], historical_development="Öffentlicher Stream", open_blockers=blocker_names, known_limitations=["Keine private Feeds"], affected_artifact_count=2),
+        mk("dashboard", "Dashboard", "Operational Health", live.get("dashboard", "UNKNOWN"), "INFO", "HTTP 200 · aktuelle Antwort", "DASHBOARD_HEALTH", "Diese Seite wurde von der aktiven Dashboard-Runtime ausgeliefert.", [f"checked_at={live.get('checked_at', 'MISSING:checked_at')}", "/api/health"], observed_since_utc=live.get("checked_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Bei RED Runtime-Log und Port 8765 prüfen.", operational_impact="Bedienoberfläche", scientific_impact="Sichtbarkeit von Evidenz", governance_impact="Read-only UI muss erreichbar sein", freshness_seconds=_age_seconds(live.get("checked_at")), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Aktuelle HTTP-Auslieferung.", affected_windows=live.get("checked_at"), affected_artifacts="/api/health", status_history=[str(live.get("checked_at"))], historical_development="Aktueller Dashboard-Prozess", open_blockers=blocker_names, known_limitations=["Keine Schreibfunktionen"]),
+        mk("capture_process", "Capture Process", "Operational Health", "GREEN" if live.get("stream") == "GREEN" and live.get("database") == "GREEN" else "RED", "INFO", _required("capture_process", data.get("system_health", {}).get("stream")), "CAPTURE_PROCESS", "TIM erfasst öffentliche Marktdaten deterministisch.", ["system_health.stream", "database.latest_health"], observed_since_utc=data.get("timestamp"), last_checked_utc=data.get("timestamp"), linked_report="data/operational/state.json", recommended_next_action="Bei Störung den Transportpfad und Persistenzpfad prüfen.", operational_impact="Rohdatenaufnahme", scientific_impact="Kontinuität der Eingangsdaten", governance_impact="Keine automatische Rekonstruktion", freshness_seconds=_age_seconds(data.get("timestamp")), provenance=data.get("provenance"), source_hash=data.get("research_audit", {}).get("audit_hash"), technical_cause="Beobachteter Capture-Prozess.", affected_windows=data.get("timestamp"), affected_artifacts="data/operational/state.json", status_history=[str(data.get("timestamp"))], historical_development="Capture pipeline", open_blockers=blocker_names, known_limitations=["Kein Side-channel capture"]),
+        mk("websocket_connectivity", "WebSocket Connectivity", "Operational Health", live.get("stream", "UNKNOWN"), "INFO" if data.get("system_health", {}).get("stream") == "running" else "CRITICAL", _required("websocket_connectivity", data.get("system_health", {}).get("stream")), "WEBSOCKET_CONNECTIVITY", "Verbindung zum öffentlichen WebSocket-Stream.", ["system_health.stream"], observed_since_utc=data.get("timestamp"), last_checked_utc=data.get("timestamp"), linked_report="data/operational/state.json", recommended_next_action="Reconnect- und Timeout-Logs prüfen.", operational_impact="Transportstabilität", scientific_impact="Lückenfreie Beobachtung", governance_impact="Betrieb nur bei stabiler Verbindung", freshness_seconds=_age_seconds(data.get("timestamp")), provenance=data.get("provenance"), source_hash=data.get("research_audit", {}).get("audit_hash"), technical_cause="Transportstatus des Streams.", affected_windows=data.get("timestamp"), affected_artifacts="data/operational/state.json", status_history=[str(data.get("timestamp"))], historical_development="Transport layer", open_blockers=blocker_names, known_limitations=["Kein externes Failover"]),
+        mk("persistency", "Persistency", "Operational Health", live.get("database", "UNKNOWN"), "INFO" if live.get("database") == "GREEN" else "CRITICAL", str(data.get("system_health", {}).get("database") or "UNKNOWN"), "PERSISTENCY", "Aktueller Persistenzstatus der laufenden Runtime.", [f"database={data.get('system_health', {}).get('database', 'MISSING:database_status')}", f"last_data_at={live.get('last_data_at', 'MISSING:last_data_at')}"], observed_since_utc=live.get("last_data_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Letzten erfolgreichen Write und DB-Status prüfen.", operational_impact="Datenhaltung", scientific_impact="Persistierte Reproduzierbarkeit", governance_impact="Keine Schreibfehler toleriert", freshness_seconds=live.get("data_age_seconds"), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Aktueller DB-Status plus letzte persistierte Candle.", affected_windows=live.get("last_data_at"), affected_artifacts="/api/health", status_history=[str(live.get("last_data_at"))], historical_development="Aktuelle Persistenz; historischer Validator separat", open_blockers=blocker_names, known_limitations=["Kein Backfill"]),
+        mk("queue", "Live Queue", "Operational Health", "GREEN" if int(live.get('queue_depth', 0)) == 0 else "YELLOW", "INFO", f"{live.get('queue_depth', 0)} wartende Nachrichten · historischer Backfill getrennt", "LIVE_QUEUE", "Nur aktive Live-Events zählen gegen die Runtime-Kapazität. Historische Cutover-Events bleiben als DEFERRED offline erhalten.", [f"queue_depth={live.get('queue_depth', 0)}", f"queue_model={live.get('queue_model', 'POSTGRES_DURABLE_OUTBOX_V1')}"], observed_since_utc=live.get("runtime_started_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Bei steigender Live-Queue Stream und Worker prüfen; Deferred Backfill separat bearbeiten.", operational_impact="Aktueller Stream bleibt vom historischen Backfill entkoppelt", scientific_impact="Live-Fenster und historische Lücken bleiben unterscheidbar", governance_impact="Keine historische Arbeit wird stillschweigend verworfen", freshness_seconds=_age_seconds(live.get("checked_at")), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Audited Live-Cutover mit separatem Offline-Backfill.", affected_windows=live.get("checked_at"), affected_artifacts="artifacts/operations/live_cutover.json", status_history=[str(live.get("checked_at"))], historical_development="Live Cutover", open_blockers=blocker_names, known_limitations=["Historischer Backfill ist nicht Teil der Live-Queue"]),
+        mk("storage", "Storage", "Operational Health", live.get("database", "UNKNOWN"), "INFO" if latest.get("database", {}).get("status") == "HEALTHY" else "HIGH", "Persistente Datenspeicherung", "STORAGE", "Storage-Betrieb wird über Datenbank- und Qualitätsstatus abgeleitet.", ["database.latest_health", "research_quality.latest"], observed_since_utc=data.get("timestamp"), last_checked_utc=data.get("timestamp"), linked_report="data/research/quality/latest.json", recommended_next_action="Max RSS und DB-Persistenz beobachten.", operational_impact="Speicher- und Persistenzpfad", scientific_impact="Artefaktstabilität", governance_impact="Betriebsgrenze der Persistenz", freshness_seconds=_age_seconds(data.get("timestamp")), provenance=data.get("provenance"), source_hash=data.get("research_quality", {}).get("report_hash"), technical_cause="Storage über persistente DB repräsentiert.", affected_windows=data.get("timestamp"), affected_artifacts="data/research/quality/latest.json", status_history=[str(data.get("timestamp"))], historical_development="Storage layer", open_blockers=blocker_names, known_limitations=["Kein dedizierter Storage-Monitor"], affected_artifact_count=2),
+        mk("runtime", "Runtime", "Operational Health", live.get("runtime", "UNKNOWN"), "INFO", _duration(live.get("runtime_started_at"), data.get("timestamp")), "RUNTIME", "Laufzeit des aktuell antwortenden TIM-Prozesses.", [f"runtime_started_at={live.get('runtime_started_at', 'MISSING:runtime_started_at')}", f"checked_at={live.get('checked_at', 'MISSING:checked_at')}"], observed_since_utc=live.get("runtime_started_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Ungeplante Neustarts im Timeline-Register untersuchen.", operational_impact="Lebenszeichen der Anwendung", scientific_impact="Kontinuierlicher Beobachtungsraum", governance_impact="Core Freeze bleibt unverändert", freshness_seconds=_age_seconds(live.get("checked_at")), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Aktuell antwortender Dashboard-/Runtime-Prozess.", affected_windows=live.get("runtime_started_at"), affected_artifacts="/api/health", status_history=[str(live.get("runtime_started_at"))], historical_development="Aktuelle Runtime; Acceptance-Laufzeit separat", open_blockers=blocker_names, known_limitations=["Prozessstartzeit ist instanzlokal"]),
+        mk("ollama_availability", "Ollama Availability", "Operational Health", "GREEN" if live.get("ollama_availability") in {"AVAILABLE", "DISABLED_BY_POLICY"} else "RED", "INFO" if live.get("ollama_availability") in {"AVAILABLE", "DISABLED_BY_POLICY"} else "WARNING", "Optional deaktiviert · Core nicht abhängig" if live.get("ollama_availability") == "DISABLED_BY_POLICY" else str(live.get("ollama_availability", "UNAVAILABLE")), "OLLAMA_AVAILABILITY", "Ollama ist optional. Deaktivierung gemäß Konfiguration ist ein gesunder Zustand; bei Aktivierung wird die lokale API beim Start geprüft.", [f"enabled={live.get('ollama_enabled', False)}", f"availability={live.get('ollama_availability', 'DISABLED_BY_POLICY')}"], observed_since_utc=live.get("runtime_started_at"), last_checked_utc=live.get("checked_at"), linked_report="/api/health", recommended_next_action="Nur bei aktiviertem und UNAVAILABLE gemeldetem Ollama den lokalen Dienst prüfen.", operational_impact="Kein Einfluss auf Marktdatenerfassung", scientific_impact="Optionale Erklärungen, keine Regel- oder Persistenzabhängigkeit", governance_impact="Ollama bleibt außerhalb des deterministischen Core", freshness_seconds=_age_seconds(live.get("checked_at")), provenance=data.get("provenance"), source_hash="N/A:LIVE_STATUS_NOT_HASHED", technical_cause="Expliziter Konfigurations- und Startzeitstatus.", affected_windows=live.get("checked_at"), affected_artifacts="config/settings.py", status_history=[str(live.get("checked_at"))], historical_development="Optionales lokales Modell", open_blockers=blocker_names, known_limitations=["Keine periodische Modell-Inferenz als Health-Probe"]),
+    ]
+
+    deterministic = quality.get("checks", {}).get("deterministic")
+    deterministic_evidence_pass = (
+        criteria.get("replay") == "PASS"
+        and criteria.get("hash_consistency") == "PASS"
+    )
+    scientific = [
+        mk("continuous_coverage", "Continuous Coverage", "Scientific Health", "GREEN" if criteria.get("continuous_coverage") == "PASS" else "RED", "INFO" if criteria.get("continuous_coverage") == "PASS" else "CRITICAL", f"{coverage}% · {missing_minutes} Minuten fehlen", "CONTINUOUS_COVERAGE", f"{readiness.get('continuous_persisted_1m_intervals', 'MISSING:continuous_persisted_1m_intervals')} von {readiness.get('continuous_expected_1m_intervals', 'MISSING:continuous_expected_1m_intervals')} erwarteten Minuten sind persistiert.", [f"window={readiness.get('continuous_window_start', 'MISSING:continuous_window_start')} → {readiness.get('continuous_window_end', 'MISSING:continuous_window_end')}", "data/research/status/tim_v1_readiness.json"], observed_since_utc=readiness.get("generated_at"), last_checked_utc=readiness.get("generated_at"), linked_report="data/research/status/tim_v1_readiness.json", linked_blocker="continuous_coverage", recommended_next_action="Neuen zusammenhängenden Beobachtungszeitraum ohne Rekonstruktion fortführen.", operational_impact="Keine operative Korrektur", scientific_impact="Blockiert Scientific Readiness", governance_impact="Data Gap Governance", freshness_seconds=_age_seconds(readiness.get("generated_at")), provenance=readiness.get("provenance"), source_hash=readiness.get("artifact_hash"), technical_cause="Persistierte 1m-Abdeckung unter Ziel.", affected_windows=f"{readiness.get('continuous_window_start', 'MISSING:continuous_window_start')} → {readiness.get('continuous_window_end', 'MISSING:continuous_window_end')}", affected_artifacts="data/research/status/tim_v1_readiness.json", status_history=[str(readiness.get("generated_at"))], historical_development="Continuous coverage window", open_blockers=blocker_names, known_limitations=["Coverage historical and continuous window differ"]),
+        mk("validator", "Validator", "Scientific Health", validator_level, "WARNING" if validator_level == "YELLOW" else "INFO", f"{validator.get('status', 'UNKNOWN')} · {validator.get('cycles', 0)} Zyklen", "VALIDATOR", "Persistierter Acceptance-Validator und wissenschaftliche Bewertung.", [f"last_cycle_at={validator.get('last_cycle_at', 'MISSING:last_cycle_at')}", f"acceptance_score={validator.get('acceptance', {}).get('score', 'MISSING:score')}", "docs/TIM_72H_ACCEPTANCE_REPORT.md"], observed_since_utc=validator.get("started_at"), last_checked_utc=validator.get("last_cycle_at"), linked_report="docs/TIM_72H_ACCEPTANCE_REPORT.md", linked_blocker="manual_scientific_review" if criteria.get("manual_scientific_review") != "PASS" else None, recommended_next_action="Acceptance-Report und offene Readiness-Kriterien gemeinsam prüfen.", operational_impact="Wissenschaftlicher Gatekeeper", scientific_impact="Freigabe- und Integritätskontext", governance_impact="Manueller Review benötigt", freshness_seconds=_age_seconds(validator.get("last_cycle_at")), provenance=data.get("provenance"), source_hash=validator.get("acceptance", {}).get("report_path"), technical_cause="Persistierter Validator- und Acceptance-Status.", affected_windows=validator.get("last_cycle_at"), affected_artifacts="docs/TIM_72H_ACCEPTANCE_REPORT.md", status_history=[str(validator.get("last_cycle_at"))], historical_development="Validator cycle", open_blockers=blocker_names, known_limitations=["Completed state is read-only"]),
+        mk("replay", "Replay", "Scientific Health", "GREEN" if criteria.get("replay") == "PASS" else "RED", "INFO" if criteria.get("replay") == "PASS" else "CRITICAL", str(criteria.get("replay", "UNKNOWN")), "REPLAY", "Persistierter deterministischer Replay-Status.", [f"benchmark={latest.get('benchmark', 'MISSING:benchmark')}", "data/research/status/tim_v1_readiness.json"], observed_since_utc=readiness.get("generated_at"), last_checked_utc=readiness.get("generated_at"), linked_report="data/research/status/tim_v1_readiness.json", linked_blocker="replay" if criteria.get("replay") != "PASS" else None, recommended_next_action="Bei Abweichung Dataset- und Output-Hashes vergleichen.", operational_impact="Reproduzierbarkeit", scientific_impact="Benchmark-Stabilität", governance_impact="Versionierte Replays", freshness_seconds=_age_seconds(readiness.get("generated_at")), provenance=readiness.get("provenance"), source_hash=readiness.get("output_hash"), technical_cause="Deterministischer Replay-Check.", affected_windows=readiness.get("generated_at"), affected_artifacts="data/research/status/tim_v1_readiness.json", status_history=[str(readiness.get("generated_at"))], historical_development="Replay validation", open_blockers=blocker_names, known_limitations=["Replay result is historical"]),
+        mk("determinism", "Determinism", "Scientific Health", "GREEN" if deterministic_evidence_pass else "RED", "INFO" if deterministic_evidence_pass else "HIGH", "PASS · Replay und Hash-Konsistenz" if deterministic_evidence_pass else "FAIL", "DETERMINISM", "Der historische Quality-Report ist wegen Artefakt-Governance fehlgeschlagen; Replay und Hash-Konsistenz werden separat bewertet.", quality_issue_codes + ["criteria.replay", "criteria.hash_consistency"], observed_since_utc=quality.get("generated_at"), last_checked_utc=quality.get("generated_at"), linked_report="data/research/quality/latest.json", linked_blocker=None if deterministic_evidence_pass else "determinism", recommended_next_action="Historische Audit-Issues getrennt vom Determinismus bewerten; Artefakte nicht verändern.", operational_impact="Kein aktueller Betriebsfehler", scientific_impact="Replay und Hash-Konsistenz sind die maßgebliche Determinismus-Evidenz", governance_impact="Artefakt-Governance bleibt separat offen", freshness_seconds=_age_seconds(quality.get("generated_at")), provenance=quality.get("read_only_sources", data.get("provenance")), source_hash=quality.get("report_hash"), technical_cause="Historischer Quality-Status enthält zusätzliche Governance-Issues.", affected_windows=quality.get("generated_at"), affected_artifacts="data/research/quality/latest.json", status_history=[str(quality.get("generated_at"))], historical_development="Historical quality snapshot", open_blockers=blocker_names, known_limitations=["Snapshot ist historisch"]),
+        mk("provenance", "Provenance", "Scientific Health", "GREEN" if criteria.get("new_artifact_provenance") == "PASS" and "PROVENANCE_INCOMPLETE" not in quality_issue_codes else "YELLOW" if criteria.get("new_artifact_provenance") == "PASS" else "RED", "INFO" if "PROVENANCE_INCOMPLETE" not in quality_issue_codes else "WARNING", "Neue Artefakte PASS · Historisch unvollständig" if "PROVENANCE_INCOMPLETE" in quality_issue_codes else str(criteria.get("new_artifact_provenance", "UNKNOWN")), "PROVENANCE", "Neue Artefakte erfüllen das Gate; der historische Quality-Report dokumentiert unveränderte Provenance-Lücken.", [code for code in quality_issue_codes if "PROVENANCE" in code or "DOCUMENTATION" in code] + ["data/research/quality/latest.json"], observed_since_utc=quality.get("generated_at"), last_checked_utc=quality.get("generated_at"), linked_report="data/research/quality/latest.json", linked_blocker="historical_provenance" if "PROVENANCE_INCOMPLETE" in quality_issue_codes else None, recommended_next_action="Historische Lücken dokumentiert lassen; keine rückwirkenden Hashes erzeugen.", operational_impact="Kein aktueller Betriebsfehler", scientific_impact="Historische Vergleichbarkeit eingeschränkt", governance_impact="Keine Retro-Korrektur", freshness_seconds=_age_seconds(quality.get("generated_at")), provenance=readiness.get("provenance"), source_hash=readiness.get("artifact_hash"), technical_cause="Historische Provenance-Abweichungen dokumentiert.", affected_windows=quality.get("generated_at"), affected_artifacts="data/research/quality/latest.json", status_history=[str(quality.get("generated_at"))], historical_development="Historical provenance report", open_blockers=blocker_names, known_limitations=["Historical gaps may be unrecoverable"]),
+        mk("hash_integrity", "Hash Integrity", "Scientific Health", "GREEN" if criteria.get("hash_consistency") == "PASS" and "OUTPUT_HASH_MISMATCH" not in audit_issue_codes else "YELLOW", "INFO" if criteria.get("hash_consistency") == "PASS" and "OUTPUT_HASH_MISMATCH" not in audit_issue_codes else "WARNING", "P0 untersucht · Contract-Semantik offen" if "OUTPUT_HASH_MISMATCH" in audit_issue_codes else str(criteria.get("hash_consistency", "UNKNOWN")), "HASH_INTEGRITY", "Der Audit meldet OUTPUT_HASH_MISMATCH; die bestehende P0-Untersuchung klassifiziert die Ursache als Hash-Domänen-/Vertragsproblem.", [code for code in audit_issue_codes if "HASH" in code] + ["data/research/audit/latest.json"], observed_since_utc=audit.get("generated_at"), last_checked_utc=audit.get("generated_at"), linked_report="data/research/audit/latest.json", linked_blocker="hash_contract_v2" if "OUTPUT_HASH_MISMATCH" in audit_issue_codes else None, recommended_next_action="Historische Artefakte unverändert lassen; HC-1.0 erst für V2 verwenden.", operational_impact="Hash-Interpretation", scientific_impact="Artefaktvergleich", governance_impact="Vertragsdisziplin", freshness_seconds=_age_seconds(audit.get("generated_at")), provenance=audit.get("read_only") if audit.get("read_only") is not None else data.get("provenance"), source_hash=audit.get("audit_hash"), technical_cause="Hash-Domänen-/Vertragsproblem.", affected_windows=audit.get("generated_at"), affected_artifacts="data/research/audit/latest.json", status_history=[str(audit.get("generated_at"))], historical_development="Hash audit", open_blockers=blocker_names, known_limitations=["No retroactive rewrite"]),
+        mk("research_integrity", "Research Integrity", "Scientific Health", str(validator.get("research_health", {}).get("level", "YELLOW")).upper(), "INFO" if str(validator.get("research_health", {}).get("level", "YELLOW")).upper() == "GREEN" else "WARNING", f"{validator.get('research_health', {}).get('trigger_duplicates', 0)} Trigger-Duplikate", "RESEARCH_INTEGRITY", "Persistierter Research-Integrity-Check für Reports, Provenance, Schema und Trigger-Deduplizierung.", ["data/operational/state.json", f"checked_at={validator.get('research_health', {}).get('checked_at', 'MISSING:checked_at')}"], observed_since_utc=validator.get("research_health", {}).get("checked_at"), last_checked_utc=validator.get("research_health", {}).get("checked_at"), linked_report="data/operational/state.json", linked_blocker="research_integrity" if validator.get("research_health", {}).get("level") != "GREEN" else None, recommended_next_action="Bei RED den letzten Research-Cycle-Check und betroffene Artefakte prüfen.", operational_impact="Research pipeline integrity", scientific_impact="Trigger-Deduplizierung", governance_impact="Auditability", freshness_seconds=_age_seconds(validator.get("research_health", {}).get("checked_at")), provenance=data.get("provenance"), source_hash=validator.get("research_health", {}).get("checked_at"), technical_cause="Research-Integrity-Report.", affected_windows=validator.get("research_health", {}).get("checked_at"), affected_artifacts="data/operational/state.json", status_history=[str(validator.get("research_health", {}).get("checked_at"))], historical_development="Research integrity", open_blockers=blocker_names, known_limitations=["Historical findings stay readable"]),
+        mk("data_quality", "Data Quality", "Scientific Health", quality_level, "INFO" if quality_status == "PASS" else "HIGH", f"{quality.get('validation_status', 'UNKNOWN')} · {gaps} ungeklärte Gaps", "DATA_QUALITY", f"Coverage {coverage}%; {missing_minutes} Minuten fehlen. Research Quality enthält {len(quality_issues)} offene Issues.", quality_issue_codes + ["data/research/quality/latest.json"], observed_since_utc=quality.get("generated_at"), last_checked_utc=quality.get("generated_at"), linked_report="data/research/quality/latest.json", linked_blocker="data_gap_register", recommended_next_action="DATA_GAP-Register und Provenance-Issues abarbeiten; keine Daten rekonstruieren.", operational_impact="Datenqualität", scientific_impact="Reproduzierbarkeit und Coverage", governance_impact="Readiness blockiert", freshness_seconds=_age_seconds(quality.get("generated_at")), provenance=quality.get("read_only_sources", data.get("provenance")), source_hash=quality.get("report_hash"), technical_cause="Quality validation report.", affected_windows=f"{readiness.get('continuous_window_start', 'MISSING:continuous_window_start')} → {readiness.get('continuous_window_end', 'MISSING:continuous_window_end')}", affected_artifacts="data/research/quality/latest.json", status_history=[str(quality.get("generated_at"))], historical_development="Data quality report", open_blockers=blocker_names, known_limitations=["No reconstruction"]),
+        mk("acceptance", "Acceptance", "Scientific Health", "GREEN" if validator.get("acceptance", {}).get("score", 0) >= 0.95 else "YELLOW", "INFO" if validator.get("acceptance", {}).get("score", 0) >= 0.95 else "WARNING", f"{float(validator.get('acceptance', {}).get('score', 0)) * 100:.0f}% · {validator.get('acceptance', {}).get('status', 'UNKNOWN')}", "ACCEPTANCE", "72h Acceptance ist abgeschlossen, das dokumentierte Ergebnis erreicht jedoch nicht das 95%-GO-Kriterium.", [str(validator.get("acceptance", {}).get("report_path", "MISSING:report_path")), "data/operational/state.json"], observed_since_utc=validator.get("acceptance", {}).get("checked_at"), last_checked_utc=validator.get("acceptance", {}).get("checked_at"), linked_report=validator.get("acceptance", {}).get("report_path"), linked_blocker="coverage_review" if validator.get("acceptance", {}).get("score", 0) < 0.95 else None, recommended_next_action="Offene Coverage-, Gap- und Review-Blocker schließen.", operational_impact="Governance gate", scientific_impact="Review milestone", governance_impact="Manual review", freshness_seconds=_age_seconds(validator.get("acceptance", {}).get("checked_at")), provenance=data.get("provenance"), source_hash=validator.get("acceptance", {}).get("report_path"), technical_cause="Acceptance report status.", affected_windows=validator.get("acceptance", {}).get("checked_at"), affected_artifacts="docs/TIM_72H_ACCEPTANCE_REPORT.md", status_history=[str(validator.get("acceptance", {}).get("checked_at"))], historical_development="Acceptance gate", open_blockers=blocker_names, known_limitations=["Readiness remains open"]),
+    ]
+
+    governance = [
+        mk("observe_only", "OBSERVE-only Status", "Governance Health", "GREEN" if data.get("mode") == "OBSERVE" else "RED", "INFO" if data.get("mode") == "OBSERVE" else "CRITICAL", str(data.get("mode", "UNKNOWN")), "OBSERVE_ONLY", "Dashboard und Runtime melden Forschungsmodus ohne Ausführung.", [str(data.get("safety")), str(data.get("provenance"))], observed_since_utc=data.get("timestamp"), last_checked_utc=data.get("timestamp"), linked_report="config/core_manifest.json", recommended_next_action="Bei Abweichung Betrieb sofort stoppen und untersuchen.", operational_impact="Ausführung verboten", scientific_impact="Read-only invariant", governance_impact="Core freeze protected", freshness_seconds=_age_seconds(data.get("timestamp")), provenance=data.get("provenance"), source_hash=data.get("research_audit", {}).get("audit_hash"), technical_cause="Forschungsmodus im Snapshot.", affected_windows=data.get("timestamp"), affected_artifacts="config/core_manifest.json", status_history=[str(data.get("timestamp"))], historical_development="Operational boundary", open_blockers=blocker_names, known_limitations=["No execution controls"]),
+        mk("core_freeze", "Core Freeze Status", "Governance Health", "GREEN" if core.get("status") == "FROZEN" else "YELLOW", "INFO" if core.get("status") == "FROZEN" else "WARNING", str(core.get("status", "Nicht im Manifest ausgewiesen")), "CORE_FREEZE", "Status wird ausschließlich aus config/core_manifest.json gelesen.", [f"core_version={core.get('core_version', core.get('version', 'MISSING:core_version'))}", "config/core_manifest.json"], observed_since_utc=core.get("frozen_at") or core.get("generated_at") or "UNSPECIFIED_IN_FROZEN_MANIFEST", last_checked_utc=data.get("timestamp"), linked_report="config/core_manifest.json", recommended_next_action="Core-Manifest vor funktionalen Änderungen prüfen.", operational_impact="Core protection", scientific_impact="Frozen reference baseline", governance_impact="No core edits", freshness_seconds=_age_seconds(data.get("timestamp")), provenance=core.get("provenance", data.get("provenance")), source_hash=core.get("artifact_hash") or core.get("core_version"), technical_cause="Frozen core manifest.", affected_windows=core.get("frozen_at") or core.get("generated_at") or "UNSPECIFIED_IN_FROZEN_MANIFEST", affected_artifacts="config/core_manifest.json", status_history=[str(core.get("frozen_at") or core.get("generated_at") or "UNSPECIFIED_IN_FROZEN_MANIFEST")], historical_development="Core freeze", open_blockers=blocker_names, known_limitations=["Das eingefrorene Manifest enthält keinen frozen_at-Zeitstempel"]),
+        mk("open_blockers", "Offene Blocker", "Governance Health", "YELLOW" if blocker_names else "GREEN", "WARNING", ", ".join(blocker_names) or "Keine persistierten Blocker", "OPEN_BLOCKERS", f"{len(blocker_names)} persistierte Blocker verhindern eine automatische Freigabe.", blocker_names + ["data/research/status/tim_v1_readiness.json"], observed_since_utc=readiness.get("generated_at"), last_checked_utc=readiness.get("generated_at"), linked_report="data/research/status/tim_v1_readiness.json", linked_blocker=",".join(blocker_names) if blocker_names else None, recommended_next_action="Blocker verifizieren und manuellen Scientific Review durchführen.", operational_impact="Freigabestatus", scientific_impact="Readiness gate", governance_impact="V2 planning blocked", freshness_seconds=_age_seconds(readiness.get("generated_at")), provenance=readiness.get("provenance"), source_hash=readiness.get("artifact_hash"), technical_cause="Persistierte blocker list.", affected_windows=readiness.get("generated_at"), affected_artifacts="data/research/status/tim_v1_readiness.json", status_history=[str(readiness.get("generated_at"))], historical_development="Readiness blockers", open_blockers=blocker_names, known_limitations=["No auto-close"]),
+        mk("scientific_review", "Scientific Review Status", "Governance Health", "GREEN" if criteria.get("manual_scientific_review") == "PASS" else "YELLOW", "INFO" if criteria.get("manual_scientific_review") == "PASS" else "WARNING", str(criteria.get("manual_scientific_review", "UNKNOWN")), "SCIENTIFIC_REVIEW", "Die Freigabe erfordert eine dokumentierte manuelle Entscheidung.", ["manual_scientific_review", "eligible_for_scientific_review=" + str(readiness.get("eligible_for_scientific_review"))], observed_since_utc=readiness.get("generated_at"), last_checked_utc=readiness.get("generated_at"), linked_report="data/research/status/tim_v1_readiness.json", linked_blocker="manual_scientific_review", recommended_next_action="Reviewer, Evidenzbasis und Entscheidung protokollieren.", operational_impact="Review gate", scientific_impact="Formal approval", governance_impact="Manual decision required", freshness_seconds=_age_seconds(readiness.get("generated_at")), provenance=readiness.get("provenance"), source_hash=readiness.get("artifact_hash"), technical_cause="Manual review still open.", affected_windows=readiness.get("generated_at"), affected_artifacts="data/research/status/tim_v1_readiness.json", status_history=[str(readiness.get("generated_at"))], historical_development="Scientific review", open_blockers=blocker_names, known_limitations=["Manual review cannot be automated"]),
+        mk("hash_contract", "Hash Contract Status", "Governance Health", "GREEN" if quality.get("validation_status") == "PASS" and "OUTPUT_HASH_MISMATCH" not in audit_issue_codes else "YELLOW", "INFO" if quality.get("validation_status") == "PASS" and "OUTPUT_HASH_MISMATCH" not in audit_issue_codes else "WARNING", "HC-1.0 referenziert; V2-Contract vorbereiten", "HASH_CONTRACT", "Der Audit meldet OUTPUT_HASH_MISMATCH; die Ursache ist ein Vertrags-/Domänenproblem.", [code for code in audit_issue_codes if "HASH" in code] + ["data/research/audit/latest.json"], observed_since_utc=audit.get("generated_at"), last_checked_utc=audit.get("generated_at"), linked_report="data/research/audit/latest.json", linked_blocker="hash_contract_v2" if "OUTPUT_HASH_MISMATCH" in audit_issue_codes else None, recommended_next_action="HC-1.0 nur als Referenz beibehalten.", operational_impact="Contract semantics", scientific_impact="Artifact comparison", governance_impact="Future versioned contract only", freshness_seconds=_age_seconds(audit.get("generated_at")), provenance=audit.get("provenance", data.get("provenance")), source_hash=audit.get("audit_hash"), technical_cause="Hash domain mismatch documented in audit.", affected_windows=audit.get("generated_at"), affected_artifacts="data/research/audit/latest.json", status_history=[str(audit.get("generated_at"))], historical_development="Hash contract", open_blockers=blocker_names, known_limitations=["Historical hashes remain frozen"]),
+        mk("readiness", "Readiness Status", "Governance Health", "GREEN" if readiness.get("readiness_status") == "READY_FOR_V2" else "YELLOW", "INFO" if readiness.get("readiness_status") == "READY_FOR_V2" else "WARNING", str(readiness.get("readiness_status", "UNKNOWN")), "READINESS", f"{len(blocker_names)} persistierte Blocker verhindern eine automatische Freigabe.", blocker_names + ["data/research/status/tim_v1_readiness.json"], observed_since_utc=readiness.get("generated_at"), last_checked_utc=readiness.get("generated_at"), linked_report="data/research/status/tim_v1_readiness.json", linked_blocker=",".join(blocker_names) if blocker_names else None, recommended_next_action="Blocker verifizieren und Review durchführen.", operational_impact="V2 gate", scientific_impact="Operational readiness", governance_impact="Planning only", freshness_seconds=_age_seconds(readiness.get("generated_at")), provenance=readiness.get("provenance"), source_hash=readiness.get("artifact_hash"), technical_cause="Readiness report state.", affected_windows=readiness.get("generated_at"), affected_artifacts="data/research/status/tim_v1_readiness.json", status_history=[str(readiness.get("generated_at"))], historical_development="Readiness assessment", open_blockers=blocker_names, known_limitations=["Not automatically promoted"]),
+        mk("last_audit", "Letzter Research Audit", "Governance Health", audit_level, "INFO" if audit_status == "PASS" else "HIGH", f"{audit_status} · {audit.get('artifacts_failed', '—')} von {audit.get('artifacts_checked', '—')} fehlgeschlagen", "LAST_AUDIT", ", ".join(audit_issue_codes) or "Keine Audit-Issues dokumentiert.", audit_issue_codes + ["data/research/audit/latest.json"], observed_since_utc=audit.get("generated_at"), last_checked_utc=audit.get("generated_at"), linked_report="data/research/audit/latest.json", linked_blocker="audit", recommended_next_action="Fehlgeschlagene Artefakte anhand des unveränderten Auditberichts prüfen.", operational_impact="Audit trail", scientific_impact="Evidence traceability", governance_impact="Audit governance", freshness_seconds=_age_seconds(audit.get("generated_at")), provenance=audit.get("provenance", data.get("provenance")), source_hash=audit.get("audit_hash"), technical_cause="Audit report results.", affected_windows=audit.get("generated_at"), affected_artifacts="data/research/audit/latest.json", status_history=[str(audit.get("generated_at"))], historical_development="Audit trail", open_blockers=blocker_names, known_limitations=["Audit cannot rewrite history"]),
+        mk("responsible_role", "Verantwortliche Rolle", "Governance Health", "GREEN" if roles.get("scientific_release_authority") else "YELLOW", "INFO" if roles.get("scientific_release_authority") else "WARNING", str(roles.get("scientific_release_authority") or "Manuelle Rollenzuweisung ausstehend"), "RESPONSIBLE_ROLE", "Die Rolle genehmigt wissenschaftliche Freigaben; TIM selbst kann keine Freigabe erteilen.", [f"scientific_release_authority={roles.get('scientific_release_authority', 'NOT_ASSIGNED')}", f"core_owner={roles.get('core_owner', 'NOT_ASSIGNED')}", "config/governance_roles.json"], observed_since_utc=roles.get("effective_from"), last_checked_utc=data.get("timestamp"), linked_report="config/governance_roles.json", recommended_next_action="Personelle Benennung außerhalb des Systems dokumentieren; Rollenvertrag unverändert halten.", operational_impact="Eindeutige menschliche Verantwortung", scientific_impact="Nachvollziehbare Review-Autorität", governance_impact="TIM darf sich nicht selbst freigeben", freshness_seconds=_age_seconds(data.get("timestamp")), provenance=roles.get("provenance", "TIM_GOVERNANCE_DOCUMENT"), source_hash=roles.get("artifact_hash", "N/A:ROLE_CONTRACT_NOT_SELF_HASHED"), technical_cause="Expliziter rollenbasierter Governance-Vertrag.", affected_windows=roles.get("effective_from"), affected_artifacts="config/governance_roles.json", status_history=[str(roles.get("effective_from"))], historical_development="Rollenvertrag gilt prospektiv", open_blockers=blocker_names, known_limitations=["Die konkrete natürliche Person wird bewusst nicht in Runtime-Konfiguration gespeichert"]),
+        mk("release_status", "Freigabestatus", "Governance Health", "YELLOW" if readiness.get("v2_approved") is not True else "GREEN", "WARNING", "NOT_READY_FOR_V2" if readiness.get("v2_approved") is not True else "READY_FOR_V2", "RELEASE_STATUS", "Die finale Freigabe bleibt manuell und unverändert ausstehend.", blocker_names + ["data/research/status/tim_v1_readiness.json"], observed_since_utc=readiness.get("generated_at"), last_checked_utc=readiness.get("generated_at"), linked_report="data/research/status/tim_v1_readiness.json", linked_blocker="v2_approval" if readiness.get("v2_approved") is not True else None, recommended_next_action="Manuellen Scientific Review protokollieren.", operational_impact="Release gate", scientific_impact="Eligibility gate", governance_impact="Approval process", freshness_seconds=_age_seconds(readiness.get("generated_at")), provenance=readiness.get("provenance"), source_hash=readiness.get("artifact_hash"), technical_cause="No automatic approval", affected_windows=readiness.get("generated_at"), affected_artifacts="data/research/status/tim_v1_readiness.json", status_history=[str(readiness.get("generated_at"))], historical_development="Release gating", open_blockers=blocker_names, known_limitations=["No automatic release"]),
+    ]
+
+    cutover = data.get("live_cutover", {})
+    cutover_status = "GREEN" if cutover.get("status") == "APPLIED" else "YELLOW"
+    cutover_panel = (
+        "<section class='panel'><div class='panel__head'><div><h2>Live Cutover & Offline Backfill</h2>"
+        "<p class='muted'>Aktuelle Live-Daten sind von der historischen Nachbearbeitung getrennt. Kein Datenverlust, kein Trading.</p>"
+        f"</div><span class='badge badge--{cutover_status.lower()}'>{_safe(cutover.get('status', 'NOT_CONFIGURED'))}</span></div>"
+        "<div class='detail-grid'><div class='detail'><dt>Live start</dt>"
+        f"<dd>{_safe(cutover.get('approved_at'))}</dd><dt>Baseline cursor</dt><dd class='mono'>{_safe(cutover.get('baseline_cursor_id'))}</dd>"
+        f"<dt>First live trade</dt><dd class='mono'>{_safe(cutover.get('first_live_trade_id'))}</dd></div>"
+        "<div class='detail'><dt>Deferred offline events</dt>"
+        f"<dd>{_safe(cutover.get('deferred_outbox_count'))}</dd><dt>Policy</dt><dd>{_safe(cutover.get('historical_policy'))}</dd>"
+        f"<dt>Receipt hash</dt><dd class='mono'>{_safe(cutover.get('manifest_hash'))}</dd></div></div></section>"
+    )
+    timelines = _timeline_rows(data.get("timeline", []))
+    exceptions_rows, exceptions = _quality_exception_rows(data, archived=True)
+    def section(title: str, text: str, cards: list[str], *, badge: str, timestamp: Any) -> str:
+        return (
+            "<section class='panel'>"
+            "<div class='panel__head'><div>"
+            f"<h2>{_safe(title)}</h2><p class='muted'>{_safe(text)}</p>"
+            "</div><div class='health-section-meta'>"
+            f"<span class='badge badge--{_safe(badge)}'>{_safe('LIVE' if badge == 'green' else 'HISTORISCHER SNAPSHOT')}</span>"
+            f"<span class='mono'>Berichtszeit: {_safe(_required('timestamp', timestamp))}</span>"
+            "</div></div>"
+            f"<div class='health-grid'>{''.join(cards)}</div></section>"
+        )
+
+    return (
+        "<div class='safety-callout health-scope-note'><b>Statusbereiche sind getrennt:</b> "
+        "Grün markierte Live-Daten beschreiben den aktuellen Betrieb. Historische Audit- und Readiness-Snapshots "
+        "sind eingefrorene wissenschaftliche Befunde und bedeuten nicht automatisch einen aktuellen Systemausfall.</div>"
+        + cutover_panel
+        + section("1 · Live Operational Health", "Aktueller Betrieb von Persistenz, Stream, Dashboard und Runtime.", operational, badge="green", timestamp=data.get("timestamp"))
+        + section("2 · Historical Scientific Baseline", "Archivierte Evidenz, kein Live-Health-Status. FAIL- und WAITING-Werte bleiben unverändert dokumentiert.", scientific, badge="snapshot", timestamp=quality.get("generated_at") or readiness.get("generated_at"))
+        + section("3 · V2 Governance & Readiness", "Archivierte Governance-Evidenz, kein aktueller Systemfehler. Freigaben bleiben ausschließlich manuell.", governance, badge="snapshot", timestamp=readiness.get("generated_at"))
+        + "<section class='panel'><div class='panel__head'><h2>Health Timeline</h2><span class='badge badge--snapshot'>DIAGNOSTIC TIMELINE</span></div><div class='table-wrap'><table><thead><tr><th>event_id</th><th>event_type</th><th>timestamp_utc</th><th>component_id</th><th>previous_status</th><th>new_status</th><th>reason_code</th><th>evidence_reference</th><th>provenance</th><th>source_hash</th></tr></thead><tbody>" + timelines + "</tbody></table></div></section>"
+        + "<section class='panel'><div class='panel__head'><h2>Data Quality Evidence Register</h2><span class='badge badge--snapshot'>ARCHIVIERTE BEFUNDE</span></div><div class='table-wrap'><table><thead><tr><th>Component</th><th>Status</th><th>Reason Code</th><th>Reason Text</th><th>Time Window</th><th>Provenance</th><th>Linked Report</th><th>Linked Blocker</th></tr></thead><tbody>" + exceptions_rows + "</tbody></table></div><p class='count-scope'>Historische Ausnahmen bleiben unverändert sichtbar und werden nicht als aktueller Runtime-Fehler gewertet.</p></section>"
+    )
+
+
+CSS = r"""
+:root{color-scheme:dark;--bg:#070a0f;--rail:#0a0e14;--surface:#0e131b;--surface-raised:#131a24;--surface-soft:#171f2b;--line:#242e3c;--line-strong:#344154;--text:#f1f5f9;--text-soft:#c5ced9;--muted:#8491a3;--green:#35d39a;--green-soft:#0d2d25;--yellow:#f2bd55;--yellow-soft:#332710;--red:#ff6577;--red-soft:#341720;--blue:#70a7ff;--cyan:#51c7d9;--radius:10px;--shadow:0 16px 40px rgba(0,0,0,.22)}
+*{box-sizing:border-box}html{scrollbar-color:var(--line-strong) var(--bg)}body{margin:0;background:radial-gradient(circle at 85% -20%,#102137 0,transparent 33%),var(--bg);color:var(--text);font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.005em}a{color:var(--blue);text-decoration:none}a:hover{color:#a9caff}.shell{margin-left:246px;max-width:1680px;padding:28px 32px 48px}.topbar{position:fixed;inset:0 auto 0 0;z-index:10;width:246px;background:linear-gradient(180deg,#0b1017,#080c12);border-right:1px solid var(--line)}.topbar__inner{height:100%;padding:24px 16px;display:flex;flex-direction:column;align-items:stretch}.brand{display:block;padding:0 10px 22px;border-bottom:1px solid var(--line);font-size:22px;font-weight:850;letter-spacing:-.04em;color:white}.brand:before{content:"";display:inline-block;width:8px;height:8px;margin-right:9px;border-radius:2px;background:var(--green);box-shadow:0 0 14px rgba(53,211,154,.45)}.brand small{display:block;margin:5px 0 0 17px;font-size:9px;line-height:1.4;font-weight:650;color:var(--muted);letter-spacing:.12em}.nav{display:flex;flex:1;flex-direction:column;gap:3px;padding:20px 0}.nav a{position:relative;color:var(--muted);padding:10px 12px;border-radius:7px;font-size:13px;font-weight:600}.nav a.active,.nav a:hover{background:var(--surface-soft);color:var(--text);text-decoration:none}.nav a.active:before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:2px;background:var(--blue);border-radius:2px}.live{margin-top:auto;width:100%;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:left;white-space:normal}.hero{display:flex;justify-content:space-between;gap:28px;align-items:end;margin:4px 0 24px}.hero h1{max-width:940px;margin:0 0 8px;font-size:clamp(27px,3vw,40px);line-height:1.1;letter-spacing:-.035em}.hero p{max-width:760px;margin:0;color:var(--muted);font-size:15px}.observe{color:var(--green);font-weight:750}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.card,.panel{background:linear-gradient(150deg,rgba(19,26,36,.96),rgba(12,17,24,.98));border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}.card{padding:17px 18px;min-height:126px}.card__label{color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.095em}.card__value{font-size:24px;line-height:1.15;font-weight:760;letter-spacing:-.025em;margin:16px 0 7px}.card__note{color:var(--muted);font-size:12px;line-height:1.45}.panel{padding:22px;margin-top:18px}.panel h2,.overview-section h2{margin:0;font-size:19px;letter-spacing:-.015em}.panel__head{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:18px}.panel__head>div>h2{margin-bottom:0}.badge{display:inline-flex;align-items:center;width:max-content;padding:4px 8px;border:1px solid transparent;border-radius:5px;font-size:10px;line-height:1.4;font-weight:800;letter-spacing:.055em}.badge--green{background:var(--green-soft);border-color:#1e5947;color:var(--green)}.badge--yellow{background:var(--yellow-soft);border-color:#664b19;color:var(--yellow)}.badge--red{background:var(--red-soft);border-color:#6b2937;color:var(--red)}.badge--snapshot{background:#14243a;color:#a8c7ef;border-color:#29486d}.tag{display:inline-flex;padding:3px 7px;background:#172841;border:1px solid #2a476b;border-radius:5px;color:#bfdaff}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}.table-wrap{overflow:auto;max-width:100%;border:1px solid var(--line);border-radius:8px;background:#0b1017}table{border-collapse:separate;border-spacing:0;width:100%;min-width:850px}th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{position:sticky;top:0;z-index:1;background:#151c27;color:#9aa7b8;font-size:10px;text-transform:uppercase;letter-spacing:.08em}td{color:var(--text-soft);font-size:13px}tbody tr:last-child td{border-bottom:0}tr:hover td{background:#121a25}.filters{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:10px;margin-bottom:16px}.filters label,.field label{display:block;color:var(--muted);font-size:11px;font-weight:650;margin-bottom:6px}input,select,textarea,button{font:inherit;color:var(--text);background:#0b1119;border:1px solid var(--line-strong);border-radius:7px;padding:10px 11px}input:hover,select:hover,textarea:hover{border-color:#4b5b70}textarea{min-height:110px;resize:vertical}button{cursor:pointer;background:#1b3f6a}button:hover{background:#24548c}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.detail{background:#0a1017;border:1px solid var(--line);border-radius:8px;padding:16px}.detail dt{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em}.detail dd{margin:5px 0 14px;overflow-wrap:anywhere}.code{white-space:pre-wrap;word-break:break-word;background:#080c12;border:1px solid var(--line);border-radius:7px;padding:16px;color:#cbd5e1;max-height:420px;overflow:auto}.health-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.health{border-top:2px solid var(--line)}.health--green{border-color:var(--green)}.health--yellow{border-color:var(--yellow)}.health--red{border-color:var(--red)}.health--snapshot{border-color:#42658d}.health-card{padding:0;overflow:hidden}.health-card summary{list-style:none;cursor:pointer;padding:18px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.health-card summary::-webkit-details-marker{display:none}.health-card summary strong{display:block;font-size:17px;margin-top:8px}.health-card[open] summary{border-bottom:1px solid var(--line)}.diagnostic{padding:17px 18px;background:#090f16}.diagnostic dl{margin:0}.diagnostic dt{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em}.diagnostic dd{margin:4px 0 13px;overflow-wrap:anywhere}.diagnostic h4{margin:15px 0 8px}.diagnostic ul{margin:0;padding-left:18px;overflow-wrap:anywhere}.timeline{list-style:none;margin:0;padding:0}.timeline li{display:grid;grid-template-columns:180px 190px 1fr;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}.timeline time{color:var(--muted);font-family:ui-monospace,monospace}.research-tabs{display:flex;gap:8px;margin-bottom:12px}.research-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}.research-grid>*{min-width:0}.muted{color:var(--muted)}.empty{text-align:center;color:var(--muted);padding:42px 24px;background:linear-gradient(90deg,transparent,#111923,transparent)}.empty:before{content:"No data";display:block;margin-bottom:5px;color:var(--text-soft);font-weight:700}.count-scope{font-size:11px;color:var(--muted)}details.readiness{margin-top:14px}details.readiness summary{cursor:pointer;color:var(--blue);font-weight:700;padding:8px 0}.path{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.path__step{padding:14px;border:1px solid var(--line);border-radius:8px;background:#0b1119}.path__step b{display:block;margin-bottom:5px}.safety-callout{border-left:3px solid var(--green);padding:14px 16px;background:var(--green-soft);color:#bdf4df;border-radius:7px}
+@media(max-width:1050px){.grid{grid-template-columns:repeat(2,1fr)}.health-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:680px){.grid,.health-grid,.detail-grid,.research-grid,.filters,.path{grid-template-columns:1fr}.hero{display:block}.timeline li{grid-template-columns:1fr;gap:3px}.card{min-height:104px}table{min-width:720px}.readiness table{min-width:100%}.readiness th,.readiness td{overflow-wrap:anywhere}}
+"""
+
+EXTRA_CSS = r"""
+.live{border:1px solid #5b471d;background:#2a210f;padding:10px 11px}.live:hover{background:#352a12}.badge--paused{color:var(--muted);border-color:var(--line-strong);background:var(--surface-soft)}
+.topbar{overflow:hidden}
+.topbar__inner{overflow-y:auto;scrollbar-width:thin;overscroll-behavior:contain}
+.legacy-nav{margin:14px 0 0;color:var(--muted)}
+.legacy-nav summary{cursor:pointer;width:100%;padding:9px 10px;border-top:1px solid var(--line);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.legacy-nav nav{max-height:240px;overflow:auto;display:grid;gap:3px;padding:6px;background:var(--rail);border:1px solid var(--line);border-radius:8px}
+.legacy-nav a{font-size:11px;color:var(--muted);padding:7px 8px;border-radius:5px}
+.legacy-nav a.active,.legacy-nav a:hover{color:var(--text);background:var(--surface-soft);text-decoration:none}
+.table-wrap{max-height:min(920px,80vh)}
+.errwrap{max-width:760px;margin:64px auto;padding:0 20px}
+.errbox{background:linear-gradient(150deg,rgba(19,26,36,.96),rgba(12,17,24,.98));border:1px solid var(--red);border-radius:10px;padding:26px 28px;box-shadow:var(--shadow)}
+.errbox h1{margin:14px 0 10px;font-size:24px;letter-spacing:-.02em}
+.errbox p{margin:8px 0;color:var(--muted)}
+.errbox code{font-family:ui-monospace,Menlo,monospace;color:var(--text-soft);overflow-wrap:anywhere}
+.shell{min-height:calc(100vh - 72px)}
+.footer{margin-left:246px;max-width:1680px;padding:0 32px 28px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+.skip-link{position:fixed;z-index:100;left:12px;top:8px;transform:translateY(-160%);background:var(--text);color:var(--bg);padding:10px 14px;border-radius:8px;font-weight:800}
+.skip-link:focus{transform:translateY(0)}
+:where(a,button,input,select,textarea,summary):focus-visible{outline:3px solid #9bc4ff;outline-offset:3px}
+caption{text-align:left;padding:11px 13px;color:var(--muted);font-size:11px;background:#0b1119}
+.eyebrow{margin:0 0 8px!important;color:var(--blue)!important;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+.operations-hero{align-items:center;padding:26px 28px;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(120deg,#111b28,#0c121a 62%,#102236);box-shadow:var(--shadow)}
+.operations-hero h1{max-width:850px}.safety-stack{display:flex;gap:7px;align-items:flex-end;flex-direction:column}.operations-boundary{padding:12px 14px;border:1px solid #28624b;border-radius:10px;background:#10261f;letter-spacing:.04em}
+.operations-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.operations-card{position:relative;overflow:hidden;transition:border-color .16s ease,transform .16s ease}.operations-card:hover{border-color:var(--line-strong);transform:translateY(-1px)}.operations-card:before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:var(--line)}
+.operations-card:has(.badge--green):before{background:var(--green)}.operations-card:has(.badge--yellow):before{background:var(--yellow)}.operations-card:has(.badge--red):before{background:var(--red)}
+.operations-card .card__value,.operations-card .card__note{overflow-wrap:anywhere}.metric-value{display:block;margin-top:8px;font-size:20px}.quick-links{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.quick-links h2{width:100%}.quick-links a{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#0b1728}
+.health-card summary{min-height:44px}
+.health-card{padding:0;overflow:hidden}
+.health-card summary{list-style:none;cursor:pointer;padding:17px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.health-card summary::-webkit-details-marker{display:none}
+.health-card summary strong{display:block;font-size:18px;margin-top:9px}
+.health-card[open] summary{border-bottom:1px solid var(--line)}
+.diagnostic{padding:15px 17px;background:#0a1524}
+.diagnostic dl{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px}
+.diagnostic dt{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.diagnostic dd{margin:4px 0 0;overflow-wrap:anywhere}
+.contract-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.queue-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.meta-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.signal-header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.signal-kicker{display:flex;gap:8px;flex-wrap:wrap}
+.signal-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0b1728;color:var(--text);font-size:12px}
+.status-note{font-size:11px;color:var(--muted);margin-top:4px}
+.status-note b{color:var(--text)}
+.health-section-meta{display:flex;flex-direction:column;align-items:flex-end;gap:7px;color:var(--muted);font-size:11px;text-align:right}
+.health-scope-note{margin-top:16px}
+.terminal-strip{display:flex;align-items:center;gap:0;margin:0 0 24px;border:1px solid var(--line);border-radius:8px;background:#0b1118;overflow:hidden}.terminal-strip span,.terminal-strip strong{padding:9px 13px;border-right:1px solid var(--line);font:10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.05em;color:var(--muted)}.terminal-strip strong{margin-left:auto;border:0;color:var(--green)}.status-dot{display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%}.status-dot--green{background:var(--green);box-shadow:0 0 8px rgba(53,211,154,.55)}
+.overview-section{margin-top:28px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:14px}.section-heading p{margin:0;color:var(--muted);font-size:12px}.section-copy{margin:6px 0 0;color:var(--muted)}.operations-grid--overview .operations-card:nth-child(-n+5){min-height:142px}
+.context-panel{margin-top:28px}.horizon-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.horizon-card{position:relative;min-height:190px;padding:18px;background:#0a1017;border:1px solid var(--line);border-radius:8px;overflow:hidden}.horizon-card:after{content:"";position:absolute;inset:auto -15% -55% 30%;height:130px;background:radial-gradient(circle,rgba(81,199,217,.1),transparent 65%)}.horizon-card__head{display:flex;align-items:center;justify-content:space-between;gap:10px}.horizon-key{font:800 12px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;color:var(--cyan)}.horizon-card h3{margin:25px 0 3px;font-size:18px}.horizon-card p{margin:0;color:var(--muted);font-size:12px}.horizon-timeframes{color:var(--text-soft)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important}.horizon-track{position:absolute;left:18px;right:18px;bottom:18px;height:3px;background:var(--surface-soft)}.horizon-track span{display:block;width:24%;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));opacity:.55}
+@media(max-width:1180px){.operations-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.topbar{width:220px}.shell,.footer{margin-left:220px}.horizon-grid{grid-template-columns:1fr}.horizon-card{min-height:160px}}
+@media(max-width:820px){.topbar{position:sticky;inset:auto;top:0;width:auto;border:0;border-bottom:1px solid var(--line)}.topbar__inner{height:auto;padding:13px 16px;overflow:visible}.brand{padding:0 0 11px;border:0}.brand small{display:inline;margin-left:10px}.nav{flex-direction:row;overflow-x:auto;padding:3px 0 7px}.nav a{white-space:nowrap}.live{margin-top:6px}.legacy-nav{margin:6px 0 0}.legacy-nav summary{border:0;padding:5px 0}.legacy-nav nav{display:flex;flex-wrap:wrap;max-height:none}.status-matrix{grid-template-columns:1fr 1fr}.shell,.footer{margin-left:0}.shell{padding:24px 18px 34px}.footer{padding-inline:18px}.operations-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.safety-stack{align-items:flex-start}.operations-hero{display:block}.safety-stack{margin-top:18px;flex-direction:row;flex-wrap:wrap}.terminal-strip{overflow-x:auto}.terminal-strip span,.terminal-strip strong{white-space:nowrap}.terminal-strip strong{margin-left:0}.section-heading{align-items:flex-start;flex-direction:column}}
+@media(max-width:680px){.health-section-meta{align-items:flex-start;text-align:left}.panel__head{align-items:flex-start;flex-direction:column}}
+@media(max-width:520px){.operations-grid,.horizon-grid{grid-template-columns:1fr}.brand small{display:block;margin-left:17px;font-size:8px}.live{font-size:10px;max-width:100%}.operations-hero{padding:19px}.operations-hero h1{font-size:26px}.panel{padding:17px}.footer{padding-inline:16px}.terminal-strip span:nth-child(4),.terminal-strip span:nth-child(5){display:none}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+@media(forced-colors:active){.badge,.card,.panel,.operations-hero{border:1px solid CanvasText}.operations-card:before{display:none}}
+"""
+
+EXTRA_CSS = EXTRA_CSS + design_system.COMPONENT_CSS
+
+
+AUTO_REFRESH_SCRIPT = r"""
+<script>
+(() => {
+  'use strict';
+  const INTERVAL_MS = 5000;
+  const MAX_RETRIES = 3;
+  let timer = null, retries = 0, healthSignature = null, setupSignature = null, setupRefreshTimer = null;
+  const byId = id => document.getElementById(id);
+  const text = value => value === null || value === undefined || value === '' ? '—' : String(value);
+  function set(id, value) { const node=byId(id); if(node) node.textContent=text(value); }
+  function status(kind, message) { const el=byId('tim-status'); if(!el)return; el.className=`live badge--${kind}`;el.textContent=`● ${message}`; }
+  function countdown(deadline) { const seconds=Math.max(0,Math.floor((new Date(deadline).getTime()-Date.now())/1000));return `${Math.floor(seconds/3600)}h ${String(Math.floor((seconds%3600)/60)).padStart(2,'0')}m ${String(seconds%60).padStart(2,'0')}s`; }
+  function update(data) {
+    const hdr = (id, sev, label) => { const el = byId(id); if (el) { el.textContent = label; el.dataset.sev = sev; } };
+    const op = data.operational_health || {};
+    const ageSeconds = op.data_age_seconds;
+    const isFresh = typeof ageSeconds === 'number' && ageSeconds >= 0 && ageSeconds <= 120;
+    const stream = String(op.stream || 'UNKNOWN').toUpperCase();
+    hdr('st-system', op.status === 'GREEN' ? 'ok' : op.status === 'RED' ? 'fail' : op.status === 'YELLOW' ? 'warn' : 'unknown', op.status === 'GREEN' ? 'RUNNING' : op.status === 'RED' ? 'IMPAIRED' : op.status === 'YELLOW' ? 'DEGRADED' : 'UNKNOWN');
+    hdr('st-live-data', stream === 'GREEN' ? (isFresh ? 'ok' : 'warn') : stream === 'RED' ? 'fail' : 'unknown', stream === 'GREEN' ? (isFresh ? 'LIVE' : 'STALE') : stream === 'RED' ? 'DOWN' : 'UNKNOWN');
+    hdr('st-queue', typeof op.queue_depth === 'number' ? (op.queue_depth === 0 ? 'ok' : 'warn') : 'unknown', typeof op.queue_depth === 'number' ? op.queue_depth + ' EV' : 'UNKNOWN');
+    const rolling = (data.operations && data.operations.datasets ? data.operations.datasets : []).slice(-1)[0] || {};
+    hdr('st-data-quality', rolling.status ? (String(rolling.status).indexOf('FAIL') >= 0 ? 'fail' : String(rolling.status).indexOf('PASS') === 0 ? 'ok' : 'warn') : 'unknown', rolling.coverage || 'UNKNOWN');
+    const rg = (data.gate_model && data.gate_model.bands && data.gate_model.bands.research_readiness ? data.gate_model.bands.research_readiness : []).map(g => String((g && g.status) || '').toUpperCase()).filter(Boolean);
+    let rSev = 'unknown', rLabel = 'UNKNOWN';
+    if (rg.length && !rg.includes('FAIL') && rg.every(s => s === 'PASS')) { rSev = 'ok'; rLabel = 'READY'; }
+    else if (rg.length && rg.every(s => s === 'NO_EVIDENCE')) { rSev = 'unknown'; rLabel = 'UNKNOWN'; }
+    else if (rg.length && (rg.includes('PASS') || rg.includes('IN_PROGRESS') || rg.includes('LIMITED'))) { rSev = 'warn'; rLabel = 'PARTIAL'; }
+    else {
+      const rs = String((data.readiness && data.readiness.readiness_status) || 'UNKNOWN');
+      rSev = rs.indexOf('NOT_READY') >= 0 ? 'warn' : (rs === 'READY_FOR_V2' || rs === 'READY') ? 'ok' : rs === 'UNKNOWN' ? 'unknown' : 'warn';
+      rLabel = rs.indexOf('NOT_READY') >= 0 ? 'NOT READY' : rs === 'READY_FOR_V2' ? 'READY' : rs === 'UNKNOWN' ? 'UNKNOWN' : rs;
+    }
+    hdr('st-research', rSev, rLabel);
+    set('runtime', data.validator?.started_at ? countdown(new Date(Date.now()+(Date.now()-new Date(data.validator.started_at).getTime())).toISOString()) : '—');
+    set('acceptance-countdown', data.validator?.deadline ? countdown(data.validator.deadline) : '—');
+    set('acceptance-state', `${text(data.validator?.acceptance?.status).toUpperCase()} • ${text(data.validator?.health_monitor?.level)}`);
+    set('validator-cycles', data.validator?.cycles || 0);
+    set('visible-candles', data.visible_counts?.candles || 0);
+    set('visible-observations', data.visible_counts?.observations || 0);
+    set('memory-observations', data.memory_status?.observations || data.visible_counts?.observations || 0);
+    set('case-active', data.case_counts?.active || 0);set('case-closed',data.case_counts?.closed || 0);
+    const health=String(data.operational_health?.status || 'UNKNOWN').toLowerCase();
+    const badge=health==='green'?'green':health==='red'?'red':'yellow';
+    const label=health==='green'?'Live':health==='red'?'Betriebsstörung':'Status unvollständig';
+    status(badge, `${label} · sichtbarer Ausschnitt: ${data.visible_counts?.candles || 0} Candles · ${data.visible_counts?.observations || 0} Beob. · ${new Date().toLocaleTimeString('de-DE')}`);
+    if(location.pathname==='/health'){
+      const signature=JSON.stringify([data.operational_health?.status,data.operational_health?.database,data.operational_health?.stream,data.operational_health?.dashboard,data.operational_health?.runtime,data.operational_health?.last_data_at,data.validator?.status,data.validator?.last_cycle_at,data.readiness?.readiness_status]);
+      if(healthSignature!==null && healthSignature!==signature){ location.reload(); return; }
+      healthSignature=signature;
+    }
+    if(location.pathname==='/setup-path'){
+      // This page is server-rendered because every conclusion must remain tied to
+      // one governed snapshot.  Reload only when its input changed; polling the
+      // status badge alone would otherwise make the analysis cards look frozen.
+      const lastCandle=(data.candles||[]).slice(-1)[0]||{};
+      const signature=JSON.stringify([op.last_data_at,data.visible_counts?.candles,lastCandle.timestamp||lastCandle.time||lastCandle.close,data.research_quality?.validation_status,data.case_counts?.closed]);
+      if(setupSignature!==null && setupSignature!==signature && !setupRefreshTimer){
+        status('yellow','Neue Daten erkannt – aktualisiere Analyse…');
+        setupRefreshTimer=setTimeout(()=>location.reload(),400);
+      }
+      setupSignature=signature;
+    }
+  }
+  async function poll() {
+    if(document.hidden)return;status('yellow','Aktualisiere…');
+    const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),8000);
+    try{const response=await fetch('/api/state',{signal:controller.signal,cache:'no-store'});if(!response.ok)throw new Error(`HTTP ${response.status}`);update(await response.json());retries=0;}
+    catch(error){retries+=1;status(retries>=MAX_RETRIES?'red':'yellow',retries>=MAX_RETRIES?`Verbindung verloren – automatischer Wiederherstellungsversuch ${retries-MAX_RETRIES+1}`:`Temporärer Fehler ${retries}/${MAX_RETRIES}`);}
+    finally{clearTimeout(timeout);clearTimeout(timer);if(!document.hidden)timer=setTimeout(poll,retries?2000:INTERVAL_MS);}
+  }
+  document.addEventListener('visibilitychange', () => {
+    clearTimeout(timer);
+    if (document.hidden) status('paused', 'Pausiert – Tab im Hintergrund');
+    else { retries = 0; poll(); }
+  });
+  const live=byId('tim-status');if(live)live.addEventListener('click',poll);
+  const filter=()=>{const statusValue=byId('filter-status')?.value||'',typeValue=(byId('filter-type')?.value||'').toLowerCase(),ruleValue=(byId('filter-rule')?.value||'').toLowerCase(),period=byId('filter-period')?.value||'';document.querySelectorAll('tbody tr[data-status]').forEach(row=>{let ok=!statusValue||row.dataset.status===statusValue;ok=ok&&(!typeValue||(row.dataset.type||'').toLowerCase().includes(typeValue));ok=ok&&(!ruleValue||(row.dataset.rule||'').toLowerCase().includes(ruleValue));if(ok&&period&&row.dataset.time){const age=Date.now()-new Date(row.dataset.time).getTime();ok=age<=Number(period)*86400000;}row.hidden=!ok;});};
+  document.querySelectorAll('.filters input,.filters select').forEach(node=>node.addEventListener('input',filter));
+  function showResearch(target,data,deep=false){const box=byId(target);if(!box)return;box.replaceChildren();const pre=document.createElement('pre');pre.className='code';pre.textContent=data.error||(!data.result?'Kein Ergebnis':deep?`Report: ${data.result.report_id||'—'}\n${data.result.word_count||0} Wörter • ${data.result.sources||0} Quellen`:`${data.result.summary||''}\nPatterns: ${(data.result.patterns||[]).join(', ')||'keine'}`);box.appendChild(pre);if(deep&&data.result?.download_url){const link=document.createElement('a');link.href=data.result.download_url;link.textContent='Markdown-Bericht öffnen';link.target='_blank';link.rel='noopener';box.appendChild(link);}}
+  async function research(endpoint,query,target,extra={}){const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,...extra})});showResearch(target,await response.json(),endpoint.endsWith('/deep'));}
+  byId('quick-run')?.addEventListener('click',()=>research('/api/research/quick',byId('quick-query').value,'quick-results'));
+  byId('deep-run')?.addEventListener('click',()=>research('/api/research/deep',byId('deep-query').value,'deep-results',{type:byId('report-type').value}));
+  poll();
+})();
+</script>
+"""
+
+
+def _content_security_policy() -> str:
+    style = CSS + EXTRA_CSS
+    script = AUTO_REFRESH_SCRIPT.split("<script>", 1)[1].rsplit("</script>", 1)[0]
+    style_hash = base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()
+    script_hash = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
+    return (
+        "default-src 'none'; "
+        f"style-src 'sha256-{style_hash}'; "
+        f"script-src 'sha256-{script_hash}'; "
+        "connect-src 'self'; img-src 'self' data:; font-src 'none'; "
+        "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
+
+
+NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
+    ("OPERATIONS", [
+        ("Overview", "/"),
+        ("Runtime", "/runtime"),
+        ("Data Quality", "/data-quality"),
+        ("Incidents & Gaps", "/gaps"),
+    ]),
+    ("RESEARCH", [
+        ("Independent Cases", "/independent-cases"),
+        ("Qualification", "/qualification"),
+    ]),
+    ("READINESS", [
+        ("V2 Readiness", "/v2-readiness"),
+    ]),
+    ("INTELLIGENCE", [
+        ("Setup Path", "/setup-path"),
+        ("Graphify & MCP", "/mcp"),
+    ]),
+    ("SYSTEM", [
+        ("Security", "/security"),
+        ("Audit & Evidence", "/audit-evidence"),
+    ]),
+]
+
+
+def _strip_states(data: dict[str, Any]) -> list[tuple[str, str, str, str]]:
+    """Derive global header states strictly from the live snapshot.
+
+    Values mirror the AUTO_REFRESH_SCRIPT derivation; a state without
+    evidence renders as UNKNOWN, never as a healthy substitute.
+    """
+    live = data.get("operational_health", {})
+    status = str(live.get("status", "UNKNOWN")).upper()
+    if status == "GREEN":
+        system = ("ok", "RUNNING")
+    elif status == "RED":
+        system = ("fail", "IMPAIRED")
+    elif status == "YELLOW":
+        system = ("warn", "DEGRADED")
+    else:
+        system = ("unknown", "UNKNOWN")
+
+    stream = str(live.get("stream", "UNKNOWN")).upper()
+    age = live.get("data_age_seconds")
+    fresh = isinstance(age, (int, float)) and 0 <= age <= 120
+    if stream == "GREEN" and fresh:
+        data_state = ("ok", "LIVE")
+    elif stream == "GREEN":
+        data_state = ("warn", "STALE")
+    elif stream in ("RED", "FAIL"):
+        data_state = ("fail", "DOWN")
+    else:
+        data_state = ("unknown", "UNKNOWN")
+
+    queue_depth = live.get("queue_depth")
+    if isinstance(queue_depth, int):
+        queue_state = ("ok", f"{queue_depth} EV") if queue_depth == 0 else ("warn", f"{queue_depth} EV")
+    else:
+        queue_state = ("unknown", "UNKNOWN")
+
+    datasets = data.get("operations", {}).get("datasets") or []
+    rolling = datasets[-1] if datasets else {}
+    quality_status = rolling.get("status")
+    quality_text = str(rolling.get("coverage") or "UNKNOWN")
+    quality_state = (_severity_of(quality_status), quality_text)
+
+    bands = (data.get("gate_model") or {}).get("bands") or {}
+    research_gates = [str(g.get("status", "")).upper() for g in (bands.get("research_readiness") or []) if isinstance(g, dict)]
+    research_gates = [s for s in research_gates if s]
+    if research_gates and "FAIL" not in research_gates and all(s == "PASS" for s in research_gates):
+        research_state = ("ok", "READY")
+    elif research_gates and all(s == "NO_EVIDENCE" for s in research_gates):
+        research_state = ("unknown", "UNKNOWN")
+    elif research_gates and ("PASS" in research_gates or "IN_PROGRESS" in research_gates or "LIMITED" in research_gates):
+        research_state = ("warn", "PARTIAL")
+    else:
+        readiness_status = str(data.get("readiness", {}).get("readiness_status", "UNKNOWN")).upper()
+        if "NOT_READY" in readiness_status:
+            research_state = ("warn", "NOT READY")
+        elif readiness_status in ("READY_FOR_V2", "READY"):
+            research_state = ("ok", "READY")
+        elif readiness_status == "UNKNOWN":
+            research_state = ("unknown", "UNKNOWN")
+        else:
+            research_state = ("warn", readiness_status)
+    return [
+        ("SYSTEM",) + system,
+        ("LIVE DATA",) + data_state,
+        ("QUEUE",) + queue_state,
+        ("DATA QUALITY",) + quality_state,
+        ("RESEARCH",) + research_state,
+    ]
+
+
+def _error_page(page: str, exc: Exception) -> str:
+    """Bounded degradation page: a page that cannot render stays explorable.
+
+    The message is operator-facing (loopback-only surface) and names the page,
+    the exception type and its message so a malformed persisted record can be
+    traced without exposing stack traces.
+    """
+    return (
+        "<!doctype html><html lang='de'><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='color-scheme' content='dark'>"
+        f"<title>{_safe(page)} · Render-Fehler · TIM</title>"
+        f"<style>{CSS}{EXTRA_CSS}</style></head><body><div class='errwrap'><div class='errbox'>"
+        "<span class='badge badge--red'>RENDER FEHLER</span>"
+        f"<h1>{_safe(page)} konnte nicht gerendert werden</h1>"
+        f"<p>Die Seite <code>{_safe(page)}</code> ist auf einen ungültigen persistierten Datensatz gestoßen. "
+        "Andere Seiten bleiben verfügbar; es wurden keine Daten verändert.</p>"
+        f"<p><code>{type(exc).__name__}: {_safe(str(exc))}</code></p>"
+        "<p><a href='/'>Zur Übersicht zurückkehren</a></p>"
+        "</div></div></body></html>"
+    )
+
+
+def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, str]] | None = None) -> str:
+    nav_parts = []
+    for group_label, links in NAV_GROUPS:
+        items = "".join(
+            f"<a href='{href}' class='{'active' if page == key else ''}'"
+            f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
+            for key, href in links
+        )
+        nav_parts.append(f"<div class='nav__group'><p class='nav__label'>{_safe(group_label)}</p>{items}</div>")
+    nav = "".join(nav_parts)
+
+    strip_rows = "".join(
+        f"<div class='status-matrix__row{' status-matrix__row--locked' if label == 'TRADING' else ''}'>"
+        f"<span>{_safe(label)}</span><b id='st-{_safe(label.lower().replace(' ', '-'))}' data-sev='{sev}'>{_safe(value)}</b></div>"
+        for label, sev, value in (strip or [])
+    )
+    trading_row = (
+        "<div class='status-matrix__row status-matrix__row--locked'>"
+        "<span>TRADING</span><b data-sev='fail'>LOCKED</b></div>"
+    )
+    matrix = f"<dl class='status-matrix' aria-label='Globaler Systemstatus'>{strip_rows}{trading_row}</dl>" if strip else ""
+
+    legacy_links = [
+        ("Observations", "/observations"), ("Research Cases", "/cases"), ("Orderflow", "/orderflow"),
+        ("Signal Research", "/signals"), ("Analytics", "/analytics"), ("Insights", "/insights"),
+        ("Health Center", "/health"), ("Data Quality Exceptions", "/exceptions"),
+        ("Timeline", "/timeline"), ("Research", "/research"),
+    ]
+    legacy_nav = "".join(
+        f"<a href='{href}' class='{'active' if page == key else ''}'"
+        f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
+        for key, href in legacy_links
+    )
+    return f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav>{matrix}<details class='legacy-nav'><summary>Vertiefende Research-Ansichten</summary><nav aria-label='Vertiefende Research-Ansichten'>{legacy_nav}</nav></details><button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT}</body></html>"""
+
+
+def _hero(title: str, text: str) -> str:
+    return f"<div class='hero'><div><h1>{_safe(title)}</h1><p>{_safe(text)}</p></div><div class='observe'>OBSERVE • READ-ONLY</div></div>"
+
+
+def _number(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _setup_chart(candles: list[dict[str, Any]]) -> str:
+    closes = [value for item in candles[-30:] if (value := _number(item.get("close"))) is not None]
+    if len(closes) < 2:
+        return "<p class='empty'>Kein ausreichend vollständiger Candle-Verlauf für ein Chartbild.</p>"
+    low, high = min(closes), max(closes)
+    spread = max(high - low, high * 0.001)
+    points = " ".join(f"{40 + i * 600 / (len(closes) - 1):.1f},{26 + (high - value) * 210 / spread:.1f}" for i, value in enumerate(closes))
+    return f"<svg viewBox='0 0 680 280' role='img' aria-label='BTCUSDT Schlusskurse, sichtbares Zeitfenster'><rect x='40' y='26' width='600' height='210' class='setup-chart__frame'/><polyline points='{points}' class='setup-chart__line'/><text x='40' y='18'>{_safe(f'{high:,.2f}')}</text><text x='40' y='258'>{_safe(f'{low:,.2f}')}</text><text x='640' y='258' text-anchor='end'>letzter Schluss {_safe(f'{closes[-1]:,.2f}')}</text></svg>"
+
+
+def _setup_path_page(data: dict[str, Any]) -> str:
+    candles = [item for item in data.get("candles", []) if isinstance(item, dict)]
+    health, quality = data.get("operational_health", {}), data.get("research_quality", {})
+    fresh, enough = health.get("status") == "GREEN", len(candles) >= 20
+    quality_status = str(quality.get("validation_status") or quality.get("status") or "UNKNOWN").upper()
+    quality_ok = quality_status in {"PASS", "VALID", "GREEN", "OK"}
+    gate = "PASS" if fresh and enough and quality_ok else "BLOCKED"
+    status = _severity_of(gate)
+    latest = _number(candles[-1].get("close")) if candles else None
+    def rng(items: list[dict[str, Any]]) -> str:
+        values = [value for item in items if (value := _number(item.get("close"))) is not None]
+        return f"{min(values):,.2f} – {max(values):,.2f}" if values else "UNAVAILABLE"
+    cases = data.get("case_counts", {})
+    missing = sorted({str(x) for case in data.get("research_cases", []) for x in case.get("missing_evidence", []) if x})
+    body = _hero("Setup Path", "Erklärte BTC-Analyse mit Daten-Governance, drei Zeithorizonten und rückgekoppelter Fehlerprüfung.")
+    body += "<p class='cc-note' aria-live='polite'>Live-Synchronisierung aktiv: Der Analysepfad wird bei neuen Daten automatisch aus einem konsistenten Snapshot neu aufgebaut.</p>"
+    gate_reason = "Frische Daten, mindestens 20 Candles und bestätigte Datenqualität verfügbar." if gate == "PASS" else "Setup-Vorschläge gesperrt: Frische, ausreichende Candle-Historie oder bestätigte Datenqualität fehlt."
+    body += f"<section class='state-banner state-banner--{status}'><div class='state-banner__primary'><span class='sev sev--{status}'>{gate}</span><h2 class='state-banner__state'>Analyse-Gate</h2><p class='state-banner__sub'>{_safe(gate_reason)}</p></div><dl class='state-banner__metrics'><div class='state-banner__metric'><dt>Provenance</dt><dd>{_safe(data.get('provenance'))}</dd></div><div class='state-banner__metric'><dt>Data age</dt><dd>{_safe(health.get('data_age_seconds'))}<small>Sekunden</small></dd></div><div class='state-banner__metric'><dt>Quality</dt><dd>{_safe(quality_status)}</dd></div></dl></section>"
+    body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Zeitkontext</p><h2>Short, Mid und Long Term</h2><p class='cc-section__note'>Die Horizonte werden nicht zu einem unqualifizierten Score zusammengezogen.</p></div></div><div class='hgroup'><article class='horizon'><div class='horizon__head'><div><p class='horizon__key'>SHORT</p><h3>Aktuelle Reaktion</h3></div><span class='sev sev--{status}'>{gate}</span></div><table><tr><td>Letzter Schluss</td><td>{_safe(f'{latest:,.2f}' if latest is not None else 'UNAVAILABLE')}</td></tr><tr><td>Belege</td><td>Struktur, Delta/Footprint falls vorhanden</td></tr></table></article><article class='horizon'><div class='horizon__head'><div><p class='horizon__key'>MID</p><h3>Range &amp; Location</h3></div><span class='sev sev--{'ok' if enough else 'unknown'}'>{'PASS' if enough else 'UNKNOWN'}</span></div><table><tr><td>20-Candle-Range</td><td>{_safe(rng(candles[-20:]))}</td></tr><tr><td>Belege</td><td>Support, Resistance, Fib, Value</td></tr></table></article><article class='horizon'><div class='horizon__head'><div><p class='horizon__key'>LONG</p><h3>Übergeordneter Kontext</h3></div><span class='sev sev--unknown'>REQUIRED</span></div><table><tr><td>Sichtbare Range</td><td>{_safe(rng(candles))}</td></tr><tr><td>Belege</td><td>HTF-Struktur, Value-Migration, Regime</td></tr></table></article></div></section>"
+    body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Erklärtes Chartbild</p><h2>Beobachtete Schlusskurse</h2><p class='cc-section__note'>Jüngste {len(candles[-30:])} gespeicherte Candles. Keine Zukunftswerte.</p></div></div><div class='cc-surface setup-chart'>{_setup_chart(candles)}</div></section>"
+    body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Setup-Pfad</p><h2>Von Daten zu einer überprüfbaren Hypothese</h2></div></div><div class='pipeline'><div class='pipeline__stage'><b>1 · Governance</b><span class='sev sev--{status}'>{gate}</span><span class='pipeline__value'>Quelle, Frische, Vollständigkeit</span></div><div class='pipeline__stage'><b>2 · Kontext</b><span class='sev sev--unknown'>REQUIRED</span><span class='pipeline__value'>HTF, Regime, Value</span></div><div class='pipeline__stage'><b>3 · Location</b><span class='sev sev--unknown'>REQUIRED</span><span class='pipeline__value'>Support, Resistance, Fib</span></div><div class='pipeline__stage'><b>4 · Beweis</b><span class='sev sev--unknown'>REQUIRED</span><span class='pipeline__value'>Structure, Delta, Absorption</span></div><div class='pipeline__stage'><b>5 · Reflexion</b><span class='sev sev--info'>LOGGED</span><span class='pipeline__value'>Outcome, Fehlerkategorie, Review</span></div></div><p class='cc-note'>Absorption wird nur nach belegter aggressiver Ausführung und fehlendem Preisfortschritt angezeigt. Ohne Footprint-, Delta- oder Value-Profile-Daten bleibt die Aussage UNAVAILABLE.</p></section>"
+    body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Lernen &amp; Reparatur</p><h2>Feedback aus abgeschlossenen Research Cases</h2><p class='cc-section__note'>Fehler werden als Daten-, Kontext-, Location-, Struktur-, Orderflow- oder Confirmation-Problem protokolliert; Regeln ändern sich nicht automatisch.</p></div></div><div class='metricstrip'><dl class='metricstrip__item'><dt>Research Cases</dt><dd>{_safe(cases.get('total'))}</dd></dl><dl class='metricstrip__item'><dt>Geschlossen</dt><dd>{_safe(cases.get('closed'))}</dd></dl><dl class='metricstrip__item'><dt>Fehlende Evidenz</dt><dd>{len(missing)}<small>{_safe(', '.join(missing[:2]) or 'keine dokumentiert')}</small></dd></dl></div></section>"
+    return _layout("Setup Path", "Setup Path", body, strip=_strip_states(data))
+
+
+def render(state: DashboardState, page: str = "Overview", selected_id: str | None = None) -> str:
+    data = state.snapshot()
+    validator = data["validator"]
+    if page == "Setup Path":
+        return _setup_path_page(data)
+    if page in OPERATIONS_PAGES and page != "Overview":
+        return _layout(page, page, render_operations_page(page, data["operations"]), strip=_strip_states(data))
+    if page == "Orderflow":
+        with state.lock:
+            total_orderflow=len(state.orderflow_observations)
+            observations=[dict(item) for item in state.orderflow_observations[-ORDERFLOW_VISIBLE_LIMIT:]]
+            validations={str(item.get("observation_id")):dict(item) for item in state.orderflow_validations}
+        selected=next((item for item in observations if str(item.get("observation_id"))==str(selected_id)),None)
+        rows="".join(f"<tr data-type='{_safe(item.get('kind'))}' data-rule='{_safe(item.get('rule_version'))}' data-time='{_safe(item.get('observed_at'))}'><td>{_safe(item.get('observed_at'))}</td><td><a class='mono' href='/orderflow?id={_safe(item.get('observation_id'))}'>{_safe(_short(item.get('observation_id'),18))}</a></td><td><span class='tag'>{_safe(item.get('kind'))}</span></td><td>{_safe(item.get('timeframe'))}</td><td>{len(item.get('evidence',[]))}</td><td>{len(validations.get(str(item.get('observation_id')),{}).get('horizons',[]))}/3</td><td>{_safe(validations.get(str(item.get('observation_id')),{}).get('outcome') or 'PENDING')}</td><td class='mono'>{_safe(item.get('rule_version'))}</td></tr>" for item in reversed(observations)) or "<tr><td colspan='8' class='empty'>Noch keine Orderflow-Observations.</td></tr>"
+        detail=""
+        if selected:
+            validation=validations.get(str(selected.get("observation_id")),{})
+            detail=f"<section class='panel'><div class='panel__head'><h2>Observation &amp; Outcome Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>ID</dt><dd class='mono'>{_safe(selected.get('observation_id'))}</dd><dt>Beschreibung</dt><dd>{_safe(selected.get('summary'))}</dd><dt>Rule Version</dt><dd>{_safe(selected.get('rule_version'))}</dd><dt>Input Hash</dt><dd class='mono'>{_safe(selected.get('input_hash'))}</dd><dt>Outcome</dt><dd>{_safe(validation.get('outcome') or 'PENDING')}</dd><dt>Validated Through</dt><dd>{_safe(validation.get('validated_through'))}</dd></dl><div><h3>Evidenzbedingungen</h3><pre class='code'>{_json_block(selected.get('evidence'))}</pre><h3>5/15/30-Minuten-Verlauf</h3><pre class='code'>{_json_block(validation.get('horizons',[]))}</pre></div></div></section>"
+        body=_hero("Orderflow Research","Deterministische Beschreibungen und nachgelagerte 5/15/30-Minuten-Outcomes.")+f"<section class='panel'><div class='panel__head'><h2>Persistierte Orderflow-Observations</h2><span class='count-scope'>neueste {len(observations)} von {total_orderflow}</span></div><div class='filters'><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. STRONG_BUYER_ACTIVITY'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='1.0.0'></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option></select></div></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Type</th><th>Timeframe</th><th>Evidence</th><th>Horizonte</th><th>Outcome</th><th>Rule Version</th></tr></thead><tbody>{rows}</tbody></table></div><p class='count-scope'>Der sichtbare Ausschnitt ist bewusst auf {ORDERFLOW_VISIBLE_LIMIT} Einträge begrenzt. Outcomes dokumentieren beobachtete Preisentwicklung; keine Prognose.</p></section>{detail}"
+        return _layout("Orderflow Research",page,body,strip=_strip_states(data))
+    if page == "Signal Research":
+        return _signal_research_page(state, data, selected_id)
+    if page == "Analytics":
+        analytics = state.analytics()
+        rules = "".join(f"<tr><td>{_safe(x['rule_id'])}</td><td class='mono'>{_safe(x['version'])}</td><td>{x['count']}</td><td>{_safe(x['first_occurrence'])}</td><td>{_safe(x['last_occurrence'])}</td><td>{x['average_duration_seconds']}</td><td>{x['average_timeframes_per_case']}</td><td>{_safe(', '.join(x['most_common_missing_evidence']))}</td><td>{_safe(', '.join(x['most_common_outcomes']))}</td><td>{x['confirmed_rate_percent']}%</td><td>{x['invalidation_rate_percent']}%</td><td>{x['closed_rate_percent']}%</td><td>{x['average_lifetime_seconds']}</td></tr>" for x in analytics["rules"]) or "<tr><td colspan='13' class='empty'>Keine persistierten Rule-Daten.</td></tr>"
+        clusters = "".join(f"<tr><td>{_safe(x['observation_type'])}</td><td>{_safe(x['rule_version'])}</td><td>{_safe(x['outcome'])}</td><td>{_safe(', '.join(x['missing_evidence']))}</td><td>{_safe(x['stored_evidence_score'])}</td><td>{_safe(x['timeframe'])}</td><td>{x['count']}</td></tr>" for x in analytics["case_clusters"]) or "<tr><td colspan='7' class='empty'>Keine Cluster verfügbar.</td></tr>"
+        days = "".join(f"<tr><td>{_safe(label)}</td><td>{count}</td></tr>" for label, count in analytics["timeline"]["research_cases_per_day"].items()) or "<tr><td colspan='2' class='empty'>Keine Timeline-Daten.</td></tr>"
+        hours = "".join(f"<tr><td>{_safe(label)}</td><td>{count}</td></tr>" for label, count in analytics["timeline"]["research_cases_per_hour"].items()) or "<tr><td colspan='2' class='empty'>Keine Timeline-Daten.</td></tr>"
+        obs_frequency = "".join(f"<tr><td>{_safe(label)}</td><td>{count}</td></tr>" for label, count in analytics["timeline"]["observation_frequency"].items()) or "<tr><td colspan='2' class='empty'>Keine Observations.</td></tr>"
+        outcome_frequency = "".join(f"<tr><td>{_safe(label)}</td><td>{count}</td></tr>" for label, count in analytics["timeline"]["outcome_frequency"].items()) or "<tr><td colspan='2' class='empty'>Keine persistierten Outcomes.</td></tr>"
+        quality = "".join(f"<article class='card'><div class='card__label'>{_safe(key.replace('_',' '))}</div><div class='card__value'>{value}</div><div class='card__note'>Persistierte Ereignisse</div></article>" for key, value in analytics["data_quality"].items())
+        body = _hero("Research Analytics", "Deterministische Statistik über bereits persistierte Research-Daten.")
+        body += f"<p class='observe'>OBSERVE • READ-ONLY • Dataset <span class='mono'>{_safe(_short(analytics['dataset_hash'],16))}</span></p><section class='panel'><div class='panel__head'><h2>Exporte</h2><div><a class='tag' href='/exports/analytics.csv'>CSV</a> <a class='tag' href='/exports/analytics.json'>JSON</a> <a class='tag' href='/exports/analytics.md'>Markdown</a></div></div><p class='count-scope'>{analytics['source_counts']['observations']} persistierte Observations · {analytics['source_counts']['research_cases']} Research Cases · {analytics['source_counts']['events']} Systemereignisse. Keine Prognosen, Rankings oder neu berechneten Scores.</p></section>"
+        body += f"<section class='panel'><h2>Rule Analytics</h2><div class='table-wrap'><table><thead><tr><th>Rule</th><th>Version</th><th>Anzahl</th><th>Erstes Auftreten</th><th>Letztes Auftreten</th><th>Ø Dauer s</th><th>Ø Timeframes/Case</th><th>Häufigste Missing Evidence</th><th>Häufigste Outcomes</th><th>Confirmed</th><th>Invalidiert</th><th>Closed</th><th>Ø Lifetime s</th></tr></thead><tbody>{rules}</tbody></table></div></section>"
+        body += f"<section class='panel'><h2>Case Cluster</h2><div class='table-wrap'><table><thead><tr><th>Observation Type</th><th>Rule Version</th><th>Outcome</th><th>Missing Evidence</th><th>Gespeicherter Evidence Score</th><th>Timeframe</th><th>Anzahl</th></tr></thead><tbody>{clusters}</tbody></table></div><p class='count-scope'>Evidence Score ist ausschließlich der persistierte Wert; Analytics berechnet keinen neuen Score.</p></section>"
+        body += f"<div class='research-grid'><section class='panel'><h2>Cases pro Tag</h2><div class='table-wrap'><table><thead><tr><th>Tag (UTC)</th><th>Anzahl</th></tr></thead><tbody>{days}</tbody></table></div></section><section class='panel'><h2>Cases pro Stunde</h2><div class='table-wrap'><table><thead><tr><th>Stunde (UTC)</th><th>Anzahl</th></tr></thead><tbody>{hours}</tbody></table></div></section><section class='panel'><h2>Observation-Häufigkeit</h2><div class='table-wrap'><table><thead><tr><th>Observation Type</th><th>Anzahl</th></tr></thead><tbody>{obs_frequency}</tbody></table></div></section><section class='panel'><h2>Outcome-Häufigkeit</h2><div class='table-wrap'><table><thead><tr><th>Outcome</th><th>Anzahl</th></tr></thead><tbody>{outcome_frequency}</tbody></table></div></section></div><section class='panel'><h2>Data Quality Analytics</h2><div class='grid'>{quality}</div></section>"
+        return _layout("Research Analytics", page, body, strip=_strip_states(data))
+    if page == "Insights":
+        insights = state.insights()
+        badge = "green" if insights["eligibility_status"] == "ELIGIBLE" else "yellow"
+        outcome_rows = "".join(
+            f"<tr><td>{_safe(item['observation_type'])}</td><td class='mono'>{_safe(item['versions']['rule'])}</td><td>{item['fully_validated_cases']}</td><td>{item['outcomes']['PRICE_INCREASED']}</td><td>{item['outcomes']['PRICE_DECREASED']}</td><td>{item['outcomes']['PRICE_SIDEWAYS']}</td><td><span class='badge badge--yellow'>{_safe(item['sample_label'])}</span></td></tr>"
+            for item in insights["outcome_distribution"]
+        ) or "<tr><td colspan='7' class='empty'>Keine auswertbaren Orderflow-Observations.</td></tr>"
+        followup_rows = []
+        for item in insights["followup_statistics"]:
+            for horizon in item["horizons"]:
+                price, delta = horizon["price_change_percent"], horizon["net_delta"]
+                followup_rows.append(f"<tr><td>{_safe(item['observation_type'])}</td><td>{horizon['minutes']}m</td><td>{_safe(price.get('n') if price else None)}</td><td>{_safe(price.get('median') if price else None)}</td><td>{_safe(price.get('mean') if price else None)}</td><td>{_safe(price.get('percentile_25') if price else None)} / {_safe(price.get('percentile_75') if price else None)}</td><td>{_safe(delta.get('median') if delta else None)}</td><td>{_safe(delta.get('mean') if delta else None)}</td></tr>")
+        combination_rows = "".join(
+            f"<tr><td>{_safe(item['observation_type'])}</td><td>{item['count']}</td><td class='mono'>{_safe(item['rule_version'])}</td><td>{_safe(' + '.join(item['evidence']))}</td><td>{item['outcomes']['PRICE_INCREASED']} / {item['outcomes']['PRICE_DECREASED']} / {item['outcomes']['PRICE_SIDEWAYS']}</td><td>{_safe(item['sample_label'])}</td></tr>"
+            for item in insights["evidence_combinations"][:30]
+        ) or "<tr><td colspan='6' class='empty'>Keine Evidenzkombinationen.</td></tr>"
+        session_rows = "".join(f"<tr><td>{_safe(name)}</td><td>{count}</td></tr>" for name, count in insights["temporal_distribution"]["market_session"].items()) or "<tr><td colspan='2' class='empty'>Keine zeitlichen Daten.</td></tr>"
+        warnings = "".join(f"<li>{_safe(item)}</li>" for item in insights["warnings"]) or "<li>Keine Warnungen.</li>"
+        versions = insights["versions"]
+        body = _hero("Research Insights", "Retrospektive, versionsgetrennte Statistik über vollständig persistierte Forschungsergebnisse.")
+        body += f"<p class='observe'>EXTERNAL TO CORE • READ-ONLY • NO FORECASTS • Dataset <span class='mono'>{_safe(_short(insights['input_hash'],16))}</span></p><div class='grid'><article class='card'><div class='card__label'>Eligibility</div><div class='card__value'><span class='badge badge--{badge}'>{_safe(insights['eligibility_status'])}</span></div><div class='card__note'>{_safe(insights['result_status'])}</div></article><article class='card'><div class='card__label'>Fully Validated</div><div class='card__value'>{insights['eligibility']['fully_validated_cases']}</div><div class='card__note'>Minimum für Eligibility: 1.000</div></article><article class='card'><div class='card__label'>Versionen</div><div class='card__value mono'>{_safe(versions['core'])}</div><div class='card__note'>Metrics {_safe(', '.join(versions['metrics']))} · Rules {_safe(', '.join(versions['rules']))} · Validation {_safe(', '.join(versions['validations']))}</div></article><article class='card'><div class='card__label'>Integrity</div><div class='card__value'>{_safe(insights['data_quality']['integrity_status'])}</div><div class='card__note'>Replay {_safe(insights['data_quality']['replay_status'])} · Coverage {_safe(insights['data_quality']['coverage_percent'])}</div></article></div>"
+        body += f"<section class='panel'><div class='panel__head'><h2>Exporte</h2><div><a class='tag' href='/exports/insights.json'>JSON</a> <a class='tag' href='/exports/insights.csv'>CSV</a> <a class='tag' href='/exports/insights.md'>Markdown</a></div></div><ul>{warnings}</ul></section>"
+        body += f"<section class='panel'><h2>Outcome-Verteilungen</h2><div class='table-wrap'><table><thead><tr><th>Observation</th><th>Rule</th><th>N vollständig</th><th>Price Increased</th><th>Price Decreased</th><th>Price Sideways</th><th>Sample</th></tr></thead><tbody>{outcome_rows}</tbody></table></div></section>"
+        body += f"<section class='panel'><h2>Folgeverläufe</h2><p class='count-scope'>Mittelwert wird stets zusammen mit Median und N dargestellt. Keine kausale Interpretation.</p><div class='table-wrap'><table><thead><tr><th>Observation</th><th>Horizont</th><th>N</th><th>Median Preis %</th><th>Mittel Preis %</th><th>Q25 / Q75</th><th>Median Delta</th><th>Mittel Delta</th></tr></thead><tbody>{''.join(followup_rows)}</tbody></table></div></section>"
+        body += f"<section class='panel'><h2>Evidenzkombinationen</h2><div class='table-wrap'><table><thead><tr><th>Observation</th><th>Anzahl</th><th>Rule</th><th>Evidenz</th><th>Outcomes I / D / S</th><th>Sample</th></tr></thead><tbody>{combination_rows}</tbody></table></div></section><section class='panel'><h2>Market Sessions (UTC)</h2><p class='count-scope'>ASIA 00–08 · EUROPE 08–16 · USA 16–24 UTC. Feste deskriptive Einteilung.</p><div class='table-wrap'><table><thead><tr><th>Session</th><th>Observations</th></tr></thead><tbody>{session_rows}</tbody></table></div></section>"
+        return _layout("Research Insights", page, body, strip=_strip_states(data))
+    if page == "Observations":
+        selected = next((item for item in data["observations"] if str(item.get("observation_id")) == str(selected_id)), None)
+        rows = "".join(_observation_row(item, data["research_cases"]) for item in reversed(data["observations"])) or "<tr><td colspan='7' class='empty'>No observations yet</td></tr>"
+        detail = ""
+        if selected:
+            case = _case_for_observation(selected, data["research_cases"])
+            detail = f"<section class='panel'><div class='panel__head'><h2>Observation Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>Observation ID</dt><dd class='mono'>{_safe(selected.get('observation_id'))}</dd><dt>Timestamp</dt><dd>{_safe(selected.get('observed_at'))}</dd><dt>Type</dt><dd>{_safe(selected.get('kind'))}</dd><dt>Rule</dt><dd>{_safe(selected.get('rule_id'))} · {_safe(selected.get('rule_version'))}</dd><dt>Provenance</dt><dd>{_safe(selected.get('provenance'))}</dd><dt>Research Case</dt><dd>{_safe(case.get('case_id') if case else None)}</dd><dt>Hash</dt><dd class='mono'>{_safe(selected.get('input_hash'))}</dd></dl><div><h3>Evidence / Rohdaten</h3><pre class='code'>{_json_block(selected.get('evidence'))}</pre></div></div><h3>Vollständige Observation</h3><pre class='code'>{_json_block(selected)}</pre></section>"
+        body = _hero("Observation Explorer", "Deterministische Beobachtungen mit Evidenz und Provenance.") + f"<section class='panel'><div class='panel__head'><h2>Active Observations</h2><span class='count-scope'>sichtbarer Ausschnitt: {len(data['observations'])}</span></div><div class='filters'><div><label>Status</label><select id='filter-status'><option value=''>Alle</option><option>OPEN</option><option>MONITORING</option><option>CONFIRMED</option><option>INVALIDATED</option><option>CLOSED</option><option>UNASSIGNED</option></select></div><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. REJECTION'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='z. B. 1.0.0'></div></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Observation Type</th><th>Rule Version</th><th>Evidence Score</th><th>Provenance</th><th>Status</th></tr></thead><tbody id='observations-body'>{rows}</tbody></table></div><p class='count-scope'>Evidence Score entspricht der gespeicherten deterministischen Confidence; keine neue Bewertung wird erzeugt.</p></section>{detail}"
+        return _layout("Observation Explorer", page, body, strip=_strip_states(data))
+    if page == "Research Cases":
+        selected = next((item for item in data["research_cases"] if str(item.get("case_id")) == str(selected_id)), None)
+        rows = "".join(_case_row(item) for item in reversed(data["research_cases"])) or "<tr><td colspan='8' class='empty'>No research cases yet</td></tr>"
+        detail = ""
+        if selected:
+            timeline = "".join(f"<li><time>{_safe(item.get('observed_at'))}</time><span class='tag'>{_safe(item.get('kind'))}</span><span class='mono'>{_safe(_short(item.get('observation_id'), 14))}</span></li>" for item in selected.get("evidence", [])) or "<li class='empty'>Keine Evidenz-Timeline.</li>"
+            detail = f"<section class='panel'><div class='panel__head'><h2>Case Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>Case ID</dt><dd class='mono'>{_safe(selected.get('case_id'))}</dd><dt>Status</dt><dd>{_safe(selected.get('status'))}</dd><dt>Dauer</dt><dd>{_safe(_duration(selected.get('opened_at'),selected.get('updated_at')))}</dd><dt>Outcome</dt><dd>{_safe(selected.get('outcome'))}</dd><dt>Missing Evidence</dt><dd>{_safe(', '.join(selected.get('missing_evidence', [])))}</dd></dl><div><h3>Timeline</h3><ul class='timeline'>{timeline}</ul></div></div></section>"
+        body = _hero("Research Case Explorer", "Case-Lifecycle, fehlende Evidenz und reproduzierbare Timeline.") + f"<section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><span class='count-scope'>sichtbarer Ausschnitt: {len(data['research_cases'])}</span></div><div class='filters'><div><label>Status</label><select id='filter-status'><option value=''>Alle</option><option>OPEN</option><option>MONITORING</option><option>CONFIRMED</option><option>INVALIDATED</option><option>CLOSED</option></select></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option><option value='30'>30 Tage</option></select></div><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. BOS'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='z. B. 1.0.0'></div></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{rows}</tbody></table></div></section>{detail}"
+        return _layout("Research Case Explorer", page, body, strip=_strip_states(data))
+    if page == "Health Center":
+        body = _hero("Health Center", "Zentrales Diagnosezentrum für Betrieb, Wissenschaft und Governance.")
+        body += "<p class='count-scope'>Karten öffnen, um Ursache, Zeitpunkt, Evidenz, Auswirkung und nächsten Schritt zu sehen. Statuswerte werden nicht synthetisch ergänzt.</p>"
+        body += _health_center_sections(data)
+        return _layout("Health Center", page, body, strip=_strip_states(data))
+    if page == "Data Quality Exceptions":
+        return _data_quality_exceptions_page(data)
+    if page == "Timeline":
+        return _health_timeline_page(data)
+    if page == "Research":
+        research = validator.get("research_health", {})
+        body = _hero("Research Evidence", "Lokale, dokumentierte TIM-Evidenz ohne schreibende UI-Aktionen.") + f"<div class='grid'><article class='card'><div class='card__label'>Research Integrity</div><div class='card__value'><span class='badge badge--{_status(research.get('level')).lower()}'>{_safe(research.get('level'))}</span></div><div class='card__note'>{_safe(research.get('trigger_duplicates', 0))} Trigger-Duplikate</div></article><article class='card'><div class='card__label'>Mode</div><div class='card__value'>OBSERVE</div><div class='card__note'>Keine Multi-Agent-Ausführung</div></article></div><section class='panel'><div class='panel__head'><h2>Read-only Research Index</h2><span class='badge badge--green'>NO WRITE CONTROLS</span></div><p>Die Control-Center-Oberfläche erzeugt, verändert oder signiert keine Research-Artefakte. Persistierte Evidenz bleibt über die spezialisierten Ansichten lesbar.</p><div class='quick-links'><a href='/observations'>Observations</a><a href='/cases'>Research Cases</a><a href='/signals'>Signal Research</a><a href='/analytics'>Analytics</a><a href='/insights'>Insights</a></div></section>"
+        return _layout("Research Workspace", page, body, strip=_strip_states(data))
+    readiness = data["readiness"]
+    audit = data.get("research_audit", {})
+    quality = data.get("research_quality", {})
+    health_level = str(validator.get("health_monitor", {}).get("level", "YELLOW")).upper()
+    started = _parse_time(validator.get("started_at"))
+    runtime = _duration(started.isoformat() if started else None, datetime.now(timezone.utc).isoformat())
+    checks = validator.get("health_monitor", {}).get("checks", {})
+    candle_gap_free = bool(checks.get("candle_sequence_gap_free", True))
+    provenance_deterministic = bool(checks.get("provenance_deterministic", True))
+    data_quality_level = "RED" if not candle_gap_free else str(
+        readiness.get("scientific_health_status")
+        or quality.get("status")
+        or audit.get("status")
+        or "UNKNOWN"
+    ).upper()
+    data_quality_note = (
+        f"Persistierte Sequenz, Zeitstempel und Provenance. "
+        f"Coverage {_safe(readiness.get('continuous_coverage_percent'))}% · "
+        f"Gap {_safe(readiness.get('unresolved_new_gap_count'))} · "
+        f"Audit {_safe(audit.get('status'))} · Quality {_safe(quality.get('status'))}"
+    )
+    validator_level = str(validator.get("status") or validator.get("health_monitor", {}).get("level") or "UNKNOWN").upper()
+    validator_note = (
+        f"{_safe(validator.get('cycles', 0))} persistierte Zyklen · "
+        f"letzte Prüfung {_safe(validator.get('research_last_check'))}"
+    )
+    cards = [
+        ("Acceptance Countdown", f"<span id='acceptance-state' class='badge badge--{health_level.lower()}'>{_safe(validator.get('acceptance',{}).get('status','monitoring')).upper()} • {health_level}</span>", f"<span id='acceptance-countdown'>Deadline wird geladen</span>"),
+        ("Data Quality", f"<span class='badge badge--{data_quality_level.lower()}'>{data_quality_level}</span>", _safe(data_quality_note)),
+        ("Stream Status", _safe(data.get("system_health", {}).get("stream")), "Öffentliche Marktdaten"),
+        ("Validator Status", f"<span class='badge badge--{validator_level.lower()}'>{_safe(validator.get('status'))}</span>", f"<span id='validator-cycles'>{validator.get('cycles',0)}</span> persistierte Zyklen."),
+        ("Runtime", f"<span id='runtime'>{_safe(runtime)}</span>", f"Restart Count: {validator.get('restart_count',0)}"),
+        ("Active Research Cases", f"<span id='case-active'>{data['case_counts']['active']}</span>", "Persistierter Case-Status"),
+        ("Closed Research Cases", f"<span id='case-closed'>{data['case_counts']['closed']}</span>", "Persistierter Case-Status"),
+        ("Candles (sichtbar)", f"<span id='visible-candles'>{len(data['candles'])}</span>", "Letzter persistierter Ausschnitt"),
+        ("Observations", f"<span id='memory-observations'>{data['memory_status'].get('observations',len(data['observations']))}</span>", "Persistierter Memory-Zähler"),
+        ("Dashboard Version", DASHBOARD_VERSION, "Read-only Research UI"),
+    ]
+    card_html = "".join(f"<article class='card'><div class='card__label'>{label}</div><div class='card__value'>{value}</div><div class='card__note'>{note}</div></article>" for label, value, note in cards)
+    recent_obs = "".join(_observation_row(item, data["research_cases"]) for item in reversed(data["observations"][-8:])) or "<tr><td colspan='7' class='empty'>No observations yet</td></tr>"
+    case_preview = "".join(_case_row(item) for item in reversed(data["research_cases"][-5:])) or "<tr><td colspan='8' class='empty'>No research cases yet</td></tr>"
+    readiness=data["readiness"];criteria_rows="".join(f"<tr><td>{_safe(name)}</td><td><span class='badge badge--{_status(status).lower()}'>{_safe(status)}</span></td></tr>" for name,status in sorted(readiness.get("criteria",{}).items())) or "<tr><td colspan='2' class='empty'>Statusdatei noch nicht verfügbar.</td></tr>"
+    readiness_panel=f"<section class='panel'><div class='panel__head'><h2>Scientific Data Progress &amp; V2 Readiness</h2><span class='badge badge--{_status(readiness.get('readiness_status')).lower()}'>{_safe(readiness.get('readiness_status'))}</span></div><div class='grid'><article class='card'><div class='card__label'>Validierte Cases</div><div class='card__value'>{_safe(readiness.get('validated_case_count'))} / {_safe(readiness.get('required_case_count'))}</div><div class='card__note'>{_safe(readiness.get('validated_case_progress_percent'))}% · {_safe(readiness.get('remaining_case_count'))} verbleibend</div></article><article class='card'><div class='card__label'>Offene Cases</div><div class='card__value'>{_safe(readiness.get('open_case_count'))}</div><div class='card__note'>{_safe(readiness.get('observation_count'))} Observationen gesamt</div></article><article class='card'><div class='card__label'>Neue Continuous Coverage</div><div class='card__value'>{_safe(readiness.get('continuous_coverage_percent'))}%</div><div class='card__note'>{_safe(readiness.get('continuous_persisted_1m_intervals'))} / {_safe(readiness.get('continuous_expected_1m_intervals'))} Minuten</div></article><article class='card'><div class='card__label'>Gemessener Verlauf</div><div class='card__value'>{_safe(readiness.get('measured_validated_cases_per_hour'))}/h</div><div class='card__note'>{_safe(readiness.get('measured_validated_cases_per_day'))}/Tag · Hochrechnung unverbindlich: {_safe(readiness.get('nonbinding_projected_1000_case_time'))}</div></article></div><details class='readiness'><summary>Alle Freigabekriterien anzeigen</summary><div class='table-wrap'><table><thead><tr><th>Freigabekriterium</th><th>Status</th></tr></thead><tbody>{criteria_rows}</tbody></table></div></details><p class='count-scope'>TIM startet V2 niemals automatisch. Die endgültige Freigabe erfordert einen manuellen Evolution Review.</p></section>"
+    research_overview = _hero("TIM Research Dashboard", "Research Overview · deterministischer Systemzustand und aktuelle Research-Aktivität.") + f"<p class='observe'>OBSERVE MODE • {data['safety']}</p>{readiness_panel}<section class='panel'><div class='panel__head'><h2>Market Status</h2><span class='badge badge--green'>{_safe(data['market_status'].get('status'))}</span></div><p class='count-scope'><b>Zählerbereich:</b> sichtbarer letzter Ausschnitt, keine Gesamtzahlen. Sichtbare Candles: <span id='candles-count'>{len(data['candles'])}</span> · Sichtbare Observations: <span id='obs-count'>{len(data['observations'])}</span> · Sichtbare Cases: <span id='cases-count'>{len(data['research_cases'])}</span></p></section><div class='grid'>{card_html}<article class='card'><div class='card__label'>Research Module</div><div class='card__value'><span id='research-health' class='badge badge--{_status(validator.get('research_health',{}).get('level')).lower()}'>{_safe(validator.get('research_health',{}).get('level'))}</span></div><div class='card__note'><a href='/research'>Research Workspace öffnen →</a></div></article></div><section class='panel'><div class='panel__head'><h2>Active Observations</h2><a href='/observations'>Alle öffnen →</a></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Observation Type</th><th>Rule Version</th><th>Evidence Score</th><th>Provenance</th><th>Status</th></tr></thead><tbody id='observations-body'>{recent_obs}</tbody></table></div></section><section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><a href='/cases'>Alle öffnen →</a></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{case_preview}</tbody></table></div></section><section class='panel'><h2>News</h2><p class='muted'>Keine autorisierte News-Ingestion aktiv. Es werden keine Nachrichten erfunden oder ergänzt.</p></section>"
+    body = render_operations_page("Overview", data["operations"]) + "<details class='panel readiness'><summary>Vertiefende Research-Übersicht anzeigen</summary>" + research_overview + "</details>"
+    return _layout("Research Overview", page, body, strip=_strip_states(data))
+
+
+class DashboardServer:
+    def __init__(self, state: DashboardState, host: str = "127.0.0.1", port: int = 8765, research_router: ResearchRouter | None = None) -> None:
+        host = _require_loopback_host(host)
+        self.state, self.host, self.port = state, host, port
+        self.research_router = research_router or ResearchRouter()
+        self.research_lock = threading.Lock()
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def respond(self, status: int, payload: bytes, content_type: str) -> None:
+                if len(payload) > MAX_RESPONSE_BYTES:
+                    status = 413
+                    payload = b'{"error":"response exceeds dashboard limit"}'
+                    content_type = "application/json"
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(payload)))
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.send_header("Content-Security-Policy", _content_security_policy())
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+                self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+                self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def do_GET(self):
+                if not _is_loopback_request_host(self.headers.get("Host")):
+                    return self.respond(421, b'{"error":"loopback Host header required"}', "application/json")
+                parsed = urlparse(self.path)
+                path, query = parsed.path, parse_qs(parsed.query)
+                if path == "/api/state":
+                    return self.respond(200, json.dumps(outer.state.snapshot()).encode(), "application/json")
+                if path == "/api/operations":
+                    return self.respond(200, json.dumps(outer.state.snapshot()["operations"], sort_keys=True).encode(), "application/json")
+                if path == "/api/health":
+                    snapshot = outer.state.snapshot()
+                    payload = {
+                        "timestamp": snapshot["timestamp"],
+                        "mode": snapshot["mode"],
+                        "operational": snapshot["operational_health"],
+                        "historical_scientific": {
+                            "validator_status": snapshot["validator"].get("status", "UNKNOWN"),
+                            "last_checked_at": snapshot["validator"].get("last_cycle_at"),
+                            "quality_status": snapshot["research_quality"].get("validation_status", "UNKNOWN"),
+                            "audit_status": snapshot["research_audit"].get("status", "UNKNOWN"),
+                        },
+                        "governance": {
+                            "readiness_status": snapshot["readiness"].get("readiness_status", "UNKNOWN"),
+                            "core_status": snapshot["core_manifest"].get("status", "UNKNOWN"),
+                            "observe_only": snapshot["mode"] == "OBSERVE",
+                        },
+                    }
+                    return self.respond(200, json.dumps(payload, sort_keys=True).encode(), "application/json")
+                if path == "/api/analytics":
+                    return self.respond(200, ResearchAnalyticsEngine.to_json(outer.state.analytics()).encode(), "application/json")
+                if path == "/api/insights":
+                    return self.respond(200, ResearchInsightsEngine.to_json(outer.state.insights()).encode(), "application/json")
+                if path == "/api/readiness":
+                    return self.respond(200, json.dumps(outer.state.readiness(),sort_keys=True).encode(), "application/json")
+                if path.startswith("/exports/analytics."):
+                    analytics = outer.state.analytics()
+                    extension = path.rsplit(".", 1)[-1]
+                    exports = {"json": (ResearchAnalyticsEngine.to_json, "application/json"), "csv": (ResearchAnalyticsEngine.to_csv, "text/csv; charset=utf-8"), "md": (ResearchAnalyticsEngine.to_markdown, "text/markdown; charset=utf-8")}
+                    if extension not in exports:
+                        return self.respond(404, b'{"error":"not found"}', "application/json")
+                    formatter, content_type = exports[extension]
+                    return self.respond(200, formatter(analytics).encode(), content_type)
+                if path.startswith("/exports/insights."):
+                    insights = outer.state.insights()
+                    extension = path.rsplit(".", 1)[-1]
+                    exports = {"json": (ResearchInsightsEngine.to_json, "application/json"), "csv": (ResearchInsightsEngine.to_csv, "text/csv; charset=utf-8"), "md": (ResearchInsightsEngine.to_markdown, "text/markdown; charset=utf-8")}
+                    if extension not in exports:
+                        return self.respond(404, b'{"error":"not found"}', "application/json")
+                    formatter, content_type = exports[extension]
+                    return self.respond(200, formatter(insights).encode(), content_type)
+                pages = {
+                    "/": "Overview", "/security": "Security", "/runtime": "Runtime",
+                    "/data-quality": "Data Quality", "/gaps": "Incidents & Gaps",
+                    "/qualification": "Qualification",
+                    "/independent-cases": "Independent Cases",
+                    "/v2-readiness": "V2 Readiness", "/mcp": "Graphify & MCP",
+                    "/setup-path": "Setup Path",
+                    "/audit-evidence": "Audit & Evidence",
+                    "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow",
+                    "/signals": "Signal Research", "/analytics": "Analytics", "/insights": "Insights",
+                    "/health": "Health Center", "/exceptions": "Data Quality Exceptions",
+                    "/timeline": "Timeline", "/research": "Research",
+                }
+                if path in pages:
+                    try:
+                        page = render(outer.state, pages[path], query.get("id", [None])[0])
+                    except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                        return self.respond(500, _error_page(pages[path], exc).encode(), "text/html; charset=utf-8")
+                    return self.respond(200, page.encode(), "text/html; charset=utf-8")
+                if path.startswith("/api/observations/"):
+                    oid = unquote(path.removeprefix("/api/observations/"))
+                    item = next((entry for entry in outer.state.snapshot()["observations"] if str(entry.get("observation_id")) == oid), None)
+                    return self.respond(200 if item else 404, json.dumps(item or {"error": "observation not found"}).encode(), "application/json")
+                if path.startswith("/api/cases/"):
+                    cid = unquote(path.removeprefix("/api/cases/"))
+                    item = next((entry for entry in outer.state.snapshot()["research_cases"] if str(entry.get("case_id")) == cid), None)
+                    return self.respond(200 if item else 404, json.dumps(item or {"error": "case not found"}).encode(), "application/json")
+                if path == "/api/rag":
+                    q = (query.get("q", [""])[0] or "").strip().lower()
+                    if not q:
+                        return self.respond(400, b'{"error":"q query param required"}', "application/json")
+                    snap = outer.state.snapshot()
+                    # RAG über Research Cases + Market Memory (active_observations)
+                    scored = []
+                    for obs in snap["active_observations"][-100:]:
+                        text = f"{obs.get('kind','')} {obs.get('summary','')} {obs.get('rule_id','')}".lower()
+                        score = sum(1 for tok in q.split() if tok in text) / max(1, len(q.split()))
+                        if score > 0:
+                            scored.append((score, obs))
+                    scored.sort(key=lambda x: x[0], reverse=True)
+                    top_obs = [o for _, o in scored[:5]]
+                    # auch Cases durchsuchen
+                    case_hits = []
+                    for case in snap["research_cases"][-50:]:
+                        text = f"{case.get('case_id','')} {' '.join(case.get('observation_ids',[]))} {' '.join(case.get('missing_evidence',[]))}".lower()
+                        if any(tok in text for tok in q.split()):
+                            case_hits.append(case)
+                            if len(case_hits) >= 5:
+                                break
+                    payload = {"query": q, "observations": top_obs, "cases": case_hits[:5], "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC", "graphify": "enabled" if Path("graphify-out/graph.json").exists() else "disabled", "omniroute": "http://localhost:20128/v1"}
+                    return self.respond(200, json.dumps(payload).encode(), "application/json")
+                if path == "/api/llm/explain":
+                    q = (query.get("q", [""])[0] or "").strip()
+                    obs_id = (query.get("observation_id", [""])[0] or "").strip()
+                    snap = outer.state.snapshot()
+                    # finde Observation
+                    obs = None
+                    if obs_id:
+                        obs = next((o for o in snap["active_observations"] if str(o.get("observation_id")) == obs_id), None)
+                    if not obs and snap["active_observations"]:
+                        obs = snap["active_observations"][-1]
+                    if not obs:
+                        return self.respond(404, b'{"error":"no observation for LLM"}', "application/json")
+                    # LLM via Ollama/OmniRoute wenn enabled, sonst Fallback
+                    import asyncio as _asyncio
+                    try:
+                        if not settings.enable_ollama:
+                            raise RuntimeError("Ollama disabled by policy")
+                        client = OllamaClient(settings.ollama_url, settings.ollama_model)
+                        # auch OmniRoute als fallback testen (20128)
+                        prompt = observation_prompt(type("O",(),obs)()) if False else f"Erkläre TIM Observation {obs.get('kind')} {obs.get('summary')} OBSERVE-only, keine Handlungsempfehlung. Query: {q}"
+                        # sync call via asyncio
+                        result = _asyncio.run(client.generate_json(prompt)) if hasattr(client, 'generate_json') else {"explanation": "LLM disabled"}
+                        payload = {"observation": obs, "llm": result, "model": settings.ollama_model, "via": settings.ollama_url, "omniroute": "http://localhost:20128/v1"}
+                    except Exception as exc:
+                        payload = {"observation": obs, "llm": {"explanation": f"LLM unavailable: {type(exc).__name__}: {exc}", "fallback": f"Observation {obs.get('kind')} {obs.get('summary')} — Provenance {obs.get('provenance')}"}, "model": settings.ollama_model, "via": "fallback", "omniroute": "http://localhost:20128/v1"}
+                    return self.respond(200, json.dumps(payload).encode(), "application/json")
+                if path.startswith("/reports/"):
+                    name = Path(unquote(path.removeprefix("/reports/"))).name
+                    root = outer.research_router.config.report_root.resolve()
+                    candidate = (root / name).resolve()
+                    if candidate.parent != root or not candidate.is_file() or candidate.suffix not in {".md", ".json"}:
+                        return self.respond(404, b'{"error":"report not found"}', "application/json")
+                    return self.respond(200, candidate.read_bytes(), "text/markdown; charset=utf-8" if candidate.suffix == ".md" else "application/json")
+                return self.respond(404, b'{"error":"not found"}', "application/json")
+
+            def do_POST(self):
+                if not _is_loopback_request_host(self.headers.get("Host")):
+                    return self.respond(421, b'{"error":"loopback Host header required"}', "application/json")
+                path = urlparse(self.path).path
+                if path not in {"/api/research/quick", "/api/research/deep"}:
+                    return self.respond(404, b'{"error":"not found"}', "application/json")
+                try:
+                    if self.headers.get_content_type() != "application/json":
+                        raise ValueError("Content-Type must be application/json")
+                    size = int(self.headers.get("Content-Length", "0"))
+                    if size < 2 or size > 8192:
+                        raise ValueError("request body must be between 2 and 8192 bytes")
+                    value = json.loads(self.rfile.read(size))
+                    query = str(value.get("query", "")).strip()
+                    limit = 500 if path.endswith("/quick") else 2000
+                    if not query or len(query) > limit:
+                        raise ValueError(f"query must contain 1-{limit} characters")
+                    report_type = str(value.get("type", "research_report"))
+                    if report_type not in {"research_report", "deep"}:
+                        raise ValueError("unsupported report type")
+                    snapshot = outer.state.snapshot()
+                    evidence = [{"source": item.get("source", "TIM_DASHBOARD"), "provenance": item.get("provenance", snapshot["provenance"]), "observed_at": item.get("observed_at"), "summary": item.get("summary", "")} for item in snapshot["observations"][-20:]]
+                    requested = "quick" if path.endswith("/quick") else ("deep" if report_type == "deep" else "report")
+                    with outer.research_lock:
+                        routed = outer.research_router.route(query, evidence, requested_type=requested, context={"symbol": snapshot["market_status"].get("symbol", "BTCUSDT"), "timeframe": "mixed"})
+                    result = asdict(routed["result"]) if is_dataclass(routed["result"]) else dict(routed["result"])
+                    if routed["module"] == "B":
+                        result["download_url"] = "/reports/" + Path(result["file"]).name
+                    return self.respond(200, json.dumps({"selected_type": routed["selected_type"], "module": routed["module"], "result": result}).encode(), "application/json")
+                except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                    return self.respond(400, json.dumps({"error": str(exc)}).encode(), "application/json")
+                except Exception:
+                    return self.respond(500, b'{"error":"research processing failed"}', "application/json")
+
+            def log_message(self, *_):
+                pass
+
+        self.server = ThreadingHTTPServer((host, port), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, name="tim-dashboard", daemon=True)
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def stop(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
