@@ -53,3 +53,6 @@ artifacts/tim_manager/reports/*
 !artifacts/github_toolchain/**
 .runtime/
 .serena/
+
+# Research-case exports (scripts/export_case.py)
+exports/
