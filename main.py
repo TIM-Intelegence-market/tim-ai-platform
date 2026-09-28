@@ -337,9 +337,11 @@ class TIMApplication:
                 self._ingestion_health_snapshot is not None
                 and now - self._ingestion_health_sample_started < HEALTH_SNAPSHOT_INTERVAL_SECONDS
             ):
-                snapshot = {**self._ingestion_health_snapshot, **self._health_labels(now, cached=True)}
-                self._publish_health(snapshot)
-                return snapshot
+                labels = self._health_labels(now, cached=True)
+                # Only the labels: ingest_trade publishes live queue_depth and
+                # recovery_state, which an older cached sample must not overwrite.
+                self._publish_health(labels)
+                return {**self._ingestion_health_snapshot, **labels}
             started = now
             try:
                 metrics = await self.durable_store.metrics_snapshot(settings.symbol)
@@ -387,7 +389,17 @@ class TIMApplication:
                 else:
                     try:
                         metrics = await self._refresh_ingestion_health()
-                    except Exception:
+                    except Exception as error:
+                        # Telemetry never stops the worker, but a failing sample must stay visible.
+                        self.queue_log.write(
+                            "INGESTION_HEALTH_UNAVAILABLE",
+                            severity="WARNING",
+                            mode="OBSERVE",
+                            trading_actions=0,
+                            error_type=type(error).__name__,
+                            rate_limit_seconds=60.0,
+                            rate_limit_key=f"INGESTION_HEALTH_UNAVAILABLE:{type(error).__name__}",
+                        )
                         metrics = self._last_health_for_evidence()
                 self.queue_log.write(
                     "OUTBOX_WORKER_CYCLE",

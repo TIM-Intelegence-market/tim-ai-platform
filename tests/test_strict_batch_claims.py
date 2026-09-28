@@ -92,8 +92,8 @@ async def test_prefix_claims_contiguous_head_in_order(database) -> None:
     items = await store.claim_strict_prefix("CANDLE_V1", limit=3, lease_seconds=300)
     assert [item.aggregate_trade_id for item in items] == [1, 2, 3]
     assert await states(database) == {
-        1: ("PROCESSING", 1), 2: ("PROCESSING", 1), 3: ("PROCESSING", 1), 4: ("PENDING", 0), 5: ("PENDING", 0),
-    }
+        1: ("PROCESSING", 1), 2: ("PROCESSING", 0), 3: ("PROCESSING", 0), 4: ("PENDING", 0), 5: ("PENDING", 0),
+    }, "only the head is charged at claim time; later items are charged when they run"
     # The next claim cannot overtake the leased head.
     assert await store.claim_strict_prefix("CANDLE_V1", limit=3) == []
 
@@ -284,6 +284,7 @@ async def test_lost_lease_stops_batch_without_processing_it(database, monkeypatc
     assert result["completed"] == 2 and result["returned"] == 3
     after = await states(database)
     assert after[3] == ("RETRY", 0) and after[5] == ("RETRY", 0)
+    assert after[4] == ("RETRY", 0), "the taken-over item is left to its new owner, never charged by this batch"
 
 
 @pytest.mark.asyncio
@@ -305,3 +306,38 @@ def test_batch_size_setting_is_bounded(monkeypatch) -> None:
         monkeypatch.setenv("TIM_OUTBOX_BATCH_SIZE", bad)
         with pytest.raises(ValueError, match="TIM_OUTBOX_BATCH_SIZE"):
             Settings()
+
+
+@pytest.mark.asyncio
+async def test_crash_mid_batch_does_not_spend_attempts_of_items_that_never_ran(database) -> None:
+    store = await seeded(database)
+    for _ in range(6):
+        items = await store.claim_strict_prefix("CANDLE_V1", limit=5, lease_seconds=300)
+        assert [item.aggregate_trade_id for item in items] == [1, 2, 3, 4, 5]
+        # Process killed (SIGKILL/OOM): no defer runs, the leases simply expire.
+        await execute(
+            database,
+            "UPDATE ingestion_outbox SET lease_expires_at=clock_timestamp()-interval '1 second' "
+            "WHERE symbol=$1 AND status='PROCESSING'",
+            SYMBOL,
+        )
+        await store.release_expired_leases("CANDLE_V1")
+    after = await states(database)
+    assert after[1] == ("RETRY", 6), "the head is charged per claim, exactly like the single-item path"
+    assert all(after[trade_id] == ("RETRY", 0) for trade_id in (2, 3, 4, 5))
+
+
+@pytest.mark.asyncio
+async def test_locked_head_is_never_skipped_by_either_claim_path(database) -> None:
+    store = await seeded(database)
+    seen: list[int] = []
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            await connection.execute(
+                "SELECT 1 FROM ingestion_outbox WHERE symbol=$1 AND aggregate_trade_id=1 FOR UPDATE", SYMBOL
+            )
+            assert await store.claim("CANDLE_V1", limit=1, strict_order=True) == []
+            result = await recording_worker(store, seen).run_once()
+            single = await recording_worker(store, seen, batch_size=1).run_once()
+    assert seen == [] and result["claimed"] == 0 and single["claimed"] == 0
+    assert set((await states(database)).values()) == {("PENDING", 0)}
