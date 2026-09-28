@@ -6,14 +6,14 @@ Existing imports such as ``from src.dashboard.app import DashboardServer`` keep 
 from __future__ import annotations
 
 from src.dashboard.constants import DASHBOARD_VERSION, VISIBLE_LIMIT, ORDERFLOW_VISIBLE_LIMIT, ALLOWED_TIMELINE_EVENTS  # noqa: F401
-from src.dashboard.helpers import _safe, _short, _parse_time, _duration, _age_seconds, _json_block, _status, _required, _status_level  # noqa: F401
+from src.dashboard.helpers import CASE_STATUS_BADGE, _case_status, _safe, _short, _parse_time, _duration, _age_seconds, _json_block, _status, _required, _status_level  # noqa: F401
 from src.dashboard.state import DashboardState  # noqa: F401
 from src.dashboard.api import _research_cases_collection  # noqa: F401
 from src.dashboard.components import _case_for_observation, _observation_row, _case_row, _issue_windows, _card_markup, _diagnostic_card, _timeline_rows, _quality_exception_rows, _signal_context_rows, _retrospective_outcome_rows  # noqa: F401
 from src.dashboard.pages.signals import _signal_research_page, _signal_research_rows  # noqa: F401
 from src.dashboard.pages.operations import _data_quality_exceptions_page, _health_timeline_page, _health_center_sections  # noqa: F401
-from src.dashboard.layout import CSS, EXTRA_CSS, AUTO_REFRESH_SCRIPT, _layout, _hero  # noqa: F401
+from src.dashboard.layout import CSS, AUTO_REFRESH_SCRIPT, NAV_GROUPS, NAV_SCRIPT, _nav, _layout, _hero  # noqa: F401
 from src.dashboard.views import render  # noqa: F401
 from src.dashboard.server import DashboardServer  # noqa: F401
 
-__all__ = ["ALLOWED_TIMELINE_EVENTS", "AUTO_REFRESH_SCRIPT", "CSS", "DASHBOARD_VERSION", "DashboardServer", "DashboardState", "EXTRA_CSS", "ORDERFLOW_VISIBLE_LIMIT", "VISIBLE_LIMIT", "_age_seconds", "_card_markup", "_case_for_observation", "_case_row", "_data_quality_exceptions_page", "_diagnostic_card", "_duration", "_health_center_sections", "_health_timeline_page", "_hero", "_issue_windows", "_json_block", "_layout", "_observation_row", "_parse_time", "_quality_exception_rows", "_required", "_research_cases_collection", "_retrospective_outcome_rows", "_safe", "_short", "_signal_context_rows", "_signal_research_page", "_signal_research_rows", "_status", "_status_level", "_timeline_rows", "render"]
+__all__ = ["ALLOWED_TIMELINE_EVENTS", "AUTO_REFRESH_SCRIPT", "CSS", "DASHBOARD_VERSION", "DashboardServer", "DashboardState", "NAV_GROUPS", "NAV_SCRIPT", "ORDERFLOW_VISIBLE_LIMIT", "VISIBLE_LIMIT", "_age_seconds", "CASE_STATUS_BADGE", "_card_markup", "_case_for_observation", "_case_status", "_case_row", "_data_quality_exceptions_page", "_diagnostic_card", "_duration", "_health_center_sections", "_health_timeline_page", "_hero", "_issue_windows", "_json_block", "_layout", "_nav", "_observation_row", "_parse_time", "_quality_exception_rows", "_required", "_research_cases_collection", "_retrospective_outcome_rows", "_safe", "_short", "_signal_context_rows", "_signal_research_page", "_signal_research_rows", "_status", "_status_level", "_timeline_rows", "render"]

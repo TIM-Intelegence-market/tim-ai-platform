@@ -27,7 +27,7 @@ def test_explorer_is_honest_when_zero_confirmed_but_cases_collect_evidence() -> 
     state = DashboardState(research_cases=[_case(index, "OPEN") for index in range(15)])
 
     snapshot = state.snapshot()
-    page = render(state, "Research Cases")
+    page = render(state, 'Research Cases')
 
     assert snapshot["case_counts"]["confirmed"] == 0
     assert snapshot["case_counts"]["collecting_evidence"] == 15
@@ -47,7 +47,7 @@ def test_explorer_shows_real_confirmed_cases_without_inventing_progress() -> Non
     )
 
     snapshot = state.snapshot()
-    page = render(state, "Research Cases")
+    page = render(state, 'Research Cases')
 
     assert snapshot["case_counts"]["confirmed"] == 1
     assert snapshot["case_counts"]["collecting_evidence"] == 1
@@ -65,7 +65,7 @@ def test_explorer_shows_real_confirmed_cases_without_inventing_progress() -> Non
 def test_explorer_empty_state_reports_zero_without_fake_cases() -> None:
     state = DashboardState(research_cases=[])
 
-    page = render(state, "Research Cases")
+    page = render(state, 'Research Cases')
 
     assert "0 confirmed, 0 collecting evidence" in page
     assert "keine materialisierten Research Cases vorhanden" in page

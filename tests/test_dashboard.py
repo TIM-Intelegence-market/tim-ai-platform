@@ -23,10 +23,10 @@ def populated_state(tmp_path: Path) -> DashboardState:
 
 def test_dashboard_renders_empty_research_state_safely() -> None:
     page = render(DashboardState())
-    assert "Market Status" in page
-    assert "Active Observations" in page
-    assert "Research Cases &amp; Missing Evidence" in page
-    assert "News" in page
+    assert 'Marktstatus' in page
+    assert 'Aktive Beobachtungen' in page
+    assert "Research-Fälle und fehlende Belege" in page
+    assert 'Nachrichten' in page
     assert "NO ORDERS OR EXECUTION" in page
     assert "fetch('/api/state'" in page
     assert "INTERVAL_MS = 5000" in page
@@ -38,11 +38,11 @@ def test_dashboard_renders_empty_research_state_safely() -> None:
     assert "else { retries = 0; poll(); }" in page
     assert "automatischer Wiederherstellungsversuch" in page
     assert "paused = true" not in page
-    assert "Acceptance Countdown" in page
+    assert 'Acceptance-Countdown' in page
     assert "acceptance-countdown" in page
     assert "countdown(data.validator.deadline)" in page
-    assert "Research Module" in page
-    assert "Scientific Data Progress &amp; V2 Readiness" in page
+    assert 'Research-Modul' in page
+    assert "Wissenschaftlicher Datenfortschritt und V2-Bereitschaft" in page
     assert "research-health" in page
     assert "/api/research/quick" in page and "/api/research/deep" in page
     assert "innerHTML" not in page
@@ -55,7 +55,7 @@ def test_dashboard_serves_html_and_json() -> None:
     try:
         with urlopen(f"http://127.0.0.1:{port}/", timeout=2) as response:
             assert response.status == 200
-            assert b"TIM Research Dashboard" in response.read()
+            assert b'TIM Research-Dashboard' in response.read()
         with urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as response:
             assert response.status == 200
             assert response.headers["Cache-Control"] == "no-cache, no-store, must-revalidate"
@@ -114,7 +114,7 @@ def test_snapshot_caps_live_collections() -> None:
 def test_dashboard_labels_capped_counts_as_visible_not_total() -> None:
     page=render(DashboardState(recent_candles=[{"n":i} for i in range(70)],active_observations=[{"n":i} for i in range(70)]))
     assert "Zählerbereich:</b> sichtbarer letzter Ausschnitt, keine Gesamtzahlen" in page
-    assert "Sichtbare Candles" in page and "Sichtbare Observations" in page and "Sichtbare Cases" in page
+    assert "Sichtbare Kerzen" in page and 'Sichtbare Beobachtungen' in page and "Sichtbare Fälle" in page
     assert "sichtbarer Ausschnitt:" in page
 
 
@@ -170,7 +170,7 @@ def test_research_api_rejects_invalid_input(tmp_path: Path) -> None:
 
 def test_professional_research_navigation_and_overview_cards(tmp_path: Path) -> None:
     page=render(populated_state(tmp_path))
-    for label in ("Research Overview","Data Quality","Stream Status","Validator Status","Runtime","Active Research Cases","Closed Research Cases","Dashboard Version"):
+    for label in ('Research-Überblick','Datenqualität','Stream-Status','Validator-Status','Laufzeit','Aktive Research-Fälle','Abgeschlossene Research-Fälle','Dashboard-Version'):
         assert label in page
     for route in ("/observations","/cases","/signals","/health","/timeline","/research"):
         assert f"href='{route}'" in page
@@ -182,8 +182,8 @@ def test_observation_explorer_is_read_only_and_complete(tmp_path: Path) -> None:
     state=populated_state(tmp_path)
     state.active_observations[0].update({"observation_id":"obs-1234567890","observed_at":"2026-07-20T14:00:00+00:00","rule_id":"bos","rule_version":"1.0.0","evidence":{"swing":100},"input_hash":"a"*64,"provenance":"PUBLIC_MARKET_DATA_DETERMINISTIC"})
     state.research_cases[0]["observation_ids"]=["obs-1234567890"]
-    page=render(state,"Observations","obs-1234567890")
-    for label in ("Timestamp","Observation ID","Observation Type","Rule Version","Evidence Score","Provenance","Status","Observation Detail","Evidence / Rohdaten","Research Case","Hash"):
+    page=render(state,'Observations',"obs-1234567890")
+    for label in ('Zeitpunkt','Beobachtungs-ID','Beobachtungsart','Regelversion','Beleg-Score','Herkunft',"Status","Observation Detail","Evidence / Rohdaten","Research Case","Hash"):
         assert label in page
     assert "obs-1234567890" in page and "case-1" in page and "a"*64 in page
     assert "READ-ONLY" in page
@@ -193,8 +193,8 @@ def test_observation_explorer_is_read_only_and_complete(tmp_path: Path) -> None:
 def test_case_explorer_filters_and_timeline(tmp_path: Path) -> None:
     state=populated_state(tmp_path)
     state.research_cases[0].update({"opened_at":"2026-07-20T13:00:00+00:00","updated_at":"2026-07-20T14:00:00+00:00","observation_ids":["obs-1"],"evidence":[{"observation_id":"obs-1","kind":"BOS_BEARISH","observed_at":"2026-07-20T13:30:00+00:00"}],"rule_versions":{"bos":"1.0.0"}})
-    page=render(state,"Research Cases","case-1")
-    for label in ("OPEN","MONITORING","CONFIRMED","INVALIDATED","CLOSED","Zeitraum","Observation Type","Rule Version","Dauer","Outcome","Missing Evidence","Timeline"):
+    page=render(state,'Research Cases',"case-1")
+    for label in ("OPEN","MONITORING","CONFIRMED","INVALIDATED","CLOSED","Zeitraum",'Beobachtungsart','Regelversion',"Dauer",'Ergebnis','Fehlende Belege','Zeitleiste'):
         assert label in page
     assert "obs-1" in page and "BOS_BEARISH" in page
 
@@ -205,10 +205,10 @@ def test_health_center_and_timeline_use_persisted_state(tmp_path: Path) -> None:
     events=tmp_path/"events.jsonl"
     events.write_text(json.dumps({"timestamp":"2026-07-20T13:00:00+00:00","event":"DATA_GAP","severity":"CRITICAL"})+"\n"+json.dumps({"timestamp":"2026-07-20T13:01:00+00:00","event":"TRADE_EXECUTED","severity":"INFO"})+"\n")
     state=DashboardState(validator_path=validator,events_path=events,system_health={"database":"connected","stream":"running"})
-    health=render(state,"Health Center")
-    for component in ("Database","Stream","Validator","Dashboard","Replay","Acceptance","Data Quality","Research Integrity","Governance"):
+    health=render(state,'Health Center')
+    for component in ('Datenbank',"Stream","Validator","Dashboard","Replay",'Abnahme','Datenqualität','Research-Integrität',"Governance"):
         assert component in health
-    timeline=render(state,"Timeline")
+    timeline=render(state,'Timeline')
     assert "RUNTIME_START" in timeline and "DATA_GAP" in timeline
     assert "TRADE_EXECUTED" not in timeline
 
@@ -225,8 +225,8 @@ def test_health_center_explains_persisted_failures(tmp_path: Path) -> None:
     quality.write_text(json.dumps({"validation_status":"FAIL","checks":{"deterministic":False},"issues":[{"code":"PROVENANCE_INCOMPLETE"}]}))
     manifest.write_text(json.dumps({"status":"FROZEN","core_version":"1.0.0"}))
     state=DashboardState(validator_path=validator,readiness_path=readiness,audit_path=audit,quality_path=quality,core_manifest_path=manifest,system_health={"stream":"running"})
-    page=render(state,"Health Center")
-    for section in ("Live Operational Health","Historical Scientific Baseline","V2 Governance &amp; Readiness"):
+    page=render(state,'Health Center')
+    for section in ("Aktueller Betriebszustand","Historische wissenschaftliche Basis","V2-Governance und Bereitschaft"):
         assert section in page
     assert "Berichtszeit:" in page
     assert "bedeuten nicht automatisch einen aktuellen Systemausfall" in page
@@ -240,8 +240,8 @@ def test_health_center_explains_persisted_failures(tmp_path: Path) -> None:
     assert "ARCHIV · RED" in page
     assert "ARCHIV · YELLOW" in page
     assert "badge--snapshot" in page
-    historical = page.split("2 · Historical Scientific Baseline", 1)[1].split("3 · V2 Governance &amp; Readiness", 1)[0]
-    governance = page.split("3 · V2 Governance &amp; Readiness", 1)[1].split("Health Timeline", 1)[0]
+    historical = page.split("2 · Historische wissenschaftliche Basis", 1)[1].split("3 · V2-Governance und Bereitschaft", 1)[0]
+    governance = page.split("3 · V2-Governance und Bereitschaft", 1)[1].split('Zustandsverlauf', 1)[0]
     for archived_section in (historical, governance):
         assert "health--red" not in archived_section
         assert "health--yellow" not in archived_section
@@ -250,7 +250,7 @@ def test_health_center_explains_persisted_failures(tmp_path: Path) -> None:
         assert "health--snapshot" in archived_section
     assert "Archivierte Evidenz, kein Live-Health-Status" in historical
     assert "Archivierte Governance-Evidenz, kein aktueller Systemfehler" in governance
-    evidence_register = page.split("Data Quality Evidence Register", 1)[1]
+    evidence_register = page.split('Register der Datenqualitätsbelege', 1)[1]
     assert "badge--red" not in evidence_register
     assert "badge--yellow" not in evidence_register
     assert "ARCHIV · RED" in evidence_register
@@ -263,7 +263,7 @@ def test_live_health_has_explicit_queue_and_optional_ollama_state() -> None:
     assert snapshot["operational_health"]["queue_depth"] == 0
     assert snapshot["operational_health"]["queue_model"] == "DIRECT_AWAIT_NO_APPLICATION_QUEUE"
     assert snapshot["operational_health"]["ollama_availability"] == "DISABLED_BY_POLICY"
-    page=render(state,"Health Center")
+    page=render(state,'Health Center')
     assert "0 wartende Nachrichten" in page
     assert "Optional deaktiviert" in page
     assert "MISSING:queue_depth" not in page
@@ -277,7 +277,7 @@ def test_timeline_normalizes_legacy_events_without_inventing_hashes() -> None:
         {"timestamp":"2026-07-20T15:13:03+00:00","event":"RUNTIME_START","severity":"INFO","summary":"Persistierte TIM-Laufzeit gestartet."},
     ]
     state._timeline_mtime_ns=-1
-    page=render(state,"Timeline")
+    page=render(state,'Timeline')
     assert "MISSING:component_id" not in page
     assert "MISSING:previous_status" not in page
     assert "MISSING:new_status" not in page
@@ -290,16 +290,16 @@ def test_governance_role_is_read_from_explicit_contract(tmp_path: Path) -> None:
     roles=tmp_path/"roles.json"
     roles.write_text(json.dumps({"scientific_release_authority":"Independent Scientific Reviewer (human)","core_owner":"TIM Project Owner (human)","effective_from":"2026-07-27T00:00:00+00:00","provenance":"TIM_GOVERNANCE_DOCUMENT"}))
     state=DashboardState(governance_roles_path=roles)
-    page=render(state,"Health Center")
+    page=render(state,'Health Center')
     assert "Independent Scientific Reviewer (human)" in page
     assert "MISSING:responsible_role" not in page
 
 
 def test_dashboard_restart_renders_identical_persisted_content(tmp_path: Path) -> None:
     state=populated_state(tmp_path)
-    before=render(state,"Observations")
+    before=render(state,'Observations')
     restarted=DashboardState(recent_candles=list(state.recent_candles),active_observations=list(state.active_observations),research_cases=list(state.research_cases),validator_path=state.validator_path)
-    after=render(restarted,"Observations")
+    after=render(restarted,'Observations')
     stable=lambda value:value.replace("TIM Dashboard startet…","TIM Dashboard startet…")
     assert stable(before)==stable(after)
 
@@ -333,7 +333,7 @@ def test_signal_research_is_read_only_evidence_path() -> None:
             "outcome":"PRICE_INCREASED",
         }],
     )
-    page=render(state,"Signal Research")
+    page=render(state,'Signal Research')
     assert "AggTrades" in page and "Orderflow Metrics" in page
     assert "RISING_CVD_ACTIVITY" in page and "VALIDATED_CONTEXT" in page
     assert "cumulative_delta" in page and "trades_per_second" in page
@@ -362,7 +362,7 @@ def test_overview_uses_same_health_status_sources(tmp_path: Path) -> None:
         "latest_health":{},
     }))
     page=render(DashboardState(validator_path=validator))
-    assert "Data Quality" in page and "badge--red'>RED" in page
+    assert 'Datenqualität' in page and "badge--red'>RED" in page
     assert "Persistierte Sequenz, Zeitstempel und Provenance." in page
     assert "Alle Freigabekriterien anzeigen" in page
 
@@ -376,7 +376,7 @@ def test_insights_page_and_exports_are_read_only(tmp_path: Path) -> None:
     try:
         with urlopen(f"http://127.0.0.1:{port}/insights",timeout=2) as response:
             page=response.read().decode()
-            assert response.status==200 and "Research Insights" in page and "NOT_YET_ELIGIBLE" in page
+            assert response.status==200 and 'Research-Erkenntnisse' in page and "NOT_YET_ELIGIBLE" in page
             assert "EXTERNAL TO CORE" in page and "NO FORECASTS" in page and "Save" not in page
         with urlopen(f"http://127.0.0.1:{port}/api/insights",timeout=2) as response:
             payload=json.loads(response.read()); assert payload["read_only"] is True and payload["mode"]=="OBSERVE"
@@ -393,8 +393,8 @@ def test_research_analytics_page_and_exports_are_read_only(tmp_path: Path) -> No
     server=DashboardServer(state,port=0);server.start();port=server.server.server_address[1]
     try:
         with urlopen(f"http://127.0.0.1:{port}/analytics",timeout=2) as response:
-            page=response.read().decode(); assert response.status==200 and "Research Analytics" in page and "READ-ONLY" in page and "Case Cluster" in page
-            assert "Cases pro Stunde" in page and "Observation-Häufigkeit" in page and "Outcome-Häufigkeit" in page
+            page=response.read().decode(); assert response.status==200 and 'Research-Analysen' in page and "READ-ONLY" in page and 'Fallgruppe' in page
+            assert 'Fälle pro Stunde' in page and "Observation-Häufigkeit" in page and "Outcome-Häufigkeit" in page
         for extension,content_type in (("json","application/json"),("csv","text/csv"),("md","text/markdown")):
             with urlopen(f"http://127.0.0.1:{port}/exports/analytics.{extension}",timeout=2) as response:
                 assert response.status==200 and response.headers["Content-Type"].startswith(content_type) and response.read()

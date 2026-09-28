@@ -5,7 +5,7 @@ import hashlib
 import json
 from typing import Any
 
-from src.dashboard.helpers import _duration, _required, _safe, _short, _status, _status_level
+from src.dashboard.helpers import _case_status, _duration, _required, _safe, _short, _status, _status_level
 
 
 def _case_for_observation(observation: dict[str, Any], cases: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -37,7 +37,7 @@ def _case_row(item: dict[str, Any]) -> str:
     return (
         f"<tr data-status='{_safe(item.get('status'))}' data-type='{_safe(' '.join(kinds))}' data-rule='{_safe(rules)}' data-time='{_safe(updated)}'>"
         f"<td><a href='/cases?id={html.escape(case_id, quote=True)}' class='mono'>{_safe(_short(case_id, 18))}</a></td>"
-        f"<td><span class='badge badge--{_status(item.get('status')).lower()}'>{_safe(item.get('status'))}</span></td>"
+        f"<td><span class='badge badge--{_case_status(item.get('status'))}'>{_safe(item.get('status'))}</span></td>"
         f"<td>{_safe(_duration(opened, updated))}</td><td>{len(item.get('observation_ids', []))}</td><td>{_safe(item.get('outcome'))}</td>"
         f"<td>{_safe(', '.join(item.get('missing_evidence', [])))}</td><td>{_safe(', '.join(kinds))}</td><td class='mono'>{_safe(rules)}</td></tr>"
     )
