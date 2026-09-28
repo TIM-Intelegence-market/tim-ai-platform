@@ -8,6 +8,7 @@ import logging
 import signal
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 from pathlib import Path
 
 from config.settings import settings
@@ -34,6 +35,10 @@ from src.research.case_engine import ResearchCaseEngine
 from src.research.trigger import ResearchTrigger
 
 log = logging.getLogger("tim")
+# Ingestion telemetry cadence: one metrics query per interval at most. A sample
+# older than FRESH (including its own query time) is always labelled stale.
+HEALTH_SNAPSHOT_INTERVAL_SECONDS = 5.0
+HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
 
 
 class TIMApplication:
@@ -64,6 +69,12 @@ class TIMApplication:
         self.history: dict[str, list[Candle]] = {timeframe: [] for timeframe in settings.timeframes}
         self.queue_log = StructuredLog(Path("data/operational/queue.jsonl"))
         self.worker_stop = asyncio.Event()
+        # Ingestion telemetry is sampled at most once per interval; worker
+        # decisions never depend on it (see _refresh_ingestion_health).
+        self._ingestion_health_lock = asyncio.Lock()
+        self._ingestion_health_snapshot: dict | None = None
+        self._ingestion_health_sample_started = 0.0
+        self._ingestion_health_observed_at: str | None = None
         self.enrichment_worker = DurableOutboxWorker(
             self.durable_store,
             "CANDLE_V1",
@@ -288,21 +299,74 @@ class TIMApplication:
             await self.process_orderflow_window(latest_complete-timedelta(minutes=1),latest_complete)
             await self.validate_pending_orderflow(latest_complete)
 
-    async def _refresh_ingestion_health(self) -> dict:
-        metrics = await self.durable_store.metrics_snapshot(settings.symbol)
+    def _health_labels(self, now: float, *, cached: bool) -> dict:
+        age = max(0.0, now - self._ingestion_health_sample_started)
+        return {
+            "health_snapshot_cached": cached,
+            # A sample is current only when it was just taken and the query itself
+            # was fast; anything else is labelled stale, never passed off as live.
+            "health_snapshot_stale": cached or age > HEALTH_SNAPSHOT_FRESH_SECONDS,
+            "health_snapshot_age_seconds": round(age, 3),
+            "health_snapshot_observed_at": self._ingestion_health_observed_at,
+            "health_snapshot_scope": "telemetry_only",
+        }
+
+    def _publish_health(self, snapshot: dict) -> None:
         with self.dashboard_state.lock:
             self.dashboard_state.system_health.update(
-                {
-                    "queue_depth": metrics["queue_depth"],
-                    "queue_high_water": metrics["queue_high_water"],
-                    "queue_oldest_age": metrics["queue_oldest_age"],
-                    "cursor_age": metrics["cursor_age"],
-                    "recovery_state": metrics["recovery_state"],
-                    "duplicate_total": metrics["duplicate_total"],
-                    "out_of_order_total": metrics["out_of_order_total"],
-                }
+                {key: snapshot.get(key) for key in (
+                    "queue_depth", "queue_high_water", "queue_oldest_age", "cursor_age", "recovery_state",
+                    "duplicate_total", "out_of_order_total", "health_snapshot_cached", "health_snapshot_stale",
+                    "health_snapshot_age_seconds", "health_snapshot_observed_at", "health_snapshot_scope",
+                ) if key in snapshot}
             )
-        return metrics
+
+    async def _refresh_ingestion_health(self) -> dict:
+        """Telemetry only: at most one metrics query per interval, never a worker dependency.
+
+        Concurrent callers share one query (lock). A cached sample is returned as a
+        copy labelled cached/stale with its age measured from the sample start, so the
+        query duration counts towards the age. A failed refresh keeps the previous
+        sample, marks it stale, re-raises, and the next call retries.
+        """
+        async with self._ingestion_health_lock:
+            now = monotonic()
+            if (
+                self._ingestion_health_snapshot is not None
+                and now - self._ingestion_health_sample_started < HEALTH_SNAPSHOT_INTERVAL_SECONDS
+            ):
+                snapshot = {**self._ingestion_health_snapshot, **self._health_labels(now, cached=True)}
+                self._publish_health(snapshot)
+                return snapshot
+            started = now
+            try:
+                metrics = await self.durable_store.metrics_snapshot(settings.symbol)
+            except Exception:
+                with self.dashboard_state.lock:
+                    self.dashboard_state.system_health.update(
+                        {
+                            "health_snapshot_stale": True,
+                            "health_snapshot_age_seconds": round(max(0.0, monotonic() - self._ingestion_health_sample_started), 3)
+                            if self._ingestion_health_snapshot is not None else None,
+                        }
+                    )
+                raise
+            self._ingestion_health_sample_started = started
+            self._ingestion_health_observed_at = datetime.now(timezone.utc).isoformat()
+            self._ingestion_health_snapshot = dict(metrics)
+            snapshot = {**metrics, **self._health_labels(monotonic(), cached=False)}
+            self._publish_health(snapshot)
+            return snapshot
+
+    def _last_health_for_evidence(self) -> dict:
+        """Previous sample (or none) for log evidence without querying the database."""
+        if self._ingestion_health_snapshot is None:
+            return {
+                "queue_depth": None, "queue_oldest_age": None, "recovery_state": None,
+                "health_snapshot_cached": True, "health_snapshot_stale": True, "health_snapshot_age_seconds": None,
+                "health_snapshot_observed_at": None, "health_snapshot_scope": "telemetry_only",
+            }
+        return {**self._ingestion_health_snapshot, **self._health_labels(monotonic(), cached=True)}
 
     async def _worker_loop(self) -> None:
         loop = asyncio.get_running_loop()
@@ -310,21 +374,33 @@ class TIMApplication:
         while not self.worker_stop.is_set():
             try:
                 result = await self.enrichment_worker.run_once()
-                metrics = await self._refresh_ingestion_health()
                 terminal_blocked = result.get("status") == "TERMINAL_BLOCKED"
                 if terminal_blocked:
                     with self.dashboard_state.lock:
                         self.dashboard_state.system_health["worker"] = "TERMINAL_BLOCKED"
                         self.dashboard_state.system_health["terminal_blocker"] = result["terminal_blocker"]
+                    # The blocker is authoritative evidence on its own; logging it must
+                    # not wait for (or fail with) a telemetry query.
+                    metrics = self._last_health_for_evidence()
+                else:
+                    try:
+                        metrics = await self._refresh_ingestion_health()
+                    except Exception:
+                        metrics = self._last_health_for_evidence()
                 self.queue_log.write(
                     "OUTBOX_WORKER_CYCLE",
                     mode="OBSERVE",
                     trading_actions=0,
                     worker="CANDLE_V1",
                     result=result,
-                    queue_depth=metrics["queue_depth"],
-                    queue_oldest_age=metrics["queue_oldest_age"],
-                    recovery_state=metrics["recovery_state"],
+                    queue_depth=metrics.get("queue_depth"),
+                    queue_oldest_age=metrics.get("queue_oldest_age"),
+                    recovery_state=metrics.get("recovery_state"),
+                    health_snapshot_cached=metrics.get("health_snapshot_cached"),
+                    health_snapshot_stale=metrics.get("health_snapshot_stale"),
+                    health_snapshot_age_seconds=metrics.get("health_snapshot_age_seconds"),
+                    health_snapshot_observed_at=metrics.get("health_snapshot_observed_at"),
+                    health_snapshot_scope=metrics.get("health_snapshot_scope"),
                     severity="ERROR" if terminal_blocked else "INFO",
                     rate_limit_seconds=60.0 if not result["claimed"] else 0.0,
                     rate_limit_key=(
