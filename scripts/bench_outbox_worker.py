@@ -42,13 +42,22 @@ def timed(stats: dict, name: str, function):
     return wrapper
 
 
+async def clean(app) -> None:
+    async with app.database.acquire() as connection:
+        await connection.execute("DELETE FROM ingestion_outbox WHERE symbol=$1", SYMBOL)
+        # The agg_trades foreign key is checked per deleted row against the outbox,
+        # which has no (symbol, trade id) index; without dead tuples that stays cheap.
+        await connection.execute("VACUUM ingestion_outbox")
+        for table in ("candles", "agg_trades", "ingestion_cursors", "ingestion_gap_incidents"):
+            await connection.execute(f"DELETE FROM {table} WHERE symbol=$1", SYMBOL)
+        await connection.execute("DELETE FROM ingestion_metrics")
+
+
 async def seed(app, filler: int, active: int) -> None:
     from src.models.market_data import Trade
 
+    await clean(app)
     async with app.database.acquire() as connection:
-        for table in ("ingestion_outbox", "candles", "agg_trades", "ingestion_cursors", "ingestion_gap_incidents"):
-            await connection.execute(f"DELETE FROM {table} WHERE symbol=$1", SYMBOL)
-        await connection.execute("DELETE FROM ingestion_metrics")
         base = datetime.now(timezone.utc).replace(second=0, microsecond=0) - timedelta(hours=6)
         # Completed history (bloat): raw rows plus COMPLETED outbox rows, far below the active range.
         await connection.execute(
@@ -80,7 +89,7 @@ async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--filler", type=int, default=200_000)
     parser.add_argument("--active", type=int, default=3_000)
-    parser.add_argument("--batch", type=int, default=None, help="override worker batch size (if supported)")
+    parser.add_argument("--batch", type=int, default=None, help="override worker batch size (default: settings.outbox_batch_size)")
     args = parser.parse_args()
     require_safe_test_database(settings.database_url)
 
@@ -95,7 +104,7 @@ async def main() -> int:
         store, worker = app.durable_store, app.enrichment_worker
         if args.batch is not None:
             worker.batch_size = args.batch
-        for name in ("claim_detailed", "load_trade", "acknowledge", "record_metric", "metrics_snapshot"):
+        for name in ("claim_detailed", "claim_strict_prefix", "load_trade", "load_trades", "renew_leases", "defer", "acknowledge", "record_metric", "metrics_snapshot"):
             setattr(store, name, timed(stats, name, getattr(store, name)))
         worker.handler = timed(stats, "handler", worker.handler)
         completed = 0
@@ -128,11 +137,10 @@ async def main() -> int:
         }
         print(json.dumps(report, indent=1))
     finally:
-        async with app.database.acquire() as connection:
-            for table in ("ingestion_outbox", "candles", "agg_trades", "ingestion_cursors", "ingestion_gap_incidents"):
-                await connection.execute(f"DELETE FROM {table} WHERE symbol=$1", SYMBOL)
-            await connection.execute("DELETE FROM ingestion_metrics")
-        await app.database.close()
+        try:
+            await clean(app)
+        finally:
+            await app.database.close()
     return 0
 
 

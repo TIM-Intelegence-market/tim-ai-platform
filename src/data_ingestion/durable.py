@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import re
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -594,6 +595,105 @@ class DurableIngestionStore:
             row["symbol"], row["price"], row["quantity"], row["trade_time"],
             row["aggregate_trade_id"], row["buyer_is_maker"],
         )
+
+    async def load_trades(self, symbol: str, aggregate_trade_ids: list[int]) -> dict[int, Trade]:
+        """Batch form of load_trade; missing ids are simply absent from the result."""
+        if not aggregate_trade_ids:
+            return {}
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """SELECT symbol,price,quantity,trade_time,aggregate_trade_id,buyer_is_maker
+                   FROM agg_trades WHERE symbol=$1 AND aggregate_trade_id=ANY($2::bigint[])""",
+                symbol,
+                aggregate_trade_ids,
+            )
+        return {
+            row["aggregate_trade_id"]: Trade(
+                row["symbol"], row["price"], row["quantity"], row["trade_time"],
+                row["aggregate_trade_id"], row["buyer_is_maker"],
+            )
+            for row in rows
+        }
+
+    async def claim_strict_prefix(
+        self,
+        worker_name: str,
+        *,
+        limit: int = 100,
+        lease_seconds: int = 60,
+    ) -> list[OutboxItem]:
+        """Claim the contiguous claimable head of the strict order, up to ``limit`` items.
+
+        The head is read first without locks (the true oldest active items), then
+        only those rows are locked. The claim stops at the first position that is
+        locked elsewhere, not PENDING/RETRY or not yet available, so an item is never
+        claimed while an older active item is still unprocessed. An empty result
+        means "use the single-item strict path" (idle, lease or terminal blocker).
+        """
+        if not 1 <= limit <= 1_000:
+            raise ValueError("claim limit must be between 1 and 1000")
+        if lease_seconds < 1:
+            raise ValueError("lease_seconds must be positive")
+        async with self.database.acquire() as connection:
+            async with connection.transaction():
+                await connection.execute(
+                    """UPDATE ingestion_outbox SET status='RETRY',available_at=clock_timestamp(),
+                       lease_expires_at=NULL,last_error=COALESCE(last_error,'worker lease expired'),updated_at=clock_timestamp()
+                       WHERE worker_name=$1 AND status='PROCESSING' AND lease_expires_at<clock_timestamp()""",
+                    worker_name,
+                )
+                head = await connection.fetch(
+                    """SELECT outbox_id FROM ingestion_outbox
+                       WHERE worker_name=$1 AND status=ANY($2::text[])
+                       ORDER BY aggregate_trade_id,created_at,outbox_id LIMIT $3""",
+                    worker_name,
+                    list(ACTIVE_OUTBOX_STATUSES),
+                    limit,
+                )
+                head_ids = [row["outbox_id"] for row in head]
+                if not head_ids:
+                    return []
+                locked = {
+                    row["outbox_id"]: row
+                    for row in await connection.fetch(
+                        """SELECT * FROM ingestion_outbox WHERE outbox_id=ANY($1::text[])
+                           FOR UPDATE SKIP LOCKED""",
+                        head_ids,
+                    )
+                }
+                now = datetime.now(timezone.utc)
+                prefix: list[str] = []
+                for outbox_id in head_ids:
+                    row = locked.get(outbox_id)
+                    if row is None or row["status"] not in {"PENDING", "RETRY"} or row["available_at"] > now:
+                        break
+                    prefix.append(outbox_id)
+                if not prefix:
+                    return []
+                rows = await connection.fetch(
+                    """UPDATE ingestion_outbox SET status='PROCESSING',attempts=attempts+1,
+                               started_at=clock_timestamp(),lease_expires_at=clock_timestamp()+($2*interval '1 second'),
+                               updated_at=clock_timestamp()
+                       WHERE outbox_id=ANY($1::text[]) RETURNING *""",
+                    prefix,
+                    lease_seconds,
+                )
+        position = {outbox_id: index for index, outbox_id in enumerate(prefix)}
+        return [OutboxItem.from_row(row) for row in sorted(rows, key=lambda row: position[row["outbox_id"]])]
+
+    async def renew_leases(self, outbox_ids: list[str], lease_seconds: int) -> int:
+        """Extend the lease of still-PROCESSING items; returns how many were renewed."""
+        if not outbox_ids:
+            return 0
+        async with self.database.acquire() as connection:
+            status = await connection.execute(
+                """UPDATE ingestion_outbox SET lease_expires_at=clock_timestamp()+($2*interval '1 second'),
+                   updated_at=clock_timestamp()
+                   WHERE outbox_id=ANY($1::text[]) AND status='PROCESSING'""",
+                outbox_ids,
+                lease_seconds,
+            )
+        return int(status.split()[-1])
 
     async def claim(
         self,
@@ -1287,6 +1387,10 @@ class DurableIngestionStore:
 
 WorkerHandler = Callable[[OutboxItem, Trade], Awaitable[Any]]
 
+# A strict batch renews the leases of its remaining items at least this often,
+# so every item starts with (almost) the full lease regardless of batch length.
+LEASE_RENEWAL_INTERVAL_SECONDS = 5.0
+
 
 class DurableOutboxWorker:
     """At-least-once worker with explicit idempotency identity and quarantine.
@@ -1315,6 +1419,14 @@ class DurableOutboxWorker:
         self.strict_order = strict_order
 
     async def run_once(self) -> dict[str, Any]:
+        if self.strict_order and self.batch_size > 1 and hasattr(self.store, "claim_strict_prefix"):
+            items = await self.store.claim_strict_prefix(
+                self.worker_name, limit=self.batch_size, lease_seconds=self.lease_seconds
+            )
+            if items:
+                return await self._run_strict_batch(items)
+            # Empty prefix: idle, head leased elsewhere, not yet available or a
+            # terminal blocker. The single-item path below reports which.
         if hasattr(self.store, "claim_detailed"):
             claim = await self.store.claim_detailed(
                 self.worker_name,
@@ -1385,6 +1497,90 @@ class DurableOutboxWorker:
             "retried": retried,
             "quarantined": quarantined,
         }
+
+    async def _run_strict_batch(self, items: list[OutboxItem]) -> dict[str, Any]:
+        """Process a claimed strict-order prefix one item at a time, in order.
+
+        The first failure ends the batch: that item goes through ``fail`` exactly
+        like the single-item path, every later item is returned untouched
+        (``defer`` restores its attempt counter), so nothing is skipped or
+        reordered. Leases of the remaining items are renewed as the batch
+        advances, so each item starts with a full lease.
+        """
+        completed = retried = quarantined = 0
+        max_latency: float | None = None
+        index = 0
+        try:
+            trade_ids: dict[str, list[int]] = {}
+            for item in items:
+                trade_ids.setdefault(item.symbol, []).append(item.aggregate_trade_id)
+            trades: dict[tuple[str, int], Trade] = {}
+            for symbol, ids in trade_ids.items():
+                for trade_id, trade in (await self.store.load_trades(symbol, ids)).items():
+                    trades[(symbol, trade_id)] = trade
+            last_renewal = time.monotonic()
+            while index < len(items):
+                item = items[index]
+                if time.monotonic() - last_renewal >= LEASE_RENEWAL_INTERVAL_SECONDS:
+                    remaining = [pending.outbox_id for pending in items[index:]]
+                    renewed = await self.store.renew_leases(remaining, self.lease_seconds)
+                    last_renewal = time.monotonic()
+                    if renewed != len(remaining):
+                        break
+                started = datetime.now(timezone.utc)
+                try:
+                    trade = trades.get((item.symbol, item.aggregate_trade_id))
+                    if trade is None:
+                        raise DurableIngestionError("outbox references a missing raw event")
+                    result = await self.handler(item, trade)
+                    output_hash = _canonical_hash({"result": result, "worker": self.worker_name})
+                    acknowledged = (
+                        await self.store.acknowledge_with_followup(item, output_hash, self.next_worker)
+                        if self.next_worker is not None
+                        else await self.store.acknowledge(item.outbox_id, output_hash)
+                    )
+                    if not acknowledged:
+                        raise DurableIngestionError("worker lease was not acknowledgeable")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    state = await self.store.fail(item.outbox_id, error)
+                    if state == "QUARANTINED":
+                        quarantined += 1
+                    else:
+                        retried += 1
+                    index += 1
+                    break
+                completed += 1
+                index += 1
+                latency = (datetime.now(timezone.utc) - started).total_seconds()
+                max_latency = latency if max_latency is None else max(max_latency, latency)
+        except asyncio.CancelledError:
+            await asyncio.shield(self._defer_items(items[index:], "worker shutdown checkpoint"))
+            raise
+        except BaseException:
+            await asyncio.shield(self._defer_items(items[index:], "strict batch interrupted"))
+            raise
+        if index < len(items):
+            await self._defer_items(items[index:], "strict batch stopped at an earlier item")
+        if max_latency is not None:
+            await self.store.record_metric(
+                "worker_latency",
+                max_latency,
+                kind="GAUGE",
+                metadata={"worker_name": self.worker_name, "batch_completed": completed},
+            )
+        return {
+            "claimed": len(items),
+            "completed": completed,
+            "retried": retried,
+            "quarantined": quarantined,
+            "returned": len(items) - index,
+        }
+
+    async def _defer_items(self, items: list[OutboxItem], reason: str) -> None:
+        for item in items:
+            await self.store.defer(item.outbox_id, reason)
 
     async def recover_one(self, outbox_id: str) -> dict[str, Any]:
         """Replay exactly one quarantined record; never resets attempts or skips peers."""

@@ -11,6 +11,13 @@ def _csv(name: str, default: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in os.getenv(name, default).split(",") if item.strip())
 
 
+def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    value = int(os.getenv(name, str(default)))
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     database_host: str = field(default_factory=lambda: os.getenv("TIM_DATABASE_HOST", "127.0.0.1"))
@@ -28,6 +35,9 @@ class Settings:
     allowed_news_hosts: tuple[str, ...] = field(default_factory=lambda: _csv("TIM_ALLOWED_NEWS_HOSTS", ""))
     allowed_knowledge_roots: tuple[Path, ...] = field(default_factory=lambda: tuple(Path(item).expanduser() for item in _csv("TIM_ALLOWED_KNOWLEDGE_ROOTS", "")))
     source_snapshot_root: Path = field(default_factory=lambda: Path(os.getenv("TIM_SOURCE_SNAPSHOT_ROOT", "data/source_snapshots")).expanduser())
+    # Strict-order outbox items the candle worker claims per cycle (1 = one item
+    # per cycle). Order, retries and quarantine are identical for every value.
+    outbox_batch_size: int = field(default_factory=lambda: _bounded_int("TIM_OUTBOX_BATCH_SIZE", 100, 1, 1_000))
     log_level: str = field(default_factory=lambda: os.getenv("TIM_LOG_LEVEL", "INFO").upper())
 
     @property

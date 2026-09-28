@@ -79,7 +79,9 @@ class TIMApplication:
             self.durable_store,
             "CANDLE_V1",
             self.process_persisted_trade,
-            batch_size=1,
+            # Contiguous strict-order prefix per claim (see claim_strict_prefix);
+            # processing, retries and quarantine stay strictly one item at a time.
+            batch_size=settings.outbox_batch_size,
             # Hour-boundary enrichment has measured production runtimes up to
             # 169 seconds. Keep the lease above that verified maximum so a
             # healthy in-flight item cannot be reclaimed as an expired lease.
