@@ -37,6 +37,8 @@ Erkenntnisse) · Betrieb (Systemzustand, Datenqualität, Zeitleiste) · Werkzeug
   quarantined red.
 - No horizontal page scroll at 390 px; wide tables scroll inside their container.
 - Safety markers stay visible: `OBSERVE • READ-ONLY`, `NO ORDERS OR EXECUTION`.
+- Labels are translated via `i18n.py`; data containers (`td`, `dd`, `pre`, `code`, `option`,
+  `.mono`, `.tag`, `.badge`) are never translated.
 
 ## Routes
 
@@ -58,8 +60,18 @@ New:
 Shows only `case_id`, `symbol`, `timeframe`, `opened_at`, `status`, `outcome`, the evidence
 count, the retrospective summary and links to the proof. It contains no navigation, no
 scripts and no health, runtime, validator, path or event data (enforced by
-`tests/test_dashboard_v3.py`). It is served on `127.0.0.1` like the rest of the dashboard;
-share it by screen sharing or publish exported proof pages instead.
+`tests/test_dashboard_v3.py`). The allowlist limits what the page shows; it is not an access
+boundary: the linked proof export contains the full case record (documentation, review
+history, evidence hashes) and the same local server also serves the operator pages. It is
+served on `127.0.0.1` like the rest of the dashboard; share it by screen sharing or publish
+exported proof pages instead.
+
+## Retrospective basis
+
+The retrospective counts outcomes from the orderflow history held in memory (the runtime
+keeps the most recent observations). Every block therefore carries a `basis` line such as
+"Grundlage: 500 Orderflow-Beobachtungen im geladenen Verlauf, nicht die vollständige
+Historie." Two exports of the same case at different times can differ in `n`.
 
 ## Proof export from the command line
 

@@ -33,8 +33,8 @@ def _observation_row(item: dict[str, Any], cases: list[dict[str, Any]]) -> str:
 
 def _case_row(item: dict[str, Any]) -> str:
     opened, updated = item.get("opened_at"), item.get("updated_at")
-    kinds = sorted({str(ev.get("kind")) for ev in item.get("evidence", []) if ev.get("kind")})
-    rules = ", ".join(f"{key}:{value}" for key, value in sorted(item.get("rule_versions", {}).items()))
+    kinds = sorted({str(ev.get("kind")) for ev in item.get("evidence") or [] if isinstance(ev, dict) and ev.get("kind")})
+    rules = ", ".join(f"{key}:{value}" for key, value in sorted((item.get("rule_versions") or {}).items()))
     case_id = str(item.get("case_id", ""))
     proof_href = html.escape("/exports/case/" + quote(case_id, safe=""), quote=True)
     return (
@@ -409,13 +409,13 @@ def _case_proof_panel(case: dict[str, Any], observations: list[dict[str, Any]], 
     href = "/exports/case/" + quote(case_id, safe="")
     try:
         blocks = case_retrospective(case, observations, validations)
-    except (KeyError, ValueError):
+    except Exception:  # malformed stored data must not break the page
         blocks = []
     if blocks:
         items = "".join(
             f"<li><b>{_safe(block.get('observation_type'))}</b> · Regel {_safe(block.get('rule_version'))} · n={_safe(block.get('sample_size'))}: "
             + (", ".join(f"{_safe(name)} {_safe(count)}" for name, count in (block.get("outcomes") or {}).items()) + ". " if block.get("outcomes") else "")
-            + f"<span class='muted'>{_safe(block.get('note'))}</span></li>"
+            + f"<span class='muted'>{_safe(block.get('note'))} {_safe(block.get('basis'), '')}</span></li>"
             for block in blocks
         )
         retro = f"<h3>Rückblick <span class='badge badge--snapshot'>{_safe(blocks[0].get('label'))}</span></h3><ul class='retro'>{items}</ul>"

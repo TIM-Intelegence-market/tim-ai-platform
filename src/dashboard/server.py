@@ -99,7 +99,7 @@ class DashboardServer:
                         return self.respond(404, b'{"error":"case not found"}', "application/json")
                     try:
                         retrospective = case_retrospective(item, orderflow_observations, orderflow_validations) or None
-                    except (KeyError, ValueError):
+                    except Exception:  # malformed stored data must not break the page
                         retrospective = None
                     export = build_case_export(item, exported_at=datetime.now(timezone.utc), retrospective=retrospective)
                     if extension == "json":

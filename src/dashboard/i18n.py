@@ -2,8 +2,10 @@
 
 The page builders keep their English source labels; ``translate_html`` replaces
 exact text nodes of the final HTML with the German label from ``DE``. Only whole
-text nodes outside <script>/<style> are touched, never attributes, JSON APIs or
-data values that merely contain a word.
+text nodes are touched, never attributes, JSON APIs or data values that merely
+contain a word. Text inside <script>/<style> and inside data containers
+(<td>, <dd>, <pre>, <code>, <option> and elements with class ``mono``) is never
+translated, so stored values that happen to equal a label stay as they are.
 """
 
 from __future__ import annotations
@@ -217,9 +219,17 @@ def _translate_text(segment: str) -> str:
     return lead + html.escape(target + suffix, quote=False) + tail
 
 
+_DATA_TAGS = {"td", "dd", "pre", "code", "option"}
+_START_TAG = re.compile(r"<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>")
+_END_TAG = re.compile(r"</([a-zA-Z][a-zA-Z0-9]*)\s*>")
+_VOID = {"br", "hr", "img", "input", "meta", "link", "source", "wbr"}
+_MONO = re.compile(r"""class\s*=\s*['"][^'"]*\b(?:mono|tag|badge)\b""")
+
+
 def translate_html(page: str) -> str:
     out: list[str] = []
     raw_until: str | None = None
+    data_stack: list[str] = []  # open tags that make their content data (never translated)
     for part in _TAG_OR_TEXT.split(page):
         if not part:
             continue
@@ -228,10 +238,20 @@ def translate_html(page: str) -> str:
                 match = _RAW_START.match(part)
                 if match:
                     raw_until = f"</{match.group(1).lower()}"
+                else:
+                    start = _START_TAG.match(part)
+                    end = _END_TAG.match(part)
+                    if start and not part.endswith("/>"):
+                        name = start.group(1).lower()
+                        if data_stack or name in _DATA_TAGS or _MONO.search(start.group(2)):
+                            if name not in _VOID:
+                                data_stack.append(name)
+                    elif end and data_stack and end.group(1).lower() == data_stack[-1]:
+                        data_stack.pop()
             elif part.lower().startswith(raw_until):
                 raw_until = None
             out.append(part)
-        elif raw_until is not None:
+        elif raw_until is not None or data_stack:
             out.append(part)
         else:
             out.append(_translate_text(part))

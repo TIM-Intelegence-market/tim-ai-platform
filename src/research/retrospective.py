@@ -47,6 +47,7 @@ def retrospective(
 ) -> dict[str, Any]:
     if as_of.tzinfo is None:
         raise ValueError("as_of must be timezone-aware")
+    observations = list(observations)
     excluded = {str(item) for item in exclude_ids}
     matching = {
         str(item["observation_id"])
@@ -78,6 +79,7 @@ def retrospective(
         "sufficient": sufficient,
         "outcomes": counts if sufficient else None,
         "note": NOTE if sufficient else f"Zu wenige vergleichbare Fälle (n={n}, mindestens {MIN_SAMPLE}). Keine Häufigkeiten angezeigt.",
+        "basis": f"Grundlage: {len(observations)} Orderflow-Beobachtungen im geladenen Verlauf, nicht die vollständige Historie.",
     }
 
 

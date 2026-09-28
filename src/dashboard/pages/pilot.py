@@ -1,9 +1,12 @@
 """Pilot view: what a coach or pilot customer may see.
 
-Only allowlisted case fields are rendered (``PILOT_CASE_FIELDS``) plus the
-verifiable export links and the RETROSPECTIVE summary. No operational,
-health, runtime, path or event data. Served locally like the rest of the
-dashboard (127.0.0.1); intended for screen sharing.
+Only allowlisted case fields are rendered on this page (``PILOT_CASE_FIELDS``)
+plus the verifiable export links and the RETROSPECTIVE summary. No operational,
+health, runtime, path or event data. The linked proof export contains the full
+case record (documentation, review history, evidence hashes) by design, and the
+same local server also serves the operator pages: the allowlist limits what this
+page shows, it is not an access boundary. Served locally (127.0.0.1); intended
+for screen sharing.
 """
 
 from __future__ import annotations
@@ -28,15 +31,15 @@ STATUS_LABELS = {
 def _pilot_case(case: dict[str, Any], observations: list[dict[str, Any]], validations: list[dict[str, Any]]) -> str:
     view = {key: case.get(key) for key in PILOT_CASE_FIELDS}
     status = str(view["status"] or "").upper()
-    href = html.escape("/exports/case/" + quote(str(view["case_id"] or ""), safe=""), quote=True)
+    href = html.escape("/exports/case/" + quote(str(case.get("case_id", "")), safe=""), quote=True)
     try:
         blocks = case_retrospective(case, observations, validations)
-    except (KeyError, ValueError):
+    except Exception:  # malformed stored data must not break the page
         blocks = []
     retro = "".join(
         f"<li>{_safe(block.get('observation_type'))}, n={_safe(block.get('sample_size'))}: "
         + (", ".join(f"{_safe(name)} {_safe(count)}" for name, count in (block.get("outcomes") or {}).items()) if block.get("outcomes") else "zu wenige vergleichbare Fälle")
-        + "</li>"
+        + f" <span class='muted'>{_safe(block.get('basis'), '')}</span></li>"
         for block in blocks
     )
     retro_html = f"<p class='card__label'>Rückblick <span class='badge badge--snapshot'>RETROSPECTIVE</span></p><ul class='retro'>{retro}</ul>" if retro else ""
@@ -66,8 +69,8 @@ def render_pilot(state: DashboardState) -> str:
         "<section class='panel'><h2>Was ist ein Research-Beleg?</h2>"
         "<p>Ein Beleg hält fest, welche Beobachtungen zu einem Zeitpunkt vorlagen. Der Fingerabdruck (Hash) ändert sich, "
         "sobald auch nur ein Zeichen verändert wird. Die Beleg-Seite prüft das selbst im Browser.</p>"
-        "<p>Als Zeitnachweis zählt, wann der Hash zuerst veröffentlicht wurde. Der Rückblick zählt nur vergangene, "
-        "gleichartige Fälle, deren Ausgang zum Zeitpunkt des Falls bereits feststand.</p>"
+        "<p>Als Zeitnachweis zählt, wann der Hash zuerst veröffentlicht wurde. Der Rückblick zählt vergangene, "
+        "gleichartige Fälle aus dem geladenen Verlauf, deren Ausgang zum Zeitpunkt des Falls bereits feststand.</p>"
         f"<p class='safety-callout'>{html.escape(DISCLAIMER)}</p></section>"
         f"<section class='panel'><h2>Research-Fälle</h2><div class='grid pilot-grid'>{items}</div></section>"
     )

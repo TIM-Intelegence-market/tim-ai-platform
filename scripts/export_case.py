@@ -50,11 +50,17 @@ def main() -> int:
     if args.history:
         history = json.loads(args.history.read_text(encoding="utf-8"))
     elif args.case_id and not args.file and not args.no_history:
-        with urlopen(f"{args.dashboard}/api/orderflow/history", timeout=10) as response:
-            history = json.loads(response.read())
+        try:
+            with urlopen(f"{args.dashboard}/api/orderflow/history", timeout=10) as response:
+                history = json.loads(response.read())
+        except (OSError, ValueError) as exc:  # older dashboard (404) or unreachable
+            print(f"Warnung: kein Orderflow-Verlauf ({exc}); Export ohne Rückblick.", file=sys.stderr)
     retrospective = None
     if history is not None and not args.no_history:
-        retrospective = case_retrospective(case, history.get("observations", []), history.get("validations", [])) or None
+        try:
+            retrospective = case_retrospective(case, history.get("observations", []), history.get("validations", [])) or None
+        except Exception as exc:  # malformed history must not block the export
+            print(f"Warnung: Rückblick nicht berechenbar ({exc}); Export ohne Rückblick.", file=sys.stderr)
     export = build_case_export(case, exported_at=datetime.now(timezone.utc), retrospective=retrospective)
     if not re.fullmatch(r"[A-Za-z0-9_-]+", str(export["case"]["case_id"])):
         parser.error("case_id contains characters not allowed in a file name")

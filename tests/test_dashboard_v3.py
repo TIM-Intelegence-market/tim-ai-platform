@@ -19,7 +19,8 @@ from src.dashboard.layout import NAV_GROUPS
 def test_translation_touches_only_whole_text_nodes() -> None:
     page = ("<title>Research Cases · TIM</title><h2>Market Status</h2><p>Market Status is fine</p>"
             "<a title='Market Status' href='/x'>Overview</a><script>const t='Market Status';</script>"
-            "<style>.a>b{}</style><td>Research Cases &amp; Missing Evidence</td>")
+            "<style>.a>b{}</style><th>Rule Version</th><td>Research Cases &amp; Missing Evidence</td>"
+            "<dd><span>Closed</span></dd><span class='tag mono'>Outcome</span><br><p>Status</p>")
     out = translate_html(page)
     assert "<title>Research-Fälle · TIM</title>" in out
     assert "<h2>Marktstatus</h2>" in out
@@ -27,7 +28,10 @@ def test_translation_touches_only_whole_text_nodes() -> None:
     assert "title='Market Status'" in out  # attributes untouched
     assert "const t='Market Status';" in out  # scripts untouched
     assert ">Überblick</a>" in out
-    assert "<td>Research-Fälle und fehlende Belege</td>" in out
+    assert "<th>Regelversion</th>" in out  # header labels are translated
+    assert "<td>Research Cases &amp; Missing Evidence</td>" in out  # data cells never
+    assert "<dd><span>Closed</span></dd>" in out and ">Outcome</span>" in out
+    assert "<p>Status</p>" in out
 
 
 def test_catalog_has_no_empty_or_identical_noise() -> None:
@@ -190,3 +194,65 @@ def test_pilot_view_renders_only_allowlisted_fields(tmp_path: Path) -> None:
 def test_pilot_route_is_served(server) -> None:
     status, body = _get(server + "/pilot")
     assert status == 200 and b"TIM Research-Belege" in body and b"<script" not in body
+
+
+
+# --- review findings -----------------------------------------------------------------------------------------
+def test_stored_values_equal_to_labels_are_not_translated() -> None:
+    case = {"case_id": "case-x", "status": "OPEN", "outcome": "Outcome", "missing_evidence": ["Evidence"],
+            "rule_versions": {"bos": "Closed"}, "evidence": [{"observation_id": "o1", "kind": "Research"}]}
+    page = render(DashboardState(research_cases=[case]), "Research Cases", "case-x")
+    assert "Recherche-Werkzeug</span>" not in page.split("Falldetails", 1)[1]
+    assert "bos:Closed" in page and ">Evidence<" in page
+
+
+def test_malformed_case_does_not_break_pilot_or_export(server) -> None:
+    state = _orderflow_state()
+    state.research_cases.append({"case_id": "case_bad", "status": "OPEN", "opened_at": OPENED.isoformat(), "rule_versions": None,
+                                 "evidence": ["not-a-dict"], "observation_ids": []})
+    srv = DashboardServer(state, port=0)
+    srv.start()
+    base = f"http://127.0.0.1:{srv.server.server_address[1]}"
+    try:
+        status, body = _get(base + "/pilot")
+        assert status == 200 and b"case_bad" in body and b"case_ofproof" in body
+        status, body = _get(base + "/exports/case/case_bad.json")
+        assert status == 200 and verify_case_export(json.loads(body))
+        assert _get(base + "/cases")[0] == 200
+    finally:
+        srv.stop()
+
+
+def test_retrospective_states_its_basis(server) -> None:
+    export = json.loads(_get(server + "/exports/case/case_ofproof.json")[1])
+    assert export["retrospective"][0]["basis"].startswith("Grundlage: 13 Orderflow-Beobachtungen im geladenen Verlauf")
+    assert "im geladenen Verlauf" in _get(server + "/pilot")[1].decode()
+
+
+def test_export_script_survives_dashboard_without_history_api(tmp_path: Path) -> None:
+    import http.server
+    import threading
+
+    case = {"case_id": "case_old", "symbol": "BTCUSDT", "opened_at": OPENED.isoformat(), "rule_versions": {"orderflow": "1.0.0"}, "evidence": []}
+
+    class OldDashboard(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            body, code = (json.dumps(case).encode(), 200) if self.path == "/api/cases/case_old" else (b'{"error":"not found"}', 404)
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), OldDashboard)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        result = subprocess.run([sys.executable, str(ROOT / "scripts/export_case.py"), "case_old", "--dashboard", f"http://127.0.0.1:{httpd.server_address[1]}", "--out", str(tmp_path)],
+                                capture_output=True, text=True)
+    finally:
+        httpd.shutdown()
+    assert result.returncode == 0 and "Warnung" in result.stderr
+    export = json.loads((tmp_path / "case_old.json").read_text())
+    assert verify_case_export(export) and "retrospective" not in export
