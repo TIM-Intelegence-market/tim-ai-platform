@@ -131,8 +131,9 @@ def test_strip_states_never_fabricate_health(tmp_path: Path) -> None:
 
 def test_pipeline_renders_nine_truthful_stages(tmp_path: Path) -> None:
     page = render(_state(tmp_path), "Overview")
+    from src.dashboard.i18n import DE
     for stage in ("Source", "Ingest", "Queue", "Persist", "Cursor", "Candles", "Quality", "Research", "Readiness"):
-        assert f"<b>{stage}</b>" in page
+        assert f"<b>{DE.get(stage, stage)}</b>" in page
     assert page.count("pipeline__stage") >= 9
 
 
@@ -159,7 +160,7 @@ def test_incidents_are_bounded_and_newest_first(tmp_path: Path) -> None:
 
 def test_grouped_navigation_has_five_labelled_groups(tmp_path: Path) -> None:
     page = render(_state(tmp_path))
-    for group in ("OPERATIONS", "RESEARCH", "READINESS", "INTELLIGENCE", "SYSTEM"):
+    for group in ("BETRIEB", "FORSCHUNG", "FREIGABE", "SYSTEM", "WERKZEUGE"):
         assert f"<p class='nav__label'>{group}</p>" in page
     assert page.count("class='nav__group'") == 5
 

@@ -205,6 +205,8 @@ class ErrorLogWorker:
     def run(self, stop, *, interval: float = 1.0):
         if type(interval) not in {int, float} or not math.isfinite(interval) or not .1 <= interval <= 60:
             raise ValueError('poll interval must be at least 0.1 seconds')
+        if stop.is_set():
+            return  # stopped before start: no lease, no source stat, no reads
         with self._lease():
             while not stop.is_set():
                 self._poll()

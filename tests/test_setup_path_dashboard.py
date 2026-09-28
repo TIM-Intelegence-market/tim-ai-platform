@@ -3,7 +3,7 @@ from src.dashboard.app import DashboardState, _setup_path_page, render
 
 def test_setup_path_is_read_only_and_blocks_without_fresh_history() -> None:
     page = render(DashboardState(), page="Setup Path")
-    assert "Setup Path" in page
+    assert "Setup-Pfad" in page  # German label (src/dashboard/i18n.py)
     assert "Analyse-Gate" in page
     assert "BLOCKED" in page
     assert "Live-Synchronisierung aktiv" in page

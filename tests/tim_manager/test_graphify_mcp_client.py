@@ -296,12 +296,14 @@ def test_safe_close_is_idempotent() -> None:
     assert transport.closed is True
 
 
+@pytest.mark.local_env  # needs the Graphify MCP executable in .venv/bin (developer machine)
 def test_real_mcp_handshake_and_tool_discovery() -> None:
     with GraphifyReadOnlyClient(config()) as client:
         tools = client.list_tools()
     assert {item["name"] for item in tools} == GRAPHIFY_LOCAL_TOOLS
 
 
+@pytest.mark.local_env  # needs the Graphify MCP executable in .venv/bin (developer machine)
 def test_real_read_only_query_has_provenance_and_does_not_change_graph() -> None:
     before = sha256_file(GRAPH_PATH)
     with GraphifyReadOnlyClient(config()) as client:
@@ -312,12 +314,14 @@ def test_real_read_only_query_has_provenance_and_does_not_change_graph() -> None
     assert result.graph_hash == before == after
 
 
+@pytest.mark.local_env  # needs the Graphify MCP executable in .venv/bin (developer machine)
 def test_real_denied_query_never_reaches_server() -> None:
     with GraphifyReadOnlyClient(config()) as client:
         with pytest.raises(GraphifyPolicyError):
             client._call("triage_prs", {})
 
 
+@pytest.mark.local_env  # needs the Graphify MCP executable in .venv/bin (developer machine)
 def test_real_server_crash_is_safe_and_new_client_recovers() -> None:
     transport = LocalStdioMCPClient(config())
     transport.initialize()
@@ -332,6 +336,7 @@ def test_real_server_crash_is_safe_and_new_client_recovers() -> None:
     assert result.graph_hash == sha256_file(GRAPH_PATH)
 
 
+@pytest.mark.local_env  # needs the Graphify MCP executable in .venv/bin (developer machine)
 def test_real_excluded_path_search_does_not_expose_excluded_source() -> None:
     with GraphifyReadOnlyClient(config()) as client:
         result = client.search_codegraph("secrets private wallet raw_data")

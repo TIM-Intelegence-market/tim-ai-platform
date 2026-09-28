@@ -105,6 +105,10 @@ NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
 ]
 
 
+# Menu labels that differ from the generic translation of the page key.
+NAV_LABELS = {"Research": "Recherche-Werkzeug"}
+
+
 def _strip_states(data: dict[str, Any]) -> list[tuple[str, str, str, str]]:
     """Derive global header states strictly from the live snapshot.
 
@@ -202,7 +206,7 @@ def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, s
     for group_label, links in NAV_GROUPS:
         items = "".join(
             f"<a href='{href}' class='{'active' if page == key else ''}'"
-            f"{' aria-current=\'page\'' if page == key else ''}>{_safe(key)}</a>"
+            f"{' aria-current=\'page\'' if page == key else ''}>{_safe(NAV_LABELS.get(key, key))}</a>"
             for key, href in links
         )
         nav_parts.append(f"<div class='nav__group'><p class='nav__label'>{_safe(group_label)}</p>{items}</div>")

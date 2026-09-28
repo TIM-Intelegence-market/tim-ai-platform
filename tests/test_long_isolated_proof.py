@@ -12,7 +12,11 @@ from src.data_ingestion.catchup import PublicBinanceAggTradeClient
 from src.database.connection import Database
 
 DATABASE_URL = os.getenv("TIM_DURABLE_TEST_DATABASE_URL")
-pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="isolated test PostgreSQL URL not provided")
+# Developer-machine proof: needs the isolated cluster on port 5433 and live Binance REST access.
+pytestmark = [
+    pytest.mark.local_env,
+    pytest.mark.skipif(not DATABASE_URL, reason="isolated test PostgreSQL URL not provided"),
+]
 
 # Small historical sample outside production history (Jun19, proven via binary search)
 SAMPLE_FROM_ID = 3992578125

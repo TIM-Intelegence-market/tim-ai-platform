@@ -27,7 +27,7 @@ async def test_runtime_ingress_only_persists_and_updates_queue_health() -> None:
     async def ingress(_trade):
         return SimpleNamespace(
             queue_depth=7,
-            cursor=SimpleNamespace(last_aggregate_trade_id=42, recovery_state="NORMAL"),
+            cursor=SimpleNamespace(last_aggregate_trade_id=42, recovery_state="NORMAL", last_persisted_at=NOW),
         )
 
     app._enrich_trade = enrich
@@ -36,6 +36,7 @@ async def test_runtime_ingress_only_persists_and_updates_queue_health() -> None:
     assert enrichment_called is False
     assert app.dashboard_state.system_health["queue_depth"] == 7
     assert app.dashboard_state.system_health["cursor_trade_id"] == 42
+    assert app.dashboard_state.system_health["last_raw_persisted_at"] == NOW.isoformat()
 
 
 @pytest.mark.asyncio

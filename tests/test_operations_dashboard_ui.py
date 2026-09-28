@@ -10,16 +10,17 @@ from src.dashboard.app import DashboardServer, DashboardState, render
 
 
 OPERATIONS_ROUTES = {
-    "/": "Operations Overview",
-    "/security": "Security",
-    "/runtime": "Runtime",
-    "/data-quality": "Data Quality",
-    "/gaps": "Incidents &amp; Gaps",
-    "/qualification": "Qualification",
-    "/independent-cases": "Independent Cases",
-    "/v2-readiness": "V2 Readiness",
+    # Dashboard 4.1: titles are rendered with the German labels from src/dashboard/i18n.py
+    "/": "Betriebsüberblick",
+    "/security": "Sicherheit",
+    "/runtime": "Laufzeit",
+    "/data-quality": "Datenqualität",
+    "/gaps": "Vorfälle &amp; Lücken",
+    "/qualification": "Qualifikation",
+    "/independent-cases": "Unabhängige Fälle",
+    "/v2-readiness": "V2-Bereitschaft",
     "/mcp": "Graphify &amp; MCP",
-    "/audit-evidence": "Audit &amp; Evidence",
+    "/audit-evidence": "Audit &amp; Evidenz",
 }
 
 

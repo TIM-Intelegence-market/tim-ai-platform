@@ -39,13 +39,15 @@ def test_catalog_has_no_empty_or_identical_noise() -> None:
 
 
 def test_navigation_is_grouped_and_marks_current_page() -> None:
-    assert [group for group, _ in NAV_GROUPS] == ["Overview", "Forschung", "Betrieb", "Werkzeuge"]
+    # Dashboard 4.1: one Control Center navigation holds every live page plus the pilot view.
+    assert [group for group, _ in NAV_GROUPS] == ["BETRIEB", "FORSCHUNG", "FREIGABE", "SYSTEM", "WERKZEUGE"]
     routes = [href for _, links in NAV_GROUPS for _, href in links]
-    assert len(routes) == len(set(routes)) == 12 and "/pilot" in routes
+    assert len(routes) == len(set(routes)) == 22 and "/pilot" in routes
     page = render(DashboardState(), "Research Cases")
-    assert "<details class='navgroup active'><summary>Forschung</summary>" in page
+    assert "<p class='nav__label'>FORSCHUNG</p>" in page
     assert "<a href='/cases' class='active' aria-current='page'>Research-Fälle</a>" in page
-    assert "class='menu-toggle'" in page and "aria-label='Hauptnavigation'" in page
+    assert page.count("aria-current='page'") == 1 and "aria-label='Hauptnavigation'" in page
+    assert ">Recherche-Werkzeug</a>" in page  # menu label of /research differs from the generic "Forschung"
 
 
 def test_safety_markers_stay_visible_after_redesign() -> None:
@@ -76,7 +78,8 @@ def test_no_page_leaks_unrendered_template_code() -> None:
 def test_signal_research_shows_each_queue_card_once() -> None:
     page = render(DashboardState(), "Signal Research")
     assert page.count("Aktuelle Research-Warteschlange") == 1
-    assert "<b>Pipeline-Version:</b> 3.0.0" in page
+    from src.dashboard.constants import DASHBOARD_VERSION
+    assert f"<b>Pipeline-Version:</b> {DASHBOARD_VERSION}" in page
 
 
 # --- P4: proof export, orderflow history API, retrospective on case detail ---------------------------------

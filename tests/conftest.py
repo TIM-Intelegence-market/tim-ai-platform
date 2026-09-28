@@ -55,11 +55,6 @@ def _install_database_isolation(monkeypatch: pytest.MonkeyPatch):
 
 def pytest_configure(config):
     """Protect collection/imports and session fixtures, not only test bodies."""
-    config.addinivalue_line(
-        "markers",
-        "local_env: needs files or a runtime that exist only on the developer machine "
-        "(local artifacts, .venv-research, running Ollama); excluded in CI via -m 'not local_env'",
-    )
     patch = pytest.MonkeyPatch()
     config._tim_database_patch = patch
     patch.setenv("TIM_RUNTIME_ENV", "test")
