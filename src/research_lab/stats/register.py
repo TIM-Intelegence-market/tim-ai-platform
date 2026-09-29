@@ -15,7 +15,7 @@ from src.research_lab.data.store import HoldoutPermission, _issue_permission
 from src.research_lab.protocol import MAX_REGISTER_ENTRIES, PROTOCOL_VERSION
 
 GENESIS = "0" * 64
-STATUSES = {"registered", "failed_train", "failed_validation", "candidate", "passed_holdout", "failed_holdout", "no_verdict"}
+STATUSES = {"registered", "failed_train", "failed_validation", "candidate", "passed_holdout", "failed_holdout", "no_verdict", "not_selected"}
 
 
 class RegisterError(ValueError):
@@ -79,8 +79,11 @@ class HypothesisRegister:
             raise RegisterError(f"{variant} is not registered")
         if status not in STATUSES:
             raise RegisterError(f"unknown status {status}")
-        if known[variant]["status"] in {"failed_train", "failed_validation", "failed_holdout", "passed_holdout", "no_verdict"}:
+        current = known[variant]["status"]
+        if current in {"failed_train", "failed_validation", "not_selected", "failed_holdout", "passed_holdout", "no_verdict"}:
             raise RegisterError(f"{variant} already has a final status")
+        if current == "candidate" and status not in {"passed_holdout", "failed_holdout", "no_verdict"}:
+            raise RegisterError(f"{variant} is a frozen candidate; only the holdout can decide it")
         self._append({"kind": "status", "variant": variant, "status": status, "note": note})
 
 
