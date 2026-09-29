@@ -193,6 +193,8 @@ class SqliteTaskRepository(TaskRepository):
             current = self._decode(row)
             if task.state is not current.state:
                 raise ValueError('update cannot change state; use transition()')
+            if task.type != current.type:
+                raise ValueError('task type is immutable')
             if task.attempt_count < current.attempt_count:
                 raise ValueError('attempt_count cannot be reduced')
             if guard is not None:
