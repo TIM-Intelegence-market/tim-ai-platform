@@ -16,7 +16,7 @@ Stand 2026-09-29. Scope: `ORDERFLOW_RESEARCH_PROVIDER`. Die Live-Ingestion über
 |---|---|---|
 | Basis-URL | VERIFIED | `https://api.openmarket.xyz` (Default); `TIM_OPENMARKET_BASE_URL` überschreibt, nur `https` |
 | Endpunkt und Auth | VERIFIED | `GET /v1/points`, Header `X-OpenMarket-Key` |
-| Query-Parameter (Candles) | VERIFIED | `type`, `exchange`, `rawSymbol`, `interval`, `from` (Unix-Sekunden, inklusiv), `period` (Sekunden). Die Tests prüfen den exakten Wire-String. |
+| Query-Parameter (Candles) | VERIFIED | `type`, `exchange`, `rawSymbol`, `interval`, `from` (Unix-Sekunden, inklusiv), `period` (Sekunden). Die Tests prüfen den exakten Wire-String. Echter Proof (29.09.2026): Die API liefert auch das Intervall, das genau bei `from+period` beginnt (Ende inklusiv, 6 Punkte für 300 s MINUTE). TIM schließt genau diesen Randpunkt aus (`window:end_boundary_points_excluded=N`); jeder andere Punkt außerhalb bleibt eine Ablehnung. |
 | Intervalle | VERIFIED | `MINUTE, FIVE_MINUTES, FIFTEEN_MINUTES, THIRTY_MINUTES, HOUR, FOUR_HOURS, DAY, WEEK` |
 | REST-Hülle | VERIFIED_FROM_DOCS | `series[] → id → points[] → Point`; primärer, strikter Pfad (siehe unten) |
 | REST-Zeitstempel | VERIFIED_FROM_DOCS | `{"s"}` oder `{"s","ns"}` |

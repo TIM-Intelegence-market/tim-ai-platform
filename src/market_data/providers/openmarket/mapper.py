@@ -115,9 +115,16 @@ class TimeCheck:
     interval grid (up to DAY) and with firstTimestamp/lastTimestamp inside
     ``[timestamp, timestamp+interval)``. Without first/last on every point the
     meaning of ``timestamp`` stays ``UNPROVEN``; any contradiction is ``FAIL``.
+
+    The real API (proof 2026-09-29) also returns the interval that starts
+    exactly at ``from+period``: the end bound is inclusive on OpenMarket's side.
+    That one boundary interval lies outside the requested window, so it is
+    excluded and counted in ``end_boundary_excluded``, not treated as a
+    contradiction. Any other point outside the window is still rejected.
     """
     status: str = "UNPROVEN"
     rejected: list[str] = field(default_factory=list)
+    end_boundary_excluded: int = 0
 
 
 def check_time_semantics(
@@ -128,6 +135,9 @@ def check_time_semantics(
     check, kept, bounded = TimeCheck(), [], True
     for point in points:
         label = f"{point.side or 'ALL'}@{point.timestamp.isoformat()}"
+        if point.timestamp_ns == end_ns:
+            check.end_boundary_excluded += 1
+            continue
         if not start_ns <= point.timestamp_ns < end_ns:
             check.rejected.append(f"{label}: outside requested window")
             continue

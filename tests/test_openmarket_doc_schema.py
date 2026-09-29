@@ -312,13 +312,53 @@ def test_proof_fails_on_fallback_or_websocket_timestamps(monkeypatch, capsys) ->
 def test_proof_diagnostics_show_rejections_and_offsets_without_values(monkeypatch, capsys) -> None:
     series = minute_series("TRADE_SIDE_AGNOSTIC_AGG")
     boundary = dict(series["points"][-1]["Point"])
-    end = (PROOF_NOW // 60) * 60 - 300
+    end = (PROOF_NOW // 60) * 60 - 300 + 60  # one interval past the (tolerated) end boundary
     boundary.update(timestamp={"s": end}, firstTimestamp={"s": end + 1}, lastTimestamp={"s": end + 2}, high="98765.4")
     series["points"].append({"Point": boundary})
     code, out = run_proof(monkeypatch, capsys, {"series": [series]})
     assert code == 1 and "WINDOW_SEMANTICS=FAIL" in out
     assert "outside requested window" in out.split("REJECTIONS=", 1)[1].splitlines()[0]
     offsets = out.split("POINT_OFFSETS_0=", 1)[1].splitlines()[0]
-    assert offsets.startswith("ALL[0/1.000000005/58,") and offsets.endswith(",300/301/302]")
+    assert offsets.startswith("ALL[0/1.000000005/58,") and offsets.endswith(",360/361/362]")
     assert "WINDOW_END_EXCLUSIVE=" in out
     assert "om_test_fixture_value" not in out and "98765.4" not in out and "100.5" not in out
+
+
+def with_end_boundary(series: dict) -> dict:
+    """The shape the real API returned on 2026-09-29: one extra point at from+period."""
+    last = dict(series["points"][-1]["Point"])
+    end = (PROOF_NOW // 60) * 60 - 300
+    last.update(timestamp={"s": end}, firstTimestamp={"s": end, "ns": 63_000_000}, lastTimestamp={"s": end + 59, "ns": 713_000_000})
+    series["points"].append({"Point": last})
+    return series
+
+
+def test_proof_passes_when_the_api_includes_the_end_boundary_point(monkeypatch, capsys) -> None:
+    code, out = run_proof(
+        monkeypatch, capsys,
+        {"series": [with_end_boundary(minute_series("TRADE_SIDE_AGNOSTIC_AGG"))]},
+        {"series": [with_end_boundary(minute_series("TRADE_AGG", "SELL")), with_end_boundary(minute_series("TRADE_AGG", "BUY"))]},
+        argv=("--per-side",),
+    )
+    for line in ("WINDOW_SEMANTICS=PASS", "NORMALIZATION=PASS", "SIDE_LOCATION=PASS", "REJECTED_OR_CONFLICTING_POINTS=0",
+                 "RECORDS_NORMALIZED=5", "REJECTIONS=none", "FINAL=PASS"):
+        assert line in out, line
+    assert code == 0 and "om_test_fixture_value" not in out
+
+
+def test_end_boundary_point_is_excluded_and_noted_not_used(monkeypatch, capsys) -> None:
+    from src.market_data.providers.openmarket.mapper import check_time_semantics
+    from src.market_data.providers.openmarket.schemas import parse_candles
+    parsed = parse_candles({"series": [with_end_boundary(minute_series("TRADE_SIDE_AGNOSTIC_AGG"))]}, per_side=False)
+    start = (PROOF_NOW // 60) * 60 - 600
+    kept, check = check_time_semantics(parsed.points, interval="MINUTE", from_seconds=start, period_seconds=300)
+    assert len(parsed.points) == 6 and len(kept) == 5 and check.status == "PASS"
+    assert check.end_boundary_excluded == 1 and check.rejected == []
+    assert all(point.timestamp_ns < (start + 300) * 1_000_000_000 for point in kept)
+    # Only the exact end bound is tolerated: one second later is still a rejection.
+    shifted = with_end_boundary(minute_series("TRADE_SIDE_AGNOSTIC_AGG"))
+    shifted["points"][-1]["Point"]["timestamp"] = {"s": start + 301}
+    parsed = parse_candles({"series": [shifted]}, per_side=False)
+    kept, check = check_time_semantics(parsed.points, interval="MINUTE", from_seconds=start, period_seconds=300)
+    assert check.status == "FAIL" and check.end_boundary_excluded == 0
+    assert any("outside requested window" in item for item in check.rejected)

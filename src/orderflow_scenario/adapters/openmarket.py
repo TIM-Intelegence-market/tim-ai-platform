@@ -143,6 +143,8 @@ class OpenMarketAdapter:
         missing.extend(f"candle_conflict:{item}" for item in report.conflicts)
         notes.extend(documented_checks(parsed))
         notes.append(f"check:time_semantics={time_check.status}")
+        if time_check.end_boundary_excluded:
+            notes.append(f"window:end_boundary_points_excluded={time_check.end_boundary_excluded}")
         notes.append(f"verify:time_unit={'true' if time_check.status == 'PASS' else 'false'}")
         if report.duplicates:
             notes.append(f"dedup:candle_duplicates_dropped={report.duplicates}")
@@ -217,6 +219,8 @@ class OpenMarketAdapter:
             )
             parsed.points = checked
             parsed.rejected.extend(time_check.rejected)
+            if time_check.end_boundary_excluded:
+                notes.append(f"window:per_side_end_boundary_points_excluded={time_check.end_boundary_excluded}")
         except OpenMarketError as error:
             # Per-side data is optional context; its absence is reported, never filled.
             if error.kind in {OpenMarketErrorKind.NO_SECRET, OpenMarketErrorKind.INVALID_SECRET, OpenMarketErrorKind.NOT_CONFIGURED}:
