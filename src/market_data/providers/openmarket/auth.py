@@ -32,6 +32,21 @@ DEFAULT_SECRET_FILE = "~/Library/Application Support/TIM/openmarket-api-key"
 _KEY_SHAPE = re.compile(r"[\x21-\x7e]{8,512}")
 
 
+def _require_key_shape(raw: str, provider: str) -> None:
+    """Explain a malformed key by counts only, never by content."""
+    if _KEY_SHAPE.fullmatch(raw):
+        return
+    line_breaks = sum(c in "\r\n" for c in raw)
+    whitespace = sum(c.isspace() for c in raw)
+    non_ascii = sum(not c.isspace() and not 33 <= ord(c) <= 126 for c in raw)
+    raise OpenMarketError(
+        OpenMarketErrorKind.NO_SECRET,
+        f"OpenMarket key has an invalid shape ({provider}: length={len(raw)} line_breaks={line_breaks} "
+        f"whitespace={whitespace} non_ascii={non_ascii}); store only the key with "
+        "scripts/openmarket_store_key.py",
+    )
+
+
 class OpenMarketSecretResolver:
     PROVIDERS = frozenset({"keychain", "file", "env"})
 
@@ -71,8 +86,11 @@ class OpenMarketSecretResolver:
             if provider == "file":
                 path = Path(self.env.get(FILE_ENV, DEFAULT_SECRET_FILE)).expanduser()
                 _require_private_regular_file(path)
-                return SecretValue(path.read_text(encoding="utf-8").strip())
-            return SecretValue(self.env.get(KEY_ENV, "").strip())
+                raw = path.read_text(encoding="utf-8", errors="replace").strip()
+            else:
+                raw = self.env.get(KEY_ENV, "").strip()
+            _require_key_shape(raw, provider)
+            return SecretValue(raw)
         except SecretProviderError as exc:
             # SecretProviderError messages are fixed texts without the value.
             raise OpenMarketError(OpenMarketErrorKind.NO_SECRET, f"{provider} provider: {exc}") from None

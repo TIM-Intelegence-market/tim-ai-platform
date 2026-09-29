@@ -63,7 +63,13 @@ def main() -> int:
     evidence: dict[str, object] = {"SECRET_DISCLOSED": "NO", "HOST": socket.gethostname()}
     evidence["PROXY_ENV_SET"] = "YES" if any(os.environ.get(name) for name in ("HTTPS_PROXY", "https_proxy")) else "NO"
     client = OpenMarketClient(max_retries=1)
-    evidence["SECRET_CONFIGURED"] = "YES" if client.secrets.configured() else "NO"
+    try:
+        client.secrets.api_key()
+        evidence["SECRET_CONFIGURED"] = "YES"
+    except OpenMarketError as error:
+        evidence["SECRET_CONFIGURED"] = "NO"
+        # Fixed texts only (auth.py); never the value. Fix with scripts/openmarket_store_key.py.
+        evidence["SECRET_ERROR"] = str(error)
     evidence["BASE_URL"] = "DOCUMENTED_DEFAULT" if client.base_url == DEFAULT_BASE_URL else "OVERRIDE"
     final, reason = "FAIL", ""
     if evidence["SECRET_CONFIGURED"] == "NO":
