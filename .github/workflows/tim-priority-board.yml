@@ -1,0 +1,46 @@
+name: TIM Priority Board
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  checks: read
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: tim-priority-board
+  cancel-in-progress: false
+
+jobs:
+  prioritize:
+    runs-on: ubuntu-latest
+    # Enforces SPEC.timeout_seconds (600 s) of the Project Manager Agent.
+    timeout-minutes: 10
+    env:
+      PRIORITY_BOARD_TITLE: TIM Priority Board
+      PRIORITY_BOARD_MARKER: TIM_PRIORITY_BOARD_V1
+      PRIORITY_TIMEZONE_LABEL: Europe/Berlin
+      TOP_N: "5"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prioritize TIM GitHub work
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          python scripts/tim_priority_agent.py --record-path priority_board_run.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Keep replayable run record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: priority-board-run
+          path: priority_board_run.json
+          if-no-files-found: ignore
+          retention-days: 30
