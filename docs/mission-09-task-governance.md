@@ -17,9 +17,10 @@ parts containing `|` are rejected, not normalised.
 3. Otherwise claim creation. The claim is a row in SQLite (`PRIMARY KEY fingerprint`, `UNIQUE canonical_key`), so threads and processes cannot both win it. Every claim carries a fencing token. A worker that loses returns `PENDING`. A claim is taken over only after its lease expired, never because the claimant name matches.
 4. Uniqueness check before creating: search GitHub for the fingerprint marker (`<!-- TIM_TASK_FINGERPRINT:<sha> -->`).
    - `authoritative_hint` given and that issue exists: adopt it even if it predates the marker (#11 and #22–#65 do); `legacy_issues` (which require a hint) and other marker matches are recorded as duplicates
-   - `authoritative_hint` given but the issue does not exist: `BLOCKED` (`HINT_NOT_FOUND`), never a fallthrough to create
+   - `authoritative_hint` given but the issue does not exist (`HINT_NOT_FOUND`), is a pull request, or has an untrusted author (`HINT_INVALID`): `BLOCKED`, nothing written into that issue, never a fallthrough to create
+   - no hint but the task is listed in `legacy.py` (today: M09-P0 audit → #11, duplicates #22–#65): the listed authority is used as the hint automatically
    - one marker match: adopt it (`RECOVERED`), no create
-   - several matches without hint: `BLOCKED` plus a governance incident; a later call with a valid hint unblocks it (also for `DUPLICATE_AFTER_CREATE` and `HINT_NOT_FOUND`)
+   - several matches without hint: `BLOCKED` plus a governance incident; a later call with a hint unblocks it only if the hint addresses the block: it must be one of the recorded candidates (`AMBIGUOUS_DUPLICATES`, `DUPLICATE_AFTER_CREATE`) or differ from the rejected hint (`HINT_NOT_FOUND`, `HINT_INVALID`). An always-passed hint therefore cannot wave away unrelated incidents
    - none: renew the lease (fails if the claim was taken over, then nothing is created) and create exactly once
 5. Uniqueness check after creating. A second match blocks the task and records an incident. Nothing is ever closed automatically.
 6. Adopt path order: mark duplicates and write the marker first (all idempotent, comment/label only), persist the mapping last, so a crash midway repeats the remaining steps on the next run.
@@ -42,8 +43,9 @@ The gateway interface has no close operation on purpose. `trusted_authors` is a 
 ## Limits
 
 - The create-once guarantee holds for all workers that share one registry file. Workers with separate registries (for example cloud sessions and a Mac LaunchAgent) are protected only by the GitHub-side checks, which are not atomic. Run task creation from one place or share the registry.
-- `lease_seconds` must be at least 4 times the gateway's `max_create_seconds` (enforced, `ValueError` otherwise). A create that still outlives its lease produces a detected duplicate (incident plus duplicate list), not a prevented one. GitHub offers no idempotency key, so prevention is impossible there.
-- Issues that predate the marker are only found through `authoritative_hint`. The first run for such a task must pass the hint, or a new issue is created. The Task Engine wiring must supply it (for M09-P0: #11).
+- Fencing tokens are monotonic per task: rows are never deleted, releasing or unblocking sets `RELEASED`, so a stale worker's old token can never match a later claim.
+- The gateway must declare `max_create_seconds` and enforce it as the `timeout` of `create_issue`; a create that exceeds it is recorded as a `SLOW_CREATE` incident. `lease_seconds` must be at least 4 times that value (`ValueError` otherwise). A create that still outlives its lease produces a detected duplicate (incident plus the stale worker's issue in the winner's duplicate list), not a prevented one. GitHub offers no idempotency key, so prevention is impossible there.
+- Issues that predate the marker are only found through `authoritative_hint` or the built-in `legacy.py` table. A legacy task that is not listed there and is called without a hint creates a new issue. New legacy cases must be added to the table.
 
 ## Wiring a real GitHub gateway
 

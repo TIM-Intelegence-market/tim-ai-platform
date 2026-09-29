@@ -16,10 +16,14 @@ def ensure_task(*args, trusted_authors=None, **kwargs):
 
 
 def req(**kw):
-    base = dict(mission_id='M09', phase_id='P0', task_type='BASELINE_ARCHITECTURE_AUDIT', target='TIM',
-                schema_version='v1', title='Baseline audit')
+    base = dict(mission_id='M09', phase_id='P0', task_type='SAMPLE_TASK', target='TIM',
+                schema_version='v1', title='Sample')
     base.update(kw)
     return TaskRequest(**base)
+
+
+def legacy_req():
+    return req(task_type='BASELINE_ARCHITECTURE_AUDIT')
 
 
 @pytest.fixture
@@ -29,8 +33,8 @@ def env(tmp_path):
 
 # ---- unit: identity ----
 def test_key_and_fingerprint_are_deterministic():
-    assert req().key == 'M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1'
-    assert req().fingerprint == task_fingerprint('M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1')
+    assert legacy_req().key == 'M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1'
+    assert legacy_req().fingerprint == task_fingerprint('M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1')
     assert req().fingerprint == req().fingerprint
 
 
@@ -178,8 +182,8 @@ def test_claim_lost_after_create_is_reported_as_blocked_not_created(env, monkeyp
     reg = TaskRegistry(reg_path)
     real_create = gh.create_issue
 
-    def create_then_lose_claim(request, fingerprint):
-        issue = real_create(request, fingerprint)
+    def create_then_lose_claim(request, fingerprint, **kw):
+        issue = real_create(request, fingerprint, **kw)
         TaskRegistry(reg_path, clock=lambda: time.time() + 10_000).claim(
             fingerprint, request.key, 'thief', 300)       # takeover after A's renew
         return issue
@@ -196,7 +200,7 @@ def test_failure_before_create_releases_the_claim(env, monkeypatch):
     monkeypatch.setattr(gh, 'find_issues', lambda *a: (_ for _ in ()).throw(ConnectionError('github down')))
     with pytest.raises(ConnectionError):
         ensure_task(req(), reg, gh, claimant='A')
-    assert reg.get(req().fingerprint) is None
+    assert reg.get(req().fingerprint).state is MappingState.RELEASED
     monkeypatch.undo()
     assert ensure_task(req(), reg, gh, claimant='B').outcome is EnsureOutcome.CREATED
 
@@ -347,8 +351,8 @@ def test_duplicate_appearing_after_create_is_escalated_not_closed(env, monkeypat
     reg_path, gh = env
     real_create = gh.create_issue
 
-    def create_then_foreign_dup(request, fingerprint):
-        issue = real_create(request, fingerprint)
+    def create_then_foreign_dup(request, fingerprint, **kw):
+        issue = real_create(request, fingerprint, **kw)
         gh.seed(4242, fingerprint)          # somebody outside the claim created one too
         return issue
 
@@ -403,8 +407,8 @@ def test_stale_worker_cannot_overwrite_the_winners_mapping(env, monkeypatch):
     reg_a = TaskRegistry(reg_path)
     real_create = gh.create_issue
 
-    def slow_create(request, fingerprint):
-        issue = real_create(request, fingerprint)          # A creates ...
+    def slow_create(request, fingerprint, **kw):
+        issue = real_create(request, fingerprint, **kw)          # A creates ...
         late = TaskRegistry(reg_path, clock=lambda: time.time() + 10_000)
         won, m = late.claim(fingerprint, request.key, 'B', 300)   # ... but B took over meanwhile
         assert won
@@ -424,8 +428,8 @@ def test_duplicate_after_create_unblocks_with_a_valid_hint(env, monkeypatch):
     reg_path, gh = env
     real_create = gh.create_issue
 
-    def create_then_foreign_dup(request, fingerprint):
-        issue = real_create(request, fingerprint)
+    def create_then_foreign_dup(request, fingerprint, **kw):
+        issue = real_create(request, fingerprint, **kw)
         gh.seed(4242, fingerprint)
         return issue
 
@@ -463,3 +467,105 @@ def test_crash_while_documenting_duplicates_resumes_and_finishes_them(env, monke
     r = ensure_task(req(), late, gh, claimant='w2', authoritative_hint=11, legacy_issues=[22, 23, 24])
     assert r.outcome is EnsureOutcome.RECOVERED
     assert sorted(n for n, _ in gh.ops('duplicate')) == [22, 23, 24]
+
+
+# ---- third review round ----
+def test_legacy_task_without_hint_uses_built_in_authority_and_creates_nothing(env):
+    reg_path, gh = env
+    fp = legacy_req().fingerprint
+    gh.seed(11, fp, marker=False)
+    for n in range(22, 66):
+        gh.seed(n, fp, marker=False)
+    reg = TaskRegistry(reg_path)
+    r = ensure_task(legacy_req(), reg, gh, claimant='w')          # caller forgot the hint
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 11 and not r.created
+    assert gh.count() == 45 and len(gh.ops('duplicate')) == 44 and gh.state(11) == 'open'
+    lost = ensure_task(legacy_req(), TaskRegistry(reg_path + '.new'), gh, claimant='w')   # registry lost too
+    assert lost.issue_number == 11 and gh.count() == 45
+
+
+def test_fencing_tokens_never_restart_after_release_or_unblock(env, monkeypatch):
+    reg_path, gh = env
+    reg = TaskRegistry(reg_path)
+    fp, key = req().fingerprint, req().key
+    won, m1 = reg.claim(fp, key, 'A', 300)
+    reg.release(fp, m1.claim_token)
+    won2, m2 = reg.claim(fp, key, 'C', 300)
+    assert won and won2 and m2.claim_token > m1.claim_token
+    assert not reg.renew(fp, m1.claim_token)                        # stale A can no longer renew
+    assert reg.map_issue(fp, m1.claim_token, 'owner/repo', 5) is None
+    reg.block(fp, 'AMBIGUOUS_DUPLICATES', 'matches=[1, 2]', token=m2.claim_token)
+    assert reg.unblock(fp, 'test') and not reg.unblock(fp, 'again')
+    _, m3 = reg.claim(fp, key, 'D', 300)
+    assert m3.claim_token > m2.claim_token
+
+
+def test_hint_pointing_at_a_pull_request_or_untrusted_author_is_rejected(env):
+    reg_path, gh = env
+    fp = req().fingerprint
+    gh.seed(77, fp, marker=False, pr=True)
+    gh.seed(78, fp, marker=False, author='stranger')
+    reg = TaskRegistry(reg_path)
+    pr = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=77)
+    assert pr.outcome is EnsureOutcome.BLOCKED and reg.incidents(fp)[0]['reason'] == 'HINT_INVALID'
+    other = ensure_task(req(), TaskRegistry(reg_path + '2'), gh, claimant='w', authoritative_hint=78,
+                        trusted_authors={'owner'})
+    assert other.outcome is EnsureOutcome.BLOCKED and gh.count() == 2
+    body = gh._db().execute('SELECT body FROM issues WHERE number IN (77,78)').fetchall()
+    assert all('TIM_TASK_FINGERPRINT' not in b[0] for b in body)     # nothing was written into the wrong issue
+
+
+def test_stale_workers_issue_is_recorded_as_duplicate_even_when_winner_is_visible(env, monkeypatch):
+    reg_path, gh = env
+    reg_a = TaskRegistry(reg_path)
+    real_create = gh.create_issue
+
+    def create_after_takeover(request, fingerprint, **kw):
+        issue = real_create(request, fingerprint, **kw)               # A's own issue
+        late = TaskRegistry(reg_path, clock=lambda: time.time() + 10_000)
+        won, m = late.claim(fingerprint, request.key, 'B', 300)
+        gh.seed(4711, fingerprint)                                     # B's issue exists on GitHub
+        late.map_issue(fingerprint, m.claim_token, gh.repository, 4711)
+        return issue
+
+    monkeypatch.setattr(gh, 'create_issue', create_after_takeover)
+    r = ensure_task(req(), reg_a, gh, claimant='A')
+    m = reg_a.get(req().fingerprint)
+    assert r.outcome is EnsureOutcome.BLOCKED and r.created
+    assert m.state is MappingState.MAPPED and m.github_issue_number == 4711
+    assert r.issue_number in m.duplicate_issues and 4711 not in m.duplicate_issues
+
+
+def test_gateway_must_declare_create_bound(env):
+    reg_path, gh = env
+    gh.max_create_seconds = None
+    with pytest.raises(ValueError):
+        ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w')
+    assert gh.count() == 0
+
+
+def test_create_slower_than_declared_bound_is_recorded(env, monkeypatch):
+    reg_path, gh = env
+    gh.max_create_seconds = 0.05
+    real_create = gh.create_issue
+
+    def slow(request, fingerprint, **kw):
+        time.sleep(0.2)
+        return real_create(request, fingerprint, **kw)
+
+    monkeypatch.setattr(gh, 'create_issue', slow)
+    reg = TaskRegistry(reg_path)
+    r = ensure_task(req(), reg, gh, claimant='w', lease_seconds=1)
+    assert r.outcome is EnsureOutcome.CREATED
+    assert [i['reason'] for i in reg.incidents(req().fingerprint)] == ['SLOW_CREATE']
+
+
+def test_always_passed_hint_does_not_wave_away_unrelated_blocks(env):
+    reg_path, gh = env
+    fp = req().fingerprint
+    gh.seed(5, fp); gh.seed(9, fp)
+    reg = TaskRegistry(reg_path)
+    assert ensure_task(req(), reg, gh, claimant='w').outcome is EnsureOutcome.BLOCKED       # ambiguous 5 vs 9
+    unrelated = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11)              # 11 is not a candidate
+    assert unrelated.outcome is EnsureOutcome.BLOCKED and reg.get(fp).state is MappingState.BLOCKED
+    assert gh.count() == 2

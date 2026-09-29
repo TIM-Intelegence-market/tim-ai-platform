@@ -34,6 +34,7 @@ class MappingState(str, Enum):
     CLAIMED = 'CLAIMED'    # a worker holds the create-once claim, no issue mapped yet
     MAPPED = 'MAPPED'      # authoritative issue persisted
     BLOCKED = 'BLOCKED'    # ambiguous or violated uniqueness, needs a human
+    RELEASED = 'RELEASED'  # claim given up or block lifted; row and token counter are kept (tokens never restart)
 
 
 @dataclass(frozen=True)
@@ -73,7 +74,7 @@ class TaskRegistry:
         Every successful claim gets a new `claim_token` (fencing token). A CLAIMED
         row can only be taken over after its lease expired, never by name: two
         workers sharing a claimant name must not both win. MAPPED and BLOCKED rows
-        are never claimable.
+        are never claimable. Rows are never deleted, so a fencing token is never reused.
         """
         now = self.clock()
         cur = self.db.execute(
@@ -82,9 +83,9 @@ class TaskRegistry:
         won = cur.rowcount == 1
         if not won:
             cur = self.db.execute(
-                'UPDATE task_mappings SET claimant=?, claimed_at=?, claim_token=claim_token+1, updated_at=? '
-                'WHERE fingerprint=? AND state=? AND claimed_at<? RETURNING claim_token',
-                (claimant, now, now, fingerprint, MappingState.CLAIMED, now - lease_seconds))
+                'UPDATE task_mappings SET state=\'CLAIMED\', claimant=?, claimed_at=?, claim_token=claim_token+1, updated_at=? '
+                'WHERE fingerprint=? AND ((state=? AND claimed_at<?) OR state=?) RETURNING claim_token',
+                (claimant, now, now, fingerprint, MappingState.CLAIMED, now - lease_seconds, MappingState.RELEASED))
             won = cur.fetchone() is not None
         return won, self.get(fingerprint)
 
@@ -97,8 +98,8 @@ class TaskRegistry:
 
     def release(self, fingerprint: str, token: int) -> None:
         """Give the claim up after a failure that happened before anything was created."""
-        self.db.execute('DELETE FROM task_mappings WHERE fingerprint=? AND state=? AND claim_token=?',
-                        (fingerprint, MappingState.CLAIMED, token))
+        self.db.execute('UPDATE task_mappings SET state=?, updated_at=? WHERE fingerprint=? AND state=? AND claim_token=?',
+                        (MappingState.RELEASED, self.clock(), fingerprint, MappingState.CLAIMED, token))
 
     def map_issue(self, fingerprint: str, token: int, repository: str, issue_number: int, duplicates=()) -> Mapping | None:
         """Persist the authoritative issue. None means the claim was lost and nothing was written."""
@@ -128,6 +129,10 @@ class TaskRegistry:
                         (fingerprint, reason, detail, now))
         return self.get(fingerprint)
 
+    def record_incident(self, fingerprint: str, reason: str, detail: str = '') -> None:
+        self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                        (fingerprint, reason, detail, self.clock()))
+
     def add_duplicates(self, fingerprint: str, numbers) -> Mapping | None:
         """Record extra duplicate issue numbers on a MAPPED task without touching its state."""
         row = self.get(fingerprint)
@@ -138,18 +143,29 @@ class TaskRegistry:
                         (json.dumps(merged), self.clock(), fingerprint))
         return self.get(fingerprint)
 
-    def unblock(self, fingerprint: str, note: str) -> None:
-        """Explicit operator/hint-driven release of a BLOCKED task. History stays in governance_incidents."""
-        row = self.get(fingerprint)
-        if row is None or row.state is not MappingState.BLOCKED:
-            return
-        if row.github_issue_number is not None:
-            self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', updated_at=? WHERE fingerprint=?',
-                            (MappingState.MAPPED, self.clock(), fingerprint))
-        else:
-            self.db.execute('DELETE FROM task_mappings WHERE fingerprint=?', (fingerprint,))
-        self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
-                        (fingerprint, 'UNBLOCKED', note, self.clock()))
+    def unblock(self, fingerprint: str, note: str) -> bool:
+        """Explicit release of a BLOCKED task (two single-statement, state-guarded updates, no TOCTOU).
+
+        With a mapped issue the task returns to MAPPED, otherwise to RELEASED (claimable again).
+        History stays in governance_incidents.
+        """
+        now = self.clock()
+        n = self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', updated_at=? '
+                            'WHERE fingerprint=? AND state=? AND github_issue_number IS NOT NULL',
+                            (MappingState.MAPPED, now, fingerprint, MappingState.BLOCKED)).rowcount
+        n += self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', updated_at=? '
+                             'WHERE fingerprint=? AND state=? AND github_issue_number IS NULL',
+                             (MappingState.RELEASED, now, fingerprint, MappingState.BLOCKED)).rowcount
+        if n:
+            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                            (fingerprint, 'UNBLOCKED', note, now))
+        return bool(n)
+
+    def last_incident(self, fingerprint: str, reasons) -> dict | None:
+        marks = ','.join('?' * len(reasons))
+        row = self.db.execute(f'SELECT * FROM governance_incidents WHERE fingerprint=? AND reason IN ({marks}) '
+                              'ORDER BY id DESC LIMIT 1', (fingerprint, *reasons)).fetchone()
+        return dict(row) if row else None
 
     def incidents(self, fingerprint: str | None = None) -> list[dict]:
         sql, args = 'SELECT * FROM governance_incidents', ()

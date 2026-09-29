@@ -12,7 +12,7 @@ class FakeGitHub:
     def __init__(self, path, *, latency=0.0, crash_after_create=False):
         self.path, self.latency, self.crash_after_create = path, latency, crash_after_create
         db = self._db()
-        db.execute('CREATE TABLE IF NOT EXISTS issues(number INTEGER PRIMARY KEY, state TEXT, body TEXT, author TEXT DEFAULT \'owner\')')
+        db.execute('CREATE TABLE IF NOT EXISTS issues(number INTEGER PRIMARY KEY, state TEXT, body TEXT, author TEXT DEFAULT \'owner\', is_pr INTEGER DEFAULT 0)')
         db.execute('CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY AUTOINCREMENT, op TEXT, number INTEGER, detail TEXT)')
         db.close()
 
@@ -21,11 +21,11 @@ class FakeGitHub:
         db.execute('PRAGMA busy_timeout=30000')
         return db
 
-    def seed(self, number, fingerprint, state='open', extra='', marker=True, author='owner'):
+    def seed(self, number, fingerprint, state='open', extra='', marker=True, author='owner', pr=False):
         """marker=False models issues that predate the fingerprint marker (#11, #22-#65)."""
         db = self._db()
-        db.execute('INSERT INTO issues VALUES(?,?,?,?)',
-                   (number, state, (fingerprint_marker(fingerprint) if marker else 'legacy') + extra, author))
+        db.execute('INSERT INTO issues VALUES(?,?,?,?,?)',
+                   (number, state, (fingerprint_marker(fingerprint) if marker else 'legacy') + extra, author, int(pr)))
         db.close()
 
     def find_issues(self, fingerprint, canonical_key):
@@ -38,11 +38,11 @@ class FakeGitHub:
 
     def get_issue(self, number):
         db = self._db()
-        row = db.execute('SELECT number,state,author FROM issues WHERE number=?', (number,)).fetchone()
+        row = db.execute('SELECT number,state,author,is_pr FROM issues WHERE number=?', (number,)).fetchone()
         db.close()
-        return IssueRef(row[0], row[1], author=row[2]) if row else None
+        return IssueRef(row[0], row[1], author=row[2], is_pull_request=bool(row[3])) if row else None
 
-    def create_issue(self, request: TaskRequest, fingerprint):
+    def create_issue(self, request: TaskRequest, fingerprint, *, timeout):
         db = self._db()
         cur = db.execute('INSERT INTO issues(state,body) VALUES(?,?)', ('open', fingerprint_marker(fingerprint)))
         number = cur.lastrowid + 1000
