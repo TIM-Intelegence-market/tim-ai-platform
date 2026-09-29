@@ -24,6 +24,7 @@ from src.market_data.providers.openmarket.client import OpenMarketClient
 from src.market_data.providers.openmarket.errors import OpenMarketError, OpenMarketErrorKind
 from src.market_data.providers.openmarket.mapper import (
     TIM_TIMEFRAME,
+    check_time_semantics,
     dedupe_candles,
     provenance_notes,
     side_volumes,
@@ -99,6 +100,7 @@ class OpenMarketAdapter:
         self.side_is_aggressor = side_is_aggressor
         self.now = now
         self.adapter_kind = "OPENMARKET_API"
+        self.last_input: AdapterInput | None = None
 
     def adapt(self, data: Mapping[str, Any], observed_at: datetime | None = None) -> AdapterInput:
         request = OpenMarketRequest.from_mapping(data)
@@ -113,15 +115,26 @@ class OpenMarketAdapter:
             parsed.points, exchange=request.exchange, raw_symbol=request.raw_symbol,
             interval=request.interval, data_type=data_type,
         )
-        missing.extend(f"candle_rejected:{item}" for item in parsed.rejected)
+        points, time_check = check_time_semantics(
+            points, interval=request.interval, from_seconds=request.from_seconds, period_seconds=request.period_seconds
+        )
+        missing.extend(f"candle_rejected:{item}" for item in parsed.rejected + time_check.rejected)
         missing.extend(f"candle_conflict:{item}" for item in report.conflicts)
+        notes.append(f"check:time_semantics={time_check.status}")
+        notes.append(f"verify:time_unit={'true' if time_check.status == 'PASS' else 'false'}")
         if report.duplicates:
             notes.append(f"dedup:candle_duplicates_dropped={report.duplicates}")
         if report.reordered:
             notes.append("dedup:candles_reordered_by_timestamp=true")
         if parsed.unexpected_fields:
             notes.append(f"schema:unexpected_fields={','.join(sorted(parsed.unexpected_fields))}")
-        candles = to_tim_candles(points, raw_symbol=request.raw_symbol, interval=request.interval, as_of=observed_at)
+        all_candles = to_tim_candles(points, raw_symbol=request.raw_symbol, interval=request.interval, as_of=observed_at)
+        # The running interval is incomplete: it never enters the analysis.
+        closed_flags = [candle["closed"] for candle in all_candles]
+        candles = [candle for candle in all_candles if candle["closed"]]
+        points = [point for point, closed in zip(points, closed_flags) if closed]
+        if len(candles) != len(all_candles):
+            notes.append(f"excluded:open_interval_candles={len(all_candles) - len(candles)}")
         if not candles:
             missing.append("candles")
         notes.extend(
@@ -136,7 +149,11 @@ class OpenMarketAdapter:
 
         total_volume = sum((point.volume for point in points), Decimal(0)) if points else None
         if total_volume is not None:
-            notes.append("derived:total_volume=true derivation=sum_of_TRADE_SIDE_AGNOSTIC_AGG_volume")
+            complete = not (parsed.rejected or time_check.rejected or report.conflicts)
+            notes.append(
+                "derived:total_volume=true derivation=sum_of_closed_TRADE_SIDE_AGNOSTIC_AGG_volume "
+                f"complete={'true' if complete else 'false'}"
+            )
         else:
             missing.append("total_volume")
 
@@ -146,7 +163,7 @@ class OpenMarketAdapter:
         else:
             missing.append("aggressive_volume:per_side_not_requested")
 
-        return AdapterInput(
+        self.last_input = AdapterInput(
             symbol=request.raw_symbol,
             venue=request.exchange,
             market_type=request.market_type,
@@ -165,12 +182,19 @@ class OpenMarketAdapter:
             missing_fields=tuple(sorted(set(missing))),
             extra_notes=tuple(notes),
         )
+        return self.last_input
 
     def _per_side(self, request: OpenMarketRequest, observed_at: datetime, missing: list[str], notes: list[str]):
         data_type = "TRADE_AGG"
         try:
             response = self.client.get_points(request.params(data_type))
             parsed = parse_candles(response.payload, per_side=True)
+            checked, time_check = check_time_semantics(
+                parsed.points, interval=request.interval, from_seconds=request.from_seconds,
+                period_seconds=request.period_seconds,
+            )
+            parsed.points = checked
+            parsed.rejected.extend(time_check.rejected)
         except OpenMarketError as error:
             # Per-side data is optional context; its absence is reported, never filled.
             if error.kind in {OpenMarketErrorKind.NO_SECRET, OpenMarketErrorKind.INVALID_SECRET, OpenMarketErrorKind.NOT_CONFIGURED}:
@@ -185,6 +209,10 @@ class OpenMarketAdapter:
         missing.extend(f"per_side_conflict:{item}" for item in report.conflicts)
         notes.append(f"provenance:per_side_response_sha256={response.body_sha256}")
         notes.append(f"provenance:per_side_envelope_paths={'|'.join(parsed.envelope_paths)}")
+        # Same rule as the side-agnostic candles: the running interval is excluded.
+        interval_ns = INTERVAL_SECONDS[request.interval] * 1_000_000_000
+        cutoff_ns = int(observed_at.timestamp()) * 1_000_000_000
+        points = [point for point in points if point.timestamp_ns + interval_ns <= cutoff_ns]
         volumes = side_volumes(points)
         if volumes is None:
             missing.append("aggressive_volume:no_paired_BUY_SELL_intervals")
@@ -196,6 +224,7 @@ class OpenMarketAdapter:
         if not self.side_is_aggressor:
             missing.append("aggressive_volume:TRADE_AGG_side_semantics_unverified")
             missing.append("net_delta")
+            notes.append("verify:delta_definition=false")
             return None, None, None
         notes.append("derived:net_delta=true derivation=buy_volume_minus_sell_volume source=TRADE_AGG units=as_reported_by_provider")
         return volumes.buy_volume, volumes.sell_volume, volumes.buy_volume - volumes.sell_volume

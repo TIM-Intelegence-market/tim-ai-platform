@@ -14,6 +14,7 @@ every request fails closed with ``NO_SECRET``.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Mapping
@@ -26,6 +27,9 @@ PROVIDER_ENV = "TIM_OPENMARKET_SECRET_PROVIDER"
 KEY_ENV = "TIM_OPENMARKET_API_KEY"
 FILE_ENV = "TIM_OPENMARKET_SECRET_FILE"
 DEFAULT_SECRET_FILE = "~/Library/Application Support/TIM/openmarket-api-key"
+# Printable ASCII without whitespace: anything else could not travel in an HTTP
+# header and would surface in an encoding error instead.
+_KEY_SHAPE = re.compile(r"[\x21-\x7e]{8,512}")
 
 
 class OpenMarketSecretResolver:
@@ -52,6 +56,12 @@ class OpenMarketSecretResolver:
         return True
 
     def api_key(self) -> SecretValue:
+        secret = self._resolve()
+        if not _KEY_SHAPE.fullmatch(secret.reveal()):
+            raise OpenMarketError(OpenMarketErrorKind.NO_SECRET, "OpenMarket key has an invalid shape")
+        return secret
+
+    def _resolve(self) -> SecretValue:
         provider = self.provider
         if provider is None:
             raise OpenMarketError(OpenMarketErrorKind.NO_SECRET, f"{PROVIDER_ENV} is not set")

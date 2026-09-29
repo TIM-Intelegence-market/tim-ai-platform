@@ -69,9 +69,10 @@ def main() -> int:
         except OSError:
             evidence["DNS"] = "FAIL"
         now = int(time.time())
+        start = (now // 60) * 60 - 600  # on the minute grid, fully in the past
         request = {
             "exchange": args.exchange, "raw_symbol": args.raw_symbol, "interval": "MINUTE",
-            "from": now - 600, "period": 300, "market_type": args.market_type,
+            "from": start, "period": 300, "market_type": args.market_type,
         }
         captured = {}
         original = client.get_points
@@ -105,8 +106,19 @@ def main() -> int:
                 ADAPT_TOTAL_MS=round((time.perf_counter() - started) * 1000, 1),
                 MISSING_FIELDS=",".join(adapted.missing_fields),
             )
-            final = "PASS" if adapted.candles else "INCONCLUSIVE"
-            reason = "" if adapted.candles else "NO_CANDLES_IN_WINDOW"
+            notes = set(adapted.extra_notes)
+            problems = [m for m in adapted.missing_fields if m.startswith(("candle_rejected", "candle_conflict"))]
+            time_ok = "check:time_semantics=PASS" in notes
+            evidence["TIME_SEMANTICS"] = next((n.split("=", 1)[1] for n in notes if n.startswith("check:time_semantics=")), "UNKNOWN")
+            evidence["REJECTED_OR_CONFLICTING_POINTS"] = len(problems)
+            if problems or not time_ok:
+                evidence["SCHEMA"] = evidence["NORMALIZATION"] = "PARTIAL"
+            if not adapted.candles:
+                final, reason = "INCONCLUSIVE", "NO_CLOSED_CANDLES_IN_WINDOW"
+            elif problems or not time_ok:
+                final, reason = "FAIL", "SCHEMA_OR_TIME_SEMANTICS_NOT_PROVEN"
+            else:
+                final, reason = "PASS", ""
         finally:
             client.close()
         limits = client.rate_limit

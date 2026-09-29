@@ -36,7 +36,8 @@ Stand 2026-09-29. Scope: `ORDERFLOW_RESEARCH_PROVIDER`. Die Live-Ingestion über
 | Basis-URL (Host) | muss als `TIM_OPENMARKET_BASE_URL` gesetzt werden, nur `https` | Doku/Konto |
 | JSON-Hülle um die Punkte | Punktlisten werden an den dokumentierten Feldern erkannt, der Pfad landet in der Provenienz (`envelope_paths`). Mehrdeutig → `SCHEMA_MISMATCH` | `ENVELOPE_SHAPE` im Proof |
 | Ort der BUY/SELL-Kennung bei `TRADE_AGG` | `side` oder `series.side` des nächsten umschließenden Objekts; fehlt sie → `SCHEMA_MISMATCH` | Proof mit `TRADE_AGG` |
-| Zeitstempel-Kodierung der REST-Punkte | akzeptiert `{seconds,nanoseconds}`, ganzzahlige Unix-Sekunden, ISO-8601 mit Offset. Millisekunden-Größen werden als mehrdeutig abgelehnt | Proof |
+| Zeitstempel-Kodierung der REST-Punkte | akzeptiert `{seconds,nanoseconds}`, ganzzahlige Unix-Sekunden, ISO-8601 mit Offset (höchstens µs). Millisekunden-Größen, Werte vor 1970 und Überläufe werden als mehrdeutig bzw. ungültig abgelehnt | Proof |
+| `timestamp` = Beginn des Intervalls? | wird geprüft, nicht angenommen. Der Punkt muss in `[from, from+period)` liegen, auf dem Intervall-Raster sitzen, und `firstTimestamp ≤ lastTimestamp` muss in `[timestamp, timestamp+Intervall)` liegen. Ergebnis: `check:time_semantics=PASS\|UNPROVEN\|FAIL`; `time_unit_verified` im Pipeline-Input nur bei `PASS` | Proof |
 | Parametername für das Intervall | `interval` (aus der Doku-Übersicht; im Proof bestätigen) | Proof |
 | BUY/SELL = Aggressor-Seite? | nicht angenommen: `net_delta`/`aggressive_*` bleiben leer, außer `side_is_aggressor=True` | Doku-Definition |
 | Volumen-Einheit (Base/Quote) | wird unverändert übernommen (`units=as_reported_by_provider`) | Doku |
@@ -68,6 +69,8 @@ OpenMarket REST
 
 **Schutz des Keys:**
 - Der Key steht nur im Request-Header, nie in der URL.
+- Bis zum Transport bleibt er ein `SecretValue`, auch in den Stack-Frames. Tracebacks mit lokalen Variablen zeigen nur `@REDACTED@`.
+- Keys, die nicht aus druckbarem ASCII ohne Leerzeichen bestehen, werden vor dem Request abgelehnt.
 - `repr`/`str` liefern `@REDACTED@`.
 - Fehlermeldungen enthalten keine Response-Bodies, nur dokumentierte Codes.
 
@@ -82,8 +85,8 @@ OpenMarket REST
 | API nicht erreichbar | `DNS_FAILURE`, `TLS_FAILURE`, `NETWORK_FAILURE`, `TIMEOUT` | begrenzte Retries (Standard 2, max. 5) mit Backoff, dann Abbruch |
 | 5xx / 504 | `API_FAILURE` / `TIMEOUT` | wie oben |
 | ungültige oder abweichende Antwort | `SCHEMA_MISMATCH` | Abbruch; einzelne ungültige Punkte → `missing_fields`, nie ersetzt |
-| Teilantwort (Lücken, nur eine Seite) | – | nur vorhandene Punkte; BUY/SELL nur über gepaarte Intervalle |
-| veraltete Daten | – | laufendes Intervall `closed=false`; Zeitstempel und Anfragezeit in der Provenienz |
+| Teilantwort (Lücken, nur eine Seite) | – | nur vorhandene Punkte; BUY/SELL nur über gepaarte Intervalle; `total_volume … complete=false` |
+| veraltete oder laufende Daten | – | das laufende Intervall wird ausgeschlossen (`excluded:open_interval_candles`); Zeitstempel und Anfragezeit in der Provenienz |
 
 Grundsatz: fail closed. Marktdaten werden nie erfunden oder ergänzt.
 
@@ -145,5 +148,6 @@ TIM_OPENMARKET_SECRET_PROVIDER=file TIM_OPENMARKET_BASE_URL=https://… \
 ## Rollback
 
 - Kein Schema und keine Laufzeitkomponente geändert.
+- Das CLI schreibt für `--provider openmarket` zusätzlich `adapter_evidence={missing_fields, notes}` nach stderr. Die Provenienz geht also nicht verloren, und das Ausgabeschema der Analyse bleibt unverändert.
 - `--provider openmarket` einfach nicht verwenden, die MMT- und generic-Pfade bleiben unverändert.
 - Code-Rollback: den PR revertieren.

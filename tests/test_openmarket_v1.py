@@ -27,7 +27,7 @@ from src.orderflow_scenario import cli
 
 FAKE_KEY = "om_test_fixture_value_0123456789"  # synthetic, not a real credential
 BASE = "https://openmarket.invalid"
-T0 = 1_790_000_000  # epoch seconds, minute aligned (2026-09-21)
+T0 = 1_789_999_980  # epoch seconds on the 1-minute grid (2026-09-21T14:13:00Z)
 ENV = {"TIM_OPENMARKET_SECRET_PROVIDER": "env", "TIM_OPENMARKET_API_KEY": FAKE_KEY, "TIM_OPENMARKET_BASE_URL": BASE}
 
 
@@ -108,7 +108,8 @@ def test_secret_redaction(capsys) -> None:
     rendered = " ".join([str(caught.value), repr(caught.value), json.dumps(om.health())])
     assert FAKE_KEY not in rendered, "a provider body echoing the key must never surface"
     assert caught.value.provider_code == "INVALID_API_KEY"
-    assert transport.calls[0][1][AUTH_HEADER] == FAKE_KEY  # sent only in the request header
+    sent = transport.calls[0][1][AUTH_HEADER]
+    assert FAKE_KEY not in repr(sent) and sent.reveal() == FAKE_KEY, "wrapped until the transport reveals it"
     assert FAKE_KEY not in transport.calls[0][0], "never in the URL"
     assert FAKE_KEY not in capsys.readouterr().out
 
@@ -256,16 +257,18 @@ def test_candle_mapping() -> None:
         {"exchange": "BINANCE_FUTURES", "raw_symbol": "BTCUSDT", "interval": "MINUTE", "from": T0, "period": 180, "market_type": "FUTURES"}
     )
     assert adapted.venue == "BINANCE_FUTURES" and adapted.symbol == "BTCUSDT" and adapted.timeframe == "1m"
-    assert len(adapted.candles) == 3
+    assert len(adapted.candles) == 2, "the running third interval is excluded"
     first = adapted.candles[0]
-    assert first["open_time"] == "2026-09-21T14:13:20+00:00" and first["close_time"] == "2026-09-21T14:14:20+00:00"
-    assert [c["closed"] for c in adapted.candles] == [True, True, False], "the running interval is not closed"
-    assert adapted.total_volume == Decimal("6.000000003")
+    assert first["open_time"] == "2026-09-21T14:13:00+00:00" and first["close_time"] == "2026-09-21T14:14:00+00:00"
+    assert all(c["closed"] for c in adapted.candles)
+    assert "excluded:open_interval_candles=1" in adapted.extra_notes
+    assert "check:time_semantics=PASS" in adapted.extra_notes and "verify:time_unit=true" in adapted.extra_notes
+    assert adapted.total_volume == Decimal("4.000000002")
     assert "candles.trade_count" in adapted.missing_fields
     assert any(note.startswith("provenance:provider=openmarket") for note in adapted.extra_notes)
     assert "provenance:envelope_paths=$.points" in adapted.extra_notes
     assert any(note.startswith("provenance:response_sha256=") for note in adapted.extra_notes)
-    assert "derived:total_volume=true derivation=sum_of_TRADE_SIDE_AGNOSTIC_AGG_volume" in adapted.extra_notes
+    assert "derived:total_volume=true derivation=sum_of_closed_TRADE_SIDE_AGNOSTIC_AGG_volume complete=true" in adapted.extra_notes
 
 
 def _per_side_payload(buy_volume="3.5", sell_volume="1.25"):
@@ -310,7 +313,7 @@ def test_decimal_precision() -> None:
 def test_timestamp_mapping() -> None:
     assert to_timestamp_ns({"seconds": T0, "nanoseconds": 123456789}, label="t") == T0 * 10**9 + 123456789
     assert to_timestamp_ns(T0, label="t") == T0 * 10**9
-    assert to_timestamp_ns("2026-09-21T14:13:20.5+02:00", label="t") == (T0 - 7200) * 10**9 + 500_000_000
+    assert to_timestamp_ns("2026-09-21T14:13:00.5+02:00", label="t") == (T0 - 7200) * 10**9 + 500_000_000
     for bad in (T0 * 1000, "2026-09-21T14:13:20", {"seconds": T0, "nanoseconds": 10**9}, 1.5, True):
         with pytest.raises(OpenMarketError) as caught:
             to_timestamp_ns(bad, label="t")
@@ -341,8 +344,9 @@ def test_missing_fields() -> None:
     assert any("missing volume" in item for item in parsed.rejected)
     assert any("invalid OHLC" in item for item in parsed.rejected)
     assert parsed.unexpected_fields == {"extra"}
+    assert parse_candles({"points": []}, per_side=False).points == [], "an empty window is empty, not an error"
     with pytest.raises(OpenMarketError):
-        parse_candles({"points": []}, per_side=False)
+        parse_candles({"points": "nope"}, per_side=False)
     with pytest.raises(OpenMarketError):
         parse_candles({"a": [point(0)], "b": [point(1)]}, per_side=False)  # ambiguous envelope
     with pytest.raises(OpenMarketError):
@@ -422,3 +426,81 @@ def test_proof_script_never_claims_pass_without_http_200(monkeypatch, capsys) ->
     out = capsys.readouterr().out
     assert "AUTH=UNPROVEN" in out and "TLS=UNPROVEN" in out and "FINAL=FAIL" in out
     assert "AUTH=PASS" not in out and FAKE_KEY not in out
+
+
+def test_traceback_locals_never_contain_the_key() -> None:
+    import traceback
+    om, _, _ = client(HttpResult(401, {}, body({"error": "INVALID_API_KEY"})))
+    try:
+        om.get_points(PARAMS)
+    except OpenMarketError as error:
+        rendered = "".join(traceback.TracebackException.from_exception(error, capture_locals=True).format())
+    assert "SecretValue('@REDACTED@')" in rendered and FAKE_KEY not in rendered
+
+
+@pytest.mark.parametrize("value", ["short", "has space inside key", "tab\tkey_12345678", "ümlaut_key_12345678"])
+def test_malformed_key_is_rejected_before_any_request(value) -> None:
+    om, transport, _ = client(env={**ENV, "TIM_OPENMARKET_API_KEY": value})
+    with pytest.raises(OpenMarketError) as caught:
+        om.get_points(PARAMS)
+    assert caught.value.kind is OpenMarketErrorKind.NO_SECRET and transport.calls == []
+    assert value not in str(caught.value)
+
+
+def test_time_semantics_reject_points_outside_window_or_interval() -> None:
+    request = {"exchange": "BINANCE_FUTURES", "raw_symbol": "BTCUSDT", "interval": "MINUTE", "from": T0, "period": 120, "market_type": "FUTURES"}
+    outside = point(5)
+    wrong_last = dict(point(1), lastTimestamp={"seconds": T0 + 60 + 60, "nanoseconds": 0})
+    om, _, _ = client(ok({"points": [point(0), wrong_last, outside]}))
+    adapted = OpenMarketAdapter(om, include_per_side=False).adapt(request)
+    assert len(adapted.candles) == 1
+    assert "check:time_semantics=FAIL" in adapted.extra_notes and "verify:time_unit=false" in adapted.extra_notes
+    assert any("outside requested window" in m for m in adapted.missing_fields)
+    assert any("first/last trade outside" in m for m in adapted.missing_fields)
+    no_bounds = {key: value for key, value in point(0).items() if key not in {"firstTimestamp", "lastTimestamp"}}
+    om, _, _ = client(ok({"points": [no_bounds]}))
+    unproven = OpenMarketAdapter(om, include_per_side=False).adapt(request)
+    assert "check:time_semantics=UNPROVEN" in unproven.extra_notes and "verify:time_unit=false" in unproven.extra_notes
+
+
+def test_point_side_must_match_series_side() -> None:
+    payload = {"series": [
+        {"series": {"side": "BUY"}, "points": [dict(point(0), side="SELL"), dict(point(1), side="BUY")]},
+        {"series": {"side": "SELL"}, "points": [point(0)]},
+    ]}
+    parsed = parse_candles(payload, per_side=True)
+    assert [(p.side, p.timestamp_ns) for p in parsed.points] == [("BUY", (T0 + 60) * 10**9), ("SELL", T0 * 10**9)]
+    assert any("contradicts series side" in item for item in parsed.rejected)
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    ["0001-01-01T00:00:00+14:00", {"seconds": 10**15, "nanoseconds": 0}, {"seconds": -5, "nanoseconds": 0},
+     "2026-09-21T14:13:00.1234567+00:00", "1969-12-31T23:59:59+00:00"],
+)
+def test_hostile_timestamps_stay_in_the_taxonomy(timestamp) -> None:
+    parsed = parse_candles({"points": [dict(point(0), timestamp=timestamp), point(1)]}, per_side=False)
+    assert len(parsed.points) == 1 and len(parsed.rejected) == 1
+
+
+def test_hostile_json_stays_in_the_taxonomy() -> None:
+    for raw in (b"[" * 200_000 + b"]" * 200_000, b'{"v": ' + b"9" * 5000 + b"}", b"\xff\xfe"):
+        with pytest.raises(OpenMarketError) as caught:
+            parse_json(raw)
+        assert caught.value.kind is OpenMarketErrorKind.SCHEMA_MISMATCH
+    parsed = parse_candles({"points": [dict(point(0), volume="1e400")]}, per_side=False)
+    assert parsed.points == [] and "plausible" in parsed.rejected[0]
+
+
+def test_cli_existing_providers_run_end_to_end(capsys) -> None:
+    import io
+    import sys as _sys
+    for provider in ("generic", "mmt-structured"):
+        _sys.stdin = io.StringIO(json.dumps({"symbol": "BTCUSDT", "candles": []}))
+        try:
+            code = cli.main(["--provider", provider])
+        finally:
+            _sys.stdin = _sys.__stdin__
+        err = capsys.readouterr().err
+        # Past _market_context now; the remaining empty-candle failure is pre-existing in the pipeline.
+        assert "not subscriptable" not in err and code == 2

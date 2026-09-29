@@ -15,6 +15,7 @@ accepts only unambiguous timestamp encodings. Anything else is a
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -40,6 +41,7 @@ INTERVAL_SECONDS = {
 }
 # Epoch seconds larger than this are milliseconds or finer: ambiguous, rejected.
 _MAX_EPOCH_SECONDS = 100_000_000_000
+_MAX_DECIMAL_EXPONENT = 30  # anything larger is not a plausible price/volume
 _MAX_DEPTH = 8
 
 
@@ -51,7 +53,7 @@ def parse_json(body: bytes) -> Any:
     """JSON with exact decimals: floats never pass through binary floating point."""
     try:
         return json.loads(body.decode("utf-8"), parse_float=Decimal)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, ValueError, RecursionError):  # JSONDecodeError is a ValueError
         raise _mismatch("response is not valid JSON") from None
 
 
@@ -65,8 +67,8 @@ def to_decimal(value: Any, *, label: str) -> Decimal:
         result = Decimal(str(value)) if not isinstance(value, Decimal) else value
     except (InvalidOperation, ValueError):
         raise _mismatch(f"{label} is not numeric") from None
-    if not result.is_finite():
-        raise _mismatch(f"{label} is not finite")
+    if not result.is_finite() or result.adjusted() > _MAX_DECIMAL_EXPONENT:
+        raise _mismatch(f"{label} is not a finite plausible number")
     return result
 
 
@@ -83,19 +85,27 @@ def to_timestamp_ns(value: Any, *, label: str) -> int:
             raise _mismatch(f"{label} seconds/nanoseconds must be integers")
         if not 0 <= nanos < 1_000_000_000:
             raise _mismatch(f"{label} nanoseconds out of range")
+        if not 0 <= seconds < _MAX_EPOCH_SECONDS:
+            raise _mismatch(f"{label} seconds out of range")
         return seconds * 1_000_000_000 + nanos
     if isinstance(value, int) and not isinstance(value, bool):
         if not 0 <= value < _MAX_EPOCH_SECONDS:
             raise _mismatch(f"{label} integer is not epoch seconds (ambiguous unit)")
         return value * 1_000_000_000
     if isinstance(value, str):
+        # Python keeps microseconds: ISO strings with finer digits are rejected
+        # rather than silently truncated.
+        if re.search(r"\.\d{7,}", value):
+            raise _mismatch(f"{label} has sub-microsecond digits in ISO form")
         try:
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            raise _mismatch(f"{label} is not ISO-8601") from None
-        if parsed.tzinfo is None:
-            raise _mismatch(f"{label} has no timezone")
-        parsed = parsed.astimezone(timezone.utc)
+            if parsed.tzinfo is None:
+                raise _mismatch(f"{label} has no timezone")
+            parsed = parsed.astimezone(timezone.utc)
+        except (ValueError, OverflowError):
+            raise _mismatch(f"{label} is not a valid ISO-8601 instant") from None
+        if parsed.year < 1970:
+            raise _mismatch(f"{label} is before the epoch")
         epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
         delta = parsed - epoch
         return (delta.days * 86_400 + delta.seconds) * 1_000_000_000 + delta.microseconds * 1_000
@@ -143,6 +153,24 @@ def _is_point_list(node: Any) -> bool:
     )
 
 
+def is_empty_result(payload: Any) -> bool:
+    """True when the payload holds lists but none contains any point (empty window)."""
+    def walk(node: Any, depth: int) -> tuple[bool, bool]:  # (has_list, has_point)
+        if depth > _MAX_DEPTH:
+            return False, False
+        if isinstance(node, list):
+            if any(isinstance(item, dict) and "timestamp" in item for item in node):
+                return True, True
+            results = [walk(item, depth + 1) for item in node]
+            return True, any(point for _, point in results)
+        if isinstance(node, dict):
+            results = [walk(value, depth + 1) for value in node.values()]
+            return any(has for has, _ in results), any(point for _, point in results)
+        return False, False
+    has_list, has_point = walk(payload, 0)
+    return has_list and not has_point
+
+
 def _side_of(node: dict[str, Any]) -> str | None:
     side = node.get("side")
     if side is None and isinstance(node.get("series"), dict):
@@ -169,6 +197,8 @@ def parse_candles(payload: Any, *, per_side: bool) -> ParsedSeries:
     found: list[tuple[str, str | None, list]] = []
     _walk(payload, "$", None, 0, found)
     if not found:
+        if is_empty_result(payload):
+            return ParsedSeries()  # empty window: no points, nothing invented
         raise _mismatch("no candle point list with documented fields found")
     if not per_side and len(found) != 1:
         raise _mismatch("side-agnostic response contains more than one point list (ambiguous)")
@@ -187,6 +217,10 @@ def parse_candles(payload: Any, *, per_side: bool) -> ParsedSeries:
             missing = [name for name in CANDLE_REQUIRED if item.get(name) is None]
             if missing:
                 result.rejected.append(f"{label}: missing {','.join(missing)}")
+                continue
+            own_side = item.get("side")
+            if own_side is not None and (not per_side or own_side != side):
+                result.rejected.append(f"{label}: point side {own_side!r} contradicts series side {side!r}")
                 continue
             try:
                 point = CandlePoint(
@@ -208,6 +242,11 @@ def parse_candles(payload: Any, *, per_side: bool) -> ParsedSeries:
                 )
             except OpenMarketError as error:
                 result.rejected.append(f"{label}: {error}")
+                continue
+            if point.first_timestamp_ns is not None and point.last_timestamp_ns is not None and (
+                point.first_timestamp_ns > point.last_timestamp_ns
+            ):
+                result.rejected.append(f"{label}: firstTimestamp after lastTimestamp")
                 continue
             if point.low > min(point.open, point.close) or point.high < max(point.open, point.close) or point.volume < 0:
                 result.rejected.append(f"{label}: invalid OHLC/volume relationship")

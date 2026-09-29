@@ -107,6 +107,47 @@ def to_tim_candles(
     return candles
 
 
+@dataclass(slots=True)
+class TimeCheck:
+    """Evidence that ``timestamp`` is the interval open and inside the request.
+
+    ``PASS`` needs every point inside ``[from, from+period)``, aligned to the
+    interval grid (up to DAY) and with firstTimestamp/lastTimestamp inside
+    ``[timestamp, timestamp+interval)``. Without first/last on every point the
+    meaning of ``timestamp`` stays ``UNPROVEN``; any contradiction is ``FAIL``.
+    """
+    status: str = "UNPROVEN"
+    rejected: list[str] = field(default_factory=list)
+
+
+def check_time_semantics(
+    points: list[CandlePoint], *, interval: str, from_seconds: int, period_seconds: int
+) -> tuple[list[CandlePoint], TimeCheck]:
+    length_ns = INTERVAL_SECONDS[interval] * 1_000_000_000
+    start_ns, end_ns = from_seconds * 1_000_000_000, (from_seconds + period_seconds) * 1_000_000_000
+    check, kept, bounded = TimeCheck(), [], True
+    for point in points:
+        label = f"{point.side or 'ALL'}@{point.timestamp.isoformat()}"
+        if not start_ns <= point.timestamp_ns < end_ns:
+            check.rejected.append(f"{label}: outside requested window")
+            continue
+        if interval != "WEEK" and point.timestamp_ns % length_ns:
+            check.rejected.append(f"{label}: not aligned to the {interval} grid")
+            continue
+        first, last = point.first_timestamp_ns, point.last_timestamp_ns
+        if first is None or last is None:
+            bounded = False
+        elif not (point.timestamp_ns <= first <= last < point.timestamp_ns + length_ns):
+            check.rejected.append(f"{label}: first/last trade outside [timestamp, timestamp+interval)")
+            continue
+        kept.append(point)
+    if check.rejected:
+        check.status = "FAIL"
+    elif kept and bounded:
+        check.status = "PASS"
+    return kept, check
+
+
 @dataclass(frozen=True, slots=True)
 class SideVolumes:
     buy_volume: Decimal

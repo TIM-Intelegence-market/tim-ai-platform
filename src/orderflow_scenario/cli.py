@@ -65,6 +65,7 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
 
         levels = LevelSet(range_high=adapted.levels.get("range_high"), range_low=adapted.levels.get("range_low"), value_area_high=adapted.levels.get("value_area_high"), value_area_low=adapted.levels.get("value_area_low"), last_price=adapted.price_now or Decimal(str(last)) if last is not None else None)
 
+    notes = set(getattr(adapted, "extra_notes", ()) or ())
     return PipelineInputs(
         market_context=_market_context(adapted, adapted.observed_at),
         candles=tuple(candles),
@@ -82,6 +83,9 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
         screenshot_confidence=adapted.screenshot_confidence,
         estimated_prices=adapted.estimated_prices,
         venue_mixed=False,
+        # Adapters that cannot prove these say so explicitly (OpenMarket); others keep the default.
+        delta_definition_verified="verify:delta_definition=false" not in notes,
+        time_unit_verified="verify:time_unit=false" not in notes,
         spot_futures_separated=True,
         source_name=adapters_name(adapted),
     )
@@ -133,6 +137,14 @@ def main(argv: list[str] | None = None) -> int:
             adapt_input = payload
 
         pipeline_inputs = _pipeline_inputs(adapter, adapt_input)
+        if args.provider == "openmarket":
+            evidence = getattr(adapter, "last_input", None)
+            if evidence is not None:
+                sys.stderr.write(
+                    "adapter_evidence="
+                    + json.dumps({"missing_fields": list(evidence.missing_fields), "notes": list(evidence.extra_notes)}, sort_keys=True)
+                    + "\n"
+                )
         analysis = Pipeline(default_config()).run(pipeline_inputs)
         output = analysis.to_dict()
         sys.stdout.write(json.dumps(output, ensure_ascii=False, indent=2, sort_keys=True) + "\n")

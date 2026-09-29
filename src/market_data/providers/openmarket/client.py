@@ -25,6 +25,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 from urllib.parse import urlencode, urlsplit
 
+from config.secrets import SecretValue
+
 from .auth import OpenMarketSecretResolver
 from .errors import OpenMarketError, OpenMarketErrorKind, classify_http_status
 from .schemas import parse_json
@@ -34,6 +36,7 @@ AUTH_HEADER = "X-OpenMarket-Key"
 BASE_URL_ENV = "TIM_OPENMARKET_BASE_URL"
 RATE_LIMIT_HEADERS = ("X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Used", "X-RateLimit-Reset", "Retry-After")
 USER_AGENT = "TIM-OpenMarket/1.0"
+MAX_BODY_BYTES = 8 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +46,8 @@ class HttpResult:
     body: bytes
 
 
-Transport = Callable[[str, str, Mapping[str, str], float], HttpResult]
+# Header values may be SecretValue; transports resolve them via reveal_headers().
+Transport = Callable[[str, str, Mapping[str, Any], float], HttpResult]
 
 
 @dataclass(slots=True)
@@ -89,6 +93,11 @@ def _retry_after_seconds(value: str | None) -> float | None:
     return seconds if seconds >= 0 else None
 
 
+def reveal_headers(headers: Mapping[str, Any]) -> dict[str, str]:
+    """Only transports call this, as late as possible: callers pass a SecretValue."""
+    return {name: value.reveal() if isinstance(value, SecretValue) else value for name, value in headers.items()}
+
+
 class _PersistentHttpsTransport:
     """One reused ``HTTPSConnection``; reconnects once the server drops it."""
 
@@ -97,15 +106,18 @@ class _PersistentHttpsTransport:
         self.connection: http.client.HTTPSConnection | None = None
         self.context = ssl.create_default_context()
 
-    def __call__(self, method: str, path: str, headers: Mapping[str, str], timeout: float) -> HttpResult:
+    def __call__(self, method: str, path: str, headers: Mapping[str, Any], timeout: float) -> HttpResult:
         if self.connection is None:
             self.connection = http.client.HTTPSConnection(self.host, self.port, timeout=timeout, context=self.context)
         self.connection.timeout = timeout
         try:
-            self.connection.request(method, path, headers=dict(headers))
+            self.connection.request(method, path, headers=reveal_headers(headers))
             response = self.connection.getresponse()
-            body = response.read(8 * 1024 * 1024 + 1)
-            return HttpResult(response.status, dict(response.getheaders()), body)
+            body = response.read(MAX_BODY_BYTES + 1)
+            result = HttpResult(response.status, dict(response.getheaders()), body)
+            if len(body) > MAX_BODY_BYTES:
+                self.close()  # unread remainder must not poison the reused connection
+            return result
         except BaseException:
             self.close()
             raise
@@ -135,8 +147,8 @@ class OpenMarketClient:
         self.secrets = secrets or OpenMarketSecretResolver(env)
         self.timeout_seconds = max(1.0, min(timeout_seconds, 60.0))
         self.max_retries = max(0, min(max_retries, 5))
-        self.backoff_seconds = max(0.0, backoff_seconds)
-        self.max_retry_after_seconds = max_retry_after_seconds
+        self.backoff_seconds = max(0.0, min(backoff_seconds, 5.0))
+        self.max_retry_after_seconds = max(0.0, min(max_retry_after_seconds, 60.0))
         self.sleep = sleep
         self.rate_limit = RateLimitState()
         self.last_success: str | None = None
@@ -185,10 +197,11 @@ class OpenMarketClient:
     def get_points(self, params: Mapping[str, str | int]) -> PointsResponse:
         """One logical read with bounded retries. Raises ``OpenMarketError``."""
         transport = self._resolve_transport()
-        key = self.secrets.api_key()  # NO_SECRET fails closed before any request
+        # NO_SECRET fails closed before any request. The key stays wrapped in a
+        # SecretValue here, so tracebacks with captured locals never show it.
         query = urlencode({name: str(value) for name, value in params.items()})
         path = f"{self._path_prefix}{POINTS_PATH}?{query}"
-        headers = {AUTH_HEADER: key.reveal(), "Accept": "application/json", "User-Agent": USER_AGENT}
+        headers = {AUTH_HEADER: self.secrets.api_key(), "Accept": "application/json", "User-Agent": USER_AGENT}
         attempt = 0
         while True:
             requested_at = datetime.now(timezone.utc)
@@ -201,20 +214,21 @@ class OpenMarketClient:
                 error = OpenMarketError(OpenMarketErrorKind.TLS_FAILURE, "TLS handshake failed")
             except (TimeoutError, socket.timeout):
                 error = OpenMarketError(OpenMarketErrorKind.TIMEOUT, "request timed out")
-            except (OSError, http.client.HTTPException):
+            except (OSError, http.client.HTTPException, ValueError):
+                # ValueError covers header encoding failures; its text is not reused.
                 error = OpenMarketError(OpenMarketErrorKind.NETWORK_FAILURE, "network failure")
             else:
                 latency = time.perf_counter() - started
                 self.reachable = True
                 self._record_rate_limit(result.headers, result.status)
                 if result.status == 200:
-                    if len(result.body) > 8 * 1024 * 1024:
+                    if len(result.body) > MAX_BODY_BYTES:
                         raise self._fail(OpenMarketError(OpenMarketErrorKind.SCHEMA_MISMATCH, "response larger than 8 MiB"))
-                    self.authenticated = True
                     try:
                         payload = parse_json(result.body)
                     except OpenMarketError as parse_error:
                         raise self._fail(parse_error) from None
+                    self.authenticated = True  # a parsable 200, not just any 200
                     self.last_success = requested_at.isoformat()
                     self.last_error = None
                     return PointsResponse(
