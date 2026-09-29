@@ -2,10 +2,10 @@
 
 | Feld | Wert |
 |---|---|
-| Version | 0.1 |
-| Status | **ENTWURF – nicht freigegeben** |
+| Version | 1.0 |
+| Status | **FREIGEGEBEN** |
 | Erstellt | 2026-09-29 |
-| Freigabe | offen (Uzi) |
+| Freigabe | 2026-09-29, Uzi |
 | Bezug | Bauplan „TIM Research Lab“ (Paket R0), TIM Constitution Band 8 |
 
 Dieses Protokoll wird **vor dem ersten Test** festgeschrieben. Nach der Freigabe
@@ -38,7 +38,7 @@ Ein Setup gilt als profitabel, wenn es **alle fünf** Bedingungen erfüllt:
 | K1 | Erwartungswert nach Gebühren, Slippage und Funding | Holdout | > 0 R je Trade |
 | K2 | schlägt zufällige Einstiege, korrigiert für alle registrierten Varianten | Holdout | Holm-Bonferroni, Familien-α = 5 %, m = Zahl aller Registereinträge (Abschnitt 7) |
 | K3 | Mindestzahl an Trades | Holdout | Short ≥ 200, Mid ≥ 30, Long ≥ 10 |
-| K4 | maximaler Drawdown | Holdout | ≤ **20 %** bei 1 % Risiko je Trade (**PLATZHALTER, Uzi legt fest**) |
+| K4 | maximaler Drawdown | Holdout | ≤ **20 %** bei 1 % Risiko je Trade |
 | K5 | Papier-Betrieb im erwarteten Band | R7, 4–8 Wochen | „bestätigt“ oder „kein Widerspruch“ (Abschnitt 9) |
 
 Unterschreitet ein Setup K3, lautet das Urteil **KEIN URTEIL**, nicht BESTANDEN.
@@ -337,7 +337,7 @@ dasselbe Ergebnis mit demselben Hash.
 
 | # | Punkt | Wer |
 |---|---|---|
-| O1 | Drawdown-Grenze für K4 (Platzhalter 20 % bei 1 % Risiko je Trade) | Uzi |
+| O1 | ~~Drawdown-Grenze für K4~~ erledigt: 20 % bei 1 % Risiko je Trade | Uzi |
 | O2 | Datenweg: (a) Domains in der Umgebung freigeben oder (b) Download auf dem Mac | Uzi |
 | O3 | Archivbeginn und Gebührenstufe gegen die Quellen prüfen (Abschnitte 3.1, 4.4) | R1 |
 
@@ -349,3 +349,4 @@ Kriterien und Raster nur noch erlaubt, wenn sie strenger machen.
 | Datum | Version | Änderung | Grund | Bis dahin gesehene Daten |
 |---|---|---|---|---|
 | 2026-09-29 | 0.1 | Entwurf erstellt, nach Gegenprüfung präzisiert (M3 beide Richtungen, m = 48) | R0 | keine Labordaten |
+| 2026-09-29 | 1.0 | Freigegeben; Drawdown-Grenze K4 = 20 % bei 1 % Risiko je Trade festgelegt | Freigabe durch Uzi | keine Labordaten |
