@@ -252,7 +252,8 @@ def test_bounded_retry() -> None:
 # --- parsing and mapping -----------------------------------------------------------------
 
 def test_candle_mapping() -> None:
-    om, _, _ = client(ok({"series": {"exchange": "BINANCE_FUTURES"}, "points": [point(0), point(1), point(2)]}))
+    # Structural fallback shape (no documented "series" envelope).
+    om, _, _ = client(ok({"meta": {"exchange": "BINANCE_FUTURES"}, "points": [point(0), point(1), point(2)]}))
     adapted = OpenMarketAdapter(om, include_per_side=False, now=lambda: datetime.fromtimestamp(T0 + 150, timezone.utc)).adapt(
         {"exchange": "BINANCE_FUTURES", "raw_symbol": "BTCUSDT", "interval": "MINUTE", "from": T0, "period": 180, "market_type": "FUTURES"}
     )
@@ -267,14 +268,26 @@ def test_candle_mapping() -> None:
     assert "candles.trade_count" in adapted.missing_fields
     assert any(note.startswith("provenance:provider=openmarket") for note in adapted.extra_notes)
     assert "provenance:envelope_paths=$.points" in adapted.extra_notes
+    assert "check:documented_envelope=FAIL" in adapted.extra_notes, "the fallback is never documented evidence"
     assert any(note.startswith("provenance:response_sha256=") for note in adapted.extra_notes)
     assert "derived:total_volume=true derivation=sum_of_closed_TRADE_SIDE_AGNOSTIC_AGG_volume complete=true" in adapted.extra_notes
 
 
+def rest_point(offset_minutes: int, volume: str) -> dict:
+    """point() in the documented REST form: Point wrapper, {s, ns} timestamps."""
+    raw = point(offset_minutes, volume=volume)
+    for name in ("timestamp", "firstTimestamp", "lastTimestamp"):
+        raw[name] = {"s": raw[name]["seconds"], "ns": raw[name]["nanoseconds"]}
+    return {"Point": raw}
+
+
 def _per_side_payload(buy_volume="3.5", sell_volume="1.25"):
+    """Documented TRADE_AGG envelope: one series per side, side in series[].id.side."""
+    def series_id(side):
+        return {"type": "TRADE_AGG", "exchange": "BINANCE_FUTURES", "rawSymbol": "BTCUSDT", "interval": "MINUTE", "side": side}
     return {"series": [
-        {"series": {"side": "BUY"}, "points": [point(0, volume=buy_volume)]},
-        {"series": {"side": "SELL"}, "points": [point(0, volume=sell_volume), point(1, volume="9")]},
+        {"id": series_id("BUY"), "points": [rest_point(0, buy_volume)]},
+        {"id": series_id("SELL"), "points": [rest_point(0, sell_volume), rest_point(1, "9")]},
     ]}
 
 
@@ -464,7 +477,8 @@ def test_time_semantics_reject_points_outside_window_or_interval() -> None:
 
 
 def test_point_side_must_match_series_side() -> None:
-    payload = {"series": [
+    # Fallback path only: the documented path reads the side from series[].id.side.
+    payload = {"data": [
         {"series": {"side": "BUY"}, "points": [dict(point(0), side="SELL"), dict(point(1), side="BUY")]},
         {"series": {"side": "SELL"}, "points": [point(0)]},
     ]}

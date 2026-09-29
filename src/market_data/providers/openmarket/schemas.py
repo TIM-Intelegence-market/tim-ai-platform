@@ -1,16 +1,24 @@
 """Deterministic parsing of OpenMarket ``GET /v1/points`` candle responses.
 
-Verified (owner-checked documentation, 2026-09-29): candle point fields
-``open high low close volume timestamp firstTimestamp lastTimestamp`` for
-``TRADE_SIDE_AGNOSTIC_AGG``; ``TRADE_AGG`` returns separate BUY and SELL series.
+Documented REST schema (owner-verified official docs, 2026-09-29) - the
+primary, strict path:
 
-NOT verified: the JSON envelope around the points, where the BUY/SELL side is
-carried in a ``TRADE_AGG`` response, and the timestamp encoding of REST points.
-The parser therefore does not assume envelope key names. It finds the point
-lists by their documented fields, reads the side from the nearest enclosing
-object (``side`` or ``series.side``, as documented for WebSocket series), and
-accepts only unambiguous timestamp encodings. Anything else is a
-``SCHEMA_MISMATCH``; nothing is guessed or filled in.
+    {"series": [{"id": {"type", "exchange", "rawSymbol", "normalizedSymbol",
+                        "category", "interval", "coin", ["side"]},
+                 "points": [{"Point": {"open", "high", "low", "close", "volume",
+                                       "timestamp": {"s"[, "ns"]},
+                                       "firstTimestamp": {"s", "ns"},
+                                       "lastTimestamp": {"s", "ns"}}}]}]}
+
+- ``TRADE_AGG`` carries BUY/SELL in ``series[].id.side``.
+- REST timestamps are ``{"s"[, "ns"]}``; the WebSocket schema
+  ``{"seconds"[, "nanoseconds"]}`` is a different, separately supported shape.
+  The two are never mixed.
+- Any deviation on the documented path is a ``SCHEMA_MISMATCH``.
+
+A structural fallback (point lists found by their fields) remains for
+non-documented shapes. Its result is marked ``documented_envelope=False`` and
+the proof never accepts it as provider evidence. Nothing is guessed or filled in.
 """
 from __future__ import annotations
 
@@ -19,7 +27,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Mapping
 
 from .errors import OpenMarketError, OpenMarketErrorKind
 
@@ -72,15 +80,41 @@ def to_decimal(value: Any, *, label: str) -> Decimal:
     return result
 
 
+REST_TIMESTAMP_KEYS = (frozenset({"s"}), frozenset({"s", "ns"}))
+WEBSOCKET_TIMESTAMP_KEYS = (frozenset({"seconds"}), frozenset({"seconds", "nanoseconds"}))
+
+
+def timestamp_encoding(value: Any) -> str:
+    """REST ``{s[,ns]}``, WEBSOCKET ``{seconds[,nanoseconds]}``, EPOCH_SECONDS, ISO8601 or UNKNOWN."""
+    if isinstance(value, dict):
+        keys = frozenset(value)
+        if keys in REST_TIMESTAMP_KEYS:
+            return "REST"
+        if keys in WEBSOCKET_TIMESTAMP_KEYS:
+            return "WEBSOCKET"
+        return "UNKNOWN"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return "EPOCH_SECONDS"
+    if isinstance(value, str):
+        return "ISO8601"
+    return "UNKNOWN"
+
+
 def to_timestamp_ns(value: Any, *, label: str) -> int:
     """UTC epoch nanoseconds from a documented-safe encoding.
 
-    Accepted: ``{"seconds": s, "nanoseconds": n}`` (documented for WebSocket
-    trades), integer epoch seconds (the unit of the documented ``from``
-    parameter), or an ISO-8601 string with an explicit offset.
+    Accepted: REST ``{"s": s[, "ns": n]}`` and WebSocket
+    ``{"seconds": s[, "nanoseconds": n]}`` (exact key sets, never mixed),
+    integer epoch seconds, or an ISO-8601 string with an explicit offset.
     """
     if isinstance(value, dict):
-        seconds, nanos = value.get("seconds"), value.get("nanoseconds", 0)
+        encoding = timestamp_encoding(value)
+        if encoding == "REST":
+            seconds, nanos = value.get("s"), value.get("ns", 0)
+        elif encoding == "WEBSOCKET":
+            seconds, nanos = value.get("seconds"), value.get("nanoseconds", 0)
+        else:
+            raise _mismatch(f"{label} has mixed or unknown timestamp keys {sorted(value)}")
         if not isinstance(seconds, int) or isinstance(seconds, bool) or not isinstance(nanos, int) or isinstance(nanos, bool):
             raise _mismatch(f"{label} seconds/nanoseconds must be integers")
         if not 0 <= nanos < 1_000_000_000:
@@ -142,6 +176,14 @@ class ParsedSeries:
     rejected: list[str] = field(default_factory=list)
     unexpected_fields: set[str] = field(default_factory=set)
     envelope_paths: list[str] = field(default_factory=list)
+    documented_envelope: bool = False
+    series_ids: list[dict[str, str]] = field(default_factory=list)
+    side_location: str | None = None
+    timestamp_encodings: set[str] = field(default_factory=set)
+
+
+SERIES_ID_FIELDS = ("type", "exchange", "rawSymbol", "normalizedSymbol", "category", "interval", "coin", "side")
+EXPECTED_ID_FIELDS = ("type", "exchange", "rawSymbol", "interval")
 
 
 def _is_point_list(node: Any) -> bool:
@@ -193,7 +235,96 @@ def _walk(node: Any, path: str, side: str | None, depth: int, found: list[tuple[
             _walk(value, f"{path}[{index}]", side, depth + 1, found)
 
 
-def parse_candles(payload: Any, *, per_side: bool) -> ParsedSeries:
+def _build_point(item: dict, label: str, side: str | None, result: ParsedSeries, *, rest_only: bool) -> None:
+    result.unexpected_fields.update(set(item) - CANDLE_FIELDS - ({"side"} if not rest_only else set()))
+    missing = [name for name in CANDLE_REQUIRED if item.get(name) is None]
+    if missing:
+        result.rejected.append(f"{label}: missing {','.join(missing)}")
+        return
+    if not rest_only:
+        own_side = item.get("side")
+        if own_side is not None and own_side != side:
+            result.rejected.append(f"{label}: point side {own_side!r} contradicts series side {side!r}")
+            return
+    stamps = {name: item[name] for name in ("timestamp", "firstTimestamp", "lastTimestamp") if item.get(name) is not None}
+    encodings = {timestamp_encoding(value) for value in stamps.values()}
+    if rest_only and encodings != {"REST"}:
+        result.rejected.append(f"{label}: REST timestamp schema {{s[,ns]}} expected, got {sorted(encodings)}")
+        return
+    try:
+        point = CandlePoint(
+            side=side,
+            timestamp_ns=to_timestamp_ns(item["timestamp"], label=f"{label}.timestamp"),
+            open=to_decimal(item["open"], label=f"{label}.open"),
+            high=to_decimal(item["high"], label=f"{label}.high"),
+            low=to_decimal(item["low"], label=f"{label}.low"),
+            close=to_decimal(item["close"], label=f"{label}.close"),
+            volume=to_decimal(item["volume"], label=f"{label}.volume"),
+            first_timestamp_ns=(
+                to_timestamp_ns(stamps["firstTimestamp"], label=f"{label}.firstTimestamp") if "firstTimestamp" in stamps else None
+            ),
+            last_timestamp_ns=(
+                to_timestamp_ns(stamps["lastTimestamp"], label=f"{label}.lastTimestamp") if "lastTimestamp" in stamps else None
+            ),
+        )
+    except OpenMarketError as error:
+        result.rejected.append(f"{label}: {error}")
+        return
+    if point.first_timestamp_ns is not None and point.last_timestamp_ns is not None and (
+        point.first_timestamp_ns > point.last_timestamp_ns
+    ):
+        result.rejected.append(f"{label}: firstTimestamp after lastTimestamp")
+        return
+    if point.low > min(point.open, point.close) or point.high < max(point.open, point.close) or point.volume < 0:
+        result.rejected.append(f"{label}: invalid OHLC/volume relationship")
+        return
+    result.timestamp_encodings.update(encodings)
+    result.points.append(point)
+
+
+def _parse_documented(series: Any, *, per_side: bool, expected: Mapping[str, str] | None) -> ParsedSeries:
+    """The documented REST envelope; every structural deviation is a mismatch."""
+    if not isinstance(series, list):
+        raise _mismatch("series must be a list")
+    result = ParsedSeries(documented_envelope=True, side_location="series[].id.side" if per_side else None)
+    if not per_side and len(series) > 1:
+        raise _mismatch("side-agnostic response contains more than one series (one instrument was requested)")
+    seen_sides: set[str] = set()
+    for index, item in enumerate(series):
+        where = f"series[{index}]"
+        if not isinstance(item, dict) or not isinstance(item.get("id"), dict) or not isinstance(item.get("points"), list):
+            raise _mismatch(f"{where} must contain an id object and a points list")
+        series_id = item["id"]
+        for name in EXPECTED_ID_FIELDS:
+            if expected is not None and series_id.get(name) != expected.get(name):
+                raise _mismatch(f"{where}.id.{name} does not match the request")
+        side = series_id.get("side")
+        if per_side:
+            if side not in SIDES:
+                raise _mismatch(f"{where}.id.side missing or invalid (BUY|SELL expected)")
+            if side in seen_sides:
+                raise _mismatch(f"{where}.id.side duplicate {side} series")
+            seen_sides.add(side)
+        elif "side" in series_id:
+            raise _mismatch(f"{where}.id.side present on a side-agnostic series")
+        result.series_ids.append({name: series_id[name] for name in SERIES_ID_FIELDS if isinstance(series_id.get(name), str)})
+        result.envelope_paths.append(f"$.{where}.points[*].Point")
+        for point_index, wrapper in enumerate(item["points"]):
+            label = f"{where}.points[{point_index}]"
+            if not isinstance(wrapper, dict) or not isinstance(wrapper.get("Point"), dict):
+                raise _mismatch(f"{label} must be a {{\"Point\": {{...}}}} wrapper")
+            _build_point(wrapper["Point"], label, side if per_side else None, result, rest_only=True)
+    return result
+
+
+def parse_candles(payload: Any, *, per_side: bool, expected: Mapping[str, str] | None = None) -> ParsedSeries:
+    """Documented envelope first (strict); structural fallback only for other shapes.
+
+    ``expected`` (type, exchange, rawSymbol, interval) is checked against every
+    ``series[].id`` on the documented path.
+    """
+    if isinstance(payload, dict) and "series" in payload:
+        return _parse_documented(payload["series"], per_side=per_side, expected=expected)
     found: list[tuple[str, str | None, list]] = []
     _walk(payload, "$", None, 0, found)
     if not found:
@@ -212,44 +343,5 @@ def parse_candles(payload: Any, *, per_side: bool) -> ParsedSeries:
     for path, side, items in found:
         result.envelope_paths.append(path)
         for index, item in enumerate(items):
-            label = f"{path}[{index}]"
-            result.unexpected_fields.update(set(item) - CANDLE_FIELDS)
-            missing = [name for name in CANDLE_REQUIRED if item.get(name) is None]
-            if missing:
-                result.rejected.append(f"{label}: missing {','.join(missing)}")
-                continue
-            own_side = item.get("side")
-            if own_side is not None and (not per_side or own_side != side):
-                result.rejected.append(f"{label}: point side {own_side!r} contradicts series side {side!r}")
-                continue
-            try:
-                point = CandlePoint(
-                    side=side if per_side else None,
-                    timestamp_ns=to_timestamp_ns(item["timestamp"], label=f"{label}.timestamp"),
-                    open=to_decimal(item["open"], label=f"{label}.open"),
-                    high=to_decimal(item["high"], label=f"{label}.high"),
-                    low=to_decimal(item["low"], label=f"{label}.low"),
-                    close=to_decimal(item["close"], label=f"{label}.close"),
-                    volume=to_decimal(item["volume"], label=f"{label}.volume"),
-                    first_timestamp_ns=(
-                        to_timestamp_ns(item["firstTimestamp"], label=f"{label}.firstTimestamp")
-                        if item.get("firstTimestamp") is not None else None
-                    ),
-                    last_timestamp_ns=(
-                        to_timestamp_ns(item["lastTimestamp"], label=f"{label}.lastTimestamp")
-                        if item.get("lastTimestamp") is not None else None
-                    ),
-                )
-            except OpenMarketError as error:
-                result.rejected.append(f"{label}: {error}")
-                continue
-            if point.first_timestamp_ns is not None and point.last_timestamp_ns is not None and (
-                point.first_timestamp_ns > point.last_timestamp_ns
-            ):
-                result.rejected.append(f"{label}: firstTimestamp after lastTimestamp")
-                continue
-            if point.low > min(point.open, point.close) or point.high < max(point.open, point.close) or point.volume < 0:
-                result.rejected.append(f"{label}: invalid OHLC/volume relationship")
-                continue
-            result.points.append(point)
+            _build_point(item, f"{path}[{index}]", side if per_side else None, result, rest_only=False)
     return result

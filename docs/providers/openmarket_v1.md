@@ -10,38 +10,54 @@ Stand 2026-09-29. Scope: `ORDERFLOW_RESEARCH_PROVIDER`. Die Live-Ingestion über
 | Direkter Zugriff aus der Claude-Cloud-Umgebung | `CLAUDE_DIRECT_DOC_ACCESS=BLOCKED` (Egress-Proxy sperrt `openmarket.xyz`) |
 | Echte API-Antwort | Noch keine. Die Belege liefert `scripts/openmarket_api_proof.py` auf dem Zielhost. |
 
-## Belegt
+## Belegt (offizielle Doku, vom Owner geprüft)
 
-- **REST:** `GET /v1/points`.
-- **Auth:** Header `X-OpenMarket-Key`. Der Key ist ein serverseitiges Secret.
-- **Parameter:**
-  - `type`, `exchange`, `rawSymbol` (alternativ `coin`, `normalizedSymbol`);
-  - `from` = Unix-Sekunden (inklusiv), `period` = Dauer in Sekunden;
-  - Intervalle `MINUTE, FIVE_MINUTES, FIFTEEN_MINUTES, THIRTY_MINUTES, HOUR, FOUR_HOURS, DAY, WEEK`.
-- **Datentypen:** `TRADE_SIDE_AGNOSTIC_AGG, TRADE_AGG, OPEN_INTEREST_AGG, FUNDING_RATE_AGG, LIQUIDATION_AGG, VOLUME_PROFILE_AGG, TPO_AGG, BLOCK_BOOK_SNAPSHOT_AGG, HYPERLIQUID_LIQUIDATION_AGG, HYPERLIQUID_TRIGGER_LIQUIDITY_AGG`.
-- **Candle-Felder (`TRADE_SIDE_AGNOSTIC_AGG`):** `open high low close volume timestamp firstTimestamp lastTimestamp`.
-- **`TRADE_AGG`:** getrennte BUY- und SELL-Serien.
-- **Rate-Limit:** gewichtsbasiert. Header `X-RateLimit-Limit/-Remaining/-Used/-Reset`, dazu `Retry-After` (vor allem bei 429).
-- **Fehler:**
-  - `400 INVALID_PARAMS | INVALID_EXCHANGE | INVALID_SYMBOL | INVALID_TIMEFRAME`;
-  - `401 INVALID_API_KEY`;
-  - `403` für Typ/Tier, History-Tiefe, Aggregation oder maximale Punktzahl;
-  - `429`, `500 INTERNAL_ERROR`, `504 TIMEOUT`.
-- **WebSocket** (nur Audit, siehe unten): `public/authenticate`, `public/subscribe`, Typ `TRADE` mit `series.{exchange,symbol,normalizedSymbol,category,side}` und `trade.{id,price,amount,timestamp.seconds,timestamp.nanoseconds}`. `trade.id` ist die Exchange-Trade-ID.
+| Punkt | Status | Umsetzung |
+|---|---|---|
+| Basis-URL | VERIFIED | `https://api.openmarket.xyz` (Default); `TIM_OPENMARKET_BASE_URL` überschreibt, nur `https` |
+| Endpunkt und Auth | VERIFIED | `GET /v1/points`, Header `X-OpenMarket-Key` |
+| Query-Parameter (Candles) | VERIFIED | `type`, `exchange`, `rawSymbol`, `interval`, `from` (Unix-Sekunden, inklusiv), `period` (Sekunden). Die Tests prüfen den exakten Wire-String. |
+| Intervalle | VERIFIED | `MINUTE, FIVE_MINUTES, FIFTEEN_MINUTES, THIRTY_MINUTES, HOUR, FOUR_HOURS, DAY, WEEK` |
+| REST-Hülle | VERIFIED_FROM_DOCS | `series[] → id → points[] → Point`; primärer, strikter Pfad (siehe unten) |
+| REST-Zeitstempel | VERIFIED_FROM_DOCS | `{"s"}` oder `{"s","ns"}` |
+| Ort der Seite bei `TRADE_AGG` (REST) | VERIFIED_FROM_DOCS | `series[].id.side` = `BUY` \| `SELL` |
+| Candle-Felder | VERIFIED | `open high low close volume timestamp firstTimestamp lastTimestamp` |
+| Rate-Limit | VERIFIED | gewichtsbasiert; `X-RateLimit-Limit/-Remaining/-Used/-Reset`, `Retry-After` |
+| Fehler | VERIFIED | `400 INVALID_PARAMS \| INVALID_EXCHANGE \| INVALID_SYMBOL \| INVALID_TIMEFRAME`, `401 INVALID_API_KEY`, `403` (Tier/Tiefe/Aggregation/Punktzahl), `429`, `500 INTERNAL_ERROR`, `504 TIMEOUT` |
+| WebSocket | VERIFIED (nur Audit) | `public/authenticate`, `public/subscribe`, `TRADE` mit `trade.id` (Exchange-Trade-ID), Zeitstempel `{"seconds","nanoseconds"}`; `TRADE_AGG`: `series.side` = Aggressor-Seite des Batches |
 
-## Nicht belegt – im Code bewusst nicht angenommen
+Dokumentierte REST-Antwort (`TRADE_SIDE_AGNOSTIC_AGG`, gekürzt):
+
+```json
+{"series": [{"id": {"type": "TRADE_SIDE_AGNOSTIC_AGG", "exchange": "BINANCE_FUTURES", "rawSymbol": "BTCUSDT",
+                    "normalizedSymbol": "BTC-USDT", "category": "PERPETUAL", "interval": "HOUR", "coin": "BTC"},
+             "points": [{"Point": {"open": 66499.9, "high": 66639.0, "low": 66400.0, "close": 66467.8, "volume": 2852.833,
+                                   "timestamp": {"s": 1774800000},
+                                   "firstTimestamp": {"s": 1774800003, "ns": 234000000},
+                                   "lastTimestamp": {"s": 1774803599, "ns": 649000000}}}]}]}
+```
+
+### Strikter dokumentierter Pfad
+
+- `series` muss eine Liste sein. Side-agnostic: höchstens eine Serie, weil genau ein Instrument angefragt wird.
+- Jede Serie hat `id` (Objekt) und `points` (Liste). `id.type/exchange/rawSymbol/interval` müssen der Anfrage entsprechen (`check:series_id`).
+- `TRADE_AGG`: `id.side` ∈ {BUY, SELL}, keine Seite doppelt. Side-agnostic: kein `id.side`.
+- Jeder Punkt ist `{"Point": {...}}`; Zeitstempel ausschließlich im REST-Schema `{s[,ns]}`.
+- Jede strukturelle Abweichung → `SCHEMA_MISMATCH`. Punkte mit ungültigen Werten → `missing_fields`, nie ersetzt.
+
+REST- und WebSocket-Zeitstempel sind zwei getrennte Schemas. Gemischte Schlüssel (`s`+`nanoseconds`, `seconds`+`ns`, zusätzliche Schlüssel) werden abgelehnt. Auf dem REST-Pfad wird ein WebSocket-Zeitstempel abgelehnt.
+
+Die strukturelle Erkennung aus dem ersten Entwurf bleibt nur als Fallback für Antworten ohne `series`-Hülle. Ihr Ergebnis trägt `check:documented_envelope=FAIL` und zählt im Proof nie als Beleg.
+
+## Weiterhin nicht belegt
 
 | Punkt | Umgang im Code | Klärung |
 |---|---|---|
-| Basis-URL (Host) | muss als `TIM_OPENMARKET_BASE_URL` gesetzt werden, nur `https` | Doku/Konto |
-| JSON-Hülle um die Punkte | Punktlisten werden an den dokumentierten Feldern erkannt, der Pfad landet in der Provenienz (`envelope_paths`). Mehrdeutig → `SCHEMA_MISMATCH` | `ENVELOPE_SHAPE` im Proof |
-| Ort der BUY/SELL-Kennung bei `TRADE_AGG` | `side` oder `series.side` des nächsten umschließenden Objekts; fehlt sie → `SCHEMA_MISMATCH` | Proof mit `TRADE_AGG` |
-| Zeitstempel-Kodierung der REST-Punkte | akzeptiert `{seconds,nanoseconds}`, ganzzahlige Unix-Sekunden, ISO-8601 mit Offset (höchstens µs). Millisekunden-Größen, Werte vor 1970 und Überläufe werden als mehrdeutig bzw. ungültig abgelehnt | Proof |
-| `timestamp` = Beginn des Intervalls? | wird geprüft, nicht angenommen. Der Punkt muss in `[from, from+period)` liegen, auf dem Intervall-Raster sitzen, und `firstTimestamp ≤ lastTimestamp` muss in `[timestamp, timestamp+Intervall)` liegen. Ergebnis: `check:time_semantics=PASS\|UNPROVEN\|FAIL`; `time_unit_verified` im Pipeline-Input nur bei `PASS` | Proof |
-| Parametername für das Intervall | `interval` (aus der Doku-Übersicht; im Proof bestätigen) | Proof |
-| BUY/SELL = Aggressor-Seite? | nicht angenommen: `net_delta`/`aggressive_*` bleiben leer, außer `side_is_aggressor=True` | Doku-Definition |
-| Volumen-Einheit (Base/Quote) | wird unverändert übernommen (`units=as_reported_by_provider`) | Doku |
-| Schemas von `VOLUME_PROFILE_AGG`, `OPEN_INTEREST_AGG`, `FUNDING_RATE_AGG`, `LIQUIDATION_AGG`, `TPO_AGG` | nicht implementiert (keine Felddefinition belegt) | Doku, dann v1.1 |
+| REST `TRADE_AGG`: BUY/SELL = Aggressor-Seite? | Nur für WebSocket dokumentiert, wird nicht auf REST übertragen. `net_delta`/`aggressive_*` bleiben leer (`REST_SIDE_AGGRESSOR_SEMANTICS=UNPROVEN`), außer `side_is_aggressor=True` | REST-Doku oder echter Proof |
+| `timestamp` = Beginn des Intervalls | wird geprüft, nicht angenommen: Fenster `[from, from+period)`, Intervall-Raster, `first/lastTimestamp` in `[timestamp, timestamp+Intervall)` → `check:time_semantics` (im Beispiel der Doku erfüllt) | echter Proof |
+| Volumen-Einheit (Base/Quote) | unverändert übernommen (`units=as_reported_by_provider`) | Doku |
+| Schemas von `VOLUME_PROFILE_AGG`, `OPEN_INTEREST_AGG`, `FUNDING_RATE_AGG`, `LIQUIDATION_AGG`, `TPO_AGG` | nicht implementiert | Doku, dann v1.1 |
+| echte Authentifizierung und echte Daten | nicht bewiesen (Cloud-Egress gesperrt, kein Key) | `scripts/openmarket_api_proof.py` auf dem Zielhost |
 
 ## Architektur
 
@@ -65,7 +81,7 @@ OpenMarket REST
 | `TIM_OPENMARKET_KEYCHAIN_SERVICE` / `_ACCOUNT` | Standard `com.tim.openmarket` / `tim` |
 | `TIM_OPENMARKET_SECRET_FILE` | Standard `~/Library/Application Support/TIM/openmarket-api-key`; Modus 0600, gleicher Eigentümer |
 | `TIM_OPENMARKET_API_KEY` | nur bei `env` |
-| `TIM_OPENMARKET_BASE_URL` | Pflicht, `https://…` |
+| `TIM_OPENMARKET_BASE_URL` | optional; überschreibt den dokumentierten Default `https://api.openmarket.xyz` (nur `https`) |
 
 **Schutz des Keys:**
 - Der Key steht nur im Request-Header, nie in der URL.
@@ -78,7 +94,7 @@ OpenMarket REST
 
 | Lage | Klasse | TIM-Reaktion |
 |---|---|---|
-| kein Key / keine Basis-URL | `NO_SECRET` / `NOT_CONFIGURED` | kein Request; CLI endet mit Exit 3, keine Analyse |
+| kein Key / ungültige Override-URL | `NO_SECRET` / `NOT_CONFIGURED` | kein Request; CLI endet mit Exit 3, keine Analyse |
 | Key ungültig oder abgelaufen | `INVALID_SECRET` (401) | Abbruch ohne Retry, `authenticated=false` |
 | Typ, Tier oder Tiefe nicht erlaubt | `FORBIDDEN` (403) | Abbruch; per-Side-Anfrage → nur als fehlend markiert |
 | Rate-Limit | `RATE_LIMITED` (429) | `Retry-After` beachten (Obergrenze 30 s), sonst sofortiger Abbruch; Zustand in `rate_limit_state` |
@@ -138,12 +154,15 @@ Das gehört in eine eigene Mission. `binance_ws.py`, Catch-up, Durable-Ingestion
 ## Nachweis auf dem Zielhost
 
 ```
-TIM_OPENMARKET_SECRET_PROVIDER=file TIM_OPENMARKET_BASE_URL=https://… \
-  python scripts/openmarket_api_proof.py --exchange BINANCE_FUTURES --raw-symbol BTCUSDT
+TIM_OPENMARKET_SECRET_PROVIDER=file \
+  python scripts/openmarket_api_proof.py --exchange BINANCE_FUTURES --raw-symbol BTCUSDT --per-side
 ```
 
-- Ausgegeben werden nur Statusfelder. `AUTH` und `TLS` werden nur bei HTTP 200 mit gültigem Schema zu `PASS`, sonst `UNPROVEN`.
-- `ENVELOPE_SHAPE` zeigt nur Schlüsselnamen und Typen. Damit werden die offenen Punkte aus „Nicht belegt“ geklärt.
+- `FINAL=PASS` nur bei: `HTTP_STATUS=200`, `DOCUMENTED_ENVELOPE=PASS`, `REST_TIMESTAMP_SCHEMA=PASS`, `SERIES_ID=PASS`, `WINDOW_SEMANTICS=PASS`, `NORMALIZATION=PASS`; mit `--per-side` zusätzlich `SIDE_LOCATION=PASS`.
+- `AUTH` und `TLS` werden nur dann `PASS`, sonst `UNPROVEN` (ein Proxy oder Gateway kann jede andere Antwort liefern).
+- `ENVELOPE_SHAPE` (Schlüsselnamen und Typen) ist nur Diagnose, kein Kriterium.
+- `REST_SIDE_AGGRESSOR_SEMANTICS` bleibt `UNPROVEN`; der Proof beweist sie nicht.
+- Ausgegeben werden nur Statusfelder, nie der Key oder ein Response-Body.
 
 ## Rollback
 

@@ -6,11 +6,12 @@ per-side series) through ``OpenMarketClient`` and returns the same
 inference: whatever OpenMarket does not deliver is listed in
 ``missing_fields``; every derived value is labelled in ``extra_notes``.
 
-Aggressor semantics: ``TRADE_AGG`` is documented as separate BUY and SELL
-series, but not (in the verified facts) as taker/aggressor volume. TIM's
-``aggressive_*_volume`` and ``net_delta`` are aggressor quantities, so they are
-only derived when the caller asserts ``side_is_aggressor=True`` after
-verifying that definition; by default they stay missing.
+Aggressor semantics: OpenMarket documents ``series.side`` as the aggressor side
+only for WebSocket ``TRADE_AGG``. That statement is not transferred to REST
+``TRADE_AGG`` (``series[].id.side``). TIM's ``aggressive_*_volume`` and
+``net_delta`` are aggressor quantities, so they are only derived when the caller
+asserts ``side_is_aggressor=True`` after REST documentation or a real proof
+confirms it; by default they stay missing (REST_SIDE_AGGRESSOR_SEMANTICS=UNPROVEN).
 """
 from __future__ import annotations
 
@@ -75,6 +76,10 @@ class OpenMarketRequest:
         if self.market_type not in MARKET_TYPES:
             raise ValueError("market_type must be SPOT or FUTURES")
 
+    def expected_id(self, data_type: str) -> dict[str, str]:
+        """What every documented ``series[].id`` must echo back."""
+        return {"type": data_type, "exchange": self.exchange, "rawSymbol": self.raw_symbol, "interval": self.interval}
+
     def params(self, data_type: str) -> dict[str, str | int]:
         return {
             "type": data_type,
@@ -84,6 +89,22 @@ class OpenMarketRequest:
             "from": self.from_seconds,
             "period": self.period_seconds,
         }
+
+
+def documented_checks(parsed) -> list[str]:
+    """Evidence notes for the documented REST contract (see schemas.py)."""
+    documented = parsed.documented_envelope
+    if any("REST timestamp schema" in item for item in parsed.rejected):
+        timestamp_status = "FAIL"
+    elif not parsed.points:
+        timestamp_status = "UNPROVEN"
+    else:
+        timestamp_status = "PASS" if parsed.timestamp_encodings == {"REST"} else "FAIL"
+    return [
+        f"check:documented_envelope={'PASS' if documented else 'FAIL'}",
+        f"check:rest_timestamp_schema={timestamp_status}",
+        f"check:series_id={'PASS' if documented and parsed.series_ids else ('UNPROVEN' if documented else 'FAIL')}",
+    ]
 
 
 class OpenMarketAdapter:
@@ -110,7 +131,7 @@ class OpenMarketAdapter:
 
         data_type = "TRADE_SIDE_AGNOSTIC_AGG"
         response = self.client.get_points(request.params(data_type))
-        parsed = parse_candles(response.payload, per_side=False)
+        parsed = parse_candles(response.payload, per_side=False, expected=request.expected_id(data_type))
         points, report = dedupe_candles(
             parsed.points, exchange=request.exchange, raw_symbol=request.raw_symbol,
             interval=request.interval, data_type=data_type,
@@ -120,6 +141,7 @@ class OpenMarketAdapter:
         )
         missing.extend(f"candle_rejected:{item}" for item in parsed.rejected + time_check.rejected)
         missing.extend(f"candle_conflict:{item}" for item in report.conflicts)
+        notes.extend(documented_checks(parsed))
         notes.append(f"check:time_semantics={time_check.status}")
         notes.append(f"verify:time_unit={'true' if time_check.status == 'PASS' else 'false'}")
         if report.duplicates:
@@ -188,7 +210,7 @@ class OpenMarketAdapter:
         data_type = "TRADE_AGG"
         try:
             response = self.client.get_points(request.params(data_type))
-            parsed = parse_candles(response.payload, per_side=True)
+            parsed = parse_candles(response.payload, per_side=True, expected=request.expected_id(data_type))
             checked, time_check = check_time_semantics(
                 parsed.points, interval=request.interval, from_seconds=request.from_seconds,
                 period_seconds=request.period_seconds,
@@ -207,6 +229,9 @@ class OpenMarketAdapter:
         )
         missing.extend(f"per_side_rejected:{item}" for item in parsed.rejected)
         missing.extend(f"per_side_conflict:{item}" for item in report.conflicts)
+        notes.append(
+            f"check:side_location={'PASS' if parsed.documented_envelope and parsed.side_location == 'series[].id.side' else 'FAIL'}"
+        )
         notes.append(f"provenance:per_side_response_sha256={response.body_sha256}")
         notes.append(f"provenance:per_side_envelope_paths={'|'.join(parsed.envelope_paths)}")
         # Same rule as the side-agnostic candles: the running interval is excluded.

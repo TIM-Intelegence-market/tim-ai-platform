@@ -9,8 +9,8 @@
 - Effective limits come from the documented ``X-RateLimit-*`` headers; no
   account tier is assumed.
 
-The base URL is not part of the verified facts, so it must be configured
-explicitly (``TIM_OPENMARKET_BASE_URL``, https only).
+Base URL: the documented ``https://api.openmarket.xyz``; ``TIM_OPENMARKET_BASE_URL``
+may override it (https only).
 """
 from __future__ import annotations
 
@@ -34,6 +34,8 @@ from .schemas import parse_json
 POINTS_PATH = "/v1/points"
 AUTH_HEADER = "X-OpenMarket-Key"
 BASE_URL_ENV = "TIM_OPENMARKET_BASE_URL"
+# Documented REST base URL (owner-verified official docs); the env var only overrides it.
+DEFAULT_BASE_URL = "https://api.openmarket.xyz"
 RATE_LIMIT_HEADERS = ("X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Used", "X-RateLimit-Reset", "Retry-After")
 USER_AGENT = "TIM-OpenMarket/1.0"
 MAX_BODY_BYTES = 8 * 1024 * 1024
@@ -143,7 +145,7 @@ class OpenMarketClient:
         env: Mapping[str, str] | None = None,
     ) -> None:
         env = os.environ if env is None else env
-        self.base_url = (base_url if base_url is not None else env.get(BASE_URL_ENV, "")).rstrip("/")
+        self.base_url = (base_url or env.get(BASE_URL_ENV) or DEFAULT_BASE_URL).rstrip("/")
         self.secrets = secrets or OpenMarketSecretResolver(env)
         self.timeout_seconds = max(1.0, min(timeout_seconds, 60.0))
         self.max_retries = max(0, min(max_retries, 5))
