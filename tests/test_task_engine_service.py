@@ -133,6 +133,23 @@ def test_unknown_task_is_reported(engine):
         engine.transition_task('ghost', S.PLANNED)
 
 
+def test_set_code_version_rebinds_evidence_and_is_validated(engine, tmp_path):
+    engine.create_task('bug', type='BUGFIX', git_sha=SHA)
+    advance(engine, 'bug', S.PLANNED, S.READY, S.IN_PROGRESS, S.VERIFYING)
+    task = engine.get_task('bug')
+    for name, reference in synthetic_evidence(
+            tmp_path, SimpleNamespace(id='bug', attempt_count=task.attempt_count, git_sha=SHA)).items():
+        engine.attach_evidence_ref('bug', name, reference)
+    updated = engine.set_code_version('bug', git_sha='b' * 40, code_version='after-repair')
+    assert (updated.git_sha, updated.code_version) == ('b' * 40, 'after-repair')
+    assert engine.get_task('bug') == updated and engine.revision('bug') == 6
+    with pytest.raises(FixFirstRejected):  # reports bound to the old SHA no longer count
+        engine.transition_task('bug', S.FIXED)
+    for bad in ('abc', 'B' * 40, None):
+        with pytest.raises(ValueError):
+            engine.set_code_version('bug', git_sha=bad)
+
+
 def test_stale_revision_is_rejected(engine):
     engine.create_task('t', type='BUGFIX')
     engine.transition_task('t', S.PLANNED, expected_revision=1)

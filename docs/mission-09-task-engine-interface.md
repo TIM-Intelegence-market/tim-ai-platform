@@ -22,6 +22,7 @@ default path; never point it at a production or observer database.
 | `transition_task(task_id, target, *, reason=None, expected_revision=None)` | Only legal state-machine moves. Dependency/parent gating and the Fix-First gate always apply. `target` is a `TaskState` or its exact name. |
 | `block(task_id, reason)` / `safe_stop(task_id, reason)` | Escape moves; a reason is mandatory. `SAFE_STOP` is released only through `BLOCKED`. |
 | `checkpoint(task_id, step_id, *, next_action, metadata=None)` | Records a completed atomic step and the exact next action atomically; repeating a step id is a no-op. |
+| `set_code_version(task_id, *, git_sha, code_version=None, config_hash=None)` | Records the code version under verification (e.g. the repair commit). Reports bound to an earlier `git_sha` stop counting. Not allowed on `FIXED` tasks. |
 | `attach_evidence_ref(task_id, name, reference)` | Appends an evidence reference (JSON data, ≤64 KiB); the latest per name is current. |
 | `tasks(state=, type=, parent_task_id=, source=)`, `get_task`, `history`, `evidence`, `checkpoints` | Read access. |
 | `resumable_work()`, `handoff()`, `snapshot(task_id)` | Resume order `IN_PROGRESS > VERIFYING > READY > PLANNED > NEW`; held states are never auto-resumed. |

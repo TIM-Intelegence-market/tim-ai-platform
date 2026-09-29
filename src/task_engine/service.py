@@ -6,6 +6,7 @@ the Fix-First gate are always applied, and every timestamp comes from one
 injected clock. No incident, log, provider or remediation logic lives here;
 an incident is linked to a task through ``source``.
 """
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from src.task_engine.fix_first import fix_first_guard
@@ -77,6 +78,28 @@ class TaskEngine:
     def safe_stop(self, task_id, reason, *, expected_revision=None):
         return self.transition_task(task_id, TaskState.SAFE_STOP, reason=reason,
                                     expected_revision=expected_revision)
+
+    def set_code_version(self, task_id, *, git_sha, code_version=None, config_hash=None):
+        """Record the code version under verification, e.g. after a repair commit.
+
+        Fix-First binds every report to the task's git_sha, so reports made for an
+        earlier version stop counting once this changes.
+        """
+        if not isinstance(git_sha, str) or len(git_sha) not in {40, 64} or any(
+                c not in '0123456789abcdef' for c in git_sha):
+            raise ValueError('git_sha must be a full lowercase hex commit id')
+        task = self._repo.get(task_id)
+        if task.state is TaskState.FIXED:
+            raise ValueError('cannot change the code version of a terminal task')
+        timestamps = dict(task.timestamps, updated_at=self._clock())
+        changes = {'git_sha': git_sha, 'timestamps': timestamps}
+        if code_version is not None:
+            changes['code_version'] = code_version
+        if config_hash is not None:
+            changes['config_hash'] = config_hash
+        updated = replace(task, **changes)
+        self._repo.update(updated, expected_revision=self._repo.revision(task_id))
+        return updated
 
     # -- progress and evidence ---------------------------------------------
     def checkpoint(self, task_id, step_id, *, next_action, metadata=None):
