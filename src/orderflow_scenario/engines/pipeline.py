@@ -27,6 +27,7 @@ from ..external_context import DEFAULT_MAX_AGE, build_external_context
 from ..config import OrderflowScenarioConfig, default_config
 from ..domain import (
     AnalysisOutput,
+    AuctionStateKind,
     ConfirmationState,
     Decision,
     DecisionStatus,
@@ -144,7 +145,7 @@ class Pipeline:
                 invalidation_conditions=(),
             )
             auction_state = AuctionStateModel(
-                primary="BALANCE", secondary=(), evidence=("data_quality_insufficient",), confidence=Decimal("0.1")
+                primary=AuctionStateKind.BALANCE, secondary=(), evidence=("data_quality_insufficient",), confidence=Decimal("0.1")
             )
             orderflow = OrderflowInterpretation(
                 aggressive_side="UNKNOWN",
@@ -304,6 +305,9 @@ class Pipeline:
     def _levels_from_candles(self, candles: Sequence[Candle], price_now: Decimal | None) -> LevelSet:
         closes = [c.close for c in candles]
         last = price_now if price_now is not None else (Decimal(closes[-1]) if closes else None)
+        if not candles:
+            # No candles, no structural levels; callers end in INSUFFICIENT_DATA / NO_TRADE.
+            return LevelSet(last_price=last)
         return LevelSet(
             range_high=Decimal(max(c.high for c in candles)),
             range_low=Decimal(min(c.low for c in candles)),

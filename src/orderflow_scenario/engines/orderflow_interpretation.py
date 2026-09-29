@@ -36,8 +36,9 @@ class OrderflowInputs:
     extra_notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        # net_delta (aggressive buy minus aggressive sell volume) is signed by
+        # definition; a negative value means sellers were the aggressors.
         for label, value in (
-            ("net_delta", self.net_delta),
             ("aggressive_buy_volume", self.aggressive_buy_volume),
             ("aggressive_sell_volume", self.aggressive_sell_volume),
             ("total_volume", self.total_volume),
@@ -108,7 +109,10 @@ class OrderflowInterpretationEngine:
             )
 
         # --- 3. Interpretation: flow vs price progress ---
-        if net_delta is not None and price_response in {"UP", "DOWN"}:
+        # A zero delta has no aggressive side (NEUTRAL), so neither the
+        # interpretation nor the absorption hypothesis below applies.
+        directional_delta = net_delta is not None and net_delta != ZERO
+        if directional_delta and price_response in {"UP", "DOWN"}:
             delta_direction = net_delta > ZERO
             price_direction = price_response == "UP"
             if delta_direction and not price_direction:
@@ -167,7 +171,7 @@ class OrderflowInterpretationEngine:
         # --- 4. Absorption hypothesis ---
         absorption_hypothesis: str | None = None
         absorption_confirmed = False
-        if net_delta is not None and price_response in {"UP", "DOWN"}:
+        if directional_delta and price_response in {"UP", "DOWN"}:
             delta_direction = net_delta > ZERO
             price_direction = price_response == "UP"
             if delta_direction and not price_direction:

@@ -1,0 +1,6181 @@
+{
+  "protocol": "1.0",
+  "commit": "cb093da",
+  "created": "2026-09-29T2219Z",
+  "random_runs": 10000,
+  "seed": 20260929,
+  "register_m": 48,
+  "candidates": [],
+  "dataset_hashes": {
+    "spot/1d": "93afffdd88127a3eca4a2ff8160b9fadf3fee8b79dccc65b932c8033417b2a6c",
+    "futures/um/1d": "c73b7ef415959be6653f88f33e2648767916699e265f90e24c5ba06fb41636ed",
+    "futures/um/1h": "d4354c6172202af8468df2dad75b3221b8f711058b763c1a9ee38d6815e8ea65",
+    "futures/um/5m": "1e13f85f209ccefd743f76018684ba8030b563a350fd4e65c3e715cfe7cdd7a9",
+    "futures/um/15m": "ade39f0876a5e7f9a4523726cd32a8b3722f517830d08a031fe1803207aeded1",
+    "funding": "780fad8557e7c54b221a5190158e1ca0c011b428c7c319276d8cb347ced89873"
+  },
+  "buy_and_hold": {
+    "train": 2.527246907709989,
+    "validation": 4.6569520674027025
+  },
+  "variants": {
+    "L1-n100-l": {
+      "variant_id": "L1-n100-l",
+      "hypothesis": "L1",
+      "horizon": "long",
+      "params": {
+        "n": 100,
+        "long_short": false
+      },
+      "train": {
+        "summary": {
+          "trades": 30,
+          "expectancy_r": 1.525563775803367,
+          "median_r": -0.21119618039584956,
+          "std_r": 7.25157222771739,
+          "profit_factor": 6.481847153644594,
+          "win_rate": 0.16666666666666666,
+          "avg_win_r": 10.82314512689763,
+          "avg_loss_r": -0.33395249441548536,
+          "max_drawdown_r": 2.846567245017988,
+          "max_drawdown_pct": 0.02846567245017988,
+          "longest_losing_streak": 9,
+          "expectancy_by_year": {
+            "2018": [
+              8,
+              -0.2814904402540613
+            ],
+            "2019": [
+              4,
+              3.2822241203840936
+            ],
+            "2020": [
+              8,
+              4.59914384123115
+            ],
+            "2021": [
+              6,
+              0.0063399677806062135
+            ],
+            "2022": [
+              4,
+              -0.48531255548392643
+            ]
+          }
+        },
+        "p": 0.0735926407359264,
+        "time_in_market": 0.4322381930184805
+      },
+      "validation": {
+        "summary": {
+          "trades": 16,
+          "expectancy_r": 1.0858252649804712,
+          "median_r": -0.15141478614762466,
+          "std_r": 3.1696169798696814,
+          "profit_factor": 5.27280101102637,
+          "win_rate": 0.3125,
+          "avg_win_r": 4.2878406292919085,
+          "avg_loss_r": -0.3696362642520004,
+          "max_drawdown_r": 2.2088432154126525,
+          "max_drawdown_pct": 0.022088432154126526,
+          "longest_losing_streak": 8,
+          "expectancy_by_year": {
+            "2023": [
+              7,
+              2.064312523198934
+            ],
+            "2024": [
+              9,
+              0.3247796196994444
+            ]
+          }
+        },
+        "p": 0.15948405159484053,
+        "time_in_market": 0.7770177838577291
+      },
+      "stress_train": {
+        "trades": 30,
+        "expectancy_r": 1.484420183405809,
+        "median_r": -0.22306233662787545,
+        "std_r": 7.187659762117116,
+        "profit_factor": 6.094395640997213,
+        "win_rate": 0.16666666666666666,
+        "avg_win_r": 10.654818980709312,
+        "avg_loss_r": -0.3496595760548912,
+        "max_drawdown_r": 3.0274023718134453,
+        "max_drawdown_pct": 0.030274023718134455,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2018": [
+            8,
+            -0.2993393913533634
+          ],
+          "2019": [
+            4,
+            3.116352386650635
+          ],
+          "2020": [
+            8,
+            4.559343111848847
+          ],
+          "2021": [
+            6,
+            -0.0033251136849256485
+          ],
+          "2022": [
+            4,
+            -0.49822078157064414
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 16,
+        "expectancy_r": 1.0629498016150492,
+        "median_r": -0.1635257354980056,
+        "std_r": 3.152030212930915,
+        "profit_factor": 5.032251663021467,
+        "win_rate": 0.25,
+        "avg_win_r": 5.306247083672855,
+        "avg_loss_r": -0.3514826257375528,
+        "max_drawdown_r": 2.2597042000286325,
+        "max_drawdown_pct": 0.022597042000286324,
+        "longest_losing_streak": 8,
+        "expectancy_by_year": {
+          "2023": [
+            7,
+            2.0315165884571993
+          ],
+          "2024": [
+            9,
+            0.3096200785155993
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 1.9197926294386798,
+      "verdict": "failed_validation",
+      "reasons": [
+        "Validierung: p >= 0,05 gegen Zufall"
+      ]
+    },
+    "L1-n100-ls": {
+      "variant_id": "L1-n100-ls",
+      "hypothesis": "L1",
+      "horizon": "long",
+      "params": {
+        "n": 100,
+        "long_short": true
+      },
+      "train": {
+        "summary": {
+          "trades": 61,
+          "expectancy_r": 0.7936024124685194,
+          "median_r": -0.19000836614835054,
+          "std_r": 5.1721215720258495,
+          "profit_factor": 4.197833842778431,
+          "win_rate": 0.22950819672131148,
+          "avg_win_r": 4.539145758887134,
+          "avg_loss_r": -0.32209135029447217,
+          "max_drawdown_r": 4.118281803211246,
+          "max_drawdown_pct": 0.041182818032112455,
+          "longest_losing_streak": 9,
+          "expectancy_by_year": {
+            "2018": [
+              17,
+              -0.19339059507421996
+            ],
+            "2019": [
+              8,
+              1.7087576733634597
+            ],
+            "2020": [
+              15,
+              2.3041619869185945
+            ],
+            "2021": [
+              13,
+              0.07701675825999212
+            ],
+            "2022": [
+              8,
+              0.30795977859686613
+            ]
+          }
+        },
+        "p": 0.04609539046095391,
+        "time_in_market": 0.8973305954825462
+      },
+      "validation": {
+        "summary": {
+          "trades": 31,
+          "expectancy_r": 0.39626398425357634,
+          "median_r": -0.21984856958141605,
+          "std_r": 2.3960376157283187,
+          "profit_factor": 2.284475250219158,
+          "win_rate": 0.22580645161290322,
+          "avg_win_r": 3.1211092620127836,
+          "avg_loss_r": -0.39848255509285907,
+          "max_drawdown_r": 4.965827834063354,
+          "max_drawdown_pct": 0.04965827834063354,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2023": [
+              13,
+              0.8883837898620178
+            ],
+            "2024": [
+              18,
+              0.040844124647479774
+            ]
+          }
+        },
+        "p": 0.2074792520747925,
+        "time_in_market": 1.0232558139534884
+      },
+      "stress_train": {
+        "trades": 61,
+        "expectancy_r": 0.74812040775245,
+        "median_r": -0.20554078704010006,
+        "std_r": 5.124909834726334,
+        "profit_factor": 3.852823152855397,
+        "win_rate": 0.21311475409836064,
+        "avg_win_r": 4.740915439631853,
+        "avg_loss_r": -0.33326158004822154,
+        "max_drawdown_r": 4.723399685942114,
+        "max_drawdown_pct": 0.047233996859421146,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2018": [
+            17,
+            -0.2257082092251347
+          ],
+          "2019": [
+            8,
+            1.5841568517441333
+          ],
+          "2020": [
+            15,
+            2.273506945264087
+          ],
+          "2021": [
+            13,
+            0.051341869513571343
+          ],
+          "2022": [
+            8,
+            0.25363514164199347
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 31,
+        "expectancy_r": 0.3708947440188655,
+        "median_r": -0.23965892450437365,
+        "std_r": 2.3846759209505306,
+        "profit_factor": 2.1485022996923973,
+        "win_rate": 0.1935483870967742,
+        "avg_win_r": 3.584801198792432,
+        "avg_loss_r": -0.4004428051267904,
+        "max_drawdown_r": 5.19862009178747,
+        "max_drawdown_pct": 0.0519862009178747,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2023": [
+            13,
+            0.8567954338522594
+          ],
+          "2024": [
+            18,
+            0.019966468028081018
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 1.9197926294386798,
+      "verdict": "failed_validation",
+      "reasons": [
+        "Validierung: p >= 0,05 gegen Zufall"
+      ]
+    },
+    "L1-n150-l": {
+      "variant_id": "L1-n150-l",
+      "hypothesis": "L1",
+      "horizon": "long",
+      "params": {
+        "n": 150,
+        "long_short": false
+      },
+      "train": {
+        "summary": {
+          "trades": 17,
+          "expectancy_r": 2.5518292367116793,
+          "median_r": -0.19891849222426272,
+          "std_r": 8.214989693863188,
+          "profit_factor": 9.108073822433708,
+          "win_rate": 0.17647058823529413,
+          "avg_win_r": 16.24381831602723,
+          "avg_loss_r": -0.3821684231416536,
+          "max_drawdown_r": 1.86713978642522,
+          "max_drawdown_pct": 0.0186713978642522,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2018": [
+              4,
+              -0.2701648080203852
+            ],
+            "2019": [
+              1,
+              16.771699034002495
+            ],
+            "2020": [
+              4,
+              7.3892992521507015
+            ],
+            "2021": [
+              5,
+              -0.23996473318577066
+            ],
+            "2022": [
+              3,
+              -0.22243870683212205
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.398870636550308
+      },
+      "validation": {
+        "summary": {
+          "trades": 9,
+          "expectancy_r": 2.482664685274019,
+          "median_r": -0.10075053563006246,
+          "std_r": 4.294184529488017,
+          "profit_factor": 18.75696179399116,
+          "win_rate": 0.3333333333333333,
+          "avg_win_r": 7.867434844298745,
+          "avg_loss_r": -0.20972039423834346,
+          "max_drawdown_r": 0.7296696190913856,
+          "max_drawdown_pct": 0.007296696190913856,
+          "longest_losing_streak": 3,
+          "expectancy_by_year": {
+            "2023": [
+              5,
+              3.665924260978527
+            ],
+            "2024": [
+              4,
+              1.0035902156433847
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.8002735978112175
+      },
+      "stress_train": {
+        "trades": 17,
+        "expectancy_r": 2.4724830930028774,
+        "median_r": -0.21280073841962371,
+        "std_r": 8.086635055023192,
+        "profit_factor": 8.608219478504163,
+        "win_rate": 0.17647058823529413,
+        "avg_win_r": 15.85226399278158,
+        "avg_loss_r": -0.39461281409255916,
+        "max_drawdown_r": 1.9554018805515554,
+        "max_drawdown_pct": 0.019554018805515553,
+        "longest_losing_streak": 4,
+        "expectancy_by_year": {
+          "2018": [
+            4,
+            -0.28570561758514024
+          ],
+          "2019": [
+            1,
+            15.764109901815592
+          ],
+          "2020": [
+            4,
+            7.341581757531361
+          ],
+          "2021": [
+            5,
+            -0.2486999003608589
+          ],
+          "2022": [
+            3,
+            -0.2373007929157548
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 9,
+        "expectancy_r": 2.4477606820310287,
+        "median_r": -0.11515361015560588,
+        "std_r": 4.267714530852365,
+        "profit_factor": 17.211095481402005,
+        "win_rate": 0.3333333333333333,
+        "avg_win_r": 7.796260813290996,
+        "avg_loss_r": -0.22648938359895487,
+        "max_drawdown_r": 0.7706464013262,
+        "max_drawdown_pct": 0.007706464013262,
+        "longest_losing_streak": 3,
+        "expectancy_by_year": {
+          "2023": [
+            5,
+            3.618504089938079
+          ],
+          "2024": [
+            4,
+            0.9843314221472159
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": 1.9197926294386798,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 17 < 20 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "L1-n150-ls": {
+      "variant_id": "L1-n150-ls",
+      "hypothesis": "L1",
+      "horizon": "long",
+      "params": {
+        "n": 150,
+        "long_short": true
+      },
+      "train": {
+        "summary": {
+          "trades": 34,
+          "expectancy_r": 1.4540804450603428,
+          "median_r": -0.1632941628487723,
+          "std_r": 5.999167122133661,
+          "profit_factor": 6.555103989391894,
+          "win_rate": 0.2647058823529412,
+          "avg_win_r": 6.48204787112019,
+          "avg_loss_r": -0.35598782832120207,
+          "max_drawdown_r": 3.6666987171687833,
+          "max_drawdown_pct": 0.036666987171687836,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2018": [
+              8,
+              0.21210137894532313
+            ],
+            "2019": [
+              2,
+              7.848451778007609
+            ],
+            "2020": [
+              7,
+              4.084931713523628
+            ],
+            "2021": [
+              11,
+              -0.18611041941780607
+            ],
+            "2022": [
+              6,
+              0.9162855272340544
+            ]
+          }
+        },
+        "p": 0.05219478052194781,
+        "time_in_market": 0.8952772073921971
+      },
+      "validation": {
+        "summary": {
+          "trades": 17,
+          "expectancy_r": 1.0977736036628154,
+          "median_r": -0.2814864269835782,
+          "std_r": 3.460724609627498,
+          "profit_factor": 4.613036544557041,
+          "win_rate": 0.23529411764705882,
+          "avg_win_r": 5.956844382226385,
+          "avg_loss_r": -0.3973250974336675,
+          "max_drawdown_r": 2.949123635457701,
+          "max_drawdown_pct": 0.02949123635457701,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2023": [
+              9,
+              1.7676833795304008
+            ],
+            "2024": [
+              8,
+              0.34412510581178174
+            ]
+          }
+        },
+        "p": 0.10318968103189681,
+        "time_in_market": 1.0041039671682626
+      },
+      "stress_train": {
+        "trades": 34,
+        "expectancy_r": 1.3693574087696183,
+        "median_r": -0.18037716852453886,
+        "std_r": 5.900252398050378,
+        "profit_factor": 5.981293456135083,
+        "win_rate": 0.23529411764705882,
+        "avg_win_r": 6.988093848779109,
+        "avg_loss_r": -0.35948457277176343,
+        "max_drawdown_r": 3.8613725342463834,
+        "max_drawdown_pct": 0.03861372534246384,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2018": [
+            8,
+            0.11931453637860237
+          ],
+          "2019": [
+            2,
+            7.307426595599542
+          ],
+          "2020": [
+            7,
+            4.045518706653552
+          ],
+          "2021": [
+            11,
+            -0.210540552615217
+          ],
+          "2022": [
+            6,
+            0.8310162580219411
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 17,
+        "expectancy_r": 1.0622729997405393,
+        "median_r": -0.2944415248330593,
+        "std_r": 3.4438480514378083,
+        "profit_factor": 4.277347688993319,
+        "win_rate": 0.23529411764705882,
+        "avg_win_r": 5.892194974327669,
+        "avg_loss_r": -0.4238568385939621,
+        "max_drawdown_r": 3.1400717802746287,
+        "max_drawdown_pct": 0.03140071780274629,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2023": [
+            9,
+            1.72674872996481
+          ],
+          "2024": [
+            8,
+            0.31473780323823447
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 1.9197926294386798,
+      "verdict": "failed_validation",
+      "reasons": [
+        "Validierung: p >= 0,05 gegen Zufall"
+      ]
+    },
+    "L1-n200-l": {
+      "variant_id": "L1-n200-l",
+      "hypothesis": "L1",
+      "horizon": "long",
+      "params": {
+        "n": 200,
+        "long_short": false
+      },
+      "train": {
+        "summary": {
+          "trades": 14,
+          "expectancy_r": 1.8499372733529307,
+          "median_r": -0.297971317303905,
+          "std_r": 6.137801124299841,
+          "profit_factor": 6.247155036204765,
+          "win_rate": 0.14285714285714285,
+          "avg_win_r": 15.417481305401006,
+          "avg_loss_r": -0.4113200653217486,
+          "max_drawdown_r": 2.778149754585005,
+          "max_drawdown_pct": 0.02778149754585005,
+          "longest_losing_streak": 9,
+          "expectancy_by_year": {
+            "2019": [
+              2,
+              4.041751496502619
+            ],
+            "2020": [
+              3,
+              6.86458952950693
+            ],
+            "2021": [
+              9,
+              -0.308683306065
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.38295687885010266
+      },
+      "validation": {
+        "summary": {
+          "trades": 8,
+          "expectancy_r": 2.4902353589824924,
+          "median_r": 0.015164720151588151,
+          "std_r": 3.885357831809563,
+          "profit_factor": 24.589938064384583,
+          "win_rate": 0.5,
+          "avg_win_r": 5.191597627428319,
+          "avg_loss_r": -0.21112690946333418,
+          "max_drawdown_r": 0.6353917545126464,
+          "max_drawdown_pct": 0.0063539175451264645,
+          "longest_losing_streak": 3,
+          "expectancy_by_year": {
+            "2023": [
+              3,
+              5.420083241288467
+            ],
+            "2024": [
+              5,
+              0.732326629598907
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.811217510259918
+      },
+      "stress_train": {
+        "trades": 14,
+        "expectancy_r": 1.7737812171221994,
+        "median_r": -0.30697901242641334,
+        "std_r": 6.049942997356747,
+        "profit_factor": 5.904814671539828,
+        "win_rate": 0.14285714285714285,
+        "avg_win_r": 14.947954284628919,
+        "avg_loss_r": -0.42191429412892045,
+        "max_drawdown_r": 2.8499761732480096,
+        "max_drawdown_pct": 0.028499761732480096,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2019": [
+            2,
+            3.6218908771365643
+          ],
+          "2020": [
+            3,
+            6.813043819561891
+          ],
+          "2021": [
+            9,
+            -0.3166640192497791
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 8,
+        "expectancy_r": 2.456866358795967,
+        "median_r": 0.002765191924563551,
+        "std_r": 3.860596720752738,
+        "profit_factor": 22.7378991537614,
+        "win_rate": 0.5,
+        "avg_win_r": 5.13977722551954,
+        "avg_loss_r": -0.2260445079276067,
+        "max_drawdown_r": 0.6760965321107868,
+        "max_drawdown_pct": 0.0067609653211078685,
+        "longest_losing_streak": 3,
+        "expectancy_by_year": {
+          "2023": [
+            3,
+            5.360917094527884
+          ],
+          "2024": [
+            5,
+            0.7144359173568169
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": 1.9197926294386798,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 14 < 20 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "L1-n200-ls": {
+      "variant_id": "L1-n200-ls",
+      "hypothesis": "L1",
+      "horizon": "long",
+      "params": {
+        "n": 200,
+        "long_short": true
+      },
+      "train": {
+        "summary": {
+          "trades": 28,
+          "expectancy_r": 0.8767929314392809,
+          "median_r": -0.2876828245480961,
+          "std_r": 4.5259922037016125,
+          "profit_factor": 3.3683435860798903,
+          "win_rate": 0.10714285714285714,
+          "avg_win_r": 11.638727336717572,
+          "avg_loss_r": -0.414639197194114,
+          "max_drawdown_r": 5.913854946256109,
+          "max_drawdown_pct": 0.059138549462561085,
+          "longest_losing_streak": 18,
+          "expectancy_by_year": {
+            "2019": [
+              4,
+              1.6525847059067247
+            ],
+            "2020": [
+              5,
+              3.954499760715673
+            ],
+            "2021": [
+              19,
+              -0.09645450246870532
+            ]
+          }
+        },
+        "p": 0.1501849815018498,
+        "time_in_market": 0.723305954825462
+      },
+      "validation": {
+        "summary": {
+          "trades": 15,
+          "expectancy_r": 1.1063318790526961,
+          "median_r": -0.209115883340688,
+          "std_r": 3.2041267407136456,
+          "profit_factor": 4.978263690361921,
+          "win_rate": 0.26666666666666666,
+          "avg_win_r": 5.191597627428319,
+          "avg_loss_r": -0.379219302174803,
+          "max_drawdown_r": 2.2492427081226296,
+          "max_drawdown_pct": 0.022492427081226295,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2023": [
+              5,
+              2.9413711346132443
+            ],
+            "2024": [
+              10,
+              0.1888122512724223
+            ]
+          }
+        },
+        "p": 0.16878312168783122,
+        "time_in_market": 1.0
+      },
+      "stress_train": {
+        "trades": 28,
+        "expectancy_r": 0.8079609946553933,
+        "median_r": -0.2956247975074803,
+        "std_r": 4.453402888700096,
+        "profit_factor": 3.066529408714273,
+        "win_rate": 0.10714285714285714,
+        "avg_win_r": 11.190067743724406,
+        "avg_loss_r": -0.43789181523288834,
+        "max_drawdown_r": 6.117956108030075,
+        "max_drawdown_pct": 0.06117956108030075,
+        "longest_losing_streak": 18,
+        "expectancy_by_year": {
+          "2019": [
+            4,
+            1.3824915933793838
+          ],
+          "2020": [
+            5,
+            3.907320584589635
+          ],
+          "2021": [
+            19,
+            -0.12861376032182611
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 15,
+        "expectancy_r": 1.073652406549208,
+        "median_r": -0.2280814995996395,
+        "std_r": 3.1881495871269405,
+        "profit_factor": 4.615540859399387,
+        "win_rate": 0.26666666666666666,
+        "avg_win_r": 5.13977722551954,
+        "avg_loss_r": -0.40493843671273116,
+        "max_drawdown_r": 2.440962491427756,
+        "max_drawdown_pct": 0.02440962491427756,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2023": [
+            5,
+            2.8885137522328828
+          ],
+          "2024": [
+            10,
+            0.16622173370737042
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 1.9197926294386798,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "L2-L30-l": {
+      "variant_id": "L2-L30-l",
+      "hypothesis": "L2",
+      "horizon": "long",
+      "params": {
+        "lookback": 30,
+        "long_short": false
+      },
+      "train": {
+        "summary": {
+          "trades": 141,
+          "expectancy_r": 0.15442387330220203,
+          "median_r": 0.10976193620047223,
+          "std_r": 0.7664319963868446,
+          "profit_factor": 1.7746042800369224,
+          "win_rate": 0.574468085106383,
+          "avg_win_r": 0.6158432241317162,
+          "avg_loss_r": -0.46849225031764213,
+          "max_drawdown_r": 6.1516052970869355,
+          "max_drawdown_pct": 0.06151605297086936,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2017": [
+              12,
+              0.529732018810762
+            ],
+            "2018": [
+              16,
+              -0.276883676664844
+            ],
+            "2019": [
+              32,
+              0.2610518416711518
+            ],
+            "2020": [
+              36,
+              0.3476414832098516
+            ],
+            "2021": [
+              28,
+              0.02137952081190619
+            ],
+            "2022": [
+              17,
+              -0.09530930442623799
+            ]
+          }
+        },
+        "p": 0.0184981501849815,
+        "time_in_market": 0.48408624229979463
+      },
+      "validation": {
+        "summary": {
+          "trades": 67,
+          "expectancy_r": 0.1945191091862909,
+          "median_r": -0.0016972481549256914,
+          "std_r": 0.7299168690715573,
+          "profit_factor": 2.161396809963506,
+          "win_rate": 0.4925373134328358,
+          "avg_win_r": 0.7349825229564163,
+          "avg_loss_r": -0.3300483218258896,
+          "max_drawdown_r": 3.494449788679427,
+          "max_drawdown_pct": 0.03494449788679427,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2023": [
+              35,
+              0.22824438393454138
+            ],
+            "2024": [
+              32,
+              0.1576320899303919
+            ]
+          }
+        },
+        "p": 0.3451654834516548,
+        "time_in_market": 0.625170998632011
+      },
+      "stress_train": {
+        "trades": 141,
+        "expectancy_r": 0.13534828389752038,
+        "median_r": 0.09298154863995822,
+        "std_r": 0.761742528919711,
+        "profit_factor": 1.6548219169227738,
+        "win_rate": 0.5673758865248227,
+        "avg_win_r": 0.6028509319875575,
+        "avg_loss_r": -0.4777699431058069,
+        "max_drawdown_r": 6.622738260253469,
+        "max_drawdown_pct": 0.06622738260253469,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2017": [
+            12,
+            0.5111566994246799
+          ],
+          "2018": [
+            16,
+            -0.300021168792601
+          ],
+          "2019": [
+            32,
+            0.23018484903351774
+          ],
+          "2020": [
+            36,
+            0.3315168028602643
+          ],
+          "2021": [
+            28,
+            0.011714398225076732
+          ],
+          "2022": [
+            17,
+            -0.11046805207108222
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 67,
+        "expectancy_r": 0.17765007407742497,
+        "median_r": -0.019228558065534414,
+        "std_r": 0.7261325898040728,
+        "profit_factor": 2.0159823681075992,
+        "win_rate": 0.47761194029850745,
+        "avg_win_r": 0.7380584820677062,
+        "avg_loss_r": -0.3347233275136892,
+        "max_drawdown_r": 3.6979157954808155,
+        "max_drawdown_pct": 0.036979157954808155,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2023": [
+            35,
+            0.2100838561007016
+          ],
+          "2024": [
+            32,
+            0.1421756249894662
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.09754619311018144,
+      "verdict": "failed_validation",
+      "reasons": [
+        "Validierung: p >= 0,05 gegen Zufall"
+      ]
+    },
+    "L2-L30-ls": {
+      "variant_id": "L2-L30-ls",
+      "hypothesis": "L2",
+      "horizon": "long",
+      "params": {
+        "lookback": 30,
+        "long_short": true
+      },
+      "train": {
+        "summary": {
+          "trades": 273,
+          "expectancy_r": 0.09551919950482016,
+          "median_r": 0.028478643611506843,
+          "std_r": 0.7021428524426723,
+          "profit_factor": 1.4792220091911354,
+          "win_rate": 0.5311355311355311,
+          "avg_win_r": 0.5551136714973602,
+          "avg_loss_r": -0.4251151632992291,
+          "max_drawdown_r": 6.64766491196987,
+          "max_drawdown_pct": 0.06647664911969871,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2017": [
+              12,
+              0.529732018810762
+            ],
+            "2018": [
+              53,
+              -0.05775170873824614
+            ],
+            "2019": [
+              52,
+              0.14037789298507114
+            ],
+            "2020": [
+              52,
+              0.23423591161184262
+            ],
+            "2021": [
+              52,
+              0.01245951869393961
+            ],
+            "2022": [
+              52,
+              0.05101894213633518
+            ]
+          }
+        },
+        "p": 0.015198480151984802,
+        "time_in_market": 0.9419917864476386
+      },
+      "validation": {
+        "summary": {
+          "trades": 105,
+          "expectancy_r": 0.09989500893666649,
+          "median_r": 0.004806704126568379,
+          "std_r": 0.704827269459085,
+          "profit_factor": 1.4993322637331792,
+          "win_rate": 0.5047619047619047,
+          "avg_win_r": 0.594244919953349,
+          "avg_loss_r": -0.40396163113802924,
+          "max_drawdown_r": 4.653712203283874,
+          "max_drawdown_pct": 0.04653712203283874,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              0.15617477823370163
+            ],
+            "2024": [
+              53,
+              0.04467712207919805
+            ]
+          }
+        },
+        "p": 0.32096790320967905,
+        "time_in_market": 0.9644322845417237
+      },
+      "stress_train": {
+        "trades": 273,
+        "expectancy_r": 0.07531666569301403,
+        "median_r": 0.012192883548508948,
+        "std_r": 0.6989968153482057,
+        "profit_factor": 1.3615939562016737,
+        "win_rate": 0.5091575091575091,
+        "avg_win_r": 0.5570130679951129,
+        "avg_loss_r": -0.4243534829636406,
+        "max_drawdown_r": 7.695254734424393,
+        "max_drawdown_pct": 0.07695254734424394,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2017": [
+            12,
+            0.5111566994246799
+          ],
+          "2018": [
+            53,
+            -0.07982697401908238
+          ],
+          "2019": [
+            52,
+            0.11143602271237726
+          ],
+          "2020": [
+            52,
+            0.21487312722553614
+          ],
+          "2021": [
+            52,
+            -0.0020758540998030983
+          ],
+          "2022": [
+            52,
+            0.034582068856275
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 105,
+        "expectancy_r": 0.07889421009413343,
+        "median_r": -0.011368820333780977,
+        "std_r": 0.7016491948817283,
+        "profit_factor": 1.3768585414278198,
+        "win_rate": 0.4857142857142857,
+        "avg_win_r": 0.5934378129228574,
+        "avg_loss_r": -0.40706363702188364,
+        "max_drawdown_r": 4.871536868640654,
+        "max_drawdown_pct": 0.048715368686406545,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            0.13262880629106097
+          ],
+          "2024": [
+            53,
+            0.026173474202808283
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.09754619311018144,
+      "verdict": "failed_validation",
+      "reasons": [
+        "Validierung: p >= 0,05 gegen Zufall"
+      ]
+    },
+    "L2-L90-l": {
+      "variant_id": "L2-L90-l",
+      "hypothesis": "L2",
+      "horizon": "long",
+      "params": {
+        "lookback": 90,
+        "long_short": false
+      },
+      "train": {
+        "summary": {
+          "trades": 121,
+          "expectancy_r": 0.09390098272652865,
+          "median_r": 0.010924886529822533,
+          "std_r": 0.7744024114406974,
+          "profit_factor": 1.4261678765289796,
+          "win_rate": 0.5041322314049587,
+          "avg_win_r": 0.6233265306807714,
+          "avg_loss_r": -0.4443483243602848,
+          "max_drawdown_r": 5.81003423876893,
+          "max_drawdown_pct": 0.0581003423876893,
+          "longest_losing_streak": 9,
+          "expectancy_by_year": {
+            "2017": [
+              3,
+              -0.03846209025743516
+            ],
+            "2018": [
+              12,
+              -0.24621447102300417
+            ],
+            "2019": [
+              28,
+              0.3402201988736441
+            ],
+            "2020": [
+              37,
+              0.22467298259354865
+            ],
+            "2021": [
+              38,
+              -0.04656466031660603
+            ],
+            "2022": [
+              3,
+              -0.5458766664779936
+            ]
+          }
+        },
+        "p": 0.2024797520247975,
+        "time_in_market": 0.4127310061601643
+      },
+      "validation": {
+        "summary": {
+          "trades": 79,
+          "expectancy_r": 0.12923439329697664,
+          "median_r": -0.016097786108695097,
+          "std_r": 0.6741375575038345,
+          "profit_factor": 1.7858316929230487,
+          "win_rate": 0.46835443037974683,
+          "avg_win_r": 0.6270677440208079,
+          "avg_loss_r": -0.30933308234068424,
+          "max_drawdown_r": 3.52455373989205,
+          "max_drawdown_pct": 0.0352455373989205,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2023": [
+              41,
+              0.09741809970877739
+            ],
+            "2024": [
+              38,
+              0.16356249953687585
+            ]
+          }
+        },
+        "p": 0.5900409959004099,
+        "time_in_market": 0.7373461012311902
+      },
+      "stress_train": {
+        "trades": 121,
+        "expectancy_r": 0.07712701148848818,
+        "median_r": -0.0034676951480549926,
+        "std_r": 0.7684970338721124,
+        "profit_factor": 1.338342314943126,
+        "win_rate": 0.49586776859504134,
+        "avg_win_r": 0.6152498502006492,
+        "avg_loss_r": -0.45217414134314554,
+        "max_drawdown_r": 6.150814096307249,
+        "max_drawdown_pct": 0.06150814096307249,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2017": [
+            3,
+            -0.04847854739415067
+          ],
+          "2018": [
+            12,
+            -0.2633467162160745
+          ],
+          "2019": [
+            28,
+            0.31229720540367
+          ],
+          "2020": [
+            37,
+            0.20794021560432624
+          ],
+          "2021": [
+            38,
+            -0.05574412927155583
+          ],
+          "2022": [
+            3,
+            -0.5606227298204314
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 79,
+        "expectancy_r": 0.11311421951872914,
+        "median_r": -0.029701144577878584,
+        "std_r": 0.6713804619376421,
+        "profit_factor": 1.6572622711511071,
+        "win_rate": 0.45569620253164556,
+        "avg_win_r": 0.6258846983247921,
+        "avg_loss_r": -0.3161819952956491,
+        "max_drawdown_r": 3.8522905290108707,
+        "max_drawdown_pct": 0.038522905290108704,
+        "longest_losing_streak": 6,
+        "expectancy_by_year": {
+          "2023": [
+            41,
+            0.07997735138958695
+          ],
+          "2024": [
+            38,
+            0.14886715618438257
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.09754619311018144,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "L2-L90-ls": {
+      "variant_id": "L2-L90-ls",
+      "hypothesis": "L2",
+      "horizon": "long",
+      "params": {
+        "lookback": 90,
+        "long_short": true
+      },
+      "train": {
+        "summary": {
+          "trades": 264,
+          "expectancy_r": 0.03719657763970778,
+          "median_r": -0.05012907776495051,
+          "std_r": 0.7171379124048648,
+          "profit_factor": 1.1616889397800882,
+          "win_rate": 0.4659090909090909,
+          "avg_win_r": 0.5736029022754028,
+          "avg_loss_r": -0.4307323438510049,
+          "max_drawdown_r": 10.27592424750503,
+          "max_drawdown_pct": 0.1027592424750503,
+          "longest_losing_streak": 17,
+          "expectancy_by_year": {
+            "2017": [
+              3,
+              -0.03846209025743516
+            ],
+            "2018": [
+              53,
+              -0.012088225149457218
+            ],
+            "2019": [
+              52,
+              0.18236654843882577
+            ],
+            "2020": [
+              52,
+              0.043252810157968544
+            ],
+            "2021": [
+              52,
+              -0.059140633972827365
+            ],
+            "2022": [
+              52,
+              0.0369050965409637
+            ]
+          }
+        },
+        "p": 0.20157984201579843,
+        "time_in_market": 0.8983572895277208
+      },
+      "validation": {
+        "summary": {
+          "trades": 105,
+          "expectancy_r": 0.043608487909940694,
+          "median_r": -0.016342862554222622,
+          "std_r": 0.6763817925923616,
+          "profit_factor": 1.201461431580683,
+          "win_rate": 0.4666666666666667,
+          "avg_win_r": 0.5572911744615967,
+          "avg_loss_r": -0.40586386282275827,
+          "max_drawdown_r": 6.255532220946618,
+          "max_drawdown_pct": 0.06255532220946618,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.0043411907222016925
+            ],
+            "2024": [
+              53,
+              0.09065345562449549
+            ]
+          }
+        },
+        "p": 0.7854214578542146,
+        "time_in_market": 0.9644322845417237
+      },
+      "stress_train": {
+        "trades": 264,
+        "expectancy_r": 0.01724051529448838,
+        "median_r": -0.06767975704181295,
+        "std_r": 0.7139471595104567,
+        "profit_factor": 1.0716796057899034,
+        "win_rate": 0.4431818181818182,
+        "avg_win_r": 0.5816177676183762,
+        "avg_loss_r": -0.43195770594289173,
+        "max_drawdown_r": 11.00577558398988,
+        "max_drawdown_pct": 0.11005775583989881,
+        "longest_losing_streak": 18,
+        "expectancy_by_year": {
+          "2017": [
+            3,
+            -0.04847854739415067
+          ],
+          "2018": [
+            53,
+            -0.034117457216270304
+          ],
+          "2019": [
+            52,
+            0.1537404331712655
+          ],
+          "2020": [
+            52,
+            0.022937330858374873
+          ],
+          "2021": [
+            52,
+            -0.06943120098292292
+          ],
+          "2022": [
+            52,
+            0.017852608345392342
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 105,
+        "expectancy_r": 0.024861481465131213,
+        "median_r": -0.03229460433731147,
+        "std_r": 0.6747747227474178,
+        "profit_factor": 1.1102197402826348,
+        "win_rate": 0.44761904761904764,
+        "avg_win_r": 0.5594586679938794,
+        "avg_loss_r": -0.4083465834805786,
+        "max_drawdown_r": 6.817841663126746,
+        "max_drawdown_pct": 0.06817841663126746,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.024140658504175704
+          ],
+          "2024": [
+            53,
+            0.07293905275577196
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.09754619311018144,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "L2-L180-l": {
+      "variant_id": "L2-L180-l",
+      "hypothesis": "L2",
+      "horizon": "long",
+      "params": {
+        "lookback": 180,
+        "long_short": false
+      },
+      "train": {
+        "summary": {
+          "trades": 120,
+          "expectancy_r": 0.0417376352506976,
+          "median_r": 0.019232943863611938,
+          "std_r": 0.6398915151273898,
+          "profit_factor": 1.189612238220934,
+          "win_rate": 0.5166666666666667,
+          "avg_win_r": 0.5068231625644659,
+          "avg_loss_r": -0.4554227560157443,
+          "max_drawdown_r": 6.653603225660943,
+          "max_drawdown_pct": 0.06653603225660942,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2018": [
+              11,
+              -0.1252983856413429
+            ],
+            "2019": [
+              28,
+              -0.05036553872753996
+            ],
+            "2020": [
+              33,
+              0.34189123777259806
+            ],
+            "2021": [
+              43,
+              -0.05548846349446558
+            ],
+            "2022": [
+              5,
+              -0.2198746719448228
+            ]
+          }
+        },
+        "p": 0.51994800519948,
+        "time_in_market": 0.4106776180698152
+      },
+      "validation": {
+        "summary": {
+          "trades": 89,
+          "expectancy_r": 0.08983350685564415,
+          "median_r": -0.029637491053913244,
+          "std_r": 0.6799143092855644,
+          "profit_factor": 1.4734262719467683,
+          "win_rate": 0.449438202247191,
+          "avg_win_r": 0.6220773998058673,
+          "avg_loss_r": -0.3446513037159666,
+          "max_drawdown_r": 4.347535282034681,
+          "max_drawdown_pct": 0.043475352820346806,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2023": [
+              42,
+              0.08891879553068852
+            ],
+            "2024": [
+              47,
+              0.09065090846517897
+            ]
+          }
+        },
+        "p": 0.8113188681131887,
+        "time_in_market": 0.8221614227086184
+      },
+      "stress_train": {
+        "trades": 120,
+        "expectancy_r": 0.026626757666110272,
+        "median_r": 0.006728658350596462,
+        "std_r": 0.6374585934671596,
+        "profit_factor": 1.1172288550287537,
+        "win_rate": 0.5,
+        "avg_win_r": 0.5075232027667571,
+        "avg_loss_r": -0.4542696874345366,
+        "max_drawdown_r": 7.024927627204155,
+        "max_drawdown_pct": 0.07024927627204156,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2018": [
+            11,
+            -0.14319717801971024
+          ],
+          "2019": [
+            28,
+            -0.07178007614073902
+          ],
+          "2020": [
+            33,
+            0.32473573885965135
+          ],
+          "2021": [
+            43,
+            -0.06456957094183179
+          ],
+          "2022": [
+            5,
+            -0.2319131643557978
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 89,
+        "expectancy_r": 0.07381448179723227,
+        "median_r": -0.04195840011881001,
+        "std_r": 0.6775352635216021,
+        "profit_factor": 1.3732195241161667,
+        "win_rate": 0.43820224719101125,
+        "avg_win_r": 0.619787181021829,
+        "avg_loss_r": -0.3520442235979532,
+        "max_drawdown_r": 4.691433327923523,
+        "max_drawdown_pct": 0.04691433327923523,
+        "longest_losing_streak": 6,
+        "expectancy_by_year": {
+          "2023": [
+            42,
+            0.07136037928058499
+          ],
+          "2024": [
+            47,
+            0.07600750957806603
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.09754619311018144,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "L2-L180-ls": {
+      "variant_id": "L2-L180-ls",
+      "hypothesis": "L2",
+      "horizon": "long",
+      "params": {
+        "lookback": 180,
+        "long_short": true
+      },
+      "train": {
+        "summary": {
+          "trades": 251,
+          "expectancy_r": 0.011451473930098908,
+          "median_r": -0.05268091993325886,
+          "std_r": 0.6767780257972881,
+          "profit_factor": 1.0482899612305574,
+          "win_rate": 0.4701195219123506,
+          "avg_win_r": 0.5287832296385031,
+          "avg_loss_r": -0.44753459504427473,
+          "max_drawdown_r": 12.086928192630467,
+          "max_drawdown_pct": 0.12086928192630467,
+          "longest_losing_streak": 9,
+          "expectancy_by_year": {
+            "2018": [
+              43,
+              0.07880652582059298
+            ],
+            "2019": [
+              52,
+              -0.1497209880544242
+            ],
+            "2020": [
+              52,
+              0.17937871024450994
+            ],
+            "2021": [
+              52,
+              -0.09876436233275394
+            ],
+            "2022": [
+              52,
+              0.059215089107462975
+            ]
+          }
+        },
+        "p": 0.3785621437856214,
+        "time_in_market": 0.8506160164271047
+      },
+      "validation": {
+        "summary": {
+          "trades": 105,
+          "expectancy_r": 0.011946449278281784,
+          "median_r": -0.045908995560403155,
+          "std_r": 0.6859687255661467,
+          "profit_factor": 1.050341868439928,
+          "win_rate": 0.42857142857142855,
+          "avg_win_r": 0.5815900608855697,
+          "avg_loss_r": -0.4152862594271843,
+          "max_drawdown_r": 6.589214026407595,
+          "max_drawdown_pct": 0.06589214026407596,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.01470263037059446
+            ],
+            "2024": [
+              53,
+              0.03809271610359432
+            ]
+          }
+        },
+        "p": 0.9029097090290971,
+        "time_in_market": 0.9507523939808481
+      },
+      "stress_train": {
+        "trades": 251,
+        "expectancy_r": -0.01029934797561323,
+        "median_r": -0.0759203853129997,
+        "std_r": 0.6741540689727136,
+        "profit_factor": 0.9585295477322523,
+        "win_rate": 0.44223107569721115,
+        "avg_win_r": 0.5383035049423722,
+        "avg_loss_r": -0.4452630385034445,
+        "max_drawdown_r": 13.850585145275979,
+        "max_drawdown_pct": 0.1385058514527598,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2018": [
+            43,
+            0.05289462672235833
+          ],
+          "2019": [
+            52,
+            -0.17605970088350434
+          ],
+          "2020": [
+            52,
+            0.15180526084940618
+          ],
+          "2021": [
+            52,
+            -0.11001706303155054
+          ],
+          "2022": [
+            52,
+            0.040817555162950055
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 105,
+        "expectancy_r": -0.005898574812884313,
+        "median_r": -0.055796821438444,
+        "std_r": 0.6853136502213254,
+        "profit_factor": 0.9761344201596003,
+        "win_rate": 0.4095238095238095,
+        "avg_win_r": 0.589122448781337,
+        "avg_loss_r": -0.4185744460153281,
+        "max_drawdown_r": 7.061533465464443,
+        "max_drawdown_pct": 0.07061533465464442,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.035030830153481476
+          ],
+          "2024": [
+            53,
+            0.02268401533260724
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.09754619311018144,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M1-N20-k2": {
+      "variant_id": "M1-N20-k2",
+      "hypothesis": "M1",
+      "horizon": "mid",
+      "params": {
+        "N": 20,
+        "k": 2
+      },
+      "train": {
+        "summary": {
+          "trades": 35,
+          "expectancy_r": 0.5832043526648512,
+          "median_r": 0.2705956571069886,
+          "std_r": 1.8541188589165363,
+          "profit_factor": 2.202284350291547,
+          "win_rate": 0.5142857142857142,
+          "avg_win_r": 2.0772199951630532,
+          "avg_loss_r": -0.9986945629214802,
+          "max_drawdown_r": 2.388381023886577,
+          "max_drawdown_pct": 0.02388381023886577,
+          "longest_losing_streak": 2,
+          "expectancy_by_year": {
+            "2020": [
+              12,
+              1.3170429036739089
+            ],
+            "2021": [
+              11,
+              0.18390834274458515
+            ],
+            "2022": [
+              12,
+              0.21538714408270412
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.4635036496350365
+      },
+      "validation": {
+        "summary": {
+          "trades": 30,
+          "expectancy_r": 0.4384207550046789,
+          "median_r": -0.937365177393255,
+          "std_r": 2.627637197607222,
+          "profit_factor": 1.7665767585496175,
+          "win_rate": 0.36666666666666664,
+          "avg_win_r": 2.75547540988621,
+          "avg_loss_r": -0.9030319399267339,
+          "max_drawdown_r": 5.94848354489643,
+          "max_drawdown_pct": 0.059484835448964296,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2023": [
+              14,
+              0.6907406859920081
+            ],
+            "2024": [
+              16,
+              0.21764081539076585
+            ]
+          }
+        },
+        "p": 0.17798220177982202,
+        "time_in_market": 0.5376196990424077
+      },
+      "stress_train": {
+        "trades": 35,
+        "expectancy_r": 0.5497704092552148,
+        "median_r": 0.23149338044352952,
+        "std_r": 1.838572666324142,
+        "profit_factor": 2.1109305503535896,
+        "win_rate": 0.5142857142857142,
+        "avg_win_r": 2.03125260506833,
+        "avg_loss_r": -1.0188577980763192,
+        "max_drawdown_r": 2.472322508438456,
+        "max_drawdown_pct": 0.02472322508438456,
+        "longest_losing_streak": 2,
+        "expectancy_by_year": {
+          "2020": [
+            12,
+            1.2745911556704164
+          ],
+          "2021": [
+            11,
+            0.15679140975846317
+          ],
+          "2022": [
+            12,
+            0.1851804123787021
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 30,
+        "expectancy_r": 0.3977184399237838,
+        "median_r": -0.9733570663623863,
+        "std_r": 2.5998740049964786,
+        "profit_factor": 1.6720096868115109,
+        "win_rate": 0.36666666666666664,
+        "avg_win_r": 2.698780432485513,
+        "avg_loss_r": -0.9344753452435328,
+        "max_drawdown_r": 6.393581065570068,
+        "max_drawdown_pct": 0.06393581065570068,
+        "longest_losing_streak": 5,
+        "expectancy_by_year": {
+          "2023": [
+            14,
+            0.6402686020460242
+          ],
+          "2024": [
+            16,
+            0.18548704806682348
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.37469686616982895,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 35 < 50 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M1-N20-k3": {
+      "variant_id": "M1-N20-k3",
+      "hypothesis": "M1",
+      "horizon": "mid",
+      "params": {
+        "N": 20,
+        "k": 3
+      },
+      "train": {
+        "summary": {
+          "trades": 35,
+          "expectancy_r": 0.3930491488879319,
+          "median_r": 0.2573684751830563,
+          "std_r": 1.277008588704919,
+          "profit_factor": 2.1429410621284504,
+          "win_rate": 0.5714285714285714,
+          "avg_win_r": 1.2896483290936955,
+          "avg_loss_r": -0.8024164247197528,
+          "max_drawdown_r": 2.075909803402567,
+          "max_drawdown_pct": 0.02075909803402567,
+          "longest_losing_streak": 2,
+          "expectancy_by_year": {
+            "2020": [
+              12,
+              0.9739848061637667
+            ],
+            "2021": [
+              11,
+              0.04051416144200723
+            ],
+            "2022": [
+              12,
+              0.13527056343752805
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.5136861313868614
+      },
+      "validation": {
+        "summary": {
+          "trades": 30,
+          "expectancy_r": 0.18450663192072642,
+          "median_r": -0.5472236259596588,
+          "std_r": 1.823258388851086,
+          "profit_factor": 1.3760586115159767,
+          "win_rate": 0.36666666666666664,
+          "avg_win_r": 1.8412889419707652,
+          "avg_loss_r": -0.7746831265292959,
+          "max_drawdown_r": 5.785729946946338,
+          "max_drawdown_pct": 0.057857299469463386,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2023": [
+              14,
+              0.3507409806746815
+            ],
+            "2024": [
+              16,
+              0.039051576761015734
+            ]
+          }
+        },
+        "p": 0.40345965403459655,
+        "time_in_market": 0.6238030095759234
+      },
+      "stress_train": {
+        "trades": 35,
+        "expectancy_r": 0.37134157091633363,
+        "median_r": 0.230897269120636,
+        "std_r": 1.2686066755838672,
+        "profit_factor": 2.060996260702446,
+        "win_rate": 0.5714285714285714,
+        "avg_win_r": 1.262336004880606,
+        "avg_loss_r": -0.816651007702696,
+        "max_drawdown_r": 2.1424994131895314,
+        "max_drawdown_pct": 0.021424994131895313,
+        "longest_losing_streak": 2,
+        "expectancy_by_year": {
+          "2020": [
+            12,
+            0.9466412784533417
+          ],
+          "2021": [
+            11,
+            0.022877627126310144
+          ],
+          "2022": [
+            12,
+            0.11546714518684724
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 30,
+        "expectancy_r": 0.15829650836328577,
+        "median_r": -0.5711370275400289,
+        "std_r": 1.809720461095697,
+        "profit_factor": 1.3137679740840351,
+        "win_rate": 0.36666666666666664,
+        "avg_win_r": 1.8076317557796173,
+        "avg_loss_r": -0.7965817927724851,
+        "max_drawdown_r": 6.176388641417871,
+        "max_drawdown_pct": 0.06176388641417871,
+        "longest_losing_streak": 5,
+        "expectancy_by_year": {
+          "2023": [
+            14,
+            0.31887219761673796
+          ],
+          "2024": [
+            16,
+            0.017792780266515082
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.37469686616982895,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 35 < 50 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M1-N55-k2": {
+      "variant_id": "M1-N55-k2",
+      "hypothesis": "M1",
+      "horizon": "mid",
+      "params": {
+        "N": 55,
+        "k": 2
+      },
+      "train": {
+        "summary": {
+          "trades": 23,
+          "expectancy_r": 0.15367433150708767,
+          "median_r": -1.0159906156343477,
+          "std_r": 1.929209530070603,
+          "profit_factor": 1.2404257301542527,
+          "win_rate": 0.34782608695652173,
+          "avg_win_r": 2.2794444042537445,
+          "avg_loss_r": -0.9800697072911293,
+          "max_drawdown_r": 6.823914882356003,
+          "max_drawdown_pct": 0.06823914882356003,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2020": [
+              8,
+              1.0281992443752368
+            ],
+            "2021": [
+              9,
+              -0.5284346091244587
+            ],
+            "2022": [
+              6,
+              0.010804525296875145
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.26094890510948904
+      },
+      "validation": {
+        "summary": {
+          "trades": 19,
+          "expectancy_r": 0.3560914624624613,
+          "median_r": -0.9928611777351553,
+          "std_r": 2.174164859745375,
+          "profit_factor": 1.596284280660049,
+          "win_rate": 0.42105263157894735,
+          "avg_win_r": 2.2640293452312,
+          "avg_loss_r": -1.0314997250057123,
+          "max_drawdown_r": 4.125946223686991,
+          "max_drawdown_pct": 0.04125946223686991,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2023": [
+              9,
+              0.7393006234146164
+            ],
+            "2024": [
+              10,
+              0.01120321760552169
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.32558139534883723
+      },
+      "stress_train": {
+        "trades": 23,
+        "expectancy_r": 0.12869300179531024,
+        "median_r": -1.0382948114727164,
+        "std_r": 1.9171210938729146,
+        "profit_factor": 1.1979037776657762,
+        "win_rate": 0.34782608695652173,
+        "avg_win_r": 2.2395493159890254,
+        "avg_loss_r": -0.9970970324413378,
+        "max_drawdown_r": 7.047453573068449,
+        "max_drawdown_pct": 0.07047453573068449,
+        "longest_losing_streak": 4,
+        "expectancy_by_year": {
+          "2020": [
+            8,
+            0.9992678392157597
+          ],
+          "2021": [
+            9,
+            -0.5483138693142244
+          ],
+          "2022": [
+            6,
+            -0.01656314143432025
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 19,
+        "expectancy_r": 0.3230119951703092,
+        "median_r": -1.0413306932024762,
+        "std_r": 2.15828459150828,
+        "profit_factor": 1.5271256452008357,
+        "win_rate": 0.42105263157894735,
+        "avg_win_r": 2.222505728576917,
+        "avg_loss_r": -1.058437992761769,
+        "max_drawdown_r": 4.227009848357392,
+        "max_drawdown_pct": 0.04227009848357392,
+        "longest_losing_streak": 4,
+        "expectancy_by_year": {
+          "2023": [
+            9,
+            0.6997076312879126
+          ],
+          "2024": [
+            10,
+            -0.01601407733553379
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.37469686616982895,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 23 < 50 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M1-N55-k3": {
+      "variant_id": "M1-N55-k3",
+      "hypothesis": "M1",
+      "horizon": "mid",
+      "params": {
+        "N": 55,
+        "k": 3
+      },
+      "train": {
+        "summary": {
+          "trades": 23,
+          "expectancy_r": 0.015456609811372342,
+          "median_r": -0.3891395998433631,
+          "std_r": 1.3644033046983386,
+          "profit_factor": 1.0300861770184424,
+          "win_rate": 0.34782608695652173,
+          "avg_win_r": 1.5214533667386498,
+          "avg_loss_r": -0.7877416605498423,
+          "max_drawdown_r": 5.6668782591568,
+          "max_drawdown_pct": 0.056668782591568,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2020": [
+              8,
+              0.5548500643321501
+            ],
+            "2021": [
+              9,
+              -0.4016319584038399
+            ],
+            "2022": [
+              6,
+              -0.07810181056017962
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.3385036496350365
+      },
+      "validation": {
+        "summary": {
+          "trades": 19,
+          "expectancy_r": 0.20844183976630587,
+          "median_r": -0.16644300285377112,
+          "std_r": 1.5157848546020558,
+          "profit_factor": 1.464835736860082,
+          "win_rate": 0.47368421052631576,
+          "avg_win_r": 1.3867092305605004,
+          "avg_loss_r": -0.8519988119484692,
+          "max_drawdown_r": 3.1853265101478607,
+          "max_drawdown_pct": 0.03185326510147861,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2023": [
+              9,
+              0.5941737972862162
+            ],
+            "2024": [
+              10,
+              -0.1387169220016134
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.4158686730506156
+      },
+      "stress_train": {
+        "trades": 23,
+        "expectancy_r": -0.0012737433315752418,
+        "median_r": -0.396035246263963,
+        "std_r": 1.3579755017203938,
+        "profit_factor": 0.9975590374495386,
+        "win_rate": 0.34782608695652173,
+        "avg_win_r": 1.496570786489874,
+        "avg_loss_r": -0.8001241592363483,
+        "max_drawdown_r": 5.819289824202599,
+        "max_drawdown_pct": 0.05819289824202599,
+        "longest_losing_streak": 4,
+        "expectancy_by_year": {
+          "2020": [
+            8,
+            0.5362616440845522
+          ],
+          "2021": [
+            9,
+            -0.4148770612475348
+          ],
+          "2022": [
+            6,
+            -0.09758261634580591
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 19,
+        "expectancy_r": 0.18615825410279707,
+        "median_r": -0.17570509351636054,
+        "std_r": 1.5086169999573318,
+        "profit_factor": 1.4061894729294035,
+        "win_rate": 0.47368421052631576,
+        "avg_win_r": 1.3605313936313257,
+        "avg_loss_r": -0.8707775714728786,
+        "max_drawdown_r": 3.2685131480422482,
+        "max_drawdown_pct": 0.032685131480422486,
+        "longest_losing_streak": 4,
+        "expectancy_by_year": {
+          "2023": [
+            9,
+            0.5681056993892939
+          ],
+          "2024": [
+            10,
+            -0.15759444665505004
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": 0.37469686616982895,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 23 < 50 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M2-q0.025-h3": {
+      "variant_id": "M2-q0.025-h3",
+      "hypothesis": "M2",
+      "horizon": "mid",
+      "params": {
+        "q": 0.025,
+        "h": 3
+      },
+      "train": {
+        "summary": {
+          "trades": 23,
+          "expectancy_r": 0.03099252746472008,
+          "median_r": 0.012641787757760368,
+          "std_r": 0.6589477162565275,
+          "profit_factor": 1.1309346371053952,
+          "win_rate": 0.5217391304347826,
+          "avg_win_r": 0.5130817191512161,
+          "avg_loss_r": -0.4949229543750938,
+          "max_drawdown_r": 3.4163115704083693,
+          "max_drawdown_pct": 0.034163115704083695,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2021": [
+              16,
+              -0.019853240898132778
+            ],
+            "2022": [
+              7,
+              0.14721142657981232
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.05782390510948905
+      },
+      "validation": {
+        "summary": {
+          "trades": 37,
+          "expectancy_r": -0.08189926293673451,
+          "median_r": -0.12628848850925856,
+          "std_r": 0.5301443262666898,
+          "profit_factor": 0.6876444496806148,
+          "win_rate": 0.40540540540540543,
+          "avg_win_r": 0.4447389565620267,
+          "avg_loss_r": -0.4409707762313445,
+          "max_drawdown_r": 5.803497182061064,
+          "max_drawdown_pct": 0.05803497182061064,
+          "longest_losing_streak": 6,
+          "expectancy_by_year": {
+            "2023": [
+              16,
+              -0.21472423601536308
+            ],
+            "2024": [
+              21,
+              0.019300716551744392
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.1461468308253534
+      },
+      "stress_train": {
+        "trades": 23,
+        "expectancy_r": -0.008653462586251425,
+        "median_r": -0.05517084828187023,
+        "std_r": 0.6670331088064284,
+        "profit_factor": 0.9670698102790543,
+        "win_rate": 0.43478260869565216,
+        "avg_win_r": 0.5844957387933404,
+        "avg_loss_r": -0.46492207903209126,
+        "max_drawdown_r": 4.0759059367151975,
+        "max_drawdown_pct": 0.040759059367151976,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2021": [
+            16,
+            -0.0686803609080572
+          ],
+          "2022": [
+            7,
+            0.1285508764350189
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 37,
+        "expectancy_r": -0.12197453900417314,
+        "median_r": -0.16537062265715352,
+        "std_r": 0.532675822876268,
+        "profit_factor": 0.5766000207701485,
+        "win_rate": 0.3783783783783784,
+        "avg_win_r": 0.439002198430003,
+        "avg_loss_r": -0.4634386400510629,
+        "max_drawdown_r": 6.960010113685331,
+        "max_drawdown_pct": 0.06960010113685332,
+        "longest_losing_streak": 6,
+        "expectancy_by_year": {
+          "2023": [
+            16,
+            -0.25739693579869644
+          ],
+          "2024": [
+            21,
+            -0.01879557001786964
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.01368391764079682,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 23 < 50 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M2-q0.025-h7": {
+      "variant_id": "M2-q0.025-h7",
+      "hypothesis": "M2",
+      "horizon": "mid",
+      "params": {
+        "q": 0.025,
+        "h": 7
+      },
+      "train": {
+        "summary": {
+          "trades": 18,
+          "expectancy_r": 0.10314723682917167,
+          "median_r": 0.1505198843140825,
+          "std_r": 0.9350913854238572,
+          "profit_factor": 1.3856113482175136,
+          "win_rate": 0.5555555555555556,
+          "avg_win_r": 0.6671472937380719,
+          "avg_loss_r": -0.6018528343069537,
+          "max_drawdown_r": 3.4389374200406198,
+          "max_drawdown_pct": 0.0343893742004062,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2021": [
+              11,
+              0.12634728723291563
+            ],
+            "2022": [
+              7,
+              0.06669001476614546
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.09911040145985402
+      },
+      "validation": {
+        "summary": {
+          "trades": 26,
+          "expectancy_r": -0.02842672198066852,
+          "median_r": -0.1044776838059636,
+          "std_r": 0.9108815099254834,
+          "profit_factor": 0.9217416044514221,
+          "win_rate": 0.5,
+          "avg_win_r": 0.6696301947946596,
+          "avg_loss_r": -0.7264836387559966,
+          "max_drawdown_r": 4.338724724861453,
+          "max_drawdown_pct": 0.04338724724861453,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2023": [
+              11,
+              -0.004811580499334462
+            ],
+            "2024": [
+              15,
+              -0.0457444924003135
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.21397628818969447
+      },
+      "stress_train": {
+        "trades": 18,
+        "expectancy_r": 0.04094082975178717,
+        "median_r": 0.07655043497628757,
+        "std_r": 0.9523678355868335,
+        "profit_factor": 1.1333971540325594,
+        "win_rate": 0.5555555555555556,
+        "avg_win_r": 0.6261302684429568,
+        "avg_loss_r": -0.6905459686121749,
+        "max_drawdown_r": 4.20869395947793,
+        "max_drawdown_pct": 0.042086939594779306,
+        "longest_losing_streak": 4,
+        "expectancy_by_year": {
+          "2021": [
+            11,
+            0.036894585450954656
+          ],
+          "2022": [
+            7,
+            0.04729921365309541
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 26,
+        "expectancy_r": -0.0836631900760029,
+        "median_r": -0.12184488998566612,
+        "std_r": 0.9175587273301722,
+        "profit_factor": 0.7865549415085307,
+        "win_rate": 0.5,
+        "avg_win_r": 0.6166054725439106,
+        "avg_loss_r": -0.7839318526959164,
+        "max_drawdown_r": 5.360156569341596,
+        "max_drawdown_pct": 0.05360156569341596,
+        "longest_losing_streak": 5,
+        "expectancy_by_year": {
+          "2023": [
+            11,
+            -0.05966576818788418
+          ],
+          "2024": [
+            15,
+            -0.1012612994606233
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.01368391764079682,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 18 < 50 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M2-q0.05-h3": {
+      "variant_id": "M2-q0.05-h3",
+      "hypothesis": "M2",
+      "horizon": "mid",
+      "params": {
+        "q": 0.05,
+        "h": 3
+      },
+      "train": {
+        "summary": {
+          "trades": 36,
+          "expectancy_r": 0.04195905175440775,
+          "median_r": -0.028477078868109854,
+          "std_r": 0.5831403954117867,
+          "profit_factor": 1.2114083258180328,
+          "win_rate": 0.4722222222222222,
+          "avg_win_r": 0.5091523017791273,
+          "avg_loss_r": -0.37605596142560455,
+          "max_drawdown_r": 3.114417626975426,
+          "max_drawdown_pct": 0.03114417626975426,
+          "longest_losing_streak": 6,
+          "expectancy_by_year": {
+            "2021": [
+              26,
+              0.0337120732308329
+            ],
+            "2022": [
+              10,
+              0.06340119591570234
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.09462439172749391
+      },
+      "validation": {
+        "summary": {
+          "trades": 57,
+          "expectancy_r": -0.02532712400314504,
+          "median_r": -0.023396978854505715,
+          "std_r": 0.5640565031233292,
+          "profit_factor": 0.8943301950417931,
+          "win_rate": 0.49122807017543857,
+          "avg_win_r": 0.4363647787547527,
+          "avg_loss_r": -0.47109861632111527,
+          "max_drawdown_r": 5.30247842286076,
+          "max_drawdown_pct": 0.053024784228607603,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2023": [
+              25,
+              0.017815716574063726
+            ],
+            "2024": [
+              32,
+              -0.05903246820408939
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.2212722298221614
+      },
+      "stress_train": {
+        "trades": 36,
+        "expectancy_r": -0.000361014333034356,
+        "median_r": -0.06415608365457295,
+        "std_r": 0.5893884916549639,
+        "profit_factor": 0.9983884664122883,
+        "win_rate": 0.4166666666666667,
+        "avg_win_r": 0.5367794489315242,
+        "avg_loss_r": -0.3840327738077191,
+        "max_drawdown_r": 3.5849919067707683,
+        "max_drawdown_pct": 0.03584991906770768,
+        "longest_losing_streak": 6,
+        "expectancy_by_year": {
+          "2021": [
+            26,
+            -0.017823977085353934
+          ],
+          "2022": [
+            10,
+            0.04504268882299655
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 57,
+        "expectancy_r": -0.06253283845939911,
+        "median_r": -0.07147842301281336,
+        "std_r": 0.564136808899987,
+        "profit_factor": 0.7580640164220305,
+        "win_rate": 0.47368421052631576,
+        "avg_win_r": 0.41364201922584526,
+        "avg_loss_r": -0.49109021037611905,
+        "max_drawdown_r": 6.218987255528049,
+        "max_drawdown_pct": 0.06218987255528049,
+        "longest_losing_streak": 4,
+        "expectancy_by_year": {
+          "2023": [
+            25,
+            -0.021681847943370115
+          ],
+          "2024": [
+            32,
+            -0.09444767480004675
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.01368391764079682,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 36 < 50 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M2-q0.05-h7": {
+      "variant_id": "M2-q0.05-h7",
+      "hypothesis": "M2",
+      "horizon": "mid",
+      "params": {
+        "q": 0.05,
+        "h": 7
+      },
+      "train": {
+        "summary": {
+          "trades": 26,
+          "expectancy_r": 0.06776794755505622,
+          "median_r": 0.1505198843140825,
+          "std_r": 0.6936653430555476,
+          "profit_factor": 1.3176351634599421,
+          "win_rate": 0.5769230769230769,
+          "avg_win_r": 0.4872737580890496,
+          "avg_loss_r": -0.5042854304458438,
+          "max_drawdown_r": 3.182956083873522,
+          "max_drawdown_pct": 0.03182956083873522,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2021": [
+              16,
+              0.1243213176936885
+            ],
+            "2022": [
+              10,
+              -0.022717444666755425
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.15142183698296838
+      },
+      "validation": {
+        "summary": {
+          "trades": 36,
+          "expectancy_r": 0.07898239607831245,
+          "median_r": -0.05580791976701423,
+          "std_r": 0.9976924693820646,
+          "profit_factor": 1.2517345123702888,
+          "win_rate": 0.4722222222222222,
+          "avg_win_r": 0.8316744316348106,
+          "avg_loss_r": -0.5944788988932912,
+          "max_drawdown_r": 6.10453413557694,
+          "max_drawdown_pct": 0.0610453413557694,
+          "longest_losing_streak": 8,
+          "expectancy_by_year": {
+            "2023": [
+              15,
+              0.3088143815591188
+            ],
+            "2024": [
+              21,
+              -0.08518330783654925
+            ]
+          }
+        },
+        "p": 0.412958704129587,
+        "time_in_market": 0.29331965344277244
+      },
+      "stress_train": {
+        "trades": 26,
+        "expectancy_r": 0.0007524084157651735,
+        "median_r": 0.06209721828031976,
+        "std_r": 0.708127707282492,
+        "profit_factor": 1.0030716427587554,
+        "win_rate": 0.5384615384615384,
+        "avg_win_r": 0.45631022986388425,
+        "avg_loss_r": -0.5307317166070404,
+        "max_drawdown_r": 4.009778532403855,
+        "max_drawdown_pct": 0.04009778532403855,
+        "longest_losing_streak": 4,
+        "expectancy_by_year": {
+          "2021": [
+            16,
+            0.02722648035270325
+          ],
+          "2022": [
+            10,
+            -0.041606106683335746
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 36,
+        "expectancy_r": 0.02875291891024648,
+        "median_r": -0.09992436927621261,
+        "std_r": 1.0013719152796423,
+        "profit_factor": 1.0843294021662726,
+        "win_rate": 0.4722222222222222,
+        "avg_win_r": 0.7829206202296156,
+        "avg_loss_r": -0.6460287085860311,
+        "max_drawdown_r": 7.014254008231923,
+        "max_drawdown_pct": 0.07014254008231922,
+        "longest_losing_streak": 8,
+        "expectancy_by_year": {
+          "2023": [
+            15,
+            0.25913385201773925
+          ],
+          "2024": [
+            21,
+            -0.1358048904522484
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.01368391764079682,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: 26 < 50 Trades",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-mo-long": {
+      "variant_id": "M3-mo-long",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 0,
+        "side": 1
+      },
+      "train": {
+        "summary": {
+          "trades": 154,
+          "expectancy_r": 0.014952644509348564,
+          "median_r": -0.04158487166329239,
+          "std_r": 0.836679413774445,
+          "profit_factor": 1.0505522763710449,
+          "win_rate": 0.4805194805194805,
+          "avg_win_r": 0.64667185691208,
+          "avg_loss_r": -0.569387626963178,
+          "max_drawdown_r": 8.067249139618477,
+          "max_drawdown_pct": 0.08067249139618478,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              0.17726700358522623
+            ],
+            "2021": [
+              52,
+              -0.10252393327596704
+            ],
+            "2022": [
+              52,
+              -0.023642276816756673
+            ]
+          }
+        },
+        "p": 0.29327067293270676,
+        "time_in_market": 0.14051094890510948
+      },
+      "validation": {
+        "summary": {
+          "trades": 105,
+          "expectancy_r": 0.11406120672032304,
+          "median_r": -0.029400312133411013,
+          "std_r": 0.8736249713119454,
+          "profit_factor": 1.4439834141185055,
+          "win_rate": 0.47619047619047616,
+          "avg_win_r": 0.7790273678433117,
+          "avg_loss_r": -0.4904534852096666,
+          "max_drawdown_r": 7.2233021092696506,
+          "max_drawdown_pct": 0.07223302109269651,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              0.020769620757527023
+            ],
+            "2024": [
+              53,
+              0.20559257408004744
+            ]
+          }
+        },
+        "p": 0.11578842115788421,
+        "time_in_market": 0.1436388508891929
+      },
+      "stress_train": {
+        "trades": 154,
+        "expectancy_r": -0.01890920583131815,
+        "median_r": -0.06687750381246557,
+        "std_r": 0.8287327371754342,
+        "profit_factor": 0.9393323953742458,
+        "win_rate": 0.474025974025974,
+        "avg_win_r": 0.6176374234673747,
+        "avg_loss_r": -0.5925870322363129,
+        "max_drawdown_r": 10.661413128195425,
+        "max_drawdown_pct": 0.10661413128195425,
+        "longest_losing_streak": 5,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            0.1363575521034723
+          ],
+          "2021": [
+            52,
+            -0.12788376275866115
+          ],
+          "2022": [
+            52,
+            -0.0592296084566583
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 105,
+        "expectancy_r": 0.06648877868090486,
+        "median_r": -0.07774289020809555,
+        "std_r": 0.8667855048525427,
+        "profit_factor": 1.2373142609294798,
+        "win_rate": 0.4380952380952381,
+        "avg_win_r": 0.7912905959089874,
+        "avg_loss_r": -0.4986109432257358,
+        "max_drawdown_r": 8.61484609024315,
+        "max_drawdown_pct": 0.0861484609024315,
+        "longest_losing_streak": 5,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.031627533982425
+          ],
+          "2024": [
+            53,
+            0.16275384016190775
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-mo-short": {
+      "variant_id": "M3-mo-short",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 0,
+        "side": -1
+      },
+      "train": {
+        "summary": {
+          "trades": 154,
+          "expectancy_r": -0.0564168608521021,
+          "median_r": -0.09669352533360512,
+          "std_r": 0.6798911576657106,
+          "profit_factor": 0.8108079916496433,
+          "win_rate": 0.4675324675324675,
+          "avg_win_r": 0.5171450535589319,
+          "avg_loss_r": -0.5600322003349613,
+          "max_drawdown_r": 11.937257417395745,
+          "max_drawdown_pct": 0.11937257417395745,
+          "longest_losing_streak": 8,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              -0.2102090794295744
+            ],
+            "2021": [
+              52,
+              0.06953523338602882
+            ],
+            "2022": [
+              52,
+              -0.03449182184266351
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14051094890510948
+      },
+      "validation": {
+        "summary": {
+          "trades": 105,
+          "expectancy_r": -0.09161537624596927,
+          "median_r": -0.051022852424558826,
+          "std_r": 0.7116703657031053,
+          "profit_factor": 0.7221218137628045,
+          "win_rate": 0.45714285714285713,
+          "avg_win_r": 0.5208017561513062,
+          "avg_loss_r": -0.6073350666857802,
+          "max_drawdown_r": 12.930238778690603,
+          "max_drawdown_pct": 0.12930238778690603,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.03247090987493664
+            ],
+            "2024": [
+              53,
+              -0.14964390928924656
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.1436388508891929
+      },
+      "stress_train": {
+        "trades": 154,
+        "expectancy_r": -0.09941051857683658,
+        "median_r": -0.13266510786188068,
+        "std_r": 0.6773894550824043,
+        "profit_factor": 0.6886648449977519,
+        "win_rate": 0.43506493506493504,
+        "avg_win_r": 0.5054264997734417,
+        "avg_loss_r": -0.565204544202913,
+        "max_drawdown_r": 17.252749410497152,
+        "max_drawdown_pct": 0.17252749410497153,
+        "longest_losing_streak": 8,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            -0.26158739094959604
+          ],
+          "2021": [
+            52,
+            0.029683363872466582
+          ],
+          "2022": [
+            52,
+            -0.07256510066771718
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 105,
+        "expectancy_r": -0.14554495186371116,
+        "median_r": -0.0942198662734493,
+        "std_r": 0.7094537414027134,
+        "profit_factor": 0.5954169458671715,
+        "win_rate": 0.38095238095238093,
+        "avg_win_r": 0.5622635842741904,
+        "avg_loss_r": -0.5811194356408814,
+        "max_drawdown_r": 17.234235376027385,
+        "max_drawdown_pct": 0.17234235376027385,
+        "longest_losing_streak": 6,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.09028161465046902
+          ],
+          "2024": [
+            53,
+            -0.19976558460123173
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-di-long": {
+      "variant_id": "M3-di-long",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 1,
+        "side": 1
+      },
+      "train": {
+        "summary": {
+          "trades": 154,
+          "expectancy_r": -0.018916265349882846,
+          "median_r": 0.006902429615790387,
+          "std_r": 0.6117498160625965,
+          "profit_factor": 0.9247042740533304,
+          "win_rate": 0.512987012987013,
+          "avg_win_r": 0.4528575026189678,
+          "avg_loss_r": -0.5158513009437388,
+          "max_drawdown_r": 9.335043753138603,
+          "max_drawdown_pct": 0.09335043753138603,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              0.018215885032334126
+            ],
+            "2021": [
+              52,
+              -0.06290432113889813
+            ],
+            "2022": [
+              52,
+              -0.010632200312999272
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14051094890510948
+      },
+      "validation": {
+        "summary": {
+          "trades": 105,
+          "expectancy_r": -0.00023429803208241423,
+          "median_r": -0.03121004937637286,
+          "std_r": 0.6837095669788471,
+          "profit_factor": 0.9991259047751754,
+          "win_rate": 0.4666666666666667,
+          "avg_win_r": 0.573882962412509,
+          "avg_loss_r": -0.5025869009210999,
+          "max_drawdown_r": 11.175306042113617,
+          "max_drawdown_pct": 0.11175306042113617,
+          "longest_losing_streak": 6,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              0.14319073348206324
+            ],
+            "2024": [
+              53,
+              -0.14095319687614985
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.1436388508891929
+      },
+      "stress_train": {
+        "trades": 154,
+        "expectancy_r": -0.05227549473653943,
+        "median_r": -0.027331255971988017,
+        "std_r": 0.6075164843916749,
+        "profit_factor": 0.8042109575204528,
+        "win_rate": 0.4805194805194805,
+        "avg_win_r": 0.4468571964853305,
+        "avg_loss_r": -0.5139732341167691,
+        "max_drawdown_r": 13.427373383641282,
+        "max_drawdown_pct": 0.1342737338364128,
+        "longest_losing_streak": 6,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            -0.020938665044147858
+          ],
+          "2021": [
+            52,
+            -0.08822183607174362
+          ],
+          "2022": [
+            52,
+            -0.046460720413250216
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 105,
+        "expectancy_r": -0.047036536878592446,
+        "median_r": -0.07184283217502348,
+        "std_r": 0.6768023784895986,
+        "profit_factor": 0.8384001867852187,
+        "win_rate": 0.4666666666666667,
+        "avg_win_r": 0.5229245962634554,
+        "avg_loss_r": -0.5457525283778843,
+        "max_drawdown_r": 13.199326129917669,
+        "max_drawdown_pct": 0.13199326129917668,
+        "longest_losing_streak": 6,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            0.0900222480864814
+          ],
+          "2024": [
+            53,
+            -0.18150930703300452
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-di-short": {
+      "variant_id": "M3-di-short",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 1,
+        "side": -1
+      },
+      "train": {
+        "summary": {
+          "trades": 154,
+          "expectancy_r": -0.01626840569008916,
+          "median_r": -0.07308109166626034,
+          "std_r": 0.7067556375232203,
+          "profit_factor": 0.9389549042687946,
+          "win_rate": 0.461038961038961,
+          "avg_win_r": 0.5427518614857707,
+          "avg_loss_r": -0.494466465563415,
+          "max_drawdown_r": 7.168444443408128,
+          "max_drawdown_pct": 0.07168444443408128,
+          "longest_losing_streak": 9,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              -0.08662768674958096
+            ],
+            "2021": [
+              52,
+              0.05493057305131428
+            ],
+            "2022": [
+              52,
+              -0.019814229566596633
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14051094890510948
+      },
+      "validation": {
+        "summary": {
+          "trades": 105,
+          "expectancy_r": -0.11416782385794086,
+          "median_r": -0.06494654872150998,
+          "std_r": 0.6426586698703968,
+          "profit_factor": 0.6343608037409036,
+          "win_rate": 0.4380952380952381,
+          "avg_win_r": 0.45212527461789603,
+          "avg_loss_r": -0.5556844769068985,
+          "max_drawdown_r": 16.53664364689098,
+          "max_drawdown_pct": 0.1653664364689098,
+          "longest_losing_streak": 8,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.2722647258804992
+            ],
+            "2024": [
+              53,
+              0.04094611774909754
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.1436388508891929
+      },
+      "stress_train": {
+        "trades": 154,
+        "expectancy_r": -0.060080785530680275,
+        "median_r": -0.09804206324008874,
+        "std_r": 0.7028966107838436,
+        "profit_factor": 0.7917221241677792,
+        "win_rate": 0.42857142857142855,
+        "avg_win_r": 0.5328954706361594,
+        "avg_loss_r": -0.50481297765581,
+        "max_drawdown_r": 11.261669804018297,
+        "max_drawdown_pct": 0.11261669804018297,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            -0.13973048983486872
+          ],
+          "2021": [
+            52,
+            0.015624450343382924
+          ],
+          "2022": [
+            52,
+            -0.05919976726610074
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 105,
+        "expectancy_r": -0.16805172588132397,
+        "median_r": -0.12215263774915512,
+        "std_r": 0.6414795162072765,
+        "profit_factor": 0.509791373227534,
+        "win_rate": 0.38095238095238093,
+        "avg_win_r": 0.45875817561634513,
+        "avg_loss_r": -0.5537808960337357,
+        "max_drawdown_r": 19.99557404979284,
+        "max_drawdown_pct": 0.1999557404979284,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.32847553728561957
+          ],
+          "2024": [
+            53,
+            -0.01065477884314716
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-mi-long": {
+      "variant_id": "M3-mi-long",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 2,
+        "side": 1
+      },
+      "train": {
+        "summary": {
+          "trades": 154,
+          "expectancy_r": 0.06469561600475351,
+          "median_r": 0.03075905423050523,
+          "std_r": 0.729431803554307,
+          "profit_factor": 1.2698477730423667,
+          "win_rate": 0.512987012987013,
+          "avg_win_r": 0.5934734642360459,
+          "avg_loss_r": -0.492283717465541,
+          "max_drawdown_r": 7.3406531677026745,
+          "max_drawdown_pct": 0.07340653167702675,
+          "longest_losing_streak": 8,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              0.1655773995874643
+            ],
+            "2021": [
+              52,
+              0.09570871731890697
+            ],
+            "2022": [
+              52,
+              -0.06331920029277568
+            ]
+          }
+        },
+        "p": 0.06619338066193381,
+        "time_in_market": 0.14051094890510948
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": 0.050601144379229406,
+          "median_r": -0.11371634006599227,
+          "std_r": 0.8608087153363606,
+          "profit_factor": 1.1687813774884552,
+          "win_rate": 0.4519230769230769,
+          "avg_win_r": 0.7753621137757133,
+          "avg_loss_r": -0.5470087777547135,
+          "max_drawdown_r": 9.504467630665506,
+          "max_drawdown_pct": 0.09504467630665506,
+          "longest_losing_streak": 9,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              0.024270012534166996
+            ],
+            "2024": [
+              52,
+              0.07693227622429182
+            ]
+          }
+        },
+        "p": 0.3775622437756224,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 154,
+        "expectancy_r": 0.03067456983178255,
+        "median_r": -0.0010232618399458578,
+        "std_r": 0.7246209712185282,
+        "profit_factor": 1.120196963012974,
+        "win_rate": 0.5,
+        "avg_win_r": 0.5717542125183843,
+        "avg_loss_r": -0.5104050728548193,
+        "max_drawdown_r": 8.396562294320933,
+        "max_drawdown_pct": 0.08396562294320933,
+        "longest_losing_streak": 8,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            0.12488297082130644
+          ],
+          "2021": [
+            52,
+            0.06963256706234913
+          ],
+          "2022": [
+            52,
+            -0.0988684283502493
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": 0.003304187391200496,
+        "median_r": -0.16364824086891172,
+        "std_r": 0.8532309340734374,
+        "profit_factor": 1.0102260769289324,
+        "win_rate": 0.4519230769230769,
+        "avg_win_r": 0.7222867868810195,
+        "avg_loss_r": -0.5895411139425101,
+        "max_drawdown_r": 11.171306731560321,
+        "max_drawdown_pct": 0.11171306731560321,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.02853185345869356
+          ],
+          "2024": [
+            52,
+            0.03514022824109456
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_validation",
+      "reasons": [
+        "Validierung: p >= 0,05 gegen Zufall",
+        "Walk-Forward der Hypothese <= 0"
+      ]
+    },
+    "M3-mi-short": {
+      "variant_id": "M3-mi-short",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 2,
+        "side": -1
+      },
+      "train": {
+        "summary": {
+          "trades": 154,
+          "expectancy_r": -0.07522867601643998,
+          "median_r": -0.11350646577618723,
+          "std_r": 0.6793935026577606,
+          "profit_factor": 0.7496530204567838,
+          "win_rate": 0.44805194805194803,
+          "avg_win_r": 0.502774204857628,
+          "avg_loss_r": -0.5444310146083304,
+          "max_drawdown_r": 15.392030653004577,
+          "max_drawdown_pct": 0.15392030653004576,
+          "longest_losing_streak": 6,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              -0.1289976293066847
+            ],
+            "2021": [
+              52,
+              -0.08877086898830491
+            ],
+            "2022": [
+              52,
+              -0.009985566419339712
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14051094890510948
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": -0.10578832946449122,
+          "median_r": -0.011462340903517254,
+          "std_r": 0.6711284682984441,
+          "profit_factor": 0.6829589886347421,
+          "win_rate": 0.49038461538461536,
+          "avg_win_r": 0.4647079506625749,
+          "avg_loss_r": -0.6547564480773285,
+          "max_drawdown_r": 13.54247978064748,
+          "max_drawdown_pct": 0.1354247978064748,
+          "longest_losing_streak": 6,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.11362314130877268
+            ],
+            "2024": [
+              52,
+              -0.09795351762020978
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 154,
+        "expectancy_r": -0.11849028445448087,
+        "median_r": -0.15062097077257103,
+        "std_r": 0.6761959405451243,
+        "profit_factor": 0.6334131723109891,
+        "win_rate": 0.42207792207792205,
+        "avg_win_r": 0.48506544905998744,
+        "avg_loss_r": -0.5592894156729128,
+        "max_drawdown_r": 21.006442500520336,
+        "max_drawdown_pct": 0.21006442500520336,
+        "longest_losing_streak": 8,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            -0.1816451445776007
+          ],
+          "2021": [
+            52,
+            -0.12719692565118781
+          ],
+          "2022": [
+            52,
+            -0.04905781621631252
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": -0.15939542347749452,
+        "median_r": -0.05919336082542539,
+        "std_r": 0.6686159210707815,
+        "profit_factor": 0.5573028163024331,
+        "win_rate": 0.46153846153846156,
+        "avg_win_r": 0.434762851392404,
+        "avg_loss_r": -0.6686739447945503,
+        "max_drawdown_r": 17.499424679489767,
+        "max_drawdown_pct": 0.17499424679489767,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.17224261020012108
+          ],
+          "2024": [
+            52,
+            -0.14654823675486794
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-do-long": {
+      "variant_id": "M3-do-long",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 3,
+        "side": 1
+      },
+      "train": {
+        "summary": {
+          "trades": 155,
+          "expectancy_r": -0.050544421850120806,
+          "median_r": -0.06759004624812023,
+          "std_r": 0.6724957859267889,
+          "profit_factor": 0.8254540062235113,
+          "win_rate": 0.432258064516129,
+          "avg_win_r": 0.5529847098757462,
+          "avg_loss_r": -0.5100495562323151,
+          "max_drawdown_r": 16.253606524145653,
+          "max_drawdown_pct": 0.16253606524145653,
+          "longest_losing_streak": 6,
+          "expectancy_by_year": {
+            "2020": [
+              51,
+              0.10686008162772027
+            ],
+            "2021": [
+              52,
+              -0.07360459610070279
+            ],
+            "2022": [
+              52,
+              -0.18186174139511374
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14142335766423358
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": -0.09953087604467752,
+          "median_r": -0.17311249591309844,
+          "std_r": 0.6922781737735219,
+          "profit_factor": 0.6848403452590279,
+          "win_rate": 0.375,
+          "avg_win_r": 0.5767469153194164,
+          "avg_loss_r": -0.5052975508631339,
+          "max_drawdown_r": 13.786523121604327,
+          "max_drawdown_pct": 0.13786523121604327,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.11882089114857211
+            ],
+            "2024": [
+              52,
+              -0.08024086094078292
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 155,
+        "expectancy_r": -0.08415177976835622,
+        "median_r": -0.10432028348027483,
+        "std_r": 0.6692056185180568,
+        "profit_factor": 0.7262625633217324,
+        "win_rate": 0.41935483870967744,
+        "avg_win_r": 0.5324037540253501,
+        "avg_loss_r": -0.5294418875082553,
+        "max_drawdown_r": 18.827998840688213,
+        "max_drawdown_pct": 0.18827998840688215,
+        "longest_losing_streak": 6,
+        "expectancy_by_year": {
+          "2020": [
+            51,
+            0.06685167259384188
+          ],
+          "2021": [
+            52,
+            -0.09864206933580402
+          ],
+          "2022": [
+            52,
+            -0.2177610300176796
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": -0.14548546334634094,
+        "median_r": -0.21111720763521893,
+        "std_r": 0.6843569570205257,
+        "profit_factor": 0.5756084243563012,
+        "win_rate": 0.375,
+        "avg_win_r": 0.5261974279077304,
+        "avg_loss_r": -0.5484951980987838,
+        "max_drawdown_r": 18.24410792845401,
+        "max_drawdown_pct": 0.1824410792845401,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.1705669000791586
+          ],
+          "2024": [
+            52,
+            -0.12040402661352327
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-do-short": {
+      "variant_id": "M3-do-short",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 3,
+        "side": -1
+      },
+      "train": {
+        "summary": {
+          "trades": 155,
+          "expectancy_r": -0.012570403193047688,
+          "median_r": -0.03938748231864939,
+          "std_r": 0.9356436687874045,
+          "profit_factor": 0.9569145759881988,
+          "win_rate": 0.44516129032258067,
+          "avg_win_r": 0.6271546026755462,
+          "avg_loss_r": -0.5258381404597102,
+          "max_drawdown_r": 9.440700911966333,
+          "max_drawdown_pct": 0.09440700911966333,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2020": [
+              51,
+              0.0133453464966715
+            ],
+            "2021": [
+              52,
+              -0.014766677356184853
+            ],
+            "2022": [
+              52,
+              -0.03579149891790435
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14142335766423358
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": -0.0044442286145419665,
+          "median_r": 0.03401827079092804,
+          "std_r": 0.7600406574178745,
+          "profit_factor": 0.9833658552724425,
+          "win_rate": 0.5192307692307693,
+          "avg_win_r": 0.5060001195789045,
+          "avg_loss_r": -0.5557241246634641,
+          "max_drawdown_r": 5.654321982015572,
+          "max_drawdown_pct": 0.05654321982015573,
+          "longest_losing_streak": 4,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              0.0674357698713566
+            ],
+            "2024": [
+              52,
+              -0.07632422710044054
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 155,
+        "expectancy_r": -0.05559118590470895,
+        "median_r": -0.08435899059650177,
+        "std_r": 0.9306744615923978,
+        "profit_factor": 0.8235238967260546,
+        "win_rate": 0.4258064516129032,
+        "avg_win_r": 0.6092338166330571,
+        "avg_loss_r": -0.5486074799214793,
+        "max_drawdown_r": 15.271434730589688,
+        "max_drawdown_pct": 0.1527143473058969,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2020": [
+            51,
+            -0.038135142486434376
+          ],
+          "2021": [
+            52,
+            -0.05351545625797919
+          ],
+          "2022": [
+            52,
+            -0.07478726582705417
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": -0.05916253369807707,
+        "median_r": -0.013158291931869473,
+        "std_r": 0.7506672919679008,
+        "profit_factor": 0.797634878646659,
+        "win_rate": 0.46153846153846156,
+        "avg_win_r": 0.5052511856822351,
+        "avg_loss_r": -0.5429457217383448,
+        "max_drawdown_r": 9.070682923506228,
+        "max_drawdown_pct": 0.09070682923506228,
+        "longest_losing_streak": 4,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            0.007037433692405242
+          ],
+          "2024": [
+            52,
+            -0.1253625010885594
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-fr-long": {
+      "variant_id": "M3-fr-long",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 4,
+        "side": 1
+      },
+      "train": {
+        "summary": {
+          "trades": 155,
+          "expectancy_r": -0.07298153373329742,
+          "median_r": -0.08340899703984758,
+          "std_r": 0.6260321091129363,
+          "profit_factor": 0.7328468416544247,
+          "win_rate": 0.44516129032258067,
+          "avg_win_r": 0.44972652283913545,
+          "avg_loss_r": -0.49236357912280754,
+          "max_drawdown_r": 12.428386500378963,
+          "max_drawdown_pct": 0.12428386500378963,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              -0.093291475684328
+            ],
+            "2021": [
+              53,
+              -0.009527291361538676
+            ],
+            "2022": [
+              52,
+              -0.11812725965929137
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14142335766423358
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": 0.02498175332021431,
+          "median_r": 0.01772228802554169,
+          "std_r": 0.7669335726490025,
+          "profit_factor": 1.0895910176721098,
+          "win_rate": 0.5096153846153846,
+          "avg_win_r": 0.5961827828554235,
+          "avg_loss_r": -0.5686193165889246,
+          "max_drawdown_r": 7.838378637022193,
+          "max_drawdown_pct": 0.07838378637022193,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              0.09086016279907705
+            ],
+            "2024": [
+              52,
+              -0.04089665615864843
+            ]
+          }
+        },
+        "p": 0.5183481651834817,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 155,
+        "expectancy_r": -0.10613867288423981,
+        "median_r": -0.11159780704765976,
+        "std_r": 0.6228298341443042,
+        "profit_factor": 0.6357501351575048,
+        "win_rate": 0.4064516129032258,
+        "avg_win_r": 0.4557764314060483,
+        "avg_loss_r": -0.49092836386563277,
+        "max_drawdown_r": 16.861040418314378,
+        "max_drawdown_pct": 0.16861040418314377,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            -0.13154137808619
+          ],
+          "2021": [
+            53,
+            -0.03537900364895355
+          ],
+          "2022": [
+            52,
+            -0.15383342691063714
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": -0.021830224392912947,
+        "median_r": -0.0294538793149468,
+        "std_r": 0.7583517501341102,
+        "profit_factor": 0.927162526436589,
+        "win_rate": 0.4519230769230769,
+        "avg_win_r": 0.6148861033829784,
+        "avg_loss_r": -0.5468419332607533,
+        "max_drawdown_r": 11.14520434295692,
+        "max_drawdown_pct": 0.1114520434295692,
+        "longest_losing_streak": 10,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            0.0381659605704297
+          ],
+          "2024": [
+            52,
+            -0.0818264093562556
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-fr-short": {
+      "variant_id": "M3-fr-short",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 4,
+        "side": -1
+      },
+      "train": {
+        "summary": {
+          "trades": 155,
+          "expectancy_r": 0.011377766926230739,
+          "median_r": -0.009540457174589591,
+          "std_r": 0.6154445568470706,
+          "profit_factor": 1.0514096951904048,
+          "win_rate": 0.49032258064516127,
+          "avg_win_r": 0.4745719741112674,
+          "avg_loss_r": -0.43422678682139937,
+          "max_drawdown_r": 10.893218150101823,
+          "max_drawdown_pct": 0.10893218150101824,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              -0.052745398104293434
+            ],
+            "2021": [
+              53,
+              -0.07871470750226522
+            ],
+            "2022": [
+              52,
+              0.16485967839231716
+            ]
+          }
+        },
+        "p": 0.18198180181981802,
+        "time_in_market": 0.14142335766423358
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": -0.12508146858023172,
+          "median_r": -0.10905917555694825,
+          "std_r": 0.6157111917102938,
+          "profit_factor": 0.5974344482659389,
+          "win_rate": 0.41346153846153844,
+          "avg_win_r": 0.44896398808659,
+          "avg_loss_r": -0.5297364626240569,
+          "max_drawdown_r": 13.329457253327774,
+          "max_drawdown_pct": 0.13329457253327776,
+          "longest_losing_streak": 8,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.15184439671262834
+            ],
+            "2024": [
+              52,
+              -0.09831854044783513
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 155,
+        "expectancy_r": -0.03093943221828654,
+        "median_r": -0.048185589480183796,
+        "std_r": 0.6133803025532768,
+        "profit_factor": 0.8725911975486739,
+        "win_rate": 0.4645161290322581,
+        "avg_win_r": 0.45616602404660256,
+        "avg_loss_r": -0.4534887436769855,
+        "max_drawdown_r": 14.722621258870651,
+        "max_drawdown_pct": 0.14722621258870652,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            -0.1018489520673468
+          ],
+          "2021": [
+            53,
+            -0.1172327300683336
+          ],
+          "2022": [
+            52,
+            0.1251955827529732
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": -0.17721552009807112,
+        "median_r": -0.14660848821854097,
+        "std_r": 0.61440581384997,
+        "profit_factor": 0.4805733576927018,
+        "win_rate": 0.3942307692307692,
+        "avg_win_r": 0.4158978785724379,
+        "avg_loss_r": -0.5632099541534816,
+        "max_drawdown_r": 18.70715168237011,
+        "max_drawdown_pct": 0.1870715168237011,
+        "longest_losing_streak": 8,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.20860684375336785
+          ],
+          "2024": [
+            52,
+            -0.14582419644277433
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-sa-long": {
+      "variant_id": "M3-sa-long",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 5,
+        "side": 1
+      },
+      "train": {
+        "summary": {
+          "trades": 155,
+          "expectancy_r": -0.00791765933980633,
+          "median_r": 0.0007662342041344678,
+          "std_r": 0.426377965797812,
+          "profit_factor": 0.9486911269614866,
+          "win_rate": 0.5032258064516129,
+          "avg_win_r": 0.2909151043720759,
+          "avg_loss_r": -0.3106313680349598,
+          "max_drawdown_r": 5.737146107201359,
+          "max_drawdown_pct": 0.05737146107201359,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              0.045664478290427184
+            ],
+            "2021": [
+              52,
+              0.004964284328322716
+            ],
+            "2022": [
+              53,
+              -0.0711057339106438
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14142335766423358
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": -0.017655232226162935,
+          "median_r": -0.02684326616986049,
+          "std_r": 0.3691803484731929,
+          "profit_factor": 0.8434065775393164,
+          "win_rate": 0.38461538461538464,
+          "avg_win_r": 0.24723516964640177,
+          "avg_loss_r": -0.18321173339651586,
+          "max_drawdown_r": 5.122107961658051,
+          "max_drawdown_pct": 0.05122107961658051,
+          "longest_losing_streak": 6,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.014159951908715569
+            ],
+            "2024": [
+              52,
+              -0.0211505125436103
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 155,
+        "expectancy_r": -0.04125517295871834,
+        "median_r": -0.0380706900153535,
+        "std_r": 0.4228890144137042,
+        "profit_factor": 0.7586259829494093,
+        "win_rate": 0.4258064516129032,
+        "avg_win_r": 0.30451126948740637,
+        "avg_loss_r": -0.297666242637867,
+        "max_drawdown_r": 8.648185553732977,
+        "max_drawdown_pct": 0.08648185553732977,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            0.006099524904851788
+          ],
+          "2021": [
+            52,
+            -0.020448550182396937
+          ],
+          "2022": [
+            53,
+            -0.10634346121432625
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": -0.06321729129793094,
+        "median_r": -0.0732947303137555,
+        "std_r": 0.3639182922801783,
+        "profit_factor": 0.5580450991364498,
+        "win_rate": 0.28846153846153844,
+        "avg_win_r": 0.27671921200845817,
+        "avg_loss_r": -0.20102938723295355,
+        "max_drawdown_r": 8.77209876221873,
+        "max_drawdown_pct": 0.0877209876221873,
+        "longest_losing_streak": 15,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.06493412109015172
+          ],
+          "2024": [
+            52,
+            -0.06150046150571016
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-sa-short": {
+      "variant_id": "M3-sa-short",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 5,
+        "side": -1
+      },
+      "train": {
+        "summary": {
+          "trades": 155,
+          "expectancy_r": -0.06221428661149991,
+          "median_r": -0.050718423848456366,
+          "std_r": 0.41588740290612125,
+          "profit_factor": 0.6603519633251838,
+          "win_rate": 0.432258064516129,
+          "avg_win_r": 0.2798294287892445,
+          "avg_loss_r": -0.3226339335643394,
+          "max_drawdown_r": 12.882721411838228,
+          "max_drawdown_pct": 0.12882721411838227,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              -0.14428958662180416
+            ],
+            "2021": [
+              52,
+              -0.0361642236676125
+            ],
+            "2022": [
+              53,
+              -0.01034331062219673
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14142335766423358
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": -0.069134829848181,
+          "median_r": -0.04763057879313157,
+          "std_r": 0.29090583429265926,
+          "profit_factor": 0.4786769579522055,
+          "win_rate": 0.3076923076923077,
+          "avg_win_r": 0.20630790115933365,
+          "avg_loss_r": -0.1915538214070764,
+          "max_drawdown_r": 7.525310439518699,
+          "max_drawdown_pct": 0.075253104395187,
+          "longest_losing_streak": 13,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.07885004029364867
+            ],
+            "2024": [
+              52,
+              -0.05941961940271335
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 155,
+        "expectancy_r": -0.10447484940309193,
+        "median_r": -0.0842316085188077,
+        "std_r": 0.4162227471328197,
+        "profit_factor": 0.4965170121708923,
+        "win_rate": 0.38064516129032255,
+        "avg_win_r": 0.2706704050641175,
+        "avg_loss_r": -0.33503287037773105,
+        "max_drawdown_r": 18.416647795888565,
+        "max_drawdown_pct": 0.18416647795888566,
+        "longest_losing_streak": 8,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            -0.1940871764990943
+          ],
+          "2021": [
+            52,
+            -0.07469650853933021
+          ],
+          "2022": [
+            53,
+            -0.0491514035562144
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": -0.120527001676483,
+        "median_r": -0.09751716106539787,
+        "std_r": 0.29202943326633535,
+        "profit_factor": 0.2908270668846921,
+        "win_rate": 0.2403846153846154,
+        "avg_win_r": 0.20561763288373952,
+        "avg_loss_r": -0.2237373290689585,
+        "max_drawdown_r": 12.556697086243648,
+        "max_drawdown_pct": 0.12556697086243648,
+        "longest_losing_streak": 15,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.1351522979527657
+          ],
+          "2024": [
+            52,
+            -0.10590170540020029
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-so-long": {
+      "variant_id": "M3-so-long",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 6,
+        "side": 1
+      },
+      "train": {
+        "summary": {
+          "trades": 155,
+          "expectancy_r": -0.04467039306924217,
+          "median_r": -0.051899684681376436,
+          "std_r": 0.47033791974709516,
+          "profit_factor": 0.7821952048886129,
+          "win_rate": 0.45806451612903226,
+          "avg_win_r": 0.3502199130741377,
+          "avg_loss_r": -0.37844672326186085,
+          "max_drawdown_r": 7.841810613468876,
+          "max_drawdown_pct": 0.07841810613468876,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              -0.06285913185826414
+            ],
+            "2021": [
+              52,
+              0.01644959107556955
+            ],
+            "2022": [
+              52,
+              -0.09194115258988957
+            ],
+            "2023": [
+              1,
+              0.14460686592531186
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14142335766423358
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": 0.04409435333774567,
+          "median_r": -0.013260712225115974,
+          "std_r": 0.48402479088984257,
+          "profit_factor": 1.298238087014883,
+          "win_rate": 0.4807692307692308,
+          "avg_win_r": 0.39924322395077894,
+          "avg_loss_r": -0.284747193526174,
+          "max_drawdown_r": 3.285099529344872,
+          "max_drawdown_pct": 0.032850995293448725,
+          "longest_losing_streak": 5,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              0.07310777044456698
+            ],
+            "2024": [
+              52,
+              0.015080936230924361
+            ]
+          }
+        },
+        "p": 0.41445855414458554,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 155,
+        "expectancy_r": -0.0780071376607612,
+        "median_r": -0.07253804298374943,
+        "std_r": 0.46554905859436496,
+        "profit_factor": 0.6479259196895572,
+        "win_rate": 0.44516129032258067,
+        "avg_win_r": 0.3224840580992809,
+        "avg_loss_r": -0.39933146914265544,
+        "max_drawdown_r": 12.472347551583123,
+        "max_drawdown_pct": 0.12472347551583124,
+        "longest_losing_streak": 7,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            -0.10168797681139755
+          ],
+          "2021": [
+            52,
+            -0.009450323846189148
+          ],
+          "2022": [
+            52,
+            -0.12633679883737975
+          ],
+          "2023": [
+            1,
+            0.054222882697472684
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": -0.001776862980530859,
+        "median_r": -0.05334954355625195,
+        "std_r": 0.4782177991664653,
+        "profit_factor": 0.9896365946356557,
+        "win_rate": 0.41346153846153844,
+        "avg_win_r": 0.41038557152405125,
+        "avg_loss_r": -0.29231759550015435,
+        "max_drawdown_r": 4.219543456385042,
+        "max_drawdown_pct": 0.042195434563850415,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            0.021968079600785465
+          ],
+          "2024": [
+            52,
+            -0.025521805561847185
+          ]
+        }
+      },
+      "year_stable": true,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "M3-so-short": {
+      "variant_id": "M3-so-short",
+      "hypothesis": "M3",
+      "horizon": "mid",
+      "params": {
+        "weekday": 6,
+        "side": -1
+      },
+      "train": {
+        "summary": {
+          "trades": 155,
+          "expectancy_r": -0.02089473371338693,
+          "median_r": -0.02216026439007644,
+          "std_r": 0.5102544274851315,
+          "profit_factor": 0.8952151625200511,
+          "win_rate": 0.4838709677419355,
+          "avg_win_r": 0.3689234495460208,
+          "avg_loss_r": -0.3863492805190817,
+          "max_drawdown_r": 9.272181086967356,
+          "max_drawdown_pct": 0.09272181086967356,
+          "longest_losing_streak": 9,
+          "expectancy_by_year": {
+            "2020": [
+              50,
+              -0.005758566989799314
+            ],
+            "2021": [
+              52,
+              -0.08168445829292158
+            ],
+            "2022": [
+              52,
+              0.03115726935145704
+            ],
+            "2023": [
+              1,
+              -0.323341551128852
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14142335766423358
+      },
+      "validation": {
+        "summary": {
+          "trades": 104,
+          "expectancy_r": -0.11512231781909289,
+          "median_r": -0.07924112485535703,
+          "std_r": 0.4226555909879014,
+          "profit_factor": 0.4789983820064992,
+          "win_rate": 0.3942307692307692,
+          "avg_win_r": 0.26847508087929894,
+          "avg_loss_r": -0.36476506935296693,
+          "max_drawdown_r": 12.74297181980985,
+          "max_drawdown_pct": 0.1274297181980985,
+          "longest_losing_streak": 11,
+          "expectancy_by_year": {
+            "2023": [
+              52,
+              -0.1405415975486644
+            ],
+            "2024": [
+              52,
+              -0.08970303808952138
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.14227086183310533
+      },
+      "stress_train": {
+        "trades": 155,
+        "expectancy_r": -0.06369744895475582,
+        "median_r": -0.06916831264967248,
+        "std_r": 0.5093992551572474,
+        "profit_factor": 0.7141676992233493,
+        "win_rate": 0.432258064516129,
+        "avg_win_r": 0.36818647714612485,
+        "avg_loss_r": -0.3925181654179264,
+        "max_drawdown_r": 13.020711024691233,
+        "max_drawdown_pct": 0.13020711024691234,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2020": [
+            50,
+            -0.05713145068320558
+          ],
+          "2021": [
+            52,
+            -0.12053593933044257
+          ],
+          "2022": [
+            52,
+            -0.006372226396583417
+          ],
+          "2023": [
+            1,
+            -0.41730743602152187
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 104,
+        "expectancy_r": -0.16689177340525985,
+        "median_r": -0.12438776248867503,
+        "std_r": 0.4237501987015618,
+        "profit_factor": 0.34304905545914954,
+        "win_rate": 0.3269230769230769,
+        "avg_win_r": 0.2665708386447353,
+        "avg_loss_r": -0.3774307564009718,
+        "max_drawdown_r": 18.041015246744884,
+        "max_drawdown_pct": 0.18041015246744885,
+        "longest_losing_streak": 11,
+        "expectancy_by_year": {
+          "2023": [
+            52,
+            -0.1969014642147765
+          ],
+          "2024": [
+            52,
+            -0.13688208259574322
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.10327419479171625,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "S1-N20-5m": {
+      "variant_id": "S1-N20-5m",
+      "hypothesis": "S1",
+      "horizon": "short",
+      "params": {
+        "N": 20,
+        "interval": "5m"
+      },
+      "train": {
+        "summary": {
+          "trades": 14070,
+          "expectancy_r": -0.6771268971727358,
+          "median_r": -1.3251604830352053,
+          "std_r": 1.4256843867887996,
+          "profit_factor": 0.3812774015010757,
+          "win_rate": 0.2977967306325515,
+          "avg_win_r": 1.4011841835250114,
+          "avg_loss_r": -1.558515908116416,
+          "max_drawdown_r": 9528.018121704814,
+          "max_drawdown_pct": 95.28018121704814,
+          "longest_losing_streak": 24,
+          "expectancy_by_year": {
+            "2020": [
+              4558,
+              -0.78599952902396
+            ],
+            "2021": [
+              5158,
+              -0.5271307684915512
+            ],
+            "2022": [
+              4354,
+              -0.7408472866444101
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.4802881690997567
+      },
+      "validation": {
+        "summary": {
+          "trades": 9472,
+          "expectancy_r": -0.9890220272094629,
+          "median_r": -1.5216223654664696,
+          "std_r": 1.4956203804856996,
+          "profit_factor": 0.255282888850761,
+          "win_rate": 0.2805109797297297,
+          "avg_win_r": 1.2086108044860395,
+          "avg_loss_r": -1.845824732097937,
+          "max_drawdown_r": 9368.016641728003,
+          "max_drawdown_pct": 93.68016641728003,
+          "longest_losing_streak": 26,
+          "expectancy_by_year": {
+            "2023": [
+              4055,
+              -1.1697713140620125
+            ],
+            "2024": [
+              5417,
+              -0.8537186566746487
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.4874981000151999
+      },
+      "stress_train": {
+        "trades": 13537,
+        "expectancy_r": -1.1478806296882584,
+        "median_r": -1.637485491525903,
+        "std_r": 1.475923070106197,
+        "profit_factor": 0.20188561446461506,
+        "win_rate": 0.2570732067666396,
+        "avg_win_r": 1.129484167246448,
+        "avg_loss_r": -1.9359118013431036,
+        "max_drawdown_r": 15539.034939409026,
+        "max_drawdown_pct": 155.39034939409026,
+        "longest_losing_streak": 38,
+        "expectancy_by_year": {
+          "2020": [
+            4368,
+            -1.3196058978944103
+          ],
+          "2021": [
+            5012,
+            -0.9280671571918323
+          ],
+          "2022": [
+            4157,
+            -1.2324630575515292
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 8965,
+        "expectancy_r": -1.5990478473826772,
+        "median_r": -1.9878164609999844,
+        "std_r": 1.5522303060162082,
+        "profit_factor": 0.10960864396691179,
+        "win_rate": 0.21784718349135526,
+        "avg_win_r": 0.9035940850821846,
+        "avg_loss_r": -2.296090017106561,
+        "max_drawdown_r": 14335.463951785678,
+        "max_drawdown_pct": 143.35463951785678,
+        "longest_losing_streak": 42,
+        "expectancy_by_year": {
+          "2023": [
+            3869,
+            -1.8110258601828686
+          ],
+          "2024": [
+            5096,
+            -1.4381092815420293
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": false,
+      "walk_forward_mean": -0.42635297740332156,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "S1-N20-15m": {
+      "variant_id": "S1-N20-15m",
+      "hypothesis": "S1",
+      "horizon": "short",
+      "params": {
+        "N": 20,
+        "interval": "15m"
+      },
+      "train": {
+        "summary": {
+          "trades": 5540,
+          "expectancy_r": -0.38792447481216674,
+          "median_r": -1.1507815883897319,
+          "std_r": 1.2656310946774865,
+          "profit_factor": 0.5204014602063473,
+          "win_rate": 0.3351985559566787,
+          "avg_win_r": 1.2557572556674557,
+          "avg_loss_r": -1.2166828167889951,
+          "max_drawdown_r": 2149.101590459403,
+          "max_drawdown_pct": 21.49101590459403,
+          "longest_losing_streak": 17,
+          "expectancy_by_year": {
+            "2020": [
+              1742,
+              -0.46850579833005324
+            ],
+            "2021": [
+              2114,
+              -0.29509139741269375
+            ],
+            "2022": [
+              1684,
+              -0.4211052705688933
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.39071053832116787
+      },
+      "validation": {
+        "summary": {
+          "trades": 3715,
+          "expectancy_r": -0.5729911387486378,
+          "median_r": -1.2197576496330194,
+          "std_r": 1.2904452002114322,
+          "profit_factor": 0.3837952049488673,
+          "win_rate": 0.322207267833109,
+          "avg_win_r": 1.1076104495094494,
+          "avg_loss_r": -1.371910956518666,
+          "max_drawdown_r": 2130.357775195956,
+          "max_drawdown_pct": 21.303577751959562,
+          "longest_losing_streak": 26,
+          "expectancy_by_year": {
+            "2023": [
+              1630,
+              -0.6841955517098499
+            ],
+            "2024": [
+              2085,
+              -0.4860543554744049
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.39846956224350205
+      },
+      "stress_train": {
+        "trades": 5492,
+        "expectancy_r": -0.692897721449356,
+        "median_r": -1.3098282041107323,
+        "std_r": 1.2857824486790592,
+        "profit_factor": 0.3168721009357482,
+        "win_rate": 0.2946103423160961,
+        "avg_win_r": 1.0909456763953338,
+        "avg_loss_r": -1.4379309216849545,
+        "max_drawdown_r": 3805.394286199856,
+        "max_drawdown_pct": 38.053942861998564,
+        "longest_losing_streak": 40,
+        "expectancy_by_year": {
+          "2020": [
+            1726,
+            -0.7965941347583406
+          ],
+          "2021": [
+            2095,
+            -0.5512969999130412
+          ],
+          "2022": [
+            1671,
+            -0.7633187281802194
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 3671,
+        "expectancy_r": -0.9966424246547253,
+        "median_r": -1.4458265266402592,
+        "std_r": 1.3358544880198047,
+        "profit_factor": 0.1915061310491016,
+        "win_rate": 0.24843366929991828,
+        "avg_win_r": 0.9502434130480507,
+        "avg_loss_r": -1.6401943942034503,
+        "max_drawdown_r": 3659.60631216568,
+        "max_drawdown_pct": 36.5960631216568,
+        "longest_losing_streak": 40,
+        "expectancy_by_year": {
+          "2023": [
+            1610,
+            -1.1327007024037485
+          ],
+          "2024": [
+            2061,
+            -0.8903572101103645
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": false,
+      "walk_forward_mean": -0.42635297740332156,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "S1-N50-5m": {
+      "variant_id": "S1-N50-5m",
+      "hypothesis": "S1",
+      "horizon": "short",
+      "params": {
+        "N": 50,
+        "interval": "5m"
+      },
+      "train": {
+        "summary": {
+          "trades": 9476,
+          "expectancy_r": -0.6145601378035944,
+          "median_r": -1.2913311172871331,
+          "std_r": 1.4075192191190182,
+          "profit_factor": 0.4105486999210703,
+          "win_rate": 0.3029759392148586,
+          "avg_win_r": 1.4127749898397215,
+          "avg_loss_r": -1.4957833250047994,
+          "max_drawdown_r": 5823.571865826845,
+          "max_drawdown_pct": 58.23571865826845,
+          "longest_losing_streak": 21,
+          "expectancy_by_year": {
+            "2020": [
+              2974,
+              -0.7194162217651929
+            ],
+            "2021": [
+              3652,
+              -0.4686596072395977
+            ],
+            "2022": [
+              2850,
+              -0.6920993461958478
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.34142462489862124
+      },
+      "validation": {
+        "summary": {
+          "trades": 6412,
+          "expectancy_r": -0.9057082564746687,
+          "median_r": -1.452354218730993,
+          "std_r": 1.489963938049575,
+          "profit_factor": 0.28266104833294803,
+          "win_rate": 0.29320024953212726,
+          "avg_win_r": 1.2172100872951772,
+          "avg_loss_r": -1.7863539948434486,
+          "max_drawdown_r": 5807.401340515588,
+          "max_drawdown_pct": 58.07401340515588,
+          "longest_losing_streak": 23,
+          "expectancy_by_year": {
+            "2023": [
+              2663,
+              -1.0695624512709516
+            ],
+            "2024": [
+              3749,
+              -0.7893188937799497
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.35203393372853015
+      },
+      "stress_train": {
+        "trades": 9337,
+        "expectancy_r": -1.0589408575040686,
+        "median_r": -1.579879675333474,
+        "std_r": 1.457542469879708,
+        "profit_factor": 0.22446685700194846,
+        "win_rate": 0.26389632644318306,
+        "avg_win_r": 1.1614224688407955,
+        "avg_loss_r": -1.8549506401482918,
+        "max_drawdown_r": 9887.330786515495,
+        "max_drawdown_pct": 98.87330786515496,
+        "longest_losing_streak": 43,
+        "expectancy_by_year": {
+          "2020": [
+            2923,
+            -1.2202672496146674
+          ],
+          "2021": [
+            3610,
+            -0.8472722774428426
+          ],
+          "2022": [
+            2804,
+            -1.1632798481894275
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 6283,
+        "expectancy_r": -1.4980347967142573,
+        "median_r": -1.8897533323173936,
+        "std_r": 1.551394627545612,
+        "profit_factor": 0.12419461762310088,
+        "win_rate": 0.22950819672131148,
+        "avg_win_r": 0.9255904510433217,
+        "avg_loss_r": -2.2199657215782174,
+        "max_drawdown_r": 9412.152627755688,
+        "max_drawdown_pct": 94.12152627755688,
+        "longest_losing_streak": 51,
+        "expectancy_by_year": {
+          "2023": [
+            2610,
+            -1.6767073170917346
+          ],
+          "2024": [
+            3673,
+            -1.3710717479298264
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": false,
+      "walk_forward_mean": -0.42635297740332156,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "S1-N50-15m": {
+      "variant_id": "S1-N50-15m",
+      "hypothesis": "S1",
+      "horizon": "short",
+      "params": {
+        "N": 50,
+        "interval": "15m"
+      },
+      "train": {
+        "summary": {
+          "trades": 3223,
+          "expectancy_r": -0.32822836757543694,
+          "median_r": -1.1217453842987894,
+          "std_r": 1.240734026842973,
+          "profit_factor": 0.5661952228610302,
+          "win_rate": 0.34564070741545144,
+          "avg_win_r": 1.2394331225859234,
+          "avg_loss_r": -1.1562866416578246,
+          "max_drawdown_r": 1057.8800286956355,
+          "max_drawdown_pct": 10.578800286956355,
+          "longest_losing_streak": 27,
+          "expectancy_by_year": {
+            "2020": [
+              998,
+              -0.3674032300482593
+            ],
+            "2021": [
+              1312,
+              -0.2874216456641042
+            ],
+            "2022": [
+              913,
+              -0.3440464468742232
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.2332344890510949
+      },
+      "validation": {
+        "summary": {
+          "trades": 2129,
+          "expectancy_r": -0.46164929603792315,
+          "median_r": -1.1707348606000012,
+          "std_r": 1.2517426273609074,
+          "profit_factor": 0.44961552068092286,
+          "win_rate": 0.34241427900422733,
+          "avg_win_r": 1.1013755394468623,
+          "avg_loss_r": -1.2755386568010723,
+          "max_drawdown_r": 984.7025700934037,
+          "max_drawdown_pct": 9.847025700934037,
+          "longest_losing_streak": 15,
+          "expectancy_by_year": {
+            "2023": [
+              842,
+              -0.5492756687198891
+            ],
+            "2024": [
+              1287,
+              -0.40432108640450015
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.2346528727770178
+      },
+      "stress_train": {
+        "trades": 3215,
+        "expectancy_r": -0.5972079430373022,
+        "median_r": -1.2501918797084601,
+        "std_r": 1.2534128840656678,
+        "profit_factor": 0.35991746316389606,
+        "win_rate": 0.30793157076205285,
+        "avg_win_r": 1.0905317103168013,
+        "avg_loss_r": -1.34815727194542,
+        "max_drawdown_r": 1920.023536864927,
+        "max_drawdown_pct": 19.20023536864927,
+        "longest_losing_streak": 27,
+        "expectancy_by_year": {
+          "2020": [
+            994,
+            -0.6838051183606916
+          ],
+          "2021": [
+            1310,
+            -0.5184966967982259
+          ],
+          "2022": [
+            911,
+            -0.6159062309645696
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 2115,
+        "expectancy_r": -0.825832083407223,
+        "median_r": -1.3512110330690386,
+        "std_r": 1.279034754695218,
+        "profit_factor": 0.23925114059098804,
+        "win_rate": 0.27706855791962176,
+        "avg_win_r": 0.9373833037617902,
+        "avg_loss_r": -1.501596777247015,
+        "max_drawdown_r": 1748.3240998387134,
+        "max_drawdown_pct": 17.483240998387135,
+        "longest_losing_streak": 27,
+        "expectancy_by_year": {
+          "2023": [
+            836,
+            -0.9213845264265508
+          ],
+          "2024": [
+            1279,
+            -0.7633755999325099
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": false,
+      "walk_forward_mean": -0.42635297740332156,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "S2-london-r30": {
+      "variant_id": "S2-london-r30",
+      "hypothesis": "S2",
+      "horizon": "short",
+      "params": {
+        "session": "london",
+        "r": 30
+      },
+      "train": {
+        "summary": {
+          "trades": 756,
+          "expectancy_r": -0.2522851091813884,
+          "median_r": -1.1116898850501085,
+          "std_r": 1.325639319200929,
+          "profit_factor": 0.6700931269043111,
+          "win_rate": 0.3412698412698413,
+          "avg_win_r": 1.5015420781212248,
+          "avg_loss_r": -1.1608943748923806,
+          "max_drawdown_r": 191.7618463310709,
+          "max_drawdown_pct": 1.917618463310709,
+          "longest_losing_streak": 17,
+          "expectancy_by_year": {
+            "2020": [
+              253,
+              -0.24139261522683592
+            ],
+            "2021": [
+              253,
+              -0.20972972810516732
+            ],
+            "2022": [
+              250,
+              -0.30637435871253127
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.0884529602595296
+      },
+      "validation": {
+        "summary": {
+          "trades": 504,
+          "expectancy_r": -0.3968739136050529,
+          "median_r": -1.226769142861386,
+          "std_r": 1.3806005851012038,
+          "profit_factor": 0.5558290624213932,
+          "win_rate": 0.33134920634920634,
+          "avg_win_r": 1.49884847708761,
+          "avg_loss_r": -1.3362971754616544,
+          "max_drawdown_r": 201.22480230372304,
+          "max_drawdown_pct": 2.0122480230372304,
+          "longest_losing_streak": 15,
+          "expectancy_by_year": {
+            "2023": [
+              250,
+              -0.4852432623258993
+            ],
+            "2024": [
+              254,
+              -0.30989620817114905
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.083171834625323
+      },
+      "stress_train": {
+        "trades": 756,
+        "expectancy_r": -0.49140933561434025,
+        "median_r": -1.2275126695622602,
+        "std_r": 1.3321379605047377,
+        "profit_factor": 0.4650589787943183,
+        "win_rate": 0.3201058201058201,
+        "avg_win_r": 1.3346025905055336,
+        "avg_loss_r": -1.3511270128925688,
+        "max_drawdown_r": 371.5323789665648,
+        "max_drawdown_pct": 3.715323789665648,
+        "longest_losing_streak": 17,
+        "expectancy_by_year": {
+          "2020": [
+            253,
+            -0.516924307628673
+          ],
+          "2021": [
+            253,
+            -0.37409298062325547
+          ],
+          "2022": [
+            250,
+            -0.5843123351868131
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 504,
+        "expectancy_r": -0.7643453424001002,
+        "median_r": -1.4555769524417763,
+        "std_r": 1.3973960588593095,
+        "profit_factor": 0.3317549167289208,
+        "win_rate": 0.2916666666666667,
+        "avg_win_r": 1.3010213430531468,
+        "avg_loss_r": -1.6147904481749666,
+        "max_drawdown_r": 385.43253112420444,
+        "max_drawdown_pct": 3.8543253112420444,
+        "longest_losing_streak": 15,
+        "expectancy_by_year": {
+          "2023": [
+            250,
+            -0.922563262595465
+          ],
+          "2024": [
+            254,
+            -0.6086190429952136
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": false,
+      "walk_forward_mean": -0.004831316025814531,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "S2-london-r60": {
+      "variant_id": "S2-london-r60",
+      "hypothesis": "S2",
+      "horizon": "short",
+      "params": {
+        "session": "london",
+        "r": 60
+      },
+      "train": {
+        "summary": {
+          "trades": 746,
+          "expectancy_r": -0.1939604048667561,
+          "median_r": -1.0527126727012215,
+          "std_r": 1.225357965795475,
+          "profit_factor": 0.7063989127160041,
+          "win_rate": 0.35656836461126007,
+          "avg_win_r": 1.3087679024170529,
+          "avg_loss_r": -1.026722341819867,
+          "max_drawdown_r": 147.24494908871688,
+          "max_drawdown_pct": 1.4724494908871688,
+          "longest_losing_streak": 12,
+          "expectancy_by_year": {
+            "2020": [
+              246,
+              -0.146177683607553
+            ],
+            "2021": [
+              250,
+              -0.2101422045392845
+            ],
+            "2022": [
+              250,
+              -0.22479680291328352
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.10378649635036497
+      },
+      "validation": {
+        "summary": {
+          "trades": 504,
+          "expectancy_r": -0.3286743488192266,
+          "median_r": -1.1605381443996596,
+          "std_r": 1.262813723412985,
+          "profit_factor": 0.574726785524852,
+          "win_rate": 0.34523809523809523,
+          "avg_win_r": 1.2865909957977668,
+          "avg_loss_r": -1.1803597123445504,
+          "max_drawdown_r": 165.71494665524006,
+          "max_drawdown_pct": 1.6571494665524007,
+          "longest_losing_streak": 12,
+          "expectancy_by_year": {
+            "2023": [
+              250,
+              -0.2889996342912857
+            ],
+            "2024": [
+              254,
+              -0.36772426469318414
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.10086069311445509
+      },
+      "stress_train": {
+        "trades": 746,
+        "expectancy_r": -0.3863851162167069,
+        "median_r": -1.1166192852934778,
+        "std_r": 1.2230469914814337,
+        "profit_factor": 0.5047715389022962,
+        "win_rate": 0.32439678284182305,
+        "avg_win_r": 1.214040329690686,
+        "avg_loss_r": -1.1548433660373203,
+        "max_drawdown_r": 288.24329669766354,
+        "max_drawdown_pct": 2.8824329669766353,
+        "longest_losing_streak": 12,
+        "expectancy_by_year": {
+          "2020": [
+            246,
+            -0.36903059826154544
+          ],
+          "2021": [
+            250,
+            -0.3319111022739199
+          ],
+          "2022": [
+            250,
+            -0.4579359758273729
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 504,
+        "expectancy_r": -0.5981063798604628,
+        "median_r": -1.320498287380206,
+        "std_r": 1.2711992021018192,
+        "profit_factor": 0.372016838313569,
+        "win_rate": 0.30357142857142855,
+        "avg_win_r": 1.1671646861608191,
+        "avg_loss_r": -1.3675835112030728,
+        "max_drawdown_r": 301.4456154496733,
+        "max_drawdown_pct": 3.014456154496733,
+        "longest_losing_streak": 17,
+        "expectancy_by_year": {
+          "2023": [
+            250,
+            -0.6349896863950848
+          ],
+          "2024": [
+            254,
+            -0.5618039127988268
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": false,
+      "walk_forward_mean": -0.004831316025814531,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "S2-newyork-r30": {
+      "variant_id": "S2-newyork-r30",
+      "hypothesis": "S2",
+      "horizon": "short",
+      "params": {
+        "session": "newyork",
+        "r": 30
+      },
+      "train": {
+        "summary": {
+          "trades": 736,
+          "expectancy_r": -0.027475946188834394,
+          "median_r": -0.31120615272656726,
+          "std_r": 1.1922746114219123,
+          "profit_factor": 0.948826438050321,
+          "win_rate": 0.421195652173913,
+          "avg_win_r": 1.2095112376844823,
+          "avg_loss_r": -0.9276309391482903,
+          "max_drawdown_r": 37.90970449278237,
+          "max_drawdown_pct": 0.3790970449278237,
+          "longest_losing_streak": 7,
+          "expectancy_by_year": {
+            "2020": [
+              247,
+              -0.03769243665309936
+            ],
+            "2021": [
+              248,
+              -0.08442512811610695
+            ],
+            "2022": [
+              241,
+              0.04159820427853922
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.08818684103811841
+      },
+      "validation": {
+        "summary": {
+          "trades": 494,
+          "expectancy_r": -0.018186678232651084,
+          "median_r": -0.24026480968490896,
+          "std_r": 1.1867777318461619,
+          "profit_factor": 0.965462703001165,
+          "win_rate": 0.4291497975708502,
+          "avg_win_r": 1.1846542776824927,
+          "avg_loss_r": -0.9224500918993549,
+          "max_drawdown_r": 21.1842925770049,
+          "max_drawdown_pct": 0.211842925770049,
+          "longest_losing_streak": 8,
+          "expectancy_by_year": {
+            "2023": [
+              243,
+              -0.023875232428119612
+            ],
+            "2024": [
+              251,
+              -0.012679432537436527
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.09263850889192886
+      },
+      "stress_train": {
+        "trades": 736,
+        "expectancy_r": -0.19956756018178348,
+        "median_r": -0.4243054902860991,
+        "std_r": 1.1909513189165308,
+        "profit_factor": 0.6852581774410931,
+        "win_rate": 0.38179347826086957,
+        "avg_win_r": 1.1380496611595576,
+        "avg_loss_r": -1.0256564375376447,
+        "max_drawdown_r": 148.38798677787722,
+        "max_drawdown_pct": 1.4838798677787721,
+        "longest_losing_streak": 9,
+        "expectancy_by_year": {
+          "2020": [
+            247,
+            -0.26709724485720854
+          ],
+          "2021": [
+            248,
+            -0.23694320281298292
+          ],
+          "2022": [
+            241,
+            -0.09189539633378575
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 494,
+        "expectancy_r": -0.19119147005405437,
+        "median_r": -0.3922089565823132,
+        "std_r": 1.1892168897167874,
+        "profit_factor": 0.6946792836918763,
+        "win_rate": 0.38866396761133604,
+        "avg_win_r": 1.1192376420936065,
+        "avg_loss_r": -1.0243119651942891,
+        "max_drawdown_r": 98.45668086357774,
+        "max_drawdown_pct": 0.9845668086357775,
+        "longest_losing_streak": 10,
+        "expectancy_by_year": {
+          "2023": [
+            243,
+            -0.22706994505971934
+          ],
+          "2024": [
+            251,
+            -0.15645653210036278
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": false,
+      "walk_forward_mean": -0.004831316025814531,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "S2-newyork-r60": {
+      "variant_id": "S2-newyork-r60",
+      "hypothesis": "S2",
+      "horizon": "short",
+      "params": {
+        "session": "newyork",
+        "r": 60
+      },
+      "train": {
+        "summary": {
+          "trades": 695,
+          "expectancy_r": -0.0010472301420217196,
+          "median_r": -0.15222642720698518,
+          "std_r": 0.9836097554711133,
+          "profit_factor": 0.9973904777930628,
+          "win_rate": 0.4244604316546763,
+          "avg_win_r": 0.9429944638243748,
+          "avg_loss_r": -0.6972779794422392,
+          "max_drawdown_r": 15.352815221202105,
+          "max_drawdown_pct": 0.15352815221202107,
+          "longest_losing_streak": 11,
+          "expectancy_by_year": {
+            "2020": [
+              232,
+              0.009299425505332231
+            ],
+            "2021": [
+              242,
+              -0.020453335554922656
+            ],
+            "2022": [
+              221,
+              0.009341246779860224
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.09206774635036497
+      },
+      "validation": {
+        "summary": {
+          "trades": 474,
+          "expectancy_r": -0.02874726726049562,
+          "median_r": -0.17287271552119476,
+          "std_r": 0.9516730583461354,
+          "profit_factor": 0.9279244987779416,
+          "win_rate": 0.4092827004219409,
+          "avg_win_r": 0.9042700523670165,
+          "avg_loss_r": -0.6751949815738433,
+          "max_drawdown_r": 23.077073446554316,
+          "max_drawdown_pct": 0.23077073446554316,
+          "longest_losing_streak": 8,
+          "expectancy_by_year": {
+            "2023": [
+              232,
+              -0.009841053679422288
+            ],
+            "2024": [
+              242,
+              -0.04687223234648327
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.09776371789025688
+      },
+      "stress_train": {
+        "trades": 695,
+        "expectancy_r": -0.1398881256431148,
+        "median_r": -0.26489515448872925,
+        "std_r": 0.971584191542589,
+        "profit_factor": 0.7056650299646773,
+        "win_rate": 0.381294964028777,
+        "avg_win_r": 0.8795823659299009,
+        "avg_loss_r": -0.7681664518450896,
+        "max_drawdown_r": 98.77082175860224,
+        "max_drawdown_pct": 0.9877082175860225,
+        "longest_losing_streak": 14,
+        "expectancy_by_year": {
+          "2020": [
+            232,
+            -0.17701709708148747
+          ],
+          "2021": [
+            242,
+            -0.13126774451976161
+          ],
+          "2022": [
+            221,
+            -0.11035061821392486
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 474,
+        "expectancy_r": -0.1651771390381326,
+        "median_r": -0.2827263752360562,
+        "std_r": 0.9455111163748073,
+        "profit_factor": 0.6538609851015597,
+        "win_rate": 0.3649789029535865,
+        "avg_win_r": 0.8549034097376543,
+        "avg_loss_r": -0.7514692816899968,
+        "max_drawdown_r": 83.56954050433305,
+        "max_drawdown_pct": 0.8356954050433305,
+        "longest_losing_streak": 8,
+        "expectancy_by_year": {
+          "2023": [
+            232,
+            -0.16912428211085617
+          ],
+          "2024": [
+            242,
+            -0.1613931010510588
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": false,
+      "walk_forward_mean": -0.004831316025814531,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "T1-bos-15m": {
+      "variant_id": "T1-bos-15m",
+      "hypothesis": "T1",
+      "horizon": "short",
+      "params": {
+        "interval": "15m"
+      },
+      "train": {
+        "summary": {
+          "trades": 8173,
+          "expectancy_r": -0.4389338516878717,
+          "median_r": -1.2332987593380171,
+          "std_r": 1.395029748505303,
+          "profit_factor": 0.5297797250752027,
+          "win_rate": 0.3051511073045393,
+          "avg_win_r": 1.6206084847853521,
+          "avg_loss_r": -1.343406221324114,
+          "max_drawdown_r": 3589.33755848824,
+          "max_drawdown_pct": 35.8933755848824,
+          "longest_losing_streak": 20,
+          "expectancy_by_year": {
+            "2020": [
+              2694,
+              -0.4795580620494686
+            ],
+            "2021": [
+              2803,
+              -0.32476632211066764
+            ],
+            "2022": [
+              2676,
+              -0.5176221785528796
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.47013762165450124
+      },
+      "validation": {
+        "summary": {
+          "trades": 5450,
+          "expectancy_r": -0.6091881516600356,
+          "median_r": -1.3531339812198173,
+          "std_r": 1.4349867845416762,
+          "profit_factor": 0.4259659402759273,
+          "win_rate": 0.3071559633027523,
+          "avg_win_r": 1.4717353107247286,
+          "avg_loss_r": -1.531716190863451,
+          "max_drawdown_r": 3329.0596665856983,
+          "max_drawdown_pct": 33.29059666585698,
+          "longest_losing_streak": 24,
+          "expectancy_by_year": {
+            "2023": [
+              2703,
+              -0.709732553251186
+            ],
+            "2024": [
+              2747,
+              -0.5102542173677607
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.4669545143638851
+      },
+      "stress_train": {
+        "trades": 8013,
+        "expectancy_r": -0.7865023459417928,
+        "median_r": -1.4636725261907533,
+        "std_r": 1.411531104820389,
+        "profit_factor": 0.33074483028803964,
+        "win_rate": 0.2797953325845501,
+        "avg_win_r": 1.3891875641152132,
+        "avg_loss_r": -1.6317452463659494,
+        "max_drawdown_r": 6302.93228101881,
+        "max_drawdown_pct": 63.0293228101881,
+        "longest_losing_streak": 25,
+        "expectancy_by_year": {
+          "2020": [
+            2624,
+            -0.8682608605222089
+          ],
+          "2021": [
+            2761,
+            -0.6019525242206911
+          ],
+          "2022": [
+            2628,
+            -0.898757945452048
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 5271,
+        "expectancy_r": -1.084093531453546,
+        "median_r": -1.6833009868626911,
+        "std_r": 1.46674053467053,
+        "profit_factor": 0.2259867092333657,
+        "win_rate": 0.2688294441282489,
+        "avg_win_r": 1.1774009964836323,
+        "avg_loss_r": -1.9155771189177344,
+        "max_drawdown_r": 5720.446163691042,
+        "max_drawdown_pct": 57.20446163691042,
+        "longest_losing_streak": 28,
+        "expectancy_by_year": {
+          "2023": [
+            2610,
+            -1.2466134826545454
+          ],
+          "2024": [
+            2661,
+            -0.9246883932969852
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.25872320846678365,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "T2-rejection-15m": {
+      "variant_id": "T2-rejection-15m",
+      "hypothesis": "T2",
+      "horizon": "short",
+      "params": {
+        "interval": "15m"
+      },
+      "train": {
+        "summary": {
+          "trades": 3119,
+          "expectancy_r": -0.4533767791609081,
+          "median_r": -1.2010578209493459,
+          "std_r": 1.333514207885277,
+          "profit_factor": 0.4975391870238042,
+          "win_rate": 0.31131773004168,
+          "avg_win_r": 1.4420506452909467,
+          "avg_loss_r": -1.3102017461733622,
+          "max_drawdown_r": 1415.0227478507375,
+          "max_drawdown_pct": 14.150227478507375,
+          "longest_losing_streak": 21,
+          "expectancy_by_year": {
+            "2020": [
+              1031,
+              -0.4798123599213216
+            ],
+            "2021": [
+              1018,
+              -0.38497897589090246
+            ],
+            "2022": [
+              1070,
+              -0.492978536137431
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.24498175182481752
+      },
+      "validation": {
+        "summary": {
+          "trades": 2213,
+          "expectancy_r": -0.6719110976697648,
+          "median_r": -1.3238023228105493,
+          "std_r": 1.3563477040719658,
+          "profit_factor": 0.3641375145702749,
+          "win_rate": 0.2919114324446453,
+          "avg_win_r": 1.3181442225714954,
+          "avg_loss_r": -1.4923168008451662,
+          "max_drawdown_r": 1490.4113252915995,
+          "max_drawdown_pct": 14.904113252915995,
+          "longest_losing_streak": 24,
+          "expectancy_by_year": {
+            "2023": [
+              1229,
+              -0.7618194482006029
+            ],
+            "2024": [
+              984,
+              -0.5596170297811467
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.2610436616507068
+      },
+      "stress_train": {
+        "trades": 3081,
+        "expectancy_r": -0.7804386812010055,
+        "median_r": -1.395507939529303,
+        "std_r": 1.3472638230194698,
+        "profit_factor": 0.3070146381243798,
+        "win_rate": 0.2775073028237585,
+        "avg_win_r": 1.2459464919322003,
+        "avg_loss_r": -1.5587672180513608,
+        "max_drawdown_r": 2404.830492120783,
+        "max_drawdown_pct": 24.048304921207833,
+        "longest_losing_streak": 23,
+        "expectancy_by_year": {
+          "2020": [
+            1021,
+            -0.8209762040190896
+          ],
+          "2021": [
+            1006,
+            -0.6589164472135639
+          ],
+          "2022": [
+            1054,
+            -0.8571583743642902
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 2179,
+        "expectancy_r": -1.1121363858184954,
+        "median_r": -1.6302721309543178,
+        "std_r": 1.4069438219403592,
+        "profit_factor": 0.19586256006821853,
+        "win_rate": 0.24827902707664065,
+        "avg_win_r": 1.0910361956491468,
+        "avg_loss_r": -1.8398020552775884,
+        "max_drawdown_r": 2424.9485032837156,
+        "max_drawdown_pct": 24.249485032837157,
+        "longest_losing_streak": 29,
+        "expectancy_by_year": {
+          "2023": [
+            1209,
+            -1.2420524383361788
+          ],
+          "2024": [
+            970,
+            -0.9502100894330524
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.3372862153628522,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "T3-failedcont-15m": {
+      "variant_id": "T3-failedcont-15m",
+      "hypothesis": "T3",
+      "horizon": "short",
+      "params": {
+        "interval": "15m"
+      },
+      "train": {
+        "summary": {
+          "trades": 13489,
+          "expectancy_r": -0.6109023986626785,
+          "median_r": -1.2332134203998597,
+          "std_r": 1.4171198762341901,
+          "profit_factor": 0.40697898703984475,
+          "win_rate": 0.30283935058195566,
+          "avg_win_r": 1.3843994827046715,
+          "avg_loss_r": -1.4776408275637447,
+          "max_drawdown_r": 8240.462455560855,
+          "max_drawdown_pct": 82.40462455560855,
+          "longest_losing_streak": 17,
+          "expectancy_by_year": {
+            "2020": [
+              4249,
+              -0.6486042003043839
+            ],
+            "2021": [
+              4884,
+              -0.5207202550700923
+            ],
+            "2022": [
+              4356,
+              -0.6752400098037676
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.8572460462287105
+      },
+      "validation": {
+        "summary": {
+          "trades": 8617,
+          "expectancy_r": -0.8446541788750501,
+          "median_r": -1.3492078813787778,
+          "std_r": 1.470679581518601,
+          "profit_factor": 0.2953116431413999,
+          "win_rate": 0.2893118254612974,
+          "avg_win_r": 1.223478166511816,
+          "avg_loss_r": -1.686563704846549,
+          "max_drawdown_r": 7278.385059366316,
+          "max_drawdown_pct": 72.78385059366316,
+          "longest_losing_streak": 33,
+          "expectancy_by_year": {
+            "2023": [
+              4059,
+              -0.9247748382148159
+            ],
+            "2024": [
+              4558,
+              -0.7733049563519899
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.8604651162790697
+      },
+      "stress_train": {
+        "trades": 12937,
+        "expectancy_r": -1.0174130856165342,
+        "median_r": -1.466033988137895,
+        "std_r": 1.4943499634068147,
+        "profit_factor": 0.23453069895061102,
+        "win_rate": 0.2670634613898122,
+        "avg_win_r": 1.1672254956196801,
+        "avg_loss_r": -1.813439904660103,
+        "max_drawdown_r": 13162.273088621045,
+        "max_drawdown_pct": 131.62273088621046,
+        "longest_losing_streak": 44,
+        "expectancy_by_year": {
+          "2020": [
+            4072,
+            -1.1012082476299367
+          ],
+          "2021": [
+            4700,
+            -0.8732066078515328
+          ],
+          "2022": [
+            4165,
+            -1.0982189789603352
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 8151,
+        "expectancy_r": -1.3687382047660184,
+        "median_r": -1.688467547224662,
+        "std_r": 1.5571018774985486,
+        "profit_factor": 0.1427934374822829,
+        "win_rate": 0.23125996810207336,
+        "avg_win_r": 0.985922299485419,
+        "avg_loss_r": -2.0770904311487124,
+        "max_drawdown_r": 11156.585107047797,
+        "max_drawdown_pct": 111.56585107047796,
+        "longest_losing_streak": 33,
+        "expectancy_by_year": {
+          "2023": [
+            3813,
+            -1.4765390378957965
+          ],
+          "2024": [
+            4338,
+            -1.2739838071809921
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.4277575706832258,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "T1-bos-1h": {
+      "variant_id": "T1-bos-1h",
+      "hypothesis": "T1",
+      "horizon": "short",
+      "params": {
+        "interval": "1h"
+      },
+      "train": {
+        "summary": {
+          "trades": 2068,
+          "expectancy_r": -0.24776944602351877,
+          "median_r": -1.114284119044711,
+          "std_r": 1.3798593703516515,
+          "profit_factor": 0.6907749574103801,
+          "win_rate": 0.3099613152804642,
+          "avg_win_r": 1.7856740257358685,
+          "avg_loss_r": -1.1611802837234257,
+          "max_drawdown_r": 513.8280595224483,
+          "max_drawdown_pct": 5.138280595224483,
+          "longest_losing_streak": 14,
+          "expectancy_by_year": {
+            "2020": [
+              682,
+              -0.32446118401092683
+            ],
+            "2021": [
+              709,
+              -0.20095878418308263
+            ],
+            "2022": [
+              677,
+              -0.2195345773934699
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.44491332116788324
+      },
+      "validation": {
+        "summary": {
+          "trades": 1389,
+          "expectancy_r": -0.277823786750897,
+          "median_r": -1.1822142804633253,
+          "std_r": 1.4278185946566453,
+          "profit_factor": 0.6729781717928609,
+          "win_rate": 0.33405327573794097,
+          "avg_win_r": 1.7115040357252052,
+          "avg_loss_r": -1.2757136349983687,
+          "max_drawdown_r": 387.3612658664735,
+          "max_drawdown_pct": 3.8736126586647353,
+          "longest_losing_streak": 15,
+          "expectancy_by_year": {
+            "2023": [
+              692,
+              -0.38866191246024956
+            ],
+            "2024": [
+              697,
+              -0.1677807695473504
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.41381668946648426
+      },
+      "stress_train": {
+        "trades": 2044,
+        "expectancy_r": -0.4299069003234625,
+        "median_r": -1.2325824866592212,
+        "std_r": 1.384412093297726,
+        "profit_factor": 0.5351254060231461,
+        "win_rate": 0.299412915851272,
+        "avg_win_r": 1.6528127087309752,
+        "avg_loss_r": -1.320007738829968,
+        "max_drawdown_r": 878.747692943457,
+        "max_drawdown_pct": 8.78747692943457,
+        "longest_losing_streak": 15,
+        "expectancy_by_year": {
+          "2020": [
+            676,
+            -0.5249105567121517
+          ],
+          "2021": [
+            700,
+            -0.3452929013885123
+          ],
+          "2022": [
+            668,
+            -0.42243283974817997
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 1372,
+        "expectancy_r": -0.5523951594476643,
+        "median_r": -1.3616974309026908,
+        "std_r": 1.4464209858648567,
+        "profit_factor": 0.46617574256090816,
+        "win_rate": 0.3170553935860058,
+        "avg_win_r": 1.5214794305325208,
+        "avg_loss_r": -1.5151864578909733,
+        "max_drawdown_r": 758.9235768591914,
+        "max_drawdown_pct": 7.589235768591914,
+        "longest_losing_streak": 15,
+        "expectancy_by_year": {
+          "2023": [
+            687,
+            -0.6996313622814169
+          ],
+          "2024": [
+            685,
+            -0.4047290698903093
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.25872320846678365,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "T2-rejection-1h": {
+      "variant_id": "T2-rejection-1h",
+      "hypothesis": "T2",
+      "horizon": "short",
+      "params": {
+        "interval": "1h"
+      },
+      "train": {
+        "summary": {
+          "trades": 800,
+          "expectancy_r": -0.251945961795551,
+          "median_r": -1.097702803748998,
+          "std_r": 1.3289131492087327,
+          "profit_factor": 0.672231977551765,
+          "win_rate": 0.325,
+          "avg_win_r": 1.5899249613181063,
+          "avg_loss_r": -1.1387727025539787,
+          "max_drawdown_r": 201.8607015780256,
+          "max_drawdown_pct": 2.018607015780256,
+          "longest_losing_streak": 32,
+          "expectancy_by_year": {
+            "2020": [
+              279,
+              -0.24743823274544968
+            ],
+            "2021": [
+              247,
+              -0.15005843950208272
+            ],
+            "2022": [
+              274,
+              -0.34838345964761275
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.2444875304136253
+      },
+      "validation": {
+        "summary": {
+          "trades": 619,
+          "expectancy_r": -0.3323740264548968,
+          "median_r": -1.154851066645439,
+          "std_r": 1.349192871039655,
+          "profit_factor": 0.6015166928081302,
+          "win_rate": 0.32310177705977383,
+          "avg_win_r": 1.5528348972933952,
+          "avg_loss_r": -1.2322350879099289,
+          "max_drawdown_r": 207.5731010915466,
+          "max_drawdown_pct": 2.075731010915466,
+          "longest_losing_streak": 16,
+          "expectancy_by_year": {
+            "2023": [
+              328,
+              -0.4000324016722826
+            ],
+            "2024": [
+              291,
+              -0.2561130399555752
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.2778157774737802
+      },
+      "stress_train": {
+        "trades": 798,
+        "expectancy_r": -0.4404712918809279,
+        "median_r": -1.207611119051677,
+        "std_r": 1.3320007244687204,
+        "profit_factor": 0.5067679485457806,
+        "win_rate": 0.3082706766917293,
+        "avg_win_r": 1.4680580923510043,
+        "avg_loss_r": -1.2910115609408108,
+        "max_drawdown_r": 351.4960909209808,
+        "max_drawdown_pct": 3.514960909209808,
+        "longest_losing_streak": 32,
+        "expectancy_by_year": {
+          "2020": [
+            278,
+            -0.45564771199688797
+          ],
+          "2021": [
+            246,
+            -0.2915150171757768
+          ],
+          "2022": [
+            274,
+            -0.5588077837978267
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 612,
+        "expectancy_r": -0.5906644599498737,
+        "median_r": -1.3135592354929055,
+        "std_r": 1.3587096961863419,
+        "profit_factor": 0.4117630132557192,
+        "win_rate": 0.3022875816993464,
+        "avg_win_r": 1.3677777641439697,
+        "avg_loss_r": -1.4391698731989626,
+        "max_drawdown_r": 363.14054977409955,
+        "max_drawdown_pct": 3.6314054977409955,
+        "longest_losing_streak": 16,
+        "expectancy_by_year": {
+          "2023": [
+            323,
+            -0.6976986198100328
+          ],
+          "2024": [
+            289,
+            -0.4710380459885194
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.3372862153628522,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    },
+    "T3-failedcont-1h": {
+      "variant_id": "T3-failedcont-1h",
+      "hypothesis": "T3",
+      "horizon": "short",
+      "params": {
+        "interval": "1h"
+      },
+      "train": {
+        "summary": {
+          "trades": 3515,
+          "expectancy_r": -0.3655234543224796,
+          "median_r": -1.1185876895178863,
+          "std_r": 1.3707121578588795,
+          "profit_factor": 0.5751980046060611,
+          "win_rate": 0.30981507823613086,
+          "avg_win_r": 1.5975097653707144,
+          "avg_loss_r": -1.2467036588756075,
+          "max_drawdown_r": 1287.0522810366235,
+          "max_drawdown_pct": 12.870522810366236,
+          "longest_losing_streak": 21,
+          "expectancy_by_year": {
+            "2020": [
+              1063,
+              -0.3737094400732934
+            ],
+            "2021": [
+              1322,
+              -0.3582351524211302
+            ],
+            "2022": [
+              1130,
+              -0.3663495005706821
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.8490723844282239
+      },
+      "validation": {
+        "summary": {
+          "trades": 2115,
+          "expectancy_r": -0.4605666105069489,
+          "median_r": -1.1663297660891805,
+          "std_r": 1.4068952885224757,
+          "profit_factor": 0.502725797155887,
+          "win_rate": 0.3148936170212766,
+          "avg_win_r": 1.4786447104565879,
+          "avg_loss_r": -1.3518811307013694,
+          "max_drawdown_r": 976.7448246005039,
+          "max_drawdown_pct": 9.767448246005038,
+          "longest_losing_streak": 27,
+          "expectancy_by_year": {
+            "2023": [
+              980,
+              -0.47945173275109737
+            ],
+            "2024": [
+              1135,
+              -0.4442605137675079
+            ]
+          }
+        },
+        "p": null,
+        "time_in_market": 0.8663930688554492
+      },
+      "stress_train": {
+        "trades": 3446,
+        "expectancy_r": -0.6217133295795704,
+        "median_r": -1.249629179725007,
+        "std_r": 1.4089882214838527,
+        "profit_factor": 0.40291377336972883,
+        "win_rate": 0.2904817179338363,
+        "avg_win_r": 1.4442634975935529,
+        "avg_loss_r": -1.467538607289303,
+        "max_drawdown_r": 2143.6911697340083,
+        "max_drawdown_pct": 21.436911697340083,
+        "longest_losing_streak": 21,
+        "expectancy_by_year": {
+          "2020": [
+            1038,
+            -0.6743630387804617
+          ],
+          "2021": [
+            1299,
+            -0.5707647145832742
+          ],
+          "2022": [
+            1109,
+            -0.6321117540427478
+          ]
+        }
+      },
+      "stress_validation": {
+        "trades": 2062,
+        "expectancy_r": -0.7658070127495381,
+        "median_r": -1.3322349266366817,
+        "std_r": 1.4717472042160642,
+        "profit_factor": 0.3307916959095113,
+        "win_rate": 0.2938894277400582,
+        "avg_win_r": 1.2880379321888435,
+        "avg_loss_r": -1.620635334612628,
+        "max_drawdown_r": 1580.8924587676104,
+        "max_drawdown_pct": 15.808924587676104,
+        "longest_losing_streak": 30,
+        "expectancy_by_year": {
+          "2023": [
+            945,
+            -0.8162589736358092
+          ],
+          "2024": [
+            1117,
+            -0.7231238408269541
+          ]
+        }
+      },
+      "year_stable": false,
+      "neighbours_ok": true,
+      "walk_forward_mean": -0.4277575706832258,
+      "verdict": "failed_train",
+      "reasons": [
+        "Training: Erwartungswert <= 0",
+        "Training: p >= 0,10 gegen Zufall"
+      ]
+    }
+  }
+}

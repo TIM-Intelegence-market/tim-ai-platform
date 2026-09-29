@@ -8,6 +8,7 @@ structure, and it flags missing fields.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
@@ -20,9 +21,23 @@ from .base import AdapterInput
 def _dt(value: Any) -> datetime | None:
     if value is None:
         return None
+    if isinstance(value, str):
+        # JSON input carries ISO-8601 strings; accept a trailing "Z" explicitly.
+        text = value.strip()
+        if text[-1:] in ("Z", "z"):
+            text = text[:-1] + "+00:00"
+        try:
+            value = datetime.fromisoformat(text)
+        except ValueError as exc:
+            raise ValueError(f"invalid datetime value: {value!r}") from exc
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     raise ValueError(f"invalid datetime value: {value!r}")
+
+
+def _record(item: Candle | Trade) -> dict[str, Any]:
+    # AdapterInput carries plain dicts; datetimes as ISO-8601 (read back via fromisoformat).
+    return {key: value.isoformat() if isinstance(value, datetime) else value for key, value in asdict(item).items()}
 
 
 def _dec(value: Any) -> Decimal | None:
@@ -113,8 +128,8 @@ class GenericOrderflowAdapter:
             market_type=str(data.get("market_type", "FUTURES")),
             timeframe=str(data.get("timeframe", "4H")),
             observed_at=observed_at,
-            candles=tuple(c.to_dict() for c in candles),
-            trades=tuple(t.to_dict() for t in trades),
+            candles=tuple(_record(c) for c in candles),
+            trades=tuple(_record(t) for t in trades),
             price_now=_dec(data.get("price_now")),
             net_delta=_dec(data.get("net_delta")),
             aggressive_buy_volume=_dec(data.get("aggressive_buy_volume")),

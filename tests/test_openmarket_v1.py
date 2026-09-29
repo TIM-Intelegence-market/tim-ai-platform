@@ -307,6 +307,25 @@ def test_per_side_mapping() -> None:
     assert any(n.startswith("derived:net_delta=true derivation=buy_volume_minus_sell_volume") for n in derived.extra_notes)
 
 
+def test_per_side_seller_dominance_keeps_negative_net_delta() -> None:
+    """buy - sell < 0 is passed through unclipped and accepted by the engine."""
+    from src.orderflow_scenario.engines.orderflow_interpretation import OrderflowInputs, OrderflowInterpretationEngine
+
+    request = {"exchange": "BINANCE_FUTURES", "raw_symbol": "BTCUSDT", "interval": "MINUTE", "from": T0, "period": 120, "market_type": "FUTURES"}
+    om, _, _ = client(ok({"points": [point(0)]}), ok(_per_side_payload(buy_volume="1.25", sell_volume="3.5")))
+    derived = OpenMarketAdapter(om, side_is_aggressor=True).adapt(request)
+    assert derived.net_delta == Decimal("-2.25")
+    interpretation = OrderflowInterpretationEngine().evaluate(
+        OrderflowInputs(
+            net_delta=derived.net_delta,
+            aggressive_buy_volume=derived.aggressive_buy_volume,
+            aggressive_sell_volume=derived.aggressive_sell_volume,
+            total_volume=derived.total_volume,
+        )
+    )
+    assert interpretation.aggressive_side == "SELLERS"
+
+
 def test_per_side_unavailable_is_reported_not_fatal() -> None:
     request = {"exchange": "BINANCE_FUTURES", "raw_symbol": "BTCUSDT", "interval": "MINUTE", "from": T0, "period": 60, "market_type": "FUTURES"}
     om, _, _ = client(ok({"points": [point(0)]}), HttpResult(403, {}, b"type not permitted for tier"))
@@ -515,6 +534,7 @@ def test_cli_existing_providers_run_end_to_end(capsys) -> None:
             code = cli.main(["--provider", provider])
         finally:
             _sys.stdin = _sys.__stdin__
-        err = capsys.readouterr().err
-        # Past _market_context now; the remaining empty-candle failure is pre-existing in the pipeline.
-        assert "not subscriptable" not in err and code == 2
+        captured = capsys.readouterr()
+        # No candles at all is not an input error: the pipeline fails closed to NO_TRADE.
+        assert "not subscriptable" not in captured.err and code == 0
+        assert json.loads(captured.out)["decision"]["status"] == "NO_TRADE"

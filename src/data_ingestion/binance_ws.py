@@ -17,6 +17,15 @@ StreamEventHandler = Callable[[str, Mapping[str, object]], Awaitable[None]]
 RecoveryHandler = Callable[[Trade], Awaitable[None]]
 
 
+class StreamClosed(ConnectionError):
+    """The server ended the stream cleanly (close code 1000/1001 or none).
+
+    websockets ends iteration without raising in that case, so run() raises this
+    to send a clean close through the same disconnect path as any other loss:
+    backoff, DISCONNECTED telemetry and catch-up before the next live trade.
+    """
+
+
 class BinanceTradeStream:
     """Public Binance aggregate-trade stream. It has no authenticated endpoints."""
 
@@ -88,6 +97,8 @@ class BinanceTradeStream:
                             needs_recovery = False
                             await self._event("RECOVERY_COMPLETE", next_live_trade_id=trade.trade_id)
                         await self.handler(trade)
+                    if not self._stop.is_set():
+                        raise StreamClosed(f"server closed the stream (code {getattr(socket, 'close_code', None)})")
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

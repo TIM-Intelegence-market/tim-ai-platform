@@ -288,7 +288,9 @@ class AuctionStateEngine:
         if bodies and pstdev(bodies) > 0 and len(bodies) >= 3:
             last_three = bodies[-3:]
             first_three = bodies[:-3]
-            if last_three and first_three and (mean(last_three) / mean(first_three)) > 1.5:
+            # Bodyless (doji) candles give mean(first_three) == 0; any body
+            # after them is an extension, so compare without dividing.
+            if last_three and first_three and mean(last_three) > mean(first_three) * 1.5:
                 secondary_auction.append(AuctionStateKind.RANGE_EXTENSION)
                 evidence.append("range_extension")
 
