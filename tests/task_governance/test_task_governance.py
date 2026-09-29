@@ -39,8 +39,8 @@ def test_distinct_phase_target_type_version_give_distinct_identity():
         assert req(**change).fingerprint != base
 
 
-def test_case_of_identifier_parts_is_normalised_but_version_is_not():
-    assert canonical_task_key('m09', 'p0', 'x', 'tim', 'v1') == 'M09|P0|X|TIM|v1'
+def test_case_of_identifier_parts_is_normalised():
+    assert canonical_task_key('m09', 'p0', 'x', 'tim', 'V1') == 'M09|P0|X|TIM|v1'
 
 
 @pytest.mark.parametrize('bad', ['', ' ', 'a|b', None, 'a b'])
@@ -114,16 +114,85 @@ def test_creator_crash_after_github_create_resumes_without_second_issue(env, tmp
     assert r.outcome is EnsureOutcome.RECOVERED and not r.created and ok.count() == 1
 
 
-def test_same_claimant_resumes_immediately_other_worker_waits_for_lease(env, tmp_path):
+def test_nobody_resumes_by_name_only_after_lease_expiry(env, tmp_path):
     reg_path, _ = env
     gh_path = str(tmp_path / 'gh3.db')
     with pytest.raises(RuntimeError):
         ensure_task(req(), TaskRegistry(reg_path), FakeGitHub(gh_path, crash_after_create=True), claimant='a')
     ok = FakeGitHub(gh_path)
-    other = ensure_task(req(), TaskRegistry(reg_path), ok, claimant='b', lease_seconds=300)
-    assert other.outcome is EnsureOutcome.PENDING and not other.created
-    mine = ensure_task(req(), TaskRegistry(reg_path), ok, claimant='a')
-    assert mine.outcome is EnsureOutcome.RECOVERED and ok.count() == 1
+    for name in ('b', 'a'):        # even the same name must wait: names are not identities
+        r = ensure_task(req(), TaskRegistry(reg_path), ok, claimant=name, lease_seconds=300)
+        assert r.outcome is EnsureOutcome.PENDING and not r.created
+    late = TaskRegistry(reg_path, clock=lambda: time.time() + 10_000)
+    r = ensure_task(req(), late, ok, claimant='a', lease_seconds=300)
+    assert r.outcome is EnsureOutcome.RECOVERED and ok.count() == 1
+
+
+def test_workers_sharing_one_claimant_name_still_create_one_issue(tmp_path):
+    reg_path = str(tmp_path / 'reg.db')
+    gh = FakeGitHub(str(tmp_path / 'gh.db'), latency=0.05)
+    TaskRegistry(reg_path).close()
+    results, barrier = [], threading.Barrier(6)
+
+    def worker():
+        reg = TaskRegistry(reg_path)
+        barrier.wait()
+        results.append(ensure_task(req(), reg, gh, claimant='tim-worker'))
+
+    ts = [threading.Thread(target=worker) for _ in range(6)]
+    [t.start() for t in ts]; [t.join() for t in ts]
+    assert gh.count() == 1 and sum(r.created for r in results) == 1
+
+
+def test_lease_expiry_during_slow_create_does_not_produce_second_issue(env, monkeypatch):
+    """A is slow between claim and create; B's lease takeover must stop A before it creates."""
+    reg_path, gh = env
+    reg_a = TaskRegistry(reg_path)
+    real_find = gh.find_issues
+    state = {'first': True}
+
+    def slow_find(fp, key):
+        out = real_find(fp, key)
+        if state['first']:                       # A is inside its pre-create check ...
+            state['first'] = False
+            late = TaskRegistry(reg_path, clock=lambda: time.time() + 10_000)
+            b = ensure_task(req(), late, gh, claimant='B', lease_seconds=300)   # ... B takes over and creates
+            state['b'] = b
+        return out
+
+    monkeypatch.setattr(gh, 'find_issues', slow_find)
+    a = ensure_task(req(), reg_a, gh, claimant='A')
+    assert state['b'].outcome is EnsureOutcome.CREATED
+    assert a.outcome is EnsureOutcome.PENDING and not a.created      # A's renew fails, A never creates
+    assert gh.count() == 1
+
+
+def test_claim_lost_after_create_is_reported_as_blocked_not_created(env, monkeypatch):
+    reg_path, gh = env
+    reg = TaskRegistry(reg_path)
+    real_create = gh.create_issue
+
+    def create_then_lose_claim(request, fingerprint):
+        issue = real_create(request, fingerprint)
+        TaskRegistry(reg_path, clock=lambda: time.time() + 10_000).claim(
+            fingerprint, request.key, 'thief', 300)       # takeover after A's renew
+        return issue
+
+    monkeypatch.setattr(gh, 'create_issue', create_then_lose_claim)
+    r = ensure_task(req(), reg, gh, claimant='A')
+    assert r.outcome is EnsureOutcome.BLOCKED and r.created
+    assert reg.incidents()[0]['reason'] == 'CLAIM_LOST_AFTER_CREATE'
+
+
+def test_failure_before_create_releases_the_claim(env, monkeypatch):
+    reg_path, gh = env
+    reg = TaskRegistry(reg_path)
+    monkeypatch.setattr(gh, 'find_issues', lambda *a: (_ for _ in ()).throw(ConnectionError('github down')))
+    with pytest.raises(ConnectionError):
+        ensure_task(req(), reg, gh, claimant='A')
+    assert reg.get(req().fingerprint) is None
+    monkeypatch.undo()
+    assert ensure_task(req(), reg, gh, claimant='B').outcome is EnsureOutcome.CREATED
 
 
 # ---- concurrency ----
@@ -174,6 +243,51 @@ def test_uniqueness_constraint_is_in_the_database(env):
 
 
 # ---- GitHub-side duplicates ----
+def test_regression_legacy_issues_without_marker_creates_nothing(env):
+    """The real #11 and #22..#65 predate the marker: the hint must still be adopted."""
+    reg_path, gh = env
+    fp = req().fingerprint
+    gh.seed(11, fp, marker=False)
+    for n in range(22, 66):
+        gh.seed(n, fp, marker=False)
+    reg = TaskRegistry(reg_path)
+    r = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11, legacy_issues=range(22, 66))
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 11 and not r.created
+    assert gh.count() == 45 and reg.get(fp).duplicate_issues == tuple(range(22, 66))
+    assert len(gh.ops('duplicate')) == 44 and gh.state(11) == 'open'
+    assert [i.number for i in gh.find_issues(fp, req().key)] == [11]     # marker back-filled on #11 only
+    again = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11)
+    assert again.outcome is EnsureOutcome.UPDATED and gh.count() == 45
+
+
+def test_blocked_ambiguity_resolves_when_a_valid_hint_is_supplied_later(env):
+    reg_path, gh = env
+    fp = req().fingerprint
+    gh.seed(5, fp); gh.seed(9, fp)
+    reg = TaskRegistry(reg_path)
+    assert ensure_task(req(), reg, gh, claimant='w').outcome is EnsureOutcome.BLOCKED
+    r = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=5)
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 5 and gh.count() == 2
+    assert [i['reason'] for i in reg.incidents(fp)] == ['AMBIGUOUS_DUPLICATES', 'UNBLOCKED']
+
+
+def test_marker_copied_by_untrusted_author_cannot_hijack_or_block(env):
+    reg_path, gh = env
+    fp = req().fingerprint
+    gh.seed(5, fp, author='stranger')
+    reg = TaskRegistry(reg_path)
+    r = ensure_task(req(), reg, gh, claimant='w', trusted_authors={'owner'})
+    assert r.outcome is EnsureOutcome.CREATED and r.issue_number != 5
+    reg2 = TaskRegistry(reg_path + '2')
+    gh.seed(6, fp, author='stranger')
+    assert ensure_task(req(), reg2, gh, claimant='w', trusted_authors={'owner'}).outcome is EnsureOutcome.RECOVERED
+
+
+def test_schema_version_case_does_not_create_a_second_identity():
+    assert req(schema_version='V1').fingerprint == req(schema_version='v1').fingerprint
+
+
+
 def test_regression_task_11_with_duplicates_22_to_65_creates_nothing(env):
     """#68 primary fixture: authoritative #11, historical duplicates #22..#65."""
     reg_path, gh = env

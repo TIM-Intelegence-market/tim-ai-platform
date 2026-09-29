@@ -26,7 +26,7 @@ class TaskRequest:
 
 
 def canonical_task_key(mission_id, phase_id, task_type, target, schema_version) -> str:
-    """`M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1`; identifier parts are case-folded.
+    """`M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1`; identifier parts are upper-cased, the schema version lower-cased.
 
     Empty parts and parts containing the separator are rejected instead of
     being normalised, so two different tasks can never collapse into one key.
@@ -37,7 +37,7 @@ def canonical_task_key(mission_id, phase_id, task_type, target, schema_version) 
         text = str(value).strip() if value is not None else ''
         if not _PART.match(text):
             raise ValueError(f'invalid {name}: {value!r}')
-        parts.append(text if name == 'schema_version' else text.upper())
+        parts.append(text.lower() if name == 'schema_version' else text.upper())
     return '|'.join(parts)
 
 

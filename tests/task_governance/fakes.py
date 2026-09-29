@@ -11,7 +11,7 @@ class FakeGitHub:
     def __init__(self, path, *, latency=0.0, crash_after_create=False):
         self.path, self.latency, self.crash_after_create = path, latency, crash_after_create
         db = self._db()
-        db.execute('CREATE TABLE IF NOT EXISTS issues(number INTEGER PRIMARY KEY, state TEXT, body TEXT)')
+        db.execute('CREATE TABLE IF NOT EXISTS issues(number INTEGER PRIMARY KEY, state TEXT, body TEXT, author TEXT DEFAULT \'owner\')')
         db.execute('CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY AUTOINCREMENT, op TEXT, number INTEGER, detail TEXT)')
         db.close()
 
@@ -20,18 +20,26 @@ class FakeGitHub:
         db.execute('PRAGMA busy_timeout=30000')
         return db
 
-    def seed(self, number, fingerprint, state='open', extra=''):
+    def seed(self, number, fingerprint, state='open', extra='', marker=True, author='owner'):
+        """marker=False models issues that predate the fingerprint marker (#11, #22-#65)."""
         db = self._db()
-        db.execute('INSERT INTO issues VALUES(?,?,?)', (number, state, fingerprint_marker(fingerprint) + extra))
+        db.execute('INSERT INTO issues VALUES(?,?,?,?)',
+                   (number, state, (fingerprint_marker(fingerprint) if marker else 'legacy') + extra, author))
         db.close()
 
     def find_issues(self, fingerprint, canonical_key):
         db = self._db()
-        rows = db.execute('SELECT number,state FROM issues WHERE body LIKE ? ORDER BY number',
+        rows = db.execute('SELECT number,state,author FROM issues WHERE body LIKE ? ORDER BY number',
                           (f'%{fingerprint_marker(fingerprint)}%',)).fetchall()
         db.close()
         time.sleep(self.latency)      # widen the check-then-create window
-        return [IssueRef(n, s) for n, s in rows]
+        return [IssueRef(n, s, author=a) for n, s, a in rows]
+
+    def get_issue(self, number):
+        db = self._db()
+        row = db.execute('SELECT number,state,author FROM issues WHERE number=?', (number,)).fetchone()
+        db.close()
+        return IssueRef(row[0], row[1], author=row[2]) if row else None
 
     def create_issue(self, request: TaskRequest, fingerprint):
         db = self._db()
@@ -50,6 +58,10 @@ class FakeGitHub:
         db.close()
 
     def update_issue(self, number, request, reason):
+        marker = fingerprint_marker(request.fingerprint)      # back-fills the marker like a real gateway must
+        db = self._db()
+        db.execute('UPDATE issues SET body=body || ? WHERE number=? AND body NOT LIKE ?', (marker, number, f'%{marker}%'))
+        db.close()
         self._log('update', number, reason)
 
     def reopen_issue(self, number, request, reason):
@@ -60,7 +72,8 @@ class FakeGitHub:
 
     def is_documented_duplicate(self, number, authoritative):
         db = self._db()
-        row = db.execute('SELECT 1 FROM log WHERE op=? AND number=?', ('duplicate', number)).fetchone()
+        row = db.execute('SELECT 1 FROM log WHERE op=? AND number=? AND detail=?',
+                         ('duplicate', number, f'of #{authoritative}')).fetchone()
         db.close()
         return row is not None
 
