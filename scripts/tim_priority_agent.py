@@ -112,6 +112,9 @@ def main() -> int:
     parser.add_argument("--marker", default=os.environ.get("PRIORITY_BOARD_MARKER", "TIM_PRIORITY_BOARD_V1"))
     parser.add_argument("--timezone-label", default=os.environ.get("PRIORITY_TIMEZONE_LABEL", "Europe/Berlin"))
     parser.add_argument("--top-n", default=int(os.environ.get("TOP_N", "5")), type=int)
+    parser.add_argument("--trusted-authors", default=os.environ.get("PRIORITY_TRUSTED_AUTHORS", ""),
+                        help="comma-separated logins whose issue/comment text may set status, next action "
+                             "and dependencies (default: the repository owner)")
     parser.add_argument("--dry-run", action="store_true", help="build the board but write nothing to GitHub")
     parser.add_argument("--record-path", type=Path, help="write the replayable run record (snapshot + board) here")
     parser.add_argument("--replay", type=Path, metavar="RECORD", help="re-run a recorded snapshot offline and verify the board")
@@ -123,6 +126,7 @@ def main() -> int:
     agent = PriorityAgent(
         RestGitHubClient(args.repository, args.token), args.board_title, args.marker,
         args.timezone_label, args.top_n, repository=args.repository,
+        trusted_authors=[login.strip() for login in args.trusted_authors.split(",") if login.strip()] or None,
     )
     try:
         board_number, board = agent.run(dry_run=args.dry_run)

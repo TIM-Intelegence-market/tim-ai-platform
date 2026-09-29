@@ -12,6 +12,13 @@ Contract (Constitution Band 5, Master Prompt 09), declared in ``SPEC``:
   use the snapshot's ``captured_at``, never the render time.
 
 A missing or unreadable source is UNKNOWN, never GREEN.
+
+Required tools (``REQUIRED_TOOLS``): Ollama and Qwen. Both run as KeepAlive
+launchd services of the 24/7 runtime (``ops/launchd/com.tim.ollama.plist``,
+``ops/launchd/com.tim.local-qwen-worker.plist``), so a required tool that is
+UNAVAILABLE is RED and one that was not probed is UNKNOWN. All other probed
+tools (Serena, Graphify, Obsidian, OpenCode, pytest, ...) serve development
+sessions; when they are missing the report is YELLOW, never RED.
 """
 from __future__ import annotations
 
@@ -29,7 +36,7 @@ WRITE_REPORT = "write_health_report"
 
 SPEC = AgentSpec(
     name="monitoring-agent",
-    version="1.0.0",
+    version="1.1.0",
     mission="Bundle existing TIM health signals into one read-only report with "
             "a status and provenance per source; never restart, repair or release.",
     owner="uezeyiraydin-cell",
@@ -45,6 +52,7 @@ REPORT_SCHEMA = "tim.monitoring.report.v1"
 GREEN, YELLOW, RED, UNKNOWN = "GREEN", "YELLOW", "RED", "UNKNOWN"
 _SEVERITY = (RED, UNKNOWN, YELLOW, GREEN)
 DEFAULT_MAX_STATE_AGE_SECONDS = 900
+REQUIRED_TOOLS = ("Ollama", "Qwen")
 _STATE_BOUND = 1024 * 1024
 
 
@@ -70,13 +78,23 @@ def _age_seconds(captured_at: str, observed: str | None) -> float | None:
 def assess_tools(source: Mapping[str, Any]) -> dict[str, Any]:
     if source.get("collected") is not True:
         return {"status": UNKNOWN, "reasons": [source.get("reason", "nicht erhoben")], "items": {}}
+    # Snapshots without "required" (recorded before 1.1.0) treat every tool as optional.
+    required = set(source.get("required") or ())
     items = {}
     for name, entry in sorted(source["tools"].items()):
         state = entry.get("state")
         status = {"AVAILABLE": GREEN, "DEGRADED": YELLOW, "UNAVAILABLE": YELLOW}.get(state, UNKNOWN)
+        if name in required and state == "UNAVAILABLE":
+            status = RED
         items[name] = {"status": status, "state": state, "evidence": entry.get("evidence", ""),
                        "observed_at": entry.get("observed_at")}
-    reasons = [f"{name}: {item['state']}" for name, item in items.items() if item["status"] != GREEN]
+        if required:
+            items[name]["required"] = name in required
+    for name in sorted(required - set(items)):
+        items[name] = {"status": UNKNOWN, "state": None, "evidence": "Pflicht-Werkzeug nicht geprüft",
+                       "observed_at": None, "required": True}
+    reasons = [f"{name}{' (Pflicht)' if item.get('required') else ''}: {item['state'] or 'nicht geprüft'}"
+               for name, item in items.items() if item["status"] != GREEN]
     return {"status": _worst(i["status"] for i in items.values()) if items else UNKNOWN,
             "reasons": reasons or ["alle Werkzeuge verfügbar"], "items": items}
 
@@ -169,6 +187,7 @@ def collect_snapshot(*, orchestration_state: Path | None = None,
                      tool_registry: Any | None = None, probe_tools: bool = True,
                      readiness: Callable[..., Mapping[str, Any]] | None = None,
                      clock: Callable[[], str] | None = None,
+                     required_tools: tuple[str, ...] = REQUIRED_TOOLS,
                      max_state_age_seconds: int = DEFAULT_MAX_STATE_AGE_SECONDS) -> dict[str, Any]:
     SPEC.authorize(READ_SOURCES)
     captured_at = (clock or (lambda: datetime.now(timezone.utc).replace(microsecond=0).isoformat()))()
@@ -177,7 +196,7 @@ def collect_snapshot(*, orchestration_state: Path | None = None,
         if tool_registry is None:
             from src.agent_infra.health import ToolHealthRegistry
             tool_registry = ToolHealthRegistry()
-        tools = {"collected": True, "tools": tool_registry.refresh()}
+        tools = {"collected": True, "required": sorted(set(required_tools)), "tools": tool_registry.refresh()}
     else:
         tools = {"collected": False, "reason": "Werkzeug-Probes abgeschaltet"}
 
@@ -213,6 +232,7 @@ def render_report(report: Mapping[str, Any]) -> str:
         lines.append(f"## {name}: `{entry['status']}`")
         lines.extend(f"- {reason}" for reason in entry["reasons"])
         for tool, item in entry.get("items", {}).items():
-            lines.append(f"  - {tool}: {item['status']} ({item['evidence']})")
+            flag = " · Pflicht" if item.get("required") else ""
+            lines.append(f"  - {tool}: {item['status']}{flag} ({item['evidence']})")
         lines.append("")
     return "\n".join(lines)
