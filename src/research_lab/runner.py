@@ -33,11 +33,13 @@ from src.research_lab.stats.inference import neighbours_positive, walk_forward, 
 from src.research_lab.stats.random_entry import atr_at_signal, atr_series, random_entry_pvalue
 from src.research_lab.stats.register import HypothesisRegister
 
-# Data windows (protocol 3.1/3.2). Loading starts one month early for indicator warm-up.
+# Data windows (protocol 3.1/3.2). Spot loads the partial first month 2017-08 for
+# indicator warm-up. The USD-M monthly archive starts with 2020-01 (probe 2026-09-29:
+# 2019-09 to 2019-12 return 404); strategies wait for their own warm-up there.
 SPOT_LOAD = (2017, 8)
 SPOT_SIGNALS_MS = _utc_ms(2017, 9, 1)
-USDM_LOAD = (2019, 9)
-USDM_SIGNALS_MS = _utc_ms(2019, 10, 1)
+USDM_LOAD = (2020, 1)
+USDM_SIGNALS_MS = _utc_ms(2020, 1, 1)
 LAST_MONTH = (2024, 12)
 
 

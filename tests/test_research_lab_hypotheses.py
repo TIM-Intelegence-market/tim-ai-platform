@@ -88,7 +88,7 @@ def test_s2_trades_once_per_session_and_leaves_by_session_end() -> None:
 
 def test_runner_evaluates_and_decides_without_holdout_data() -> None:
     specs = [v for v in VARIANTS if v.hypothesis == "M3"][:4]
-    first = _utc_ms(2019, 9, 1)
+    first = _utc_ms(2020, 1, 1)
     days = (_utc_ms(2025, 6, 1) - first) // 86_400_000
     bars = synthetic_series(days, seed=5, start_ms=first, interval_ms=86_400_000, volatility=0.03)
     results, trades = {}, {}
