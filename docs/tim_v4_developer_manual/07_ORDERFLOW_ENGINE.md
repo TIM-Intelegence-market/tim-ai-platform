@@ -57,8 +57,10 @@ total_volume, open_interest_trend, open_interest_with_price,
 delta_divergence, taker_buy_sell_ratio, volume_bubbles, extra_notes,
 candles, trades.
 
-Konstruktionsinvarianten: negative Volumina → `ValueError`; ungültige
-`open_interest_trend` → `ValueError`.
+Konstruktionsinvarianten: negative Volumina (`aggressive_buy_volume`,
+`aggressive_sell_volume`, `total_volume`) → `ValueError`; ungültige
+`open_interest_trend` → `ValueError`. `net_delta` ist vorzeichenbehaftet
+(negativ = aggressive Verkäufer) und wird nicht begrenzt.
 
 `OrderflowInterpretationEngine.evaluate(inputs)` → `OrderflowInterpretation`.
 
@@ -115,7 +117,8 @@ flowchart LR
 
 ## 6. Invarianten
 
-1. Aggressive Seite eindeutig aus `net_delta` (+/NEUTRAL); nie beides.
+1. Aggressive Seite eindeutig aus dem Vorzeichen von `net_delta`
+   (+ BUYERS / − SELLERS / 0 NEUTRAL); nie beides.
 2. Kein negativer Volumens-Input.
 3. Jede Interpretationen referenziert Evidenz (`evidence_refs`).
 4. Statements sind typisiert (OBS vs INT vs HYPO etc.).

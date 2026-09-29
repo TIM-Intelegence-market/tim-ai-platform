@@ -36,8 +36,9 @@ class OrderflowInputs:
     extra_notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        # net_delta (aggressive buy minus aggressive sell volume) is signed by
+        # definition; a negative value means sellers were the aggressors.
         for label, value in (
-            ("net_delta", self.net_delta),
             ("aggressive_buy_volume", self.aggressive_buy_volume),
             ("aggressive_sell_volume", self.aggressive_sell_volume),
             ("total_volume", self.total_volume),
