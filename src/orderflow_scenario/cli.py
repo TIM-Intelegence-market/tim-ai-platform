@@ -13,19 +13,26 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .adapters import GenericOrderflowAdapter, MMTScreenshotAdapter, MMTStructuredDataAdapter
+from .adapters import GenericOrderflowAdapter, MMTScreenshotAdapter, MMTStructuredDataAdapter, OpenMarketAdapter
 from .engines.pipeline import Pipeline, PipelineInputs
 from .config import default_config
 from .domain import MarketContext
 from .schema_validation import validate_analysis
+from src.market_data.providers.openmarket.errors import OpenMarketError
 
 
-def _market_context(data: dict[str, Any], observed) -> MarketContext:
+def _market_context(data: Any, observed) -> MarketContext:
+    # Adapters return an AdapterInput (attributes); mappings are still accepted.
+    def value(name: str, default: str | None = None) -> Any:
+        if isinstance(data, dict):
+            return data[name] if default is None else data.get(name, default)
+        return getattr(data, name) if default is None else getattr(data, name, default)
+
     return MarketContext(
-        symbol=str(data["symbol"]),
-        venue=str(data.get("venue", "UNKNOWN")),
-        market_type=str(data.get("market_type", "FUTURES")),
-        timeframe=str(data.get("timeframe", "4H")),
+        symbol=str(value("symbol")),
+        venue=str(value("venue", "UNKNOWN")),
+        market_type=str(value("market_type", "FUTURES")),
+        timeframe=str(value("timeframe", "4H")),
         timestamp=observed,
     )
 
@@ -87,17 +94,35 @@ def adapters_name(adapted) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ofsc", description="Orderflow Scenario and Trade Decision Manager (observation-only).")
     parser.add_argument("--input", default=None, help="path to JSON input; defaults to stdin")
-    parser.add_argument("--provider", choices=["generic", "mmt-structured", "mmt-screenshot"], default="generic")
+    parser.add_argument("--provider", choices=["generic", "mmt-structured", "mmt-screenshot", "openmarket"], default="generic")
+    openmarket = parser.add_argument_group("openmarket", "read-only OpenMarket request (instead of --input)")
+    openmarket.add_argument("--exchange", help="OpenMarket exchange, e.g. BINANCE_FUTURES")
+    openmarket.add_argument("--raw-symbol", help="exchange symbol, e.g. BTCUSDT")
+    openmarket.add_argument("--interval", help="MINUTE, FIVE_MINUTES, ..., FOUR_HOURS, DAY, WEEK")
+    openmarket.add_argument("--from", dest="from_seconds", type=int, help="UTC epoch seconds (inclusive)")
+    openmarket.add_argument("--period", type=int, help="duration in seconds")
+    openmarket.add_argument("--market-type", choices=["SPOT", "FUTURES"])
+    openmarket.add_argument("--no-per-side", action="store_true", help="skip the TRADE_AGG per-side request")
     parser.add_argument("--validate", action="store_true", help="also print schema validation status")
     args = parser.parse_args(argv)
 
     try:
-        if args.input:
+        if args.provider == "openmarket":
+            payload = {
+                "exchange": args.exchange, "raw_symbol": args.raw_symbol, "interval": args.interval,
+                "from": args.from_seconds, "period": args.period, "market_type": args.market_type,
+            }
+            if any(value is None for value in payload.values()):
+                raise ValueError("--provider openmarket requires --exchange --raw-symbol --interval --from --period --market-type")
+        elif args.input:
             payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
         else:
             payload = json.load(sys.stdin)
 
-        if args.provider == "mmt-screenshot":
+        if args.provider == "openmarket":
+            adapter = OpenMarketAdapter(include_per_side=not args.no_per_side)
+            adapt_input = payload
+        elif args.provider == "mmt-screenshot":
             adapter = MMTScreenshotAdapter()
             adapt_input = payload.get("screenshot", payload)
         elif args.provider == "mmt-structured":
@@ -120,6 +145,10 @@ def main(argv: list[str] | None = None) -> int:
                     sys.stderr.write(f"  - {error}\n")
                 return 2
         return 0
+    except OpenMarketError as exc:
+        # Classified, secret-free provider failure: fail closed, no analysis.
+        sys.stderr.write(f"ERROR: {exc}\n")
+        return 3
     except (json.JSONDecodeError, KeyError, ValueError) as exc:
         sys.stderr.write(f"ERROR: {exc}\n")
         return 2

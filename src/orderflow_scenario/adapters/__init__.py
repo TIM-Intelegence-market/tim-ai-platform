@@ -11,6 +11,7 @@ from .base import AdapterInput, AdapterResult, ListPathEntry
 from .generic import GenericOrderflowAdapter
 from .mmt_structured import MMTStructuredDataAdapter
 from .mmt_screenshot import MMTScreenshotAdapter
+from .openmarket import OpenMarketAdapter, OpenMarketRequest
 
 __all__ = [
     "AdapterInput",
@@ -19,4 +20,6 @@ __all__ = [
     "GenericOrderflowAdapter",
     "MMTStructuredDataAdapter",
     "MMTScreenshotAdapter",
+    "OpenMarketAdapter",
+    "OpenMarketRequest",
 ]
