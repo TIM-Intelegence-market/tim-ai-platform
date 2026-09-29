@@ -9,8 +9,11 @@ from scripts.tim_priority_agent import (
 )
 
 
-def issue(number, title, *, state="open", labels=(), body="", updated_at="2026-09-27T10:00:00Z"):
-    return {"number": number, "title": title, "state": state, "labels": [{"name": label} for label in labels], "body": body, "updated_at": updated_at}
+BOT = "github-actions[bot]"
+
+
+def issue(number, title, *, state="open", labels=(), body="", updated_at="2026-09-27T10:00:00Z", author="someone"):
+    return {"number": number, "title": title, "state": state, "labels": [{"name": label} for label in labels], "body": body, "updated_at": updated_at, "user": {"login": author}}
 
 
 class FakeGitHub:
@@ -79,7 +82,7 @@ def test_first_run_creates_exactly_one_board_and_excludes_archived_work():
 
 
 def test_second_run_updates_existing_board_instead_of_creating_another():
-    board = issue(500, "TIM Priority Board", body="<!-- TIM_PRIORITY_BOARD_V1 -->")
+    board = issue(500, "TIM Priority Board", body="<!-- TIM_PRIORITY_BOARD_V1 -->", author=BOT)
     client = FakeGitHub([board, issue(12, "Task Engine", labels=("status:active",))])
     board_number, _ = agent(client).run()
     assert board_number == 500
@@ -89,8 +92,8 @@ def test_second_run_updates_existing_board_instead_of_creating_another():
 
 def test_ambiguous_marker_fails_closed_without_mutation():
     client = FakeGitHub([
-        issue(500, "Board A", body="<!-- TIM_PRIORITY_BOARD_V1 -->"),
-        issue(501, "Board B", body="<!-- TIM_PRIORITY_BOARD_V1 -->"),
+        issue(500, "TIM Priority Board", body="<!-- TIM_PRIORITY_BOARD_V1 -->", author=BOT),
+        issue(501, "TIM Priority Board", body="<!-- TIM_PRIORITY_BOARD_V1 -->", author=BOT),
     ])
     try:
         agent(client).run()
@@ -107,7 +110,7 @@ def test_api_failure_before_rendering_never_writes_board():
         def list_open_pull_requests(self):
             raise PriorityAgentError("API unavailable")
 
-    client = FailingGitHub([issue(500, "Board", body="<!-- TIM_PRIORITY_BOARD_V1 -->"), issue(12, "Task Engine")])
+    client = FailingGitHub([issue(500, "TIM Priority Board", body="<!-- TIM_PRIORITY_BOARD_V1 -->", author=BOT), issue(12, "Task Engine")])
     try:
         agent(client).run()
     except PriorityAgentError:
