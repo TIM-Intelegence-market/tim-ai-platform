@@ -4,6 +4,9 @@ Each random run draws as many trades as the variant made. Entry bars are drawn
 uniformly from the allowed bars of the same period. Side, stop distance (in ATR
 units), target in R and holding time are drawn jointly from the variant's real
 trades. Random trades may overlap. Exits and costs follow the engine exactly.
+
+For runtime, random trades are simulated once into a pool of at least 50 times
+the variant's trade count, and each run draws its trades from that pool.
 """
 from __future__ import annotations
 
@@ -17,6 +20,8 @@ from src.research_lab.data.parse import FundingRate, Kline
 from src.research_lab.protocol import BASE_COSTS, CostModel
 
 ATR_PERIOD = 14
+POOL_FACTOR = 50
+MIN_POOL = 5_000
 
 
 def atr_series(bars: Sequence[Kline], period: int = ATR_PERIOD) -> list[float | None]:
@@ -102,20 +107,25 @@ def random_entry_pvalue(
     observed = sum(t.r for t in trades) / len(trades)
     funding_times = [f.time for f in funding]
     rng = random.Random(seed)
+    n = len(trades)
+    # Monte Carlo pool: simulate a large set of uniformly random trades once, then
+    # build each run from n draws of that pool. With the pool far larger than n
+    # this matches drawing fresh random trades per run, at a fraction of the cost.
+    pool_size = min(runs * n, max(POOL_FACTOR * n, MIN_POOL))
+    pool: list[float] = []
+    attempts = 0
+    while len(pool) < pool_size:
+        attempts += 1
+        if attempts > 20 * pool_size:
+            raise ValueError("random entries cannot be placed in this period")
+        index = rng.choice(candidates)
+        side, stop_atr, target_r, held = rng.choice(templates)
+        result = simulate_trade(bars, index, side, stop_atr * atr_values[index], target_r, held, interval_ms, costs, funding, funding_times)
+        if result is not None:
+            pool.append(result)
+    threshold = observed * n
     at_least = 0
     for _ in range(runs):
-        total = 0.0
-        made = attempts = 0
-        while made < len(trades):
-            attempts += 1
-            if attempts > 20 * len(trades):
-                raise ValueError("random entries cannot be placed in this period")
-            index = rng.choice(candidates)
-            side, stop_atr, target_r, held = rng.choice(templates)
-            result = simulate_trade(bars, index, side, stop_atr * atr_values[index], target_r, held, interval_ms, costs, funding, funding_times)
-            if result is not None:
-                total += result
-                made += 1
-        if total / len(trades) >= observed:
+        if sum(rng.choices(pool, k=n)) >= threshold:
             at_least += 1
     return (1 + at_least) / (1 + runs)

@@ -119,6 +119,9 @@ def test_register_counts_every_attempt_and_detects_edits(tmp_path) -> None:
         register.register("L1-100-long", "L1", {"n": 100})
     with pytest.raises(RegisterError):
         register.set_status("L1-100-long", "candidate")  # final status stays final
+    register.set_status("L1-150-long", "candidate")
+    with pytest.raises(RegisterError, match="frozen candidate"):
+        register.set_status("L1-150-long", "failed_validation")
     register.register("L1-200-long", "L1", {"n": 200})
     with pytest.raises(RegisterError, match="limit"):
         register.register("L1-250-long", "L1", {"n": 250})
