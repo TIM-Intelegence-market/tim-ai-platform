@@ -8,8 +8,10 @@ account, or exchange interaction.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import sys
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,7 @@ from .engines.pipeline import Pipeline, PipelineInputs
 from .config import default_config
 from .domain import MarketContext
 from .schema_validation import validate_analysis
+from src.knowledge.broncx_feed import BroncxFeedStore
 from src.market_data.providers.openmarket.errors import OpenMarketError
 
 
@@ -108,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
     openmarket.add_argument("--market-type", choices=["SPOT", "FUTURES"])
     openmarket.add_argument("--no-per-side", action="store_true", help="skip the TRADE_AGG per-side request")
     parser.add_argument("--validate", action="store_true", help="also print schema validation status")
+    parser.add_argument("--broncx-feed", type=Path, default=None, help="Broncx Discord feed directory (external guidance, report and audit only)")
+    parser.add_argument("--broncx-max-age-hours", type=float, default=24.0, help="Broncx posts older than this are shown as stale and not used")
     args = parser.parse_args(argv)
 
     try:
@@ -145,6 +150,16 @@ def main(argv: list[str] | None = None) -> int:
                     + json.dumps({"missing_fields": list(evidence.missing_fields), "notes": list(evidence.extra_notes)}, sort_keys=True)
                     + "\n"
                 )
+        if args.broncx_feed is not None:
+            if args.broncx_max_age_hours <= 0:
+                raise ValueError("--broncx-max-age-hours must be positive")
+            if not args.broncx_feed.expanduser().is_dir():
+                raise ValueError(f"--broncx-feed directory not found: {args.broncx_feed}")
+            pipeline_inputs = dataclasses.replace(
+                pipeline_inputs,
+                external_posts=tuple(BroncxFeedStore(args.broncx_feed.expanduser()).load()),
+                external_max_age=timedelta(hours=args.broncx_max_age_hours),
+            )
         analysis = Pipeline(default_config()).run(pipeline_inputs)
         output = analysis.to_dict()
         sys.stdout.write(json.dumps(output, ensure_ascii=False, indent=2, sort_keys=True) + "\n")

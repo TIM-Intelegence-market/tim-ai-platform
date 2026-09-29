@@ -14,14 +14,16 @@ pipeline short-circuits to NO_TRADE.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Sequence
 
+from src.knowledge.broncx_feed import BroncxPost
 from src.models.market_data import Candle, Trade
 
 from ..audit import AuditBuilder, analysis_id_for
 from ..explanation import build_setup_explanation
+from ..external_context import DEFAULT_MAX_AGE, build_external_context
 from ..config import OrderflowScenarioConfig, default_config
 from ..domain import (
     AnalysisOutput,
@@ -81,6 +83,9 @@ class PipelineInputs:
     risk_tier_name: str = "STANDARD"
     kill_switch_enabled: bool = True
     observed_at: datetime | None = None
+    # External guidance (Broncx via Discord): audit and report only, never evidence.
+    external_posts: tuple[BroncxPost, ...] = ()
+    external_max_age: timedelta = DEFAULT_MAX_AGE
 
     def __post_init__(self) -> None:
         if self.requested_leverage < Decimal("1"):
@@ -247,6 +252,20 @@ class Pipeline:
             "setup_explanation", "1.0.0",
             build_setup_explanation(levels if quality.status != "INSUFFICIENT_DATA" else self._levels_from_candles(inputs.candles, inputs.price_now), market_state, orderflow, quality, scenarios),
         )
+        if inputs.external_posts:
+            audit.add_input("external_posts", [post.to_dict() for post in inputs.external_posts])
+            audit.add_engine(
+                "external_context", "1.0.0",
+                build_external_context(
+                    inputs.external_posts,
+                    observed_at=observed_at,
+                    symbol=inputs.market_context.symbol,
+                    candles=inputs.candles,
+                    price_now=inputs.price_now,
+                    scenarios=scenarios,
+                    max_age=inputs.external_max_age,
+                ),
+            )
         audit_payload = audit.build(mode=self.config.mode.value, kill_switch_enabled=self.config.kill_switch_enabled and inputs.kill_switch_enabled, timestamp=observed_at)
 
         analysis = AnalysisOutput(

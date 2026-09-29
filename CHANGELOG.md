@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Broncx Discord feed as external guidance
+
+- Added `src/knowledge/broncx_feed.py` (post store and guidance parser) and
+  `src/sources/broncx_discord.py` (read-only poller for a forward channel in the
+  owner's own Discord server) with `scripts/broncx_discord_bot.py` and a
+  launchd agent.
+- The orderflow scenario pipeline accepts `external_posts`; the guidance is
+  written to the audit (`external_context`) and the report
+  (`BRONCX-LEITFADEN`) only. Decision, scenarios, scores and data quality are
+  unchanged by it (tested).
+- `ofsc --broncx-feed DIR [--broncx-max-age-hours H]`.
+
 ## Unreleased — repository foundation
 
 - Prepared contribution, security, conduct, Git governance, AI access, release,
