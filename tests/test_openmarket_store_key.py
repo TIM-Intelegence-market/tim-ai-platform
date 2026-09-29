@@ -70,3 +70,35 @@ def test_proof_names_the_secret_problem_without_the_value(tmp_path, monkeypatch,
     out = capsys.readouterr().out
     assert "SECRET_CONFIGURED=NO" in out and "SECRET_ERROR=" in out and "invalid shape" in out
     assert KEY not in out and "TIM-SERVER-2" not in out
+
+
+def test_long_token_keys_are_accepted(tmp_path) -> None:
+    """OpenMarket keys may be long tokens (e.g. JWT-sized); 512 was an unfounded cap."""
+    token = "eyJ" + "A" * 900 + ".payload_" + "b" * 300 + ".sig-_" + "c" * 80
+    target = tmp_path / "openmarket-api-key"
+    assert store.main(["--file", str(target)], prompt=lambda _: token) == 0
+    assert target.read_text() == token
+
+
+def test_rejection_reports_length_but_never_content(tmp_path, capsys) -> None:
+    too_long = "k" * 5000
+    assert store.main(["--file", str(tmp_path / "k")], prompt=lambda _: too_long) == 2
+    out = capsys.readouterr().out
+    assert "got 5000" in out and too_long not in out
+
+
+def test_from_clipboard_handles_long_tokens_and_clears_clipboard(tmp_path, capsys) -> None:
+    token = "eyJ" + "Z" * 1800 + ".sig"
+    cleared = []
+    target = tmp_path / "openmarket-api-key"
+    code = store.main(["--from-clipboard", "--file", str(target)], clipboard=lambda: token + "\n", clear=lambda: cleared.append(True))
+    assert code == 0 and target.read_text() == token and cleared == [True]
+    assert token not in capsys.readouterr().out
+
+
+def test_from_clipboard_rejects_multiline_clipboard(tmp_path, capsys) -> None:
+    target = tmp_path / "openmarket-api-key"
+    code = store.main(["--from-clipboard", "--file", str(target)],
+                      clipboard=lambda: "Name: TIM-SERVER-2\nKey: " + KEY + "\n", clear=lambda: None)
+    assert code == 2 and not target.exists()
+    assert "spaces or line breaks" in capsys.readouterr().out

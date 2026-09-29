@@ -6,7 +6,11 @@ history), checked against the same shape rule the resolver enforces, and
 written atomically with mode 0600. Nothing is printed except the length and
 ``****last4`` so the operator can compare it with the OpenMarket dashboard.
 
-usage: python scripts/openmarket_store_key.py [--file PATH]
+With ``--from-clipboard`` the key is read via ``pbpaste`` instead (no terminal
+line-length limit for long tokens) and the clipboard is cleared afterwards;
+the same strict checks apply, so a multi-line clipboard is rejected.
+
+usage: python scripts/openmarket_store_key.py [--from-clipboard] [--file PATH]
 Then: TIM_OPENMARKET_SECRET_PROVIDER=file python scripts/openmarket_api_proof.py
 """
 from __future__ import annotations
@@ -14,6 +18,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -39,7 +44,7 @@ def problems(value: str, *, allow_short: bool) -> list[str]:
     if any(not 33 <= ord(c) <= 126 for c in value if not c.isspace()):
         found.append("contains non-ASCII characters")
     if not _KEY_SHAPE.fullmatch(value) and not found:
-        found.append("does not match the key shape (8-512 printable ASCII characters)")
+        found.append(f"does not match the key shape (8-4096 printable ASCII characters; got {len(value)})")
     if len(value) < MIN_PLAUSIBLE_LENGTH and not allow_short:
         found.append(f"only {len(value)} characters; is this the key name instead of the key?")
     return found
@@ -58,14 +63,32 @@ def write_private(path: Path, value: str) -> None:
         raise
 
 
-def main(argv: list[str] | None = None, prompt: Callable[[str], str] = getpass.getpass) -> int:
+def read_clipboard() -> str:
+    return subprocess.run(["/usr/bin/pbpaste"], check=True, capture_output=True, text=True, timeout=5).stdout
+
+
+def clear_clipboard() -> None:
+    subprocess.run(["/usr/bin/pbcopy"], input="", check=False, text=True, timeout=5)
+
+
+def main(
+    argv: list[str] | None = None,
+    prompt: Callable[[str], str] = getpass.getpass,
+    clipboard: Callable[[], str] = read_clipboard,
+    clear: Callable[[], None] = clear_clipboard,
+) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", default=DEFAULT_SECRET_FILE)
     parser.add_argument("--allow-short", action="store_true", help="accept keys shorter than 20 characters")
+    parser.add_argument("--from-clipboard", action="store_true", help="read the key with pbpaste (long tokens)")
     args = parser.parse_args(argv)
     path = Path(args.file).expanduser()
 
-    value = prompt("OpenMarket API key (input hidden, paste only the key): ").strip()
+    if args.from_clipboard:
+        value = clipboard().strip()
+        clear()
+    else:
+        value = prompt("OpenMarket API key (input hidden, paste only the key): ").strip()
     issues = problems(value, allow_short=args.allow_short)
     if issues:
         print("NOT STORED: the input " + "; ".join(issues) + ".")

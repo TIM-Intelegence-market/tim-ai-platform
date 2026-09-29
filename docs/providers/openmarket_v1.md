@@ -82,7 +82,7 @@ OpenMarket REST
 | `TIM_OPENMARKET_SECRET_FILE` | Standard `~/Library/Application Support/TIM/openmarket-api-key`; Modus 0600, gleicher Eigentümer |
 | `TIM_OPENMARKET_API_KEY` | nur bei `env` |
 
-Key ablegen: `python scripts/openmarket_store_key.py`. Das Skript fragt den Key verdeckt ab (kein Echo, keine Zwischenablage-Datei, keine Shell-History) und prüft die Form. Mehrzeiliger Text, Leerzeichen, Nicht-ASCII-Zeichen oder ein zu kurzer Wert (z. B. nur der Key-Name) werden abgelehnt, die bestehende Datei bleibt dann unverändert. Gültige Keys schreibt es atomar mit Modus 0600 und zeigt nur Länge und `****last4` zum Abgleich mit dem Dashboard. Ist die Key-Datei fehlerhaft, nennt der Resolver den Grund nur über Zählwerte (Länge, Zeilenumbrüche, Leerzeichen, Nicht-ASCII), der Inhalt erscheint nie.
+Key ablegen: `python scripts/openmarket_store_key.py --from-clipboard` (liest die Zwischenablage per `pbpaste` ohne Terminal-Zeilenlimit und leert sie danach) oder ohne Option per verdeckter Eingabe. Das Skript fragt den Key verdeckt ab (kein Echo, keine Zwischenablage-Datei, keine Shell-History) und prüft die Form. Mehrzeiliger Text, Leerzeichen, Nicht-ASCII-Zeichen oder ein zu kurzer Wert (z. B. nur der Key-Name) werden abgelehnt, die bestehende Datei bleibt dann unverändert. Gültige Keys (8–4096 Zeichen; OpenMarket-Keys können lange Tokens sein) schreibt es atomar mit Modus 0600 und zeigt nur Länge und `****last4` zum Abgleich mit dem Dashboard. Ist die Key-Datei fehlerhaft, nennt der Resolver den Grund nur über Zählwerte (Länge, Zeilenumbrüche, Leerzeichen, Nicht-ASCII), der Inhalt erscheint nie.
 | `TIM_OPENMARKET_BASE_URL` | optional; überschreibt den dokumentierten Default `https://api.openmarket.xyz` (nur `https`) |
 
 **Schutz des Keys:**

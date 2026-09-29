@@ -29,7 +29,9 @@ FILE_ENV = "TIM_OPENMARKET_SECRET_FILE"
 DEFAULT_SECRET_FILE = "~/Library/Application Support/TIM/openmarket-api-key"
 # Printable ASCII without whitespace: anything else could not travel in an HTTP
 # header and would surface in an encoding error instead.
-_KEY_SHAPE = re.compile(r"[\x21-\x7e]{8,512}")
+# The upper bound follows the secret-file size limit (config/secrets.py, 4096
+# bytes); OpenMarket keys can be long tokens, so no tighter length is assumed.
+_KEY_SHAPE = re.compile(r"[\x21-\x7e]{8,4096}")
 
 
 def _require_key_shape(raw: str, provider: str) -> None:
