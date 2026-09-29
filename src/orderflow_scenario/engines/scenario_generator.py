@@ -158,7 +158,7 @@ class ScenarioGenerator:
                     trigger_level=trigger,
                     entry_low=entry_low,
                     entry_high=entry_high,
-                    entry_model=EntryModel.RETEST if entry_low is not None else EntryModel.MARKET_AFTER_CONFIRMATION,
+                    entry_model=EntryModel.LIMIT_RETEST if entry_low is not None else EntryModel.MARKET_AFTER_CONFIRMATION,
                     score=Decimal("0.38"),
                 )
             )
