@@ -41,6 +41,10 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
     from decimal import Decimal
 
     adapted = adapter.adapt(data)
+    rejected = [item for item in adapted.missing_fields if item.startswith("candles[")]
+    if not adapted.candles and rejected:
+        # Every supplied candle was unusable: an input error, not a market condition.
+        raise ValueError(f"no usable candles in input ({len(rejected)} rejected, first: {rejected[0]})")
     candles = []
     for raw in adapted.candles:
         candles.append(

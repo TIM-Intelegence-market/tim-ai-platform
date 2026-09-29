@@ -515,6 +515,7 @@ def test_cli_existing_providers_run_end_to_end(capsys) -> None:
             code = cli.main(["--provider", provider])
         finally:
             _sys.stdin = _sys.__stdin__
-        err = capsys.readouterr().err
-        # Past _market_context now; the remaining empty-candle failure is pre-existing in the pipeline.
-        assert "not subscriptable" not in err and code == 2
+        captured = capsys.readouterr()
+        # No candles at all is not an input error: the pipeline fails closed to NO_TRADE.
+        assert "not subscriptable" not in captured.err and code == 0
+        assert json.loads(captured.out)["decision"]["status"] == "NO_TRADE"

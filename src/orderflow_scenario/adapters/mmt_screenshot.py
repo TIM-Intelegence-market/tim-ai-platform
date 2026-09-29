@@ -8,11 +8,12 @@ as missing and are never invented. Confidence is deliberately suppressed.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
 from .base import AdapterInput
+from .generic import _dt
 
 
 def _dec(value: Any) -> Decimal | None:
@@ -45,14 +46,21 @@ class MMTScreenshotAdapter:
 
         candles_raw = data.get("candles") or []
         candles: list[dict[str, Any]] = []
+        rejected: list[str] = []
         for index, item in enumerate(candles_raw):
             try:
+                open_time = _dt(item["open_time"])
+                if open_time is None:
+                    rejected.append(f"candles[{index}].open_time")
+                    continue
+                period_seconds = int(item.get("period_seconds", 240))
                 candles.append(
                     {
                         "symbol": str(item.get("symbol", data.get("symbol"))),
                         "timeframe": str(item.get("timeframe", "4H")),
-                        "open_time": item["open_time"],
-                        "period_seconds": int(item.get("period_seconds", 240)),
+                        "open_time": open_time.isoformat(),
+                        "close_time": (open_time + timedelta(seconds=period_seconds)).isoformat(),
+                        "period_seconds": period_seconds,
                         "open": float(item["open"]),
                         "high": float(item["high"]),
                         "low": float(item["low"]),
@@ -63,10 +71,10 @@ class MMTScreenshotAdapter:
                     }
                 )
                 estimated.append(f"candles[{index}]")
-            except (KeyError, TypeError, ValueError):
-                continue
+            except (KeyError, TypeError, ValueError) as exc:
+                rejected.append(f"candles[{index}]:{exc}")
 
-        missing: list[str] = []
+        missing: list[str] = list(rejected)
         if not candles:
             missing.append("candles")
         if price_now is None:
