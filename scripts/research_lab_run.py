@@ -46,12 +46,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.commit_register:
             parser.error("--commit-register needs the full run without --only")
     register = HypothesisRegister(args.register)
-    ensure_registered(register)
+    if args.commit_register:
+        ensure_registered(register)  # a trial run leaves the register file untouched
     config = RunConfig(random_runs=args.random_runs)
     results, candidates, context = run(ArchiveStore(args.root), specs=specs, config=config,
                                        progress=lambda line: print(line, flush=True))
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
-    report = write_report(args.out, results, candidates, context, config, register.m, commit or "unknown")
+    report = write_report(args.out, results, candidates, context, config, register.m or len(VARIANTS), commit or "unknown")
     if args.commit_register:
         commit_statuses(register, results)
     print(f"report: {report}")
