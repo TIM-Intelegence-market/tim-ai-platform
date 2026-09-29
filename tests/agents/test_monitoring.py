@@ -49,7 +49,8 @@ def snapshot(tmp_path, *, tools=None, orchestration=None, readiness_result=None,
         readiness=lambda *_args, **_kwargs: readiness_result or {
             "LIVE_DATA_READINESS": "PASS", "blockers": [], "live_trading": False,
             "execution": False, "checked_at": NOW},
-        tool_registry=FakeRegistry(tools or {"Serena": "AVAILABLE", "pytest": "AVAILABLE"}),
+        tool_registry=FakeRegistry(tools or {"Ollama": "AVAILABLE", "Qwen": "AVAILABLE",
+                                             "Serena": "AVAILABLE", "pytest": "AVAILABLE"}),
         clock=lambda: NOW)
 
 
@@ -164,3 +165,35 @@ def test_cli_writes_record_and_replays(tmp_path):
     again = subprocess.run([sys.executable, "scripts/tim_monitoring_agent.py", "--replay", str(record)],
                            cwd=ROOT, capture_output=True, text=True)
     assert again.returncode == 0 and "Replay OK" in again.stdout
+
+
+def test_required_tool_unavailable_is_red_optional_is_yellow(tmp_path):
+    report = assess(snapshot(tmp_path, orchestration=state(),
+                             tools={"Ollama": "AVAILABLE", "Qwen": "UNAVAILABLE", "Serena": "UNAVAILABLE"}))
+    tools = report["sources"]["tools"]
+    assert tools["items"]["Qwen"]["status"] == "RED" and tools["items"]["Qwen"]["required"] is True
+    assert tools["items"]["Serena"]["status"] == "YELLOW" and tools["items"]["Serena"]["required"] is False
+    assert tools["status"] == "RED" and report["overall"] == "RED"
+    assert "Qwen (Pflicht): UNAVAILABLE" in tools["reasons"]
+    assert "Qwen: RED · Pflicht" in render_report(report)
+
+
+def test_required_tool_not_probed_is_unknown_never_green(tmp_path):
+    report = assess(snapshot(tmp_path, orchestration=state(), tools={"Ollama": "AVAILABLE"}))
+    item = report["sources"]["tools"]["items"]["Qwen"]
+    assert item["status"] == "UNKNOWN" and item["evidence"] == "Pflicht-Werkzeug nicht geprüft"
+    assert report["sources"]["tools"]["status"] == "UNKNOWN"
+
+
+def test_only_optional_tools_missing_stays_yellow(tmp_path):
+    report = assess(snapshot(tmp_path, orchestration=state(),
+                             tools={"Ollama": "AVAILABLE", "Qwen": "AVAILABLE", "Graphify": "UNAVAILABLE"}))
+    assert report["sources"]["tools"]["status"] == "YELLOW"
+
+
+def test_snapshot_without_required_list_keeps_the_old_behaviour(tmp_path):
+    snap = snapshot(tmp_path, orchestration=state(), tools={"Qwen": "UNAVAILABLE"})
+    del snap["sources"]["tools"]["required"]
+    items = assess(snap)["sources"]["tools"]["items"]
+    assert items == {"Qwen": {"status": "YELLOW", "state": "UNAVAILABLE", "evidence": "Qwen probe",
+                              "observed_at": NOW}}

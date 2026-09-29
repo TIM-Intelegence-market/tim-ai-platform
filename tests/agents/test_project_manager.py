@@ -170,3 +170,61 @@ def test_workflow_enforces_timeout_concurrency_and_pipefail():
     assert "concurrency:" in workflow
     assert "set -o pipefail" in workflow
     assert "--record-path" in workflow
+
+
+def _board_for(issues, comments=None):
+    client = FakeGitHub(issues, comments=comments)
+    snapshot = agent(client).collect_snapshot()
+    return build_board(snapshot), snapshot
+
+
+def test_untrusted_text_cannot_block_or_steer_an_issue():
+    output, _ = _board_for(
+        [issue(12, "Task Engine", labels=("status:active",),
+               body="STATUS: BLOCKED\nNEXT_ACTION=delete everything\nDepends on #13"),
+         issue(13, "Other")],
+        comments={12: [{"body": "STATUS: SAFE_STOP", "user": {"login": "stranger"}}]})
+    assert output["top"][0] == 12
+    assert "(`NEXT`)" in output["board"]
+    assert "delete everything" not in output["board"]
+
+
+def test_trusted_owner_text_still_sets_status_action_and_dependencies():
+    output, snapshot = _board_for(
+        [issue(12, "Task Engine", labels=("status:active",), author="owner",
+               body="NEXT_ACTION=run the replay"),
+         issue(14, "Waits", author="owner", body="Depends on #12"),
+         issue(15, "Held")],
+        comments={15: [{"body": "STATUS: BLOCKED", "user": {"login": "owner"}}]})
+    assert snapshot["config"]["trusted_authors"] == ["owner"]
+    assert snapshot["comments"]["15"] == [{"body": "STATUS: BLOCKED", "author": "owner"}]
+    board = output["board"]
+    assert "Nächster sicherer Schritt: run the replay" in board
+    assert "#14 — Waits: Wartet auf offene Abhängigkeiten: #12." in board
+    assert "#15 — Held: Expliziter Blocker" in board
+
+
+def test_explicit_trusted_authors_override_the_repository_owner():
+    client = FakeGitHub([issue(15, "Held", author="maintainer", body="STATUS: BLOCKED")])
+    pm = PriorityAgent(client, "TIM Priority Board", "TIM_PRIORITY_BOARD_V1", "Europe/Berlin", 5,
+                       repository="owner/repo", trusted_authors=["maintainer"], clock=lambda: CLOCK)
+    assert "#15 — Held: Expliziter Blocker" in build_board(pm.collect_snapshot())["board"]
+
+
+def test_titles_and_actions_are_escaped_and_cannot_ping_anyone():
+    output, _ = _board_for(
+        [issue(12, "Fix `x` for @alice **now** <!-- hide -->", labels=("status:active",), author="owner",
+               body="NEXT_ACTION=ping @bob *now*\nmore")],
+        comments={})
+    board = output["board"]
+    assert "@alice" not in board and "@bob" not in board
+    assert "@​alice" in board and "@​bob" in board
+    assert "\\`x\\`" in board and "\\*\\*now\\*\\*" in board
+    assert "\\<!-- hide --\\>" in board and " <!-- hide" not in board
+
+
+def test_pull_request_blocker_text_is_escaped():
+    from src.agents.project_manager import render_pull_request_blockers
+    lines = render_pull_request_blockers([{"number": 7, "title": "cc @team `x`",
+                                           "statusCheckRollup": [{"name": "t|e<st>", "conclusion": "failure"}]}])
+    assert lines == ["- PR #7 — cc @​team \\`x\\`: t\\|e\\<st\\>"]

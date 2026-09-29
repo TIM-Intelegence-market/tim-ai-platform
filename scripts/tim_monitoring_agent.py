@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.agents.contract import PolicyViolation, ReplayMismatch, RunRecord, replay, run_task  # noqa: E402
 from src.agents.monitoring import (  # noqa: E402
     BUILD_REPORT,
+    REQUIRED_TOOLS,
     SPEC,
     WRITE_REPORT,
     assess,
@@ -36,6 +37,9 @@ def main() -> int:
     parser.add_argument("--readiness-manifest", type=Path, help="bugfixer readiness manifest to evaluate")
     parser.add_argument("--repo-root", type=Path, default=Path.cwd(), help="repository root for the readiness gate")
     parser.add_argument("--no-tool-probes", action="store_true", help="skip agent_infra tool probes")
+    parser.add_argument("--required-tool", action="append", dest="required_tools", metavar="NAME",
+                        help="tool that must be AVAILABLE, else RED; repeat for several "
+                             "(default: Ollama and Qwen)")
     parser.add_argument("--max-state-age", type=int, default=900, help="seconds before state.json counts as stale")
     parser.add_argument("--record-path", type=Path, help="write the replayable run record here")
     parser.add_argument("--replay", type=Path, metavar="RECORD", help="re-run a recorded report and verify it")
@@ -49,6 +53,7 @@ def main() -> int:
         snapshot = collect_snapshot(
             orchestration_state=args.orchestration_state, readiness_manifest=args.readiness_manifest,
             repo_root=args.repo_root, probe_tools=not args.no_tool_probes,
+            required_tools=tuple(args.required_tools) if args.required_tools else REQUIRED_TOOLS,
             max_state_age_seconds=args.max_state_age)
         record = run_task(SPEC, assess, snapshot, action=BUILD_REPORT)
         if args.record_path:
