@@ -109,13 +109,33 @@ class TaskRegistry:
              fingerprint, MappingState.CLAIMED, token))
         return self.get(fingerprint) if cur.rowcount == 1 else None
 
-    def block(self, fingerprint: str, reason: str, detail: str = '') -> Mapping:
-        """Fail closed: record the incident, keep any existing mapping, never delete or close anything."""
+    def block(self, fingerprint: str, reason: str, detail: str = '', *, token: int | None = None) -> Mapping:
+        """Fail closed: record the incident and stop the task, never delete or close anything.
+
+        With a token the state change is fenced: it only applies while that claim is still the
+        current one. A stale worker (claim taken over, or task already MAPPED) records the
+        incident but cannot overwrite the winner's state.
+        """
         now = self.clock()
-        self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, updated_at=? WHERE fingerprint=?',
-                        (MappingState.BLOCKED, reason, now, fingerprint))
+        if token is None:
+            self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, updated_at=? WHERE fingerprint=?',
+                            (MappingState.BLOCKED, reason, now, fingerprint))
+        else:
+            self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, updated_at=? '
+                            'WHERE fingerprint=? AND state=? AND claim_token=?',
+                            (MappingState.BLOCKED, reason, now, fingerprint, MappingState.CLAIMED, token))
         self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
                         (fingerprint, reason, detail, now))
+        return self.get(fingerprint)
+
+    def add_duplicates(self, fingerprint: str, numbers) -> Mapping | None:
+        """Record extra duplicate issue numbers on a MAPPED task without touching its state."""
+        row = self.get(fingerprint)
+        if row is None:
+            return None
+        merged = sorted(set(row.duplicate_issues) | set(numbers))
+        self.db.execute('UPDATE task_mappings SET duplicate_issues=?, updated_at=? WHERE fingerprint=?',
+                        (json.dumps(merged), self.clock(), fingerprint))
         return self.get(fingerprint)
 
     def unblock(self, fingerprint: str, note: str) -> None:

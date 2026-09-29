@@ -3,6 +3,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Collection, Protocol
 
+_UNBLOCKABLE_BY_HINT = {'AMBIGUOUS_DUPLICATES', 'DUPLICATE_AFTER_CREATE', 'HINT_NOT_FOUND'}
+MIN_LEASE_FACTOR = 4      # lease must be at least this many times the gateway's worst-case create time
+
 from .identity import TaskRequest
 from .registry import Mapping, MappingState, TaskRegistry
 
@@ -26,6 +29,7 @@ class IssueGateway(Protocol):
     - `create_issue` embeds the marker in the body.
     """
     repository: str
+    max_create_seconds: float   # worst-case duration of one create_issue call incl. retries
 
     def find_issues(self, fingerprint: str, canonical_key: str) -> list[IssueRef]: ...
     def get_issue(self, number: int) -> IssueRef | None: ...
@@ -61,24 +65,33 @@ class EnsureResult:
 
 def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGateway, *, claimant: str,
                 policy: ReopenPolicy = ReopenPolicy.NEVER, retry: bool = False,
-                authoritative_hint: int | None = None, legacy_issues: Collection[int] = (),
-                trusted_authors: Collection[str] | None = None, lease_seconds: float = 300.0) -> EnsureResult:
+                trusted_authors: Collection[str] | None, authoritative_hint: int | None = None,
+                legacy_issues: Collection[int] = (), lease_seconds: float = 300.0) -> EnsureResult:
     """Resolve one logical task to exactly one authoritative GitHub issue.
 
     `authoritative_hint` is the explicit roadmap-designated issue (e.g. #11 for the M09-P0
     audit); it is adopted even if it predates the fingerprint marker. `legacy_issues` are
-    known historical duplicates without a marker. `trusted_authors` restricts which marker
-    matches count, so a stranger cannot hijack or block a task by copying the marker.
-    Without a valid hint, several matches are ambiguous and the task is BLOCKED.
+    known historical duplicates without a marker and require a hint. `trusted_authors` is a
+    required decision: pass the set of accounts allowed to own task issues so a stranger cannot
+    hijack or block a task by copying the marker, or pass None to trust every author. The hint
+    itself is an operator decision and is not author-filtered.
+    An explicit hint that does not resolve to an existing issue BLOCKS the task; it never
+    falls through to creation. Without a hint, several matches are ambiguous and BLOCK too.
 
     Scope: the claim lives in `registry`, so every worker that may create this task must
     share one registry. Across registries only the GitHub-side checks protect.
     """
     fp, key = request.fingerprint, request.key
+    if legacy_issues and authoritative_hint is None:
+        raise ValueError('legacy_issues need an authoritative_hint')
+    worst_create = getattr(gateway, 'max_create_seconds', 30.0)
+    if lease_seconds < MIN_LEASE_FACTOR * worst_create:
+        raise ValueError(f'lease_seconds={lease_seconds} is shorter than {MIN_LEASE_FACTOR}x the gateway create time '
+                         f'({worst_create}s): a slow create could outlive its claim')
 
     existing = registry.get(fp)
     if existing and existing.state is MappingState.BLOCKED:
-        if existing.github_issue_number is None and existing.block_reason == 'AMBIGUOUS_DUPLICATES' \
+        if existing.github_issue_number is None and existing.block_reason in _UNBLOCKABLE_BY_HINT \
                 and authoritative_hint is not None:
             registry.unblock(fp, f'authoritative hint #{authoritative_hint} supplied')
             existing = None
@@ -103,16 +116,20 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         registry.release(fp, token)              # nothing was created yet: safe to give the claim up
         raise
 
+    if authoritative_hint is not None and hinted is None:
+        blocked = registry.block(fp, 'HINT_NOT_FOUND', f'authoritative hint #{authoritative_hint} does not exist',
+                                 token=token)
+        return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
     candidates = {m.number: m for m in matches}
     if hinted is not None:
         candidates[hinted.number] = hinted
-    if hinted is not None or len(candidates) == 1:
-        chosen = hinted or next(iter(candidates.values()))
-        dups = sorted((set(candidates) | set(legacy_issues)) - {chosen.number}) if hinted else []
-        return _adopt(registry, gateway, fp, token, chosen, dups, request)
+        dups = sorted((set(candidates) | set(legacy_issues)) - {hinted.number})
+        return _adopt(registry, gateway, fp, token, hinted, dups, request)
+    if len(candidates) == 1:
+        return _adopt(registry, gateway, fp, token, next(iter(candidates.values())), [], request)
     if len(candidates) > 1:
         numbers = sorted(candidates)
-        blocked = registry.block(fp, 'AMBIGUOUS_DUPLICATES', f'matches={numbers}, no authoritative hint')
+        blocked = registry.block(fp, 'AMBIGUOUS_DUPLICATES', f'matches={numbers}, no authoritative hint', token=token)
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
 
     # Nothing exists. Re-assert the claim right before the irreversible create.
@@ -121,12 +138,17 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     issue = gateway.create_issue(request, fp)
     after = {m.number for m in _matches(gateway, fp, key, trusted_authors)} | {issue.number}
     if len(after) > 1:
-        blocked = registry.block(fp, 'DUPLICATE_AFTER_CREATE', f'matches={sorted(after)}')
+        blocked = registry.block(fp, 'DUPLICATE_AFTER_CREATE', f'matches={sorted(after)}', token=token)
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, True, issue.number, blocked.block_reason)
     mapped = registry.map_issue(fp, token, gateway.repository, issue.number)
     if mapped is None:
-        blocked = registry.block(fp, 'CLAIM_LOST_AFTER_CREATE', f'created #{issue.number} after the claim was taken over')
-        return EnsureResult(EnsureOutcome.BLOCKED, blocked, True, issue.number, blocked.block_reason)
+        # Claim lost while creating: our issue is a duplicate of whatever the new owner does.
+        # Record it without overwriting the owner's state, and tell the caller honestly.
+        current = registry.block(fp, 'CLAIM_LOST_AFTER_CREATE', f'created #{issue.number} after the claim was taken over',
+                                 token=token)
+        if current.state is MappingState.MAPPED:
+            current = registry.add_duplicates(fp, [issue.number])
+        return EnsureResult(EnsureOutcome.BLOCKED, current, True, issue.number, 'CLAIM_LOST_AFTER_CREATE')
     return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number)
 
 
@@ -138,13 +160,15 @@ def _matches(gateway, fp, key, trusted_authors) -> list[IssueRef]:
 
 
 def _adopt(registry, gateway, fp, token, issue, duplicates, request) -> EnsureResult:
-    mapped = registry.map_issue(fp, token, gateway.repository, issue.number, duplicates)
-    if mapped is None:
-        return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'claim lost while adopting')
+    # Side effects first (all idempotent, comment/label only), mapping last: if we die midway the
+    # claim is still open and the next run repeats the remaining steps instead of skipping them.
     for number in duplicates:
         if not gateway.is_documented_duplicate(number, issue.number):
             gateway.mark_duplicate(number, issue.number)
     gateway.update_issue(issue.number, request, 'mapping recovered; marker written')
+    mapped = registry.map_issue(fp, token, gateway.repository, issue.number, duplicates)
+    if mapped is None:
+        return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'claim lost while adopting')
     return EnsureResult(EnsureOutcome.RECOVERED, mapped, False, issue.number)
 
 

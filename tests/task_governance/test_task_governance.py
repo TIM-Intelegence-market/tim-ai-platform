@@ -5,8 +5,14 @@ import time
 import pytest
 
 from src.task_governance import (EnsureOutcome, MappingState, ReopenPolicy, TaskRegistry, TaskRequest,
-                                 canonical_task_key, ensure_task, task_fingerprint)
+                                 canonical_task_key, task_fingerprint)
+from src.task_governance import ensure_task as _ensure_task
 from tests.task_governance.fakes import FakeGitHub
+
+
+def ensure_task(*args, trusted_authors=None, **kwargs):
+    """Tests trust every author unless a test says otherwise; production callers must decide."""
+    return _ensure_task(*args, trusted_authors=trusted_authors, **kwargs)
 
 
 def req(**kw):
@@ -357,3 +363,103 @@ def test_duplicate_appearing_after_create_is_escalated_not_closed(env, monkeypat
 def test_gateway_protocol_has_no_close_operation():
     from src.task_governance import IssueGateway
     assert not [n for n in dir(IssueGateway) if 'close' in n.lower()]
+
+
+# ---- second review round ----
+def test_invalid_hint_blocks_and_never_creates(env):
+    reg_path, gh = env
+    fp = req().fingerprint
+    for n in (11, 22, 23):
+        gh.seed(n, fp, marker=False)
+    reg = TaskRegistry(reg_path)
+    r = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=7777)
+    assert r.outcome is EnsureOutcome.BLOCKED and not r.created and gh.count() == 3
+    assert reg.incidents(fp)[0]['reason'] == 'HINT_NOT_FOUND'
+    fixed = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11, legacy_issues=[22, 23])
+    assert fixed.outcome is EnsureOutcome.RECOVERED and fixed.issue_number == 11 and gh.count() == 3
+
+
+def test_legacy_issues_without_hint_are_rejected(env):
+    reg_path, gh = env
+    with pytest.raises(ValueError):
+        ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w', legacy_issues=[22])
+
+
+def test_lease_shorter_than_gateway_create_time_is_rejected(env):
+    reg_path, gh = env
+    with pytest.raises(ValueError):
+        ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w', lease_seconds=10)   # 4 x 5s = 20s needed
+    assert gh.count() == 0
+
+
+def test_trusted_authors_decision_is_mandatory(env):
+    reg_path, gh = env
+    with pytest.raises(TypeError):
+        _ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w')
+
+
+def test_stale_worker_cannot_overwrite_the_winners_mapping(env, monkeypatch):
+    reg_path, gh = env
+    reg_a = TaskRegistry(reg_path)
+    real_create = gh.create_issue
+
+    def slow_create(request, fingerprint):
+        issue = real_create(request, fingerprint)          # A creates ...
+        late = TaskRegistry(reg_path, clock=lambda: time.time() + 10_000)
+        won, m = late.claim(fingerprint, request.key, 'B', 300)   # ... but B took over meanwhile
+        assert won
+        gh_b = FakeGitHub(gh.path)
+        late.map_issue(fingerprint, m.claim_token, gh_b.repository, 4711)   # and B mapped its own issue
+        return issue
+
+    monkeypatch.setattr(gh, 'create_issue', slow_create)
+    r = ensure_task(req(), reg_a, gh, claimant='A')
+    m = reg_a.get(req().fingerprint)
+    assert r.outcome is EnsureOutcome.BLOCKED and r.created
+    assert m.state is MappingState.MAPPED and m.github_issue_number == 4711      # winner untouched
+    assert r.issue_number in m.duplicate_issues                                  # A's issue recorded as duplicate
+
+
+def test_duplicate_after_create_unblocks_with_a_valid_hint(env, monkeypatch):
+    reg_path, gh = env
+    real_create = gh.create_issue
+
+    def create_then_foreign_dup(request, fingerprint):
+        issue = real_create(request, fingerprint)
+        gh.seed(4242, fingerprint)
+        return issue
+
+    monkeypatch.setattr(gh, 'create_issue', create_then_foreign_dup)
+    reg = TaskRegistry(reg_path)
+    first = ensure_task(req(), reg, gh, claimant='w')
+    assert first.outcome is EnsureOutcome.BLOCKED
+    monkeypatch.undo()
+    r = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=first.issue_number)
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == first.issue_number and gh.count() == 2
+
+
+def test_crash_while_documenting_duplicates_resumes_and_finishes_them(env, monkeypatch):
+    reg_path, gh = env
+    fp = req().fingerprint
+    gh.seed(11, fp, marker=False)
+    for n in (22, 23, 24):
+        gh.seed(n, fp, marker=False)
+    reg = TaskRegistry(reg_path)
+    real_mark = gh.mark_duplicate
+    calls = []
+
+    def flaky(number, authoritative):
+        calls.append(number)
+        if len(calls) == 2:
+            raise ConnectionError('github hiccup')
+        real_mark(number, authoritative)
+
+    monkeypatch.setattr(gh, 'mark_duplicate', flaky)
+    with pytest.raises(ConnectionError):
+        ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11, legacy_issues=[22, 23, 24])
+    assert reg.get(fp).state is MappingState.CLAIMED          # not mapped yet: nothing is skipped on retry
+    monkeypatch.setattr(gh, 'mark_duplicate', real_mark)
+    late = TaskRegistry(reg_path, clock=lambda: time.time() + 10_000)
+    r = ensure_task(req(), late, gh, claimant='w2', authoritative_hint=11, legacy_issues=[22, 23, 24])
+    assert r.outcome is EnsureOutcome.RECOVERED
+    assert sorted(n for n, _ in gh.ops('duplicate')) == [22, 23, 24]

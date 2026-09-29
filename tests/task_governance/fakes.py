@@ -7,6 +7,7 @@ from src.task_governance import IssueRef, TaskRequest, fingerprint_marker
 
 class FakeGitHub:
     repository = 'owner/repo'
+    max_create_seconds = 5.0
 
     def __init__(self, path, *, latency=0.0, crash_after_create=False):
         self.path, self.latency, self.crash_after_create = path, latency, crash_after_create
