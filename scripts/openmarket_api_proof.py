@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.market_data.providers.openmarket.client import DEFAULT_BASE_URL, OpenMarketClient  # noqa: E402
 from src.market_data.providers.openmarket.errors import OpenMarketError, OpenMarketErrorKind  # noqa: E402
+from src.market_data.providers.openmarket.schemas import to_timestamp_ns  # noqa: E402
 from src.orderflow_scenario.adapters.openmarket import OpenMarketAdapter  # noqa: E402
 
 GATES = ("DOCUMENTED_ENVELOPE", "REST_TIMESTAMP_SCHEMA", "SERIES_ID", "WINDOW_SEMANTICS", "NORMALIZATION")
@@ -46,6 +47,37 @@ def envelope_shape(payload, depth: int = 0) -> str:
     if isinstance(payload, list):
         return f"list[{len(payload)}]" + (f"<{envelope_shape(payload[0], depth + 1)}>" if payload else "")
     return type(payload).__name__
+
+
+def _offset(value, from_seconds: int) -> str:
+    try:
+        ns = to_timestamp_ns(value, label="diagnostic") - from_seconds * 1_000_000_000
+    except (OpenMarketError, TypeError, ValueError):
+        return "?"
+    whole, fraction = divmod(abs(ns), 1_000_000_000)
+    return ("-" if ns < 0 else "") + str(whole) + (f".{fraction:09d}".rstrip("0") if fraction else "")
+
+
+def point_timeline(payload, from_seconds: int) -> str:
+    """Diagnostic only: per series, timestamp/first/last as seconds after ``from``.
+
+    Timestamps only; never prices, volumes or any other value.
+    """
+    parts = []
+    series = payload.get("series") if isinstance(payload, dict) else None
+    for entry in series if isinstance(series, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        ident = entry.get("id") if isinstance(entry.get("id"), dict) else {}
+        side = ident.get("side") if ident.get("side") in {"BUY", "SELL"} else "ALL"
+        stamps = []
+        for item in entry.get("points") if isinstance(entry.get("points"), list) else []:
+            point = item.get("Point", item) if isinstance(item, dict) else {}
+            if not isinstance(point, dict):
+                continue
+            stamps.append("/".join(_offset(point.get(name), from_seconds) for name in ("timestamp", "firstTimestamp", "lastTimestamp")))
+        parts.append(f"{side}[{','.join(stamps)}]")
+    return " ".join(parts) or "none"
 
 
 def note_value(notes: set[str], key: str) -> str:
@@ -126,6 +158,12 @@ def main() -> int:
             evidence["RESPONSE_BYTES"] = responses[0].response_bytes
             evidence["ADAPT_TOTAL_MS"] = round((time.perf_counter() - started) * 1000, 1)
             evidence["ENVELOPE_SHAPE"] = envelope_shape(responses[0].payload)  # diagnostic, not a gate
+            # Diagnostics, not gates: side@timestamp plus reason, and ts/first/last in s after WINDOW_FROM.
+            evidence["WINDOW_FROM"] = datetime.fromtimestamp(start, timezone.utc).isoformat()
+            evidence["WINDOW_END_EXCLUSIVE"] = datetime.fromtimestamp(start + 300, timezone.utc).isoformat()
+            evidence["REJECTIONS"] = " | ".join(problems) or "none"
+            for index, response in enumerate(responses):
+                evidence[f"POINT_OFFSETS_{index}"] = point_timeline(response.payload, start)
             gates = list(GATES) + (["SIDE_LOCATION"] if args.per_side else [])
             failed = [gate for gate in gates if evidence.get(gate) != "PASS"]
             all_ok = evidence["HTTP_STATUS"] == 200 and not failed

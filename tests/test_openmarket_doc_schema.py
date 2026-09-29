@@ -307,3 +307,18 @@ def test_proof_fails_on_fallback_or_websocket_timestamps(monkeypatch, capsys) ->
     code, out = run_proof(monkeypatch, capsys, {"series": [minute_series("TRADE_SIDE_AGNOSTIC_AGG", rest=False)]})
     assert code == 1 and "FINAL=FAIL" in out
     assert "REST_TIMESTAMP_SCHEMA=FAIL" in out and "NORMALIZATION=FAIL" in out
+
+
+def test_proof_diagnostics_show_rejections_and_offsets_without_values(monkeypatch, capsys) -> None:
+    series = minute_series("TRADE_SIDE_AGNOSTIC_AGG")
+    boundary = dict(series["points"][-1]["Point"])
+    end = (PROOF_NOW // 60) * 60 - 300
+    boundary.update(timestamp={"s": end}, firstTimestamp={"s": end + 1}, lastTimestamp={"s": end + 2}, high="98765.4")
+    series["points"].append({"Point": boundary})
+    code, out = run_proof(monkeypatch, capsys, {"series": [series]})
+    assert code == 1 and "WINDOW_SEMANTICS=FAIL" in out
+    assert "outside requested window" in out.split("REJECTIONS=", 1)[1].splitlines()[0]
+    offsets = out.split("POINT_OFFSETS_0=", 1)[1].splitlines()[0]
+    assert offsets.startswith("ALL[0/1.000000005/58,") and offsets.endswith(",300/301/302]")
+    assert "WINDOW_END_EXCLUSIVE=" in out
+    assert "om_test_fixture_value" not in out and "98765.4" not in out and "100.5" not in out
