@@ -17,6 +17,10 @@ from urllib.request import Request, urlopen
 
 ISSUE_REFERENCE = re.compile(r"#(\d+)")
 NEXT_ACTION = re.compile(r"(?:NEXT_SAFE_ACTION|NEXT_ACTION)\s*[=:]\s*([^\n`]+)", re.IGNORECASE)
+PAGE_SIZE = 100
+MAX_PAGES = 50
+# REST returns lowercase conclusions, GraphQL uppercase; compare case-insensitively.
+FAILED_CONCLUSIONS = {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"}
 BLOCKED_TEXT = re.compile(r"(?:STATUS|STATE)\s*[=:]\s*(?:BLOCKED|SAFE_STOP)|\bBLOCKER\s*[=:]", re.IGNORECASE)
 
 
@@ -59,9 +63,16 @@ class RestGitHubClient:
             raise PriorityAgentError(f"GitHub API request failed for {method} {path}: {error}") from error
 
     def _paginate(self, path: str) -> list[dict[str, Any]]:
-        # TIM currently has fewer than 100 issues/comments per source issue. A hard
-        # page size keeps the agent deterministic and avoids accidental broad scans.
-        return list(self._request(f"{path}{'&' if '?' in path else '?'}per_page=100"))
+        # Follow pages until a short page arrives. Fail closed instead of truncating:
+        # a partial scan would hide old issues or lose the existing board.
+        separator = "&" if "?" in path else "?"
+        items: list[dict[str, Any]] = []
+        for page in range(1, MAX_PAGES + 1):
+            batch = list(self._request(f"{path}{separator}per_page={PAGE_SIZE}&page={page}"))
+            items.extend(batch)
+            if len(batch) < PAGE_SIZE:
+                return items
+        raise PriorityAgentError(f"Mehr als {MAX_PAGES * PAGE_SIZE} Einträge für {path}; Abbruch statt Teilergebnis.")
 
     def list_issues(self, state: str = "open") -> list[dict[str, Any]]:
         return self._paginate(f"/repos/{self.repository}/issues?state={state}")
@@ -72,6 +83,9 @@ class RestGitHubClient:
     def list_open_pull_requests(self) -> list[dict[str, Any]]:
         pull_requests = self._paginate(f"/repos/{self.repository}/pulls?state=open")
         for pull_request in pull_requests:
+            # The list endpoint omits mergeable_state; only the single-PR endpoint returns it.
+            details = self._request(f"/repos/{self.repository}/pulls/{pull_request['number']}")
+            pull_request["mergeable_state"] = details.get("mergeable_state")
             sha = pull_request["head"]["sha"]
             checks = self._request(
                 f"/repos/{self.repository}/commits/{sha}/check-runs?per_page=100"
@@ -171,7 +185,7 @@ def render_pull_request_blockers(pull_requests: Iterable[dict[str, Any]]) -> lis
     blockers: list[str] = []
     for pr in pull_requests:
         checks = pr.get("statusCheckRollup") or []
-        failed = [check.get("name", "unbekannter Check") for check in checks if check.get("conclusion") in {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"}]
+        failed = [check.get("name", "unbekannter Check") for check in checks if str(check.get("conclusion") or "").upper() in FAILED_CONCLUSIONS]
         if failed or pr.get("mergeable_state") in {"dirty", "unstable"}:
             detail = ", ".join(failed) if failed else f"Merge-Zustand: {pr.get('mergeable_state', 'unbekannt')}"
             blockers.append(f"- PR #{pr['number']} — {pr['title']}: {detail}")

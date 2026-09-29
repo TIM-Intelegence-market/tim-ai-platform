@@ -1,4 +1,12 @@
-from scripts.tim_priority_agent import PriorityAgent, PriorityAgentError, classify_issue
+from pathlib import Path
+
+from scripts.tim_priority_agent import (
+    PriorityAgent,
+    PriorityAgentError,
+    RestGitHubClient,
+    classify_issue,
+    render_pull_request_blockers,
+)
 
 
 def issue(number, title, *, state="open", labels=(), body="", updated_at="2026-09-27T10:00:00Z"):
@@ -121,3 +129,75 @@ def test_pr_check_failure_is_rendered_as_a_blocker():
     )
     _, board = agent(client).run()
     assert "PR #80 — Server bootstrap: codeql" in board
+
+
+class RecordingRestClient(RestGitHubClient):
+    """REST client with canned responses shaped like the real GitHub REST API."""
+
+    def __init__(self, responses):
+        super().__init__("owner/repo", "token")
+        self.responses = responses
+        self.paths = []
+
+    def _request(self, path, method="GET", payload=None):
+        self.paths.append(path)
+        return self.responses[path]
+
+
+def test_rest_check_conclusions_are_lowercase_and_still_detected():
+    blockers = render_pull_request_blockers([
+        {"number": 81, "title": "Lint", "statusCheckRollup": [{"name": "ruff", "conclusion": "failure"}]},
+        {"number": 82, "title": "Green", "statusCheckRollup": [{"name": "tests", "conclusion": "success"}]},
+    ])
+    assert blockers == ["- PR #81 — Lint: ruff"]
+
+
+def test_pagination_reads_every_page_beyond_the_first_hundred():
+    base = "/repos/owner/repo/issues?state=all&per_page=100"
+    client = RecordingRestClient({
+        f"{base}&page=1": [{"number": n} for n in range(250, 150, -1)],
+        f"{base}&page=2": [{"number": n} for n in range(150, 50, -1)],
+        f"{base}&page=3": [{"number": n} for n in range(50, 0, -1)],
+    })
+    numbers = [item["number"] for item in client.list_issues("all")]
+    assert len(numbers) == 250
+    assert numbers[-1] == 1
+
+
+def test_pagination_fails_closed_instead_of_truncating(monkeypatch):
+    import scripts.tim_priority_agent as module
+
+    monkeypatch.setattr(module, "MAX_PAGES", 2)
+
+    class EndlessClient(RecordingRestClient):
+        def _request(self, path, method="GET", payload=None):
+            return [{"number": 1}] * module.PAGE_SIZE
+
+    try:
+        EndlessClient({}).list_issues("all")
+    except PriorityAgentError as error:
+        assert "Abbruch statt Teilergebnis" in str(error)
+    else:
+        raise AssertionError("Expected fail-closed pagination error")
+
+
+def test_mergeable_state_is_fetched_from_single_pull_request_endpoint():
+    client = RecordingRestClient({
+        "/repos/owner/repo/pulls?state=open&per_page=100&page=1": [
+            {"number": 80, "title": "Server bootstrap", "head": {"sha": "abc"}},
+        ],
+        "/repos/owner/repo/pulls/80": {"number": 80, "mergeable_state": "dirty"},
+        "/repos/owner/repo/commits/abc/check-runs?per_page=100": {"check_runs": []},
+    })
+    pull_requests = client.list_open_pull_requests()
+    assert pull_requests[0]["mergeable_state"] == "dirty"
+    assert render_pull_request_blockers(pull_requests) == ["- PR #80 — Server bootstrap: Merge-Zustand: dirty"]
+
+
+def test_workflow_grants_checks_read_for_check_run_api():
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/tim-priority-board.yml").read_text()
+    permissions = workflow.split("permissions:", 1)[1].split("jobs:", 1)[0]
+    assert "checks: read" in permissions
+    assert "issues: write" in permissions
+    assert "contents: write" not in permissions
+    assert "pull-requests: write" not in permissions
