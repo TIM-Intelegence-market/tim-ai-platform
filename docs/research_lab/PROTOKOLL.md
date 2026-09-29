@@ -339,7 +339,7 @@ dasselbe Ergebnis mit demselben Hash.
 |---|---|---|
 | O1 | ~~Drawdown-Grenze für K4~~ erledigt: 20 % bei 1 % Risiko je Trade | Uzi |
 | O2 | Datenweg: (a) Domains in der Umgebung freigeben oder (b) Download auf dem Mac | Uzi |
-| O3 | Archivbeginn und Gebührenstufe gegen die Quellen prüfen (Abschnitte 3.1, 4.4) | R1 |
+| O3 | Archivbeginn und Gebührenstufe gegen die Quellen prüfen (Abschnitte 3.1, 4.4). Teilweise erledigt: Spot-Klines beginnen am 2017-08-17 (Probe 2026-09-29), erster vollständiger Spot-Monat ist damit 2017-09. Offen: Beginn der Perpetual-Klines und fundingRate, Gebührenstufe | R1 |
 
 ## Änderungsprotokoll
 
@@ -351,3 +351,4 @@ Kriterien und Raster nur noch erlaubt, wenn sie strenger machen.
 | 2026-09-29 | 0.1 | Entwurf erstellt, nach Gegenprüfung präzisiert (M3 beide Richtungen, m = 48) | R0 | keine Labordaten |
 | 2026-09-29 | 1.0 | Freigegeben; Drawdown-Grenze K4 = 20 % bei 1 % Risiko je Trade festgelegt | Freigabe durch Uzi | keine Labordaten |
 | 2026-09-29 | 1.0 | Klarstellung zu 7.4, keine Regeländerung: Die Wächter-Prüfung läuft mit 99 statt 10 000 Zufallsläufen (Laufzeit; die p-Untergrenze 0,01 liegt unter jeder dort genutzten Holm-Schwelle), m = 4 und ohne Walk-Forward und Nachbarschaftsregel, weil die synthetischen Varianten kein Parameterraster haben. Ergebnis: 0 von 200 Zufallsreihen BESTANDEN, 190 von 200 Reihen mit +0,2 R BESTANDEN | R3 | nur synthetische Daten |
+| 2026-09-29 | 1.0 | Befund, keine Regeländerung: Probe-Download (USD-M 1h 2024-01: 744/744 Kerzen, Checksumme PASS; fundingRate 2024-01 PASS; Spot 1d 2017-08/09 PASS). Spot-Archiv beginnt 2017-08-17 | R1 | 2024-01 USD-M, 2017-08/09 Spot (nur Vollständigkeit geprüft, keine Auswertung) |
