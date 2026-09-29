@@ -56,7 +56,7 @@ class TaskRepository(ABC):
     """Storage contract later phases depend on; backends stay interchangeable."""
 
     @abstractmethod
-    def create(self, task: Task) -> int: ...
+    def create(self, task: Task, *, guard=None) -> int: ...
 
     @abstractmethod
     def get(self, task_id: str) -> Task: ...
@@ -65,11 +65,11 @@ class TaskRepository(ABC):
     def revision(self, task_id: str) -> int: ...
 
     @abstractmethod
-    def update(self, task: Task, *, expected_revision: int) -> int: ...
+    def update(self, task: Task, *, expected_revision: int, guard=None) -> int: ...
 
     @abstractmethod
     def transition(self, task_id: str, target: TaskState, *, at: str, reason: str | None = None,
-                   expected_revision: int | None = None) -> Task: ...
+                   expected_revision: int | None = None, guard=None) -> Task: ...
 
     @abstractmethod
     def list(self, *, state: TaskState | None = None, type: str | None = None,
@@ -147,12 +147,14 @@ class SqliteTaskRepository(TaskRepository):
             raise CorruptTaskRecord(f'task record {row["task_id"]!r} disagrees with its index columns')
         return task
 
-    def create(self, task):
+    def create(self, task, *, guard=None):
         if not isinstance(task, Task):
             raise TypeError('task must be a Task')
         with self._transaction():
             if self.db.execute('SELECT 1 FROM tasks WHERE task_id=?', (task.task_id,)).fetchone():
                 raise TaskExists(task.task_id)
+            if guard is not None:
+                guard(task)
             self.db.execute('INSERT INTO tasks VALUES (?,?,?,?,?,?)',
                             (task.task_id, task.parent_task_id, task.type, task.state.value, 1, _payload(task)))
         return 1
@@ -168,7 +170,7 @@ class SqliteTaskRepository(TaskRepository):
                         (task.parent_task_id, task.type, task.state.value, revision + 1, _payload(task), task.task_id))
         return revision + 1
 
-    def update(self, task, *, expected_revision):
+    def update(self, task, *, expected_revision, guard=None):
         """Replace non-state fields; state changes must go through transition()."""
         if not isinstance(task, Task):
             raise TypeError('task must be a Task')
@@ -181,15 +183,20 @@ class SqliteTaskRepository(TaskRepository):
                 raise ValueError('update cannot change state; use transition()')
             if task.attempt_count < current.attempt_count:
                 raise ValueError('attempt_count cannot be reduced')
+            if guard is not None:
+                guard(task)
             return self._write(task, row['revision'])
 
-    def transition(self, task_id, target, *, at, reason=None, expected_revision=None):
+    def transition(self, task_id, target, *, at, reason=None, expected_revision=None, guard=None):
+        """Apply the state machine; ``guard(current, target)`` may veto inside the transaction."""
         with self._transaction():
             row = self._row(task_id)
             if expected_revision is not None and row['revision'] != expected_revision:
                 raise RevisionConflict(task_id)
             current = self._decode(row)
             moved = apply_transition(current, target, at=at, reason=reason)
+            if guard is not None:
+                guard(current, target)
             self._write(moved, row['revision'])
             self.db.execute('INSERT INTO task_transitions(task_id,from_state,to_state,at,reason,attempt_count) '
                             'VALUES (?,?,?,?,?,?)',
