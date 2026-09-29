@@ -12,12 +12,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
+from dataclasses import replace
 import json
 from pathlib import Path
 import sqlite3
 
 from src.task_engine.model import Task, TaskState
-from src.task_engine.state_machine import transition as apply_transition
+from src.task_engine.state_machine import _instant, transition as apply_transition
 
 APP_ID = 0x54494D54  # 'TIMT'
 SCHEMA_VERSION = 1
@@ -33,6 +34,10 @@ CREATE TABLE IF NOT EXISTS task_transitions (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
     from_state TEXT NOT NULL, to_state TEXT NOT NULL, at TEXT NOT NULL,
     reason TEXT, attempt_count INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS task_checkpoints (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, step_id TEXT NOT NULL,
+    at TEXT NOT NULL, next_action TEXT NOT NULL, metadata TEXT NOT NULL,
+    UNIQUE(task_id, step_id));
 '''
 
 
@@ -77,6 +82,13 @@ class TaskRepository(ABC):
 
     @abstractmethod
     def history(self, task_id: str) -> list[dict]: ...
+
+    @abstractmethod
+    def checkpoint(self, task_id: str, step_id: str, *, at: str, next_action: str,
+                   metadata: dict | None = None) -> dict: ...
+
+    @abstractmethod
+    def checkpoints(self, task_id: str) -> list[dict]: ...
 
 
 def _payload(task):
@@ -225,3 +237,47 @@ class SqliteTaskRepository(TaskRepository):
         return [dict(row) for row in self.db.execute(
             'SELECT sequence,task_id,from_state,to_state,at,reason,attempt_count FROM task_transitions '
             'WHERE task_id=? ORDER BY sequence', (task_id,))]
+
+    @staticmethod
+    def _checkpoint(row):
+        result = dict(row)
+        result['metadata'] = json.loads(result['metadata'])
+        return result
+
+    def checkpoint(self, task_id, step_id, *, at, next_action, metadata=None):
+        """Record a completed atomic step and the next action in one transaction.
+
+        Recording an already completed step is a no-op that returns the original
+        checkpoint, so a resumed run cannot duplicate it.
+        """
+        if not isinstance(step_id, str) or not step_id.strip():
+            raise ValueError('step_id must be a non-empty string')
+        if not isinstance(next_action, str) or not next_action.strip():
+            raise ValueError('next_action must be a non-empty string')
+        metadata = {} if metadata is None else metadata
+        if not isinstance(metadata, dict):
+            raise ValueError('checkpoint metadata must be a dict')
+        encoded = json.dumps(metadata, sort_keys=True, separators=(',', ':'))
+        with self._transaction():
+            row = self._row(task_id)
+            existing = self.db.execute('SELECT * FROM task_checkpoints WHERE task_id=? AND step_id=?',
+                                       (task_id, step_id)).fetchone()
+            if existing is not None:
+                return self._checkpoint(existing)
+            current = self._decode(row)
+            if current.state is TaskState.FIXED:
+                raise ValueError('cannot checkpoint a terminal task')
+            previous = current.timestamps.get('updated_at')
+            if _instant(at) < _instant(previous or at):
+                raise ValueError('checkpoint time precedes the last update')
+            timestamps = dict(current.timestamps, updated_at=at, checkpoint_at=at)
+            self._write(replace(current, next_action=next_action, timestamps=timestamps), row['revision'])
+            self.db.execute('INSERT INTO task_checkpoints(task_id,step_id,at,next_action,metadata) '
+                            'VALUES (?,?,?,?,?)', (task_id, step_id, at, next_action, encoded))
+            return self._checkpoint(self.db.execute(
+                'SELECT * FROM task_checkpoints WHERE task_id=? AND step_id=?', (task_id, step_id)).fetchone())
+
+    def checkpoints(self, task_id):
+        self._row(task_id)
+        return [self._checkpoint(row) for row in self.db.execute(
+            'SELECT * FROM task_checkpoints WHERE task_id=? ORDER BY sequence', (task_id,))]
