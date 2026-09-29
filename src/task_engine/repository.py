@@ -25,11 +25,15 @@ SCHEMA_VERSION = 1
 
 _SCHEMA = '''
 CREATE TABLE IF NOT EXISTS tasks (
-    task_id TEXT PRIMARY KEY, parent_task_id TEXT, type TEXT NOT NULL,
+    task_id TEXT PRIMARY KEY, parent_task_id TEXT, type TEXT NOT NULL, source TEXT NOT NULL,
     state TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS tasks_state ON tasks(state);
 CREATE INDEX IF NOT EXISTS tasks_type ON tasks(type);
 CREATE INDEX IF NOT EXISTS tasks_parent ON tasks(parent_task_id);
+CREATE INDEX IF NOT EXISTS tasks_source ON tasks(source);
+CREATE TABLE IF NOT EXISTS task_evidence (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, name TEXT NOT NULL,
+    reference TEXT NOT NULL, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS task_transitions (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
     from_state TEXT NOT NULL, to_state TEXT NOT NULL, at TEXT NOT NULL,
@@ -78,7 +82,7 @@ class TaskRepository(ABC):
 
     @abstractmethod
     def list(self, *, state: TaskState | None = None, type: str | None = None,
-             parent_task_id: str | None = None) -> list[Task]: ...
+             parent_task_id: str | None = None, source: str | None = None) -> list[Task]: ...
 
     @abstractmethod
     def history(self, task_id: str) -> list[dict]: ...
@@ -89,6 +93,12 @@ class TaskRepository(ABC):
 
     @abstractmethod
     def checkpoints(self, task_id: str) -> list[dict]: ...
+
+    @abstractmethod
+    def attach_evidence(self, task_id: str, name: str, reference, *, at: str) -> None: ...
+
+    @abstractmethod
+    def evidence(self, task_id: str) -> dict: ...
 
 
 def _payload(task):
@@ -154,8 +164,8 @@ class SqliteTaskRepository(TaskRepository):
             task = Task.from_dict(json.loads(row['payload']))
         except (ValueError, TypeError) as error:
             raise CorruptTaskRecord(f'unreadable task record {row["task_id"]!r}') from error
-        if (task.task_id, task.parent_task_id, task.type, task.state.value) != (
-                row['task_id'], row['parent_task_id'], row['type'], row['state']):
+        if (task.task_id, task.parent_task_id, task.type, task.source, task.state.value) != (
+                row['task_id'], row['parent_task_id'], row['type'], row['source'], row['state']):
             raise CorruptTaskRecord(f'task record {row["task_id"]!r} disagrees with its index columns')
         return task
 
@@ -167,8 +177,9 @@ class SqliteTaskRepository(TaskRepository):
                 raise TaskExists(task.task_id)
             if guard is not None:
                 guard(task)
-            self.db.execute('INSERT INTO tasks VALUES (?,?,?,?,?,?)',
-                            (task.task_id, task.parent_task_id, task.type, task.state.value, 1, _payload(task)))
+            self.db.execute('INSERT INTO tasks VALUES (?,?,?,?,?,?,?)',
+                            (task.task_id, task.parent_task_id, task.type, task.source, task.state.value, 1,
+                             _payload(task)))
         return 1
 
     def get(self, task_id):
@@ -178,8 +189,9 @@ class SqliteTaskRepository(TaskRepository):
         return self._row(task_id)['revision']
 
     def _write(self, task, revision):
-        self.db.execute('UPDATE tasks SET parent_task_id=?,type=?,state=?,revision=?,payload=? WHERE task_id=?',
-                        (task.parent_task_id, task.type, task.state.value, revision + 1, _payload(task), task.task_id))
+        self.db.execute('UPDATE tasks SET parent_task_id=?,type=?,source=?,state=?,revision=?,payload=? '
+                        'WHERE task_id=?', (task.parent_task_id, task.type, task.source, task.state.value,
+                                            revision + 1, _payload(task), task.task_id))
         return revision + 1
 
     def update(self, task, *, expected_revision, guard=None):
@@ -217,7 +229,7 @@ class SqliteTaskRepository(TaskRepository):
                             (task_id, current.state.value, moved.state.value, at, reason, moved.attempt_count))
         return moved
 
-    def list(self, *, state=None, type=None, parent_task_id=None):
+    def list(self, *, state=None, type=None, parent_task_id=None, source=None):
         clauses, params = [], []
         if state is not None:
             if not isinstance(state, TaskState):
@@ -230,6 +242,9 @@ class SqliteTaskRepository(TaskRepository):
         if parent_task_id is not None:
             clauses.append('parent_task_id=?')
             params.append(parent_task_id)
+        if source is not None:
+            clauses.append('source=?')
+            params.append(source)
         where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
         rows = self.db.execute(f'SELECT * FROM tasks{where} ORDER BY task_id', params).fetchall()
         return [self._decode(row) for row in rows]
@@ -283,3 +298,32 @@ class SqliteTaskRepository(TaskRepository):
         self._row(task_id)
         return [self._checkpoint(row) for row in self.db.execute(
             'SELECT * FROM task_checkpoints WHERE task_id=? ORDER BY sequence', (task_id,))]
+
+    def attach_evidence(self, task_id, name, reference, *, at):
+        """Append an evidence reference; the latest reference per name is current.
+
+        References are stored as data only. Whether they prove anything is
+        decided by the Fix-First validator when FIXED is requested.
+        """
+        if not isinstance(name, str) or not name.strip() or len(name) > 128:
+            raise ValueError('evidence name must be a non-empty string of at most 128 characters')
+        try:
+            encoded = json.dumps(reference, sort_keys=True, separators=(',', ':'), allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise ValueError('evidence reference must be JSON data') from error
+        if len(encoded) > 64 * 1024:
+            raise ValueError('evidence reference too large; store the artifact and reference it by hash')
+        _instant(at)
+        with self._transaction():
+            if self._decode(self._row(task_id)).state is TaskState.FIXED:
+                raise ValueError('cannot attach evidence to a terminal task')
+            self.db.execute('INSERT INTO task_evidence(task_id,name,reference,at) VALUES (?,?,?,?)',
+                            (task_id, name, encoded, at))
+
+    def evidence(self, task_id):
+        self._row(task_id)
+        current = {}
+        for row in self.db.execute('SELECT name,reference FROM task_evidence WHERE task_id=? ORDER BY sequence',
+                                   (task_id,)):
+            current[row['name']] = json.loads(row['reference'])
+        return current
