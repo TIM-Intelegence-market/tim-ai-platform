@@ -350,3 +350,4 @@ Kriterien und Raster nur noch erlaubt, wenn sie strenger machen.
 |---|---|---|---|---|
 | 2026-09-29 | 0.1 | Entwurf erstellt, nach Gegenprüfung präzisiert (M3 beide Richtungen, m = 48) | R0 | keine Labordaten |
 | 2026-09-29 | 1.0 | Freigegeben; Drawdown-Grenze K4 = 20 % bei 1 % Risiko je Trade festgelegt | Freigabe durch Uzi | keine Labordaten |
+| 2026-09-29 | 1.0 | Klarstellung zu 7.4, keine Regeländerung: Die Wächter-Prüfung läuft mit 99 statt 10 000 Zufallsläufen (Laufzeit; die p-Untergrenze 0,01 liegt unter jeder dort genutzten Holm-Schwelle), m = 4 und ohne Walk-Forward und Nachbarschaftsregel, weil die synthetischen Varianten kein Parameterraster haben. Ergebnis: 0 von 200 Zufallsreihen BESTANDEN, 190 von 200 Reihen mit +0,2 R BESTANDEN | R3 | nur synthetische Daten |

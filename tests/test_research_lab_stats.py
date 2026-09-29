@@ -134,9 +134,26 @@ def test_register_counts_every_attempt_and_detects_edits(tmp_path) -> None:
 def test_holdout_runs_only_once(tmp_path) -> None:
     register = HypothesisRegister(tmp_path / "register.jsonl")
     register.register("M1-20-2", "M1", {"N": 20, "k": 2})
+    with pytest.raises(RegisterError, match="candidate status"):
+        claim_holdout(tmp_path / "holdout.lock", ["M1-20-2"], register)
+    register.set_status("M1-20-2", "candidate")
     permission = claim_holdout(tmp_path / "holdout.lock", ["M1-20-2"], register)
-    assert isinstance(permission, HoldoutPermission)
+    assert isinstance(permission, HoldoutPermission) and permission.m == 1 and permission.candidates == ("M1-20-2",)
+    lock = json.loads((tmp_path / "holdout.lock").read_text())
+    assert lock["m"] == 1 and lock["register_head"] == register.events()[-1]["hash"]
     with pytest.raises(FileExistsError):
         claim_holdout(tmp_path / "holdout.lock", ["M1-20-2"], register)
     with pytest.raises(RegisterError):
         claim_holdout(tmp_path / "other.lock", ["unknown"], register)
+
+
+def test_candidate_limit_and_final_no_verdict(tmp_path) -> None:
+    register = HypothesisRegister(tmp_path / "register.jsonl")
+    for n in (20, 30, 40):
+        register.register(f"M1-{n}", "M1", {"N": n})
+        register.set_status(f"M1-{n}", "candidate")
+    with pytest.raises(RegisterError, match="two candidates"):
+        claim_holdout(tmp_path / "holdout.lock", ["M1-20", "M1-30", "M1-40"], register)
+    register.set_status("M1-40", "no_verdict")
+    with pytest.raises(RegisterError, match="final"):
+        register.set_status("M1-40", "passed_holdout")

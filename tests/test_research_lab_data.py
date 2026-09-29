@@ -8,7 +8,7 @@ import pytest
 
 from src.research_lab.data.archive import ArchiveRef, Dataset, Market
 from src.research_lab.data.parse import check_completeness, parse_funding, parse_klines
-from src.research_lab.data.store import ArchiveStore, HoldoutLocked, HoldoutPermission, months
+from src.research_lab.data.store import ArchiveStore, HoldoutLocked, _issue_permission, months
 
 HOUR = 3_600_000
 JAN_2024 = 1_704_067_200_000
@@ -107,7 +107,7 @@ def test_holdout_months_are_locked(tmp_path) -> None:
     with pytest.raises(HoldoutLocked):
         store.fetch(ref)
     assert fake.calls == []
-    permission = HoldoutPermission("test")
+    permission = _issue_permission("test", (), 0)
     store.fetch(ref, permission)
     with pytest.raises(HoldoutLocked):
         store.load_klines([ref])

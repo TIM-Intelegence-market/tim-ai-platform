@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from src.research_lab.backtest.engine import Strategy, Trade, run_backtest
 from src.research_lab.backtest.metrics import Summary, summarize
 from src.research_lab.data.parse import FundingRate, Kline
+from src.research_lab.data.store import HoldoutPermission
 from src.research_lab.protocol import (
     BASE_COSTS,
     FAMILY_ALPHA,
@@ -95,11 +96,16 @@ def run_guard(
     config: GuardConfig,
     periods: Periods = Periods(),
     funding: Sequence[FundingRate] = (),
-    run_holdout: bool = True,
+    holdout: HoldoutPermission | None = None,
 ) -> GuardReport:
-    """Apply the selection rules. `bars` may include holdout bars only when the
-    caller holds the holdout permission; train and validation never see them."""
+    """Apply the selection rules. Train and validation never see holdout bars.
+
+    Without a holdout permission the run stops after freezing the candidate
+    list. With it (from claim_holdout) the recomputed candidates and m must
+    match what the lock froze, and the holdout is evaluated once."""
     report = GuardReport()
+    if holdout is not None and m != holdout.m:
+        raise ValueError("m differs from the register size frozen in the holdout lock")
     before_holdout = [b for b in bars if b.open_time < periods.holdout_start]
     atr_before = atr_series(before_holdout)
     validation_scores: dict[str, float] = {}
@@ -134,8 +140,10 @@ def run_guard(
         report.candidates.extend(ranked[: config.max_candidates_per_hypothesis])
         for dropped in ranked[config.max_candidates_per_hypothesis:]:
             report.verdicts[dropped] = NOT_SELECTED
-    if not run_holdout or not report.candidates:
+    if holdout is None or not report.candidates:
         return report
+    if tuple(sorted(report.candidates)) != holdout.candidates:
+        raise ValueError("candidates differ from the list frozen in the holdout lock")
 
     atr_all = atr_series(bars)
     pvalues: dict[str, float] = {}

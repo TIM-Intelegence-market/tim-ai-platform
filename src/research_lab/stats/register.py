@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.research_lab.data.store import HoldoutPermission
+from src.research_lab.data.store import HoldoutPermission, _issue_permission
 from src.research_lab.protocol import MAX_REGISTER_ENTRIES, PROTOCOL_VERSION
 
 GENESIS = "0" * 64
@@ -79,7 +79,7 @@ class HypothesisRegister:
             raise RegisterError(f"{variant} is not registered")
         if status not in STATUSES:
             raise RegisterError(f"unknown status {status}")
-        if known[variant]["status"] in {"failed_train", "failed_validation", "failed_holdout", "passed_holdout"}:
+        if known[variant]["status"] in {"failed_train", "failed_validation", "failed_holdout", "passed_holdout", "no_verdict"}:
             raise RegisterError(f"{variant} already has a final status")
         self._append({"kind": "status", "variant": variant, "status": status, "note": note})
 
@@ -91,13 +91,27 @@ def candidates_hash(candidates: list[str], register: HypothesisRegister) -> str:
 
 
 def claim_holdout(lock_path: Path | str, candidates: list[str], register: HypothesisRegister) -> HoldoutPermission:
-    """Create the holdout lock exactly once. A second call raises FileExistsError."""
-    unknown = [c for c in candidates if c not in register.variants()]
+    """Create the holdout lock exactly once. A second call raises FileExistsError.
+
+    The lock records m and the register head hash. Commit the register and the
+    lock to git so that a later truncation of the register is visible."""
+    variants = register.variants()
+    unknown = [c for c in candidates if c not in variants]
     if unknown:
         raise RegisterError(f"candidates not in register: {unknown}")
+    not_candidates = [c for c in candidates if variants[c]["status"] != "candidate"]
+    if not_candidates:
+        raise RegisterError(f"variants without candidate status: {not_candidates}")
+    per_hypothesis: dict[str, int] = {}
+    for c in candidates:
+        per_hypothesis[variants[c]["hypothesis"]] = per_hypothesis.get(variants[c]["hypothesis"], 0) + 1
+    if max(per_hypothesis.values(), default=0) > 2:
+        raise RegisterError("at most two candidates per hypothesis (protocol section 8)")
+    events = register.events()
     digest = candidates_hash(candidates, register)
     path = Path(lock_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x") as handle:  # exclusive: refuses a second holdout run
-        json.dump({"candidates": sorted(candidates), "candidates_hash": digest, "m": register.m, "protocol": PROTOCOL_VERSION}, handle, sort_keys=True)
-    return HoldoutPermission(f"holdout {digest[:12]}")
+        json.dump({"candidates": sorted(candidates), "candidates_hash": digest, "m": len(variants),
+                   "register_head": events[-1]["hash"], "protocol": PROTOCOL_VERSION}, handle, sort_keys=True)
+    return _issue_permission(f"holdout {digest[:12]}", tuple(sorted(candidates)), len(variants))

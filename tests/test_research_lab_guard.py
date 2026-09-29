@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import statistics
 
+import pytest
+
 from src.research_lab.backtest.engine import Signal, run_backtest
+from src.research_lab.data.store import HoldoutPermission, _issue_permission
 from src.research_lab.backtest.metrics import summarize
 from src.research_lab.stats.guard import (
     FAILED_TRAIN,
@@ -55,7 +58,7 @@ def test_train_and_validation_never_see_holdout_bars() -> None:
 
     config = GuardConfig(min_trades_train=20, min_trades_holdout=10, random_runs=19)
     run_guard(bars, [Variant("spy", "h", spying)], BAR_MS, m=1, config=config,
-              periods=Periods(START + 2_000 * BAR_MS, holdout_start), run_holdout=False)
+              periods=Periods(START + 2_000 * BAR_MS, holdout_start))
     assert seen and max(seen) < holdout_start
 
 
@@ -67,7 +70,10 @@ def test_verdicts_for_thin_holdout_and_extra_candidates() -> None:
         Variant("t5", "marker", marker_strategy(time_stop_bars=5)),
         Variant("never", "other", lambda history: None),
     ]
-    report = run_guard(bars, variants, BAR_MS, m=3, config=config, periods=periods(6_000, 9_000, 12_000))
+    frozen = run_guard(bars, variants, BAR_MS, m=3, config=config, periods=periods(6_000, 9_000, 12_000))
+    assert frozen.candidates and not any("holdout" in stages for stages in frozen.stages.values())
+    permission = _issue_permission("test", tuple(sorted(frozen.candidates)), 3)
+    report = run_guard(bars, variants, BAR_MS, m=3, config=config, periods=periods(6_000, 9_000, 12_000), holdout=permission)
     assert report.verdicts["never"] == FAILED_TRAIN
     assert len(report.candidates) == 1
     (candidate,) = report.candidates
@@ -86,3 +92,17 @@ def test_losing_short_strategy_fails_train() -> None:
     config = GuardConfig(min_trades_train=50, min_trades_holdout=10, random_runs=19)
     report = run_guard(bars, [Variant("short", "h", short_markers)], BAR_MS, m=1, config=config, periods=periods(4_000, 5_000, 6_000))
     assert report.verdicts["short"] == FAILED_TRAIN
+
+
+def test_holdout_needs_matching_permission() -> None:
+    bars = synthetic_series(12_000, seed=8, start_ms=START, interval_ms=BAR_MS, edge=EDGE_02R)
+    config = GuardConfig(min_trades_train=100, min_trades_holdout=50, random_runs=99)
+    variants = [Variant("t3", "marker", marker_strategy(time_stop_bars=3))]
+    with pytest.raises(PermissionError):
+        HoldoutPermission("forged", ("t3",), 1)
+    with pytest.raises(ValueError, match="candidates differ"):
+        run_guard(bars, variants, BAR_MS, m=1, config=config, periods=periods(6_000, 9_000, 12_000),
+                  holdout=_issue_permission("wrong", ("other",), 1))
+    with pytest.raises(ValueError, match="m differs"):
+        run_guard(bars, variants, BAR_MS, m=1, config=config, periods=periods(6_000, 9_000, 12_000),
+                  holdout=_issue_permission("wrong m", ("t3",), 48))

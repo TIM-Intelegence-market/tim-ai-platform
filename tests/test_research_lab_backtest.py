@@ -5,6 +5,7 @@ import statistics
 import pytest
 
 from src.research_lab.backtest.engine import History, Signal, run_backtest
+from src.research_lab.backtest.funding import with_pre_perp_proxy
 from src.research_lab.backtest.indicators import atr
 from src.research_lab.backtest.metrics import max_drawdown_r, summarize
 from src.research_lab.data.parse import FundingRate, Kline
@@ -157,3 +158,43 @@ def test_atr_needs_enough_bars() -> None:
     bars = [bar(i, 100, 102, 98, 100) for i in range(15)]
     assert atr(History(bars, 13), 14) is None
     assert atr(History(bars, 14), 14) == pytest.approx(4.0)
+
+
+def test_stop_between_open_and_slipped_entry_is_invalid() -> None:
+    costs = CostModel(fee=0.0, slippage=0.001, stop_slippage=0.0)
+    bars = [bar(0, 100, 101, 99, 100), bar(1, 100, 100.5, 99.5, 100)]
+    result = run_backtest(bars, once(0, Signal(-1, 99.95)), H, costs=costs)  # short, stop above slipped entry 99.9 but below open 100
+    assert result.trades == [] and result.invalid_signals == 1
+
+
+def test_rule_exit_makes_room_for_reversal_on_same_bar() -> None:
+    bars = [bar(0, 100, 101, 99, 100), bar(1, 100, 101, 99.5, 100.5), bar(2, 100.5, 101, 99, 99.2), bar(3, 99, 99.5, 98.5, 99)]
+
+    def flip(history):
+        t = len(history) - 1
+        if t == 0:
+            return Signal(1, 97.0, exit_rule=lambda h, p: h[-1].close < 100)
+        if t == 2:
+            return Signal(-1, 102.0, time_stop_bars=1)
+        return None
+
+    result = run_backtest(bars, flip, H, costs=FREE)
+    assert [(t.side, t.reason, t.entry_time) for t in result.trades] == [(1, "rule", bars[1].open_time), (-1, "time", bars[3].open_time)]
+    assert result.ignored_signals == 0
+
+
+def test_signal_on_last_bar_is_counted() -> None:
+    bars = [bar(0, 100, 101, 99, 100)]
+    assert run_backtest(bars, once(0, Signal(1, 98.0)), H, costs=FREE).invalid_signals == 1
+
+
+def test_pre_perp_funding_proxy_charges_both_sides() -> None:
+    real = [FundingRate(T0 + 24 * H, -0.001)]
+    funding = with_pre_perp_proxy(real, T0 + 1)
+    assert [f.time for f in funding[:3]] == [T0 + 8 * H, T0 + 16 * H, T0 + 24 * H]
+    assert funding[0].proxy and funding[0].rate == 0.0001 and funding[-1] is real[0]
+    assert with_pre_perp_proxy(real, T0, stressed=True)[0].rate == 0.0002
+    bars = [bar(i, 100, 100.5, 99.5, 100) for i in range(20)]
+    for side, stop in ((1, 99.0), (-1, 101.0)):
+        (trade,) = run_backtest(bars, once(0, Signal(side, stop, time_stop_bars=18)), H, costs=FREE, funding=funding[:2]).trades
+        assert trade.funding_r == pytest.approx(2 * 0.0001 * 100)

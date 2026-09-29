@@ -85,7 +85,7 @@ class Trade:
     reason: str
     bars_held: int
     r: float  # net result in R after all costs
-    cost_r: float
+    cost_r: float  # fees only; slippage is inside the fill prices
     funding_r: float
     stop_atr: float | None = None
     target_r: float | None = None
@@ -119,7 +119,8 @@ def exit_on_bar(bar: Kline, side: int, stop: float, target: float | None) -> tup
 def _funding_cost(funding: Sequence[FundingRate], times: list[int], side: int, notional: float, start: int, end: int, costs: CostModel) -> float:
     total = 0.0
     for i in range(bisect.bisect_left(times, start), bisect.bisect_left(times, end)):
-        payment = side * funding[i].rate * notional
+        rate = funding[i]
+        payment = abs(rate.rate) * notional if rate.proxy else side * rate.rate * notional
         if payment < 0 and not costs.funding_credits_allowed:
             payment = 0.0
         total += payment
@@ -173,6 +174,8 @@ def run_backtest(
         if position is not None and not contiguous:
             close(t - 1, bars[t - 1].close, "gap", bars[t - 1].close_time + 1, costs.slippage)
             result.gap_closes += 1
+        if position is not None and exit_next_open:
+            close(t, bar.open, "rule", bar.open_time, costs.slippage)
         if pending is not None:
             index, signal, atr = pending
             pending = None
@@ -180,7 +183,9 @@ def run_backtest(
                 result.invalid_signals += 1
             else:
                 entry = bar.open * (1 + signal.side * costs.slippage)
-                if (entry - signal.stop) * signal.side <= 0:
+                # The stop must lie beyond the raw open too, or the trade would be
+                # stopped at the open with a tiny risk and an extreme R.
+                if (entry - signal.stop) * signal.side <= 0 or (bar.open - signal.stop) * signal.side <= 0:
                     result.invalid_signals += 1
                 else:
                     risk = abs(entry - signal.stop)
@@ -188,8 +193,6 @@ def run_backtest(
                     position = Position(signal.side, t, entry, signal.stop, target)
                     signal_time, signal_atr = bars[index].open_time, atr
                     time_stop, exit_rule, target_r = signal.time_stop_bars, signal.exit_rule, signal.target_r
-        if position is not None and exit_next_open:
-            close(t, bar.open, "rule", bar.open_time, costs.slippage)
         if position is not None:
             hit = exit_on_bar(bar, position.side, position.stop, position.target)
             if hit is not None:
@@ -205,10 +208,14 @@ def run_backtest(
         signal = strategy(history) if in_range else None
         if signal is not None:
             result.signals.append((bar.open_time, signal.side, signal.stop))
-            if position is not None or pending is not None:
+            # A position that exits by rule at the next open makes room for a
+            # signal on the same bar (reversal, e.g. L1 long/short).
+            if (position is not None and not exit_next_open) or pending is not None:
                 result.ignored_signals += 1
             elif t + 1 < len(bars):
                 pending = (t, signal, atr_at_signal(history) if atr_at_signal else None)
+            else:
+                result.invalid_signals += 1  # no next bar to enter on
 
     if position is not None:
         last = len(bars) - 1

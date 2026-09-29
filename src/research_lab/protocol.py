@@ -50,6 +50,11 @@ class CostModel:
         return CostModel(self.fee * 2, self.slippage * 2, self.stop_slippage * 2, funding_credits_allowed=False)
 
 
+# Flat funding cost per 8 h before the perpetual existed (Long horizon only).
+PRE_PERP_FUNDING = 0.0001
+PRE_PERP_FUNDING_STRESS = 0.0002
+FUNDING_INTERVAL_MS = 8 * 3_600_000
+
 BASE_COSTS = CostModel()
 STRESS_COSTS = BASE_COSTS.stressed()
 
