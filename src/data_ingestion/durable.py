@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import re
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -595,6 +596,115 @@ class DurableIngestionStore:
             row["aggregate_trade_id"], row["buyer_is_maker"],
         )
 
+    async def load_trades(self, symbol: str, aggregate_trade_ids: list[int]) -> dict[int, Trade]:
+        """Batch form of load_trade; missing ids are simply absent from the result."""
+        if not aggregate_trade_ids:
+            return {}
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """SELECT symbol,price,quantity,trade_time,aggregate_trade_id,buyer_is_maker
+                   FROM agg_trades WHERE symbol=$1 AND aggregate_trade_id=ANY($2::bigint[])""",
+                symbol,
+                aggregate_trade_ids,
+            )
+        return {
+            row["aggregate_trade_id"]: Trade(
+                row["symbol"], row["price"], row["quantity"], row["trade_time"],
+                row["aggregate_trade_id"], row["buyer_is_maker"],
+            )
+            for row in rows
+        }
+
+    async def claim_strict_prefix(
+        self,
+        worker_name: str,
+        *,
+        limit: int = 100,
+        lease_seconds: int = 60,
+    ) -> list[OutboxItem]:
+        """Claim the contiguous claimable head of the strict order, up to ``limit`` items.
+
+        Only the first returned item is charged an attempt at claim time; the
+        others are charged by ``acknowledge``/``fail`` with ``charge_attempt=True``
+        and returned by ``defer`` with ``restore_attempt=False``.
+
+        The head is read first without locks (the true oldest active items), then
+        only those rows are locked. The claim stops at the first position that is
+        locked elsewhere, not PENDING/RETRY or not yet available, so an item is never
+        claimed while an older active item is still unprocessed. An empty result
+        means "use the single-item strict path" (idle, lease or terminal blocker).
+        """
+        if not 1 <= limit <= 1_000:
+            raise ValueError("claim limit must be between 1 and 1000")
+        if lease_seconds < 1:
+            raise ValueError("lease_seconds must be positive")
+        async with self.database.acquire() as connection:
+            async with connection.transaction():
+                await connection.execute(
+                    """UPDATE ingestion_outbox SET status='RETRY',available_at=clock_timestamp(),
+                       lease_expires_at=NULL,last_error=COALESCE(last_error,'worker lease expired'),updated_at=clock_timestamp()
+                       WHERE worker_name=$1 AND status='PROCESSING' AND lease_expires_at<clock_timestamp()""",
+                    worker_name,
+                )
+                head = await connection.fetch(
+                    """SELECT outbox_id FROM ingestion_outbox
+                       WHERE worker_name=$1 AND status=ANY($2::text[])
+                       ORDER BY aggregate_trade_id,created_at,outbox_id LIMIT $3""",
+                    worker_name,
+                    list(ACTIVE_OUTBOX_STATUSES),
+                    limit,
+                )
+                head_ids = [row["outbox_id"] for row in head]
+                if not head_ids:
+                    return []
+                locked = {
+                    row["outbox_id"]: row
+                    for row in await connection.fetch(
+                        """SELECT * FROM ingestion_outbox WHERE outbox_id=ANY($1::text[])
+                           FOR UPDATE SKIP LOCKED""",
+                        head_ids,
+                    )
+                }
+                now = datetime.now(timezone.utc)
+                prefix: list[str] = []
+                for outbox_id in head_ids:
+                    row = locked.get(outbox_id)
+                    if row is None or row["status"] not in {"PENDING", "RETRY"} or row["available_at"] > now:
+                        break
+                    prefix.append(outbox_id)
+                if not prefix:
+                    return []
+                # Only the head is charged an attempt now; every later item is charged
+                # when it is actually acknowledged or failed (see acknowledge/fail
+                # charge_attempt). A crash mid-batch therefore never spends the retry
+                # budget of items that did not run.
+                rows = await connection.fetch(
+                    """UPDATE ingestion_outbox SET status='PROCESSING',
+                               attempts=attempts+CASE WHEN outbox_id=$3 THEN 1 ELSE 0 END,
+                               started_at=clock_timestamp(),lease_expires_at=clock_timestamp()+($2*interval '1 second'),
+                               updated_at=clock_timestamp()
+                       WHERE outbox_id=ANY($1::text[]) RETURNING *""",
+                    prefix,
+                    lease_seconds,
+                    prefix[0],
+                )
+        position = {outbox_id: index for index, outbox_id in enumerate(prefix)}
+        return [OutboxItem.from_row(row) for row in sorted(rows, key=lambda row: position[row["outbox_id"]])]
+
+    async def renew_leases(self, outbox_ids: list[str], lease_seconds: int) -> int:
+        """Extend the lease of still-PROCESSING items; returns how many were renewed."""
+        if not outbox_ids:
+            return 0
+        async with self.database.acquire() as connection:
+            status = await connection.execute(
+                """UPDATE ingestion_outbox SET lease_expires_at=clock_timestamp()+($2*interval '1 second'),
+                   updated_at=clock_timestamp()
+                   WHERE outbox_id=ANY($1::text[]) AND status='PROCESSING'""",
+                outbox_ids,
+                lease_seconds,
+            )
+        return int(status.split()[-1])
+
     async def claim(
         self,
         worker_name: str,
@@ -620,13 +730,18 @@ class DurableIngestionStore:
                     # record.  Selecting that head directly is equivalent to
                     # the former NOT EXISTS anti-join, but remains bounded as
                     # a live catch-up queue grows.
-                    head = await connection.fetchrow(
-                        """SELECT * FROM ingestion_outbox
+                    # Read the head without locks, then lock exactly that row:
+                    # SKIP LOCKED on the ordered scan would silently skip a head
+                    # locked by another transaction and claim the item behind it.
+                    head_id = await connection.fetchval(
+                        """SELECT outbox_id FROM ingestion_outbox
                            WHERE worker_name=$1 AND status=ANY($2::text[])
-                           ORDER BY aggregate_trade_id,created_at,outbox_id
-                           FOR UPDATE SKIP LOCKED LIMIT 1""",
+                           ORDER BY aggregate_trade_id,created_at,outbox_id LIMIT 1""",
                         worker_name,
                         list(ACTIVE_OUTBOX_STATUSES),
+                    )
+                    head = None if head_id is None else await connection.fetchrow(
+                        "SELECT * FROM ingestion_outbox WHERE outbox_id=$1 FOR UPDATE SKIP LOCKED", head_id
                     )
                     if head is None or head["status"] not in {"PENDING", "RETRY"} or head["available_at"] > datetime.now(timezone.utc):
                         return []
@@ -961,16 +1076,17 @@ class DurableIngestionStore:
             )
         return len(rows)
 
-    async def acknowledge(self, outbox_id: str, output_hash: str) -> bool:
+    async def acknowledge(self, outbox_id: str, output_hash: str, *, charge_attempt: bool = False) -> bool:
         if not SHA256.fullmatch(output_hash):
             raise ValueError("output_hash must be a lowercase SHA-256 digest")
         async with self.database.acquire() as connection:
             status = await connection.execute(
                 """UPDATE ingestion_outbox SET status='COMPLETED',output_hash=$2,completed_at=clock_timestamp(),
-                   lease_expires_at=NULL,last_error=NULL,updated_at=clock_timestamp()
+                   attempts=attempts+$3::int,lease_expires_at=NULL,last_error=NULL,updated_at=clock_timestamp()
                    WHERE outbox_id=$1 AND status='PROCESSING'""",
                 outbox_id,
                 output_hash,
+                int(charge_attempt),
             )
         return status == "UPDATE 1"
 
@@ -981,6 +1097,7 @@ class DurableIngestionStore:
         next_worker: str,
         *,
         worker_version: str = WORKER_VERSION,
+        charge_attempt: bool = False,
     ) -> bool:
         """Atomically complete one stage and enqueue the next idempotent stage."""
         if next_worker not in PIPELINE_WORKERS:
@@ -1015,11 +1132,12 @@ class DurableIngestionStore:
                     self.max_attempts,
                 )
                 await connection.execute(
-                    """UPDATE ingestion_outbox SET status='COMPLETED',output_hash=$2,
+                    """UPDATE ingestion_outbox SET status='COMPLETED',output_hash=$2,attempts=attempts+$3::int,
                        completed_at=clock_timestamp(),lease_expires_at=NULL,last_error=NULL,updated_at=clock_timestamp()
                        WHERE outbox_id=$1""",
                     item.outbox_id,
                     output_hash,
+                    int(charge_attempt),
                 )
                 if status == "INSERT 0 1":
                     depth = int(
@@ -1032,32 +1150,44 @@ class DurableIngestionStore:
                     await self._maximum(connection, "queue_high_water", depth)
         return True
 
-    async def fail(self, outbox_id: str, error: BaseException, *, retry_delay_seconds: float = 1.0) -> str:
+    async def fail(
+        self,
+        outbox_id: str,
+        error: BaseException,
+        *,
+        retry_delay_seconds: float = 1.0,
+        charge_attempt: bool = False,
+    ) -> str:
         message = f"{type(error).__name__}: {error}"[:2_000]
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(
                 """UPDATE ingestion_outbox SET
-                       status=CASE WHEN attempts>=max_attempts THEN 'QUARANTINED' ELSE 'RETRY' END,
+                       status=CASE WHEN attempts+$4::int>=max_attempts THEN 'QUARANTINED' ELSE 'RETRY' END,
+                       attempts=attempts+$4::int,
                        last_error=$2,available_at=clock_timestamp()+($3*interval '1 second'),
                        lease_expires_at=NULL,updated_at=clock_timestamp()
                    WHERE outbox_id=$1 AND status='PROCESSING' RETURNING status""",
                 outbox_id,
                 message,
                 max(0.0, min(retry_delay_seconds, 3_600.0)),
+                int(charge_attempt),
             )
             await self._increment(connection, "worker_failure_total", metadata={"outbox_id": outbox_id})
         if row is None:
             raise DurableIngestionError("outbox item was not in PROCESSING state")
         return str(row["status"])
 
-    async def defer(self, outbox_id: str, reason: str = "worker shutdown checkpoint") -> bool:
+    async def defer(
+        self, outbox_id: str, reason: str = "worker shutdown checkpoint", *, restore_attempt: bool = True
+    ) -> bool:
         async with self.database.acquire() as connection:
             status = await connection.execute(
-                """UPDATE ingestion_outbox SET status='RETRY',attempts=GREATEST(attempts-1,0),
+                """UPDATE ingestion_outbox SET status='RETRY',attempts=GREATEST(attempts-$3::int,0),
                    last_error=$2,available_at=clock_timestamp(),lease_expires_at=NULL,updated_at=clock_timestamp()
                    WHERE outbox_id=$1 AND status='PROCESSING'""",
                 outbox_id,
                 reason[:2_000],
+                int(restore_attempt),
             )
         return status == "UPDATE 1"
 
@@ -1287,6 +1417,10 @@ class DurableIngestionStore:
 
 WorkerHandler = Callable[[OutboxItem, Trade], Awaitable[Any]]
 
+# A strict batch renews the leases of its remaining items at least this often,
+# so every item starts with (almost) the full lease regardless of batch length.
+LEASE_RENEWAL_INTERVAL_SECONDS = 5.0
+
 
 class DurableOutboxWorker:
     """At-least-once worker with explicit idempotency identity and quarantine.
@@ -1315,6 +1449,14 @@ class DurableOutboxWorker:
         self.strict_order = strict_order
 
     async def run_once(self) -> dict[str, Any]:
+        if self.strict_order and self.batch_size > 1 and hasattr(self.store, "claim_strict_prefix"):
+            items = await self.store.claim_strict_prefix(
+                self.worker_name, limit=self.batch_size, lease_seconds=self.lease_seconds
+            )
+            if items:
+                return await self._run_strict_batch(items)
+            # Empty prefix: idle, head leased elsewhere, not yet available or a
+            # terminal blocker. The single-item path below reports which.
         if hasattr(self.store, "claim_detailed"):
             claim = await self.store.claim_detailed(
                 self.worker_name,
@@ -1385,6 +1527,96 @@ class DurableOutboxWorker:
             "retried": retried,
             "quarantined": quarantined,
         }
+
+    async def _run_strict_batch(self, items: list[OutboxItem]) -> dict[str, Any]:
+        """Process a claimed strict-order prefix one item at a time, in order.
+
+        The first failure ends the batch: that item goes through ``fail`` exactly
+        like the single-item path, every later item is returned untouched
+        (their attempt counters stay as before the claim), so nothing is skipped
+        or reordered. Only the head is charged an attempt at claim time; each later
+        item is charged by its own acknowledge or fail, so a crash mid-batch never
+        spends the retry budget of items that did not run. Leases of the remaining items are renewed as the batch
+        advances, so each item starts with a full lease.
+        """
+        completed = retried = quarantined = 0
+        max_latency: float | None = None
+        index = 0
+        try:
+            trade_ids: dict[str, list[int]] = {}
+            for item in items:
+                trade_ids.setdefault(item.symbol, []).append(item.aggregate_trade_id)
+            trades: dict[tuple[str, int], Trade] = {}
+            for symbol, ids in trade_ids.items():
+                for trade_id, trade in (await self.store.load_trades(symbol, ids)).items():
+                    trades[(symbol, trade_id)] = trade
+            last_renewal = time.monotonic()
+            while index < len(items):
+                item = items[index]
+                if time.monotonic() - last_renewal >= LEASE_RENEWAL_INTERVAL_SECONDS:
+                    remaining = [pending.outbox_id for pending in items[index:]]
+                    renewed = await self.store.renew_leases(remaining, self.lease_seconds)
+                    last_renewal = time.monotonic()
+                    if renewed != len(remaining):
+                        break
+                started = datetime.now(timezone.utc)
+                try:
+                    trade = trades.get((item.symbol, item.aggregate_trade_id))
+                    if trade is None:
+                        raise DurableIngestionError("outbox references a missing raw event")
+                    result = await self.handler(item, trade)
+                    output_hash = _canonical_hash({"result": result, "worker": self.worker_name})
+                    charge = index > 0
+                    acknowledged = (
+                        await self.store.acknowledge_with_followup(
+                            item, output_hash, self.next_worker, charge_attempt=charge
+                        )
+                        if self.next_worker is not None
+                        else await self.store.acknowledge(item.outbox_id, output_hash, charge_attempt=charge)
+                    )
+                    if not acknowledged:
+                        raise DurableIngestionError("worker lease was not acknowledgeable")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    state = await self.store.fail(item.outbox_id, error, charge_attempt=index > 0)
+                    if state == "QUARANTINED":
+                        quarantined += 1
+                    else:
+                        retried += 1
+                    index += 1
+                    break
+                completed += 1
+                index += 1
+                latency = (datetime.now(timezone.utc) - started).total_seconds()
+                max_latency = latency if max_latency is None else max(max_latency, latency)
+        except asyncio.CancelledError:
+            await asyncio.shield(self._defer_items(items, index, "worker shutdown checkpoint"))
+            raise
+        except BaseException:
+            await asyncio.shield(self._defer_items(items, index, "strict batch interrupted"))
+            raise
+        if index < len(items):
+            await asyncio.shield(self._defer_items(items, index, "strict batch stopped at an earlier item"))
+        if max_latency is not None:
+            await self.store.record_metric(
+                "worker_latency",
+                max_latency,
+                kind="GAUGE",
+                metadata={"worker_name": self.worker_name, "batch_completed": completed},
+            )
+        return {
+            "claimed": len(items),
+            "completed": completed,
+            "retried": retried,
+            "quarantined": quarantined,
+            "returned": len(items) - index,
+        }
+
+    async def _defer_items(self, items: list[OutboxItem], start: int, reason: str) -> None:
+        # Only the head (index 0) was charged an attempt at claim time.
+        for position in range(start, len(items)):
+            await self.store.defer(items[position].outbox_id, reason, restore_attempt=position == 0)
 
     async def recover_one(self, outbox_id: str) -> dict[str, Any]:
         """Replay exactly one quarantined record; never resets attempts or skips peers."""

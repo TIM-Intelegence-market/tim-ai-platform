@@ -203,6 +203,33 @@ CREATE INDEX IF NOT EXISTS ingestion_outbox_claim_idx ON ingestion_outbox(worker
 CREATE INDEX IF NOT EXISTS ingestion_outbox_worker_order_active_idx
     ON ingestion_outbox(worker_name,aggregate_trade_id,created_at,outbox_id)
     INCLUDE(status) WHERE status <> 'COMPLETED';
+-- The outbox grows by every trade and turns over constantly. With the default
+-- 20 % scale factors autovacuum waits for millions of changes, the visibility
+-- map decays and index-only counts of active work degrade into heap fetches
+-- (measured: 7 s per count, fixed by a manual VACUUM). Vacuum and analyze it
+-- after about 1 % change instead. Applied only when different, without waiting
+-- behind a long lock and without failing the schema when the role lacks rights.
+DO $tim$
+DECLARE
+    wanted TEXT[] := ARRAY['autovacuum_vacuum_scale_factor=0.01', 'autovacuum_analyze_scale_factor=0.01']
+        || CASE WHEN current_setting('server_version_num')::INT >= 130000
+                THEN ARRAY['autovacuum_vacuum_insert_scale_factor=0.01'] ELSE ARRAY[]::TEXT[] END;
+    current_options TEXT[];
+    previous_lock_timeout TEXT := current_setting('lock_timeout');
+BEGIN
+    SELECT COALESCE(reloptions, ARRAY[]::TEXT[]) INTO current_options
+    FROM pg_class WHERE oid = 'ingestion_outbox'::regclass;
+    IF NOT current_options @> wanted THEN
+        PERFORM set_config('lock_timeout', '5s', true);
+        BEGIN
+            EXECUTE format('ALTER TABLE ingestion_outbox SET (%s)', array_to_string(wanted, ', '));
+        EXCEPTION WHEN lock_not_available OR insufficient_privilege THEN
+            RAISE WARNING 'ingestion_outbox autovacuum settings not applied: %', SQLERRM;
+        END;
+        PERFORM set_config('lock_timeout', previous_lock_timeout, true);
+    END IF;
+END
+$tim$;
 
 CREATE TABLE IF NOT EXISTS ingestion_gap_incidents (
     gap_id TEXT PRIMARY KEY CHECK (gap_id ~ '^[0-9a-f]{64}$'), source TEXT NOT NULL CHECK (source = 'BINANCE'), market TEXT NOT NULL CHECK (market = 'SPOT'),
