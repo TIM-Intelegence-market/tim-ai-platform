@@ -69,7 +69,9 @@ def inject_known_defect(workspace, recipe):
 def inject_unknown_defect(workspace):
     path = workspace / TARGET
     text = path.read_text()
-    broken = text.replace('if payload.get("e") != "aggTrade":', 'if payload.get("e") == "aggTrade":')
+    # Fails fast (price parsed from quantity); a defect that drops every trade would
+    # hang existing mocked-reconnect tests - that case is covered by the timeout test.
+    broken = text.replace('price=float(payload["p"])', 'price=float(payload["q"])')
     if broken == text:
         raise SystemExit('unknown-defect injection point not found')
     path.write_text(broken)
@@ -116,7 +118,7 @@ def main():
             workspace = create_disposable_workspace(ROOT, source, sandbox_root=scratch)
             injected = inject(workspace)
             result = self_heal(engine, workspace, python=sys.executable, detection_tests=SUITE,
-                               out_dir=out / name, forbidden_roots=PROTECTED, **kwargs)
+                               out_dir=out / name, forbidden_roots=PROTECTED, test_timeout=300, **kwargs)
             bundle = result.pop('bundle', None)
             runs[name] = {**result, 'injection_commit': injected,
                           'defect_commit_seen_by_executor': bundle['defect_commit'] if bundle else None,

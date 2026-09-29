@@ -1,4 +1,5 @@
 """Issue #12 P1.14 contract: recurrence repaired from the engine's own known case."""
+from dataclasses import replace
 import sys
 
 import pytest
@@ -7,7 +8,7 @@ from src.task_engine.repair_executor import create_disposable_workspace
 from src.task_engine.repository import SqliteTaskRepository
 from src.task_engine.self_heal import BUGFIX_EVIDENCE, find_known_case, self_heal
 from src.task_engine.service import TaskEngine
-from tests.task_engine_repair_fixture import FIXED, S, make_source, recipe
+from tests.task_engine_repair_fixture import FIXED, S, git, make_source, recipe
 
 ROOT_CAUSE = 'add() subtracts instead of adding'
 DETECTION = ('tests/test_calc.py', 'tests/test_other.py')
@@ -66,6 +67,27 @@ def test_held_task_is_not_auto_resumed_or_duplicated(engine, tmp_path):
     again = heal(engine, source, tmp_path, 'run2', approved_recipe=recipe(source), root_cause=ROOT_CAUSE)
     assert again['outcome'] == 'HELD' and again['task_id'] == blocked['task_id']
     assert len(engine.tasks(type='BUGFIX')) == 1
+
+
+def test_hanging_detection_is_bounded_and_blocked(engine, tmp_path):
+    source = make_source(tmp_path, FIXED)
+    (source / 'tests' / 'test_hang.py').write_text('import time\n\n\ndef test_hang():\n    time.sleep(120)\n')
+    git(source, 'add', '.')
+    git(source, 'commit', '-qm', 'hang')
+    workspace = create_disposable_workspace(source, 'HEAD', sandbox_root=tmp_path)
+    result = self_heal(engine, workspace, python=sys.executable, detection_tests=('tests/test_hang.py',),
+                       out_dir=tmp_path / 'run', test_timeout=3)
+    assert result['detection']['failing'] == ['DETECTION_TIMEOUT']
+    assert result['outcome'] == 'BLOCKED' and engine.get_task(result['task_id']).state is S.BLOCKED
+
+
+def test_collector_rejection_always_leaves_the_task_blocked(engine, tmp_path):
+    source = make_source(tmp_path)
+    bad_probe = replace(recipe(source), probe={'path': 'probe.py', 'sha256': '0' * 64})
+    result = heal(engine, source, tmp_path, 'run', approved_recipe=bad_probe, root_cause=ROOT_CAUSE)
+    assert result['outcome'] == 'BLOCKED'
+    task = engine.get_task(result['task_id'])
+    assert task.state is S.BLOCKED and 'probe script does not match' in task.blocker_reason
 
 
 def test_open_task_for_the_same_defect_is_resumed_not_duplicated(engine, tmp_path):

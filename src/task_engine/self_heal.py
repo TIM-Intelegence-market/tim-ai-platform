@@ -25,14 +25,21 @@ BUGFIX_EVIDENCE = ('root_cause', 'reproduction', 'repair', 'targeted_tests', 're
 HELD = {S.BLOCKED, S.SAFE_STOP}
 
 
-def detect(workspace, *, python, tests, out_dir):
-    """Run detection tests; the fingerprint is derived from the failing test ids only."""
+def detect(workspace, *, python, tests, out_dir, timeout=900):
+    """Run detection tests; the fingerprint is derived from the failing test ids only.
+
+    A detection run that does not finish is itself a defect signal
+    (DETECTION_TIMEOUT); it never counts as healthy.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     junit = out_dir / 'detection.junit.xml'
-    subprocess.run([python, '-m', 'pytest', *tests, '-q', '-p', 'no:cacheprovider', f'--junitxml={junit}'],
-                   cwd=workspace, capture_output=True, text=True, timeout=900)
-    summary = junit_summary(junit)
+    try:
+        subprocess.run([python, '-m', 'pytest', *tests, '-q', '-p', 'no:cacheprovider', f'--junitxml={junit}'],
+                       cwd=workspace, capture_output=True, text=True, timeout=timeout)
+        summary = junit_summary(junit)
+    except subprocess.TimeoutExpired:
+        summary = {'failing': ['DETECTION_TIMEOUT'], 'counts': None}
     failing = summary['failing']
     fingerprint = hashlib.sha256('\n'.join(failing).encode()).hexdigest()[:16] if failing else None
     return {'failing': failing, 'counts': summary['counts'], 'fingerprint': fingerprint,
@@ -50,9 +57,9 @@ def find_known_case(engine, source):
 
 
 def self_heal(engine, workspace, *, python, detection_tests, out_dir, parent_task_id=None,
-              approved_recipe=None, root_cause=None, forbidden_roots=()):
+              approved_recipe=None, root_cause=None, forbidden_roots=(), test_timeout=900):
     out_dir = Path(out_dir)
-    detection = detect(workspace, python=python, tests=detection_tests, out_dir=out_dir)
+    detection = detect(workspace, python=python, tests=detection_tests, out_dir=out_dir, timeout=test_timeout)
     result = {'detection': detection}
     if detection['source'] is None:
         return {**result, 'outcome': 'NO_DEFECT'}
@@ -98,12 +105,14 @@ def self_heal(engine, workspace, *, python, detection_tests, out_dir, parent_tas
     engine.checkpoint(task_id, 'detect', next_action='reproduce defect before repair',
                       metadata={'fingerprint': detection['fingerprint'], 'failing': detection['failing'],
                                 'known_case_task_id': result['known_case_task_id']})
-    collector = EvidenceCollector(engine, task_id, recipe, workspace, out_dir, python=python)
+    collector = EvidenceCollector(engine, task_id, recipe, workspace, out_dir, python=python, timeout=test_timeout)
     try:
         collector.collect_pre_repair()
         execution = execute_repair(engine, task_id, recipe, workspace, out_dir, forbidden_roots=forbidden_roots)
         result['bundle'] = collector.collect_post_repair(execution, root_cause=root_cause)
     except (ReproductionFailed, RepairFailed) as error:
+        if engine.get_task(task_id).state not in HELD:
+            engine.block(task_id, f'self-heal stopped: {error}'[:500])
         return {**result, 'outcome': 'BLOCKED', 'reason': str(error), 'state': engine.get_task(task_id).state.value}
     engine.transition_task(task_id, S.VERIFYING)
     try:

@@ -39,9 +39,10 @@ def junit_summary(path):
 
 
 class EvidenceCollector:
-    def __init__(self, engine, task_id, recipe, workspace, out_dir, *, python):
+    def __init__(self, engine, task_id, recipe, workspace, out_dir, *, python, timeout=900):
         self.engine, self.task_id, self.recipe = engine, task_id, recipe
         self.workspace, self.out, self.python = Path(workspace), Path(out_dir), python
+        self.timeout = timeout
         self.out.mkdir(parents=True, exist_ok=True)
         self.pre = None
 
@@ -60,9 +61,12 @@ class EvidenceCollector:
     # -- checks ------------------------------------------------------------
     def pytest(self, tests, name):
         junit = self.out / f'{name}.junit.xml'
-        result = subprocess.run([self.python, '-m', 'pytest', *tests, '-q', '-p', 'no:cacheprovider',
-                                 f'--junitxml={junit}'], cwd=self.workspace, capture_output=True, text=True,
-                                timeout=900)
+        try:
+            result = subprocess.run([self.python, '-m', 'pytest', *tests, '-q', '-p', 'no:cacheprovider',
+                                     f'--junitxml={junit}'], cwd=self.workspace, capture_output=True, text=True,
+                                    timeout=self.timeout)
+        except subprocess.TimeoutExpired as error:
+            raise ReproductionFailed(f'{name}: tests did not finish within {self.timeout}s') from error
         summary = junit_summary(junit)
         return {'exit_status': result.returncode, 'tests': list(tests),
                 'junit': {'path': str(junit.resolve()), 'sha256': sha256_file(junit)}, **summary}
