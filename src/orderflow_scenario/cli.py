@@ -168,6 +168,10 @@ def main(argv: list[str] | None = None) -> int:
     except (json.JSONDecodeError, KeyError, ValueError) as exc:
         sys.stderr.write(f"ERROR: {exc}\n")
         return 2
+    except (TypeError, AttributeError) as exc:
+        # Wrongly shaped input (e.g. a list or number where an object is expected): input error, no traceback.
+        sys.stderr.write(f"ERROR: malformed input: {type(exc).__name__}: {exc}\n")
+        return 2
 
 
 if __name__ == "__main__":

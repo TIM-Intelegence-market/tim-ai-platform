@@ -110,3 +110,33 @@ def test_pipeline_levels_from_empty_candles():
     context = MarketContext(symbol="BTCUSDT", venue="UNKNOWN", market_type="FUTURES", timeframe="4H", timestamp=START)
     analysis = Pipeline().run(PipelineInputs(market_context=context, candles=()))
     assert analysis.decision.status.value == "NO_TRADE"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [{"period_seconds": 0}, {"period_seconds": -60}, {"high": 0.1}, {"open_time": "not-a-time"}, {"open": "x"}],
+)
+def test_screenshot_rejects_single_bad_candle_without_failing_the_run(tmp_path, capsys, bad):
+    candles = raw_candles()
+    candles[5] = {**candles[5], **bad}
+    payload = {"symbol": "BTCUSDT", "price_now": 1.5, "candles": candles}
+    assert run_cli(tmp_path, payload, "--provider", "mmt-screenshot", "--validate") == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["symbol"] == "BTCUSDT"
+
+
+@pytest.mark.parametrize(
+    ("provider", "payload"),
+    [
+        ("generic", [1, 2, 3]),
+        ("generic", {"symbol": "BTCUSDT", "candles": [1, "x"]}),
+        ("mmt-screenshot", [1, 2, 3]),
+        ("mmt-screenshot", {"symbol": "BTCUSDT", "candles": "abc"}),
+    ],
+)
+def test_cli_malformed_input_exits_cleanly(tmp_path, capsys, provider, payload):
+    assert run_cli(tmp_path, payload, "--provider", provider) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("ERROR:")
+    assert "Traceback" not in captured.err

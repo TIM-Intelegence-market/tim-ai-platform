@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
+from src.models.market_data import Candle
+
 from .base import AdapterInput
 from .generic import _dt
 
@@ -54,20 +56,34 @@ class MMTScreenshotAdapter:
                     rejected.append(f"candles[{index}].open_time")
                     continue
                 period_seconds = int(item.get("period_seconds", 240))
+                # Validate like the generic adapter so one bad candle is rejected, not the whole run.
+                candle = Candle(
+                    symbol=str(item.get("symbol", data.get("symbol"))),
+                    timeframe=str(item.get("timeframe", "4H")),
+                    open_time=open_time,
+                    close_time=open_time + timedelta(seconds=period_seconds),
+                    open=float(item["open"]),
+                    high=float(item["high"]),
+                    low=float(item["low"]),
+                    close=float(item["close"]),
+                    volume=float(item.get("volume", 0.0)),
+                    trade_count=int(item.get("trade_count", 0)),
+                    closed=bool(item.get("closed", True)),
+                )
                 candles.append(
                     {
-                        "symbol": str(item.get("symbol", data.get("symbol"))),
-                        "timeframe": str(item.get("timeframe", "4H")),
-                        "open_time": open_time.isoformat(),
-                        "close_time": (open_time + timedelta(seconds=period_seconds)).isoformat(),
+                        "symbol": candle.symbol,
+                        "timeframe": candle.timeframe,
+                        "open_time": candle.open_time.isoformat(),
+                        "close_time": candle.close_time.isoformat(),
                         "period_seconds": period_seconds,
-                        "open": float(item["open"]),
-                        "high": float(item["high"]),
-                        "low": float(item["low"]),
-                        "close": float(item["close"]),
-                        "volume": float(item.get("volume", 0.0)),
-                        "trade_count": int(item.get("trade_count", 0)),
-                        "closed": bool(item.get("closed", True)),
+                        "open": candle.open,
+                        "high": candle.high,
+                        "low": candle.low,
+                        "close": candle.close,
+                        "volume": candle.volume,
+                        "trade_count": candle.trade_count,
+                        "closed": candle.closed,
                     }
                 )
                 estimated.append(f"candles[{index}]")
