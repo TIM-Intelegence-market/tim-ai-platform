@@ -140,3 +140,45 @@ def test_cli_malformed_input_exits_cleanly(tmp_path, capsys, provider, payload):
     assert captured.out == ""
     assert captured.err.startswith("ERROR:")
     assert "Traceback" not in captured.err
+
+
+def raw_trades(count: int = 3) -> list[dict]:
+    return [
+        {
+            "event_time": (START + timedelta(seconds=index)).isoformat(),
+            "price": 1.5,
+            "quantity": 0.1,
+            "trade_id": index,
+            "buyer_is_maker": index % 2 == 0,
+        }
+        for index in range(count)
+    ]
+
+
+@pytest.mark.parametrize("provider", ["generic", "mmt-structured"])
+def test_cli_passes_adapter_trades_to_the_pipeline(tmp_path, capsys, provider):
+    payload = {"symbol": "BTCUSDT", "candles": raw_candles(), "trades": raw_trades()}
+    assert run_cli(tmp_path, payload, "--provider", provider, "--validate") == 0
+    output = json.loads(capsys.readouterr().out)
+    assert "trades" not in output["data_quality"]["missing_fields"]
+
+
+def test_pipeline_inputs_rebuild_trade_models():
+    inputs = cli._pipeline_inputs(GenericOrderflowAdapter(), {"symbol": "BTCUSDT", "candles": raw_candles(), "trades": raw_trades(2)})
+    assert [trade.trade_id for trade in inputs.trades] == [0, 1]
+    assert inputs.trades[0].event_time == START
+    assert inputs.trades[0].buyer_is_maker is True
+
+
+def test_cli_without_trades_still_reports_them_missing(tmp_path, capsys):
+    assert run_cli(tmp_path, {"symbol": "BTCUSDT", "candles": raw_candles()}, "--validate") == 0
+    output = json.loads(capsys.readouterr().out)
+    assert "trades" in output["data_quality"]["missing_fields"]
+
+
+def test_cli_with_price_but_no_candles_ends_in_no_trade(tmp_path, capsys):
+    assert run_cli(tmp_path, {"symbol": "BTCUSDT", "price_now": 1.5, "candles": []}, "--validate") == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["data_quality"]["status"] == "INSUFFICIENT_DATA"
+    assert output["decision"]["status"] == "NO_TRADE"
+    assert output["scenarios"] == []

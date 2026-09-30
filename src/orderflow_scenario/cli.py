@@ -65,6 +65,18 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
                 closed=raw.get("closed", True),
             )
         )
+    trades = []
+    for raw in adapted.trades:
+        trades.append(
+            __import__("src.models.market_data", fromlist=["Trade"]).Trade(
+                symbol=raw["symbol"],
+                price=raw["price"],
+                quantity=raw["quantity"],
+                event_time=__import__("datetime", fromlist=["datetime"]).datetime.fromisoformat(raw["event_time"]),
+                trade_id=raw.get("trade_id"),
+                buyer_is_maker=raw.get("buyer_is_maker"),
+            )
+        )
     last = candles[-1].close if candles else None
     levels = None
     if adapted.levels:
@@ -76,7 +88,7 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
     return PipelineInputs(
         market_context=_market_context(adapted, adapted.observed_at),
         candles=tuple(candles),
-        trades=(),
+        trades=tuple(trades),
         price_now=adapted.price_now if adapted.price_now is not None else (Decimal(str(last)) if last is not None else None),
         price_timestamp=adapted.price_timestamp,
         net_delta=adapted.net_delta,
