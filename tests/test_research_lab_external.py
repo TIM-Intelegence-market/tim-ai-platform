@@ -798,6 +798,28 @@ def test_unusable_value_still_counts_for_overlapping_vintages() -> None:
     assert store(chained).value(date(2024, 1, 1), MAR_RELEASE).value == Decimal("301.0")
 
 
+@pytest.mark.parametrize("empty_calendar", [False, True])
+def test_without_calendar_dates_no_first_print_is_certified(empty_calendar: bool) -> None:
+    raw = bundle([row("2024-01-01", "2024-03-12", "9999-12-31", "300.2")], calendar=empty_calendar)
+    if empty_calendar:
+        raw.payloads["release_dates"] = release_payload(())
+    result = parse_bundle(raw)
+    assert result.state is QualityState.READY and "RELEASE_CALENDAR_UNAVAILABLE" in codes(result)
+    assert result.periods_without_first_release == frozenset({date(2024, 1, 1)})
+    event = release_events(PointInTimeStore(result), until=INGESTED)[0]
+    assert event.first_release_in_archive is False and event.event_time is None
+
+
+@pytest.mark.parametrize(
+    "edge_row",
+    [row("9999-12-01", "9999-12-30", "9999-12-31", "300.0"), row("2024-01-01", "9999-12-31", "9999-12-31", "300.0")],
+)
+def test_dates_at_the_calendar_edge_make_the_payload_not_ready_instead_of_crashing(edge_row: dict) -> None:
+    result = ingest(base_rows() + [edge_row])
+    assert result.state is QualityState.NOT_READY
+    assert "MALFORMED_TIMESTAMP" in codes(result) and "UNDATABLE_ROWS" in codes(result)
+
+
 def test_quality_findings_are_part_of_the_dataset_identity() -> None:
     at = datetime(2024, 4, 20, tzinfo=UTC)
     clean = replay(ingest(), at)

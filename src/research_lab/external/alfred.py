@@ -51,6 +51,7 @@ LAST_REALTIME = "9999-12-31"
 PAGE_LIMIT = 100_000  # observations endpoint maximum
 REQUIRED_PAYLOADS = ("series", "observations")
 SECRET_KEYS = frozenset({"api_key", "apikey", "token", "password", "secret"})
+NO_CALENDAR = "no release dates: every vintage counts as known only after its vintage day ended and no first print can be identified"
 
 Fetcher = Callable[[str], bytes]
 Clock = Callable[[], datetime]
@@ -140,12 +141,14 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
 
     release_dates: set[date] = set()
     if "release_dates" not in bundle.payloads:
-        issues.append(issue("RELEASE_CALENDAR_UNAVAILABLE", Severity.WARNING, series_id, "no release dates: every vintage counts as known only after its vintage day ended"))
+        issues.append(issue("RELEASE_CALENDAR_UNAVAILABLE", Severity.WARNING, series_id, NO_CALENDAR))
     else:
         try:
             release_dates = _release_dates(spec, json.loads(bundle.payloads["release_dates"]))
         except (UnicodeDecodeError, ValueError, TypeError, KeyError) as exc:
             return not_ready("MALFORMED_PAYLOAD", f"release dates unusable: {exc}")
+        if not release_dates:
+            issues.append(issue("RELEASE_CALENDAR_UNAVAILABLE", Severity.WARNING, series_id, NO_CALENDAR))
 
     request_start = _date(observations["realtime_start"])
     clipped_start = None if observations["realtime_start"] == FIRST_REALTIME else request_start
@@ -289,13 +292,19 @@ def _row(
         issues.append(issue("MALFORMED_TIMESTAMP", Severity.ERROR, row_id, f"unusable date field: {exc.__class__.__name__}"))
         return None
 
-    # The row is datable from here on: every later defect is dated at this vintage's availability.
-    period = spec.period_of(raw_period)
-    period_end = spec.period_end(period)
-    record_id = f"{spec.source}:{spec.source_identifier}:{period.isoformat()}@{vintage.isoformat()}"
     clipped = clipped_start is not None and vintage == clipped_start
     basis = AvailabilityBasis.SCHEDULED_RELEASE if vintage in release_dates and not clipped else AvailabilityBasis.END_OF_VINTAGE_DAY
-    available_at = spec.available_at(vintage, basis)
+    try:
+        period = spec.period_of(raw_period)
+        period_end = spec.period_end(period)
+        _ = period_end + spec.max_first_release_lag  # the first-print check needs it later
+        available_at = spec.available_at(vintage, basis)
+    except (ValueError, OverflowError):
+        # Dates at the calendar's edge (e.g. period 9999-12) have no representable end or availability.
+        issues.append(issue("MALFORMED_TIMESTAMP", Severity.ERROR, row_id, "date outside the supported range"))
+        return None
+    # The row is datable from here on: every later defect is dated at this vintage's availability.
+    record_id = f"{spec.source}:{spec.source_identifier}:{period.isoformat()}@{vintage.isoformat()}"
 
     # realtime_end says when this value stopped being current, which is only known once the next
     # vintage exists. A bad end is therefore not held against this row; it is treated as unknown and
@@ -371,7 +380,8 @@ def _revision_history_gaps(
     The lag bound can only disprove a first print. With a release calendar the first
     print must also be positively identified: the earliest archived vintage has to be
     the first scheduled release after the period ended, otherwise an earlier release
-    is missing (or the calendar does not show it) and the first print counts as unknown."""
+    is missing (or the calendar does not show it) and the first print counts as unknown.
+    Without calendar dates no first print can be identified at all."""
     first: dict[date, VintageObservation | Unusable] = {}
     for item in [*records, *unusable]:
         if item.period_start not in first or item.vintage < first[item.period_start].vintage:
@@ -390,7 +400,7 @@ def _revision_history_gaps(
             expected = calendar[position] if position < len(calendar) else None
             if item.vintage != expected:
                 detail = "earliest archived vintage is not the first scheduled release after the period ended"
-        if detail is not None or (clipped_start is not None and item.vintage == clipped_start):
+        if detail is not None or not calendar or (clipped_start is not None and item.vintage == clipped_start):
             gaps.add(period)
         if detail is not None:
             issues.append(issue("REVISION_HISTORY_UNAVAILABLE", Severity.WARNING, record_id, detail, item.available_at))

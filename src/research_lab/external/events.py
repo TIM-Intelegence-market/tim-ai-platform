@@ -145,10 +145,10 @@ def release_events(store: PointInTimeStore, *, until: datetime) -> tuple[Release
         first_release = reference not in store.ingest.periods_without_first_release
         if actual is None:
             status = EventStatus.ACTUAL_UNKNOWN
-        elif not first_release:
-            status = EventStatus.FIRST_RELEASE_UNAVAILABLE
         elif basis is not AvailabilityBasis.SCHEDULED_RELEASE:
             status = EventStatus.RELEASE_TIME_UNKNOWN
+        elif not first_release:
+            status = EventStatus.FIRST_RELEASE_UNAVAILABLE
         else:
             status = EventStatus.OK
         change = None
@@ -194,7 +194,8 @@ def with_expectation(event: ReleaseEvent, expectation: Expectation) -> ReleaseEv
     against, so the expectation is refused rather than compared with the later,
     conservative ``available_at``. Without the first print the real release came
     earlier than any archived vintage, so no expectation can be shown to precede it."""
-    if not event.first_release_in_archive:
+    first_missing = event.status is EventStatus.FIRST_RELEASE_UNAVAILABLE or (event.event_time is not None and not event.first_release_in_archive)
+    if first_missing:
         raise ValueError("first release missing from the archive; an expectation cannot be shown to precede the release")
     if event.event_time is None:
         raise ValueError("release time unknown; an expectation cannot be shown to precede the release")
