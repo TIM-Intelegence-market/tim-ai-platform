@@ -38,6 +38,8 @@ class EventStatus(StrEnum):
     OK = "OK"
     RELEASE_TIME_UNKNOWN = "RELEASE_TIME_UNKNOWN"  # vintage is not a scheduled release date: no exact event time
     ACTUAL_UNKNOWN = "ACTUAL_UNKNOWN"  # the new period's value is missing or unusable
+    # The archive lacks the period's first print: this vintage is not the release, so neither its time nor its value is.
+    FIRST_RELEASE_UNAVAILABLE = "FIRST_RELEASE_UNAVAILABLE"
 
 
 class Measure(StrEnum):
@@ -140,8 +142,11 @@ def release_events(store: PointInTimeStore, *, until: datetime) -> tuple[Release
         revised = _value(store.entry_in_vintage(previous_period, available_at))
         actual = _value(entry)
         basis = entry.availability_basis if isinstance(entry, VintageObservation) else _basis_of(store, vintage, available_at)
+        first_release = reference not in store.ingest.periods_without_first_release
         if actual is None:
             status = EventStatus.ACTUAL_UNKNOWN
+        elif not first_release:
+            status = EventStatus.FIRST_RELEASE_UNAVAILABLE
         elif basis is not AvailabilityBasis.SCHEDULED_RELEASE:
             status = EventStatus.RELEASE_TIME_UNKNOWN
         else:
@@ -163,13 +168,14 @@ def release_events(store: PointInTimeStore, *, until: datetime) -> tuple[Release
                 source=spec.source,
                 source_identifier=spec.source_identifier,
                 status=status,
-                event_time=available_at if basis is AvailabilityBasis.SCHEDULED_RELEASE else None,
+                # A vintage archived after the real release is not the release instant.
+                event_time=available_at if basis is AvailabilityBasis.SCHEDULED_RELEASE and first_release else None,
                 available_at=available_at,
                 availability_basis=basis.value,
                 vintage=vintage,
                 reference_period=reference,
                 new_periods=len(periods),
-                first_release_in_archive=reference not in store.ingest.periods_without_first_release,
+                first_release_in_archive=first_release,
                 actual=actual,
                 previous=before,
                 previous_revised=revised,
@@ -186,7 +192,10 @@ def with_expectation(event: ReleaseEvent, expectation: Expectation) -> ReleaseEv
 
     Without a known release time (``event_time``) there is no instant to check
     against, so the expectation is refused rather than compared with the later,
-    conservative ``available_at``."""
+    conservative ``available_at``. Without the first print the real release came
+    earlier than any archived vintage, so no expectation can be shown to precede it."""
+    if not event.first_release_in_archive:
+        raise ValueError("first release missing from the archive; an expectation cannot be shown to precede the release")
     if event.event_time is None:
         raise ValueError("release time unknown; an expectation cannot be shown to precede the release")
     if expectation.available_at >= event.event_time:

@@ -730,3 +730,49 @@ def test_replay_before_any_release_is_insufficient_data() -> None:
     output = replay(ingest(), datetime(2024, 2, 13, 13, tzinfo=UTC))
     assert output["state"] == "INSUFFICIENT_DATA" and output["events"] == []
     assert output["latest"]["status"] == "NOT_AVAILABLE"
+
+
+# --- regressions from the pre-merge review (PR #128) ------------------------------
+
+
+def test_missing_first_print_is_not_a_release_and_takes_no_expectation() -> None:
+    # January's earliest archived vintage is the April release: the real January release came earlier.
+    event = release_events(store([row("2024-01-01", "2024-04-10", "9999-12-31", "310.0")]), until=INGESTED)[0]
+    assert event.first_release_in_archive is False
+    assert event.status is EventStatus.FIRST_RELEASE_UNAVAILABLE and event.event_time is None
+    with pytest.raises(ValueError, match="first release"):
+        with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", APR_RELEASE - timedelta(days=1)))
+    btc = BtcSeries.build(klines(datetime(2024, 4, 9, tzinfo=UTC), 72), "1h", replay_at=INGESTED)
+    assert align_event(event, btc, replay_at=INGESTED)["status"] == WindowStatus.EVENT_TIME_UNKNOWN
+
+
+def test_coverage_that_cuts_the_replay_changes_the_dataset_identity() -> None:
+    rows = copy.deepcopy(base_rows()[:4])
+    rows[3]["realtime_end"] = "9999-12-31"
+    at = datetime(2024, 4, 10, 14, tzinfo=UTC)
+    cut = replay(parse_bundle(bundle(rows, ingested_at=datetime(2024, 4, 10, 13, tzinfo=UTC))), at)
+    covered = replay(parse_bundle(bundle(rows, ingested_at=datetime(2024, 4, 30, tzinfo=UTC))), at)
+    assert cut["inputs"]["external_records_hash"] == covered["inputs"]["external_records_hash"]
+    assert (cut["state"], covered["state"]) == ("INSUFFICIENT_DATA", "READY")
+    assert cut["dataset_id"] != covered["dataset_id"]
+    # Re-ingesting the same archive later keeps the identity when both cover the replay time.
+    assert covered["dataset_id"] == replay(parse_bundle(bundle(rows, ingested_at=INGESTED)), at)["dataset_id"]
+
+
+def test_missing_first_prints_are_part_of_the_dataset_identity() -> None:
+    at = datetime(2024, 4, 20, tzinfo=UTC)
+    rows = [row("2024-01-01", "2024-03-01", "2024-03-11", "300.0")] + base_rows()[1:]
+    full, clipped = replay(ingest(rows), at), replay(ingest(rows, start="2024-03-01"), at)
+    assert full["inputs"] == clipped["inputs"]
+    assert full["dataset_id"] != clipped["dataset_id"]
+
+
+def test_different_unusable_payloads_do_not_share_a_dataset_id() -> None:
+    at = datetime(2024, 4, 20, tzinfo=UTC)
+    broken_json, missing = bundle(), bundle()
+    broken_json.payloads["series"] = b"{"
+    del missing.payloads["observations"]
+    first, second = replay(parse_bundle(broken_json), at), replay(parse_bundle(missing), at)
+    assert first["state"] == second["state"] == "NOT_READY"
+    assert first["dataset_id"] != second["dataset_id"]
+    assert first["dataset_id"] == replay(parse_bundle(copy.deepcopy(broken_json)), at)["dataset_id"]

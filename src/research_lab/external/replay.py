@@ -75,7 +75,8 @@ def run_replay(
     }
     if ingest.state is not QualityState.READY:
         content = {**header, "state": ingest.state.value, "quality_issues": issues, "series_rows": [], "events": []}
-        return _finish(content, provenance)
+        # No inputs were read: the dataset is the payload that failed, so its identity is that payload.
+        return _finish(content, provenance, {"state": ingest.state.value, "payload_sha256": provenance["payload_sha256"]})
 
     store = PointInTimeStore(ingest)
     btc = BtcSeries.build(klines, config.interval, replay_at=at, permission=permission)
@@ -106,7 +107,16 @@ def run_replay(
         "events": [{"event": event.to_dict(), "btc": alignment} for event, alignment in zip(events, aligned)],
         "series_rows": rows,
     }
-    return _finish(content, provenance)
+    identity = {
+        "state": state.value,
+        # Coverage and missing first prints change results without changing the visible records. The coverage
+        # end enters only when it cuts the replay, so re-ingesting the same archive later keeps the identity.
+        "coverage_end": iso(ingest.coverage_end) if ingest.coverage_end < at else None,
+        "periods_without_first_release": sorted(
+            period.isoformat() for period in ingest.periods_without_first_release if store.first_entry(period).available_at <= at
+        ),
+    }
+    return _finish(content, provenance, identity)
 
 
 def _content_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -115,9 +125,11 @@ def _content_record(record: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in record.items() if key not in {"ingested_at", "payload_sha256", "vintage_end"}}
 
 
-def _finish(content: dict[str, Any], provenance: dict[str, Any]) -> dict[str, Any]:
+def _finish(content: dict[str, Any], provenance: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:
     content_hash = digest(content)
-    dataset_id = digest({"config": content["config"], "source": content["source"], "inputs": content.get("inputs"), "transform_version": content["transform_version"]})
+    dataset_id = digest(
+        {"config": content["config"], "source": content["source"], "inputs": content.get("inputs"), "transform_version": content["transform_version"], "identity": identity}
+    )
     result = {**content, "dataset_id": dataset_id, "content_hash": content_hash, "provenance": provenance}
     result["output_hash"] = digest(result)
     return result

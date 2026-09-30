@@ -104,6 +104,9 @@ damit die Befundliste keine späteren Vintages verrät.
 `actual` (Erstwert der neuen Periode), `previous` (Vorperiode unmittelbar vor der
 Veröffentlichung), `previous_revised` (Vorperiode in dieser Veröffentlichung),
 `revision`, `derived_change_pct` (aus den Indexwerten desselben Vintage).
+Fehlt der Erstdruck der Periode im Archiv (`first_release_in_archive = false`),
+ist das Vintage nicht die Veröffentlichung: Status `FIRST_RELEASE_UNAVAILABLE`,
+`event_time` leer, keine Fenster und keine Erwartung.
 
 `expected` und `surprise` bleiben leer (`UNAVAILABLE_NO_EXPECTATION`), solange
 keine belegte Erwartung vorliegt. `with_expectation` verlangt Quelle, Kennung, eine
@@ -132,7 +135,9 @@ werden nie erfunden. Rechnungen laufen in einem festen Decimal-Kontext.
 `run_replay(ingest, klines, ReplayConfig(replay_at, interval, horizons))` liest
 weder Uhr noch Netz noch Zufall. Eine Replay-Zeit ab 2025-01-01 (Holdout, Protokoll
 3.2) verlangt die Holdout-Freigabe, auch für externe Daten. Nicht nutzbare
-Einträge gehen in die Datensatz-Identität ein. Ausgabe: `dataset_id`, `content_hash` (Inhalt),
+Einträge gehen in die Datensatz-Identität ein, ebenso Zustand, ein Archivende vor
+der Replay-Zeit und Perioden ohne Erstdruck; bei unbrauchbarer Payload
+(`NOT_READY`, `INSUFFICIENT_DATA`) sind es Zustand und Payload-Hashes. Ausgabe: `dataset_id`, `content_hash` (Inhalt),
 `output_hash` (inkl. Provenienz), Versionen, Konfiguration, sichtbare
 Datensatz-IDs, BTC-Hash und -Vollständigkeit. Eine spätere Revision ändert den
 `content_hash` eines früheren Replays nicht (getestet).
