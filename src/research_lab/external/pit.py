@@ -132,10 +132,12 @@ class PointInTimeStore:
             return PointValue(Visibility.NOT_AVAILABLE, at, reason="no period available at this time")
         period = max(visible)
         result = self.value(period, at)
-        # Overdue: the next period should have been released by now.
+        # Overdue: the next period should have been released by now, by the lag bound or because the
+        # release calendar's release for a newer period has passed without that period in the archive.
         next_period_end = self.spec.period_end(self.spec.period_end(period))
         overdue_after = self.spec.available_at(next_period_end + self.spec.max_first_release_lag, AvailabilityBasis.END_OF_VINTAGE_DAY)
-        return replace(result, stale=True) if at > overdue_after else result
+        skipped = any(missing > period and due <= at for missing, due in self.ingest.missing_periods)
+        return replace(result, stale=True) if at > overdue_after or skipped else result
 
     def visible_records(self, at: datetime) -> tuple[VintageObservation, ...]:
         """Records available at T, as they looked at T.
@@ -154,8 +156,16 @@ class PointInTimeStore:
         return tuple(result)
 
     def visible_unusable(self, at: datetime) -> tuple[Unusable, ...]:
+        """Unusable entries available at T; like visible_records, vintage_end only once a successor is known."""
         at = require_utc(at, "at")
-        return tuple(item for item in self.ingest.unusable if item.available_at <= at)
+        result = []
+        for item in self.ingest.unusable:
+            if item.available_at > at:
+                continue
+            items = self._entries[item.period_start]
+            successor_known = any(other.vintage > item.vintage and other.available_at <= at for other in items)
+            result.append(item if successor_known else replace(item, vintage_end=None))
+        return tuple(result)
 
     def first_entry(self, period_start: date) -> Entry:
         """The period's earliest archived vintage."""

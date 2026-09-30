@@ -207,6 +207,7 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
     _missing_successors(spec, records, unusable, request_end, release_dates, issues)
     _date_bad_ends(series_id, bad_ends, records, unusable, ingested_at, issues)
     without_first = _revision_history_gaps(spec, records, unusable, clipped_start, release_dates, issues)
+    missing_periods = _missing_periods(spec, records, unusable, release_dates, coverage_end, issues)
     state = QualityState.READY if records or unusable else QualityState.INSUFFICIENT_DATA
     if state is QualityState.INSUFFICIENT_DATA:
         issues.append(issue("NO_OBSERVATIONS", Severity.ERROR, series_id, "payload holds no usable observation"))
@@ -221,6 +222,7 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
         ingested_at,
         hashes,
         request,
+        missing_periods,
     )
 
 
@@ -462,6 +464,41 @@ def _vintage_chain_checks(
             else:
                 kept.append(current)
     return sorted(kept, key=lambda item: (item.period_start, item.vintage)), unusable
+
+
+def _missing_periods(
+    spec: SourceSpec,
+    records: list[VintageObservation],
+    unusable: list[Unusable],
+    release_dates: set[date],
+    coverage_end: datetime,
+    issues: list[DatedIssue],
+) -> tuple[tuple[date, datetime], ...]:
+    """Periods a calendar release should have published but the archive lacks entirely.
+
+    A release date d publishes the period whose first scheduled release after its end is d
+    (the month before d's month for CPI). Only periods after the archive's first period and
+    releases within coverage count; each is reported when its release was due, never earlier."""
+    archived = {item.period_start for item in [*records, *unusable]}
+    if not archived or not release_dates:
+        return ()
+    calendar = sorted(release_dates)
+    missing = []
+    for release in calendar:
+        try:
+            period = spec.previous_period(spec.period_of(release))
+            period_end = spec.period_end(period)
+            due = spec.available_at(release, AvailabilityBasis.SCHEDULED_RELEASE)
+        except (ValueError, OverflowError):
+            continue
+        if period <= min(archived) or period in archived or due > coverage_end:
+            continue
+        if calendar[bisect_left(calendar, period_end)] != release:
+            continue  # this release published another period
+        record_id = f"{spec.source}:{spec.source_identifier}:{period.isoformat()}@{release.isoformat()}"
+        issues.append(issue("MISSING_PERIOD", Severity.ERROR, record_id, "the release calendar shows this period's release but the archive has no vintage of it", due))
+        missing.append((period, due))
+    return tuple(missing)
 
 
 def _missing_successors(

@@ -21,7 +21,10 @@
   release interval (45 days) earlier, so a skipped release is noticed; without
   calendar dates no first print counts as identified. A vintage that ended
   without a successor leaves its period UNKNOWN from when the successor would
-  have become visible (MISSING_VINTAGE). Unusable rows still count
+  have become visible (MISSING_VINTAGE); a period the calendar shows as
+  released but the archive lacks is reported when due (MISSING_PERIOD) and
+  marks latest() stale. Unusable entries hide their end date until a successor
+  is visible. Unusable rows still count
   for overlapping vintages, vintages outside the payload's declared real-time
   range and dates at the calendar edge make the payload NOT_READY, and values outside 1e-6..1e9 (or over 20 digits) are malformed,
   instead of crashing ingestion or event arithmetic. The dataset

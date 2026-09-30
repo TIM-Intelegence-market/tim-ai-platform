@@ -844,6 +844,27 @@ def test_calendar_gap_around_the_first_release_certifies_no_first_print() -> Non
         with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", datetime(2024, 3, 1, tzinfo=UTC)))
 
 
+def test_period_missing_from_the_archive_is_flagged_when_its_release_was_due() -> None:
+    rows = [r for r in base_rows() if r["date"] != "2024-02-01"]  # the March 12 release published February
+    result = ingest(rows)
+    assert result.missing_periods == ((date(2024, 2, 1), MAR_RELEASE),)
+    pit = PointInTimeStore(result)
+    assert pit.latest(MAR_RELEASE - timedelta(seconds=1)).stale is False
+    known = pit.latest(MAR_RELEASE)
+    assert known.period_start == date(2024, 1, 1) and known.stale is True
+    assert "MISSING_PERIOD" not in [i["code"] for i in replay(result, MAR_RELEASE - timedelta(seconds=1))["quality_issues"]]
+    assert "MISSING_PERIOD" in [i["code"] for i in replay(result, datetime(2024, 3, 20, tzinfo=UTC))["quality_issues"]]
+    assert ingest().missing_periods == ()
+
+
+def test_visible_unusable_does_not_reveal_when_it_was_later_replaced() -> None:
+    pit = store([row("2024-01-01", "2024-02-13", "2024-03-11", "bad"), row("2024-01-01", "2024-03-12", "9999-12-31", "301.0")])
+    (early,) = pit.visible_unusable(FEB_RELEASE)
+    assert early.vintage_end is None
+    (later,) = pit.visible_unusable(MAR_RELEASE)
+    assert later.vintage_end == date(2024, 3, 11)
+
+
 def test_interrupted_save_keeps_earlier_bundles_and_leaves_no_partial_entry(tmp_path, monkeypatch) -> None:
     import os
 

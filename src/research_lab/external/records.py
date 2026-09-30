@@ -262,6 +262,8 @@ class IngestResult:
     ingested_at: datetime
     payload_hashes: dict[str, str]
     request: dict[str, Any]
+    # Periods the release calendar says were released but the archive lacks: (period, when it was due).
+    missing_periods: tuple[tuple[date, datetime], ...] = ()
 
 
 def issue(code: str, severity: Severity, record_id: str, detail: str, available_at: datetime | None = None) -> DatedIssue:
