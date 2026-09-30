@@ -36,7 +36,8 @@ Ablauf (deterministisch):
 2. `direction == NEUTRAL` → `None`.
 3. Zeitenbrüche: `trigger = scenario.trigger_level or last`;
    `entry_low/high` aus Szenario-Zone (Fallback auf trigger/last).
-4. Stop, Ziele long/short über `_stop_*`/`_targets_*`.
+4. Stop, Ziele long/short über `_stop_*`/`_targets_*`; Ziele bei 1,5R / 2R / 3R
+   (`TARGET_R`, Entscheidung 2026-09-30: Ziel 1 erfüllt das 1,5R-Minimum der Tiers).
 5. `stop_distance <= ZERO` → `None`.
 6. Expected RR < `minimum_reward_risk` → `None`.
 7. Grading über `_grade`.
