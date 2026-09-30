@@ -13,15 +13,17 @@ pipeline short-circuits to NO_TRADE.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Sequence
 
+from src.knowledge.broncx_feed import BroncxPost
 from src.models.market_data import Candle, Trade
 
 from ..audit import AuditBuilder, analysis_id_for
 from ..explanation import build_setup_explanation
+from ..external_context import DEFAULT_MAX_AGE, active_view, apply_external_weight, build_external_context
 from ..config import OrderflowScenarioConfig, default_config
 from ..domain import (
     AnalysisOutput,
@@ -82,6 +84,9 @@ class PipelineInputs:
     risk_tier_name: str = "STANDARD"
     kill_switch_enabled: bool = True
     observed_at: datetime | None = None
+    # External guidance (Broncx via Discord): audit and report only, never evidence.
+    external_posts: tuple[BroncxPost, ...] = ()
+    external_max_age: timedelta = DEFAULT_MAX_AGE
 
     def __post_init__(self) -> None:
         if self.requested_leverage < Decimal("1"):
@@ -128,6 +133,19 @@ class Pipeline:
         )
         quality = self.data_quality_gate.evaluate(quality_inputs, observed_at=observed_at)
 
+        # Broncx's current view (external guidance): weights scenarios and adds his levels, never confirms.
+        external_view = None
+        external_adjustments: list[dict] = []
+        if inputs.external_posts:
+            external_view = active_view(
+                inputs.external_posts,
+                observed_at=observed_at,
+                symbol=inputs.market_context.symbol,
+                candles=inputs.candles,
+                price_now=inputs.price_now,
+                max_age=inputs.external_max_age,
+            )
+
         # 2. Market State and Auction State.
         if quality.status == "INSUFFICIENT_DATA":
             market_state = MarketStateModel(
@@ -171,6 +189,8 @@ class Pipeline:
                 )
             )
             levels = inputs.levels or self._levels_from_candles(inputs.candles, inputs.price_now)
+            if external_view is not None and external_view.bias is not None:
+                levels = replace(levels, external_levels=external_view.levels, external_bias=external_view.bias)
             scenarios = self.scenario_generator.generate(market_state, auction_state, orderflow, levels)
             scenario_inputs = [
                 ProbabilityEngineInput(
@@ -183,6 +203,8 @@ class Pipeline:
                 for scenario in scenarios
             ]
             scenarios = self.probability_engine.evaluate(scenario_inputs)
+            if external_view is not None:
+                scenarios, external_adjustments = apply_external_weight(scenarios, external_view)
 
             # Confirmation updates.
             updates_by_id = {update.scenario_id: update for update in inputs.confirmation_updates}
@@ -248,6 +270,25 @@ class Pipeline:
             "setup_explanation", "1.0.0",
             build_setup_explanation(levels if quality.status != "INSUFFICIENT_DATA" else self._levels_from_candles(inputs.candles, inputs.price_now), market_state, orderflow, quality, scenarios),
         )
+        if inputs.external_posts:
+            audit.add_input("external_posts", [post.to_dict() for post in inputs.external_posts])
+            audit.add_engine(
+                "external_context", "1.0.0",
+                build_external_context(
+                    inputs.external_posts,
+                    observed_at=observed_at,
+                    symbol=inputs.market_context.symbol,
+                    candles=inputs.candles,
+                    price_now=inputs.price_now,
+                    scenarios=scenarios,
+                    max_age=inputs.external_max_age,
+                    influence={
+                        "view": external_view.to_dict(),
+                        "score_adjustments": external_adjustments,
+                        "level_scenarios": [item.scenario_id for item in scenarios if item.trade_template.get("level_source") == "broncx"],
+                    },
+                ),
+            )
         audit_payload = audit.build(mode=self.config.mode.value, kill_switch_enabled=self.config.kill_switch_enabled and inputs.kill_switch_enabled, timestamp=observed_at)
 
         analysis = AnalysisOutput(

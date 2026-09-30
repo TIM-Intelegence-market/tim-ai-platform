@@ -82,7 +82,8 @@ class TradePlanBuilder:
         trigger = scenario.trigger_level or last
         entry_low = scenario.entry_zone_low or trigger
         entry_high = scenario.entry_zone_high or last
-        entry_model = inputs.entry_model or scenario.trade_template.get("entry_model", "MARKET_AFTER_CONFIRMATION")
+        # The scenario generator stores the entry model as its string value; an unknown name raises.
+        entry_model = inputs.entry_model or EntryModel(scenario.trade_template.get("entry_model", EntryModel.MARKET_AFTER_CONFIRMATION))
         exact_entry = inputs.exact_entry or entry_low
 
         # Stop derived from structural invalidation.
@@ -170,7 +171,7 @@ class TradePlanBuilder:
     def _stop_long(self, scenario: Scenario, inputs: TradePlanInputs) -> Decimal:
         ms = inputs.market_state
         if ms.primary in {MarketStateKind.BREAKOUT_ATTEMPT, MarketStateKind.TREND_UP}:
-            return (inputs.entry_zone_low or inputs.last_price) * Decimal("0.995")
+            return (scenario.entry_zone_low or inputs.last_price) * Decimal("0.995")
         return (scenario.entry_zone_low or inputs.last_price) * Decimal("0.99")
 
     def _stop_short(self, scenario: Scenario, inputs: TradePlanInputs) -> Decimal:
@@ -205,6 +206,8 @@ class TradePlanBuilder:
         if scenario.score >= Decimal("0.45"):
             score += 1
             reasons.append(f"score_{scenario.score:.2f}")
+            if "external_weight" in scenario.trade_template:
+                reasons.append(f"score_includes_broncx_weight_{scenario.trade_template['external_weight']}")
         if expected_rr >= Decimal("2.0"):
             score += 1
             reasons.append(f"rr_{expected_rr:.2f}")
