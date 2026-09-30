@@ -80,9 +80,10 @@ entry_low/high, score (entry_model liegt im `trade_template`).
 `Direction`: LONG / SHORT / NEUTRAL. `EntryModel`: LIMIT_RETEST,
 MARKET_AFTER_CONFIRMATION, RECLAIM, u.a.
 
-> **Befund (Phase 2):** `scenario_generator.py:161` referenziert `EntryModel.RETEST`,
-> das im Enum **nicht** existiert (nur `LIMIT_RETEST`) — latenter `AttributeError`
-> in einem Breakout-Branch. Fix: → `LIMIT_RETEST` (Roadmap V5-01).
+> **Befund (Phase 2), behoben:** `scenario_generator.py` referenzierte `EntryModel.RETEST`,
+> das im Enum nicht existiert. Der Breakout-Branch setzt jetzt `LIMIT_RETEST`
+> (PR #121, Roadmap V5-01). `trade_template["entry_model"]` trägt den String-Wert;
+> `TradePlanBuilder` wandelt ihn wieder in `EntryModel` um.
 
 ## 6. Invarianten
 
@@ -138,7 +139,7 @@ PARTIAL ........... 7 %
 
 Befunde: `ScenarioGenerator.generate` und die Szenario-Kerne (A Breakout,
 B Sweep-Reversal, C Rejection, D/E Balance) verifiziert. **Fehler:**
-`EntryModel.RETEST` existiert nicht (→ V5-01); `entry_model` liegt im
+`EntryModel.RETEST` existierte nicht (→ V5-01, behoben); `entry_model` liegt im
 `trade_template`, nicht direkt am `Scenario`; Fallback-IDs „A"/„B" doppelt;
 `max_scenarios` wird nicht gelesen. Keine eigene Testdatei (LÜCKE).
 

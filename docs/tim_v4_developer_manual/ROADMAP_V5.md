@@ -18,6 +18,7 @@ Legende Priorität: 1 = sofort, 2 = geplant, 3 = optional.
 - **Aufwand:** klein (≤ 0,5 Tag).
 - **Abhängigkeit:** `domain.py`.
 - **Priorität:** 1.
+- **Status:** erledigt (PR #121, `LIMIT_RETEST`; Test in `tests/test_orderflow_engine_edge_cases.py`).
 
 ## V5-02 API-Referenz korrigieren
 
