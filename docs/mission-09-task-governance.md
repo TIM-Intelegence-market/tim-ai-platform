@@ -51,6 +51,8 @@ The gateway interface has no close operation on purpose. `trusted_authors` is a 
 
 ## Wiring a real GitHub gateway
 
+Pull requests are never treated as task issues (`find_issues` results with `is_pull_request` are dropped). A gateway raises `CreateNotSent` only when `create_issue` failed before any request left the process; that releases the claim immediately. Any other exception is treated as uncertain (see step 5). A registry file from an earlier release is migrated on open (`PRAGMA user_version`, missing columns added).
+
 Implement `IssueGateway` (`find_issues`, `create_issue`, `update_issue`, `reopen_issue`, `is_documented_duplicate`, `mark_duplicate`). `create_issue` and `update_issue` must embed `fingerprint_marker(fp)` in the body (the update back-fills issues that predate it). `mark_duplicate` and `update_issue` may only comment or label. `find_issues` should list issues and match the marker; GitHub's search index lags, and a lagging search would hide a just-created issue from the post-create check.
 
 ## Integration with #12

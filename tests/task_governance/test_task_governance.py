@@ -644,3 +644,81 @@ def test_create_failure_with_two_visible_issues_blocks(env, monkeypatch):
     reg = TaskRegistry(reg_path)
     r = ensure_task(req(), reg, gh, claimant='w')
     assert r.outcome is EnsureOutcome.BLOCKED and gh.count() == 2
+
+
+# ---- fifth review round ----
+def test_pull_request_carrying_the_marker_is_never_adopted(env):
+    reg_path, gh = env
+    gh.seed(31, req().fingerprint, pr=True)
+    r = ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w')
+    assert r.outcome is EnsureOutcome.CREATED and r.issue_number != 31 and gh.count() == 2
+
+
+def test_pull_request_with_marker_after_failed_create_is_not_taken_for_the_issue(env, monkeypatch):
+    reg_path, gh = env
+    gh.seed(31, req().fingerprint, pr=True)
+
+    def failing(request, fingerprint, **kw):
+        raise TimeoutError('timeout')
+
+    monkeypatch.setattr(gh, 'create_issue', failing)
+    with pytest.raises(TimeoutError):
+        ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w')      # nothing real found: claim stays held
+
+
+@pytest.mark.parametrize('spelling', ['Uezeyiraydin-Cell/TIM-AI-Platform', ' uezeyiraydin-cell/tim-ai-platform '])
+def test_repository_binding_ignores_case_and_whitespace(env, spelling):
+    reg_path, gh = env
+    gh.repository = spelling
+    fp = legacy_req().fingerprint
+    gh.seed(11, fp, marker=False)
+    r = ensure_task(legacy_req(), TaskRegistry(reg_path), gh, claimant='w')
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 11 and gh.count() == 1
+
+
+def test_registry_file_from_an_earlier_release_is_migrated(tmp_path):
+    import sqlite3
+    path = str(tmp_path / 'old.db')
+    db = sqlite3.connect(path)
+    db.executescript('''CREATE TABLE task_mappings (fingerprint TEXT PRIMARY KEY, canonical_key TEXT NOT NULL UNIQUE,
+        state TEXT NOT NULL, claimant TEXT, claimed_at REAL, github_repository TEXT, github_issue_number INTEGER,
+        duplicate_issues TEXT NOT NULL DEFAULT '[]', block_reason TEXT NOT NULL DEFAULT '',
+        created_at REAL NOT NULL, updated_at REAL NOT NULL);
+        CREATE TABLE governance_incidents (id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT NOT NULL,
+        reason TEXT NOT NULL, detail TEXT NOT NULL, created_at REAL NOT NULL);''')
+    fp = req().fingerprint
+    db.execute("INSERT INTO task_mappings(fingerprint,canonical_key,state,github_repository,github_issue_number,created_at,updated_at)"
+               " VALUES(?,?,?,?,?,0,0)", (fp, req().key, 'MAPPED', 'owner/repo', 5))
+    db.commit(); db.close()
+    reg = TaskRegistry(path)
+    m = reg.get(fp)
+    assert m.github_issue_number == 5 and m.claim_token == 0 and m.block_candidates == ()
+    gh = FakeGitHub(str(tmp_path / 'gh.db'))
+    gh.seed(5, fp)
+    assert ensure_task(req(), reg, gh, claimant='w').outcome is EnsureOutcome.UPDATED
+
+
+def test_create_not_sent_releases_the_claim_at_once(env, monkeypatch):
+    from src.task_governance import CreateNotSent
+    reg_path, gh = env
+    reg = TaskRegistry(reg_path)
+
+    def refused(request, fingerprint, **kw):
+        raise CreateNotSent('no network')
+
+    monkeypatch.setattr(gh, 'create_issue', refused)
+    with pytest.raises(CreateNotSent):
+        ensure_task(req(), reg, gh, claimant='A')
+    assert reg.get(req().fingerprint).state is MappingState.RELEASED
+    monkeypatch.undo()
+    assert ensure_task(req(), reg, gh, claimant='B').outcome is EnsureOutcome.CREATED
+
+
+def test_unblock_and_map_clear_block_candidates(env):
+    reg_path, gh = env
+    fp = req().fingerprint
+    gh.seed(5, fp); gh.seed(9, fp)
+    reg = TaskRegistry(reg_path)
+    ensure_task(req(), reg, gh, claimant='w')
+    ensure_task(req(), reg, gh, claimant='w', authoritative_hint=9)
+    assert reg.get(fp).block_candidates == () and reg.get(fp).state is MappingState.MAPPED

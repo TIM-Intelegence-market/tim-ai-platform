@@ -22,6 +22,11 @@ class IssueRef:
     is_pull_request: bool = False
 
 
+class CreateNotSent(Exception):
+    """Raised by a gateway when create_issue failed before any request left the process.
+    Only then may the claim be released at once; every other failure is treated as uncertain."""
+
+
 class IssueGateway(Protocol):
     """The only GitHub surface the guard may use. It has no close operation, and
     `mark_duplicate`/`update_issue` must only comment or label, never change state.
@@ -87,7 +92,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     """
     fp, key = request.fingerprint, request.key
     known = LEGACY_AUTHORITIES.get(key)
-    if known is not None and known.repository != gateway.repository:
+    if known is not None and known.repository.strip().lower() != str(gateway.repository).strip().lower():
         known = None                                  # numbers of another repository mean nothing here
     if known is not None and authoritative_hint in (None, known.authoritative):
         authoritative_hint = known.authoritative
@@ -155,6 +160,9 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     started = time.monotonic()
     try:
         issue = gateway.create_issue(request, fp, timeout=worst_create)
+    except CreateNotSent:
+        registry.release(fp, token)
+        raise
     except Exception as exc:
         return _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
     elapsed = time.monotonic() - started
@@ -190,7 +198,11 @@ def _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_au
         mapped = registry.map_issue(fp, token, gateway.repository, found[0].number)
         if mapped is not None:
             return EnsureResult(EnsureOutcome.CREATED, mapped, True, found[0].number, 'adopted after failed create call')
-        raise exc
+        current = registry.block(fp, 'CLAIM_LOST_AFTER_CREATE', f'created #{found[0].number} after the claim was taken over',
+                                 token=token)
+        if current.state is MappingState.MAPPED and current.github_issue_number != found[0].number:
+            current = registry.add_duplicates(fp, [found[0].number])
+        return EnsureResult(EnsureOutcome.BLOCKED, current, True, found[0].number, 'CLAIM_LOST_AFTER_CREATE')
     if len(found) > 1:
         numbers = sorted(m.number for m in found)
         blocked = registry.block(fp, 'DUPLICATE_AFTER_CREATE', f'matches={numbers}', token=token, candidates=numbers)
@@ -209,7 +221,8 @@ def _hint_resolves_block(existing, hint) -> bool:
 
 
 def _matches(gateway, fp, key, trusted_authors) -> list[IssueRef]:
-    found = gateway.find_issues(fp, key)
+    # Pull requests come out of the issues API too; a PR that carries the marker is never a task issue.
+    found = [m for m in gateway.find_issues(fp, key) if not m.is_pull_request]
     if trusted_authors is None:
         return found
     return [m for m in found if m.author in trusted_authors]

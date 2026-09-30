@@ -10,6 +10,8 @@ import json
 import sqlite3
 import time
 
+SCHEMA_VERSION = 2
+
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS task_mappings (
     fingerprint TEXT PRIMARY KEY,
@@ -62,6 +64,15 @@ class TaskRegistry:
         self.db.execute('PRAGMA journal_mode=WAL')
         self.db.execute('PRAGMA busy_timeout=30000')
         self.db.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Bring a registry file written by an earlier release up to the current columns."""
+        have = {r['name'] for r in self.db.execute('PRAGMA table_info(task_mappings)')}
+        for name, ddl in (('claim_token', 'INTEGER NOT NULL DEFAULT 0'), ('block_candidates', "TEXT NOT NULL DEFAULT '[]'")):
+            if name not in have:
+                self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
+        self.db.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
 
     def close(self):
         self.db.close()
@@ -107,7 +118,7 @@ class TaskRegistry:
         """Persist the authoritative issue. None means the claim was lost and nothing was written."""
         cur = self.db.execute(
             'UPDATE task_mappings SET state=?, github_repository=?, github_issue_number=?, duplicate_issues=?, '
-            'block_reason=\'\', updated_at=? WHERE fingerprint=? AND state=? AND claim_token=?',
+            'block_reason=\'\', block_candidates=\'[]\', updated_at=? WHERE fingerprint=? AND state=? AND claim_token=?',
             (MappingState.MAPPED, repository, issue_number, json.dumps(sorted(set(duplicates))), self.clock(),
              fingerprint, MappingState.CLAIMED, token))
         return self.get(fingerprint) if cur.rowcount == 1 else None

@@ -33,11 +33,11 @@ class FakeGitHub:
         if self.blackout:
             raise ConnectionError('github unreachable')
         db = self._db()
-        rows = db.execute('SELECT number,state,author FROM issues WHERE body LIKE ? ORDER BY number',
+        rows = db.execute('SELECT number,state,author,is_pr FROM issues WHERE body LIKE ? ORDER BY number',
                           (f'%{fingerprint_marker(fingerprint)}%',)).fetchall()
         db.close()
         time.sleep(self.latency)      # widen the check-then-create window
-        return [IssueRef(n, s, author=a) for n, s, a in rows]
+        return [IssueRef(n, s, author=a, is_pull_request=bool(p)) for n, s, a, p in rows]
 
     def get_issue(self, number):
         db = self._db()
