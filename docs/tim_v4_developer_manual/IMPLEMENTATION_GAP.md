@@ -14,6 +14,7 @@ Jeder Eintrag benennt eine real gefundene Lücke/Überanspruch mit Priorität.
 - Folgen: latenter `AttributeError` in einem Szenario-Branch.
 - Lösung: Zuweisung auf `EntryModel.LIMIT_RETEST` korrigieren; Test für den Branch ergänzen.
 - Abhängigkeit: Domain/Enum (klein).
+- Status: erledigt (PR #121).
 
 ### H-02 API-Referenz nennt nicht existente Einstiegspunkte
 - Kapitel: 28.

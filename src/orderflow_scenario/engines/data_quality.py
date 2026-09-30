@@ -108,7 +108,8 @@ class DataQualityGate:
             confidence = confidence * Decimal("0.5")
 
         status = "PASS"
-        if len(missing) >= 3 or (inputs.price_now is None):
+        # Without a price or without any candle there is nothing to analyse.
+        if len(missing) >= 3 or (inputs.price_now is None) or not inputs.candles:
             status = "INSUFFICIENT_DATA"
         elif missing or problems:
             status = "PARTIAL"
