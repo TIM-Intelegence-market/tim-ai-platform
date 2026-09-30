@@ -55,9 +55,9 @@ dazu strengere Regeln:
 | Regel | Warum |
 | --- | --- |
 | Eine Richtung hat ein Chart nur mit Positions-Werkzeug (rote und grüne Box am Einstieg). Das Modell liest nur Einstieg und die äußeren Boxkanten ab, die Richtung berechnet TIM daraus: Rot oben und Grün unten ist SHORT. | Im Test hat das Modell dieselbe Short-Position einmal als LONG gedeutet und bei einem reinen Kurschart die Hoch/Tief-Pfeile als Richtung gelesen. |
-| Die Chart-Richtung zählt nur, wenn der Beitrag keinen Text hat oder sie zur Richtung im Text passt. Hat der Text keine Richtung, bleibt es bei NONE. | Der Text ist verlässlicher als ein gelesenes Bild. |
+| Die Chart-Richtung zählt, wenn der Beitrag keinen Text hat, wenn der Text keine eigene Richtung nennt („Took this“) oder wenn sie zur Richtung im Text passt. Sie zählt nicht, wenn der Text etwas anderes sagt, eine Richtung zurücknimmt („closed my short“, „no longs“, „shorts got squeezed“), einen Trade verwaltet („stopped out“, „tp1 hit“, „if taken“, „moved sl to be“) oder eine frühere Idee erneuert („still valid“). Ist für das Symbol noch eine frühere Sicht offen (jünger als die Frist und nicht mit „closed“, „stopped out“ o. Ä. beendet), gilt ein Beitrag ohne eigene Richtung, auch ein reines Bild, als Folgebeitrag: Das Bild ersetzt dann weder seine geschriebene Richtung noch seine Level oder Invalidierung. | Der Text ist verlässlicher als ein gelesenes Bild. „Took this“ plus Chart ist aber Broncx' üblicher Stil. |
 | Der Stop des Positions-Werkzeugs wirkt nur als Invalidierung, wenn die Chart-Richtung auch zählt. | Ein falsch gelesener Stop darf keine anders lautende Sicht beenden. |
-| Chart-Level zählen nur innerhalb von 30 % vom Kurs, tragen `source: chart` und werden gegen die Kerzen geprüft. Eigene Level-Szenarien werden daraus nie. | Das Modell liest gelegentlich auch Kursanzeigen mit. |
+| Chart-Level zählen nur innerhalb von 30 % vom Kurs, tragen `source: chart`, stehen im Bericht als „aus Bild, geschätzt“ und werden gegen die Kerzen geprüft. Eigene Level-Szenarien werden daraus nie. | Das Modell liest gelegentlich auch Kursanzeigen mit. |
 | Symbol und Timeframe aus dem Bild füllen nur Lücken im Text. | |
 
 `show --price 83365` zeigt je Beitrag die Zeile `chart (estimated, …)` mit dem Gelesenen und

@@ -63,7 +63,7 @@ DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
-_TIMEFRAME = re.compile(r"^(\d{1,3})\s*(m|min|h|d)$", re.IGNORECASE)
+_TIMEFRAME = re.compile(r"^(\d{0,3})\s*(m|min|h|d)$", re.IGNORECASE)
 _MINUTES = {1, 3, 5, 15, 30, 45, 60, 120, 240}
 _HOURS = {1, 2, 4, 6, 8, 12}
 _ROLE_WORDS = (
@@ -168,7 +168,14 @@ def _timeframe(value: Any) -> str | None:
     match = _TIMEFRAME.match(value.strip())
     if not match:
         return None
-    amount, unit = int(match.group(1)), match.group(2).lower()
+    if match.group(2) == "M":  # TradingView's monthly chart, not minutes
+        return None
+    unit = match.group(2).lower()
+    if not match.group(1) and unit != "d":  # a bare "D" is TradingView's daily chart; a bare "m" is nothing
+        return None
+    amount = int(match.group(1) or 1)
+    if unit == "d" and amount == 1:
+        return "1d"
     if unit == "h" and amount in _HOURS:
         return f"{amount}h"
     if unit in {"m", "min"} and amount in _MINUTES:
@@ -332,22 +339,48 @@ class ChartImageStore:
         return done
 
 
-def merge_chart_reading(text: BroncxGuidance, has_text: bool, readings: list[ChartReading], reference_price: Decimal | None) -> BroncxGuidance:
-    """Add what the charts show to the text guidance, under the stricter chart rules."""
+# Trade management: the post is about a position that is already open or over, not a new direction.
+_MANAGEMENT = re.compile(
+    r"\b(?:stopped|clos(?:e|ed|ing)|exit(?:ed|ing)?|invalidated|if\s+taken|tp\s?\d?\s+(?:hit|done|reached|filled)"
+    r"|took\s+(?:some\s+)?profits?|profits?\s+(?:taken|secured)|secured|trimm\w*|partials?|cut\s+(?:it|this)"
+    r"|hit\s+tp|(?:sl|stop)\s+(?:to|at)\s+(?:be|entry)|break\s?even|moved?\s+(?:my\s+|the\s+)?(?:sl|stop))\b",
+    re.IGNORECASE,
+)
+
+
+def _direction_withheld(text: BroncxGuidance, content: str) -> bool:
+    """The text withdrew a direction, manages a trade, or renews an earlier idea: the chart must not start a new view."""
+    return text.direction_withdrawn or text.reaffirms_previous or bool(_MANAGEMENT.search(content))
+
+
+def merge_chart_reading(text: BroncxGuidance, has_text: bool, readings: list[ChartReading], reference_price: Decimal | None,
+                        *, content: str = "", chart_sets_direction: bool = True) -> BroncxGuidance:
+    """Add what the charts show to the text guidance, under the stricter chart rules.
+
+    ``chart_sets_direction=False`` is used for a follow-up to a view that is still open: there a chart
+    must not replace the direction, levels and invalidation he wrote earlier.
+    """
     if not readings:
         return text
     notes = list(text.notes)
     chart_biases = {reading.bias for reading in readings if reading.bias in {"SHORT", "LONG"}}
     bias = text.bias
+    bias_source = text.bias_source
     chart_direction_used = False
     if chart_biases:
         chart_bias = "MIXED" if len(chart_biases) > 1 else next(iter(chart_biases))
-        if not has_text:
-            bias, chart_direction_used = chart_bias, chart_bias in {"SHORT", "LONG"}
+        if not has_text and chart_sets_direction:
+            bias, chart_direction_used, bias_source = chart_bias, chart_bias in {"SHORT", "LONG"}, "chart"
             notes.append(f"bias {chart_bias} read from chart (estimated)")
         elif text.bias == chart_bias:
             chart_direction_used = True
             notes.append(f"chart agrees with text bias {chart_bias}")
+        elif text.bias == "NONE" and chart_bias in {"SHORT", "LONG"} and chart_sets_direction and not _direction_withheld(text, content):
+            # "Took this" plus a position tool: the text names no direction, so the chart's counts.
+            bias, chart_direction_used, bias_source = chart_bias, True, "chart_text_silent"
+            notes.append(f"bias {chart_bias} read from chart (estimated); text states no direction")
+        elif text.bias == "NONE" and not chart_sets_direction:
+            notes.append(f"chart bias {chart_bias} not used: follow-up to an active view")
         else:
             notes.append(f"chart bias {chart_bias} ignored: text says {text.bias}")
 
@@ -384,10 +417,11 @@ def merge_chart_reading(text: BroncxGuidance, has_text: bool, readings: list[Cha
     else:
         quality = "UNSTRUCTURED"
     return replace(text, bias=bias, symbol=symbol, timeframe=timeframe, levels=tuple(levels), invalidation=tuple(invalidation),
-                   parse_quality=quality, notes=tuple(notes), chart_readings=len(readings))
+                   parse_quality=quality, notes=tuple(notes), chart_readings=len(readings), bias_source=bias_source)
 
 
-def guidance_for_post(post: BroncxPost, reference_price: Decimal | None = None) -> BroncxGuidance:
+def guidance_for_post(post: BroncxPost, reference_price: Decimal | None = None, *, chart_sets_direction: bool = True) -> BroncxGuidance:
     """Text guidance plus the cached chart readings attached to the post."""
     text = parse_guidance(post.content, reference_price)
-    return merge_chart_reading(text, bool(post.content.strip()), list(post.chart_readings), reference_price)
+    return merge_chart_reading(text, bool(post.content.strip()), list(post.chart_readings), reference_price,
+                               content=post.content, chart_sets_direction=chart_sets_direction)

@@ -219,6 +219,8 @@ class BroncxGuidance:
     parse_quality: str  # STRUCTURED | PARTIAL | UNSTRUCTURED
     notes: tuple[str, ...] = field(default=())
     chart_readings: int = 0  # chart images whose reading was merged in
+    direction_withdrawn: bool = False  # "closed my short", "no longs", "shorts got squeezed"
+    bias_source: str = "text"  # text | chart (image-only post) | chart_text_silent (text names no direction)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -233,19 +235,24 @@ class BroncxGuidance:
             "parse_quality": self.parse_quality,
             "notes": list(self.notes),
             "chart_readings": self.chart_readings,
+            "direction_withdrawn": self.direction_withdrawn,
+            "bias_source": self.bias_source,
         }
 
 
 def parse_guidance(text: str, reference_price: Decimal | None = None) -> BroncxGuidance:
     """Best-effort structure from a Broncx post. Unrecognised text stays raw, never guessed."""
     notes: list[str] = []
+    withdrawn = False
     directional = _REVERSED.sub(" ", text)
     if directional != text:
         notes.append("squeeze/liquidation wording ignored for bias")
+        withdrawn = True
     negated = _NEGATED.sub(" ", directional)
     if negated != directional:
         notes.append("negated or closed position ignored for bias")
         directional = negated
+        withdrawn = True
     short, long = bool(_SHORT.search(directional)), bool(_LONG.search(directional))
     bias = "MIXED" if short and long else "SHORT" if short else "LONG" if long else "NONE"
 
@@ -289,7 +296,8 @@ def parse_guidance(text: str, reference_price: Decimal | None = None) -> BroncxG
         quality = "PARTIAL"
     else:
         quality = "UNSTRUCTURED"
-    return BroncxGuidance(bias, symbol, timeframe, tuple(levels), invalidation, conditions, references, reaffirms, quality, tuple(notes))
+    return BroncxGuidance(bias, symbol, timeframe, tuple(levels), invalidation, conditions, references, reaffirms, quality, tuple(notes),
+                          direction_withdrawn=withdrawn)
 
 
 def _level(number: re.Match[str], text: str, reference_price: Decimal | None, *, stop: bool = False) -> BroncxLevel | None:
