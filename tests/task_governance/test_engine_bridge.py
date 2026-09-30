@@ -3,7 +3,7 @@ import pytest
 from src.task_engine.repository import SqliteTaskRepository
 from src.task_engine.service import TaskEngine
 from src.task_engine.model import TaskState
-from src.task_governance import (EnsureOutcome, GitHubRestGateway, MappingState, TaskRegistry, request_from_engine_task,
+from src.task_governance import (EnsureOutcome, GitHubRestGateway, IdentityDrift, MappingState, TaskRegistry, request_from_engine_task,
                                  sync_engine_task_to_issue)
 from tests.task_governance.fake_rest import FakeRest
 
@@ -123,3 +123,34 @@ def test_regression_legacy_audit_is_adopted_through_the_bridge_without_a_new_iss
     assert len(rest.issues) == 45 and all(i['state'] == 'open' for i in rest.issues.values())
     assert sync(engine, reg, gw, 'BASELINE', target='TIM').issue_number == 11
     assert len(rest.issues) == 45
+
+
+# ---- review round 1 of PR #130 ----
+def test_task_ids_differing_only_in_case_get_distinct_identities_and_issues(world):
+    engine, reg, gw, rest, _ = world
+    make(engine, 'bug-a'), make(engine, 'BUG-A')
+    first, second = sync(engine, reg, gw, 'bug-a'), sync(engine, reg, gw, 'BUG-A')
+    assert first.issue_number != second.issue_number and len(rest.issues) == 2
+    keys = {request_from_engine_task(engine.get_task(t), mission_id='M09', phase_id='P0').key for t in ('bug-a', 'BUG-A')}
+    assert len(keys) == 2 and 'M09|P0|SAMPLE_TASK|BUG-A|v1' in keys
+
+
+@pytest.mark.parametrize('task_id', ['bug a', 'bug|a', 'ünï', 'H-0123456789ABCDEF'])
+def test_unusual_or_reserved_task_ids_still_get_a_valid_unique_identity(world, task_id):
+    engine, reg, gw, rest, _ = world
+    make(engine, task_id)
+    key = request_from_engine_task(engine.get_task(task_id), mission_id='M09', phase_id='P0').key
+    assert key.split('|')[3].startswith('H-') and key.split('|')[3] != task_id.upper()
+    assert sync(engine, reg, gw, task_id).outcome is EnsureOutcome.CREATED
+
+
+def test_changed_identity_for_the_same_task_is_refused_before_any_github_call(world):
+    engine, reg, gw, rest, _ = world
+    make(engine)
+    sync(engine, reg, gw)
+    calls = len(rest.calls)
+    for changed in (dict(phase_id='P1'), dict(schema_version='v2'), dict(task_type='OTHER'), dict(target='ELSE')):
+        args = dict(mission_id='M09', phase_id='P0', claimant='w', trusted_authors=None) | changed
+        with pytest.raises(IdentityDrift):
+            sync_engine_task_to_issue(engine, 'T-1', reg, gw, **args)
+    assert len(rest.calls) == calls and len(rest.issues) == 1 and len(engine.checkpoints('T-1')) == 1

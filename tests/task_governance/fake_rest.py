@@ -8,11 +8,14 @@ class FakeRest:
     def __init__(self, repository='owner/repo'):
         self.repo = repository
         self.issues, self.comments, self.calls = {}, {}, []
+        self.alias = {}                 # asked issue number -> served issue number (models a silent redirect)
         self.fail = {}                  # (method, path-regex) -> status code or Exception instance
         self.next_number = 1000
+        self.repo_visible = True
 
     def seed(self, number, body='', state='open', login='owner', pr=False):
-        item = {'number': number, 'state': state, 'title': f'issue {number}', 'body': body, 'user': {'login': login}}
+        item = {'number': number, 'state': state, 'title': f'issue {number}', 'body': body, 'user': {'login': login},
+                'repository_url': f'https://api.github.com/repos/{self.repo}'}
         if pr:
             item['pull_request'] = {'url': 'x'}
         self.issues[number] = item
@@ -46,7 +49,7 @@ class FakeRest:
                 return 201, json.dumps(self.issues[number]).encode()
         m = re.fullmatch(re.escape(base) + r'/(\d+)', path)
         if m:
-            number = int(m.group(1))
+            number = self.alias.get(int(m.group(1)), int(m.group(1))) if method == 'GET' else int(m.group(1))
             if number not in self.issues:
                 return 404, b'{}'
             if method == 'GET':
@@ -64,4 +67,6 @@ class FakeRest:
             if method == 'POST':
                 self.comments.setdefault(number, []).append({'body': payload['body']})
                 return 201, b'{}'
+        if path == f'/repos/{self.repo}' and method == 'GET':
+            return (200, b'{}') if self.repo_visible else (404, b'{}')
         return 400, b'{}'

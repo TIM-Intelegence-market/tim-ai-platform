@@ -160,3 +160,143 @@ def test_constructor_validates_repository_and_token():
         GitHubRestGateway('not a repo', TOKEN)
     with pytest.raises(ValueError):
         GitHubRestGateway('owner/repo', '')
+
+
+# ---- review round 1 of PR #130: redirects, wall-clock timeout, answer identity, 404 semantics ----
+import http.server
+import socket
+import threading
+import time
+
+
+def test_every_3xx_is_an_error_and_nothing_is_followed(rest, gw):
+    rest.seed(11)
+    rest.fail[('GET', r'/issues/11$')] = 301
+    with pytest.raises(GitHubError):
+        gw.get_issue(11)
+    rest.fail[('PATCH', r'/issues/11$')] = 307
+    with pytest.raises(GitHubError):
+        gw._call('PATCH', '/repos/owner/repo/issues/11', {'body': 'x'})
+
+
+def test_an_answer_for_another_issue_number_is_refused(rest, gw):
+    rest.seed(11)
+    rest.seed(77)
+    rest.alias[11] = 77
+    with pytest.raises(GitHubError):
+        gw.get_issue(11)
+    with pytest.raises(GitHubError):
+        gw.update_issue(11, req(), 'x')
+    assert not rest.writes()                                  # nothing was written to #77
+
+
+def test_an_issue_of_another_repository_is_refused(rest, gw):
+    rest.seed(5)
+    rest.issues[5]['repository_url'] = 'https://api.github.com/repos/owner/other'
+    with pytest.raises(GitHubError):
+        gw.get_issue(5)
+    rest.seed(6, fingerprint_marker(req().fingerprint))
+    rest.issues[6]['repository_url'] = 'https://api.github.com/repos/owner/other'
+    with pytest.raises(GitHubError):
+        gw.find_issues(req().fingerprint, '')
+
+
+def test_404_on_an_invisible_repository_is_not_reported_as_missing_issue(rest, gw):
+    assert gw.get_issue(404) is None                          # repository visible: a real 404 for the issue
+    rest.repo_visible = False
+    with pytest.raises(GitHubError):
+        GitHubRestGateway('owner/repo', TOKEN, transport=rest).get_issue(404)
+
+
+def test_connection_refused_only_counts_as_not_sent_for_create(rest, gw):
+    rest.fail[('GET', r'/issues/9$')] = _NotSent()
+    with pytest.raises(GitHubError):
+        gw.get_issue(9)
+    rest.fail[('POST', r'/issues$')] = _NotSent()
+    with pytest.raises(CreateNotSent):
+        gw.create_issue(req(), req().fingerprint, timeout=5)
+
+
+class _Server:
+    """Local HTTP server for the real transport; `handler(self)` decides the answer."""
+    def __init__(self, handler):
+        self.paths = []
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+
+            def do_GET(self): outer.paths.append(('GET', self.path)); handler(self)
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get('Content-Length') or 0)); outer.paths.append(('POST', self.path)); handler(self)
+            do_PATCH = do_POST
+
+        self.httpd = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.url = f'http://127.0.0.1:{self.httpd.server_port}'
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+def _real(server, **kw):
+    return GitHubRestGateway('o/r', TOKEN, api=server.url, **kw)
+
+
+def test_real_transport_does_not_follow_a_redirect_to_another_issue():
+    def handler(h):
+        if h.path.endswith('/issues/11'):
+            h.send_response(301); h.send_header('Location', '/repos/o/r/issues/77'); h.send_header('Content-Length', '0'); h.end_headers()
+        else:
+            body = b'{"number": 77, "state": "open"}'
+            h.send_response(200); h.send_header('Content-Length', str(len(body))); h.end_headers(); h.wfile.write(body)
+    server = _Server(handler)
+    try:
+        with pytest.raises(GitHubError):
+            _real(server).get_issue(11)
+        assert server.paths == [('GET', '/repos/o/r/issues/11')]      # #77 was never requested
+    finally:
+        server.close()
+
+
+def test_real_transport_slow_drip_answer_cannot_outlive_the_create_timeout():
+    def handler(h):
+        h.send_response(201); h.send_header('Content-Length', '200'); h.end_headers()
+        for _ in range(200):
+            try:
+                h.wfile.write(b' '); h.wfile.flush()
+            except OSError:
+                return
+            time.sleep(0.1)
+    server = _Server(handler)
+    try:
+        gateway = _real(server)
+        start = time.monotonic()
+        with pytest.raises(GitHubError) as caught:
+            gateway.create_issue(req(), req().fingerprint, timeout=0.6)
+        assert time.monotonic() - start < 3 and not isinstance(caught.value, CreateNotSent)
+    finally:
+        server.close()
+
+
+def test_real_transport_http_errors_and_refused_connections():
+    server = _Server(lambda h: (h.send_response(403), h.send_header('Content-Length', '0'), h.end_headers()))
+    try:
+        with pytest.raises(GitHubError, match='HTTP 403'):
+            _real(server).get_issue(1)
+    finally:
+        server.close()
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]                          # closed again: nothing listens here
+    dead = GitHubRestGateway('o/r', TOKEN, api=f'http://127.0.0.1:{port}')
+    with pytest.raises(CreateNotSent):
+        dead.create_issue(req(), req().fingerprint, timeout=2)
+    with pytest.raises(GitHubError):
+        dead.get_issue(1)
+
+
+def test_real_transport_refuses_plain_http_to_a_real_host():
+    with pytest.raises(GitHubError):
+        GitHubRestGateway('o/r', TOKEN, api='http://example.com').get_issue(1)

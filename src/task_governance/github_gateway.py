@@ -5,18 +5,23 @@ Contract kept on purpose:
   more issues than the page cap allows raise instead of guessing.
 - `get_issue` returns None only for a confirmed 404. Rate limits, permission errors, 5xx and network
   errors raise `GitHubError`, so a transient failure never looks like "does not exist".
-- `create_issue` enforces `timeout` on the request; `CreateNotSent` only when no request can have left
-  the process (connection refused, name resolution failed).
+- `create_issue` enforces `timeout` as a wall-clock limit on the whole request (a server that drips bytes
+  cannot stretch it); `CreateNotSent` only when no request can have left the process (connection refused,
+  name resolution failed). A timeout is uncertain and raises `GitHubError`.
+- Redirects are never followed (a moved or transferred issue must not redirect a write to another issue); every
+  3xx is an error. An answer must carry the requested issue number and, when present, this repository's URL.
 - `update_issue`, `mark_duplicate`, `reopen_issue` only change the managed body section, add a marker,
   comment, or reopen. No method changes an issue to closed.
 The token is used only in the Authorization header and never appears in errors.
 """
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from http.client import HTTPConnection, HTTPSConnection
+from urllib.parse import urlsplit
 import hashlib
+import ipaddress
 import json
 import re
 import socket
+import threading
 
 from .identity import TaskRequest, fingerprint_marker
 from .sync import CreateNotSent, IssueRef
@@ -36,24 +41,67 @@ class _NotSent(Exception):
     pass
 
 
-def _urllib_transport(method, url, headers, body, timeout):
-    request = Request(url, data=body, method=method, headers=headers)
+MAX_ANSWER_BYTES = 16 * 1024 * 1024
+
+
+def _is_loopback(host):
     try:
-        with urlopen(request, timeout=timeout) as response:
-            return response.status, response.read()
-    except HTTPError as error:
-        return error.code, b''
-    except URLError as error:
-        if isinstance(error.reason, (ConnectionRefusedError, socket.gaierror)):
+        return ipaddress.ip_address(host).is_loopback or host == 'localhost'
+    except ValueError:
+        return host == 'localhost'
+
+
+def _http_transport(method, url, headers, body, timeout):
+    """One request with a wall-clock deadline; no redirects (http.client never follows them)."""
+    parts = urlsplit(url)
+    if parts.scheme == 'https':
+        factory = HTTPSConnection
+    elif parts.scheme == 'http' and _is_loopback(parts.hostname or ''):
+        factory = HTTPConnection            # plain http only for a local test server, never with a real host
+    else:
+        raise GitHubError('refusing a non-https url')
+    target = parts.path + (f'?{parts.query}' if parts.query else '')
+    box = {}
+
+    def run():
+        try:
+            box['conn'] = conn = factory(parts.hostname, parts.port, timeout=timeout)
+            conn.request(method, target, body=body, headers=headers)
+            response = conn.getresponse()
+            data = response.read(MAX_ANSWER_BYTES + 1)
+            box['result'] = (response.status, data)
+        except BaseException as error:      # reported to the caller thread below
+            box['error'] = error
+        finally:
+            conn = box.get('conn')
+            if conn is not None:
+                conn.close()
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        conn = box.get('conn')
+        if conn is not None:
+            conn.close()                    # unblocks the worker; the request may still have reached GitHub
+        raise GitHubError(f'{method} timed out after {timeout}s')
+    error = box.get('error')
+    if error is not None:
+        if isinstance(error, (ConnectionRefusedError, socket.gaierror)):
             raise _NotSent() from None
-        raise GitHubError(f'{method} failed: {type(error.reason).__name__}') from None
-    except (TimeoutError, OSError) as error:
         raise GitHubError(f'{method} failed: {type(error).__name__}') from None
+    status, data = box['result']
+    if len(data) > MAX_ANSWER_BYTES:
+        raise GitHubError(f'{method} answer too large')
+    return status, data
+
+
+_urllib_transport = _http_transport         # earlier name
 
 
 class GitHubRestGateway:
     def __init__(self, repository: str, token: str, *, max_create_seconds: float = 20.0, request_timeout: float = 20.0,
-                 max_pages: int = 50, transport=_urllib_transport, api: str = API):
+                 max_pages: int = 50, transport=_http_transport, api: str = API):
         if not re.fullmatch(r'[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+', repository or ''):
             raise ValueError('repository must look like owner/name')
         if not token:
@@ -62,23 +110,29 @@ class GitHubRestGateway:
         self.max_create_seconds = float(max_create_seconds)
         self._token, self._timeout, self._max_pages = token, float(request_timeout), max_pages
         self._transport, self._api = transport, api.rstrip('/')
+        self._repository_ok = False
 
     def __repr__(self):
         return f'GitHubRestGateway({self.repository!r})'
 
     # -- plumbing ----------------------------------------------------------
-    def _call(self, method, path, payload=None, *, timeout=None):
+    def _call(self, method, path, payload=None, *, timeout=None, create=False):
         headers = {'Accept': 'application/vnd.github+json', 'Authorization': f'Bearer {self._token}',
                    'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'tim-task-governance'}
         body = None
         if payload is not None:
             body = json.dumps(payload).encode('utf-8')
             headers['Content-Type'] = 'application/json'
-        status, raw = self._transport(method, f'{self._api}{path}', headers, body, timeout or self._timeout)
-        if status >= 400:
+        try:
+            status, raw = self._transport(method, f'{self._api}{path}', headers, body, timeout or self._timeout)
+        except _NotSent:
+            if create:
+                raise
+            raise GitHubError(f'{method} {path}: connection refused') from None
+        if status >= 300:
             if status == 404 and method == 'GET':
                 return 404, None
-            raise GitHubError(f'{method} {path}: HTTP {status}')
+            raise GitHubError(f'{method} {path}: HTTP {status}')      # includes 3xx: redirects are never followed
         try:
             return status, (json.loads(raw.decode('utf-8')) if raw else None)
         except ValueError:
@@ -95,14 +149,32 @@ class GitHubRestGateway:
                 return
         raise GitHubError(f'GET {path}: more than {self._max_pages * PAGE_SIZE} entries, refusing to guess')
 
-    @staticmethod
-    def _ref(item) -> IssueRef:
+    def _ref(self, item, number=None) -> IssueRef:
+        if not isinstance(item, dict) or 'number' not in item:
+            raise GitHubError('answer without an issue number')
+        if number is not None and int(item['number']) != int(number):
+            raise GitHubError(f'asked for issue #{int(number)} but got #{item["number"]}')
+        url = item.get('repository_url')
+        if url is not None and not str(url).lower().rstrip('/').endswith(f'/repos/{self.repository}'.lower()):
+            raise GitHubError(f'issue #{item["number"]} belongs to another repository')
         return IssueRef(int(item['number']), str(item.get('state', '')), item.get('title') or '',
                         ((item.get('user') or {}).get('login') or ''), is_pull_request='pull_request' in item)
 
     def _issue(self, number):
         status, item = self._call('GET', f'/repos/{self.repository}/issues/{int(number)}')
-        return None if status == 404 else item
+        if status == 404:
+            self._require_repository()          # 404 on a private or wrong repository must not read as "no such issue"
+            return None
+        self._ref(item, number)
+        return item
+
+    def _require_repository(self):
+        if self._repository_ok:
+            return
+        status, _ = self._call('GET', f'/repos/{self.repository}')
+        if status == 404:
+            raise GitHubError('repository not found or no access')
+        self._repository_ok = True
 
     def _comment(self, number, text):
         self._call('POST', f'/repos/{self.repository}/issues/{int(number)}/comments', {'body': text})
@@ -115,17 +187,15 @@ class GitHubRestGateway:
 
     def get_issue(self, number):
         item = self._issue(number)
-        return None if item is None else self._ref(item)
+        return None if item is None else self._ref(item, number)
 
     def create_issue(self, request: TaskRequest, fingerprint, *, timeout):
         body = f'{_managed(request)}\n\n{fingerprint_marker(fingerprint)}'
         try:
             _, item = self._call('POST', f'/repos/{self.repository}/issues', {'title': request.title or request.key, 'body': body},
-                                 timeout=timeout)
+                                 timeout=timeout, create=True)
         except _NotSent:
             raise CreateNotSent('connection could not be opened') from None
-        if not isinstance(item, dict) or 'number' not in item:
-            raise GitHubError('create answered without an issue number')
         return self._ref(item)
 
     def update_issue(self, number, request: TaskRequest, reason):
