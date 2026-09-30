@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -94,6 +94,9 @@ class BroncxPost:
     attachments: tuple[str, ...] = ()
     forwarded_by: str = ""
     note: str = ""
+    # Cached chart readings (``broncx_chart_vision.ChartReading``) attached by ``BroncxFeedStore.load``;
+    # never written to posts.jsonl.
+    chart_readings: tuple[Any, ...] = field(default=(), compare=False)
 
     def __post_init__(self) -> None:
         if not self.message_id:
@@ -113,6 +116,7 @@ class BroncxPost:
         payload["posted_at"] = self.posted_at.isoformat()
         payload["received_at"] = self.received_at.isoformat()
         payload["attachments"] = list(self.attachments)
+        payload.pop("chart_readings", None)
         return payload
 
     @classmethod
@@ -149,7 +153,16 @@ class BroncxFeedStore:
             except (ValueError, KeyError, TypeError):
                 continue  # a torn last line after a crash must not hide the other posts
             posts.setdefault(post.message_id, post)
-        return sorted(posts.values(), key=lambda item: (item.posted_at, item.message_id))
+        return sorted(self._with_chart_readings(posts.values()), key=lambda item: (item.posted_at, item.message_id))
+
+    def _with_chart_readings(self, posts: Iterable[BroncxPost]) -> list[BroncxPost]:
+        from .broncx_chart_vision import ChartImageStore  # local import: the vision module builds on this one
+
+        images = ChartImageStore(self.root)
+        readings = images.readings()
+        if not readings:
+            return list(posts)
+        return [replace(post, chart_readings=tuple(images.readings_for(post.message_id, readings))) for post in posts]
 
     def append(self, post: BroncxPost) -> bool:
         if any(existing.message_id == post.message_id for existing in self.load()):
@@ -184,12 +197,13 @@ class BroncxFeedStore:
 class BroncxLevel:
     raw: str
     value: Decimal
-    role: str  # TARGET | STOP | LEVEL
+    role: str  # TARGET | STOP | LEVEL, and ENTRY for a position tool read from a chart
     scaled_from_shorthand: bool = False
     ambiguous: bool = False
+    source: str = "text"  # text | chart (read from an image by the local vision model, estimated)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"raw": self.raw, "value": str(self.value), "role": self.role, "scaled_from_shorthand": self.scaled_from_shorthand, "ambiguous": self.ambiguous}
+        return {"raw": self.raw, "value": str(self.value), "role": self.role, "scaled_from_shorthand": self.scaled_from_shorthand, "ambiguous": self.ambiguous, "source": self.source}
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +218,7 @@ class BroncxGuidance:
     reaffirms_previous: bool
     parse_quality: str  # STRUCTURED | PARTIAL | UNSTRUCTURED
     notes: tuple[str, ...] = field(default=())
+    chart_readings: int = 0  # chart images whose reading was merged in
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -217,6 +232,7 @@ class BroncxGuidance:
             "reaffirms_previous": self.reaffirms_previous,
             "parse_quality": self.parse_quality,
             "notes": list(self.notes),
+            "chart_readings": self.chart_readings,
         }
 
 

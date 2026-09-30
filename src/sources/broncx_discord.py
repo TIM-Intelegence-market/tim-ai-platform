@@ -20,6 +20,7 @@ import re
 import stat
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from config.secrets import SecretValue
+from src.knowledge.broncx_chart_vision import IMAGE_SUFFIXES, MAX_IMAGE_BYTES, ChartImageStore
 from src.knowledge.broncx_feed import SOURCE_FORWARD, SOURCE_MANUAL, BroncxFeedStore, BroncxPost
 
 __all__ = [
@@ -48,6 +50,9 @@ _FORWARD_REFERENCE_TYPE = 1
 INITIAL_BACKFILL = 50
 
 HttpGet = Callable[[str, dict[str, str]], tuple[int, Any, dict[str, str]]]
+HttpGetBytes = Callable[[str, dict[str, str], int], bytes]
+# Attachment files are only fetched from Discord's own CDN, and never with the bot secret.
+_CDN_HOSTS = {"cdn.discordapp.com", "media.discordapp.net"}
 
 
 class DiscordFeedError(RuntimeError):
@@ -114,6 +119,8 @@ class PollResult:
     rejected_author: int
     skipped_empty: int
     last_message_id: str | None
+    images_saved: int = 0
+    image_errors: int = 0
 
 
 def message_to_post(message: dict[str, Any], received_at: datetime) -> BroncxPost | None:
@@ -148,6 +155,42 @@ def message_to_post(message: dict[str, Any], received_at: datetime) -> BroncxPos
     )
 
 
+def image_attachments(message: dict[str, Any]) -> tuple[str, list[tuple[str, str]]]:
+    """(stored message id, [(filename, url)]) of the chart images in a forward or a typed message."""
+    snapshots = message.get("message_snapshots") or []
+    reference = message.get("message_reference") or {}
+    if snapshots and reference.get("type", _FORWARD_REFERENCE_TYPE) == _FORWARD_REFERENCE_TYPE:
+        attachments = (snapshots[0].get("message") or {}).get("attachments") or []
+        message_id = str(reference.get("message_id") or message["id"])
+    else:
+        attachments = message.get("attachments") or []
+        message_id = str(message["id"])
+    images = []
+    for item in attachments:
+        filename, url = str(item.get("filename") or ""), str(item.get("url") or "")
+        content_type = str(item.get("content_type") or "")
+        if (content_type.startswith("image/") or Path(filename).suffix.lower() in IMAGE_SUFFIXES) and _is_cdn(url):
+            if int(item.get("size") or 0) <= MAX_IMAGE_BYTES:
+                images.append((filename or "image.png", url))
+    return message_id, images
+
+
+def _is_cdn(url: str) -> bool:
+    parsed = urllib.parse.urlsplit(url)
+    return parsed.scheme == "https" and (parsed.hostname or "") in _CDN_HOSTS
+
+
+def _urllib_get_bytes(url: str, headers: dict[str, str], limit: int) -> bytes:
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    with urllib.request.urlopen(request, timeout=30) as response:
+        if not _is_cdn(response.geturl()):
+            raise OSError("attachment redirected away from the Discord CDN")
+        data = response.read(limit + 1)
+    if len(data) > limit:
+        raise OSError("attachment larger than the image size limit")
+    return data
+
+
 def _parse_time(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
@@ -173,6 +216,7 @@ class DiscordFeedPoller:
         config: DiscordFeedConfig,
         store: BroncxFeedStore,
         http_get: HttpGet | None = None,
+        http_get_bytes: HttpGetBytes | None = None,
         clock: Callable[[], datetime] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -180,6 +224,8 @@ class DiscordFeedPoller:
         self.config = config
         self.store = store
         self._http_get = http_get or _urllib_get
+        self._http_get_bytes = http_get_bytes or _urllib_get_bytes
+        self.images = ChartImageStore(store.root)
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._sleep = sleep
 
@@ -190,7 +236,7 @@ class DiscordFeedPoller:
         if not isinstance(messages, list):
             raise DiscordFeedError("unexpected Discord response shape")
 
-        stored = duplicates = rejected = empty = 0
+        stored = duplicates = rejected = empty = saved = errors = 0
         newest = after
         received_at = self._clock()
         for message in sorted((item for item in messages if _SNOWFLAKE.fullmatch(str(item.get("id", "")))), key=lambda item: int(item["id"])):
@@ -210,9 +256,50 @@ class DiscordFeedPoller:
                 stored += 1
             else:
                 duplicates += 1
+            ok, failed = self._save_images(message)
+            saved, errors = saved + ok, errors + failed
         if newest and newest != after:
             self.store.set_last_message_id(newest)
-        return PollResult(len(messages), stored, duplicates, rejected, empty, newest)
+        return PollResult(len(messages), stored, duplicates, rejected, empty, newest, saved, errors)
+
+    def backfill_images(self) -> tuple[int, int]:
+        """Download chart images of already stored posts (from before image support), while Discord still links them."""
+        messages = self._get(f"{API_BASE}/channels/{self.config.channel_id}/messages?limit=100")
+        if not isinstance(messages, list):
+            raise DiscordFeedError("unexpected Discord response shape")
+        stored = {post.message_id for post in self.store.load()}
+        saved = errors = 0
+        for message in messages:
+            author = message.get("author") or {}
+            if author.get("bot") or str(author.get("id", "")) not in self.config.forwarder_ids:
+                continue
+            try:
+                message_id, _ = image_attachments(message)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if message_id in stored:
+                ok, failed = self._save_images(message)
+                saved, errors = saved + ok, errors + failed
+        return saved, errors
+
+    def _save_images(self, message: dict[str, Any]) -> tuple[int, int]:
+        """Store the post's chart images once; a failed download never blocks the text post."""
+        try:
+            message_id, images = image_attachments(message)
+        except (KeyError, TypeError, ValueError):
+            return 0, 0
+        if not images or self.images.has_images(message_id):
+            return 0, 0
+        saved = errors = 0
+        for index, (filename, url) in enumerate(images):
+            try:
+                data = self._http_get_bytes(url, {"User-Agent": USER_AGENT}, MAX_IMAGE_BYTES)
+            except (OSError, ValueError):
+                errors += 1
+                continue
+            self.images.save(message_id, index, filename, data)
+            saved += 1
+        return saved, errors
 
     def _get(self, url: str) -> Any:
         headers = {"Authorization": f"Bot {self._secret.reveal()}", "User-Agent": USER_AGENT}
