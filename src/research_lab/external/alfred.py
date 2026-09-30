@@ -204,6 +204,7 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
                 issues.append(issue("DUPLICATE_RECORD", Severity.WARNING, record_id, f"{len(items)} identical rows; kept one", items[0].available_at))
 
     records, unusable = _vintage_chain_checks(records, unusable, issues)
+    _missing_successors(spec, records, unusable, request_end, release_dates, issues)
     _date_bad_ends(series_id, bad_ends, records, unusable, ingested_at, issues)
     without_first = _revision_history_gaps(spec, records, unusable, clipped_start, release_dates, issues)
     state = QualityState.READY if records or unusable else QualityState.INSUFFICIENT_DATA
@@ -461,6 +462,41 @@ def _vintage_chain_checks(
             else:
                 kept.append(current)
     return sorted(kept, key=lambda item: (item.period_start, item.vintage)), unusable
+
+
+def _missing_successors(
+    spec: SourceSpec,
+    records: list[VintageObservation],
+    unusable: list[Unusable],
+    request_end: date,
+    release_dates: set[date],
+    issues: list[DatedIssue],
+) -> None:
+    """A vintage that ended without a successor starting the next day leaves its period unknown.
+
+    The missing vintage would have started the day after realtime_end; from the instant it
+    would have become available (same rule as a real vintage) the period is UNKNOWN, so the
+    expired value is not carried forward and earlier replays are unchanged. A row ending on
+    the request's last day is clipped by the request, not ended."""
+    starts: dict[date, set[date]] = defaultdict(set)
+    for item in [*records, *unusable]:
+        starts[item.period_start].add(item.vintage)
+    for item in sorted([*records, *unusable], key=lambda item: (item.period_start, item.vintage)):
+        end = item.vintage_end
+        if end is None or end >= request_end:
+            continue
+        successor = end + timedelta(days=1)
+        if any(start <= successor for start in starts[item.period_start] if start > item.vintage):
+            continue  # the next vintage starts on time (or overlaps, which the chain check handles)
+        basis = AvailabilityBasis.SCHEDULED_RELEASE if successor in release_dates else AvailabilityBasis.END_OF_VINTAGE_DAY
+        try:
+            available_at = spec.available_at(successor, basis)
+        except OverflowError:
+            continue  # the successor could never become available in any representable replay
+        record_id = f"{spec.source}:{spec.source_identifier}:{item.period_start.isoformat()}@{successor.isoformat()}"
+        issues.append(issue("MISSING_VINTAGE", Severity.ERROR, record_id, f"vintage {item.vintage.isoformat()} ended {end.isoformat()} and no vintage starts the next day", available_at))
+        unusable.append(Unusable(item.period_start, successor, available_at, "MISSING_VINTAGE"))
+        starts[item.period_start].add(successor)
 
 
 def _date_bad_ends(

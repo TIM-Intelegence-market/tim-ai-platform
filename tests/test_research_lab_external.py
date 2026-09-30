@@ -844,6 +844,24 @@ def test_calendar_gap_around_the_first_release_certifies_no_first_print() -> Non
         with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", datetime(2024, 3, 1, tzinfo=UTC)))
 
 
+def test_vintage_ending_without_successor_leaves_the_period_unknown_from_then_on() -> None:
+    rows = [r for r in base_rows() if not (r["date"] == "2024-01-01" and r["realtime_start"] == "2024-03-12")]
+    result = ingest(rows)  # January's first print ends 2024-03-11, its March 12 revision is missing
+    assert result.state is QualityState.READY and "MISSING_VINTAGE" in codes(result)
+    pit = PointInTimeStore(result)
+    assert pit.value(date(2024, 1, 1), MAR_RELEASE - timedelta(seconds=1)).value == Decimal("300.0")
+    assert pit.value(date(2024, 1, 1), MAR_RELEASE).status is Visibility.UNKNOWN
+    feb = release_events(pit, until=INGESTED)[1]
+    assert feb.previous == Decimal("300.0") and feb.previous_revised is None and feb.derived_change_pct is None
+    before = datetime(2024, 3, 1, tzinfo=UTC)
+    assert replay(result, before)["content_hash"] == replay(ingest(), before)["content_hash"]
+    # A gap between two vintages is unknown until the later one arrives.
+    gap = [row("2024-01-01", "2024-02-13", "2024-03-11", "300.0"), row("2024-01-01", "2024-04-10", "9999-12-31", "300.4")]
+    gapped = store(gap)
+    assert gapped.value(date(2024, 1, 1), MAR_RELEASE).status is Visibility.UNKNOWN
+    assert gapped.value(date(2024, 1, 1), APR_RELEASE).value == Decimal("300.4")
+
+
 @pytest.mark.parametrize(
     "envelope",
     [{"start": "2024-04-01"}, {"end": "2024-02-01"}, {"start": "2024-05-01", "end": "2024-04-01"}],
