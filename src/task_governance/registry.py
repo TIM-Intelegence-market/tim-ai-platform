@@ -10,7 +10,7 @@ import json
 import sqlite3
 import time
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS task_mappings (
@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS task_mappings (
     duplicate_issues TEXT NOT NULL DEFAULT '[]',
     block_reason TEXT NOT NULL DEFAULT '',
     block_candidates TEXT NOT NULL DEFAULT '[]',
+    hint_issue INTEGER,
+    hint_legacy TEXT NOT NULL DEFAULT '[]',
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS governance_incidents (
@@ -53,6 +55,8 @@ class Mapping:
     duplicate_issues: tuple[int, ...]
     block_reason: str
     block_candidates: tuple[int, ...]
+    hint_issue: int | None = None                  # operator-designated authoritative issue, pinned by the first claim
+    hint_legacy: tuple[int, ...] = ()              # known historical duplicates pinned together with it
 
 
 class TaskRegistry:
@@ -82,7 +86,8 @@ class TaskRegistry:
     def _migrate(self) -> None:
         """Bring a registry file written by an earlier release up to the current columns."""
         have = {r['name'] for r in self.db.execute('PRAGMA table_info(task_mappings)')}
-        for name, ddl in (('claim_token', 'INTEGER NOT NULL DEFAULT 0'), ('block_candidates', "TEXT NOT NULL DEFAULT '[]'")):
+        for name, ddl in (('claim_token', 'INTEGER NOT NULL DEFAULT 0'), ('block_candidates', "TEXT NOT NULL DEFAULT '[]'"),
+                          ('hint_issue', 'INTEGER'), ('hint_legacy', "TEXT NOT NULL DEFAULT '[]'")):
             if name not in have:
                 try:
                     self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
@@ -98,26 +103,68 @@ class TaskRegistry:
         row = self.db.execute('SELECT * FROM task_mappings WHERE fingerprint=?', (fingerprint,)).fetchone()
         return self._mapping(row) if row else None
 
-    def claim(self, fingerprint: str, canonical_key: str, claimant: str, lease_seconds: float) -> tuple[bool, Mapping]:
+    def claim(self, fingerprint: str, canonical_key: str, claimant: str, lease_seconds: float, *,
+              hint: int | None = None, legacy=()) -> tuple[bool, Mapping]:
         """Atomically claim creation. True only for the single winner.
 
         Every successful claim gets a new `claim_token` (fencing token). A CLAIMED
         row can only be taken over after its lease expired, never by name: two
         workers sharing a claimant name must not both win. MAPPED and BLOCKED rows
         are never claimable. Rows are never deleted, so a fencing token is never reused.
+
+        The winner also pins `hint`/`legacy` in the same transaction: the first hint sticks, the
+        same hint only adds legacy numbers, a different hint is left out (the caller sees the
+        mismatch in the returned row). So no later run can proceed without information an earlier
+        run may already have acted on.
         """
         now = self.clock()
-        cur = self.db.execute(
-            'INSERT OR IGNORE INTO task_mappings(fingerprint,canonical_key,state,claimant,claimed_at,claim_token,created_at,updated_at) '
-            'VALUES(?,?,?,?,?,1,?,?)', (fingerprint, canonical_key, MappingState.CLAIMED, claimant, now, now, now))
-        won = cur.rowcount == 1
-        if not won:
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
             cur = self.db.execute(
-                'UPDATE task_mappings SET state=\'CLAIMED\', claimant=?, claimed_at=?, claim_token=claim_token+1, updated_at=? '
-                'WHERE fingerprint=? AND ((state=? AND claimed_at<?) OR state=?) RETURNING claim_token',
-                (claimant, now, now, fingerprint, MappingState.CLAIMED, now - lease_seconds, MappingState.RELEASED))
-            won = cur.fetchone() is not None
+                'INSERT OR IGNORE INTO task_mappings(fingerprint,canonical_key,state,claimant,claimed_at,claim_token,'
+                'hint_issue,hint_legacy,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?,?)',
+                (fingerprint, canonical_key, MappingState.CLAIMED, claimant, now, hint,
+                 json.dumps(sorted(set(legacy))) if hint is not None else '[]', now, now))
+            won = cur.rowcount == 1
+            if not won:
+                cur = self.db.execute(
+                    'UPDATE task_mappings SET state=\'CLAIMED\', claimant=?, claimed_at=?, claim_token=claim_token+1, updated_at=? '
+                    'WHERE fingerprint=? AND ((state=? AND claimed_at<?) OR state=?) RETURNING claim_token',
+                    (claimant, now, now, fingerprint, MappingState.CLAIMED, now - lease_seconds, MappingState.RELEASED))
+                won = cur.fetchone() is not None
+                if won and hint is not None:
+                    row = self.db.execute('SELECT hint_issue, hint_legacy FROM task_mappings WHERE fingerprint=?',
+                                          (fingerprint,)).fetchone()
+                    if row['hint_issue'] is None or row['hint_issue'] == hint:
+                        merged = sorted(set(json.loads(row['hint_legacy'])) | set(legacy))
+                        self.db.execute('UPDATE task_mappings SET hint_issue=?, hint_legacy=? WHERE fingerprint=?',
+                                        (hint, json.dumps(merged), fingerprint))
+            self.db.execute('COMMIT')
+        except BaseException:
+            self.db.execute('ROLLBACK')
+            raise
         return won, self.get(fingerprint)
+
+    def replace_hint(self, fingerprint: str, hint: int | None, legacy=(), note: str = '') -> bool:
+        """Operator decision: pin a different hint (or none) on a task that is not MAPPED.
+
+        A HINT_CONFLICT block is lifted by this; the old hint stays in governance_incidents.
+        """
+        now = self.clock()
+        n = self.db.execute(
+            'UPDATE task_mappings SET hint_issue=?, hint_legacy=?, updated_at=?, '
+            'state=CASE WHEN state=? AND block_reason=? THEN ? ELSE state END, '
+            'block_reason=CASE WHEN state=? AND block_reason=? THEN \'\' ELSE block_reason END, '
+            'block_candidates=CASE WHEN state=? AND block_reason=? THEN \'[]\' ELSE block_candidates END '
+            'WHERE fingerprint=? AND state<>?',
+            (hint, json.dumps(sorted(set(legacy))) if hint is not None else '[]', now,
+             MappingState.BLOCKED, 'HINT_CONFLICT', MappingState.RELEASED,
+             MappingState.BLOCKED, 'HINT_CONFLICT', MappingState.BLOCKED, 'HINT_CONFLICT',
+             fingerprint, MappingState.MAPPED)).rowcount
+        if n:
+            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                            (fingerprint, 'HINT_REPLACED', f'hint={hint} {note}'.strip(), now))
+        return bool(n)
 
     def renew(self, fingerprint: str, token: int) -> bool:
         """Extend the lease if this claim was not taken over. Call right before the irreversible create."""
@@ -178,18 +225,27 @@ class TaskRegistry:
         return self.get(fingerprint)
 
     def unblock(self, fingerprint: str, note: str) -> bool:
-        """Explicit release of a BLOCKED task (two single-statement, state-guarded updates, no TOCTOU).
+        """Explicit release of a BLOCKED task (one transaction of state-guarded updates, no TOCTOU).
 
         With a mapped issue the task returns to MAPPED, otherwise to RELEASED (claimable again).
         History stays in governance_incidents.
         """
         now = self.clock()
-        n = self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', block_candidates=\'[]\', updated_at=? '
-                            'WHERE fingerprint=? AND state=? AND github_issue_number IS NOT NULL',
-                            (MappingState.MAPPED, now, fingerprint, MappingState.BLOCKED)).rowcount
-        n += self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', block_candidates=\'[]\', updated_at=? '
-                             'WHERE fingerprint=? AND state=? AND github_issue_number IS NULL',
-                             (MappingState.RELEASED, now, fingerprint, MappingState.BLOCKED)).rowcount
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            # a rejected hint is worthless: drop it so the operator's replacement can be pinned
+            self.db.execute('UPDATE task_mappings SET hint_issue=NULL, hint_legacy=\'[]\' WHERE fingerprint=? AND state=? '
+                            'AND block_reason IN (\'HINT_NOT_FOUND\', \'HINT_INVALID\')', (fingerprint, MappingState.BLOCKED))
+            n = self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', block_candidates=\'[]\', updated_at=? '
+                                'WHERE fingerprint=? AND state=? AND github_issue_number IS NOT NULL',
+                                (MappingState.MAPPED, now, fingerprint, MappingState.BLOCKED)).rowcount
+            n += self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', block_candidates=\'[]\', updated_at=? '
+                                 'WHERE fingerprint=? AND state=? AND github_issue_number IS NULL',
+                                 (MappingState.RELEASED, now, fingerprint, MappingState.BLOCKED)).rowcount
+            self.db.execute('COMMIT')
+        except BaseException:
+            self.db.execute('ROLLBACK')
+            raise
         if n:
             self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
                             (fingerprint, 'UNBLOCKED', note, now))
@@ -209,4 +265,5 @@ class TaskRegistry:
         return Mapping(row['fingerprint'], row['canonical_key'], MappingState(row['state']), row['claimant'],
                        row['claimed_at'], row['claim_token'], row['github_repository'], row['github_issue_number'],
                        tuple(json.loads(row['duplicate_issues'])), row['block_reason'],
-                       tuple(json.loads(row['block_candidates'])))
+                       tuple(json.loads(row['block_candidates'])), row['hint_issue'],
+                       tuple(json.loads(row['hint_legacy'])))

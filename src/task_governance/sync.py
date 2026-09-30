@@ -94,6 +94,9 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     is an operator decision, but it must still be a confirmed issue (not a PR) by a trusted author.
     Matches whose issue-vs-PR status the gateway did not report BLOCK (`UNKNOWN_ISSUE_KIND`,
     re-validated on every run); they are neither adopted nor bypassed by creating.
+    The first claim pins the hint and `legacy_issues` in the registry row (same transaction), and
+    every later run of an unfinished task uses the pinned hint even if the caller omits it; a
+    different explicit hint BLOCKS as HINT_CONFLICT until an operator calls `registry.replace_hint`.
     An explicit hint that does not resolve to an existing issue BLOCKS the task; it never
     falls through to creation. Without a hint, several matches are ambiguous and BLOCK too.
 
@@ -101,6 +104,13 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     share one registry. Across registries only the GitHub-side checks protect.
     """
     fp, key = request.fingerprint, request.key
+    existing = registry.get(fp)
+    if existing is not None and existing.state is not MappingState.MAPPED and existing.hint_issue is not None \
+            and authoritative_hint is None:
+        # An earlier run pinned a hint and may already have acted on it: a run that forgot to pass it
+        # must not carry on without it (that could create a second issue next to the legacy one).
+        authoritative_hint = existing.hint_issue
+        legacy_issues = tuple(existing.hint_legacy) + tuple(legacy_issues)
     known = LEGACY_AUTHORITIES.get(key)
     if known is not None and _norm_repo(known.repository) != _norm_repo(gateway.repository):
         known = None                                  # numbers of another repository mean nothing here
@@ -116,7 +126,6 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         raise ValueError(f'lease_seconds={lease_seconds} is shorter than {MIN_LEASE_FACTOR}x the gateway create time '
                          f'({worst_create}s): a slow create could outlive its claim')
 
-    existing = registry.get(fp)
     if existing and existing.state is MappingState.BLOCKED:
         if existing.github_issue_number is None and (
                 existing.block_reason == 'UNKNOWN_ISSUE_KIND'          # the marker exists, so no hint is needed
@@ -132,7 +141,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     if existing and existing.state is MappingState.MAPPED:
         return _sync(registry, existing, request, gateway, policy, retry)
 
-    won, mapping = registry.claim(fp, key, claimant, lease_seconds)
+    won, mapping = registry.claim(fp, key, claimant, lease_seconds, hint=authoritative_hint, legacy=legacy_issues)
     if mapping.state is MappingState.MAPPED:     # someone finished between our read and claim
         return _sync(registry, mapping, request, gateway, policy, retry)
     if mapping.state is MappingState.BLOCKED:
@@ -140,6 +149,10 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     if not won:
         return EnsureResult(EnsureOutcome.PENDING, mapping, False, None, f'claim held by {mapping.claimant}')
     token = mapping.claim_token
+    if authoritative_hint is not None and mapping.hint_issue != authoritative_hint:
+        blocked = registry.block(fp, 'HINT_CONFLICT', f'pinned hint #{mapping.hint_issue}, this run passed #{authoritative_hint}',
+                                 token=token, candidates=[mapping.hint_issue, authoritative_hint])
+        return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
 
     try:
         matches = _matches(gateway, fp, key, trusted_authors)

@@ -872,7 +872,7 @@ def test_processes_migrating_an_old_registry_file_at_the_same_time(tmp_path, rou
     assert codes == [0] * 6 and gh.count() == 1
 
 
-def test_hint_unknown_kind_is_not_lifted_by_a_run_without_the_hint(env, monkeypatch):
+def test_hint_unknown_kind_restart_without_the_hint_uses_the_pinned_hint(env, monkeypatch):
     from src.task_governance import IssueRef
     reg_path, gh = env
     gh.seed(11, req().fingerprint, marker=False)               # real legacy issue, task not in the legacy table
@@ -881,7 +881,118 @@ def test_hint_unknown_kind_is_not_lifted_by_a_run_without_the_hint(env, monkeypa
     with monkeypatch.context() as m:
         m.setattr(gh, 'get_issue', lambda n: (lambda i: IssueRef(i.number, i.state, author=i.author) if i else None)(real_get(n)))
         assert ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11).outcome is EnsureOutcome.BLOCKED
-    restart = ensure_task(req(), reg, gh, claimant='w')          # restart without the hint
-    assert restart.outcome is EnsureOutcome.BLOCKED and not restart.created and gh.count() == 1
-    assert ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11).outcome is EnsureOutcome.RECOVERED
+        blocked_again = ensure_task(req(), reg, gh, claimant='w')     # still unknown: stays blocked, never creates
+        assert blocked_again.outcome is EnsureOutcome.BLOCKED and not blocked_again.created and gh.count() == 1
+    restart = ensure_task(req(), reg, gh, claimant='w')          # gateway fixed, caller forgot the hint
+    assert restart.outcome is EnsureOutcome.RECOVERED and restart.issue_number == 11 and not restart.created
     assert gh.count() == 1
+
+
+def _expire(reg, seconds=10_000):
+    reg.clock = lambda: time.time() + seconds
+
+
+def test_hint_survives_a_crash_while_adopting_and_a_hintless_restart_still_adopts(env, monkeypatch):
+    """Round-8 C1: mark_duplicate fails before the marker reaches the hint issue."""
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    gh.seed(11, task.fingerprint, marker=False)
+    gh.seed(22, task.fingerprint, marker=False)
+    reg = TaskRegistry(reg_path)
+    monkeypatch.setattr(gh, 'mark_duplicate', lambda n, a: (_ for _ in ()).throw(RuntimeError('502')))
+    with pytest.raises(RuntimeError):
+        ensure_task(task, reg, gh, claimant='w1', authoritative_hint=11, legacy_issues=[22])
+    monkeypatch.undo()
+    m = reg.get(task.fingerprint)
+    assert m.state is MappingState.CLAIMED and m.hint_issue == 11 and m.hint_legacy == (22,)
+    _expire(reg)
+    r = ensure_task(task, reg, gh, claimant='w2')                # no hint, lease expired
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 11 and not r.created
+    assert gh.count() == 2 and reg.get(task.fingerprint).duplicate_issues == (22,)
+
+
+def test_hint_survives_an_unknown_kind_block_on_another_match(env, monkeypatch):
+    """Round-8 C2: _matches raises before get_issue(hint) ran; the hint must not be lost."""
+    from src.task_governance import IssueRef
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    gh.seed(11, task.fingerprint, marker=False)
+    gh.seed(31, task.fingerprint, pr=True)                        # a PR, but the gateway does not say so at first
+    reg = TaskRegistry(reg_path)
+    real = gh.find_issues
+    with monkeypatch.context() as m:
+        m.setattr(gh, 'find_issues', lambda fp, key: [IssueRef(i.number, i.state, author=i.author) for i in real(fp, key)])
+        assert ensure_task(task, reg, gh, claimant='w', authoritative_hint=11).outcome is EnsureOutcome.BLOCKED
+    assert reg.get(task.fingerprint).hint_issue == 11
+    r = ensure_task(task, reg, gh, claimant='w')                  # kind reported now: #31 is a PR, no candidate left
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 11 and gh.count() == 2
+
+
+def test_a_different_hint_than_the_pinned_one_blocks_with_hint_conflict(env):
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    gh.seed(11, task.fingerprint, marker=False)
+    gh.seed(12, task.fingerprint, marker=False)
+    reg = TaskRegistry(reg_path)
+    with pytest.raises(RuntimeError):
+        gh.update_issue = lambda *a: (_ for _ in ()).throw(RuntimeError('502'))
+        ensure_task(task, reg, gh, claimant='w1', authoritative_hint=11)
+    del gh.update_issue
+    _expire(reg)
+    r = ensure_task(task, reg, gh, claimant='w2', authoritative_hint=12)
+    assert r.outcome is EnsureOutcome.BLOCKED and r.detail == 'HINT_CONFLICT' and not r.created
+    assert ensure_task(task, reg, gh, claimant='w2').outcome is EnsureOutcome.BLOCKED    # stays blocked, even hint-less
+    assert ensure_task(task, reg, gh, claimant='w2', authoritative_hint=12).outcome is EnsureOutcome.BLOCKED
+    assert reg.replace_hint(task.fingerprint, 12, note='operator chose #12')
+    done = ensure_task(task, reg, gh, claimant='w3')
+    assert done.outcome is EnsureOutcome.RECOVERED and done.issue_number == 12 and gh.count() == 2
+    assert 'HINT_REPLACED' in [i['reason'] for i in reg.incidents(task.fingerprint)]
+
+
+def test_a_rejected_hint_is_dropped_so_the_replacement_can_be_pinned(env):
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    gh.seed(12, task.fingerprint, marker=False)
+    reg = TaskRegistry(reg_path)
+    assert ensure_task(task, reg, gh, claimant='w', authoritative_hint=99).outcome is EnsureOutcome.BLOCKED    # 99 missing
+    assert ensure_task(task, reg, gh, claimant='w').outcome is EnsureOutcome.BLOCKED       # rejected hint is not a way out
+    assert gh.count() == 1
+    r = ensure_task(task, reg, gh, claimant='w', authoritative_hint=12)
+    assert r.outcome is EnsureOutcome.RECOVERED and reg.get(task.fingerprint).hint_issue == 12
+
+
+def test_hint_columns_are_added_to_a_registry_from_release_two(tmp_path):
+    import sqlite3
+    path = str(tmp_path / 'v2.db')
+    db = sqlite3.connect(path)
+    db.executescript('''CREATE TABLE task_mappings (fingerprint TEXT PRIMARY KEY, canonical_key TEXT NOT NULL UNIQUE,
+        state TEXT NOT NULL, claimant TEXT, claimed_at REAL, claim_token INTEGER NOT NULL DEFAULT 0,
+        github_repository TEXT, github_issue_number INTEGER, duplicate_issues TEXT NOT NULL DEFAULT '[]',
+        block_reason TEXT NOT NULL DEFAULT '', block_candidates TEXT NOT NULL DEFAULT '[]',
+        created_at REAL NOT NULL, updated_at REAL NOT NULL);
+        CREATE TABLE governance_incidents (id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT NOT NULL,
+        reason TEXT NOT NULL, detail TEXT NOT NULL, created_at REAL NOT NULL);''')
+    fp = req().fingerprint
+    db.execute("INSERT INTO task_mappings(fingerprint,canonical_key,state,claimed_at,claim_token,created_at,updated_at)"
+               " VALUES(?,?,?,?,3,0,0)", (fp, req().key, 'CLAIMED', 0))
+    db.commit(); db.close()
+    reg = TaskRegistry(path)
+    won, m = reg.claim(fp, req().key, 'w', 1.0, hint=7, legacy=[8])
+    assert won and m.claim_token == 4 and m.hint_issue == 7 and m.hint_legacy == (8,)
+
+
+def test_concurrent_claims_pin_one_hint_and_only_one_wins(tmp_path):
+    path = str(tmp_path / 'reg.db')
+    fp, key = req().fingerprint, req().key
+    results = []
+
+    def worker(i):
+        reg = TaskRegistry(path)
+        results.append((i, reg.claim(fp, key, f'w{i}', 300, hint=10 + i % 2, legacy=[i])[0]))
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    assert sum(1 for _, won in results if won) == 1
+    winner = next(i for i, won in results if won)
+    m = TaskRegistry(path).get(fp)
+    assert m.hint_issue == 10 + winner % 2 and m.hint_legacy == (winner,)
