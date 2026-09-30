@@ -51,7 +51,12 @@ LAST_REALTIME = "9999-12-31"
 PAGE_LIMIT = 100_000  # observations endpoint maximum
 REQUIRED_PAYLOADS = ("series", "observations")
 SECRET_KEYS = frozenset({"api_key", "apikey", "token", "password", "secret"})
-NO_CALENDAR = "no release dates: every vintage counts as known only after its vintage day ended and no first print can be identified"
+# Event arithmetic runs in a fixed 28-digit context (events.DECIMAL_CONTEXT). Within these bounds every
+# change and revision fits it exactly; a value outside them is malformed rather than a crash later.
+MIN_ABS_VALUE = Decimal("1e-6")
+MAX_ABS_VALUE = Decimal("1e9")
+MAX_DIGITS = 20
+NO_CALENDAR ="no release dates: every vintage counts as known only after its vintage day ended and no first print can be identified"
 
 Fetcher = Callable[[str], bytes]
 Clock = Callable[[], datetime]
@@ -343,6 +348,9 @@ def _row(
             return unusable("MALFORMED_VALUE", "value is not finite")
         if spec.positive_values and value <= 0:
             return unusable("MALFORMED_VALUE", "value must be positive for this series")
+        # copy_abs and comparisons are exact: no ambient context can overflow on extreme exponents.
+        if (value and not MIN_ABS_VALUE <= value.copy_abs() <= MAX_ABS_VALUE) or len(value.as_tuple().digits) > MAX_DIGITS:
+            return unusable("MALFORMED_VALUE", "value outside the supported range or precision")
         status = ValueStatus.OK
     if status is ValueStatus.MISSING:
         issues.append(issue("MISSING_VALUE", Severity.WARNING, record_id, "source published no value", available_at))
@@ -398,7 +406,10 @@ def _revision_history_gaps(
         elif calendar:
             position = bisect_left(calendar, period_end)
             expected = calendar[position] if position < len(calendar) else None
-            if item.vintage != expected:
+            if position == 0:
+                # No release before the period ended: the calendar may start too late to show the first print.
+                detail = "release calendar does not reach back to the end of the reference period"
+            elif item.vintage != expected:
                 detail = "earliest archived vintage is not the first scheduled release after the period ended"
         if detail is not None or not calendar or (clipped_start is not None and item.vintage == clipped_start):
             gaps.add(period)

@@ -71,7 +71,7 @@ def observations_payload(
     return json.dumps(body).encode()
 
 
-def release_payload(dates: tuple[str, ...] = ("2024-02-13", "2024-03-12", "2024-04-10"), release_id: int = 10, count: int | None = None) -> bytes:
+def release_payload(dates: tuple[str, ...] = ("2024-01-11", "2024-02-13", "2024-03-12", "2024-04-10"), release_id: int = 10, count: int | None = None) -> bytes:
     items = [{"release_id": release_id, "date": d} for d in dates]
     return json.dumps({"offset": 0, "count": len(items) if count is None else count, "release_dates": items}).encode()
 
@@ -585,7 +585,7 @@ def test_holdout_release_anchor_needs_the_permission() -> None:
     btc = BtcSeries.build(klines(datetime(2025, 1, 15, tzinfo=UTC), 48), "1h", replay_at=datetime(2025, 2, 1, tzinfo=UTC), permission=permission)
     rows = [row("2024-12-01", "2025-01-15", "9999-12-31", "310.0")]
     raw = bundle(rows, calendar=False)
-    raw.payloads["release_dates"] = release_payload(("2025-01-15",))
+    raw.payloads["release_dates"] = release_payload(("2024-12-11", "2025-01-15"))
     event = release_events(PointInTimeStore(parse_bundle(raw)), until=INGESTED)[0]
     locked = align_event(event, btc, replay_at=datetime(2025, 2, 1, tzinfo=UTC))
     assert locked["status"] == WindowStatus.HOLDOUT_LOCKED and locked["anchor"] is None
@@ -818,6 +818,32 @@ def test_dates_at_the_calendar_edge_make_the_payload_not_ready_instead_of_crashi
     result = ingest(base_rows() + [edge_row])
     assert result.state is QualityState.NOT_READY
     assert "MALFORMED_TIMESTAMP" in codes(result) and "UNDATABLE_ROWS" in codes(result)
+
+
+def test_calendar_starting_after_the_period_ended_certifies_no_first_print() -> None:
+    # The calendar lacks the February 13 release, so matching its first entry proves nothing.
+    raw = bundle([row("2024-01-01", "2024-03-12", "9999-12-31", "300.2")])
+    raw.payloads["release_dates"] = release_payload(("2024-03-12", "2024-04-10"))
+    result = parse_bundle(raw)
+    assert date(2024, 1, 1) in result.periods_without_first_release
+    event = release_events(PointInTimeStore(result), until=INGESTED)[0]
+    assert event.status is EventStatus.FIRST_RELEASE_UNAVAILABLE and event.event_time is None
+    with pytest.raises(ValueError, match="first release"):
+        with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", MAR_RELEASE - timedelta(days=1)))
+
+
+@pytest.mark.parametrize("extreme", ["1e100", "1e999999999", "1e-9", "300.00000000000000000001"])
+def test_values_outside_the_supported_range_are_unusable_not_a_crash(extreme: str) -> None:
+    rows = base_rows()
+    rows[2] = row("2024-02-01", "2024-03-12", "9999-12-31", extreme)  # February, first printed with the March release
+    result = ingest(rows)
+    assert result.state is QualityState.READY and "MALFORMED_VALUE" in codes(result)
+    output = replay(result, datetime(2024, 4, 20, tzinfo=UTC))
+    feb = next(item["event"] for item in output["events"] if item["event"]["reference_period"] == "2024-02-01")
+    assert feb["status"] == "ACTUAL_UNKNOWN" and feb["derived_change_pct"] is None
+    assert PointInTimeStore(result).value(date(2024, 2, 1), APR_RELEASE).status is Visibility.UNKNOWN
+    # January, before February's bad print, is untouched.
+    assert PointInTimeStore(result).value(date(2024, 1, 1), MAR_RELEASE).value == Decimal("300.2")
 
 
 def test_quality_findings_are_part_of_the_dataset_identity() -> None:
