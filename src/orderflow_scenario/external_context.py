@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Sequence
 
+from src.knowledge.broncx_chart_vision import guidance_for_post
 from src.knowledge.broncx_feed import BroncxGuidance, BroncxPost, parse_guidance
 from src.models.market_data import Candle
 
@@ -102,7 +103,8 @@ def active_view(
     newest = directional[-1]
     # His current idea: the directional post plus the direction-less follow-ups after it ("invalid above ...", "tp2 at ...").
     idea = [newest] + [entry for entry in active if entry.guidance.bias == "NONE" and entry.post.posted_at > newest.post.posted_at]
-    levels = tuple(sorted({level.value for entry in idea for level in entry.guidance.levels if level.role == "LEVEL" and not level.ambiguous}))
+    # Only levels he wrote become scenarios; prices read off a chart image are estimates and are only checked.
+    levels = tuple(sorted({level.value for entry in idea for level in entry.guidance.levels if level.role == "LEVEL" and level.source == "text" and not level.ambiguous}))
     if newest.guidance.bias not in {"LONG", "SHORT"}:
         return ExternalView(None, newest.post.message_id, (), "mixed_direction")
     for entry in idea:
@@ -228,7 +230,7 @@ def _status(entry: _Entry, symbol: str, observed_at: datetime, max_age: timedelt
 def _thread(posts: Sequence[BroncxPost], reference: Decimal | None) -> list[_Entry]:
     entries: list[_Entry] = []
     for post in posts:
-        guidance = parse_guidance(post.content, reference)
+        guidance = guidance_for_post(post, reference)
         entry = _Entry(post, guidance, guidance.symbol, guidance.timeframe)
         previous = entries[-1] if entries else None
         if entry.symbol is None and previous and post.posted_at - previous.post.posted_at <= THREAD_WINDOW and previous.symbol:

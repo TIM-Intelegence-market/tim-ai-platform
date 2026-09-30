@@ -37,7 +37,33 @@ Zusammenhänge im Thread:
 - Als Timeframe zählen nur übliche Werte (etwa „btc 15“ oder „btc 4h“). „btc 83“ wird als Preis gelesen.
 - Ein Level gilt nur dann als erreicht, wenn eine Kerze es nach dem Beitrag berührt hat.
   Kerzen, die schon vor dem Beitrag begonnen haben, zählen nicht.
-- Chartbilder werden gespeichert und gezählt, aber nicht ausgewertet.
+- Chartbilder liest ein lokales Bildmodell aus (siehe [Chartbilder](#chartbilder)).
+
+## Chartbilder
+
+Der Bot lädt Chartbilder beim Abholen herunter (`data/broncx_feed/images/<Nachrichten-ID>/`),
+weil Discord-Bildlinks nach etwa einem Tag ablaufen. Heruntergeladen wird nur vom Discord-CDN
+über HTTPS, höchstens 10 MB, und ohne das Bot-Geheimnis. Danach liest ein lokales Bildmodell über
+Ollama (Standard `qwen3.5:9b`, einstellbar mit `TIM_BRONCX_VISION_MODEL`) das Bild aus. Kein Bild
+verlässt den Mac. Im Dauerbetrieb wird pro Minute höchstens ein Bild gelesen, das dauert etwa eine
+Minute. Das Ergebnis wird in `chart_readings.jsonl` gespeichert. Eine Analyse ruft das Modell
+also nie selbst auf, und eine Wiederholung liest dieselben Werte.
+
+Aus einem Bild gelesene Werte sind Schätzungen. Für sie gelten dieselben Grenzen wie für den Text,
+dazu strengere Regeln:
+
+| Regel | Warum |
+| --- | --- |
+| Eine Richtung hat ein Chart nur mit Positions-Werkzeug (rote und grüne Box am Einstieg). Das Modell liest nur Einstieg und die äußeren Boxkanten ab, die Richtung berechnet TIM daraus: Rot oben und Grün unten ist SHORT. | Im Test hat das Modell dieselbe Short-Position einmal als LONG gedeutet und bei einem reinen Kurschart die Hoch/Tief-Pfeile als Richtung gelesen. |
+| Die Chart-Richtung zählt nur, wenn der Beitrag keinen Text hat oder sie zur Richtung im Text passt. Hat der Text keine Richtung, bleibt es bei NONE. | Der Text ist verlässlicher als ein gelesenes Bild. |
+| Der Stop des Positions-Werkzeugs wirkt nur als Invalidierung, wenn die Chart-Richtung auch zählt. | Ein falsch gelesener Stop darf keine anders lautende Sicht beenden. |
+| Chart-Level zählen nur innerhalb von 30 % vom Kurs, tragen `source: chart` und werden gegen die Kerzen geprüft. Eigene Level-Szenarien werden daraus nie. | Das Modell liest gelegentlich auch Kursanzeigen mit. |
+| Symbol und Timeframe aus dem Bild füllen nur Lücken im Text. | |
+
+`show --price 83365` zeigt je Beitrag die Zeile `chart (estimated, …)` mit dem Gelesenen und
+Hinweise wie `chart agrees with text bias SHORT`. Bilder aus der Zeit vor dieser Funktion holt
+`fetch-images` nach, solange Discord sie noch verlinkt. `read-charts` liest alle offenen Bilder
+auf einmal. Läuft Ollama nicht, bleiben die Bilder ungelesen und werden später gelesen.
 
 ## Ablauf
 
@@ -84,6 +110,7 @@ Dann zählt der Zeitpunkt deiner Nachricht.
    ```sh
    .venv/bin/python scripts/broncx_discord_bot.py once   # erwartet: stored=1
    .venv/bin/python scripts/broncx_discord_bot.py show   # zeigt, wie TIM den Beitrag liest
+   .venv/bin/python scripts/broncx_discord_bot.py read-charts   # Chartbilder lesen (Ollama muss laufen)
    ```
 
 7. **Dauerbetrieb** (startet mit der Anmeldung und läuft dann durchgehend):
@@ -104,14 +131,18 @@ Dann zählt der Zeitpunkt deiner Nachricht.
 | `401` | Das Bot-Geheimnis ist falsch oder wurde zurückgesetzt: `setup` erneut ausführen |
 | `403` | Dem Bot fehlen im Kanal *View Channel* oder *Read Message History* |
 | `404` | Die Kanal-ID ist falsch oder der Bot ist nicht im Server |
+| `ERROR: chart reading: Ollama not reachable` | Ollama läuft nicht: die Ollama-App starten, die Bilder werden dann nachgelesen |
+| `image_errors=…` | Ein Bild ließ sich nicht laden: später `fetch-images` ausführen |
 
-Einstellbar per Umgebungsvariable: `TIM_BRONCX_FEED_DIR`, `TIM_BRONCX_DISCORD_CONFIG`
-und `TIM_BRONCX_DISCORD_SECRET_FILE`.
+Einstellbar per Umgebungsvariable: `TIM_BRONCX_FEED_DIR`, `TIM_BRONCX_DISCORD_CONFIG`,
+`TIM_BRONCX_DISCORD_SECRET_FILE`, `TIM_BRONCX_VISION_MODEL` und `TIM_OLLAMA_URL`.
 
 ## Grenzen
 
 - Die Auswertung der Texte arbeitet mit festen Mustern und kann Aussagen verfehlen. Der
   Originaltext steht deshalb immer im Audit, und `show` zeigt, was TIM erkannt hat.
+- Die Chart-Auswertung ist an zwei echten Bildern erprobt, nicht statistisch geprüft. Ein kleines
+  lokales Modell verliest sich. Deshalb stehen Bildwerte immer getrennt im Audit.
 - Invalidierungen ohne Zahl, etwa „flip poc for higher“, kann TIM nicht automatisch
   prüfen. Sie bleiben `NOT_EVALUATED` und müssen von Hand geprüft werden.
 - Die Frist, die Schwelle von 30 % für Kurzschreibweisen, die 7 Tage für eine
