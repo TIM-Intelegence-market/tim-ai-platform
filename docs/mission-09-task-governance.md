@@ -57,9 +57,19 @@ Only results with `is_pull_request=False` count as task issues and pull requests
 
 Implement `IssueGateway` (`find_issues`, `create_issue`, `update_issue`, `reopen_issue`, `is_documented_duplicate`, `mark_duplicate`). `create_issue` and `update_issue` must embed `fingerprint_marker(fp)` in the body (the update back-fills issues that predate it). `mark_duplicate` and `update_issue` may only comment or label. `find_issues` should list issues and match the marker; GitHub's search index lags, and a lagging search would hide a just-created issue from the post-create check.
 
-## Integration with #12
+## Integration with #12 (Task Engine bridge)
 
-The task engine (PR #119) must store `canonical_task_key`, `task_fingerprint`, `github_issue_number`, `github_repository` and `sync_state` and call `ensure_task` before any autonomous issue creation. That step is intentionally not done here, so this change does not touch PR #119's files. #68 stays open until it is done.
+The Task Engine (`src/task_engine`, PR #119) is a local task store and creates no GitHub issues. `sync_engine_task_to_issue(engine, task_id, registry, gateway, mission_id=, phase_id=, claimant=, trusted_authors=)` in `engine_bridge.py` connects it: it builds the `TaskRequest` from the engine task (identity: mission, phase, task type, target = task id unless given, schema version; title and body only for display), calls `ensure_task`, and records the issue number as the idempotent checkpoint `github_issue:<fingerprint[:16]>` (metadata: `issue`, `outcome`). It never changes the task state or `next_action`; a `BLOCKED` result, a `PENDING` result, an exception from GitHub and a `FIXED` task leave the engine untouched. No file of #12 is changed and no production switch exists: nothing calls the bridge automatically.
+
+`GitHubRestGateway(repository, token)` (`github_gateway.py`) is the REST implementation of `IssueGateway`:
+
+- `find_issues` lists `/issues?state=all` page by page and filters by marker (no search index); more than `max_pages * 100` issues raise instead of guessing.
+- `get_issue` returns `None` only for a confirmed 404; rate limits, 403, 5xx and network errors raise `GitHubError`, so an outage never looks like "does not exist".
+- `create_issue` sends the request with the caller's `timeout`; only connection refused or a failed name lookup raise `CreateNotSent`. Any other failure is uncertain and the guard re-checks by marker.
+- `update_issue` rewrites only the section between `TIM_TASK_BODY_BEGIN`/`END` (or appends it), back-fills the marker, PATCHes only when the body changed and posts at most one audit comment per distinct reason. `mark_duplicate` posts one comment. `reopen_issue` reopens and comments. No method closes an issue.
+- The token appears only in the `Authorization` header; errors carry the HTTP status and path, never the token or the response body. The account behind the token must be in `trusted_authors`.
+
+The gateway is tested against an in-memory REST fake (`tests/task_governance/fake_rest.py`). It has not been run against github.com; the first live use needs the token and Uzi's explicit yes.
 
 ### Pinned hint (registry v3)
 
