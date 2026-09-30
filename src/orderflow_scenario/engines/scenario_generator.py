@@ -37,11 +37,18 @@ class LevelSet:
     midpoint: Decimal | None = None
     point_of_control: Decimal | None = None
     last_price: Decimal | None = None
+    # Broncx guidance (see external_context.active_view): his LEVEL prices and current direction.
+    external_levels: tuple[Decimal, ...] = ()
+    external_bias: str | None = None
 
     def __post_init__(self) -> None:
         for name, value in self._prices():
             if value is not None and value <= 0:
                 raise ValueError(f"{name} must be positive")
+        if any(value <= 0 for value in self.external_levels):
+            raise ValueError("external_levels must be positive")
+        if self.external_bias not in {None, "LONG", "SHORT"}:
+            raise ValueError("external_bias must be LONG, SHORT or None")
 
     def _prices(self):
         for name in (
@@ -280,6 +287,9 @@ class ScenarioGenerator:
                 )
             )
 
+        # --- External levels: Broncx's levels near price, in his direction ---
+        scenarios.extend(_external_level_scenarios(levels, scenarios, orderflow))
+
         # Normalize scores so the sum is approximately 1.0 and cap at max_scenarios.
         if scenarios:
             total = sum((scenario.score for scenario in scenarios), ZERO)
@@ -292,6 +302,83 @@ class ScenarioGenerator:
             scenarios = [_add_score(scenarios[0], remainder)] + scenarios[1:]
 
         return tuple(scenarios)
+
+
+# A Broncx level becomes a scenario only within 1 % of price, and not when TIM already has a trigger within 0.2 %.
+EXTERNAL_LEVEL_WINDOW = Decimal("0.01")
+EXTERNAL_LEVEL_DUPLICATE = Decimal("0.002")
+MAX_EXTERNAL_SCENARIOS = 2
+
+
+def _external_level_scenarios(levels: LevelSet, existing: list[Scenario], orderflow: OrderflowInterpretation) -> list[Scenario]:
+    """Directional scenarios at Broncx's levels. Same mandatory confirmations as TIM's own templates."""
+    bias, last = levels.external_bias, levels.last_price
+    if bias not in {"LONG", "SHORT"} or last is None or last <= 0:
+        return []
+    triggers = [scenario.trigger_level for scenario in existing if scenario.trigger_level]
+    accepted: list[Decimal] = []
+    for level in sorted(set(levels.external_levels), key=lambda value: (abs(value - last), value)):
+        if len(accepted) == MAX_EXTERNAL_SCENARIOS or abs(level - last) / last > EXTERNAL_LEVEL_WINDOW:
+            break
+        # Also against levels accepted just before: 83100 and 83110 are one place, not two scenarios.
+        if all(abs(level - trigger) / trigger > EXTERNAL_LEVEL_DUPLICATE for trigger in triggers + accepted):
+            accepted.append(level)
+    # The id names the level, so a confirmation update can never land on a different level.
+    return [_external_scenario(f"X-{bias}-{format(level.normalize(), 'f')}", bias, level, last, orderflow) for level in accepted]
+
+
+def _external_scenario(scenario_id: str, bias: str, level: Decimal, last: Decimal, orderflow: OrderflowInterpretation) -> Scenario:
+    buyers, sellers = orderflow.aggressive_side == "BUYERS", orderflow.aggressive_side == "SELLERS"
+    if bias == "SHORT":
+        evidence_for = ("delta_bearish",) if sellers else ()
+        evidence_against = ("delta_constructive",) if buyers else ()
+        if level >= last:
+            scenario_type, entry_model = ScenarioType.REJECTION_FAILED_BREAKOUT, EntryModel.FAILED_RETEST
+            hypothesis = f"Broncx level {level}: price tests it from below, acceptance above fails and the retest fails."
+            mandatory = ("upper_trigger_tested", "acceptance_above_fails", "return_below_level", "retest_from_below_fails", "valid_invalidation_above")
+            invalidation = ("acceptance_above_level", "value_migrating_up", "constructive_breakout")
+            entry_low, entry_high = level * Decimal("0.995"), level * Decimal("0.999")
+        else:
+            scenario_type, entry_model = ScenarioType.BREAKOUT_ACCEPTANCE, EntryModel.LIMIT_RETEST
+            hypothesis = f"Broncx level {level}: price closes below it, is accepted below and the retest from below fails."
+            mandatory = ("close_below_trigger_level", "weak_price_response", "no_immediate_reclaim", "retest_from_below_fails", "valid_invalidation_defined")
+            invalidation = ("close_back_above_trigger", "retest_reclaimed", "delta_negative_without_progress")
+            entry_low, entry_high = level * Decimal("0.992"), level * Decimal("0.999")
+        direction = Direction.SHORT
+    else:
+        evidence_for = ("delta_constructive",) if buyers else ()
+        evidence_against = ("delta_bearish",) if sellers else ()
+        if level <= last:
+            scenario_type, entry_model = ScenarioType.LIQUIDITY_SWEEP_REVERSAL, EntryModel.RECLAIM
+            hypothesis = f"Broncx level {level}: price tests it from above, fails to hold below and reclaims it."
+            mandatory = ("defined_liquidity_swept", "no_sustained_progress_below", "level_reclaimed", "reclaim_holds", "invalidatable_stop_available")
+            invalidation = ("acceptance_below_level", "value_migrating_down", "reclaim_fails")
+            entry_low, entry_high = level * Decimal("1.001"), level * Decimal("1.006")
+        else:
+            scenario_type, entry_model = ScenarioType.BREAKOUT_ACCEPTANCE, EntryModel.LIMIT_RETEST
+            hypothesis = f"Broncx level {level}: breakout above it with acceptance and constructive flow; retest defended."
+            mandatory = ("close_above_trigger_level", "constructive_price_response", "no_immediate_fall_back", "retest_holds_or_momentum_continuation", "valid_invalidation_defined")
+            invalidation = ("close_back_below_trigger", "delta_positive_without_progress", "retest_lost")
+            entry_low, entry_high = level * Decimal("1.001"), level * Decimal("1.008")
+        direction = Direction.LONG
+    scenario = _build_scenario(
+        scenario_id=scenario_id,
+        scenario_type=scenario_type,
+        direction=direction,
+        hypothesis=hypothesis,
+        evidence_for=evidence_for,
+        evidence_against=evidence_against,
+        mandatory=mandatory,
+        optional=(),
+        invalidation=invalidation,
+        trigger_level=level,
+        entry_low=entry_low,
+        entry_high=entry_high,
+        entry_model=entry_model,
+        score=Decimal("0.30"),
+    )
+    scenario.trade_template["level_source"] = "broncx"
+    return scenario
 
 
 def _replace_score(scenario: Scenario, score: Decimal) -> Scenario:

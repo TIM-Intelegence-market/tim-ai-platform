@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Broncx Discord feed as external guidance
+
+- Added `src/knowledge/broncx_feed.py` (post store and guidance parser) and
+  `src/sources/broncx_discord.py` (read-only poller for a forward channel in the
+  owner's own Discord server) with `scripts/broncx_discord_bot.py` and a
+  launchd agent.
+- The orderflow scenario pipeline accepts `external_posts`; the guidance is
+  written to the audit (`external_context`) and the report
+  (`BRONCX-LEITFADEN`).
+- Broncx's newest active direction weights the analysis: scenarios in his
+  direction +0.08 score, opposing ones -0.08; his LEVEL prices within 1 % of
+  price become scenarios (`X-<bias>-<level>`, at most two) with TIM's own
+  mandatory confirmations; stop and invalidation prices never do.
+  It never confirms a scenario or creates a trade plan by itself; stale,
+  invalidated, mixed or not-yet-known posts have no effect (tested).
+- `ofsc --broncx-feed DIR [--broncx-max-age-hours H]`.
+
 ## Unreleased — repository foundation
 
 - Prepared contribution, security, conduct, Git governance, AI access, release,
