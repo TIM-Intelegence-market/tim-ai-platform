@@ -81,8 +81,9 @@ def test_connection_refused_is_create_not_sent_but_timeouts_are_not(rest, gw):
     with pytest.raises(CreateNotSent):
         gw.create_issue(req(), req().fingerprint, timeout=5)
     rest.fail[('POST', r'/issues$')] = TimeoutError('slow')
-    with pytest.raises(TimeoutError):
+    with pytest.raises(GitHubError) as caught:                 # uncertain: anything but CreateNotSent
         gw.create_issue(req(), req().fingerprint, timeout=5)
+    assert not isinstance(caught.value, CreateNotSent)
 
 
 def test_update_replaces_only_the_managed_section_and_is_idempotent(rest, gw):
@@ -378,3 +379,18 @@ def test_a_timeout_shuts_the_socket_down_so_a_send_in_progress_cannot_finish(mon
         github_gateway._http_transport('POST', 'http://127.0.0.1:9/x', {}, b'{}', 0.3)
     time.sleep(0.2)
     assert time.monotonic() - start < 2 and seen['how'] == socket.SHUT_RDWR and seen['sent'] is False and seen['closed']
+
+
+def test_an_injected_transport_cannot_leak_the_token_through_its_exception():
+    def leaky(method, url, headers, body, timeout):
+        raise RuntimeError(f'failed with {headers}')
+    gateway = GitHubRestGateway('owner/repo', TOKEN, transport=leaky)
+    with pytest.raises(GitHubError) as caught:
+        gateway.get_issue(1)
+    assert TOKEN not in str(caught.value) and TOKEN not in repr(caught.value.__cause__) and caught.value.__suppress_context__
+
+
+def test_an_unusable_issue_number_in_an_answer_is_a_github_error(rest):
+    gateway = GitHubRestGateway('owner/repo', TOKEN, transport=lambda *a: (200, b'{"number": "x"}'))
+    with pytest.raises(GitHubError):
+        gateway.get_issue(1)

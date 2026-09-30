@@ -2,12 +2,14 @@
 
 The Task Engine only stores tasks; it never talks to GitHub. `sync_engine_task_to_issue` derives the
 task identity from the engine task, runs `ensure_task`, and records the resulting issue number as an
-idempotent checkpoint. It never changes the task state, so a BLOCKED sync leaves the engine untouched.
+optional idempotent checkpoint (`record_checkpoint=True`; the engine is only read by default). It never changes the task state, so a
+BLOCKED sync leaves the engine untouched.
 """
 import hashlib
 import re
 
 from .identity import TaskRequest
+from .registry import EngineBindingConflict
 from .sync import EnsureOutcome, ReopenPolicy, ensure_task
 
 _PLAIN_TARGET = re.compile(r'^[A-Z0-9][A-Z0-9_.\-]*$')
@@ -57,7 +59,10 @@ def sync_engine_task_to_issue(engine, task_id, registry, gateway, *, mission_id,
     task = engine.get_task(task_id)
     request = request_from_engine_task(task, mission_id=mission_id, phase_id=phase_id, target=target,
                                        schema_version=schema_version, task_type=task_type)
-    bound = registry.bind_engine_task(task_id, request.fingerprint, request.key)   # durable before any GitHub call
+    try:
+        bound = registry.bind_engine_task(task_id, request.fingerprint, request.key)   # durable before any GitHub call
+    except EngineBindingConflict as conflict:
+        raise IdentityDrift(str(conflict)) from None
     if bound != request.fingerprint:
         raise IdentityDrift(f'task {task_id} is already bound to another identity ({bound[:16]}); this call ({request.fingerprint[:16]}) '
                             'would create a second issue. An operator decides with registry.rebind_engine_task.')

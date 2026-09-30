@@ -14,6 +14,11 @@ import time
 
 SCHEMA_VERSION = 3
 
+
+class EngineBindingConflict(ValueError):
+    """Two engine tasks would share one task identity (and so one issue)."""
+
+
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS task_mappings (
     fingerprint TEXT PRIMARY KEY,
@@ -137,6 +142,10 @@ class TaskRegistry:
         issue was created and never recorded anything on the engine side."""
         self.db.execute('BEGIN IMMEDIATE')
         try:
+            other = self.db.execute('SELECT task_id FROM engine_bindings WHERE fingerprint=? AND task_id!=?',
+                                    (fingerprint, task_id)).fetchone()
+            if other is not None:
+                raise EngineBindingConflict(f'identity {fingerprint[:16]} is already bound to engine task {other[0]}')
             self.db.execute('INSERT OR IGNORE INTO engine_bindings(task_id,fingerprint,canonical_key,created_at) VALUES(?,?,?,?)',
                             (task_id, fingerprint, canonical_key, self.clock()))
             bound = self.db.execute('SELECT fingerprint FROM engine_bindings WHERE task_id=?', (task_id,)).fetchone()[0]
@@ -158,6 +167,10 @@ class TaskRegistry:
             raise ValueError('a note is required')
         self.db.execute('BEGIN IMMEDIATE')
         try:
+            other = self.db.execute('SELECT task_id FROM engine_bindings WHERE fingerprint=? AND task_id!=?',
+                                    (fingerprint, task_id)).fetchone()
+            if other is not None:
+                raise EngineBindingConflict(f'identity {fingerprint[:16]} is already bound to engine task {other[0]}')
             old = self.db.execute('SELECT fingerprint FROM engine_bindings WHERE task_id=?', (task_id,)).fetchone()
             self.db.execute('INSERT OR REPLACE INTO engine_bindings(task_id,fingerprint,canonical_key,created_at) VALUES(?,?,?,?)',
                             (task_id, fingerprint, canonical_key, self.clock()))

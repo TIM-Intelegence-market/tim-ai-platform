@@ -138,6 +138,10 @@ class GitHubRestGateway:
             if create:
                 raise
             raise GitHubError(f'{method} {path}: connection refused') from None
+        except GitHubError:
+            raise
+        except Exception as error:              # an injected transport may put headers (the token) into its message
+            raise GitHubError(f'{method} {path}: transport failed ({type(error).__name__})') from None
         if status >= 300:
             if status == 404 and method == 'GET':
                 return 404, None
@@ -161,12 +165,16 @@ class GitHubRestGateway:
     def _ref(self, item, number=None) -> IssueRef:
         if not isinstance(item, dict) or 'number' not in item:
             raise GitHubError('answer without an issue number')
-        if number is not None and int(item['number']) != int(number):
-            raise GitHubError(f'asked for issue #{int(number)} but got #{item["number"]}')
+        try:
+            found = int(item['number'])
+        except (TypeError, ValueError):
+            raise GitHubError('answer with an unusable issue number') from None
+        if number is not None and found != int(number):
+            raise GitHubError(f'asked for issue #{int(number)} but got #{found}')
         url = item.get('repository_url')
         if url is not None and not str(url).lower().rstrip('/').endswith(f'/repos/{self.repository}'.lower()):
             raise GitHubError(f'issue #{item["number"]} belongs to another repository')
-        return IssueRef(int(item['number']), str(item.get('state', '')), item.get('title') or '',
+        return IssueRef(found, str(item.get('state', '')), item.get('title') or '',
                         ((item.get('user') or {}).get('login') or ''), is_pull_request='pull_request' in item)
 
     def _issue(self, number):

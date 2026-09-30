@@ -265,3 +265,16 @@ def test_concurrent_bindings_of_different_identities_all_see_the_first_one(world
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert len(seen) == 8 and len(set(seen)) == 1
+
+
+# ---- review round 4 of PR #130 ----
+def test_two_engine_tasks_cannot_share_one_identity(world):
+    engine, reg, gw, rest, _ = world
+    make(engine, 'T-1'), make(engine, 'T-2')
+    sync(engine, reg, gw, 'T-1', target='SHARED')
+    with pytest.raises(IdentityDrift, match='already bound'):
+        sync(engine, reg, gw, 'T-2', target='SHARED')
+    other = request_from_engine_task(engine.get_task('T-2'), mission_id='M09', phase_id='P0', target='SHARED')
+    with pytest.raises(Exception, match='already bound'):
+        reg.rebind_engine_task('T-2', other.fingerprint, other.key, 'try to share')
+    assert len(rest.issues) == 1
