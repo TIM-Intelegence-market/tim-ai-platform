@@ -725,14 +725,77 @@ def test_unblock_and_map_clear_block_candidates(env):
 
 
 # ---- sixth review round ----
-def test_gateway_that_does_not_say_pr_or_issue_is_treated_as_not_an_issue(env, monkeypatch):
+def _without_kind(gh, monkeypatch):
     from src.task_governance import IssueRef
-    reg_path, gh = env
-    gh.seed(31, req().fingerprint)
     real = gh.find_issues
     monkeypatch.setattr(gh, 'find_issues', lambda fp, key: [IssueRef(i.number, i.state, author=i.author) for i in real(fp, key)])
+    return real
+
+
+def test_unknown_issue_kind_blocks_and_never_creates_or_adopts(env, monkeypatch):
+    reg_path, gh = env
+    gh.seed(31, req().fingerprint)                          # the real task issue, e.g. after the registry was lost
+    _without_kind(gh, monkeypatch)
+    reg = TaskRegistry(reg_path)
+    r = ensure_task(req(), reg, gh, claimant='w')
+    assert r.outcome is EnsureOutcome.BLOCKED and not r.created and gh.count() == 1
+    assert reg.get(req().fingerprint).block_reason == 'UNKNOWN_ISSUE_KIND'
+
+
+def test_unknown_issue_kind_block_lifts_itself_once_the_gateway_reports_it(env, monkeypatch):
+    reg_path, gh = env
+    gh.seed(31, req().fingerprint)
+    reg = TaskRegistry(reg_path)
+    with monkeypatch.context() as m:
+        _without_kind(gh, m)
+        assert ensure_task(req(), reg, gh, claimant='w').outcome is EnsureOutcome.BLOCKED
+    r = ensure_task(req(), reg, gh, claimant='w')            # gateway fixed, no human involved
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 31 and gh.count() == 1
+
+
+def test_hint_with_unknown_kind_is_revalidated_each_run_but_a_real_pr_stays_rejected(env, monkeypatch):
+    reg_path, gh = env
+    gh.seed(11, req().fingerprint, marker=False)
+    gh.seed(77, req().fingerprint, marker=False, pr=True)
+    reg = TaskRegistry(reg_path)
+    real_get = gh.get_issue
+    from src.task_governance import IssueRef
+    with monkeypatch.context() as m:
+        m.setattr(gh, 'get_issue', lambda n: (lambda i: IssueRef(i.number, i.state, author=i.author) if i else None)(real_get(n)))
+        assert ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11).outcome is EnsureOutcome.BLOCKED
+    fixed = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11)
+    assert fixed.outcome is EnsureOutcome.RECOVERED and fixed.issue_number == 11
+    reg2 = TaskRegistry(reg_path + '2')
+    assert ensure_task(req(), reg2, gh, claimant='w', authoritative_hint=77).outcome is EnsureOutcome.BLOCKED
+    assert ensure_task(req(), reg2, gh, claimant='w', authoritative_hint=77).outcome is EnsureOutcome.BLOCKED   # sticky
+
+
+def test_unknown_kind_appearing_after_create_blocks_and_reports_the_created_issue(env, monkeypatch):
+    reg_path, gh = env
+    real_create = gh.create_issue
+
+    def create_then_lose_kind(request, fingerprint, **kw):
+        issue = real_create(request, fingerprint, **kw)
+        _without_kind(gh, monkeypatch)
+        return issue
+
+    monkeypatch.setattr(gh, 'create_issue', create_then_lose_kind)
     r = ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w')
-    assert r.outcome is EnsureOutcome.CREATED and r.issue_number != 31      # unknown kind never adopted
+    assert r.outcome is EnsureOutcome.BLOCKED and r.created and gh.count() == 1
+
+
+def test_existing_mapping_from_another_repository_is_not_touched(env):
+    reg_path, gh = env
+    gh.repository = 'owner/repo'
+    reg = TaskRegistry(reg_path)
+    first = ensure_task(req(), reg, gh, claimant='w')
+    other = FakeGitHub(gh.path)
+    other.repository = 'someone/else'
+    before = len(gh.ops('update'))
+    r = ensure_task(req(), reg, other, claimant='w')
+    assert r.outcome is EnsureOutcome.BLOCKED and r.detail == 'REPOSITORY_MISMATCH'
+    assert len(gh.ops('update')) == before and reg.get(req().fingerprint).state is MappingState.MAPPED
+    assert reg.get(req().fingerprint).github_issue_number == first.issue_number
 
 
 def test_create_not_sent_that_was_wrong_is_reconciled_instead_of_released(env, monkeypatch):
@@ -769,7 +832,8 @@ def test_trusted_authors_compare_case_insensitively(env):
     assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 7 and gh.count() == 1
 
 
-def _open_and_ensure(reg_path, gh_path, i, q):
+def _open_and_ensure(reg_path, gh_path, i, q, barrier):
+    barrier.wait(60)                      # all processes hit the registry file at the same moment
     r = ensure_task(req(), TaskRegistry(reg_path), FakeGitHub(gh_path), claimant=f'p{i}')
     q.put((r.created, r.outcome.value))
 
@@ -777,7 +841,8 @@ def _open_and_ensure(reg_path, gh_path, i, q):
 def _run_processes(reg_path, gh_path, n):
     ctx = mp.get_context('spawn')
     q = ctx.Queue()
-    procs = [ctx.Process(target=_open_and_ensure, args=(reg_path, gh_path, i, q)) for i in range(n)]
+    barrier = ctx.Barrier(n)
+    procs = [ctx.Process(target=_open_and_ensure, args=(reg_path, gh_path, i, q, barrier)) for i in range(n)]
     [p.start() for p in procs]; [p.join(90) for p in procs]
     return [p.exitcode for p in procs], [q.get(timeout=5) for _ in procs if not q.empty()]
 

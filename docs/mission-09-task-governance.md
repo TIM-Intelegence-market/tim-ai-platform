@@ -26,6 +26,8 @@ parts containing `|` are rejected, not normalised.
 6. Adopt path order: mark duplicates and write the marker first (all idempotent, comment/label only), persist the mapping last, so a crash midway repeats the remaining steps on the next run.
 7. Persist the mapping with the fencing token (issue number, repository, duplicate list). If the claim was lost meanwhile, the result is `BLOCKED` (`CLAIM_LOST_AFTER_CREATE`), never reported as cleanly created. The stale worker only records an incident and adds its issue to the winner's duplicate list; it cannot overwrite the winner's state (fenced writes).
 
+A mapping is only synced for the repository it was created in; a call for another repository through the same registry returns `BLOCKED` (`REPOSITORY_MISMATCH`) and touches nothing.
+
 A `MAPPED` task is never downgraded to `BLOCKED`, not even by an unfenced operator call; such a call only records an incident.
 
 A failure before anything was created (for example GitHub unreachable) releases the claim.
@@ -51,7 +53,7 @@ The gateway interface has no close operation on purpose. `trusted_authors` is a 
 
 ## Wiring a real GitHub gateway
 
-Only results with `is_pull_request=False` count as task issues; pull requests and results where the gateway did not fill the field are dropped (fail closed). Author and repository comparisons ignore case and whitespace, and repository names also accept URL and `.git` forms. A gateway raises `CreateNotSent` only when `create_issue` failed before any request left the process; the guard still searches by marker and releases the claim only if nothing is visible. Any other exception is treated as uncertain (see step 5). A registry file from an earlier release is migrated on open (`PRAGMA user_version`, missing columns added).
+Only results with `is_pull_request=False` count as task issues and pull requests are dropped. A marker match whose kind the gateway did not report blocks the task (`UNKNOWN_ISSUE_KIND`, same for a hint: `HINT_UNKNOWN_KIND`); it is neither adopted nor bypassed by creating, and the block is re-validated on every run, so it lifts itself once the gateway reports the field. Author and repository comparisons ignore case and whitespace, and repository names also accept URL and `.git` forms. A gateway raises `CreateNotSent` only when `create_issue` failed before any request left the process; the guard still searches by marker and releases the claim only if nothing is visible. Any other exception is treated as uncertain (see step 5). A registry file from an earlier release is migrated on open (`PRAGMA user_version`, missing columns added).
 
 Implement `IssueGateway` (`find_issues`, `create_issue`, `update_issue`, `reopen_issue`, `is_documented_duplicate`, `mark_duplicate`). `create_issue` and `update_issue` must embed `fingerprint_marker(fp)` in the body (the update back-fills issues that predate it). `mark_duplicate` and `update_issue` may only comment or label. `find_issues` should list issues and match the marker; GitHub's search index lags, and a lagging search would hide a just-created issue from the post-create check.
 
