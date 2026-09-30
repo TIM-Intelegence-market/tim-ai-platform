@@ -15,7 +15,7 @@ from typing import Any, Mapping
 from src.models.market_data import Candle
 
 from .base import AdapterInput
-from .generic import _dt
+from .generic import _dt, _period_seconds
 
 
 def _dec(value: Any) -> Decimal | None:
@@ -55,11 +55,12 @@ class MMTScreenshotAdapter:
                 if open_time is None:
                     rejected.append(f"candles[{index}].open_time")
                     continue
-                period_seconds = int(item.get("period_seconds", 240))
+                timeframe = str(item.get("timeframe", data.get("timeframe", "4H")))
+                period_seconds = _period_seconds(item, timeframe)
                 # Validate like the generic adapter so one bad candle is rejected, not the whole run.
                 candle = Candle(
                     symbol=str(item.get("symbol", data.get("symbol"))),
-                    timeframe=str(item.get("timeframe", "4H")),
+                    timeframe=timeframe,
                     open_time=open_time,
                     close_time=open_time + timedelta(seconds=period_seconds),
                     open=float(item["open"]),
