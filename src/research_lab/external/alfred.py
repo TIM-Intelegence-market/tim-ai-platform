@@ -174,6 +174,11 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
             entries[(entry.period_start, entry.vintage)].append(entry)
     if undatable:
         return not_ready("UNDATABLE_ROWS", f"{undatable} row(s) without a usable period or vintage date; availability cannot be established")
+    request_end = _date(observations["realtime_end"])
+    outside = sum(1 for _period, vintage in entries if not request_start <= vintage <= request_end)
+    if outside:
+        # The envelope's range sets coverage and clipping; rows contradicting it make both untrustworthy.
+        return not_ready("INCONSISTENT_METADATA", f"{outside} vintage(s) outside the declared real-time range")
 
     records: list[VintageObservation] = []
     unusable: list[Unusable] = []
@@ -253,6 +258,8 @@ def _metadata_problem(spec: SourceSpec, series: Any, observations: Any) -> str |
             _date(observations.get(key))
         except (TypeError, ValueError):
             return f"observations {key} is not a date"
+    if observations["realtime_start"] > observations["realtime_end"]:  # ISO dates compare as strings
+        return "observations realtime_start is after realtime_end"
     return None
 
 

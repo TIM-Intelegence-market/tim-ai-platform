@@ -98,6 +98,7 @@ Wiederverwendet: `QualityIssue`/`Severity` aus `src/quality/framework.py`.
 | Gültigkeit überlappt mit irgendeinem früheren Vintage (auch einem unbrauchbaren) | späteres Vintage `UNKNOWN` |
 | gleiche Periode/Vintage doppelt, gleicher Wert | eine Zeile behalten (unabhängig von der Reihenfolge), Warnung |
 | gleiche Periode/Vintage doppelt, anderer Wert | `UNKNOWN` |
+| Vintage außerhalb des erklärten Real-Time-Bereichs der Payload, oder Bereichsbeginn nach Bereichsende | Payload `NOT_READY` (`INCONSISTENT_METADATA`) |
 | fehlender oder leerer Release-Kalender | Warnung, alle Vintages `END_OF_VINTAGE_DAY`, kein Erstdruck belegt |
 | Wert außerhalb 1e-6 … 1e9 (Betrag) oder mit mehr als 20 Stellen | `UNKNOWN` (`MALFORMED_VALUE`), damit die Ereignisrechnung im festen Decimal-Kontext nie überläuft |
 | Datum am Kalenderrand ohne darstellbare Periodenrechnung oder `available_at` (z. B. Periode 0001-01 oder 9999-12) | nicht datierbar: Payload `NOT_READY` |

@@ -20,8 +20,8 @@
   period ended, and the calendar must hold the previous release at most one
   release interval (45 days) earlier, so a skipped release is noticed; without
   calendar dates no first print counts as identified. Unusable rows still count
-  for overlapping vintages, dates at the calendar edge make the payload
-  NOT_READY and values outside 1e-6..1e9 (or over 20 digits) are malformed,
+  for overlapping vintages, vintages outside the payload's declared real-time
+  range and dates at the calendar edge make the payload NOT_READY, and values outside 1e-6..1e9 (or over 20 digits) are malformed,
   instead of crashing ingestion or event arithmetic. The dataset
   id also covers state, visible quality findings, an archive end before replay
   time, missing first prints and, for unusable payloads, the payload hashes.

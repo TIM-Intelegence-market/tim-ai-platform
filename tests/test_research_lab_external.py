@@ -844,6 +844,17 @@ def test_calendar_gap_around_the_first_release_certifies_no_first_print() -> Non
         with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", datetime(2024, 3, 1, tzinfo=UTC)))
 
 
+@pytest.mark.parametrize(
+    "envelope",
+    [{"start": "2024-04-01"}, {"end": "2024-02-01"}, {"start": "2024-05-01", "end": "2024-04-01"}],
+)
+def test_rows_outside_the_declared_real_time_range_are_not_ready(envelope: dict) -> None:
+    result = ingest(**envelope)
+    assert result.state is QualityState.NOT_READY and codes(result) == ["INCONSISTENT_METADATA"]
+    output = replay(result, datetime(2024, 4, 20, tzinfo=UTC))
+    assert output["state"] == "NOT_READY" and output["events"] == []
+
+
 def test_period_at_the_start_of_the_calendar_makes_the_payload_not_ready_instead_of_crashing() -> None:
     result = ingest(base_rows() + [row("0001-01-01", "2024-02-13", "9999-12-31", "300.0")])
     assert result.state is QualityState.NOT_READY and "UNDATABLE_ROWS" in codes(result)
