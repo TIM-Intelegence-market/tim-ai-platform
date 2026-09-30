@@ -19,7 +19,7 @@ class IssueRef:
     state: str          # 'open' | 'closed'
     title: str = ''
     author: str = ''
-    is_pull_request: bool = False
+    is_pull_request: bool | None = None    # None = gateway did not say; treated as NOT an issue (fail closed)
 
 
 class CreateNotSent(Exception):
@@ -92,7 +92,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     """
     fp, key = request.fingerprint, request.key
     known = LEGACY_AUTHORITIES.get(key)
-    if known is not None and known.repository.strip().lower() != str(gateway.repository).strip().lower():
+    if known is not None and _norm_repo(known.repository) != _norm_repo(gateway.repository):
         known = None                                  # numbers of another repository mean nothing here
     if known is not None and authoritative_hint in (None, known.authoritative):
         authoritative_hint = known.authoritative
@@ -136,8 +136,9 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         blocked = registry.block(fp, 'HINT_NOT_FOUND', f'hint={authoritative_hint} does not exist', token=token,
                                  candidates=[authoritative_hint])
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
-    if hinted is not None and (hinted.is_pull_request or (trusted_authors is not None and hinted.author not in trusted_authors)):
-        why = 'is a pull request' if hinted.is_pull_request else f'is authored by untrusted {hinted.author!r}'
+    if hinted is not None and (hinted.is_pull_request is not False or not _trusted(hinted, trusted_authors)):
+        why = ('is a pull request or not confirmed to be an issue' if hinted.is_pull_request is not False
+               else f'is authored by untrusted {hinted.author!r}')
         blocked = registry.block(fp, 'HINT_INVALID', f'hint={hinted.number} {why}', token=token,
                                  candidates=[hinted.number])
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
@@ -160,7 +161,14 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     started = time.monotonic()
     try:
         issue = gateway.create_issue(request, fp, timeout=worst_create)
-    except CreateNotSent:
+    except CreateNotSent as exc:
+        # Trust but verify: a gateway that raised this wrongly must not enable an instant second create.
+        try:
+            visible = _matches(gateway, fp, key, trusted_authors)
+        except Exception:
+            raise exc                                # cannot verify: keep the claim until its lease expires
+        if visible:
+            return _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
         registry.release(fp, token)
         raise
     except Exception as exc:
@@ -222,10 +230,20 @@ def _hint_resolves_block(existing, hint) -> bool:
 
 def _matches(gateway, fp, key, trusted_authors) -> list[IssueRef]:
     # Pull requests come out of the issues API too; a PR that carries the marker is never a task issue.
-    found = [m for m in gateway.find_issues(fp, key) if not m.is_pull_request]
-    if trusted_authors is None:
-        return found
-    return [m for m in found if m.author in trusted_authors]
+    found = [m for m in gateway.find_issues(fp, key) if m.is_pull_request is False]
+    return [m for m in found if _trusted(m, trusted_authors)]
+
+
+def _trusted(issue, trusted_authors) -> bool:
+    return trusted_authors is None or issue.author.strip().lower() in {a.strip().lower() for a in trusted_authors}
+
+
+def _norm_repo(repo) -> str:
+    text = str(repo).strip().lower().rstrip('/')
+    for prefix in ('https://github.com/', 'http://github.com/', 'github.com/', 'git@github.com:'):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+    return text.removesuffix('.git').rstrip('/')
 
 
 def _adopt(registry, gateway, fp, token, issue, duplicates, request) -> EnsureResult:

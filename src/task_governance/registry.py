@@ -61,17 +61,34 @@ class TaskRegistry:
         self.clock = clock
         self.db = sqlite3.connect(path, timeout=30, isolation_level=None, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.db.execute('PRAGMA journal_mode=WAL')
         self.db.execute('PRAGMA busy_timeout=30000')
-        self.db.executescript(SCHEMA)
-        self._migrate()
+        self._init()
+
+    def _init(self) -> None:
+        """Switching to WAL and running DDL ignore busy_timeout when several processes open a fresh
+        or old file at once, so retry on lock errors instead of failing the worker at startup."""
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                self.db.execute('PRAGMA journal_mode=WAL')
+                self.db.executescript(SCHEMA)
+                self._migrate()
+                return
+            except sqlite3.OperationalError as exc:
+                if 'locked' not in str(exc) and 'busy' not in str(exc) or time.monotonic() > deadline:
+                    raise
+                time.sleep(0.02)
 
     def _migrate(self) -> None:
         """Bring a registry file written by an earlier release up to the current columns."""
         have = {r['name'] for r in self.db.execute('PRAGMA table_info(task_mappings)')}
         for name, ddl in (('claim_token', 'INTEGER NOT NULL DEFAULT 0'), ('block_candidates', "TEXT NOT NULL DEFAULT '[]'")):
             if name not in have:
-                self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
+                try:
+                    self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
+                except sqlite3.OperationalError as exc:
+                    if 'duplicate column' not in str(exc):       # another process migrated first
+                        raise
         self.db.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
 
     def close(self):

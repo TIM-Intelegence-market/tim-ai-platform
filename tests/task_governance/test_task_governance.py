@@ -722,3 +722,86 @@ def test_unblock_and_map_clear_block_candidates(env):
     ensure_task(req(), reg, gh, claimant='w')
     ensure_task(req(), reg, gh, claimant='w', authoritative_hint=9)
     assert reg.get(fp).block_candidates == () and reg.get(fp).state is MappingState.MAPPED
+
+
+# ---- sixth review round ----
+def test_gateway_that_does_not_say_pr_or_issue_is_treated_as_not_an_issue(env, monkeypatch):
+    from src.task_governance import IssueRef
+    reg_path, gh = env
+    gh.seed(31, req().fingerprint)
+    real = gh.find_issues
+    monkeypatch.setattr(gh, 'find_issues', lambda fp, key: [IssueRef(i.number, i.state, author=i.author) for i in real(fp, key)])
+    r = ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w')
+    assert r.outcome is EnsureOutcome.CREATED and r.issue_number != 31      # unknown kind never adopted
+
+
+def test_create_not_sent_that_was_wrong_is_reconciled_instead_of_released(env, monkeypatch):
+    from src.task_governance import CreateNotSent
+    reg_path, gh = env
+    real_create = gh.create_issue
+
+    def lying(request, fingerprint, **kw):
+        real_create(request, fingerprint, **kw)               # the request did go out ...
+        raise CreateNotSent('claimed nothing was sent')       # ... but the gateway says it did not
+
+    monkeypatch.setattr(gh, 'create_issue', lying)
+    r = ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w')
+    assert r.outcome is EnsureOutcome.CREATED and gh.count() == 1
+    monkeypatch.undo()
+    assert ensure_task(req(), TaskRegistry(reg_path), gh, claimant='x').outcome is EnsureOutcome.UPDATED
+    assert gh.count() == 1
+
+
+@pytest.mark.parametrize('spelling', ['https://github.com/uezeyiraydin-cell/tim-ai-platform',
+                                      'uezeyiraydin-cell/tim-ai-platform.git', 'uezeyiraydin-cell/tim-ai-platform/',
+                                      'git@github.com:uezeyiraydin-cell/tim-ai-platform.git'])
+def test_repository_binding_accepts_url_and_git_forms(env, spelling):
+    reg_path, gh = env
+    gh.repository = spelling
+    gh.seed(11, legacy_req().fingerprint, marker=False)
+    assert ensure_task(legacy_req(), TaskRegistry(reg_path), gh, claimant='w').issue_number == 11
+
+
+def test_trusted_authors_compare_case_insensitively(env):
+    reg_path, gh = env
+    gh.seed(7, req().fingerprint, author='Owner')
+    r = ensure_task(req(), TaskRegistry(reg_path), gh, claimant='w', trusted_authors={' OWNER '})
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 7 and gh.count() == 1
+
+
+def _open_and_ensure(reg_path, gh_path, i, q):
+    r = ensure_task(req(), TaskRegistry(reg_path), FakeGitHub(gh_path), claimant=f'p{i}')
+    q.put((r.created, r.outcome.value))
+
+
+def _run_processes(reg_path, gh_path, n):
+    ctx = mp.get_context('spawn')
+    q = ctx.Queue()
+    procs = [ctx.Process(target=_open_and_ensure, args=(reg_path, gh_path, i, q)) for i in range(n)]
+    [p.start() for p in procs]; [p.join(90) for p in procs]
+    return [p.exitcode for p in procs], [q.get(timeout=5) for _ in procs if not q.empty()]
+
+
+@pytest.mark.parametrize('round_', range(4))
+def test_processes_may_create_the_registry_file_themselves(tmp_path, round_):
+    """No pre-created registry: the first opens race on WAL switch and DDL and must not crash."""
+    reg_path, gh_path = str(tmp_path / 'reg.db'), str(tmp_path / 'gh.db')
+    gh = FakeGitHub(gh_path)
+    codes, outs = _run_processes(reg_path, gh_path, 6)
+    assert codes == [0] * 6
+    assert gh.count() == 1 and sum(c for c, _ in outs) == 1
+
+
+@pytest.mark.parametrize('round_', range(3))
+def test_processes_migrating_an_old_registry_file_at_the_same_time(tmp_path, round_):
+    import sqlite3
+    reg_path, gh_path = str(tmp_path / 'old.db'), str(tmp_path / 'gh.db')
+    db = sqlite3.connect(reg_path)
+    db.executescript('''CREATE TABLE task_mappings (fingerprint TEXT PRIMARY KEY, canonical_key TEXT NOT NULL UNIQUE,
+        state TEXT NOT NULL, claimant TEXT, claimed_at REAL, github_repository TEXT, github_issue_number INTEGER,
+        duplicate_issues TEXT NOT NULL DEFAULT '[]', block_reason TEXT NOT NULL DEFAULT '',
+        created_at REAL NOT NULL, updated_at REAL NOT NULL);''')
+    db.commit(); db.close()
+    gh = FakeGitHub(gh_path)
+    codes, outs = _run_processes(reg_path, gh_path, 6)
+    assert codes == [0] * 6 and gh.count() == 1
