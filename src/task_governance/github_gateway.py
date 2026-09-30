@@ -132,16 +132,17 @@ class GitHubRestGateway:
         if payload is not None:
             body = json.dumps(payload).encode('utf-8')
             headers['Content-Type'] = 'application/json'
+        failure = None
         try:
             status, raw = self._transport(method, f'{self._api}{path}', headers, body, timeout or self._timeout)
         except _NotSent:
             if create:
                 raise
-            raise GitHubError(f'{method} {path}: connection refused') from None
-        except GitHubError:
-            raise
-        except Exception as error:              # an injected transport may put headers (the token) into its message
-            raise GitHubError(f'{method} {path}: transport failed ({type(error).__name__})') from None
+            failure = f'{method} {path}: connection refused'
+        except Exception as error:              # an injected transport may put headers (the token) into its message,
+            failure = f'{method} {path}: transport failed ({type(error).__name__})'    # also a GitHubError of its own
+        if failure is not None:
+            raise GitHubError(failure)          # raised outside the except block: no __context__ keeps the original
         if status >= 300:
             if status == 404 and method == 'GET':
                 return 404, None

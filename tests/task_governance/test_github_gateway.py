@@ -381,13 +381,16 @@ def test_a_timeout_shuts_the_socket_down_so_a_send_in_progress_cannot_finish(mon
     assert time.monotonic() - start < 2 and seen['how'] == socket.SHUT_RDWR and seen['sent'] is False and seen['closed']
 
 
-def test_an_injected_transport_cannot_leak_the_token_through_its_exception():
+@pytest.mark.parametrize('error', [lambda headers: RuntimeError(f'failed with {headers}'),
+                                   lambda headers: GitHubError(f'failed with {headers}')])
+def test_an_injected_transport_cannot_leak_the_token_through_its_exception(error):
     def leaky(method, url, headers, body, timeout):
-        raise RuntimeError(f'failed with {headers}')
+        raise error(headers)
     gateway = GitHubRestGateway('owner/repo', TOKEN, transport=leaky)
     with pytest.raises(GitHubError) as caught:
         gateway.get_issue(1)
-    assert TOKEN not in str(caught.value) and TOKEN not in repr(caught.value.__cause__) and caught.value.__suppress_context__
+    assert TOKEN not in str(caught.value) and TOKEN not in repr(caught.value)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
 
 
 def test_an_unusable_issue_number_in_an_answer_is_a_github_error(rest):
