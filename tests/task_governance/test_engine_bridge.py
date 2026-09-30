@@ -135,7 +135,7 @@ def test_task_ids_differing_only_in_case_get_distinct_identities_and_issues(worl
     assert len(keys) == 2 and 'M09|P0|SAMPLE_TASK|BUG-A|v1' in keys
 
 
-@pytest.mark.parametrize('task_id', ['bug a', 'bug|a', 'ünï', 'H-0123456789ABCDEF'])
+@pytest.mark.parametrize('task_id', ['bug a', 'bug|a', 'ünï', 'H-0123456789ABCDEF0123456789ABCDEF'])
 def test_unusual_or_reserved_task_ids_still_get_a_valid_unique_identity(world, task_id):
     engine, reg, gw, rest, _ = world
     make(engine, task_id)
@@ -154,3 +154,83 @@ def test_changed_identity_for_the_same_task_is_refused_before_any_github_call(wo
         with pytest.raises(IdentityDrift):
             sync_engine_task_to_issue(engine, 'T-1', reg, gw, **args)
     assert len(rest.calls) == calls and len(rest.issues) == 1 and len(engine.checkpoints('T-1')) == 1
+
+
+# ---- review round 2 of PR #130: the binding must not depend on an engine checkpoint ----
+def _force_state(engine, task_id, *states):
+    now = engine.get_task(task_id).timestamps['updated_at']
+    for state in states:
+        engine._repo.transition(task_id, state, at=now)       # repository level: the engine's own gates are #12's business
+
+
+def test_drift_is_caught_even_when_the_first_run_crashed_after_creating_and_wrote_no_checkpoint(world):
+    engine, reg, gw, rest, _ = world
+    make(engine)
+    rest.lose_create_reply = True
+    with pytest.raises(Exception):
+        sync(engine, reg, gw)                                 # create landed, reply lost, reconcile cannot list
+    assert len(rest.issues) == 1 and engine.checkpoints('T-1') == []
+    rest.lose_create_reply = False
+    rest.fail.clear()
+    with pytest.raises(IdentityDrift):
+        sync_engine_task_to_issue(engine, 'T-1', reg, gw, mission_id='M09', phase_id='P1', claimant='w', trusted_authors=None)
+    assert len(rest.issues) == 1
+
+
+def test_drift_is_caught_for_a_fixed_task_that_never_got_a_checkpoint(world):
+    engine, reg, gw, rest, _ = world
+    make(engine)
+    _force_state(engine, 'T-1', TaskState.PLANNED, TaskState.READY, TaskState.IN_PROGRESS, TaskState.VERIFYING, TaskState.FIXED)
+    assert sync(engine, reg, gw).outcome is EnsureOutcome.CREATED
+    with pytest.raises(IdentityDrift):
+        sync_engine_task_to_issue(engine, 'T-1', reg, gw, mission_id='M09', phase_id='P1', claimant='w', trusted_authors=None)
+    assert len(rest.issues) == 1
+
+
+def test_only_active_tasks_get_a_checkpoint_and_a_revision_bump(world):
+    engine, reg, gw, rest, _ = world
+    make(engine, 'T-1'), make(engine, 'T-2')
+    engine.block('T-1', 'waiting')
+    before = engine.revision('T-1')
+    assert sync(engine, reg, gw, 'T-1').outcome is EnsureOutcome.CREATED
+    assert engine.revision('T-1') == before and engine.checkpoints('T-1') == []
+    assert sync(engine, reg, gw, 'T-2').outcome is EnsureOutcome.CREATED and len(engine.checkpoints('T-2')) == 1
+
+
+def test_a_blank_next_action_does_not_break_the_checkpoint(world):
+    engine, reg, gw, rest, _ = world
+    make(engine, next_action='   ')
+    assert sync(engine, reg, gw).outcome is EnsureOutcome.CREATED
+    assert engine.checkpoints('T-1')[0]['next_action'] == 'continue task'
+    assert sync(engine, reg, gw).outcome is EnsureOutcome.UPDATED
+
+
+def test_binding_is_durable_across_registry_reopen_and_an_operator_can_rebind(world):
+    engine, reg, gw, rest, tmp_path = world
+    make(engine)
+    first = sync(engine, reg, gw)
+    reopened = TaskRegistry(str(tmp_path / 'reg.db'))
+    with pytest.raises(IdentityDrift):
+        sync_engine_task_to_issue(engine, 'T-1', reopened, gw, mission_id='M09', phase_id='P1', claimant='w', trusted_authors=None)
+    request = request_from_engine_task(engine.get_task('T-1'), mission_id='M09', phase_id='P1')
+    with pytest.raises(ValueError):
+        reopened.rebind_engine_task('T-1', request.fingerprint, request.key, ' ')
+    reopened.rebind_engine_task('T-1', request.fingerprint, request.key, 'operator moved the task to P1')
+    engine._repo.db.execute("DELETE FROM task_checkpoints WHERE task_id='T-1'")      # engine side of the old identity
+    moved = sync_engine_task_to_issue(engine, 'T-1', reopened, gw, mission_id='M09', phase_id='P1', claimant='w', trusted_authors=None)
+    assert moved.outcome is EnsureOutcome.CREATED and moved.issue_number != first.issue_number
+    assert [i for i in reopened.incidents() if i['reason'] == 'ENGINE_REBOUND']
+
+
+def test_concurrent_bindings_of_different_identities_all_see_the_first_one(world):
+    import threading
+    _, reg, *_ = world
+    seen = []
+
+    def run(i):
+        seen.append(reg.bind_engine_task('T-1', f'fp{i}', f'KEY{i}'))
+
+    threads = [threading.Thread(target=run, args=(i,)) for i in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(seen) == 8 and len(set(seen)) == 1

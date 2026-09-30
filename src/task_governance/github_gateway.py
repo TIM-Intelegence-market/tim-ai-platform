@@ -61,11 +61,15 @@ def _http_transport(method, url, headers, body, timeout):
     else:
         raise GitHubError('refusing a non-https url')
     target = parts.path + (f'?{parts.query}' if parts.query else '')
-    box = {}
+    box, cancelled = {}, threading.Event()
 
     def run():
         try:
             box['conn'] = conn = factory(parts.hostname, parts.port, timeout=timeout)
+            conn.connect()
+            if cancelled.is_set():
+                return                      # the caller already gave up: send nothing
+            conn.auto_open = 0              # a closed connection must fail, not silently reconnect and send late
             conn.request(method, target, body=body, headers=headers)
             response = conn.getresponse()
             data = response.read(MAX_ANSWER_BYTES + 1)
@@ -81,11 +85,14 @@ def _http_transport(method, url, headers, body, timeout):
     worker.start()
     worker.join(timeout)
     if worker.is_alive():
+        cancelled.set()
         conn = box.get('conn')
         if conn is not None:
             conn.close()                    # unblocks the worker; the request may still have reached GitHub
         raise GitHubError(f'{method} timed out after {timeout}s')
     error = box.get('error')
+    if 'result' not in box and error is None:
+        raise GitHubError(f'{method} did not complete')
     if error is not None:
         if isinstance(error, (ConnectionRefusedError, socket.gaierror)):
             raise _NotSent() from None
@@ -94,9 +101,6 @@ def _http_transport(method, url, headers, body, timeout):
     if len(data) > MAX_ANSWER_BYTES:
         raise GitHubError(f'{method} answer too large')
     return status, data
-
-
-_urllib_transport = _http_transport         # earlier name
 
 
 class GitHubRestGateway:
@@ -110,7 +114,6 @@ class GitHubRestGateway:
         self.max_create_seconds = float(max_create_seconds)
         self._token, self._timeout, self._max_pages = token, float(request_timeout), max_pages
         self._transport, self._api = transport, api.rstrip('/')
-        self._repository_ok = False
 
     def __repr__(self):
         return f'GitHubRestGateway({self.repository!r})'
@@ -169,12 +172,9 @@ class GitHubRestGateway:
         return item
 
     def _require_repository(self):
-        if self._repository_ok:
-            return
-        status, _ = self._call('GET', f'/repos/{self.repository}')
+        status, _ = self._call('GET', f'/repos/{self.repository}')       # not cached: access can be withdrawn
         if status == 404:
             raise GitHubError('repository not found or no access')
-        self._repository_ok = True
 
     def _comment(self, number, text):
         self._call('POST', f'/repos/{self.repository}/issues/{int(number)}/comments', {'body': text})
@@ -209,13 +209,15 @@ class GitHubRestGateway:
         if marker not in new:
             new = f'{new}\n\n{marker}'
         if new != body:
-            self._call('PATCH', f'/repos/{self.repository}/issues/{int(number)}', {'body': new})
+            _, answer = self._call('PATCH', f'/repos/{self.repository}/issues/{int(number)}', {'body': new})
+            self._ref(answer, number)
         tag = f'<!-- TIM_TASK_AUDIT:{hashlib.sha256(reason.encode()).hexdigest()[:12]} -->'
         if not any(tag in (c.get('body') or '') for c in self._pages(f'/repos/{self.repository}/issues/{int(number)}/comments')):
             self._comment(number, f'{tag}\nTIM task governance: {reason}')
 
     def reopen_issue(self, number, request: TaskRequest, reason):
-        self._call('PATCH', f'/repos/{self.repository}/issues/{int(number)}', {'state': 'open'})
+        _, answer = self._call('PATCH', f'/repos/{self.repository}/issues/{int(number)}', {'state': 'open'})
+        self._ref(answer, number)
         self._comment(number, f'TIM task governance: reopened ({reason}).')
 
     def is_documented_duplicate(self, number, authoritative):

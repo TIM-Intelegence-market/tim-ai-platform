@@ -163,6 +163,7 @@ def test_constructor_validates_repository_and_token():
 
 
 # ---- review round 1 of PR #130: redirects, wall-clock timeout, answer identity, 404 semantics ----
+import http.client
 import http.server
 import socket
 import threading
@@ -300,3 +301,44 @@ def test_real_transport_http_errors_and_refused_connections():
 def test_real_transport_refuses_plain_http_to_a_real_host():
     with pytest.raises(GitHubError):
         GitHubRestGateway('o/r', TOKEN, api='http://example.com').get_issue(1)
+
+
+# ---- review round 2 of PR #130 ----
+def test_repository_check_is_not_cached(rest, gw):
+    assert gw.get_issue(404) is None
+    rest.repo_visible = False
+    with pytest.raises(GitHubError):
+        gw.get_issue(404)
+
+
+def test_patch_and_reopen_answers_must_name_the_asked_issue(rest):
+    rest.seed(5, 'text')
+
+    def transport(method, url, headers, body, timeout):
+        if method == 'PATCH':
+            return 200, b'{"number": 99, "state": "open"}'
+        return rest(method, url, headers, body, timeout)
+    gateway = GitHubRestGateway('owner/repo', TOKEN, transport=transport)
+    with pytest.raises(GitHubError):
+        gateway.update_issue(5, req(), 'x')
+    with pytest.raises(GitHubError):
+        gateway.reopen_issue(5, req(), 'x')
+
+
+def test_a_request_the_caller_gave_up_on_during_connect_is_never_sent_later(monkeypatch):
+    from src.task_governance import github_gateway
+
+    class SlowConnect(http.client.HTTPConnection):
+        def connect(self):
+            super().connect()
+            time.sleep(0.8)                                    # the caller times out meanwhile
+
+    monkeypatch.setattr(github_gateway, 'HTTPConnection', SlowConnect)
+    server = _Server(lambda h: (h.send_response(201), h.send_header('Content-Length', '2'), h.end_headers(), h.wfile.write(b'{}')))
+    try:
+        with pytest.raises(GitHubError):
+            _real(server).create_issue(req(), req().fingerprint, timeout=0.2)
+        time.sleep(2.5)                                        # long enough for a silent reconnect (0.8 s) plus send
+        assert ('POST', '/repos/o/r/issues') not in server.paths
+    finally:
+        server.close()

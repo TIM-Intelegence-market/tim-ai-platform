@@ -12,6 +12,7 @@ class FakeRest:
         self.fail = {}                  # (method, path-regex) -> status code or Exception instance
         self.next_number = 1000
         self.repo_visible = True
+        self.lose_create_reply = False   # the issue is created, but the answer never arrives
 
     def seed(self, number, body='', state='open', login='owner', pr=False):
         item = {'number': number, 'state': state, 'title': f'issue {number}', 'body': body, 'user': {'login': login},
@@ -46,6 +47,9 @@ class FakeRest:
                 number = self.next_number
                 self.seed(number, payload['body'])
                 self.issues[number]['title'] = payload['title']
+                if self.lose_create_reply:
+                    self.fail[('GET', r'/issues$')] = 503     # and GitHub stops answering listings afterwards
+                    raise TimeoutError('reply lost')
                 return 201, json.dumps(self.issues[number]).encode()
         m = re.fullmatch(re.escape(base) + r'/(\d+)', path)
         if m:
