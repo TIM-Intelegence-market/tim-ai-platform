@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — BTC Research Engine V1: Data & Events
+
+- Added `src/research_lab/external/`: point-in-time external data for BTC
+  research, first source ALFRED US CPI (`CPIAUCSL`, every vintage).
+- Every record carries source, reference period, vintage, `available_at`
+  (BLS release time 08:30 New York on release dates, otherwise end of the
+  vintage day), ingestion time and payload hash. Replay at T sees a record only
+  when `available_at <= T`; rows that cannot be dated make the payload
+  NOT_READY, unusable dated rows make their period UNKNOWN (no fallback to an
+  older vintage).
+- CPI release events (actual, previous, previous revised, revision; expected and
+  surprise only from a sourced expectation known before the release), BTC
+  alignment on the research lab's klines with the protocol holdout lock, and a
+  deterministic replay with dataset id, content hash and output hash.
+- No forecasts, signals, orders or production-database access.
+
 ## Unreleased — Broncx Discord feed as external guidance
 
 - Added `src/knowledge/broncx_feed.py` (post store and guidance parser) and
