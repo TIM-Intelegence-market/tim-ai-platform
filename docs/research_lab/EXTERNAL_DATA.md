@@ -159,7 +159,9 @@ Datensatz-IDs, BTC-Hash und -Vollständigkeit. Eine spätere Revision ändert de
 kostenlosen FRED-API-Key. Der Key steht nur in der URL, nie im Bundle, im
 Manifest oder in der Provenienz; `RawPayloadStore.put` verweigert Anfragen mit
 Zugangsdaten. Rohdaten liegen unter `data/research_lab/external/` (von Git
-ignoriert). Paging wird nicht unterstützt: eine unvollständige Antwort ist
+ignoriert), je Bundle ein Manifest-Eintrag `bundles/<id>.json`; alle Dateien
+werden atomar geschrieben (temporäre Datei, dann Umbenennen), sodass parallele
+oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging wird nicht unterstützt: eine unvollständige Antwort ist
 `NOT_READY`.
 
 ## 10. Bekannte Grenzen

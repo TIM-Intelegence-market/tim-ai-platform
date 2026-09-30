@@ -27,6 +27,8 @@
   instead of crashing ingestion or event arithmetic. The dataset
   id also covers state, visible quality findings, an archive end before replay
   time, missing first prints and, for unusable payloads, the payload hashes.
+- The raw payload store keeps one manifest entry per bundle and writes every
+  file atomically, so concurrent or interrupted saves keep earlier bundles.
 - No forecasts, signals, orders or production-database access.
 
 ## Unreleased — Broncx Discord feed as external guidance

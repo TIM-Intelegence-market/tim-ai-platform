@@ -3,11 +3,17 @@
 Files live under data/research_lab/external (ignored by git, like the archive
 store). Raw bytes are kept exactly as received, so every normalization can be
 re-run and checked. Request parameters are recorded without credentials.
+
+Every bundle has its own manifest entry (``bundles/<id>.json``) and every file is
+written atomically (temporary file, then rename): concurrent saves never overwrite
+each other and an interrupted save leaves earlier bundles intact.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -16,16 +22,15 @@ from src.research_lab.external.alfred import RawBundle, reject_credentials
 from src.research_lab.external.records import iso, require_utc
 
 DEFAULT_ROOT = Path("data/research_lab/external")
-MANIFEST = "manifest.json"
+BUNDLES = "bundles"
 
 
 class RawPayloadStore:
     def __init__(self, root: Path | str = DEFAULT_ROOT) -> None:
         self.root = Path(root)
 
-    def _manifest(self) -> dict[str, Any]:
-        path = self.root / MANIFEST
-        return json.loads(path.read_text()) if path.exists() else {"bundles": {}}
+    def _entry_path(self, bundle_id: str) -> Path:
+        return self.root / BUNDLES / f"{bundle_id}.json"
 
     def put(self, bundle: RawBundle) -> str:
         """Store a bundle; returns its id (hash of payload hashes and ingestion time)."""
@@ -43,18 +48,16 @@ class RawPayloadStore:
         for name, payload in bundle.payloads.items():
             target = self._path(hashes[name])
             if not target.exists():
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(payload)
-        manifest = self._manifest()
-        manifest["bundles"][bundle_id] = entry
-        self.root.mkdir(parents=True, exist_ok=True)
-        (self.root / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+                _write_atomic(target, payload)
+        # The entry goes last: a bundle is only visible once all its payloads are on disk.
+        _write_atomic(self._entry_path(bundle_id), (json.dumps(entry, indent=2, sort_keys=True) + "\n").encode())
         return bundle_id
 
     def get(self, bundle_id: str) -> RawBundle:
-        entry = self._manifest()["bundles"].get(bundle_id)
-        if entry is None:
+        path = self._entry_path(bundle_id)
+        if not path.exists():
             raise KeyError(f"unknown bundle {bundle_id}")
+        entry = json.loads(path.read_text())
         if _bundle_id(entry) != bundle_id:
             raise ValueError(f"manifest entry of bundle {bundle_id} changed since it was stored")
         payloads = {}
@@ -67,6 +70,21 @@ class RawPayloadStore:
 
     def _path(self, sha: str) -> Path:
         return self.root / "payloads" / sha[:2] / f"{sha}.json"
+
+
+def _write_atomic(target: Path, content: bytes) -> None:
+    """Write via a unique temporary file in the same directory and rename: readers see all or nothing."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "wb") as file:
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def _bundle_id(entry: dict[str, Any]) -> str:

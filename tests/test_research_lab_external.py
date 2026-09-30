@@ -596,10 +596,10 @@ def test_holdout_release_anchor_needs_the_permission() -> None:
 def test_raw_store_refuses_an_edited_manifest_entry(tmp_path) -> None:
     payload_store = RawPayloadStore(tmp_path)
     bundle_id = payload_store.put(bundle())
-    manifest_path = tmp_path / "manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["bundles"][bundle_id]["ingested_at"] = "2020-01-01T00:00:00+00:00"
-    manifest_path.write_text(json.dumps(manifest))
+    entry_path = tmp_path / "bundles" / f"{bundle_id}.json"
+    entry = json.loads(entry_path.read_text())
+    entry["ingested_at"] = "2020-01-01T00:00:00+00:00"
+    entry_path.write_text(json.dumps(entry))
     with pytest.raises(ValueError, match="manifest entry"):
         payload_store.get(bundle_id)
 
@@ -842,6 +842,34 @@ def test_calendar_gap_around_the_first_release_certifies_no_first_print() -> Non
     assert event.status is EventStatus.FIRST_RELEASE_UNAVAILABLE and event.event_time is None
     with pytest.raises(ValueError, match="first release"):
         with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", datetime(2024, 3, 1, tzinfo=UTC)))
+
+
+def test_interrupted_save_keeps_earlier_bundles_and_leaves_no_partial_entry(tmp_path, monkeypatch) -> None:
+    import os
+
+    payload_store = RawPayloadStore(tmp_path)
+    first = payload_store.put(bundle())
+
+    def crash(*_args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", crash)
+    with pytest.raises(OSError):
+        payload_store.put(bundle(ingested_at=INGESTED + timedelta(hours=1)))
+    monkeypatch.undo()
+    assert payload_store.get(first).ingested_at == INGESTED
+    assert [p.name for p in (tmp_path / "bundles").iterdir()] == [f"{first}.json"]
+    assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_concurrent_saves_keep_every_bundle(tmp_path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    raws = [bundle(ingested_at=INGESTED + timedelta(minutes=i)) for i in range(16)]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        ids = list(pool.map(lambda raw: RawPayloadStore(tmp_path).put(raw), raws))
+    assert len(set(ids)) == 16
+    assert [RawPayloadStore(tmp_path).get(i).ingested_at for i in ids] == [raw.ingested_at for raw in raws]
 
 
 def test_vintage_ending_without_successor_leaves_the_period_unknown_from_then_on() -> None:
