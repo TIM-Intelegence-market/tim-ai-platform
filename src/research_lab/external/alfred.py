@@ -477,10 +477,15 @@ def _missing_periods(
     """Periods a calendar release should have published but the archive lacks entirely.
 
     A release date d publishes the period whose first scheduled release after its end is d
-    (the month before d's month for CPI). Only periods after the archive's first period and
-    releases within coverage count; each is reported when its release was due, never earlier."""
-    archived = {item.period_start for item in [*records, *unusable]}
-    if not archived or not release_dates:
+    (the month before d's month for CPI). Everything is judged as known at the release: the
+    period is missing when none of its vintages was available by then, and only once an older
+    period was already available (the archive had started). Later vintages cannot erase it;
+    it ends when the period's first vintage becomes visible."""
+    first_available: dict[date, datetime] = {}
+    for item in [*records, *unusable]:
+        if item.period_start not in first_available or item.available_at < first_available[item.period_start]:
+            first_available[item.period_start] = item.available_at
+    if not first_available or not release_dates:
         return ()
     calendar = sorted(release_dates)
     missing = []
@@ -491,8 +496,10 @@ def _missing_periods(
             due = spec.available_at(release, AvailabilityBasis.SCHEDULED_RELEASE)
         except (ValueError, OverflowError):
             continue
-        if period <= min(archived) or period in archived or due > coverage_end:
+        if due > coverage_end or first_available.get(period, datetime.max.replace(tzinfo=due.tzinfo)) <= due:
             continue
+        if not any(older < period and seen <= due for older, seen in first_available.items()):
+            continue  # the archive had not started yet
         if calendar[bisect_left(calendar, period_end)] != release:
             continue  # this release published another period
         record_id = f"{spec.source}:{spec.source_identifier}:{period.isoformat()}@{release.isoformat()}"

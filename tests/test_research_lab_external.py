@@ -857,6 +857,17 @@ def test_period_missing_from_the_archive_is_flagged_when_its_release_was_due() -
     assert ingest().missing_periods == ()
 
 
+def test_a_later_vintage_does_not_erase_an_earlier_missing_period() -> None:
+    without_feb = [r for r in base_rows() if r["date"] != "2024-02-01"]
+    late_feb = without_feb + [row("2024-02-01", "2024-04-10", "9999-12-31", "301.0")]  # February archived only from April
+    at = datetime(2024, 3, 20, tzinfo=UTC)
+    early, late = replay(ingest(without_feb), at), replay(ingest(late_feb), at)
+    assert early["content_hash"] == late["content_hash"] and early["dataset_id"] == late["dataset_id"]
+    pit = PointInTimeStore(ingest(late_feb))
+    assert pit.latest(at).stale is True
+    assert pit.latest(APR_RELEASE).period_start == date(2024, 3, 1) and pit.latest(APR_RELEASE).stale is False
+
+
 def test_visible_unusable_does_not_reveal_when_it_was_later_replaced() -> None:
     pit = store([row("2024-01-01", "2024-02-13", "2024-03-11", "bad"), row("2024-01-01", "2024-03-12", "9999-12-31", "301.0")])
     (early,) = pit.visible_unusable(FEB_RELEASE)
