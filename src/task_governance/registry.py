@@ -172,11 +172,12 @@ class TaskRegistry:
                         merged = sorted(set(json.loads(row['hint_legacy'])) | set(legacy))
                         self.db.execute('UPDATE task_mappings SET hint_issue=?, hint_legacy=? WHERE fingerprint=?',
                                         (hint, json.dumps(merged), fingerprint))
+            mapping = self.get(fingerprint)                  # read inside the transaction: our token, not a successor's
             self.db.execute('COMMIT')
         except BaseException:
             self.db.execute('ROLLBACK')
             raise
-        return won, self.get(fingerprint)
+        return won, mapping
 
     @_serialized
     def replace_hint(self, fingerprint: str, hint: int | None, legacy=(), note: str = '') -> bool:
@@ -271,17 +272,26 @@ class TaskRegistry:
         """Explicit release of a BLOCKED task (one transaction of state-guarded updates, no TOCTOU).
 
         With a mapped issue the task returns to MAPPED, otherwise to RELEASED (claimable again).
-        History stays in governance_incidents. A rejected hint (HINT_NOT_FOUND, HINT_INVALID) is dropped and
-        replaced by `hint`/`legacy` in the same transaction, so no run can see the task without a hint.
+        History stays in governance_incidents. A given `hint`/`legacy` is pinned in the same transaction for every block reason (a rejected hint
+        is replaced; a different pinned hint stays and shows up as HINT_CONFLICT), so no run can see the task
+        without the hint the operator just supplied.
         """
         now = self.clock()
         self.db.execute('BEGIN IMMEDIATE')
         try:
             # a rejected hint is worthless: swap in the replacement
-            self.db.execute('UPDATE task_mappings SET hint_issue=?, hint_legacy=? WHERE fingerprint=? AND state=? '
-                            'AND block_reason IN (\'HINT_NOT_FOUND\', \'HINT_INVALID\')',
-                            (hint, json.dumps(sorted(set(legacy))) if hint is not None else '[]', fingerprint,
-                             MappingState.BLOCKED))
+            row = self.db.execute('SELECT block_reason, hint_issue, hint_legacy FROM task_mappings WHERE fingerprint=? AND state=?',
+                                  (fingerprint, MappingState.BLOCKED)).fetchone()
+            if row is not None:
+                if row['block_reason'] in ('HINT_NOT_FOUND', 'HINT_INVALID'):
+                    pin = (hint, sorted(set(legacy))) if hint is not None else (None, [])   # rejected hint: replace it
+                elif hint is not None and row['hint_issue'] in (None, hint):
+                    pin = (hint, sorted(set(json.loads(row['hint_legacy'])) | set(legacy)))  # e.g. MIGRATED_CLAIM
+                else:
+                    pin = None       # a different pinned hint stays; the next claim reports HINT_CONFLICT
+                if pin is not None:
+                    self.db.execute('UPDATE task_mappings SET hint_issue=?, hint_legacy=? WHERE fingerprint=?',
+                                    (pin[0], json.dumps(pin[1]), fingerprint))
             n = self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', block_candidates=\'[]\', updated_at=? '
                                 'WHERE fingerprint=? AND state=? AND github_issue_number IS NOT NULL',
                                 (MappingState.MAPPED, now, fingerprint, MappingState.BLOCKED)).rowcount

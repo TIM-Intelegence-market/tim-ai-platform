@@ -1089,3 +1089,49 @@ def test_a_hint_that_differs_from_the_mapped_issue_leaves_an_incident(env):
     r = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=12)
     assert r.outcome is EnsureOutcome.UPDATED and r.issue_number == 11
     assert 'HINT_IGNORED_MAPPED' in [i['reason'] for i in reg.incidents(req().fingerprint)]
+
+
+def test_operator_unblock_of_a_migrated_claim_with_a_hint_keeps_the_hint(tmp_path):
+    """Round-10 C1: unblock(hint=...) must pin the hint for MIGRATED_CLAIM too, or the next hint-less run creates."""
+    import sqlite3
+    path = str(tmp_path / 'v2.db')
+    db = sqlite3.connect(path)
+    db.executescript('''CREATE TABLE task_mappings (fingerprint TEXT PRIMARY KEY, canonical_key TEXT NOT NULL UNIQUE,
+        state TEXT NOT NULL, claimant TEXT, claimed_at REAL, claim_token INTEGER NOT NULL DEFAULT 0,
+        github_repository TEXT, github_issue_number INTEGER, duplicate_issues TEXT NOT NULL DEFAULT '[]',
+        block_reason TEXT NOT NULL DEFAULT '', block_candidates TEXT NOT NULL DEFAULT '[]',
+        created_at REAL NOT NULL, updated_at REAL NOT NULL);
+        CREATE TABLE governance_incidents (id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT NOT NULL,
+        reason TEXT NOT NULL, detail TEXT NOT NULL, created_at REAL NOT NULL);''')
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    db.execute("INSERT INTO task_mappings(fingerprint,canonical_key,state,claimed_at,claim_token,created_at,updated_at)"
+               " VALUES(?,?,?,?,2,0,0)", (task.fingerprint, task.key, 'CLAIMED', 0))
+    db.commit(); db.close()
+    reg = TaskRegistry(path)
+    gh = FakeGitHub(str(tmp_path / 'gh.db'))
+    gh.seed(11, task.fingerprint, marker=False)
+    gh.seed(22, task.fingerprint, marker=False)
+    assert reg.get(task.fingerprint).block_reason == 'MIGRATED_CLAIM'
+    assert reg.unblock(task.fingerprint, 'operator checked', hint=11, legacy=[22])
+    m = reg.get(task.fingerprint)
+    assert m.state is MappingState.RELEASED and m.hint_issue == 11 and m.hint_legacy == (22,)
+    r = ensure_task(task, reg, gh, claimant='w')                  # hint-less run afterwards
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 11 and gh.count() == 2
+
+
+def test_unblock_with_a_hint_never_overwrites_a_different_pinned_hint(env):
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    reg = TaskRegistry(reg_path)
+    reg.claim(task.fingerprint, task.key, 'A', 300, hint=11)
+    reg.block(task.fingerprint, 'AMBIGUOUS_DUPLICATES', token=reg.get(task.fingerprint).claim_token, candidates=[11, 12])
+    assert reg.unblock(task.fingerprint, 'operator', hint=12)
+    assert reg.get(task.fingerprint).hint_issue == 11            # replace_hint is the explicit way to change it
+
+
+def test_claim_returns_the_row_it_won_with_its_own_token(env):
+    reg_path, _ = env
+    reg = TaskRegistry(reg_path)
+    t = req()
+    won, m = reg.claim(t.fingerprint, t.key, 'A', 300)
+    assert won and m.claim_token == 1 and m.claimant == 'A'
