@@ -35,6 +35,19 @@ def _dt(value: Any) -> datetime | None:
     raise ValueError(f"invalid datetime value: {value!r}")
 
 
+_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def _period_seconds(item: Mapping[str, Any], timeframe: str) -> int:
+    """Candle length: explicit `period_seconds`, else the length of the timeframe ("4H" -> 14400)."""
+    if item.get("period_seconds") is not None:
+        return int(item["period_seconds"])
+    count, unit = timeframe[:-1], timeframe[-1:].lower()
+    if not count.isdigit() or unit not in _UNIT_SECONDS:
+        raise ValueError(f"period_seconds missing and timeframe {timeframe!r} unknown")
+    return int(count) * _UNIT_SECONDS[unit]
+
+
 def _record(item: Candle | Trade) -> dict[str, Any]:
     # AdapterInput carries plain dicts; datetimes as ISO-8601 (read back via fromisoformat).
     return {key: value.isoformat() if isinstance(value, datetime) else value for key, value in asdict(item).items()}
@@ -57,6 +70,7 @@ class GenericOrderflowAdapter:
         raw = items.get("candles") if isinstance(items, Mapping) else items
         if not isinstance(raw, list):
             raise ValueError("candles must be a list")
+        default_timeframe = str(items.get("timeframe", "4H")) if isinstance(items, Mapping) else "4H"
         candles: list[Candle] = []
         missing: list[str] = []
         for index, item in enumerate(raw):
@@ -65,12 +79,12 @@ class GenericOrderflowAdapter:
                 if open_time is None:
                     missing.append(f"candles[{index}].open_time")
                     continue
-                period_seconds = int(item.get("period_seconds", 240))
-                close_time = open_time + timedelta(seconds=period_seconds)
+                timeframe = str(item.get("timeframe", default_timeframe))
+                close_time = open_time + timedelta(seconds=_period_seconds(item, timeframe))
                 candles.append(
                     Candle(
                         symbol=str(item.get("symbol", "UNKNOWN")),
-                        timeframe=str(item.get("timeframe", "4H")),
+                        timeframe=timeframe,
                         open_time=open_time,
                         close_time=close_time,
                         open=float(item["open"]),
