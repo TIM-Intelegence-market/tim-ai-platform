@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS task_mappings (
     github_issue_number INTEGER,
     duplicate_issues TEXT NOT NULL DEFAULT '[]',
     block_reason TEXT NOT NULL DEFAULT '',
+    block_candidates TEXT NOT NULL DEFAULT '[]',
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS governance_incidents (
@@ -49,6 +50,7 @@ class Mapping:
     github_issue_number: int | None
     duplicate_issues: tuple[int, ...]
     block_reason: str
+    block_candidates: tuple[int, ...]
 
 
 class TaskRegistry:
@@ -110,21 +112,25 @@ class TaskRegistry:
              fingerprint, MappingState.CLAIMED, token))
         return self.get(fingerprint) if cur.rowcount == 1 else None
 
-    def block(self, fingerprint: str, reason: str, detail: str = '', *, token: int | None = None) -> Mapping:
+    def block(self, fingerprint: str, reason: str, detail: str = '', *, token: int | None = None,
+              candidates=()) -> Mapping:
         """Fail closed: record the incident and stop the task, never delete or close anything.
 
-        With a token the state change is fenced: it only applies while that claim is still the
-        current one. A stale worker (claim taken over, or task already MAPPED) records the
-        incident but cannot overwrite the winner's state.
+        `candidates` are the issue numbers the block is about (structured, used to judge whether a
+        later hint really addresses it). With a token the state change is fenced to that claim. A
+        MAPPED task is never downgraded, by anyone: a stale worker or operator call only records
+        the incident.
         """
         now = self.clock()
+        cands = json.dumps(sorted(set(candidates)))
         if token is None:
-            self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, updated_at=? WHERE fingerprint=?',
-                            (MappingState.BLOCKED, reason, now, fingerprint))
+            self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, block_candidates=?, updated_at=? '
+                            'WHERE fingerprint=? AND state<>?',
+                            (MappingState.BLOCKED, reason, cands, now, fingerprint, MappingState.MAPPED))
         else:
-            self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, updated_at=? '
+            self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, block_candidates=?, updated_at=? '
                             'WHERE fingerprint=? AND state=? AND claim_token=?',
-                            (MappingState.BLOCKED, reason, now, fingerprint, MappingState.CLAIMED, token))
+                            (MappingState.BLOCKED, reason, cands, now, fingerprint, MappingState.CLAIMED, token))
         self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
                         (fingerprint, reason, detail, now))
         return self.get(fingerprint)
@@ -150,22 +156,16 @@ class TaskRegistry:
         History stays in governance_incidents.
         """
         now = self.clock()
-        n = self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', updated_at=? '
+        n = self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', block_candidates=\'[]\', updated_at=? '
                             'WHERE fingerprint=? AND state=? AND github_issue_number IS NOT NULL',
                             (MappingState.MAPPED, now, fingerprint, MappingState.BLOCKED)).rowcount
-        n += self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', updated_at=? '
+        n += self.db.execute('UPDATE task_mappings SET state=?, block_reason=\'\', block_candidates=\'[]\', updated_at=? '
                              'WHERE fingerprint=? AND state=? AND github_issue_number IS NULL',
                              (MappingState.RELEASED, now, fingerprint, MappingState.BLOCKED)).rowcount
         if n:
             self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
                             (fingerprint, 'UNBLOCKED', note, now))
         return bool(n)
-
-    def last_incident(self, fingerprint: str, reasons) -> dict | None:
-        marks = ','.join('?' * len(reasons))
-        row = self.db.execute(f'SELECT * FROM governance_incidents WHERE fingerprint=? AND reason IN ({marks}) '
-                              'ORDER BY id DESC LIMIT 1', (fingerprint, *reasons)).fetchone()
-        return dict(row) if row else None
 
     def incidents(self, fingerprint: str | None = None) -> list[dict]:
         sql, args = 'SELECT * FROM governance_incidents', ()
@@ -180,4 +180,5 @@ class TaskRegistry:
     def _mapping(row) -> Mapping:
         return Mapping(row['fingerprint'], row['canonical_key'], MappingState(row['state']), row['claimant'],
                        row['claimed_at'], row['claim_token'], row['github_repository'], row['github_issue_number'],
-                       tuple(json.loads(row['duplicate_issues'])), row['block_reason'])
+                       tuple(json.loads(row['duplicate_issues'])), row['block_reason'],
+                       tuple(json.loads(row['block_candidates'])))

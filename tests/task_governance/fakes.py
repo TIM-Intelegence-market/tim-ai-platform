@@ -9,8 +9,9 @@ class FakeGitHub:
     repository = 'owner/repo'
     max_create_seconds = 5.0
 
-    def __init__(self, path, *, latency=0.0, crash_after_create=False):
+    def __init__(self, path, *, latency=0.0, crash_after_create=False, blackout_after_crash=False):
         self.path, self.latency, self.crash_after_create = path, latency, crash_after_create
+        self.blackout_after_crash, self.blackout = blackout_after_crash, False
         db = self._db()
         db.execute('CREATE TABLE IF NOT EXISTS issues(number INTEGER PRIMARY KEY, state TEXT, body TEXT, author TEXT DEFAULT \'owner\', is_pr INTEGER DEFAULT 0)')
         db.execute('CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY AUTOINCREMENT, op TEXT, number INTEGER, detail TEXT)')
@@ -29,6 +30,8 @@ class FakeGitHub:
         db.close()
 
     def find_issues(self, fingerprint, canonical_key):
+        if self.blackout:
+            raise ConnectionError('github unreachable')
         db = self._db()
         rows = db.execute('SELECT number,state,author FROM issues WHERE body LIKE ? ORDER BY number',
                           (f'%{fingerprint_marker(fingerprint)}%',)).fetchall()
@@ -50,7 +53,8 @@ class FakeGitHub:
         db.execute('INSERT INTO log(op,number,detail) VALUES(?,?,?)', ('create', number, ''))
         db.close()
         if self.crash_after_create:
-            raise RuntimeError('worker died after creating the issue')
+            self.blackout = self.blackout_after_crash
+            raise TimeoutError('create timed out after GitHub had created the issue')
         return IssueRef(number, 'open')
 
     def _log(self, op, number, detail=''):

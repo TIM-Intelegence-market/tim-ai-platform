@@ -87,8 +87,11 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     """
     fp, key = request.fingerprint, request.key
     known = LEGACY_AUTHORITIES.get(key)
-    if authoritative_hint is None and known is not None:
-        authoritative_hint, legacy_issues = known.authoritative, tuple(known.duplicates) + tuple(legacy_issues)
+    if known is not None and known.repository != gateway.repository:
+        known = None                                  # numbers of another repository mean nothing here
+    if known is not None and authoritative_hint in (None, known.authoritative):
+        authoritative_hint = known.authoritative
+        legacy_issues = tuple(known.duplicates) + tuple(legacy_issues)
     if legacy_issues and authoritative_hint is None:
         raise ValueError('legacy_issues need an authoritative_hint')
     worst_create = getattr(gateway, 'max_create_seconds', None)
@@ -100,7 +103,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
 
     existing = registry.get(fp)
     if existing and existing.state is MappingState.BLOCKED:
-        if existing.github_issue_number is None and _hint_resolves_block(registry, fp, existing, authoritative_hint):
+        if existing.github_issue_number is None and _hint_resolves_block(existing, authoritative_hint):
             registry.unblock(fp, f'authoritative hint #{authoritative_hint} supplied')
             existing = None
         else:
@@ -125,11 +128,13 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         raise
 
     if authoritative_hint is not None and hinted is None:
-        blocked = registry.block(fp, 'HINT_NOT_FOUND', f'hint={authoritative_hint} does not exist', token=token)
+        blocked = registry.block(fp, 'HINT_NOT_FOUND', f'hint={authoritative_hint} does not exist', token=token,
+                                 candidates=[authoritative_hint])
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
     if hinted is not None and (hinted.is_pull_request or (trusted_authors is not None and hinted.author not in trusted_authors)):
         why = 'is a pull request' if hinted.is_pull_request else f'is authored by untrusted {hinted.author!r}'
-        blocked = registry.block(fp, 'HINT_INVALID', f'hint={hinted.number} {why}', token=token)
+        blocked = registry.block(fp, 'HINT_INVALID', f'hint={hinted.number} {why}', token=token,
+                                 candidates=[hinted.number])
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
     candidates = {m.number: m for m in matches}
     if hinted is not None:
@@ -140,20 +145,25 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         return _adopt(registry, gateway, fp, token, next(iter(candidates.values())), [], request)
     if len(candidates) > 1:
         numbers = sorted(candidates)
-        blocked = registry.block(fp, 'AMBIGUOUS_DUPLICATES', f'matches={numbers}, no authoritative hint', token=token)
+        blocked = registry.block(fp, 'AMBIGUOUS_DUPLICATES', f'matches={numbers}, no authoritative hint', token=token,
+                                 candidates=numbers)
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
 
     # Nothing exists. Re-assert the claim right before the irreversible create.
     if not registry.renew(fp, token):
         return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'claim lost before create')
     started = time.monotonic()
-    issue = gateway.create_issue(request, fp, timeout=worst_create)
+    try:
+        issue = gateway.create_issue(request, fp, timeout=worst_create)
+    except Exception as exc:
+        return _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
     elapsed = time.monotonic() - started
     if elapsed > worst_create:
         registry.record_incident(fp, 'SLOW_CREATE', f'create took {elapsed:.1f}s, declared bound {worst_create}s')
     after = {m.number for m in _matches(gateway, fp, key, trusted_authors)} | {issue.number}
     if len(after) > 1:
-        blocked = registry.block(fp, 'DUPLICATE_AFTER_CREATE', f'matches={sorted(after)}', token=token)
+        blocked = registry.block(fp, 'DUPLICATE_AFTER_CREATE', f'matches={sorted(after)}', token=token,
+                                 candidates=sorted(after))
         if blocked.state is MappingState.MAPPED:      # a newer owner already mapped: keep its state, record ours
             blocked = registry.add_duplicates(fp, after - {blocked.github_issue_number})
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, True, issue.number, 'DUPLICATE_AFTER_CREATE')
@@ -169,16 +179,33 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number)
 
 
-def _hint_resolves_block(registry, fp, existing, hint) -> bool:
-    """A hint lifts a block only if it actually addresses it, so an always-passed hint cannot silently
-    wave away every incident: it must be one of the recorded candidates, or differ from a failed hint."""
+def _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc) -> EnsureResult:
+    """The create call failed, but GitHub may have created the issue anyway. Look before anyone retries."""
+    registry.record_incident(fp, 'CREATE_UNCERTAIN', f'{type(exc).__name__}: {exc}')
+    try:
+        found = _matches(gateway, fp, key, trusted_authors)
+    except Exception:
+        raise exc                                    # cannot look: keep the claim, never release after a create attempt
+    if len(found) == 1:
+        mapped = registry.map_issue(fp, token, gateway.repository, found[0].number)
+        if mapped is not None:
+            return EnsureResult(EnsureOutcome.CREATED, mapped, True, found[0].number, 'adopted after failed create call')
+        raise exc
+    if len(found) > 1:
+        numbers = sorted(m.number for m in found)
+        blocked = registry.block(fp, 'DUPLICATE_AFTER_CREATE', f'matches={numbers}', token=token, candidates=numbers)
+        return EnsureResult(EnsureOutcome.BLOCKED, blocked, True, None, 'DUPLICATE_AFTER_CREATE')
+    raise exc                                        # nothing visible yet: claim stays held until its lease expires
+
+
+def _hint_resolves_block(existing, hint) -> bool:
+    """A hint lifts a block only if it addresses it, so an always-passed hint cannot silently wave away
+    every incident: it must be one of the recorded candidates, or differ from a rejected hint."""
     if hint is None or existing.block_reason not in _UNBLOCKABLE_BY_HINT:
         return False
-    incident = registry.last_incident(fp, (existing.block_reason,))
-    detail = incident['detail'] if incident else ''
     if existing.block_reason in ('HINT_NOT_FOUND', 'HINT_INVALID'):
-        return f'hint={hint} ' not in detail + ' '
-    return f'{hint}' in detail.replace('[', ' ').replace(']', ' ').replace(',', ' ').split()
+        return hint not in existing.block_candidates
+    return hint in existing.block_candidates
 
 
 def _matches(gateway, fp, key, trusted_authors) -> list[IssueRef]:

@@ -22,6 +22,9 @@ def req(**kw):
     return TaskRequest(**base)
 
 
+LEGACY_REPO = 'uezeyiraydin-cell/tim-ai-platform'
+
+
 def legacy_req():
     return req(task_type='BASELINE_ARCHITECTURE_AUDIT')
 
@@ -111,13 +114,24 @@ def test_lost_local_state_recovers_mapping_from_github(env, tmp_path):
     assert lost.get(req().fingerprint).state is MappingState.MAPPED
 
 
-def test_creator_crash_after_github_create_resumes_without_second_issue(env, tmp_path):
+def test_timeout_after_github_created_the_issue_adopts_it_immediately(env, tmp_path):
+    reg_path, _ = env
+    gh = FakeGitHub(str(tmp_path / 'gh2.db'), crash_after_create=True)
+    reg = TaskRegistry(reg_path)
+    r = ensure_task(req(), reg, gh, claimant='w')
+    assert r.outcome is EnsureOutcome.CREATED and r.created and gh.count() == 1
+    assert 'CREATE_UNCERTAIN' in [i['reason'] for i in reg.incidents(req().fingerprint)]
+    again = ensure_task(req(), reg, FakeGitHub(gh.path), claimant='w2')
+    assert again.outcome is EnsureOutcome.UPDATED and again.issue_number == r.issue_number and gh.count() == 1
+
+
+def test_creator_dies_with_github_unreachable_recovers_after_lease(env, tmp_path):
     reg_path, _ = env
     gh_path = str(tmp_path / 'gh2.db')
-    crashing = FakeGitHub(gh_path, crash_after_create=True)
-    with pytest.raises(RuntimeError):
-        ensure_task(req(), TaskRegistry(reg_path), crashing, claimant='dead')
-    assert crashing.count() == 1
+    dead = FakeGitHub(gh_path, crash_after_create=True, blackout_after_crash=True)
+    with pytest.raises(TimeoutError):
+        ensure_task(req(), TaskRegistry(reg_path), dead, claimant='dead')
+    assert dead.count() == 1
     ok = FakeGitHub(gh_path)
     late = TaskRegistry(reg_path, clock=lambda: time.time() + 10_000)      # lease long expired
     r = ensure_task(req(), late, ok, claimant='alive', lease_seconds=300)
@@ -127,8 +141,9 @@ def test_creator_crash_after_github_create_resumes_without_second_issue(env, tmp
 def test_nobody_resumes_by_name_only_after_lease_expiry(env, tmp_path):
     reg_path, _ = env
     gh_path = str(tmp_path / 'gh3.db')
-    with pytest.raises(RuntimeError):
-        ensure_task(req(), TaskRegistry(reg_path), FakeGitHub(gh_path, crash_after_create=True), claimant='a')
+    with pytest.raises(TimeoutError):
+        ensure_task(req(), TaskRegistry(reg_path), FakeGitHub(gh_path, crash_after_create=True, blackout_after_crash=True),
+                    claimant='a')
     ok = FakeGitHub(gh_path)
     for name in ('b', 'a'):        # even the same name must wait: names are not identities
         r = ensure_task(req(), TaskRegistry(reg_path), ok, claimant=name, lease_seconds=300)
@@ -472,6 +487,7 @@ def test_crash_while_documenting_duplicates_resumes_and_finishes_them(env, monke
 # ---- third review round ----
 def test_legacy_task_without_hint_uses_built_in_authority_and_creates_nothing(env):
     reg_path, gh = env
+    gh.repository = LEGACY_REPO
     fp = legacy_req().fingerprint
     gh.seed(11, fp, marker=False)
     for n in range(22, 66):
@@ -569,3 +585,62 @@ def test_always_passed_hint_does_not_wave_away_unrelated_blocks(env):
     unrelated = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11)              # 11 is not a candidate
     assert unrelated.outcome is EnsureOutcome.BLOCKED and reg.get(fp).state is MappingState.BLOCKED
     assert gh.count() == 2
+
+
+# ---- fourth review round ----
+def test_explicit_correct_hint_still_documents_the_built_in_legacy_duplicates(env):
+    reg_path, gh = env
+    gh.repository = LEGACY_REPO
+    fp = legacy_req().fingerprint
+    gh.seed(11, fp, marker=False)
+    for n in range(22, 66):
+        gh.seed(n, fp, marker=False)
+    r = ensure_task(legacy_req(), TaskRegistry(reg_path), gh, claimant='w', authoritative_hint=11)
+    assert r.outcome is EnsureOutcome.RECOVERED and len(gh.ops('duplicate')) == 44
+
+
+def test_legacy_table_does_not_apply_to_another_repository(env):
+    reg_path, gh = env                      # repository 'owner/repo': #11 and #22.. there are strangers' issues
+    fp = legacy_req().fingerprint
+    gh.seed(11, fp, marker=False)
+    for n in range(22, 66):
+        gh.seed(n, fp, marker=False)
+    r = ensure_task(legacy_req(), TaskRegistry(reg_path), gh, claimant='w')
+    assert r.outcome is EnsureOutcome.CREATED and gh.ops('duplicate') == []      # nothing written into foreign issues
+    assert all(b[0] == 'legacy' for b in gh._db().execute('SELECT body FROM issues WHERE number<=65').fetchall())
+
+
+def test_public_block_never_downgrades_a_mapped_task(env):
+    reg_path, gh = env
+    reg = TaskRegistry(reg_path)
+    first = ensure_task(req(), reg, gh, claimant='w')
+    after = reg.block(req().fingerprint, 'OPERATOR_TEST', 'x')
+    assert after.state is MappingState.MAPPED and after.github_issue_number == first.issue_number
+    assert reg.incidents(req().fingerprint)[-1]['reason'] == 'OPERATOR_TEST'
+
+
+def test_hint_decision_uses_structured_candidates_not_incident_text(env):
+    reg_path, gh = env
+    fp = req().fingerprint
+    gh.seed(5, fp); gh.seed(9, fp)
+    reg = TaskRegistry(reg_path)
+    assert ensure_task(req(), reg, gh, claimant='w').outcome is EnsureOutcome.BLOCKED
+    assert reg.get(fp).block_candidates == (5, 9)
+    reg.record_incident(fp, 'AMBIGUOUS_DUPLICATES', 'matches=[11, 12]')      # a stale worker's noise changes nothing
+    assert ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11).outcome is EnsureOutcome.BLOCKED
+    assert ensure_task(req(), reg, gh, claimant='w', authoritative_hint=9).outcome is EnsureOutcome.RECOVERED
+
+
+def test_create_failure_with_two_visible_issues_blocks(env, monkeypatch):
+    reg_path, gh = env
+    real_create = gh.create_issue
+
+    def create_then_fail_with_foreign_dup(request, fingerprint, **kw):
+        real_create(request, fingerprint, **kw)
+        gh.seed(4242, fingerprint)
+        raise TimeoutError('timeout')
+
+    monkeypatch.setattr(gh, 'create_issue', create_then_fail_with_foreign_dup)
+    reg = TaskRegistry(reg_path)
+    r = ensure_task(req(), reg, gh, claimant='w')
+    assert r.outcome is EnsureOutcome.BLOCKED and gh.count() == 2

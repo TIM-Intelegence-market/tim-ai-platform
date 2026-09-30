@@ -9,11 +9,12 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class LegacyEntry:
+    repository: str          # issue numbers are only meaningful inside this repository
     authoritative: int
     duplicates: tuple[int, ...]
 
 
 # #68 evidence: M09-P0 audit is authoritative #11, retained duplicates #22..#65 (accidental series).
 LEGACY_AUTHORITIES: dict[str, LegacyEntry] = {
-    'M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1': LegacyEntry(11, tuple(range(22, 66))),
+    'M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1': LegacyEntry('uezeyiraydin-cell/tim-ai-platform', 11, tuple(range(22, 66))),
 }

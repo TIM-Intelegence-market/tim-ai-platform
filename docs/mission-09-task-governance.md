@@ -18,13 +18,15 @@ parts containing `|` are rejected, not normalised.
 4. Uniqueness check before creating: search GitHub for the fingerprint marker (`<!-- TIM_TASK_FINGERPRINT:<sha> -->`).
    - `authoritative_hint` given and that issue exists: adopt it even if it predates the marker (#11 and #22–#65 do); `legacy_issues` (which require a hint) and other marker matches are recorded as duplicates
    - `authoritative_hint` given but the issue does not exist (`HINT_NOT_FOUND`), is a pull request, or has an untrusted author (`HINT_INVALID`): `BLOCKED`, nothing written into that issue, never a fallthrough to create
-   - no hint but the task is listed in `legacy.py` (today: M09-P0 audit → #11, duplicates #22–#65): the listed authority is used as the hint automatically
+   - no hint, or the listed hint, and the task is listed in `legacy.py` for this repository (today: M09-P0 audit → #11, duplicates #22–#65 in `uezeyiraydin-cell/tim-ai-platform`): the listed authority and duplicates are used automatically. The table is bound to a repository, so other repositories are never touched
    - one marker match: adopt it (`RECOVERED`), no create
-   - several matches without hint: `BLOCKED` plus a governance incident; a later call with a hint unblocks it only if the hint addresses the block: it must be one of the recorded candidates (`AMBIGUOUS_DUPLICATES`, `DUPLICATE_AFTER_CREATE`) or differ from the rejected hint (`HINT_NOT_FOUND`, `HINT_INVALID`). An always-passed hint therefore cannot wave away unrelated incidents
+   - several matches without hint: `BLOCKED` plus a governance incident; a later call with a hint unblocks it only if the hint addresses the block: it must be one of the structured `block_candidates` stored on the task row (`AMBIGUOUS_DUPLICATES`, `DUPLICATE_AFTER_CREATE`) or differ from the rejected hint (`HINT_NOT_FOUND`, `HINT_INVALID`). An always-passed hint therefore cannot wave away unrelated incidents
    - none: renew the lease (fails if the claim was taken over, then nothing is created) and create exactly once
-5. Uniqueness check after creating. A second match blocks the task and records an incident. Nothing is ever closed automatically.
+5. If `create_issue` raises (for example a timeout after GitHub created the issue), record `CREATE_UNCERTAIN` and search by marker before anything else: one match is adopted, several block, none or unreachable keeps the claim held until the lease expires and re-raises. Otherwise: uniqueness check after creating. A second match blocks the task and records an incident. Nothing is ever closed automatically.
 6. Adopt path order: mark duplicates and write the marker first (all idempotent, comment/label only), persist the mapping last, so a crash midway repeats the remaining steps on the next run.
 7. Persist the mapping with the fencing token (issue number, repository, duplicate list). If the claim was lost meanwhile, the result is `BLOCKED` (`CLAIM_LOST_AFTER_CREATE`), never reported as cleanly created. The stale worker only records an incident and adds its issue to the winner's duplicate list; it cannot overwrite the winner's state (fenced writes).
+
+A `MAPPED` task is never downgraded to `BLOCKED`, not even by an unfenced operator call; such a call only records an incident.
 
 A failure before anything was created (for example GitHub unreachable) releases the claim.
 
