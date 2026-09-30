@@ -134,11 +134,15 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
             registry.unblock(fp, f'{existing.block_reason}: re-validating')
             existing = None
         elif existing.github_issue_number is None and _hint_resolves_block(existing, authoritative_hint):
-            registry.unblock(fp, f'authoritative hint #{authoritative_hint} supplied')
+            registry.unblock(fp, f'authoritative hint #{authoritative_hint} supplied',
+                             hint=authoritative_hint, legacy=legacy_issues)
             existing = None
         else:
             return EnsureResult(EnsureOutcome.BLOCKED, existing, False, existing.github_issue_number, existing.block_reason)
     if existing and existing.state is MappingState.MAPPED:
+        if authoritative_hint not in (None, existing.github_issue_number):
+            registry.record_incident(fp, 'HINT_IGNORED_MAPPED',
+                                     f'task is mapped to #{existing.github_issue_number}, hint #{authoritative_hint} ignored')
         return _sync(registry, existing, request, gateway, policy, retry)
 
     won, mapping = registry.claim(fp, key, claimant, lease_seconds, hint=authoritative_hint, legacy=legacy_issues)
@@ -149,6 +153,11 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     if not won:
         return EnsureResult(EnsureOutcome.PENDING, mapping, False, None, f'claim held by {mapping.claimant}')
     token = mapping.claim_token
+    if mapping.hint_issue is not None and authoritative_hint in (None, mapping.hint_issue):
+        # The row we won is the truth, not what we read before the claim: another run may have pinned a hint
+        # (or more legacy numbers) in between, e.g. it claimed, failed and released just before we took over.
+        authoritative_hint = mapping.hint_issue
+        legacy_issues = tuple(mapping.hint_legacy) + tuple(legacy_issues)
     if authoritative_hint is not None and mapping.hint_issue != authoritative_hint:
         blocked = registry.block(fp, 'HINT_CONFLICT', f'pinned hint #{mapping.hint_issue}, this run passed #{authoritative_hint}',
                                  token=token, candidates=[mapping.hint_issue, authoritative_hint])

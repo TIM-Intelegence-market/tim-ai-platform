@@ -977,8 +977,13 @@ def test_hint_columns_are_added_to_a_registry_from_release_two(tmp_path):
                " VALUES(?,?,?,?,3,0,0)", (fp, req().key, 'CLAIMED', 0))
     db.commit(); db.close()
     reg = TaskRegistry(path)
+    m = reg.get(fp)                                           # an open claim whose hint (if any) is unknown: fail closed
+    assert m.state is MappingState.BLOCKED and m.block_reason == 'MIGRATED_CLAIM' and m.claim_token == 3
+    assert 'MIGRATED_CLAIM' in [i['reason'] for i in reg.incidents(fp)]
+    assert reg.unblock(fp, 'operator checked GitHub')
     won, m = reg.claim(fp, req().key, 'w', 1.0, hint=7, legacy=[8])
     assert won and m.claim_token == 4 and m.hint_issue == 7 and m.hint_legacy == (8,)
+    assert TaskRegistry(path).db.execute('PRAGMA user_version').fetchone()[0] == 3
 
 
 def test_concurrent_claims_pin_one_hint_and_only_one_wins(tmp_path):
@@ -996,3 +1001,91 @@ def test_concurrent_claims_pin_one_hint_and_only_one_wins(tmp_path):
     winner = next(i for i, won in results if won)
     m = TaskRegistry(path).get(fp)
     assert m.hint_issue == 10 + winner % 2 and m.hint_legacy == (winner,)
+
+
+def test_hint_pinned_between_our_read_and_our_claim_is_still_used(env, monkeypatch):
+    """Round-9 C1: the other run pinned the hint and released after we read 'no row'."""
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    gh.seed(11, task.fingerprint, marker=False)
+    reg = TaskRegistry(reg_path)
+    won, _ = reg.claim(task.fingerprint, task.key, 'A', 300, hint=11, legacy=[22])   # A pins, fails, releases
+    token = reg.get(task.fingerprint).claim_token
+    reg.release(task.fingerprint, token)
+    real_get = reg.get
+    calls = []
+    monkeypatch.setattr(reg, 'get', lambda fp: None if not calls and not calls.append(1) else real_get(fp))
+    r = ensure_task(task, reg, gh, claimant='B')               # B read 'no row' before A wrote it
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 11 and not r.created and gh.count() == 1
+
+
+def test_same_explicit_hint_without_legacy_still_documents_the_pinned_legacy_numbers(env):
+    """Round-9 C3."""
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    gh.seed(11, task.fingerprint, marker=False)
+    gh.seed(22, task.fingerprint, marker=False)
+    reg = TaskRegistry(reg_path)
+    reg.claim(task.fingerprint, task.key, 'A', 300, hint=11, legacy=[22])
+    reg.release(task.fingerprint, reg.get(task.fingerprint).claim_token)
+    r = ensure_task(task, reg, gh, claimant='B', authoritative_hint=11)
+    assert r.outcome is EnsureOutcome.RECOVERED and reg.get(task.fingerprint).duplicate_issues == (22,)
+    assert gh.ops('duplicate')
+
+
+def test_replace_hint_is_refused_while_a_worker_holds_the_claim(env):
+    """Round-9 C2: an operator change must not race a live, fenced worker."""
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    reg = TaskRegistry(reg_path)
+    reg.claim(task.fingerprint, task.key, 'A', 300, hint=11)
+    assert reg.replace_hint(task.fingerprint, 12) is False
+    assert reg.get(task.fingerprint).hint_issue == 11
+    reg.release(task.fingerprint, reg.get(task.fingerprint).claim_token)
+    assert reg.replace_hint(task.fingerprint, 12) is True and reg.get(task.fingerprint).hint_issue == 12
+
+
+def test_one_registry_object_shared_by_threads_stays_consistent(tmp_path):
+    """Round-9 E3: explicit transactions on one shared connection must not interleave."""
+    reg = TaskRegistry(str(tmp_path / 'reg.db'))
+    errors = []
+
+    def worker(i):
+        try:
+            t = req(task_type=f'TASK_{i}')
+            for _ in range(20):
+                won, m = reg.claim(t.fingerprint, t.key, f'w{i}', 300, hint=100 + i)
+                reg.record_incident(t.fingerprint, 'PING')
+                if won:
+                    reg.release(t.fingerprint, m.claim_token)
+        except Exception as exc:                                # pragma: no cover - the failure being tested
+            errors.append(repr(exc))
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    assert errors == []
+    for i in range(8):
+        assert reg.get(req(task_type=f'TASK_{i}').fingerprint).hint_issue == 100 + i
+
+
+def test_replacement_hint_is_pinned_in_the_same_transaction_as_the_unblock(env):
+    """Round-9 G1."""
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    gh.seed(12, task.fingerprint, marker=False)
+    reg = TaskRegistry(reg_path)
+    assert ensure_task(task, reg, gh, claimant='w', authoritative_hint=99).outcome is EnsureOutcome.BLOCKED
+    assert reg.unblock(task.fingerprint, 'operator', hint=12, legacy=[13])
+    m = reg.get(task.fingerprint)
+    assert m.state is MappingState.RELEASED and m.hint_issue == 12 and m.hint_legacy == (13,)
+
+
+def test_a_hint_that_differs_from_the_mapped_issue_leaves_an_incident(env):
+    """Round-9 G3."""
+    reg_path, gh = env
+    gh.seed(11, req().fingerprint)
+    reg = TaskRegistry(reg_path)
+    assert ensure_task(req(), reg, gh, claimant='w').outcome is EnsureOutcome.RECOVERED
+    r = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=12)
+    assert r.outcome is EnsureOutcome.UPDATED and r.issue_number == 11
+    assert 'HINT_IGNORED_MAPPED' in [i['reason'] for i in reg.incidents(req().fingerprint)]

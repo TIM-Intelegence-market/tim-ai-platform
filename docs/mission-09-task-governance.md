@@ -68,4 +68,9 @@ The first claim of a task stores `authoritative_hint` and `legacy_issues` in the
 - Same hint again: only adds `legacy_issues`.
 - Different explicit hint: the task `BLOCKED`s as `HINT_CONFLICT` (candidates: pinned and requested hint). It stays blocked, also for hint-less runs, until an operator calls `registry.replace_hint(fingerprint, hint, legacy, note=...)`, which records `HINT_REPLACED` in `governance_incidents`.
 - A hint rejected as `HINT_NOT_FOUND` or `HINT_INVALID` is dropped when a different hint unblocks the task, so the replacement can be pinned.
-- Registry files from releases 1 and 2 get the two columns added on open (`user_version=3`).
+- After a claim is won, the pinned hint and legacy numbers come from the row the claim returned, not from what the caller read before (another run may have pinned them in between).
+- `registry.replace_hint` works only on `BLOCKED` or `RELEASED` tasks; it is refused (returns `False`) while a worker holds the claim, because that worker's fencing token would not notice the change. `registry.unblock(fp, note, hint=..., legacy=...)` swaps a rejected hint for the replacement in the same transaction.
+- A hint that differs from the issue a task is already mapped to is ignored and leaves a `HINT_IGNORED_MAPPED` incident.
+- Registry files from releases 1 and 2 get the columns added on open, in one transaction (`user_version=3`, never downgraded). Open claims from such a file become `BLOCKED` as `MIGRATED_CLAIM` (their hint cannot be recovered); an operator checks GitHub and calls `registry.unblock`.
+- One `TaskRegistry` object may be shared by threads (its methods are serialized by a lock); processes open their own object on the same file.
+- The gateway account must be listed in `trusted_authors`, otherwise `_matches` cannot see the issues the gateway itself created and a failed create could be repeated.
