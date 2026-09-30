@@ -1135,3 +1135,20 @@ def test_claim_returns_the_row_it_won_with_its_own_token(env):
     t = req()
     won, m = reg.claim(t.fingerprint, t.key, 'A', 300)
     assert won and m.claim_token == 1 and m.claimant == 'A'
+
+
+def test_operator_retry_after_a_gateway_glitch_keeps_the_pinned_hint(env, monkeypatch):
+    """Round-11 E1: get_issue returned None once although #11 exists; a plain unblock must not forget the hint."""
+    reg_path, gh = env
+    task = req(mission_id='M10', task_type='SOME_AUDIT')
+    gh.seed(11, task.fingerprint, marker=False)
+    reg = TaskRegistry(reg_path)
+    real_get = gh.get_issue
+    with monkeypatch.context() as m:
+        m.setattr(gh, 'get_issue', lambda n: None)
+        assert ensure_task(task, reg, gh, claimant='w', authoritative_hint=11).outcome is EnsureOutcome.BLOCKED
+    assert reg.get(task.fingerprint).block_reason == 'HINT_NOT_FOUND'
+    assert reg.unblock(task.fingerprint, 'retry after GitHub glitch')          # no hint given
+    assert reg.get(task.fingerprint).hint_issue == 11
+    r = ensure_task(task, reg, gh, claimant='w')                                # hint-less run
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 11 and gh.count() == 1

@@ -67,7 +67,7 @@ The first claim of a task stores `authoritative_hint` and `legacy_issues` in the
 
 - Same hint again: only adds `legacy_issues`.
 - Different explicit hint: the task `BLOCKED`s as `HINT_CONFLICT` (candidates: pinned and requested hint). It stays blocked, also for hint-less runs, until an operator calls `registry.replace_hint(fingerprint, hint, legacy, note=...)`, which records `HINT_REPLACED` in `governance_incidents`.
-- A hint rejected as `HINT_NOT_FOUND` or `HINT_INVALID` is dropped when a different hint unblocks the task, so the replacement can be pinned.
+- A hint rejected as `HINT_NOT_FOUND` or `HINT_INVALID` is replaced only when a different hint is given (`ensure_task` with another hint, or `unblock(..., hint=X)`). A plain `unblock` keeps the pinned hint, so an operator retry after a transient gateway error (a wrongly reported 404) cannot make the next run create a second issue; to drop a hint on purpose use `replace_hint(fp, None)`.
 - After a claim is won, the pinned hint and legacy numbers come from the row the claim returned, not from what the caller read before (another run may have pinned them in between).
 - `registry.replace_hint` works only on `BLOCKED` or `RELEASED` tasks; it is refused (returns `False`) while a worker holds the claim, because that worker's fencing token would not notice the change. `registry.unblock(fp, note, hint=..., legacy=...)` swaps a rejected hint for the replacement in the same transaction.
 - A hint that differs from the issue a task is already mapped to is ignored and leaves a `HINT_IGNORED_MAPPED` incident.

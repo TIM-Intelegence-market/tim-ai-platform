@@ -284,7 +284,7 @@ class TaskRegistry:
                                   (fingerprint, MappingState.BLOCKED)).fetchone()
             if row is not None:
                 if row['block_reason'] in ('HINT_NOT_FOUND', 'HINT_INVALID'):
-                    pin = (hint, sorted(set(legacy))) if hint is not None else (None, [])   # rejected hint: replace it
+                    pin = (hint, sorted(set(legacy))) if hint is not None else None   # replaced only by an explicit new hint
                 elif hint is not None and row['hint_issue'] in (None, hint):
                     pin = (hint, sorted(set(json.loads(row['hint_legacy'])) | set(legacy)))  # e.g. MIGRATED_CLAIM
                 else:
