@@ -3,7 +3,8 @@ import pytest
 from src.task_engine.repository import SqliteTaskRepository
 from src.task_engine.service import TaskEngine
 from src.task_engine.model import TaskState
-from src.task_governance import (EnsureOutcome, GitHubRestGateway, IdentityDrift, MappingState, TaskRegistry, request_from_engine_task,
+from src.task_governance import (EnsureOutcome, GitHubRestGateway, IdentityDrift, MappingState, TaskRegistry, issue_for_engine_task,
+                                 request_from_engine_task,
                                  sync_engine_task_to_issue)
 from tests.task_governance.fake_rest import FakeRest
 
@@ -38,22 +39,34 @@ def test_request_carries_identity_and_readable_body(world):
         assert text in request.body
 
 
-def test_first_sync_creates_one_issue_and_checkpoints_it(world):
+def test_first_sync_creates_one_issue_and_only_reads_the_engine(world):
     engine, reg, gw, rest, _ = world
     make(engine)
+    before = (engine.get_task('T-1'), engine.revision('T-1'))
     result = sync(engine, reg, gw)
     assert result.outcome is EnsureOutcome.CREATED and len(rest.issues) == 1
+    assert (engine.get_task('T-1'), engine.revision('T-1')) == before and engine.checkpoints('T-1') == []
+    mapping = issue_for_engine_task(reg, 'T-1')
+    assert mapping.github_issue_number == result.issue_number and mapping.state is MappingState.MAPPED
+    assert issue_for_engine_task(reg, 'nobody') is None
+
+
+def test_opt_in_checkpoint_records_the_issue_once(world):
+    engine, reg, gw, rest, _ = world
+    make(engine)
+    result = sync(engine, reg, gw, record_checkpoint=True)
+    sync(engine, reg, gw, record_checkpoint=True)
     [checkpoint] = engine.checkpoints('T-1')
     assert checkpoint['metadata']['issue'] == result.issue_number and checkpoint['step_id'].startswith('github_issue:')
     assert engine.get_task('T-1').state is TaskState.NEW and engine.get_task('T-1').next_action == 'start'
 
 
-def test_second_sync_updates_the_same_issue_and_adds_no_checkpoint(world):
+def test_second_sync_updates_the_same_issue(world):
     engine, reg, gw, rest, _ = world
     make(engine)
     first, again = sync(engine, reg, gw), sync(engine, reg, gw)
     assert again.outcome is EnsureOutcome.UPDATED and again.issue_number == first.issue_number
-    assert len(rest.issues) == 1 and len(engine.checkpoints('T-1')) == 1
+    assert len(rest.issues) == 1 and engine.checkpoints('T-1') == []
 
 
 def test_lost_registry_recovers_the_issue_instead_of_creating_another(world):
@@ -100,7 +113,7 @@ def test_fixed_task_gets_an_issue_check_but_no_checkpoint(world):
     now = engine.get_task('T-1').timestamps['updated_at']
     for state in (TaskState.PLANNED, TaskState.READY, TaskState.IN_PROGRESS, TaskState.VERIFYING, TaskState.FIXED):
         engine._repo.transition('T-1', state, at=now)          # repository level: the engine's own FIXED gate is #12's business
-    assert sync(engine, reg, gw).outcome is EnsureOutcome.CREATED
+    assert sync(engine, reg, gw, record_checkpoint=True).outcome is EnsureOutcome.CREATED
     assert engine.checkpoints('T-1') == []
 
 
@@ -153,7 +166,7 @@ def test_changed_identity_for_the_same_task_is_refused_before_any_github_call(wo
         args = dict(mission_id='M09', phase_id='P0', claimant='w', trusted_authors=None) | changed
         with pytest.raises(IdentityDrift):
             sync_engine_task_to_issue(engine, 'T-1', reg, gw, **args)
-    assert len(rest.calls) == calls and len(rest.issues) == 1 and len(engine.checkpoints('T-1')) == 1
+    assert len(rest.calls) == calls and len(rest.issues) == 1
 
 
 # ---- review round 2 of PR #130: the binding must not depend on an engine checkpoint ----
@@ -187,28 +200,46 @@ def test_drift_is_caught_for_a_fixed_task_that_never_got_a_checkpoint(world):
     assert len(rest.issues) == 1
 
 
-def test_only_active_tasks_get_a_checkpoint_and_a_revision_bump(world):
+def test_only_active_tasks_get_the_opt_in_checkpoint_and_a_blocked_task_keeps_its_revision(world):
     engine, reg, gw, rest, _ = world
     make(engine, 'T-1'), make(engine, 'T-2')
     engine.block('T-1', 'waiting')
     before = engine.revision('T-1')
-    assert sync(engine, reg, gw, 'T-1').outcome is EnsureOutcome.CREATED
+    assert sync(engine, reg, gw, 'T-1', record_checkpoint=True).outcome is EnsureOutcome.CREATED
     assert engine.revision('T-1') == before and engine.checkpoints('T-1') == []
-    assert sync(engine, reg, gw, 'T-2').outcome is EnsureOutcome.CREATED and len(engine.checkpoints('T-2')) == 1
+    assert sync(engine, reg, gw, 'T-2', record_checkpoint=True).outcome is EnsureOutcome.CREATED
+    assert len(engine.checkpoints('T-2')) == 1
 
 
-def test_a_blank_next_action_does_not_break_the_checkpoint(world):
+def test_a_task_blocked_while_github_is_called_gets_no_checkpoint_and_no_revision_bump(world):
+    engine, reg, gw, rest, tmp_path = world
+    make(engine)
+    supervisor = TaskEngine(SqliteTaskRepository(tmp_path / 'engine.db'))       # a second writer on the same store
+    real_create = gw.create_issue
+
+    def create_and_block(*args, **kwargs):
+        ref = real_create(*args, **kwargs)
+        supervisor.block('T-1', 'stopped by a supervisor')
+        return ref
+    gw.create_issue = create_and_block
+    assert sync(engine, reg, gw, record_checkpoint=True).outcome is EnsureOutcome.CREATED
+    after_block = engine.revision('T-1')
+    assert engine.get_task('T-1').state is TaskState.BLOCKED and engine.checkpoints('T-1') == []
+    assert engine.revision('T-1') == after_block
+
+
+def test_a_blank_next_action_does_not_break_the_opt_in_checkpoint(world):
     engine, reg, gw, rest, _ = world
     make(engine, next_action='   ')
-    assert sync(engine, reg, gw).outcome is EnsureOutcome.CREATED
+    assert sync(engine, reg, gw, record_checkpoint=True).outcome is EnsureOutcome.CREATED
     assert engine.checkpoints('T-1')[0]['next_action'] == 'continue task'
-    assert sync(engine, reg, gw).outcome is EnsureOutcome.UPDATED
+    assert sync(engine, reg, gw, record_checkpoint=True).outcome is EnsureOutcome.UPDATED
 
 
 def test_binding_is_durable_across_registry_reopen_and_an_operator_can_rebind(world):
     engine, reg, gw, rest, tmp_path = world
     make(engine)
-    first = sync(engine, reg, gw)
+    first = sync(engine, reg, gw, record_checkpoint=True)               # leaves an engine checkpoint behind
     reopened = TaskRegistry(str(tmp_path / 'reg.db'))
     with pytest.raises(IdentityDrift):
         sync_engine_task_to_issue(engine, 'T-1', reopened, gw, mission_id='M09', phase_id='P1', claimant='w', trusted_authors=None)
@@ -216,9 +247,9 @@ def test_binding_is_durable_across_registry_reopen_and_an_operator_can_rebind(wo
     with pytest.raises(ValueError):
         reopened.rebind_engine_task('T-1', request.fingerprint, request.key, ' ')
     reopened.rebind_engine_task('T-1', request.fingerprint, request.key, 'operator moved the task to P1')
-    engine._repo.db.execute("DELETE FROM task_checkpoints WHERE task_id='T-1'")      # engine side of the old identity
     moved = sync_engine_task_to_issue(engine, 'T-1', reopened, gw, mission_id='M09', phase_id='P1', claimant='w', trusted_authors=None)
-    assert moved.outcome is EnsureOutcome.CREATED and moved.issue_number != first.issue_number
+    assert moved.outcome is EnsureOutcome.CREATED and moved.issue_number != first.issue_number     # no raw SQL needed
+    assert issue_for_engine_task(reopened, 'T-1').github_issue_number == moved.issue_number
     assert [i for i in reopened.incidents() if i['reason'] == 'ENGINE_REBOUND']
 
 

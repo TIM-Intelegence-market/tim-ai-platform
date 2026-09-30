@@ -342,3 +342,39 @@ def test_a_request_the_caller_gave_up_on_during_connect_is_never_sent_later(monk
         assert ('POST', '/repos/o/r/issues') not in server.paths
     finally:
         server.close()
+
+
+def test_a_timeout_shuts_the_socket_down_so_a_send_in_progress_cannot_finish(monkeypatch):
+    from src.task_governance import github_gateway
+    seen = {}
+
+    class Sock:
+        def __init__(self):
+            self.dead = threading.Event()
+
+        def shutdown(self, how):
+            seen['how'] = how
+            self.dead.set()
+
+    class HangingConn:
+        def __init__(self, host, port, timeout=None):
+            self.sock = None
+
+        def connect(self):
+            self.sock = Sock()
+
+        def request(self, *args, **kwargs):
+            seen['sent'] = not self.sock.dead.wait(5)             # a send blocked on a full buffer
+
+        def getresponse(self):
+            raise OSError('no answer')
+
+        def close(self):
+            seen['closed'] = True
+
+    monkeypatch.setattr(github_gateway, 'HTTPConnection', HangingConn)
+    start = time.monotonic()
+    with pytest.raises(GitHubError):
+        github_gateway._http_transport('POST', 'http://127.0.0.1:9/x', {}, b'{}', 0.3)
+    time.sleep(0.2)
+    assert time.monotonic() - start < 2 and seen['how'] == socket.SHUT_RDWR and seen['sent'] is False and seen['closed']

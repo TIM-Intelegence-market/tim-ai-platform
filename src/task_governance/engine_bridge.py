@@ -48,23 +48,35 @@ def request_from_engine_task(task, *, mission_id, phase_id, target=None, schema_
 
 def sync_engine_task_to_issue(engine, task_id, registry, gateway, *, mission_id, phase_id, claimant, trusted_authors,
                               target=None, schema_version='v1', task_type=None, policy=ReopenPolicy.NEVER, retry=False,
-                              authoritative_hint=None, legacy_issues=(), lease_seconds=300.0):
-    """Ensure the task's issue and, for an active task, checkpoint `github_issue:<fingerprint[:16]>`; returns the `EnsureResult`."""
+                              authoritative_hint=None, legacy_issues=(), lease_seconds=300.0, record_checkpoint=False):
+    """Ensure the task's issue and return the `EnsureResult`. The engine is only read by default.
+
+    The registry holds the task-to-issue mapping (`issue_for_engine_task`). `record_checkpoint=True` additionally writes the
+    engine checkpoint `github_issue:<fingerprint[:16]>` for a task that is still active when the call ends; that write bumps the
+    task revision, and because the engine's checkpoint has no state guard a task blocked in the last instant can still get it."""
     task = engine.get_task(task_id)
     request = request_from_engine_task(task, mission_id=mission_id, phase_id=phase_id, target=target,
                                        schema_version=schema_version, task_type=task_type)
-    step = f'{STEP_PREFIX}{request.fingerprint[:16]}'
     bound = registry.bind_engine_task(task_id, request.fingerprint, request.key)   # durable before any GitHub call
-    drifted = [c['step_id'] for c in engine.checkpoints(task_id)
-               if c['step_id'].startswith(STEP_PREFIX) and c['step_id'] != step]
-    if bound != request.fingerprint or drifted:
-        raise IdentityDrift(f'task {task_id} is already bound to another identity ({bound[:16]}); this call would create a '
-                            'second issue. An operator decides with registry.rebind_engine_task.')
+    if bound != request.fingerprint:
+        raise IdentityDrift(f'task {task_id} is already bound to another identity ({bound[:16]}); this call ({request.fingerprint[:16]}) '
+                            'would create a second issue. An operator decides with registry.rebind_engine_task.')
     result = ensure_task(request, registry, gateway, claimant=claimant, policy=policy, retry=retry,
                          trusted_authors=trusted_authors, authoritative_hint=authoritative_hint,
                          legacy_issues=legacy_issues, lease_seconds=lease_seconds)
-    # Only an active task gets the checkpoint (it bumps the revision); the registry holds the mapping for all others.
-    if result.outcome in _WITH_ISSUE and result.issue_number is not None and task.state.value in _ACTIVE:
-        engine.checkpoint(task_id, step, next_action=(task.next_action or '').strip() or 'continue task',
-                          metadata={'issue': result.issue_number, 'outcome': result.outcome.value})
+    if record_checkpoint and result.outcome in _WITH_ISSUE and result.issue_number is not None:
+        current = engine.get_task(task_id)                       # state as it is now, not before the GitHub calls
+        if current.state.value in _ACTIVE:
+            try:
+                engine.checkpoint(task_id, f'{STEP_PREFIX}{request.fingerprint[:16]}',
+                                  next_action=(current.next_action or '').strip() or 'continue task',
+                                  metadata={'issue': result.issue_number, 'outcome': result.outcome.value})
+            except ValueError:
+                pass                                             # became terminal meanwhile; the registry has the mapping
     return result
+
+
+def issue_for_engine_task(registry, task_id):
+    """The registry mapping (issue number, state) of an engine task, or None when it was never synced."""
+    binding = registry.engine_binding(task_id)
+    return None if binding is None else registry.get(binding[0])

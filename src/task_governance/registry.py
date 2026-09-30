@@ -147,6 +147,11 @@ class TaskRegistry:
             raise
 
     @_serialized
+    def engine_binding(self, task_id: str):
+        row = self.db.execute('SELECT fingerprint, canonical_key FROM engine_bindings WHERE task_id=?', (task_id,)).fetchone()
+        return None if row is None else (row[0], row[1])
+
+    @_serialized
     def rebind_engine_task(self, task_id: str, fingerprint: str, canonical_key: str, note: str) -> None:
         """Operator decision to move an engine task to another identity (the old issue stays as it is)."""
         if not note.strip():

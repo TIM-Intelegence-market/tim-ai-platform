@@ -85,10 +85,16 @@ def _http_transport(method, url, headers, body, timeout):
     worker.start()
     worker.join(timeout)
     if worker.is_alive():
-        cancelled.set()
+        cancelled.set()                     # first: a worker that has not passed its own check yet will send nothing
         conn = box.get('conn')
+        sock = getattr(conn, 'sock', None)
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)     # no further byte can leave, and a blocked send or read ends
+            except OSError:
+                pass
         if conn is not None:
-            conn.close()                    # unblocks the worker; the request may still have reached GitHub
+            conn.close()                    # bytes that were already on the wire may still have reached GitHub
         raise GitHubError(f'{method} timed out after {timeout}s')
     error = box.get('error')
     if 'result' not in box and error is None:
