@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Collection, Protocol
 
-_REVALIDATED_EACH_RUN = ('UNKNOWN_ISSUE_KIND', 'HINT_UNKNOWN_KIND')     # cheap to re-check, no human needed
 _UNBLOCKABLE_BY_HINT = ('AMBIGUOUS_DUPLICATES', 'DUPLICATE_AFTER_CREATE', 'HINT_NOT_FOUND', 'HINT_INVALID')
 MIN_LEASE_FACTOR = 4      # lease must be at least this many times the gateway's worst-case create time
 
@@ -119,7 +118,10 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
 
     existing = registry.get(fp)
     if existing and existing.state is MappingState.BLOCKED:
-        if existing.github_issue_number is None and existing.block_reason in _REVALIDATED_EACH_RUN:
+        if existing.github_issue_number is None and (
+                existing.block_reason == 'UNKNOWN_ISSUE_KIND'          # the marker exists, so no hint is needed
+                or (existing.block_reason == 'HINT_UNKNOWN_KIND'       # only the same hint may re-validate it,
+                    and authoritative_hint in existing.block_candidates)):   # else a hint-less run would create anew
             registry.unblock(fp, f'{existing.block_reason}: re-validating')
             existing = None
         elif existing.github_issue_number is None and _hint_resolves_block(existing, authoritative_hint):

@@ -870,3 +870,18 @@ def test_processes_migrating_an_old_registry_file_at_the_same_time(tmp_path, rou
     gh = FakeGitHub(gh_path)
     codes, outs = _run_processes(reg_path, gh_path, 6)
     assert codes == [0] * 6 and gh.count() == 1
+
+
+def test_hint_unknown_kind_is_not_lifted_by_a_run_without_the_hint(env, monkeypatch):
+    from src.task_governance import IssueRef
+    reg_path, gh = env
+    gh.seed(11, req().fingerprint, marker=False)               # real legacy issue, task not in the legacy table
+    reg = TaskRegistry(reg_path)
+    real_get = gh.get_issue
+    with monkeypatch.context() as m:
+        m.setattr(gh, 'get_issue', lambda n: (lambda i: IssueRef(i.number, i.state, author=i.author) if i else None)(real_get(n)))
+        assert ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11).outcome is EnsureOutcome.BLOCKED
+    restart = ensure_task(req(), reg, gh, claimant='w')          # restart without the hint
+    assert restart.outcome is EnsureOutcome.BLOCKED and not restart.created and gh.count() == 1
+    assert ensure_task(req(), reg, gh, claimant='w', authoritative_hint=11).outcome is EnsureOutcome.RECOVERED
+    assert gh.count() == 1
