@@ -78,7 +78,8 @@ nächste Periode laut `max_first_release_lag` (45 Tage) überfällig ist.
   Release-Kalender muss das früheste Vintage außerdem der erste Kalendertermin
   nach Periodenende sein; sonst gilt der Erstdruck ebenfalls als fehlend (die
   Verzugsgrenze kann einen Erstdruck nur widerlegen, nicht belegen). Der
-  Kalender muss dafür einen Termin vor dem Periodenende enthalten; ohne
+  Kalender muss dafür einen Termin vor dem Periodenende enthalten, höchstens
+  ein Release-Intervall (45 Tage) vor dem Erstdruck; ohne
   Kalendertermine (fehlend oder leer) gilt kein Erstdruck als belegt.
 
 ## 5. Datenqualität
@@ -99,7 +100,7 @@ Wiederverwendet: `QualityIssue`/`Severity` aus `src/quality/framework.py`.
 | gleiche Periode/Vintage doppelt, anderer Wert | `UNKNOWN` |
 | fehlender oder leerer Release-Kalender | Warnung, alle Vintages `END_OF_VINTAGE_DAY`, kein Erstdruck belegt |
 | Wert außerhalb 1e-6 … 1e9 (Betrag) oder mit mehr als 20 Stellen | `UNKNOWN` (`MALFORMED_VALUE`), damit die Ereignisrechnung im festen Decimal-Kontext nie überläuft |
-| Datum am Kalenderrand ohne darstellbares Periodenende oder `available_at` (z. B. Periode 9999-12) | nicht datierbar: Payload `NOT_READY` |
+| Datum am Kalenderrand ohne darstellbare Periodenrechnung oder `available_at` (z. B. Periode 0001-01 oder 9999-12) | nicht datierbar: Payload `NOT_READY` |
 | BTC-Kerze mit ungültigem Preis/Volumen oder falschem Raster (bis zur Replay-Zeit) | `ValueError`; Kerzen nach der Replay-Zeit werden weder genutzt noch geprüft |
 
 Replay zeigt nur Befunde, die zu T datiert oder undatiert (Payload-Ebene) sind,
@@ -166,9 +167,12 @@ ignoriert). Paging wird nicht unterstützt: eine unvollständige Antwort ist
   es auf `END_OF_VINTAGE_DAY` zurück; einen Tag zu spätes ALFRED-Datum würde als
   späterer Zeitpunkt übernommen (konservativ, aber falsche Ereigniszeit).
 - Die Genauigkeit historischer Release-Termine in FRED ist nicht gegen den
-  BLS-Archivkalender geprüft. Fehlt im Kalender mitten im Zeitraum ein Termin,
-  kann eine Revision als Erstdruck gelten; geprüft werden nur Vollständigkeit
-  der Antwort (`count`) und ein Termin vor dem Periodenende.
+  BLS-Archivkalender geprüft. Geprüft werden Vollständigkeit der Antwort
+  (`count`), ein Termin vor dem Periodenende und dass dieser höchstens ein
+  Release-Intervall (45 Tage) vor dem Erstdruck liegt; ein fehlender Monatstermin
+  fällt damit auf. Falsch datierte (statt fehlende) Termine werden nicht erkannt.
+  Echte Lücken über 45 Tage (z. B. Shutdown 2025) machen den Erstdruck
+  konservativ unbekannt.
 - Die Holdout-Sperre für externe Daten sitzt in `run_replay`. Direkte Abfragen an
   `PointInTimeStore` sind nicht gesperrt; Forschungsläufe gehen über `run_replay`.
 - Nur Monatsreihen; nur eine Quelle.

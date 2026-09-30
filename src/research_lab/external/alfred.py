@@ -302,8 +302,12 @@ def _row(
     try:
         period = spec.period_of(raw_period)
         period_end = spec.period_end(period)
-        _ = period_end + spec.max_first_release_lag  # the first-print check needs it later
         available_at = spec.available_at(vintage, basis)
+        # Every later step's period arithmetic must be representable too: the first-print check, the
+        # previous period of a release event and the staleness deadline of PointInTimeStore.latest.
+        _ = period_end + spec.max_first_release_lag
+        spec.previous_period(period)
+        spec.available_at(spec.period_end(period_end) + spec.max_first_release_lag, AvailabilityBasis.END_OF_VINTAGE_DAY)
     except (ValueError, OverflowError):
         # Dates at the calendar's edge (e.g. period 9999-12) have no representable end or availability.
         issues.append(issue("MALFORMED_TIMESTAMP", Severity.ERROR, row_id, "date outside the supported range"))
@@ -409,6 +413,9 @@ def _revision_history_gaps(
             if position == 0:
                 # No release before the period ended: the calendar may start too late to show the first print.
                 detail = "release calendar does not reach back to the end of the reference period"
+            elif expected is not None and expected - calendar[position - 1] > spec.max_release_interval:
+                # A gap wider than one release interval may hide the release that first printed the period.
+                detail = "release calendar has a gap around the first release"
             elif item.vintage != expected:
                 detail = "earliest archived vintage is not the first scheduled release after the period ended"
         if detail is not None or not calendar or (clipped_start is not None and item.vintage == clipped_start):

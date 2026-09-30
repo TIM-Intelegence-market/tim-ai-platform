@@ -63,6 +63,8 @@ class SourceSpec:
     release_timezone: str
     release_time: time  # publisher's scheduled release time on a release date
     max_first_release_lag: timedelta  # period end -> first release; a later first vintage means earlier prints are missing
+    # Longest regular gap between two scheduled releases; a wider calendar gap may hide a release.
+    max_release_interval: timedelta
     positive_values: bool = True  # index levels; zero or negative is malformed
 
     @property
@@ -111,6 +113,7 @@ class SourceSpec:
             "release_timezone": self.release_timezone,
             "release_time": self.release_time.isoformat(),
             "max_first_release_lag_days": self.max_first_release_lag.days,
+            "max_release_interval_days": self.max_release_interval.days,
             "positive_values": self.positive_values,
         }
 
@@ -131,6 +134,7 @@ CPI_US = SourceSpec(
     release_timezone="America/New_York",
     release_time=time(8, 30),
     max_first_release_lag=timedelta(days=45),
+    max_release_interval=timedelta(days=45),  # monthly releases; a skipped month shows as ~60 days
 )
 
 SOURCES: dict[tuple[str, str], SourceSpec] = {CPI_US.key: CPI_US}

@@ -832,7 +832,25 @@ def test_calendar_starting_after_the_period_ended_certifies_no_first_print() -> 
         with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", MAR_RELEASE - timedelta(days=1)))
 
 
-@pytest.mark.parametrize("extreme", ["1e100", "1e999999999", "1e-9", "300.00000000000000000001"])
+def test_calendar_gap_around_the_first_release_certifies_no_first_print() -> None:
+    # The February 13 release is missing inside the calendar: January 11 -> March 12 spans two releases.
+    raw = bundle([row("2024-01-01", "2024-03-12", "9999-12-31", "300.2")])
+    raw.payloads["release_dates"] = release_payload(("2024-01-11", "2024-03-12", "2024-04-10"))
+    result = parse_bundle(raw)
+    assert date(2024, 1, 1) in result.periods_without_first_release
+    event = release_events(PointInTimeStore(result), until=INGESTED)[0]
+    assert event.status is EventStatus.FIRST_RELEASE_UNAVAILABLE and event.event_time is None
+    with pytest.raises(ValueError, match="first release"):
+        with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", datetime(2024, 3, 1, tzinfo=UTC)))
+
+
+def test_period_at_the_start_of_the_calendar_makes_the_payload_not_ready_instead_of_crashing() -> None:
+    result = ingest(base_rows() + [row("0001-01-01", "2024-02-13", "9999-12-31", "300.0")])
+    assert result.state is QualityState.NOT_READY and "UNDATABLE_ROWS" in codes(result)
+    assert replay(result, datetime(2024, 4, 20, tzinfo=UTC))["state"] == "NOT_READY"
+
+
+@pytest.mark.parametrize("extreme",["1e100", "1e999999999", "1e-9", "300.00000000000000000001"])
 def test_values_outside_the_supported_range_are_unusable_not_a_crash(extreme: str) -> None:
     rows = base_rows()
     rows[2] = row("2024-02-01", "2024-03-12", "9999-12-31", extreme)  # February, first printed with the March release

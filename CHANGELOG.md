@@ -17,7 +17,8 @@
 - A period whose first print is missing from the archive yields no release
   event time and accepts no expectation (`FIRST_RELEASE_UNAVAILABLE`); with a
   release calendar the first print must be the first scheduled release after the
-  period ended and the calendar must reach back before the period end; without
+  period ended, and the calendar must hold the previous release at most one
+  release interval (45 days) earlier, so a skipped release is noticed; without
   calendar dates no first print counts as identified. Unusable rows still count
   for overlapping vintages, dates at the calendar edge make the payload
   NOT_READY and values outside 1e-6..1e9 (or over 20 digits) are malformed,
