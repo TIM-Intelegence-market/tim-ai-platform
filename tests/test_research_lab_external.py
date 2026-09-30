@@ -776,3 +776,31 @@ def test_different_unusable_payloads_do_not_share_a_dataset_id() -> None:
     assert first["state"] == second["state"] == "NOT_READY"
     assert first["dataset_id"] != second["dataset_id"]
     assert first["dataset_id"] == replay(parse_bundle(copy.deepcopy(broken_json)), at)["dataset_id"]
+
+
+def test_first_print_must_be_the_first_scheduled_release_not_just_inside_the_lag() -> None:
+    # January's February 13 print is missing; its March 12 revision lies inside the 45-day bound.
+    result = ingest([row("2024-01-01", "2024-03-12", "9999-12-31", "300.2")])
+    assert date(2024, 1, 1) in result.periods_without_first_release
+    event = release_events(PointInTimeStore(result), until=INGESTED)[0]
+    assert event.status is EventStatus.FIRST_RELEASE_UNAVAILABLE and event.event_time is None
+    with pytest.raises(ValueError, match="first release"):
+        with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", MAR_RELEASE - timedelta(days=1)))
+    # The complete fixture still identifies every first print.
+    assert ingest().periods_without_first_release == frozenset()
+    assert [e.status for e in release_events(store(), until=INGESTED)] == [EventStatus.OK] * 3
+
+
+def test_unusable_value_still_counts_for_overlapping_vintages() -> None:
+    overlapping = [row("2024-01-01", "2024-02-13", "2024-12-31", "bad"), row("2024-01-01", "2024-03-12", "9999-12-31", "301.0")]
+    assert store(overlapping).value(date(2024, 1, 1), MAR_RELEASE).status is Visibility.UNKNOWN
+    chained = [row("2024-01-01", "2024-02-13", "2024-03-11", "bad"), row("2024-01-01", "2024-03-12", "9999-12-31", "301.0")]
+    assert store(chained).value(date(2024, 1, 1), MAR_RELEASE).value == Decimal("301.0")
+
+
+def test_quality_findings_are_part_of_the_dataset_identity() -> None:
+    at = datetime(2024, 4, 20, tzinfo=UTC)
+    clean = replay(ingest(), at)
+    duplicated = replay(ingest(base_rows() + [base_rows()[0]]), at)
+    assert clean["inputs"] == duplicated["inputs"]
+    assert clean["dataset_id"] != duplicated["dataset_id"]

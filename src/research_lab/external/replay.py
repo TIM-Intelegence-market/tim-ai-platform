@@ -76,7 +76,7 @@ def run_replay(
     if ingest.state is not QualityState.READY:
         content = {**header, "state": ingest.state.value, "quality_issues": issues, "series_rows": [], "events": []}
         # No inputs were read: the dataset is the payload that failed, so its identity is that payload.
-        return _finish(content, provenance, {"state": ingest.state.value, "payload_sha256": provenance["payload_sha256"]})
+        return _finish(content, provenance, {"state": ingest.state.value, "quality_issues": issues, "payload_sha256": provenance["payload_sha256"]})
 
     store = PointInTimeStore(ingest)
     btc = BtcSeries.build(klines, config.interval, replay_at=at, permission=permission)
@@ -109,6 +109,8 @@ def run_replay(
     }
     identity = {
         "state": state.value,
+        # Findings dated at or before T (e.g. a duplicate kept once) are part of what this dataset says.
+        "quality_issues": issues,
         # Coverage and missing first prints change results without changing the visible records. The coverage
         # end enters only when it cuts the replay, so re-ingesting the same archive later keeps the identity.
         "coverage_end": iso(ingest.coverage_end) if ingest.coverage_end < at else None,

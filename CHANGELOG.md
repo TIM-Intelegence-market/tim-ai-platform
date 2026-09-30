@@ -15,9 +15,11 @@
   alignment on the research lab's klines with the protocol holdout lock, and a
   deterministic replay with dataset id, content hash and output hash.
 - A period whose first print is missing from the archive yields no release
-  event time and accepts no expectation (`FIRST_RELEASE_UNAVAILABLE`). The
-  dataset id also covers state, an archive end before replay time, missing first
-  prints and, for unusable payloads, the payload hashes.
+  event time and accepts no expectation (`FIRST_RELEASE_UNAVAILABLE`); with a
+  release calendar the first print must be the first scheduled release after the
+  period ended. Unusable rows still count for overlapping vintages. The dataset
+  id also covers state, visible quality findings, an archive end before replay
+  time, missing first prints and, for unusable payloads, the payload hashes.
 - No forecasts, signals, orders or production-database access.
 
 ## Unreleased — Broncx Discord feed as external guidance

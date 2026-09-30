@@ -74,7 +74,10 @@ nächste Periode laut `max_first_release_lag` (45 Tage) überfällig ist.
 - Liegt das früheste archivierte Vintage einer Periode später als eine erste
   Veröffentlichung sein konnte, wird die Periode als
   `REVISION_HISTORY_UNAVAILABLE` markiert (`first_release_in_archive = false`).
-  Der Wert ist dann erst ab diesem Vintage sichtbar, nie früher.
+  Der Wert ist dann erst ab diesem Vintage sichtbar, nie früher. Mit
+  Release-Kalender muss das früheste Vintage außerdem der erste Kalendertermin
+  nach Periodenende sein; sonst gilt der Erstdruck ebenfalls als fehlend (die
+  Verzugsgrenze kann einen Erstdruck nur widerlegen, nicht belegen).
 
 ## 5. Datenqualität
 
@@ -89,7 +92,7 @@ Wiederverwendet: `QualityIssue`/`Severity` aus `src/quality/framework.py`.
 | Zeile ohne `realtime_start` oder mit nicht lesbarem Perioden-/Vintage-Datum | ganze Payload `NOT_READY` (Verfügbarkeit oder Periode nicht bestimmbar) |
 | Periodendatum lesbar, aber kein Periodenbeginn; Vintage vor Periodenende; `available_at > ingested_at`; ungültiger oder nicht positiver Wert | Periode ab diesem Vintage `UNKNOWN` |
 | ungültiges oder widersprüchliches `realtime_end` (auch bei Duplikaten) | Ende gilt als unbekannt; das **nächste** Vintage der Periode wird ab seiner eigenen Verfügbarkeit `UNKNOWN` (das Ende ist erst dann erkennbar) |
-| Gültigkeit überlappt mit irgendeinem früheren Vintage | späteres Vintage `UNKNOWN` |
+| Gültigkeit überlappt mit irgendeinem früheren Vintage (auch einem unbrauchbaren) | späteres Vintage `UNKNOWN` |
 | gleiche Periode/Vintage doppelt, gleicher Wert | eine Zeile behalten (unabhängig von der Reihenfolge), Warnung |
 | gleiche Periode/Vintage doppelt, anderer Wert | `UNKNOWN` |
 | fehlender Release-Kalender | Warnung, alle Vintages `END_OF_VINTAGE_DAY` |
@@ -135,9 +138,10 @@ werden nie erfunden. Rechnungen laufen in einem festen Decimal-Kontext.
 `run_replay(ingest, klines, ReplayConfig(replay_at, interval, horizons))` liest
 weder Uhr noch Netz noch Zufall. Eine Replay-Zeit ab 2025-01-01 (Holdout, Protokoll
 3.2) verlangt die Holdout-Freigabe, auch für externe Daten. Nicht nutzbare
-Einträge gehen in die Datensatz-Identität ein, ebenso Zustand, ein Archivende vor
-der Replay-Zeit und Perioden ohne Erstdruck; bei unbrauchbarer Payload
-(`NOT_READY`, `INSUFFICIENT_DATA`) sind es Zustand und Payload-Hashes. Ausgabe: `dataset_id`, `content_hash` (Inhalt),
+Einträge gehen in die Datensatz-Identität ein, ebenso Zustand, bis T sichtbare
+Befunde, ein Archivende vor der Replay-Zeit und Perioden ohne Erstdruck; bei
+unbrauchbarer Payload (`NOT_READY`, `INSUFFICIENT_DATA`) sind es Zustand, Befunde
+und Payload-Hashes. Ausgabe: `dataset_id`, `content_hash` (Inhalt),
 `output_hash` (inkl. Provenienz), Versionen, Konfiguration, sichtbare
 Datensatz-IDs, BTC-Hash und -Vollständigkeit. Eine spätere Revision ändert den
 `content_hash` eines früheren Replays nicht (getestet).

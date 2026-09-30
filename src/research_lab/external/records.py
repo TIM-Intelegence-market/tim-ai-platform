@@ -238,6 +238,8 @@ class Unusable:
     vintage: date
     available_at: datetime
     reason: str
+    # The row's realtime_end when readable: an unusable value still claims validity, so it counts for overlaps.
+    vintage_end: date | None = None
 
 
 @dataclass(frozen=True, slots=True)

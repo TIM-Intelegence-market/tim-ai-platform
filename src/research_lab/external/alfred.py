@@ -21,6 +21,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from bisect import bisect_left
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -173,24 +174,25 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
         bad = sorted((item for item in items if isinstance(item, Unusable)), key=lambda item: item.reason)
         good = sorted((item for item in items if isinstance(item, VintageObservation)), key=lambda item: item.raw_value)
         values = {(item.value_status, item.value) for item in good}
+        ends = {item.vintage_end for item in items}
+        if len(ends) > 1:
+            # Rows disagree on the end date: the end is unknown (see _row), never picked by row order.
+            bad_ends.append((period, vintage, "duplicate rows disagree on realtime_end"))
+        end = next(iter(ends)) if len(ends) == 1 else None
         if bad:
-            unusable.append(bad[0])
+            unusable.append(replace(bad[0], vintage_end=end))
         elif len(values) > 1:
-            unusable.append(Unusable(period, vintage, items[0].available_at, "CONFLICTING_DUPLICATE"))
+            unusable.append(Unusable(period, vintage, items[0].available_at, "CONFLICTING_DUPLICATE", end))
             issues.append(issue("CONFLICTING_DUPLICATE", Severity.ERROR, record_id, f"{len(items)} rows with different values", items[0].available_at))
         else:
-            kept = good[0]  # same value in every row: the representative does not depend on row order
-            if len({item.vintage_end for item in good}) > 1:
-                # Same value, different end dates: the end is unknown (see _row), never picked by row order.
-                kept = replace(kept, vintage_end=None)
-                bad_ends.append((period, vintage, "duplicate rows disagree on realtime_end"))
-            records.append(kept)
+            # Same value in every row: the representative does not depend on row order.
+            records.append(replace(good[0], vintage_end=end))
             if len(items) > 1:
                 issues.append(issue("DUPLICATE_RECORD", Severity.WARNING, record_id, f"{len(items)} identical rows; kept one", items[0].available_at))
 
     records, unusable = _vintage_chain_checks(records, unusable, issues)
     _date_bad_ends(series_id, bad_ends, records, unusable, ingested_at, issues)
-    without_first = _revision_history_gaps(spec, records, unusable, clipped_start, issues)
+    without_first = _revision_history_gaps(spec, records, unusable, clipped_start, release_dates, issues)
     state = QualityState.READY if records or unusable else QualityState.INSUFFICIENT_DATA
     if state is QualityState.INSUFFICIENT_DATA:
         issues.append(issue("NO_OBSERVATIONS", Severity.ERROR, series_id, "payload holds no usable observation"))
@@ -295,12 +297,6 @@ def _row(
     basis = AvailabilityBasis.SCHEDULED_RELEASE if vintage in release_dates and not clipped else AvailabilityBasis.END_OF_VINTAGE_DAY
     available_at = spec.available_at(vintage, basis)
 
-    def unusable(code: str, detail: str) -> Unusable:
-        issues.append(issue(code, Severity.ERROR, record_id, detail, available_at))
-        return Unusable(period, vintage, available_at, code)
-
-    if raw_period != period:
-        return unusable("MALFORMED_TIMESTAMP", "observation date is not the start of a reference period")
     # realtime_end says when this value stopped being current, which is only known once the next
     # vintage exists. A bad end is therefore not held against this row; it is treated as unknown and
     # the vintage chain check makes the next vintage of the period UNKNOWN from that vintage on.
@@ -313,6 +309,13 @@ def _row(
     if vintage_end is not None and vintage_end < vintage:
         vintage_end = None
         bad_ends.append((period, vintage, "realtime_end before realtime_start"))
+
+    def unusable(code: str, detail: str) -> Unusable:
+        issues.append(issue(code, Severity.ERROR, record_id, detail, available_at))
+        return Unusable(period, vintage, available_at, code, vintage_end)
+
+    if raw_period != period:
+        return unusable("MALFORMED_TIMESTAMP", "observation date is not the start of a reference period")
     if vintage < period_end:
         return unusable("IMPOSSIBLE_TIMESTAMP_ORDER", "vintage dated before the reference period ended")
     if available_at > ingested_at:
@@ -360,20 +363,37 @@ def _revision_history_gaps(
     records: list[VintageObservation],
     unusable: list[Unusable],
     clipped_start: date | None,
+    release_dates: set[date],
     issues: list[DatedIssue],
 ) -> set[date]:
+    """Periods whose first print is not in the archive.
+
+    The lag bound can only disprove a first print. With a release calendar the first
+    print must also be positively identified: the earliest archived vintage has to be
+    the first scheduled release after the period ended, otherwise an earlier release
+    is missing (or the calendar does not show it) and the first print counts as unknown."""
     first: dict[date, VintageObservation | Unusable] = {}
     for item in [*records, *unusable]:
         if item.period_start not in first or item.vintage < first[item.period_start].vintage:
             first[item.period_start] = item
+    calendar = sorted(release_dates)
     gaps = set()
     for period, item in sorted(first.items()):
-        latest_first_release = spec.period_end(period) + spec.max_first_release_lag
-        if item.vintage > latest_first_release or (clipped_start is not None and item.vintage == clipped_start):
+        period_end = spec.period_end(period)
+        latest_first_release = period_end + spec.max_first_release_lag
+        record_id = f"{spec.source}:{spec.source_identifier}:{period.isoformat()}@{item.vintage.isoformat()}"
+        detail = None
+        if item.vintage > latest_first_release:
+            detail = "earliest archived vintage is later than the first release could have been"
+        elif calendar:
+            position = bisect_left(calendar, period_end)
+            expected = calendar[position] if position < len(calendar) else None
+            if item.vintage != expected:
+                detail = "earliest archived vintage is not the first scheduled release after the period ended"
+        if detail is not None or (clipped_start is not None and item.vintage == clipped_start):
             gaps.add(period)
-            if item.vintage > latest_first_release:
-                record_id = f"{spec.source}:{spec.source_identifier}:{period.isoformat()}@{item.vintage.isoformat()}"
-                issues.append(issue("REVISION_HISTORY_UNAVAILABLE", Severity.WARNING, record_id, "earliest archived vintage is later than the first release could have been", item.available_at))
+        if detail is not None:
+            issues.append(issue("REVISION_HISTORY_UNAVAILABLE", Severity.WARNING, record_id, detail, item.available_at))
     return gaps
 
 
@@ -385,19 +405,24 @@ def _vintage_chain_checks(
     """Overlapping real-time periods assert two values at once: the later vintage becomes UNKNOWN.
 
     The conflict is only knowable once the later vintage exists, so marking it from
-    that vintage's own availability on uses no later knowledge."""
-    by_period: dict[date, list[VintageObservation]] = defaultdict(list)
-    for record in records:
-        by_period[record.period_start].append(record)
+    that vintage's own availability on uses no later knowledge. Unusable entries take
+    part as earlier vintages: a bad value still claims its validity period."""
+    by_period: dict[date, list[VintageObservation | Unusable]] = defaultdict(list)
+    for item in [*records, *unusable]:
+        by_period[item.period_start].append(item)
     kept: list[VintageObservation] = []
     for _period, items in sorted(by_period.items()):
         items.sort(key=lambda item: item.vintage)
-        kept.append(items[0])
-        for position, current in enumerate(items[1:], start=1):
+        for position, current in enumerate(items):
+            if not isinstance(current, VintageObservation):
+                continue
+            if position == 0:
+                kept.append(current)
+                continue
             # Every earlier vintage, not only the adjacent one, must have ended before this one starts.
             if any(earlier.vintage_end is None or earlier.vintage_end >= current.vintage for earlier in items[:position]):
                 issues.append(issue("INCONSISTENT_VINTAGE_CHAIN", Severity.ERROR, current.record_id, "an earlier vintage is still valid when this one starts", current.available_at))
-                unusable.append(Unusable(current.period_start, current.vintage, current.available_at, "INCONSISTENT_VINTAGE_CHAIN"))
+                unusable.append(Unusable(current.period_start, current.vintage, current.available_at, "INCONSISTENT_VINTAGE_CHAIN", current.vintage_end))
             else:
                 kept.append(current)
     return sorted(kept, key=lambda item: (item.period_start, item.vintage)), unusable
