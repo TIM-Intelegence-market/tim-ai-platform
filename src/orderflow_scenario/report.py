@@ -124,7 +124,11 @@ def _external_section(external: dict[str, Any]) -> list[str]:
             text = check["text"] if report_is_safe(check["text"]) else "(siehe Audit)"
             lines.append(f"    Invalidierung laut Broncx: {text} -> {check['status']}.")
         if entry["level_checks"]:
-            levels = ", ".join(f"{check['level']} {check['role']} {check['status']}" + (f" ({check['distance_pct']} %)" if check["distance_pct"] is not None else "") for check in entry["level_checks"])
+            levels = ", ".join(
+                f"{check['level']} {check['role']}" + (" aus Bild, geschätzt" if check.get("source") == "chart" else "") + f" {check['status']}"
+                + (f" ({check['distance_pct']} %)" if check["distance_pct"] is not None else "")
+                for check in entry["level_checks"]
+            )
             lines.append(f"    Prüf-Level: {levels}.")
     return lines
 

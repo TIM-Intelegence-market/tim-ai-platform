@@ -32,6 +32,13 @@
   It never confirms a scenario or creates a trade plan by itself; stale,
   invalidated, mixed or not-yet-known posts have no effect (tested).
 - `ofsc --broncx-feed DIR [--broncx-max-age-hours H]`.
+- Chart images: a position-tool direction also counts when his text names no
+  direction ("Took this") and no earlier view of his is still open (the same
+  now holds for image-only posts); never against
+  his text, a withdrawn direction ("closed my short"), trade management
+  ("stopped out", "tp1 hit") or a renewal ("still valid"); chart levels are marked "aus Bild, geschätzt" in the
+  report; `fetch-images` retries a failed image of a post; daily charts keep
+  their timeframe (`1d`).
 
 ## Unreleased — repository foundation
 

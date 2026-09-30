@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Sequence
 
+from src.knowledge.broncx_chart_vision import guidance_for_post
 from src.knowledge.broncx_feed import BroncxGuidance, BroncxPost, parse_guidance
 from src.models.market_data import Candle
 
@@ -53,6 +54,8 @@ EXTERNAL_CONTEXT_RULE = (
 _THRESHOLD = re.compile(r"\b(above|below)\b", re.IGNORECASE)
 # #broncx-feed carries BTC posts: a post without a symbol only applies to a BTC analysis.
 FEED_DEFAULT_SYMBOL = "BTC"
+# Posts that end his current position ("stopped out", "closed", "took profits").
+_CLOSED = re.compile(r"\b(?:stopped\s+out|closed|clos(?:ing|e)\s+(?:it|this|here)|exited|took\s+(?:some\s+)?profits?|cut\s+(?:it|this))\b", re.IGNORECASE)
 _QUOTE_SUFFIX = re.compile(r"[-_/]?(?:USDT|USDC|BUSD|USD|PERP)$")
 
 
@@ -95,14 +98,15 @@ def active_view(
 ) -> ExternalView:
     """His newest active directional view and the LEVEL prices of all active posts for ``symbol``."""
     known, reference = _known(posts, observed_at), _reference(candles, price_now)
-    active = [entry for entry in _thread(known, reference) if _status(entry, symbol, observed_at, max_age) == "ACTIVE"]
+    active = [entry for entry in _thread(known, reference, max_age) if _status(entry, symbol, observed_at, max_age) == "ACTIVE"]
     directional = sorted((entry for entry in active if entry.guidance.bias != "NONE"), key=lambda entry: (entry.effective_at, entry.post.posted_at))
     if not directional:
         return ExternalView(None, None, (), "no_active_direction")
     newest = directional[-1]
     # His current idea: the directional post plus the direction-less follow-ups after it ("invalid above ...", "tp2 at ...").
     idea = [newest] + [entry for entry in active if entry.guidance.bias == "NONE" and entry.post.posted_at > newest.post.posted_at]
-    levels = tuple(sorted({level.value for entry in idea for level in entry.guidance.levels if level.role == "LEVEL" and not level.ambiguous}))
+    # Only levels he wrote become scenarios; prices read off a chart image are estimates and are only checked.
+    levels = tuple(sorted({level.value for entry in idea for level in entry.guidance.levels if level.role == "LEVEL" and level.source == "text" and not level.ambiguous}))
     if newest.guidance.bias not in {"LONG", "SHORT"}:
         return ExternalView(None, newest.post.message_id, (), "mixed_direction")
     for entry in idea:
@@ -142,7 +146,7 @@ def build_external_context(
 ) -> dict[str, Any]:
     known = _known(posts, observed_at)
     reference = _reference(candles, price_now)
-    entries = _thread(known, reference)
+    entries = _thread(known, reference, max_age)
     # TIM's own directions: Broncx-level scenarios (X*) would make every view look aligned.
     tim_directions = {
         item.direction
@@ -181,7 +185,7 @@ def build_external_context(
         }
         if status == "ACTIVE":
             since = _since(candles, entry.post.posted_at)
-            item["level_checks"] = [_level_check(level.value, level.role, reference, since) for level in entry.guidance.levels if not level.ambiguous]
+            item["level_checks"] = [_level_check(level.value, level.role, reference, since, level.source) for level in entry.guidance.levels if not level.ambiguous]
             item["invalidation_checks"] = [_invalidation_check(text, reference, since) for text in entry.guidance.invalidation]
             item["alignment"] = _alignment(entry.guidance.bias, tim_directions, bool(scenarios))
         rendered.append(item)
@@ -225,14 +229,18 @@ def _status(entry: _Entry, symbol: str, observed_at: datetime, max_age: timedelt
     return "ACTIVE" if observed_at - entry.effective_at <= max_age else "STALE"
 
 
-def _thread(posts: Sequence[BroncxPost], reference: Decimal | None) -> list[_Entry]:
+def _thread(posts: Sequence[BroncxPost], reference: Decimal | None, max_age: timedelta = DEFAULT_MAX_AGE) -> list[_Entry]:
     entries: list[_Entry] = []
     for post in posts:
-        guidance = parse_guidance(post.content, reference)
+        guidance = guidance_for_post(post, reference)
         entry = _Entry(post, guidance, guidance.symbol, guidance.timeframe)
         previous = entries[-1] if entries else None
         if entry.symbol is None and previous and post.posted_at - previous.post.posted_at <= THREAD_WINDOW and previous.symbol:
             entry.symbol, entry.timeframe, entry.symbol_inherited = previous.symbol, previous.timeframe, True
+        if guidance.bias_source in {"chart", "chart_text_silent"} and _open_view_before(entries, entry, max_age):
+            # A follow-up ("tp1 here", or just the chart) to a view he stated: the chart must not replace
+            # his direction, levels or invalidation.
+            entry.guidance = guidance = guidance_for_post(post, reference, chart_sets_direction=False)
         if guidance.reaffirms_previous and guidance.bias == "NONE":
             # "This might play out again" renews the latest directional view instead of standing alone.
             target = next((item for item in reversed(entries) if item.guidance.bias in {"SHORT", "LONG"} and post.posted_at - item.post.posted_at <= RENEW_WINDOW), None)
@@ -244,7 +252,24 @@ def _thread(posts: Sequence[BroncxPost], reference: Decimal | None) -> list[_Ent
     return entries
 
 
-def _level_check(value: Decimal, role: str, reference: Decimal | None, since: Sequence[Candle]) -> dict[str, Any]:
+def _open_view_before(entries: Sequence[_Entry], entry: _Entry, max_age: timedelta) -> bool:
+    """Is an earlier view of his for this symbol still open (recent, and not withdrawn by a later post)?"""
+    symbol = entry.symbol or FEED_DEFAULT_SYMBOL
+    same = [item for item in entries if (item.symbol or FEED_DEFAULT_SYMBOL) == symbol]
+    for index, item in enumerate(same):
+        if item.guidance.bias not in {"SHORT", "LONG", "MIXED"} or entry.post.posted_at - item.effective_at > max_age:
+            continue
+        # "closed my short" / "stopped out" after it closes that view: a new position may follow.
+        if not any(later.guidance.direction_withdrawn or _closes_trade(later) for later in same[index + 1:]):
+            return True
+    return False
+
+
+def _closes_trade(entry: _Entry) -> bool:
+    return bool(_CLOSED.search(entry.post.content))
+
+
+def _level_check(value: Decimal, role: str, reference: Decimal | None, since: Sequence[Candle], source: str = "text") -> dict[str, Any]:
     if not since:
         reached = "NO_DATA_SINCE_POST"
     elif any(Decimal(str(candle.low)) <= value <= Decimal(str(candle.high)) for candle in since):
@@ -252,7 +277,7 @@ def _level_check(value: Decimal, role: str, reference: Decimal | None, since: Se
     else:
         reached = "NOT_REACHED"
     distance = None if not reference else str(((value - reference) / reference * 100).quantize(Decimal("0.01")))
-    return {"level": str(value), "role": role, "status": reached, "distance_pct": distance}
+    return {"level": str(value), "role": role, "status": reached, "distance_pct": distance, "source": source}
 
 
 def _invalidation_check(text: str, reference: Decimal | None, since: Sequence[Candle]) -> dict[str, Any]:

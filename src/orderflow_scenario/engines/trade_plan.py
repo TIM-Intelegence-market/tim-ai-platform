@@ -32,6 +32,9 @@ from ..domain import MarketState as MarketStateModel
 
 ZERO = Decimal("0")
 ONE = Decimal("1")
+# Targets as multiples of the stop distance (R). Target 1 at 1.5R meets the
+# 1.5R tier minimum (decision 2026-09-30); below it no plan was ever built.
+TARGET_R = (Decimal("1.5"), Decimal("2"), Decimal("3"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,11 +185,11 @@ class TradePlanBuilder:
 
     def _targets_long(self, last: Decimal, entry: Decimal, stop: Decimal, inputs: TradePlanInputs) -> tuple[Decimal, Decimal, Decimal]:
         risk = entry - stop
-        return (entry + risk * Decimal("1.0"), entry + risk * Decimal("2.0"), entry + risk * Decimal("3.0"))
+        return (entry + risk * TARGET_R[0], entry + risk * TARGET_R[1], entry + risk * TARGET_R[2])
 
     def _targets_short(self, last: Decimal, entry: Decimal, stop: Decimal, inputs: TradePlanInputs) -> tuple[Decimal, Decimal, Decimal]:
         risk = stop - entry
-        return (entry - risk * Decimal("1.0"), entry - risk * Decimal("2.0"), entry - risk * Decimal("3.0"))
+        return (entry - risk * TARGET_R[0], entry - risk * TARGET_R[1], entry - risk * TARGET_R[2])
 
     def _reward_risk(self, targets: tuple[Decimal, Decimal, Decimal], entry: Decimal, stop: Decimal, direction: Direction) -> Decimal:
         if direction == Direction.LONG:

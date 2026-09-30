@@ -7,6 +7,7 @@ import pytest
 
 from src.orderflow_scenario import cli
 from src.orderflow_scenario.adapters.generic import GenericOrderflowAdapter, _dt
+from src.orderflow_scenario.adapters.mmt_screenshot import MMTScreenshotAdapter
 from src.orderflow_scenario.domain import MarketContext
 from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
 
@@ -182,3 +183,46 @@ def test_cli_with_price_but_no_candles_ends_in_no_trade(tmp_path, capsys):
     assert output["data_quality"]["status"] == "INSUFFICIENT_DATA"
     assert output["decision"]["status"] == "NO_TRADE"
     assert output["scenarios"] == []
+
+
+def _without_period(candles: list[dict]) -> list[dict]:
+    return [{key: value for key, value in candle.items() if key != "period_seconds"} for candle in candles]
+
+
+@pytest.mark.parametrize(
+    ("timeframe", "seconds"),
+    [(None, 14400), ("4H", 14400), ("15m", 900), ("1h", 3600), ("1D", 86400), ("30s", 30)],
+)
+@pytest.mark.parametrize("adapter", [GenericOrderflowAdapter(), MMTScreenshotAdapter()])
+def test_candle_period_defaults_to_timeframe(adapter, timeframe, seconds):
+    candles = _without_period(raw_candles(2))
+    if timeframe is not None:
+        for candle in candles:
+            candle["timeframe"] = timeframe
+    adapted = adapter.adapt({"symbol": "BTCUSDT", "price_now": 1.5, "candles": candles})
+    first = adapted.candles[0]
+    assert datetime.fromisoformat(first["close_time"]) - datetime.fromisoformat(first["open_time"]) == timedelta(seconds=seconds)
+
+
+@pytest.mark.parametrize("adapter", [GenericOrderflowAdapter(), MMTScreenshotAdapter()])
+def test_candle_period_follows_payload_timeframe(adapter):
+    adapted = adapter.adapt({"symbol": "BTCUSDT", "price_now": 1.5, "timeframe": "15m", "candles": _without_period(raw_candles(2))})
+    first = adapted.candles[0]
+    assert first["timeframe"] == "15m"
+    assert datetime.fromisoformat(first["close_time"]) - datetime.fromisoformat(first["open_time"]) == timedelta(minutes=15)
+
+
+@pytest.mark.parametrize("adapter", [GenericOrderflowAdapter(), MMTScreenshotAdapter()])
+def test_explicit_period_wins_over_timeframe(adapter):
+    adapted = adapter.adapt({"symbol": "BTCUSDT", "price_now": 1.5, "timeframe": "4H", "candles": raw_candles(2)})
+    first = adapted.candles[0]
+    assert datetime.fromisoformat(first["close_time"]) - datetime.fromisoformat(first["open_time"]) == timedelta(seconds=900)
+
+
+@pytest.mark.parametrize("adapter", [GenericOrderflowAdapter(), MMTScreenshotAdapter()])
+def test_unknown_timeframe_without_period_rejects_the_candle(adapter):
+    candles = _without_period(raw_candles(1))
+    candles[0]["timeframe"] = "weekly"
+    adapted = adapter.adapt({"symbol": "BTCUSDT", "price_now": 1.5, "candles": candles})
+    assert adapted.candles == ()
+    assert any("weekly" in item for item in adapted.missing_fields)
