@@ -283,15 +283,18 @@ class DiscordFeedPoller:
         return saved, errors
 
     def _save_images(self, message: dict[str, Any]) -> tuple[int, int]:
-        """Store the post's chart images once; a failed download never blocks the text post."""
+        """Store each chart image of the post once; a failed download never blocks the text post and is retried later."""
         try:
             message_id, images = image_attachments(message)
         except (KeyError, TypeError, ValueError):
             return 0, 0
-        if not images or self.images.has_images(message_id):
+        if not images:
             return 0, 0
+        have = {path.name.split("-", 1)[0] for path in self.images.images_for(message_id)}
         saved = errors = 0
         for index, (filename, url) in enumerate(images):
+            if str(index) in have:
+                continue  # already stored; only a failed download is tried again
             try:
                 data = self._http_get_bytes(url, {"User-Agent": USER_AGENT}, MAX_IMAGE_BYTES)
             except (OSError, ValueError):

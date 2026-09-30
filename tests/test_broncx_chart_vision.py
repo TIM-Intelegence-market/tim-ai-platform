@@ -132,9 +132,82 @@ def test_ignored_chart_direction_brings_no_invalidation(tmp_path: Path) -> None:
     assert (view.bias, view.reason) == ("LONG", "active")
 
 
-def test_text_without_direction_keeps_none_even_with_a_chart_direction(tmp_path: Path) -> None:
-    store = feed_with_chart(tmp_path, "If taken take tp1 here", SHORT_TOOL)
+def test_text_without_direction_takes_the_chart_direction(tmp_path: Path) -> None:
+    # Broncx 2026-09-30 09:04 UTC: "Took this @here" plus a long position tool on BTC 15m.
+    took_this = {"symbol": "BTCUSDT", "timeframe": "15m",
+                 "position_tool": {"entry": 83092.7, "red_box_outer_edge": 82842.9, "green_box_outer_edge": 83991.7}}
+    store = feed_with_chart(tmp_path, "Took this @here", took_this)
+    guidance = guidance_for_post(store.load()[0], PRICE)
+    assert guidance.bias == "LONG"
+    assert "bias LONG read from chart (estimated); text states no direction" in guidance.notes
+    assert guidance.invalidation == ("below 82842.9 (chart)",)
+    view = active_view(store.load(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(15, 83300)], price_now=PRICE)
+    assert (view.bias, view.reason) == ("LONG", "active")
+
+
+LONG_TOOL = {"position_tool": {"entry": 83092.7, "red_box_outer_edge": 82842.9, "green_box_outer_edge": 83991.7}}
+
+
+def feed_with_text_then_chart(tmp_path: Path, first: str, second: str, payload: dict) -> BroncxFeedStore:
+    store = BroncxFeedStore(tmp_path)
+    store.append(BroncxPost(message_id="1000", posted_at=POSTED - timedelta(minutes=30), content=first, received_at=POSTED))
+    store.append(BroncxPost(message_id="1001", posted_at=POSTED, content=second, received_at=POSTED, attachments=("image0.jpg",)))
+    images = ChartImageStore(tmp_path)
+    path = images.save("1001", 0, "image0.jpg", b"\x89PNG fake")
+    images.append_reading(reading(payload, image=images.relative(path)))
+    return store
+
+
+def test_chart_follow_up_cannot_flip_his_written_direction(tmp_path: Path) -> None:
+    store = feed_with_text_then_chart(tmp_path, "shorting here, invalid above 84500, level 83000", "Took this", LONG_TOOL)
+    view = active_view(store.load(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(15, 83300)], price_now=PRICE)
+    assert (view.bias, view.source_message_id, view.levels) == ("SHORT", "1000", (Decimal("83000"),))
+
+
+def test_chart_follow_up_cannot_revive_his_triggered_invalidation(tmp_path: Path) -> None:
+    store = feed_with_text_then_chart(tmp_path, "shorting here, invalid above 83000", "tp1 here", SHORT_TOOL)
+    view = active_view(store.load(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(15, 83300)], price_now=PRICE)
+    assert (view.bias, view.reason) == (None, "invalidated")
+
+
+def test_chart_follow_up_keeps_his_written_levels(tmp_path: Path) -> None:
+    store = feed_with_text_then_chart(tmp_path, "shorts at 83,000", "tp1 here", SHORT_TOOL)
+    view = active_view(store.load(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(15, 83300)], price_now=PRICE)
+    assert (view.bias, view.source_message_id, view.levels) == ("SHORT", "1000", (Decimal("83000"),))
+    follow_up = build_external_context(store.load(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(15, 83300)], price_now=PRICE, scenarios=[])["entries"][0]
+    assert "chart bias SHORT not used: follow-up to an active view" in follow_up["guidance"]["notes"]
+
+
+def test_image_only_follow_up_cannot_flip_his_written_direction(tmp_path: Path) -> None:
+    store = feed_with_text_then_chart(tmp_path, "shorting here, invalid above 84500", "", LONG_TOOL)
+    view = active_view(store.load(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(15, 83300)], price_now=PRICE)
+    assert (view.bias, view.source_message_id) == ("SHORT", "1000")
+
+
+def test_new_position_after_he_closed_the_old_one_counts(tmp_path: Path) -> None:
+    store = BroncxFeedStore(tmp_path)
+    store.append(BroncxPost(message_id="0999", posted_at=POSTED - timedelta(hours=2), content="shorting here", received_at=POSTED))
+    store.append(BroncxPost(message_id="1000", posted_at=POSTED - timedelta(hours=1), content="closed my short", received_at=POSTED))
+    store.append(BroncxPost(message_id="1001", posted_at=POSTED, content="Took this", received_at=POSTED, attachments=("image0.jpg",)))
+    images = ChartImageStore(tmp_path)
+    images.append_reading(reading(LONG_TOOL, image=images.relative(images.save("1001", 0, "image0.jpg", b"png"))))
+    view = active_view(store.load(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(15, 83300)], price_now=PRICE)
+    assert (view.bias, view.source_message_id) == ("LONG", "1001")
+
+
+@pytest.mark.parametrize("content", ["Stopped out", "TP1 hit, closed", "Closed this one", "If taken take tp1 here", "moved sl to be", "still valid",
+                                     "took profits", "secured, out", "cut it", "trimmed some"])
+def test_trade_management_text_does_not_take_the_chart_direction(tmp_path: Path, content: str) -> None:
+    store = feed_with_chart(tmp_path, content, SHORT_TOOL)
     assert guidance_for_post(store.load()[0], PRICE).bias == "NONE"
+
+
+@pytest.mark.parametrize("content", ["closed my short", "no shorts here", "shorts got squeezed"])
+def test_text_that_withdraws_a_direction_keeps_none(tmp_path: Path, content: str) -> None:
+    store = feed_with_chart(tmp_path, content, SHORT_TOOL)
+    guidance = guidance_for_post(store.load()[0], PRICE)
+    assert guidance.bias == "NONE"
+    assert guidance.invalidation == ()
 
 
 def test_image_only_post_takes_the_chart_direction(tmp_path: Path) -> None:
@@ -171,6 +244,17 @@ def test_audit_shows_chart_levels_with_their_source(tmp_path: Path) -> None:
     assert entry["guidance"]["chart_readings"] == 1
     assert {level["source"] for level in entry["guidance"]["levels"]} == {"chart"}
     assert {check["level"] for check in entry["level_checks"]} >= {"82641.4", "84358.7"}
+    assert {check["source"] for check in entry["level_checks"]} == {"chart"}
+
+
+def test_report_marks_chart_levels_as_read_from_an_image(tmp_path: Path) -> None:
+    from src.orderflow_scenario.report import _external_section
+
+    store = feed_with_chart(tmp_path, "shorts are in 83,000", SHORT_TOOL)
+    context = build_external_context(store.load(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(15, 83400)], price_now=PRICE, scenarios=[])
+    text = "\n".join(_external_section(context))
+    assert "83000 LEVEL NOT_REACHED" in text or "83000 LEVEL TOUCHED" in text
+    assert "82641.4 TARGET aus Bild, geschätzt" in text
 
 
 # --- storage ---------------------------------------------------------------------------------------
@@ -310,3 +394,25 @@ def test_backfill_fetches_images_of_already_stored_posts_once(tmp_path: Path) ->
     assert instance.backfill_images() == (1, 0)
     assert instance.backfill_images() == (0, 0)
     assert len(requests) == 1
+
+
+def test_a_failed_image_is_fetched_again_without_downloading_the_saved_one(tmp_path: Path) -> None:
+    second = CDN.replace("image0", "image1")
+    message = forward("1554215667501105000", [
+        {"filename": "a.png", "url": CDN, "content_type": "image/png"},
+        {"filename": "b.png", "url": second, "content_type": "image/png"},
+    ])
+    store = BroncxFeedStore(tmp_path)
+    store.append(BroncxPost(message_id="9554215667501105000", posted_at=POSTED, content="", received_at=POSTED, attachments=("a.png", "b.png")))
+    downloads: dict[str, bytes | Exception] = {CDN: b"a", second: OSError("timeout")}
+    instance, requests = poller(tmp_path, [message], downloads)
+    assert instance.backfill_images() == (1, 1)
+    downloads[second] = b"b"
+    assert instance.backfill_images() == (1, 0)
+    assert [url for url, _ in requests] == [CDN, second, second]
+    assert [path.read_bytes() for path in ChartImageStore(tmp_path).images_for("9554215667501105000")] == [b"a", b"b"]
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("1D", "1d"), ("D", "1d"), ("1d", "1d"), ("4h", "4h"), ("15m", "15m"), ("m", None), ("2D", None), ("1M", None)])
+def test_chart_timeframes_include_the_daily_chart(raw: str, expected: str | None) -> None:
+    assert reading({"timeframe": raw}).timeframe == expected
