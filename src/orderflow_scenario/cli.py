@@ -115,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     openmarket.add_argument("--market-type", choices=["SPOT", "FUTURES"])
     openmarket.add_argument("--no-per-side", action="store_true", help="skip the TRADE_AGG per-side request")
     parser.add_argument("--validate", action="store_true", help="also print schema validation status")
-    parser.add_argument("--broncx-feed", type=Path, default=None, help="Broncx Discord feed directory (external guidance, report and audit only)")
+    parser.add_argument("--broncx-feed", type=Path, default=None, help="Broncx Discord feed directory (external guidance: weights scenario scores, adds level scenarios, never confirms)")
     parser.add_argument("--broncx-max-age-hours", type=float, default=24.0, help="Broncx posts older than this are shown as stale and not used")
     args = parser.parse_args(argv)
 

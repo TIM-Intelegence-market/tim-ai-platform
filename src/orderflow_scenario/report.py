@@ -101,7 +101,8 @@ _ALIGNMENT_TEXT = {
 
 
 def _external_section(external: dict[str, Any]) -> list[str]:
-    lines = ["\nBRONCX-LEITFADEN (extern, zählt nicht als Bestätigung):"]
+    lines = ["\nBRONCX-LEITFADEN (extern, gewichtet, zählt nicht als Bestätigung):"]
+    lines.extend(_influence_lines(external.get("influence")))
     active = [entry for entry in external["entries"] if entry["status"] == "ACTIVE"]
     if not active:
         stale = sum(1 for entry in external["entries"] if entry["status"] == "STALE")
@@ -125,6 +126,29 @@ def _external_section(external: dict[str, Any]) -> list[str]:
         if entry["level_checks"]:
             levels = ", ".join(f"{check['level']} {check['role']} {check['status']}" + (f" ({check['distance_pct']} %)" if check["distance_pct"] is not None else "") for check in entry["level_checks"])
             lines.append(f"    Prüf-Level: {levels}.")
+    return lines
+
+
+_NO_INFLUENCE_TEXT = {
+    "no_active_direction": "kein aktueller Beitrag mit Richtung",
+    "mixed_direction": "sein neuester Beitrag nennt beide Richtungen",
+    "invalidated": "seine Invalidierung ist ausgelöst",
+}
+
+
+def _influence_lines(influence: dict[str, Any] | None) -> list[str]:
+    if not influence:
+        return []
+    view = influence["view"]
+    if not view["bias"]:
+        return [f"  Keine Gewichtung: {_NO_INFLUENCE_TEXT.get(view['reason'], view['reason'])}."]
+    lines = [f"  Gewichtung nach Broncx-Richtung {view['bias']}:"]
+    for item in influence["score_adjustments"]:
+        lines.append(f"    Szenario {item['scenario_id']} ({item['direction']}): Score {float(item['before']):.2f} -> {float(item['after']):.2f}.")
+    if not influence["score_adjustments"]:
+        lines.append("    Keine gerichteten Szenarien zu gewichten.")
+    if influence["level_scenarios"]:
+        lines.append(f"  Szenarien an Broncx-Leveln: {', '.join(influence['level_scenarios'])} (brauchen TIMs eigene Bestätigung).")
     return lines
 
 

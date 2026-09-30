@@ -1,6 +1,6 @@
 # Broncx-Discord-Feed: aktuelle Sicht als Leitfaden für TIM
 
-Status: externe Meinung, nur Beobachtung. Ergänzt den
+Status: externe Meinung, fließt gewichtet in die Analyse ein. Ergänzt den
 [Bootcamp-Katalog](BRONCX_BOOTCAMP_KNOWLEDGE.md) um Broncx' aktuellen Gedankengang.
 
 ## Wofür TIM die Beiträge nutzt
@@ -8,13 +8,21 @@ Status: externe Meinung, nur Beobachtung. Ergänzt den
 | Darf | Darf nicht |
 | --- | --- |
 | Richtung (SHORT/LONG), Symbol und Timeframe als Hypothese nennen | als CONFIRMATION zählen |
-| Ziel- und Prüf-Level nennen, die TIM gegen die Kerzen prüft (TOUCHED / NOT_REACHED, Abstand in %) | Scores, Szenarien, Trade-Plan oder Entscheidung ändern |
-| Invalidierung anzeigen; mit Zahl („invalid below 83,000“) prüft TIM sie per Schlusskurs | älter als die Frist (Standard 24 h) noch als aktuell gelten |
-| offen zeigen, ob TIMs Szenarien übereinstimmen (ALIGNED) oder widersprechen (CONFLICT) | Beiträge verwenden, die erst nach dem Analysezeitpunkt gepostet oder weitergeleitet wurden |
+| Scores gewichten: Szenarien in seiner Richtung +0,08, Gegenszenarien −0,08 | Szenario-Status, Bestätigungen oder Invalidierungen ändern |
+| Level mit Rolle LEVEL, die höchstens 1 % vom Kurs entfernt sind, als eigene Szenarien in seiner Richtung anlegen (höchstens zwei, Kennung nach Level, z. B. `X-SHORT-83800`) | allein einen Trade-Plan auslösen: der braucht weiter ein von TIM bestätigtes Szenario, Datenqualität, Risiko und Kill Switch |
+| Ziel- und Prüf-Level nennen, die TIM gegen die Kerzen prüft (TOUCHED / NOT_REACHED, Abstand in %) | älter als die Frist (Standard 24 h) noch wirken |
+| Invalidierung anzeigen; mit Zahl („invalid below 83,000“) prüft TIM sie per Schlusskurs, auch aus Folgebeiträgen. Ausgelöst heißt: keine Wirkung mehr. Stop- und Invalidierungspreise (Rolle STOP) werden nie zu Einstiegs-Szenarien | Beiträge verwenden, die erst nach dem Analysezeitpunkt gepostet oder weitergeleitet wurden |
+| offen zeigen, ob TIMs eigene Szenarien übereinstimmen (ALIGNED) oder widersprechen (CONFLICT) | wirken, wenn sein neuester Beitrag mit Richtung beide Seiten nennt (MIXED) |
 
-Die Sicht landet im Audit (`engine: external_context`, `influences_decision: false`)
-und im Bericht unter **BRONCX-LEITFADEN**. Ein Test stellt sicher, dass Entscheidung,
-Szenarien, Orderflow und Datenqualität mit und ohne Broncx-Beiträge identisch bleiben.
+Maßgeblich ist sein neuester aktiver Beitrag mit Richtung („This might play out again“
+erneuert ihn) zusammen mit den Folgebeiträgen ohne eigene Richtung. Nur deren Level
+zählen, ältere Ideen nicht. Verneinte oder geschlossene Positionen („not shorting“,
+„closed my short“) gelten nicht als Richtung. Die Wirkung steht im Audit (`engine: external_context`, Felder `influences_scores` und `influence`:
+Sicht, Score-Änderungen je Szenario, Level-Szenarien) und im Bericht unter
+**BRONCX-LEITFADEN**. Tests stellen sicher, dass Entscheidung, Szenario-Status,
+Orderflow und Datenqualität gleich bleiben und ohne TIMs eigene Bestätigung kein
+Trade-Plan entsteht. Level-Szenarien liegen nicht innerhalb von 0,2 % eines
+TIM-eigenen Triggers und zählen beim Abgleich ALIGNED/CONFLICT nicht mit.
 
 Zusammenhänge im Thread:
 
@@ -106,5 +114,8 @@ und `TIM_BRONCX_DISCORD_SECRET_FILE`.
   Originaltext steht deshalb immer im Audit, und `show` zeigt, was TIM erkannt hat.
 - Invalidierungen ohne Zahl, etwa „flip poc for higher“, kann TIM nicht automatisch
   prüfen. Sie bleiben `NOT_EVALUATED` und müssen von Hand geprüft werden.
-- Die Frist, die Schwelle von 30 % für Kurzschreibweisen und die 7 Tage für eine
-  Erneuerung sind Startwerte. Sie sind nicht statistisch geprüft.
+- Die Frist, die Schwelle von 30 % für Kurzschreibweisen, die 7 Tage für eine
+  Erneuerung, das Gewicht 0,08 und das 1-%-Fenster für Level-Szenarien sind Startwerte.
+  Sie sind nicht statistisch geprüft.
+- Beiträge ohne Symbol (etwa „shorts are in“) gelten nur für BTC, weil in `#broncx-feed`
+  BTC-Beiträge landen. Symbole werden exakt verglichen (SOL wirkt nicht auf SOLV).

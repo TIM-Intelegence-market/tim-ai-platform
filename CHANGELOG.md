@@ -8,8 +8,13 @@
   launchd agent.
 - The orderflow scenario pipeline accepts `external_posts`; the guidance is
   written to the audit (`external_context`) and the report
-  (`BRONCX-LEITFADEN`) only. Decision, scenarios, scores and data quality are
-  unchanged by it (tested).
+  (`BRONCX-LEITFADEN`).
+- Broncx's newest active direction weights the analysis: scenarios in his
+  direction +0.08 score, opposing ones -0.08; his LEVEL prices within 1 % of
+  price become scenarios (`X-<bias>-<level>`, at most two) with TIM's own
+  mandatory confirmations; stop and invalidation prices never do.
+  It never confirms a scenario or creates a trade plan by itself; stale,
+  invalidated, mixed or not-yet-known posts have no effect (tested).
 - `ofsc --broncx-feed DIR [--broncx-max-age-hours H]`.
 
 ## Unreleased — repository foundation

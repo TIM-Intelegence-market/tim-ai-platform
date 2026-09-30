@@ -205,6 +205,8 @@ class TradePlanBuilder:
         if scenario.score >= Decimal("0.45"):
             score += 1
             reasons.append(f"score_{scenario.score:.2f}")
+            if "external_weight" in scenario.trade_template:
+                reasons.append(f"score_includes_broncx_weight_{scenario.trade_template['external_weight']}")
         if expected_rr >= Decimal("2.0"):
             score += 1
             reasons.append(f"rr_{expected_rr:.2f}")

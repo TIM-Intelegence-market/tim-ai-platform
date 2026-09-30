@@ -19,7 +19,7 @@ from src.knowledge.broncx_feed import BroncxFeedStore, BroncxPost, parse_guidanc
 from src.models.market_data import Candle
 from src.orderflow_scenario.domain import MarketContext
 from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
-from src.orderflow_scenario.external_context import build_external_context
+from src.orderflow_scenario.external_context import EXTERNAL_WEIGHT, active_view, build_external_context
 from src.orderflow_scenario.report import report_is_safe
 from src.orderflow_scenario.schema_validation import validate_analysis
 from src.sources.broncx_discord import DiscordFeedConfig, DiscordFeedError, DiscordFeedPoller, load_bot_secret, message_to_post
@@ -127,7 +127,7 @@ def test_state_tracks_last_message_id(tmp_path: Path) -> None:
 def test_screenshot_thread_renews_the_short_view_and_inherits_symbol() -> None:
     context = build_external_context(screenshot_posts(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(59, 83365)], price_now=PRICE, scenarios=())
     entries = {item["message_id"]: item for item in context["entries"]}
-    assert context["influences_decision"] is False
+    assert context["influences_scores"] is False  # no influence dict: context only
     # Three days old, but "This might play out again" renewed it this morning.
     assert entries["1001"]["status"] == "ACTIVE"
     assert entries["1001"]["renewed_at"] == "2026-09-29T09:04:00+00:00"
@@ -197,21 +197,137 @@ def pipeline_inputs(**extra) -> PipelineInputs:
     )
 
 
-def test_broncx_guidance_never_changes_tim_decision_scores_or_scenarios() -> None:
-    baseline = Pipeline().run(pipeline_inputs()).to_dict()
-    guided = Pipeline().run(pipeline_inputs(external_posts=tuple(screenshot_posts()))).to_dict()
-    for key in ("decision", "scenarios", "orderflow", "market_state", "data_quality"):
-        assert guided[key] == baseline[key], key
-    engines = {item["engine"]: item["result"] for item in guided["audit"]["engines"]}
-    assert "external_context" not in {item["engine"] for item in baseline["audit"]["engines"]}
-    assert engines["external_context"]["influences_decision"] is False
-    assert validate_analysis(guided)[0] is True
+def scores(analysis) -> dict[str, Decimal]:
+    return {item.scenario_id: item.score for item in analysis.scenarios}
+
+
+def test_broncx_view_weights_scores_but_never_confirms_or_decides() -> None:
+    baseline = Pipeline().run(pipeline_inputs())
+    guided = Pipeline().run(pipeline_inputs(external_posts=tuple(screenshot_posts())))
+    # His renewed SHORT view pushes TIM's LONG scenario down by exactly the external weight.
+    assert scores(guided)["B"] == scores(baseline)["B"] - EXTERNAL_WEIGHT
+    assert [(item.scenario_id, item.state) for item in guided.scenarios] == [(item.scenario_id, item.state) for item in baseline.scenarios]
+    before, after = baseline.to_dict(), guided.to_dict()
+    for key in ("decision", "orderflow", "market_state", "data_quality"):
+        assert after[key] == before[key], key
+    engines = {item["engine"]: item["result"] for item in after["audit"]["engines"]}
+    assert "external_context" not in {item["engine"] for item in before["audit"]["engines"]}
+    influence = engines["external_context"]["influence"]
+    assert engines["external_context"]["influences_scores"] is True
+    assert influence["view"] == {"bias": "SHORT", "source_message_id": "1001", "levels": [], "reason": "active"}
+    assert influence["score_adjustments"][0]["scenario_id"] == "B"
+    assert validate_analysis(after)[0] is True
+
+
+def test_aligned_view_raises_scores_but_no_trade_plan_without_tim_confirmation() -> None:
+    baseline = Pipeline().run(pipeline_inputs())
+    guided = Pipeline().run(pipeline_inputs(external_posts=(post("1", "btc long, going higher", NOW - timedelta(hours=1)),)))
+    assert scores(guided)["B"] == scores(baseline)["B"] + EXTERNAL_WEIGHT
+    assert guided.decision.status.value != "TRADE_PLAN" and guided.decision.trade_plan is None
+    assert all(item.state.value == "PROPOSED" for item in guided.scenarios)
+
+
+@pytest.mark.parametrize(
+    ("posts", "reason"),
+    [
+        ([post("1", "btc short, tp 80k", NOW - timedelta(hours=30))], "no_active_direction"),  # stale
+        ([post("1", "btc short, tp 80k", NOW + timedelta(minutes=5))], "no_active_direction"),  # future
+        ([post("1", "eth short, tp 3k", NOW - timedelta(hours=1))], "no_active_direction"),  # other symbol
+        ([post("1", "btc longs and shorts both fine here", NOW - timedelta(hours=1))], "mixed_direction"),
+    ],
+)
+def test_stale_future_other_symbol_and_mixed_views_have_no_influence(posts, reason) -> None:
+    baseline = Pipeline().run(pipeline_inputs())
+    guided = Pipeline().run(pipeline_inputs(external_posts=tuple(posts)))
+    assert guided.to_dict()["scenarios"] == baseline.to_dict()["scenarios"]
+    engines = {item["engine"]: item["result"] for item in guided.to_dict()["audit"]["engines"]}
+    assert engines["external_context"]["influence"]["view"]["reason"] == reason
+    assert engines["external_context"]["influences_scores"] is False
+
+
+def test_triggered_invalidation_removes_the_view() -> None:
+    posted = NOW - timedelta(minutes=15 * 10)
+    candles = [candle(i, 83365) for i in range(40, 60)]
+    candles[55 - 40] = candle(55, 82900)  # a close below his invalidation after the post
+    view = active_view([post("1", "btc long, invalid below 83,000. tp 84k", posted)], observed_at=NOW, symbol="BTCUSDT", candles=candles, price_now=PRICE)
+    assert view.bias is None and view.reason == "invalidated"
+    candles[55 - 40] = candle(55, 83100, low=82950)  # only a wick: still valid
+    view = active_view([post("1", "btc long, invalid below 83,000. tp 84k", posted)], observed_at=NOW, symbol="BTCUSDT", candles=candles, price_now=PRICE)
+    assert view.bias == "LONG" and view.levels == ()  # 83,000 is his stop, not an entry level
+
+
+def test_broncx_level_near_price_becomes_a_scenario_needing_tim_confirmation() -> None:
+    guided = Pipeline().run(pipeline_inputs(external_posts=(post("1", "btc short from 83,800", NOW - timedelta(hours=1)),)))
+    level_scenarios = [item for item in guided.scenarios if item.trade_template.get("level_source") == "broncx"]
+    assert [(item.scenario_id, item.direction.value, item.scenario_type.value, item.trigger_level) for item in level_scenarios] == [
+        ("X-SHORT-83800", "SHORT", "REJECTION_FAILED_BREAKOUT", Decimal("83800"))
+    ]
+    assert level_scenarios[0].state.value == "PROPOSED" and "acceptance_above_fails" in level_scenarios[0].mandatory_confirmations
+    assert guided.decision.trade_plan is None
+    engines = {item["engine"]: item["result"] for item in guided.to_dict()["audit"]["engines"]}
+    assert engines["external_context"]["influence"]["level_scenarios"] == ["X-SHORT-83800"]
+    # A level-scenario in his direction must not make his own view look "aligned" with TIM.
+    assert engines["external_context"]["entries"][0]["alignment"] == "CONFLICT"
+    assert validate_analysis(guided.to_dict())[0] is True
+
+
+def test_far_levels_and_levels_on_tim_triggers_add_no_scenario() -> None:
+    for text in ("btc short from 85,500", "btc short from 83,280"):  # >1 % away / on TIM's own 83272 trigger
+        guided = Pipeline().run(pipeline_inputs(external_posts=(post("1", text, NOW - timedelta(hours=1)),)))
+        assert [item.scenario_id for item in guided.scenarios] == ["B"], text
+
+
+def test_posts_without_symbol_only_apply_to_btc_and_symbols_match_exactly() -> None:
+    posts = [post("1", "short here, looks heavy", NOW - timedelta(hours=1))]
+    assert active_view(posts, observed_at=NOW, symbol="BTCUSDT", candles=[], price_now=PRICE).bias == "SHORT"
+    assert active_view(posts, observed_at=NOW, symbol="ETHUSDT", candles=[], price_now=Decimal("3000")).bias is None
+    sol = [post("1", "sol short", NOW - timedelta(hours=1))]
+    assert active_view(sol, observed_at=NOW, symbol="SOLUSDT", candles=[], price_now=Decimal("150")).bias == "SHORT"
+    assert active_view(sol, observed_at=NOW, symbol="SOLVUSDT", candles=[], price_now=Decimal("150")).bias is None
+
+
+def test_invalidation_in_a_follow_up_post_removes_the_view() -> None:
+    posted = NOW - timedelta(minutes=15 * 10)
+    posts = [post("1", "btc short 15", posted), post("2", "invalid above 83,500", posted + timedelta(minutes=2))]
+    candles = [candle(i, 83365) for i in range(40, 60)]
+    candles[56 - 40] = candle(56, 83800)
+    view = active_view(posts, observed_at=NOW, symbol="BTCUSDT", candles=candles, price_now=PRICE)
+    assert view.bias is None and view.reason == "invalidated"
+
+
+def test_stops_and_invalidation_prices_never_become_entry_scenarios() -> None:
+    guidance = parse_guidance("btc short, invalid above 83,500, sl 83,700, target 1: 83.1", PRICE)
+    assert {str(level.value): level.role for level in guidance.levels} == {"83500": "STOP", "83700": "STOP", "83100": "TARGET"}
+    guided = Pipeline().run(pipeline_inputs(external_posts=(post("1", "btc short, invalid above 83,500", NOW - timedelta(hours=1)),)))
+    assert [item.scenario_id for item in guided.scenarios] == ["B"]
+
+
+def test_level_scenario_ids_follow_the_level_and_near_duplicates_merge() -> None:
+    first = Pipeline().run(pipeline_inputs(external_posts=(post("1", "btc short from 83,800 and 83,810", NOW - timedelta(hours=1)),)))
+    assert [item.scenario_id for item in first.scenarios] == ["B", "X-SHORT-83800"]
+    later = Pipeline().run(pipeline_inputs(external_posts=(post("1", "btc short from 83,800", NOW - timedelta(hours=2)), post("2", "btc short from 83,600", NOW - timedelta(hours=1)))))
+    ids = [item.scenario_id for item in later.scenarios]
+    assert "X-SHORT-83600" in ids and "X-SHORT-83800" not in ids  # only the newest idea's levels
+
+
+def test_negated_and_closed_positions_state_no_direction() -> None:
+    for text in ("not shorting this", "closed my short, out", "no longs here", "don't buy this"):
+        assert parse_guidance(text, PRICE).bias == "NONE", text
+
+
+def test_no_scenarios_means_no_influence_is_claimed() -> None:
+    thin = pipeline_inputs(external_posts=(post("1", "btc long", NOW - timedelta(hours=1)),))
+    analysis = Pipeline().run(PipelineInputs(**{**{f: getattr(thin, f) for f in thin.__dataclass_fields__}, "candles": ()}))
+    engines = {item["engine"]: item["result"] for item in analysis.to_dict()["audit"]["engines"]}
+    assert engines["external_context"]["influences_scores"] is False
 
 
 def test_report_shows_broncx_as_external_guidance() -> None:
     analysis = Pipeline().run(pipeline_inputs(external_posts=tuple(screenshot_posts())))
     text = analysis.report_text
-    assert "BRONCX-LEITFADEN (extern, zählt nicht als Bestätigung):" in text
+    assert "BRONCX-LEITFADEN (extern, gewichtet, zählt nicht als Bestätigung):" in text
+    assert "Gewichtung nach Broncx-Richtung SHORT:" in text
+    assert "Szenario B (LONG): Score" in text
     assert "Invalidierung laut Broncx: we flip poc for higher -> NOT_EVALUATED." in text
     assert "Von Broncx erneut bestätigt." in text
     assert report_is_safe(text)

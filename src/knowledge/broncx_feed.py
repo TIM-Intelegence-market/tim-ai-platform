@@ -36,6 +36,12 @@ SOURCE_MANUAL = "discord_manual"
 _SYMBOLS = {"btc": "BTC", "bitcoin": "BTC", "eth": "ETH", "ether": "ETH", "sol": "SOL", "xau": "XAU", "gold": "XAU"}
 # Phrases whose direction word means the opposite ("short squeeze" is bullish), removed before bias detection.
 _REVERSED = re.compile(r"\bshorts?\s+squeez\w*|\bsqueez\w*\s+(?:the\s+)?shorts?\b|\b(?:shorts?|longs?)\s+(?:(?:got|get|getting|are|were|being)\s+)?(?:liquidated|trapped|squeezed|rekt|stopped out)\b", re.IGNORECASE)
+# Negated or closed positions ("not shorting", "no longs", "closed my short") state no current direction.
+_NEGATED = re.compile(
+    r"\b(?:not|no|never|don'?t|won'?t|avoid(?:ing)?)\s+(?:\w+\s+){0,2}?(?:shorts?|shorting|longs?|longing|buy(?:ing)?|sell(?:ing)?)\b"
+    r"|\b(?:clos(?:ed?|ing)|exit(?:ed|ing)?|out\s+of|cut)\s+(?:my\s+|the\s+|all\s+)?(?:shorts?|longs?)\b",
+    re.IGNORECASE,
+)
 _SHORT = re.compile(r"\b(shorts?|shorting|bearish|sell(?:ing)?)\b", re.IGNORECASE)
 _LONG = re.compile(r"\b(longs?|longing|bullish|buy(?:ing)?)\b", re.IGNORECASE)
 _SYMBOL_TF = re.compile(r"\b(btc|bitcoin|eth|ether|sol|xau|gold)\b(?:\s+(\d{1,3})\s*(m|min|h)?\b)?", re.IGNORECASE)
@@ -44,7 +50,9 @@ _MINUTES = {1, 3, 5, 15, 30, 45, 60, 120, 240}
 _HOURS = {1, 2, 4, 6, 8, 12}
 # A number not glued to letters or digits on either side ("tp1" and "0x12" are not levels).
 _NUMBER = re.compile(r"(?<![\w.,])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(\s?k)?(?!\w|,\d|%|\.\d|\s%)", re.IGNORECASE)
-_TARGET_CONTEXT = re.compile(r"\b(tp\s?\d?|targets?|towards?|to)\s*(?:at|@|:)?\s*$", re.IGNORECASE)
+_TARGET_CONTEXT = re.compile(r"\b(tp\s?\d?|targets?(?:\s?\d)?|towards?|to)\s*(?:at|@|:)?\s*$", re.IGNORECASE)
+# His stop or invalidation price: never an entry level.
+_STOP_CONTEXT = re.compile(r"\b(sl|stop(?:\s?loss)?|stopped)\s*(?:at|@|:)?\s*$", re.IGNORECASE)
 # End of a clause: punctuation, but not the "," or "." inside a number such as 83,000 or 82.6.
 _END = r"[,.](?!\d)|[;!?\n]|$"
 _UNLESS = re.compile(r"\bunless\s+(.+?)(?=\s+(?:shorts?|longs?|then)\b|" + _END + ")", re.IGNORECASE)
@@ -176,7 +184,7 @@ class BroncxFeedStore:
 class BroncxLevel:
     raw: str
     value: Decimal
-    role: str  # TARGET | LEVEL
+    role: str  # TARGET | STOP | LEVEL
     scaled_from_shorthand: bool = False
     ambiguous: bool = False
 
@@ -218,6 +226,10 @@ def parse_guidance(text: str, reference_price: Decimal | None = None) -> BroncxG
     directional = _REVERSED.sub(" ", text)
     if directional != text:
         notes.append("squeeze/liquidation wording ignored for bias")
+    negated = _NEGATED.sub(" ", directional)
+    if negated != directional:
+        notes.append("negated or closed position ignored for bias")
+        directional = negated
     short, long = bool(_SHORT.search(directional)), bool(_LONG.search(directional))
     bias = "MIXED" if short and long else "SHORT" if short else "LONG" if long else "NONE"
 
@@ -236,18 +248,21 @@ def parse_guidance(text: str, reference_price: Decimal | None = None) -> BroncxG
             if timeframe:
                 timeframe_span = match.span(2)
 
+    invalidation_matches = [item for pattern in (_UNLESS, _INVALID) for item in pattern.finditer(text)]
+    stop_spans = [item.span(1) for item in invalidation_matches]
     levels: list[BroncxLevel] = []
     for number in _NUMBER.finditer(text):
         if timeframe_span and number.span(1) == timeframe_span:
             continue
-        level = _level(number, text, reference_price)
+        in_invalidation = any(start <= number.start() < end for start, end in stop_spans)
+        level = _level(number, text, reference_price, stop=in_invalidation)
         if level is None:
             continue
         levels.append(level)
         if level.ambiguous:
             notes.append(f"level {level.raw} could not be scaled without a reference price")
 
-    invalidation = tuple(item.group(1).strip() for pattern in (_UNLESS, _INVALID) for item in pattern.finditer(text))
+    invalidation = tuple(item.group(1).strip() for item in invalidation_matches)
     conditions = tuple(item.group(1).strip() for item in _IF.finditer(text))
     references = tuple(name for name, pattern in _REFERENCES.items() if re.search(pattern, text, re.IGNORECASE))
     reaffirms = bool(_REAFFIRM.search(text))
@@ -261,7 +276,7 @@ def parse_guidance(text: str, reference_price: Decimal | None = None) -> BroncxG
     return BroncxGuidance(bias, symbol, timeframe, tuple(levels), invalidation, conditions, references, reaffirms, quality, tuple(notes))
 
 
-def _level(number: re.Match[str], text: str, reference_price: Decimal | None) -> BroncxLevel | None:
+def _level(number: re.Match[str], text: str, reference_price: Decimal | None, *, stop: bool = False) -> BroncxLevel | None:
     raw = number.group(0).strip()
     try:
         value = Decimal(number.group(1).replace(",", ""))
@@ -286,7 +301,8 @@ def _level(number: re.Match[str], text: str, reference_price: Decimal | None) ->
             ambiguous = True
     if scaled and value == value.to_integral_value():
         value = value.quantize(Decimal(1))
-    role = "TARGET" if _TARGET_CONTEXT.search(text[: number.start()]) else "LEVEL"
+    before = text[: number.start()]
+    role = "STOP" if stop or _STOP_CONTEXT.search(before) else "TARGET" if _TARGET_CONTEXT.search(before) else "LEVEL"
     return BroncxLevel(raw, value, role, scaled, ambiguous)
 
 
