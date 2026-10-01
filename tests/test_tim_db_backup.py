@@ -101,11 +101,15 @@ def test_scratch_database_name_is_guarded(name: str) -> None:
     assert backup.scratch_name("tim", "tim_restore_test") == "tim_restore_test"
 
 
-def test_compare_requires_matching_non_empty_counts() -> None:
+def test_compare_requires_non_empty_restore_without_lost_rows() -> None:
     cutoff = datetime(2026, 10, 1, tzinfo=UTC)
     restored = {"candles": {"cutoff": cutoff, "rows": 10}, "agg_trades": {"cutoff": cutoff, "rows": 99}}
     assert backup.compare(restored, restored)["status"] == "PASS"
-    assert backup.compare(restored, {**restored, "candles": {"cutoff": cutoff, "rows": 11}})["status"] == "FAIL"
+    backfilled = backup.compare(restored, {**restored, "candles": {"cutoff": cutoff, "rows": 13}})
+    assert backfilled["status"] == "PASS"
+    assert backfilled["tables"]["candles"]["backfilled_after_dump"] == 3
+    assert backfilled["tables"]["candles"]["match"] is False
+    assert backup.compare(restored, {**restored, "candles": {"cutoff": cutoff, "rows": 9}})["status"] == "FAIL"
     empty = {"candles": {"cutoff": None, "rows": 0}, "agg_trades": {"cutoff": None, "rows": 0}}
     assert backup.compare(empty, empty)["status"] == "FAIL"
 

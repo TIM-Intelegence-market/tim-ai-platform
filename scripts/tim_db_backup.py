@@ -33,7 +33,8 @@ UTC = timezone.utc
 DUMP_PATTERN = re.compile(r"^tim_(\d{8}T\d{6}Z)\.dump$")
 REPORT_PATH = ROOT / "data/operational/restore_test.json"
 BACKUP_REPORT_PATH = ROOT / "data/operational/backup_last_run.json"
-# (table, time column) pairs whose history is append-only, so counts up to a cutoff are stable.
+# (table, time column) pairs whose history only grows: rows are never deleted, but a gap backfill
+# may insert older rows after the dump, so live counts up to a cutoff can exceed the dump's.
 COMPARED_TABLES = (("candles", "open_time"), ("agg_trades", "trade_time"))
 
 
@@ -205,9 +206,11 @@ def compare(restored: dict[str, dict[str, Any]], live: dict[str, dict[str, Any]]
             "restored_rows": restored[table]["rows"],
             "live_rows": live[table]["rows"],
             "match": restored[table]["rows"] == live[table]["rows"],
+            # rows backfilled into the past after the dump; fewer live rows than restored is a loss
+            "backfilled_after_dump": live[table]["rows"] - restored[table]["rows"],
         }
     empty = all(entry["restored_rows"] == 0 for entry in tables.values())
-    passed = all(entry["match"] for entry in tables.values()) and not empty
+    passed = all(entry["backfilled_after_dump"] >= 0 for entry in tables.values()) and not empty
     return {"status": "PASS" if passed else "FAIL", "tables": tables, "empty_restore": empty}
 
 
