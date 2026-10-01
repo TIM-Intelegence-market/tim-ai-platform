@@ -45,7 +45,9 @@ systemctl enable --now chrony
 chronyc -n tracking | grep -E 'Leap status|System time' || true
 
 step "service user"
-id tim >/dev/null 2>&1 || useradd --system --home-dir /var/lib/tim --create-home --shell /usr/sbin/nologin tim
+# The group tim may already exist (e.g. an admin user was added to it); reuse it.
+getent group tim >/dev/null || groupadd --system tim
+id tim >/dev/null 2>&1 || useradd --system --gid tim --home-dir /var/lib/tim --create-home --shell /usr/sbin/nologin tim
 
 step "directories"
 install -d -o root -g tim -m 0750 "$ETC"

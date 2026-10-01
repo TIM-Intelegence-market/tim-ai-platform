@@ -135,3 +135,10 @@ def test_bootstrap_starts_nothing_without_flag_and_never_prints_the_secret() -> 
     assert 'cat "$SECRET"' in script and "<<SQL" in script  # password reaches psql via stdin only
     for unit in sorted(path.name for path in SERVICES + TIMERS):
         assert unit.startswith("tim-")
+
+
+def test_bootstrap_reuses_an_existing_tim_group() -> None:
+    # On tim-core-01 the group tim already exists; plain `useradd tim` would fail there.
+    script = (ROOT / "ops/debian/bootstrap.sh").read_text(encoding="utf-8")
+    assert "getent group tim >/dev/null || groupadd --system tim" in script
+    assert "useradd --system --gid tim" in script
