@@ -27,6 +27,9 @@ _TYPE_TO_NODE = {
     "tool": NodeType.TOOL,
     "report": NodeType.OBSIDIAN_NOTE,
 }
+# Template folders hold placeholder notes (type: mission etc.); indexing
+# them would create fake Mission/Gate/Incident nodes.
+TEMPLATE_DIRS = frozenset({"99 Vorlagen", "Templates"})
 _KNOWN = {"mission", "gate", "incident", "decision", "decision-log", "moc",
           "tool", "report"}
 
@@ -61,6 +64,8 @@ class ObsidianIndexer:
         result.metrics["VAULT_FOUND"] = True
         for path in sorted(self.content_root.rglob("*.md")):
             if any(part.startswith(".") for part in path.parts):
+                continue
+            if path.relative_to(self.content_root).parts[0] in TEMPLATE_DIRS:
                 continue
             relative = path.relative_to(self.vault).as_posix()
             text = path.read_text(encoding="utf-8", errors="replace")

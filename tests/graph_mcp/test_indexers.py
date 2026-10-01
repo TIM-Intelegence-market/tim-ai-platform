@@ -107,6 +107,16 @@ def test_obsidian_indexer_types_links_and_privacy(vault_tree: Path):
         assert "See" not in json.dumps(node["metadata"])
 
 
+def test_obsidian_indexer_skips_template_folders(vault_tree: Path):
+    for folder in ("99 Vorlagen", "Templates"):
+        template = vault_tree / "TIM" / folder / "Template Mission.md"
+        template.parent.mkdir()
+        template.write_text("---\ntype: mission\nstatus: planned\n---\n# {{title}}\n")
+    result = ObsidianIndexer(vault_tree).index()
+    assert [n["name"] for n in result.nodes if n["type"] == "Mission"] == ["Demo Mission"]
+    assert result.metrics["NOTES"] == 3
+
+
 def test_parse_frontmatter():
     fields = parse_frontmatter("---\ntype: mission\nstatus: pass\n---\nbody\n")
     assert fields == {"type": "mission", "status": "pass"}
