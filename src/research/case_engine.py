@@ -113,8 +113,9 @@ class ResearchCaseEngine:
         """CONFIRMED only with full scientific criteria; else ValueError
         naming the first unmet criterion (never silently confirm)."""
         case = self.cases[case_id]
-        if case.missing_evidence:
-            raise ValueError(f"Cannot confirm: missing {case.missing_evidence[0]}")
+        blocking = [item for item in case.missing_evidence if item != "Manual Review pending"]
+        if blocking:
+            raise ValueError(f"Cannot confirm: missing {blocking[0]}")
         if not case.outcome:
             raise ValueError("Cannot confirm: Outcome horizon not closed")
         if not case.rule_versions:
@@ -123,7 +124,9 @@ class ResearchCaseEngine:
             raise ValueError(f"Cannot confirm from status {case.status}: Manual Review pending")
         if not reviewer:
             raise ValueError("Cannot confirm: reviewer required")
-        return self.transition(case_id, "CONFIRMED", observed_at, f"reviewer={reviewer}; criteria complete")
+        case = self.transition(case_id, "CONFIRMED", observed_at, f"reviewer={reviewer}; criteria complete")
+        case.missing_evidence = []
+        return case
 
     def quarantine(self, case_id: str, observed_at: datetime, reason: str) -> ResearchCase:
         """Defective observations are quarantined, never deleted."""

@@ -129,6 +129,9 @@ DE: dict[str, str] = {
     "Closed": "Abgeschlossen",
     "Fully Validated": "Vollständig validiert",
     "Alle aktiven / alle Status": "Alle aktiven / alle Status",
+    "Review Ready": "Review bereit",
+    "Rejected": "Verworfen",
+    "Quarantined": "In Quarantäne",
     # Orderflow / signals
     "Persistierte Orderflow-Observations": "Gespeicherte Orderflow-Beobachtungen",
     "Neue oder unvollständige Observations": "Neue oder unvollständige Beobachtungen",
