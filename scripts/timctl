@@ -66,22 +66,72 @@ def run(command: list[str], *, timeout: float = 15) -> subprocess.CompletedProce
         raise RuntimeControlError(f"required local command failed: {Path(command[0]).name}") from exc
 
 
+SYSTEMD_UNIT = "tim-runtime.service"
+
+
+def parse_systemd_service(text: str) -> dict[str, str]:
+    """Return the last value of each key in the [Service] section of a unit file."""
+    values: dict[str, str] = {}
+    section = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("#", ";")):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1]
+            continue
+        if section == "Service" and "=" in line:
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip()
+    return values
+
+
 class RuntimeControl:
     def __init__(self) -> None:
         test_mode = os.getenv("TIMCTL_TEST_MODE", "false").lower() == "true"
+        platform = os.getenv("TIMCTL_PLATFORM", sys.platform) if test_mode else sys.platform
+        # macOS keeps launchd; Linux (the Debian server) uses systemd.
+        self.service_manager = "systemd" if platform.startswith("linux") else "launchd"
+        self.ps = os.getenv("TIMCTL_PS", "/bin/ps") if test_mode else "/bin/ps"
+        self.dashboard_port = int(os.getenv("TIM_DASHBOARD_PORT", "8765"))
+        self.database_port = settings.database_port
+        self.ingestion_control = ROOT / "scripts/tim_ingestion_control.py"
+        if self.service_manager == "systemd":
+            configured_unit = os.getenv("TIMCTL_UNIT_PATH") if test_mode else None
+            self.unit_path = Path(configured_unit or f"/etc/systemd/system/{SYSTEMD_UNIT}")
+            self.systemctl = os.getenv("TIMCTL_SYSTEMCTL", "/usr/bin/systemctl") if test_mode else "/usr/bin/systemctl"
+            self.ss = os.getenv("TIMCTL_SS", "/usr/bin/ss") if test_mode else "/usr/bin/ss"
+            exec_start = self._load_unit()
+            self.label = SYSTEMD_UNIT
+            self.target = f"systemd/{SYSTEMD_UNIT}"
+            self.runtime_python = exec_start[0]
+            return
         configured_plist = os.getenv("TIMCTL_PLIST_PATH") if test_mode else None
         self.plist_path = Path(configured_plist or Path.home() / "Library/LaunchAgents/com.tim.runtime.plist")
         self.launchctl = os.getenv("TIMCTL_LAUNCHCTL", "/bin/launchctl") if test_mode else "/bin/launchctl"
         self.netstat = os.getenv("TIMCTL_NETSTAT", "/usr/sbin/netstat") if test_mode else "/usr/sbin/netstat"
-        self.ps = os.getenv("TIMCTL_PS", "/bin/ps") if test_mode else "/bin/ps"
-        self.dashboard_port = int(os.getenv("TIM_DASHBOARD_PORT", "8765"))
-        self.database_port = settings.database_port
         self.launch_domain = f"gui/{os.getuid()}"
         self.plist = self._load_plist()
         self.label = str(self.plist["Label"])
         self.target = f"{self.launch_domain}/{self.label}"
         self.runtime_python = str(self.plist["ProgramArguments"][0])
-        self.ingestion_control = ROOT / "scripts/tim_ingestion_control.py"
+
+    def _load_unit(self) -> list[str]:
+        try:
+            metadata = self.unit_path.stat()
+            text = self.unit_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise RuntimeControlError("TIM systemd unit is missing or invalid") from exc
+        # The unit is installed by root; it may also belong to the service user, never be writable by others.
+        if metadata.st_uid not in {0, os.getuid()} or metadata.st_mode & 0o022:
+            raise RuntimeControlError("TIM systemd unit ownership or permissions are unsafe")
+        service = parse_systemd_service(text)
+        arguments = service.get("ExecStart", "").lstrip("-@:+!").split()
+        if not arguments or str(ROOT / "main.py") not in arguments:
+            raise RuntimeControlError("systemd unit is not the TIM runtime service")
+        if Path(service.get("WorkingDirectory", "")).resolve() != ROOT:
+            raise RuntimeControlError("systemd unit has the wrong working directory")
+        return arguments
 
     def _load_plist(self) -> dict[str, Any]:
         try:
@@ -104,7 +154,53 @@ class RuntimeControl:
     def _launchctl(self, *arguments: str, timeout: float = 20) -> subprocess.CompletedProcess[str]:
         return run([self.launchctl, *arguments], timeout=timeout)
 
+    def _systemctl(self, *arguments: str, timeout: float = 20) -> subprocess.CompletedProcess[str]:
+        return run([self.systemctl, *arguments], timeout=timeout)
+
+    def _systemd_status(self) -> dict[str, Any]:
+        result = self._systemctl(
+            "show", SYSTEMD_UNIT, "--property=LoadState,ActiveState,SubState,MainPID", timeout=10
+        )
+        if result.returncode != 0:
+            return {"loaded": False, "state": "STOPPED", "pid": None}
+        fields = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+        active = fields.get("ActiveState", "inactive")
+        # "loaded" mirrors launchd: the runtime is (or is about to be) up, not merely installed.
+        if fields.get("LoadState") != "loaded" or active in {"inactive", "failed"}:
+            return {"loaded": False, "state": "STOPPED", "pid": None}
+        running = active == "active" and fields.get("SubState") == "running"
+        pid = int(fields["MainPID"]) if fields.get("MainPID", "0").isdigit() else 0
+        return {"loaded": True, "state": "RUNNING" if running else active.upper(), "pid": pid or None}
+
+    def _stop_service(self) -> None:
+        if self.service_manager == "systemd":
+            result = self._systemctl("stop", SYSTEMD_UNIT, timeout=60)
+            if result.returncode != 0 and self.service_status()["loaded"]:
+                raise RuntimeControlError("systemd refused to stop the TIM runtime")
+            return
+        result = self._launchctl("bootout", self.launch_domain, str(self.plist_path), timeout=30)
+        if result.returncode != 0 and self.service_status()["loaded"]:
+            raise RuntimeControlError("launchd refused to boot out the TIM runtime")
+
+    def _start_service(self, service: dict[str, Any]) -> None:
+        if self.service_manager == "systemd":
+            if service["state"] != "RUNNING":
+                result = self._systemctl("start", SYSTEMD_UNIT, timeout=60)
+                if result.returncode != 0:
+                    raise RuntimeControlError("systemd refused to start the TIM runtime")
+            return
+        if not service["loaded"]:
+            result = self._launchctl("bootstrap", self.launch_domain, str(self.plist_path), timeout=30)
+            if result.returncode != 0:
+                raise RuntimeControlError("launchd refused to bootstrap the TIM runtime")
+        elif service["state"] != "RUNNING":
+            result = self._launchctl("kickstart", self.target, timeout=30)
+            if result.returncode != 0:
+                raise RuntimeControlError("launchd refused to start the TIM runtime")
+
     def service_status(self) -> dict[str, Any]:
+        if self.service_manager == "systemd":
+            return self._systemd_status()
         result = self._launchctl("print", self.target)
         if result.returncode != 0:
             return {"loaded": False, "state": "STOPPED", "pid": None}
@@ -117,7 +213,10 @@ class RuntimeControl:
         }
 
     def listeners(self, port: int) -> dict[str, Any]:
-        result = run([self.netstat, "-an", "-p", "tcp"])
+        if self.service_manager == "systemd":
+            result = run([self.ss, "-H", "-ltn"])
+        else:
+            result = run([self.netstat, "-an", "-p", "tcp"])
         if result.returncode != 0:
             return {"status": "UNKNOWN", "addresses": [], "unsafe": True}
         addresses: list[str] = []
@@ -136,7 +235,7 @@ class RuntimeControl:
             if local:
                 addresses.append(local)
         unsafe = any(
-            address.startswith(("*.", "0.0.0.0.", "0.0.0.0:", "::.", ":::"))
+            address.startswith(("*.", "*:", "0.0.0.0.", "0.0.0.0:", "::.", ":::"))
             or address in {f"[::]:{port}", f"*.{port}"}
             for address in addresses
         )
@@ -268,7 +367,7 @@ class RuntimeControl:
         ingestion = self.ingestion_gate("status", timeout=10)
         service = self.service_status()
         if not service["loaded"] or service["state"] != "RUNNING":
-            raise RuntimeControlError("TIM launchd service is not running")
+            raise RuntimeControlError(f"TIM {self.service_manager} service is not running")
         dashboard_listener = self.listeners(self.dashboard_port)
         if dashboard_listener["status"] != "LISTENING" or dashboard_listener["unsafe"]:
             raise RuntimeControlError("TIM dashboard is not proven loopback-only")
@@ -296,6 +395,7 @@ class RuntimeControl:
         return {
             "timestamp": utc_now(),
             "launchd_target": self.target,
+            "service_manager": self.service_manager,
             "service": service,
             "dashboard_listener": self.listeners(self.dashboard_port),
             "database_listener": self.listeners(self.database_port),
@@ -315,9 +415,7 @@ class RuntimeControl:
                 pre_health = self.dashboard_health()
             except RuntimeControlError:
                 pre_health = None
-            result = self._launchctl("bootout", self.launch_domain, str(self.plist_path), timeout=30)
-            if result.returncode != 0 and self.service_status()["loaded"]:
-                raise RuntimeControlError("launchd refused to boot out the TIM runtime")
+            self._stop_service()
         stopped = self._wait(
             lambda: not self.service_status()["loaded"]
             and self.listeners(self.dashboard_port)["status"] == "CLOSED"
@@ -338,6 +436,7 @@ class RuntimeControl:
             "completed_at": utc_now(),
             "status": "PASS",
             "launchd_target": self.target,
+            "service_manager": self.service_manager,
             "prior_runtime_pid_resolved_from_launchd": prior_pid,
             "observe_gate": observe,
             "secret_provider": secret,
@@ -361,15 +460,7 @@ class RuntimeControl:
             "database_boundary": self.database_boundary_gate(),
             "durable_ingestion": self.ingestion_gate("bootstrap", timeout=10),
         }
-        service = self.service_status()
-        if not service["loaded"]:
-            result = self._launchctl("bootstrap", self.launch_domain, str(self.plist_path), timeout=30)
-            if result.returncode != 0:
-                raise RuntimeControlError("launchd refused to bootstrap the TIM runtime")
-        elif service["state"] != "RUNNING":
-            result = self._launchctl("kickstart", self.target, timeout=30)
-            if result.returncode != 0:
-                raise RuntimeControlError("launchd refused to start the TIM runtime")
+        self._start_service(self.service_status())
         if not self._wait(
             lambda: self.service_status()["state"] == "RUNNING" and self.listeners(self.dashboard_port)["status"] == "LISTENING",
             30,

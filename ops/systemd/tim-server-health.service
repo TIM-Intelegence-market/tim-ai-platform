@@ -1,0 +1,17 @@
+# TIM server health and gap check
+[Unit]
+Description=TIM server health and gap check (OBSERVE only)
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_server_health.py --backup-dir /var/backups/tim
+User=tim
+Group=tim
+WorkingDirectory=/opt/tim
+EnvironmentFile=/etc/tim/tim.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts

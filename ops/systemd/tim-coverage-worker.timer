@@ -1,0 +1,11 @@
+[Unit]
+Description=Run tim-coverage-worker.service every 900s
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=900s
+AccuracySec=1s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,95 @@
+# TIM Cockpit: lebende Übersicht über den Vault (Obsidian Bases, Core-Plugin).
+# Gehört nach "TIM/01 Home/". Liest nur Frontmatter (type, status, verdict, updated, review).
+filters:
+  and:
+    - file.inFolder("TIM")
+    - '!file.inFolder("TIM/99 Vorlagen")'
+    - '!file.inFolder("TIM/95 Archiv")'
+views:
+  - type: table
+    name: Missionen
+    filters:
+      and:
+        - type == "mission"
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - status
+      - updated
+  - type: table
+    name: Gates
+    filters:
+      and:
+        - type == "gate"
+    order:
+      - file.name
+      - status
+      - verdict
+      - file.folder
+      - updated
+  - type: table
+    name: Blockiert
+    filters:
+      and:
+        - status == "blocked"
+    order:
+      - file.name
+      - type
+      - file.folder
+      - updated
+  - type: table
+    name: Incidents offen
+    filters:
+      and:
+        - type == "incident"
+        - status != "done"
+    order:
+      - file.name
+      - status
+      - severity
+      - system
+      - updated
+  - type: table
+    name: Entscheidungen
+    filters:
+      and:
+        - type == "decision"
+    order:
+      - file.name
+      - status
+      - source
+      - updated
+  - type: table
+    name: Research
+    filters:
+      and:
+        - type == "research"
+    order:
+      - file.name
+      - status
+      - verdict
+      - source
+      - updated
+  - type: table
+    name: Eingang (prüfen)
+    filters:
+      and:
+        - review == "pending"
+    order:
+      - file.name
+      - type
+      - source
+      - created
+  - type: table
+    name: Zuletzt geändert
+    order:
+      - file.name
+      - type
+      - status
+      - updated
+    sort:
+      - property: updated
+        direction: DESC
+    limit: 25

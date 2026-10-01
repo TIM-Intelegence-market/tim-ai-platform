@@ -1,0 +1,9 @@
+[Unit]
+Description=Run tim-restore-test.service every Sunday at 04:30 UTC
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

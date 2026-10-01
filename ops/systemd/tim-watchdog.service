@@ -1,0 +1,23 @@
+# TIM independent watchdog. Counterpart of ops/launchd/com.tim.watchdog.plist.
+# Restarts go through scripts/timctl, which needs 50-tim-runtime.rules to manage tim-runtime.service.
+[Unit]
+Description=TIM independent watchdog (OBSERVE only)
+After=tim-runtime.service
+
+[Service]
+Type=simple
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_watchdog.py --interval 30 --restart-after-red-cycles 3 --restart-cooldown 300
+Restart=always
+RestartSec=10
+User=tim
+Group=tim
+WorkingDirectory=/opt/tim
+EnvironmentFile=/etc/tim/tim.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

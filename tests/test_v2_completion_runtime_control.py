@@ -40,6 +40,7 @@ def control(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         )
     plist_path.chmod(0o600)
     monkeypatch.setenv("TIMCTL_TEST_MODE", "true")
+    monkeypatch.setenv("TIMCTL_PLATFORM", "darwin")
     monkeypatch.setenv("TIMCTL_PLIST_PATH", str(plist_path))
     return module, module.RuntimeControl()
 

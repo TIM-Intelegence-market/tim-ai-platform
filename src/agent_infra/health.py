@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import Callable
 
 from src.agent_infra.router import AVAILABLE, UNKNOWN, UNAVAILABLE
+from src.obsidian_vault.schema import DEFAULT_VAULT, vault_path
 
-_VAULT = os.environ.get("TIM_OBSIDIAN_VAULT", "")
-VAULT = Path(_VAULT) if _VAULT else Path.home() / "Documents/TIM/TIM OBSIDIAN"
+VAULT = vault_path() or DEFAULT_VAULT
 GRAPH_STORE = Path(".runtime/graph/graph.sqlite")
 
 

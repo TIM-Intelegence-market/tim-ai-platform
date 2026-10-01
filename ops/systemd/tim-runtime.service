@@ -1,0 +1,25 @@
+# TIM collector runtime (OBSERVE only). Counterpart of ops/launchd/com.tim.runtime.plist.
+[Unit]
+Description=TIM collector runtime (OBSERVE only)
+Wants=network-online.target
+After=network-online.target postgresql.service time-sync.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/main.py --init-schema
+Restart=always
+RestartSec=10
+TimeoutStopSec=45
+User=tim
+Group=tim
+WorkingDirectory=/opt/tim
+EnvironmentFile=/etc/tim/tim.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

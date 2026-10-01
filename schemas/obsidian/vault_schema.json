@@ -1,0 +1,143 @@
+{
+  "schema_version": "1.0.0",
+  "content_root": "TIM",
+  "statuses": [
+    "planned",
+    "active",
+    "blocked",
+    "done",
+    "archived"
+  ],
+  "required_fields": [
+    "type",
+    "status",
+    "updated"
+  ],
+  "optional_fields": [
+    "created",
+    "owner",
+    "project",
+    "related",
+    "source",
+    "area",
+    "verdict",
+    "severity",
+    "system",
+    "evidence",
+    "detected",
+    "resolved",
+    "decided",
+    "priority",
+    "depends_on",
+    "blocks",
+    "executor",
+    "tags",
+    "aliases",
+    "review"
+  ],
+  "types": {
+    "home": "Startseite oder Übersicht",
+    "moc": "Map of Content, verlinkt einen Bereich",
+    "architecture": "Architekturbeschreibung",
+    "incident": "Vorfall mit Ursache und Behebung",
+    "mission": "Mission",
+    "gate": "Gate oder Abnahmekriterium einer Mission",
+    "system": "laufendes System oder Dienst",
+    "data-qa": "Datenqualität und Prüfungen",
+    "tool": "Agent oder Werkzeug",
+    "decision": "Entscheidung im ADR-Format",
+    "research": "Research-Hypothese, Experiment oder Befund",
+    "runbook": "Betriebsanleitung",
+    "report": "Bericht",
+    "daily": "Tagesstatus"
+  },
+  "folders": {
+    "00 Inbox": {
+      "types": "*",
+      "review_required": true
+    },
+    "01 Home": {
+      "types": [
+        "home",
+        "moc"
+      ]
+    },
+    "10 Architektur": {
+      "types": [
+        "architecture",
+        "moc"
+      ]
+    },
+    "20 Incidents": {
+      "types": [
+        "incident",
+        "moc"
+      ]
+    },
+    "30 Missionen": {
+      "types": [
+        "mission",
+        "gate",
+        "moc"
+      ]
+    },
+    "40 Systeme": {
+      "types": [
+        "system",
+        "moc"
+      ]
+    },
+    "50 Daten & QA": {
+      "types": [
+        "data-qa",
+        "gate",
+        "moc"
+      ]
+    },
+    "60 Agenten & Tools": {
+      "types": [
+        "tool",
+        "moc"
+      ]
+    },
+    "70 Entscheidungen": {
+      "types": [
+        "decision",
+        "moc"
+      ]
+    },
+    "75 Research": {
+      "types": [
+        "research",
+        "moc"
+      ]
+    },
+    "80 Runbooks": {
+      "types": [
+        "runbook",
+        "moc"
+      ]
+    },
+    "90 Berichte": {
+      "types": [
+        "report",
+        "daily",
+        "moc"
+      ]
+    },
+    "95 Archiv": {
+      "types": "*",
+      "status": [
+        "archived"
+      ]
+    },
+    "99 Vorlagen": {
+      "types": "*",
+      "template_folder": true
+    }
+  },
+  "review_values": [
+    "pending"
+  ],
+  "stale_after_days": 60
+}
