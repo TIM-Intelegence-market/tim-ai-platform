@@ -184,6 +184,9 @@ def main() -> int:
             checks[f"{tag}_api_stats_consistent"] = stats["total"] == len(cases) == sum(stats["by_status"].values())
             checks[f"{tag}_api_detail"] = one["case_id"] == target["case_id"] and "assessment" in one and "timeline" in one
             checks[f"{tag}_api_404"] = missing.status == 404
+            api_acceptance = {"stats": stats, "list_total_matching": api["pagination"]["total_matching"],
+                              "detail_case_id": one["case_id"], "detail_keys": sorted(one), "unknown_id_status": missing.status,
+                              "checks": {key.split("_", 1)[1]: value for key, value in checks.items() if key.startswith(f"{tag}_api")}}
             page.close()
         browser.close()
     for server in servers:
@@ -194,6 +197,7 @@ def main() -> int:
     result = {"cases": len(cases), "status_counts": {s: sum(1 for c in cases if c.get("status") == s) for s in sorted(statuses)},
               "checks": checks, "passed": sum(checks.values()), "total": len(checks),
               "console_errors": errors[:5], "failed_requests": failed[:5]}
+    (out / "api_acceptance.json").write_text(json.dumps(api_acceptance, indent=1, sort_keys=True, default=str) + "\n")
     (out / "test_results/browser_e2e.json").write_text(json.dumps(result, indent=1, sort_keys=True) + "\n")
     print(json.dumps({"passed": result["passed"], "total": result["total"]}))
     for name, ok in checks.items():

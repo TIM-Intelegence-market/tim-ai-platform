@@ -45,6 +45,7 @@ Batch-Lauf ist für den Bestand und für Prüfungen da.
   Builder-/Schema-Version, `as_of`, gelesene/ausgeschlossene Observations,
   Status-Counts, Case-IDs, `manifest_hash`, `changes`, Observations-Fingerabdruck
 - `case_status_counts.json`, `exclusion_reasons.json`, `validation.json`
+- `api_acceptance.json` (aus dem Browser-E2E: Stats, Liste, Detail, 404)
 - `materialization_idempotency.json`: erster und zweiter Apply im Vergleich
 
 ## Nachweis in diesem Repo
