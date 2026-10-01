@@ -172,7 +172,7 @@ sudo -u tim /opt/tim/.venv/bin/python scripts/timctl status    # status PASS, pi
 ```bash
 ls -la /var/backups/tim/ | tail -3
 sudo systemctl start tim-restore-test.service && cat /opt/tim/data/operational/restore_test.json
-# erwartet: "status": "PASS", gleiche Zeilenzahlen
+# erwartet: "status": "PASS"; live nie weniger Zeilen als im Dump (nachgefüllte Altdaten zählen als backfilled_after_dump)
 ```
 
 ### P6 (Repo) Health- und Gap-Check
