@@ -1,0 +1,92 @@
+# Mission 09 task governance (#68)
+
+Guard that makes mission-task creation idempotent, update-first and duplicate-safe.
+Code: `src/task_governance/`. Tests: `tests/task_governance/`.
+
+## Identity
+
+`canonical_task_key = MISSION|PHASE|TASK_TYPE|TARGET|schema_version`, for example
+`M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1`. The fingerprint is `sha256(key)`.
+Titles and bodies are display text and never part of the identity. Empty parts or
+parts containing `|` are rejected, not normalised.
+
+## Flow (`ensure_task`)
+
+1. Mapping for the fingerprint is MAPPED: update the issue (or apply the reopen policy). Nothing is created.
+2. Mapping is BLOCKED: stay blocked, nothing is created.
+3. Otherwise claim creation. The claim is a row in SQLite (`PRIMARY KEY fingerprint`, `UNIQUE canonical_key`), so threads and processes cannot both win it. Every claim carries a fencing token. A worker that loses returns `PENDING`. A claim is taken over only after its lease expired, never because the claimant name matches.
+4. Uniqueness check before creating: search GitHub for the fingerprint marker (`<!-- TIM_TASK_FINGERPRINT:<sha> -->`).
+   - `authoritative_hint` given and that issue exists: adopt it even if it predates the marker (#11 and #22–#65 do); `legacy_issues` (which require a hint) and other marker matches are recorded as duplicates
+   - `authoritative_hint` given but the issue does not exist (`HINT_NOT_FOUND`), is a pull request, or has an untrusted author (`HINT_INVALID`): `BLOCKED`, nothing written into that issue, never a fallthrough to create
+   - no hint, or the listed hint, and the task is listed in `legacy.py` for this repository (today: M09-P0 audit → #11, duplicates #22–#65 in `uezeyiraydin-cell/tim-ai-platform`): the listed authority and duplicates are used automatically. The table is bound to a repository, so other repositories are never touched
+   - one marker match: adopt it (`RECOVERED`), no create
+   - several matches without hint: `BLOCKED` plus a governance incident; a later call with a hint unblocks it only if the hint addresses the block: it must be one of the structured `block_candidates` stored on the task row (`AMBIGUOUS_DUPLICATES`, `DUPLICATE_AFTER_CREATE`) or differ from the rejected hint (`HINT_NOT_FOUND`, `HINT_INVALID`). An always-passed hint therefore cannot wave away unrelated incidents
+   - none: renew the lease (fails if the claim was taken over, then nothing is created) and create exactly once
+5. If `create_issue` raises (for example a timeout after GitHub created the issue), record `CREATE_UNCERTAIN` and search by marker before anything else: one match is adopted, several block, none or unreachable keeps the claim held until the lease expires and re-raises. Otherwise: uniqueness check after creating. A second match blocks the task and records an incident. Nothing is ever closed automatically.
+6. Adopt path order: mark duplicates and write the marker first (all idempotent, comment/label only), persist the mapping last, so a crash midway repeats the remaining steps on the next run.
+7. Persist the mapping with the fencing token (issue number, repository, duplicate list). If the claim was lost meanwhile, the result is `BLOCKED` (`CLAIM_LOST_AFTER_CREATE`), never reported as cleanly created. The stale worker only records an incident and adds its issue to the winner's duplicate list; it cannot overwrite the winner's state (fenced writes).
+
+A mapping is only synced for the repository it was created in; a call for another repository through the same registry returns `BLOCKED` (`REPOSITORY_MISMATCH`) and touches nothing.
+
+A `MAPPED` task is never downgraded to `BLOCKED`, not even by an unfenced operator call; such a call only records an incident.
+
+A failure before anything was created (for example GitHub unreachable) releases the claim.
+
+## Policies
+
+| Situation | Behaviour |
+|---|---|
+| Retry, restart, usage-limit resume | Same issue, updated |
+| Closed authoritative issue | Never replaced. Reopened only with `ReopenPolicy.EXPLICIT` and `retry=True`, otherwise an audit comment |
+| Historical duplicates | Kept as audit evidence, marked "duplicate of" once if not yet documented, never closed or deleted |
+| Creator crashed after creating the issue | Nobody takes over before `lease_seconds` expired (a claimant name is not an identity); then the marker search finds the issue and adopts it |
+| Local registry lost | Mapping recovered from the GitHub marker |
+
+The gateway interface has no close operation on purpose. `trusted_authors` is a required argument: pass the accounts allowed to own task issues, so someone who copies the marker into another issue cannot hijack or block a task (`None` trusts everyone and is a conscious choice). The hint is an operator decision, but it must be a confirmed issue (not a PR) by a trusted author.
+
+## Limits
+
+- The create-once guarantee holds for all workers that share one registry file. Workers with separate registries (for example cloud sessions and a Mac LaunchAgent) are protected only by the GitHub-side checks, which are not atomic. Run task creation from one place or share the registry.
+- Fencing tokens are monotonic per task: rows are never deleted, releasing or unblocking sets `RELEASED`, so a stale worker's old token can never match a later claim.
+- The gateway must declare `max_create_seconds` and enforce it as the `timeout` of `create_issue`; a create that exceeds it is recorded as a `SLOW_CREATE` incident. `lease_seconds` must be at least 4 times that value (`ValueError` otherwise). A create that still outlives its lease produces a detected duplicate (incident plus the stale worker's issue in the winner's duplicate list), not a prevented one. GitHub offers no idempotency key, so prevention is impossible there.
+- Issues that predate the marker are only found through `authoritative_hint` or the built-in `legacy.py` table. A legacy task that is not listed there and is called without a hint creates a new issue. New legacy cases must be added to the table.
+
+## Wiring a real GitHub gateway
+
+Only results with `is_pull_request=False` count as task issues and pull requests are dropped. A marker match whose kind the gateway did not report blocks the task (`UNKNOWN_ISSUE_KIND`, same for a hint: `HINT_UNKNOWN_KIND`); it is neither adopted nor bypassed by creating. `UNKNOWN_ISSUE_KIND` is re-validated on every run and lifts itself once the gateway reports the field. `HINT_UNKNOWN_KIND` is re-validated with the pinned hint (see below), never without one, otherwise a run would create a duplicate of the legacy issue. A `MAPPED` row without a repository (none are written today) fails closed as `REPOSITORY_MISMATCH` and needs a manual repair. Author and repository comparisons ignore case and whitespace, and repository names also accept URL and `.git` forms. A gateway raises `CreateNotSent` only when `create_issue` failed before any request left the process; the guard still searches by marker and releases the claim only if nothing is visible. Any other exception is treated as uncertain (see step 5). A registry file from an earlier release is migrated on open (`PRAGMA user_version`, missing columns added).
+
+Implement `IssueGateway` (`find_issues`, `create_issue`, `update_issue`, `reopen_issue`, `is_documented_duplicate`, `mark_duplicate`). `create_issue` and `update_issue` must embed `fingerprint_marker(fp)` in the body (the update back-fills issues that predate it). `mark_duplicate` and `update_issue` may only comment or label. `find_issues` should list issues and match the marker; GitHub's search index lags, and a lagging search would hide a just-created issue from the post-create check.
+
+## Integration with #12 (Task Engine bridge)
+
+The Task Engine (`src/task_engine`, PR #119) is a local task store and creates no GitHub issues. `sync_engine_task_to_issue(engine, task_id, registry, gateway, mission_id=, phase_id=, claimant=, trusted_authors=)` in `engine_bridge.py` connects it: it builds the `TaskRequest` from the engine task, binds the task to that identity in the registry, calls `ensure_task` and returns its result. **By default the engine is only read**: no state change, no checkpoint, no revision bump, whatever the outcome (`BLOCKED`, `PENDING`, an exception from GitHub, a task in any state). The task-to-issue mapping lives in the registry; `issue_for_engine_task(registry, task_id)` returns it. `record_checkpoint=True` is an opt-in that also writes the engine checkpoint `github_issue:<fingerprint[:16]>` (metadata: `issue`, `outcome`) for a task that is still `NEW`, `PLANNED`, `READY`, `IN_PROGRESS` or `VERIFYING` when the call ends (the state is re-read after the GitHub calls). That write bumps the revision, so a caller holding an older `expected_revision` gets one conflict, and because the engine's checkpoint has no state guard a task blocked in the very last instant can still receive it. No file of #12 is changed and no production switch exists: nothing calls the bridge automatically.
+
+Identity rules of the bridge:
+
+- The identity is mission, phase, task type (the engine task's `type`), target and schema version. The canonical key upper-cases the target, so ids that differ only in case ("bug-a" and "BUG-A") would share one issue. The default target is therefore the task id only when it is already upper case, matches the identifier alphabet and does not look like a hash target; every other id becomes `H-<32 hex of sha256(task_id)>`. Pass `target=` to override.
+- Binding (`engine_bindings` table, created on open, older registry files gain it): before any GitHub call the registry pins the engine task id to its fingerprint (first binding wins, atomic). A later call that derives another identity (changed phase, type, target or schema version) raises `IdentityDrift` before any GitHub call, because it would create a second issue. This holds even when the first run crashed after the create, ended `BLOCKED`, or belonged to a `FIXED` task, none of which leave an engine checkpoint. Engine checkpoints play no part in this check, so a checkpoint from an older identity cannot lock a task. An operator moves a task on purpose with `registry.rebind_engine_task(task_id, fingerprint, key, note)` (incident `ENGINE_REBOUND`; the old issue stays untouched). Two engine tasks cannot share one identity (`EngineBindingConflict`, reported as `IdentityDrift`). The binding lives in the registry file: with a lost registry file it is lost too, and only the marker lookup of the same identity protects. Operating rule: back up the registry file, and never change the identity of a task after a registry loss. After `rebind_engine_task` an old opt-in engine checkpoint keeps its old issue number; the registry mapping (`issue_for_engine_task`) is the authority. A registry file written by an earlier intermediate state that holds two engine tasks on one identity is reported once on open (incident `ENGINE_BINDING_DUPLICATE`), and `issue_for_engine_task` raises `EngineBindingConflict` for both tasks until an operator rebinds all but one.
+
+`GitHubRestGateway(repository, token)` (`github_gateway.py`) is the REST implementation of `IssueGateway`:
+
+- `find_issues` lists `/issues?state=all` page by page and filters by marker (no search index). A short page ends the listing; more than `max_pages * 100` issues raise instead of guessing.
+- `get_issue` returns `None` only for a confirmed 404 on a repository that is visible to the token (a 404 first triggers one `GET /repos/{repo}` every time, not cached; a private or misspelled repository raises). Rate limits, 403, 5xx and network errors raise `GitHubError`, so an outage never looks like "does not exist".
+- Redirects are never followed and every 3xx is an error: a moved or transferred issue must not send a write to another issue. Every issue answer (GET and the PATCH answers of update and reopen) must carry the requested issue number and, when present, this repository's URL.
+- `create_issue` sends the caller's `timeout` as a wall-clock limit for the whole request (a server that drips bytes cannot stretch it); only connection refused or a failed name lookup raise `CreateNotSent`. A timeout or any other failure is uncertain and the guard re-checks by marker. After a timeout the socket is shut down, the connection cannot reopen itself, and a request that was still connecting is dropped; bytes that were already on the wire may still reach GitHub, which is why a timeout is uncertain and the marker lookup decides. A worker stuck in name resolution lives until the resolver returns (daemon thread, it sends nothing). Connection refused on any other call is a `GitHubError`.
+- `update_issue` rewrites only the section between `TIM_TASK_BODY_BEGIN`/`END` (or appends it), back-fills the marker, PATCHes only when the body changed and posts at most one audit comment per distinct reason. `mark_duplicate` posts one comment. `reopen_issue` reopens and comments. No method closes an issue.
+- Known limits: `update_issue` reads the body and then patches it, so a human edit in between is overwritten (GitHub gives no conditional update here); an issue body that carries a second, foreign fingerprint marker is not cleaned. The token appears only in the `Authorization` header; errors carry the HTTP status and path, never the token or the response body (the fixed diagnostic texts of the built-in transport, such as `timed out after`, stay readable; any error of an injected transport is reduced to its type name). Plain http is refused except for a loopback test server. The account behind the token must be in `trusted_authors`, otherwise its own issues are ignored and a lost registry can lead to a second issue after an author rename or deletion.
+
+The gateway is tested against an in-memory REST fake and a local HTTP server for the real transport (`tests/task_governance/`). It has not been run against github.com; the first live use needs the token and Uzi's explicit yes.
+
+### Pinned hint (registry v3)
+
+The first claim of a task stores `authoritative_hint` and `legacy_issues` in the registry row, in the same transaction as the claim (`hint_issue`, `hint_legacy`). Every later run of a task that is not yet `MAPPED` uses the pinned hint even when the caller omits it, so a crash while adopting (e.g. `mark_duplicate` failing with a 502) or a block on another match cannot leave a later run without the information an earlier run had, and a hint-less restart can no longer create a second issue next to the legacy one. Rules:
+
+- Same hint again: only adds `legacy_issues`.
+- Different explicit hint: the task `BLOCKED`s as `HINT_CONFLICT` (candidates: pinned and requested hint). It stays blocked, also for hint-less runs, until an operator calls `registry.replace_hint(fingerprint, hint, legacy, note=...)`, which records `HINT_REPLACED` in `governance_incidents`.
+- A hint rejected as `HINT_NOT_FOUND` or `HINT_INVALID` is replaced only when a different hint is given (`ensure_task` with another hint, or `unblock(..., hint=X)`). A plain `unblock` keeps the pinned hint, so an operator retry after a transient gateway error (a wrongly reported 404) cannot make the next run create a second issue; to drop a hint on purpose use `replace_hint(fp, None)`.
+- After a claim is won, the pinned hint and legacy numbers come from the row the claim returned, not from what the caller read before (another run may have pinned them in between).
+- `registry.replace_hint` works only on `BLOCKED` or `RELEASED` tasks; it is refused (returns `False`) while a worker holds the claim, because that worker's fencing token would not notice the change. `registry.unblock(fp, note, hint=..., legacy=...)` swaps a rejected hint for the replacement in the same transaction.
+- A hint that differs from the issue a task is already mapped to is ignored and leaves a `HINT_IGNORED_MAPPED` incident.
+- Registry files from releases 1 and 2 get the columns added on open, in one transaction (`user_version=3`, never downgraded). Open claims from such a file become `BLOCKED` as `MIGRATED_CLAIM` (their hint cannot be recovered); an operator checks GitHub and calls `registry.unblock(fp, note, hint=<authoritative issue>, legacy=[...])` when the task has a legacy issue without marker (the hint is pinned for every block reason; a different already pinned hint stays, use `replace_hint` to change it), or plain `unblock` when no legacy issue exists.
+- One `TaskRegistry` object may be shared by threads (its methods are serialized by a lock); processes open their own object on the same file.
+- The gateway account must be listed in `trusted_authors`, otherwise `_matches` cannot see the issues the gateway itself created and a failed create could be repeated.
