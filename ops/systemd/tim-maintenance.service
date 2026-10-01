@@ -1,0 +1,18 @@
+# TIM bounded self-maintenance. Counterpart of com.tim.maintenance.
+[Unit]
+Description=TIM bounded self-maintenance (OBSERVE only)
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_maintenance.py --max-bytes 8388608
+User=tim
+Group=tim
+WorkingDirectory=/opt/tim
+EnvironmentFile=/etc/tim/tim.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts
+PrivateTmp=yes
+

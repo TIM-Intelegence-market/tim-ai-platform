@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — TIM on a Debian server (systemd)
+
+- Added `ops/systemd/`: systemd counterparts of the launchd runtime, watchdog,
+  candle finalizer, rolling liveness, maintenance and coverage worker, a polkit
+  rule that lets the `tim` user control only `tim-runtime.service`, and
+  `tim.env.example` (file secret provider, no secret values). Install steps in
+  `ops/systemd/README.md`.
+- `scripts/timctl` uses `systemctl` and `ss` on Linux and keeps launchd and
+  netstat on macOS. All start/stop gates are unchanged; `status` and
+  `safe-stop` report `service_manager`.
+- `scripts/tim_db_backup.py` (daily checksummed `pg_dump`, weekly restore test into
+  a scratch `*_restore_test` database with row-count comparison),
+  `scripts/tim_server_health.py` (runtime, candle freshness, 60-minute gap, disk,
+  time sync, backup age) and `scripts/tim_server_campaign.py` (pre-registered
+  coverage window, `declare` and `evaluate`), each with a systemd timer.
+- `ops/debian/bootstrap.sh`: idempotent Debian 13 setup; starts nothing without `--start`.
+
 ## Unreleased — BTC Research Engine V1: Data & Events
 
 - Added `src/research_lab/external/`: point-in-time external data for BTC

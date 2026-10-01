@@ -1,0 +1,18 @@
+# TIM offline coverage worker. Counterpart of com.tim.coverage-worker; CPUQuota replaces the Mac-only cpulimit wrapper.
+[Unit]
+Description=TIM offline coverage worker (OBSERVE only)
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/run_coverage_worker.py
+User=tim
+Group=tim
+WorkingDirectory=/opt/tim
+EnvironmentFile=/etc/tim/tim.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts
+PrivateTmp=yes
+CPUQuota=20%

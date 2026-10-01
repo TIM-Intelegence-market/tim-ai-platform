@@ -1,0 +1,18 @@
+# TIM closed 1m candle finalizer. Counterpart of com.tim.closed-candle-finalizer.
+[Unit]
+Description=TIM closed 1m candle finalizer (OBSERVE only)
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/finalize_closed_1m_candles.py --lookback-minutes 90
+User=tim
+Group=tim
+WorkingDirectory=/opt/tim
+EnvironmentFile=/etc/tim/tim.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts
+PrivateTmp=yes
+
