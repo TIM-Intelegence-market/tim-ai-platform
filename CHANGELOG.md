@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased — BTC Research Engine V1: Data & Events
+
+- Added `src/research_lab/external/`: point-in-time external data for BTC
+  research, first source ALFRED US CPI (`CPIAUCSL`, every vintage).
+- Every record carries source, reference period, vintage, `available_at`
+  (BLS release time 08:30 New York on release dates, otherwise end of the
+  vintage day), ingestion time and payload hash. Replay at T sees a record only
+  when `available_at <= T`; rows that cannot be dated make the payload
+  NOT_READY, unusable dated rows make their period UNKNOWN (no fallback to an
+  older vintage).
+- CPI release events (actual, previous, previous revised, revision; expected and
+  surprise only from a sourced expectation known before the release), BTC
+  alignment on the research lab's klines with the protocol holdout lock, and a
+  deterministic replay with dataset id, content hash and output hash.
+- A period whose first print is missing from the archive yields no release
+  event time and accepts no expectation (`FIRST_RELEASE_UNAVAILABLE`); with a
+  release calendar the first print must be the first scheduled release after the
+  period ended, and the calendar must hold the previous release at most one
+  release interval (45 days) earlier, so a skipped release is noticed; without
+  calendar dates no first print counts as identified. A vintage that ended
+  without a successor leaves its period UNKNOWN from when the successor would
+  have become visible (MISSING_VINTAGE); a period the calendar shows as
+  released but the archive lacks is reported when due (MISSING_PERIOD) and
+  marks latest() stale. Unusable entries hide their end date until a successor
+  is visible. Unusable rows still count
+  for overlapping vintages, vintages outside the payload's declared real-time
+  range and dates at the calendar edge make the payload NOT_READY, and values outside 1e-6..1e9 (or over 20 digits) are malformed,
+  instead of crashing ingestion or event arithmetic. The dataset
+  id also covers state, visible quality findings, an archive end before replay
+  time, missing first prints and, for unusable payloads, the payload hashes.
+- A release calendar whose release_id is not exactly the integer of the source
+  (e.g. 10.9, 1e309, "10") makes the payload NOT_READY.
+- The raw payload store keeps one manifest entry per bundle and writes every
+  file atomically, so concurrent or interrupted saves keep earlier bundles.
+- No forecasts, signals, orders or production-database access.
+
 ## Unreleased — Broncx Discord feed as external guidance
 
 - Added `src/knowledge/broncx_feed.py` (post store and guidance parser) and
