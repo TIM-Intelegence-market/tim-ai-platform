@@ -13,6 +13,7 @@ class FakeRest:
         self.next_number = 1000
         self.repo_visible = True
         self.lose_create_reply = False   # the issue is created, but the answer never arrives
+        self.login = 'owner'             # the account behind the token (GET /user)
 
     def seed(self, number, body='', state='open', login='owner', pr=False):
         item = {'number': number, 'state': state, 'title': f'issue {number}', 'body': body, 'user': {'login': login},
@@ -71,6 +72,8 @@ class FakeRest:
             if method == 'POST':
                 self.comments.setdefault(number, []).append({'body': payload['body']})
                 return 201, b'{}'
+        if path == '/user' and method == 'GET':
+            return 200, json.dumps({'login': self.login}).encode()
         if path == f'/repos/{self.repo}' and method == 'GET':
             return (200, b'{}') if self.repo_visible else (404, b'{}')
         return 400, b'{}'

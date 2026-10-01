@@ -90,3 +90,14 @@ The first claim of a task stores `authoritative_hint` and `legacy_issues` in the
 - Registry files from releases 1 and 2 get the columns added on open, in one transaction (`user_version=3`, never downgraded). Open claims from such a file become `BLOCKED` as `MIGRATED_CLAIM` (their hint cannot be recovered); an operator checks GitHub and calls `registry.unblock(fp, note, hint=<authoritative issue>, legacy=[...])` when the task has a legacy issue without marker (the hint is pinned for every block reason; a different already pinned hint stays, use `replace_hint` to change it), or plain `unblock` when no legacy issue exists.
 - One `TaskRegistry` object may be shared by threads (its methods are serialized by a lock); processes open their own object on the same file.
 - The gateway account must be listed in `trusted_authors`, otherwise `_matches` cannot see the issues the gateway itself created and a failed create could be repeated.
+
+## Live check of the gateway (first run against github.com)
+
+`python -m src.task_governance.live_check --repo OWNER/NAME` (module `src/task_governance/live_check.py`, tested against the in-memory REST fake). It is the evidence step that #68 still needs: the gateway has only been tested against a fake and a local HTTP server.
+
+Token: read from the environment variable `TIM_LIVE_CHECK_TOKEN` only, never from arguments, never printed. Use a fine-grained token limited to the one repository (Issues: read for the read-only mode, Issues: read and write for the round trip). Revoke it after the run.
+
+1. `--mode readonly` (default; only GET requests): repository visible, token user (`GET /user`), whole issue listing read, a missing issue number is a confirmed 404. `--probe-issue N` also reads one existing issue. Safe against the production repository with a read-only token.
+2. `--mode roundtrip --confirm-write OWNER/NAME` (writes one issue): create, second run updates the same issue, a run with a fresh registry adopts it instead of creating another, and exactly one issue carries the marker. The gateway cannot close issues, so the test issue stays open and is closed by hand. Run it against a throw-away repository first. The production repository is refused unless `--allow-production-repo` is passed as well.
+
+Exit code 0 means every check passed, 1 a failed check (the output lists each check), 2 a refused call. Do not interpret a single green run as proof of the secondary-rate-limit and abuse-protection behaviour of GitHub; the run proves the contract on the real API for one task.
