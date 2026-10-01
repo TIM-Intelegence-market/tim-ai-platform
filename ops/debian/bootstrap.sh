@@ -32,6 +32,34 @@ step() { printf '\n== %s\n' "$1"; }
 . /etc/os-release
 [[ "${ID:-}" == "debian" ]] || { echo "this script is for Debian (found ${ID:-unknown})" >&2; exit 3; }
 
+step "preflight: no other TIM on this host"
+# A second TIM sharing the database or port 8765 breaks both (tim-core-01, 2026-10-01).
+conflicts=()
+for dir in /srv/tim /home/*/tim /home/*/tim-ai-platform; do
+  [[ -f "$dir/main.py" && "$(realpath "$dir")" != "$(realpath "$ROOT")" ]] && conflicts+=("checkout $dir")
+done
+for unit_dir in /home/*/.config/systemd/user /root/.config/systemd/user; do
+  compgen -G "$unit_dir/tim-*" >/dev/null && conflicts+=("user units in $unit_dir")
+done
+while read -r pid; do
+  cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+  [[ -n "$cwd" && "$cwd" != "$ROOT" ]] && conflicts+=("main.py running in $cwd (pid $pid)")
+done < <(pgrep -f 'python[0-9.]* .*main\.py' || true)
+if ! systemctl is-active --quiet tim-runtime.service 2>/dev/null && command -v ss >/dev/null \
+   && [[ -n "$(ss -H -ltn 'sport = :8765')" ]]; then
+  conflicts+=("port 8765 already in use")
+fi
+if [[ ! -s "$SECRET" ]] && systemctl is-active --quiet postgresql 2>/dev/null \
+   && runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'tim'" 2>/dev/null | grep -q 1; then
+  conflicts+=("database role tim exists but $SECRET does not; refusing to replace its password")
+fi
+if (( ${#conflicts[@]} )); then
+  printf 'another TIM setup was found, nothing changed:\n' >&2
+  printf '  - %s\n' "${conflicts[@]}" >&2
+  echo "stop or migrate it first (see ops/systemd/README.md)" >&2
+  exit 6
+fi
+
 step "packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q

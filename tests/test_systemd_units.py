@@ -142,3 +142,12 @@ def test_bootstrap_reuses_an_existing_tim_group() -> None:
     script = (ROOT / "ops/debian/bootstrap.sh").read_text(encoding="utf-8")
     assert "getent group tim >/dev/null || groupadd --system tim" in script
     assert "useradd --system --gid tim" in script
+
+
+def test_bootstrap_refuses_to_run_next_to_another_tim_before_changing_anything() -> None:
+    # tim-core-01 already ran TIM from /srv/tim; bootstrap reset the shared DB password.
+    script = (ROOT / "ops/debian/bootstrap.sh").read_text(encoding="utf-8")
+    preflight, rest = script.split('step "packages"', 1)
+    assert "/srv/tim" in preflight and "systemd/user" in preflight and "sport = :8765" in preflight
+    assert "refusing to replace its password" in preflight and "exit 6" in preflight
+    assert "apt-get" not in preflight and "ALTER ROLE" not in preflight
