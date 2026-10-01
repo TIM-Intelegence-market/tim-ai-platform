@@ -13,6 +13,9 @@ from config.settings import settings
 from src.data_ingestion.binance_ws import BinanceTradeStream
 
 MIGRATION = ROOT / "src/database/migrations/006_live_cutover_deferred.sql"
+# The single deferral UPDATE touches every pending outbox row; on a large outbox
+# (tim-core-01: 15M rows, 50k pending) it needs minutes, not the asyncpg default.
+DEFAULT_COMMAND_TIMEOUT = 1800.0
 
 async def first_live_trade_id() -> int:
     url = f"{settings.binance_ws_url.rstrip('/')}/{settings.symbol.lower()}@aggTrade"
@@ -23,10 +26,10 @@ async def first_live_trade_id() -> int:
                 assert trade.trade_id is not None
                 return trade.trade_id
 
-async def run(apply: bool, output: Path) -> dict:
+async def run(apply: bool, output: Path, command_timeout: float = DEFAULT_COMMAND_TIMEOUT) -> dict:
     if not apply:
         return {"status":"REFUSED","reason":"pass --apply after explicit approval","trading_actions":0}
-    connection = await asyncpg.connect(settings.database_url, timeout=10, command_timeout=60)
+    connection = await asyncpg.connect(settings.database_url, timeout=10, command_timeout=command_timeout)
     try:
         await connection.execute(MIGRATION.read_text())
         cursor = await connection.fetchrow("""SELECT last_aggregate_trade_id FROM ingestion_cursors
@@ -54,6 +57,8 @@ async def run(apply: bool, output: Path) -> dict:
     finally: await connection.close()
 
 def main() -> int:
-    p=argparse.ArgumentParser();p.add_argument('--apply',action='store_true');p.add_argument('--output',type=Path,default=ROOT/'artifacts/operations/live_cutover.json');a=p.parse_args()
-    result=asyncio.run(run(a.apply,a.output));print(json.dumps(result,sort_keys=True));return 0 if result['status']=='APPLIED' else 2
+    p=argparse.ArgumentParser();p.add_argument('--apply',action='store_true');p.add_argument('--output',type=Path,default=ROOT/'artifacts/operations/live_cutover.json')
+    p.add_argument('--command-timeout',type=float,default=DEFAULT_COMMAND_TIMEOUT,help='seconds per SQL statement (default 1800)');a=p.parse_args()
+    if a.command_timeout<=0: p.error('--command-timeout must be positive')
+    result=asyncio.run(run(a.apply,a.output,a.command_timeout));print(json.dumps(result,sort_keys=True));return 0 if result['status']=='APPLIED' else 2
 if __name__=='__main__': raise SystemExit(main())
