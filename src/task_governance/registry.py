@@ -14,6 +14,11 @@ import time
 
 SCHEMA_VERSION = 3
 
+
+class EngineBindingConflict(ValueError):
+    """Two engine tasks would share one task identity (and so one issue)."""
+
+
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS task_mappings (
     fingerprint TEXT PRIMARY KEY,
@@ -31,6 +36,8 @@ CREATE TABLE IF NOT EXISTS task_mappings (
     hint_legacy TEXT NOT NULL DEFAULT '[]',
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS engine_bindings (
+    task_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, canonical_key TEXT NOT NULL, created_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS governance_incidents (
     id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT NOT NULL,
     reason TEXT NOT NULL, detail TEXT NOT NULL, created_at REAL NOT NULL);
@@ -119,8 +126,72 @@ class TaskRegistry:
                     self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
                                     (fp, 'MIGRATED_CLAIM', 'open claim from a registry without stored hints; operator must unblock',
                                      time.time()))
+            # An earlier release could bind two engine tasks to one identity. Keep both rows, but say so once per
+            # identity: the lookup then refuses to answer and the operator decides with rebind_engine_task.
+            for dup in self.db.execute('SELECT fingerprint FROM engine_bindings GROUP BY fingerprint HAVING COUNT(*)>1').fetchall():
+                fp = dup[0]
+                if self.db.execute("SELECT 1 FROM governance_incidents WHERE fingerprint=? AND reason='ENGINE_BINDING_DUPLICATE'",
+                                   (fp,)).fetchone() is None:
+                    tasks = sorted(r[0] for r in self.db.execute('SELECT task_id FROM engine_bindings WHERE fingerprint=?', (fp,)))
+                    self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                                    (fp, 'ENGINE_BINDING_DUPLICATE', f'engine tasks {", ".join(tasks)} share this identity; '
+                                     'operator must rebind all but one', time.time()))
             if self.db.execute('PRAGMA user_version').fetchone()[0] < SCHEMA_VERSION:   # never downgrade a newer file
                 self.db.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
+            self.db.execute('COMMIT')
+        except BaseException:
+            self.db.execute('ROLLBACK')
+            raise
+
+    @_serialized
+    def bind_engine_task(self, task_id: str, fingerprint: str, canonical_key: str) -> str:
+        """Pin `task_id` to one task identity before anything is created; returns the fingerprint it is bound to.
+
+        The first binding wins and is durable, so a later run that derives another identity for the same engine task
+        (phase, type, target or schema version changed) sees the mismatch even when the first run crashed after the
+        issue was created and never recorded anything on the engine side."""
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            other = self.db.execute('SELECT task_id FROM engine_bindings WHERE fingerprint=? AND task_id!=?',
+                                    (fingerprint, task_id)).fetchone()
+            if other is not None:
+                raise EngineBindingConflict(f'identity {fingerprint[:16]} is already bound to engine task {other[0]}')
+            self.db.execute('INSERT OR IGNORE INTO engine_bindings(task_id,fingerprint,canonical_key,created_at) VALUES(?,?,?,?)',
+                            (task_id, fingerprint, canonical_key, self.clock()))
+            bound = self.db.execute('SELECT fingerprint FROM engine_bindings WHERE task_id=?', (task_id,)).fetchone()[0]
+            self.db.execute('COMMIT')
+            return bound
+        except BaseException:
+            self.db.execute('ROLLBACK')
+            raise
+
+    @_serialized
+    def engine_binding(self, task_id: str):
+        row = self.db.execute('SELECT fingerprint, canonical_key FROM engine_bindings WHERE task_id=?', (task_id,)).fetchone()
+        if row is None:
+            return None
+        other = self.db.execute('SELECT task_id FROM engine_bindings WHERE fingerprint=? AND task_id!=?', (row[0], task_id)).fetchone()
+        if other is not None:                       # only a file written by an earlier release can get here
+            raise EngineBindingConflict(f'identity {row[0][:16]} is bound to several engine tasks (also {other[0]}); '
+                                        'resolve with rebind_engine_task')
+        return (row[0], row[1])
+
+    @_serialized
+    def rebind_engine_task(self, task_id: str, fingerprint: str, canonical_key: str, note: str) -> None:
+        """Operator decision to move an engine task to another identity (the old issue stays as it is)."""
+        if not note.strip():
+            raise ValueError('a note is required')
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            other = self.db.execute('SELECT task_id FROM engine_bindings WHERE fingerprint=? AND task_id!=?',
+                                    (fingerprint, task_id)).fetchone()
+            if other is not None:
+                raise EngineBindingConflict(f'identity {fingerprint[:16]} is already bound to engine task {other[0]}')
+            old = self.db.execute('SELECT fingerprint FROM engine_bindings WHERE task_id=?', (task_id,)).fetchone()
+            self.db.execute('INSERT OR REPLACE INTO engine_bindings(task_id,fingerprint,canonical_key,created_at) VALUES(?,?,?,?)',
+                            (task_id, fingerprint, canonical_key, self.clock()))
+            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                            (fingerprint, 'ENGINE_REBOUND', f'{task_id}: {old[0] if old else None} -> {fingerprint}: {note}', self.clock()))
             self.db.execute('COMMIT')
         except BaseException:
             self.db.execute('ROLLBACK')
