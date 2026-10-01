@@ -278,3 +278,23 @@ def test_two_engine_tasks_cannot_share_one_identity(world):
     with pytest.raises(Exception, match='already bound'):
         reg.rebind_engine_task('T-2', other.fingerprint, other.key, 'try to share')
     assert len(rest.issues) == 1
+
+
+# ---- review round 6 of PR #130: registry files written by earlier intermediate states ----
+def test_a_registry_file_with_two_tasks_on_one_identity_is_reported_once_and_answers_nothing(world):
+    import sqlite3
+    from src.task_governance import EngineBindingConflict
+    _, reg, _, _, tmp_path = world
+    reg.bind_engine_task('T-1', 'f' * 64, 'KEY')
+    raw = sqlite3.connect(str(tmp_path / 'reg.db'))                    # what an earlier release could have written
+    raw.execute("INSERT INTO engine_bindings(task_id,fingerprint,canonical_key,created_at) VALUES('T-2',?,?,0)", ('f' * 64, 'KEY'))
+    raw.commit(), raw.close()
+    for _ in range(2):                                                 # reopening must not repeat the incident
+        reopened = TaskRegistry(str(tmp_path / 'reg.db'))
+    found = [i for i in reopened.incidents() if i['reason'] == 'ENGINE_BINDING_DUPLICATE']
+    assert len(found) == 1 and 'T-1' in found[0]['detail'] and 'T-2' in found[0]['detail']
+    for task in ('T-1', 'T-2'):
+        with pytest.raises(EngineBindingConflict, match='rebind_engine_task'):
+            issue_for_engine_task(reopened, task)
+    clean = TaskRegistry(str(tmp_path / 'clean.db'))
+    assert not [i for i in clean.incidents() if i['reason'] == 'ENGINE_BINDING_DUPLICATE']

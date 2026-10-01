@@ -278,6 +278,7 @@ def test_real_transport_slow_drip_answer_cannot_outlive_the_create_timeout():
         with pytest.raises(GitHubError) as caught:
             gateway.create_issue(req(), req().fingerprint, timeout=0.6)
         assert time.monotonic() - start < 3 and not isinstance(caught.value, CreateNotSent)
+        assert 'timed out after' in str(caught.value) and 'POST /repos/' in str(caught.value)    # the reason stays readable
     finally:
         server.close()
 

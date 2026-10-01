@@ -126,6 +126,16 @@ class TaskRegistry:
                     self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
                                     (fp, 'MIGRATED_CLAIM', 'open claim from a registry without stored hints; operator must unblock',
                                      time.time()))
+            # An earlier release could bind two engine tasks to one identity. Keep both rows, but say so once per
+            # identity: the lookup then refuses to answer and the operator decides with rebind_engine_task.
+            for dup in self.db.execute('SELECT fingerprint FROM engine_bindings GROUP BY fingerprint HAVING COUNT(*)>1').fetchall():
+                fp = dup[0]
+                if self.db.execute("SELECT 1 FROM governance_incidents WHERE fingerprint=? AND reason='ENGINE_BINDING_DUPLICATE'",
+                                   (fp,)).fetchone() is None:
+                    tasks = sorted(r[0] for r in self.db.execute('SELECT task_id FROM engine_bindings WHERE fingerprint=?', (fp,)))
+                    self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                                    (fp, 'ENGINE_BINDING_DUPLICATE', f'engine tasks {", ".join(tasks)} share this identity; '
+                                     'operator must rebind all but one', time.time()))
             if self.db.execute('PRAGMA user_version').fetchone()[0] < SCHEMA_VERSION:   # never downgrade a newer file
                 self.db.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
             self.db.execute('COMMIT')
@@ -158,7 +168,13 @@ class TaskRegistry:
     @_serialized
     def engine_binding(self, task_id: str):
         row = self.db.execute('SELECT fingerprint, canonical_key FROM engine_bindings WHERE task_id=?', (task_id,)).fetchone()
-        return None if row is None else (row[0], row[1])
+        if row is None:
+            return None
+        other = self.db.execute('SELECT task_id FROM engine_bindings WHERE fingerprint=? AND task_id!=?', (row[0], task_id)).fetchone()
+        if other is not None:                       # only a file written by an earlier release can get here
+            raise EngineBindingConflict(f'identity {row[0][:16]} is bound to several engine tasks (also {other[0]}); '
+                                        'resolve with rebind_engine_task')
+        return (row[0], row[1])
 
     @_serialized
     def rebind_engine_task(self, task_id: str, fingerprint: str, canonical_key: str, note: str) -> None:

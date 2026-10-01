@@ -37,6 +37,10 @@ class GitHubError(Exception):
     """A GitHub call failed or answered something unusable. Never carries the token or response bodies."""
 
 
+class _TransportError(GitHubError):
+    """Raised by the built-in transport only; its messages are fixed texts, so they may be shown as they are."""
+
+
 class _NotSent(Exception):
     pass
 
@@ -59,7 +63,7 @@ def _http_transport(method, url, headers, body, timeout):
     elif parts.scheme == 'http' and _is_loopback(parts.hostname or ''):
         factory = HTTPConnection            # plain http only for a local test server, never with a real host
     else:
-        raise GitHubError('refusing a non-https url')
+        raise _TransportError('refusing a non-https url')
     target = parts.path + (f'?{parts.query}' if parts.query else '')
     box, cancelled = {}, threading.Event()
 
@@ -95,17 +99,17 @@ def _http_transport(method, url, headers, body, timeout):
                 pass
         if conn is not None:
             conn.close()                    # bytes that were already on the wire may still have reached GitHub
-        raise GitHubError(f'{method} timed out after {timeout}s')
+        raise _TransportError(f'{method} timed out after {timeout}s')
     error = box.get('error')
     if 'result' not in box and error is None:
-        raise GitHubError(f'{method} did not complete')
+        raise _TransportError(f'{method} did not complete')
     if error is not None:
         if isinstance(error, (ConnectionRefusedError, socket.gaierror)):
             raise _NotSent() from None
-        raise GitHubError(f'{method} failed: {type(error).__name__}') from None
+        raise _TransportError(f'{method} failed: {type(error).__name__}') from None
     status, data = box['result']
     if len(data) > MAX_ANSWER_BYTES:
-        raise GitHubError(f'{method} answer too large')
+        raise _TransportError(f'{method} answer too large')
     return status, data
 
 
@@ -139,6 +143,8 @@ class GitHubRestGateway:
             if create:
                 raise
             failure = f'{method} {path}: connection refused'
+        except _TransportError as error:         # the built-in transport's own fixed texts stay readable
+            failure = f'{method} {path}: {error}'
         except Exception as error:              # an injected transport may put headers (the token) into its message,
             failure = f'{method} {path}: transport failed ({type(error).__name__})'    # also a GitHubError of its own
         if failure is not None:
