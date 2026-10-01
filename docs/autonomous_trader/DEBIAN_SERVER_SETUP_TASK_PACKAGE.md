@@ -1,9 +1,9 @@
 # Task-Paket Schritt 1: Debian-Server für den bestehenden Collector
 
 **Stand:** 2026-10-01
-**Status:** Vorschlag, wartet auf Go. Dieses Dokument autorisiert keine
-Umsetzung, keine Secret-Nutzung, keine privaten Exchange-Aufrufe und kein
-Trading. Nur OBSERVE-Betrieb des bestehenden Collectors.
+**Status:** Go von Uzi am 2026-10-01. Repo-Teile gebaut (siehe Abschnitt 9),
+Server-Lauf steht aus. Keine privaten Exchange-Aufrufe, kein Trading. Nur
+OBSERVE-Betrieb des bestehenden Collectors.
 **Bezug:** [DEBIAN_MAC_OPERATING_PLAN.md](DEBIAN_MAC_OPERATING_PLAN.md),
 Abschnitt 4 Schritt 1 und Abschnitt 6.
 
@@ -199,18 +199,19 @@ sudo systemctl stop tim-runtime; sleep 300; cat /opt/tim/data/operational/server
 
 ### P7 (Repo) Messfenster festschreiben
 
-Deklaration `artifacts/continuous_coverage/debian_campaign_<start>.json` mit
-Start/Ende (UTC-Minute), Symbol, Timeframe `1m`, Ziel 99,5 %, Host-Kennung
-und dem Commit von `platform-main`. Wird vor dem Start committet; der Hash
-steht in der Abnahme. Grundlage: vorhandenes
-`scripts/v2_qualification_preregister.py`, falls es passt, sonst eine
-schlanke eigene Deklaration.
+Deklaration `docs/autonomous_trader/campaigns/debian_campaign_<start>.json`
+(`artifacts/` ist per `.gitignore` ausgeschlossen) mit Start/Ende (UTC-Minute),
+Symbol, Timeframe `1m`, Ziel 99,5 %, Host-Kennung und dem Code-Commit. Wird vor
+dem Start committet; der Hash steht in der Abnahme. Umgesetzt als schlanke
+eigene Deklaration in `scripts/tim_server_campaign.py` (`declare`, `evaluate`).
 
 **Prüfbefehl:**
 
 ```bash
-git log -1 --format=%cI -- artifacts/continuous_coverage/debian_campaign_*.json   # liegt vor dem Startzeitpunkt
-sha256sum artifacts/continuous_coverage/debian_campaign_*.json
+python scripts/tim_server_campaign.py declare --start 2026-10-05T00:00Z --host-id tim-debian-01
+git log -1 --format=%cI -- docs/autonomous_trader/campaigns/debian_campaign_*.json   # liegt vor dem Startzeitpunkt
+sha256sum docs/autonomous_trader/campaigns/debian_campaign_*.json
+python scripts/tim_server_campaign.py evaluate --declaration docs/autonomous_trader/campaigns/debian_campaign_<start>.json
 ```
 
 ## 6. Reihenfolge und Abhängigkeiten
@@ -242,3 +243,17 @@ Einen PR gegen `platform-main` mit P3 (`ops/systemd/` plus Unit-Test) und P4
 `python -m pytest tests/ -q -m "not local_env"` unter Python 3.13. P6 folgt
 als zweiter PR. Die Server-Pakete P1, P2 und P5 laufen danach auf dem
 Debian-Rechner, sobald er bereitsteht.
+
+## 9. Umsetzungsstand (2026-10-01)
+
+| Paket | Stand | Datei |
+|---|---|---|
+| P1, P2 | Skript fertig, auf dem Server noch nicht gelaufen | `ops/debian/bootstrap.sh` (ohne `--start` wird nichts gestartet) |
+| P3 | fertig | `ops/systemd/`, `tests/test_systemd_units.py` |
+| P4 | fertig | `scripts/timctl`, `tests/test_timctl_systemd.py` |
+| P5 | fertig, Backup und Restore-Test gegen echtes PostgreSQL 16 erfolgreich (176 Kerzen, 176 Trades) | `scripts/tim_db_backup.py`, `tim-backup.*`, `tim-restore-test.*` |
+| P6 | fertig, erkennt eine eingebaute 2-Minuten-Lücke als ROT | `scripts/tim_server_health.py`, `tim-server-health.*` |
+| P7 | Werkzeug fertig; Deklaration erst, wenn der Server läuft | `scripts/tim_server_campaign.py` |
+
+Die Rolle `tim` bekommt `CREATEDB`, damit der Restore-Test eine eigene
+Wegwerf-Datenbank `tim_restore_test` anlegen und wieder löschen kann.

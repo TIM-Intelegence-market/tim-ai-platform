@@ -10,6 +10,12 @@
 - `scripts/timctl` uses `systemctl` and `ss` on Linux and keeps launchd and
   netstat on macOS. All start/stop gates are unchanged; `status` and
   `safe-stop` report `service_manager`.
+- `scripts/tim_db_backup.py` (daily checksummed `pg_dump`, weekly restore test into
+  a scratch `*_restore_test` database with row-count comparison),
+  `scripts/tim_server_health.py` (runtime, candle freshness, 60-minute gap, disk,
+  time sync, backup age) and `scripts/tim_server_campaign.py` (pre-registered
+  coverage window, `declare` and `evaluate`), each with a systemd timer.
+- `ops/debian/bootstrap.sh`: idempotent Debian 13 setup; starts nothing without `--start`.
 
 ## Unreleased — Broncx Discord feed as external guidance
 

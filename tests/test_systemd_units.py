@@ -13,6 +13,8 @@ UNITS = ROOT / "ops/systemd"
 SERVER_ROOT = "/opt/tim"
 SERVICES = sorted(UNITS.glob("*.service"))
 TIMERS = sorted(UNITS.glob("*.timer"))
+# Only the backup units may write outside the checkout's data directories.
+BACKUP_UNITS = {"tim-backup.service", "tim-restore-test.service"}
 
 
 def parse(path: Path) -> configparser.ConfigParser:
@@ -30,6 +32,9 @@ def test_expected_units_exist() -> None:
         "tim-rolling-liveness.service", "tim-rolling-liveness.timer",
         "tim-maintenance.service", "tim-maintenance.timer",
         "tim-coverage-worker.service", "tim-coverage-worker.timer",
+        "tim-backup.service", "tim-backup.timer",
+        "tim-restore-test.service", "tim-restore-test.timer",
+        "tim-server-health.service", "tim-server-health.timer",
     } <= names
 
 
@@ -46,7 +51,10 @@ def test_service_runs_repo_script_as_tim_with_hardening(path: Path) -> None:
     assert service["EnvironmentFile"] == "/etc/tim/tim.env"
     assert service["NoNewPrivileges"] == "yes"
     assert service["ProtectSystem"] == "strict"
-    assert set(service["ReadWritePaths"].split()) == {f"{SERVER_ROOT}/data", f"{SERVER_ROOT}/artifacts"}
+    allowed = {f"{SERVER_ROOT}/data", f"{SERVER_ROOT}/artifacts"}
+    if path.name in BACKUP_UNITS:
+        allowed.add("/var/backups/tim")
+    assert set(service["ReadWritePaths"].split()) == allowed
 
 
 @pytest.mark.parametrize("path", SERVICES, ids=lambda path: path.name)
@@ -60,7 +68,7 @@ def test_service_has_no_mac_paths_or_secret_values(path: Path) -> None:
 @pytest.mark.parametrize("path", TIMERS, ids=lambda path: path.name)
 def test_every_timer_has_a_oneshot_service(path: Path) -> None:
     timer = parse(path)
-    assert timer["Timer"]["OnUnitActiveSec"]
+    assert timer["Timer"].get("OnUnitActiveSec") or timer["Timer"].get("OnCalendar", "").endswith("UTC")
     assert timer["Install"]["WantedBy"] == "timers.target"
     service = parse(path.with_suffix(".service"))["Service"]
     assert service["Type"] == "oneshot"
@@ -108,3 +116,22 @@ def test_polkit_rule_is_limited_to_the_runtime_unit_and_tim() -> None:
     rule = (UNITS / "50-tim-runtime.rules").read_text(encoding="utf-8")
     assert '"tim-runtime.service"' in rule and 'subject.user == "tim"' in rule
     assert 'action.lookup("verb")' in rule
+
+
+def test_backup_timers_run_in_utc_and_catch_up_after_downtime() -> None:
+    for name in ("tim-backup.timer", "tim-restore-test.timer"):
+        timer = parse(UNITS / name)["Timer"]
+        assert timer["OnCalendar"].endswith("UTC")
+        assert timer["Persistent"] == "true"
+
+
+def test_bootstrap_starts_nothing_without_flag_and_never_prints_the_secret() -> None:
+    script = (ROOT / "ops/debian/bootstrap.sh").read_text(encoding="utf-8")
+    assert script.startswith("#!/usr/bin/env bash") and "set -euo pipefail" in script
+    start_block = script.split('if [[ "$START" == true ]]; then', 1)
+    assert "systemctl enable --now tim-runtime.service" in start_block[1]
+    assert "systemctl enable --now tim-" not in start_block[0]
+    assert not re.search(r"(echo|printf|cat)[^\n]*\$(PASSWORD|\{PASSWORD\})", script)
+    assert 'cat "$SECRET"' in script and "<<SQL" in script  # password reaches psql via stdin only
+    for unit in sorted(path.name for path in SERVICES + TIMERS):
+        assert unit.startswith("tim-")

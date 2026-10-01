@@ -1,0 +1,11 @@
+[Unit]
+Description=Run tim-server-health.service every 60s
+
+[Timer]
+OnBootSec=120s
+OnUnitActiveSec=60s
+AccuracySec=1s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

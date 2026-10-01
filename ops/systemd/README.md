@@ -14,6 +14,9 @@ Gegenstück zu `ops/launchd/` für den Debian-Server aus
 | `tim-rolling-liveness.{service,timer}` | `com.tim.rolling-liveness` | alle 60 s |
 | `tim-maintenance.{service,timer}` | `com.tim.maintenance` | alle 60 s |
 | `tim-coverage-worker.{service,timer}` | `com.tim.coverage-worker` | alle 900 s, `CPUQuota=20%` statt `cpulimit` |
+| `tim-backup.{service,timer}` | – | täglich 03:15 UTC, `pg_dump` nach `/var/backups/tim`, 14 Tage (P5) |
+| `tim-restore-test.{service,timer}` | – | sonntags 04:30 UTC, Restore in `tim_restore_test` und Zeilenvergleich (P5) |
+| `tim-server-health.{service,timer}` | – | alle 60 s, Health- und Lückenprüfung (P6) |
 | `50-tim-runtime.rules` | – | polkit: Benutzer `tim` darf nur `tim-runtime.service` starten/stoppen |
 | `tim.env.example` | `EnvironmentVariables` der Plists | Vorlage für `/etc/tim/tim.env`, ohne Secrets |
 
@@ -32,18 +35,23 @@ bekommt eine eigene Deklaration, Paket P7).
 
 ## Installation (als root, erst nach Freigabe)
 
+Am einfachsten mit `ops/debian/bootstrap.sh`: das Skript erledigt Pakete,
+Benutzer, PostgreSQL, Passwortdatei, venv und die Units unten. Ohne `--start`
+startet es nichts. Von Hand:
+
 ```bash
 install -d -o root -g tim -m 0750 /etc/tim
 install -o root -g tim -m 0640 /opt/tim/ops/systemd/tim.env.example /etc/tim/tim.env
 # Passwortdatei separat anlegen: tim:tim, 0600. Nie ins Repo.
-install -d -o tim -g tim -m 0750 /opt/tim/data /opt/tim/artifacts
+install -d -o tim -g tim -m 0750 /opt/tim/data /opt/tim/artifacts /var/backups/tim
 
 install -o root -g root -m 0644 /opt/tim/ops/systemd/tim-*.service /opt/tim/ops/systemd/tim-*.timer /etc/systemd/system/
 install -o root -g root -m 0644 /opt/tim/ops/systemd/50-tim-runtime.rules /etc/polkit-1/rules.d/
 systemd-analyze verify /etc/systemd/system/tim-*.service /etc/systemd/system/tim-*.timer
 systemctl daemon-reload
 systemctl enable --now tim-runtime.service
-systemctl enable --now tim-candle-finalizer.timer tim-rolling-liveness.timer tim-maintenance.timer tim-coverage-worker.timer
+systemctl enable --now tim-candle-finalizer.timer tim-rolling-liveness.timer tim-maintenance.timer tim-coverage-worker.timer \
+  tim-backup.timer tim-restore-test.timer tim-server-health.timer
 systemctl enable --now tim-watchdog.service
 ```
 
