@@ -288,11 +288,12 @@ def main() -> int:
     from pathlib import Path
     root = Path(os.environ.get("TIM_GRAPH_MCP_ROOT", ".")).resolve()
     db_path = Path(os.environ.get("TIM_GRAPH_MCP_DB", root / ".runtime/graph/graph.sqlite"))
-    vault = os.environ.get("TIM_GRAPH_MCP_VAULT")
+    from src.obsidian_vault.schema import vault_path
+    vault = vault_path()
     ki_tools = os.environ.get("TIM_GRAPH_MCP_KI_TOOLS",
                               str(Path.home() / "Desktop/KI TOOLS"))
     service = build_service(root, db_path,
-                            vault=Path(vault) if vault else None,
+                            vault=vault,
                             ki_tools=Path(ki_tools) if ki_tools else None)
     server = GraphMcpServer(service)
     server.serve()

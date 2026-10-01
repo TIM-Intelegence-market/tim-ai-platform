@@ -12,12 +12,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.graph_mcp import export as export_module  # noqa: E402
 from src.graph_mcp.mcp_server import build_service  # noqa: E402
+from src.obsidian_vault.schema import vault_path  # noqa: E402
 
 # Portable resolution: explicit --vault CLI arg wins, then
-# TIM_GRAPH_MCP_VAULT, else vaultless (None — the service supports
-# vault=None; vault-dependent queries report honestly instead of
-# guessing a machine-specific default).
-DEFAULT_VAULT = os.environ.get("TIM_GRAPH_MCP_VAULT", "")
+# TIM_OBSIDIAN_VAULT, then TIM_GRAPH_MCP_VAULT (legacy), else vaultless
+# (None — the service supports vault=None; vault-dependent queries report
+# honestly instead of guessing a machine-specific default).
+DEFAULT_VAULT = str(vault_path() or "")
 DEFAULT_KI_TOOLS = os.environ.get("TIM_GRAPH_MCP_KI_TOOLS",
                                   str(Path.home() / "Desktop/KI TOOLS"))
 
