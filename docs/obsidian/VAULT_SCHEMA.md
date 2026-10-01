@@ -45,3 +45,10 @@ python -m src.obsidian_vault.draft_writer decision --title "…" --source https:
 
 Regel: Agenten schreiben nur über `draft_writer` in `00 Inbox`, nie überschreibend.
 In den geprüften Bereich verschiebt Uzi die Notiz in Obsidian.
+
+## Dashboards
+
+`docs/obsidian/dashboards/TIM Cockpit.base` gehört nach `TIM/01 Home/` im Vault
+(Obsidian-Core-Plugin Bases, keine Community-Plugins). Ansichten: Missionen,
+Gates, Blockiert, Incidents offen, Entscheidungen, Research, Eingang (prüfen),
+Zuletzt geändert.
