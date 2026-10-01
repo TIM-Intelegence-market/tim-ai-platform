@@ -7,8 +7,9 @@ rows. Observations, candles and raw data are read, never written.
 
 Modes:
   dry-run   build in memory, write preview/manifest/counts/exclusions; no DB writes.
-  apply     like dry-run, then upsert changed cases in one transaction; the
-            observations fingerprint is taken before and after and must match.
+  apply     like dry-run, then upsert changed cases in short transactions; the
+            fingerprint of the observations that existed at start is taken
+            before and after and must match (new runtime rows are ignored).
   validate  rebuild with the manifest's ``as_of`` and compare against the DB;
             exits 1 on any difference (a second apply would change nothing).
 
@@ -123,7 +124,9 @@ async def run_db(args, as_of: datetime) -> int:
     await db.connect()
     try:
         repo = MarketRepository(db)
-        before = await repo.observations_fingerprint(args.symbol)
+        # Only rows that existed at start are compared: the live runtime keeps appending observations.
+        started = datetime.now(timezone.utc)
+        before = await repo.observations_fingerprint(args.symbol, started)
         result, existing = await build_from_db(repo, args.symbol, as_of)
         if args.mode == "validate":
             persisted = {case.case_id: case.to_dict() for case in existing}
@@ -143,7 +146,7 @@ async def run_db(args, as_of: datetime) -> int:
             for start in range(0, len(result.cases), args.batch_size):
                 part = await repo.apply_research_cases(result.cases[start:start + args.batch_size], as_of=as_of)
                 changes = {key: changes[key] + part[key] for key in changes}
-        after = await repo.observations_fingerprint(args.symbol)
+        after = await repo.observations_fingerprint(args.symbol, started)
         if before != after:
             print(json.dumps({"error": "observations changed during materialization", "before": before, "after": after}))
             return 2
