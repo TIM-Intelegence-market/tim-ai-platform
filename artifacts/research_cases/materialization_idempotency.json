@@ -1,0 +1,59 @@
+{
+ "first_apply": {
+  "as_of": "2026-01-08T00:00:00+00:00",
+  "builder_version": "research-case-builder/1.0.0",
+  "case_ids": [
+   "case_8918f05520f57944",
+   "case_956af23de8daaca3",
+   "case_caf8b813febc0206"
+  ],
+  "cases": 3,
+  "changes": {
+   "inserted": 0,
+   "unchanged": 0,
+   "updated": 3
+  },
+  "manifest_hash": "889272fde522f5aad111a57eeb77a1b771e156ff4579b2b86aa48da0b704c692",
+  "mode": "apply",
+  "observations_excluded": 0,
+  "observations_fingerprint": {
+   "digest": "7c646b9e1bd5622c2e6f4ddab8b65e4e",
+   "observations": 3
+  },
+  "observations_read": 3,
+  "schema_version": 2,
+  "source": "db",
+  "status_counts": {
+   "OPEN": 3
+  }
+ },
+ "idempotent": true,
+ "second_apply": {
+  "as_of": "2026-01-08T00:00:00+00:00",
+  "builder_version": "research-case-builder/1.0.0",
+  "case_ids": [
+   "case_8918f05520f57944",
+   "case_956af23de8daaca3",
+   "case_caf8b813febc0206"
+  ],
+  "cases": 3,
+  "changes": {
+   "inserted": 0,
+   "unchanged": 3,
+   "updated": 0
+  },
+  "manifest_hash": "889272fde522f5aad111a57eeb77a1b771e156ff4579b2b86aa48da0b704c692",
+  "mode": "apply",
+  "observations_excluded": 0,
+  "observations_fingerprint": {
+   "digest": "7c646b9e1bd5622c2e6f4ddab8b65e4e",
+   "observations": 3
+  },
+  "observations_read": 3,
+  "schema_version": 2,
+  "source": "db",
+  "status_counts": {
+   "OPEN": 3
+  }
+ }
+}

@@ -1,9 +1,13 @@
 {
+ "as_of": "2026-01-08T00:00:00+00:00",
+ "cases": 3,
+ "difference_count": 0,
+ "differences": [],
  "mode": "validate",
+ "observations": {
+  "digest": "7c646b9e1bd5622c2e6f4ddab8b65e4e",
+  "observations": 3
+ },
  "persisted_cases": 3,
- "persisted_observations": 3,
- "statuses": [
-  "OPEN"
- ],
- "manifest_hash": "6092f14ffa8e978007f2f53095a04d68ea42d034866226b2bbf06de4aa544890"
+ "status": "PASS"
 }
