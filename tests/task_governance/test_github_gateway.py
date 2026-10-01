@@ -398,3 +398,53 @@ def test_an_unusable_issue_number_in_an_answer_is_a_github_error(rest):
     gateway = GitHubRestGateway('owner/repo', TOKEN, transport=lambda *a: (200, b'{"number": "x"}'))
     with pytest.raises(GitHubError):
         gateway.get_issue(1)
+
+
+# -- the listing lags behind new issues (seen live against github.com) ---------------------------------------------
+
+def test_a_lagging_listing_still_finds_the_issue_that_was_just_created(rest, gw, tmp_path):
+    rest.next_number, rest.lag_listing = 0, True    # numbers are sequential on GitHub: the first issue is #1
+    first = ensure_task(req(), TaskRegistry(str(tmp_path / 'a.db')), gw, claimant='w', trusted_authors=None)
+    lost = ensure_task(req(), TaskRegistry(str(tmp_path / 'b.db')), gw, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.CREATED and lost.outcome is EnsureOutcome.RECOVERED
+    assert len(rest.issues) == 1 and lost.issue_number == first.issue_number
+
+
+def test_find_issues_sees_lagging_issues_below_and_above_the_highest_listed(rest, gw):
+    fp = req().fingerprint
+    for number in (1, 2, 3):
+        rest.seed(number)
+    rest.seed(4, fingerprint_marker(fp))          # below the highest listed number
+    rest.seed(5)
+    rest.seed(6, fingerprint_marker(fp))          # above it
+    rest.unlisted = {4, 6}
+    assert [i.number for i in gw.find_issues(fp, '')] == [4, 6]
+
+
+def test_deleted_and_transferred_numbers_are_not_errors(rest, gw):
+    rest.seed(1)
+    rest.seed(4)                                   # 2 and 3 are gaps: one gone (404), one transferred (301)
+    rest.fail[('GET', r'/issues/2$')] = 410
+    rest.fail[('GET', r'/issues/3$')] = 301
+    assert gw.find_issues('x' * 64, '') == []
+
+
+def test_a_server_error_while_reading_a_gap_is_not_read_as_absent(rest, gw):
+    rest.seed(1)
+    rest.seed(3)
+    rest.fail[('GET', r'/issues/2$')] = 503
+    with pytest.raises(GitHubError):
+        gw.find_issues('x' * 64, '')
+
+
+def test_an_empty_repository_costs_only_a_few_direct_reads(rest, gw):
+    assert gw.find_issues('x' * 64, '') == []
+    assert [c[1] for c in rest.calls if '/issues/' in c[1]] == [f'/repos/owner/repo/issues/{n}' for n in (1, 2, 3)]
+
+
+def test_a_long_run_of_unlisted_numbers_is_refused_instead_of_guessed(rest):
+    for number in range(1, 400):
+        rest.seed(number)
+    rest.unlisted = set(range(1, 400))
+    with pytest.raises(GitHubError, match='refusing to guess'):
+        GitHubRestGateway('owner/repo', TOKEN, transport=rest).find_issues('x' * 64, '')

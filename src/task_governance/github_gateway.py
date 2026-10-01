@@ -2,7 +2,9 @@
 
 Contract kept on purpose:
 - `find_issues` lists issues by REST (never the lagging search index) and filters by the fingerprint marker;
-  more issues than the page cap allows raise instead of guessing.
+  more issues than the page cap allows raise instead of guessing. The listing itself lags behind the newest
+  issues (seen live: an issue created a moment earlier was missing), so the numbers just below and above the
+  highest listed one are also read one by one, which is consistent right after a create.
 - `get_issue` returns None only for a confirmed 404. Rate limits, permission errors, 5xx and network
   errors raise `GitHubError`, so a transient failure never looks like "does not exist".
 - `create_issue` enforces `timeout` as a wall-clock limit on the whole request (a server that drips bytes
@@ -30,6 +32,10 @@ BODY_BEGIN = '<!-- TIM_TASK_BODY_BEGIN -->'
 BODY_END = '<!-- TIM_TASK_BODY_END -->'
 _MANAGED = re.compile(re.escape(BODY_BEGIN) + r'.*?' + re.escape(BODY_END), re.DOTALL)
 PAGE_SIZE = 100
+PROBE_WINDOW = 50       # unlisted numbers this far below the highest listed one are read directly
+PROBE_MISSES = 3        # numbers above the highest one are read until this many in a row do not exist
+PROBE_LIMIT = 200       # more direct reads than this in one lookup raise instead of guessing
+_NOT_AN_ISSUE = (301, 307, 308, 404, 410)   # deleted or transferred numbers: not an issue of this repository
 API = 'https://api.github.com'
 
 
@@ -129,7 +135,7 @@ class GitHubRestGateway:
         return f'GitHubRestGateway({self.repository!r})'
 
     # -- plumbing ----------------------------------------------------------
-    def _call(self, method, path, payload=None, *, timeout=None, create=False):
+    def _call(self, method, path, payload=None, *, timeout=None, create=False, absent=()):
         headers = {'Accept': 'application/vnd.github+json', 'Authorization': f'Bearer {self._token}',
                    'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'tim-task-governance'}
         body = None
@@ -150,8 +156,8 @@ class GitHubRestGateway:
         if failure is not None:
             raise GitHubError(failure)          # raised outside the except block: no __context__ keeps the original
         if status >= 300:
-            if status == 404 and method == 'GET':
-                return 404, None
+            if (status == 404 and method == 'GET') or status in absent:
+                return status, None
             raise GitHubError(f'{method} {path}: HTTP {status}')      # includes 3xx: redirects are never followed
         try:
             return status, (json.loads(raw.decode('utf-8')) if raw else None)
@@ -203,8 +209,28 @@ class GitHubRestGateway:
     # -- IssueGateway ------------------------------------------------------
     def find_issues(self, fingerprint, canonical_key):
         marker = fingerprint_marker(fingerprint)
-        return [self._ref(item) for item in self._pages(f'/repos/{self.repository}/issues?state=all')
-                if marker in (item.get('body') or '')]
+        listed = list(self._pages(f'/repos/{self.repository}/issues?state=all'))
+        items = {self._ref(item).number: item for item in listed}
+        top = max(items, default=0)
+        for number in range(max(1, top - PROBE_WINDOW), top):
+            if number not in items:
+                self._probe(items, number)          # a gap: deleted or transferred, or hidden by the lagging listing
+        misses, number, reads = 0, top, 0
+        while misses < PROBE_MISSES:                # above the highest listed number: a fresh issue the listing does not show yet
+            number += 1
+            reads += 1
+            if reads > PROBE_LIMIT:
+                raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers above #{top}, refusing to guess')
+            misses = 0 if self._probe(items, number) else misses + 1
+        return [self._ref(item) for item in items.values() if marker in (item.get('body') or '')]
+
+    def _probe(self, items, number):
+        status, item = self._call('GET', f'/repos/{self.repository}/issues/{number}', absent=_NOT_AN_ISSUE)
+        if status != 200:
+            return False
+        self._ref(item, number)
+        items[number] = item
+        return True
 
     def get_issue(self, number):
         item = self._issue(number)

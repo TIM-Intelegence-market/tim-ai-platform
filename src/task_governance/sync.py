@@ -40,7 +40,8 @@ class IssueGateway(Protocol):
     `mark_duplicate`/`update_issue` must only comment or label, never change state.
 
     Contract for implementers:
-    - `find_issues` lists issues carrying the fingerprint marker (not the lagging search index).
+    - `find_issues` lists issues carrying the fingerprint marker (not the lagging search index). The REST listing lags too:
+      the gateway reads the numbers around its highest entry one by one so an issue created a moment ago is not missed.
     - `update_issue` also writes the marker into the issue body, which back-fills issues that
       predate the marker (e.g. #11 and #22-#65).
     - `create_issue` embeds the marker in the body.

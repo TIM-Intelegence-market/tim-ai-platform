@@ -14,6 +14,8 @@ class FakeRest:
         self.repo_visible = True
         self.lose_create_reply = False   # the issue is created, but the answer never arrives
         self.login = 'owner'             # the account behind the token (GET /user)
+        self.lag_listing = False         # new issues are missing from the listing until release_listing(), single reads see them
+        self.unlisted = set()
 
     def seed(self, number, body='', state='open', login='owner', pr=False):
         item = {'number': number, 'state': state, 'title': f'issue {number}', 'body': body, 'user': {'login': login},
@@ -22,6 +24,9 @@ class FakeRest:
             item['pull_request'] = {'url': 'x'}
         self.issues[number] = item
         self.comments.setdefault(number, [])
+
+    def release_listing(self):
+        self.unlisted.clear()
 
     def writes(self):
         return [c for c in self.calls if c[0] != 'GET']
@@ -41,13 +46,15 @@ class FakeRest:
             if method == 'GET':
                 query = parse_qs(parsed.query)
                 per, page = int(query['per_page'][0]), int(query['page'][0])
-                items = [self.issues[n] for n in sorted(self.issues)]
+                items = [self.issues[n] for n in sorted(self.issues) if n not in self.unlisted]
                 return 200, json.dumps(items[(page - 1) * per: page * per]).encode()
             if method == 'POST':
                 self.next_number += 1
                 number = self.next_number
                 self.seed(number, payload['body'])
                 self.issues[number]['title'] = payload['title']
+                if self.lag_listing:
+                    self.unlisted.add(number)
                 if self.lose_create_reply:
                     self.fail[('GET', r'/issues$')] = 503     # and GitHub stops answering listings afterwards
                     raise TimeoutError('reply lost')
