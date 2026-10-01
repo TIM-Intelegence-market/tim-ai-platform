@@ -1,0 +1,47 @@
+{
+  "bundle_id": "2de40acb55deb1a97f71eda543d8192a1fd8a7d35c1072c759e5f4a6c27c73c5",
+  "description": "Real ALFRED/FRED API responses for CPIAUCSL, unmodified (see src/research_lab/external/fixture_window.py)",
+  "payload_sha256": {
+    "observations": "25035d370096360012298195c180c0a4e8347cf2385099303777da1d01a051f0",
+    "release_dates": "5f410e2e734530d1489ed52924105540c4a875ce650612ad43d8273fa271e12f",
+    "series": "665a6572bfd9f1077445ebdee83d8c04026b28a4a25e6add8a404abce83e1073"
+  },
+  "requests": {
+    "observations": {
+      "limit": "100000",
+      "observation_end": "2020-01-31",
+      "observation_start": "2019-11-01",
+      "output_type": "1",
+      "path": "series/observations",
+      "realtime_end": "2020-12-31",
+      "realtime_start": "1776-07-04",
+      "series_id": "CPIAUCSL",
+      "sort_order": "asc",
+      "units": "lin"
+    },
+    "release_dates": {
+      "include_release_dates_with_no_data": "false",
+      "limit": "10000",
+      "path": "release/dates",
+      "realtime_end": "2020-12-31",
+      "realtime_start": "1776-07-04",
+      "release_id": "10",
+      "sort_order": "asc"
+    },
+    "series": {
+      "path": "series",
+      "realtime_end": "2020-12-31",
+      "realtime_start": "1776-07-04",
+      "series_id": "CPIAUCSL"
+    }
+  },
+  "retrieved_at": "2026-10-01T20:31:05.049076+00:00",
+  "source": "ALFRED",
+  "source_identifier": "CPIAUCSL",
+  "window": {
+    "name": "fixture-2019-2020",
+    "observation_end": "2020-01-31",
+    "observation_start": "2019-11-01",
+    "realtime_end": "2020-12-31"
+  }
+}

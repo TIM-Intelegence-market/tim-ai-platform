@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — BTC Research Engine V1.1: ALFRED CPI live ingest & real-data verification
+
+- Read-only live ingest (`src/research_lab/external/live.py`,
+  `scripts/research_lab_alfred_ingest.py`): FRED key via `FredSecretResolver`
+  on TIM's secret model (`scripts/fred_store_key.py`, hidden prompt, mode 0600);
+  research window 2017–2024 whose real-time range ends 2024-12-31; responses
+  reaching past the window are refused before storage; HTTPS to the FRED API
+  only, no redirects, retries with backoff for 429/5xx, errors without URL or
+  key; raw payloads through `RawPayloadStore`, reused by bundle id offline.
+- Verified against real ALFRED data (CPIAUCSL, 95 periods 2017-01 … 2024-11,
+  101 vintages, 300 revisions, 107 release events, holdout closed); report in
+  `docs/research_lab/reports/alfred_cpi_v1_1_verification.md`. BLS 08:30 release
+  time confirmed on four archived releases, otherwise an assumption.
+- Fixed with real data: multi-version series metadata (was NOT_READY),
+  February seasonal-revision dates (every January was reported as missing its
+  first print; revision-only dates now have no release time), periods outside
+  the requested observation range (were reported missing), archives ending
+  before a revision date can be classified (now INSUFFICIENT_DATA from that date
+  instead of an answer that depends on the download date), defective Binance
+  candles (optional `invalid_candles="exclude"`, listed and part of the dataset
+  identity; default still aborts).
+- Real-data regression fixture (unmodified API responses, SHA-256 checked in
+  CI) for first print, seasonal revision and January release 2019–2020.
+- Expectation bounds before surprise arithmetic (magnitude 1e9, 12 decimals, 20
+  digits; exact, trapping context): extreme values are refused instead of
+  `decimal.Overflow` or silent rounding.
+
 ## Unreleased — BTC Research Engine V1: Data & Events
 
 - Added `src/research_lab/external/`: point-in-time external data for BTC

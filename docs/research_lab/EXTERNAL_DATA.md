@@ -1,9 +1,11 @@
-# Research Lab – Externe Daten (BTC Research Engine V1: Data & Events)
+# Research Lab – Externe Daten (BTC Research Engine V1: Data & Events, V1.1: Live-Ingest)
 
 | Feld | Wert |
 |---|---|
 | Code | `src/research_lab/external/` |
-| Tests | `tests/test_research_lab_external.py` (ohne Netzwerk, synthetische Fixtures) |
+| Tests | `tests/test_research_lab_external.py` (synthetische Fixtures), `tests/test_research_lab_external_v1_1.py` (Live-Schicht mit Fake-Transport, echtes ALFRED-Fixture); beide ohne Netzwerk |
+| Echtes Fixture | `tests/fixtures/research_lab/alfred_cpiaucsl_fixture_2019_2020/` (unveränderte API-Antworten, SHA-256 in `provenance.json`) |
+| Verifikationsbericht | `docs/research_lab/reports/alfred_cpi_v1_1_verification.md` (+ `.json`) |
 | Transform-Version | `1.0.0` (`records.TRANSFORM_VERSION`) |
 | Erste Quelle | ALFRED, US-CPI `CPIAUCSL` (alle Vintages) |
 
@@ -40,10 +42,23 @@ ALFRED-Payload (series, observations, release_dates)
 - Vintage-Datum ist ein Termin aus dem Release-Kalender (`release/dates`, Release 10):
   Datum 08:30 America/New_York (BLS-Veröffentlichung, Sommerzeit beachtet),
   `availability_basis = SCHEDULED_RELEASE`.
-- Sonst (Korrekturen, fehlender Kalender, auf den Anfragebeginn gekappte Vintages):
-  Ende des Vintage-Tages in New York, `END_OF_VINTAGE_DAY`. Das ist konservativ:
-  der Wert wird eher zu spät als zu früh sichtbar. Solche Vintages haben keine
-  Ereigniszeit.
+- Sonst (Korrekturen, fehlender Kalender, auf den Anfragebeginn gekappte Vintages,
+  reine Revisionstermine, siehe unten): Ende des Vintage-Tages in New York,
+  `END_OF_VINTAGE_DAY`. Das ist konservativ: der Wert wird eher zu spät als zu
+  früh sichtbar. Solche Vintages haben keine Ereigniszeit.
+
+**Reine Revisionstermine (V1.1, aus echten Daten):** Der FRED-CPI-Kalender enthält
+in den meisten Jahren im Februar zwei Termine wenige Tage auseinander (z. B.
+2024-02-09 und 2024-02-13; im Forschungszeitraum 2017 und 2019–2024, nicht 2018,
+wo die Revision mit dem Januar-Release zusammenfällt). Am ersten zeigt ALFRED nur Revisionen älterer Perioden (jährliche
+Saisonrevision der letzten fünf Jahre), die Januarzahl erscheint erst am zweiten.
+Laut BLS werden die revidierten saisonbereinigten Indizes an einem Datum ohne
+Uhrzeitangabe bereitgestellt. Ein Kalendertermin gilt als reiner Revisionstermin,
+wenn (1) Vintages an ihm beginnen, (2) keine Periode an ihm zum ersten Mal
+erscheint und (3) der nächste Kalendertermin höchstens 7 Tage später folgt (der
+BLS-Kalender ist vorab veröffentlicht). Solche Termine veröffentlichen keine
+Periode und haben keine Release-Zeit (`END_OF_VINTAGE_DAY`). Fehlt Bedingung (3),
+bleibt der Termin ein normaler Release, eine fehlende Periode bleibt fehlend.
 
 FRED übernimmt die BLS-Zahlen erst später am Morgen. `available_at` beschreibt
 die öffentliche Verfügbarkeit bei der Primärquelle, nicht den FRED-Import.
@@ -91,6 +106,8 @@ Wiederverwendet: `QualityIssue`/`Severity` aus `src/quality/framework.py`.
 | unbekannte Quelle | `UnknownSource` |
 | Zugangsdaten in den Anfrageparametern | `ValueError` (vor jeder Ausgabe) |
 | Metadaten weichen ab (ID, Einheit, Frequenz, Saisonbereinigung, Transformation, `output_type ≠ 1`, Paging, Release-ID) | Payload `NOT_READY` |
+| Metadaten in Real-Time-Versionen (echte Antwort: 6 Versionen, Einheit bis 1988 „Index 1967=100“) | Versionen müssen lückenlos sein und alle archivierten Vintages abdecken, sonst `NOT_READY`. Widerspricht eine Version der Spezifikation (Einheit, Frequenz, Saisonbereinigung, ID), sind die in ihrer Gültigkeit veröffentlichten Vintages ab ihrer Verfügbarkeit `UNKNOWN` (`INCONSISTENT_METADATA`); frühere Vintages und Replays bleiben unberührt. Ältere Versionen ohne Zeilen in der Payload zählen nicht |
+| Zeile außerhalb des erklärten Beobachtungsbereichs (`observation_start`/`observation_end`) | Payload `NOT_READY`; Perioden außerhalb des Bereichs gelten nie als `MISSING_PERIOD` (nicht angefragt) |
 | JSON ungültig, Payload fehlt, Release-Kalender unvollständig | `NOT_READY` |
 | Zeile ohne `realtime_start` oder mit nicht lesbarem Perioden-/Vintage-Datum | ganze Payload `NOT_READY` (Verfügbarkeit oder Periode nicht bestimmbar) |
 | Periodendatum lesbar, aber kein Periodenbeginn; Vintage vor Periodenende; `available_at > ingested_at`; ungültiger oder nicht positiver Wert | Periode ab diesem Vintage `UNKNOWN` |
@@ -125,6 +142,17 @@ keine belegte Erwartung vorliegt. `with_expectation` verlangt Quelle, Kennung, e
 bekannte Ereigniszeit und einen Erwartungszeitpunkt strikt davor; Konsenswerte
 werden nie erfunden. Rechnungen laufen in einem festen Decimal-Kontext.
 `surprise_normalized` wird hier nicht berechnet.
+
+**Grenzen für Erwartungswerte (V1.1)**, geprüft vor jeder Rechnung: nur `Decimal`,
+endlich, Betrag höchstens 1e9, höchstens 12 Nachkommastellen, höchstens 20
+signifikante Stellen. Begründung: ein CPI-Konsens ist ein Indexniveau (CPIAUCSL
+2017–2024 etwa 240–320) oder eine Veränderung in Prozent (eine bis zwei
+Nachkommastellen, historisch innerhalb ±25 %); die Grenzen liegen viele
+Größenordnungen darüber und entsprechen den Grenzen der Reihenwerte selbst.
+Die Überraschung wird in einem Kontext berechnet, der Rundung, Überlauf und
+ungültige Operationen als Fehler behandelt: ein nicht exakt darstellbares
+Ergebnis wird abgewiesen, nie gerundet. Abgewiesen heißt: `ValueError`, keine
+Erwartung angehängt, das Ereignis bleibt unverändert.
 
 ## 7. BTC-Ausrichtung
 
@@ -166,14 +194,53 @@ werden atomar geschrieben (temporäre Datei, dann Umbenennen), sodass parallele
 oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging wird nicht unterstützt: eine unvollständige Antwort ist
 `NOT_READY`.
 
+**Live-Ingest (V1.1)**, `src/research_lab/external/live.py`, Bedienung über
+`scripts/research_lab_alfred_ingest.py` (`fetch`, `verify`, `fixture`, `replay`):
+
+- **Schlüssel:** `FredSecretResolver` nach dem bestehenden TIM-Modell
+  (`config/secrets.py`, wie OpenMarket): genau ein ausdrücklich gewählter Provider
+  (`TIM_FRED_SECRET_PROVIDER` = `keychain` | `file` | `env`), kein stiller
+  Rückfall, Wert nur in `SecretValue`, Fehlermeldungen beschreiben Formfehler nur
+  über Zählwerte, Fehler tragen keine Ausnahmekette (ein Keychain-Timeout kann den
+  Wert in `TimeoutExpired.output` halten). `scripts/fred_store_key.py` speichert den
+  Key mit verdeckter Eingabe als Datei mit Modus 0600 und verweigert Ziele innerhalb
+  eines Git-Arbeitsverzeichnisses.
+- **Echo-Schutz:** Enthält eine API-Antwort den Key, wird sie vor jeder weiteren
+  Prüfung abgewiesen (die Fensterprüfung zitiert Antwortwerte) und nicht gespeichert.
+- **Forschungsfenster:** `ResearchWindow` legt Beobachtungs- und Real-Time-Bereich
+  fest; `RESEARCH_2017_2024` = Perioden 2016-01 … 2024-12 (ein Jahr Vorlauf),
+  Vintages bis 2024-12-31. Ein Fenster, das den Holdout (2025-01-01) erreicht, lässt
+  sich nicht bauen (`HoldoutLocked`); Downloads haben keinen Freigabeweg.
+- **Antwortprüfung vor dem Speichern** (`check_window`): Envelope muss die Anfrage
+  exakt wiedergeben; Vintages, `realtime_end` einer Zeile, Perioden, Kalendertermine
+  oder Datumsangaben der Metadaten-Versionen (`realtime_start/end`,
+  `observation_end`, `last_updated`) jenseits des Fensters ⇒ `LiveIngestError`,
+  nichts wird gespeichert, nichts gekürzt. Eine Antwort mit späteren Daten
+  erweitert das Fenster also nie.
+- **Transport** (`http_fetcher`): nur `https://api.stlouisfed.org/fred/…`,
+  Weiterleitungen verweigert, Antwort höchstens 50 MB, 429/5xx/Netzfehler mit
+  Backoff `2 s · 2^n` (4 Versuche), 4xx sofort Fehler. Fehler nennen Pfad und
+  Status, nie URL oder Key, und werden außerhalb des `except`-Blocks ausgelöst:
+  weder `__cause__` noch `__context__` hält die ursprüngliche Ausnahme (deren Text
+  die URL mit dem Key enthalten kann).
+- **Fixture-Echtheit:** `load_fixture` prüft jede Datei gegen ihren SHA-256 und
+  berechnet die Bundle-ID des Downloads neu; eine bearbeitete Datei mit
+  angepasstem Hash widerspricht der ID.
+- **Wiederverwendung:** geparst wird immer ein gespeichertes Bundle
+  (`load_research_ingest`), per Bundle-ID ohne Netz, nach erneuter Fensterprüfung.
+
 ## 10. Bekannte Grenzen
 
 - Die Uhrzeit 08:30 New York ist eine Regel für BLS-CPI-Termine, kein Feld der
-  Quelle. Stimmt ein ALFRED-Vintage-Datum nicht mit dem BLS-Termin überein, fällt
-  es auf `END_OF_VINTAGE_DAY` zurück; einen Tag zu spätes ALFRED-Datum würde als
-  späterer Zeitpunkt übernommen (konservativ, aber falsche Ereigniszeit).
-- Die Genauigkeit historischer Release-Termine in FRED ist nicht gegen den
-  BLS-Archivkalender geprüft. Geprüft werden Vollständigkeit der Antwort
+  Quelle: ALFRED/FRED liefern nur Daten ohne Uhrzeit. V1.1 hat die Regel an vier
+  archivierten BLS-Meldungen belegt (Sperrfrist „8:30 a.m. (ET)“ am 2017-02-15,
+  2020-02-13, 2022-07-13 und 2024-01-11, jeweils gleich dem ALFRED-Erstdruckdatum);
+  für alle übrigen Termine bleibt sie eine Annahme. Stimmt ein ALFRED-Vintage-Datum
+  nicht mit dem BLS-Termin überein, fällt es auf `END_OF_VINTAGE_DAY` zurück; einen
+  Tag zu spätes ALFRED-Datum würde als späterer Zeitpunkt übernommen (konservativ,
+  aber falsche Ereigniszeit).
+- Die Genauigkeit historischer Release-Termine in FRED ist nur stichprobenartig
+  (siehe oben) gegen BLS-Meldungen geprüft. Geprüft werden Vollständigkeit der Antwort
   (`count`), ein Termin vor dem Periodenende und dass dieser höchstens ein
   Release-Intervall (45 Tage) vor dem Erstdruck liegt; ein fehlender Monatstermin
   fällt damit auf. Falsch datierte (statt fehlende) Termine werden nicht erkannt.
@@ -182,8 +249,20 @@ oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging 
 - Die Holdout-Sperre für externe Daten sitzt in `run_replay`. Direkte Abfragen an
   `PointInTimeStore` sind nicht gesperrt; Forschungsläufe gehen über `run_replay`.
 - Nur Monatsreihen; nur eine Quelle.
-- Erwartungswerte (`Expectation`) sind nur auf Endlichkeit geprüft, nicht auf
-  Betrag oder Stellenzahl: ein extremer Wert (z. B. `1e1000000`) lässt
-  `with_expectation` mit `decimal.Overflow` abbrechen, es wird dann keine
-  Erwartung angehängt (Kandidat für V1.1).
-- Kein Live-Abruf in Tests; der echte Abruf ist nicht Teil der CI.
+- Kein Live-Abruf in Tests; der echte Abruf ist nicht Teil der CI. Die CI prüft
+  die echte Semantik am unveränderten Fixture 2019–2020 (Erstdruck, Saisonrevision,
+  Januar-Release), nicht am vollständigen Download 2017–2024.
+- Die Erkennung reiner Revisionstermine stützt sich auf die Annahme, dass der
+  nächste BLS-Termin vorab bekannt ist (BLS veröffentlicht den Kalender im Voraus);
+  der FRED-Kalender selbst ist rückblickend.
+- Reine Revisionstermine werden an den Revisionszeilen älterer Perioden erkannt.
+  Enthält eine Payload nur Perioden ab dem Januar (enger Beobachtungsbereich ohne
+  Vorlauf), sieht sie die Revision nicht: der Januar-Erstdruck gilt dann als
+  unbekannt (`FIRST_RELEASE_UNAVAILABLE`, fail-closed, kein falscher Wert und keine
+  falsche Zeit). Das Forschungsfenster hat deshalb ein Jahr Vorlauf; das Fixture
+  enthält die revidierten Perioden.
+- `replay_checks` gilt nur als bestanden, wenn der finale Replay `READY` ist und
+  BTC-Kerzen sowie Ereignisse enthält.
+- Die Grenze von 7 Tagen für reine Revisionstermine ist aus dem echten Kalender
+  2005–2024 abgeleitet (wo ein solches Terminpaar vorkommt: 2 bis 6 Tage); ein abweichender künftiger Abstand würde den
+  Termin als normalen Release behandeln (fail-closed: Januar dann als fehlend markiert).
