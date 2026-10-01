@@ -443,8 +443,43 @@ def test_an_empty_repository_costs_only_a_few_direct_reads(rest, gw):
 
 
 def test_a_long_run_of_unlisted_numbers_is_refused_instead_of_guessed(rest):
-    for number in range(1, 400):
+    for number in range(1, 700):
         rest.seed(number)
-    rest.unlisted = set(range(1, 400))
+    rest.unlisted = set(range(1, 700))
     with pytest.raises(GitHubError, match='refusing to guess'):
         GitHubRestGateway('owner/repo', TOKEN, transport=rest).find_issues('x' * 64, '')
+
+
+def test_the_post_create_check_reaches_the_new_issue_even_behind_three_missing_numbers(rest, gw, tmp_path):
+    rest.next_number, rest.lag_listing = 0, True
+    for number in range(1, 6):
+        rest.seed(number)
+    for number in (6, 7, 8):                       # deleted at the top: three misses in a row
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    rest.next_number = 8
+    first = ensure_task(req(), TaskRegistry(str(tmp_path / 'a.db')), gw, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.CREATED and first.issue_number == 9
+    # a second creator that was blind to #9 before its own create must see it afterwards: loud, not a silent duplicate
+    other = GitHubRestGateway('owner/repo', TOKEN, transport=rest)
+    again = ensure_task(req(), TaskRegistry(str(tmp_path / 'b.db')), other, claimant='w2', trusted_authors=None)
+    assert again.outcome is EnsureOutcome.BLOCKED and again.detail == 'DUPLICATE_AFTER_CREATE'
+    assert len(rest.issues) == 7                   # exactly one extra issue (#10); the check named both
+
+
+def test_a_marker_issue_far_below_the_highest_listed_number_is_still_found(rest, gw):
+    fp = req().fingerprint
+    for number in range(1, 101):
+        rest.seed(number, fingerprint_marker(fp) if number == 40 else '', pr=number > 40)
+    rest.unlisted = {40}                           # 60 pull requests landed after it while the listing lagged
+    assert [i.number for i in gw.find_issues(fp, '')] == [40]
+
+
+def test_old_missing_numbers_are_read_once_and_remembered(rest, gw):
+    for number in range(1, 121):
+        if number not in (3, 4):
+            rest.seed(number)
+    gw.find_issues('x' * 64, '')
+    first = [c[1] for c in rest.calls if c[1].endswith(('/issues/3', '/issues/4'))]
+    gw.find_issues('x' * 64, '')
+    second = [c[1] for c in rest.calls if c[1].endswith(('/issues/3', '/issues/4'))]
+    assert len(first) == 2 and second == first     # old gaps (more than 50 below the top) are not asked again

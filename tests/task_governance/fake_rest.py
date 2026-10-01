@@ -10,7 +10,7 @@ class FakeRest:
         self.issues, self.comments, self.calls = {}, {}, []
         self.alias = {}                 # asked issue number -> served issue number (models a silent redirect)
         self.fail = {}                  # (method, path-regex) -> status code or Exception instance
-        self.next_number = 1000
+        self.next_number = 0
         self.repo_visible = True
         self.lose_create_reply = False   # the issue is created, but the answer never arrives
         self.login = 'owner'             # the account behind the token (GET /user)

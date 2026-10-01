@@ -3,8 +3,10 @@
 Contract kept on purpose:
 - `find_issues` lists issues by REST (never the lagging search index) and filters by the fingerprint marker;
   more issues than the page cap allows raise instead of guessing. The listing itself lags behind the newest
-  issues (seen live: an issue created a moment earlier was missing), so the numbers just below and above the
-  highest listed one are also read one by one, which is consistent right after a create.
+  issues (seen live: an issue created a moment earlier was missing), so every number the listing leaves out
+  below its highest entry, and everything above it, is also read one by one (consistent right after a create).
+  Above the highest entry the reads stop after PROBE_MISSES missing numbers in a row, but never below the highest
+  number this gateway has created or seen, so the post-create check always reaches the issue it just made.
 - `get_issue` returns None only for a confirmed 404. Rate limits, permission errors, 5xx and network
   errors raise `GitHubError`, so a transient failure never looks like "does not exist".
 - `create_issue` enforces `timeout` as a wall-clock limit on the whole request (a server that drips bytes
@@ -32,9 +34,9 @@ BODY_BEGIN = '<!-- TIM_TASK_BODY_BEGIN -->'
 BODY_END = '<!-- TIM_TASK_BODY_END -->'
 _MANAGED = re.compile(re.escape(BODY_BEGIN) + r'.*?' + re.escape(BODY_END), re.DOTALL)
 PAGE_SIZE = 100
-PROBE_WINDOW = 50       # unlisted numbers this far below the highest listed one are read directly
+PROBE_WINDOW = 50       # the newest listed numbers are always re-read; older gaps that do not exist are remembered
 PROBE_MISSES = 3        # numbers above the highest one are read until this many in a row do not exist
-PROBE_LIMIT = 200       # more direct reads than this in one lookup raise instead of guessing
+PROBE_LIMIT = 500       # more direct reads than this in one lookup raise instead of guessing
 _NOT_AN_ISSUE = (301, 307, 308, 404, 410)   # deleted or transferred numbers: not an issue of this repository
 API = 'https://api.github.com'
 
@@ -130,6 +132,8 @@ class GitHubRestGateway:
         self.max_create_seconds = float(max_create_seconds)
         self._token, self._timeout, self._max_pages = token, float(request_timeout), max_pages
         self._transport, self._api = transport, api.rstrip('/')
+        self._top = 0           # highest issue number this gateway has seen or created: lookups never stop below it
+        self._absent = set()    # old numbers confirmed missing (deleted or transferred)
 
     def __repr__(self):
         return f'GitHubRestGateway({self.repository!r})'
@@ -211,17 +215,23 @@ class GitHubRestGateway:
         marker = fingerprint_marker(fingerprint)
         listed = list(self._pages(f'/repos/{self.repository}/issues?state=all'))
         items = {self._ref(item).number: item for item in listed}
-        top = max(items, default=0)
-        for number in range(max(1, top - PROBE_WINDOW), top):
-            if number not in items:
-                self._probe(items, number)          # a gap: deleted or transferred, or hidden by the lagging listing
-        misses, number, reads = 0, top, 0
-        while misses < PROBE_MISSES:                # above the highest listed number: a fresh issue the listing does not show yet
+        top, reads = max(items, default=0), 0
+        for number in range(1, top):                # gaps: deleted or transferred, or hidden by the lagging listing
+            if number in items or number in self._absent:
+                continue
+            reads += 1
+            if reads > PROBE_LIMIT:
+                raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers below #{top}, refusing to guess')
+            if not self._probe(items, number) and number <= top - PROBE_WINDOW:
+                self._absent.add(number)
+        misses, number, floor = 0, top, max(top, self._top)
+        while misses < PROBE_MISSES or number < floor:      # above the listing's highest: fresh issues it does not show yet
             number += 1
             reads += 1
             if reads > PROBE_LIMIT:
-                raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers above #{top}, refusing to guess')
+                raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers, refusing to guess')
             misses = 0 if self._probe(items, number) else misses + 1
+        self._top = max(self._top, max(items, default=0))
         return [self._ref(item) for item in items.values() if marker in (item.get('body') or '')]
 
     def _probe(self, items, number):
@@ -243,7 +253,9 @@ class GitHubRestGateway:
                                  timeout=timeout, create=True)
         except _NotSent:
             raise CreateNotSent('connection could not be opened') from None
-        return self._ref(item)
+        ref = self._ref(item)
+        self._top = max(self._top, ref.number)      # the next lookup reads every number up to this one, however the listing lags
+        return ref
 
     def update_issue(self, number, request: TaskRequest, reason):
         item = self._issue(number)
