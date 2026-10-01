@@ -168,6 +168,8 @@ Erwartung angehängt, das Ereignis bleibt unverändert.
   `RESOLUTION_TOO_COARSE`, `NOT_AVAILABLE_AT_REPLAY_TIME`, `HOLDOUT_LOCKED`.
   Eine Veröffentlichung im Holdout liefert ohne Freigabe weder Referenzkerze noch
   Fenster.
+- `invalid_candles="exclude"`: ausgeschlossene Kerzen zählen in der
+  BTC-Vollständigkeit als fehlend, auch am Anfang oder Ende der Reihe.
 - Es werden keine Renditen oder Reaktionen berechnet.
 
 ## 8. Replay und Reproduzierbarkeit
@@ -205,7 +207,8 @@ oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging 
   Wert in `TimeoutExpired.output` halten). `scripts/fred_store_key.py` speichert den
   Key mit verdeckter Eingabe als Datei mit Modus 0600 und verweigert Ziele innerhalb
   eines Git-Arbeitsverzeichnisses.
-- **Echo-Schutz:** Enthält eine API-Antwort den Key, wird sie vor jeder weiteren
+- **Echo-Schutz:** Enthält eine API-Antwort den Key, roh oder in einem decodierten
+  JSON-String (auch per `\uXXXX` maskiert), wird sie vor jeder weiteren
   Prüfung abgewiesen (die Fensterprüfung zitiert Antwortwerte) und nicht gespeichert.
 - **Forschungsfenster:** `ResearchWindow` legt Beobachtungs- und Real-Time-Bereich
   fest; `RESEARCH_2017_2024` = Perioden 2016-01 … 2024-12 (ein Jahr Vorlauf),
@@ -266,3 +269,14 @@ oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging 
 - Die Grenze von 7 Tagen für reine Revisionstermine ist aus dem echten Kalender
   2005–2024 abgeleitet (wo ein solches Terminpaar vorkommt: 2 bis 6 Tage); ein abweichender künftiger Abstand würde den
   Termin als normalen Release behandeln (fail-closed: Januar dann als fehlend markiert).
+
+## 11. Roadmap
+
+Reihenfolge der BTC Research Engine: **V1 (#128) → V1.1 (#139) → V1.2 → V2**.
+
+- **V1.2** ist der nächste Schritt. Ihr fachlicher und technischer Umfang ist noch
+  nicht festgelegt und wird vor Beginn eigens spezifiziert.
+- **V2 — Historical Relationship Analysis** (Event Studies, Lead/Lag, rollierende
+  Zusammenhänge, mehrere Forschungshorizonte) folgt später. V2 beginnt erst, wenn
+  die V1-Datenbasis ausreichend breit, sauber, reproduzierbar und
+  Point-in-Time-sicher validiert ist.

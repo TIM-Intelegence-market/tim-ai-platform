@@ -180,12 +180,34 @@ def ingest_live(
         raise LiveIngestError(failure)
     # A response echoing the key must not reach the window check (its messages quote response values),
     # the store or any hash.
-    secret = key.reveal().encode()
-    echoed = sorted(name for name, payload in bundle.payloads.items() if secret in payload)
+    secret = key.reveal()
+    echoed = sorted(name for name, payload in bundle.payloads.items() if _echoes(payload, secret))
     if echoed:
         raise LiveIngestError(f"response echoes the API key ({', '.join(echoed)}); nothing stored")
     check_window(bundle, window)  # before storing: a refused response never reaches the disk
     return store.put(bundle)
+
+
+def _echoes(payload: bytes, secret: str) -> bool:
+    """The raw bytes or any decoded JSON string (key or value) contain the secret; JSON escapes
+    such as ``\\u0061`` would hide it from the byte check but not from json.loads."""
+    if secret.encode() in payload:
+        return True
+    try:
+        pending = [json.loads(payload)]
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return False  # not JSON: the byte check above saw the payload as it is
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            if secret in item:
+                return True
+        elif isinstance(item, dict):
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, list):
+            pending.extend(item)
+    return False
 
 
 def load_research_ingest(store: RawPayloadStore, bundle_id: str, window: ResearchWindow) -> tuple[RawBundle, IngestResult]:

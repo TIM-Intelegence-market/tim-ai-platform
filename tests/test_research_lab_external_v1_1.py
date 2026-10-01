@@ -430,6 +430,15 @@ def test_excluded_candles_are_part_of_the_dataset_identity() -> None:
     assert "invalid_candles" not in default["config"] and "btc_excluded" not in default["inputs"]
 
 
+@pytest.mark.parametrize("edge", [0, 2])
+def test_excluded_edge_candles_count_as_missing(edge: int) -> None:
+    good = klines(datetime(2024, 2, 13, tzinfo=UTC), 3)
+    candles = list(good)
+    candles[edge] = Kline(good[edge].open_time, 1.0, 1.0, 1.0, 1.0, 0.0, good[edge].open_time + 1_000, 0.0)  # wrong span
+    btc = BtcSeries.build(candles, "1h", replay_at=INGESTED, invalid_candles="exclude")
+    assert btc.gaps() == {"expected": 3, "present": 2, "missing": 1}
+
+
 def test_unknown_candle_policy_is_refused() -> None:
     with pytest.raises(ValueError):
         ReplayConfig(INGESTED, invalid_candles="repair")
@@ -832,14 +841,17 @@ def test_keychain_failure_keeps_no_exception_chain(monkeypatch) -> None:
     assert raised.value.__context__ is None and raised.value.__cause__ is None and KEY not in str(raised.value)
 
 
+@pytest.mark.parametrize("escaped", [False, True])
 @pytest.mark.parametrize("where", ["series", "series/observations", "release/dates"])
-def test_responses_echoing_the_key_are_refused_and_never_stored(tmp_path, where: str) -> None:
+def test_responses_echoing_the_key_are_refused_and_never_stored(tmp_path, where: str, escaped: bool) -> None:
     payloads = research_payloads()
     body = json.loads(payloads[where])
-    body["notes"] = f"echo {KEY}"
+    body["notes"] = "echo @@KEY@@"
     if where == "series/observations":
-        body["observation_end"] = KEY  # would otherwise surface in the envelope error message
-    payloads[where] = json.dumps(body).encode()
+        body["observation_end"] = "@@KEY@@"  # would otherwise surface in the envelope error message
+    # JSON escapes hide the key from a byte search; json.loads restores it.
+    echoed = "".join(f"\\u{ord(char):04x}" for char in KEY) if escaped else KEY
+    payloads[where] = json.dumps(body).replace("@@KEY@@", echoed).encode()
     _api, store, run = live(tmp_path, payloads)
     with pytest.raises(LiveIngestError) as raised:
         run()

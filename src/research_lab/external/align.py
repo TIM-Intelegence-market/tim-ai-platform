@@ -54,6 +54,8 @@ class BtcSeries:
     cutoff_ms: int  # replay time the series was cut at
     # Candles left out under invalid_candles="exclude": [{"open_time_ms", "reason"}]; they count as missing.
     excluded: tuple[dict[str, Any], ...] = ()
+    # [first, end) grid range of the closed candles before exclusion, so excluded edge candles stay missing.
+    coverage_ms: tuple[int, int] | None = None
 
     @classmethod
     def build(
@@ -95,12 +97,17 @@ class BtcSeries:
                 excluded.append({"open_time_ms": kline.open_time, "reason": reason})
             else:
                 raise ValueError(f"kline {kline.open_time} is defective ({reason}) for the {interval} grid")
-        return cls(interval, step, tuple(kept), {kline.open_time: kline for kline in kept}, cutoff, tuple(excluded))
+        on_grid = [kline.open_time for kline in closed if kline.open_time % step == 0]
+        coverage = (on_grid[0], on_grid[-1] + step) if on_grid else None
+        return cls(interval, step, tuple(kept), {kline.open_time: kline for kline in kept}, cutoff, tuple(excluded), coverage)
 
     def gaps(self) -> dict[str, Any]:
-        if not self.klines:
+        coverage = self.coverage_ms
+        if coverage is None and self.klines:
+            coverage = (self.klines[0].open_time, self.klines[-1].open_time + self.interval_ms)
+        if coverage is None:
             return {"expected": 0, "present": 0, "missing": 0}
-        report = check_completeness(list(self.klines), self.interval_ms, self.klines[0].open_time, self.klines[-1].open_time + self.interval_ms)
+        report = check_completeness(list(self.klines), self.interval_ms, *coverage)
         return {"expected": report.expected, "present": report.present, "missing": report.missing}
 
 
