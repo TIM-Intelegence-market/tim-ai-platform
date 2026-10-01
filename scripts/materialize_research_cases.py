@@ -127,15 +127,22 @@ async def run_db(args, as_of: datetime) -> int:
         result, existing = await build_from_db(repo, args.symbol, as_of)
         if args.mode == "validate":
             persisted = {case.case_id: case.to_dict() for case in existing}
-            diffs = [case.case_id for case in result.cases if persisted.get(case.case_id) != case.to_dict()]
+            newer = {case.case_id for case in existing if case.updated_at > as_of}
+            diffs = [case.case_id for case in result.cases if case.case_id not in newer and persisted.get(case.case_id) != case.to_dict()]
             report = {"mode": "validate", "as_of": as_of.isoformat(), "cases": len(result.cases), "persisted_cases": len(persisted),
-                      "differences": diffs[:50], "difference_count": len(diffs), "observations": before,
+                      "differences": diffs[:50], "difference_count": len(diffs), "skipped_newer": len(newer), "observations": before,
                       "status": "PASS" if not diffs else "FAIL"}
             Path(args.out_dir).mkdir(parents=True, exist_ok=True)
             (Path(args.out_dir) / "validation.json").write_text(json.dumps(report, indent=1, sort_keys=True) + "\n")
             print(json.dumps({key: report[key] for key in ("status", "cases", "difference_count")}))
             return 0 if not diffs else 1
-        changes = await repo.apply_research_cases(result.cases) if args.mode == "apply" else None
+        changes = None
+        if args.mode == "apply":
+            # Short transactions keep row locks brief while the live runtime keeps writing cases.
+            changes = {"inserted": 0, "updated": 0, "unchanged": 0, "skipped_newer": 0}
+            for start in range(0, len(result.cases), args.batch_size):
+                part = await repo.apply_research_cases(result.cases[start:start + args.batch_size], as_of=as_of)
+                changes = {key: changes[key] + part[key] for key in changes}
         after = await repo.observations_fingerprint(args.symbol)
         if before != after:
             print(json.dumps({"error": "observations changed during materialization", "before": before, "after": after}))
@@ -163,6 +170,7 @@ def main() -> int:
     parser.add_argument("--as-of", help="data time (ISO, UTC); default: now floored to the minute; validate defaults to the manifest's as_of")
     parser.add_argument("--out-dir", default=str(OUT_DIR))
     parser.add_argument("--database-url", default=None)
+    parser.add_argument("--batch-size", type=int, default=500, help="cases per apply transaction")
     args = parser.parse_args()
     manifest_path = Path(args.out_dir) / "materialization_manifest.json"
     if args.mode == "validate" and not args.as_of and manifest_path.exists():

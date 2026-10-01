@@ -66,7 +66,9 @@ async def test_materialization_against_isolated_database_is_idempotent_and_read_
         assert await repo.observations_fingerprint(SYMBOL) == before
 
         again, persisted = await script.build_from_db(repo, SYMBOL, as_of)
-        assert await repo.apply_research_cases(again.cases) == {"inserted": 0, "updated": 0, "unchanged": len(again.cases)}
+        assert await repo.apply_research_cases(again.cases) == {"inserted": 0, "updated": 0, "unchanged": len(again.cases), "skipped_newer": 0}
+        earlier = await repo.apply_research_cases(again.cases, as_of=start)
+        assert earlier["skipped_newer"] == len(again.cases) and earlier["updated"] == 0
         assert {c.case_id: c.to_dict() for c in persisted} == {c.case_id: c.to_dict() for c in again.cases}
         assert again.manifest()["manifest_hash"] == result.manifest()["manifest_hash"]
         assert all(case.status != "CONFIRMED" for case in persisted)

@@ -14,8 +14,12 @@ Stand 2026-10-01, Builder `research-case-builder/1.0.0`.
    30-Minuten-Fenster (`case_id = case_ + sha256(symbol:tf:fenster)[:16]`).
 3. `assess`/`refresh_case` leiten Status, Missing Evidence und Outcome ab
    (siehe Domänenmodell). Gap Incidents und Candle-Closes werden gelesen.
-4. `apply_research_cases` schreibt **nur** `research_cases`, in einer
-   Transaktion, unveränderte Zeilen werden nicht angefasst.
+4. `apply_research_cases` schreibt **nur** `research_cases`, in kurzen
+   Transaktionen zu je `--batch-size` (Standard 500) Cases, damit die laufende
+   Runtime nicht auf Zeilensperren wartet. Unveränderte Zeilen werden nicht
+   angefasst; Zeilen, die die Runtime nach `as_of` erweitert hat
+   (`updated_at > as_of`), bleiben unberührt (`skipped_newer`) und werden auch
+   von `validate` ausgelassen.
 
 Observations, Candles und Raw-Daten werden nie geschrieben. Das Skript nimmt
 vor und nach dem Lauf einen Fingerabdruck (Anzahl + md5 über ID, Input-Hash,

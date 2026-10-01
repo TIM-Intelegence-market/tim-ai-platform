@@ -268,17 +268,24 @@ class MarketRepository:
             rows=await con.fetch("SELECT close_time,close FROM candles WHERE symbol=$1 AND timeframe=$2 AND close_time>=$3 AND close_time<=$4 ORDER BY close_time",symbol,timeframe,start,end)
         return [{"close_time":row["close_time"],"close":float(row["close"])} for row in rows]
 
-    async def apply_research_cases(self,cases:list[ResearchCase])->dict:
-        """Upsert derived cases in one transaction; unchanged rows are not rewritten."""
-        inserted=updated=unchanged=0
+    async def apply_research_cases(self,cases:list[ResearchCase],as_of:datetime|None=None)->dict:
+        """Upsert derived cases in one transaction; unchanged rows are not rewritten.
+
+        Rows the live runtime extended after ``as_of`` (updated_at > as_of) are
+        left alone: the rebuild cannot see those newer observations.
+        """
+        inserted=updated=unchanged=skipped_newer=0
         async with self.database.acquire() as con:
             async with con.transaction():
                 for case in cases:
                     row=await con.fetchrow("SELECT * FROM research_cases WHERE case_id=$1 FOR UPDATE",case.case_id)
+                    if row is not None and as_of is not None and row["updated_at"]>as_of:
+                        skipped_newer+=1
+                        continue
                     if row is not None and _case_from_row(row).to_dict()==case.to_dict():
                         unchanged+=1
                         continue
                     await self._upsert_case(con,case)
                     if row is None:inserted+=1
                     else:updated+=1
-        return {"inserted":inserted,"updated":updated,"unchanged":unchanged}
+        return {"inserted":inserted,"updated":updated,"unchanged":unchanged,"skipped_newer":skipped_newer}
