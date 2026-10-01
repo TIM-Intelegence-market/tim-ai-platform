@@ -83,6 +83,8 @@ def test_apply_produces_a_lint_clean_vault(old_vault, tmp_path):
     assert (root / "00 Inbox").is_dir() and (root / "90 Berichte" / "Daily").is_dir()
     log = (root / "70 Entscheidungen" / "Decision Log.md").read_text()
     assert "[[LONG History Extension Execution]]" in log and "type: moc" in log
+    gate = (root / "30 Missionen" / "Qwen Self Repair Gate.md").read_text()
+    assert "status: done" in gate and "verdict: pass" in gate
     status = (root / "01 Home" / "TIM Current Status.md").read_text()
     assert "[[Missions MOC]]" in status
     report = (root / "90 Berichte" / "Mission Reports" / "2026-09-18 Build.md").read_text()

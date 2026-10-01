@@ -60,6 +60,8 @@ STATUS_MAP = {
     "not_started": "planned", "proposed": "planned", "draft": "planned",
     "unknown": "planned", "planned": "planned", "archived": "archived",
 }
+# old statuses that carry a result, not only progress
+KEEP_AS_VERDICT = {"pass"}
 OBSIDIAN_SKIP = {"workspace.json", "workspace-mobile.json", "workspaces.json"}
 
 _FM = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
@@ -164,6 +166,9 @@ class Migration:
             target = Path(self.schema.content_root, folder, *rel.parts[1:]).as_posix()
             plan = NotePlan(rel.as_posix(), target, old_type, new_type, old_status, new_status)
             new_text = _set_field(_set_field(text, "type", new_type), "status", new_status)
+            if old_status in KEEP_AS_VERDICT and not fm.get("verdict"):
+                # "pass" and "done" share one status now; keep the gate result
+                new_text = _set_field(new_text, "verdict", old_status)
             if folder in self.schema.template_folders:
                 rendered[target] = new_text
             else:
