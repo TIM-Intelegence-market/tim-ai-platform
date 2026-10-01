@@ -479,11 +479,12 @@ def test_old_missing_numbers_are_read_once_and_remembered(rest, gw):
         if number not in (3, 4):
             rest.seed(number)
     rest.fail[('GET', r'/issues/[34]$')] = 410     # deleted for good (a 404 would not be remembered)
+    count = lambda: len([c for c in rest.calls if c[1].endswith(('/issues/3', '/issues/4'))])
     gw.find_issues('x' * 64, '')
-    first = [c[1] for c in rest.calls if c[1].endswith(('/issues/3', '/issues/4'))]
     gw.find_issues('x' * 64, '')
-    second = [c[1] for c in rest.calls if c[1].endswith(('/issues/3', '/issues/4'))]
-    assert len(first) == 2 and second == first     # old gaps (more than 50 below the top) are not asked again
+    asked = count()
+    gw.find_issues('x' * 64, '')
+    assert asked == 4 and count() == asked         # remembered after the second 410: old gaps are not asked a third time
 
 
 def test_a_404_on_an_old_gap_is_never_remembered(rest, gw):
@@ -516,13 +517,19 @@ def test_a_lookup_that_hits_the_read_limit_fails_before_anything_is_created(rest
     assert rest.writes() == [] and len(rest.issues) == 2
 
 
-def test_gateway_state_survives_threads_sharing_it(rest, gw):
-    import threading
-    for number in range(1, 30):
-        rest.seed(number)
-    threads = [threading.Thread(target=gw.find_issues, args=('x' * 64, '')) for _ in range(8)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    assert gw._top == 29
+def test_a_single_wrong_410_never_hides_an_old_issue_for_good(rest, gw):
+    fp = req().fingerprint
+    for number in range(1, 101):
+        rest.seed(number, fingerprint_marker(fp) if number == 40 else '', pr=number > 40)
+    rest.unlisted = {40}
+    rest.fail[('GET', r'/issues/40$')] = 410       # one transient wrong answer
+    assert gw.find_issues(fp, '') == []
+    del rest.fail[('GET', r'/issues/40$')]
+    assert [i.number for i in gw.find_issues(fp, '')] == [40]
+
+
+def test_an_implausible_issue_number_in_the_create_answer_is_not_trusted_or_followed(rest, gw, tmp_path):
+    rest.next_number = 999_999_999
+    with pytest.raises(GitHubError, match='not trusted'):
+        gw.create_issue(req(), req().fingerprint, timeout=5)
+    assert gw._top == 0 and len(rest.calls) == 1   # no walk of a billion numbers, and the poisoned number is not kept

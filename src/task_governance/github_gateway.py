@@ -37,6 +37,7 @@ PAGE_SIZE = 100
 PROBE_WINDOW = 50       # the newest listed numbers are always re-read; older gaps that are gone for good are remembered
 PROBE_MISSES = 3        # numbers above the highest one are read until this many in a row do not exist
 PROBE_LIMIT = 500       # more direct reads than this in one lookup raise instead of guessing
+OWED_LIMIT = 2000       # numbers up to the highest known one are owed; an answer further above than this is not trusted
 _GONE = (301, 307, 308, 410)                # deleted or transferred for good: may be remembered
 _NOT_AN_ISSUE = _GONE + (404,)              # none of these is an issue of this repository; a 404 is never remembered
 API = 'https://api.github.com'
@@ -135,7 +136,8 @@ class GitHubRestGateway:
         self._transport, self._api = transport, api.rstrip('/')
         self._lock = threading.Lock()
         self._top = 0           # highest issue number this gateway has seen or created: lookups never stop below it
-        self._gone = set()      # old numbers answered with 410/301/307/308 (deleted or transferred); a 404 is never remembered
+        self._gone = set()      # old numbers answered twice with 410/301/307/308 (deleted or transferred); a 404 is never remembered
+        self._gone_once = set()
 
     def __repr__(self):
         return f'GitHubRestGateway({self.repository!r})'
@@ -228,12 +230,12 @@ class GitHubRestGateway:
                 raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers below #{top}, refusing to guess')
             status = self._probe(items, number)
             if status in _GONE and number <= top - PROBE_WINDOW:
-                with self._lock:
-                    self._gone.add(number)
+                with self._lock:                    # one wrong answer must not hide an issue for good: remember on the second
+                    (self._gone if number in self._gone_once else self._gone_once).add(number)
         misses, number, floor = 0, top, max(top, known_top)
         while misses < PROBE_MISSES or number < floor:      # above the listing's highest: fresh issues it does not show yet
             number += 1
-            if number > floor:                      # numbers up to the highest known one are owed and bounded: no limit
+            if number > floor:                      # numbers up to the highest known one are owed (bounded by OWED_LIMIT)
                 reads += 1
                 if reads > PROBE_LIMIT:
                     raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers, refusing to guess')
@@ -262,6 +264,8 @@ class GitHubRestGateway:
             raise CreateNotSent('connection could not be opened') from None
         ref = self._ref(item)
         with self._lock:
+            if ref.number > self._top + OWED_LIMIT:
+                raise GitHubError(f'create answered with issue #{ref.number}, far above the highest known #{self._top}: not trusted')
             self._top = max(self._top, ref.number)  # the next lookup reads every number up to this one, however the listing lags
         return ref
 
