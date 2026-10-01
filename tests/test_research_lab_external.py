@@ -844,6 +844,15 @@ def test_calendar_gap_around_the_first_release_certifies_no_first_print() -> Non
         with_expectation(event, Expectation(Decimal("300"), Measure.LEVEL, "SURVEY", "cpi_level", datetime(2024, 3, 1, tzinfo=UTC)))
 
 
+@pytest.mark.parametrize("bad_id", ["10.9", "1e309", "true", '"10"'])
+def test_release_id_must_be_the_exact_integer(bad_id: str) -> None:
+    raw = bundle()
+    raw.payloads["release_dates"] = release_payload().replace(b'"release_id": 10', f'"release_id": {bad_id}'.encode())
+    assert bad_id.encode() in raw.payloads["release_dates"]
+    result = parse_bundle(raw)
+    assert result.state is QualityState.NOT_READY and codes(result) == ["MALFORMED_PAYLOAD"]
+
+
 def test_period_missing_from_the_archive_is_flagged_when_its_release_was_due() -> None:
     rows = [r for r in base_rows() if r["date"] != "2024-02-01"]  # the March 12 release published February
     result = ingest(rows)

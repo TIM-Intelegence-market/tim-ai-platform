@@ -275,8 +275,10 @@ def _release_dates(spec: SourceSpec, payload: Any) -> set[date]:
         raise ValueError(f"release calendar holds {len(payload['release_dates'])} of {count} dates (paging is not supported)")
     result = set()
     for item in payload["release_dates"]:
-        if int(item["release_id"]) != spec.release_id:
-            raise ValueError(f"release id {item['release_id']} does not match {spec.release_id}")
+        release_id = item["release_id"]
+        # Exact JSON integer only: int() would turn 10.9 into 10 and crash on 1e309 (inf); bool is no id.
+        if type(release_id) is not int or release_id != spec.release_id:
+            raise ValueError(f"release id {release_id!r} does not match {spec.release_id}")
         result.add(_date(item["date"]))
     return result
 

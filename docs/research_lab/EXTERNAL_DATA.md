@@ -101,6 +101,7 @@ Wiederverwendet: `QualityIssue`/`Severity` aus `src/quality/framework.py`.
 | Vintage endet (`realtime_end`), aber kein Vintage beginnt am Folgetag (fehlende Revision, Lücke) | `MISSING_VINTAGE`: Periode `UNKNOWN` ab dem Zeitpunkt, zu dem der fehlende Nachfolger sichtbar geworden wäre; frühere Replays unverändert |
 | Periode laut Release-Kalender veröffentlicht, im Archiv zum fälligen Zeitpunkt aber ohne sichtbares Vintage | `MISSING_PERIOD` ab dem fälligen Release-Zeitpunkt; `latest()` `stale`, bis ein Vintage der Periode sichtbar wird (die ältere Periode bleibt als solche ausgewiesen, kein Ersatzwert; spätere Vintages ändern frühere Replays nicht) |
 | Vintage außerhalb des erklärten Real-Time-Bereichs der Payload, oder Bereichsbeginn nach Bereichsende | Payload `NOT_READY` (`INCONSISTENT_METADATA`) |
+| Release-Kalender mit fremder oder nicht exakt ganzzahliger `release_id` (z. B. `10.9`, `1e309`, `"10"`) | Payload `NOT_READY` (`MALFORMED_PAYLOAD`) |
 | fehlender oder leerer Release-Kalender | Warnung, alle Vintages `END_OF_VINTAGE_DAY`, kein Erstdruck belegt |
 | Wert außerhalb 1e-6 … 1e9 (Betrag) oder mit mehr als 20 Stellen | `UNKNOWN` (`MALFORMED_VALUE`), damit die Ereignisrechnung im festen Decimal-Kontext nie überläuft |
 | Datum am Kalenderrand ohne darstellbare Periodenrechnung oder `available_at` (z. B. Periode 0001-01 oder 9999-12) | nicht datierbar: Payload `NOT_READY` |
@@ -181,4 +182,8 @@ oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging 
 - Die Holdout-Sperre für externe Daten sitzt in `run_replay`. Direkte Abfragen an
   `PointInTimeStore` sind nicht gesperrt; Forschungsläufe gehen über `run_replay`.
 - Nur Monatsreihen; nur eine Quelle.
+- Erwartungswerte (`Expectation`) sind nur auf Endlichkeit geprüft, nicht auf
+  Betrag oder Stellenzahl: ein extremer Wert (z. B. `1e1000000`) lässt
+  `with_expectation` mit `decimal.Overflow` abbrechen, es wird dann keine
+  Erwartung angehängt (Kandidat für V1.1).
 - Kein Live-Abruf in Tests; der echte Abruf ist nicht Teil der CI.

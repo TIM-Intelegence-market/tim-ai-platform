@@ -30,6 +30,8 @@
   instead of crashing ingestion or event arithmetic. The dataset
   id also covers state, visible quality findings, an archive end before replay
   time, missing first prints and, for unusable payloads, the payload hashes.
+- A release calendar whose release_id is not exactly the integer of the source
+  (e.g. 10.9, 1e309, "10") makes the payload NOT_READY.
 - The raw payload store keeps one manifest entry per bundle and writes every
   file atomically, so concurrent or interrupted saves keep earlier bundles.
 - No forecasts, signals, orders or production-database access.
