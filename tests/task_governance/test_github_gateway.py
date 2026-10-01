@@ -478,8 +478,51 @@ def test_old_missing_numbers_are_read_once_and_remembered(rest, gw):
     for number in range(1, 121):
         if number not in (3, 4):
             rest.seed(number)
+    rest.fail[('GET', r'/issues/[34]$')] = 410     # deleted for good (a 404 would not be remembered)
     gw.find_issues('x' * 64, '')
     first = [c[1] for c in rest.calls if c[1].endswith(('/issues/3', '/issues/4'))]
     gw.find_issues('x' * 64, '')
     second = [c[1] for c in rest.calls if c[1].endswith(('/issues/3', '/issues/4'))]
     assert len(first) == 2 and second == first     # old gaps (more than 50 below the top) are not asked again
+
+
+def test_a_404_on_an_old_gap_is_never_remembered(rest, gw):
+    fp = req().fingerprint
+    for number in range(1, 101):
+        rest.seed(number, fingerprint_marker(fp) if number == 40 else '', pr=number > 40)
+    rest.unlisted = {40}
+    rest.fail[('GET', r'/issues/40$')] = 404       # one lying 404 while the issue is still hidden by the listing
+    assert gw.find_issues(fp, '') == []
+    del rest.fail[('GET', r'/issues/40$')]
+    assert [i.number for i in gw.find_issues(fp, '')] == [40]      # asked again, not cached as gone
+
+
+def test_the_post_create_check_is_not_cut_short_by_the_read_limit(rest, gw, tmp_path):
+    for number in range(1, 101):
+        rest.seed(number)
+    rest.next_number, rest.lag_listing = 699, True
+    for number in range(101, 700):
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    result = ensure_task(req(), TaskRegistry(str(tmp_path / 'a.db')), gw, claimant='w', trusted_authors=None)
+    assert result.outcome is EnsureOutcome.CREATED and result.issue_number == 700    # reached its own number, mapped, no error
+    assert len([c for c in rest.calls if c[0] == 'POST']) == 1
+
+
+def test_a_lookup_that_hits_the_read_limit_fails_before_anything_is_created(rest, gw, tmp_path):
+    for number in (1, 700):
+        rest.seed(number)                          # 698 numbers in between are missing (404): too many to read
+    with pytest.raises(GitHubError, match='refusing to guess'):
+        ensure_task(req(), TaskRegistry(str(tmp_path / 'a.db')), gw, claimant='w', trusted_authors=None)
+    assert rest.writes() == [] and len(rest.issues) == 2
+
+
+def test_gateway_state_survives_threads_sharing_it(rest, gw):
+    import threading
+    for number in range(1, 30):
+        rest.seed(number)
+    threads = [threading.Thread(target=gw.find_issues, args=('x' * 64, '')) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert gw._top == 29

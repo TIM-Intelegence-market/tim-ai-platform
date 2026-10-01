@@ -34,10 +34,11 @@ BODY_BEGIN = '<!-- TIM_TASK_BODY_BEGIN -->'
 BODY_END = '<!-- TIM_TASK_BODY_END -->'
 _MANAGED = re.compile(re.escape(BODY_BEGIN) + r'.*?' + re.escape(BODY_END), re.DOTALL)
 PAGE_SIZE = 100
-PROBE_WINDOW = 50       # the newest listed numbers are always re-read; older gaps that do not exist are remembered
+PROBE_WINDOW = 50       # the newest listed numbers are always re-read; older gaps that are gone for good are remembered
 PROBE_MISSES = 3        # numbers above the highest one are read until this many in a row do not exist
 PROBE_LIMIT = 500       # more direct reads than this in one lookup raise instead of guessing
-_NOT_AN_ISSUE = (301, 307, 308, 404, 410)   # deleted or transferred numbers: not an issue of this repository
+_GONE = (301, 307, 308, 410)                # deleted or transferred for good: may be remembered
+_NOT_AN_ISSUE = _GONE + (404,)              # none of these is an issue of this repository; a 404 is never remembered
 API = 'https://api.github.com'
 
 
@@ -132,8 +133,9 @@ class GitHubRestGateway:
         self.max_create_seconds = float(max_create_seconds)
         self._token, self._timeout, self._max_pages = token, float(request_timeout), max_pages
         self._transport, self._api = transport, api.rstrip('/')
+        self._lock = threading.Lock()
         self._top = 0           # highest issue number this gateway has seen or created: lookups never stop below it
-        self._absent = set()    # old numbers confirmed missing (deleted or transferred)
+        self._gone = set()      # old numbers answered with 410/301/307/308 (deleted or transferred); a 404 is never remembered
 
     def __repr__(self):
         return f'GitHubRestGateway({self.repository!r})'
@@ -216,31 +218,36 @@ class GitHubRestGateway:
         listed = list(self._pages(f'/repos/{self.repository}/issues?state=all'))
         items = {self._ref(item).number: item for item in listed}
         top, reads = max(items, default=0), 0
+        with self._lock:
+            known_top, gone = self._top, set(self._gone)
         for number in range(1, top):                # gaps: deleted or transferred, or hidden by the lagging listing
-            if number in items or number in self._absent:
+            if number in items or number in gone:
                 continue
             reads += 1
-            if reads > PROBE_LIMIT:
+            if reads > PROBE_LIMIT:                 # before any create: nothing has been written yet
                 raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers below #{top}, refusing to guess')
-            if not self._probe(items, number) and number <= top - PROBE_WINDOW:
-                self._absent.add(number)
-        misses, number, floor = 0, top, max(top, self._top)
+            status = self._probe(items, number)
+            if status in _GONE and number <= top - PROBE_WINDOW:
+                with self._lock:
+                    self._gone.add(number)
+        misses, number, floor = 0, top, max(top, known_top)
         while misses < PROBE_MISSES or number < floor:      # above the listing's highest: fresh issues it does not show yet
             number += 1
-            reads += 1
-            if reads > PROBE_LIMIT:
-                raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers, refusing to guess')
-            misses = 0 if self._probe(items, number) else misses + 1
-        self._top = max(self._top, max(items, default=0))
+            if number > floor:                      # numbers up to the highest known one are owed and bounded: no limit
+                reads += 1
+                if reads > PROBE_LIMIT:
+                    raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers, refusing to guess')
+            misses = 0 if self._probe(items, number) == 200 else misses + 1
+        with self._lock:
+            self._top = max(self._top, max(items, default=0))
         return [self._ref(item) for item in items.values() if marker in (item.get('body') or '')]
 
     def _probe(self, items, number):
         status, item = self._call('GET', f'/repos/{self.repository}/issues/{number}', absent=_NOT_AN_ISSUE)
-        if status != 200:
-            return False
-        self._ref(item, number)
-        items[number] = item
-        return True
+        if status == 200:
+            self._ref(item, number)
+            items[number] = item
+        return status
 
     def get_issue(self, number):
         item = self._issue(number)
@@ -254,7 +261,8 @@ class GitHubRestGateway:
         except _NotSent:
             raise CreateNotSent('connection could not be opened') from None
         ref = self._ref(item)
-        self._top = max(self._top, ref.number)      # the next lookup reads every number up to this one, however the listing lags
+        with self._lock:
+            self._top = max(self._top, ref.number)  # the next lookup reads every number up to this one, however the listing lags
         return ref
 
     def update_issue(self, number, request: TaskRequest, reason):
