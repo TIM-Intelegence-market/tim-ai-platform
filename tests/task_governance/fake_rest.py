@@ -16,6 +16,7 @@ class FakeRest:
         self.login = 'owner'             # the account behind the token (GET /user)
         self.lag_listing = False         # new issues are missing from the listing until release_listing(), single reads see them
         self.unlisted = set()
+        self.create_reply_body = None    # when set, the create answer carries this body instead of the stored one
 
     def seed(self, number, body='', state='open', login='owner', pr=False):
         item = {'number': number, 'state': state, 'title': f'issue {number}', 'body': body, 'user': {'login': login},
@@ -58,7 +59,10 @@ class FakeRest:
                 if self.lose_create_reply:
                     self.fail[('GET', r'/issues$')] = 503     # and GitHub stops answering listings afterwards
                     raise TimeoutError('reply lost')
-                return 201, json.dumps(self.issues[number]).encode()
+                answer = dict(self.issues[number])
+                if self.create_reply_body is not None:
+                    answer['body'] = self.create_reply_body
+                return 201, json.dumps(answer).encode()
         m = re.fullmatch(re.escape(base) + r'/(\d+)', path)
         if m:
             number = self.alias.get(int(m.group(1)), int(m.group(1))) if method == 'GET' else int(m.group(1))

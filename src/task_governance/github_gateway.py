@@ -26,6 +26,7 @@ import json
 import re
 import socket
 import threading
+import time
 
 from .identity import TaskRequest, fingerprint_marker
 from .sync import CreateNotSent, IssueRef
@@ -37,9 +38,10 @@ PAGE_SIZE = 100
 PROBE_WINDOW = 50       # the newest listed numbers are always re-read; older gaps that are gone for good are remembered
 PROBE_MISSES = 3        # numbers above the highest one are read until this many in a row do not exist
 PROBE_LIMIT = 500       # more direct reads than this in one lookup raise instead of guessing
-OWED_LIMIT = 2000       # numbers up to the highest known one are owed; an answer further above than this is not trusted
-_GONE = (301, 307, 308, 410)                # deleted or transferred for good: may be remembered
-_NOT_AN_ISSUE = _GONE + (404,)              # none of these is an issue of this repository; a 404 is never remembered
+OWED_LIMIT = 2000       # numbers up to the highest known one are owed and may be read this many times per lookup; a create
+                        # answer further above the highest known number is used for the mapping but never raises the floor
+CONFIRM_SECONDS = 120.0 # a missing old number is remembered when a second answer this much later agrees with the first
+_NOT_AN_ISSUE = (301, 307, 308, 404, 410)   # deleted, transferred or not an issue (a discussion shares the numbers)
 API = 'https://api.github.com'
 
 
@@ -125,7 +127,7 @@ def _http_transport(method, url, headers, body, timeout):
 
 class GitHubRestGateway:
     def __init__(self, repository: str, token: str, *, max_create_seconds: float = 20.0, request_timeout: float = 20.0,
-                 max_pages: int = 50, transport=_http_transport, api: str = API):
+                 max_pages: int = 50, transport=_http_transport, api: str = API, clock=time.monotonic):
         if not re.fullmatch(r'[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+', repository or ''):
             raise ValueError('repository must look like owner/name')
         if not token:
@@ -136,8 +138,10 @@ class GitHubRestGateway:
         self._transport, self._api = transport, api.rstrip('/')
         self._lock = threading.Lock()
         self._top = 0           # highest issue number this gateway has seen or created: lookups never stop below it
-        self._gone = set()      # old numbers answered twice with 410/301/307/308 (deleted or transferred); a 404 is never remembered
-        self._gone_once = set()
+        self._clock = clock
+        self._gone = set()      # old numbers (404, 410, redirect) that two answers at least CONFIRM_SECONDS apart called missing
+        self._gone_first = {}   # old number -> time of its first "missing" answer
+        self._created = {}      # numbers this gateway created -> the fingerprint they carry: not read again for other fingerprints
 
     def __repr__(self):
         return f'GitHubRestGateway({self.repository!r})'
@@ -229,16 +233,25 @@ class GitHubRestGateway:
             if reads > PROBE_LIMIT:                 # before any create: nothing has been written yet
                 raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers below #{top}, refusing to guess')
             status = self._probe(items, number)
-            if status in _GONE and number <= top - PROBE_WINDOW:
-                with self._lock:                    # one wrong answer must not hide an issue for good: remember on the second
-                    (self._gone if number in self._gone_once else self._gone_once).add(number)
-        misses, number, floor = 0, top, max(top, known_top)
+            if status in _NOT_AN_ISSUE and number <= top - PROBE_WINDOW:
+                self._note_missing(number)
+            elif status == 200:
+                with self._lock:
+                    self._gone_first.pop(number, None)     # it exists after all: an earlier "missing" answer was wrong
+        misses, number, floor, owed = 0, top, max(top, known_top), 0
         while misses < PROBE_MISSES or number < floor:      # above the listing's highest: fresh issues it does not show yet
             number += 1
-            if number > floor:                      # numbers up to the highest known one are owed (bounded by OWED_LIMIT)
+            if number > floor:
                 reads += 1
                 if reads > PROBE_LIMIT:
                     raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers, refusing to guess')
+            else:                                   # owed: up to the highest known number, bounded by OWED_LIMIT
+                owed += 1
+                if owed > OWED_LIMIT:
+                    raise GitHubError(f'more than {OWED_LIMIT} issue numbers between the listing and #{floor}, refusing to guess')
+                if self._created.get(number, fingerprint) != fingerprint:
+                    misses = 0                      # our own issue for another task: it exists and cannot be this one
+                    continue
             misses = 0 if self._probe(items, number) == 200 else misses + 1
         with self._lock:
             self._top = max(self._top, max(items, default=0))
@@ -249,7 +262,17 @@ class GitHubRestGateway:
         if status == 200:
             self._ref(item, number)
             items[number] = item
+        elif status < 300:
+            raise GitHubError(f'GET issue #{number}: unexpected HTTP {status}')
         return status
+
+    def _note_missing(self, number):
+        """Remember an old missing number only when two answers far enough apart agree, so no single wrong answer hides an issue."""
+        now = self._clock()
+        with self._lock:
+            first = self._gone_first.setdefault(number, now)
+            if now - first >= CONFIRM_SECONDS:
+                self._gone.add(number)
 
     def get_issue(self, number):
         item = self._issue(number)
@@ -263,10 +286,12 @@ class GitHubRestGateway:
         except _NotSent:
             raise CreateNotSent('connection could not be opened') from None
         ref = self._ref(item)
+        if fingerprint_marker(fingerprint) not in (item.get('body') or ''):
+            raise GitHubError(f'create answered with issue #{ref.number}, which does not carry the marker')
         with self._lock:
-            if ref.number > self._top + OWED_LIMIT:
-                raise GitHubError(f'create answered with issue #{ref.number}, far above the highest known #{self._top}: not trusted')
-            self._top = max(self._top, ref.number)  # the next lookup reads every number up to this one, however the listing lags
+            self._created[ref.number] = fingerprint
+            if ref.number <= self._top + OWED_LIMIT:    # an answer far above anything known maps, but must not make lookups walk to it
+                self._top = max(self._top, ref.number)  # the next lookup reads every number up to this one, however the listing lags
         return ref
 
     def update_issue(self, number, request: TaskRequest, reason):

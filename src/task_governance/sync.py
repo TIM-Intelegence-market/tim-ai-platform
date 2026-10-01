@@ -226,6 +226,10 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         after = {m.number for m in _matches(gateway, fp, key, trusted_authors)} | {issue.number}
     except UnknownIssueKind as unknown:
         return _blocked_unknown(registry, fp, token, unknown, created=True, issue_number=issue.number)
+    except Exception as exc:                         # the issue exists: never leave without mapping it, or the next run creates another
+        registry.record_incident(fp, 'POST_CREATE_CHECK_FAILED',
+                                 f'created #{issue.number}; the duplicate check failed ({type(exc).__name__}: {exc})')
+        after = {issue.number}
     if len(after) > 1:
         blocked = registry.block(fp, 'DUPLICATE_AFTER_CREATE', f'matches={sorted(after)}', token=token,
                                  candidates=sorted(after))

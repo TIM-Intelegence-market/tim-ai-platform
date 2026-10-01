@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from src.task_governance import (CreateNotSent, EnsureOutcome, GitHubError, GitHubRestGateway, MappingState, TaskRegistry,
@@ -474,28 +476,46 @@ def test_a_marker_issue_far_below_the_highest_listed_number_is_still_found(rest,
     assert [i.number for i in gw.find_issues(fp, '')] == [40]
 
 
-def test_old_missing_numbers_are_read_once_and_remembered(rest, gw):
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.mark.parametrize('status', [404, 410, 301])
+def test_old_missing_numbers_are_remembered_only_after_two_answers_far_apart(rest, status):
+    clock = Clock()
+    gw = GitHubRestGateway('owner/repo', TOKEN, transport=rest, clock=clock)
     for number in range(1, 121):
         if number not in (3, 4):
             rest.seed(number)
-    rest.fail[('GET', r'/issues/[34]$')] = 410     # deleted for good (a 404 would not be remembered)
+    rest.fail[('GET', r'/issues/[34]$')] = status
     count = lambda: len([c for c in rest.calls if c[1].endswith(('/issues/3', '/issues/4'))])
     gw.find_issues('x' * 64, '')
+    gw.find_issues('x' * 64, '')                  # a second answer right away does not count: still asked every time
+    assert count() == 4
+    clock.now += 121
+    gw.find_issues('x' * 64, '')                  # the second answer, far enough apart: remembered from now on
+    assert count() == 6
     gw.find_issues('x' * 64, '')
-    asked = count()
-    gw.find_issues('x' * 64, '')
-    assert asked == 4 and count() == asked         # remembered after the second 410: old gaps are not asked a third time
+    assert count() == 6
 
 
-def test_a_404_on_an_old_gap_is_never_remembered(rest, gw):
+def test_a_single_wrong_answer_never_hides_an_old_issue_for_good(rest):
+    clock = Clock()
+    gw = GitHubRestGateway('owner/repo', TOKEN, transport=rest, clock=clock)
     fp = req().fingerprint
     for number in range(1, 101):
         rest.seed(number, fingerprint_marker(fp) if number == 40 else '', pr=number > 40)
     rest.unlisted = {40}
-    rest.fail[('GET', r'/issues/40$')] = 404       # one lying 404 while the issue is still hidden by the listing
-    assert gw.find_issues(fp, '') == []
-    del rest.fail[('GET', r'/issues/40$')]
-    assert [i.number for i in gw.find_issues(fp, '')] == [40]      # asked again, not cached as gone
+    for status in (404, 410):
+        rest.fail[('GET', r'/issues/40$')] = status       # one wrong answer while the issue is still hidden by the listing
+        assert gw.find_issues(fp, '') == []
+        del rest.fail[('GET', r'/issues/40$')]
+        assert [i.number for i in gw.find_issues(fp, '')] == [40]
+        clock.now += 1000                                  # even much later, a good answer in between resets nothing harmful
 
 
 def test_the_post_create_check_is_not_cut_short_by_the_read_limit(rest, gw, tmp_path):
@@ -517,19 +537,49 @@ def test_a_lookup_that_hits_the_read_limit_fails_before_anything_is_created(rest
     assert rest.writes() == [] and len(rest.issues) == 2
 
 
-def test_a_single_wrong_410_never_hides_an_old_issue_for_good(rest, gw):
-    fp = req().fingerprint
-    for number in range(1, 101):
-        rest.seed(number, fingerprint_marker(fp) if number == 40 else '', pr=number > 40)
-    rest.unlisted = {40}
-    rest.fail[('GET', r'/issues/40$')] = 410       # one transient wrong answer
-    assert gw.find_issues(fp, '') == []
-    del rest.fail[('GET', r'/issues/40$')]
-    assert [i.number for i in gw.find_issues(fp, '')] == [40]
+def test_an_implausible_issue_number_in_the_create_answer_maps_but_never_makes_lookups_walk_to_it(rest, gw):
+    rest.next_number, rest.lag_listing = 999_999_999, True
+    ref = gw.create_issue(req(), req().fingerprint, timeout=5)
+    assert ref.number == 1_000_000_000 and gw._top == 0
+    gw.find_issues('x' * 64, '')
+    assert len(rest.calls) < 12                    # a few reads, not a walk of a billion numbers
 
 
-def test_an_implausible_issue_number_in_the_create_answer_is_not_trusted_or_followed(rest, gw, tmp_path):
-    rest.next_number = 999_999_999
-    with pytest.raises(GitHubError, match='not trusted'):
+def test_a_create_answer_without_the_marker_is_refused(rest, gw):
+    rest.create_reply_body = 'someone else'
+    with pytest.raises(GitHubError, match='marker'):
         gw.create_issue(req(), req().fingerprint, timeout=5)
-    assert gw._top == 0 and len(rest.calls) == 1   # no walk of a billion numbers, and the poisoned number is not kept
+
+
+def test_a_failing_post_create_check_maps_the_issue_and_records_an_incident(rest, gw, tmp_path):
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    real = gw.find_issues
+    calls = []
+
+    def flaky(fingerprint, key):
+        calls.append(1)
+        if len(calls) > 1:                         # the lookup before the create works, the check after it does not
+            raise GitHubError('GET /repos/owner/repo/issues: HTTP 429')
+        return real(fingerprint, key)
+    gw.find_issues = flaky
+    first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    again = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.CREATED and first.issue_number == 1 and again.issue_number == 1
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
+def test_a_batch_of_creates_does_not_reread_its_own_issues_for_other_tasks(rest, gw, tmp_path):
+    rest.lag_listing = True
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    for index in range(40):
+        ensure_task(req(target=f'T{index}'), reg, gw, claimant='w', trusted_authors=None)
+    gets = len([c for c in rest.calls if c[0] == 'GET' and re.search(r'/issues/\d+$', c[1])])
+    assert gets < 40 * 10                           # linear, not quadratic (a full re-read would be about 40 * 40)
+
+
+def test_an_answer_other_than_200_on_a_direct_read_is_an_error(rest, gw):
+    rest.seed(1)
+    rest.seed(3)
+    rest.fail[('GET', r'/issues/2$')] = 202
+    with pytest.raises(GitHubError, match='unexpected HTTP 202'):
+        gw.find_issues('x' * 64, '')
