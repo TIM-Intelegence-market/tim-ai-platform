@@ -1,0 +1,13 @@
+// Lets the service user "tim" start, stop and restart tim-runtime.service (and nothing else),
+// so scripts/timctl and the watchdog can control the runtime without sudo.
+// Install to /etc/polkit-1/rules.d/50-tim-runtime.rules
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "tim-runtime.service" &&
+        subject.user == "tim") {
+        var verb = action.lookup("verb");
+        if (verb == "start" || verb == "stop" || verb == "restart") {
+            return polkit.Result.YES;
+        }
+    }
+});

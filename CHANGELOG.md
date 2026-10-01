@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — TIM on a Debian server (systemd)
+
+- Added `ops/systemd/`: systemd counterparts of the launchd runtime, watchdog,
+  candle finalizer, rolling liveness, maintenance and coverage worker, a polkit
+  rule that lets the `tim` user control only `tim-runtime.service`, and
+  `tim.env.example` (file secret provider, no secret values). Install steps in
+  `ops/systemd/README.md`.
+- `scripts/timctl` uses `systemctl` and `ss` on Linux and keeps launchd and
+  netstat on macOS. All start/stop gates are unchanged; `status` and
+  `safe-stop` report `service_manager`.
+
 ## Unreleased — Broncx Discord feed as external guidance
 
 - Added `src/knowledge/broncx_feed.py` (post store and guidance parser) and
