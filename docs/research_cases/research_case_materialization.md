@@ -23,7 +23,10 @@ Stand 2026-10-01, Builder `research-case-builder/1.0.0`.
 
 Observations, Candles und Raw-Daten werden nie geschrieben. Das Skript nimmt
 vor und nach dem Lauf einen Fingerabdruck (Anzahl + md5 über ID, Input-Hash,
-Typ, Zeit) der Observations und bricht mit Exit 2 ab, wenn er sich ändert.
+Typ, Zeit) der Observations, die beim Start schon existierten (`created_at` bis
+Laufbeginn), und bricht mit Exit 2 ab, wenn er sich ändert. Neue Observations,
+die die laufende Runtime währenddessen anhängt, lösen den Abbruch nicht aus;
+geänderte oder gelöschte Bestandszeilen weiterhin.
 
 ## Ablauf
 

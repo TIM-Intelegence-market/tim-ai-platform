@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import importlib.util
 import os
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -73,6 +75,16 @@ async def test_materialization_against_isolated_database_is_idempotent_and_read_
         assert again.manifest()["manifest_hash"] == result.manifest()["manifest_hash"]
         assert all(case.status != "CONFIRMED" for case in persisted)
         assert all(case.missing_evidence for case in persisted)
+
+        # The live runtime keeps appending: a row created after the cutoff must not trip the check.
+        cutoff = datetime.now(timezone.utc)
+        pinned = await repo.observations_fingerprint(SYMBOL, cutoff)
+        assert pinned == before
+        template = (await repo.observations_until(SYMBOL, as_of))[0]
+        async with db.acquire() as con:  # raw insert: a late runtime row, even one observed inside the window
+            await repo._insert_observation(con, replace(template, observation_id=uuid4(), created_at=datetime.now(timezone.utc)))
+        assert await repo.observations_fingerprint(SYMBOL, cutoff) == pinned
+        assert (await repo.observations_fingerprint(SYMBOL))["observations"] == before["observations"] + 1
     finally:
         async with db.acquire() as con:
             for table in ("research_cases", "observations", "candles"):

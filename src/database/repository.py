@@ -247,10 +247,11 @@ class MarketRepository:
             rows=await con.fetch("SELECT * FROM observations WHERE symbol=$1 AND observed_at<=$2 ORDER BY observed_at,observation_id",symbol,as_of)
         return [_observation_from_row(row) for row in rows]
 
-    async def observations_fingerprint(self,symbol:str)->dict:
-        """Count and content hash of persisted observations; proves the materialization left them untouched."""
+    async def observations_fingerprint(self,symbol:str,created_until:datetime|None=None)->dict:
+        """Count and content hash of persisted observations; proves the materialization left them untouched.
+        ``created_until`` limits the check to rows that already existed, so the live runtime may keep appending."""
         async with self.database.acquire() as con:
-            row=await con.fetchrow("SELECT count(*) AS n, coalesce(md5(string_agg(observation_id::text||':'||input_hash||':'||kind||':'||observed_at::text, ',' ORDER BY observation_id)),'') AS digest FROM observations WHERE symbol=$1",symbol)
+            row=await con.fetchrow("SELECT count(*) AS n, coalesce(md5(string_agg(observation_id::text||':'||input_hash||':'||kind||':'||observed_at::text, ',' ORDER BY observation_id)),'') AS digest FROM observations WHERE symbol=$1 AND ($2::timestamptz IS NULL OR created_at<=$2)",symbol,created_until)
         return {"observations":int(row["n"]),"digest":str(row["digest"])}
 
     async def observation_research_cases(self,symbol:str)->list[ResearchCase]:
