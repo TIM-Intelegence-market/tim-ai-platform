@@ -2,7 +2,11 @@
 
 Contract kept on purpose:
 - `find_issues` lists issues by REST (never the lagging search index) and filters by the fingerprint marker;
-  more issues than the page cap allows raise instead of guessing.
+  more issues than the page cap allows raise instead of guessing. The listing itself lags behind the newest
+  issues (seen live: an issue created a moment earlier was missing), so every number the listing leaves out
+  below its highest entry, and everything above it, is also read one by one (consistent right after a create).
+  Above the highest entry the reads stop after PROBE_MISSES missing numbers in a row, but never below the highest
+  number this gateway has created or seen, so the post-create check always reaches the issue it just made.
 - `get_issue` returns None only for a confirmed 404. Rate limits, permission errors, 5xx and network
   errors raise `GitHubError`, so a transient failure never looks like "does not exist".
 - `create_issue` enforces `timeout` as a wall-clock limit on the whole request (a server that drips bytes
@@ -22,6 +26,7 @@ import json
 import re
 import socket
 import threading
+import time
 
 from .identity import TaskRequest, fingerprint_marker
 from .sync import CreateNotSent, IssueRef
@@ -30,6 +35,14 @@ BODY_BEGIN = '<!-- TIM_TASK_BODY_BEGIN -->'
 BODY_END = '<!-- TIM_TASK_BODY_END -->'
 _MANAGED = re.compile(re.escape(BODY_BEGIN) + r'.*?' + re.escape(BODY_END), re.DOTALL)
 PAGE_SIZE = 100
+PROBE_WINDOW = 50       # the newest listed numbers are always re-read; older gaps that are gone for good are remembered
+PROBE_MISSES = 3        # numbers above the highest one are read until this many in a row do not exist
+PROBE_LIMIT = 500       # more direct reads than this in one lookup raise instead of guessing
+OWED_LIMIT = 2000       # numbers up to the highest known one are owed and may be read this many times per lookup; a create
+                        # answer further above the highest known number is used for the mapping but never raises the floor
+CONFIRM_SECONDS = 120.0 # a missing old number is remembered when a second answer this much later agrees with the first
+GONE_TTL = 3600.0       # a remembered number is read again after this long (two wrong answers must not hide an issue for good)
+_NOT_AN_ISSUE = (301, 307, 308, 404, 410)   # deleted, transferred or not an issue (a discussion shares the numbers)
 API = 'https://api.github.com'
 
 
@@ -115,7 +128,7 @@ def _http_transport(method, url, headers, body, timeout):
 
 class GitHubRestGateway:
     def __init__(self, repository: str, token: str, *, max_create_seconds: float = 20.0, request_timeout: float = 20.0,
-                 max_pages: int = 50, transport=_http_transport, api: str = API):
+                 max_pages: int = 50, transport=_http_transport, api: str = API, clock=time.monotonic):
         if not re.fullmatch(r'[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+', repository or ''):
             raise ValueError('repository must look like owner/name')
         if not token:
@@ -124,12 +137,18 @@ class GitHubRestGateway:
         self.max_create_seconds = float(max_create_seconds)
         self._token, self._timeout, self._max_pages = token, float(request_timeout), max_pages
         self._transport, self._api = transport, api.rstrip('/')
+        self._lock = threading.Lock()
+        self._top = 0           # highest issue number this gateway has seen or created: lookups never stop below it
+        self._clock = clock
+        self._gone = {}         # old numbers (404, 410, redirect) that two answers at least CONFIRM_SECONDS apart called missing -> when
+        self._gone_first = {}   # old number -> time of its first "missing" answer
+        self._created = {}      # numbers this gateway created -> the fingerprint they carry: not read again for other fingerprints
 
     def __repr__(self):
         return f'GitHubRestGateway({self.repository!r})'
 
     # -- plumbing ----------------------------------------------------------
-    def _call(self, method, path, payload=None, *, timeout=None, create=False):
+    def _call(self, method, path, payload=None, *, timeout=None, create=False, absent=()):
         headers = {'Accept': 'application/vnd.github+json', 'Authorization': f'Bearer {self._token}',
                    'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'tim-task-governance'}
         body = None
@@ -150,8 +169,8 @@ class GitHubRestGateway:
         if failure is not None:
             raise GitHubError(failure)          # raised outside the except block: no __context__ keeps the original
         if status >= 300:
-            if status == 404 and method == 'GET':
-                return 404, None
+            if (status == 404 and method == 'GET') or status in absent:
+                return status, None
             raise GitHubError(f'{method} {path}: HTTP {status}')      # includes 3xx: redirects are never followed
         try:
             return status, (json.loads(raw.decode('utf-8')) if raw else None)
@@ -203,8 +222,67 @@ class GitHubRestGateway:
     # -- IssueGateway ------------------------------------------------------
     def find_issues(self, fingerprint, canonical_key):
         marker = fingerprint_marker(fingerprint)
-        return [self._ref(item) for item in self._pages(f'/repos/{self.repository}/issues?state=all')
-                if marker in (item.get('body') or '')]
+        listed = list(self._pages(f'/repos/{self.repository}/issues?state=all'))
+        items = {self._ref(item).number: item for item in listed}
+        top, reads = max(items, default=0), 0
+        now = self._clock()
+        with self._lock:
+            for number in [n for n, since in self._gone.items() if now - since >= GONE_TTL]:
+                del self._gone[number]              # remembered long enough: ask again, and again require two answers
+                self._gone_first.pop(number, None)
+            known_top, gone = self._top, set(self._gone)
+        for number in range(1, top):                # gaps: deleted or transferred, or hidden by the lagging listing
+            if number in items or number in gone:
+                continue
+            reads += 1
+            if reads > PROBE_LIMIT:                 # before any create: nothing has been written yet
+                raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers below #{top}, refusing to guess')
+            status = self._probe(items, number)
+            if status in _NOT_AN_ISSUE and number <= top - PROBE_WINDOW:
+                self._note_missing(number)
+            elif status == 200:
+                with self._lock:
+                    self._gone_first.pop(number, None)     # it exists after all: an earlier "missing" answer was wrong
+        misses, number, floor, owed = 0, top, max(top, known_top), 0
+        while misses < PROBE_MISSES or number < floor:      # above the listing's highest: fresh issues it does not show yet
+            number += 1
+            if number > floor:
+                reads += 1
+                if reads > PROBE_LIMIT:
+                    raise GitHubError(f'more than {PROBE_LIMIT} unlisted issue numbers, refusing to guess')
+            else:                                   # owed: up to the highest known number, bounded by OWED_LIMIT
+                owed += 1
+                if owed > OWED_LIMIT:
+                    raise GitHubError(f'more than {OWED_LIMIT} issue numbers between the listing and #{floor}, refusing to guess')
+                if self._created.get(number, fingerprint) != fingerprint:
+                    misses = 0                      # our own issue for another task: it exists and cannot be this one
+                    continue
+            misses = 0 if self._probe(items, number) == 200 else misses + 1
+        with self._lock:
+            self._top = max(self._top, max(items, default=0))
+        return [self._ref(item) for item in items.values() if marker in (item.get('body') or '')]
+
+    def _probe(self, items, number):
+        status, item = self._call('GET', f'/repos/{self.repository}/issues/{number}', absent=_NOT_AN_ISSUE)
+        if status == 200:
+            self._ref(item, number)
+            items[number] = item
+        elif status < 300:
+            raise GitHubError(f'GET issue #{number}: unexpected HTTP {status}')
+        return status
+
+    def _note_missing(self, number):
+        """Remember an old missing number only when two answers far enough apart agree, so no single wrong answer hides an issue."""
+        now = self._clock()
+        with self._lock:
+            first = self._gone_first.setdefault(number, now)
+            if now - first >= CONFIRM_SECONDS:
+                self._gone[number] = now
+
+    def carries_marker(self, number, fingerprint):
+        """True when the issue exists and its body still carries the task's marker."""
+        item = self._issue(number)
+        return item is not None and fingerprint_marker(fingerprint) in (item.get('body') or '')
 
     def get_issue(self, number):
         item = self._issue(number)
@@ -217,7 +295,12 @@ class GitHubRestGateway:
                                  timeout=timeout, create=True)
         except _NotSent:
             raise CreateNotSent('connection could not be opened') from None
-        return self._ref(item)
+        ref = self._ref(item)
+        with self._lock:
+            self._created[ref.number] = fingerprint
+            if ref.number <= self._top + OWED_LIMIT:    # an answer far above anything known maps, but must not make lookups walk to it
+                self._top = max(self._top, ref.number)  # the next lookup reads every number up to this one, however the listing lags
+        return ref
 
     def update_issue(self, number, request: TaskRequest, reason):
         item = self._issue(number)

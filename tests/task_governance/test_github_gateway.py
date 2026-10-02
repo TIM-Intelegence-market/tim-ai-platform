@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from src.task_governance import (CreateNotSent, EnsureOutcome, GitHubError, GitHubRestGateway, MappingState, TaskRegistry,
@@ -398,3 +400,321 @@ def test_an_unusable_issue_number_in_an_answer_is_a_github_error(rest):
     gateway = GitHubRestGateway('owner/repo', TOKEN, transport=lambda *a: (200, b'{"number": "x"}'))
     with pytest.raises(GitHubError):
         gateway.get_issue(1)
+
+
+# -- the listing lags behind new issues (seen live against github.com) ---------------------------------------------
+
+def test_a_lagging_listing_still_finds_the_issue_that_was_just_created(rest, gw, tmp_path):
+    rest.next_number, rest.lag_listing = 0, True    # numbers are sequential on GitHub: the first issue is #1
+    first = ensure_task(req(), TaskRegistry(str(tmp_path / 'a.db')), gw, claimant='w', trusted_authors=None)
+    lost = ensure_task(req(), TaskRegistry(str(tmp_path / 'b.db')), gw, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.CREATED and lost.outcome is EnsureOutcome.RECOVERED
+    assert len(rest.issues) == 1 and lost.issue_number == first.issue_number
+
+
+def test_find_issues_sees_lagging_issues_below_and_above_the_highest_listed(rest, gw):
+    fp = req().fingerprint
+    for number in (1, 2, 3):
+        rest.seed(number)
+    rest.seed(4, fingerprint_marker(fp))          # below the highest listed number
+    rest.seed(5)
+    rest.seed(6, fingerprint_marker(fp))          # above it
+    rest.unlisted = {4, 6}
+    assert [i.number for i in gw.find_issues(fp, '')] == [4, 6]
+
+
+def test_deleted_and_transferred_numbers_are_not_errors(rest, gw):
+    rest.seed(1)
+    rest.seed(4)                                   # 2 and 3 are gaps: one gone (404), one transferred (301)
+    rest.fail[('GET', r'/issues/2$')] = 410
+    rest.fail[('GET', r'/issues/3$')] = 301
+    assert gw.find_issues('x' * 64, '') == []
+
+
+def test_a_server_error_while_reading_a_gap_is_not_read_as_absent(rest, gw):
+    rest.seed(1)
+    rest.seed(3)
+    rest.fail[('GET', r'/issues/2$')] = 503
+    with pytest.raises(GitHubError):
+        gw.find_issues('x' * 64, '')
+
+
+def test_an_empty_repository_costs_only_a_few_direct_reads(rest, gw):
+    assert gw.find_issues('x' * 64, '') == []
+    assert [c[1] for c in rest.calls if '/issues/' in c[1]] == [f'/repos/owner/repo/issues/{n}' for n in (1, 2, 3)]
+
+
+def test_a_long_run_of_unlisted_numbers_is_refused_instead_of_guessed(rest):
+    for number in range(1, 700):
+        rest.seed(number)
+    rest.unlisted = set(range(1, 700))
+    with pytest.raises(GitHubError, match='refusing to guess'):
+        GitHubRestGateway('owner/repo', TOKEN, transport=rest).find_issues('x' * 64, '')
+
+
+def test_the_post_create_check_reaches_the_new_issue_even_behind_three_missing_numbers(rest, gw, tmp_path):
+    rest.next_number, rest.lag_listing = 0, True
+    for number in range(1, 6):
+        rest.seed(number)
+    for number in (6, 7, 8):                       # deleted at the top: three misses in a row
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    rest.next_number = 8
+    first = ensure_task(req(), TaskRegistry(str(tmp_path / 'a.db')), gw, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.CREATED and first.issue_number == 9
+    # a second creator that was blind to #9 before its own create must see it afterwards: loud, not a silent duplicate
+    other = GitHubRestGateway('owner/repo', TOKEN, transport=rest)
+    again = ensure_task(req(), TaskRegistry(str(tmp_path / 'b.db')), other, claimant='w2', trusted_authors=None)
+    assert again.outcome is EnsureOutcome.BLOCKED and again.detail == 'DUPLICATE_AFTER_CREATE'
+    assert len(rest.issues) == 7                   # exactly one extra issue (#10); the check named both
+
+
+def test_a_marker_issue_far_below_the_highest_listed_number_is_still_found(rest, gw):
+    fp = req().fingerprint
+    for number in range(1, 101):
+        rest.seed(number, fingerprint_marker(fp) if number == 40 else '', pr=number > 40)
+    rest.unlisted = {40}                           # 60 pull requests landed after it while the listing lagged
+    assert [i.number for i in gw.find_issues(fp, '')] == [40]
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.mark.parametrize('status', [404, 410, 301])
+def test_old_missing_numbers_are_remembered_only_after_two_answers_far_apart(rest, status):
+    clock = Clock()
+    gw = GitHubRestGateway('owner/repo', TOKEN, transport=rest, clock=clock)
+    for number in range(1, 121):
+        if number not in (3, 4):
+            rest.seed(number)
+    rest.fail[('GET', r'/issues/[34]$')] = status
+    count = lambda: len([c for c in rest.calls if c[1].endswith(('/issues/3', '/issues/4'))])
+    gw.find_issues('x' * 64, '')
+    gw.find_issues('x' * 64, '')                  # a second answer right away does not count: still asked every time
+    assert count() == 4
+    clock.now += 121
+    gw.find_issues('x' * 64, '')                  # the second answer, far enough apart: remembered from now on
+    assert count() == 6
+    gw.find_issues('x' * 64, '')
+    assert count() == 6
+
+
+def test_a_single_wrong_answer_never_hides_an_old_issue_for_good(rest):
+    clock = Clock()
+    gw = GitHubRestGateway('owner/repo', TOKEN, transport=rest, clock=clock)
+    fp = req().fingerprint
+    for number in range(1, 101):
+        rest.seed(number, fingerprint_marker(fp) if number == 40 else '', pr=number > 40)
+    rest.unlisted = {40}
+    for status in (404, 410):
+        rest.fail[('GET', r'/issues/40$')] = status       # one wrong answer while the issue is still hidden by the listing
+        assert gw.find_issues(fp, '') == []
+        del rest.fail[('GET', r'/issues/40$')]
+        assert [i.number for i in gw.find_issues(fp, '')] == [40]
+        clock.now += 1000                                  # even much later, a good answer in between resets nothing harmful
+
+
+def test_the_post_create_check_is_not_cut_short_by_the_read_limit(rest, gw, tmp_path):
+    for number in range(1, 101):
+        rest.seed(number)
+    rest.next_number, rest.lag_listing = 699, True
+    for number in range(101, 700):
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    result = ensure_task(req(), TaskRegistry(str(tmp_path / 'a.db')), gw, claimant='w', trusted_authors=None)
+    assert result.outcome is EnsureOutcome.CREATED and result.issue_number == 700    # reached its own number, mapped, no error
+    assert len([c for c in rest.calls if c[0] == 'POST']) == 1
+
+
+def test_a_lookup_that_hits_the_read_limit_fails_before_anything_is_created(rest, gw, tmp_path):
+    for number in (1, 700):
+        rest.seed(number)                          # 698 numbers in between are missing (404): too many to read
+    with pytest.raises(GitHubError, match='refusing to guess'):
+        ensure_task(req(), TaskRegistry(str(tmp_path / 'a.db')), gw, claimant='w', trusted_authors=None)
+    assert rest.writes() == [] and len(rest.issues) == 2
+
+
+def test_an_implausible_issue_number_in_the_create_answer_maps_but_never_makes_lookups_walk_to_it(rest, gw):
+    rest.next_number, rest.lag_listing = 999_999_999, True
+    ref = gw.create_issue(req(), req().fingerprint, timeout=5)
+    assert ref.number == 1_000_000_000 and gw._top == 0
+    gw.find_issues('x' * 64, '')
+    assert len(rest.calls) < 12                    # a few reads, not a walk of a billion numbers
+
+
+def _failing_check_after_create(gw):
+    real, calls = gw.find_issues, []
+
+    def flaky(fingerprint, key):
+        calls.append(1)
+        if len(calls) == 2:                        # the lookup before the create works, the check after it does not
+            raise GitHubError('GET /repos/owner/repo/issues: HTTP 429')
+        return real(fingerprint, key)
+    gw.find_issues = flaky
+
+
+def test_a_failing_post_create_check_blocks_with_the_new_issue_and_the_next_run_adopts_it(rest, gw, tmp_path):
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.BLOCKED and first.detail == 'POST_CREATE_CHECK_FAILED' and first.issue_number == 1
+    assert first.mapping.block_candidates == (1,)
+    assert 'POST_CREATE_CHECK_FAILED' in [i['reason'] for i in reg.incidents(req().fingerprint)]
+    again = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    assert again.outcome in (EnsureOutcome.CREATED, EnsureOutcome.RECOVERED, EnsureOutcome.UPDATED) and again.issue_number == 1
+    assert again.mapping.state is MappingState.MAPPED
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
+def test_a_failing_post_create_check_with_a_hidden_older_marker_issue_blocks_instead_of_choosing(rest, gw, tmp_path):
+    rest.next_number, rest.lag_listing = 0, True
+    for number in range(1, 6):
+        rest.seed(number)
+    rest.seed(9, fingerprint_marker(req().fingerprint))      # an older issue of this task, hidden by the lag
+    rest.unlisted = {9}
+    for number in (6, 7, 8):
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    rest.next_number = 9
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.BLOCKED and first.issue_number == 10
+    again = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    assert again.outcome is EnsureOutcome.BLOCKED and again.mapping.block_candidates == (9, 10)    # nothing is chosen for the operator
+    assert rest.issues[9]['state'] == 'open' and rest.comments.get(9, []) == []                   # and nothing is changed or commented
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
+def test_the_re_check_adopts_the_created_issue_even_when_the_lookup_is_still_blind_to_it(rest, gw, tmp_path):
+    rest.next_number, rest.lag_listing = 0, True
+    for number in range(1, 6):
+        rest.seed(number)
+    for number in (6, 7, 8):                       # deleted numbers in front of the new issue: a lookup stops before #9
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    rest.next_number = 8
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    fresh = GitHubRestGateway('owner/repo', TOKEN, transport=rest)           # a new process: _top is 0, the listing hides #9
+    assert fresh.find_issues(req().fingerprint, '') == []
+    again = ensure_task(req(), reg, fresh, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.BLOCKED and first.issue_number == 9
+    assert again.mapping.state is MappingState.MAPPED and again.issue_number == 9
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
+def _blind_setup(rest):
+    rest.next_number, rest.lag_listing = 0, True
+    for number in range(1, 6):
+        rest.seed(number)
+    for number in (6, 7, 8):                       # deleted numbers in front of the new issue: a fresh lookup stops before #9
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    rest.next_number = 8
+
+
+def test_a_second_failing_re_check_keeps_the_context_and_the_third_run_still_does_not_create(rest, gw, tmp_path):
+    _blind_setup(rest)
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    rest.fail[('GET', r'/issues$')] = 503          # the re-check cannot list either
+    second = ensure_task(req(), reg, GitHubRestGateway('owner/repo', TOKEN, transport=rest), claimant='w', trusted_authors=None)
+    row = reg.get(req().fingerprint)
+    assert second.outcome is EnsureOutcome.BLOCKED and 're-check failed again' in second.detail
+    assert row.block_reason == 'POST_CREATE_CHECK_FAILED' and row.block_candidates == (9,)          # nothing was lost
+    del rest.fail[('GET', r'/issues$')]
+    third = ensure_task(req(), reg, GitHubRestGateway('owner/repo', TOKEN, transport=rest), claimant='w', trusted_authors=None)
+    assert first.issue_number == 9 and third.mapping.state is MappingState.MAPPED and third.issue_number == 9
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
+@pytest.mark.parametrize('spoil', ['deleted', 'pull_request', 'untrusted', 'unmarked'])
+def test_an_expected_issue_that_cannot_be_adopted_blocks_and_never_creates(rest, gw, tmp_path, spoil):
+    _blind_setup(rest)
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    ensure_task(req(), reg, gw, claimant='w', trusted_authors=['owner'])
+    issue = rest.issues[9]
+    if spoil == 'deleted':
+        del rest.issues[9]
+    elif spoil == 'pull_request':
+        issue['pull_request'] = {'url': 'x'}
+    elif spoil == 'untrusted':
+        issue['user'] = {'login': 'stranger'}
+    else:
+        issue['body'] = 'the marker was edited away'
+    again = ensure_task(req(), reg, gw, claimant='w', trusted_authors=['owner'])
+    assert again.outcome is EnsureOutcome.BLOCKED and again.detail == 'EXPECTED_ISSUE_INVALID'
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+    assert issue.get('body', '') != '' or spoil == 'deleted'                                          # and nothing was overwritten
+
+
+@pytest.mark.parametrize('reason', ['POST_CREATE_CHECK_FAILED', 'EXPECTED_ISSUE_INVALID'])
+def test_a_block_about_our_own_created_issue_cannot_be_released_without_a_hint(rest, gw, tmp_path, reason):
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    fp = req().fingerprint
+    won, mapping = reg.claim(fp, req().key, 'w', 300)
+    reg.block(fp, reason, 'created #9', token=mapping.claim_token, candidates=[9])
+    with pytest.raises(ValueError, match='hint'):
+        reg.unblock(fp, 'retry')
+    assert reg.get(fp).state is MappingState.BLOCKED and reg.get(fp).block_candidates == (9,)
+    assert reg.unblock(fp, 'operator checked #9', hint=9) is True
+
+
+def test_a_gateway_that_cannot_check_the_marker_never_adopts_the_expected_issue(rest, gw, tmp_path):
+    _blind_setup(rest)
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+
+    class NoMarkerCheck:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            if name == 'carries_marker':
+                raise AttributeError(name)
+            return getattr(self._inner, name)
+    again = ensure_task(req(), reg, NoMarkerCheck(GitHubRestGateway('owner/repo', TOKEN, transport=rest)), claimant='w',
+                        trusted_authors=None)
+    assert again.outcome is EnsureOutcome.BLOCKED and again.detail == 'EXPECTED_ISSUE_INVALID'
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
+def test_a_batch_of_creates_does_not_reread_its_own_issues_for_other_tasks(rest, gw, tmp_path):
+    rest.lag_listing = True
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    for index in range(40):
+        ensure_task(req(target=f'T{index}'), reg, gw, claimant='w', trusted_authors=None)
+    gets = len([c for c in rest.calls if c[0] == 'GET' and re.search(r'/issues/\d+$', c[1])])
+    assert gets < 40 * 10                           # linear, not quadratic (a full re-read would be about 40 * 40)
+
+
+def test_an_answer_other_than_200_on_a_direct_read_is_an_error(rest, gw):
+    rest.seed(1)
+    rest.seed(3)
+    rest.fail[('GET', r'/issues/2$')] = 202
+    with pytest.raises(GitHubError, match='unexpected HTTP 202'):
+        gw.find_issues('x' * 64, '')
+
+
+def test_a_remembered_missing_number_is_asked_again_after_an_hour(rest):
+    clock = Clock()
+    gw = GitHubRestGateway('owner/repo', TOKEN, transport=rest, clock=clock)
+    for number in range(1, 121):
+        if number != 3:
+            rest.seed(number)
+    rest.fail[('GET', r'/issues/3$')] = 410
+    count = lambda: len([c for c in rest.calls if c[1].endswith('/issues/3')])
+    gw.find_issues('x' * 64, '')
+    clock.now += 121
+    gw.find_issues('x' * 64, '')
+    assert count() == 2
+    gw.find_issues('x' * 64, '')
+    assert count() == 2                            # remembered
+    clock.now += 3600
+    gw.find_issues('x' * 64, '')
+    assert count() == 3                            # asked again after the time to live
