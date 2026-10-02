@@ -31,6 +31,22 @@ Pflicht: `type`, `status`, `updated` (JJJJ-MM-TT).
 `status` ist genau einer von: `planned`, `active`, `blocked`, `done`, `archived`.
 Entscheidungen, Research und Incidents tragen `source:` mit Link auf PR oder Beleg.
 
+Optional `code:` (Liste) verbindet eine Notiz mit dem Repository, z. B. in System-Notizen:
+
+```yaml
+code:
+  - src/data_ingestion/aggregator.py   # Datei
+  - src/data_ingestion                 # Paket = Service
+  - service:research_lab               # Service direkt
+```
+
+Der Graph legt nur Verbindungen zu Pfaden an, die im Repository existieren
+(`<Datei/Service> DOCUMENTED_BY <Notiz>`); unbekannte Einträge zählt er als
+`CODE_LINKS_UNRESOLVED`. Wikilinks zwischen typisierten Notizen werden zu
+Beziehungen: Mission ↔ Gate als `REQUIRES` (Mission braucht Gate), sonst
+`REFERENCES`. Dadurch liefern `graph_mission_context` und `graph_gate_context`
+Gates, Incidents und Missionen.
+
 ## Werkzeuge
 
 Ein Pfad für alle Werkzeuge: `TIM_OBSIDIAN_VAULT` (Altname `TIM_GRAPH_MCP_VAULT`
@@ -41,10 +57,14 @@ python -m src.obsidian_vault.lint                    # Schema, Links, Alter prü
 python -m src.obsidian_vault.migrate plan  --source OLD --markdown
 python -m src.obsidian_vault.migrate apply --source OLD --target NEU   # Ziel leer, Quelle bleibt unberührt
 python -m src.obsidian_vault.draft_writer decision --title "…" --source https://…   # nur nach 00 Inbox
+gh pr list --state merged --limit 50 --json number,title,url,mergedAt \
+  | python -m src.obsidian_vault.pr_drafts --prs-json - --since 2026-10-01   # gemergte PRs als Entwürfe
 ```
 
 Regel: Agenten schreiben nur über `draft_writer` in `00 Inbox`, nie überschreibend.
 In den geprüften Bereich verschiebt Uzi die Notiz in Obsidian.
+`pr_drafts` überspringt jeden PR, dessen URL schon irgendwo im Vault steht (auch im
+Master-Entwurf), und schreibt keinen Entwurf doppelt.
 
 ## Dashboards
 

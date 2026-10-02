@@ -33,7 +33,8 @@
     "executor",
     "tags",
     "aliases",
-    "review"
+    "review",
+    "code"
   ],
   "types": {
     "home": "Startseite oder Übersicht",
