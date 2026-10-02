@@ -361,6 +361,82 @@ def test_a_block_about_a_created_issue_without_a_known_repository_is_not_recheck
     assert rest_b.writes() == [] and reg.get(fp).block_reason == 'POST_CREATE_CHECK_FAILED'
 
 
+def test_a_stale_operator_confirmation_cannot_clear_a_newer_create_intent(tmp_path):
+    clock = Clock()
+    path = str(tmp_path / 'shared.db')
+    operator, worker = TaskRegistry(path, clock=clock), TaskRegistry(path, clock=clock)
+    fp = req().fingerprint
+    won, mapping = worker.claim(fp, req().key, 'old', 300)
+    worker.begin_create(fp, mapping.claim_token, 'owner/repo')
+    worker.release(fp, mapping.claim_token)                       # an old intent, long quiet
+    clock.now += 10_000
+    real_execute = operator.db.execute
+    raced = []
+
+    class RacingDb:
+        """The operator's check has passed; before its write, another operator clears it and a worker records a new intent."""
+        def execute(self, sql, *args):
+            if 'create_intent=0' in sql and not raced:
+                raced.append(1)
+                TaskRegistry(path, clock=clock).confirm_not_created(fp, 'other operator')
+                won2, m2 = worker.claim(fp, req().key, 'new', 300)
+                worker.begin_create(fp, m2.claim_token, 'owner/repo')          # a new create, then the worker dies
+                clock.now += 301
+                won3, m3 = worker.claim(fp, req().key, 'takeover', 300)       # its successor blocks, as ensure_task does
+                worker.block(fp, 'CREATE_UNCERTAIN', 'takeover', token=m3.claim_token)
+            return real_execute(sql, *args)
+
+        def __getattr__(self, name):
+            return getattr(operator.db, name)
+    operator.db = RacingDb()
+    operator.confirm_not_created(fp, 'stale operator')
+    assert raced and TaskRegistry(path, clock=clock).get(fp).create_intent is True        # the new intent survives
+
+
+def test_a_registry_from_the_intermediate_schema_four_is_migrated_conservatively(tmp_path):
+    import sqlite3
+    path = str(tmp_path / 'mid.db')
+    TaskRegistry(path).close()
+    db = sqlite3.connect(path)                     # a file written by 766d425: create_intent, no create_started_at
+    db.execute('ALTER TABLE task_mappings DROP COLUMN create_started_at')
+    db.execute("INSERT INTO task_mappings(fingerprint,canonical_key,state,claimant,claimed_at,claim_token,create_intent,"
+               "created_at,updated_at) VALUES(?,?,'RELEASED','old',0,1,0,0,0)", (req().fingerprint, req().key))
+    db.execute("INSERT INTO task_mappings(fingerprint,canonical_key,state,claimant,claimed_at,claim_token,create_intent,"
+               "created_at,updated_at) VALUES(?,?,'BLOCKED','old',0,1,1,0,0)", (req(target='B').fingerprint, req(target='B').key))
+    db.commit()
+    db.close()
+    clock = Clock(now=10_000_000_000.0)
+    reg = TaskRegistry(path, clock=clock)
+    assert reg.get(req().fingerprint).create_intent is True
+    assert reg.confirm_not_created(req(target='B').fingerprint, 'operator') is False      # no timestamp bypasses the hour
+
+
+def test_a_stale_negative_re_check_cannot_overwrite_a_newer_duplicate_verdict(tmp_path):
+    rest = FakeRest()
+    blind_setup(rest)
+    path = str(tmp_path / 'a.db')
+    reg_a, reg_b = TaskRegistry(path), TaskRegistry(path)
+    gw = GitHubRestGateway(rest.repo, TOKEN, transport=rest)
+    failing_check_after_create(gw)
+    ensure_task(req(), reg_a, gw, claimant='a', trusted_authors=None)
+    inner = GitHubRestGateway(rest.repo, TOKEN, transport=rest)
+
+    class SeesAWrongMissingAnswer:
+        def __getattr__(self, name):
+            return getattr(inner, name)
+
+        def get_issue(self, number):
+            # B runs completely in between and records the newer verdict; A then gets a transient wrong 404
+            rest.seed(10, fingerprint_marker(req().fingerprint))
+            rest.next_number = 10
+            ensure_task(req(), reg_b, GitHubRestGateway(rest.repo, TOKEN, transport=rest), claimant='b', trusted_authors=None)
+            return None
+    result = ensure_task(req(), reg_a, SeesAWrongMissingAnswer(), claimant='a', trusted_authors=None)
+    row = reg_a.get(req().fingerprint)
+    assert row.block_reason == 'DUPLICATE_AFTER_CREATE' and row.block_candidates == (9, 10)
+    assert result.outcome is EnsureOutcome.BLOCKED
+
+
 def test_a_good_direct_read_resets_a_pending_missing_answer():
     rest, clock = FakeRest(), Clock()
     gw = GitHubRestGateway(rest.repo, TOKEN, transport=rest, clock=clock)

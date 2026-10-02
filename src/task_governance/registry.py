@@ -123,11 +123,12 @@ class TaskRegistry:
                               ('create_intent', 'INTEGER NOT NULL DEFAULT 0'), ('create_started_at', 'REAL')):
                 if name not in have:
                     self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
-            if 'create_intent' not in have:
-                # Older releases did not record creates. Any unfinished row may follow a create (an open claim in the middle
-                # of one, or a row released or blocked by a worker that took over a crashed creator): never create blindly.
+            if 'create_intent' not in have or 'create_started_at' not in have:
+                # Older releases (and the intermediate one with create_intent but no timestamp) did not record every create.
+                # Any unfinished row may follow a create (an open claim in the middle of one, or a row released or blocked by
+                # a worker that took over a crashed creator): never create blindly, and start the quiet period now.
                 self.db.execute("UPDATE task_mappings SET create_intent=1, create_started_at=? WHERE state<>'MAPPED'",
-                                (time.time(),))
+                                (self.clock(),))
             if pre_hint:
                 # A claim written before hints were stored may belong to a run that had a hint we cannot recover:
                 # fail closed instead of letting a hint-less run create next to a legacy issue.
@@ -328,17 +329,15 @@ class TaskRegistry:
         if not note.strip():
             raise ValueError('a note is required')
         now = self.clock()
-        row = self.db.execute('SELECT create_started_at FROM task_mappings WHERE fingerprint=?', (fingerprint,)).fetchone()
-        if row is None or (row['create_started_at'] is not None and now - row['create_started_at'] < quiet_seconds):
-            return False
-        n = self.db.execute(
+        n = self.db.execute(       # one statement: the quiet period is checked against the intent it clears, not an older read
             "UPDATE task_mappings SET create_intent=0, updated_at=?, "
             "state=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN ? ELSE state END, "
             "block_candidates=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '[]' ELSE block_candidates END, "
             "block_reason=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '' ELSE block_reason END "
-            "WHERE fingerprint=? AND state IN (?, ?) AND create_intent=1",
+            "WHERE fingerprint=? AND state IN (?, ?) AND create_intent=1 "
+            "AND create_started_at IS NOT NULL AND ? - create_started_at >= ?",
             (now, MappingState.BLOCKED, MappingState.RELEASED, MappingState.BLOCKED, MappingState.BLOCKED,
-             fingerprint, MappingState.BLOCKED, MappingState.RELEASED)).rowcount
+             fingerprint, MappingState.BLOCKED, MappingState.RELEASED, now, quiet_seconds)).rowcount
         if n:
             self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
                             (fingerprint, 'CREATE_INTENT_CLEARED', note, now))
@@ -356,17 +355,23 @@ class TaskRegistry:
 
     @_serialized
     def block(self, fingerprint: str, reason: str, detail: str = '', *, token: int | None = None,
-              candidates=()) -> Mapping:
+              candidates=(), expect=None) -> Mapping:
         """Fail closed: record the incident and stop the task, never delete or close anything.
 
         `candidates` are the issue numbers the block is about (structured, used to judge whether a
         later hint really addresses it). With a token the state change is fenced to that claim. A
         MAPPED task is never downgraded, by anyone: a stale worker or operator call only records
-        the incident.
+        the incident. `expect=(block_reason, candidates)` changes only that exact block, so a verdict taken on an older
+        read cannot overwrite a newer one (the incident is still recorded).
         """
         now = self.clock()
         cands = json.dumps(sorted(set(candidates)))
-        if token is None:
+        if expect is not None:
+            self.db.execute('UPDATE task_mappings SET block_reason=?, block_candidates=?, updated_at=? '
+                            'WHERE fingerprint=? AND state=? AND block_reason=? AND block_candidates=?',
+                            (reason, cands, now, fingerprint, MappingState.BLOCKED, expect[0],
+                             json.dumps(sorted(set(expect[1])))))
+        elif token is None:
             self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, block_candidates=?, updated_at=? '
                             'WHERE fingerprint=? AND state<>?',
                             (MappingState.BLOCKED, reason, cands, now, fingerprint, MappingState.MAPPED))

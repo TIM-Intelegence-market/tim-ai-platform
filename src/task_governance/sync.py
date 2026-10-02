@@ -301,7 +301,9 @@ def _recheck_created_issue(registry, gateway, request, row, trusted_authors):
     fp, key, cand = request.fingerprint, request.key, row.block_candidates[0]
 
     def blocked(reason, detail, numbers):
-        mapping = registry.block(fp, reason, detail, candidates=numbers)
+        mapping = registry.block(fp, reason, detail, candidates=numbers, expect=('POST_CREATE_CHECK_FAILED', row.block_candidates))
+        if (mapping.block_reason, mapping.block_candidates) != (reason, tuple(sorted(set(numbers)))):
+            return _changed_meanwhile(registry, fp)      # another worker's newer verdict stands
         return EnsureResult(EnsureOutcome.BLOCKED, mapping, False, cand, reason)
     try:
         expected = gateway.get_issue(cand)
