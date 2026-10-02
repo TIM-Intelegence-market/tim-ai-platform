@@ -337,7 +337,7 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
     January first print, which follows the February revision date, a first print."""
     starts: set[date] = set()
     # Values per (period, vintage); None marks a row _row rejects (MALFORMED_TIMESTAMP,
-    # IMPOSSIBLE_TIMESTAMP_ORDER, MALFORMED_VALUE).
+    # IMPOSSIBLE_TIMESTAMP_ORDER, MALFORMED_VALUE) or a published "no value".
     groups: dict[tuple[date, date], set[Any]] = defaultdict(set)
     period_ends: dict[date, date] = {}
     for row in rows:
@@ -353,7 +353,8 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
         starts.add(start)
         period_ends[period] = period_end
         parsed = _parse_value(spec, row.get("value"))
-        usable = raw_period == period and start >= period_end and not isinstance(parsed, str)
+        # A published value only: "no value" (".") does not show that the period was released then.
+        usable = raw_period == period and start >= period_end and not isinstance(parsed, str) and parsed[1] is ValueStatus.OK
         groups[(period, start)].add(parsed if usable else None)
     first_start: dict[date, date] = {}
     for (period, start), values in groups.items():

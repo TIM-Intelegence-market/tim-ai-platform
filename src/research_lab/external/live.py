@@ -42,6 +42,10 @@ class LiveIngestError(RuntimeError):
     """A download or response check failed. Messages never contain the API key or the request URL."""
 
 
+class FetchError(LiveIngestError):
+    """Raised by http_fetcher; its message names the endpoint path and status only."""
+
+
 @dataclass(frozen=True, slots=True)
 class ResearchWindow:
     """Which periods and vintages one research download may contain."""
@@ -176,10 +180,9 @@ def ingest_live(
     failure: str | None = None
     try:
         bundle = fetch_bundle(spec, api_key=key.reveal(), fetcher=fetcher, clock=clock, requests=research_requests(spec, window))
-    except LiveIngestError as exc:
-        # http_fetcher's messages name path and status only; any other fetcher's message is checked.
-        failure = str(exc) if key.reveal() not in str(exc) else "download failed (LiveIngestError)"
-    except Exception as exc:  # noqa: BLE001 - any fetch failure is reported without its (URL-bearing) text
+    except FetchError as exc:
+        failure = str(exc)  # http_fetcher's own text: endpoint path and status only
+    except Exception as exc:  # noqa: BLE001 - any other failure (any other fetcher's text, possibly encoded) is not quoted
         failure = f"download failed ({exc.__class__.__name__})"
     if failure is not None:
         # Raised outside the except block: no __context__ keeps the original exception (and its URL with the key).
@@ -246,7 +249,7 @@ def http_fetcher(
 
     def fetch(url: str) -> bytes:
         if not url.startswith(API_BASE + "/"):
-            raise LiveIngestError("refusing a URL outside the FRED API")
+            raise FetchError("refusing a URL outside the FRED API")
         path = urlsplit(url).path
         for attempt in range(attempts):
             status: int | None = None
@@ -255,9 +258,9 @@ def http_fetcher(
                 with open_url(request, timeout=timeout) as response:
                     body = response.read(MAX_RESPONSE_BYTES + 1)
                 if len(body) > MAX_RESPONSE_BYTES:
-                    raise LiveIngestError(f"{path}: response larger than {MAX_RESPONSE_BYTES} bytes")
+                    raise FetchError(f"{path}: response larger than {MAX_RESPONSE_BYTES} bytes")
                 return body
-            except LiveIngestError:
+            except FetchError:
                 raise
             except urllib.error.HTTPError as exc:
                 status = exc.code
@@ -268,9 +271,9 @@ def http_fetcher(
                 retryable = False
             if not retryable or attempt == attempts - 1:
                 reason = f"HTTP {status}" if status is not None else "network error"
-                raise LiveIngestError(f"{path}: {reason} after {attempt + 1} attempt(s)") from None
+                raise FetchError(f"{path}: {reason} after {attempt + 1} attempt(s)") from None
             sleep(backoff * 2**attempt)
-        raise LiveIngestError(f"{path}: no attempt made")  # attempts < 1
+        raise FetchError(f"{path}: no attempt made")  # attempts < 1
 
     return fetch
 
@@ -284,6 +287,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 __all__ = [
     "HOLDOUT_START",
     "RESEARCH_2017_2024",
+    "FetchError",
     "LiveIngestError",
     "ResearchWindow",
     "check_window",

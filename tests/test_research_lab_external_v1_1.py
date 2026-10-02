@@ -215,8 +215,9 @@ def test_a_revision_is_no_first_print_when_the_first_print_is_missing() -> None:
         [row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "garbage")],  # value is not a number
         [row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "302.0"), row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "303.0")],
         [row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "302.0"), row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "garbage")],
+        [row("2024-01-01", SEASONAL_REVISION, "2024-02-12", ".")],  # source published no value
     ],
-    ids=["impossible", "malformed-period", "malformed-value", "conflicting-duplicates", "valid-and-invalid-duplicate"],
+    ids=["impossible", "malformed-period", "malformed-value", "conflicting-duplicates", "valid-and-invalid-duplicate", "no-value"],
 )
 def test_an_unusable_row_is_no_first_print(unusable: list) -> None:
     # Entries parse_bundle makes unusable must not make the seasonal revision date look like a
@@ -981,14 +982,17 @@ def test_repeated_json_members_are_refused(tmp_path) -> None:
     assert result.state is QualityState.NOT_READY and codes(result) == ["MALFORMED_PAYLOAD"]
 
 
-def test_a_fetcher_error_quoting_the_url_does_not_leak_the_key(tmp_path) -> None:
+@pytest.mark.parametrize("encode", [lambda url: url, lambda url: "".join(f"\\u{ord(char):04x}" for char in url)], ids=["plain", "escaped"])
+def test_a_fetcher_error_quoting_the_url_does_not_leak_the_key(tmp_path, encode) -> None:
+    # Only http_fetcher's own messages (path and status) are passed on; another fetcher's text may hold
+    # the key in any reversible encoding.
     def fetcher(url: str) -> bytes:
-        raise LiveIngestError(f"failed {url}")
+        raise LiveIngestError(f"failed {encode(url)}")
 
     resolver = FredSecretResolver({PROVIDER_ENV: "env", KEY_ENV: KEY})
     with pytest.raises(LiveIngestError) as raised:
         ingest_live(RESEARCH_2017_2024, resolver=resolver, store=RawPayloadStore(tmp_path / "raw"), fetcher=fetcher, clock=lambda: INGESTED)
-    assert KEY not in str(raised.value) and raised.value.__context__ is None
+    assert str(raised.value) == "download failed (LiveIngestError)" and raised.value.__context__ is None
 
 
 @pytest.mark.parametrize("stdout", [KEY.encode() + b"\n", KEY.encode() + b"\xff"], ids=["valid", "not-utf8"])
