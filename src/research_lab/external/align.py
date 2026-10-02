@@ -52,6 +52,10 @@ class BtcSeries:
     klines: tuple[Kline, ...]
     by_open: dict[int, Kline]
     cutoff_ms: int  # replay time the series was cut at
+    # Candles left out under invalid_candles="exclude": [{"open_time_ms", "reason"}]; they count as missing.
+    excluded: tuple[dict[str, Any], ...] = ()
+    # [first, end) grid range of the closed candles before exclusion, so excluded edge candles stay missing.
+    coverage_ms: tuple[int, int] | None = None
 
     @classmethod
     def build(
@@ -61,9 +65,19 @@ class BtcSeries:
         *,
         replay_at: datetime,
         permission: HoldoutPermission | None = None,
+        invalid_candles: str = "raise",
     ) -> "BtcSeries":
+        """Validate the candles closed at replay time.
+
+        ``invalid_candles="raise"`` (default) aborts on the first defective candle. ``"exclude"``
+        leaves defective candles out one by one and lists them in ``excluded`` (the real Binance
+        spot archive has candles cut short by outages and candles off the hourly grid); they then
+        count as missing, so every window touching them is INSUFFICIENT_DATA. Duplicates, disorder
+        and holdout candles abort under both policies."""
         if interval not in INTERVAL_MS:
             raise ValueError(f"unsupported interval: {interval}")
+        if invalid_candles not in CANDLE_POLICIES:
+            raise ValueError(f"unknown invalid_candles policy: {invalid_candles!r}")
         step = INTERVAL_MS[interval]
         cutoff = utc_to_ms(require_utc(replay_at, "replay_at"))
         # Only candles closed at replay time exist for this replay; later ones are neither used nor
@@ -72,27 +86,48 @@ class BtcSeries:
         for previous, current in zip(closed, closed[1:]):
             if current.open_time <= previous.open_time:
                 raise ValueError("BTC klines must be strictly increasing by open_time (duplicates or disorder)")
-        for kline in closed:
-            if kline.open_time % step:
-                raise ValueError(f"kline {kline.open_time} is not aligned to the {interval} grid")
-            if kline.close_time != kline.open_time + step - 1:
-                raise ValueError(f"kline {kline.open_time} does not span one {interval} interval")
-            prices = (kline.open, kline.high, kline.low, kline.close)
-            if not all(math.isfinite(value) and value > 0 for value in prices):
-                raise ValueError(f"kline {kline.open_time} has a non-finite or non-positive price")
-            if not (math.isfinite(kline.volume) and kline.volume >= 0 and math.isfinite(kline.taker_buy_volume) and kline.taker_buy_volume >= 0):
-                raise ValueError(f"kline {kline.open_time} has a non-finite or negative volume")
-            if kline.low > min(kline.open, kline.close) or kline.high < max(kline.open, kline.close):
-                raise ValueError(f"kline {kline.open_time} has an invalid OHLC relationship")
         if permission is None and any(kline.open_time + step > HOLDOUT_START_MS for kline in closed):
             raise HoldoutLocked("BTC klines reach into the protocol holdout; alignment needs the holdout permission")
-        return cls(interval, step, tuple(closed), {kline.open_time: kline for kline in closed}, cutoff)
+        kept, excluded = [], []
+        for kline in closed:
+            reason = _defect(kline, step)
+            if reason is None:
+                kept.append(kline)
+            elif invalid_candles == "exclude":
+                excluded.append({"open_time_ms": kline.open_time, "reason": reason})
+            else:
+                raise ValueError(f"kline {kline.open_time} is defective ({reason}) for the {interval} grid")
+        # Grid slots from the first to the last closed candle; an off-grid candle at an edge still marks
+        # the slot it fell into, so a slot left empty there counts as missing.
+        coverage = (closed[0].open_time - closed[0].open_time % step, closed[-1].open_time - closed[-1].open_time % step + step) if closed else None
+        return cls(interval, step, tuple(kept), {kline.open_time: kline for kline in kept}, cutoff, tuple(excluded), coverage)
 
     def gaps(self) -> dict[str, Any]:
-        if not self.klines:
+        coverage = self.coverage_ms
+        if coverage is None and self.klines:
+            coverage = (self.klines[0].open_time, self.klines[-1].open_time + self.interval_ms)
+        if coverage is None:
             return {"expected": 0, "present": 0, "missing": 0}
-        report = check_completeness(list(self.klines), self.interval_ms, self.klines[0].open_time, self.klines[-1].open_time + self.interval_ms)
+        report = check_completeness(list(self.klines), self.interval_ms, *coverage)
         return {"expected": report.expected, "present": report.present, "missing": report.missing}
+
+
+CANDLE_POLICIES = ("raise", "exclude")
+
+
+def _defect(kline: Kline, step: int) -> str | None:
+    if kline.open_time % step:
+        return "OFF_GRID"
+    if kline.close_time != kline.open_time + step - 1:
+        return "WRONG_SPAN"
+    prices = (kline.open, kline.high, kline.low, kline.close)
+    if not all(math.isfinite(value) and value > 0 for value in prices):
+        return "INVALID_PRICE"
+    if not (math.isfinite(kline.volume) and kline.volume >= 0 and math.isfinite(kline.taker_buy_volume) and kline.taker_buy_volume >= 0):
+        return "INVALID_VOLUME"
+    if kline.low > min(kline.open, kline.close) or kline.high < max(kline.open, kline.close):
+        return "INVALID_OHLC"
+    return None
 
 
 def align_series(store: PointInTimeStore, btc: BtcSeries) -> list[dict[str, Any]]:

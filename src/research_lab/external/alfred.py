@@ -51,6 +51,9 @@ LAST_REALTIME = "9999-12-31"
 PAGE_LIMIT = 100_000  # observations endpoint maximum
 REQUIRED_PAYLOADS = ("series", "observations")
 SECRET_KEYS = frozenset({"api_key", "apikey", "token", "password", "secret"})
+# Real CPI calendar 2005-2024: where a separate seasonal-revision date exists, it precedes the January
+# release by 2 to 6 days (in 2016 and 2018 the revision came with the January release itself).
+REVISION_ONLY_LEAD = timedelta(days=7)
 # Event arithmetic runs in a fixed 28-digit context (events.DECIMAL_CONTEXT). Within these bounds every
 # change and revision fits it exactly; a value outside them is malformed rather than a crash later.
 MIN_ABS_VALUE = Decimal("1e-6")
@@ -101,11 +104,22 @@ class RawBundle:
     requests: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
-def fetch_bundle(spec: SourceSpec, *, api_key: str, fetcher: Fetcher, clock: Clock) -> RawBundle:
-    """Download one bundle. The key goes into the URL only, never into the bundle or its provenance."""
+def fetch_bundle(
+    spec: SourceSpec,
+    *,
+    api_key: str,
+    fetcher: Fetcher,
+    clock: Clock,
+    requests: dict[str, dict[str, str]] | None = None,
+) -> RawBundle:
+    """Download one bundle. The key goes into the URL only, never into the bundle or its provenance.
+
+    ``requests`` defaults to the full real-time range (``requests_for``); research downloads pass a
+    narrower, holdout-safe set (``live.research_requests``)."""
     if not api_key:
         raise ValueError("an ALFRED API key is required to download")
-    requests = requests_for(spec)
+    requests = copy.deepcopy(requests) if requests is not None else requests_for(spec)
+    reject_credentials(requests)
     payloads = {name: fetcher(url_for(request, api_key)) for name, request in requests.items()}
     # Taken after the last download, so every payload was received at or before ingested_at.
     ingested_at = require_utc(clock(), "clock()")
@@ -117,6 +131,19 @@ def reject_credentials(requests: dict[str, dict[str, str]]) -> None:
         leaked = SECRET_KEYS & {key.lower() for key in request}
         if leaked:
             raise ValueError(f"request parameters must not contain credentials: {sorted(leaked)}")
+
+
+def load_json(payload: bytes) -> Any:
+    """json.loads, but an object with a repeated member is refused: plain json.loads keeps the last
+    value silently, so the stored response would say more than what was checked and parsed."""
+
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result = dict(pairs)
+        if len(result) != len(pairs):
+            raise ValueError("JSON object repeats a member")
+        return result
+
+    return json.loads(payload, object_pairs_hook=unique)
 
 
 def parse_bundle(bundle: RawBundle) -> IngestResult:
@@ -136,8 +163,8 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
     if missing:
         return not_ready("MISSING_PAYLOAD", f"missing payload(s): {', '.join(missing)}")
     try:
-        series = json.loads(bundle.payloads["series"])
-        observations = json.loads(bundle.payloads["observations"])
+        series = load_json(bundle.payloads["series"])
+        observations = load_json(bundle.payloads["observations"])
     except (UnicodeDecodeError, ValueError) as exc:
         return not_ready("MALFORMED_PAYLOAD", f"payload is not valid JSON: {exc.__class__.__name__}")
     problem = _metadata_problem(spec, series, observations)
@@ -149,11 +176,17 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
         issues.append(issue("RELEASE_CALENDAR_UNAVAILABLE", Severity.WARNING, series_id, NO_CALENDAR))
     else:
         try:
-            release_dates = _release_dates(spec, json.loads(bundle.payloads["release_dates"]))
+            release_dates = _release_dates(spec, load_json(bundle.payloads["release_dates"]))
         except (UnicodeDecodeError, ValueError, TypeError, KeyError) as exc:
             return not_ready("MALFORMED_PAYLOAD", f"release dates unusable: {exc}")
         if not release_dates:
             issues.append(issue("RELEASE_CALENDAR_UNAVAILABLE", Severity.WARNING, series_id, NO_CALENDAR))
+    # Calendar dates that only revised older periods (BLS seasonal revision, published a few days before the
+    # January CPI with a date but no stated time) neither publish a period nor have a release time.
+    raw_rows = observations["observations"]
+    revision_dates = revision_only_dates(raw_rows, release_dates, spec)
+    calendar_with_revisions = release_dates
+    release_dates = release_dates - revision_dates
 
     request_start = _date(observations["realtime_start"])
     clipped_start = None if observations["realtime_start"] == FIRST_REALTIME else request_start
@@ -162,6 +195,10 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
         # The request end date is inclusive: coverage ends just before the next day starts.
         day_after = spec.available_at(_date(observations["realtime_end"]), AvailabilityBasis.END_OF_VINTAGE_DAY)
         coverage_end = min(ingested_at, day_after - timedelta(microseconds=1))
+    # A revision-shaped date the archive cannot classify yet (its lead runs past the archive's knowledge)
+    # ends the coverage just before that date: replays from then on are INSUFFICIENT_DATA, never a guess.
+    for day in sorted(ambiguous_revision_dates(raw_rows, calendar_with_revisions, spec, coverage_end)):
+        coverage_end = min(coverage_end, spec.available_at(day, AvailabilityBasis.SCHEDULED_RELEASE) - timedelta(microseconds=1))
 
     entries: dict[tuple[date, date], list[VintageObservation | Unusable]] = defaultdict(list)
     bad_ends: list[tuple[date, date, str]] = []
@@ -179,6 +216,20 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
     if outside:
         # The envelope's range sets coverage and clipping; rows contradicting it make both untrustworthy.
         return not_ready("INCONSISTENT_METADATA", f"{outside} vintage(s) outside the declared real-time range")
+    # The declared observation range (optional) says which periods were requested at all: a period
+    # outside it is not missing from the archive, it was not asked for.
+    try:
+        periods_from = spec.period_of(_date(observations["observation_start"])) if "observation_start" in observations else None
+        periods_to = _date(observations["observation_end"]) if "observation_end" in observations else None
+    except (TypeError, ValueError):
+        return not_ready("INCONSISTENT_METADATA", "observation range is not a date range")
+    if periods_from is not None and periods_to is not None and periods_from > periods_to:
+        return not_ready("INCONSISTENT_METADATA", "observation_start is after observation_end")
+    outside = sum(
+        1 for period, _vintage in entries if (periods_from is not None and period < periods_from) or (periods_to is not None and period > periods_to)
+    )
+    if outside:
+        return not_ready("INCONSISTENT_METADATA", f"{outside} row(s) outside the declared observation range")
 
     records: list[VintageObservation] = []
     unusable: list[Unusable] = []
@@ -203,11 +254,19 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
             if len(items) > 1:
                 issues.append(issue("DUPLICATE_RECORD", Severity.WARNING, record_id, f"{len(items)} identical rows; kept one", items[0].available_at))
 
+    # Vintages published under a metadata version that contradicts the spec are unusable from then on.
+    # Applied after duplicates were reconciled, so the kept end date never depends on row order.
+    for start, end, problem in _metadata_mismatch_spans(spec, series, raw_rows):
+        for record in [r for r in records if start <= r.vintage <= end]:
+            records.remove(record)
+            issues.append(issue("INCONSISTENT_METADATA", Severity.ERROR, record.record_id, problem, record.available_at))
+            unusable.append(Unusable(record.period_start, record.vintage, record.available_at, "INCONSISTENT_METADATA", record.vintage_end))
+
     records, unusable = _vintage_chain_checks(records, unusable, issues)
     _missing_successors(spec, records, unusable, request_end, release_dates, issues)
     _date_bad_ends(series_id, bad_ends, records, unusable, ingested_at, issues)
     without_first = _revision_history_gaps(spec, records, unusable, clipped_start, release_dates, issues)
-    missing_periods = _missing_periods(spec, records, unusable, release_dates, coverage_end, issues)
+    missing_periods = _missing_periods(spec, records, unusable, release_dates, coverage_end, issues, periods_from, periods_to)
     state = QualityState.READY if records or unusable else QualityState.INSUFFICIENT_DATA
     if state is QualityState.INSUFFICIENT_DATA:
         issues.append(issue("NO_OBSERVATIONS", Severity.ERROR, series_id, "payload holds no usable observation"))
@@ -232,22 +291,23 @@ def _sorted(issues: list[DatedIssue]) -> tuple[DatedIssue, ...]:
 
 
 def _metadata_problem(spec: SourceSpec, series: Any, observations: Any) -> str | None:
-    if not isinstance(series, dict) or not isinstance(series.get("seriess"), list) or len(series["seriess"]) != 1:
-        return "series payload must describe exactly one series"
-    meta = series["seriess"][0]
-    if not isinstance(meta, dict):
-        return "series metadata is not an object"
-    expected = {
-        "id": spec.source_identifier,
-        "frequency_short": spec.frequency.value,
-        "units": spec.units,
-        "seasonal_adjustment_short": spec.seasonal_adjustment,
-    }
-    for key, value in expected.items():
-        if meta.get(key) != value:
-            return f"series {key} is {meta.get(key)!r}, expected {value!r}"
+    if not isinstance(series, dict) or not isinstance(series.get("seriess"), list) or not series["seriess"]:
+        return "series payload must describe the series"
     if not isinstance(observations, dict) or not isinstance(observations.get("observations"), list):
         return "observations payload has no observation list"
+    versions = series["seriess"]
+    if not all(isinstance(meta, dict) for meta in versions):
+        return "series metadata is not an object"
+    if _versioned(versions):
+        # Structure only (gap-free, covering every vintage); contradicting versions are scoped in time
+        # by _metadata_mismatch_spans, so a later version cannot change an earlier replay.
+        relevant_or_problem = _relevant_metadata(versions, observations["observations"])
+        if isinstance(relevant_or_problem, str):
+            return relevant_or_problem
+    else:
+        mismatch = _metadata_mismatch(spec, versions[0])
+        if mismatch:
+            return mismatch
     if observations.get("units") != "lin":
         return f"observations are transformed (units={observations.get('units')!r}); only levels are accepted"
     if observations.get("output_type") != 1:
@@ -264,6 +324,184 @@ def _metadata_problem(spec: SourceSpec, series: Any, observations: Any) -> str |
     if observations["realtime_start"] > observations["realtime_end"]:  # ISO dates compare as strings
         return "observations realtime_start is after realtime_end"
     return None
+
+
+def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: SourceSpec) -> set[date]:
+    """Calendar dates on which the archive shows vintages but no period is first printed.
+
+    A period's earliest usable vintage only counts as its first print if it is positively
+    identified as one (see below). Otherwise the real first print may be missing from the
+    archive or the calendar, and the earliest archived vintage may be a revision: taking it for
+    a first print would give a revision-only date (no stated time) the 08:30 release time.
+    Regular means not revision-only by the rule without this correction; that keeps the
+    January first print, which follows the February revision date, a first print."""
+    starts: set[date] = set()
+    # Values per (period, vintage); None marks a row _row rejects (MALFORMED_TIMESTAMP,
+    # IMPOSSIBLE_TIMESTAMP_ORDER, MALFORMED_VALUE) or a published "no value".
+    groups: dict[tuple[date, date], set[Any]] = defaultdict(set)
+    period_ends: dict[date, date] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            start = _date(row.get("realtime_start"))
+            raw_period = _date(row.get("date"))
+            period = spec.period_of(raw_period)
+            period_end = spec.period_end(period)
+            latest_first_release = period_end + spec.max_first_release_lag
+        except (TypeError, ValueError, OverflowError):
+            continue  # undatable rows (also at the calendar's edge) make the payload NOT_READY in _row
+        starts.add(start)
+        period_ends[period] = period_end
+        parsed = _parse_value(spec, row.get("value"))
+        # A published value only: "no value" (".") does not show that the period was released then.
+        usable = raw_period == period and start >= period_end and not isinstance(parsed, str) and parsed[1] is ValueStatus.OK
+        # Later than the first release could have been (see _revision_history_gaps): the first print is
+        # missing even if the calendar shows no release in between.
+        usable = usable and start <= latest_first_release
+        groups[(period, start)].add(parsed if usable else None)
+    first_start: dict[date, date] = {}
+    for (period, start), values in groups.items():
+        # Only a usable, unambiguous entry is evidence of a first print; a rejected row or
+        # conflicting duplicates make the entry UNKNOWN (see parse_bundle).
+        if None in values or len(values) != 1:
+            continue
+        if period not in first_start or start < first_start[period]:
+            first_start[period] = start
+    calendar = sorted(release_dates)
+
+    def shaped(first_prints: set[date]) -> set[date]:
+        return {day for day in release_dates if day in starts and day not in first_prints}
+
+    revision_only = _followed_within_lead(calendar, shaped(set(first_start.values())))
+    # A first print must be positively identified, by the same rules as _revision_history_gaps: the
+    # earliest usable vintage is the first regular release after the period ended, the calendar
+    # reaches back before that release and has no gap wider than one release interval there.
+    regular = [day for day in calendar if day not in revision_only]
+    first_prints = set()
+    for period, first in first_start.items():
+        position = bisect_left(regular, period_ends[period])
+        if position == 0 or position == len(regular) or regular[position] != first:
+            continue
+        if regular[position] - regular[position - 1] > spec.max_release_interval:
+            continue
+        first_prints.add(first)
+    return shaped(first_prints)
+
+
+def _followed_within_lead(calendar: list[date], shaped: set[date]) -> set[date]:
+    return {day for day, following in zip(calendar, calendar[1:]) if day in shaped and following - day <= REVISION_ONLY_LEAD}
+
+
+def revision_only_dates(rows: list[Any], release_dates: set[date], spec: SourceSpec) -> set[date]:
+    """Calendar dates that only revised older periods, ahead of the release that publishes the next one.
+
+    Real FRED CPI calendars hold the BLS seasonal-revision date in most Februaries (e.g. 2024-02-09)
+    two to six days before the January release (2024-02-13); on it only older periods are revised.
+    A date counts as revision-only when it is revision-shaped (vintages start on it, no period
+    appears for the first time) and the next calendar date follows within REVISION_ONLY_LEAD. Such
+    a date publishes no period and has no release time (BLS states a date, no time).
+
+    A revision-shaped date without a following date stays a normal release: the period it was due
+    to publish is missing from that release on. FRED lists only dates with data, so an archive
+    downloaded between the two dates cannot tell the cases apart; ``ambiguous_revision_dates``
+    makes such an archive end its coverage before that date instead of guessing."""
+    return _followed_within_lead(sorted(release_dates), revision_shaped_dates(rows, release_dates, spec))
+
+
+def ambiguous_revision_dates(rows: list[Any], release_dates: set[date], spec: SourceSpec, known_until: datetime) -> set[date]:
+    """Revision-shaped dates whose classification depends on calendar dates the archive cannot hold yet.
+
+    Without a following date within REVISION_ONLY_LEAD the date counts as a normal release, but if
+    the archive's knowledge ends before that lead has passed, a later download might still show the
+    following release. The answer would then depend on the download date."""
+    calendar = sorted(release_dates)
+    result = set()
+    for day in revision_shaped_dates(rows, release_dates, spec):
+        position = bisect_left(calendar, day)
+        following = calendar[position + 1] if position + 1 < len(calendar) else None
+        if following is not None and following - day <= REVISION_ONLY_LEAD:
+            continue
+        try:
+            lead_known = spec.available_at(day + REVISION_ONLY_LEAD, AvailabilityBasis.END_OF_VINTAGE_DAY)
+        except OverflowError:
+            continue
+        if known_until < lead_known:
+            result.add(day)
+    return result
+
+
+def _versioned(versions: list[dict[str, Any]]) -> bool:
+    return len(versions) > 1 or any("realtime_start" in meta or "realtime_end" in meta for meta in versions)
+
+
+def _metadata_mismatch(spec: SourceSpec, meta: dict[str, Any]) -> str | None:
+    expected = {
+        "id": spec.source_identifier,
+        "frequency_short": spec.frequency.value,
+        "units": spec.units,
+        "seasonal_adjustment_short": spec.seasonal_adjustment,
+    }
+    for key, value in expected.items():
+        if meta.get(key) != value:
+            return f"series {key} is {meta.get(key)!r}, expected {value!r}"
+    return None
+
+
+def _metadata_mismatch_spans(spec: SourceSpec, series: dict[str, Any], rows: list[Any]) -> list[tuple[date, date, str]]:
+    """Real-time spans of metadata versions that contradict the spec and overlap archived vintages.
+
+    Vintages published while such a version was in force are UNKNOWN from their own availability
+    on; vintages before it are untouched, so a later contradicting version leaves earlier replays
+    as they were. Only called after _metadata_problem accepted the version structure."""
+    versions = series["seriess"]
+    if not _versioned(versions):
+        return []
+    relevant = _relevant_metadata(versions, rows)
+    spans = []
+    for meta in relevant if isinstance(relevant, list) else []:
+        problem = _metadata_mismatch(spec, meta)
+        if problem:
+            end = date.max if meta.get("realtime_end") == LAST_REALTIME else _date(meta["realtime_end"])
+            spans.append((_date(meta["realtime_start"]), end, problem))
+    return spans
+
+
+def _relevant_metadata(versions: list[dict[str, Any]], rows: list[Any]) -> list[dict[str, Any]] | str:
+    """Metadata versions in force while the archived vintages were published.
+
+    With a real-time range ALFRED returns every version of the series metadata, each valid
+    from realtime_start to realtime_end (CPIAUCSL: six versions; units were "Index 1967=100"
+    until 1988). The versions must form one gap-free real-time line; every version overlapping
+    the vintages present in the payload must match the spec. Versions entirely before the
+    earliest vintage describe data that is not in the payload and do not matter."""
+    spans = []
+    for meta in versions:
+        try:
+            start = _date(meta.get("realtime_start"))
+            end = date.max if meta.get("realtime_end") == LAST_REALTIME else _date(meta.get("realtime_end"))
+        except (TypeError, ValueError):
+            return "series metadata version has no usable real-time range"
+        if end < start:
+            return "series metadata version ends before it starts"
+        spans.append((start, end, meta))
+    spans.sort(key=lambda span: span[0])
+    for (_s, previous_end, _m), (start, _e, _n) in zip(spans, spans[1:]):
+        if previous_end == date.max or start != previous_end + timedelta(days=1):
+            return "series metadata versions are not one gap-free real-time line"
+    vintages = []
+    for row in rows:
+        if isinstance(row, dict):
+            try:
+                vintages.append(_date(row.get("realtime_start")))
+            except (TypeError, ValueError):
+                continue  # undatable rows make the payload NOT_READY later
+    if not vintages:
+        return [spans[-1][2]]
+    first, last = min(vintages), max(vintages)
+    if spans[0][0] > first or spans[-1][1] < last:
+        return "series metadata does not cover every archived vintage"
+    return [meta for start, end, meta in spans if start <= last and end >= first]
 
 
 def _release_dates(spec: SourceSpec, payload: Any) -> set[date]:
@@ -351,23 +589,10 @@ def _row(
     if available_at > ingested_at:
         return unusable("FUTURE_DATA", "record claims availability after it was ingested")
     raw_value = row.get("value")
-    if not isinstance(raw_value, str):
-        return unusable("MALFORMED_VALUE", "value is not a string")
-    if raw_value.strip() == ".":
-        value, status = None, ValueStatus.MISSING
-    else:
-        try:
-            value = Decimal(raw_value.strip())
-        except InvalidOperation:
-            return unusable("MALFORMED_VALUE", "value is not a number")
-        if not value.is_finite():
-            return unusable("MALFORMED_VALUE", "value is not finite")
-        if spec.positive_values and value <= 0:
-            return unusable("MALFORMED_VALUE", "value must be positive for this series")
-        # copy_abs and comparisons are exact: no ambient context can overflow on extreme exponents.
-        if (value and not MIN_ABS_VALUE <= value.copy_abs() <= MAX_ABS_VALUE) or len(value.as_tuple().digits) > MAX_DIGITS:
-            return unusable("MALFORMED_VALUE", "value outside the supported range or precision")
-        status = ValueStatus.OK
+    parsed = _parse_value(spec, raw_value)
+    if isinstance(parsed, str):
+        return unusable("MALFORMED_VALUE", parsed)
+    value, status = parsed
     if status is ValueStatus.MISSING:
         issues.append(issue("MISSING_VALUE", Severity.WARNING, record_id, "source published no value", available_at))
     if clipped:
@@ -389,6 +614,26 @@ def _row(
         raw_value=raw_value,
         payload_sha256=payload_sha256,
     )
+
+
+def _parse_value(spec: SourceSpec, raw_value: Any) -> tuple[Decimal | None, ValueStatus] | str:
+    """The row's value and status, or why it is unusable (MALFORMED_VALUE)."""
+    if not isinstance(raw_value, str):
+        return "value is not a string"
+    if raw_value.strip() == ".":
+        return None, ValueStatus.MISSING
+    try:
+        value = Decimal(raw_value.strip())
+    except InvalidOperation:
+        return "value is not a number"
+    if not value.is_finite():
+        return "value is not finite"
+    if spec.positive_values and value <= 0:
+        return "value must be positive for this series"
+    # copy_abs and comparisons are exact: no ambient context can overflow on extreme exponents.
+    if (value and not MIN_ABS_VALUE <= value.copy_abs() <= MAX_ABS_VALUE) or len(value.as_tuple().digits) > MAX_DIGITS:
+        return "value outside the supported range or precision"
+    return value, ValueStatus.OK
 
 
 def _revision_history_gaps(
@@ -475,14 +720,17 @@ def _missing_periods(
     release_dates: set[date],
     coverage_end: datetime,
     issues: list[DatedIssue],
+    periods_from: date | None = None,
+    periods_to: date | None = None,
 ) -> tuple[tuple[date, datetime], ...]:
     """Periods a calendar release should have published but the archive lacks entirely.
 
     A release date d publishes the period whose first scheduled release after its end is d
-    (the month before d's month for CPI). Everything is judged as known at the release: the
-    period is missing when none of its vintages was available by then, and only once an older
-    period was already available (the archive had started). Later vintages cannot erase it;
-    it ends when the period's first vintage becomes visible."""
+    (the month before d's month for CPI); revision-only dates are not in ``release_dates``.
+    Everything is judged as known at the release: the period is missing when none of its
+    vintages was available by then, and only once an older period was already available
+    (the archive had started). Later vintages cannot erase it; it ends when the period's
+    first vintage becomes visible."""
     first_available: dict[date, datetime] = {}
     for item in [*records, *unusable]:
         if item.period_start not in first_available or item.available_at < first_available[item.period_start]:
@@ -498,6 +746,8 @@ def _missing_periods(
             due = spec.available_at(release, AvailabilityBasis.SCHEDULED_RELEASE)
         except (ValueError, OverflowError):
             continue
+        if (periods_from is not None and period < periods_from) or (periods_to is not None and period > periods_to):
+            continue  # not requested, so not missing
         if due > coverage_end or first_available.get(period, datetime.max.replace(tzinfo=due.tzinfo)) <= due:
             continue
         if not any(older < period and seen <= due for older, seen in first_available.items()):

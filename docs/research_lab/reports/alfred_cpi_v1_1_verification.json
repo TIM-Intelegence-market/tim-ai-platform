@@ -1,0 +1,391 @@
+{
+  "replay": {
+    "all_checks_pass": true,
+    "btc_candles": 64525,
+    "btc_completeness": {
+      "expected": 64651,
+      "missing": 184,
+      "present": 64467
+    },
+    "btc_excluded": {
+      "OFF_GRID": 43,
+      "WRONG_SPAN": 14
+    },
+    "checks": {
+      "answered": true,
+      "as_of": [
+        {
+          "as_of_coverage_end": "2020-02-01T04:59:59.999999+00:00",
+          "content_hash_as_of": "9b6ab307d02b363e1beb67768ff19cdfaecc9dbbd1f95d9b1abfeca12754c747",
+          "content_hash_full": "9b6ab307d02b363e1beb67768ff19cdfaecc9dbbd1f95d9b1abfeca12754c747",
+          "cut": "2020-01-31",
+          "dataset_id_equal": true,
+          "equal": true,
+          "events": 48,
+          "leakage": [],
+          "outcome": "EQUAL",
+          "replay_at": "2020-01-31T23:00:00+00:00"
+        },
+        {
+          "as_of_coverage_end": "2020-02-11T13:29:59.999999+00:00",
+          "content_hash_as_of": "2276186934b32c4a95bfb69218d1edae05e46466f746323011c932f0976d4754",
+          "content_hash_full": "34c59dc54acd5c690f5888ddc7f1298c247c4495d7d70458e9abc391306303c1",
+          "cut": "2020-02-12",
+          "dataset_id_equal": false,
+          "equal": true,
+          "equal_at_coverage_end": true,
+          "events": 48,
+          "leakage": [],
+          "outcome": "INSUFFICIENT_DATA",
+          "replay_at": "2020-02-12T23:00:00+00:00"
+        },
+        {
+          "as_of_coverage_end": "2022-07-01T03:59:59.999999+00:00",
+          "content_hash_as_of": "8e0e0acc8021c7be1be0b45a5424b1f9c7cd259e5a2aa1983b3468a01f5f6b8c",
+          "content_hash_full": "8e0e0acc8021c7be1be0b45a5424b1f9c7cd259e5a2aa1983b3468a01f5f6b8c",
+          "cut": "2022-06-30",
+          "dataset_id_equal": true,
+          "equal": true,
+          "events": 77,
+          "leakage": [],
+          "outcome": "EQUAL",
+          "replay_at": "2022-06-30T23:00:00+00:00"
+        }
+      ],
+      "leakage_at_final": [],
+      "reordered_output_hash_differs_only_by_payload_provenance": true,
+      "reordered_same_dataset_and_content": true,
+      "repeat_identical": true
+    },
+    "event_status": {
+      "OK": 107
+    },
+    "events": 107,
+    "hashes": {
+      "content_hash": "45cdf4bea48a690ee9740703461cf5c80518c5a2e210ecace499d95e261a86af",
+      "dataset_id": "0ab92b1218b421798490c5319663085ba038d7e379d0d1b0aa038848682707fb",
+      "output_hash": "805841d884655be098ccd7fed5ec24addd27f3d82cabdac53e2bde7cab439ca7"
+    },
+    "interval": "1h",
+    "quality_issue_codes": {},
+    "replay_at": "2024-12-31T23:59:59+00:00",
+    "series_rows": 64467,
+    "state": "READY"
+  },
+  "verification": {
+    "bundle_id": "7e1c2a85a9d64fee13896935411ea85c9657580743a6390aaeee6ce5513d2476",
+    "holdout": {
+      "holdout_start": "2025-01-01",
+      "last_period": "2024-11-01",
+      "last_release_date": "2024-12-11",
+      "last_vintage": "2024-12-11",
+      "requested_realtime_end": "2024-12-31",
+      "status": "CLOSED"
+    },
+    "ingested_at": "2026-10-01T20:31:02.084004+00:00",
+    "model": {
+      "calendar_releases_in_range": 102,
+      "calendar_releases_without_first_print": [],
+      "coverage_end": "2025-01-01T04:59:59.999999+00:00",
+      "distinct_vintages": 101,
+      "first_period": "2017-01-01",
+      "first_print_lag_days": {
+        "max": 14,
+        "min": 9
+      },
+      "last_period": "2024-11-01",
+      "max_values_per_period": 6,
+      "missing_periods": [],
+      "periods_without_first_print": [],
+      "quality_findings": {},
+      "records": 395,
+      "research_periods": 95,
+      "revised_periods": 84,
+      "revision_only_release_dates": [
+        "2017-02-13",
+        "2019-02-11",
+        "2020-02-11",
+        "2021-02-08",
+        "2022-02-08",
+        "2023-02-10",
+        "2024-02-09"
+      ],
+      "revisions": 300,
+      "scheduled_first_prints": 95,
+      "state": "READY",
+      "unusable_entries": {},
+      "vintages_not_in_calendar": []
+    },
+    "payload_sha256": {
+      "observations": "d68bbbd8738f36671bdf91e2e17064468152627ec6e2c798368386b153ca73c5",
+      "release_dates": "e515b7d853a41ba0908367fe9e54ecc61c7c26f44b0cf6f6db0ac2f8f96d4d8f",
+      "series": "90bab80744c992336277a46b5a880937796e72b2b38ebd2c0bdf9a5476c360e0"
+    },
+    "raw": {
+      "calendar": {
+        "ascending_as_delivered": true,
+        "count": 929,
+        "duplicates": [],
+        "envelope": {
+          "count": 929,
+          "limit": 10000,
+          "offset": 0,
+          "realtime_end": "2024-12-31",
+          "realtime_start": "1776-07-04"
+        },
+        "first": "1949-03-24",
+        "gap_days_max": 49,
+        "gap_days_min": 2,
+        "last": "2024-12-11",
+        "present": true,
+        "release_ids": [
+          10
+        ],
+        "unusual_gaps": [
+          {
+            "after": "1995-12-14",
+            "before": "1996-02-01",
+            "days": 49
+          },
+          {
+            "after": "1996-02-28",
+            "before": "1996-03-15",
+            "days": 16
+          },
+          {
+            "after": "2000-09-15",
+            "before": "2000-09-28",
+            "days": 13
+          },
+          {
+            "after": "2000-09-28",
+            "before": "2000-10-18",
+            "days": 20
+          },
+          {
+            "after": "2005-02-18",
+            "before": "2005-02-23",
+            "days": 5
+          },
+          {
+            "after": "2006-02-17",
+            "before": "2006-02-22",
+            "days": 5
+          },
+          {
+            "after": "2007-02-16",
+            "before": "2007-02-21",
+            "days": 5
+          },
+          {
+            "after": "2008-02-15",
+            "before": "2008-02-20",
+            "days": 5
+          },
+          {
+            "after": "2009-02-18",
+            "before": "2009-02-20",
+            "days": 2
+          },
+          {
+            "after": "2010-02-17",
+            "before": "2010-02-19",
+            "days": 2
+          },
+          {
+            "after": "2011-02-15",
+            "before": "2011-02-17",
+            "days": 2
+          },
+          {
+            "after": "2012-02-15",
+            "before": "2012-02-17",
+            "days": 2
+          },
+          {
+            "after": "2013-02-19",
+            "before": "2013-02-21",
+            "days": 2
+          },
+          {
+            "after": "2013-09-17",
+            "before": "2013-10-30",
+            "days": 43
+          },
+          {
+            "after": "2014-02-18",
+            "before": "2014-02-20",
+            "days": 2
+          },
+          {
+            "after": "2015-02-20",
+            "before": "2015-02-26",
+            "days": 6
+          },
+          {
+            "after": "2017-02-13",
+            "before": "2017-02-15",
+            "days": 2
+          },
+          {
+            "after": "2019-02-11",
+            "before": "2019-02-13",
+            "days": 2
+          },
+          {
+            "after": "2020-02-11",
+            "before": "2020-02-13",
+            "days": 2
+          },
+          {
+            "after": "2021-02-08",
+            "before": "2021-02-10",
+            "days": 2
+          },
+          {
+            "after": "2022-02-08",
+            "before": "2022-02-10",
+            "days": 2
+          },
+          {
+            "after": "2023-02-10",
+            "before": "2023-02-14",
+            "days": 4
+          },
+          {
+            "after": "2024-02-09",
+            "before": "2024-02-13",
+            "days": 4
+          }
+        ]
+      },
+      "envelope": {
+        "count": 471,
+        "limit": 100000,
+        "observation_end": "2024-12-31",
+        "observation_start": "2016-01-01",
+        "offset": 0,
+        "output_type": 1,
+        "realtime_end": "2024-12-31",
+        "realtime_start": "1776-07-04",
+        "units": "lin"
+      },
+      "first_period": "2016-01-01",
+      "first_vintage": "2016-02-19",
+      "last_period": "2024-11-01",
+      "last_vintage": "2024-12-11",
+      "period_gaps": [],
+      "periods": 107,
+      "rows": 471,
+      "rows_still_current": 0,
+      "series": {
+        "frequency_short": "M",
+        "id": "CPIAUCSL",
+        "realtime_end": "2024-12-31",
+        "realtime_start": "2019-09-12",
+        "seasonal_adjustment_short": "SA",
+        "title": "Consumer Price Index for All Urban Consumers: All Items in U.S. City Average",
+        "units": "Index 1982-1984=100"
+      },
+      "series_versions": [
+        {
+          "frequency_short": "M",
+          "realtime_end": "1976-02-23",
+          "realtime_start": "1972-07-21",
+          "seasonal_adjustment_short": "SA",
+          "title": "Consumer Price Index for Urban Wage Earners and Clerical Workers: All Items",
+          "units": "Index 1967=100"
+        },
+        {
+          "frequency_short": "M",
+          "realtime_end": "1981-02-24",
+          "realtime_start": "1976-02-24",
+          "seasonal_adjustment_short": "SA",
+          "title": "Consumer Price Index for Urban Wage Earners and Clerical Workers: All Items",
+          "units": "Index 1967=100"
+        },
+        {
+          "frequency_short": "M",
+          "realtime_end": "1988-02-25",
+          "realtime_start": "1981-02-25",
+          "seasonal_adjustment_short": "SA",
+          "title": "Consumer Price Index for All Urban Consumers: All Items",
+          "units": "Index 1967=100"
+        },
+        {
+          "frequency_short": "M",
+          "realtime_end": "1994-02-16",
+          "realtime_start": "1988-02-26",
+          "seasonal_adjustment_short": "SA",
+          "title": "Consumer Price Index for All Urban Consumers: All Items",
+          "units": "Index 1982-1984=100"
+        },
+        {
+          "frequency_short": "M",
+          "realtime_end": "2019-09-11",
+          "realtime_start": "1994-02-17",
+          "seasonal_adjustment_short": "SA",
+          "title": "Consumer Price Index for All Urban Consumers: All Items",
+          "units": "Index 1982-1984=100"
+        },
+        {
+          "frequency_short": "M",
+          "realtime_end": "2024-12-31",
+          "realtime_start": "2019-09-12",
+          "seasonal_adjustment_short": "SA",
+          "title": "Consumer Price Index for All Urban Consumers: All Items in U.S. City Average",
+          "units": "Index 1982-1984=100"
+        }
+      ],
+      "values_per_period": {
+        "distribution": {
+          "1": 11,
+          "2": 12,
+          "3": 12,
+          "4": 12,
+          "5": 12,
+          "6": 44,
+          "7": 4
+        },
+        "max": 7,
+        "min": 1
+      },
+      "vintage_dates": 114
+    },
+    "requests": {
+      "observations": {
+        "limit": "100000",
+        "observation_end": "2024-12-31",
+        "observation_start": "2016-01-01",
+        "output_type": "1",
+        "path": "series/observations",
+        "realtime_end": "2024-12-31",
+        "realtime_start": "1776-07-04",
+        "series_id": "CPIAUCSL",
+        "sort_order": "asc",
+        "units": "lin"
+      },
+      "release_dates": {
+        "include_release_dates_with_no_data": "false",
+        "limit": "10000",
+        "path": "release/dates",
+        "realtime_end": "2024-12-31",
+        "realtime_start": "1776-07-04",
+        "release_id": "10",
+        "sort_order": "asc"
+      },
+      "series": {
+        "path": "series",
+        "realtime_end": "2024-12-31",
+        "realtime_start": "1776-07-04",
+        "series_id": "CPIAUCSL"
+      }
+    },
+    "window": {
+      "name": "research-2017-2024",
+      "observation_end": "2024-12-31",
+      "observation_start": "2016-01-01",
+      "realtime_end": "2024-12-31"
+    }
+  }
+}

@@ -13,7 +13,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
-from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
+from decimal import (
+    ROUND_HALF_EVEN,
+    Context,
+    Decimal,
+    DecimalException,
+    DivisionByZero,
+    Inexact,
+    InvalidOperation,
+    Overflow,
+    Rounded,
+    localcontext,
+)
 from enum import StrEnum
 from typing import Any
 
@@ -31,6 +42,23 @@ from src.research_lab.external.records import (
 CHANGE_QUANTUM = Decimal("0.0001")
 # Fixed arithmetic context: results must not depend on the caller's ambient decimal settings.
 DECIMAL_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
+# Surprise must be exact: any rounding, overflow or invalid operation is an error, never a silent result.
+SURPRISE_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN, traps=[Inexact, Rounded, Overflow, InvalidOperation, DivisionByZero])
+
+# Expectation bounds, checked before any arithmetic. A CPI consensus is either an index level (CPIAUCSL is
+# about 240-320 in 2017-2024) or a percent change (monthly or yearly, published with one or two decimals,
+# historically within +-25 %). The bounds sit many orders of magnitude above that and match the bounds of
+# the series values themselves (alfred.MAX_ABS_VALUE / MAX_DIGITS), so every realistic consensus passes
+# unchanged while values that cannot be a CPI expectation (1e1000000, 1e-1000000) are refused:
+# - magnitude at most 1e9 (index levels and percentages are far below);
+# - at most 12 decimal places (consensus values use one to three);
+# - at most 20 significant digits.
+# For CPI targets (index with up to three decimals, derived change with four) target - expected needs at most
+# 22 digits and fits the 28-digit context exactly; any result that would need rounding is refused by
+# SURPRISE_CONTEXT instead of being rounded.
+EXPECTATION_MAX_ABS = Decimal("1e9")
+EXPECTATION_MAX_SCALE = 12
+EXPECTATION_MAX_DIGITS = 20
 _JUST_BEFORE = timedelta(microseconds=1)
 
 
@@ -61,8 +89,18 @@ class Expectation:
         require_utc(self.available_at, "available_at")
         if not self.source or not self.source_identifier:
             raise ValueError("an expectation needs a source and a source identifier")
+        if not isinstance(self.value, Decimal):
+            raise ValueError("expectation value must be a Decimal (floats are not exact)")
         if not self.value.is_finite():
             raise ValueError("expectation value must be finite")
+        # as_tuple, copy_abs and comparisons are exact and never touch a context, so they cannot overflow.
+        sign, digits, exponent = self.value.as_tuple()
+        if self.value.copy_abs() > EXPECTATION_MAX_ABS:
+            raise ValueError(f"expectation value exceeds the supported magnitude ({EXPECTATION_MAX_ABS})")
+        if exponent < -EXPECTATION_MAX_SCALE:
+            raise ValueError(f"expectation value has more than {EXPECTATION_MAX_SCALE} decimal places")
+        if len(digits) > EXPECTATION_MAX_DIGITS:
+            raise ValueError(f"expectation value has more than {EXPECTATION_MAX_DIGITS} significant digits")
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,8 +162,8 @@ class ReleaseEvent:
 
 
 def release_events(store: PointInTimeStore, *, until: datetime) -> tuple[ReleaseEvent, ...]:
-    """Every release event available at or before ``until``."""
-    until = require_utc(until, "until")
+    """Every release event available at or before ``until`` and within the archive's coverage."""
+    until = store.known_at(require_utc(until, "until"))
     spec = store.spec
     first_seen: dict[tuple[datetime, date], list[date]] = {}
     for period in store.periods:
@@ -202,8 +240,11 @@ def with_expectation(event: ReleaseEvent, expectation: Expectation) -> ReleaseEv
     if expectation.available_at >= event.event_time:
         raise ValueError("expectation was not available before the release; using it would be lookahead")
     target = event.actual if expectation.measure is Measure.LEVEL else event.derived_change_pct
-    with localcontext(DECIMAL_CONTEXT):
-        surprise = None if target is None else target - expectation.value
+    try:
+        with localcontext(SURPRISE_CONTEXT):
+            surprise = None if target is None else target - expectation.value
+    except DecimalException:
+        raise ValueError("surprise is not exactly representable; the expectation is not attached") from None
     return replace(
         event,
         expected=expectation.value,

@@ -143,8 +143,9 @@ class PointInTimeStore:
         """Records available at T, as they looked at T.
 
         A record's vintage_end is only known once the next vintage of its period is
-        available; before that it is shown as still current (None)."""
-        at = require_utc(at, "at")
+        available; before that it is shown as still current (None). Nothing after the
+        archive's coverage end is shown, as value() and latest() refuse it."""
+        at = self.known_at(at)
         result = []
         for period in self._periods:
             items = self._entries[period]
@@ -157,7 +158,7 @@ class PointInTimeStore:
 
     def visible_unusable(self, at: datetime) -> tuple[Unusable, ...]:
         """Unusable entries available at T; like visible_records, vintage_end only once a successor is known."""
-        at = require_utc(at, "at")
+        at = self.known_at(at)
         result = []
         for item in self.ingest.unusable:
             if item.available_at > at:
@@ -167,17 +168,22 @@ class PointInTimeStore:
             result.append(item if successor_known else replace(item, vintage_end=None))
         return tuple(result)
 
+    def known_at(self, at: datetime) -> datetime:
+        """The latest instant whose knowledge this archive holds for a query at T."""
+        return min(require_utc(at, "at"), self.coverage_end)
+
     def first_entry(self, period_start: date) -> Entry:
-        """The period's earliest archived vintage."""
+        """The period's earliest archived vintage (archive structure, not a point-in-time query)."""
         return self._entries[period_start][0]
 
     def entry_in_vintage(self, period_start: date, available_at: datetime) -> Entry | None:
-        """The period's entry as of one vintage instant (the newest one at or before it)."""
+        """The period's entry as of one vintage instant (the newest one at or before it), within coverage."""
         items = self._entries.get(period_start)
         if not items:
             return None
-        count = bisect_right(self._times[period_start], available_at)
-        return items[count - 1] if count else None
+        count = bisect_right(self._times[period_start], self.known_at(available_at))
+        # The returned entry is the newest one at that instant: its end is only known later (see visible_records).
+        return replace(items[count - 1], vintage_end=None) if count else None
 
     @property
     def periods(self) -> list[date]:

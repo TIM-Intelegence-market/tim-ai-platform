@@ -19,7 +19,7 @@ from typing import Any
 
 from src.research_lab.data.parse import Kline
 from src.research_lab.data.store import HoldoutLocked, HoldoutPermission
-from src.research_lab.external.align import HORIZONS, BtcSeries, align_event, align_series
+from src.research_lab.external.align import CANDLE_POLICIES, HORIZONS, BtcSeries, align_event, align_series
 from src.research_lab.external.events import release_events
 from src.research_lab.external.pit import PointInTimeStore
 from src.research_lab.external.records import TRANSFORM_VERSION, IngestResult, QualityState, iso, require_utc, utc_to_ms
@@ -35,15 +35,23 @@ class ReplayConfig:
     replay_at: datetime
     interval: str = "1h"
     horizons: tuple[str, ...] = tuple(HORIZONS)
+    # "raise" (default) aborts on a defective BTC candle; "exclude" leaves it out and lists it (BtcSeries.build).
+    invalid_candles: str = "raise"
 
     def __post_init__(self) -> None:
         require_utc(self.replay_at, "replay_at")
         unknown = [name for name in self.horizons if name not in HORIZONS]
         if unknown:
             raise ValueError(f"unknown horizon(s): {unknown}")
+        if self.invalid_candles not in CANDLE_POLICIES:
+            raise ValueError(f"unknown invalid_candles policy: {self.invalid_candles!r}")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"replay_at": iso(self.replay_at), "interval": self.interval, "horizons": list(self.horizons)}
+        result: dict[str, Any] = {"replay_at": iso(self.replay_at), "interval": self.interval, "horizons": list(self.horizons)}
+        if self.invalid_candles != "raise":
+            # Only a non-default policy enters the config, so existing replays keep their hashes.
+            result["invalid_candles"] = self.invalid_candles
+        return result
 
 
 def run_replay(
@@ -58,7 +66,10 @@ def run_replay(
         # Protocol 3.2: nothing from the holdout period is replayed before R6, external data included.
         raise HoldoutLocked("replay time lies in the protocol holdout; replay needs the holdout permission")
     spec = ingest.spec
-    issues = [item.to_dict() for item in ingest.issues if item.available_at is None or item.available_at <= at]
+    # Past the archive's coverage end nothing is known (latest() says INSUFFICIENT_DATA): dated findings,
+    # records, unusable entries and events after it stay out, as a guess would otherwise show early.
+    known = min(at, ingest.coverage_end)
+    issues = [item.to_dict() for item in ingest.issues if item.available_at is None or item.available_at <= known]
     header: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "transform_version": TRANSFORM_VERSION,
@@ -79,9 +90,9 @@ def run_replay(
         return _finish(content, provenance, {"state": ingest.state.value, "quality_issues": issues, "payload_sha256": provenance["payload_sha256"]})
 
     store = PointInTimeStore(ingest)
-    btc = BtcSeries.build(klines, config.interval, replay_at=at, permission=permission)
-    visible = store.visible_records(at)
-    events = release_events(store, until=at)
+    btc = BtcSeries.build(klines, config.interval, replay_at=at, permission=permission, invalid_candles=config.invalid_candles)
+    visible = store.visible_records(known)
+    events = release_events(store, until=known)
     aligned = [align_event(event, btc, replay_at=at, horizons=config.horizons, permission=permission) for event in events]
     rows = align_series(store, btc)
     state = QualityState.READY
@@ -96,11 +107,13 @@ def run_replay(
             # Unusable entries change results (UNKNOWN instead of a value), so they are part of the identity.
             "external_unusable": [
                 {"period_start": item.period_start.isoformat(), "vintage": item.vintage.isoformat(), "available_at": iso(item.available_at), "reason": item.reason}
-                for item in store.visible_unusable(at)
+                for item in store.visible_unusable(known)
             ],
             "btc_candles": len(btc.klines),
             "btc_hash": digest([[k.open_time, repr(k.open), repr(k.high), repr(k.low), repr(k.close), repr(k.volume), k.close_time, repr(k.taker_buy_volume)] for k in btc.klines]),
             "btc_completeness": btc.gaps(),
+            # Excluded candles change windows (missing instead of present), so they belong to the identity.
+            **({"btc_excluded": list(btc.excluded)} if config.invalid_candles == "exclude" else {}),
         },
         "quality_issues": issues,
         "latest": store.latest(at).to_dict(),
@@ -115,7 +128,7 @@ def run_replay(
         # end enters only when it cuts the replay, so re-ingesting the same archive later keeps the identity.
         "coverage_end": iso(ingest.coverage_end) if ingest.coverage_end < at else None,
         "periods_without_first_release": sorted(
-            period.isoformat() for period in ingest.periods_without_first_release if store.first_entry(period).available_at <= at
+            period.isoformat() for period in ingest.periods_without_first_release if store.first_entry(period).available_at <= known
         ),
     }
     return _finish(content, provenance, identity)
