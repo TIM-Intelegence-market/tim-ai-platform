@@ -70,7 +70,8 @@ class GraphService:
 
     def refresh_docs(self) -> dict[str, Any]:
         started = time.monotonic()
-        results = [ObsidianIndexer(self.vault).index() if self.vault else None,
+        results = [ObsidianIndexer(self.vault, repo_root=self.root).index()
+                   if self.vault else None,
                    RecipeIndexer(self.root).index(),
                    AgentIndexer(self.ki_tools, self.vault,
                                 graph_mcp_present=(self.root / 'src' / 'graph_mcp').is_dir()).index()]
@@ -226,6 +227,10 @@ class GraphService:
                 "ObsidianNote": "documentation", "Gate": "missions",
             }.get(node["type"], "direct_dependents")
             categories[bucket].append(node["id"])
+        # notes that document this node (`<node> DOCUMENTED_BY <note>`)
+        for edge in self.store.edges_from(node_id, ("DOCUMENTED_BY",)):
+            if edge["to"] not in categories["documentation"]:
+                categories["documentation"].append(edge["to"])
         return {"node": node_id, "analysis": "STATIC_GRAPH_IMPACT",
                 "runtime_evidence": False, **categories,
                 "note": "static graph impact; no runtime evidence implied"}

@@ -9,7 +9,8 @@ from src.graph_mcp.indexer.agents import AgentIndexer
 from src.graph_mcp.indexer.code import CodeIndexer
 from src.graph_mcp.indexer.database import DatabaseIndexer
 from src.graph_mcp.indexer.github import GithubIndexer
-from src.graph_mcp.indexer.obsidian import ObsidianIndexer, parse_frontmatter
+from src.graph_mcp.indexer.obsidian import (ObsidianIndexer, parse_code_field,
+                                            parse_frontmatter)
 from src.graph_mcp.indexer.runtime import RuntimeIndexer
 
 
@@ -160,3 +161,40 @@ def test_runtime_indexer_services_from_imports(code_tree: Path):
     # no main.py in the fixture -> nothing claims main.py wiring
     assert all(node["metadata"]["wired_via"] == "internal"
                for node in result.nodes if node["type"] == "Service")
+
+
+def test_obsidian_typed_links_become_typed_edges(vault_tree: Path):
+    result = ObsidianIndexer(vault_tree).index()
+    typed = {(e["from"], e["to"], e["type"]) for e in result.edges
+             if e["metadata"].get("resolution_method") == "wikilink_typed"}
+    mission = "mission:TIM/30%20Missions/Demo%20Mission.md"
+    gate = "gate:TIM/00%20HOME/Demo%20Gate.md"
+    incident = "incident:TIM/20%20Incidents/Demo%20Incident.md"
+    assert (mission, gate, "REQUIRES") in typed
+    assert (mission, incident, "REFERENCES") in typed
+    assert (incident, mission, "REFERENCES") in typed
+    assert len(typed) == 3  # no duplicates, no self links
+
+
+def test_obsidian_code_field_links_only_existing_paths(vault_tree: Path, code_tree: Path):
+    system = vault_tree / "TIM" / "40 Systeme" / "Demo Engine.md"
+    system.parent.mkdir()
+    system.write_text("---\ntype: system\nstatus: active\ncode:\n"
+                      "  - src/demo/core.py\n  - src/demo\n  - service:demo\n"
+                      "  - src/missing.py\n  - ../outside.py\n  - service:../tests\n---\n# Demo Engine\n")
+    result = ObsidianIndexer(vault_tree, repo_root=code_tree).index()
+    note = "note:TIM/40%20Systeme/Demo%20Engine.md"
+    code_edges = {(e["from"], e["to"]) for e in result.edges
+                  if e["metadata"].get("resolution_method") == "frontmatter_code"}
+    assert code_edges == {("file:src/demo/core.py", note), ("service:demo", note)}
+    assert result.metrics["CODE_LINKS"] == 2  # directory and service: same node
+    assert result.metrics["CODE_LINKS_UNRESOLVED"] == 3
+    # without a repository root nothing is linked, nothing is guessed
+    assert ObsidianIndexer(vault_tree).index().metrics["CODE_LINKS"] == 0
+
+
+def test_parse_code_field_formats():
+    assert parse_code_field("---\ncode: [src/a.py, 'src/b']\n---\n") == ["src/a.py", "src/b"]
+    assert parse_code_field("---\ncode: src/a.py\n---\n") == ["src/a.py"]
+    assert parse_code_field("---\ncode:\n  - src/a.py\ntype: x\n---\n") == ["src/a.py"]
+    assert parse_code_field("---\ntype: x\n---\ncode: src/a.py\n") == []

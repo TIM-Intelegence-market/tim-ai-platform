@@ -3,7 +3,13 @@
 
 Reads note frontmatter and wikilinks only. Never writes the vault. The
 vault path is configuration, so tests use fixtures and production uses the
-real vault path."""
+real vault path.
+
+Wikilinks between typed notes become typed edges (mission -> gate is
+REQUIRES, other typed pairs REFERENCES), so context bundles see gates and
+incidents. A `code:` frontmatter list links a note to repository files or
+services (`<file> DOCUMENTED_BY <note>`); entries are only linked when they
+exist under the repository root, never guessed."""
 from __future__ import annotations
 
 import json
@@ -16,6 +22,8 @@ from src.graph_mcp.schema import Edge, EdgeType, Node, NodeType, stable_id, utc_
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 _WIKILINK = re.compile(r"\[\[([^\]\n|#]+)(?:#[^\]\n|]*)?(?:\|[^\]\n]*)?\]\]")
 _CODE_SPAN = re.compile(r"`[^`\n]*`")
+_CODE_FIELD = re.compile(r"^code:[ \t]*(.*)$", re.MULTILINE)
+_PACKAGE = re.compile(r"^[A-Za-z0-9_]+$")
 
 _TYPE_TO_NODE = {
     "mission": NodeType.MISSION,
@@ -46,12 +54,36 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return fields
 
 
+def parse_code_field(text: str) -> list[str]:
+    """`code:` as inline list (`[a, b]`), comma list, or YAML block list."""
+    match = _FRONTMATTER.match(text)
+    if not match:
+        return []
+    block = match.group(1)
+    field = _CODE_FIELD.search(block)
+    if not field:
+        return []
+    inline = field.group(1).strip()
+    if inline:
+        items = inline.strip("[]").split(",")
+    else:
+        items = []
+        for line in block[field.end():].splitlines()[1:]:
+            stripped = line.strip()
+            if not stripped.startswith("- "):
+                break
+            items.append(stripped[2:])
+    return [item.strip().strip("\"'") for item in items if item.strip().strip("\"'")]
+
+
 class ObsidianIndexer:
     source = "obsidian"
 
-    def __init__(self, vault: Path, content_root: str = "TIM") -> None:
+    def __init__(self, vault: Path, content_root: str = "TIM",
+                 repo_root: Path | None = None) -> None:
         self.vault = Path(vault)
         self.content_root = self.vault / content_root
+        self.repo_root = Path(repo_root).resolve() if repo_root else None
 
     def index(self) -> IndexResult:
         result = IndexResult(source=self.source)
@@ -78,7 +110,8 @@ class ObsidianIndexer:
                          "severity", "system", "evidence", "owner")
                         if key in frontmatter}
             notes[note_id] = {"id": note_id, "title": title, "path": relative,
-                              "frontmatter": frontmatter, "metadata": metadata}
+                              "frontmatter": frontmatter, "metadata": metadata,
+                              "typed": None, "code": parse_code_field(text)}
             result.nodes.append(Node(note_id, NodeType.OBSIDIAN_NOTE, title, src,
                                      relative, metadata).record(observed))
             note_type = frontmatter.get("type", "").lower()
@@ -94,7 +127,9 @@ class ObsidianIndexer:
                     {"note": note_id, **metadata}).record(observed))
                 result.edges.append(Edge(typed_id, note_id,
                                          EdgeType.DOCUMENTED_BY).record())
+                notes[note_id]["typed"] = (typed_id, note_type)
         self._references(result, notes, observed)
+        self._code_links(result, notes)
         result.metrics.update({"NOTES": len(notes), "NODES_ADDED": len(result.nodes),
                                "EDGES_ADDED": len(result.edges)})
         return result
@@ -102,6 +137,7 @@ class ObsidianIndexer:
     def _references(self, result: IndexResult, notes: dict[str, dict],
                     observed: str) -> None:
         by_title = {note["title"]: note for note in notes.values()}
+        typed_pairs: set[tuple[str, str, str]] = set()
         for note in notes.values():
             path = self.vault / note["path"]
             text = _CODE_SPAN.sub("", path.read_text(encoding="utf-8", errors="replace"))
@@ -114,6 +150,65 @@ class ObsidianIndexer:
                         note["id"], destination["id"], EdgeType.REFERENCES,
                         {"resolution_method": "wikilink"},
                         evidence=[note["path"]]).record())
+                    self._typed_link(result, note, destination, typed_pairs)
+
+    @staticmethod
+    def _typed_link(result: IndexResult, note: dict, destination: dict,
+                    seen: set[tuple[str, str, str]]) -> None:
+        if not (note["typed"] and destination["typed"]):
+            return
+        (src_id, src_type), (dst_id, dst_type) = note["typed"], destination["typed"]
+        if {src_type, dst_type} == {"mission", "gate"}:
+            # a mission needs its gate, whichever note carries the link
+            edge_type = EdgeType.REQUIRES
+            if src_type == "gate":
+                src_id, dst_id = dst_id, src_id
+        else:
+            edge_type = EdgeType.REFERENCES
+        key = (src_id, dst_id, str(edge_type))
+        if src_id == dst_id or key in seen:
+            return
+        seen.add(key)
+        result.edges.append(Edge(src_id, dst_id, edge_type,
+                                 {"resolution_method": "wikilink_typed"},
+                                 evidence=[note["path"]]).record())
+
+    def _code_links(self, result: IndexResult, notes: dict[str, dict]) -> None:
+        linked: set[tuple[str, str]] = set()
+        unresolved = 0
+        for note in notes.values():
+            for entry in note["code"]:
+                target = self._code_target(entry)
+                if target is None:
+                    unresolved += 1
+                    continue
+                if (target, note["id"]) in linked:
+                    continue
+                linked.add((target, note["id"]))
+                result.edges.append(Edge(target, note["id"], EdgeType.DOCUMENTED_BY,
+                                         {"resolution_method": "frontmatter_code"},
+                                         evidence=[note["path"]]).record())
+        result.metrics.update({"CODE_LINKS": len(linked), "CODE_LINKS_UNRESOLVED": unresolved})
+
+    def _code_target(self, entry: str) -> str | None:
+        """Only existing repository paths are linked; nothing is guessed."""
+        if self.repo_root is None:
+            return None
+        if entry.startswith("service:"):
+            package = entry.removeprefix("service:").strip()
+            if _PACKAGE.match(package) and (self.repo_root / "src" / package).is_dir():
+                return stable_id("service", package)
+            return None
+        relative = entry.strip().strip("/")
+        candidate = (self.repo_root / relative).resolve()
+        if not relative or not candidate.is_relative_to(self.repo_root):
+            return None
+        if candidate.is_file():
+            return stable_id("file", relative)
+        parts = Path(relative).parts
+        if candidate.is_dir() and len(parts) == 2 and parts[0] == "src":
+            return stable_id("service", parts[1])
+        return None
 
     def _resolve(self, title: str) -> str:
         candidates = [p for p in self.content_root.rglob(f"{title}.md")]

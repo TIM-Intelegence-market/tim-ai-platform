@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 from src.graph_mcp.export import export_graphml, export_json, export_mermaid, export_dot
-from src.graph_mcp.service import HARD_MAX_DEPTH, HARD_MAX_LIMIT
+from src.graph_mcp.service import HARD_MAX_DEPTH, HARD_MAX_LIMIT, GraphService
+from src.graph_mcp.store import GraphStore
 
 
 def test_search_modes_and_bounded(service):
@@ -75,7 +76,14 @@ def test_mission_incident_gate_agent_context(service):
     incident = _first(service, "Incident")
     incident_context = service.incident_context(incident["id"])
     assert incident_context["classification"] == "resolved"
-    assert incident_context["evidence_refs"] == []  # no claims without edges
+    # the only evidence is the note that carries the wikilink
+    assert incident_context["evidence_refs"] == ["TIM/20 Incidents/Demo Incident.md"]
+
+    mission_id = "mission:TIM/30%20Missions/Demo%20Mission.md"
+    bundle = service.mission_context(mission_id)
+    assert bundle["gates"] == ["gate:TIM/00%20HOME/Demo%20Gate.md"]
+    assert bundle["incidents"] == [incident["id"]]
+    assert service.gate_context(bundle["gates"][0])["missions"] == [mission_id]
 
     gate = _first(service, "Gate")
     gate_context = service.gate_context(gate["id"])
@@ -171,3 +179,14 @@ def test_store_has_no_dangling_edges(service):
         for edge in service.store.edges_from(node["id"]):
             assert edge["to"] in ids, edge
             assert edge["from"] in ids, edge
+
+
+def test_code_field_shows_up_in_impact(code_tree, vault_tree, tmp_path):
+    note = vault_tree / "TIM" / "40 Systeme" / "Demo Engine.md"
+    note.parent.mkdir()
+    note.write_text("---\ntype: system\nstatus: active\ncode: [src/demo/core.py]\n---\n# x\n")
+    service = GraphService(GraphStore(tmp_path / "impact.sqlite"), code_tree, vault=vault_tree)
+    service.refresh_code()
+    service.refresh_docs()
+    impact = service.impact("file:src/demo/core.py")
+    assert impact["documentation"] == ["note:TIM/40%20Systeme/Demo%20Engine.md"]
