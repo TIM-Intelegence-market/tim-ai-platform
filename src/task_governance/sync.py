@@ -127,6 +127,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         raise ValueError(f'lease_seconds={lease_seconds} is shorter than {MIN_LEASE_FACTOR}x the gateway create time '
                          f'({worst_create}s): a slow create could outlive its claim')
 
+    expected_issue = None
     if existing and existing.state is MappingState.BLOCKED:
         if existing.github_issue_number is None and (
                 existing.block_reason == 'UNKNOWN_ISSUE_KIND'          # the marker exists, so no hint is needed
@@ -135,11 +136,11 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
             registry.unblock(fp, f'{existing.block_reason}: re-validating')
             existing = None
         elif existing.github_issue_number is None and existing.block_reason == 'POST_CREATE_CHECK_FAILED' \
-                and existing.block_candidates and authoritative_hint in (None, existing.block_candidates[0]):
-            # Our own create succeeded but the duplicate check did not: adopt that issue by number (a direct read is
-            # consistent), document any other marker issue as a duplicate, never create again.
-            authoritative_hint = existing.block_candidates[0]
-            registry.unblock(fp, f'POST_CREATE_CHECK_FAILED: adopting #{authoritative_hint}', hint=authoritative_hint)
+                and existing.block_candidates:
+            # Our own create succeeded but the duplicate check did not. Look again: the created issue alone is adopted,
+            # a second marker issue next to it blocks like any other duplicate (nothing is chosen for the operator).
+            expected_issue = existing.block_candidates[0]
+            registry.unblock(fp, f'POST_CREATE_CHECK_FAILED: re-checking with #{expected_issue}')
             existing = None
         elif existing.github_issue_number is None and _hint_resolves_block(existing, authoritative_hint):
             registry.unblock(fp, f'authoritative hint #{authoritative_hint} supplied',
@@ -174,6 +175,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     try:
         matches = _matches(gateway, fp, key, trusted_authors)
         hinted = gateway.get_issue(authoritative_hint) if authoritative_hint is not None else None
+        expected = gateway.get_issue(expected_issue) if expected_issue is not None and authoritative_hint is None else None
     except UnknownIssueKind as exc:
         return _blocked_unknown(registry, fp, token, exc, created=False)
     except Exception:
@@ -194,6 +196,8 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
                                  candidates=[hinted.number])
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
     candidates = {m.number: m for m in matches}
+    if expected is not None and expected.is_pull_request is False and _trusted(expected, trusted_authors):
+        candidates.setdefault(expected.number, expected)   # the lookup may still lag behind our own create: a direct read does not
     if hinted is not None:
         candidates[hinted.number] = hinted
         dups = sorted((set(candidates) | set(legacy_issues)) - {hinted.number})

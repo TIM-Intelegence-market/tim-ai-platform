@@ -569,7 +569,7 @@ def test_a_failing_post_create_check_blocks_with_the_new_issue_and_the_next_run_
     assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
 
 
-def test_a_failing_post_create_check_with_a_hidden_older_marker_issue_documents_it_as_duplicate(rest, gw, tmp_path):
+def test_a_failing_post_create_check_with_a_hidden_older_marker_issue_blocks_instead_of_choosing(rest, gw, tmp_path):
     rest.next_number, rest.lag_listing = 0, True
     for number in range(1, 6):
         rest.seed(number)
@@ -583,9 +583,21 @@ def test_a_failing_post_create_check_with_a_hidden_older_marker_issue_documents_
     first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
     assert first.outcome is EnsureOutcome.BLOCKED and first.issue_number == 10
     again = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
-    assert again.mapping.state is MappingState.MAPPED and again.issue_number == 10
-    assert any('TIM_DUPLICATE_OF:10' in c['body'] for c in rest.comments.get(9, []))     # #9 is documented, not closed
-    assert rest.issues[9]['state'] == 'open'
+    assert again.outcome is EnsureOutcome.BLOCKED and again.mapping.block_candidates == (9, 10)    # nothing is chosen for the operator
+    assert rest.issues[9]['state'] == 'open' and rest.comments.get(9, []) == []                   # and nothing is changed or commented
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
+def test_the_re_check_adopts_the_created_issue_even_when_the_lookup_still_lags_behind_it(rest, gw, tmp_path):
+    rest.lag_listing = True
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    fresh = GitHubRestGateway('owner/repo', TOKEN, transport=rest)           # a new process: its lookup does not see #1 in the listing
+    rest.fail[('GET', r'/issues\?')] = 503
+    rest.fail.clear()
+    again = ensure_task(req(), reg, fresh, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.BLOCKED and again.mapping.state is MappingState.MAPPED and again.issue_number == 1
     assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
 
 
