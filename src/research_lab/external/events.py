@@ -162,8 +162,8 @@ class ReleaseEvent:
 
 
 def release_events(store: PointInTimeStore, *, until: datetime) -> tuple[ReleaseEvent, ...]:
-    """Every release event available at or before ``until``."""
-    until = require_utc(until, "until")
+    """Every release event available at or before ``until`` and within the archive's coverage."""
+    until = store.known_at(require_utc(until, "until"))
     spec = store.spec
     first_seen: dict[tuple[datetime, date], list[date]] = {}
     for period in store.periods:

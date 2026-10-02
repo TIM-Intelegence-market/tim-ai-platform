@@ -190,7 +190,9 @@ Datensatz-IDs, BTC-Hash und -Vollständigkeit. Eine spätere Revision ändert de
 `content_hash` eines früheren Replays nicht (getestet). Liegt die Replay-Zeit nach dem
 Archivende (`coverage_end`, z. B. ein noch nicht einordenbarer Revisionstermin), enthält
 der Replay nur, was bis zum Archivende verfügbar war: keine späteren Records,
-Einträge, Ereignisse oder datierten Befunde (Zustand `INSUFFICIENT_DATA`).
+Einträge, Ereignisse oder datierten Befunde (Zustand `INSUFFICIENT_DATA`). Dieselbe
+Grenze gilt für `PointInTimeStore.visible_records`/`visible_unusable` und
+`release_events`.
 
 ## 9. Abruf
 

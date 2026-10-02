@@ -207,10 +207,18 @@ def test_a_revision_is_no_first_print_when_the_first_print_is_missing() -> None:
     assert PointInTimeStore(result).value(date(2023, 12, 1), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)).value is None
 
 
-def test_an_impossible_row_is_no_first_print() -> None:
-    # A February row dated 2024-02-09 (before February ended) is unusable; it must not make the
-    # seasonal revision date look like the release that first printed February.
-    raw = bundle([*seasonal_rows(), row("2024-02-01", SEASONAL_REVISION, "9999-12-31", "302.0")])
+@pytest.mark.parametrize(
+    "unusable",
+    [
+        row("2024-02-01", SEASONAL_REVISION, "9999-12-31", "302.0"),  # vintage before February ended
+        row("2024-01-02", SEASONAL_REVISION, "9999-12-31", "302.0"),  # not the start of a period
+    ],
+    ids=["impossible", "malformed-period"],
+)
+def test_an_unusable_row_is_no_first_print(unusable: dict) -> None:
+    # Rows _row rejects must not make the seasonal revision date look like a release that first
+    # printed a period.
+    raw = bundle([*seasonal_rows(), unusable])
     raw.payloads["release_dates"] = release_payload(("2023-12-12", "2024-01-11", SEASONAL_REVISION, "2024-02-13"))
     result = parse_bundle(raw)
     revised = next(r for r in result.records if r.vintage == date(2024, 2, 9))
@@ -229,6 +237,9 @@ def test_a_replay_past_the_coverage_end_shows_nothing_dated_after_it() -> None:
     assert result["state"] == "INSUFFICIENT_DATA"
     assert result["events"] == [] and result["inputs"]["external_record_ids"] == []
     assert all(item["available_at"] is None or item["available_at"] <= iso(ingest_result.coverage_end) for item in result["quality_issues"])
+    # The public point-in-time queries keep the same cut.
+    pit, at = PointInTimeStore(ingest_result), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)
+    assert pit.visible_records(at) == () and pit.visible_unusable(at) == () and release_events(pit, until=at) == ()
 
 
 def test_revisions_without_a_release_right_after_do_not_hide_a_missing_period() -> None:

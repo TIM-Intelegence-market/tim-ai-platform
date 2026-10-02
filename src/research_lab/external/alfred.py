@@ -330,13 +330,14 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
             continue
         try:
             start = _date(row.get("realtime_start"))
-            period = spec.period_of(_date(row.get("date")))
+            raw_period = _date(row.get("date"))
+            period = spec.period_of(raw_period)
             period_end = spec.period_end(period)
         except (TypeError, ValueError, OverflowError):
             continue  # undatable rows make the payload NOT_READY
         starts.add(start)
-        if start < period_end:
-            continue  # impossible vintage (IMPOSSIBLE_TIMESTAMP_ORDER in _row): no first print
+        if raw_period != period or start < period_end:
+            continue  # unusable in _row (MALFORMED_TIMESTAMP, IMPOSSIBLE_TIMESTAMP_ORDER): no first print
         period_ends[period] = period_end
         if period not in first_start or start < first_start[period]:
             first_start[period] = start

@@ -143,8 +143,9 @@ class PointInTimeStore:
         """Records available at T, as they looked at T.
 
         A record's vintage_end is only known once the next vintage of its period is
-        available; before that it is shown as still current (None)."""
-        at = require_utc(at, "at")
+        available; before that it is shown as still current (None). Nothing after the
+        archive's coverage end is shown, as value() and latest() refuse it."""
+        at = self.known_at(at)
         result = []
         for period in self._periods:
             items = self._entries[period]
@@ -157,7 +158,7 @@ class PointInTimeStore:
 
     def visible_unusable(self, at: datetime) -> tuple[Unusable, ...]:
         """Unusable entries available at T; like visible_records, vintage_end only once a successor is known."""
-        at = require_utc(at, "at")
+        at = self.known_at(at)
         result = []
         for item in self.ingest.unusable:
             if item.available_at > at:
@@ -166,6 +167,10 @@ class PointInTimeStore:
             successor_known = any(other.vintage > item.vintage and other.available_at <= at for other in items)
             result.append(item if successor_known else replace(item, vintage_end=None))
         return tuple(result)
+
+    def known_at(self, at: datetime) -> datetime:
+        """The latest instant whose knowledge this archive holds for a query at T."""
+        return min(require_utc(at, "at"), self.coverage_end)
 
     def first_entry(self, period_start: date) -> Entry:
         """The period's earliest archived vintage."""
