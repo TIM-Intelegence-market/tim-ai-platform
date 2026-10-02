@@ -323,18 +323,21 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
     Regular means not revision-only by the rule without this correction; that keeps the
     January first print, which follows the February revision date, a first print."""
     starts: set[date] = set()
-    first_start: dict[Any, date] = {}
+    first_start: dict[date, date] = {}
+    period_ends: dict[date, date] = {}
     for row in rows:
         if not isinstance(row, dict):
             continue
         try:
             start = _date(row.get("realtime_start"))
-        except (TypeError, ValueError):
+            period = spec.period_of(_date(row.get("date")))
+            period_end = spec.period_end(period)
+        except (TypeError, ValueError, OverflowError):
             continue  # undatable rows make the payload NOT_READY
-        period = row.get("date")
-        if not isinstance(period, str):
-            continue  # malformed period: _row reports it and the payload is NOT_READY
         starts.add(start)
+        if start < period_end:
+            continue  # impossible vintage (IMPOSSIBLE_TIMESTAMP_ORDER in _row): no first print
+        period_ends[period] = period_end
         if period not in first_start or start < first_start[period]:
             first_start[period] = start
     calendar = sorted(release_dates)
@@ -345,12 +348,7 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
     revision_only = _followed_within_lead(calendar, shaped(set(first_start.values())))
     first_prints = set()
     for period, first in first_start.items():
-        try:
-            period_end = spec.period_end(spec.period_of(_date(period)))
-        except (TypeError, ValueError, OverflowError):
-            first_prints.add(first)  # undatable period: _row reports it and the payload is NOT_READY
-            continue
-        passed = calendar[bisect_left(calendar, period_end) : bisect_left(calendar, first)]
+        passed = calendar[bisect_left(calendar, period_ends[period]) : bisect_left(calendar, first)]
         if all(day in revision_only for day in passed):
             first_prints.add(first)
     return shaped(first_prints)

@@ -97,8 +97,9 @@ class BtcSeries:
                 excluded.append({"open_time_ms": kline.open_time, "reason": reason})
             else:
                 raise ValueError(f"kline {kline.open_time} is defective ({reason}) for the {interval} grid")
-        on_grid = [kline.open_time for kline in closed if kline.open_time % step == 0]
-        coverage = (on_grid[0], on_grid[-1] + step) if on_grid else None
+        # Grid slots from the first to the last closed candle; an off-grid candle at an edge still marks
+        # the slot it fell into, so a slot left empty there counts as missing.
+        coverage = (closed[0].open_time - closed[0].open_time % step, closed[-1].open_time - closed[-1].open_time % step + step) if closed else None
         return cls(interval, step, tuple(kept), {kline.open_time: kline for kline in kept}, cutoff, tuple(excluded), coverage)
 
     def gaps(self) -> dict[str, Any]:

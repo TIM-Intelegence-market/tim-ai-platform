@@ -55,8 +55,9 @@ Saisonrevision der letzten fünf Jahre), die Januarzahl erscheint erst am zweite
 Laut BLS werden die revidierten saisonbereinigten Indizes an einem Datum ohne
 Uhrzeitangabe bereitgestellt. Ein Kalendertermin gilt als reiner Revisionstermin,
 wenn (1) Vintages an ihm beginnen, (2) keine Periode an ihm zum ersten Mal
-erscheint (das früheste archivierte Vintage einer Periode zählt nur als Erstdruck,
-wenn seit Periodenende kein regulärer Termin vergangen ist; sonst fehlt der
+erscheint (das früheste mögliche archivierte Vintage einer Periode zählt nur als Erstdruck,
+wenn seit Periodenende kein regulärer Termin vergangen ist; ein Vintage vor dem
+Periodenende ist nie ein Erstdruck; sonst fehlt der
 Erstdruck im Archiv und das Vintage ist eine Revision) und (3) der nächste Kalendertermin höchstens 7 Tage später folgt (der
 BLS-Kalender ist vorab veröffentlicht). Solche Termine veröffentlichen keine
 Periode und haben keine Release-Zeit (`END_OF_VINTAGE_DAY`). Fehlt Bedingung (3),
@@ -171,7 +172,8 @@ Erwartung angehängt, das Ereignis bleibt unverändert.
   Eine Veröffentlichung im Holdout liefert ohne Freigabe weder Referenzkerze noch
   Fenster.
 - `invalid_candles="exclude"`: ausgeschlossene Kerzen zählen in der
-  BTC-Vollständigkeit als fehlend, auch am Anfang oder Ende der Reihe.
+  BTC-Vollständigkeit als fehlend, auch am Anfang oder Ende der Reihe (eine
+  Kerze neben dem Raster markiert dabei den Rasterplatz, in den sie fällt).
 - Es werden keine Renditen oder Reaktionen berechnet.
 
 ## 8. Replay und Reproduzierbarkeit
@@ -185,7 +187,10 @@ unbrauchbarer Payload (`NOT_READY`, `INSUFFICIENT_DATA`) sind es Zustand, Befund
 und Payload-Hashes. Ausgabe: `dataset_id`, `content_hash` (Inhalt),
 `output_hash` (inkl. Provenienz), Versionen, Konfiguration, sichtbare
 Datensatz-IDs, BTC-Hash und -Vollständigkeit. Eine spätere Revision ändert den
-`content_hash` eines früheren Replays nicht (getestet).
+`content_hash` eines früheren Replays nicht (getestet). Liegt die Replay-Zeit nach dem
+Archivende (`coverage_end`, z. B. ein noch nicht einordenbarer Revisionstermin), enthält
+der Replay nur, was bis zum Archivende verfügbar war: keine späteren Records,
+Einträge, Ereignisse oder datierten Befunde (Zustand `INSUFFICIENT_DATA`).
 
 ## 9. Abruf
 
@@ -209,8 +214,9 @@ oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging 
   Wert in `TimeoutExpired.output` halten). `scripts/fred_store_key.py` speichert den
   Key mit verdeckter Eingabe als Datei mit Modus 0600 und verweigert Ziele innerhalb
   eines Git-Arbeitsverzeichnisses.
-- **Echo-Schutz:** Enthält eine API-Antwort den Key, roh oder in einem decodierten
-  JSON-String (auch per `\uXXXX` maskiert), wird sie vor jeder weiteren
+- **Echo-Schutz:** Enthält eine API-Antwort den Key, roh, als Text (dekodiert wie
+  `json.loads`) oder in einem JSON-String (auch per `\uXXXX` maskiert oder in einem
+  doppelten, sonst überschriebenen Feld), wird sie vor jeder weiteren
   Prüfung abgewiesen (die Fensterprüfung zitiert Antwortwerte) und nicht gespeichert.
 - **Forschungsfenster:** `ResearchWindow` legt Beobachtungs- und Real-Time-Bereich
   fest; `RESEARCH_2017_2024` = Perioden 2016-01 … 2024-12 (ein Jahr Vorlauf),

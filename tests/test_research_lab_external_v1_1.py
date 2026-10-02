@@ -34,7 +34,7 @@ from src.research_lab.external.live import (
 )
 from src.research_lab.external.pit import PointInTimeStore, Visibility
 from src.research_lab.external.realcheck import as_of, leakage, reordered
-from src.research_lab.external.records import CPI_US, QualityState
+from src.research_lab.external.records import CPI_US, QualityState, iso
 from src.research_lab.external.replay import ReplayConfig, run_replay
 from src.research_lab.external.store import RawPayloadStore
 from src.research_lab.external.verify import raw_summary
@@ -205,6 +205,30 @@ def test_a_revision_is_no_first_print_when_the_first_print_is_missing() -> None:
     assert revised.available_at == datetime(2024, 2, 10, 5, 0, tzinfo=UTC)
     assert date(2023, 12, 1) in result.periods_without_first_release
     assert PointInTimeStore(result).value(date(2023, 12, 1), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)).value is None
+
+
+def test_an_impossible_row_is_no_first_print() -> None:
+    # A February row dated 2024-02-09 (before February ended) is unusable; it must not make the
+    # seasonal revision date look like the release that first printed February.
+    raw = bundle([*seasonal_rows(), row("2024-02-01", SEASONAL_REVISION, "9999-12-31", "302.0")])
+    raw.payloads["release_dates"] = release_payload(("2023-12-12", "2024-01-11", SEASONAL_REVISION, "2024-02-13"))
+    result = parse_bundle(raw)
+    revised = next(r for r in result.records if r.vintage == date(2024, 2, 9))
+    assert revised.availability_basis.value == "END_OF_VINTAGE_DAY"
+    assert PointInTimeStore(result).value(date(2023, 12, 1), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)).value == Decimal("300.0")
+
+
+def test_a_replay_past_the_coverage_end_shows_nothing_dated_after_it() -> None:
+    # Archive downloaded 2024-02-11 holding only December's 2024-02-09 vintage: whether that date was a
+    # revision cannot be told yet, so coverage ends before it. No event or record may show it early.
+    raw = with_envelope(bundle([row("2023-12-01", SEASONAL_REVISION, "2024-02-11", "299.8")]), realtime_end="2024-02-11")
+    raw.payloads["release_dates"] = release_payload(("2023-12-12", "2024-01-11", SEASONAL_REVISION))
+    ingest_result = parse_bundle(raw)
+    assert ingest_result.coverage_end < datetime(2024, 2, 9, 13, 30, tzinfo=UTC)
+    result = run_replay(ingest_result, klines(datetime(2024, 2, 8, tzinfo=UTC), 24), ReplayConfig(datetime(2024, 2, 9, 14, 0, tzinfo=UTC)))
+    assert result["state"] == "INSUFFICIENT_DATA"
+    assert result["events"] == [] and result["inputs"]["external_record_ids"] == []
+    assert all(item["available_at"] is None or item["available_at"] <= iso(ingest_result.coverage_end) for item in result["quality_issues"])
 
 
 def test_revisions_without_a_release_right_after_do_not_hide_a_missing_period() -> None:
@@ -443,11 +467,16 @@ def test_excluded_candles_are_part_of_the_dataset_identity() -> None:
     assert "invalid_candles" not in default["config"] and "btc_excluded" not in default["inputs"]
 
 
+@pytest.mark.parametrize("defect", ["WRONG_SPAN", "OFF_GRID"])
 @pytest.mark.parametrize("edge", [0, 2])
-def test_excluded_edge_candles_count_as_missing(edge: int) -> None:
+def test_excluded_edge_candles_count_as_missing(edge: int, defect: str) -> None:
     good = klines(datetime(2024, 2, 13, tzinfo=UTC), 3)
     candles = list(good)
-    candles[edge] = Kline(good[edge].open_time, 1.0, 1.0, 1.0, 1.0, 0.0, good[edge].open_time + 1_000, 0.0)  # wrong span
+    if defect == "WRONG_SPAN":
+        candles[edge] = Kline(good[edge].open_time, 1.0, 1.0, 1.0, 1.0, 0.0, good[edge].open_time + 1_000, 0.0)
+    else:  # opens 28 minutes into its slot, as in the real Binance archive; the slot itself stays empty
+        shifted = good[edge].open_time + 1_694_789
+        candles[edge] = Kline(shifted, 2.0, 2.0, 2.0, 2.0, 1.0, shifted + 3_599_999, 0.0)
     btc = BtcSeries.build(candles, "1h", replay_at=INGESTED, invalid_candles="exclude")
     assert btc.gaps() == {"expected": 3, "present": 2, "missing": 1}
 
@@ -887,6 +916,29 @@ def test_malformed_responses_leave_no_exception_context(tmp_path, body: bytes) -
     with pytest.raises(LiveIngestError) as raised:
         run()
     # A JSONDecodeError context would hold the decoded response (.doc), key included.
+    assert KEY not in str(raised.value) and raised.value.__context__ is None
+    assert stored_files(store) == []
+
+
+ESCAPED_KEY = "".join(f"\\u{ord(char):04x}" for char in KEY).encode()
+
+
+@pytest.mark.parametrize(
+    "where, members",
+    [
+        # json.loads keeps the last of two equal members; the first one would still reach the store.
+        ("series", b'"notes": "' + ESCAPED_KEY + b'", "notes": "safe", '),
+        # A lone surrogate (ED A0 80) fails strict UTF-8, but json.loads(bytes) decodes it (surrogatepass).
+        ("series/observations", b'"notes": "' + ESCAPED_KEY + b'", "other": "\xed\xa0\x80", '),
+    ],
+    ids=["duplicate-member", "lone-surrogate"],
+)
+def test_hidden_key_echoes_are_refused(tmp_path, where: str, members: bytes) -> None:
+    payloads = research_payloads()
+    payloads[where] = payloads[where].replace(b"{", b"{" + members, 1)
+    _api, store, run = live(tmp_path, payloads)
+    with pytest.raises(LiveIngestError) as raised:
+        run()
     assert KEY not in str(raised.value) and raised.value.__context__ is None
     assert stored_files(store) == []
 

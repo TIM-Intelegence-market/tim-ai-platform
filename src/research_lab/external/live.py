@@ -199,14 +199,15 @@ def _echoes(payload: bytes, secret: str) -> bool:
     if secret.encode() in payload:
         return True
     try:
-        # json.loads also accepts UTF-16/32; check the text in the encoding it would decode with.
-        text = payload.decode(json.detect_encoding(payload))
+        # Decoded exactly as json.loads(bytes) decodes (UTF-8/16/32, surrogatepass).
+        text = payload.decode(json.detect_encoding(payload), "surrogatepass")
     except UnicodeDecodeError:
-        return False
+        return False  # json.loads cannot decode it either
     if secret in text:
         return True
     try:
-        pending = [json.loads(text)]
+        # Pairs instead of dicts: a duplicate member would otherwise hide the earlier value.
+        pending: list[Any] = [json.loads(text, object_pairs_hook=lambda pairs: [item for pair in pairs for item in pair])]
     except (ValueError, RecursionError):
         return False  # not JSON: the checks above saw the payload as bytes and as text
     while pending:
@@ -214,10 +215,7 @@ def _echoes(payload: bytes, secret: str) -> bool:
         if isinstance(item, str):
             if secret in item:
                 return True
-        elif isinstance(item, dict):
-            pending.extend(item.keys())
-            pending.extend(item.values())
-        elif isinstance(item, list):
+        elif isinstance(item, list):  # arrays, and objects as [key, value, key, value, ...]
             pending.extend(item)
     return False
 
