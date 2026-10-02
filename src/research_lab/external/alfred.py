@@ -171,7 +171,7 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
     # Calendar dates that only revised older periods (BLS seasonal revision, published a few days before the
     # January CPI with a date but no stated time) neither publish a period nor have a release time.
     raw_rows = observations["observations"]
-    revision_dates = revision_only_dates(raw_rows, release_dates)
+    revision_dates = revision_only_dates(raw_rows, release_dates, spec)
     calendar_with_revisions = release_dates
     release_dates = release_dates - revision_dates
 
@@ -313,8 +313,15 @@ def _metadata_problem(spec: SourceSpec, series: Any, observations: Any) -> str |
     return None
 
 
-def revision_shaped_dates(rows: list[Any], release_dates: set[date]) -> set[date]:
-    """Calendar dates on which the archive shows vintages but no period appears for the first time."""
+def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: SourceSpec) -> set[date]:
+    """Calendar dates on which the archive shows vintages but no period is first printed.
+
+    A period's earliest archived vintage only counts as its first print if no regular release
+    date passed between the period's end and that vintage. Otherwise the real first print is
+    missing from the archive, and the earliest archived vintage is a revision: taking it for a
+    first print would give a revision-only date (no stated time) the 08:30 release time.
+    Regular means not revision-only by the rule without this correction; that keeps the
+    January first print, which follows the February revision date, a first print."""
     starts: set[date] = set()
     first_start: dict[Any, date] = {}
     for row in rows:
@@ -330,11 +337,30 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date]) -> set[date
         starts.add(start)
         if period not in first_start or start < first_start[period]:
             first_start[period] = start
-    first_prints = set(first_start.values())
-    return {day for day in release_dates if day in starts and day not in first_prints}
+    calendar = sorted(release_dates)
+
+    def shaped(first_prints: set[date]) -> set[date]:
+        return {day for day in release_dates if day in starts and day not in first_prints}
+
+    revision_only = _followed_within_lead(calendar, shaped(set(first_start.values())))
+    first_prints = set()
+    for period, first in first_start.items():
+        try:
+            period_end = spec.period_end(spec.period_of(_date(period)))
+        except (TypeError, ValueError, OverflowError):
+            first_prints.add(first)  # undatable period: _row reports it and the payload is NOT_READY
+            continue
+        passed = calendar[bisect_left(calendar, period_end) : bisect_left(calendar, first)]
+        if all(day in revision_only for day in passed):
+            first_prints.add(first)
+    return shaped(first_prints)
 
 
-def revision_only_dates(rows: list[Any], release_dates: set[date]) -> set[date]:
+def _followed_within_lead(calendar: list[date], shaped: set[date]) -> set[date]:
+    return {day for day, following in zip(calendar, calendar[1:]) if day in shaped and following - day <= REVISION_ONLY_LEAD}
+
+
+def revision_only_dates(rows: list[Any], release_dates: set[date], spec: SourceSpec) -> set[date]:
     """Calendar dates that only revised older periods, ahead of the release that publishes the next one.
 
     Real FRED CPI calendars hold the BLS seasonal-revision date in most Februaries (e.g. 2024-02-09)
@@ -347,9 +373,7 @@ def revision_only_dates(rows: list[Any], release_dates: set[date]) -> set[date]:
     to publish is missing from that release on. FRED lists only dates with data, so an archive
     downloaded between the two dates cannot tell the cases apart; ``ambiguous_revision_dates``
     makes such an archive end its coverage before that date instead of guessing."""
-    calendar = sorted(release_dates)
-    shaped = revision_shaped_dates(rows, release_dates)
-    return {day for day, following in zip(calendar, calendar[1:]) if day in shaped and following - day <= REVISION_ONLY_LEAD}
+    return _followed_within_lead(sorted(release_dates), revision_shaped_dates(rows, release_dates, spec))
 
 
 def ambiguous_revision_dates(rows: list[Any], release_dates: set[date], spec: SourceSpec, known_until: datetime) -> set[date]:
@@ -360,7 +384,7 @@ def ambiguous_revision_dates(rows: list[Any], release_dates: set[date], spec: So
     following release. The answer would then depend on the download date."""
     calendar = sorted(release_dates)
     result = set()
-    for day in revision_shaped_dates(rows, release_dates):
+    for day in revision_shaped_dates(rows, release_dates, spec):
         position = bisect_left(calendar, day)
         following = calendar[position + 1] if position + 1 < len(calendar) else None
         if following is not None and following - day <= REVISION_ONLY_LEAD:

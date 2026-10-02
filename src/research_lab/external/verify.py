@@ -102,8 +102,8 @@ def model_summary(bundle: RawBundle, ingest: IngestResult, *, research_start: da
     calendar_dates = set()
     if raw["calendar"]["present"]:
         calendar_dates = {date.fromisoformat(item["date"]) for item in json.loads(bundle.payloads["release_dates"])["release_dates"]}
-    revision_only = revision_only_dates(json.loads(bundle.payloads["observations"])["observations"], calendar_dates)
     spec = ingest.spec
+    revision_only = revision_only_dates(json.loads(bundle.payloads["observations"])["observations"], calendar_dates, spec)
     # Release dates due to publish a research period: from the end of the first research period on.
     first_due = spec.period_end(spec.period_of(research_start))
     in_range = lambda period: research_start <= period <= research_end  # noqa: E731

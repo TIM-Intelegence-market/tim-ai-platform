@@ -105,12 +105,17 @@ def check_window(bundle: RawBundle, window: ResearchWindow) -> None:
     if bundle.requests != research_requests(source_spec(bundle.source, bundle.source_identifier), window):
         raise LiveIngestError(f"bundle requests do not match research window {window.name}")
     end = window.realtime_end.isoformat()
+    failure: str | None = None
     try:
         observations = json.loads(bundle.payloads["observations"])
         series = json.loads(bundle.payloads["series"])
         calendar = json.loads(bundle.payloads["release_dates"]) if "release_dates" in bundle.payloads else None
     except (KeyError, UnicodeDecodeError, ValueError) as exc:
-        raise LiveIngestError(f"response is not usable JSON ({exc.__class__.__name__})") from None
+        failure = f"response is not usable JSON ({exc.__class__.__name__})"
+    if failure is not None:
+        # Raised outside the except block: "from None" would still keep __context__, and a
+        # JSONDecodeError holds the whole decoded response in .doc.
+        raise LiveIngestError(failure)
     if not isinstance(observations, dict) or not isinstance(series, dict):
         raise LiveIngestError("response is not a JSON object")
     # The envelope must echo exactly what was asked; a wider answer would widen coverage silently.
@@ -194,9 +199,16 @@ def _echoes(payload: bytes, secret: str) -> bool:
     if secret.encode() in payload:
         return True
     try:
-        pending = [json.loads(payload)]
-    except (UnicodeDecodeError, ValueError, RecursionError):
-        return False  # not JSON: the byte check above saw the payload as it is
+        # json.loads also accepts UTF-16/32; check the text in the encoding it would decode with.
+        text = payload.decode(json.detect_encoding(payload))
+    except UnicodeDecodeError:
+        return False
+    if secret in text:
+        return True
+    try:
+        pending = [json.loads(text)]
+    except (ValueError, RecursionError):
+        return False  # not JSON: the checks above saw the payload as bytes and as text
     while pending:
         item = pending.pop()
         if isinstance(item, str):

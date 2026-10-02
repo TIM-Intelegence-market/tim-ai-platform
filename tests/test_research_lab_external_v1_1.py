@@ -194,6 +194,19 @@ def test_revision_only_vintages_have_no_release_time() -> None:
     assert pit.value(date(2023, 12, 1), datetime(2024, 2, 10, 5, 0, tzinfo=UTC)).value == Decimal("299.8")
 
 
+def test_a_revision_is_no_first_print_when_the_first_print_is_missing() -> None:
+    # December's first print (2024-01-11) is missing from the archive: its 2024-02-09 vintage is the
+    # seasonal revision, which has no stated time, not a release at 08:30.
+    raw = bundle(seasonal_rows()[1:])
+    raw.payloads["release_dates"] = release_payload(("2023-12-12", "2024-01-11", SEASONAL_REVISION, "2024-02-13"))
+    result = parse_bundle(raw)
+    revised = next(r for r in result.records if r.vintage == date(2024, 2, 9))
+    assert revised.availability_basis.value == "END_OF_VINTAGE_DAY" and revised.release_time is None
+    assert revised.available_at == datetime(2024, 2, 10, 5, 0, tzinfo=UTC)
+    assert date(2023, 12, 1) in result.periods_without_first_release
+    assert PointInTimeStore(result).value(date(2023, 12, 1), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)).value is None
+
+
 def test_revisions_without_a_release_right_after_do_not_hide_a_missing_period() -> None:
     # Revisions on 2024-02-09 but no January and no release within a week: a normal release whose
     # period is missing, exactly as V1 judged it (due at the release, 08:30 New York).
@@ -855,6 +868,25 @@ def test_responses_echoing_the_key_are_refused_and_never_stored(tmp_path, where:
     _api, store, run = live(tmp_path, payloads)
     with pytest.raises(LiveIngestError) as raised:
         run()
+    assert KEY not in str(raised.value) and raised.value.__context__ is None
+    assert stored_files(store) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        ('{"notes": "' + KEY + '",').encode("utf-16"),  # json.loads decodes UTF-16; the byte search does not
+        b'{"notes": "truncated",',
+    ],
+    ids=["utf16-echo", "truncated"],
+)
+def test_malformed_responses_leave_no_exception_context(tmp_path, body: bytes) -> None:
+    payloads = research_payloads()
+    payloads["series"] = body
+    _api, store, run = live(tmp_path, payloads)
+    with pytest.raises(LiveIngestError) as raised:
+        run()
+    # A JSONDecodeError context would hold the decoded response (.doc), key included.
     assert KEY not in str(raised.value) and raised.value.__context__ is None
     assert stored_files(store) == []
 

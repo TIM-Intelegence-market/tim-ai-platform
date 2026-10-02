@@ -55,7 +55,9 @@ Saisonrevision der letzten fünf Jahre), die Januarzahl erscheint erst am zweite
 Laut BLS werden die revidierten saisonbereinigten Indizes an einem Datum ohne
 Uhrzeitangabe bereitgestellt. Ein Kalendertermin gilt als reiner Revisionstermin,
 wenn (1) Vintages an ihm beginnen, (2) keine Periode an ihm zum ersten Mal
-erscheint und (3) der nächste Kalendertermin höchstens 7 Tage später folgt (der
+erscheint (das früheste archivierte Vintage einer Periode zählt nur als Erstdruck,
+wenn seit Periodenende kein regulärer Termin vergangen ist; sonst fehlt der
+Erstdruck im Archiv und das Vintage ist eine Revision) und (3) der nächste Kalendertermin höchstens 7 Tage später folgt (der
 BLS-Kalender ist vorab veröffentlicht). Solche Termine veröffentlichen keine
 Periode und haben keine Release-Zeit (`END_OF_VINTAGE_DAY`). Fehlt Bedingung (3),
 bleibt der Termin ein normaler Release, eine fehlende Periode bleibt fehlend.
@@ -223,7 +225,8 @@ oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging 
 - **Transport** (`http_fetcher`): nur `https://api.stlouisfed.org/fred/…`,
   Weiterleitungen verweigert, Antwort höchstens 50 MB, 429/5xx/Netzfehler mit
   Backoff `2 s · 2^n` (4 Versuche), 4xx sofort Fehler. Fehler nennen Pfad und
-  Status, nie URL oder Key, und werden außerhalb des `except`-Blocks ausgelöst:
+  Status, nie URL oder Key, und werden außerhalb des `except`-Blocks ausgelöst
+  (ebenso die JSON-Fehler der Fensterprüfung; der Echo-Schutz prüft auch UTF-16/32):
   weder `__cause__` noch `__context__` hält die ursprüngliche Ausnahme (deren Text
   die URL mit dem Key enthalten kann).
 - **Fixture-Echtheit:** `load_fixture` prüft jede Datei gegen ihren SHA-256 und
