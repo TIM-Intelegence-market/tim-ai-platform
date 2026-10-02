@@ -54,6 +54,9 @@ def _serialized(method):
     return wrapper
 
 
+HINT_ONLY_BLOCKS = ('POST_CREATE_CHECK_FAILED', 'EXPECTED_ISSUE_INVALID')   # blocks about an issue we created: never released blindly
+
+
 class MappingState(str, Enum):
     CLAIMED = 'CLAIMED'    # a worker holds the create-once claim, no issue mapped yet
     MAPPED = 'MAPPED'      # authoritative issue persisted
@@ -354,6 +357,9 @@ class TaskRegistry:
             row = self.db.execute('SELECT block_reason, hint_issue, hint_legacy FROM task_mappings WHERE fingerprint=? AND state=?',
                                   (fingerprint, MappingState.BLOCKED)).fetchone()
             if row is not None:
+                if row['block_reason'] in HINT_ONLY_BLOCKS and hint is None:
+                    # the created issue may exist: a plain release would let the next run create another one
+                    raise ValueError(f"{row['block_reason']} can only be released with hint=<issue number> (or replace_hint)")
                 if row['block_reason'] in ('HINT_NOT_FOUND', 'HINT_INVALID'):
                     pin = (hint, sorted(set(legacy))) if hint is not None else None   # replaced only by an explicit new hint
                 elif hint is not None and row['hint_issue'] in (None, hint):

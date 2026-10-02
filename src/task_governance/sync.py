@@ -51,6 +51,7 @@ class IssueGateway(Protocol):
 
     def find_issues(self, fingerprint: str, canonical_key: str) -> list[IssueRef]: ...
     def get_issue(self, number: int) -> IssueRef | None: ...
+    def carries_marker(self, number: int, fingerprint: str) -> bool: ...   # the issue exists and still has the task marker
     def create_issue(self, request: TaskRequest, fingerprint: str, *, timeout: float) -> IssueRef: ...   # must enforce `timeout`
     def update_issue(self, number: int, request: TaskRequest, reason: str) -> None: ...
     def reopen_issue(self, number: int, request: TaskRequest, reason: str) -> None: ...
@@ -274,7 +275,7 @@ def _recheck_created_issue(registry, gateway, request, row, trusted_authors):
         expected = gateway.get_issue(cand)
         matches = _matches(gateway, fp, key, trusted_authors)
         marked = getattr(gateway, 'carries_marker', None)
-        marked = True if marked is None or expected is None else marked(cand, fp)
+        marked = True if expected is None else (marked is not None and marked(cand, fp))     # no way to check: fail closed
     except Exception as exc:
         return EnsureResult(EnsureOutcome.BLOCKED, row, False, cand,
                             f'POST_CREATE_CHECK_FAILED: the re-check failed again ({type(exc).__name__}), nothing was changed')

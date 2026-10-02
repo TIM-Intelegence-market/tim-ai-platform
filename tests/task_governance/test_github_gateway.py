@@ -652,6 +652,38 @@ def test_an_expected_issue_that_cannot_be_adopted_blocks_and_never_creates(rest,
     assert issue.get('body', '') != '' or spoil == 'deleted'                                          # and nothing was overwritten
 
 
+@pytest.mark.parametrize('reason', ['POST_CREATE_CHECK_FAILED', 'EXPECTED_ISSUE_INVALID'])
+def test_a_block_about_our_own_created_issue_cannot_be_released_without_a_hint(rest, gw, tmp_path, reason):
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    fp = req().fingerprint
+    won, mapping = reg.claim(fp, req().key, 'w', 300)
+    reg.block(fp, reason, 'created #9', token=mapping.claim_token, candidates=[9])
+    with pytest.raises(ValueError, match='hint'):
+        reg.unblock(fp, 'retry')
+    assert reg.get(fp).state is MappingState.BLOCKED and reg.get(fp).block_candidates == (9,)
+    assert reg.unblock(fp, 'operator checked #9', hint=9) is True
+
+
+def test_a_gateway_that_cannot_check_the_marker_never_adopts_the_expected_issue(rest, gw, tmp_path):
+    _blind_setup(rest)
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+
+    class NoMarkerCheck:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            if name == 'carries_marker':
+                raise AttributeError(name)
+            return getattr(self._inner, name)
+    again = ensure_task(req(), reg, NoMarkerCheck(GitHubRestGateway('owner/repo', TOKEN, transport=rest)), claimant='w',
+                        trusted_authors=None)
+    assert again.outcome is EnsureOutcome.BLOCKED and again.detail == 'EXPECTED_ISSUE_INVALID'
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
 def test_a_batch_of_creates_does_not_reread_its_own_issues_for_other_tasks(rest, gw, tmp_path):
     rest.lag_listing = True
     reg = TaskRegistry(str(tmp_path / 'a.db'))
