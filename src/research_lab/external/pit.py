@@ -182,7 +182,8 @@ class PointInTimeStore:
         if not items:
             return None
         count = bisect_right(self._times[period_start], self.known_at(available_at))
-        return items[count - 1] if count else None
+        # The returned entry is the newest one at that instant: its end is only known later (see visible_records).
+        return replace(items[count - 1], vintage_end=None) if count else None
 
     @property
     def periods(self) -> list[date]:

@@ -336,7 +336,9 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
     Regular means not revision-only by the rule without this correction; that keeps the
     January first print, which follows the February revision date, a first print."""
     starts: set[date] = set()
-    first_start: dict[date, date] = {}
+    # Values per (period, vintage); None marks a row _row rejects (MALFORMED_TIMESTAMP,
+    # IMPOSSIBLE_TIMESTAMP_ORDER, MALFORMED_VALUE).
+    groups: dict[tuple[date, date], set[Any]] = defaultdict(set)
     period_ends: dict[date, date] = {}
     for row in rows:
         if not isinstance(row, dict):
@@ -349,9 +351,16 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
         except (TypeError, ValueError, OverflowError):
             continue  # undatable rows make the payload NOT_READY
         starts.add(start)
-        if raw_period != period or start < period_end or isinstance(_parse_value(spec, row.get("value")), str):
-            continue  # unusable in _row (MALFORMED_TIMESTAMP, IMPOSSIBLE_TIMESTAMP_ORDER, MALFORMED_VALUE): no first print
         period_ends[period] = period_end
+        parsed = _parse_value(spec, row.get("value"))
+        usable = raw_period == period and start >= period_end and not isinstance(parsed, str)
+        groups[(period, start)].add(parsed if usable else None)
+    first_start: dict[date, date] = {}
+    for (period, start), values in groups.items():
+        # Only a usable, unambiguous entry is evidence of a first print; a rejected row or
+        # conflicting duplicates make the entry UNKNOWN (see parse_bundle).
+        if None in values or len(values) != 1:
+            continue
         if period not in first_start or start < first_start[period]:
             first_start[period] = start
     calendar = sorted(release_dates)

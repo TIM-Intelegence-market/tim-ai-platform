@@ -58,7 +58,7 @@ wenn (1) Vintages an ihm beginnen, (2) keine Periode an ihm zum ersten Mal
 erscheint (das früheste brauchbare archivierte Vintage einer Periode zählt nur als Erstdruck,
 wenn seit Periodenende kein regulärer Termin vergangen ist; Zeilen, die als
 unbrauchbar gelten (Vintage vor Periodenende, kein Periodenbeginn, kein gültiger
-Wert), sind nie ein Erstdruck; sonst fehlt der
+Wert, widersprüchliche Duplikate), sind nie ein Erstdruck; sonst fehlt der
 Erstdruck im Archiv und das Vintage ist eine Revision) und (3) der nächste Kalendertermin höchstens 7 Tage später folgt (der
 BLS-Kalender ist vorab veröffentlicht). Solche Termine veröffentlichen keine
 Periode und haben keine Release-Zeit (`END_OF_VINTAGE_DAY`). Fehlt Bedingung (3),

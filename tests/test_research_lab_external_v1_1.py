@@ -210,16 +210,18 @@ def test_a_revision_is_no_first_print_when_the_first_print_is_missing() -> None:
 @pytest.mark.parametrize(
     "unusable",
     [
-        row("2024-02-01", SEASONAL_REVISION, "9999-12-31", "302.0"),  # vintage before February ended
-        row("2024-01-02", SEASONAL_REVISION, "9999-12-31", "302.0"),  # not the start of a period
-        row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "garbage"),  # value is not a number
+        [row("2024-02-01", SEASONAL_REVISION, "9999-12-31", "302.0")],  # vintage before February ended
+        [row("2024-01-02", SEASONAL_REVISION, "9999-12-31", "302.0")],  # not the start of a period
+        [row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "garbage")],  # value is not a number
+        [row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "302.0"), row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "303.0")],
+        [row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "302.0"), row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "garbage")],
     ],
-    ids=["impossible", "malformed-period", "malformed-value"],
+    ids=["impossible", "malformed-period", "malformed-value", "conflicting-duplicates", "valid-and-invalid-duplicate"],
 )
-def test_an_unusable_row_is_no_first_print(unusable: dict) -> None:
-    # Rows _row rejects must not make the seasonal revision date look like a release that first
-    # printed a period.
-    raw = bundle([*seasonal_rows(), unusable])
+def test_an_unusable_row_is_no_first_print(unusable: list) -> None:
+    # Entries parse_bundle makes unusable must not make the seasonal revision date look like a
+    # release that first printed a period.
+    raw = bundle([*seasonal_rows(), *unusable])
     raw.payloads["release_dates"] = release_payload(("2023-12-12", "2024-01-11", SEASONAL_REVISION, "2024-02-13"))
     result = parse_bundle(raw)
     revised = next(r for r in result.records if r.vintage == date(2024, 2, 9))
@@ -242,6 +244,13 @@ def test_a_replay_past_the_coverage_end_shows_nothing_dated_after_it() -> None:
     pit, at = PointInTimeStore(ingest_result), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)
     assert pit.visible_records(at) == () and pit.visible_unusable(at) == () and release_events(pit, until=at) == ()
     assert pit.entry_in_vintage(date(2023, 12, 1), at) is None
+
+
+def test_entry_in_vintage_does_not_show_a_later_end() -> None:
+    # December's first vintage ended 2024-02-08, which is only known once its successor is out.
+    pit = PointInTimeStore(parse_bundle(seasonal_bundle()))
+    entry = pit.entry_in_vintage(date(2023, 12, 1), datetime(2024, 1, 12, tzinfo=UTC))
+    assert entry.vintage == date(2024, 1, 11) and entry.vintage_end is None
 
 
 def test_revisions_without_a_release_right_after_do_not_hide_a_missing_period() -> None:
