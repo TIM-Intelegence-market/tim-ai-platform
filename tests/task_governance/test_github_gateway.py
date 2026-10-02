@@ -588,16 +588,21 @@ def test_a_failing_post_create_check_with_a_hidden_older_marker_issue_blocks_ins
     assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
 
 
-def test_the_re_check_adopts_the_created_issue_even_when_the_lookup_still_lags_behind_it(rest, gw, tmp_path):
-    rest.lag_listing = True
+def test_the_re_check_adopts_the_created_issue_even_when_the_lookup_is_still_blind_to_it(rest, gw, tmp_path):
+    rest.next_number, rest.lag_listing = 0, True
+    for number in range(1, 6):
+        rest.seed(number)
+    for number in (6, 7, 8):                       # deleted numbers in front of the new issue: a lookup stops before #9
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    rest.next_number = 8
     reg = TaskRegistry(str(tmp_path / 'a.db'))
     _failing_check_after_create(gw)
     first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
-    fresh = GitHubRestGateway('owner/repo', TOKEN, transport=rest)           # a new process: its lookup does not see #1 in the listing
-    rest.fail[('GET', r'/issues\?')] = 503
-    rest.fail.clear()
+    fresh = GitHubRestGateway('owner/repo', TOKEN, transport=rest)           # a new process: _top is 0, the listing hides #9
+    assert fresh.find_issues(req().fingerprint, '') == []
     again = ensure_task(req(), reg, fresh, claimant='w', trusted_authors=None)
-    assert first.outcome is EnsureOutcome.BLOCKED and again.mapping.state is MappingState.MAPPED and again.issue_number == 1
+    assert first.outcome is EnsureOutcome.BLOCKED and first.issue_number == 9
+    assert again.mapping.state is MappingState.MAPPED and again.issue_number == 9
     assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
 
 
