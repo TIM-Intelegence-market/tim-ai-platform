@@ -59,7 +59,8 @@ erscheint (das früheste brauchbare archivierte Vintage einer Periode zählt nur
 wenn seit Periodenende kein regulärer Termin vergangen ist; Zeilen, die als
 unbrauchbar gelten (Vintage vor Periodenende, kein Periodenbeginn, kein gültiger
 Wert, widersprüchliche Duplikate) oder nur „kein Wert“ (`.`) melden, sind nie ein
-Erstdruck; sonst fehlt der
+Erstdruck, ebenso ein Vintage später als `max_first_release_lag` nach Periodenende;
+sonst fehlt der
 Erstdruck im Archiv und das Vintage ist eine Revision) und (3) der nächste Kalendertermin höchstens 7 Tage später folgt (der
 BLS-Kalender ist vorab veröffentlicht). Solche Termine veröffentlichen keine
 Periode und haben keine Release-Zeit (`END_OF_VINTAGE_DAY`). Fehlt Bedingung (3),
@@ -237,8 +238,10 @@ oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging 
 - **Transport** (`http_fetcher`): nur `https://api.stlouisfed.org/fred/…`,
   Weiterleitungen verweigert, Antwort höchstens 50 MB, 429/5xx/Netzfehler mit
   Backoff `2 s · 2^n` (4 Versuche), 4xx sofort Fehler. Fehler nennen Pfad und
-  Status, nie URL oder Key (`FetchError`; Meldungen anderer Fetcher gibt
-  `ingest_live` nicht weiter), und werden außerhalb des `except`-Blocks ausgelöst
+  Status, nie URL oder Key (`ingest_live` gibt nur Texte weiter, die einem der
+  festen `http_fetcher`-Formate für die drei Endpunkte entsprechen,
+  `SAFE_FETCH_MESSAGE`; alles andere wird ersetzt), und werden außerhalb des
+  `except`-Blocks ausgelöst
   (ebenso die JSON-Fehler der Fensterprüfung; der Echo-Schutz prüft auch UTF-16/32):
   weder `__cause__` noch `__context__` hält die ursprüngliche Ausnahme (deren Text
   die URL mit dem Key enthalten kann).

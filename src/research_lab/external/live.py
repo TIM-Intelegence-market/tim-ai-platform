@@ -17,6 +17,7 @@ URL; fetch errors report the endpoint path and HTTP status, never the URL.
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -44,6 +45,15 @@ class LiveIngestError(RuntimeError):
 
 class FetchError(LiveIngestError):
     """Raised by http_fetcher; its message names the endpoint path and status only."""
+
+
+# The only fetch messages ingest_live passes on: http_fetcher's formats for the three known endpoints.
+# Anything else (another fetcher's text, whatever its type) may hold the key and is replaced.
+_ENDPOINT = r"/fred/(?:series|series/observations|release/dates)"
+SAFE_FETCH_MESSAGE = re.compile(
+    rf"refusing a URL outside the FRED API|{_ENDPOINT}: (?:HTTP \d{{3}}|network error) after \d+ attempt\(s\)"
+    rf"|{_ENDPOINT}: response larger than \d+ bytes|{_ENDPOINT}: no attempt made"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,10 +190,8 @@ def ingest_live(
     failure: str | None = None
     try:
         bundle = fetch_bundle(spec, api_key=key.reveal(), fetcher=fetcher, clock=clock, requests=research_requests(spec, window))
-    except FetchError as exc:
-        failure = str(exc)  # http_fetcher's own text: endpoint path and status only
-    except Exception as exc:  # noqa: BLE001 - any other failure (any other fetcher's text, possibly encoded) is not quoted
-        failure = f"download failed ({exc.__class__.__name__})"
+    except Exception as exc:  # noqa: BLE001 - only http_fetcher's known formats are quoted, nothing else
+        failure = str(exc) if isinstance(exc, LiveIngestError) and SAFE_FETCH_MESSAGE.fullmatch(str(exc)) else f"download failed ({exc.__class__.__name__})"
     if failure is not None:
         # Raised outside the except block: no __context__ keeps the original exception (and its URL with the key).
         raise LiveIngestError(failure)
@@ -289,6 +297,7 @@ __all__ = [
     "RESEARCH_2017_2024",
     "FetchError",
     "LiveIngestError",
+    "SAFE_FETCH_MESSAGE",
     "ResearchWindow",
     "check_window",
     "http_fetcher",

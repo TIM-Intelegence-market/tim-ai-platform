@@ -355,6 +355,9 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
         parsed = _parse_value(spec, row.get("value"))
         # A published value only: "no value" (".") does not show that the period was released then.
         usable = raw_period == period and start >= period_end and not isinstance(parsed, str) and parsed[1] is ValueStatus.OK
+        # Later than the first release could have been (see _revision_history_gaps): the first print is
+        # missing even if the calendar shows no release in between.
+        usable = usable and start <= period_end + spec.max_first_release_lag
         groups[(period, start)].add(parsed if usable else None)
     first_start: dict[date, date] = {}
     for (period, start), values in groups.items():

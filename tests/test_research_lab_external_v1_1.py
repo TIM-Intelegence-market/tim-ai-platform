@@ -24,6 +24,7 @@ from src.research_lab.external.fixture_window import FIXTURE_2019_2020, FIXTURE_
 from src.research_lab.external.fred_secret import FILE_ENV, KEY_ENV, PROVIDER_ENV, FredSecretError, FredSecretResolver
 from src.research_lab.external.live import (
     RESEARCH_2017_2024,
+    FetchError,
     LiveIngestError,
     ResearchWindow,
     _NoRedirect,
@@ -245,6 +246,16 @@ def test_a_replay_past_the_coverage_end_shows_nothing_dated_after_it() -> None:
     pit, at = PointInTimeStore(ingest_result), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)
     assert pit.visible_records(at) == () and pit.visible_unusable(at) == () and release_events(pit, until=at) == ()
     assert pit.entry_in_vintage(date(2023, 12, 1), at) is None
+
+
+def test_a_vintage_later_than_any_first_release_is_no_first_print() -> None:
+    # The calendar lacks the December and January dates; November's 2024-02-09 vintage is 70 days after
+    # its period ended, beyond max_first_release_lag (45 days), so it is a revision, not a first print.
+    raw = bundle([row("2023-11-01", SEASONAL_REVISION, "9999-12-31", "299.8"), row("2024-01-01", "2024-02-13", "9999-12-31", "301.0")])
+    raw.payloads["release_dates"] = release_payload(("2023-11-14", SEASONAL_REVISION, "2024-02-13"))
+    pit = PointInTimeStore(parse_bundle(raw))
+    assert pit.value(date(2023, 11, 1), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)).value is None
+    assert pit.value(date(2023, 11, 1), datetime(2024, 2, 10, 5, 0, tzinfo=UTC)).value == Decimal("299.8")
 
 
 def test_entry_in_vintage_does_not_show_a_later_end() -> None:
@@ -982,17 +993,34 @@ def test_repeated_json_members_are_refused(tmp_path) -> None:
     assert result.state is QualityState.NOT_READY and codes(result) == ["MALFORMED_PAYLOAD"]
 
 
-@pytest.mark.parametrize("encode", [lambda url: url, lambda url: "".join(f"\\u{ord(char):04x}" for char in url)], ids=["plain", "escaped"])
-def test_a_fetcher_error_quoting_the_url_does_not_leak_the_key(tmp_path, encode) -> None:
-    # Only http_fetcher's own messages (path and status) are passed on; another fetcher's text may hold
-    # the key in any reversible encoding.
+@pytest.mark.parametrize(
+    "make_error",
+    [
+        lambda url: LiveIngestError(f"failed {url}"),
+        lambda url: LiveIngestError("failed " + "".join(f"\\u{ord(char):04x}" for char in url)),
+        lambda url: FetchError(url),  # the exception type alone does not show where the text came from
+    ],
+    ids=["plain", "escaped", "fetch-error-type"],
+)
+def test_a_fetcher_error_quoting_the_url_does_not_leak_the_key(tmp_path, make_error) -> None:
+    # Only http_fetcher's message formats are passed on; any other text may hold the key in any encoding.
     def fetcher(url: str) -> bytes:
-        raise LiveIngestError(f"failed {encode(url)}")
+        raise make_error(url)
 
     resolver = FredSecretResolver({PROVIDER_ENV: "env", KEY_ENV: KEY})
     with pytest.raises(LiveIngestError) as raised:
         ingest_live(RESEARCH_2017_2024, resolver=resolver, store=RawPayloadStore(tmp_path / "raw"), fetcher=fetcher, clock=lambda: INGESTED)
-    assert str(raised.value) == "download failed (LiveIngestError)" and raised.value.__context__ is None
+    assert str(raised.value).startswith("download failed (") and KEY not in str(raised.value) and raised.value.__context__ is None
+
+
+def test_http_fetcher_messages_are_still_passed_on(tmp_path) -> None:
+    def fetcher(url: str) -> bytes:
+        raise FetchError("/fred/series: HTTP 404 after 1 attempt(s)")
+
+    resolver = FredSecretResolver({PROVIDER_ENV: "env", KEY_ENV: KEY})
+    with pytest.raises(LiveIngestError) as raised:
+        ingest_live(RESEARCH_2017_2024, resolver=resolver, store=RawPayloadStore(tmp_path / "raw"), fetcher=fetcher, clock=lambda: INGESTED)
+    assert str(raised.value) == "/fred/series: HTTP 404 after 1 attempt(s)"
 
 
 @pytest.mark.parametrize("stdout", [KEY.encode() + b"\n", KEY.encode() + b"\xff"], ids=["valid", "not-utf8"])
