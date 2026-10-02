@@ -286,8 +286,6 @@ class GitHubRestGateway:
         except _NotSent:
             raise CreateNotSent('connection could not be opened') from None
         ref = self._ref(item)
-        if fingerprint_marker(fingerprint) not in (item.get('body') or ''):
-            raise GitHubError(f'create answered with issue #{ref.number}, which does not carry the marker')
         with self._lock:
             self._created[ref.number] = fingerprint
             if ref.number <= self._top + OWED_LIMIT:    # an answer far above anything known maps, but must not make lookups walk to it

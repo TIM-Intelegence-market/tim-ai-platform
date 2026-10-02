@@ -222,6 +222,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     elapsed = time.monotonic() - started
     if elapsed > worst_create:
         registry.record_incident(fp, 'SLOW_CREATE', f'create took {elapsed:.1f}s, declared bound {worst_create}s')
+    check_failed = False
     try:
         after = {m.number for m in _matches(gateway, fp, key, trusted_authors)} | {issue.number}
     except UnknownIssueKind as unknown:
@@ -229,7 +230,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     except Exception as exc:                         # the issue exists: never leave without mapping it, or the next run creates another
         registry.record_incident(fp, 'POST_CREATE_CHECK_FAILED',
                                  f'created #{issue.number}; the duplicate check failed ({type(exc).__name__}: {exc})')
-        after = {issue.number}
+        after, check_failed = {issue.number}, True
     if len(after) > 1:
         blocked = registry.block(fp, 'DUPLICATE_AFTER_CREATE', f'matches={sorted(after)}', token=token,
                                  candidates=sorted(after))
@@ -245,7 +246,8 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         if current.state is MappingState.MAPPED:
             current = registry.add_duplicates(fp, [issue.number])
         return EnsureResult(EnsureOutcome.BLOCKED, current, True, issue.number, 'CLAIM_LOST_AFTER_CREATE')
-    return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number)
+    return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number,
+                        'POST_CREATE_CHECK_FAILED: duplicates were not checked, see the incident' if check_failed else '')
 
 
 def _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc) -> EnsureResult:

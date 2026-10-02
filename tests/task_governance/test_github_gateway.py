@@ -545,12 +545,6 @@ def test_an_implausible_issue_number_in_the_create_answer_maps_but_never_makes_l
     assert len(rest.calls) < 12                    # a few reads, not a walk of a billion numbers
 
 
-def test_a_create_answer_without_the_marker_is_refused(rest, gw):
-    rest.create_reply_body = 'someone else'
-    with pytest.raises(GitHubError, match='marker'):
-        gw.create_issue(req(), req().fingerprint, timeout=5)
-
-
 def test_a_failing_post_create_check_maps_the_issue_and_records_an_incident(rest, gw, tmp_path):
     reg = TaskRegistry(str(tmp_path / 'a.db'))
     real = gw.find_issues
@@ -565,6 +559,7 @@ def test_a_failing_post_create_check_maps_the_issue_and_records_an_incident(rest
     first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
     again = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
     assert first.outcome is EnsureOutcome.CREATED and first.issue_number == 1 and again.issue_number == 1
+    assert first.detail.startswith('POST_CREATE_CHECK_FAILED')       # the caller can see that duplicates were not checked
     assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
 
 
