@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS task_mappings (
     hint_issue INTEGER,
     hint_legacy TEXT NOT NULL DEFAULT '[]',
     create_intent INTEGER NOT NULL DEFAULT 0,
+    create_started_at REAL,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS engine_bindings (
@@ -119,12 +120,14 @@ class TaskRegistry:
             pre_hint = 'hint_issue' not in have
             for name, ddl in (('claim_token', 'INTEGER NOT NULL DEFAULT 0'), ('block_candidates', "TEXT NOT NULL DEFAULT '[]'"),
                               ('hint_issue', 'INTEGER'), ('hint_legacy', "TEXT NOT NULL DEFAULT '[]'"),
-                              ('create_intent', 'INTEGER NOT NULL DEFAULT 0')):
+                              ('create_intent', 'INTEGER NOT NULL DEFAULT 0'), ('create_started_at', 'REAL')):
                 if name not in have:
                     self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
             if 'create_intent' not in have:
-                # An open claim from an older release may have been in the middle of a create: never create blindly after it.
-                self.db.execute("UPDATE task_mappings SET create_intent=1 WHERE state='CLAIMED'")
+                # Older releases did not record creates. Any unfinished row may follow a create (an open claim in the middle
+                # of one, or a row released or blocked by a worker that took over a crashed creator): never create blindly.
+                self.db.execute("UPDATE task_mappings SET create_intent=1, create_started_at=? WHERE state<>'MAPPED'",
+                                (time.time(),))
             if pre_hint:
                 # A claim written before hints were stored may belong to a run that had a hint we cannot recover:
                 # fail closed instead of letting a hint-less run create next to a legacy issue.
@@ -299,9 +302,9 @@ class TaskRegistry:
         while the listing does not show it yet). Only `release(..., create_not_sent=True)` or an operator clears it."""
         now = self.clock()
         cur = self.db.execute(
-            'UPDATE task_mappings SET claimed_at=?, updated_at=?, create_intent=1, github_repository=? '
+            'UPDATE task_mappings SET claimed_at=?, updated_at=?, create_intent=1, create_started_at=?, github_repository=? '
             'WHERE fingerprint=? AND state=? AND claim_token=?',
-            (now, now, repository, fingerprint, MappingState.CLAIMED, token))
+            (now, now, now, repository, fingerprint, MappingState.CLAIMED, token))
         return cur.rowcount == 1
 
     @_serialized
@@ -315,14 +318,19 @@ class TaskRegistry:
                         (MappingState.RELEASED, self.clock(), int(create_not_sent), fingerprint, MappingState.CLAIMED, token))
 
     @_serialized
-    def confirm_not_created(self, fingerprint: str, note: str) -> bool:
+    def confirm_not_created(self, fingerprint: str, note: str, *, quiet_seconds: float = 3600.0) -> bool:
         """Operator decision after checking GitHub: no issue of this task exists, a new create is allowed.
 
         Clears the create record of a BLOCKED (`CREATE_UNCERTAIN` becomes RELEASED) or RELEASED task; refused (False)
-        while a worker holds the claim and for MAPPED tasks."""
+        while a worker holds the claim, for MAPPED tasks, and until `quiet_seconds` have passed since the recorded create
+        started: the worker that recorded it may still be paused right before its request. Absence on GitHub alone does
+        not prove that it will never send; the operator must also know that worker stopped."""
         if not note.strip():
             raise ValueError('a note is required')
         now = self.clock()
+        row = self.db.execute('SELECT create_started_at FROM task_mappings WHERE fingerprint=?', (fingerprint,)).fetchone()
+        if row is None or (row['create_started_at'] is not None and now - row['create_started_at'] < quiet_seconds):
+            return False
         n = self.db.execute(
             "UPDATE task_mappings SET create_intent=0, updated_at=?, "
             "state=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN ? ELSE state END, "

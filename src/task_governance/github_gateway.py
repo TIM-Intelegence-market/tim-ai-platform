@@ -209,10 +209,16 @@ class GitHubRestGateway:
             self._require_repository()          # 404 on a private or wrong repository must not read as "no such issue"
             return None
         self._ref(item, number)
-        with self._lock:                        # an issue read by number exists: later lookups never stop below it
-            if int(number) <= self._top + OWED_LIMIT:
-                self._top = max(self._top, int(number))
+        self._seen(int(number), floor=True)     # it exists: later lookups never stop below it (OWED_LIMIT bounds the walk)
         return item
+
+    def _seen(self, number, *, floor=False):
+        """A good answer for `number`: forget any "missing" answer for it; optionally make it the lookup floor."""
+        with self._lock:
+            self._gone.pop(number, None)
+            self._gone_first.pop(number, None)
+            if floor:
+                self._top = max(self._top, number)
 
     def _require_repository(self):
         status, _ = self._call('GET', f'/repos/{self.repository}')       # not cached: access can be withdrawn
@@ -233,10 +239,11 @@ class GitHubRestGateway:
             for number in [n for n, since in self._gone.items() if now - since >= GONE_TTL]:
                 del self._gone[number]              # remembered long enough: ask again, and again require two answers
                 self._gone_first.pop(number, None)
-            for number in items:                    # listed means it exists: an earlier "missing" answer was wrong
-                self._gone.pop(number, None)
-                self._gone_first.pop(number, None)
-            known_top, gone = self._top, set(self._gone)
+            known_top = self._top
+        for number in items:                        # listed means it exists: an earlier "missing" answer was wrong
+            self._seen(number)
+        with self._lock:
+            gone = set(self._gone)
         for number in range(1, top):                # gaps: deleted or transferred, or hidden by the lagging listing
             if number in items or number in gone:
                 continue
@@ -246,9 +253,6 @@ class GitHubRestGateway:
             status = self._probe(items, number)
             if status in _NOT_AN_ISSUE and number <= top - PROBE_WINDOW:
                 self._note_missing(number)
-            elif status == 200:
-                with self._lock:
-                    self._gone_first.pop(number, None)     # it exists after all: an earlier "missing" answer was wrong
         misses, number, floor, owed = 0, top, max(top, known_top), 0
         while misses < PROBE_MISSES or number < floor:      # above the listing's highest: fresh issues it does not show yet
             number += 1
@@ -273,6 +277,7 @@ class GitHubRestGateway:
         if status == 200:
             self._ref(item, number)
             items[number] = item
+            self._seen(number)                  # it exists after all: an earlier "missing" answer was wrong
         elif status < 300:
             raise GitHubError(f'GET issue #{number}: unexpected HTTP {status}')
         return status

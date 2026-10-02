@@ -235,7 +235,8 @@ def test_an_open_claim_from_a_release_three_registry_counts_as_a_possible_create
     db.close()
     reg = TaskRegistry(path)
     assert reg.get(req().fingerprint).create_intent is True                       # its worker may have been creating
-    assert reg.get(req(target='OTHER').fingerprint).create_intent is False
+    # a released row may have been released by a worker that took over a crashed creator: also a possible create
+    assert reg.get(req(target='OTHER').fingerprint).create_intent is True
     assert reg.db.execute('PRAGMA user_version').fetchone()[0] == 4
     rest = FakeRest()
     result = ensure_task(req(), reg, GitHubRestGateway(rest.repo, TOKEN, transport=rest), claimant='new', trusted_authors=None)
@@ -263,3 +264,119 @@ def test_an_operator_can_clear_an_uncertain_create_after_checking_github(tmp_pat
     result = ensure_task(req(), reg, gw, claimant='b', trusted_authors=None)
     assert result.outcome is EnsureOutcome.CREATED and creates(rest) == 1
     assert 'CREATE_INTENT_CLEARED' in [i['reason'] for i in reg.incidents(req().fingerprint)]
+
+
+# -- second Codex pass on 766d425 ---------------------------------------------------------------------------------
+
+def test_an_operator_cannot_clear_a_fresh_create_intent_while_its_worker_may_still_send(tmp_path):
+    clock = Clock()
+    path = str(tmp_path / 'shared.db')
+    reg = TaskRegistry(path, clock=clock)
+    fp = req().fingerprint
+    won, mapping = reg.claim(fp, req().key, 'a', 300)
+    assert reg.begin_create(fp, mapping.claim_token, 'owner/repo')     # A is about to send and then pauses
+    clock.now += 400                                                    # A's lease expired, B takes over and blocks
+    rest = FakeRest()
+    b = ensure_task(req(), TaskRegistry(path, clock=clock), GitHubRestGateway(rest.repo, TOKEN, transport=rest),
+                    claimant='b', trusted_authors=None)
+    assert b.detail == 'CREATE_UNCERTAIN'
+    assert reg.confirm_not_created(fp, 'operator: nothing on GitHub') is False       # A may still send: too early
+    assert reg.get(fp).create_intent is True
+    clock.now += 3600
+    assert reg.confirm_not_created(fp, 'operator: nothing on GitHub, worker a stopped') is True
+
+
+def test_a_stale_revalidation_cannot_lift_a_newer_block(tmp_path):
+    rest = FakeRest()
+    blind_setup(rest)
+    clock = Clock()
+    path = str(tmp_path / 'shared.db')
+    gw_a = GitHubRestGateway(rest.repo, TOKEN, transport=rest)
+    _crashing_after_create(gw_a)
+    with pytest.raises(SystemExit):
+        ensure_task(req(), TaskRegistry(path, clock=clock), gw_a, claimant='a', trusted_authors=None)
+    clock.now += 10_000
+    reg = TaskRegistry(path, clock=clock)
+    assert ensure_task(req(), reg, GitHubRestGateway(rest.repo, TOKEN, transport=rest), claimant='b',
+                       trusted_authors=None).detail == 'CREATE_UNCERTAIN'
+    other = TaskRegistry(path, clock=clock)
+    real_unblock = reg.unblock
+
+    def newer_verdict_first(*a, **k):              # another worker writes a newer block between our read and our unblock
+        other.block(req().fingerprint, 'AMBIGUOUS_DUPLICATES', 'matches=[9, 13]', candidates=[9, 13])
+        return real_unblock(*a, **k)
+    reg.unblock = newer_verdict_first
+    rest.release_listing()
+    result = ensure_task(req(), reg, GitHubRestGateway(rest.repo, TOKEN, transport=rest), claimant='c', trusted_authors=None)
+    row = reg.get(req().fingerprint)
+    assert result.outcome is EnsureOutcome.BLOCKED
+    assert row.state is MappingState.BLOCKED and row.block_reason == 'AMBIGUOUS_DUPLICATES' and row.block_candidates == (9, 13)
+
+
+def test_a_fresh_re_check_reaches_a_created_issue_far_above_zero(tmp_path):
+    rest = FakeRest()
+    rest.lag_listing = True
+    for n in range(1, 2001):
+        rest.seed(n)
+    for n in (2001, 2002, 2003):
+        rest.fail[('GET', rf'/issues/{n}$')] = 410
+    rest.seed(2004, fingerprint_marker(req().fingerprint))
+    rest.unlisted = {2004}
+    rest.next_number = 2004
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    gw = GitHubRestGateway(rest.repo, TOKEN, transport=rest)
+    failing_check_after_create(gw)
+    first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    assert first.issue_number == 2005
+    again = ensure_task(req(), reg, GitHubRestGateway(rest.repo, TOKEN, transport=rest), claimant='w', trusted_authors=None)
+    assert again.outcome is EnsureOutcome.BLOCKED and again.mapping.block_candidates == (2004, 2005)
+
+
+def test_a_crashed_create_in_one_repository_is_not_adopted_through_another(tmp_path):
+    rest_a, rest_b = FakeRest('owner/a'), FakeRest('owner/b')
+    clock = Clock()
+    path = str(tmp_path / 'shared.db')
+    gw_a = GitHubRestGateway('owner/a', TOKEN, transport=rest_a)
+    _crashing_after_create(gw_a)
+    with pytest.raises(SystemExit):
+        ensure_task(req(), TaskRegistry(path, clock=clock), gw_a, claimant='a', trusted_authors=None)
+    clock.now += 10_000
+    rest_b.seed(1, fingerprint_marker(req().fingerprint))
+    reg = TaskRegistry(path, clock=clock)
+    result = ensure_task(req(), reg, GitHubRestGateway('owner/b', TOKEN, transport=rest_b), claimant='b', trusted_authors=None)
+    assert result.outcome is EnsureOutcome.BLOCKED and result.detail == 'REPOSITORY_MISMATCH'
+    assert rest_b.writes() == [] and reg.get(req().fingerprint).create_intent is True
+
+
+def test_a_block_about_a_created_issue_without_a_known_repository_is_not_rechecked(tmp_path):
+    rest_b = FakeRest('owner/b')
+    rest_b.seed(1, fingerprint_marker(req().fingerprint))
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    fp = req().fingerprint
+    won, mapping = reg.claim(fp, req().key, 'w', 300)
+    reg.block(fp, 'POST_CREATE_CHECK_FAILED', 'created #1 (written by an older release)', token=mapping.claim_token,
+              candidates=[1])                     # no create record, so no repository: an older release's row
+    result = ensure_task(req(), reg, GitHubRestGateway('owner/b', TOKEN, transport=rest_b), claimant='w', trusted_authors=None)
+    assert result.outcome is EnsureOutcome.BLOCKED and result.detail == 'REPOSITORY_UNKNOWN'
+    assert rest_b.writes() == [] and reg.get(fp).block_reason == 'POST_CREATE_CHECK_FAILED'
+
+
+def test_a_good_direct_read_resets_a_pending_missing_answer():
+    rest, clock = FakeRest(), Clock()
+    gw = GitHubRestGateway(rest.repo, TOKEN, transport=rest, clock=clock)
+    request = req()
+    for n in range(1, 101):
+        rest.seed(n, fingerprint_marker(request.fingerprint) if n == 40 else '')
+    rest.next_number = 100
+    rest.unlisted = {40}
+    rest.fail[('GET', r'/issues/40$')] = 404
+    gw.find_issues(request.fingerprint, request.key)
+    clock.now += 60
+    del rest.fail[('GET', r'/issues/40$')]
+    assert gw.get_issue(40).number == 40           # a good answer by number in between
+    clock.now += 61
+    rest.fail[('GET', r'/issues/40$')] = 404
+    gw.find_issues(request.fingerprint, request.key)
+    del rest.fail[('GET', r'/issues/40$')]
+    result = ensure_task(request, TaskRegistry(':memory:'), gw, claimant='w', trusted_authors=['owner'])
+    assert result.outcome is EnsureOutcome.RECOVERED and result.issue_number == 40 and creates(rest) == 0
