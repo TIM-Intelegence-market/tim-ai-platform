@@ -41,6 +41,7 @@ PROBE_LIMIT = 500       # more direct reads than this in one lookup raise instea
 OWED_LIMIT = 2000       # numbers up to the highest known one are owed and may be read this many times per lookup; a create
                         # answer further above the highest known number is used for the mapping but never raises the floor
 CONFIRM_SECONDS = 120.0 # a missing old number is remembered when a second answer this much later agrees with the first
+GONE_TTL = 3600.0       # a remembered number is read again after this long (two wrong answers must not hide an issue for good)
 _NOT_AN_ISSUE = (301, 307, 308, 404, 410)   # deleted, transferred or not an issue (a discussion shares the numbers)
 API = 'https://api.github.com'
 
@@ -139,7 +140,7 @@ class GitHubRestGateway:
         self._lock = threading.Lock()
         self._top = 0           # highest issue number this gateway has seen or created: lookups never stop below it
         self._clock = clock
-        self._gone = set()      # old numbers (404, 410, redirect) that two answers at least CONFIRM_SECONDS apart called missing
+        self._gone = {}         # old numbers (404, 410, redirect) that two answers at least CONFIRM_SECONDS apart called missing -> when
         self._gone_first = {}   # old number -> time of its first "missing" answer
         self._created = {}      # numbers this gateway created -> the fingerprint they carry: not read again for other fingerprints
 
@@ -224,7 +225,11 @@ class GitHubRestGateway:
         listed = list(self._pages(f'/repos/{self.repository}/issues?state=all'))
         items = {self._ref(item).number: item for item in listed}
         top, reads = max(items, default=0), 0
+        now = self._clock()
         with self._lock:
+            for number in [n for n, since in self._gone.items() if now - since >= GONE_TTL]:
+                del self._gone[number]              # remembered long enough: ask again, and again require two answers
+                self._gone_first.pop(number, None)
             known_top, gone = self._top, set(self._gone)
         for number in range(1, top):                # gaps: deleted or transferred, or hidden by the lagging listing
             if number in items or number in gone:
@@ -272,7 +277,7 @@ class GitHubRestGateway:
         with self._lock:
             first = self._gone_first.setdefault(number, now)
             if now - first >= CONFIRM_SECONDS:
-                self._gone.add(number)
+                self._gone[number] = now
 
     def get_issue(self, number):
         item = self._issue(number)

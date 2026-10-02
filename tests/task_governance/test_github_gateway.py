@@ -545,21 +545,47 @@ def test_an_implausible_issue_number_in_the_create_answer_maps_but_never_makes_l
     assert len(rest.calls) < 12                    # a few reads, not a walk of a billion numbers
 
 
-def test_a_failing_post_create_check_maps_the_issue_and_records_an_incident(rest, gw, tmp_path):
-    reg = TaskRegistry(str(tmp_path / 'a.db'))
-    real = gw.find_issues
-    calls = []
+def _failing_check_after_create(gw):
+    real, calls = gw.find_issues, []
 
     def flaky(fingerprint, key):
         calls.append(1)
-        if len(calls) > 1:                         # the lookup before the create works, the check after it does not
+        if len(calls) == 2:                        # the lookup before the create works, the check after it does not
             raise GitHubError('GET /repos/owner/repo/issues: HTTP 429')
         return real(fingerprint, key)
     gw.find_issues = flaky
+
+
+def test_a_failing_post_create_check_blocks_with_the_new_issue_and_the_next_run_adopts_it(rest, gw, tmp_path):
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
     first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.BLOCKED and first.detail == 'POST_CREATE_CHECK_FAILED' and first.issue_number == 1
+    assert first.mapping.block_candidates == (1,)
+    assert 'POST_CREATE_CHECK_FAILED' in [i['reason'] for i in reg.incidents(req().fingerprint)]
     again = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
-    assert first.outcome is EnsureOutcome.CREATED and first.issue_number == 1 and again.issue_number == 1
-    assert first.detail.startswith('POST_CREATE_CHECK_FAILED')       # the caller can see that duplicates were not checked
+    assert again.outcome in (EnsureOutcome.CREATED, EnsureOutcome.RECOVERED, EnsureOutcome.UPDATED) and again.issue_number == 1
+    assert again.mapping.state is MappingState.MAPPED
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
+def test_a_failing_post_create_check_with_a_hidden_older_marker_issue_documents_it_as_duplicate(rest, gw, tmp_path):
+    rest.next_number, rest.lag_listing = 0, True
+    for number in range(1, 6):
+        rest.seed(number)
+    rest.seed(9, fingerprint_marker(req().fingerprint))      # an older issue of this task, hidden by the lag
+    rest.unlisted = {9}
+    for number in (6, 7, 8):
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    rest.next_number = 9
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    assert first.outcome is EnsureOutcome.BLOCKED and first.issue_number == 10
+    again = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    assert again.mapping.state is MappingState.MAPPED and again.issue_number == 10
+    assert any('TIM_DUPLICATE_OF:10' in c['body'] for c in rest.comments.get(9, []))     # #9 is documented, not closed
+    assert rest.issues[9]['state'] == 'open'
     assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
 
 
@@ -578,3 +604,22 @@ def test_an_answer_other_than_200_on_a_direct_read_is_an_error(rest, gw):
     rest.fail[('GET', r'/issues/2$')] = 202
     with pytest.raises(GitHubError, match='unexpected HTTP 202'):
         gw.find_issues('x' * 64, '')
+
+
+def test_a_remembered_missing_number_is_asked_again_after_an_hour(rest):
+    clock = Clock()
+    gw = GitHubRestGateway('owner/repo', TOKEN, transport=rest, clock=clock)
+    for number in range(1, 121):
+        if number != 3:
+            rest.seed(number)
+    rest.fail[('GET', r'/issues/3$')] = 410
+    count = lambda: len([c for c in rest.calls if c[1].endswith('/issues/3')])
+    gw.find_issues('x' * 64, '')
+    clock.now += 121
+    gw.find_issues('x' * 64, '')
+    assert count() == 2
+    gw.find_issues('x' * 64, '')
+    assert count() == 2                            # remembered
+    clock.now += 3600
+    gw.find_issues('x' * 64, '')
+    assert count() == 3                            # asked again after the time to live

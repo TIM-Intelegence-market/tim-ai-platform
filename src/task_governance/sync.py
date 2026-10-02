@@ -134,6 +134,13 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
                     and authoritative_hint in existing.block_candidates)):   # else a hint-less run would create anew
             registry.unblock(fp, f'{existing.block_reason}: re-validating')
             existing = None
+        elif existing.github_issue_number is None and existing.block_reason == 'POST_CREATE_CHECK_FAILED' \
+                and existing.block_candidates and authoritative_hint in (None, existing.block_candidates[0]):
+            # Our own create succeeded but the duplicate check did not: adopt that issue by number (a direct read is
+            # consistent), document any other marker issue as a duplicate, never create again.
+            authoritative_hint = existing.block_candidates[0]
+            registry.unblock(fp, f'POST_CREATE_CHECK_FAILED: adopting #{authoritative_hint}', hint=authoritative_hint)
+            existing = None
         elif existing.github_issue_number is None and _hint_resolves_block(existing, authoritative_hint):
             registry.unblock(fp, f'authoritative hint #{authoritative_hint} supplied',
                              hint=authoritative_hint, legacy=legacy_issues)
@@ -222,15 +229,16 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     elapsed = time.monotonic() - started
     if elapsed > worst_create:
         registry.record_incident(fp, 'SLOW_CREATE', f'create took {elapsed:.1f}s, declared bound {worst_create}s')
-    check_failed = False
     try:
         after = {m.number for m in _matches(gateway, fp, key, trusted_authors)} | {issue.number}
     except UnknownIssueKind as unknown:
         return _blocked_unknown(registry, fp, token, unknown, created=True, issue_number=issue.number)
-    except Exception as exc:                         # the issue exists: never leave without mapping it, or the next run creates another
+    except Exception as exc:    # the issue exists but a duplicate cannot be ruled out: block with it as the candidate, never map blindly
         registry.record_incident(fp, 'POST_CREATE_CHECK_FAILED',
                                  f'created #{issue.number}; the duplicate check failed ({type(exc).__name__}: {exc})')
-        after, check_failed = {issue.number}, True
+        blocked = registry.block(fp, 'POST_CREATE_CHECK_FAILED', f'created #{issue.number}, duplicates not checked', token=token,
+                                 candidates=[issue.number])
+        return EnsureResult(EnsureOutcome.BLOCKED, blocked, True, issue.number, 'POST_CREATE_CHECK_FAILED')
     if len(after) > 1:
         blocked = registry.block(fp, 'DUPLICATE_AFTER_CREATE', f'matches={sorted(after)}', token=token,
                                  candidates=sorted(after))
@@ -246,8 +254,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         if current.state is MappingState.MAPPED:
             current = registry.add_duplicates(fp, [issue.number])
         return EnsureResult(EnsureOutcome.BLOCKED, current, True, issue.number, 'CLAIM_LOST_AFTER_CREATE')
-    return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number,
-                        'POST_CREATE_CHECK_FAILED: duplicates were not checked, see the incident' if check_failed else '')
+    return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number)
 
 
 def _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc) -> EnsureResult:
