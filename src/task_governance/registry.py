@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 
 class EngineBindingConflict(ValueError):
@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS task_mappings (
     block_candidates TEXT NOT NULL DEFAULT '[]',
     hint_issue INTEGER,
     hint_legacy TEXT NOT NULL DEFAULT '[]',
+    create_intent INTEGER NOT NULL DEFAULT 0,
+    create_started_at REAL,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS engine_bindings (
@@ -79,6 +81,7 @@ class Mapping:
     block_candidates: tuple[int, ...]
     hint_issue: int | None = None                  # operator-designated authoritative issue, pinned by the first claim
     hint_legacy: tuple[int, ...] = ()              # known historical duplicates pinned together with it
+    create_intent: bool = False                    # a create may have reached GitHub: nobody may create blindly again
 
 
 class TaskRegistry:
@@ -116,9 +119,19 @@ class TaskRegistry:
             have = {r['name'] for r in self.db.execute('PRAGMA table_info(task_mappings)')}
             pre_hint = 'hint_issue' not in have
             for name, ddl in (('claim_token', 'INTEGER NOT NULL DEFAULT 0'), ('block_candidates', "TEXT NOT NULL DEFAULT '[]'"),
-                              ('hint_issue', 'INTEGER'), ('hint_legacy', "TEXT NOT NULL DEFAULT '[]'")):
+                              ('hint_issue', 'INTEGER'), ('hint_legacy', "TEXT NOT NULL DEFAULT '[]'"),
+                              ('create_intent', 'INTEGER NOT NULL DEFAULT 0'), ('create_started_at', 'REAL')):
                 if name not in have:
                     self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
+            if self.db.execute('PRAGMA user_version').fetchone()[0] < 5:
+                # Files before schema 5 (including intermediate ones that already had these columns) did not record every
+                # create. Any unfinished row may follow a create (an open claim in the middle of one, or a row released or
+                # blocked by a worker that took over a crashed creator): never create blindly, and start the quiet period now.
+                self.db.execute("UPDATE task_mappings SET create_intent=1, create_started_at=? WHERE state<>'MAPPED'",
+                                (self.clock(),))
+            # an intent without its start time could never be cleared by an operator: start the quiet period now
+            self.db.execute('UPDATE task_mappings SET create_started_at=? WHERE create_intent=1 AND create_started_at IS NULL',
+                            (self.clock(),))
             if pre_hint:
                 # A claim written before hints were stored may belong to a run that had a hint we cannot recover:
                 # fail closed instead of letting a hint-less run create next to a legacy issue.
@@ -286,10 +299,52 @@ class TaskRegistry:
         return cur.rowcount == 1
 
     @_serialized
-    def release(self, fingerprint: str, token: int) -> None:
-        """Give the claim up after a failure that happened before anything was created."""
-        self.db.execute('UPDATE task_mappings SET state=?, updated_at=? WHERE fingerprint=? AND state=? AND claim_token=?',
-                        (MappingState.RELEASED, self.clock(), fingerprint, MappingState.CLAIMED, token))
+    def begin_create(self, fingerprint: str, token: int, repository: str) -> bool:
+        """Renew the lease and record, before the irreversible create, that a create for `repository` may happen.
+
+        The record outlives a crash: a worker that takes the claim over later never creates blindly (the issue may exist
+        while the listing does not show it yet). Only `release(..., create_not_sent=True)` or an operator clears it."""
+        now = self.clock()
+        cur = self.db.execute(
+            'UPDATE task_mappings SET claimed_at=?, updated_at=?, create_intent=1, create_started_at=?, github_repository=? '
+            'WHERE fingerprint=? AND state=? AND claim_token=?',
+            (now, now, now, repository, fingerprint, MappingState.CLAIMED, token))
+        return cur.rowcount == 1
+
+    @_serialized
+    def release(self, fingerprint: str, token: int, *, create_not_sent: bool = False) -> None:
+        """Give the claim up after a failure that happened before anything was created.
+
+        `create_not_sent=True` (the gateway proved that the create request never left the process) also clears this
+        claim's create record."""
+        self.db.execute('UPDATE task_mappings SET state=?, updated_at=?, create_intent=CASE WHEN ? THEN 0 ELSE create_intent END '
+                        'WHERE fingerprint=? AND state=? AND claim_token=?',
+                        (MappingState.RELEASED, self.clock(), int(create_not_sent), fingerprint, MappingState.CLAIMED, token))
+
+    @_serialized
+    def confirm_not_created(self, fingerprint: str, note: str, *, quiet_seconds: float = 3600.0) -> bool:
+        """Operator decision after checking GitHub: no issue of this task exists, a new create is allowed.
+
+        Clears the create record of a BLOCKED (`CREATE_UNCERTAIN` becomes RELEASED) or RELEASED task; refused (False)
+        while a worker holds the claim, for MAPPED tasks, and until `quiet_seconds` have passed since the recorded create
+        started: the worker that recorded it may still be paused right before its request. Absence on GitHub alone does
+        not prove that it will never send; the operator must also know that worker stopped."""
+        if not note.strip():
+            raise ValueError('a note is required')
+        now = self.clock()
+        n = self.db.execute(       # one statement: the quiet period is checked against the intent it clears, not an older read
+            "UPDATE task_mappings SET create_intent=0, updated_at=?, "
+            "state=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN ? ELSE state END, "
+            "block_candidates=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '[]' ELSE block_candidates END, "
+            "block_reason=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '' ELSE block_reason END "
+            "WHERE fingerprint=? AND state IN (?, ?) AND create_intent=1 "
+            "AND create_started_at IS NOT NULL AND ? - create_started_at >= ?",
+            (now, MappingState.BLOCKED, MappingState.RELEASED, MappingState.BLOCKED, MappingState.BLOCKED,
+             fingerprint, MappingState.BLOCKED, MappingState.RELEASED, now, quiet_seconds)).rowcount
+        if n:
+            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                            (fingerprint, 'CREATE_INTENT_CLEARED', note, now))
+        return bool(n)
 
     @_serialized
     def map_issue(self, fingerprint: str, token: int, repository: str, issue_number: int, duplicates=()) -> Mapping | None:
@@ -303,17 +358,23 @@ class TaskRegistry:
 
     @_serialized
     def block(self, fingerprint: str, reason: str, detail: str = '', *, token: int | None = None,
-              candidates=()) -> Mapping:
+              candidates=(), expect=None) -> Mapping:
         """Fail closed: record the incident and stop the task, never delete or close anything.
 
         `candidates` are the issue numbers the block is about (structured, used to judge whether a
         later hint really addresses it). With a token the state change is fenced to that claim. A
         MAPPED task is never downgraded, by anyone: a stale worker or operator call only records
-        the incident.
+        the incident. `expect=(block_reason, candidates)` changes only that exact block, so a verdict taken on an older
+        read cannot overwrite a newer one (the incident is still recorded).
         """
         now = self.clock()
         cands = json.dumps(sorted(set(candidates)))
-        if token is None:
+        if expect is not None:
+            self.db.execute('UPDATE task_mappings SET block_reason=?, block_candidates=?, updated_at=? '
+                            'WHERE fingerprint=? AND state=? AND block_reason=? AND block_candidates=?',
+                            (reason, cands, now, fingerprint, MappingState.BLOCKED, expect[0],
+                             json.dumps(sorted(set(expect[1])))))
+        elif token is None:
             self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, block_candidates=?, updated_at=? '
                             'WHERE fingerprint=? AND state<>?',
                             (MappingState.BLOCKED, reason, cands, now, fingerprint, MappingState.MAPPED))
@@ -342,20 +403,25 @@ class TaskRegistry:
         return self.get(fingerprint)
 
     @_serialized
-    def unblock(self, fingerprint: str, note: str, *, hint: int | None = None, legacy=()) -> bool:
+    def unblock(self, fingerprint: str, note: str, *, hint: int | None = None, legacy=(), expect=None) -> bool:
         """Explicit release of a BLOCKED task (one transaction of state-guarded updates, no TOCTOU).
 
         With a mapped issue the task returns to MAPPED, otherwise to RELEASED (claimable again).
         History stays in governance_incidents. A given `hint`/`legacy` is pinned in the same transaction for every block reason (a rejected hint
         is replaced; a different pinned hint stays and shows up as HINT_CONFLICT), so no run can see the task
-        without the hint the operator just supplied.
+        without the hint the operator just supplied. `expect=(block_reason, candidates)` releases only that exact block
+        (False otherwise), so a decision taken on an older read cannot lift a block another worker wrote meanwhile.
         """
         now = self.clock()
         self.db.execute('BEGIN IMMEDIATE')
         try:
             # a rejected hint is worthless: swap in the replacement
-            row = self.db.execute('SELECT block_reason, hint_issue, hint_legacy FROM task_mappings WHERE fingerprint=? AND state=?',
-                                  (fingerprint, MappingState.BLOCKED)).fetchone()
+            row = self.db.execute('SELECT block_reason, block_candidates, hint_issue, hint_legacy FROM task_mappings '
+                                  'WHERE fingerprint=? AND state=?', (fingerprint, MappingState.BLOCKED)).fetchone()
+            if expect is not None and (row is None or (row['block_reason'], tuple(json.loads(row['block_candidates'])))
+                                       != (expect[0], tuple(expect[1]))):
+                self.db.execute('COMMIT')
+                return False
             if row is not None:
                 if row['block_reason'] in HINT_ONLY_BLOCKS and hint is None:
                     # the created issue may exist: a plain release would let the next run create another one
@@ -401,4 +467,4 @@ class TaskRegistry:
                        row['claimed_at'], row['claim_token'], row['github_repository'], row['github_issue_number'],
                        tuple(json.loads(row['duplicate_issues'])), row['block_reason'],
                        tuple(json.loads(row['block_candidates'])), row['hint_issue'],
-                       tuple(json.loads(row['hint_legacy'])))
+                       tuple(json.loads(row['hint_legacy'])), bool(row['create_intent']))

@@ -129,12 +129,26 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
                          f'({worst_create}s): a slow create could outlive its claim')
 
     if existing and existing.state is MappingState.BLOCKED:
+        if existing.github_issue_number is None and existing.github_repository \
+                and _norm_repo(existing.github_repository) != _norm_repo(gateway.repository):
+            # A create was attempted in another repository: its issue numbers mean something else here. Touch nothing.
+            registry.record_incident(fp, 'REPOSITORY_MISMATCH',
+                                     f'create attempted in {existing.github_repository}, called for {gateway.repository}')
+            return EnsureResult(EnsureOutcome.BLOCKED, existing, False, None, 'REPOSITORY_MISMATCH')
         if existing.github_issue_number is None and (
-                existing.block_reason == 'UNKNOWN_ISSUE_KIND'          # the marker exists, so no hint is needed
+                existing.block_reason in ('UNKNOWN_ISSUE_KIND', 'CREATE_UNCERTAIN')   # look again; the create record stays
                 or (existing.block_reason == 'HINT_UNKNOWN_KIND'       # only the same hint may re-validate it,
                     and authoritative_hint in existing.block_candidates)):   # else a hint-less run would create anew
-            registry.unblock(fp, f'{existing.block_reason}: re-validating')
+            if not registry.unblock(fp, f'{existing.block_reason}: re-validating',
+                                    expect=(existing.block_reason, existing.block_candidates)):
+                return _changed_meanwhile(registry, fp)
             existing = None
+        elif existing.github_issue_number is None and existing.block_reason == 'POST_CREATE_CHECK_FAILED' \
+                and existing.block_candidates and existing.github_repository is None:
+            # Written by a release that did not record the repository: the candidate number may belong to another one.
+            registry.record_incident(fp, 'REPOSITORY_UNKNOWN', f'created #{existing.block_candidates[0]} in an unknown '
+                                     f'repository, called for {gateway.repository}; operator: unblock with hint=<issue>')
+            return EnsureResult(EnsureOutcome.BLOCKED, existing, False, None, 'REPOSITORY_UNKNOWN')
         elif existing.github_issue_number is None and existing.block_reason == 'POST_CREATE_CHECK_FAILED' \
                 and existing.block_candidates:
             # Our own create succeeded but the duplicate check did not. Nothing changes in the row until a re-check has
@@ -142,12 +156,15 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
             verdict = _recheck_created_issue(registry, gateway, request, existing, trusted_authors)
             if isinstance(verdict, EnsureResult):
                 return verdict
+            if not registry.unblock(fp, f'POST_CREATE_CHECK_FAILED: #{verdict} is the only marker issue', hint=verdict,
+                                    expect=('POST_CREATE_CHECK_FAILED', existing.block_candidates)):
+                return _changed_meanwhile(registry, fp)
             authoritative_hint = verdict
-            registry.unblock(fp, f'POST_CREATE_CHECK_FAILED: #{verdict} is the only marker issue', hint=verdict)
             existing = None
         elif existing.github_issue_number is None and _hint_resolves_block(existing, authoritative_hint):
-            registry.unblock(fp, f'authoritative hint #{authoritative_hint} supplied',
-                             hint=authoritative_hint, legacy=legacy_issues)
+            if not registry.unblock(fp, f'authoritative hint #{authoritative_hint} supplied', hint=authoritative_hint,
+                                    legacy=legacy_issues, expect=(existing.block_reason, existing.block_candidates)):
+                return _changed_meanwhile(registry, fp)
             existing = None
         else:
             return EnsureResult(EnsureOutcome.BLOCKED, existing, False, existing.github_issue_number, existing.block_reason)
@@ -165,6 +182,13 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     if not won:
         return EnsureResult(EnsureOutcome.PENDING, mapping, False, None, f'claim held by {mapping.claimant}')
     token = mapping.claim_token
+    if mapping.create_intent and mapping.github_repository \
+            and _norm_repo(mapping.github_repository) != _norm_repo(gateway.repository):
+        # The create that may have happened went to another repository: adopting or creating here could split the task.
+        registry.release(fp, token)                  # the create record stays
+        registry.record_incident(fp, 'REPOSITORY_MISMATCH',
+                                 f'create attempted in {mapping.github_repository}, called for {gateway.repository}')
+        return EnsureResult(EnsureOutcome.BLOCKED, registry.get(fp), False, None, 'REPOSITORY_MISMATCH')
     if mapping.hint_issue is not None and authoritative_hint in (None, mapping.hint_issue):
         # The row we won is the truth, not what we read before the claim: another run may have pinned a hint
         # (or more legacy numbers) in between, e.g. it claimed, failed and released just before we took over.
@@ -210,8 +234,16 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
                                  candidates=numbers)
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
 
-    # Nothing exists. Re-assert the claim right before the irreversible create.
-    if not registry.renew(fp, token):
+    if mapping.create_intent:
+        # An earlier claim of this task may already have created the issue (it crashed or outlived its lease before it
+        # could record the result) and the listing may not show it yet: never create blindly after that. The block is
+        # re-validated on every run and adopts the issue once it is visible; otherwise an operator checks GitHub and
+        # calls registry.confirm_not_created.
+        blocked = registry.block(fp, 'CREATE_UNCERTAIN', 'an earlier create may have reached GitHub; no marker issue visible',
+                                 token=token)
+        return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, 'CREATE_UNCERTAIN')
+    # Nothing exists. Re-assert the claim and record the create intent right before the irreversible create.
+    if not registry.begin_create(fp, token, gateway.repository):
         return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'claim lost before create')
     started = time.monotonic()
     try:
@@ -226,7 +258,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
             raise exc                                # cannot verify: keep the claim until its lease expires
         if visible:
             return _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
-        registry.release(fp, token)
+        registry.release(fp, token, create_not_sent=True)
         raise
     except Exception as exc:
         return _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
@@ -269,7 +301,9 @@ def _recheck_created_issue(registry, gateway, request, row, trusted_authors):
     fp, key, cand = request.fingerprint, request.key, row.block_candidates[0]
 
     def blocked(reason, detail, numbers):
-        mapping = registry.block(fp, reason, detail, candidates=numbers)
+        mapping = registry.block(fp, reason, detail, candidates=numbers, expect=('POST_CREATE_CHECK_FAILED', row.block_candidates))
+        if (mapping.block_reason, mapping.block_candidates) != (reason, tuple(sorted(set(numbers)))):
+            return _changed_meanwhile(registry, fp)      # another worker's newer verdict stands
         return EnsureResult(EnsureOutcome.BLOCKED, mapping, False, cand, reason)
     try:
         expected = gateway.get_issue(cand)
@@ -290,6 +324,14 @@ def _recheck_created_issue(registry, gateway, request, row, trusted_authors):
         numbers = sorted(others | {cand})
         return blocked('DUPLICATE_AFTER_CREATE', f'matches={numbers} (found when re-checking created #{cand})', numbers)
     return cand
+
+
+def _changed_meanwhile(registry, fp) -> EnsureResult:
+    """Another worker changed the blocked task between our read and our release: its newer verdict stands."""
+    current = registry.get(fp)
+    if current.state is MappingState.BLOCKED:
+        return EnsureResult(EnsureOutcome.BLOCKED, current, False, current.github_issue_number, current.block_reason)
+    return EnsureResult(EnsureOutcome.PENDING, current, False, current.github_issue_number, 'task changed meanwhile, run again')
 
 
 def _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc) -> EnsureResult:

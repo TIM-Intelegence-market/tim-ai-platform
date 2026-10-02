@@ -57,6 +57,13 @@ def run_readonly(gateway, *, probe_issue=None):
     return results
 
 
+def _without_memory(gateway):
+    """The same repository, token and transport, but none of the numbers this gateway created or saw."""
+    return GitHubRestGateway(gateway.repository, gateway._token, max_create_seconds=gateway.max_create_seconds,
+                             request_timeout=gateway._timeout, max_pages=gateway._max_pages, transport=gateway._transport,
+                             api=gateway._api, clock=gateway._clock)
+
+
 def run_roundtrip(gateway, workdir, *, login, run_id=None):
     from src.task_engine.repository import SqliteTaskRepository
     from src.task_engine.service import TaskEngine
@@ -72,8 +79,8 @@ def run_roundtrip(gateway, workdir, *, login, run_id=None):
                            next_action='close this issue')
         registry = TaskRegistry(str(Path(workdir) / 'registry.db'))
 
-        def sync(reg):
-            return sync_engine_task_to_issue(engine, task_id, reg, gateway, mission_id='LIVECHECK', phase_id='P0', claimant='live-check',
+        def sync(reg, gw=gateway):
+            return sync_engine_task_to_issue(engine, task_id, reg, gw, mission_id='LIVECHECK', phase_id='P0', claimant='live-check',
                                              trusted_authors=[login])
 
         first = sync(registry)
@@ -83,7 +90,8 @@ def run_roundtrip(gateway, workdir, *, login, run_id=None):
         second = sync(registry)
         _check(results, 'second_run_updates_the_same_issue',
                lambda: (second.outcome is EnsureOutcome.UPDATED and second.issue_number == first.issue_number, f'{second.outcome.value} #{second.issue_number}'))
-        lost = sync(TaskRegistry(str(Path(workdir) / 'registry-lost.db')))        # a registry that never saw the task
+        # a new process: a registry that never saw the task and a gateway that does not remember the created number
+        lost = sync(TaskRegistry(str(Path(workdir) / 'registry-lost.db')), _without_memory(gateway))
         _check(results, 'lost_registry_adopts_instead_of_creating',
                lambda: (lost.outcome is EnsureOutcome.RECOVERED and lost.issue_number == first.issue_number, f'{lost.outcome.value} #{lost.issue_number}'))
         from .engine_bridge import request_from_engine_task
