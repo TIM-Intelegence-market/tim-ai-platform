@@ -127,7 +127,6 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         raise ValueError(f'lease_seconds={lease_seconds} is shorter than {MIN_LEASE_FACTOR}x the gateway create time '
                          f'({worst_create}s): a slow create could outlive its claim')
 
-    expected_issue = None
     if existing and existing.state is MappingState.BLOCKED:
         if existing.github_issue_number is None and (
                 existing.block_reason == 'UNKNOWN_ISSUE_KIND'          # the marker exists, so no hint is needed
@@ -137,10 +136,13 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
             existing = None
         elif existing.github_issue_number is None and existing.block_reason == 'POST_CREATE_CHECK_FAILED' \
                 and existing.block_candidates:
-            # Our own create succeeded but the duplicate check did not. Look again: the created issue alone is adopted,
-            # a second marker issue next to it blocks like any other duplicate (nothing is chosen for the operator).
-            expected_issue = existing.block_candidates[0]
-            registry.unblock(fp, f'POST_CREATE_CHECK_FAILED: re-checking with #{expected_issue}')
+            # Our own create succeeded but the duplicate check did not. Nothing changes in the row until a re-check has
+            # succeeded, so a second failure loses no context. Then the created issue alone is adopted by number.
+            verdict = _recheck_created_issue(registry, gateway, request, existing, trusted_authors)
+            if isinstance(verdict, EnsureResult):
+                return verdict
+            authoritative_hint = verdict
+            registry.unblock(fp, f'POST_CREATE_CHECK_FAILED: #{verdict} is the only marker issue', hint=verdict)
             existing = None
         elif existing.github_issue_number is None and _hint_resolves_block(existing, authoritative_hint):
             registry.unblock(fp, f'authoritative hint #{authoritative_hint} supplied',
@@ -175,7 +177,6 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     try:
         matches = _matches(gateway, fp, key, trusted_authors)
         hinted = gateway.get_issue(authoritative_hint) if authoritative_hint is not None else None
-        expected = gateway.get_issue(expected_issue) if expected_issue is not None and authoritative_hint is None else None
     except UnknownIssueKind as exc:
         return _blocked_unknown(registry, fp, token, exc, created=False)
     except Exception:
@@ -196,8 +197,6 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
                                  candidates=[hinted.number])
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
     candidates = {m.number: m for m in matches}
-    if expected is not None and expected.is_pull_request is False and _trusted(expected, trusted_authors):
-        candidates.setdefault(expected.number, expected)   # the lookup may still lag behind our own create: a direct read does not
     if hinted is not None:
         candidates[hinted.number] = hinted
         dups = sorted((set(candidates) | set(legacy_issues)) - {hinted.number})
@@ -259,6 +258,37 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
             current = registry.add_duplicates(fp, [issue.number])
         return EnsureResult(EnsureOutcome.BLOCKED, current, True, issue.number, 'CLAIM_LOST_AFTER_CREATE')
     return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number)
+
+
+def _recheck_created_issue(registry, gateway, request, row, trusted_authors):
+    """Re-check a task that was blocked as POST_CREATE_CHECK_FAILED: the issue number to adopt, or a BLOCKED result.
+
+    The row is only changed to say something new (`EXPECTED_ISSUE_INVALID`, `DUPLICATE_AFTER_CREATE`); a failing re-check
+    leaves it untouched, and nothing here ever creates an issue."""
+    fp, key, cand = request.fingerprint, request.key, row.block_candidates[0]
+
+    def blocked(reason, detail, numbers):
+        mapping = registry.block(fp, reason, detail, candidates=numbers)
+        return EnsureResult(EnsureOutcome.BLOCKED, mapping, False, cand, reason)
+    try:
+        expected = gateway.get_issue(cand)
+        matches = _matches(gateway, fp, key, trusted_authors)
+        marked = getattr(gateway, 'carries_marker', None)
+        marked = True if marked is None or expected is None else marked(cand, fp)
+    except Exception as exc:
+        return EnsureResult(EnsureOutcome.BLOCKED, row, False, cand,
+                            f'POST_CREATE_CHECK_FAILED: the re-check failed again ({type(exc).__name__}), nothing was changed')
+    if expected is None:
+        return blocked('EXPECTED_ISSUE_INVALID', f'created #{cand} does not exist any more', [cand])
+    if expected.is_pull_request is not False or not _trusted(expected, trusted_authors):
+        return blocked('EXPECTED_ISSUE_INVALID', f'created #{cand} is a pull request, of unknown kind or by an untrusted author', [cand])
+    if not marked:
+        return blocked('EXPECTED_ISSUE_INVALID', f'created #{cand} no longer carries the task marker', [cand])
+    others = {m.number for m in matches} - {cand}
+    if others:
+        numbers = sorted(others | {cand})
+        return blocked('DUPLICATE_AFTER_CREATE', f'matches={numbers} (found when re-checking created #{cand})', numbers)
+    return cand
 
 
 def _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc) -> EnsureResult:

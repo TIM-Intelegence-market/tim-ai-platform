@@ -606,6 +606,52 @@ def test_the_re_check_adopts_the_created_issue_even_when_the_lookup_is_still_bli
     assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
 
 
+def _blind_setup(rest):
+    rest.next_number, rest.lag_listing = 0, True
+    for number in range(1, 6):
+        rest.seed(number)
+    for number in (6, 7, 8):                       # deleted numbers in front of the new issue: a fresh lookup stops before #9
+        rest.fail[('GET', rf'/issues/{number}$')] = 410
+    rest.next_number = 8
+
+
+def test_a_second_failing_re_check_keeps_the_context_and_the_third_run_still_does_not_create(rest, gw, tmp_path):
+    _blind_setup(rest)
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    first = ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
+    rest.fail[('GET', r'/issues$')] = 503          # the re-check cannot list either
+    second = ensure_task(req(), reg, GitHubRestGateway('owner/repo', TOKEN, transport=rest), claimant='w', trusted_authors=None)
+    row = reg.get(req().fingerprint)
+    assert second.outcome is EnsureOutcome.BLOCKED and 're-check failed again' in second.detail
+    assert row.block_reason == 'POST_CREATE_CHECK_FAILED' and row.block_candidates == (9,)          # nothing was lost
+    del rest.fail[('GET', r'/issues$')]
+    third = ensure_task(req(), reg, GitHubRestGateway('owner/repo', TOKEN, transport=rest), claimant='w', trusted_authors=None)
+    assert first.issue_number == 9 and third.mapping.state is MappingState.MAPPED and third.issue_number == 9
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+
+
+@pytest.mark.parametrize('spoil', ['deleted', 'pull_request', 'untrusted', 'unmarked'])
+def test_an_expected_issue_that_cannot_be_adopted_blocks_and_never_creates(rest, gw, tmp_path, spoil):
+    _blind_setup(rest)
+    reg = TaskRegistry(str(tmp_path / 'a.db'))
+    _failing_check_after_create(gw)
+    ensure_task(req(), reg, gw, claimant='w', trusted_authors=['owner'])
+    issue = rest.issues[9]
+    if spoil == 'deleted':
+        del rest.issues[9]
+    elif spoil == 'pull_request':
+        issue['pull_request'] = {'url': 'x'}
+    elif spoil == 'untrusted':
+        issue['user'] = {'login': 'stranger'}
+    else:
+        issue['body'] = 'the marker was edited away'
+    again = ensure_task(req(), reg, gw, claimant='w', trusted_authors=['owner'])
+    assert again.outcome is EnsureOutcome.BLOCKED and again.detail == 'EXPECTED_ISSUE_INVALID'
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
+    assert issue.get('body', '') != '' or spoil == 'deleted'                                          # and nothing was overwritten
+
+
 def test_a_batch_of_creates_does_not_reread_its_own_issues_for_other_tasks(rest, gw, tmp_path):
     rest.lag_listing = True
     reg = TaskRegistry(str(tmp_path / 'a.db'))

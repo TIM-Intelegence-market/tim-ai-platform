@@ -279,6 +279,11 @@ class GitHubRestGateway:
             if now - first >= CONFIRM_SECONDS:
                 self._gone[number] = now
 
+    def carries_marker(self, number, fingerprint):
+        """True when the issue exists and its body still carries the task's marker."""
+        item = self._issue(number)
+        return item is not None and fingerprint_marker(fingerprint) in (item.get('body') or '')
+
     def get_issue(self, number):
         item = self._issue(number)
         return None if item is None else self._ref(item, number)
