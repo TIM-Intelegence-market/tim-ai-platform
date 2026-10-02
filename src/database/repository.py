@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from src.database.connection import Database
 from src.models.market_data import Candle, Observation, ObservationKind, Trade
+from src.research.case_builder import Gap
 from src.research.case_engine import ResearchCase
 from src.orderflow.observations import OrderflowObservation
 from src.orderflow.validation import OrderflowValidation
@@ -71,6 +72,14 @@ def _json_object(value: object) -> dict:
     except (json.JSONDecodeError, UnicodeDecodeError):
         decoded = None
     return dict(decoded) if isinstance(decoded, dict) else {"_quality_error": "INVALID_JSON_OBJECT"}
+
+
+def _observation_from_row(row)->Observation:
+    return Observation(kind=ObservationKind(row["kind"]), symbol=row["symbol"], timeframe=row["timeframe"], observed_at=row["observed_at"], summary=row["summary"], confidence=row["confidence"], evidence=_json_object(row["evidence"]), source=row["source"], provenance=row["provenance"], observation_version=row.get("observation_version",1), rule_id=row.get("rule_id","unassigned"), rule_version=row.get("rule_version","1.0.0"), input_hash=row.get("input_hash",""), observation_id=row["observation_id"], created_at=row["created_at"])
+
+
+def _case_from_row(row)->ResearchCase:
+    return ResearchCase(case_id=row["case_id"],symbol=row["symbol"],timeframe=row["timeframe"],opened_at=row["opened_at"],updated_at=row["updated_at"],status=row["status"],observation_ids=_json_value(row["observation_ids"],list),evidence=_json_value(row["evidence"],list),missing_evidence=_json_value(row["missing_evidence"],list),outcome=row["outcome"],rule_versions=_json_value(row["rule_versions"],dict),documentation=row["documentation"],review_history=_json_value(row.get("review_history",[]),list))
 
 
 def _json_value(value:object,expected:type):
@@ -224,9 +233,60 @@ class MarketRepository:
     async def recent_observations(self, symbol: str, limit: int = 100) -> list[Observation]:
         async with self.database.acquire() as con:
             rows = await con.fetch("SELECT * FROM observations WHERE symbol=$1 ORDER BY observed_at DESC LIMIT $2", symbol, limit)
-        return [Observation(kind=ObservationKind(row["kind"]), symbol=row["symbol"], timeframe=row["timeframe"], observed_at=row["observed_at"], summary=row["summary"], confidence=row["confidence"], evidence=_json_object(row["evidence"]), source=row["source"], provenance=row["provenance"], observation_version=row.get("observation_version",1), rule_id=row.get("rule_id","unassigned"), rule_version=row.get("rule_version","1.0.0"), input_hash=row.get("input_hash",""), observation_id=row["observation_id"], created_at=row["created_at"]) for row in rows]
+        return [_observation_from_row(row) for row in rows]
 
     async def recent_research_cases(self,symbol:str,limit:int=1000)->list[ResearchCase]:
         async with self.database.acquire() as con:
             rows=await con.fetch("SELECT * FROM research_cases WHERE symbol=$1 ORDER BY updated_at DESC LIMIT $2",symbol,limit)
-        return [ResearchCase(case_id=row["case_id"],symbol=row["symbol"],timeframe=row["timeframe"],opened_at=row["opened_at"],updated_at=row["updated_at"],status=row["status"],observation_ids=_json_value(row["observation_ids"],list),evidence=_json_value(row["evidence"],list),missing_evidence=_json_value(row["missing_evidence"],list),outcome=row["outcome"],rule_versions=_json_value(row["rule_versions"],dict),documentation=row["documentation"],review_history=_json_value(row.get("review_history",[]),list)) for row in rows]
+        return [_case_from_row(row) for row in rows]
+
+    # --- Research Case materialization (Issue #3): reads are read-only; the
+    # only write is apply_research_cases, which touches research_cases alone.
+    async def observations_until(self,symbol:str,as_of:datetime)->list[Observation]:
+        async with self.database.acquire() as con:
+            rows=await con.fetch("SELECT * FROM observations WHERE symbol=$1 AND observed_at<=$2 ORDER BY observed_at,observation_id",symbol,as_of)
+        return [_observation_from_row(row) for row in rows]
+
+    async def observations_fingerprint(self,symbol:str,created_until:datetime|None=None)->dict:
+        """Count and content hash of persisted observations; proves the materialization left them untouched.
+        ``created_until`` limits the check to rows that already existed, so the live runtime may keep appending."""
+        async with self.database.acquire() as con:
+            row=await con.fetchrow("SELECT count(*) AS n, coalesce(md5(string_agg(observation_id::text||':'||input_hash||':'||kind||':'||observed_at::text, ',' ORDER BY observation_id)),'') AS digest FROM observations WHERE symbol=$1 AND ($2::timestamptz IS NULL OR created_at<=$2)",symbol,created_until)
+        return {"observations":int(row["n"]),"digest":str(row["digest"])}
+
+    async def observation_research_cases(self,symbol:str)->list[ResearchCase]:
+        async with self.database.acquire() as con:
+            rows=await con.fetch("SELECT * FROM research_cases WHERE symbol=$1 AND case_id LIKE 'case\\_%' ORDER BY case_id",symbol)
+        return [_case_from_row(row) for row in rows]
+
+    async def research_case_gaps(self,symbol:str)->list[Gap]:
+        async with self.database.acquire() as con:
+            rows=await con.fetch("SELECT gap_id,symbol,gap_started_at,gap_ended_at FROM ingestion_gap_incidents WHERE symbol=$1 AND gap_started_at IS NOT NULL ORDER BY gap_id",symbol)
+        return [Gap(gap_id=row["gap_id"],symbol=row["symbol"],start=row["gap_started_at"],end=row["gap_ended_at"]) for row in rows]
+
+    async def candle_closes(self,symbol:str,timeframe:str,start:datetime,end:datetime)->list[dict]:
+        async with self.database.acquire() as con:
+            rows=await con.fetch("SELECT close_time,close FROM candles WHERE symbol=$1 AND timeframe=$2 AND close_time>=$3 AND close_time<=$4 ORDER BY close_time",symbol,timeframe,start,end)
+        return [{"close_time":row["close_time"],"close":float(row["close"])} for row in rows]
+
+    async def apply_research_cases(self,cases:list[ResearchCase],as_of:datetime|None=None)->dict:
+        """Upsert derived cases in one transaction; unchanged rows are not rewritten.
+
+        Rows the live runtime extended after ``as_of`` (updated_at > as_of) are
+        left alone: the rebuild cannot see those newer observations.
+        """
+        inserted=updated=unchanged=skipped_newer=0
+        async with self.database.acquire() as con:
+            async with con.transaction():
+                for case in cases:
+                    row=await con.fetchrow("SELECT * FROM research_cases WHERE case_id=$1 FOR UPDATE",case.case_id)
+                    if row is not None and as_of is not None and row["updated_at"]>as_of:
+                        skipped_newer+=1
+                        continue
+                    if row is not None and _case_from_row(row).to_dict()==case.to_dict():
+                        unchanged+=1
+                        continue
+                    await self._upsert_case(con,case)
+                    if row is None:inserted+=1
+                    else:updated+=1
+        return {"inserted":inserted,"updated":updated,"unchanged":unchanged,"skipped_newer":skipped_newer}

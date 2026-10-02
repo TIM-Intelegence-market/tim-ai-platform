@@ -22,3 +22,13 @@ persistierter Candle, idempotent) + Orderflow-Fenster.
 Garantien: deterministisch (kein UUID/Zeit in IDs), idempotent
 (Upserts nach case_id), Provenienz lückenlos, Raw unverändert
 (nur abgeleitete Cases).
+
+## Nachtrag 2026-10-01: verbleibende Verlustpunkte und Behebung
+
+1. Cases blieben dauerhaft `OPEN`: kein Codepfad leitete Status ab.
+   Behoben durch `case_builder.refresh_case` in der Laufzeit (je Candle-Close)
+   und im Batch (`scripts/materialize_research_cases.py --source db`).
+2. Materialisierung lief nur über Fixtures, nie über vorhandene Observations.
+   Behoben: `observations_until` + `materialize` + `apply_research_cases`.
+3. Missing Evidence kannte nur drei Kontextcodes; Horizont, Gaps, Datenqualität
+   und Review fehlten. Behoben (siehe Domänenmodell).

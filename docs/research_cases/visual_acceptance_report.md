@@ -1,24 +1,35 @@
-# Visuelle Abnahme (Phase 8)
+# Visuelle Abnahme (Phase 8), Stand 2026-10-01
 
-Methode: Playwright Chromium Headless, isolierter Dashboard-Harness
-(Port 18766, Cases aus Test-DB, kein Live-System berührt).
+Methode: `scripts/research_case_browser_e2e.py` (Playwright Chromium headless).
+Ein isolierter DashboardServer auf 127.0.0.1 liest die Cases aus der
+isolierten Testdatenbank `tim_test`; ein zweiter Server ohne Cases prüft den
+Empty State. Kein Live-System wird berührt.
 
-- `artifacts/research_cases/baseline/cases_1440x900.png` — Vorher:
-  Live-Explorer mit Orderflow-Cases, altem Filter, ohne Statuskarten.
-- `artifacts/research_cases/final/cases_1440x900.png` — Nachher:
-  Statuskarten (0 Confirmed / 3 Collecting / 3 Total), ehrliche
-  Fortschrittszeile, 3 echte Case-Zeilen mit Types/Rule/Missing,
-  Stand-Zeile (Timestamp/Builder/Quelle), OBSERVE-Badge.
-- `artifacts/research_cases/final/cases_1920x1080.png` — gleicher
-  Stand in 1920×1080.
-- Browser-E2E: `artifacts/research_cases/test_results/browser_e2e.json`
-  — 16/16 Checks (Cards/Rows/Filter/Stand/API/Stats/Detail je Viewport,
-  0 Console Errors, 0 failed Requests).
+Datensatz (8 Cases): 3 aus dem echten Fixture-Pfad (Candles → ObservationEngine
+→ Persistenz, Symbol BTCUSDT) und 5 TEST_ONLY-Cases (Symbol E2ETEST, per
+`--seed-test-cases` über den echten Builder erzeugt), damit jeder Status einmal
+gerendert wird: 4 OPEN, 2 COLLECTING_EVIDENCE (davon 1 mit Gap), 1
+READY_FOR_REVIEW, 1 QUARANTINED, 0 CONFIRMED.
 
-PASS nur mit gerenderten Screenshots — hiermit erbracht.
-Mainline-Note: Die PNGs (`baseline/cases_1440x900.png`,
-`final/cases_1440x900.png`, `final/cases_1920x1080.png`) sind bewusst
-NICHT im Mainline-Manifest (REGENERATABLE via
-`scripts/research_case_browser_e2e.py`); JSON-Evidenz liegt bei.
-Bekannte Nicht-Regression: rotes Widget unten-links ist ein
-vorbestehender Dashboard-Overflow, außerhalb Explorer-Scope.
+Ergebnis: **38/38 Checks PASS** in 1440×900 und 1920×1080
+(`artifacts/research_cases/test_results/browser_e2e.json`): Seite lädt, Default
+nicht CONFIRMED-only, Karten und reale Zeilen sichtbar, Filter ACTIVE/OPEN/
+READY_FOR_REVIEW/CONFIRMED korrekt, Empty State, Detail mit Lifecycle und
+Missing Evidence, Quarantäne-Grund sichtbar, API-Liste/Stats/Detail/404,
+OBSERVE/READ-ONLY und Builder-Version sichtbar, 0 Console-Fehler, 0 fehlerhafte
+Requests.
+
+Screenshots (je Viewport): `default`, `all_active`, `open`, `ready_for_review`,
+`confirmed` (0 Treffer), `empty_state`, `case_detail`, `missing_evidence`
+unter `artifacts/research_cases/final/`. Die PNGs (zusammen ca. 9 MB) werden
+wie bisher nicht eingecheckt und lassen sich mit dem Skript neu erzeugen; die
+Abnahme-Screenshots vom 2026-10-01 liegen im Projektordner unter
+`research-cases/`.
+
+Neu erzeugen:
+```
+TIM_E2E_CHROMIUM=/pfad/zu/chromium   # nur nötig, wenn der Playwright-Build abweicht
+python scripts/research_case_browser_e2e.py --database-url postgresql://tim_test:…@127.0.0.1:5433/tim_test --seed-test-cases
+```
+Das Skript verweigert Datenbanken, deren Name nicht `test`, `pytest` oder
+`isolated` enthält.

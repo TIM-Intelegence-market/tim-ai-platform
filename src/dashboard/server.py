@@ -16,7 +16,7 @@ from src.llm.ollama_client import OllamaClient
 from src.llm.prompts import observation_prompt
 from config.settings import settings
 
-from src.dashboard.api import _research_cases_collection
+from src.dashboard.api import _research_case_detail, _research_cases_collection
 from src.dashboard.constants import HISTORY_LIMIT, MAX_RESPONSE_BYTES
 from src.dashboard.layout import _content_security_policy, _content_security_policy_for, _error_page
 from src.dashboard.security import _is_loopback_request_host, _require_loopback_host
@@ -160,13 +160,14 @@ class DashboardServer:
                 if path == "/api/research-cases" or path == "/api/research-cases/stats":
                     with outer.state.lock:
                         full = {"research_cases": [dict(entry) for entry in outer.state.research_cases]}
-                    return self.respond(200, json.dumps(_research_cases_collection(full, query, stats_only=(path == "/api/research-cases/stats"))).encode(), "application/json")
+                    return self.respond(200, json.dumps(_research_cases_collection(full, query, stats_only=(path == "/api/research-cases/stats")), default=str).encode(), "application/json")
                 if path.startswith("/api/research-cases/"):
                     cid = unquote(path.removeprefix("/api/research-cases/"))
                     with outer.state.lock:
                         full_cases = [dict(entry) for entry in outer.state.research_cases]
                     item = next((entry for entry in full_cases if str(entry.get("case_id")) == cid), None)
-                    return self.respond(200 if item else 404, json.dumps(item or {"error": "case not found"}).encode(), "application/json")
+                    payload = _research_case_detail(item) if item else {"error": "case not found"}
+                    return self.respond(200 if item else 404, json.dumps(payload, default=str).encode(), "application/json")
                 if path == "/api/rag":
                     q = (query.get("q", [""])[0] or "").strip().lower()
                     if not q:

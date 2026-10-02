@@ -1,81 +1,67 @@
 {
- "collection": {
-  "cases": [
-   {
-    "case_id": "case_a",
-    "status": "OPEN",
-    "timeframe": "1m",
-    "symbol": "BTCUSDT",
-    "observation_ids": [
-     "o1"
-    ],
-    "evidence": [
-     {
-      "kind": "BOS_BULLISH"
-     }
-    ],
-    "missing_evidence": [
-     "x"
-    ],
-    "outcome": null,
-    "rule_versions": {
-     "bos": "1.0.0"
-    }
-   },
-   {
-    "case_id": "case_b",
-    "status": "CONFIRMED",
-    "timeframe": "5m",
-    "symbol": "BTCUSDT",
-    "observation_ids": [
-     "o2"
-    ],
-    "evidence": [
-     {
-      "kind": "REJECTION"
-     }
-    ],
-    "missing_evidence": [],
-    "outcome": "documented",
-    "rule_versions": {
-     "bronxc": "1.0.0"
-    }
-   }
-  ],
-  "stats": {
-   "total": 2,
-   "by_status": {
-    "CONFIRMED": 1,
-    "OPEN": 1
-   },
-   "confirmed": 1,
-   "pending_outcome": 1,
-   "missing_evidence": {
-    "x": 1
-   }
-  },
-  "pagination": {
-   "limit": 50,
-   "returned": 2,
-   "total_matching": 2,
-   "next_cursor": null
-  },
-  "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC"
+ "checks": {
+  "api_404": true,
+  "api_detail": true,
+  "api_list": true,
+  "api_stats_consistent": true
  },
+ "detail_case_id": "case_e09698eaece4ae41",
+ "detail_keys": [
+  "assessment",
+  "case_id",
+  "documentation",
+  "evidence",
+  "lifecycle",
+  "missing_evidence",
+  "mode",
+  "observation_ids",
+  "opened_at",
+  "outcome",
+  "provenance",
+  "review_history",
+  "rule_versions",
+  "status",
+  "symbol",
+  "timeframe",
+  "timeline",
+  "updated_at"
+ ],
+ "list_total_matching": 8,
  "stats": {
-  "stats": {
-   "total": 2,
-   "by_status": {
-    "CONFIRMED": 1,
-    "OPEN": 1
-   },
-   "confirmed": 1,
-   "pending_outcome": 1,
-   "missing_evidence": {
-    "x": 1
-   }
+  "active": 7,
+  "as_of": "2026-10-01T22:08:23.979596+00:00",
+  "by_data_quality": {
+   "DEFECT": 1,
+   "OK": 7
   },
-  "provenance": "PUBLIC_MARKET_DATA_DETERMINISTIC"
+  "by_maturity": {
+   "MATURE": 8
+  },
+  "by_review_status": {
+   "BLOCKED": 1,
+   "NOT_READY": 6,
+   "PENDING": 1
+  },
+  "by_status": {
+   "COLLECTING_EVIDENCE": 2,
+   "OPEN": 4,
+   "QUARANTINED": 1,
+   "READY_FOR_REVIEW": 1
+  },
+  "confirmed": 0,
+  "gap_exposure": 0,
+  "missing_evidence": {
+   "Data Quality unter Schwelle": 1,
+   "Gap \u00fcberlappt Case": 1,
+   "Manual Review pending": 1,
+   "Outcome-Daten unvollst\u00e4ndig": 3,
+   "continuation_context": 5,
+   "level_reaction_context": 2,
+   "structure_confirmation": 4,
+   "zu wenige Observations": 4
+  },
+  "pending_outcome": 5,
+  "total": 8
  },
- "detail": "route-tested-live-in-e2e"
+ "unknown_id_status": 404
 }

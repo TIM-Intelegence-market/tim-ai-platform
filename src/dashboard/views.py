@@ -14,6 +14,28 @@ from src.dashboard.pages.operations import _data_quality_exceptions_page, _healt
 from src.dashboard.pages.setup_path import _setup_path_page
 from src.dashboard.pages.signals import _signal_research_page
 from src.dashboard.state import DashboardState
+from src.research.case_builder import BUILDER_VERSION, assess
+
+
+def _case_assessment(case: dict) -> str:
+    """Read-only lifecycle descriptors (maturity, data quality, gaps, review, provenance)."""
+    try:
+        result = assess(case, datetime.now(timezone.utc))
+    except (TypeError, ValueError, KeyError) as exc:
+        return f"<dt>Assessment</dt><dd>nicht verfügbar ({_safe(type(exc).__name__)})</dd>"
+    rows = [
+        ("Abgeleiteter Status", result.get("derived_status")),
+        ("Outcome / Reife", f"{result.get('maturity')} · fällig {result.get('outcome_due_at', '—')}"),
+        ("Fenster (UTC)", f"{result.get('window_start', '—')} → {result.get('window_end', '—')}"),
+        ("Data Quality", result.get("data_quality_status")),
+        ("Gaps", ", ".join(result.get("gap_exposure") or []) or "keine bekannten"),
+        ("Replay", "nicht automatisch geprüft (siehe Missing Evidence)"),
+        ("Review", result.get("review_status")),
+        ("Builder / Schema", f"{result.get('case_version')} · v{result.get('schema_version')}"),
+        ("Provenienz", f"{len(result['lineage']['observation_ids'])} Observations · {len(result['lineage']['input_hashes'])} Input-Hashes"),
+        ("Content Hash", _short(result.get("case_hash"), 24)),
+    ]
+    return "".join(f"<dt>{_safe(label)}</dt><dd>{_safe(value)}</dd>" for label, value in rows)
 
 def render(state: DashboardState, page: str = "Overview", selected_id: str | None = None) -> str:
     data = state.snapshot()
@@ -105,8 +127,13 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
             f"<article class='card'><div class='card__label'>Confirmed</div><div class='card__value'>{confirmed}</div><div class='card__note'>wissenschaftlich bestätigte Cases</div></article>"
             f"<article class='card'><div class='card__label'>Collecting Evidence</div><div class='card__value'>{collecting}</div><div class='card__note'>OPEN / MONITORING / COLLECTING_EVIDENCE</div></article>"
             f"<article class='card'><div class='card__label'>Total Cases</div><div class='card__value'>{total}</div><div class='card__note'>persistierte Research Cases</div></article>"
+            f"<article class='card'><div class='card__label'>Open</div><div class='card__value'>{int(counts.get('open', 0) or 0)}</div><div class='card__note'>zu wenige Observations</div></article>"
+            f"<article class='card'><div class='card__label'>Review Ready</div><div class='card__value'>{int(counts.get('ready_for_review', 0) or 0)}</div><div class='card__note'>Kriterien erfüllt, manuelles Review offen</div></article>"
+            f"<article class='card'><div class='card__label'>Rejected</div><div class='card__value'>{int(counts.get('rejected', 0) or 0)}</div><div class='card__note'>nach Review verworfen</div></article>"
+            f"<article class='card'><div class='card__label'>Quarantined</div><div class='card__value'>{int(counts.get('quarantined', 0) or 0)}</div><div class='card__note'>defekte Daten, nie gelöscht</div></article>"
             "</div>"
             f"<p class='observe case-progress'>{_safe(progress)}</p>"
+            + ("<p class='count-scope'><a class='tag' href='/cases?status=ACTIVE'>Alle aktiven Cases anzeigen</a> · Confirmed entsteht nur durch manuelles Review, nie automatisch.</p>" if confirmed == 0 and total > 0 else "")
         )
         detail = ""
         if selected:
@@ -114,13 +141,14 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
             reviews = "".join(f"<li><time>{_safe(item.get('at'))}</time><span class='tag'>{_safe(item.get('to'))}</span><span>{_safe(item.get('reason'))}</span></li>" for item in selected.get("review_history", []) or []) or "<li class='empty'>Noch kein Review.</li>"
             case_hash = hashlib.sha256(json.dumps({"case_id": selected.get("case_id"), "observation_ids": selected.get("observation_ids", []), "rule_versions": selected.get("rule_versions", {})}, sort_keys=True).encode()).hexdigest()[:16]
             rules = ", ".join(f"{key}:{value}" for key, value in sorted((selected.get("rule_versions", {}) or {}).items())) or "—"
-            detail = f"<section class='panel'><div class='panel__head'><h2>Case Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>Case ID</dt><dd class='mono'>{_safe(selected.get('case_id'))}</dd><dt>Status</dt><dd>{_safe(selected.get('status'))}</dd><dt>Dauer</dt><dd>{_safe(_duration(selected.get('opened_at'),selected.get('updated_at')))}</dd><dt>Outcome</dt><dd>{_safe(selected.get('outcome'))}</dd><dt>Missing Evidence</dt><dd>{_safe(', '.join(selected.get('missing_evidence', [])))}</dd><dt>Rule Versions</dt><dd class='mono'>{_safe(rules)}</dd><dt>Case Hash</dt><dd class='mono'>casehash:{_safe(case_hash)}</dd></dl><div><h3>Timeline</h3><ul class='timeline'>{timeline}</ul><h3>Review History</h3><ul class='timeline'>{reviews}</ul></div></div></section>"
+            assessment = _case_assessment(selected)
+            detail = f"<section class='panel'><div class='panel__head'><h2>Case Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>Case ID</dt><dd class='mono'>{_safe(selected.get('case_id'))}</dd><dt>Status</dt><dd>{_safe(selected.get('status'))}</dd><dt>Dauer</dt><dd>{_safe(_duration(selected.get('opened_at'),selected.get('updated_at')))}</dd><dt>Outcome</dt><dd>{_safe(selected.get('outcome'))}</dd><dt>Missing Evidence</dt><dd>{_safe(', '.join(selected.get('missing_evidence', [])))}</dd><dt>Rule Versions</dt><dd class='mono'>{_safe(rules)}</dd><dt>Case Hash</dt><dd class='mono'>casehash:{_safe(case_hash)}</dd>{assessment}</dl><div><h3>Timeline</h3><ul class='timeline'>{timeline}</ul><h3>Review History</h3><ul class='timeline'>{reviews}</ul></div></div></section>"
             with state.lock:
                 orderflow_observations = [dict(item) for item in state.orderflow_observations]
                 orderflow_validations = [dict(item) for item in state.orderflow_validations]
             detail += _case_proof_panel(selected, orderflow_observations, orderflow_validations)
-        stand = f"<p class='count-scope'>Datenstand: {_safe(data.get('timestamp'))} · Builder: ResearchCaseEngine/30min-Fenster · Quelle: OBSERVE-only Laufzeit</p>"
-        body = _hero("Research Case Explorer", "Case-Lifecycle, fehlende Evidenz und reproduzierbare Timeline.") + f"<section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><span class='count-scope'>sichtbarer Ausschnitt: {len(data['research_cases'])}</span></div>" + summary + f"<div class='filters'><div><label>Status</label><select id='filter-status'><option value='' selected>Alle aktiven / alle Status</option><option>OPEN</option><option>MONITORING</option><option>COLLECTING_EVIDENCE</option><option>READY_FOR_REVIEW</option><option>CONFIRMED</option><option>REJECTED</option><option>QUARANTINED</option><option>INVALIDATED</option><option>CLOSED</option></select></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option><option value='30'>30 Tage</option></select></div><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. BOS'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='z. B. 1.0.0'></div></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{rows}</tbody></table></div>{stand}</section>{detail}"
+        stand = f"<p class='count-scope'>Datenstand: {_safe(data.get('timestamp'))} · Builder: {_safe(BUILDER_VERSION)} (ResearchCaseEngine/30min-Fenster) · Quelle: OBSERVE-only Laufzeit · OBSERVE / READ-ONLY</p>"
+        body = _hero("Research Case Explorer", "Case-Lifecycle, fehlende Evidenz und reproduzierbare Timeline.") + f"<section class='panel'><div class='panel__head'><h2>Research Cases &amp; Missing Evidence</h2><span class='count-scope'>sichtbarer Ausschnitt: {len(data['research_cases'])}</span></div>" + summary + f"<div class='filters'><div><label>Status</label><select id='filter-status'><option value='' selected>Alle aktiven / alle Status</option><option value='ACTIVE'>ALL ACTIVE</option><option>OPEN</option><option>MONITORING</option><option>COLLECTING_EVIDENCE</option><option>READY_FOR_REVIEW</option><option>CONFIRMED</option><option>REJECTED</option><option>QUARANTINED</option><option>INVALIDATED</option><option>CLOSED</option></select></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option><option value='30'>30 Tage</option></select></div><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. BOS'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='z. B. 1.0.0'></div></div><div class='table-wrap'><table><thead><tr><th>Case</th><th>Status</th><th>Dauer</th><th>Observations</th><th>Outcome</th><th>Missing Evidence</th><th>Types</th><th>Rule Version</th></tr></thead><tbody id='cases-body'>{rows}</tbody></table></div>{stand}</section>{detail}"
         return _layout("Research Case Explorer", page, body, strip=_strip_states(data))
     if page == "Health Center":
         body = _hero("Health Center", "Zentrales Diagnosezentrum für Betrieb, Wissenschaft und Governance.")

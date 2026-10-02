@@ -31,6 +31,7 @@ from src.orderflow.metrics import OrderflowMetricsService
 from src.orderflow.observations import OrderflowObservationEngine, OrderflowResearchCaseEngine
 from src.orderflow.validation import OrderflowValidationEngine
 from src.operational.logging import StructuredLog
+from src.research.case_builder import ACTIVE_STATUSES, is_builder_case, refresh_case
 from src.research.case_engine import ResearchCaseEngine
 from src.research.trigger import ResearchTrigger
 
@@ -190,6 +191,7 @@ class TIMApplication:
                 log.info("%s", observation.to_dict())
                 if triggered is not None:log.info("Research trigger: %s", asdict(triggered))
                 await self.explain(observation)
+            await self._refresh_research_cases(candle)
             completed_summary.append(
                 {
                     "symbol": candle.symbol,
@@ -200,6 +202,20 @@ class TIMApplication:
             )
         self.aggregator = candidate_aggregator
         return completed_summary
+
+    async def _refresh_research_cases(self, candle: Candle) -> None:
+        """Re-derive active observation cases of this timeframe at the candle close (data time, never wall clock)."""
+        active = [case for case in self.cases.cases.values() if is_builder_case(case) and case.symbol == candle.symbol and case.timeframe == candle.timeframe and case.status in ACTIVE_STATUSES]
+        if not active:
+            return
+        gaps = await self.repository.research_case_gaps(candle.symbol) if hasattr(self.repository, "research_case_gaps") else []
+        bars = [{"close_time": item.close_time, "close": item.close} for item in self.history[candle.timeframe]]
+        changed = [case for case in active if refresh_case(case, candle.close_time, gaps=gaps, candles=bars)]
+        for case in changed:
+            await self.repository.upsert_research_case(case)
+        if changed:
+            with self.dashboard_state.lock:
+                self.dashboard_state.research_cases = [item.to_dict() for item in self.cases.cases.values()]
 
     async def process_orderflow_window(self,start:datetime,end:datetime)->None:
         metrics=await self.orderflow_metrics.calculate_series(settings.symbol,start-(end-start),end,int((end-start).total_seconds()))
