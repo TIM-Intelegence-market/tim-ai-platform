@@ -209,6 +209,9 @@ class GitHubRestGateway:
             self._require_repository()          # 404 on a private or wrong repository must not read as "no such issue"
             return None
         self._ref(item, number)
+        with self._lock:                        # an issue read by number exists: later lookups never stop below it
+            if int(number) <= self._top + OWED_LIMIT:
+                self._top = max(self._top, int(number))
         return item
 
     def _require_repository(self):
@@ -229,6 +232,9 @@ class GitHubRestGateway:
         with self._lock:
             for number in [n for n, since in self._gone.items() if now - since >= GONE_TTL]:
                 del self._gone[number]              # remembered long enough: ask again, and again require two answers
+                self._gone_first.pop(number, None)
+            for number in items:                    # listed means it exists: an earlier "missing" answer was wrong
+                self._gone.pop(number, None)
                 self._gone_first.pop(number, None)
             known_top, gone = self._top, set(self._gone)
         for number in range(1, top):                # gaps: deleted or transferred, or hidden by the lagging listing

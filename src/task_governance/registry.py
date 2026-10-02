@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class EngineBindingConflict(ValueError):
@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS task_mappings (
     block_candidates TEXT NOT NULL DEFAULT '[]',
     hint_issue INTEGER,
     hint_legacy TEXT NOT NULL DEFAULT '[]',
+    create_intent INTEGER NOT NULL DEFAULT 0,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS engine_bindings (
@@ -79,6 +80,7 @@ class Mapping:
     block_candidates: tuple[int, ...]
     hint_issue: int | None = None                  # operator-designated authoritative issue, pinned by the first claim
     hint_legacy: tuple[int, ...] = ()              # known historical duplicates pinned together with it
+    create_intent: bool = False                    # a create may have reached GitHub: nobody may create blindly again
 
 
 class TaskRegistry:
@@ -116,9 +118,13 @@ class TaskRegistry:
             have = {r['name'] for r in self.db.execute('PRAGMA table_info(task_mappings)')}
             pre_hint = 'hint_issue' not in have
             for name, ddl in (('claim_token', 'INTEGER NOT NULL DEFAULT 0'), ('block_candidates', "TEXT NOT NULL DEFAULT '[]'"),
-                              ('hint_issue', 'INTEGER'), ('hint_legacy', "TEXT NOT NULL DEFAULT '[]'")):
+                              ('hint_issue', 'INTEGER'), ('hint_legacy', "TEXT NOT NULL DEFAULT '[]'"),
+                              ('create_intent', 'INTEGER NOT NULL DEFAULT 0')):
                 if name not in have:
                     self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
+            if 'create_intent' not in have:
+                # An open claim from an older release may have been in the middle of a create: never create blindly after it.
+                self.db.execute("UPDATE task_mappings SET create_intent=1 WHERE state='CLAIMED'")
             if pre_hint:
                 # A claim written before hints were stored may belong to a run that had a hint we cannot recover:
                 # fail closed instead of letting a hint-less run create next to a legacy issue.
@@ -286,10 +292,49 @@ class TaskRegistry:
         return cur.rowcount == 1
 
     @_serialized
-    def release(self, fingerprint: str, token: int) -> None:
-        """Give the claim up after a failure that happened before anything was created."""
-        self.db.execute('UPDATE task_mappings SET state=?, updated_at=? WHERE fingerprint=? AND state=? AND claim_token=?',
-                        (MappingState.RELEASED, self.clock(), fingerprint, MappingState.CLAIMED, token))
+    def begin_create(self, fingerprint: str, token: int, repository: str) -> bool:
+        """Renew the lease and record, before the irreversible create, that a create for `repository` may happen.
+
+        The record outlives a crash: a worker that takes the claim over later never creates blindly (the issue may exist
+        while the listing does not show it yet). Only `release(..., create_not_sent=True)` or an operator clears it."""
+        now = self.clock()
+        cur = self.db.execute(
+            'UPDATE task_mappings SET claimed_at=?, updated_at=?, create_intent=1, github_repository=? '
+            'WHERE fingerprint=? AND state=? AND claim_token=?',
+            (now, now, repository, fingerprint, MappingState.CLAIMED, token))
+        return cur.rowcount == 1
+
+    @_serialized
+    def release(self, fingerprint: str, token: int, *, create_not_sent: bool = False) -> None:
+        """Give the claim up after a failure that happened before anything was created.
+
+        `create_not_sent=True` (the gateway proved that the create request never left the process) also clears this
+        claim's create record."""
+        self.db.execute('UPDATE task_mappings SET state=?, updated_at=?, create_intent=CASE WHEN ? THEN 0 ELSE create_intent END '
+                        'WHERE fingerprint=? AND state=? AND claim_token=?',
+                        (MappingState.RELEASED, self.clock(), int(create_not_sent), fingerprint, MappingState.CLAIMED, token))
+
+    @_serialized
+    def confirm_not_created(self, fingerprint: str, note: str) -> bool:
+        """Operator decision after checking GitHub: no issue of this task exists, a new create is allowed.
+
+        Clears the create record of a BLOCKED (`CREATE_UNCERTAIN` becomes RELEASED) or RELEASED task; refused (False)
+        while a worker holds the claim and for MAPPED tasks."""
+        if not note.strip():
+            raise ValueError('a note is required')
+        now = self.clock()
+        n = self.db.execute(
+            "UPDATE task_mappings SET create_intent=0, updated_at=?, "
+            "state=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN ? ELSE state END, "
+            "block_candidates=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '[]' ELSE block_candidates END, "
+            "block_reason=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '' ELSE block_reason END "
+            "WHERE fingerprint=? AND state IN (?, ?) AND create_intent=1",
+            (now, MappingState.BLOCKED, MappingState.RELEASED, MappingState.BLOCKED, MappingState.BLOCKED,
+             fingerprint, MappingState.BLOCKED, MappingState.RELEASED)).rowcount
+        if n:
+            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                            (fingerprint, 'CREATE_INTENT_CLEARED', note, now))
+        return bool(n)
 
     @_serialized
     def map_issue(self, fingerprint: str, token: int, repository: str, issue_number: int, duplicates=()) -> Mapping | None:
@@ -342,20 +387,25 @@ class TaskRegistry:
         return self.get(fingerprint)
 
     @_serialized
-    def unblock(self, fingerprint: str, note: str, *, hint: int | None = None, legacy=()) -> bool:
+    def unblock(self, fingerprint: str, note: str, *, hint: int | None = None, legacy=(), expect=None) -> bool:
         """Explicit release of a BLOCKED task (one transaction of state-guarded updates, no TOCTOU).
 
         With a mapped issue the task returns to MAPPED, otherwise to RELEASED (claimable again).
         History stays in governance_incidents. A given `hint`/`legacy` is pinned in the same transaction for every block reason (a rejected hint
         is replaced; a different pinned hint stays and shows up as HINT_CONFLICT), so no run can see the task
-        without the hint the operator just supplied.
+        without the hint the operator just supplied. `expect=(block_reason, candidates)` releases only that exact block
+        (False otherwise), so a decision taken on an older read cannot lift a block another worker wrote meanwhile.
         """
         now = self.clock()
         self.db.execute('BEGIN IMMEDIATE')
         try:
             # a rejected hint is worthless: swap in the replacement
-            row = self.db.execute('SELECT block_reason, hint_issue, hint_legacy FROM task_mappings WHERE fingerprint=? AND state=?',
-                                  (fingerprint, MappingState.BLOCKED)).fetchone()
+            row = self.db.execute('SELECT block_reason, block_candidates, hint_issue, hint_legacy FROM task_mappings '
+                                  'WHERE fingerprint=? AND state=?', (fingerprint, MappingState.BLOCKED)).fetchone()
+            if expect is not None and (row is None or (row['block_reason'], tuple(json.loads(row['block_candidates'])))
+                                       != (expect[0], tuple(expect[1]))):
+                self.db.execute('COMMIT')
+                return False
             if row is not None:
                 if row['block_reason'] in HINT_ONLY_BLOCKS and hint is None:
                     # the created issue may exist: a plain release would let the next run create another one
@@ -401,4 +451,4 @@ class TaskRegistry:
                        row['claimed_at'], row['claim_token'], row['github_repository'], row['github_issue_number'],
                        tuple(json.loads(row['duplicate_issues'])), row['block_reason'],
                        tuple(json.loads(row['block_candidates'])), row['hint_issue'],
-                       tuple(json.loads(row['hint_legacy'])))
+                       tuple(json.loads(row['hint_legacy'])), bool(row['create_intent']))
