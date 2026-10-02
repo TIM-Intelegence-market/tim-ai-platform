@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class EngineBindingConflict(ValueError):
@@ -123,12 +123,15 @@ class TaskRegistry:
                               ('create_intent', 'INTEGER NOT NULL DEFAULT 0'), ('create_started_at', 'REAL')):
                 if name not in have:
                     self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
-            if 'create_intent' not in have or 'create_started_at' not in have:
-                # Older releases (and the intermediate one with create_intent but no timestamp) did not record every create.
-                # Any unfinished row may follow a create (an open claim in the middle of one, or a row released or blocked by
-                # a worker that took over a crashed creator): never create blindly, and start the quiet period now.
+            if self.db.execute('PRAGMA user_version').fetchone()[0] < 5:
+                # Files before schema 5 (including intermediate ones that already had these columns) did not record every
+                # create. Any unfinished row may follow a create (an open claim in the middle of one, or a row released or
+                # blocked by a worker that took over a crashed creator): never create blindly, and start the quiet period now.
                 self.db.execute("UPDATE task_mappings SET create_intent=1, create_started_at=? WHERE state<>'MAPPED'",
                                 (self.clock(),))
+            # an intent without its start time could never be cleared by an operator: start the quiet period now
+            self.db.execute('UPDATE task_mappings SET create_started_at=? WHERE create_intent=1 AND create_started_at IS NULL',
+                            (self.clock(),))
             if pre_hint:
                 # A claim written before hints were stored may belong to a run that had a hint we cannot recover:
                 # fail closed instead of letting a hint-less run create next to a legacy issue.

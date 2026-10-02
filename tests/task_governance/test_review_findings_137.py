@@ -237,7 +237,7 @@ def test_an_open_claim_from_a_release_three_registry_counts_as_a_possible_create
     assert reg.get(req().fingerprint).create_intent is True                       # its worker may have been creating
     # a released row may have been released by a worker that took over a crashed creator: also a possible create
     assert reg.get(req(target='OTHER').fingerprint).create_intent is True
-    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == 4
+    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == 5
     rest = FakeRest()
     result = ensure_task(req(), reg, GitHubRestGateway(rest.repo, TOKEN, transport=rest), claimant='new', trusted_authors=None)
     assert result.detail == 'CREATE_UNCERTAIN' and creates(rest) == 0
@@ -399,6 +399,7 @@ def test_a_registry_from_the_intermediate_schema_four_is_migrated_conservatively
     TaskRegistry(path).close()
     db = sqlite3.connect(path)                     # a file written by 766d425: create_intent, no create_started_at
     db.execute('ALTER TABLE task_mappings DROP COLUMN create_started_at')
+    db.execute('PRAGMA user_version=4')            # what that release wrote
     db.execute("INSERT INTO task_mappings(fingerprint,canonical_key,state,claimant,claimed_at,claim_token,create_intent,"
                "created_at,updated_at) VALUES(?,?,'RELEASED','old',0,1,0,0,0)", (req().fingerprint, req().key))
     db.execute("INSERT INTO task_mappings(fingerprint,canonical_key,state,claimant,claimed_at,claim_token,create_intent,"
@@ -409,6 +410,29 @@ def test_a_registry_from_the_intermediate_schema_four_is_migrated_conservatively
     reg = TaskRegistry(path, clock=clock)
     assert reg.get(req().fingerprint).create_intent is True
     assert reg.confirm_not_created(req(target='B').fingerprint, 'operator') is False      # no timestamp bypasses the hour
+
+
+def test_a_schema_four_file_with_both_columns_is_still_repaired(tmp_path):
+    import sqlite3
+    path = str(tmp_path / 'v4.db')
+    TaskRegistry(path).close()
+    db = sqlite3.connect(path)                     # written by an intermediate release that already had both columns
+    db.execute('PRAGMA user_version=4')
+    db.execute("INSERT INTO task_mappings(fingerprint,canonical_key,state,claimant,claimed_at,claim_token,create_intent,"
+               "created_at,updated_at) VALUES(?,?,'RELEASED','old',0,1,0,0,0)", (req().fingerprint, req().key))
+    db.execute("INSERT INTO task_mappings(fingerprint,canonical_key,state,claimant,claimed_at,claim_token,create_intent,"
+               "created_at,updated_at) VALUES(?,?,'RELEASED','old',0,1,1,0,0)", (req(target='B').fingerprint, req(target='B').key))
+    db.commit()
+    db.close()
+    clock = Clock()
+    reg = TaskRegistry(path, clock=clock)
+    assert reg.get(req().fingerprint).create_intent is True                        # repaired although the column existed
+    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == 5
+    clock.now += 3600
+    assert reg.confirm_not_created(req(target='B').fingerprint, 'operator') is True  # a stranded intent can be cleared again
+    reg.close()
+    reopened = TaskRegistry(path, clock=clock)                                     # the repair runs once, not on every open
+    assert reopened.get(req(target='B').fingerprint).create_intent is False
 
 
 def test_a_stale_negative_re_check_cannot_overwrite_a_newer_duplicate_verdict(tmp_path):

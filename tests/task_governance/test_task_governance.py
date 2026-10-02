@@ -983,7 +983,7 @@ def test_hint_columns_are_added_to_a_registry_from_release_two(tmp_path):
     assert reg.unblock(fp, 'operator checked GitHub')
     won, m = reg.claim(fp, req().key, 'w', 1.0, hint=7, legacy=[8])
     assert won and m.claim_token == 4 and m.hint_issue == 7 and m.hint_legacy == (8,)
-    assert TaskRegistry(path).db.execute('PRAGMA user_version').fetchone()[0] == 4
+    assert TaskRegistry(path).db.execute('PRAGMA user_version').fetchone()[0] == 5
 
 
 def test_concurrent_claims_pin_one_hint_and_only_one_wins(tmp_path):
