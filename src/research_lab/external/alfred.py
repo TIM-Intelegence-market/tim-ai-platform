@@ -348,8 +348,9 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
             raw_period = _date(row.get("date"))
             period = spec.period_of(raw_period)
             period_end = spec.period_end(period)
+            latest_first_release = period_end + spec.max_first_release_lag
         except (TypeError, ValueError, OverflowError):
-            continue  # undatable rows make the payload NOT_READY
+            continue  # undatable rows (also at the calendar's edge) make the payload NOT_READY in _row
         starts.add(start)
         period_ends[period] = period_end
         parsed = _parse_value(spec, row.get("value"))
@@ -357,7 +358,7 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
         usable = raw_period == period and start >= period_end and not isinstance(parsed, str) and parsed[1] is ValueStatus.OK
         # Later than the first release could have been (see _revision_history_gaps): the first print is
         # missing even if the calendar shows no release in between.
-        usable = usable and start <= period_end + spec.max_first_release_lag
+        usable = usable and start <= latest_first_release
         groups[(period, start)].add(parsed if usable else None)
     first_start: dict[date, date] = {}
     for (period, start), values in groups.items():

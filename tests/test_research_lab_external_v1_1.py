@@ -258,6 +258,12 @@ def test_a_vintage_later_than_any_first_release_is_no_first_print() -> None:
     assert pit.value(date(2023, 11, 1), datetime(2024, 2, 10, 5, 0, tzinfo=UTC)).value == Decimal("299.8")
 
 
+def test_a_period_at_the_calendar_edge_is_refused_not_a_crash() -> None:
+    # The first-release bound of period 9999-11 lies past date.max: the row is undatable (NOT_READY).
+    result = parse_bundle(bundle([row("9999-11-01", "9999-12-01", "9999-12-31", "300.0")]))
+    assert result.state is QualityState.NOT_READY and "MALFORMED_TIMESTAMP" in codes(result)
+
+
 def test_entry_in_vintage_does_not_show_a_later_end() -> None:
     # December's first vintage ended 2024-02-08, which is only known once its successor is out.
     pit = PointInTimeStore(parse_bundle(seasonal_bundle()))
