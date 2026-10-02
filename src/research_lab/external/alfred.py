@@ -133,6 +133,19 @@ def reject_credentials(requests: dict[str, dict[str, str]]) -> None:
             raise ValueError(f"request parameters must not contain credentials: {sorted(leaked)}")
 
 
+def load_json(payload: bytes) -> Any:
+    """json.loads, but an object with a repeated member is refused: plain json.loads keeps the last
+    value silently, so the stored response would say more than what was checked and parsed."""
+
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result = dict(pairs)
+        if len(result) != len(pairs):
+            raise ValueError("JSON object repeats a member")
+        return result
+
+    return json.loads(payload, object_pairs_hook=unique)
+
+
 def parse_bundle(bundle: RawBundle) -> IngestResult:
     spec = source_spec(bundle.source, bundle.source_identifier)
     ingested_at = require_utc(bundle.ingested_at, "ingested_at")
@@ -150,8 +163,8 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
     if missing:
         return not_ready("MISSING_PAYLOAD", f"missing payload(s): {', '.join(missing)}")
     try:
-        series = json.loads(bundle.payloads["series"])
-        observations = json.loads(bundle.payloads["observations"])
+        series = load_json(bundle.payloads["series"])
+        observations = load_json(bundle.payloads["observations"])
     except (UnicodeDecodeError, ValueError) as exc:
         return not_ready("MALFORMED_PAYLOAD", f"payload is not valid JSON: {exc.__class__.__name__}")
     problem = _metadata_problem(spec, series, observations)
@@ -163,7 +176,7 @@ def parse_bundle(bundle: RawBundle) -> IngestResult:
         issues.append(issue("RELEASE_CALENDAR_UNAVAILABLE", Severity.WARNING, series_id, NO_CALENDAR))
     else:
         try:
-            release_dates = _release_dates(spec, json.loads(bundle.payloads["release_dates"]))
+            release_dates = _release_dates(spec, load_json(bundle.payloads["release_dates"]))
         except (UnicodeDecodeError, ValueError, TypeError, KeyError) as exc:
             return not_ready("MALFORMED_PAYLOAD", f"release dates unusable: {exc}")
         if not release_dates:
@@ -336,8 +349,8 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
         except (TypeError, ValueError, OverflowError):
             continue  # undatable rows make the payload NOT_READY
         starts.add(start)
-        if raw_period != period or start < period_end:
-            continue  # unusable in _row (MALFORMED_TIMESTAMP, IMPOSSIBLE_TIMESTAMP_ORDER): no first print
+        if raw_period != period or start < period_end or isinstance(_parse_value(spec, row.get("value")), str):
+            continue  # unusable in _row (MALFORMED_TIMESTAMP, IMPOSSIBLE_TIMESTAMP_ORDER, MALFORMED_VALUE): no first print
         period_ends[period] = period_end
         if period not in first_start or start < first_start[period]:
             first_start[period] = start
@@ -555,23 +568,10 @@ def _row(
     if available_at > ingested_at:
         return unusable("FUTURE_DATA", "record claims availability after it was ingested")
     raw_value = row.get("value")
-    if not isinstance(raw_value, str):
-        return unusable("MALFORMED_VALUE", "value is not a string")
-    if raw_value.strip() == ".":
-        value, status = None, ValueStatus.MISSING
-    else:
-        try:
-            value = Decimal(raw_value.strip())
-        except InvalidOperation:
-            return unusable("MALFORMED_VALUE", "value is not a number")
-        if not value.is_finite():
-            return unusable("MALFORMED_VALUE", "value is not finite")
-        if spec.positive_values and value <= 0:
-            return unusable("MALFORMED_VALUE", "value must be positive for this series")
-        # copy_abs and comparisons are exact: no ambient context can overflow on extreme exponents.
-        if (value and not MIN_ABS_VALUE <= value.copy_abs() <= MAX_ABS_VALUE) or len(value.as_tuple().digits) > MAX_DIGITS:
-            return unusable("MALFORMED_VALUE", "value outside the supported range or precision")
-        status = ValueStatus.OK
+    parsed = _parse_value(spec, raw_value)
+    if isinstance(parsed, str):
+        return unusable("MALFORMED_VALUE", parsed)
+    value, status = parsed
     if status is ValueStatus.MISSING:
         issues.append(issue("MISSING_VALUE", Severity.WARNING, record_id, "source published no value", available_at))
     if clipped:
@@ -593,6 +593,26 @@ def _row(
         raw_value=raw_value,
         payload_sha256=payload_sha256,
     )
+
+
+def _parse_value(spec: SourceSpec, raw_value: Any) -> tuple[Decimal | None, ValueStatus] | str:
+    """The row's value and status, or why it is unusable (MALFORMED_VALUE)."""
+    if not isinstance(raw_value, str):
+        return "value is not a string"
+    if raw_value.strip() == ".":
+        return None, ValueStatus.MISSING
+    try:
+        value = Decimal(raw_value.strip())
+    except InvalidOperation:
+        return "value is not a number"
+    if not value.is_finite():
+        return "value is not finite"
+    if spec.positive_values and value <= 0:
+        return "value must be positive for this series"
+    # copy_abs and comparisons are exact: no ambient context can overflow on extreme exponents.
+    if (value and not MIN_ABS_VALUE <= value.copy_abs() <= MAX_ABS_VALUE) or len(value.as_tuple().digits) > MAX_DIGITS:
+        return "value outside the supported range or precision"
+    return value, ValueStatus.OK
 
 
 def _revision_history_gaps(

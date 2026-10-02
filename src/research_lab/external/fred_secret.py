@@ -99,13 +99,21 @@ class FredSecretResolver:
         try:
             completed = subprocess.run(
                 ["/usr/bin/security", "find-generic-password", "-s", service, "-a", account, "-w"],
-                check=False, capture_output=True, text=True, timeout=5,
+                # Bytes, decoded below: with text=True a UnicodeDecodeError would carry the value in .object.
+                check=False, capture_output=True, timeout=5,
             )
         except (OSError, subprocess.TimeoutExpired):
             pass  # TimeoutExpired.output may hold the value: never chain it
         if completed is None or completed.returncode != 0:
             raise SecretProviderError("macOS Keychain FRED secret is unavailable")
-        return completed.stdout.strip()
+        text = None
+        try:
+            text = completed.stdout.decode("utf-8")
+        except UnicodeDecodeError:
+            pass  # the error holds the value: never chain it
+        if text is None:
+            raise SecretProviderError("macOS Keychain FRED secret is not valid UTF-8")
+        return text.strip()
 
 
 __all__ = ["DEFAULT_SECRET_FILE", "FILE_ENV", "KEY_ENV", "KEY_SHAPE", "PROVIDER_ENV", "FredSecretError", "FredSecretResolver"]

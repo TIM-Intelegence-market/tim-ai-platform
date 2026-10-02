@@ -212,8 +212,9 @@ def test_a_revision_is_no_first_print_when_the_first_print_is_missing() -> None:
     [
         row("2024-02-01", SEASONAL_REVISION, "9999-12-31", "302.0"),  # vintage before February ended
         row("2024-01-02", SEASONAL_REVISION, "9999-12-31", "302.0"),  # not the start of a period
+        row("2024-01-01", SEASONAL_REVISION, "2024-02-12", "garbage"),  # value is not a number
     ],
-    ids=["impossible", "malformed-period"],
+    ids=["impossible", "malformed-period", "malformed-value"],
 )
 def test_an_unusable_row_is_no_first_print(unusable: dict) -> None:
     # Rows _row rejects must not make the seasonal revision date look like a release that first
@@ -240,6 +241,7 @@ def test_a_replay_past_the_coverage_end_shows_nothing_dated_after_it() -> None:
     # The public point-in-time queries keep the same cut.
     pit, at = PointInTimeStore(ingest_result), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)
     assert pit.visible_records(at) == () and pit.visible_unusable(at) == () and release_events(pit, until=at) == ()
+    assert pit.entry_in_vintage(date(2023, 12, 1), at) is None
 
 
 def test_revisions_without_a_release_right_after_do_not_hide_a_missing_period() -> None:
@@ -952,6 +954,50 @@ def test_hidden_key_echoes_are_refused(tmp_path, where: str, members: bytes) -> 
         run()
     assert KEY not in str(raised.value) and raised.value.__context__ is None
     assert stored_files(store) == []
+
+
+def test_repeated_json_members_are_refused(tmp_path) -> None:
+    # json.loads would keep the second date; the stored response would still hold the holdout date.
+    repeated = b'"realtime_start": "2025-02-12", "realtime_start": "2016-02-19"'
+    payloads = research_payloads()
+    assert payloads["series/observations"].count(b'"realtime_start": "2016-02-19"') == 1
+    payloads["series/observations"] = payloads["series/observations"].replace(b'"realtime_start": "2016-02-19"', repeated)
+    _api, store, run = live(tmp_path, payloads)
+    with pytest.raises(LiveIngestError):
+        run()
+    assert stored_files(store) == []
+    raw = bundle()
+    raw.payloads["observations"] = raw.payloads["observations"].replace(b'"realtime_start": "2024-02-13"', b'"realtime_start": "2024-01-11", "realtime_start": "2024-02-13"', 1)
+    result = parse_bundle(raw)
+    assert result.state is QualityState.NOT_READY and codes(result) == ["MALFORMED_PAYLOAD"]
+
+
+def test_a_fetcher_error_quoting_the_url_does_not_leak_the_key(tmp_path) -> None:
+    def fetcher(url: str) -> bytes:
+        raise LiveIngestError(f"failed {url}")
+
+    resolver = FredSecretResolver({PROVIDER_ENV: "env", KEY_ENV: KEY})
+    with pytest.raises(LiveIngestError) as raised:
+        ingest_live(RESEARCH_2017_2024, resolver=resolver, store=RawPayloadStore(tmp_path / "raw"), fetcher=fetcher, clock=lambda: INGESTED)
+    assert KEY not in str(raised.value) and raised.value.__context__ is None
+
+
+@pytest.mark.parametrize("stdout", [KEY.encode() + b"\n", KEY.encode() + b"\xff"], ids=["valid", "not-utf8"])
+def test_keychain_output_is_decoded_without_exposing_the_key(monkeypatch, stdout: bytes) -> None:
+    import subprocess
+
+    def run(args, *, text=False, **_kwargs):
+        # Like subprocess.run: text=True decodes inside run, so a decode error carries the bytes.
+        return subprocess.CompletedProcess(args, 0, stdout.decode("utf-8") if text else stdout, "" if text else b"")
+
+    monkeypatch.setattr("src.research_lab.external.fred_secret.subprocess.run", run)
+    resolver = FredSecretResolver({PROVIDER_ENV: "keychain"})
+    if stdout.endswith(b"\n"):
+        assert resolver.api_key().reveal() == KEY
+        return
+    with pytest.raises(FredSecretError) as raised:
+        resolver.api_key()
+    assert KEY not in str(raised.value) and KEY not in repr(raised.value) and raised.value.__context__ is None
 
 
 def test_store_key_script_refuses_destinations_inside_a_repository(tmp_path, monkeypatch) -> None:

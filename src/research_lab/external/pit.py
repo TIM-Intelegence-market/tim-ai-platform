@@ -173,15 +173,15 @@ class PointInTimeStore:
         return min(require_utc(at, "at"), self.coverage_end)
 
     def first_entry(self, period_start: date) -> Entry:
-        """The period's earliest archived vintage."""
+        """The period's earliest archived vintage (archive structure, not a point-in-time query)."""
         return self._entries[period_start][0]
 
     def entry_in_vintage(self, period_start: date, available_at: datetime) -> Entry | None:
-        """The period's entry as of one vintage instant (the newest one at or before it)."""
+        """The period's entry as of one vintage instant (the newest one at or before it), within coverage."""
         items = self._entries.get(period_start)
         if not items:
             return None
-        count = bisect_right(self._times[period_start], available_at)
+        count = bisect_right(self._times[period_start], self.known_at(available_at))
         return items[count - 1] if count else None
 
     @property

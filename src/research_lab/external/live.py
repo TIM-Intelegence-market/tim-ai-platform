@@ -27,7 +27,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from src.research_lab.data.store import HoldoutLocked
-from src.research_lab.external.alfred import API_BASE, FIRST_REALTIME, PAGE_LIMIT, Clock, Fetcher, RawBundle, fetch_bundle, parse_bundle
+from src.research_lab.external.alfred import API_BASE, FIRST_REALTIME, PAGE_LIMIT, Clock, Fetcher, RawBundle, fetch_bundle, load_json, parse_bundle
 from src.research_lab.external.fred_secret import FredSecretResolver
 from src.research_lab.external.records import CPI_US, IngestResult, SourceSpec, source_spec
 from src.research_lab.external.store import RawPayloadStore
@@ -107,9 +107,9 @@ def check_window(bundle: RawBundle, window: ResearchWindow) -> None:
     end = window.realtime_end.isoformat()
     failure: str | None = None
     try:
-        observations = json.loads(bundle.payloads["observations"])
-        series = json.loads(bundle.payloads["series"])
-        calendar = json.loads(bundle.payloads["release_dates"]) if "release_dates" in bundle.payloads else None
+        observations = load_json(bundle.payloads["observations"])
+        series = load_json(bundle.payloads["series"])
+        calendar = load_json(bundle.payloads["release_dates"]) if "release_dates" in bundle.payloads else None
     except (KeyError, UnicodeDecodeError, ValueError) as exc:
         failure = f"response is not usable JSON ({exc.__class__.__name__})"
     if failure is not None:
@@ -177,7 +177,8 @@ def ingest_live(
     try:
         bundle = fetch_bundle(spec, api_key=key.reveal(), fetcher=fetcher, clock=clock, requests=research_requests(spec, window))
     except LiveIngestError as exc:
-        failure = str(exc)  # already free of URL and key
+        # http_fetcher's messages name path and status only; any other fetcher's message is checked.
+        failure = str(exc) if key.reveal() not in str(exc) else "download failed (LiveIngestError)"
     except Exception as exc:  # noqa: BLE001 - any fetch failure is reported without its (URL-bearing) text
         failure = f"download failed ({exc.__class__.__name__})"
     if failure is not None:

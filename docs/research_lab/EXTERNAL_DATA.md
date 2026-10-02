@@ -55,9 +55,10 @@ Saisonrevision der letzten fünf Jahre), die Januarzahl erscheint erst am zweite
 Laut BLS werden die revidierten saisonbereinigten Indizes an einem Datum ohne
 Uhrzeitangabe bereitgestellt. Ein Kalendertermin gilt als reiner Revisionstermin,
 wenn (1) Vintages an ihm beginnen, (2) keine Periode an ihm zum ersten Mal
-erscheint (das früheste mögliche archivierte Vintage einer Periode zählt nur als Erstdruck,
-wenn seit Periodenende kein regulärer Termin vergangen ist; ein Vintage vor dem
-Periodenende ist nie ein Erstdruck; sonst fehlt der
+erscheint (das früheste brauchbare archivierte Vintage einer Periode zählt nur als Erstdruck,
+wenn seit Periodenende kein regulärer Termin vergangen ist; Zeilen, die als
+unbrauchbar gelten (Vintage vor Periodenende, kein Periodenbeginn, kein gültiger
+Wert), sind nie ein Erstdruck; sonst fehlt der
 Erstdruck im Archiv und das Vintage ist eine Revision) und (3) der nächste Kalendertermin höchstens 7 Tage später folgt (der
 BLS-Kalender ist vorab veröffentlicht). Solche Termine veröffentlichen keine
 Periode und haben keine Release-Zeit (`END_OF_VINTAGE_DAY`). Fehlt Bedingung (3),
@@ -191,8 +192,8 @@ Datensatz-IDs, BTC-Hash und -Vollständigkeit. Eine spätere Revision ändert de
 Archivende (`coverage_end`, z. B. ein noch nicht einordenbarer Revisionstermin), enthält
 der Replay nur, was bis zum Archivende verfügbar war: keine späteren Records,
 Einträge, Ereignisse oder datierten Befunde (Zustand `INSUFFICIENT_DATA`). Dieselbe
-Grenze gilt für `PointInTimeStore.visible_records`/`visible_unusable` und
-`release_events`.
+Grenze gilt für `PointInTimeStore.visible_records`/`visible_unusable`/`entry_in_vintage`
+und `release_events`.
 
 ## 9. Abruf
 
@@ -229,7 +230,9 @@ oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging 
   oder Datumsangaben der Metadaten-Versionen (`realtime_start/end`,
   `observation_end`, `last_updated`) jenseits des Fensters ⇒ `LiveIngestError`,
   nichts wird gespeichert, nichts gekürzt. Eine Antwort mit späteren Daten
-  erweitert das Fenster also nie.
+  erweitert das Fenster also nie. Ein JSON-Objekt mit doppeltem Feld wird
+  abgewiesen (in `parse_bundle`: `MALFORMED_PAYLOAD`), weil `json.loads` sonst
+  stillschweigend den letzten Wert behielte.
 - **Transport** (`http_fetcher`): nur `https://api.stlouisfed.org/fred/…`,
   Weiterleitungen verweigert, Antwort höchstens 50 MB, 429/5xx/Netzfehler mit
   Backoff `2 s · 2^n` (4 Versuche), 4xx sofort Fehler. Fehler nennen Pfad und
