@@ -329,10 +329,10 @@ def _metadata_problem(spec: SourceSpec, series: Any, observations: Any) -> str |
 def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: SourceSpec) -> set[date]:
     """Calendar dates on which the archive shows vintages but no period is first printed.
 
-    A period's earliest archived vintage only counts as its first print if no regular release
-    date passed between the period's end and that vintage. Otherwise the real first print is
-    missing from the archive, and the earliest archived vintage is a revision: taking it for a
-    first print would give a revision-only date (no stated time) the 08:30 release time.
+    A period's earliest usable vintage only counts as its first print if it is positively
+    identified as one (see below). Otherwise the real first print may be missing from the
+    archive or the calendar, and the earliest archived vintage may be a revision: taking it for
+    a first print would give a revision-only date (no stated time) the 08:30 release time.
     Regular means not revision-only by the rule without this correction; that keeps the
     January first print, which follows the February revision date, a first print."""
     starts: set[date] = set()
@@ -374,11 +374,18 @@ def revision_shaped_dates(rows: list[Any], release_dates: set[date], spec: Sourc
         return {day for day in release_dates if day in starts and day not in first_prints}
 
     revision_only = _followed_within_lead(calendar, shaped(set(first_start.values())))
+    # A first print must be positively identified, by the same rules as _revision_history_gaps: the
+    # earliest usable vintage is the first regular release after the period ended, the calendar
+    # reaches back before that release and has no gap wider than one release interval there.
+    regular = [day for day in calendar if day not in revision_only]
     first_prints = set()
     for period, first in first_start.items():
-        passed = calendar[bisect_left(calendar, period_ends[period]) : bisect_left(calendar, first)]
-        if all(day in revision_only for day in passed):
-            first_prints.add(first)
+        position = bisect_left(regular, period_ends[period])
+        if position == 0 or position == len(regular) or regular[position] != first:
+            continue
+        if regular[position] - regular[position - 1] > spec.max_release_interval:
+            continue
+        first_prints.add(first)
     return shaped(first_prints)
 
 

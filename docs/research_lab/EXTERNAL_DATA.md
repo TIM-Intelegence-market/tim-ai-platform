@@ -55,13 +55,14 @@ Saisonrevision der letzten fünf Jahre), die Januarzahl erscheint erst am zweite
 Laut BLS werden die revidierten saisonbereinigten Indizes an einem Datum ohne
 Uhrzeitangabe bereitgestellt. Ein Kalendertermin gilt als reiner Revisionstermin,
 wenn (1) Vintages an ihm beginnen, (2) keine Periode an ihm zum ersten Mal
-erscheint (das früheste brauchbare archivierte Vintage einer Periode zählt nur als Erstdruck,
-wenn seit Periodenende kein regulärer Termin vergangen ist; Zeilen, die als
-unbrauchbar gelten (Vintage vor Periodenende, kein Periodenbeginn, kein gültiger
-Wert, widersprüchliche Duplikate) oder nur „kein Wert“ (`.`) melden, sind nie ein
-Erstdruck, ebenso ein Vintage später als `max_first_release_lag` nach Periodenende;
-sonst fehlt der
-Erstdruck im Archiv und das Vintage ist eine Revision) und (3) der nächste Kalendertermin höchstens 7 Tage später folgt (der
+erscheint (ein Erstdruck muss positiv erkannt sein, nach denselben Regeln wie
+`REVISION_HISTORY_UNAVAILABLE`: das früheste brauchbare Vintage ist genau der erste
+reguläre Termin nach Periodenende, der Kalender reicht davor zurück und hat dort
+keine Lücke über ein Release-Intervall, und es liegt innerhalb von
+`max_first_release_lag`; Zeilen, die als unbrauchbar gelten (Vintage vor
+Periodenende, kein Periodenbeginn, kein gültiger Wert, widersprüchliche Duplikate)
+oder nur „kein Wert“ (`.`) melden, sind nie ein Erstdruck; sonst fehlt der
+Erstdruck im Archiv oder Kalender und das Vintage ist eine Revision) und (3) der nächste Kalendertermin höchstens 7 Tage später folgt (der
 BLS-Kalender ist vorab veröffentlicht). Solche Termine veröffentlichen keine
 Periode und haben keine Release-Zeit (`END_OF_VINTAGE_DAY`). Fehlt Bedingung (3),
 bleibt der Termin ein normaler Release, eine fehlende Periode bleibt fehlend.

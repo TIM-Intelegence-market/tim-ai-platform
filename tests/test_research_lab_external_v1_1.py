@@ -258,6 +258,16 @@ def test_a_vintage_later_than_any_first_release_is_no_first_print() -> None:
     assert pit.value(date(2023, 11, 1), datetime(2024, 2, 10, 5, 0, tzinfo=UTC)).value == Decimal("299.8")
 
 
+def test_a_calendar_gap_hides_no_missing_first_print() -> None:
+    # The calendar lacks 2024-01-11 (December's real first print): December's 2024-02-09 vintage cannot be
+    # identified as a first print, so 2024-02-09 stays a revision date without a stated time.
+    raw = bundle([row("2023-12-01", SEASONAL_REVISION, "9999-12-31", "299.8"), row("2024-01-01", "2024-02-13", "9999-12-31", "301.0")])
+    raw.payloads["release_dates"] = release_payload(("2023-12-12", SEASONAL_REVISION, "2024-02-13"))
+    pit = PointInTimeStore(parse_bundle(raw))
+    assert pit.value(date(2023, 12, 1), datetime(2024, 2, 9, 14, 0, tzinfo=UTC)).value is None
+    assert pit.value(date(2023, 12, 1), datetime(2024, 2, 10, 5, 0, tzinfo=UTC)).value == Decimal("299.8")
+
+
 def test_a_period_at_the_calendar_edge_is_refused_not_a_crash() -> None:
     # The first-release bound of period 9999-11 lies past date.max: the row is undatable (NOT_READY).
     result = parse_bundle(bundle([row("9999-11-01", "9999-12-01", "9999-12-31", "300.0")]))
