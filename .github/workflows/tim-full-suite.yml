@@ -34,5 +34,6 @@ jobs:
           compose up -d --wait
           compose exec -T timescaledb sh -c 'PGPASSWORD="$(cat /run/secrets/tim_database_password)" psql -h 127.0.0.1 -p 5433 -U tim -d tim -c "CREATE DATABASE tim_test"'
           compose exec -T timescaledb sh -c 'PGPASSWORD="$(cat /run/secrets/tim_database_password)" psql -h 127.0.0.1 -p 5433 -U tim -d tim_test -f /docker-entrypoint-initdb.d/001-schema.sql'
-      - name: Run full suite
-        run: python -m pytest -q
+      # Match ci.yml: local_env tests require developer-machine files or services.
+      - name: Run CI-compatible suite
+        run: python -m pytest tests/ -q -m "not local_env"

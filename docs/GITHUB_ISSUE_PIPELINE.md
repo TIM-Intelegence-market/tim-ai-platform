@@ -13,7 +13,7 @@ It never merges PRs, closes issues, deletes history, or stores credentials in th
 
 The previous automatic merge gate was removed. PR labels, body markers, branch names, and a successful PR-controlled check cannot authenticate a worker or prove human approval. The Claude process now has file tools only; the runner rejects changes to `.github/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, and the pipeline script before pushing. The worker still runs under the local user account, so this is not a separate operating-system or GitHub identity. Keep the LaunchAgent stopped until this restricted flow has passed a new end-to-end pilot.
 
-The `TIM full suite` GitHub Action runs `pytest -q` with an isolated TimescaleDB service. It remains red until external-service and missing-artifact test dependencies are addressed explicitly; tests are not silently skipped. The CI database now uses internal port 5433 and Python 3.13.
+The `TIM full suite` GitHub Action runs `pytest tests/ -q -m "not local_env"` with an isolated TimescaleDB service, matching the documented CI exclusion in `pytest.ini` and `ci.yml`. Tests requiring developer-machine artifacts, executables, or external services remain available for local runs. The CI database uses internal port 5433 and Python 3.13. An unmarked task-engine test can still fail intermittently because Python may reuse stale bytecode in a repair workspace; that requires a separate production-code fix.
 
 ## One-time setup
 
