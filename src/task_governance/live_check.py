@@ -23,7 +23,11 @@ from .github_gateway import GitHubError, GitHubRestGateway
 from .registry import TaskRegistry
 from .sync import EnsureOutcome
 
-PRODUCTION_REPOSITORY = 'uezeyiraydin-cell/tim-ai-platform'
+PRODUCTION_REPOSITORY = 'TIM-Intelegence-market/tim-ai-platform'
+PRODUCTION_REPOSITORY_ALIASES = frozenset({
+    PRODUCTION_REPOSITORY.lower(),
+    'uezeyiraydin-cell/tim-ai-platform',  # GitHub redirects the pre-transfer URL.
+})
 TOKEN_VARIABLE = 'TIM_LIVE_CHECK_TOKEN'
 MISSING_ISSUE = 2_000_000_000
 
@@ -121,7 +125,7 @@ def main(argv=None, environ=None, transport=None):
         if args.confirm_write != args.repo:
             print('roundtrip writes an issue: pass --confirm-write with the same OWNER/NAME', file=sys.stderr)
             return 2
-        if args.repo.lower() == PRODUCTION_REPOSITORY and not args.allow_production_repo:
+        if args.repo.lower() in PRODUCTION_REPOSITORY_ALIASES and not args.allow_production_repo:
             print('refusing the production repository: use a throw-away repository or pass --allow-production-repo', file=sys.stderr)
             return 2
     kwargs = {} if transport is None else {'transport': transport}
