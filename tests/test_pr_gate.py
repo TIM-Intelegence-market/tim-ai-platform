@@ -168,3 +168,18 @@ def test_workflow_reruns_on_edited_and_keeps_read_only_permissions():
     types_line = next(line for line in text.splitlines() if line.strip().startswith("types:"))
     assert "edited" in types_line and "pull_request_target" in text
     assert "permissions:\n  contents: read\n" in text
+
+
+def test_existing_tests_are_protected_only_new_test_files_may_be_added():
+    assert evaluate([Entry("000000", "100644", "A", "tests/test_new.py")], POLICY) == []
+    assert any("protected" in v for v in evaluate([entry("tests/test_existing.py")], POLICY))
+    assert evaluate([entry("tests/test_existing.py", "D", "100644", "000000")], POLICY)
+    assert evaluate([entry("src/agents/review.py")], POLICY) == []  # source changes stay allowed
+
+
+def test_policy_without_add_only_prefixes_fails_closed(tmp_path):
+    without = {key: value for key, value in POLICY.items() if key != "add_only_prefixes"}
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps(without))
+    with pytest.raises(GateError):
+        pr_gate.load_policy(path)

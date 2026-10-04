@@ -73,6 +73,7 @@ def evaluate(entries: Sequence[Entry], policy: dict) -> list[str]:
     allow_prefixes = tuple(prefix.casefold() for prefix in policy["allow_prefixes"])
     deny_names = {name.casefold() for name in policy["deny_names"]}
     deny_deleted = tuple(prefix.casefold() for prefix in policy["deny_deleted_prefixes"])
+    add_only = tuple(prefix.casefold() for prefix in policy["add_only_prefixes"])
     for entry in entries:
         path, folded = entry.path, entry.path.casefold()
         problem = _bad_path(path)
@@ -94,6 +95,8 @@ def evaluate(entries: Sequence[Entry], policy: dict) -> list[str]:
             violations.append(f"{path}: outside the allowed paths")
         if entry.status == "D" and folded.startswith(deny_deleted):
             violations.append(f"{path}: deleting files here is not allowed")
+        if entry.status in {"M", "D"} and folded.startswith(add_only):
+            violations.append(f"{path}: existing files here are protected; only new files may be added")
         if entry.size is not None and entry.size > int(policy["max_file_bytes"]):
             violations.append(f"{path}: {entry.size} bytes exceeds the limit of {policy['max_file_bytes']}")
     return violations
@@ -102,7 +105,7 @@ def evaluate(entries: Sequence[Entry], policy: dict) -> list[str]:
 def load_policy(path: Path) -> dict:
     try:
         policy = json.loads(path.read_text(encoding="utf-8"))
-        for key in ("applies_to_branch_regex", "max_files", "max_file_bytes", "allow_prefixes", "deny_prefixes",
+        for key in ("applies_to_branch_regex", "max_files", "max_file_bytes", "add_only_prefixes", "allow_prefixes", "deny_prefixes",
                     "deny_names", "deny_deleted_prefixes"):
             policy[key]
     except (OSError, ValueError, KeyError) as error:

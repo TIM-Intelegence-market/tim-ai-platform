@@ -15,5 +15,6 @@
     "requirements.txt", "requirements-research.txt", "docker-compose.yml",
     "codecov.yml", "sonar-project.properties", ".gitattributes", ".gitmodules"
   ],
-  "deny_deleted_prefixes": ["tests/"]
+  "deny_deleted_prefixes": ["tests/"],
+  "add_only_prefixes": ["tests/"]
 }
