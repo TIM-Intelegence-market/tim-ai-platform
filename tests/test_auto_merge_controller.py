@@ -589,6 +589,22 @@ def test_the_documented_ruleset_satisfies_the_controllers_precondition():
         {spec["name"] for spec in policy["required_checks"]} | {spec["context"] for spec in policy["required_statuses"]}
 
 
+def test_no_workflow_that_runs_pull_request_code_can_write_statuses_or_contents():
+    """The pr-gate/head status is only trustworthy while nothing that executes PR code holds a write token."""
+    import re
+
+    workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+    assert workflows
+    for path in workflows:
+        text = path.read_text(encoding="utf-8")
+        if not re.search(r"(?m)^  pull_request:", text):  # pull_request (not _target) executes the PR's own code
+            continue
+        assert re.search(r"(?m)^permissions:\n  \S", text), f"{path.name} runs PR code without a top-level permissions block"
+        for dangerous in ("statuses: write", "contents: write", "pull-requests: write", "checks: write", "write-all",
+                          "id-token: write", "actions: write", "workflows: write"):
+            assert dangerous not in text, f"{path.name} runs PR code and grants {dangerous}"
+
+
 def test_commit_status_request_asks_for_a_full_page():
     gh = Gh([json.dumps(status_of())])
     amc.GhApi(REPO, gh).commit_status(SHA)
