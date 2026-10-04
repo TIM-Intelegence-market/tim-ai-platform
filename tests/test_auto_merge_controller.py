@@ -574,6 +574,21 @@ def test_compare_request_uses_a_validated_range():
         amc.GhApi(REPO, Gh([])).compare("a b", SHA)
 
 
+def test_the_documented_ruleset_satisfies_the_controllers_precondition():
+    ruleset = json.loads((ROOT / "docs" / "rulesets" / "platform-main-auto-merge.json").read_text(encoding="utf-8"))
+    policy = amc.load_policy(ROOT / ".github" / "auto-merge-policy.json")
+    api_rules = [{"type": rule["type"], "parameters": rule.get("parameters")} for rule in ruleset["rules"]]
+    assert amc.rules_blockers(api_rules, policy) == []
+    assert ruleset["enforcement"] == "active" and ruleset["conditions"]["ref_name"]["include"] == ["refs/heads/platform-main"]
+    assert len(ruleset["bypass_actors"]) == 1 and ruleset["bypass_actors"][0]["actor_type"] == "Integration"
+    pull_request = next(rule for rule in ruleset["rules"] if rule["type"] == "pull_request")
+    assert pull_request["parameters"]["required_approving_review_count"] == 0
+    checks = next(rule for rule in ruleset["rules"] if rule["type"] == "required_status_checks")["parameters"]
+    assert checks["strict_required_status_checks_policy"] is True
+    assert {entry["context"] for entry in checks["required_status_checks"]} == \
+        {spec["name"] for spec in policy["required_checks"]} | {spec["context"] for spec in policy["required_statuses"]}
+
+
 def test_commit_status_request_asks_for_a_full_page():
     gh = Gh([json.dumps(status_of())])
     amc.GhApi(REPO, gh).commit_status(SHA)
