@@ -100,8 +100,11 @@ Zu klären ist **eine Entscheidung des Inhabers**: privat mit passendem Plan, ö
    Commit-Status ergänzen.
 4. In `.github/auto-merge-policy.json` `worker_logins` setzen und `enabled: true` lassen, `dry_run: true`; den Controller manuell
    (`workflow_dispatch` auf `platform-main`) starten und die Entscheidungen im Log lesen.
-5. Pilot: ein harmloses Issue durch die Pipeline schicken; der Controller muss `would-merge` melden, ein manipulierter Test-PR
-   (Workflow-Änderung, geänderter bestehender Test, gefälschtes Label) muss `blocked` melden.
+5. Pilot (Dry-Run): Der Runner erzeugt einen **Draft-PR**. Der Controller meldet dafür zuerst `would-mark-ready` (nicht
+   `would-merge`) und ändert im Dry-Run nichts; der PR bleibt Draft. Erst ein **Ready-PR** kann `would-merge` ergeben. Für den
+   Pilot setzt der Inhaber den Pilot-PR von Hand auf „Ready“ und startet den Controller ein zweites Mal; im echten Betrieb
+   markiert der Controller den PR selbst als „ready“ (`marked-ready`) und merged erst im **nächsten** Lauf nach erneuter
+   Prüfung. Manipulierte Test-PRs (Workflow-Änderung, geänderter bestehender Test, gefälschtes Label) müssen `blocked` melden.
 6. Erst dann: `dry_run: false` in einem überprüften Commit und den `schedule`-Trigger im Workflow einkommentieren.
 7. LaunchAgent der Pipeline erst nach dem erfolgreichen Pilot starten (`production`).
 8. `CI.md` und `CLAUDE.md` auf die neue Regel umstellen und die Garantie-Matrix mit dem beobachteten Stand aktualisieren.
