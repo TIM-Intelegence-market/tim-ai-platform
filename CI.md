@@ -34,13 +34,14 @@ sondern nur Menschen oder eine getrennte Merge-Identität nehmen PRs in den Merg
 
 ## Freigaberegel (entschieden: Mensch genehmigt, GitHub merged)
 
-Pflicht-Review plus Pflicht-Checks (`PR gate`, `test`, `TIM full suite`) im Ruleset auf `platform-main`;
-danach darf ein Mensch Auto-Merge aktivieren. Merge ohne Menschen gibt es nicht. Produktivmodus und
+Pflicht-Review plus Pflicht-Checks `PR gate` und `test` im Ruleset auf `platform-main`; danach darf ein
+Mensch Auto-Merge aktivieren. `TIM full suite` wird **erst später** Pflicht-Check, nachdem die rote Suite
+repariert ist (eigenes Paket); bis dahin ist sie nur Information. Merge ohne Menschen gibt es nicht. Produktivmodus und
 Auto-Merge der Pipeline bleiben ausgeschaltet.
 
 **Noch nicht technisch erzwungen:** Branch-Protection und Rulesets liefern für dieses private Repository
 derzeit HTTP 403. Bis das Ruleset steht, ist die Regel eine Verabredung, kein Schutz. Außerdem ist
-`TIM full suite` weiterhin rot und kann deshalb noch nicht Pflicht-Check werden.
+`TIM full suite` weiterhin rot und darf deshalb noch nicht Pflicht-Check sein.
 
 ## Offene Punkte, erst durch den ersten GitHub-Lauf klärbar
 
@@ -61,6 +62,6 @@ derzeit HTTP 403. Bis das Ruleset steht, ist die Regel eine Verabredung, kein Sc
 ## Einmalig durch den Repository-Inhaber zu tun
 
 1. Dieses Gate erst nach dem Merge nach `platform-main` aktiv: `pull_request_target` nutzt die Workflow-Datei des Base-Branches.
-2. Ruleset auf `platform-main`: Review erforderlich, Checks `PR gate` und `test` erforderlich, Force-Push gesperrt.
+2. Ruleset auf `platform-main`: Review erforderlich, Checks `PR gate` und `test` erforderlich (`TIM full suite` erst nach Reparatur ergänzen), Force-Push gesperrt.
 3. Worker-Konto/-Token ohne Schreibrecht auf `platform-main`.
 4. Negativtest: Test-PR mit Änderung in `.github/` muss am `PR gate` scheitern.
