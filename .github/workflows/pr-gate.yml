@@ -17,20 +17,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # The default checkout credentials stay on purpose: the fetch below needs them in a
+      # private repository. The token is read-only and no PR code runs in this job.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
-          persist-credentials: false
-      - name: Fetch PR head as data only
-        run: git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
+      - name: Fetch PR head as data only and pin it to the triggering commit
+        run: |
+          git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
+          fetched="$(git rev-parse refs/remotes/pr/head)"
+          if [ "$fetched" != "$HEAD_SHA" ]; then
+            echo "PR head moved from $HEAD_SHA to $fetched during the run; a new run will check it." >&2
+            exit 1
+          fi
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       - name: Check changed paths and modes
         run: >-
           python3 scripts/pr_gate.py
           --policy .github/pr-gate-policy.json
-          --base "$BASE_SHA" --head refs/remotes/pr/head --branch "$HEAD_REF"
+          --base "$BASE_SHA" --head "$HEAD_SHA" --branch "$HEAD_REF"
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}

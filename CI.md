@@ -32,11 +32,25 @@ Der Check gilt **nur** für Branches nach dem Schema `claude/issue-N-…`. Ein W
 fällt aus dem Gate. Deshalb darf eine spätere Automatik nie anhand des Branch-Namens entscheiden,
 sondern nur Menschen oder eine getrennte Merge-Identität nehmen PRs in den Merge auf.
 
-## Freigaberegel (Vorschlag, Entscheidung offen)
+## Freigaberegel (entschieden: Mensch genehmigt, GitHub merged)
 
-Empfohlen: **Mensch genehmigt, GitHub merged.** Pflicht-Review plus Pflicht-Checks (`PR gate`, `test`,
-`TIM full suite`) im Ruleset auf `platform-main`; danach darf ein Mensch Auto-Merge aktivieren.
-Merge ohne Menschen nur, wenn ausdrücklich beschlossen und mit eigener Identität ohne Worker-Rechte.
+Pflicht-Review plus Pflicht-Checks (`PR gate`, `test`, `TIM full suite`) im Ruleset auf `platform-main`;
+danach darf ein Mensch Auto-Merge aktivieren. Merge ohne Menschen gibt es nicht. Produktivmodus und
+Auto-Merge der Pipeline bleiben ausgeschaltet.
+
+**Noch nicht technisch erzwungen:** Branch-Protection und Rulesets liefern für dieses private Repository
+derzeit HTTP 403. Bis das Ruleset steht, ist die Regel eine Verabredung, kein Schutz. Außerdem ist
+`TIM full suite` weiterhin rot und kann deshalb noch nicht Pflicht-Check werden.
+
+## Offene Punkte, erst durch den ersten GitHub-Lauf klärbar
+
+- Der erste Merge dieses Gates nach `platform-main` ist ein manuell geprüfter Bootstrap-Schritt, weil
+  `pull_request_target` nur die Workflow-Datei des Base-Branches nutzt.
+- Ob der `pull_request_target`-Check als Required Check für den aktuellen PR-Commit zählt, ist unbestätigt:
+  der Event läuft auf dem Base-Stand, GitHub verlangt Checks für den neuesten PR-Commit. Falls nicht, ist die
+  Ausweichlösung ein Commit-Status auf der PR-Head-SHA (braucht `statuses: write`, weiterhin ohne PR-Code).
+- Ob `git fetch` auf `refs/pull/N/head` im privaten Repo mit den Standard-Zugangsdaten läuft, zeigt ebenfalls erst der Lauf.
+  Der Workflow bricht ab, wenn der geholte Stand nicht der auslösenden `head.sha` entspricht.
 
 ## Nicht Teil dieser Datei
 
