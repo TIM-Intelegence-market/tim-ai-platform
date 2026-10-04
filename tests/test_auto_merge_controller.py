@@ -20,7 +20,8 @@ POLICY = {
     "required_statuses": [{"context": "pr-gate/head", "creator": "github-actions[bot]",
                            "workflow_path": ".github/workflows/pr-gate.yml", "event": "pull_request_target"}],
     "check_app_slugs": ["github-actions"], "allowed_conclusions": ["success"], "merge_method": "squash",
-    "max_merges_per_run": 1,
+    "max_merges_per_run": 1, "require_branch_rules": True, "require_app_token": True,
+    "required_branch_rules": ["pull_request", "required_status_checks", "non_fast_forward", "deletion", "update"],
 }
 
 
@@ -64,10 +65,22 @@ def status_of(*entries, state="success"):
 GOOD_STATUS = status_of(status_entry())
 
 
+def good_rules():
+    return [{"type": "pull_request", "parameters": {"required_approving_review_count": 0}},
+            {"type": "required_status_checks", "parameters": {
+                "strict_required_status_checks_policy": True,
+                "required_status_checks": [{"context": "test"}, {"context": "TIM full suite"}, {"context": "pr-gate/head"}]}},
+            {"type": "non_fast_forward"}, {"type": "deletion"}, {"type": "update"}]
+
+
+GOOD_COMPARE = {"behind_by": 0, "ahead_by": 1, "merge_base_commit": {"sha": BASE_SHA}}
+
+
 class FakeApi:
     def __init__(self, prs=None, checks=None, status=None, fail=None, fresh=None, behind=None, runs=None):
         self.runs = copy.deepcopy(GOOD_RUNS) if runs is None else runs
-        self.behind = {"behind_by": 0, "ahead_by": 1} if behind is None else behind
+        self.behind = GOOD_COMPARE if behind is None else behind
+        self.rules = good_rules()
         self.prs = {pr["number"]: pr for pr in (prs or [make_pr()])}
         self.checks = GOOD_CHECKS if checks is None else checks
         self.status = GOOD_STATUS if status is None else status
@@ -89,8 +102,14 @@ class FakeApi:
             pr = {**pr, **self.fresh}
         return copy.deepcopy(pr)
 
+    def branch_rules(self, base):
+        self._maybe_fail("branch_rules")
+        return self.rules
+
     def compare(self, base, sha):
         self._maybe_fail("compare")
+        if isinstance(self.behind, list):  # successive answers: evaluation, then the check right before the merge
+            return self.behind.pop(0) if len(self.behind) > 1 else self.behind[0]
         return self.behind
 
     def workflow_run(self, run_id):
@@ -118,9 +137,9 @@ def clean_gate(pr):
     return []
 
 
-def go(api, gate=clean_gate, policy=None):
+def go(api, gate=clean_gate, policy=None, token_kind="app"):
     out = []
-    code = amc.run(api, gate, policy or POLICY, REPO, emit=out.append)
+    code = amc.run(api, gate, policy or POLICY, REPO, emit=out.append, token_kind=token_kind)
     return code, [line for line in out if line.startswith("{")], api.calls
 
 
@@ -307,7 +326,7 @@ def test_merge_api_refusal_is_recorded_and_never_raises():
 
 
 @pytest.mark.parametrize("behind", [{"behind_by": 1}, {"behind_by": 40}, {}, {"behind_by": None}, {"behind_by": "0"},
-                                    {"behind_by": False}])
+                                    {"behind_by": False}, {"behind_by": 1, "merge_base_commit": {"sha": BASE_SHA}}])
 def test_a_head_that_is_behind_the_base_or_unknown_is_never_merged(behind):
     code, decisions, calls = outcome(FakeApi(behind=behind))
     assert calls == [] and "up to date" in decisions[0]["reasons"][0]
@@ -370,11 +389,113 @@ def test_worker_login_comparison_ignores_case_only():
     assert outcome(FakeApi(prs=[make_pr(user={"login": "tim-worker2"})]))[1] == []
 
 
+# --- base race, branch rules, merger token -----------------------------------------------------------
+
+def test_base_moving_between_evaluation_and_merge_blocks_the_merge():
+    moved = {"behind_by": 1, "merge_base_commit": {"sha": BASE_SHA}}
+    api = FakeApi(behind=[GOOD_COMPARE, moved])
+    code, decisions, calls = outcome(api)
+    assert calls == [] and "base branch moved" in decisions[0]["reasons"][0]
+    other_base = {"behind_by": 0, "merge_base_commit": {"sha": "e" * 40}}
+    assert outcome(FakeApi(behind=[GOOD_COMPARE, other_base]))[2] == []
+    assert outcome(FakeApi(behind=[GOOD_COMPARE, {}]))[2] == []
+
+
+def test_the_compare_is_repeated_right_before_the_merge():
+    api = FakeApi(behind=[GOOD_COMPARE, GOOD_COMPARE])
+    seen = []
+    original = api.compare
+    api.compare = lambda base, sha: (seen.append(sha), original(base, sha))[1]
+    assert outcome(api)[2] == [("merge", 7, SHA, "squash")] and len(seen) == 2
+
+
+@pytest.mark.parametrize("missing", ["pull_request", "required_status_checks", "non_fast_forward", "deletion", "update"])
+def test_a_missing_branch_rule_blocks_everything(missing):
+    api = FakeApi()
+    api.rules = [rule for rule in api.rules if rule["type"] != missing]
+    out = []
+    assert amc.run(api, clean_gate, POLICY, REPO, emit=out.append, token_kind="app") == 1
+    assert api.calls == [] and missing in out[0]
+
+
+def test_non_strict_or_incomplete_required_status_checks_block_everything():
+    for mutate in (lambda p: p.update(strict_required_status_checks_policy=False),
+                   lambda p: p.pop("strict_required_status_checks_policy"),
+                   lambda p: p.update(required_status_checks=[{"context": "test"}, {"context": "pr-gate/head"}]),
+                   lambda p: p.update(required_status_checks=[{"context": "TIM full suite"}, {"context": "test"}]),
+                   lambda p: p.update(required_status_checks=[])):
+        api = FakeApi()
+        mutate(api.rules[1]["parameters"])
+        assert amc.run(api, clean_gate, POLICY, REPO, emit=lambda line: None, token_kind="app") == 1
+        assert api.calls == []
+
+
+@pytest.mark.parametrize("rules", [None, {}, "x", [None, 5], []])
+def test_unreadable_or_empty_branch_rules_block_everything(rules):
+    api = FakeApi()
+    api.rules = rules
+    assert amc.run(api, clean_gate, POLICY, REPO, emit=lambda line: None, token_kind="app") == 1 and api.calls == []
+
+
+def test_the_403_for_missing_rulesets_fails_the_run_closed():
+    api = FakeApi(fail={"branch_rules"})
+    out = []
+    assert amc.run(api, clean_gate, POLICY, REPO, emit=out.append, token_kind="app") == 1
+    assert api.calls == [] and "failed closed" in out[0]
+
+
+def test_extra_rules_do_not_hurt_and_a_complete_ruleset_allows_the_merge():
+    api = FakeApi()
+    api.rules.append({"type": "creation"})
+    assert outcome(api)[2] == [("merge", 7, SHA, "squash")]
+
+
+def test_the_rules_check_can_only_be_skipped_in_a_dry_run():
+    api = FakeApi()
+    api.rules = []
+    dry = {**POLICY, "dry_run": True, "require_branch_rules": False}
+    assert outcome(api, policy=dry)[1][0]["outcome"] == "would-merge"
+    code, decisions, calls = outcome(api, policy={**POLICY, "dry_run": True})  # rules required: stop before any PR
+    assert code == 1 and decisions[0]["scope"] == "branch-rules" and len(decisions) == 1
+
+
+@pytest.mark.parametrize("kind", ["github-token", "unknown", "", "App"])
+def test_real_merges_need_the_merger_app_token(kind):
+    class Untouchable:
+        def __getattr__(self, name):
+            raise AssertionError(f"API used without an app token: {name}")
+
+    out = []
+    assert amc.run(Untouchable(), clean_gate, POLICY, REPO, emit=out.append, token_kind=kind) == 1
+    assert "App token" in out[0]
+    assert outcome(FakeApi(), policy={**POLICY, "dry_run": True}, token_kind=kind)[1][0]["outcome"] == "would-merge"
+
+
+def test_branch_rules_request_is_validated():
+    gh = Gh([json.dumps([])])
+    assert amc.GhApi(REPO, gh).branch_rules("platform-main") == []
+    assert gh.argv[0] == ["gh", "api", "repos/owner/repo/rules/branches/platform-main"]
+    with pytest.raises(amc.ControllerError):
+        amc.GhApi(REPO, Gh([])).branch_rules("a/b")
+    with pytest.raises(amc.ApiError):
+        amc.GhApi(REPO, Gh([subprocess.CalledProcessError(1, "gh", stderr="Upgrade to GitHub Pro")])).branch_rules("platform-main")
+
+
+def test_the_controller_workflow_is_manual_only_and_distinguishes_the_token_kind():
+    text = (ROOT / ".github" / "workflows" / "auto-merge-controller.yml").read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in text
+    assert "\n  schedule:" not in text and "pull_request" not in text and "push:" not in text
+    assert "if: github.ref == 'refs/heads/platform-main'" in text
+    assert "TIM_MERGER_TOKEN_KIND" in text and "create-github-app-token" in text
+    assert "ref: platform-main" in text and "persist-credentials: false" not in text
+
+
 # --- policy -------------------------------------------------------------------------------------------
 
 def test_the_shipped_policy_is_inert():
     policy = amc.load_policy(ROOT / ".github" / "auto-merge-policy.json")
     assert policy["enabled"] is False and policy["dry_run"] is True and policy["worker_logins"] == []
+    assert policy["require_branch_rules"] is True and policy["require_app_token"] is True
 
 
 @pytest.mark.parametrize("change", [
@@ -385,6 +506,9 @@ def test_the_shipped_policy_is_inert():
     {"required_statuses": []}, {"required_statuses": ["pr-gate/head"]}, {"required_statuses": [{"context": "x"}]},
     {"required_statuses": [{"context": "c", "creator": "u", "workflow_path": "w", "event": "e"},
                            {"context": "c", "creator": "v", "workflow_path": "w", "event": "e"}]},
+    {"dry_run": False, "require_branch_rules": False}, {"dry_run": False, "require_app_token": False},
+    {"require_branch_rules": "yes"}, {"require_app_token": 1}, {"required_branch_rules": []},
+    {"required_branch_rules": "update"}, {"required_branch_rules": [""]},
     {"check_app_slugs": []}, {"allowed_conclusions": []}, {"max_merges_per_run": 0},
     {"max_merges_per_run": 99}, {"max_merges_per_run": True}, {"head_branch_regex": "("}, {"base_branch": ""},
 ])

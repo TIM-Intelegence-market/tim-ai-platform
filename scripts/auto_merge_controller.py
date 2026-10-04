@@ -70,6 +70,14 @@ def load_policy(path: Path) -> dict[str, Any]:
         names = [spec["name"] for spec in policy["required_checks"]]
         if len(set(names)) != len(names):
             raise ValueError("required check names must be unique")
+        for key in ("require_branch_rules", "require_app_token"):
+            if not isinstance(policy[key], bool):
+                raise ValueError(f"{key} must be a boolean")
+        if (not isinstance(policy["required_branch_rules"], list) or not policy["required_branch_rules"]
+                or not all(isinstance(item, str) and item for item in policy["required_branch_rules"])):
+            raise ValueError("required_branch_rules must be a non-empty list of rule types")
+        if not policy["dry_run"] and not (policy["require_branch_rules"] and policy["require_app_token"]):
+            raise ValueError("real merges require require_branch_rules and require_app_token")
         if policy["merge_method"] not in MERGE_METHODS:
             raise ValueError("merge_method must be squash, merge or rebase")
         if type(policy["max_merges_per_run"]) is not int or not 1 <= policy["max_merges_per_run"] <= 5:
@@ -185,6 +193,32 @@ def _identity_blockers(check: dict[str, Any], runs: dict[int, dict[str, Any]], s
     return problems
 
 
+def rules_blockers(rules: Any, policy: dict[str, Any]) -> list[str]:
+    """GitHub must report the protection rules that make the controller's guarantees real on the base branch."""
+    if not isinstance(rules, list):
+        return ["branch rules unavailable"]
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for rule in rules:
+        if isinstance(rule, dict) and isinstance(rule.get("type"), str):
+            by_type.setdefault(rule["type"], []).append(rule)
+    blockers = [f"branch rule {kind!r} is not active on {policy['base_branch']}"
+                for kind in policy["required_branch_rules"] if kind not in by_type]
+    if "required_status_checks" in policy["required_branch_rules"] and "required_status_checks" in by_type:
+        needed = {spec["name"] for spec in policy["required_checks"]} | {spec["context"] for spec in policy["required_statuses"]}
+        strict = False
+        contexts: set[str] = set()
+        for rule in by_type["required_status_checks"]:
+            parameters = rule.get("parameters") or {}
+            strict = strict or parameters.get("strict_required_status_checks_policy") is True
+            contexts |= {entry.get("context") for entry in parameters.get("required_status_checks") or []
+                         if isinstance(entry, dict)}
+        if not strict:
+            blockers.append("required status checks do not require an up-to-date branch (strict policy)")
+        for name in sorted(needed - contexts):
+            blockers.append(f"{name!r} is not a required status check of the ruleset")
+    return blockers
+
+
 def pr_blockers(pr: dict[str, Any], policy: dict[str, Any], repo: str) -> list[str]:
     """Every reason this PR must not be merged right now; an empty list means eligible."""
     blockers: list[str] = []
@@ -228,7 +262,9 @@ def decide(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[s
         sha = str((pr.get("head") or {}).get("sha") or "")
         reasons = pr_blockers(pr, policy, repo)
         if not reasons:
-            behind = (api.compare(policy["base_branch"], sha) or {}).get("behind_by")
+            comparison = api.compare(policy["base_branch"], sha) or {}
+            behind = comparison.get("behind_by")
+            merge_base = (comparison.get("merge_base_commit") or {}).get("sha")
             if type(behind) is not int or behind != 0:
                 reasons.append(f"head is not up to date with {policy['base_branch']} (behind_by={behind!r}); "
                                "the checked tree would differ from the merged tree")
@@ -250,6 +286,10 @@ def decide(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[s
         if (fresh.get("head") or {}).get("sha") != sha or fresh.get("state") != "open" \
                 or fresh.get("mergeable_state") != "clean":
             return Decision(number, "blocked", sha, ["pull request changed during evaluation"])
+        again = api.compare(policy["base_branch"], sha) or {}
+        if again.get("behind_by") != 0 or type(again.get("behind_by")) is not int \
+                or (again.get("merge_base_commit") or {}).get("sha") != merge_base:
+            return Decision(number, "blocked", sha, ["base branch moved during evaluation"])
         if policy["dry_run"]:
             return Decision(number, "would-merge", sha)
         api.merge(number, sha, policy["merge_method"])
@@ -259,10 +299,22 @@ def decide(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[s
 
 
 def run(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[str, Any], repo: str,
-        emit: Callable[[str], None] = print) -> int:
+        emit: Callable[[str], None] = print, token_kind: str = "unknown") -> int:
     if not policy["enabled"]:
         emit("auto-merge controller is disabled by policy; nothing was evaluated.")
         return 0
+    if not policy["dry_run"] and policy["require_app_token"] and token_kind != "app":
+        emit(f"controller failed closed: real merges need a GitHub App token for the merger identity (token kind: {token_kind!r}).")
+        return 1
+    try:
+        if policy["require_branch_rules"]:
+            problems = rules_blockers(api.branch_rules(policy["base_branch"]), policy)
+            if problems:
+                emit(json.dumps({"scope": "branch-rules", "outcome": "blocked", "reasons": problems}))
+                return 1
+    except ControllerError as error:
+        emit(f"controller failed closed: {error}")
+        return 1
     try:
         candidates = [pr for pr in api.open_pulls(policy["base_branch"]) if is_worker_pr(pr, policy)]
     except ControllerError as error:
@@ -350,6 +402,11 @@ class GhApi:
             raise ControllerError("unsafe base branch name")
         return self._gh(f"repos/{self.repo}/compare/{base}...{self._sha(sha)}")
 
+    def branch_rules(self, branch: str) -> list[dict[str, Any]]:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", branch):
+            raise ControllerError("unsafe branch name")
+        return self._gh(f"repos/{self.repo}/rules/branches/{branch}")
+
     def mark_ready(self, node_id: str) -> None:
         if not re.fullmatch(r"[A-Za-z0-9_=-]+", str(node_id)):
             raise ControllerError("unsafe node id")
@@ -402,7 +459,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ControllerError, pr_gate.GateError) as error:
         print(f"controller failed closed: {error}", file=sys.stderr)
         return 1
-    return run(api, gate, policy, args.repo)
+    return run(api, gate, policy, args.repo, token_kind=os.environ.get("TIM_MERGER_TOKEN_KIND", "unknown"))
 
 
 if __name__ == "__main__":

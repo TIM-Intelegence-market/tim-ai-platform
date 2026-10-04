@@ -34,6 +34,16 @@ jobs:
         with:
           ref: platform-main
           fetch-depth: 0
+      # Real merges need the merger identity: a GitHub App token. github.token merges would not trigger
+      # follow-up workflows (for example ci.yml on push to platform-main) and cannot be a ruleset bypass actor.
+      # Before activation: pin this action to a reviewed commit SHA.
+      - name: Create merger app token
+        id: app
+        if: vars.TIM_MERGER_APP_ID != ''
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.TIM_MERGER_APP_ID }}
+          private-key: ${{ secrets.TIM_MERGER_APP_PRIVATE_KEY }}
       - name: Evaluate worker pull requests
         run: >-
           python3 -m scripts.auto_merge_controller
@@ -41,4 +51,5 @@ jobs:
           --policy .github/auto-merge-policy.json
           --gate-policy .github/pr-gate-policy.json
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          TIM_MERGER_TOKEN_KIND: ${{ steps.app.outputs.token && 'app' || 'github-token' }}

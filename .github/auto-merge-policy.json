@@ -32,5 +32,14 @@
       "workflow_path": ".github/workflows/pr-gate.yml",
       "event": "pull_request_target"
     }
-  ]
+  ],
+  "require_branch_rules": true,
+  "required_branch_rules": [
+    "pull_request",
+    "required_status_checks",
+    "non_fast_forward",
+    "deletion",
+    "update"
+  ],
+  "require_app_token": true
 }
