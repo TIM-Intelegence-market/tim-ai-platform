@@ -25,7 +25,8 @@ beweisen weder Herkunft noch Freigabe.
   `src/database/`, `CLAUDE.md`, `AGENTS.md`, `CI.md`, `conftest.py`, `pytest.ini`, Abhängigkeitslisten,
   `docker-compose.yml`, `.gitattributes`, `.gitmodules`.
 - Nur Status A/M/D, nur reguläre Dateien (`100644`); keine Symlinks, Submodule, Rechte- oder Typwechsel.
-- Keine Löschung unter `tests/`, höchstens 40 Dateien, kein leerer Diff.
+- Keine Löschung unter `tests/`, höchstens 40 Dateien, höchstens 1 MB je geänderter Datei, kein leerer Diff.
+- Läuft auch bei `edited` (zum Beispiel Wechsel des Ziel-Branches), nicht nur bei neuen Commits.
 - Bei jedem Fehler oder unlesbarer Policy: Check schlägt fehl (fail-closed).
 
 Der Check gilt **nur** für Branches nach dem Schema `claude/issue-N-…`. Ein Worker, der anders benennt,

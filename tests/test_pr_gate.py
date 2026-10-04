@@ -141,3 +141,30 @@ def test_gate_fails_closed_on_unknown_revision_and_bad_policy(repo, tmp_path, ca
     assert main(["--repository", str(repo), "--policy", str(bad), "--base", "platform-main",
                  "--head", "HEAD", "--branch", "claude/issue-7-fix"]) == 1
     assert "failed closed" in capsys.readouterr().err
+
+
+def test_oversized_file_is_rejected_in_unit_and_real_diff(repo, capsys):
+    limit = POLICY["max_file_bytes"]
+    assert evaluate([Entry("000000", "100644", "A", "docs/big.bin", size=limit + 1)], POLICY)
+    assert evaluate([Entry("000000", "100644", "A", "docs/ok.bin", size=limit)], POLICY) == []
+    (repo / "docs").mkdir()
+    (repo / "docs" / "ok.bin").write_bytes(b"\0" * limit)
+    assert run_gate(repo) == 0
+    (repo / "docs" / "big.bin").write_bytes(b"\0" * (limit + 1))
+    assert run_gate(repo) == 1
+    assert "exceeds the limit" in capsys.readouterr().err
+
+
+def test_policy_without_size_limit_fails_closed(tmp_path):
+    without = {key: value for key, value in POLICY.items() if key != "max_file_bytes"}
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps(without))
+    with pytest.raises(GateError):
+        pr_gate.load_policy(path)
+
+
+def test_workflow_reruns_on_edited_and_keeps_read_only_permissions():
+    text = (POLICY_PATH.parent / "workflows" / "pr-gate.yml").read_text(encoding="utf-8")
+    types_line = next(line for line in text.splitlines() if line.strip().startswith("types:"))
+    assert "edited" in types_line and "pull_request_target" in text
+    assert "permissions:\n  contents: read\n" in text

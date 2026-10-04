@@ -13,11 +13,12 @@ import json
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import Sequence
 
 REGULAR = "100644"
+MAX_SIZED_ENTRIES = 500  # beyond this the file-count limit already rejects the diff; skip per-file git calls
 ABSENT = "000000"
 
 
@@ -31,6 +32,8 @@ class Entry:
     new_mode: str
     status: str
     path: str
+    new_sha: str = field(default="", compare=False)
+    size: int | None = field(default=None, compare=False)  # filled by diff_entries for A/M
 
 
 def parse_raw(data: str) -> list[Entry]:
@@ -45,8 +48,8 @@ def parse_raw(data: str) -> list[Entry]:
         fields = meta[1:].split(" ") if meta.startswith(":") else []
         if len(fields) != 5 or index + 1 >= len(tokens):
             raise GateError(f"unparseable diff record: {meta!r}")
-        old_mode, new_mode, _old_sha, _new_sha, status = fields
-        entries.append(Entry(old_mode, new_mode, status, tokens[index + 1]))
+        old_mode, new_mode, _old_sha, new_sha, status = fields
+        entries.append(Entry(old_mode, new_mode, status, tokens[index + 1], new_sha))
         index += 2
     return entries
 
@@ -91,13 +94,15 @@ def evaluate(entries: Sequence[Entry], policy: dict) -> list[str]:
             violations.append(f"{path}: outside the allowed paths")
         if entry.status == "D" and folded.startswith(deny_deleted):
             violations.append(f"{path}: deleting files here is not allowed")
+        if entry.size is not None and entry.size > int(policy["max_file_bytes"]):
+            violations.append(f"{path}: {entry.size} bytes exceeds the limit of {policy['max_file_bytes']}")
     return violations
 
 
 def load_policy(path: Path) -> dict:
     try:
         policy = json.loads(path.read_text(encoding="utf-8"))
-        for key in ("applies_to_branch_regex", "max_files", "allow_prefixes", "deny_prefixes",
+        for key in ("applies_to_branch_regex", "max_files", "max_file_bytes", "allow_prefixes", "deny_prefixes",
                     "deny_names", "deny_deleted_prefixes"):
             policy[key]
     except (OSError, ValueError, KeyError) as error:
@@ -113,7 +118,18 @@ def diff_entries(repository: Path, base: str, head: str) -> list[Entry]:
                                    capture_output=True, timeout=120)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as error:
         raise GateError(f"git diff failed: {getattr(error, 'stderr', '') or error}") from error
-    return parse_raw(completed.stdout)
+    entries = parse_raw(completed.stdout)
+    sized: list[Entry] = []
+    for entry in entries:
+        if entry.status in {"A", "M"} and len(entries) <= MAX_SIZED_ENTRIES:
+            try:
+                size = int(subprocess.run(["git", "cat-file", "-s", entry.new_sha], cwd=repository, check=True,
+                                          text=True, capture_output=True, timeout=60).stdout.strip())
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, ValueError) as error:
+                raise GateError(f"object size unavailable for {entry.path!r}: {error!r}") from error
+            entry = replace(entry, size=size)
+        sized.append(entry)
+    return sized
 
 
 def main(argv: Sequence[str] | None = None) -> int:
