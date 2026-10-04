@@ -4,16 +4,16 @@
 
 1. It selects at most one open `priority:p0` or `priority:p1` issue carrying `status:ready`, excluding epics, blockers and unresolved explicit dependencies. The default pilot mode additionally requires `agent:pilot`.
 2. Codex analyzes the issue read-only and posts the result as an issue comment.
-3. Claude Code implements only that analysis in a fresh worktree and opens a draft PR.
-4. On a later scheduler run, the merge gate examines pipeline PRs and squash-merges only when every rule below passes.
+3. Claude Code edits source and tests in a restricted worktree without shell, GitHub, or MCP tools.
+4. The local runner rejects protected paths, checks the diff, commits and pushes the branch, then opens a draft PR.
 
-It never deletes history or stores credentials in the repository. A successful merge may close the linked issue through `Closes #N`.
+It never merges PRs, closes issues, deletes history, or stores credentials in the repository. Merging and publishing to `platform-main` require separate human review and approval.
 
-## Automatic merge rules
+## Merge safety boundary
 
-The PR must carry `agent:auto-merge`, the `TIM_CODEX_CLAUDE_RUN_V1` marker and a matching `Closes #N` reference. Its branch must be `claude/issue-N-*`, its base must be the current default branch, and GitHub must report `MERGEABLE` and `CLEAN`. Every reported status check must succeed, including the named `TIM full suite` check. The merge command pins the reviewed head SHA with `--match-head-commit`; a new push requires a fresh check. No administrator bypass or GitHub auto-merge is used. Existing draft PRs are not enrolled automatically.
+The previous automatic merge gate was removed. PR labels, body markers, branch names, and a successful PR-controlled check cannot authenticate a worker or prove human approval. The Claude process now has file tools only; the runner rejects changes to `.github/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, and the pipeline script before pushing. The worker still runs under the local user account, so this is not a separate operating-system or GitHub identity. Keep the LaunchAgent stopped until this restricted flow has passed a new end-to-end pilot.
 
-The `TIM full suite` GitHub Action runs `pytest -q` with the local TimescaleDB service. Known baseline failures or missing CI availability keep the PR open. To run the merge gate alone: `python3 scripts/github_issue_pipeline.py --merge-ready`.
+The `TIM full suite` GitHub Action runs `pytest -q` with an isolated TimescaleDB service. It remains red until external-service and missing-artifact test dependencies are addressed explicitly; tests are not silently skipped. The CI database now uses internal port 5433 and Python 3.13.
 
 ## One-time setup
 
@@ -35,7 +35,7 @@ Logs and retained worktrees live in `~/Library/Application Support/TIM GitHub Wo
 
 ## Safety and recovery
 
-- The local directory lock permits one run only.
+- An OS file lock permits one run only and releases automatically after a process crash.
 - Add `agent:retry` to a blocked issue after correcting its cause; the next scheduler run retries it once.
 - A pre-existing branch or missing draft PR is a safe stop, never a duplicate PR.
-- `agent:pr-open` means a draft PR exists. Its `agent:auto-merge` label enrolls it in the merge gate; failed or missing checks leave it open.
+- `agent:pr-open` means a draft PR exists and awaits human review. CI failures leave it open.
