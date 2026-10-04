@@ -1279,6 +1279,34 @@ class DurableIngestionStore:
                     )
         return len(rows)
 
+    async def first_missing_trade_id(self, symbol: str, from_id: int, to_id: int) -> int:
+        """Return the lowest aggregate ID in ``from_id..to_id`` without a raw row.
+
+        Returns ``to_id + 1`` when the whole range is already persisted.  Read
+        only: catch-up uses it to skip ranges an earlier, interrupted run has
+        already filled instead of fetching them again as duplicates.
+        """
+        if from_id < 0 or to_id < from_id:
+            raise ValueError("invalid aggregate-ID range")
+        async with self.database.acquire() as connection:
+            value = await connection.fetchval(
+                """SELECT CASE
+                       WHEN NOT EXISTS (SELECT 1 FROM agg_trades WHERE symbol=$1 AND aggregate_trade_id=$2::bigint)
+                       THEN $2::bigint
+                       ELSE COALESCE((
+                           SELECT raw.aggregate_trade_id + 1 FROM agg_trades raw
+                           WHERE raw.symbol=$1 AND raw.aggregate_trade_id >= $2::bigint
+                             AND raw.aggregate_trade_id < $3::bigint
+                             AND NOT EXISTS (SELECT 1 FROM agg_trades next_raw WHERE next_raw.symbol=$1
+                                             AND next_raw.aggregate_trade_id=raw.aggregate_trade_id + 1)
+                           ORDER BY raw.aggregate_trade_id LIMIT 1), $3::bigint + 1)
+                   END""",
+                symbol,
+                from_id,
+                to_id,
+            )
+        return int(value)
+
     async def resolve_gap(self, gap_id: str) -> bool:
         """Resolve exactly one verified gap without waiting behind legacy gaps.
 

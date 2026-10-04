@@ -47,6 +47,9 @@ class CatchUpResult:
     duplicates: int
     pages: int
     reason: str | None = None
+    # IDs inside the range that were already persisted (e.g. by an earlier,
+    # interrupted run) and therefore skipped without a REST request.
+    already_present: int = 0
 
 
 Transport = Callable[[str, Mapping[str, str], float], Awaitable[HttpResponse]]
@@ -212,9 +215,37 @@ class CatchUpCoordinator:
             )
         return await self._recover_range(str(gap["symbol"]), start_id, end_id, str(gap["gap_id"]))
 
+    async def _skip_persisted(self, symbol: str, expected: int, end_id: int) -> int:
+        """Next ID to fetch: jump over IDs that already have a raw row.
+
+        Best effort and read only; any failure means "fetch from ``expected``".
+        The jump never crosses the durable cursor and never starts above it:
+        IDs above the cursor are fetched again as duplicates so the cursor
+        advances contiguously and ingest records no spurious TRADE_ID_GAP.
+        """
+        finder = getattr(self.store, "first_missing_trade_id", None)
+        if finder is None:
+            return expected
+        try:
+            first_missing = int(await finder(symbol, expected, end_id))
+            if first_missing <= expected:
+                return expected
+            cursor = await self.store.get_cursor(symbol)
+        except Exception:
+            return expected
+        cursor_id = cursor.last_aggregate_trade_id if cursor is not None else None
+        if cursor_id is None or cursor_id + 1 < expected:
+            # Range above the cursor: ingest would record a gap from the
+            # cursor anyway, so do not widen it with already stored IDs.
+            return expected
+        target = min(first_missing, end_id + 1)
+        if cursor_id + 1 < target:
+            return cursor_id + 1
+        return target
+
     async def _recover_range(self, symbol: str, start_id: int, end_id: int, gap_id: str) -> CatchUpResult:
         expected = start_id
-        persisted = duplicates = pages = 0
+        persisted = duplicates = pages = already_present = 0
         await self.store.set_gap_status(gap_id, "CATCHING_UP")
         try:
             await self.store.set_recovery_state(symbol, "CATCHING_UP")
@@ -224,13 +255,24 @@ class CatchUpCoordinator:
         await self.store.record_metric("catchup_total")
         reason: str | None = None
         try:
+            skip_check = probe_jumped = True
             while expected <= end_id and pages < self.max_pages:
+                if skip_check:
+                    resume_at = await self._skip_persisted(symbol, expected, end_id)
+                    already_present += resume_at - expected
+                    # A probe that could not jump is not repeated until a page
+                    # brings new rows; this keeps probing linear, not quadratic.
+                    probe_jumped = resume_at > expected
+                    expected = resume_at
+                    if expected > end_id:
+                        break
                 requested = min(self.page_limit, end_id - expected + 1)
                 batch = await self.client.fetch(symbol, expected, limit=requested)
                 pages += 1
                 if not batch:
                     reason = "public REST source returned no data for requested range"
                     break
+                inserted_before = persisted
                 for trade in batch:
                     assert trade.trade_id is not None
                     if trade.trade_id > end_id:
@@ -244,6 +286,11 @@ class CatchUpCoordinator:
                     expected += 1
                 if reason:
                     break
+                # A page of pure duplicates means we are walking through an
+                # already filled stretch: look for the next real hole.
+                skip_check = persisted == inserted_before and probe_jumped
+                if persisted > inserted_before:
+                    probe_jumped = True
                 if batch[-1].trade_id is not None and batch[-1].trade_id < expected - 1:
                     reason = "catch-up source made no forward progress"
                     break
@@ -272,7 +319,10 @@ class CatchUpCoordinator:
                 resolved = 0
                 reason = f"{type(error).__name__}: {error}"
             if resolved:
-                return CatchUpResult("COMPLETE", symbol, start_id, end_id, persisted, duplicates, pages)
+                return CatchUpResult(
+                    "COMPLETE", symbol, start_id, end_id, persisted, duplicates, pages,
+                    already_present=already_present,
+                )
             reason = reason or "persisted range failed independent completeness verification"
 
         await self.store.set_gap_status(gap_id, "OPEN", error=reason)
@@ -281,4 +331,7 @@ class CatchUpCoordinator:
             await self.store.set_recovery_state(symbol, "GAP_DETECTED")
         except Exception:
             pass
-        return CatchUpResult("OPEN", symbol, start_id, end_id, persisted, duplicates, pages, reason)
+        return CatchUpResult(
+            "OPEN", symbol, start_id, end_id, persisted, duplicates, pages, reason,
+            already_present=already_present,
+        )
