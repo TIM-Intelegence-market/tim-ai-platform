@@ -95,12 +95,13 @@ Heute ist **keine** Garantie der Schutzregel-Klasse durch GitHub erzwungen, weil
 | Unbekannter Zustand, fehlender Check, SHA-Wechsel, API-Fehler, fehlende Regeln, kein App-Token blockieren | Controller, 239 Tests | **B** |
 | PR-Text, Labels und Branch-Namen begründen keine Berechtigung | Controller (Test mit gefälschten Labels und Text) | **B** |
 | Controller und Policy sind inaktiv | `enabled: false`, `dry_run: true`, keine Worker, Workflow manuell, Job nur auf `platform-main` | **B** |
+| Runner, Codex und Claude können weder die `gh`-Anmeldung des Inhabers noch einen Merger-Schlüssel lesen | getrennter macOS-Benutzer (Voraussetzung, [`AUTO_MERGE_IDENTITIES.md`](AUTO_MERGE_IDENTITIES.md) §5) und Isolationsprüfung 4a im Pilot; **noch nicht eingerichtet, nicht belegt** | **C**, bis 4a bestanden |
 | Folge-Workflows nach einem Controller-Merge laufen | App-Token statt `github.token` | **C** |
 | Fachliche Richtigkeit; Worker-Code (Quellcode und neue Testmodule) läuft in den Checks und könnte Ergebnisse beeinflussen | nicht durch Pfadregeln erzwingbar | **C**, nicht erzwingbar |
 
 ## 5. Aktivierung
 
 Siehe [`AUTO_MERGE_ROLLOUT.md`](AUTO_MERGE_ROLLOUT.md) (Abschnitt 5, Aktivierungsvorschau). Reihenfolge in Kurzform: Plan oder
-Sichtbarkeit entscheiden, Apps und Rulesets anlegen, Negativversuche im Testrepository belegen (danach nur lesende Prüfungen im Produktionsrepository), Bootstrap-Merges, erster echter Gate-Lauf, Dry-Run-Matrix,
-Ende-zu-Ende-Pilot, dann die Aktivierungsänderung zur Freigabe vorlegen. **Stopp-Schalter:** `enabled: false` in der Policy, den
+Sichtbarkeit entscheiden, Apps und Rulesets anlegen, getrennten macOS-Benutzer für den Runner einrichten, Negativversuche im Testrepository belegen (danach nur lesende Prüfungen im Produktionsrepository), Bootstrap-Merges, erster echter Gate-Lauf, Dry-Run-Matrix,
+Isolationsprüfung 4a und Ende-zu-Ende-Pilot, dann die Aktivierungsänderung zur Freigabe vorlegen. **Stopp-Schalter:** `enabled: false` in der Policy, den
 `schedule`-Trigger entfernen oder den Bypass der Merger-App im Ruleset „restrict updates“ entziehen.

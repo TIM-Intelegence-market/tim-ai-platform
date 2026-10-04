@@ -51,3 +51,29 @@ Vor der Aktivierung ist `actions/create-github-app-token` auf einen geprüften C
    Worker-Token versucht, auf `platform-main` zu pushen (muss abgelehnt werden), eine Datei unter `.github/workflows/` zu
    pushen (muss abgelehnt werden) und einen PR zu mergen (muss durch das Ruleset abgelehnt werden). Merger-Token versucht, einen PR mit rotem oder fehlendem Pflicht-Check, einen veralteten Branch oder ohne PR zu mergen
    beziehungsweise zu pushen (alles muss abgelehnt werden; die vollständige Liste steht in `AUTO_MERGE_RULESET.md`, Abschnitt 4).
+
+## 5. Getrennter macOS-Benutzer für den Runner (Aktivierungsvoraussetzung)
+
+Die Trennung der GitHub-Identitäten schützt nichts, solange Runner, Codex und Claude als **derselbe macOS-Benutzer** laufen wie
+der Inhaber: Dieser Benutzer kann die `gh`-Anmeldung des Inhabers (`~/.config/gh/hosts.yml` oder Schlüsselbund-Eintrag `gh:github.com`)
+und jeden lokal abgelegten Schlüssel lesen, und damit mit Inhaber- oder Admin-Rechten handeln. Der Token-Fix im Runner
+(`agent_env`, keine Zugangsdaten an `codex`/`claude`) entfernt nur die *vererbte* Umgebung, nicht den Zugriff über das Dateisystem.
+
+**Voraussetzung vor jeder Aktivierung (LaunchAgent, `schedule`, Auto-Merge bleiben bis dahin aus):**
+
+1. Ein eigener, nicht administrativer macOS-Benutzer (Vorschlag `timrunner`, kein Mitglied von `admin`, keine `sudo`-Regel,
+   kein automatischer Login, kein Dateifreigabe- oder Fernzugriff) führt Runner, `codex` und `claude` aus. Der Inhaber startet nichts davon
+   unter seinem eigenen Benutzer.
+2. Das Repository wird für diesen Benutzer **neu geklont** (eigenes Arbeitsverzeichnis, eigener `gh`-Konfigurationsordner, eigener Schlüsselbund).
+   Der Worker-App-Schlüssel liegt ausschließlich im Schlüsselbund dieses Benutzers.
+3. Der Inhaber-Benutzer schützt seine Daten: Home-Verzeichnis auf `700` (macOS-Standard erlaubt anderen Benutzern das Auflisten),
+   `~/.config/gh` bleibt `700`, keine Schlüsseldateien in gemeinsam lesbaren Ordnern (`/Users/Shared`, `/tmp`, das Repository).
+4. Der **Merger-Schlüssel** existiert nur als Actions-Secret von GitHub. Es gibt keine lokale Kopie (auch nicht „zur Sicherheit“,
+   nicht im Downloads-Ordner, nicht im Passwortmanager des Runner-Benutzers). Sollte eine lokale Kopie unvermeidbar sein, gehört sie
+   in den Schlüsselbund des Inhabers und gilt für den Pilot als „muss unlesbar sein“.
+5. Der Runner-Benutzer ist weder Admin noch Maintainer des Repositorys und hat keine eigene `gh`-Anmeldung mit persönlichen Rechten
+   (`gh auth status` im Runner-Benutzer zeigt nur den Worker-Token der Prozessumgebung).
+
+Der Nachweis steht im Pilot ([`AUTO_MERGE_ROLLOUT.md`](AUTO_MERGE_ROLLOUT.md), Abschnitt 4a). Fällt eine Prüfung durch, bleibt der
+LaunchAgent aus und es wird nichts aktiviert. Eingerichtet hat Claude diesen Benutzer nicht; die Einrichtung ist Handarbeit des Inhabers.
+

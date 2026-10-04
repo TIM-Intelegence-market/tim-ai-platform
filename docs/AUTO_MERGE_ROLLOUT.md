@@ -71,6 +71,8 @@ ein Dry-Run schreibt nichts außer dem Log. Start über „Actions → Auto-merg
 
 Der LaunchAgent bleibt **während des Pilots gestoppt**; der Runner wird von Hand gestartet.
 
+0. Getrennter macOS-Benutzer für den Runner eingerichtet ([`AUTO_MERGE_IDENTITIES.md`](AUTO_MERGE_IDENTITIES.md), Abschnitt 5) und die
+   Isolationsprüfung 4a **bestanden**. Ohne bestandene Prüfung 4a beginnt der Pilot nicht.
 1. Runner-Patch P6 auf PR #146 angewendet und gemerged oder lokal ausgecheckt; Worker-App eingerichtet, `TIM_WORKER_LOGIN` und
    `TIM_WORKER_GH_TOKEN` nur im Prozess gesetzt.
 2. Ein harmloses Issue mit `priority:p1`, `status:ready` und `agent:pilot` (z. B. eine Doku-Ergänzung) anlegen.
@@ -81,9 +83,42 @@ Der LaunchAgent bleibt **während des Pilots gestoppt**; der Runner wird von Han
    (Fälle „committed, unpushed“ und „pushed“ des Patches) oder ein sauberer Stopp mit Hinweis.
 6. `--maintain` nach einem Base-Update: der veraltete PR wird aktualisiert und neu geprüft.
 
+## 4a. Isolationsprüfung: Runner-Benutzer, Inhaber-Anmeldung und Merger-Schlüssel
+
+Ziel: Weder Claude noch Codex (beide laufen als Runner-Benutzer `timrunner`) können die `gh`-Anmeldung des Inhabers oder den
+Merger-Schlüssel lesen. Die Prüfung gibt **nie Inhalte aus**, nur Exit-Codes und Berechtigungsmeldungen; Dateien werden nicht mit `cat` geöffnet.
+`OWNER` steht für den Kurznamen des Inhaber-Benutzers, `MERGER_KEY` für den Pfad, an dem eine lokale Merger-Schlüsseldatei liegen *würde*.
+
+Teil 1: als Runner-Benutzer in einer Terminal-Sitzung (`sudo -u timrunner -i` vom Inhaber aus, oder direkt angemeldet):
+
+```bash
+OWNER=<kurzname-des-inhabers>; MERGER_KEY=<pfad-einer-moeglichen-lokalen-merger-schluesseldatei>
+id -Gn | tr ' ' '\n' | grep -qx admin && echo "FAIL: Runner-Benutzer ist in der Gruppe admin"
+sudo -n true 2>/dev/null && echo "FAIL: sudo ohne Passwort möglich"
+for f in "/Users/$OWNER/.config/gh/hosts.yml" "/Users/$OWNER/.config/gh/config.yml" "$MERGER_KEY"; do
+  test -r "$f" && echo "FAIL: lesbar: $f" || echo "ok: nicht lesbar: $f"
+done
+ls "/Users/$OWNER" >/dev/null 2>&1 && echo "FAIL: Home des Inhabers auflistbar" || echo "ok: Home nicht auflistbar"
+security find-generic-password -s "gh:github.com" >/dev/null 2>&1 && echo "FAIL: gh-Eintrag im Schlüsselbund des Runner-Benutzers" || echo "ok: kein gh-Eintrag"
+security find-generic-password -s "gh:github.com" "/Users/$OWNER/Library/Keychains/login.keychain-db" >/dev/null 2>&1 && echo "FAIL: Schlüsselbund des Inhabers lesbar" || echo "ok: Schlüsselbund des Inhabers nicht lesbar"
+env -u GH_TOKEN -u GITHUB_TOKEN -u TIM_WORKER_GH_TOKEN gh auth status >/dev/null 2>&1 && echo "FAIL: persönliche gh-Anmeldung im Runner-Benutzer" || echo "ok: keine persönliche gh-Anmeldung"
+```
+
+Teil 2: dieselben Zugriffe **durch die Agenten selbst**, damit die Sandbox und die Werkzeugrechte mitgeprüft werden. Ein harmloses
+Pilot-Issue weist Codex (Analyse) und Claude (Umsetzung) an, nur die oben stehenden `test -r`-Zeilen auszuführen und Treffer zu melden
+(keinen Dateiinhalt). Erwartet: jede Zeile „nicht lesbar“, kein Treffer, kein Fehler im Pilot-Lauf selbst. Zusätzlich im Runner-Protokoll
+prüfen, dass kein Zugangsdaten-Muster erscheint (`grep -Ei 'ghp_|ghs_|github_pat_|BEGIN .*PRIVATE KEY' <logdatei>` muss leer sein).
+
+Teil 3: Gegenprobe, dass der Test etwas misst: als Inhaber-Benutzer dieselben `test -r`-Zeilen ausführen; die Inhaber-Dateien müssen dort
+lesbar sein (sonst prüft der Test einen falschen Pfad und ist wertlos).
+
+Beleg ablegen: Ausgabe der drei Teile mit Datum, macOS-Version und Benutzernamen im Pilotprotokoll. **Jedes „FAIL“ stoppt den Pilot;**
+LaunchAgent und Auto-Merge bleiben aus, bis die Ursache behoben und die Prüfung vollständig wiederholt ist. Dieser Nachweis ist
+Teil der Aktivierungsfreigabe (Abschnitt 5) und gilt nur für den geprüften Stand (nach OS-Update, neuem Schlüssel oder geänderten Rechten wiederholen).
+
 ## 5. Aktivierungsvorschau (nicht angewendet, nur zur Freigabe)
 
-Erst wenn Rulesets, getrennte Identitäten, alle Negativversuche (im Testrepository, dazu der lesende Beleg im Produktionsrepository) und der Pilot belegt sind, würde eine **eigene** Änderung
+Erst wenn Rulesets, getrennte Identitäten, alle Negativversuche (im Testrepository, dazu der lesende Beleg im Produktionsrepository), der getrennte macOS-Benutzer mit bestandener Isolationsprüfung 4a und der Pilot belegt sind, würde eine **eigene** Änderung
 folgende Punkte enthalten. Sie wird **vor Ausführung zur Freigabe vorgelegt** und nicht vorab committet.
 
 `.github/auto-merge-policy.json`:
