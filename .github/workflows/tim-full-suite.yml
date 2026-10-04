@@ -1,0 +1,22 @@
+name: TIM full suite
+
+on:
+  pull_request:
+    branches: [platform-main]
+
+jobs:
+  test:
+    name: TIM full suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Start local database
+        run: docker compose up -d --wait
+      - name: Run full suite
+        run: python -m pytest -q
