@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [platform-main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: TIM full suite
