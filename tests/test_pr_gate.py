@@ -183,3 +183,71 @@ def test_policy_without_add_only_prefixes_fails_closed(tmp_path):
     path.write_text(json.dumps(without))
     with pytest.raises(GateError):
         pr_gate.load_policy(path)
+
+
+# --- new test helper files: conftest, plugins, configuration, shadowing modules ---------------------------
+
+HELPER_PATHS = [
+    "tests/conftest.py", "tests/sub/conftest.py", "tests/helpers.py", "tests/__init__.py", "tests/sub/__init__.py",
+    "tests/json.py", "tests/pytest.py", "tests/pytest.ini", "tests/tox.ini", "tests/pyproject.toml",
+    "tests/setup.cfg", "tests/.coveragerc", "tests/plugin.pth", "tests/data/fixture.json", "tests/test_Upper.py",
+    "tests/test_x.PY", "tests/test_x.py.bak", "tests/Sub/test_ok.py", "tests/sub dir/test_ok.py",
+    "tests/test_ok.pyc", "tests/sitecustomize.py", "tests/usercustomize.py", "tests/noxfile.py",
+    "src/sitecustomize.py", "src/usercustomize.py", "src/conftest.py", "src/mod.pth", "src/native.so",
+    "tests/test_.py", "tests/_hidden/test_ok.py", "tests/test-dash.py",
+]
+
+
+@pytest.mark.parametrize("path", HELPER_PATHS)
+def test_new_helper_plugin_and_config_files_are_rejected(path):
+    assert evaluate([Entry("000000", "100644", "A", path)], POLICY)
+
+
+@pytest.mark.parametrize("path", ["tests/test_new.py", "tests/sub/test_new_2.py", "tests/a/b/test_deep_9.py",
+                                  "src/agents/new_module.py", "docs/note.md"])
+def test_plain_new_test_modules_and_sources_stay_allowed(path):
+    assert evaluate([Entry("000000", "100644", "A", path)], POLICY) == []
+
+
+def test_real_git_diffs_with_hostile_test_helpers_are_rejected(repo, capsys):
+    (repo / "tests" / "sub").mkdir()
+    for name in ("conftest.py", "helpers.py", "json.py", "__init__.py", "plugin.pth", "pytest.ini"):
+        (repo / "tests" / name).write_text("x = 1\n")
+    (repo / "tests" / "sub" / "conftest.py").write_text("x = 1\n")
+    (repo / "tests" / "test_good.py").write_text("def test_good():\n    pass\n")
+    assert run_gate(repo) == 1
+    err = capsys.readouterr().err
+    for name in ("tests/conftest.py", "tests/helpers.py", "tests/json.py", "tests/__init__.py", "tests/plugin.pth",
+                 "tests/pytest.ini", "tests/sub/conftest.py"):
+        assert name in err
+    assert "tests/test_good.py" not in err
+
+
+def test_real_git_diff_with_only_new_test_modules_and_source_passes(repo):
+    (repo / "tests" / "sub").mkdir()
+    (repo / "tests" / "sub" / "test_more.py").write_text("def test_more():\n    pass\n")
+    (repo / "tests" / "test_new.py").write_text("def test_new():\n    pass\n")
+    (repo / "src" / "b.py").write_text("y = 2\n")
+    assert run_gate(repo) == 0
+
+
+def test_real_git_diff_that_edits_an_existing_helper_or_test_is_rejected(repo, capsys):
+    (repo / "tests" / "test_a.py").write_text("def test_a():\n    assert True\n")  # weakened existing test
+    assert run_gate(repo) == 1
+    assert "existing files here are protected" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("missing", ["new_file_patterns", "deny_suffixes"])
+def test_policy_without_the_new_keys_fails_closed(tmp_path, missing):
+    without = {key: value for key, value in POLICY.items() if key != missing}
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps(without))
+    with pytest.raises(GateError):
+        pr_gate.load_policy(path)
+
+
+def test_policy_with_a_broken_new_file_pattern_fails_closed(tmp_path):
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps({**POLICY, "new_file_patterns": {"tests/": "("}}))
+    with pytest.raises(GateError):
+        pr_gate.load_policy(path)
