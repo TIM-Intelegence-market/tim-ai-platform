@@ -33,6 +33,23 @@ zsh scripts/install_github_issue_pipeline_launchd.sh pilot
 
 Logs and retained worktrees live in `~/Library/Application Support/TIM GitHub Worker`. After a successful pilot Issue and Draft PR, explicitly switch to P0/P1 processing with `zsh scripts/install_github_issue_pipeline_launchd.sh production`.
 
+## Worker identity (required for real runs)
+
+Real runs, retries and `--maintain` never use the owner's own `gh` login. Two environment variables select the worker:
+
+- `TIM_WORKER_LOGIN`: the worker's GitHub login (for a GitHub App, `<app-slug>[bot]`).
+- `TIM_WORKER_GH_TOKEN`: a token of that identity (an installation token of the worker App or a fine-grained token of a machine user). Keep it in the macOS Keychain and export it only in the launcher; never in the repository, a plist or a log.
+
+`gh` and `git` then run with that token, an empty private `gh` config directory (no fallback to the owner's login) and `gh auth git-credential` as the only git credential helper. `codex` and `claude` never see the token. Before any write the runner checks that GraphQL `viewer` equals `TIM_WORKER_LOGIN` and that the repository permissions show neither `admin` nor `maintain`; draft PRs by any other author are refused. `--dry-run` and `--setup-labels` may still use the ambient login.
+
+## Resuming an aborted run
+
+Before analysing, the runner inspects the issue's branch: nothing left over starts the normal flow; an empty branch is discarded (with a record) and starts fresh; **committed but unpushed** work is re-validated against the base, pushed and gets its draft PR; **pushed** work only gets its draft PR. Claude and Codex are not run again. A remote-only or diverged branch, uncommitted changes or a protected path in the committed diff stop the run and leave everything untouched for a human. The worktree's git directory is taken from the main repository, never from the worktree's own `.git` file.
+
+## Keeping open worker PRs current
+
+`python3 scripts/github_issue_pipeline.py --maintain` finds open PRs of the worker identity on `claude/issue-N-*` branches whose merge state is `BEHIND`, calls GitHub's update-branch with the expected head SHA, waits for the new head, refuses an identity change or conflicts and re-validates the updated diff (protected paths, non-regular entries). A new head SHA makes CI and the PR gate run again; nothing is merged by the runner.
+
 ## Safety and recovery
 
 - An OS file lock permits one run only and releases automatically after a process crash.

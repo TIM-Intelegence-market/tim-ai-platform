@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.github_issue_pipeline import Candidate, CommandRunner, DirectoryLock, EXCLUDED_LABELS, Pipeline, PipelineError, analysis_prompt, choose_candidate, claude_prompt, dependency_numbers
+from scripts.github_issue_pipeline import WorkerIdentity, Candidate, CommandRunner, DirectoryLock, EXCLUDED_LABELS, Pipeline, PipelineError, analysis_prompt, choose_candidate, claude_prompt, dependency_numbers
 
 
 def issue(number, *, labels=(), body="", updated_at="2026-09-27T10:00:00Z", state="open"):
@@ -197,7 +197,8 @@ ISSUE = json.dumps([{"number": 7, "title": "Fix race", "state": "OPEN", "body": 
                      "updatedAt": "2026-09-27T10:00:00Z", "url": "https://example.test/7"}])
 PR = json.dumps([{"number": 9, "url": "https://example.test/pr/9", "headRefOid": "deadbeef",
                   "headRefName": "claude/issue-7-fix-race", "baseRefName": "platform-main", "isDraft": True,
-                  "body": "Closes #7\n<!-- TIM_CODEX_CLAUDE_RUN_V1 -->"}])
+                  "body": "Closes #7\n<!-- TIM_CODEX_CLAUDE_RUN_V1 -->",
+                  "author": {"login": "tim-worker"}}])
 
 
 class FlowRunner(CommandRunner):
@@ -216,9 +217,15 @@ class FlowRunner(CommandRunner):
         text = " ".join(args)
         for prefix, reply in self.replies.items():
             if text.startswith(prefix):
-                return reply
+                return reply(self) if callable(reply) else reply
         if args[:3] == ["gh", "issue", "list"]:
             return ISSUE
+        if args[:3] == ["gh", "repo", "view"] and "nameWithOwner" in args:
+            return "owner/repo"
+        if args[:3] == ["gh", "api", "graphql"]:
+            return "tim-worker"
+        if args[:2] == ["gh", "api"] and ".permissions" in args:
+            return '{"admin": false, "maintain": false, "push": true}'
         if args[:3] == ["gh", "repo", "view"]:
             return '{"defaultBranchRef":{"name":"platform-main"}}'
         if args[:3] == ["gh", "pr", "list"]:
@@ -245,7 +252,8 @@ class FlowRunner(CommandRunner):
 
 def run_flow(tmp_path, monkeypatch, runner):
     monkeypatch.setattr("scripts.github_issue_pipeline.shutil.which", lambda _: "/bin/tool")
-    return Pipeline(Path("."), tmp_path, runner).execute(mode="pilot")
+    worker = WorkerIdentity("tim-worker", "test-token", tmp_path / "gh-config")
+    return Pipeline(Path("."), tmp_path, runner, worker=worker).execute(mode="pilot")
 
 
 def test_runner_turns_missing_executables_into_pipeline_errors(tmp_path):
@@ -314,7 +322,10 @@ def test_failure_before_commit_removes_worktree_and_branch_but_keeps_a_record(tm
 
 @pytest.mark.parametrize("failing", ["git push", "gh pr create"])
 def test_failure_after_commit_keeps_everything_for_recovery(tmp_path, monkeypatch, failing):
-    runner = FlowRunner(fail={failing: PipelineError("network down")}, replies={"git ls-remote": "abc refs/heads/x", "gh pr list": "[]"})
+    def remote_branch(runner):  # the branch exists on origin only after the (possibly failing) push
+        return "abc refs/heads/x" if runner.issued("git", "push") else ""
+
+    runner = FlowRunner(fail={failing: PipelineError("network down")}, replies={"git ls-remote": remote_branch, "gh pr list": "[]"})
     assert run_flow(tmp_path, monkeypatch, runner) == 1
     assert not runner.issued("git", "worktree", "remove") and not runner.issued("git", "branch", "-D")
     comment = next(call for call in runner.issued("gh", "issue", "comment") if "Automation blocked" in call[-1])
@@ -322,7 +333,7 @@ def test_failure_after_commit_keeps_everything_for_recovery(tmp_path, monkeypatc
 
 
 def test_unexpected_errors_block_instead_of_crashing_and_labels_still_move(tmp_path, monkeypatch):
-    runner = FlowRunner(replies={"gh repo view": "not json"}, fail={"gh issue comment": RuntimeError("gh down")})
+    runner = FlowRunner(replies={"gh repo view --json defaultBranchRef": "not json"}, fail={"gh issue comment": RuntimeError("gh down")})
     assert run_flow(tmp_path, monkeypatch, runner) == 1
     assert ["gh", "issue", "edit", "7", "--add-label", "agent:blocked"] in runner.calls
     assert ["gh", "issue", "edit", "7", "--remove-label", "agent:analyzing"] in runner.calls
