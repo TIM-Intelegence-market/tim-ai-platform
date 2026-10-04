@@ -12,7 +12,7 @@ Repository-Einstellung.
 | 3 | #150 Controller (gestapelt auf #147) | Schritt 2 | Inhaber, **manuell geprüft** | vorher auf den neuen `platform-main` bringen (siehe unten), damit keine Gate-Datei doppelt eingeführt wird |
 | 4 | #146 Runner (Codex-Branch) | Runner-Patch P6 zuerst anwenden | Codex/Inhaber | liefert den Check `TIM full suite`; ohne ihn blockiert der Controller dauerhaft |
 | 5 | erster echter Gate-Lauf, Dry-Run-Matrix, Pilot | Schritte 1 bis 4 | Inhaber | Abschnitte 2 bis 4 |
-| 6 | GitHub-Plan, Ruleset, Identitäten, Negativversuche | Entscheidung zum Plan | Inhaber | siehe `AUTO_MERGE_RULESET.md` und `AUTO_MERGE_IDENTITIES.md` |
+| 6 | GitHub-Plan, Rulesets, Identitäten, Negativversuche **zuerst im Testrepository** | Entscheidung zum Plan | Inhaber | siehe `AUTO_MERGE_RULESET.md` (Abschnitt 4), `rulesets/test-repo/README.md` und `AUTO_MERGE_IDENTITIES.md` |
 | 7 | Aktivierung | alles oben belegt | Inhaber, nach ausdrücklichem Go | Abschnitt 5 |
 
 **#150 nach dem Merge von #147 auf den neuen Stand bringen.** #150 liegt auf dem Branch von #147 (Head `023ccec`). Wurde #147 per
@@ -83,7 +83,7 @@ Der LaunchAgent bleibt **während des Pilots gestoppt**; der Runner wird von Han
 
 ## 5. Aktivierungsvorschau (nicht angewendet, nur zur Freigabe)
 
-Erst wenn Ruleset, getrennte Identitäten, alle Negativversuche und der Pilot belegt sind, würde eine **eigene** Änderung
+Erst wenn Rulesets, getrennte Identitäten, alle Negativversuche (im Testrepository, dazu der lesende Beleg im Produktionsrepository) und der Pilot belegt sind, würde eine **eigene** Änderung
 folgende Punkte enthalten. Sie wird **vor Ausführung zur Freigabe vorgelegt** und nicht vorab committet.
 
 `.github/auto-merge-policy.json`:

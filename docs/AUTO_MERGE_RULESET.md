@@ -2,7 +2,7 @@
 
 **Solange diese Regeln nicht angelegt und per Negativversuch geprüft sind, bleibt Auto-Merge aus.** Ein Code-Gate allein ist
 keine technische Sperre für andere Schreibberechtigte: Wer Schreibrecht hat und keine Regel im Weg findet, kann selbst nach
-`platform-main` pushen oder mergen. Der Controller liest deshalb vor jedem echten Merge **beide Rulesets unten samt ihrer
+`platform-main` pushen oder mergen. Der Controller liest deshalb **unmittelbar vor jedem einzelnen Merge** (nicht nur einmal zu Beginn des Laufs; ein echter Lauf mergt genau einen PR) **beide Rulesets unten samt ihrer
 Bypass-Konfiguration** (`GET /repos/{repo}/rulesets`, `.../rulesets/{id}`, `.../rules/branches/platform-main`), prüft sie gegen die
 Policy und bricht bei jeder Abweichung oder jedem Lesefehler ab. Dasselbe lesende Prüfen ohne Merge:
 `python -m scripts.auto_merge_controller --repo OWNER/REPO --policy .github/auto-merge-policy.json --gate-policy .github/pr-gate-policy.json --verify-rulesets`.
@@ -51,7 +51,7 @@ In GitHub unter „Settings → Rules → Rulesets → New ruleset → Import a 
 außer der Merger-App. Ruleset A bleibt für die Merger-App voll wirksam, weil es keinen Bypass hat: Sie darf nur über einen PR mergen,
 dessen drei Pflicht-Kontexte grün sind und dessen Branch aktuell ist. Ein direkter Push der Merger-App scheitert an der PR-Pflicht, ein roter
 oder fehlender Check am Pflicht-Check. Das ist **GitHubs Ruleset-Semantik nach meinem Kenntnisstand und nicht selbst getestet**; es zählt erst,
-wenn die Negativversuche 6 bis 8 und 11 bis 13 unten belegt sind. Der Controller prüft vor jedem echten Merge, dass A keinen und B genau den einen
+wenn die Negativversuche 6 bis 8 und 11 bis 13 unten in Stufe 1 (Testrepository) belegt sind. Der Controller prüft vor jedem echten Merge, dass A keinen und B genau den einen
 erwarteten Bypass-Akteur hat, dass keine Pflichtregel in B steht und dass jede Regel auf `platform-main` wirksam ist (Abgleich mit
 `rules/branches/platform-main`).
 
@@ -71,33 +71,32 @@ nicht prüfen und merged deshalb nie.
 Kenntnisstand mit HTTP 405 „Base branch was modified“; nicht selbst getestet, siehe Negativversuch 6). Der Controller prüft zusätzlich unmittelbar vor
 dem Merge erneut `behind_by == 0` und die Merge-Basis; ein Restfenster von Millisekunden schließt nur die Regel.
 
-## 4. Negativversuche (nach dem Anlegen der Rulesets, vor jeder Aktivierung)
+## 4. Negativversuche: erst im Testrepository, dann nur lesend im Produktionsrepository
 
-Jeder Versuch muss scheitern. Ergebnis und Zeitpunkt eintragen; **bis alle Zeilen belegt sind, bleibt `enabled: false`.** Das sind echte Versuche
-gegen GitHub und nicht automatisiert: Gelingt ein Merge, den die Regeln verhindern sollten, ist das Ruleset unwirksam und ein roter Test läge auf
-`platform-main` (sofort zurücknehmen, `enabled: false` lassen).
+**Stufe 1, Testrepository.** Alle 13 Versuche laufen in einem **privaten Testrepository mit identischen Regeln** (Aufbau, Fixture-Workflows und
+Gleichheitsbeleg: [`rulesets/test-repo/README.md`](rulesets/test-repo/README.md)). Gelingt dort ein Merge, den die Regeln verhindern sollten, ist
+das Ruleset falsch konfiguriert, und der Schaden bleibt im Testrepository. **Stufe 2, Produktionsrepository.** Dort gibt es danach nur die
+**lesenden** Prüfungen (Versuche 9 und 10); kein roter, fehlender oder veralteter PR wird nach `platform-main` gemergt. Bis alle Zeilen in Stufe 1
+belegt sind und der Gleichheitsbeleg leer ist, bleibt `enabled: false`.
 
-| Nr. | Versuch | Erwartung | Beleg |
-|---|---|---|---|
-| 1 | Worker-Token: `git push origin HEAD:platform-main` | abgelehnt (B und PR-Pflicht) | offen |
-| 2 | Worker-Token: Force-Push auf `platform-main` | abgelehnt (`non_fast_forward`) | offen |
-| 3 | Inhaber (Admin): direkter Push auf `platform-main` | abgelehnt (kein Bypass) | offen |
-| 4 | Worker-Token: Datei unter `.github/workflows/` auf einen Branch pushen | abgelehnt (App ohne Recht „Workflows“) | offen |
-| 5 | Worker-Token: einen grünen PR mergen | abgelehnt (B, kein Bypass) | offen |
-| 6 | Merger-Token: einen PR mergen, dessen Branch hinter `platform-main` liegt | abgelehnt (strikte Aktualität, A) | offen |
-| 7 | Merger-Token: PR ohne den Commit-Status `pr-gate/head` mergen | abgelehnt (Pflicht-Kontext, A) | offen |
-| 8 | Merger-Token: PR mit rotem `TIM full suite` mergen | abgelehnt (Pflicht-Kontext, A) | offen |
-| 9 | `GET /repos/{repo}/rules/branches/platform-main` | `deletion`, `non_fast_forward`, `pull_request`, `required_status_checks` aus Ruleset A und `update` aus Ruleset B | offen |
-| 10 | `--verify-rulesets` | `ok: true`, keine Probleme | offen |
-| 11 | Merger-Token: PR mit fehlendem `test` mergen | abgelehnt (Pflicht-Kontext, A) | offen |
-| 12 | Merger-Token: direkter Push auf `platform-main` ohne PR | abgelehnt (PR-Pflicht in A, kein Bypass) | offen |
-| 13 | Merger-Token: Force-Push und Löschen von `platform-main` | abgelehnt (`non_fast_forward`, `deletion` in A) | offen |
+| Nr. | Versuch (in Stufe 1) | Erwartung | Beleg Stufe 1 | Beleg Stufe 2 |
+|---|---|---|---|---|
+| 1 | Worker-Token: `git push origin HEAD:platform-main` | abgelehnt (B und PR-Pflicht) | offen | nicht ausführen |
+| 2 | Worker-Token: Force-Push auf `platform-main` | abgelehnt (`non_fast_forward`) | offen | nicht ausführen |
+| 3 | Inhaber (Admin): direkter Push auf `platform-main` | abgelehnt (kein Bypass) | offen | nicht ausführen |
+| 4 | Worker-Token: Datei unter `.github/workflows/` auf einen Branch pushen | abgelehnt (App ohne Recht „Workflows“) | offen | nicht ausführen |
+| 5 | Worker-Token: einen grünen PR mergen | abgelehnt (B, kein Bypass) | offen | nicht ausführen |
+| 6 | Merger-Token: einen PR mergen, dessen Branch hinter `platform-main` liegt | abgelehnt (strikte Aktualität, A) | offen | nicht ausführen |
+| 7 | Merger-Token: PR ohne den Commit-Status `pr-gate/head` mergen | abgelehnt (Pflicht-Kontext, A) | offen | nicht ausführen |
+| 8 | Merger-Token: PR mit rotem `TIM full suite` mergen (Datei `PROBE_RED_FULL`) | abgelehnt (Pflicht-Kontext, A) | offen | nicht ausführen |
+| 9 | `GET /repos/{repo}/rules/branches/platform-main` | `deletion`, `non_fast_forward`, `pull_request`, `required_status_checks` aus Ruleset A und `update` aus Ruleset B | offen | offen (lesend) |
+| 10 | `--verify-rulesets` | `ok: true`, keine Probleme | offen | offen (lesend) |
+| 11 | Merger-Token: PR mit fehlendem oder rotem `test` mergen (Datei `PROBE_RED_TEST`) | abgelehnt (Pflicht-Kontext, A) | offen | nicht ausführen |
+| 12 | Merger-Token: direkter Push auf `platform-main` ohne PR | abgelehnt (PR-Pflicht in A, kein Bypass) | offen | nicht ausführen |
+| 13 | Merger-Token: Force-Push und Löschen von `platform-main` | abgelehnt (`non_fast_forward`, `deletion` in A) | offen | nicht ausführen |
+| 14 | Gleichheitsbeleg: beide Rulesets normalisiert in beiden Repositories | Unterschied leer | offen | offen |
 
-**So geht ein Versuch mit rotem Check (Nr. 8) gefahrlos:** Auf einem Wegwerf-Branch `claude/issue-<N>-probe-red` eine Datei
-`tests/test_zz_probe_must_stay_red.py` mit einem Test anlegen, der `assert False` enthält, PR öffnen, warten bis `TIM full suite` rot ist, dann mit
-dem Merger-Token `gh api -X PUT repos/OWNER/REPO/pulls/<N>/merge -f sha=<head> -f merge_method=squash` ausführen. Erwartet ist eine Ablehnung
-(HTTP 405 oder 403), danach PR schließen und Branch löschen. Entsprechend für 7 (Status nicht gesetzt) und 11. Den Merge-Aufruf nie mit
-deaktiviertem Ruleset wiederholen.
+Den Merge-Aufruf nie mit deaktiviertem Ruleset wiederholen und im Testrepository nach jedem Versuch den PR schließen und den Branch löschen.
 
 ## 5. GitHub-eigenes Auto-Merge
 

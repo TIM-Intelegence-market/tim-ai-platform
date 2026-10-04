@@ -57,8 +57,8 @@ ergänzbar**; neue Dateien unter `tests/` nur als `test_*.py` (keine `conftest.p
 keine Module, die Standardnamen überdecken, keine `.pth`/`.pyc`/`.so`); keine Symlinks, Submodule, Rechtewechsel; höchstens 40 Dateien
 und 1 MB je Datei.
 
-**Wiederholung und Fehler:** Der Controller hält keinen Zustand und bewertet jeden Lauf neu; es wird höchstens `max_merges_per_run`
-(1) PR gemerged. Ein neuer Push ändert die SHA und startet die Prüfung von vorn. Ein PR, der nach einem anderen Merge hinter
+**Wiederholung und Fehler:** Der Controller hält keinen Zustand und bewertet jeden Lauf neu; ein echter Lauf mergt **genau einen** PR
+(`max_merges_per_run` muss bei echten Merges 1 sein), und die Rulesets werden unmittelbar vor diesem Merge erneut gelesen. Ein neuer Push ändert die SHA und startet die Prüfung von vorn. Ein PR, der nach einem anderen Merge hinter
 `platform-main` liegt, bleibt blockiert, bis der Runner ihn aktualisiert hat (`--maintain`, Patch P6). Der Runner nimmt einen
 abgebrochenen Lauf an der ersten unerledigten Stelle wieder auf, ohne Claude erneut zu starten.
 
@@ -70,7 +70,7 @@ abgebrochenen Lauf an der ersten unerledigten Stelle wieder auf, ohne Claude ern
 | Gate-Härtung | geschützte Tests, Test-Hilfsdateien, Größenlimit, Status `pr-gate/head` | erledigt (PR #150) |
 | Identitäten, Ruleset, Rollout, Garantien | diese Dokumente und `docs/rulesets/platform-main-merge-conditions.json` sowie `platform-main-restrict-updates.json` | erledigt als Entwurf |
 | Runner-Patch P6 für PR #146 (Worker-Identität, Wiederaufnahme, Branch-Pflege) | als separate Patch-Datei geliefert | **offen: nicht in #146 angewendet** |
-| GitHub-Plan, Ruleset, Apps, Negativversuche | `AUTO_MERGE_RULESET.md`, `AUTO_MERGE_IDENTITIES.md` | **offen, Inhaber** |
+| GitHub-Plan, Ruleset, Apps, Negativversuche (**zuerst in einem privaten Testrepository mit identischen Regeln**, im Produktionsrepository danach nur lesend) | `AUTO_MERGE_RULESET.md` (Abschnitt 4), `rulesets/test-repo/README.md`, `AUTO_MERGE_IDENTITIES.md` | **offen, Inhaber** |
 | Bootstrap-Merges #149, #147, #150, #146 | Reihenfolge in `AUTO_MERGE_ROLLOUT.md` | **offen, Inhaber** |
 | Erster echter Gate-Lauf, Dry-Run-Matrix, Ende-zu-Ende-Pilot | Tabellen in `AUTO_MERGE_ROLLOUT.md` | **offen** |
 | Aktivierung, `CI.md`/`CLAUDE.md` umstellen | nur als Vorschau, nicht angewendet | erst nach Ihrem ausdrücklichen Go |
@@ -85,7 +85,7 @@ Heute ist **keine** Garantie der Schutzregel-Klasse durch GitHub erzwungen, weil
 | Der gemergte Head ist der geprüfte Head | Merge-API-Parameter `sha=`: GitHub lehnt bei verschobenem Head ab (wirkt nur im Merge-Aufruf des Controllers) | **A** |
 | Der Gate-Workflow läuft aus dem Base-Stand und hat nur `contents: read`, `statuses: write` | GitHub-Semantik von `pull_request_target` und `permissions` | **A** (Wirkung in Actions noch nie beobachtet, also zugleich **C**) |
 | Kein Weg nach `platform-main` ohne PR und grüne Pflicht-Checks, **auch nicht für die Merger-App** (Ruleset A hat keinen Bypass-Akteur) | GitHub-Ruleset „merge conditions“ | **C** (403, Ruleset fehlt) |
-| Die Konfiguration beider Rulesets samt Bypass-Akteuren entspricht der Policy | Controller liest sie vor jedem echten Merge (`--verify-rulesets` auch einzeln, lesend) | **B** |
+| Die Konfiguration beider Rulesets samt Bypass-Akteuren entspricht der Policy | Controller liest sie zu Beginn des Laufs **und unmittelbar vor jedem einzelnen Merge erneut**; ein echter Lauf mergt genau einen PR (`--verify-rulesets` auch einzeln, lesend) | **B** |
 | Der Branch ist aktuell (Base-Race) | Ruleset „strikt“; zusätzlich prüft der Controller zweimal | Ruleset **C**, Controller **B** |
 | Nur die Merger-Identität kann mergen, der Worker nicht | Ruleset „restrict updates“ (Regel `update`, Merger-App als einziger Bypass-Akteur, **nur dort**) | **C** |
 | Worker hat kein Recht auf Workflows, Admin, Maintain | App-Rechte; der Runner prüft `admin`/`maintain` vor jeder Aktion | App **C**, Runner **B** |
@@ -101,6 +101,6 @@ Heute ist **keine** Garantie der Schutzregel-Klasse durch GitHub erzwungen, weil
 ## 5. Aktivierung
 
 Siehe [`AUTO_MERGE_ROLLOUT.md`](AUTO_MERGE_ROLLOUT.md) (Abschnitt 5, Aktivierungsvorschau). Reihenfolge in Kurzform: Plan oder
-Sichtbarkeit entscheiden, Apps und Ruleset anlegen, Negativversuche belegen, Bootstrap-Merges, erster echter Gate-Lauf, Dry-Run-Matrix,
+Sichtbarkeit entscheiden, Apps und Rulesets anlegen, Negativversuche im Testrepository belegen (danach nur lesende Prüfungen im Produktionsrepository), Bootstrap-Merges, erster echter Gate-Lauf, Dry-Run-Matrix,
 Ende-zu-Ende-Pilot, dann die Aktivierungsänderung zur Freigabe vorlegen. **Stopp-Schalter:** `enabled: false` in der Policy, den
 `schedule`-Trigger entfernen oder den Bypass der Merger-App im Ruleset „restrict updates“ entziehen.

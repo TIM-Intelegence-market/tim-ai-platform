@@ -47,7 +47,7 @@ Vor der Aktivierung ist `actions/create-github-app-token` auf einen geprüften C
 2. Worker-Schlüssel im Schlüsselbund ablegen, Merger-Schlüssel als Actions-Secret hinterlegen. Keinen Schlüssel in Chat,
    Issue, PR oder Datei einfügen.
 3. `worker_logins` in `.github/auto-merge-policy.json` erst bei der Aktivierung eintragen (siehe Rollout-Dokument).
-4. Negativversuche der Rechte (nur mit dem jeweiligen Token ausführen und die erwartete Ablehnung festhalten):
+4. Negativversuche der Rechte (**zuerst im Testrepository**, nur mit dem jeweiligen Token ausführen und die erwartete Ablehnung festhalten):
    Worker-Token versucht, auf `platform-main` zu pushen (muss abgelehnt werden), eine Datei unter `.github/workflows/` zu
    pushen (muss abgelehnt werden) und einen PR zu mergen (muss durch das Ruleset abgelehnt werden). Merger-Token versucht, einen PR mit rotem oder fehlendem Pflicht-Check, einen veralteten Branch oder ohne PR zu mergen
    beziehungsweise zu pushen (alles muss abgelehnt werden; die vollständige Liste steht in `AUTO_MERGE_RULESET.md`, Abschnitt 4).
