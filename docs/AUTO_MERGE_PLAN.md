@@ -1,113 +1,103 @@
-# Vollautomatischer Merge: Plan, Stand und Aktivierung
+# Vollautomatischer Merge: Plan, Stand und Garantien
 
-**Status: vorbereitet, nicht aktiv.** Zielentscheidung des Inhabers: Ein Issue wird automatisch analysiert, von Claude Code
-umgesetzt, als PR geprüft und nach bestandenen Schutzregeln ohne menschliches Review nach `platform-main` gemerged.
-Das ersetzt die bisherige Regel (b) „Mensch genehmigt, GitHub merged“ **erst bei der Aktivierung** (Schritt 8).
-`CI.md` und `CLAUDE.md` sind deshalb absichtlich unverändert und beschreiben weiter Regel (b). Das Gate-Regelwerk in
-`CI.md` kennt die Erweiterungen dieses PRs (geschützte bestehende Tests) noch nicht.
+**Status: vorbereitet, nicht aktiv und nicht bereit für Auto-Merge.** Zielentscheidung des Inhabers: Ein Issue wird automatisch
+analysiert, von Claude Code umgesetzt, als PR geprüft und nach bestandenen Schutzregeln ohne menschliches Review nach `platform-main`
+gemerged. Das ersetzt die bisherige Regel (b) „Mensch genehmigt, GitHub merged“ **erst bei der Aktivierung**. `CI.md` und `CLAUDE.md`
+sind deshalb absichtlich unverändert und beschreiben weiter Regel (b).
+
+Weiterführend: [Identitäten und Schlüssel](AUTO_MERGE_IDENTITIES.md) · [Schutzregeln und 403-Beleg](AUTO_MERGE_RULESET.md) ·
+[Bootstrap, Dry-Run, Pilot, Aktivierungsvorschau](AUTO_MERGE_ROLLOUT.md).
+
+**Offene harte Voraussetzungen, solange eine davon offen ist, gilt „nicht bereit“:** (1) HTTP 403 für Rulesets, (2) keine getrennten
+Worker- und Merger-Identitäten, (3) der Gate-Workflow lief noch nie in GitHub Actions, (4) Runner-Patch P6 ist nicht in PR #146.
 
 ## 1. Fakten und Annahmen
 
 | Aussage | Beleg |
 |---|---|
-| PR #146: Draft, Head `71ada63`, mergeable `clean`, `TIM full suite`, `test`, `codeql` grün | GitHub-API gelesen am 2026-10-04 |
-| PR #147: Draft, Head `023ccec`, `test`, `codeql` grün; `PR gate` lief noch nie in Actions | GitHub-API gelesen |
-| PR #149: Draft, Head `692e278`, grün | GitHub-API gelesen |
-| Der Issue-Runner arbeitet mit dem lokalen `gh` des Nutzers; es gibt kein eigenes Worker-Token | Code in #146 (`Pipeline.github`) |
-| Branch-Protection und Rulesets liefern im privaten Repo HTTP 403; `allow_auto_merge` ist `false` | **Angabe des Inhabers, nicht selbst geprüft** |
-| Das Konto ist ein persönliches Konto ohne bezahlten Plan | **Annahme** (aus dem 403 und dem Kommentar „User plan account“ in `CODEOWNERS`) |
-| Welcher GitHub-Plan Rulesets für private Repos freischaltet | **nicht verifiziert** (`docs.github.com` ist im Entwicklungscontainer gesperrt), siehe Abschnitt 4 |
-| Ein `pull_request_target`-Check zählt als Pflicht-Check für den PR-Commit | **ungeklärt**, zeigt erst der erste Lauf nach dem Bootstrap-Merge |
+| PR #146: Draft, Head `71ada63`, `TIM full suite`, `test`, `codeql` grün, enthält den `local_env`-Filter | GitHub-API gelesen |
+| PR #147: Draft, Head `023ccec` (Gate); PR #149: Draft, Head `692e278` (Bytecode-Fix) | GitHub-API gelesen |
+| Rulesets und `rules/branches/platform-main` antworten mit HTTP 403: „Upgrade to GitHub Pro or make this repository public“ | **am 2026-10-04 selbst per lesendem GET verifiziert**, Details in `AUTO_MERGE_RULESET.md` |
+| Repository ist privat, Besitzer ist ein persönliches Konto (`owner.type: User`), `allow_auto_merge: false` | selbst gelesen |
+| Der Issue-Runner nutzt das `gh`-Konto des Inhabers; ohne Patch P6 gibt es keine Worker-Identität | Code in #146 |
+| Das Konto hat derzeit GitHub Free | Folgerung aus dem 403-Text, **nicht direkt gelesen** |
+| Preis und Umfang von GitHub Pro | **nicht verifiziert** (`docs.github.com` ist im Entwicklungscontainer gesperrt) |
+| Merges mit `github.token` lösen keine Folge-Workflows aus | dokumentiertes GitHub-Verhalten nach meinem Kenntnisstand, im Pilot zu bestätigen |
+| Das Merge-API-Verhalten bei verschobenem Base (HTTP 405 bei strikter Aktualität) | nach meinem Kenntnisstand, nicht selbst getestet |
+| Der Commit-Status `pr-gate/head` entsteht auf der Head-SHA und gilt als Pflicht-Check | **ungeklärt**, zeigt erst der erste Lauf nach dem Bootstrap-Merge |
 
 ## 2. Architektur (Vertrauensgrenzen)
 
 ```
-Issue ──► Runner (lokal, Worker-Identität) ──► Draft-PR (Branch claude/issue-N-…)
-                                                   │
-        GitHub Ruleset (erzwingt PR, Pflicht-Checks, aktueller Branch, nur Merger darf mergen)
-                                                   │
- Controller-Workflow (läuft aus platform-main, Merger-Identität) ◄── liest nur: Autor, Branch, Repo, Head-SHA,
-   1. Policy (.github/auto-merge-policy.json, aus Base)                Checks dieser SHA, Gate-Ergebnis
-   2. Gate neu ausführen auf exakt dieser SHA (scripts/pr_gate.py)     NIE: PR-Text, Labels, Kommentare
-   3. Merge per API mit `sha=<geprüfte SHA>`  (GitHub lehnt bei verschobenem Head selbst ab)
+Issue ──► Runner (lokal, Worker-Identität, Patch P6) ──► Draft-PR (Branch claude/issue-N-…, Autor = Worker)
+                                                              │
+   GitHub-Ruleset auf platform-main (noch nicht möglich: 403): PR erforderlich, 0 Reviews, strikte Pflicht-Checks
+   test · TIM full suite · pr-gate/head, kein Force-Push, kein Löschen, Updates nur durch die Merger-App
+                                                              │
+ Controller-Workflow (aus platform-main, Merger-App-Token) ◄── liest nur: Autor-Login, Branch, Repo, Head-SHA,
+   1. Policy (.github/auto-merge-policy.json, aus Base)           Checks/Status dieser SHA, Gate-Ergebnis
+   2. Gate neu ausführen auf exakt dieser SHA                     NIE: PR-Text, Labels, Kommentare
+   3. Merge per API mit sha=<geprüfte SHA> (GitHub lehnt bei verschobenem Head selbst ab)
 ```
 
-Der Worker ändert weder Gate, Workflows, Policy noch den Controller: Das Pfad-Gate (`.github/`, `scripts/`, `config/`,
-`CI.md`, `CLAUDE.md`, Abhängigkeitslisten, `conftest.py` …) lehnt solche PRs ab, und bestehende Tests sind **nur noch
-ergänzbar, nicht änderbar oder löschbar** (`add_only_prefixes`). Der Controller-Job läuft nur auf `platform-main`.
+**Der Controller blockiert bei:** unbekanntem Autor, Fork, falscher Basis oder Branch, `mergeable` ungleich `true`,
+`mergeable_state` ungleich `clean`, Branch hinter `platform-main` (vor der Prüfung **und** noch einmal unmittelbar vor dem Merge),
+fehlendem, laufendem oder nicht erfolgreichem Check (jeder Check auf der SHA muss `success` sein), Pflicht-Check, der nicht von der
+erwarteten Workflow-Datei, dem erwarteten Ereignis, derselben Head-SHA und demselben Repository stammt (gleichnamige Jobs aus anderen
+Workflows machen ihn mehrdeutig und blockieren), fehlendem oder unechtem `pr-gate/head`-Status (genau einer, `success`, Ersteller
+`github-actions[bot]`, Lauf von `pr-gate.yml` auf `pull_request_target`), Gate-Verstoß oder -Absturz, SHA-Wechsel, jedem API-Fehler,
+fehlenden Branch-Regeln (siehe Ruleset-Dokument) und fehlendem App-Token. Ein Draft-PR wird zuerst auf „ready“ gesetzt und erst beim
+**nächsten** Lauf neu geprüft und gemerged.
 
-**Der Controller blockiert bei:** unbekanntem Autor, Fork, falschem Basis- oder Branch-Namen, `mergeable` ungleich `true`,
-`mergeable_state` ungleich `clean`, Branch hinter `platform-main` (`behind_by` ungleich 0), fehlendem, laufendem oder nicht
-erfolgreichem Check (jeder Check auf der SHA muss `success` sein), Pflicht-Check von einer anderen App als `github-actions`,
-Gate-Verstoß oder Gate-Absturz, SHA-Wechsel zwischen Prüfung und Merge, jedem API-Fehler und jeder Antwort ohne erwartete
-Felder. Ein Draft-PR wird zuerst auf „ready“ gesetzt und erst beim nächsten Lauf neu geprüft und gemerged.
+**Das Gate** (Pfade, Modi, Größe) gilt für Branches `claude/issue-N-…`: erlaubt nur `src/`, `tests/`, `docs/`; gesperrt `.github/`,
+`scripts/`, `config/`, `CI.md`, `CLAUDE.md`, Abhängigkeitslisten, `conftest.py`, `sitecustomize.py` u. a.; **bestehende Tests nur
+ergänzbar**; neue Dateien unter `tests/` nur als `test_*.py` (keine `conftest.py`, `__init__.py`, Plugins, Konfigurationsdateien, Daten,
+keine Module, die Standardnamen überdecken, keine `.pth`/`.pyc`/`.so`); keine Symlinks, Submodule, Rechtewechsel; höchstens 40 Dateien
+und 1 MB je Datei.
 
-**Wiederholung:** Der Controller hält keinen Zustand. Jeder Lauf bewertet alles neu, es wird höchstens
-`max_merges_per_run` (1) PR gemerged. Ein neuer Push ändert die SHA und startet die Prüfung von vorn. Ein PR, der nach
-einem anderen Merge hinter `platform-main` liegt, bleibt blockiert, bis der Branch aktualisiert wurde (Paket P4).
+**Wiederholung und Fehler:** Der Controller hält keinen Zustand und bewertet jeden Lauf neu; es wird höchstens `max_merges_per_run`
+(1) PR gemerged. Ein neuer Push ändert die SHA und startet die Prüfung von vorn. Ein PR, der nach einem anderen Merge hinter
+`platform-main` liegt, bleibt blockiert, bis der Runner ihn aktualisiert hat (`--maintain`, Patch P6). Der Runner nimmt einen
+abgebrochenen Lauf an der ersten unerledigten Stelle wieder auf, ohne Claude erneut zu starten.
 
 ## 3. Pakete und Stand
 
 | Paket | Inhalt | Stand |
 |---|---|---|
-| P1 | Plan und Garantie-Matrix (dieses Dokument) | erledigt |
-| P2 | Controller, Policy, Workflow, inaktiv: `scripts/auto_merge_controller.py`, `.github/auto-merge-policy.json`, `.github/workflows/auto-merge-controller.yml` | erledigt, 125 Tests (Controller und Gate) |
-| P3 | Gate: bestehende Tests geschützt (`add_only_prefixes`) | erledigt |
-| P4 | Runner (PR #146, Codex-Branch): eigenes Worker-Token und Identitätsprüfung, Branch aktuell halten, sichere Wiederholung | **offen**, nur mit echtem `gh` im Pilot prüfbar |
-| P5 | GitHub-Einstellungen und Plan (Abschnitt 4) | **offen, Inhaber** |
-| P6 | Manuell geprüfte Bootstrap-Merges von #147, #146 und diesem PR | **offen, Inhaber** |
-| P7 | Pilot erst mit `dry_run`, dann echt, mit Beleg der Garantien | **offen** |
-| P8 | `CI.md` und `CLAUDE.md` auf die neue Regel umstellen | erst bei Aktivierung |
+| Controller, Policy, Workflow (inaktiv) | `scripts/auto_merge_controller.py`, `.github/auto-merge-policy.json`, `.github/workflows/auto-merge-controller.yml` | erledigt (PR #150) |
+| Gate-Härtung | geschützte Tests, Test-Hilfsdateien, Größenlimit, Status `pr-gate/head` | erledigt (PR #150) |
+| Identitäten, Ruleset, Rollout, Garantien | diese Dokumente und `docs/rulesets/platform-main-auto-merge.json` | erledigt als Entwurf |
+| Runner-Patch P6 für PR #146 (Worker-Identität, Wiederaufnahme, Branch-Pflege) | als separate Patch-Datei geliefert | **offen: nicht in #146 angewendet** |
+| GitHub-Plan, Ruleset, Apps, Negativversuche | `AUTO_MERGE_RULESET.md`, `AUTO_MERGE_IDENTITIES.md` | **offen, Inhaber** |
+| Bootstrap-Merges #149, #147, #150, #146 | Reihenfolge in `AUTO_MERGE_ROLLOUT.md` | **offen, Inhaber** |
+| Erster echter Gate-Lauf, Dry-Run-Matrix, Ende-zu-Ende-Pilot | Tabellen in `AUTO_MERGE_ROLLOUT.md` | **offen** |
+| Aktivierung, `CI.md`/`CLAUDE.md` umstellen | nur als Vorschau, nicht angewendet | erst nach Ihrem ausdrücklichen Go |
 
-## 4. Was auf GitHub fehlt
+## 4. Garantie-Matrix
 
-Zu klären ist **eine Entscheidung des Inhabers**: privat mit passendem Plan, öffentlich oder bis dahin Draft-PRs.
+**A = durch GitHub erzwungen · B = nur durch den Controller (Code und Tests) geprüft · C = noch nicht geprüft oder nicht vorhanden.**
+Heute ist **keine** Garantie der Schutzregel-Klasse durch GitHub erzwungen, weil Rulesets für dieses Repository 403 liefern.
 
-- **Plan (nach meinem Kenntnisstand, bitte auf den von Ihnen verlinkten GitHub-Seiten prüfen):** Rulesets und Branch-Protection
-  für *private* Repositories brauchen bei einem persönlichen Konto GitHub Pro, bei einer Organisation GitHub Team oder
-  Enterprise Cloud. Mit GitHub Free sind sie nur für öffentliche Repositories verfügbar. Der HTTP-403-Text von GitHub nennt
-  den fehlenden Plan normalerweise ausdrücklich; bitte den genauen Wortlaut prüfen. Ich habe den 403-Block nicht umgangen und
-  keine Admin-Zugangsdaten benutzt.
-- **Ruleset auf `platform-main`** (nach Planwechsel): Pull Request erforderlich (Anzahl Freigaben 0), erforderliche Status-Checks
-  `PR gate`, `test`, `TIM full suite` mit „Branch muss aktuell sein“, Force-Push und Löschen gesperrt, **Updates nur für die
-  Merger-Identität** (Bypass-Liste nur diese), keine Admin-Ausnahme.
-- **Merger-Identität:** empfohlen eine GitHub App mit `contents: write` und `pull-requests: write` (nicht der Mensch, nicht
-  der Worker). Der Controller nutzt bis dahin `github.token`. Merges mit `github.token` lösen keine Folge-Workflows aus
-  (zum Beispiel `ci.yml` bei `push` auf `platform-main`); ein App-Token behebt das.
-- **Worker-Identität:** ein eigenes Konto oder eine App mit fein abgestuftem Token nur für dieses Repository, das nicht der
-  Inhaber ist. Ohne das könnte jeder PR des Inhabers mit passendem Branch-Namen als Worker-PR gelten.
-- **Repository-Variable oder Secret:** nur nötig, wenn die App-Variante gewählt wird (App-ID, privater Schlüssel).
-
-## 5. Garantie-Matrix: was GitHub heute erzwingt und was nicht
-
-| Garantie | Durchsetzung | Heute |
+| Garantie | Mechanismus | Kat. |
 |---|---|---|
-| Controller und Policy sind inaktiv (`enabled: false`, `dry_run: true`, keine Worker, Workflow nur manuell, Job nur auf `platform-main`) | Code und Test `test_the_shipped_policy_is_inert` | **ja** |
-| Jeder unbekannte Zustand, fehlende Check, SHA-Wechsel oder API-Fehler blockiert den Merge | Controller-Code, 125 Tests; zusätzlich `sha=` im Merge-Aufruf | **ja** (wirkt erst bei Aktivierung) |
-| Der Worker kann Gate, Workflows, Policy, Controller oder bestehende Tests im PR nicht ändern | Pfad-Gate im PR-Diff | **nur im Code**; ohne Ruleset nicht erzwungen |
-| Es gibt keinen Weg nach `platform-main` ohne PR und grüne Pflicht-Checks | GitHub-Ruleset | **nein** (403) |
-| Der geprüfte Stand ist der gemergte Stand (Branch aktuell) | Controller prüft `behind_by`; Ruleset „aktuell“ | **nur im Controller** |
-| Nur der Controller kann mergen, der Worker nicht | Ruleset „Updates einschränken“ mit Merger-Bypass | **nein** |
-| Worker- und Merger-Identität sind vom Menschen getrennt | eigenes Konto beziehungsweise App | **nein** (Runner nutzt das `gh` des Inhabers) |
-| Fachliche Richtigkeit der Änderung | nicht erzwingbar | **nie**: ein grüner Test beweist sie nicht, ein Worker könnte neue, schwache Tests ergänzen |
+| Der gemergte Head ist der geprüfte Head | Merge-API-Parameter `sha=`: GitHub lehnt bei verschobenem Head ab (wirkt nur im Merge-Aufruf des Controllers) | **A** |
+| Der Gate-Workflow läuft aus dem Base-Stand und hat nur `contents: read`, `statuses: write` | GitHub-Semantik von `pull_request_target` und `permissions` | **A** (Wirkung in Actions noch nie beobachtet, also zugleich **C**) |
+| Kein Weg nach `platform-main` ohne PR und grüne Pflicht-Checks | GitHub-Ruleset | **C** (403) |
+| Der Branch ist aktuell (Base-Race) | Ruleset „strikt“; zusätzlich prüft der Controller zweimal | Ruleset **C**, Controller **B** |
+| Nur die Merger-Identität kann mergen, der Worker nicht | Regel `update` mit Merger-Bypass | **C** |
+| Worker hat kein Recht auf Workflows, Admin, Maintain | App-Rechte; der Runner prüft `admin`/`maintain` vor jeder Aktion | App **C**, Runner **B** |
+| Worker und Merger sind getrennt vom Inhaber | zwei GitHub Apps | **C** (nicht eingerichtet, Runner nutzt noch das `gh` des Inhabers) |
+| Worker ändert weder Gate, Workflows, Policy, Controller noch bestehende Tests; keine Test-Hilfsdateien | Pfad-Gate im PR-Diff, vom Controller selbst erneut ausgeführt | **B** (ohne Ruleset für andere Schreibberechtigte nicht durchgesetzt) |
+| Checks stammen vom erwarteten Workflow, Ereignis, Head und Repository; Gate-Status stammt von `github-actions[bot]` | Controller | **B** |
+| Unbekannter Zustand, fehlender Check, SHA-Wechsel, API-Fehler, fehlende Regeln, kein App-Token blockieren | Controller, 239 Tests | **B** |
+| PR-Text, Labels und Branch-Namen begründen keine Berechtigung | Controller (Test mit gefälschten Labels und Text) | **B** |
+| Controller und Policy sind inaktiv | `enabled: false`, `dry_run: true`, keine Worker, Workflow manuell, Job nur auf `platform-main` | **B** |
+| Folge-Workflows nach einem Controller-Merge laufen | App-Token statt `github.token` | **C** |
+| Fachliche Richtigkeit; Worker-Code (Quellcode und neue Testmodule) läuft in den Checks und könnte Ergebnisse beeinflussen | nicht durch Pfadregeln erzwingbar | **C**, nicht erzwingbar |
 
-## 6. Aktivierung (erst nach P5, P6 und einem Pilot-Beleg)
+## 5. Aktivierung
 
-1. Plan/Sichtbarkeit entscheiden, Ruleset und Identitäten anlegen (Abschnitt 4) und die 403-Sperre als aufgehoben prüfen.
-2. #147 manuell geprüft nach `platform-main` mergen (Bootstrap), dann #146 und diesen PR.
-3. Ersten echten Lauf des `PR gate` beobachten: Fetch im privaten Repo, Zuordnung zum Pflicht-Check. Falls der Check nicht für die
-   PR-SHA zählt, `PR gate` aus `required_checks` der Policy streichen (der Controller führt das Gate selbst aus) oder einen
-   Commit-Status ergänzen.
-4. In `.github/auto-merge-policy.json` `worker_logins` setzen und `enabled: true` lassen, `dry_run: true`; den Controller manuell
-   (`workflow_dispatch` auf `platform-main`) starten und die Entscheidungen im Log lesen.
-5. Pilot (Dry-Run): Der Runner erzeugt einen **Draft-PR**. Der Controller meldet dafür zuerst `would-mark-ready` (nicht
-   `would-merge`) und ändert im Dry-Run nichts; der PR bleibt Draft. Erst ein **Ready-PR** kann `would-merge` ergeben. Für den
-   Pilot setzt der Inhaber den Pilot-PR von Hand auf „Ready“ und startet den Controller ein zweites Mal; im echten Betrieb
-   markiert der Controller den PR selbst als „ready“ (`marked-ready`) und merged erst im **nächsten** Lauf nach erneuter
-   Prüfung. Manipulierte Test-PRs (Workflow-Änderung, geänderter bestehender Test, gefälschtes Label) müssen `blocked` melden.
-6. Erst dann: `dry_run: false` in einem überprüften Commit und den `schedule`-Trigger im Workflow einkommentieren.
-7. LaunchAgent der Pipeline erst nach dem erfolgreichen Pilot starten (`production`).
-8. `CI.md` und `CLAUDE.md` auf die neue Regel umstellen und die Garantie-Matrix mit dem beobachteten Stand aktualisieren.
-
-**Stopp-Schalter:** `enabled: false` in der Policy, den `schedule`-Trigger entfernen oder das Ruleset-Bypass des Mergers
-entziehen. Jeder der drei stoppt weitere Merges.
+Siehe [`AUTO_MERGE_ROLLOUT.md`](AUTO_MERGE_ROLLOUT.md) (Abschnitt 5, Aktivierungsvorschau). Reihenfolge in Kurzform: Plan oder
+Sichtbarkeit entscheiden, Apps und Ruleset anlegen, Negativversuche belegen, Bootstrap-Merges, erster echter Gate-Lauf, Dry-Run-Matrix,
+Ende-zu-Ende-Pilot, dann die Aktivierungsänderung zur Freigabe vorlegen. **Stopp-Schalter:** `enabled: false` in der Policy, den
+`schedule`-Trigger entfernen oder den Bypass der Merger-App im Ruleset entziehen.
