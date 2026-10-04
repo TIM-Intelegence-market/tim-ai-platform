@@ -10,9 +10,9 @@ Merger-Identität. Keine Zugangsdaten stehen in Git, in einer PR-Beschreibung od
 |---|---|---|
 | Aufgabe | eigenen Branch `claude/issue-N-*` pushen, Draft-PR öffnen, Issue-Labels und -Kommentare setzen, PR-Branch aktualisieren | PRs nach `platform-main` mergen, die der Controller freigegeben hat |
 | Typ (empfohlen) | **GitHub App** „TIM Worker“, nur auf diesem Repository installiert. Alternative: ein separates Maschinenkonto mit fein abgestuftem Token | **GitHub App** „TIM Merger“, nur auf diesem Repository installiert |
-| Repository-Rechte der App | Contents: Read and write · Pull requests: Read and write · Issues: Read and write · Metadata: Read | Contents: Read and write · Pull requests: Read and write · Checks: Read · Commit statuses: Read · Actions: Read · Metadata: Read |
+| Repository-Rechte der App | Contents: Read and write · Pull requests: Read and write · Issues: Read and write · Metadata: Read | Contents: Read and write · Pull requests: Read and write · Checks: Read · Commit statuses: Read · Actions: Read · **Administration: Read-only** (nur um Ruleset und Bypass-Konfiguration zu prüfen; kein Schreiben) · Metadata: Read |
 | **Nie** gewähren | Workflows (damit kann der Worker keine `.github/workflows/**` pushen, GitHub lehnt das selbst ab), Actions, Administration, Commit statuses, Checks, Secrets, Environments | Workflows, Administration, Secrets, Issues |
-| Ruleset-Rolle | **kein** Bypass | **einziger** Bypass-Akteur der Regel „Updates einschränken“ auf `platform-main` |
+| Ruleset-Rolle | **kein** Bypass | **einziger** Bypass-Akteur des Rulesets „platform-main restrict updates“ und **in keinem anderen**; im Ruleset „platform-main merge conditions“ (Pflicht-Checks) steht kein Bypass-Akteur |
 | Erkennung | Autor-Login `tim-worker[bot]` (Eintrag `worker_logins` der Merge-Policy) | führt den Merge aus; der Controller verlangt `TIM_MERGER_TOKEN_KIND=app` |
 | Token-/Schlüsselort | privater Schlüssel (`.pem`) im **macOS-Schlüsselbund** des Rechners, auf dem der Runner läuft; der Launcher holt ihn, erzeugt ein Installations-Token (läuft nach ca. 1 Stunde ab) und setzt nur `TIM_WORKER_GH_TOKEN` und `TIM_WORKER_LOGIN` für den Runner-Prozess | privater Schlüssel als **Actions-Secret** `TIM_MERGER_APP_PRIVATE_KEY` und App-ID als Repository-Variable `TIM_MERGER_APP_ID`; `actions/create-github-app-token` erzeugt pro Lauf ein Kurzzeit-Token |
 | Rotation | Schlüssel alle 90 Tage: neuen Schlüssel erzeugen, im Schlüsselbund ersetzen, alten in den App-Einstellungen löschen | wie links; Secret ersetzen, alten Schlüssel löschen |
@@ -49,5 +49,5 @@ Vor der Aktivierung ist `actions/create-github-app-token` auf einen geprüften C
 3. `worker_logins` in `.github/auto-merge-policy.json` erst bei der Aktivierung eintragen (siehe Rollout-Dokument).
 4. Negativversuche der Rechte (nur mit dem jeweiligen Token ausführen und die erwartete Ablehnung festhalten):
    Worker-Token versucht, auf `platform-main` zu pushen (muss abgelehnt werden), eine Datei unter `.github/workflows/` zu
-   pushen (muss abgelehnt werden) und einen PR zu mergen (muss durch das Ruleset abgelehnt werden). Merger-Token versucht, auf
-   einen Worker-Branch zu pushen (sollte mangels Zweck abgelehnt werden können, ist aber nicht sicherheitsrelevant).
+   pushen (muss abgelehnt werden) und einen PR zu mergen (muss durch das Ruleset abgelehnt werden). Merger-Token versucht, einen PR mit rotem oder fehlendem Pflicht-Check, einen veralteten Branch oder ohne PR zu mergen
+   beziehungsweise zu pushen (alles muss abgelehnt werden; die vollständige Liste steht in `AUTO_MERGE_RULESET.md`, Abschnitt 4).

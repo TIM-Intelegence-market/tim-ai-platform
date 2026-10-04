@@ -31,8 +31,10 @@ Worker- und Merger-Identitäten, (3) der Gate-Workflow lief noch nie in GitHub A
 ```
 Issue ──► Runner (lokal, Worker-Identität, Patch P6) ──► Draft-PR (Branch claude/issue-N-…, Autor = Worker)
                                                               │
-   GitHub-Ruleset auf platform-main (noch nicht möglich: 403): PR erforderlich, 0 Reviews, strikte Pflicht-Checks
-   test · TIM full suite · pr-gate/head, kein Force-Push, kein Löschen, Updates nur durch die Merger-App
+   GitHub-Rulesets auf platform-main (noch nicht möglich: 403):
+     A "merge conditions", KEIN Bypass-Akteur: PR erforderlich, 0 Reviews, strikte Pflicht-Checks
+       test · TIM full suite · pr-gate/head, kein Force-Push, kein Löschen
+     B "restrict updates", Merger-App als einziger Bypass-Akteur: nur die Merger-App darf aktualisieren
                                                               │
  Controller-Workflow (aus platform-main, Merger-App-Token) ◄── liest nur: Autor-Login, Branch, Repo, Head-SHA,
    1. Policy (.github/auto-merge-policy.json, aus Base)           Checks/Status dieser SHA, Gate-Ergebnis
@@ -46,7 +48,7 @@ fehlendem, laufendem oder nicht erfolgreichem Check (jeder Check auf der SHA mus
 erwarteten Workflow-Datei, dem erwarteten Ereignis, derselben Head-SHA und demselben Repository stammt (gleichnamige Jobs aus anderen
 Workflows machen ihn mehrdeutig und blockieren), fehlendem oder unechtem `pr-gate/head`-Status (genau einer, `success`, Ersteller
 `github-actions[bot]`, Lauf von `pr-gate.yml` auf `pull_request_target`), Gate-Verstoß oder -Absturz, SHA-Wechsel, jedem API-Fehler,
-fehlenden Branch-Regeln (siehe Ruleset-Dokument) und fehlendem App-Token. Ein Draft-PR wird zuerst auf „ready“ gesetzt und erst beim
+Rulesets, die nicht exakt der Policy entsprechen (beide Rulesets samt Bypass-Konfiguration, siehe Ruleset-Dokument), und fehlendem App-Token. Ein Draft-PR wird zuerst auf „ready“ gesetzt und erst beim
 **nächsten** Lauf neu geprüft und gemerged.
 
 **Das Gate** (Pfade, Modi, Größe) gilt für Branches `claude/issue-N-…`: erlaubt nur `src/`, `tests/`, `docs/`; gesperrt `.github/`,
@@ -66,7 +68,7 @@ abgebrochenen Lauf an der ersten unerledigten Stelle wieder auf, ohne Claude ern
 |---|---|---|
 | Controller, Policy, Workflow (inaktiv) | `scripts/auto_merge_controller.py`, `.github/auto-merge-policy.json`, `.github/workflows/auto-merge-controller.yml` | erledigt (PR #150) |
 | Gate-Härtung | geschützte Tests, Test-Hilfsdateien, Größenlimit, Status `pr-gate/head` | erledigt (PR #150) |
-| Identitäten, Ruleset, Rollout, Garantien | diese Dokumente und `docs/rulesets/platform-main-auto-merge.json` | erledigt als Entwurf |
+| Identitäten, Ruleset, Rollout, Garantien | diese Dokumente und `docs/rulesets/platform-main-merge-conditions.json` sowie `platform-main-restrict-updates.json` | erledigt als Entwurf |
 | Runner-Patch P6 für PR #146 (Worker-Identität, Wiederaufnahme, Branch-Pflege) | als separate Patch-Datei geliefert | **offen: nicht in #146 angewendet** |
 | GitHub-Plan, Ruleset, Apps, Negativversuche | `AUTO_MERGE_RULESET.md`, `AUTO_MERGE_IDENTITIES.md` | **offen, Inhaber** |
 | Bootstrap-Merges #149, #147, #150, #146 | Reihenfolge in `AUTO_MERGE_ROLLOUT.md` | **offen, Inhaber** |
@@ -82,9 +84,10 @@ Heute ist **keine** Garantie der Schutzregel-Klasse durch GitHub erzwungen, weil
 |---|---|---|
 | Der gemergte Head ist der geprüfte Head | Merge-API-Parameter `sha=`: GitHub lehnt bei verschobenem Head ab (wirkt nur im Merge-Aufruf des Controllers) | **A** |
 | Der Gate-Workflow läuft aus dem Base-Stand und hat nur `contents: read`, `statuses: write` | GitHub-Semantik von `pull_request_target` und `permissions` | **A** (Wirkung in Actions noch nie beobachtet, also zugleich **C**) |
-| Kein Weg nach `platform-main` ohne PR und grüne Pflicht-Checks | GitHub-Ruleset | **C** (403) |
+| Kein Weg nach `platform-main` ohne PR und grüne Pflicht-Checks, **auch nicht für die Merger-App** (Ruleset A hat keinen Bypass-Akteur) | GitHub-Ruleset „merge conditions“ | **C** (403, Ruleset fehlt) |
+| Die Konfiguration beider Rulesets samt Bypass-Akteuren entspricht der Policy | Controller liest sie vor jedem echten Merge (`--verify-rulesets` auch einzeln, lesend) | **B** |
 | Der Branch ist aktuell (Base-Race) | Ruleset „strikt“; zusätzlich prüft der Controller zweimal | Ruleset **C**, Controller **B** |
-| Nur die Merger-Identität kann mergen, der Worker nicht | Regel `update` mit Merger-Bypass | **C** |
+| Nur die Merger-Identität kann mergen, der Worker nicht | Ruleset „restrict updates“ (Regel `update`, Merger-App als einziger Bypass-Akteur, **nur dort**) | **C** |
 | Worker hat kein Recht auf Workflows, Admin, Maintain | App-Rechte; der Runner prüft `admin`/`maintain` vor jeder Aktion | App **C**, Runner **B** |
 | Worker und Merger sind getrennt vom Inhaber | zwei GitHub Apps | **C** (nicht eingerichtet, Runner nutzt noch das `gh` des Inhabers) |
 | Worker ändert weder Gate, Workflows, Policy, Controller noch bestehende Tests; keine Test-Hilfsdateien | Pfad-Gate im PR-Diff, vom Controller selbst erneut ausgeführt | **B** (ohne Ruleset für andere Schreibberechtigte nicht durchgesetzt) |
@@ -100,4 +103,4 @@ Heute ist **keine** Garantie der Schutzregel-Klasse durch GitHub erzwungen, weil
 Siehe [`AUTO_MERGE_ROLLOUT.md`](AUTO_MERGE_ROLLOUT.md) (Abschnitt 5, Aktivierungsvorschau). Reihenfolge in Kurzform: Plan oder
 Sichtbarkeit entscheiden, Apps und Ruleset anlegen, Negativversuche belegen, Bootstrap-Merges, erster echter Gate-Lauf, Dry-Run-Matrix,
 Ende-zu-Ende-Pilot, dann die Aktivierungsänderung zur Freigabe vorlegen. **Stopp-Schalter:** `enabled: false` in der Policy, den
-`schedule`-Trigger entfernen oder den Bypass der Merger-App im Ruleset entziehen.
+`schedule`-Trigger entfernen oder den Bypass der Merger-App im Ruleset „restrict updates“ entziehen.

@@ -44,12 +44,12 @@ eintragen:
 | Zählt `pr-gate/head` als Pflicht-Check des PR (sobald das Ruleset existiert)? | PR zeigt den Kontext als erforderlich und erfüllt | offen |
 | Wird `test` an die Head-SHA gebunden und trägt der Lauf Pfad `.github/workflows/ci.yml`, Ereignis `pull_request`? | `GET /repos/{repo}/actions/runs/{id}` passt | offen |
 
-## 3. Controller im Dry-Run (manuell, `enabled: true`, `dry_run: true`, `require_branch_rules: false`)
+## 3. Controller im Dry-Run (manuell, `enabled: true`, `dry_run: true`, `require_rulesets: false`)
 
 Der Workflow liest Policy und Gate immer aus `platform-main`. Für den Dry-Run ist deshalb eine **eigene, geprüfte Änderung** an
 `.github/auto-merge-policy.json` auf `platform-main` nötig: `enabled: true`, `dry_run: true`, `worker_logins` auf den Login der
-Worker-Identität, `require_branch_rules: false` (solange es kein Ruleset gibt). Das ist ungefährlich, weil `dry_run: true` bleibt: Der
-Code verweigert eine Policy, die echte Merges erlaubt, ohne dass `require_branch_rules` und `require_app_token` an sind (getestet), und
+Worker-Identität, `require_rulesets: false` (solange es kein Ruleset gibt). Das ist ungefährlich, weil `dry_run: true` bleibt: Der
+Code verweigert eine Policy, die echte Merges erlaubt, ohne dass `require_rulesets`, `require_app_token` und eine `merger_app_id` gesetzt sind (getestet), und
 ein Dry-Run schreibt nichts außer dem Log. Start über „Actions → Auto-merge controller → Run workflow“ auf `platform-main`. Danach die
 Änderung zurücknehmen oder durch die Aktivierungsänderung (Abschnitt 5) ersetzen. Für jeden Fall Ergebnis und Actions-Link eintragen:
 
