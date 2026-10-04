@@ -105,6 +105,7 @@ Never merge a PR, close an issue, delete history, alter credentials, or work out
 
 WORKER_LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?")
 AMBIENT_CREDENTIALS = {"GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GIT_ASKPASS", "SSH_ASKPASS"}
+AGENT_CREDENTIALS = AMBIENT_CREDENTIALS | {"GH_TOKEN", "GH_CONFIG_DIR", "TIM_WORKER_GH_TOKEN"}
 CREDENTIAL_PAIRS = (("credential.helper", ""), ("credential.helper", "!gh auth git-credential"))
 BRANCH_PATTERN = re.compile(r"claude/issue-[0-9]+-[a-z0-9-]+")
 PROTECTED_PREFIXES = {".git", ".github", ".claude"}
@@ -218,8 +219,11 @@ class Pipeline:
     def _with_worker(self, env: Mapping[str, str] | None) -> dict[str, str]:
         """gh and git act as the worker only: its token, an empty gh config and its git credential helper."""
         assert self.worker is not None
-        merged = {key: value for key, value in (os.environ if env is None else env).items()
-                  if key not in AMBIENT_CREDENTIALS}
+        source = os.environ if env is None else env
+        merged = {key: value for key, value in source.items()
+                  if key not in AMBIENT_CREDENTIALS
+                  and (env is not None or (key not in {"GIT_DIR", "GIT_WORK_TREE"}
+                                           and not key.startswith("GIT_CONFIG_")))}
         merged.update({"GH_TOKEN": self.worker.token, "GH_CONFIG_DIR": str(self.worker.config_dir),
                        "GIT_TERMINAL_PROMPT": "0"})
         count = int(merged.get("GIT_CONFIG_COUNT", "0") or 0)
@@ -229,10 +233,20 @@ class Pipeline:
         merged["GIT_CONFIG_COUNT"] = str(count + len(CREDENTIAL_PAIRS))
         return merged
 
+    @staticmethod
+    def agent_env(env: Mapping[str, str] | None = None) -> dict[str, str]:
+        """Keep GitHub credentials and injected Git configuration out of agent subprocesses."""
+        source = os.environ if env is None else env
+        return {key: value for key, value in source.items()
+                if key not in AGENT_CREDENTIALS and key not in {"GIT_DIR", "GIT_WORK_TREE"}
+                and not key.startswith("GIT_CONFIG_")}
+
     def command(self, *args: str, cwd: Path | None = None, timeout: int = 900,
                 env: Mapping[str, str] | None = None) -> str:
         if self.worker is not None and args and args[0] in {"gh", "git"}:
             env = self._with_worker(env)  # never for codex or claude: they must not see the token
+        elif args and args[0] in {"codex", "claude"}:
+            env = self.agent_env(env)
         if env is None:
             return self.runner.run(args, cwd=cwd or self.repository, timeout=timeout)
         return self.runner.run(args, cwd=cwd or self.repository, timeout=timeout, env=env)

@@ -131,6 +131,10 @@ def test_worker_identity_is_all_or_nothing_and_validated(tmp_path):
 def test_gh_and_git_act_as_the_worker_but_codex_and_claude_never_see_the_token(world, monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", "owner-token")
     monkeypatch.setenv("GH_TOKEN", "owner-gh-token")
+    monkeypatch.setenv("TIM_WORKER_GH_TOKEN", "test-token")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "credential.helper")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "!malicious-helper")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     runner = Hybrid(world.repo)
     p = pipeline(world, runner)
     p.github("issue", "list")
@@ -142,7 +146,10 @@ def test_gh_and_git_act_as_the_worker_but_codex_and_claude_never_see_the_token(w
         assert "GITHUB_TOKEN" not in env and env["GIT_TERMINAL_PROMPT"] == "0"
         pairs = {env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"] for i in range(int(env["GIT_CONFIG_COUNT"]))}
         assert pairs["credential.helper"] == "!gh auth git-credential"
-    assert claude_env is None
+    assert claude_env is not None
+    assert not (set(claude_env) & {"TIM_WORKER_GH_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GIT_CONFIG_COUNT",
+                                  "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"})
+    assert claude_env.get("PATH") == os.environ.get("PATH")
 
 
 def test_the_hardened_worktree_env_keeps_its_settings_next_to_the_worker_credentials(world):
