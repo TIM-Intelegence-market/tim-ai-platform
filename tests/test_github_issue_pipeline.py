@@ -186,3 +186,144 @@ def test_stale_legacy_directory_lock_is_migrated(tmp_path):
     (lock / "pid").write_text("99999999")
     with DirectoryLock(lock):
         assert lock.is_file()
+
+
+# --- hardening: git hooks/config, error states, cleanup -------------------------------------
+
+import subprocess
+
+ISSUE = json.dumps([{"number": 7, "title": "Fix race", "state": "OPEN", "body": "",
+                     "labels": [{"name": "priority:p0"}, {"name": "status:ready"}, {"name": "agent:pilot"}],
+                     "updatedAt": "2026-09-27T10:00:00Z", "url": "https://example.test/7"}])
+PR = json.dumps([{"number": 9, "url": "https://example.test/pr/9", "headRefOid": "deadbeef",
+                  "headRefName": "claude/issue-7-fix-race", "baseRefName": "platform-main", "isDraft": True,
+                  "body": "Closes #7\n<!-- TIM_CODEX_CLAUDE_RUN_V1 -->"}])
+
+
+class FlowRunner(CommandRunner):
+    """Records every call; `fail` maps a command prefix to an exception raised for it."""
+
+    def __init__(self, fail=None, replies=None):
+        self.calls, self.envs, self.fail, self.replies = [], [], fail or {}, replies or {}
+
+    def run(self, args, *, cwd=None, timeout=900, env=None):
+        args = list(args)
+        self.calls.append(args)
+        self.envs.append(env)
+        for prefix, error in self.fail.items():
+            if " ".join(args).startswith(prefix):
+                raise error
+        text = " ".join(args)
+        for prefix, reply in self.replies.items():
+            if text.startswith(prefix):
+                return reply
+        if args[:3] == ["gh", "issue", "list"]:
+            return ISSUE
+        if args[:3] == ["gh", "repo", "view"]:
+            return '{"defaultBranchRef":{"name":"platform-main"}}'
+        if args[:3] == ["gh", "pr", "list"]:
+            return PR
+        if args[:2] == ["claude", "auth"]:
+            return json.dumps({"loggedIn": True})
+        if args[:2] == ["git", "branch"] and "--list" in args:
+            return ""
+        if args[:2] == ["git", "rev-parse"] and "--absolute-git-dir" in args:
+            return "/real/gitdir"
+        if args[:2] == ["git", "rev-parse"]:
+            return "deadbeef"
+        if args[:3] == ["git", "diff", "--name-only"]:
+            return "src/a.py\0"
+        if args[0] == "codex":
+            out = Path(args[args.index("--output-last-message") + 1])
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text("## Problem\nx", encoding="utf-8")
+        return ""
+
+    def issued(self, *prefix):
+        return [call for call in self.calls if call[:len(prefix)] == list(prefix)]
+
+
+def run_flow(tmp_path, monkeypatch, runner):
+    monkeypatch.setattr("scripts.github_issue_pipeline.shutil.which", lambda _: "/bin/tool")
+    return Pipeline(Path("."), tmp_path, runner).execute(mode="pilot")
+
+
+def test_runner_turns_missing_executables_into_pipeline_errors(tmp_path):
+    with pytest.raises(PipelineError):
+        CommandRunner().run(["definitely-not-an-installed-tool-xyz"], cwd=tmp_path)
+
+
+def test_commit_and_push_skip_hooks_and_pin_the_recorded_gitdir(tmp_path, monkeypatch):
+    runner = FlowRunner()
+    assert run_flow(tmp_path, monkeypatch, runner) == 0
+    for call in (runner.issued("git", "commit")[0], runner.issued("git", "push")[0]):
+        assert "--no-verify" in call
+        env = runner.envs[runner.calls.index(call)]
+        assert env["GIT_DIR"] == "/real/gitdir" and env["GIT_CONFIG_VALUE_0"] == os.devnull
+        assert env["GIT_CONFIG_KEY_0"] == "core.hooksPath" and env["GIT_CONFIG_VALUE_1"] == "false"
+    assert runner.envs[runner.calls.index(runner.issued("git", "diff", "--name-only")[0])]["GIT_DIR"] == "/real/gitdir"
+
+
+def test_redirected_dot_git_file_cannot_run_worker_config(tmp_path):
+    """A worker that rewrites `.git` to a crafted gitdir must not get core.sshCommand executed."""
+    main, work = tmp_path / "main", tmp_path / "wt"
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+
+    def git(*args, cwd=main, **kwargs):
+        return subprocess.run(["git", *args], cwd=cwd, check=kwargs.get("check", True), capture_output=True, text=True, env=env)
+
+    main.mkdir()
+    git("init", "-q", "-b", "main")
+    (main / "a").write_text("1")
+    git("add", "a")
+    git("commit", "-qm", "base")
+    sha = git("rev-parse", "HEAD").stdout.strip()
+    git("worktree", "add", "-q", "-b", "w", str(work))
+    gitdir = Path(git("rev-parse", "--absolute-git-dir", cwd=work).stdout.strip())
+    evil = work / ".evil"
+    (evil / "objects" / "info").mkdir(parents=True)
+    (evil / "refs" / "heads").mkdir(parents=True)
+    (evil / "objects" / "info" / "alternates").write_text(str(main / ".git" / "objects") + "\n")
+    (evil / "HEAD").write_text("ref: refs/heads/w\n")
+    (evil / "refs" / "heads" / "w").write_text(sha + "\n")
+    marker = tmp_path / "MARKER"
+    (evil / "config").write_text('[core]\n\trepositoryformatversion = 0\n\tsshCommand = sh -c "echo x > %s; exit 1" --\n'
+                                 '[remote "origin"]\n\turl = ssh://example.invalid/x.git\n' % marker)
+    (work / ".git").write_text(f"gitdir: {evil}\n")
+
+    git("push", "origin", "w", cwd=work, check=False)
+    assert marker.exists(), "control: a plain git call follows the redirect and runs the worker's config"
+    marker.unlink()
+
+    pipeline = Pipeline(main, tmp_path / "state")
+    with pytest.raises(PipelineError):  # no such remote in the real repository; the point is what does NOT run
+        pipeline.worktree_git(work, gitdir, "push", "--no-verify", "origin", "w")
+    assert not marker.exists()
+
+
+def test_failure_before_commit_removes_worktree_and_branch_but_keeps_a_record(tmp_path, monkeypatch):
+    runner = FlowRunner(fail={"claude -p": PipelineError("claude exploded")})
+    assert run_flow(tmp_path, monkeypatch, runner) == 1
+    assert runner.issued("git", "worktree", "remove", "--force")
+    assert runner.issued("git", "branch", "-D", "claude/issue-7-fix-race")
+    assert list((tmp_path / "runs").glob("*-discarded.patch"))
+    comment = next(call for call in runner.issued("gh", "issue", "comment") if "Automation blocked" in call[-1])
+    assert "claude exploded" in comment[-1] and "were removed" in comment[-1]
+    assert ["gh", "issue", "edit", "7", "--add-label", "agent:blocked"] in runner.calls
+
+
+@pytest.mark.parametrize("failing", ["git push", "gh pr create"])
+def test_failure_after_commit_keeps_everything_for_recovery(tmp_path, monkeypatch, failing):
+    runner = FlowRunner(fail={failing: PipelineError("network down")}, replies={"git ls-remote": "abc refs/heads/x", "gh pr list": "[]"})
+    assert run_flow(tmp_path, monkeypatch, runner) == 1
+    assert not runner.issued("git", "worktree", "remove") and not runner.issued("git", "branch", "-D")
+    comment = next(call for call in runner.issued("gh", "issue", "comment") if "Automation blocked" in call[-1])
+    assert "Kept for recovery" in comment[-1] and "Nothing was deleted" in comment[-1]
+
+
+def test_unexpected_errors_block_instead_of_crashing_and_labels_still_move(tmp_path, monkeypatch):
+    runner = FlowRunner(replies={"gh repo view": "not json"}, fail={"gh issue comment": RuntimeError("gh down")})
+    assert run_flow(tmp_path, monkeypatch, runner) == 1
+    assert ["gh", "issue", "edit", "7", "--add-label", "agent:blocked"] in runner.calls
+    assert ["gh", "issue", "edit", "7", "--remove-label", "agent:analyzing"] in runner.calls
+    assert ["gh", "issue", "edit", "7", "--remove-label", "agent:claude-running"] in runner.calls

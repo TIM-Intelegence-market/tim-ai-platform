@@ -39,3 +39,6 @@ Logs and retained worktrees live in `~/Library/Application Support/TIM GitHub Wo
 - Add `agent:retry` to a blocked issue after correcting its cause; the next scheduler run retries it once.
 - A pre-existing branch or missing draft PR is a safe stop, never a duplicate PR.
 - `agent:pr-open` means a draft PR exists and awaits human review. CI failures leave it open.
+- After the worker has run, every git call uses the gitdir recorded beforehand (`GIT_DIR`), with hooks and fsmonitor off and `--no-verify` on commit and push. A worker that rewrites the worktree's `.git` file therefore cannot make git read its own config.
+- Any error, not only a pipeline error, blocks the issue instead of crashing the run. Each blocked-state step (comment, labels) is attempted independently.
+- A failure before the commit removes the unfinished worktree and local branch and keeps a record under `runs/<run-id>-discarded.patch`. From the commit on (failed push or failed PR creation) nothing is deleted: the worktree and branch stay, and the blocked comment names them. Resolve them by hand before adding `agent:retry`; a leftover branch is still a safe stop.

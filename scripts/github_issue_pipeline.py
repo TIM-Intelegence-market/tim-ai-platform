@@ -15,7 +15,7 @@ import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 DEPENDENCY = re.compile(r"\b(?:depends on|blocked by)\b[^\n]*", re.IGNORECASE)
 ISSUE_REFERENCE = re.compile(r"#(\d+)")
@@ -103,10 +103,12 @@ Never merge a PR, close an issue, delete history, alter credentials, or work out
 
 
 class CommandRunner:
-    def run(self, args: Sequence[str], *, cwd: Path | None = None, timeout: int = 900) -> str:
+    def run(self, args: Sequence[str], *, cwd: Path | None = None, timeout: int = 900,
+            env: Mapping[str, str] | None = None) -> str:
         try:
-            completed = subprocess.run(list(args), cwd=cwd, check=True, text=True, capture_output=True, timeout=timeout)
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            completed = subprocess.run(list(args), cwd=cwd, check=True, text=True, capture_output=True,
+                                       timeout=timeout, env=env)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as error:
             detail = getattr(error, "stderr", "") or getattr(error, "stdout", "") or str(error)
             raise PipelineError(detail.strip()[:2000]) from error
         return completed.stdout.strip()
@@ -165,8 +167,27 @@ class Pipeline:
     def __init__(self, repository: Path, state_dir: Path, runner: CommandRunner | None = None) -> None:
         self.repository, self.state_dir, self.runner = repository.resolve(), state_dir.expanduser(), runner or CommandRunner()
 
-    def command(self, *args: str, cwd: Path | None = None, timeout: int = 900) -> str:
-        return self.runner.run(args, cwd=cwd or self.repository, timeout=timeout)
+    def command(self, *args: str, cwd: Path | None = None, timeout: int = 900,
+                env: Mapping[str, str] | None = None) -> str:
+        if env is None:
+            return self.runner.run(args, cwd=cwd or self.repository, timeout=timeout)
+        return self.runner.run(args, cwd=cwd or self.repository, timeout=timeout, env=env)
+
+    @staticmethod
+    def hardened_git_env(worktree: Path, gitdir: Path) -> dict[str, str]:
+        """Pin git to the gitdir recorded before the worker ran and switch off hooks and fsmonitor.
+
+        The worker can edit the worktree's `.git` file. Without an explicit GIT_DIR, git would follow
+        a redirected gitdir and honour its config (for example core.sshCommand) with our privileges.
+        """
+        return {**os.environ, "GIT_DIR": str(gitdir), "GIT_WORK_TREE": str(worktree),
+                "GIT_CONFIG_COUNT": "2",
+                "GIT_CONFIG_KEY_0": "core.hooksPath", "GIT_CONFIG_VALUE_0": os.devnull,
+                "GIT_CONFIG_KEY_1": "core.fsmonitor", "GIT_CONFIG_VALUE_1": "false"}
+
+    def worktree_git(self, worktree: Path, gitdir: Path, *args: str, timeout: int = 900) -> str:
+        return self.command("git", *args, cwd=worktree, timeout=timeout,
+                            env=self.hardened_git_env(worktree, gitdir))
 
     def github(self, *args: str) -> str:
         return self.command("gh", *args)
@@ -237,9 +258,14 @@ class Pipeline:
         self.command("git", "worktree", "add", "-b", branch, str(worktree), base_ref)
         return worktree, branch
 
-    def validate_worker_diff(self, worktree: Path) -> None:
-        tracked = self.command("git", "diff", "--name-only", "-z", "HEAD", cwd=worktree)
-        untracked = self.command("git", "ls-files", "--others", "--exclude-standard", "-z", cwd=worktree)
+    def validate_worker_diff(self, worktree: Path, gitdir: Path | None = None) -> None:
+        def git(*args: str) -> str:
+            if gitdir is None:
+                return self.command("git", *args, cwd=worktree)
+            return self.worktree_git(worktree, gitdir, *args)
+
+        tracked = git("diff", "--name-only", "-z", "HEAD")
+        untracked = git("ls-files", "--others", "--exclude-standard", "-z")
         paths = [path for output in (tracked, untracked) for path in output.split("\0") if path]
         if not paths:
             raise PipelineError("Claude made no file changes; refusing an empty PR.")
@@ -293,33 +319,78 @@ class Pipeline:
             return 0
         self.ensure_labels()
         run_id = uuid.uuid4().hex
-        self.edit_labels(candidate.number, add="agent:analyzing", remove="agent:retry")
+        worktree: Path | None = None
+        gitdir: Path | None = None
+        branch = ""
+        stage = "start"
         try:
+            self.edit_labels(candidate.number, add="agent:analyzing", remove="agent:retry")
             base_ref = self.default_base_ref()
             analysis = self.run_analysis(candidate, run_id, base_ref)
             self.edit_labels(candidate.number, add="agent:claude-running", remove="agent:analyzing")
             worktree, branch = self.make_worktree(candidate, run_id, base_ref)
+            stage = "worktree"
+            gitdir = Path(self.command("git", "rev-parse", "--absolute-git-dir", cwd=worktree))
             self.command("claude", "-p", "--output-format", "json", "--max-turns", "30",
                          "--restricted", "--strict-mcp-config", "--tools", "Read,Edit,Write,Glob,Grep",
                          "--permission-mode", "acceptEdits", claude_prompt(candidate, analysis, branch),
                          cwd=worktree, timeout=3600)
-            self.validate_worker_diff(worktree)
-            self.command("git", "diff", "HEAD", "--check", cwd=worktree)
-            self.command("git", "add", "--all", cwd=worktree)
-            self.command("git", "commit", "-m", f"fix(issue-{candidate.number}): {candidate.title[:60]}", cwd=worktree)
-            self.command("git", "push", "origin", branch, cwd=worktree)
-            head_sha = self.command("git", "rev-parse", "HEAD", cwd=worktree)
+            self.validate_worker_diff(worktree, gitdir)
+            self.worktree_git(worktree, gitdir, "diff", "HEAD", "--check")
+            self.worktree_git(worktree, gitdir, "add", "--all")
+            self.worktree_git(worktree, gitdir, "commit", "--no-verify", "-m",
+                              f"fix(issue-{candidate.number}): {candidate.title[:60]}")
+            stage = "committed"
+            self.worktree_git(worktree, gitdir, "push", "--no-verify", "origin", branch)
+            stage = "pushed"
+            head_sha = self.worktree_git(worktree, gitdir, "rev-parse", "HEAD")
             pull_request = self.ensure_draft_pr(candidate, branch, base_ref.removeprefix("origin/"), head_sha)
             if pull_request is None:
                 raise PipelineError("Runner finished without opening the required draft pull request.")
             self.comment(candidate.number, f"<!-- {RUN_MARKER} run={run_id} -->\nClaude draft PR: {pull_request['url']}\nBranch: `{branch}`")
             self.edit_labels(candidate.number, add="agent:pr-open", remove="agent:claude-running")
             return 0
-        except PipelineError as error:
-            self.comment(candidate.number, f"<!-- {RUN_MARKER} run={run_id} status=blocked -->\n## Automation blocked\n\n{error}")
-            self.edit_labels(candidate.number, add="agent:blocked", remove="agent:analyzing")
-            self.edit_labels(candidate.number, add="agent:blocked", remove="agent:claude-running")
-            return 1
+        except Exception as error:  # fail closed on every error, not only PipelineError
+            return self.block(candidate, run_id, error, stage, worktree, gitdir, branch)
+
+    def block(self, candidate: Candidate, run_id: str, error: Exception, stage: str,
+              worktree: Path | None, gitdir: Path | None, branch: str) -> int:
+        """Record a blocked run. Every step is best effort so one failure cannot leave the rest undone."""
+        detail = str(error) if isinstance(error, PipelineError) else f"Unexpected {type(error).__name__}: {error}"
+        notes: list[str] = []
+        if worktree is not None and stage == "worktree":
+            notes.append(self.discard_worktree(worktree, gitdir, branch, run_id))
+        elif worktree is not None:
+            notes.append(f"Kept for recovery (stage `{stage}`): worktree `{worktree}`, branch `{branch}`. "
+                         "Nothing was deleted; resolve it by hand before `agent:retry`.")
+        body = f"<!-- {RUN_MARKER} run={run_id} status=blocked -->\n## Automation blocked\n\n{detail[:2000]}"
+        if notes:
+            body += "\n\n" + "\n".join(notes)
+        for step in (lambda: self.comment(candidate.number, body),
+                     lambda: self.edit_labels(candidate.number, add="agent:blocked"),
+                     lambda: self.edit_labels(candidate.number, remove="agent:analyzing"),
+                     lambda: self.edit_labels(candidate.number, remove="agent:claude-running")):
+            try:
+                step()
+            except Exception as problem:
+                print(f"Could not record the blocked state: {problem}", file=sys.stderr)
+        return 1
+
+    def discard_worktree(self, worktree: Path, gitdir: Path | None, branch: str, run_id: str) -> str:
+        """Remove a worktree and branch that never produced a commit; keep a local record of the rejected work."""
+        patch = self.state_dir / "runs" / f"{run_id}-discarded.patch"
+        try:
+            record = ""
+            if gitdir is not None:
+                record = (self.worktree_git(worktree, gitdir, "status", "--porcelain=v1") + "\n\n"
+                          + self.worktree_git(worktree, gitdir, "diff", "HEAD", "--binary", "--no-ext-diff", "--no-textconv"))
+            patch.parent.mkdir(parents=True, exist_ok=True)
+            patch.write_text(record, encoding="utf-8")
+            self.command("git", "worktree", "remove", "--force", str(worktree))
+            self.command("git", "branch", "-D", branch)
+        except (PipelineError, OSError) as problem:
+            return f"Cleanup failed ({problem}); worktree `{worktree}` and branch `{branch}` were kept."
+        return f"The unfinished worktree and local branch `{branch}` were removed. Record of the rejected work: `{patch}`."
 
 
 def main() -> int:
