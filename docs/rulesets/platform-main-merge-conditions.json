@@ -1,5 +1,5 @@
 {
-  "name": "platform-main auto-merge",
+  "name": "platform-main merge conditions",
   "target": "branch",
   "enforcement": "active",
   "conditions": {
@@ -8,18 +8,10 @@
       "exclude": []
     }
   },
-  "bypass_actors": [
-    {
-      "actor_id": 0,
-      "actor_type": "Integration",
-      "bypass_mode": "always",
-      "_comment": "Replace actor_id 0 with the App ID of the TIM Merger app. It must be the ONLY bypass actor. No repository role, no organization admin, no owner."
-    }
-  ],
+  "bypass_actors": [],
   "rules": [
     {"type": "deletion"},
     {"type": "non_fast_forward"},
-    {"type": "update"},
     {
       "type": "pull_request",
       "parameters": {

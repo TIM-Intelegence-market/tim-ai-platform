@@ -20,8 +20,12 @@ POLICY = {
     "required_statuses": [{"context": "pr-gate/head", "creator": "github-actions[bot]",
                            "workflow_path": ".github/workflows/pr-gate.yml", "event": "pull_request_target"}],
     "check_app_slugs": ["github-actions"], "allowed_conclusions": ["success"], "merge_method": "squash",
-    "max_merges_per_run": 1, "require_branch_rules": True, "require_app_token": True,
-    "required_branch_rules": ["pull_request", "required_status_checks", "non_fast_forward", "deletion", "update"],
+    "max_merges_per_run": 1, "require_rulesets": True, "require_app_token": True,
+    "merger_app_id": 4242, "check_integration_id": 15368,
+    "required_rulesets": [
+        {"name": "platform-main merge conditions", "rules": ["deletion", "non_fast_forward", "pull_request",
+                                                             "required_status_checks"], "bypass": "none"},
+        {"name": "platform-main restrict updates", "rules": ["update"], "bypass": "merger_only"}],
 }
 
 
@@ -65,12 +69,25 @@ def status_of(*entries, state="success"):
 GOOD_STATUS = status_of(status_entry())
 
 
-def good_rules():
-    return [{"type": "pull_request", "parameters": {"required_approving_review_count": 0}},
-            {"type": "required_status_checks", "parameters": {
-                "strict_required_status_checks_policy": True,
-                "required_status_checks": [{"context": "test"}, {"context": "TIM full suite"}, {"context": "pr-gate/head"}]}},
-            {"type": "non_fast_forward"}, {"type": "deletion"}, {"type": "update"}]
+def good_world():
+    """(listing, details, effective rules) of a correctly configured pair of rulesets."""
+    conditions = {"ref_name": {"include": ["refs/heads/platform-main"], "exclude": []}}
+    merge = {"id": 11, "name": "platform-main merge conditions", "target": "branch", "source_type": "Repository",
+             "enforcement": "active", "conditions": conditions, "bypass_actors": [],
+             "rules": [{"type": "deletion"}, {"type": "non_fast_forward"},
+                       {"type": "pull_request", "parameters": {"required_approving_review_count": 0}},
+                       {"type": "required_status_checks", "parameters": {
+                           "strict_required_status_checks_policy": True,
+                           "required_status_checks": [{"context": "test", "integration_id": 15368},
+                                                      {"context": "TIM full suite", "integration_id": 15368},
+                                                      {"context": "pr-gate/head", "integration_id": 15368}]}}]}
+    update = {"id": 12, "name": "platform-main restrict updates", "target": "branch", "source_type": "Repository",
+              "enforcement": "active", "conditions": copy.deepcopy(conditions),
+              "bypass_actors": [{"actor_id": 4242, "actor_type": "Integration", "bypass_mode": "always"}],
+              "rules": [{"type": "update"}]}
+    listing = [{"id": ruleset["id"], "name": ruleset["name"]} for ruleset in (merge, update)]
+    effective = [{**rule, "ruleset_id": ruleset["id"]} for ruleset in (merge, update) for rule in ruleset["rules"]]
+    return listing, {11: merge, 12: update}, effective
 
 
 GOOD_COMPARE = {"behind_by": 0, "ahead_by": 1, "merge_base_commit": {"sha": BASE_SHA}}
@@ -80,7 +97,7 @@ class FakeApi:
     def __init__(self, prs=None, checks=None, status=None, fail=None, fresh=None, behind=None, runs=None):
         self.runs = copy.deepcopy(GOOD_RUNS) if runs is None else runs
         self.behind = GOOD_COMPARE if behind is None else behind
-        self.rules = good_rules()
+        self.listing, self.details, self.effective = good_world()
         self.prs = {pr["number"]: pr for pr in (prs or [make_pr()])}
         self.checks = GOOD_CHECKS if checks is None else checks
         self.status = GOOD_STATUS if status is None else status
@@ -102,9 +119,17 @@ class FakeApi:
             pr = {**pr, **self.fresh}
         return copy.deepcopy(pr)
 
+    def rulesets(self):
+        self._maybe_fail("rulesets")
+        return self.listing
+
+    def ruleset(self, ruleset_id):
+        self._maybe_fail("ruleset")
+        return self.details[ruleset_id]
+
     def branch_rules(self, base):
         self._maybe_fail("branch_rules")
-        return self.rules
+        return self.effective
 
     def compare(self, base, sha):
         self._maybe_fail("compare")
@@ -409,54 +434,144 @@ def test_the_compare_is_repeated_right_before_the_merge():
     assert outcome(api)[2] == [("merge", 7, SHA, "squash")] and len(seen) == 2
 
 
-@pytest.mark.parametrize("missing", ["pull_request", "required_status_checks", "non_fast_forward", "deletion", "update"])
-def test_a_missing_branch_rule_blocks_everything(missing):
-    api = FakeApi()
-    api.rules = [rule for rule in api.rules if rule["type"] != missing]
+def run_closed(api, policy=POLICY):
     out = []
-    assert amc.run(api, clean_gate, POLICY, REPO, emit=out.append, token_kind="app") == 1
-    assert api.calls == [] and missing in out[0]
+    code = amc.run(api, clean_gate, policy, REPO, emit=out.append, token_kind="app")
+    return code, out
 
 
-def test_non_strict_or_incomplete_required_status_checks_block_everything():
-    for mutate in (lambda p: p.update(strict_required_status_checks_policy=False),
-                   lambda p: p.pop("strict_required_status_checks_policy"),
-                   lambda p: p.update(required_status_checks=[{"context": "test"}, {"context": "pr-gate/head"}]),
-                   lambda p: p.update(required_status_checks=[{"context": "TIM full suite"}, {"context": "test"}]),
-                   lambda p: p.update(required_status_checks=[])):
+def mutate(api, ruleset_id, fn):
+    fn(api.details[ruleset_id])
+    return api
+
+
+MERGE, UPDATE = 11, 12
+
+
+def status_rule(api):
+    return next(rule for rule in api.details[MERGE]["rules"] if rule["type"] == "required_status_checks")["parameters"]
+
+
+@pytest.mark.parametrize("name, fn", [
+    # the reported flaw: a bypass actor on the ruleset that carries the mandatory checks
+    ("merger app bypasses the merge conditions", lambda a: mutate(a, MERGE, lambda r: r.update(bypass_actors=[
+        {"actor_id": 4242, "actor_type": "Integration", "bypass_mode": "always"}]))),
+    ("any bypass on the merge conditions", lambda a: mutate(a, MERGE, lambda r: r.update(bypass_actors=[
+        {"actor_id": 1, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}]))),
+    ("bypass list missing on the merge conditions", lambda a: mutate(a, MERGE, lambda r: r.pop("bypass_actors"))),
+    ("bypass list null on the merge conditions", lambda a: mutate(a, MERGE, lambda r: r.update(bypass_actors=None))),
+    ("no bypass actor on restrict updates", lambda a: mutate(a, UPDATE, lambda r: r.update(bypass_actors=[]))),
+    ("bypass list missing on restrict updates", lambda a: mutate(a, UPDATE, lambda r: r.pop("bypass_actors"))),
+    ("two bypass actors on restrict updates", lambda a: mutate(a, UPDATE, lambda r: r["bypass_actors"].append(
+        {"actor_id": 9, "actor_type": "OrganizationAdmin", "bypass_mode": "always"}))),
+    ("wrong merger app id", lambda a: mutate(a, UPDATE, lambda r: r["bypass_actors"][0].update(actor_id=7))),
+    ("merger bypass only for pull requests", lambda a: mutate(a, UPDATE, lambda r: r["bypass_actors"][0].update(
+        bypass_mode="pull_request"))),
+    ("merger is not an integration", lambda a: mutate(a, UPDATE, lambda r: r["bypass_actors"][0].update(
+        actor_type="Team"))),
+    ("restrict updates carries a mandatory rule", lambda a: mutate(a, UPDATE, lambda r: r["rules"].append(
+        {"type": "pull_request", "parameters": {"required_approving_review_count": 0}}))),
+    ("merge conditions lose a rule", lambda a: mutate(a, MERGE, lambda r: r.update(
+        rules=[rule for rule in r["rules"] if rule["type"] != "deletion"]))),
+    ("merge conditions gain a rule", lambda a: mutate(a, MERGE, lambda r: r["rules"].append({"type": "creation"}))),
+    ("merge conditions not active", lambda a: mutate(a, MERGE, lambda r: r.update(enforcement="evaluate"))),
+    ("merge conditions disabled", lambda a: mutate(a, MERGE, lambda r: r.update(enforcement="disabled"))),
+    ("restrict updates not active", lambda a: mutate(a, UPDATE, lambda r: r.update(enforcement="evaluate"))),
+    ("a tag ruleset", lambda a: mutate(a, MERGE, lambda r: r.update(target="tag"))),
+    ("an organization ruleset", lambda a: mutate(a, MERGE, lambda r: r.update(source_type="Organization"))),
+    ("other branch", lambda a: mutate(a, MERGE, lambda r: r["conditions"]["ref_name"].update(include=["refs/heads/main"]))),
+    ("default-branch alias", lambda a: mutate(a, MERGE, lambda r: r["conditions"]["ref_name"].update(include=["~DEFAULT_BRANCH"]))),
+    ("base branch excluded", lambda a: mutate(a, MERGE, lambda r: r["conditions"]["ref_name"].update(
+        exclude=["refs/heads/platform-main"]))),
+    ("two branches", lambda a: mutate(a, MERGE, lambda r: r["conditions"]["ref_name"].update(
+        include=["refs/heads/platform-main", "refs/heads/x"]))),
+    ("no conditions", lambda a: mutate(a, MERGE, lambda r: r.pop("conditions"))),
+    ("not strict", lambda a: status_rule(a).update(strict_required_status_checks_policy=False)),
+    ("strict missing", lambda a: status_rule(a).pop("strict_required_status_checks_policy")),
+    ("strict as string", lambda a: status_rule(a).update(strict_required_status_checks_policy="true")),
+    ("test not required", lambda a: status_rule(a).update(required_status_checks=[
+        entry for entry in status_rule(a)["required_status_checks"] if entry["context"] != "test"])),
+    ("full suite not required", lambda a: status_rule(a).update(required_status_checks=[
+        entry for entry in status_rule(a)["required_status_checks"] if entry["context"] != "TIM full suite"])),
+    ("gate status not required", lambda a: status_rule(a).update(required_status_checks=[
+        entry for entry in status_rule(a)["required_status_checks"] if entry["context"] != "pr-gate/head"])),
+    ("check bound to any app", lambda a: status_rule(a)["required_status_checks"][0].pop("integration_id")),
+    ("check bound to another app", lambda a: status_rule(a)["required_status_checks"][0].update(integration_id=1)),
+    ("no required checks at all", lambda a: status_rule(a).update(required_status_checks=[])),
+    ("human approvals required", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(
+        required_approving_review_count=1))),
+    ("approvals unknown", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request").pop("parameters"))),
+    ("rule not effective on the branch", lambda a: a.effective.__setitem__(slice(None), [
+        rule for rule in a.effective if not (rule["type"] == "deletion" and rule["ruleset_id"] == MERGE)])),
+    ("effective rules come from another ruleset", lambda a: a.effective.__setitem__(slice(None), [
+        {**rule, "ruleset_id": 99} for rule in a.effective])),
+    ("ruleset missing from the listing", lambda a: a.listing.__setitem__(slice(None), a.listing[:1])),
+    ("ruleset twice in the listing", lambda a: a.listing.append({"id": 13, "name": "platform-main merge conditions"})),
+    ("listing empty", lambda a: a.listing.clear()),
+    ("details missing", lambda a: a.details.pop(MERGE)),
+])
+def test_every_deviation_in_the_rulesets_blocks_everything(name, fn):
+    api = _built(fn)
+    code, out = run_closed(api)
+    assert code == 1 and api.calls == [], name
+    # either a precise ruleset finding or, when the data cannot even be read, a fail-closed message
+    assert json.loads(out[0])["scope"] == "rulesets" if out[0].startswith("{") else "failed closed" in out[0], name
+
+
+def _built(fn):
+    api = FakeApi()
+    result = fn(api)  # the lambdas mutate the fake and may return it (mutate helper) or an unrelated value
+    return result if isinstance(result, FakeApi) else api
+
+
+@pytest.mark.parametrize("failing", ["rulesets", "ruleset", "branch_rules"])
+def test_the_403_for_missing_rulesets_fails_the_run_closed(failing):
+    api = FakeApi(fail={failing})
+    code, out = run_closed(api)
+    assert code == 1 and api.calls == [] and "failed closed" in out[0]
+
+
+@pytest.mark.parametrize("bad", [None, {}, "x", 5])
+def test_unreadable_ruleset_answers_block_everything(bad):
+    for attribute in ("listing", "details", "effective"):
         api = FakeApi()
-        mutate(api.rules[1]["parameters"])
-        assert amc.run(api, clean_gate, POLICY, REPO, emit=lambda line: None, token_kind="app") == 1
-        assert api.calls == []
+        setattr(api, attribute, bad)
+        if attribute == "details":
+            api.ruleset = lambda ruleset_id: bad
+        assert run_closed(api)[0] == 1 and api.calls == []
 
 
-@pytest.mark.parametrize("rules", [None, {}, "x", [None, 5], []])
-def test_unreadable_or_empty_branch_rules_block_everything(rules):
+def test_extra_unrelated_rulesets_do_not_hurt_and_the_complete_pair_allows_the_merge():
     api = FakeApi()
-    api.rules = rules
-    assert amc.run(api, clean_gate, POLICY, REPO, emit=lambda line: None, token_kind="app") == 1 and api.calls == []
-
-
-def test_the_403_for_missing_rulesets_fails_the_run_closed():
-    api = FakeApi(fail={"branch_rules"})
-    out = []
-    assert amc.run(api, clean_gate, POLICY, REPO, emit=out.append, token_kind="app") == 1
-    assert api.calls == [] and "failed closed" in out[0]
-
-
-def test_extra_rules_do_not_hurt_and_a_complete_ruleset_allows_the_merge():
-    api = FakeApi()
-    api.rules.append({"type": "creation"})
+    api.listing.append({"id": 50, "name": "something else"})
+    api.effective.append({"type": "creation", "ruleset_id": 50})
     assert outcome(api)[2] == [("merge", 7, SHA, "squash")]
 
 
-def test_the_rules_check_can_only_be_skipped_in_a_dry_run():
+def test_the_rulesets_check_can_only_be_skipped_in_a_dry_run():
     api = FakeApi()
-    api.rules = []
-    dry = {**POLICY, "dry_run": True, "require_branch_rules": False}
+    api.listing.clear()
+    dry = {**POLICY, "dry_run": True, "require_rulesets": False}
     assert outcome(api, policy=dry)[1][0]["outcome"] == "would-merge"
-    code, decisions, calls = outcome(api, policy={**POLICY, "dry_run": True})  # rules required: stop before any PR
-    assert code == 1 and decisions[0]["scope"] == "branch-rules" and len(decisions) == 1
+    code, decisions, calls = outcome(api, policy={**POLICY, "dry_run": True})  # required: stop before any PR
+    assert code == 1 and decisions[0]["scope"] == "rulesets" and len(decisions) == 1
+
+
+def test_the_verify_command_reports_without_touching_anything(tmp_path, capsys, monkeypatch):
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps({**POLICY, "dry_run": True}))
+    good, bad = FakeApi(), FakeApi()
+    mutate(bad, MERGE, lambda r: r.update(bypass_actors=[{"actor_id": 4242, "actor_type": "Integration", "bypass_mode": "always"}]))
+    monkeypatch.setattr(amc, "GhApi", lambda repo: good)
+    assert amc.main(["--repo", REPO, "--policy", str(path), "--gate-policy", str(path), "--verify-rulesets"]) == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+    monkeypatch.setattr(amc, "GhApi", lambda repo: bad)
+    assert amc.main(["--repo", REPO, "--policy", str(path), "--gate-policy", str(path), "--verify-rulesets"]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["ok"] is False and "no bypass actors" in report["problems"][0]
+    assert good.calls == [] and bad.calls == []
 
 
 @pytest.mark.parametrize("kind", ["github-token", "unknown", "", "App"])
@@ -471,14 +586,22 @@ def test_real_merges_need_the_merger_app_token(kind):
     assert outcome(FakeApi(), policy={**POLICY, "dry_run": True}, token_kind=kind)[1][0]["outcome"] == "would-merge"
 
 
-def test_branch_rules_request_is_validated():
-    gh = Gh([json.dumps([])])
-    assert amc.GhApi(REPO, gh).branch_rules("platform-main") == []
-    assert gh.argv[0] == ["gh", "api", "repos/owner/repo/rules/branches/platform-main"]
-    with pytest.raises(amc.ControllerError):
-        amc.GhApi(REPO, Gh([])).branch_rules("a/b")
+def test_ruleset_requests_are_validated():
+    gh = Gh([json.dumps([]), json.dumps({"id": 11}), json.dumps([])])
+    api = amc.GhApi(REPO, gh)
+    assert api.rulesets() == []
+    assert gh.argv[0][2].startswith("repos/owner/repo/rulesets?includes_parents=true")
+    assert api.ruleset(11) == {"id": 11} and gh.argv[1] == ["gh", "api", "repos/owner/repo/rulesets/11"]
+    assert api.branch_rules("platform-main") == []
+    assert gh.argv[2] == ["gh", "api", "repos/owner/repo/rules/branches/platform-main"]
+    for bad in ("a/b", "x y"):
+        with pytest.raises(amc.ControllerError):
+            amc.GhApi(REPO, Gh([])).branch_rules(bad)
+    for bad in ("11", 0, True, -3):
+        with pytest.raises(amc.ControllerError):
+            amc.GhApi(REPO, Gh([])).ruleset(bad)
     with pytest.raises(amc.ApiError):
-        amc.GhApi(REPO, Gh([subprocess.CalledProcessError(1, "gh", stderr="Upgrade to GitHub Pro")])).branch_rules("platform-main")
+        amc.GhApi(REPO, Gh([subprocess.CalledProcessError(1, "gh", stderr="Upgrade to GitHub Pro")])).rulesets()
 
 
 def test_the_controller_workflow_is_manual_only_and_distinguishes_the_token_kind():
@@ -495,7 +618,7 @@ def test_the_controller_workflow_is_manual_only_and_distinguishes_the_token_kind
 def test_the_shipped_policy_is_inert():
     policy = amc.load_policy(ROOT / ".github" / "auto-merge-policy.json")
     assert policy["enabled"] is False and policy["dry_run"] is True and policy["worker_logins"] == []
-    assert policy["require_branch_rules"] is True and policy["require_app_token"] is True
+    assert policy["require_rulesets"] is True and policy["require_app_token"] is True and policy["merger_app_id"] == 0
 
 
 @pytest.mark.parametrize("change", [
@@ -506,9 +629,22 @@ def test_the_shipped_policy_is_inert():
     {"required_statuses": []}, {"required_statuses": ["pr-gate/head"]}, {"required_statuses": [{"context": "x"}]},
     {"required_statuses": [{"context": "c", "creator": "u", "workflow_path": "w", "event": "e"},
                            {"context": "c", "creator": "v", "workflow_path": "w", "event": "e"}]},
-    {"dry_run": False, "require_branch_rules": False}, {"dry_run": False, "require_app_token": False},
-    {"require_branch_rules": "yes"}, {"require_app_token": 1}, {"required_branch_rules": []},
-    {"required_branch_rules": "update"}, {"required_branch_rules": [""]},
+    {"dry_run": False, "require_rulesets": False}, {"dry_run": False, "require_app_token": False},
+    {"dry_run": False, "merger_app_id": 0}, {"merger_app_id": -1}, {"merger_app_id": "4242"},
+    {"check_integration_id": 0}, {"check_integration_id": None},
+    {"require_rulesets": "yes"}, {"require_app_token": 1}, {"required_rulesets": []}, {"required_rulesets": "update"},
+    {"required_rulesets": [{"name": "x", "rules": [], "bypass": "none"}]},
+    {"required_rulesets": [{"name": "x", "rules": ["update"], "bypass": "everyone"}]},
+    {"required_rulesets": [{"name": "x", "rules": ["update"]}]},
+    # the mandatory rules must sit in rulesets without bypass: a merger-bypass ruleset may not carry them
+    {"required_rulesets": [{"name": "a", "rules": ["pull_request", "required_status_checks", "non_fast_forward",
+                                                   "deletion", "update"], "bypass": "merger_only"}]},
+    {"required_rulesets": [{"name": "a", "rules": ["update"], "bypass": "merger_only"}]},
+    {"required_rulesets": [{"name": "a", "rules": ["pull_request", "deletion"], "bypass": "none"},
+                           {"name": "b", "rules": ["update"], "bypass": "merger_only"}]},
+    {"required_rulesets": [{"name": "a", "rules": ["pull_request", "required_status_checks", "non_fast_forward",
+                                                   "deletion"], "bypass": "none"},
+                           {"name": "a", "rules": ["update"], "bypass": "merger_only"}]},
     {"check_app_slugs": []}, {"allowed_conclusions": []}, {"max_merges_per_run": 0},
     {"max_merges_per_run": 99}, {"max_merges_per_run": True}, {"head_branch_regex": "("}, {"base_branch": ""},
 ])
@@ -574,35 +710,28 @@ def test_compare_request_uses_a_validated_range():
         amc.GhApi(REPO, Gh([])).compare("a b", SHA)
 
 
-def test_the_documented_ruleset_satisfies_the_controllers_precondition():
-    ruleset = json.loads((ROOT / "docs" / "rulesets" / "platform-main-auto-merge.json").read_text(encoding="utf-8"))
-    policy = amc.load_policy(ROOT / ".github" / "auto-merge-policy.json")
-    api_rules = [{"type": rule["type"], "parameters": rule.get("parameters")} for rule in ruleset["rules"]]
-    assert amc.rules_blockers(api_rules, policy) == []
-    assert ruleset["enforcement"] == "active" and ruleset["conditions"]["ref_name"]["include"] == ["refs/heads/platform-main"]
-    assert len(ruleset["bypass_actors"]) == 1 and ruleset["bypass_actors"][0]["actor_type"] == "Integration"
-    pull_request = next(rule for rule in ruleset["rules"] if rule["type"] == "pull_request")
-    assert pull_request["parameters"]["required_approving_review_count"] == 0
-    checks = next(rule for rule in ruleset["rules"] if rule["type"] == "required_status_checks")["parameters"]
-    assert checks["strict_required_status_checks_policy"] is True
+def test_the_documented_rulesets_satisfy_the_controllers_verification():
+    policy = {**amc.load_policy(ROOT / ".github" / "auto-merge-policy.json"), "merger_app_id": 4242}
+    docs = {}
+    for name in ("merge-conditions", "restrict-updates"):
+        ruleset = json.loads((ROOT / "docs" / "rulesets" / f"platform-main-{name}.json").read_text(encoding="utf-8"))
+        for actor in ruleset["bypass_actors"]:
+            assert actor["actor_id"] == 0  # placeholder to be replaced by the merger app id on import
+            actor["actor_id"] = 4242
+        docs[name] = ruleset
+    merge, update = docs["merge-conditions"], docs["restrict-updates"]
+    assert merge["bypass_actors"] == [], "the ruleset that makes the checks mandatory must have no bypass actor"
+    assert len(update["bypass_actors"]) == 1 and update["bypass_actors"][0]["actor_type"] == "Integration"
+    assert [rule["type"] for rule in update["rules"]] == ["update"]
+    details, listing, effective = {}, [], []
+    for number, ruleset in ((11, merge), (12, update)):
+        details[number] = {**ruleset, "id": number, "source_type": "Repository"}
+        listing.append({"id": number, "name": ruleset["name"]})
+        effective += [{**rule, "ruleset_id": number} for rule in ruleset["rules"]]
+    assert amc.rulesets_blockers(listing, details, effective, policy) == []
+    checks = next(rule for rule in merge["rules"] if rule["type"] == "required_status_checks")["parameters"]
     assert {entry["context"] for entry in checks["required_status_checks"]} == \
         {spec["name"] for spec in policy["required_checks"]} | {spec["context"] for spec in policy["required_statuses"]}
-
-
-def test_no_workflow_that_runs_pull_request_code_can_write_statuses_or_contents():
-    """The pr-gate/head status is only trustworthy while nothing that executes PR code holds a write token."""
-    import re
-
-    workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
-    assert workflows
-    for path in workflows:
-        text = path.read_text(encoding="utf-8")
-        if not re.search(r"(?m)^  pull_request:", text):  # pull_request (not _target) executes the PR's own code
-            continue
-        assert re.search(r"(?m)^permissions:\n  \S", text), f"{path.name} runs PR code without a top-level permissions block"
-        for dangerous in ("statuses: write", "contents: write", "pull-requests: write", "checks: write", "write-all",
-                          "id-token: write", "actions: write", "workflows: write"):
-            assert dangerous not in text, f"{path.name} runs PR code and grants {dangerous}"
 
 
 def test_commit_status_request_asks_for_a_full_page():

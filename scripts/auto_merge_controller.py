@@ -41,6 +41,32 @@ class ApiError(ControllerError):
     """A GitHub API call failed."""
 
 
+UNBYPASSABLE_RULES = {"pull_request", "required_status_checks", "non_fast_forward", "deletion"}
+
+
+def _validate_required_rulesets(specs: Any) -> None:
+    """The rulesets the base branch must be protected by. A bypass applies to every rule of its ruleset, so the
+    rules that make checks mandatory may only live in rulesets without any bypass actor."""
+    if not isinstance(specs, list) or not specs:
+        raise ValueError("required_rulesets must be a non-empty list")
+    names: set[str] = set()
+    for spec in specs:
+        if (not isinstance(spec, dict) or set(spec) != {"name", "rules", "bypass"} or not isinstance(spec["name"], str)
+                or not spec["name"] or not isinstance(spec["rules"], list) or not spec["rules"]
+                or not all(isinstance(rule, str) and rule for rule in spec["rules"])
+                or len(set(spec["rules"])) != len(spec["rules"]) or spec["bypass"] not in {"none", "merger_only"}):
+            raise ValueError("every required ruleset needs exactly name, rules and bypass (none or merger_only)")
+        if spec["name"] in names:
+            raise ValueError("required ruleset names must be unique")
+        names.add(spec["name"])
+        if spec["bypass"] == "merger_only" and set(spec["rules"]) & UNBYPASSABLE_RULES:
+            raise ValueError("a ruleset with a bypass actor must not carry the rules that make checks mandatory")
+    protected = {rule for spec in specs if spec["bypass"] == "none" for rule in spec["rules"]}
+    if not UNBYPASSABLE_RULES <= protected:
+        raise ValueError("pull_request, required_status_checks, non_fast_forward and deletion must all sit in "
+                         "rulesets without a bypass actor")
+
+
 def load_policy(path: Path) -> dict[str, Any]:
     try:
         policy = json.loads(path.read_text(encoding="utf-8"))
@@ -70,14 +96,18 @@ def load_policy(path: Path) -> dict[str, Any]:
         names = [spec["name"] for spec in policy["required_checks"]]
         if len(set(names)) != len(names):
             raise ValueError("required check names must be unique")
-        for key in ("require_branch_rules", "require_app_token"):
+        for key in ("require_rulesets", "require_app_token"):
             if not isinstance(policy[key], bool):
                 raise ValueError(f"{key} must be a boolean")
-        if (not isinstance(policy["required_branch_rules"], list) or not policy["required_branch_rules"]
-                or not all(isinstance(item, str) and item for item in policy["required_branch_rules"])):
-            raise ValueError("required_branch_rules must be a non-empty list of rule types")
-        if not policy["dry_run"] and not (policy["require_branch_rules"] and policy["require_app_token"]):
-            raise ValueError("real merges require require_branch_rules and require_app_token")
+        for key in ("merger_app_id", "check_integration_id"):
+            if type(policy[key]) is not int or policy[key] < 0:
+                raise ValueError(f"{key} must be a non-negative integer")
+        if policy["check_integration_id"] == 0:
+            raise ValueError("check_integration_id must be the GitHub Actions app id")
+        _validate_required_rulesets(policy["required_rulesets"])
+        if not policy["dry_run"] and not (policy["require_rulesets"] and policy["require_app_token"]
+                                          and policy["merger_app_id"] > 0):
+            raise ValueError("real merges require require_rulesets, require_app_token and a merger_app_id")
         if policy["merge_method"] not in MERGE_METHODS:
             raise ValueError("merge_method must be squash, merge or rebase")
         if type(policy["max_merges_per_run"]) is not int or not 1 <= policy["max_merges_per_run"] <= 5:
@@ -193,30 +223,82 @@ def _identity_blockers(check: dict[str, Any], runs: dict[int, dict[str, Any]], s
     return problems
 
 
-def rules_blockers(rules: Any, policy: dict[str, Any]) -> list[str]:
-    """GitHub must report the protection rules that make the controller's guarantees real on the base branch."""
-    if not isinstance(rules, list):
-        return ["branch rules unavailable"]
-    by_type: dict[str, list[dict[str, Any]]] = {}
-    for rule in rules:
-        if isinstance(rule, dict) and isinstance(rule.get("type"), str):
-            by_type.setdefault(rule["type"], []).append(rule)
-    blockers = [f"branch rule {kind!r} is not active on {policy['base_branch']}"
-                for kind in policy["required_branch_rules"] if kind not in by_type]
-    if "required_status_checks" in policy["required_branch_rules"] and "required_status_checks" in by_type:
-        needed = {spec["name"] for spec in policy["required_checks"]} | {spec["context"] for spec in policy["required_statuses"]}
-        strict = False
-        contexts: set[str] = set()
-        for rule in by_type["required_status_checks"]:
-            parameters = rule.get("parameters") or {}
-            strict = strict or parameters.get("strict_required_status_checks_policy") is True
-            contexts |= {entry.get("context") for entry in parameters.get("required_status_checks") or []
-                         if isinstance(entry, dict)}
-        if not strict:
-            blockers.append("required status checks do not require an up-to-date branch (strict policy)")
-        for name in sorted(needed - contexts):
-            blockers.append(f"{name!r} is not a required status check of the ruleset")
+def _ruleset_blockers(spec: dict[str, Any], listing: list[dict[str, Any]], details: dict[int, dict[str, Any]],
+                      effective: list[dict[str, Any]], policy: dict[str, Any]) -> list[str]:
+    name = spec["name"]
+    found = [entry for entry in listing if isinstance(entry, dict) and entry.get("name") == name]
+    if len(found) != 1:
+        return [f"ruleset {name!r} is missing or ambiguous ({len(found)} found)"]
+    ruleset_id = found[0].get("id")
+    ruleset = details.get(ruleset_id) if type(ruleset_id) is int else None
+    if not isinstance(ruleset, dict):
+        return [f"ruleset {name!r} could not be read"]
+    out: list[str] = []
+    if ruleset.get("enforcement") != "active":
+        out.append(f"ruleset {name!r} is not active (enforcement {ruleset.get('enforcement')!r})")
+    if ruleset.get("target") != "branch" or ruleset.get("source_type") != "Repository":
+        out.append(f"ruleset {name!r} is not a repository branch ruleset")
+    ref_name = (ruleset.get("conditions") or {}).get("ref_name") or {}
+    if ref_name.get("include") != [f"refs/heads/{policy['base_branch']}"] or ref_name.get("exclude") != []:
+        out.append(f"ruleset {name!r} must target exactly refs/heads/{policy['base_branch']} without exclusions")
+    rules = [rule for rule in ruleset.get("rules") or [] if isinstance(rule, dict)]
+    types = [rule.get("type") for rule in rules]
+    if sorted(map(str, types)) != sorted(spec["rules"]):
+        out.append(f"ruleset {name!r} has rules {sorted(map(str, types))}, expected exactly {sorted(spec['rules'])}")
+    actors = ruleset.get("bypass_actors")
+    if spec["bypass"] == "none":
+        if actors != []:
+            out.append(f"ruleset {name!r} must have no bypass actors (found {actors!r})")
+    else:
+        expected = {"actor_id": policy["merger_app_id"], "actor_type": "Integration", "bypass_mode": "always"}
+        if (not isinstance(actors, list) or len(actors) != 1 or not isinstance(actors[0], dict)
+                or {key: actors[0].get(key) for key in expected} != expected):
+            out.append(f"ruleset {name!r} must have exactly one bypass actor: the merger app {policy['merger_app_id']}")
+    by_type = {rule.get("type"): rule for rule in rules}
+    if "required_status_checks" in by_type:
+        out += _status_check_rule_blockers(name, by_type["required_status_checks"].get("parameters") or {}, policy)
+    if "pull_request" in by_type:
+        if (by_type["pull_request"].get("parameters") or {}).get("required_approving_review_count") != 0:
+            out.append(f"ruleset {name!r} must require zero human approvals (the pipeline merges without review)")
+    for kind in spec["rules"]:
+        if not any(isinstance(rule, dict) and rule.get("type") == kind and rule.get("ruleset_id") == ruleset_id
+                   for rule in effective):
+            out.append(f"rule {kind!r} of ruleset {name!r} is not effective on {policy['base_branch']}")
+    return out
+
+
+def _status_check_rule_blockers(name: str, parameters: dict[str, Any], policy: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    if parameters.get("strict_required_status_checks_policy") is not True:
+        out.append(f"ruleset {name!r} does not require an up-to-date branch (strict policy)")
+    entries = [entry for entry in parameters.get("required_status_checks") or [] if isinstance(entry, dict)]
+    needed = {spec["name"] for spec in policy["required_checks"]} | {spec["context"] for spec in policy["required_statuses"]}
+    for context in sorted(needed):
+        matching = [entry for entry in entries if entry.get("context") == context]
+        if not matching:
+            out.append(f"{context!r} is not a required status check of ruleset {name!r}")
+        elif any(entry.get("integration_id") != policy["check_integration_id"] for entry in matching):
+            out.append(f"required check {context!r} is not bound to the GitHub Actions app")
+    return out
+
+
+def rulesets_blockers(listing: Any, details: dict[int, dict[str, Any]] | None, effective: Any,
+                      policy: dict[str, Any]) -> list[str]:
+    """GitHub must report, with their bypass configuration, the rulesets that make the guarantees real."""
+    if not isinstance(listing, list) or not isinstance(details, dict) or not isinstance(effective, list):
+        return ["rulesets unavailable"]
+    blockers: list[str] = []
+    for spec in policy["required_rulesets"]:
+        blockers += _ruleset_blockers(spec, listing, details, effective, policy)
     return blockers
+
+
+def fetch_rulesets(api: Any, policy: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[int, dict[str, Any]], Any]:
+    listing = api.rulesets()
+    wanted = {spec["name"] for spec in policy["required_rulesets"]}
+    ids = sorted({entry["id"] for entry in listing if isinstance(entry, dict) and entry.get("name") in wanted
+                  and type(entry.get("id")) is int})
+    return listing, {ruleset_id: api.ruleset(ruleset_id) for ruleset_id in ids}, api.branch_rules(policy["base_branch"])
 
 
 def pr_blockers(pr: dict[str, Any], policy: dict[str, Any], repo: str) -> list[str]:
@@ -307,13 +389,13 @@ def run(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[str,
         emit(f"controller failed closed: real merges need a GitHub App token for the merger identity (token kind: {token_kind!r}).")
         return 1
     try:
-        if policy["require_branch_rules"]:
-            problems = rules_blockers(api.branch_rules(policy["base_branch"]), policy)
+        if policy["require_rulesets"]:
+            problems = rulesets_blockers(*fetch_rulesets(api, policy), policy)
             if problems:
-                emit(json.dumps({"scope": "branch-rules", "outcome": "blocked", "reasons": problems}))
+                emit(json.dumps({"scope": "rulesets", "outcome": "blocked", "reasons": problems}))
                 return 1
-    except ControllerError as error:
-        emit(f"controller failed closed: {error}")
+    except Exception as error:  # fail closed on every error while reading the protection rules
+        emit(f"controller failed closed: {type(error).__name__}: {error}"[:400])
         return 1
     try:
         candidates = [pr for pr in api.open_pulls(policy["base_branch"]) if is_worker_pr(pr, policy)]
@@ -402,6 +484,12 @@ class GhApi:
             raise ControllerError("unsafe base branch name")
         return self._gh(f"repos/{self.repo}/compare/{base}...{self._sha(sha)}")
 
+    def rulesets(self) -> list[dict[str, Any]]:
+        return self._pages(f"repos/{self.repo}/rulesets?includes_parents=true", None)
+
+    def ruleset(self, ruleset_id: int) -> dict[str, Any]:
+        return self._gh(f"repos/{self.repo}/rulesets/{self._number(ruleset_id)}")
+
     def branch_rules(self, branch: str) -> list[dict[str, Any]]:
         if not re.fullmatch(r"[A-Za-z0-9._-]+", branch):
             raise ControllerError("unsafe branch name")
@@ -448,7 +536,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--policy", type=Path, required=True, help="merge policy taken from the base branch")
     parser.add_argument("--gate-policy", type=Path, required=True, help="path-gate policy taken from the base branch")
     parser.add_argument("--repository", type=Path, default=Path("."))
+    parser.add_argument("--verify-rulesets", action="store_true",
+                        help="Read-only: check the rulesets and their bypass actors against the policy and exit.")
     args = parser.parse_args(argv)
+    if args.verify_rulesets:
+        try:
+            policy = load_policy(args.policy)
+            problems = rulesets_blockers(*fetch_rulesets(GhApi(args.repo), policy), policy)
+        except ControllerError as error:
+            print(f"verification failed closed: {error}", file=sys.stderr)
+            return 1
+        print(json.dumps({"scope": "rulesets", "ok": not problems, "problems": problems}))
+        return 1 if problems else 0
     try:
         policy = load_policy(args.policy)
         if not policy["enabled"]:

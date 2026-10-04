@@ -33,13 +33,27 @@
       "event": "pull_request_target"
     }
   ],
-  "require_branch_rules": true,
-  "required_branch_rules": [
-    "pull_request",
-    "required_status_checks",
-    "non_fast_forward",
-    "deletion",
-    "update"
-  ],
-  "require_app_token": true
+  "require_app_token": true,
+  "require_rulesets": true,
+  "merger_app_id": 0,
+  "check_integration_id": 15368,
+  "required_rulesets": [
+    {
+      "name": "platform-main merge conditions",
+      "rules": [
+        "deletion",
+        "non_fast_forward",
+        "pull_request",
+        "required_status_checks"
+      ],
+      "bypass": "none"
+    },
+    {
+      "name": "platform-main restrict updates",
+      "rules": [
+        "update"
+      ],
+      "bypass": "merger_only"
+    }
+  ]
 }
