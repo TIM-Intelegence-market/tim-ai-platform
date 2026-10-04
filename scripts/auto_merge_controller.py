@@ -108,6 +108,8 @@ def load_policy(path: Path) -> dict[str, Any]:
         if not policy["dry_run"] and not (policy["require_rulesets"] and policy["require_app_token"]
                                           and policy["merger_app_id"] > 0):
             raise ValueError("real merges require require_rulesets, require_app_token and a merger_app_id")
+        if not policy["dry_run"] and policy["max_merges_per_run"] != 1:
+            raise ValueError("real runs merge exactly one pull request per run (max_merges_per_run must be 1)")
         if policy["merge_method"] not in MERGE_METHODS:
             raise ValueError("merge_method must be squash, merge or rebase")
         if type(policy["max_merges_per_run"]) is not int or not 1 <= policy["max_merges_per_run"] <= 5:
@@ -337,7 +339,7 @@ class Decision:
 
 
 def decide(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[str, Any], repo: str,
-           number: int) -> Decision:
+           number: int, merge_guard: Callable[[], list[str]] | None = None) -> Decision:
     """Evaluate one PR and, when allowed by the policy, take exactly one step towards merging it."""
     try:
         pr = api.pull(number)
@@ -372,6 +374,10 @@ def decide(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[s
         if again.get("behind_by") != 0 or type(again.get("behind_by")) is not int \
                 or (again.get("merge_base_commit") or {}).get("sha") != merge_base:
             return Decision(number, "blocked", sha, ["base branch moved during evaluation"])
+        if merge_guard is not None:  # the protection rules are re-read right before every merge, not once per run
+            problems = merge_guard()
+            if problems:
+                return Decision(number, "blocked", sha, [f"rulesets: {item}" for item in problems])
         if policy["dry_run"]:
             return Decision(number, "would-merge", sha)
         api.merge(number, sha, policy["merge_method"])
@@ -402,9 +408,12 @@ def run(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[str,
     except ControllerError as error:
         emit(f"controller failed closed: {error}")
         return 1
+    def guard() -> list[str]:
+        return rulesets_blockers(*fetch_rulesets(api, policy), policy) if policy["require_rulesets"] else []
+
     merged = 0
     for pr in sorted(candidates, key=lambda item: int(item["number"])):
-        decision = decide(api, gate, policy, repo, int(pr["number"]))
+        decision = decide(api, gate, policy, repo, int(pr["number"]), guard)
         emit(decision.line())
         if decision.outcome in {"merged", "would-merge"}:
             merged += 1

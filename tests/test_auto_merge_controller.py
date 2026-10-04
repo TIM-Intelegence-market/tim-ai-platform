@@ -397,10 +397,83 @@ def test_empty_worker_list_means_no_pr_is_eligible():
     assert outcome(FakeApi(), policy={**POLICY, "worker_logins": []})[1] == []
 
 
-def test_at_most_the_configured_number_of_merges_per_run():
+def test_at_most_the_configured_number_of_would_merge_decisions_per_dry_run():
+    api = FakeApi(prs=[make_pr(7), make_pr(8), make_pr(9)])
+    code, decisions, calls = outcome(api, policy={**POLICY, "dry_run": True, "max_merges_per_run": 2})
+    assert [d["pr"] for d in decisions] == [7, 8] and calls == []
+
+
+def test_a_real_run_merges_at_most_one_pull_request():
     api = FakeApi(prs=[make_pr(7), make_pr(8)])
     code, decisions, calls = outcome(api)
-    assert [call[1] for call in calls] == [7]
+    assert [call[1] for call in calls] == [7] and [d["pr"] for d in decisions] == [7]
+
+
+def test_a_policy_for_real_merges_must_allow_exactly_one_merge_per_run(tmp_path):
+    for value in (2, 3, 5):
+        path = tmp_path / "policy.json"
+        path.write_text(json.dumps({**POLICY, "max_merges_per_run": value}))
+        with pytest.raises(amc.ControllerError, match="exactly one"):
+            amc.load_policy(path)
+    path.write_text(json.dumps({**POLICY, "dry_run": True, "max_merges_per_run": 3}))
+    assert amc.load_policy(path)["max_merges_per_run"] == 3
+
+
+def test_the_rulesets_are_read_again_right_before_the_merge():
+    api = FakeApi()
+    reads = []
+    original = api.rulesets
+    api.rulesets = lambda: (reads.append(1), original())[1]
+    assert outcome(api)[2] == [("merge", 7, SHA, "squash")]
+    assert len(reads) == 2, "once at the start of the run and once right before the merge"
+
+
+def test_a_ruleset_that_changes_after_the_start_of_the_run_blocks_the_merge():
+    api = FakeApi()
+    original = api.rulesets
+    state = {"calls": 0}
+
+    def rulesets():
+        state["calls"] += 1
+        if state["calls"] == 2:  # between the start check and the merge someone adds a bypass to the merge conditions
+            api.details[MERGE]["bypass_actors"] = [{"actor_id": 4242, "actor_type": "Integration", "bypass_mode": "always"}]
+        return original()
+
+    api.rulesets = rulesets
+    code, decisions, calls = outcome(api)
+    assert calls == [] and decisions[0]["outcome"] == "blocked" and "rulesets:" in decisions[0]["reasons"][0]
+
+
+def test_a_ruleset_read_error_right_before_the_merge_blocks_it():
+    api = FakeApi()
+    original = api.ruleset
+    state = {"calls": 0}
+
+    def ruleset(ruleset_id):
+        state["calls"] += 1
+        if state["calls"] > 2:
+            raise amc.ApiError("rate limited")
+        return original(ruleset_id)
+
+    api.ruleset = ruleset
+    code, decisions, calls = outcome(api)
+    assert calls == [] and decisions[0]["outcome"] == "blocked"
+
+
+def test_the_dry_run_also_applies_the_guard_so_would_merge_means_it_would_pass():
+    api = FakeApi()
+    original = api.rulesets
+    state = {"calls": 0}
+
+    def rulesets():
+        state["calls"] += 1
+        if state["calls"] == 2:
+            api.details[UPDATE]["bypass_actors"] = []
+        return original()
+
+    api.rulesets = rulesets
+    code, decisions, calls = outcome(api, policy={**POLICY, "dry_run": True})
+    assert decisions[0]["outcome"] == "blocked"
 
 
 def test_other_authors_and_other_bases_are_not_evaluated():
