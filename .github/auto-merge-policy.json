@@ -24,5 +24,13 @@
     "success"
   ],
   "merge_method": "squash",
-  "max_merges_per_run": 1
+  "max_merges_per_run": 1,
+  "required_statuses": [
+    {
+      "context": "pr-gate/head",
+      "creator": "github-actions[bot]",
+      "workflow_path": ".github/workflows/pr-gate.yml",
+      "event": "pull_request_target"
+    }
+  ]
 }

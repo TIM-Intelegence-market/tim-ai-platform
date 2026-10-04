@@ -17,6 +17,8 @@ POLICY = {
     "required_checks": [{"name": "test", "workflow_path": ".github/workflows/ci.yml", "event": "pull_request"},
                         {"name": "TIM full suite", "workflow_path": ".github/workflows/tim-full-suite.yml",
                          "event": "pull_request"}],
+    "required_statuses": [{"context": "pr-gate/head", "creator": "github-actions[bot]",
+                           "workflow_path": ".github/workflows/pr-gate.yml", "event": "pull_request_target"}],
     "check_app_slugs": ["github-actions"], "allowed_conclusions": ["success"], "merge_method": "squash",
     "max_merges_per_run": 1,
 }
@@ -45,9 +47,21 @@ GOOD_RUNS = {
     101: {"path": ".github/workflows/ci.yml", "event": "pull_request", "head_sha": SHA, "head_repository": {"full_name": REPO}},
     102: {"path": ".github/workflows/tim-full-suite.yml", "event": "pull_request", "head_sha": SHA,
           "head_repository": {"full_name": REPO}},
+    # pull_request_target runs carry the BASE commit, so only path and event of this run are compared
+    104: {"path": ".github/workflows/pr-gate.yml", "event": "pull_request_target", "head_sha": BASE_SHA,
+          "head_repository": {"full_name": REPO}},
 }
 GOOD_CHECKS = [run_ok("test"), run_ok("TIM full suite"), {**run_ok("codeql"), "app": {"slug": "github-advanced-security"}}]
-GOOD_STATUS = {"state": "pending", "total_count": 0}
+def status_entry(context="pr-gate/head", state="success", creator="github-actions[bot]", run_id=104, url="auto"):
+    url = f"https://github.com/{REPO}/actions/runs/{run_id}" if url == "auto" else url
+    return {"context": context, "state": state, "creator": {"login": creator}, "target_url": url}
+
+
+def status_of(*entries, state="success"):
+    return {"state": state, "total_count": len(entries), "statuses": list(entries)}
+
+
+GOOD_STATUS = status_of(status_entry())
 
 
 class FakeApi:
@@ -226,12 +240,44 @@ def test_the_same_check_twice_from_the_expected_workflow_is_fine_but_one_failure
     assert outcome(FakeApi(checks=failing))[2] == []
 
 
-@pytest.mark.parametrize("status", [None, {"state": "failure", "total_count": 1}, {"state": "pending", "total_count": 2}])
-def test_bad_legacy_commit_statuses_block(status):
+@pytest.mark.parametrize("status", [
+    None,
+    status_of(),                                                                     # gate status missing
+    status_of(status_entry(state="pending"), state="pending"),                       # still running
+    status_of(status_entry(state="failure"), state="failure"),
+    status_of(status_entry(state="error"), state="failure"),
+    status_of(status_entry(creator="tim-worker")),                                   # spoofed by the worker identity
+    status_of(status_entry(creator="github-actions")),                               # wrong login spelling
+    status_of(status_entry(context="PR gate")),                                      # wrong context
+    status_of(status_entry(), status_entry(state="failure"), state="failure"),       # duplicate context
+    status_of(status_entry(), status_entry(creator="tim-worker")),                   # duplicate, one spoofed
+    status_of(status_entry(), status_entry(context="other", state="failure"), state="failure"),
+    status_of(status_entry(), status_entry(context="other", state="pending"), state="pending"),
+    status_of(status_entry(url=None)), status_of(status_entry(url="")),
+    status_of(status_entry(url="https://github.com/evil/repo/actions/runs/104")),
+    status_of(status_entry(url=f"https://github.com/{REPO}/pull/7")),
+    status_of(status_entry(run_id=999)),                                             # run that does not resolve
+    {"state": "success", "total_count": 5, "statuses": [status_entry()]},            # truncated list
+    {"state": "success", "total_count": 1, "statuses": "nope"},
+])
+def test_bad_missing_or_spoofed_commit_statuses_block(status):
     api = FakeApi(status=status)
     if status is None:
         api.commit_status = lambda sha: None
-    assert outcome(api)[2] == []
+    code, decisions, calls = outcome(api)
+    assert calls == [] and decisions[0]["outcome"] == "blocked"
+
+
+@pytest.mark.parametrize("change", [{"path": ".github/workflows/other.yml"}, {"event": "pull_request"},
+                                    {"event": "push"}])
+def test_the_gate_status_must_come_from_the_gate_workflow(change):
+    runs = copy.deepcopy(GOOD_RUNS)
+    runs[104].update(change)
+    assert "comes from" in _blocked_with(FakeApi(runs=runs))
+
+
+def test_a_clean_gate_status_from_the_gate_workflow_is_accepted():
+    assert outcome(FakeApi(status=status_of(status_entry())))[2] == [("merge", 7, SHA, "squash")]
 
 
 def test_gate_violations_and_gate_crashes_block():
@@ -336,6 +382,9 @@ def test_the_shipped_policy_is_inert():
     {"required_checks": []}, {"required_checks": ["test"]}, {"required_checks": [{"name": "test"}]},
     {"required_checks": [{"name": "t", "workflow_path": "w", "event": "e"}, {"name": "t", "workflow_path": "x", "event": "e"}]},
     {"required_checks": [{"name": "t", "workflow_path": "w", "event": "e", "extra": "x"}]},
+    {"required_statuses": []}, {"required_statuses": ["pr-gate/head"]}, {"required_statuses": [{"context": "x"}]},
+    {"required_statuses": [{"context": "c", "creator": "u", "workflow_path": "w", "event": "e"},
+                           {"context": "c", "creator": "v", "workflow_path": "w", "event": "e"}]},
     {"check_app_slugs": []}, {"allowed_conclusions": []}, {"max_merges_per_run": 0},
     {"max_merges_per_run": 99}, {"max_merges_per_run": True}, {"head_branch_regex": "("}, {"base_branch": ""},
 ])
@@ -399,6 +448,24 @@ def test_compare_request_uses_a_validated_range():
     assert gh.argv[0] == ["gh", "api", f"repos/owner/repo/compare/platform-main...{SHA}"]
     with pytest.raises(amc.ControllerError):
         amc.GhApi(REPO, Gh([])).compare("a b", SHA)
+
+
+def test_commit_status_request_asks_for_a_full_page():
+    gh = Gh([json.dumps(status_of())])
+    amc.GhApi(REPO, gh).commit_status(SHA)
+    assert gh.argv[0] == ["gh", "api", f"repos/owner/repo/commits/{SHA}/status?per_page=100"]
+
+
+def test_the_gate_workflow_reports_exactly_the_status_the_policy_requires():
+    policy = amc.load_policy(ROOT / ".github" / "auto-merge-policy.json")
+    text = (ROOT / ".github" / "workflows" / "pr-gate.yml").read_text(encoding="utf-8")
+    spec = policy["required_statuses"][0]
+    assert f"context={spec['context']}" in text and spec["workflow_path"] == ".github/workflows/pr-gate.yml"
+    assert "pull_request_target:" in text and spec["event"] == "pull_request_target"
+    assert "statuses: write" in text and "state=pending" in text
+    assert "if: always()" in text and "continue-on-error: true" in text and "if: steps.gate.outcome != 'success'" in text
+    for forbidden in ("github.event.pull_request.title", "github.event.pull_request.body", "head_commit.message"):
+        assert forbidden not in text  # no PR-controlled text in status descriptions or commands
 
 
 def test_workflow_run_lookup_is_validated_and_check_runs_ask_for_the_latest():

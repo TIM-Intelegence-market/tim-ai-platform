@@ -59,6 +59,14 @@ def load_policy(path: Path) -> dict[str, Any]:
             if (not isinstance(spec, dict) or set(spec) != {"name", "workflow_path", "event"}
                     or not all(isinstance(value, str) and value for value in spec.values())):
                 raise ValueError("every required check needs exactly name, workflow_path and event")
+        if not policy["required_statuses"]:
+            raise ValueError("required_statuses must not be empty")
+        for spec in policy["required_statuses"]:
+            if (not isinstance(spec, dict) or set(spec) != {"context", "creator", "workflow_path", "event"}
+                    or not all(isinstance(value, str) and value for value in spec.values())):
+                raise ValueError("every required status needs exactly context, creator, workflow_path and event")
+        if len({spec["context"] for spec in policy["required_statuses"]}) != len(policy["required_statuses"]):
+            raise ValueError("required status contexts must be unique")
         names = [spec["name"] for spec in policy["required_checks"]]
         if len(set(names)) != len(names):
             raise ValueError("required check names must be unique")
@@ -89,10 +97,47 @@ def run_id_of(check: dict[str, Any], repo: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def required_run_ids(checks: Sequence[dict[str, Any]] | None, policy: dict[str, Any], repo: str) -> list[int]:
+def status_run_id(url: Any, repo: str) -> int | None:
+    match = re.fullmatch(rf"https://github\.com/{re.escape(repo)}/actions/runs/(\d+)", str(url or ""))
+    return int(match.group(1)) if match else None
+
+
+def required_run_ids(checks: Sequence[dict[str, Any]] | None, status: dict[str, Any] | None,
+                     policy: dict[str, Any], repo: str) -> list[int]:
     names = {spec["name"] for spec in policy["required_checks"]}
     ids = {run_id_of(check, repo) for check in (checks or []) if check.get("name") in names}
+    contexts = {spec["context"] for spec in policy["required_statuses"]}
+    ids |= {status_run_id(entry.get("target_url"), repo) for entry in ((status or {}).get("statuses") or [])
+            if isinstance(entry, dict) and entry.get("context") in contexts}
     return sorted(run_id for run_id in ids if run_id is not None)
+
+
+def status_blockers(status: dict[str, Any], runs: dict[int, dict[str, Any]], policy: dict[str, Any],
+                    repo: str) -> list[str]:
+    """Required commit statuses must be exactly one per context, successful, from the expected creator and workflow."""
+    entries = status.get("statuses")
+    if not isinstance(entries, list) or (status.get("total_count") or 0) > len(entries):
+        return ["commit statuses are incomplete"]
+    blockers: list[str] = []
+    if entries and status.get("state") != "success":
+        blockers.append(f"commit status is {status.get('state')!r}")
+    for spec in policy["required_statuses"]:
+        matching = [entry for entry in entries if isinstance(entry, dict) and entry.get("context") == spec["context"]]
+        if len(matching) != 1:
+            blockers.append(f"required status {spec['context']!r} is missing or ambiguous ({len(matching)} entries)")
+            continue
+        entry = matching[0]
+        if entry.get("state") != "success":
+            blockers.append(f"required status {spec['context']!r} is {entry.get('state')!r}")
+        if (entry.get("creator") or {}).get("login") != spec["creator"]:
+            blockers.append(f"required status {spec['context']!r} was not created by {spec['creator']!r}")
+        run_id = status_run_id(entry.get("target_url"), repo)
+        run = runs.get(run_id) if run_id is not None else None
+        if run is None:
+            blockers.append(f"required status {spec['context']!r} cannot be attributed to a workflow run of this repository")
+        elif run.get("path") != spec["workflow_path"] or run.get("event") != spec["event"]:
+            blockers.append(f"required status {spec['context']!r} comes from {run.get('path')!r} on {run.get('event')!r}")
+    return blockers
 
 
 def check_blockers(checks: Sequence[dict[str, Any]] | None, runs: dict[int, dict[str, Any]] | None,
@@ -116,8 +161,7 @@ def check_blockers(checks: Sequence[dict[str, Any]] | None, runs: dict[int, dict
             blockers.append(f"required check {spec['name']!r} is missing")
         for candidate in candidates:
             blockers += _identity_blockers(candidate, runs, spec, policy, sha, repo)
-    if status.get("total_count") and status.get("state") != "success":
-        blockers.append(f"commit status is {status.get('state')!r}")
+    blockers += status_blockers(status, runs, policy, repo)
     return blockers
 
 
@@ -189,10 +233,10 @@ def decide(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[s
                 reasons.append(f"head is not up to date with {policy['base_branch']} (behind_by={behind!r}); "
                                "the checked tree would differ from the merged tree")
         if not reasons:
-            checks = api.check_runs(sha)
-            ids = required_run_ids(checks, policy, repo)
-            runs = {run_id: api.workflow_run(run_id) for run_id in ids[:20]} if len(ids) <= 20 else None
-            reasons += check_blockers(checks, runs, api.commit_status(sha), policy, sha, repo)
+            checks, status = api.check_runs(sha), api.commit_status(sha)
+            ids = required_run_ids(checks, status, policy, repo)
+            runs = {run_id: api.workflow_run(run_id) for run_id in ids} if len(ids) <= 20 else None
+            reasons += check_blockers(checks, runs, status, policy, sha, repo)
         if not reasons:
             reasons += [f"gate: {item}" for item in gate(pr)]
         if reasons:
@@ -299,7 +343,7 @@ class GhApi:
         return self._gh(f"repos/{self.repo}/actions/runs/{self._number(run_id)}")
 
     def commit_status(self, sha: str) -> dict[str, Any]:
-        return self._gh(f"repos/{self.repo}/commits/{self._sha(sha)}/status")
+        return self._gh(f"repos/{self.repo}/commits/{self._sha(sha)}/status?per_page=100")
 
     def compare(self, base: str, sha: str) -> dict[str, Any]:
         if not re.fullmatch(r"[A-Za-z0-9._/-]+", base):
