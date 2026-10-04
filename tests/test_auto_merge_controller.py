@@ -13,7 +13,10 @@ SHA = "a" * 40
 BASE_SHA = "b" * 40
 POLICY = {
     "version": 1, "enabled": True, "dry_run": False, "base_branch": "platform-main", "worker_logins": ["tim-worker"],
-    "head_branch_regex": "^claude/issue-[0-9]+-[a-z0-9-]+$", "required_checks": ["PR gate", "test"],
+    "head_branch_regex": "^claude/issue-[0-9]+-[a-z0-9-]+$",
+    "required_checks": [{"name": "test", "workflow_path": ".github/workflows/ci.yml", "event": "pull_request"},
+                        {"name": "TIM full suite", "workflow_path": ".github/workflows/tim-full-suite.yml",
+                         "event": "pull_request"}],
     "check_app_slugs": ["github-actions"], "allowed_conclusions": ["success"], "merge_method": "squash",
     "max_merges_per_run": 1,
 }
@@ -29,16 +32,27 @@ def make_pr(number=7, **over):
     return pr
 
 
-def run_ok(name, app="github-actions"):
-    return {"name": name, "status": "completed", "conclusion": "success", "app": {"slug": app}}
+RUN_IDS = {"test": 101, "TIM full suite": 102, "codeql": 103, "PR gate": 104}
 
 
-GOOD_CHECKS = [run_ok("PR gate"), run_ok("test"), {**run_ok("codeql"), "app": {"slug": "github-advanced-security"}}]
+def run_ok(name, app="github-actions", run_id=None):
+    run_id = RUN_IDS.get(name, 900) if run_id is None else run_id
+    return {"name": name, "status": "completed", "conclusion": "success", "app": {"slug": app},
+            "details_url": f"https://github.com/{REPO}/actions/runs/{run_id}/job/1"}
+
+
+GOOD_RUNS = {
+    101: {"path": ".github/workflows/ci.yml", "event": "pull_request", "head_sha": SHA, "head_repository": {"full_name": REPO}},
+    102: {"path": ".github/workflows/tim-full-suite.yml", "event": "pull_request", "head_sha": SHA,
+          "head_repository": {"full_name": REPO}},
+}
+GOOD_CHECKS = [run_ok("test"), run_ok("TIM full suite"), {**run_ok("codeql"), "app": {"slug": "github-advanced-security"}}]
 GOOD_STATUS = {"state": "pending", "total_count": 0}
 
 
 class FakeApi:
-    def __init__(self, prs=None, checks=None, status=None, fail=None, fresh=None, behind=None):
+    def __init__(self, prs=None, checks=None, status=None, fail=None, fresh=None, behind=None, runs=None):
+        self.runs = copy.deepcopy(GOOD_RUNS) if runs is None else runs
         self.behind = {"behind_by": 0, "ahead_by": 1} if behind is None else behind
         self.prs = {pr["number"]: pr for pr in (prs or [make_pr()])}
         self.checks = GOOD_CHECKS if checks is None else checks
@@ -64,6 +78,10 @@ class FakeApi:
     def compare(self, base, sha):
         self._maybe_fail("compare")
         return self.behind
+
+    def workflow_run(self, run_id):
+        self._maybe_fail("workflow_run")
+        return self.runs[run_id]
 
     def check_runs(self, sha):
         self._maybe_fail("check_runs")
@@ -133,15 +151,21 @@ def test_a_pr_without_an_author_is_never_evaluated_or_merged():
     assert calls == [] and decisions == []
 
 
+def _checks(*extra, drop=()):
+    return [c for c in GOOD_CHECKS if c["name"] not in drop] + list(extra)
+
+
 @pytest.mark.parametrize("checks", [
-    None, [], [run_ok("test")], [run_ok("PR gate")],
-    [run_ok("PR gate", app="evil-app"), run_ok("test")],
-    [run_ok("PR gate"), run_ok("test"), {"name": "extra", "status": "in_progress", "conclusion": None}],
-    [run_ok("PR gate"), run_ok("test"), {"name": "extra", "status": "completed", "conclusion": "failure"}],
-    [run_ok("PR gate"), run_ok("test"), {"name": "extra", "status": "completed", "conclusion": "skipped"}],
-    [run_ok("PR gate"), run_ok("test"), {"name": "extra", "status": "completed", "conclusion": "cancelled"}],
-    [run_ok("PR gate"), run_ok("test"), {"name": "test", "status": "completed", "conclusion": "failure"}],
-    [{"name": "PR gate", "status": "queued", "conclusion": None}, run_ok("test")],
+    None, [], _checks(drop=("test",)), _checks(drop=("TIM full suite",)),
+    _checks(drop=("test",)) + [run_ok("test", app="evil-app")],
+    _checks({"name": "extra", "status": "in_progress", "conclusion": None}),
+    _checks({"name": "extra", "status": "completed", "conclusion": "failure"}),
+    _checks({"name": "extra", "status": "completed", "conclusion": "skipped"}),
+    _checks({"name": "extra", "status": "completed", "conclusion": "cancelled"}),
+    _checks({"name": "test", "status": "completed", "conclusion": "failure", "app": {"slug": "github-actions"},
+             "details_url": f"https://github.com/{REPO}/actions/runs/101/job/2"}),
+    _checks({"name": "test", "status": "queued", "conclusion": None, "app": {"slug": "github-actions"},
+             "details_url": f"https://github.com/{REPO}/actions/runs/101/job/2"}),
 ])
 def test_missing_pending_failed_or_spoofed_checks_block(checks):
     api = FakeApi(checks=checks)
@@ -149,6 +173,57 @@ def test_missing_pending_failed_or_spoofed_checks_block(checks):
         api.check_runs = lambda sha: None
     code, decisions, calls = outcome(api)
     assert calls == [] and decisions[0]["outcome"] == "blocked"
+
+
+def _blocked_with(api):
+    code, decisions, calls = outcome(api)
+    assert calls == [] and decisions[0]["outcome"] == "blocked"
+    return " ".join(decisions[0]["reasons"])
+
+
+def test_a_job_named_test_from_another_workflow_is_ambiguous_and_blocks():
+    runs = copy.deepcopy(GOOD_RUNS)
+    runs[777] = {"path": ".github/workflows/other.yml", "event": "pull_request", "head_sha": SHA,
+                 "head_repository": {"full_name": REPO}}
+    api = FakeApi(checks=_checks(run_ok("test", run_id=777)), runs=runs)
+    assert "ambiguous" in _blocked_with(api)
+
+
+@pytest.mark.parametrize("change, expected", [
+    ({"path": ".github/workflows/other.yml"}, "expected"),
+    ({"event": "push"}, "expected"),
+    ({"event": "pull_request_target"}, "expected"),
+    ({"head_sha": "c" * 40}, "another commit"),
+    ({"head_repository": {"full_name": "fork/repo"}}, "different repository"),
+    ({"head_repository": None}, "different repository"),
+])
+def test_required_checks_must_come_from_the_expected_workflow_for_this_head(change, expected):
+    runs = copy.deepcopy(GOOD_RUNS)
+    runs[101].update(change)
+    assert expected in _blocked_with(FakeApi(runs=runs))
+
+
+def test_a_check_that_cannot_be_attributed_to_a_run_of_this_repo_blocks():
+    for url in ("", None, "https://github.com/evil/repo/actions/runs/101/job/1", "https://example.com/actions/runs/101/job/1",
+                f"https://github.com/{REPO}/actions/runs/101"):
+        checks = _checks({**run_ok("test"), "details_url": url}, drop=("test",))
+        assert "attributed" in _blocked_with(FakeApi(checks=checks))
+
+
+def test_an_unknown_workflow_run_or_an_api_error_while_resolving_runs_blocks():
+    code, decisions, calls = outcome(FakeApi(runs={102: GOOD_RUNS[102]}))  # run 101 cannot be resolved
+    assert calls == [] and decisions[0]["outcome"] == "blocked"
+    api = FakeApi()
+    api.workflow_run = lambda run_id: (_ for _ in ()).throw(amc.ApiError("boom"))
+    code, decisions, calls = outcome(api)
+    assert calls == [] and decisions[0]["outcome"] == "blocked"
+
+
+def test_the_same_check_twice_from_the_expected_workflow_is_fine_but_one_failure_blocks():
+    both = _checks(run_ok("test"))
+    assert outcome(FakeApi(checks=both))[2] == [("merge", 7, SHA, "squash")]
+    failing = _checks({**run_ok("test"), "conclusion": "failure"})
+    assert outcome(FakeApi(checks=failing))[2] == []
 
 
 @pytest.mark.parametrize("status", [None, {"state": "failure", "total_count": 1}, {"state": "pending", "total_count": 2}])
@@ -258,7 +333,10 @@ def test_the_shipped_policy_is_inert():
 
 @pytest.mark.parametrize("change", [
     {"enabled": "yes"}, {"dry_run": 1}, {"merge_method": "fast-forward"}, {"worker_logins": "bot"},
-    {"required_checks": []}, {"check_app_slugs": []}, {"allowed_conclusions": []}, {"max_merges_per_run": 0},
+    {"required_checks": []}, {"required_checks": ["test"]}, {"required_checks": [{"name": "test"}]},
+    {"required_checks": [{"name": "t", "workflow_path": "w", "event": "e"}, {"name": "t", "workflow_path": "x", "event": "e"}]},
+    {"required_checks": [{"name": "t", "workflow_path": "w", "event": "e", "extra": "x"}]},
+    {"check_app_slugs": []}, {"allowed_conclusions": []}, {"max_merges_per_run": 0},
     {"max_merges_per_run": 99}, {"max_merges_per_run": True}, {"head_branch_regex": "("}, {"base_branch": ""},
 ])
 def test_invalid_policy_fails_closed(tmp_path, change):
@@ -321,6 +399,18 @@ def test_compare_request_uses_a_validated_range():
     assert gh.argv[0] == ["gh", "api", f"repos/owner/repo/compare/platform-main...{SHA}"]
     with pytest.raises(amc.ControllerError):
         amc.GhApi(REPO, Gh([])).compare("a b", SHA)
+
+
+def test_workflow_run_lookup_is_validated_and_check_runs_ask_for_the_latest():
+    gh = Gh([json.dumps({"path": "p"}), json.dumps({"total_count": 0, "check_runs": []})])
+    api = amc.GhApi(REPO, gh)
+    assert api.workflow_run(101) == {"path": "p"}
+    assert gh.argv[0] == ["gh", "api", "repos/owner/repo/actions/runs/101"]
+    api.check_runs(SHA)
+    assert "filter=latest" in gh.argv[1][2]
+    for bad in ("101", 0, -1, True, "../x"):
+        with pytest.raises(amc.ControllerError):
+            amc.GhApi(REPO, Gh([])).workflow_run(bad)
 
 
 def test_check_runs_are_paginated_and_incomplete_lists_are_refused():

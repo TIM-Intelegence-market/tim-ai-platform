@@ -5,9 +5,24 @@
   "base_branch": "platform-main",
   "worker_logins": [],
   "head_branch_regex": "^claude/issue-[0-9]+-[a-z0-9-]+$",
-  "required_checks": ["PR gate", "test", "TIM full suite"],
-  "check_app_slugs": ["github-actions"],
-  "allowed_conclusions": ["success"],
+  "required_checks": [
+    {
+      "name": "test",
+      "workflow_path": ".github/workflows/ci.yml",
+      "event": "pull_request"
+    },
+    {
+      "name": "TIM full suite",
+      "workflow_path": ".github/workflows/tim-full-suite.yml",
+      "event": "pull_request"
+    }
+  ],
+  "check_app_slugs": [
+    "github-actions"
+  ],
+  "allowed_conclusions": [
+    "success"
+  ],
   "merge_method": "squash",
   "max_merges_per_run": 1
 }

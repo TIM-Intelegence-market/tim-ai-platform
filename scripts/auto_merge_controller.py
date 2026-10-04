@@ -49,12 +49,19 @@ def load_policy(path: Path) -> dict[str, Any]:
         for key in ("base_branch", "head_branch_regex", "merge_method"):
             if not isinstance(policy[key], str) or not policy[key]:
                 raise ValueError(f"{key} must be a non-empty string")
-        for key in ("worker_logins", "required_checks", "check_app_slugs", "allowed_conclusions"):
+        for key in ("worker_logins", "check_app_slugs", "allowed_conclusions"):
             if not isinstance(policy[key], list) or not all(isinstance(item, str) and item for item in policy[key]):
                 raise ValueError(f"{key} must be a list of non-empty strings")
-        for key in ("required_checks", "check_app_slugs", "allowed_conclusions"):
+        for key in ("check_app_slugs", "allowed_conclusions", "required_checks"):
             if not policy[key]:
                 raise ValueError(f"{key} must not be empty")
+        for spec in policy["required_checks"]:
+            if (not isinstance(spec, dict) or set(spec) != {"name", "workflow_path", "event"}
+                    or not all(isinstance(value, str) and value for value in spec.values())):
+                raise ValueError("every required check needs exactly name, workflow_path and event")
+        names = [spec["name"] for spec in policy["required_checks"]]
+        if len(set(names)) != len(names):
+            raise ValueError("required check names must be unique")
         if policy["merge_method"] not in MERGE_METHODS:
             raise ValueError("merge_method must be squash, merge or rebase")
         if type(policy["max_merges_per_run"]) is not int or not 1 <= policy["max_merges_per_run"] <= 5:
@@ -75,9 +82,23 @@ def is_worker_pr(pr: dict[str, Any], policy: dict[str, Any]) -> bool:
     return bool(workers) and _login(pr) in workers and (pr.get("base") or {}).get("ref") == policy["base_branch"]
 
 
-def check_blockers(checks: Sequence[dict[str, Any]] | None, status: dict[str, Any] | None,
-                   policy: dict[str, Any]) -> list[str]:
-    if checks is None:
+def run_id_of(check: dict[str, Any], repo: str) -> int | None:
+    """Workflow run id from a check's details URL; None when the check cannot be attributed to a run of this repo."""
+    match = re.fullmatch(rf"https://github\.com/{re.escape(repo)}/actions/runs/(\d+)/job/\d+",
+                         str(check.get("details_url") or ""))
+    return int(match.group(1)) if match else None
+
+
+def required_run_ids(checks: Sequence[dict[str, Any]] | None, policy: dict[str, Any], repo: str) -> list[int]:
+    names = {spec["name"] for spec in policy["required_checks"]}
+    ids = {run_id_of(check, repo) for check in (checks or []) if check.get("name") in names}
+    return sorted(run_id for run_id in ids if run_id is not None)
+
+
+def check_blockers(checks: Sequence[dict[str, Any]] | None, runs: dict[int, dict[str, Any]] | None,
+                   status: dict[str, Any] | None, policy: dict[str, Any], sha: str, repo: str) -> list[str]:
+    """Checks must be complete and successful, and each required check must come from exactly the expected workflow."""
+    if checks is None or runs is None:
         return ["check runs unavailable"]
     if status is None:
         return ["commit statuses unavailable"]
@@ -89,14 +110,35 @@ def check_blockers(checks: Sequence[dict[str, Any]] | None, status: dict[str, An
             blockers.append(f"check {name!r} is {run.get('status')!r}, not completed")
         elif run.get("conclusion") not in allowed:
             blockers.append(f"check {name!r} concluded {run.get('conclusion')!r}")
-    for required in policy["required_checks"]:
-        good = [run for run in checks if run.get("name") == required and run.get("status") == "completed"
-                and run.get("conclusion") in allowed and (run.get("app") or {}).get("slug") in policy["check_app_slugs"]]
-        if not good:
-            blockers.append(f"required check {required!r} is missing or not reported by an allowed app")
+    for spec in policy["required_checks"]:
+        candidates = [run for run in checks if run.get("name") == spec["name"]]
+        if not candidates:
+            blockers.append(f"required check {spec['name']!r} is missing")
+        for candidate in candidates:
+            blockers += _identity_blockers(candidate, runs, spec, policy, sha, repo)
     if status.get("total_count") and status.get("state") != "success":
         blockers.append(f"commit status is {status.get('state')!r}")
     return blockers
+
+
+def _identity_blockers(check: dict[str, Any], runs: dict[int, dict[str, Any]], spec: dict[str, str],
+                       policy: dict[str, Any], sha: str, repo: str) -> list[str]:
+    name = spec["name"]
+    if (check.get("app") or {}).get("slug") not in policy["check_app_slugs"]:
+        return [f"check {name!r} is reported by a foreign app (ambiguous)"]
+    run_id = run_id_of(check, repo)
+    run = runs.get(run_id) if run_id is not None else None
+    if run is None:
+        return [f"check {name!r} cannot be attributed to a workflow run of this repository (ambiguous)"]
+    problems = []
+    if run.get("path") != spec["workflow_path"] or run.get("event") != spec["event"]:
+        problems.append(f"check {name!r} comes from {run.get('path')!r} on {run.get('event')!r}, expected "
+                        f"{spec['workflow_path']!r} on {spec['event']!r} (ambiguous)")
+    if run.get("head_sha") != sha:
+        problems.append(f"check {name!r} ran for another commit than the evaluated head")
+    if (run.get("head_repository") or {}).get("full_name") != repo:
+        problems.append(f"check {name!r} ran for a different repository")
+    return problems
 
 
 def pr_blockers(pr: dict[str, Any], policy: dict[str, Any], repo: str) -> list[str]:
@@ -147,7 +189,10 @@ def decide(api: Any, gate: Callable[[dict[str, Any]], list[str]], policy: dict[s
                 reasons.append(f"head is not up to date with {policy['base_branch']} (behind_by={behind!r}); "
                                "the checked tree would differ from the merged tree")
         if not reasons:
-            reasons += check_blockers(api.check_runs(sha), api.commit_status(sha), policy)
+            checks = api.check_runs(sha)
+            ids = required_run_ids(checks, policy, repo)
+            runs = {run_id: api.workflow_run(run_id) for run_id in ids[:20]} if len(ids) <= 20 else None
+            reasons += check_blockers(checks, runs, api.commit_status(sha), policy, sha, repo)
         if not reasons:
             reasons += [f"gate: {item}" for item in gate(pr)]
         if reasons:
@@ -248,7 +293,10 @@ class GhApi:
         return self._gh(f"repos/{self.repo}/pulls/{self._number(number)}")
 
     def check_runs(self, sha: str) -> list[dict[str, Any]]:
-        return self._pages(f"repos/{self.repo}/commits/{self._sha(sha)}/check-runs", "check_runs")
+        return self._pages(f"repos/{self.repo}/commits/{self._sha(sha)}/check-runs?filter=latest", "check_runs")
+
+    def workflow_run(self, run_id: int) -> dict[str, Any]:
+        return self._gh(f"repos/{self.repo}/actions/runs/{self._number(run_id)}")
 
     def commit_status(self, sha: str) -> dict[str, Any]:
         return self._gh(f"repos/{self.repo}/commits/{self._sha(sha)}/status")
