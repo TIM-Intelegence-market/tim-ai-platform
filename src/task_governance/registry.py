@@ -9,6 +9,7 @@ from enum import Enum
 import json
 import functools
 import sqlite3
+import uuid
 import threading
 import time
 
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS task_mappings (
     updated_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS engine_bindings (
     task_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, canonical_key TEXT NOT NULL, created_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS registry_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS governance_incidents (
     id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT NOT NULL,
     reason TEXT NOT NULL, detail TEXT NOT NULL, created_at REAL NOT NULL);
@@ -94,6 +96,31 @@ class TaskRegistry:
         self.db.execute('PRAGMA busy_timeout=30000')
         self._init()
 
+    @property
+    def registry_id(self) -> str:
+        """Identity of this registry file: the repository's create authority names it (`create_authority`)."""
+        with self._lock:
+            return self.db.execute("SELECT value FROM registry_meta WHERE key='registry_id'").fetchone()[0]
+
+    @_serialized
+    def rotate_registry_id(self, note: str) -> str:
+        """Give this file a new identity. Operator step for a file that was copied to another host: the copy must not
+        share the original's authority. Mappings stay; the new id is not designated until an operator says so."""
+        if not note.strip():
+            raise ValueError('a note is required')
+        old = self.registry_id
+        new = uuid.uuid4().hex
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            self.db.execute("UPDATE registry_meta SET value=? WHERE key='registry_id'", (new,))
+            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                            ('', 'REGISTRY_ID_ROTATED', f'{old} -> {new}: {note.strip()}', self.clock()))
+            self.db.execute('COMMIT')
+        except BaseException:
+            self.db.execute('ROLLBACK')
+            raise
+        return new
+
     def _init(self) -> None:
         """Switching to WAL and running DDL ignore busy_timeout when several processes open a fresh
         or old file at once, so retry on lock errors instead of failing the worker at startup."""
@@ -103,6 +130,7 @@ class TaskRegistry:
                 self.db.execute('PRAGMA journal_mode=WAL')
                 self.db.executescript(SCHEMA)
                 self._migrate()
+                self.db.execute("INSERT OR IGNORE INTO registry_meta(key,value) VALUES('registry_id',?)", (uuid.uuid4().hex,))
                 return
             except sqlite3.OperationalError as exc:
                 if 'locked' not in str(exc) and 'busy' not in str(exc) or time.monotonic() > deadline:

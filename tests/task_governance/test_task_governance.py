@@ -825,6 +825,27 @@ def test_repository_binding_accepts_url_and_git_forms(env, spelling):
     assert ensure_task(legacy_req(), TaskRegistry(reg_path), gh, claimant='w').issue_number == 11
 
 
+@pytest.mark.parametrize('spelling', ['TIM-Intelegence-market/tim-ai-platform',
+                                      'https://github.com/TIM-Intelegence-market/tim-ai-platform.git'])
+def test_legacy_authority_follows_the_repository_transfer(env, spelling):
+    reg_path, gh = env
+    gh.repository = spelling
+    gh.seed(11, legacy_req().fingerprint, marker=False)
+    r = ensure_task(legacy_req(), TaskRegistry(reg_path), gh, claimant='w')
+    assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 11 and gh.count() == 1
+
+
+def test_mapping_made_before_the_transfer_stays_valid_after_it(env):
+    reg_path, gh = env
+    gh.repository = LEGACY_REPO
+    reg = TaskRegistry(reg_path)
+    first = ensure_task(req(), reg, gh, claimant='w')
+    moved = FakeGitHub(gh.path)
+    moved.repository = 'TIM-Intelegence-market/tim-ai-platform'
+    r = ensure_task(req(), reg, moved, claimant='w')
+    assert r.outcome is not EnsureOutcome.BLOCKED and r.issue_number == first.issue_number and gh.count() == 1
+
+
 def test_trusted_authors_compare_case_insensitively(env):
     reg_path, gh = env
     gh.seed(7, req().fingerprint, author='Owner')
