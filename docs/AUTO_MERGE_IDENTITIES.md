@@ -78,4 +78,3 @@ und jeden lokal abgelegten Schlüssel lesen, und damit mit Inhaber- oder Admin-R
 
 Der Nachweis steht im Pilot ([`AUTO_MERGE_ROLLOUT.md`](AUTO_MERGE_ROLLOUT.md), Abschnitt 4a). Fällt eine Prüfung durch, bleibt der
 LaunchAgent aus und es wird nichts aktiviert. Eingerichtet hat Claude diesen Benutzer nicht; die Einrichtung ist Handarbeit des Inhabers.
-
