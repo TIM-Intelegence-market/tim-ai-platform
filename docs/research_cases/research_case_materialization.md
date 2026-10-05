@@ -20,6 +20,10 @@ Stand 2026-10-01, Builder `research-case-builder/1.0.0`.
    angefasst; Zeilen, die die Runtime nach `as_of` erweitert hat
    (`updated_at > as_of`), bleiben unberührt (`skipped_newer`) und werden auch
    von `validate` ausgelassen.
+   Anders als der Live-Upsert überschreibt der Neuaufbau auch `opened_at`:
+   Eine neu gestartete Live-Engine sieht nur spätere Observations und behält
+   deshalb den gespeicherten Wert; der Neuaufbau aus allen Observations ist
+   maßgeblich (sonst meldet `validate` solche Cases dauerhaft als Abweichung).
 
 Observations, Candles und Raw-Daten werden nie geschrieben. Das Skript nimmt
 vor und nach dem Lauf einen Fingerabdruck (Anzahl + md5 über ID, Input-Hash,

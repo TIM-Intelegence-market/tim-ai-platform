@@ -14,6 +14,13 @@ class LegacyEntry:
     duplicates: tuple[int, ...]
 
 
+# A transferred repository keeps its issue numbers; GitHub redirects the old name to the new one.
+# Both spellings therefore name the same repository and must compare equal everywhere numbers are bound.
+TRANSFERRED_REPOSITORIES: dict[str, str] = {
+    'uezeyiraydin-cell/tim-ai-platform': 'tim-intelegence-market/tim-ai-platform',   # moved 2026-10-04
+}
+
+
 # #68 evidence: M09-P0 audit is authoritative #11, retained duplicates #22..#65 (accidental series).
 LEGACY_AUTHORITIES: dict[str, LegacyEntry] = {
     'M09|P0|BASELINE_ARCHITECTURE_AUDIT|TIM|v1': LegacyEntry('uezeyiraydin-cell/tim-ai-platform', 11, tuple(range(22, 66))),

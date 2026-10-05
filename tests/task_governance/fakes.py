@@ -29,6 +29,14 @@ class FakeGitHub:
                    (number, state, (fingerprint_marker(fingerprint) if marker else 'legacy') + extra, author, int(pr)))
         db.close()
 
+    deny_create = None      # a reason: authorize_create refuses with it (models a registry the repository did not designate)
+
+    def authorize_create(self, registry_id, trusted_authors):
+        from src.task_governance import CreateNotAuthorized
+        self.authorized = getattr(self, 'authorized', []) + [registry_id]
+        if self.deny_create:
+            raise CreateNotAuthorized(self.deny_create)
+
     def find_issues(self, fingerprint, canonical_key):
         if self.blackout:
             raise ConnectionError('github unreachable')

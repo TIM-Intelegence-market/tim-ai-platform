@@ -86,7 +86,9 @@ def test_the_production_repository_needs_its_own_flag_and_the_token_is_required(
     prod = FakeRest(repository)
     assert run(prod, '--mode', 'roundtrip', '--confirm-write', repository) == 2 and prod.calls == []
     assert run(FakeRest(REPO), token=None) == 2
-    assert run(prod, '--mode', 'roundtrip', '--confirm-write', repository, '--allow-production-repo') == 0
+    # The flag lifts only the live_check refusal; create authority still refuses both production aliases.
+    assert run(prod, '--mode', 'roundtrip', '--confirm-write', repository, '--allow-production-repo') == 1
+    assert prod.issues == {}
 
 
 def test_the_token_never_appears_in_any_output(capsys):
