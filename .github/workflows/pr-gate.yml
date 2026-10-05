@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write   # only to report the gate result on the exact head SHA (context pr-gate/head)
 
 jobs:
   gate:
@@ -18,12 +19,27 @@ jobs:
     timeout-minutes: 5
     steps:
       # The default checkout credentials stay on purpose: the fetch below needs them in a
-      # private repository. The token is read-only and no PR code runs in this job.
+      # private repository. The token never runs PR code.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
-      - name: Fetch PR head as data only and pin it to the triggering commit
+      # A pull_request_target check run is not tied to the PR head commit. The gate result is therefore
+      # also published as a commit status on the exact head SHA, created by github-actions[bot] from this
+      # workflow (the controller verifies creator, context and workflow run). `pending` first, so a missing
+      # or cancelled run can never look like a pass. Descriptions are fixed text: nothing from the PR.
+      - name: Report pending on the head SHA
+        run: >-
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA"
+          -f state=pending -f context=pr-gate/head -f description="PR gate is running"
+          -f target_url="$RUN_URL"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - name: Fetch PR head as data only, pin it to the triggering commit and run the gate
+        id: gate
+        continue-on-error: true
         run: |
           git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
           fetched="$(git rev-parse refs/remotes/pr/head)"
@@ -31,15 +47,25 @@ jobs:
             echo "PR head moved from $HEAD_SHA to $fetched during the run; a new run will check it." >&2
             exit 1
           fi
+          python3 scripts/pr_gate.py --policy .github/pr-gate-policy.json \
+            --base "$BASE_SHA" --head "$HEAD_SHA" --branch "$HEAD_REF"
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      - name: Check changed paths and modes
-        run: >-
-          python3 scripts/pr_gate.py
-          --policy .github/pr-gate-policy.json
-          --base "$BASE_SHA" --head "$HEAD_SHA" --branch "$HEAD_REF"
-        env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      - name: Report the gate result on the head SHA
+        if: always()
+        run: |
+          if [ "$GATE_OUTCOME" = "success" ]; then state=success; description="PR gate passed"
+          else state=failure; description="PR gate rejected or could not run"; fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state="$state" -f context=pr-gate/head -f description="$description" -f target_url="$RUN_URL"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_OUTCOME: ${{ steps.gate.outcome }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - name: Fail the job when the gate did not pass
+        if: steps.gate.outcome != 'success'
+        run: exit 1

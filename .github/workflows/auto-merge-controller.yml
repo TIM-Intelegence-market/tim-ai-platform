@@ -1,0 +1,55 @@
+name: Auto-merge controller
+
+# INACTIVE: manual trigger only, and the policy ships with `enabled: false` and `dry_run: true`.
+# Two independent switches must change before anything can be merged (see docs/AUTO_MERGE_PLAN.md):
+#   1. a reviewed commit that adds the `schedule` trigger below, and
+#   2. a reviewed commit to .github/auto-merge-policy.json (enabled, dry_run, worker_logins).
+# The workflow runs from the base branch and checks out the base branch only; pull request code is
+# fetched as git objects by the gate step and is never checked out, installed or executed.
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "*/15 * * * *"
+
+permissions:
+  contents: write        # merge
+  pull-requests: write   # merge, mark ready
+  checks: read
+  statuses: read
+
+concurrency:
+  group: auto-merge-controller
+  cancel-in-progress: false
+
+jobs:
+  controller:
+    name: Auto-merge controller
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # workflow_dispatch runs the workflow file of whichever branch it is dispatched on; only the
+    # protected base branch may run this job, never a branch a worker can push.
+    if: github.ref == 'refs/heads/platform-main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: platform-main
+          fetch-depth: 0
+      # Real merges need the merger identity: a GitHub App token. github.token merges would not trigger
+      # follow-up workflows (for example ci.yml on push to platform-main) and cannot be a ruleset bypass actor.
+      # Before activation: pin this action to a reviewed commit SHA.
+      - name: Create merger app token
+        id: app
+        if: vars.TIM_MERGER_APP_ID != ''
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.TIM_MERGER_APP_ID }}
+          private-key: ${{ secrets.TIM_MERGER_APP_PRIVATE_KEY }}
+      - name: Evaluate worker pull requests
+        run: >-
+          python3 -m scripts.auto_merge_controller
+          --repo "$GITHUB_REPOSITORY"
+          --policy .github/auto-merge-policy.json
+          --gate-policy .github/pr-gate-policy.json
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          TIM_MERGER_TOKEN_KIND: ${{ steps.app.outputs.token && 'app' || 'github-token' }}

@@ -1,0 +1,21 @@
+{
+  "name": "platform-main restrict updates",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/platform-main"],
+      "exclude": []
+    }
+  },
+  "bypass_actors": [
+    {
+      "actor_id": 0,
+      "actor_type": "Integration",
+      "bypass_mode": "always"
+    }
+  ],
+  "rules": [
+    {"type": "update"}
+  ]
+}
