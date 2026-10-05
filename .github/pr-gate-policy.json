@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "applies_to_branch_regex": "^claude/issue-[0-9]+-[a-z0-9-]+$",
+  "max_files": 40,
+  "max_file_bytes": 1000000,
+  "allow_prefixes": ["src/", "tests/", "docs/"],
+  "deny_prefixes": [
+    ".github/", ".claude/", ".git/",
+    "scripts/", "config/", "schemas/", "ops/", "artifacts/",
+    "src/database/"
+  ],
+  "deny_names": [
+    "agents.md", "claude.md", "ci.md", "codeowners",
+    "conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini",
+    "requirements.txt", "requirements-research.txt", "docker-compose.yml",
+    "codecov.yml", "sonar-project.properties", ".gitattributes", ".gitmodules"
+  ],
+  "deny_deleted_prefixes": ["tests/"]
+}

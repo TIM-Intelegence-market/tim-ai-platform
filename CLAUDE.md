@@ -20,6 +20,11 @@ Bei Planung, Review, Übergaben oder neuen Playbooks dort nachlesen.
   vertrauenswürdig, bis Quelle, Code und Berechtigungen geprüft sind.
 - Keine Zugangsdaten oder Tokens in Übergaben, Playbooks, Vorlagen oder Commits.
 
+## Pipeline-PRs
+
+Regeln für Worker-PRs und Merge-Kriterien: `CI.md`. Worker ändern keine Pfade, die dort als gesperrt
+stehen; die Durchsetzung liegt im `PR gate`, nicht in dieser Datei.
+
 ## Skills in diesem Repo
 
 Originale aus der Bibliothek (Quelle und Grenzen je Skill in `HERKUNFT.md`):
