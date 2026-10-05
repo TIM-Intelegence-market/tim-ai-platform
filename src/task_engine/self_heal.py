@@ -14,7 +14,7 @@ import hashlib
 from pathlib import Path
 import subprocess
 
-from src.task_engine.evidence_collector import EvidenceCollector, ReproductionFailed, junit_summary
+from src.task_engine.evidence_collector import EvidenceCollector, ReproductionFailed, bytecode_free_env, junit_summary
 from src.task_engine.fix_first import ENGINE_REPAIR_EVIDENCE, FixFirstRejected
 from src.task_engine.model import TaskState
 from src.task_engine.repair_executor import RepairFailed, RepairRecipe, execute_repair
@@ -36,7 +36,7 @@ def detect(workspace, *, python, tests, out_dir, timeout=900):
     junit = out_dir / 'detection.junit.xml'
     try:
         subprocess.run([python, '-m', 'pytest', *tests, '-q', '-p', 'no:cacheprovider', f'--junitxml={junit}'],
-                       cwd=workspace, capture_output=True, text=True, timeout=timeout)
+                       cwd=workspace, capture_output=True, text=True, timeout=timeout, env=bytecode_free_env())
         summary = junit_summary(junit)
     except subprocess.TimeoutExpired:
         summary = {'failing': ['DETECTION_TIMEOUT'], 'counts': None}

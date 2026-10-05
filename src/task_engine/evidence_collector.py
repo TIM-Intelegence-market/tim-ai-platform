@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import difflib
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import xml.etree.ElementTree as ET
@@ -36,6 +37,16 @@ def junit_summary(path):
                      if case.find('failure') is not None or case.find('error') is not None)
     counts = {tag: len(list(tree.iter(tag))) for tag in ('testcase', 'failure', 'error', 'skipped')}
     return {'counts': counts, 'failing': failing}
+
+
+def bytecode_free_env():
+    """Environment for every run inside the repair workspace.
+
+    Python reuses a cached .pyc when the source's size and whole-second mtime are unchanged. A repair that
+    keeps the file size (``a - b`` -> ``a + b``) and lands in the same second as the pre-repair run would then
+    be tested against the OLD bytecode, so the post-repair report wrongly fails. Never write bytecode there.
+    """
+    return {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'}
 
 
 class EvidenceCollector:
@@ -64,7 +75,7 @@ class EvidenceCollector:
         try:
             result = subprocess.run([self.python, '-m', 'pytest', *tests, '-q', '-p', 'no:cacheprovider',
                                      f'--junitxml={junit}'], cwd=self.workspace, capture_output=True, text=True,
-                                    timeout=self.timeout)
+                                    timeout=self.timeout, env=bytecode_free_env())
         except subprocess.TimeoutExpired as error:
             raise ReproductionFailed(f'{name}: tests did not finish within {self.timeout}s') from error
         summary = junit_summary(junit)
@@ -78,7 +89,7 @@ class EvidenceCollector:
         if sha256_file(script) != self.recipe.probe['sha256']:
             raise ReproductionFailed('probe script does not match the approved recipe')
         result = subprocess.run([self.python, str(script)], cwd=self.workspace, capture_output=True, text=True,
-                                timeout=120)
+                                timeout=120, env=bytecode_free_env())
         if result.returncode != 0:
             raise ReproductionFailed(f'probe exited {result.returncode}: {result.stderr[-500:]}')
         data = json.loads(result.stdout)
