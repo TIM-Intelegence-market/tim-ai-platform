@@ -9,7 +9,9 @@ MIN_LEASE_FACTOR = 4      # lease must be at least this many times the gateway's
 import time
 
 from .identity import TaskRequest
-from .legacy import LEGACY_AUTHORITIES, TRANSFERRED_REPOSITORIES
+from .create_authority import CreateNotAuthorized
+from .legacy import LEGACY_AUTHORITIES
+from .repository_names import normalize_repository
 from .registry import Mapping, MappingState, TaskRegistry
 
 
@@ -45,6 +47,7 @@ class IssueGateway(Protocol):
     - `update_issue` also writes the marker into the issue body, which back-fills issues that
       predate the marker (e.g. #11 and #22-#65).
     - `create_issue` embeds the marker in the body.
+    - `authorize_create` is asked before every create (#68 path A, see `create_authority.py`); a gateway without it never creates.
     """
     repository: str
     max_create_seconds: float   # REQUIRED: hard upper bound (enforced via `timeout`) of one create_issue call incl. retries
@@ -52,6 +55,7 @@ class IssueGateway(Protocol):
     def find_issues(self, fingerprint: str, canonical_key: str) -> list[IssueRef]: ...
     def get_issue(self, number: int) -> IssueRef | None: ...
     def carries_marker(self, number: int, fingerprint: str) -> bool: ...   # the issue exists and still has the task marker
+    def authorize_create(self, registry_id: str, trusted_authors) -> None: ...   # raise CreateNotAuthorized unless the repository designates this registry
     def create_issue(self, request: TaskRequest, fingerprint: str, *, timeout: float) -> IssueRef: ...   # must enforce `timeout`
     def update_issue(self, number: int, request: TaskRequest, reason: str) -> None: ...
     def reopen_issue(self, number: int, request: TaskRequest, reason: str) -> None: ...
@@ -242,7 +246,20 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         blocked = registry.block(fp, 'CREATE_UNCERTAIN', 'an earlier create may have reached GitHub; no marker issue visible',
                                  token=token)
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, 'CREATE_UNCERTAIN')
-    # Nothing exists. Re-assert the claim and record the create intent right before the irreversible create.
+    # Nothing exists. Only the registry that the repository designates may create (#68, decision gate path A); the check
+    # comes before the create intent is recorded, so a refusal leaves nothing behind that could block a later creator.
+    try:
+        _authorize_create(gateway, registry, trusted_authors)
+    except CreateNotAuthorized as exc:
+        registry.release(fp, token)
+        last = registry.incidents(fp)[-1:]
+        if not last or (last[0]['reason'], last[0]['detail']) != ('CREATE_NOT_AUTHORIZED', str(exc)):     # a scheduler retries: say it once
+            registry.record_incident(fp, 'CREATE_NOT_AUTHORIZED', str(exc))
+        return EnsureResult(EnsureOutcome.BLOCKED, registry.get(fp), False, None, 'CREATE_NOT_AUTHORIZED')
+    except Exception:
+        registry.release(fp, token)              # authority unreadable: nothing was created, try again on the next run
+        raise
+    # Re-assert the claim and record the create intent right before the irreversible create.
     if not registry.begin_create(fp, token, gateway.repository):
         return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'claim lost before create')
     started = time.monotonic()
@@ -291,6 +308,16 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
             current = registry.add_duplicates(fp, [issue.number])
         return EnsureResult(EnsureOutcome.BLOCKED, current, True, issue.number, 'CLAIM_LOST_AFTER_CREATE')
     return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number)
+
+
+def _authorize_create(gateway, registry, trusted_authors) -> None:
+    """Raise `CreateNotAuthorized` unless the repository designates this registry as the one that may create.
+
+    A gateway without `authorize_create` cannot prove it: that refuses, so a gateway written without the rule never creates."""
+    authorize = getattr(gateway, 'authorize_create', None)
+    if authorize is None:
+        raise CreateNotAuthorized('the gateway has no authorize_create, so it cannot prove that this registry may create')
+    authorize(registry.registry_id, trusted_authors)
 
 
 def _recheck_created_issue(registry, gateway, request, row, trusted_authors):
@@ -387,13 +414,7 @@ def _trusted(issue, trusted_authors) -> bool:
     return trusted_authors is None or issue.author.strip().lower() in {a.strip().lower() for a in trusted_authors}
 
 
-def _norm_repo(repo) -> str:
-    text = str(repo).strip().lower().rstrip('/')
-    for prefix in ('https://github.com/', 'http://github.com/', 'github.com/', 'git@github.com:'):
-        if text.startswith(prefix):
-            text = text[len(prefix):]
-    text = text.removesuffix('.git').rstrip('/')
-    return TRANSFERRED_REPOSITORIES.get(text, text)
+_norm_repo = normalize_repository
 
 
 def _adopt(registry, gateway, fp, token, issue, duplicates, request) -> EnsureResult:
