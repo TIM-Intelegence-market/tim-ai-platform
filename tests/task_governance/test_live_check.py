@@ -85,7 +85,9 @@ def test_the_production_repository_needs_its_own_flag_and_the_token_is_required(
     prod = FakeRest(PRODUCTION_REPOSITORY)
     assert run(prod, '--mode', 'roundtrip', '--confirm-write', PRODUCTION_REPOSITORY) == 2 and prod.calls == []
     assert run(FakeRest(REPO), token=None) == 2
-    assert run(prod, '--mode', 'roundtrip', '--confirm-write', PRODUCTION_REPOSITORY, '--allow-production-repo') == 0
+    # the flag only lifts the live_check refusal; the create authority still refuses a Mission-Task create in production
+    assert run(prod, '--mode', 'roundtrip', '--confirm-write', PRODUCTION_REPOSITORY, '--allow-production-repo') == 1
+    assert prod.issues == {}
 
 
 def test_the_token_never_appears_in_any_output(capsys):
