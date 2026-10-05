@@ -206,10 +206,13 @@ class MarketRepository:
         await con.execute(query,observation.observation_id,observation.observed_at,observation.created_at,observation.kind.value,observation.symbol,observation.timeframe,observation.summary,observation.confidence,json.dumps(observation.evidence),observation.source,observation.provenance,observation.observation_version,observation.rule_id,observation.rule_version,observation.input_hash)
 
     @staticmethod
-    async def _upsert_case(con,case:ResearchCase)->None:
-        query="""INSERT INTO research_cases(case_id,symbol,timeframe,opened_at,updated_at,status,observation_ids,evidence,missing_evidence,outcome,rule_versions,documentation,review_history)
+    async def _upsert_case(con,case:ResearchCase,rebuild:bool=False)->None:
+        """Live writes keep the stored opened_at (a restarted engine only sees later observations);
+        a full rebuild from all observations is authoritative and overwrites it."""
+        opened="opened_at=EXCLUDED.opened_at," if rebuild else ""
+        query=f"""INSERT INTO research_cases(case_id,symbol,timeframe,opened_at,updated_at,status,observation_ids,evidence,missing_evidence,outcome,rule_versions,documentation,review_history)
         VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11::jsonb,$12,$13::jsonb)
-        ON CONFLICT(case_id) DO UPDATE SET updated_at=EXCLUDED.updated_at,status=EXCLUDED.status,observation_ids=EXCLUDED.observation_ids,evidence=EXCLUDED.evidence,missing_evidence=EXCLUDED.missing_evidence,outcome=EXCLUDED.outcome,rule_versions=EXCLUDED.rule_versions,documentation=EXCLUDED.documentation,review_history=EXCLUDED.review_history"""
+        ON CONFLICT(case_id) DO UPDATE SET {opened}updated_at=EXCLUDED.updated_at,status=EXCLUDED.status,observation_ids=EXCLUDED.observation_ids,evidence=EXCLUDED.evidence,missing_evidence=EXCLUDED.missing_evidence,outcome=EXCLUDED.outcome,rule_versions=EXCLUDED.rule_versions,documentation=EXCLUDED.documentation,review_history=EXCLUDED.review_history"""
         await con.execute(query,case.case_id,case.symbol,case.timeframe,case.opened_at,case.updated_at,case.status,json.dumps(case.observation_ids),json.dumps(case.evidence),json.dumps(case.missing_evidence),case.outcome,json.dumps(case.rule_versions),case.documentation,json.dumps(getattr(case,"review_history",[])))
 
     async def upsert_research_case(self, case: ResearchCase) -> None:
@@ -286,7 +289,7 @@ class MarketRepository:
                     if row is not None and _case_from_row(row).to_dict()==case.to_dict():
                         unchanged+=1
                         continue
-                    await self._upsert_case(con,case)
+                    await self._upsert_case(con,case,rebuild=True)
                     if row is None:inserted+=1
                     else:updated+=1
         return {"inserted":inserted,"updated":updated,"unchanged":unchanged,"skipped_newer":skipped_newer}
