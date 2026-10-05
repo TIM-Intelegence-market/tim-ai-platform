@@ -52,6 +52,11 @@ Workflows machen ihn mehrdeutig und blockieren), fehlendem oder unechtem `pr-gat
 Rulesets, die nicht exakt der Policy entsprechen (beide Rulesets samt Bypass-Konfiguration, siehe Ruleset-Dokument), und fehlendem App-Token. Ein Draft-PR wird zuerst auf „ready“ gesetzt und erst beim
 **nächsten** Lauf neu geprüft und gemerged.
 
+Der kombinierte Status-Endpunkt liefert den Ersteller nicht mit. Der Controller liest deshalb zusätzlich die detaillierte,
+paginierte Status-Historie und ergänzt nur den neuesten Status jedes Kontexts mit derselben ID, demselben Ergebnis und
+derselben Ziel-URL. Abweichungen zwischen den Antworten oder ein fehlender Ersteller blockieren. Ältere Statusmeldungen
+(z. B. `pending` vor `success`) werden nicht als aktuelle Meldungen bewertet.
+
 **Das Gate** (Pfade, Modi, Größe) gilt für Branches `claude/issue-N-…`: erlaubt nur `src/`, `tests/`, `docs/`; gesperrt `.github/`,
 `scripts/`, `config/`, `CI.md`, `CLAUDE.md`, Abhängigkeitslisten, `conftest.py`, `sitecustomize.py` u. a.; **bestehende Tests nur
 ergänzbar**; neue Dateien unter `tests/` nur als `test_*.py` (keine `conftest.py`, `__init__.py`, Plugins, Konfigurationsdateien, Daten,
