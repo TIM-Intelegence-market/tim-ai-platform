@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "enabled": false,
+  "dry_run": true,
+  "base_branch": "platform-main",
+  "worker_logins": [],
+  "head_branch_regex": "^claude/issue-[0-9]+-[a-z0-9-]+$",
+  "required_checks": [
+    {
+      "name": "test",
+      "workflow_path": ".github/workflows/ci.yml",
+      "event": "pull_request"
+    },
+    {
+      "name": "TIM full suite",
+      "workflow_path": ".github/workflows/tim-full-suite.yml",
+      "event": "pull_request"
+    }
+  ],
+  "check_app_slugs": [
+    "github-actions"
+  ],
+  "allowed_conclusions": [
+    "success"
+  ],
+  "merge_method": "squash",
+  "max_merges_per_run": 1,
+  "required_statuses": [
+    {
+      "context": "pr-gate/head",
+      "creator": "github-actions[bot]",
+      "workflow_path": ".github/workflows/pr-gate.yml",
+      "event": "pull_request_target"
+    }
+  ],
+  "require_app_token": true,
+  "require_rulesets": true,
+  "merger_app_id": 0,
+  "check_integration_id": 15368,
+  "required_rulesets": [
+    {
+      "name": "platform-main merge conditions",
+      "rules": [
+        "deletion",
+        "non_fast_forward",
+        "pull_request",
+        "required_status_checks"
+      ],
+      "bypass": "none"
+    },
+    {
+      "name": "platform-main restrict updates",
+      "rules": [
+        "update"
+      ],
+      "bypass": "merger_only"
+    }
+  ]
+}

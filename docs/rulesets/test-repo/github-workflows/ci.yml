@@ -1,0 +1,18 @@
+# FIXTURE for the private ruleset test repository only (copy to .github/workflows/ci.yml there).
+# It lives under docs/ in the production repository so that it never runs here.
+name: CI
+
+on:
+  pull_request:
+    branches: [platform-main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Red when the probe asks for it
+        run: test ! -f PROBE_RED_TEST
