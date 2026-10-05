@@ -76,6 +76,15 @@ async def test_materialization_against_isolated_database_is_idempotent_and_read_
         assert all(case.status != "CONFIRMED" for case in persisted)
         assert all(case.missing_evidence for case in persisted)
 
+        # A stale opened_at (kept by live upserts) must be repaired by apply, not reported forever.
+        victim = persisted[0]
+        async with db.acquire() as con:
+            await con.execute("UPDATE research_cases SET opened_at=opened_at-interval '10 minutes' WHERE case_id=$1", victim.case_id)
+        assert (await repo.apply_research_cases(again.cases))["updated"] == 1
+        assert await repo.apply_research_cases(again.cases) == {"inserted": 0, "updated": 0, "unchanged": len(again.cases), "skipped_newer": 0}
+        repaired = {c.case_id: c.to_dict() for c in await repo.observation_research_cases(SYMBOL)}
+        assert repaired == {c.case_id: c.to_dict() for c in again.cases}
+
         # The live runtime keeps appending: a row created after the cutoff must not trip the check.
         cutoff = datetime.now(timezone.utc)
         pinned = await repo.observations_fingerprint(SYMBOL, cutoff)

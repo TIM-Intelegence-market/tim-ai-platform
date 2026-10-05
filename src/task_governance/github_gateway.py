@@ -28,6 +28,7 @@ import socket
 import threading
 import time
 
+from .create_authority import AuthorityIssue, CreateNotAuthorized
 from .identity import TaskRequest, fingerprint_marker
 from .sync import CreateNotSent, IssueRef
 
@@ -128,7 +129,8 @@ def _http_transport(method, url, headers, body, timeout):
 
 class GitHubRestGateway:
     def __init__(self, repository: str, token: str, *, max_create_seconds: float = 20.0, request_timeout: float = 20.0,
-                 max_pages: int = 50, transport=_http_transport, api: str = API, clock=time.monotonic):
+                 max_pages: int = 50, transport=_http_transport, api: str = API, clock=time.monotonic,
+                 create_authority=None):
         if not re.fullmatch(r'[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+', repository or ''):
             raise ValueError('repository must look like owner/name')
         if not token:
@@ -140,6 +142,7 @@ class GitHubRestGateway:
         self._lock = threading.Lock()
         self._top = 0           # highest issue number this gateway has seen or created: lookups never stop below it
         self._clock = clock
+        self._create_authority = create_authority     # None: this gateway never lets a registry create (see create_authority.py)
         self._gone = {}         # old numbers (404, 410, redirect) that two answers at least CONFIRM_SECONDS apart called missing -> when
         self._gone_first = {}   # old number -> time of its first "missing" answer
         self._created = {}      # numbers this gateway created -> the fingerprint they carry: not read again for other fingerprints
@@ -299,7 +302,24 @@ class GitHubRestGateway:
         item = self._issue(number)
         return None if item is None else self._ref(item, number)
 
+    def authorize_create(self, registry_id, trusted_authors):
+        """Raise `CreateNotAuthorized` unless the repository designates `registry_id` as its creator. Without a configured
+        authority nobody may create."""
+        if self._create_authority is None:
+            raise CreateNotAuthorized('no create authority is configured for this gateway')
+        self._create_authority.check(self, registry_id, trusted_authors)
+
+    def read_authority_issue(self, number):
+        """The designation issue read by number (consistent, unlike the listing); None for a confirmed 404."""
+        item = self._issue(number)
+        if item is None:
+            return None
+        ref = self._ref(item, number)
+        return AuthorityIssue(ref.number, ref.state, ref.author, item.get('body') or '', ref.is_pull_request)
+
     def create_issue(self, request: TaskRequest, fingerprint, *, timeout):
+        if self._create_authority is None:       # `ensure_task` asked `authorize_create` before; a direct call must not get around it
+            raise CreateNotAuthorized('no create authority is configured for this gateway')
         body = f'{_managed(request)}\n\n{fingerprint_marker(fingerprint)}'
         try:
             _, item = self._call('POST', f'/repos/{self.repository}/issues', {'title': request.title or request.key, 'body': body},
