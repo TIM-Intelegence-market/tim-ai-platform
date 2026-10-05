@@ -813,6 +813,40 @@ def test_commit_status_request_asks_for_a_full_page():
     assert gh.argv[0] == ["gh", "api", f"repos/owner/repo/commits/{SHA}/status?per_page=100"]
 
 
+def test_commit_status_recovers_creator_from_detailed_api_and_ignores_old_history():
+    detailed = {"id": 42, **status_entry()}
+    summary = {key: value for key, value in detailed.items() if key != "creator"}
+    old = {**detailed, "id": 41, "state": "pending", "creator": {"login": "foreign"}}
+    gh = Gh([json.dumps(status_of(summary)), json.dumps([detailed, old])])
+    result = amc.GhApi(REPO, gh).commit_status(SHA)
+    assert result["statuses"] == [detailed]
+    assert amc.status_blockers(result, GOOD_RUNS, POLICY, REPO) == []
+    assert gh.argv[1][2].endswith("/statuses?per_page=100&page=1")
+
+
+@pytest.mark.parametrize("change", [
+    {"id": 43}, {"state": "failure"}, {"context": "different"}, {"target_url": "foreign"},
+    {"creator": None}, {"creator": {}},
+])
+def test_commit_status_blocks_changed_or_unattributable_details(change):
+    detailed = {"id": 42, **status_entry()}
+    summary = {key: value for key, value in detailed.items() if key != "creator"}
+    gh = Gh([json.dumps(status_of(summary)), json.dumps([{**detailed, **change}])])
+    with pytest.raises(amc.ApiError):
+        amc.GhApi(REPO, gh).commit_status(SHA)
+
+
+def test_commit_status_does_not_trust_combined_creator_or_suppress_api_errors():
+    detailed = {"id": 42, **status_entry(creator="foreign")}
+    combined = {**detailed, "creator": {"login": "github-actions[bot]"}}
+    gh = Gh([json.dumps(status_of(combined)), json.dumps([detailed])])
+    result = amc.GhApi(REPO, gh).commit_status(SHA)
+    assert any("was not created by" in reason for reason in amc.status_blockers(result, GOOD_RUNS, POLICY, REPO))
+    gh = Gh([json.dumps(status_of(combined)), subprocess.CalledProcessError(1, "gh", stderr="HTTP 403")])
+    with pytest.raises(amc.ApiError):
+        amc.GhApi(REPO, gh).commit_status(SHA)
+
+
 def test_the_gate_workflow_reports_exactly_the_status_the_policy_requires():
     policy = amc.load_policy(ROOT / ".github" / "auto-merge-policy.json")
     text = (ROOT / ".github" / "workflows" / "pr-gate.yml").read_text(encoding="utf-8")

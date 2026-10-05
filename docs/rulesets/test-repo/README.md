@@ -27,3 +27,6 @@ landet im Testrepository und nicht im Produktionsrepository. Aufbau (alles Handa
    ist eine Ablehnung (HTTP 405 oder 403). Für „Status fehlt“: PR öffnen, solange der Workflow `PR gate` im Testrepository deaktiviert ist.
 7. Erst wenn alle Versuche im Testrepository wie erwartet scheitern **und** der Gleichheitsbeleg leer ist, folgen im Produktionsrepository nur noch
    die **lesenden** Prüfungen (Versuche 9 und 10); dort wird kein roter, fehlender oder veralteter PR gemergt.
+
+Die Gate-Fixture liest Commit und Root-Tree als Metadaten. Nur ein erfolgreich gelesener, gültiger Tree ohne
+`PROBE_GATE_FAIL` erzeugt `success`; API-Fehler oder ungültige Antworten erzeugen `failure`. PR-Code wird nicht ausgeführt.

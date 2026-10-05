@@ -486,7 +486,35 @@ class GhApi:
         return self._gh(f"repos/{self.repo}/actions/runs/{self._number(run_id)}")
 
     def commit_status(self, sha: str) -> dict[str, Any]:
-        return self._gh(f"repos/{self.repo}/commits/{self._sha(sha)}/status?per_page=100")
+        path = f"repos/{self.repo}/commits/{self._sha(sha)}"
+        combined = self._gh(f"{path}/status?per_page=100")
+        if not isinstance(combined, dict) or not isinstance(combined.get("statuses"), list):
+            raise ApiError("unexpected combined status response")
+        entries = combined["statuses"]
+        if not entries:
+            return combined
+        # The combined endpoint omits creator. The detailed endpoint includes it
+        # and returns status history newest first, not one item per context.
+        latest: dict[str, dict[str, Any]] = {}
+        for entry in self._pages(f"{path}/statuses", None):
+            if (not isinstance(entry, dict) or not isinstance(entry.get("context"), str)
+                    or type(entry.get("id")) is not int or entry["id"] <= 0):
+                raise ApiError("invalid detailed status response")
+            latest.setdefault(entry["context"], entry)
+        hydrated = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ApiError("invalid combined status entry")
+            detailed = latest.get(entry.get("context"))
+            if detailed is None or any(entry.get(key) != detailed.get(key)
+                                       for key in ("id", "context", "state", "target_url")):
+                raise ApiError("commit statuses changed or disagree between endpoints")
+            if not isinstance(detailed.get("creator"), dict) or not detailed["creator"].get("login"):
+                raise ApiError("status creator unavailable")
+            hydrated.append(detailed)
+        if {entry.get("context") for entry in entries} != set(latest):
+            raise ApiError("commit status contexts changed or are incomplete")
+        return {**combined, "statuses": hydrated}
 
     def compare(self, base: str, sha: str) -> dict[str, Any]:
         if not re.fullmatch(r"[A-Za-z0-9._/-]+", base):
