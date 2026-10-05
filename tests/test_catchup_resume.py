@@ -223,3 +223,38 @@ async def test_unhelpful_probe_is_not_repeated_on_every_duplicate_page() -> None
     assert result.status == "COMPLETE"
     assert calls[0][0] == 121
     assert store.probe_calls <= 2
+
+
+@pytest.mark.asyncio
+async def test_backfill_below_cursor_is_deferred_once_the_queue_is_busy(database) -> None:
+    from src.data_ingestion.durable import DurableIngestionStore
+
+    store = DurableIngestionStore(database, queue_capacity=10_000, historical_queue_capacity=3)
+    symbol = "RESUMEC"
+    for trade_id in [*range(10, 13), 30]:
+        await store.ingest_trade(trade(symbol, trade_id))
+    # Live trades stay PENDING regardless of the historical cap.
+    for trade_id in range(20, 24):
+        await store.ingest_trade(trade(symbol, trade_id))
+    await store.ingest_trade(trade(symbol, 31))
+    async with database.acquire() as connection:
+        rows = dict(await connection.fetch(
+            "SELECT aggregate_trade_id,status FROM ingestion_outbox WHERE symbol=$1", symbol))
+    assert {rows[i] for i in (10, 11, 12, 30, 31)} == {"PENDING"}
+    # Below the cursor (30) and with 4+ rows already queued: offline backfill.
+    assert {rows[i] for i in range(20, 24)} == {"DEFERRED"}
+
+
+@pytest.mark.asyncio
+async def test_small_backfill_below_cursor_stays_live(database) -> None:
+    from src.data_ingestion.durable import DurableIngestionStore
+
+    store = DurableIngestionStore(database, queue_capacity=10_000, historical_queue_capacity=100)
+    symbol = "RESUMED"
+    await store.ingest_trade(trade(symbol, 10))
+    await store.ingest_trade(trade(symbol, 12))
+    await store.ingest_trade(trade(symbol, 11))
+    async with database.acquire() as connection:
+        status = await connection.fetchval(
+            "SELECT status FROM ingestion_outbox WHERE symbol=$1 AND aggregate_trade_id=11", symbol)
+    assert status == "PENDING"
