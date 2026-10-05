@@ -9,7 +9,7 @@ MIN_LEASE_FACTOR = 4      # lease must be at least this many times the gateway's
 import time
 
 from .identity import TaskRequest
-from .legacy import LEGACY_AUTHORITIES
+from .legacy import LEGACY_AUTHORITIES, TRANSFERRED_REPOSITORIES
 from .registry import Mapping, MappingState, TaskRegistry
 
 
@@ -392,7 +392,8 @@ def _norm_repo(repo) -> str:
     for prefix in ('https://github.com/', 'http://github.com/', 'github.com/', 'git@github.com:'):
         if text.startswith(prefix):
             text = text[len(prefix):]
-    return text.removesuffix('.git').rstrip('/')
+    text = text.removesuffix('.git').rstrip('/')
+    return TRANSFERRED_REPOSITORIES.get(text, text)
 
 
 def _adopt(registry, gateway, fp, token, issue, duplicates, request) -> EnsureResult:
