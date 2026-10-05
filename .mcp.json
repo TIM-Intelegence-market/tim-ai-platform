@@ -3,9 +3,24 @@
     "tim-graph": {
       "type": "stdio",
       "command": "${TIM_GRAPH_MCP_PY:-python3}",
-      "args": ["-m", "src.graph_mcp.mcp_server"],
+      "args": [
+        "-m",
+        "src.graph_mcp.mcp_server"
+      ],
       "env": {
         "TIM_GRAPH_MCP_ROOT": "${TIM_GRAPH_MCP_ROOT:-.}"
+      }
+    },
+    "tim-ops": {
+      "type": "stdio",
+      "command": "${TIM_GRAPH_MCP_PY:-python3}",
+      "args": [
+        "-m",
+        "src.ops_mcp.mcp_server"
+      ],
+      "env": {
+        "TIM_OPS_MCP_ROOT": "${TIM_OPS_MCP_ROOT:-.}",
+        "TIM_OPS_TASK_DB": "${TIM_OPS_TASK_DB:-}"
       }
     }
   }
