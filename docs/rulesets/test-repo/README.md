@@ -4,7 +4,7 @@
 landet im Testrepository und nicht im Produktionsrepository. Aufbau (alles Handarbeit des Inhabers, nichts davon hat Claude getan):
 
 1. Ein **privates** Repository anlegen, zum Beispiel `tim-ai-platform-rulesets-test`, mit dem Standard-Branch `platform-main` und
-   einem ersten Commit. Dasselbe Konto und derselbe Plan wie das Produktionsrepository (GitHub Pro gilt für alle privaten Repositories des Kontos).
+   einem ersten Commit. Dieselbe Organisation (`TIM-Intelegence-market`) und derselbe Plan wie das Produktionsrepository, sonst sind die Rulesets nicht vergleichbar.
 2. Beide Apps (Worker und Merger) auf dieses Repository installieren, mit **denselben** Rechten wie im Produktionsrepository.
 3. Die drei Dateien aus [`github-workflows/`](github-workflows/) nach `.github/workflows/` des Testrepositories kopieren. Sie erzeugen genau die
    drei Pflicht-Kontexte (`test`, `TIM full suite`, `pr-gate/head`) von `github-actions`; je eine Datei im PR lässt einen davon rot werden:

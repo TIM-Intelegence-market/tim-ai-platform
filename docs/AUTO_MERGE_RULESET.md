@@ -7,7 +7,11 @@ Bypass-Konfiguration** (`GET /repos/{repo}/rulesets`, `.../rulesets/{id}`, `.../
 Policy und bricht bei jeder Abweichung oder jedem Lesefehler ab. Dasselbe lesende Prüfen ohne Merge:
 `python -m scripts.auto_merge_controller --repo OWNER/REPO --policy .github/auto-merge-policy.json --gate-policy .github/pr-gate-policy.json --verify-rulesets`.
 
-## 1. Der HTTP-403-Block (am 2026-10-04 lesend verifiziert)
+## 1. Der HTTP-403-Block (am 2026-10-04 lesend verifiziert, vor dem Umzug)
+
+**Nachtrag 2026-10-05:** Das Repository liegt jetzt in der Organisation `TIM-Intelegence-market` (privat, `owner.type: Organization`,
+gleiche Repository-ID). Die Abfragen unten stammen von davor. Ob Rulesets jetzt verfügbar sind, hängt vom Plan der Organisation ab
+und ist **nicht neu geprüft**. Der erste Schritt ist dieselbe lesende Abfrage gegen `repos/TIM-Intelegence-market/tim-ai-platform/rulesets`.
 
 Drei reine `GET`-Abfragen mit dem Integrations-Token der Entwicklungssitzung. Es wurde kein Admin-Token verwendet und nichts
 umgangen oder geändert.
@@ -28,7 +32,7 @@ Pro habe ich nicht verifiziert.
 
 | Weg | Bewertung |
 |---|---|
-| Privat mit GitHub Pro | empfohlen: schaltet Rulesets, Pflicht-Checks und Bypass-Listen frei |
+| Privat mit GitHub Team für die Organisation | empfohlen: schaltet nach meinem Kenntnisstand Rulesets, Pflicht-Checks und Bypass-Listen frei (nicht verifiziert). GitHub Pro des persönlichen Kontos hilft seit dem Umzug nicht mehr |
 | Öffentlich | nicht empfohlen: Betriebs- und Governance-Dokumente eines Trading-Systems würden öffentlich |
 | Weiter bei Draft-PRs, Merge von Hand | sicherer Zustand bis zur Entscheidung; so sind #146, #147, #149 und #150 heute |
 

@@ -42,8 +42,10 @@ Vor der Aktivierung ist `actions/create-github-app-token` auf einen geprüften C
 
 ## 4. Einrichtung (alles Handarbeit des Inhabers, nichts davon hat Claude getan)
 
-1. Beide Apps unter den persönlichen Einstellungen anlegen („Developer settings → GitHub Apps“), jeweils ohne Webhook,
-   nur für „Only on this account“, auf dieses Repository installieren, Rechte wie in der Tabelle.
+1. Beide Apps in den Einstellungen der Organisation `TIM-Intelegence-market` anlegen („Developer settings → GitHub Apps“),
+   jeweils ohne Webhook, nur für „Only on this account“, auf dieses Repository installieren, Rechte wie in der Tabelle.
+   Seit dem Umzug des Repositorys (2026-10-04) ist eine unter dem persönlichen Konto angelegte App mit „Only on this account“
+   nicht mehr auf dem Repository installierbar.
 2. Worker-Schlüssel im Schlüsselbund ablegen, Merger-Schlüssel als Actions-Secret hinterlegen. Keinen Schlüssel in Chat,
    Issue, PR oder Datei einfügen.
 3. `worker_logins` in `.github/auto-merge-policy.json` erst bei der Aktivierung eintragen (siehe Rollout-Dokument).

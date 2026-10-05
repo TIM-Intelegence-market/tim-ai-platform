@@ -17,11 +17,12 @@ Worker- und Merger-Identitäten, (3) der Gate-Workflow lief noch nie in GitHub A
 |---|---|
 | PR #146: Draft, Head `71ada63`, `TIM full suite`, `test`, `codeql` grün, enthält den `local_env`-Filter | GitHub-API gelesen |
 | PR #147: Draft, Head `023ccec` (Gate); PR #149: Draft, Head `692e278` (Bytecode-Fix) | GitHub-API gelesen |
-| Rulesets und `rules/branches/platform-main` antworten mit HTTP 403: „Upgrade to GitHub Pro or make this repository public“ | **am 2026-10-04 selbst per lesendem GET verifiziert**, Details in `AUTO_MERGE_RULESET.md` |
-| Repository ist privat, Besitzer ist ein persönliches Konto (`owner.type: User`), `allow_auto_merge: false` | selbst gelesen |
+| Rulesets und `rules/branches/platform-main` antworten mit HTTP 403: „Upgrade to GitHub Pro or make this repository public“ | **am 2026-10-04 selbst per lesendem GET verifiziert, vor dem Umzug in die Organisation**; danach nicht neu geprüft, Details in `AUTO_MERGE_RULESET.md` |
+| Repository wurde am 2026-10-04 von `uezeyiraydin-cell` in die Organisation `TIM-Intelegence-market` verschoben; es ist privat, `owner.type: Organization` | am 2026-10-05 selbst gelesen (GitHub-Suche, Repository-ID unverändert 1316019774) |
+| `allow_auto_merge: false` | vor dem Umzug selbst gelesen, danach nicht neu geprüft |
 | Der Issue-Runner nutzt das `gh`-Konto des Inhabers; ohne Patch P6 gibt es keine Worker-Identität | Code in #146 |
-| Das Konto hat derzeit GitHub Free | Folgerung aus dem 403-Text, **nicht direkt gelesen** |
-| Preis und Umfang von GitHub Pro | **nicht verifiziert** (`docs.github.com` ist im Entwicklungscontainer gesperrt) |
+| Das Konto hatte vor dem Umzug GitHub Free | Folgerung aus dem 403-Text, **nicht direkt gelesen**; der Plan der Organisation ist unbekannt |
+| Für private Repositories einer Organisation braucht es für Rulesets den Organisationsplan GitHub Team (GitHub Pro gilt nur für persönliche Konten) | nach meinem Kenntnisstand, **nicht verifiziert** (`docs.github.com` ist im Entwicklungscontainer gesperrt); Preis und Umfang ebenso |
 | Merges mit `github.token` lösen keine Folge-Workflows aus | dokumentiertes GitHub-Verhalten nach meinem Kenntnisstand, im Pilot zu bestätigen |
 | Das Merge-API-Verhalten bei verschobenem Base (HTTP 405 bei strikter Aktualität) | nach meinem Kenntnisstand, nicht selbst getestet |
 | Der Commit-Status `pr-gate/head` entsteht auf der Head-SHA und gilt als Pflicht-Check | **ungeklärt**, zeigt erst der erste Lauf nach dem Bootstrap-Merge |
