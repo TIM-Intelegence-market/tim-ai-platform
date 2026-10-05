@@ -298,6 +298,11 @@ class CatchUpCoordinator:
                 reason = f"bounded catch-up page limit {self.max_pages} reached"
         except (PublicDataError, QueueCapacityError, OSError, TimeoutError) as error:
             reason = str(error) or type(error).__name__
+        except asyncio.CancelledError:
+            # Stream timeout or shutdown: leave the gap OPEN (not CATCHING_UP)
+            # so the next connection or tim_catchup resumes it from the cursor.
+            await asyncio.shield(self._mark_open(symbol, gap_id, "catch-up cancelled (timeout or shutdown)"))
+            raise
         except Exception as error:
             reason = f"{type(error).__name__}: {error}"
 
@@ -325,13 +330,16 @@ class CatchUpCoordinator:
                 )
             reason = reason or "persisted range failed independent completeness verification"
 
+        await self._mark_open(symbol, gap_id, reason)
+        return CatchUpResult(
+            "OPEN", symbol, start_id, end_id, persisted, duplicates, pages, reason,
+            already_present=already_present,
+        )
+
+    async def _mark_open(self, symbol: str, gap_id: str, reason: str | None) -> None:
         await self.store.set_gap_status(gap_id, "OPEN", error=reason)
         await self.store.record_metric("catchup_failure_total")
         try:
             await self.store.set_recovery_state(symbol, "GAP_DETECTED")
         except Exception:
             pass
-        return CatchUpResult(
-            "OPEN", symbol, start_id, end_id, persisted, duplicates, pages, reason,
-            already_present=already_present,
-        )
