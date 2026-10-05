@@ -18,6 +18,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from .create_authority import UnrestrictedCreateAuthority
 from .engine_bridge import sync_engine_task_to_issue
 from .github_gateway import GitHubError, GitHubRestGateway
 from .registry import TaskRegistry
@@ -61,7 +62,7 @@ def _without_memory(gateway):
     """The same repository, token and transport, but none of the numbers this gateway created or saw."""
     return GitHubRestGateway(gateway.repository, gateway._token, max_create_seconds=gateway.max_create_seconds,
                              request_timeout=gateway._timeout, max_pages=gateway._max_pages, transport=gateway._transport,
-                             api=gateway._api, clock=gateway._clock)
+                             api=gateway._api, clock=gateway._clock, create_authority=gateway._create_authority)
 
 
 def run_roundtrip(gateway, workdir, *, login, run_id=None):
@@ -125,7 +126,9 @@ def main(argv=None, environ=None, transport=None):
             print('refusing the production repository: use a throw-away repository or pass --allow-production-repo', file=sys.stderr)
             return 2
     kwargs = {} if transport is None else {'transport': transport}
-    gateway = GitHubRestGateway(args.repo, token, **kwargs)
+    # the roundtrip owns the throw-away repository it writes to; `UnrestrictedCreateAuthority` refuses the production one
+    authority = UnrestrictedCreateAuthority() if args.mode == 'roundtrip' else None
+    gateway = GitHubRestGateway(args.repo, token, create_authority=authority, **kwargs)
     try:
         if args.mode == 'readonly':
             results = run_readonly(gateway, probe_issue=args.probe_issue)

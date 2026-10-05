@@ -35,6 +35,33 @@ TIM_GRAPH_MCP_ROOT=. TIM_OBSIDIAN_VAULT="$TIM_OBSIDIAN_VAULT" \
 Client registration name (distinct from `serena`/`graphify`):
 `tim-graph`.
 
+### Client registration
+
+Claude Code picks the server up from the project-scoped `.mcp.json` in the
+repo root (asks once per checkout before starting it). The entry uses
+`python3` and the current checkout; override per machine without editing
+the file:
+
+```bash
+export TIM_GRAPH_MCP_PY="$PWD/.venv/bin/python"   # Mac venv
+export TIM_OBSIDIAN_VAULT="<vault>"                # optional, enables mission/note context
+```
+
+An empty store answers `graph_health` with `"status": "empty"`; build it
+once with `refresh-all` above or the `graph_refresh_code` tool.
+
+Codex (`~/.codex/config.toml`, outside the repo):
+
+```toml
+[mcp_servers.tim-graph]
+command = "<tim worktree>/.venv/bin/python"
+args = ["-m", "src.graph_mcp.mcp_server"]
+env = { TIM_GRAPH_MCP_ROOT = "<tim worktree>", PYTHONPATH = "<tim worktree>" }
+```
+
+Codex starts the server from its own working directory, so
+`TIM_GRAPH_MCP_ROOT` and `PYTHONPATH` must be the absolute worktree path there.
+
 ## Acceptance probes
 
 ```bash
