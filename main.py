@@ -463,6 +463,11 @@ class TIMApplication:
             if lag > 1.0:
                 next_probe = loop.time()
 
+    def request_stop(self) -> None:
+        """SIGTERM/SIGINT: end the stream (even mid-catch-up) and the worker."""
+        self.stream.stop()
+        self.worker_stop.set()
+
     async def recover_quarantined(self, outbox_id: str) -> dict:
         """Explicit single-record recovery entrypoint; never scans other quarantines."""
         result = await self.enrichment_worker.recover_one(outbox_id)
@@ -492,7 +497,10 @@ class TIMApplication:
         finally:
             self.worker_stop.set()
             try:
-                await asyncio.wait_for(worker_task, timeout=30)
+                # Stream shutdown takes at most ~15 s (session cleanup + close
+                # handshake); 20 s here keeps the total under systemd's
+                # TimeoutStopSec=45 so SIGTERM never escalates to SIGKILL.
+                await asyncio.wait_for(worker_task, timeout=20)
             except TimeoutError:
                 worker_task.cancel()
                 try:
@@ -508,7 +516,7 @@ async def async_main(initialize_schema: bool) -> None:
     loop = asyncio.get_running_loop()
     for name in ("SIGINT", "SIGTERM"):
         if hasattr(signal, name):
-            loop.add_signal_handler(getattr(signal, name), app.stream.stop)
+            loop.add_signal_handler(getattr(signal, name), app.request_stop)
     await app.run(initialize_schema)
 
 
