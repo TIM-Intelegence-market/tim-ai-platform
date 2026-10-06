@@ -18,9 +18,9 @@ umgangen oder geändert.
 
 | Abfrage | Antwort |
 |---|---|
-| `GET /repos/uezeyiraydin-cell/tim-ai-platform/rulesets` | HTTP 403: *„Upgrade to GitHub Pro or make this repository public to enable this feature.“* |
+| `GET /repos/uezeyiraydin-cell/tim-ai-platform/rulesets` | HTTP 403: *„Upgrade to GitHub Pro or make this repository public to enable this feature."* |
 | `GET /repos/uezeyiraydin-cell/tim-ai-platform/rules/branches/platform-main` | HTTP 403, derselbe Text |
-| `GET /repos/uezeyiraydin-cell/tim-ai-platform/branches/platform-main/protection` | HTTP 403: *„Resource not accessible by integration“* (fehlende Token-Rechte; **kein** Planhinweis, sagt über den Plan nichts) |
+| `GET /repos/uezeyiraydin-cell/tim-ai-platform/branches/platform-main/protection` | HTTP 403: *„Resource not accessible by integration"* (fehlende Token-Rechte; **kein** Planhinweis, sagt über den Plan nichts) |
 
 Gelesene Repository-Daten: `private: true`, `owner.type: User` (persönliches Konto), `default_branch: platform-main`,
 `allow_auto_merge: false`. **Folgerung:** Rulesets sind für dieses private Repository auf dem aktuellen Plan nicht verfügbar. GitHub
@@ -49,7 +49,7 @@ genau diesen Fehler (ein einziges Ruleset mit Bypass); er wurde im Review gefund
 | Bypass-Akteure | **keine** (leere Liste) | **genau einer**: die Merger-App (`actor_type: Integration`, `bypass_mode: always`, `actor_id` vor dem Import ersetzen) |
 | Wirkung | gilt für **alle**, auch für die Merger-App: PR erforderlich, alle drei Kontexte grün, Branch aktuell, kein Force-Push, kein Löschen | niemand außer der Merger-App darf `platform-main` aktualisieren, also auch nicht per PR mergen |
 
-In GitHub unter „Settings → Rules → Rulesets → New ruleset → Import a ruleset“ (beide Dateien einzeln importieren).
+In GitHub unter „Settings → Rules → Rulesets → New ruleset → Import a ruleset" (beide Dateien einzeln importieren).
 
 **Wie ausschließlich die Merger-Identität mergt, ohne Checks umgehen zu können:** Ruleset B sperrt jede Aktualisierung von `platform-main` für alle
 außer der Merger-App. Ruleset A bleibt für die Merger-App voll wirksam, weil es keinen Bypass hat: Sie darf nur über einen PR mergen,
@@ -71,8 +71,8 @@ nicht prüfen und merged deshalb nie.
 ## 3. Der Base-Race: welche Regel verhindert den Merge?
 
 `sha=` im Merge-Aufruf schützt nur vor einem geänderten **Head**. Läuft `platform-main` nach der Prüfung weiter, schützt ausschließlich
-`strict_required_status_checks_policy: true` in Ruleset A („Branch muss vor dem Merge aktuell sein“): GitHub lehnt den Merge dann ab (nach meinem
-Kenntnisstand mit HTTP 405 „Base branch was modified“; nicht selbst getestet, siehe Negativversuch 6). Der Controller prüft zusätzlich unmittelbar vor
+`strict_required_status_checks_policy: true` in Ruleset A („Branch muss vor dem Merge aktuell sein"): GitHub lehnt den Merge dann ab (nach meinem
+Kenntnisstand mit HTTP 405 „Base branch was modified"; nicht selbst getestet, siehe Negativversuch 6). Der Controller prüft zusätzlich unmittelbar vor
 dem Merge erneut `behind_by == 0` und die Merge-Basis; ein Restfenster von Millisekunden schließt nur die Regel.
 
 ## 4. Negativversuche: erst im Testrepository, dann nur lesend im Produktionsrepository
@@ -88,7 +88,7 @@ belegt sind und der Gleichheitsbeleg leer ist, bleibt `enabled: false`.
 | 1 | Worker-Token: `git push origin HEAD:platform-main` | abgelehnt (B und PR-Pflicht) | offen | nicht ausführen |
 | 2 | Worker-Token: Force-Push auf `platform-main` | abgelehnt (`non_fast_forward`) | offen | nicht ausführen |
 | 3 | Inhaber (Admin): direkter Push auf `platform-main` | abgelehnt (kein Bypass) | offen | nicht ausführen |
-| 4 | Worker-Token: Datei unter `.github/workflows/` auf einen Branch pushen | abgelehnt (App ohne Recht „Workflows“) | offen | nicht ausführen |
+| 4 | Worker-Token: Datei unter `.github/workflows/` auf einen Branch pushen | abgelehnt (App ohne Recht „Workflows") | offen | nicht ausführen |
 | 5 | Worker-Token: einen grünen PR mergen | abgelehnt (B, kein Bypass) | offen | nicht ausführen |
 | 6 | Merger-Token: einen PR mergen, dessen Branch hinter `platform-main` liegt | abgelehnt (strikte Aktualität, A) | offen | nicht ausführen |
 | 7 | Merger-Token: PR ohne den Commit-Status `pr-gate/head` mergen | abgelehnt (Pflicht-Kontext, A) | offen | nicht ausführen |
@@ -107,3 +107,58 @@ Den Merge-Aufruf nie mit deaktiviertem Ruleset wiederholen und im Testrepository
 `allow_auto_merge` ist `false` und wird **nicht** gebraucht: Der Controller merged über die API. GitHubs eigenes Auto-Merge könnte
 die Merge-Steuerung ersetzen, kennt aber weder die Autor-Identität noch das erneute Gate noch die Bindung der Checks an
 Workflows; deshalb ist es hier nicht vorgesehen.
+
+## 6. Vollständiger Parametervergleich: Policy-Sollwerte für Fail-Closed-Prüfung
+
+Der Controller prüft unmittelbar vor jedem Merge alle Ruleset-Parameter gegen diese Policy-Sollwerte aus `.github/auto-merge-policy.json`. **Alle Parameter müssen anwesend und vom exakten Typ sein; fehlende oder falschtypisierte Parameter blockieren den Merge.**
+
+### Expected Pull Request Parameters (9 erforderliche Schlüssel)
+
+```json
+{
+  "required_approving_review_count": 0,
+  "dismiss_stale_reviews_on_push": false,
+  "required_reviewers": [],
+  "require_code_owner_review": false,
+  "dismissal_restriction": {"enabled": false, "allowed_actors": []},
+  "require_last_push_approval": false,
+  "required_review_thread_resolution": false,
+  "require_extra_approval_for_unattributed_changes": true,
+  "allowed_merge_methods": ["merge", "squash", "rebase"]
+}
+```
+
+**Jeder Parameter muss exakt diesen Wert haben; Abweichungen (z.B. `dismissal_restriction: null` oder `allowed_merge_methods: ["merge", "rebase"]` ohne `squash`) blockieren den Merge mit klarer Fehlermeldung.**
+
+### Expected Status Checks Parameters (2 erforderliche Schlüssel)
+
+```json
+{
+  "strict_required_status_checks_policy": true,
+  "do_not_enforce_on_create": false
+}
+```
+
+Zusätzlich ist `required_status_checks` erforderlich, muss aber eine Liste mit Dicts enthalten (jedes mit `context: string` und `integration_id: int`). Die Kontexte kommen aus `required_checks` und `required_statuses` der vertrauenswürdigen Base-Policy; `integration_id` muss `check_integration_id` der Policy entsprechen. Das Gate liefert die Prüfergebnisse, keine Ruleset-Sollwerte.
+
+### Fehlermeldungen bei Validierungsfehlern
+
+- **Fehlender Parameter:** `ruleset 'name' is missing PR parameter 'key'`
+- **Falscher Typ:** `ruleset 'name' has PR parameter 'key' with type int, expected bool`
+- **Falscher Wert:** `ruleset 'name' has PR parameter 'key' = false, expected true`
+- **Heterogenes Array:** `ruleset 'name' has PR parameter 'allowed_merge_methods'[1] with type int, expected str`
+- **Nicht-Dict-Parameter:** `ruleset 'name' has <PR/status> parameters with type list, expected dict`
+
+**Aktuelle Policy-Version:** `version: 1`; `enabled: false`, `dry_run: true` (produktiv noch nicht aktiv); `merger_app_id: 0` (vor dem Import ersetzen).
+
+## Status (2026-10-06)
+
+- **GitHub Team / Ruleset API:** Vorhanden und lesbar in Organisation `TIM-Intelegence-market`
+- **Ruleset A (platform-main merge conditions):** ID 24518921, aktiv, kein Bypass-Akteur (erwartet)
+- **Ruleset B (platform-main restrict updates):** Noch zu prüfen; braucht genau einen Bypass-Akteur (Merger-App)
+- **Worker/Merger-Apps:** App-Token-Tests und E2E-Szenarien noch offen (Punkt 5 im Negativversuch-Plan)
+- **Auto-Merge Controller:** `enabled: false`, `dry_run: true` (deaktiviert bis Negativversuche vollständig belegt sind)
+
+---
+
+*Zuletzt aktualisiert: 2026-10-06 (Abschnitt 6 korrigiert: Gate liefert Prüfergebnisse, nicht Sollwerte; Status dokumentiert)*

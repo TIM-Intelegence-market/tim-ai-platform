@@ -104,6 +104,55 @@ def load_policy(path: Path) -> dict[str, Any]:
                 raise ValueError(f"{key} must be a non-negative integer")
         if policy["check_integration_id"] == 0:
             raise ValueError("check_integration_id must be the GitHub Actions app id")
+        pr_params = policy.get("expected_pull_request_parameters")
+        if not isinstance(pr_params, dict):
+            raise ValueError("expected_pull_request_parameters must be a dict")
+        expected_pr_keys = {"required_approving_review_count", "dismiss_stale_reviews_on_push", "required_reviewers",
+                            "require_code_owner_review", "dismissal_restriction", "require_last_push_approval",
+                            "required_review_thread_resolution", "require_extra_approval_for_unattributed_changes",
+                            "allowed_merge_methods"}
+        if set(pr_params.keys()) != expected_pr_keys:
+            raise ValueError(f"expected_pull_request_parameters must have exactly {expected_pr_keys}, found {set(pr_params.keys())}")
+        if type(pr_params.get("required_approving_review_count")) is not int or pr_params.get("required_approving_review_count") != 0:
+            raise ValueError("expected_pull_request_parameters.required_approving_review_count must be 0 (int)")
+        if type(pr_params.get("dismiss_stale_reviews_on_push")) is not bool or pr_params.get("dismiss_stale_reviews_on_push") is not False:
+            raise ValueError("expected_pull_request_parameters.dismiss_stale_reviews_on_push must be False (bool)")
+        if not isinstance(pr_params.get("required_reviewers"), list):
+            raise ValueError("expected_pull_request_parameters.required_reviewers must be a list")
+        if pr_params.get("required_reviewers") != []:
+            raise ValueError("expected_pull_request_parameters.required_reviewers must be empty")
+        if type(pr_params.get("require_code_owner_review")) is not bool or pr_params.get("require_code_owner_review") is not False:
+            raise ValueError("expected_pull_request_parameters.require_code_owner_review must be False (bool)")
+        dismissal = pr_params.get("dismissal_restriction")
+        if not isinstance(dismissal, dict) or set(dismissal.keys()) != {"enabled", "allowed_actors"}:
+            raise ValueError("expected_pull_request_parameters.dismissal_restriction must have exactly {enabled, allowed_actors}")
+        if type(dismissal.get("enabled")) is not bool or dismissal.get("enabled") is not False:
+            raise ValueError("expected_pull_request_parameters.dismissal_restriction.enabled must be False (bool)")
+        if not isinstance(dismissal.get("allowed_actors"), list) or dismissal.get("allowed_actors") != []:
+            raise ValueError("expected_pull_request_parameters.dismissal_restriction.allowed_actors must be []")
+        if type(pr_params.get("require_last_push_approval")) is not bool or pr_params.get("require_last_push_approval") is not False:
+            raise ValueError("expected_pull_request_parameters.require_last_push_approval must be False (bool)")
+        if type(pr_params.get("required_review_thread_resolution")) is not bool or pr_params.get("required_review_thread_resolution") is not False:
+            raise ValueError("expected_pull_request_parameters.required_review_thread_resolution must be False (bool)")
+        if type(pr_params.get("require_extra_approval_for_unattributed_changes")) is not bool or pr_params.get("require_extra_approval_for_unattributed_changes") is not True:
+            raise ValueError("expected_pull_request_parameters.require_extra_approval_for_unattributed_changes must be True (bool)")
+        allowed_methods = pr_params.get("allowed_merge_methods")
+        if not isinstance(allowed_methods, list):
+            raise ValueError("expected_pull_request_parameters.allowed_merge_methods must be a list")
+        if not all(isinstance(m, str) for m in allowed_methods):
+            raise ValueError("expected_pull_request_parameters.allowed_merge_methods must contain only strings")
+        if sorted(allowed_methods) != ["merge", "rebase", "squash"]:
+            raise ValueError("expected_pull_request_parameters.allowed_merge_methods must be ['merge', 'squash', 'rebase'] (unordered)")
+        status_params = policy.get("expected_status_checks_parameters")
+        if not isinstance(status_params, dict):
+            raise ValueError("expected_status_checks_parameters must be a dict")
+        expected_status_keys = {"strict_required_status_checks_policy", "do_not_enforce_on_create"}
+        if set(status_params.keys()) != expected_status_keys:
+            raise ValueError(f"expected_status_checks_parameters must have exactly {expected_status_keys}, found {set(status_params.keys())}")
+        if type(status_params.get("strict_required_status_checks_policy")) is not bool or status_params.get("strict_required_status_checks_policy") is not True:
+            raise ValueError("expected_status_checks_parameters.strict_required_status_checks_policy must be True (bool)")
+        if type(status_params.get("do_not_enforce_on_create")) is not bool or status_params.get("do_not_enforce_on_create") is not False:
+            raise ValueError("expected_status_checks_parameters.do_not_enforce_on_create must be False (bool)")
         _validate_required_rulesets(policy["required_rulesets"])
         if not policy["dry_run"] and not (policy["require_rulesets"] and policy["require_app_token"]
                                           and policy["merger_app_id"] > 0):
@@ -260,8 +309,7 @@ def _ruleset_blockers(spec: dict[str, Any], listing: list[dict[str, Any]], detai
     if "required_status_checks" in by_type:
         out += _status_check_rule_blockers(name, by_type["required_status_checks"].get("parameters") or {}, policy)
     if "pull_request" in by_type:
-        if (by_type["pull_request"].get("parameters") or {}).get("required_approving_review_count") != 0:
-            out.append(f"ruleset {name!r} must require zero human approvals (the pipeline merges without review)")
+        out += _pull_request_rule_blockers(name, by_type["pull_request"].get("parameters") or {}, policy)
     for kind in spec["rules"]:
         if not any(isinstance(rule, dict) and rule.get("type") == kind and rule.get("ruleset_id") == ruleset_id
                    for rule in effective):
@@ -269,18 +317,126 @@ def _ruleset_blockers(spec: dict[str, Any], listing: list[dict[str, Any]], detai
     return out
 
 
-def _status_check_rule_blockers(name: str, parameters: dict[str, Any], policy: dict[str, Any]) -> list[str]:
+def _pull_request_rule_blockers(name: str, parameters: dict[str, Any], policy: dict[str, Any]) -> list[str]:
+    """Validate all required PR parameters are present and match expectations; fail-closed on any deviation."""
     out: list[str] = []
-    if parameters.get("strict_required_status_checks_policy") is not True:
-        out.append(f"ruleset {name!r} does not require an up-to-date branch (strict policy)")
-    entries = [entry for entry in parameters.get("required_status_checks") or [] if isinstance(entry, dict)]
+    if not isinstance(parameters, dict):
+        return [f"ruleset {name!r} has PR parameters with type {type(parameters).__name__}, expected dict"]
+    expected_params = policy.get("expected_pull_request_parameters", {})
+    seen_keys = set(parameters.keys())
+    expected_keys = set(expected_params.keys())
+    extra_keys = seen_keys - expected_keys
+    if extra_keys:
+        out.append(f"ruleset {name!r} has unknown PR parameters: {sorted(extra_keys)}")
+    for key, expected_value in expected_params.items():
+        if key not in parameters:
+            out.append(f"ruleset {name!r} is missing PR parameter {key!r}")
+            continue
+        actual_value = parameters[key]
+        expected_type = type(expected_value)
+        actual_type = type(actual_value)
+        if actual_type is not expected_type:
+            out.append(f"ruleset {name!r} has PR parameter {key!r} with type {actual_type.__name__}, expected {expected_type.__name__}")
+            continue
+        if isinstance(expected_value, dict):
+            if not isinstance(actual_value, dict):
+                out.append(f"ruleset {name!r} has PR parameter {key!r} with type {type(actual_value).__name__}, expected dict")
+                continue
+            if set(actual_value.keys()) != set(expected_value.keys()):
+                out.append(f"ruleset {name!r} has PR parameter {key!r} with wrong keys: {sorted(actual_value.keys())}, expected {sorted(expected_value.keys())}")
+                continue
+            for dict_key, dict_expected in expected_value.items():
+                dict_actual = actual_value.get(dict_key)
+                if type(dict_actual) is not type(dict_expected):
+                    out.append(f"ruleset {name!r} has PR parameter {key!r}[{dict_key!r}] with type {type(dict_actual).__name__}, expected {type(dict_expected).__name__}")
+                elif dict_actual != dict_expected:
+                    out.append(f"ruleset {name!r} has PR parameter {key!r}[{dict_key!r}] = {dict_actual!r}, expected {dict_expected!r}")
+        elif isinstance(expected_value, list):
+            if not isinstance(actual_value, list):
+                out.append(f"ruleset {name!r} has PR parameter {key!r} with type {type(actual_value).__name__}, expected list")
+                continue
+            if len(actual_value) != len(expected_value):
+                out.append(f"ruleset {name!r} has PR parameter {key!r} with {len(actual_value)} items, expected {len(expected_value)}")
+                continue
+            # Validate all elements have the correct type (homogeneous)
+            type_errors_found = False
+            if expected_value:  # only check if the expected list is non-empty
+                expected_elem_type = type(expected_value[0])
+                for i, elem in enumerate(actual_value):
+                    if type(elem) is not expected_elem_type:
+                        out.append(f"ruleset {name!r} has PR parameter {key!r}[{i}] with type {type(elem).__name__}, expected {expected_elem_type.__name__}")
+                        type_errors_found = True
+            # Only sort if all elements have the correct type
+            if not type_errors_found and sorted(actual_value) != sorted(expected_value):
+                out.append(f"ruleset {name!r} has PR parameter {key!r} = {actual_value!r}, expected {expected_value!r}")
+        elif actual_value != expected_value:
+            out.append(f"ruleset {name!r} has PR parameter {key!r} = {actual_value!r}, expected {expected_value!r}")
+    return out
+
+
+def _status_check_rule_blockers(name: str, parameters: dict[str, Any], policy: dict[str, Any]) -> list[str]:
+    """Validate all required_status_checks rule parameters with strict type checking."""
+    out: list[str] = []
+    if not isinstance(parameters, dict):
+        return [f"ruleset {name!r} has status check parameters with type {type(parameters).__name__}, expected dict"]
+    expected_params = policy.get("expected_status_checks_parameters", {})
+    allowed_param_keys = set(expected_params.keys()) | {"required_status_checks"}
+    seen_keys = set(parameters.keys())
+    unknown_keys = seen_keys - allowed_param_keys
+    if unknown_keys:
+        out.append(f"ruleset {name!r} has unknown status check parameters: {sorted(unknown_keys)}")
+    for key, expected_value in expected_params.items():
+        if key not in parameters:
+            out.append(f"ruleset {name!r} is missing {key}")
+        elif type(parameters.get(key)) is not type(expected_value):
+            out.append(f"ruleset {name!r} has {key} with type {type(parameters.get(key)).__name__}, expected {type(expected_value).__name__}")
+        elif parameters.get(key) != expected_value:
+            out.append(f"ruleset {name!r} has {key}={parameters.get(key)!r}, expected {expected_value!r}")
+    if "required_status_checks" not in parameters:
+        out.append(f"ruleset {name!r} is missing required_status_checks")
+        return out
+    raw_entries = parameters.get("required_status_checks")
+    if not isinstance(raw_entries, list):
+        out.append(f"ruleset {name!r} has required_status_checks with type {type(raw_entries).__name__}, expected list")
+        return out
+    entries = []
+    for i, entry in enumerate(raw_entries):
+        if not isinstance(entry, dict):
+            out.append(f"ruleset {name!r} has malformed required_status_checks[{i}]: type {type(entry).__name__}, expected dict")
+            continue
+        unknown_entry_keys = set(entry.keys()) - {"context", "integration_id"}
+        if unknown_entry_keys:
+            out.append(f"ruleset {name!r} has unknown keys in required_status_checks[{i}]: {sorted(unknown_entry_keys)}")
+        if "context" not in entry:
+            out.append(f"ruleset {name!r} has required_status_checks[{i}] missing context")
+            continue
+        if "integration_id" not in entry:
+            out.append(f"ruleset {name!r} has required_status_checks[{i}] missing integration_id")
+            continue
+        if not isinstance(entry.get("context"), str):
+            out.append(f"ruleset {name!r} has required_status_checks[{i}].context with type {type(entry.get('context')).__name__}, expected str")
+            continue
+        if type(entry.get("integration_id")) is not int:
+            out.append(f"ruleset {name!r} has required_status_checks[{i}].integration_id with type {type(entry.get('integration_id')).__name__}, expected int")
+            continue
+        entries.append(entry)
     needed = {spec["name"] for spec in policy["required_checks"]} | {spec["context"] for spec in policy["required_statuses"]}
+    found = {entry.get("context") for entry in entries if isinstance(entry.get("context"), str)}
+    extra_contexts = found - needed
+    if extra_contexts:
+        out.append(f"ruleset {name!r} has extra required status checks: {sorted(extra_contexts)}")
+    missing_contexts = needed - found
+    if missing_contexts:
+        out.append(f"ruleset {name!r} is missing required status checks: {sorted(missing_contexts)}")
+    contexts_list = [entry.get("context") for entry in entries if isinstance(entry.get("context"), str)]
+    if len(contexts_list) != len(set(contexts_list)):
+        out.append(f"ruleset {name!r} has duplicate required status check contexts")
     for context in sorted(needed):
         matching = [entry for entry in entries if entry.get("context") == context]
-        if not matching:
-            out.append(f"{context!r} is not a required status check of ruleset {name!r}")
-        elif any(entry.get("integration_id") != policy["check_integration_id"] for entry in matching):
-            out.append(f"required check {context!r} is not bound to the GitHub Actions app")
+        if matching:
+            for entry in matching:
+                if entry.get("integration_id") != policy["check_integration_id"]:
+                    out.append(f"required check {context!r} is not bound to the GitHub Actions app (integration_id={entry.get('integration_id')}, expected {policy['check_integration_id']})")
     return out
 
 

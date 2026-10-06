@@ -26,6 +26,21 @@ POLICY = {
         {"name": "platform-main merge conditions", "rules": ["deletion", "non_fast_forward", "pull_request",
                                                              "required_status_checks"], "bypass": "none"},
         {"name": "platform-main restrict updates", "rules": ["update"], "bypass": "merger_only"}],
+    "expected_pull_request_parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": False,
+        "required_reviewers": [],
+        "require_code_owner_review": False,
+        "dismissal_restriction": {"enabled": False, "allowed_actors": []},
+        "require_last_push_approval": False,
+        "required_review_thread_resolution": False,
+        "require_extra_approval_for_unattributed_changes": True,
+        "allowed_merge_methods": ["merge", "squash", "rebase"]
+    },
+    "expected_status_checks_parameters": {
+        "strict_required_status_checks_policy": True,
+        "do_not_enforce_on_create": False
+    }
 }
 
 
@@ -75,9 +90,19 @@ def good_world():
     merge = {"id": 11, "name": "platform-main merge conditions", "target": "branch", "source_type": "Repository",
              "enforcement": "active", "conditions": conditions, "bypass_actors": [],
              "rules": [{"type": "deletion"}, {"type": "non_fast_forward"},
-                       {"type": "pull_request", "parameters": {"required_approving_review_count": 0}},
+                       {"type": "pull_request", "parameters": {
+                           "required_approving_review_count": 0,
+                           "dismiss_stale_reviews_on_push": False,
+                           "required_reviewers": [],
+                           "require_code_owner_review": False,
+                           "dismissal_restriction": {"enabled": False, "allowed_actors": []},
+                           "require_last_push_approval": False,
+                           "required_review_thread_resolution": False,
+                           "require_extra_approval_for_unattributed_changes": True,
+                           "allowed_merge_methods": ["merge", "squash", "rebase"]}},
                        {"type": "required_status_checks", "parameters": {
                            "strict_required_status_checks_policy": True,
+                           "do_not_enforce_on_create": False,
                            "required_status_checks": [{"context": "test", "integration_id": 15368},
                                                       {"context": "TIM full suite", "integration_id": 15368},
                                                       {"context": "pr-gate/head", "integration_id": 15368}]}}]}
@@ -525,7 +550,85 @@ def status_rule(api):
     return next(rule for rule in api.details[MERGE]["rules"] if rule["type"] == "required_status_checks")["parameters"]
 
 
+def _pop_pr_params(a):
+    api = mutate(a, MERGE, lambda r: None)
+    next(rule for rule in api.details[MERGE]["rules"] if rule["type"] == "pull_request")["parameters"].clear()
+    return api
+
 @pytest.mark.parametrize("name, fn", [
+    # pull_request rule parameter completeness
+    ("PR rule missing required_approving_review_count", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].pop("required_approving_review_count"))),
+    ("PR rule missing dismiss_stale_reviews_on_push", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].pop("dismiss_stale_reviews_on_push"))),
+    ("PR rule missing required_reviewers", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].pop("required_reviewers"))),
+    ("PR rule missing require_code_owner_review", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].pop("require_code_owner_review"))),
+    ("PR rule missing dismissal_restriction", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].pop("dismissal_restriction"))),
+    ("PR rule missing require_last_push_approval", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].pop("require_last_push_approval"))),
+    ("PR rule missing required_review_thread_resolution", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].pop("required_review_thread_resolution"))),
+    ("PR rule missing require_extra_approval_for_unattributed_changes", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].pop("require_extra_approval_for_unattributed_changes"))),
+    ("PR rule missing allowed_merge_methods", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].pop("allowed_merge_methods"))),
+    ("PR rule has extra parameter", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(extra_param=True))),
+    ("PR rule wrong dismiss_stale_reviews_on_push", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(dismiss_stale_reviews_on_push=True))),
+    ("PR rule wrong required_reviewers", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(required_reviewers=["user1"]))),
+    ("PR rule wrong require_code_owner_review", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(require_code_owner_review=True))),
+    ("PR rule wrong require_last_push_approval", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(require_last_push_approval=True))),
+    ("PR rule wrong required_review_thread_resolution", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(required_review_thread_resolution=True))),
+    ("PR rule wrong require_extra_approval_for_unattributed_changes", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(require_extra_approval_for_unattributed_changes=False))),
+    ("PR rule wrong allowed_merge_methods", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(allowed_merge_methods=["squash"]))),
+    ("PR rule wrong dismissal_restriction enabled", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"]["dismissal_restriction"].update(enabled=True))),
+    ("status check rule missing do_not_enforce_on_create", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"].pop("do_not_enforce_on_create"))),
+    ("status check rule wrong do_not_enforce_on_create", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"].update(do_not_enforce_on_create=True))),
+    ("status check rule has duplicate contexts", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"]["required_status_checks"].append(
+        {"context": "test", "integration_id": 15368}))),
+    ("status check rule has extra context", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"]["required_status_checks"].append(
+        {"context": "extra-check", "integration_id": 15368}))),
+    # Type validation: wrong types must be rejected
+    ("PR rule required_approving_review_count is bool not int", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(required_approving_review_count=False))),
+    ("PR rule dismiss_stale_reviews_on_push is int not bool", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(dismiss_stale_reviews_on_push=0))),
+    ("PR rule required_reviewers is dict not list", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(required_reviewers={}))),
+    ("PR rule allowed_merge_methods is string not list", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(allowed_merge_methods="squash"))),
+    ("status check strict policy is string not bool", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"].update(strict_required_status_checks_policy="true"))),
+    ("status check do_not_enforce_on_create is int not bool", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"].update(do_not_enforce_on_create=0))),
+    ("status check integration_id is string not int", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"]["required_status_checks"][0].update(integration_id="15368"))),
+    ("status check context is int not string", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"]["required_status_checks"][0].update(context=1))),
+    # Unknown/unexpected parameters must be rejected
+    ("PR rule has unknown security parameter", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "pull_request")["parameters"].update(unknown_security_param=True))),
+    ("status check rule has unknown parameter", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"].update(unknown_param="value"))),
+    ("status check entry has unknown key", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"]["required_status_checks"][0].update(unknown_key="value"))),
+    ("status check malformed entry (not dict)", lambda a: mutate(a, MERGE, lambda r: next(
+        rule for rule in r["rules"] if rule["type"] == "required_status_checks")["parameters"]["required_status_checks"].append("malformed"))),
     # the reported flaw: a bypass actor on the ruleset that carries the mandatory checks
     ("merger app bypasses the merge conditions", lambda a: mutate(a, MERGE, lambda r: r.update(bypass_actors=[
         {"actor_id": 4242, "actor_type": "Integration", "bypass_mode": "always"}]))),
@@ -796,6 +899,24 @@ def test_the_documented_rulesets_satisfy_the_controllers_verification():
     assert merge["bypass_actors"] == [], "the ruleset that makes the checks mandatory must have no bypass actor"
     assert len(update["bypass_actors"]) == 1 and update["bypass_actors"][0]["actor_type"] == "Integration"
     assert [rule["type"] for rule in update["rules"]] == ["update"]
+    # Enhance partial documented rulesets with complete parameters to simulate GitHub API response
+    for rule in merge.get("rules", []):
+        if rule.get("type") == "pull_request":
+            # Complete the PR parameters using policy expectations as defaults
+            # Preserve any explicit values from the documented ruleset
+            rule["parameters"] = {
+                **copy.deepcopy(policy["expected_pull_request_parameters"]),
+                **rule.get("parameters", {})
+            }
+        elif rule.get("type") == "required_status_checks":
+            # Complete the status check parameters, preserving documented contexts
+            params = rule.get("parameters", {})
+            status_checks = params.get("required_status_checks", [])
+            rule["parameters"] = {
+                **copy.deepcopy(policy["expected_status_checks_parameters"]),
+                "required_status_checks": status_checks,
+                **{k: v for k, v in params.items() if k != "required_status_checks"}
+            }
     details, listing, effective = {}, [], []
     for number, ruleset in ((11, merge), (12, update)):
         details[number] = {**ruleset, "id": number, "source_type": "Repository"}
@@ -805,6 +926,185 @@ def test_the_documented_rulesets_satisfy_the_controllers_verification():
     checks = next(rule for rule in merge["rules"] if rule["type"] == "required_status_checks")["parameters"]
     assert {entry["context"] for entry in checks["required_status_checks"]} == \
         {spec["name"] for spec in policy["required_checks"]} | {spec["context"] for spec in policy["required_statuses"]}
+
+
+def test_incomplete_pull_request_parameters_block():
+    """Incomplete PR rulesets must be rejected; missing parameters block merges."""
+    policy = {**amc.load_policy(ROOT / ".github" / "auto-merge-policy.json"), "merger_app_id": 4242}
+    ruleset = {
+        "id": 11, "name": "platform-main merge conditions", "target": "branch", "source_type": "Repository",
+        "enforcement": "active", "conditions": {"ref_name": {"include": ["refs/heads/platform-main"], "exclude": []}},
+        "bypass_actors": [],
+        "rules": [
+            {"type": "deletion"}, {"type": "non_fast_forward"},
+            {"type": "pull_request", "parameters": {"required_approving_review_count": 0}},  # missing 8 parameters
+            {"type": "required_status_checks", "parameters": {
+                **policy["expected_status_checks_parameters"],
+                "required_status_checks": [
+                    {"context": "test", "integration_id": 15368},
+                    {"context": "TIM full suite", "integration_id": 15368},
+                    {"context": "pr-gate/head", "integration_id": 15368}
+                ]
+            }}
+        ]
+    }
+    listing = [{"id": 11, "name": "platform-main merge conditions"}, {"id": 12, "name": "platform-main restrict updates"}]
+    details = {
+        11: ruleset,
+        12: {
+            "id": 12, "name": "platform-main restrict updates", "target": "branch", "source_type": "Repository",
+            "enforcement": "active", "conditions": {"ref_name": {"include": ["refs/heads/platform-main"], "exclude": []}},
+            "bypass_actors": [{"actor_id": 4242, "actor_type": "Integration", "bypass_mode": "always"}],
+            "rules": [{"type": "update"}]
+        }
+    }
+    effective = [
+        {"type": "deletion", "ruleset_id": 11}, {"type": "non_fast_forward", "ruleset_id": 11},
+        {"type": "pull_request", "ruleset_id": 11}, {"type": "required_status_checks", "ruleset_id": 11},
+        {"type": "update", "ruleset_id": 12}
+    ]
+    blockers = amc.rulesets_blockers(listing, details, effective, policy)
+    assert any("is missing PR parameter" in blocker for blocker in blockers), f"Expected missing parameter error, got: {blockers}"
+
+
+def test_incomplete_status_checks_parameters_block():
+    """Incomplete status-checks parameters must be rejected."""
+    policy = {**amc.load_policy(ROOT / ".github" / "auto-merge-policy.json"), "merger_app_id": 4242}
+    ruleset = {
+        "id": 11, "name": "platform-main merge conditions", "target": "branch", "source_type": "Repository",
+        "enforcement": "active", "conditions": {"ref_name": {"include": ["refs/heads/platform-main"], "exclude": []}},
+        "bypass_actors": [],
+        "rules": [
+            {"type": "deletion"}, {"type": "non_fast_forward"},
+            {"type": "pull_request", "parameters": copy.deepcopy(policy["expected_pull_request_parameters"])},
+            {"type": "required_status_checks", "parameters": {
+                "strict_required_status_checks_policy": True,  # missing do_not_enforce_on_create
+                "required_status_checks": [
+                    {"context": "test", "integration_id": 15368},
+                    {"context": "TIM full suite", "integration_id": 15368},
+                    {"context": "pr-gate/head", "integration_id": 15368}
+                ]
+            }}
+        ]
+    }
+    listing = [{"id": 11, "name": "platform-main merge conditions"}, {"id": 12, "name": "platform-main restrict updates"}]
+    details = {
+        11: ruleset,
+        12: {
+            "id": 12, "name": "platform-main restrict updates", "target": "branch", "source_type": "Repository",
+            "enforcement": "active", "conditions": {"ref_name": {"include": ["refs/heads/platform-main"], "exclude": []}},
+            "bypass_actors": [{"actor_id": 4242, "actor_type": "Integration", "bypass_mode": "always"}],
+            "rules": [{"type": "update"}]
+        }
+    }
+    effective = [
+        {"type": "deletion", "ruleset_id": 11}, {"type": "non_fast_forward", "ruleset_id": 11},
+        {"type": "pull_request", "ruleset_id": 11}, {"type": "required_status_checks", "ruleset_id": 11},
+        {"type": "update", "ruleset_id": 12}
+    ]
+    blockers = amc.rulesets_blockers(listing, details, effective, policy)
+    assert any("is missing do_not_enforce_on_create" in blocker for blocker in blockers), f"Expected missing parameter error, got: {blockers}"
+
+
+def test_incorrect_explicit_template_values_block():
+    """Explicit template values that don't match policy expectations must be rejected."""
+    policy = {**amc.load_policy(ROOT / ".github" / "auto-merge-policy.json"), "merger_app_id": 4242}
+    ruleset = {
+        "id": 11, "name": "platform-main merge conditions", "target": "branch", "source_type": "Repository",
+        "enforcement": "active", "conditions": {"ref_name": {"include": ["refs/heads/platform-main"], "exclude": []}},
+        "bypass_actors": [],
+        "rules": [
+            {"type": "deletion"}, {"type": "non_fast_forward"},
+            {"type": "pull_request", "parameters": {
+                **copy.deepcopy(policy["expected_pull_request_parameters"]),
+                "required_approving_review_count": 1  # Should be 0
+            }},
+            {"type": "required_status_checks", "parameters": {
+                **copy.deepcopy(policy["expected_status_checks_parameters"]),
+                "required_status_checks": [
+                    {"context": "test", "integration_id": 15368},
+                    {"context": "TIM full suite", "integration_id": 15368},
+                    {"context": "pr-gate/head", "integration_id": 15368}
+                ]
+            }}
+        ]
+    }
+    listing = [{"id": 11, "name": "platform-main merge conditions"}, {"id": 12, "name": "platform-main restrict updates"}]
+    details = {
+        11: ruleset,
+        12: {
+            "id": 12, "name": "platform-main restrict updates", "target": "branch", "source_type": "Repository",
+            "enforcement": "active", "conditions": {"ref_name": {"include": ["refs/heads/platform-main"], "exclude": []}},
+            "bypass_actors": [{"actor_id": 4242, "actor_type": "Integration", "bypass_mode": "always"}],
+            "rules": [{"type": "update"}]
+        }
+    }
+    effective = [
+        {"type": "deletion", "ruleset_id": 11}, {"type": "non_fast_forward", "ruleset_id": 11},
+        {"type": "pull_request", "ruleset_id": 11}, {"type": "required_status_checks", "ruleset_id": 11},
+        {"type": "update", "ruleset_id": 12}
+    ]
+    blockers = amc.rulesets_blockers(listing, details, effective, policy)
+    assert any("required_approving_review_count" in blocker and "0" in blocker for blocker in blockers), f"Expected incorrect value error, got: {blockers}"
+
+
+@pytest.mark.parametrize("bad_param_type", [
+    [],      # list instead of dict
+    "invalid",  # string instead of dict
+    None,    # None instead of dict
+    True,    # bool instead of dict
+])
+def test_non_dict_pull_request_parameters_block(bad_param_type):
+    """Non-dict PR parameters must produce blockers, not AttributeError."""
+    policy = {**amc.load_policy(ROOT / ".github" / "auto-merge-policy.json"), "merger_app_id": 4242}
+    blockers = amc._pull_request_rule_blockers("test-ruleset", bad_param_type, policy)
+    assert len(blockers) > 0
+    assert "expected dict" in blockers[0]
+    assert type(bad_param_type).__name__ in blockers[0]
+
+
+@pytest.mark.parametrize("bad_param_type", [
+    [],      # list instead of dict
+    "invalid",  # string instead of dict
+    None,    # None instead of dict
+    True,    # bool instead of dict
+])
+def test_non_dict_status_check_parameters_block(bad_param_type):
+    """Non-dict status check parameters must produce blockers, not AttributeError."""
+    policy = {**amc.load_policy(ROOT / ".github" / "auto-merge-policy.json"), "merger_app_id": 4242}
+    blockers = amc._status_check_rule_blockers("test-ruleset", bad_param_type, policy)
+    assert len(blockers) > 0
+    assert "expected dict" in blockers[0]
+    assert type(bad_param_type).__name__ in blockers[0]
+
+
+def test_heterogeneous_merge_methods_blocked():
+    """Heterogeneous merge methods array must produce clear blocker."""
+    policy = {**amc.load_policy(ROOT / ".github" / "auto-merge-policy.json"), "merger_app_id": 4242}
+    parameters = {
+        **copy.deepcopy(policy["expected_pull_request_parameters"]),
+        "allowed_merge_methods": ["merge", 1, "rebase"]  # Mixed types
+    }
+    blockers = amc._pull_request_rule_blockers("test-ruleset", parameters, policy)
+    assert any("allowed_merge_methods" in b and "type" in b for b in blockers), f"Expected type error for heterogeneous array, got: {blockers}"
+
+
+@pytest.mark.parametrize("bad_integration_id", [
+    False,   # bool instead of int
+    3.14,    # float instead of int
+])
+def test_status_check_integration_id_type_blocked(bad_integration_id):
+    """Status check integration_id with wrong type must be rejected."""
+    policy = {**amc.load_policy(ROOT / ".github" / "auto-merge-policy.json"), "merger_app_id": 4242}
+    required_status_checks = [
+        {"context": "test", "integration_id": bad_integration_id}
+    ]
+    parameters = {
+        **copy.deepcopy(policy["expected_status_checks_parameters"]),
+        "required_status_checks": required_status_checks
+    }
+    blockers = amc._status_check_rule_blockers("test-ruleset", parameters, policy)
+    assert len(blockers) > 0, f"Expected blocker for bad integration_id type {type(bad_integration_id).__name__}, got: {blockers}"
 
 
 def test_commit_status_request_asks_for_a_full_page():
