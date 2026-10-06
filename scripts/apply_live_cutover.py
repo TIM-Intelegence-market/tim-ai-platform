@@ -47,8 +47,15 @@ async def run(apply: bool, output: Path, command_timeout: float = DEFAULT_COMMAN
         manifest = {"cutover_id":cutover_id,"symbol":settings.symbol,"baseline_cursor_id":baseline,"first_live_trade_id":first_id,"approved_at":datetime.now(timezone.utc).isoformat(),"mode":"OBSERVE_ONLY","historical_policy":"DEFERRED_OFFLINE_BACKFILL","trading_actions":0}
         digest = hashlib.sha256(json.dumps(manifest,sort_keys=True,separators=(",",":")).encode()).hexdigest()
         async with connection.transaction():
-            deferred = await connection.fetchval("""WITH changed AS (UPDATE ingestion_outbox SET status='DEFERRED',last_error=$1,lease_expires_at=NULL,updated_at=clock_timestamp()
-                WHERE worker_name='CANDLE_V1' AND status IN ('PENDING','RETRY') RETURNING 1) SELECT count(*) FROM changed""", f"deferred by live cutover {cutover_id}")
+            # A quarantined historical row at or below the baseline would stay at the
+            # head of the strict order and block every live row (tim-core-01,
+            # 2026-10-06: trade 4078027026 kept CANDLE_V1 at claimed=0 after a cutover).
+            deferred = await connection.fetchval("""WITH changed AS (UPDATE ingestion_outbox SET status='DEFERRED',
+                    last_error=CASE WHEN status='QUARANTINED' THEN $1||' (was QUARANTINED: '||COALESCE(last_error,'no error')||')' ELSE $1 END,
+                    lease_expires_at=NULL,updated_at=clock_timestamp()
+                WHERE worker_name='CANDLE_V1' AND (status IN ('PENDING','RETRY')
+                    OR (status='QUARANTINED' AND symbol=$2 AND aggregate_trade_id<=$3)) RETURNING 1) SELECT count(*) FROM changed""",
+                f"deferred by live cutover {cutover_id}", settings.symbol, baseline)
             await connection.execute("""INSERT INTO live_cutover_receipts(cutover_id,symbol,baseline_cursor_id,first_live_trade_id,deferred_outbox_count,manifest_json,manifest_hash,mode,trading_actions)
                 VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,'OBSERVE_ONLY',0)""",cutover_id,settings.symbol,baseline,first_id,deferred,json.dumps(manifest),digest)
         manifest.update({"deferred_outbox_count":deferred,"manifest_hash":digest,"status":"APPLIED"})
