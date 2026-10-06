@@ -1,0 +1,39 @@
+name: TIM full suite
+
+on:
+  pull_request:
+    branches: [platform-main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: TIM full suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Create isolated CI database credentials
+        shell: bash
+        run: |
+          password="$(openssl rand -hex 24)"
+          printf '%s' "$password" > "$RUNNER_TEMP/tim-db-password"
+          chmod 600 "$RUNNER_TEMP/tim-db-password"
+          echo "TIM_DATABASE_SECRET_FILE=$RUNNER_TEMP/tim-db-password" >> "$GITHUB_ENV"
+          echo "TIM_DURABLE_TEST_DATABASE_URL=postgresql://tim:$password@127.0.0.1:5433/tim_test" >> "$GITHUB_ENV"
+      - name: Start local database
+        shell: bash
+        run: |
+          compose() { docker compose -f docker-compose.yml -f .github/ci-timescaledb.yml "$@"; }
+          compose up -d --wait
+          compose exec -T timescaledb sh -c 'PGPASSWORD="$(cat /run/secrets/tim_database_password)" psql -h 127.0.0.1 -p 5433 -U tim -d tim -c "CREATE DATABASE tim_test"'
+          compose exec -T timescaledb sh -c 'PGPASSWORD="$(cat /run/secrets/tim_database_password)" psql -h 127.0.0.1 -p 5433 -U tim -d tim_test -f /docker-entrypoint-initdb.d/001-schema.sql'
+      # Match ci.yml: local_env tests require developer-machine files or services.
+      - name: Run CI-compatible suite
+        run: python -m pytest tests/ -q -m "not local_env"

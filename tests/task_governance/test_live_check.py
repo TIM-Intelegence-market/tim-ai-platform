@@ -81,12 +81,13 @@ def test_roundtrip_refuses_without_a_matching_confirmation_and_writes_nothing(ar
     assert run(rest, *args) == 2 and rest.calls == []
 
 
-def test_the_production_repository_needs_its_own_flag_and_the_token_is_required(capsys):
-    prod = FakeRest(PRODUCTION_REPOSITORY)
-    assert run(prod, '--mode', 'roundtrip', '--confirm-write', PRODUCTION_REPOSITORY) == 2 and prod.calls == []
+@pytest.mark.parametrize('repository', [PRODUCTION_REPOSITORY, 'uezeyiraydin-cell/tim-ai-platform'])
+def test_the_production_repository_needs_its_own_flag_and_the_token_is_required(capsys, repository):
+    prod = FakeRest(repository)
+    assert run(prod, '--mode', 'roundtrip', '--confirm-write', repository) == 2 and prod.calls == []
     assert run(FakeRest(REPO), token=None) == 2
-    # the flag only lifts the live_check refusal; the create authority still refuses a Mission-Task create in production
-    assert run(prod, '--mode', 'roundtrip', '--confirm-write', PRODUCTION_REPOSITORY, '--allow-production-repo') == 1
+    # The flag lifts only the live_check refusal; create authority still refuses both production aliases.
+    assert run(prod, '--mode', 'roundtrip', '--confirm-write', repository, '--allow-production-repo') == 1
     assert prod.issues == {}
 
 
