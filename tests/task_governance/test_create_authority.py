@@ -154,11 +154,22 @@ def test_an_unreadable_authority_releases_the_claim_and_creates_nothing(tmp_path
 
 # -- the gate: separate registries, one repository ---------------------------------------------------------------------------
 
-def test_two_registries_race_and_only_the_designated_one_creates(tmp_path):
+def test_two_registries_race_and_only_the_designated_one_creates(tmp_path, monkeypatch):
     rest = FakeRest()
     a, b = registry(tmp_path, 'a.db'), registry(tmp_path, 'b.db')
     designate(rest, a)
     gw = gateway(rest)
+    # Start barriers alone do not ensure both scans saw an empty repository:
+    # a later scan may legitimately adopt the designated registry's new issue.
+    # Synchronize at create authorization so this test exercises competing creates.
+    authorization_barrier = threading.Barrier(2)
+    original_authorize = gw.authorize_create
+
+    def authorize_create(*args):
+        authorization_barrier.wait(timeout=5)
+        return original_authorize(*args)
+
+    monkeypatch.setattr(gw, 'authorize_create', authorize_create)
     results = {}
     barrier = threading.Barrier(2)
 

@@ -194,6 +194,7 @@ class DurableIngestionStore:
         database: Database,
         *,
         queue_capacity: int = 50_000,
+        historical_queue_capacity: int = 1_000,
         max_attempts: int = 5,
         worker_version: str = WORKER_VERSION,
         # Calibrated 2026-09-17 against production: verifying the 100 oldest
@@ -204,12 +205,15 @@ class DurableIngestionStore:
     ) -> None:
         if queue_capacity < 1:
             raise ValueError("queue_capacity must be positive")
+        if historical_queue_capacity < 0:
+            raise ValueError("historical_queue_capacity must not be negative")
         if max_attempts < 1:
             raise ValueError("max_attempts must be positive")
         if resolve_verify_limit < 1:
             raise ValueError("resolve_verify_limit must be positive")
         self.database = database
         self.queue_capacity = queue_capacity
+        self.historical_queue_capacity = historical_queue_capacity
         self.max_attempts = max_attempts
         self.worker_version = worker_version
         self.resolve_verify_limit = resolve_verify_limit
@@ -460,7 +464,22 @@ class DurableIngestionStore:
                         )
                         await self._increment(connection, "gap_total")
 
-                    outbox_status = "DEFERRED" if defer_outbox else "PENDING"
+                    # Workers claim the outbox oldest trade id first, so a large
+                    # backfill below the cursor would hold back every live trade.
+                    # Historical work only stays live while the queue is short.
+                    defer_historical = (
+                        out_of_order
+                        and not existing_work
+                        and not defer_outbox
+                        and queue_depth >= self.historical_queue_capacity
+                    )
+                    if defer_historical:
+                        await self._increment(
+                            connection,
+                            "outbox_historical_deferred_total",
+                            metadata={"worker": first_worker, "capacity": self.historical_queue_capacity},
+                        )
+                    outbox_status = "DEFERRED" if defer_outbox or defer_historical else "PENDING"
                     status = await connection.execute(
                         """INSERT INTO ingestion_outbox(
                                outbox_id,worker_name,idempotency_key,source,market,symbol,data_type,

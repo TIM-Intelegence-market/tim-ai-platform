@@ -1,0 +1,35 @@
+# FIXTURE for the private ruleset test repository only (copy to .github/workflows/pr-gate.yml there).
+# Posts the same commit status context as the production gate (pr-gate/head), from github-actions[bot].
+name: PR gate
+
+on:
+  pull_request_target:
+    branches: [platform-main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  gate:
+    name: PR gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report the probe result on the head SHA
+        run: |
+          set -euo pipefail
+          state=failure
+          if tree_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA" --jq '.commit.tree.sha') &&
+             marker=$(gh api "repos/$GITHUB_REPOSITORY/git/trees/$tree_sha" --jq 'if .truncated == false and (.tree | type == "array") then any(.tree[]; .path == "PROBE_GATE_FAIL") else error("invalid tree") end'); then
+            case "$marker" in
+              false) state=success ;;
+              true) state=failure ;;
+              *) state=failure ;;
+            esac
+          fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA"   -f state="$state" -f context=pr-gate/head -f description="probe gate" -f target_url="$RUN_URL"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

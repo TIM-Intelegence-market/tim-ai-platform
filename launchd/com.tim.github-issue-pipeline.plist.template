@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.tim.github-issue-pipeline</string>
+  <key>ProgramArguments</key><array>
+    <string>__PYTHON__</string><string>__REPOSITORY__/scripts/github_issue_pipeline.py</string><string>--mode</string><string>__MODE__</string>
+  </array>
+  <key>WorkingDirectory</key><string>__REPOSITORY__</string>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>__PATH__</string></dict>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>__STATE_DIR__/launchd.out.log</string>
+  <key>StandardErrorPath</key><string>__STATE_DIR__/launchd.err.log</string>
+</dict></plist>
