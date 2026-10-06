@@ -353,3 +353,24 @@ async def test_cancelled_catch_up_leaves_gap_open_not_catching_up() -> None:
     assert "cancelled" in store.gap_status[-1][2]
     assert store.recovery_states[-1] == "GAP_DETECTED"
     assert "catchup_failure_total" in store.metrics
+
+
+@pytest.mark.asyncio
+async def test_cancelled_catch_up_finishes_even_if_marking_the_gap_hangs(monkeypatch) -> None:
+    from src.data_ingestion import catchup as catchup_module
+
+    monkeypatch.setattr(catchup_module, "CANCEL_MARK_TIMEOUT_SECONDS", 0.1)
+
+    class HungStatusStore(GapStore):
+        async def set_gap_status(self, gap_id, status, *, error=None):
+            if status == "OPEN":
+                await asyncio.Event().wait()  # database hangs
+            await super().set_gap_status(gap_id, status, error=error)
+
+    coordinator = CatchUpCoordinator(HungStatusStore(), HangingClient())
+    loop = asyncio.get_running_loop()
+    began = loop.time()
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.1):
+            await coordinator.recover_before("BTCUSDT", 20)
+    assert loop.time() - began < 2.0

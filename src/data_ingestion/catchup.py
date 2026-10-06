@@ -18,6 +18,7 @@ from src.models.market_data import Trade
 
 BINANCE_PUBLIC_HOSTS = frozenset({"api.binance.com"})
 SYMBOL_PATTERN = re.compile(r"^[A-Z0-9]{3,20}$")
+CANCEL_MARK_TIMEOUT_SECONDS = 10.0
 
 
 class PublicDataError(RuntimeError):
@@ -301,7 +302,14 @@ class CatchUpCoordinator:
         except asyncio.CancelledError:
             # Stream timeout or shutdown: leave the gap OPEN (not CATCHING_UP)
             # so the next connection or tim_catchup resumes it from the cursor.
-            await asyncio.shield(self._mark_open(symbol, gap_id, "catch-up cancelled (timeout or shutdown)"))
+            # Bounded: with a hung database the cancellation must still finish.
+            try:
+                await asyncio.shield(asyncio.wait_for(
+                    self._mark_open(symbol, gap_id, "catch-up cancelled (timeout or shutdown)"),
+                    timeout=CANCEL_MARK_TIMEOUT_SECONDS,
+                ))
+            except Exception:
+                pass
             raise
         except Exception as error:
             reason = f"{type(error).__name__}: {error}"
