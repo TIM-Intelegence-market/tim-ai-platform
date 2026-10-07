@@ -519,7 +519,8 @@ def queue(tmp_path, requests=None):
 def run(dirs, fake, repo, *, pol=None, toolbox=None, now=NOW, dated=False, **changes):
     # Requests count as just written (qwen._too_late reads the file time) unless the test dated them itself.
     for path in [] if dated else dirs['requests'].glob('*.json'):
-        os.utime(path, (now.timestamp(), now.timestamp()))
+        if not path.is_symlink():          # planted links stay untouched (utime would follow them)
+            os.utime(path, (now.timestamp(), now.timestamp()))
     options = dict(policy=pol or policy(), now=now, requests_dir=dirs['requests'], results_dir=dirs['results'],
                    log_dir=dirs['log'], root=repo, request_uid=None, selfcheck=lambda: [], runner=systemctl(),
                    read_text=reader(), transport=fake, clock=Clock(),
