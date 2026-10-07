@@ -1,15 +1,29 @@
 #!/usr/bin/env python3
-"""TIM checkup entry point (design parts A and B, PR-1). OBSERVE only.
+"""TIM checkup entry point (design parts A, B and C). OBSERVE only.
 
     tim_checkup.py run                  one checkup run (tim-checkup.service, user tim)
     tim_checkup.py status [--since 24h] what the checkup knows; reads files only, never writes
+    tim_checkup.py diagnose             one Qwen diagnosis run (tim-qwen-diagnose.service, user tim-agent)
+    tim_checkup.py calibrate [--endpoint URL]
+                                        P2 measurement for the owner (as tim-server); prints values, writes nothing
 
 `run` loads config/tim_checkup.json and the TIM_CHECKUP_* settings from the environment, builds the incident
 reporter and calls `src.tim_incident.checkup.run`, which prints exactly one JSON line `{"event": "checkup_end", ...}`.
 If the run cannot even start, this file prints one fixed JSON line of the same kind (exception type only, never its
 text and never the environment) and exits 1. Exit codes: 0 normal, 3 reporting disturbed, 1 internal error.
 
-`diagnose` (Qwen, PR-2) and `watch` (outside watch, PR-3) are not part of this release: fixed line, exit 2.
+`diagnose` calls `src.tim_incident.qwen.run` and prints its one JSON line `{"event": "diagnose_end", ...}`. It is
+fail-closed: while a server-only value in config `agent` is null the line is `"outcome": "not_calibrated"` and the
+exit code 0, before any self-check output, file read or network call. Then come the budget, `sandbox_selfcheck`
+(exit 2 on a violation), PAUSE/HOLD, the queue, the gate and the model pin. It never reads TIM_CHECKUP_* (the unit
+has no EnvironmentFile): whether it runs at all is decided by the installer enabling the timer.
+
+`calibrate` performs the measurement of design section 7 against Ollama on 127.0.0.2 (default; 127.0.0.1 only
+with a warning that the values lack the production limits) (only GET
+/api/tags, POST /api/show and POST /api/chat; never a pull) and prints one JSON line with the values to paste into
+config/tim_checkup.json by a reviewed PR. It writes nothing.
+
+`watch` (outside watch, PR-3) is not part of this release: fixed line, exit 2.
 """
 from __future__ import annotations
 
@@ -17,6 +31,7 @@ import argparse
 import json
 import os
 import re
+import secrets
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -27,11 +42,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 UTC = timezone.utc
-LATER = {'diagnose': 'Qwen-Diagnose, PR-2', 'watch': 'Außenwache, PR-3'}
+LATER = {'watch': 'Außenwache, PR-3'}
 _WINDOW = re.compile(r'([1-9][0-9]{0,4})([mhd])')
 _SPOOL_FILE = re.compile(r'^\d{12}-[a-z_]{1,20}-[0-9a-f]{12}\.json$')
 TAIL_BYTES = 4 * 1024 * 1024
 STATUS_LIST_MAX = 50
+DEFAULT_ENDPOINT = 'http://127.0.0.2:11434'      # Ollama behind the TIM drop-in, as in production
 
 
 def _print_line(value: dict) -> None:
@@ -49,9 +65,11 @@ def _setup_error(stage: str, error: BaseException, host: str | None) -> dict:
 
 def run_checkup(*, root: Path = ROOT, data_dir: Path | None = None, environ=None, policy_path: Path | None = None,
                 now=None, clock=time.time, monotonic=time.monotonic, transport=None, openssl=None, runner=None,
-                connect=None, health_collect=None, statvfs=None, proc_dir: Path | None = None) -> int:
+                connect=None, health_collect=None, statvfs=None, proc_dir: Path | None = None, agent_dir=...,
+                user_lookup=None, own_uid: int | None = None) -> int:
     """One checkup run; returns its exit code. Everything after `policy_path` is a test seam: production passes
-    nothing (real clock, journalctl/systemctl runner, sockets, openssl, HTTPS transport)."""
+    nothing (real clock, journalctl/systemctl runner, sockets, openssl, HTTPS transport, /var/lib/tim-agent, the
+    pwd lookup of tim-agent and the own uid). `agent_dir=None` skips the diagnosis part."""
     environ = os.environ if environ is None else environ
     data_dir = Path(root) / 'data' if data_dir is None else Path(data_dir)
     stage, host, reporter = 'import', None, None
@@ -76,7 +94,9 @@ def run_checkup(*, root: Path = ROOT, data_dir: Path | None = None, environ=None
         return checkup.run(root=Path(root), data_dir=data_dir, policy=policy, settings=settings, reporter=reporter,
                            environ=environ, now=clock() if now is None else now, runner=runner, connect=connect,
                            monotonic=monotonic, health_collect=health_collect, statvfs=statvfs,
-                           proc_dir=Path('/proc') if proc_dir is None else Path(proc_dir))
+                           proc_dir=Path('/proc') if proc_dir is None else Path(proc_dir),
+                           agent_dir=checkup.AGENT_DIR if agent_dir is ... else agent_dir, user_lookup=user_lookup,
+                           own_uid=own_uid)
     except Exception as error:      # checkup.run handles its own errors; this is the last line of defence
         _print_line(_setup_error('run', error, host))
         return 1
@@ -264,6 +284,194 @@ def show_status(*, data_dir: Path, since: timedelta, now: datetime | None = None
     return 0
 
 
+# --- diagnose (tim-agent) ----------------------------------------------------------------------------------------
+
+def _diagnose_error(stage: str, error: BaseException) -> dict:
+    """The fixed diagnose_end line for a run that could not start: stage and exception type only."""
+    return {'event': 'diagnose_end', 'outcome': 'error', 'exit_code': 1, 'stage': stage,
+            'error': type(error).__name__}
+
+
+def run_diagnose(*, policy_path: Path | None = None, **seams) -> int:
+    """One `tim_checkup.py diagnose` run: `qwen.run` (calibration and budget first, then `sandbox_selfcheck`, then
+    PAUSE/HOLD, queue, gate, model pin, tool loop) and its one JSON line. `seams` go to `qwen.run` (tests only:
+    directories, uid of the request owner, self-check, runner, /proc reader, Ollama transport, toolbox, clock)."""
+    try:
+        from src.tim_incident import qwen
+        from src.tim_incident.policy import load_policy
+        policy = load_policy() if policy_path is None else load_policy(policy_path)
+    except Exception as error:
+        _print_line(_diagnose_error('policy', error))
+        return 1
+    try:
+        end = qwen.run(policy=policy, **seams)
+    except Exception as error:      # qwen.run handles its own errors; this is the last line of defence
+        _print_line(_diagnose_error('run', error))
+        return 1
+    _print_line(end)
+    code = end.get('exit_code')
+    return code if isinstance(code, int) and not isinstance(code, bool) else 1
+
+
+# --- calibrate (owner, P2) ---------------------------------------------------------------------------------------
+
+CALIBRATE_FILES = ('scripts/tim_server_health.py', 'src/operational/watchdog.py', 'src/data_ingestion/catchup.py')
+CALIBRATE_TEXT_CHARS = 36000
+CALIBRATE_TIMEOUT = 1500.0                  # seconds per call, as in design section 7 (cold model load included)
+CALIBRATE_NUM_PREDICT = 128
+_CALIBRATE_ENDPOINT = re.compile(r'^http://(127\.0\.0\.[12]):([1-9][0-9]{0,4})/?$')
+_CALIBRATE_TOOL = {'type': 'function', 'function': {
+    'name': 'read_file', 'description': 'read a file',
+    'parameters': {'type': 'object', 'properties': {'path': {'type': 'string'}}, 'required': ['path']}}}
+
+
+class CalibrationError(Exception):
+    """Fixed German texts only; never response text."""
+
+
+def calibrate_endpoint(value: str) -> tuple[str, int]:
+    """http://127.0.0.2:<port> (behind the drop-in) or http://127.0.0.1:<port> (without it, flagged); nothing else."""
+    match = _CALIBRATE_ENDPOINT.match(value or '')
+    if not match or not 1 <= int(match.group(2)) <= 65535:
+        raise argparse.ArgumentTypeError('nur http://127.0.0.1:<port> oder http://127.0.0.2:<port>')
+    return match.group(1), int(match.group(2))
+
+
+def _rate(count, nanoseconds) -> float:
+    if type(count) is not int or type(nanoseconds) is not int or count <= 0 or nanoseconds <= 0:
+        raise CalibrationError('Antwort ohne Zähler oder Dauer (prompt_eval_count/eval_count)')
+    return count / (nanoseconds / 1e9)
+
+
+def calibrate(*, endpoint: tuple[str, int], root: Path = ROOT, policy_path: Path | None = None, transport=None,
+              read_text=None, out=None, err=None) -> int:
+    """Design section 7 (P2): psi before, two chat calls with the same prefix (prompt and generation speed, cache),
+    one tool-call probe, /api/tags digest and the sha256 over template/system/parameters of /api/show, psi after.
+    Prints one JSON line {"event": "calibrate", "paste": {...}, "hint": {...}}; `paste` holds the measured values for
+    config `agent`. Writes nothing. Exit 0 measured, 1 not measurable (fixed text on stderr)."""
+    from src.tim_incident import qwen
+    from src.tim_incident.policy import AGENT_MODEL, compute_budget, load_policy
+    out = sys.stdout if out is None else out
+    err = sys.stderr if err is None else err
+    host, port = endpoint
+    send = transport or qwen.http_transport(host, port)
+    read_text = read_text or qwen._read_text
+    try:
+        policy = load_policy() if policy_path is None else load_policy(policy_path)
+    except Exception:
+        print('calibrate: config/tim_checkup.json lässt sich nicht laden; erst die Konfiguration reparieren.', file=err)
+        return 1
+    agent = policy.agent
+
+    def call(method: str, path: str, payload: dict | None) -> dict:
+        body = None if payload is None else json.dumps(payload).encode('utf-8')
+        try:
+            status, raw = send(method, path, body, CALIBRATE_TIMEOUT)
+        except qwen.OllamaError:
+            raise CalibrationError(f'Ollama auf {host}:{port} nicht erreichbar oder zu langsam ({path})') from None
+        if status != 200:
+            raise CalibrationError(f'Ollama antwortet auf {path} mit HTTP {int(status)}')
+        try:
+            value = qwen._json(bytes(raw).decode('utf-8'))
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            raise CalibrationError(f'Antwort von {path} ist kein JSON') from None
+        if not isinstance(value, dict):
+            raise CalibrationError(f'Antwort von {path} ist kein Objekt')
+        return value
+
+    def psi():
+        try:
+            return qwen.read_psi(read_text)
+        except (OSError, ValueError, KeyError):
+            return None
+
+    try:
+        psi_before = psi()
+        tags = call('GET', '/api/tags', None)
+        models = tags.get('models') if isinstance(tags.get('models'), list) else []
+        entries = [m for m in models if isinstance(m, dict) and AGENT_MODEL in (m.get('name'), m.get('model'))]
+        digest = qwen.normalize_digest(entries[0].get('digest')) if len(entries) == 1 else None
+        if digest is None:
+            raise CalibrationError(f'{AGENT_MODEL} fehlt auf {host}:{port} oder hat keinen Digest. '
+                                   'Nie "ollama pull" auf dem Server: den Inhaber fragen.')
+        show = call('POST', '/api/show', {'model': AGENT_MODEL})
+        config_sha = qwen.config_sha256(show)
+        parts = []
+        for name in CALIBRATE_FILES:
+            try:
+                parts.append(read_text_file(Path(root) / name))
+            except OSError:
+                raise CalibrationError(f'{name} unter {root} nicht lesbar') from None
+        text = ''.join(parts)[:CALIBRATE_TEXT_CHARS]
+        options = {'num_thread': agent.num_thread, 'num_ctx': agent.num_ctx, 'num_predict': CALIBRATE_NUM_PREDICT,
+                   'temperature': 0.2}
+        # A fresh mark at the very start: a repeat within keep_alive must not find call 1's prefix in the cache.
+        base = [{'role': 'system', 'content': f'Lauf {secrets.token_hex(8)}. Du bist ein Diagnosewerkzeug. Nur lesen.'},
+                {'role': 'user', 'content': 'Fasse zusammen:\n' + text}]
+        runs = []
+        for extra in ([], [{'role': 'user', 'content': 'Und jetzt in einem Satz.'}]):
+            response = call('POST', '/api/chat', {'model': AGENT_MODEL, 'stream': False, 'tools': [_CALIBRATE_TOOL],
+                                                  'options': options, 'keep_alive': '10m',
+                                                  'messages': base + extra})
+            runs.append({'prompt_tok_s': _rate(response.get('prompt_eval_count'),
+                                               response.get('prompt_eval_duration')),
+                         'gen_tok_s': _rate(response.get('eval_count'), response.get('eval_duration')),
+                         'prompt_ns': response.get('prompt_eval_duration'),
+                         'load_s': round((response.get('load_duration') or 0) / 1e9, 1)
+                         if type(response.get('load_duration')) is int else None})
+        probe = call('POST', '/api/chat', {'model': AGENT_MODEL, 'stream': False, 'tools': [_CALIBRATE_TOOL],
+                                           'options': options, 'messages': [
+                                               {'role': 'user',
+                                                'content': 'Lies scripts/tim_server_health.py mit dem Werkzeug.'}]})
+        message = probe.get('message') if isinstance(probe.get('message'), dict) else {}
+        calls = message.get('tool_calls')
+        tool_calls_ok = (isinstance(calls, list) and len(calls) >= 1 and isinstance(calls[0], dict)
+                         and isinstance(calls[0].get('function'), dict)
+                         and calls[0]['function'].get('name') == 'read_file')
+        psi_after = psi()
+    except CalibrationError as error:
+        print(f'calibrate: {error}', file=err)
+        return 1
+
+    prompt_tok_s = round(runs[0]['prompt_tok_s'], 1)        # the first call is uncached: the real prompt speed
+    gen_tok_s = round(min(run['gen_tok_s'] for run in runs), 1)
+    cache_ok = runs[1]['prompt_ns'] <= 0.2 * runs[0]['prompt_ns']
+    budget = compute_budget(prompt_tok_s, gen_tok_s, cache_ok=cache_ok, tool_calls_ok=tool_calls_ok,
+                            per_call_timeout=agent.per_call_timeout_seconds, deadline=agent.deadline_seconds,
+                            evidence_tokens_max=agent.evidence_tokens_max,
+                            round_prompt_tokens=agent.round_prompt_tokens, num_predict_round=agent.num_predict_round,
+                            num_predict_final=agent.num_predict_final, max_rounds_cap=agent.max_rounds_cap)
+    paste = {'model_digest': digest, 'model_config_sha256': config_sha,
+             'measured': {'prompt_tok_s': prompt_tok_s, 'gen_tok_s': gen_tok_s, 'cache_ok': cache_ok}}
+    if budget.go:
+        paste['tool_mode'] = budget.mode
+    hint = {'budget_mode': budget.mode, 'max_rounds': budget.max_rounds, 'evidence_tokens': budget.evidence_tokens,
+            'reason': budget.reason, 'tool_calls_ok': tool_calls_ok, 'load_seconds': [run['load_s'] for run in runs],
+            'psi_before': psi_before, 'psi_after': psi_after,
+            'still_from_p0': ['ollama_allowed_cpus', 'resolver'], 'valid_for_config': host != '127.0.0.1'}
+    _print_line_to(out, {'event': 'calibrate', 'endpoint': f'http://{host}:{port}', 'model': AGENT_MODEL,
+                         'paste': {'agent': paste}, 'hint': hint})
+    print('calibrate: Werte unter "paste" per PR in config/tim_checkup.json -> agent eintragen; ollama_allowed_cpus '
+          'und resolver kommen aus P0. Nur gültig, wenn tim-server-health und Watchdog während der Messung GREEN '
+          'blieben (docs/TIM_CHECKUP.md, Kalibrieren).', file=err)
+    if not budget.go:
+        print(f'calibrate: No-Go ({budget.mode}): die Diagnose nicht einschalten.', file=err)
+    if host == '127.0.0.1':
+        print('calibrate: WARNUNG: gemessen gegen 127.0.0.1, also Ollama ohne TIM-Drop-in und ohne die Grenzen des '
+              'Betriebs. Diese Werte nicht in die Konfiguration übernehmen; nach Qwen-Schritt 3 gegen '
+              'http://127.0.0.2:11434 messen.', file=err)
+    return 0
+
+
+def read_text_file(path: Path) -> str:
+    with open(path, encoding='utf-8', errors='replace') as handle:
+        return handle.read(CALIBRATE_TEXT_CHARS)
+
+
+def _print_line_to(out, value: dict) -> None:
+    print(json.dumps(value, ensure_ascii=False), file=out, flush=True)
+
+
 # --- command line ------------------------------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None, *, environ=None, root: Path = ROOT, data_dir: Path | None = None,
@@ -275,6 +483,13 @@ def main(argv: list[str] | None = None, *, environ=None, root: Path = ROOT, data
     status = commands.add_parser('status', help='state, outbox and dry-run actions; reads files only')
     status.add_argument('--since', type=parse_window, default=timedelta(hours=24), metavar='DAUER',
                         help='window for minor gaps and dry-run actions, e.g. 90m, 24h, 7d (default 24h)')
+    commands.add_parser('diagnose', help='one Qwen diagnosis run (tim-qwen-diagnose.service, user tim-agent); '
+                        'fail-closed while config agent is not calibrated')
+    calibration = commands.add_parser('calibrate', help='P2 measurement against Ollama for the owner; prints the '
+                                      'values for config agent, writes nothing')
+    calibration.add_argument('--endpoint', type=calibrate_endpoint, default=calibrate_endpoint(DEFAULT_ENDPOINT),
+                             metavar='URL', help='http://127.0.0.2:<port> (Ollama with the drop-in limits) or '
+                             f'http://127.0.0.1:<port> (flagged: not for config) (default {DEFAULT_ENDPOINT})')
     for name, part in LATER.items():
         commands.add_parser(name, help=f'not part of this release ({part})')
     args = parser.parse_args(argv)
@@ -284,6 +499,10 @@ def main(argv: list[str] | None = None, *, environ=None, root: Path = ROOT, data
         return 2
     if args.command == 'status':
         return show_status(data_dir=data_dir, since=args.since, now=now)
+    if args.command == 'diagnose':
+        return run_diagnose()
+    if args.command == 'calibrate':
+        return calibrate(endpoint=args.endpoint, root=Path(root))
     if os.geteuid() == 0:
         # Files written as root would lock the tim user out of its own state on the next timer run.
         print('tim_checkup.py run: nicht als root starten, sondern mit sudo systemctl start tim-checkup.service.',

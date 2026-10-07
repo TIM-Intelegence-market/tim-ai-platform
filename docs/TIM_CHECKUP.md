@@ -1,7 +1,8 @@
 # TIM-Checkup und Vorfall-Melder
 
-Runbook für Uzi. Stand: PR-1, also Checkup und Melder. Die Qwen-Diagnose (PR-2) und die Außenwache vom
-Mac (PR-3) gibt es noch nicht.
+Runbook für Uzi. Stand: PR-2, also Checkup, Melder und Qwen-Diagnose. Die Außenwache vom Mac (PR-3) gibt es
+noch nicht. Die Qwen-Diagnose ist ausgeliefert, bleibt aber aus, bis die Messwerte vom Server in der Konfiguration
+stehen (Kapitel [Qwen-Diagnose](#qwen-diagnose)).
 
 ## Was der Checkup tut
 
@@ -35,7 +36,7 @@ Nur RED öffnet einen Vorfall, AMBER und YELLOW nie. Einzelne Ausreißer öffnen
 | SAFETY | `observe_only` ist `False` oder es gibt Trading-Aktionen | sofort |
 | BACKUP | Backup oder Restore-Test fehlgeschlagen | sofort |
 | TIME_SYNC | Uhrzeit nicht synchron | 3 Proben |
-| UNIT | ein Repo-Timer zwei Läufe in Folge nicht aktiv | 2 Läufe |
+| UNIT | ein Repo-Timer zwei Läufe in Folge nicht aktiv; mit `--diagnosis on` auch `tim-qwen-diagnose.timer` und `tim-checkup.path` | 2 Läufe |
 | SELFTEST | Label `checkup:selftest` am Freigabe-Issue | sofort |
 
 **Vorrang:** `HEALTH_STALE > DISK > DATABASE > RUNTIME > NETWORK > DATA_FLOW > WATCHDOG`. Nur die oberste aktive
@@ -68,7 +69,7 @@ dem nächsten Lauf, also nach höchstens 15 min, oder sofort mit `sudo systemctl
 | **schließen** | Not-Aus. Kein einziger Schreibzugriff mehr, auch kein Kommentar, kein Label, kein Schließen. Im Journal steht `"reporting": "revoked"`. Wieder öffnen hebt den Not-Aus auf. |
 | Label `checkup:silence` | Stumm. Der Checkup prüft und puffert weiter, schreibt aber nichts. Nach dem Entfernen fasst ein Sammelkommentar im Freigabe-Issue zusammen, was inzwischen schon erledigt war. |
 | Label `checkup:selftest` | Selbsttest. Genau ein Issue mit Label `selftest`, solange das Label steht. Nach dem Entfernen ein Erholungskommentar, dann wird es geschlossen. |
-| Label `checkup:pause-qwen` | Reserviert für die Qwen-Diagnose (PR-2). Wirkt heute nicht. |
+| Label `checkup:pause-qwen` | Qwen pausiert. Der Checkup schreibt `requests/PAUSE` für 30 min und erneuert es jeden Lauf, solange das Label steht. Es entstehen keine neuen Aufträge, der Agent startet keine Diagnose. Nach dem Entfernen läuft es beim nächsten Lauf wieder. Siehe [Qwen-Diagnose](#qwen-diagnose). |
 
 ## Einmalig auf GitHub
 
@@ -132,9 +133,12 @@ sudo sh -c 'install -d -m 0700 /root/attic && cd /opt/tim && git rev-parse HEAD 
 
 Bei geändertem Runtime-Code danach `sudo systemctl restart tim-runtime`.
 
-**2. Installieren.** Legt `/opt/tim/data/incidents` (tim:tim, 0700) und den leeren Platzhalter
-`/etc/tim/github-app.pem` (root:root, 0600) an, installiert die beiden Units, schaltet den Timer ein und gibt den
-Text für das Freigabe-Issue aus. Melden bleibt aus.
+**2. Installieren.** Legt `/opt/tim/data/incidents` (tim:tim, 0700), den leeren Platzhalter
+`/etc/tim/github-app.pem` (root:root, 0600), den Systembenutzer `tim-agent` und die Austauschordner unter
+`/var/lib/tim-agent` an. Installiert die fünf Units (`tim-checkup.*`, `tim-qwen-diagnose.*`), schaltet nur
+`tim-checkup.timer` ein und gibt den Text für das Freigabe-Issue aus. Melden und Diagnose bleiben aus. Ollama fasst
+dieser Schritt nicht an: kein Drop-in, kein Neustart, Ollama bleibt auf `127.0.0.1:11434`. Das kommt erst mit
+`--ollama-cpus` (Qwen, Schritt 3).
 
 ```bash
 sudo bash /opt/tim/ops/debian/install_checkup.sh
@@ -196,7 +200,7 @@ keinen Schreibzugriff. Danach wieder öffnen.
 |---|---|
 | 0 | erledigt |
 | 1 | nicht als root gestartet, oder der Timer ließ sich beim Ausbauen nicht stoppen |
-| 2 | Voraussetzung fehlt (Checkout, Benutzer `tim`, `tim.env`, Units, `scripts/tim_checkup.py`) |
+| 2 | Voraussetzung fehlt (Checkout, Benutzer `tim`, `tim.env`, Units, `scripts/tim_checkup.py`); `--ollama-cpus` bei laufendem alten Worker; `--diagnosis on`, solange etwas fehlt (nichts geändert) |
 | 7 | `/opt/tim` gehört nicht root oder ist gruppen- oder weltbeschreibbar |
 | 64 | falsche Option oder ungültiger Wert, nichts geändert |
 | 65 | kein lesbarer privater Schlüssel eingefügt, nichts geändert |
@@ -291,13 +295,225 @@ dann still. Ist
 der Vorfall nach dem Deploy vorbei, meldet er die Erholung mit Commit. Merge und Deploy bleiben immer bei dir,
 Auto-Merge bleibt aus.
 
+## Qwen-Diagnose
+
+Zu einem Vorfall schreibt das lokale Modell `qwen3-coder:30b` auf dem Server einen Diagnose-Kommentar ins
+Vorfall-Issue: wahrscheinliche Ursache, betroffene Stellen im Code, Vorschlag, wie man es prüft. Kein Cloud-Modell,
+kein Download. Das Modell liegt schon unter `/srv/tim/models`. Nie `ollama pull` auf dem Server.
+
+### Was sie kann und was nicht
+
+| Kann | Kann nicht |
+|---|---|
+| Den Auftrag des Checkups lesen: redigierte Evidenz und Journal-Auszüge der Units der Klasse | Schreiben, ausführen, neu starten, reparieren. Sie ändert nichts an TIM und nichts an `/opt/tim`. |
+| Code lesen: `read_file`, `grep_code` unter `src/ scripts/ config/ ops/ tests/ docs/ main.py`, `requirements*.txt`, `.venv/lib/` | `data/`, `artifacts/`, `.git/`, `.env*` und Dateien mit secret, token, password, credential, `.pem` oder `.key` im Namen lesen. Symlinks folgt sie nicht. |
+| Feste Diagnosebefehle: Status einer Unit aus der Liste in `config/tim_checkup.json`, Timer, fehlgeschlagene Units, Platz, Speicher, Zeit, Binance-Ping | Die Datenbank erreichen (127.0.0.1 ist bis auf Ollama auf 127.0.0.2 gesperrt), das Journal lesen, Geheimnisse sehen. Sie läuft als eigener Benutzer `tim-agent` ohne Gruppe `tim`. |
+| Im Web suchen und Seiten lesen, eng begrenzt (unten) | Labels setzen, den Body ändern, `status:ready` oder `agent:*` setzen. Ihr Text wird nur Kommentar, immer im Codeblock. |
+| `git_log`, erst wenn `agent.root_owned` in der Konfiguration `true` ist | `git_log` ohne diese Freigabe. Sie kommt per PR, nachdem P0/P3 gezeigt haben, dass `/opt/tim` root gehört. |
+
+Alles, was das Modell liefert, gilt als nicht vertrauenswürdig. Der Checkup prüft das Ergebnis neu, bevor es auf
+GitHub landet: Schema, Größe, Besitzer der Datei, jede genannte Stelle (Datei und Zeile müssen in `/opt/tim`
+existieren), Quellen nur von abgerufenen Seiten der Domainliste, Redaktion und Schlussprüfung. Was nicht passt, fällt
+weg oder wird als „verworfen“ gemeldet, nie mit Inhalt.
+
+**Web, die Grenzen:**
+- Suche höchstens 3-mal pro Diagnose, mindestens 5 s Abstand. Die Anfrage baut der Code nur aus Wörtern des festen
+  Vokabulars in der Konfiguration, errno-Namen, systemd-Ergebniswörtern und Exception-Namen, die in der Evidenz
+  stehen und in Python oder im Code definiert sind. Kein Logtext, keine IP, kein Hostname geht in eine Suche.
+- Erst DuckDuckGo (HTML), bei Sperre die GitHub-Issue-Suche ohne Anmeldung.
+- Abrufen nur über Link-IDs aus vorherigen Treffern, nur https auf der Domainliste: docs.python.org,
+  peps.python.org, pypi.org, github.com, raw.githubusercontent.com, www.postgresql.org, magicstack.github.io,
+  developers.binance.com, manpages.debian.org, www.freedesktop.org, stackoverflow.com. Treffer anderswo sieht das
+  Modell nur als Titel und Ausschnitt. Höchstens 4 Abrufe, 1 MB, 15 s, 3 Weiterleitungen; jede Adresse muss eine
+  öffentliche IP sein.
+- Den Anbietern dieser Seiten und DuckDuckGo werden die Server-IP und der Zeitpunkt sichtbar.
+
+**Lastschutz:** Eine Diagnose startet nur, wenn genug Speicher frei ist (26 GiB), `load1` unter 4 liegt, PSI unter
+den Schwellen bleibt, kein Backup und kein Restore-Test läuft und das Tageslimit (6) nicht erreicht ist. Ollama hat
+nur die Kerne aus `--ollama-cpus` (`AllowedCPUs`), höchstens 28 GB und kein Swap. Holt TIM gerade nach (Watchdog `queue_age`, `cursor_age`, `data_age`
+nicht GREEN oder `gap_last_60m` RED), schreibt der Checkup `requests/HOLD` und Qwen wartet. Verschlechtert sich
+TIM während einer Diagnose oder enden zwei Läufe in Folge ohne Erfolg, schreibt der Checkup `requests/PAUSE` für
+24 h und kommentiert „Qwen pausiert: Verdacht auf Lastwirkung“.
+
+### Einschalten, in dieser Reihenfolge
+
+**1. Alten Qwen-Worker stilllegen** (Plan Abschnitt 6, F.1 bis F.6). Er läuft heute als User-Unit von
+`tim-server` unter `/home/tim-server/tim-qwen-worker` und als System-Dienst. Erst die Prüfung F.1/F.2 aus dem Plan
+machen; zeigt sie Patches, pytest-Läufe, eine `gh`-Anmeldung oder fremde SSH-Schlüssel, zuerst den
+Entscheidungspunkt dort abarbeiten. Dann als `tim-server`, ohne sudo (die Schritte sind verkettet, scheitert einer,
+wird nichts gelöscht):
+
+```bash
+systemctl --user disable --now tim-qwen-worker.service && tar czf ~/qwen-worker-$(date +%F).tgz -C ~ tim-qwen-worker .config/systemd/user/tim-qwen-worker.service && { git -C /srv/tim/repo diff > ~/srv-tim-repo-uncommitted-$(date +%F).patch || echo 'git diff fehlgeschlagen (nur Hinweis)'; } && rm ~/.config/systemd/user/tim-qwen-worker.service && systemctl --user daemon-reload
+```
+
+Den System-Dienst stilllegen und ins Archiv legen, nicht löschen:
+
+```bash
+sudo sh -c 'install -d -m 0700 /root/attic && systemctl disable --now tim-qwen-worker.service && mv /etc/systemd/system/tim-qwen-worker.service /etc/tim/qwen-worker.env /root/attic/ && systemctl daemon-reload'
+```
+
+Nachweis: `pgrep -af '[r]un_local_qwen|[t]im-qwen' || echo keiner` zeigt `keiner`. Nicht anfassen:
+`/srv/tim/models`, die Market-Feeds und Linger von `tim-server`. Solange der alte Worker läuft, schaltet das
+Installskript die Diagnose nicht ein und sagt das.
+
+**2. Werte aus P0 holen**, nur lesen:
+- Kerne für Ollama: `lscpu -e`. Zwei physische Kerne mit ihren HT-Geschwistern, zum Beispiel `2-3,6-7`, höchstens
+  die Hälfte aller CPUs.
+- DNS-Resolver: `resolvectl status` oder `cat /etc/resolv.conf`. Ist es ein öffentlicher Resolver, ist der Wert
+  `public`. Ist es eine private oder eine Loopback-Adresse (etwa `127.0.0.53`), braucht der Agent sie zusätzlich
+  in `IPAddressAllow` von `ops/systemd/tim-qwen-diagnose.service` (als `<ip>/32`) und als `agent.resolver` in der
+  Konfiguration, beides im selben PR. Ohne erreichbaren Resolver scheitern nur die Web-Werkzeuge, sonst nichts.
+
+**3. Installieren mit der Kernliste.** Erst nach Schritt 1: Läuft der alte Worker noch, bricht das Skript mit
+Exit 2 ab und lässt Ollama unverändert. Legt das Ollama-Drop-in an (`tim-limits.conf` und `tim-cpus.conf` aus
+`--ollama-cpus`, nie geraten) und startet Ollama einmal neu. Die vorige Ollama-Unit liegt danach unter
+`/root/attic/ollama.service.before`.
+
+```bash
+sudo bash /opt/tim/ops/debian/install_checkup.sh --ollama-cpus 2-3,6-7
+```
+
+Ohne `--ollama-cpus` fasst das Skript Ollama nicht an (Ausnahme: ein erneuter Lauf mit `--diagnosis on` und
+vorhandenem `tim-cpus.conf` hält `tim-limits.conf` aktuell). Ollama hört nach diesem Schritt nur noch auf `127.0.0.2:11434`; `ollama`-Befehle brauchen `OLLAMA_HOST=127.0.0.2:11434`. Prüfen:
+
+```bash
+systemctl show ollama -p AllowedCPUs,CPUQuotaPerSecUSec,MemoryMax,MemorySwapMax,Nice,IPAddressDeny; ss -ltn 'sport = :11434'
+```
+
+**4. Kalibrieren (P2).** Zu einer ruhigen Zeit, nicht zwischen 03:00 und 05:00 UTC, als `tim-server`. Der Befehl
+misst gegen Ollama mit denselben Grenzen wie im Betrieb, schreibt nichts und gibt eine JSON-Zeile aus. Er dauert
+einige Minuten, beim ersten Laden des Modells länger.
+
+```bash
+cd /opt/tim && .venv/bin/python scripts/tim_checkup.py calibrate --endpoint http://127.0.0.2:11434
+```
+
+`http://127.0.0.2:11434` ist der Standard. Gegen `http://127.0.0.1:11434` (Ollama ohne Drop-in, also ohne die
+Grenzen des Betriebs) misst der Befehl nur mit Warnung, und die Werte gehören nicht in die Konfiguration. Andere
+Adressen lehnt der Befehl ab. Jeder Lauf beginnt mit einer neuen Zufallsmarke im Prompt, damit auch eine
+Wiederholung innerhalb von 10 min den ersten Aufruf ungecacht misst. Er ruft nur `/api/tags`, `/api/show` und `/api/chat` auf. Fehlt das Modell, bricht er mit einem
+Hinweis ab und lädt nichts.
+
+Danach als Inhaber nachweisen, dass TIM ungestört blieb. War vorher alles GREEN, ist das Ergebnis jeweils 0:
+
+```bash
+sudo journalctl -u tim-server-health --since -40min -o cat | grep -c '"status": "RED"'; sudo tail -n 80 /opt/tim/data/operational/watchdog.jsonl | grep -c '"status": "RED"'
+```
+
+In der Ausgabe stehen unter `paste.agent` die Werte für `config/tim_checkup.json` → `agent`: `model_digest`,
+`model_config_sha256`, `measured` (`prompt_tok_s`, `gen_tok_s`, `cache_ok`) und bei Go `tool_mode`. Unter `hint`
+stehen der Budget-Modus (`native`, `schema`, `einschuss` oder `no-go`), die Werkzeugrunden, ob `tool_calls`
+funktionieren, und PSI vor und nach der Messung. Bei `no-go` die Diagnose nicht einschalten.
+
+Die Werte kommen per PR in die Konfiguration, zusammen mit `ollama_allowed_cpus` (dieselbe Liste wie
+`--ollama-cpus`) und `resolver` aus Schritt 2. Solange auch nur einer dieser sieben Werte `null` ist, endet jeder
+Diagnose-Lauf sofort mit `"outcome": "not_calibrated"`, ohne Ollama zu fragen. Nach dem Merge deployen wie in
+Schritt 1 der Installation.
+
+**5. Einschalten.** Dieselbe Zeile wie in Schritt 5 der Installation, mit `--diagnosis on`:
+
+```bash
+sudo bash /opt/tim/ops/debian/install_checkup.sh --configure --app-id <ID> --installation-id <ID> --authority-issue <N> --reporter-login '<slug>[bot]' --owner-login uezeyiraydin-cell --reporting on --diagnosis on
+```
+
+Das schaltet `tim-qwen-diagnose.timer` (alle 5 min) und `tim-checkup.path` (holt ein Ergebnis sofort ab) ein, aber
+nur, wenn alles da ist: Units, beide Drop-ins, `tim-agent`, die Ordner und kein alter Worker. Sonst nennt das
+Skript, was fehlt, bricht mit Exit 2 ab und ändert `/etc/tim/tim.env` nicht. Ab jetzt beobachtet der Checkup die beiden Units in der Klasse UNIT.
+
+**6. Selbsttest.** Label `checkup:selftest` ans Freigabe-Issue wie im Selbsttest des Melders. Der Auftrag dazu
+nimmt das konstruierte Bündel `ops/selftest/qwen_selftest_bundle.json` (kein aufgezeichnetes Log; es beschreibt das
+begrenzte Nachholen beim Start, `max_pages=100` in `src/data_ingestion/catchup.py`). Erwartet nach höchstens 30 min
+ein Diagnose-Kommentar im Selbsttest-Issue mit einer geprüften Stelle in `src/data_ingestion/catchup.py` oder
+`src/data_ingestion/durable.py`. Dazu:
+
+```bash
+sudo journalctl -u tim-qwen-diagnose -n 5 -o cat
+systemd-analyze security tim-qwen-diagnose.service | tail -1
+```
+
+### Pausieren
+
+| Wie | Wirkung |
+|---|---|
+| Label `checkup:pause-qwen` am Freigabe-Issue | Pause, solange das Label steht. Kein neuer Auftrag, keine Diagnose. Ohne sudo, vom Handy. Der erste Checkup-Lauf nach dem Entfernen hebt sie auf. Wirkt nur mit Melden `dry-run` oder `on`, denn nur dann liest der Checkup die Labels. Kann er sie in einem Lauf nicht lesen, bleibt die Pause stehen. |
+| `--diagnosis off` | Timer und Path-Unit aus. Aufträge entstehen keine mehr. |
+| Pause des Circuit Breakers aufheben | Erst die Ursache im Kommentar „Qwen pausiert“ prüfen. Dann `sudo rm /var/lib/tim-agent/requests/PAUSE`; der nächste Checkup-Lauf schreibt keine neue, solange nichts Neues passiert. |
+
+### Eine Diagnose lesen
+
+Der Kommentar hat zwei Teile:
+- **Kopf, feste Felder vom Checkup:** Diagnose-Art (`code_src`, `code_locked`, `ops_manual`, `external_network`,
+  `transient`, `unknown`), Sicherheit laut Modell, die geprüften Stellen als `datei:zeile` (Datei und Zeile
+  bestätigt, Inhalt nie zitiert), die Zahl der entfernten, nicht bestätigten Stellen, ob ein Mensch nötig ist,
+  Modus und Zahl der Werkzeugrunden.
+- **Codeblock, Text des Modells:** Zusammenfassung, Ursache, Vorschlag, Prüfung, Begründung der Stellen und
+  Quellen. Redigiert, ungeprüft, als Text dargestellt; Links und Bilder darin wirken nicht.
+
+Im Body des Issues ändert sich nur der Abschnitt FIELDS (Diagnose-Art und geprüfte Stellen). Das Label
+`incident:code` kommt nur bei `code_src` mit mindestens einer geprüften Stelle, alle unter `src/`, keine unter
+`src/tim_incident/` oder `src/database/`. Steht schon `status:ready` oder `agent:*`, bleibt der Body unverändert.
+
+Andere Kommentare zur selben Episode, je Auftrag höchstens einer (Tag `diagnosis-<auftrag>`):
+- „Diagnose nicht möglich: <fester Grund>“, zum Beispiel „Modell weicht ab“: Digest oder Konfiguration des Modells
+  passen nicht mehr zur Konfiguration. Dann nichts nachladen, sondern klären, wer das Modell geändert hat.
+- „Diagnose verworfen: …“: Das Ergebnis hat die Prüfung des Checkups nicht bestanden; vom Inhalt wird nichts
+  gezeigt.
+- „Diagnose ausgefallen“: 60 min, nachdem der Auftrag startbereit war, kam kein Ergebnis, etwa wegen Last oder
+  Tageslimit. Zeit unter HOLD oder Pause zählt nicht: Der Checkup datiert offene Aufträge dann neu. Sie wird nicht
+  nachgeholt. Einen Auftrag, den der Agent nicht mehr vor dieser Grenze beenden könnte, beginnt er nicht; er
+  meldet ihn als „Diagnose nicht möglich: Zeitlimit überschritten“ (`reason` `too_late`).
+
+Eine Diagnose ist ein Hinweis für dich oder eine Claude-Sitzung (Weg 1), kein Befund. Jede Annahme selbst prüfen.
+
+### Status der Diagnose
+
+```bash
+systemctl list-timers tim-qwen-diagnose.timer --no-pager
+sudo journalctl -u tim-qwen-diagnose -n 1 -o cat            # letzte Zeile "event": "diagnose_end"
+sudo journalctl _SYSTEMD_UNIT=tim-checkup.service -n 1 -o cat   # Feld "qwen" der checkup_end-Zeile
+```
+
+`outcome` in der `diagnose_end`-Zeile:
+
+| Wert | Bedeutet |
+|---|---|
+| `not_calibrated` | Messwerte fehlen in der Konfiguration (`missing` nennt sie). Kein Kontakt zu Ollama. Exit 0. |
+| `no_go` | Die Messwerte ergeben kein Budget. Exit 0. |
+| `selfcheck_failed` | Die Sandbox stimmt nicht (falscher Benutzer, Gruppe `tim`, lesbares Geheimnis, beschreibbares `/opt/tim`, Token in der Umgebung, PostgreSQL erreichbar). `checks` nennt die Prüfung. Exit 2. Unit und Benutzer prüfen. |
+| `paused`, `hold`, `idle` | Pause, TIM holt nach, oder kein Auftrag. Exit 0. |
+| `gated` | Lastschutz, `checks` nennt den Grund. Der nächste Lauf versucht es wieder. |
+| `ollama_unavailable` | Ollama antwortet nicht. Ein zweiter Versuch folgt. |
+| `retry` | Abbruch wegen Last oder Ollama mitten im Lauf (`reason`). Kein Ergebnis, der nächste Lauf versucht es nach dem Gate noch einmal, solange `attempts` reicht. |
+| `done`, `failed` | Ergebnis geschrieben (`failed` mit festem `reason`). |
+| `write_failed`, `error` | Ergebnis nicht schreibbar oder interner Fehler. Exit 1. |
+
+`diagnose` liest keine `TIM_CHECKUP_*`-Werte: Ob sie läuft, entscheidet allein das Ein- und Ausschalten des Timers.
+Im Feld `qwen` der `checkup_end`-Zeile: `hold` (Gründe), `pause` (`label`, `breaker` oder `null`), `breaker`
+(Gründe, falls er gerade ausgelöst hat), `ingest` (übernommen, fehlgeschlagen, verworfen), `requests` (neue
+Aufträge), `missing` (ausgefallene), `notes` (etwa `no requests: not calibrated`, `diagnosis off` oder
+`qwen runs failed without load symptom: exit-code (N)`). Der Breaker zählt für „zwei Läufe in Folge“ nur Läufe, die
+systemd mit `timeout`, `oom-kill`, `signal` oder `core-dump` beendet hat (aus dem Journal von
+`tim-qwen-diagnose`); `exit-code` (etwa `selfcheck_failed`) steht nur als Hinweis in `notes`.
+
+### Rückweg der Diagnose
+
+- Sofort und ohne sudo: Label `checkup:pause-qwen`.
+- Aus: `--configure … --diagnosis off`.
+- Ganz weg: `--uninstall` (siehe Rückweg unten). Danach `sudo systemctl cat ollama | diff - /root/attic/ollama.service.before`.
+- Alter Worker zurück, erst nach `--uninstall`, denn er erwartet Ollama auf 127.0.0.1:
+  `sudo sh -c 'mv /root/attic/tim-qwen-worker.service /etc/systemd/system/ && mv /root/attic/qwen-worker.env /etc/tim/ && systemctl daemon-reload'`,
+  dann als `tim-server`: `tar xzf ~/qwen-worker-<DATUM>.tgz -C ~ && systemctl --user daemon-reload && systemctl --user enable --now tim-qwen-worker.service`.
+
 ## Rückweg
 
 | Was | Wie |
 |---|---|
 | Melden sofort stoppen, ohne sudo | Freigabe-Issue schließen oder Label `checkup:silence` |
 | Melden aus, Checkup läuft weiter | `--configure` wie in Schritt 5 mit `--reporting off` |
-| Checkup ausbauen | `sudo bash /opt/tim/ops/debian/install_checkup.sh --uninstall`: Timer aus, Units weg, `daemon-reload`. Es bleiben `/opt/tim/data/incidents`, der Schlüssel und die `TIM_CHECKUP_*`-Zeilen als Beleg. |
+| Qwen-Diagnose aus, Checkup läuft weiter | `--configure` wie in Schritt 5 mit `--diagnosis off`: `tim-qwen-diagnose.timer` und `tim-checkup.path` werden sofort abgeschaltet. Kurzfristig ohne sudo: Label `checkup:pause-qwen`. |
+| Checkup ausbauen | `sudo bash /opt/tim/ops/debian/install_checkup.sh --uninstall`: Timer und Path-Unit aus, Units und die TIM-Drop-ins von Ollama weg, `daemon-reload`, `try-restart ollama`. Es bleiben `/opt/tim/data/incidents`, der Schlüssel, die `TIM_CHECKUP_*`-Zeilen, der Benutzer `tim-agent` und `/var/lib/tim-agent` als Beleg. |
+| Ollama wie vorher | ergibt sich aus `--uninstall`. Vergleich: `sudo systemctl cat ollama \| diff - /root/attic/ollama.service.before` |
 | Schlüssel widerrufen | GitHub → App → Private keys löschen oder die Installation aussetzen; danach `sudo rm /etc/tim/github-app.pem`. Ohne die Datei startet die Unit nicht mehr: vorher ausbauen oder das Installskript neu laufen lassen (legt den leeren Platzhalter an). |
 | Code-Stand zurück | `sudo sh -c 'cd /opt/tim && git checkout -q --detach "$(cat /root/attic/opt-tim.prev)" && systemctl restart tim-runtime'` |
 | Gate-Sperre aufheben | menschlicher PR, der `src/tim_incident/` aus `deny_prefixes` in `.github/pr-gate-policy.json` nimmt |
@@ -320,4 +536,5 @@ Auto-Merge bleibt aus.
   24 h aktualisiert. Ist die Tagesgrenze erreicht, bleibt ein erholter Vorfall offen (Statuszeile) und wird erst
   nach einem ruhigen Tag geschlossen, damit ein flatternder Vorfall nicht ständig schließt und wieder öffnet.
 - Kein Telegram, keine Mail. Push nur über GitHub Mobile.
-- Die Qwen-Diagnose fehlt noch (PR-2). `--diagnosis on` wirkt heute nicht.
+- Die Qwen-Diagnose ist ein Ratschlag eines lokalen Modells: ungeprüft, möglicherweise falsch, nie eine Aktion.
+  Ihre Grenzen stehen im Kapitel [Qwen-Diagnose](#qwen-diagnose).

@@ -2,15 +2,23 @@
 # Install the TIM checkup and incident reporter (OBSERVE only) on the Debian server. Idempotent.
 # Run as root after the code is deployed to /opt/tim; the steps and their order are in docs/TIM_CHECKUP.md:
 #
-#   bash /opt/tim/ops/debian/install_checkup.sh               # data dir, key placeholder, units, timer, authority body
+#   bash /opt/tim/ops/debian/install_checkup.sh [--ollama-cpus LIST]
+#       data dir, key placeholder, tim-agent user and exchange dirs, units, timer, authority body. Ollama is left
+#       alone unless --ollama-cpus is given (Qwen step 3): LIST (P0, lscpu -e: two physical cores with their HT
+#       siblings, e.g. 2-3,6-7) becomes Ollama's AllowedCPUs and the TIM drop-in moves Ollama to 127.0.0.2.
 #   bash /opt/tim/ops/debian/install_checkup.sh --app-key     # paste the GitHub App private key (PEM), end with Ctrl-D
 #   bash /opt/tim/ops/debian/install_checkup.sh --configure --app-id N --installation-id N --authority-issue N \
 #     [--watch-issue N] --reporter-login SLUG[bot] --owner-login LOGIN --reporting off|dry-run|on --diagnosis off|on
-#   bash /opt/tim/ops/debian/install_checkup.sh --uninstall   # timer off, units removed; data and key stay as evidence
+#   bash /opt/tim/ops/debian/install_checkup.sh --uninstall   # timers off, units and drop-ins removed; data, key,
+#                                                             # tim-agent and /var/lib/tim-agent stay as evidence
 #
 # Reporting stays off until --configure sets it. The key is never printed and never passed as an argument.
-# bootstrap.sh copies tim-checkup.* by glob but never enables them; only this script does.
-# The checkup never repairs, restarts, fills gaps or empties queues.
+# The Qwen diagnosis (tim-qwen-diagnose.timer, tim-checkup.path) is enabled only while TIM_CHECKUP_DIAGNOSIS=on.
+# bootstrap.sh copies tim-checkup.* and tim-qwen-diagnose.* by glob but never enables them; only this script does.
+# The checkup never repairs, restarts TIM, fills gaps or empties queues. The only restart here is
+# "systemctl try-restart ollama.service", and only when a TIM drop-in of Ollama was added, changed or removed.
+# The drop-in is only touched on the Qwen path (--ollama-cpus, or a re-install with the diagnosis on and AllowedCPUs
+# already set) and never while the old Qwen worker still runs: everything else keeps Ollama on 127.0.0.1.
 set -euo pipefail
 export LC_ALL=C   # plain ASCII ranges in the value checks below
 
@@ -20,13 +28,23 @@ ENV_FILE="$ETC/tim.env"
 KEY="$ETC/github-app.pem"
 INCIDENTS="$ROOT/data/incidents"
 UNIT_DIR=/etc/systemd/system
-UNITS=(tim-checkup.service tim-checkup.timer)
+UNITS=(tim-checkup.service tim-checkup.timer tim-checkup.path tim-qwen-diagnose.service tim-qwen-diagnose.timer)
+DIAGNOSIS_UNITS=(tim-qwen-diagnose.timer tim-checkup.path)   # enabled only with TIM_CHECKUP_DIAGNOSIS=on
+AGENT=tim-agent
+AGENT_HOME=/var/lib/tim-agent
+DROPIN_DIR="$UNIT_DIR/ollama.service.d"
+DROPINS=(tim-limits.conf tim-cpus.conf)   # tim-cpus.conf only from --ollama-cpus, never guessed
+ATTIC=/root/attic
 REPOSITORY=TIM-Intelegence-market/tim-ai-platform
 NUMBER_RE='^[1-9][0-9]{0,11}$'
 LOGIN_RE='^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\[bot\])?$'   # WORKER_LOGIN in scripts/github_issue_pipeline.py
+CPU_LIST_RE='^(0|[1-9][0-9]{0,3})(-(0|[1-9][0-9]{0,3}))?(,(0|[1-9][0-9]{0,3})(-(0|[1-9][0-9]{0,3}))?){0,31}$'
 
 TMP_FILE=""
 TTY_STATE=""
+OLLAMA_CPUS=""
+OLLAMA_CHANGED=0
+MISSING=()
 cleanup() {
   if [[ -n "$TTY_STATE" ]]; then stty "$TTY_STATE" 2>/dev/null || true; fi
   if [[ -n "$TMP_FILE" ]]; then rm -f -- "$TMP_FILE"; fi
@@ -40,12 +58,54 @@ require_root() { [[ $EUID -eq 0 ]] || fail "run as root" 1; }
 
 usage() {
   cat <<'EOF'
-usage: install_checkup.sh                 install units, enable the timer, print the authority issue body
+usage: install_checkup.sh [--ollama-cpus LIST]
+                                          install units, enable the timer, print the authority issue body;
+                                          only with LIST (like 2-3,6-7): Ollama drop-in and AllowedCPUs
        install_checkup.sh --app-key       store the GitHub App private key (pasted, not shown)
        install_checkup.sh --configure --app-id N --installation-id N --authority-issue N [--watch-issue N]
                           --reporter-login SLUG[bot] --owner-login LOGIN --reporting off|dry-run|on --diagnosis off|on
-       install_checkup.sh --uninstall     disable the timer, remove the units, keep data and key
+       install_checkup.sh --uninstall     disable the timers, remove units and drop-ins, keep data, key and tim-agent
 EOF
+}
+
+# --- --ollama-cpus and TIM_CHECKUP_DIAGNOSIS (no root needed, testable) --------------------------------------
+
+# valid_cpu_list LIST ONLINE: a plain list like 2-3,6-7 of distinct CPUs below ONLINE that covers at most half of
+# them, so Ollama can never take every core from tim-runtime and PostgreSQL. No value is ever guessed.
+valid_cpu_list() {
+  local list="$1" online="$2" part lo hi cpu count=0 seen=" "
+  [[ "$list" =~ $CPU_LIST_RE && "$online" =~ ^[1-9][0-9]{0,4}$ ]] || return 1
+  for part in ${list//,/ }; do
+    lo="${part%-*}"
+    hi="${part#*-}"
+    (( lo <= hi && hi < online )) || return 1
+    for (( cpu = lo; cpu <= hi; cpu++ )); do
+      [[ "$seen" != *" $cpu "* ]] || return 1
+      seen+="$cpu "
+      count=$(( count + 1 ))
+    done
+  done
+  (( count >= 1 && 2 * count <= online ))
+}
+
+online_cpus() { getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0; }
+
+parse_install() {
+  OLLAMA_CPUS=""
+  (( $# )) || return 0
+  [[ "$1" == --ollama-cpus ]] || fail "unknown option for install" 64
+  (( $# == 2 )) || fail "--ollama-cpus needs exactly one value, e.g. 2-3,6-7" 64
+  valid_cpu_list "$2" "$(online_cpus)" \
+    || fail "--ollama-cpus must list online CPUs like 2-3,6-7 (from lscpu -e), at most half of them" 64
+  OLLAMA_CPUS="$2"
+}
+
+# Only exactly "TIM_CHECKUP_DIAGNOSIS=on" as the last such line of $1 (the one systemd would use) counts as on.
+diagnosis_on() {
+  local file="$1" last
+  [[ -f "$file" ]] || return 1
+  last="$({ grep -E '^[[:space:]]*TIM_CHECKUP_DIAGNOSIS[[:space:]]*=' "$file" || true; } | tail -n 1)"
+  [[ "${last//[[:space:]]/}" == "TIM_CHECKUP_DIAGNOSIS=on" ]]
 }
 
 # --- --configure: parse and validate (no root needed, testable with a temporary env file) ------------------
@@ -113,6 +173,14 @@ write_env_file() {
 }
 
 configure() {
+  if [[ "$DIAGNOSIS" == on ]]; then
+    # Refuse before the env file changes: "on" with disabled units would only produce UNIT incidents.
+    diagnosis_missing
+    if (( ${#MISSING[@]} )); then
+      echo "--diagnosis on refused, nothing changed; missing: ${MISSING[*]}" >&2
+      fail "Run install_checkup.sh --ollama-cpus LIST first (docs/TIM_CHECKUP.md, Qwen), or use --diagnosis off." 2
+    fi
+  fi
   step "TIM_CHECKUP_* lines in $ENV_FILE"
   write_env_file "$ENV_FILE"
   grep -E '^TIM_CHECKUP_' "$ENV_FILE"
@@ -122,9 +190,7 @@ configure() {
   if [[ "$REPORTING" == on ]]; then
     echo "reporting=on writes to the production repository: only after 24 h dry-run and the owner's explicit yes."
   fi
-  if [[ "$DIAGNOSIS" == on ]]; then
-    echo "note: diagnosis=on has no effect yet; the Qwen diagnosis comes with a later release."
-  fi
+  apply_diagnosis
   echo "Takes effect at the next run (at most 15 min). To run now: systemctl start tim-checkup.service"
 }
 
@@ -156,7 +222,7 @@ store_app_key() {
   echo "Stored $KEY (root:root 0600); the next run reads it. Delete the downloaded .pem file on the Mac now."
 }
 
-# --- install (no argument) -------------------------------------------------------------------------------------
+# --- install (no argument or --ollama-cpus LIST) -----------------------------------------------------------------
 
 install_checkup() {
   [[ -f "$ROOT/main.py" && -d "$ROOT/ops/systemd" ]] || fail "TIM checkout missing at $ROOT" 2
@@ -175,12 +241,17 @@ install_checkup() {
   [[ ! -L "$INCIDENTS" ]] || fail "$INCIDENTS is a symlink; refusing" 2
   install -d -o tim -g tim -m 0700 "$INCIDENTS"
 
+  install_agent_user
+  install_agent_dirs
+
   step "GitHub App key placeholder"
   # LoadCredential= fails the unit when the file is missing; with an empty file the checkup reports key_missing.
   [[ ! -L "$KEY" ]] || fail "$KEY is a symlink; refusing" 2
   [[ -e "$KEY" ]] || install -o root -g root -m 0600 /dev/null "$KEY"
   chown root:root "$KEY"
   chmod 0600 "$KEY"
+
+  install_ollama_dropins
 
   step "systemd units"
   local unit
@@ -196,12 +267,18 @@ install_checkup() {
   (( ${#installed[@]} )) || fail "no checkup units in $ROOT/ops/systemd; deploy the code first" 2
   systemd-analyze verify "${installed[@]}"
   systemctl daemon-reload
+  if (( OLLAMA_CHANGED )); then
+    step "Ollama: drop-in changed, try-restart"
+    restart_ollama
+    show_ollama
+  fi
   if [[ -f "$UNIT_DIR/tim-checkup.service" && -f "$UNIT_DIR/tim-checkup.timer" ]]; then
     systemctl enable --now tim-checkup.timer
     systemctl list-timers tim-checkup.timer --no-pager
   else
     echo "tim-checkup.timer not enabled: service or timer missing" >&2
   fi
+  apply_diagnosis
 
   step "authority issue body"
   echo "Open an issue with your own GitHub account (not the App), label governance, with exactly this body:"
@@ -215,40 +292,233 @@ install_checkup() {
   1. bash /opt/tim/ops/debian/install_checkup.sh --app-key
   2. bash /opt/tim/ops/debian/install_checkup.sh --configure ... --reporting dry-run --diagnosis off
   3. after 24 h dry-run and the owner's explicit yes: the same line with --reporting on
+  4. Qwen (P6, after the P2 values are merged into config/tim_checkup.json): this script again with
+     --ollama-cpus LIST, then the --configure line with --diagnosis on
 EOF
+}
+
+# --- PR-2: tim-agent, exchange directories, Ollama drop-in, diagnosis switch -----------------------------------
+
+install_agent_user() {
+  step "system user $AGENT (no group tim, no systemd-journal)"
+  if ! id "$AGENT" >/dev/null 2>&1; then
+    if getent group "$AGENT" >/dev/null; then
+      useradd --system --gid "$AGENT" --no-create-home --home-dir "$AGENT_HOME" --shell /usr/sbin/nologin "$AGENT"
+    else
+      useradd --system --user-group --no-create-home --home-dir "$AGENT_HOME" --shell /usr/sbin/nologin "$AGENT"
+    fi
+  fi
+  # The agent holds no secret and must not read the journal or anything of group tim: its only group is its own.
+  [[ "$(id -nG "$AGENT")" == "$AGENT" ]] \
+    || fail "$AGENT must be in group $AGENT only (not tim, systemd-journal, adm); fix with gpasswd -d $AGENT GROUP" 7
+  id "$AGENT"
+}
+
+check_owner_mode() {
+  [[ "$(stat -c '%U:%G %a' -- "$1")" == "$2" ]] || fail "$1 is not $2 after install; nothing enabled" 7
+}
+
+install_agent_dirs() {
+  step "exchange directories under $AGENT_HOME"
+  local dir
+  for dir in "$AGENT_HOME" "$AGENT_HOME/requests" "$AGENT_HOME/results" "$AGENT_HOME/log"; do
+    [[ ! -L "$dir" ]] || fail "$dir is a symlink; refusing" 2
+  done
+  # requests: written by tim (checkup), read by tim-agent; results: written by tim-agent, read by tim.
+  # setgid keeps the reading side's group on every new file; files are 0640, nobody else reads them.
+  install -d -o root -g root -m 0755 "$AGENT_HOME"
+  install -d -o tim -g "$AGENT" -m 2750 "$AGENT_HOME/requests"
+  install -d -o "$AGENT" -g tim -m 2750 "$AGENT_HOME/results"
+  install -d -o "$AGENT" -g "$AGENT" -m 0700 "$AGENT_HOME/log"
+  check_owner_mode "$AGENT_HOME" "root:root 755"
+  check_owner_mode "$AGENT_HOME/requests" "tim:$AGENT 2750"
+  check_owner_mode "$AGENT_HOME/results" "$AGENT:tim 2750"
+  check_owner_mode "$AGENT_HOME/log" "$AGENT:$AGENT 700"
+  stat -c '%U:%G %a %n' -- "$AGENT_HOME" "$AGENT_HOME/requests" "$AGENT_HOME/results" "$AGENT_HOME/log"
+}
+
+# The only restart in this script: Ollama, and only after a TIM drop-in was added, changed or removed.
+restart_ollama() {
+  systemctl try-restart ollama.service \
+    || echo "warning: ollama.service did not restart cleanly; check journalctl -u ollama" >&2
+}
+
+show_ollama() {
+  systemctl show ollama.service -p AllowedCPUs,CPUQuotaPerSecUSec,MemoryMax,MemorySwapMax,Nice,IPAddressDeny --no-pager \
+    || true
+  ss -ltn 'sport = :11434' || true
+}
+
+# Copies $1 to $DROPIN_DIR/$2 (root:root 0644) only when the content differs (cmp); then sets OLLAMA_CHANGED.
+install_dropin() {
+  local source="$1" target="$DROPIN_DIR/$2"
+  [[ ! -L "$target" ]] || fail "$target is a symlink; refusing" 2
+  if cmp -s -- "$source" "$target"; then
+    echo "unchanged $target"
+    return 0
+  fi
+  install -o root -g root -m 0644 "$source" "$target"
+  OLLAMA_CHANGED=1
+  echo "installed $target"
+}
+
+# True while the old Qwen worker (design section 6, F.3/F.4) runs: it expects Ollama on 127.0.0.1.
+old_worker_running() {
+  systemctl is-active --quiet tim-qwen-worker.service 2>/dev/null \
+    || pgrep -f 'run_local_qwen|tim-qwen-worker' >/dev/null 2>&1
+}
+
+# The drop-in moves Ollama to 127.0.0.2 and cuts it off the network: only on the Qwen path, i.e. an explicit
+# --ollama-cpus, or a re-install with TIM_CHECKUP_DIAGNOSIS=on and tim-cpus.conf already in place (keeps it current).
+install_ollama_dropins() {
+  step "Ollama drop-in: limits, 127.0.0.2 only, no internet"
+  local source="$ROOT/ops/systemd/ollama.service.d/tim-limits.conf"
+  if [[ -z "$OLLAMA_CPUS" ]] && ! { diagnosis_on "$ENV_FILE" && [[ -f "$DROPIN_DIR/tim-cpus.conf" ]]; }; then
+    echo "Ollama drop-in not installed, Ollama not touched (stays on 127.0.0.1)." \
+         "Qwen step 3 installs it: install_checkup.sh --ollama-cpus LIST"
+    return 0
+  fi
+  if [[ ! -f "$source" ]]; then
+    echo "not in this checkout, skipped: ollama.service.d/tim-limits.conf" >&2
+    return 0
+  fi
+  if ! systemctl cat ollama.service >/dev/null 2>&1; then
+    echo "ollama.service not found: drop-in skipped; the Qwen diagnosis cannot be enabled" >&2
+    return 0
+  fi
+  if old_worker_running; then
+    [[ -z "$OLLAMA_CPUS" ]] \
+      || fail "the old Qwen worker still runs (tim-qwen-worker); stop and archive it first (docs/TIM_CHECKUP.md F.3/F.4)" 2
+    echo "Ollama drop-in skipped, Ollama not touched: the old Qwen worker still runs (F.3/F.4)" >&2
+    return 0
+  fi
+  [[ ! -L "$ATTIC" && ! -L "$DROPIN_DIR" ]] || fail "$ATTIC or $DROPIN_DIR is a symlink; refusing" 2
+  install -d -o root -g root -m 0700 "$ATTIC"
+  if [[ ! -e "$ATTIC/ollama.service.before" ]]; then
+    # Only the first time: Ollama before any TIM drop-in, for the way back (docs/TIM_CHECKUP.md).
+    systemctl cat ollama.service >"$ATTIC/ollama.service.before"
+    { ss -ltn 'sport = :11434' || true; } >"$ATTIC/ollama.listen.before"
+    echo "saved $ATTIC/ollama.service.before and $ATTIC/ollama.listen.before"
+  fi
+  install -d -o root -g root -m 0755 "$DROPIN_DIR"
+  install_dropin "$source" tim-limits.conf
+  if [[ -n "$OLLAMA_CPUS" ]]; then
+    TMP_FILE="$(mktemp)"
+    {
+      echo "# Written by ops/debian/install_checkup.sh from --ollama-cpus (P0, lscpu -e). Removed by --uninstall."
+      echo "[Service]"
+      printf 'AllowedCPUs=%s\n' "$OLLAMA_CPUS"
+    } >"$TMP_FILE"
+    install_dropin "$TMP_FILE" tim-cpus.conf
+    rm -f -- "$TMP_FILE"
+    TMP_FILE=""
+  elif [[ -f "$DROPIN_DIR/tim-cpus.conf" ]]; then
+    echo "kept from an earlier install: $(grep -E '^AllowedCPUs=' "$DROPIN_DIR/tim-cpus.conf" || echo tim-cpus.conf)"
+  else
+    echo "AllowedCPUs not set (no --ollama-cpus): no tim-cpus.conf written, nothing guessed." >&2
+    echo "The Qwen diagnosis stays disabled until: install_checkup.sh --ollama-cpus LIST (P0, lscpu -e)." >&2
+  fi
+}
+
+# Enables tim-qwen-diagnose.timer and tim-checkup.path only with TIM_CHECKUP_DIAGNOSIS=on and everything in place,
+# otherwise disables them. Even when enabled, diagnose stays idle ("not calibrated") until config has the P2 values.
+# Fills MISSING with what the Qwen diagnosis still needs (empty: it can be enabled).
+diagnosis_missing() {
+  local unit
+  MISSING=()
+  for unit in tim-checkup.service tim-qwen-diagnose.service "${DIAGNOSIS_UNITS[@]}"; do
+    [[ -f "$UNIT_DIR/$unit" ]] || MISSING+=("$unit")
+  done
+  [[ -f "$DROPIN_DIR/tim-limits.conf" ]] || MISSING+=("ollama.service.d/tim-limits.conf")
+  [[ -f "$DROPIN_DIR/tim-cpus.conf" ]] || MISSING+=("ollama.service.d/tim-cpus.conf (--ollama-cpus)")
+  id "$AGENT" >/dev/null 2>&1 || MISSING+=("user $AGENT")
+  [[ -d "$AGENT_HOME/requests" && -d "$AGENT_HOME/results" ]] || MISSING+=("$AGENT_HOME/requests and results")
+  # The old worker (design section 6, F.3/F.4) expects Ollama on 127.0.0.1 and must be stopped and archived first.
+  if old_worker_running; then
+    MISSING+=("old Qwen worker stopped (tim-qwen-worker, docs/TIM_CHECKUP.md F.3/F.4)")
+  fi
+  return 0
+}
+
+apply_diagnosis() {
+  step "Qwen diagnosis"
+  local unit
+  if ! diagnosis_on "$ENV_FILE"; then
+    for unit in "${DIAGNOSIS_UNITS[@]}"; do
+      if [[ -f "$UNIT_DIR/$unit" ]]; then systemctl disable --now "$unit" 2>/dev/null || true; fi
+    done
+    echo "TIM_CHECKUP_DIAGNOSIS is not on: tim-qwen-diagnose.timer and tim-checkup.path stay disabled."
+    return 0
+  fi
+  diagnosis_missing
+  if (( ${#MISSING[@]} )); then
+    echo "TIM_CHECKUP_DIAGNOSIS=on, but the Qwen diagnosis is NOT enabled; missing: ${MISSING[*]}" >&2
+    echo "Run install_checkup.sh --ollama-cpus LIST first, then this again; until then set --diagnosis off" \
+         "(otherwise the checkup reports the two disabled units as a UNIT incident)." >&2
+    return 0
+  fi
+  systemctl enable --now tim-qwen-diagnose.timer tim-checkup.path
+  systemctl list-timers tim-qwen-diagnose.timer --no-pager
+  echo "Enabled. diagnose stays idle (not calibrated) until the P2 values are merged into config/tim_checkup.json."
 }
 
 # --- --uninstall -----------------------------------------------------------------------------------------------
 
 uninstall_checkup() {
-  step "stop and remove the checkup units"
+  step "stop and remove the checkup and Qwen units"
   # A running check is stopped; its outbox entries stay pending on disk.
-  systemctl disable --now tim-checkup.timer 2>/dev/null || true
-  systemctl stop tim-checkup.service 2>/dev/null || true
-  if systemctl is-active --quiet tim-checkup.timer; then
-    fail "tim-checkup.timer is still active; nothing removed" 1
-  fi
   local unit
+  for unit in tim-checkup.timer tim-checkup.path tim-qwen-diagnose.timer; do
+    systemctl disable --now "$unit" 2>/dev/null || true
+  done
+  systemctl stop tim-checkup.service tim-qwen-diagnose.service 2>/dev/null || true
+  for unit in tim-checkup.timer tim-checkup.path tim-qwen-diagnose.timer; do
+    if systemctl is-active --quiet "$unit"; then
+      fail "$unit is still active; nothing removed" 1
+    fi
+  done
   for unit in "${UNITS[@]}"; do
     rm -f -- "$UNIT_DIR/$unit"
   done
-  if [[ -L "$UNIT_DIR/timers.target.wants/tim-checkup.timer" ]]; then
-    rm -f -- "$UNIT_DIR/timers.target.wants/tim-checkup.timer"
-  fi
+  for unit in timers.target.wants/tim-checkup.timer timers.target.wants/tim-qwen-diagnose.timer \
+              paths.target.wants/tim-checkup.path; do
+    if [[ -L "$UNIT_DIR/$unit" ]]; then
+      rm -f -- "$UNIT_DIR/$unit"
+    fi
+  done
+
+  step "remove the Ollama drop-ins"
+  local dropin
+  local removed=0
+  for dropin in "${DROPINS[@]}"; do
+    if [[ -e "$DROPIN_DIR/$dropin" || -L "$DROPIN_DIR/$dropin" ]]; then
+      rm -f -- "$DROPIN_DIR/$dropin"
+      removed=1
+      echo "removed $DROPIN_DIR/$dropin"
+    fi
+  done
+  if [[ -d "$DROPIN_DIR" && ! -L "$DROPIN_DIR" ]]; then rmdir --ignore-fail-on-non-empty -- "$DROPIN_DIR"; fi
   systemctl daemon-reload
-  systemctl reset-failed tim-checkup.service tim-checkup.timer 2>/dev/null || true
+  if (( removed )); then
+    # Back to the listener and limits from before the drop-in (compare with the saved copy below).
+    restart_ollama
+  fi
+  systemctl reset-failed tim-checkup.service tim-checkup.timer tim-checkup.path tim-qwen-diagnose.service \
+    tim-qwen-diagnose.timer 2>/dev/null || true
 
   step "kept as evidence (nothing deleted)"
   echo "  $INCIDENTS: state, outbox and outbox/done, registry, evidence"
   echo "  $KEY: revoke the key in the GitHub App settings first, then remove the file by hand"
   echo "  TIM_CHECKUP_* lines in $ENV_FILE"
+  echo "  user $AGENT and $AGENT_HOME (requests, results, log)"
+  echo "  $ATTIC/ollama.service.before; compare: systemctl cat ollama | diff - $ATTIC/ollama.service.before"
   echo "  issues on GitHub stay as they are; close the authority issue to revoke creation for good"
-  echo "Note: bootstrap.sh copies tim-checkup.* again on its next run but never enables them."
+  echo "Note: bootstrap.sh copies tim-checkup.* and tim-qwen-diagnose.* again on its next run but never enables them."
 }
 
 main() {
   case "${1:-}" in
-    "") require_root; install_checkup ;;
+    ""|--ollama-cpus) parse_install "$@"; require_root; install_checkup ;;
     --app-key) (( $# == 1 )) || fail "--app-key takes no value; paste the key when asked" 64
                require_root; store_app_key ;;
     --configure) shift; parse_configure "$@"; require_root; configure ;;

@@ -1,6 +1,8 @@
 # TIM checkup every 15 min: incidents from health/status files, redacted evidence, GitHub issues. Read-only for TIM.
 # Installed and enabled only by ops/debian/install_checkup.sh (bootstrap.sh copies it but never enables it).
 # The GitHub App key reaches the process only through LoadCredential; reporting is off until --configure.
+# It writes diagnosis requests, HOLD and PAUSE to /var/lib/tim-agent/requests (optional path: absent until PR-2 is
+# installed) and reads results/ as group tim; tim-checkup.path also starts it when a result arrives.
 [Unit]
 Description=TIM checkup and incident reporter (OBSERVE only)
 After=network-online.target postgresql.service
@@ -37,7 +39,7 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-ReadWritePaths=/opt/tim/data /opt/tim/artifacts
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts -/var/lib/tim-agent/requests
 TimeoutStartSec=300
 Nice=5
 CPUQuota=25%

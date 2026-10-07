@@ -1,0 +1,48 @@
+# Qwen incident diagnosis: local qwen3-coder:30b via Ollama on 127.0.0.2, read-only tools, no credentials, no journal group.
+# Installed by bootstrap.sh's glob but enabled only by ops/debian/install_checkup.sh, and only with TIM_CHECKUP_DIAGNOSIS=on.
+# tim-agent reads requests/ and writes results/ and log/ under /var/lib/tim-agent; everything it writes is untrusted
+# and re-validated by tim-checkup. It never writes to /opt/tim, never restarts anything and never sees a secret.
+# DNS: only public resolvers are reachable. If P0 shows a private or loopback resolver (for example 127.0.0.53),
+# P0 adds "<resolver-ip>/32" to IPAddressAllow below by a reviewed PR; nothing else is ever allowed.
+[Unit]
+Description=TIM Qwen incident diagnosis (read-only advice, OBSERVE only)
+After=network-online.target ollama.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_checkup.py diagnose
+User=tim-agent
+Group=tim-agent
+WorkingDirectory=/opt/tim
+Environment=PYTHONDONTWRITEBYTECODE=1 HOME=/var/lib/tim-agent GIT_OPTIONAL_LOCKS=0
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.0.0.0/24 192.168.0.0/16 198.18.0.0/15 224.0.0.0/4 240.0.0.0/4 ::1/128 fc00::/7 fe80::/10 ff00::/8
+IPAddressAllow=127.0.0.2/32
+InaccessiblePaths=-/etc/tim -/var/backups/tim -/opt/tim/data -/opt/tim/artifacts -/var/lib/postgresql -/run/postgresql -/srv/tim -/var/lib/tim -/var/log -/run/credentials
+ReadWritePaths=-/var/lib/tim-agent/results -/var/lib/tim-agent/log
+TimeoutStartSec=1200
+Nice=15
+CPUQuota=50%
+MemoryMax=1G
+TasksMax=32
+LimitFSIZE=16M

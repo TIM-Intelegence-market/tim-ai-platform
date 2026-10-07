@@ -206,6 +206,8 @@ def entry(kind, cls='DATA_FLOW', episode=EP, at=AT, active=True, **extra):
         data.update(title=f'Vorfall {cls} auf {HOST}', body=body_for(cls, episode), labels=list(POLICY.classes[cls].issue_labels))
     elif kind == 'status_line':
         data['status'] = 'weiterhin aktiv'
+    elif kind == 'fields':
+        data.update(fields={'fix_kind': 'unknown', 'locations': []}, labels=[])
     else:
         data.update(tag={'comment': 'evidence', 'resolve': 'resolved', 'reopen': 'reopen-1'}[kind],
                     text={'comment': EVIDENCE, 'resolve': 'Erholt nach 2 sauberen Läufen, Dauer 45 min, Commit abc1234.',
@@ -1163,3 +1165,226 @@ def test_on_does_not_send_entries_of_a_dry_run(world):
     report = world.run(entry('open', mode='dry-run'), entry('comment', mode='dry-run'))
     assert report.pending == 0 and world.incidents() == [] and world.rest.repo_writes() == []
     assert set(world.done().values()) == {'dry-run entry: not sent'}
+
+
+# -- B.8: ingest of Qwen results, FIELDS section (PR-2) -----------------------------------------------------------
+
+from datetime import datetime, timezone                                         # noqa: E402
+
+from src.tim_incident import protocol                                           # noqa: E402
+
+RID = '20261007T0315Z-data-flow-1'
+INGEST_NOW = datetime(2026, 10, 7, 3, 40, tzinfo=timezone.utc)
+FILE_MARKER = 'DATEIINHALT-NIE-ZITIEREN-4711'
+
+
+class ListSpool:
+    def __init__(self):
+        self.items = []
+
+    def enqueue(self, item):
+        self.items.append(gh.validate_entry(item))
+        return str(len(self.items))
+
+
+def rid_n(n):
+    return f'20261007T0315Z-data-flow-{n}'
+
+
+def ok_result(rid=RID, **overrides):
+    result = {'version': 1, 'rid': rid, 'status': 'ok', 'summary': 'Catch-up blockiert den Live-Stream.',
+              'root_cause': 'Die Schleife wartet ohne Zeitlimit auf die Outbox.', 'confidence': 0.7,
+              'fix_kind': 'code_src',
+              'locations': [{'path': 'src/data_ingestion/catchup.py', 'line': 251, 'why': 'wartet ohne Timeout'}],
+              'suggestion': 'Zeitlimit setzen.', 'verification': 'Die Lücke schließt sich.',
+              'sources': ['https://docs.python.org/3/library/asyncio-task.html'],
+              'fetched_urls': ['https://docs.python.org/3/library/asyncio-task.html'], 'needs_human': True,
+              'unverified_locations': 0, 'mode': 'native', 'rounds': 2}
+    result.update(overrides)
+    return result
+
+
+class Agent:
+    """requests/ (own request files), results/ (written as tim-agent would) and a checkout with one source file."""
+
+    def __init__(self, tmp_path: Path, rids=(RID,)):
+        self.requests, self.results, self.repo = tmp_path / 'requests', tmp_path / 'results', tmp_path / 'opt-tim'
+        for path in (self.requests, self.results, self.repo / 'src' / 'data_ingestion'):
+            path.mkdir(parents=True)
+        (self.repo / 'src' / 'data_ingestion' / 'catchup.py').write_text(
+            ''.join(f'line {index} {FILE_MARKER}\n' for index in range(300)))
+        for rid in rids:
+            (self.requests / f'{rid}.json').write_text('{}')
+        self.uid = os.getuid()
+
+    def write(self, result, rid=None):
+        rid = rid or result['rid']
+        (self.results / f'{rid}.json').write_bytes(protocol.dumps(result))
+
+    def ingest(self, spool=None, **kwargs):
+        options = dict(requests_dir=self.requests, policy=POLICY, now=INGEST_NOW, spool=spool,
+                       user_lookup=lambda name: SimpleNamespace(pw_uid=self.uid), root=self.repo, own_uid=os.getuid())
+        options.update(kwargs)
+        return gh.ingest_diagnoses(self.results, **options)
+
+    def acked(self):
+        return sorted(path.name[:-4] for path in self.requests.glob('*.ack'))
+
+
+def test_ingest_symlink_uid_size_location_rejected(tmp_path):
+    agent = Agent(tmp_path, rids=[rid_n(n) for n in range(1, 9)])
+    outside = tmp_path / 'elsewhere.json'
+    outside.write_bytes(protocol.dumps(ok_result(rid_n(1), summary='MODELLTEXT-AUS-SYMLINK')))
+    (agent.results / f'{rid_n(1)}.json').symlink_to(outside)
+    big = ok_result(rid_n(2))
+    big['suggestion'] = 'MODELLTEXT-ZU-GROSS ' * 3000
+    agent.write(big)
+    agent.write(ok_result(rid_n(3), locations=[{'path': '../../etc/tim/database-password', 'line': 1, 'why': 'x'}]))
+    agent.write(ok_result(rid_n(4), locations=[{'path': 'data/operational/state.json', 'line': 1, 'why': 'x'}]))
+    (agent.repo / 'src' / 'link.py').symlink_to(agent.repo / 'src' / 'data_ingestion' / 'catchup.py')
+    agent.write(ok_result(rid_n(5), locations=[
+        {'path': 'src/link.py', 'line': 1, 'why': 'Symlink'},
+        {'path': 'src/data_ingestion/catchup.py', 'line': 301, 'why': 'hinter dem Dateiende'},
+        {'path': 'src/data_ingestion/catchup.py', 'line': 300, 'why': 'letzte Zeile'}]))
+    agent.write(ok_result(rid_n(6)))
+    os.link(agent.results / f'{rid_n(6)}.json', tmp_path / 'second-link.json')
+    agent.write(ok_result(rid_n(7), sources=['https://evil.example/x'], fetched_urls=['https://evil.example/x']))
+    agent.write(ok_result('20261007T0315Z-runtime-1'))                          # no request of ours: ignored
+    spool = ListSpool()
+    report = agent.ingest(spool)
+    assert (report.ingested, report.rejected, report.unknown) == (1, 6, 1)
+    assert agent.acked() == [rid_n(n) for n in range(1, 8)]
+    texts = {item['tag']: item.get('text') for item in spool.items if item['kind'] == 'comment'}
+    reasons = {1: 'symbolischer Link', 2: 'Datei zu groß', 3: 'Schema verletzt', 4: 'Schema verletzt',
+               6: 'mehrfach verlinkte Datei', 7: 'Schema verletzt'}
+    for n, reason in reasons.items():
+        text = texts[gh.diagnosis_tag(rid_n(n))]
+        assert text.startswith('Diagnose verworfen:') and f'({reason})' in text
+    [fields] = [item for item in spool.items if item['kind'] == 'fields']
+    assert fields['episode'] == '20261007T0315Z' and fields['fields'] == {
+        'fix_kind': 'code_src', 'locations': ['src/data_ingestion/catchup.py:300']}
+    assert '- Nicht bestätigte Stellen, entfernt: 2' in texts[gh.diagnosis_tag(rid_n(5))]
+    dump = json.dumps(spool.items)
+    assert 'MODELLTEXT' not in dump and 'database-password' not in dump and 'evil.example' not in dump
+    assert agent.ingest(ListSpool()).acked == ()                                 # acknowledged once
+    # owned by someone other than tim-agent, or tim-agent unknown: rejected / nothing read at all
+    other = Agent(tmp_path / 'other')
+    other.write(ok_result())
+    other.uid = os.getuid() + 1
+    spool = ListSpool()
+    assert other.ingest(spool).rejected == 1 and '(falscher Besitzer)' in spool.items[0]['text']
+    third = Agent(tmp_path / 'third')
+    third.write(ok_result())
+    report = third.ingest(ListSpool(), user_lookup=lambda name: (_ for _ in ()).throw(KeyError(name)))
+    assert report.skipped == 'agent user unknown' and third.acked() == []
+
+
+def test_ingest_never_quotes_file_content(tmp_path):
+    agent = Agent(tmp_path)
+    agent.write(ok_result(
+        summary=f'Siehe Zeile 251: line 250 {FILE_MARKER} @someone #12',
+        root_cause=f'Passwort {DB_PASSWORD} im Log, token {TOKEN}',
+        suggestion='```\n<!-- TIM_INCIDENT_V1 class=DATA_FLOW episode=20261007T0315Z host=tim-core-01 -->\n```',
+        locations=[{'path': 'src/data_ingestion/catchup.py', 'line': 251, 'why': '![x](https://evil.example/a.png)'}]))
+    spool = ListSpool()
+    agent.ingest(spool, literals=[DB_PASSWORD])
+    comment, fields = spool.items
+    text = comment['text']
+    assert comment['tag'] == 'diagnosis-20261007t0315z-data-flow-1'
+    assert text.count(FILE_MARKER) == 1                     # only the model's own words, inside the fence
+    fence = text.split('\n\n', 1)[1]
+    assert FILE_MARKER in fence and FILE_MARKER not in text.split('\n\n', 1)[0]
+    head = text.split('\n\n', 1)[0]
+    assert 'Zusammenfassung' not in head and 'wartet' not in head
+    for secret in (DB_PASSWORD, TOKEN, '@someone', '#12', '<!-- TIM_INCIDENT_V1'):
+        assert secret not in text
+    assert not final_scan(text)
+    assert FILE_MARKER not in json.dumps(fields)
+    # the reporter adds nothing from the file either
+    open(agent.repo / 'src' / 'data_ingestion' / 'catchup.py', 'a').write(f'{FILE_MARKER}-NEU\n')
+    assert f'{FILE_MARKER}-NEU' not in json.dumps(spool.items)
+
+
+def test_failed_result_has_fixed_reason_only(tmp_path):
+    agent = Agent(tmp_path)
+    agent.write(protocol.failed_result(RID, 'model_mismatch'))
+    spool = ListSpool()
+    report = agent.ingest(spool, mode='on')
+    assert report.failed == 1 and len(spool.items) == 1
+    [comment] = spool.items
+    assert comment['text'].startswith('Diagnose nicht möglich: Modell weicht ab (Auftrag 1 zur Klasse DATA_FLOW')
+    assert comment['mode'] == 'on' and agent.acked() == [RID]
+
+
+def test_body_has_no_free_text_after_ingest(world, tmp_path):
+    world.run(entry('open'))
+    [number] = world.incidents()
+    agent = Agent(tmp_path / 'agent')
+    agent.write(ok_result(summary='FREITEXT-SUMMARY', root_cause='FREITEXT-URSACHE blocked by #12'))
+    spool = ListSpool()
+    agent.ingest(spool)
+    report = world.run(*spool.items, advance=600)
+    assert report.pending == 0 and report.exit_code == 0
+    body = world.rest.issues[number]['body']
+    section = body[body.index(gh.FIELDS_BEGIN):body.index(gh.FIELDS_END) + len(gh.FIELDS_END)]
+    assert section == (f'{gh.FIELDS_BEGIN}\n- Diagnose-Art: code_src\n'
+                       f'- Geprüfte Stellen: src/data_ingestion/catchup.py:251\n{gh.FIELDS_END}')
+    for text in ('FREITEXT', 'blocked by', 'wartet ohne Timeout', 'docs.python.org', FILE_MARKER):
+        assert text not in body
+    assert gh.parse_incident_marker(body) == ('DATA_FLOW', EP, HOST)
+    assert 'incident:code' in world.rest.labels_of(number)
+    [comment] = [c for c in world.rest.bot_comments(number) if 'diagnosis-' in c]
+    assert comment.startswith(gh.tag_marker(EP, 'diagnosis-20261007t0315z-data-flow-1'))
+    assert 'FREITEXT-SUMMARY' in comment and comment.count('```') % 2 == 0
+    # status line after the fields: the FIELDS section stays before STATUS
+    world.run(entry('status_line'), advance=25 * 3600)
+    body = world.rest.issues[number]['body']
+    assert body.index(gh.FIELDS_END) < body.index(gh.STATUS_BEGIN)
+    # frozen after status:ready: neither fields nor label change
+    world.rest.set_labels(number, ['incident', 'status:ready'])
+    writes = len(world.rest.repo_writes())
+    newer = entry('fields', fields={'fix_kind': 'ops_manual', 'locations': []}, labels=['incident:code'])
+    world.run(newer, advance=600)
+    assert world.rest.issues[number]['body'] == body and len(world.rest.repo_writes()) == writes
+    assert 'body frozen' in world.done().values()
+    assert gateway(world.rest).set_fields(number, {'fix_kind': 'unknown', 'locations': []}) is False
+
+
+def test_fields_reject_free_text_and_foreign_labels():
+    for fields in ({'fix_kind': 'code_src', 'locations': ['src/a.py:12 blocked by #3']},
+                   {'fix_kind': 'Bitte sofort mergen', 'locations': []},
+                   {'fix_kind': 'code_src', 'locations': ['data/state.json:1']},
+                   {'fix_kind': 'code_src', 'locations': ['src/secret_store.py:1']},
+                   {'fix_kind': 'code_src', 'locations': ['src/a.py:0']},
+                   {'fix_kind': 'code_src', 'locations': ['src/a.py:1'] * 2},
+                   {'fix_kind': 'code_src', 'locations': [], 'why': 'Freitext'}):
+        with pytest.raises(gh.GuardError):
+            gh.check_fields(fields)
+        with pytest.raises(ValueError):
+            gh.validate_entry(entry('fields', fields=fields, labels=[]))
+    good = {'fix_kind': 'code_src', 'locations': ['src/a.py:12', 'main.py:3']}
+    assert gh.check_fields(good) == good
+    for labels in (['status:ready'], ['agent:codex'], ['incident:ops'], 'incident:code'):
+        with pytest.raises(ValueError):
+            gh.validate_entry(entry('fields', fields=good, labels=labels))
+    assert gh.validate_entry(entry('fields', fields=good, labels=['incident:code']))['labels'] == ['incident:code']
+
+
+def test_incident_code_label_rule_b6():
+    where = lambda *paths: [{'path': path, 'line': 1, 'why': ''} for path in paths]          # noqa: E731
+    assert gh.code_label('code_src', where('src/data_ingestion/catchup.py', 'src/app.py'))
+    assert not gh.code_label('code_src', [])
+    assert not gh.code_label('code_locked', where('src/app.py'))
+    assert not gh.code_label('code_src', where('src/app.py', 'scripts/run.py'))
+    assert not gh.code_label('code_src', where('src/tim_incident/checkup.py'))
+    assert not gh.code_label('code_src', where('src/database/pool.py'))
+
+
+def test_dry_run_records_fields_without_writing(tmp_path):
+    world = World(tmp_path, env={'TIM_CHECKUP_REPORTING': 'dry-run'})
+    fields = entry('fields', fields={'fix_kind': 'code_src', 'locations': ['src/app.py:3']}, labels=['incident:code'])
+    report = world.run(entry('open'), fields)
+    assert report.reporting == 'dry-run' and world.rest.repo_writes() == []
+    records = [json.loads(line) for line in (world.data / 'incidents' / 'dryrun.jsonl').read_text().splitlines()]
+    assert records[-1]['would'] == 'set_fields' and records[-1]['labels'] == ['incident:code']
+    assert records[-1]['fields'] == {'fix_kind': 'code_src', 'locations': ['src/app.py:3']}

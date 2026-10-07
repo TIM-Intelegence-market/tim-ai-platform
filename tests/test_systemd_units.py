@@ -1,7 +1,12 @@
-"""ops/systemd: every unit points at real repo files, runs as tim, and carries no secret values."""
+"""ops/systemd: every unit points at real repo files, runs as tim, and carries no secret values.
+
+The Qwen diagnosis unit (PR-2) is the one exception to "runs as tim": it runs as tim-agent without the env file,
+credentials or journal group, and gets its own isolation test.
+"""
 from __future__ import annotations
 
 import configparser
+import json
 import plistlib
 import re
 from pathlib import Path
@@ -15,6 +20,16 @@ SERVICES = sorted(UNITS.glob("*.service"))
 TIMERS = sorted(UNITS.glob("*.timer"))
 # Only the backup units may write outside the checkout's data directories.
 BACKUP_UNITS = {"tim-backup.service", "tim-restore-test.service"}
+# Runs as tim-agent, not tim: User=tim and EnvironmentFile are forbidden there (test_agent_unit_isolation).
+AGENT_UNITS = {"tim-qwen-diagnose.service"}
+# Optional extra write paths (leading "-": absent until the installer creates them).
+EXTRA_WRITE = {"tim-checkup.service": {"-/var/lib/tim-agent/requests"}}
+# Units added by the checkup plan: every path outside data/ and artifacts/ must be optional ("-").
+NEW_UNITS = ("tim-checkup.service", "tim-qwen-diagnose.service")
+PATH_KEYS = ("ReadWritePaths", "ReadOnlyPaths", "InaccessiblePaths", "ExecPaths", "NoExecPaths")
+DROPIN = UNITS / "ollama.service.d/tim-limits.conf"
+AGENT_HOME = "/var/lib/tim-agent"
+CONFIG = json.loads((ROOT / "config/tim_checkup.json").read_text(encoding="utf-8"))
 
 
 def parse(path: Path) -> configparser.ConfigParser:
@@ -36,11 +51,15 @@ def test_expected_units_exist() -> None:
         "tim-restore-test.service", "tim-restore-test.timer",
         "tim-server-health.service", "tim-server-health.timer",
         "tim-checkup.service", "tim-checkup.timer",
+        "tim-qwen-diagnose.service", "tim-qwen-diagnose.timer",
     } <= names
+    assert (UNITS / "tim-checkup.path").is_file() and DROPIN.is_file()
 
 
 @pytest.mark.parametrize("path", SERVICES, ids=lambda path: path.name)
 def test_service_runs_repo_script_as_tim_with_hardening(path: Path) -> None:
+    if path.name in AGENT_UNITS:
+        pytest.skip("runs as tim-agent; see test_agent_unit_isolation")
     service = parse(path)["Service"]
     arguments = service["ExecStart"].split()
     assert arguments[0] == f"{SERVER_ROOT}/.venv/bin/python"
@@ -55,6 +74,7 @@ def test_service_runs_repo_script_as_tim_with_hardening(path: Path) -> None:
     allowed = {f"{SERVER_ROOT}/data", f"{SERVER_ROOT}/artifacts"}
     if path.name in BACKUP_UNITS:
         allowed.add("/var/backups/tim")
+    allowed |= EXTRA_WRITE.get(path.name, set())
     assert set(service["ReadWritePaths"].split()) == allowed
 
 
@@ -85,10 +105,121 @@ def test_checkup_unit_hardening() -> None:
 
 
 def test_bootstrap_never_enables_the_checkup() -> None:
-    # bootstrap.sh copies tim-checkup.* by glob; only ops/debian/install_checkup.sh enables the timer.
+    # bootstrap.sh copies tim-checkup.* and tim-qwen-diagnose.* by glob; only ops/debian/install_checkup.sh enables them.
     script = (ROOT / "ops/debian/bootstrap.sh").read_text(encoding="utf-8")
     enables = [line for line in script.replace("\\\n", " ").splitlines() if "systemctl enable" in line]
-    assert enables and not any("tim-checkup" in line or "*" in line for line in enables)
+    assert enables and not any("tim-checkup" in line or "tim-qwen" in line or "*" in line for line in enables)
+    assert "ollama" not in script.lower().replace("tim_enable_ollama", "")
+
+
+HARDENING_YES = ("NoNewPrivileges", "PrivateTmp", "PrivateDevices", "ProtectHome", "ProtectKernelTunables",
+                 "ProtectKernelModules", "ProtectKernelLogs", "ProtectControlGroups", "ProtectClock",
+                 "ProtectHostname", "RestrictNamespaces", "RestrictRealtime", "RestrictSUIDSGID", "LockPersonality")
+PRIVATE_NETS = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
+                "192.0.0.0/24", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/4", "240.0.0.0/4",
+                "::1/128", "fc00::/7", "fe80::/10", "ff00::/8")
+
+
+def _endpoint() -> tuple[str, str]:
+    match = re.fullmatch(r"http://(127\.0\.0\.2):(\d+)", CONFIG["agent"]["endpoint"])
+    assert match, CONFIG["agent"]["endpoint"]
+    return match.group(1), match.group(2)
+
+
+def test_agent_unit_isolation() -> None:
+    # Qwen reads code and writes untrusted advice: no secret, no journal, no TIM data, no private network, no DB.
+    unit = parse(UNITS / "tim-qwen-diagnose.service")
+    service = unit["Service"]
+    assert service["ExecStart"].split() == [
+        f"{SERVER_ROOT}/.venv/bin/python", f"{SERVER_ROOT}/scripts/tim_checkup.py", "diagnose"]
+    assert service["Type"] == "oneshot" and "Restart" not in service
+    # Identity: its own user and group, nothing else.
+    assert service["User"] == "tim-agent" and service["Group"] == "tim-agent"
+    for key in ("EnvironmentFile", "LoadCredential", "LoadCredentialEncrypted", "SetCredential", "SupplementaryGroups",
+                "PassEnvironment", "DynamicUser", "AmbientCapabilities"):
+        assert key not in service, key
+    environment = dict(item.split("=", 1) for item in service["Environment"].split())
+    assert environment == {"PYTHONDONTWRITEBYTECODE": "1", "HOME": AGENT_HOME, "GIT_OPTIONAL_LOCKS": "0"}
+    assert service["WorkingDirectory"] == SERVER_ROOT
+    assert service["UMask"] == "0027"
+    # File system: writes only results/ and log/, never sees secrets, TIM data, backups, the DB or the journal.
+    assert service["ProtectSystem"] == "strict"
+    assert set(service["ReadWritePaths"].split()) == {f"-{AGENT_HOME}/results", f"-{AGENT_HOME}/log"}
+    hidden = {path.lstrip("-") for path in service["InaccessiblePaths"].split()}
+    assert {"/etc/tim", "/opt/tim/data", "/opt/tim/artifacts", "/var/backups/tim", "/var/lib/postgresql",
+            "/run/postgresql", "/var/log", "/run/credentials", "/srv/tim"} <= hidden
+    for key in HARDENING_YES:
+        assert service[key] == "yes", key
+    assert service["ProtectProc"] == "invisible"
+    assert service["SystemCallFilter"] == "@system-service" and service["SystemCallArchitectures"] == "native"
+    assert service["CapabilityBoundingSet"] == ""
+    assert set(service["RestrictAddressFamilies"].split()) == {"AF_UNIX", "AF_INET", "AF_INET6"}
+    # Network: loopback and private nets denied; only Ollama's own address is allowed. No resolver line before P0.
+    denied = service["IPAddressDeny"].split()
+    assert set(PRIVATE_NETS) <= set(denied) and "any" not in denied
+    host, _ = _endpoint()
+    # Before P0 (resolver null or "public") only Ollama; a private resolver from P0 adds exactly its own /32.
+    resolver = CONFIG["agent"].get("resolver")
+    extra = [] if resolver in (None, "public") else [f"{resolver}/32"]
+    assert service["IPAddressAllow"].split() == [f"{host}/32", *extra]
+    assert "127.0.0.1" not in service["IPAddressAllow"]
+    # Limits.
+    assert int(service["Nice"]) >= 10
+    assert service["MemoryMax"] == "1G" and service["LimitFSIZE"] and service["CPUQuota"] and service["TasksMax"]
+    timeout = int(service["TimeoutStartSec"])
+    assert CONFIG["agent"]["deadline_seconds"] < timeout <= 1200
+    assert "ollama.service" in unit["Unit"]["After"].split()
+    assert "Install" not in unit  # started only by its timer
+
+
+def test_qwen_timer() -> None:
+    timer = parse(UNITS / "tim-qwen-diagnose.timer")
+    assert timer["Timer"]["OnBootSec"] == "600s" and timer["Timer"]["OnUnitActiveSec"] == "300s"
+    assert timer["Timer"]["Persistent"] == "false" and timer["Timer"]["AccuracySec"] == "30s"
+    assert timer["Install"]["WantedBy"] == "timers.target"
+
+
+@pytest.mark.parametrize("name", NEW_UNITS)
+def test_new_units_optional_paths_have_dash(name: str) -> None:
+    # Paths outside /opt/tim/data and /opt/tim/artifacts may be absent: without "-" the unit would fail to start.
+    service = parse(UNITS / name)["Service"]
+    seen = 0
+    for key in PATH_KEYS:
+        for path in service.get(key, "").split():
+            seen += 1
+            if path.removeprefix("-") in (f"{SERVER_ROOT}/data", f"{SERVER_ROOT}/artifacts"):
+                continue
+            assert path.startswith("-/"), (key, path)
+    assert seen
+
+
+def test_ollama_dropin_limits() -> None:
+    # The drop-in may only limit Ollama: no ExecStart, no user, no model path, and never AllowedCPUs (installer only).
+    dropin = parse(DROPIN)
+    assert dropin.sections() == ["Service"]
+    service = dropin["Service"]
+    assert "AllowedCPUs" not in service
+    assert set(service) == {"Nice", "CPUWeight", "CPUQuota", "IOSchedulingClass", "MemoryMax", "MemorySwapMax",
+                            "OOMScoreAdjust", "IPAddressAllow", "IPAddressDeny", "Environment"}
+    assert int(service["Nice"]) >= 10 and int(service["CPUWeight"]) <= 50
+    assert service["CPUQuota"] == "300%" and service["IOSchedulingClass"] == "idle"
+    assert service["MemoryMax"] == "28G" and service["MemorySwapMax"] == "0"
+    assert int(service["OOMScoreAdjust"]) > 0
+    assert service["IPAddressDeny"] == "any" and service["IPAddressAllow"] == "localhost"
+    environment = dict(item.split("=", 1) for item in service["Environment"].split())
+    host, port = _endpoint()
+    assert environment == {"OLLAMA_HOST": f"{host}:{port}", "OLLAMA_NUM_PARALLEL": "1",
+                           "OLLAMA_MAX_LOADED_MODELS": "1", "OLLAMA_KEEP_ALIVE": "10m", "OLLAMA_NO_CLOUD": "1"}
+    assert "AllowedCPUs" not in "\n".join(line for line in DROPIN.read_text(encoding="utf-8").splitlines()
+                                           if not line.startswith("#"))
+
+
+def test_checkup_path_unit() -> None:
+    unit = parse(UNITS / "tim-checkup.path")
+    assert dict(unit["Path"]) == {"PathChanged": f"{AGENT_HOME}/results", "Unit": "tim-checkup.service",
+                                  "TriggerLimitIntervalSec": "1h", "TriggerLimitBurst": "12"}
+    assert unit["Install"]["WantedBy"] == "paths.target"
+    assert set(unit.sections()) == {"Unit", "Path", "Install"}
 
 
 @pytest.mark.parametrize("path", SERVICES, ids=lambda path: path.name)

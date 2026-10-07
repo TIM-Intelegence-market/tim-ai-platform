@@ -13,12 +13,17 @@ Contract kept on purpose:
   must pass `final_scan`; a comment with a hit is replaced whole, fixed texts are redacted. The token appears only in the Authorization header: never in spool, state, logs or errors.
 - The spool never deletes: delivered entries move to `outbox/done/`. A failure before sending stops the run and keeps
   the spool; nothing is retried blindly after an uncertain create (`CREATE_UNCERTAIN` waits for the owner).
+- Qwen results (PR-2, design B.8) cross the trust boundary only in `ingest_diagnoses`: opened with O_NOFOLLOW, owner
+  tim-agent, at most 32 KB, strict schema, locations re-verified under /opt/tim, file content never quoted, all model
+  text redacted again and fenced. The body gets only the FIELDS section (`set_fields`: fix_kind enum and verified
+  path:line), never model text, and nothing once the body is frozen.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import pwd
 import re
 import socket
 import stat
@@ -38,9 +43,9 @@ from src.task_governance.registry import MappingState, TaskRegistry
 from src.task_governance.repository_names import normalize_repository
 from src.task_governance.sync import CreateNotSent, EnsureOutcome, ensure_task
 
-from . import github_app
+from . import github_app, protocol
 from .policy import CLASS_NAMES, LABEL_ALLOWLIST, NOT_CONFIGURED, Controls
-from .redaction import final_scan, literal_variants, redact
+from .redaction import final_scan, literal_variants, redact, untrusted_block
 
 INCIDENT_MARKER = 'TIM_INCIDENT_V1'
 _INCIDENT = re.compile(r'<!-- TIM_INCIDENT_V1 class=([A-Z_]{1,32}) episode=(\d{8}T\d{4}Z) '
@@ -48,10 +53,15 @@ _INCIDENT = re.compile(r'<!-- TIM_INCIDENT_V1 class=([A-Z_]{1,32}) episode=(\d{8
 STATUS_BEGIN = '<!-- TIM_INCIDENT_STATUS_BEGIN -->'
 STATUS_END = '<!-- TIM_INCIDENT_STATUS_END -->'
 _STATUS = re.compile(re.escape(STATUS_BEGIN) + r'.*?' + re.escape(STATUS_END), re.S)
+FIELDS_BEGIN = '<!-- TIM_INCIDENT_FIELDS_BEGIN -->'
+FIELDS_END = '<!-- TIM_INCIDENT_FIELDS_END -->'
+_FIELDS = re.compile(re.escape(FIELDS_BEGIN) + r'.*?' + re.escape(FIELDS_END), re.S)
+_FIELD_LOCATION = re.compile(r'^([A-Za-z0-9_./-]{1,200}):([1-9][0-9]{0,6})$')
+FIELD_LABELS = frozenset({'incident:code'})     # the only label a diagnosis may add (B.6)
 _FORBIDDEN_LABEL = re.compile(r'^(?:status:|agent:|checkup:)|^(?:priority:p0|governance)$')
 _SUMMARY_PREFIX = '<!-- TIM_INCIDENT_SUMMARY id='
 
-KINDS = ('open', 'comment', 'status_line', 'resolve', 'reopen')
+KINDS = ('open', 'comment', 'status_line', 'resolve', 'reopen', 'fields')
 _EPISODE = re.compile(r'^\d{8}T\d{4}Z$')
 _HOSTNAME = re.compile(r'^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$')
 _TAG = re.compile(r'^[a-z0-9][a-z0-9-]{0,40}$')
@@ -496,6 +506,27 @@ class IncidentGateway(GitHubRestGateway):
         self._ref(answer, number)
         return True
 
+    def set_fields(self, number, fields, *, episode: str | None = None) -> bool:
+        """Replace only the FIELDS section (design B.5): the Diagnose-Art enum and verified path:line locations, no
+        free text. Inserted before the STATUS section (or at the end) when missing. No-op once the body is frozen."""
+        section = fields_section(check_fields(fields))
+        item = self._guard(number, episode)
+        if frozen(_label_names(item)):
+            return False
+        body = item.get('body') or ''
+        if _FIELDS.search(body):
+            new = _FIELDS.sub(lambda _: section, body, count=1)
+        elif STATUS_BEGIN in body:
+            head, tail = body.split(STATUS_BEGIN, 1)
+            new = f'{head.rstrip()}\n{section}\n{STATUS_BEGIN}{tail}'
+        else:
+            new = f'{body.rstrip()}\n{section}'
+        if new == body:
+            return False
+        _, answer = self._call('PATCH', f'/repos/{self.repository}/issues/{int(number)}', {'body': new})
+        self._ref(answer, number)
+        return True
+
     def post_summary(self, items) -> bool:
         """The only comment on the authority issue: a fixed text listing episodes that resolved while reporting was
         silenced or revoked. Idempotent per set of episodes."""
@@ -583,6 +614,220 @@ def status_text(entry) -> str:
     return f'- Stand {_when(entry["at"])}: {entry["status"]}{extra}'
 
 
+# -- diagnosis fields (design B.5) ---------------------------------------------------------------------------------
+
+def check_fields(fields) -> dict:
+    """A checked copy of {'fix_kind': FIX_KINDS, 'locations': ['path:line', ...]}; GuardError otherwise. Paths follow
+    the location rules (prefix, blocklist, ^[A-Za-z0-9_./-]+$), so the body never gets free text."""
+    if not isinstance(fields, dict) or set(fields) != {'fix_kind', 'locations'}:
+        raise GuardError('fields invalid')
+    if fields['fix_kind'] not in protocol.FIX_KINDS:
+        raise GuardError('fields invalid')
+    locations = fields['locations']
+    if not isinstance(locations, list) or len(locations) > protocol.LOCATIONS_MAX:
+        raise GuardError('fields invalid')
+    for item in locations:
+        match = _FIELD_LOCATION.match(item) if isinstance(item, str) else None
+        if match is None or not protocol.path_allowed(match.group(1), None, location=True):
+            raise GuardError('fields invalid')
+    if len(set(locations)) != len(locations):
+        raise GuardError('fields invalid')
+    return {'fix_kind': fields['fix_kind'], 'locations': list(locations)}
+
+
+def fields_section(fields) -> str:
+    places = ', '.join(fields['locations']) or 'keine'
+    return '\n'.join([FIELDS_BEGIN, f"- Diagnose-Art: {fields['fix_kind']}", f'- Geprüfte Stellen: {places}',
+                      FIELDS_END])
+
+
+def code_label(fix_kind: str, locations) -> bool:
+    """B.6: incident:code only for fix_kind code_src with at least one verified location, every one under src/ and
+    none in src/tim_incident/ or src/database/."""
+    paths = [item['path'] for item in locations]
+    return fix_kind == 'code_src' and bool(paths) and all(
+        path.startswith('src/') and not path.startswith(('src/tim_incident/', 'src/database/')) for path in paths)
+
+
+# -- ingest of Qwen results (design B.8): the trust boundary -------------------------------------------------------
+
+AGENT_USER = 'tim-agent'
+REPO_ROOT = Path('/opt/tim')
+INGEST_MAX = 20                             # results per run; the rest waits for the next run
+DIAGNOSIS_TAG_PREFIX = 'diagnosis-'
+_REJECT_TEXTS = {
+    'unreadable': 'Datei nicht lesbar',
+    'symlink': 'symbolischer Link',
+    'not_regular': 'keine reguläre Datei',
+    'wrong_owner': 'falscher Besitzer',
+    'linked': 'mehrfach verlinkte Datei',
+    'too_large': 'Datei zu groß',
+    'not_json': 'kein gültiges JSON',
+    'schema': 'Schema verletzt',
+    'bad_name': 'ungültiger Name',
+    'write_failed': 'ungültig',
+}
+_WITHHELD = '[Modelltext zurückgehalten: Die Schlussprüfung hat einen Geheimnisverdacht gefunden.]'
+
+
+def diagnosis_tag(rid: str) -> str:
+    """Comment tag of a request: one diagnosis comment per rid ('diagnosis-20261007t0315z-data-flow-1')."""
+    if protocol.parse_rid(rid) is None:
+        raise GuardError('invalid rid')
+    return DIAGNOSIS_TAG_PREFIX + rid.lower()
+
+
+def _request_label(rid: str) -> str:
+    episode, cls, seq = protocol.parse_rid(rid)
+    return f'Auftrag {seq} zur Klasse {cls}, Episode {episode}'
+
+
+def diagnosis_failed_text(rid: str, reason: str) -> str:
+    return (f'Diagnose nicht möglich: {protocol.FAILURE_TEXTS[reason]} ({_request_label(rid)}). '
+            'Die Qwen-Diagnose hat keinen Text geliefert.')
+
+
+def diagnosis_rejected_text(rid: str, code: str) -> str:
+    return (f'Diagnose verworfen: Das Ergebnis ({_request_label(rid)}) hat die Prüfung des Checkups nicht bestanden '
+            f'({_REJECT_TEXTS.get(code, "ungültig")}). Davon wird nichts angezeigt.')
+
+
+def diagnosis_missing_text(rid: str, minutes: int) -> str:
+    return (f'Diagnose ausgefallen: Zum {_request_label(rid)} kam nach {int(minutes)} min kein Ergebnis. '
+            'Sie wird nicht nachgeholt.')
+
+
+def diagnosis_text(rid: str, result: dict, kept: list[dict], removed: int, literals=()) -> str:
+    """The comment for an 'ok' result. Fixed German head with the enum, numbers and verified path:line only; every
+    model text (summary, cause, suggestion, check, location reasons, sources) goes through `untrusted_block`
+    (redaction with the known secrets, final scan, neutralize, fence). File content is never read into it."""
+    unverified = removed + result['unverified_locations']
+    places = ', '.join(f"{item['path']}:{item['line']}" for item in kept) or 'keine'
+    head = [f'Qwen-Diagnose ({_request_label(rid)}), ungeprüft. Lokales Modell, nur Lesezugriff, nichts wurde '
+            'ausgeführt. Der Text im Block stammt vom Modell und ist maschinell redigiert.',
+            f"- Diagnose-Art: {result['fix_kind']}",
+            f"- Sicherheit laut Modell: {round(result['confidence'] * 100)} %",
+            f'- Geprüfte Stellen (Datei und Zeile bestätigt, Inhalt nicht zitiert): {places}',
+            f'- Nicht bestätigte Stellen, entfernt: {unverified}',
+            f"- Mensch nötig: {'ja' if result['needs_human'] else 'nein'}",
+            f"- Modus: {result['mode']}, Werkzeugrunden: {result['rounds']}, abgerufene Seiten: "
+            f"{len(result['fetched_urls'])}"]
+    parts = [f"Zusammenfassung:\n{result['summary']}"]
+    for title, key in (('Ursache', 'root_cause'), ('Vorschlag', 'suggestion'), ('Prüfung', 'verification')):
+        if result[key].strip():
+            parts.append(f'{title}:\n{result[key]}')
+    reasons = [f"{item['path']}:{item['line']}: {item['why']}" for item in kept if item['why'].strip()]
+    if reasons:
+        parts.append('Begründung der Stellen:\n' + '\n'.join(reasons))
+    if result['sources']:
+        parts.append('Quellen:\n' + '\n'.join(result['sources']))
+    model = '\n\n'.join(parts)
+    text = '\n'.join(head) + '\n\n' + untrusted_block(model, literals)
+    if final_scan(text) or _holds_literal(text, literals):
+        text = '\n'.join(head) + '\n\n' + _WITHHELD
+    if final_scan(text) or _holds_literal(text, literals):
+        text = f'Qwen-Diagnose ({_request_label(rid)}): {_WITHHELD}'
+    return text
+
+
+def agent_uid(user_lookup=None) -> int | None:
+    """uid of tim-agent; None when the user does not exist (ingest is then skipped, fail-closed)."""
+    lookup = user_lookup or pwd.getpwnam
+    try:
+        uid = lookup(AGENT_USER).pw_uid
+    except (KeyError, OSError, AttributeError, TypeError, ValueError):
+        return None
+    return uid if isinstance(uid, int) and not isinstance(uid, bool) and uid >= 0 else None
+
+
+def _own_file(path: Path, own_uid: int | None) -> bool:
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISREG(info.st_mode) and (own_uid is None or info.st_uid == own_uid)
+
+
+def _present(path: Path) -> bool:
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+@dataclass
+class IngestReport:
+    ingested: int = 0           # ok results turned into a comment (+ fields)
+    failed: int = 0             # status 'failed' results: fixed reason comment
+    rejected: int = 0           # results that failed the checks: fixed comment, never their content
+    unknown: int = 0            # results without an own request: ignored, never acknowledged
+    acked: tuple[str, ...] = ()
+    skipped: str | None = None  # fixed reason when nothing was read
+
+
+def ingest_diagnoses(results_dir, *, requests_dir, policy, now: datetime, spool=None, target=None, literals=(),
+                     mode: str | None = None, user_lookup=None, root=REPO_ROOT, own_uid: int | None = None,
+                     limit: int = INGEST_MAX) -> IngestReport:
+    """Design B.8. For each result without an acknowledgement whose request is ours (requests/<rid>.json, regular,
+    owned by `own_uid`): `protocol.read_result` (O_NOFOLLOW, owner tim-agent, <= 32 KB, strict schema, sources within
+    fetched_urls on the domain list), `protocol.verify_locations` again under `root`, then spool entries: one comment
+    (tag diagnosis-<rid>) and, for an 'ok' result, one 'fields' entry (enum and verified locations, incident:code
+    only by rule B.6). The acknowledgement requests/<rid>.ack is written after the entries are queued, so a failure
+    repeats the same idempotent entries next run. `spool` None: acknowledge without queueing (reporting off).
+    `target(rid)` gives (issue class, active) of the episode; the default is the rid's class, active."""
+    uid = agent_uid(user_lookup)
+    if uid is None:
+        return IngestReport(skipped='agent user unknown')
+    results_dir, requests_dir = Path(results_dir), Path(requests_dir)
+    report = IngestReport()
+    acked = []
+    for rid in protocol.list_rids(results_dir):
+        if len(acked) >= limit:
+            break
+        if _present(requests_dir / protocol.ack_name(rid)):
+            continue
+        if not _own_file(requests_dir / protocol.request_name(rid), own_uid):
+            report.unknown += 1
+            continue
+        episode, cls, _ = protocol.parse_rid(rid)
+        issue_class, active = target(rid) if target is not None else (cls, True)
+        base = {'v': 1, 'episode': episode, 'class': issue_class, 'host': policy.host, 'at': protocol.iso(now),
+                'active': bool(active)}
+        if mode in ('dry-run', 'on'):
+            base['mode'] = mode
+        entries = []
+        try:
+            result = protocol.read_result(results_dir, rid, expected_uid=uid, fetch_domains=policy.agent.fetch_domains)
+        except protocol.ProtocolError as error:
+            report.rejected += 1
+            entries.append({**base, 'kind': 'comment', 'tag': diagnosis_tag(rid),
+                            'text': diagnosis_rejected_text(rid, error.code)})
+        else:
+            if result['status'] == 'failed':
+                report.failed += 1
+                entries.append({**base, 'kind': 'comment', 'tag': diagnosis_tag(rid),
+                                'text': diagnosis_failed_text(rid, result['reason'])})
+            else:
+                report.ingested += 1
+                kept, removed = protocol.verify_locations(result['locations'], root)
+                entries.append({**base, 'kind': 'comment', 'tag': diagnosis_tag(rid),
+                                'text': diagnosis_text(rid, result, kept, removed, literals)})
+                fields = {'fix_kind': result['fix_kind'],
+                          'locations': list(dict.fromkeys(f"{item['path']}:{item['line']}" for item in kept))}
+                entries.append({**base, 'kind': 'fields', 'fields': fields,
+                                'labels': ['incident:code'] if code_label(result['fix_kind'], kept) else []})
+        if spool is not None:
+            for item in entries:
+                spool.enqueue(item)
+        protocol.write_ack(requests_dir, rid, now)
+        acked.append(rid)
+    report.acked = tuple(acked)
+    return report
+
+
 # -- entries and spool -------------------------------------------------------------------------------------------
 
 def _parse_time(value) -> datetime:
@@ -634,6 +879,14 @@ def validate_entry(entry) -> dict:
     elif kind == 'status_line':
         if not _one_line(data.get('status'), MAX_STATUS):
             raise ValueError('entry status invalid')
+    elif kind == 'fields':
+        try:
+            data['fields'] = check_fields(data.get('fields'))
+        except GuardError:
+            raise ValueError('entry fields invalid') from None
+        labels = data.get('labels')
+        if not isinstance(labels, list) or not all(label in FIELD_LABELS for label in labels):
+            raise ValueError('entry labels invalid')
     else:
         if not isinstance(data.get('tag'), str) or not _TAG.match(data['tag']):
             raise ValueError('entry tag invalid')
@@ -1201,6 +1454,8 @@ class Reporter:
             return 'done', 'closed by a person'
         if kind == 'status_line':
             return self._status(number, issue, entry, state)
+        if kind == 'fields':
+            return self._fields(number, issue, entry)
         if kind == 'comment':
             return self._post_comment(number, entry, state)
         if kind == 'resolve':
@@ -1253,6 +1508,16 @@ class Reporter:
         self._gateway.set_status_line(number, line, episode=entry['episode'])
         state['status_at'][str(number)] = now
         return 'done', 'status line set'
+
+    def _fields(self, number, issue, entry) -> tuple[str, str]:
+        """FIELDS section and the incident:code label of a verified diagnosis; nothing once the body is frozen (E6)."""
+        if issue['frozen']:
+            return 'done', 'body frozen'
+        self._gateway.set_fields(number, entry['fields'], episode=entry['episode'])
+        labels = [label for label in entry.get('labels') or () if label in FIELD_LABELS and label_allowed(label)]
+        if labels:
+            self._gateway.add_labels(number, labels, episode=entry['episode'])
+        return 'done', 'fields set'
 
     def _human_closed(self, number, key, commit, state) -> tuple[str, str]:
         self._gateway.comment_once(number, 'human-closed', human_closed_text(commit), episode=key.split('/', 1)[1])
@@ -1417,6 +1682,8 @@ class Reporter:
                               title=request.title, labels=labels, body=request.body)
             elif entry['kind'] == 'status_line':
                 record.update(would='set_status_line', status=redact(status_text(entry), self._literals))
+            elif entry['kind'] == 'fields':
+                record.update(would='set_fields', fields=entry['fields'], labels=entry.get('labels') or [])
             else:
                 record.update(would={'comment': 'comment', 'resolve': 'comment_and_close',
                                      'reopen': 'reopen_and_comment'}[entry['kind']],

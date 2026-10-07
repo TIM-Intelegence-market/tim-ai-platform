@@ -192,6 +192,7 @@ class World:
         self.failing: dict = {}
         self.runtime_lines: list[tuple[datetime, str]] = []
         self.evidence_journal: dict[str, str] = {}
+        self.qwen_journal: list[str] = []   # tim-qwen-diagnose.service journal; the cursor is the line count
         self.files: dict[str, dict] = {}
         self.disk: dict[str, float] = {}
         self.calls: list[tuple[list[str], float]] = []
@@ -202,6 +203,8 @@ class World:
         self.env = env_for(reporting)
         self.spool = MemorySpool()
         self.default_collect = False
+        self.agent = None                   # /var/lib/tim-agent stand-in (PR-2); None skips the diagnosis part
+        self.agent_uid = os.getuid()        # owner tim-agent of results/ in the fake pwd database
 
     # --- the world -----------------------------------------------------------------------------------------------
     def health(self, start: datetime, end: datetime, **overrides) -> None:
@@ -254,6 +257,12 @@ class World:
                 return self.health_denied
             reports = [json.dumps(self.health_at(at)) for at in self.health_times(_since(argv, '--since'))]
             return 0, 'tim-server-health starting\n' + '\n'.join(reports) + '\n'
+        if unit == checkup.QWEN_UNIT and output == 'cat':
+            assert '--show-cursor' in argv
+            start = int(argv[argv.index('--after-cursor') + 1].split('i=')[1]) if '--after-cursor' in argv else 0
+            lines = self.qwen_journal[start:]
+            return 0, ''.join(f'{line}\n' for line in lines) + (
+                f'-- cursor: s=fake;i={len(self.qwen_journal)}\n' if lines else '')
         if unit == checkup.RUNTIME_UNIT and output == 'cat':
             if self.health_denied:
                 return self.health_denied
@@ -315,7 +324,8 @@ class World:
                 reporter=reporter, environ=self.env, now=self.now, runner=self.runner, connect=self.connect,
                 monotonic=lambda: 1000.0, spool=self.spool,
                 health_collect=None if self.default_collect else self.collect, statvfs=self.statvfs,
-                proc_dir=self.proc)
+                proc_dir=self.proc, agent_dir=self.agent,
+                user_lookup=lambda name: SimpleNamespace(pw_uid=self.agent_uid) if name == 'tim-agent' else None)
         lines = out.getvalue().splitlines()
         assert len(lines) == 1, lines
         summary = json.loads(lines[0])
@@ -1202,3 +1212,397 @@ def test_lost_state_while_github_unreachable_adopts_later(world):
     [entry] = adopted.opens()
     assert entry['episode'] == '20261007T0315Z' and entry['adopt_only'] is True
     assert world.next().summary.get('adopted') is None                     # adopted once, then kept
+
+
+# --- diagnosis: requests, HOLD, PAUSE, breaker, ingest (PR-2, design C.5, B.8) -----------------------------------
+
+from src.tim_incident import protocol                                           # noqa: E402
+from src.tim_incident.policy import agent_budget                                # noqa: E402
+
+
+def calibrated(**agent) -> object:
+    """The shipped policy with the server-only values filled in (fake numbers: no measurement happened)."""
+    data = json.loads(CONFIG.read_text(encoding='utf-8'))
+    data['agent'].update(model_digest='a' * 64, model_config_sha256='b' * 64, ollama_allowed_cpus='2-3,6-7',
+                         resolver='public', measured={'prompt_tok_s': 20.0, 'gen_tok_s': 6.0, 'cache_ok': True})
+    data['agent'].update(agent)
+    return policy_from_dict(data)
+
+
+def agent_world(tmp_path: Path, *, policy=None, diagnosis: str = 'on', labels=()) -> World:
+    world = World(tmp_path, policy=policy or calibrated(), labels=labels)
+    world.env['TIM_CHECKUP_DIAGNOSIS'] = diagnosis
+    world.agent = tmp_path / 'tim-agent'
+    for name in ('requests', 'results'):
+        (world.agent / name).mkdir(parents=True)
+    return world
+
+
+def requests_dir(world: World) -> Path:
+    return world.agent / 'requests'
+
+
+def request_files(world: World) -> list[str]:
+    return sorted(path.name for path in requests_dir(world).iterdir())
+
+
+RID = '20261007T0315Z-data-flow-1'
+QWEN_IDLE = {'ExecMainStartTimestamp': '', 'ExecMainExitTimestamp': '', 'Result': 'success', 'ActiveState': 'inactive'}
+
+
+def qwen_run(start: datetime, end: datetime | None, result: str = 'success') -> dict:
+    stamp = lambda moment: moment.strftime('%a %Y-%m-%d %H:%M:%S UTC')              # noqa: E731
+    return {'ExecMainStartTimestamp': stamp(start), 'ExecMainExitTimestamp': stamp(end) if end else '',
+            'Result': result, 'ActiveState': 'inactive' if end else 'active'}
+
+
+def test_request_written_for_opened_qwen_class(tmp_path):
+    world = agent_world(tmp_path, policy=calibrated(evidence_tokens_max=1024))
+    secret = tmp_path / 'database-password'
+    secret.write_text(DB_PASSWORD + '\n')
+    world.env['TIM_DATABASE_SECRET_FILE'] = str(secret)
+    world.units[checkup.QWEN_UNIT] = dict(QWEN_IDLE)
+    lines = [f'2026-10-07T03:{index % 60:02d}:00+0000 tim-core-01 python[7]: candle {index} closed\x1b[0m'
+             for index in range(400)]
+    world.evidence_journal['tim-runtime.service'] = '\n'.join(lines) + (
+        f'\n\n2026-10-07T03:14:00+0000 tim-core-01 python[7]: connect postgresql://tim:{DB_PASSWORD}@db/tim\n')
+    world.health(NOW - 2 * MIN, NOW + 2 * RUN, candle_freshness=CANDLE_RED)
+    first = world.run()
+    assert opened_classes([first]) == ['DATA_FLOW'] and first.code == 0
+    assert first.summary['qwen']['requests'] == [RID] and request_files(world) == [f'{RID}.json']
+    path = requests_dir(world) / f'{RID}.json'
+    assert path.stat().st_mode & 0o777 == 0o640
+    raw = path.read_bytes()
+    assert DB_PASSWORD.encode() not in raw and b'\x1b' not in raw
+    request = protocol.validate_request(raw, allowed_units=world.policy.agent.units_allowlist,
+                                        max_bytes=world.policy.limits.request_bytes)
+    assert (request['episode'], request['class'], request['selftest']) == ('20261007T0315Z', 'DATA_FLOW', False)
+    assert len(request['evidence']) <= agent_budget(world.policy.agent).evidence_chars == 3 * 1024
+    assert request['units'] == ['tim-runtime.service', 'tim-candle-finalizer.service']
+    assert set(request['journal']) <= set(request['units'])
+    assert all(len(buffer) <= 200 for buffer in request['journal'].values())
+    assert len(request['journal']['tim-runtime.service']) == 200                 # the newest 200 of 400 lines
+    assert request['journal']['tim-runtime.service'][-1] == '[BLOCK ENTFERNT: bekanntes Geheimnis]'
+    journal_calls = [argv for argv, _ in world.calls if argv[0] == 'journalctl' and 'short-iso' in argv]
+    assert sorted(argv[2] for argv in journal_calls) == ['tim-candle-finalizer.service', 'tim-runtime.service']
+    assert not final_scan(request['evidence'])
+    assert [item['rid'] for item in world.state()['chain']['diagnoses']] == [RID]
+    second = world.next()                                                       # ONGOING: no second request
+    assert second.summary['qwen']['requests'] == [] and request_files(world) == [f'{RID}.json']
+
+
+def test_no_request_while_not_calibrated_or_diagnosis_off(tmp_path):
+    for name, policy, diagnosis, note in (('shipped', POLICY, 'on', 'no requests: not calibrated'),
+                                          ('off', calibrated(), 'off', 'diagnosis off')):
+        world = agent_world(tmp_path / name, policy=policy, diagnosis=diagnosis)
+        world.health(NOW - 2 * MIN, NOW, candle_freshness=CANDLE_RED)
+        result = world.run()
+        assert opened_classes([result]) == ['DATA_FLOW']
+        assert result.summary['qwen']['requests'] == [] and note in result.summary['qwen']['notes']
+        assert request_files(world) == [] and result.code == 0
+        assert [argv for argv, _ in world.calls if checkup.QWEN_UNIT in argv]        # HOLD/PAUSE/breaker still run
+
+
+def test_no_request_for_class_without_qwen(tmp_path):
+    world = agent_world(tmp_path)
+    world.health(NOW - 20 * MIN, NOW + 3 * RUN, time_sync='RED')
+    results = [world.run(), world.next(), world.next()]
+    assert opened_classes(results) == ['TIME_SYNC'] and not world.policy.classes['TIME_SYNC'].qwen
+    assert all(result.summary['qwen']['requests'] == [] for result in results) and request_files(world) == []
+
+
+def test_hold_written_while_catching_up(tmp_path):
+    world = agent_world(tmp_path)
+    hold = requests_dir(world) / 'HOLD'
+    world.run()
+    assert not hold.exists()
+    world.watch(NOW + RUN - 5 * MIN, NOW + RUN, queue_age='RED')
+    result = world.next()
+    assert hold.exists() and result.summary['qwen']['hold'] == ['watchdog.queue_age']
+    assert hold.stat().st_mode & 0o777 == 0o640
+    world.health(NOW + 2 * RUN - 5 * MIN, NOW + 2 * RUN, gap_last_60m=gap_red(NOW + RUN, 3))
+    result = world.next()
+    assert hold.exists() and result.summary['qwen']['hold'] == ['gap_last_60m']
+    assert not world.next().summary['qwen']['hold'] and not hold.exists()
+    world.health_until = world.now - timedelta(hours=1)                          # no health data at all: fail-closed
+    world.health_file = False
+    world.collect = lambda backup_dir, disk_path: None                          # the in-process collect fails too
+    assert 'health unknown' in world.next().summary['qwen']['hold'] and hold.exists()
+
+
+def test_pause_label_written_refreshed_and_cleared(tmp_path):
+    world = agent_world(tmp_path, labels=('checkup:pause-qwen',))
+    world.health(NOW - 2 * MIN, NOW + 4 * RUN, candle_freshness=CANDLE_RED)
+    result = world.run()
+    pause = protocol.read_pause(requests_dir(world), expected_uid=os.getuid())
+    assert pause == {'version': 1, 'reason': 'label', 'until': protocol.iso(NOW + timedelta(minutes=30))}
+    assert result.summary['qwen']['pause'] == 'label' and request_files(world) == ['PAUSE']
+    assert 'no requests: paused (label)' in result.summary['qwen']['notes']
+    world.reporter.authority = 'unknown'                                         # labels unreadable: pause kept
+    world.reporter.labels.clear()
+    world.next()
+    assert protocol.read_pause(requests_dir(world), expected_uid=os.getuid())['until'] == \
+        protocol.iso(NOW + RUN + timedelta(minutes=30))
+    world.reporter.authority = 'open'
+    assert world.next().summary['qwen']['pause'] is None and 'PAUSE' not in request_files(world)
+
+
+def test_invalid_or_foreign_pause_is_replaced(tmp_path):
+    directory = tmp_path / 'requests'
+    directory.mkdir()
+    (directory / 'PAUSE').write_text('{"reason": "label", "until": "never"}')
+    assert protocol.pause_active(directory, NOW, expected_uid=os.getuid())            # the agent stays paused
+    flags = checkup.write_hold_pause(directory, now=NOW, hold=False, label=False, own_uid=os.getuid())
+    assert flags == {'hold': False, 'pause': None} and not (directory / 'PAUSE').exists()
+    until = NOW + timedelta(hours=24)
+    checkup.write_hold_pause(directory, now=NOW, hold=True, label=None, breaker_until=until, own_uid=os.getuid())
+    flags = checkup.write_hold_pause(directory, now=NOW + RUN, hold=False, label=True, own_uid=os.getuid())
+    assert flags == {'hold': False, 'pause': 'breaker'} and not (directory / 'HOLD').exists()
+    assert protocol.read_pause(directory, expected_uid=os.getuid())['until'] == protocol.iso(until)
+    flags = checkup.write_hold_pause(directory, now=until + MIN, hold=False, label=False, own_uid=os.getuid())
+    assert flags['pause'] is None and not (directory / 'PAUSE').exists()
+
+
+def qwen_end(result: str = 'success') -> str:
+    return ('tim-qwen-diagnose.service: Deactivated successfully.' if result == 'success'
+            else f"tim-qwen-diagnose.service: Failed with result '{result}'.")
+
+
+def test_breaker_pauses_on_worsening_and_failed_runs(tmp_path):
+    # (c) two runs in a row without success
+    world = agent_world(tmp_path / 'failed')
+    world.health(NOW - 2 * MIN, NOW + 4 * RUN, candle_freshness=CANDLE_RED)
+    world.units[checkup.QWEN_UNIT] = qwen_run(NOW - 10 * MIN, NOW - 3 * MIN, 'timeout')
+    world.qwen_journal += ['{"event": "diagnose_end"}', 'tim-qwen-diagnose.service: start operation timed out.',
+                           qwen_end('timeout')]
+    first = world.run()
+    assert first.summary['qwen']['breaker'] == [] and first.summary['qwen']['requests'] == [RID]
+    assert world.state()['diagnosis']['failed_streak'] == 1
+    assert world.next().summary['qwen']['breaker'] == []                       # the same run is counted once
+    world.units[checkup.QWEN_UNIT] = qwen_run(NOW + RUN, NOW + RUN + 8 * MIN, 'oom-kill')
+    world.qwen_journal.append(qwen_end('oom-kill'))
+    tripped = world.next()
+    at = NOW + 2 * RUN
+    assert tripped.summary['qwen']['breaker'] == ['failed_runs'] and tripped.summary['qwen']['pause'] == 'breaker'
+    pause = protocol.read_pause(requests_dir(world), expected_uid=os.getuid())
+    assert pause == {'version': 1, 'reason': 'breaker', 'until': protocol.iso(at + timedelta(hours=24))}
+    [comment] = [entry for entry in tripped.entries if entry['kind'] == 'comment']
+    assert comment['tag'] == 'qwen-paused-20261007t0345' and comment['class'] == 'DATA_FLOW'
+    assert comment['text'].startswith('Qwen pausiert: Verdacht auf Lastwirkung (zwei Läufe in Folge')
+    assert not final_scan(comment['text'])
+    world.units[checkup.QWEN_UNIT] = qwen_run(NOW + 2 * RUN + MIN, NOW + 2 * RUN + 9 * MIN, 'signal')
+    world.qwen_journal += [qwen_end('signal'), qwen_end('signal')]
+    again = world.next()                                                        # paused: no second trip or comment
+    assert again.summary['qwen']['breaker'] == [] and again.summary['qwen']['pause'] == 'breaker'
+    assert [entry for entry in again.entries if entry['kind'] == 'comment'] == []
+    assert world.state()['diagnosis']['failed_streak'] == 0                    # nothing counts during the pause
+
+    # (b) data_age rises during the run
+    world = agent_world(tmp_path / 'age')
+    world.watch(NOW - 9 * MIN, NOW - 4 * MIN, data_age={'status': 'GREEN', 'value': 170.0, 'reason': 'fixture'})
+    world.units[checkup.QWEN_UNIT] = qwen_run(NOW - 9 * MIN, NOW - 4 * MIN)
+    result = world.run()
+    assert result.summary['qwen']['breaker'] == ['age_jump'] and result.summary['qwen']['pause'] == 'breaker'
+    assert result.entries == []                                                 # no episode, no request: no comment
+
+    # (a) a chain class turns RED while Qwen runs
+    world = agent_world(tmp_path / 'red')
+    world.health(NOW - 5 * MIN, NOW, candle_freshness=CANDLE_RED)
+    world.units[checkup.QWEN_UNIT] = qwen_run(NOW - 6 * MIN, None)              # still running
+    result = world.run()
+    assert result.summary['qwen']['breaker'] == ['chain_red'] and result.summary['qwen']['pause'] == 'breaker'
+    assert result.summary['qwen']['requests'] == [] and 'no requests: paused (breaker)' in \
+        result.summary['qwen']['notes']
+
+    # a quiet run changes nothing
+    world = agent_world(tmp_path / 'quiet')
+    world.units[checkup.QWEN_UNIT] = qwen_run(NOW - 9 * MIN, NOW - 4 * MIN)
+    result = world.run()
+    assert result.summary['qwen']['breaker'] == [] and result.summary['qwen']['pause'] is None
+
+
+def test_breaker_counts_timeout_killed_retries_but_not_exit_code(tmp_path):
+    # Two runs killed by TimeoutStartSec, the retry starting at once: the newest window is always the running retry,
+    # yet the journal shows both ends (review R2-LOOP-1).
+    world = agent_world(tmp_path / 'killed')
+    world.units[checkup.QWEN_UNIT] = qwen_run(NOW - 2 * MIN, None)
+    world.qwen_journal += [qwen_end('timeout')]
+    assert world.run().summary['qwen']['breaker'] == []
+    world.units[checkup.QWEN_UNIT] = qwen_run(NOW + RUN - 2 * MIN, None)
+    world.qwen_journal += [qwen_end('timeout')]
+    assert world.next().summary['qwen']['breaker'] == ['failed_runs']
+    # A persistent selfcheck failure (exit 2 every 5 min) is no load symptom: a note, never the breaker (R2-LOOP-5).
+    world = agent_world(tmp_path / 'selfcheck')
+    world.units[checkup.QWEN_UNIT] = qwen_run(NOW - 2 * MIN, NOW - 2 * MIN, 'exit-code')
+    world.qwen_journal += [qwen_end('exit-code')] * 3
+    result = world.run()
+    assert result.summary['qwen']['breaker'] == [] and world.state()['diagnosis']['failed_streak'] == 0
+    assert 'qwen runs failed without load symptom: exit-code (3)' in result.summary['qwen']['notes']
+    world.qwen_journal += [qwen_end('exit-code')] * 3
+    assert world.next().summary['qwen']['breaker'] == []
+    # A success between two load failures resets the streak.
+    world = agent_world(tmp_path / 'mixed')
+    world.qwen_journal += [qwen_end('timeout'), qwen_end(), qwen_end('signal')]
+    assert world.run().summary['qwen']['breaker'] == [] and world.state()['diagnosis']['failed_streak'] == 1
+
+
+def test_qwen_run_results_reads_systemd_end_lines_and_cursor():
+    seen = []
+
+    def runner(argv, timeout):
+        seen.append(argv)
+        return 0, ('{"event": "diagnose_end", "note": "Failed with result \'timeout\'."}\n'
+                   "tim-qwen-diagnose.service: Failed with result 'oom-kill'.\n"
+                   'tim-qwen-diagnose.service: Succeeded.\n-- cursor: s=ab12;i=3f;b=cd\n')
+    assert checkup.qwen_run_results(runner, None, now=NOW, timeout=5) == (['oom-kill', 'success'], 's=ab12;i=3f;b=cd')
+    assert seen[0][:3] == ['journalctl', '-u', checkup.QWEN_UNIT] and '--since' in seen[0]
+    checkup.qwen_run_results(runner, 's=ab12;i=3f;b=cd', now=NOW, timeout=5)
+    assert seen[1][-2:] == ['--after-cursor', 's=ab12;i=3f;b=cd'] and '--since' not in seen[1]
+    assert checkup.qwen_run_results(lambda argv, timeout: (1, ''), 'x', now=NOW, timeout=5) is None
+    assert checkup.qwen_run_results(lambda argv, timeout: (0, ''), 'keep', now=NOW, timeout=5) == ([], 'keep')
+    assert checkup._valid_diagnosis_state({'journal_cursor': 'a b'})['journal_cursor'] is None
+
+
+def test_qwen_run_window_parses_systemctl_show():
+    def runner(argv, timeout):
+        assert argv[:3] == ['systemctl', 'show', checkup.QWEN_UNIT] and '--timestamp=utc' in argv
+        return 0, ('ExecMainStartTimestamp=Wed 2026-10-07 03:10:00 UTC\nExecMainExitTimestamp=Wed 2026-10-07 '
+                   '03:12:30.123456 UTC\nResult=timeout\nActiveState=failed\n')
+    window = checkup.qwen_run_window(runner, timeout=5)
+    assert window == {'start': datetime(2026, 10, 7, 3, 10, tzinfo=UTC),
+                      'end': datetime(2026, 10, 7, 3, 12, 30, tzinfo=UTC), 'result': 'timeout'}
+    assert checkup.qwen_run_window(lambda argv, timeout: (0, 'ExecMainStartTimestamp=\n'), timeout=5) is None
+    assert checkup.qwen_run_window(lambda argv, timeout: (1, ''), timeout=5) is None
+
+
+def test_overdue_request_comment_once_and_ack(tmp_path):
+    world = agent_world(tmp_path)
+    world.health(NOW - 2 * MIN, NOW + 4 * RUN, candle_freshness=CANDLE_RED)
+    world.run()
+    path = requests_dir(world) / f'{RID}.json'
+    os.utime(path, (NOW.timestamp(), NOW.timestamp()))
+    assert world.next().summary['qwen']['missing'] == []                       # 15 min: still waiting
+    result = world.run(at=NOW + 61 * MIN)
+    assert result.summary['qwen']['missing'] == [RID]
+    [comment] = [entry for entry in result.entries if entry['kind'] == 'comment']
+    assert comment['tag'] == 'diagnosis-20261007t0315z-data-flow-1' and comment['class'] == 'DATA_FLOW'
+    assert comment['text'].startswith('Diagnose ausgefallen: Zum Auftrag 1 zur Klasse DATA_FLOW')
+    assert (requests_dir(world) / f'{RID}.ack').exists()
+    assert world.next().summary['qwen']['missing'] == []                       # exactly one comment
+    assert protocol.pending_rids(requests_dir(world), world.agent / 'results') == []
+
+
+def test_held_request_is_not_overdue_until_an_hour_after_hold_clears(tmp_path):
+    # A RUNTIME/DATA_FLOW incident keeps HOLD up for hours: that time is no failure of the diagnosis (R2-LOOP-2).
+    world = agent_world(tmp_path)
+    world.health(NOW - 2 * MIN, NOW + 10 * RUN, candle_freshness=CANDLE_RED)
+    world.run()
+    path = requests_dir(world) / f'{RID}.json'
+    os.utime(path, (NOW.timestamp(), NOW.timestamp()))
+    held_until = NOW + 90 * MIN
+    world.watch(NOW, held_until, queue_age='RED')
+    for at in (NOW + 30 * MIN, NOW + 61 * MIN, held_until):
+        result = world.run(at=at)
+        assert result.summary['qwen']['hold'] and result.summary['qwen']['missing'] == []
+    assert path.stat().st_mtime == held_until.timestamp() and not (requests_dir(world) / f'{RID}.ack').exists()
+    assert world.run(at=held_until + 30 * MIN).summary['qwen']['missing'] == []
+    assert world.run(at=held_until + 61 * MIN).summary['qwen']['missing'] == [RID]
+
+
+def test_retention_deletes_only_own_acked_requests_after_8_days(tmp_path):
+    paths = checkup.AgentPaths(tmp_path)
+    paths.requests.mkdir()
+    paths.results.mkdir()
+    old, fresh = '20260920T0100Z-runtime-1', '20261006T0100Z-runtime-1'
+    for rid in (old, fresh):
+        (paths.requests / f'{rid}.json').write_text('{}')
+        protocol.write_ack(paths.requests, rid, NOW)
+    stamp = (NOW - timedelta(days=8)).timestamp()
+    os.utime(paths.requests / f'{old}.ack', (stamp, stamp))
+    week = (NOW - timedelta(days=7, hours=12)).timestamp()      # the agent prunes its result after 7 days first
+    os.utime(paths.requests / f'{fresh}.ack', (week, week))
+    assert checkup.retain_requests(paths, NOW, own_uid=os.getuid() + 1) == 0     # foreign files stay
+    assert checkup.retain_requests(paths, NOW, own_uid=os.getuid()) == 1
+    assert sorted(path.name for path in paths.requests.iterdir()) == [f'{fresh}.ack', f'{fresh}.json']
+
+
+def _write_result(world: World, rid: str, **overrides) -> None:
+    result = {'version': 1, 'rid': rid, 'status': 'ok', 'summary': 'Catch-up blockiert den Live-Stream.',
+              'root_cause': 'Die Schleife wartet auf die Outbox.', 'confidence': 0.6, 'fix_kind': 'code_src',
+              'locations': [{'path': 'src/data_ingestion/catchup.py', 'line': 251, 'why': 'Wartet ohne Timeout'},
+                            {'path': 'src/data_ingestion/missing.py', 'line': 3, 'why': 'erfunden'}],
+              'suggestion': 'Timeout setzen.', 'verification': 'Lücke schließt sich.', 'sources': [],
+              'fetched_urls': [], 'needs_human': True, 'unverified_locations': 0, 'mode': 'native', 'rounds': 2}
+    result.update(overrides)
+    protocol.write_result(world.agent / 'results', result)
+
+
+def test_ingest_through_run_comment_fields_and_ack(tmp_path):
+    world = agent_world(tmp_path)
+    source = world.root / 'src' / 'data_ingestion'
+    source.mkdir(parents=True)
+    (source / 'catchup.py').write_text(''.join(f'line {index} INHALT-NIE-ZITIEREN\n' for index in range(300)))
+    world.health(NOW - 2 * MIN, NOW + 4 * RUN, candle_freshness=CANDLE_RED)
+    world.run()
+    _write_result(world, RID)
+    result = world.next()
+    assert result.summary['qwen']['ingest'] == {'ingested': 1, 'failed': 0, 'rejected': 0, 'unknown': 0,
+                                                'skipped': None}
+    comment, fields = [entry for entry in result.entries if entry['kind'] in ('comment', 'fields')]
+    assert comment['tag'] == 'diagnosis-20261007t0315z-data-flow-1' and comment['class'] == 'DATA_FLOW'
+    assert 'INHALT-NIE-ZITIEREN' not in json.dumps(result.entries)
+    assert '- Geprüfte Stellen (Datei und Zeile bestätigt, Inhalt nicht zitiert): src/data_ingestion/catchup.py:251' \
+        in comment['text'] and '- Nicht bestätigte Stellen, entfernt: 1' in comment['text']
+    assert fields['fields'] == {'fix_kind': 'code_src', 'locations': ['src/data_ingestion/catchup.py:251']}
+    assert fields['labels'] == ['incident:code'] and fields['mode'] == 'on' and fields['active'] is True
+    assert (requests_dir(world) / f'{RID}.ack').exists()
+    assert [entry for entry in world.next().entries if entry['kind'] in ('comment', 'fields')] == []
+
+
+def test_diagnosis_step_errors_keep_exit_code(tmp_path, monkeypatch):
+    world = agent_world(tmp_path)
+    world.health(NOW - 2 * MIN, NOW, candle_freshness=CANDLE_RED)
+
+    def broken(*args, **kwargs):
+        raise OSError('disk gone')
+    monkeypatch.setattr(checkup, 'write_hold_pause', broken)
+    result = world.run()
+    assert result.code == 0 and result.summary['qwen'] == {'error': 'OSError'} and result.opens()
+
+
+def test_selftest_request_uses_the_recorded_bundle(tmp_path):
+    world = agent_world(tmp_path / 'missing', labels=('checkup:selftest',))
+    result = world.run()
+    assert opened_classes([result]) == ['SELFTEST'] and result.summary['qwen']['requests'] == []
+    assert any(note.startswith('SELFTEST/') and 'request not written' in note for note in result.summary['qwen']['notes'])
+
+    world = agent_world(tmp_path / 'bundle', labels=('checkup:selftest',))
+    bundle = world.root / checkup.SELFTEST_BUNDLE
+    bundle.parent.mkdir(parents=True)
+    bundle.write_text(json.dumps({
+        'evidence': f'gap 03:01-03:14, catch-up blocked, password={DB_PASSWORD}',
+        'units': ['tim-runtime.service'],
+        'journal': {'tim-runtime.service': ['2026-09-30T03:12:00+0000 live resume blocked by incomplete catch-up']},
+        'expected_paths': ['src/data_ingestion/catchup.py', 'src/data_ingestion/durable.py']}))
+    result = world.run()
+    [rid] = result.summary['qwen']['requests']
+    assert rid == '20261007T0315Z-selftest-1'
+    request = json.loads((requests_dir(world) / f'{rid}.json').read_text())
+    assert request['selftest'] is True and request['units'] == ['tim-runtime.service']
+    assert request['expected_paths'] == ['src/data_ingestion/catchup.py', 'src/data_ingestion/durable.py']
+    assert DB_PASSWORD not in request['evidence']
+
+
+def test_qwen_units_watched_in_unit_class_only_with_diagnosis_on(tmp_path):
+    for diagnosis in ('on', 'off'):
+        world = agent_world(tmp_path / diagnosis, diagnosis=diagnosis)
+        world.units['tim-qwen-diagnose.timer'] = {'ActiveState': 'inactive', 'SubState': 'dead'}
+        results = [world.run(), world.next()]
+        queried = {argv[2] for argv, _ in world.calls if argv[:2] == ['systemctl', 'show']}
+        if diagnosis == 'on':                       # the installer enabled both: a stopped timer is a UNIT incident
+            assert set(checkup.DIAGNOSIS_WATCH_UNITS) <= queried
+            assert opened_classes(results) == ['UNIT']
+            [entry] = [entry for result in results for entry in result.opens()]
+            assert 'tim-qwen-diagnose.timer' in entry['body'] and 'tim-checkup.path' not in entry['body']
+        else:                                       # disabled on purpose: neither queried nor reported
+            assert not set(checkup.DIAGNOSIS_WATCH_UNITS) & queried and opened_classes(results) == []

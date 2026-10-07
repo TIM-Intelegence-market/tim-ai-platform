@@ -109,8 +109,9 @@ def _drop(data: dict, path: tuple) -> dict:
 
 
 @pytest.mark.parametrize('path', [
-    ('agent',), ('label_allowlist',), ('classes', 'DISK', 'priority'), ('network', 'dns'), ('hysteresis', 'x'),
-    ('limits', 'request_bytes'), ('rate_limits', 'burst'), ('health', 'journal_unit'), ('classes', 'NEW_CLASS'),
+    ('agent', 'cloud_model'), ('label_allowlist',), ('classes', 'DISK', 'priority'), ('network', 'dns'),
+    ('hysteresis', 'x'), ('limits', 'result_bytes'), ('rate_limits', 'burst'), ('health', 'journal_unit'),
+    ('classes', 'NEW_CLASS'), ('agent', 'measured', 'tool_calls_ok'), ('agent', 'gate', 'psi_irq'),
 ])
 def test_unknown_keys_rejected(tmp_path, path):
     with pytest.raises(PolicyError, match='unknown key'):
@@ -119,6 +120,8 @@ def test_unknown_keys_rejected(tmp_path, path):
 
 @pytest.mark.parametrize('path', [
     ('version',), ('classes', 'UNIT'), ('classes', 'DISK', 'remedy'), ('network', 'outage_hosts'), ('evidence',),
+    ('agent',), ('hold_checks',), ('limits', 'request_bytes'), ('agent', 'model_digest'), ('agent', 'measured'),
+    ('agent', 'measured', 'cache_ok'), ('agent', 'gate', 'psi_io'), ('agent', 'resolver'),
 ])
 def test_missing_keys_rejected(tmp_path, path):
     with pytest.raises(PolicyError, match='missing key'):
@@ -325,3 +328,225 @@ def test_tim_incident_never_imports_worker_editable_modules():
             assert not name.startswith('..'), (path.name, name)
     # The redaction is a self-contained copy: standard library only.
     assert not {name for name in _imports(package / 'redaction.py') if name.startswith(('src', '.'))}
+
+
+# --- agent block, hold_checks, request_bytes (PR-2, design C.4) -----------------------------------------------------------
+
+from src.tim_incident.policy import (  # noqa: E402
+    AGENT_TOOL_MODES, CALIBRATION_KEYS, MIN_EVIDENCE_TOKENS, Budget, agent_budget, compute_budget,
+)
+
+CALIBRATED = {
+    'model_digest': 'a' * 64, 'model_config_sha256': 'b' * 64,
+    'measured': {'prompt_tok_s': 20, 'gen_tok_s': 6, 'cache_ok': True},
+    'ollama_allowed_cpus': '2-3,6-7', 'resolver': 'public',
+}
+
+
+def calibrated(**changes) -> dict:
+    data = raw()
+    data['agent'].update(copy.deepcopy(CALIBRATED))
+    for key, value in changes.items():
+        data['agent'][key] = value
+    return data
+
+
+def test_shipped_agent_block_is_uncalibrated_and_fail_closed():
+    policy = load_policy(CONFIG)
+    agent = policy.agent
+    assert agent.model == 'qwen3-coder:30b' and agent.endpoint == 'http://127.0.0.2:11434' and agent.port == 11434
+    assert agent.tool_mode == 'native' and agent.num_ctx == 16384 and agent.num_thread == 2
+    assert (agent.per_call_timeout_seconds, agent.deadline_seconds, agent.evidence_tokens_max) == (420, 900, 4096)
+    assert (agent.tool_output_chars, agent.ctx_stop_ratio) == (4000, 0.75)
+    assert (agent.num_predict_round, agent.num_predict_final, agent.round_prompt_tokens) == (256, 768, 1300)
+    assert (agent.max_tool_calls, agent.max_tool_calls_per_round, agent.max_searches, agent.max_fetches) == (12, 3, 3, 4)
+    assert (agent.daily_limit, agent.per_episode, agent.attempts) == (6, 3, 2)
+    assert (agent.gate.min_mem_available_gib, agent.gate.max_load1) == (26, 4)
+    assert (agent.gate.psi_cpu, agent.gate.psi_io, agent.gate.psi_memory) == (40, 20, 5)
+    # values only the server can measure ship as null
+    assert agent.model_digest is None and agent.model_config_sha256 is None
+    assert agent.measured.prompt_tok_s is None and agent.measured.gen_tok_s is None and agent.measured.cache_ok is None
+    assert agent.ollama_allowed_cpus is None and agent.resolver is None
+    assert agent.root_owned is False                    # git_log stays off until P0/P3 confirm root ownership
+    assert not agent.calibrated and agent.missing_calibration == CALIBRATION_KEYS
+    budget = agent_budget(agent)
+    assert budget.mode == 'not-calibrated' and not budget.go and budget.max_rounds == 0
+    assert policy.hold_checks == ('queue_age', 'cursor_age', 'data_age')
+    assert policy.limits.request_bytes == 65536
+
+
+def test_shipped_agent_lists():
+    policy = load_policy(CONFIG)
+    agent = policy.agent
+    assert agent.fetch_domains == (
+        'docs.python.org', 'peps.python.org', 'pypi.org', 'github.com', 'raw.githubusercontent.com',
+        'www.postgresql.org', 'magicstack.github.io', 'developers.binance.com', 'manpages.debian.org',
+        'www.freedesktop.org', 'stackoverflow.com')
+    for unit in {unit for cls in policy.classes.values() if cls.qwen for unit in cls.units}:
+        assert unit in agent.units_allowlist
+    assert policy.postgres_unit in agent.units_allowlist
+    assert 'tim-qwen-diagnose.service' not in agent.units_allowlist
+    for word in ('python', 'asyncpg', 'postgresql', 'systemd', 'binance', 'websocket', 'timeout'):
+        assert word in agent.query_vocabulary
+    assert all(word == word.lower() and len(word) <= 40 for word in agent.query_vocabulary)
+    assert not any(final_scan(word) for word in agent.query_vocabulary)
+
+
+def test_calibrated_agent_block_loads():
+    agent = policy_from_dict(calibrated()).agent
+    assert agent.calibrated and agent.missing_calibration == ()
+    budget = agent_budget(agent)
+    assert budget.go and budget.mode == 'native' and budget.max_rounds == 4
+    assert policy_from_dict(calibrated(model_digest='sha256:' + 'c' * 64)).agent.calibrated
+    assert policy_from_dict(calibrated(resolver='192.168.1.1')).agent.resolver == '192.168.1.1'
+    assert policy_from_dict(calibrated(resolver='127.0.0.53')).agent.resolver == '127.0.0.53'
+    assert policy_from_dict(calibrated(ollama_allowed_cpus='2,3')).agent.ollama_allowed_cpus == '2,3'
+
+
+@pytest.mark.parametrize('key', ['model_digest', 'model_config_sha256', 'ollama_allowed_cpus', 'resolver'])
+def test_each_missing_calibration_value_is_fail_closed(key):
+    agent = policy_from_dict(calibrated(**{key: None})).agent
+    assert not agent.calibrated and agent.missing_calibration == (key,)
+    assert agent_budget(agent).mode == 'not-calibrated'
+
+
+@pytest.mark.parametrize('key', ['prompt_tok_s', 'gen_tok_s', 'cache_ok'])
+def test_each_missing_measurement_is_fail_closed(key):
+    data = calibrated()
+    data['agent']['measured'][key] = None
+    agent = policy_from_dict(data).agent
+    assert agent.missing_calibration == (f'measured.{key}',) and agent_budget(agent).mode == 'not-calibrated'
+
+
+@pytest.mark.parametrize('path, value', [
+    (('agent', 'model'), 'qwen3-coder:480b-cloud'),
+    (('agent', 'model'), 'llama3:8b'),
+    (('agent', 'model_digest'), 'A' * 64),
+    (('agent', 'model_digest'), 'a' * 63),
+    (('agent', 'model_digest'), ''),
+    (('agent', 'model_config_sha256'), 'sha256:' + 'a' * 64),
+    (('agent', 'endpoint'), 'http://127.0.0.1:11434'),
+    (('agent', 'endpoint'), 'https://127.0.0.2:11434'),
+    (('agent', 'endpoint'), 'http://localhost:11434'),
+    (('agent', 'endpoint'), 'http://127.0.0.2:99999'),
+    (('agent', 'endpoint'), 'http://ollama.com:443'),
+    (('agent', 'tool_mode'), 'cloud'),
+    (('agent', 'measured', 'prompt_tok_s'), 0),
+    (('agent', 'measured', 'prompt_tok_s'), '20'),
+    (('agent', 'measured', 'cache_ok'), 'yes'),
+    (('agent', 'ollama_allowed_cpus'), 'all'),
+    (('agent', 'ollama_allowed_cpus'), '3-2'),
+    (('agent', 'ollama_allowed_cpus'), ''),
+    (('agent', 'resolver'), '0.0.0.0'),
+    (('agent', 'resolver'), '224.0.0.1'),
+    (('agent', 'resolver'), 'dns.example'),
+    (('agent', 'resolver'), '192.168.001.1'),
+    (('agent', 'num_ctx'), 1024),
+    (('agent', 'num_thread'), 0),
+    (('agent', 'num_thread'), True),
+    (('agent', 'deadline_seconds'), 300),
+    (('agent', 'ctx_stop_ratio'), 1.0),
+    (('agent', 'max_tool_calls_per_round'), 20),
+    (('agent', 'attempts'), 0),
+    (('agent', 'units_allowlist'), ['tim-runtime.service']),        # misses units of qwen classes
+    (('agent', 'units_allowlist'), ['tim-runtime']),
+    (('agent', 'fetch_domains'), ['docs.python.org', '127.0.0.1']),
+    (('agent', 'fetch_domains'), ['https://pypi.org']),
+    (('agent', 'fetch_domains'), ['Docs.Python.org']),
+    (('agent', 'fetch_domains'), ['pypi.org', 'pypi.org']),
+    (('agent', 'fetch_domains'), []),
+    (('agent', 'query_vocabulary'), ['python', 'two words']),
+    (('agent', 'query_vocabulary'), ['Python']),
+    (('agent', 'query_vocabulary'), ['x' * 41]),
+    (('agent', 'gate', 'psi_cpu'), 101),
+    (('agent', 'gate', 'max_load1'), None),
+    (('agent', 'root_owned'), 'yes'),
+    (('agent', 'root_owned'), None),
+    (('agent', 'root_owned'), 1),
+    (('hold_checks',), ['queue_age', 'watchdog.cursor_age']),
+    (('hold_checks',), ['made_up']),
+    (('hold_checks',), []),
+    (('limits', 'request_bytes'), 1024),
+    (('limits', 'request_bytes'), 10 ** 6),
+])
+def test_agent_wrong_values_rejected(tmp_path, path, value):
+    with pytest.raises(PolicyError):
+        load_policy(write(tmp_path, _set(raw(), path, value)))
+
+
+def test_agent_error_messages_name_key_not_value(tmp_path):
+    secret = 'ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'
+    with pytest.raises(PolicyError) as caught:
+        load_policy(write(tmp_path, _set(raw(), ('agent', 'model_digest'), secret)))
+    assert 'agent.model_digest' in str(caught.value) and secret not in str(caught.value)
+
+
+# --- budget formula (design section 7) ---------------------------------------------------------------------------------
+
+def test_budget_design_examples():
+    fast = compute_budget(20, 6, cache_ok=True)
+    assert fast.mode == 'native' and fast.go and fast.max_rounds == 4
+    assert fast.evidence_tokens == 4096 and fast.evidence_chars == 3 * 4096
+    assert fast.t_initial == pytest.approx(4096 / 20 + 256 / 6)
+    assert fast.t_round == pytest.approx(1300 / 20 + 256 / 6)
+    assert fast.t_final == pytest.approx(768 / 6)
+    medium = compute_budget(15, 4, cache_ok=True)
+    assert medium.mode == 'native' and medium.max_rounds == 2 and medium.evidence_tokens == 3150
+    slow = compute_budget(10, 3, cache_ok=True)
+    assert slow.mode == 'no-go' and not slow.go and slow.max_rounds == 0 and slow.evidence_tokens == 2100
+
+
+def test_budget_go_no_go_table():
+    # broken tool calls: schema mode, same rounds
+    schema = compute_budget(20, 6, cache_ok=True, tool_calls_ok=False)
+    assert schema.mode == 'schema' and schema.max_rounds == 4
+    # fewer than 2 rounds, but one call fits into 0.8 * T: einschuss
+    one = compute_budget(12, 12, cache_ok=True, deadline=500)
+    assert one.max_rounds == 0 and one.mode == 'einschuss' and one.go
+    assert one.t_initial + one.t_final <= 0.8 * 420
+    # no cache: tool rounds are not valid, einschuss only if one call fits
+    assert compute_budget(50, 20, cache_ok=False).mode == 'einschuss'
+    assert compute_budget(20, 6, cache_ok=False).mode == 'no-go'
+    # RED during the measurement is always no-go
+    assert compute_budget(50, 20, cache_ok=True, red_during_measurement=True).mode == 'no-go'
+    # rounds are capped
+    assert compute_budget(1000, 1000, cache_ok=True).max_rounds == 6
+    assert compute_budget(1000, 1000, cache_ok=True, max_rounds_cap=3).max_rounds == 3
+
+
+@pytest.mark.parametrize('p, g', [(0, 6), (20, 0), (-1, 6), (float('nan'), 6), (float('inf'), 6), (None, 6),
+                                  (True, 6), ('20', 6)])
+def test_budget_invalid_measurement_is_no_go(p, g):
+    budget = compute_budget(p, g, cache_ok=True)
+    assert budget.mode == 'no-go' and not budget.go and budget.max_rounds == 0
+
+
+def test_budget_tiny_evidence_is_no_go():
+    budget = compute_budget(2, 50, cache_ok=True)      # E = floor(0.5 * 420 * 2) = 420 tokens
+    assert budget.evidence_tokens < MIN_EVIDENCE_TOKENS and budget.mode == 'no-go'
+
+
+def test_budget_is_pure_and_frozen():
+    assert compute_budget(20, 6, cache_ok=True) == compute_budget(20, 6, cache_ok=True)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        compute_budget(20, 6, cache_ok=True).max_rounds = 6
+    assert isinstance(compute_budget(20, 6, cache_ok=True), Budget)
+
+
+def test_agent_budget_policy_mode_only_narrows():
+    def budget(**measured_and_mode):
+        mode = measured_and_mode.pop('tool_mode', 'native')
+        data = calibrated(tool_mode=mode)
+        data['agent']['measured'].update(measured_and_mode)
+        return agent_budget(policy_from_dict(data).agent)
+
+    assert budget().mode == 'native'
+    assert budget(tool_mode='schema').mode == 'schema' and budget(tool_mode='schema').max_rounds == 4
+    # einschuss set, but p=20/g=6 needs 375 s for one call > 0.8 * 420: no-go instead of a timeout
+    assert budget(tool_mode='einschuss').mode == 'no-go'
+    fast_one = budget(tool_mode='einschuss', prompt_tok_s=50, gen_tok_s=20)
+    assert fast_one.mode == 'einschuss' and fast_one.max_rounds == 0
+    # the policy can never widen: measured einschuss stays einschuss with tool_mode native
+    assert budget(prompt_tok_s=50, gen_tok_s=20, cache_ok=False).mode == 'einschuss'
+    assert budget(prompt_tok_s=10, gen_tok_s=3).mode == 'no-go'
+    assert set(AGENT_TOOL_MODES) == {'native', 'schema', 'einschuss'}

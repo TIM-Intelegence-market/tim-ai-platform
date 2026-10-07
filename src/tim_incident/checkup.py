@@ -14,7 +14,14 @@ One run (`run()`):
    `redaction.untrusted_block`;
 6. `reporter.deliver(spool, deadline=...)`, then ONE JSON line `{"event": "checkup_end", ...}` on stdout.
 
-Qwen diagnosis is PR-2: `ClassPolicy.qwen` and `Settings.diagnosis` are read here but change nothing yet.
+Qwen diagnosis (PR-2, design C.5, B.8), only where /var/lib/tim-agent/requests exists (`diagnosis_step`):
+- requests/HOLD while a `policy.hold_checks` watchdog check is not GREEN or gap_last_60m is RED (catch-up running);
+- requests/PAUSE while the label checkup:pause-qwen stands (refreshed every run) or for 24 h after the circuit breaker;
+- results of tim-agent through `github.ingest_diagnoses` (the trust boundary), an acknowledgement requests/<rid>.ack;
+- one "Diagnose ausgefallen" comment for a request without result after 60 min; acknowledged requests go after 7 days;
+- new requests (redacted evidence, redacted journal buffers) for announced, reopened or class-changed episodes of a
+  class with `qwen: true`, only with TIM_CHECKUP_DIAGNOSIS=on and a calibrated agent budget (fail-closed).
+The checkup never starts, stops or talks to the agent or Ollama.
 """
 from __future__ import annotations
 
@@ -26,6 +33,7 @@ import json
 import os
 import re
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -34,7 +42,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from .policy import CHAIN_CLASSES, CLASS_NAMES, HEALTH_CHECKS, NOT_CONFIGURED, WATCHDOG_CHECKS, Controls, Policy, Settings
+from . import protocol
+from .policy import (CHAIN_CLASSES, CLASS_NAMES, HEALTH_CHECKS, NOT_CONFIGURED, WATCHDOG_CHECKS, Controls, Policy,
+                     Settings, agent_budget)
 from .redaction import final_scan, redact, untrusted_block
 
 UTC = timezone.utc
@@ -572,6 +582,7 @@ class Observation:
     runtime: dict                           # runtime journal around the gap: access, net_pattern, foreign_traceback
     disk: dict
     manifest_observe: bool | None
+    extra_units: tuple[str, ...] = ()       # UNIT-class units watched only in this run (DIAGNOSIS_WATCH_UNITS)
 
     @property
     def latest_health(self) -> Sample | None:
@@ -605,7 +616,8 @@ def _gap_from(samples: list[Sample]) -> dict | None:
 
 
 def observe(*, root: Path, data_dir: Path, policy: Policy, controls: Controls, now: datetime, runner: Runner,
-            connect=None, collect=None, statvfs=os.statvfs, timeout: float = 10.0) -> Observation:
+            connect=None, collect=None, statvfs=os.statvfs, timeout: float = 10.0,
+            extra_units: tuple[str, ...] = ()) -> Observation:
     window = timedelta(minutes=policy.hysteresis.window_minutes)
     since = now - window
     snapshot = read_snapshot(data_dir, now, window_minutes=policy.hysteresis.window_minutes)
@@ -627,7 +639,9 @@ def observe(*, root: Path, data_dir: Path, policy: Policy, controls: Controls, n
             by_time[sample.at] = sample
     samples = [by_time[moment] for moment in sorted(by_time)]
 
-    units = unit_states(runner, dict.fromkeys((RUNTIME_UNIT,) + policy.classes['UNIT'].units), timeout=timeout)
+    extra_units = tuple(unit for unit in extra_units if unit not in policy.classes['UNIT'].units)
+    units = unit_states(runner, dict.fromkeys((RUNTIME_UNIT,) + policy.classes['UNIT'].units + extra_units),
+                        timeout=timeout)
     probes = net_probe(policy.network.probes, connect=connect, timeout=policy.network.probe_timeout_seconds)
     gap = _gap_from(samples)
     runtime = {'access': 'skipped', 'net_pattern': False, 'foreign_traceback': False, 'pattern_lines': []}
@@ -641,7 +655,8 @@ def observe(*, root: Path, data_dir: Path, policy: Policy, controls: Controls, n
         now=now, controls=controls, journal_access=access, health_samples=samples, health_age=health_file['age'],
         health_stale=stale, health_collected=collected is not None, watchdog_samples=snapshot['watchdog_samples'],
         snapshot=snapshot, units=units, probes=probes, gap=gap, runtime=runtime,
-        disk=disk_usage(policy.disk.statvfs_paths, statvfs), manifest_observe=manifest_observe(root))
+        disk=disk_usage(policy.disk.statvfs_paths, statvfs), manifest_observe=manifest_observe(root),
+        extra_units=extra_units)
 
 
 # --- evaluation --------------------------------------------------------------------------------------------------
@@ -691,7 +706,7 @@ def _run_checks(obs: Observation, policy: Policy) -> dict[str, list[str]]:
         data = obs.file(name)
         if data is not None and data.get('status') == 'FAIL':
             hits[name] = [f'{name}.json']
-    down = [unit for unit in policy.classes['UNIT'].units
+    down = [unit for unit in policy.classes['UNIT'].units + obs.extra_units
             if (obs.units.get(unit) or {}).get('query') == 'ok' and obs.units[unit].get('ActiveState') != 'active']
     if obs.health_stale:            # HEALTH_STALE includes the health timer itself
         folded = [unit for unit in down if unit.startswith('tim-server-health.')]
@@ -902,7 +917,8 @@ def classify(evaluation: Evaluation, policy: Policy) -> Classification:
 
 def empty_state() -> dict:
     return {'v': STATE_VERSION, 'updated_at': None, 'chain': None, 'independent': {}, 'run_hits': {}, 'red_runs': {},
-            'probes': [], 'minor_seen': [], 'state_lost_at': None, 'explained_gap': None}
+            'probes': [], 'minor_seen': [], 'state_lost_at': None, 'explained_gap': None,
+            'diagnosis': empty_diagnosis_state()}
 
 
 def _chain_rank(name: str) -> int:
@@ -1120,6 +1136,7 @@ def _valid_state(data) -> dict | None:
     for key in ('updated_at', 'state_lost_at', 'explained_gap'):
         value = data.get(key)
         state[key] = value if isinstance(value, str) else None
+    state['diagnosis'] = _valid_diagnosis_state(data.get('diagnosis'))
     return state
 
 
@@ -1204,7 +1221,8 @@ def issue_title(name: str, host: str, opened: datetime) -> str:
 def issue_body(episode: Mapping, evaluation: Evaluation, policy: Policy, settings: Settings, *, root: Path,
                commit: Mapping, slot: str) -> str:
     """Deterministic body (design B.5), managed part only: no log text, no model text. The reporter keeps the status
-    section (TIM_INCIDENT_STATUS_BEGIN/END) outside this part; the diagnosis fields block follows in PR-2."""
+    section (TIM_INCIDENT_STATUS_BEGIN/END) and the diagnosis FIELDS section (`github.IncidentGateway.set_fields`)
+    outside this part."""
     name, host = episode['class'], policy.host
     policy_class = policy.classes[name]
     opened = _parse_time(episode['opened_at'])
@@ -1308,6 +1326,12 @@ class EvidenceContext:
     commit: dict
     probe_history: list
     units: dict
+    journals: dict = field(default_factory=dict)        # (unit, since) -> raw journal text of this run
+
+
+def _journal_since(obs: Observation, episode: Mapping, policy: Policy) -> datetime:
+    opened = _parse_time(episode['opened_at']) or obs.now
+    return opened - timedelta(minutes=policy.limits.journal_before_open_minutes)
 
 
 def collect_evidence(obs: Observation, evaluation: Evaluation, episode: Mapping, slot: str,
@@ -1344,15 +1368,20 @@ def collect_evidence(obs: Observation, evaluation: Evaluation, episode: Mapping,
                                     if state and state.get('query') == 'ok' else 'nicht abfragbar'))
     sections.append(('2. Unit-Status', '\n'.join(lines) or 'keine Units', 'head'))
 
-    opened = _parse_time(episode['opened_at']) or obs.now
-    since = opened - timedelta(minutes=limits.journal_before_open_minutes)
+    since = _journal_since(obs, episode, policy)
     for unit in units:
-        if context.time_left() <= timeout + limits.create_min_remaining_seconds:
+        cached = context.journals.get((unit, since))
+        if cached is None and context.time_left() <= timeout + limits.create_min_remaining_seconds:
             sections.append((f'3. Journal {unit}', 'übersprungen: Zeitlimit des Laufs', 'tail'))
             continue
-        argv = ['journalctl', '-u', unit, '--since', _journal_time(since), '-n', str(limits.journal_lines),
-                '-o', 'short-iso', '--no-pager']
-        code, text = _call(context.runner, argv, timeout)
+        if cached is not None:
+            code, text = 0, cached
+        else:
+            argv = ['journalctl', '-u', unit, '--since', _journal_time(since), '-n', str(limits.journal_lines),
+                    '-o', 'short-iso', '--no-pager']
+            code, text = _call(context.runner, argv, timeout)
+            if code == 0:
+                context.journals[(unit, since)] = text
         text = _clip(redact(text, context.literals), limits.journal_bytes, 'tail') if code == 0 \
             else f'journalctl Exit {code}'
         sections.append((f'3. Journal {unit}', text or 'keine Einträge', 'tail'))
@@ -1569,6 +1598,581 @@ def build_entries(plan, obs: Observation, evaluation: Evaluation, policy: Policy
     return entries
 
 
+# --- diagnosis (PR-2, design C.5) ----------------------------------------------------------------------------------
+
+AGENT_DIR = Path('/var/lib/tim-agent')
+QWEN_UNIT = 'tim-qwen-diagnose.service'
+DIAGNOSIS_WATCH_UNITS = ('tim-qwen-diagnose.timer', 'tim-checkup.path')
+SELFTEST_BUNDLE = Path('ops') / 'selftest' / 'qwen_selftest_bundle.json'
+DIAGNOSIS_OVERDUE = timedelta(seconds=protocol.DIAGNOSIS_OVERDUE_SECONDS)   # the agent starts nothing it cannot finish
+# Longer than the agent's result retention (7 days): the agent sees the .ack when it prunes its result.
+REQUEST_RETENTION = timedelta(days=8)
+BREAKER_PAUSE = timedelta(hours=24)
+LABEL_PAUSE = timedelta(minutes=30)         # refreshed every run while the label stands
+BREAKER_BASELINE = timedelta(minutes=30)
+BREAKER_FAILED_RUNS = 2
+BREAKER_MIN_AGE_SECONDS = 60.0
+BREAKER_AGE_CHECKS = ('data_age', 'cursor_age')
+BREAKER_TAIL_BYTES = 4 * 1024 * 1024
+# Rule (c) counts only the load symptoms of design C.5; 'exit-code' (selfcheck, config) is reported as a note.
+QWEN_LOAD_RESULTS = frozenset({'timeout', 'oom-kill', 'signal', 'core-dump', 'watchdog'})
+QWEN_JOURNAL_LINES = 500
+QWEN_JOURNAL_FIRST = timedelta(hours=1)    # first look without a cursor
+_QWEN_RUN_END = re.compile(r"^tim-qwen-diagnose\.service: (?:Failed with result '([a-z-]{1,32})'"
+                           r"|(?:Deactivated successfully|Succeeded))\.$")
+_JOURNAL_CURSOR = re.compile(r'^-- cursor: ([A-Za-z0-9=;_-]{1,512})$')
+REQUEST_JOURNAL_STEPS = (protocol.JOURNAL_MAX_LINES, 100, 50, 20, 0)   # shrink until the request fits
+_BAD_TEXT = re.compile('[\x00-\x08\x0b-\x1f\x7f  ]')
+_SYSTEMD_TIME = re.compile(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\.\d+)? UTC$')
+BREAKER_REASONS = {
+    'chain_red': 'eine Klasse der Kette wurde während des Laufs RED',
+    'age_jump': 'data_age oder cursor_age stieg während des Laufs stark an',
+    'failed_runs': 'zwei Läufe in Folge endeten ohne Erfolg',
+}
+
+
+@dataclass(frozen=True)
+class AgentPaths:
+    base: Path
+
+    @property
+    def requests(self) -> Path:
+        return self.base / 'requests'
+
+    @property
+    def results(self) -> Path:
+        return self.base / 'results'
+
+
+def empty_diagnosis_state() -> dict:
+    return {'last_start': None, 'failed_streak': 0, 'tripped_at': None, 'journal_cursor': None}
+
+
+def _valid_diagnosis_state(value) -> dict:
+    state = empty_diagnosis_state()
+    if not isinstance(value, dict):
+        return state
+    cursor = value.get('journal_cursor')
+    state['journal_cursor'] = cursor if isinstance(cursor, str) and _JOURNAL_CURSOR.match(f'-- cursor: {cursor}') \
+        else None
+    for key in ('last_start', 'tripped_at'):
+        state[key] = value.get(key) if isinstance(value.get(key), str) else None
+    streak = value.get('failed_streak')
+    state['failed_streak'] = streak if isinstance(streak, int) and not isinstance(streak, bool) and streak >= 0 else 0
+    return state
+
+
+def agent_ready(paths: AgentPaths) -> bool:
+    """The diagnosis part runs only where the installer created requests/ and results/ as real directories."""
+    for path in (paths.requests, paths.results):
+        try:
+            if not stat.S_ISDIR(os.lstat(path).st_mode):
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def _episode_diagnoses(episode: Mapping) -> list[dict]:
+    """The requests already written for an episode (kept in the episode as 'diagnoses')."""
+    items = episode.get('diagnoses') if isinstance(episode, Mapping) else None
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if isinstance(item, dict) and protocol.parse_rid(item.get('rid')) is not None]
+
+
+def hold_reasons(obs: Observation, policy: Policy) -> list[str]:
+    """Why requests/HOLD must stand (C.5): a hold check of the newest watchdog sample not GREEN, or gap_last_60m RED
+    in the newest health sample. No watchdog or health data at all also holds (fail-closed)."""
+    reasons = []
+    checks = obs.watchdog_samples[-1].checks if obs.watchdog_samples else None
+    if checks is None:
+        status, age = obs.file('watchdog_status'), obs.age('watchdog_status')
+        if status is not None and age is not None and age <= WATCHDOG_FACTS_MAX_AGE \
+                and isinstance(status.get('checks'), dict):
+            checks = status['checks']
+    if checks is None:
+        reasons.append('watchdog unknown')
+    else:
+        for name in policy.hold_checks:
+            check = checks.get(name)
+            if not isinstance(check, dict) or check.get('status') != 'GREEN':
+                reasons.append(f'watchdog.{name}')
+    latest = obs.latest_health
+    if latest is None:
+        reasons.append('health unknown')
+    else:
+        gap = latest.checks.get('gap_last_60m')
+        if isinstance(gap, dict) and gap.get('status') == 'RED':
+            reasons.append('gap_last_60m')
+    return reasons
+
+
+def write_hold_pause(requests_dir: Path, *, now: datetime, hold: bool, label: bool | None,
+                     breaker_until: datetime | None = None, own_uid: int | None = None) -> dict:
+    """HOLD and PAUSE in requests/ (C.5). `label`: True while checkup:pause-qwen stands, None when the labels could not
+    be read (an existing label pause is then kept, fail-closed), False when it is gone. A running breaker pause is
+    never shortened by the label logic; an expired, foreign or invalid PAUSE is removed."""
+    if hold:
+        protocol.write_hold(requests_dir, now)
+    elif protocol.hold_active(requests_dir):
+        protocol.clear_hold(requests_dir)
+    try:
+        current = protocol.read_pause(requests_dir, expected_uid=own_uid)
+    except protocol.ProtocolError:
+        current = {'reason': 'invalid', 'until': None}
+    until = protocol.parse_iso(current.get('until')) if current else None
+    breaker_running = bool(current and current['reason'] == 'breaker' and until is not None and now < until)
+    if breaker_until is not None:
+        protocol.write_pause(requests_dir, breaker_until, 'breaker')
+        pause = 'breaker'
+    elif breaker_running:
+        pause = 'breaker'
+    elif label or (label is None and current and current['reason'] == 'label'):
+        protocol.write_pause(requests_dir, now + LABEL_PAUSE, 'label')
+        pause = 'label'
+    else:
+        if current is not None:
+            protocol.clear_pause(requests_dir)
+        pause = None
+    return {'hold': bool(hold), 'pause': pause}
+
+
+def _systemd_time(value) -> datetime | None:
+    match = _SYSTEMD_TIME.search(value.strip()) if isinstance(value, str) else None
+    if match is None:
+        return None
+    try:
+        return datetime.strptime(match.group(1), '%Y-%m-%d %H:%M:%S').replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def qwen_run_window(runner: Runner, *, timeout: float) -> dict | None:
+    """Window of the newest tim-qwen-diagnose run from `systemctl show` (UTC timestamps): {'start', 'end' (None
+    while it runs), 'result'}; None when it never ran or the query failed."""
+    argv = ['systemctl', 'show', QWEN_UNIT,
+            '--property=ExecMainStartTimestamp,ExecMainExitTimestamp,Result,ActiveState', '--timestamp=utc',
+            '--no-pager']
+    code, text = _call(runner, argv, timeout)
+    if code != 0:
+        return None
+    fields = dict(line.split('=', 1) for line in text.splitlines() if '=' in line)
+    start = _systemd_time(fields.get('ExecMainStartTimestamp'))
+    if start is None:
+        return None
+    end = _systemd_time(fields.get('ExecMainExitTimestamp'))
+    running = fields.get('ActiveState') in ('activating', 'active', 'reloading', 'deactivating')
+    if end is not None and (end < start or running):
+        end = None
+    return {'start': start, 'end': end, 'result': (fields.get('Result') or '').strip()}
+
+
+def qwen_run_results(runner: Runner, cursor: str | None, *, now: datetime,
+                     timeout: float) -> tuple[list[str], str | None] | None:
+    """Results of the tim-qwen-diagnose runs that ended after `cursor`, oldest first ('success' or systemd's Result
+    word), from systemd's own end lines in the unit's journal, and the new cursor. Unlike the newest window of
+    `systemctl show` this also sees a run killed by TimeoutStartSec whose retry started at once. None when the journal
+    cannot be read (the streak then stays as it is)."""
+    argv = ['journalctl', '-u', QWEN_UNIT, '-o', 'cat', '--no-pager', '--show-cursor', '-n', str(QWEN_JOURNAL_LINES)]
+    argv += ['--after-cursor', cursor] if cursor else ['--since', _journal_time(now - QWEN_JOURNAL_FIRST)]
+    code, text = _call(runner, argv, timeout)
+    if code != 0 or _journal_denied(text):
+        return None
+    results, new_cursor = [], cursor
+    for line in text.splitlines():
+        line = line.strip()
+        match = _JOURNAL_CURSOR.match(line)
+        if match:
+            new_cursor = match.group(1)
+            continue
+        match = _QWEN_RUN_END.match(line)
+        if match:
+            results.append(match.group(1) or 'success')
+    return results, new_cursor
+
+
+def _chain_turned_red(obs: Observation, policy: Policy, start: datetime, end: datetime) -> bool:
+    """Rule (a): a chain class GREEN in the last sample before the run and RED in a sample during it (per source)."""
+    for samples in (obs.health_samples, obs.watchdog_samples):
+        before = [sample for sample in samples if sample.at < start]
+        during = [sample for sample in samples if start <= sample.at <= end]
+        if not before or not during:
+            continue
+        for name in policy.chain_order:
+            checks = set(policy.classes[name].checks)
+            if not before[-1].red & checks and any(sample.red & checks for sample in during):
+                return True
+    return False
+
+
+def _age_values(data_dir: Path, start: datetime, end: datetime) -> tuple[list[float], list[float]]:
+    baseline, during = [], []
+    path = CheckupPaths(Path(data_dir)).operational / 'watchdog.jsonl'
+    for line in _tail_lines(path, BREAKER_TAIL_BYTES):
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, dict) or record.get('event') != 'WATCHDOG_CHECK':
+            continue
+        sample = watchdog_sample(record)
+        if sample is None or sample.at < start - BREAKER_BASELINE or sample.at > end:
+            continue
+        for name in BREAKER_AGE_CHECKS:
+            check = sample.checks.get(name)
+            value = check.get('value') if isinstance(check, dict) else None
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value == value:
+                (during if sample.at >= start else baseline).append(float(value))
+    return baseline, during
+
+
+def _age_jumped(data_dir: Path, start: datetime, end: datetime) -> bool:
+    """Rule (b): the highest data_age/cursor_age during the run exceeds max(60 s, twice the highest of the 30 min
+    before it). Without values on both sides the rule cannot judge and does not trip."""
+    baseline, during = _age_values(data_dir, start, end)
+    if not baseline or not during:
+        return False
+    return max(during) > max(BREAKER_MIN_AGE_SECONDS, 2 * max(baseline))
+
+
+def breaker(diag: dict, window: dict | None, obs: Observation, policy: Policy, *, data_dir: Path,
+            now: datetime, paused: bool, run_results: list[str] | None = None) -> list[str]:
+    """Circuit breaker (C.5). Updates `diag` (last_start, failed_streak, tripped_at) in place and returns the trip
+    reasons (empty: no trip). Rules (a) and (b) look at the newest run window: a running run every time, a finished
+    one once. Rule (c) counts `run_results` (qwen_run_results, every ended run since the last checkup): each load
+    result (QWEN_LOAD_RESULTS) adds one, a success resets, other results leave the streak alone. While a breaker
+    pause runs nothing trips and the streak stays 0."""
+    if run_results is not None:
+        for result in run_results:
+            if result == 'success':
+                diag['failed_streak'] = 0
+            elif result in QWEN_LOAD_RESULTS:
+                diag['failed_streak'] = diag.get('failed_streak', 0) + 1
+    if paused:
+        diag['failed_streak'] = 0
+        return []
+    reasons = []
+    if window is not None:
+        key = _iso(window['start'])
+        first_look = window['end'] is not None and diag.get('last_start') != key
+        if first_look:
+            diag['last_start'] = key
+        if first_look or window['end'] is None:
+            end = window['end'] or now
+            if _chain_turned_red(obs, policy, window['start'], end):
+                reasons.append('chain_red')
+            if _age_jumped(data_dir, window['start'], end):
+                reasons.append('age_jump')
+    if diag.get('failed_streak', 0) >= BREAKER_FAILED_RUNS:
+        reasons.append('failed_runs')
+    if reasons:
+        diag['tripped_at'] = _iso(now)
+        diag['failed_streak'] = 0
+    return reasons
+
+
+def _target(state: Mapping, policy: Policy, rid: str) -> tuple[str, bool]:
+    """(issue class, active) of the episode a request belongs to: the class its issue was opened with."""
+    episode_id, cls, _ = protocol.parse_rid(rid)
+    slot = 'chain' if cls in policy.chain_order else cls
+    episode = state.get('chain') if slot == 'chain' else (state.get('independent') or {}).get(slot)
+    if isinstance(episode, dict) and episode.get('episode') == episode_id:
+        return episode['class'], episode.get('status') == 'active'
+    return cls, False
+
+
+def _clean_text(text: str) -> str:
+    return _BAD_TEXT.sub('?', text)
+
+
+def _request_evidence(sections, literals, limit: int) -> str:
+    """Redacted evidence text for a request: every section except the journals (they travel as buffers), at most
+    `limit` characters, and nothing that the final scan still flags."""
+    parts = [f'### {heading}\n{redact(text, literals)}' for heading, text, _ in sections
+             if not heading.startswith('3. Journal')]
+    text = _clean_text('\n\n'.join(parts))
+    if len(text) > limit:
+        text = text[:max(1, limit - 16)].rsplit('\n', 1)[0] + '\n[... gekürzt]'
+    if final_scan(text):
+        text = '[Evidenz zurückgehalten: Schlussprüfung]'
+    return text[:limit] or '[keine Evidenz]'
+
+
+def _journal_buffer(raw: str, literals) -> list[str]:
+    lines = []
+    for line in redact(raw, literals).splitlines():
+        line = _clean_text(line).rstrip()
+        if line:
+            lines.append(line[:2000])
+    return lines[-protocol.JOURNAL_MAX_LINES:]
+
+
+def _selftest_bundle(root: Path, policy: Policy, literals) -> dict | None:
+    """The recorded selftest bundle (C.6): {"evidence", "units", "journal", "expected_paths"}; None when missing or
+    invalid. Its text is redacted again like any evidence."""
+    try:
+        raw = _read_bytes(Path(root) / SELFTEST_BUNDLE, protocol.REQUEST_MAX_BYTES)
+        data = protocol.loads_strict(raw, protocol.REQUEST_MAX_BYTES)
+    except (OSError, protocol.ProtocolError):
+        return None
+    evidence, units, journal = data.get('evidence'), data.get('units', []), data.get('journal', {})
+    paths = data.get('expected_paths')
+    if not isinstance(evidence, str) or not isinstance(units, list) or not isinstance(journal, dict) \
+            or not isinstance(paths, list):
+        return None
+    if not all(isinstance(unit, str) and unit in policy.agent.units_allowlist for unit in units):
+        return None
+    if not all(isinstance(lines, list) and all(isinstance(line, str) for line in lines) for lines in journal.values()):
+        return None
+    return {'evidence': _clean_text(redact(evidence, literals))[:protocol.EVIDENCE_MAX_CHARS],
+            'units': list(units),
+            'journal': {unit: _journal_buffer('\n'.join(lines), literals) for unit, lines in journal.items()},
+            'expected_paths': list(paths)}
+
+
+def build_request(obs: Observation, evaluation: Evaluation, episode: Mapping, slot: str, cls: str, seq: int,
+                  context: EvidenceContext, *, evidence_chars: int) -> dict:
+    """A validated request (protocol.build_request) for class `cls` of `episode`: redacted evidence of at most
+    `evidence_chars` characters (3 E of the budget) and the redacted journal buffer (<= 200 lines) of each unit of the
+    class that the agent may name. Shrinks the buffers until the request fits policy.limits.request_bytes; raises
+    ProtocolError when it cannot be built."""
+    policy = context.policy
+    allowed = policy.agent.units_allowlist
+    limit = max(1, min(int(evidence_chars), protocol.EVIDENCE_MAX_CHARS))
+    expected = None
+    if cls == 'SELFTEST':
+        bundle = _selftest_bundle(context.root, policy, context.literals)
+        if bundle is None:
+            raise protocol.ProtocolError('schema')
+        evidence, units, journal, expected = (bundle['evidence'][:limit] or '[keine Evidenz]', bundle['units'],
+                                              bundle['journal'], bundle['expected_paths'])
+    else:
+        view = {**episode, 'current': cls}
+        sections = collect_evidence(obs, evaluation, view, slot, context)
+        evidence = _request_evidence(sections, context.literals, limit)
+        units = [unit for unit in dict.fromkeys(policy.classes[cls].units) if unit in allowed]
+        units = units[:protocol.REQUEST_UNITS_MAX]
+        since = _journal_since(obs, episode, policy)
+        journal = {unit: _journal_buffer(context.journals[(unit, since)], context.literals)
+                   for unit in units if (unit, since) in context.journals}
+    for lines in REQUEST_JOURNAL_STEPS:
+        cut = {unit: (buffer[-lines:] if lines else []) for unit, buffer in journal.items()}
+        try:
+            return protocol.build_request(
+                episode=episode['episode'], cls=cls, seq=seq, created_at=obs.now, evidence=evidence, units=units,
+                journal=cut, expected_paths=expected, allowed_units=allowed, max_bytes=policy.limits.request_bytes)
+        except protocol.ProtocolError as error:
+            if error.code != 'too_large':
+                raise
+    raise protocol.ProtocolError('too_large')
+
+
+def _request_targets(plan, policy: Policy) -> list[tuple[str, dict, str, str]]:
+    """(slot, episode, class, reason) for each announced, reopened or class-changed episode of a qwen class."""
+    targets = []
+    for action, slot, episode, transition in plan:
+        if action == 'announce':
+            cls, reason = episode.get('current') or episode['class'], 'opened'
+        elif action == 'reopened':
+            cls, reason = episode.get('current') or episode['class'], 'reopened'
+        elif action == 'changed' and transition and transition.get('new_class'):
+            cls, reason = transition['new_class'], 'changed'
+        else:
+            continue
+        if cls in policy.classes and policy.classes[cls].qwen:
+            targets.append((slot, episode, cls, reason))
+    return targets
+
+
+def refresh_pending(paths: AgentPaths, now: datetime, *, own_uid: int | None) -> int:
+    """Re-date own pending requests to `now` while HOLD or PAUSE stands: the agent may not start them, so that time
+    does not count toward DIAGNOSIS_OVERDUE (the agent's start cutoff uses the same mtime)."""
+    refreshed = 0
+    stamp = now.timestamp()
+    for rid in protocol.pending_rids(paths.requests, paths.results):
+        path = paths.requests / protocol.request_name(rid)
+        try:
+            info = os.lstat(path)
+            if not stat.S_ISREG(info.st_mode) or (own_uid is not None and info.st_uid != own_uid):
+                continue
+            os.utime(path, (stamp, stamp), follow_symlinks=False)
+        except OSError:
+            continue
+        refreshed += 1
+    return refreshed
+
+
+def overdue_requests(paths: AgentPaths, now: datetime, *, own_uid: int | None) -> list[str]:
+    """Own requests without result and acknowledgement, written (or last re-dated by refresh_pending) at least
+    DIAGNOSIS_OVERDUE ago."""
+    overdue = []
+    for rid in protocol.pending_rids(paths.requests, paths.results):
+        try:
+            info = os.lstat(paths.requests / protocol.request_name(rid))
+        except OSError:
+            continue
+        if own_uid is not None and info.st_uid != own_uid:
+            continue
+        if now.timestamp() - info.st_mtime >= DIAGNOSIS_OVERDUE.total_seconds():
+            overdue.append(rid)
+    return overdue
+
+
+def retain_requests(paths: AgentPaths, now: datetime, *, own_uid: int | None) -> int:
+    """Delete own acknowledged requests (request and .ack) whose acknowledgement is older than 8 days. Only files of
+    `own_uid` are touched; results belong to the agent."""
+    removed = 0
+    for rid in protocol.list_rids(paths.requests, '.ack'):
+        names = (protocol.ack_name(rid), protocol.request_name(rid))
+        try:
+            info = os.lstat(paths.requests / names[0])
+        except OSError:
+            continue
+        if not stat.S_ISREG(info.st_mode) or (own_uid is not None and info.st_uid != own_uid):
+            continue
+        if now.timestamp() - info.st_mtime < REQUEST_RETENTION.total_seconds():
+            continue
+        try:
+            request = os.lstat(paths.requests / names[1])
+        except OSError:
+            request = None
+        if request is not None and (own_uid is None or request.st_uid == own_uid):
+            protocol.remove(paths.requests, names[1])
+        protocol.remove(paths.requests, names[0])
+        removed += 1
+    return removed
+
+
+def _comment_entry(cls: str, episode: str, host: str, now: datetime, active: bool, tag: str, text: str,
+                   mode: str | None) -> dict:
+    entry = {'v': ENTRY_VERSION, 'kind': 'comment', 'episode': episode, 'class': cls, 'host': host, 'at': _iso(now),
+             'active': active, 'tag': tag, 'text': text}
+    if mode in ('dry-run', 'on'):
+        entry['mode'] = mode
+    return entry
+
+
+def breaker_text(reasons, until: datetime) -> str:
+    listed = '; '.join(BREAKER_REASONS[reason] for reason in reasons)
+    return (f'Qwen pausiert: Verdacht auf Lastwirkung ({listed}). Die Diagnose ruht bis {_human(until)}; '
+            'requests/PAUSE hat der Checkup geschrieben. Vorzeitig aufheben: Datei löschen, siehe docs/TIM_CHECKUP.md.')
+
+
+def diagnosis_step(*, paths: AgentPaths, state: dict, plan, obs: Observation, evaluation: Evaluation, policy: Policy,
+                   settings: Settings, root: Path, data_dir: Path, now: datetime, runner: Runner, spool, literals,
+                   context: EvidenceContext | None, user_lookup=None, own_uid: int | None = None) -> dict:
+    """One pass of the checkup's side of the diagnosis (C.5, B.8). Changes `state` in place (breaker bookkeeping and
+    the requests of each episode) and queues comment/fields entries into `spool` (None: reporting off, nothing is
+    queued but results are still acknowledged). Returns a summary for the checkup_end line."""
+    from .github import diagnosis_missing_text, diagnosis_tag, ingest_diagnoses
+
+    summary: dict = {'requests': [], 'notes': []}
+    reporting = settings.reporting if settings.reporting in ('dry-run', 'on') else None
+    queue = spool if reporting else None
+    diag = state.setdefault('diagnosis', empty_diagnosis_state())
+    timeout = float(policy.limits.command_timeout_seconds)
+
+    # 1. breaker, HOLD, PAUSE
+    try:
+        current = protocol.read_pause(paths.requests, expected_uid=own_uid)
+    except protocol.ProtocolError:
+        current = None
+    until = protocol.parse_iso(current['until']) if current else None
+    breaker_running = bool(current and current['reason'] == 'breaker' and until is not None and now < until)
+    window = qwen_run_window(runner, timeout=timeout)
+    ended = qwen_run_results(runner, diag.get('journal_cursor'), now=now, timeout=timeout)
+    if ended is None:
+        diag['journal_cursor'] = None           # unreadable or a stale cursor: next run starts again from --since
+    else:
+        diag['journal_cursor'] = ended[1]
+        failed = [result for result in ended[0] if result not in QWEN_LOAD_RESULTS and result != 'success']
+        if failed:
+            summary['notes'].append(f"qwen runs failed without load symptom: {', '.join(sorted(set(failed)))} "
+                                    f'({len(failed)})')
+    reasons = breaker(diag, window, obs, policy, data_dir=data_dir, now=now, paused=breaker_running,
+                      run_results=None if ended is None else ended[0])
+    breaker_until = now + BREAKER_PAUSE if reasons else None
+    holds = hold_reasons(obs, policy)
+    # labels unreadable this run ('unknown'): keep a label pause; reporting not configured: there is no label
+    label = None if obs.controls.authority == 'unknown' else obs.controls.pause_qwen
+    flags = write_hold_pause(paths.requests, now=now, hold=bool(holds), label=label, breaker_until=breaker_until,
+                             own_uid=own_uid)
+    summary.update(hold=holds, pause=flags['pause'], breaker=reasons)
+    if flags['hold'] or flags['pause'] is not None:
+        refresh_pending(paths, now, own_uid=own_uid)        # held time does not make a request overdue
+
+    # 2. results of tim-agent (the trust boundary is in github.ingest_diagnoses)
+    ingest = ingest_diagnoses(paths.results, requests_dir=paths.requests, policy=policy, now=now, spool=queue,
+                              target=lambda rid: _target(state, policy, rid), literals=literals, mode=reporting,
+                              user_lookup=user_lookup, root=root, own_uid=own_uid)
+    summary['ingest'] = {'ingested': ingest.ingested, 'failed': ingest.failed, 'rejected': ingest.rejected,
+                         'unknown': ingest.unknown, 'skipped': ingest.skipped}
+
+    # 3. requests without a result after 60 min: one comment, then acknowledged
+    missing = []
+    for rid in overdue_requests(paths, now, own_uid=own_uid):
+        episode_id = protocol.parse_rid(rid)[0]
+        issue_class, active = _target(state, policy, rid)
+        if queue is not None:
+            queue.enqueue(_comment_entry(issue_class, episode_id, policy.host, now, active, diagnosis_tag(rid),
+                                         diagnosis_missing_text(rid, int(DIAGNOSIS_OVERDUE.total_seconds() // 60)),
+                                         reporting))
+        protocol.write_ack(paths.requests, rid, now)
+        missing.append(rid)
+    summary['missing'] = missing
+
+    # 4. new requests, only with diagnosis on, a calibrated budget and no pause
+    targets = _request_targets(plan, policy)
+    budget = agent_budget(policy.agent)
+    if targets and settings.diagnosis != 'on':
+        summary['notes'].append('diagnosis off')
+    elif targets and not budget.go:
+        summary['notes'].append(f'no requests: {budget.reason}')
+    elif targets and flags['pause'] is not None:
+        summary['notes'].append(f"no requests: paused ({flags['pause']})")
+    elif targets and context is None:
+        summary['notes'].append('no requests: no evidence context')
+    elif targets:
+        for slot, episode, cls, reason in targets:
+            done = _episode_diagnoses(episode)
+            if reason != 'reopened' and any(item.get('class') == cls for item in done):
+                continue
+            if len(done) >= policy.agent.per_episode:
+                summary['notes'].append(f"{cls}/{episode['episode']}: request limit per episode reached")
+                continue
+            try:
+                request = build_request(obs, evaluation, episode, slot, cls, len(done) + 1, context,
+                                        evidence_chars=budget.evidence_chars)
+                protocol.write_request(paths.requests, request, allowed_units=policy.agent.units_allowlist,
+                                       max_bytes=policy.limits.request_bytes)
+            except (protocol.ProtocolError, KeyError, ValueError) as error:
+                code = getattr(error, 'code', type(error).__name__)
+                summary['notes'].append(f"{cls}/{episode['episode']}: request not written ({code})")
+                continue
+            episode['diagnoses'] = done + [{'rid': request['rid'], 'class': cls, 'at': _iso(now)}]
+            summary['requests'].append(request['rid'])
+
+    # 5. breaker comment: on the episode of the newest open request, else the active chain episode
+    if reasons:
+        open_rids = [rid for rid in protocol.list_rids(paths.requests)
+                     if not os.path.lexists(paths.requests / protocol.ack_name(rid))]
+        target = None
+        if open_rids:
+            issue_class, active = _target(state, policy, open_rids[-1])
+            target = (issue_class, protocol.parse_rid(open_rids[-1])[0], active)
+        elif state.get('chain') and state['chain'].get('status') == 'active':
+            target = (state['chain']['class'], state['chain']['episode'], True)
+        if target is not None and queue is not None:
+            queue.enqueue(_comment_entry(target[0], target[1], policy.host, now, target[2],
+                                         'qwen-paused-' + now.strftime('%Y%m%dt%H%M'),
+                                         breaker_text(reasons, breaker_until), reporting))
+
+    # 6. retention of own acknowledged requests
+    summary['removed'] = retain_requests(paths, now, own_uid=own_uid)
+    return summary
+
+
 # --- run ---------------------------------------------------------------------------------------------------------
 
 def _lock(path: Path) -> int | None:
@@ -1604,12 +2208,14 @@ def _record_minor(paths: CheckupPaths, state: dict, minor: list[dict], host: str
 
 def run(*, root: Path, data_dir: Path, policy: Policy, settings: Settings, reporter, environ: Mapping[str, str],
         now=None, runner: Runner | None = None, connect=None, monotonic=time.monotonic, spool=None,
-        health_collect=None, statvfs=None, proc_dir: Path = Path('/proc')) -> int:
+        health_collect=None, statvfs=None, proc_dir: Path = Path('/proc'), agent_dir: Path | None = AGENT_DIR,
+        user_lookup=None, own_uid: int | None = None) -> int:
     """One checkup run; returns the exit code: 0 normal (also revoked/silenced), 3 reporting disturbed or journal
     denied, 1 internal error. `reporter.deliver` gets `deadline` = start + limits.run_timeout_seconds on the
     `monotonic` clock (pass the reporter the same clock). Extra keywords are test seams: `spool` (default
     github.Spool(data/incidents/outbox)), `health_collect` (default scripts.tim_server_health.collect), `statvfs`,
-    `proc_dir`."""
+    `proc_dir`, `agent_dir` (default /var/lib/tim-agent; None skips the diagnosis part), `user_lookup` (pwd lookup of
+    tim-agent for the result owner check) and `own_uid` (owner of requests/, default os.getuid())."""
     started = monotonic()
     base = _utc(now if now is not None else time.time())
     deadline = started + policy.limits.run_timeout_seconds     # a monotonic() value, as Reporter.deliver expects
@@ -1643,7 +2249,9 @@ def run(*, root: Path, data_dir: Path, policy: Policy, settings: Settings, repor
             root=Path(root), paths=paths, policy=policy, settings=settings, reporter=reporter, environ=environ,
             base=base, current=current, time_left=time_left, deadline=deadline, previous_run=previous_run,
             runner=runner or default_runner, connect=connect, spool=spool, health_collect=health_collect,
-            statvfs=statvfs or os.statvfs, proc_dir=Path(proc_dir))
+            statvfs=statvfs or os.statvfs, proc_dir=Path(proc_dir),
+            agent=AgentPaths(Path(agent_dir)) if agent_dir is not None else None, user_lookup=user_lookup,
+            own_uid=os.getuid() if own_uid is None else own_uid)
     except Exception as exc:        # fixed text: the type name only, never the message
         exit_code = 1
         summary.update({'exit_code': 1, 'error': type(exc).__name__,
@@ -1671,7 +2279,8 @@ def run(*, root: Path, data_dir: Path, policy: Policy, settings: Settings, repor
 
 
 def _run_locked(*, root, paths: CheckupPaths, policy: Policy, settings: Settings, reporter, environ, base, current,
-                time_left, deadline, previous_run, runner, connect, spool, health_collect, statvfs, proc_dir):
+                time_left, deadline, previous_run, runner, connect, spool, health_collect, statvfs, proc_dir,
+                agent=None, user_lookup=None, own_uid=None):
     now = base
     state, state_status = load_state(paths.data, previous_run=previous_run)
     if state_status == 'lost':
@@ -1695,8 +2304,11 @@ def _run_locked(*, root, paths: CheckupPaths, policy: Policy, settings: Settings
             adopted = []        # GitHub not readable: new episodes stay adopt_only, the next run tries again
 
     timeout = float(policy.limits.command_timeout_seconds)
+    # With the diagnosis switched on the installer enables the Qwen timer and the path unit: both belong to the
+    # UNIT class then (design A.2). Switched off they stay disabled on purpose and are not watched.
     obs = observe(root=root, data_dir=paths.data, policy=policy, controls=controls, now=now, runner=runner,
-                  connect=connect, collect=health_collect, statvfs=statvfs, timeout=timeout)
+                  connect=connect, collect=health_collect, statvfs=statvfs, timeout=timeout,
+                  extra_units=DIAGNOSIS_WATCH_UNITS if settings.diagnosis == 'on' else ())
     evaluation = evaluate(obs, policy, state)
     classification = classify(evaluation, policy)
     new_state, transitions = advance(state, evaluation, classification, policy, now, adopt_only=adopt_only)
@@ -1707,6 +2319,7 @@ def _run_locked(*, root, paths: CheckupPaths, policy: Policy, settings: Settings
     plan, marks = plan_reports(new_state, transitions, settings.reporting)
     literals = secret_literals(settings, environ) + reporter_literals(reporter)
     entries = []
+    context = None
     if plan:
         context = EvidenceContext(runner=runner, root=root, policy=policy, literals=literals,
                                   time_left=time_left, proc_dir=proc_dir, statvfs=statvfs, commit=read_commit(root),
@@ -1722,7 +2335,17 @@ def _run_locked(*, root, paths: CheckupPaths, policy: Policy, settings: Settings
     save_state(paths.data, new_state)
     for entry in entries:
         spool.enqueue(entry)
-    if marks:
+    qwen = None
+    if agent is not None and agent_ready(agent):
+        # errors here never change the exit code: the diagnosis is advice, the incident reporting goes on
+        try:
+            qwen = diagnosis_step(paths=agent, state=new_state, plan=plan, obs=obs, evaluation=evaluation,
+                                  policy=policy, settings=settings, root=root, data_dir=paths.data, now=now,
+                                  runner=runner, spool=spool, literals=literals, context=context,
+                                  user_lookup=user_lookup, own_uid=own_uid)
+        except Exception as exc:        # fixed text: the type name only
+            qwen = {'error': type(exc).__name__}
+    if marks or qwen is not None:
         apply_marks(new_state, marks)
         save_state(paths.data, new_state, rotate=False)
 
@@ -1749,6 +2372,8 @@ def _run_locked(*, root, paths: CheckupPaths, policy: Policy, settings: Settings
     }
     if adopted:
         summary['adopted'] = adopted
+    if qwen is not None:
+        summary['qwen'] = qwen
     return summary, exit_code
 
 
