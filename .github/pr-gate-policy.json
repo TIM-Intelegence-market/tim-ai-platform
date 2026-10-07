@@ -7,7 +7,7 @@
   "deny_prefixes": [
     ".github/", ".claude/", ".git/",
     "scripts/", "config/", "schemas/", "ops/", "artifacts/",
-    "src/database/"
+    "src/database/", "src/tim_incident/", "src/__init__.py"
   ],
   "deny_names": [
     "agents.md", "claude.md", "ci.md", "codeowners",

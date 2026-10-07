@@ -17,13 +17,18 @@ Gegenstück zu `ops/launchd/` für den Debian-Server aus
 | `tim-backup.{service,timer}` | – | täglich 03:15 UTC, `pg_dump` nach `/var/backups/tim`, 14 Tage (P5) |
 | `tim-restore-test.{service,timer}` | – | sonntags 04:30 UTC, Restore in `tim_restore_test` und Zeilenvergleich (P5) |
 | `tim-server-health.{service,timer}` | – | alle 60 s, Health- und Lückenprüfung (P6) |
+| `tim-checkup.{service,timer}` | – | alle 900 s, Checkup und Vorfall-Melder; nur über `ops/debian/install_checkup.sh` (siehe unten) |
 | `50-tim-runtime.rules` | – | polkit: Benutzer `tim` darf nur `tim-runtime.service` starten/stoppen |
 | `tim.env.example` | `EnvironmentVariables` der Plists | Vorlage für `/etc/tim/tim.env`, ohne Secrets |
 
 Bewusst nicht portiert: `awake` und `power-state-telemetry` (nur Mac),
-`ollama`, `local-qwen-worker`, `broncx-discord-feed` (bleiben auf dem Mac),
+`local-qwen-worker`, `broncx-discord-feed` (bleiben auf dem Mac),
 `continuous-coverage*` (gehören zur Mac-Kampagne vom 2026-09-24; der Server
 bekommt eine eigene Deklaration, Paket P7).
+
+Ollama läuft seit dem 28.09.2026 auf tim-core-01 (`ollama.service`, Modell
+`qwen3-coder:30b`, Modelle unter `/srv/tim/models`). Es gehört nicht zu diesen
+Units und wird von ihnen weder installiert noch gestartet.
 
 ## Annahmen
 
@@ -54,6 +59,27 @@ systemctl enable --now tim-candle-finalizer.timer tim-rolling-liveness.timer tim
   tim-backup.timer tim-restore-test.timer tim-server-health.timer
 systemctl enable --now tim-watchdog.service
 ```
+
+`bootstrap.sh` und das `install` oben kopieren per Glob auch `tim-checkup.*`,
+schalten den Checkup aber nicht ein. Das macht nur `install_checkup.sh`.
+
+## Checkup und Vorfall-Melder
+
+`tim-checkup.timer` startet alle 15 min `scripts/tim_checkup.py run` als `tim`.
+Der Checkup liest Health- und Statusdateien und meldet je Ursache ein GitHub-Issue.
+Er repariert nichts, startet nichts neu, füllt keine Lücken und leert keine Queues.
+
+- Installiert und eingeschaltet wird er nur mit `ops/debian/install_checkup.sh`
+  (als root, nach dem Deploy des Codes). Das Skript legt `/opt/tim/data/incidents`
+  (tim:tim, 0700) und einen leeren Platzhalter `/etc/tim/github-app.pem`
+  (root:root, 0600) an.
+- Melden ist ab Werk aus. `--configure` schreibt die `TIM_CHECKUP_*`-Zeilen in
+  `/etc/tim/tim.env`, erst `dry-run`, nach 24 h und ausdrücklichem Ja `on`.
+- Der Schlüssel der GitHub App erreicht den Dienst nur über `LoadCredential=`.
+- Ausbauen: `install_checkup.sh --uninstall`. Daten unter
+  `/opt/tim/data/incidents` und der Schlüssel bleiben als Beleg.
+
+Ablauf, Steuerung vom Handy und Rückweg: [`docs/TIM_CHECKUP.md`](../../docs/TIM_CHECKUP.md).
 
 ## Prüfen
 

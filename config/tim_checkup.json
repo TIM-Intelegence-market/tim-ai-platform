@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "repository": "TIM-Intelegence-market/tim-ai-platform",
+  "host": "tim-core-01",
+  "postgres_unit": "postgresql.service",
+  "chain_order": ["HEALTH_STALE", "DISK", "DATABASE", "RUNTIME", "NETWORK", "DATA_FLOW", "WATCHDOG"],
+  "classes": {
+    "HEALTH_STALE": {
+      "checks": ["health_file"],
+      "open_red_samples": 0,
+      "open_runs": 1,
+      "units": ["tim-server-health.service", "tim-server-health.timer"],
+      "labels": ["priority:p1", "incident:unknown"],
+      "qwen": true,
+      "category": "unknown",
+      "remedy": "tim-server-health.timer und tim-server-health.service prüfen (systemctl status, Journal)"
+    },
+    "DISK": {
+      "checks": ["disk", "statvfs"],
+      "open_red_samples": 1,
+      "open_runs": 0,
+      "units": ["tim-backup.service", "tim-maintenance.service"],
+      "labels": ["incident:ops"],
+      "qwen": false,
+      "category": "ops",
+      "remedy": "Speicherplatz freigeben; nichts unter /opt/tim/data oder in /var/backups/tim ungeprüft löschen"
+    },
+    "DATABASE": {
+      "checks": ["database"],
+      "open_red_samples": 3,
+      "open_runs": 0,
+      "units": ["postgresql.service", "tim-runtime.service"],
+      "labels": ["priority:p1"],
+      "qwen": true,
+      "category": "ops",
+      "remedy": "PostgreSQL-Dienst und Verbindung der Runtime prüfen"
+    },
+    "RUNTIME": {
+      "checks": ["runtime", "runtime_unit"],
+      "open_red_samples": 3,
+      "open_runs": 2,
+      "units": ["tim-runtime.service", "tim-watchdog.service"],
+      "labels": ["priority:p1"],
+      "qwen": true,
+      "category": "ops",
+      "remedy": "tim-runtime.service prüfen; Neustarts übernimmt nur der Watchdog"
+    },
+    "NETWORK": {
+      "checks": ["net_probe", "net_pattern", "past_gap"],
+      "open_red_samples": 0,
+      "open_runs": 2,
+      "units": ["tim-runtime.service"],
+      "labels": ["incident:network"],
+      "qwen": false,
+      "category": "network",
+      "remedy": "Netz am Standort prüfen (pfSense, DNS, Provider); TIM holt Lücken selbst nach"
+    },
+    "DATA_FLOW": {
+      "checks": ["candle_freshness", "gap_last_60m"],
+      "open_red_samples": 3,
+      "open_runs": 0,
+      "units": ["tim-runtime.service", "tim-candle-finalizer.service"],
+      "labels": ["priority:p1"],
+      "qwen": true,
+      "category": "ops",
+      "remedy": "Datenfluss der Runtime prüfen (Kerzen, Lücken, Nachholen)"
+    },
+    "WATCHDOG": {
+      "checks": ["watchdog.single_collector", "watchdog.postgres_listener", "watchdog.queue_age"],
+      "open_red_samples": 3,
+      "open_runs": 0,
+      "units": ["tim-watchdog.service", "tim-runtime.service"],
+      "labels": ["priority:p1"],
+      "qwen": true,
+      "category": "ops",
+      "remedy": "Befund des Watchdogs prüfen (Collector, PostgreSQL-Listener, Alter der Queue)"
+    },
+    "SAFETY": {
+      "checks": ["watchdog.observe_only", "watchdog.trading_action_count"],
+      "open_red_samples": 1,
+      "open_runs": 0,
+      "units": ["tim-runtime.service", "tim-watchdog.service"],
+      "labels": ["priority:p1", "incident:safety"],
+      "qwen": true,
+      "category": "safety",
+      "remedy": "Sofort prüfen, ob TIM noch OBSERVE-only läuft; über priority:p0 entscheidet der Inhaber"
+    },
+    "BACKUP": {
+      "checks": ["backup", "backup_last_run", "restore_test"],
+      "open_red_samples": 1,
+      "open_runs": 0,
+      "units": ["tim-backup.service", "tim-restore-test.service"],
+      "labels": ["priority:p1"],
+      "qwen": true,
+      "category": "ops",
+      "remedy": "Backup und Restore-Test prüfen (tim-backup, tim-restore-test)"
+    },
+    "TIME_SYNC": {
+      "checks": ["time_sync"],
+      "open_red_samples": 3,
+      "open_runs": 0,
+      "units": [],
+      "labels": ["incident:ops"],
+      "qwen": false,
+      "category": "ops",
+      "remedy": "Zeitsynchronisation prüfen (timedatectl)"
+    },
+    "UNIT": {
+      "checks": ["unit"],
+      "open_red_samples": 0,
+      "open_runs": 2,
+      "units": [
+        "tim-candle-finalizer.timer",
+        "tim-rolling-liveness.timer",
+        "tim-maintenance.timer",
+        "tim-coverage-worker.timer",
+        "tim-backup.timer",
+        "tim-restore-test.timer",
+        "tim-server-health.timer",
+        "tim-watchdog.service"
+      ],
+      "labels": ["incident:ops"],
+      "qwen": false,
+      "category": "ops",
+      "remedy": "Betroffene Unit prüfen (systemctl status, systemctl list-timers)"
+    },
+    "SELFTEST": {
+      "checks": ["selftest"],
+      "open_red_samples": 0,
+      "open_runs": 1,
+      "units": [],
+      "labels": ["selftest"],
+      "qwen": true,
+      "category": "selftest",
+      "remedy": "Kein Handlungsbedarf, Selbsttest des Melders; Label checkup:selftest am Freigabe-Issue entfernen, dann wird der Vorfall geschlossen"
+    }
+  },
+  "health": {"stale_seconds": 300},
+  "disk": {
+    "statvfs_paths": ["/var", "/srv", "/var/lib/postgresql", "/var/backups/tim"],
+    "red_percent": 95
+  },
+  "network": {
+    "probes": [["stream.binance.com", 9443], ["api.binance.com", 443], ["api.github.com", 443]],
+    "outage_hosts": ["stream.binance.com", "api.binance.com"],
+    "runtime_patterns": [
+      "Errno (101|110|111|113)",
+      "gaierror",
+      "ClientConnectorError",
+      "ConnectionResetError",
+      "Binance public stream disconnected"
+    ],
+    "min_missing_minutes": 3,
+    "probe_timeout_seconds": 5,
+    "probe_history_runs": 8,
+    "gap_context_minutes": 5
+  },
+  "hysteresis": {
+    "window_minutes": 16,
+    "resolve_clean_runs": 2,
+    "resolve_max_clean_runs": 8,
+    "reopen_cooldown_hours": 2,
+    "status_line_hours": 24
+  },
+  "limits": {
+    "evidence_comment_bytes": 49152,
+    "journal_lines": 80,
+    "journal_bytes": 8192,
+    "journal_before_open_minutes": 30,
+    "gap_incidents_lines": 5,
+    "run_timeout_seconds": 240,
+    "create_min_remaining_seconds": 60,
+    "command_timeout_seconds": 10,
+    "spool_coalesce_after": 500,
+    "spool_alarm_minutes": 60
+  },
+  "rate_limits": {
+    "new_issues_per_hour": 3,
+    "new_issues_per_day": 20,
+    "writes_per_run": 12,
+    "comments_per_incident_per_day": 4,
+    "changed_per_episode": 3,
+    "pause_after_forbidden_minutes": 30,
+    "pause_after_rate_limit_minutes": 30
+  },
+  "evidence": {
+    "statvfs_paths": ["/", "/opt/tim", "/var", "/var/lib/postgresql", "/var/backups/tim", "/srv"]
+  }
+}

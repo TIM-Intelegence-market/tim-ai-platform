@@ -35,6 +35,7 @@ def test_expected_units_exist() -> None:
         "tim-backup.service", "tim-backup.timer",
         "tim-restore-test.service", "tim-restore-test.timer",
         "tim-server-health.service", "tim-server-health.timer",
+        "tim-checkup.service", "tim-checkup.timer",
     } <= names
 
 
@@ -55,6 +56,39 @@ def test_service_runs_repo_script_as_tim_with_hardening(path: Path) -> None:
     if path.name in BACKUP_UNITS:
         allowed.add("/var/backups/tim")
     assert set(service["ReadWritePaths"].split()) == allowed
+
+
+def test_checkup_unit_hardening() -> None:
+    # The checkup holds the GitHub App key: it gets it only as a credential and runs tightly sandboxed.
+    service = parse(UNITS / "tim-checkup.service")["Service"]
+    assert service["ExecStart"].split() == [
+        f"{SERVER_ROOT}/.venv/bin/python", f"{SERVER_ROOT}/scripts/tim_checkup.py", "run"]
+    assert service["Type"] == "oneshot" and "Restart" not in service
+    assert service["User"] == "tim" and service["Group"] == "tim"
+    assert service["SupplementaryGroups"] == "systemd-journal"
+    assert service["LoadCredential"].startswith("github-app-key:/etc/tim/")
+    assert service["UMask"] == "0077"
+    assert service["SystemCallFilter"] == "@system-service"
+    assert service["SystemCallArchitectures"] == "native"
+    assert service["ProtectProc"] == "invisible"
+    assert service["CapabilityBoundingSet"] == ""
+    for key in ("NoNewPrivileges", "PrivateTmp", "PrivateDevices", "ProtectHome", "ProtectKernelTunables",
+                "ProtectKernelModules", "ProtectKernelLogs", "ProtectControlGroups", "ProtectClock",
+                "ProtectHostname", "RestrictNamespaces", "RestrictRealtime", "RestrictSUIDSGID", "LockPersonality"):
+        assert service[key] == "yes", key
+    assert set(service["RestrictAddressFamilies"].split()) == {"AF_UNIX", "AF_INET", "AF_INET6"}
+    assert 0 < int(service["TimeoutStartSec"]) <= 300
+    assert service["MemoryMax"] and service["LimitFSIZE"] and service["CPUQuota"]
+    assert "Environment" not in service or "TOKEN" not in service["Environment"].upper()
+    timer = parse(UNITS / "tim-checkup.timer")["Timer"]
+    assert timer["OnUnitActiveSec"] == "900s" and timer["Persistent"] == "false"
+
+
+def test_bootstrap_never_enables_the_checkup() -> None:
+    # bootstrap.sh copies tim-checkup.* by glob; only ops/debian/install_checkup.sh enables the timer.
+    script = (ROOT / "ops/debian/bootstrap.sh").read_text(encoding="utf-8")
+    enables = [line for line in script.replace("\\\n", " ").splitlines() if "systemctl enable" in line]
+    assert enables and not any("tim-checkup" in line or "*" in line for line in enables)
 
 
 @pytest.mark.parametrize("path", SERVICES, ids=lambda path: path.name)

@@ -1,0 +1,45 @@
+# TIM checkup every 15 min: incidents from health/status files, redacted evidence, GitHub issues. Read-only for TIM.
+# Installed and enabled only by ops/debian/install_checkup.sh (bootstrap.sh copies it but never enables it).
+# The GitHub App key reaches the process only through LoadCredential; reporting is off until --configure.
+[Unit]
+Description=TIM checkup and incident reporter (OBSERVE only)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_checkup.py run
+User=tim
+Group=tim
+SupplementaryGroups=systemd-journal
+WorkingDirectory=/opt/tim
+EnvironmentFile=/etc/tim/tim.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+LoadCredential=github-app-key:/etc/tim/github-app.pem
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts
+TimeoutStartSec=300
+Nice=5
+CPUQuota=25%
+MemoryMax=512M
+LimitFSIZE=64M

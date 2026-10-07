@@ -22,8 +22,13 @@ beweisen weder Herkunft noch Freigabe.
 
 - Jede geänderte Datei liegt unter `src/`, `tests/` oder `docs/`.
 - Gesperrt, auch darunter: `.github/`, `.claude/`, `scripts/`, `config/`, `schemas/`, `ops/`, `artifacts/`,
-  `src/database/`, `CLAUDE.md`, `AGENTS.md`, `CI.md`, `conftest.py`, `pytest.ini`, Abhängigkeitslisten,
-  `docker-compose.yml`, `.gitattributes`, `.gitmodules`.
+  `src/database/`, `src/tim_incident/`, `src/__init__.py`, `CLAUDE.md`, `AGENTS.md`, `CI.md`, `conftest.py`,
+  `pytest.ini`, Abhängigkeitslisten, `docker-compose.yml`, `.gitattributes`, `.gitmodules`.
+- `src/tim_incident/` ist gesperrt, weil dort die Schutzlogik des Vorfall-Melders liegt (Redaktion, Schreibschutz,
+  Label-Allowlist); ein Worker darf sie nicht abschwächen, auch nicht beim Beheben eines Vorfalls (`docs/TIM_CHECKUP.md`).
+  Ebenso gesperrt ist `src/__init__.py`: Es läuft bei jedem Import im Checkup-Prozess, der den App-Schlüssel hält.
+- Nicht gesperrt, aber im selben Prozess geladen: `src/task_governance/` (samt `__init__.py`, `engine_bridge.py`,
+  `legacy.py`). Eine Änderung dort wirkt auf den Melder; solche PRs nur nach genauem Review mergen.
 - Nur Status A/M/D, nur reguläre Dateien (`100644`); keine Symlinks, Submodule, Rechte- oder Typwechsel.
 - Keine Löschung unter `tests/`, höchstens 40 Dateien, höchstens 1 MB je geänderter Datei, kein leerer Diff.
 - Läuft auch bei `edited` (zum Beispiel Wechsel des Ziel-Branches), nicht nur bei neuen Commits.
