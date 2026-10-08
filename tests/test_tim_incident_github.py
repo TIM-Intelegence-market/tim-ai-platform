@@ -73,6 +73,7 @@ class IncidentRest(FakeRest):
 
     def seed(self, number, body='', state='open', login=BOT, pr=False, labels=(), closed_by=None, state_reason=None):
         super().seed(number, body, state, login, pr)
+        self.issues[number]['user']['type'] = 'Bot' if login.endswith('[bot]') else 'User'     # as GitHub sends it
         self.issues[number].update(labels=[{'name': name} for name in labels], state_reason=state_reason,
                                    closed_by={'login': closed_by} if closed_by else None)
         self.next_number = max(self.next_number, number)

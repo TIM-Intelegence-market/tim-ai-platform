@@ -6,6 +6,10 @@ Contract kept on purpose:
 - `IncidentGateway._guard` runs before every write: the issue carries exactly one TIM_INCIDENT_V1 marker, was opened by
   the reporter login, is not a pull request and is neither the authority nor the watch issue. Only `post_summary`
   comments on the authority issue, with a text built here from structured data.
+- The outside watch on the Mac (PR-3, design D) builds the gateway with `outside_watch=True`. Then exactly one write
+  is possible: `comment_once` on the configured watch issue W with a `TIM_OUTSIDE_WATCH:<episode>:<kind>` tag
+  (`_guard_watch`); every other write, on W or anywhere else, is refused before sending. Without the flag (the server)
+  W stays protected as before.
 - Labels come only from `policy.LABEL_ALLOWLIST`; `status:*`, `agent:*`, `checkup:*`, `priority:p0`, `governance` never.
 - The body is fixed text from the checkup and is never rewritten; only the STATUS section outside the managed part
   changes, and not at all once `status:ready` or an `agent:*` label is set (E6).
@@ -65,6 +69,10 @@ KINDS = ('open', 'comment', 'status_line', 'resolve', 'reopen', 'fields')
 _EPISODE = re.compile(r'^\d{8}T\d{4}Z$')
 _HOSTNAME = re.compile(r'^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$')
 _TAG = re.compile(r'^[a-z0-9][a-z0-9-]{0,40}$')
+WATCH_TAG_PREFIX = 'TIM_OUTSIDE_WATCH'
+WATCH_KINDS = ('silent', 'stale', 'impaired', 'recovered')
+_WATCH_TAG = re.compile(r'^TIM_OUTSIDE_WATCH:\d{8}T\d{6}Z:(?:' + '|'.join(WATCH_KINDS) + r')$')
+WATCH_ISSUE_LABEL = 'status:external-action'     # design section 17: W carries it, the pipeline skips W
 _COMMIT = re.compile(r'^[0-9a-f]{7,40}$')
 _ENTRY_ID = re.compile(r'^\d{12}-[a-z_]{1,20}-[0-9a-f]{12}$')
 MAX_TITLE = 256
@@ -271,12 +279,18 @@ _NOT_SENT = 'not_sent'
 class IncidentGateway(GitHubRestGateway):
     """`GitHubRestGateway` with the write guard, the label allowlist and the incident-only write methods."""
 
-    def __init__(self, repository: str, token: str, *, reporter_login: str, owner_login: str, authority_issue: int,
-                 watch_issue: int | None = None, transport=None, write_budget: int | None = None, **kwargs):
-        if not reporter_login or not owner_login:
+    def __init__(self, repository: str, token: str, *, reporter_login: str, owner_login: str | None,
+                 authority_issue: int | None, watch_issue: int | None = None, transport=None,
+                 write_budget: int | None = None, outside_watch: bool = False, **kwargs):
+        if not reporter_login or (not owner_login and not outside_watch):
             raise ValueError('reporter_login and owner_login are required')
-        self.reporter_login, self.owner_login = reporter_login, owner_login
-        self.authority_issue = int(authority_issue)
+        self.outside_watch = bool(outside_watch)
+        if self.outside_watch and not watch_issue:
+            raise ValueError('the outside watch needs the watch issue')
+        self.reporter_login, self.owner_login = reporter_login, owner_login or ''
+        self.authority_issue = int(authority_issue) if authority_issue else 0
+        if not self.outside_watch and not self.authority_issue:
+            raise ValueError('authority_issue is required')
         self.watch_issue = int(watch_issue) if watch_issue else None
         self._protected = frozenset(n for n in (self.authority_issue, self.watch_issue) if n)
         self._inner = incident_transport if transport is None else transport
@@ -285,8 +299,8 @@ class IncidentGateway(GitHubRestGateway):
         self.writes_ok = 0          # write calls GitHub accepted
         self.write_budget = write_budget
         self.authority_problem = 'authority not read'
-        super().__init__(repository, token, transport=self._send,
-                         create_authority=OwnerOnlyAuthority(self.authority_issue, owner_login), **kwargs)
+        authority = None if self.outside_watch else OwnerOnlyAuthority(self.authority_issue, owner_login)
+        super().__init__(repository, token, transport=self._send, create_authority=authority, **kwargs)
 
     def __repr__(self):
         return f'IncidentGateway({self.repository!r})'
@@ -302,6 +316,9 @@ class IncidentGateway(GitHubRestGateway):
         return status, raw
 
     def _call(self, method, path, payload=None, *, timeout=None, create=False, absent=()):
+        if method != 'GET' and self.outside_watch \
+                and (create or path != f'/repos/{self.repository}/issues/{self.watch_issue}/comments'):
+            raise GuardError('the outside watch only comments on the watch issue')     # last line, nothing sent
         if method != 'GET':
             if not create and self.write_budget is not None and self.writes >= self.write_budget:
                 raise WriteBudgetExceeded('write budget of this run used up')
@@ -330,6 +347,8 @@ class IncidentGateway(GitHubRestGateway):
     def _guard(self, number, episode: str | None = None) -> dict:
         """The fresh issue, or GuardError: our marker, our author, no PR, not the authority or watch issue."""
         n = int(number)
+        if self.outside_watch:
+            raise GuardError('the outside watch writes only to the watch issue')
         if n in self._protected:
             raise GuardError(f'issue #{n} is the authority or watch issue')
         item = self._issue(n)
@@ -454,8 +473,40 @@ class IncidentGateway(GitHubRestGateway):
             self._call('POST', f'/repos/{self.repository}/issues/{int(number)}/labels', {'labels': missing})
         return missing
 
+    def _guard_watch(self, number, tag: str) -> str:
+        """The one exception to `_guard` (design D): only with `outside_watch`, only the configured watch issue W, only
+        a TIM_OUTSIDE_WATCH tag. W is open, not locked, no pull request, opened by a human account (`user.type` User,
+        no `[bot]` login, not the reporter) and carries `status:external-action`. Returns the comment head."""
+        n = int(number)
+        if not self.outside_watch or self.watch_issue is None or n != self.watch_issue:
+            raise GuardError(f'issue #{n} is not the watch issue of the outside watch')
+        if not isinstance(tag, str) or not _WATCH_TAG.match(tag):
+            raise GuardError('invalid outside watch tag')
+        item = self._issue(n)
+        if item is None or 'pull_request' in item or item.get('state') != 'open':
+            raise GuardError(f'watch issue #{n} missing, closed or a pull request')
+        if item.get('locked'):
+            raise GuardError(f'watch issue #{n} is locked')
+        author = item.get('user') or {}
+        login = author.get('login') if isinstance(author.get('login'), str) else ''
+        if self._is_reporter(login) or author.get('type') != 'User' or login.lower().endswith('[bot]'):
+            raise GuardError(f'watch issue #{n} was not opened by a human account')
+        if WATCH_ISSUE_LABEL not in _label_names(item):
+            raise GuardError(f'watch issue #{n} lacks the {WATCH_ISSUE_LABEL} label')
+        return f'<!-- {tag} -->'
+
     def comment_once(self, number, tag: str, text: str, *, episode: str | None = None) -> bool:
         """Post `text` under `tag` unless a comment of the reporter already starts with that tag. True if posted."""
+        if self.outside_watch:
+            if not isinstance(text, str) or not text.strip() or final_scan(text):
+                raise GuardError('comment text failed the final scan')
+            head = self._guard_watch(number, tag)
+            for comment in self._pages(f'/repos/{self.repository}/issues/{int(number)}/comments'):
+                if isinstance(comment, dict) and self._is_reporter((comment.get('user') or {}).get('login')) \
+                        and (comment.get('body') or '').startswith(head):
+                    return False
+            self._comment(number, f'{head}\n{text}')
+            return True
         if not _TAG.match(tag or ''):
             raise GuardError('invalid comment tag')
         if not isinstance(text, str) or not text.strip() or final_scan(text):

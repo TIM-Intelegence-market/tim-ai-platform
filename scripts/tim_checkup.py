@@ -6,6 +6,8 @@
     tim_checkup.py diagnose             one Qwen diagnosis run (tim-qwen-diagnose.service, user tim-agent)
     tim_checkup.py calibrate [--endpoint URL]
                                         P2 measurement for the owner (as tim-server); prints values, writes nothing
+    tim_checkup.py watch [--once] [--host HOST]
+                                        outside watch on the Mac (launchd every 300 s, design part D)
 
 `run` loads config/tim_checkup.json and the TIM_CHECKUP_* settings from the environment, builds the incident
 reporter and calls `src.tim_incident.checkup.run`, which prints exactly one JSON line `{"event": "checkup_end", ...}`.
@@ -23,7 +25,15 @@ with a warning that the values lack the production limits) (only GET
 /api/tags, POST /api/show and POST /api/chat; never a pull) and prints one JSON line with the values to paste into
 config/tim_checkup.json by a reviewed PR. It writes nothing.
 
-`watch` (outside watch, PR-3) is not part of this release: fixed line, exit 2.
+`watch` calls `src.tim_incident.watch.run_once`: one pass (online check, one ssh call with fixed argv, decision,
+at most the comments of one episode on the watch issue W, macOS notifications) and one JSON line
+`{"event": "watch_end", ...}`. It reads only HOME and TIM_WATCH_* from the environment. Without them it prints a fixed
+German line and exits 2 before any network call. `--once` is the default (launchd repeats the pass); `--host` replaces
+the ssh target for the simulation in design section 16 (`--host tim-server-unreachable.invalid`).
+Exit codes: 0 normal (an alarm included), 2 not set up, 3 a comment cannot be delivered (notification: key rejected
+with HTTP 401 or missing from the keychain, token refused, keychain or openssl failing, W not usable, HTTP 403 three
+times), 1 internal error. SIGTERM (launchd at logout, `launchctl bootout`) ends the pass through SystemExit, so the
+temporary key file is removed.
 """
 from __future__ import annotations
 
@@ -42,7 +52,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 UTC = timezone.utc
-LATER = {'watch': 'Außenwache, PR-3'}
 _WINDOW = re.compile(r'([1-9][0-9]{0,4})([mhd])')
 _SPOOL_FILE = re.compile(r'^\d{12}-[a-z_]{1,20}-[0-9a-f]{12}\.json$')
 TAIL_BYTES = 4 * 1024 * 1024
@@ -472,6 +481,41 @@ def _print_line_to(out, value: dict) -> None:
     print(json.dumps(value, ensure_ascii=False), file=out, flush=True)
 
 
+# --- watch (Mac, design D) ---------------------------------------------------------------------------------------
+
+def run_watch(*, host: str, environ=None, policy_path: Path | None = None, **seams) -> int:
+    """One pass of the outside watch and its one JSON line. `seams` go to `watch.run_once` (tests only: runner,
+    transport, clock, state_path, tempdir)."""
+    environ = os.environ if environ is None else environ
+    try:
+        from src.tim_incident import watch
+        from src.tim_incident.policy import load_policy
+        settings = watch.load_watch_settings(environ)
+        if not settings.complete:
+            print('tim_checkup.py watch: nicht eingerichtet (' + '; '.join(settings.problems) + '). '
+                  'Siehe docs/TIM_CHECKUP.md, Außenwache vom Mac.', file=sys.stderr)
+            _print_line({'event': 'watch_end', 'state': 'UNKNOWN', 'exit_code': 2, 'problems': list(settings.problems)})
+            return 2
+        repository = (load_policy() if policy_path is None else load_policy(policy_path)).repository
+    except Exception as error:
+        _print_line({'event': 'watch_end', 'state': 'UNKNOWN', 'exit_code': 1, 'stage': 'setup',
+                     'error': type(error).__name__})
+        return 1
+    try:
+        record = watch.run_once(settings, host=host, repository=repository, **seams)
+    except Exception as error:      # run_once handles its own errors; this is the last line of defence
+        _print_line({'event': 'watch_end', 'state': 'UNKNOWN', 'exit_code': 1, 'stage': 'run',
+                     'error': type(error).__name__})
+        return 1
+    _print_line(record)
+    code = record.get('exit_code')
+    return code if isinstance(code, int) and not isinstance(code, bool) else 1
+
+
+def _exit_on_sigterm(signum, frame):
+    raise SystemExit(143)
+
+
 # --- command line ------------------------------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None, *, environ=None, root: Path = ROOT, data_dir: Path | None = None,
@@ -490,13 +534,18 @@ def main(argv: list[str] | None = None, *, environ=None, root: Path = ROOT, data
     calibration.add_argument('--endpoint', type=calibrate_endpoint, default=calibrate_endpoint(DEFAULT_ENDPOINT),
                              metavar='URL', help='http://127.0.0.2:<port> (Ollama with the drop-in limits) or '
                              f'http://127.0.0.1:<port> (flagged: not for config) (default {DEFAULT_ENDPOINT})')
-    for name, part in LATER.items():
-        commands.add_parser(name, help=f'not part of this release ({part})')
+    watch = commands.add_parser('watch', help='outside watch from the Mac: one pass (launchd every 300 s)')
+    watch.add_argument('--once', action='store_true', help='one pass and exit (the default; launchd repeats it)')
+    watch.add_argument('--host', default='tim-server', metavar='HOST',
+                       help='ssh target (default tim-server, the alias in ~/.ssh/config); '
+                       'tim-server-unreachable.invalid simulates an outage')
     args = parser.parse_args(argv)
     data_dir = Path(root) / 'data' if data_dir is None else Path(data_dir)
-    if args.command in LATER:
-        print(f'tim_checkup.py {args.command}: nicht Teil dieser Version ({LATER[args.command]}).', file=sys.stderr)
-        return 2
+    if args.command == 'watch':
+        if environ is None:                         # the real process: let finally blocks run on SIGTERM
+            import signal
+            signal.signal(signal.SIGTERM, _exit_on_sigterm)
+        return run_watch(host=args.host, environ=environ)
     if args.command == 'status':
         return show_status(data_dir=data_dir, since=args.since, now=now)
     if args.command == 'diagnose':

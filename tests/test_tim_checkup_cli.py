@@ -536,8 +536,8 @@ def test_setup_and_run_failures_print_one_fixed_line(tmp_path, monkeypatch):
 
 
 def test_later_commands_and_root_are_refused(tmp_path, monkeypatch, capsys):
-    assert tim_checkup.main(['watch'], data_dir=tmp_path / 'data') == 2
-    assert 'PR-3' in capsys.readouterr().err
+    assert tim_checkup.main(['watch'], data_dir=tmp_path / 'data', environ={}) == 2      # not set up: no network
+    assert 'nicht eingerichtet' in capsys.readouterr().err
     monkeypatch.setattr(tim_checkup.os, 'geteuid', lambda: 0)
     assert tim_checkup.main(['run'], data_dir=tmp_path / 'data') == 1
     assert 'nicht als root' in capsys.readouterr().err and not (tmp_path / 'data').exists()

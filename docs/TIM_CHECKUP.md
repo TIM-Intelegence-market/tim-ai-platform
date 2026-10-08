@@ -1,7 +1,7 @@
 # TIM-Checkup und Vorfall-Melder
 
-Runbook für Uzi. Stand: PR-2, also Checkup, Melder und Qwen-Diagnose. Die Außenwache vom Mac (PR-3) gibt es
-noch nicht. Die Qwen-Diagnose ist ausgeliefert, bleibt aber aus, bis die Messwerte vom Server in der Konfiguration
+Runbook für Uzi. Stand: PR-3, also Checkup, Melder, Qwen-Diagnose und die Außenwache vom Mac (Kapitel
+[Außenwache vom Mac](#außenwache-vom-mac)). Die Qwen-Diagnose ist ausgeliefert, bleibt aber aus, bis die Messwerte vom Server in der Konfiguration
 stehen (Kapitel [Qwen-Diagnose](#qwen-diagnose)).
 
 ## Was der Checkup tut
@@ -96,7 +96,8 @@ dem nächsten Lauf, also nach höchstens 15 min, oder sofort mit `sudo systemctl
    jemand anderes oder die App eröffnet hat, zählt nicht.
 6. **Benachrichtigungen:** Repo → Watch → Custom → Issues. In GitHub Mobile Push für „Participating“ und
    „Mentions“ einschalten. Jeder Vorfall-Body enthält `cc @uezeyiraydin-cell`.
-7. Das **Außenwache-Issue** (`--watch-issue`) braucht erst PR-3. Jetzt weglassen.
+7. Das **Außenwache-Issue** W (`--watch-issue`): mit deinem Konto eröffnen, Label `status:external-action`.
+   Einrichten im Kapitel [Außenwache vom Mac](#außenwache-vom-mac).
 
 ### Label-Regeln
 
@@ -505,6 +506,156 @@ systemd mit `timeout`, `oom-kill`, `signal` oder `core-dump` beendet hat (aus de
   `sudo sh -c 'mv /root/attic/tim-qwen-worker.service /etc/systemd/system/ && mv /root/attic/qwen-worker.env /etc/tim/ && systemctl daemon-reload'`,
   dann als `tim-server`: `tar xzf ~/qwen-worker-<DATUM>.tgz -C ~ && systemctl --user daemon-reload && systemctl --user enable --now tim-qwen-worker.service`.
 
+## Außenwache vom Mac
+
+Der Checkup läuft auf dem Server. Ist der Server aus, hängt er oder ist sein Netz weg, meldet er nichts. Diese
+Lücke deckt die Außenwache ab: ein LaunchAgent auf deinem Mac, der alle 5 Minuten von außen nachsieht.
+
+### Was sie tut
+
+Ein Durchlauf (`scripts/tim_checkup.py watch`, Code in `src/tim_incident/watch.py`):
+
+1. **Ist der Mac online?** Abfrage von `https://api.github.com/zen` mit 5 s Zeitlimit. Kommt keine Antwort, ist
+   der Zustand `UNKNOWN`. Dann gibt es keinen Alarm, und es wird nichts gezählt.
+2. **Eine ssh-Abfrage** mit festem Befehl und eigenem Schlüssel `~/.ssh/tim_watch_ed25519`. Der Server führt für
+   diesen Schlüssel nur einen Befehl aus: `systemctl show` für `tim-checkup.service` und
+   `tim-server-health.service`. Die Ausgabe wird ausgewertet und nie geloggt. Die Abfrage teilt nie eine
+   ssh-Verbindung (`ControlMaster=no`, `ControlPath=none`), auch wenn `~/.ssh/config` Multiplexing einschaltet.
+3. **Entscheidung:**
+
+   | Zustand | Bedingung |
+   |---|---|
+   | SILENT | ssh scheitert (Server aus, Netz weg, sshd gestört, Zeitlimit) |
+   | STALE | letztes Ende von tim-checkup älter als 35 min, oder von tim-server-health älter als 5 min |
+   | IMPAIRED | 2 verschiedene Checkup-Läufe in Folge nicht sauber (`Result` ungleich `success` oder Exit ungleich 0). „In Folge“ heißt: der zweite Lauf startete höchstens 16 min nach dem Ende des ersten. Lagen ungesehene Läufe dazwischen (Mac schlief, ssh weg), zählt nur der neue. Exit 3 heißt „Melden gestört“, sonst „Checkup fehlgeschlagen (Status X)“. |
+   | OK | sonst |
+
+   Gezählt wird pro Checkup-Lauf: Derselbe fehlgeschlagene Lauf zählt nur einmal, auch wenn die Wache ihn
+   mehrmals sieht.
+4. **Alarm** erst bei 2 Abweichungen in Folge. IMPAIRED zählt schon als zwei, denn es braucht zwei Läufe.
+   - Genau **1 Kommentar pro Episode** im Außenwache-Issue W, Kennung
+     `TIM_OUTSIDE_WATCH:<episode>:<art>`. Wechselt die Art während der Episode (etwa SILENT, dann STALE), kommt
+     kein zweiter Kommentar.
+   - Bei Erholung (2 Durchläufe mit OK in Folge) **1 Entwarnung** mit der Dauer bis zum ersten OK. Ein einzelnes
+     OK zwischen zwei Ausfällen beendet die Episode nicht, so gibt flatterndes ssh keine Kommentarflut.
+   - Höchstens 6 Episoden in 24 h bekommen Kommentar und Mitteilung. Der sechste Alarm sagt das dazu, weitere
+     Episoden stehen bis zum genannten Zeitpunkt nur im Log (`alarm:<art>:muted`).
+   - Dazu jedes Mal eine **macOS-Mitteilung** mit festem Text.
+   - Kann ein Kommentar nicht raus, kommt immer eine Mitteilung, und der Durchlauf endet mit Exit 3:
+     - Lehnt GitHub den Schlüssel ab (HTTP 401) oder fehlt er im Schlüsselbund: Die offenen Kommentare werden
+       verworfen.
+     - W geschlossen, gesperrt oder ohne Label, Schlüsselbund gesperrt, Signatur mit `openssl` gescheitert oder
+       Token verweigert (falsche App-ID, Installation oder Repo): Die Kommentare bleiben liegen (höchstens 20) und
+       gehen raus, sobald es wieder geht. Die Mitteilung kommt einmal, nicht bei jedem Durchlauf.
+     - HTTP 403 drei Durchläufe in Folge: Der vorderste Kommentar wird verworfen.
+   - Bei einer Netzstörung bleiben die Kommentare still liegen und gehen beim nächsten Durchlauf raus, ohne
+     doppelten Kommentar. Erreicht die Wache GitHub 2 Stunden lang nicht (24 Durchläufe im Wachzustand), kommt
+     einmal eine Mitteilung: Netz, Proxy oder die Zertifikate der Python-Umgebung prüfen.
+5. **Ablage:** Zustand in `~/Library/Application Support/TIM Outside Watch/state.json` (nur für dich lesbar).
+   Schlüssel 2 der App liegt im Schlüsselbund. Für die Signatur steht er kurz in einer Datei mit Rechten 0600 im
+   selben Ordner. Sie wird gelöscht, sobald `openssl` fertig ist, also bevor die Token-Anfrage rausgeht. Wird ein
+   Durchlauf mittendrin beendet (Abmelden, `launchctl bootout`), räumt der nächste Durchlauf übrig gebliebene
+   Ordner `tim-watch-*` weg.
+
+Die Wache schreibt nur in W. Der Schreibschutz des Melders lässt für sie genau eine Ausnahme zu: Kommentare mit
+der Außenwache-Kennung im konfigurierten Issue W, und nur wenn W offen und nicht gesperrt ist, von einem
+Menschen eröffnet wurde (GitHub-Kontotyp „User“, kein Bot und keine App) und das Label `status:external-action`
+trägt. Alles andere lehnt der Code ab, bevor etwas gesendet wird. Der
+Checkup auf dem Server schreibt nie in W.
+
+Logs: `~/Library/Logs/tim-outside-watch.log`, eine JSON-Zeile pro Durchlauf (`"event": "watch_end"`) mit
+Zustand, Alter in Sekunden und Aktionen. Fehler stehen in `tim-outside-watch.err.log`.
+
+### Was sie nicht abdeckt
+
+- **Mac schläft oder ist aus:** Dann gibt es keine Wache. launchd holt einen verpassten Durchlauf nach dem
+  Aufwachen nach, aber nicht die Zeit dazwischen.
+- **Mac im selben LAN wie der Server:** Fällt das Internet am Standort aus, ist der Mac selbst offline
+  (`UNKNOWN`) und schlägt keinen Alarm. Diese Zeit deckt nachträglich der Puffer des Melders auf dem Server ab.
+- Die Uhren von Mac und Server werden verglichen. Weichen sie um Minuten ab, stimmen die Altersgrenzen nicht
+  mehr. Beide sollten per NTP laufen.
+- Die Wache startet nichts neu und repariert nichts. Sie sagt nur Bescheid.
+
+### Einmalig einrichten (P7, ohne sudo)
+
+Vorher müssen auf GitHub die App „TIM Reporter“ und das **Außenwache-Issue W** existieren (Kapitel
+[Einmalig auf GitHub](#einmalig-auf-github)). W eröffnest du mit deinem eigenen Konto und gibst ihm das Label
+`status:external-action`, damit es nie in die Pipeline gerät:
+
+```bash
+gh issue create -R TIM-Intelegence-market/tim-ai-platform --title "TIM-Außenwache vom Mac" --label status:external-action --body "Kommentare der Außenwache vom Mac. Nicht schließen."
+```
+
+Die Nummer brauchst du unten als `TIM_WATCH_ISSUE` und auf dem Server für `--watch-issue`, damit der Checkup W
+nie anfasst.
+
+1. **ssh-Schlüssel nur für die Wache** erzeugen:
+   ```bash
+   ssh-keygen -t ed25519 -N '' -C tim-outside-watch -f ~/.ssh/tim_watch_ed25519
+   ```
+2. **Auf dem Server eintragen**, erst nach einem sauberen Ergebnis der Prüfung F.1. Der Eintrag erlaubt diesem
+   Schlüssel genau einen Befehl, ohne Terminal, ohne Weiterleitung:
+   ```bash
+   printf 'restrict,command="systemctl show --timestamp=unix --property=Id,ActiveState,Result,ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp tim-checkup.service tim-server-health.service" %s\n' "$(cat ~/.ssh/tim_watch_ed25519.pub)" | ssh tim-server 'cat >> ~/.ssh/authorized_keys'
+   ```
+   Der Host-Alias `tim-server` muss in `~/.ssh/config` stehen, und der Host-Schlüssel muss schon in
+   `~/.ssh/known_hosts` sein (die Wache läuft mit `BatchMode=yes` und fragt nie nach).
+   Probe: `ssh -T -i ~/.ssh/tim_watch_ed25519 -o IdentitiesOnly=yes -o ControlMaster=no -o ControlPath=none tim-server` gibt die Unit-Werte aus. Eine
+   Shell bekommst du damit nicht.
+3. **Private key 2 der App** erzeugen (GitHub → App → Private keys → Generate) und in den Schlüsselbund legen:
+   ```bash
+   security add-generic-password -U -s tim-outside-watch -a tim-reporter -w "$(base64 -i <pfad>.pem | tr -d '\n')" && rm <pfad>.pem
+   ```
+   Für Millisekunden steht der Wert dabei in der Prozessliste. Auf einem Mac, den nur du benutzt, ist das
+   vertretbar (Restrisiko R12).
+4. **LaunchAgent einrichten:** plist kopieren, die vier Platzhalter `EINTRAGEN` ersetzen, laden.
+   ```bash
+   cp ops/launchd/com.tim.outside-watch.plist ~/Library/LaunchAgents/
+   P=~/Library/LaunchAgents/com.tim.outside-watch.plist
+   plutil -replace EnvironmentVariables.TIM_WATCH_ISSUE -string <W> "$P"
+   plutil -replace EnvironmentVariables.TIM_WATCH_APP_ID -string <App-ID> "$P"
+   plutil -replace EnvironmentVariables.TIM_WATCH_INSTALLATION_ID -string <Installations-ID> "$P"
+   plutil -replace EnvironmentVariables.TIM_WATCH_REPORTER_LOGIN -string '<slug>[bot]' "$P"
+   launchctl bootstrap gui/$(id -u) "$P"
+   ```
+   In der plist stehen nur `HOME` und diese vier Werte, keine Geheimnisse. Solange ein Platzhalter drinsteht,
+   endet jeder Durchlauf mit Exit 2 und „nicht eingerichtet“, ohne Netzzugriff.
+
+### Testen
+
+Im Repo-Ordner auf dem Mac, mit den Werten aus der plist in der Umgebung:
+
+```bash
+cd ~/Documents/TIM/tim
+export TIM_WATCH_ISSUE=<W> TIM_WATCH_APP_ID=<App-ID> TIM_WATCH_INSTALLATION_ID=<Installations-ID> TIM_WATCH_REPORTER_LOGIN='<slug>[bot]'
+.venv/bin/python scripts/tim_checkup.py watch --once --host tim-server-unreachable.invalid
+.venv/bin/python scripts/tim_checkup.py watch --once --host tim-server-unreachable.invalid
+.venv/bin/python scripts/tim_checkup.py watch --once
+.venv/bin/python scripts/tim_checkup.py watch --once
+```
+
+Erwartet:
+- Lauf 1: `"state": "SILENT"`, noch kein Kommentar.
+- Lauf 2: `"actions": ["alarm:silent"]`, genau 1 Kommentar in W und eine Mitteilung.
+- Lauf 3: `"state": "OK"`, `"actions": []`. Ein OK allein beendet die Episode noch nicht.
+- Lauf 4: `"actions": ["recovered"]`, genau 1 Entwarnung mit der Dauer.
+
+Der Test nutzt denselben Zustand wie der LaunchAgent. Läuft der Agent schon, die vier Zeilen zügig hintereinander
+ausführen oder ihn vorher anhalten: `launchctl bootout gui/$(id -u)/com.tim.outside-watch`. `--once` ist der
+Normalfall, ein Durchlauf und Ende; launchd wiederholt ihn alle 300 s.
+
+Exit-Codes: 0 normal (auch bei Alarm), 2 nicht eingerichtet oder ungültiger `--host`, 3 ein Kommentar kann
+nicht raus (Schlüssel abgelehnt oder fehlt, Token verweigert, Schlüsselbund oder `openssl` gestört, W nicht
+nutzbar, dreimal HTTP 403; jeweils mit Mitteilung), 1 interner Fehler.
+
+### Rückweg der Außenwache
+
+- Anhalten: `launchctl bootout gui/$(id -u)/com.tim.outside-watch`, dann
+  `rm ~/Library/LaunchAgents/com.tim.outside-watch.plist`.
+- Schlüssel 2 widerrufen: GitHub → App → Private keys, den zweiten löschen; dann
+  `security delete-generic-password -s tim-outside-watch -a tim-reporter`.
+- ssh-Zugang entziehen: auf dem Server die Zeile mit `tim-outside-watch` aus `~/.ssh/authorized_keys` löschen.
+
 ## Rückweg
 
 | Was | Wie |
@@ -521,7 +672,8 @@ systemd mit `timeout`, `oom-kill`, `signal` oder `core-dump` beendet hat (aus de
 ## Grenzen
 
 - Nur OBSERVE, kein echtes Geld. Der Checkup ändert nichts an TIM.
-- Fällt der Server oder sein Netz ganz aus, kommt kein Issue. Das fängt erst die Außenwache vom Mac (PR-3).
+- Fällt der Server oder sein Netz ganz aus, kommt kein Issue. Das fängt die Außenwache vom Mac ab, solange der
+  Mac wach ist und nicht im selben ausgefallenen Netz hängt.
 - Gehen `state.json` und `state.json.prev` verloren, übernimmt der nächste Lauf mit `on` die offenen
   Vorfall-Issues des Melders (Feld `adopted`) und meldet ihre Erholung wie gewohnt. Ein Vorfall, der in den 2 h
   nach dem Verlust neu beginnt, bekommt kein eigenes Issue; er steht nur in `status`.

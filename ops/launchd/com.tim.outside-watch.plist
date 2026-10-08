@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tim.outside-watch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/tim/Documents/TIM/tim/.venv/bin/python</string>
+    <string>/Users/tim/Documents/TIM/tim/scripts/tim_checkup.py</string>
+    <string>watch</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>/Users/tim</string>
+    <key>TIM_WATCH_ISSUE</key><string>EINTRAGEN</string>
+    <key>TIM_WATCH_APP_ID</key><string>EINTRAGEN</string>
+    <key>TIM_WATCH_INSTALLATION_ID</key><string>EINTRAGEN</string>
+    <key>TIM_WATCH_REPORTER_LOGIN</key><string>EINTRAGEN</string>
+  </dict>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/tim/Library/Logs/tim-outside-watch.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Library/Logs/tim-outside-watch.err.log</string>
+</dict>
+</plist>
