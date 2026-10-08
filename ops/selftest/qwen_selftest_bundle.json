@@ -1,0 +1,21 @@
+{
+  "_comment": "Constructed selftest bundle for the Qwen diagnosis (design C.6), not a recorded log. Built by hand from repo facts: main.py (CatchUpCoordinator with default max_pages), src/data_ingestion/catchup.py (max_pages=100, 'bounded catch-up page limit ... reached'), src/data_ingestion/durable.py (queue_capacity=50_000) and docs/autonomous_trader/SERVER_MIGRATION_SRV_TO_OPT.md (Ausgangslage). tests/test_tim_checkup_cli.py checks that every expected path exists and that the facts still hold.",
+  "constructed": true,
+  "evidence": "KONSTRUIERTES SELBSTTEST-BUENDEL, KEIN AUFGEZEICHNETES LOG.\nDieses Buendel ist von Hand aus Fakten des Repos gebaut (Stand 2026-10-07), damit der Selbsttest der Qwen-Diagnose\neine bekannte Antwort hat. Es beschreibt kein echtes Ereignis auf tim-core-01; Zeitangaben sind relativ (T+mm:ss).\n\n### Ausgangslage (aus docs/autonomous_trader/SERVER_MIGRATION_SRV_TO_OPT.md, Abschnitt Ausgangslage)\nNach einem Netzausfall Richtung Binance (Errno 113 zu Port 9443) entstanden keine 1m-Kerzen mehr. Die Runtime hing\nbeim Nachholen fest: zuerst \"bounded catch-up page limit 100 reached\", spaeter \"durable outbox capacity 50000\nreached\". Sie ging nie zurueck in den Live-Betrieb. Der Watchdog startete nicht neu, weil venue_trades noch floss.\nLaut Dokument steckt dieselbe Nachhol-Logik in /opt/tim (src/data_ingestion/catchup.py).\n\n### Fakten aus dem Code (nachpruefbar mit read_file)\n- main.py baut CatchUpCoordinator(self.durable_store, PublicBinanceAggTradeClient()) ohne max_pages, also gilt der\n  Standardwert.\n- src/data_ingestion/catchup.py: CatchUpCoordinator.__init__ hat max_pages: int = 100 und page_limit: int = 1_000.\n  _recover_range holt Seiten, solange expected <= end_id and pages < self.max_pages, und setzt danach den Grund\n  \"bounded catch-up page limit {self.max_pages} reached\".\n- src/data_ingestion/durable.py: DurableIngestionStore hat queue_capacity: int = 50_000; QueueCapacityError heisst\n  \"The bounded outbox cannot accept another item without dropping work\".\n- scripts/tim_catchup.py hat --max-pages mit Standard 100; der Umzugsplan nutzt fuer Schritt M2 --max-pages 10000.\n\n### Fehlschlagende Pruefungen (konstruiert)\ncandle_freshness RED (Alter der letzten geschlossenen Kerze weit ueber 180 s), gap_last_60m RED.\nruntime GREEN (tim-runtime.service active/running), database GREEN.\n\n### Frage an die Diagnose\nWarum holt die Runtime die Luecke beim Start nicht auf, und welche Stelle im Code begrenzt das Nachholen?\n",
+  "units": [
+    "tim-runtime.service"
+  ],
+  "journal": {
+    "tim-runtime.service": [
+      "[konstruiert, kein echtes Log] T+00:00 tim-runtime: catch-up started for BTCUSDT after reconnect",
+      "[konstruiert, kein echtes Log] T+04:10 tim-runtime: catch-up OPEN: bounded catch-up page limit 100 reached",
+      "[konstruiert, kein echtes Log] T+04:11 tim-runtime: live stream continuation deferred, gap still open",
+      "[konstruiert, kein echtes Log] T+31:40 tim-runtime: durable outbox capacity 50000 reached",
+      "[konstruiert, kein echtes Log] T+31:41 tim-runtime: no closed 1m candle written since the gap opened"
+    ]
+  },
+  "expected_paths": [
+    "src/data_ingestion/catchup.py",
+    "src/data_ingestion/durable.py"
+  ]
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run tim-checkup.service every 900s
+
+[Timer]
+OnBootSec=300s
+OnUnitActiveSec=900s
+AccuracySec=10s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+# Enabled only by ops/debian/install_checkup.sh with TIM_CHECKUP_DIAGNOSIS=on. A run without a request ends in under 1 s.
+[Unit]
+Description=Run tim-qwen-diagnose.service every 300s
+
+[Timer]
+OnBootSec=600s
+OnUnitActiveSec=300s
+AccuracySec=30s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

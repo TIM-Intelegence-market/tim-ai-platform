@@ -1,0 +1,18 @@
+# Starts tim-checkup.service as soon as tim-agent writes a diagnosis result, instead of waiting up to 15 min.
+# The result is untrusted: the checkup re-validates and redacts it (ingest_diagnoses). Enabled only by
+# ops/debian/install_checkup.sh with TIM_CHECKUP_DIAGNOSIS=on. Unconfirmed until P6: whether a rename into the
+# directory (atomic write) fires PathChanged; the 15-min timer picks the result up either way.
+# Trigger limit (systemd >= 250): at most 12 starts per hour. Normal use is <= 6 results a day; a tim-agent that keeps
+# touching results/ puts this path unit into "failed" instead of running the checkup back to back. With the diagnosis
+# on, the checkup watches tim-checkup.path in the UNIT class, so that state opens an incident; the timer keeps running.
+[Unit]
+Description=Ingest Qwen diagnosis results right away
+
+[Path]
+PathChanged=/var/lib/tim-agent/results
+Unit=tim-checkup.service
+TriggerLimitIntervalSec=1h
+TriggerLimitBurst=12
+
+[Install]
+WantedBy=paths.target
