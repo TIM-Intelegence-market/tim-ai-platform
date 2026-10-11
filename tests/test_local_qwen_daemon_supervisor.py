@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -126,7 +127,7 @@ def test_github_intake_invokes_only_pilot_issue_with_merge_gate(tmp_path: Path, 
 
     def fake_run(command, **kwargs):
         captured.extend(command)
-        return SimpleNamespace(returncode=0, stdout="No eligible Mac Qwen issue.")
+        return SimpleNamespace(returncode=0, stdout="No eligible Mac Qwen issue.", stderr="")
 
     monkeypatch.setattr(daemon.subprocess, "run", fake_run)
     args = _args()
@@ -135,6 +136,22 @@ def test_github_intake_invokes_only_pilot_issue_with_merge_gate(tmp_path: Path, 
     assert daemon._run_github_intake(tmp_path, args) == 0
     assert captured[1:] == [str(entrypoint), "--repository", str(tmp_path),
                              "--pilot-issue", "166", "--merge"]
+
+
+def test_github_intake_logs_the_runner_stop_reason(tmp_path: Path, monkeypatch, capsys) -> None:
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "run_mac_qwen_issue.py").write_text("# test\n", encoding="utf-8")
+    monkeypatch.setattr(daemon.subprocess, "run", lambda *_a, **_k: SimpleNamespace(
+        returncode=2, stdout="",
+        stderr="Mac Qwen issue worker stopped safely: issue worktree or branch already exists"))
+    args = _args()
+    args.github_pilot_issue = 166
+    args.github_merge = False
+    assert daemon._run_github_intake(tmp_path, args) == 2
+    line = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert line["TIM_GITHUB_INTAKE"] == "BLOCKED"
+    assert "worktree or branch already exists" in line["error"]
 
 
 def test_launchd_payload_runs_unified_daemon_with_local_patch_gate(tmp_path: Path) -> None:

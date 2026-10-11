@@ -207,11 +207,20 @@ class ProviderBroker:
             if result.returncode != 0 or not output.is_file():
                 raise RuntimeError("Codex CLI advice failed")
             advice = output.read_text(encoding="utf-8").strip()
+        return self._clean_advice(advice)
+
+    @staticmethod
+    def _clean_advice(advice: str) -> str:
         if not advice:
-            raise ValueError("Codex CLI returned empty advice")
+            raise ValueError("advisor returned empty advice")
         advice = SECRET.sub(r"\1=<REDACTED>", advice)
         advice = re.sub(r"(?:/[A-Za-z0-9._-]+){2,}", "<PATH>", advice)
         return " ".join(advice.split())[:4000]
+
+    def _claude_advice(self, outbound: dict[str, Any]) -> str:
+        """Ask the subscription-authenticated Claude Code CLI, with no tools and no GitHub credentials."""
+        from src.local_first.claude_cli_fallback import advise
+        return self._clean_advice(advise(outbound))
 
     def route(self, task_id: str, *, model: str | None = None) -> dict[str, str]:
         request_path, payload, digest = self._request(task_id)
@@ -227,27 +236,37 @@ class ProviderBroker:
         selected_model = model or self.model
         if selected_model not in {self.model, "ollama-local/qwen2.5:7b"}:
             raise ValueError("model is not allowlisted")
-        if self.automatic and model is None and os.getenv("TIM_CODEX_BLOCKER_ADVISOR") == "1":
+        advisors = []
+        if self.automatic and model is None:
+            if os.getenv("TIM_CODEX_BLOCKER_ADVISOR") == "1":
+                advisors.append(("CODEX_CLI", "codex-failed", self._codex_advice,
+                                 os.getenv("TIM_CODEX_MODEL", DEFAULT_CODEX_MODEL)))
+            if os.getenv("TIM_CLAUDE_BLOCKER_ADVISOR") == "1":
+                from src.local_first import claude_cli_fallback
+                advisors.append(("CLAUDE_CLI", "claude-failed", self._claude_advice,
+                                 os.getenv("TIM_CLAUDE_MODEL", claude_cli_fallback.DEFAULT_MODEL)))
+        # ChatGPT (Codex CLI) first, then Claude Code CLI, then OmniRoute.
+        for provider, failed_folder, ask, provider_model in advisors:
             try:
-                advice = self._codex_advice(self._outbound(payload, digest))
+                advice = ask(self._outbound(payload, digest))
                 if request_digest(request_path) != digest:
-                    raise ValueError("blocker request changed during Codex advice")
+                    raise ValueError("blocker request changed during advice")
                 _write_private(self._marker("resolutions", task_id), {
                     "kind": "BLOCKER_PROPOSAL", "task_id": task_id,
                     "request_sha256": digest, "authority": "ADVISORY_ONLY",
-                    "provider": "CODEX_CLI", "model": os.getenv("TIM_CODEX_MODEL", DEFAULT_CODEX_MODEL),
+                    "provider": provider, "model": provider_model,
                     "proposal": {"diagnosis": advice},
                 })
                 _write_private(self._marker("router-completed", task_id), {
                     "task_id": task_id, "request_sha256": digest,
-                    "model": os.getenv("TIM_CODEX_MODEL", DEFAULT_CODEX_MODEL),
+                    "model": provider_model,
                 })
                 _write_private(self._marker("automatic-advice-used", task_id), {
-                    "task_id": task_id, "request_sha256": digest, "provider": "CODEX_CLI",
+                    "task_id": task_id, "request_sha256": digest, "provider": provider,
                 })
                 return self.status(task_id)
             except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
-                _write_private(self._marker("codex-failed", task_id), {
+                _write_private(self._marker(failed_folder, task_id), {
                     "task_id": task_id, "request_sha256": digest,
                     "error_type": type(exc).__name__,
                     "recorded_at": datetime.now(timezone.utc).isoformat(),

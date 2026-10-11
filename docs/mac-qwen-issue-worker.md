@@ -29,9 +29,10 @@ accepted; database, incident, market-data, orderflow and paper-trading paths
 are outside this A3 pilot contract. The
 worker creates a fresh worktree from `platform-main`, runs local Qwen through
 the existing patch and test gates, and uses Codex CLI as an opt-in patch
-fallback when Qwen is blocked. Codex receives a sanitized snapshot without
-GitHub credential environment variables. Both providers face the same file
-allowlist, hashes, syntax check, and tests. An accepted local result is then
+fallback when Qwen is blocked, then Claude Code CLI when Codex fails or its
+patch is rejected. Both receive a sanitized snapshot without GitHub credential
+environment variables, and Claude runs without tools. All providers face the
+same file allowlist, hashes, syntax check, and tests. An accepted local result is then
 committed by the worker account and opened as a normal PR linked to the issue.
 
 Run the read-only selection check first:
@@ -51,7 +52,8 @@ waits for GitHub to report the exact worker PR head as mergeable, then requests
 a squash merge. GitHub's branch ruleset remains authoritative. A conflict,
 changed PR head, failed local acceptance, or expired wait leaves the PR or
 worktree for inspection. Local runtime evidence in `.tim/` never enters a
-commit. The script never uses Claude.
+commit. `--no-codex-fallback` and `--no-claude-fallback` switch either helper
+off for a run.
 
 The existing Mac LaunchAgent can poll this runner while its local queues are
 idle. Enable it only with the dedicated GitHub login, and initially restrict

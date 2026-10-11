@@ -31,8 +31,19 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--enable-codex-advisor", action="store_true")
     value.add_argument("--enable-codex-patch-fallback", action="store_true")
     value.add_argument("--codex-model", default="gpt-5.6-luna")
+    value.add_argument("--enable-claude-advisor", action="store_true")
+    value.add_argument("--enable-claude-patch-fallback", action="store_true")
+    value.add_argument("--claude-model", default="sonnet")
+    value.add_argument("--claude-bin", type=Path, default=None,
+                       help="Claude Code CLI path; defaults to ~/.local/bin, then Homebrew.")
     value.add_argument("--load", action="store_true", help="Bootstrap the LaunchAgent after writing the plist.")
     return value
+
+
+def _default_claude_bin() -> Path:
+    candidates = [Path.home() / ".local/bin/claude", Path("/opt/homebrew/bin/claude"),
+                  Path("/usr/local/bin/claude")]
+    return next((path for path in candidates if path.is_file()), candidates[0])
 
 
 def _plist_payload(
@@ -55,6 +66,10 @@ def _plist_payload(
     enable_codex_advisor: bool = False,
     enable_codex_patch_fallback: bool = False,
     codex_model: str = "gpt-5.6-luna",
+    enable_claude_advisor: bool = False,
+    enable_claude_patch_fallback: bool = False,
+    claude_model: str = "sonnet",
+    claude_bin: Path | None = None,
 ) -> dict[str, Any]:
     python_executable = python.absolute()
     program_arguments = [
@@ -107,6 +122,15 @@ def _plist_payload(
             "TIM_CODEX_MODEL": codex_model,
             "TIM_CODEX_BIN": str(Path.home() / ".local/bin/codex"),
         })
+    if enable_claude_advisor or enable_claude_patch_fallback:
+        environment.update({
+            "TIM_CLAUDE_MODEL": claude_model,
+            "TIM_CLAUDE_BIN": str(claude_bin or _default_claude_bin()),
+        })
+        if enable_claude_advisor:
+            environment["TIM_CLAUDE_BLOCKER_ADVISOR"] = "1"
+        if enable_claude_patch_fallback:
+            environment["TIM_CLAUDE_PATCH_FALLBACK"] = "1"
     return {
         "Label": LABEL,
         "ProgramArguments": program_arguments,
@@ -162,6 +186,10 @@ def main() -> int:
         enable_codex_advisor=args.enable_codex_advisor,
         enable_codex_patch_fallback=args.enable_codex_patch_fallback,
         codex_model=args.codex_model,
+        enable_claude_advisor=args.enable_claude_advisor,
+        enable_claude_patch_fallback=args.enable_claude_patch_fallback,
+        claude_model=args.claude_model,
+        claude_bin=args.claude_bin,
     )
     with plist_path.open("wb") as handle:
         plistlib.dump(payload, handle, sort_keys=True)

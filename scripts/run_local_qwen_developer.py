@@ -377,10 +377,16 @@ async def run(args: argparse.Namespace) -> int:
         result["reason"] = f"QWEN_ERROR:{type(exc).__name__}"
 
     codex_calls = 0
-    if (os.getenv("TIM_CODEX_PATCH_FALLBACK") == "1" and calls > 0 and contract
+    claude_calls = 0
+    fallbacks = []
+    if os.getenv("TIM_CODEX_PATCH_FALLBACK") == "1":
+        fallbacks.append("CODEX_CLI")
+    if os.getenv("TIM_CLAUDE_PATCH_FALLBACK") == "1":
+        fallbacks.append("CLAUDE_CLI")
+    if (fallbacks and calls > 0 and contract
             and result.get("status") != "VERIFYING" and result.get("rollback") in {False, True}
             and str(result.get("reason", "")).startswith(("QWEN_", "verification failed"))):
-        from src.local_first.codex_patch_fallback import propose as codex_propose
+        from src.local_first import claude_cli_fallback, codex_patch_fallback
 
         qwen_reason = str(result.get("reason", ""))
         tests = result.get("tests") if isinstance(result.get("tests"), dict) else {}
@@ -389,24 +395,35 @@ async def run(args: argparse.Namespace) -> int:
             json.dumps({"reason": qwen_reason, "test_stdout": str(tests.get("stdout", ""))[-4000:],
                         "test_stderr": str(tests.get("stderr", ""))[-2000:]})[:6500],
         )
-        try:
-            _check_snapshot(repo, contract)
-            codex_calls = 1
-            raw = codex_propose(_prompt(task, contract, "Local Qwen blocked: " + feedback))
-            _check_snapshot(repo, contract)
-            proposal = _bind_proposal(raw, contract, proposal_id)
-            result = SafePatchExecutor(repo, state).apply(proposal, contract["allowed_paths"]).as_dict()
-            result["qwen_blocker_reason"] = qwen_reason
-            result["fallback_provider"] = "CODEX_CLI"
-        except Exception as exc:
-            proposal = {}
-            result["reason"] = qwen_reason
-            result["codex_fallback_error"] = type(exc).__name__
+        # ChatGPT (Codex CLI) first, then Claude; each proposal faces the same local gates.
+        for provider in fallbacks:
+            try:
+                _check_snapshot(repo, contract)
+                if provider == "CODEX_CLI":
+                    codex_calls = 1
+                    raw = codex_patch_fallback.propose(_prompt(task, contract, "Local Qwen blocked: " + feedback))
+                else:
+                    claude_calls = 1
+                    raw = claude_cli_fallback.propose(_prompt(task, contract, "Local Qwen blocked: " + feedback))
+                _check_snapshot(repo, contract)
+                proposal = _bind_proposal(raw, contract, proposal_id)
+                applied = SafePatchExecutor(repo, state).apply(proposal, contract["allowed_paths"]).as_dict()
+                if applied.get("status") != "VERIFYING":
+                    raise ProposalError(str(applied.get("reason", "fallback proposal rejected"))[:200])
+                errors = {key: value for key, value in result.items() if key.endswith("_fallback_error")}
+                result = {**applied, **errors}
+                result["qwen_blocker_reason"] = qwen_reason
+                result["fallback_provider"] = provider
+                break
+            except Exception as exc:
+                proposal = {}
+                result["reason"] = qwen_reason
+                result["codex_fallback_error" if provider == "CODEX_CLI" else "claude_fallback_error"] = type(exc).__name__
 
     patches = proposal.get("patches", [])
     result.update({
         "task_id": task_id, "provider": "LOCAL_QWEN_OLLAMA", "model": args.model,
-        "codex_fallback_calls": codex_calls,
+        "codex_fallback_calls": codex_calls, "claude_fallback_calls": claude_calls,
         "next_action": "LOCAL_REVIEW" if result["status"] == "VERIFYING" else "REPAIR_AND_RESUME_SAME_TASK_DO_NOT_CREATE_SUBTASK",
         "at": _utc(), "authority": "LOCAL_SAFETY_GATES",
         "binding_version": 3, "model_calls": calls, "max_model_calls": 2,

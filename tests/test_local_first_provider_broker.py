@@ -104,6 +104,45 @@ def test_codex_failure_falls_back_to_omniroute(tmp_path: Path, monkeypatch) -> N
     assert (tmp_path / "blockers/codex-failed/task-1.json").exists()
 
 
+def test_codex_failure_asks_claude_before_omniroute(tmp_path: Path, monkeypatch) -> None:
+    broker, _ = _setup(tmp_path)
+    broker = ProviderBroker(tmp_path, key_path=broker.key_path, automatic=True)
+    monkeypatch.setenv("TIM_CODEX_BLOCKER_ADVISOR", "1")
+    monkeypatch.setenv("TIM_CLAUDE_BLOCKER_ADVISOR", "1")
+    monkeypatch.setattr(broker, "_codex_advice", lambda outbound: (_ for _ in ()).throw(RuntimeError("usage limit")))
+    from src.local_first import claude_cli_fallback
+    monkeypatch.setattr(claude_cli_fallback, "advise",
+                        lambda outbound: "Fixture missing in /Users/x/repo/tests; token=abc")
+    monkeypatch.setattr("src.local_first.provider_broker.urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("OmniRoute should not run")))
+    assert broker.route("task-1")["state"] == "RESOLVED"
+    payload = json.loads((tmp_path / "blockers/resolutions/task-1.json").read_text())
+    assert payload["provider"] == "CLAUDE_CLI"
+    assert payload["authority"] == "ADVISORY_ONLY"
+    assert "abc" not in payload["proposal"]["diagnosis"] and "/Users" not in payload["proposal"]["diagnosis"]
+    assert (tmp_path / "blockers/codex-failed/task-1.json").exists()
+
+
+def test_claude_failure_still_falls_back_to_omniroute(tmp_path: Path, monkeypatch) -> None:
+    broker, _ = _setup(tmp_path)
+    broker = ProviderBroker(tmp_path, key_path=broker.key_path, automatic=True)
+    monkeypatch.setenv("TIM_CLAUDE_BLOCKER_ADVISOR", "1")
+    monkeypatch.setattr(broker, "_claude_advice", lambda outbound: (_ for _ in ()).throw(RuntimeError("offline")))
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return None
+        def read(self, *_):
+            return b'{"choices":[{"message":{"content":"Check configuration locally"}}]}'
+
+    monkeypatch.setattr("src.local_first.provider_broker.urlopen", lambda *_args, **_kwargs: Response())
+    assert broker.route("task-1")["state"] == "RESOLVED"
+    payload = json.loads((tmp_path / "blockers/resolutions/task-1.json").read_text())
+    assert payload["provider"] == "OMNIROUTE"
+    assert (tmp_path / "blockers/claude-failed/task-1.json").exists()
+
+
 def test_codex_advisor_receives_no_github_environment(tmp_path: Path, monkeypatch) -> None:
     broker = ProviderBroker(tmp_path)
     binary = tmp_path / "codex"

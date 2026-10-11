@@ -59,7 +59,8 @@ def _assert_task_diff(pipeline: Pipeline, worktree: Path, gitdir: Path, task: di
     return sorted(code)
 
 
-def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool) -> dict:
+def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
+                    claude_fallback: bool = False) -> dict:
     state = worktree / ".tim/local-first"
     inbox = state / "developer-inbox"
     inbox.mkdir(parents=True, exist_ok=True)
@@ -73,7 +74,8 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool) -> dict
     env.update({"PYTHONPATH": str(worktree), "TIM_LOCAL_PATCH_SANDBOX": "1",
                 "TIM_BLOCKER_AUTO_WAIT": "0", "TIM_LIVE_TRADING": "0",
                 "TIM_EXECUTION_ENABLED": "0", "OLLAMA_MODEL": "qwen3.5:9b",
-                "TIM_CODEX_PATCH_FALLBACK": "1" if codex_fallback else "0"})
+                "TIM_CODEX_PATCH_FALLBACK": "1" if codex_fallback else "0",
+                "TIM_CLAUDE_PATCH_FALLBACK": "1" if claude_fallback else "0"})
     completed = subprocess.run(
         [sys.executable, "scripts/run_local_qwen_build_queue.py", "--task-id", task["task_id"]],
         cwd=worktree, env=env, capture_output=True, text=True, timeout=1800, check=False,
@@ -81,7 +83,7 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool) -> dict
     acceptance = state / "acceptance-results" / f"{task['task_id']}.json"
     result = state / "developer-results" / f"{task['task_id']}.json"
     if completed.returncode or not acceptance.is_file() or not result.is_file():
-        raise PipelineError("local Qwen/Codex task did not pass its acceptance gate")
+        raise PipelineError("local Qwen/Codex/Claude task did not pass its acceptance gate")
     evidence = json.loads(acceptance.read_text(encoding="utf-8"))
     outcome = json.loads(result.read_text(encoding="utf-8"))
     if evidence.get("status") != "FIXED" or evidence.get("passed") is not True:
@@ -109,7 +111,8 @@ def _merge_when_ready(pipeline: Pipeline, number: int, branch: str, head: str,
 
 
 def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
-                codex_fallback: bool, merge: bool, dry_run: bool = False) -> str:
+                codex_fallback: bool, merge: bool, dry_run: bool = False,
+                claude_fallback: bool = False) -> str:
     pipeline.verify_worker_identity()
     if pipeline.repository_slug() != REPO:
         raise PipelineError("unexpected TIM repository")
@@ -134,7 +137,8 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
     worktree.parent.mkdir(parents=True, exist_ok=True)
     pipeline.command("git", "worktree", "add", "-b", branch, str(worktree), base)
     gitdir = Path(pipeline.command("git", "rev-parse", "--absolute-git-dir", cwd=worktree))
-    outcome = _run_local_task(worktree, task, codex_fallback=codex_fallback)
+    outcome = _run_local_task(worktree, task, codex_fallback=codex_fallback,
+                              claude_fallback=claude_fallback)
     paths = _assert_task_diff(pipeline, worktree, gitdir, task)
     pipeline.worktree_git(worktree, gitdir, "diff", "HEAD", "--check")
     pipeline.worktree_git(worktree, gitdir, "add", "--", *paths)
@@ -168,6 +172,7 @@ def main() -> int:
     parser.add_argument("--state-dir", type=Path, default=Path.home() / "Library/Application Support/TIM Mac Issue Worker")
     parser.add_argument("--pilot-issue", type=int)
     parser.add_argument("--no-codex-fallback", action="store_true")
+    parser.add_argument("--no-claude-fallback", action="store_true")
     parser.add_argument("--merge", action="store_true", help="Wait for GitHub gates, then squash merge as the worker")
     parser.add_argument("--dry-run", action="store_true", help="Check identity and issue contract without writing")
     args = parser.parse_args()
@@ -176,7 +181,8 @@ def main() -> int:
             worker = worker_identity(Path.home() / ".config/gh-tim-mac-worker")
             pipeline = Pipeline(args.repository, args.state_dir, worker=worker)
             print(process_one(pipeline, args.state_dir.expanduser(), pilot_issue=args.pilot_issue,
-                              codex_fallback=not args.no_codex_fallback, merge=args.merge,
+                              codex_fallback=not args.no_codex_fallback,
+                              claude_fallback=not args.no_claude_fallback, merge=args.merge,
                               dry_run=args.dry_run))
         return 0
     except (PipelineError, OSError, ValueError, subprocess.TimeoutExpired) as exc:

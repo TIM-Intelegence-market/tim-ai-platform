@@ -195,6 +195,36 @@ def test_codex_patch_fallback_cannot_expand_paths(sandbox, monkeypatch):
     assert not (sandbox / "src/other.py").exists()
 
 
+def test_claude_patch_fallback_runs_when_codex_fails(sandbox, monkeypatch):
+    from src.local_first import claude_cli_fallback, codex_patch_fallback
+
+    monkeypatch.setenv("TIM_CODEX_PATCH_FALLBACK", "1")
+    monkeypatch.setenv("TIM_CLAUDE_PATCH_FALLBACK", "1")
+    monkeypatch.setattr(codex_patch_fallback, "propose",
+                        lambda _: (_ for _ in ()).throw(RuntimeError("usage limit")))
+    monkeypatch.setattr(claude_cli_fallback, "propose", lambda _: response())
+    code, result, _, tests = run_fake(sandbox, monkeypatch, [TimeoutError()])
+    assert code == 0 and result["status"] == "VERIFYING"
+    assert result["codex_fallback_calls"] == 1 and result["claude_fallback_calls"] == 1
+    assert result["codex_fallback_error"] == "RuntimeError"
+    assert result["fallback_provider"] == "CLAUDE_CLI"
+    assert tests == [[TEST]]
+    assert (sandbox / IMPLEMENTATION).read_text() == "VALUE = 2\n"
+
+
+def test_claude_patch_fallback_cannot_expand_paths(sandbox, monkeypatch):
+    from src.local_first import claude_cli_fallback
+
+    monkeypatch.setenv("TIM_CLAUDE_PATCH_FALLBACK", "1")
+    monkeypatch.setattr(claude_cli_fallback, "propose", lambda _: {
+        "patches": [{"path": "src/other.py", "content": "VALUE = 2\n"}]})
+    code, result, _, tests = run_fake(sandbox, monkeypatch, [TimeoutError()])
+    assert code == 2 and result["reason"] == "QWEN_ERROR:TimeoutError"
+    assert result["claude_fallback_error"] == "ContractError"
+    assert result["codex_fallback_calls"] == 0 and result["claude_fallback_calls"] == 1
+    assert not tests and not (sandbox / "src/other.py").exists()
+
+
 def test_safety_rejection_does_not_retry(sandbox, monkeypatch):
     proposal = response()
     proposal["patches"][0]["content"] = "import os\nos.system('anything')\n"

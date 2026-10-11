@@ -7,8 +7,16 @@ task metadata and failure details. Codex runs in an empty temporary directory
 with a read-only sandbox; GitHub credential environment variables are removed.
 It still runs under the same macOS user, so this is not OS-level isolation.
 Its answer is advisory and Qwen must
-retry under the existing local verification gates. If Codex CLI fails, the
-daemon can ask OmniRoute for the same bounded advice. It does not scan and
+retry under the existing local verification gates. If Codex CLI fails (for
+example because the ChatGPT usage limit is reached) and
+`TIM_CLAUDE_BLOCKER_ADVISOR=1`, the daemon asks the Claude Code CLI next, using
+the subscription login in the macOS Keychain. Claude runs in print mode in an
+empty temporary directory with `--restricted --strict-mcp-config --tools ""`,
+so it has no tools, no MCP servers and no settings files; the same credential
+filter applies, which also removes `CLAUDE_CODE_OAUTH_TOKEN` and API keys from
+its environment. If Claude fails too, the daemon can ask OmniRoute for the same
+bounded advice. The order is ChatGPT (Codex CLI), Claude Code CLI, OmniRoute;
+each blocker still gets at most one automatic answer. It does not scan and
 route historical blocker requests.
 
 For developer tasks, `TIM_CODEX_PATCH_FALLBACK=1` separately enables a stronger
@@ -18,7 +26,15 @@ proposal. The local patch executor binds the proposal to the original path and
 file-hash allowlist, rejects unsafe code, and runs the required tests. Codex
 cannot commit, push, merge, or change the task contract. This fallback is off
 by default and can be enabled with `--enable-codex-patch-fallback` when
-installing the Mac LaunchAgent. A failed Codex proposal leaves the task blocked.
+installing the Mac LaunchAgent.
+
+`TIM_CLAUDE_PATCH_FALLBACK=1` adds Claude Code CLI as the second patch helper.
+It runs only when Codex is off, fails, or proposes a patch that the local
+executor rejects or whose tests fail. Claude receives the same sanitized
+snapshot and prompt, has no tools, and its JSON patch faces the same path,
+hash, code-intent and test gates. Enable it with
+`--enable-claude-patch-fallback` (model via `--claude-model`, default
+`sonnet`). If both helpers fail, the task stays blocked.
 
 ## GitHub issue escalation
 
@@ -45,6 +61,9 @@ and merge pilot is still pending.
 
 - Preferred and installed local model: `qwen3.5:9b`; no installed fallback.
 - Codex CLI advisor model: `gpt-5.6-luna` (explicit override; live probe passed).
+- Claude Code CLI helper: `~/.local/bin/claude`, else Homebrew (`/opt/homebrew/bin/claude`;
+  override with `--claude-bin`), model `sonnet`; needs a one-time
+  `claude auth login` as the worker's macOS user. Not yet probed live on the Mac.
 - OmniRoute endpoint: `http://127.0.0.1:20128/v1`.
 - Live local test model: `ollama-local/qwen2.5:7b`.
 - Automatic cloud fallback model: `anthropic/claude-sonnet-5`.

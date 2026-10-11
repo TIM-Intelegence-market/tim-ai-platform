@@ -146,7 +146,7 @@ class BlockerMailbox:
             "next_action": self.sanitize(task.next_action),
             "risk": task.risk,
             "evidence": [self._sanitize_obj(item) for item in evidence],
-            "provider_order": ["CODEX_CLI", "OMNIROUTE"],
+            "provider_order": ["CODEX_CLI", "CLAUDE_CLI", "OMNIROUTE"],
             "authority": "LOCAL_SAFETY_GATES",
             "created_at": _utc_now(),
         }

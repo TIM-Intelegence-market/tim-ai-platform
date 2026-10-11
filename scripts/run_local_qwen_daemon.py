@@ -279,7 +279,9 @@ def _run_github_intake(repo_root: Path, args: argparse.Namespace) -> int:
         return 2
     print(json.dumps({"TIM_GITHUB_INTAKE": "DONE" if completed.returncode == 0 else "BLOCKED",
                       "returncode": completed.returncode,
-                      "output": completed.stdout.strip()[:500]}), flush=True)
+                      "output": completed.stdout.strip()[:500],
+                      # The runner reports its safe-stop reason on stderr.
+                      "error": (completed.stderr or "").strip()[-500:]}), flush=True)
     return completed.returncode
 
 
