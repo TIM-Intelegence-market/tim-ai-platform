@@ -74,6 +74,8 @@ def test_builds_only_explicit_a3_issue_task():
     for invalid in ({**task, "risk": "A1"}, {**task, "task_id": "github-issue-17"},
                     {**task, "allowed_paths": ["../secrets.py"]},
                     {**task, "allowed_paths": ["src/database/migrate.py"]},
+                    {**task, "allowed_paths": ["src/local_first/sandbox_runner.py"]},
+                    {**task, "allowed_paths": ["src/llm/ollama_client.py"]},
                     {**task, "allowed_paths": ["tests/conftest.py"]}):
         issue["body"] = "```json TIM_QWEN_TASK_V1\n" + json.dumps(invalid) + "\n```"
         with pytest.raises(ValueError):

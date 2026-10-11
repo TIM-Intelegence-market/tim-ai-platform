@@ -36,6 +36,8 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--claude-model", default="sonnet")
     value.add_argument("--claude-bin", type=Path, default=None,
                        help="Claude Code CLI path; defaults to ~/.local/bin, then Homebrew.")
+    value.add_argument("--disable-qwen-tool-loop", action="store_true",
+                       help="Let Qwen answer in one shot instead of using the read-only tool loop.")
     value.add_argument("--load", action="store_true", help="Bootstrap the LaunchAgent after writing the plist.")
     return value
 
@@ -70,6 +72,7 @@ def _plist_payload(
     enable_claude_patch_fallback: bool = False,
     claude_model: str = "sonnet",
     claude_bin: Path | None = None,
+    disable_qwen_tool_loop: bool = False,
 ) -> dict[str, Any]:
     python_executable = python.absolute()
     program_arguments = [
@@ -100,6 +103,8 @@ def _plist_payload(
         "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
         "OLLAMA_MODEL": model,
         "TIM_QWEN_FALLBACK_MODELS": fallback_models,
+        "TIM_TEST_SANDBOX": "required",
+        "TIM_QWEN_TOOL_LOOP": "0" if disable_qwen_tool_loop else "1",
     }
     if enable_github_escalation or enable_github_intake:
         if not github_worker_login or github_config_dir is None:
@@ -190,6 +195,7 @@ def main() -> int:
         enable_claude_patch_fallback=args.enable_claude_patch_fallback,
         claude_model=args.claude_model,
         claude_bin=args.claude_bin,
+        disable_qwen_tool_loop=args.disable_qwen_tool_loop,
     )
     with plist_path.open("wb") as handle:
         plistlib.dump(payload, handle, sort_keys=True)

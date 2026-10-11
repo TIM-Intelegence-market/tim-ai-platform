@@ -21,8 +21,16 @@ class OllamaClient:
         self.timeout = timeout
         self.observation_only = observation_only
 
-    async def generate_json(self, prompt: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._request, prompt)
+    async def generate_json(self, prompt: str, *, schema: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Ask for one JSON object; with ``schema`` Ollama constrains decoding to that JSON schema."""
+        if schema is None:
+            return await asyncio.to_thread(self._request, prompt)
+        return await asyncio.to_thread(self._request, prompt, schema)
+
+    async def chat(self, messages: list[dict[str, Any]], *, tools: list[dict[str, Any]] | None = None,
+                   options: dict[str, Any] | None = None) -> dict[str, Any]:
+        """One non-streaming ``/api/chat`` turn; returns the assistant message (may hold tool_calls)."""
+        return await asyncio.to_thread(self._chat, messages, tools, options)
 
     async def available(self) -> bool:
         """Probe the local Ollama API without running a model."""
@@ -68,9 +76,25 @@ class OllamaClient:
                 names.append(value)
         return tuple(names)
 
-    def _request(self, prompt: str) -> dict[str, Any]:
+    def _chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None,
+              options: dict[str, Any] | None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"model": self.model, "messages": messages, "stream": False, "think": False}
+        if tools:
+            payload["tools"] = tools
+        if options:
+            payload["options"] = options
+        request = Request(f"{self.base_url}/api/chat", data=json.dumps(payload).encode(),
+                          headers={"Content-Type": "application/json"}, method="POST")
+        with urlopen(request, timeout=self.timeout) as response:
+            body = json.loads(response.read())
+        message = body.get("message") if isinstance(body, dict) else None
+        if not isinstance(message, dict):
+            raise ValueError("Ollama chat response has no message")
+        return message
+
+    def _request(self, prompt: str, schema: dict[str, Any] | None = None) -> dict[str, Any]:
         body = json.dumps({"model": self.model, "prompt": prompt, "stream": False,
-                           "format": "json", "think": False}).encode()
+                           "format": schema if schema is not None else "json", "think": False}).encode()
         request = Request(self.endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
         with urlopen(request, timeout=self.timeout) as response:
             payload = json.loads(response.read())

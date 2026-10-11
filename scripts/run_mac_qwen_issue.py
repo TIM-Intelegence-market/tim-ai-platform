@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -59,6 +60,22 @@ def _assert_task_diff(pipeline: Pipeline, worktree: Path, gitdir: Path, task: di
     return sorted(code)
 
 
+def _run_task_group(command: list[str], cwd: Path, env: dict, *, timeout: int) -> int:
+    """Run the local task in its own process group and kill the whole group on timeout,
+    so no developer or pytest process keeps running in the worktree afterwards."""
+    process = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, text=True, start_new_session=True)
+    try:
+        return process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        raise PipelineError("local task timed out; its process group was stopped") from None
+
+
 def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
                     claude_fallback: bool = False) -> dict:
     state = worktree / ".tim/local-first"
@@ -75,14 +92,16 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
                 "TIM_BLOCKER_AUTO_WAIT": "0", "TIM_LIVE_TRADING": "0",
                 "TIM_EXECUTION_ENABLED": "0", "OLLAMA_MODEL": "qwen3.5:9b",
                 "TIM_CODEX_PATCH_FALLBACK": "1" if codex_fallback else "0",
-                "TIM_CLAUDE_PATCH_FALLBACK": "1" if claude_fallback else "0"})
-    completed = subprocess.run(
+                "TIM_CLAUDE_PATCH_FALLBACK": "1" if claude_fallback else "0",
+                # Model-written tests never run outside the OS sandbox on the worker Mac.
+                "TIM_TEST_SANDBOX": "required",
+                "TIM_QWEN_TOOL_LOOP": "0" if os.environ.get("TIM_QWEN_TOOL_LOOP") == "0" else "1"})
+    returncode = _run_task_group(
         [sys.executable, "scripts/run_local_qwen_build_queue.py", "--task-id", task["task_id"]],
-        cwd=worktree, env=env, capture_output=True, text=True, timeout=1800, check=False,
-    )
+        worktree, env, timeout=1800)
     acceptance = state / "acceptance-results" / f"{task['task_id']}.json"
     result = state / "developer-results" / f"{task['task_id']}.json"
-    if completed.returncode or not acceptance.is_file() or not result.is_file():
+    if returncode or not acceptance.is_file() or not result.is_file():
         raise PipelineError("local Qwen/Codex/Claude task did not pass its acceptance gate")
     evidence = json.loads(acceptance.read_text(encoding="utf-8"))
     outcome = json.loads(result.read_text(encoding="utf-8"))

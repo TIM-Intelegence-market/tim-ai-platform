@@ -74,7 +74,11 @@ def test_plist_payload_uses_safe_paths_and_minimal_environment(
         "OLLAMA_BASE_URL",
         "OLLAMA_MODEL",
         "TIM_QWEN_FALLBACK_MODELS",
+        "TIM_TEST_SANDBOX",
+        "TIM_QWEN_TOOL_LOOP",
     }
+    assert env["TIM_TEST_SANDBOX"] == "required"
+    assert env["TIM_QWEN_TOOL_LOOP"] == "1"
 
     assert env["TIM_LIVE_TRADING"] == "0"
     assert env["TIM_EXECUTION_ENABLED"] == "0"

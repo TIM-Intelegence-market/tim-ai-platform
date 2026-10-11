@@ -58,7 +58,7 @@ def run_fake(repo, monkeypatch, replies, *, task_changes=None, real_tests=False,
         async def available(self):
             return available
 
-        async def generate_json(self, prompt):
+        async def generate_json(self, prompt, **kwargs):
             prompts.append(json.loads(prompt))
             value = replies[len(prompts) - 1]
             if isinstance(value, Exception):
@@ -89,7 +89,8 @@ def test_binds_stale_metadata_and_runs_real_required_test(sandbox, monkeypatch):
     assert result["tests"]["tests"] == [TEST]
     assert result["proposal_id"].startswith("tim-") and "/" not in result["proposal_id"]
     assert result["next_action"] == "LOCAL_REVIEW"
-    assert prompts[0]["response_schema"] == {"patches": [{"path": "allowed/path.py", "content": "complete UTF-8 file"}]}
+    assert {item["path"] for item in prompts[0]["response_schema"]["patches"]} == {
+        "allowed/existing.py", "allowed/new_file.py"}
     assert result["changed"][0]["before_sha256"] == hashlib.sha256(b"VALUE = 1\n").hexdigest()
     assert (sandbox / IMPLEMENTATION).read_text() == "VALUE = 2\n"
 

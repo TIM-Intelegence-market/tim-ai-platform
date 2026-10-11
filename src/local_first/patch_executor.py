@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -9,6 +10,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from src.local_first import sandbox_runner
 
 
 FORBIDDEN_PATH_PARTS = {".env", ".git", "secrets", "keychain", "credentials", "production", "prod"}
@@ -24,6 +27,15 @@ FORBIDDEN_CONTENT = (
 )
 MAX_FILES = 6
 MAX_FILE_BYTES = 256_000
+# Credential shapes that must never travel from test output into logs or helper prompts.
+TOKEN_RE = re.compile(
+    r"(gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,}|sk-[A-Za-z0-9_-]{20,}"
+    r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})"
+)
+
+
+def redact_tokens(text: str) -> str:
+    return TOKEN_RE.sub("<REDACTED_TOKEN>", text)
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -165,20 +177,26 @@ class SafePatchExecutor:
             if not candidate or candidate in seen:
                 continue
             seen.add(candidate)
+            # Probe inside the same sandbox the tests use, so a profile that breaks Python
+            # surfaces here instead of as a confusing test failure.
+            sandbox = sandbox_runner.plan([candidate, "-c", "import pytest"], self.repo_root)
             try:
                 check = subprocess.run(
-                    [candidate, "-c", "import pytest"],
+                    sandbox.argv,
                     cwd=self.repo_root,
-                    env={**os.environ, "TIM_LIVE_TRADING": "0", "TIM_EXECUTION_ENABLED": "0"},
+                    env=sandbox.env,
                     capture_output=True,
                     text=True,
-                    timeout=10,
+                    timeout=20,
                     check=False,
                 )
             except (OSError, subprocess.SubprocessError):
                 continue
+            finally:
+                sandbox.cleanup()
             if check.returncode == 0:
                 return candidate
+            self.last_probe_error = redact_tokens(check.stderr[-600:])
         return None
 
     def _run_tests(self, tests: Any) -> dict[str, Any]:
@@ -193,29 +211,39 @@ class SafePatchExecutor:
                 return {"returncode": 2, "stderr": f"test missing: {relative}"}
             paths.append(relative)
 
-        python = self._pytest_python()
+        try:
+            python = self._pytest_python()
+        except sandbox_runner.SandboxUnavailable as exc:
+            return {"returncode": 2, "stderr": f"TEST_SANDBOX_UNAVAILABLE: {exc}", "tests": paths}
         if python is None:
             return {
                 "returncode": 2,
-                "stderr": "no local Python interpreter with pytest available",
+                "stderr": "no local Python interpreter with pytest available inside the test sandbox"
+                          + (f"; last probe: {self.last_probe_error}" if getattr(self, "last_probe_error", "") else ""),
                 "tests": paths,
             }
 
-        completed = subprocess.run(
-            [python, "-m", "pytest", "-q", *paths],
-            cwd=self.repo_root,
-            env={**os.environ, "TIM_LIVE_TRADING": "0", "TIM_EXECUTION_ENABLED": "0"},
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
+        sandbox = sandbox_runner.plan(
+            [python, "-m", "pytest", "-q", "-p", "no:cacheprovider", *paths], self.repo_root)
+        try:
+            completed = subprocess.run(
+                sandbox.argv,
+                cwd=self.repo_root,
+                env=sandbox.env,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+        finally:
+            sandbox.cleanup()
         return {
             "returncode": completed.returncode,
-            "stdout": completed.stdout[-12000:],
-            "stderr": completed.stderr[-12000:],
+            "stdout": redact_tokens(completed.stdout[-12000:]),
+            "stderr": redact_tokens(completed.stderr[-12000:]),
             "tests": paths,
             "python": python,
+            "sandbox": sandbox.kind,
         }
 
     @staticmethod

@@ -22,6 +22,8 @@ ISSUE_REFERENCE = re.compile(r"#([1-9][0-9]*)")
 PROTECTED_PREFIXES = (
     "src/database/", "src/tim_incident/", "src/orderflow/", "src/paper/",
     "src/market_data/", "src/data_ingestion/",
+    # The worker's own gates, sandbox and model plumbing: it must never patch itself.
+    "src/local_first/", "src/llm/",
 )
 
 

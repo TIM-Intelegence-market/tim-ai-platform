@@ -85,6 +85,19 @@ def test_acceptance_gate_promotes_verifying_to_fixed(tmp_path: Path) -> None:
     assert durable["evidence_sha256"] == evidence["evidence_sha256"]
 
 
+def test_acceptance_gate_requires_sandboxed_tests_when_configured(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/example.py").write_text("VALUE = 2\n", encoding="utf-8")
+    monkeypatch.setenv("TIM_TEST_SANDBOX", "required")
+    evidence = supervisor._acceptance_gate(tmp_path, tmp_path / ".tim/local-first", _task(), _verifying_result())
+    assert evidence["passed"] is False and evidence["repairable"] is False
+    assert "test_sandbox_enforced" in evidence["failed_checks"]
+    result = _verifying_result()
+    result["tests"]["sandbox"] = "seatbelt"
+    evidence = supervisor._acceptance_gate(tmp_path, tmp_path / ".tim/local-first", _task(), result)
+    assert evidence["passed"] is True and evidence["tests"]["sandbox"] == "seatbelt"
+
+
 def test_acceptance_gate_missing_required_output_is_repairable(tmp_path: Path) -> None:
     result = _verifying_result()
     result["required_outputs"] = ["src/required.py"]
