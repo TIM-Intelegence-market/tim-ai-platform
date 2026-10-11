@@ -15,7 +15,9 @@ REJECT_LABELS = {
     "status:blocked", "status:waiting", "agent:pr-open", "agent:blocked",
     "agent:analyzing", "agent:claude-running", "agent:escalate",
 }
-DEPENDENCY_LINE = re.compile(r"(?im)^.*\b(?:depends on|blocked by)\b[^\n]*$")
+DEPENDENCY_LINE = re.compile(
+    r"(?im)^.*\b(?:depends on|blocked by|blockiert durch|abhängig von)\b[^\n]*$"
+)
 ISSUE_REFERENCE = re.compile(r"#([1-9][0-9]*)")
 PROTECTED_PREFIXES = (
     "src/database/", "src/tim_incident/", "src/orderflow/", "src/paper/",

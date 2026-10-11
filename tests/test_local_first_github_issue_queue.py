@@ -41,6 +41,23 @@ def test_rejects_blocked_epic_pull_request_and_malformed_issue():
     assert select_ready_issue(issues, only_number=11) is None
 
 
+def test_rejects_german_dependency_phrases_on_open_issue():
+    ready = ["agent:qwen-ready", "status:ready", "priority:p0"]
+    blocker = _issue(999999, [])
+    for body in ("Blockiert durch #999999", "Abhängig von #999999"):
+        issue = _issue(20, ready, body="Kontext\n" + body + "\nEnde")
+        assert select_ready_issue([issue, blocker]) is None
+        assert select_ready_issue([issue, blocker], only_number=20) is None
+
+
+def test_german_dependency_on_closed_issue_does_not_block():
+    ready = ["agent:qwen-ready", "status:ready", "priority:p0"]
+    closed = _issue(999999, [], state="closed")
+    for body in ("Blockiert durch #999999", "Abhängig von #999999"):
+        issue = _issue(20, ready, body=body)
+        assert select_ready_issue([issue, closed]) is issue
+
+
 def test_selects_only_ready_issue():
     ready = ["agent:qwen-ready", "status:ready", "priority:p1"]
     issue = _issue(9, ready, state="OPEN")
