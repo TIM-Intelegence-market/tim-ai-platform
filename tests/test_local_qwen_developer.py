@@ -161,6 +161,40 @@ def test_provider_errors_do_not_retry(sandbox, monkeypatch, error):
     assert len(prompts) == 1 and not tests
 
 
+def test_codex_patch_fallback_after_qwen_timeout_uses_same_safety_gate(sandbox, monkeypatch):
+    from src.local_first import codex_patch_fallback
+
+    monkeypatch.setenv("TIM_CODEX_PATCH_FALLBACK", "1")
+    prompts = []
+
+    def codex_proposal(prompt):
+        prompts.append(json.loads(prompt))
+        assert (sandbox / IMPLEMENTATION).read_text() == "VALUE = 1\n"
+        return response()
+
+    monkeypatch.setattr(codex_patch_fallback, "propose", codex_proposal)
+    code, result, _, tests = run_fake(sandbox, monkeypatch, [TimeoutError()])
+    assert code == 0 and result["status"] == "VERIFYING"
+    assert result["model_calls"] == 1 and result["codex_fallback_calls"] == 1
+    assert result["fallback_provider"] == "CODEX_CLI"
+    assert result["qwen_blocker_reason"] == "QWEN_ERROR:TimeoutError"
+    assert tests == [[TEST]] and len(prompts) == 1
+    assert (sandbox / IMPLEMENTATION).read_text() == "VALUE = 2\n"
+
+
+def test_codex_patch_fallback_cannot_expand_paths(sandbox, monkeypatch):
+    from src.local_first import codex_patch_fallback
+
+    monkeypatch.setenv("TIM_CODEX_PATCH_FALLBACK", "1")
+    monkeypatch.setattr(codex_patch_fallback, "propose", lambda _: {
+        "patches": [{"path": "src/other.py", "content": "VALUE = 2\n"}]})
+    code, result, _, tests = run_fake(sandbox, monkeypatch, [TimeoutError()])
+    assert code == 2 and result["reason"] == "QWEN_ERROR:TimeoutError"
+    assert result["codex_fallback_error"] == "ContractError"
+    assert result["codex_fallback_calls"] == 1 and not tests
+    assert not (sandbox / "src/other.py").exists()
+
+
 def test_safety_rejection_does_not_retry(sandbox, monkeypatch):
     proposal = response()
     proposal["patches"][0]["content"] = "import os\nos.system('anything')\n"

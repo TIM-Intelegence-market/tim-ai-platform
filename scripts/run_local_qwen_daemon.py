@@ -88,6 +88,11 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--interval", type=float, default=5.0)
     value.add_argument("--pilot-task-id", default=None,
                        help="Process only this task ID; leave every other queued task untouched.")
+    value.add_argument("--github-intake", action="store_true",
+                       help="Poll explicitly ready GitHub issues through the isolated Mac issue runner.")
+    value.add_argument("--github-pilot-issue", type=int, default=None)
+    value.add_argument("--github-merge", action="store_true",
+                       help="Let GitHub's required gates authorize a squash merge for a worker PR.")
     value.add_argument("--ollama-url", default=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
     value.add_argument("--model", default=os.getenv("OLLAMA_MODEL", "qwen3.5:9b"))
     value.add_argument(
@@ -256,6 +261,28 @@ def _run_developer_queue(repo_root: Path, args: argparse.Namespace, model: str) 
     return completed.returncode
 
 
+def _run_github_intake(repo_root: Path, args: argparse.Namespace) -> int:
+    script = repo_root / "scripts/run_mac_qwen_issue.py"
+    if not script.is_file():
+        print(json.dumps({"TIM_GITHUB_INTAKE": "SAFE_STOP", "reason": "runner missing"}), flush=True)
+        return 2
+    command = [sys.executable, str(script), "--repository", str(repo_root)]
+    if args.github_pilot_issue is not None:
+        command.extend(["--pilot-issue", str(args.github_pilot_issue)])
+    if args.github_merge:
+        command.append("--merge")
+    try:
+        completed = subprocess.run(command, cwd=repo_root, text=True, capture_output=True,
+                                   check=False, timeout=1900)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(json.dumps({"TIM_GITHUB_INTAKE": "SAFE_STOP", "error_type": type(exc).__name__}), flush=True)
+        return 2
+    print(json.dumps({"TIM_GITHUB_INTAKE": "DONE" if completed.returncode == 0 else "BLOCKED",
+                      "returncode": completed.returncode,
+                      "output": completed.stdout.strip()[:500]}), flush=True)
+    return completed.returncode
+
+
 def _requeue_resolved(state_root: Path, inbox: Path, pilot_task_id: str | None = None) -> set[str]:
     requeued: set[str] = set()
     tasks_root = state_root / "tasks"
@@ -370,6 +397,7 @@ async def daemon(args: argparse.Namespace) -> int:
     # One top-level coordinator per repository. The child build queue owns its own narrower
     # supervisor.lock while it is actively applying/verifying patches.
     with SingleInstance(_developer_state(repo_root) / "daemon.lock"):
+        next_github_poll = 0.0
         print(json.dumps({
             "TIM_QWEN_SUPERVISOR": "RUNNING",
             "policy": "LOCAL_FIRST_WIP_1",
@@ -419,6 +447,9 @@ async def daemon(args: argparse.Namespace) -> int:
             resumed_ids = _requeue_resolved(state_root, inbox, args.pilot_task_id)
             task_path = _next_task(inbox, args.pilot_task_id)
             if task_path is None:
+                if args.github_intake and time.monotonic() >= next_github_poll:
+                    next_github_poll = time.monotonic() + 300.0
+                    _run_github_intake(repo_root, args)
                 await asyncio.sleep(args.interval)
                 continue
 

@@ -11,6 +11,15 @@ retry under the existing local verification gates. If Codex CLI fails, the
 daemon can ask OmniRoute for the same bounded advice. It does not scan and
 route historical blocker requests.
 
+For developer tasks, `TIM_CODEX_PATCH_FALLBACK=1` separately enables a stronger
+fallback after Qwen's bounded attempt fails. Codex CLI receives the same
+sanitized file snapshot in an empty read-only sandbox and returns a JSON patch
+proposal. The local patch executor binds the proposal to the original path and
+file-hash allowlist, rejects unsafe code, and runs the required tests. Codex
+cannot commit, push, merge, or change the task contract. This fallback is off
+by default and can be enabled with `--enable-codex-patch-fallback` when
+installing the Mac LaunchAgent. A failed Codex proposal leaves the task blocked.
+
 ## GitHub issue escalation
 
 For a GitHub-fed task `github-issue-N`, a blocked local attempt can be posted
@@ -29,8 +38,8 @@ operate it.
 
 The Mac LaunchAgent is loaded in single-task pilot mode with a dedicated
 `apoman74-art` GitHub login. The GitHub blocker bridge passed a controlled live
-write test on issue #165, which was then closed. A complete Qwen-to-Claude
-issue repair and draft-PR pilot is still pending.
+write test on issue #165, which was then closed. A complete GitHub issue repair
+and merge pilot is still pending.
 
 ## Current Mac configuration
 

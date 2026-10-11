@@ -376,9 +376,37 @@ async def run(args: argparse.Namespace) -> int:
     except Exception as exc:
         result["reason"] = f"QWEN_ERROR:{type(exc).__name__}"
 
+    codex_calls = 0
+    if (os.getenv("TIM_CODEX_PATCH_FALLBACK") == "1" and calls > 0 and contract
+            and result.get("status") != "VERIFYING" and result.get("rollback") in {False, True}
+            and str(result.get("reason", "")).startswith(("QWEN_", "verification failed"))):
+        from src.local_first.codex_patch_fallback import propose as codex_propose
+
+        qwen_reason = str(result.get("reason", ""))
+        tests = result.get("tests") if isinstance(result.get("tests"), dict) else {}
+        feedback = SECRET_RE.sub(
+            r"\1=<REDACTED>",
+            json.dumps({"reason": qwen_reason, "test_stdout": str(tests.get("stdout", ""))[-4000:],
+                        "test_stderr": str(tests.get("stderr", ""))[-2000:]})[:6500],
+        )
+        try:
+            _check_snapshot(repo, contract)
+            codex_calls = 1
+            raw = codex_propose(_prompt(task, contract, "Local Qwen blocked: " + feedback))
+            _check_snapshot(repo, contract)
+            proposal = _bind_proposal(raw, contract, proposal_id)
+            result = SafePatchExecutor(repo, state).apply(proposal, contract["allowed_paths"]).as_dict()
+            result["qwen_blocker_reason"] = qwen_reason
+            result["fallback_provider"] = "CODEX_CLI"
+        except Exception as exc:
+            proposal = {}
+            result["reason"] = qwen_reason
+            result["codex_fallback_error"] = type(exc).__name__
+
     patches = proposal.get("patches", [])
     result.update({
         "task_id": task_id, "provider": "LOCAL_QWEN_OLLAMA", "model": args.model,
+        "codex_fallback_calls": codex_calls,
         "next_action": "LOCAL_REVIEW" if result["status"] == "VERIFYING" else "REPAIR_AND_RESUME_SAME_TASK_DO_NOT_CREATE_SUBTASK",
         "at": _utc(), "authority": "LOCAL_SAFETY_GATES",
         "binding_version": 3, "model_calls": calls, "max_model_calls": 2,

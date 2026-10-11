@@ -65,6 +65,7 @@ def test_plist_payload_uses_safe_paths_and_minimal_environment(
     env = payload["EnvironmentVariables"]
 
     assert set(env) == {
+        "PATH",
         "PYTHONPATH",
         "TIM_LOCAL_PATCH_SANDBOX",
         "TIM_BLOCKER_AUTO_WAIT",
@@ -78,6 +79,7 @@ def test_plist_payload_uses_safe_paths_and_minimal_environment(
     assert env["TIM_LIVE_TRADING"] == "0"
     assert env["TIM_EXECUTION_ENABLED"] == "0"
     assert env["TIM_LOCAL_PATCH_SANDBOX"] == "1"
+    assert env["PATH"].startswith("/opt/homebrew/bin:/usr/local/bin:")
 
 
 def test_main_writes_library_plist_without_launchctl(

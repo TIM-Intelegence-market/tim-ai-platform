@@ -117,6 +117,26 @@ def test_developer_queue_invokes_existing_deterministic_supervisor(tmp_path: Pat
     assert captured["command"][-2:] == ["--task-id", "github-issue-166"]
 
 
+def test_github_intake_invokes_only_pilot_issue_with_merge_gate(tmp_path: Path, monkeypatch) -> None:
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    entrypoint = scripts / "run_mac_qwen_issue.py"
+    entrypoint.write_text("# test\n", encoding="utf-8")
+    captured = []
+
+    def fake_run(command, **kwargs):
+        captured.extend(command)
+        return SimpleNamespace(returncode=0, stdout="No eligible Mac Qwen issue.")
+
+    monkeypatch.setattr(daemon.subprocess, "run", fake_run)
+    args = _args()
+    args.github_pilot_issue = 166
+    args.github_merge = True
+    assert daemon._run_github_intake(tmp_path, args) == 0
+    assert captured[1:] == [str(entrypoint), "--repository", str(tmp_path),
+                             "--pilot-issue", "166", "--merge"]
+
+
 def test_launchd_payload_runs_unified_daemon_with_local_patch_gate(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     worker = repo / "scripts/run_local_qwen_daemon.py"

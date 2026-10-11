@@ -25,7 +25,11 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--github-worker-login", default=None)
     value.add_argument("--github-config-dir", type=Path, default=None)
     value.add_argument("--enable-github-escalation", action="store_true")
+    value.add_argument("--enable-github-intake", action="store_true")
+    value.add_argument("--github-pilot-issue", type=int, default=None)
+    value.add_argument("--github-merge", action="store_true")
     value.add_argument("--enable-codex-advisor", action="store_true")
+    value.add_argument("--enable-codex-patch-fallback", action="store_true")
     value.add_argument("--codex-model", default="gpt-5.6-luna")
     value.add_argument("--load", action="store_true", help="Bootstrap the LaunchAgent after writing the plist.")
     return value
@@ -45,7 +49,11 @@ def _plist_payload(
     github_worker_login: str | None = None,
     github_config_dir: Path | None = None,
     enable_github_escalation: bool = False,
+    enable_github_intake: bool = False,
+    github_pilot_issue: int | None = None,
+    github_merge: bool = False,
     enable_codex_advisor: bool = False,
+    enable_codex_patch_fallback: bool = False,
     codex_model: str = "gpt-5.6-luna",
 ) -> dict[str, Any]:
     python_executable = python.absolute()
@@ -57,7 +65,18 @@ def _plist_payload(
     ]
     if pilot_task_id is not None:
         program_arguments.extend(["--pilot-task-id", pilot_task_id])
+    if enable_github_intake:
+        if not github_worker_login or github_config_dir is None:
+            raise ValueError("GitHub intake requires a dedicated worker login and config directory")
+        program_arguments.append("--github-intake")
+        if github_pilot_issue is not None:
+            if github_pilot_issue <= 0:
+                raise ValueError("invalid GitHub pilot issue number")
+            program_arguments.extend(["--github-pilot-issue", str(github_pilot_issue)])
+        if github_merge:
+            program_arguments.append("--github-merge")
     environment = {
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "PYTHONPATH": str(repo),
         "TIM_LOCAL_PATCH_SANDBOX": "1",
         "TIM_BLOCKER_AUTO_WAIT": "0",
@@ -67,17 +86,24 @@ def _plist_payload(
         "OLLAMA_MODEL": model,
         "TIM_QWEN_FALLBACK_MODELS": fallback_models,
     }
-    if enable_github_escalation:
+    if enable_github_escalation or enable_github_intake:
         if not github_worker_login or github_config_dir is None:
             raise ValueError("GitHub escalation requires a dedicated worker login and config directory")
         environment.update({
-            "TIM_QWEN_GITHUB_ESCALATION": "1",
             "TIM_QWEN_WORKER_LOGIN": github_worker_login,
             "GH_CONFIG_DIR": str(github_config_dir),
         })
+        if enable_github_escalation:
+            environment["TIM_QWEN_GITHUB_ESCALATION"] = "1"
     if enable_codex_advisor:
         environment.update({
             "TIM_CODEX_BLOCKER_ADVISOR": "1",
+            "TIM_CODEX_MODEL": codex_model,
+            "TIM_CODEX_BIN": str(Path.home() / ".local/bin/codex"),
+        })
+    if enable_codex_patch_fallback:
+        environment.update({
+            "TIM_CODEX_PATCH_FALLBACK": "1",
             "TIM_CODEX_MODEL": codex_model,
             "TIM_CODEX_BIN": str(Path.home() / ".local/bin/codex"),
         })
@@ -130,7 +156,11 @@ def main() -> int:
         github_worker_login=args.github_worker_login,
         github_config_dir=args.github_config_dir,
         enable_github_escalation=args.enable_github_escalation,
+        enable_github_intake=args.enable_github_intake,
+        github_pilot_issue=args.github_pilot_issue,
+        github_merge=args.github_merge,
         enable_codex_advisor=args.enable_codex_advisor,
+        enable_codex_patch_fallback=args.enable_codex_patch_fallback,
         codex_model=args.codex_model,
     )
     with plist_path.open("wb") as handle:

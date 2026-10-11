@@ -41,6 +41,7 @@ def test_plist_preserves_venv_python_and_repo_pythonpath(tmp_path: Path) -> None
     assert payload["ProgramArguments"][0] == str(venv_python.absolute())
     assert payload["ProgramArguments"][0] != str(real_python.resolve())
     assert payload["EnvironmentVariables"]["PYTHONPATH"] == str(repo)
+    assert "/opt/homebrew/bin" in payload["EnvironmentVariables"]["PATH"]
     assert payload["EnvironmentVariables"]["TIM_LIVE_TRADING"] == "0"
     assert payload["EnvironmentVariables"]["TIM_EXECUTION_ENABLED"] == "0"
 
@@ -62,3 +63,27 @@ def test_github_escalation_requires_separate_worker_config(tmp_path: Path) -> No
     assert env["GH_CONFIG_DIR"] == str(tmp_path / "gh-worker")
     assert env["TIM_QWEN_WORKER_LOGIN"] == "apoman74-art"
     assert env["TIM_QWEN_GITHUB_ESCALATION"] == "1"
+
+
+def test_codex_patch_fallback_is_opt_in(tmp_path: Path) -> None:
+    installer = _load_installer()
+    kwargs = dict(repo=tmp_path, python=tmp_path / "python", worker=tmp_path / "worker.py",
+                  state=tmp_path / "state", logs=tmp_path / "logs", model="qwen3.5:9b",
+                  fallback_models="", interval=5.0)
+    assert "TIM_CODEX_PATCH_FALLBACK" not in installer._plist_payload(**kwargs)["EnvironmentVariables"]
+    payload = installer._plist_payload(**kwargs, enable_codex_patch_fallback=True)
+    assert payload["EnvironmentVariables"]["TIM_CODEX_PATCH_FALLBACK"] == "1"
+
+
+def test_github_intake_has_worker_identity_and_pilot_scope(tmp_path: Path) -> None:
+    installer = _load_installer()
+    kwargs = dict(repo=tmp_path, python=tmp_path / "python", worker=tmp_path / "worker.py",
+                  state=tmp_path / "state", logs=tmp_path / "logs", model="qwen3.5:9b",
+                  fallback_models="", interval=5.0)
+    with pytest.raises(ValueError):
+        installer._plist_payload(**kwargs, enable_github_intake=True)
+    payload = installer._plist_payload(**kwargs, enable_github_intake=True, github_pilot_issue=166,
+                                       github_merge=True, github_worker_login="apoman74-art",
+                                       github_config_dir=tmp_path / "worker-gh")
+    assert payload["ProgramArguments"][-4:] == ["--github-intake", "--github-pilot-issue", "166", "--github-merge"]
+    assert payload["EnvironmentVariables"]["GH_CONFIG_DIR"] == str(tmp_path / "worker-gh")

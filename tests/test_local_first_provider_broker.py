@@ -111,6 +111,7 @@ def test_codex_advisor_receives_no_github_environment(tmp_path: Path, monkeypatc
     monkeypatch.setenv("TIM_CODEX_BIN", str(binary))
     monkeypatch.setenv("GH_CONFIG_DIR", "/private/github-config")
     monkeypatch.setenv("GH_TOKEN", "test-only-secret")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-only-provider-secret")
     monkeypatch.setenv("TIM_QWEN_WORKER_LOGIN", "worker")
 
     class Result:
@@ -120,6 +121,7 @@ def test_codex_advisor_receives_no_github_environment(tmp_path: Path, monkeypatc
         assert args[args.index("--sandbox") + 1] == "read-only"
         assert "GH_CONFIG_DIR" not in kwargs["env"]
         assert "GH_TOKEN" not in kwargs["env"]
+        assert "ANTHROPIC_API_KEY" not in kwargs["env"]
         assert "TIM_QWEN_WORKER_LOGIN" not in kwargs["env"]
         Path(args[args.index("--output-last-message") + 1]).write_text("Inspect local evidence")
         return Result()
