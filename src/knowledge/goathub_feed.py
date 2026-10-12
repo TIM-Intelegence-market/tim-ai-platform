@@ -14,6 +14,7 @@ is written (direction, symbol, level, invalidation), not whether it is right.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections import defaultdict
@@ -32,6 +33,7 @@ __all__ = [
     "default_goathub_dir",
     "extract_call",
     "good_calls",
+    "import_screen_readings",
     "render_channel_markdown",
     "render_summary_markdown",
     "write_memory_export",
@@ -39,6 +41,7 @@ __all__ = [
 
 SOURCE_DIRECT = "discord_direct"
 SOURCE_FORWARD = "discord_forward"
+SOURCE_SCREEN = "discord_screen"  # read off the owner's own Discord window by Claude; transcribed, check the original when it matters
 SOURCE_FOLLOW = "discord_follow"  # Discord channel "Follow": the original channel posts into the owner's channel
 SOURCE_MANUAL = "discord_manual"
 GOOD_GRADES = ("A", "B")
@@ -334,6 +337,31 @@ def render_summary_markdown(messages: Sequence[GoatHubMessage], generated_at: da
             break
         body.append(line)
     return text + ("\n".join(body) if body else "- keine") + "\n"
+
+
+def import_screen_readings(store: GoatHubFeedStore, payload: Sequence[dict[str, Any]], received_at: datetime | None = None) -> tuple[int, int]:
+    """Store messages Claude read off the screen: [{channel_id, channel_name, author, posted_at, content}], idempotent by content hash."""
+    received_at = received_at or datetime.now(timezone.utc)
+    stored = duplicates = 0
+    for item in payload:
+        posted_at = datetime.fromisoformat(str(item["posted_at"]))
+        if posted_at.tzinfo is None:
+            raise ValueError("posted_at must carry a time zone")
+        channel_id = str(item.get("channel_id") or "screen")
+        author = str(item.get("author") or "")
+        content = str(item.get("content") or "")
+        digest = hashlib.sha256(f"{channel_id}|{author}|{posted_at.isoformat()}|{content}".encode()).hexdigest()[:20]
+        message = GoatHubMessage(
+            message_id=f"screen-{digest}", channel_id=channel_id, posted_at=posted_at, content=content,
+            received_at=received_at, author_name=author, channel_name=str(item.get("channel_name") or ""),
+            source=SOURCE_SCREEN, attachments=tuple(str(name) for name in item.get("attachments") or ()),
+            reactions=int(item.get("reactions") or 0),
+        )
+        if store.append(message):
+            stored += 1
+        else:
+            duplicates += 1
+    return stored, duplicates
 
 
 def write_memory_export(store: GoatHubFeedStore, out_dirs: Sequence[Path], generated_at: datetime | None = None) -> list[Path]:

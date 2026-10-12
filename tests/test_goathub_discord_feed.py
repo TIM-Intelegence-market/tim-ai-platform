@@ -247,3 +247,17 @@ def test_followed_announcement_channel_posts_are_accepted(tmp_path: Path) -> Non
     stored = GoatHubFeedStore(tmp_path).load()[0]
     assert stored.source == "discord_follow" and stored.message_id == "700000000000000000"
     assert stored.author_label == "The Goat Hub #calls"
+
+
+def test_screen_readings_import_once(tmp_path: Path) -> None:
+    from src.knowledge.goathub_feed import import_screen_readings
+
+    store = GoatHubFeedStore(tmp_path)
+    payload = [{"channel_id": "goatfather", "channel_name": "goatfather-channel", "author": "goatfather",
+                "posted_at": "2026-10-12T14:47:00+00:00", "content": "btc long 83000 invalid below 82000"}]
+    assert import_screen_readings(store, payload, NOW) == (1, 0)
+    assert import_screen_readings(store, payload, NOW) == (0, 1)
+    stored = GoatHubFeedStore(tmp_path).load()[0]
+    assert stored.source == "discord_screen" and stored.author_label == "goatfather"
+    with pytest.raises(ValueError):
+        import_screen_readings(store, [{**payload[0], "posted_at": "2026-10-12T14:47:00"}], NOW)

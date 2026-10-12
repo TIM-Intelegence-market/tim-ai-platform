@@ -8,6 +8,7 @@ Subcommands:
           run), then write the memory export; launchd runs this three times a day
   export  write the memory export from the stored messages only (no Discord access)
   calls   print the good community calls (grade A/B)
+  import-screen FILE  store messages Claude read off your Discord window (JSON list), then export
 
 The export goes to data/goathub_feed/memory/ and to every --memory-dir:
 GOATHUB_KANAL.md (whole channel, verbatim), GOATHUB_KURZ.md (under 4 KB, for a
@@ -29,7 +30,7 @@ from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.knowledge.goathub_feed import GoatHubFeedStore, good_calls, write_memory_export  # noqa: E402
+from src.knowledge.goathub_feed import GoatHubFeedStore, good_calls, import_screen_readings, write_memory_export  # noqa: E402
 from src.sources.broncx_discord import DiscordFeedError, load_bot_secret  # noqa: E402
 from src.sources.goathub_discord import (  # noqa: E402
     GoatHubChannel,
@@ -115,7 +116,8 @@ def calls(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None, ask: Callable[[str], str] = input) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=["setup", "sync", "export", "calls"])
+    parser.add_argument("command", choices=["setup", "sync", "export", "calls", "import-screen"])
+    parser.add_argument("file", nargs="?", type=Path, help="JSON file for 'import-screen'")
     parser.add_argument("--config", type=Path, default=default_config_path())
     parser.add_argument("--secret-file", type=Path, default=default_secret_path())
     parser.add_argument("--feed-dir", type=Path, default=None, help="default: data/goathub_feed or $TIM_GOATHUB_FEED_DIR")
@@ -133,6 +135,12 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] = input) -> in
             return export(args)
         if args.command == "calls":
             return calls(args)
+        if args.command == "import-screen":
+            if args.file is None:
+                parser.error("import-screen needs a JSON file")
+            stored, duplicates = import_screen_readings(GoatHubFeedStore(args.feed_dir), json.loads(args.file.read_text(encoding="utf-8")))
+            print(f"import stored={stored} duplicates={duplicates}", flush=True)
+            return export(args)
         return sync(args)
     except DiscordFeedError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
