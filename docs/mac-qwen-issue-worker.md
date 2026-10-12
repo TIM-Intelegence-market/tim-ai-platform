@@ -92,6 +92,10 @@ LaunchAgent environment to switch either off; a `--github-pilot-issue` never tri
    `TIM_TRIAGE_TRUSTED_AUTHORS`); epics, server, observe-only, waiting and blocked issues are never
    triaged. Contracts are read from the issue body or from a worker comment, never from another
    person's comment.
+   A third answer, `split`, is for issues that bundle separable items: the worker opens up to six
+   child issues `[Teil von #N] …` with a validated contract in their body and the ready labels,
+   comments the list on the parent and labels it `agent:split`. Items that need a person stay on
+   the parent. A parent version is split at most once, even if a run stops halfway.
 
 **No endless repetition.** `issue-ledger.json` in the state folder records every triage call and
 attempt. Each issue version is triaged at most twice, at most 30 triage calls run per day, and each

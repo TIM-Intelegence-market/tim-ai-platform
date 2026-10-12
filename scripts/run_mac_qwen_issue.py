@@ -254,9 +254,36 @@ def _triage_one(pipeline: Pipeline, ledger: IssueLedger, issues: list, repo_root
         pipeline.github("issue", "edit", str(number), "--add-label",
                         f"{issue_triage.LABEL_READY},status:ready,priority:{result['priority']}")
         return f"Triage: #{number} prepared for the Mac Qwen worker."
+    if result["decision"] == "split":
+        children = _create_subtasks(pipeline, ledger, issue, result)
+        pipeline.github("issue", "comment", str(number), "--body",
+                        issue_triage.split_comment(result, children))
+        pipeline.github("issue", "edit", str(number), "--add-label", issue_triage.LABEL_SPLIT)
+        return f"Triage: #{number} split into {len(children)} worker issues: {children}"
     pipeline.github("issue", "comment", str(number), "--body", issue_triage.skip_comment(result))
     pipeline.github("issue", "edit", str(number), "--add-label", issue_triage.LABEL_NOT_SUITABLE)
     return f"Triage: #{number} is not a Mac Qwen task: {result['reason']}"
+
+
+def _create_subtasks(pipeline: Pipeline, ledger: IssueLedger, parent: dict, result: dict) -> list[int]:
+    """Open one worker-authored issue per subtask; the ledger already marks the parent as split,
+    so a crash halfway never creates the same children twice."""
+    children: list[int] = []
+    for subtask in result["subtasks"]:
+        url = pipeline.github("issue", "create", "--title", f"[Teil von #{parent['number']}] {subtask['title']}",
+                              "--body", f"Teil von #{parent['number']}; Vertrag folgt.")
+        match = re.search(r"/issues/([1-9][0-9]*)", url)
+        if match is None:
+            raise PipelineError("GitHub did not return an issue URL")
+        child = int(match.group(1))
+        bound = {**subtask, "task": issue_triage.rebind_task(subtask["task"], child)}
+        pipeline.github("issue", "edit", str(child), "--body", issue_triage.subtask_body(parent, bound))
+        pipeline.github("issue", "edit", str(child), "--add-label",
+                        f"{issue_triage.LABEL_READY},status:ready,priority:{subtask['priority']}")
+        children.append(child)
+        ledger.entry(parent["number"]).setdefault("children", []).append(child)
+        ledger.save()
+    return children
 
 
 def _select(pipeline: Pipeline, ledger: IssueLedger, issues: list, *, pilot_issue: int | None,

@@ -247,3 +247,50 @@ def test_self_update_fast_forwards_only_a_clean_checkout():
     for blocked in (Git("a" * 40, "b" * 40, dirty=" M x.py"), Git("a" * 40, "b" * 40, ancestor=False)):
         assert runner.self_update(blocked) is None
         assert not any(call[:2] == ("git", "checkout") for call in blocked.calls)
+
+
+def _split_answer(*subtasks):
+    return json.dumps({"decision": "split", "reason": "Sammel-Issue", "subtasks": list(subtasks)})
+
+
+GOOD_SUB = {"title": "Marker erneut lesen", "priority": "p1", "objective": "Fix marker",
+            "allowed_paths": ["src/x.py", "tests/test_x.py"], "tests": ["tests/test_x.py"]}
+
+
+def test_parse_split_keeps_only_valid_subtasks():
+    bad = {**GOOD_SUB, "allowed_paths": ["src/local_first/runtime.py"]}
+    result = issue_triage.parse_triage(_split_answer(GOOD_SUB, bad, {**GOOD_SUB, "title": ""}), _issue(90))
+    assert result["decision"] == "split" and len(result["subtasks"]) == 1
+    assert issue_triage.parse_triage(_split_answer(bad), _issue(90))["decision"] == "skip"
+    many = issue_triage.parse_triage(_split_answer(*[GOOD_SUB] * 9), _issue(90))
+    assert len(many["subtasks"]) == issue_triage.MAX_SUBTASKS
+
+
+def test_split_creates_ready_child_issues_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(issue_triage, "ask_claude", lambda prompt, root: _split_answer(GOOD_SUB, GOOD_SUB))
+
+    class Creating(FakePipeline):
+        next_number = 200
+
+        def github(self, *args):
+            if args[:2] == ("issue", "create"):
+                self.calls.append(("gh",) + args)
+                Creating.next_number += 1
+                return f"https://github.com/o/r/issues/{Creating.next_number}"
+            return super().github(*args)
+
+    parent = _issue(91, body="viele Punkte")
+    pipeline = Creating([parent])
+    result = runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
+                                merge=True, triage=True)
+    assert "split into 2" in result
+    bodies = [call[-1] for call in _gh(pipeline, "issue", "edit") if call[-2] == "--body"]
+    assert len(bodies) == 2
+    child = attach_worker_contract({**_issue(201, READY), "body": bodies[0]}, WORKER)
+    assert build_task(child)["task_id"] == "github-issue-201"
+    assert ("gh", "issue", "edit", "91", "--add-label", "agent:split") in pipeline.calls
+    assert IssueLedger(tmp_path / "issue-ledger.json").entry(91)["children"] == [201, 202]
+    # Same version is never split again, even if GitHub lost the label.
+    monkeypatch.setattr(issue_triage, "ask_claude", lambda prompt, root: pytest.fail("split twice"))
+    assert "nothing left" in runner.process_one(Creating([parent]), tmp_path, pilot_issue=None,
+                                                codex_fallback=False, merge=True, triage=True)
