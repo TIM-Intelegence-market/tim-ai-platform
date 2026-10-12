@@ -26,6 +26,9 @@ READ_ROOTS = ("src", "tests", "docs")
 TEXT_SUFFIXES = {".py", ".md", ".txt", ".json", ".toml", ".ini", ".cfg", ".yml", ".yaml"}
 MAX_STEPS = 12
 MAX_SECONDS = 600.0  # leaves room for helpers inside the 30-minute task timeout
+# One turn on a 16 GB Mac takes about 60 s and grows with every file read; the developer's default
+# 120 s client timeout cut a real run (issue #172) mid-loop. A turn may use the rest of the budget.
+CHAT_TURN_SECONDS = 300.0
 MAX_CALLS_PER_STEP = 3
 MAX_NUDGES = 2
 MAX_TEST_RUNS = 2
@@ -84,7 +87,7 @@ TOOL_NAMES = {item["function"]["name"] for item in TOOLS}
 
 class ChatClient(Protocol):
     async def chat(self, messages: list[dict[str, Any]], *, tools: list[dict[str, Any]] | None = None,
-                   options: dict[str, Any] | None = None) -> dict[str, Any]: ...
+                   options: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]: ...
 
 
 @dataclass(slots=True)
@@ -282,12 +285,15 @@ class QwenToolLoop:
         last_submitted: dict[str, Any] | None = None
         deadline = self.clock() + self.max_seconds
         for _ in range(self.max_steps):
-            if self.clock() >= deadline:
+            remaining = deadline - self.clock()
+            if remaining <= 0:
                 self.stats["ended"] = "time_budget_exhausted"
                 break
             self.stats["steps"] += 1
             try:
-                message = await self.client.chat(messages, tools=TOOLS, options=dict(CHAT_OPTIONS))
+                turn_seconds = max(1.0, min(CHAT_TURN_SECONDS, remaining))
+                message = await self.client.chat(messages, tools=TOOLS, options=dict(CHAT_OPTIONS),
+                                                 timeout=turn_seconds)
             except Exception as exc:  # tools unsupported or Ollama error: caller falls back to one-shot
                 self.stats["ended"] = f"chat_error:{type(exc).__name__}"
                 return LoopResult(None, self.stats)

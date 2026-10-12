@@ -155,9 +155,11 @@ class ScriptedChat:
     def __init__(self, replies):
         self.replies = list(replies)
         self.seen = []
+        self.timeouts = []
 
-    async def chat(self, messages, *, tools=None, options=None):
+    async def chat(self, messages, *, tools=None, options=None, timeout=None):
         self.seen.append([dict(m) for m in messages])
+        self.timeouts.append(timeout)
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
@@ -202,6 +204,49 @@ def test_loop_uses_text_calls_and_rejects_bad_submit(sandbox):
     assert result.proposal == {"patches": good}
     assert result.stats["text_parsed_calls"] == 2
     assert any(m["role"] == "tool" and m["content"].startswith("REJECTED") for m in chat.seen[-1])
+
+
+def test_loop_turn_timeout_is_longer_than_client_default_but_within_budget(sandbox):
+    now = [0.0]
+    patch = [{"path": IMPLEMENTATION, "content": "VALUE = 2\n"}]
+
+    class SlowChat(ScriptedChat):
+        async def chat(self, messages, **kwargs):
+            reply = await super().chat(messages, **kwargs)
+            now[0] += 250.0
+            return reply
+
+    chat = SlowChat([native("read_file", path=IMPLEMENTATION), native("read_file", path=IMPLEMENTATION),
+                     native("submit_patch", patches=patch)])
+    result = asyncio.run(make_loop(sandbox, chat, clock=lambda: now[0]).run("sys", "user"))
+    assert result.stats["submitted"]
+    assert chat.timeouts == [loop_mod.CHAT_TURN_SECONDS, loop_mod.CHAT_TURN_SECONDS, 100.0]
+
+
+def test_ollama_chat_uses_per_turn_timeout(monkeypatch):
+    from src.llm import ollama_client
+
+    seen = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return json.dumps({"message": {"role": "assistant", "content": "ok"}}).encode()
+
+    def fake_urlopen(request, timeout):
+        seen.setdefault("timeouts", []).append(timeout)
+        return Response()
+
+    monkeypatch.setattr(ollama_client, "urlopen", fake_urlopen)
+    client = ollama_client.OllamaClient("http://127.0.0.1:11434", "qwen", timeout=120, observation_only=False)
+    asyncio.run(client.chat([{"role": "user", "content": "hi"}]))
+    asyncio.run(client.chat([{"role": "user", "content": "hi"}], timeout=300.0))
+    assert seen["timeouts"] == [120, 300.0]
 
 
 def test_loop_reports_chat_errors_for_one_shot_fallback(sandbox):
@@ -257,7 +302,7 @@ def run_developer(repo, monkeypatch, *, chat_replies, json_replies=()):
         async def available(self):
             return True
 
-        async def chat(self, messages, *, tools=None, options=None):
+        async def chat(self, messages, *, tools=None, options=None, timeout=None):
             seen["chat"] += 1
             assert {tool["function"]["name"] for tool in tools} == loop_mod.TOOL_NAMES
             reply = chats.pop(0)
