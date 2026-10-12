@@ -1,0 +1,12 @@
+[package]
+name = "mac-worker-dashboard"
+version = "0.1.0"
+edition = "2021"
+description = "Read-only localhost dashboard for the Mac Qwen issue worker"
+publish = false
+
+[dependencies]
+serde_json = "1"
+
+[profile.release]
+strip = true

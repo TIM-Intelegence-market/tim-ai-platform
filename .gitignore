@@ -57,3 +57,6 @@ artifacts/tim_manager/reports/*
 # Research-case exports (scripts/export_case.py)
 exports/
 !src/research_lab/data/
+
+# Rust build output of local tools
+tools/*/target/
