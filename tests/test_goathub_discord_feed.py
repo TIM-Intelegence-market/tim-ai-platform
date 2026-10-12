@@ -181,6 +181,8 @@ def test_config_validation(tmp_path: Path) -> None:
         GoatHubConfig((GoatHubChannel(CHANNEL),), "forward", frozenset())
     with pytest.raises(DiscordFeedError):
         GoatHubChannel("general")
+    with pytest.raises(DiscordFeedError):
+        GoatHubConfig((GoatHubChannel(OWNER),), "forward", frozenset({OWNER}))
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"channels": [{"id": CHANNEL, "name": "calls"}], "mode": "direct"}), encoding="utf-8")
     assert GoatHubConfig.load(path).channels[0].name == "calls"

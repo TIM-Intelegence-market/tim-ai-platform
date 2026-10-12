@@ -90,6 +90,8 @@ class GoatHubConfig:
             raise DiscordFeedError("forward mode needs forwarder_ids (your Discord user id)")
         if not all(_SNOWFLAKE.fullmatch(item) for item in self.forwarder_ids):
             raise DiscordFeedError("forwarder_ids must be Discord user ids (15-21 digits)")
+        if self.forwarder_ids & {channel.channel_id for channel in self.channels}:
+            raise DiscordFeedError("a channel id equals a forwarder (user) id; enter the channel id via 'Copy Channel ID', not your user id")
 
     @classmethod
     def load(cls, path: Path) -> "GoatHubConfig":
