@@ -66,6 +66,10 @@ def build_report(analysis: AnalysisOutput) -> str:
     if external:
         sections.extend(_external_section(external))
 
+    community = next((item["result"] for item in analysis.audit.get("engines", []) if item.get("engine") == "community_calls"), None)
+    if community:
+        sections.extend(_community_section(community))
+
     decision = analysis.decision
     sections.append("\nENTSCHEIDUNG:")
     if decision.status == DecisionStatus.NO_TRADE:
@@ -138,6 +142,24 @@ _NO_INFLUENCE_TEXT = {
     "mixed_direction": "sein neuester Beitrag nennt beide Richtungen",
     "invalidated": "seine Invalidierung ist ausgelöst",
 }
+
+
+def _community_section(community: dict[str, Any]) -> list[str]:
+    lines = ["\nGOATHUB-COMMUNITY-CALLS (nur Anzeige, keine Gewichtung, zählt nicht als Bestätigung):"]
+    if not community["entries"]:
+        lines.append(f"  Kein guter Call zu diesem Symbol (Frist {community['max_age_hours']:g} h).")
+        return lines
+    for entry in community["entries"]:
+        label = " ".join(part for part in (entry["bias"], entry["symbol"], entry["timeframe"]) if part)
+        first = entry["text"].strip().splitlines()[0][:120] if entry["text"].strip() else ""
+        quote = f"\"{first}\"" if first and report_is_safe(first) else "(Text siehe Audit)"
+        lines.append(f"  [vor {entry['age_hours']:g} h] {entry['author']} [{entry['grade']}] {label}: {quote}")
+        for level in entry["levels"]:
+            lines.append(f"    {level['role']} {level['level']}: {level['status']}" + (f" ({level['distance_pct']} %)" if level["distance_pct"] is not None else ""))
+        for item in entry["invalidation"]:
+            text = f"\"{item['text']}\"" if report_is_safe(item["text"]) else "(siehe Audit)"
+            lines.append(f"    Invalidierung {text}: {item['status']}")
+    return lines
 
 
 def _influence_lines(influence: dict[str, Any] | None) -> list[str]:

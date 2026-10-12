@@ -19,10 +19,12 @@ from decimal import Decimal
 from typing import Any, Sequence
 
 from src.knowledge.broncx_feed import BroncxPost
+from src.knowledge.goathub_feed import GoatHubMessage
 from src.models.market_data import Candle, Trade
 
 from ..audit import AuditBuilder, analysis_id_for
 from ..explanation import build_setup_explanation
+from ..community_calls import DEFAULT_CALL_MAX_AGE, build_community_calls
 from ..external_context import DEFAULT_MAX_AGE, active_view, apply_external_weight, build_external_context
 from ..config import OrderflowScenarioConfig, default_config
 from ..domain import (
@@ -87,6 +89,9 @@ class PipelineInputs:
     # External guidance (Broncx via Discord): audit and report only, never evidence.
     external_posts: tuple[BroncxPost, ...] = ()
     external_max_age: timedelta = DEFAULT_MAX_AGE
+    # GoatHub community calls: audit and report only, no score weight, never evidence.
+    community_messages: tuple[GoatHubMessage, ...] = ()
+    community_max_age: timedelta = DEFAULT_CALL_MAX_AGE
 
     def __post_init__(self) -> None:
         if self.requested_leverage < Decimal("1"):
@@ -287,6 +292,18 @@ class Pipeline:
                         "score_adjustments": external_adjustments,
                         "level_scenarios": [item.scenario_id for item in scenarios if item.trade_template.get("level_source") == "broncx"],
                     },
+                ),
+            )
+        if inputs.community_messages:
+            audit.add_engine(
+                "community_calls", "1.0.0",
+                build_community_calls(
+                    inputs.community_messages,
+                    observed_at=observed_at,
+                    symbol=inputs.market_context.symbol,
+                    candles=inputs.candles,
+                    price_now=inputs.price_now,
+                    max_age=inputs.community_max_age,
                 ),
             )
         audit_payload = audit.build(mode=self.config.mode.value, kill_switch_enabled=self.config.kill_switch_enabled and inputs.kill_switch_enabled, timestamp=observed_at)
