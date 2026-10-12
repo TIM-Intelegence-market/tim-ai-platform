@@ -19,7 +19,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.llm.ollama_client import OllamaClient
-from src.local_first.patch_executor import FORBIDDEN_PATH_PARTS, SafePatchExecutor
+from src.local_first.patch_executor import FORBIDDEN_PATH_PARTS, SafePatchExecutor, redact_code_secrets
 from src.local_first.runtime import BlockerMailbox
 
 MAX_CONTEXT_FILES = 12
@@ -112,10 +112,7 @@ def _safe_context(
 
         visible = decoded[:limit]
 
-        redacted = SECRET_RE.sub(
-            r"\1=<REDACTED>",
-            visible,
-        )
+        redacted = redact_code_secrets(visible)
 
         complete = (
             valid_utf8

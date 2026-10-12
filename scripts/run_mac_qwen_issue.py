@@ -83,6 +83,33 @@ def _run_task_group(command: list[str], cwd: Path, env: dict, *, timeout: int) -
         raise PipelineError("local task timed out; its process group was stopped") from None
 
 
+# Contract checks that fail the same way on every retry; no model ever saw the task.
+CONTRACT_FAILURES = (
+    "unsafe contract path", "contract path is not a file", "allowed file context is truncated",
+    "invalid required test path", "required output is not allowlisted", "required files exceed",
+    "context_paths must", "missing required test is not writable", "required outputs exceed",
+    "required new tests exceed",
+)
+
+
+class ContractRejected(PipelineError):
+    """The local developer refused the contract itself; retrying cannot help."""
+
+
+def _contract_rejection(result: Path) -> str | None:
+    try:
+        outcome = json.loads(result.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(outcome, dict) or outcome.get("model_calls") or outcome.get("codex_fallback_calls") \
+            or outcome.get("claude_fallback_calls"):
+        return None
+    reason = str(outcome.get("reason") or "")
+    if reason.startswith(CONTRACT_FAILURES) or re.match(r"\w+ must contain 1-\d+ unique file paths", reason):
+        return reason[:300]
+    return None
+
+
 def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
                     claude_fallback: bool = False) -> dict:
     state = worktree / ".tim/local-first"
@@ -109,6 +136,9 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
     acceptance = state / "acceptance-results" / f"{task['task_id']}.json"
     result = state / "developer-results" / f"{task['task_id']}.json"
     if returncode or not acceptance.is_file() or not result.is_file():
+        rejection = _contract_rejection(result) if result.is_file() else None
+        if rejection:
+            raise ContractRejected(f"Vertrag nicht ausführbar: {rejection}")
         raise PipelineError("local Qwen/Codex/Claude task did not pass its acceptance gate")
     evidence = json.loads(acceptance.read_text(encoding="utf-8"))
     outcome = json.loads(result.read_text(encoding="utf-8"))
@@ -246,7 +276,7 @@ def _triage_one(pipeline: Pipeline, ledger: IssueLedger, issues: list, repo_root
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
         ledger.record_triage(issue, f"error:{type(exc).__name__}")
         return f"Triage of #{number} failed: {type(exc).__name__}"
-    result = issue_triage.parse_triage(raw, issue)
+    result = issue_triage.parse_triage(raw, issue, repo_root)
     ledger.record_triage(issue, result["decision"])
     _ensure_labels(pipeline)
     if result["decision"] == "ready":
@@ -376,7 +406,10 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
         if match is None:
             raise PipelineError("GitHub did not return a pull request URL")
     except (PipelineError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
-        if ledger.record_failure(number, digest, str(exc)):
+        if isinstance(exc, ContractRejected):
+            ledger.exhaust(number, digest, str(exc))
+            _block_issue(pipeline, ledger, number, ledger.errors(number))
+        elif ledger.record_failure(number, digest, str(exc)):
             _block_issue(pipeline, ledger, number, ledger.errors(number))
         raise
     if merge:

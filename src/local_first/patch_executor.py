@@ -38,6 +38,32 @@ def redact_tokens(text: str) -> str:
     return TOKEN_RE.sub("<REDACTED_TOKEN>", text)
 
 
+# Source code names tokens and passwords all the time ("token: int", "token=claim_token + 1").
+# For code context only a quoted literal after such a name counts as a secret, plus known
+# token formats; log and feedback text keeps the broader SECRET_RE of its caller.
+CODE_SECRET_RE = re.compile(
+    r"(?i)(\b\w*(?:api[_-]?key|token|password|secret|authorization)\w*\s*[:=]\s*)"
+    r"(['\"])([^'\"\s]{4,})\2"
+)
+
+
+SECRET_WORD_RE = re.compile(r"(?i)api[_-]?key|token|password|secret|authorization")
+CONSTANT_NAME_RE = re.compile(r"[A-Z][A-Z0-9_]*")
+LOWER_NAME_RE = re.compile(r"[a-z][a-z_]*")
+
+
+def _redact_literal(match: re.Match[str]) -> str:
+    value = match.group(3)
+    # Env variable names and enum values ("TIM_LIVE_CHECK_TOKEN", "token_invalid") are not secrets.
+    if CONSTANT_NAME_RE.fullmatch(value) or (LOWER_NAME_RE.fullmatch(value) and SECRET_WORD_RE.search(value)):
+        return match.group(0)
+    return f"{match.group(1)}{match.group(2)}<REDACTED>{match.group(2)}"
+
+
+def redact_code_secrets(text: str) -> str:
+    return redact_tokens(CODE_SECRET_RE.sub(_redact_literal, text))
+
+
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

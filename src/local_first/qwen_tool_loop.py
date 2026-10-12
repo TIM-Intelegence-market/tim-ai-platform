@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Protocol
 
-from src.local_first.patch_executor import FORBIDDEN_PATH_PARTS, redact_tokens
+from src.local_first.patch_executor import FORBIDDEN_PATH_PARTS, redact_code_secrets, redact_tokens
 
 READ_ROOTS = ("src", "tests", "docs")
 TEXT_SUFFIXES = {".py", ".md", ".txt", ".json", ".toml", ".ini", ".cfg", ".yml", ".yaml"}
@@ -275,7 +275,9 @@ class QwenToolLoop:
             text = self._execute(name, args)
         except Exception as exc:  # every tool error goes back to the model as text
             text = f"ERROR: {str(exc)[:500]}"
-        text = _clean(text)[:MAX_TOOL_OUTPUT_CHARS]
+        # File contents are code: names like "token: int" stay readable so edits can match them.
+        text = (redact_code_secrets(text) if name in {"read_file", "search_code"}
+                else _clean(text))[:MAX_TOOL_OUTPUT_CHARS]
         self.output_chars += len(text)
         return text
 

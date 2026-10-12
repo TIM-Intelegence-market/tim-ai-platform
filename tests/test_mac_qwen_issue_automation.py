@@ -294,3 +294,41 @@ def test_split_creates_ready_child_issues_once(tmp_path, monkeypatch):
     monkeypatch.setattr(issue_triage, "ask_claude", lambda prompt, root: pytest.fail("split twice"))
     assert "nothing left" in runner.process_one(Creating([parent]), tmp_path, pilot_issue=None,
                                                 codex_fallback=False, merge=True, triage=True)
+
+
+def test_rejected_contract_blocks_at_once_with_its_reason(tmp_path, monkeypatch):
+    reason = "allowed file context is truncated, redacted or not UTF-8: tests/test_big.py"
+    result = tmp_path / "developer-result.json"
+    result.write_text(json.dumps({"model_calls": 0, "codex_fallback_calls": 0,
+                                  "claude_fallback_calls": 0, "reason": reason}), encoding="utf-8")
+    assert runner._contract_rejection(result) == reason
+
+    def reject(*_args, **_kwargs):
+        raise runner.ContractRejected(f"Vertrag nicht ausführbar: {runner._contract_rejection(result)}")
+
+    monkeypatch.setattr(runner, "_run_local_task", reject)
+    pipeline = FakePipeline([_issue(63, READY, _contract(63))])
+    with pytest.raises(PipelineError):
+        runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False, merge=True)
+    assert _gh(pipeline, "issue", "edit")[0][-1] == "agent:blocked"
+    assert "tests/test_big.py" in _gh(pipeline, "issue", "comment")[0][-1]
+
+
+def test_model_failures_and_ollama_outage_are_not_contract_rejections(tmp_path):
+    result = tmp_path / "developer-result.json"
+    for outcome in ({"model_calls": 1, "reason": "required files exceed the context budget"},
+                    {"model_calls": 0, "reason": "LOCAL_QWEN_UNAVAILABLE"},
+                    {"model_calls": 0, "reason": "snapshot drift: src/x.py; resume same task with fresh context"}):
+        result.write_text(json.dumps(outcome), encoding="utf-8")
+        assert runner._contract_rejection(result) is None
+
+
+def test_triage_rejects_files_the_model_cannot_see_in_full(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_big.py").write_text("x = 1\n" * 6000, encoding="utf-8")
+    answer = json.dumps({"decision": "ready", "reason": "klein", "objective": "Fix",
+                         "allowed_paths": ["src/example.py", "tests/test_big.py"],
+                         "tests": ["tests/test_big.py"]})
+    result = issue_triage.parse_triage(answer, _issue(64), tmp_path)
+    assert result["decision"] == "skip" and "32000" in result["reason"]
+    assert issue_triage.parse_triage(answer, _issue(64))["decision"] == "ready"

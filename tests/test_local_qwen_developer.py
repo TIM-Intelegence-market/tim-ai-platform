@@ -281,7 +281,7 @@ def test_allowed_files_cannot_be_displaced_by_read_only_context(sandbox):
     assert len(contract["context"]) == developer.MAX_CONTEXT_FILES
 
 
-@pytest.mark.parametrize("content", ["x" * (developer.MAX_WRITABLE_CONTEXT_CHARS + 1), "password=credential\n", "\udcff"])
+@pytest.mark.parametrize("content", ["x" * (developer.MAX_WRITABLE_CONTEXT_CHARS + 1), "password = \"credential\"\n", "\udcff"])
 def test_incomplete_writable_context_blocks_before_model(sandbox, monkeypatch, content):
     (sandbox / IMPLEMENTATION).write_bytes(content.encode("utf-8", errors="surrogateescape"))
     code, result, prompts, _ = run_fake(sandbox, monkeypatch, [])
