@@ -15,6 +15,11 @@
 - Metriken `outbox_deferred_rebuilt_total`, `candles_deferred_rebuilt_total`;
   Beleg unter `data/deferred_candle_rebuild/`. Doku:
   `docs/DEFERRED_CANDLE_REBUILD.md`; Tests: `tests/test_deferred_candle_rebuild.py`.
+- Teil 2: `--scope uncandled --from/--to` baut Kerzen für abgeschlossene Minuten
+  mit Rohtrades, aber ohne geschlossene Kerze und ohne Outbox-Arbeit (promotete
+  Offline-Kandidaten); schreibt nur `candles`, Metrik
+  `candles_uncandled_rebuilt_total`. Migration
+  `007_outbox_deferred_index.sql`: Teilindex auf DEFERRED-Einträge.
 
 ## Unreleased — BTC Research Engine V1.1: ALFRED CPI live ingest & real-data verification
 

@@ -44,8 +44,13 @@ METRIC_REBUILT_CANDLES = "candles_deferred_rebuilt_total"
 # requires a lowercase 64-hex output_hash for every COMPLETED row.
 _QUEUE_LOCK_KEY = 0x54494D4F55544258
 
+METRIC_UNCANDLED_CANDLES = "candles_uncandled_rebuilt_total"
+SCOPE_DEFERRED = "DEFERRED"
+SCOPE_UNCANDLED = "UNCANDLED"
+
 BLOCKER_NOT_CLOSED = "MINUTE_NOT_CLOSED"
 BLOCKER_LIVE_WORK = "ACTIVE_LIVE_WORK_IN_MINUTE"
+BLOCKER_DEFERRED_WORK = "DEFERRED_WORK_IN_MINUTE"
 BLOCKER_OPEN_GAP = "OPEN_GAP_TOUCHES_MINUTE"
 
 
@@ -114,15 +119,29 @@ def classify_minute(
     max_trade_id: int,
     open_gaps: int,
     closed_through: datetime,
+    scope: str = SCOPE_DEFERRED,
 ) -> MinutePlan:
-    """Pure verdict for one minute; the SQL only supplies the counts."""
-    if deferred_items < 1:
-        raise ValueError("a minute plan needs at least one DEFERRED item")
+    """Pure verdict for one minute; the SQL only supplies the counts.
+
+    ``SCOPE_DEFERRED`` minutes carry DEFERRED CANDLE_V1 rows that this tool
+    completes. ``SCOPE_UNCANDLED`` minutes have raw trades but no closed candle
+    and no outbox work at all (for example promoted offline candidates); they
+    get a candle only, and a minute that still has DEFERRED rows is sent to
+    the deferred scope instead of being handled twice.
+    """
+    if scope not in (SCOPE_DEFERRED, SCOPE_UNCANDLED):
+        raise ValueError("unknown rebuild scope")
+    if scope == SCOPE_DEFERRED and deferred_items < 1:
+        raise ValueError("a deferred minute plan needs at least one DEFERRED item")
+    if raw_trades < 1:
+        raise ValueError("a minute plan needs at least one raw trade")
     blocker: str | None = None
     if open_time > closed_through:
         blocker = BLOCKER_NOT_CLOSED
     elif active_items > 0:
         blocker = BLOCKER_LIVE_WORK
+    elif scope == SCOPE_UNCANDLED and deferred_items > 0:
+        blocker = BLOCKER_DEFERRED_WORK
     elif open_gaps > 0:
         blocker = BLOCKER_OPEN_GAP
     return MinutePlan(
@@ -179,6 +198,45 @@ FROM minutes m JOIN raw r USING (open_time) LEFT JOIN work w USING (open_time)
 ORDER BY m.open_time
 """
 
+# Closed minutes inside [$2, $3) that have raw trades but no closed 1m candle.
+# Bounded by a time window because this scans the raw table by time; the
+# outbox counts tell whether the minute belongs to the live worker or to the
+# deferred scope.
+_UNCANDLED_SQL = """
+WITH minutes AS (
+    SELECT date_trunc('minute', trade_time) AS open_time, count(*) AS raw_trades,
+           min(aggregate_trade_id) AS min_trade_id, max(aggregate_trade_id) AS max_trade_id
+    FROM agg_trades
+    WHERE symbol=$1 AND trade_time >= $2 AND trade_time < $3
+    GROUP BY 1
+), missing AS (
+    SELECT m.* FROM minutes m
+    LEFT JOIN candles c ON c.symbol=$1 AND c.timeframe='1m' AND c.open_time=m.open_time
+    WHERE c.open_time IS NULL OR c.closed = false
+    ORDER BY m.open_time LIMIT $6
+), work AS (
+    SELECT ms.open_time,
+           count(*) FILTER (WHERE o.status = ANY($5::text[])) AS active_items,
+           count(*) FILTER (WHERE o.status='DEFERRED') AS deferred_items,
+           count(*) FILTER (WHERE o.status='COMPLETED') AS completed_items
+    FROM missing ms
+    JOIN agg_trades t ON t.symbol=$1 AND t.trade_time >= ms.open_time AND t.trade_time < ms.open_time + interval '1 minute'
+    JOIN ingestion_outbox o ON o.symbol=t.symbol AND o.aggregate_trade_id=t.aggregate_trade_id AND o.worker_name=$4
+    GROUP BY ms.open_time
+)
+SELECT ms.open_time, ms.raw_trades, ms.min_trade_id, ms.max_trade_id,
+       COALESCE(w.active_items, 0) AS active_items, COALESCE(w.deferred_items, 0) AS deferred_items,
+       COALESCE(w.completed_items, 0) AS completed_items,
+       (SELECT count(*) FROM ingestion_gap_incidents g
+         WHERE g.symbol=$1 AND g.status IN ('OPEN','CATCHING_UP')
+           AND ((g.missing_from_id IS NOT NULL AND g.missing_from_id <= ms.max_trade_id + 1 AND g.missing_to_id >= ms.min_trade_id - 1)
+             OR (g.gap_started_at IS NOT NULL AND g.gap_ended_at IS NOT NULL
+                 AND g.gap_started_at < ms.open_time + interval '1 minute' AND g.gap_ended_at >= ms.open_time))
+       ) AS open_gaps
+FROM missing ms LEFT JOIN work w USING (open_time)
+ORDER BY ms.open_time
+"""
+
 _CANDLE_SQL = """
 SELECT (array_agg(price ORDER BY trade_time, aggregate_trade_id))[1] AS open,
        max(price) AS high, min(price) AS low,
@@ -219,6 +277,53 @@ async def inventory(
     ]
 
 
+async def inventory_uncandled(
+    connection: Any,
+    symbol: str,
+    *,
+    window_start: datetime,
+    window_end: datetime | None = None,
+    now: datetime | None = None,
+    safety_seconds: int = 120,
+    max_minutes: int = 500,
+) -> list[MinutePlan]:
+    """Closed minutes in the window with raw trades but no closed 1m candle. Read-only.
+
+    The window end is clamped to the last closed minute, so the live minute is
+    never part of the scan.
+    """
+    if not 1 <= max_minutes <= 10_000:
+        raise ValueError("max_minutes must be between 1 and 10000")
+    if window_start.tzinfo is None or (window_end is not None and window_end.tzinfo is None):
+        raise ValueError("window bounds must be timezone-aware")
+    closed_through = closed_before(now or datetime.now(UTC), safety_seconds)
+    end = closed_through + ONE_MINUTE
+    if window_end is not None:
+        end = min(end, window_end.astimezone(UTC))
+    start = window_start.astimezone(UTC)
+    if end <= start:
+        return []
+    rows = await connection.fetch(
+        _UNCANDLED_SQL, symbol, start, end, FIRST_WORKER, list(ACTIVE_OUTBOX_STATUSES), max_minutes
+    )
+    return [
+        classify_minute(
+            symbol=symbol,
+            open_time=row["open_time"].astimezone(UTC),
+            deferred_items=int(row["deferred_items"]),
+            active_items=int(row["active_items"]),
+            completed_items=int(row["completed_items"]),
+            raw_trades=int(row["raw_trades"]),
+            min_trade_id=int(row["min_trade_id"]),
+            max_trade_id=int(row["max_trade_id"]),
+            open_gaps=int(row["open_gaps"]),
+            closed_through=closed_through,
+            scope=SCOPE_UNCANDLED,
+        )
+        for row in rows
+    ]
+
+
 async def deferred_counts(connection: Any, symbol: str) -> dict[str, int]:
     """DEFERRED rows per worker, so the report shows what this tool does not touch."""
     rows = await connection.fetch(
@@ -244,10 +349,13 @@ class MinuteResult:
 class RebuildReport:
     symbol: str
     mode: str
+    scope: str
     applied: bool
     checked_at_utc: str
     closed_through_utc: str
     planned_minutes: int
+    window_start_utc: str | None = None
+    window_end_utc: str | None = None
     rebuilt_minutes: int = 0
     rebuilt_items: int = 0
     blocked_minutes: int = 0
@@ -296,7 +404,7 @@ def _same_candle(existing: Any, candle: Candle) -> bool:
     )
 
 
-async def _rebuild_minute(connection: Any, plan: MinutePlan) -> MinuteResult:
+async def _rebuild_minute(connection: Any, plan: MinutePlan, scope: str = SCOPE_DEFERRED) -> MinuteResult:
     """Rebuild one minute in its own transaction; a conflict rolls the minute back."""
     result = MinuteResult(
         open_time=plan.open_time.isoformat(), status="REBUILT",
@@ -314,8 +422,9 @@ async def _rebuild_minute(connection: Any, plan: MinutePlan) -> MinuteResult:
                FOR UPDATE OF o""",
             plan.symbol, FIRST_WORKER, plan.open_time,
         )
-        if len(locked) != plan.deferred_items:
-            raise _MinuteConflict(f"deferred rows changed since planning: {len(locked)} != {plan.deferred_items}")
+        expected_deferred = plan.deferred_items if scope == SCOPE_DEFERRED else 0
+        if len(locked) != expected_deferred:
+            raise _MinuteConflict(f"deferred rows changed since planning: {len(locked)} != {expected_deferred}")
         active = await connection.fetchval(
             """SELECT count(*) FROM ingestion_outbox o
                JOIN agg_trades t ON t.symbol=o.symbol AND t.aggregate_trade_id=o.aggregate_trade_id
@@ -350,32 +459,32 @@ async def _rebuild_minute(connection: Any, plan: MinutePlan) -> MinuteResult:
                 candle.low, candle.close, candle.volume, candle.trade_count,
             )
         output_hash = candle_output_hash(candle)
-        status = await connection.execute(
-            """UPDATE ingestion_outbox SET status='COMPLETED',output_hash=$3,completed_at=clock_timestamp(),
-                   lease_expires_at=NULL,last_error=NULL,updated_at=clock_timestamp()
-               WHERE outbox_id = ANY($1::text[]) AND symbol=$2 AND status='DEFERRED'""",
-            [row["outbox_id"] for row in locked], plan.symbol, output_hash,
-        )
-        if status != f"UPDATE {plan.deferred_items}":
-            raise _MinuteConflict(f"outbox completion touched {status!r}, expected {plan.deferred_items} rows")
-        await connection.execute(
-            """INSERT INTO ingestion_metrics(metric_name,metric_kind,numeric_value,metadata)
-               VALUES($1,'COUNTER',$2,$3::jsonb)
-               ON CONFLICT(metric_name) DO UPDATE SET numeric_value=ingestion_metrics.numeric_value+EXCLUDED.numeric_value,
-               metadata=EXCLUDED.metadata,updated_at=clock_timestamp()""",
-            METRIC_REBUILT_ITEMS, plan.deferred_items,
-            json.dumps({"rebuild": REBUILD_VERSION, "symbol": plan.symbol, "last_open_time": plan.open_time.isoformat()}),
-        )
-        await connection.execute(
-            """INSERT INTO ingestion_metrics(metric_name,metric_kind,numeric_value,metadata)
-               VALUES($1,'COUNTER',1,$2::jsonb)
-               ON CONFLICT(metric_name) DO UPDATE SET numeric_value=ingestion_metrics.numeric_value+1,
-               metadata=EXCLUDED.metadata,updated_at=clock_timestamp()""",
-            METRIC_REBUILT_CANDLES,
-            json.dumps({"rebuild": REBUILD_VERSION, "symbol": plan.symbol, "last_open_time": plan.open_time.isoformat()}),
-        )
+        metadata = json.dumps({"rebuild": REBUILD_VERSION, "scope": scope, "symbol": plan.symbol, "last_open_time": plan.open_time.isoformat()})
+        if scope == SCOPE_DEFERRED:
+            status = await connection.execute(
+                """UPDATE ingestion_outbox SET status='COMPLETED',output_hash=$3,completed_at=clock_timestamp(),
+                       lease_expires_at=NULL,last_error=NULL,updated_at=clock_timestamp()
+                   WHERE outbox_id = ANY($1::text[]) AND symbol=$2 AND status='DEFERRED'""",
+                [row["outbox_id"] for row in locked], plan.symbol, output_hash,
+            )
+            if status != f"UPDATE {plan.deferred_items}":
+                raise _MinuteConflict(f"outbox completion touched {status!r}, expected {plan.deferred_items} rows")
+            await _count(connection, METRIC_REBUILT_ITEMS, plan.deferred_items, metadata)
+            await _count(connection, METRIC_REBUILT_CANDLES, 1, metadata)
+        else:
+            await _count(connection, METRIC_UNCANDLED_CANDLES, 1, metadata)
         result.output_hash = output_hash
     return result
+
+
+async def _count(connection: Any, name: str, amount: int, metadata: str) -> None:
+    await connection.execute(
+        """INSERT INTO ingestion_metrics(metric_name,metric_kind,numeric_value,metadata)
+           VALUES($1,'COUNTER',$2,$3::jsonb)
+           ON CONFLICT(metric_name) DO UPDATE SET numeric_value=ingestion_metrics.numeric_value+EXCLUDED.numeric_value,
+           metadata=EXCLUDED.metadata,updated_at=clock_timestamp()""",
+        name, amount, metadata,
+    )
 
 
 class _MinuteConflict(RuntimeError):
@@ -403,12 +512,57 @@ async def rebuild_deferred_candles(
     report = RebuildReport(
         symbol=symbol,
         mode="OBSERVE",
+        scope=SCOPE_DEFERRED,
         applied=apply,
         checked_at_utc=checked_at.astimezone(UTC).isoformat(),
         closed_through_utc=closed_before(checked_at, safety_seconds).isoformat(),
         planned_minutes=len(plans),
         deferred_by_worker=await deferred_counts(connection, symbol),
     )
+    await _execute_plans(connection, plans, report, apply=apply, scope=SCOPE_DEFERRED)
+    return report
+
+
+async def rebuild_uncandled_candles(
+    connection: Any,
+    symbol: str,
+    *,
+    apply: bool,
+    window_start: datetime,
+    window_end: datetime | None = None,
+    now: datetime | None = None,
+    safety_seconds: int = 120,
+    max_minutes: int = 500,
+) -> RebuildReport:
+    """Second scope: closed minutes with raw trades and no closed candle, no outbox work.
+
+    Covers raw data that reached ``agg_trades`` without any outbox row, such as
+    promoted offline candidates. Minutes that still carry DEFERRED rows are
+    reported as blocked here and belong to :func:`rebuild_deferred_candles`.
+    Only ``candles`` is written.
+    """
+    checked_at = now or datetime.now(UTC)
+    plans = await inventory_uncandled(
+        connection, symbol, window_start=window_start, window_end=window_end,
+        now=checked_at, safety_seconds=safety_seconds, max_minutes=max_minutes,
+    )
+    report = RebuildReport(
+        symbol=symbol,
+        mode="OBSERVE",
+        scope=SCOPE_UNCANDLED,
+        applied=apply,
+        checked_at_utc=checked_at.astimezone(UTC).isoformat(),
+        closed_through_utc=closed_before(checked_at, safety_seconds).isoformat(),
+        planned_minutes=len(plans),
+        deferred_by_worker=await deferred_counts(connection, symbol),
+        window_start_utc=window_start.astimezone(UTC).isoformat(),
+        window_end_utc=window_end.astimezone(UTC).isoformat() if window_end is not None else None,
+    )
+    await _execute_plans(connection, plans, report, apply=apply, scope=SCOPE_UNCANDLED)
+    return report
+
+
+async def _execute_plans(connection: Any, plans: list[MinutePlan], report: RebuildReport, *, apply: bool, scope: str) -> None:
     for plan in plans:
         if plan.blocker is not None:
             report.blocked_minutes += 1
@@ -424,7 +578,7 @@ async def rebuild_deferred_candles(
             ))
             continue
         try:
-            result = await _rebuild_minute(connection, plan)
+            result = await _rebuild_minute(connection, plan, scope)
         except _MinuteConflict as conflict:
             report.conflict_minutes += 1
             report.minutes.append(MinuteResult(
@@ -433,7 +587,8 @@ async def rebuild_deferred_candles(
             ))
             continue
         report.rebuilt_minutes += 1
-        report.rebuilt_items += plan.deferred_items
+        if scope == SCOPE_DEFERRED:
+            report.rebuilt_items += plan.deferred_items
         if result.candle_action == "INSERTED":
             report.candles_inserted += 1
         elif result.candle_action == "UPDATED":
@@ -441,4 +596,3 @@ async def rebuild_deferred_candles(
         else:
             report.candles_unchanged += 1
         report.minutes.append(result)
-    return report

@@ -16,15 +16,19 @@ import pytest_asyncio
 
 from src.data_ingestion import deferred_candles as module
 from src.data_ingestion.deferred_candles import (
+    BLOCKER_DEFERRED_WORK,
     BLOCKER_LIVE_WORK,
     BLOCKER_NOT_CLOSED,
     BLOCKER_OPEN_GAP,
     METRIC_REBUILT_CANDLES,
     METRIC_REBUILT_ITEMS,
+    METRIC_UNCANDLED_CANDLES,
+    SCOPE_UNCANDLED,
     candle_output_hash,
     classify_minute,
     closed_before,
     rebuild_deferred_candles,
+    rebuild_uncandled_candles,
 )
 from src.data_ingestion.durable import DurableIngestionStore
 from src.database.connection import Database
@@ -62,6 +66,18 @@ def test_classify_minute_orders_blockers_and_accepts_a_clean_closed_minute() -> 
     assert _plan(open_time=datetime(2026, 10, 12, 11, 58, tzinfo=UTC), active_items=1, open_gaps=1).blocker == BLOCKER_NOT_CLOSED
     with pytest.raises(ValueError):
         _plan(deferred_items=0)
+
+
+def test_classify_uncandled_minute_sends_deferred_work_to_the_other_scope() -> None:
+    clean = _plan(deferred_items=0, scope=SCOPE_UNCANDLED)
+    assert clean.blocker is None
+    assert _plan(deferred_items=1, scope=SCOPE_UNCANDLED).blocker == BLOCKER_DEFERRED_WORK
+    assert _plan(deferred_items=1, active_items=1, scope=SCOPE_UNCANDLED).blocker == BLOCKER_LIVE_WORK
+    assert _plan(deferred_items=0, open_gaps=1, scope=SCOPE_UNCANDLED).blocker == BLOCKER_OPEN_GAP
+    with pytest.raises(ValueError):
+        _plan(scope="SOMETHING_ELSE")
+    with pytest.raises(ValueError):
+        _plan(deferred_items=0, raw_trades=0, scope=SCOPE_UNCANDLED)
 
 
 def test_output_hash_is_deterministic_and_bound_to_the_candle_and_rebuild_version() -> None:
@@ -324,3 +340,92 @@ async def test_max_minutes_bounds_one_run_oldest_first(database) -> None:
     assert [c["open_time"] for c in await candles(database)] == [BASE]
     rows = await outbox_rows(database)
     assert rows[103]["status"] == "DEFERRED" and rows[104]["status"] == "DEFERRED"
+
+
+# --- second scope: raw trades without any outbox work ----------------------
+
+async def seed_uncandled(database: Database) -> None:
+    """Minutes 10 and 11 reach agg_trades directly (like a promoted offline candidate): no outbox rows."""
+    async with database.acquire() as connection:
+        rows = [
+            (SYMBOL, 700, BASE + timedelta(minutes=10, seconds=5), 90.0, 0.5, False, "BINANCE_SPOT_AGGTRADE"),
+            (SYMBOL, 701, BASE + timedelta(minutes=10, seconds=40), 91.0, 1.5, True, "BINANCE_SPOT_AGGTRADE"),
+            (SYMBOL, 702, BASE + timedelta(minutes=11, seconds=1), 89.0, 0.5, False, "BINANCE_SPOT_AGGTRADE"),
+        ]
+        await connection.executemany(
+            "INSERT INTO agg_trades(symbol,aggregate_trade_id,trade_time,price,quantity,buyer_is_maker,source) VALUES($1,$2,$3,$4,$5,$6,$7)",
+            rows,
+        )
+
+
+@database_only
+@pytest.mark.asyncio
+async def test_uncandled_scope_builds_candles_for_minutes_without_outbox_rows_only(database) -> None:
+    await seed(database)             # minutes 0,1 deferred; minute 2 live
+    await seed_uncandled(database)   # minutes 10,11 without outbox rows
+    async with database.acquire() as connection:
+        report = await rebuild_uncandled_candles(connection, SYMBOL, apply=True, window_start=BASE - timedelta(hours=1))
+        outbox_statuses = await connection.fetch(
+            "SELECT status, count(*) AS n FROM ingestion_outbox WHERE symbol=$1 GROUP BY status ORDER BY status", SYMBOL
+        )
+    # Minutes 0 and 1 are blocked (deferred work belongs to the other scope), minute 2 is blocked by live work,
+    # minutes 10 and 11 are rebuilt.
+    assert report.scope == SCOPE_UNCANDLED and report.planned_minutes == 5
+    assert [(m.status, m.blocker) for m in report.minutes] == [
+        ("BLOCKED", BLOCKER_DEFERRED_WORK), ("BLOCKED", BLOCKER_DEFERRED_WORK), ("BLOCKED", BLOCKER_LIVE_WORK),
+        ("REBUILT", None), ("REBUILT", None),
+    ]
+    assert report.rebuilt_minutes == 2 and report.rebuilt_items == 0 and report.candles_inserted == 2
+    built = await candles(database)
+    assert [c["open_time"] for c in built] == [BASE + timedelta(minutes=10), BASE + timedelta(minutes=11)]
+    assert (built[0]["open"], built[0]["high"], built[0]["low"], built[0]["close"], built[0]["volume"], built[0]["trade_count"]) == (90.0, 91.0, 90.0, 91.0, 2.0, 2)
+    # No outbox row was created or changed.
+    assert [(r["status"], int(r["n"])) for r in outbox_statuses] == [("DEFERRED", 5), ("PENDING", 2)]
+    assert await metric(database, METRIC_UNCANDLED_CANDLES) == 2
+    assert await metric(database, METRIC_REBUILT_ITEMS) is None
+
+
+@database_only
+@pytest.mark.asyncio
+async def test_uncandled_scope_dry_run_and_window_bounds(database) -> None:
+    await seed_uncandled(database)
+    async with database.acquire() as connection:
+        dry = await rebuild_uncandled_candles(connection, SYMBOL, apply=False, window_start=BASE)
+        assert dry.planned_minutes == 2 and dry.rebuilt_minutes == 0 and await candles(database) == []
+        # Window ends before minute 11: only minute 10 is in scope.
+        narrow = await rebuild_uncandled_candles(
+            connection, SYMBOL, apply=True, window_start=BASE, window_end=BASE + timedelta(minutes=11)
+        )
+        assert [m.open_time for m in narrow.minutes] == [(BASE + timedelta(minutes=10)).isoformat()]
+        # A window entirely in the future (after the last closed minute) is empty.
+        empty = await rebuild_uncandled_candles(connection, SYMBOL, apply=True, window_start=datetime.now(UTC) + timedelta(hours=1))
+        assert empty.planned_minutes == 0
+        # Second pass finds only minute 11 and is then idempotent.
+        rest = await rebuild_uncandled_candles(connection, SYMBOL, apply=True, window_start=BASE)
+        again = await rebuild_uncandled_candles(connection, SYMBOL, apply=True, window_start=BASE)
+    assert rest.rebuilt_minutes == 1 and again.planned_minutes == 0
+    assert len(await candles(database)) == 2
+
+
+@database_only
+@pytest.mark.asyncio
+async def test_uncandled_scope_replaces_an_unclosed_candle_and_respects_open_gaps(database) -> None:
+    await seed_uncandled(database)
+    store = DurableIngestionStore(database)
+    async with database.acquire() as connection:
+        await connection.execute(
+            """INSERT INTO candles(symbol,timeframe,open_time,close_time,open,high,low,close,volume,trade_count,closed)
+               VALUES($1,'1m',$2,$3,90.0,90.0,90.0,90.0,0.5,1,false)""",
+            SYMBOL, BASE + timedelta(minutes=10), BASE + timedelta(minutes=11),
+        )
+        # Missing ids right after 702 could belong to minute 11.
+        gap_id = await store.record_gap(symbol=SYMBOL, missing_from_id=703, missing_to_id=710, reason="TRADE_ID_GAP")
+        report = await rebuild_uncandled_candles(connection, SYMBOL, apply=True, window_start=BASE)
+        assert [(m.status, m.blocker, m.candle_action) for m in report.minutes] == [
+            ("REBUILT", None, "UPDATED"), ("BLOCKED", BLOCKER_OPEN_GAP, None),
+        ]
+        await connection.execute("UPDATE ingestion_gap_incidents SET status='RESOLVED' WHERE gap_id=$1", gap_id)
+        resolved = await rebuild_uncandled_candles(connection, SYMBOL, apply=True, window_start=BASE)
+    assert resolved.rebuilt_minutes == 1
+    first = (await candles(database))[0]
+    assert (first["closed"], first["trade_count"], first["high"]) == (True, 2, 91.0)

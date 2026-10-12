@@ -200,6 +200,7 @@ CREATE TABLE IF NOT EXISTS ingestion_outbox (
     FOREIGN KEY (symbol,aggregate_trade_id) REFERENCES agg_trades(symbol,aggregate_trade_id) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS ingestion_outbox_claim_idx ON ingestion_outbox(worker_name,status,available_at,created_at) WHERE status IN ('PENDING','RETRY','PROCESSING');
+CREATE INDEX IF NOT EXISTS ingestion_outbox_deferred_idx ON ingestion_outbox(worker_name,symbol,aggregate_trade_id) WHERE status = 'DEFERRED';
 CREATE INDEX IF NOT EXISTS ingestion_outbox_worker_order_active_idx
     ON ingestion_outbox(worker_name,aggregate_trade_id,created_at,outbox_id)
     INCLUDE(status) WHERE status <> 'COMPLETED';

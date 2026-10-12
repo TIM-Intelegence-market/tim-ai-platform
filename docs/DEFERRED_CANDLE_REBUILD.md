@@ -61,11 +61,40 @@ Exit 3: Fehler.
 
 ## Nachweis
 
-- `tests/test_deferred_candle_rebuild.py`: 3 reine Tests (Schließregel, Sperrreihenfolge, Hash) und 10 Datenbanktests gegen die isolierte Test-Datenbank (`docs/ISOLATED_TEST_DATABASE.md`): Trockenlauf schreibt nichts; Nachbau erzeugt rohdatenbasierte Kerzen und schließt nur DEFERRED-Einträge; Live-Einträge, Cursor und `queue_depth` unverändert; Sperren durch Live-Arbeit, ID-nahe Lücke, zeitlich überlappende Lücke und Sicherheitsabstand; Ersetzen einer Teilkerze; fremde Worker unberührt; `--max-minutes` begrenzt älteste zuerst; Wiederholungslauf idempotent.
+- `tests/test_deferred_candle_rebuild.py`: 4 reine Tests (Schließregel, Sperrreihenfolge je Umfang, Hash) und 13 Datenbanktests (10 für `deferred`, 3 für `uncandled`: nur Minuten ohne Outbox-Arbeit, Fenstergrenzen und Idempotenz, Ersetzen einer offenen Kerze und Lückensperre) gegen die isolierte Test-Datenbank (`docs/ISOLATED_TEST_DATABASE.md`): Trockenlauf schreibt nichts; Nachbau erzeugt rohdatenbasierte Kerzen und schließt nur DEFERRED-Einträge; Live-Einträge, Cursor und `queue_depth` unverändert; Sperren durch Live-Arbeit, ID-nahe Lücke, zeitlich überlappende Lücke und Sicherheitsabstand; Ersetzen einer Teilkerze; fremde Worker unberührt; `--max-minutes` begrenzt älteste zuerst; Wiederholungslauf idempotent.
 - CLI-Probe gegen die Test-Datenbank am 2026-10-12: Trockenlauf (2 Minuten geplant, Exit 0), `--apply` (2 Kerzen, 4 Einträge, Exit 0, Beleg geschrieben), Wiederholung (0 geplant, Exit 0).
+
+## Zweiter Umfang: Minuten ohne jegliche Outbox-Einträge (B5, Teil 2)
+
+Rohtrades, die ohne Outbox-Eintrag nach `agg_trades` gelangen (promotete Offline-Kandidaten aus
+`scripts/promote_offline_raw_candidate.py`), bekommen vom Live-Worker nie eine Kerze. Dafür:
+
+```bash
+# Fenster ist Pflicht (Zeitscan über agg_trades); Ende ist höchstens die letzte abgeschlossene Minute
+.venv/bin/python scripts/rebuild_deferred_candles.py --symbol BTCUSDT --scope uncandled \
+    --from 2026-09-20T00:00:00Z --to 2026-10-01T00:00:00Z            # Trockenlauf
+.venv/bin/python scripts/rebuild_deferred_candles.py --symbol BTCUSDT --scope uncandled \
+    --from 2026-09-20T00:00:00Z --to 2026-10-01T00:00:00Z --apply    # schreibt nur candles
+```
+
+Geplant werden abgeschlossene Minuten im Fenster mit Rohtrades, aber ohne geschlossene 1m-Kerze
+(fehlend oder `closed=false`). Sperren wie oben, zusätzlich `DEFERRED_WORK_IN_MINUTE`: eine Minute
+mit DEFERRED-Einträgen gehört in den Umfang `deferred` und wird hier nicht doppelt bearbeitet.
+Geschrieben wird ausschließlich `candles`; es entsteht kein Outbox-Eintrag. Metrik
+`candles_uncandled_rebuilt_total`. Bibliothek: `inventory_uncandled`, `rebuild_uncandled_candles`.
+
+Reihenfolge auf dem Server: erst `tim_catchup.py --open-gaps`, dann `--scope deferred`, dann
+`--scope uncandled` über die bekannten Cutover-/Kandidaten-Zeiträume.
+
+## Index
+
+Migration `src/database/migrations/007_outbox_deferred_index.sql` (auch in `schema.sql`): Teilindex
+`ingestion_outbox_deferred_idx` auf `(worker_name, symbol, aggregate_trade_id) WHERE status='DEFERRED'`.
+Der bestehende Claim-Index deckt nur aktive Status; ohne den neuen Index war die Bestandsaufnahme
+ein sequentieller Scan über die ganze Outbox. Bestehende Installationen wenden die Migration an,
+`--init-schema` beim nächsten Start legt ihn ebenfalls idempotent an.
 
 ## Bekannte Grenzen
 
-- Die Bestandsaufnahme liest alle `DEFERRED`-Einträge des Symbols; der Teilindex der Outbox deckt nur aktive Status, auf dem Server ist das ein sequentieller Scan je Lauf. Für ein Offline-Werkzeug vertretbar; bei Millionen Einträgen einen Index auf `(worker_name, status, symbol)` erwägen.
-- Minuten, deren Rohtrades ohne Outbox-Einträge in `agg_trades` liegen (promotete Offline-Kandidaten), haben ebenfalls keine Kerzen und sind **nicht** Teil dieses Werkzeugs. Das ist der zweite Teil von B5.
+- Der Umfang `uncandled` scannt `agg_trades` nach Zeit; große Fenster dauern entsprechend. Fenster in Tages- oder Wochenschritten wählen.
 - Nicht gegen den Server `tim-core-01` gelaufen (war am 2026-10-12 offline). Vor dem ersten `--apply` dort: Trockenlauf lesen, `tim_catchup.py --open-gaps` vorher laufen lassen, damit möglichst wenige Minuten durch Lücken gesperrt bleiben.
