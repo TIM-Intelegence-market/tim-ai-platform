@@ -5,7 +5,7 @@ After=network-online.target postgresql.service
 
 [Service]
 Type=oneshot
-ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_db_backup.py backup --dir /var/backups/tim --keep-days 14
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_db_backup.py backup --dir /var/backups/tim --keep-days 14 --keep-count 3
 User=tim
 Group=tim
 WorkingDirectory=/opt/tim

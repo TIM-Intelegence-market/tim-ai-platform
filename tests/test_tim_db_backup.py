@@ -82,6 +82,81 @@ def test_prune_removes_old_dumps_but_keeps_the_newest_and_foreign_files(tmp_path
     assert backup.prune(lonely, 14, now) == [] and only.exists()
 
 
+def test_prune_by_count_keeps_the_newest_ones(tmp_path: Path) -> None:
+    now = datetime(2026, 10, 20, 3, 15, tzinfo=UTC)
+    made = [make_dump(tmp_path, now - timedelta(days=day)) for day in range(6)]
+    removed = backup.prune(tmp_path, 14, now, keep_count=3)
+    assert removed == sorted(path.name for path in made[3:])
+    assert [path.exists() for path in made] == [True, True, True, False, False, False]
+    assert backup.prune(tmp_path, 14, now, keep_count=1) == sorted(path.name for path in made[1:3])
+    assert made[0].exists()
+
+
+def fake_free(monkeypatch, start: int, per_removed: int, directory: Path) -> None:
+    """Free space grows by per_removed for each dump that disappeared since the call started."""
+    initial = len(backup.dumps(directory))
+    monkeypatch.setattr(backup, "free_bytes", lambda path: start + per_removed * (initial - len(backup.dumps(path))))
+
+
+def test_make_room_deletes_oldest_until_the_next_dump_fits(tmp_path: Path, monkeypatch) -> None:
+    now = datetime(2026, 10, 12, 3, 15, tzinfo=UTC)
+    made = [make_dump(tmp_path, now - timedelta(days=day), b"y" * 100) for day in range(5)]
+    fake_free(monkeypatch, 10, 100, tmp_path)
+    removed, needed, free = backup.make_room(tmp_path)
+    assert needed == 125 and free >= needed
+    assert removed == [made[4].name, made[3].name]
+    assert all(path.exists() for path in made[:3])
+
+
+def test_make_room_fails_fast_and_keeps_two_dumps(tmp_path: Path, monkeypatch) -> None:
+    now = datetime(2026, 10, 12, 3, 15, tzinfo=UTC)
+    made = [make_dump(tmp_path, now - timedelta(days=day), b"y" * 100) for day in range(4)]
+    fake_free(monkeypatch, 0, 10, tmp_path)
+    with pytest.raises(backup.BackupError, match="not enough space"):
+        backup.make_room(tmp_path)
+    assert [path.exists() for path in made] == [True, True, False, False]
+
+
+def test_full_disk_never_starts_pg_dump(tmp_path: Path, monkeypatch) -> None:
+    directory = tmp_path / "backups"
+    now = datetime(2026, 10, 12, 3, 15, tzinfo=UTC)
+    make_dump(directory, now - timedelta(days=1), b"y" * 100)
+    marker = tmp_path / "ran"
+    tool = fake_tool(tmp_path, "pg_dump", f"open({str(marker)!r}, 'w').write('x')")
+    monkeypatch.setattr(backup, "free_bytes", lambda path: 0)
+    with pytest.raises(backup.BackupError, match="not enough space"):
+        backup.backup(directory, 14, PARTS, pg_dump=tool)
+    assert not marker.exists()
+
+
+def test_backup_prunes_by_count_and_removes_stale_temporaries(tmp_path: Path) -> None:
+    directory = tmp_path / "backups"
+    now = backup.utc_now()
+    made = [make_dump(directory, now - timedelta(days=day + 1)) for day in range(4)]
+    stale = directory / ".tim_dump.abc123"
+    stale.write_bytes(b"partial")
+    old = (now - timedelta(hours=7)).timestamp()
+    os.utime(stale, (old, old))
+    fresh = directory / ".tim_dump.fresh1"
+    fresh.write_bytes(b"other run")
+    tool = fake_tool(tmp_path, "pg_dump", "open(sys.argv[sys.argv.index('--file') + 1], 'wb').write(b'PGDMP new')")
+    result = backup.backup(directory, 14, PARTS, keep_count=3, pg_dump=tool)
+    assert result["status"] == "PASS"
+    assert result["removed_temporaries"] == [stale.name] and fresh.exists() and not stale.exists()
+    assert result["pruned"] == sorted(path.name for path in made[2:])
+    assert len(backup.dumps(directory)) == 3
+
+
+def test_main_rejects_keep_count_below_one() -> None:
+    with pytest.raises(SystemExit):
+        backup.main(["backup", "--keep-count", "0"])
+
+
+def test_backup_unit_caps_the_number_of_dumps() -> None:
+    unit = (Path(backup.ROOT) / "ops/systemd/tim-backup.service").read_text()
+    assert "--keep-count 3" in unit
+
+
 def test_verified_newest_rejects_tampered_dump(tmp_path: Path) -> None:
     now = datetime(2026, 10, 20, tzinfo=UTC)
     make_dump(tmp_path, now - timedelta(days=1), b"older")

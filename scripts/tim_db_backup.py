@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Daily PostgreSQL backup and weekly restore test for the TIM server (OBSERVE only).
 
-backup        pg_dump -Fc into the backup directory, sha256 next to it, prune old dumps.
+backup        pg_dump -Fc into the backup directory, sha256 next to it, prune old dumps
+              (by age and by count; before the dump only as far as free space requires).
 restore-test  restore the newest verified dump into a scratch database, compare row
               counts with the live database up to the dump's newest timestamp, drop it.
 
@@ -17,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -33,6 +35,11 @@ UTC = timezone.utc
 DUMP_PATTERN = re.compile(r"^tim_(\d{8}T\d{6}Z)\.dump$")
 REPORT_PATH = ROOT / "data/operational/restore_test.json"
 BACKUP_REPORT_PATH = ROOT / "data/operational/backup_last_run.json"
+# A new dump needs room for about the size of the previous one plus growth.
+SPACE_FACTOR = 1.25
+# Before a new dump exists, space pruning never goes below this many verified-or-not old dumps.
+MIN_KEPT_BEFORE_DUMP = 2
+STALE_TEMPORARY = timedelta(hours=6)
 # (table, time column) pairs whose history only grows: rows are never deleted, but a gap backfill
 # may insert older rows after the dump, so live counts up to a cutoff can exceed the dump's.
 COMPARED_TABLES = (("candles", "open_time"), ("agg_trades", "trade_time"))
@@ -110,23 +117,80 @@ def dump_time(path: Path) -> datetime:
     return datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
 
 
-def prune(directory: Path, keep_days: int, now: datetime) -> list[str]:
-    """Delete TIM dumps older than keep_days, but never the newest one."""
+def remove_dump(path: Path) -> None:
+    path.unlink()
+    sidecar = path.with_name(path.name + ".sha256")
+    if sidecar.exists():
+        sidecar.unlink()
+
+
+def prune(directory: Path, keep_days: int, now: datetime, keep_count: int | None = None) -> list[str]:
+    """Delete TIM dumps older than keep_days or beyond the newest keep_count, but never the newest one."""
     removed: list[str] = []
     existing = dumps(directory)
-    for path in existing[:-1]:
-        if now - dump_time(path) > timedelta(days=keep_days):
-            path.unlink()
-            sidecar = path.with_name(path.name + ".sha256")
-            if sidecar.exists():
-                sidecar.unlink()
+    newest_first = list(reversed(existing))
+    for rank, path in enumerate(newest_first):
+        if rank == 0:
+            continue
+        too_old = now - dump_time(path) > timedelta(days=keep_days)
+        too_many = keep_count is not None and rank >= keep_count
+        if too_old or too_many:
+            remove_dump(path)
             removed.append(path.name)
-    return removed
+    return sorted(removed)
 
 
-def backup(directory: Path, keep_days: int, parts: dict[str, str], *, pg_dump: str = "pg_dump") -> dict[str, Any]:
+def free_bytes(directory: Path) -> int:
+    return shutil.disk_usage(directory).free
+
+
+def remove_stale_temporaries(directory: Path, now: datetime) -> list[str]:
+    """pg_dump runs killed hard (OOM, power loss) leave .tim_dump.* behind; the unit is a oneshot."""
+    removed: list[str] = []
+    for path in directory.iterdir():
+        if path.name.startswith(".tim_dump.") and path.is_file() and not path.is_symlink():
+            modified = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+            if now - modified > STALE_TEMPORARY:
+                path.unlink()
+                removed.append(path.name)
+    return sorted(removed)
+
+
+def make_room(directory: Path) -> tuple[list[str], int, int]:
+    """Free space for the next dump by deleting the oldest dumps, keeping MIN_KEPT_BEFORE_DUMP.
+
+    Returns (removed, needed, free). Raises BackupError before pg_dump starts when even that is
+    not enough, so a full disk fails fast with a readable reason instead of an ENOSPC mid-dump.
+    """
+    existing = dumps(directory)
+    needed = int(existing[-1].stat().st_size * SPACE_FACTOR) if existing else 0
+    removed: list[str] = []
+    free = free_bytes(directory)
+    while free < needed and len(existing) > MIN_KEPT_BEFORE_DUMP:
+        oldest = existing.pop(0)
+        remove_dump(oldest)
+        removed.append(oldest.name)
+        free = free_bytes(directory)
+    if free < needed:
+        raise BackupError(
+            f"not enough space in {directory}: need about {needed // 2**20} MiB, free {free // 2**20} MiB, "
+            f"{len(existing)} dumps kept"
+        )
+    return removed, needed, free
+
+
+def backup(
+    directory: Path,
+    keep_days: int,
+    parts: dict[str, str],
+    *,
+    keep_count: int | None = None,
+    pg_dump: str = "pg_dump",
+) -> dict[str, Any]:
     directory.mkdir(parents=True, exist_ok=True, mode=0o750)
     started = utc_now()
+    stale = remove_stale_temporaries(directory, started)
+    made_room, needed, free = make_room(directory)
     target = directory / f"tim_{stamp(started)}.dump"
     descriptor, temporary = tempfile.mkstemp(prefix=".tim_dump.", dir=directory)
     os.close(descriptor)
@@ -147,7 +211,11 @@ def backup(directory: Path, keep_days: int, parts: dict[str, str], *, pg_dump: s
         "dump": str(target),
         "bytes": target.stat().st_size,
         "sha256": checksum,
-        "pruned": prune(directory, keep_days, utc_now()),
+        "pruned": sorted(made_room + prune(directory, keep_days, utc_now(), keep_count)),
+        "pruned_for_space": made_room,
+        "removed_temporaries": stale,
+        "space_needed_bytes": needed,
+        "space_free_before_bytes": free,
         "trading_actions": 0,
     }
 
@@ -250,8 +318,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("command", choices=("backup", "restore-test"))
     parser.add_argument("--dir", type=Path, default=Path("/var/backups/tim"))
     parser.add_argument("--keep-days", type=int, default=14)
+    parser.add_argument("--keep-count", type=int, default=None,
+                        help="keep at most this many dumps (the newest is always kept)")
     parser.add_argument("--scratch-db", default="tim_restore_test")
     args = parser.parse_args(argv)
+    if args.keep_count is not None and args.keep_count < 1:
+        parser.error("--keep-count must be at least 1")
     report_path = BACKUP_REPORT_PATH if args.command == "backup" else REPORT_PATH
     try:
         from config.settings import settings
@@ -259,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
         database_url = settings.database_url
         parts = connection_parts(database_url)
         if args.command == "backup":
-            payload = backup(args.dir, args.keep_days, parts)
+            payload = backup(args.dir, args.keep_days, parts, keep_count=args.keep_count)
         else:
             payload = restore_test(args.dir, args.scratch_db, database_url, parts)
     except Exception as exc:  # fail closed and leave evidence, never a secret
