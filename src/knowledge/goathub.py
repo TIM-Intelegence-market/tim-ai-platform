@@ -42,6 +42,8 @@ class KnowledgeResult:
 
 class GoatHubKnowledge:
     def __init__(self, chunk_lines: int = 8) -> None:
+        if chunk_lines < 1:
+            raise ValueError("chunk_lines must be at least 1")
         self.chunk_lines = chunk_lines
         self.documents: dict[str, KnowledgeDocument] = {}
 
@@ -56,6 +58,8 @@ class GoatHubKnowledge:
         return True
 
     def search(self, query: str, limit: int = 10) -> list[KnowledgeResult]:
+        if limit < 1:
+            return []
         query_tokens = _tokens(query)
         if not query_tokens:
             return []
