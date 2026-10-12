@@ -199,7 +199,7 @@ class TaskRegistry:
             other = self.db.execute('SELECT task_id FROM engine_bindings WHERE fingerprint=? AND task_id!=?',
                                     (fingerprint, task_id)).fetchone()
             if other is not None:
-                raise EngineBindingConflict(f'identity {fingerprint[:16]} is already bound to engine task {other[0]}')
+                raise EngineBindingConflict(f'identity {fingerprint[:16]} is already bound to engine task {other[0]}; resolve with rebind_engine_task')
             self.db.execute('INSERT OR IGNORE INTO engine_bindings(task_id,fingerprint,canonical_key,created_at) VALUES(?,?,?,?)',
                             (task_id, fingerprint, canonical_key, self.clock()))
             bound = self.db.execute('SELECT fingerprint FROM engine_bindings WHERE task_id=?', (task_id,)).fetchone()[0]

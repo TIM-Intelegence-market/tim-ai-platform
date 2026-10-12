@@ -298,3 +298,11 @@ def test_a_registry_file_with_two_tasks_on_one_identity_is_reported_once_and_ans
             issue_for_engine_task(reopened, task)
     clean = TaskRegistry(str(tmp_path / 'clean.db'))
     assert not [i for i in clean.incidents() if i['reason'] == 'ENGINE_BINDING_DUPLICATE']
+
+
+def test_binding_conflict_explains_how_to_rebind(world):
+    from src.task_governance import EngineBindingConflict
+    _, reg, _, _, _ = world
+    reg.bind_engine_task('T-1', 'a' * 64, 'KEY')
+    with pytest.raises(EngineBindingConflict, match='rebind_engine_task'):
+        reg.bind_engine_task('T-2', 'a' * 64, 'KEY')
