@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — Kerzen für DEFERRED-Zeiträume nachbauen (B5, Teil 1)
+
+- Neu: `src/data_ingestion/deferred_candles.py` und
+  `scripts/rebuild_deferred_candles.py` bauen geschlossene 1m-Kerzen für
+  Minuten, deren `CANDLE_V1`-Outbox-Einträge beim Live-Cutover oder durch
+  Rückstau auf `DEFERRED` gesetzt wurden, allein aus den persistierten
+  Rohtrades und setzen genau diese Einträge auf `COMPLETED`
+  (`output_hash` deterministisch, `DEFERRED_CANDLE_REBUILD_V1`).
+- Trockenlauf ist Standard; je Minute eine Transaktion unter dem Outbox-Lock
+  mit erneuter Prüfung; gesperrt bleiben nicht abgeschlossene Minuten, Minuten
+  mit aktiver Live-Arbeit und Minuten, an die eine offene Lücke grenzt.
+  Cursor, Lückenregister, Live-Queue und Folgestufen werden nicht geschrieben.
+- Metriken `outbox_deferred_rebuilt_total`, `candles_deferred_rebuilt_total`;
+  Beleg unter `data/deferred_candle_rebuild/`. Doku:
+  `docs/DEFERRED_CANDLE_REBUILD.md`; Tests: `tests/test_deferred_candle_rebuild.py`.
+
 ## Unreleased — BTC Research Engine V1.1: ALFRED CPI live ingest & real-data verification
 
 - Read-only live ingest (`src/research_lab/external/live.py`,
