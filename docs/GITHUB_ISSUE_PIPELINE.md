@@ -7,6 +7,50 @@
 3. Claude Code edits source and tests in a restricted worktree without shell, GitHub, or MCP tools.
 4. The local runner rejects protected paths, checks the diff, commits and pushes the branch, then opens a draft PR.
 
+For a GitHub issue that the Mac Qwen worker cannot resolve, the Qwen blocker
+bridge writes a `TIM_BLOCKER_REQUEST` evidence comment on that same issue and
+adds `agent:escalate`. The comment contains a bounded JSON request with the
+task ID, observed blocker, local attempt and evidence. The handoff looks like:
+
+```markdown
+<!-- TIM_BLOCKER_REQUEST task_id=github-issue-42 -->
+## TIM local blocker request
+```json
+{"kind":"BLOCKER_REQUEST","task_id":"github-issue-42","blocker_reason":"test failed","evidence":["test log reference"]}
+```
+```
+
+The issue still needs `status:ready` and `priority:p0` or `priority:p1`; in pilot
+mode it also needs `agent:pilot`. A missing or invalid evidence comment blocks
+the run. The Qwen worker does not add `status:ready` or a priority itself.
+Codex analyzes the failed attempt before Claude edits. Claude receives the
+analysis and must explain any change to an approach that already failed. The
+runner opens a draft PR for review; it does not merge or deploy it. The local
+AI's issue text is untrusted evidence, not permission to widen scope.
+
+`TIM_CODEX_MODEL` selects the CLI model for the runner. The default is
+`gpt-5.6-luna`, which completed a read-only live probe on the maintainer's Mac
+on 10 October 2026. Each target machine must pass its own probe before the
+worker is enabled. The desktop's global model setting is not changed.
+
+ChatGPT cannot currently be used as an unattended server fallback: this
+repository has no verified server-side ChatGPT execution channel for this
+pipeline. A human can take over a blocked issue in ChatGPT, attach the result
+and evidence to the same issue, then return it to `status:ready`. The automated
+fallback implemented here uses Claude Code. Server installation remains pending
+while the server is offline; this macOS LaunchAgent documentation is not a
+server deployment procedure.
+
+Before a Debian server pilot, install the repository in an isolated checkout,
+use its `.venv` Python, and give the service a private state directory. Verify
+on that server that `codex exec --model "$TIM_CODEX_MODEL"` completes a read-only
+probe and `claude auth status` reports an active login. Give GitHub writes only
+to the configured worker identity, with neither admin nor maintain permission.
+Keep the service in pilot mode until a local-AI escalation issue produces a
+validated draft PR and the server's restart, lock, credential isolation and
+rollback checks have passed. No server service or schedule is installed by
+this change.
+
 It never merges PRs, closes issues, deletes history, or stores credentials in the repository. Merging and publishing to `platform-main` require separate human review and approval.
 
 ## Merge safety boundary

@@ -68,6 +68,7 @@ def test_analysis_command_uses_only_supported_exec_options(tmp_path):
                 return "abc123"
             if args[0] == "codex":
                 assert "-a" not in args
+                assert args[args.index("--model") + 1] == "gpt-5.6-luna"
                 output = Path(args[args.index("--output-last-message") + 1])
                 output.parent.mkdir(parents=True, exist_ok=True)
                 output.write_text("## Problem\nTest", encoding="utf-8")
@@ -76,6 +77,25 @@ def test_analysis_command_uses_only_supported_exec_options(tmp_path):
 
     pipeline = Pipeline(Path("."), tmp_path, Runner())
     assert pipeline.run_analysis(Candidate(1, "Pilot", "", frozenset(), "", ""), "run", "origin/platform-main") == "## Problem\nTest"
+
+
+def test_local_ai_escalation_requires_failure_evidence():
+    label_set = ("priority:p1", "status:ready", "agent:escalate")
+    candidate = issue(11, labels=label_set)
+    assert choose_candidate([candidate], mode="production").number == 11
+    class Runner(CommandRunner):
+        def run(self, args, **_):
+            if list(args[:3]) == ["gh", "issue", "view"]:
+                return json.dumps({"comments": [{"body": "<!-- TIM_BLOCKER_REQUEST task_id=github-issue-11 -->\n"
+                                     "```json\n" + json.dumps({"kind": "BLOCKER_REQUEST", "task_id": "github-issue-11",
+                                                               "blocker_reason": "test failed", "evidence": ["pytest output"]})
+                                     + "\n```"}]})
+            return ""
+    evidence = Pipeline(Path("."), Path("."), Runner()).local_blocker_evidence(11)
+    assert "test failed" in evidence
+    prompt = analysis_prompt(Candidate(11, "Failure", evidence, frozenset(label_set), "", ""), "abc")
+    assert "Prior local attempt" in prompt
+    assert "Do not repeat a failed approach" in prompt
 
 
 def test_recovery_creates_a_draft_only_for_an_existing_remote_branch(tmp_path):
