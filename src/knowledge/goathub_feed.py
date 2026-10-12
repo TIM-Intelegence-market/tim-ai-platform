@@ -17,8 +17,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -202,13 +203,43 @@ class CommunityCall:
         }
 
 
+# Community posts name any coin ("long on movr", "Long HNT"); Broncx' parser only knows a few majors.
+_TICKER_AFTER_DIRECTION = re.compile(
+    r"\b(?:long|longing|short|shorting|buy|buying|sell|selling)\s+(?:on\s+|a\s+|some\s+)?\$?([A-Za-z][A-Za-z0-9]{1,9})\b", re.IGNORECASE)
+_TICKER_PAIR = re.compile(r"\b([A-Za-z][A-Za-z0-9]{1,9})\s*/\s*USDT?\b", re.IGNORECASE)
+_NOT_TICKERS = {
+    "from", "here", "now", "the", "it", "this", "that", "more", "before", "after", "on", "at", "with", "and", "or",
+    "position", "positions", "weekly", "daily", "spot", "futures", "dip", "dips", "every", "all", "some", "zone",
+    "breakout", "entry", "only", "again", "too", "back", "what", "whatever", "when", "if", "is", "in", "for", "you",
+}
+# "2-5% of account", "0.5-1% each 5% dip": sizes and percentages, never price levels.
+_PERCENT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:-|to)\s*\d+(?:[.,]\d+)?\s*%|\d+(?:[.,]\d+)?\s*%")
+# "SL on 1.5$" means the same as "SL at 1.5".
+_SL_ON = re.compile(r"\b(sl|stop(?:\s?loss)?)\s+on\b", re.IGNORECASE)
+# "Pull SL little lower to 0.48" moves the stop; the number is a stop, not a target.
+_SL_TO = re.compile(r"\b(sl|stop(?:\s?loss)?)\b[^\n.\d]{0,30}?\bto\s+(?=\d)", re.IGNORECASE)
+
+
+def _community_symbol(text: str) -> str | None:
+    """One coin the call is about; a list of several coins names no single symbol."""
+    found = {match.group(1).upper() for pattern in (_TICKER_AFTER_DIRECTION, _TICKER_PAIR) for match in pattern.finditer(text)
+             if match.group(1).lower() not in _NOT_TICKERS}
+    return found.pop() if len(found) == 1 else None
+
+
 def extract_call(message: GoatHubMessage, reference_price: Decimal | None = None) -> CommunityCall | None:
     """A call is a message that states a current direction; anything else is conversation."""
     if not message.content.strip():
         return None
-    guidance = parse_guidance(message.content, reference_price)
+    text = _SL_TO.sub(r"\1 at ", _SL_ON.sub(r"\1 at", _PERCENT.sub(" ", message.content)))
+    guidance = parse_guidance(text, reference_price)
     if guidance.bias not in {"SHORT", "LONG"} or guidance.direction_withdrawn:
         return None
+    coin_list = sum(1 for line in text.splitlines() if re.fullmatch(r"\s*\$?[A-Za-z][A-Za-z0-9]{1,9}\s*", line)) >= 3
+    if coin_list:
+        guidance = replace(guidance, symbol=None)  # a list of coins names no single symbol
+    elif guidance.symbol is None:
+        guidance = replace(guidance, symbol=_community_symbol(text))
     has_level = any(level.role != "STOP" for level in guidance.levels)
     has_stop = bool(guidance.invalidation) or any(level.role == "STOP" for level in guidance.levels)
     reasons = [f"Richtung {guidance.bias}"]
@@ -222,7 +253,7 @@ def extract_call(message: GoatHubMessage, reference_price: Decimal | None = None
         reasons.append(f"{message.reactions} Reaktionen")
     if guidance.symbol and has_level and has_stop:
         grade = "A"
-    elif guidance.symbol and has_level:
+    elif guidance.symbol and (has_level or has_stop):
         grade = "B"
     else:
         grade = "C"
@@ -262,7 +293,7 @@ def _call_line(call: CommunityCall) -> str:
     levels = ", ".join(f"{level.role} {level.raw if level.ambiguous else level.value}" for level in guidance.levels) or "-"
     stop = "; ".join(guidance.invalidation) or "-"
     first = call.message.content.strip().splitlines()[0][:160]
-    return (f"| {call.message.posted_at.strftime('%Y-%m-%d %H:%M')} | {call.message.author_label} | {call.grade} | "
+    return (f"| {call.message.posted_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} | {call.message.author_label} | {call.grade} | "
             f"{guidance.bias} {guidance.symbol or '?'}{' ' + guidance.timeframe if guidance.timeframe else ''} | {levels} | {stop} | "
             f"{first.replace('|', '/')} |")
 
@@ -276,7 +307,7 @@ def render_channel_markdown(messages: Sequence[GoatHubMessage], generated_at: da
         f"Stand: {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC. "
         f"{len(messages)} Nachrichten, {len(calls)} gute Calls (Note A/B).",
         "",
-        "Community-Meinung, nur Beobachtung: kein Call ist eine Bestätigung oder ein Auftrag. "
+        "Alle Zeiten UTC. Community-Meinung, nur Beobachtung: kein Call ist eine Bestätigung oder ein Auftrag. "
         "Die Note sagt nur, wie vollständig ein Call geschrieben ist, nicht ob er stimmt.",
         "",
         "## Gute Calls",
@@ -315,7 +346,7 @@ def render_summary_markdown(messages: Sequence[GoatHubMessage], generated_at: da
     authors: dict[str, int] = defaultdict(int)
     for message in messages:
         authors[message.author_label] += 1
-    newest = messages[-1].posted_at.strftime("%Y-%m-%d %H:%M") if messages else "-"
+    newest = messages[-1].posted_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M") if messages else "-"
     head = [
         "# GoatHub-Kanal (Kurzfassung)",
         "",
@@ -331,7 +362,7 @@ def render_summary_markdown(messages: Sequence[GoatHubMessage], generated_at: da
     for call in calls:
         guidance = call.guidance
         levels = ", ".join(level.raw if level.ambiguous else str(level.value) for level in guidance.levels) or "-"
-        line = (f"- {call.message.posted_at.strftime('%m-%d %H:%M')} {call.message.author_label} [{call.grade}] "
+        line = (f"- {call.message.posted_at.astimezone(timezone.utc).strftime('%m-%d %H:%M')} {call.message.author_label} [{call.grade}] "
                 f"{guidance.bias} {guidance.symbol or '?'} Level {levels}: \"{call.message.content.strip().splitlines()[0][:100]}\"")
         if len((text + "\n".join(body + [line]) + "\n").encode("utf-8")) > limit_bytes:
             break
@@ -347,6 +378,7 @@ def import_screen_readings(store: GoatHubFeedStore, payload: Sequence[dict[str, 
         posted_at = datetime.fromisoformat(str(item["posted_at"]))
         if posted_at.tzinfo is None:
             raise ValueError("posted_at must carry a time zone")
+        posted_at = posted_at.astimezone(timezone.utc)
         channel_id = str(item.get("channel_id") or "screen")
         author = str(item.get("author") or "")
         content = str(item.get("content") or "")

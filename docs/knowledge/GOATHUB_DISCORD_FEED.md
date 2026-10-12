@@ -24,12 +24,14 @@ der Broncx' Beiträge aus The Goat Hub gewichtet. Dieser Feed nimmt den ganzen K
 
 Ein Call ist eine Nachricht mit aktueller Richtung (LONG/SHORT). Verneinte oder geschlossene
 Positionen („closed my short“) und Squeeze-Wörter zählen nicht. Die Erkennung nutzt dieselben
-Muster wie der Broncx-Feed.
+Muster wie der Broncx-Feed und erkennt zusätzlich jede Coin nach „long/short/buy“ oder als Paar
+(„MOVR/USDT“). Prozent- und Größenangaben („2-5% of account“) gelten nie als Level, „SL on 1.5$“
+und „SL … to 0.48“ als Stop. Eine Liste mehrerer Coins nennt kein einzelnes Symbol und bleibt Note C.
 
 | Note | Bedeutung |
 | --- | --- |
 | A | Richtung, Symbol, Level und Invalidierung oder Stop |
-| B | Richtung, Symbol und Level |
+| B | Richtung, Symbol und Level oder Stop (z. B. „Long HNT from here with SL 0.5“) |
 | C | der Rest (kein Symbol oder kein Level), gilt nicht als guter Call |
 
 Die Note sagt nur, wie vollständig ein Call geschrieben ist, nicht ob er stimmt. Reaktionen
@@ -87,6 +89,13 @@ Einstellbar per Umgebungsvariable: `TIM_GOATHUB_FEED_DIR`, `TIM_GOATHUB_DISCORD_
 Wie beim Broncx-Feed: `401` Geheimnis falsch, `403` Bot fehlt das Leserecht im Kanal, `404` Kanal-ID
 falsch oder Bot nicht im Server, `empty=… hint` Message Content Intent fehlt, `rejected_author`
 Nachricht nicht von einer eingetragenen Nutzer-ID (nur Modus `forward`).
+
+## Lesen am Bildschirm
+
+Ohne Bot im GoatHub-Server liest Claude den Kanal über die Bildschirmfreigabe auf dem Mac
+(Discord-App oder ein eigenes Chrome-Fenster). Das Gelesene ist eine Abschrift, keine Kopie:
+`import-screen <datei.json>` speichert es mit Quelle `discord_screen`, Kennung aus Inhalts-Hash,
+dann folgt der Export. Zahlen und Coin-Namen vor einer Entscheidung am Original prüfen.
 
 ## Grenzen
 

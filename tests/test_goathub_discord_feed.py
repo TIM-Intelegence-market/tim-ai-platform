@@ -261,3 +261,16 @@ def test_screen_readings_import_once(tmp_path: Path) -> None:
     assert stored.source == "discord_screen" and stored.author_label == "goatfather"
     with pytest.raises(ValueError):
         import_screen_readings(store, [{**payload[0], "posted_at": "2026-10-12T14:47:00"}], NOW)
+
+
+@pytest.mark.parametrize(("text", "grade", "symbol", "levels"), [
+    ("Risky trade:\n\nLong HNT from here with SL 0.5\n5% of account", "B", "HNT", [("STOP", "0.5")]),
+    ("Gonna open a long on movr, with 0.5% of my account. SL on 1.5$", "B", "MOVR", [("STOP", "1.5")]),
+    ("Pull SL little lower to 0.48, long HNT", "B", "HNT", [("STOP", "0.48")]),
+    ("Risky plays: buy now, for 2-5% of account per coin, then buy 0.5-1% each 5% dip.\nNear\nFet\nSol\nBtc", "C", None, []),
+])
+def test_community_calls_name_any_coin_and_ignore_sizes(text: str, grade: str, symbol: str | None, levels: list) -> None:
+    call = extract_call(message("1", text))
+    assert call is not None and call.grade == grade
+    assert call.guidance.symbol == symbol
+    assert [(level.role, str(level.value)) for level in call.guidance.levels] == levels
