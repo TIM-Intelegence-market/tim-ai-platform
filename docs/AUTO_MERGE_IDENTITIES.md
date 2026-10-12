@@ -78,3 +78,13 @@ und jeden lokal abgelegten Schlüssel lesen, und damit mit Inhaber- oder Admin-R
 
 Der Nachweis steht im Pilot ([`AUTO_MERGE_ROLLOUT.md`](AUTO_MERGE_ROLLOUT.md), Abschnitt 4a). Fällt eine Prüfung durch, bleibt der
 LaunchAgent aus und es wird nichts aktiviert. Eingerichtet hat Claude diesen Benutzer nicht; die Einrichtung ist Handarbeit des Inhabers.
+
+## 6. Action-Pinning (2026-10-06)
+
+**Status:** `actions/checkout@v4` und `actions/create-github-app-token@v1` sind jetzt auf spezifische SHAs gepinnt:
+- `actions/checkout@11d5960a326750d5838078e36cf38b85af677262` (v4, 2024-09-26)
+- `actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547` (v1, 2024-10-22)
+
+Beide Commits sind unveränderlich und wurden offline geprüft (lib/main.js, lib/post.js, action.yml, Node20 runtime). Das Token wird maskiert und ist auf das aktuelle Repository beschränkt (kein `owner` Parameter). Post-Revoke ist best-effort mit Warnung, keine Garantie.
+
+Prüfgrenzen: Token-Step braucht `TIM_MERGER_APP_ID` und `TIM_MERGER_APP_PRIVATE_KEY` (bleiben bis Aktivierung ungesetzt). Keine Credentials in Workflows.
