@@ -497,7 +497,7 @@ uninstall_checkup() {
       echo "removed $DROPIN_DIR/$dropin"
     fi
   done
-  if [[ -d "$DROPIN_DIR" && ! -L "$DROPIN_DIR" ]]; then rmdir --ignore-fail-on-non-empty -- "$DROPIN_DIR"; fi
+  if [[ -d "$DROPIN_DIR" && ! -L "$DROPIN_DIR" ]]; then rmdir "$DROPIN_DIR" 2>/dev/null || true; fi  # empty only; GNU --ignore-fail-on-non-empty is not portable
   systemctl daemon-reload
   if (( removed )); then
     # Back to the listener and limits from before the drop-in (compare with the saved copy below).
