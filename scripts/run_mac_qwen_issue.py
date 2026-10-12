@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -19,9 +21,14 @@ if str(ROOT) not in sys.path:
 
 from scripts.github_issue_pipeline import DirectoryLock, Pipeline, PipelineError, WorkerIdentity
 from src.local_first.github_issue_queue import build_task, select_ready_issue
+from src.local_first import issue_triage
+from src.local_first.issue_triage import IssueLedger, attach_worker_contract, contract_hash
 
 REPO = "TIM-Intelegence-market/tim-ai-platform"
 WORKER_LOGIN = "apoman74-art"
+WORKER_BRANCH = re.compile(r"codex/issue-([1-9][0-9]*)-qwen")
+SELF_UPDATED_EXIT = 3
+STALE_PR_SECONDS = 6 * 3600
 
 
 def worker_identity(config_dir: Path) -> WorkerIdentity:
@@ -129,20 +136,179 @@ def _merge_when_ready(pipeline: Pipeline, number: int, branch: str, head: str,
     raise PipelineError("required GitHub checks did not make the PR mergeable in time")
 
 
+def self_update(pipeline: Pipeline) -> str | None:
+    """Fast-forward the worker checkout to origin/platform-main when it is clean.
+
+    Returns a log line when the checkout moved; the supervisor then restarts on the new code.
+    """
+    pipeline.command("git", "fetch", "--quiet", "origin", "platform-main")
+    head = pipeline.command("git", "rev-parse", "HEAD")
+    target = pipeline.command("git", "rev-parse", "origin/platform-main")
+    if head == target:
+        return None
+    if pipeline.command("git", "status", "--porcelain", "--untracked-files=no"):
+        return None
+    try:
+        pipeline.command("git", "merge-base", "--is-ancestor", "HEAD", "origin/platform-main")
+    except PipelineError:
+        return None
+    pipeline.command("git", "checkout", "--quiet", "--detach", "origin/platform-main")
+    return f"TIM_SELF_UPDATED {head[:12]} -> {target[:12]}"
+
+
+def _ensure_labels(pipeline: Pipeline) -> None:
+    existing = {item.get("name") for item in json.loads(
+        pipeline.github("label", "list", "--limit", "500", "--json", "name") or "[]")}
+    for name, (color, description) in issue_triage.WORKER_LABELS.items():
+        if name not in existing:
+            pipeline.github("label", "create", name, "--color", color, "--description", description)
+
+
+def _block_issue(pipeline: Pipeline, ledger: IssueLedger, number: int, errors: list[str]) -> None:
+    """Stop automation on one issue visibly; the local ledger also skips it if GitHub refuses."""
+    try:
+        _ensure_labels(pipeline)
+        pipeline.github("issue", "edit", str(number), "--add-label", issue_triage.LABEL_BLOCKED)
+    except PipelineError:
+        return
+    ledger.mark_blocked(number)
+    try:
+        pipeline.github("issue", "comment", str(number), "--body", issue_triage.blocked_comment(errors))
+    except PipelineError:
+        pass
+
+
+def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool,
+                         now: float | None = None) -> set[int]:
+    """Finish or retire the worker's own open PRs; return the issue numbers they cover."""
+    prs = json.loads(pipeline.github(
+        "pr", "list", "--state", "open", "--author", WORKER_LOGIN, "--limit", "100", "--json",
+        "number,headRefName,headRefOid,baseRefName,mergeStateStatus,createdAt,author"))
+    covered: set[int] = set()
+    now = time.time() if now is None else now
+    for pr in prs if isinstance(prs, list) else []:
+        match = WORKER_BRANCH.fullmatch(str(pr.get("headRefName", "")))
+        if match is None or pr.get("baseRefName") != "platform-main":
+            continue
+        issue = int(match.group(1))
+        covered.add(issue)
+        number, status = str(pr.get("number")), pr.get("mergeStateStatus")
+        try:
+            created = calendar.timegm(time.strptime(str(pr.get("createdAt")), "%Y-%m-%dT%H:%M:%SZ"))
+        except ValueError:
+            created = now
+        try:
+            if merge and status == "CLEAN":
+                pipeline.github("pr", "merge", number, "--squash")
+            elif merge and status == "BEHIND":
+                pipeline.github("pr", "update-branch", number)
+            elif merge and (status == "DIRTY" or now - created > STALE_PR_SECONDS):
+                reason = f"worker PR #{number} closed: {status or 'unknown'} after {int((now - created) // 60)} min"
+                pipeline.github("pr", "close", number, "--delete-branch", "--comment",
+                                "Der Mac-Qwen-Worker schließt diesen PR und versucht es neu "
+                                f"(Zustand {status}).")
+                covered.discard(issue)
+                contract = (ledger.entry(issue).get("attempts") or {}).get("contract")
+                if contract and ledger.record_failure(issue, contract, reason):
+                    _block_issue(pipeline, ledger, issue, ledger.errors(issue))
+        except PipelineError as exc:
+            # One stuck PR must not stop the queue; the next poll looks at it again.
+            print(f"worker PR #{number} maintenance failed: {str(exc)[:200]}", file=sys.stderr)
+    return covered
+
+
+def _clear_leftovers(pipeline: Pipeline, state_dir: Path, number: int, branch: str,
+                     worktree: Path, attempt: int) -> None:
+    """Keep the evidence of a failed attempt, then remove its worktree and branches."""
+    if worktree.exists():
+        evidence = worktree / ".tim/local-first"
+        if evidence.is_dir():
+            shutil.copytree(evidence, state_dir / "runs" / f"issue-{number}-before-attempt-{attempt}",
+                            dirs_exist_ok=True, symlinks=True)
+        pipeline.command("git", "worktree", "remove", "--force", str(worktree))
+    pipeline.command("git", "worktree", "prune")
+    if pipeline.command("git", "branch", "--list", branch).strip():
+        pipeline.command("git", "branch", "-D", branch)
+    if pipeline.command("git", "ls-remote", "--heads", "origin", branch).strip():
+        pipeline.command("git", "push", "--no-verify", "origin", "--delete", branch)
+
+
+def _triage_one(pipeline: Pipeline, ledger: IssueLedger, issues: list, repo_root: Path) -> str:
+    candidates = issue_triage.triage_candidates(issues, ledger)
+    if not candidates:
+        return "No eligible Mac Qwen issue; nothing left to triage."
+    if not ledger.triage_budget_left():
+        return "No eligible Mac Qwen issue; daily triage budget used."
+    issue = candidates[0]
+    number = issue["number"]
+    try:
+        raw = issue_triage.ask_claude(issue_triage.triage_prompt(issue), repo_root)
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        ledger.record_triage(issue, f"error:{type(exc).__name__}")
+        return f"Triage of #{number} failed: {type(exc).__name__}"
+    result = issue_triage.parse_triage(raw, issue)
+    ledger.record_triage(issue, result["decision"])
+    _ensure_labels(pipeline)
+    if result["decision"] == "ready":
+        pipeline.github("issue", "comment", str(number), "--body", issue_triage.ready_comment(result))
+        pipeline.github("issue", "edit", str(number), "--add-label",
+                        f"{issue_triage.LABEL_READY},status:ready,priority:{result['priority']}")
+        return f"Triage: #{number} prepared for the Mac Qwen worker."
+    pipeline.github("issue", "comment", str(number), "--body", issue_triage.skip_comment(result))
+    pipeline.github("issue", "edit", str(number), "--add-label", issue_triage.LABEL_NOT_SUITABLE)
+    return f"Triage: #{number} is not a Mac Qwen task: {result['reason']}"
+
+
+def _select(pipeline: Pipeline, ledger: IssueLedger, issues: list, *, pilot_issue: int | None,
+            skip: set[int], dry_run: bool) -> tuple[dict, dict] | None:
+    """Pick the next workable issue; a broken contract or used-up attempts never block the queue."""
+    while True:
+        issue = select_ready_issue(issues, only_number=pilot_issue, skip=skip)
+        if issue is None:
+            return None
+        number = issue["number"]
+        try:
+            task = build_task(issue)
+        except ValueError as exc:
+            skip.add(number)
+            if not dry_run and not ledger.entry(number).get("blocked"):
+                ledger.exhaust(number, issue_triage.body_hash(issue), f"invalid contract: {exc}")
+                _block_issue(pipeline, ledger, number, ledger.errors(number))
+            continue
+        if ledger.exhausted(number, contract_hash(task)):
+            skip.add(number)
+            if not dry_run and not ledger.entry(number).get("blocked"):
+                _block_issue(pipeline, ledger, number, ledger.errors(number))
+            continue
+        return issue, task
+
+
 def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
                 codex_fallback: bool, merge: bool, dry_run: bool = False,
-                claude_fallback: bool = False) -> str:
+                claude_fallback: bool = False, triage: bool = False,
+                update: bool = False) -> str:
     pipeline.verify_worker_identity()
     if pipeline.repository_slug() != REPO:
         raise PipelineError("unexpected TIM repository")
-    issues = json.loads(pipeline.github("issue", "list", "--state", "open", "--limit", "1000",
-                                       "--json", "number,title,body,labels,updatedAt,url,state"))
+    if update and not dry_run:
+        moved = self_update(pipeline)
+        if moved:
+            return moved
+    issues = json.loads(pipeline.github("issue", "list", "--state", "open", "--limit", "1000", "--json",
+                                       "number,title,body,labels,updatedAt,url,state,author,comments"))
     if not isinstance(issues, list):
         raise PipelineError("GitHub issue list is invalid")
-    issue = select_ready_issue(issues, only_number=pilot_issue)
-    if issue is None:
+    issues = [attach_worker_contract(issue, WORKER_LOGIN) if isinstance(issue, dict) else issue
+              for issue in issues]
+    ledger = IssueLedger(state_dir / "issue-ledger.json")
+    ledger.reconcile(issues)
+    skip = set() if dry_run else _maintain_worker_prs(pipeline, ledger, merge=merge)
+    selected = _select(pipeline, ledger, issues, pilot_issue=pilot_issue, skip=skip, dry_run=dry_run)
+    if selected is None:
+        if triage and pilot_issue is None and not dry_run:
+            return _triage_one(pipeline, ledger, issues, pipeline.repository)
         return "No eligible Mac Qwen issue."
-    task = build_task(issue)
+    issue, task = selected
     number = task["issue_number"]
     if dry_run:
         return f"Eligible Mac Qwen issue #{number}: {issue.get('title', '')}"
@@ -151,37 +317,47 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
         raise PipelineError("unexpected TIM base branch")
     branch = f"codex/issue-{number}-qwen"
     worktree = state_dir / "worktrees" / f"issue-{number}-qwen"
-    if worktree.exists() or pipeline.command("git", "branch", "--list", branch).strip():
-        raise PipelineError("issue worktree or branch already exists; inspect the previous run")
-    worktree.parent.mkdir(parents=True, exist_ok=True)
-    pipeline.command("git", "worktree", "add", "-b", branch, str(worktree), base)
-    gitdir = Path(pipeline.command("git", "rev-parse", "--absolute-git-dir", cwd=worktree))
-    outcome = _run_local_task(worktree, task, codex_fallback=codex_fallback,
-                              claude_fallback=claude_fallback)
-    paths = _assert_task_diff(pipeline, worktree, gitdir, task)
-    pipeline.worktree_git(worktree, gitdir, "diff", "HEAD", "--check")
-    pipeline.worktree_git(worktree, gitdir, "add", "--", *paths)
-    pipeline.worktree_git(worktree, gitdir, "-c", f"user.name={WORKER_LOGIN}",
-                          "-c", f"user.email={WORKER_LOGIN}@users.noreply.github.com",
-                          "commit", "--no-verify", "-m", f"fix(issue-{number}): Mac Qwen repair")
-    head = pipeline.worktree_git(worktree, gitdir, "rev-parse", "HEAD")
-    pipeline.worktree_git(worktree, gitdir, "push", "--no-verify", "origin", branch)
-    body = (f"Closes #{number}\n\nMac Qwen issue repair.\n\n"
-            f"Local acceptance: {outcome['acceptance']['status']}\n"
-            f"Implementation provider: {outcome['result'].get('fallback_provider') or outcome['result'].get('provider')}\n"
-            f"Changed paths: {', '.join(paths)}\n\n"
-            "GitHub required checks and the repository ruleset control merging.\n")
-    body_path = state_dir / "runs" / f"issue-{number}-pr.md"
-    body_path.parent.mkdir(parents=True, exist_ok=True)
-    body_path.write_text(body, encoding="utf-8")
-    url = pipeline.github("pr", "create", "--base", "platform-main", "--head", branch,
-                          "--title", f"fix(issue-{number}): {str(issue.get('title', 'Mac Qwen repair'))[:90]}",
-                          "--body-file", str(body_path))
-    match = re.search(r"/pull/([1-9][0-9]*)", url)
-    if match is None:
-        raise PipelineError("GitHub did not return a pull request URL")
+    digest = contract_hash(task)
+    attempt = ledger.start_attempt(number, digest)
+    try:
+        _clear_leftovers(pipeline, state_dir, number, branch, worktree, attempt)
+        worktree.parent.mkdir(parents=True, exist_ok=True)
+        pipeline.command("git", "worktree", "add", "-b", branch, str(worktree), base)
+        gitdir = Path(pipeline.command("git", "rev-parse", "--absolute-git-dir", cwd=worktree))
+        outcome = _run_local_task(worktree, task, codex_fallback=codex_fallback,
+                                  claude_fallback=claude_fallback)
+        paths = _assert_task_diff(pipeline, worktree, gitdir, task)
+        pipeline.worktree_git(worktree, gitdir, "diff", "HEAD", "--check")
+        pipeline.worktree_git(worktree, gitdir, "add", "--", *paths)
+        pipeline.worktree_git(worktree, gitdir, "-c", f"user.name={WORKER_LOGIN}",
+                              "-c", f"user.email={WORKER_LOGIN}@users.noreply.github.com",
+                              "commit", "--no-verify", "-m", f"fix(issue-{number}): Mac Qwen repair")
+        head = pipeline.worktree_git(worktree, gitdir, "rev-parse", "HEAD")
+        pipeline.worktree_git(worktree, gitdir, "push", "--no-verify", "origin", branch)
+        body = (f"Closes #{number}\n\nMac Qwen issue repair.\n\n"
+                f"Local acceptance: {outcome['acceptance']['status']}\n"
+                f"Implementation provider: {outcome['result'].get('fallback_provider') or outcome['result'].get('provider')}\n"
+                f"Changed paths: {', '.join(paths)}\n\n"
+                "GitHub required checks and the repository ruleset control merging.\n")
+        body_path = state_dir / "runs" / f"issue-{number}-pr.md"
+        body_path.parent.mkdir(parents=True, exist_ok=True)
+        body_path.write_text(body, encoding="utf-8")
+        url = pipeline.github("pr", "create", "--base", "platform-main", "--head", branch,
+                              "--title", f"fix(issue-{number}): {str(issue.get('title', 'Mac Qwen repair'))[:90]}",
+                              "--body-file", str(body_path))
+        match = re.search(r"/pull/([1-9][0-9]*)", url)
+        if match is None:
+            raise PipelineError("GitHub did not return a pull request URL")
+    except (PipelineError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        if ledger.record_failure(number, digest, str(exc)):
+            _block_issue(pipeline, ledger, number, ledger.errors(number))
+        raise
     if merge:
-        _merge_when_ready(pipeline, int(match.group(1)), branch, head)
+        try:
+            _merge_when_ready(pipeline, int(match.group(1)), branch, head)
+        except PipelineError as exc:
+            # The PR stays open; the next poll merges, updates or retires it.
+            return f"{url} (merge pending: {str(exc)[:120]})"
     return url
 
 
@@ -194,16 +370,21 @@ def main() -> int:
     parser.add_argument("--no-claude-fallback", action="store_true")
     parser.add_argument("--merge", action="store_true", help="Wait for GitHub gates, then squash merge as the worker")
     parser.add_argument("--dry-run", action="store_true", help="Check identity and issue contract without writing")
+    parser.add_argument("--triage", action="store_true",
+                        help="When nothing is ready, let Claude triage one open issue into a contract")
+    parser.add_argument("--self-update", action="store_true",
+                        help="Fast-forward a clean worker checkout to origin/platform-main first")
     args = parser.parse_args()
     try:
         with DirectoryLock(args.state_dir.expanduser() / "run.lock"):
             worker = worker_identity(Path.home() / ".config/gh-tim-mac-worker")
             pipeline = Pipeline(args.repository, args.state_dir, worker=worker)
-            print(process_one(pipeline, args.state_dir.expanduser(), pilot_issue=args.pilot_issue,
-                              codex_fallback=not args.no_codex_fallback,
-                              claude_fallback=not args.no_claude_fallback, merge=args.merge,
-                              dry_run=args.dry_run))
-        return 0
+            message = process_one(pipeline, args.state_dir.expanduser(), pilot_issue=args.pilot_issue,
+                                  codex_fallback=not args.no_codex_fallback,
+                                  claude_fallback=not args.no_claude_fallback, merge=args.merge,
+                                  dry_run=args.dry_run, triage=args.triage, update=args.self_update)
+            print(message)
+        return SELF_UPDATED_EXIT if message.startswith("TIM_SELF_UPDATED") else 0
     except (PipelineError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         print(f"Mac Qwen issue worker stopped safely: {str(exc)[:300]}", file=sys.stderr)
         return 2

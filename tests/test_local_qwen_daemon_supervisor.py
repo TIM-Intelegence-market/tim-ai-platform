@@ -133,9 +133,37 @@ def test_github_intake_invokes_only_pilot_issue_with_merge_gate(tmp_path: Path, 
     args = _args()
     args.github_pilot_issue = 166
     args.github_merge = True
+    monkeypatch.delenv("TIM_WORKER_SELF_UPDATE", raising=False)
     assert daemon._run_github_intake(tmp_path, args) == 0
+    # A pilot issue never triggers triage of other issues.
     assert captured[1:] == [str(entrypoint), "--repository", str(tmp_path),
-                             "--pilot-issue", "166", "--merge"]
+                             "--pilot-issue", "166", "--merge", "--self-update"]
+
+
+def test_github_intake_triages_and_self_updates_by_default(tmp_path: Path, monkeypatch, capsys) -> None:
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "run_mac_qwen_issue.py").write_text("# test\n", encoding="utf-8")
+    captured = []
+
+    def fake_run(command, **kwargs):
+        captured.append(command)
+        return SimpleNamespace(returncode=daemon.SELF_UPDATED_EXIT, stdout="TIM_SELF_UPDATED a -> b", stderr="")
+
+    monkeypatch.setattr(daemon.subprocess, "run", fake_run)
+    monkeypatch.delenv("TIM_GITHUB_TRIAGE", raising=False)
+    monkeypatch.delenv("TIM_WORKER_SELF_UPDATE", raising=False)
+    args = _args()
+    args.github_pilot_issue = None
+    args.github_merge = True
+    assert daemon._run_github_intake(tmp_path, args) == daemon.SELF_UPDATED_EXIT
+    assert captured[0][-3:] == ["--merge", "--triage", "--self-update"]
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["TIM_GITHUB_INTAKE"] == "SELF_UPDATED"
+
+    monkeypatch.setenv("TIM_GITHUB_TRIAGE", "0")
+    monkeypatch.setenv("TIM_WORKER_SELF_UPDATE", "0")
+    daemon._run_github_intake(tmp_path, args)
+    assert "--triage" not in captured[1] and "--self-update" not in captured[1]
 
 
 def test_github_intake_logs_the_runner_stop_reason(tmp_path: Path, monkeypatch, capsys) -> None:

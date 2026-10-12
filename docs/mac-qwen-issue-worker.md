@@ -67,6 +67,43 @@ Checks or commit-status APIs. The worker therefore uses the PR merge state and
 GitHub's enforced ruleset for the final gate. Read-only CI diagnosis can use a
 separate account with Checks read access.
 
+## Automatic chain (no manual labelling)
+
+Since the automation change the LaunchAgent needs no manual step per issue. Every five minutes,
+while the local queues are idle and Ollama answers, the supervisor runs the issue runner with
+`--merge --triage --self-update` (set `TIM_GITHUB_TRIAGE=0` or `TIM_WORKER_SELF_UPDATE=0` in the
+LaunchAgent environment to switch either off; a `--github-pilot-issue` never triages):
+
+1. **Self-update.** The runner fetches `platform-main`. If the worker checkout is clean and behind,
+   it fast-forwards (detached) and exits with code 3; the supervisor exits and launchd restarts it
+   on the new code. A dirty or diverged checkout is left alone.
+2. **Own PRs.** Open worker PRs (`codex/issue-N-qwen`) are merged when GitHub reports `CLEAN`,
+   brought up to date when `BEHIND`, and closed with their branch when `DIRTY` or older than six
+   hours. Their issues are not started again while the PR is open.
+3. **Work.** The next ready issue is processed as above. Leftovers of an earlier failed attempt
+   (worktree, local and remote branch) are removed first; their `.tim` evidence is copied to
+   `runs/issue-N-before-attempt-K` in the state folder.
+4. **Triage.** Only when nothing is ready: Claude Code (read-only: `Read`, `Grep`, `Glob`, no MCP,
+   no credentials, `--restricted`) reads one open issue and the repository and answers `ready` or
+   `skip`. A `ready` answer must pass the same `build_task` validation; the worker then posts the
+   contract as its own comment (marker `TIM_QWEN_TRIAGE_V1`) and adds `agent:qwen-ready`,
+   `status:ready` and `priority:p0|p1`. A `skip` gets a one-line reason and `agent:not-suitable`.
+   Only issues from trusted authors are triaged (`uezeyiraydin-cell`, `apoman74-art`, plus
+   `TIM_TRIAGE_TRUSTED_AUTHORS`); epics, server, observe-only, waiting and blocked issues are never
+   triaged. Contracts are read from the issue body or from a worker comment, never from another
+   person's comment.
+
+**No endless repetition.** `issue-ledger.json` in the state folder records every triage call and
+attempt. Each issue version is triaged at most twice, at most 30 triage calls run per day, and each
+contract gets at most two attempts. After the second failure (or at once for an invalid contract)
+the issue gets `agent:blocked` and a comment with the last errors, and the queue moves on to the
+next issue. Removing `agent:blocked` grants two new attempts; removing `agent:not-suitable` asks for
+a new triage. While Ollama is unreachable no attempt starts, so an outage does not use up retries.
+
+The LaunchAgent itself has `RunAtLoad` and `KeepAlive`, so it starts at login and after a crash or
+an update exit. LaunchAgents start only after the user logs in; on a Mac mini that should restart
+unattended, enable automatic login.
+
 ## Tools, sandbox and skills
 
 Research and ranking: <https://claude.ai/artifact/FR5gJcqxMhPp7fo9J8av5r>.

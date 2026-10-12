@@ -261,6 +261,9 @@ def _run_developer_queue(repo_root: Path, args: argparse.Namespace, model: str) 
     return completed.returncode
 
 
+SELF_UPDATED_EXIT = 3
+
+
 def _run_github_intake(repo_root: Path, args: argparse.Namespace) -> int:
     script = repo_root / "scripts/run_mac_qwen_issue.py"
     if not script.is_file():
@@ -271,13 +274,18 @@ def _run_github_intake(repo_root: Path, args: argparse.Namespace) -> int:
         command.extend(["--pilot-issue", str(args.github_pilot_issue)])
     if args.github_merge:
         command.append("--merge")
+    if args.github_pilot_issue is None and os.getenv("TIM_GITHUB_TRIAGE", "1") != "0":
+        command.append("--triage")
+    if os.getenv("TIM_WORKER_SELF_UPDATE", "1") != "0":
+        command.append("--self-update")
     try:
         completed = subprocess.run(command, cwd=repo_root, text=True, capture_output=True,
                                    check=False, timeout=1900)
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(json.dumps({"TIM_GITHUB_INTAKE": "SAFE_STOP", "error_type": type(exc).__name__}), flush=True)
         return 2
-    print(json.dumps({"TIM_GITHUB_INTAKE": "DONE" if completed.returncode == 0 else "BLOCKED",
+    state = {0: "DONE", SELF_UPDATED_EXIT: "SELF_UPDATED"}.get(completed.returncode, "BLOCKED")
+    print(json.dumps({"TIM_GITHUB_INTAKE": state,
                       "returncode": completed.returncode,
                       "output": completed.stdout.strip()[:500],
                       # The runner reports its safe-stop reason on stderr.
@@ -451,7 +459,16 @@ async def daemon(args: argparse.Namespace) -> int:
             if task_path is None:
                 if args.github_intake and time.monotonic() >= next_github_poll:
                     next_github_poll = time.monotonic() + 300.0
-                    _run_github_intake(repo_root, args)
+                    model, error = await _ensure_local_qwen(
+                        args.ollama_url, args.model, args.fallback_models, _developer_state(repo_root))
+                    if model is None:
+                        # Without local Qwen every issue attempt would fail and use up its retries.
+                        print(json.dumps({"TIM_GITHUB_INTAKE": "WAITING_FOR_OLLAMA", "reason": error}),
+                              flush=True)
+                    elif _run_github_intake(repo_root, args) == SELF_UPDATED_EXIT:
+                        # The checkout moved to the newest platform-main; launchd restarts us on it.
+                        print(json.dumps({"TIM_QWEN_SUPERVISOR": "RESTART_FOR_UPDATE"}), flush=True)
+                        return 0
                 await asyncio.sleep(args.interval)
                 continue
 

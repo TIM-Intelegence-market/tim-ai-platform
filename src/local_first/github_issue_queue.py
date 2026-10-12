@@ -37,7 +37,8 @@ def _labels(issue: dict[str, Any]) -> set[str] | None:
     return set(names)
 
 
-def select_ready_issue(issues: Any, *, only_number: int | None = None) -> dict[str, Any] | None:
+def select_ready_issue(issues: Any, *, only_number: int | None = None,
+                       skip: set[int] | frozenset[int] = frozenset()) -> dict[str, Any] | None:
     """Choose one explicitly labelled, open, small issue with stable ordering."""
     if not isinstance(issues, list):
         return None
@@ -52,7 +53,7 @@ def select_ready_issue(issues: Any, *, only_number: int | None = None) -> dict[s
         number = issue.get("number")
         if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
             continue
-        if only_number is not None and number != only_number:
+        if (only_number is not None and number != only_number) or number in skip:
             continue
         labels = _labels(issue)
         if labels is None or labels & REJECT_LABELS or not {"agent:qwen-ready", "status:ready"} <= labels:
