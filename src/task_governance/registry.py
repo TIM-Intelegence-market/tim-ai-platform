@@ -454,6 +454,9 @@ class TaskRegistry:
                 if row['block_reason'] in HINT_ONLY_BLOCKS and hint is None:
                     # the created issue may exist: a plain release would let the next run create another one
                     raise ValueError(f"{row['block_reason']} can only be released with hint=<issue number> (or replace_hint)")
+                if row['block_reason'] == 'HINT_CONFLICT' and hint is None:
+                    # a plain release would drop the conflict without deciding which hint is authoritative
+                    raise ValueError('HINT_CONFLICT can only be released with hint=<issue number> (or replace_hint)')
                 if row['block_reason'] in ('HINT_NOT_FOUND', 'HINT_INVALID'):
                     pin = (hint, sorted(set(legacy))) if hint is not None else None   # replaced only by an explicit new hint
                 elif hint is not None and row['hint_issue'] in (None, hint):
