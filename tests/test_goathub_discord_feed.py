@@ -233,3 +233,17 @@ def test_bot_export_command_writes_files(tmp_path: Path) -> None:
     GoatHubFeedStore(tmp_path / "feed").append(message("1", "gm"))
     assert bot.main(["export", "--feed-dir", str(tmp_path / "feed"), "--memory-dir", str(tmp_path / "vault")]) == 0
     assert (tmp_path / "feed" / "memory" / "GOATHUB_KANAL.md").exists() and (tmp_path / "vault" / "GOATHUB_KURZ.md").exists()
+
+
+def test_followed_announcement_channel_posts_are_accepted(tmp_path: Path) -> None:
+    crosspost = {"id": "400000000000000001", "timestamp": "2026-10-12T11:00:00+00:00", "content": "btc short 83800 invalid above 84500",
+                 "author": {"id": "400000000000000009", "username": "The Goat Hub #calls", "bot": True},
+                 "webhook_id": "400000000000000009", "flags": 2,
+                 "message_reference": {"channel_id": "500000000000000000", "guild_id": "600000000000000000", "message_id": "700000000000000000"}}
+    plain_bot = {**discord_message(400000000000000002, "400000000000000008", "bot noise", bot=True)}
+    fake = FakeDiscord([(200, [crosspost, plain_bot], {})])
+    result = reader(tmp_path, fake, mode="forward").sync()[0]
+    assert (result.stored, result.rejected_author) == (1, 1)
+    stored = GoatHubFeedStore(tmp_path).load()[0]
+    assert stored.source == "discord_follow" and stored.message_id == "700000000000000000"
+    assert stored.author_label == "The Goat Hub #calls"

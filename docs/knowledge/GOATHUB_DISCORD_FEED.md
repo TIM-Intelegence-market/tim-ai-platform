@@ -52,6 +52,7 @@ erst nach einer Auswertung sinnvoll, welche Autoren mit ihren Calls richtig lage
 | Modus | Wie | Vollständig? |
 | --- | --- | --- |
 | `direct` | Ein Admin von The Goat Hub lädt den TIM-Bot in den Server ein (Rechte *View Channels* und *Read Message History*, nur für die gewünschten Kanäle). Der Bot liest dann alle Nachrichten mit Autor und Reaktionen. | ja |
+| Folgen (im Modus `forward`) | Ist der GoatHub-Kanal ein Ankündigungskanal (Megafon-Symbol), zeigt Discord oben **Folgen**. Du wählst als Ziel deinen Kanal im TIM-Server, dafür brauchst du dort „Webhooks verwalten“, keinen GoatHub-Admin. Discord postet jede neue Nachricht automatisch in deinen Kanal, der Bot übernimmt sie (Quelle `discord_follow`). | alle neuen Nachrichten ab dem Folgen, ohne Autor des Einzelbeitrags |
 | `forward` (Standard) | Du leitest Beiträge per **Weiterleiten** in einen eigenen Kanal im TIM-Server, wie beim Broncx-Feed. Nur deine Nutzer-ID wird angenommen, der ursprüngliche Autor fehlt. | nur was du weiterleitest |
 
 Ein Bot kann einen fremden Server nicht ohne Einladung lesen, und ein eigenes Discord-Konto

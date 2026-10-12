@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from config.secrets import SecretValue
-from src.knowledge.goathub_feed import SOURCE_DIRECT, SOURCE_FORWARD, SOURCE_MANUAL, GoatHubFeedStore, GoatHubMessage
+from src.knowledge.goathub_feed import SOURCE_DIRECT, SOURCE_FOLLOW, SOURCE_FORWARD, SOURCE_MANUAL, GoatHubFeedStore, GoatHubMessage
 from src.sources.broncx_discord import (
     API_BASE,
     DiscordFeedError,
@@ -53,6 +53,7 @@ PAGE_SIZE = 100
 MAX_PAGES = 100
 _SNOWFLAKE = re.compile(r"\d{15,21}")
 _FORWARD_REFERENCE_TYPE = 1
+_IS_CROSSPOST = 1 << 1
 USER_AGENT = "DiscordBot (https://github.com/uezeyiraydin-cell/tim-ai-platform, 1.0)"
 
 
@@ -138,6 +139,16 @@ def _reaction_count(message: dict[str, Any]) -> int:
     return total
 
 
+def _is_follow_crosspost(message: dict[str, Any]) -> bool:
+    """A message Discord's channel "Follow" delivered: webhook post flagged IS_CROSSPOST from another server."""
+    try:
+        flags = int(message.get("flags") or 0)
+    except (TypeError, ValueError):
+        return False
+    reference = message.get("message_reference") or {}
+    return bool(message.get("webhook_id")) and bool(flags & _IS_CROSSPOST) and bool(reference.get("guild_id"))
+
+
 def message_to_goathub(message: dict[str, Any], channel: GoatHubChannel, received_at: datetime, mode: str = "direct") -> GoatHubMessage | None:
     """Map a Discord message (direct post, forward or typed text) to a stored community message."""
     author = message.get("author") or {}
@@ -155,11 +166,13 @@ def message_to_goathub(message: dict[str, Any], channel: GoatHubChannel, receive
         content = str(message.get("content") or "")
         posted_at = message["timestamp"]
         attachments = message.get("attachments") or []
-        source = SOURCE_DIRECT if mode == "direct" else SOURCE_MANUAL
+        source = SOURCE_FOLLOW if _is_follow_crosspost(message) else SOURCE_DIRECT if mode == "direct" else SOURCE_MANUAL
         author_id = str(author.get("id", ""))
         author_name = str(author.get("global_name") or author.get("username") or "")
         forwarded_by = ""
         message_id = str(message["id"])
+        if source == SOURCE_FOLLOW:
+            message_id = str((message.get("message_reference") or {}).get("message_id") or message_id)
     names = tuple(str(item.get("filename") or item.get("url") or "attachment") for item in attachments)
     if not content.strip() and not names:
         return None
@@ -237,6 +250,8 @@ class GoatHubReader:
 
     def _accepted(self, message: dict[str, Any]) -> bool:
         author = message.get("author") or {}
+        if _is_follow_crosspost(message):
+            return True  # a GoatHub announcement channel the owner follows ("Follow") posts here by webhook
         if author.get("bot"):
             return False
         if self.config.mode == "direct":

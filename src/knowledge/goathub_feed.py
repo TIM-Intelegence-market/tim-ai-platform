@@ -39,6 +39,7 @@ __all__ = [
 
 SOURCE_DIRECT = "discord_direct"
 SOURCE_FORWARD = "discord_forward"
+SOURCE_FOLLOW = "discord_follow"  # Discord channel "Follow": the original channel posts into the owner's channel
 SOURCE_MANUAL = "discord_manual"
 GOOD_GRADES = ("A", "B")
 # Reactions that make a call "liked by the community"; a count, not a vote on correctness.
