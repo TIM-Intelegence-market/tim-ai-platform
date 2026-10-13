@@ -1,43 +1,38 @@
 name: CI
 
+# Runs on the self-hosted runner on the Mac mini (labels self-hosted, macOS, tim-ci), which uses no
+# GitHub Actions minutes; setup and isolation in docs/CI_SELF_HOSTED_RUNNER.md. Feature branches are
+# tested through their pull request, so a push to a PR branch no longer starts a second identical run.
 on:
   push:
     branches:
-      - main
       - platform-main
-      - 'codex/**'
-      - 'opencode/**'
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# One runner serves the repository: a newer push to the same PR replaces its queued run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, tim-ci]
     timeout-minutes: 30
-    services:
-      postgres:
-        # Isolated test database only: tests/conftest.py refuses any other target.
-        image: postgres:16
-        env:
-          POSTGRES_DB: tim_test
-          POSTGRES_USER: tim
-          POSTGRES_PASSWORD: tim_ci_only
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U tim -d tim_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    # Isolated test database only (tests/conftest.py refuses any other target): PostgreSQL 16 on the
+    # runner host, port 5434, database tim_test, role tim, set up by ops/macos/setup_ci_runner.sh.
+    # Service containers are not available on macOS runners.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
+      - uses: actions/checkout@v7
+      # setup-python cannot install on this runner: the macOS Python package hardcodes
+      # /Users/runner/hostedtoolcache. Use Homebrew's python@3.13 from setup_ci_runner.sh instead.
+      - name: Set up Python 3.13 (Homebrew)
+        run: |
+          /opt/homebrew/bin/python3.13 -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -53,9 +48,11 @@ jobs:
           TIM_RUNTIME_ENV: test
           TIM_ALLOW_DATABASE_URL_ENV_FOR_TESTS: "true"
           TIM_DATABASE_SECRET_PROVIDER: url-env
-          TIM_DURABLE_TEST_DATABASE_URL: postgresql://tim:tim_ci_only@127.0.0.1:5432/tim_test
+          TIM_DURABLE_TEST_DATABASE_URL: postgresql://tim:tim_ci_only@127.0.0.1:5434/tim_test
       - name: Upload coverage to Codecov
         if: success()
+        # Optional report: the Codecov action needs gpg, which the Mac runner does not have.
+        continue-on-error: true
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           files: coverage.xml
@@ -63,31 +60,33 @@ jobs:
           fail_ci_if_error: false
       - name: Upload JUnit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-junit
           path: artifacts/github_toolchain/pytest_full.junit.xml
 
   codeql:
-    runs-on: ubuntu-latest
+    # Several minutes per run and not a merge gate: analyse platform-main only, not every PR.
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, macOS, tim-ci]
     permissions:
       contents: read
       security-events: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
         with:
           languages: python
       # Code scanning is not enabled in the repository settings yet, so uploading
       # fails with a configuration error. The analysis still runs and its SARIF is
       # kept as an artifact. After enabling code scanning (Settings → Code security),
       # drop `upload: never` and the artifact step.
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
         with:
           upload: never
           output: codeql-results
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: codeql-sarif

@@ -301,7 +301,7 @@ def test_api_request_reraises_non_429(monkeypatch: pytest.MonkeyPatch) -> None:
         bc._api_request({"symbol": "BTCUSDT"}, 1.0)
 
 
-def test_write_api_candidate_rows_single_page(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_single_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     minute = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
     trade_ms = int(minute.timestamp() * 1000)
     page = [
@@ -321,7 +321,7 @@ def test_write_api_candidate_rows_single_page(monkeypatch: pytest.MonkeyPatch) -
         return FakeResponse(json.dumps(page).encode(), headers={"x-mbx-used-weight-1m": "5"})
 
     monkeypatch.setattr(bc, "urlopen", fake_urlopen)
-    target = Path("/tmp/tim-test-api-out.csv.gz")
+    target = tmp_path / "tim-test-api-out.csv.gz"
     target.unlink(missing_ok=True)
     result = bc._write_api_candidate_rows(target=target, required_minutes=frozenset([minute]), timeout=1.0)
     assert result["api_pages"] == 1
@@ -331,7 +331,7 @@ def test_write_api_candidate_rows_single_page(monkeypatch: pytest.MonkeyPatch) -
     target.unlink(missing_ok=True)
 
 
-def test_write_api_candidate_rows_paginates_until_small_page(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_paginates_until_small_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     minute = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
     trade_ms = int(minute.timestamp() * 1000)
     pages = [
@@ -348,7 +348,7 @@ def test_write_api_candidate_rows_paginates_until_small_page(monkeypatch: pytest
         return FakeResponse(json.dumps(pages.pop(0)).encode())
 
     monkeypatch.setattr(bc, "urlopen", fake_urlopen)
-    target = Path("/tmp/tim-test-api-out2.csv.gz")
+    target = tmp_path / "tim-test-api-out2.csv.gz"
     target.unlink(missing_ok=True)
     result = bc._write_api_candidate_rows(target=target, required_minutes=frozenset([minute]), timeout=1.0)
     assert result["api_pages"] == 2
@@ -362,7 +362,7 @@ def test_write_api_candidate_rows_rejects_empty_required(tmp_path: Path) -> None
         bc._write_api_candidate_rows(target=tmp_path / "o.csv.gz", required_minutes=frozenset(), timeout=1.0)
 
 
-def test_write_api_candidate_rows_rejects_non_contiguous_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_rejects_non_contiguous_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     minute = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
     trade_ms = int(minute.timestamp() * 1000)
     page = [
@@ -374,7 +374,7 @@ def test_write_api_candidate_rows_rejects_non_contiguous_ids(monkeypatch: pytest
         return FakeResponse(json.dumps(page).encode())
 
     monkeypatch.setattr(bc, "urlopen", fake_urlopen)
-    target = Path("/tmp/tim-test-api-out3.csv.gz")
+    target = tmp_path / "tim-test-api-out3.csv.gz"
     target.unlink(missing_ok=True)
     with pytest.raises(ValueError, match="aggregate-ID contiguous"):
         bc._write_api_candidate_rows(target=target, required_minutes=frozenset([minute]), timeout=1.0)
@@ -626,7 +626,7 @@ def test_api_request_raises_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
         bc._api_request({"symbol": "BTCUSDT"}, 1.0)
 
 
-def test_write_api_candidate_rows_rejects_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_rejects_invalid_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     minute = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
 
     def fake_urlopen(request, timeout):
@@ -634,10 +634,10 @@ def test_write_api_candidate_rows_rejects_invalid_json(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(bc, "urlopen", fake_urlopen)
     with pytest.raises(ValueError, match="invalid JSON"):
-        bc._write_api_candidate_rows(target=Path("/tmp/api-bad-json.csv.gz"), required_minutes=frozenset([minute]), timeout=1.0)
+        bc._write_api_candidate_rows(target=tmp_path / "api-bad-json.csv.gz", required_minutes=frozenset([minute]), timeout=1.0)
 
 
-def test_write_api_candidate_rows_rejects_non_list(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_rejects_non_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     minute = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
 
     def fake_urlopen(request, timeout):
@@ -645,7 +645,7 @@ def test_write_api_candidate_rows_rejects_non_list(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(bc, "urlopen", fake_urlopen)
     with pytest.raises(ValueError, match="must be a list"):
-        bc._write_api_candidate_rows(target=Path("/tmp/api-not-list.csv.gz"), required_minutes=frozenset([minute]), timeout=1.0)
+        bc._write_api_candidate_rows(target=tmp_path / "api-not-list.csv.gz", required_minutes=frozenset([minute]), timeout=1.0)
 
 
 def test_write_api_candidate_rows_empty_page_breaks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -661,7 +661,7 @@ def test_write_api_candidate_rows_empty_page_breaks(tmp_path: Path, monkeypatch:
     assert result["candidate_rows"] == 0
 
 
-def test_write_api_candidate_rows_rejects_bad_value_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_rejects_bad_value_branches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     minute = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
     trade_ms = str(int(minute.timestamp() * 1000))
     bad_rows = [
@@ -675,10 +675,10 @@ def test_write_api_candidate_rows_rejects_bad_value_branches(monkeypatch: pytest
 
         monkeypatch.setattr(bc, "urlopen", fake_urlopen)
         with pytest.raises(ValueError, match="invalid public aggTrades API row"):
-            bc._write_api_candidate_rows(target=Path(f"/tmp/api-bad-row-{idx}.csv.gz"), required_minutes=frozenset([minute]), timeout=1.0)
+            bc._write_api_candidate_rows(target=tmp_path / f"api-bad-row-{idx}.csv.gz", required_minutes=frozenset([minute]), timeout=1.0)
 
 
-def test_write_api_candidate_rows_stops_at_end_and_rejects_before_start(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_stops_at_end_and_rejects_before_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     minute = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
     end_ms = int((minute + timedelta(minutes=1)).timestamp() * 1000)
     before_ms = int((minute - timedelta(minutes=1)).timestamp() * 1000)
@@ -686,15 +686,15 @@ def test_write_api_candidate_rows_stops_at_end_and_rejects_before_start(monkeypa
     page_before = [{"a": 5, "p": "1", "q": "1", "f": 5, "l": 5, "T": str(before_ms), "m": True, "M": True}]
 
     monkeypatch.setattr(bc, "urlopen", lambda req, timeout: FakeResponse(json.dumps(page_at_end).encode()))
-    result = bc._write_api_candidate_rows(target=Path("/tmp/api-end.csv.gz"), required_minutes=frozenset([minute]), timeout=1.0)
+    result = bc._write_api_candidate_rows(target=tmp_path / "api-end.csv.gz", required_minutes=frozenset([minute]), timeout=1.0)
     assert result["candidate_rows"] == 0
 
     monkeypatch.setattr(bc, "urlopen", lambda req, timeout: FakeResponse(json.dumps(page_before).encode()))
     with pytest.raises(ValueError, match="before requested start"):
-        bc._write_api_candidate_rows(target=Path("/tmp/api-before.csv.gz"), required_minutes=frozenset([minute]), timeout=1.0)
+        bc._write_api_candidate_rows(target=tmp_path / "api-before.csv.gz", required_minutes=frozenset([minute]), timeout=1.0)
 
 
-def test_write_api_candidate_rows_skips_non_required_minutes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_skips_non_required_minutes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     m0 = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
     m6 = datetime(2026, 7, 23, 12, 6, tzinfo=UTC)
     mid = datetime(2026, 7, 23, 12, 3, tzinfo=UTC)
@@ -704,7 +704,7 @@ def test_write_api_candidate_rows_skips_non_required_minutes(monkeypatch: pytest
     ]
 
     monkeypatch.setattr(bc, "urlopen", lambda req, timeout: FakeResponse(json.dumps(page).encode()))
-    target = Path("/tmp/api-skip-nonreq.csv.gz")
+    target = tmp_path / "api-skip-nonreq.csv.gz"
     target.unlink(missing_ok=True)
     result = bc._write_api_candidate_rows(target=target, required_minutes=frozenset([m0, m6]), timeout=1.0)
     assert result["api_rows"] == 2
@@ -713,14 +713,14 @@ def test_write_api_candidate_rows_skips_non_required_minutes(monkeypatch: pytest
     target.unlink(missing_ok=True)
 
 
-def test_write_api_candidate_rows_rejects_existing_target_difference(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_rejects_existing_target_difference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     minute = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
     trade_ms = str(int(minute.timestamp() * 1000))
     page_a = [{"a": 1, "p": "1", "q": "1", "f": 1, "l": 1, "T": trade_ms, "m": True, "M": True}]
     page_b = [{"a": 2, "p": "2", "q": "2", "f": 2, "l": 2, "T": trade_ms, "m": True, "M": True}]
 
     monkeypatch.setattr(bc, "urlopen", lambda req, timeout: FakeResponse(json.dumps(page_a).encode()))
-    target = Path("/tmp/api-exists.csv.gz")
+    target = tmp_path / "api-exists.csv.gz"
     target.unlink(missing_ok=True)
     bc._write_api_candidate_rows(target=target, required_minutes=frozenset([minute]), timeout=1.0)
     monkeypatch.setattr(bc, "urlopen", lambda req, timeout: FakeResponse(json.dumps(page_b).encode()))
@@ -783,7 +783,7 @@ def test_api_request_raises_on_response_status(monkeypatch: pytest.MonkeyPatch) 
         bc._api_request({"symbol": "BTCUSDT"}, 1.0)
 
 
-def test_write_api_candidate_rows_detects_true_duplicate(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_api_candidate_rows_detects_true_duplicate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     minute = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
     trade_ms = str(int(minute.timestamp() * 1000))
     page = [
@@ -793,4 +793,4 @@ def test_write_api_candidate_rows_detects_true_duplicate(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(bc, "urlopen", lambda req, timeout: FakeResponse(json.dumps(page).encode()))
     with pytest.raises(ValueError, match="aggregate-ID contiguous"):
-        bc._write_api_candidate_rows(target=Path("/tmp/api-true-dup.csv.gz"), required_minutes=frozenset([minute]), timeout=1.0)
+        bc._write_api_candidate_rows(target=tmp_path / "api-true-dup.csv.gz", required_minutes=frozenset([minute]), timeout=1.0)
