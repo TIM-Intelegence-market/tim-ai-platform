@@ -7,7 +7,7 @@ Stand 2026-10-13. Seit dem 12.10. um 22:56 UTC startete GitHub keine Jobs mehr a
 | Workflow | Job | Runner | Wann |
 |---|---|---|---|
 | `ci.yml` | `test` (Pflicht-Check) | `[self-hosted, macOS, tim-ci]` | jeder PR, Push auf `platform-main`, manuell |
-| `ci.yml` | `codeql` | `[self-hosted, macOS, tim-ci]` | nur Push auf `platform-main` und manuell |
+| `ci.yml` | `codeql` | `[self-hosted, macOS, tim-ci]` | täglich 02:30 UTC auf `platform-main` und manuell |
 | `pr-gate.yml` | `PR gate` (Pflicht-Check) | `[self-hosted, macOS, tim-ci]` | jeder PR gegen `platform-main` |
 | `tim-priority-board.yml` | `prioritize` | `[self-hosted, macOS, tim-ci]` | täglich 07:00 UTC |
 | `tim-full-suite.yml` | `TIM full suite` | GitHub (`ubuntu-latest`) | nur manuell |
@@ -17,8 +17,9 @@ Was früher doppelt lief:
 - Pushes auf `codex/**`, `opencode/**` und `main` starteten `ci.yml` zusätzlich zum Lauf im PR. Diese Push-Läufe gibt es nicht mehr.
 - `TIM full suite` führte dieselbe Testsuite ein zweites Mal aus, nur mit TimescaleDB in Docker. Sie ist jetzt nur noch manuell zu starten.
 - Bei einem neuen Push in denselben PR ersetzt der neue Lauf den wartenden.
+- `codeql` lief nach jedem Merge über 20 Minuten und hielt auf dem einzigen Runner alle PRs dahinter auf. Es läuft jetzt nachts.
 
-Die Namen der Pflicht-Checks im Ruleset (`PR gate`, `test`) bleiben unverändert.
+Pflicht-Checks im Ruleset „platform-main merge conditions“ seit 2026-10-13: `test` und `pr-gate/head`. `TIM full suite` ist kein Pflicht-Check mehr. Das Ruleset hat keine Bypass-Akteure, auch Admins können einen roten oder fehlenden Pflicht-Check nicht übergehen.
 
 Offen für die Auto-Merge-Pipeline: `.github/auto-merge-policy.json` verlangt noch `TIM full suite` als Check im PR. Bevor der Controller eingeschaltet wird, muss entweder dieser Eintrag weg oder `TIM full suite` wieder im PR laufen. Solange der Controller aus ist (`enabled: false`), hat das keine Wirkung.
 
