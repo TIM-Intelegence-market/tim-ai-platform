@@ -5,7 +5,11 @@ from typing import Collection, Protocol
 
 _UNBLOCKABLE_BY_HINT = ('AMBIGUOUS_DUPLICATES', 'DUPLICATE_AFTER_CREATE', 'HINT_NOT_FOUND', 'HINT_INVALID')
 MIN_LEASE_FACTOR = 4      # lease must be at least this many times the gateway's worst-case create time
+CREATE_FRESHNESS_SECONDS = 80.0   # a create rests on a lookup and an authority answer at most this old (#68): 4 x the default
+                                  # create bound of 20 s, measured by the clock that moved further (monotonic or wall)
+HOLDER_HOST_CHARS = 16            # of the host name in the create-claim text (GitHub: 100 characters for a label description)
 
+import socket
 import time
 
 from .identity import TaskRequest
@@ -48,6 +52,9 @@ class IssueGateway(Protocol):
       predate the marker (e.g. #11 and #22-#65).
     - `create_issue` embeds the marker in the body.
     - `authorize_create` is asked before every create (#68 path A, see `create_authority.py`); a gateway without it never creates.
+    - `claim_create` takes the repository-wide create claim of the task, something the repository hands out at most once
+      per task until `release_create_claim` (the REST gateway: a label). It returns None when the claim is now ours, else
+      a text naming the holder. A gateway without it never creates either.
     """
     repository: str
     max_create_seconds: float   # REQUIRED: hard upper bound (enforced via `timeout`) of one create_issue call incl. retries
@@ -56,6 +63,8 @@ class IssueGateway(Protocol):
     def get_issue(self, number: int) -> IssueRef | None: ...
     def carries_marker(self, number: int, fingerprint: str) -> bool: ...   # the issue exists and still has the task marker
     def authorize_create(self, registry_id: str, trusted_authors) -> None: ...   # raise CreateNotAuthorized unless the repository designates this registry
+    def claim_create(self, fingerprint: str, holder: str) -> str | None: ...    # None: the create claim is ours; else who holds it
+    def release_create_claim(self, fingerprint: str) -> None: ...
     def create_issue(self, request: TaskRequest, fingerprint: str, *, timeout: float) -> IssueRef: ...   # must enforce `timeout`
     def update_issue(self, number: int, request: TaskRequest, reason: str) -> None: ...
     def reopen_issue(self, number: int, request: TaskRequest, reason: str) -> None: ...
@@ -251,17 +260,63 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     try:
         _authorize_create(gateway, registry, trusted_authors)
     except CreateNotAuthorized as exc:
-        registry.release(fp, token)
-        last = registry.incidents(fp)[-1:]
-        if not last or (last[0]['reason'], last[0]['detail']) != ('CREATE_NOT_AUTHORIZED', str(exc)):     # a scheduler retries: say it once
-            registry.record_incident(fp, 'CREATE_NOT_AUTHORIZED', str(exc))
-        return EnsureResult(EnsureOutcome.BLOCKED, registry.get(fp), False, None, 'CREATE_NOT_AUTHORIZED')
+        return _create_refused(registry, fp, token, exc)
     except Exception:
         registry.release(fp, token)              # authority unreadable: nothing was created, try again on the next run
         raise
     # Re-assert the claim and record the create intent right before the irreversible create.
     if not registry.begin_create(fp, token, gateway.repository):
         return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'claim lost before create')
+    # The repository-wide create claim (#68): the row above fences only this registry file, and no check of the designation
+    # can cover the moment of the request (a process may stand still between the two). The claim is something the
+    # repository hands out once per task (a label); every create happens under it and it is dropped only after the created
+    # issue is recorded, so a second creator either does not get it or, holding it, sees the issue in the lookup below.
+    try:
+        held = _claim_create(gateway, registry, fp, token)
+    except CreateNotAuthorized as exc:
+        return _create_refused(registry, fp, token, exc, not_sent=True)
+    except Exception:
+        registry.release(fp, token, create_not_sent=True)      # nothing was sent to the issues endpoint
+        raise
+    if held is not None:
+        registry.release(fp, token, create_not_sent=True)
+        _incident_once(registry, fp, 'GLOBAL_CLAIM_HELD', held)
+        return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'GLOBAL_CLAIM_HELD')
+    looked = _now()                              # the create rests on this lookup and on the authority answer after it
+    try:
+        matches = _matches(gateway, fp, key, trusted_authors)
+    except UnknownIssueKind as exc:
+        _release_create_claim(gateway, registry, fp)
+        return _blocked_unknown(registry, fp, token, exc, created=False)
+    except Exception:
+        _release_create_claim(gateway, registry, fp)
+        registry.release(fp, token, create_not_sent=True)
+        raise
+    if matches:                                  # created under an earlier claim and visible now that we hold it
+        try:
+            if len(matches) == 1:
+                return _adopt(registry, gateway, fp, token, matches[0], [], request)
+            numbers = sorted(m.number for m in matches)
+            blocked = registry.block(fp, 'AMBIGUOUS_DUPLICATES', f'matches={numbers}, no authoritative hint', token=token,
+                                     candidates=numbers)
+            return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
+        finally:
+            _release_create_claim(gateway, registry, fp)
+    # The designation is asked again right before the request, and lookup and answer must be fresh: a creator whose
+    # designation was withdrawn after its first check, or that stood still longer than the bound, does not create.
+    try:
+        _authorize_create(gateway, registry, trusted_authors)
+        age = _age(looked)
+        if age > CREATE_FRESHNESS_SECONDS:
+            raise CreateNotAuthorized(f'the lookup and the authority answer are {age:.0f}s old, '
+                                      f'the create bound is {CREATE_FRESHNESS_SECONDS:g}s')
+    except CreateNotAuthorized as exc:
+        _release_create_claim(gateway, registry, fp)
+        return _create_refused(registry, fp, token, exc, not_sent=True)
+    except Exception:
+        _release_create_claim(gateway, registry, fp)
+        registry.release(fp, token, create_not_sent=True)
+        raise
     started = time.monotonic()
     try:
         issue = gateway.create_issue(request, fp, timeout=worst_create)
@@ -270,16 +325,28 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         try:
             visible = _matches(gateway, fp, key, trusted_authors)
         except UnknownIssueKind as unknown:
-            return _blocked_unknown(registry, fp, token, unknown, created=False)
+            return _blocked_unknown(registry, fp, token, unknown, created=False)   # intent and claim stay (re-validated)
         except Exception:
-            raise exc                                # cannot verify: keep the claim until its lease expires
+            raise exc                                # cannot verify: keep the claim (and the create claim) until its lease expires
         if visible:
-            return _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
+            result = _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
+            _release_create_claim(gateway, registry, fp)
+            return result
         registry.release(fp, token, create_not_sent=True)
+        _release_create_claim(gateway, registry, fp)
         raise
     except Exception as exc:
-        return _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
-    elapsed = time.monotonic() - started
+        # Raises while the outcome stays uncertain: then the claim and the create claim stay, nobody creates behind them.
+        result = _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
+        _release_create_claim(gateway, registry, fp)
+        return result
+    result = _record_create(registry, gateway, fp, key, token, trusted_authors, issue, time.monotonic() - started, worst_create)
+    _release_create_claim(gateway, registry, fp)
+    return result
+
+
+def _record_create(registry, gateway, fp, key, token, trusted_authors, issue, elapsed, worst_create) -> EnsureResult:
+    """The issue exists: check for duplicates and map it. Every verdict here records the created number."""
     if elapsed > worst_create:
         registry.record_incident(fp, 'SLOW_CREATE', f'create took {elapsed:.1f}s, declared bound {worst_create}s')
     try:
@@ -308,6 +375,82 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
             current = registry.add_duplicates(fp, [issue.number])
         return EnsureResult(EnsureOutcome.BLOCKED, current, True, issue.number, 'CLAIM_LOST_AFTER_CREATE')
     return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number)
+
+
+def _create_refused(registry, fp, token, exc, *, not_sent=False) -> EnsureResult:
+    """The designation (or its freshness) refused the create: give the claim up, say it once."""
+    registry.release(fp, token, create_not_sent=not_sent)
+    _incident_once(registry, fp, 'CREATE_NOT_AUTHORIZED', str(exc))
+    return EnsureResult(EnsureOutcome.BLOCKED, registry.get(fp), False, None, 'CREATE_NOT_AUTHORIZED')
+
+
+def _incident_once(registry, fp, reason, detail) -> None:
+    """Record the incident unless it repeats the last one: a scheduler that retries says it once."""
+    last = registry.incidents(fp)[-1:]
+    if not last or (last[0]['reason'], last[0]['detail']) != (reason, detail):
+        registry.record_incident(fp, reason, detail)
+
+
+def _now():
+    return time.monotonic(), time.time()
+
+
+def _age(since) -> float:
+    """Seconds since `since` by whichever clock moved further: a paused process (monotonic) or a corrected wall clock
+    cannot hide time on both of them at once."""
+    mono, wall = _now()
+    return max(mono - since[0], wall - since[1])
+
+
+def _hostname() -> str:
+    try:
+        return (socket.gethostname() or 'unknown').split()[0]
+    except OSError:
+        return 'unknown'
+
+
+def _claim_holder(registry, token) -> str:
+    """Who holds the create claim (no secret in it): registry id, claim token, host, time. Fits 100 characters."""
+    text = f'registry={registry.registry_id} token={token} host={_hostname()[:HOLDER_HOST_CHARS]}'
+    stamp = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime())
+    return text if len(f'{text} at={stamp}') > 100 else f'{text} at={stamp}'
+
+
+def _claim_fields(text) -> dict:
+    return dict(part.split('=', 1) for part in (text or '').split() if '=' in part)
+
+
+def _claim_create(gateway, registry, fp, token):
+    """Take the repository-wide create claim (#68). None when it is ours, otherwise the text naming who holds it.
+
+    A claim of this registry on this host under a lower (older) token is replaced: this run won the local claim of a row
+    without a create intent, which only `release(create_not_sent=True)` (the run that held it ended without a request) or
+    an operator's `confirm_not_created` leaves behind; so that holder is gone and only its release was lost. Any other
+    holder keeps it (another registry, another host, a token that is not lower: a registry file restored from a backup),
+    and a claim whose holder died is removed by an operator who knows that holder stopped (see the docs)."""
+    claim = getattr(gateway, 'claim_create', None)
+    if claim is None or getattr(gateway, 'release_create_claim', None) is None:
+        raise CreateNotAuthorized('the gateway has no claim_create, so it cannot take the repository-wide create claim')
+    holder = _claim_holder(registry, token)
+    held = claim(fp, holder)
+    if held is None or held == holder:
+        return None
+    fields = _claim_fields(held)
+    if fields.get('registry') != registry.registry_id or fields.get('host') != _claim_fields(holder)['host'] \
+            or not fields.get('token', '').isdigit() or int(fields['token']) >= int(token):
+        return held
+    gateway.release_create_claim(fp)
+    registry.record_incident(fp, 'STALE_CLAIM_REPLACED', held)
+    held = claim(fp, holder)
+    return None if held in (None, holder) else held
+
+
+def _release_create_claim(gateway, registry, fp) -> None:
+    """Drop the create claim once the outcome of the create is recorded; a failure is an incident, never a blocker."""
+    try:
+        gateway.release_create_claim(fp)
+    except Exception as exc:
+        registry.record_incident(fp, 'CLAIM_RELEASE_FAILED', f'{type(exc).__name__}: {exc}')
 
 
 def _authorize_create(gateway, registry, trusted_authors) -> None:

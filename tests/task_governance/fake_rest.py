@@ -1,7 +1,7 @@
 """In-memory GitHub REST server behind the gateway's injectable transport. Records every call."""
 import json
 import re
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 class FakeRest:
@@ -16,6 +16,7 @@ class FakeRest:
         self.login = 'owner'             # the account behind the token (GET /user)
         self.lag_listing = False         # new issues are missing from the listing until release_listing(), single reads see them
         self.unlisted = set()
+        self.labels = {}                 # repository labels by name (the create claims of #68 live here)
 
     def seed(self, number, body='', state='open', login='owner', pr=False):
         item = {'number': number, 'state': state, 'title': f'issue {number}', 'body': body, 'user': {'login': login},
@@ -79,6 +80,30 @@ class FakeRest:
             if method == 'POST':
                 self.comments.setdefault(number, []).append({'body': payload['body']})
                 return 201, b'{}'
+        labels = f'/repos/{self.repo}/labels'
+        if path == labels and method == 'POST':
+            name = payload['name']
+            if name in self.labels:
+                return 422, b'{"message": "Validation Failed", "errors": [{"resource": "Label", "code": "already_exists", "field": "name"}]}'
+            if len(payload.get('description') or '') > 100 or len(name) > 50:
+                return 422, b'{"message": "Validation Failed", "errors": [{"resource": "Label", "code": "invalid", "field": "name"}]}'
+            self.labels[name] = {'name': name, 'color': payload.get('color'), 'description': payload.get('description')}
+            return 201, json.dumps(self.labels[name]).encode()
+        if path == labels and method == 'GET':
+            query = parse_qs(parsed.query)
+            per, page = int(query['per_page'][0]), int(query['page'][0])
+            items = [self.labels[n] for n in sorted(self.labels)]
+            return 200, json.dumps(items[(page - 1) * per: page * per]).encode()
+        m = re.fullmatch(re.escape(labels) + r'/([^/]+)', path)
+        if m:
+            name = unquote(m.group(1))
+            if name not in self.labels:
+                return 404, b'{}'
+            if method == 'GET':
+                return 200, json.dumps(self.labels[name]).encode()
+            if method == 'DELETE':
+                del self.labels[name]
+                return 204, b''
         if path == '/user' and method == 'GET':
             return 200, json.dumps({'login': self.login}).encode()
         if path == f'/repos/{self.repo}' and method == 'GET':

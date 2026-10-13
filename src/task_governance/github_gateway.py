@@ -16,10 +16,13 @@ Contract kept on purpose:
   3xx is an error. An answer must carry the requested issue number and, when present, this repository's URL.
 - `update_issue`, `mark_duplicate`, `reopen_issue` only change the managed body section, add a marker,
   comment, or reopen. No method changes an issue to closed.
+- `claim_create` takes the repository-wide create claim of a task (#68): a label that GitHub creates at most once per
+  name (a second create answers 422), so two creators that both passed every local check cannot both hold it.
+  `release_create_claim` drops it; a label that already is gone counts as released.
 The token is used only in the Authorization header and never appears in errors.
 """
 from http.client import HTTPConnection, HTTPSConnection
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 import hashlib
 import ipaddress
 import json
@@ -45,6 +48,14 @@ CONFIRM_SECONDS = 120.0 # a missing old number is remembered when a second answe
 GONE_TTL = 3600.0       # a remembered number is read again after this long (two wrong answers must not hide an issue for good)
 _NOT_AN_ISSUE = (301, 307, 308, 404, 410)   # deleted, transferred or not an issue (a discussion shares the numbers)
 API = 'https://api.github.com'
+CLAIM_LABEL_PREFIX = 'tim-claim-'   # the create claim of a task is a label named after its fingerprint (#68)
+CLAIM_LABEL_COLOR = 'ededed'
+CLAIM_DESCRIPTION_LIMIT = 100       # GitHub: a label description must be 100 characters or fewer
+
+
+def claim_label(fingerprint: str) -> str:
+    """Name of a task's create-claim label: 42 characters (GitHub allows 50), 128 bits of the fingerprint."""
+    return f'{CLAIM_LABEL_PREFIX}{fingerprint[:32]}'
 
 
 class GitHubError(Exception):
@@ -316,6 +327,34 @@ class GitHubRestGateway:
             return None
         ref = self._ref(item, number)
         return AuthorityIssue(ref.number, ref.state, ref.author, item.get('body') or '', ref.is_pull_request)
+
+    def claim_create(self, fingerprint, holder: str):
+        """Take the repository-wide create claim of this task (#68): a label that only one caller can create.
+
+        None when the claim is ours now. Otherwise the description the holder wrote (who holds it): GitHub answers 422
+        for a label that exists, and a read confirms that it does, so an invalid request cannot pass as "held"."""
+        name = claim_label(fingerprint)
+        path = f'/repos/{self.repository}/labels'
+        status, _ = self._call('POST', path, {'name': name, 'color': CLAIM_LABEL_COLOR,
+                                              'description': holder[:CLAIM_DESCRIPTION_LIMIT]}, absent=(422,))
+        if status == 201:
+            return None
+        held = self._claim_holder(name)
+        if held is None:
+            raise GitHubError(f'POST {path}: HTTP {status} but the label does not exist')
+        return held
+
+    def _claim_holder(self, name):
+        _, item = self._call('GET', f'/repos/{self.repository}/labels/{quote(name, safe="")}')
+        if item is None:
+            return None
+        if not isinstance(item, dict):
+            raise GitHubError(f'GET /repos/{self.repository}/labels/{name}: unexpected answer')
+        return str(item.get('description') or '')
+
+    def release_create_claim(self, fingerprint) -> None:
+        """Drop the task's create claim. A label that is already gone counts as released."""
+        self._call('DELETE', f'/repos/{self.repository}/labels/{quote(claim_label(fingerprint), safe="")}', absent=(404,))
 
     def create_issue(self, request: TaskRequest, fingerprint, *, timeout):
         if self._create_authority is None:       # `ensure_task` asked `authorize_create` before; a direct call must not get around it

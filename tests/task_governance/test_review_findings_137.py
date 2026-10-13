@@ -46,7 +46,7 @@ def failing_check_after_create(gw):
 
     def flaky(fingerprint, key):
         calls.append(1)
-        if len(calls) == 2:                        # the lookup before the create works, the check after it does not
+        if len(calls) == 3:                        # the lookups before the create work (one before and one under the create claim), the check after it does not
             raise GitHubError('GET /repos/owner/repo/issues: HTTP 429')
         return real(fingerprint, key)
     gw.find_issues = flaky

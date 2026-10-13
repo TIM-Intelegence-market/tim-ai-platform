@@ -85,7 +85,7 @@ MAX_ENTRY_BYTES = 256 * 1024
 CREATE_UNCERTAIN_NOTE_SECONDS = 3600.0      # B.4: after this long the journal names the confirm-not-created line
 CONFIRM_QUIET_SECONDS = 3600.0
 STATE_KEEP_SECONDS = 30 * 86400             # per-episode bookkeeping older than this is dropped
-CREATE_WRITES = 3                           # create, labels, possibly the marker back-fill
+CREATE_WRITES = 5                           # create claim, create, labels, possibly the marker back-fill, claim release (#68)
 
 PREFLIGHT_OK = 'ok'
 PREFLIGHT_SKIPPED = 'skipped'
