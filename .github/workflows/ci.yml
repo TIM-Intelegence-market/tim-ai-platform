@@ -9,6 +9,9 @@ on:
       - platform-main
   pull_request:
   workflow_dispatch:
+  # CodeQL runs nightly instead of after every merge (see the codeql job).
+  schedule:
+    - cron: '30 2 * * *'
 
 permissions:
   contents: read
@@ -20,6 +23,7 @@ concurrency:
 
 jobs:
   test:
+    if: github.event_name != 'schedule'
     runs-on: [self-hosted, macOS, tim-ci]
     timeout-minutes: 30
     # Isolated test database only (tests/conftest.py refuses any other target): PostgreSQL 16 on the
@@ -66,9 +70,11 @@ jobs:
           path: artifacts/github_toolchain/pytest_full.junit.xml
 
   codeql:
-    # Several minutes per run and not a merge gate: analyse platform-main only, not every PR.
-    if: github.event_name != 'pull_request'
+    # Not a merge gate and over 20 minutes on the single Mac runner, where it held up every PR queued
+    # behind a merge. Runs nightly on platform-main and on manual dispatch only.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, macOS, tim-ci]
+    timeout-minutes: 60
     permissions:
       contents: read
       security-events: write
