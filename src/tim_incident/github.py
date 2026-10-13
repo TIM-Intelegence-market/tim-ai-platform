@@ -47,7 +47,7 @@ from src.task_governance.github_gateway import (MAX_ANSWER_BYTES, GitHubError, G
 from src.task_governance.identity import TaskRequest, fingerprint_marker
 from src.task_governance.registry import MappingState, TaskRegistry
 from src.task_governance.repository_names import normalize_repository
-from src.task_governance.sync import CreateNotSent, EnsureOutcome, ensure_task
+from src.task_governance.sync import CreateNotSent, EnsureOutcome, ensure_task, release_unsent_create
 
 from . import github_app, protocol
 from .policy import CLASS_NAMES, LABEL_ALLOWLIST, NOT_CONFIGURED, Controls
@@ -1644,11 +1644,9 @@ class Reporter:
                 or mapping.claim_token != token:
             return
         if not self._gateway.find_issues(request.fingerprint, request.key):
-            registry.release(request.fingerprint, token, create_not_sent=True)
-            try:
-                self._gateway.release_create_claim(request.fingerprint)      # the create claim that run took (#68)
-            except Exception as exc:                                        # the next run replaces its own stale claim
-                registry.record_incident(request.fingerprint, 'CLAIM_RELEASE_FAILED', f'{type(exc).__name__}: {exc}')
+            # Drops the create claim label that run took (#68, only while it still names that run), notes that the run
+            # ended without a request, releases the row; a failed drop is an incident and the next run replaces the label.
+            release_unsent_create(registry, self._gateway, request.fingerprint, token)
 
     def _confirm_path(self, key: str) -> Path:
         cls, episode = key.split('/', 1)

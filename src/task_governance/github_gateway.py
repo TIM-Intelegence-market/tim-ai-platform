@@ -18,7 +18,8 @@ Contract kept on purpose:
   comment, or reopen. No method changes an issue to closed.
 - `claim_create` takes the repository-wide create claim of a task (#68): a label that GitHub creates at most once per
   name (a second create answers 422), so two creators that both passed every local check cannot both hold it.
-  `release_create_claim` drops it; a label that already is gone counts as released.
+  `create_claim_holder` reads who holds it (GET only); `release_create_claim` drops it, and a label that already is
+  gone counts as released (the guard reads the holder first and never drops a label another run holds by now).
 The token is used only in the Authorization header and never appears in errors.
 """
 from http.client import HTTPConnection, HTTPSConnection

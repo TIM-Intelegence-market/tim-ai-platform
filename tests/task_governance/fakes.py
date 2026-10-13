@@ -52,6 +52,14 @@ class FakeGitHub:
         finally:
             db.close()
 
+    def create_claim_holder(self, fingerprint):
+        if self.blackout:
+            raise ConnectionError('github unreachable')
+        db = self._db()
+        row = db.execute('SELECT holder FROM claims WHERE fingerprint=?', (fingerprint,)).fetchone()
+        db.close()
+        return row[0] if row else None
+
     def release_create_claim(self, fingerprint):
         if self.blackout:
             raise ConnectionError('github unreachable')

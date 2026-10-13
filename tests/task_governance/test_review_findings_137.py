@@ -3,6 +3,8 @@ import json
 
 import pytest
 
+from src.task_governance.registry import SCHEMA_VERSION
+
 from src.task_governance import (EnsureOutcome, GitHubError, GitHubRestGateway, MappingState, TaskRegistry, TaskRequest,
                                  ensure_task, fingerprint_marker)
 from src.task_governance import live_check
@@ -237,7 +239,7 @@ def test_an_open_claim_from_a_release_three_registry_counts_as_a_possible_create
     assert reg.get(req().fingerprint).create_intent is True                       # its worker may have been creating
     # a released row may have been released by a worker that took over a crashed creator: also a possible create
     assert reg.get(req(target='OTHER').fingerprint).create_intent is True
-    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == 5
+    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == SCHEMA_VERSION
     rest = FakeRest()
     result = ensure_task(req(), reg, GitHubRestGateway(rest.repo, TOKEN, transport=rest), claimant='new', trusted_authors=None)
     assert result.detail == 'CREATE_UNCERTAIN' and creates(rest) == 0
@@ -427,7 +429,7 @@ def test_a_schema_four_file_with_both_columns_is_still_repaired(tmp_path):
     clock = Clock()
     reg = TaskRegistry(path, clock=clock)
     assert reg.get(req().fingerprint).create_intent is True                        # repaired although the column existed
-    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == 5
+    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == SCHEMA_VERSION
     clock.now += 3600
     assert reg.confirm_not_created(req(target='B').fingerprint, 'operator') is True  # a stranded intent can be cleared again
     reg.close()

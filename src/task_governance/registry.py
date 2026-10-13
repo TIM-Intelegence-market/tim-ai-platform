@@ -13,7 +13,7 @@ import uuid
 import threading
 import time
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class EngineBindingConflict(ValueError):
@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS task_mappings (
     hint_legacy TEXT NOT NULL DEFAULT '[]',
     create_intent INTEGER NOT NULL DEFAULT 0,
     create_started_at REAL,
+    create_run TEXT,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS engine_bindings (
@@ -45,6 +46,8 @@ CREATE TABLE IF NOT EXISTS registry_meta (key TEXT PRIMARY KEY, value TEXT NOT N
 CREATE TABLE IF NOT EXISTS governance_incidents (
     id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT NOT NULL,
     reason TEXT NOT NULL, detail TEXT NOT NULL, created_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS claim_ends (
+    fingerprint TEXT NOT NULL, run TEXT NOT NULL, ended_at REAL NOT NULL, PRIMARY KEY (fingerprint, run));
 '''
 
 
@@ -84,6 +87,7 @@ class Mapping:
     hint_issue: int | None = None                  # operator-designated authoritative issue, pinned by the first claim
     hint_legacy: tuple[int, ...] = ()              # known historical duplicates pinned together with it
     create_intent: bool = False                    # a create may have reached GitHub: nobody may create blindly again
+    create_run: str | None = None                  # the run that recorded the intent (and took the create claim label, #68)
 
 
 class TaskRegistry:
@@ -148,7 +152,8 @@ class TaskRegistry:
             pre_hint = 'hint_issue' not in have
             for name, ddl in (('claim_token', 'INTEGER NOT NULL DEFAULT 0'), ('block_candidates', "TEXT NOT NULL DEFAULT '[]'"),
                               ('hint_issue', 'INTEGER'), ('hint_legacy', "TEXT NOT NULL DEFAULT '[]'"),
-                              ('create_intent', 'INTEGER NOT NULL DEFAULT 0'), ('create_started_at', 'REAL')):
+                              ('create_intent', 'INTEGER NOT NULL DEFAULT 0'), ('create_started_at', 'REAL'),
+                              ('create_run', 'TEXT')):
                 if name not in have:
                     self.db.execute(f'ALTER TABLE task_mappings ADD COLUMN {name} {ddl}')
             if self.db.execute('PRAGMA user_version').fetchone()[0] < 5:
@@ -327,17 +332,47 @@ class TaskRegistry:
         return cur.rowcount == 1
 
     @_serialized
-    def begin_create(self, fingerprint: str, token: int, repository: str) -> bool:
+    def begin_create(self, fingerprint: str, token: int, repository: str, run: str | None = None) -> bool:
         """Renew the lease and record, before the irreversible create, that a create for `repository` may happen.
 
         The record outlives a crash: a worker that takes the claim over later never creates blindly (the issue may exist
-        while the listing does not show it yet). Only `release(..., create_not_sent=True)` or an operator clears it."""
+        while the listing does not show it yet). Only `release(..., create_not_sent=True)`, a later run that finds the
+        recorded `run` in `claim_ends` (see `note_claim_ended`) or an operator clears it. `run` names this run of the
+        claim; it is the identity the create claim label carries (#68)."""
         now = self.clock()
         cur = self.db.execute(
-            'UPDATE task_mappings SET claimed_at=?, updated_at=?, create_intent=1, create_started_at=?, github_repository=? '
-            'WHERE fingerprint=? AND state=? AND claim_token=?',
-            (now, now, now, repository, fingerprint, MappingState.CLAIMED, token))
+            'UPDATE task_mappings SET claimed_at=?, updated_at=?, create_intent=1, create_started_at=?, github_repository=?, '
+            'create_run=? WHERE fingerprint=? AND state=? AND claim_token=?',
+            (now, now, now, repository, run, fingerprint, MappingState.CLAIMED, token))
         return cur.rowcount == 1
+
+    @_serialized
+    def note_claim_ended(self, fingerprint: str, run: str) -> None:
+        """Record that `run` (see `begin_create`) ended without sending a create request, after it dropped its create claim
+        label or tried to. From now on a run of this registry may replace a claim label that still names `run`, and a
+        claim row whose intent `run` recorded is stale (#68). Never recorded for a run that may have sent a request."""
+        self.db.execute('INSERT OR IGNORE INTO claim_ends(fingerprint,run,ended_at) VALUES(?,?,?)',
+                        (fingerprint, run, self.clock()))
+
+    @_serialized
+    def claim_ended(self, fingerprint: str, run: str | None) -> bool:
+        if not run:
+            return False
+        return self.db.execute('SELECT 1 FROM claim_ends WHERE fingerprint=? AND run=?', (fingerprint, run)).fetchone() is not None
+
+    @_serialized
+    def clear_create_intent(self, fingerprint: str, token: int, note: str) -> bool:
+        """Clear a create intent whose run is recorded as ended without a request (`claim_ended`): fenced to the claim
+        `token` of the caller, who holds the row now. Records the incident `STALE_INTENT_CLEARED`."""
+        now = self.clock()
+        n = self.db.execute('UPDATE task_mappings SET create_intent=0, updated_at=? WHERE fingerprint=? AND state=? '
+                            'AND claim_token=? AND create_intent=1 AND create_run IS NOT NULL '
+                            'AND create_run IN (SELECT run FROM claim_ends WHERE fingerprint=?)',
+                            (now, fingerprint, MappingState.CLAIMED, token, fingerprint)).rowcount
+        if n:
+            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                            (fingerprint, 'STALE_INTENT_CLEARED', note, now))
+        return bool(n)
 
     @_serialized
     def release(self, fingerprint: str, token: int, *, create_not_sent: bool = False) -> None:
@@ -360,18 +395,22 @@ class TaskRegistry:
         if not note.strip():
             raise ValueError('a note is required')
         now = self.clock()
-        n = self.db.execute(       # one statement: the quiet period is checked against the intent it clears, not an older read
+        rows = self.db.execute(    # one statement: the quiet period is checked against the intent it clears, not an older read
             "UPDATE task_mappings SET create_intent=0, updated_at=?, "
             "state=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN ? ELSE state END, "
             "block_candidates=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '[]' ELSE block_candidates END, "
             "block_reason=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '' ELSE block_reason END "
             "WHERE fingerprint=? AND state IN (?, ?) AND create_intent=1 "
-            "AND create_started_at IS NOT NULL AND ? - create_started_at >= ?",
+            "AND create_started_at IS NOT NULL AND ? - create_started_at >= ? RETURNING create_run",
             (now, MappingState.BLOCKED, MappingState.RELEASED, MappingState.BLOCKED, MappingState.BLOCKED,
-             fingerprint, MappingState.BLOCKED, MappingState.RELEASED, now, quiet_seconds)).rowcount
+             fingerprint, MappingState.BLOCKED, MappingState.RELEASED, now, quiet_seconds)).fetchall()
+        n = len(rows)
         if n:
             self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
                             (fingerprint, 'CREATE_INTENT_CLEARED', note, now))
+            if rows[0]['create_run']:      # the operator says that run stopped: its claim label may be replaced (#68)
+                self.db.execute('INSERT OR IGNORE INTO claim_ends(fingerprint,run,ended_at) VALUES(?,?,?)',
+                                (fingerprint, rows[0]['create_run'], now))
         return bool(n)
 
     @_serialized
@@ -503,4 +542,4 @@ class TaskRegistry:
                        row['claimed_at'], row['claim_token'], row['github_repository'], row['github_issue_number'],
                        tuple(json.loads(row['duplicate_issues'])), row['block_reason'],
                        tuple(json.loads(row['block_candidates'])), row['hint_issue'],
-                       tuple(json.loads(row['hint_legacy'])), bool(row['create_intent']))
+                       tuple(json.loads(row['hint_legacy'])), bool(row['create_intent']), row['create_run'])

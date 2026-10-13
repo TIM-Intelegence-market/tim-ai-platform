@@ -6,6 +6,7 @@ issue is recorded. No sleeps: every pause is an event, and one case is a real SI
 import hashlib
 import multiprocessing as mp
 import os
+import shutil
 import signal
 import sqlite3
 import threading
@@ -14,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from src.task_governance import (EnsureOutcome, GitHubError, IssueCreateAuthority, IssueRef, MappingState, TaskRegistry,
-                                 ensure_task)
+from src.task_governance import (CreateNotSent, EnsureOutcome, GitHubError, IssueCreateAuthority, IssueRef, MappingState,
+                                 TaskRegistry, ensure_task)
 from src.task_governance import sync
 from src.task_governance.create_authority import authority_body
-from src.task_governance.github_gateway import claim_label
+from src.task_governance.github_gateway import _NotSent, claim_label
 from tests.task_governance.fake_rest import FakeRest
 from tests.task_governance.fakes import FakeGitHub
 from tests.task_governance.test_create_authority import AUTH_ISSUE, OWNER, REPO, designate, ensure, gateway, registry, req, task_issues
@@ -84,6 +85,22 @@ def incidents(reg, fp=FP):
     return [(i['reason'], i['detail']) for i in reg.incidents(fp)]
 
 
+def holder(reg, token=0, *, host=None, run=None, ended=False):
+    """A claim text of this registry, by default of this host and of a fresh run; `ended=True` records that run as ended
+    without a request, which is the one condition under which a run of this registry replaces the label."""
+    run = run or sync._new_run()
+    if ended:
+        reg.note_claim_ended(FP, run)
+    return f'registry={reg.registry_id[:16]} token={token} host={host or sync._host_id()} run={run} at=2026-10-13T21:00Z'
+
+
+def backup_of(reg, dest):
+    """A copy of the registry file as a backup would take it (WAL checkpointed first)."""
+    reg.db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+    shutil.copyfile(reg.path, dest)
+    return TaskRegistry(dest)
+
+
 # -- the handover while the old creator stands still ---------------------------------------------------------------------
 
 def test_a_creator_paused_before_its_claim_adopts_the_issue_the_new_creator_made(tmp_path):
@@ -117,7 +134,7 @@ def test_a_creator_paused_under_its_claim_is_refused_by_the_second_check_and_the
     assert waiting.outcome is EnsureOutcome.PENDING and waiting.detail == 'GLOBAL_CLAIM_HELD'
     row = b.get(FP)
     assert row.state is MappingState.RELEASED and not row.create_intent
-    assert incidents(b)[0][0] == 'GLOBAL_CLAIM_HELD' and f'registry={a.registry_id}' in incidents(b)[0][1]
+    assert incidents(b)[0][0] == 'GLOBAL_CLAIM_HELD' and f'registry={a.registry_id[:16]} ' in incidents(b)[0][1]
     go.set()
     refused = finished(thread, box)
     assert refused.outcome is EnsureOutcome.BLOCKED and refused.detail == 'CREATE_NOT_AUTHORIZED'
@@ -220,36 +237,58 @@ def test_a_claim_held_elsewhere_makes_the_task_pending_until_it_is_released(tmp_
     assert ensure(reg, gateway(rest)).outcome is EnsureOutcome.CREATED and rest.labels == {}
 
 
-def test_a_claim_of_this_registry_on_this_host_under_an_older_token_is_replaced(tmp_path):
+def test_a_claim_of_a_run_this_registry_recorded_as_ended_is_replaced(tmp_path):
     rest = FakeRest()
     reg = registry(tmp_path)
     designate(rest, reg)
-    hold(rest, f'registry={reg.registry_id} token=0 host={sync._host_id()} at=2026-10-13T21:00Z')   # left by a run that ended without a request
+    hold(rest, holder(reg, ended=True))                          # left by a run that ended without a request; its delete was lost
     result = ensure(reg, gateway(rest))
     assert result.outcome is EnsureOutcome.CREATED and rest.labels == {}
     assert [r for r, _ in incidents(reg)] == ['STALE_CLAIM_REPLACED']
 
 
-@pytest.mark.parametrize('token', ['9', 'x', '²', '1' * 19], ids=['newer', 'letters', 'superscript', 'huge'])
-def test_a_claim_of_this_registry_with_a_token_that_is_not_lower_is_not_touched(tmp_path, token):
+@pytest.mark.parametrize('text', ['lower token, unknown run', 'no run', 'garbage run', 'huge token'])
+def test_a_claim_of_a_run_this_registry_never_saw_end_is_not_touched(tmp_path, text):
+    """Not the token decides, only the recorded end of the run: a restored backup reaches any token by retrying."""
     rest = FakeRest()
     reg = registry(tmp_path)
     designate(rest, reg)
-    hold(rest, f'registry={reg.registry_id} token={token} host={sync._host_id()}')   # a registry file restored from a backup, or garbage
-    result = ensure(reg, gateway(rest))                                                # never an exception, never a create
-    assert result.outcome is EnsureOutcome.PENDING and result.detail == 'GLOBAL_CLAIM_HELD'
-    assert issue_posts(rest) == [] and LABEL in rest.labels and reg.get(FP).claim_token < 9
+    hold(rest, {'lower token, unknown run': holder(reg, 0),
+                'no run': f'registry={reg.registry_id[:16]} token=0 host={sync._host_id()}',
+                'garbage run': holder(reg, 0, run='²'),
+                'huge token': holder(reg, '1' * 19, ended=True)}[text])
+    result = ensure(reg, gateway(rest))                           # never an exception, never a create
+    expected = EnsureOutcome.PENDING if text != 'huge token' else EnsureOutcome.CREATED   # the token is informational only
+    assert result.outcome is expected
+    if expected is EnsureOutcome.PENDING:
+        assert result.detail == 'GLOBAL_CLAIM_HELD' and issue_posts(rest) == [] and LABEL in rest.labels
 
 
-def test_our_own_text_under_the_current_token_counts_as_held_not_as_ours(tmp_path):
-    """Only a lower token is replaced: the same text could come from a twin that shares the registry file and token."""
+def test_our_registry_host_and_token_with_another_run_count_as_held(tmp_path):
+    """The run id is the identity: a twin that shares the registry file and token is another run."""
     rest = FakeRest()
     reg = registry(tmp_path)
     designate(rest, reg)
-    row_token = reg.get(FP).claim_token + 1 if reg.get(FP) else 1
-    hold(rest, sync._claim_holder(reg, row_token))
+    hold(rest, sync._claim_holder(reg, 1, sync._new_run()))
     result = ensure(reg, gateway(rest))
     assert result.outcome is EnsureOutcome.PENDING and result.detail == 'GLOBAL_CLAIM_HELD' and issue_posts(rest) == []
+
+
+def test_a_claim_request_whose_answer_was_lost_is_recognised_as_ours_by_the_run(tmp_path):
+    rest = FakeRest()
+    reg = registry(tmp_path)
+    designate(rest, reg)
+    gw = gateway(rest)
+    real = gw.claim_create
+
+    def lost(fingerprint, text):
+        real(fingerprint, text)                                   # the label exists, the answer never arrives
+        raise GitHubError('POST /repos/owner/repo/labels: timed out')
+
+    gw.claim_create = lost
+    result = ensure(reg, gw)
+    assert result.outcome is EnsureOutcome.CREATED and rest.labels == {} and len(issue_posts(rest)) == 1
+    assert incidents(reg) == []
 
 
 def test_two_hosts_whose_names_share_a_prefix_are_different_hosts(tmp_path, monkeypatch):
@@ -260,7 +299,7 @@ def test_two_hosts_whose_names_share_a_prefix_are_different_hosts(tmp_path, monk
     twin = sync._host_id()
     monkeypatch.setattr(sync, '_hostname', lambda: 'tim-checkup-prod-01')
     assert twin != sync._host_id() and twin.startswith('tim-checku-') and len(twin) == 17
-    hold(rest, f'registry={reg.registry_id} token=0 host={twin}')           # an unrotated copy of our registry on the twin
+    hold(rest, holder(reg, host=twin, ended=True))               # an unrotated copy of our registry on the twin
     result = ensure(reg, gateway(rest))
     assert result.outcome is EnsureOutcome.PENDING and result.detail == 'GLOBAL_CLAIM_HELD' and issue_posts(rest) == []
 
@@ -269,7 +308,7 @@ def test_a_claim_of_this_registry_on_another_host_is_not_touched(tmp_path):
     rest = FakeRest()
     reg = registry(tmp_path)
     designate(rest, reg)
-    hold(rest, f'registry={reg.registry_id} token=1 host=another-host at=2026-10-13T21:00Z')   # a copied registry file
+    hold(rest, holder(reg, 1, host='another-ho-abcdef', ended=True))   # a copied registry file
     result = ensure(reg, gateway(rest))
     assert result.outcome is EnsureOutcome.PENDING and result.detail == 'GLOBAL_CLAIM_HELD'
     assert issue_posts(rest) == [] and LABEL in rest.labels
@@ -336,11 +375,13 @@ def test_the_claim_label_and_its_text_fit_github(tmp_path, monkeypatch):
     reg = registry(tmp_path)
     name = 'a-very-long-host-name-that-goes-on-and-on.example.org'
     monkeypatch.setattr(sync, '_hostname', lambda: name)
-    text = sync._claim_holder(reg, 10 ** 9)
-    assert len(text) <= 100 and sync._claim_fields(text)['registry'] == reg.registry_id
+    run = sync._new_run()
+    text = sync._claim_holder(reg, 10 ** 9, run)
+    assert len(text) <= 100 and sync._claim_fields(text)['registry'] == reg.registry_id[:16]
     assert sync._claim_fields(text)['host'] == 'a-very-lon-' + hashlib.sha256(name.encode()).hexdigest()[:6]
+    assert sync._holder_run(text) == run and len(run) == 12
     assert ' at=' not in text                                    # the time is the first thing dropped to fit
-    assert ' at=' in sync._claim_holder(reg, 7)
+    assert ' at=' in sync._claim_holder(reg, 10 ** 7 - 1, run)   # seven digits of token still fit with the time
 
 
 def test_a_lookup_failure_under_the_claim_releases_it_and_creates_nothing(tmp_path):
@@ -426,6 +467,141 @@ def test_a_paused_run_of_the_same_registry_is_not_taken_over_after_its_lease(tmp
     first = finished(thread, box)
     assert first.detail == 'CLAIM_LOST_AFTER_CREATE' and first.created
     assert len(task_issues(rest)) == 1 and rest.labels == {}
+
+
+# -- the race review of 2026-10-14: C1 (late delete), C2 (restored backup), C5 (label leak) -----------------------------
+
+def test_a_run_that_gives_up_cannot_delete_the_label_of_a_sibling_run(tmp_path):
+    """C1: run 1 of a registry file gives up under its claim (its create never left) and stands still right before its
+    DELETE; run 2 of the same file must not get the claim meanwhile (run 1 still holds the row), so run 1's late DELETE
+    hits only its own label; after the handover the new creator creates the one issue."""
+    rest = FakeRest()
+    reg1, reg2, other = registry(tmp_path, 'shared.db'), registry(tmp_path, 'shared.db'), registry(tmp_path, 'b.db')
+    designate(rest, reg1)
+    gw1, gw2 = gateway(rest), gateway(rest)
+    rest.fail[('POST', r'/issues$')] = _NotSent()
+    reached, go = pause_at(gw1, 'release_create_claim', before=True)
+    thread, box = run_in_thread(lambda: ensure(reg1, gw1, claimant='run-1'))
+    assert reached.wait(5)
+    del rest.fail[('POST', r'/issues$')]
+    row = reg1.get(FP)
+    assert row.state is MappingState.CLAIMED and row.create_intent and LABEL in rest.labels   # the row is kept until the delete
+    second = ensure(reg2, gw2, claimant='run-2')
+    assert second.outcome is EnsureOutcome.PENDING and second.detail == 'claim held by run-1'
+    assert 'STALE_CLAIM_REPLACED' not in [r for r, _ in incidents(reg2)] and LABEL in rest.labels
+    go.set()
+    thread.join(20)
+    assert isinstance(box.get('error'), CreateNotSent)          # run 1 ends as it would have: nothing was sent
+    row = reg1.get(FP)
+    assert row.state is MappingState.RELEASED and not row.create_intent and rest.labels == {}
+    assert reg1.claim_ended(FP, row.create_run)
+    redesignate(rest, other)
+    created = ensure(other, gateway(rest), claimant='b')
+    assert created.outcome is EnsureOutcome.CREATED
+    assert ensure(reg2, gw2, claimant='run-2').outcome is EnsureOutcome.RECOVERED
+    assert len(task_issues(rest)) == 1 and len(issue_posts(rest)) == 2 and rest.labels == {}   # the first request never left
+
+
+def test_a_registry_restored_from_a_backup_never_replaces_the_claim_of_the_live_original(tmp_path):
+    """C2: the restored file shares id and host with the original and reaches every token by retrying; the run id of the
+    original's live holder is not in its `claim_ends`, so it waits however often it runs."""
+    rest = FakeRest()
+    reg = registry(tmp_path, 'a.db')
+    designate(rest, reg)
+    rest.issues[AUTH_ISSUE]['state'] = 'closed'                  # two refused runs: tokens 1 and 2, then a backup
+    assert ensure(reg, gateway(rest)).detail == 'CREATE_NOT_AUTHORIZED'
+    restored = backup_of(reg, str(tmp_path / 'a.restored.db'))
+    assert ensure(reg, gateway(rest)).detail == 'CREATE_NOT_AUTHORIZED'
+    rest.issues[AUTH_ISSUE]['state'] = 'open'
+    gw = gateway(rest)
+    reached, go = pause_at(gw, 'create_issue', before=True)       # the original holds the claim and stands still
+    thread, box = run_in_thread(lambda: ensure(reg, gw, claimant='original'))
+    assert reached.wait(5)
+    assert restored.registry_id == reg.registry_id
+    for _ in range(6):                                           # the scheduler retries; the token passes the holder's
+        waiting = ensure(restored, gateway(rest), claimant='restored')
+        assert waiting.outcome is EnsureOutcome.PENDING and waiting.detail == 'GLOBAL_CLAIM_HELD'
+    assert restored.get(FP).claim_token > reg.get(FP).claim_token and issue_posts(rest) == []
+    assert 'STALE_CLAIM_REPLACED' not in [r for r, _ in incidents(restored)]
+    go.set()
+    assert finished(thread, box).outcome is EnsureOutcome.CREATED
+    assert ensure(restored, gateway(rest), claimant='restored').outcome is EnsureOutcome.RECOVERED
+    assert len(task_issues(rest)) == 1 and rest.labels == {}
+
+
+def test_an_uncertain_create_resolved_by_the_first_lookup_drops_the_label(tmp_path):
+    """C5: the label kept for an uncertain create goes once the issue is visible and adopted."""
+    rest = FakeRest()
+    clock = [1000.0]
+    reg = TaskRegistry(str(tmp_path / 'a.db'), clock=lambda: clock[0])
+    designate(rest, reg)
+    gw = gateway(rest)
+    rest.lose_create_reply = True
+    with pytest.raises(GitHubError):
+        ensure(reg, gw)
+    rest.lose_create_reply = False
+    del rest.fail[('GET', r'/issues$')]
+    row = reg.get(FP)
+    assert row.state is MappingState.CLAIMED and row.create_intent and LABEL in rest.labels
+    clock[0] += 400                                              # the lease is over, the issue is visible now
+    result = ensure(reg, gw)
+    assert result.outcome is EnsureOutcome.RECOVERED and reg.get(FP).state is MappingState.MAPPED
+    assert rest.labels == {} and len(task_issues(rest)) == 1
+
+
+def test_a_run_that_noted_its_end_but_lost_its_row_release_leaves_no_uncertain_create(tmp_path):
+    """A crash between the note and the row release heals at the next takeover: the recorded run ended without a request."""
+    rest = FakeRest()
+    clock = [1000.0]
+    reg = TaskRegistry(str(tmp_path / 'a.db'), clock=lambda: clock[0])
+    designate(rest, reg)
+    won, mapping = reg.claim(FP, req().key, 'crashed', 300.0)
+    run = sync._new_run()
+    assert won and reg.begin_create(FP, mapping.claim_token, REPO, run)
+    reg.note_claim_ended(FP, run)                                # its label is gone (or replaceable), then it died
+    clock[0] += 400
+    result = ensure(reg, gateway(rest))
+    assert result.outcome is EnsureOutcome.CREATED
+    assert [r for r, _ in incidents(reg)] == ['STALE_INTENT_CLEARED'] and len(task_issues(rest)) == 1
+
+
+def test_the_operator_confirmation_lets_the_next_run_replace_the_dead_holders_label(tmp_path):
+    rest = FakeRest()
+    clock = [1000.0]
+    reg = TaskRegistry(str(tmp_path / 'a.db'), clock=lambda: clock[0])
+    designate(rest, reg)
+    gw = gateway(rest)
+    rest.fail[('POST', r'/issues$')] = TimeoutError('no answer')   # nothing created, nobody can know
+    with pytest.raises(GitHubError):
+        ensure(reg, gw)
+    del rest.fail[('POST', r'/issues$')]
+    clock[0] += 400
+    assert ensure(reg, gw).detail == 'CREATE_UNCERTAIN' and LABEL in rest.labels
+    assert not reg.confirm_not_created(FP, 'checked GitHub, worker stopped')   # not before the quiet hour
+    clock[0] += 3600
+    assert reg.confirm_not_created(FP, 'checked GitHub, worker stopped')
+    result = ensure(reg, gw)
+    assert result.outcome is EnsureOutcome.CREATED and rest.labels == {} and len(task_issues(rest)) == 1
+    assert 'STALE_CLAIM_REPLACED' in [r for r, _ in incidents(reg)]
+
+
+def test_a_label_another_run_holds_by_now_is_never_deleted_by_name(tmp_path):
+    """Defence in depth under the rule above: a release reads the label first and leaves another holder's label alone."""
+    rest = FakeRest()
+    reg = registry(tmp_path)
+    designate(rest, reg)
+    gw = gateway(rest)
+    real = gw.create_issue
+
+    def swapped(request, fingerprint, *, timeout):               # while we create, someone replaced our label by hand
+        issue = real(request, fingerprint, timeout=timeout)
+        hold(rest, holder(registry(tmp_path, 'other.db'), 1))
+        return issue
+
+    gw.create_issue = swapped
+    result = ensure(reg, gw)
+    assert result.outcome is EnsureOutcome.CREATED and LABEL in rest.labels
+    assert [r for r, _ in incidents(reg)] == ['CLAIM_NOT_OURS']
 
 
 # -- a real SIGSTOP of a separate process -----------------------------------------------------------------------------
