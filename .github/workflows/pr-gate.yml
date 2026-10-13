@@ -15,7 +15,8 @@ permissions:
 jobs:
   gate:
     name: PR gate
-    runs-on: ubuntu-latest
+    # Self-hosted runner (docs/CI_SELF_HOSTED_RUNNER.md); this job never executes PR code.
+    runs-on: [self-hosted, macOS, tim-ci]
     timeout-minutes: 5
     steps:
       # The default checkout credentials stay on purpose: the fetch below needs them in a

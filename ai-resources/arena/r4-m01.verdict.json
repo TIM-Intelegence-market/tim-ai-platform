@@ -1,0 +1,11 @@
+{
+  "match": "r4-m01",
+  "scores": {
+    "a005": {"correctness": 8, "completeness": 9, "specificity": 8, "robustness": 7, "clarity": 6, "fatal": false},
+    "a004": {"correctness": 8, "completeness": 8, "specificity": 8, "robustness": 8, "clarity": 7, "fatal": false}
+  },
+  "winner": "a004",
+  "reason": "Both fixed every attack against them and are close in substance, but a004 keeps the Kurzurteil within the five-sentence limit and is easier to use, while a005 runs to roughly nine Kurzurteil sentences, is denser, and moves the human and server work into U1-U4 outside the five-package cap.",
+  "survived": ["21,7/Woche as upper bound: recounted from R4 JSON (4,4 to 89,9)", "entry model mismatch: F7 single strategy object", "gap 10 server claim: downgraded to WICHTIG/UNVERIFIED", "two bottlenecks in Kurzurteil: reduced to one", "V5 time verdict missing: 1h vs 15m verdict given", "venue_trades feed: split BELEGT/UNVERIFIED", "L1 placement on document only: marked ABGELEITET"],
+  "standing": {"a005": ["Kurzurteil exceeds five sentences", "U1-U4 effectively extend the five-package limit (partly standing)"], "a004": ["Packages 3 and 5 need network or server access and cannot be handed to a coding agent as written (unraised, found by judge)"]}
+}
