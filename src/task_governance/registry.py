@@ -386,17 +386,20 @@ class TaskRegistry:
 
     @_serialized
     def block(self, fingerprint: str, reason: str, detail: str = '', *, token: int | None = None,
-              candidates=(), expect=None) -> Mapping:
+              candidates=(), expect=None, create_not_sent: bool = False) -> Mapping:
         """Fail closed: record the incident and stop the task, never delete or close anything.
 
         `candidates` are the issue numbers the block is about (structured, used to judge whether a
         later hint really addresses it). With a token the state change is fenced to that claim. A
         MAPPED task is never downgraded, by anyone: a stale worker or operator call only records
         the incident. `expect=(block_reason, candidates)` changes only that exact block, so a verdict taken on an older
-        read cannot overwrite a newer one (the incident is still recorded).
+        read cannot overwrite a newer one (the incident is still recorded). `create_not_sent=True` (only with a token)
+        also clears the claim's create record in the same fenced statement: the worker proved that no request left.
         """
         now = self.clock()
         cands = json.dumps(sorted(set(candidates)))
+        if create_not_sent and token is None:
+            raise ValueError('create_not_sent needs the claim token')
         if expect is not None:
             self.db.execute('UPDATE task_mappings SET block_reason=?, block_candidates=?, updated_at=? '
                             'WHERE fingerprint=? AND state=? AND block_reason=? AND block_candidates=?',
@@ -407,9 +410,11 @@ class TaskRegistry:
                             'WHERE fingerprint=? AND state<>?',
                             (MappingState.BLOCKED, reason, cands, now, fingerprint, MappingState.MAPPED))
         else:
-            self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, block_candidates=?, updated_at=? '
+            self.db.execute('UPDATE task_mappings SET state=?, block_reason=?, block_candidates=?, updated_at=?, '
+                            'create_intent=CASE WHEN ? THEN 0 ELSE create_intent END '
                             'WHERE fingerprint=? AND state=? AND claim_token=?',
-                            (MappingState.BLOCKED, reason, cands, now, fingerprint, MappingState.CLAIMED, token))
+                            (MappingState.BLOCKED, reason, cands, now, int(create_not_sent), fingerprint,
+                             MappingState.CLAIMED, token))
         self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
                         (fingerprint, reason, detail, now))
         return self.get(fingerprint)

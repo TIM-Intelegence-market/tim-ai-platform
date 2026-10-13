@@ -344,6 +344,10 @@ class GitHubRestGateway:
             raise GitHubError(f'POST {path}: HTTP {status} but the label does not exist')
         return held
 
+    def create_claim_holder(self, fingerprint):
+        """The text of the task's create-claim label, or None when no claim is held (GET only)."""
+        return self._claim_holder(claim_label(fingerprint))
+
     def _claim_holder(self, name):
         _, item = self._call('GET', f'/repos/{self.repository}/labels/{quote(name, safe="")}')
         if item is None:

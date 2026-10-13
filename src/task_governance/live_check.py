@@ -104,7 +104,7 @@ def run_roundtrip(gateway, workdir, *, login, run_id=None):
         found = gateway.find_issues(request.fingerprint, request.key)
         _check(results, 'exactly_one_issue_carries_the_marker', lambda: ([f.number for f in found] == [first.issue_number], f'{[f.number for f in found]}'))
         label = claim_label(request.fingerprint)             # the create happened under the create claim (#68): it must be gone again
-        _check(results, 'create_claim_released', lambda: (gateway._claim_holder(label) is None, f'label {label} absent'))
+        _check(results, 'create_claim_released', lambda: (gateway.create_claim_holder(request.fingerprint) is None, f'label {label} absent'))
         results.append({'name': 'cleanup', 'ok': True, 'detail': f'issue #{first.issue_number} stays open: close it by hand (the gateway cannot close)'})
     finally:
         repository.close()

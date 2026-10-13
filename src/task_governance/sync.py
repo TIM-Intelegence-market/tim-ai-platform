@@ -7,8 +7,11 @@ _UNBLOCKABLE_BY_HINT = ('AMBIGUOUS_DUPLICATES', 'DUPLICATE_AFTER_CREATE', 'HINT_
 MIN_LEASE_FACTOR = 4      # lease must be at least this many times the gateway's worst-case create time
 CREATE_FRESHNESS_SECONDS = 80.0   # a create rests on a lookup and an authority answer at most this old (#68): 4 x the default
                                   # create bound of 20 s, measured by the clock that moved further (monotonic or wall)
-HOLDER_HOST_CHARS = 16            # of the host name in the create-claim text (GitHub: 100 characters for a label description)
+HOLDER_HOST_CHARS = 10            # of the host name in the create-claim text, plus 6 hex of its hash (two hosts whose names
+                                  # share a prefix must not count as one; GitHub: 100 characters for a label description)
 
+import hashlib
+import re
 import socket
 import time
 
@@ -54,7 +57,7 @@ class IssueGateway(Protocol):
     - `authorize_create` is asked before every create (#68 path A, see `create_authority.py`); a gateway without it never creates.
     - `claim_create` takes the repository-wide create claim of the task, something the repository hands out at most once
       per task until `release_create_claim` (the REST gateway: a label). It returns None when the claim is now ours, else
-      a text naming the holder. A gateway without it never creates either.
+      a text naming the holder. A gateway without both methods never creates either.
     """
     repository: str
     max_create_seconds: float   # REQUIRED: hard upper bound (enforced via `timeout`) of one create_issue call incl. retries
@@ -282,15 +285,18 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         registry.release(fp, token, create_not_sent=True)
         _incident_once(registry, fp, 'GLOBAL_CLAIM_HELD', held)
         return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'GLOBAL_CLAIM_HELD')
-    looked = _now()                              # the create rests on this lookup and on the authority answer after it
+    # Row first, label second, on every path that gives up here: a crash in between leaves a claim label of this registry
+    # under a token that is now lower, which the next run replaces itself; the other order would leave a create intent
+    # without a label, which only an operator clears.
     try:
         matches = _matches(gateway, fp, key, trusted_authors)
     except UnknownIssueKind as exc:
+        result = _blocked_unknown(registry, fp, token, exc, created=False, create_not_sent=True)
         _release_create_claim(gateway, registry, fp)
-        return _blocked_unknown(registry, fp, token, exc, created=False)
+        return result
     except Exception:
-        _release_create_claim(gateway, registry, fp)
         registry.release(fp, token, create_not_sent=True)
+        _release_create_claim(gateway, registry, fp)
         raise
     if matches:                                  # created under an earlier claim and visible now that we hold it
         try:
@@ -302,20 +308,23 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
             return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
         finally:
             _release_create_claim(gateway, registry, fp)
-    # The designation is asked again right before the request, and lookup and answer must be fresh: a creator whose
-    # designation was withdrawn after its first check, or that stood still longer than the bound, does not create.
+    # The designation is asked again right before the request, and that answer must be fresh: a creator whose
+    # designation was withdrawn after its first check, or that stood still longer than the bound between asking and
+    # deciding, does not create. (The lookup above cannot go stale under the claim: nobody else creates meanwhile.)
+    asked = _now()
     try:
         _authorize_create(gateway, registry, trusted_authors)
-        age = _age(looked)
+        age = _age(asked)
         if age > CREATE_FRESHNESS_SECONDS:
-            raise CreateNotAuthorized(f'the lookup and the authority answer are {age:.0f}s old, '
-                                      f'the create bound is {CREATE_FRESHNESS_SECONDS:g}s')
+            raise CreateNotAuthorized(f'the authority answer is {age:.0f}s old, the create bound is '
+                                      f'{CREATE_FRESHNESS_SECONDS:g}s')
     except CreateNotAuthorized as exc:
+        result = _create_refused(registry, fp, token, exc, not_sent=True)
         _release_create_claim(gateway, registry, fp)
-        return _create_refused(registry, fp, token, exc, not_sent=True)
+        return result
     except Exception:
-        _release_create_claim(gateway, registry, fp)
         registry.release(fp, token, create_not_sent=True)
+        _release_create_claim(gateway, registry, fp)
         raise
     started = time.monotonic()
     try:
@@ -409,9 +418,15 @@ def _hostname() -> str:
         return 'unknown'
 
 
+def _host_id() -> str:
+    """This host in the create-claim text: a readable prefix plus a hash of the whole name (prefixes alone collide)."""
+    name = _hostname()
+    return f'{name[:HOLDER_HOST_CHARS]}-{hashlib.sha256(name.encode("utf-8")).hexdigest()[:6]}'
+
+
 def _claim_holder(registry, token) -> str:
     """Who holds the create claim (no secret in it): registry id, claim token, host, time. Fits 100 characters."""
-    text = f'registry={registry.registry_id} token={token} host={_hostname()[:HOLDER_HOST_CHARS]}'
+    text = f'registry={registry.registry_id} token={token} host={_host_id()}'
     stamp = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime())
     return text if len(f'{text} at={stamp}') > 100 else f'{text} at={stamp}'
 
@@ -433,12 +448,12 @@ def _claim_create(gateway, registry, fp, token):
         raise CreateNotAuthorized('the gateway has no claim_create, so it cannot take the repository-wide create claim')
     holder = _claim_holder(registry, token)
     held = claim(fp, holder)
-    if held is None or held == holder:
+    if held is None:
         return None
     fields = _claim_fields(held)
     if fields.get('registry') != registry.registry_id or fields.get('host') != _claim_fields(holder)['host'] \
-            or not fields.get('token', '').isdigit() or int(fields['token']) >= int(token):
-        return held
+            or not re.fullmatch(r'[0-9]{1,18}', fields.get('token', '')) or int(fields['token']) >= int(token):
+        return held                              # another registry or host, an unreadable token, or one that is not lower
     gateway.release_create_claim(fp)
     registry.record_incident(fp, 'STALE_CLAIM_REPLACED', held)
     held = claim(fp, holder)
@@ -446,7 +461,8 @@ def _claim_create(gateway, registry, fp, token):
 
 
 def _release_create_claim(gateway, registry, fp) -> None:
-    """Drop the create claim once the outcome of the create is recorded; a failure is an incident, never a blocker."""
+    """Drop the create claim once the row says what happened (created and recorded, refused, or nothing sent); a failure
+    is an incident, never a blocker."""
     try:
         gateway.release_create_claim(fp)
     except Exception as exc:
@@ -548,8 +564,9 @@ def _matches(gateway, fp, key, trusted_authors) -> list[IssueRef]:
     return [m for m in seen if m.is_pull_request is False]
 
 
-def _blocked_unknown(registry, fp, token, exc, *, created, issue_number=None) -> EnsureResult:
-    blocked = registry.block(fp, 'UNKNOWN_ISSUE_KIND', str(exc), token=token, candidates=exc.numbers)
+def _blocked_unknown(registry, fp, token, exc, *, created, issue_number=None, create_not_sent=False) -> EnsureResult:
+    blocked = registry.block(fp, 'UNKNOWN_ISSUE_KIND', str(exc), token=token, candidates=exc.numbers,
+                             create_not_sent=create_not_sent)
     return EnsureResult(EnsureOutcome.BLOCKED, blocked, created, issue_number, 'UNKNOWN_ISSUE_KIND')
 
 

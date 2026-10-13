@@ -469,7 +469,10 @@ def test_create_that_never_left_is_released_once_the_network_is_back(world):
     report = world.run(advance=900)
     assert report.reporting == 'on' and report.pending == 0 and len(world.incidents()) == 1
     reasons = [i['reason'] for i in world.reporter.registry().incidents(fp)]
-    assert 'CREATE_UNCERTAIN' not in reasons
+    assert 'CREATE_UNCERTAIN' not in reasons and 'STALE_CLAIM_REPLACED' not in reasons
+    deletes = [path for method, path in rest.repo_writes() if method == 'DELETE']
+    assert len(deletes) == 2 and all(path.endswith(claim_label(fp)) for path in deletes)   # released with the row, then after the create
+    assert rest.labels == {}
 
 
 def test_create_uncertain_waits_for_the_confirm_file(world):

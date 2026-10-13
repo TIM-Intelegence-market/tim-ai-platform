@@ -11,6 +11,8 @@ Contract kept on purpose:
   (`_guard_watch`); every other write, on W or anywhere else, is refused before sending. Without the flag (the server)
   W stays protected as before.
 - Labels come only from `policy.LABEL_ALLOWLIST`; `status:*`, `agent:*`, `checkup:*`, `priority:p0`, `governance` never.
+  The one exception is the repository label `tim-claim-<fingerprint>` that `ensure_task` creates and deletes around a
+  create (its create claim, #68); it is never attached to an issue, and the outside watch is refused it like every write.
 - The body is fixed text from the checkup and is never rewritten; only the STATUS section outside the managed part
   changes, and not at all once `status:ready` or an `agent:*` label is set (E6).
 - Every outgoing text is checked again for the known secrets (installation token, app key lines, DB password) and
@@ -85,7 +87,8 @@ MAX_ENTRY_BYTES = 256 * 1024
 CREATE_UNCERTAIN_NOTE_SECONDS = 3600.0      # B.4: after this long the journal names the confirm-not-created line
 CONFIRM_QUIET_SECONDS = 3600.0
 STATE_KEEP_SECONDS = 30 * 86400             # per-episode bookkeeping older than this is dropped
-CREATE_WRITES = 5                           # create claim, create, labels, possibly the marker back-fill, claim release (#68)
+CREATE_WRITES = 6                           # create claim (two writes when a stale claim of this host is replaced), create,
+                                            # claim release, labels, possibly the marker back-fill (#68)
 
 PREFLIGHT_OK = 'ok'
 PREFLIGHT_SKIPPED = 'skipped'
@@ -1617,7 +1620,7 @@ class Reporter:
             gateway.add_labels(result.issue_number, labels, episode=episode)
             return 'done', result.outcome.value.lower()
         if result.outcome is EnsureOutcome.PENDING:
-            return 'wait', 'claim held'
+            return 'wait', 'claim held' if result.detail != 'GLOBAL_CLAIM_HELD' else 'create claim held elsewhere (label tim-claim-*)'
         if result.detail == 'CREATE_NOT_AUTHORIZED':
             return ('done', 'adopt only: no issue found') if adopt_only else ('wait', 'create not authorized')
         if result.detail == 'CREATE_UNCERTAIN':
@@ -1642,6 +1645,10 @@ class Reporter:
             return
         if not self._gateway.find_issues(request.fingerprint, request.key):
             registry.release(request.fingerprint, token, create_not_sent=True)
+            try:
+                self._gateway.release_create_claim(request.fingerprint)      # the create claim that run took (#68)
+            except Exception as exc:                                        # the next run replaces its own stale claim
+                registry.record_incident(request.fingerprint, 'CLAIM_RELEASE_FAILED', f'{type(exc).__name__}: {exc}')
 
     def _confirm_path(self, key: str) -> Path:
         cls, episode = key.split('/', 1)

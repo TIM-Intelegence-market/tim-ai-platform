@@ -135,7 +135,8 @@ def test_no_call_the_gateway_makes_can_close_an_issue(rest, gw, tmp_path):
     ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
     ensure_task(req(body='v2'), reg, gw, claimant='w', trusted_authors=None)
     for method, path, _ in rest.calls:
-        assert method in ('GET', 'POST', 'PATCH') or (method == 'DELETE' and '/labels/tim-claim-' in path)   # only the create claim
+        assert method in ('GET', 'POST', 'PATCH') \
+            or (method == 'DELETE' and re.fullmatch(r'/repos/owner/repo/labels/tim-claim-[0-9a-f]{32}', path))   # only the create claim
     assert all(payload.get('state') != 'closed' for payload in rest.issues.values())
     assert all(i['state'] == 'open' for i in rest.issues.values())
 
@@ -690,7 +691,7 @@ def test_a_batch_of_creates_does_not_reread_its_own_issues_for_other_tasks(rest,
     for index in range(40):
         ensure_task(req(target=f'T{index}'), reg, gw, claimant='w', trusted_authors=None)
     gets = len([c for c in rest.calls if c[0] == 'GET' and re.search(r'/issues/\d+$', c[1])])
-    assert gets < 40 * 20                           # linear, not quadratic (a full re-read would be about 40 * 40); two lookups per create
+    assert gets < 40 * 12                           # linear, not quadratic (a full re-read would be about 40 * 40); two lookups per create
 
 
 def test_an_answer_other_than_200_on_a_direct_read_is_an_error(rest, gw):

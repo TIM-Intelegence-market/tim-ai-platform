@@ -3,6 +3,7 @@ registry, and then went on, must not make a second issue. Three things close it:
 before the request, that answer and the lookup must be younger than `CREATE_FRESHNESS_SECONDS`, and every create happens
 under a repository-wide create claim (a label GitHub creates at most once per name) that is dropped only after the created
 issue is recorded. No sleeps: every pause is an event, and one case is a real SIGSTOP of a separate process."""
+import hashlib
 import multiprocessing as mp
 import os
 import signal
@@ -13,7 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from src.task_governance import EnsureOutcome, GitHubError, IssueCreateAuthority, MappingState, TaskRegistry, ensure_task
+from src.task_governance import (EnsureOutcome, GitHubError, IssueCreateAuthority, IssueRef, MappingState, TaskRegistry,
+                                 ensure_task)
 from src.task_governance import sync
 from src.task_governance.create_authority import authority_body
 from src.task_governance.github_gateway import claim_label
@@ -222,23 +224,45 @@ def test_a_claim_of_this_registry_on_this_host_under_an_older_token_is_replaced(
     rest = FakeRest()
     reg = registry(tmp_path)
     designate(rest, reg)
-    host = sync._hostname()[:sync.HOLDER_HOST_CHARS]
-    hold(rest, f'registry={reg.registry_id} token=0 host={host} at=2026-10-13T21:00Z')   # left by a run that ended without a request
+    hold(rest, f'registry={reg.registry_id} token=0 host={sync._host_id()} at=2026-10-13T21:00Z')   # left by a run that ended without a request
     result = ensure(reg, gateway(rest))
     assert result.outcome is EnsureOutcome.CREATED and rest.labels == {}
     assert [r for r, _ in incidents(reg)] == ['STALE_CLAIM_REPLACED']
 
 
-@pytest.mark.parametrize('token', ['9', 'x'], ids=['newer', 'unreadable'])
+@pytest.mark.parametrize('token', ['9', 'x', '²', '1' * 19], ids=['newer', 'letters', 'superscript', 'huge'])
 def test_a_claim_of_this_registry_with_a_token_that_is_not_lower_is_not_touched(tmp_path, token):
     rest = FakeRest()
     reg = registry(tmp_path)
     designate(rest, reg)
-    host = sync._hostname()[:sync.HOLDER_HOST_CHARS]
-    hold(rest, f'registry={reg.registry_id} token={token} host={host}')   # a registry file restored from a backup, or garbage
-    result = ensure(reg, gateway(rest))
+    hold(rest, f'registry={reg.registry_id} token={token} host={sync._host_id()}')   # a registry file restored from a backup, or garbage
+    result = ensure(reg, gateway(rest))                                                # never an exception, never a create
     assert result.outcome is EnsureOutcome.PENDING and result.detail == 'GLOBAL_CLAIM_HELD'
     assert issue_posts(rest) == [] and LABEL in rest.labels and reg.get(FP).claim_token < 9
+
+
+def test_our_own_text_under_the_current_token_counts_as_held_not_as_ours(tmp_path):
+    """Only a lower token is replaced: the same text could come from a twin that shares the registry file and token."""
+    rest = FakeRest()
+    reg = registry(tmp_path)
+    designate(rest, reg)
+    row_token = reg.get(FP).claim_token + 1 if reg.get(FP) else 1
+    hold(rest, sync._claim_holder(reg, row_token))
+    result = ensure(reg, gateway(rest))
+    assert result.outcome is EnsureOutcome.PENDING and result.detail == 'GLOBAL_CLAIM_HELD' and issue_posts(rest) == []
+
+
+def test_two_hosts_whose_names_share_a_prefix_are_different_hosts(tmp_path, monkeypatch):
+    rest = FakeRest()
+    reg = registry(tmp_path)
+    designate(rest, reg)
+    monkeypatch.setattr(sync, '_hostname', lambda: 'tim-checkup-prod-02')
+    twin = sync._host_id()
+    monkeypatch.setattr(sync, '_hostname', lambda: 'tim-checkup-prod-01')
+    assert twin != sync._host_id() and twin.startswith('tim-checku-') and len(twin) == 17
+    hold(rest, f'registry={reg.registry_id} token=0 host={twin}')           # an unrotated copy of our registry on the twin
+    result = ensure(reg, gateway(rest))
+    assert result.outcome is EnsureOutcome.PENDING and result.detail == 'GLOBAL_CLAIM_HELD' and issue_posts(rest) == []
 
 
 def test_a_claim_of_this_registry_on_another_host_is_not_touched(tmp_path):
@@ -310,10 +334,11 @@ def test_a_gateway_without_the_claim_never_creates(tmp_path):
 def test_the_claim_label_and_its_text_fit_github(tmp_path, monkeypatch):
     assert LABEL.startswith('tim-claim-') and len(LABEL) == 42 <= 50
     reg = registry(tmp_path)
-    monkeypatch.setattr(sync, '_hostname', lambda: 'a-very-long-host-name-that-goes-on-and-on.example.org')
+    name = 'a-very-long-host-name-that-goes-on-and-on.example.org'
+    monkeypatch.setattr(sync, '_hostname', lambda: name)
     text = sync._claim_holder(reg, 10 ** 9)
     assert len(text) <= 100 and sync._claim_fields(text)['registry'] == reg.registry_id
-    assert sync._claim_fields(text)['host'] == 'a-very-long-host'
+    assert sync._claim_fields(text)['host'] == 'a-very-lon-' + hashlib.sha256(name.encode()).hexdigest()[:6]
     assert ' at=' not in text                                    # the time is the first thing dropped to fit
     assert ' at=' in sync._claim_holder(reg, 7)
 
@@ -337,6 +362,48 @@ def test_a_lookup_failure_under_the_claim_releases_it_and_creates_nothing(tmp_pa
     row = reg.get(FP)
     assert row.state is MappingState.RELEASED and not row.create_intent and rest.labels == {} and issue_posts(rest) == []
     assert ensure(reg, gw).outcome is EnsureOutcome.CREATED
+
+
+def test_a_slow_lookup_under_the_claim_does_not_count_against_the_bound(tmp_path, monkeypatch):
+    """Under the claim nobody else creates, so the lookup cannot go stale; only the authority answer must be fresh."""
+    rest = FakeRest()
+    reg = registry(tmp_path)
+    designate(rest, reg)
+    gw = gateway(rest)
+    clock, real, calls = [0.0], gw.find_issues, []
+
+    def slow(fingerprint, key):
+        calls.append(1)
+        if len(calls) == 2:                                      # the lookup under the claim takes long (many direct reads)
+            clock[0] += 10 * sync.CREATE_FRESHNESS_SECONDS
+        return real(fingerprint, key)
+
+    gw.find_issues = slow
+    monkeypatch.setattr(sync, '_now', lambda: (clock[0], clock[0]))
+    assert ensure(reg, gw).outcome is EnsureOutcome.CREATED
+
+
+def test_an_unknown_issue_kind_under_the_claim_leaves_no_create_intent(tmp_path):
+    rest = FakeRest()
+    reg = registry(tmp_path)
+    designate(rest, reg)
+    gw = gateway(rest)
+    real, calls = gw.find_issues, []
+
+    def unknown_under_claim(fingerprint, key):
+        calls.append(1)
+        if len(calls) == 2:
+            return [IssueRef(77, 'open', author=OWNER, is_pull_request=None)]     # the gateway did not say issue or PR
+        return real(fingerprint, key)
+
+    gw.find_issues = unknown_under_claim
+    result = ensure(reg, gw)
+    assert result.outcome is EnsureOutcome.BLOCKED and result.detail == 'UNKNOWN_ISSUE_KIND'
+    row = reg.get(FP)
+    assert row.state is MappingState.BLOCKED and not row.create_intent and rest.labels == {} and issue_posts(rest) == []
+    gw.find_issues = real                                        # the kind is reported on the next run: it creates, no CREATE_UNCERTAIN
+    again = ensure(reg, gw)
+    assert again.outcome is EnsureOutcome.CREATED and 'CREATE_UNCERTAIN' not in [r for r, _ in incidents(reg)]
 
 
 # -- the same registry: a paused run is never taken over --------------------------------------------------------------
