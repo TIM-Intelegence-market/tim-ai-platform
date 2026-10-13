@@ -332,3 +332,32 @@ def test_triage_rejects_files_the_model_cannot_see_in_full(tmp_path):
     result = issue_triage.parse_triage(answer, _issue(64), tmp_path)
     assert result["decision"] == "skip" and "32000" in result["reason"]
     assert issue_triage.parse_triage(answer, _issue(64))["decision"] == "ready"
+
+
+def _check(name, conclusion, start="2026-10-12T22:56:14Z", end="2026-10-12T22:56:17Z"):
+    return {"__typename": "CheckRun", "name": name, "status": "COMPLETED", "conclusion": conclusion,
+            "startedAt": start, "completedAt": end}
+
+
+def test_stale_pr_is_kept_when_actions_started_no_runner(tmp_path):
+    no_runner = [_check("PR gate", "FAILURE"), _check("test", "FAILURE"), _check("TIM full suite", "FAILURE")]
+    pr = {"baseRefName": "platform-main", "createdAt": "2026-10-12T10:00:00Z", "author": {"login": WORKER},
+          "number": 7, "headRefName": "codex/issue-84-qwen", "mergeStateStatus": "BLOCKED",
+          "statusCheckRollup": no_runner}
+    ledger = IssueLedger(tmp_path / "l.json")
+    ledger.start_attempt(84, "c")
+    later = 1_791_800_000.0 + runner.STALE_PR_SECONDS
+    pipeline = FakePipeline([], [pr])
+    assert runner._maintain_worker_prs(pipeline, ledger, merge=True, now=later) == {84}
+    assert not _gh(pipeline, "pr", "close") and not ledger.errors(84)
+    # A real test failure after minutes still retires the stale PR.
+    real = {**pr, "statusCheckRollup": [_check("PR gate", "SUCCESS"),
+                                        _check("test", "FAILURE", end="2026-10-12T23:09:00Z")]}
+    pipeline = FakePipeline([], [real])
+    assert runner._maintain_worker_prs(pipeline, ledger, merge=True, now=later) == set()
+    assert _gh(pipeline, "pr", "close")
+
+
+def test_quick_pr_gate_failure_alone_is_not_an_outage():
+    assert not runner._ci_unavailable({"statusCheckRollup": [_check("PR gate", "FAILURE")]})
+    assert not runner._ci_unavailable({"statusCheckRollup": []})

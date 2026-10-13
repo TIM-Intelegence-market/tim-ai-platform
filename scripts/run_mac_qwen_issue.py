@@ -29,6 +29,9 @@ WORKER_LOGIN = "apoman74-art"
 WORKER_BRANCH = re.compile(r"codex/issue-([1-9][0-9]*)-qwen")
 SELF_UPDATED_EXIT = 3
 STALE_PR_SECONDS = 6 * 3600
+# Jobs that normally run for minutes; failing within seconds means no runner started them.
+LONG_CHECKS = frozenset({"test", "TIM full suite"})
+NO_RUNNER_SECONDS = 15
 
 
 def worker_identity(config_dir: Path) -> WorkerIdentity:
@@ -208,12 +211,37 @@ def _block_issue(pipeline: Pipeline, ledger: IssueLedger, number: int, errors: l
         pass
 
 
+def _seconds(stamp: object) -> float | None:
+    try:
+        return float(calendar.timegm(time.strptime(str(stamp), "%Y-%m-%dT%H:%M:%SZ")))
+    except ValueError:
+        return None
+
+
+def _ci_unavailable(pr: dict) -> bool:
+    """True when every failed check died within seconds and a long job was among them.
+
+    That is GitHub Actions not starting runners (spending limit, outage), not the PR failing,
+    so the PR must neither be retired as stale nor cost the issue an attempt.
+    """
+    failed = []
+    for check in pr.get("statusCheckRollup") or []:
+        if not isinstance(check, dict) or str(check.get("conclusion", "")).upper() not in {
+                "FAILURE", "STARTUP_FAILURE", "TIMED_OUT", "CANCELLED"}:
+            continue
+        start, end = _seconds(check.get("startedAt")), _seconds(check.get("completedAt"))
+        if start is None or end is None or end - start > NO_RUNNER_SECONDS:
+            return False
+        failed.append(str(check.get("name", "")))
+    return bool(failed) and any(name in LONG_CHECKS for name in failed)
+
+
 def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool,
                          now: float | None = None) -> set[int]:
     """Finish or retire the worker's own open PRs; return the issue numbers they cover."""
     prs = json.loads(pipeline.github(
         "pr", "list", "--state", "open", "--author", WORKER_LOGIN, "--limit", "100", "--json",
-        "number,headRefName,headRefOid,baseRefName,mergeStateStatus,createdAt,author"))
+        "number,headRefName,headRefOid,baseRefName,mergeStateStatus,createdAt,author,statusCheckRollup"))
     covered: set[int] = set()
     now = time.time() if now is None else now
     for pr in prs if isinstance(prs, list) else []:
@@ -232,6 +260,9 @@ def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool
                 pipeline.github("pr", "merge", number, "--squash")
             elif merge and status == "BEHIND":
                 pipeline.github("pr", "update-branch", number)
+            elif merge and status != "DIRTY" and _ci_unavailable(pr):
+                # Keep the PR; once Actions runs again a base update re-runs its checks.
+                print(f"worker PR #{number} waits: GitHub Actions started no runner", file=sys.stderr)
             elif merge and (status == "DIRTY" or now - created > STALE_PR_SECONDS):
                 reason = f"worker PR #{number} closed: {status or 'unknown'} after {int((now - created) // 60)} min"
                 pipeline.github("pr", "close", number, "--delete-branch", "--comment",
