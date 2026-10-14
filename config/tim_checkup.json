@@ -178,7 +178,7 @@
   "rate_limits": {
     "new_issues_per_hour": 3,
     "new_issues_per_day": 20,
-    "writes_per_run": 12,
+    "writes_per_run": 18,
     "comments_per_incident_per_day": 4,
     "changed_per_episode": 3,
     "pause_after_forbidden_minutes": 30,

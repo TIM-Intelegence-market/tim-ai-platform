@@ -135,7 +135,8 @@ def test_no_call_the_gateway_makes_can_close_an_issue(rest, gw, tmp_path):
     ensure_task(req(), reg, gw, claimant='w', trusted_authors=None)
     ensure_task(req(body='v2'), reg, gw, claimant='w', trusted_authors=None)
     for method, path, _ in rest.calls:
-        assert method in ('GET', 'POST', 'PATCH')
+        assert method in ('GET', 'POST', 'PATCH') \
+            or (method == 'DELETE' and re.fullmatch(r'/repos/owner/repo/labels/tim-claim-[0-9a-f]{32}', path))   # only the create claim
     assert all(payload.get('state') != 'closed' for payload in rest.issues.values())
     assert all(i['state'] == 'open' for i in rest.issues.values())
 
@@ -526,7 +527,7 @@ def test_the_post_create_check_is_not_cut_short_by_the_read_limit(rest, gw, tmp_
         rest.fail[('GET', rf'/issues/{number}$')] = 410
     result = ensure_task(req(), TaskRegistry(str(tmp_path / 'a.db')), gw, claimant='w', trusted_authors=None)
     assert result.outcome is EnsureOutcome.CREATED and result.issue_number == 700    # reached its own number, mapped, no error
-    assert len([c for c in rest.calls if c[0] == 'POST']) == 1
+    assert len([c for c in rest.calls if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
 
 
 def test_a_lookup_that_hits_the_read_limit_fails_before_anything_is_created(rest, gw, tmp_path):
@@ -550,7 +551,7 @@ def _failing_check_after_create(gw):
 
     def flaky(fingerprint, key):
         calls.append(1)
-        if len(calls) == 2:                        # the lookup before the create works, the check after it does not
+        if len(calls) == 3:                        # the lookups before the create work (one before and one under the create claim), the check after it does not
             raise GitHubError('GET /repos/owner/repo/issues: HTTP 429')
         return real(fingerprint, key)
     gw.find_issues = flaky
@@ -690,7 +691,7 @@ def test_a_batch_of_creates_does_not_reread_its_own_issues_for_other_tasks(rest,
     for index in range(40):
         ensure_task(req(target=f'T{index}'), reg, gw, claimant='w', trusted_authors=None)
     gets = len([c for c in rest.calls if c[0] == 'GET' and re.search(r'/issues/\d+$', c[1])])
-    assert gets < 40 * 10                           # linear, not quadratic (a full re-read would be about 40 * 40)
+    assert gets < 40 * 12                           # linear, not quadratic (a full re-read would be about 40 * 40); two lookups per create
 
 
 def test_an_answer_other_than_200_on_a_direct_read_is_an_error(rest, gw):

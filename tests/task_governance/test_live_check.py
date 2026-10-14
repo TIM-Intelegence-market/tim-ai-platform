@@ -51,6 +51,8 @@ def test_roundtrip_creates_one_issue_updates_it_and_adopts_it_after_a_lost_regis
     assert [c for c in rest.writes() if c[0] == 'POST' and c[1].endswith('/issues')] != [] and \
         len([c for c in rest.writes() if c[0] == 'POST' and c[1].endswith('/issues')]) == 1
     assert names['lost_registry_adopts_instead_of_creating']['ok'] and names['exactly_one_issue_carries_the_marker']['ok']
+    assert names['create_claim_released']['ok'] and rest.labels == {}       # the create claim (#68) was taken and dropped
+    assert [c[0] for c in rest.writes() if '/labels' in c[1]] == ['POST', 'DELETE']
     assert 'close it by hand' in names['cleanup']['detail']
 
 

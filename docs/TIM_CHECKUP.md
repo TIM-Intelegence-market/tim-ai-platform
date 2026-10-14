@@ -93,7 +93,11 @@ dem nächsten Lauf, also nach höchstens 15 min, oder sofort mit `sudo systemctl
    gh issue create -R TIM-Intelegence-market/tim-ai-platform --title "TIM-Checkup: Freigabe und Steuerung" --label governance --body-file body.txt
    ```
    Die Nummer brauchst du für `--authority-issue`. Die Marker-Zeile im Body nicht von Hand ändern. Ein Issue, das
-   jemand anderes oder die App eröffnet hat, zählt nicht.
+   jemand anderes oder die App eröffnet hat, zählt nicht. Umzug des Checkups auf einen anderen Host in drei Schritten:
+   altes Freigabe-Issue schließen, mindestens 4 Minuten warten, dann ein neues Freigabe-Issue mit der Registry-ID des
+   neuen Hosts anlegen (Begründung in `docs/mission-09-task-governance.md`, „Create claim and handover“). Labels
+   `tim-claim-…` legt der Checkup vor jedem neuen Issue selbst an und löscht sie danach wieder; eines, das stehen
+   bleibt, nur von Hand löschen, wenn der Lauf, der es anlegte, sicher beendet ist.
 6. **Benachrichtigungen:** Repo → Watch → Custom → Issues. In GitHub Mobile Push für „Participating“ und
    „Mentions“ einschalten. Jeder Vorfall-Body enthält `cc @uezeyiraydin-cell`.
 7. Das **Außenwache-Issue** W (`--watch-issue`): mit deinem Konto eröffnen, Label `status:external-action`.

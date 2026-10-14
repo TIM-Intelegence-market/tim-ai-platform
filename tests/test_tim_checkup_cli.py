@@ -22,6 +22,7 @@ import pytest
 from scripts import tim_checkup
 from src.task_governance import TaskRegistry
 from src.task_governance.create_authority import authority_body
+from src.task_governance.github_gateway import claim_label
 from src.tim_incident import checkup
 from src.tim_incident import github as gh
 from src.tim_incident.policy import CONTROL_LABELS, LABEL_ALLOWLIST, load_policy
@@ -343,7 +344,8 @@ def test_on_opens_one_issue_with_evidence_and_closes_after_recovery(tmp_path):
     assert evidence.startswith(gh.tag_marker(EPISODE, 'evidence'))
     assert '### 1. Fehlschlagende Prüfungen und Unterbefunde' in evidence and '### 9. Watchdog' in evidence
     assert LITERAL_REMOVED in evidence                  # the journal block with the DB password is gone whole
-    assert rest.writes_to_repo() == [('POST', f'/repos/{REPO}/issues'),
+    claim = f'/repos/{REPO}/labels/{claim_label(gh.task_request("DATA_FLOW", EPISODE, HOST).fingerprint)}'
+    assert rest.writes_to_repo() == [('POST', f'/repos/{REPO}/labels'), ('POST', f'/repos/{REPO}/issues'), ('DELETE', claim),
                                      ('POST', f'/repos/{REPO}/issues/{number}/labels'),
                                      ('POST', f'/repos/{REPO}/issues/{number}/comments')]
 
@@ -405,7 +407,8 @@ def test_selftest_label_opens_one_issue_and_closes_it_after_removal(tmp_path):
     code, summary = server.next()
     assert code == 0 and summary['transitions'] == [f'resolved:SELFTEST:{EPISODE}']
     assert rest.issues[number]['state'] == 'closed' and len(rest.bot_comments(number)) == 2
-    assert rest.writes_to_repo()[0] == ('POST', f'/repos/{REPO}/issues') and rest.incidents() == [number]
+    assert rest.writes_to_repo()[:2] == [('POST', f'/repos/{REPO}/labels'), ('POST', f'/repos/{REPO}/issues')]
+    assert rest.incidents() == [number]
 
 
 def test_on_before_the_key_is_pasted_is_exit3_and_keeps_the_outbox(tmp_path):
