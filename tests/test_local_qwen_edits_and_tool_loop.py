@@ -223,6 +223,63 @@ def test_loop_turn_timeout_is_longer_than_client_default_but_within_budget(sandb
     assert chat.timeouts == [loop_mod.CHAT_TURN_SECONDS, loop_mod.CHAT_TURN_SECONDS, 100.0]
 
 
+def test_hard_loop_allows_server_cold_start_and_keeps_total_deadline(sandbox, monkeypatch):
+    monkeypatch.setenv("TIM_QWEN_HARD_RUN", "1")
+    now = [0.0]
+    patch = [{"path": IMPLEMENTATION, "content": "VALUE = 2\n"}]
+
+    class ColdServer(ScriptedChat):
+        async def chat(self, messages, **kwargs):
+            reply = await super().chat(messages, **kwargs)
+            now[0] += 350.0
+            return reply
+
+    chat = ColdServer([native("read_file", path=IMPLEMENTATION), native("submit_patch", patches=patch)])
+    loop = make_loop(sandbox, chat, clock=lambda: now[0])
+    result = asyncio.run(loop.run("sys", "user"))
+    assert result.stats["submitted"]
+    assert chat.timeouts == [900.0, 550.0]
+    assert loop_mod.chat_options()["num_ctx"] == 65536
+    assert loop_mod.chat_options()["num_batch"] == 256
+
+
+def test_explicit_short_deadline_still_limits_hard_server_calls(sandbox, monkeypatch):
+    monkeypatch.setenv("TIM_QWEN_HARD_RUN", "1")
+    patch = [{"path": IMPLEMENTATION, "content": "VALUE = 2\n"}]
+    chat = ScriptedChat([native("submit_patch", patches=patch)])
+    result = asyncio.run(make_loop(sandbox, chat, max_seconds=10, clock=lambda: 0).run("s", "u"))
+    assert result.stats["submitted"]
+    assert chat.timeouts == [10.0]
+
+
+def test_server_one_shot_retains_large_context_and_bounded_batch(monkeypatch):
+    from src.llm import ollama_client
+
+    seen = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self):
+            return json.dumps({"response": '{"patches": []}'}).encode()
+
+    def fake_urlopen(request, timeout):
+        seen.update(json.loads(request.data))
+        return Response()
+
+    monkeypatch.setattr(ollama_client, "urlopen", fake_urlopen)
+    monkeypatch.setenv("TIM_QWEN_HARD_RUN", "1")
+    client = ollama_client.OllamaClient("http://127.0.0.1:11435", "qwen3-coder:30b",
+                                      observation_only=False, generation_options=loop_mod.chat_options())
+    assert asyncio.run(client.generate_json("large contract", schema={"type": "object"})) == {"patches": []}
+    assert seen["options"]["num_ctx"] == 65536
+    assert seen["options"]["num_batch"] == 256
+
+
 def test_ollama_chat_uses_per_turn_timeout(monkeypatch):
     from src.llm import ollama_client
 

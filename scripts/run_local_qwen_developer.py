@@ -452,7 +452,13 @@ async def run(args: argparse.Namespace) -> int:
         if not (repo / ".tim/local-first/PATCH_SANDBOX_ALLOWED").exists():
             raise ContractError("sandbox marker missing")
         contract = _build_contract(repo, task)
-        ollama = OllamaClient(args.ollama_url, args.model, timeout=args.timeout, observation_only=False)
+        generation_kwargs = {}
+        if os.getenv("TIM_QWEN_HARD_RUN") == "1":
+            from src.local_first.qwen_tool_loop import chat_options
+            # A one-shot retry must retain the larger context used by the server tool loop.
+            generation_kwargs["generation_options"] = chat_options()
+        ollama = OllamaClient(args.ollama_url, args.model, timeout=args.timeout,
+                              observation_only=False, **generation_kwargs)
         if not await ollama.available():
             from src.local_first.runtime import LocalTask
             BlockerMailbox(state / "blockers").create_request(LocalTask(

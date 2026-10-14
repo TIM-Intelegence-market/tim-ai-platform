@@ -137,10 +137,9 @@ def test_hard_issue_routes_to_server_model_only_when_tunnel_answers(tmp_path: Pa
 
     seen.clear()
     monkeypatch.setattr(run_mac_qwen_issue, "_hard_backend", lambda: None)
-    with pytest.raises(PipelineError):
+    with pytest.raises(PipelineError, match="server model unavailable"):
         run_mac_qwen_issue._run_local_task(tmp_path, task, codex_fallback=False, hard=True)
-    assert seen["OLLAMA_MODEL"] == "qwen3.5:9b"
-    assert "OLLAMA_BASE_URL" not in seen
+    assert not seen  # No Mac fallback starts after the server disappears.
 
 
 def test_hard_backend_refuses_non_loopback_url(monkeypatch):

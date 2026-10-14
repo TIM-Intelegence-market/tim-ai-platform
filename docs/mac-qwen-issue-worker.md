@@ -81,8 +81,11 @@ from `127.0.0.1:11435` to the server's Ollama. The worker reads two variables:
 An issue labelled `agent:qwen-hard` plus `status:ready` is picked like a
 `agent:qwen-ready` issue, but its local Qwen step runs against the server model
 with a 900 s request timeout. When the tunnel does not answer or the model is
-not installed there, the issue runs on the Mac model as usual. Codex and Claude
-fallbacks are unchanged. The cold start of the 30B model takes about 2.5 min.
+not installed there, the issue waits for the server without spending a repair
+attempt. This also holds when the server disappears between selection and
+starting the model process. Earlier genuine failures remain in the ledger.
+Codex and Claude fallbacks after a started model attempt are unchanged. The
+cold start of the 30B model takes about 2.5 min.
 
 Before any PR is opened, the server model reads the final diff once and writes
 up to five lines (`OK` or `PROBLEM` plus findings) into the PR body under
@@ -156,9 +159,13 @@ switch off with `--disable-qwen-tool-loop` or `TIM_QWEN_TOOL_LOOP=0`) Qwen first
 `/api/chat` tool calls: `list_dir`, `read_file` and `search_code` (read-only, `src/`, `tests/`,
 `docs/`), `run_required_tests` (sandboxed, at most twice), `check_patch` and `submit_patch`.
 No tool writes files or takes a shell command, and the submitted patch faces the same gates.
-The loop is capped at 12 steps and 10 minutes. Tool calls that Qwen prints as text are parsed
-as well, because Ollama's Qwen 3.5 parser is not reliable yet. If the loop ends without a
-patch, the worker makes its normal one-shot request. Each result records `tool_loop`
+The loop is capped at 12 steps and 10 minutes on the Mac. Heavy server runs use
+a shared 15-minute loop budget, including model loading, with each call bounded
+by the remaining budget. CPU prefill batches are limited to 256 tokens for
+these server calls. Tool calls that Qwen prints as text are parsed as well,
+because Ollama's Qwen 3.5 parser is not reliable yet. If the loop ends without a
+patch, the worker makes a structured one-shot request. Heavy server retries
+retain the same context and CPU batch settings. Each result records `tool_loop`
 statistics (native, text-parsed and invalid calls, calls per tool, how the loop ended) and
 the `test_sandbox` that ran.
 

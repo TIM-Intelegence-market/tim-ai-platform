@@ -473,6 +473,28 @@ def test_hard_issue_waits_for_the_server_instead_of_spending_attempts(tmp_path, 
     assert not _gh(pipeline, "issue", "edit")
 
 
+@pytest.mark.parametrize("prior_attempt", [False, True])
+def test_server_disappearing_after_selection_preserves_retry_budget(tmp_path, monkeypatch, prior_attempt):
+    backend = iter([("http://127.0.0.1:11435", "qwen3-coder:30b"), None])
+    monkeypatch.setattr(runner, "_hard_backend", lambda: next(backend))
+    monkeypatch.setattr(runner, "_run_task_group", lambda *a, **k: pytest.fail("started Mac fallback"))
+    monkeypatch.setattr(runner, "_clear_leftovers", lambda *a, **k: None)
+    issue = _issue(82, HARD, _contract(82))
+    ledger = IssueLedger(tmp_path / "issue-ledger.json")
+    if prior_attempt:
+        digest = issue_triage.contract_hash(build_task(issue))
+        ledger.start_attempt(82, digest)
+        ledger.record_failure(82, digest, "previous genuine model failure")
+    before = dict(ledger.entry(82))
+    pipeline = FakePipeline([issue])
+    message = runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False, merge=False)
+    assert "waiting for server model" in message
+    assert IssueLedger(tmp_path / "issue-ledger.json").entry(82) == before
+    assert not _gh(pipeline, "issue", "edit")
+    assert not _gh(pipeline, "issue", "comment")
+    assert not _gh(pipeline, "pr", "create")
+
+
 def test_no_issue_job_starts_while_a_ci_job_runs_but_prs_are_still_kept(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "ci_job_running", lambda: True)
     monkeypatch.setattr(runner, "_run_local_task", lambda *a, **k: pytest.fail("ran during CI"))

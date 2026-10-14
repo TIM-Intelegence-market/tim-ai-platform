@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import calendar
+import copy
 import json
 import os
 import re
@@ -26,8 +27,8 @@ from src.local_first.issue_triage import IssueLedger, attach_worker_contract, co
 
 REPO = "TIM-Intelegence-market/tim-ai-platform"
 # Big model on tim-server, reached through the local SSH tunnel (LaunchAgent com.tim.server-ollama-tunnel).
-# The server never sees GitHub: only prompt in, text out. Unset URL or unreachable backend means the
-# issue runs like any other on the local Mac model.
+# The server never sees GitHub: only prompt in, text out. Hard issues wait for the server;
+# they must not silently fall back to the smaller Mac model.
 HARD_MODEL_DEFAULT = "qwen3-coder:30b"
 HARD_REQUEST_TIMEOUT = "900"
 REVIEW_MAX_DIFF_CHARS = 60_000
@@ -148,8 +149,15 @@ def _hard_backend() -> tuple[str, str] | None:
     return url, model
 
 
+class ServerBackendUnavailable(PipelineError):
+    """The server disappeared before any model work started; defer without spending retries."""
+
+
 def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
                     claude_fallback: bool = False, hard: bool = False) -> dict:
+    backend = _hard_backend() if hard else None
+    if hard and backend is None:
+        raise ServerBackendUnavailable("server model unavailable; wait for the SSH tunnel")
     state = worktree / ".tim/local-first"
     inbox = state / "developer-inbox"
     inbox.mkdir(parents=True, exist_ok=True)
@@ -168,7 +176,6 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
                 # Model-written tests never run outside the OS sandbox on the worker Mac.
                 "TIM_TEST_SANDBOX": "required",
                 "TIM_QWEN_TOOL_LOOP": "0" if os.environ.get("TIM_QWEN_TOOL_LOOP") == "0" else "1"})
-    backend = _hard_backend() if hard else None
     if backend is not None:
         env.update({"OLLAMA_BASE_URL": backend[0], "OLLAMA_MODEL": backend[1],
                     "TIM_QWEN_REQUEST_TIMEOUT": HARD_REQUEST_TIMEOUT, "TIM_QWEN_HARD_RUN": "1"})
@@ -512,6 +519,7 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
     branch = f"codex/issue-{number}-qwen"
     worktree = state_dir / "worktrees" / f"issue-{number}-qwen"
     digest = contract_hash(task)
+    previous_attempts = copy.deepcopy(ledger.entry(number).get("attempts"))
     attempt = ledger.start_attempt(number, digest)
     try:
         _clear_leftovers(pipeline, state_dir, number, branch, worktree, attempt)
@@ -550,6 +558,15 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
         match = re.search(r"/pull/([1-9][0-9]*)", url)
         if match is None:
             raise PipelineError("GitHub did not return a pull request URL")
+    except ServerBackendUnavailable:
+        # No model process was launched. Preserve any earlier genuine failures exactly.
+        entry = ledger.entry(number)
+        if previous_attempts is None:
+            entry.pop("attempts", None)
+        else:
+            entry["attempts"] = previous_attempts
+        ledger.save()
+        return f"Issue #{number} waiting for server model; retry budget unchanged."
     except (PipelineError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         if isinstance(exc, ContractRejected):
             ledger.exhaust(number, digest, str(exc))

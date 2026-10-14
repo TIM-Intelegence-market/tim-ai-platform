@@ -43,12 +43,16 @@ MAX_PARSE_CHARS = 40_000  # bounds the text-call regexes on runaway model output
 CHAT_OPTIONS = {"temperature": 0.2, "num_ctx": 32768, "num_predict": 8192}
 # agent:qwen-hard runs on the tim-server model (262k context) and may hold files up to 96 000 characters.
 HARD_NUM_CTX = 65536
+HARD_MAX_SECONDS = 900.0
+HARD_CHAT_TURN_SECONDS = 900.0
 
 
 def chat_options() -> dict[str, Any]:
     options = dict(CHAT_OPTIONS)
     if os.environ.get("TIM_QWEN_HARD_RUN") == "1":
         options["num_ctx"] = HARD_NUM_CTX
+        # Keep CPU prefill batches bounded within the server's Ollama memory limit.
+        options["num_batch"] = 256
     return options
 SECRET_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|authorization)\s*[:=]\s*[^\s,;]+")
 SENSITIVE_NAME = re.compile(r"(?i)(secret|credential|private|\.env|token|password|keychain)")
@@ -243,14 +247,16 @@ class QwenToolLoop:
     def __init__(self, client: ChatClient, repo_root: Path, *,
                  check_patch: Callable[[list[Any]], None],
                  run_tests: Callable[[], dict[str, Any]],
-                 max_steps: int = MAX_STEPS, max_seconds: float = MAX_SECONDS,
+                 max_steps: int = MAX_STEPS, max_seconds: float | None = None,
                  clock: Callable[[], float] = time.monotonic) -> None:
         self.client = client
         self.reader = RepoReader(repo_root)
         self.check_patch = check_patch
         self.run_tests = run_tests
         self.max_steps = max_steps
-        self.max_seconds = max_seconds
+        hard = os.environ.get("TIM_QWEN_HARD_RUN") == "1"
+        self.max_seconds = (HARD_MAX_SECONDS if hard else MAX_SECONDS) if max_seconds is None else max_seconds
+        self.turn_seconds = HARD_CHAT_TURN_SECONDS if hard else CHAT_TURN_SECONDS
         self.clock = clock
         self.test_runs = 0
         self.output_chars = 0
@@ -303,7 +309,7 @@ class QwenToolLoop:
                 break
             self.stats["steps"] += 1
             try:
-                turn_seconds = max(1.0, min(CHAT_TURN_SECONDS, remaining))
+                turn_seconds = max(1.0, min(self.turn_seconds, remaining))
                 message = await self.client.chat(messages, tools=TOOLS, options=chat_options(),
                                                  timeout=turn_seconds)
             except Exception as exc:  # tools unsupported or Ollama error: caller falls back to one-shot
