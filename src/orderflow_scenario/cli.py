@@ -21,6 +21,7 @@ from .config import default_config
 from .domain import MarketContext
 from .schema_validation import validate_analysis
 from src.knowledge.broncx_feed import BroncxFeedStore
+from src.knowledge.goathub_feed import GoatHubFeedStore
 from src.market_data.providers.openmarket.errors import OpenMarketError
 
 
@@ -129,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--validate", action="store_true", help="also print schema validation status")
     parser.add_argument("--broncx-feed", type=Path, default=None, help="Broncx Discord feed directory (external guidance: weights scenario scores, adds level scenarios, never confirms)")
     parser.add_argument("--broncx-max-age-hours", type=float, default=24.0, help="Broncx posts older than this are shown as stale and not used")
+    parser.add_argument("--goathub-feed", type=Path, default=None, help="GoatHub community feed directory (good calls shown in the report; no score weight, never confirms)")
+    parser.add_argument("--goathub-max-age-hours", type=float, default=24.0, help="GoatHub calls older than this are not shown")
     args = parser.parse_args(argv)
 
     try:
@@ -175,6 +178,16 @@ def main(argv: list[str] | None = None) -> int:
                 pipeline_inputs,
                 external_posts=tuple(BroncxFeedStore(args.broncx_feed.expanduser()).load()),
                 external_max_age=timedelta(hours=args.broncx_max_age_hours),
+            )
+        if args.goathub_feed is not None:
+            if args.goathub_max_age_hours <= 0:
+                raise ValueError("--goathub-max-age-hours must be positive")
+            if not args.goathub_feed.expanduser().is_dir():
+                raise ValueError(f"--goathub-feed directory not found: {args.goathub_feed}")
+            pipeline_inputs = dataclasses.replace(
+                pipeline_inputs,
+                community_messages=tuple(GoatHubFeedStore(args.goathub_feed.expanduser()).load()),
+                community_max_age=timedelta(hours=args.goathub_max_age_hours),
             )
         analysis = Pipeline(default_config()).run(pipeline_inputs)
         output = analysis.to_dict()
