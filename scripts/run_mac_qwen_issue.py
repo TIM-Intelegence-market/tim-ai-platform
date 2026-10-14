@@ -38,6 +38,19 @@ STALE_PR_SECONDS = 6 * 3600
 # Jobs that normally run for minutes; failing within seconds means no runner started them.
 LONG_CHECKS = frozenset({"test", "TIM full suite"})
 NO_RUNNER_SECONDS = 15
+# The CI runner mac-mini-tim shares this Mac; a worker job beside a test job doubles its runtime.
+CI_JOB_PROCESS = "Runner.Worker"
+
+
+def ci_job_running() -> bool:
+    """True while a GitHub Actions job runs on this Mac (TIM_WORKER_CI_PAUSE=0 switches the pause off)."""
+    if os.environ.get("TIM_WORKER_CI_PAUSE") == "0":
+        return False
+    try:
+        return subprocess.run(["pgrep", "-f", CI_JOB_PROCESS], capture_output=True,
+                              timeout=10, check=False).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def worker_identity(config_dir: Path) -> WorkerIdentity:
@@ -158,7 +171,7 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
     backend = _hard_backend() if hard else None
     if backend is not None:
         env.update({"OLLAMA_BASE_URL": backend[0], "OLLAMA_MODEL": backend[1],
-                    "TIM_QWEN_REQUEST_TIMEOUT": HARD_REQUEST_TIMEOUT})
+                    "TIM_QWEN_REQUEST_TIMEOUT": HARD_REQUEST_TIMEOUT, "TIM_QWEN_HARD_RUN": "1"})
     returncode = _run_task_group(
         [sys.executable, "scripts/run_local_qwen_build_queue.py", "--task-id", task["task_id"]],
         worktree, env, timeout=1800)
@@ -383,18 +396,20 @@ def _triage_one(pipeline: Pipeline, ledger: IssueLedger, issues: list, repo_root
         return "No eligible Mac Qwen issue; daily triage budget used."
     issue = candidates[0]
     number = issue["number"]
+    # Files the Mac model cannot see in full are only accepted while the server model answers.
+    allow_hard = _hard_backend() is not None
     try:
-        raw = issue_triage.ask_claude(issue_triage.triage_prompt(issue), repo_root)
+        raw = issue_triage.ask_claude(issue_triage.triage_prompt(issue, allow_hard=allow_hard), repo_root)
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
         ledger.record_triage(issue, f"error:{type(exc).__name__}")
         return f"Triage of #{number} failed: {type(exc).__name__}"
-    result = issue_triage.parse_triage(raw, issue, repo_root)
+    result = issue_triage.parse_triage(raw, issue, repo_root, allow_hard=allow_hard)
     ledger.record_triage(issue, result["decision"])
     _ensure_labels(pipeline)
     if result["decision"] == "ready":
         pipeline.github("issue", "comment", str(number), "--body", issue_triage.ready_comment(result))
         pipeline.github("issue", "edit", str(number), "--add-label",
-                        f"{issue_triage.LABEL_READY},status:ready,priority:{result['priority']}")
+                        f"{issue_triage.ready_label(result)},status:ready,priority:{result['priority']}")
         return f"Triage: #{number} prepared for the Mac Qwen worker."
     if result["decision"] == "split":
         children = _create_subtasks(pipeline, ledger, issue, result)
@@ -421,7 +436,7 @@ def _create_subtasks(pipeline: Pipeline, ledger: IssueLedger, parent: dict, resu
         bound = {**subtask, "task": issue_triage.rebind_task(subtask["task"], child)}
         pipeline.github("issue", "edit", str(child), "--body", issue_triage.subtask_body(parent, bound))
         pipeline.github("issue", "edit", str(child), "--add-label",
-                        f"{issue_triage.LABEL_READY},status:ready,priority:{subtask['priority']}")
+                        f"{issue_triage.ready_label(subtask)},status:ready,priority:{subtask['priority']}")
         children.append(child)
         ledger.entry(parent["number"]).setdefault("children", []).append(child)
         ledger.save()
@@ -431,11 +446,19 @@ def _create_subtasks(pipeline: Pipeline, ledger: IssueLedger, parent: dict, resu
 def _select(pipeline: Pipeline, ledger: IssueLedger, issues: list, *, pilot_issue: int | None,
             skip: set[int], dry_run: bool) -> tuple[dict, dict] | None:
     """Pick the next workable issue; a broken contract or used-up attempts never block the queue."""
+    hard_ready: bool | None = None
     while True:
         issue = select_ready_issue(issues, only_number=pilot_issue, skip=skip)
         if issue is None:
             return None
         number = issue["number"]
+        if is_hard_issue(issue) and not dry_run:
+            if hard_ready is None:
+                hard_ready = _hard_backend() is not None
+            if not hard_ready:
+                # Waits for the server tunnel instead of spending attempts on the Mac model.
+                skip.add(number)
+                continue
         try:
             task = build_task(issue)
         except ValueError as exc:
@@ -472,7 +495,9 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
     ledger = IssueLedger(state_dir / "issue-ledger.json")
     ledger.reconcile(issues)
     skip = set() if dry_run else _maintain_worker_prs(pipeline, ledger, merge=merge)
-    selected = _select(pipeline, ledger, issues, pilot_issue=pilot_issue, skip=skip, dry_run=dry_run)
+    if not dry_run and ci_job_running():
+        return "CI job running on this Mac; issue work paused until it ends."
+    selected =_select(pipeline, ledger, issues, pilot_issue=pilot_issue, skip=skip, dry_run=dry_run)
     if selected is None:
         if triage and pilot_issue is None and not dry_run:
             return _triage_one(pipeline, ledger, issues, pipeline.repository)

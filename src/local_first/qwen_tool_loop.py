@@ -14,6 +14,7 @@ are parsed here too. Every run records how many calls were native, parsed or inv
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -40,6 +41,15 @@ MAX_SEARCH_HITS = 40
 MAX_LIST_ENTRIES = 200
 MAX_PARSE_CHARS = 40_000  # bounds the text-call regexes on runaway model output
 CHAT_OPTIONS = {"temperature": 0.2, "num_ctx": 32768, "num_predict": 8192}
+# agent:qwen-hard runs on the tim-server model (262k context) and may hold files up to 96 000 characters.
+HARD_NUM_CTX = 65536
+
+
+def chat_options() -> dict[str, Any]:
+    options = dict(CHAT_OPTIONS)
+    if os.environ.get("TIM_QWEN_HARD_RUN") == "1":
+        options["num_ctx"] = HARD_NUM_CTX
+    return options
 SECRET_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|authorization)\s*[:=]\s*[^\s,;]+")
 SENSITIVE_NAME = re.compile(r"(?i)(secret|credential|private|\.env|token|password|keychain)")
 TOOL_CALL_TAG = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
@@ -294,7 +304,7 @@ class QwenToolLoop:
             self.stats["steps"] += 1
             try:
                 turn_seconds = max(1.0, min(CHAT_TURN_SECONDS, remaining))
-                message = await self.client.chat(messages, tools=TOOLS, options=dict(CHAT_OPTIONS),
+                message = await self.client.chat(messages, tools=TOOLS, options=chat_options(),
                                                  timeout=turn_seconds)
             except Exception as exc:  # tools unsupported or Ollama error: caller falls back to one-shot
                 self.stats["ended"] = f"chat_error:{type(exc).__name__}"

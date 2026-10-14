@@ -25,6 +25,12 @@ from src.local_first.runtime import BlockerMailbox
 MAX_CONTEXT_FILES = 12
 MAX_CONTEXT_CHARS = 12_000
 MAX_WRITABLE_CONTEXT_CHARS = 32_000
+# Set by the Mac issue worker for agent:qwen-hard runs on the tim-server model (TIM_QWEN_HARD_RUN=1).
+HARD_WRITABLE_CONTEXT_CHARS = 96_000
+
+
+def _writable_limit() -> int:
+    return HARD_WRITABLE_CONTEXT_CHARS if os.getenv("TIM_QWEN_HARD_RUN") == "1" else MAX_WRITABLE_CONTEXT_CHARS
 MAX_PROPOSAL_PATCHES = 6
 MAX_EDITS_PER_PATCH = 20
 SECRET_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|authorization)\s*[:=]\s*[^\s,;]+")
@@ -105,7 +111,7 @@ def _safe_context(
             valid_utf8 = False
 
         limit = (
-            MAX_WRITABLE_CONTEXT_CHARS
+            _writable_limit()
             if relative in complete_paths
             else MAX_CONTEXT_CHARS
         )

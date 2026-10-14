@@ -27,6 +27,14 @@ def _contract(number, paths=("src/example.py", "tests/test_example.py")):
 
 
 READY = ("agent:qwen-ready", "status:ready", "priority:p1")
+HARD = ("agent:qwen-hard", "status:ready", "priority:p1")
+
+
+@pytest.fixture(autouse=True)
+def _no_ci_job_or_server(monkeypatch):
+    # These tests themselves run inside a CI job (Runner.Worker) on the Mac runner.
+    monkeypatch.setattr(runner, "ci_job_running", lambda: False)
+    monkeypatch.delenv("TIM_QWEN_HARD_URL", raising=False)
 
 
 class FakePipeline:
@@ -414,3 +422,98 @@ def test_self_update_says_why_it_skips_a_dirty_checkout(capsys):
 
     assert runner.self_update(Dirty([])) is None
     assert "local changes: M CLAUDE.md" in capsys.readouterr().err
+
+
+REAL_CI_JOB_RUNNING = runner.ci_job_running
+
+
+def _big_file_answer(tmp_path, chars):
+    (tmp_path / "src").mkdir(exist_ok=True)
+    (tmp_path / "src" / "big.py").write_text("x" * chars, encoding="utf-8")
+    return json.dumps({"decision": "ready", "reason": "groß", "objective": "Fix",
+                       "allowed_paths": ["src/big.py", "tests/test_big_new.py"],
+                       "tests": ["tests/test_big_new.py"]})
+
+
+def test_triage_routes_files_only_the_server_model_can_see_to_agent_qwen_hard(tmp_path):
+    answer = _big_file_answer(tmp_path, 40_000)
+    hard = issue_triage.parse_triage(answer, _issue(80), tmp_path, allow_hard=True)
+    assert hard["decision"] == "ready" and hard["hard"] is True
+    assert issue_triage.ready_label(hard) == "agent:qwen-hard"
+    assert "Server-Modell" in issue_triage.ready_comment(hard)
+    assert issue_triage.parse_triage(answer, _issue(80), tmp_path)["decision"] == "skip"
+    huge = _big_file_answer(tmp_path, 120_000)
+    result = issue_triage.parse_triage(huge, _issue(80), tmp_path, allow_hard=True)
+    assert result["decision"] == "skip" and "96000" in result["reason"]
+    small = issue_triage.parse_triage(_big_file_answer(tmp_path, 1_000), _issue(80), tmp_path, allow_hard=True)
+    assert small["hard"] is False and issue_triage.ready_label(small) == "agent:qwen-ready"
+    assert "96000" in issue_triage.triage_prompt(_issue(80), allow_hard=True)
+    assert "32000" in issue_triage.triage_prompt(_issue(80))
+
+
+def test_triage_labels_large_file_issue_for_the_server_while_the_tunnel_answers(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    answer = _big_file_answer(repo, 40_000)
+    monkeypatch.setattr(issue_triage, "ask_claude", lambda prompt, root: answer)
+    monkeypatch.setattr(runner, "_hard_backend", lambda: ("http://127.0.0.1:11435", "qwen3-coder:30b"))
+    pipeline = FakePipeline([_issue(81, body="groß")], repository=repo)
+    assert "#81 prepared" in runner.process_one(pipeline, tmp_path / "state", pilot_issue=None,
+                                                codex_fallback=False, merge=True, triage=True)
+    assert _gh(pipeline, "issue", "edit")[0][-1] == "agent:qwen-hard,status:ready,priority:p1"
+
+
+def test_hard_issue_waits_for_the_server_instead_of_spending_attempts(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)
+    monkeypatch.setattr(runner, "_run_local_task", lambda *a, **k: pytest.fail("ran without server"))
+    pipeline = FakePipeline([_issue(82, HARD, _contract(82))])
+    assert runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
+                              merge=True) == "No eligible Mac Qwen issue."
+    assert not IssueLedger(tmp_path / "issue-ledger.json").entry(82).get("attempts")
+    assert not _gh(pipeline, "issue", "edit")
+
+
+def test_no_issue_job_starts_while_a_ci_job_runs_but_prs_are_still_kept(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "ci_job_running", lambda: True)
+    monkeypatch.setattr(runner, "_run_local_task", lambda *a, **k: pytest.fail("ran during CI"))
+    monkeypatch.setattr(issue_triage, "ask_claude", lambda *a: pytest.fail("triaged during CI"))
+    pipeline = FakePipeline([_issue(83, READY, _contract(83)), _issue(84)])
+    assert "paused" in runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
+                                          merge=True, triage=True)
+    assert _gh(pipeline, "pr", "list")
+    assert "#83" in runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
+                                       merge=True, dry_run=True)
+
+
+def test_ci_job_detection(monkeypatch):
+    class Done:
+        def __init__(self, code):
+            self.returncode = code
+
+    monkeypatch.delenv("TIM_WORKER_CI_PAUSE", raising=False)
+    monkeypatch.setattr(runner.subprocess, "run", lambda args, **kw: Done(0 if "Runner.Worker" in args else 1))
+    assert REAL_CI_JOB_RUNNING() is True
+    monkeypatch.setenv("TIM_WORKER_CI_PAUSE", "0")
+    assert REAL_CI_JOB_RUNNING() is False
+    monkeypatch.delenv("TIM_WORKER_CI_PAUSE")
+    monkeypatch.setattr(runner.subprocess, "run", lambda args, **kw: Done(1))
+    assert REAL_CI_JOB_RUNNING() is False
+
+    def missing(*_a, **_k):
+        raise FileNotFoundError("pgrep")
+
+    monkeypatch.setattr(runner.subprocess, "run", missing)
+    assert REAL_CI_JOB_RUNNING() is False
+
+
+def test_hard_run_widens_file_limit_and_model_context(monkeypatch):
+    from scripts import run_local_qwen_developer as developer
+    from src.local_first import qwen_tool_loop
+
+    monkeypatch.delenv("TIM_QWEN_HARD_RUN", raising=False)
+    assert developer._writable_limit() == 32_000
+    assert qwen_tool_loop.chat_options()["num_ctx"] == 32768
+    monkeypatch.setenv("TIM_QWEN_HARD_RUN", "1")
+    assert developer._writable_limit() == issue_triage.MAX_HARD_CONTEXT_FILE_CHARS
+    assert qwen_tool_loop.chat_options()["num_ctx"] == 65536
+    assert qwen_tool_loop.CHAT_OPTIONS["num_ctx"] == 32768

@@ -24,14 +24,18 @@ from src.local_first.patch_executor import redact_tokens
 
 TRIAGE_MARKER = "<!-- TIM_QWEN_TRIAGE_V1 -->"
 LABEL_READY = "agent:qwen-ready"
+LABEL_HARD = "agent:qwen-hard"
 LABEL_NOT_SUITABLE = "agent:not-suitable"
 LABEL_BLOCKED = "agent:blocked"
 LABEL_SPLIT = "agent:split"
 MAX_SUBTASKS = 6
 # Matches MAX_WRITABLE_CONTEXT_CHARS of scripts/run_local_qwen_developer.py.
 MAX_CONTEXT_FILE_CHARS = 32_000
+# Matches HARD_WRITABLE_CONTEXT_CHARS: larger files go to the tim-server model (agent:qwen-hard).
+MAX_HARD_CONTEXT_FILE_CHARS = 96_000
 WORKER_LABELS = {
     LABEL_READY: ("0e8a16", "Mac Qwen worker may pick this issue up"),
+    LABEL_HARD: ("1d76db", "Mac worker runs this issue on the tim-server model"),
     "status:ready": ("0e8a16", "Ready to be worked on"),
     "priority:p0": ("b60205", "Highest priority"),
     "priority:p1": ("d93f0b", "High priority"),
@@ -42,7 +46,7 @@ WORKER_LABELS = {
 TRIAGE_SKIP_LABELS = REJECT_LABELS | {
     "type:epic", "master", "ws:server", "observe-only", "status:roadmap", "ci-blocked",
     "external-action", "status:external-action", "archive", "duplicate", "agent:pilot",
-    LABEL_READY, LABEL_NOT_SUITABLE, LABEL_BLOCKED, LABEL_SPLIT,
+    LABEL_READY, LABEL_HARD, LABEL_NOT_SUITABLE, LABEL_BLOCKED, LABEL_SPLIT,
 }
 DEFAULT_TRUSTED_AUTHORS = ("uezeyiraydin-cell", "apoman74-art")
 MAX_TRIAGE_CALLS_PER_VERSION = 2
@@ -221,7 +225,13 @@ def triage_candidates(issues: list[dict[str, Any]], ledger: IssueLedger,
     return [item[2] for item in sorted(ranked, key=lambda item: (item[0], item[1]))]
 
 
-def triage_prompt(issue: dict[str, Any]) -> str:
+def ready_label(result: dict[str, Any]) -> str:
+    """Hand a triaged contract to the Mac model or, when a file only fits there, the server model."""
+    return LABEL_HARD if result.get("hard") else LABEL_READY
+
+
+def triage_prompt(issue: dict[str, Any], *, allow_hard: bool = False) -> str:
+    limit = MAX_HARD_CONTEXT_FILE_CHARS if allow_hard else MAX_CONTEXT_FILE_CHARS
     payload = {"number": issue.get("number"), "title": str(issue.get("title", ""))[:300],
                "labels": sorted(_label_names(issue)), "body": str(issue.get("body") or "")[:12_000]}
     return (
@@ -240,7 +250,7 @@ def triage_prompt(issue: dict[str, Any]) -> str:
         f"Never use these paths: {', '.join(PROTECTED_PREFIXES)}. Only .py files under src/ and "
         "tests/; test files must be tests/**/test_*.py. allowed_paths must list every file that may "
         "change, including test files to create or edit; tests lists the test files to run.\n"
-        f"Every existing file in allowed_paths must have at most {MAX_CONTEXT_FILE_CHARS} characters, "
+        f"Every existing file in allowed_paths must have at most {limit} characters, "
         "because the model sees each one in full; for a larger test file create a new "
         "tests/**/test_*.py next to it instead.\n"
         "The objective must be self-contained: what to change, where, and how the tests prove it.\n"
@@ -269,10 +279,12 @@ def _decode(raw: str) -> dict[str, Any]:
     return value
 
 
-def parse_triage(raw: str, issue: dict[str, Any], repo_root: Path | None = None) -> dict[str, Any]:
-    """Return {"decision": "ready", "task", "priority", "reason"} or {"decision": "skip", "reason"}.
+def parse_triage(raw: str, issue: dict[str, Any], repo_root: Path | None = None, *,
+                 allow_hard: bool = False) -> dict[str, Any]:
+    """Return {"decision": "ready", "task", "priority", "reason", "hard"} or {"decision": "skip", "reason"}.
 
     A "ready" answer is bound to the same contract validation the worker applies before work.
+    With allow_hard, a contract whose files only fit the server model is marked "hard".
     """
     try:
         answer = _decode(raw)
@@ -286,11 +298,12 @@ def parse_triage(raw: str, issue: dict[str, Any], repo_root: Path | None = None)
         for item in raw_subtasks[:MAX_SUBTASKS] if isinstance(raw_subtasks, list) else []:
             title = redact_tokens(str(item.get("title") or "").strip())[:120] if isinstance(item, dict) else ""
             try:
-                task = _bound_task(item if isinstance(item, dict) else {}, number, repo_root)
+                task, hard = _bound_task(item if isinstance(item, dict) else {}, number, repo_root,
+                                         allow_hard=allow_hard)
             except ValueError:
                 continue
             if title:
-                subtasks.append({"title": title, "task": task,
+                subtasks.append({"title": title, "task": task, "hard": hard,
                                  "priority": "p0" if item.get("priority") == "p0" else "p1"})
         if not subtasks:
             return {"decision": "skip", "reason": f"Zerlegung ohne gültige Teilaufgabe: {reason}"}
@@ -298,25 +311,33 @@ def parse_triage(raw: str, issue: dict[str, Any], repo_root: Path | None = None)
     if answer.get("decision") != "ready":
         return {"decision": "skip", "reason": reason}
     try:
-        task = _bound_task(answer, number, repo_root)
+        task, hard = _bound_task(answer, number, repo_root, allow_hard=allow_hard)
     except ValueError as exc:
         return {"decision": "skip", "reason": f"Vorgeschlagener Vertrag ungültig: {exc}."}
     priority = "p0" if answer.get("priority") == "p0" else "p1"
-    return {"decision": "ready", "task": task, "priority": priority, "reason": reason}
+    return {"decision": "ready", "task": task, "priority": priority, "reason": reason, "hard": hard}
 
 
-def _bound_task(answer: dict[str, Any], number: int, repo_root: Path | None = None) -> dict[str, Any]:
-    """Validate a proposed contract exactly as the worker will before it starts work."""
+def _bound_task(answer: dict[str, Any], number: int, repo_root: Path | None = None, *,
+                allow_hard: bool = False) -> tuple[dict[str, Any], bool]:
+    """Validate a proposed contract exactly as the worker will before it starts work.
+
+    Also returns whether a file is too large for the Mac model, so only the server model may run it.
+    """
     task = {"task_id": f"github-issue-{number}", "issue_number": number, "risk": "A3",
             "sandboxed": True, "objective": redact_tokens(str(answer.get("objective") or "")),
             "allowed_paths": answer.get("allowed_paths"), "tests": answer.get("tests")}
     bound = build_task({"number": number, "body": render_contract_block(task)})
+    limit = MAX_HARD_CONTEXT_FILE_CHARS if allow_hard else MAX_CONTEXT_FILE_CHARS
+    hard = False
     if repo_root is not None:
         for relative in bound["allowed_paths"]:
             path = repo_root / relative
-            if path.is_file() and len(path.read_text(encoding="utf-8", errors="replace")) > MAX_CONTEXT_FILE_CHARS:
-                raise ValueError(f"{relative} is longer than {MAX_CONTEXT_FILE_CHARS} characters")
-    return bound
+            size = len(path.read_text(encoding="utf-8", errors="replace")) if path.is_file() else 0
+            if size > limit:
+                raise ValueError(f"{relative} is longer than {limit} characters")
+            hard = hard or size > MAX_CONTEXT_FILE_CHARS
+    return bound, hard
 
 
 def rebind_task(task: dict[str, Any], number: int) -> dict[str, Any]:
@@ -343,7 +364,8 @@ def render_contract_block(task: dict[str, Any]) -> str:
 
 
 def ready_comment(result: dict[str, Any]) -> str:
-    return (f"{TRIAGE_MARKER}\nAutomatische Triage: Der Mac-Qwen-Worker übernimmt dieses Issue.\n\n"
+    where = " mit dem Server-Modell (große Datei)" if result.get("hard") else ""
+    return (f"{TRIAGE_MARKER}\nAutomatische Triage: Der Mac-Qwen-Worker übernimmt dieses Issue{where}.\n\n"
             f"Begründung: {result['reason']}\n\n{render_contract_block(result['task'])}\n")
 
 
