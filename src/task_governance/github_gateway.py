@@ -154,6 +154,7 @@ class GitHubRestGateway:
         self._lock = threading.Lock()
         self._top = 0           # highest issue number this gateway has seen or created: lookups never stop below it
         self._clock = clock
+        self._last_read = None  # (number, body) of the last get_issue: lets carries_marker skip a second GET
         self._create_authority = create_authority     # None: this gateway never lets a registry create (see create_authority.py)
         self._gone = {}         # old numbers (404, 410, redirect) that two answers at least CONFIRM_SECONDS apart called missing -> when
         self._gone_first = {}   # old number -> time of its first "missing" answer
@@ -307,12 +308,23 @@ class GitHubRestGateway:
 
     def carries_marker(self, number, fingerprint):
         """True when the issue exists and its body still carries the task's marker."""
+        with self._lock:
+            last = self._last_read
+            if last is not None and last[0] == int(number):
+                self._last_read = None          # used once: later calls read fresh
+            else:
+                last = None
+        if last is not None:
+            return fingerprint_marker(fingerprint) in last[1]
         item = self._issue(number)
         return item is not None and fingerprint_marker(fingerprint) in (item.get('body') or '')
 
     def get_issue(self, number):
         item = self._issue(number)
-        return None if item is None else self._ref(item, number)
+        ref = None if item is None else self._ref(item, number)
+        with self._lock:
+            self._last_read = None if item is None else (int(number), item.get('body') or '')
+        return ref
 
     def authorize_create(self, registry_id, trusted_authors):
         """Raise `CreateNotAuthorized` unless the repository designates `registry_id` as its creator. Without a configured

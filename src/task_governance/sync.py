@@ -592,8 +592,8 @@ def _recheck_created_issue(registry, gateway, request, row, trusted_authors):
     try:
         expected = gateway.get_issue(cand)
         matches = _matches(gateway, fp, key, trusted_authors)
-        marked = getattr(gateway, 'carries_marker', None)
-        marked = True if expected is None else (marked is not None and marked(cand, fp))     # no way to check: fail closed
+        check = getattr(gateway, 'carries_marker', None)
+        marked = expected is None or (check is not None and bool(check(cand, fp)))     # no way to check: fail closed
     except Exception as exc:
         return EnsureResult(EnsureOutcome.BLOCKED, row, False, cand,
                             f'POST_CREATE_CHECK_FAILED: the re-check failed again ({type(exc).__name__}), nothing was changed')
@@ -663,7 +663,8 @@ def _matches(gateway, fp, key, trusted_authors) -> list[IssueRef]:
 
 
 def _blocked_unknown(registry, fp, token, exc, *, created, issue_number=None, create_not_sent=False) -> EnsureResult:
-    blocked = registry.block(fp, 'UNKNOWN_ISSUE_KIND', str(exc), token=token, candidates=exc.numbers,
+    numbers = exc.numbers if issue_number is None else sorted({*exc.numbers, issue_number})
+    blocked = registry.block(fp, 'UNKNOWN_ISSUE_KIND', str(exc), token=token, candidates=numbers,
                              create_not_sent=create_not_sent)
     return EnsureResult(EnsureOutcome.BLOCKED, blocked, created, issue_number, 'UNKNOWN_ISSUE_KIND')
 
