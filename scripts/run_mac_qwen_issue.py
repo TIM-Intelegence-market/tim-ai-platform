@@ -236,12 +236,28 @@ def _ci_unavailable(pr: dict) -> bool:
     return bool(failed) and any(name in LONG_CHECKS for name in failed)
 
 
+PR_FIELDS = "number,headRefName,headRefOid,baseRefName,mergeStateStatus,createdAt,author"
+
+
+def _list_worker_prs(pipeline: Pipeline) -> str:
+    """The worker's open PRs, with their checks when its token may read them.
+
+    The worker's fine-grained token cannot read commit statuses, and GitHub then refuses the whole
+    query. Without the checks `_ci_unavailable` sees no failures, so such a PR is treated as before.
+    """
+    base = ("pr", "list", "--state", "open", "--author", WORKER_LOGIN, "--limit", "100", "--json")
+    try:
+        return pipeline.github(*base, PR_FIELDS + ",statusCheckRollup")
+    except PipelineError as exc:
+        if "Resource not accessible" not in str(exc):
+            raise
+        return pipeline.github(*base, PR_FIELDS)
+
+
 def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool,
                          now: float | None = None) -> set[int]:
     """Finish or retire the worker's own open PRs; return the issue numbers they cover."""
-    prs = json.loads(pipeline.github(
-        "pr", "list", "--state", "open", "--author", WORKER_LOGIN, "--limit", "100", "--json",
-        "number,headRefName,headRefOid,baseRefName,mergeStateStatus,createdAt,author,statusCheckRollup"))
+    prs = json.loads(_list_worker_prs(pipeline))
     covered: set[int] = set()
     now = time.time() if now is None else now
     for pr in prs if isinstance(prs, list) else []:

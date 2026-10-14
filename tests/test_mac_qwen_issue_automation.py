@@ -361,3 +361,33 @@ def test_stale_pr_is_kept_when_actions_started_no_runner(tmp_path):
 def test_quick_pr_gate_failure_alone_is_not_an_outage():
     assert not runner._ci_unavailable({"statusCheckRollup": [_check("PR gate", "FAILURE")]})
     assert not runner._ci_unavailable({"statusCheckRollup": []})
+
+
+def test_worker_prs_are_listed_without_checks_when_the_token_cannot_read_them(tmp_path):
+    class NoStatusRead(FakePipeline):
+        def github(self, *args):
+            if args[:2] == ("pr", "list") and "statusCheckRollup" in args[-1]:
+                self.calls.append(("gh",) + args)
+                raise PipelineError("GraphQL: Resource not accessible by personal access token "
+                                    "(search.nodes.0.statusCheckRollup)")
+            return super().github(*args)
+
+    pr = {"baseRefName": "platform-main", "createdAt": "2026-10-12T10:00:00Z", "author": {"login": WORKER},
+          "number": 1, "headRefName": "codex/issue-80-qwen", "mergeStateStatus": "CLEAN"}
+    pipeline = NoStatusRead([], [pr])
+    covered = runner._maintain_worker_prs(pipeline, IssueLedger(tmp_path / "l.json"), merge=True,
+                                          now=1_791_800_000.0)
+    assert covered == {80}
+    assert ("gh", "pr", "merge", "1", "--squash") in pipeline.calls
+    assert "statusCheckRollup" not in _gh(pipeline, "pr", "list")[-1][-1]
+
+
+def test_other_pr_list_errors_still_stop_the_run(tmp_path):
+    class Broken(FakePipeline):
+        def github(self, *args):
+            if args[:2] == ("pr", "list"):
+                raise PipelineError("HTTP 502")
+            return super().github(*args)
+
+    with pytest.raises(PipelineError, match="502"):
+        runner._maintain_worker_prs(Broken([]), IssueLedger(tmp_path / "l.json"), merge=True)
