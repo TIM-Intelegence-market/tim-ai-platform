@@ -365,13 +365,19 @@ class TaskRegistry:
         """Clear a create intent whose run is recorded as ended without a request (`claim_ended`): fenced to the claim
         `token` of the caller, who holds the row now. Records the incident `STALE_INTENT_CLEARED`."""
         now = self.clock()
-        n = self.db.execute('UPDATE task_mappings SET create_intent=0, updated_at=? WHERE fingerprint=? AND state=? '
-                            'AND claim_token=? AND create_intent=1 AND create_run IS NOT NULL '
-                            'AND create_run IN (SELECT run FROM claim_ends WHERE fingerprint=?)',
-                            (now, fingerprint, MappingState.CLAIMED, token, fingerprint)).rowcount
-        if n:
-            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
-                            (fingerprint, 'STALE_INTENT_CLEARED', note, now))
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            n = self.db.execute('UPDATE task_mappings SET create_intent=0, updated_at=? WHERE fingerprint=? AND state=? '
+                                'AND claim_token=? AND create_intent=1 AND create_run IS NOT NULL '
+                                'AND create_run IN (SELECT run FROM claim_ends WHERE fingerprint=?)',
+                                (now, fingerprint, MappingState.CLAIMED, token, fingerprint)).rowcount
+            if n:
+                self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                                (fingerprint, 'STALE_INTENT_CLEARED', note, now))
+            self.db.execute('COMMIT')
+        except BaseException:
+            self.db.execute('ROLLBACK')
+            raise
         return bool(n)
 
     @_serialized
@@ -395,22 +401,28 @@ class TaskRegistry:
         if not note.strip():
             raise ValueError('a note is required')
         now = self.clock()
-        rows = self.db.execute(    # one statement: the quiet period is checked against the intent it clears, not an older read
-            "UPDATE task_mappings SET create_intent=0, updated_at=?, "
-            "state=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN ? ELSE state END, "
-            "block_candidates=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '[]' ELSE block_candidates END, "
-            "block_reason=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '' ELSE block_reason END "
-            "WHERE fingerprint=? AND state IN (?, ?) AND create_intent=1 "
-            "AND create_started_at IS NOT NULL AND ? - create_started_at >= ? RETURNING create_run",
-            (now, MappingState.BLOCKED, MappingState.RELEASED, MappingState.BLOCKED, MappingState.BLOCKED,
-             fingerprint, MappingState.BLOCKED, MappingState.RELEASED, now, quiet_seconds)).fetchall()
-        n = len(rows)
-        if n:
-            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
-                            (fingerprint, 'CREATE_INTENT_CLEARED', note, now))
-            if rows[0]['create_run']:      # the operator says that run stopped: its claim label may be replaced (#68)
-                self.db.execute('INSERT OR IGNORE INTO claim_ends(fingerprint,run,ended_at) VALUES(?,?,?)',
-                                (fingerprint, rows[0]['create_run'], now))
+        self.db.execute('BEGIN IMMEDIATE')     # the row, the incident and the note of the run end together or not at all
+        try:
+            rows = self.db.execute(    # one statement: the quiet period is checked against the intent it clears, not an older read
+                "UPDATE task_mappings SET create_intent=0, updated_at=?, "
+                "state=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN ? ELSE state END, "
+                "block_candidates=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '[]' ELSE block_candidates END, "
+                "block_reason=CASE WHEN state=? AND block_reason='CREATE_UNCERTAIN' THEN '' ELSE block_reason END "
+                "WHERE fingerprint=? AND state IN (?, ?) AND create_intent=1 "
+                "AND create_started_at IS NOT NULL AND ? - create_started_at >= ? RETURNING create_run",
+                (now, MappingState.BLOCKED, MappingState.RELEASED, MappingState.BLOCKED, MappingState.BLOCKED,
+                 fingerprint, MappingState.BLOCKED, MappingState.RELEASED, now, quiet_seconds)).fetchall()
+            n = len(rows)
+            if n:
+                self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                                (fingerprint, 'CREATE_INTENT_CLEARED', note, now))
+                if rows[0]['create_run']:      # the operator says that run stopped: its claim label may be replaced (#68)
+                    self.db.execute('INSERT OR IGNORE INTO claim_ends(fingerprint,run,ended_at) VALUES(?,?,?)',
+                                    (fingerprint, rows[0]['create_run'], now))
+            self.db.execute('COMMIT')
+        except BaseException:
+            self.db.execute('ROLLBACK')
+            raise
         return bool(n)
 
     @_serialized

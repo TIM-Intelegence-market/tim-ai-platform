@@ -204,11 +204,12 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     if not won:
         return EnsureResult(EnsureOutcome.PENDING, mapping, False, None, f'claim held by {mapping.claimant}')
     token = mapping.claim_token
+    healed = None
     if mapping.create_intent and registry.claim_ended(fp, mapping.create_run):
         # The run that recorded this intent noted afterwards, after dropping its claim label, that no request left it; only
         # its row release was lost (it crashed in between). The intent is stale, not a create that may have reached GitHub.
         registry.clear_create_intent(fp, token, f'run {mapping.create_run} ended without a request; its intent is stale')
-        mapping = registry.get(fp)
+        mapping, healed = registry.get(fp), mapping.create_run     # its label, if it still stands, goes with an adoption below
     if mapping.create_intent and mapping.github_repository \
             and _norm_repo(mapping.github_repository) != _norm_repo(gateway.repository):
         # The create that may have happened went to another repository: adopting or creating here could split the task.
@@ -249,7 +250,7 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
                                  candidates=[hinted.number])
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
     candidates = {m.number: m for m in matches}
-    stale_claim = mapping.create_run if mapping.create_intent else None   # an uncertain create resolved here: its label goes
+    stale_claim = mapping.create_run if mapping.create_intent else healed   # an uncertain create resolved here: its label goes
     if hinted is not None:
         candidates[hinted.number] = hinted
         dups = sorted((set(candidates) | set(legacy_issues)) - {hinted.number})
@@ -341,6 +342,22 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         _give_up_create_claim(gateway, registry, fp, run)
         registry.release(fp, token, create_not_sent=True)
         raise
+    # One more look at the label right before the request: a label is deleted by name, so a replacement that raced this
+    # run (two registries of one lineage replacing the same dead run's label) or a hand deletion can have taken the claim
+    # away meanwhile. A label that does not name this run means no request: nothing of ours stands, so nothing is dropped.
+    read = getattr(gateway, 'create_claim_holder', None)
+    if read is not None:
+        try:
+            current = read(fp)
+        except Exception:
+            _give_up_create_claim(gateway, registry, fp, run)
+            registry.release(fp, token, create_not_sent=True)
+            raise
+        if _holder_run(current) != run:
+            registry.note_claim_ended(fp, run)
+            registry.release(fp, token, create_not_sent=True)
+            _incident_once(registry, fp, 'CLAIM_LOST_BEFORE_CREATE', current or 'the claim label is gone')
+            return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'CLAIM_LOST_BEFORE_CREATE')
     started = time.monotonic()
     try:
         issue = gateway.create_issue(request, fp, timeout=worst_create)
@@ -362,7 +379,8 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     except Exception as exc:
         # Raises while the outcome stays uncertain: then the claim and the create claim stay, nobody creates behind them.
         result = _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
-        _release_create_claim(gateway, registry, fp, run)
+        if result.detail != 'UNKNOWN_ISSUE_KIND':         # that block keeps the intent, so the label stays with it
+            _release_create_claim(gateway, registry, fp, run)
         return result
     result = _record_create(registry, gateway, fp, key, token, trusted_authors, issue, time.monotonic() - started, worst_create)
     _release_create_claim(gateway, registry, fp, run)
@@ -509,14 +527,19 @@ def _claim_create(gateway, registry, fp, token, run):
         raise
     if held is None or _holder_run(held) == run:     # ours, or our own text (the request reached GitHub, a retry saw 422)
         return None
-    fields = _claim_fields(held)
+    fields, stale = _claim_fields(held), _holder_run(held)
     if fields.get('registry') != registry.registry_id[:HOLDER_REGISTRY_CHARS] or fields.get('host') != _host_id() \
-            or not registry.claim_ended(fp, _holder_run(held)):
+            or not registry.claim_ended(fp, stale):
         return held                              # another registry or host, or a run this registry never saw end
-    gateway.release_create_claim(fp)
-    registry.record_incident(fp, 'STALE_CLAIM_REPLACED', held)
+    # Deleted by name, so read again first and delete only while the label still names the dead run: a second replacer
+    # (a registry file restored from a backup shares the note) may have taken the claim meanwhile; then its label stands
+    # and the claim below answers that it is held.
+    _release_create_claim(gateway, registry, fp, stale)
     held = claim(fp, holder)
-    return None if held is None or _holder_run(held) == run else held
+    if held is None or _holder_run(held) == run:
+        registry.record_incident(fp, 'STALE_CLAIM_REPLACED', f'run {stale} ended without a request; its label was replaced')
+        return None
+    return held
 
 
 def _release_create_claim(gateway, registry, fp, run) -> None:

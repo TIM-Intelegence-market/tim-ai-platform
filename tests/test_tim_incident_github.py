@@ -475,6 +475,25 @@ def test_create_that_never_left_is_released_once_the_network_is_back(world):
     assert rest.labels == {}
 
 
+def test_a_failed_listing_does_not_lose_the_remembered_unsent_create(world):
+    """The token of a proven-unsent create stays remembered until the release ran; one bad listing in between must not
+    turn the row into CREATE_UNCERTAIN after its lease."""
+    rest = world.rest
+    rest.down_after_create_attempt = True
+    world.run(entry('open'))
+    fp = gh.task_request('DATA_FLOW', EP, HOST).fingerprint
+    token = world.reporter.registry().get(fp).claim_token
+    rest.down = rest.down_after_create_attempt = False
+    rest.fail[('GET', r'/issues$')] = 503                              # the listing is down on the next run
+    report = world.run(advance=900)
+    assert report.pending == 1 and world.state()['not_sent'] == {fp: token}
+    del rest.fail[('GET', r'/issues$')]
+    report = world.run(advance=900)
+    assert report.pending == 0 and len(world.incidents()) == 1 and world.state()['not_sent'] == {}
+    reasons = [i['reason'] for i in world.reporter.registry().incidents(fp)]
+    assert 'CREATE_UNCERTAIN' not in reasons and rest.labels == {}
+
+
 def test_create_uncertain_waits_for_the_confirm_file(world):
     rest = world.rest
     rest.fail[('POST', r'/issues$')] = TimeoutError('answer lost')       # nothing created, but nobody can know

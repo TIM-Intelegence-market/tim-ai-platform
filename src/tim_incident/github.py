@@ -1635,18 +1635,20 @@ class Reporter:
     def _release_not_sent(self, request, state) -> None:
         """A create that our transport proved unsent, but that ensure_task could not verify then (network gone):
         verify now and release the claim, so it does not turn into CREATE_UNCERTAIN."""
-        token = state['not_sent'].pop(request.fingerprint, None)
+        token = state['not_sent'].get(request.fingerprint)
         if token is None:
             return
         registry = self.registry()
         mapping = registry.get(request.fingerprint)
-        if mapping is None or mapping.state is not MappingState.CLAIMED or not mapping.create_intent \
-                or mapping.claim_token != token:
-            return
-        if not self._gateway.find_issues(request.fingerprint, request.key):
-            # Drops the create claim label that run took (#68, only while it still names that run), notes that the run
-            # ended without a request, releases the row; a failed drop is an incident and the next run replaces the label.
-            release_unsent_create(registry, self._gateway, request.fingerprint, token)
+        if mapping is not None and mapping.state is MappingState.CLAIMED and mapping.create_intent \
+                and mapping.claim_token == token:
+            # The lookup may raise (the listing is down again): then the token stays remembered for the next run instead
+            # of the row turning into CREATE_UNCERTAIN after its lease. Nothing visible: drop the create claim label that
+            # run took (#68, only while it still names that run), note that the run ended without a request, release the
+            # row; a failed drop is an incident and the next run replaces the label.
+            if not self._gateway.find_issues(request.fingerprint, request.key):
+                release_unsent_create(registry, self._gateway, request.fingerprint, token)
+        state['not_sent'].pop(request.fingerprint, None)
 
     def _confirm_path(self, key: str) -> Path:
         cls, episode = key.split('/', 1)

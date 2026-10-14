@@ -376,9 +376,10 @@ def test_a_stale_operator_confirmation_cannot_clear_a_newer_create_intent(tmp_pa
     raced = []
 
     class RacingDb:
-        """The operator's check has passed; before its write, another operator clears it and a worker records a new intent."""
+        """The operator's check has passed; before its write (the transaction that holds the row, the incident and the
+        note of the run end together), another operator clears it and a worker records a new intent."""
         def execute(self, sql, *args):
-            if 'create_intent=0' in sql and not raced:
+            if sql.startswith('BEGIN') and not raced:
                 raced.append(1)
                 TaskRegistry(path, clock=clock).confirm_not_created(fp, 'other operator')
                 won2, m2 = worker.claim(fp, req().key, 'new', 300)

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from src.task_governance import (CreateNotSent, EnsureOutcome, GitHubError, IssueCreateAuthority, IssueRef, MappingState,
-                                 TaskRegistry, ensure_task)
+                                 TaskRegistry, ensure_task, fingerprint_marker)
 from src.task_governance import sync
 from src.task_governance.create_authority import authority_body
 from src.task_governance.github_gateway import _NotSent, claim_label
@@ -602,6 +602,123 @@ def test_a_label_another_run_holds_by_now_is_never_deleted_by_name(tmp_path):
     result = ensure(reg, gw)
     assert result.outcome is EnsureOutcome.CREATED and LABEL in rest.labels
     assert [r for r, _ in incidents(reg)] == ['CLAIM_NOT_OURS']
+
+
+# -- the second race review of 2026-10-14: two replacers (A1), a healed takeover (A6), an unknown kind (A7) -------------
+
+def test_two_replacers_of_one_dead_runs_label_make_one_issue(tmp_path):
+    """A1: the original and a backup restored on the same host both know the dead run; the slower replacer must not
+    delete the faster replacer's live label by name."""
+    rest = FakeRest()
+    reg = registry(tmp_path, 'a.db')
+    designate(rest, reg)
+    gw = gateway(rest)
+    rest.fail[('POST', r'/issues$')] = _NotSent()                # a run gives up under its claim ...
+    rest.fail[('DELETE', r'/labels/')] = 503                     # ... and its drop fails: the dead run's label stands
+    with pytest.raises(CreateNotSent):
+        ensure(reg, gw)
+    rest.fail.clear()
+    dead = reg.get(FP).create_run
+    assert reg.claim_ended(FP, dead) and sync._holder_run(rest.labels[LABEL]['description']) == dead
+    restored = backup_of(reg, str(tmp_path / 'a.restored.db'))
+    gw_o, gw_r = gateway(rest), gateway(rest)
+    reached, go = pause_at(gw_o, 'create_claim_holder', before=True)   # the original: 422, dead run, about to re-read
+    thread, box = run_in_thread(lambda: ensure(reg, gw_o, claimant='original'))
+    assert reached.wait(5)
+    r_reached, r_go = pause_at(gw_r, 'create_issue', before=True)      # the restored copy replaces the label and creates
+    r_thread, r_box = run_in_thread(lambda: ensure(restored, gw_r, claimant='restored'))
+    assert r_reached.wait(5)
+    assert 'STALE_CLAIM_REPLACED' in [r for r, _ in incidents(restored)]
+    go.set()
+    original = finished(thread, box)
+    assert original.outcome is EnsureOutcome.PENDING and original.detail == 'GLOBAL_CLAIM_HELD'
+    assert [r for r, _ in incidents(reg)][-2:] == ['CLAIM_NOT_OURS', 'GLOBAL_CLAIM_HELD'] and LABEL in rest.labels
+    r_go.set()
+    assert finished(r_thread, r_box).outcome is EnsureOutcome.CREATED
+    assert ensure(reg, gw_o, claimant='original').outcome is EnsureOutcome.RECOVERED
+    assert len(task_issues(rest)) == 1 and rest.labels == {}
+
+
+def test_a_label_taken_away_right_before_the_request_stops_the_create(tmp_path):
+    """The victim side of a raced replacement (or a hand deletion): one read before the request, no request when the
+    label does not name this run any more."""
+    rest = FakeRest()
+    reg = registry(tmp_path)
+    designate(rest, reg)
+    gw = gateway(rest)
+    reached, go = pause_at(gw, 'create_claim_holder', before=True)     # the look right before the request
+    thread, box = run_in_thread(lambda: ensure(reg, gw, claimant='victim'))
+    assert reached.wait(5)
+    ours = reg.get(FP).create_run
+    hold(rest, holder(registry(tmp_path, 'other.db'), 1))              # replaced meanwhile
+    go.set()
+    result = finished(thread, box)
+    assert result.outcome is EnsureOutcome.PENDING and result.detail == 'CLAIM_LOST_BEFORE_CREATE'
+    assert issue_posts(rest) == [] and LABEL in rest.labels              # the other holder's label is left alone
+    row = reg.get(FP)
+    assert row.state is MappingState.RELEASED and not row.create_intent and reg.claim_ended(FP, ours)
+    assert [r for r, _ in incidents(reg)] == ['CLAIM_LOST_BEFORE_CREATE']
+
+
+def test_a_healed_takeover_that_adopts_drops_the_dead_runs_label(tmp_path):
+    """A6: run 1 finds the issue under its claim, fails while adopting and while dropping its label, notes its end and
+    dies; the takeover clears the stale intent, adopts, and the label goes with it."""
+    rest = FakeRest()
+    clock = [1000.0]
+    reg1 = TaskRegistry(str(tmp_path / 'a.db'), clock=lambda: clock[0])
+    reg2 = TaskRegistry(str(tmp_path / 'a.db'), clock=lambda: clock[0])
+    designate(rest, reg1)
+    gw = gateway(rest)
+    reached, go = pause_at(gw, 'claim_create')
+    thread, box = run_in_thread(lambda: ensure(reg1, gw, claimant='run-1'))
+    assert reached.wait(5)
+    rest.seed(50, body=fingerprint_marker(FP))                      # visible to the lookup under the claim only
+    rest.fail[('PATCH', r'/issues/50$')] = 503
+    rest.fail[('DELETE', r'/labels/')] = 503
+    go.set()
+    thread.join(20)
+    assert isinstance(box.get('error'), GitHubError)
+    row = reg1.get(FP)
+    assert row.state is MappingState.CLAIMED and row.create_intent and reg1.claim_ended(FP, row.create_run)
+    assert LABEL in rest.labels
+    rest.fail.clear()
+    clock[0] += 400
+    result = ensure(reg2, gateway(rest), claimant='run-2')
+    assert result.outcome is EnsureOutcome.RECOVERED and result.issue_number == 50
+    assert [r for r, _ in incidents(reg2)] == ['CLAIM_RELEASE_FAILED', 'STALE_INTENT_CLEARED'] and rest.labels == {}
+
+
+def test_an_unknown_kind_after_an_uncertain_create_keeps_the_label_with_the_intent(tmp_path):
+    """A7: the request may have reached GitHub and the reconcile lookup cannot tell issue from PR: the intent stays, so
+    the label stays; the re-validation drops it with the adoption."""
+    rest = FakeRest()
+    clock = [1000.0]
+    reg = TaskRegistry(str(tmp_path / 'a.db'), clock=lambda: clock[0])
+    designate(rest, reg)
+    gw = gateway(rest)
+    rest.fail[('POST', r'/issues$')] = TimeoutError('no answer')
+    real, calls = gw.find_issues, []
+
+    def unknown_after_create(fingerprint, key):
+        calls.append(1)
+        if len(calls) == 3:                                          # the reconcile lookup
+            return [IssueRef(77, 'open', author=OWNER, is_pull_request=None)]
+        return real(fingerprint, key)
+
+    gw.find_issues = unknown_after_create
+    result = ensure(reg, gw)
+    assert result.outcome is EnsureOutcome.BLOCKED and result.detail == 'UNKNOWN_ISSUE_KIND'
+    row = reg.get(FP)
+    assert row.create_intent and LABEL in rest.labels
+    other = registry(tmp_path, 'other.db')
+    redesignate(rest, other)
+    assert ensure(other, gateway(rest), claimant='x').detail == 'GLOBAL_CLAIM_HELD'   # nobody creates behind it
+    del rest.fail[('POST', r'/issues$')]
+    gw.find_issues = real
+    rest.seed(77, body=fingerprint_marker(FP))                       # the kind is reported now: an issue, adopted
+    clock[0] += 400
+    again = ensure(reg, gw)
+    assert again.outcome is EnsureOutcome.RECOVERED and again.issue_number == 77 and rest.labels == {}
 
 
 # -- a real SIGSTOP of a separate process -----------------------------------------------------------------------------
