@@ -85,28 +85,54 @@ fn launch_agent(label: &str) -> Value {
     json!({"loaded": true, "pid": pid, "running": pid.is_some(), "last_exit": field("LastExitStatus")})
 }
 
-fn ollama(url: &str, model: &str) -> Value {
+/// Plain HTTP/1.0 GET against a local Ollama endpoint; `None` when it does not answer.
+fn http_get(url: &str, path: &str) -> Option<String> {
+    use std::io::Write;
+    use std::net::TcpStream;
     let host = url.trim_start_matches("http://").trim_end_matches('/');
-    let fetch = || -> Option<String> {
-        use std::net::TcpStream;
-        use std::io::Write;
-        let addr = host.parse().ok()?;
-        let mut stream = TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(2)).ok()?;
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(3))).ok()?;
-        write!(stream, "GET /api/tags HTTP/1.0\r\nHost: {host}\r\n\r\n").ok()?;
-        let mut body = String::new();
-        stream.read_to_string(&mut body).ok()?;
-        Some(body.split_once("\r\n\r\n")?.1.to_string())
-    };
-    match fetch().and_then(|b| serde_json::from_str::<Value>(&b).ok()) {
-        Some(tags) => {
-            let installed = tags["models"].as_array().map_or(false, |models| {
-                models.iter().any(|m| m["name"].as_str() == Some(model))
-            });
-            json!({"reachable": true, "model": model, "model_installed": installed})
-        }
+    let addr = host.parse().ok()?;
+    let mut stream = TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(2)).ok()?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(3))).ok()?;
+    write!(stream, "GET {path} HTTP/1.0\r\nHost: {host}\r\n\r\n").ok()?;
+    let mut body = String::new();
+    stream.read_to_string(&mut body).ok()?;
+    Some(body.split_once("\r\n\r\n")?.1.to_string())
+}
+
+fn get_json(url: &str, path: &str) -> Option<Value> {
+    http_get(url, path).and_then(|b| serde_json::from_str::<Value>(&b).ok())
+}
+
+fn lists_model(list: &Value, model: &str) -> bool {
+    list["models"].as_array().map_or(false, |models| {
+        models.iter().any(|m| m["name"].as_str() == Some(model) || m["model"].as_str() == Some(model))
+    })
+}
+
+fn ollama(url: &str, model: &str) -> Value {
+    match get_json(url, "/api/tags") {
+        Some(tags) => json!({"reachable": true, "model": model, "model_installed": lists_model(&tags, model)}),
         None => json!({"reachable": false, "model": model, "model_installed": false}),
     }
+}
+
+/// The server model behind the SSH tunnel: reachable, installed, and loaded ("warm") right now.
+fn server_model(url: &str, model: &str) -> Value {
+    let Some(tags) = get_json(url, "/api/tags") else {
+        return json!({"reachable": false, "model": model, "model_installed": false, "warm": false, "expires_at": null});
+    };
+    let loaded = get_json(url, "/api/ps").unwrap_or_default();
+    let entry = loaded["models"].as_array().and_then(|models| {
+        models.iter().find(|m| m["name"].as_str() == Some(model) || m["model"].as_str() == Some(model)).cloned()
+    });
+    json!({
+        "reachable": true,
+        "model": model,
+        "model_installed": lists_model(&tags, model),
+        "warm": entry.is_some(),
+        "expires_at": entry.as_ref().map(|e| e["expires_at"].clone()),
+        "size_bytes": entry.as_ref().map(|e| e["size"].clone()),
+    })
 }
 
 /// Every `.tim/local-first` directory that may hold evidence for an issue run.
@@ -188,7 +214,9 @@ pub fn issue_runs(cfg: &Config, issue: u64) -> Value {
             let v = read_json(&f).unwrap_or_default();
             let status = text(&v, "status").unwrap_or_default();
             if v["model_calls"].as_u64().unwrap_or(0) > 0 {
-                add_helper(&format!("Qwen ({}x)", v["model_calls"]), &mut helpers);
+                let on_server = text(&v, "model").map_or(false, |m| m == cfg.hard_model);
+                let name = if on_server { "Server-Qwen" } else { "Qwen" };
+                add_helper(&format!("{name} ({}x)", v["model_calls"]), &mut helpers);
             }
             if v["codex_fallback_calls"].as_u64().unwrap_or(0) > 0 {
                 let failed = v.get("codex_fallback_error").map_or(false, |e| !e.is_null());
@@ -391,6 +419,11 @@ pub fn worker_state(cfg: &Config) -> Value {
         "run_active": run_active,
         "current_issue": current_issue,
         "ollama": ollama(&cfg.ollama_url, &cfg.model),
+        "server": {
+            "tunnel": launch_agent(&cfg.tunnel_label),
+            "url": cfg.hard_url,
+            "ollama": server_model(&cfg.hard_url, &cfg.hard_model),
+        },
     })
 }
 
@@ -417,6 +450,39 @@ mod tests {
         assert_eq!(t["last_call_at"], json!(95000));
         assert_eq!(t["calls_last_24h"], json!(2));
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Answers each connection like Ollama would for `/api/tags` and `/api/ps`.
+    fn fake_ollama(loaded: &'static str) -> String {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for mut stream in listener.incoming().flatten() {
+                // Read the whole request first; closing with unread bytes would reset the connection.
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let mut rest = String::new();
+                while reader.read_line(&mut rest).unwrap_or(0) > 0 && !rest.ends_with("\r\n\r\n") {}
+                let body = if line.contains("/api/ps") { loaded } else { r#"{"models":[{"name":"qwen3-coder:30b"}]}"# };
+                let _ = write!(stream, "HTTP/1.0 200 OK\r\n\r\n{body}");
+            }
+        });
+        url
+    }
+
+    #[test]
+    fn server_model_warm_and_cold() {
+        let warm = server_model(&fake_ollama(r#"{"models":[{"name":"qwen3-coder:30b","expires_at":"2026-10-15T01:30:00Z","size":1}]}"#), "qwen3-coder:30b");
+        assert_eq!(warm["reachable"], json!(true));
+        assert_eq!(warm["model_installed"], json!(true));
+        assert_eq!(warm["warm"], json!(true));
+        assert_eq!(warm["expires_at"], json!("2026-10-15T01:30:00Z"));
+        let cold = server_model(&fake_ollama(r#"{"models":[]}"#), "qwen3-coder:30b");
+        assert_eq!(cold["warm"], json!(false));
+        let down = server_model("http://127.0.0.1:1", "qwen3-coder:30b");
+        assert_eq!(down["reachable"], json!(false));
     }
 
     #[test]

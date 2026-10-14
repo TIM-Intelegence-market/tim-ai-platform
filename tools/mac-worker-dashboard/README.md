@@ -1,11 +1,15 @@
 # Mac-Worker-Dashboard
 
 Kleine, nur lesende Web-App für den Mac-Qwen-Issue-Worker (`com.tim.local-qwen-worker`).
-Läuft nur auf `http://127.0.0.1:8767` und zeigt drei Bereiche:
+Läuft nur auf `http://127.0.0.1:8767` und zeigt vier Bereiche:
 
 - **Aktuell**: ob der Worker und Ollama laufen, an welchem Issue er arbeitet, in welcher Phase
   (Auftrag, Blocker, Rat von Codex/Claude, Patch, Abnahme, PR), der letzte Fehler aus dem Log
-  und liegen gebliebene Läufe (Worktree ohne PR).
+  und liegen gebliebene Läufe (Worktree ohne PR, nur solange das Issue noch offen ist).
+- **Server-Modell**: ob der SSH-Tunnel zum Server (`com.tim.server-ollama-tunnel`, 127.0.0.1:11435)
+  antwortet, ob `qwen3-coder:30b` gerade geladen ist (warm, mit Ablaufzeit) oder kalt, und wie viele
+  große Issues (`agent:qwen-hard`) auf das Server-Modell warten. Hard-Issues und PRs, an denen das
+  Server-Modell gearbeitet hat, tragen den Chip „Server-Modell“ bzw. „Server-Qwen“.
 - **Offen**: alle offenen Issues, eingeteilt nach den Regeln aus
   `src/local_first/github_issue_queue.py` und `src/local_first/issue_triage.py`: bereit für den
   Worker, wartet auf Triage durch Claude, blockiert (`agent:blocked`) oder nicht für den Worker
@@ -18,7 +22,8 @@ Läuft nur auf `http://127.0.0.1:8767` und zeigt drei Bereiche:
 - `launchctl list com.tim.local-qwen-worker`, `~/Library/Application Support/TIM Mac Issue Worker/`
   (`run.lock`, `worktrees/`, `archive/`, `runs/`) und die `.tim/local-first/`-Dateien darin
 - `~/Library/Logs/TIM/local-first.{out,err}.log` (nur die letzten 2 MB, Zugangsdaten werden geschwärzt)
-- `gh issue list` und `gh pr list` (Ergebnis 60 s zwischengespeichert), Ollama `/api/tags`
+- `gh issue list` und `gh pr list` (Ergebnis 60 s zwischengespeichert), Ollama `/api/tags`, Server-Ollama über den Tunnel `/api/tags` und `/api/ps`,
+  `launchctl list com.tim.server-ollama-tunnel`
 
 Die App schreibt nichts, nimmt nur `GET` an und beantwortet nur Anfragen mit Host `127.0.0.1` oder
 `localhost`. Sie zeigt keine Tokens; `gh` läuft mit dem normalen Login des Mac-Benutzers.

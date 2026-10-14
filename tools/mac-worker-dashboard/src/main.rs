@@ -27,6 +27,9 @@ pub struct Config {
     pub gh: String,
     pub ollama_url: String,
     pub model: String,
+    pub hard_url: String,
+    pub hard_model: String,
+    pub tunnel_label: String,
 }
 
 impl Config {
@@ -42,6 +45,9 @@ impl Config {
             gh: "/opt/homebrew/bin/gh".into(),
             ollama_url: "http://127.0.0.1:11434".into(),
             model: "qwen3.5:9b".into(),
+            hard_url: "http://127.0.0.1:11435".into(),
+            hard_model: "qwen3-coder:30b".into(),
+            tunnel_label: "com.tim.server-ollama-tunnel".into(),
         }
     }
 
@@ -68,6 +74,9 @@ impl Config {
                 "--gh" => cfg.gh = value,
                 "--ollama-url" => cfg.ollama_url = value,
                 "--model" => cfg.model = value,
+                "--hard-url" => cfg.hard_url = value,
+                "--hard-model" => cfg.hard_model = value,
+                "--tunnel-label" => cfg.tunnel_label = value,
                 other => return Err(format!("unbekannte Option {other}")),
             }
         }
@@ -111,9 +120,14 @@ fn status(cfg: &Config, gh: Value) -> Value {
         })
         .collect();
 
+    // Once GitHub answered, leftovers of issues that are no longer open are not "stalled".
+    let open_numbers: Option<Vec<u64>> = (gh["ok"] == json!(true))
+        .then(|| gh["open_issues"].as_array().map(|a| a.iter().filter_map(|i| i["number"].as_u64()).collect()))
+        .flatten();
     let stalled: Vec<Value> = local::local_issue_numbers(cfg)
         .into_iter()
         .filter(|n| !pr_issues.contains(n) && Some(*n) != current_issue)
+        .filter(|n| open_numbers.as_ref().map_or(true, |open| open.contains(n)))
         .map(|n| local::issue_runs(cfg, n))
         .collect();
 

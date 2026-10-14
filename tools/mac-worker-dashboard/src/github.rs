@@ -204,7 +204,7 @@ pub fn annotate_issue(mut issue: Value) -> Value {
         ("blocked", Some("2 Versuche gescheitert · agent:blocked entfernen gibt 2 neue".to_string()))
     } else if has("agent:not-suitable") {
         ("skipped", Some("Triage: nicht geeignet".to_string()))
-    } else if has("agent:qwen-ready") {
+    } else if has("agent:qwen-ready") || has("agent:qwen-hard") {
         if !rejected.is_empty() {
             ("skipped", Some(format!("gesperrt durch {}", rejected.join(", "))))
         } else if !has("status:ready") {
@@ -227,6 +227,7 @@ pub fn annotate_issue(mut issue: Value) -> Value {
     issue["priority"] = json!(priority);
     issue["stage"] = json!(stage);
     issue["eligible"] = json!(stage == "ready");
+    issue["server"] = json!(has("agent:qwen-hard"));
     issue["waiting_reason"] = json!(reason);
     issue
 }
@@ -265,6 +266,15 @@ mod tests {
         ]});
         assert_eq!(triage_reason(&issue).as_deref(), Some("Epic mit vielen Teilen"));
         assert_eq!(triage_reason(&json!({"comments": []})), None);
+    }
+
+    #[test]
+    fn hard_issues_go_to_server() {
+        let hard = annotate_issue(json!({"labels": ["agent:qwen-hard", "status:ready", "priority:p1"]}));
+        assert_eq!(hard["stage"], json!("ready"));
+        assert_eq!(hard["server"], json!(true));
+        let mac = annotate_issue(json!({"labels": ["agent:qwen-ready", "status:ready", "priority:p1"]}));
+        assert_eq!(mac["server"], json!(false));
     }
 
     #[test]
