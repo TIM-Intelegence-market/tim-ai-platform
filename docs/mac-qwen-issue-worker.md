@@ -67,6 +67,28 @@ Checks or commit-status APIs. The worker therefore uses the PR merge state and
 GitHub's enforced ruleset for the final gate. Read-only CI diagnosis can use a
 separate account with Checks read access.
 
+## Hard issues on the server model
+
+tim-server holds `qwen3-coder:30b` (CPU only, 62 GB RAM). The Mac stays the
+only machine with GitHub access; the server only sees prompt in, text out.
+A LaunchAgent on the Mac (`com.tim.server-ollama-tunnel`) keeps an SSH tunnel
+from `127.0.0.1:11435` to the server's Ollama. The worker reads two variables:
+
+- `TIM_QWEN_HARD_URL`: loopback URL of the tunnel, e.g. `http://127.0.0.1:11435`.
+  Anything that is not loopback is ignored. Unset means no server model.
+- `TIM_QWEN_HARD_MODEL`: defaults to `qwen3-coder:30b`.
+
+An issue labelled `agent:qwen-hard` plus `status:ready` is picked like a
+`agent:qwen-ready` issue, but its local Qwen step runs against the server model
+with a 900 s request timeout. When the tunnel does not answer or the model is
+not installed there, the issue runs on the Mac model as usual. Codex and Claude
+fallbacks are unchanged. The cold start of the 30B model takes about 2.5 min.
+
+Before any PR is opened, the server model reads the final diff once and writes
+up to five lines (`OK` or `PROBLEM` plus findings) into the PR body under
+"Reviewer (advisory, …)". That verdict never blocks the PR and is skipped when
+the server is unreachable.
+
 ## Automatic chain (no manual labelling)
 
 Since the automation change the LaunchAgent needs no manual step per issue. Every five minutes,

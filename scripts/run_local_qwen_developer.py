@@ -557,7 +557,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--state-root", type=Path, default=Path(".tim/local-first"))
     p.add_argument("--ollama-url", default=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
     p.add_argument("--model", default=os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b"))
-    p.add_argument("--timeout", type=float, default=120.0)
+    p.add_argument("--timeout", type=float, default=float(os.getenv("TIM_QWEN_REQUEST_TIMEOUT", "120")))
     return p
 
 

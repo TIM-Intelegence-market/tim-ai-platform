@@ -10,6 +10,10 @@ from typing import Any
 from src.local_first.patch_executor import FORBIDDEN_PATH_PARTS
 
 TASK_BLOCK = re.compile(r"```json\s+TIM_QWEN_TASK_V1\s*\n(.*?)\n```", re.DOTALL)
+# Either ready label, together with status:ready, lets the worker pick an issue; the hard label
+# additionally asks for the big model on tim-server (see scripts/run_mac_qwen_issue.py).
+READY_LABEL = "agent:qwen-ready"
+HARD_LABEL = "agent:qwen-hard"
 REJECT_LABELS = {
     "blocked", "epic", "pr:open", "dependency:blocked", "type:epic",
     "status:blocked", "status:waiting", "agent:pr-open", "agent:blocked",
@@ -56,7 +60,8 @@ def select_ready_issue(issues: Any, *, only_number: int | None = None,
         if (only_number is not None and number != only_number) or number in skip:
             continue
         labels = _labels(issue)
-        if labels is None or labels & REJECT_LABELS or not {"agent:qwen-ready", "status:ready"} <= labels:
+        if (labels is None or labels & REJECT_LABELS or "status:ready" not in labels
+                or not labels & {READY_LABEL, HARD_LABEL}):
             continue
         body = issue.get("body")
         dependencies = {int(ref) for line in DEPENDENCY_LINE.findall(body or "")
@@ -67,6 +72,12 @@ def select_ready_issue(issues: Any, *, only_number: int | None = None,
         if priority is not None:
             candidates.append((priority, number, issue))
     return min(candidates, key=lambda item: (item[0], item[1]))[2] if candidates else None
+
+
+def is_hard_issue(issue: dict[str, Any]) -> bool:
+    """True when the issue carries the hard label and should go to the server model first."""
+    labels = _labels(issue) if isinstance(issue, dict) else None
+    return bool(labels) and HARD_LABEL in labels
 
 
 def _safe_python_path(value: Any) -> bool:

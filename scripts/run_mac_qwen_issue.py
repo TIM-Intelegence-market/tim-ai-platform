@@ -20,11 +20,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.github_issue_pipeline import DirectoryLock, Pipeline, PipelineError, WorkerIdentity
-from src.local_first.github_issue_queue import build_task, select_ready_issue
+from src.local_first.github_issue_queue import build_task, is_hard_issue, select_ready_issue
 from src.local_first import issue_triage
 from src.local_first.issue_triage import IssueLedger, attach_worker_contract, contract_hash
 
 REPO = "TIM-Intelegence-market/tim-ai-platform"
+# Big model on tim-server, reached through the local SSH tunnel (LaunchAgent com.tim.server-ollama-tunnel).
+# The server never sees GitHub: only prompt in, text out. Unset URL or unreachable backend means the
+# issue runs like any other on the local Mac model.
+HARD_MODEL_DEFAULT = "qwen3-coder:30b"
+HARD_REQUEST_TIMEOUT = "900"
+REVIEW_MAX_DIFF_CHARS = 60_000
 WORKER_LOGIN = "apoman74-art"
 WORKER_BRANCH = re.compile(r"codex/issue-([1-9][0-9]*)-qwen")
 SELF_UPDATED_EXIT = 3
@@ -113,8 +119,24 @@ def _contract_rejection(result: Path) -> str | None:
     return None
 
 
+def _hard_backend() -> tuple[str, str] | None:
+    """Return (url, model) of the server model when configured and the tunnel answers, else None."""
+    url = os.environ.get("TIM_QWEN_HARD_URL", "").strip().rstrip("/")
+    if not url.startswith("http://127.0.0.1") and not url.startswith("http://localhost"):
+        return None
+    model = os.environ.get("TIM_QWEN_HARD_MODEL", "").strip() or HARD_MODEL_DEFAULT
+    try:
+        from src.llm.ollama_client import OllamaClient
+        client = OllamaClient(url, model, timeout=5, observation_only=False)
+        if model not in client._installed_models():
+            return None
+    except Exception:  # noqa: BLE001 - any failure means "use the Mac model"
+        return None
+    return url, model
+
+
 def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
-                    claude_fallback: bool = False) -> dict:
+                    claude_fallback: bool = False, hard: bool = False) -> dict:
     state = worktree / ".tim/local-first"
     inbox = state / "developer-inbox"
     inbox.mkdir(parents=True, exist_ok=True)
@@ -133,6 +155,10 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
                 # Model-written tests never run outside the OS sandbox on the worker Mac.
                 "TIM_TEST_SANDBOX": "required",
                 "TIM_QWEN_TOOL_LOOP": "0" if os.environ.get("TIM_QWEN_TOOL_LOOP") == "0" else "1"})
+    backend = _hard_backend() if hard else None
+    if backend is not None:
+        env.update({"OLLAMA_BASE_URL": backend[0], "OLLAMA_MODEL": backend[1],
+                    "TIM_QWEN_REQUEST_TIMEOUT": HARD_REQUEST_TIMEOUT})
     returncode = _run_task_group(
         [sys.executable, "scripts/run_local_qwen_build_queue.py", "--task-id", task["task_id"]],
         worktree, env, timeout=1800)
@@ -147,7 +173,40 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
     outcome = json.loads(result.read_text(encoding="utf-8"))
     if evidence.get("status") != "FIXED" or evidence.get("passed") is not True:
         raise PipelineError("local task acceptance is not FIXED")
-    return {"acceptance": evidence, "result": outcome}
+    return {"acceptance": evidence, "result": outcome,
+            "model": f"{backend[1]}@tim-server" if backend else None}
+
+
+def _review_patch(task: dict, diff: str) -> dict[str, str] | None:
+    """Second pair of eyes from the server model. Advisory only: the verdict goes into the PR body
+    and never blocks the PR; a missing backend or any error returns None."""
+    backend = _hard_backend()
+    if backend is None or not diff.strip():
+        return None
+    diff = diff[:REVIEW_MAX_DIFF_CHARS]
+    prompt = (
+        "You review one patch for a trading-research code base. Answer in at most 5 lines.\n"
+        "First line exactly OK or PROBLEM. Then name only concrete findings: logic error, "
+        "security boundary crossed, file outside the allowed paths, missing or weakened test. "
+        "No praise, no style remarks.\n\n"
+        f"Objective: {str(task.get('objective', ''))[:1000]}\n"
+        f"Allowed paths: {', '.join(str(item) for item in task.get('allowed_paths', []))}\n\n"
+        f"Patch:\n{diff}\n")
+    try:
+        from src.llm.ollama_client import OllamaClient
+        client = OllamaClient(backend[0], backend[1], timeout=600, observation_only=False)
+        import asyncio
+        message = asyncio.run(client.chat([{"role": "user", "content": prompt}],
+                                          options={"num_predict": 400, "temperature": 0}))
+        text = str(message.get("content") or "").strip()
+    except Exception:  # noqa: BLE001 - advisory only
+        return None
+    if not text:
+        return None
+    from src.local_first.patch_executor import redact_tokens
+    lines = [line.strip() for line in redact_tokens(text).splitlines() if line.strip()][:5]
+    verdict = "\n".join(lines)[:1500].replace("```", "'''")
+    return {"model": backend[1], "verdict": verdict} if verdict else None
 
 
 def _merge_when_ready(pipeline: Pipeline, number: int, branch: str, head: str,
@@ -435,20 +494,28 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
         pipeline.command("git", "worktree", "add", "-b", branch, str(worktree), base)
         gitdir = Path(pipeline.command("git", "rev-parse", "--absolute-git-dir", cwd=worktree))
         outcome = _run_local_task(worktree, task, codex_fallback=codex_fallback,
-                                  claude_fallback=claude_fallback)
+                                  claude_fallback=claude_fallback, hard=is_hard_issue(issue))
         paths = _assert_task_diff(pipeline, worktree, gitdir, task)
         pipeline.worktree_git(worktree, gitdir, "diff", "HEAD", "--check")
+        review = _review_patch(task, pipeline.worktree_git(worktree, gitdir, "diff", "HEAD", "--", *paths))
         pipeline.worktree_git(worktree, gitdir, "add", "--", *paths)
         pipeline.worktree_git(worktree, gitdir, "-c", f"user.name={WORKER_LOGIN}",
                               "-c", f"user.email={WORKER_LOGIN}@users.noreply.github.com",
                               "commit", "--no-verify", "-m", f"fix(issue-{number}): Mac Qwen repair")
         head = pipeline.worktree_git(worktree, gitdir, "rev-parse", "HEAD")
         pipeline.worktree_git(worktree, gitdir, "push", "--no-verify", "origin", branch)
-        body = (f"Closes #{number}\n\nMac Qwen issue repair.\n\n"
-                f"Local acceptance: {outcome['acceptance']['status']}\n"
-                f"Implementation provider: {outcome['result'].get('fallback_provider') or outcome['result'].get('provider')}\n"
-                f"Changed paths: {', '.join(paths)}\n\n"
-                "GitHub required checks and the repository ruleset control merging.\n")
+        provider = outcome["result"].get("fallback_provider") or outcome["result"].get("provider")
+        body_lines = [f"Closes #{number}", "", "Mac Qwen issue repair.", "",
+                      f"Local acceptance: {outcome['acceptance']['status']}",
+                      f"Implementation provider: {provider}"]
+        if outcome.get("model"):
+            body_lines.append(f"Qwen model: {outcome['model']}")
+        body_lines += [f"Changed paths: {', '.join(paths)}", ""]
+        if review:
+            body_lines += [f"Reviewer (advisory, {review['model']} on tim-server):", "```",
+                           review["verdict"], "```", ""]
+        body_lines.append("GitHub required checks and the repository ruleset control merging.")
+        body = "\n".join(body_lines) + "\n"
         body_path = state_dir / "runs" / f"issue-{number}-pr.md"
         body_path.parent.mkdir(parents=True, exist_ok=True)
         body_path.write_text(body, encoding="utf-8")
