@@ -391,3 +391,26 @@ def test_other_pr_list_errors_still_stop_the_run(tmp_path):
 
     with pytest.raises(PipelineError, match="502"):
         runner._maintain_worker_prs(Broken([]), IssueLedger(tmp_path / "l.json"), merge=True)
+
+
+def test_retired_pr_counts_an_attempt_without_deleting_the_branch_through_gh(tmp_path):
+    ledger = IssueLedger(tmp_path / "l.json")
+    ledger.start_attempt(90, "contract-a")
+    pr = {"baseRefName": "platform-main", "createdAt": "2026-10-12T10:00:00Z", "author": {"login": WORKER},
+          "number": 7, "headRefName": "codex/issue-90-qwen", "mergeStateStatus": "DIRTY"}
+    pipeline = FakePipeline([], [pr])
+    assert runner._maintain_worker_prs(pipeline, ledger, merge=True, now=1_791_800_000.0) == set()
+    close = _gh(pipeline, "pr", "close")
+    assert close and "--delete-branch" not in close[0]
+    assert ledger.errors(90)
+
+
+def test_self_update_says_why_it_skips_a_dirty_checkout(capsys):
+    class Dirty(FakePipeline):
+        def command(self, *args):
+            return {("git", "rev-parse", "HEAD"): "a" * 40,
+                    ("git", "rev-parse", "origin/platform-main"): "b" * 40,
+                    ("git", "status", "--porcelain", "--untracked-files=no"): " M CLAUDE.md"}.get(args, "")
+
+    assert runner.self_update(Dirty([])) is None
+    assert "local changes: M CLAUDE.md" in capsys.readouterr().err

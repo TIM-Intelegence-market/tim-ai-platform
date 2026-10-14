@@ -179,7 +179,11 @@ def self_update(pipeline: Pipeline) -> str | None:
     target = pipeline.command("git", "rev-parse", "origin/platform-main")
     if head == target:
         return None
-    if pipeline.command("git", "status", "--porcelain", "--untracked-files=no"):
+    dirty = pipeline.command("git", "status", "--porcelain", "--untracked-files=no")
+    if dirty:
+        # Say so on every poll: a silently skipped update kept a fixed worker broken for hours.
+        print(f"self-update skipped, worker checkout has local changes: {' '.join(dirty.split())[:200]}",
+              file=sys.stderr)
         return None
     try:
         pipeline.command("git", "merge-base", "--is-ancestor", "HEAD", "origin/platform-main")
@@ -281,7 +285,9 @@ def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool
                 print(f"worker PR #{number} waits: GitHub Actions started no runner", file=sys.stderr)
             elif merge and (status == "DIRTY" or now - created > STALE_PR_SECONDS):
                 reason = f"worker PR #{number} closed: {status or 'unknown'} after {int((now - created) // 60)} min"
-                pipeline.github("pr", "close", number, "--delete-branch", "--comment",
+                # No --delete-branch: on the detached worker checkout gh fails after closing, which
+                # skipped the attempt count below. The next attempt deletes the old branch anyway.
+                pipeline.github("pr", "close", number, "--comment",
                                 "Der Mac-Qwen-Worker schließt diesen PR und versucht es neu "
                                 f"(Zustand {status}).")
                 covered.discard(issue)
