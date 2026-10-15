@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from src.repair_gates.result import GateResult, GateStatus
 
 
 REPORT_GATES = (
@@ -21,25 +22,9 @@ REPORT_GATES = (
 )
 
 
-@dataclass
-class GateResult:
-    name: str
-    status: str
-    reason: str
-    evidence_refs: list[str] = field(default_factory=list)
-
-    @property
-    def passed(self) -> bool:
-        return self.status == "PASS"
-
-    @property
-    def gate(self) -> str:
-        return self.name
-
-
 def _fail(name: str, reason: str, path: str | None = None) -> GateResult:
-    return GateResult(name=name, status="FAIL", reason=reason,
-                      evidence_refs=[] if path is None else [path])
+    return GateResult(name, GateStatus.FAIL, reason,
+                      evidence_refs=() if path is None else (path,))
 
 
 def gates_from_refs(refs: dict[str, Any]) -> list[GateResult]:
@@ -88,7 +73,7 @@ def gates_from_refs(refs: dict[str, Any]) -> list[GateResult]:
             results.append(_fail(name, f"unexpected status: {status!r}", path))
             continue
 
-        results.append(GateResult(name=name, status="PASS", reason="evidence valid",
-                                  evidence_refs=[path]))
+        results.append(GateResult(name, GateStatus.PASS, "evidence valid",
+                                  evidence_refs=(path,)))
 
     return results

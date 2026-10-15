@@ -1,24 +1,9 @@
 """Autonomy repair gate adapter."""
 
-from dataclasses import dataclass
 from typing import Any
 
 from src.bugfixer.remediation import _gate
-
-
-@dataclass(frozen=True)
-class GateResult:
-    name: str
-    status: str
-    reason: str
-
-    @property
-    def gate(self) -> str:
-        return self.name
-
-    @property
-    def decision(self) -> str:
-        return self.status
+from src.repair_gates.result import GateResult, GateStatus
 
 
 def _gate_result(result: Any) -> tuple[str, str]:
@@ -33,12 +18,14 @@ def evaluate(row: dict, category: str, satisfied: dict) -> GateResult:
     """Evaluate the remediation decision as the autonomy gate."""
     decision, reason = _gate(row, category, satisfied)
     if decision == "PROPOSED":
-        status = "PASS"
+        status = GateStatus.PASS
     elif decision in {"OBSERVE_ONLY", "BLOCKED", "REVIEW_REQUIRED"}:
-        status = "BLOCKED"
+        status = GateStatus.BLOCKED
     else:
-        status = "FAIL"
+        status = GateStatus.FAIL
 
     if decision == "SAFE_STOP":
         reason = f"SAFE_STOP: {reason}"
-    return GateResult(name="autonomy", status=status, reason=reason)
+    if status is not GateStatus.PASS and not reason:
+        reason = decision or "no decision"
+    return GateResult("autonomy", status, reason)
