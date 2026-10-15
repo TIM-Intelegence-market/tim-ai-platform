@@ -458,3 +458,53 @@ def test_readonly_context_keeps_small_budget(
         len(item["content"])
         == developer.MAX_CONTEXT_CHARS
     )
+
+
+def test_compact_server_prompt_preserves_contract_code_rules_and_skill_instructions():
+    import copy
+    payload = {
+        "task": {"task_id": "T-1", "objective": "Implement precisely", "allowed_paths": ["src/a.py"],
+                 "tests": ["tests/test_a.py"], "execution_policy": {"wip_limit": 1}},
+        "context": [{"path": "src/a.py", "sha256": "abc", "content": "EXACT = 'ä'\n", "complete": True}],
+        "allowed_paths_exact": ["src/a.py"], "required_tests_exact": ["tests/test_a.py"],
+        "required_outputs_exact": ["tests/test_a.py"],
+        "hard_rules": ["Never disable TLS", "No live execution"],
+        "skills": [{"name": "safety", "description": "optional summary", "instructions": "Keep all gates", "trust": "TIM_GUIDANCE"}],
+        "local_documentation": [{"path": "docs/a.md", "excerpt": "L1: relevant\n" + "x" * 650, "trust": "UNTRUSTED_REFERENCE"},
+                                {"path": "docs/b.md", "excerpt": "optional"}],
+    }
+    before = copy.deepcopy(payload)
+    compact = developer._compact_server_prompt(payload)
+    assert payload == before  # snapshot binding and subsequent retries still use the original contract
+    for key in ("hard_rules", "allowed_paths_exact", "required_tests_exact", "required_outputs_exact"):
+        assert compact[key] == payload[key]
+    assert compact["context"][0]["content"] == payload["context"][0]["content"]
+    assert compact["context"][0]["complete"] is True
+    assert compact["skills"][0]["instructions"] == "Keep all gates"
+    assert compact["skills"][0]["trust"] == "TIM_GUIDANCE"
+    assert compact["task"]["objective"] == "Implement precisely"
+    assert compact["task"]["execution_policy"] == {"wip_limit": 1}
+    assert len(compact["local_documentation"]) == 1
+    assert compact["local_documentation"][0]["excerpt"] == "L1: relevant"
+    assert compact["local_documentation"][0]["truncated"] is True
+    assert len(json.dumps(compact)) < len(json.dumps(payload))
+
+
+def test_prompt_compaction_only_for_small_server_runs(monkeypatch):
+    monkeypatch.setenv("TIM_QWEN_SERVER_RUN", "1")
+    monkeypatch.delenv("TIM_QWEN_HARD_RUN", raising=False)
+    task = {"task_id": "T-1", "objective": "same", "allowed_paths": ["src/a.py"], "tests": ["tests/test_a.py"]}
+    contract = {"allowed_paths": task["allowed_paths"], "tests": task["tests"], "required_outputs": [],
+                "context": [{"path": "src/a.py", "sha256": "abc", "content": "VALUE = 1\n", "complete": True}]}
+    compact = json.loads(developer._prompt(task, contract))
+    assert "sha256" not in compact["context"][0]
+    assert compact["context"][0]["content"] == "VALUE = 1\n"
+    for hard, server in (("1", "1"), (None, None)):
+        for key, value in (("TIM_QWEN_HARD_RUN", hard), ("TIM_QWEN_SERVER_RUN", server)):
+            if value is None:
+                monkeypatch.delenv(key, raising=False)
+            else:
+                monkeypatch.setenv(key, value)
+        full = json.loads(developer._prompt(task, contract))
+        assert full["context"][0]["sha256"] == "abc"
+        assert full["task"] == task

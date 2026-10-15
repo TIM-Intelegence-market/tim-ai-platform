@@ -234,3 +234,21 @@ result names the failed probe.
 
 After pulling these changes on the Mac, rerun the installer so the LaunchAgent gets
 `TIM_TEST_SANDBOX` and `TIM_QWEN_TOOL_LOOP`, then restart it.
+
+### Kompakter Prompt für kleine Server-Aufgaben
+
+Kleine Aufgaben auf dem Server (`TIM_QWEN_SERVER_RUN=1`, ohne
+`TIM_QWEN_HARD_RUN=1`) senden die Vertragslisten nur einmal und lassen die
+lokal geprüften Snapshot-Hashes aus dem Modellprompt weg. Die Hashprüfung
+selbst bleibt unverändert. Pflichtdateien, Datei-Inhalte, harte Regeln,
+Ausführungsrichtlinie und Skill-Anweisungen bleiben vollständig erhalten.
+Nur optionale Dokumentationsauszüge werden auf einen Auszug mit höchstens
+600 Zeichen begrenzt; Kürzungen werden markiert. Skill-Beschreibungen werden
+weggelassen, ihre Anweisungen und Vertrauenskennzeichnung bleiben erhalten.
+
+Beim Auftrag #242 sank die Promptgröße gegenüber der vorherigen Version von
+22.219 auf 19.181 Zeichen (13,7 Prozent). Das ist eine Größenmessung, kein
+Nachweis einer entsprechenden Laufzeitverkürzung oder eines erfolgreichen
+Patches. Mac-Aufgaben und große Hard-Aufgaben behalten das volle Format.
+Die Kontextfenster-Einstellung bleibt gleich, damit das warm gehaltene
+Server-Modell nicht wegen wechselnder Kontextgrößen neu geladen werden muss.
