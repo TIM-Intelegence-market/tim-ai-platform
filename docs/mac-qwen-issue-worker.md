@@ -86,6 +86,40 @@ network, backup and cutover operations remain separate from those evaluators.
 
 ## Hard issues on the server model
 
+### Prefer the server and keep it warm
+
+Set `TIM_QWEN_SERVER_PREFERRED=1` and `TIM_QWEN_SERVER_KEEP_WARM=1` in the Mac
+worker LaunchAgent environment, alongside the existing `TIM_QWEN_HARD_URL` and
+`TIM_QWEN_HARD_MODEL`. The installer preserves these settings from its environment.
+
+Small ready issues then use the installed server model too. The intake no longer
+depends on the Mac model being available while the server answers, and checks for
+new work every 30 seconds instead of five minutes. Hard issues still wait for the
+server on an outage; small issues may use the Mac fallback. File limits and test
+sandbox requirements remain those of each original issue contract.
+
+Server implementation and review requests use `keep_alive=-1`. One background
+thread in the coordinator also preloads the model with an empty request on startup
+and every five minutes, retrying after one minute on transport errors. It does not
+generate tokens or download models. Its context and batch size match the server
+worker, avoiding configuration changes between warmup, tool loop and review.
+It logs `TIM_SERVER_MODEL=WARM` or `UNAVAILABLE` independently of a long-running
+issue child. Restarting Ollama still requires reloading the model; the next warmup
+or real request performs that load.
+
+Processing remains serial with the current `OLLAMA_NUM_PARALLEL=1`. On the checked
+Xeon E3-1270 v6, Ollama has a 300% CPU quota, CPU affinity `2-3,6-7` and a 28 GiB
+cgroup memory limit, despite the host having 62 GiB RAM. The warm 64k-context model
+occupies about 25 GB and can bring its cgroup close to that limit. More simultaneous
+contexts need measured throughput and memory headroom before changing this setting.
+The resource isolation for PostgreSQL and TIM runtime remains in place.
+
+Useful pauses include local CI/test contention, an empty eligible queue, dependency
+waits and unavailable transport. Warming prevents avoidable model unloads during
+these pauses; it does not manufacture tasks or CPU load to make usage appear high.
+
+See [Ollama's residency and concurrency documentation](https://github.com/ollama/ollama/blob/main/docs/faq.mdx).
+
 tim-server holds `qwen3-coder:30b` (CPU only, 62 GB RAM). The Mac stays the
 only machine with GitHub access; the server only sees prompt in, text out.
 A LaunchAgent on the Mac (`com.tim.server-ollama-tunnel`) keeps an SSH tunnel

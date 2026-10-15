@@ -15,6 +15,7 @@ class OllamaClient:
         *,
         observation_only: bool = True,
         generation_options: dict[str, Any] | None = None,
+        keep_alive: int | str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.endpoint = f"{self.base_url}/api/generate"
@@ -22,6 +23,7 @@ class OllamaClient:
         self.timeout = timeout
         self.observation_only = observation_only
         self.generation_options = dict(generation_options or {})
+        self.keep_alive = keep_alive
 
     async def generate_json(self, prompt: str, *, schema: dict[str, Any] | None = None) -> dict[str, Any]:
         """Ask for one JSON object; with ``schema`` Ollama constrains decoding to that JSON schema."""
@@ -87,6 +89,8 @@ class OllamaClient:
             payload["tools"] = tools
         if options:
             payload["options"] = options
+        if self.keep_alive is not None:
+            payload["keep_alive"] = self.keep_alive
         request = Request(f"{self.base_url}/api/chat", data=json.dumps(payload).encode(),
                           headers={"Content-Type": "application/json"}, method="POST")
         with urlopen(request, timeout=self.timeout if timeout is None else timeout) as response:
@@ -101,6 +105,8 @@ class OllamaClient:
                         "format": schema if schema is not None else "json", "think": False}
         if self.generation_options:
             request_body["options"] = self.generation_options
+        if self.keep_alive is not None:
+            request_body["keep_alive"] = self.keep_alive
         body = json.dumps(request_body).encode()
         request = Request(self.endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
         with urlopen(request, timeout=self.timeout) as response:

@@ -453,10 +453,11 @@ async def run(args: argparse.Namespace) -> int:
             raise ContractError("sandbox marker missing")
         contract = _build_contract(repo, task)
         generation_kwargs = {}
-        if os.getenv("TIM_QWEN_HARD_RUN") == "1":
+        if os.getenv("TIM_QWEN_HARD_RUN") == "1" or os.getenv("TIM_QWEN_SERVER_RUN") == "1":
             from src.local_first.qwen_tool_loop import chat_options
             # A one-shot retry must retain the larger context used by the server tool loop.
             generation_kwargs["generation_options"] = chat_options()
+            generation_kwargs["keep_alive"] = -1
         ollama = OllamaClient(args.ollama_url, args.model, timeout=args.timeout,
                               observation_only=False, **generation_kwargs)
         if not await ollama.available():

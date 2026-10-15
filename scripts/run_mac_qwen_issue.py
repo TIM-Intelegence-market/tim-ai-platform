@@ -24,11 +24,12 @@ from scripts.github_issue_pipeline import DirectoryLock, Pipeline, PipelineError
 from src.local_first.github_issue_queue import build_task, is_hard_issue, select_ready_issue
 from src.local_first import issue_triage
 from src.local_first.issue_triage import IssueLedger, attach_worker_contract, contract_hash
+from src.local_first.server_residency import configured_server, SERVER_OPTIONS
 
 REPO = "TIM-Intelegence-market/tim-ai-platform"
 # Big model on tim-server, reached through the local SSH tunnel (LaunchAgent com.tim.server-ollama-tunnel).
-# The server never sees GitHub: only prompt in, text out. Hard issues wait for the server;
-# they must not silently fall back to the smaller Mac model.
+# The server never sees GitHub: only prompt in, text out. Server-preferred mode also routes
+# small issues there. Hard issues always wait instead of falling back to the Mac model.
 HARD_MODEL_DEFAULT = "qwen3-coder:30b"
 HARD_REQUEST_TIMEOUT = "900"
 REVIEW_MAX_DIFF_CHARS = 60_000
@@ -135,10 +136,10 @@ def _contract_rejection(result: Path) -> str | None:
 
 def _hard_backend() -> tuple[str, str] | None:
     """Return (url, model) of the server model when configured and the tunnel answers, else None."""
-    url = os.environ.get("TIM_QWEN_HARD_URL", "").strip().rstrip("/")
-    if not url.startswith("http://127.0.0.1") and not url.startswith("http://localhost"):
+    configured = configured_server()
+    if configured is None:
         return None
-    model = os.environ.get("TIM_QWEN_HARD_MODEL", "").strip() or HARD_MODEL_DEFAULT
+    url, model = configured
     try:
         from src.llm.ollama_client import OllamaClient
         client = OllamaClient(url, model, timeout=5, observation_only=False)
@@ -155,7 +156,7 @@ class ServerBackendUnavailable(PipelineError):
 
 def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
                     claude_fallback: bool = False, hard: bool = False) -> dict:
-    backend = _hard_backend() if hard else None
+    backend = _hard_backend() if hard or os.getenv("TIM_QWEN_SERVER_PREFERRED") == "1" else None
     if hard and backend is None:
         raise ServerBackendUnavailable("server model unavailable; wait for the SSH tunnel")
     state = worktree / ".tim/local-first"
@@ -168,6 +169,9 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
     path.write_text(json.dumps(task, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     path.chmod(0o600)
     env = Pipeline.agent_env()
+    # A parent process cannot accidentally widen a small task's file contract.
+    env.pop("TIM_QWEN_HARD_RUN", None)
+    env.pop("TIM_QWEN_SERVER_RUN", None)
     env.update({"PYTHONPATH": str(worktree), "TIM_LOCAL_PATCH_SANDBOX": "1",
                 "TIM_BLOCKER_AUTO_WAIT": "0", "TIM_LIVE_TRADING": "0",
                 "TIM_EXECUTION_ENABLED": "0", "OLLAMA_MODEL": "qwen3.5:9b",
@@ -178,7 +182,9 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
                 "TIM_QWEN_TOOL_LOOP": "0" if os.environ.get("TIM_QWEN_TOOL_LOOP") == "0" else "1"})
     if backend is not None:
         env.update({"OLLAMA_BASE_URL": backend[0], "OLLAMA_MODEL": backend[1],
-                    "TIM_QWEN_REQUEST_TIMEOUT": HARD_REQUEST_TIMEOUT, "TIM_QWEN_HARD_RUN": "1"})
+                    "TIM_QWEN_REQUEST_TIMEOUT": HARD_REQUEST_TIMEOUT, "TIM_QWEN_SERVER_RUN": "1"})
+        if hard:
+            env["TIM_QWEN_HARD_RUN"] = "1"
     returncode = _run_task_group(
         [sys.executable, "scripts/run_local_qwen_build_queue.py", "--task-id", task["task_id"]],
         worktree, env, timeout=1800)
@@ -214,10 +220,10 @@ def _review_patch(task: dict, diff: str) -> dict[str, str] | None:
         f"Patch:\n{diff}\n")
     try:
         from src.llm.ollama_client import OllamaClient
-        client = OllamaClient(backend[0], backend[1], timeout=600, observation_only=False)
+        client = OllamaClient(backend[0], backend[1], timeout=600, observation_only=False, keep_alive=-1)
         import asyncio
         message = asyncio.run(client.chat([{"role": "user", "content": prompt}],
-                                          options={"num_predict": 400, "temperature": 0}))
+                                          options={**SERVER_OPTIONS, "num_predict": 400, "temperature": 0}))
         text = str(message.get("content") or "").strip()
     except Exception:  # noqa: BLE001 - advisory only
         return None

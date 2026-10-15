@@ -49,7 +49,7 @@ HARD_CHAT_TURN_SECONDS = 900.0
 
 def chat_options() -> dict[str, Any]:
     options = dict(CHAT_OPTIONS)
-    if os.environ.get("TIM_QWEN_HARD_RUN") == "1":
+    if os.environ.get("TIM_QWEN_HARD_RUN") == "1" or os.environ.get("TIM_QWEN_SERVER_RUN") == "1":
         options["num_ctx"] = HARD_NUM_CTX
         # Keep CPU prefill batches bounded within the server's Ollama memory limit.
         options["num_batch"] = 256
@@ -254,7 +254,7 @@ class QwenToolLoop:
         self.check_patch = check_patch
         self.run_tests = run_tests
         self.max_steps = max_steps
-        hard = os.environ.get("TIM_QWEN_HARD_RUN") == "1"
+        hard = os.environ.get("TIM_QWEN_HARD_RUN") == "1" or os.environ.get("TIM_QWEN_SERVER_RUN") == "1"
         self.max_seconds = (HARD_MAX_SECONDS if hard else MAX_SECONDS) if max_seconds is None else max_seconds
         self.turn_seconds = HARD_CHAT_TURN_SECONDS if hard else CHAT_TURN_SECONDS
         self.clock = clock
