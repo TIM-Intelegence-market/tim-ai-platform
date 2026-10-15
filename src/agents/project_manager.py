@@ -34,7 +34,7 @@ UPDATE_BOARD = "update_priority_board_issue"
 
 SPEC = AgentSpec(
     name="project-manager",
-    version="1.1.0",
+    version="1.2.0",
     mission="Rank open TIM GitHub issues and open-PR blockers deterministically "
             "in exactly one priority board issue.",
     owner="uezeyiraydin-cell",
@@ -77,6 +77,13 @@ def issue_body(issue: Mapping[str, Any], comments: Iterable[Mapping[str, Any]],
                trusted_authors: Iterable[str]) -> str:
     """Text that may carry directives: only what a trusted author wrote."""
     trusted = set(trusted_authors)
+    body = issue.get("body") or ""
+    if (issue.get("author") in trusted
+            and body.startswith("<!-- TIM_ISSUE_STRUCTURE_V1 -->")
+            and "<details>" in body):
+        # The maintained summary supersedes historical scope and comments.
+        # Keep the existing author trust boundary; a marker alone grants nothing.
+        return body.split("<details>", 1)[0]
     parts = [issue.get("body") or ""] if issue.get("author") in trusted else []
     parts.extend(comment.get("body") or "" for comment in comments if comment.get("author") in trusted)
     return "\n".join(parts)
@@ -123,7 +130,7 @@ def classify_issue(issue: Mapping[str, Any], text: str, open_numbers: set[int]) 
     archived = bool({"archive", "duplicate"} & labels)
     blocked = (
         archived
-        or "status:waiting" in labels
+        or "status:blocked" in labels
         or "status:external-action" in labels
         or "ci-blocked" in labels
         or bool(BLOCKED_TEXT.search(text))
@@ -139,6 +146,10 @@ def classify_issue(issue: Mapping[str, Any], text: str, open_numbers: set[int]) 
         status, reason, rank = "BLOCKED", "Expliziter Blocker, externer Schritt oder fehlgeschlagene Abnahme ist dokumentiert.", 3
     elif unresolved:
         status, reason, rank = "WAITING", f"Wartet auf offene Abhängigkeiten: {', '.join(f'#{dep}' for dep in unresolved)}.", 2
+    elif "status:waiting" in labels:
+        status, reason, rank = "WAITING", "Als wartend markiert; nächste Voraussetzung im Issue prüfen.", 2
+    elif "status:roadmap" in labels:
+        status, reason, rank = "WAITING", "Roadmap: noch kein freigegebener ausführbarer Auftrag.", 2
     elif p0 or active:
         status, reason, rank = "NEXT", "Aktiv bzw. P0 und ohne offene explizite Abhängigkeit.", 0
     elif ready:

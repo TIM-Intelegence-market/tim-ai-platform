@@ -1,6 +1,6 @@
 name: Epic oder Sammelvorhaben
 description: Mehrere verlinkte Ergebnisse koordinieren
-labels: ["type:epic"]
+labels: ["type:epic", "status:roadmap"]
 body:
   - type: textarea
     id: outcome

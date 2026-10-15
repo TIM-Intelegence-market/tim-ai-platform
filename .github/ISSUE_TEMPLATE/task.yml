@@ -1,6 +1,6 @@
 name: Abgrenzbare Aufgabe oder Fehler
 description: Ein konkretes Ergebnis mit überprüfbarer Abnahme
-labels: ["type:task"]
+labels: ["type:task", "status:roadmap"]
 body:
   - type: textarea
     id: objective

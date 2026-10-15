@@ -24,6 +24,10 @@ Jeder Titel nennt Bereich und konkretes Ergebnis. Der Body enthält:
 
 Genau ein `status:*`-Label pro Issue verwenden:
 
+Über die GitHub-Oberfläche erstellte Issues nutzen die Pflichtformulare und
+beginnen mit `status:roadmap`. Nach Prüfung des Umfangs und der Voraussetzungen
+wird der passende Status gesetzt. API-erstellte Issues folgen demselben Schema.
+
 | Label | Bedeutung |
 | --- | --- |
 | `status:roadmap` | Noch kein ausführbarer Auftrag priorisiert |
@@ -49,6 +53,12 @@ Dringlichkeit vergeben; Agent-Eignung ist keine Priorität. Worker-Labels und
   Kommentare sind Historie, nicht der aktuelle Arbeitsauftrag.
 - Bei widersprüchlicher alter Dokumentation den aktuellen Stand oben erklären;
   ursprüngliche Anforderungen und Sicherheitsgrenzen erhalten.
+- Für gepflegte Bestands-Issues steht `<!-- TIM_ISSUE_STRUCTURE_V1 -->` am
+  Body-Anfang; der aktuelle Stand endet vor `<details>`. Der Board-Generator
+  wertet dann ausschließlich diesen Bereich aus, wenn der Issue-Autor als
+  vertrauenswürdig konfiguriert ist. Anforderungen im Details-Bereich und alte
+  Kommentare überschreiben den aktuellen Stand nicht. Neue Blocker deshalb im
+  aktuellen Body und Statuslabel pflegen.
 - Erst schließen, wenn alle Abnahmekriterien erfüllt oder Änderungen am Umfang
   ausdrücklich dokumentiert sind. Ein grüner Modultest beweist keinen Rollout.
 

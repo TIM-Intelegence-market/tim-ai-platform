@@ -24,6 +24,8 @@ jobs:
       PRIORITY_BOARD_TITLE: TIM Priority Board
       PRIORITY_BOARD_MARKER: TIM_PRIORITY_BOARD_V1
       PRIORITY_TIMEZONE_LABEL: Europe/Berlin
+      # Explicit maintainers; the repository owner is an organisation, not an issue author.
+      PRIORITY_TRUSTED_AUTHORS: uezeyiraydin-cell,fleckbarti-ai
       TOP_N: "5"
     steps:
       - uses: actions/checkout@v4
