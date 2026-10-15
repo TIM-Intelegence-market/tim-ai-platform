@@ -55,14 +55,7 @@ fn text(value: &Value, key: &str) -> Option<String> {
     }
 }
 
-fn pid_alive(pid: u32) -> bool {
-    Command::new("/bin/kill")
-        .args(["-0", &pid.to_string()])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
+#[cfg(test)]
 fn lock_pid(path: &Path) -> Option<u32> {
     let raw = fs::read_to_string(path).ok()?;
     raw.trim().trim_start_matches("pid=").parse().ok()
@@ -94,9 +87,36 @@ fn http_get(url: &str, path: &str) -> Option<String> {
     let mut stream = TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(2)).ok()?;
     stream.set_read_timeout(Some(std::time::Duration::from_secs(3))).ok()?;
     write!(stream, "GET {path} HTTP/1.0\r\nHost: {host}\r\n\r\n").ok()?;
-    let mut body = String::new();
-    stream.read_to_string(&mut body).ok()?;
-    Some(body.split_once("\r\n\r\n")?.1.to_string())
+    // Stop at Content-Length: a complete reply must not become a timeout just
+    // because a proxy keeps its side of the connection open.
+    use std::io::BufRead;
+    let mut reader = std::io::BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line).ok()?;
+    if line.split_whitespace().nth(1) != Some("200") { return None; }
+    let mut length = None;
+    let mut header_bytes = line.len();
+    loop {
+        line.clear();
+        if reader.read_line(&mut line).ok()? == 0 { return None; }
+        header_bytes += line.len();
+        if header_bytes > 16_384 { return None; }
+        if line == "\r\n" || line == "\n" { break; }
+        if let Some((key, value)) = line.split_once(':') {
+            if key.eq_ignore_ascii_case("content-length") { length = Some(value.trim().parse::<usize>().ok()?); }
+        }
+    }
+    const MAX_BODY: usize = 2 * 1024 * 1024;
+    let mut body = Vec::new();
+    if let Some(length) = length {
+        if length > MAX_BODY { return None; }
+        body.resize(length, 0);
+        reader.read_exact(&mut body).ok()?;
+    } else {
+        reader.take((MAX_BODY + 1) as u64).read_to_end(&mut body).ok()?;
+        if body.len() > MAX_BODY { return None; }
+    }
+    String::from_utf8(body).ok()
 }
 
 fn get_json(url: &str, path: &str) -> Option<Value> {
@@ -119,17 +139,17 @@ fn ollama(url: &str, model: &str) -> Value {
 /// The server model behind the SSH tunnel: reachable, installed, and loaded ("warm") right now.
 fn server_model(url: &str, model: &str) -> Value {
     let Some(tags) = get_json(url, "/api/tags") else {
-        return json!({"reachable": false, "model": model, "model_installed": false, "warm": false, "expires_at": null});
+        return json!({"reachable": false, "model": model, "model_installed": false, "warm": null, "expires_at": null});
     };
-    let loaded = get_json(url, "/api/ps").unwrap_or_default();
-    let entry = loaded["models"].as_array().and_then(|models| {
+    let loaded = get_json(url, "/api/ps").filter(|v| v["models"].is_array());
+    let entry = loaded.as_ref().and_then(|v| v["models"].as_array()).and_then(|models| {
         models.iter().find(|m| m["name"].as_str() == Some(model) || m["model"].as_str() == Some(model)).cloned()
     });
     json!({
         "reachable": true,
         "model": model,
         "model_installed": lists_model(&tags, model),
-        "warm": entry.is_some(),
+        "warm": loaded.as_ref().map(|_| entry.is_some()),
         "expires_at": entry.as_ref().map(|e| e["expires_at"].clone()),
         "size_bytes": entry.as_ref().map(|e| e["size"].clone()),
     })
@@ -137,7 +157,9 @@ fn server_model(url: &str, model: &str) -> Value {
 
 /// Every `.tim/local-first` directory that may hold evidence for an issue run.
 fn evidence_roots(cfg: &Config, issue: u64) -> Vec<(String, PathBuf)> {
-    let mut roots = vec![("Worker-Ordner".to_string(), cfg.worker_repo.join(".tim/local-first"))];
+    // GitHub issue evidence lives in Application Support. Reading the source checkout
+    // under Documents is unnecessary and can block on a macOS privacy prompt.
+    let mut roots = Vec::new();
     let archive = cfg.state_dir.join("archive");
     if let Ok(entries) = fs::read_dir(&archive) {
         let prefix = format!("issue-{issue}-qwen-");
@@ -190,7 +212,7 @@ pub fn issue_runs(cfg: &Config, issue: u64) -> Value {
             for f in files_for(&root.join(dir), &task) {
                 touched = true;
                 let v = read_json(&f).unwrap_or_default();
-                let label = if dir == "developer-inbox" { "Auftrag wartet auf Qwen" } else { "Qwen arbeitet am Auftrag" };
+                let label = if dir == "developer-inbox" { "Auftrag an Entwickler übergeben" } else { "Entwickler-Auftrag verarbeitet" };
                 push(mtime(&f), label, text(&v, "objective"), &mut events);
             }
         }
@@ -223,7 +245,8 @@ pub fn issue_runs(cfg: &Config, issue: u64) -> Value {
                 add_helper(if failed { "Codex (Fehler)" } else { "Codex" }, &mut helpers);
             }
             if v["claude_fallback_calls"].as_u64().unwrap_or(0) > 0 {
-                add_helper("Claude", &mut helpers);
+                let failed = v.get("claude_fallback_error").map_or(false, |e| !e.is_null());
+                add_helper(if failed { "Claude (Fehler)" } else { "Claude" }, &mut helpers);
             }
             let detail = text(&v, "reason").or_else(|| text(&v, "qwen_blocker_reason"));
             let phase = match status.as_str() {
@@ -295,20 +318,6 @@ pub fn local_issue_numbers(cfg: &Config) -> Vec<u64> {
     }
     numbers.sort_unstable();
     numbers
-}
-
-/// The newest worktree is the issue the worker is on while a run holds the lock.
-fn newest_worktree(cfg: &Config) -> Option<u64> {
-    let entries = fs::read_dir(cfg.state_dir.join("worktrees")).ok()?;
-    entries
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name().to_string_lossy().to_string();
-            let n: u64 = name.strip_prefix("issue-")?.split('-').next()?.parse().ok()?;
-            Some((created(&e.path()).unwrap_or(0), n))
-        })
-        .max()
-        .map(|(_, n)| n)
 }
 
 fn log_tail(path: &Path) -> Vec<String> {
@@ -409,14 +418,120 @@ fn summarise(record: &Value) -> String {
     redact(&Value::Object(parts).to_string())
 }
 
+// Read only the routing fields from a live process; never return its full environment.
+fn process_routing(pid: u32) -> Value {
+    let output = Command::new("/bin/ps").args(["eww", "-p", &pid.to_string(), "-o", "command="]).output();
+    let Ok(output) = output else { return Value::Null };
+    if !output.status.success() { return Value::Null; }
+    routing_fields(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn routing_fields(command: &str) -> Value {
+    let mut fields = Map::new();
+    for word in command.split_whitespace() {
+        if let Some((key, value)) = word.split_once('=') {
+            if ["TIM_QWEN_SERVER_RUN", "TIM_QWEN_HARD_RUN", "TIM_QWEN_SERVER_PREFERRED", "TIM_QWEN_SERVER_KEEP_WARM", "TIM_WORKER_CI_PAUSE", "OLLAMA_MODEL"].contains(&key) {
+                fields.insert(key.into(), json!(redact(value)));
+            }
+        }
+    }
+    Value::Object(fields)
+}
+
+fn developer_from_processes(cfg: &Config, issue: u64, processes: &str) -> Value {
+    let inbox = cfg.state_dir.join(format!("worktrees/issue-{issue}-qwen/.tim/local-first/developer-inbox/github-issue-{issue}.json"));
+    for line in processes.lines() {
+        let line = line.trim();
+        let Some((pid, command)) = line.split_once(char::is_whitespace) else { continue };
+        if command.contains("scripts/run_local_qwen_developer.py ") && command.contains(inbox.to_string_lossy().as_ref()) {
+            if let Ok(pid) = pid.parse::<u32>() { return json!({"pid": pid}); }
+        }
+    }
+    Value::Null
+}
+
+#[derive(Debug)]
+struct Process {
+    pid: u32,
+    parent: u32,
+    command: String,
+}
+
+fn parse_processes(raw: &str) -> Vec<Process> {
+    raw.lines().filter_map(|line| {
+        let mut words = line.trim().splitn(2, char::is_whitespace);
+        let pid = words.next()?.parse().ok()?;
+        let mut rest = words.next()?.trim().splitn(2, char::is_whitespace);
+        Some(Process { pid, parent: rest.next()?.parse().ok()?, command: rest.next()?.trim().into() })
+    }).collect()
+}
+
+fn descendant(process: &Process, root: u32, processes: &[Process]) -> bool {
+    let mut parent = process.parent;
+    for _ in 0..64 {
+        if parent == root { return true; }
+        let Some(next) = processes.iter().find(|p| p.pid == parent) else { return false };
+        if next.parent == parent { return false; }
+        parent = next.parent;
+    }
+    false
+}
+
+fn active_issue(cfg: &Config, worker_pid: u32, processes: &[Process]) -> Option<u64> {
+    for process in processes.iter().filter(|p| descendant(p, worker_pid, processes)) {
+        if let Some((_, tail)) = process.command.split_once("scripts/run_local_qwen_build_queue.py --task-id github-issue-") {
+            if let Some(issue) = tail.split_whitespace().next().and_then(|v| v.parse().ok()) { return Some(issue); }
+        }
+        if process.command.contains("scripts/run_local_qwen_developer.py ") {
+            let prefix = cfg.state_dir.join("worktrees").to_string_lossy().to_string() + "/issue-";
+            if let Some((_, tail)) = process.command.split_once(&prefix) {
+                if let Some(issue) = tail.split_once("-qwen/").and_then(|(n, _)| n.parse().ok()) { return Some(issue); }
+            }
+        }
+    }
+    None
+}
+
+fn active_developer(cfg: &Config, issue: u64, processes: &[Process]) -> Value {
+    let raw = processes.iter().map(|p| format!("{} {}", p.pid, p.command)).collect::<Vec<_>>().join("\n");
+    let mut developer = developer_from_processes(cfg, issue, &raw);
+    if let Some(pid) = developer["pid"].as_u64() {
+        let routing = process_routing(pid as u32);
+        developer["backend"] = if routing["TIM_QWEN_SERVER_RUN"] == "1" || routing["TIM_QWEN_HARD_RUN"] == "1" {
+            json!("server")
+        } else if routing["OLLAMA_MODEL"].is_string() { json!("mac") } else { Value::Null };
+        developer["model"] = routing["OLLAMA_MODEL"].clone();
+        let children: Vec<&Process> = processes.iter().filter(|p| descendant(p, pid as u32, processes)).collect();
+        developer["phase"] = json!(if children.iter().any(|p| p.command.contains("codex") && p.command.contains("exec")) {
+            "Codex-Helfer läuft"
+        } else if children.iter().any(|p| p.command.contains("claude")) {
+            "Claude-Helfer läuft"
+        } else if children.iter().any(|p| p.command.contains("pytest")) {
+            "Tests laufen"
+        } else { "Entwicklerprozess läuft; wartet auf Modell oder verarbeitet Antwort" });
+    }
+    developer
+}
+
 pub fn worker_state(cfg: &Config) -> Value {
     let agent = launch_agent(&cfg.worker_label);
-    let run_pid = lock_pid(&cfg.state_dir.join("run.lock"));
-    let run_active = run_pid.map_or(false, pid_alive);
-    let current_issue = if run_active { newest_worktree(cfg) } else { None };
+    let raw = Command::new("/bin/ps").args(["-axo", "pid=,ppid=,command="]).output().ok()
+        .filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+    let processes = parse_processes(raw.as_deref().unwrap_or(""));
+    let worker_pid = agent["pid"].as_u64().unwrap_or(0) as u32;
+    let current_issue = if worker_pid > 0 { active_issue(cfg, worker_pid, &processes) } else { None };
+    let routing = agent["pid"].as_u64().map(|pid| process_routing(pid as u32)).unwrap_or(Value::Null);
+    let developer = current_issue.map(|issue| active_developer(cfg, issue, &processes)).unwrap_or(Value::Null);
+    let paused_ci = current_issue.is_none() && agent["running"] == true && routing["TIM_WORKER_CI_PAUSE"] != "0"
+        && processes.iter().any(|p| p.command.contains("/Runner.Worker"));
     json!({
+        "routing": {"server_preferred": routing["TIM_QWEN_SERVER_PREFERRED"] == "1",
+                    "keep_warm": routing["TIM_QWEN_SERVER_KEEP_WARM"] == "1"},
+        "developer": developer,
         "agent": agent,
-        "run_active": run_active,
+        "run_active": current_issue.is_some(),
+        "process_observation_ok": raw.is_some(),
+        "paused_ci": paused_ci,
         "current_issue": current_issue,
         "ollama": ollama(&cfg.ollama_url, &cfg.model),
         "server": {
@@ -430,6 +545,82 @@ pub fn worker_state(cfg: &Config) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn issue_evidence_does_not_access_the_protected_source_checkout() {
+        let mut cfg = crate::Config::for_tests();
+        cfg.worker_repo = PathBuf::from("/protected/Documents/source");
+        cfg.state_dir = std::env::temp_dir().join(format!("mwd-evidence-{}", std::process::id()));
+        let roots = evidence_roots(&cfg, 242);
+        assert_eq!(roots.len(), 1);
+        assert!(roots.iter().all(|(_, p)| p.starts_with(&cfg.state_dir)));
+        assert!(roots[0].1.ends_with("worktrees/issue-242-qwen/.tim/local-first"));
+    }
+
+    #[test]
+    fn current_issue_requires_a_live_worker_descendant_not_an_old_worktree() {
+        let cfg = crate::Config::for_tests();
+        let idle = parse_processes("10 1 python daemon\n20 10 python scripts/run_mac_qwen_issue.py --action intake\n30 1 python scripts/run_local_qwen_build_queue.py --task-id github-issue-999");
+        assert_eq!(active_issue(&cfg, 10, &idle), None);
+        let busy = parse_processes("10 1 python daemon\n20 10 python intake\n30 20 python scripts/run_local_qwen_build_queue.py --task-id github-issue-242");
+        assert_eq!(active_issue(&cfg, 10, &busy), Some(242));
+        assert_eq!(active_issue(&cfg, 99, &busy), None);
+    }
+
+    #[test]
+    fn complete_http_reply_does_not_wait_for_connection_close() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let (release, hold) = std::sync::mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            socket.read(&mut request).unwrap();
+            socket.write_all(b"HTTP/1.0 200 OK\r\nContent-Length: 13\r\n\r\n{\"models\":[]}").unwrap();
+            let _ = hold.recv_timeout(std::time::Duration::from_secs(5));
+        });
+        let response = http_get(&url, "/api/ps");
+        release.send(()).unwrap();
+        server.join().unwrap();
+        assert_eq!(response.as_deref(), Some(r#"{"models":[]}"#));
+    }
+
+    #[test]
+    fn failed_loaded_model_probe_is_unknown_not_cold() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for body in [r#"{"models":[{"name":"qwen3-coder:30b"}]}"#, "unavailable"] {
+                let (mut socket, _) = listener.accept().unwrap();
+                let mut request = [0u8; 1024];
+                socket.read(&mut request).unwrap();
+                write!(socket, "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n{}", body.len(), body).unwrap();
+            }
+        });
+        let state = server_model(&url, "qwen3-coder:30b");
+        server.join().unwrap();
+        assert_eq!(state["reachable"], json!(true));
+        assert_eq!(state["model_installed"], json!(true));
+        assert_eq!(state["warm"], Value::Null);
+    }
+
+    #[test]
+    fn routing_is_whitelisted_and_uses_exact_keys() {
+        let fields = routing_fields("python TIM_QWEN_SERVER_RUN=1 OLLAMA_MODEL=qwen3-coder:30b GH_TOKEN=secret NOT_TIM_QWEN_SERVER_RUN=0");
+        assert_eq!(fields, json!({"TIM_QWEN_SERVER_RUN":"1", "OLLAMA_MODEL":"qwen3-coder:30b"}));
+        assert_eq!(routing_fields("python"), json!({}));
+    }
+
+    #[test]
+    fn developer_must_match_the_current_issue_worktree() {
+        let mut cfg = crate::Config::for_tests();
+        cfg.state_dir = PathBuf::from("/tmp/TIM Worker");
+        let processes = "12 python scripts/run_local_qwen_developer.py /tmp/TIM Worker/worktrees/issue-241-qwen/.tim/local-first/developer-inbox/github-issue-241.json\n13 python scripts/run_local_qwen_developer.py /tmp/TIM Worker/worktrees/issue-242-qwen/.tim/local-first/developer-inbox/github-issue-242.json";
+        assert_eq!(developer_from_processes(&cfg, 242, processes), json!({"pid":13}));
+        assert_eq!(developer_from_processes(&cfg, 243, processes), Value::Null);
+    }
 
     #[test]
     fn redacts_tokens_and_assignments() {

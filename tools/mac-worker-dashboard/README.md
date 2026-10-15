@@ -59,3 +59,24 @@ tools/mac-worker-dashboard/install.sh        # baut mit cargo, installiert Launc
 
 Ohne LaunchAgent: `cargo run --release --manifest-path tools/mac-worker-dashboard/Cargo.toml`.
 Einmalige Ausgabe als JSON: `MWD_PRINT_STATUS=1 target/release/mac-worker-dashboard`. Tests: `cargo test`.
+
+## Ausführungsort und Auslastung
+
+Das Dashboard liest die Routing-Einstellungen des laufenden Workers und das Qwen-Ziel
+des Entwicklerprozesses über `ps`. Es gibt ausschließlich freigegebene Routing-Felder
+weiter, keine vollständigen Prozessumgebungen. Der Prozess muss zum aktuellen Issue-Worktree
+gehören; ohne Prozessbeleg wird kein Ausführungsort aus Issue-Labels geraten.
+Ein laufender Entwicklerprozess kann auf Modellantworten, Tests oder Helfer warten.
+Die Ereignisliste ist eine Historie abgeschlossener Schritte. „Warm“ bedeutet nur,
+dass Ollama das Modell im Speicher hält. CPU-Auslastung wird nicht erhoben.
+
+Der aktuelle Auftrag wird ausschließlich aus laufenden Nachfahren des Worker-Prozesses
+ermittelt. Eine vorhandene Lock-Datei oder ein alter Worktree belegt keinen aktiven Auftrag.
+Während einer CI-Pause erscheint diese als aktueller Zustand. Frühere Triage-Meldungen,
+Fehler und beendete Läufe ohne PR stehen in einer getrennten, standardmäßig eingeklappten
+Historie. Zeitangaben werden nicht aus der Anzahl von Log-Zeilen geschätzt.
+
+Issue-Nachweise werden ausschließlich aus `Application Support/TIM Mac Issue Worker`
+gelesen (Worktrees und Archiv). Der Quellcode-Checkout im geschützten Dokumente-Ordner
+wird dafür nicht geöffnet; eine macOS-Datenschutzabfrage soll die Live-Anzeige nicht
+blockieren.
