@@ -5,7 +5,7 @@
   <key>ProgramArguments</key><array>
     <string>__BINARY__</string><string>--port</string><string>__PORT__</string>
     <string>--worker-repo</string><string>__WORKER_REPO__</string>
-    <string>--gh</string><string>__GH__</string>
+    <string>--gh</string><string>__GH__</string>__ALLOW_HOSTS__
   </array>
   <key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
   <key>KeepAlive</key><true/>

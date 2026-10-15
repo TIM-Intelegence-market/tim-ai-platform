@@ -28,6 +28,19 @@ Läuft nur auf `http://127.0.0.1:8767` und zeigt vier Bereiche:
 Die App schreibt nichts, nimmt nur `GET` an und beantwortet nur Anfragen mit Host `127.0.0.1` oder
 `localhost`. Sie zeigt keine Tokens; `gh` läuft mit dem normalen Login des Mac-Benutzers.
 
+## Für Mitentwickler im Tailnet freigeben
+
+Der Mac mini hängt im Tailnet `tailnet.example.ts.net`. `tailscale serve` reicht das Dashboard nur
+innerhalb des Tailnets weiter (kein Funnel, nicht öffentlich); die App selbst bleibt auf 127.0.0.1:
+
+```sh
+MWD_ALLOW_HOSTS="tim-mac-mini.tailnet.example.ts.net tim-mac-mini" tools/mac-worker-dashboard/install.sh
+tailscale serve --bg --http=80 http://127.0.0.1:8767
+```
+
+Link: `http://tim-mac-mini.tailnet.example.ts.net/`. Abschalten: `tailscale serve --http=80 off`.
+Wer im Tailnet den Mac erreichen darf, regeln die ACLs des Tailnets.
+
 ## Installieren
 
 ```sh

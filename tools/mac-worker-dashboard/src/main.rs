@@ -30,6 +30,8 @@ pub struct Config {
     pub hard_url: String,
     pub hard_model: String,
     pub tunnel_label: String,
+    /// Extra Host names besides 127.0.0.1/localhost, e.g. the Tailscale name used by `tailscale serve`.
+    pub allow_hosts: Vec<String>,
 }
 
 impl Config {
@@ -48,6 +50,7 @@ impl Config {
             hard_url: "http://127.0.0.1:11435".into(),
             hard_model: "qwen3-coder:30b".into(),
             tunnel_label: "com.tim.server-ollama-tunnel".into(),
+            allow_hosts: Vec::new(),
         }
     }
 
@@ -77,6 +80,13 @@ impl Config {
                 "--hard-url" => cfg.hard_url = value,
                 "--hard-model" => cfg.hard_model = value,
                 "--tunnel-label" => cfg.tunnel_label = value,
+                "--allow-host" => {
+                    let host = value.trim().trim_end_matches('.').to_ascii_lowercase();
+                    if host.is_empty() || host.contains(['/', ' ', ':']) {
+                        return Err(format!("ungültiger Host {value}"));
+                    }
+                    cfg.allow_hosts.push(host);
+                }
                 other => return Err(format!("unbekannte Option {other}")),
             }
         }
@@ -164,9 +174,16 @@ fn respond(stream: &mut TcpStream, code: &str, kind: &str, body: &[u8]) {
     let _ = stream.write_all(body);
 }
 
-/// Accepts only local Host headers so a foreign page cannot read the API via DNS rebinding.
-fn host_allowed(host: &str, port: u16) -> bool {
-    [format!("127.0.0.1:{port}"), format!("localhost:{port}")].iter().any(|h| h == host)
+/// Accepts only local Host headers, plus names given with `--allow-host` (with or without
+/// port, as `tailscale serve` forwards the tailnet name), so a foreign page cannot read the
+/// API via DNS rebinding.
+fn host_allowed(host: &str, port: u16, extra: &[String]) -> bool {
+    if [format!("127.0.0.1:{port}"), format!("localhost:{port}")].iter().any(|h| h == host) {
+        return true;
+    }
+    let host = host.to_ascii_lowercase();
+    let name = host.split_once(':').map_or(host.as_str(), |(name, _)| name).trim_end_matches('.');
+    extra.iter().any(|h| h == name)
 }
 
 fn handle(mut stream: TcpStream, cfg: &Arc<Config>, cache: &github::Cache) {
@@ -193,7 +210,7 @@ fn handle(mut stream: TcpStream, cfg: &Arc<Config>, cache: &github::Cache) {
     }
     let mut parts = request_line.split_whitespace();
     let (method, path) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
-    if !host_allowed(&host, cfg.port) {
+    if !host_allowed(&host, cfg.port, &cfg.allow_hosts) {
         return respond(&mut stream, "421 Misdirected Request", "text/plain", b"local only");
     }
     if method != "GET" {
@@ -242,9 +259,21 @@ mod tests {
 
     #[test]
     fn only_local_hosts() {
-        assert!(host_allowed("127.0.0.1:8767", 8767));
-        assert!(host_allowed("localhost:8767", 8767));
-        assert!(!host_allowed("evil.example:8767", 8767));
-        assert!(!host_allowed("127.0.0.1:9999", 8767));
+        assert!(host_allowed("127.0.0.1:8767", 8767, &[]));
+        assert!(host_allowed("localhost:8767", 8767, &[]));
+        assert!(!host_allowed("evil.example:8767", 8767, &[]));
+        assert!(!host_allowed("127.0.0.1:9999", 8767, &[]));
+        assert!(!host_allowed("mini.tail.ts.net", 8767, &[]));
+    }
+
+    #[test]
+    fn allowed_tailnet_host() {
+        let extra = vec!["mini.tail.ts.net".to_string()];
+        assert!(host_allowed("mini.tail.ts.net", 8767, &extra));
+        assert!(host_allowed("MINI.tail.ts.net:443", 8767, &extra));
+        assert!(host_allowed("mini.tail.ts.net.", 8767, &extra));
+        assert!(!host_allowed("mini.tail.ts.net.evil.example", 8767, &extra));
+        assert!(!host_allowed("evil.example", 8767, &extra));
+        assert!(!host_allowed("", 8767, &extra));
     }
 }
