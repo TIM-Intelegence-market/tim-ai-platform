@@ -102,6 +102,7 @@ class TIMApplication:
         result = await self.durable_ingress(trade)
         with self.dashboard_state.lock:
             self.dashboard_state.system_health["queue_depth"] = result.queue_depth
+            self.dashboard_state.system_health["queue_depth_measured_at"] = datetime.now(timezone.utc).isoformat()
             self.dashboard_state.system_health["cursor_trade_id"] = result.cursor.last_aggregate_trade_id
             self.dashboard_state.system_health["recovery_state"] = result.cursor.recovery_state
             # The durable cursor is updated before the asynchronous enrichment
@@ -338,6 +339,8 @@ class TIMApplication:
                     "health_snapshot_age_seconds", "health_snapshot_observed_at", "health_snapshot_scope",
                 ) if key in snapshot}
             )
+            if snapshot.get("queue_depth") is not None and snapshot.get("health_snapshot_observed_at"):
+                self.dashboard_state.system_health["queue_depth_measured_at"] = snapshot["health_snapshot_observed_at"]
 
     async def _refresh_ingestion_health(self) -> dict:
         """Telemetry only: at most one metrics query per interval, never a worker dependency.

@@ -125,6 +125,36 @@ def _source(path: str, available: bool, *, legacy: bool = False) -> dict[str, An
     }
 
 
+LIVE_FRESH_SECONDS = 120
+
+
+def _seconds_since(value: Any) -> float | None:
+    """Age of an ISO timestamp in seconds, or None when absent or unparsable."""
+    from datetime import datetime, timezone
+
+    if value in (None, ""):
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - parsed).total_seconds()
+
+
+def _evidence_age(value: Any) -> str:
+    """Visible age of persisted evidence, so an old file is not read as current."""
+    age = _seconds_since(value)
+    if age is None or age < 0:
+        return ""
+    days = int(age // 86_400)
+    if days < 1:
+        return "heute"
+    label = "vor 1 Tag" if days == 1 else f"vor {days} Tagen"
+    return f"{label} · veraltet" if days > 7 else label
+
+
 def _metric(value: Any, source: str, *, status: Any = None, unit: str | None = None) -> dict[str, Any]:
     present = value not in (None, "")
     return {
@@ -262,11 +292,16 @@ def build_operations_snapshot(
 
     live = base.get("operational_health", {})
     live_system = base.get("system_health", {})
-    queue_depth = _first(queue, "queue_depth", "current.depth", "metrics.queue_depth")
-    if queue_depth is None and live_system.get("queue_depth_measured_at"):
+    # A live measurement from the running process beats a persisted file: the
+    # file is a snapshot of some earlier run and would otherwise freeze the
+    # pipeline view on an old value (or on UNAVAILABLE while the header shows
+    # the live depth).  A live value older than the freshness window is not live.
+    live_queue_age = _seconds_since(live_system.get("queue_depth_measured_at"))
+    if live_queue_age is not None and live_queue_age <= LIVE_FRESH_SECONDS and live_system.get("queue_depth") is not None:
         queue_depth = live_system.get("queue_depth")
         queue_source = "/api/state system_health.queue_depth"
     else:
+        queue_depth = _first(queue, "queue_depth", "current.depth", "metrics.queue_depth")
         queue_source = sources["queue_metrics.json"]["path"]
     completion_trading_actions = _first(implementation, "trading_action_count", "trading_actions")
     watchdog_trading_actions = _first(watchdog, "trading_actions")
@@ -352,7 +387,7 @@ def build_operations_snapshot(
         "processes": _metric(_first(watchdog, "processes", "runtime.processes", "checks.runtime_process.value", default=_first(tests, "runtime.pid")), watchdog_source),
         "uptime": _metric(_first(watchdog, "uptime_seconds", "runtime.uptime_seconds", default=live.get("runtime_started_at")), watchdog_source, unit="seconds or start time"),
         "restarts": _metric(_first(watchdog, "restart_count", "runtime.restart_count", default=base.get("validator", {}).get("restart_count")), watchdog_source),
-        "queue_depth": _metric(queue_depth, queue_source, status=_first(queue, "status", "queue_status")),
+        "queue_depth": _metric(queue_depth, queue_source, status=None if queue_source.startswith("/api/state") else _first(queue, "status", "queue_status")),
         "queue_age": _metric(_first(queue, "oldest_age_seconds", "queue_age_seconds", "current.oldest_age_seconds", default=_first(watchdog, "checks.queue_age.value")), sources["queue_metrics.json"]["path"] if queue else watchdog_source, status=_first(queue, "status", default=_first(watchdog, "checks.queue_age.status")), unit="s"),
         "cursor_age": _metric(_first(cursor, "cursor_age_seconds", "age_seconds", "metrics.cursor_age_seconds", default=_first(watchdog, "checks.cursor_age.value")), sources["durable_cursor_state.json"]["path"] if cursor else watchdog_source, status=_first(cursor, "status", default=_first(watchdog, "checks.cursor_age.status")), unit="s"),
         "receive_rate": _metric(_first(queue, "receive_rate_per_second", "rates.receive_per_second", "receive_rate"), sources["queue_metrics.json"]["path"], unit="events/s"),
@@ -793,7 +828,7 @@ def _overview(data: dict[str, Any]) -> str:
     )
 
     evidence_strip = metric_strip([
-        ("Last full test", audit["last_test"], "", audit["test_status"]),
+        ("Last full test", audit["last_test"], _evidence_age(audit["last_test"]), audit["test_status"]),
         ("Test result", f"{audit['passed']} pass / {audit['failed']} fail", "", None),
         ("Last incident", str((audit.get("last_incident") or {}).get("event", UNAVAILABLE)) if isinstance(audit.get("last_incident"), dict) else str(audit.get("last_incident", UNAVAILABLE)), "", None),
         ("Data spaces", str(len(data["datasets"])), "coverage rooms", None),
