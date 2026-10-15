@@ -28,6 +28,16 @@ Läuft nur auf `http://127.0.0.1:8767` und zeigt vier Bereiche:
 Die App schreibt nichts, nimmt nur `GET` an und beantwortet nur Anfragen mit Host `127.0.0.1` oder
 `localhost`. Sie zeigt keine Tokens; `gh` läuft mit dem normalen Login des Mac-Benutzers.
 
+## Warteschlange
+
+Die offene Warteschlange unterscheidet sofort startbare Aufgaben, Aufgaben mit
+offenen Abhängigkeiten, über Worker-Teilaufgaben eingeplante Sammel-Issues
+(`agent:split`) und automatisch gepflegte Übersichten (`agent:coordination`).
+Sammel-Issues sind selbst nicht ausführbar; ihre verlinkten Codeaufgaben tragen
+die validierten Verträge. Eine blockierte Gesamtabnahme bleibt auf der Karte
+sichtbar. Issue-Bodies werden nur zur Abhängigkeitsprüfung gelesen und nicht an
+den Browser ausgegeben.
+
 ## Für Mitentwickler im Tailnet freigeben
 
 Der Mac mini hängt im Tailnet `tailnet.example.ts.net`. `tailscale serve` reicht das Dashboard nur

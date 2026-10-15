@@ -126,7 +126,7 @@ function render(d){
     const cls={ready:'ok',triage:'warn',blocked:'bad'}[i.stage]||'meta';
     r.append(t,el('span',cls,i.eligible?`bereit · ${i.priority}`:i.waiting_reason));
     c.append(r);const ch=el('div');if(i.server)ch.append(el('span','chip srv','Server-Modell'));for(const l of i.labels)ch.append(el('span','chip',l));c.append(ch);return c};
-  const groups=[['ready','Bereit für den Worker'],['triage','Wartet auf Triage'],['blocked','Blockiert'],['skipped','Nicht für den Worker']];
+  const groups=[['ready','Bereit für den Worker'],['waiting','Worker-Aufgaben mit Abhängigkeiten'],['split','Über Worker-Teilaufgaben eingeplant'],['coordination','Übersichten'],['triage','Wartet auf Triage'],['blocked','Blockiert'],['skipped','Nicht für den Worker']];
   const byPrio=(a,b)=>((a.priority||'P9')>(b.priority||'P9')?1:(a.priority||'P9')<(b.priority||'P9')?-1:0)||b.number-a.number;
   for(const [stage,label] of groups){
     const items=d.open.filter(i=>(i.stage||'skipped')===stage).sort(byPrio);

@@ -67,6 +67,23 @@ Checks or commit-status APIs. The worker therefore uses the PR merge state and
 GitHub's enforced ruleset for the final gate. Read-only CI diagnosis can use a
 separate account with Checks read access.
 
+## Preparing large issues for the worker
+
+Check for existing child issues before splitting an epic. Prepare one complete
+`TIM_QWEN_TASK_V1` per executable child, validate it with `build_task` and
+`issue_triage._bound_task` against the current repository, and verify that the
+requested changes fit the patch executor's six-file change limit. Reading
+additional test modules does not authorize changing them. Tests must be explicit
+and dependencies must use `Depends on #N` lines so the selector waits for them.
+
+The child gets `agent:qwen-ready` (or `agent:qwen-hard` when the validated context
+requires the server), `status:ready` and a P0/P1 priority. The parent keeps its
+real acceptance status and gains `agent:split` plus links to its executable
+children. Remove obsolete `agent:not-suitable` only after that mapping exists.
+The generated Priority Board is an `agent:coordination` overview, never a code
+task. Server acceptance evaluators can be isolated code tasks; real server,
+network, backup and cutover operations remain separate from those evaluators.
+
 ## Hard issues on the server model
 
 tim-server holds `qwen3-coder:30b` (CPU only, 62 GB RAM). The Mac stays the

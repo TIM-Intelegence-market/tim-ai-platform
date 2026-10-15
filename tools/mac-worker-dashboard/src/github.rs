@@ -116,7 +116,7 @@ fn gh(cfg: &Config, args: &[&str]) -> Result<Value, String> {
 fn fetch(cfg: &Config) -> Value {
     let open = gh(cfg, &[
         "issue", "list", "-R", &cfg.repo, "--state", "open",
-        "--limit", "200", "--json", "number,title,labels,url,author,createdAt,updatedAt",
+        "--limit", "200", "--json", "number,title,body,labels,url,author,createdAt,updatedAt",
     ]);
     let prs = gh(cfg, &[
         "pr", "list", "-R", &cfg.repo, "--state", "all", "--author", &cfg.worker_login,
@@ -134,12 +134,13 @@ fn fetch(cfg: &Config) -> Value {
     let open: Vec<Value> = open
         .ok()
         .and_then(|v| v.as_array().cloned())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let open: Vec<Value> = annotate_open_issues(open)
         .into_iter()
         .map(|issue| {
             let reason = reasons.iter().find(|r| r["number"] == issue["number"]).and_then(triage_reason);
-            let mut issue = annotate_issue(issue);
-            if let Some(reason) = reason {
+            let mut issue = issue;
+            if let Some(reason) = reason.filter(|_| issue["stage"] == "skipped") {
                 issue["waiting_reason"] = json!(format!("Triage: {reason}"));
             }
             issue
@@ -202,6 +203,12 @@ pub fn annotate_issue(mut issue: Value) -> Value {
     let skipped: Vec<&str> = TRIAGE_SKIP_LABELS.iter().copied().filter(|l| has(l)).collect();
     let (stage, reason) = if has("agent:blocked") {
         ("blocked", Some("2 Versuche gescheitert · agent:blocked entfernen gibt 2 neue".to_string()))
+    } else if has("agent:coordination") {
+        ("coordination", Some("Automatisch gepflegte Übersicht; kein Implementierungsauftrag".to_string()))
+    } else if has("agent:split") {
+        let status = if has("status:blocked") { " · Gesamtabnahme blockiert" }
+            else if has("status:waiting") { " · Gesamtabnahme wartet" } else { "" };
+        ("split", Some(format!("Verlinkte Worker-Teilaufgaben bearbeiten{status}")))
     } else if has("agent:not-suitable") {
         ("skipped", Some("Triage: nicht geeignet".to_string()))
     } else if has("agent:qwen-ready") || has("agent:qwen-hard") {
@@ -230,6 +237,39 @@ pub fn annotate_issue(mut issue: Value) -> Value {
     issue["server"] = json!(has("agent:qwen-hard"));
     issue["waiting_reason"] = json!(reason);
     issue
+}
+
+/// Resolve only explicit dependency lines, as the Python worker does. Never send bodies to the UI.
+fn annotate_open_issues(issues: Vec<Value>) -> Vec<Value> {
+    let numbers: Vec<u64> = issues.iter().filter_map(|i| i["number"].as_u64()).collect();
+    issues.into_iter().map(|issue| {
+        let body = issue["body"].as_str().unwrap_or("");
+        let mut dependencies = Vec::new();
+        for line in body.lines() {
+            let lower = line.to_lowercase();
+            if !["depends on", "blocked by", "blockiert durch", "abhängig von"]
+                .iter().any(|phrase| lower.contains(phrase)) { continue; }
+            for part in line.split('#').skip(1) {
+                let digits: String = part.chars().take_while(|c| c.is_ascii_digit()).collect();
+                if !digits.starts_with('0') {
+                    if let Ok(number) = digits.parse::<u64>() {
+                        if numbers.contains(&number) { dependencies.push(number); }
+                    }
+                }
+            }
+        }
+        dependencies.sort_unstable();
+        dependencies.dedup();
+        let mut issue = annotate_issue(issue);
+        if issue["stage"] == "ready" && !dependencies.is_empty() {
+            issue["stage"] = json!("waiting");
+            issue["eligible"] = json!(false);
+            let refs = dependencies.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ");
+            issue["waiting_reason"] = json!(format!("Wartet auf {refs}"));
+        }
+        if let Some(object) = issue.as_object_mut() { object.remove("body"); }
+        issue
+    }).collect()
 }
 
 #[cfg(test)]
@@ -290,5 +330,30 @@ mod tests {
         assert_eq!(unfit["waiting_reason"], json!("Triage: nicht geeignet"));
         let blocked = annotate_issue(json!({"labels": ["agent:blocked"], "author": author}));
         assert_eq!(blocked["stage"], json!("blocked"));
+    }
+
+    #[test]
+    fn split_parents_and_coordination_are_not_executable() {
+        let parent = annotate_issue(json!({"labels": ["agent:split", "type:epic", "status:blocked"]}));
+        assert_eq!(parent["stage"], "split");
+        assert_eq!(parent["eligible"], false);
+        assert!(parent["waiting_reason"].as_str().unwrap().contains("Gesamtabnahme blockiert"));
+        let board = annotate_issue(json!({"labels": ["agent:coordination"], "author": {"login": "app/github-actions"}}));
+        assert_eq!(board["stage"], "coordination");
+        assert_eq!(board["eligible"], false);
+    }
+
+    #[test]
+    fn open_dependencies_wait_closed_and_unrelated_references_do_not() {
+        let result = annotate_open_issues(vec![
+            json!({"number": 10, "labels": ["agent:qwen-ready", "status:ready", "priority:p1"], "body": "Parent #11\nDepends on #11, #12\nsecret body text"}),
+            json!({"number": 11, "labels": [], "body": ""}),
+            json!({"number": 13, "labels": ["agent:qwen-ready", "status:ready", "priority:p1"], "body": "Parent #11\nDepends on #12"}),
+        ]);
+        assert_eq!(result[0]["stage"], "waiting");
+        assert_eq!(result[0]["eligible"], false);
+        assert_eq!(result[0]["waiting_reason"], "Wartet auf #11");
+        assert_eq!(result[2]["stage"], "ready");
+        assert!(result.iter().all(|i| i.get("body").is_none()));
     }
 }
