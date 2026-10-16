@@ -266,3 +266,14 @@ def test_browser_e2e_all_operations_routes_and_security_headers(tmp_path: Path) 
         assert error.value.code == 421
     finally:
         server.stop()
+
+
+def test_frozen_capture_is_shown_as_historical_not_as_live_alarm(tmp_path: Path) -> None:
+    from src.dashboard.design_system import severity
+
+    frozen = _state(tmp_path).snapshot()["operations"]["datasets"][0]
+    assert frozen["label"] == "Frozen Live Capture"
+    assert frozen["status"].startswith("HISTORICAL — ")
+    assert frozen["recorded_status"] in frozen["status"]
+    assert severity(frozen["status"]) == "disabled"
+    assert severity("FAIL") == "fail"

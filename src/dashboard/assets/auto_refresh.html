@@ -28,7 +28,7 @@
     hdr('st-live-data', stream === 'GREEN' ? (isFresh ? 'ok' : 'warn') : stream === 'RED' ? 'fail' : 'unknown', stream === 'GREEN' ? (isFresh ? 'LIVE' : 'STALE') : stream === 'RED' ? 'DOWN' : 'UNKNOWN');
     hdr('st-queue', typeof op.queue_depth === 'number' ? (op.queue_depth === 0 ? 'ok' : 'warn') : 'unknown', typeof op.queue_depth === 'number' ? op.queue_depth + ' EV' : 'UNKNOWN');
     const rolling = (data.operations && data.operations.datasets ? data.operations.datasets : []).slice(-1)[0] || {};
-    hdr('st-data-quality', rolling.status ? (String(rolling.status).indexOf('FAIL') >= 0 ? 'fail' : String(rolling.status).indexOf('PASS') === 0 ? 'ok' : 'warn') : 'unknown', rolling.coverage || 'UNKNOWN');
+    hdr('st-data-quality', rolling.status ? (String(rolling.status).indexOf('STALE') === 0 ? 'warn' : String(rolling.status).indexOf('FAIL') >= 0 ? 'fail' : String(rolling.status).indexOf('PASS') === 0 ? 'ok' : 'warn') : 'unknown', rolling.coverage || 'UNKNOWN');
     const rg = (data.gate_model && data.gate_model.bands && data.gate_model.bands.research_readiness ? data.gate_model.bands.research_readiness : []).map(g => String((g && g.status) || '').toUpperCase()).filter(Boolean);
     let rSev = 'unknown', rLabel = 'UNKNOWN';
     if (rg.length && !rg.includes('FAIL') && rg.every(s => s === 'PASS')) { rSev = 'ok'; rLabel = 'READY'; }

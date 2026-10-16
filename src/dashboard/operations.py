@@ -117,15 +117,22 @@ def _artifact(root: Path, name: str) -> tuple[dict[str, Any], str]:
     return _read_json(path), path.as_posix()
 
 
-def _source(path: str, available: bool, *, legacy: bool = False) -> dict[str, Any]:
+def _source(path: str, available: bool, *, legacy: bool = False, captured_at: Any = None) -> dict[str, Any]:
     return {
         "path": path,
         "available": available,
         "scope": "LEGACY_BASELINE" if legacy else "V2_COMPLETION",
+        "captured_at": captured_at,
     }
 
 
+def _captured_at(value: dict[str, Any]) -> Any:
+    """When an evidence file was measured, from its own content (not file mtime)."""
+    return _first(value, "captured_at_utc", "updated_at_utc", "generated_at_utc", "computed_at_utc", "finished_at_utc", "tested_at_utc")
+
+
 LIVE_FRESH_SECONDS = 120
+LIVE_EVIDENCE_MAX_AGE_SECONDS = 600
 
 
 def _seconds_since(value: Any) -> float | None:
@@ -240,7 +247,7 @@ def build_operations_snapshot(
     for name in names:
         value, path = _artifact(completion_root, name)
         evidence[name] = value
-        sources[name] = _source(path, bool(value))
+        sources[name] = _source(path, bool(value), captured_at=_captured_at(value))
 
     legacy_names = (
         "coverage_final.json",
@@ -254,7 +261,7 @@ def build_operations_snapshot(
     for name in legacy_names:
         value, path = _artifact(legacy_root, name)
         legacy[name] = value
-        sources[f"legacy/{name}"] = _source(path, bool(value), legacy=True)
+        sources[f"legacy/{name}"] = _source(path, bool(value), legacy=True, captured_at=_captured_at(value))
     live_watchdog = _read_json(live_watchdog_path)
     sources["live/watchdog_status.json"] = {
         "path": live_watchdog_path.as_posix(),
@@ -332,6 +339,9 @@ def build_operations_snapshot(
         lan_source = sources["legacy/final_runtime_recheck.json"]["path"]
         lan_status = None
 
+    live_listener = live_system.get("postgres_listener") if isinstance(live_system.get("postgres_listener"), dict) else {}
+    listener_age = _seconds_since(live_listener.get("checked_at_utc"))
+    listener_is_live = listener_age is not None and listener_age <= LIVE_EVIDENCE_MAX_AGE_SECONDS
     security = {
         "status": _normalized_status(_first(implementation, "security_status", "gates.security.status", default=_first(final_runtime, "overall_security_gate"))),
         "listener_before": _metric(
@@ -381,6 +391,19 @@ def build_operations_snapshot(
         ),
         "last_test": _first(listener_after, "tested_at_utc", "captured_at_utc", default=_first(tests, "finished_at_utc")),
     }
+    security["status_source"] = (
+        sources["implementation_state.json"]["path"]
+        if _first(implementation, "security_status", "gates.security.status") is not None
+        else sources["legacy/final_runtime_recheck.json"]["path"]
+    )
+    if listener_is_live:
+        # The runtime checks the listener itself every minute; a weeks-old
+        # audit file must not override what PostgreSQL reports right now.
+        security["status"] = _normalized_status(live_listener.get("status"))
+        security["listener_after"] = _metric(live_listener.get("listen_addresses"), str(live_listener.get("source")), status=live_listener.get("status"))
+        security["lan_exposure"] = _metric(",".join(live_listener.get("exposed_addresses") or []) or "none (loopback only)", str(live_listener.get("source")), status=live_listener.get("status"))
+        security["last_test"] = live_listener.get("checked_at_utc")
+        security["status_source"] = str(live_listener.get("source"))
 
     runtime = {
         "status": _normalized_status(_first(implementation, "runtime_status", "gates.runtime.status", default=live.get("status"))),
@@ -457,8 +480,11 @@ def build_operations_snapshot(
     rolling_live = _read_json(rolling_liveness_path)
     if isinstance(rolling_live, dict) and rolling_live.get("valid_observations") is not None:
         # Fresh DB-derived rolling window wins over the frozen August baseline.
-        rolling_record = rolling_live
+        rolling_record = dict(rolling_live)
         rolling_source = str(rolling_liveness_path)
+        rolling_age = _seconds_since(rolling_live.get("computed_at_utc"))
+        if rolling_age is None or rolling_age > LIVE_EVIDENCE_MAX_AGE_SECONDS:
+            rolling_record["status"] = f"STALE — {_normalized_status(rolling_live.get('status'))} {_evidence_age(rolling_live.get('computed_at_utc'))}".strip()
     backfill_status = _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.gate_status", "status", "gate_status", "governance_disposition")
     if _normalized_status(backfill_status) == "PASS" and backfill.get("readiness_counted") is False:
         backfill_status = "CANDIDATE PASS — NOT APPROVED"
@@ -473,6 +499,12 @@ def build_operations_snapshot(
     # fact, not an open repair task. Label it as such so the room reads as
     # historical/superseded rather than actionable.
     datasets[0]["disposition"] = "HISTORICAL / IMMUTABLE — frozen window, SUPERSEDED for coverage purposes, NOT APPROVAL SOURCE"
+    # The frozen window never changes, so its result must not look like a live
+    # alarm next to the current rooms. Keep the recorded verdict visible, but
+    # mark it historical (neutral severity) instead of a red current FAIL.
+    if datasets[0]["status"] not in (UNAVAILABLE, "", None):
+        datasets[0]["recorded_status"] = datasets[0]["status"]
+        datasets[0]["status"] = f"HISTORICAL — {datasets[0]['status']}"
 
     current_cases = _first(independent, "current.strict_independent_cases", "current.strict_independent_units", "current.strict_independent_30m_windows", "strict_independent_cases", default=_first(legacy_cases, "current_cutoff_audit.strict_independent_30m_windows"))
     frozen_cases = _first(independent, "frozen.strict_independent_cases", "frozen.strict_independent_units", "frozen_strict_independent_cases", default=_first(implementation, "frozen_strict_independent_cases", default=_first(legacy_cases, "frozen_cutoff_audit.strict_independent_30m_windows")))
@@ -522,6 +554,7 @@ def build_operations_snapshot(
         "security": security,
         "runtime": runtime,
         "datasets": datasets,
+        "evidence_dates": {item["path"]: item["captured_at"] for item in sources.values() if item.get("captured_at")},
         "gaps": {
             "rows": gaps,
             "total_loaded": len(gaps),
@@ -680,15 +713,22 @@ def _attention_rows(data: dict[str, Any]) -> list[str]:
     audit = data["audit"]
     rows: list[tuple[int, str]] = []
 
+    dates = data.get("evidence_dates") or {}
+
     def add(status: Any, title: str, detail: str, source: str = "") -> None:
         key = severity(status)
         if key == "ok":
             return
+        # Every file-based problem carries the day it was measured, so an old
+        # audit result is never read as something that broke just now.
+        captured = dates.get(source)
+        if captured:
+            source = f"{source} · Stand {str(captured)[:10]} ({_evidence_age(captured) or 'heute'})"
         weight = {"fail": 0, "blocked": 1, "degraded": 2, "warn": 3, "info": 4, "unknown": 5, "disabled": 6}[key]
         rows.append((weight, attention_row(status, title, detail, source)))
 
     if security["status"] not in ("PASS",) and severity(security["status"]) != "ok":
-        add(security["status"], "PostgreSQL security gate", str(security["status"]), str(security["listener_after"]["source"]))
+        add(security["status"], "PostgreSQL security gate", str(security["status"]), str(security.get("status_source") or security["listener_after"]["source"]))
     if severity(live.get("stream")) != "ok":
         add(live.get("stream", UNAVAILABLE), "Live market data stream", f"stream={live.get('stream', UNAVAILABLE)} · last data {live.get('last_data_at') or UNAVAILABLE}", "/api/state operational_health.stream")
     if runtime["cursor_age"]["value"] == UNAVAILABLE:

@@ -44,41 +44,16 @@ def atomic_write(path: Path, value: dict) -> None:
 async def compute(database_url: str) -> dict:
     import asyncpg
 
-    now = utc_minute(datetime.now(UTC))
-    window_end = now
-    window_start = window_end - timedelta(minutes=WINDOW_MINUTES)
+    from src.operational.live_evidence import compute_rolling_liveness
+
     connection = await asyncpg.connect(database_url, timeout=10, command_timeout=60)
     transaction = connection.transaction(isolation="repeatable_read", readonly=True)
     await transaction.start()
     try:
-        rows = await connection.fetch(
-            """SELECT DISTINCT open_time FROM candles
-               WHERE symbol='BTCUSDT' AND timeframe='1m' AND closed=true
-                 AND open_time >= $1 AND open_time < $2""",
-            window_start, window_end,
-        )
+        return await compute_rolling_liveness(connection, "BTCUSDT")
     finally:
         await transaction.rollback()
         await connection.close()
-    valid_minutes = len(rows)
-    coverage = valid_minutes / WINDOW_MINUTES
-    return {
-        "schema_version": "1.0.0",
-        "calculation_method": "PRODUCT_EXPECTED_SET_V1",
-        "closed_only": True,
-        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
-        "expected_interval": "PT1M",
-        "window_start_utc": iso(window_start),
-        "window_end_utc": iso(window_end),
-        "coverage": round(coverage, 5),
-        "coverage_percent": f"{coverage * 100:.3f}",
-        "valid_observations": valid_minutes,
-        "expected_observations": WINDOW_MINUTES,
-        "status": "PASS" if valid_minutes == WINDOW_MINUTES else "FAIL",
-        "computed_at_utc": iso(datetime.now(UTC)),
-        "source": "postgres://candles(BTCUSDT,1m,closed)",
-        "trading_actions": 0,
-    }
 
 
 def main() -> int:
