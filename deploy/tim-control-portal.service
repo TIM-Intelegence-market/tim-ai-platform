@@ -1,0 +1,38 @@
+[Unit]
+Description=T.I.M.E.C. - TIM Engineering Console
+After=network-online.target ollama.service tim-qwen-worker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tim-server
+Group=tim
+WorkingDirectory=/srv/tim/repo
+Environment=PYTHONPATH=/srv/tim/repo
+Environment=OLLAMA_BASE_URL=http://127.0.0.2:11434
+EnvironmentFile=-/etc/tim/control-portal.env
+ExecStart=/srv/tim/venv/bin/python /srv/tim/repo/scripts/run_tim_control_portal.py --repo-root /srv/tim/repo --state-root /srv/tim/data/local-first-runtime --db /srv/tim/data/control-portal/portal.sqlite3 --host 127.0.0.1 --port 8090
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/srv/tim/data/control-portal /srv/tim/data/local-first-runtime /srv/tim/logs
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectClock=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
