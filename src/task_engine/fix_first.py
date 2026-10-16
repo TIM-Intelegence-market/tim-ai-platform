@@ -16,6 +16,9 @@ P1.13: a BUGFIX that declares ``repair_execution`` in required_evidence must
 also prove the repair was executed by the engine's repair executor, and its
 pre-/post-repair reproduction is re-derived from the JUnit and probe
 artifacts themselves, never taken from a report's status field.
+
+Issue #242: any task that declares ``repair_gates`` in required_evidence must
+also carry gate results whose aggregate verdict (src/repair_gates) is PASS.
 """
 import json
 import xml.etree.ElementTree as ET
@@ -23,11 +26,14 @@ import xml.etree.ElementTree as ET
 from src.bugfixer.tasks import REQUIRED_EVIDENCE as BUGFIX_EVIDENCE
 from src.bugfixer.tasks import Task as _EvidenceSubject
 from src.bugfixer.tasks import _artifact, _report, validate_fix_evidence
+from src.repair_gates.aggregate import decide
+from src.repair_gates.result import GateResult
 from src.task_engine.model import TaskState
 from src.task_engine.state_machine import InvalidTransition
 
 ENGINE_REPAIR_EVIDENCE = ('repair_execution', 'pre_repair_repro', 'post_repair_repro')
 EXECUTOR_ID = 'src.task_engine.repair_executor'
+REPAIR_GATES_EVIDENCE = 'repair_gates'
 
 
 class FixFirstRejected(InvalidTransition):
@@ -78,6 +84,26 @@ def validate_engine_repair(subject, evidence):
         raise ValueError('runtime probe still shows the defect after the repair')
 
 
+def validate_repair_gates(task, evidence):
+    """Raise FixFirstRejected unless the declared repair gates aggregate to PASS."""
+    try:
+        gates = evidence[REPAIR_GATES_EVIDENCE]
+        if not isinstance(gates, dict):
+            raise ValueError('repair_gates must be a dict')
+        required, results = gates['required'], gates['results']
+        if (not isinstance(required, list) or not required
+                or any(not isinstance(name, str) for name in required)):
+            raise ValueError('required must be a non-empty list of gate names')
+        if not isinstance(results, list):
+            raise ValueError('results must be a list of gate result dicts')
+        verdict = decide(required, [GateResult.from_dict(result) for result in results])
+    except Exception as error:  # fail closed on any malformed gate evidence
+        raise FixFirstRejected(f'{task.task_id} repair gates invalid: {error}') from error
+    if verdict['status'] != 'PASS':
+        raise FixFirstRejected(
+            f"{task.task_id} repair gates {verdict['status']}: {verdict['reasons']}")
+
+
 def validate_fixed(task, evidence):
     """Raise FixFirstRejected unless ``evidence`` proves ``task`` may become FIXED."""
     if not isinstance(evidence, dict):
@@ -93,10 +119,12 @@ def validate_fixed(task, evidence):
                 validate_engine_repair(subject, evidence)
         except Exception as error:  # fail closed on any malformed or unverifiable evidence
             raise FixFirstRejected(f'BUGFIX {task.task_id} cannot be FIXED: {error}') from error
-        return
-    missing = [name for name in task.required_evidence if not evidence.get(name)]
-    if missing:
-        raise FixFirstRejected(f'{task.task_id} missing required evidence: {missing}')
+    else:
+        missing = [name for name in task.required_evidence if not evidence.get(name)]
+        if missing:
+            raise FixFirstRejected(f'{task.task_id} missing required evidence: {missing}')
+    if REPAIR_GATES_EVIDENCE in task.required_evidence:
+        validate_repair_gates(task, evidence)
 
 
 def fix_first_guard(evidence_for):
