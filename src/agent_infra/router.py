@@ -26,6 +26,7 @@ class Intent(StrEnum):
     IMPLEMENTATION = "implementation"
     REVIEW = "review"
     CODE_SEARCH = "code_search"
+    RUNTIME_STATE = "runtime_state"
 
 
 class Tool(StrEnum):
@@ -38,6 +39,7 @@ class Tool(StrEnum):
     GLM = "GLM"
     PYTEST = "pytest"
     NATIVE_SEARCH = "NativeSearch"
+    OPS_MCP = "TIMOpsMCP"
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +91,7 @@ ROUTES: dict[Intent, tuple[Tool, tuple[Tool, ...], Tool | None]] = {
     Intent.IMPLEMENTATION: (Tool.OPENCODE, (Tool.GLM,), None),
     Intent.REVIEW: (Tool.QWEN, (), None),
     Intent.CODE_SEARCH: (Tool.NATIVE_SEARCH, (Tool.SERENA,), None),
+    Intent.RUNTIME_STATE: (Tool.OPS_MCP, (Tool.GRAPH_MCP,), None),
 }
 
 AVAILABLE = "AVAILABLE"
