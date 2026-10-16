@@ -18,6 +18,9 @@ MAX_ACTIONS = 10
 _FINGERPRINT_RE = re.compile(r"[0-9a-f]{64}")
 _RESPONSE_KEYS = frozenset({"incident_id", "hypothesis", "proposed_actions", "confidence"})
 _FORBIDDEN_KEYS = ("status", "mark_fixed")
+EXTENDED_KEYS = ("reproduction_proposal", "minimal_fix", "risks", "required_tests")
+_EXTENDED_TEXT_KEYS = ("reproduction_proposal", "minimal_fix")
+_EXTENDED_LIST_KEYS = ("risks", "required_tests")
 
 
 def _required_str(incident, key):
@@ -138,7 +141,39 @@ def _result(reasons, hypothesis=None, actions=None, confidence=None):
     }
 
 
-def _parse(raw, request):
+def _extended_defaults():
+    return {"reproduction_proposal": None, "minimal_fix": None, "risks": [], "required_tests": []}
+
+
+def _extended_reasons(raw):
+    reasons = []
+    for key in _EXTENDED_TEXT_KEYS:
+        value = raw.get(key)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            reasons.append(f"invalid_{key}")
+    for key in _EXTENDED_LIST_KEYS:
+        value = raw.get(key)
+        if value is not None and (
+            not isinstance(value, list)
+            or len(value) > MAX_LIST_ITEMS
+            or not all(isinstance(item, str) for item in value)
+        ):
+            reasons.append(f"invalid_{key}")
+    return reasons
+
+
+def _extended_values(raw):
+    values = {}
+    for key in _EXTENDED_TEXT_KEYS:
+        value = raw.get(key)
+        values[key] = None if value is None else redact_text(value)
+    for key in _EXTENDED_LIST_KEYS:
+        value = raw.get(key)
+        values[key] = [] if value is None else [redact_text(item) for item in value]
+    return values
+
+
+def _parse(raw, request, extended=False):
     if isinstance(raw, str):
         try:
             raw = json.loads(raw)
@@ -147,10 +182,11 @@ def _parse(raw, request):
     if not isinstance(raw, dict):
         return _result(["response_not_object"])
 
+    allowed = _RESPONSE_KEYS | frozenset(EXTENDED_KEYS) if extended else _RESPONSE_KEYS
     reasons = []
     if any(key in raw for key in _FORBIDDEN_KEYS):
         reasons.append("forbidden_key")
-    if any(key not in _RESPONSE_KEYS and key not in _FORBIDDEN_KEYS for key in raw):
+    if any(key not in allowed and key not in _FORBIDDEN_KEYS for key in raw):
         reasons.append("unknown_keys")
 
     expected_id = request.get("incident_id") if isinstance(request, dict) else None
@@ -179,18 +215,28 @@ def _parse(raw, request):
     ):
         reasons.append("invalid_confidence")
 
+    if extended:
+        reasons.extend(_extended_reasons(raw))
+
     if reasons:
         return _result(reasons)
-    return _result(
+    result = _result(
         [],
         redact_text(hypothesis),
         [redact_text(item) for item in actions],
         confidence,
     )
+    if extended:
+        result.update(_extended_values(raw))
+    return result
 
 
-def parse_response(raw, request):
+def parse_response(raw, request, *, extended=False):
     try:
-        return _parse(raw, request)
+        result = _parse(raw, request, extended)
     except Exception:
-        return _result(["unparseable_response"])
+        result = _result(["unparseable_response"])
+    if extended:
+        for key, default in _extended_defaults().items():
+            result.setdefault(key, default)
+    return result
