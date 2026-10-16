@@ -51,7 +51,7 @@ def _request_ok(request) -> bool:
     return "no_fixed_authority" in constraints
 
 
-def request_diagnosis(request: dict, providers: list) -> dict:
+def request_diagnosis(request: dict, providers: list, *, extended: bool = False) -> dict:
     _validate_providers(providers)
     if not _request_ok(request):
         return {
@@ -80,7 +80,12 @@ def request_diagnosis(request: dict, providers: list) -> dict:
             attempts.append({"provider": name, "status": "error"})
             continue
         try:
-            parsed = parse_response(raw, request)
+            # Pass the keyword only when set, so the default call stays
+            # parse_response(raw, request) exactly as before.
+            if extended:
+                parsed = parse_response(raw, request, extended=True)
+            else:
+                parsed = parse_response(raw, request)
             status = parsed["status"]
         except Exception:
             attempts.append({"provider": name, "status": "error"})
