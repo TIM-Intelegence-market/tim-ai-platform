@@ -15,6 +15,15 @@ _URI = re.compile(r'([a-z][a-z0-9+.-]*://)[^\s/@]*@', re.I)
 _HEADER = re.compile(r'\b(authorization|proxy-authorization|cookie|set-cookie)\s*[:=][^\r\n]*', re.I)
 _BEARER = re.compile(r'\bBearer\s+[^\s,;]+', re.I)
 _PAIR = re.compile(r'''\b(password|passwd|passphrase|secret|token|access_token|refresh_token|api[_-]?key|credential|private[_-]?key)\b["']?\s*[:=]\s*(?:\[REDACTED\]|"[^"\n]*"|'[^'\n]*'|[^\s,;&}\]]+)''', re.I)
+# Keyword-free token shapes, copied verbatim from src/tim_incident/redaction.py (no import: keep modules decoupled).
+_TOKENS = (
+    re.compile(r'\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*'),
+    re.compile(r'\bgithub_pat_[A-Za-z0-9_]{16,}'),
+    re.compile(r'\bgh[pousr]_[A-Za-z0-9]{16,}'),
+    re.compile(r'\bsk-[A-Za-z0-9._-]{16,}'),
+    re.compile(r'\b(?:AKIA|ASIA)[0-9A-Z]{16}\b'),
+    re.compile(r'\bxox[abposr]-[A-Za-z0-9-]{10,}'),
+)
 _UUID = re.compile(r'\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b', re.I)
 _TIMESTAMP = re.compile(r'\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?\b')
 
@@ -46,7 +55,10 @@ def redact_text(text: str) -> str:
     text = _URI.sub(r'\1[REDACTED]@', text)
     text = _HEADER.sub(lambda m: m[1] + ': ' + REDACTED, text)
     text = _BEARER.sub('Bearer ' + REDACTED, text)
-    return _PAIR.sub(lambda m: m[1] + '=' + REDACTED, text)
+    text = _PAIR.sub(lambda m: m[1] + '=' + REDACTED, text)
+    for pattern in _TOKENS:
+        text = pattern.sub(REDACTED, text)
+    return text
 
 
 def redact(value):

@@ -5,6 +5,12 @@ from src.bugfixer.processing import Event, parse_line, redact_text
 
 _HEADER = 'Traceback (most recent call last):'
 _TERMINAL = re.compile(r'^([A-Za-z_][A-Za-z0-9_.]*)(?::\s*(.*))?$')
+# Frames from the worker's own package: drop the trace to avoid self-ingestion loops.
+_OWN_FRAME = re.compile(r'^\s*File "(?:[^"]*[/\\])?src[/\\]bugfixer[/\\][^"]*"')
+
+
+def _own_trace(lines) -> bool:
+    return any(_OWN_FRAME.match(line) for line in lines)
 
 
 class LegacyTraceAssembler:
@@ -25,10 +31,11 @@ class LegacyTraceAssembler:
     def incomplete(self):
         if not self.pending:
             return []
-        event = Event(self.pending['timestamp'], 'legacy', '', 'Incomplete Python traceback',
-                      stack='\n'.join(self.pending['lines']))
+        lines, started = self.pending['lines'], self.pending['timestamp']
         self.pending = None
-        return [event]
+        if _own_trace(lines):
+            return []
+        return [Event(started, 'legacy', '', 'Incomplete Python traceback', stack='\n'.join(lines))]
 
     def feed(self, line, observed_at):
         safe = redact_text(line).rstrip('\r\n')
@@ -42,10 +49,12 @@ class LegacyTraceAssembler:
             if terminal:
                 self.pending['lines'].append(safe)
                 self._validate()
-                event = Event(self.pending['timestamp'], 'legacy', terminal[1],
-                              terminal[2] or terminal[1], stack='\n'.join(self.pending['lines']))
+                lines, started = self.pending['lines'], self.pending['timestamp']
                 self.pending = None
-                return [event]
+                if _own_trace(lines):
+                    return []
+                return [Event(started, 'legacy', terminal[1], terminal[2] or terminal[1],
+                              stack='\n'.join(lines))]
             if not safe.strip() or safe[0].isspace():
                 self.pending['lines'].append(safe)
                 self._validate()
