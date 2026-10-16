@@ -8,7 +8,7 @@ from pathlib import Path
 import sqlite3
 
 from src.bugfixer.model import SCHEMA_VERSION, State, validate_transition
-from src.bugfixer.processing import Event, classify, fingerprint, redact_text
+from src.bugfixer.processing import FINGERPRINT_VERSION, Event, classify, fingerprint, redact_text
 from src.bugfixer.task_store import TASK_SCHEMA, TaskStoreMixin
 from src.bugfixer.tasks import Task, TaskState, validate_fix_evidence
 
@@ -99,7 +99,7 @@ class IncidentStore(TaskStoreMixin):
             return identity
         result = classify(event)
         self.db.execute('INSERT INTO incidents VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-                        (identity, 1, result.category, result.confidence, result.matched_rule,
+                        (identity, FINGERPRINT_VERSION, result.category, result.confidence, result.matched_rule,
                          result.reason, State.NEW, event.timestamp, event.timestamp, 1, 0,
                          json.dumps(event.safe_dict(), sort_keys=True)))
         self.transition(identity, State.NORMALIZED, 'Sanitized canonical event v1', event.timestamp)

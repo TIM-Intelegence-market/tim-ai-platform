@@ -19,6 +19,14 @@ _UUID = re.compile(r'\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b', re.I)
 _TIMESTAMP = re.compile(r'\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?\b')
 
 
+FINGERPRINT_VERSION = 2
+_HEX_ID = re.compile(r'\b0x[0-9a-fA-F]+\b|\b(?=[0-9a-fA-F]*[0-9])(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{8,}\b')
+_DURATION = re.compile(
+    r'(?<!(?:[A-Za-z0-9_.]))\d+(?:\.\d+)?(?=\s?(?:ms|us|ns|s|sec|secs|seconds?|min|minutes?|h|hours?)\b)', re.I)
+_COUNTER = re.compile(
+    r'(?i)(?<!(?:[A-Za-z0-9]))(id|request|req|attempt|retry|try|seq|sequence|offset|pid|tid|thread|job|task|order|trade)'
+    r'([\s:=#_-]{1,3})\d+\b')
+
 _LEGACY_RECORD = re.compile(
     r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} '
     r'(DEBUG|INFO|WARNING|ERROR|CRITICAL) ([A-Za-z_][A-Za-z0-9_.]*) (.+)$')
@@ -129,8 +137,12 @@ def canonical(event: Event) -> str:
     fields = event.safe_dict()
     fields.pop('timestamp')
     for key in ('message', 'stack'):
-        fields[key] = re.sub(r'\s+', ' ', _UUID.sub('<uuid>', _TIMESTAMP.sub('<timestamp>', fields[key]))).strip()
-    return json.dumps({'fingerprint_version': 1, **fields}, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+        value = _UUID.sub('<uuid>', _TIMESTAMP.sub('<timestamp>', fields[key]))
+        value = _HEX_ID.sub('<hex>', value)
+        value = _DURATION.sub('<n>', value)
+        value = _COUNTER.sub(r'\1\2<n>', value)
+        fields[key] = re.sub(r'\s+', ' ', value).strip()
+    return json.dumps({'fingerprint_version': FINGERPRINT_VERSION, **fields}, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
 
 
 def fingerprint(event: Event) -> str:
