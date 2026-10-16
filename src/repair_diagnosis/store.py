@@ -46,22 +46,28 @@ def save_diagnosis(
             raise DiagnosisStoreError("bridge result is incomplete")
 
         result = bridge_result.get("result") or {}
-        body = redact(
-            {
-                "schema_version": 1,
-                "incident_id": request["incident_id"],
-                "request_sha256": request_sha256(request),
-                "provider": bridge_result.get("provider"),
-                "provider_model": provider_model,
-                "recorded_at": recorded_at,
-                "outcome": bridge_result["outcome"],
-                "hypothesis": result.get("hypothesis"),
-                "proposed_actions": result.get("proposed_actions"),
-                "confidence": result.get("confidence"),
-                "attempts": bridge_result["attempts"],
-                "can_mark_fixed": False,
-            }
-        )
+        fields = {
+            "schema_version": 1,
+            "incident_id": request["incident_id"],
+            "request_sha256": request_sha256(request),
+            "provider": bridge_result.get("provider"),
+            "provider_model": provider_model,
+            "recorded_at": recorded_at,
+            "outcome": bridge_result["outcome"],
+            "hypothesis": result.get("hypothesis"),
+            "proposed_actions": result.get("proposed_actions"),
+            "confidence": result.get("confidence"),
+            "attempts": bridge_result["attempts"],
+            "can_mark_fixed": False,
+        }
+        if "minimal_fix" in result:
+            fields.update(
+                reproduction_proposal=result.get("reproduction_proposal"),
+                minimal_fix=result.get("minimal_fix"),
+                risks=result.get("risks", []),
+                required_tests=result.get("required_tests", []),
+            )
+        body = redact(fields)
         envelope = {
             "body": body,
             "sha256": hashlib.sha256(_canonical_json(body)).hexdigest(),

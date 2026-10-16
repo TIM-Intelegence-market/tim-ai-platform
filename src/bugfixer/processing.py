@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import ipaddress
 import json
 import re
 
@@ -24,6 +25,11 @@ _TOKENS = (
     re.compile(r'\b(?:AKIA|ASIA)[0-9A-Z]{16}\b'),
     re.compile(r'\bxox[abposr]-[A-Za-z0-9-]{10,}'),
 )
+# IP and e-mail patterns, copied from src/tim_incident/redaction.py (loopback/unspecified and times like 03:15:00 stay).
+_IPV6 = re.compile(r'(?<![0-9A-Za-z:.])(?:[0-9A-Fa-f]{0,4}:){2,7}(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9A-Fa-f]{0,4})'
+                   r'(?![0-9A-Za-z:])')
+_IPV4 = re.compile(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?!\d|\.\d)')
+_EMAIL = re.compile(r'(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b')
 _UUID = re.compile(r'\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b', re.I)
 _TIMESTAMP = re.compile(r'\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?\b')
 
@@ -50,6 +56,17 @@ def _is_bugfixer_component(component: str) -> bool:
                for root in ('bugfixer', 'src.bugfixer'))
 
 
+def _ip(match, kind):
+    text = match[0]
+    if kind is ipaddress.IPv6Address and '::' not in text and text.count(':') != 7:
+        return text  # times like 03:15:00 and MAC addresses are not addresses here
+    try:
+        address = kind(text)
+    except ValueError:
+        return text
+    return text if address.is_loopback or address.is_unspecified else '[IP]'
+
+
 def redact_text(text: str) -> str:
     text = _PEM.sub(REDACTED, text)
     text = _URI.sub(r'\1[REDACTED]@', text)
@@ -58,7 +75,9 @@ def redact_text(text: str) -> str:
     text = _PAIR.sub(lambda m: m[1] + '=' + REDACTED, text)
     for pattern in _TOKENS:
         text = pattern.sub(REDACTED, text)
-    return text
+    text = _IPV6.sub(lambda m: _ip(m, ipaddress.IPv6Address), text)
+    text = _IPV4.sub(lambda m: _ip(m, ipaddress.IPv4Address), text)
+    return _EMAIL.sub('[EMAIL]', text)
 
 
 def redact(value):
