@@ -403,6 +403,60 @@ def test_developer_falls_back_to_one_shot_with_schema(sandbox, monkeypatch):
     assert seen["json"] == 1 and seen["schema"]["required"] == ["patches"]
 
 
+def test_issue_budget_exhaustion_still_runs_helper_and_persists_result(sandbox, monkeypatch):
+    from src.local_first import claude_cli_fallback
+
+    monkeypatch.setenv("TIM_QWEN_TOOL_LOOP", "1")
+    monkeypatch.setenv("TIM_QWEN_GITHUB_RUN", "1")
+    monkeypatch.setenv("TIM_CODEX_PATCH_FALLBACK", "0")
+    monkeypatch.setenv("TIM_CLAUDE_PATCH_FALLBACK", "1")
+    clock = [100.0]
+    monkeypatch.setattr(developer.time, "monotonic", lambda: clock[0])
+    limits = []
+
+    async def exhausted(*args, max_seconds):
+        limits.append(max_seconds)
+        clock[0] += max_seconds
+        return None, {"ended": "budget"}
+
+    monkeypatch.setattr(developer, "_tool_loop_proposal", exhausted)
+    helpers = []
+
+    def helper(prompt):
+        helpers.append(prompt)
+        return {"patches": [{"path": IMPLEMENTATION, "content": "VALUE = 2\n"}]}
+
+    monkeypatch.setattr(claude_cli_fallback, "propose", helper)
+    code, result, seen = run_developer(sandbox, monkeypatch, chat_replies=[])
+    assert limits == [900.0]
+    assert seen["json"] == 0  # No fresh 900s request after the loop spent its budget.
+    assert code == 0 and result["status"] == "VERIFYING"
+    assert result["fallback_provider"] == "CLAUDE_CLI" and len(helpers) == 1
+    assert result["model_calls"] == 1
+    assert "budget exhausted" in result["qwen_blocker_reason"]
+
+
+def test_issue_structured_retry_uses_only_remaining_budget(sandbox, monkeypatch):
+    monkeypatch.setenv("TIM_QWEN_TOOL_LOOP", "1")
+    monkeypatch.setenv("TIM_QWEN_GITHUB_RUN", "1")
+    clock = [100.0]
+    monkeypatch.setattr(developer.time, "monotonic", lambda: clock[0])
+
+    clients = []
+
+    async def early_failure(ollama, *args, max_seconds):
+        assert max_seconds == 900
+        clients.append(ollama)
+        clock[0] += 840
+        return None, {"ended": "chat_error"}
+
+    monkeypatch.setattr(developer, "_tool_loop_proposal", early_failure)
+    code, result, seen = run_developer(sandbox, monkeypatch, chat_replies=[], json_replies=[
+        {"patches": [{"path": IMPLEMENTATION, "content": "VALUE = 2\n"}]}])
+    assert code == 0 and result["model_calls"] == 2 and seen["json"] == 1
+    assert clients[0].timeout == 60.0
+
+
 def test_tool_loop_is_off_by_default(sandbox, monkeypatch):
     code, result, seen = run_developer(
         sandbox, monkeypatch, chat_replies=[],

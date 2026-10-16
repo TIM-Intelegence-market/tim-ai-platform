@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -437,7 +438,8 @@ def tool_loop_enabled() -> bool:
 
 
 async def _tool_loop_proposal(ollama: Any, repo: Path, state: Path, task: dict[str, Any],
-                              contract: dict[str, Any], proposal_id: str) -> tuple[Any, dict[str, Any]]:
+                              contract: dict[str, Any], proposal_id: str,
+                              *, max_seconds: float | None = None) -> tuple[Any, dict[str, Any]]:
     """Let Qwen read, test and check before it submits; returns (raw proposal or None, stats)."""
     from src.local_first.qwen_tool_loop import QwenToolLoop
 
@@ -447,7 +449,8 @@ async def _tool_loop_proposal(ollama: Any, repo: Path, state: Path, task: dict[s
     def run_tests() -> dict[str, Any]:
         return SafePatchExecutor(repo, state)._run_tests(list(contract["tests"]))
 
-    loop = QwenToolLoop(ollama, repo, check_patch=check, run_tests=run_tests)
+    limits = {} if max_seconds is None else {"max_seconds": max_seconds}
+    loop = QwenToolLoop(ollama, repo, check_patch=check, run_tests=run_tests, **limits)
     outcome = await loop.run(TOOL_LOOP_SYSTEM, _prompt(task, contract, tool_loop=True))
     return outcome.proposal, outcome.stats
 
@@ -498,12 +501,22 @@ async def run(args: argparse.Namespace) -> int:
             ), "LOCAL_QWEN_UNAVAILABLE", [])
             raise ContractError("LOCAL_QWEN_UNAVAILABLE")
 
+        # A server tool loop and its structured retry used to each receive 900s.
+        # Share one budget so CLI helpers can run before the parent kills the group.
+        deadline = time.monotonic() + 900 if os.getenv("TIM_QWEN_GITHUB_RUN") == "1" else None
         for attempt in range(2):
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None:
+                if remaining <= 0:
+                    raise ProposalError("Qwen generation budget exhausted; continue with configured helpers")
+                ollama.timeout = min(args.timeout, remaining)
             _check_snapshot(repo, contract)
             calls += 1
             try:
                 if attempt == 0 and tool_loop_enabled():
-                    raw, tool_loop_stats = await _tool_loop_proposal(ollama, repo, state, task, contract, proposal_id)
+                    limits = {} if remaining is None else {"max_seconds": remaining}
+                    raw, tool_loop_stats = await _tool_loop_proposal(
+                        ollama, repo, state, task, contract, proposal_id, **limits)
                     if raw is None:
                         raise ProposalError(f"tool loop ended without a patch ({tool_loop_stats.get('ended')})")
                 else:

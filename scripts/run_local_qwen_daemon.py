@@ -290,7 +290,9 @@ def _run_github_intake(repo_root: Path, args: argparse.Namespace) -> int:
         command.append("--self-update")
     try:
         completed = subprocess.run(command, cwd=repo_root, text=True, capture_output=True,
-                                   check=False, timeout=1900)
+                                   # Include the issue task (2400s), advisory review
+                                   # (600s), merge wait (1800s) and GitHub overhead.
+                                   check=False, timeout=5400)
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(json.dumps({"TIM_GITHUB_INTAKE": "SAFE_STOP", "error_type": type(exc).__name__}), flush=True)
         return 2

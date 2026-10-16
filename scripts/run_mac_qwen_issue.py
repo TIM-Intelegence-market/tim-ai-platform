@@ -177,6 +177,10 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
                 "TIM_EXECUTION_ENABLED": "0", "OLLAMA_MODEL": "qwen3.5:9b",
                 "TIM_CODEX_PATCH_FALLBACK": "1" if codex_fallback else "0",
                 "TIM_CLAUDE_PATCH_FALLBACK": "1" if claude_fallback else "0",
+                # The issue ledger already owns retries. Repeating the entire provider
+                # chain inside one attempt starves helpers and loses durable results.
+                "TIM_SUPERVISOR_MAX_LOCAL_REPAIR_CYCLES": "0",
+                "TIM_QWEN_GITHUB_RUN": "1",
                 # Model-written tests never run outside the OS sandbox on the worker Mac.
                 "TIM_TEST_SANDBOX": "required",
                 "TIM_QWEN_TOOL_LOOP": "0" if os.environ.get("TIM_QWEN_TOOL_LOOP") == "0" else "1"})
@@ -187,7 +191,9 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
             env["TIM_QWEN_HARD_RUN"] = "1"
     returncode = _run_task_group(
         [sys.executable, "scripts/run_local_qwen_build_queue.py", "--task-id", task["task_id"]],
-        worktree, env, timeout=1800)
+        # 900s shared Qwen budget + two 300s helpers + their 300s test
+        # runs, with time left for acceptance and durable result writes.
+        worktree, env, timeout=2400)
     acceptance = state / "acceptance-results" / f"{task['task_id']}.json"
     result = state / "developer-results" / f"{task['task_id']}.json"
     if returncode or not acceptance.is_file() or not result.is_file():

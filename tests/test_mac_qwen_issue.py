@@ -79,6 +79,8 @@ def test_local_task_runs_with_required_test_sandbox(tmp_path: Path, monkeypatch,
         run_mac_qwen_issue._run_local_task(tmp_path, task, codex_fallback=False)
     assert seen["TIM_TEST_SANDBOX"] == "required"
     assert seen["TIM_QWEN_TOOL_LOOP"] == expected
+    assert seen["TIM_SUPERVISOR_MAX_LOCAL_REPAIR_CYCLES"] == "0"
+    assert seen["TIM_QWEN_GITHUB_RUN"] == "1"
     assert "GH_TOKEN" not in seen
 
 

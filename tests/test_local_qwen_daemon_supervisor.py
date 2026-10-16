@@ -126,6 +126,8 @@ def test_github_intake_invokes_only_pilot_issue_with_merge_gate(tmp_path: Path, 
     captured = []
 
     def fake_run(command, **kwargs):
+        # Include task generation/verification, advisory review and merge wait.
+        assert kwargs["timeout"] > 2400 + 600 + 1800
         captured.extend(command)
         return SimpleNamespace(returncode=0, stdout="No eligible Mac Qwen issue.", stderr="")
 

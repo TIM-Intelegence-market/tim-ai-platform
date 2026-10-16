@@ -227,8 +227,19 @@ the `test_sandbox` that ran.
 Issue contracts may not list `src/local_first/` or `src/llm/` either, so the worker cannot
 patch its own gates, sandbox or tool loop.
 
+GitHub issue runs share a 900-second generation budget between Qwen's tool loop
+and structured retry. A retry receives only the remaining time; after exhaustion,
+the configured CLI helpers still run. The build-queue supervisor does not repeat
+the entire provider chain inside an issue attempt: the issue ledger owns its two
+attempts. The outer process-group limit is 40 minutes, allowing for Qwen, both
+helpers, sandboxed verification and durable result writes. These limits do not
+change standalone local build-queue runs.
+The daemon allows 90 minutes for the whole intake, including the task, up to
+10 minutes of advisory review and up to 30 minutes waiting for GitHub's merge
+gate. Its timeout must not interrupt those nested stages.
+
 The local acceptance gate rejects a result whose passing test run was not sandboxed while
-`TIM_TEST_SANDBOX=required`. A task that hits the 30-minute limit has its whole process group
+`TIM_TEST_SANDBOX=required`. A task that hits the 40-minute limit has its whole process group
 stopped. The Seatbelt profile has not yet been tried on the Mac mini; if it blocks Python, the
 result names the failed probe.
 
