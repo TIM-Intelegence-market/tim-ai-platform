@@ -539,3 +539,55 @@ def test_hard_run_widens_file_limit_and_model_context(monkeypatch):
     assert developer._writable_limit() == issue_triage.MAX_HARD_CONTEXT_FILE_CHARS
     assert qwen_tool_loop.chat_options()["num_ctx"] == 65536
     assert qwen_tool_loop.CHAT_OPTIONS["num_ctx"] == 32768
+
+
+def test_failed_attempt_names_its_cause_for_the_blocked_comment(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)
+    task = build_task(_issue(83, READY, _contract(83)))
+    state = tmp_path / ".tim/local-first"
+
+    def developer(*_args, **_kwargs):
+        (state / "developer-results").mkdir(parents=True)
+        (state / "developer-results" / "github-issue-83.json").write_text(json.dumps({
+            "reason": "QWEN_REPAIR_EXHAUSTED:tool loop ended without a patch (budget) password=hunter2",
+            "codex_fallback_error": "ProposalError", "codex_fallback_detail": "codex exited 1: usage limit",
+            "claude_fallback_error": "ProposalError",
+            "tool_loop": {"ended": "budget"}}), encoding="utf-8")
+        return 2
+
+    monkeypatch.setattr(runner, "_run_task_group", developer)
+    with pytest.raises(PipelineError) as raised:
+        runner._run_local_task(tmp_path, task, codex_fallback=True, claude_fallback=True)
+    message = str(raised.value)
+    assert message.startswith("acceptance gate not passed: exit=2")
+    assert "codex=codex exited 1: usage limit" in message and "claude=ProposalError" in message
+    assert "tool_loop=budget" in message and "hunter2" not in message
+
+
+def test_failed_attempt_without_any_result_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)
+    monkeypatch.setattr(runner, "_run_task_group", lambda *a, **k: 1)
+    with pytest.raises(PipelineError, match="exit=1; no developer result"):
+        runner._run_local_task(tmp_path, build_task(_issue(84, READY, _contract(84))), codex_fallback=False)
+
+
+@pytest.mark.parametrize("field", ["codex_fallback_detail", "claude_fallback_detail", "reason"])
+@pytest.mark.parametrize("message", [
+    "Authorization: Bearer synthetic-credential-value-123456",
+    "Authorization: Basic synthetic-credential-value-123456",
+    '\"Authorization\": \"Bearer synthetic-credential-value-123456\"',
+    'password="synthetic-credential-value-123456 with spaces"',
+])
+def test_failure_detail_scrubs_complete_credentials(tmp_path, field, message):
+    result = tmp_path / "result.json"
+    result.write_text(json.dumps({field: message}))
+    detail = runner._failure_detail(2, result, tmp_path / "missing.json")
+    assert "synthetic-credential" not in detail and "with spaces" not in detail
+    assert "<REDACTED>" in detail
+
+
+def test_failure_detail_scrubs_known_tokens_before_truncation(tmp_path):
+    result = tmp_path / "result.json"
+    result.write_text(json.dumps({"codex_fallback_detail": "x" * 65 + " ghp_" + "a" * 32}))
+    detail = runner._failure_detail(2, result, tmp_path / "missing.json")
+    assert "ghp_" not in detail

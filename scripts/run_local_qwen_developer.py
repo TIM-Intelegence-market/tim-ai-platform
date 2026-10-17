@@ -20,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.llm.ollama_client import OllamaClient
-from src.local_first.patch_executor import FORBIDDEN_PATH_PARTS, SafePatchExecutor, redact_code_secrets
+from src.local_first.patch_executor import FORBIDDEN_PATH_PARTS, SafePatchExecutor, redact_code_secrets, redact_diagnostic_secrets
 from src.local_first.runtime import BlockerMailbox
 
 MAX_CONTEXT_FILES = 12
@@ -574,7 +574,7 @@ async def run(args: argparse.Namespace) -> int:
                 applied = SafePatchExecutor(repo, state).apply(proposal, contract["allowed_paths"]).as_dict()
                 if applied.get("status") != "VERIFYING":
                     raise ProposalError(str(applied.get("reason", "fallback proposal rejected"))[:200])
-                errors = {key: value for key, value in result.items() if key.endswith("_fallback_error")}
+                errors = {key: value for key, value in result.items() if key.endswith(("_fallback_error", "_fallback_detail"))}
                 result = {**applied, **errors}
                 result["qwen_blocker_reason"] = qwen_reason
                 result["fallback_provider"] = provider
@@ -582,7 +582,11 @@ async def run(args: argparse.Namespace) -> int:
             except Exception as exc:
                 proposal = {}
                 result["reason"] = qwen_reason
-                result["codex_fallback_error" if provider == "CODEX_CLI" else "claude_fallback_error"] = type(exc).__name__
+                prefix = "codex" if provider == "CODEX_CLI" else "claude"
+                result[f"{prefix}_fallback_error"] = type(exc).__name__
+                # The class name alone ("ProposalError") cannot tell a rejected patch from a
+                # CLI that is logged out or over its quota; keep a short, redacted message.
+                result[f"{prefix}_fallback_detail"] = redact_diagnostic_secrets(str(exc))[:200]
 
     patches = proposal.get("patches", [])
     result.update({

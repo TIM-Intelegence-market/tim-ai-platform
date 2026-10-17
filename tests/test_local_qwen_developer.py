@@ -192,6 +192,7 @@ def test_codex_patch_fallback_cannot_expand_paths(sandbox, monkeypatch):
     code, result, _, tests = run_fake(sandbox, monkeypatch, [TimeoutError()])
     assert code == 2 and result["reason"] == "QWEN_ERROR:TimeoutError"
     assert result["codex_fallback_error"] == "ContractError"
+    assert "src/other.py" in result["codex_fallback_detail"]
     assert result["codex_fallback_calls"] == 1 and not tests
     assert not (sandbox / "src/other.py").exists()
 
@@ -208,9 +209,24 @@ def test_claude_patch_fallback_runs_when_codex_fails(sandbox, monkeypatch):
     assert code == 0 and result["status"] == "VERIFYING"
     assert result["codex_fallback_calls"] == 1 and result["claude_fallback_calls"] == 1
     assert result["codex_fallback_error"] == "RuntimeError"
+    assert result["codex_fallback_detail"] == "usage limit"
     assert result["fallback_provider"] == "CLAUDE_CLI"
     assert tests == [[TEST]]
     assert (sandbox / IMPLEMENTATION).read_text() == "VALUE = 2\n"
+
+
+@pytest.mark.parametrize("provider", ["CODEX", "CLAUDE"])
+def test_fallback_result_scrubs_authorization_before_persistence(sandbox, monkeypatch, provider):
+    from src.local_first import claude_cli_fallback, codex_patch_fallback
+
+    monkeypatch.setenv(f"TIM_{provider}_PATCH_FALLBACK", "1")
+    helper = codex_patch_fallback if provider == "CODEX" else claude_cli_fallback
+    monkeypatch.setattr(helper, "propose", lambda _: (_ for _ in ()).throw(
+        RuntimeError("Authorization: Bearer synthetic-credential-value-123456")))
+    code, result, _, tests = run_fake(sandbox, monkeypatch, [TimeoutError()])
+    assert code == 2 and not tests
+    assert "synthetic-credential" not in json.dumps(result)
+    assert "<REDACTED>" in result[f"{provider.lower()}_fallback_detail"]
 
 
 def test_claude_patch_fallback_cannot_expand_paths(sandbox, monkeypatch):

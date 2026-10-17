@@ -24,6 +24,7 @@ from scripts.github_issue_pipeline import DirectoryLock, Pipeline, PipelineError
 from src.local_first.github_issue_queue import build_task, is_hard_issue, select_ready_issue
 from src.local_first import issue_triage
 from src.local_first.issue_triage import IssueLedger, attach_worker_contract, contract_hash
+from src.local_first.patch_executor import redact_diagnostic_secrets
 from src.local_first.server_residency import configured_server, SERVER_OPTIONS
 
 REPO = "TIM-Intelegence-market/tim-ai-platform"
@@ -134,6 +135,42 @@ def _contract_rejection(result: Path) -> str | None:
     return None
 
 
+def _read_json(path: Path) -> dict | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _failure_detail(returncode: int, result: Path, acceptance: Path) -> str:
+    """Short cause of a failed attempt for the ledger and the agent:blocked comment.
+
+    Without it every failure reads the same, whether Qwen ran out of time, both helpers
+    were rejected, or a CLI was logged out. The ledger redacts tokens and truncates.
+    """
+    parts = [f"exit={returncode}"]
+    outcome = _read_json(result)
+    evidence = _read_json(acceptance)
+    if outcome is None:
+        parts.append("no developer result")
+    else:
+        # Most telling first: the ledger keeps only the first 300 characters.
+        for name in ("codex", "claude"):
+            error = outcome.get(f"{name}_fallback_detail") or outcome.get(f"{name}_fallback_error")
+            if error:
+                parts.append(f"{name}={redact_diagnostic_secrets(str(error))[:80]}")
+        if outcome.get("reason"):
+            parts.append(f"reason={redact_diagnostic_secrets(str(outcome['reason']))[:100]}")
+    if evidence and evidence.get("failed_checks"):
+        parts.append("failed_checks=" + ",".join(map(str, evidence["failed_checks"])))
+    loop = outcome.get("tool_loop") if outcome else None
+    if isinstance(loop, dict) and loop.get("ended"):
+        parts.append(f"tool_loop={loop['ended']}")
+    text = "; ".join(parts).replace("`", "'").replace("\n", " ")
+    return redact_diagnostic_secrets(text)
+
+
 def _hard_backend() -> tuple[str, str] | None:
     """Return (url, model) of the server model when configured and the tunnel answers, else None."""
     configured = configured_server()
@@ -200,11 +237,11 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
         rejection = _contract_rejection(result) if result.is_file() else None
         if rejection:
             raise ContractRejected(f"Vertrag nicht ausführbar: {rejection}")
-        raise PipelineError("local Qwen/Codex/Claude task did not pass its acceptance gate")
+        raise PipelineError("acceptance gate not passed: " + _failure_detail(returncode, result, acceptance))
     evidence = json.loads(acceptance.read_text(encoding="utf-8"))
     outcome = json.loads(result.read_text(encoding="utf-8"))
     if evidence.get("status") != "FIXED" or evidence.get("passed") is not True:
-        raise PipelineError("local task acceptance is not FIXED")
+        raise PipelineError("local task acceptance is not FIXED: " + _failure_detail(returncode, result, acceptance))
     return {"acceptance": evidence, "result": outcome,
             "model": f"{backend[1]}@tim-server" if backend else None}
 
