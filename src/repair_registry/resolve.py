@@ -55,6 +55,7 @@ def resolve_plan(event, registry, policy=Policy(), *, satisfied_preconditions=No
         "fingerprint": fingerprint(event),
         "plan": None,
         "candidates": [],
+        "superseded": [],
         "gates": gates,
         "executed": False,
         "may_mark_fixed": False,
@@ -73,24 +74,42 @@ def resolve_plan(event, registry, policy=Policy(), *, satisfied_preconditions=No
     if not gates:
         return done(PlanOutcome.NO_MATCH, "no remediation matches the event")
 
-    proposals = r.get("proposals")
-    if not proposals:
-        decisions = [g.get("decision") for g in gates]
+    # Only the newest version of each recipe counts; an ineligible newest version never
+    # falls back to an older one that happens to pass the gates.
+    newest = {}
+    for gate in gates:
+        current = newest.get(gate["remediation_id"])
+        if current is None or _version_key(gate["version"]) > _version_key(current["version"]):
+            newest[gate["remediation_id"]] = gate
+    rows = {}
+    for proposal in r.get("proposals") or []:
+        recipe = _recipe(proposal)
+        rows[(recipe["remediation_id"], recipe["version"])] = recipe
+    proposed_ids = {rid for rid, _ in rows}
+    superseded = sorted(
+        f"{rid}@{gate['version']}"
+        for rid, gate in newest.items()
+        if gate.get("decision") != "PROPOSED" and rid in proposed_ids
+    )
+    if superseded:
+        result["superseded"] = superseded
+        return done(
+            PlanOutcome.BLOCKED,
+            "newest recipe version not eligible; no fallback to older version: "
+            + ", ".join(superseded),
+        )
+    latest = {
+        rid: rows[(rid, gate["version"])]
+        for rid, gate in newest.items()
+        if gate.get("decision") == "PROPOSED" and (rid, gate["version"]) in rows
+    }
+    if not latest:
+        decisions = [g.get("decision") for g in newest.values()]
         if "REVIEW_REQUIRED" in decisions:
             return done(PlanOutcome.REVIEW_REQUIRED, "manual review required")
         if all(d == "OBSERVE_ONLY" for d in decisions):
             return done(PlanOutcome.OBSERVE_ONLY, "observation only")
         return done(PlanOutcome.BLOCKED, "no proposal passed the gates")
-
-    latest = {}
-    for proposal in proposals:
-        recipe = _recipe(proposal)
-        rid = recipe["remediation_id"]
-        current = latest.get(rid)
-        if current is None or _version_key(recipe["version"]) > _version_key(
-            current["version"]
-        ):
-            latest[rid] = recipe
 
     result["candidates"] = sorted([rid, rec["version"]] for rid, rec in latest.items())
     if len(latest) > 1:
