@@ -7,6 +7,10 @@ Zweck: Dieses Dokument bündelt die Themen und wiederkehrenden Erkenntnisse aus 
 
 Die verbindliche technische Roadmap, Architektur und die Freigabegates stehen in [TIM_LINUX_QUBE_PLAN.md](TIM_LINUX_QUBE_PLAN.md). Neue TIM-Arbeit soll dort gegen die Missionen und Gates eingeordnet werden.
 
+## Datierte Übergaben
+
+- [TIM_THREAD_CHECKUP_QWEN_2026-10-17.md](TIM_THREAD_CHECKUP_QWEN_2026-10-17.md): 24/7-Checkup, Qwen-Modell und Server-Zustand (Claude-Projekt-Thread, Stand 17.10.2026)
+
 ## Themenlandkarte
 
 | Bereich | Gesammeltes Wissen | Relevante Chats |
