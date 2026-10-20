@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
+from ..config import MAX_LEVERAGE
 from ..domain import TradePlan, TradeStatus, utc_now
 from ..version import MODULE_VERSION
 
@@ -115,8 +116,8 @@ class PaperExecutionJournal:
 
     def _check_rules(self, entry: PaperExecutionInput) -> tuple[str, ...]:
         violations: list[str] = []
-        if entry.plan.leverage > Decimal("50"):
-            violations.append("high_leverage_needs_shadow_validation")
+        if entry.plan.leverage > MAX_LEVERAGE:
+            violations.append("leverage_exceeds_max_10x")
         if entry.plan.execution_sensitivity.value == "HIGH" and entry.plan.vetting_mode.value != "SHADOW":
             violations.append("high_execution_sensitivity_requires_shadow")
         if entry.fill_price < (entry.plan.entry_zone_low or ZERO):

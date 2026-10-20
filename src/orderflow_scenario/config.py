@@ -21,6 +21,11 @@ from .version import RULESET_VERSION
 DEFAULT_CONFIG_PATH = Path("config/orderflow_scenario.json")
 ALLOWED_MODES = {Mode.OBSERVE, Mode.RESEARCH, Mode.SIMULATE, Mode.PAPER, Mode.SHADOW}
 
+# Feste Obergrenze für den Hebel (Uzi, 2026-10-20): Spot (1x) und Hebel bis
+# höchstens 10x. Kein Tier und keine Konfigurationsdatei kann darüber gehen.
+MAX_LEVERAGE = Decimal("10")
+SPOT_LEVERAGE = Decimal("1")
+
 
 def _d(value: str | int | float | Decimal) -> Decimal:
     return value if isinstance(value, Decimal) else Decimal(str(value))
@@ -36,8 +41,10 @@ class RiskTier:
     def __post_init__(self) -> None:
         if not (Decimal("0") < self.account_risk_fraction <= Decimal("0.02")):
             raise ValueError("account_risk_fraction must be within (0, 2%]")
-        if self.max_leverage < Decimal("1"):
+        if self.max_leverage < SPOT_LEVERAGE:
             raise ValueError("max_leverage must be >= 1")
+        if self.max_leverage > MAX_LEVERAGE:
+            raise ValueError(f"max_leverage must be <= {MAX_LEVERAGE} (hard cap)")
         if self.min_reward_risk < Decimal("0.5"):
             raise ValueError("min_reward_risk must be >= 0.5")
 
@@ -159,8 +166,8 @@ def default_config() -> OrderflowScenarioConfig:
         default_risk_tier="STANDARD",
         risk_tiers=(
             RiskTier("CONSERVATIVE", Decimal("0.0025"), Decimal("5"), Decimal("1.5")),
-            RiskTier("STANDARD", Decimal("0.005"), Decimal("20"), Decimal("1.5")),
-            RiskTier("AGGRESSIVE", Decimal("0.01"), Decimal("50"), Decimal("2.0")),
+            RiskTier("STANDARD", Decimal("0.005"), MAX_LEVERAGE, Decimal("1.5")),
+            RiskTier("AGGRESSIVE", Decimal("0.01"), MAX_LEVERAGE, Decimal("2.0")),
         ),
         risk_limits=RiskLimits(
             daily_loss_fraction=Decimal("0.03"),
