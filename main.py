@@ -31,6 +31,7 @@ from src.orderflow.metrics import OrderflowMetricsService
 from src.orderflow.observations import OrderflowObservationEngine, OrderflowResearchCaseEngine
 from src.orderflow.validation import OrderflowValidationEngine
 from src.operational.logging import StructuredLog
+from src.operational.live_evidence import atomic_write_json, check_listener, compute_rolling_liveness
 from src.research.case_builder import ACTIVE_STATUSES, is_builder_case, refresh_case
 from src.research.case_engine import ResearchCaseEngine
 from src.research.trigger import ResearchTrigger
@@ -39,6 +40,7 @@ log = logging.getLogger("tim")
 # Ingestion telemetry cadence: one metrics query per interval at most. A sample
 # older than FRESH (including its own query time) is always labelled stale.
 HEALTH_SNAPSHOT_INTERVAL_SECONDS = 5.0
+LIVE_EVIDENCE_INTERVAL_SECONDS = 60.0
 HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
 
 
@@ -102,6 +104,7 @@ class TIMApplication:
         result = await self.durable_ingress(trade)
         with self.dashboard_state.lock:
             self.dashboard_state.system_health["queue_depth"] = result.queue_depth
+            self.dashboard_state.system_health["queue_depth_measured_at"] = datetime.now(timezone.utc).isoformat()
             self.dashboard_state.system_health["cursor_trade_id"] = result.cursor.last_aggregate_trade_id
             self.dashboard_state.system_health["recovery_state"] = result.cursor.recovery_state
             # The durable cursor is updated before the asynchronous enrichment
@@ -338,6 +341,8 @@ class TIMApplication:
                     "health_snapshot_age_seconds", "health_snapshot_observed_at", "health_snapshot_scope",
                 ) if key in snapshot}
             )
+            if snapshot.get("queue_depth") is not None and snapshot.get("health_snapshot_observed_at"):
+                self.dashboard_state.system_health["queue_depth_measured_at"] = snapshot["health_snapshot_observed_at"]
 
     async def _refresh_ingestion_health(self) -> dict:
         """Telemetry only: at most one metrics query per interval, never a worker dependency.
@@ -475,6 +480,36 @@ class TIMApplication:
             await self.restore_persisted_state(reset=True)
         return result
 
+    async def _refresh_live_evidence(self) -> None:
+        """Measure what the dashboard would otherwise read from old audit files."""
+        async with self.database.acquire() as connection:
+            rolling = await compute_rolling_liveness(connection, settings.symbol)
+            atomic_write_json(self.dashboard_state.rolling_liveness_path, rolling)
+            # Separate from the coverage sample: a role that may not read the
+            # listener setting must not stop the coverage room from updating.
+            try:
+                listener = await check_listener(connection)
+            except Exception as error:  # noqa: BLE001 - telemetry only
+                log.warning("postgres listener check failed: %s", type(error).__name__)
+                return
+        with self.dashboard_state.lock:
+            self.dashboard_state.system_health["postgres_listener"] = listener
+
+    async def _live_evidence_loop(self) -> None:
+        # Telemetry only: a failed sample is logged and retried, never fatal,
+        # and the dashboard marks the older file as stale on its own.
+        while not self.worker_stop.is_set():
+            try:
+                await self._refresh_live_evidence()
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - telemetry must not stop the runtime
+                log.warning("live evidence refresh failed: %s", type(error).__name__)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=LIVE_EVIDENCE_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
     async def run(self, initialize_schema: bool = False) -> None:
         await self.database.connect()
         with self.dashboard_state.lock:
@@ -490,12 +525,14 @@ class TIMApplication:
         await self.restore_persisted_state()
         self.dashboard.start()
         worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
+        evidence_task = asyncio.create_task(self._live_evidence_loop(), name="tim-live-evidence")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
             await self.stream.run()
         finally:
             self.worker_stop.set()
+            evidence_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's

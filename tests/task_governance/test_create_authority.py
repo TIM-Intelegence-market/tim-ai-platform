@@ -111,7 +111,8 @@ def test_a_refusal_leaves_no_create_intent_and_a_later_designation_creates(tmp_p
     assert [i['reason'] for i in reg.incidents()] == ['CREATE_NOT_AUTHORIZED']
     fake.deny_create = None
     created = ensure_task(req(), reg, fake, claimant='w', trusted_authors=None)
-    assert created.outcome is EnsureOutcome.CREATED and fake.authorized == [reg.registry_id, reg.registry_id]
+    assert created.outcome is EnsureOutcome.CREATED
+    assert fake.authorized == [reg.registry_id] * 3            # refused once; the create asks before and again right before the request
 
 
 def test_a_retrying_scheduler_does_not_flood_the_incident_log(tmp_path):
@@ -161,12 +162,16 @@ def test_two_registries_race_and_only_the_designated_one_creates(tmp_path, monke
     gw = gateway(rest)
     # Start barriers alone do not ensure both scans saw an empty repository:
     # a later scan may legitimately adopt the designated registry's new issue.
-    # Synchronize at create authorization so this test exercises competing creates.
+    # Synchronize at the first create authorization so this test exercises competing creates (the creator asks a second
+    # time right before its request; only the first call of each worker meets at the barrier).
     authorization_barrier = threading.Barrier(2)
     original_authorize = gw.authorize_create
+    asked = threading.local()
 
     def authorize_create(*args):
-        authorization_barrier.wait(timeout=5)
+        if not getattr(asked, 'done', False):
+            asked.done = True
+            authorization_barrier.wait(timeout=5)
         return original_authorize(*args)
 
     monkeypatch.setattr(gw, 'authorize_create', authorize_create)

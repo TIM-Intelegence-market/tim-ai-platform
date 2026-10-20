@@ -1,0 +1,68 @@
+# CI auf dem eigenen Runner (Mac mini)
+
+Stand 2026-10-13. Seit dem 12.10. um 22:56 UTC startete GitHub keine Jobs mehr auf den eigenen Runnern von GitHub. Jeder Lauf brach nach etwa 3 Sekunden ab, ohne Runner und ohne Log. Das Kontingent an Actions-Minuten der Organisation war erschöpft. Deshalb laufen die Workflows jetzt auf einem selbst betriebenen Runner auf dem Mac mini. GitHub rechnet dafür keine Minuten ab, auch nicht bei privaten Repos.
+
+## Was wo läuft
+
+| Workflow | Job | Runner | Wann |
+|---|---|---|---|
+| `ci.yml` | `test` (Pflicht-Check) | `[self-hosted, macOS, tim-ci]` | jeder PR, Push auf `platform-main`, manuell |
+| `ci.yml` | `codeql` | `[self-hosted, macOS, tim-ci]` | täglich 02:30 UTC auf `platform-main` und manuell |
+| `pr-gate.yml` | `PR gate` (Pflicht-Check) | `[self-hosted, macOS, tim-ci]` | jeder PR gegen `platform-main` |
+| `tim-priority-board.yml` | `prioritize` | `[self-hosted, macOS, tim-ci]` | täglich 07:00 UTC |
+| `tim-full-suite.yml` | `TIM full suite` | GitHub (`ubuntu-latest`) | nur manuell |
+| `auto-merge-controller.yml` | Controller | GitHub (`ubuntu-latest`) | nur manuell, inaktiv |
+
+Was früher doppelt lief:
+- Pushes auf `codex/**`, `opencode/**` und `main` starteten `ci.yml` zusätzlich zum Lauf im PR. Diese Push-Läufe gibt es nicht mehr.
+- `TIM full suite` führte dieselbe Testsuite ein zweites Mal aus, nur mit TimescaleDB in Docker. Sie ist jetzt nur noch manuell zu starten.
+- Bei einem neuen Push in denselben PR ersetzt der neue Lauf den wartenden.
+- `codeql` lief nach jedem Merge über 20 Minuten und hielt auf dem einzigen Runner alle PRs dahinter auf. Es läuft jetzt nachts.
+
+Pflicht-Checks im Ruleset „platform-main merge conditions“ seit 2026-10-13: `test` und `pr-gate/head`. `TIM full suite` ist kein Pflicht-Check mehr. Das Ruleset hat keine Bypass-Akteure, auch Admins können einen roten oder fehlenden Pflicht-Check nicht übergehen.
+
+Offen für die Auto-Merge-Pipeline: `.github/auto-merge-policy.json` verlangt noch `TIM full suite` als Check im PR. Bevor der Controller eingeschaltet wird, muss entweder dieser Eintrag weg oder `TIM full suite` wieder im PR laufen. Solange der Controller aus ist (`enabled: false`), hat das keine Wirkung.
+
+## Einrichtung (einmalig, auf dem Mac mini)
+
+1. Ein Registrierungs-Token holen: Repo → Settings → Actions → Runners → **New self-hosted runner** → macOS. Den Wert hinter `--token` kopieren. Er gilt eine Stunde.
+2. Im Terminal aus einem Checkout dieses Repos ausführen:
+   ```bash
+   sudo bash ops/macos/setup_ci_runner.sh
+   ```
+   Das Skript fragt nach dem Token und zeigt ihn nicht an. Es speichert ihn auch nirgends.
+3. Danach steht der Runner `mac-mini-tim` unter Settings → Actions → Runners als **Idle**.
+
+Das Skript lässt jeden Schritt aus, der schon erledigt ist. Ein zweiter Lauf ist deshalb harmlos. Es macht Folgendes:
+- Es installiert `postgresql@16`, `gh` und `python@3.13` mit Homebrew. Python 3.13 ist das `python3` für das PR-Gate.
+- Es legt den versteckten Standardbenutzer `timrunner` an. Der hat keine Admin-Rechte und ein Zufallspasswort, das niemand kennt.
+- Es startet eine eigene PostgreSQL-16-Instanz für Tests auf `127.0.0.1:5434` mit der Datenbank `tim_test` und der Rolle `tim`. Das Passwort ist `tim_ci_only`, wie zuvor in `ci.yml`.
+- Es lädt den Actions-Runner, prüft die SHA-256-Summe aus den Release-Notizen, registriert ihn mit dem Label `tim-ci` und startet ihn.
+- Runner und Datenbank laufen als LaunchDaemons (`com.tim.ci-runner`, `com.tim.ci-postgres`) unter `timrunner`. Sie starten nach einem Neustart auch ohne Anmeldung.
+
+## Sicherheit
+
+- Der Runner führt Code aus PR-Branches aus, und zwar als `timrunner`. Dieser Benutzer kommt nicht an die Daten des Admin-Kontos, also an Schlüssel, SSH-Zugang zu `tim-server`, den Ollama-Worker oder die Checkouts unter `Documents`. Das Skript warnt, wenn das Home-Verzeichnis des Admins für andere lesbar ist.
+- Auf dem Runner liegen keine Secrets. `pr-gate.yml` bekommt nur das kurzlebige `github.token` des Laufs und führt keinen PR-Code aus.
+- Der Runner ist nur für dieses Repo registriert, nicht für die ganze Organisation. Das Repo ist privat, Forks fremder Personen können keine Läufe auslösen.
+- Der Server `tim-core-01` ist bewusst kein Runner, weil dort der Live-Betrieb läuft.
+
+## Betrieb
+
+- Status: `sudo launchctl print system/com.tim.ci-runner | grep state` und `sudo tail -n 30 /Users/timrunner/Library/Logs/ci-runner.log`
+- Neustart: `sudo launchctl kickstart -k system/com.tim.ci-runner`
+- Es gibt nur einen Runner. Jobs warten deshalb aufeinander. Ist der Mac aus, bleiben Läufe in der Warteschlange und starten, sobald er wieder läuft. Nach 24 Stunden bricht GitHub sie ab.
+
+## Zurück zu GitHub-Runnern
+
+Bei `runs-on` wieder `ubuntu-latest` eintragen. In `ci.yml` kommt außerdem der Service-Container `postgres:16` auf Port 5432 zurück, Stand vor diesem Umbau: `git show 0c34171:.github/workflows/ci.yml`.
+
+## Runner entfernen
+
+```bash
+sudo launchctl bootout system /Library/LaunchDaemons/com.tim.ci-runner.plist
+sudo launchctl bootout system /Library/LaunchDaemons/com.tim.ci-postgres.plist
+cd /Users/timrunner/actions-runner && sudo -u timrunner ./config.sh remove --token <Token von Settings → Runners>
+sudo rm /Library/LaunchDaemons/com.tim.ci-runner.plist /Library/LaunchDaemons/com.tim.ci-postgres.plist
+sudo sysadminctl -deleteUser timrunner
+```

@@ -5,7 +5,8 @@ After=network-online.target postgresql.service
 
 [Service]
 Type=oneshot
-ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_server_health.py --backup-dir /var/backups/tim
+# PostgreSQL data is on /srv; ROOT=/opt/tim would measure the unrelated / volume.
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_server_health.py --backup-dir /var/backups/tim --disk-path /srv
 User=tim
 Group=tim
 WorkingDirectory=/opt/tim

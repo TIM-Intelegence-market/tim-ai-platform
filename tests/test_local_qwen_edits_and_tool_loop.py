@@ -223,6 +223,63 @@ def test_loop_turn_timeout_is_longer_than_client_default_but_within_budget(sandb
     assert chat.timeouts == [loop_mod.CHAT_TURN_SECONDS, loop_mod.CHAT_TURN_SECONDS, 100.0]
 
 
+def test_hard_loop_allows_server_cold_start_and_keeps_total_deadline(sandbox, monkeypatch):
+    monkeypatch.setenv("TIM_QWEN_HARD_RUN", "1")
+    now = [0.0]
+    patch = [{"path": IMPLEMENTATION, "content": "VALUE = 2\n"}]
+
+    class ColdServer(ScriptedChat):
+        async def chat(self, messages, **kwargs):
+            reply = await super().chat(messages, **kwargs)
+            now[0] += 350.0
+            return reply
+
+    chat = ColdServer([native("read_file", path=IMPLEMENTATION), native("submit_patch", patches=patch)])
+    loop = make_loop(sandbox, chat, clock=lambda: now[0])
+    result = asyncio.run(loop.run("sys", "user"))
+    assert result.stats["submitted"]
+    assert chat.timeouts == [900.0, 550.0]
+    assert loop_mod.chat_options()["num_ctx"] == 65536
+    assert loop_mod.chat_options()["num_batch"] == 256
+
+
+def test_explicit_short_deadline_still_limits_hard_server_calls(sandbox, monkeypatch):
+    monkeypatch.setenv("TIM_QWEN_HARD_RUN", "1")
+    patch = [{"path": IMPLEMENTATION, "content": "VALUE = 2\n"}]
+    chat = ScriptedChat([native("submit_patch", patches=patch)])
+    result = asyncio.run(make_loop(sandbox, chat, max_seconds=10, clock=lambda: 0).run("s", "u"))
+    assert result.stats["submitted"]
+    assert chat.timeouts == [10.0]
+
+
+def test_server_one_shot_retains_large_context_and_bounded_batch(monkeypatch):
+    from src.llm import ollama_client
+
+    seen = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self):
+            return json.dumps({"response": '{"patches": []}'}).encode()
+
+    def fake_urlopen(request, timeout):
+        seen.update(json.loads(request.data))
+        return Response()
+
+    monkeypatch.setattr(ollama_client, "urlopen", fake_urlopen)
+    monkeypatch.setenv("TIM_QWEN_HARD_RUN", "1")
+    client = ollama_client.OllamaClient("http://127.0.0.1:11435", "qwen3-coder:30b",
+                                      observation_only=False, generation_options=loop_mod.chat_options())
+    assert asyncio.run(client.generate_json("large contract", schema={"type": "object"})) == {"patches": []}
+    assert seen["options"]["num_ctx"] == 65536
+    assert seen["options"]["num_batch"] == 256
+
+
 def test_ollama_chat_uses_per_turn_timeout(monkeypatch):
     from src.llm import ollama_client
 
@@ -344,6 +401,60 @@ def test_developer_falls_back_to_one_shot_with_schema(sandbox, monkeypatch):
     assert code == 0 and result["status"] == "VERIFYING" and result["model_calls"] == 2
     assert result["tool_loop"]["ended"] == "chat_error:OSError"
     assert seen["json"] == 1 and seen["schema"]["required"] == ["patches"]
+
+
+def test_issue_budget_exhaustion_still_runs_helper_and_persists_result(sandbox, monkeypatch):
+    from src.local_first import claude_cli_fallback
+
+    monkeypatch.setenv("TIM_QWEN_TOOL_LOOP", "1")
+    monkeypatch.setenv("TIM_QWEN_GITHUB_RUN", "1")
+    monkeypatch.setenv("TIM_CODEX_PATCH_FALLBACK", "0")
+    monkeypatch.setenv("TIM_CLAUDE_PATCH_FALLBACK", "1")
+    clock = [100.0]
+    monkeypatch.setattr(developer.time, "monotonic", lambda: clock[0])
+    limits = []
+
+    async def exhausted(*args, max_seconds):
+        limits.append(max_seconds)
+        clock[0] += max_seconds
+        return None, {"ended": "budget"}
+
+    monkeypatch.setattr(developer, "_tool_loop_proposal", exhausted)
+    helpers = []
+
+    def helper(prompt):
+        helpers.append(prompt)
+        return {"patches": [{"path": IMPLEMENTATION, "content": "VALUE = 2\n"}]}
+
+    monkeypatch.setattr(claude_cli_fallback, "propose", helper)
+    code, result, seen = run_developer(sandbox, monkeypatch, chat_replies=[])
+    assert limits == [900.0]
+    assert seen["json"] == 0  # No fresh 900s request after the loop spent its budget.
+    assert code == 0 and result["status"] == "VERIFYING"
+    assert result["fallback_provider"] == "CLAUDE_CLI" and len(helpers) == 1
+    assert result["model_calls"] == 1
+    assert "budget exhausted" in result["qwen_blocker_reason"]
+
+
+def test_issue_structured_retry_uses_only_remaining_budget(sandbox, monkeypatch):
+    monkeypatch.setenv("TIM_QWEN_TOOL_LOOP", "1")
+    monkeypatch.setenv("TIM_QWEN_GITHUB_RUN", "1")
+    clock = [100.0]
+    monkeypatch.setattr(developer.time, "monotonic", lambda: clock[0])
+
+    clients = []
+
+    async def early_failure(ollama, *args, max_seconds):
+        assert max_seconds == 900
+        clients.append(ollama)
+        clock[0] += 840
+        return None, {"ended": "chat_error"}
+
+    monkeypatch.setattr(developer, "_tool_loop_proposal", early_failure)
+    code, result, seen = run_developer(sandbox, monkeypatch, chat_replies=[], json_replies=[
+        {"patches": [{"path": IMPLEMENTATION, "content": "VALUE = 2\n"}]}])
+    assert code == 0 and result["model_calls"] == 2 and seen["json"] == 1
+    assert clients[0].timeout == 60.0
 
 
 def test_tool_loop_is_off_by_default(sandbox, monkeypatch):

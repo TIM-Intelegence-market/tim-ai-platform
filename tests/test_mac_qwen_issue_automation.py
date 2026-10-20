@@ -27,6 +27,14 @@ def _contract(number, paths=("src/example.py", "tests/test_example.py")):
 
 
 READY = ("agent:qwen-ready", "status:ready", "priority:p1")
+HARD = ("agent:qwen-hard", "status:ready", "priority:p1")
+
+
+@pytest.fixture(autouse=True)
+def _no_ci_job_or_server(monkeypatch):
+    # These tests themselves run inside a CI job (Runner.Worker) on the Mac runner.
+    monkeypatch.setattr(runner, "ci_job_running", lambda: False)
+    monkeypatch.delenv("TIM_QWEN_HARD_URL", raising=False)
 
 
 class FakePipeline:
@@ -332,3 +340,254 @@ def test_triage_rejects_files_the_model_cannot_see_in_full(tmp_path):
     result = issue_triage.parse_triage(answer, _issue(64), tmp_path)
     assert result["decision"] == "skip" and "32000" in result["reason"]
     assert issue_triage.parse_triage(answer, _issue(64))["decision"] == "ready"
+
+
+def _check(name, conclusion, start="2026-10-12T22:56:14Z", end="2026-10-12T22:56:17Z"):
+    return {"__typename": "CheckRun", "name": name, "status": "COMPLETED", "conclusion": conclusion,
+            "startedAt": start, "completedAt": end}
+
+
+def test_stale_pr_is_kept_when_actions_started_no_runner(tmp_path):
+    no_runner = [_check("PR gate", "FAILURE"), _check("test", "FAILURE"), _check("TIM full suite", "FAILURE")]
+    pr = {"baseRefName": "platform-main", "createdAt": "2026-10-12T10:00:00Z", "author": {"login": WORKER},
+          "number": 7, "headRefName": "codex/issue-84-qwen", "mergeStateStatus": "BLOCKED",
+          "statusCheckRollup": no_runner}
+    ledger = IssueLedger(tmp_path / "l.json")
+    ledger.start_attempt(84, "c")
+    later = 1_791_800_000.0 + runner.STALE_PR_SECONDS
+    pipeline = FakePipeline([], [pr])
+    assert runner._maintain_worker_prs(pipeline, ledger, merge=True, now=later) == {84}
+    assert not _gh(pipeline, "pr", "close") and not ledger.errors(84)
+    # A real test failure after minutes still retires the stale PR.
+    real = {**pr, "statusCheckRollup": [_check("PR gate", "SUCCESS"),
+                                        _check("test", "FAILURE", end="2026-10-12T23:09:00Z")]}
+    pipeline = FakePipeline([], [real])
+    assert runner._maintain_worker_prs(pipeline, ledger, merge=True, now=later) == set()
+    assert _gh(pipeline, "pr", "close")
+
+
+def test_quick_pr_gate_failure_alone_is_not_an_outage():
+    assert not runner._ci_unavailable({"statusCheckRollup": [_check("PR gate", "FAILURE")]})
+    assert not runner._ci_unavailable({"statusCheckRollup": []})
+
+
+def test_worker_prs_are_listed_without_checks_when_the_token_cannot_read_them(tmp_path):
+    class NoStatusRead(FakePipeline):
+        def github(self, *args):
+            if args[:2] == ("pr", "list") and "statusCheckRollup" in args[-1]:
+                self.calls.append(("gh",) + args)
+                raise PipelineError("GraphQL: Resource not accessible by personal access token "
+                                    "(search.nodes.0.statusCheckRollup)")
+            return super().github(*args)
+
+    pr = {"baseRefName": "platform-main", "createdAt": "2026-10-12T10:00:00Z", "author": {"login": WORKER},
+          "number": 1, "headRefName": "codex/issue-80-qwen", "mergeStateStatus": "CLEAN"}
+    pipeline = NoStatusRead([], [pr])
+    covered = runner._maintain_worker_prs(pipeline, IssueLedger(tmp_path / "l.json"), merge=True,
+                                          now=1_791_800_000.0)
+    assert covered == {80}
+    assert ("gh", "pr", "merge", "1", "--squash") in pipeline.calls
+    assert "statusCheckRollup" not in _gh(pipeline, "pr", "list")[-1][-1]
+
+
+def test_other_pr_list_errors_still_stop_the_run(tmp_path):
+    class Broken(FakePipeline):
+        def github(self, *args):
+            if args[:2] == ("pr", "list"):
+                raise PipelineError("HTTP 502")
+            return super().github(*args)
+
+    with pytest.raises(PipelineError, match="502"):
+        runner._maintain_worker_prs(Broken([]), IssueLedger(tmp_path / "l.json"), merge=True)
+
+
+def test_retired_pr_counts_an_attempt_without_deleting_the_branch_through_gh(tmp_path):
+    ledger = IssueLedger(tmp_path / "l.json")
+    ledger.start_attempt(90, "contract-a")
+    pr = {"baseRefName": "platform-main", "createdAt": "2026-10-12T10:00:00Z", "author": {"login": WORKER},
+          "number": 7, "headRefName": "codex/issue-90-qwen", "mergeStateStatus": "DIRTY"}
+    pipeline = FakePipeline([], [pr])
+    assert runner._maintain_worker_prs(pipeline, ledger, merge=True, now=1_791_800_000.0) == set()
+    close = _gh(pipeline, "pr", "close")
+    assert close and "--delete-branch" not in close[0]
+    assert ledger.errors(90)
+
+
+def test_self_update_says_why_it_skips_a_dirty_checkout(capsys):
+    class Dirty(FakePipeline):
+        def command(self, *args):
+            return {("git", "rev-parse", "HEAD"): "a" * 40,
+                    ("git", "rev-parse", "origin/platform-main"): "b" * 40,
+                    ("git", "status", "--porcelain", "--untracked-files=no"): " M CLAUDE.md"}.get(args, "")
+
+    assert runner.self_update(Dirty([])) is None
+    assert "local changes: M CLAUDE.md" in capsys.readouterr().err
+
+
+REAL_CI_JOB_RUNNING = runner.ci_job_running
+
+
+def _big_file_answer(tmp_path, chars):
+    (tmp_path / "src").mkdir(exist_ok=True)
+    (tmp_path / "src" / "big.py").write_text("x" * chars, encoding="utf-8")
+    return json.dumps({"decision": "ready", "reason": "groß", "objective": "Fix",
+                       "allowed_paths": ["src/big.py", "tests/test_big_new.py"],
+                       "tests": ["tests/test_big_new.py"]})
+
+
+def test_triage_routes_files_only_the_server_model_can_see_to_agent_qwen_hard(tmp_path):
+    answer = _big_file_answer(tmp_path, 40_000)
+    hard = issue_triage.parse_triage(answer, _issue(80), tmp_path, allow_hard=True)
+    assert hard["decision"] == "ready" and hard["hard"] is True
+    assert issue_triage.ready_label(hard) == "agent:qwen-hard"
+    assert "Server-Modell" in issue_triage.ready_comment(hard)
+    assert issue_triage.parse_triage(answer, _issue(80), tmp_path)["decision"] == "skip"
+    huge = _big_file_answer(tmp_path, 120_000)
+    result = issue_triage.parse_triage(huge, _issue(80), tmp_path, allow_hard=True)
+    assert result["decision"] == "skip" and "96000" in result["reason"]
+    small = issue_triage.parse_triage(_big_file_answer(tmp_path, 1_000), _issue(80), tmp_path, allow_hard=True)
+    assert small["hard"] is False and issue_triage.ready_label(small) == "agent:qwen-ready"
+    assert "96000" in issue_triage.triage_prompt(_issue(80), allow_hard=True)
+    assert "32000" in issue_triage.triage_prompt(_issue(80))
+
+
+def test_triage_labels_large_file_issue_for_the_server_while_the_tunnel_answers(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    answer = _big_file_answer(repo, 40_000)
+    monkeypatch.setattr(issue_triage, "ask_claude", lambda prompt, root: answer)
+    monkeypatch.setattr(runner, "_hard_backend", lambda: ("http://127.0.0.1:11435", "qwen3-coder:30b"))
+    pipeline = FakePipeline([_issue(81, body="groß")], repository=repo)
+    assert "#81 prepared" in runner.process_one(pipeline, tmp_path / "state", pilot_issue=None,
+                                                codex_fallback=False, merge=True, triage=True)
+    assert _gh(pipeline, "issue", "edit")[0][-1] == "agent:qwen-hard,status:ready,priority:p1"
+
+
+def test_hard_issue_waits_for_the_server_instead_of_spending_attempts(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)
+    monkeypatch.setattr(runner, "_run_local_task", lambda *a, **k: pytest.fail("ran without server"))
+    pipeline = FakePipeline([_issue(82, HARD, _contract(82))])
+    assert runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
+                              merge=True) == "No eligible Mac Qwen issue."
+    assert not IssueLedger(tmp_path / "issue-ledger.json").entry(82).get("attempts")
+    assert not _gh(pipeline, "issue", "edit")
+
+
+@pytest.mark.parametrize("prior_attempt", [False, True])
+def test_server_disappearing_after_selection_preserves_retry_budget(tmp_path, monkeypatch, prior_attempt):
+    backend = iter([("http://127.0.0.1:11435", "qwen3-coder:30b"), None])
+    monkeypatch.setattr(runner, "_hard_backend", lambda: next(backend))
+    monkeypatch.setattr(runner, "_run_task_group", lambda *a, **k: pytest.fail("started Mac fallback"))
+    monkeypatch.setattr(runner, "_clear_leftovers", lambda *a, **k: None)
+    issue = _issue(82, HARD, _contract(82))
+    ledger = IssueLedger(tmp_path / "issue-ledger.json")
+    if prior_attempt:
+        digest = issue_triage.contract_hash(build_task(issue))
+        ledger.start_attempt(82, digest)
+        ledger.record_failure(82, digest, "previous genuine model failure")
+    before = dict(ledger.entry(82))
+    pipeline = FakePipeline([issue])
+    message = runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False, merge=False)
+    assert "waiting for server model" in message
+    assert IssueLedger(tmp_path / "issue-ledger.json").entry(82) == before
+    assert not _gh(pipeline, "issue", "edit")
+    assert not _gh(pipeline, "issue", "comment")
+    assert not _gh(pipeline, "pr", "create")
+
+
+def test_no_issue_job_starts_while_a_ci_job_runs_but_prs_are_still_kept(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "ci_job_running", lambda: True)
+    monkeypatch.setattr(runner, "_run_local_task", lambda *a, **k: pytest.fail("ran during CI"))
+    monkeypatch.setattr(issue_triage, "ask_claude", lambda *a: pytest.fail("triaged during CI"))
+    pipeline = FakePipeline([_issue(83, READY, _contract(83)), _issue(84)])
+    assert "paused" in runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
+                                          merge=True, triage=True)
+    assert _gh(pipeline, "pr", "list")
+    assert "#83" in runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
+                                       merge=True, dry_run=True)
+
+
+def test_ci_job_detection(monkeypatch):
+    class Done:
+        def __init__(self, code):
+            self.returncode = code
+
+    monkeypatch.delenv("TIM_WORKER_CI_PAUSE", raising=False)
+    monkeypatch.setattr(runner.subprocess, "run", lambda args, **kw: Done(0 if "Runner.Worker" in args else 1))
+    assert REAL_CI_JOB_RUNNING() is True
+    monkeypatch.setenv("TIM_WORKER_CI_PAUSE", "0")
+    assert REAL_CI_JOB_RUNNING() is False
+    monkeypatch.delenv("TIM_WORKER_CI_PAUSE")
+    monkeypatch.setattr(runner.subprocess, "run", lambda args, **kw: Done(1))
+    assert REAL_CI_JOB_RUNNING() is False
+
+    def missing(*_a, **_k):
+        raise FileNotFoundError("pgrep")
+
+    monkeypatch.setattr(runner.subprocess, "run", missing)
+    assert REAL_CI_JOB_RUNNING() is False
+
+
+def test_hard_run_widens_file_limit_and_model_context(monkeypatch):
+    from scripts import run_local_qwen_developer as developer
+    from src.local_first import qwen_tool_loop
+
+    monkeypatch.delenv("TIM_QWEN_HARD_RUN", raising=False)
+    assert developer._writable_limit() == 32_000
+    assert qwen_tool_loop.chat_options()["num_ctx"] == 32768
+    monkeypatch.setenv("TIM_QWEN_HARD_RUN", "1")
+    assert developer._writable_limit() == issue_triage.MAX_HARD_CONTEXT_FILE_CHARS
+    assert qwen_tool_loop.chat_options()["num_ctx"] == 65536
+    assert qwen_tool_loop.CHAT_OPTIONS["num_ctx"] == 32768
+
+
+def test_failed_attempt_names_its_cause_for_the_blocked_comment(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)
+    task = build_task(_issue(83, READY, _contract(83)))
+    state = tmp_path / ".tim/local-first"
+
+    def developer(*_args, **_kwargs):
+        (state / "developer-results").mkdir(parents=True)
+        (state / "developer-results" / "github-issue-83.json").write_text(json.dumps({
+            "reason": "QWEN_REPAIR_EXHAUSTED:tool loop ended without a patch (budget) password=hunter2",
+            "codex_fallback_error": "ProposalError", "codex_fallback_detail": "codex exited 1: usage limit",
+            "claude_fallback_error": "ProposalError",
+            "tool_loop": {"ended": "budget"}}), encoding="utf-8")
+        return 2
+
+    monkeypatch.setattr(runner, "_run_task_group", developer)
+    with pytest.raises(PipelineError) as raised:
+        runner._run_local_task(tmp_path, task, codex_fallback=True, claude_fallback=True)
+    message = str(raised.value)
+    assert message.startswith("acceptance gate not passed: exit=2")
+    assert "codex=codex exited 1: usage limit" in message and "claude=ProposalError" in message
+    assert "tool_loop=budget" in message and "hunter2" not in message
+
+
+def test_failed_attempt_without_any_result_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)
+    monkeypatch.setattr(runner, "_run_task_group", lambda *a, **k: 1)
+    with pytest.raises(PipelineError, match="exit=1; no developer result"):
+        runner._run_local_task(tmp_path, build_task(_issue(84, READY, _contract(84))), codex_fallback=False)
+
+
+@pytest.mark.parametrize("field", ["codex_fallback_detail", "claude_fallback_detail", "reason"])
+@pytest.mark.parametrize("message", [
+    "Authorization: Bearer synthetic-credential-value-123456",
+    "Authorization: Basic synthetic-credential-value-123456",
+    '\"Authorization\": \"Bearer synthetic-credential-value-123456\"',
+    'password="synthetic-credential-value-123456 with spaces"',
+])
+def test_failure_detail_scrubs_complete_credentials(tmp_path, field, message):
+    result = tmp_path / "result.json"
+    result.write_text(json.dumps({field: message}))
+    detail = runner._failure_detail(2, result, tmp_path / "missing.json")
+    assert "synthetic-credential" not in detail and "with spaces" not in detail
+    assert "<REDACTED>" in detail
+
+
+def test_failure_detail_scrubs_known_tokens_before_truncation(tmp_path):
+    result = tmp_path / "result.json"
+    result.write_text(json.dumps({"codex_fallback_detail": "x" * 65 + " ghp_" + "a" * 32}))
+    detail = runner._failure_detail(2, result, tmp_path / "missing.json")
+    assert "ghp_" not in detail

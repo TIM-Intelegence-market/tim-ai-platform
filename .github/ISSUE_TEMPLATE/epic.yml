@@ -1,0 +1,46 @@
+name: Epic oder Sammelvorhaben
+description: Mehrere verlinkte Ergebnisse koordinieren
+labels: ["type:epic", "status:roadmap"]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Ziel und Grenzen
+      description: Fachliches Gesamtergebnis und ausgeschlossener Umfang.
+    validations:
+      required: true
+  - type: textarea
+    id: progress
+    attributes:
+      label: Aktueller Stand und erledigte Ergebnisse
+      description: Datum, Status und verlinkte Belege; gemergte Bausteine von integrierten Ergebnissen unterscheiden.
+    validations:
+      required: true
+  - type: textarea
+    id: children
+    attributes:
+      label: Teilaufgaben und Restarbeiten
+      description: Verlinkte Checkliste; erledigte Teilaufgaben abhaken. Keine doppelten Aufträge.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Abhängigkeiten und Reihenfolge
+      description: Nur tatsächliche Blocker; parallel mögliche Arbeiten ausdrücklich nennen.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Gesamtabnahme
+      description: Integrations- und Betriebsnachweise für den Abschluss des gesamten Vorhabens.
+    validations:
+      required: true
+  - type: textarea
+    id: next
+    attributes:
+      label: Nächster Schritt und Zuständigkeit
+      description: Die nächste konkrete Teilaufgabe mit verantwortlicher Person oder Rolle.
+    validations:
+      required: true

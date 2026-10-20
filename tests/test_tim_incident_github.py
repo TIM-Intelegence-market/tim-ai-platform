@@ -22,7 +22,7 @@ import pytest
 
 from src.task_governance import CreateNotSent, GitHubError, MappingState, TaskRegistry, fingerprint_marker
 from src.task_governance.create_authority import CreateNotAuthorized, authority_body
-from src.task_governance.github_gateway import BODY_BEGIN, BODY_END, _NotSent
+from src.task_governance.github_gateway import BODY_BEGIN, BODY_END, _NotSent, claim_label
 from src.tim_incident import github as gh
 from src.tim_incident import github_app
 from src.tim_incident.policy import CONTROL_LABELS, LABEL_ALLOWLIST, NOT_CONFIGURED, load_policy, load_settings
@@ -324,11 +324,15 @@ def test_network_down_spools_then_delivers_in_order(world):
     report = world.run(advance=900)
     assert (report.reporting, report.exit_code, report.pending) == ('on', 0, 0)
     a, b = world.incidents()
+    claim_a = f'/repos/{REPO}/labels/{claim_label(gh.task_request("DATA_FLOW", EP, HOST).fingerprint)}'
+    claim_b = f'/repos/{REPO}/labels/{claim_label(gh.task_request("BACKUP", "20261007T0316Z", HOST).fingerprint)}'
     assert rest.repo_writes() == [
-        ('POST', f'/repos/{REPO}/issues'), ('POST', f'/repos/{REPO}/issues/{a}/labels'),
+        ('POST', f'/repos/{REPO}/labels'), ('POST', f'/repos/{REPO}/issues'), ('DELETE', claim_a),   # create under the claim (#68)
+        ('POST', f'/repos/{REPO}/issues/{a}/labels'),
         ('POST', f'/repos/{REPO}/issues/{a}/comments'),                    # refused before sending, then sent
         ('POST', f'/repos/{REPO}/issues/{a}/comments'),
-        ('POST', f'/repos/{REPO}/issues'), ('POST', f'/repos/{REPO}/issues/{b}/labels'),
+        ('POST', f'/repos/{REPO}/labels'), ('POST', f'/repos/{REPO}/issues'), ('DELETE', claim_b),
+        ('POST', f'/repos/{REPO}/issues/{b}/labels'),
         ('POST', f'/repos/{REPO}/issues/{a}/comments'), ('PATCH', f'/repos/{REPO}/issues/{a}'),
     ]
     assert len(rest.bot_comments(a)) == 2 and rest.issues[a]['state'] == 'closed'
@@ -465,7 +469,29 @@ def test_create_that_never_left_is_released_once_the_network_is_back(world):
     report = world.run(advance=900)
     assert report.reporting == 'on' and report.pending == 0 and len(world.incidents()) == 1
     reasons = [i['reason'] for i in world.reporter.registry().incidents(fp)]
-    assert 'CREATE_UNCERTAIN' not in reasons
+    assert 'CREATE_UNCERTAIN' not in reasons and 'STALE_CLAIM_REPLACED' not in reasons
+    deletes = [path for method, path in rest.repo_writes() if method == 'DELETE']
+    assert len(deletes) == 2 and all(path.endswith(claim_label(fp)) for path in deletes)   # released with the row, then after the create
+    assert rest.labels == {}
+
+
+def test_a_failed_listing_does_not_lose_the_remembered_unsent_create(world):
+    """The token of a proven-unsent create stays remembered until the release ran; one bad listing in between must not
+    turn the row into CREATE_UNCERTAIN after its lease."""
+    rest = world.rest
+    rest.down_after_create_attempt = True
+    world.run(entry('open'))
+    fp = gh.task_request('DATA_FLOW', EP, HOST).fingerprint
+    token = world.reporter.registry().get(fp).claim_token
+    rest.down = rest.down_after_create_attempt = False
+    rest.fail[('GET', r'/issues$')] = 503                              # the listing is down on the next run
+    report = world.run(advance=900)
+    assert report.pending == 1 and world.state()['not_sent'] == {fp: token}
+    del rest.fail[('GET', r'/issues$')]
+    report = world.run(advance=900)
+    assert report.pending == 0 and len(world.incidents()) == 1 and world.state()['not_sent'] == {}
+    reasons = [i['reason'] for i in world.reporter.registry().incidents(fp)]
+    assert 'CREATE_UNCERTAIN' not in reasons and rest.labels == {}
 
 
 def test_create_uncertain_waits_for_the_confirm_file(world):
@@ -611,12 +637,12 @@ def test_rate_and_comment_limits(tmp_path):
     assert len(changed.rest.bot_comments(number)) == 3                               # 3 CHANGED per episode
 
     budget = World(tmp_path / 'budget', policy=dataclasses.replace(
-        POLICY, rate_limits=dataclasses.replace(POLICY.rate_limits, writes_per_run=4)))
+        POLICY, rate_limits=dataclasses.replace(POLICY.rate_limits, writes_per_run=6)))      # one create (claim, create, release, labels) plus a comment
     report = budget.run(entry('open'), entry('comment'), entry('open', cls='DISK', episode='20261007T0320Z'))
-    assert report.writes <= 4 and report.pending >= 1
+    assert report.writes <= 6 and report.pending >= 1
     while report.pending:
         report = budget.run(advance=900)
-        assert report.writes <= 4
+        assert report.writes <= 6
     assert len(budget.incidents()) == 2
 
 

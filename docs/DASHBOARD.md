@@ -35,6 +35,17 @@ Freigabe (V2-Bereitschaft) · System (Sicherheit, Audit & Evidenz, Graphify & MC
 Werkzeuge (Recherche-Werkzeug, Pilotansicht). Below 820 px the sidebar becomes a horizontally
 scrollable bar above the status matrix.
 
+## Live updates
+
+`auto_refresh.html` polls `/api/state` every 5 s for the header badges. The page body is
+server-rendered, so the script also re-renders `#main-content` from the same URL when the live
+state changed (at most every 15 s, at least every 60 s). Open `<details>`, filter values and the
+scroll position are kept; no refresh happens while a form field has focus, text is selected or the
+research tool holds results. A view older than 2 minutes is flagged in the status button, and a
+click on it forces a refresh. Queue depth in the pipeline comes from the live process when it was
+measured within 120 s (`system_health.queue_depth_measured_at`), otherwise from
+`queue_metrics.json`. Persisted test evidence shows its age and is marked `veraltet` after 7 days.
+
 ## Design and security rules
 
 - Dark Control Center theme. Status is never colour alone: badges carry ✓ / ! / ✕ / ◷ plus text.

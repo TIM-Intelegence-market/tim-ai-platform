@@ -17,6 +17,7 @@ from pathlib import Path
 import subprocess
 import xml.etree.ElementTree as ET
 
+from src.bugfixer.processing import redact_text
 from src.task_engine.repair_executor import sha256_file, workspace_violations
 
 COLLECTOR_ID = 'src.task_engine.evidence_collector'
@@ -78,9 +79,16 @@ class EvidenceCollector:
                                     timeout=self.timeout, env=bytecode_free_env())
         except subprocess.TimeoutExpired as error:
             raise ReproductionFailed(f'{name}: tests did not finish within {self.timeout}s') from error
-        summary = junit_summary(junit)
+        stdout_tail = redact_text((result.stdout or '')[-4000:])
+        stderr_tail = redact_text((result.stderr or '')[-4000:])
+        try:
+            summary = junit_summary(junit)
+        except (OSError, ET.ParseError) as error:
+            raise ReproductionFailed(f'{name}: JUnit report missing or unreadable (exit status {result.returncode}): '
+                                     f'{stderr_tail[-500:]}') from error
         return {'exit_status': result.returncode, 'tests': list(tests),
-                'junit': {'path': str(junit.resolve()), 'sha256': sha256_file(junit)}, **summary}
+                'junit': {'path': str(junit.resolve()), 'sha256': sha256_file(junit)},
+                'stdout_tail': stdout_tail, 'stderr_tail': stderr_tail, **summary}
 
     def probe(self, name):
         if not self.recipe.probe:

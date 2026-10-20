@@ -211,6 +211,44 @@ def test_explicit_trusted_authors_override_the_repository_owner():
     assert "#15 — Held: Expliziter Blocker" in build_board(pm.collect_snapshot())["board"]
 
 
+def test_current_structured_body_overrides_historical_scope_and_comments():
+    body = ("<!-- TIM_ISSUE_STRUCTURE_V1 -->\nNEXT_ACTION: verify current result\n"
+            "Depends on: none\n<details>\nSTATUS: BLOCKED\nDepends on #13\n"
+            "NEXT_ACTION=obsolete implementation\n</details>")
+    output, _ = _board_for(
+        [issue(12, "Verify", author="owner", body=body), issue(13, "Other")],
+        comments={12: [{"body": "STATUS: BLOCKED\nNEXT_ACTION=old comment",
+                        "user": {"login": "owner"}}]})
+    assert "#12 — Verify: Offen und ohne dokumentierte harte Abhängigkeit" in output["board"]
+    assert "verify current result" in output["board"]
+    assert "obsolete implementation" not in output["board"]
+    assert "old comment" not in output["board"]
+
+
+def test_untrusted_structured_marker_does_not_discard_trusted_blocker():
+    output, _ = _board_for(
+        [issue(12, "Held", body="<!-- TIM_ISSUE_STRUCTURE_V1 -->\nNEXT_ACTION=unsafe\n<details>history</details>")],
+        comments={12: [{"body": "STATUS: BLOCKED", "user": {"login": "owner"}}]})
+    assert "#12 — Held: Expliziter Blocker" in output["board"]
+    assert "unsafe" not in output["board"]
+
+
+@pytest.mark.parametrize("label, expected", [
+    ("status:blocked", "BLOCKED"),
+    ("status:waiting", "WAITING"),
+    ("status:roadmap", "WAITING"),
+])
+def test_explicit_status_labels_are_not_treated_as_ready(label, expected):
+    from src.agents.project_manager import classify_issue
+    item = {"number": 12, "title": "Task", "labels": [label], "updated_at": CLOCK}
+    assert classify_issue(item, "", {12}).status == expected
+
+
+def test_workflow_names_the_trusted_maintainer_in_the_organisation_repository():
+    workflow = (ROOT / ".github/workflows/tim-priority-board.yml").read_text()
+    assert "PRIORITY_TRUSTED_AUTHORS: uezeyiraydin-cell,fleckbarti-ai" in workflow
+
+
 def test_titles_and_actions_are_escaped_and_cannot_ping_anyone():
     output, _ = _board_for(
         [issue(12, "Fix `x` for @alice **now** <!-- hide -->", labels=("status:active",), author="owner",

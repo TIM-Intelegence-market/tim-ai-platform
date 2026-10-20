@@ -192,6 +192,7 @@ def test_codex_patch_fallback_cannot_expand_paths(sandbox, monkeypatch):
     code, result, _, tests = run_fake(sandbox, monkeypatch, [TimeoutError()])
     assert code == 2 and result["reason"] == "QWEN_ERROR:TimeoutError"
     assert result["codex_fallback_error"] == "ContractError"
+    assert "src/other.py" in result["codex_fallback_detail"]
     assert result["codex_fallback_calls"] == 1 and not tests
     assert not (sandbox / "src/other.py").exists()
 
@@ -208,9 +209,24 @@ def test_claude_patch_fallback_runs_when_codex_fails(sandbox, monkeypatch):
     assert code == 0 and result["status"] == "VERIFYING"
     assert result["codex_fallback_calls"] == 1 and result["claude_fallback_calls"] == 1
     assert result["codex_fallback_error"] == "RuntimeError"
+    assert result["codex_fallback_detail"] == "usage limit"
     assert result["fallback_provider"] == "CLAUDE_CLI"
     assert tests == [[TEST]]
     assert (sandbox / IMPLEMENTATION).read_text() == "VALUE = 2\n"
+
+
+@pytest.mark.parametrize("provider", ["CODEX", "CLAUDE"])
+def test_fallback_result_scrubs_authorization_before_persistence(sandbox, monkeypatch, provider):
+    from src.local_first import claude_cli_fallback, codex_patch_fallback
+
+    monkeypatch.setenv(f"TIM_{provider}_PATCH_FALLBACK", "1")
+    helper = codex_patch_fallback if provider == "CODEX" else claude_cli_fallback
+    monkeypatch.setattr(helper, "propose", lambda _: (_ for _ in ()).throw(
+        RuntimeError("Authorization: Bearer synthetic-credential-value-123456")))
+    code, result, _, tests = run_fake(sandbox, monkeypatch, [TimeoutError()])
+    assert code == 2 and not tests
+    assert "synthetic-credential" not in json.dumps(result)
+    assert "<REDACTED>" in result[f"{provider.lower()}_fallback_detail"]
 
 
 def test_claude_patch_fallback_cannot_expand_paths(sandbox, monkeypatch):
@@ -458,3 +474,53 @@ def test_readonly_context_keeps_small_budget(
         len(item["content"])
         == developer.MAX_CONTEXT_CHARS
     )
+
+
+def test_compact_server_prompt_preserves_contract_code_rules_and_skill_instructions():
+    import copy
+    payload = {
+        "task": {"task_id": "T-1", "objective": "Implement precisely", "allowed_paths": ["src/a.py"],
+                 "tests": ["tests/test_a.py"], "execution_policy": {"wip_limit": 1}},
+        "context": [{"path": "src/a.py", "sha256": "abc", "content": "EXACT = 'ä'\n", "complete": True}],
+        "allowed_paths_exact": ["src/a.py"], "required_tests_exact": ["tests/test_a.py"],
+        "required_outputs_exact": ["tests/test_a.py"],
+        "hard_rules": ["Never disable TLS", "No live execution"],
+        "skills": [{"name": "safety", "description": "optional summary", "instructions": "Keep all gates", "trust": "TIM_GUIDANCE"}],
+        "local_documentation": [{"path": "docs/a.md", "excerpt": "L1: relevant\n" + "x" * 650, "trust": "UNTRUSTED_REFERENCE"},
+                                {"path": "docs/b.md", "excerpt": "optional"}],
+    }
+    before = copy.deepcopy(payload)
+    compact = developer._compact_server_prompt(payload)
+    assert payload == before  # snapshot binding and subsequent retries still use the original contract
+    for key in ("hard_rules", "allowed_paths_exact", "required_tests_exact", "required_outputs_exact"):
+        assert compact[key] == payload[key]
+    assert compact["context"][0]["content"] == payload["context"][0]["content"]
+    assert compact["context"][0]["complete"] is True
+    assert compact["skills"][0]["instructions"] == "Keep all gates"
+    assert compact["skills"][0]["trust"] == "TIM_GUIDANCE"
+    assert compact["task"]["objective"] == "Implement precisely"
+    assert compact["task"]["execution_policy"] == {"wip_limit": 1}
+    assert len(compact["local_documentation"]) == 1
+    assert compact["local_documentation"][0]["excerpt"] == "L1: relevant"
+    assert compact["local_documentation"][0]["truncated"] is True
+    assert len(json.dumps(compact)) < len(json.dumps(payload))
+
+
+def test_prompt_compaction_only_for_small_server_runs(monkeypatch):
+    monkeypatch.setenv("TIM_QWEN_SERVER_RUN", "1")
+    monkeypatch.delenv("TIM_QWEN_HARD_RUN", raising=False)
+    task = {"task_id": "T-1", "objective": "same", "allowed_paths": ["src/a.py"], "tests": ["tests/test_a.py"]}
+    contract = {"allowed_paths": task["allowed_paths"], "tests": task["tests"], "required_outputs": [],
+                "context": [{"path": "src/a.py", "sha256": "abc", "content": "VALUE = 1\n", "complete": True}]}
+    compact = json.loads(developer._prompt(task, contract))
+    assert "sha256" not in compact["context"][0]
+    assert compact["context"][0]["content"] == "VALUE = 1\n"
+    for hard, server in (("1", "1"), (None, None)):
+        for key, value in (("TIM_QWEN_HARD_RUN", hard), ("TIM_QWEN_SERVER_RUN", server)):
+            if value is None:
+                monkeypatch.delenv(key, raising=False)
+            else:
+                monkeypatch.setenv(key, value)
+        full = json.loads(developer._prompt(task, contract))
+        assert full["context"][0]["sha256"] == "abc"
+        assert full["task"] == task

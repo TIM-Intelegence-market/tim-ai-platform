@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .create_authority import UnrestrictedCreateAuthority
 from .engine_bridge import sync_engine_task_to_issue
-from .github_gateway import GitHubError, GitHubRestGateway
+from .github_gateway import GitHubError, GitHubRestGateway, claim_label
 from .registry import TaskRegistry
 from .sync import EnsureOutcome
 
@@ -103,6 +103,8 @@ def run_roundtrip(gateway, workdir, *, login, run_id=None):
         request = request_from_engine_task(engine.get_task(task_id), mission_id='LIVECHECK', phase_id='P0')
         found = gateway.find_issues(request.fingerprint, request.key)
         _check(results, 'exactly_one_issue_carries_the_marker', lambda: ([f.number for f in found] == [first.issue_number], f'{[f.number for f in found]}'))
+        label = claim_label(request.fingerprint)             # the create happened under the create claim (#68): it must be gone again
+        _check(results, 'create_claim_released', lambda: (gateway.create_claim_holder(request.fingerprint) is None, f'label {label} absent'))
         results.append({'name': 'cleanup', 'ok': True, 'detail': f'issue #{first.issue_number} stays open: close it by hand (the gateway cannot close)'})
     finally:
         repository.close()

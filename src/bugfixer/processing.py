@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import ipaddress
 import json
 import re
 
@@ -15,9 +16,31 @@ _URI = re.compile(r'([a-z][a-z0-9+.-]*://)[^\s/@]*@', re.I)
 _HEADER = re.compile(r'\b(authorization|proxy-authorization|cookie|set-cookie)\s*[:=][^\r\n]*', re.I)
 _BEARER = re.compile(r'\bBearer\s+[^\s,;]+', re.I)
 _PAIR = re.compile(r'''\b(password|passwd|passphrase|secret|token|access_token|refresh_token|api[_-]?key|credential|private[_-]?key)\b["']?\s*[:=]\s*(?:\[REDACTED\]|"[^"\n]*"|'[^'\n]*'|[^\s,;&}\]]+)''', re.I)
+# Keyword-free token shapes, copied verbatim from src/tim_incident/redaction.py (no import: keep modules decoupled).
+_TOKENS = (
+    re.compile(r'\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*'),
+    re.compile(r'\bgithub_pat_[A-Za-z0-9_]{16,}'),
+    re.compile(r'\bgh[pousr]_[A-Za-z0-9]{16,}'),
+    re.compile(r'\bsk-[A-Za-z0-9._-]{16,}'),
+    re.compile(r'\b(?:AKIA|ASIA)[0-9A-Z]{16}\b'),
+    re.compile(r'\bxox[abposr]-[A-Za-z0-9-]{10,}'),
+)
+# IP and e-mail patterns, copied from src/tim_incident/redaction.py (loopback/unspecified and times like 03:15:00 stay).
+_IPV6 = re.compile(r'(?<![0-9A-Za-z:.])(?:[0-9A-Fa-f]{0,4}:){2,7}(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9A-Fa-f]{0,4})'
+                   r'(?![0-9A-Za-z:])')
+_IPV4 = re.compile(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?!\d|\.\d)')
+_EMAIL = re.compile(r'(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b')
 _UUID = re.compile(r'\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b', re.I)
 _TIMESTAMP = re.compile(r'\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?\b')
 
+
+FINGERPRINT_VERSION = 2
+_HEX_ID = re.compile(r'\b0x[0-9a-fA-F]+\b|\b(?=[0-9a-fA-F]*[0-9])(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{8,}\b')
+_DURATION = re.compile(
+    r'(?<!(?:[A-Za-z0-9_.]))\d+(?:\.\d+)?(?=\s?(?:ms|us|ns|s|sec|secs|seconds?|min|minutes?|h|hours?)\b)', re.I)
+_COUNTER = re.compile(
+    r'(?i)(?<!(?:[A-Za-z0-9]))(id|request|req|attempt|retry|try|seq|sequence|offset|pid|tid|thread|job|task|order|trade)'
+    r'([\s:=#_-]{1,3})\d+\b')
 
 _LEGACY_RECORD = re.compile(
     r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} '
@@ -33,12 +56,28 @@ def _is_bugfixer_component(component: str) -> bool:
                for root in ('bugfixer', 'src.bugfixer'))
 
 
+def _ip(match, kind):
+    text = match[0]
+    if kind is ipaddress.IPv6Address and '::' not in text and text.count(':') != 7:
+        return text  # times like 03:15:00 and MAC addresses are not addresses here
+    try:
+        address = kind(text)
+    except ValueError:
+        return text
+    return text if address.is_loopback or address.is_unspecified else '[IP]'
+
+
 def redact_text(text: str) -> str:
     text = _PEM.sub(REDACTED, text)
     text = _URI.sub(r'\1[REDACTED]@', text)
     text = _HEADER.sub(lambda m: m[1] + ': ' + REDACTED, text)
     text = _BEARER.sub('Bearer ' + REDACTED, text)
-    return _PAIR.sub(lambda m: m[1] + '=' + REDACTED, text)
+    text = _PAIR.sub(lambda m: m[1] + '=' + REDACTED, text)
+    for pattern in _TOKENS:
+        text = pattern.sub(REDACTED, text)
+    text = _IPV6.sub(lambda m: _ip(m, ipaddress.IPv6Address), text)
+    text = _IPV4.sub(lambda m: _ip(m, ipaddress.IPv4Address), text)
+    return _EMAIL.sub('[EMAIL]', text)
 
 
 def redact(value):
@@ -129,8 +168,12 @@ def canonical(event: Event) -> str:
     fields = event.safe_dict()
     fields.pop('timestamp')
     for key in ('message', 'stack'):
-        fields[key] = re.sub(r'\s+', ' ', _UUID.sub('<uuid>', _TIMESTAMP.sub('<timestamp>', fields[key]))).strip()
-    return json.dumps({'fingerprint_version': 1, **fields}, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+        value = _UUID.sub('<uuid>', _TIMESTAMP.sub('<timestamp>', fields[key]))
+        value = _HEX_ID.sub('<hex>', value)
+        value = _DURATION.sub('<n>', value)
+        value = _COUNTER.sub(r'\1\2<n>', value)
+        fields[key] = re.sub(r'\s+', ' ', value).strip()
+    return json.dumps({'fingerprint_version': FINGERPRINT_VERSION, **fields}, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
 
 
 def fingerprint(event: Event) -> str:

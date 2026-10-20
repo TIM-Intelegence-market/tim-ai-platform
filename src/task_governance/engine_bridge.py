@@ -8,6 +8,8 @@ BLOCKED sync leaves the engine untouched.
 import hashlib
 import re
 
+from src.task_engine.repository import TaskNotFound
+
 from .identity import TaskRequest
 from .registry import EngineBindingConflict
 from .sync import EnsureOutcome, ReopenPolicy, ensure_task
@@ -19,6 +21,10 @@ STEP_PREFIX = 'github_issue:'
 
 class IdentityDrift(ValueError):
     """The engine task is already bound to another identity (phase, type, target, schema): a second issue would follow."""
+
+
+class EngineTaskMissing(IdentityDrift):
+    """The engine task does not exist (any more); nothing was written and GitHub was not called."""
 
 
 def _target_for(task_id) -> str:
@@ -56,7 +62,12 @@ def sync_engine_task_to_issue(engine, task_id, registry, gateway, *, mission_id,
     The registry holds the task-to-issue mapping (`issue_for_engine_task`). `record_checkpoint=True` additionally writes the
     engine checkpoint `github_issue:<fingerprint[:16]>` for a task that is still active when the call ends; that write bumps the
     task revision, and because the engine's checkpoint has no state guard a task blocked in the last instant can still get it."""
-    task = engine.get_task(task_id)
+    try:
+        task = engine.get_task(task_id)
+    except TaskNotFound:
+        binding = registry.engine_binding(task_id)
+        known = 'no binding' if binding is None else f'binding {str(binding[0])[:16]}'
+        raise EngineTaskMissing(f'engine task {task_id} does not exist ({known}); nothing was synced') from None
     request = request_from_engine_task(task, mission_id=mission_id, phase_id=phase_id, target=target,
                                        schema_version=schema_version, task_type=task_type)
     try:

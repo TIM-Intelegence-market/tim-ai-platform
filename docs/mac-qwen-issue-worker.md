@@ -67,6 +67,82 @@ Checks or commit-status APIs. The worker therefore uses the PR merge state and
 GitHub's enforced ruleset for the final gate. Read-only CI diagnosis can use a
 separate account with Checks read access.
 
+## Preparing large issues for the worker
+
+Check for existing child issues before splitting an epic. Prepare one complete
+`TIM_QWEN_TASK_V1` per executable child, validate it with `build_task` and
+`issue_triage._bound_task` against the current repository, and verify that the
+requested changes fit the patch executor's six-file change limit. Reading
+additional test modules does not authorize changing them. Tests must be explicit
+and dependencies must use `Depends on #N` lines so the selector waits for them.
+
+The child gets `agent:qwen-ready` (or `agent:qwen-hard` when the validated context
+requires the server), `status:ready` and a P0/P1 priority. The parent keeps its
+real acceptance status and gains `agent:split` plus links to its executable
+children. Remove obsolete `agent:not-suitable` only after that mapping exists.
+The generated Priority Board is an `agent:coordination` overview, never a code
+task. Server acceptance evaluators can be isolated code tasks; real server,
+network, backup and cutover operations remain separate from those evaluators.
+
+## Hard issues on the server model
+
+### Prefer the server and keep it warm
+
+Set `TIM_QWEN_SERVER_PREFERRED=1` and `TIM_QWEN_SERVER_KEEP_WARM=1` in the Mac
+worker LaunchAgent environment, alongside the existing `TIM_QWEN_HARD_URL` and
+`TIM_QWEN_HARD_MODEL`. The installer preserves these settings from its environment.
+
+Small ready issues then use the installed server model too. The intake no longer
+depends on the Mac model being available while the server answers, and checks for
+new work every 30 seconds instead of five minutes. Hard issues still wait for the
+server on an outage; small issues may use the Mac fallback. File limits and test
+sandbox requirements remain those of each original issue contract.
+
+Server implementation and review requests use `keep_alive=-1`. One background
+thread in the coordinator also preloads the model with an empty request on startup
+and every five minutes, retrying after one minute on transport errors. It does not
+generate tokens or download models. Its context and batch size match the server
+worker, avoiding configuration changes between warmup, tool loop and review.
+It logs `TIM_SERVER_MODEL=WARM` or `UNAVAILABLE` independently of a long-running
+issue child. Restarting Ollama still requires reloading the model; the next warmup
+or real request performs that load.
+
+Processing remains serial with the current `OLLAMA_NUM_PARALLEL=1`. On the checked
+Xeon E3-1270 v6, Ollama has a 300% CPU quota, CPU affinity `2-3,6-7` and a 28 GiB
+cgroup memory limit, despite the host having 62 GiB RAM. The warm 64k-context model
+occupies about 25 GB and can bring its cgroup close to that limit. More simultaneous
+contexts need measured throughput and memory headroom before changing this setting.
+The resource isolation for PostgreSQL and TIM runtime remains in place.
+
+Useful pauses include local CI/test contention, an empty eligible queue, dependency
+waits and unavailable transport. Warming prevents avoidable model unloads during
+these pauses; it does not manufacture tasks or CPU load to make usage appear high.
+
+See [Ollama's residency and concurrency documentation](https://github.com/ollama/ollama/blob/main/docs/faq.mdx).
+
+tim-server holds `qwen3-coder:30b` (CPU only, 62 GB RAM). The Mac stays the
+only machine with GitHub access; the server only sees prompt in, text out.
+A LaunchAgent on the Mac (`com.tim.server-ollama-tunnel`) keeps an SSH tunnel
+from `127.0.0.1:11435` to the server's Ollama. The worker reads two variables:
+
+- `TIM_QWEN_HARD_URL`: loopback URL of the tunnel, e.g. `http://127.0.0.1:11435`.
+  Anything that is not loopback is ignored. Unset means no server model.
+- `TIM_QWEN_HARD_MODEL`: defaults to `qwen3-coder:30b`.
+
+An issue labelled `agent:qwen-hard` plus `status:ready` is picked like a
+`agent:qwen-ready` issue, but its local Qwen step runs against the server model
+with a 900 s request timeout. When the tunnel does not answer or the model is
+not installed there, the issue waits for the server without spending a repair
+attempt. This also holds when the server disappears between selection and
+starting the model process. Earlier genuine failures remain in the ledger.
+Codex and Claude fallbacks after a started model attempt are unchanged. The
+cold start of the 30B model takes about 2.5 min.
+
+Before any PR is opened, the server model reads the final diff once and writes
+up to five lines (`OK` or `PROBLEM` plus findings) into the PR body under
+"Reviewer (advisory, …)". That verdict never blocks the PR and is skipped when
+the server is unreachable.
+
 ## Automatic chain (no manual labelling)
 
 Since the automation change the LaunchAgent needs no manual step per issue. Every five minutes,
@@ -134,9 +210,13 @@ switch off with `--disable-qwen-tool-loop` or `TIM_QWEN_TOOL_LOOP=0`) Qwen first
 `/api/chat` tool calls: `list_dir`, `read_file` and `search_code` (read-only, `src/`, `tests/`,
 `docs/`), `run_required_tests` (sandboxed, at most twice), `check_patch` and `submit_patch`.
 No tool writes files or takes a shell command, and the submitted patch faces the same gates.
-The loop is capped at 12 steps and 10 minutes. Tool calls that Qwen prints as text are parsed
-as well, because Ollama's Qwen 3.5 parser is not reliable yet. If the loop ends without a
-patch, the worker makes its normal one-shot request. Each result records `tool_loop`
+The loop is capped at 12 steps and 10 minutes on the Mac. Heavy server runs use
+a shared 15-minute loop budget, including model loading, with each call bounded
+by the remaining budget. CPU prefill batches are limited to 256 tokens for
+these server calls. Tool calls that Qwen prints as text are parsed as well,
+because Ollama's Qwen 3.5 parser is not reliable yet. If the loop ends without a
+patch, the worker makes a structured one-shot request. Heavy server retries
+retain the same context and CPU batch settings. Each result records `tool_loop`
 statistics (native, text-parsed and invalid calls, calls per tool, how the loop ended) and
 the `test_sandbox` that ran.
 
@@ -147,10 +227,39 @@ the `test_sandbox` that ran.
 Issue contracts may not list `src/local_first/` or `src/llm/` either, so the worker cannot
 patch its own gates, sandbox or tool loop.
 
+GitHub issue runs share a 900-second generation budget between Qwen's tool loop
+and structured retry. A retry receives only the remaining time; after exhaustion,
+the configured CLI helpers still run. The build-queue supervisor does not repeat
+the entire provider chain inside an issue attempt: the issue ledger owns its two
+attempts. The outer process-group limit is 40 minutes, allowing for Qwen, both
+helpers, sandboxed verification and durable result writes. These limits do not
+change standalone local build-queue runs.
+The daemon allows 90 minutes for the whole intake, including the task, up to
+10 minutes of advisory review and up to 30 minutes waiting for GitHub's merge
+gate. Its timeout must not interrupt those nested stages.
+
 The local acceptance gate rejects a result whose passing test run was not sandboxed while
-`TIM_TEST_SANDBOX=required`. A task that hits the 30-minute limit has its whole process group
+`TIM_TEST_SANDBOX=required`. A task that hits the 40-minute limit has its whole process group
 stopped. The Seatbelt profile has not yet been tried on the Mac mini; if it blocks Python, the
 result names the failed probe.
 
 After pulling these changes on the Mac, rerun the installer so the LaunchAgent gets
 `TIM_TEST_SANDBOX` and `TIM_QWEN_TOOL_LOOP`, then restart it.
+
+### Kompakter Prompt für kleine Server-Aufgaben
+
+Kleine Aufgaben auf dem Server (`TIM_QWEN_SERVER_RUN=1`, ohne
+`TIM_QWEN_HARD_RUN=1`) senden die Vertragslisten nur einmal und lassen die
+lokal geprüften Snapshot-Hashes aus dem Modellprompt weg. Die Hashprüfung
+selbst bleibt unverändert. Pflichtdateien, Datei-Inhalte, harte Regeln,
+Ausführungsrichtlinie und Skill-Anweisungen bleiben vollständig erhalten.
+Nur optionale Dokumentationsauszüge werden auf einen Auszug mit höchstens
+600 Zeichen begrenzt; Kürzungen werden markiert. Skill-Beschreibungen werden
+weggelassen, ihre Anweisungen und Vertrauenskennzeichnung bleiben erhalten.
+
+Beim Auftrag #242 sank die Promptgröße gegenüber der vorherigen Version von
+22.219 auf 19.181 Zeichen (13,7 Prozent). Das ist eine Größenmessung, kein
+Nachweis einer entsprechenden Laufzeitverkürzung oder eines erfolgreichen
+Patches. Mac-Aufgaben und große Hard-Aufgaben behalten das volle Format.
+Die Kontextfenster-Einstellung bleibt gleich, damit das warm gehaltene
+Server-Modell nicht wegen wechselnder Kontextgrößen neu geladen werden muss.

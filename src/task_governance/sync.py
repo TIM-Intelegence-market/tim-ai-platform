@@ -5,7 +5,17 @@ from typing import Collection, Protocol
 
 _UNBLOCKABLE_BY_HINT = ('AMBIGUOUS_DUPLICATES', 'DUPLICATE_AFTER_CREATE', 'HINT_NOT_FOUND', 'HINT_INVALID')
 MIN_LEASE_FACTOR = 4      # lease must be at least this many times the gateway's worst-case create time
+CREATE_FRESHNESS_SECONDS = 80.0   # a create rests on a lookup and an authority answer at most this old (#68): 4 x the default
+                                  # create bound of 20 s, measured by the clock that moved further (monotonic or wall)
+HOLDER_HOST_CHARS = 10            # of the host name in the create-claim text, plus 6 hex of its hash (two hosts whose names
+                                  # share a prefix must not count as one; GitHub: 100 characters for a label description)
+HOLDER_REGISTRY_CHARS = 16        # of the registry id in that text (64 bits; the run id below is the identity that counts)
+RUN_ID_HEX = 12                   # the run id in that text: 48 random bits, drawn for every create attempt, stored in the row
 
+import hashlib
+import re
+import secrets
+import socket
 import time
 
 from .identity import TaskRequest
@@ -48,6 +58,11 @@ class IssueGateway(Protocol):
       predate the marker (e.g. #11 and #22-#65).
     - `create_issue` embeds the marker in the body.
     - `authorize_create` is asked before every create (#68 path A, see `create_authority.py`); a gateway without it never creates.
+    - `claim_create` takes the repository-wide create claim of the task, something the repository hands out at most once
+      per task until `release_create_claim` (the REST gateway: a label). It returns None when the claim is now ours, else
+      a text naming the holder. `create_claim_holder` reads that text (None when nobody holds the claim); the guard reads
+      it before every release, so a claim that another run holds by now is never deleted. A gateway without these
+      methods never creates either.
     """
     repository: str
     max_create_seconds: float   # REQUIRED: hard upper bound (enforced via `timeout`) of one create_issue call incl. retries
@@ -56,6 +71,9 @@ class IssueGateway(Protocol):
     def get_issue(self, number: int) -> IssueRef | None: ...
     def carries_marker(self, number: int, fingerprint: str) -> bool: ...   # the issue exists and still has the task marker
     def authorize_create(self, registry_id: str, trusted_authors) -> None: ...   # raise CreateNotAuthorized unless the repository designates this registry
+    def claim_create(self, fingerprint: str, holder: str) -> str | None: ...    # None: the create claim is ours; else who holds it
+    def create_claim_holder(self, fingerprint: str) -> str | None: ...        # the holder text, None when nobody holds the claim
+    def release_create_claim(self, fingerprint: str) -> None: ...
     def create_issue(self, request: TaskRequest, fingerprint: str, *, timeout: float) -> IssueRef: ...   # must enforce `timeout`
     def update_issue(self, number: int, request: TaskRequest, reason: str) -> None: ...
     def reopen_issue(self, number: int, request: TaskRequest, reason: str) -> None: ...
@@ -186,6 +204,12 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     if not won:
         return EnsureResult(EnsureOutcome.PENDING, mapping, False, None, f'claim held by {mapping.claimant}')
     token = mapping.claim_token
+    healed = None
+    if mapping.create_intent and registry.claim_ended(fp, mapping.create_run):
+        # The run that recorded this intent noted afterwards, after dropping its claim label, that no request left it; only
+        # its row release was lost (it crashed in between). The intent is stale, not a create that may have reached GitHub.
+        registry.clear_create_intent(fp, token, f'run {mapping.create_run} ended without a request; its intent is stale')
+        mapping, healed = registry.get(fp), mapping.create_run     # its label, if it still stands, goes with an adoption below
     if mapping.create_intent and mapping.github_repository \
             and _norm_repo(mapping.github_repository) != _norm_repo(gateway.repository):
         # The create that may have happened went to another repository: adopting or creating here could split the task.
@@ -226,12 +250,13 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
                                  candidates=[hinted.number])
         return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
     candidates = {m.number: m for m in matches}
+    stale_claim = mapping.create_run if mapping.create_intent else healed   # an uncertain create resolved here: its label goes
     if hinted is not None:
         candidates[hinted.number] = hinted
         dups = sorted((set(candidates) | set(legacy_issues)) - {hinted.number})
-        return _adopt(registry, gateway, fp, token, hinted, dups, request)
+        return _adopt(registry, gateway, fp, token, hinted, dups, request, claim_run=stale_claim)
     if len(candidates) == 1:
-        return _adopt(registry, gateway, fp, token, next(iter(candidates.values())), [], request)
+        return _adopt(registry, gateway, fp, token, next(iter(candidates.values())), [], request, claim_run=stale_claim)
     if len(candidates) > 1:
         numbers = sorted(candidates)
         blocked = registry.block(fp, 'AMBIGUOUS_DUPLICATES', f'matches={numbers}, no authoritative hint', token=token,
@@ -251,17 +276,88 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     try:
         _authorize_create(gateway, registry, trusted_authors)
     except CreateNotAuthorized as exc:
-        registry.release(fp, token)
-        last = registry.incidents(fp)[-1:]
-        if not last or (last[0]['reason'], last[0]['detail']) != ('CREATE_NOT_AUTHORIZED', str(exc)):     # a scheduler retries: say it once
-            registry.record_incident(fp, 'CREATE_NOT_AUTHORIZED', str(exc))
-        return EnsureResult(EnsureOutcome.BLOCKED, registry.get(fp), False, None, 'CREATE_NOT_AUTHORIZED')
+        return _create_refused(registry, fp, token, exc)
     except Exception:
         registry.release(fp, token)              # authority unreadable: nothing was created, try again on the next run
         raise
-    # Re-assert the claim and record the create intent right before the irreversible create.
-    if not registry.begin_create(fp, token, gateway.repository):
+    # Re-assert the claim and record the create intent right before the irreversible create. The run id is the identity
+    # of this attempt: it goes into the row and into the create claim below, and a registry file copied or restored from a
+    # backup cannot produce it again.
+    run = _new_run()
+    if not registry.begin_create(fp, token, gateway.repository, run):
         return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'claim lost before create')
+    # The repository-wide create claim (#68): the row above fences only this registry file, and no check of the designation
+    # can cover the moment of the request (a process may stand still between the two). The claim is something the
+    # repository hands out once per task (a label); every create happens under it and it is dropped only after the created
+    # issue is recorded, so a second creator either does not get it or, holding it, sees the issue in the lookup below.
+    try:
+        held = _claim_create(gateway, registry, fp, token, run)
+    except CreateNotAuthorized as exc:
+        return _create_refused(registry, fp, token, exc, not_sent=True)
+    except Exception:
+        registry.note_claim_ended(fp, run)       # no request leaves this run: a label it may have left can be replaced
+        registry.release(fp, token, create_not_sent=True)
+        raise
+    if held is not None:
+        registry.release(fp, token, create_not_sent=True)
+        _incident_once(registry, fp, 'GLOBAL_CLAIM_HELD', held)
+        return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'GLOBAL_CLAIM_HELD')
+    # Every path that gives up from here on, before the request: drop the label (only while it still names this run),
+    # note that this run ended without a request, then release the row. The note comes after the drop, so no run of this
+    # registry replaces the label while this run could still delete it by name; a crash after the note heals itself at the
+    # next takeover (see the top of the claim path), a crash before it leaves the intent to an operator.
+    try:
+        matches = _matches(gateway, fp, key, trusted_authors)
+    except UnknownIssueKind as exc:
+        _give_up_create_claim(gateway, registry, fp, run)
+        return _blocked_unknown(registry, fp, token, exc, created=False, create_not_sent=True)
+    except Exception:
+        _give_up_create_claim(gateway, registry, fp, run)
+        registry.release(fp, token, create_not_sent=True)
+        raise
+    if matches:                                  # created under an earlier claim and visible now that we hold it
+        try:
+            if len(matches) == 1:
+                return _adopt(registry, gateway, fp, token, matches[0], [], request)
+            numbers = sorted(m.number for m in matches)
+            blocked = registry.block(fp, 'AMBIGUOUS_DUPLICATES', f'matches={numbers}, no authoritative hint', token=token,
+                                     candidates=numbers)
+            return EnsureResult(EnsureOutcome.BLOCKED, blocked, False, None, blocked.block_reason)
+        finally:
+            _give_up_create_claim(gateway, registry, fp, run)
+    # The designation is asked again right before the request, and that answer must be fresh: a creator whose
+    # designation was withdrawn after its first check, or that stood still longer than the bound between asking and
+    # deciding, does not create. (The lookup above cannot go stale under the claim: nobody else creates meanwhile.)
+    asked = _now()
+    try:
+        _authorize_create(gateway, registry, trusted_authors)
+        age = _age(asked)
+        if age > CREATE_FRESHNESS_SECONDS:
+            raise CreateNotAuthorized(f'the authority answer is {age:.0f}s old, the create bound is '
+                                      f'{CREATE_FRESHNESS_SECONDS:g}s')
+    except CreateNotAuthorized as exc:
+        _give_up_create_claim(gateway, registry, fp, run)
+        return _create_refused(registry, fp, token, exc, not_sent=True)
+    except Exception:
+        _give_up_create_claim(gateway, registry, fp, run)
+        registry.release(fp, token, create_not_sent=True)
+        raise
+    # One more look at the label right before the request: a label is deleted by name, so a replacement that raced this
+    # run (two registries of one lineage replacing the same dead run's label) or a hand deletion can have taken the claim
+    # away meanwhile. A label that does not name this run means no request: nothing of ours stands, so nothing is dropped.
+    read = getattr(gateway, 'create_claim_holder', None)
+    if read is not None:
+        try:
+            current = read(fp)
+        except Exception:
+            _give_up_create_claim(gateway, registry, fp, run)
+            registry.release(fp, token, create_not_sent=True)
+            raise
+        if _holder_run(current) != run:
+            registry.note_claim_ended(fp, run)
+            registry.release(fp, token, create_not_sent=True)
+            _incident_once(registry, fp, 'CLAIM_LOST_BEFORE_CREATE', current or 'the claim label is gone')
+            return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'CLAIM_LOST_BEFORE_CREATE')
     started = time.monotonic()
     try:
         issue = gateway.create_issue(request, fp, timeout=worst_create)
@@ -270,16 +366,44 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
         try:
             visible = _matches(gateway, fp, key, trusted_authors)
         except UnknownIssueKind as unknown:
-            return _blocked_unknown(registry, fp, token, unknown, created=False)
+            return _blocked_unknown(registry, fp, token, unknown, created=False)   # intent and both claims stay (re-validated)
         except Exception:
-            raise exc                                # cannot verify: keep the claim until its lease expires
+            raise exc                                # cannot verify: keep the claim (and the create claim) until its lease expires
         if visible:
-            return _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
+            result = _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
+            _give_up_create_claim(gateway, registry, fp, run)
+            return result
+        _give_up_create_claim(gateway, registry, fp, run)
         registry.release(fp, token, create_not_sent=True)
         raise
     except Exception as exc:
-        return _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
-    elapsed = time.monotonic() - started
+        # Raises while the outcome stays uncertain: then the claim and the create claim stay, nobody creates behind them.
+        result = _reconcile_after_failed_create(registry, gateway, fp, key, token, trusted_authors, exc)
+        if result.detail != 'UNKNOWN_ISSUE_KIND':         # that block keeps the intent, so the label stays with it
+            _release_create_claim(gateway, registry, fp, run)
+        return result
+    result = _record_create(registry, gateway, fp, key, token, trusted_authors, issue, time.monotonic() - started, worst_create)
+    _release_create_claim(gateway, registry, fp, run)
+    return result
+
+
+def release_unsent_create(registry, gateway, fingerprint: str, token: int) -> bool:
+    """For a caller that proved after the run ended that the create request of claim `token` never left (the incident
+    reporter: its transport said so, and the marker lookup shows nothing): drop that run's create claim label, note that
+    the run ended without a request, release the row. True when the row was released (#68)."""
+    mapping = registry.get(fingerprint)
+    if mapping is None or mapping.state is not MappingState.CLAIMED or mapping.claim_token != token \
+            or not mapping.create_intent:
+        return False
+    if mapping.create_run:
+        _give_up_create_claim(gateway, registry, fingerprint, mapping.create_run)
+    registry.release(fingerprint, token, create_not_sent=True)
+    current = registry.get(fingerprint)
+    return current.state is MappingState.RELEASED and not current.create_intent
+
+
+def _record_create(registry, gateway, fp, key, token, trusted_authors, issue, elapsed, worst_create) -> EnsureResult:
+    """The issue exists: check for duplicates and map it. Every verdict here records the created number."""
     if elapsed > worst_create:
         registry.record_incident(fp, 'SLOW_CREATE', f'create took {elapsed:.1f}s, declared bound {worst_create}s')
     try:
@@ -310,6 +434,139 @@ def ensure_task(request: TaskRequest, registry: TaskRegistry, gateway: IssueGate
     return EnsureResult(EnsureOutcome.CREATED, mapped, True, issue.number)
 
 
+def _create_refused(registry, fp, token, exc, *, not_sent=False) -> EnsureResult:
+    """The designation (or its freshness) refused the create: give the claim up, say it once."""
+    registry.release(fp, token, create_not_sent=not_sent)
+    _incident_once(registry, fp, 'CREATE_NOT_AUTHORIZED', str(exc))
+    return EnsureResult(EnsureOutcome.BLOCKED, registry.get(fp), False, None, 'CREATE_NOT_AUTHORIZED')
+
+
+def _incident_once(registry, fp, reason, detail) -> None:
+    """Record the incident unless it repeats the last one: a scheduler that retries says it once."""
+    last = registry.incidents(fp)[-1:]
+    if not last or (last[0]['reason'], last[0]['detail']) != (reason, detail):
+        registry.record_incident(fp, reason, detail)
+
+
+def _now():
+    return time.monotonic(), time.time()
+
+
+def _age(since) -> float:
+    """Seconds since `since` by whichever clock moved further: a paused process (monotonic) or a corrected wall clock
+    cannot hide time on both of them at once."""
+    mono, wall = _now()
+    return max(mono - since[0], wall - since[1])
+
+
+def _hostname() -> str:
+    try:
+        return (socket.gethostname() or 'unknown').split()[0]
+    except OSError:
+        return 'unknown'
+
+
+def _host_id() -> str:
+    """This host in the create-claim text: a readable prefix plus a hash of the whole name (prefixes alone collide)."""
+    name = _hostname()
+    return f'{name[:HOLDER_HOST_CHARS]}-{hashlib.sha256(name.encode("utf-8")).hexdigest()[:6]}'
+
+
+def _new_run() -> str:
+    return secrets.token_hex(RUN_ID_HEX // 2)
+
+
+def _claim_holder(registry, token, run) -> str:
+    """Who holds the create claim (no secret in it): registry, claim token, host, run id, time. Fits 100 characters."""
+    text = f'registry={registry.registry_id[:HOLDER_REGISTRY_CHARS]} token={token} host={_host_id()} run={run}'
+    stamp = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime())
+    return text if len(f'{text} at={stamp}') > 100 else f'{text} at={stamp}'
+
+
+def _claim_fields(text) -> dict:
+    return dict(part.split('=', 1) for part in (text or '').split() if '=' in part)
+
+
+def _holder_run(text) -> str | None:
+    """The run id a holder text names, or None (no text, or none that a run of this code wrote)."""
+    run = _claim_fields(text).get('run', '')
+    return run if re.fullmatch(f'[0-9a-f]{{{RUN_ID_HEX}}}', run) else None
+
+
+def _read_claim_holder(gateway, fp) -> str | None:
+    """The holder text on the repository, or None when nobody holds the claim or it cannot be read now."""
+    read = getattr(gateway, 'create_claim_holder', None)
+    if read is None:
+        return None
+    try:
+        return read(fp)
+    except Exception:
+        return None
+
+
+def _claim_create(gateway, registry, fp, token, run):
+    """Take the repository-wide create claim (#68). None when it is ours, otherwise the text naming who holds it.
+
+    A claim is replaced only when this registry recorded that the run named in it ended without a request (`claim_ends`:
+    the run dropped its label or tried to, then noted its end, then lost its row release; or an operator's
+    `confirm_not_created` said that run stopped). A run id is drawn afresh for every attempt, so a registry file copied
+    to another host or restored from a backup never has the run of a live holder in its `claim_ends`, whatever token
+    it reaches by retrying. Any other holder keeps the claim (another registry or host, a run this file does not know,
+    unreadable text), and a claim whose holder died is removed by an operator who knows that holder stopped (docs)."""
+    claim = getattr(gateway, 'claim_create', None)
+    if claim is None or getattr(gateway, 'release_create_claim', None) is None:
+        raise CreateNotAuthorized('the gateway has no claim_create, so it cannot take the repository-wide create claim')
+    holder = _claim_holder(registry, token, run)
+    try:
+        held = claim(fp, holder)
+    except Exception:
+        # The answer may have been lost after the repository created the label: a holder that does not know it would give
+        # up and leave its label standing. One read decides; a label that names this run is ours.
+        if _holder_run(_read_claim_holder(gateway, fp)) == run:
+            return None
+        raise
+    if held is None or _holder_run(held) == run:     # ours, or our own text (the request reached GitHub, a retry saw 422)
+        return None
+    fields, stale = _claim_fields(held), _holder_run(held)
+    if fields.get('registry') != registry.registry_id[:HOLDER_REGISTRY_CHARS] or fields.get('host') != _host_id() \
+            or not registry.claim_ended(fp, stale):
+        return held                              # another registry or host, or a run this registry never saw end
+    # Deleted by name, so read again first and delete only while the label still names the dead run: a second replacer
+    # (a registry file restored from a backup shares the note) may have taken the claim meanwhile; then its label stands
+    # and the claim below answers that it is held.
+    _release_create_claim(gateway, registry, fp, stale)
+    held = claim(fp, holder)
+    if held is None or _holder_run(held) == run:
+        registry.record_incident(fp, 'STALE_CLAIM_REPLACED', f'run {stale} ended without a request; its label was replaced')
+        return None
+    return held
+
+
+def _release_create_claim(gateway, registry, fp, run) -> None:
+    """Drop the create claim of `run` once the row says what happened (created and recorded, refused, or nothing sent).
+
+    A label is deleted by name, so it is read first and left alone when another run holds the claim by now (incident
+    `CLAIM_NOT_OURS`) or when it is already gone. A failure is an incident, never a blocker."""
+    try:
+        read = getattr(gateway, 'create_claim_holder', None)
+        if read is not None:
+            held = read(fp)
+            if held is None:
+                return
+            if _holder_run(held) != run:
+                registry.record_incident(fp, 'CLAIM_NOT_OURS', held)
+                return
+        gateway.release_create_claim(fp)
+    except Exception as exc:
+        registry.record_incident(fp, 'CLAIM_RELEASE_FAILED', f'{type(exc).__name__}: {exc}')
+
+
+def _give_up_create_claim(gateway, registry, fp, run) -> None:
+    """A run that sends no request gives its claim up: drop the label, then note the end (in this order, see `ensure_task`)."""
+    _release_create_claim(gateway, registry, fp, run)
+    registry.note_claim_ended(fp, run)
+
+
 def _authorize_create(gateway, registry, trusted_authors) -> None:
     """Raise `CreateNotAuthorized` unless the repository designates this registry as the one that may create.
 
@@ -335,8 +592,8 @@ def _recheck_created_issue(registry, gateway, request, row, trusted_authors):
     try:
         expected = gateway.get_issue(cand)
         matches = _matches(gateway, fp, key, trusted_authors)
-        marked = getattr(gateway, 'carries_marker', None)
-        marked = True if expected is None else (marked is not None and marked(cand, fp))     # no way to check: fail closed
+        check = getattr(gateway, 'carries_marker', None)
+        marked = expected is None or (check is not None and bool(check(cand, fp)))     # no way to check: fail closed
     except Exception as exc:
         return EnsureResult(EnsureOutcome.BLOCKED, row, False, cand,
                             f'POST_CREATE_CHECK_FAILED: the re-check failed again ({type(exc).__name__}), nothing was changed')
@@ -405,8 +662,10 @@ def _matches(gateway, fp, key, trusted_authors) -> list[IssueRef]:
     return [m for m in seen if m.is_pull_request is False]
 
 
-def _blocked_unknown(registry, fp, token, exc, *, created, issue_number=None) -> EnsureResult:
-    blocked = registry.block(fp, 'UNKNOWN_ISSUE_KIND', str(exc), token=token, candidates=exc.numbers)
+def _blocked_unknown(registry, fp, token, exc, *, created, issue_number=None, create_not_sent=False) -> EnsureResult:
+    numbers = exc.numbers if issue_number is None else sorted({*exc.numbers, issue_number})
+    blocked = registry.block(fp, 'UNKNOWN_ISSUE_KIND', str(exc), token=token, candidates=numbers,
+                             create_not_sent=create_not_sent)
     return EnsureResult(EnsureOutcome.BLOCKED, blocked, created, issue_number, 'UNKNOWN_ISSUE_KIND')
 
 
@@ -417,7 +676,7 @@ def _trusted(issue, trusted_authors) -> bool:
 _norm_repo = normalize_repository
 
 
-def _adopt(registry, gateway, fp, token, issue, duplicates, request) -> EnsureResult:
+def _adopt(registry, gateway, fp, token, issue, duplicates, request, *, claim_run=None) -> EnsureResult:
     # Side effects first (all idempotent, comment/label only), mapping last: if we die midway the
     # claim is still open and the next run repeats the remaining steps instead of skipping them.
     for number in duplicates:
@@ -427,6 +686,10 @@ def _adopt(registry, gateway, fp, token, issue, duplicates, request) -> EnsureRe
     mapped = registry.map_issue(fp, token, gateway.repository, issue.number, duplicates)
     if mapped is None:
         return EnsureResult(EnsureOutcome.PENDING, registry.get(fp), False, None, 'claim lost while adopting')
+    if claim_run is not None:
+        # The row carried the create intent of `claim_run`, whose create claim label kept everyone waiting until its issue
+        # was visible (#68). The task is mapped now: the label goes (only while it still names that run).
+        _release_create_claim(gateway, registry, fp, claim_run)
     return EnsureResult(EnsureOutcome.RECOVERED, mapped, False, issue.number)
 
 

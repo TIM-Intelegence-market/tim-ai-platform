@@ -4,6 +4,8 @@ import time
 
 import pytest
 
+from src.task_governance.registry import SCHEMA_VERSION
+
 from src.task_governance import (EnsureOutcome, MappingState, ReopenPolicy, TaskRegistry, TaskRequest,
                                  canonical_task_key, task_fingerprint)
 from src.task_governance import ensure_task as _ensure_task
@@ -1004,7 +1006,7 @@ def test_hint_columns_are_added_to_a_registry_from_release_two(tmp_path):
     assert reg.unblock(fp, 'operator checked GitHub')
     won, m = reg.claim(fp, req().key, 'w', 1.0, hint=7, legacy=[8])
     assert won and m.claim_token == 4 and m.hint_issue == 7 and m.hint_legacy == (8,)
-    assert TaskRegistry(path).db.execute('PRAGMA user_version').fetchone()[0] == 5
+    assert TaskRegistry(path).db.execute('PRAGMA user_version').fetchone()[0] == SCHEMA_VERSION
 
 
 def test_concurrent_claims_pin_one_hint_and_only_one_wins(tmp_path):

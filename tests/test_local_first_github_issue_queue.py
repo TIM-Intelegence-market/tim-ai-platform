@@ -85,3 +85,13 @@ def test_builds_only_explicit_a3_issue_task():
         "task_id": "github-issue-1", "issue_number": True}) + "\n```"
     with pytest.raises(ValueError):
         build_task(issue)
+
+
+def test_hard_label_is_selectable_and_marked():
+    from src.local_first.github_issue_queue import is_hard_issue
+
+    hard = {"number": 3, "state": "open", "labels": ["agent:qwen-hard", "status:ready", "priority:p1"]}
+    assert select_ready_issue([hard]) is hard
+    assert is_hard_issue(hard) is True
+    assert is_hard_issue({**hard, "labels": ["agent:qwen-ready", "status:ready", "priority:p1"]}) is False
+    assert select_ready_issue([{**hard, "labels": ["agent:qwen-hard", "priority:p1"]}]) is None

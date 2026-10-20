@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mac-Worker</title>
+<title>Issue-Worker</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--text:#1b1f24;--muted:#626b76;--line:#e2e5e9;--ok:#1a7f4b;--warn:#a15c00;--bad:#b42318;--accent:#2457c5;--chip:#eef1f5}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1318;--card:#171c23;--text:#e6e9ed;--muted:#97a1ad;--line:#262d36;--ok:#4cc38a;--warn:#e5a54b;--bad:#f07167;--accent:#7ea6ff;--chip:#212831}}
@@ -23,6 +23,7 @@ h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 .big{font-size:18px;font-weight:600}
 .row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px}
 .chip{display:inline-block;background:var(--chip);border-radius:6px;padding:1px 7px;font-size:12px;margin:2px 4px 0 0}
+.chip.srv{background:var(--accent);color:var(--card)}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 ol.timeline{margin:10px 0 0;padding-left:18px;color:var(--muted);font-size:13px}
 ol.timeline li{margin:2px 0}
@@ -33,9 +34,10 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:12px;color:var(--muted)
 </head>
 <body>
 <main>
-<header><h1>Mac-Worker (Qwen)</h1><span class="meta" id="updated">lädt…</span></header>
+<header><h1>Issue-Worker (Mac + Server)</h1><span class="meta" id="updated">lädt…</span></header>
 <div class="pills" id="pills"></div>
 <h2>Aktuell</h2><div id="current"></div>
+<h2>Server-Modell</h2><div id="server"></div>
 <h2>Offen</h2><div id="open"></div>
 <h2>Erledigt</h2><div id="done"></div>
 </main>
@@ -49,13 +51,17 @@ function dur(a,b){if(!a||!b||b<a)return '–';let s=b-a,h=Math.floor(s/3600),m=M
 function ago(t){if(!t)return '–';return dur(t,Math.floor(Date.now()/1000))+' her'}
 function pill(state,text){const p=el('span','pill');p.append(el('span','dot bg-'+state),text);return p}
 function timeline(events){const ol=el('ol','timeline');for(const e of events||[]){const li=el('li',null,`${when(e.at)} · ${e.phase}`);if(e.detail){const d=el('details');d.append(el('summary',null,'Details'),el('pre',null,e.detail));li.append(d)}ol.append(li)}return ol}
-function chips(list){const s=el('div');for(const h of list||[])s.append(el('span','chip',h));return s}
+function chips(list){const s=el('div');for(const h of list||[])s.append(el('span',/^Server/.test(h)?'chip srv':'chip',h));return s}
+const untilIso=s=>{const t=iso(s);return t&&t>Date.now()/1000?t:null};
 
 function render(d){
   $('#updated').textContent='Stand '+new Date(d.generated_at*1000).toLocaleTimeString('de-DE')+' · aktualisiert alle 10 s';
+  const historyOpen=Boolean($('#history')&&$('#history').open);
   const w=d.worker,pills=$('#pills');pills.textContent='';
   pills.append(pill(w.agent.running?'ok':'bad',w.agent.running?`Worker läuft (PID ${w.agent.pid})`:'Worker läuft nicht'));
-  pills.append(pill(w.ollama.reachable&&w.ollama.model_installed?'ok':'bad',w.ollama.reachable?(w.ollama.model_installed?`Ollama · ${w.ollama.model}`:`Modell ${w.ollama.model} fehlt`):'Ollama nicht erreichbar'));
+  pills.append(pill(w.ollama.reachable&&w.ollama.model_installed?'ok':'bad',w.ollama.reachable?(w.ollama.model_installed?`Mac verfügbar · ${w.ollama.model}`:`Modell ${w.ollama.model} fehlt`):'Ollama nicht erreichbar'));
+  const sv=(w.server||{}).ollama||{},tun=(w.server||{}).tunnel||{};
+  pills.append(pill(sv.reachable&&sv.model_installed?(sv.warm?'ok':'warn'):'bad',sv.reachable?(sv.model_installed?`Server · ${sv.model} ${sv.warm===true?'warm':sv.warm===false?'kalt':'Ladestatus unbekannt'}`:`Server-Modell ${sv.model} fehlt`):'Server-Status nicht abrufbar'));
   pills.append(pill(d.github.ok?'ok':'warn',d.github.ok?'GitHub erreichbar':(d.github.loading?'GitHub wird geladen…':'GitHub: '+(d.github.error||'Fehler'))));
 
   const cur=$('#current');cur.textContent='';
@@ -63,38 +69,66 @@ function render(d){
     const c=el('div','card');
     const r=el('div','row');const t=el('div','big');t.append('Arbeitet an ',link(`https://github.com/TIM-Intelegence-market/tim-ai-platform/issues/${d.current.issue}`,'#'+d.current.issue));
     r.append(t,el('span','meta','seit '+when(d.current.worktree_created_at||d.current.started_at)));
-    c.append(r,el('div',null,'Phase: '+d.current.phase),chips(d.current.helpers),timeline(d.current.events));cur.append(c);
+    const dev=w.developer||{};
+    const target=dev.backend==='server'?'Server':dev.backend==='mac'?'Mac':'unbekannt';
+    c.append(r);
+    c.append(el('div','big',dev.phase||'Auftrag wird vorbereitet oder geprüft'));
+    if(dev.pid)c.append(el('div',null,`PID ${dev.pid} · Qwen-Ziel: ${target}${dev.model?' · '+dev.model:''}`));
+    const events=el('details');events.append(el('summary',null,'Bisherige Schritte dieses Laufs'),timeline(d.current.events));
+    c.append(el('div','meta','Prozessstatus wird bei jeder Abfrage neu gelesen. Tokenfortschritt und CPU-Auslastung werden nicht gemessen.'),chips(d.current.helpers||[]),events);cur.append(c);
   }else{
     const c=el('div','card');
     const intake=d.log.last_intake;
-    c.append(el('div','big',w.agent.running?'Wartet auf das nächste Issue':'Kein Lauf aktiv'));
+    c.append(el('div','big',!w.process_observation_ok?'Prozessstatus nicht abrufbar':w.paused_ci?'Pause: GitHub-CI läuft auf dem Mac':w.agent.running?'Kein Issue in Bearbeitung':'Worker läuft nicht'));
     if(intake&&intake.status==='DONE'&&d.log.idle_polls)c.append(el('div','meta',`${d.log.idle_polls} Abfragen in Folge ohne passendes Issue · Log zuletzt geschrieben ${ago(d.log.stdout_updated_at)}`));
-    if(w.agent.running&&d.log.stdout_updated_at){
-      const left=d.log.stdout_updated_at+d.log.intake_interval_secs-Math.floor(Date.now()/1000);
+    if(w.paused_ci)c.append(el('div',null,'Der nächste Auftrag startet nach Ende der CI. Das Server-Modell kann währenddessen geladen bleiben.'));
+    if(w.agent.running&&!w.paused_ci&&d.log.stdout_updated_at){
+      const left=d.log.stdout_updated_at+((w.routing||{}).server_preferred?30:d.log.intake_interval_secs)-Math.floor(Date.now()/1000);
       c.append(el('div',null,left>60?`Nächste Prüfung in ca. ${Math.ceil(left/60)} min`:'Nächste Prüfung gleich'));
     }
     cur.append(c);
   }
+  const history=el('details','card');history.id='history';history.open=historyOpen;
+  history.append(el('summary',null,`Frühere Meldungen und Läufe (${(d.stalled||[]).length} ohne PR)`));
   const lt=d.log.last_triage,tr=d.triage||{};
-  if(lt||tr.last_call_at){
-    const c=el('div','card');const m=lt&&lt.text.match(/^Triage: #(\d+) (.*)$/);
-    const line=el('div');line.append('Letzte Triage: ');
-    if(m){line.append(link(`https://github.com/TIM-Intelegence-market/tim-ai-platform/issues/${m[1]}`,'#'+m[1]),' – '+m[2].replace(/^is not a Mac Qwen task: /,'nicht geeignet: ').replace(/^prepared for the Mac Qwen worker\.?/,'bereit für den Worker'))}else line.append('–');
-    if(tr.last_call_at)line.append(' – vor '+dur(tr.last_call_at,Math.floor(Date.now()/1000)));
-    c.append(line,el('div','meta',`${tr.calls_last_24h||0} von 30 Triage-Aufrufen in den letzten 24 h verbraucht`));cur.append(c);
+  if(lt){
+    const c=el('div','card meta');
+    c.append(el('div',null,'Historische Triage · '+(tr.last_call_at?when(tr.last_call_at):'Zeitpunkt nicht erfasst')),el('div',null,lt.text));history.append(c);
   }
-  const err=d.log.last_error,errFresh=err&&err.age_estimate_secs<86400;
-  if(!errFresh&&!(d.log.last_intake&&d.log.last_intake.status!=='DONE')){cur.append(el('div','card meta','Keine Fehler in den letzten 24 h'))}
-  else{
-    const since=err?err.intake_polls_since:0;
-    const c=el('div','card');c.append(el('div',since?'meta':'warn',since?`Letzter Fehler im Log, vor ca. ${dur(1,1+err.age_estimate_secs)} (danach ${since} Issue-Abfragen ohne Fehler)`:'Letzter Fehler im Log'),el('div',null,(err&&err.text)||(d.log.last_intake&&d.log.last_intake.error)||'BLOCKED'));
-    if(err&&err.record){const x=el('details');x.append(el('summary',null,'Log-Eintrag'),el('pre',null,err.record));c.append(x)}
-    if(d.log.stderr_tail&&d.log.stderr_tail.length){const x=el('details');x.append(el('summary',null,'Fehler-Log, letzte Zeilen ('+ago(d.log.stderr_updated_at)+')'),el('pre',null,d.log.stderr_tail.join('\n')));c.append(x)}
-    cur.append(c);
+  const err=d.log.last_error;
+  if(err){
+    const c=el('div','card');c.append(el('div','meta','Letzter protokollierter Fehler · Zeitpunkt im Log nicht erfasst'),el('div',null,err.text||'BLOCKED'));
+    const x=el('details');x.append(el('summary',null,'Log-Eintrag'),el('pre',null,err.record||''));c.append(x);history.append(c);
   }
   for(const s of d.stalled||[]){
-    const c=el('div','card');const r=el('div','row');const t=el('div');t.append(el('span','bad','Liegen geblieben: '),link(`https://github.com/TIM-Intelegence-market/tim-ai-platform/issues/${s.issue}`,'#'+s.issue));
-    r.append(t,el('span','meta',`${s.attempts} Versuch(e)`));c.append(r,chips(s.helpers),timeline(s.events));cur.append(c);
+    const c=el('div','card');const r=el('div','row');const t=el('div');
+    const last=(s.events||[]).slice(-1)[0];
+    t.append(el('span','warn',last&&/blockiert/.test(last.phase)?'Blockierter Lauf: ':'Früherer Lauf ohne PR: '),link(`https://github.com/TIM-Intelegence-market/tim-ai-platform/issues/${s.issue}`,'#'+s.issue));
+    r.append(t,el('span','meta',last?'Letztes Ergebnis '+when(last.at):'Kein Ergebnis erfasst'));
+    c.append(r);
+    if(last)c.append(el('div',null,last.phase+(last.detail?' · '+last.detail:'')));
+    c.append(chips(s.helpers),timeline(s.events));history.append(c);
+  }
+  if(lt||err||(d.stalled||[]).length)cur.append(history);
+
+  const srv=$('#server');srv.textContent='';
+  {
+    const c=el('div','card');const r=el('div','row');
+    const state=!sv.reachable?['bad','Server-Modellstatus nicht abrufbar']:!sv.model_installed?['bad',`${sv.model} fehlt auf dem Server`]:sv.warm===true?['ok',`${sv.model} geladen (warm)`]:sv.warm===false?['warn',`${sv.model} bereit, nicht geladen (kalt)`]:['warn',`${sv.model}: Ladestatus nicht abrufbar`];
+    r.append(el('div','big '+state[0],state[1]),el('span','meta',tun.loaded?(tun.running?'SSH-Prozess läuft':'Tunnel-Dienst geladen, kein Prozess'):'Tunnel-Dienst nicht geladen'));
+    c.append(r);
+    const until=sv.warm&&untilIso(sv.expires_at);
+    const hard=(d.open||[]).filter(i=>i.server);
+    const busy=d.current&&w.developer&&w.developer.backend==='server';
+    const policy=w.routing||{};
+    const ready=(d.open||[]).filter(i=>i.eligible&&i.stage==='ready'&&(!d.current||i.number!==d.current.issue));
+    c.append(el('div',null,busy?`Qwen-Ziel für #${d.current.issue}: Server (Entwicklerprozess läuft)`:(policy.server_preferred?`${ready.length} bereite Aufgabe(n) bevorzugen den Server`:(hard.length?`${hard.length} große(s) Issue(s) mit agent:qwen-hard in der Warteschlange`:'Kein großes Issue (agent:qwen-hard) offen'))));
+    c.append(el('div','meta',`${policy.keep_warm?'Warmhalten aktiviert':until?'Geladen bis '+new Date(until*1000).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):'Warmhalten nicht aktiviert'} · Über ${(w.server||{}).url||'Tunnel'}`));
+    c.append(el('div',null,policy.server_preferred?'Server bevorzugt für kleine und große Issues; Mac als Ausweichziel für kleine Issues.':'Große Issues haben den Server als Ziel; kleine Issues verwenden den Mac.'));
+    c.append(el('div','meta','Ein Auftrag gleichzeitig. CPU-Auslastung wird hier nicht gemessen. Warm bedeutet: Modell im Speicher.'));
+    const ser=(d.done||[]).filter(p=>(p.helpers||[]).some(h=>/^Server/.test(h)));
+    if(ser.length)c.append(el('div','meta',`${ser.length} PR(s) mit Server-Modell erstellt`));
+    srv.append(c);
   }
 
   const open=$('#open');open.textContent='';
@@ -103,8 +137,8 @@ function render(d){
     const c=el('div','card');const r=el('div','row');const t=el('div');t.append(link(i.url,'#'+i.number),' '+i.title);
     const cls={ready:'ok',triage:'warn',blocked:'bad'}[i.stage]||'meta';
     r.append(t,el('span',cls,i.eligible?`bereit · ${i.priority}`:i.waiting_reason));
-    c.append(r);const ch=el('div');for(const l of i.labels)ch.append(el('span','chip',l));c.append(ch);return c};
-  const groups=[['ready','Bereit für den Worker'],['triage','Wartet auf Triage'],['blocked','Blockiert'],['skipped','Nicht für den Worker']];
+    c.append(r);const ch=el('div');if(i.server)ch.append(el('span','chip srv','Server-Modell'));for(const l of i.labels)ch.append(el('span','chip',l));c.append(ch);return c};
+  const groups=[['ready','Bereit für den Worker'],['waiting','Worker-Aufgaben mit Abhängigkeiten'],['split','Über Worker-Teilaufgaben eingeplant'],['coordination','Übersichten'],['triage','Wartet auf Triage'],['blocked','Blockiert'],['skipped','Nicht für den Worker']];
   const byPrio=(a,b)=>((a.priority||'P9')>(b.priority||'P9')?1:(a.priority||'P9')<(b.priority||'P9')?-1:0)||b.number-a.number;
   for(const [stage,label] of groups){
     const items=d.open.filter(i=>(i.stage||'skipped')===stage).sort(byPrio);
@@ -129,7 +163,19 @@ function render(d){
     done.append(c);
   }
 }
-async function poll(){try{const r=await fetch('/api/status',{cache:'no-store'});render(await r.json())}catch(e){$('#updated').textContent='Dashboard-Dienst nicht erreichbar'}}
+let fetching=false,lastSuccess=null;
+async function poll(){
+  if(fetching)return;fetching=true;
+  try{
+    const r=await fetch('/api/status',{cache:'no-store',signal:AbortSignal.timeout(15000)});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();render(d);lastSuccess=d.generated_at;
+    $('#updated').className='meta';
+  }catch(e){
+    $('#updated').textContent='Daten veraltet · Dienst nicht erreichbar'+(lastSuccess?' · letzter Erfolg '+when(lastSuccess):'');
+    $('#updated').className='bad';
+  }finally{fetching=false}
+}
 poll();setInterval(poll,10000);
 </script>
 </body>

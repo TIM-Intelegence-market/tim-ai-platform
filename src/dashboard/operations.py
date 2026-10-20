@@ -120,12 +120,49 @@ def _artifact(root: Path, name: str) -> tuple[dict[str, Any], str]:
     return _read_json(path), path.as_posix()
 
 
-def _source(path: str, available: bool, *, legacy: bool = False) -> dict[str, Any]:
+def _source(path: str, available: bool, *, legacy: bool = False, captured_at: Any = None) -> dict[str, Any]:
     return {
         "path": path,
         "available": available,
         "scope": "LEGACY_BASELINE" if legacy else "V2_COMPLETION",
+        "captured_at": captured_at,
     }
+
+
+def _captured_at(value: dict[str, Any]) -> Any:
+    """When an evidence file was measured, from its own content (not file mtime)."""
+    return _first(value, "captured_at_utc", "updated_at_utc", "generated_at_utc", "computed_at_utc", "finished_at_utc", "tested_at_utc")
+
+
+LIVE_FRESH_SECONDS = 120
+LIVE_EVIDENCE_MAX_AGE_SECONDS = 600
+
+
+def _seconds_since(value: Any) -> float | None:
+    """Age of an ISO timestamp in seconds, or None when absent or unparsable."""
+    from datetime import datetime, timezone
+
+    if value in (None, ""):
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - parsed).total_seconds()
+
+
+def _evidence_age(value: Any) -> str:
+    """Visible age of persisted evidence, so an old file is not read as current."""
+    age = _seconds_since(value)
+    if age is None or age < 0:
+        return ""
+    days = int(age // 86_400)
+    if days < 1:
+        return "heute"
+    label = "vor 1 Tag" if days == 1 else f"vor {days} Tagen"
+    return f"{label} · veraltet" if days > 7 else label
 
 
 def _metric(value: Any, source: str, *, status: Any = None, unit: str | None = None) -> dict[str, Any]:
@@ -213,7 +250,7 @@ def build_operations_snapshot(
     for name in names:
         value, path = _artifact(completion_root, name)
         evidence[name] = value
-        sources[name] = _source(path, bool(value))
+        sources[name] = _source(path, bool(value), captured_at=_captured_at(value))
 
     legacy_names = (
         "coverage_final.json",
@@ -227,7 +264,7 @@ def build_operations_snapshot(
     for name in legacy_names:
         value, path = _artifact(legacy_root, name)
         legacy[name] = value
-        sources[f"legacy/{name}"] = _source(path, bool(value), legacy=True)
+        sources[f"legacy/{name}"] = _source(path, bool(value), legacy=True, captured_at=_captured_at(value))
     live_watchdog = _read_json(live_watchdog_path)
     sources["live/watchdog_status.json"] = {
         "path": live_watchdog_path.as_posix(),
@@ -267,11 +304,16 @@ def build_operations_snapshot(
 
     live = base.get("operational_health", {})
     live_system = base.get("system_health", {})
-    queue_depth = _first(queue, "queue_depth", "current.depth", "metrics.queue_depth")
-    if queue_depth is None and live_system.get("queue_depth_measured_at"):
+    # A live measurement from the running process beats a persisted file: the
+    # file is a snapshot of some earlier run and would otherwise freeze the
+    # pipeline view on an old value (or on UNAVAILABLE while the header shows
+    # the live depth).  A live value older than the freshness window is not live.
+    live_queue_age = _seconds_since(live_system.get("queue_depth_measured_at"))
+    if live_queue_age is not None and live_queue_age <= LIVE_FRESH_SECONDS and live_system.get("queue_depth") is not None:
         queue_depth = live_system.get("queue_depth")
         queue_source = "/api/state system_health.queue_depth"
     else:
+        queue_depth = _first(queue, "queue_depth", "current.depth", "metrics.queue_depth")
         queue_source = sources["queue_metrics.json"]["path"]
     completion_trading_actions = _first(implementation, "trading_action_count", "trading_actions")
     watchdog_trading_actions = _first(watchdog, "trading_actions")
@@ -302,6 +344,9 @@ def build_operations_snapshot(
         lan_source = sources["legacy/final_runtime_recheck.json"]["path"]
         lan_status = None
 
+    live_listener = live_system.get("postgres_listener") if isinstance(live_system.get("postgres_listener"), dict) else {}
+    listener_age = _seconds_since(live_listener.get("checked_at_utc"))
+    listener_is_live = listener_age is not None and listener_age <= LIVE_EVIDENCE_MAX_AGE_SECONDS
     security = {
         "status": _normalized_status(_first(implementation, "security_status", "gates.security.status", default=_first(final_runtime, "overall_security_gate"))),
         "listener_before": _metric(
@@ -351,13 +396,26 @@ def build_operations_snapshot(
         ),
         "last_test": _first(listener_after, "tested_at_utc", "captured_at_utc", default=_first(tests, "finished_at_utc")),
     }
+    security["status_source"] = (
+        sources["implementation_state.json"]["path"]
+        if _first(implementation, "security_status", "gates.security.status") is not None
+        else sources["legacy/final_runtime_recheck.json"]["path"]
+    )
+    if listener_is_live:
+        # The runtime checks the listener itself every minute; a weeks-old
+        # audit file must not override what PostgreSQL reports right now.
+        security["status"] = _normalized_status(live_listener.get("status"))
+        security["listener_after"] = _metric(live_listener.get("listen_addresses"), str(live_listener.get("source")), status=live_listener.get("status"))
+        security["lan_exposure"] = _metric(",".join(live_listener.get("exposed_addresses") or []) or "none (loopback only)", str(live_listener.get("source")), status=live_listener.get("status"))
+        security["last_test"] = live_listener.get("checked_at_utc")
+        security["status_source"] = str(live_listener.get("source"))
 
     runtime = {
         "status": _normalized_status(_first(implementation, "runtime_status", "gates.runtime.status", default=live.get("status"))),
         "processes": _metric(_first(watchdog, "processes", "runtime.processes", "checks.runtime_process.value", default=_first(tests, "runtime.pid")), watchdog_source),
         "uptime": _metric(_first(watchdog, "uptime_seconds", "runtime.uptime_seconds", default=live.get("runtime_started_at")), watchdog_source, unit="seconds or start time"),
         "restarts": _metric(_first(watchdog, "restart_count", "runtime.restart_count", default=base.get("validator", {}).get("restart_count")), watchdog_source),
-        "queue_depth": _metric(queue_depth, queue_source, status=_first(queue, "status", "queue_status")),
+        "queue_depth": _metric(queue_depth, queue_source, status=None if queue_source.startswith("/api/state") else _first(queue, "status", "queue_status")),
         "queue_age": _metric(_first(queue, "oldest_age_seconds", "queue_age_seconds", "current.oldest_age_seconds", default=_first(watchdog, "checks.queue_age.value")), sources["queue_metrics.json"]["path"] if queue else watchdog_source, status=_first(queue, "status", default=_first(watchdog, "checks.queue_age.status")), unit="s"),
         "cursor_age": _metric(_first(cursor, "cursor_age_seconds", "age_seconds", "metrics.cursor_age_seconds", default=_first(watchdog, "checks.cursor_age.value")), sources["durable_cursor_state.json"]["path"] if cursor else watchdog_source, status=_first(cursor, "status", default=_first(watchdog, "checks.cursor_age.status")), unit="s"),
         "receive_rate": _metric(_first(queue, "receive_rate_per_second", "rates.receive_per_second", "receive_rate"), sources["queue_metrics.json"]["path"], unit="events/s"),
@@ -427,11 +485,11 @@ def build_operations_snapshot(
     rolling_live = _read_json(rolling_liveness_path)
     if isinstance(rolling_live, dict) and rolling_live.get("valid_observations") is not None:
         # Fresh DB-derived rolling window wins over the frozen August baseline.
-        rolling_record = rolling_live
+        rolling_record = dict(rolling_live)
         rolling_source = str(rolling_liveness_path)
-        rolling_record = {**rolling_record, "status": current_report(
-            rolling_live, rolling_source, now=datetime.now(timezone.utc),
-        )["status"]}
+        rolling_age = _seconds_since(rolling_live.get("computed_at_utc"))
+        if rolling_age is None or rolling_age > LIVE_EVIDENCE_MAX_AGE_SECONDS:
+            rolling_record["status"] = f"STALE — {_normalized_status(rolling_live.get('status'))} {_evidence_age(rolling_live.get('computed_at_utc'))}".strip()
     operational_root = live_watchdog_path.parent
     server_health_path = operational_root / "server_health.json"
     maintenance_path = operational_root / "maintenance_last_run.json"
@@ -463,6 +521,12 @@ def build_operations_snapshot(
     # fact, not an open repair task. Label it as such so the room reads as
     # historical/superseded rather than actionable.
     datasets[0]["disposition"] = "HISTORICAL / IMMUTABLE — frozen window, SUPERSEDED for coverage purposes, NOT APPROVAL SOURCE"
+    # The frozen window never changes, so its result must not look like a live
+    # alarm next to the current rooms. Keep the recorded verdict visible, but
+    # mark it historical (neutral severity) instead of a red current FAIL.
+    if datasets[0]["status"] not in (UNAVAILABLE, "", None):
+        datasets[0]["recorded_status"] = datasets[0]["status"]
+        datasets[0]["status"] = f"HISTORICAL — {datasets[0]['status']}"
 
     current_cases = _first(independent, "current.strict_independent_cases", "current.strict_independent_units", "current.strict_independent_30m_windows", "strict_independent_cases", default=_first(legacy_cases, "current_cutoff_audit.strict_independent_30m_windows"))
     frozen_cases = _first(independent, "frozen.strict_independent_cases", "frozen.strict_independent_units", "frozen_strict_independent_cases", default=_first(implementation, "frozen_strict_independent_cases", default=_first(legacy_cases, "frozen_cutoff_audit.strict_independent_30m_windows")))
@@ -515,6 +579,7 @@ def build_operations_snapshot(
         "security": security,
         "runtime": runtime,
         "datasets": datasets,
+        "evidence_dates": {item["path"]: item["captured_at"] for item in sources.values() if item.get("captured_at")},
         "gaps": {
             "rows": gaps,
             "total_loaded": len(gaps),
@@ -664,13 +729,27 @@ def _attention_rows(data: dict[str, Any]) -> list[str]:
     are labelled as historical instead of being presented as current failures.
     """
     live = data.get("live", {})
+    security = data["security"]
+    runtime = data["runtime"]
+    cases = data["independent_cases"]
+    gaps = data["gaps"]
+    readiness = data["readiness"]
+    mcp = data["mcp"]
+    audit = data["audit"]
     current = data["current_status"]
     rows: list[tuple[int, str]] = []
+
+    dates = data.get("evidence_dates") or {}
 
     def add(status: Any, title: str, detail: str, source: str = "") -> None:
         key = severity(status)
         if key == "ok":
             return
+        # Every file-based problem carries the day it was measured, so an old
+        # audit result is never read as something that broke just now.
+        captured = dates.get(source)
+        if captured:
+            source = f"{source} · Stand {str(captured)[:10]} ({_evidence_age(captured) or 'heute'})"
         weight = {"fail": 0, "blocked": 1, "degraded": 2, "warn": 3, "info": 4, "unknown": 5, "disabled": 6}[key]
         rows.append((weight, attention_row(status, title, detail, source)))
 
@@ -682,11 +761,29 @@ def _attention_rows(data: dict[str, Any]) -> list[str]:
             f"reported={item['reported_status']} · checked={item['checked_at']} · age={item['age_seconds']}s"
             + (f" · checks: {findings}" if findings else ""),
             item["source"])
+    if security["status"] not in ("PASS",) and severity(security["status"]) != "ok":
+        add(security["status"], "PostgreSQL security gate", str(security["status"]), str(security.get("status_source") or security["listener_after"]["source"]))
     if severity(live.get("stream")) != "ok":
         add(live.get("stream", UNAVAILABLE), "Live market data stream", f"stream={live.get('stream', UNAVAILABLE)} · last data {live.get('last_data_at') or UNAVAILABLE}", "/api/state operational_health.stream")
-    runtime = data["runtime"]
     if runtime["cursor_age"]["value"] == UNAVAILABLE:
-        add(UNAVAILABLE, "Cursor age not instrumented", "No durable cursor age evidence is loaded.", str(runtime["cursor_age"]["source"]))
+        add(UNAVAILABLE, "Cursor age not instrumented", "No durable cursor age evidence is loaded; queue/database continuity cannot be verified from the dashboard.", str(runtime["cursor_age"]["source"]))
+    if severity(runtime["queue_depth"]["status"]) not in ("ok", "unknown") :
+        add(runtime["queue_depth"]["status"], "Queue health degraded", f"depth={runtime['queue_depth']['value']}", str(runtime["queue_depth"]["source"]))
+    if isinstance(gaps["p0"], int) and gaps["p0"] > 0:
+        add("FAIL", "Open P0 data gaps", f"{gaps['p0']} P0 · {gaps['p1']} P1 · {gaps['total_loaded']} loaded ({gaps['scope']})", str(gaps["source"]))
+    elif isinstance(gaps["p1"], int) and gaps["p1"] > 0:
+        add("WARN", "Open P1 data gaps", f"{gaps['p1']} P1 · {gaps['total_loaded']} loaded ({gaps['scope']})", str(gaps["source"]))
+    if severity(cases["status"]) != "ok":
+        add(cases["status"], "Independent qualification cases", f"{cases['qualification']} of {cases['required']} required independent cases", str(cases["source"]))
+    if cases["manual_review"] == "PENDING HUMAN APPROVAL":
+        add("PENDING HUMAN APPROVAL", "Manual scientific review pending", "No machine-side approval exists; a real human review is required before qualification counts.", str(cases["source"]))
+    if severity(readiness["status"]) != "ok":
+        add(readiness["status"], "V2 readiness gate", str(readiness["status"]), str(readiness["source"]))
+    if severity(mcp["status"]) == "blocked":
+        add(mcp["status"], "MCP external action required", f"support case {mcp['case_id']}", str(mcp["source"]))
+    last_incident = audit.get("last_incident")
+    if isinstance(last_incident, dict) and last_incident:
+        add("WARN", "Runtime incident in bounded timeline", str(last_incident.get("event", UNAVAILABLE)), "see Incidents & Gaps")
     history = data.get("history_recovery", {})
     if history.get("report") and history.get("status") != "PASS":
         add(history.get("status"), "Historical data recovery",
@@ -740,6 +837,8 @@ def _horizons(data: dict[str, Any]) -> list[tuple[str, str, str, str, list[tuple
         if fresh and record:
             description += (f" · {record.get('valid_minutes', UNAVAILABLE)}/{record.get('expected_minutes', UNAVAILABLE)}"
                             " closed 1m inputs; candle continuity and descriptive features only.")
+        if not record and evidence.get("status") != "STALE":
+            dimensions[-1] = ("Readiness", "AWAITING INTELLIGENCE")
         horizons.append((key, name, timeframes, description, dimensions))
     return horizons
 
@@ -838,7 +937,7 @@ def _overview(data: dict[str, Any]) -> str:
     )
 
     evidence_strip = metric_strip([
-        ("Last full test", audit["last_test"], "", audit["test_status"]),
+        ("Last full test", audit["last_test"], _evidence_age(audit["last_test"]), audit["test_status"]),
         ("Test result", f"{audit['passed']} pass / {audit['failed']} fail", "", None),
         ("Last incident", str((audit.get("last_incident") or {}).get("event", UNAVAILABLE)) if isinstance(audit.get("last_incident"), dict) else str(audit.get("last_incident", UNAVAILABLE)), "", None),
         ("Data spaces", str(len(data["datasets"])), "coverage rooms", None),

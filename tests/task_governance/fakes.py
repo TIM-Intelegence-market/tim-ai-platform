@@ -15,6 +15,7 @@ class FakeGitHub:
         db = self._db()
         db.execute('CREATE TABLE IF NOT EXISTS issues(number INTEGER PRIMARY KEY, state TEXT, body TEXT, author TEXT DEFAULT \'owner\', is_pr INTEGER DEFAULT 0)')
         db.execute('CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY AUTOINCREMENT, op TEXT, number INTEGER, detail TEXT)')
+        db.execute('CREATE TABLE IF NOT EXISTS claims(fingerprint TEXT PRIMARY KEY, holder TEXT)')
         db.close()
 
     def _db(self):
@@ -36,6 +37,42 @@ class FakeGitHub:
         self.authorized = getattr(self, 'authorized', []) + [registry_id]
         if self.deny_create:
             raise CreateNotAuthorized(self.deny_create)
+
+    def claim_create(self, fingerprint, holder):
+        """The repository-wide create claim (#68): one row per fingerprint, taken by whoever inserts it first."""
+        if self.blackout:
+            raise ConnectionError('github unreachable')
+        db = self._db()
+        try:
+            db.execute('INSERT INTO claims(fingerprint,holder) VALUES(?,?)', (fingerprint, holder))
+            db.execute('INSERT INTO log(op,number,detail) VALUES(?,?,?)', ('claim', 0, holder))
+            return None
+        except sqlite3.IntegrityError:
+            return db.execute('SELECT holder FROM claims WHERE fingerprint=?', (fingerprint,)).fetchone()[0]
+        finally:
+            db.close()
+
+    def create_claim_holder(self, fingerprint):
+        if self.blackout:
+            raise ConnectionError('github unreachable')
+        db = self._db()
+        row = db.execute('SELECT holder FROM claims WHERE fingerprint=?', (fingerprint,)).fetchone()
+        db.close()
+        return row[0] if row else None
+
+    def release_create_claim(self, fingerprint):
+        if self.blackout:
+            raise ConnectionError('github unreachable')
+        db = self._db()
+        db.execute('DELETE FROM claims WHERE fingerprint=?', (fingerprint,))
+        db.execute('INSERT INTO log(op,number,detail) VALUES(?,?,?)', ('release-claim', 0, ''))
+        db.close()
+
+    def claims(self):
+        db = self._db()
+        rows = db.execute('SELECT fingerprint,holder FROM claims ORDER BY fingerprint').fetchall()
+        db.close()
+        return dict(rows)
 
     def find_issues(self, fingerprint, canonical_key):
         if self.blackout:

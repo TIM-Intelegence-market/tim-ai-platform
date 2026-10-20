@@ -1,0 +1,46 @@
+name: Abgrenzbare Aufgabe oder Fehler
+description: Ein konkretes Ergebnis mit überprüfbarer Abnahme
+labels: ["type:task", "status:roadmap"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Ziel und Problem
+      description: Was passiert aktuell, was soll danach passieren? Bei Fehlern Reproduktion angeben.
+    validations:
+      required: true
+  - type: textarea
+    id: progress
+    attributes:
+      label: Aktueller Stand und Belege
+      description: Datum, Status, erledigte Ergebnisse und PR-/Nachweislinks. Ungeprüftes kennzeichnen.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Restarbeiten und Grenzen
+      description: Offene Checkliste, betroffene Komponenten, ausgeschlossener Umfang.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Parent und Abhängigkeiten
+      description: Parent, offene Blocker und verwandte Referenzen getrennt; sonst ausdrücklich keine.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Abnahme und Tests
+      description: Woran ist das Ergebnis nachprüfbar fertig? Tests und nötige Laufzeitnachweise nennen.
+    validations:
+      required: true
+  - type: textarea
+    id: next
+    attributes:
+      label: Nächster Schritt und Zuständigkeit
+      description: Eine konkrete nächste Handlung mit verantwortlicher Person oder Rolle.
+    validations:
+      required: true

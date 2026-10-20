@@ -3,6 +3,8 @@ import json
 
 import pytest
 
+from src.task_governance.registry import SCHEMA_VERSION
+
 from src.task_governance import (EnsureOutcome, GitHubError, GitHubRestGateway, MappingState, TaskRegistry, TaskRequest,
                                  ensure_task, fingerprint_marker)
 from src.task_governance import live_check
@@ -46,7 +48,7 @@ def failing_check_after_create(gw):
 
     def flaky(fingerprint, key):
         calls.append(1)
-        if len(calls) == 2:                        # the lookup before the create works, the check after it does not
+        if len(calls) == 3:                        # the lookups before the create work (one before and one under the create claim), the check after it does not
             raise GitHubError('GET /repos/owner/repo/issues: HTTP 429')
         return real(fingerprint, key)
     gw.find_issues = flaky
@@ -237,7 +239,7 @@ def test_an_open_claim_from_a_release_three_registry_counts_as_a_possible_create
     assert reg.get(req().fingerprint).create_intent is True                       # its worker may have been creating
     # a released row may have been released by a worker that took over a crashed creator: also a possible create
     assert reg.get(req(target='OTHER').fingerprint).create_intent is True
-    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == 5
+    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == SCHEMA_VERSION
     rest = FakeRest()
     result = ensure_task(req(), reg, GitHubRestGateway(rest.repo, TOKEN, transport=rest), claimant='new', trusted_authors=None)
     assert result.detail == 'CREATE_UNCERTAIN' and creates(rest) == 0
@@ -374,9 +376,10 @@ def test_a_stale_operator_confirmation_cannot_clear_a_newer_create_intent(tmp_pa
     raced = []
 
     class RacingDb:
-        """The operator's check has passed; before its write, another operator clears it and a worker records a new intent."""
+        """The operator's check has passed; before its write (the transaction that holds the row, the incident and the
+        note of the run end together), another operator clears it and a worker records a new intent."""
         def execute(self, sql, *args):
-            if 'create_intent=0' in sql and not raced:
+            if sql.startswith('BEGIN') and not raced:
                 raced.append(1)
                 TaskRegistry(path, clock=clock).confirm_not_created(fp, 'other operator')
                 won2, m2 = worker.claim(fp, req().key, 'new', 300)
@@ -427,7 +430,7 @@ def test_a_schema_four_file_with_both_columns_is_still_repaired(tmp_path):
     clock = Clock()
     reg = TaskRegistry(path, clock=clock)
     assert reg.get(req().fingerprint).create_intent is True                        # repaired although the column existed
-    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == 5
+    assert reg.db.execute('PRAGMA user_version').fetchone()[0] == SCHEMA_VERSION
     clock.now += 3600
     assert reg.confirm_not_created(req(target='B').fingerprint, 'operator') is True  # a stranded intent can be cleared again
     reg.close()

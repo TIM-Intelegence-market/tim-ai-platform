@@ -20,10 +20,20 @@ from src.llm.ollama_client import OllamaClient
 from src.local_first.graphify_context import LocalGraphifyContextAdapter
 from src.local_first.provider_broker import ProviderBroker
 from src.local_first.runtime import BlockerMailbox, LocalPrimaryWorker, RepairRecipeStore
+from src.local_first.server_residency import configured_server, start_residency
 
 
 DEFAULT_FALLBACK_MODELS = "qwen2.5:7b"
 DEFAULT_BLOCKED_RETRY_SECONDS = 30.0
+
+
+async def _ensure_issue_qwen(args, state_root):
+    server = configured_server() if os.getenv("TIM_QWEN_SERVER_PREFERRED") == "1" else None
+    if server is not None:
+        client = OllamaClient(*server, timeout=5, observation_only=False)
+        if await client.model_available():
+            return server[1], None
+    return await _ensure_local_qwen(args.ollama_url, args.model, args.fallback_models, state_root)
 
 
 class SingleInstance:
@@ -280,7 +290,9 @@ def _run_github_intake(repo_root: Path, args: argparse.Namespace) -> int:
         command.append("--self-update")
     try:
         completed = subprocess.run(command, cwd=repo_root, text=True, capture_output=True,
-                                   check=False, timeout=1900)
+                                   # Include the issue task (2400s), advisory review
+                                   # (600s), merge wait (1800s) and GitHub overhead.
+                                   check=False, timeout=5400)
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(json.dumps({"TIM_GITHUB_INTAKE": "SAFE_STOP", "error_type": type(exc).__name__}), flush=True)
         return 2
@@ -396,10 +408,13 @@ async def daemon(args: argparse.Namespace) -> int:
     inbox.mkdir(parents=True, exist_ok=True)
 
     stopping = False
+    residency_stop = None
 
     def stop(*_: object) -> None:
         nonlocal stopping
         stopping = True
+        if residency_stop is not None:
+            residency_stop.set()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, stop)
@@ -407,6 +422,7 @@ async def daemon(args: argparse.Namespace) -> int:
     # One top-level coordinator per repository. The child build queue owns its own narrower
     # supervisor.lock while it is actively applying/verifying patches.
     with SingleInstance(_developer_state(repo_root) / "daemon.lock"):
+        residency_stop = start_residency()
         next_github_poll = 0.0
         print(json.dumps({
             "TIM_QWEN_SUPERVISOR": "RUNNING",
@@ -458,9 +474,9 @@ async def daemon(args: argparse.Namespace) -> int:
             task_path = _next_task(inbox, args.pilot_task_id)
             if task_path is None:
                 if args.github_intake and time.monotonic() >= next_github_poll:
-                    next_github_poll = time.monotonic() + 300.0
-                    model, error = await _ensure_local_qwen(
-                        args.ollama_url, args.model, args.fallback_models, _developer_state(repo_root))
+                    poll_seconds = 30.0 if os.getenv("TIM_QWEN_SERVER_PREFERRED") == "1" else 300.0
+                    next_github_poll = time.monotonic() + poll_seconds
+                    model, error = await _ensure_issue_qwen(args, _developer_state(repo_root))
                     if model is None:
                         # Without local Qwen every issue attempt would fail and use up its retries.
                         print(json.dumps({"TIM_GITHUB_INTAKE": "WAITING_FOR_OLLAMA", "reason": error}),
@@ -468,6 +484,7 @@ async def daemon(args: argparse.Namespace) -> int:
                     elif _run_github_intake(repo_root, args) == SELF_UPDATED_EXIT:
                         # The checkout moved to the newest platform-main; launchd restarts us on it.
                         print(json.dumps({"TIM_QWEN_SUPERVISOR": "RESTART_FOR_UPDATE"}), flush=True)
+                        residency_stop.set()
                         return 0
                 await asyncio.sleep(args.interval)
                 continue

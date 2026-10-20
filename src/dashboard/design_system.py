@@ -40,8 +40,10 @@ def severity(status: Any) -> str:
     text = str(status if status not in (None, "", {}) else UNAVAILABLE).strip().upper()
     if text in {"UNAVAILABLE", "UNKNOWN", "MISSING", "STALE", "ARCHIVED", "N/A", "NONE", "—"} or text.startswith("MISSING:"):
         return "unknown"
-    if text in {"DISABLED", "DISABLED BY POLICY", "PAUSED", "OBSERVE", "OBSERVE-ONLY", "AWAITING INTELLIGENCE", "PREPARED · INACTIVE"} or text.startswith("DISABLED"):
+    if text in {"DISABLED", "DISABLED BY POLICY", "PAUSED", "OBSERVE", "OBSERVE-ONLY", "AWAITING INTELLIGENCE", "PREPARED · INACTIVE"} or text.startswith("DISABLED") or text.startswith("HISTORICAL"):
         return "disabled"
+    if text.startswith("STALE"):
+        return "warn"
     if "FAIL" in text or text in {"ERROR", "RED", "CRITICAL", "EXPOSED", "LOCKED"} or "ERROR" in text:
         return "fail"
     if "BLOCKED" in text or "ADMIN ACTION REQUIRED" in text or "EXTERNAL ACTION REQUIRED" in text:

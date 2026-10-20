@@ -79,6 +79,8 @@ def test_local_task_runs_with_required_test_sandbox(tmp_path: Path, monkeypatch,
         run_mac_qwen_issue._run_local_task(tmp_path, task, codex_fallback=False)
     assert seen["TIM_TEST_SANDBOX"] == "required"
     assert seen["TIM_QWEN_TOOL_LOOP"] == expected
+    assert seen["TIM_SUPERVISOR_MAX_LOCAL_REPAIR_CYCLES"] == "0"
+    assert seen["TIM_QWEN_GITHUB_RUN"] == "1"
     assert "GH_TOKEN" not in seen
 
 
@@ -107,3 +109,80 @@ def test_timeout_stops_the_whole_process_group(tmp_path: Path):
         time.sleep(0.1)
     else:
         pytest.fail("grandchild kept running after the timeout")
+
+
+def test_hard_issue_routes_to_server_model_only_when_tunnel_answers(tmp_path: Path, monkeypatch):
+    from scripts import run_mac_qwen_issue
+
+    monkeypatch.setenv("TIM_QWEN_HARD_URL", "http://127.0.0.1:11435")
+    monkeypatch.delenv("TIM_QWEN_HARD_MODEL", raising=False)
+    seen = {}
+
+    class FakePopen:
+        pid = 0
+
+        def __init__(self, command, **kwargs):
+            seen.update(kwargs["env"])
+
+        def wait(self, timeout=None):
+            return 2
+
+    monkeypatch.setattr(run_mac_qwen_issue.subprocess, "Popen", FakePopen)
+    task = {"task_id": "github-issue-9", "allowed_paths": ["src/a.py"], "tests": ["tests/test_a.py"]}
+
+    monkeypatch.setattr(run_mac_qwen_issue, "_hard_backend", lambda: ("http://127.0.0.1:11435", "qwen3-coder:30b"))
+    with pytest.raises(PipelineError):
+        run_mac_qwen_issue._run_local_task(tmp_path, task, codex_fallback=False, hard=True)
+    assert seen["OLLAMA_BASE_URL"] == "http://127.0.0.1:11435"
+    assert seen["OLLAMA_MODEL"] == "qwen3-coder:30b"
+    assert seen["TIM_QWEN_REQUEST_TIMEOUT"] == run_mac_qwen_issue.HARD_REQUEST_TIMEOUT
+
+    seen.clear()
+    monkeypatch.setattr(run_mac_qwen_issue, "_hard_backend", lambda: None)
+    with pytest.raises(PipelineError, match="server model unavailable"):
+        run_mac_qwen_issue._run_local_task(tmp_path, task, codex_fallback=False, hard=True)
+    assert not seen  # No Mac fallback starts after the server disappears.
+
+
+def test_hard_backend_refuses_non_loopback_url(monkeypatch):
+    from scripts import run_mac_qwen_issue
+
+    monkeypatch.setenv("TIM_QWEN_HARD_URL", "http://192.168.10.121:11434")
+    assert run_mac_qwen_issue._hard_backend() is None
+    monkeypatch.delenv("TIM_QWEN_HARD_URL")
+    assert run_mac_qwen_issue._hard_backend() is None
+
+
+def test_review_patch_is_advisory_and_redacted(monkeypatch):
+    from scripts import run_mac_qwen_issue
+
+    monkeypatch.setattr(run_mac_qwen_issue, "_hard_backend", lambda: ("http://127.0.0.1:11435", "qwen3-coder:30b"))
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def chat(self, messages, **kwargs):
+            assert "Patch:" in messages[0]["content"]
+            return {"content": "PROBLEM\nmissing test for ```edge``` case\nGH_TOKEN=ghp_abcdef1234567890 leaked\n\n\n6th\n7th\n8th"}
+
+    import src.llm.ollama_client as module
+    monkeypatch.setattr(module, "OllamaClient", FakeClient)
+    task = {"objective": "fix", "allowed_paths": ["src/a.py"]}
+    review = run_mac_qwen_issue._review_patch(task, "diff --git a/src/a.py b/src/a.py\n+x = 1\n")
+    assert review["model"] == "qwen3-coder:30b"
+    assert review["verdict"].startswith("PROBLEM")
+    assert "```" not in review["verdict"]
+    assert "ghp_abcdef1234567890" not in review["verdict"]
+    assert len(review["verdict"].splitlines()) == 5
+
+    monkeypatch.setattr(run_mac_qwen_issue, "_hard_backend", lambda: None)
+    assert run_mac_qwen_issue._review_patch(task, "+x\n") is None
+
+    class BrokenClient(FakeClient):
+        async def chat(self, messages, **kwargs):
+            raise OSError("tunnel down")
+
+    monkeypatch.setattr(run_mac_qwen_issue, "_hard_backend", lambda: ("http://127.0.0.1:11435", "m"))
+    monkeypatch.setattr(module, "OllamaClient", BrokenClient)
+    assert run_mac_qwen_issue._review_patch(task, "+x\n") is None

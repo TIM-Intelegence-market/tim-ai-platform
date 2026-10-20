@@ -38,6 +38,17 @@ def redact_tokens(text: str) -> str:
     return TOKEN_RE.sub("<REDACTED_TOKEN>", text)
 
 
+DIAGNOSTIC_SECRET_RE = re.compile(
+    r'''(?i)(\b[\w-]*(?:api[_-]?key|token|password|secret|authorization)[\w-]*["']?\s*[:=]\s*)'''
+    r'''(?:"[^"\r\n]*"|'[^'\r\n]*'|(?:(?:bearer|basic)\s+)?[^\s,;]+)'''
+)
+
+
+def redact_diagnostic_secrets(text: str) -> str:
+    """Scrub complete diagnostic values before callers truncate or publish them."""
+    return redact_tokens(DIAGNOSTIC_SECRET_RE.sub(r"\1<REDACTED>", text))
+
+
 # Source code names tokens and passwords all the time ("token: int", "token=claim_token + 1").
 # For code context only a quoted literal after such a name counts as a secret, plus known
 # token formats; log and feedback text keeps the broader SECRET_RE of its caller.
