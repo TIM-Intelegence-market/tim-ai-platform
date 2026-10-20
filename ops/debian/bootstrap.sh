@@ -135,7 +135,8 @@ if [[ "$START" == true ]]; then
   step "start TIM"
   systemctl enable --now tim-runtime.service
   systemctl enable --now tim-candle-finalizer.timer tim-rolling-liveness.timer tim-maintenance.timer \
-    tim-coverage-worker.timer tim-backup.timer tim-restore-test.timer tim-server-health.timer
+    tim-coverage-worker.timer tim-backup.timer tim-restore-test.timer tim-server-health.timer \
+    tim-qualification-daily.timer
   systemctl enable --now tim-watchdog.service
   sleep 20
   systemctl --no-pager --lines=0 status tim-runtime.service || true
