@@ -228,11 +228,21 @@ def activate_campaign(
     return value
 
 
+def validate_campaign_hash(campaign: dict[str, Any]) -> None:
+    """Check content consistency; this checksum is not a human signature."""
+    expected = stable_hash(
+        {key: value for key, value in campaign.items() if key != "preregistration_hash"}
+    )
+    if campaign.get("preregistration_hash") != expected:
+        raise ValueError("qualification campaign content does not match its preregistration hash")
+
+
 def build_daily_manifest(
     preregistration: dict[str, Any], *, day: datetime, metrics: dict[str, Any]
 ) -> dict[str, Any]:
     if preregistration.get("campaign_status") != "ACTIVE":
         raise RuntimeError("daily qualification evidence requires an active campaign")
+    validate_campaign_hash(preregistration)
     if day.tzinfo is None:
         raise ValueError("manifest day must be timezone-aware")
     required = {
