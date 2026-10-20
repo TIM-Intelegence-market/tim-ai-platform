@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Evaluate the V2 qualification start gates from live, read-only server evidence.
+"""Evaluate the V2 qualification start gates from live, read-only evidence on the TIM host.
 
-Run on the server as user ``tim`` with the runtime EnvironmentFile. Reads runtime and
-timer status files, PostgreSQL state, systemd state and git state. Writes nothing but the
-report. Never starts the campaign.
+On the Debian server run as user ``tim`` with the runtime EnvironmentFile (systemd). On the
+Mac mini run from the live checkout as the login user (launchd, see ops/macos/LIVE_MAC.md).
+Reads runtime and timer status files, PostgreSQL state, service-manager state and git
+state. Writes nothing but the report. Never starts the campaign.
 
 Example:
   scripts/v2_start_gates_check.py --frozen-commit <sha> --suite-commit <sha> \
@@ -14,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -24,6 +26,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.v2_completion.mac_live import (
+    interface_addresses,
+    launchctl_state,
+    launchd_drift,
+    log_rotation_evidence,
+    reachable,
+)
 from src.v2_completion.start_gate_checks import (
     check_durable_cursor,
     check_durable_ingestion,
@@ -31,7 +40,9 @@ from src.v2_completion.start_gate_checks import (
     check_frozen,
     check_full_suite,
     check_log_rotation,
+    check_log_rotation_in_process,
     check_observe_only,
+    check_postgresql_reachability,
     check_postgresql_security,
     check_safe_stop,
     check_watchdog,
@@ -43,6 +54,7 @@ OPERATIONAL = ROOT / "data/operational"
 RUNTIME = ROOT / "data/runtime"
 LOGROTATE_STATUS = Path("/var/lib/logrotate/status")
 SYSTEMD_DIR = Path("/etc/systemd/system")
+DARWIN = sys.platform == "darwin"
 
 
 def run(command: list[str]) -> str | None:
@@ -68,6 +80,49 @@ def unit_drift() -> list[str] | None:
         return drift
     except OSError:
         return None
+
+
+def database_port() -> int:
+    from config.settings import settings
+
+    return settings.database_port
+
+
+def postgresql_security_gate(listen_addresses: str | None):
+    """Platform-specific PostgreSQL exposure gate, shared with the daily manifest job."""
+    port = database_port()
+    if not DARWIN:
+        return check_postgresql_security(run(["ss", "-ltnH"]), listen_addresses, port=port)
+    ifconfig = run(["/sbin/ifconfig"])
+    probes = None if ifconfig is None else {host: reachable(host, port) for host in interface_addresses(ifconfig)}
+    return check_postgresql_reachability(listen_addresses, probes, port=port)
+
+
+def service_active(name: str) -> str | None:
+    if DARWIN:
+        return launchctl_state(run(["/bin/launchctl", "print", f"gui/{os.getuid()}/{name}"]))
+    return (run(["systemctl", "is-active", name]) or "").strip() or None
+
+
+def log_rotation_gate(now: datetime):
+    if DARWIN:
+        try:
+            archives, oversized = log_rotation_evidence(OPERATIONAL)
+        except OSError:
+            archives, oversized = {}, []
+        return check_log_rotation_in_process(archives, oversized, now)
+    try:
+        last_rotate = datetime.fromtimestamp(LOGROTATE_STATUS.stat().st_mtime, UTC)
+    except OSError:
+        last_rotate = None
+    return check_log_rotation(service_active("logrotate.timer"), last_rotate,
+                              sorted(path.name for path in OPERATIONAL.glob("*.gz")), now)
+
+
+def service_drift() -> list[str] | None:
+    if DARWIN:
+        return launchd_drift(ROOT, Path.home() / "Library/LaunchAgents", Path.home())
+    return unit_drift()
 
 
 async def database_evidence(symbol: str) -> dict[str, Any]:
@@ -110,26 +165,22 @@ def main(argv: list[str] | None = None) -> int:
     liveness = read_json(OPERATIONAL / "rolling_liveness.json")
     head = git("rev-parse", "HEAD")
     porcelain = git("status", "--porcelain")
-    try:
-        last_rotate = datetime.fromtimestamp(LOGROTATE_STATUS.stat().st_mtime, UTC)
-    except OSError:
-        last_rotate = None
     results = [
-        check_postgresql_security(run(["ss", "-ltnH"]), db.get("listen_addresses")),
+        postgresql_security_gate(db.get("listen_addresses")),
         check_safe_stop(read_json(RUNTIME / "last_safe_stop.json"), read_json(RUNTIME / "last_safe_start.json"), now),
         check_durable_ingestion(db.get("open_gaps"), liveness, now),
         check_durable_cursor(db.get("cursor"), now),
         check_durable_outbox(db.get("outbox")),
         check_watchdog(read_json(OPERATIONAL / "watchdog_status.json"),
-                       (run(["systemctl", "is-active", "tim-watchdog.service"]) or "").strip() or None, now),
-        check_log_rotation((run(["systemctl", "is-active", "logrotate.timer"]) or "").strip() or None,
-                           last_rotate, sorted(path.name for path in OPERATIONAL.glob("*.gz")), now),
+                       service_active("com.tim.watchdog" if DARWIN else "tim-watchdog.service"), now),
+        log_rotation_gate(now),
         check_observe_only(read_json(OPERATIONAL / "server_health.json"), liveness),
         check_full_suite(head, args.suite_commit or None, args.suite_run or None),
         check_frozen(head, None if porcelain is None else porcelain.splitlines(),
-                     args.frozen_commit or None, unit_drift()),
+                     args.frozen_commit or None, service_drift()),
     ]
-    report = summarize(results, now=now, context={"head": head, "database_error": db_error, "symbol": args.symbol})
+    report = summarize(results, now=now, context={"head": head, "database_error": db_error, "symbol": args.symbol,
+                                                  "host_platform": "macos-launchd" if DARWIN else "linux-systemd"})
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True, default=str) + "\n")
     print(json.dumps({"output": str(args.output), "all_start_gates_pass": report["all_start_gates_pass"],

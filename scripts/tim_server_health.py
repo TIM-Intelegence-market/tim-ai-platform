@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only health and gap check for the TIM Debian server (OBSERVE only).
+"""Read-only health and gap check for the host running TIM: Debian server or Mac mini (OBSERVE only).
 
 Each check is GREEN, AMBER or RED; the overall status is the worst of them. The
 report goes to stdout (journal) and data/operational/server_health.json. Exit code
@@ -140,11 +140,23 @@ async def candle_facts(database_url: str, symbol: str, start: datetime, end: dat
     return newest, {row["open_time"].astimezone(UTC) for row in rows}
 
 
+def launchd_runtime_output() -> str | None:
+    """macOS: launchd state of com.tim.runtime in the systemctl-show shape runtime_check reads."""
+    import os
+
+    output = command_output(["/bin/launchctl", "print", f"gui/{os.getuid()}/com.tim.runtime"])
+    if output is None:
+        return "ActiveState=inactive\nSubState=dead\n"
+    running = any(line.strip() == "state = running" for line in output.splitlines())
+    return "ActiveState=active\nSubState=running\n" if running else "ActiveState=inactive\nSubState=dead\n"
+
+
 def collect(backup_dir: Path, disk_path: Path) -> dict[str, Any]:
     now = datetime.now(UTC)
     start, end = gap_window(now)
+    darwin = sys.platform == "darwin"
     checks: dict[str, dict[str, Any]] = {
-        "runtime": runtime_check(command_output(
+        "runtime": runtime_check(launchd_runtime_output() if darwin else command_output(
             ["systemctl", "show", "tim-runtime.service", "--property=ActiveState,SubState"])),
     }
     try:
@@ -158,7 +170,12 @@ def collect(backup_dir: Path, disk_path: Path) -> dict[str, Any]:
         checks["candle_freshness"] = check("RED", reason=reason)
         checks["gap_last_60m"] = check("RED", reason=reason)
     checks["disk"] = disk_check(disk_path)
-    checks["time_sync"] = time_sync_check(command_output(["timedatectl", "show", "-p", "NTPSynchronized", "--value"]))
+    if darwin:
+        # macOS keeps time via timed; its sync state is not readable without admin rights.
+        checks["time_sync"] = check("AMBER", reason="time sync not measurable on macOS without admin rights")
+    else:
+        checks["time_sync"] = time_sync_check(
+            command_output(["timedatectl", "show", "-p", "NTPSynchronized", "--value"]))
     checks["backup"] = backup_check(backup_dir, now)
     return {"timestamp": now.isoformat(), "status": overall(checks), "checks": checks,
             "mode": "OBSERVE", "trading_actions": 0}
