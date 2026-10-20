@@ -4,7 +4,12 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
-from src.data_ingestion.durable import DurableIngestionStore, cursor_hash
+from src.data_ingestion.durable import ACTIVE_OUTBOX_STATUSES, DurableIngestionStore, cursor_hash
+
+# COMPLETED rows are never counted: the outbox keeps one per trade (tens of millions), and a
+# full count took 13-28 s on the Mac, longer than the safe-start bootstrap timeout. Every
+# status listed here is covered by a partial index.
+COUNTED_OUTBOX_STATUSES = (*ACTIVE_OUTBOX_STATUSES, "DEFERRED")
 
 
 class IngestionControl:
@@ -19,7 +24,9 @@ class IngestionControl:
         metrics = await self.store.metrics_snapshot(self.symbol)
         async with self.store.database.acquire() as connection:
             statuses = await connection.fetch(
-                "SELECT status,count(*) AS count FROM ingestion_outbox GROUP BY status ORDER BY status"
+                """SELECT status,count(*) AS count FROM ingestion_outbox
+                   WHERE status=ANY($1::text[]) GROUP BY status ORDER BY status""",
+                list(COUNTED_OUTBOX_STATUSES),
             )
             processing = await connection.fetchrow(
                 """SELECT count(*) AS count,min(lease_expires_at) AS first_lease_expiry
