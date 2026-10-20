@@ -70,3 +70,10 @@ def test_orderflow_pending_shows_due_time() -> None:
 
     assert _pending_label("2026-10-20T22:55:00+00:00") == "PENDING · ab 23:25 UTC"
     assert _pending_label("kaputt") == "PENDING"
+
+
+def test_timeline_falls_back_to_process_start_without_validator_state() -> None:
+    state = DashboardState()
+    events = state.snapshot()["timeline"]
+    assert events and events[0]["event"] == "RUNTIME_START"
+    assert events[0]["timestamp"] == state.runtime_started_at
