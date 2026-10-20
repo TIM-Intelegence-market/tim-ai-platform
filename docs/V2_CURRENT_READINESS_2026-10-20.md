@@ -97,3 +97,5 @@ kann in einem geprüften Commit auf diesen neuen Stand zeigen.
 Journalbeleg für #331: Im Zeitraum 04:20–04:45 MESZ sind zwölf FAIL-Läufe bei
 unvollständiger Abdeckung und dreizehn PASS-Läufe bei 100 % gespeichert.
 Die zugehörigen neuen datierten Artefakte liegen unter current_states/.
+
+Aktuelle separate Betriebsstichprobe am 20.10. um 11:10 UTC / 13:10 MESZ: Health GREEN, /srv 84,93 GiB frei, Liveness PASS 1440/1440 bei null fehlenden Minuten und zwei Minuten Settlement. Vollständiger datierter Record: `artifacts/v2_readiness/current_states/liveness_20261020T111044Z.json`. Dieser 24-h-Betriebsnachweis ersetzt die historische Coverage-Messung um 04:28 MESZ nicht. Portal erneut mit expliziter CA/Hostzuordnung HTTP 200 und TLS-Verify 0; regulärer DNS-/Vertrauenspfad weiter offen.
