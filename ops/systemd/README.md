@@ -17,6 +17,7 @@ Gegenstück zu `ops/launchd/` für den Debian-Server aus
 | `tim-backup.{service,timer}` | – | täglich 03:15 UTC, `pg_dump` nach `/var/backups/tim`, 14 Tage (P5) |
 | `tim-restore-test.{service,timer}` | – | sonntags 04:30 UTC, Restore in `tim_restore_test` und Zeilenvergleich (P5) |
 | `tim-server-health.{service,timer}` | – | alle 60 s, Health- und Lückenprüfung (P6) |
+| `tim-qualification-daily.{service,timer}` | – | täglich 00:30 UTC, ein unveränderliches V2-Qualifizierungsmanifest je vollem UTC-Tag nach `data/qualification/daily/`; tut nichts, solange keine Kampagne gestartet ist |
 | `tim-checkup.{service,timer}` | – | alle 900 s, Checkup und Vorfall-Melder; nur über `ops/debian/install_checkup.sh` (siehe unten) |
 | `tim-checkup.path` | – | startet den Checkup, sobald ein Qwen-Ergebnis in `/var/lib/tim-agent/results` liegt; nur mit `TIM_CHECKUP_DIAGNOSIS=on` |
 | `tim-qwen-diagnose.{service,timer}` | – | alle 300 s, Qwen-Diagnose als `tim-agent` (nur lesen, keine Geheimnisse, kein Journal); nur mit `TIM_CHECKUP_DIAGNOSIS=on` |

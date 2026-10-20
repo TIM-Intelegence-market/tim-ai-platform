@@ -343,9 +343,11 @@ async def collect(args: argparse.Namespace) -> dict[str, Any]:
             FROM orderflow_validations v
             JOIN orderflow_observations o USING (observation_id)
             WHERE v.complete=true AND v.validated_through <= $1
+              AND ($2::timestamptz IS NULL OR v.observed_at >= $2)
             ORDER BY v.validated_through,v.observation_id
             """,
             end,
+            getattr(args, "case_from", None),
         )
         case_rows = await connection.fetch(
             """
