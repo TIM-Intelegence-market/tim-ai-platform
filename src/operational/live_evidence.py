@@ -15,6 +15,8 @@ from typing import Any
 
 UTC = timezone.utc
 WINDOW_MINUTES = 1440
+SETTLEMENT_LAG_MINUTES = 2
+MAX_MISSING_EXAMPLES = 5
 LOOPBACK_ADDRESSES = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
@@ -24,7 +26,20 @@ def _iso(value: datetime) -> str:
 
 def rolling_liveness_record(open_times: list[datetime], window_start: datetime, window_end: datetime, computed_at: datetime) -> dict[str, Any]:
     """Coverage room for closed 1m candles in [window_start, window_end)."""
-    valid = len({value for value in open_times if window_start <= value < window_end})
+    step = timedelta(minutes=1)
+    present = {
+        value for value in open_times
+        if window_start <= value < window_end and (value - window_start) % step == timedelta(0)
+    }
+    valid = len(present)
+    missing_count = 0
+    missing_examples: list[str] = []
+    for index in range(WINDOW_MINUTES):
+        slot = window_start + index * step
+        if slot not in present:
+            missing_count += 1
+            if len(missing_examples) < MAX_MISSING_EXAMPLES:
+                missing_examples.append(_iso(slot))
     coverage = valid / WINDOW_MINUTES
     return {
         "schema_version": "1.0.0",
@@ -37,6 +52,8 @@ def rolling_liveness_record(open_times: list[datetime], window_start: datetime, 
         "coverage": round(coverage, 5),
         "coverage_percent": f"{coverage * 100:.3f}",
         "valid_observations": valid,
+        "missing_observations": missing_count,
+        "missing_examples_utc": missing_examples,
         "expected_observations": WINDOW_MINUTES,
         "status": "PASS" if valid == WINDOW_MINUTES else "FAIL",
         "computed_at_utc": _iso(computed_at),
@@ -48,7 +65,7 @@ def rolling_liveness_record(open_times: list[datetime], window_start: datetime, 
 async def compute_rolling_liveness(connection: Any, symbol: str = "BTCUSDT", now: datetime | None = None) -> dict[str, Any]:
     """Count distinct closed 1m candles in the last 24h on an open connection."""
     computed_at = now or datetime.now(UTC)
-    window_end = computed_at.astimezone(UTC).replace(second=0, microsecond=0)
+    window_end = computed_at.astimezone(UTC).replace(second=0, microsecond=0) - timedelta(minutes=SETTLEMENT_LAG_MINUTES)
     window_start = window_end - timedelta(minutes=WINDOW_MINUTES)
     rows = await connection.fetch(
         """SELECT DISTINCT open_time FROM candles
@@ -56,7 +73,9 @@ async def compute_rolling_liveness(connection: Any, symbol: str = "BTCUSDT", now
              AND open_time >= $2 AND open_time < $3""",
         symbol, window_start, window_end,
     )
-    return rolling_liveness_record([row["open_time"] for row in rows], window_start, window_end, computed_at)
+    record = rolling_liveness_record([row["open_time"] for row in rows], window_start, window_end, computed_at)
+    record["settlement_lag_minutes"] = SETTLEMENT_LAG_MINUTES
+    return record
 
 
 def listener_record(listen_addresses: str, port: Any, checked_at: datetime) -> dict[str, Any]:
