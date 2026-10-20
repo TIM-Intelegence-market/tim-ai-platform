@@ -196,13 +196,66 @@ def test_restore_test_always_drops_the_scratch_database(tmp_path: Path, monkeypa
         "dropdb": fake_tool(tmp_path, "dropdb", record),
         "createdb": fake_tool(tmp_path, "createdb", record),
         "pg_restore": fake_tool(tmp_path, "pg_restore", record + "\nsys.exit(1)"),
+        "psql": fake_tool(tmp_path, "psql", "print(100)"),
     }
+    monkeypatch.setattr(backup, "free_bytes", lambda path: 20 * 2**30)
     make_dump(tmp_path / "backups", datetime(2026, 10, 1, tzinfo=UTC))
     with pytest.raises(backup.BackupError, match="pg_restore failed"):
-        backup.restore_test(tmp_path / "backups", "tim_restore_test", "postgresql://tim@127.0.0.1/tim", PARTS, tools=tools)
+        backup.restore_test(tmp_path / "backups", "tim_restore_test", "postgresql://tim@127.0.0.1/tim", PARTS,
+                            tools=tools, storage_path=tmp_path)
     calls = log.read_text().splitlines()
     assert calls[0].startswith("dropdb") and calls[1].startswith("createdb") and calls[-1].startswith("dropdb")
     assert all("pw-not-in-argv" not in call for call in calls)
+
+
+def test_restore_checks_database_disk_before_any_scratch_mutation(tmp_path: Path, monkeypatch) -> None:
+    """A tiny dump and ample backup-disk space must not permit a full database disk."""
+    directory = tmp_path / "backups"
+    database_disk = tmp_path / "postgresql-volume"
+    database_disk.mkdir()
+    dump = make_dump(directory, datetime(2026, 10, 1, tzinfo=UTC), b"small compressed dump")
+    calls = []
+    tool = fake_tool(tmp_path, "psql", "print(50 * 2**30)")
+    def free(path):
+        calls.append(path)
+        return (30 if path == database_disk else 200) * 2**30
+    monkeypatch.setattr(backup, "free_bytes", free)
+    marker = tmp_path / "scratch-was-touched"
+    mutation = fake_tool(tmp_path, "mutation", f"open({str(marker)!r}, 'w').write('unsafe')")
+    with pytest.raises(backup.BackupError, match="not enough restore space") as error:
+        backup.restore_test(directory, "tim_restore_test", "postgresql://tim@127.0.0.1/tim", PARTS,
+                            tools={"psql": tool, "dropdb": mutation, "createdb": mutation, "pg_restore": mutation},
+                            storage_path=database_disk)
+    assert calls == [database_disk]
+    assert not marker.exists() and dump.exists()
+    space = error.value.evidence["restore_space"]
+    assert space["status"] == "FAIL" and space["source_database_bytes"] == 50 * 2**30
+    assert space["space_needed_bytes"] == 108 * 2**30
+
+
+def test_restore_space_keeps_live_reserve_at_boundary(tmp_path: Path, monkeypatch) -> None:
+    tool = fake_tool(tmp_path, "psql", "print(10 * 2**30)")
+    needed = 28 * 2**30
+    monkeypatch.setattr(backup, "free_bytes", lambda path: needed - 1)
+    with pytest.raises(backup.BackupError, match="including live reserve"):
+        backup.restore_space_check(PARTS, tmp_path, psql=tool)
+    monkeypatch.setattr(backup, "free_bytes", lambda path: needed)
+    assert backup.restore_space_check(PARTS, tmp_path, psql=tool)["status"] == "PASS"
+
+
+@pytest.mark.parametrize("size", ["unknown", "0", "-100"])
+def test_restore_refuses_unknown_or_invalid_source_size(tmp_path: Path, size: str) -> None:
+    tool = fake_tool(tmp_path, "psql", f"print({size!r})")
+    with pytest.raises(backup.BackupError, match="database size"):
+        backup.restore_space_check(PARTS, tmp_path, psql=tool)
+
+
+def test_restore_requires_explicit_local_storage_path_before_pg_call(tmp_path: Path) -> None:
+    for path in (None, Path("relative"), tmp_path / "missing"):
+        with pytest.raises(backup.BackupError, match="restore-storage-path"):
+            backup.restore_space_check(PARTS, path, psql="must-not-run")
+    with pytest.raises(backup.BackupError, match="local PostgreSQL"):
+        backup.restore_space_check({**PARTS, "host": "remote.example"}, tmp_path, psql="must-not-run")
 
 
 def test_main_writes_fail_report_without_secret(tmp_path: Path, monkeypatch) -> None:
