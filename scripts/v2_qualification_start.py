@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Start the prospective V2 qualification campaign (explicit, human-approved action).
 
-Run on the server as user ``tim`` right after ``scripts/v2_start_gates_check.py``. Refuses
-unless the start-gate report is fresh, all gates PASS, and the report, the frozen commit
-and the clean server checkout all name the same commit. Writes one immutable campaign
-file under data/qualification/ (outside git, so the checkout stays clean). Never trades.
+Run on the TIM host (server as user ``tim``, or the Mac live checkout) right after
+``scripts/v2_start_gates_check.py``. Refuses unless the start-gate report is fresh, all gates
+PASS, and the report, the frozen commit and the clean checkout all name the same commit.
+Writes one immutable campaign file under data/qualification/ (outside git, so the checkout
+stays clean). Never trades.
 
 Example:
   scripts/v2_qualification_start.py --start-gates /tmp/start_gates.json \
@@ -63,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(UTC)
     head = git("rev-parse", "HEAD")
     if git("status", "--porcelain"):
-        raise SystemExit("server checkout has local changes; refusing to start")
+        raise SystemExit("checkout has local changes; refusing to start")
     report_bytes = args.start_gates.read_bytes()
     report = json.loads(report_bytes)
     gates = gates_from_report(report, report_ref="data/qualification/start_gates.json", head=head, now=now)

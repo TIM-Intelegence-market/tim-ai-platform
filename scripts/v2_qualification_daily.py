@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Write one immutable qualification manifest per complete UTC day since the campaign start.
 
-Run by tim-qualification-daily.timer as user ``tim``. Read-only against PostgreSQL. Catches
+Run by tim-qualification-daily.timer as user ``tim`` (server) or by the launchd agent
+com.tim.qualification-daily (Mac mini, hourly; only settled days are written). Read-only against PostgreSQL. Catches
 up on missed days, never rewrites an existing manifest, and exits 0 with NOT_ACTIVE when no
 campaign has been started.
 """
@@ -20,11 +21,7 @@ if str(ROOT) not in sys.path:
 
 from src.v2_completion.campaign import daily_metrics, day_window, pending_days
 from src.v2_completion.qualification import build_daily_manifest, write_immutable_json
-from src.v2_completion.start_gate_checks import (
-    check_postgresql_security,
-    parse_time,
-    read_json,
-)
+from src.v2_completion.start_gate_checks import parse_time, read_json
 
 DEFAULT_DIR = ROOT / "data/qualification"
 
@@ -36,14 +33,15 @@ def iso(value: datetime) -> str:
 async def collect_day(campaign_start: datetime, window_end: datetime, symbol: str) -> tuple[dict, dict]:
     from config.settings import settings
     from scripts.v2_readiness_audit import collect
-    from scripts.v2_start_gates_check import database_evidence, run
+    from scripts.v2_start_gates_check import database_evidence, postgresql_security_gate
 
     audit = await collect(argparse.Namespace(start=iso(campaign_start), end=iso(window_end), downtime_evidence=None,
                                              database_url=settings.database_url, case_from=campaign_start))
     db = await database_evidence(symbol)
-    security = check_postgresql_security(run(["ss", "-ltnH"]), db.get("listen_addresses")).to_dict()
+    security = postgresql_security_gate(db.get("listen_addresses")).to_dict()
     return audit, {"security": {"status": security["status"], "reasons": security["reasons"],
-                                "listeners": security["evidence"].get("listeners")},
+                                "listeners": security["evidence"].get("listeners"),
+                                "probes": security["evidence"].get("probes")},
                    "open_gaps": db.get("open_gaps")}
 
 

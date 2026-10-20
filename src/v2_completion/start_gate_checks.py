@@ -1,7 +1,7 @@
 """Evidence-driven evaluation of the prospective qualification start gates.
 
-Every gate is judged from live, read-only evidence on the server (files written by the
-runtime and its timers, PostgreSQL state, systemd state, git state). Nothing here starts
+Every gate is judged from live, read-only evidence on the host that runs TIM (files written
+by the runtime and its timers, PostgreSQL state, systemd or launchd state, git state). Nothing here starts
 the campaign, writes to the database or changes the runtime. A gate passes only when its
 evidence is present, fresh and explicit; anything missing or unreadable is PENDING or FAIL.
 """
@@ -89,19 +89,38 @@ def _is_loopback(host: str) -> bool:
         return False
 
 
-def check_postgresql_security(ss_output: str | None, listen_addresses: str | None) -> GateResult:
+def check_postgresql_security(ss_output: str | None, listen_addresses: str | None, *, port: int = 5432) -> GateResult:
     evidence: dict[str, Any] = {"listen_addresses_setting": listen_addresses}
     if ss_output is None:
         return _gate("postgresql_security", ["socket listing unavailable"], evidence, missing=True)
-    hosts = listener_addresses(ss_output)
+    hosts = listener_addresses(ss_output, port)
     evidence["listeners"] = hosts
     reasons = []
     if not hosts:
-        reasons.append("no PostgreSQL listener found on port 5432")
+        reasons.append(f"no PostgreSQL listener found on port {port}")
     reasons += [f"non-loopback listener {host}" for host in hosts if not _is_loopback(host)]
     if listen_addresses is not None:
         configured = [item.strip() for item in listen_addresses.split(",") if item.strip()]
         reasons += [f"listen_addresses contains {item}" for item in configured if not _is_loopback(item)]
+    return _gate("postgresql_security", reasons, evidence)
+
+
+def check_postgresql_reachability(listen_addresses: str | None, probes: dict[str, bool] | None,
+                                  *, port: int) -> GateResult:
+    """macOS variant: PostgreSQL runs as another user, so its sockets are not listable.
+
+    Evidence is the server's own listen_addresses plus a TCP connect to the database
+    port on every non-loopback address of this machine; each connect must be refused.
+    """
+    evidence: dict[str, Any] = {"listen_addresses_setting": listen_addresses, "port": port, "probes": probes}
+    if listen_addresses is None or probes is None:
+        return _gate("postgresql_security", ["listen_addresses or interface probes unavailable"], evidence,
+                     missing=True)
+    configured = [item.strip() for item in listen_addresses.split(",") if item.strip()]
+    reasons = [f"listen_addresses contains {item}" for item in configured if not _is_loopback(item)]
+    if not configured:
+        reasons.append("listen_addresses is empty")
+    reasons += [f"PostgreSQL reachable on {host}:{port}" for host, reachable in sorted(probes.items()) if reachable]
     return _gate("postgresql_security", reasons, evidence)
 
 
@@ -201,6 +220,24 @@ def check_log_rotation(timer_active: str | None, last_trigger: datetime | None, 
     return _gate("log_rotation", reasons, evidence)
 
 
+def check_log_rotation_in_process(archives: dict[str, datetime], oversized: list[str], now: datetime) -> GateResult:
+    """macOS variant: TIM rotates its JSONL logs itself (StructuredLog), no logrotate.timer.
+
+    Passes when a rotated archive was written within 26 hours and no operational log
+    file has outgrown its bound.
+    """
+    newest = max(archives.values(), default=None)
+    evidence = {"rotated_archives": len(archives), "newest_archive": newest.isoformat() if newest else None,
+                "oversized_logs": oversized}
+    reasons = []
+    if newest is None:
+        reasons.append("no rotated operational log archives found")
+    elif now - newest > MAX_LOGROTATE_AGE:
+        reasons.append("no log archive rotated within 26 hours")
+    reasons += [f"log file {name} exceeds its size bound" for name in oversized]
+    return _gate("log_rotation", reasons, evidence)
+
+
 def check_observe_only(health: dict[str, Any] | None, liveness: dict[str, Any] | None) -> GateResult:
     if health is None or liveness is None:
         return _gate("observe_only", ["server_health.json or rolling_liveness.json missing"], {}, missing=True)
@@ -233,7 +270,7 @@ def check_frozen(head: str | None, dirty: list[str] | None, frozen_commit: str |
     if dirty is None or dirty:
         reasons.append("server checkout has local changes or is unreadable")
     if unit_drift is None or unit_drift:
-        reasons.append("installed systemd units differ from the repository")
+        reasons.append("installed service definitions differ from the repository")
     return _gate("configuration_and_commit_frozen", reasons, evidence)
 
 
