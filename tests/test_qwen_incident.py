@@ -274,6 +274,28 @@ def test_einschuss_mode_one_call_with_journal(repo):
     assert '03:11 retry' in evidence_text(body)                         # journal travels with the evidence
 
 
+@pytest.mark.parametrize('kind,expected', [('code_src', 'ops_manual'), ('code_locked', 'ops_manual'),
+                                          ('ops_manual', 'ops_manual'), ('unknown', 'unknown')])
+def test_einschuss_output_is_always_unverified_human_advice(repo, kind, expected):
+    pol = policy(10.0, 30.0, False)
+    toolbox = FakeToolbox()
+    fake = FakeOllama([reply(content=json.dumps({**GOOD, 'fix_kind': kind, 'needs_human': False}))])
+    result = diagnosis(fake, repo, pol=pol, toolbox=toolbox).run()
+    assert result['status'] == 'ok' and result['mode'] == 'einschuss'
+    assert result['needs_human'] is True
+    assert result['locations'] == [] and result['unverified_locations'] == 1
+    assert result['fix_kind'] == expected
+    assert toolbox.calls == [] and len(fake.chats) == 1
+    assert protocol.validate_result(result, fetch_domains=BASE.agent.fetch_domains) == result
+
+
+def test_native_diagnosis_keeps_verified_location_contract(repo):
+    fake = FakeOllama([reply(tool_calls=[submit(needs_human=False)])])
+    result = diagnosis(fake, repo).run()
+    assert result['mode'] == 'native'
+    assert result['needs_human'] is False and result['locations'] == GOOD['locations']
+
+
 def test_psi_checked_between_rounds(repo):
     readings = iter([{'cpu': 1.0, 'io': 0.0, 'memory': 0.0}, {'cpu': 80.0, 'io': 0.0, 'memory': 0.0}])
     fake = FakeOllama([reply(tool_calls=[call('read_file', path='src/a.py')])] * 3)
