@@ -1,0 +1,66 @@
+{
+  "current_ingestion": {
+    "available": true,
+    "checked_at": "2026-10-20T11:29:05.747416+00:00",
+    "cursor": {
+      "cursor_hash": "6f7ee6bfabcc68dfda7d600f426c3b30a90729dcc83d13cbdb41e74aeb8ba348",
+      "cursor_version": 1,
+      "last_aggregate_trade_id": 4093811232,
+      "last_event_time": "2026-10-20 11:29:00.635000+00:00",
+      "last_persisted_at": "2026-10-20 11:29:00.767408+00:00",
+      "recovery_state": "NORMAL",
+      "symbol": "BTCUSDT"
+    },
+    "cursor_valid": true,
+    "gap_incidents_by_status": {
+      "RESOLVED": 123196
+    },
+    "outbox_by_status": {
+      "COMPLETED": 23360663,
+      "DEFERRED": 2857192
+    },
+    "transaction_read_only": "on"
+  },
+  "historical_artifacts_modified": false,
+  "last_safe_start.json": {
+    "available": true,
+    "record": {
+      "command": "start",
+      "completed_at": "2026-10-20T11:02:25.969836+00:00",
+      "durable_ingestion_checkpoint": {},
+      "status": "PASS",
+      "trading_actions": 0
+    }
+  },
+  "last_safe_stop.json": {
+    "available": true,
+    "record": {
+      "command": "safe-stop",
+      "completed_at": "2026-10-20T11:02:18.244046+00:00",
+      "cursor": "HASH_AND_VERSION_VALIDATED",
+      "durable_ingestion_checkpoint": {
+        "checked_at": "2026-10-20T11:02:18.219382+00:00",
+        "checkpoint_reason": "durable cursor valid; pending/retry work remains recoverable",
+        "checkpoint_safe": true,
+        "cursor_valid": true,
+        "mode": "OBSERVE",
+        "outbox_by_status": {
+          "COMPLETED": 23350955,
+          "DEFERRED": 2857192
+        },
+        "processing": 0,
+        "trading_actions": 0
+      },
+      "ingress": "STOPPED_WITH_RUNTIME",
+      "queue_outbox": "DURABLY_CHECKPOINTED",
+      "raw_write": "GRACEFUL_PROCESS_EXIT",
+      "requested_at": "2026-10-20T11:02:07.122691+00:00",
+      "research_side_effects": "GRACEFUL_PROCESS_EXIT",
+      "status": "PASS",
+      "trading_actions": 0
+    }
+  },
+  "observed_at": "20261020T112902Z",
+  "purpose": "OPERATIONAL_ACCEPTANCE_NOT_QUALIFICATION",
+  "qualification_started": false
+}
