@@ -124,6 +124,7 @@ def _current_server_snapshot(root: Path) -> dict[str, Any]:
     """Load an explicitly unapproved current-state audit, never a campaign."""
     value, source = _artifact(root, "current_state.json")
     coverage = _first(value, "result.coverage", default={})
+    gap_rows = _first(value, "result.gaps")
     valid = (
         value.get("purpose") == "CURRENT_STATE_NOT_QUALIFICATION"
         and value.get("qualification_started") is False
@@ -132,6 +133,8 @@ def _current_server_snapshot(root: Path) -> dict[str, Any]:
         and coverage.get("v2_approved") is False
         and coverage.get("trading_approved") is False
         and isinstance(coverage.get("product_calculation"), dict)
+        and isinstance(gap_rows, list)
+        and all(isinstance(row, dict) for row in gap_rows)
         and bool(value.get("start")) and bool(value.get("end"))
     )
     if not valid:
@@ -144,9 +147,13 @@ def _current_server_snapshot(root: Path) -> dict[str, Any]:
         "captured_at": _captured_at(coverage),
         "coverage": coverage["product_calculation"],
         "gap_ranges": _first(coverage, "gap_summary.ranges", default=UNAVAILABLE),
+        "gap_rows": gap_rows[:MAX_GAP_ROWS],
         "missing_minutes": _first(coverage, "gap_summary.missing_minutes", default=UNAVAILABLE),
         "strict_cases": _first(value, "result.cases.current_cutoff_audit.strict_independent_30m_windows", default=UNAVAILABLE),
         "case_status": _first(value, "result.cases.current_cutoff_audit.gate_status", default=UNAVAILABLE),
+        "case_scope": "ALL_PERSISTED_HISTORY_THROUGH_CUTOFF",
+        "controls": _first(value, "result.cases.current_cutoff_audit.negative_or_control_sampling", default=UNAVAILABLE),
+        "manual_review": _first(value, "result.cases.manual_review_status", default=UNAVAILABLE),
         "qualification_counted": False,
     }
 
@@ -474,6 +481,10 @@ def build_operations_snapshot(
     }
 
     gaps_raw, gaps_source, gaps_scope = _load_gaps(completion_root, legacy_root)
+    if current_snapshot["available"]:
+        gaps_raw = current_snapshot["gap_rows"]
+        gaps_source = current_snapshot["source"]
+        gaps_scope = "V2_COMPLETION"
     gaps: list[dict[str, Any]] = []
     for item in gaps_raw:
         gaps.append({
@@ -649,6 +660,7 @@ def build_operations_snapshot(
             "p1": priorities.get("P1", 0),
             "source": gaps_source,
             "scope": gaps_scope,
+            "purpose": "CURRENT_STATE_NOT_QUALIFICATION" if current_snapshot["available"] else gaps_scope,
             "bounded_at": MAX_GAP_ROWS,
         },
         "qualification": {
@@ -1081,16 +1093,18 @@ def _data_quality(data: dict[str, Any]) -> str:
             metric_strip([
                 ("Fehlende Minuten", snapshot["missing_minutes"], "im gemessenen Zeitraum", None),
                 ("Lückenbereiche", snapshot["gap_ranges"], "aktuelle Bestandsaufnahme", None),
-                ("Unabhängige Fälle", snapshot["strict_cases"], "strikte 30-Minuten-Fenster", snapshot["case_status"]),
+                ("Fälle im Gesamtbestand", snapshot["strict_cases"], "strikte 30-Minuten-Fenster bis zum Cut-off", snapshot["case_status"]),
+                ("Kontrollen", snapshot["controls"], "Negativ-/Neutralkontrollen", None),
+                ("Menschliche Prüfung", snapshot["manual_review"], "eigene Freigabe erforderlich", snapshot["manual_review"]),
                 ("Qualifizierung", "Nicht angerechnet", "separate Freigabe und Laufzeit erforderlich", None),
             ]),
-            note=f"Zeitraum {snapshot['start']} bis {snapshot['end']}. Erfasst: {snapshot.get('captured_at') or UNAVAILABLE}. Keine V2- oder Handelsfreigabe.",
+            note=f"Abdeckung: {snapshot['start']} bis {snapshot['end']}. Fälle: gesamter persistierter Bestand bis zum Cut-off, einschließlich älterer Historie. Erfasst: {snapshot.get('captured_at') or UNAVAILABLE}. Keine V2- oder Handelsfreigabe.",
         )
     gap_strip = metric_strip([
         ("Open P0 gaps", gaps["p0"], "severity P0", "FAIL" if isinstance(gaps["p0"], int) and gaps["p0"] else "PASS"),
         ("Open P1 gaps", gaps["p1"], "severity P1", "FAIL" if isinstance(gaps["p1"], int) and gaps["p1"] else "PASS"),
         ("Loaded gap records", gaps["total_loaded"], f"bounded at {gaps['bounded_at']}", None),
-        ("Gap evidence scope", gaps["scope"], "", None),
+        ("Gap evidence scope", "Server-Bestandsaufnahme" if gaps.get("purpose") == "CURRENT_STATE_NOT_QUALIFICATION" else gaps["scope"], "", None),
     ])
     datasets = section(
         "Dataset coverage",

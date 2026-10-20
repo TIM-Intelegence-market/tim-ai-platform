@@ -1,0 +1,134 @@
+{
+  "query_start_server_local": "2026-10-20T04:20:00+02:00",
+  "query_end_server_local": "2026-10-20T04:45:00+02:00",
+  "records": [
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.375"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.375"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.375"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.375"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.514"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.514"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.583"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.514"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.514"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.514"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.722"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "FAIL",
+      "coverage_percent": "99.861"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    },
+    {
+      "output": "/opt/tim/data/operational/rolling_liveness.json",
+      "status": "PASS",
+      "coverage_percent": "100.000"
+    }
+  ],
+  "source_unit": "tim-rolling-liveness.service",
+  "deployed_live_evidence_sha256": "98dec473d5c8cdc4cece22b7690cf0a2a115a19d3d4fe6175ec8d29e441f1f6c",
+  "raw_journal_sha256": "2f1ee0a3e981176c0774f0138039fdfa92988d3f50660c14e85db9b048702b0c"
+}

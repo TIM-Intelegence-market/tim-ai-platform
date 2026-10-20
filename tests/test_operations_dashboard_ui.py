@@ -149,6 +149,10 @@ def _current_snapshot() -> dict:
         "start": "2026-10-01T00:00:00Z",
         "end": "2026-10-02T00:00:00Z",
         "result": {
+            "gaps": [
+                {"gap_id": "october-1", "severity": "P1", "start_utc": "2026-10-01T00:00:00Z", "end_utc": "2026-10-01T00:01:00Z"},
+                {"gap_id": "october-2", "severity": "P1", "start_utc": "2026-10-01T00:02:00Z", "end_utc": "2026-10-01T00:03:00Z"},
+            ],
             "coverage": {
                 "generated_at_utc": "2026-10-02T00:02:00Z",
                 "v2_approved": False, "trading_approved": False,
@@ -176,6 +180,7 @@ def test_current_server_audit_is_visible_without_promoting_qualification(tmp_pat
     assert datasets["Server-Bestandsaufnahme"]["observed"] == 1438
     assert datasets["Server-Bestandsaufnahme"]["expected"] == 1440
     assert after["current_server_snapshot"]["strict_cases"] == 17
+    assert after["current_server_snapshot"]["case_scope"] == "ALL_PERSISTED_HISTORY_THROUGH_CUTOFF"
     assert after["current_server_snapshot"]["missing_minutes"] == 2
     assert after["current_server_snapshot"]["qualification_counted"] is False
     source = after["sources"]["current/current_state.json"]
@@ -184,8 +189,12 @@ def test_current_server_audit_is_visible_without_promoting_qualification(tmp_pat
     assert source["qualification_counted"] is False
     assert after["datasets"][0] == before["datasets"][0]
     assert after["datasets"][-1] == before["datasets"][-1]
-    for key in ("qualification", "readiness", "gaps"):
+    for key in ("qualification", "readiness"):
         assert after[key] == before[key]
+    assert after["gaps"]["p1"] == 2
+    assert after["gaps"]["p0"] == 0
+    assert after["gaps"]["source"].endswith("current_state.json")
+    assert after["gaps"]["purpose"] == "CURRENT_STATE_NOT_QUALIFICATION"
     assert after["independent_cases"]["current"] == 17
     assert after["independent_cases"]["current_source"].endswith("current_state.json")
     assert after["independent_cases"]["current_cutoff"] == "2026-10-02T00:00:00Z"
@@ -198,6 +207,8 @@ def test_current_server_audit_is_visible_without_promoting_qualification(tmp_pat
     assert "2026-10-02T00:00:00Z" in page
     assert "Nicht angerechnet" in page
     assert "keine Qualifizierung" in page
+    assert "einschließlich älterer Historie" in page
+    assert "october-1" in render(state, "Incidents & Gaps")
 
 
 @pytest.mark.parametrize("invalid", [
@@ -214,6 +225,20 @@ def test_current_server_snapshot_rejects_approval_or_wrong_scope(tmp_path: Path,
     operations = state.snapshot()["operations"]
     assert operations["current_server_snapshot"]["available"] is False
     assert "Server-Bestandsaufnahme" not in {item["label"] for item in operations["datasets"]}
+
+
+def test_current_empty_gap_inventory_does_not_reuse_an_old_gap(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    payload = _current_snapshot()
+    payload["result"]["gaps"] = []
+    payload["result"]["coverage"]["gap_summary"] = {"ranges": 0, "missing_minutes": 0}
+    payload["result"]["coverage"]["product_calculation"].update(coverage=1.0, valid_observations=1440)
+    _write_json(state.legacy_readiness_artifacts_path, "current_state.json", payload)
+    operations = state.snapshot()["operations"]
+    assert operations["gaps"]["total_loaded"] == 0
+    assert operations["gaps"]["p0"] == 0
+    assert operations["gaps"]["source"].endswith("current_state.json")
+    assert operations["qualification"]["status"] == "TIME GATE"
 
 
 def test_control_center_has_exact_ten_primary_pages_and_explicit_safety_boundary(tmp_path: Path) -> None:
