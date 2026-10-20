@@ -1245,16 +1245,26 @@ class DurableIngestionStore:
                 error[:2_000] if error else None,
             )
 
-    async def open_gaps(self, symbol: str, *, limit: int = 100) -> list[dict[str, Any]]:
+    async def open_gaps(
+        self, symbol: str, *, limit: int = 100, maximum_trade_ids: int | None = None,
+    ) -> list[dict[str, Any]]:
         if not 1 <= limit <= 1_000:
             raise ValueError("gap limit must be between 1 and 1000")
+        if maximum_trade_ids is not None and not 1 <= maximum_trade_ids <= 9_223_372_036_854_775_807:
+            raise ValueError("maximum_trade_ids must be a positive bigint")
+        # Maintenance must filter before LIMIT: otherwise a fixed prefix of
+        # large legacy incidents can permanently hide small current repairs.
+        size_filter = "" if maximum_trade_ids is None else """
+                   AND missing_from_id IS NOT NULL AND missing_to_id IS NOT NULL
+                   AND missing_from_id >= 0 AND missing_to_id >= missing_from_id
+                   AND missing_to_id::numeric - missing_from_id + 1 <= $3::bigint"""
+        arguments = (symbol, limit) if maximum_trade_ids is None else (symbol, limit, maximum_trade_ids)
         async with self.database.acquire() as connection:
             rows = await connection.fetch(
                 """SELECT * FROM ingestion_gap_incidents
-                   WHERE symbol=$1 AND status IN ('OPEN','CATCHING_UP')
-                   ORDER BY detected_at,gap_id LIMIT $2""",
-                symbol,
-                limit,
+                   WHERE symbol=$1 AND status IN ('OPEN','CATCHING_UP')"""
+                + size_filter + " ORDER BY detected_at,gap_id LIMIT $2",
+                *arguments,
             )
         return [dict(row) for row in rows]
 

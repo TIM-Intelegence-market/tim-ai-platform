@@ -1,0 +1,10 @@
+[Unit]
+Description=Resume TIM historical repairs after each bounded recovery cycle
+
+[Timer]
+OnBootSec=45
+OnUnitInactiveSec=15
+Unit=tim-history-recovery.service
+
+[Install]
+WantedBy=timers.target
