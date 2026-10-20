@@ -117,6 +117,37 @@ def _artifact(root: Path, name: str) -> tuple[dict[str, Any], str]:
     return _read_json(path), path.as_posix()
 
 
+def _current_server_snapshot(root: Path) -> dict[str, Any]:
+    """Load an explicitly unapproved current-state audit, never a campaign."""
+    value, source = _artifact(root, "current_state.json")
+    coverage = _first(value, "result.coverage", default={})
+    valid = (
+        value.get("purpose") == "CURRENT_STATE_NOT_QUALIFICATION"
+        and value.get("qualification_started") is False
+        and value.get("historical_artifacts_modified") is False
+        and isinstance(coverage, dict)
+        and coverage.get("v2_approved") is False
+        and coverage.get("trading_approved") is False
+        and isinstance(coverage.get("product_calculation"), dict)
+        and bool(value.get("start")) and bool(value.get("end"))
+    )
+    if not valid:
+        return {"available": False, "source": source}
+    return {
+        "available": True,
+        "source": source,
+        "start": value["start"],
+        "end": value["end"],
+        "captured_at": _captured_at(coverage),
+        "coverage": coverage["product_calculation"],
+        "gap_ranges": _first(coverage, "gap_summary.ranges", default=UNAVAILABLE),
+        "missing_minutes": _first(coverage, "gap_summary.missing_minutes", default=UNAVAILABLE),
+        "strict_cases": _first(value, "result.cases.current_cutoff_audit.strict_independent_30m_windows", default=UNAVAILABLE),
+        "case_status": _first(value, "result.cases.current_cutoff_audit.gate_status", default=UNAVAILABLE),
+        "qualification_counted": False,
+    }
+
+
 def _source(path: str, available: bool, *, legacy: bool = False, captured_at: Any = None) -> dict[str, Any]:
     return {
         "path": path,
@@ -263,6 +294,15 @@ def build_operations_snapshot(
         legacy[name] = value
         sources[f"legacy/{name}"] = _source(path, bool(value), legacy=True, captured_at=_captured_at(value))
     live_watchdog = _read_json(live_watchdog_path)
+    current_snapshot = _current_server_snapshot(legacy_root)
+    sources["current/current_state.json"] = {
+        "path": current_snapshot["source"],
+        "available": current_snapshot["available"],
+        "scope": "V2_COMPLETION",
+        "purpose": "CURRENT_STATE_NOT_QUALIFICATION",
+        "qualification_counted": False,
+        "captured_at": current_snapshot.get("captured_at"),
+    }
     sources["live/watchdog_status.json"] = {
         "path": live_watchdog_path.as_posix(),
         "available": bool(live_watchdog),
@@ -506,7 +546,28 @@ def build_operations_snapshot(
         datasets[0]["recorded_status"] = datasets[0]["status"]
         datasets[0]["status"] = f"HISTORICAL — {datasets[0]['status']}"
 
+    if current_snapshot["available"]:
+        measured = current_snapshot["coverage"]
+        card = _coverage_card(
+            "Server-Bestandsaufnahme", measured.get("coverage"),
+            measured.get("valid_observations"), measured.get("expected_observations"),
+            measured.get("status"), current_snapshot["source"],
+        )
+        card["disposition"] = (
+            f"{current_snapshot['start']} → {current_snapshot['end']} · "
+            "Bestandsaufnahme; keine Qualifizierung oder V2-/Handelsfreigabe."
+        )
+        # Keep the historical first row and the rolling last row stable.
+        datasets.insert(1, card)
+
     current_cases = _first(independent, "current.strict_independent_cases", "current.strict_independent_units", "current.strict_independent_30m_windows", "strict_independent_cases", default=_first(legacy_cases, "current_cutoff_audit.strict_independent_30m_windows"))
+    current_case_source = sources["independent_case_audit.json"]["path"] if independent else sources["legacy/validated_case_audit.json"]["path"]
+    current_case_cutoff = _first(independent, "current.cutoff_utc", default=_first(legacy_cases, "current_cutoff_utc"))
+    snapshot_cases = current_snapshot.get("strict_cases")
+    if current_snapshot["available"] and isinstance(snapshot_cases, int) and not isinstance(snapshot_cases, bool) and snapshot_cases >= 0:
+        current_cases = snapshot_cases
+        current_case_source = current_snapshot["source"]
+        current_case_cutoff = current_snapshot["end"]
     frozen_cases = _first(independent, "frozen.strict_independent_cases", "frozen.strict_independent_units", "frozen_strict_independent_cases", default=_first(implementation, "frozen_strict_independent_cases", default=_first(legacy_cases, "frozen_cutoff_audit.strict_independent_30m_windows")))
     qualification_cases = _first(independent, "qualification.strict_independent_cases", "qualification.strict_independent_units", "qualification_independent_cases", default=_first(daily, "metrics.independent_case_count", "independent_cases"))
     required_cases = _first(independent, "required_independent_cases", "qualification.required_units", "current.required_units", "frozen.required_units", default=_first(legacy_cases, "current_cutoff_audit.required_independent_cases", default=1000 if legacy_cases else None))
@@ -554,6 +615,7 @@ def build_operations_snapshot(
         "security": security,
         "runtime": runtime,
         "datasets": datasets,
+        "current_server_snapshot": current_snapshot,
         "evidence_dates": {item["path"]: item["captured_at"] for item in sources.values() if item.get("captured_at")},
         "gaps": {
             "rows": gaps,
@@ -576,6 +638,8 @@ def build_operations_snapshot(
             "status": _normalized_status(case_status),
             "frozen": frozen_cases if frozen_cases is not None else UNAVAILABLE,
             "current": current_cases if current_cases is not None else UNAVAILABLE,
+            "current_source": current_case_source,
+            "current_cutoff": current_case_cutoff,
             "qualification": qualification_cases if qualification_cases is not None else UNAVAILABLE,
             "required": required_cases if required_cases is not None else UNAVAILABLE,
             "negative_controls": _first(independent, "negative_control_cases", "negative_controls", "current_negative_or_control_sampling", default=_first(legacy_cases, "current_cutoff_audit.negative_or_control_sampling", default=UNAVAILABLE)),
@@ -854,7 +918,7 @@ def _overview(data: dict[str, Any]) -> str:
     qualification_strip = metric_strip([
         ("Qualification cases", cases["qualification"], f"of {cases['required']} required", cases["status"]),
         ("Frozen scope", cases["frozen"], "historical gate scope", None),
-        ("Current audit", cases["current"], "strict independent units", None),
+        ("Current audit", cases["current"], cases.get("current_cutoff") or "strict independent units", None),
         ("Manual review", cases["manual_review"], "no machine approval", cases["manual_review"]),
     ])
     level4 = section(
@@ -940,6 +1004,19 @@ def _runtime(data: dict[str, Any]) -> str:
 
 def _data_quality(data: dict[str, Any]) -> str:
     gaps = data["gaps"]
+    snapshot = data.get("current_server_snapshot", {})
+    current_panel = ""
+    if snapshot.get("available"):
+        current_panel = section(
+            "Server-Bestandsaufnahme", "Gemessener Datenbestand",
+            metric_strip([
+                ("Fehlende Minuten", snapshot["missing_minutes"], "im gemessenen Zeitraum", None),
+                ("Lückenbereiche", snapshot["gap_ranges"], "aktuelle Bestandsaufnahme", None),
+                ("Unabhängige Fälle", snapshot["strict_cases"], "strikte 30-Minuten-Fenster", snapshot["case_status"]),
+                ("Qualifizierung", "Nicht angerechnet", "separate Freigabe und Laufzeit erforderlich", None),
+            ]),
+            note=f"Zeitraum {snapshot['start']} bis {snapshot['end']}. Erfasst: {snapshot.get('captured_at') or UNAVAILABLE}. Keine V2- oder Handelsfreigabe.",
+        )
     gap_strip = metric_strip([
         ("Open P0 gaps", gaps["p0"], "severity P0", "FAIL" if isinstance(gaps["p0"], int) and gaps["p0"] else "PASS"),
         ("Open P1 gaps", gaps["p1"], "severity P1", "FAIL" if isinstance(gaps["p1"], int) and gaps["p1"] else "PASS"),
@@ -961,6 +1038,7 @@ def _data_quality(data: dict[str, Any]) -> str:
         page_head("Data Quality", "Can the persisted data be trusted? Coverage, gaps and live freshness from separate evidence rooms.", generated_at=data.get("generated_at_utc"))
         + section("Live freshness", "Current pipeline state", freshness)
         + datasets
+        + current_panel
         + section("Gap register", "Open data gaps", gap_strip,
                   note="Gap rows list cause, repairability and backfill status per window.")
         + "<p class='cc-note'>Full register with evidence: <a href='/gaps'>Incidents & Gaps →</a></p>"
@@ -1039,7 +1117,7 @@ def _cases(data: dict[str, Any]) -> str:
     cases = data["independent_cases"]
     strip = metric_strip([
         ("Frozen scope", cases["frozen"], "historical gate scope", None),
-        ("Current audit", cases["current"], "strict independent units", None),
+        ("Current audit", cases["current"], cases.get("current_cutoff") or "strict independent units", None),
         ("Qualification", cases["qualification"], f"of {cases['required']} required", cases["status"]),
         ("Negative / controls", cases["negative_controls"], "no synthetic additions", None),
     ])
@@ -1051,7 +1129,8 @@ def _cases(data: dict[str, Any]) -> str:
     ])
     return (
         page_head("Independent Cases", "Independent units, controls, regimes and human review for scientific qualification.", generated_at=data.get("generated_at_utc"))
-        + section("Case counts", "Independent case scope", strip)
+        + section("Case counts", "Independent case scope", strip,
+                  note=f"Current audit: {cases.get('current_source', cases['source'])}. A current-state count does not add qualification cases.")
         + section("Gate evidence", "Scientific gate state", rows)
         + "<section class='panel quick-links'><h2>Read-only research views</h2>"
           "<a href='/observations'>Observations</a><a href='/cases'>Research Cases</a><a href='/signals'>Signal Research</a>"
