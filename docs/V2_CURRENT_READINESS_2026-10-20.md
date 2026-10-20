@@ -68,9 +68,7 @@ für sich genommen keine erfundenen Rohdaten und erklärt nicht jede einzelne L�
 
 1. Frische Mittagsmessung ergänzen und jeden Lückenbereich mit Belegen und Owner
    dispositionieren; keine Lücke allein durch Statusumschreiben schließen.
-2. Server-Abgleich #339 ist im Repo gemergt, /opt/tim läuft noch auf c121efa mit
-   Hotfixes. Kontrollierten Rollout samt Safe-stop, Cursor-/Outbox-Abnahme und
-   Konfigurations-/Code-Freeze vorbereiten; kein blindes Reset oder Pull.
+2. Server-Abgleich #339 ist im Repo gemergt und inzwischen unabhängig ausgerollt: lesender Abgleich um 11:12 UTC zeigt `/opt/tim` sauber auf `efd49d1be738cec08fc0fa02bb41b65b0a73c955`, Runtime aktiv seit 11:02:20 UTC, `NRestarts=0`. Geschützte Safe-stop-/Start-/Ingestion-Belege sind für den SSH-Benutzer nicht lesbar; Cursor-/Outbox-Abnahme und Konfigurations-Freeze sind damit noch nicht belegt. Kein weiterer pauschaler Rollout erforderlich.
 3. Netzwerkstabilität und Portal-DNS/Client-Vertrauen abnehmen. Externes Backup,
    Hardware/Rückkehrweg und die übrigen Startgates nachweisen.
 4. Rollenentwurf tatsächlich annehmen, unabhängige Prüfer benennen und HC-1.0/
