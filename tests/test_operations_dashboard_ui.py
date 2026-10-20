@@ -141,6 +141,106 @@ def test_data_quality_coverage_rows_render_evidence_values_not_template_literals
     assert "{_esc(item.get('observed'))}" not in page
 
 
+def _current_snapshot() -> dict:
+    return {
+        "purpose": "CURRENT_STATE_NOT_QUALIFICATION",
+        "qualification_started": False,
+        "historical_artifacts_modified": False,
+        "start": "2026-10-01T00:00:00Z",
+        "end": "2026-10-02T00:00:00Z",
+        "result": {
+            "gaps": [
+                {"gap_id": "october-1", "severity": "P1", "start_utc": "2026-10-01T00:00:00Z", "end_utc": "2026-10-01T00:01:00Z"},
+                {"gap_id": "october-2", "severity": "P1", "start_utc": "2026-10-01T00:02:00Z", "end_utc": "2026-10-01T00:03:00Z"},
+            ],
+            "coverage": {
+                "generated_at_utc": "2026-10-02T00:02:00Z",
+                "v2_approved": False, "trading_approved": False,
+                "product_calculation": {
+                    "coverage": 1438 / 1440, "valid_observations": 1438,
+                    "expected_observations": 1440, "status": "PASS",
+                },
+                "gap_summary": {"ranges": 2, "missing_minutes": 2},
+            },
+            "cases": {"current_cutoff_audit": {
+                "strict_independent_30m_windows": 17, "gate_status": "FAIL",
+            }},
+        },
+    }
+
+
+def test_current_server_audit_is_visible_without_promoting_qualification(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    before = state.snapshot()["operations"]
+    legacy = state.legacy_readiness_artifacts_path
+    original = {path.name: path.read_bytes() for path in legacy.iterdir()}
+    _write_json(legacy, "current_state.json", _current_snapshot())
+    after = state.snapshot()["operations"]
+    datasets = {item["label"]: item for item in after["datasets"]}
+    assert datasets["Server-Bestandsaufnahme"]["observed"] == 1438
+    assert datasets["Server-Bestandsaufnahme"]["expected"] == 1440
+    assert after["current_server_snapshot"]["strict_cases"] == 17
+    assert after["current_server_snapshot"]["case_scope"] == "ALL_PERSISTED_HISTORY_THROUGH_CUTOFF"
+    assert after["current_server_snapshot"]["missing_minutes"] == 2
+    assert after["current_server_snapshot"]["qualification_counted"] is False
+    source = after["sources"]["current/current_state.json"]
+    assert source["scope"] == "V2_COMPLETION"
+    assert source["purpose"] == "CURRENT_STATE_NOT_QUALIFICATION"
+    assert source["qualification_counted"] is False
+    assert after["datasets"][0] == before["datasets"][0]
+    assert after["datasets"][-1] == before["datasets"][-1]
+    for key in ("qualification", "readiness"):
+        assert after[key] == before[key]
+    assert after["gaps"]["p1"] == 2
+    assert after["gaps"]["p0"] == 0
+    assert after["gaps"]["source"].endswith("current_state.json")
+    assert after["gaps"]["purpose"] == "CURRENT_STATE_NOT_QUALIFICATION"
+    assert after["independent_cases"]["current"] == 17
+    assert after["independent_cases"]["current_source"].endswith("current_state.json")
+    assert after["independent_cases"]["current_cutoff"] == "2026-10-02T00:00:00Z"
+    for key in before["independent_cases"]:
+        if key not in {"current", "current_source", "current_cutoff"}:
+            assert after["independent_cases"][key] == before["independent_cases"][key]
+    assert all((legacy / name).read_bytes() == data for name, data in original.items())
+    page = render(state, "Data Quality")
+    assert "2026-10-01T00:00:00Z" in page
+    assert "2026-10-02T00:00:00Z" in page
+    assert "Nicht angerechnet" in page
+    assert "keine Qualifizierung" in page
+    assert "einschließlich älterer Historie" in page
+    assert "october-1" in render(state, "Incidents & Gaps")
+
+
+@pytest.mark.parametrize("invalid", [
+    {"purpose": "QUALIFICATION"},
+    {"qualification_started": True},
+    {"historical_artifacts_modified": "false"},
+    {"result": {"coverage": {"v2_approved": True, "trading_approved": False, "product_calculation": {}}}},
+    {"result": {"coverage": []}},
+])
+def test_current_server_snapshot_rejects_approval_or_wrong_scope(tmp_path: Path, invalid: dict) -> None:
+    state = _state(tmp_path)
+    payload = {**_current_snapshot(), **invalid}
+    _write_json(state.legacy_readiness_artifacts_path, "current_state.json", payload)
+    operations = state.snapshot()["operations"]
+    assert operations["current_server_snapshot"]["available"] is False
+    assert "Server-Bestandsaufnahme" not in {item["label"] for item in operations["datasets"]}
+
+
+def test_current_empty_gap_inventory_does_not_reuse_an_old_gap(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    payload = _current_snapshot()
+    payload["result"]["gaps"] = []
+    payload["result"]["coverage"]["gap_summary"] = {"ranges": 0, "missing_minutes": 0}
+    payload["result"]["coverage"]["product_calculation"].update(coverage=1.0, valid_observations=1440)
+    _write_json(state.legacy_readiness_artifacts_path, "current_state.json", payload)
+    operations = state.snapshot()["operations"]
+    assert operations["gaps"]["total_loaded"] == 0
+    assert operations["gaps"]["p0"] == 0
+    assert operations["gaps"]["source"].endswith("current_state.json")
+    assert operations["qualification"]["status"] == "TIME GATE"
+
+
 def test_control_center_has_exact_ten_primary_pages_and_explicit_safety_boundary(tmp_path: Path) -> None:
     page = render(_state(tmp_path))
     for route, title in OPERATIONS_ROUTES.items():
