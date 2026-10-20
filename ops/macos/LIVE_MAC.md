@@ -39,6 +39,9 @@ FROZEN=<commit auf platform-main>
 git clone https://github.com/uezeyiraydin-cell/tim-ai-platform.git ~/TIM-live
 cd ~/TIM-live && git checkout --detach "$FROZEN"
 /opt/homebrew/bin/python3.13 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
+# timctl und die Prüfskripte lesen das DB-Passwort nur über diese zwei Variablen (wie die Plists)
+export TIM_DATABASE_SECRET_PROVIDER=file
+export TIM_DATABASE_SECRET_FILE="$HOME/Library/Application Support/TIM/database-password"
 mkdir -p data/runtime && cp ~/Library/LaunchAgents/com.tim.runtime.plist data/runtime/com.tim.runtime.plist.before-live
 .venv/bin/python scripts/mac_live_install.py          # schreibt die fünf Plists, lädt nichts
 .venv/bin/python scripts/timctl safe-stop             # stoppt die alte Runtime sauber
