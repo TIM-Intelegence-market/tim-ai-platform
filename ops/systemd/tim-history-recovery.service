@@ -1,0 +1,19 @@
+[Unit]
+Description=TIM bounded large-gap and verified historical candle repair
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=tim
+Group=tim
+WorkingDirectory=/opt/tim
+EnvironmentFile=/etc/tim/tim.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_history_recovery.py
+TimeoutStartSec=120
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts
+PrivateTmp=yes
+
