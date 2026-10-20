@@ -233,7 +233,8 @@ def test_service_has_no_mac_paths_or_secret_values(path: Path) -> None:
 @pytest.mark.parametrize("path", TIMERS, ids=lambda path: path.name)
 def test_every_timer_has_a_oneshot_service(path: Path) -> None:
     timer = parse(path)
-    assert timer["Timer"].get("OnUnitActiveSec") or timer["Timer"].get("OnCalendar", "").endswith("UTC")
+    assert (timer["Timer"].get("OnUnitActiveSec") or timer["Timer"].get("OnUnitInactiveSec")
+            or timer["Timer"].get("OnCalendar", "").endswith("UTC"))
     assert timer["Install"]["WantedBy"] == "timers.target"
     service = parse(path.with_suffix(".service"))["Service"]
     assert service["Type"] == "oneshot"
