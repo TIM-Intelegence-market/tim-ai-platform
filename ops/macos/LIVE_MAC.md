@@ -14,8 +14,9 @@ kein Handel, kein Echtgeld.
   `~/TIM-live` gerendert. Von Hand geänderte Plists zählen beim Start-Gate als Drift.
 - Live-Agenten: `com.tim.runtime`, `com.tim.watchdog` (startet die Runtime bei wiederholtem Rot
   über `scripts/timctl` neu), `com.tim.server-health` (jede Minute, schreibt
-  `data/operational/server_health.json`), `com.tim.qualification-daily` (stündlich, schreibt nur
-  abgeschlossene UTC-Tage).
+  `data/operational/server_health.json`), `com.tim.history-recovery` (alle 30 s, holt offene
+  aggTrade-Lücken per REST nach, wie `tim-history-recovery.timer` auf dem Server),
+  `com.tim.qualification-daily` (stündlich, schreibt nur abgeschlossene UTC-Tage).
 
 ## Start-Gates auf macOS
 
@@ -26,7 +27,7 @@ kein Handel, kein Echtgeld.
 | postgresql_security | `ss -ltnH`, nur Loopback | `listen_addresses` nur Loopback und TCP-Verbindung auf jede Nicht-Loopback-Adresse des Macs wird abgewiesen (PostgreSQL läuft als anderer Benutzer, seine Sockets sind nicht auflistbar) |
 | watchdog | `tim-watchdog.service` aktiv | `com.tim.watchdog` im Zustand running |
 | log_rotation | `logrotate.timer` | TIM rotiert seine JSONL-Logs selbst: ein Archiv `*.gz` jünger als 26 h, kein JSONL über 20 MB, kein launchd-Log über 512 MB |
-| configuration_and_commit_frozen | Units in `/etc/systemd/system` = Repo | die vier Plists in `~/Library/LaunchAgents` = gerenderte Vorlagen |
+| configuration_and_commit_frozen | Units in `/etc/systemd/system` = Repo | die fünf Plists in `~/Library/LaunchAgents` = gerenderte Vorlagen |
 
 Alle anderen Gates sind gleich. `time_sync` in `server_health.json` steht auf dem Mac auf AMBER,
 weil der Sync-Zustand ohne Admin-Rechte nicht lesbar ist; das ist kein Start-Gate.
@@ -39,16 +40,16 @@ git clone https://github.com/uezeyiraydin-cell/tim-ai-platform.git ~/TIM-live
 cd ~/TIM-live && git checkout --detach "$FROZEN"
 /opt/homebrew/bin/python3.13 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
 mkdir -p data/runtime && cp ~/Library/LaunchAgents/com.tim.runtime.plist data/runtime/com.tim.runtime.plist.before-live
-.venv/bin/python scripts/mac_live_install.py          # schreibt die vier Plists, lädt nichts
+.venv/bin/python scripts/mac_live_install.py          # schreibt die fünf Plists, lädt nichts
 .venv/bin/python scripts/timctl safe-stop             # stoppt die alte Runtime sauber
 .venv/bin/python scripts/timctl start                 # startet die Runtime aus ~/TIM-live
-for l in watchdog server-health qualification-daily; do
+for l in watchdog server-health history-recovery qualification-daily; do
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tim.$l.plist
 done
 .venv/bin/python scripts/mac_live_install.py --check  # erwartet "drift": []
 ```
 
-Rücknahme: Agenten `watchdog`, `server-health`, `qualification-daily` mit `launchctl bootout`
+Rücknahme: Agenten `watchdog`, `server-health`, `history-recovery`, `qualification-daily` mit `launchctl bootout`
 entladen, `timctl safe-stop`, gesicherte Plist zurückkopieren, `launchctl bootstrap` für
 `com.tim.runtime`.
 
