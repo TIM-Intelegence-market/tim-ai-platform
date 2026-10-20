@@ -1,13 +1,18 @@
 """Governed 1m candle backfill: only ID-complete raw minutes, dry run writes nothing."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import os
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from scripts.tim_candle_backfill import parse_args
-from src.operational.candle_backfill import Governance, parse_utc, run_backfill, validate_window
+from src.operational.candle_backfill import (
+    Governance,
+    parse_utc,
+    run_backfill,
+    validate_window,
+)
 
 SYMBOL = "BACKFILLTEST"
 START = datetime(2026, 10, 1, 0, 0, tzinfo=timezone.utc)
