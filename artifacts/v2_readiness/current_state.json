@@ -1,0 +1,203 @@
+{
+  "purpose": "CURRENT_STATE_NOT_QUALIFICATION",
+  "start": "2026-10-01T00:00:00Z",
+  "end": "2026-10-20T02:28:00+00:00",
+  "audit_code_sha256": "4009852dc81cd5393ef7db546e981fb04115897e99e60721e3f0acdd3250bd71",
+  "historical_artifacts_modified": false,
+  "qualification_started": false,
+  "case_scope": "ALL_PERSISTED_HISTORY_THROUGH_CUTOFF",
+  "presentation_only": true,
+  "source_evidence": {
+    "path": "artifacts/v2_readiness/current_states/20261020T022800Z.json",
+    "sha256": "4ed3950d80c9806d7fe9679911d36605e41bc013513fcbd1ac6b23799583e384"
+  },
+  "result": {
+    "coverage": {
+      "generated_at_utc": "2026-10-20T02:30:52.086509Z",
+      "product_calculation": {
+        "calculation_method": "PRODUCT_EXPECTED_SET_V1",
+        "closed_only": true,
+        "coverage": 0.718155,
+        "coverage_percent": "71.816",
+        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+        "duplicates_excluded": 0,
+        "excluded_intervals": [],
+        "expected_interval": "PT1M",
+        "expected_observations": 27508,
+        "instrument": "BTCUSDT",
+        "invalid_observations": 0,
+        "market": "BINANCE_SPOT",
+        "metric_name": "tim_closed_1m_continuous_coverage",
+        "metric_version": "2.0.0",
+        "missing_observations": 7753,
+        "result_hash": "fc8caf559ffd7d02842035a17bb7d4b180b9d42e9b7727b48c973b08eda72482",
+        "status": "FAIL",
+        "synthetic_observations": 0,
+        "target": 0.95,
+        "valid_observations": 19755,
+        "window_boundary": "START_INCLUSIVE_END_EXCLUSIVE",
+        "window_end_utc": "2026-10-20T02:28:00Z",
+        "window_start_utc": "2026-10-01T00:00:00Z"
+      },
+      "gap_summary": {
+        "missing_minutes": 7753,
+        "ranges": 5,
+        "root_cause_class": {
+          "PARTIAL_WRITE": 5
+        },
+        "root_cause_status": {
+          "PROBABLE": 5
+        },
+        "severity": {
+          "P1": 5
+        }
+      },
+      "v2_approved": false,
+      "trading_approved": false
+    },
+    "gaps": [
+      {
+        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+        "duration_seconds": 71820,
+        "end_utc": "2026-10-01T19:57:00Z",
+        "evidence_refs": [
+          "PostgreSQL repeatable-read snapshot (54683304, 54683326, (54683304, 54683324))",
+          "docs/v2_readiness/data_coverage_methodology.md"
+        ],
+        "expected_observations": 1197,
+        "gap_id": "gap-b297e1cb4d969bc7555d3def",
+        "instrument": "BTCUSDT",
+        "market": "BINANCE_SPOT",
+        "missing_observations": 1197,
+        "notes": "No synthetic, interpolated, forward-filled, cross-market or OHLCV-substitute data may close this gap.",
+        "observed_observations": 0,
+        "raw_minutes_present": 1197,
+        "repair_source": null,
+        "repair_status": "NOT_ATTEMPTED",
+        "repairability": "TECHNICALLY_REPAIRABLE_GOVERNANCE_RESTRICTED",
+        "root_cause_class": "PARTIAL_WRITE",
+        "root_cause_status": "PROBABLE",
+        "secondary_root_causes": [],
+        "severity": "P1",
+        "source": "BINANCE_SPOT_PUBLIC",
+        "start_utc": "2026-10-01T00:00:00Z"
+      },
+      {
+        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+        "duration_seconds": 157980,
+        "end_utc": "2026-10-05T13:14:00Z",
+        "evidence_refs": [
+          "PostgreSQL repeatable-read snapshot (54683304, 54683326, (54683304, 54683324))",
+          "docs/v2_readiness/data_coverage_methodology.md"
+        ],
+        "expected_observations": 2633,
+        "gap_id": "gap-585ddfd3f19a460b3aeb9507",
+        "instrument": "BTCUSDT",
+        "market": "BINANCE_SPOT",
+        "missing_observations": 2633,
+        "notes": "No synthetic, interpolated, forward-filled, cross-market or OHLCV-substitute data may close this gap.",
+        "observed_observations": 0,
+        "raw_minutes_present": 2633,
+        "repair_source": null,
+        "repair_status": "NOT_ATTEMPTED",
+        "repairability": "TECHNICALLY_REPAIRABLE_GOVERNANCE_RESTRICTED",
+        "root_cause_class": "PARTIAL_WRITE",
+        "root_cause_status": "PROBABLE",
+        "secondary_root_causes": [],
+        "severity": "P1",
+        "source": "BINANCE_SPOT_PUBLIC",
+        "start_utc": "2026-10-03T17:21:00Z"
+      },
+      {
+        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+        "duration_seconds": 180,
+        "end_utc": "2026-10-06T00:45:00Z",
+        "evidence_refs": [
+          "PostgreSQL repeatable-read snapshot (54683304, 54683326, (54683304, 54683324))",
+          "docs/v2_readiness/data_coverage_methodology.md"
+        ],
+        "expected_observations": 3,
+        "gap_id": "gap-f2a873b86a60189e29984b13",
+        "instrument": "BTCUSDT",
+        "market": "BINANCE_SPOT",
+        "missing_observations": 3,
+        "notes": "No synthetic, interpolated, forward-filled, cross-market or OHLCV-substitute data may close this gap.",
+        "observed_observations": 0,
+        "raw_minutes_present": 3,
+        "repair_source": null,
+        "repair_status": "NOT_ATTEMPTED",
+        "repairability": "TECHNICALLY_REPAIRABLE_GOVERNANCE_RESTRICTED",
+        "root_cause_class": "PARTIAL_WRITE",
+        "root_cause_status": "PROBABLE",
+        "secondary_root_causes": [],
+        "severity": "P1",
+        "source": "BINANCE_SPOT_PUBLIC",
+        "start_utc": "2026-10-06T00:42:00Z"
+      },
+      {
+        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+        "duration_seconds": 234780,
+        "end_utc": "2026-10-09T23:38:00Z",
+        "evidence_refs": [
+          "PostgreSQL repeatable-read snapshot (54683304, 54683326, (54683304, 54683324))",
+          "docs/v2_readiness/data_coverage_methodology.md"
+        ],
+        "expected_observations": 3913,
+        "gap_id": "gap-14d977d8dc10d9cecfff7728",
+        "instrument": "BTCUSDT",
+        "market": "BINANCE_SPOT",
+        "missing_observations": 3913,
+        "notes": "No synthetic, interpolated, forward-filled, cross-market or OHLCV-substitute data may close this gap.",
+        "observed_observations": 0,
+        "raw_minutes_present": 3913,
+        "repair_source": null,
+        "repair_status": "NOT_ATTEMPTED",
+        "repairability": "TECHNICALLY_REPAIRABLE_GOVERNANCE_RESTRICTED",
+        "root_cause_class": "PARTIAL_WRITE",
+        "root_cause_status": "PROBABLE",
+        "secondary_root_causes": [],
+        "severity": "P1",
+        "source": "BINANCE_SPOT_PUBLIC",
+        "start_utc": "2026-10-07T06:25:00Z"
+      },
+      {
+        "data_type": "CLOSED_1M_CANDLE_DERIVED_FROM_AGGTRADE",
+        "duration_seconds": 420,
+        "end_utc": "2026-10-20T02:28:00Z",
+        "evidence_refs": [
+          "PostgreSQL repeatable-read snapshot (54683304, 54683326, (54683304, 54683324))",
+          "docs/v2_readiness/data_coverage_methodology.md"
+        ],
+        "expected_observations": 7,
+        "gap_id": "gap-17a9313ae81f5aac22e756be",
+        "instrument": "BTCUSDT",
+        "market": "BINANCE_SPOT",
+        "missing_observations": 7,
+        "notes": "No synthetic, interpolated, forward-filled, cross-market or OHLCV-substitute data may close this gap.",
+        "observed_observations": 0,
+        "raw_minutes_present": 1,
+        "repair_source": null,
+        "repair_status": "NOT_ATTEMPTED",
+        "repairability": "TECHNICALLY_REPAIRABLE_GOVERNANCE_RESTRICTED",
+        "root_cause_class": "PARTIAL_WRITE",
+        "root_cause_status": "PROBABLE",
+        "secondary_root_causes": [],
+        "severity": "P1",
+        "source": "BINANCE_SPOT_PUBLIC",
+        "start_utc": "2026-10-20T02:21:00Z"
+      }
+    ],
+    "cases": {
+      "manual_review_status": "PENDING",
+      "gate_status": "FAIL",
+      "current_cutoff_audit": {
+        "strict_independent_30m_windows": 1899,
+        "gate_status": "PASS",
+        "negative_or_control_sampling": "ABSENT",
+        "required_independent_cases": 1000,
+        "inter_rater_evidence": "ABSENT",
+        "reviewer_fields": "ABSENT_FROM_SCHEMA"
+      }
+    }
+  }
+}

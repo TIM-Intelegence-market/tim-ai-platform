@@ -1,0 +1,35 @@
+{
+  "command": "restore-test",
+  "completed_at": "2026-10-20T02:30:13.495389+00:00",
+  "dump": "/var/backups/tim/tim_20261019T031503Z.dump",
+  "dump_sha256": "64f4d9b372dc1efb58f1f2ccfdacefc1d0679296a0ad55e9b9d3cf64149d50ce",
+  "empty_restore": false,
+  "restore_space": {
+    "estimate_factor": 2,
+    "reserve_bytes": 8589934592,
+    "source_database_bytes": 40384026303,
+    "space_free_before_bytes": 91475787776,
+    "space_needed_bytes": 89357987198,
+    "status": "PASS",
+    "storage_path": "/srv"
+  },
+  "scratch_database_dropped": true,
+  "status": "PASS",
+  "tables": {
+    "agg_trades": {
+      "backfilled_after_dump": 0,
+      "cutoff": "2026-10-19T03:15:03.646000+00:00",
+      "live_rows": 72288941,
+      "match": true,
+      "restored_rows": 72288941
+    },
+    "candles": {
+      "backfilled_after_dump": 1,
+      "cutoff": "2026-10-19T03:14:00+00:00",
+      "live_rows": 152866,
+      "match": false,
+      "restored_rows": 152865
+    }
+  },
+  "trading_actions": 0
+}
