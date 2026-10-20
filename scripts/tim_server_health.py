@@ -101,7 +101,10 @@ def time_sync_check(timedatectl_output: str | None) -> dict[str, Any]:
 def backup_check(directory: Path, now: datetime) -> dict[str, Any]:
     from scripts.tim_db_backup import dump_time, dumps
 
-    existing = dumps(directory)
+    try:
+        existing = dumps(directory)
+    except OSError as exc:
+        return check("RED", directory=str(directory), reason=f"backup directory unreadable ({type(exc).__name__})")
     if not existing:
         return check("RED", directory=str(directory), reason="no backup yet")
     newest = existing[-1]
