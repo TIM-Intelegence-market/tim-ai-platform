@@ -16,6 +16,7 @@ import asyncio
 import hashlib
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -46,6 +47,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--decision-ref", default="")
     parser.add_argument("--approved-at", default="")
     parser.add_argument("--output-dir", default=str(ROOT / "data/operational/candle_backfill"))
+    parser.add_argument("--lock-wait", type=float, default=900.0,
+                        help="seconds to wait for the shared history-recovery lock (the repair timer holds it often)")
     args = parser.parse_args(argv)
     if args.apply and not (args.approved_by and args.decision_ref and args.approved_at):
         parser.error("--apply needs --approved-by, --decision-ref and --approved-at")
@@ -69,17 +72,28 @@ async def main_async(args: argparse.Namespace) -> dict:
         await database.close()
 
 
-def main(argv: list[str] | None = None) -> int:
+def acquire_lock(lock, wait_seconds: float, *, poll: float = 0.5, clock=time.monotonic, sleep=time.sleep) -> bool:
+    """Take the shared repair lock, retrying while the history-recovery timer holds it."""
     import fcntl
 
+    deadline = clock() + max(0.0, wait_seconds)
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            if clock() >= deadline:
+                return False
+            sleep(poll)
+
+
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     lock_path = ROOT / "data/operational/history_recovery.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print('{"status":"ALREADY_RUNNING"}')
+        if not acquire_lock(lock, args.lock_wait):
+            print('{"status":"LOCK_TIMEOUT"}')
             return 3
         manifest = asyncio.run(main_async(args))
     out_dir = Path(args.output_dir)

@@ -107,3 +107,25 @@ async def test_backfill_rebuilds_only_complete_minutes() -> None:
             await connection.execute("DELETE FROM candles WHERE symbol=$1", SYMBOL)
             await connection.execute("DELETE FROM agg_trades WHERE symbol=$1", SYMBOL)
         await database.close()
+
+
+def test_lock_wait_retries_until_the_timer_releases(tmp_path) -> None:
+    import fcntl
+
+    from scripts.tim_candle_backfill import acquire_lock
+
+    path = tmp_path / "history_recovery.lock"
+    holder = path.open("a")
+    fcntl.flock(holder, fcntl.LOCK_EX)
+    waiter = path.open("a")
+    ticks = iter(range(100))
+
+    def release_on_third_sleep(_: float) -> None:
+        if next(ticks) == 2:
+            fcntl.flock(holder, fcntl.LOCK_UN)
+
+    assert acquire_lock(waiter, 60, clock=lambda: 0.0, sleep=release_on_third_sleep) is True
+    other = path.open("a")
+    assert acquire_lock(other, 0, sleep=lambda _: None) is False
+    for handle in (holder, waiter, other):
+        handle.close()
