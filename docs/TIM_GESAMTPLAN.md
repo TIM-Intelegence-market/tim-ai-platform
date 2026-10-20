@@ -1,4 +1,7 @@
 <!--
+
+Aktualisierung 20.10.2026: Restore-PASS und Liveness-Abnahme sind nachgewiesen; #336–338 und #340 gemergt. Neue rein lesende Messung mit Cut-off 11:22 UTC: 72,377 % Oktober-Coverage, 7.746 Fehlminuten in vier historischen Bereichen, 1.917 strikte Fenster im Gesamtbestand seit Juli. Keine Qualifizierung oder V2-Freigabe. [Aktueller Befund samt offener Gates](V2_CURRENT_READINESS_2026-10-20_1322.md). Die älteren Baseline-Zahlen unten bleiben als damaliger Planungsstand erkennbar; sie sind keine heutige Messung.
+
 Hauptfassung des TIM-Gesamtplans. Seit 17.10.2026 liegt sie hier im Repo, damit ChatGPT/Codex und Claude
 am selben Text arbeiten. Änderungen nur per PR gegen platform-main, mit einem Eintrag im Änderungsprotokoll am Ende.
 -->
