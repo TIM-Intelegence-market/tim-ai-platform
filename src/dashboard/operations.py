@@ -3,8 +3,11 @@ from __future__ import annotations
 import html
 import json
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+from src.dashboard.status_logic import build_current_status, current_report
 
 
 MAX_EVIDENCE_BYTES = 2_000_000
@@ -183,8 +186,8 @@ def build_operations_snapshot(
 ) -> dict[str, Any]:
     """Build a bounded, read-only control-center contract from persisted evidence.
 
-    Completion evidence always wins. Legacy V2-readiness evidence is used only as
-    a visibly labelled baseline and never promoted to a current completion claim.
+    Current runtime status uses fresh operational reports. Completion and legacy
+    evidence remain available for their recorded scope and release gates.
     """
 
     names = (
@@ -240,10 +243,12 @@ def build_operations_snapshot(
     safe_stop = evidence["safe_stop_test.json"]
     cursor = evidence["durable_cursor_state.json"]
     queue = evidence["queue_metrics.json"]
-    watchdog = evidence["watchdog_status.json"] or live_watchdog
+    # A live report wins even when stale/failed: an old green artifact must
+    # never replace a current failure or conceal a stopped status producer.
+    watchdog = live_watchdog or evidence["watchdog_status.json"]
     watchdog_source = (
         sources["watchdog_status.json"]["path"]
-        if evidence["watchdog_status.json"]
+        if not live_watchdog
         else sources["live/watchdog_status.json"]["path"]
     )
     backfill = evidence["backfill_candidate_manifest.json"]
@@ -424,6 +429,26 @@ def build_operations_snapshot(
         # Fresh DB-derived rolling window wins over the frozen August baseline.
         rolling_record = rolling_live
         rolling_source = str(rolling_liveness_path)
+        rolling_record = {**rolling_record, "status": current_report(
+            rolling_live, rolling_source, now=datetime.now(timezone.utc),
+        )["status"]}
+    operational_root = live_watchdog_path.parent
+    server_health_path = operational_root / "server_health.json"
+    maintenance_path = operational_root / "maintenance_last_run.json"
+    horizon_path = operational_root / "horizon_readiness.json"
+    horizon_report = _read_json(horizon_path)
+    horizon_report_status = current_report(horizon_report, str(horizon_path), now=datetime.now(timezone.utc))
+    history_path = operational_root / "history_recovery.json"
+    history_report = _read_json(history_path)
+    history_status = current_report(history_report, str(history_path), now=datetime.now(timezone.utc))
+    current_status = build_current_status(
+        _read_json(server_health_path), rolling_live, _read_json(maintenance_path), live_watchdog,
+        sources={"runtime": str(server_health_path), "data": str(rolling_liveness_path),
+                 "maintenance": str(maintenance_path), "watchdog": str(live_watchdog_path)},
+    )
+    runtime["status"] = current_status["runtime"]["status"]
+    runtime["status_source"] = current_status["runtime"]["source"]
+    runtime["watchdog"]["status"] = current_status["watchdog"]["status"]
     backfill_status = _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.gate_status", "status", "gate_status", "governance_disposition")
     if _normalized_status(backfill_status) == "PASS" and backfill.get("readiness_counted") is False:
         backfill_status = "CANDIDATE PASS — NOT APPROVED"
@@ -484,6 +509,9 @@ def build_operations_snapshot(
         "read_only": True,
         "execution_disabled": True,
         "trading_locked": True,
+        "current_status": current_status,
+        "horizon_evidence": {"report": horizon_report, **horizon_report_status},
+        "history_recovery": {"report": history_report, **history_status},
         "security": security,
         "runtime": runtime,
         "datasets": datasets,
@@ -636,13 +664,7 @@ def _attention_rows(data: dict[str, Any]) -> list[str]:
     are labelled as historical instead of being presented as current failures.
     """
     live = data.get("live", {})
-    security = data["security"]
-    runtime = data["runtime"]
-    cases = data["independent_cases"]
-    gaps = data["gaps"]
-    readiness = data["readiness"]
-    mcp = data["mcp"]
-    audit = data["audit"]
+    current = data["current_status"]
     rows: list[tuple[int, str]] = []
 
     def add(status: Any, title: str, detail: str, source: str = "") -> None:
@@ -652,29 +674,24 @@ def _attention_rows(data: dict[str, Any]) -> list[str]:
         weight = {"fail": 0, "blocked": 1, "degraded": 2, "warn": 3, "info": 4, "unknown": 5, "disabled": 6}[key]
         rows.append((weight, attention_row(status, title, detail, source)))
 
-    if security["status"] not in ("PASS",) and severity(security["status"]) != "ok":
-        add(security["status"], "PostgreSQL security gate", str(security["status"]), str(security["listener_after"]["source"]))
+    for key, title in (("runtime", "Runtime process"), ("data", "Current candle coverage"),
+                       ("maintenance", "Gap maintenance"), ("watchdog", "Independent watchdog")):
+        item = current[key]
+        findings = ", ".join(str(finding["check"]) for finding in item.get("findings", []))
+        add(item["status"], title,
+            f"reported={item['reported_status']} · checked={item['checked_at']} · age={item['age_seconds']}s"
+            + (f" · checks: {findings}" if findings else ""),
+            item["source"])
     if severity(live.get("stream")) != "ok":
         add(live.get("stream", UNAVAILABLE), "Live market data stream", f"stream={live.get('stream', UNAVAILABLE)} · last data {live.get('last_data_at') or UNAVAILABLE}", "/api/state operational_health.stream")
+    runtime = data["runtime"]
     if runtime["cursor_age"]["value"] == UNAVAILABLE:
-        add(UNAVAILABLE, "Cursor age not instrumented", "No durable cursor age evidence is loaded; queue/database continuity cannot be verified from the dashboard.", str(runtime["cursor_age"]["source"]))
-    if severity(runtime["queue_depth"]["status"]) not in ("ok", "unknown") :
-        add(runtime["queue_depth"]["status"], "Queue health degraded", f"depth={runtime['queue_depth']['value']}", str(runtime["queue_depth"]["source"]))
-    if isinstance(gaps["p0"], int) and gaps["p0"] > 0:
-        add("FAIL", "Open P0 data gaps", f"{gaps['p0']} P0 · {gaps['p1']} P1 · {gaps['total_loaded']} loaded ({gaps['scope']})", str(gaps["source"]))
-    elif isinstance(gaps["p1"], int) and gaps["p1"] > 0:
-        add("WARN", "Open P1 data gaps", f"{gaps['p1']} P1 · {gaps['total_loaded']} loaded ({gaps['scope']})", str(gaps["source"]))
-    if severity(cases["status"]) != "ok":
-        add(cases["status"], "Independent qualification cases", f"{cases['qualification']} of {cases['required']} required independent cases", str(cases["source"]))
-    if cases["manual_review"] == "PENDING HUMAN APPROVAL":
-        add("PENDING HUMAN APPROVAL", "Manual scientific review pending", "No machine-side approval exists; a real human review is required before qualification counts.", str(cases["source"]))
-    if severity(readiness["status"]) != "ok":
-        add(readiness["status"], "V2 readiness gate", str(readiness["status"]), str(readiness["source"]))
-    if severity(mcp["status"]) == "blocked":
-        add(mcp["status"], "MCP external action required", f"support case {mcp['case_id']}", str(mcp["source"]))
-    last_incident = audit.get("last_incident")
-    if isinstance(last_incident, dict) and last_incident:
-        add("WARN", "Runtime incident in bounded timeline", str(last_incident.get("event", UNAVAILABLE)), "see Incidents & Gaps")
+        add(UNAVAILABLE, "Cursor age not instrumented", "No durable cursor age evidence is loaded.", str(runtime["cursor_age"]["source"]))
+    history = data.get("history_recovery", {})
+    if history.get("report") and history.get("status") != "PASS":
+        add(history.get("status"), "Historical data recovery",
+            ", ".join(str(error) for error in history["report"].get("errors", [])) or "Check recovery report freshness.",
+            history.get("source", ""))
     rows.sort(key=lambda item: item[0])
     return [row for _, row in rows[:12]]
 
@@ -702,24 +719,28 @@ def _pipeline_stages(data: dict[str, Any]) -> list[tuple[str, Any, str, str]]:
 
 
 def _horizons(data: dict[str, Any]) -> list[tuple[str, str, str, str, list[tuple[str, Any]]]]:
-    """Explicit, non-prescriptive analysis horizons.
-
-    The current build persists no per-horizon feature/qualification evidence,
-    so every dimension is reported as NOT AVAILABLE instead of being inferred.
-    """
+    """Render measured inputs; descriptive features never imply qualification."""
+    evidence = data.get("horizon_evidence", {})
+    records = evidence.get("report", {}).get("horizons", {})
+    records = records if isinstance(records, dict) else {}
     horizons = []
     for key, name, timeframes, description in (
         ("SHORT", "Intraday structure", "60s · 1m · 5m", "Microstructure, flow and immediate regime"),
         ("MID", "Session context", "15m · 1h · 4h", "Momentum, participation and session continuity"),
         ("LONG", "Structural context", "1D · 1W", "Regime, macro context and durable market structure"),
     ):
-        horizons.append((key, name, timeframes, description, [
-            ("Data", "NOT AVAILABLE"),
-            ("Features", "NOT AVAILABLE"),
-            ("Quality", "NOT AVAILABLE"),
-            ("Qualification", "NOT AVAILABLE"),
-            ("Readiness", "AWAITING INTELLIGENCE"),
-        ]))
+        record = records.get(key, {})
+        record = record if isinstance(record, dict) else {}
+        fresh = evidence.get("status") == "PASS"
+        missing = "STALE" if evidence.get("status") == "STALE" else UNAVAILABLE
+        dimensions = [(label, record.get(field, UNAVAILABLE) if fresh else missing)
+                      for label, field in (("Data", "data"), ("Features", "features"),
+                                          ("Quality", "quality"), ("Qualification", "qualification"),
+                                          ("Readiness", "readiness"))]
+        if fresh and record:
+            description += (f" · {record.get('valid_minutes', UNAVAILABLE)}/{record.get('expected_minutes', UNAVAILABLE)}"
+                            " closed 1m inputs; candle continuity and descriptive features only.")
+        horizons.append((key, name, timeframes, description, dimensions))
     return horizons
 
 
@@ -730,9 +751,14 @@ def _overview(data: dict[str, Any]) -> str:
     readiness = data["readiness"]
     audit = data["audit"]
 
-    status_word = {"GREEN": "RUNNING", "YELLOW": "DEGRADED", "RED": "IMPAIRED"}.get(
-        str(live.get("status", "")).upper(), "STATE UNKNOWN"
-    )
+    current = data["current_status"]
+    history = data.get("history_recovery", {})
+    history_report = history.get("report", {})
+    runtime_status = current["runtime"]["status"]
+    if live.get("status") == "RED":
+        runtime_status = "FAIL"
+    status_word = {"PASS": "RUNNING", "WARN": "DEGRADED", "FAIL": "IMPAIRED",
+                   "STALE": "STALE"}.get(runtime_status, "STATE UNKNOWN")
     freshness = live.get("data_age_seconds")
     stream_raw = live.get("stream", UNAVAILABLE)
     fresh = isinstance(freshness, (int, float)) and 0 <= freshness <= 120
@@ -746,7 +772,7 @@ def _overview(data: dict[str, Any]) -> str:
         data_label = "UNKNOWN"
 
     level1 = state_banner(
-        live.get("status", UNAVAILABLE),
+        runtime_status,
         status_word,
         f"Live operational state at { _short_time(live.get('checked_at')) } UTC · OBSERVE mode, no execution path",
         metrics=[
@@ -759,6 +785,19 @@ def _overview(data: dict[str, Any]) -> str:
         ],
     )
 
+    status_strip = section(
+        "Aktueller Status", "Betrieb und Demo-Bereitschaft",
+        metric_strip([
+            ("Runtime", current["runtime"]["status"], "", current["runtime"]["status"]),
+            ("Kerzenabdeckung", current["data"]["coverage_percent"], "%", current["data"]["status"]),
+            ("Wartung", current["maintenance"]["status"], "", current["maintenance"]["status"]),
+            ("Watchdog", current["watchdog"]["status"], "", current["watchdog"]["status"]),
+            ("Demo-Trading", "INAKTIV", "", current["demo"]["status"]),
+            ("Historische Reparatur", history_report.get("candles_rebuilt"),
+             "Kerzen im letzten Lauf", history.get("status", UNAVAILABLE)),
+        ]),
+        note="Aktuelle Berichte verfallen nach 5 Minuten. Demo-Trading benötigt eine eigene Bereitschaftsprüfung.",
+    )
     level2 = section(
         "Active problems",
         "Needs attention",
@@ -785,7 +824,13 @@ def _overview(data: dict[str, Any]) -> str:
     level4 = section(
         "Research readiness",
         "Horizons and gates",
-        horizon_body
+        metric_strip([
+            ("Historische Sicherheitsbefunde", data["security"]["status"], "Archiv", data["security"]["status"]),
+            ("Historische Lückenbefunde", data["gaps"]["total_loaded"], "Archiv", None),
+        ])
+        + attention_row(cases["manual_review"], "Manual scientific review pending" if cases["manual_review"] == "PENDING HUMAN APPROVAL" else "Scientific review",
+                        "Release gate from recorded evidence; separate from current runtime health.", cases["source"])
+        + horizon_body
         + f"<div class='block-gap'>{qualification_strip}</div>"
         + f"<div class='block-gap'>{gate_summary}{gate_link}</div>",
         note="Research readiness is reported separately from runtime health. No directional signal, forecast or trading recommendation is generated.",
@@ -807,7 +852,7 @@ def _overview(data: dict[str, Any]) -> str:
 
     return (
         page_head("Operations Overview", "Immediate system health, active problems, pipeline state and research readiness from persisted evidence.", generated_at=data.get("generated_at_utc"))
-        + level1 + level2 + level3 + level4 + evidence
+        + level1 + status_strip + level2 + level3 + level4 + evidence
     )
 
 

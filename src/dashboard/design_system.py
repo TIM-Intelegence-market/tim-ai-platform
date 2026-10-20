@@ -38,7 +38,7 @@ def severity(status: Any) -> str:
     may appear green, and missing evidence is always ``unknown``.
     """
     text = str(status if status not in (None, "", {}) else UNAVAILABLE).strip().upper()
-    if text in {"UNAVAILABLE", "UNKNOWN", "MISSING", "N/A", "NONE", "—"} or text.startswith("MISSING:"):
+    if text in {"UNAVAILABLE", "UNKNOWN", "MISSING", "STALE", "ARCHIVED", "N/A", "NONE", "—"} or text.startswith("MISSING:"):
         return "unknown"
     if text in {"DISABLED", "DISABLED BY POLICY", "PAUSED", "OBSERVE", "OBSERVE-ONLY", "AWAITING INTELLIGENCE", "PREPARED · INACTIVE"} or text.startswith("DISABLED"):
         return "disabled"

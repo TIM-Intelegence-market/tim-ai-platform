@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh TIM horizon and gap evidence every minute
+
+[Timer]
+OnBootSec=45
+OnUnitInactiveSec=60
+Unit=tim-readiness-inputs.service
+
+[Install]
+WantedBy=timers.target

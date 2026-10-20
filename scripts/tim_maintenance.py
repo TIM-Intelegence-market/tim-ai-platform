@@ -75,18 +75,14 @@ async def close_verified_recent_gaps(*, maximum: int = 25, maximum_trade_ids: in
     try:
         await database.connect()
         store = DurableIngestionStore(database)
-        candidates = await store.open_gaps(settings.symbol.upper(), limit=maximum)
-        eligible = [
-            gap for gap in candidates
-            if isinstance(gap.get("missing_from_id"), int)
-            and isinstance(gap.get("missing_to_id"), int)
-            and gap["missing_to_id"] - gap["missing_from_id"] + 1 <= maximum_trade_ids
-        ]
+        eligible = await store.open_gaps(
+            settings.symbol.upper(), limit=maximum, maximum_trade_ids=maximum_trade_ids,
+        )
         closed = 0
         for gap in eligible:
             if await store.resolve_gap(str(gap["gap_id"])):
                 closed += 1
-        return {"examined": len(eligible), "closed": closed, "deferred": len(candidates) - len(eligible)}
+        return {"examined": len(eligible), "closed": closed, "maximum_trade_ids": maximum_trade_ids}
     finally:
         await database.close()
 
