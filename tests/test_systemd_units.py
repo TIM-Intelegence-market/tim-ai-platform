@@ -261,6 +261,7 @@ def launchd_arguments(label: str) -> list[str]:
         ("tim-candle-finalizer.service", "com.tim.closed-candle-finalizer"),
         ("tim-rolling-liveness.service", "com.tim.rolling-liveness"),
         ("tim-maintenance.service", "com.tim.maintenance"),
+        ("tim-history-recovery.service", "com.tim.history-recovery"),
     ],
 )
 def test_service_runs_the_same_command_as_its_launchd_counterpart(unit: str, label: str) -> None:

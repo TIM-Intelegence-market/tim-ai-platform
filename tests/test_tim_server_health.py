@@ -81,3 +81,14 @@ def test_unreachable_database_is_red_not_a_crash(tmp_path: Path, monkeypatch) ->
     assert report["status"] == "RED"
     assert report["checks"]["candle_freshness"]["reason"].startswith("database unavailable")
     assert report["trading_actions"] == 0
+
+
+def test_backup_check_reports_unreadable_directory(monkeypatch, tmp_path) -> None:
+    from scripts import tim_db_backup
+
+    def denied(directory):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(tim_db_backup, "dumps", denied)
+    result = health.backup_check(tmp_path, health.datetime.now(health.UTC))
+    assert result["status"] == "RED" and "unreadable" in result["reason"]

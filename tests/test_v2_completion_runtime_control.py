@@ -205,3 +205,29 @@ def re_search(pattern: str, value: str) -> bool:
     import re
 
     return re.search(pattern, value) is not None
+
+
+def test_macos_listeners_fall_back_to_lsof_and_probes_without_netstat(control, monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.v2_completion import mac_live
+
+    module, instance = control
+    ifconfig = "lo0: flags\n\tinet 127.0.0.1 netmask 0xff000000\nen0: flags\n\tinet 192.168.10.23 netmask 0xffffff00\n"
+    lsof = "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\nPython 7 tim-user 5u IPv4 0x1 0t0 TCP 127.0.0.1:8765 (LISTEN)\n"
+
+    def fake_run(command, **kwargs):
+        name = Path(command[0]).name
+        if name == "netstat":
+            return completed(command, stdout="Active Internet connections (including servers)\n")
+        if name == "lsof":
+            return completed(command, stdout=lsof) if "-iTCP:8765" in command else completed(command, 1)
+        return completed(command, stdout=ifconfig)
+
+    monkeypatch.setattr(module, "run", fake_run)
+    open_ports = {("127.0.0.1", 5432)}
+    monkeypatch.setattr(mac_live, "reachable", lambda host, port, timeout=2.0: (host, port) in open_ports)
+    assert instance.listeners(8765) == {"status": "LISTENING", "addresses": ["127.0.0.1:8765"], "unsafe": False}
+    assert instance.listeners(5432) == {"status": "LISTENING", "addresses": ["127.0.0.1:5432"], "unsafe": False}
+    assert instance.database_boundary_gate()["status"] == "PASS"
+    open_ports.add(("192.168.10.23", 5432))
+    assert instance.listeners(5432)["unsafe"] is True
+    assert instance.listeners(6000) == {"status": "CLOSED", "addresses": [], "unsafe": False}

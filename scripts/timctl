@@ -110,6 +110,8 @@ class RuntimeControl:
         self.plist_path = Path(configured_plist or Path.home() / "Library/LaunchAgents/com.tim.runtime.plist")
         self.launchctl = os.getenv("TIMCTL_LAUNCHCTL", "/bin/launchctl") if test_mode else "/bin/launchctl"
         self.netstat = os.getenv("TIMCTL_NETSTAT", "/usr/sbin/netstat") if test_mode else "/usr/sbin/netstat"
+        self.lsof = os.getenv("TIMCTL_LSOF", "/usr/sbin/lsof") if test_mode else "/usr/sbin/lsof"
+        self.ifconfig = os.getenv("TIMCTL_IFCONFIG", "/sbin/ifconfig") if test_mode else "/sbin/ifconfig"
         self.launch_domain = f"gui/{os.getuid()}"
         self.plist = self._load_plist()
         self.label = str(self.plist["Label"])
@@ -216,7 +218,11 @@ class RuntimeControl:
         if self.service_manager == "systemd":
             result = run([self.ss, "-H", "-ltn"])
         else:
-            result = run([self.netstat, "-an", "-p", "tcp"])
+            netstat = run([self.netstat, "-an", "-p", "tcp"])
+            if netstat.returncode != 0 or "LISTEN" not in netstat.stdout:
+                # macOS 27: netstat lists no sockets for a normal user any more.
+                return self._launchd_listeners(port)
+            result = netstat
         if result.returncode != 0:
             return {"status": "UNKNOWN", "addresses": [], "unsafe": True}
         addresses: list[str] = []
@@ -238,6 +244,44 @@ class RuntimeControl:
             address.startswith(("*.", "*:", "0.0.0.0.", "0.0.0.0:", "::.", ":::"))
             or address in {f"[::]:{port}", f"*.{port}"}
             for address in addresses
+        )
+        return {
+            "status": "LISTENING" if addresses else "CLOSED",
+            "addresses": sorted(set(addresses)),
+            "unsafe": unsafe,
+        }
+
+    def _launchd_listeners(self, port: int) -> dict[str, Any]:
+        """Listeners on macOS without netstat: lsof for own processes, TCP probes otherwise.
+
+        PostgreSQL runs as another user, so lsof cannot see its socket. A listener then
+        counts as present when a loopback connect succeeds, and as unsafe when a connect
+        to any non-loopback address of this Mac succeeds (or interfaces are unreadable).
+        """
+        from src.v2_completion.mac_live import interface_addresses, reachable
+
+        addresses: list[str] = []
+        listing = run([self.lsof, "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"])
+        for line in listing.stdout.splitlines()[1:] if listing.returncode == 0 else []:
+            local = next((value for value in line.split() if value.endswith(f":{port}")), None)
+            if local:
+                addresses.append(local)
+        if not addresses:
+            addresses = [
+                f"{host}:{port}" if host == "127.0.0.1" else f"[{host}]:{port}"
+                for host in ("127.0.0.1", "::1")
+                if reachable(host, port, timeout=1.0)
+            ]
+        interfaces = run([self.ifconfig])
+        exposed = (
+            [host for host in interface_addresses(interfaces.stdout) if reachable(host, port, timeout=1.0)]
+            if interfaces.returncode == 0
+            else None
+        )
+        unsafe = (
+            exposed is None
+            or bool(exposed)
+            or any(address.startswith(("*:", "0.0.0.0:", "[::]:")) for address in addresses)
         )
         return {
             "status": "LISTENING" if addresses else "CLOSED",

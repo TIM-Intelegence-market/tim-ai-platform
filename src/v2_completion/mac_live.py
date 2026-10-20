@@ -16,7 +16,8 @@ from pathlib import Path
 
 TEMPLATE_ROOT = "/Users/tim/Documents/TIM/tim"
 TEMPLATE_HOME = "/Users/tim"
-LIVE_AGENTS = ("com.tim.runtime", "com.tim.watchdog", "com.tim.server-health", "com.tim.qualification-daily")
+LIVE_AGENTS = ("com.tim.runtime", "com.tim.watchdog", "com.tim.server-health", "com.tim.history-recovery",
+               "com.tim.qualification-daily")
 JSONL_BOUND = 2 * 10 * 1024 * 1024
 LOG_BOUND = 512 * 1024 * 1024
 
