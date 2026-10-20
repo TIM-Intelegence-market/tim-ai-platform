@@ -55,6 +55,12 @@ class BackupError(RuntimeError):
         self.evidence = evidence or {}
 
 
+def default_backup_directory() -> Path:
+    if sys.platform == "darwin":
+        return Path.home() / "Library/Application Support/TIM/backups/live"
+    return Path("/var/backups/tim")
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -370,7 +376,7 @@ def restore_test(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="TIM PostgreSQL backup and restore test (OBSERVE only)")
     parser.add_argument("command", choices=("backup", "restore-test"))
-    parser.add_argument("--dir", type=Path, default=Path("/var/backups/tim"))
+    parser.add_argument("--dir", type=Path, default=default_backup_directory())
     parser.add_argument("--keep-days", type=int, default=14)
     parser.add_argument("--keep-count", type=int, default=None,
                         help="keep at most this many dumps (the newest is always kept)")

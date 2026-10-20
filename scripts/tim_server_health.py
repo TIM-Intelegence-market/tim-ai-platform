@@ -185,8 +185,10 @@ def collect(backup_dir: Path, disk_path: Path) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from scripts.tim_db_backup import default_backup_directory
+
     parser = argparse.ArgumentParser(description="TIM server health and gap check (read-only)")
-    parser.add_argument("--backup-dir", type=Path, default=Path("/var/backups/tim"))
+    parser.add_argument("--backup-dir", type=Path, default=default_backup_directory())
     parser.add_argument("--disk-path", type=Path, default=ROOT)
     args = parser.parse_args(argv)
     report = collect(args.backup_dir, args.disk_path)
