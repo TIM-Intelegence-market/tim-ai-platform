@@ -25,7 +25,8 @@ jobs:
   test:
     if: github.event_name != 'schedule'
     runs-on: [self-hosted, macOS, tim-ci]
-    timeout-minutes: 30
+    # 60 instead of 30: the Mac runner is throttled while the V2 qualification campaign runs.
+    timeout-minutes: 60
     # Isolated test database only (tests/conftest.py refuses any other target): PostgreSQL 16 on the
     # runner host, port 5434, database tim_test, role tim, set up by ops/macos/setup_ci_runner.sh.
     # Service containers are not available on macOS runners.
