@@ -20,6 +20,7 @@ from src.data_ingestion.durable import DurableIngestionStore, DurableOutboxWorke
 from src.data_ingestion.ingress import DurableIngress
 from src.data_ingestion.recovery import PersistedTradeReplayService
 from src.dashboard.app import DashboardServer, DashboardState
+from src.dashboard.constants import CHART_CANDLE_LIMIT
 from src.database.connection import Database
 from src.database.repository import MarketRepository
 from src.llm.ollama_client import OllamaClient
@@ -177,6 +178,7 @@ class TIMApplication:
                 ]
                 self.dashboard_state.recent_candles.append({"symbol":candle.symbol,"timeframe":candle.timeframe,"open_time":candle.open_time.isoformat(),"close_time":candle.close_time.isoformat(),"open":candle.open,"high":candle.high,"low":candle.low,"close":candle.close,"volume":candle.volume,"trade_count":candle.trade_count,"provenance":"PUBLIC_MARKET_DATA"})
                 del self.dashboard_state.recent_candles[:-50]
+                self.dashboard_state.record_chart_candle(self.dashboard_state.recent_candles[-1])
             observations = self.observations.evaluate(history)
             for observation in observations:
                 case = self.cases.ingest(observation)
@@ -308,6 +310,7 @@ class TIMApplication:
         self.observations.restore_seen([str(item.observation_id) for item in historical])
         with self.dashboard_state.lock:
             self.dashboard_state.recent_candles=[{"symbol":candle.symbol,"timeframe":candle.timeframe,"open_time":candle.open_time.isoformat(),"close_time":candle.close_time.isoformat(),"open":candle.open,"high":candle.high,"low":candle.low,"close":candle.close,"volume":candle.volume,"trade_count":candle.trade_count,"provenance":"PUBLIC_MARKET_DATA"} for candle in recent_dashboard_candles]
+            self.dashboard_state.chart_candles={timeframe:[{"symbol":candle.symbol,"timeframe":candle.timeframe,"open_time":candle.open_time.isoformat(),"close_time":candle.close_time.isoformat(),"open":candle.open,"high":candle.high,"low":candle.low,"close":candle.close,"volume":candle.volume,"trade_count":candle.trade_count,"provenance":"PUBLIC_MARKET_DATA"} for candle in candles[-CHART_CANDLE_LIMIT:]] for timeframe,candles in self.history.items()}
             self.dashboard_state.active_observations=[item.to_dict() for item in reversed(historical)]
             self.dashboard_state.research_cases=[item.to_dict() for item in persisted_cases]
             self.dashboard_state.orderflow_observations=list(reversed(persisted_orderflow))
