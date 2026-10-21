@@ -88,6 +88,9 @@ def daily_metrics(*, day: date, window: tuple[datetime, datetime], coverage: dic
     start, end = window
     day_gaps = [gap for gap in gaps if _parse(gap["start_utc"]) < end and _parse(gap["end_utc"]) > start]
     health = health or {}
+    runtime_status = {key: health.get(key) for key in ("status", "mode", "trading_actions", "generated_at_utc")}
+    if runtime_status["generated_at_utc"] is None:
+        runtime_status["generated_at_utc"] = health.get("timestamp")
     return {
         "window_start_utc": start.isoformat().replace("+00:00", "Z"),
         "window_end_utc": end.isoformat().replace("+00:00", "Z"),
@@ -105,7 +108,7 @@ def daily_metrics(*, day: date, window: tuple[datetime, datetime], coverage: dic
         "quality_eligible_labels": cases["quality_eligible_labels"],
         "independent_case_count": cases["strict_independent_30m_windows"],
         "independent_case_target": cases["required_independent_cases"],
-        "runtime_status": {key: health.get(key) for key in ("status", "mode", "trading_actions", "generated_at_utc")},
+        "runtime_status": runtime_status,
         "security_status": security,
         "data_manifest_hash": coverage["data_manifest_hash"],
         "database_snapshot": coverage["database_snapshot"],
