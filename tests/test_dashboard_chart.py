@@ -185,3 +185,39 @@ def test_server_serves_chart_page_and_json() -> None:
             assert model["timeframe"] == "1h" and model["candles"]
     finally:
         server.stop()
+
+
+def test_model_writes_out_plans_invalidation_and_risk() -> None:
+    model = build_chart_model(_state().chart_series(), "5m", now=END + timedelta(seconds=30))
+    plans = [s for s in model["analysis"]["scenarios"] if s["plan_text"]]
+    assert plans
+    for scenario in plans:
+        assert scenario["plan_text"].startswith(f"PLAN {scenario['id']} {scenario['direction']}  Limit ")
+        invalid = scenario["invalidation_level"]
+        assert invalid["side"] == ("<" if scenario["direction"] == "LONG" else ">")
+        assert invalid["text"].startswith(f"Ungültig {scenario['id']}: 5m-Schluss")
+        if scenario["preview"]:
+            assert scenario["preview"]["stop_text"].startswith(f"Stop {scenario['id']} ")
+    assert model["risk"]["max_leverage"] == 10 and "keine Anlageberatung" in model["risk"]["text"]
+
+
+def test_ny_open_windows_follow_new_york_time() -> None:
+    from src.dashboard.chart_model import ny_open_windows
+
+    summer = ny_open_windows(datetime(2026, 10, 21, 0, tzinfo=timezone.utc), datetime(2026, 10, 21, 23, tzinfo=timezone.utc))
+    assert [w["open"] for w in summer] == ["2026-10-21T13:30:00+00:00"]
+    assert summer[0]["start"] == "2026-10-21T13:15:00+00:00" and summer[0]["end"] == "2026-10-21T14:00:00+00:00"
+    winter = ny_open_windows(datetime(2026, 12, 1, 0, tzinfo=timezone.utc), datetime(2026, 12, 1, 23, tzinfo=timezone.utc))
+    assert [w["open"] for w in winter] == ["2026-12-01T14:30:00+00:00"]
+    assert ny_open_windows(datetime(2026, 10, 24, 0, tzinfo=timezone.utc), datetime(2026, 10, 25, 23, tzinfo=timezone.utc)) == []  # weekend
+
+
+def test_setup_path_shows_written_out_plans_from_chart() -> None:
+    from src.dashboard.views import render
+
+    page = render(_state(), "Setup Path")
+    assert "TIMs Pläne im Chart (15m)" in page and "class='tc-svg'" in page
+    assert "PLAN " in page and "Ungültig " in page and "keine Anlageberatung" in page
+    assert "class='sp-plan" in page and "Nächste Sperrzeit: NY-Eröffnung" in page
+    # Without per-timeframe candles the old close-price line stays.
+    assert "setup-chart__line" in render(DashboardState(recent_candles=[{"close": 80_000 + i} for i in range(20)]), "Setup Path")

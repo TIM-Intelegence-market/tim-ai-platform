@@ -16,7 +16,7 @@ PROFILE_LEFT, PROFILE_RIGHT = 764, 850
 LABEL_X = 856
 TOP, BOTTOM = 18, 478
 LABEL_GAP = 13
-ZONE_SPACE = 140  # px right of the last candle reserved for scenario zones
+ZONE_SPACE = 330  # px right of the last candle reserved for written-out scenario plans
 SCENARIO_NAMES = {
     "BREAKOUT_ACCEPTANCE": "Ausbruch + Annahme",
     "LIQUIDITY_SWEEP_REVERSAL": "Sweep + Rückeroberung",
@@ -144,27 +144,64 @@ def _chart_svg(model: dict[str, Any]) -> str:
             inside = profile.get("val") is not None and profile["val"] <= item["low"] and item["high"] <= profile["vah"]
             parts.append(f"<rect x='{PROFILE_RIGHT - width:.1f}' y='{y(hi):.1f}' width='{width:.1f}' height='{max(0.6, y(lo) - y(hi) - 0.4):.1f}' class='tc-profile{' tc-profile--va' if inside else ''}'/>")
 
-    # Scenarios: entry zone, trigger, preview stop and targets.
-    zone_start = x(count - 1) + slot + 46  # the drawing below starts 40 px before this
+    # Past NY-open block windows inside the visible time range.
+    first_time, last_time = candles[0]["open_time"], candles[-1]["open_time"]
+    for window in model.get("events", []):
+        if window["end"] < first_time or window["start"] > last_time:
+            continue
+        x1 = next((x(i) - slot / 2 for i, c in enumerate(candles) if c["open_time"] >= window["start"]), x(count - 1))
+        x2 = next((x(i) - slot / 2 for i, c in enumerate(candles) if c["open_time"] >= window["end"]), x(count - 1) + slot / 2)
+        parts.append(f"<rect x='{x1:.1f}' y='{TOP}' width='{max(2.0, x2 - x1):.1f}' height='{BOTTOM - TOP}' class='tc-block'/>")
+        parts.append(f"<text x='{x1 + 2:.1f}' y='{TOP + 50}' class='tc-block-text'>{_safe(window['label'])}</text>")
+
+    # Scenarios written out like a hand-drawn plan: zone with text, stop, invalidation, targets.
+    zone_x = x(count - 1) + slot + 8
+    zone_w = PROFILE_RIGHT - zone_x
+    targets_above: list[str] = []
+    targets_below: list[str] = []
+
+    plan_lines: dict[tuple[str, float], list[str]] = {}
+    plan_texts: list[str] = []
+
+    def plan_line(price: float | None, cls: str, text: str) -> None:
+        if price is None:
+            return
+        if not visible(price):
+            (above if price > y_high else below).append(text)
+            return
+        plan_lines.setdefault((cls, round(price, 6)), []).append(text)  # same level: one line, joined text
+
     for scenario in analysis.get("scenarios", []):
         sid, direction = scenario["id"], scenario["direction"]
         kind = "long" if direction == "LONG" else "short" if direction == "SHORT" else "neutral"
         lo, hi = scenario.get("entry_low"), scenario.get("entry_high")
+        plan_text = scenario.get("plan_text") or f"Plan {sid} {direction}"
         if lo is not None and hi is not None:
+            lo, hi = min(lo, hi), max(lo, hi)
             if visible(lo) or visible(hi):
-                top_price, bottom_price = min(max(lo, hi), y_high), max(min(lo, hi), y_low)
-                parts.append(f"<rect x='{zone_start - 40:.1f}' y='{y(top_price):.1f}' width='{PROFILE_LEFT - zone_start + 40:.1f}' height='{max(2.0, y(bottom_price) - y(top_price)):.1f}' class='tc-zone tc-zone--{kind}'/>")
-                parts.append(f"<text x='{zone_start - 36:.1f}' y='{y(top_price) + 12:.1f}' class='tc-zone-text tc-zone-text--{kind}'>{_safe(f'Plan {sid} {direction}')}</text>")
-                parts.append(f"<text x='{zone_start - 36:.1f}' y='{y(top_price) + 24:.1f}' class='tc-zone-text tc-zone-text--{kind}'>{_safe(f'{_price(min(lo, hi))}–{_price(max(lo, hi))}')}</text>")
+                top_price, bottom_price = min(hi, y_high), max(lo, y_low)
+                parts.append(f"<rect x='{zone_x:.1f}' y='{y(top_price):.1f}' width='{zone_w:.1f}' height='{max(2.0, y(bottom_price) - y(top_price)):.1f}' class='tc-zone tc-zone--{kind}'/>")
+                plan_texts.append(f"<text x='{zone_x + 4:.1f}' y='{y(top_price) + 12:.1f}' class='tc-zone-text tc-zone-text--{kind}'>{_safe(plan_text)}</text>")
             else:
-                (above if lo > y_high else below).append(f"Zone {sid} {_price(min(lo, hi))}–{_price(max(lo, hi))}")
+                (above if lo > y_high else below).append(plan_text)
         elif scenario.get("trigger") is not None:
-            hline(scenario["trigger"], f"tc-trigger tc-trigger--{kind}", f"Trigger {sid}", zone_start - 40)
+            plan_line(scenario["trigger"], f"tc-trigger tc-trigger--{kind}", f"Trigger {sid} {_price(scenario['trigger'])}")
+        invalid = scenario.get("invalidation_level")
+        if invalid:
+            plan_line(invalid["level"], "tc-invalid", invalid["text"])
         preview = scenario.get("preview") or {}
         if preview.get("stop") is not None:
-            hline(preview["stop"], "tc-stop", f"Stop {sid}", zone_start - 40)
+            plan_line(preview["stop"], "tc-stop", preview.get("stop_text") or f"Stop {sid} {_price(preview['stop'])}")
             for number, target in enumerate((preview.get("targets") or [])[:2], start=1):
-                hline(target, "tc-target", f"Ziel {sid}{number}", zone_start - 40)
+                text = f"TP{number} {sid} {_price(target)}"
+                if visible(target):
+                    plan_line(target, "tc-target", text)
+                else:
+                    (targets_above if target > y_high else targets_below).append(text)
+
+    for (cls, price), texts in plan_lines.items():
+        parts.append(f"<line x1='{zone_x:.1f}' x2='{PROFILE_RIGHT}' y1='{y(price):.1f}' y2='{y(price):.1f}' class='{cls}'/>")
+        plan_texts.append(f"<text x='{zone_x + 4:.1f}' y='{y(price) - 5:.1f}' class='tc-plan-text {cls.split()[0]}-text'>{_safe(' · '.join(texts))}</text>")
 
     for bos in model.get("bos", []):
         arrow = "↑" if bos["direction"] == "UP" else "↓"
@@ -189,12 +226,22 @@ def _chart_svg(model: dict[str, Any]) -> str:
         parts.append(f"<line x1='{PLOT_LEFT}' x2='{PROFILE_RIGHT}' y1='{y(last):.1f}' y2='{y(last):.1f}' class='tc-last'/>")
         label(last, f"Kurs {_price(last)}", "tc-last")
 
+    parts.extend(plan_texts)  # on top of lines and candles, readable through the halo
     for item in _spread_labels(labels):
         parts.append(f"<text x='{LABEL_X}' y='{item['ly']:.1f}' class='tc-label {item['cls'].split()[0]}-text'>{_safe(item['text'])}</text>")
+    banners = [("↑ Ziele über dem Bild: ", targets_above, TOP + 2), ("↓ Ziele unter dem Bild: ", targets_below, BOTTOM - 44)]
+    for prefix, items, top in banners:
+        if items:
+            parts.append(f"<rect x='{PLOT_LEFT + 70}' y='{top}' width='{PLOT_RIGHT - PLOT_LEFT - 140}' height='18' class='tc-banner'/>")
+            parts.append(f"<text x='{PLOT_LEFT + 78}' y='{top + 13}' class='tc-banner-text'>{_safe(prefix + ' · '.join(items[:4]))}</text>")
     if above:
-        parts.append(f"<text x='{PLOT_LEFT + 60}' y='{TOP + 14}' class='tc-edge'>{_safe('↑ über dem Bild: ' + ' · '.join(above[:4]))}</text>")
+        parts.append(f"<text x='{PLOT_LEFT + 70}' y='{TOP + 34}' class='tc-edge'>{_safe('↑ über dem Bild: ' + ' · '.join(above[:3]))}</text>")
     if below:
-        parts.append(f"<text x='{PLOT_LEFT + 60}' y='{BOTTOM - 6}' class='tc-edge'>{_safe('↓ unter dem Bild: ' + ' · '.join(below[:4]))}</text>")
+        parts.append(f"<text x='{PLOT_LEFT + 70}' y='{BOTTOM - 52}' class='tc-edge'>{_safe('↓ unter dem Bild: ' + ' · '.join(below[:3]))}</text>")
+    risk = (model.get("risk") or {}).get("text")
+    if risk:
+        parts.append(f"<rect x='{PLOT_LEFT + 4}' y='{BOTTOM - 20}' width='{min(PLOT_RIGHT - PLOT_LEFT - 8, 8 + 6.4 * len(risk)):.1f}' height='16' class='tc-footer'/>")
+        parts.append(f"<text x='{PLOT_LEFT + 10}' y='{BOTTOM - 8}' class='tc-footer-text'>{_safe(risk)}</text>")
 
     title = f"BTCUSDT {timeframe} · {count} Kerzen · TIM-Chart"
     return f"<svg viewBox='0 0 {WIDTH} {HEIGHT}' role='img' aria-label='{_safe(title)}' class='tc-svg'>{''.join(parts)}</svg>"

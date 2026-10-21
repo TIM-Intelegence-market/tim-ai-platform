@@ -99,7 +99,14 @@ Marked levels, all computed by TIM:
   targets from `TradePlanBuilder` applied to the unconfirmed scenario. They are labelled as preview;
   scores are uncalibrated. Without trades the pipeline's decision stays `NO_TRADE`.
 
-The page refreshes through the normal live update.
+Plans are written out like a hand-drawn chart: each zone carries `PLAN A LONG  Limit … (reason)`,
+the invalidation is a solid red line (`Ungültig A: 15m-Schluss < …`, the scenario trigger), the
+preview stop a dashed line with its distance, targets outside the view go into a yellow banner, and
+a footer states 0.5 % account risk, max. 10x and "keine Anlageberatung". NY-open windows
+(15 min before to 30 min after 9:30 New York time, weekdays) are shaded as no-entry time.
+
+`/setup-path` shows the same chart (15m, 80 candles) with one card per plan; without per-timeframe
+candles it keeps the old close-price line. The page refreshes through the normal live update.
 
 ## Pilot view
 

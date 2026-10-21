@@ -29,6 +29,15 @@ CHART_VISIBLE = 120  # candles drawn per chart
 VALUE_AREA_SHARE = 0.70
 PROFILE_TARGET_BINS = 60
 PIVOT_WINDOW = 2  # same pivot width as orderflow_scenario.engines.market_state
+ENTRY_REASONS = {
+    "LIMIT_RETEST": "Retest Ausbruchskante",
+    "RECLAIM": "Rückeroberung Range-Low",
+    "FAILED_RETEST": "gescheiterter Retest",
+    "PULLBACK": "Rücksetzer zum POC",
+    "ENTRY_ZONE": "Zone",
+}
+NY_OPEN_LOCAL = (9, 30)  # New York stock market open, America/New_York
+NY_OPEN_BLOCK = (timedelta(minutes=15), timedelta(minutes=30))  # before / after the open
 TIMEFRAME_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
 
 
@@ -196,6 +205,30 @@ def _to_model_candles(candles: Sequence[Mapping[str, Any]]):
     return result
 
 
+def _fmt(value: float) -> str:
+    """German price format: 83.650 for BTC, 1,2345 below 1000."""
+    if value >= 1000:
+        return f"{value:,.0f}".replace(",", ".")
+    return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def ny_open_windows(start: datetime, end: datetime) -> list[dict[str, Any]]:
+    """NY-open block windows (15 min before to 30 min after 9:30 New York time) touching [start, end]."""
+    from zoneinfo import ZoneInfo
+
+    zone = ZoneInfo("America/New_York")
+    windows = []
+    day = start.astimezone(zone).date() - timedelta(days=1)
+    while day <= end.astimezone(zone).date() + timedelta(days=1):
+        if day.weekday() < 5:
+            opened = datetime(day.year, day.month, day.day, *NY_OPEN_LOCAL, tzinfo=zone).astimezone(timezone.utc)
+            begin, finish = opened - NY_OPEN_BLOCK[0], opened + NY_OPEN_BLOCK[1]
+            if finish >= start and begin <= end:
+                windows.append({"label": "NY-Eröffnung", "open": opened.isoformat(), "start": begin.isoformat(), "end": finish.isoformat()})
+        day += timedelta(days=1)
+    return windows
+
+
 def _dec(value: float | None) -> Decimal | None:
     return None if value is None else Decimal(str(value))
 
@@ -250,8 +283,27 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
                     "reward_risk": _flt(plan.expected_reward_risk),
                     "note": "Vorschau nach TIM-Regeln, Szenario nicht bestätigt",
                 }
+        entry_model = str(scenario.trade_template.get("entry_model", ""))
+        trigger = _flt(scenario.trigger_level)
+        invalid = None
+        if trigger is not None and scenario.direction.value in {"LONG", "SHORT"}:
+            side = "<" if scenario.direction.value == "LONG" else ">"
+            invalid = {"level": trigger, "side": side, "text": f"Ungültig {scenario.scenario_id}: {timeframe}-Schluss {side} {_fmt(trigger)}"}
+        plan_text = None
+        if scenario.entry_zone_low is not None and scenario.entry_zone_high is not None:
+            low, high = sorted((float(scenario.entry_zone_low), float(scenario.entry_zone_high)))
+            plan_text = f"PLAN {scenario.scenario_id} {scenario.direction.value}  Limit {_fmt(low)}–{_fmt(high)} ({ENTRY_REASONS.get(entry_model, entry_model.replace('_', ' ').lower())})"
+        if preview:
+            entry, stop = preview["entry"], preview["stop"]
+            gap = abs(entry - stop) / entry * 100 if entry else 0.0
+            where = "unter" if stop < entry else "über"
+            gap_text = f"{gap:.1f}".replace(".", ",")
+            preview["stop_text"] = f"Stop {scenario.scenario_id} {_fmt(stop)} ({gap_text} % {where} Einstieg)"
         scenarios.append({
             "id": scenario.scenario_id,
+            "entry_model": entry_model,
+            "plan_text": plan_text,
+            "invalidation_level": invalid,
             "type": scenario.scenario_type.value,
             "direction": scenario.direction.value,
             "state": scenario.state.value,
@@ -282,6 +334,15 @@ def profile_source(series: Mapping[str, Sequence[Mapping[str, Any]]], candles: S
         if finer and (finer[0]["open_time"] - start).total_seconds() <= TIMEFRAME_SECONDS[tf]:
             return finer, tf
     return list(candles), timeframe
+
+
+def _risk_note() -> dict[str, Any]:
+    from src.orderflow_scenario.config import MAX_LEVERAGE, default_config
+
+    tier = next((t for t in default_config().risk_tiers if t.name == "STANDARD"), None)
+    risk = float(tier.account_risk_fraction) * 100 if tier else 0.5
+    return {"account_risk_percent": risk, "max_leverage": float(MAX_LEVERAGE),
+            "text": f"{str(round(risk, 2)).replace('.', ',')} % Kontorisiko · max. {int(MAX_LEVERAGE)}x · Vorschau nach TIM-Regeln · keine Anlageberatung"}
 
 
 def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timeframe: str = DEFAULT_TIMEFRAME, now: datetime | None = None, visible: int = CHART_VISIBLE, profile: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -329,6 +390,12 @@ def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timefra
         tf_candles = clean_candles(series.get(tf) or [], tf)
         bos.extend(break_of_structure(tf_candles[-CHART_CANDLE_LIMIT:], tf))
     model["bos"] = bos
+
+    first, now_or_last = candles[0]["open_time"], max(now, last["close_time"])
+    model["events"] = ny_open_windows(first, now_or_last + timedelta(hours=24))
+    upcoming = [w for w in model["events"] if datetime.fromisoformat(w["end"]) >= now]
+    model["next_block"] = upcoming[0] if upcoming else None
+    model["risk"] = _risk_note()
 
     if len(candles) >= 5:
         try:
