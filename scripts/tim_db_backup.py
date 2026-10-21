@@ -39,6 +39,10 @@ BACKUP_REPORT_PATH = ROOT / "data/operational/backup_last_run.json"
 SPACE_FACTOR = 1.25
 # Before a new dump exists, space pruning never goes below this many verified-or-not old dumps.
 MIN_KEPT_BEFORE_DUMP = 2
+# A restore needs the expanded database, index/WAL working space, and room for
+# the live writer. The compressed dump size cannot estimate that requirement.
+RESTORE_SPACE_FACTOR = 2
+RESTORE_RESERVE_BYTES = 8 * 2**30
 STALE_TEMPORARY = timedelta(hours=6)
 # (table, time column) pairs whose history only grows: rows are never deleted, but a gap backfill
 # may insert older rows after the dump, so live counts up to a cutoff can exceed the dump's.
@@ -46,7 +50,9 @@ COMPARED_TABLES = (("candles", "open_time"), ("agg_trades", "trade_time"))
 
 
 class BackupError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, evidence: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.evidence = evidence or {}
 
 
 def utc_now() -> datetime:
@@ -241,6 +247,48 @@ def scratch_name(main_database: str, scratch: str) -> str:
     return scratch
 
 
+def restore_space_check(parts: dict[str, str], storage_path: Path | None, *, psql: str = "psql") -> dict[str, Any]:
+    """Check the operator-confirmed PostgreSQL filesystem, never the dump disk.
+
+    storage_path must be on the filesystem holding PostgreSQL's data, indexes,
+    and default temporary files. This local check cannot cover a remote server
+    or a cluster using separate tablespace/WAL filesystems.
+    """
+    if storage_path is None or not storage_path.is_absolute() or not storage_path.is_dir():
+        raise BackupError("restore requires --restore-storage-path on the PostgreSQL data filesystem")
+    if parts["host"] not in {"localhost", "127.0.0.1", "::1"} and not parts["host"].startswith("/"):
+        raise BackupError("restore space check requires a local PostgreSQL server")
+    result = run_pg(
+        [psql, "--no-psqlrc", "--tuples-only", "--no-align", "--dbname", parts["database"],
+         "--command", "SELECT pg_database_size(current_database())"],
+        parts, timeout=60,
+    )
+    try:
+        database_bytes = int(result.stdout.strip())
+    except ValueError as exc:
+        raise BackupError("cannot determine expanded source database size") from exc
+    if database_bytes <= 0:
+        raise BackupError("expanded source database size must be positive")
+    needed = database_bytes * RESTORE_SPACE_FACTOR + RESTORE_RESERVE_BYTES
+    free = free_bytes(storage_path)
+    evidence = {
+        "storage_path": str(storage_path.resolve()),
+        "source_database_bytes": database_bytes,
+        "space_needed_bytes": needed,
+        "space_free_before_bytes": free,
+        "reserve_bytes": RESTORE_RESERVE_BYTES,
+        "estimate_factor": RESTORE_SPACE_FACTOR,
+        "status": "PASS" if free >= needed else "FAIL",
+    }
+    if free < needed:
+        raise BackupError(
+            f"not enough restore space on {storage_path}: need {needed // 2**20} MiB "
+            f"including live reserve, free {free // 2**20} MiB; no scratch database created",
+            evidence={"restore_space": evidence},
+        )
+    return evidence
+
+
 async def count_rows(database_url: str, cutoffs: dict[str, datetime | None] | None) -> dict[str, dict[str, Any]]:
     import asyncpg
 
@@ -289,9 +337,11 @@ def restore_test(
     parts: dict[str, str],
     *,
     tools: dict[str, str] | None = None,
+    storage_path: Path | None = None,
 ) -> dict[str, Any]:
-    tools = {"dropdb": "dropdb", "createdb": "createdb", "pg_restore": "pg_restore", **(tools or {})}
+    tools = {"dropdb": "dropdb", "createdb": "createdb", "pg_restore": "pg_restore", "psql": "psql", **(tools or {})}
     scratch = scratch_name(parts["database"], scratch)
+    space = restore_space_check(parts, storage_path, psql=tools["psql"])
     dump, checksum = verified_newest(directory)
     run_pg([tools["dropdb"], "--if-exists", scratch], parts, timeout=300)
     run_pg([tools["createdb"], scratch], parts, timeout=300)
@@ -299,6 +349,9 @@ def restore_test(
         run_pg([tools["pg_restore"], "--no-owner", "--exit-on-error", "--dbname", scratch, str(dump)], parts, timeout=7200)
         restored = asyncio.run(count_rows(with_database(database_url, scratch), None))
         live = asyncio.run(count_rows(database_url, {table: entry["cutoff"] for table, entry in restored.items()}))
+    except BackupError as exc:
+        exc.evidence["restore_space"] = space
+        raise
     finally:
         run_pg([tools["dropdb"], "--if-exists", scratch], parts, timeout=300)
     result = compare(restored, live)
@@ -309,6 +362,7 @@ def restore_test(
         "dump": str(dump),
         "dump_sha256": checksum,
         "scratch_database_dropped": True,
+        "restore_space": space,
         "trading_actions": 0,
     }
 
@@ -321,6 +375,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--keep-count", type=int, default=None,
                         help="keep at most this many dumps (the newest is always kept)")
     parser.add_argument("--scratch-db", default="tim_restore_test")
+    parser.add_argument("--restore-storage-path", type=Path,
+                        help="operator-confirmed local filesystem holding PostgreSQL data, indexes and temp files")
     args = parser.parse_args(argv)
     if args.keep_count is not None and args.keep_count < 1:
         parser.error("--keep-count must be at least 1")
@@ -333,10 +389,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "backup":
             payload = backup(args.dir, args.keep_days, parts, keep_count=args.keep_count)
         else:
-            payload = restore_test(args.dir, args.scratch_db, database_url, parts)
+            payload = restore_test(args.dir, args.scratch_db, database_url, parts,
+                                   storage_path=args.restore_storage_path)
     except Exception as exc:  # fail closed and leave evidence, never a secret
         payload = {"status": "FAIL", "command": args.command, "reason": f"{type(exc).__name__}: {exc}"[:500],
                    "completed_at": utc_now().isoformat(), "trading_actions": 0}
+        if isinstance(exc, BackupError):
+            payload.update(exc.evidence)
     atomic_json(report_path, payload)
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if payload["status"] == "PASS" else 2

@@ -1009,6 +1009,14 @@ class Diagnosis:
             'unverified_locations': min(removed, 100), 'mode': self.mode, 'rounds': min(self.rounds,
                                                                                         protocol.ROUNDS_MAX),
         }
+        # No tools run in one-shot mode. A real file/line is not proof that the
+        # model inspected it or located the cause; retain advisory text only.
+        if self.mode == 'einschuss':
+            result['needs_human'] = True
+            result['locations'] = []
+            result['unverified_locations'] = min(removed + len(kept), 100)
+            if result['fix_kind'] in {'code_src', 'code_locked'}:
+                result['fix_kind'] = 'ops_manual'
         try:
             return protocol.validate_result(result, expected_rid=self.rid, fetch_domains=domains)
         except ProtocolError:

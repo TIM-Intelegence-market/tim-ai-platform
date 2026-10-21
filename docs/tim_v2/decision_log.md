@@ -91,3 +91,12 @@ Decision: replay, historical simulation, paper and shadow are separately
 gated future domains, and V2.0 implements none of them.
 Reason: evidence from one mode cannot establish authorization for another.
 Status: accepted.
+
+## D-014 — Leverage is capped at 10x
+
+Decision: TIM may plan spot trades (1x) and leveraged trades up to at most 10x.
+`MAX_LEVERAGE` in `src/orderflow_scenario/config.py` is a hard cap: no risk
+tier and no config file may exceed it, the Risk Engine rejects higher requests
+(`leverage_exceeds_max_10x`) and the paper evaluator flags them.
+Reason: owner decision (Uzi, 2026-10-20). Still paper only; no real orders.
+Status: accepted.

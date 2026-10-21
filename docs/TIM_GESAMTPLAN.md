@@ -1,4 +1,7 @@
 <!--
+
+Aktualisierung 20.10.2026: Restore-PASS und Liveness-Abnahme sind nachgewiesen; #336–338 und #340 gemergt. Neue rein lesende Messung mit Cut-off 11:22 UTC: 72,377 % Oktober-Coverage, 7.746 Fehlminuten in vier historischen Bereichen, 1.917 strikte Fenster im Gesamtbestand seit Juli. Keine Qualifizierung oder V2-Freigabe. [Aktueller Befund samt offener Gates](V2_CURRENT_READINESS_2026-10-20_1322.md). Die älteren Baseline-Zahlen unten bleiben als damaliger Planungsstand erkennbar; sie sind keine heutige Messung.
+
 Hauptfassung des TIM-Gesamtplans. Seit 17.10.2026 liegt sie hier im Repo, damit ChatGPT/Codex und Claude
 am selben Text arbeiten. Änderungen nur per PR gegen platform-main, mit einem Eintrag im Änderungsprotokoll am Ende.
 -->
@@ -84,6 +87,7 @@ kommt aus dem Projektspeicher und wurde nicht neu gemessen.
 - Der Server läuft seit 01.10. live aus `/opt/tim`. Gemergt sind die Catch-up-Fixes #145 und #159, der Kerzen-Nachbau #178 und #183 und die Backup-Rotation #190. Der Checkup ist seit 14.10. installiert, Melden ist aus.
 - Seit 14.10. kommt es zu Netzausfällen über den pfSense-Router: 64 Stück bis 16.10. Für das 34-Tage-Fenster ist das das größte einzelne Risiko.
 - Das Control Center auf dem Mac misst 24 h Abdeckung 100 %. Das ist die Mac-Runtime und zählt nicht als Qualifizierung.
+- **Entscheid Uzi, 20.10. 16:49 UTC:** „erstmal den server vergessen und TIM einfach auf dem mac runnen“. Die Qualifizierung (V3/V5) läuft deshalb vorerst auf dem Mac mini aus einem sauberen Live-Checkout (`ops/macos/LIVE_MAC.md`), nicht auf dem Server. Grund: Die Server-Leitung über 192.168.1.1 setzte am 20.10. ständig aus, die Mac-Leitung hatte 24 h 100 %. Ob der Server nach dem Kabelanschluss am 29.10. wieder übernimmt, wird dann neu entschieden; ein Wechsel mitten im Fenster beendet die laufende Kampagne.
 - CI läuft auf dem eigenen Runner, und der Mac-Issue-Worker arbeitet Code-Issues ab. Am Engpass ändert das nichts: Der liegt bei Datenkontinuität und menschlicher Prüfung, nicht bei Code.
 
 ### 0.3 Reihenfolge bis zur V2-Trading-Version
@@ -92,9 +96,9 @@ kommt aus dem Projektspeicher und wurde nicht neu gemessen.
 |---|---|---|---|---|
 | V1 | V2-Readiness neu messen: `scripts/v2_readiness_audit.py --no-write` (nur lesend) auf Server-Daten mit neuem Cut-off, danach die Ergebnis-Artefakte per PR, damit das Control Center den Stand von heute zeigt | A/B | Ist-Stand B01 bis B05 | Mac-Sitzung lesend, PR aus der Cloud |
 | V2 | Netz stabil: Ursache am Router (Chris), falls nötig USV oder zweiter Uplink; dazu die Netzausfall-Probe A2 | A | Voraussetzung für B01 | Uzi/Chris |
-| V3 | Start-Bedingungen der Qualifizierung prüfen und grün machen (siehe 0.1) | A/B | Startfreigabe | Repo + Server |
+| V3 | Start-Bedingungen der Qualifizierung prüfen und grün machen (siehe 0.1) | A/B | Startfreigabe | Repo + Mac mini |
 | V4 | Governance: RACI mit echten Namen, Freigabeweg HC-1.0 (`TIM_V2_GOVERNANCE_APPROVAL_WORKFLOW.md`) | neu | B07, B08 | **nur Uzi** (F10) |
-| V5 | Qualifizierungskampagne starten, etwa 34 Tage. Sie **ersetzt B3/B4**: gleiche Wartezeit, aber nach V2-Regeln | B | B01, B02 | Server |
+| V5 | Qualifizierungskampagne starten, etwa 34 Tage. Sie **ersetzt B3/B4**: gleiche Wartezeit, aber nach V2-Regeln | B | B01, B02 | Mac mini (seit 20.10., siehe 0.2) |
 | V6 | Parallel zu V5: Artefakt-Audit, Research-Qualität, Herkunft der Historie (H1 bis H3 liefern dafür) | B/H | B03 bis B05 | Repo |
 | V7 | Manuelle wissenschaftliche Prüfung durch einen Menschen, danach V2 freigegeben | Abschluss B | B06 | **Mensch** |
 | V8 | Plattformen V2.1 bis V2.7 sind die Pakete C, D und E: Wissensgraph = D1, Research Engine und Datensätze = H/E2, Orderflow = C, Evaluation = E3, Decision = D4/F1, Simulation = E2/F2-Replay | C/D/E | V2.1 bis V2.7 | Repo + Worker |

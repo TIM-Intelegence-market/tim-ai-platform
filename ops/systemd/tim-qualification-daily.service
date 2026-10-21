@@ -1,0 +1,18 @@
+# TIM V2 qualification: one immutable manifest per complete UTC day. Read-only on PostgreSQL.
+[Unit]
+Description=TIM V2 qualification daily manifest (OBSERVE only)
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/v2_qualification_daily.py
+User=tim
+Group=tim
+WorkingDirectory=/opt/tim
+EnvironmentFile=/etc/tim/tim.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/tim/data /opt/tim/artifacts
+PrivateTmp=yes
+TimeoutStartSec=30min

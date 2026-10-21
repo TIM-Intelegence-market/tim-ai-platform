@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from ..config import FeeModel, OrderflowScenarioConfig, RiskLimits, RiskTier
+from ..config import MAX_LEVERAGE, FeeModel, OrderflowScenarioConfig, RiskLimits, RiskTier
 from ..domain import ConfirmationState, ExecutionSensitivity, RiskDecision, RiskStatus, TradePlan, TradeStatus
 from ..domain import ZERO
 
@@ -143,7 +143,10 @@ class RiskEngine:
         if requested_leverage > tier.max_leverage:
             reasons.append("leverage_exceeds_tier_limit")
             details.append(f"requested={requested_leverage} tier_max={tier.max_leverage}")
-        approved_leverage = min(requested_leverage, tier.max_leverage)
+        if requested_leverage > MAX_LEVERAGE:
+            reasons.append("leverage_exceeds_max_10x")
+            details.append(f"requested={requested_leverage} hard_max={MAX_LEVERAGE}")
+        approved_leverage = min(requested_leverage, tier.max_leverage, MAX_LEVERAGE)
         if approved_leverage > Decimal("50") and not self.config.allow_leverage_above_50x:
             reasons.append("leverage_above_50x_not_allowed")
 

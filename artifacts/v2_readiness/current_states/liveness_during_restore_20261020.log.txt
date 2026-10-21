@@ -1,0 +1,112 @@
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.375"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.375"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.375"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.375"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.514"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.514"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.583"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.514"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.514"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.514"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.722"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "FAIL", "coverage_percent": "99.861"}
+tim-rolling-liveness.service: Main process exited, code=exited, status=2/INVALIDARGUMENT
+tim-rolling-liveness.service: Failed with result 'exit-code'.
+Failed to start tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).
+Starting tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only)...
+{"output": "/opt/tim/data/operational/rolling_liveness.json", "status": "PASS", "coverage_percent": "100.000"}
+tim-rolling-liveness.service: Deactivated successfully.
+Finished tim-rolling-liveness.service - TIM rolling liveness report (OBSERVE only).

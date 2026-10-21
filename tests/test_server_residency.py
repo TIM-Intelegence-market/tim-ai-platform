@@ -40,13 +40,53 @@ class Response:
 
 def test_warmer_loads_without_prompt_or_download(monkeypatch):
     seen = []
-    monkeypatch.setattr(residency, "urlopen", lambda req, **kw: seen.append(req) or Response({"done": True}))
-    residency.warm_server("http://127.0.0.1:11435", "qwen3-coder:30b")
-    payload = json.loads(seen[0].data)
-    assert seen[0].full_url.endswith("/api/generate")
+    monkeypatch.setattr(residency, "urlopen", lambda req, **kw: seen.append(req) or Response(
+        {"models": []} if req.full_url.endswith("/api/ps") else {"done": True}))
+    assert residency.warm_server("http://127.0.0.1:11435", "qwen3-coder:30b") == "WARM"
+    assert seen[0].full_url.endswith("/api/ps") and seen[0].get_method() == "GET"
+    payload = json.loads(seen[1].data)
+    assert seen[1].full_url.endswith("/api/generate")
     assert "prompt" not in payload
     assert payload["keep_alive"] == -1
     assert payload["options"] == residency.SERVER_OPTIONS
+
+
+@pytest.mark.parametrize("resident,expected", [
+    ({"models": [{"name": "qwen3-coder:30b", "context_length": 4096}]}, "WARM"),
+    ({"models": [{"model": "qwen3-coder:30b", "context_length": 4096}]}, "WARM"),
+    ({"models": [{"name": "other:latest"}]}, "RESIDENT_OTHER"),
+])
+def test_warm_tick_never_reloads_or_evicts_a_resident_runner(monkeypatch, resident, expected):
+    seen = []
+    def respond(req, **kwargs):
+        seen.append(req)
+        assert req.get_method() == "GET" and req.full_url.endswith("/api/ps")
+        assert req.data is None
+        return Response(resident)
+    monkeypatch.setattr(residency, "urlopen", respond)
+    assert residency.warm_server("http://127.0.0.1:11435", "qwen3-coder:30b") == expected
+    assert len(seen) == 1
+
+
+@pytest.mark.parametrize("data", [{}, {"models": None}, {"models": {}}, {"models": [None]},
+                                  {"models": [{}]}, {"models": [{"name": 17}]}])
+def test_unknown_residency_never_blindly_loads(monkeypatch, data):
+    seen = []
+    monkeypatch.setattr(residency, "urlopen", lambda req, **kw: seen.append(req) or Response(data))
+    with pytest.raises(ValueError):
+        residency.warm_server("http://127.0.0.1:11435", "qwen3-coder:30b")
+    assert len(seen) == 1 and seen[0].get_method() == "GET"
+
+
+def test_residency_http_failure_never_posts(monkeypatch):
+    seen = []
+    def fail(req, **kwargs):
+        seen.append(req)
+        raise TimeoutError("residency unknown")
+    monkeypatch.setattr(residency, "urlopen", fail)
+    with pytest.raises(TimeoutError):
+        residency.warm_server("http://127.0.0.1:11435", "qwen3-coder:30b")
+    assert len(seen) == 1 and seen[0].get_method() == "GET"
 
 
 def test_broken_tunnel_uses_backoff_instead_of_stopping_worker(monkeypatch):

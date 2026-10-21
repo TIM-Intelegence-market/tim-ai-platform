@@ -5,7 +5,9 @@ After=network-online.target postgresql.service
 
 [Service]
 Type=oneshot
-ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_db_backup.py restore-test --dir /var/backups/tim
+# tim-core-01: pg_lsclusters places PostgreSQL at /srv/postgresql/18/main.
+# /var holds compressed backups, not the database restored by pg_restore.
+ExecStart=/opt/tim/.venv/bin/python /opt/tim/scripts/tim_db_backup.py restore-test --dir /var/backups/tim --restore-storage-path /srv
 User=tim
 Group=tim
 WorkingDirectory=/opt/tim
