@@ -31,9 +31,27 @@ from src.market_data.providers.openmarket.mapper import (
     side_volumes,
     to_tim_candles,
 )
-from src.market_data.providers.openmarket.schemas import INTERVAL_SECONDS, parse_candles
+from src.market_data.providers.openmarket.context_schemas import (
+    FUNDING_RATE,
+    LIQUIDATION,
+    OPEN_INTEREST,
+    TPO,
+    VOLUME_PROFILE,
+    closed_points,
+    liquidation_totals,
+    parse_context_series,
+    summarize_profile,
+)
+from src.market_data.providers.openmarket.schemas import INTERVAL_SECONDS, ns_to_datetime, parse_candles
 
+from ..positioning import PositioningInputs, ProfileLevels
 from .base import AdapterInput
+
+# Context types requested next to the candles. TPO_AGG is not requested by
+# default: it answered HTTP 500 (code 13) on 2026-10-21 for every window tried.
+DEFAULT_CONTEXT_TYPES = (OPEN_INTEREST, FUNDING_RATE, LIQUIDATION, VOLUME_PROFILE)
+DERIVATIVES_ONLY = frozenset({OPEN_INTEREST, FUNDING_RATE, LIQUIDATION})
+_AUTH_KINDS = frozenset({OpenMarketErrorKind.NO_SECRET, OpenMarketErrorKind.INVALID_SECRET, OpenMarketErrorKind.NOT_CONFIGURED})
 
 _IDENTIFIER = re.compile(r"^[A-Z0-9_]{2,40}$")
 MARKET_TYPES = frozenset({"SPOT", "FUTURES"})
@@ -114,11 +132,24 @@ class OpenMarketAdapter:
         *,
         include_per_side: bool = True,
         side_is_aggressor: bool = False,
+        context_types: tuple[str, ...] = (),
+        funding_interval_hours: int = 8,
+        liquidation_buy_is_short: bool = True,
         now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
         self.client = client or OpenMarketClient()
         self.include_per_side = include_per_side
         self.side_is_aggressor = side_is_aggressor
+        unknown = set(context_types) - set(DEFAULT_CONTEXT_TYPES)
+        if unknown:
+            raise ValueError(f"unsupported OpenMarket context types: {sorted(unknown)}")
+        self.context_types = tuple(context_types)
+        self.funding_interval_hours = funding_interval_hours
+        # Exchange convention for liquidation orders: a forced BUY closes a short.
+        # OpenMarket does not document it; the 2026-10-21 capture (BUY dominant
+        # while price and OI rose) is consistent with it. False keeps both sides
+        # out of the analysis and only reports the raw BUY/SELL totals.
+        self.liquidation_buy_is_short = liquidation_buy_is_short
         self.now = now
         self.adapter_kind = "OPENMARKET_API"
         self.last_input: AdapterInput | None = None
@@ -126,7 +157,7 @@ class OpenMarketAdapter:
     def adapt(self, data: Mapping[str, Any], observed_at: datetime | None = None) -> AdapterInput:
         request = OpenMarketRequest.from_mapping(data)
         observed_at = observed_at or self.now()
-        missing: list[str] = ["candles.trade_count", "levels", "open_interest_with_price"]
+        missing: list[str] = ["candles.trade_count"]
         notes: list[str] = []
 
         data_type = "TRADE_SIDE_AGNOSTIC_AGG"
@@ -187,6 +218,14 @@ class OpenMarketAdapter:
         else:
             missing.append("aggressive_volume:per_side_not_requested")
 
+        positioning = profile = None
+        if self.context_types:
+            positioning, profile = self._context(request, observed_at, missing, notes)
+            missing.append(f"tpo:{TPO}_not_requested_provider_returned_http_500_on_2026-10-21")
+            missing.append("orderbook_depth:no_documented_openmarket_type")
+        else:
+            missing.extend(["levels", "open_interest_with_price", "context:not_requested"])
+
         self.last_input = AdapterInput(
             symbol=request.raw_symbol,
             venue=request.exchange,
@@ -205,8 +244,104 @@ class OpenMarketAdapter:
             screenshot_confidence=None,
             missing_fields=tuple(sorted(set(missing))),
             extra_notes=tuple(notes),
+            positioning=positioning,
+            profile=profile,
         )
         return self.last_input
+
+    def _fetch_context(self, request: OpenMarketRequest, data_type: str, observed_at: datetime, missing: list[str], notes: list[str]):
+        """One context type: parsed closed points and the reported sides, or None when unavailable."""
+        try:
+            response = self.client.get_points(request.params(data_type))
+            parsed = parse_context_series(response.payload, data_type=data_type, expected=request.expected_id(data_type))
+        except OpenMarketError as error:
+            if error.kind in _AUTH_KINDS:
+                raise
+            missing.append(f"context:{data_type}_unavailable:{error.kind.value}")
+            return None
+        points, rejected, excluded = closed_points(
+            parsed.points, from_seconds=request.from_seconds, period_seconds=request.period_seconds,
+            interval_seconds=INTERVAL_SECONDS[request.interval], now_seconds=int(observed_at.timestamp()),
+        )
+        missing.extend(f"context_rejected:{data_type}:{item}" for item in parsed.rejected + rejected)
+        notes.append(f"provenance:{data_type}_response_sha256={response.body_sha256}")
+        notes.append(f"context:{data_type}_closed_points={len(points)} excluded_open_or_boundary={excluded} units=as_reported_by_provider")
+        if parsed.reordered:
+            notes.append(f"dedup:{data_type}_reordered_by_timestamp=true")
+        if parsed.unexpected_fields:
+            notes.append(f"schema:{data_type}_unexpected_fields={','.join(sorted(parsed.unexpected_fields))}")
+        return points, parsed.sides
+
+    def _context(self, request: OpenMarketRequest, observed_at: datetime, missing: list[str], notes: list[str]):
+        funding = long_liq = short_liq = None
+        open_interest: tuple = ()
+        profile = None
+        for data_type in self.context_types:
+            if data_type in DERIVATIVES_ONLY and request.market_type != "FUTURES":
+                missing.append(f"context:{data_type}_futures_only")
+                continue
+            fetched = self._fetch_context(request, data_type, observed_at, missing, notes)
+            if fetched is None:
+                continue
+            points, sides = fetched
+            if data_type == OPEN_INTEREST:
+                # Close of each closed interval = OI at the end of that interval.
+                open_interest = tuple(
+                    (ns_to_datetime(point.timestamp_ns + INTERVAL_SECONDS[request.interval] * 1_000_000_000), point.close)
+                    for point in points
+                )
+                if len(open_interest) < 2:
+                    missing.append("context:OPEN_INTEREST_AGG_fewer_than_2_closed_points")
+            elif data_type == FUNDING_RATE:
+                if points:
+                    funding = points[-1].close
+                    notes.append(
+                        f"derived:funding_rate=rateClose_of_last_closed_interval assumed_funding_interval_hours={self.funding_interval_hours}"
+                    )
+                else:
+                    missing.append("funding_rate")
+            elif data_type == LIQUIDATION:
+                totals = liquidation_totals(points, sides)
+                notes.append(f"context:LIQUIDATION_AGG_totals BUY={totals['BUY']} SELL={totals['SELL']} series={','.join(sides) or 'none'}")
+                if not sides:
+                    missing.append("liquidations:no_series_returned")
+                elif not self.liquidation_buy_is_short:
+                    missing.append("liquidations:side_semantics_unverified")
+                else:
+                    # Intervals without liquidations are omitted by the provider; a side
+                    # with a series counts them as zero, a side without one stays unknown.
+                    short_liq, long_liq = totals["BUY"], totals["SELL"]
+                    notes.append("derived:liquidations=BUY_order_side_is_short_liquidation SELL_is_long_liquidation convention=exchange_order_side")
+            elif data_type == VOLUME_PROFILE:
+                summary = summarize_profile(points)
+                if summary is None:
+                    missing.append("volume_profile")
+                else:
+                    profile = ProfileLevels(
+                        point_of_control=summary.point_of_control,
+                        value_area_high=summary.value_area_high,
+                        value_area_low=summary.value_area_low,
+                        source=("openmarket_volume_profile",),
+                    )
+                    notes.append(
+                        f"derived:volume_profile poc={summary.point_of_control} val={summary.value_area_low} vah={summary.value_area_high} "
+                        f"value_area={summary.value_area_fraction} rows={summary.rows} intervals={summary.intervals} "
+                        f"buy={summary.buy_volume} sell={summary.sell_volume}"
+                    )
+        try:
+            positioning = PositioningInputs(
+                funding_rate=funding,
+                funding_interval_hours=self.funding_interval_hours,
+                long_liquidation_volume=long_liq,
+                short_liquidation_volume=short_liq,
+                open_interest=open_interest,
+            )
+        except ValueError as exc:
+            missing.append(f"context_rejected:positioning:{exc}")
+            positioning = None
+        if positioning is not None and positioning.is_empty():
+            positioning = None
+        return positioning, profile
 
     def _per_side(self, request: OpenMarketRequest, observed_at: datetime, missing: list[str], notes: list[str]):
         data_type = "TRADE_AGG"

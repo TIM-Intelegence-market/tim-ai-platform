@@ -7,6 +7,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from ..positioning import PositioningInputs, ProfileLevels
+
 
 @dataclass(frozen=True, slots=True)
 class AdapterInput:
@@ -37,6 +39,9 @@ class AdapterInput:
     estimated_prices: tuple[str, ...] = ()
     missing_fields: tuple[str, ...] = ()
     extra_notes: tuple[str, ...] = ()
+    # Funding, liquidations, OI series, orderbook depth; volume profile / TPO (see positioning.py).
+    positioning: PositioningInputs | None = None
+    profile: ProfileLevels | None = None
 
 
 @dataclass(frozen=True, slots=True)
