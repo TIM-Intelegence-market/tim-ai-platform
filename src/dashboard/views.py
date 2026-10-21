@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import html
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Any
 from src.dashboard.operations import OPERATIONS_PAGES, render_operations_page
 
 from src.dashboard.components import _case_for_observation, _case_proof_panel, _case_row, _observation_row
@@ -16,6 +17,15 @@ from src.dashboard.pages.signals import _signal_research_page
 from src.dashboard.state import DashboardState
 from src.research.case_builder import BUILDER_VERSION, assess
 
+
+
+def _pending_label(observed_at: Any) -> str:
+    """PENDING plus the UTC time from which the 30-minute outcome can be evaluated."""
+    try:
+        due = datetime.fromisoformat(str(observed_at).replace("Z", "+00:00")) + timedelta(minutes=30)
+    except ValueError:
+        return "PENDING"
+    return f"PENDING · ab {due:%H:%M} UTC"
 
 def _case_assessment(case: dict) -> str:
     """Read-only lifecycle descriptors (maturity, data quality, gaps, review, provenance)."""
@@ -50,12 +60,12 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
             observations=[dict(item) for item in state.orderflow_observations[-ORDERFLOW_VISIBLE_LIMIT:]]
             validations={str(item.get("observation_id")):dict(item) for item in state.orderflow_validations}
         selected=next((item for item in observations if str(item.get("observation_id"))==str(selected_id)),None)
-        rows="".join(f"<tr data-type='{_safe(item.get('kind'))}' data-rule='{_safe(item.get('rule_version'))}' data-time='{_safe(item.get('observed_at'))}'><td>{_safe(item.get('observed_at'))}</td><td><a class='mono' href='/orderflow?id={_safe(item.get('observation_id'))}'>{_safe(_short(item.get('observation_id'),18))}</a></td><td><span class='tag'>{_safe(item.get('kind'))}</span></td><td>{_safe(item.get('timeframe'))}</td><td>{len(item.get('evidence',[]))}</td><td>{len(validations.get(str(item.get('observation_id')),{}).get('horizons',[]))}/3</td><td>{_safe(validations.get(str(item.get('observation_id')),{}).get('outcome') or 'PENDING')}</td><td class='mono'>{_safe(item.get('rule_version'))}</td></tr>" for item in reversed(observations)) or "<tr><td colspan='8' class='empty'>Noch keine Orderflow-Observations.</td></tr>"
+        rows="".join(f"<tr data-type='{_safe(item.get('kind'))}' data-rule='{_safe(item.get('rule_version'))}' data-time='{_safe(item.get('observed_at'))}'><td>{_safe(item.get('observed_at'))}</td><td><a class='mono' href='/orderflow?id={_safe(item.get('observation_id'))}'>{_safe(_short(item.get('observation_id'),18))}</a></td><td><span class='tag'>{_safe(item.get('kind'))}</span></td><td>{_safe(item.get('timeframe'))}</td><td>{len(item.get('evidence',[]))}</td><td>{len(validations.get(str(item.get('observation_id')),{}).get('horizons',[]))}/3</td><td>{_safe(validations.get(str(item.get('observation_id')),{}).get('outcome') or _pending_label(item.get('observed_at')))}</td><td class='mono'>{_safe(item.get('rule_version'))}</td></tr>" for item in reversed(observations)) or "<tr><td colspan='8' class='empty'>Noch keine Orderflow-Observations.</td></tr>"
         detail=""
         if selected:
             validation=validations.get(str(selected.get("observation_id")),{})
             detail=f"<section class='panel'><div class='panel__head'><h2>Observation &amp; Outcome Detail</h2><span class='badge badge--green'>READ-ONLY</span></div><div class='detail-grid'><dl class='detail'><dt>ID</dt><dd class='mono'>{_safe(selected.get('observation_id'))}</dd><dt>Beschreibung</dt><dd>{_safe(selected.get('summary'))}</dd><dt>Rule Version</dt><dd>{_safe(selected.get('rule_version'))}</dd><dt>Input Hash</dt><dd class='mono'>{_safe(selected.get('input_hash'))}</dd><dt>Outcome</dt><dd>{_safe(validation.get('outcome') or 'PENDING')}</dd><dt>Validated Through</dt><dd>{_safe(validation.get('validated_through'))}</dd></dl><div><h3>Evidenzbedingungen</h3><pre class='code'>{_json_block(selected.get('evidence'))}</pre><h3>5/15/30-Minuten-Verlauf</h3><pre class='code'>{_json_block(validation.get('horizons',[]))}</pre></div></div></section>"
-        body=_hero("Orderflow Research","Deterministische Beschreibungen und nachgelagerte 5/15/30-Minuten-Outcomes.")+f"<section class='panel'><div class='panel__head'><h2>Persistierte Orderflow-Observations</h2><span class='count-scope'>neueste {len(observations)} von {total_orderflow}</span></div><div class='filters'><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. STRONG_BUYER_ACTIVITY'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='1.0.0'></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option></select></div></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Type</th><th>Timeframe</th><th>Evidence</th><th>Horizonte</th><th>Outcome</th><th>Rule Version</th></tr></thead><tbody>{rows}</tbody></table></div><p class='count-scope'>Der sichtbare Ausschnitt ist bewusst auf {ORDERFLOW_VISIBLE_LIMIT} Einträge begrenzt. Outcomes dokumentieren beobachtete Preisentwicklung; keine Prognose.</p></section>{detail}"
+        body=_hero("Orderflow Research","Deterministische Beschreibungen und nachgelagerte 5/15/30-Minuten-Outcomes.")+f"<section class='panel'><div class='panel__head'><h2>Persistierte Orderflow-Observations</h2><span class='count-scope'>neueste {len(observations)} von {total_orderflow}</span></div><div class='filters'><div><label>Observation Type</label><input id='filter-type' placeholder='z. B. STRONG_BUYER_ACTIVITY'></div><div><label>Rule Version</label><input id='filter-rule' placeholder='1.0.0'></div><div><label>Zeitraum</label><select id='filter-period'><option value=''>Gesamt</option><option value='1'>24 Stunden</option><option value='7'>7 Tage</option></select></div></div><div class='table-wrap'><table><thead><tr><th>Timestamp</th><th>Observation ID</th><th>Type</th><th>Timeframe</th><th>Evidence</th><th>Horizonte</th><th>Outcome</th><th>Rule Version</th></tr></thead><tbody>{rows}</tbody></table></div><p class='count-scope'>Der sichtbare Ausschnitt ist bewusst auf {ORDERFLOW_VISIBLE_LIMIT} Einträge begrenzt. Outcomes dokumentieren beobachtete Preisentwicklung; keine Prognose. PENDING ist normal: Alle drei Horizonte werden erst 30 Minuten nach der Beobachtung gemeinsam ausgewertet.</p></section>{detail}"
         return _layout("Orderflow Research",page,body,strip=_strip_states(data))
     if page == "Signal Research":
         return _signal_research_page(state, data, selected_id)

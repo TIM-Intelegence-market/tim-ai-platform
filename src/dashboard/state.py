@@ -79,6 +79,9 @@ class DashboardState:
         started = validator.get("started_at")
         if started:
             events.append({"timestamp": started, "event": "RUNTIME_START", "severity": "INFO", "summary": "Persistierte TIM-Laufzeit gestartet."})
+        else:
+            # Without a validator state file the timeline would stay empty although this process knows when it started.
+            events.append({"timestamp": self.runtime_started_at, "event": "RUNTIME_START", "severity": "INFO", "summary": "Dashboard-Prozess gestartet (kein Validator-Zustand vorhanden)."})
         try:
             lines = self.events_path.read_text().splitlines()[-250:]
         except OSError:
