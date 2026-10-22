@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import GenericOrderflowAdapter, MMTScreenshotAdapter, MMTStructuredDataAdapter, OpenMarketAdapter
+from .adapters.openmarket import DEFAULT_CONTEXT_TYPES
 from .engines.pipeline import Pipeline, PipelineInputs
 from .config import default_config
 from .domain import MarketContext
@@ -83,7 +84,7 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
     if adapted.levels:
         from .engines.scenario_generator import LevelSet
 
-        levels = LevelSet(range_high=adapted.levels.get("range_high"), range_low=adapted.levels.get("range_low"), value_area_high=adapted.levels.get("value_area_high"), value_area_low=adapted.levels.get("value_area_low"), last_price=adapted.price_now or Decimal(str(last)) if last is not None else None)
+        levels = LevelSet(range_high=adapted.levels.get("range_high"), range_low=adapted.levels.get("range_low"), value_area_high=adapted.levels.get("value_area_high"), value_area_low=adapted.levels.get("value_area_low"), point_of_control=adapted.levels.get("point_of_control"), last_price=adapted.price_now or Decimal(str(last)) if last is not None else None)
 
     notes = set(getattr(adapted, "extra_notes", ()) or ())
     return PipelineInputs(
@@ -99,6 +100,8 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
         open_interest_with_price=adapted.open_interest_with_price,
         delta_divergence=adapted.delta_divergence,
         levels=levels,
+        positioning=getattr(adapted, "positioning", None),
+        profile=getattr(adapted, "profile", None),
         structured=adapted.structured,
         screenshot_confidence=adapted.screenshot_confidence,
         estimated_prices=adapted.estimated_prices,
@@ -127,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
     openmarket.add_argument("--period", type=int, help="duration in seconds")
     openmarket.add_argument("--market-type", choices=["SPOT", "FUTURES"])
     openmarket.add_argument("--no-per-side", action="store_true", help="skip the TRADE_AGG per-side request")
+    openmarket.add_argument("--no-context", action="store_true", help="skip open interest, funding, liquidations and volume profile requests")
+    openmarket.add_argument("--funding-interval-hours", type=int, default=8, help="funding interval of the instrument (default 8)")
     parser.add_argument("--validate", action="store_true", help="also print schema validation status")
     parser.add_argument("--broncx-feed", type=Path, default=None, help="Broncx Discord feed directory (external guidance: weights scenario scores, adds level scenarios, never confirms)")
     parser.add_argument("--broncx-max-age-hours", type=float, default=24.0, help="Broncx posts older than this are shown as stale and not used")
@@ -149,6 +154,11 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.provider == "openmarket":
             adapter = OpenMarketAdapter(include_per_side=not args.no_per_side)
+            if not args.no_context:
+                adapter.context_types = DEFAULT_CONTEXT_TYPES
+                if not 1 <= args.funding_interval_hours <= 24:
+                    raise ValueError("--funding-interval-hours must be within 1..24")
+                adapter.funding_interval_hours = args.funding_interval_hours
             adapt_input = payload
         elif args.provider == "mmt-screenshot":
             adapter = MMTScreenshotAdapter()
