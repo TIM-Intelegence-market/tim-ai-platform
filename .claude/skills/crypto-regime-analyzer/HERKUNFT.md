@@ -10,7 +10,7 @@
 * **Ein-/Ausgabe:** Liest öffentlich und ohne Schlüssel `api.coingecko.com` und `fapi.binance.com` (nur Funding-Raten, lesend). In der Cloud ist Binance gesperrt, auf dem Mac erreichbar. Alternativ Offline-Modus mit eigener Snapshot-JSON (nur Standardbibliothek). Live-Modus braucht `requests`.
 * **Geprüft (22.10.2026):** Code statisch durchsucht (Netzwerk, Unterprozesse, Löschen, Umgebungsvariablen,
   Order-/Broker-Aufrufe). Keine Order-Ausführung, kein Broker-Zugriff, keine Hooks, keine MCP-Server.
-  Die mitgelieferten Tests wurden **nicht** ausgeführt (Ausführen fremden Codes war in der Cloud-Sitzung gesperrt).
+  Mitgelieferte Tests am 22.10.2026 auf Uzis Wunsch in der Cloud ausgeführt (eigenes venv, Python 3.13): 84 bestanden.
   Sie liegen unter `scripts/tests/` und werden von der TIM-Suite (`pytest tests/`) nicht eingesammelt.
 * **TIM-Hinweis:** Ergebnis ist ein Lagebild, kein Richtungssignal. Nicht als Handelssignal für TIM verdrahten.
 * **Grenzen für TIM:** nur Analyse, Papier und Journal. Kein Echtgeld, keine Anbindung an Order-Pfade,
