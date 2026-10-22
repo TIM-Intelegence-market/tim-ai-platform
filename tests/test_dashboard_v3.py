@@ -194,6 +194,21 @@ def test_pilot_view_renders_only_allowlisted_fields(tmp_path: Path) -> None:
     assert "keine Empfehlung, keine Prognose" in page
 
 
+def test_pilot_view_is_bounded_to_newest_cases() -> None:
+    # Regression: rendering every stored case (4,500 on the Mac) took >100 s and hit the 413 limit.
+    from datetime import timedelta
+    from src.dashboard.pages.pilot import PILOT_CASE_LIMIT, render_pilot
+    state = DashboardState(research_cases=[
+        {"case_id": f"case_{i:05d}", "symbol": "BTCUSDT", "timeframe": "1m", "status": "OPEN",
+         "opened_at": (OPENED + timedelta(minutes=i)).isoformat(), "evidence": []}
+        for i in range(PILOT_CASE_LIMIT + 25)
+    ])
+    page = render_pilot(state)
+    assert page.count("class='card pilot-case'") == PILOT_CASE_LIMIT
+    assert f"case_{PILOT_CASE_LIMIT + 24:05d}" in page and "case_00000" not in page
+    assert f"Die neuesten {PILOT_CASE_LIMIT} von {PILOT_CASE_LIMIT + 25}" in page
+
+
 def test_pilot_route_is_served(server) -> None:
     status, body = _get(server + "/pilot")
     assert status == 200 and b"TIM Research-Belege" in body and b"<script" not in body

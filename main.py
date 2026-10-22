@@ -317,7 +317,11 @@ class TIMApplication:
             self.dashboard_state.orderflow_validations=list(reversed(persisted_validations))
             self.dashboard_state.memory_status={"observations":self.memory.size,"method":"deterministic_jaccard"}
             self.dashboard_state.market_status={"symbol":settings.symbol,"timeframes":settings.timeframes,"status":"COLLECTING_PUBLIC_DATA"}
-            self.dashboard_state.system_health["stream"]="starting"
+            # Only the first restore runs before the stream connects. Later
+            # restores (repair/replay after an enrichment error) must not
+            # downgrade a running stream back to "starting" for good.
+            if self.dashboard_state.system_health.get("stream")!="running":
+                self.dashboard_state.system_health["stream"]="starting"
         if hasattr(self.repository,"save_orderflow_observation_with_case"):
             latest_complete=bucket_start(datetime.now(timezone.utc),"1m")
             await self.process_orderflow_window(latest_complete-timedelta(minutes=1),latest_complete)

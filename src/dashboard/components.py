@@ -26,7 +26,7 @@ def _observation_row(item: dict[str, Any], cases: list[dict[str, Any]]) -> str:
         f"<tr data-status='{_safe(status)}' data-type='{_safe(item.get('kind'))}' data-rule='{_safe(item.get('rule_version'))}'>"
         f"<td>{_safe(item.get('observed_at'))}</td><td><a href='{href}' class='mono'>{_safe(_short(oid, 12))}</a></td>"
         f"<td><span class='tag'>{_safe(item.get('kind'))}</span></td><td class='mono'>{_safe(item.get('rule_version'))}</td>"
-        f"<td>{_safe(evidence_score)}</td><td>{_safe(item.get('provenance'))}</td><td><span class='badge badge--{_status(status).lower()}'>{_safe(status)}</span></td></tr>"
+        f"<td>{_safe(evidence_score)}</td><td>{_safe(item.get('provenance'))}</td><td><span class='badge badge--{_case_status(status)}'>{_safe(status)}</span></td></tr>"
     )
 
 

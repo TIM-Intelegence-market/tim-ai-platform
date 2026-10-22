@@ -203,6 +203,14 @@ def _evidence_age(value: Any) -> str:
     return f"{label} · veraltet" if days > 7 else label
 
 
+def _log_growth_text(value: Any) -> Any:
+    """Readable form of the watchdog's largest-log finding instead of a raw dict."""
+    if isinstance(value, dict) and isinstance(value.get("largest_bytes"), (int, float)):
+        name = Path(str(value.get("path") or "")).name or "unbekannte Datei"
+        return f"größte Logdatei {value['largest_bytes'] / 1_048_576:.1f} MB · {name}"
+    return value
+
+
 def _metric(value: Any, source: str, *, status: Any = None, unit: str | None = None) -> dict[str, Any]:
     present = value not in (None, "")
     return {
@@ -226,6 +234,54 @@ def _latest_daily_manifest(root: Path) -> tuple[dict[str, Any], str]:
         return {}, directory.as_posix()
     path = candidates[-1]
     return _read_json(path), path.as_posix()
+
+
+def _running_campaign(root: Path) -> dict[str, Any]:
+    """Read the prospective campaign that scripts/v2_qualification_daily.py maintains.
+
+    The campaign lives in data/qualification (state file plus one immutable
+    manifest per settled UTC day). The older artifacts/v2_completion files only
+    describe the pre-registration, so without this the pages kept showing
+    "NOT STARTED" and 0 cases while the campaign was running.
+    """
+    path = root / "qualification_campaign.json"
+    campaign = _read_json(path)
+    if not campaign.get("campaign_status"):
+        return {}
+    manifests: list[tuple[str, dict[str, Any]]] = []
+    try:
+        files = sorted(item for item in (root / "daily").iterdir() if item.is_file() and item.suffix == ".json")
+    except OSError:
+        files = []
+    for item in files[-400:]:
+        value = _read_json(item)
+        if isinstance(value.get("metrics"), dict):
+            manifests.append((item.as_posix(), value))
+    latest_path, latest = manifests[-1] if manifests else ((root / "daily").as_posix(), {})
+    metrics = latest.get("metrics") or {}
+
+    def total(key: str) -> int | None:
+        values = [entry["metrics"].get(key) for _, entry in manifests]
+        if not values or not all(type(value) is int for value in values):
+            return None
+        return sum(values)
+
+    return {
+        "status": str(campaign.get("campaign_status")),
+        "dataset_id": campaign.get("dataset_id"),
+        "started_at": campaign.get("start_utc") or campaign.get("activated_at_utc"),
+        "minimum_days": _first(campaign, "duration.pre_registered_minimum_days"),
+        "case_target": campaign.get("case_target") or metrics.get("independent_case_target"),
+        "coverage_target": campaign.get("coverage_target"),
+        "manifests_written": len(manifests),
+        "latest_manifest": latest_path,
+        "latest_day": latest.get("day") or latest.get("utc_date") or (Path(latest_path).stem if manifests else None),
+        "independent_cases": metrics.get("independent_case_count"),
+        "cumulative_coverage": metrics.get("cumulative_coverage"),
+        "observed_minutes": total("observed_minutes"),
+        "expected_minutes": total("expected_minutes"),
+        "source": path.as_posix(),
+    }
 
 
 def _load_gaps(completion_root: Path, legacy_root: Path) -> tuple[list[dict[str, Any]], str, str]:
@@ -258,6 +314,7 @@ def build_operations_snapshot(
     legacy_root: Path = Path("artifacts/v2_readiness"),
     live_watchdog_path: Path = Path("data/operational/watchdog_status.json"),
     rolling_liveness_path: Path = Path("data/operational/rolling_liveness.json"),
+    qualification_root: Path = Path("data/qualification"),
 ) -> dict[str, Any]:
     """Build a bounded, read-only control-center contract from persisted evidence.
 
@@ -342,6 +399,7 @@ def build_operations_snapshot(
     protected = evidence["final_protected_state.json"]
     mcp = evidence["mcp_support_status.json"]
     daily, daily_source = _latest_daily_manifest(completion_root)
+    running = _running_campaign(qualification_root)
 
     runtime_baseline = legacy["runtime_observability_snapshot.json"]
     legacy_coverage = legacy["coverage_final.json"]
@@ -473,7 +531,7 @@ def build_operations_snapshot(
         "source_to_store_latency": _metric(_first(queue, "source_to_store_latency_seconds.p95", "latency.source_to_store_p95_seconds", "source_to_store_p95_seconds"), sources["queue_metrics.json"]["path"], unit="s p95"),
         "event_loop_lag": _metric(_first(queue, "event_loop_lag_seconds", "latency.event_loop_lag_seconds"), sources["queue_metrics.json"]["path"], unit="s"),
         "disk": _metric(_first(watchdog, "disk", "disk_status", "metrics.disk", "checks.disk_space.value"), watchdog_source, status=_first(watchdog, "disk.status", "disk_status", "checks.disk_space.status")),
-        "logs": _metric(_first(watchdog, "log_rotation_status", "logs.status", "log_retention.status", "checks.log_growth.value"), watchdog_source, status=_first(watchdog, "log_rotation_status", "logs.status", "checks.log_growth.status")),
+        "logs": _metric(_log_growth_text(_first(watchdog, "log_rotation_status", "logs.status", "log_retention.status", "checks.log_growth.value")), watchdog_source, status=_first(watchdog, "log_rotation_status", "logs.status", "checks.log_growth.status")),
         "watchdog": _metric(_first(watchdog, "status", "watchdog_status", "health.status"), watchdog_source, status=_first(watchdog, "status", "watchdog_status")),
         "collector_freshness": _metric(live.get("data_age_seconds"), "/api/state operational_health.data_age_seconds", status=live.get("stream"), unit="s"),
         "cursor": cursor,
@@ -550,10 +608,17 @@ def build_operations_snapshot(
     history_path = operational_root / "history_recovery.json"
     history_report = _read_json(history_path)
     history_status = current_report(history_report, str(history_path), now=datetime.now(timezone.utc))
+    maintenance_report = _read_json(maintenance_path)
+    maintenance_source = str(maintenance_path)
+    if not maintenance_report and history_report:
+        # The Mac runs no tim_maintenance.py timer; com.tim.history-recovery does
+        # the gap maintenance there (every 30 s), so its report is the evidence.
+        maintenance_report = history_report
+        maintenance_source = str(history_path)
     current_status = build_current_status(
-        _read_json(server_health_path), rolling_live, _read_json(maintenance_path), live_watchdog,
+        _read_json(server_health_path), rolling_live, maintenance_report, live_watchdog,
         sources={"runtime": str(server_health_path), "data": str(rolling_liveness_path),
-                 "maintenance": str(maintenance_path), "watchdog": str(live_watchdog_path)},
+                 "maintenance": maintenance_source, "watchdog": str(live_watchdog_path)},
     )
     runtime["status"] = current_status["runtime"]["status"]
     runtime["status_source"] = current_status["runtime"]["source"]
@@ -565,6 +630,8 @@ def build_operations_snapshot(
         frozen,
         _coverage_card("Backfill Candidate", _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.coverage", "coverage", "coverage_percent", "candidate.coverage"), _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.valid_minutes", "valid_observations", "candidate.valid_observations", "imported_rows"), _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.expected_minutes", "expected_observations", "candidate.expected_observations"), backfill_status, sources["backfill_candidate_manifest.json"]["path"]),
         _coverage_card("Approved Qualification Dataset", _first(daily, "approved_dataset.coverage", "qualification_dataset.coverage", default=_first(prereg, "approved_dataset.coverage")), _first(daily, "approved_dataset.valid_observations", "qualification_dataset.valid_observations"), _first(daily, "approved_dataset.expected_observations", "qualification_dataset.expected_observations"), _first(daily, "approved_dataset.status", "qualification_dataset.status", default=_first(prereg, "approved_dataset.status")), daily_source),
+        _coverage_card("Prospective Qualification Campaign", running["cumulative_coverage"], running["observed_minutes"], running["expected_minutes"], running["status"], running["latest_manifest"] if running["manifests_written"] else running["source"])
+        if running else
         _coverage_card("Prospective Qualification Campaign", _first(daily, "metrics.coverage", "coverage", "coverage_percent", "campaign.coverage", default=_first(prereg, "campaign.coverage")), _first(daily, "metrics.valid_observations", "valid_observations", "campaign.valid_observations"), _first(daily, "metrics.expected_observations", "expected_observations", "campaign.expected_observations"), _first(daily, "status", "campaign.status", default=_first(prereg, "campaign_status", "status", default=_first(backfill, "coverage_metrics.prospective_qualification.status"))), daily_source if daily else sources["qualification_preregistration.json"]["path"]),
         _coverage_card("Rolling Liveness", _first(rolling_record, "coverage", "coverage_percent"), _first(rolling_record, "valid_observations"), _first(rolling_record, "expected_observations"), _first(rolling_record, "status", default=live.get("stream")), rolling_source),
     ]
@@ -606,6 +673,14 @@ def build_operations_snapshot(
     required_cases = _first(independent, "required_independent_cases", "qualification.required_units", "current.required_units", "frozen.required_units", default=_first(legacy_cases, "current_cutoff_audit.required_independent_cases", default=1000 if legacy_cases else None))
     case_status = _first(independent, "status", "gate_status", "scientific_gate", default=_first(legacy_cases, "current_cutoff_audit.gate_status"))
 
+    if running:
+        # The running campaign is the only source that may count qualification
+        # cases. Until the target is reached the gate waits for time, it has not failed.
+        qualification_cases = running["independent_cases"] if running["independent_cases"] is not None else 0
+        required_cases = running["case_target"] or required_cases
+        if str(running["status"]).upper() == "ACTIVE":
+            reached = isinstance(qualification_cases, int) and isinstance(required_cases, int) and qualification_cases >= required_cases
+            case_status = "PENDING HUMAN APPROVAL" if reached else "TIME GATE"
     gates = _first(implementation, "gates", default=_first(readiness, "gates", default=[]))
     if isinstance(gates, dict):
         gates = [{"gate_id": key, **(value if isinstance(value, dict) else {"status": value})} for key, value in gates.items()]
@@ -670,6 +745,17 @@ def build_operations_snapshot(
             "started_at": _first(daily, "started_at_utc", "campaign.started_at_utc", default=_first(prereg, "start_utc", default=UNAVAILABLE)),
             "latest_manifest": daily_source,
             "source": sources["qualification_preregistration.json"]["path"],
+            "manifests_written": UNAVAILABLE,
+            "minimum_days": UNAVAILABLE,
+        } if not running else {
+            "status": _normalized_status(running["status"]),
+            "campaign_id": running["dataset_id"] or _first(prereg, "campaign_id", "dataset_id", "program_id", default=UNAVAILABLE),
+            "preregistered_at": _first(prereg, "preregistered_at_utc", "generated_at_utc", "created_at_utc", default=UNAVAILABLE),
+            "started_at": running["started_at"] or UNAVAILABLE,
+            "latest_manifest": running["latest_manifest"],
+            "source": running["source"],
+            "manifests_written": running["manifests_written"],
+            "minimum_days": running["minimum_days"] if running["minimum_days"] is not None else UNAVAILABLE,
         },
         "independent_cases": {
             "status": _normalized_status(case_status),
@@ -683,7 +769,7 @@ def build_operations_snapshot(
             "regime_coverage": _first(independent, "regime_coverage", "regimes.status", default=UNAVAILABLE),
             "manual_review": _normalized_status(manual_review, "PENDING HUMAN APPROVAL"),
             "human_approval": _normalized_status(human_approval, "PENDING HUMAN APPROVAL"),
-            "source": sources["independent_case_audit.json"]["path"] if independent else sources["legacy/validated_case_audit.json"]["path"],
+            "source": running["latest_manifest"] if running and running["manifests_written"] else (sources["independent_case_audit.json"]["path"] if independent else sources["legacy/validated_case_audit.json"]["path"]),
         },
         "readiness": {
             "status": _normalized_status(_first(implementation, "overall_status", "v2_status", default=_first(readiness, "overall_status"))),
@@ -834,7 +920,8 @@ def _attention_rows(data: dict[str, Any]) -> list[str]:
         item = current[key]
         findings = ", ".join(str(finding["check"]) for finding in item.get("findings", []))
         add(item["status"], title,
-            f"reported={item['reported_status']} · checked={item['checked_at']} · age={item['age_seconds']}s"
+            f"reported={item['reported_status']} · checked={item['checked_at'] or UNAVAILABLE} · "
+            + (f"age={item['age_seconds']}s" if item["age_seconds"] is not None else "age=—")
             + (f" · checks: {findings}" if findings else ""),
             item["source"])
     if security["status"] not in ("PASS",) and severity(security["status"]) != "ok":
@@ -859,7 +946,9 @@ def _attention_rows(data: dict[str, Any]) -> list[str]:
         add(mcp["status"], "MCP external action required", f"support case {mcp['case_id']}", str(mcp["source"]))
     last_incident = audit.get("last_incident")
     if isinstance(last_incident, dict) and last_incident:
-        add("WARN", "Runtime incident in bounded timeline", str(last_incident.get("event", UNAVAILABLE)), "see Incidents & Gaps")
+        add("WARN", "Runtime incident in bounded timeline",
+            " · ".join(str(part) for part in (last_incident.get("timestamp"), last_incident.get("event", UNAVAILABLE), last_incident.get("summary")) if part),
+            "see Incidents & Gaps")
     history = data.get("history_recovery", {})
     if history.get("report") and history.get("status") != "PASS":
         add(history.get("status"), "Historical data recovery",
@@ -1134,11 +1223,11 @@ def _incidents(data: dict[str, Any]) -> str:
     incidents = audit.get("incidents") or []
     incident_rows = "".join(
         "<tr>"
-        f"<td class='mono'>{_safe(item.get('timestamp_utc') or item.get('ts') or UNAVAILABLE)}</td>"
+        f"<td class='mono'>{_safe(item.get('timestamp_utc') or item.get('timestamp') or item.get('ts') or UNAVAILABLE)}</td>"
         f"<td>{evidence_chip(item.get('severity') or 'WARN')}</td>"
         f"<td class='mono'>{_safe(item.get('event', UNAVAILABLE))}</td>"
         f"<td>{_safe(item.get('component_id', UNAVAILABLE))}</td>"
-        f"<td>{_safe(item.get('reason_code', UNAVAILABLE))}</td>"
+        f"<td>{_safe(item.get('reason_code') or item.get('summary') or UNAVAILABLE)}</td>"
         "</tr>"
         for item in incidents[:20]
     ) or "<tr><td colspan='5' class='empty'>No incident in the bounded timeline window.</td></tr>"
@@ -1181,6 +1270,8 @@ def _qualification(data: dict[str, Any]) -> str:
         ("Campaign ID", campaign["campaign_id"], "preregistered identity", None),
         ("Preregistered at", _short_time(campaign["preregistered_at"]), "no retroactive definition", None),
         ("Started at", _short_time(campaign["started_at"]), "only after all technical gates", None),
+        ("Tagesmanifeste", campaign.get("manifests_written", UNAVAILABLE),
+         f"vorregistriertes Minimum {campaign.get('minimum_days', UNAVAILABLE)} Tage", None),
     ])
     return (
         page_head("Qualification", "Pre-registered prospective evidence space with immutable daily manifests.", generated_at=data.get("generated_at_utc"))
@@ -1192,7 +1283,7 @@ def _qualification(data: dict[str, Any]) -> str:
             note="The qualification campaign consumes only the approved dataset room; frozen and candidate rooms stay separate.",
         )
         + f"<section class='panel'><h2>Latest immutable daily manifest</h2><p class='mono'>{_safe(campaign['latest_manifest'])}</p>"
-          f"<p class='count-scope'>Preregistration: {_safe(campaign['source'])}</p></section>"
+          f"<p class='count-scope'>Quelle: {_safe(campaign['source'])}</p></section>"
     )
 
 
