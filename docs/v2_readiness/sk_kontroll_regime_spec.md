@@ -114,15 +114,50 @@ Behebung: unerfüllbare 1:1-Quote bei dichter Belegung (jetzt Raster), Validator
 Ziehung verschob sich bei längerem Zeitraum (jetzt stabil), eine Rückblicklücke ließ alles
 scheitern (jetzt Ausschluss), Startzeit mit Sekunden (jetzt gerundet). Jeder Befund hat einen Test.
 
+## Power-Simulation S2 (22.10.2026)
+
+`src/v2_completion/sk_power.py`, Ergebnis `artifacts/v2_completion/sk_power_simulation_s2.json`.
+Haupttest: Chi-Quadrat 2x3 (Aufwärts/Abwärts/Seitwärts) zwischen Positiv- und Negativfenstern,
+pro Signaltyp und Horizont, Bonferroni über 5 Typen x 3 Horizonte (alpha 0,0033 pro Test),
+Power 80 %, 1.200 Positivfenster. Ohne Marktdaten: Die Grundverteilung wird über 20/45/70 %
+Seitwärtsanteil variiert.
+
+| Negativfenster | kleinster erkennbarer Effekt (Richtung) | (Bewegung statt seitwärts) |
+| --- | --- | --- |
+| 30 | 14–28 Prozentpunkte | 17–37 Prozentpunkte |
+| 300 | 7–12 | 10–13 |
+| 500 | 6–10 | 8–11 |
+| 850 | 5–9 | 7–9 |
+
+Folgen: 300 pro Klasse erkennen nur große Effekte. Ein Ergebnis ohne Unterschied heißt „kein
+großer Effekt“, nicht „kein Effekt“. Regimestufen mit 30 Fenstern sind eine Abdeckungspflicht und
+werden nur beschreibend ausgewertet. Falsch-positiv-Rate bei Effekt null: 0,2–0,5 % (Ziel 0,33 %).
+
+## Auswertung und Verblindung
+
+`scripts/sk_study.py` liest Kerzen und Signale per `pg_restore` direkt aus der Backup-Datei,
+ohne Datenbankverbindung.
+
+- `calibrate`: Terzilgrenzen aus 01.10.–20.10.2026 20:34 UTC. Am 22.10. auf dem Backup
+  `tim_20261022T011503Z.dump` gelaufen (953 Fenster), eingefroren in
+  `artifacts/v2_completion/sk_regime_thresholds.json` (Hash 364f7915…, an den Spezifikations-Hash
+  gebunden).
+- `status`: Zwischenstand pro Signaltyp (Fenster je Klasse, Regimeabdeckung, Abnahme). Liest
+  **keine Ergebnisse**, jede Einheit trägt `NOT_EVALUATED`. Ergebnisse werden einmal am
+  Studienende gelesen. Probelauf auf den ersten Kampagnenstunden (nur zur Prüfung, zählt nicht):
+  keine Verstöße gegen Klassendefinition, keine Datenlücken.
+
+Das Volumen in USDT wird als Schlusskurs mal Basisvolumen angenähert, weil die Kerzentabelle nur das
+Basisvolumen speichert.
+
 ## Vor T0 offen
 
-1. Power-Simulation S2.
-2. Deine Freigabe der Spezifikation.
+1. Deine Freigabe der Spezifikation (Merge = T0).
 
-Erledigt: Messung der Prüfbarkeit pro Signaltyp (siehe oben).
+Erledigt: Prüfbarkeit pro Signaltyp, Power-Simulation S2, Kalibrierung der Terzilgrenzen.
 
 ## Prüfbefehl
 
 ```
-python -m pytest tests/test_sk_control_regime_study.py -q
+python -m pytest tests/test_sk_control_regime_study.py tests/test_sk_report_and_power.py -q
 ```
