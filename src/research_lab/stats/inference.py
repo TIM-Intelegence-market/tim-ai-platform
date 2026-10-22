@@ -106,18 +106,38 @@ def walk_forward_windows(start_ms: int, end_ms: int, *, fit_months: int = 24, te
     return windows
 
 
+def known_at(trades: Sequence[Trade], start_ms: int, end_ms: int) -> list[Trade]:
+    """Trades whose signal fired in [start_ms, end_ms) and whose result was already
+    known at end_ms (exit_time <= end_ms). Only these may inform a decision taken
+    at end_ms; a trade still open at the cut-off carries its future outcome."""
+    return [t for t in trades if start_ms <= t.signal_time < end_ms and t.exit_time <= end_ms]
+
+
+def signalled_in(trades: Sequence[Trade], start_ms: int, end_ms: int) -> list[Trade]:
+    """Trades attributed to [start_ms, end_ms) by their signal time (protocol 3.2:
+    a trade belongs to the period in which its signal fired)."""
+    return [t for t in trades if start_ms <= t.signal_time < end_ms]
+
+
 def walk_forward(variant_trades: Mapping[str, Sequence[Trade]], windows: Sequence[Window]) -> tuple[float, list[str]]:
     """Choose the best variant of one hypothesis per fit window, measure it only in
-    the following test window. Returns (chained mean R, chosen variant per window)."""
+    the following test window. Returns (chained mean R, chosen variant per window).
+
+    The choice at fit_end uses only trades that were closed by then (known_at).
+    A trade signalled inside the fit window but still open at fit_end is neither
+    part of the fit (its result lies in the future) nor of the test window (its
+    signal predates it); it is skipped, so the test window holds only trades a
+    forward-looking operator would have taken after the choice (protocol 7.3,
+    method version 1.1)."""
     chained: list[float] = []
     chosen = []
     for window in windows:
         def fit_mean(variant: str) -> float:
-            rs = [t.r for t in variant_trades[variant] if window.fit_start <= t.entry_time < window.fit_end]
+            rs = [t.r for t in known_at(variant_trades[variant], window.fit_start, window.fit_end)]
             return statistics.fmean(rs) if rs else float("-inf")
 
         best = max(sorted(variant_trades), key=fit_mean)
         chosen.append(best)
-        chained.extend(t.r for t in variant_trades[best] if window.fit_end <= t.entry_time < window.test_end)
+        chained.extend(t.r for t in signalled_in(variant_trades[best], window.fit_end, window.test_end))
     return (statistics.fmean(chained) if chained else 0.0), chosen
 
