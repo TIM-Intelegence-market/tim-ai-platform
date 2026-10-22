@@ -10,7 +10,7 @@ from src.analytics.research import ResearchAnalyticsEngine
 from src.dashboard.operations import build_operations_snapshot
 from src.insights import ResearchInsightsEngine
 
-from src.dashboard.constants import ALLOWED_TIMELINE_EVENTS, DASHBOARD_VERSION, VISIBLE_LIMIT
+from src.dashboard.constants import ALLOWED_TIMELINE_EVENTS, CHART_CANDLE_LIMIT, DASHBOARD_VERSION, VISIBLE_LIMIT
 from src.dashboard.helpers import _parse_time
 
 @dataclass(slots=True)
@@ -31,6 +31,8 @@ class DashboardState:
     memory_status: dict[str, Any] = field(default_factory=lambda: {"observations": 0})
     news: dict[str, Any] = field(default_factory=lambda: {"status": "PLACEHOLDER", "items": []})
     recent_candles: list[dict] = field(default_factory=list)
+    # Per-timeframe candles for the /chart page (recent_candles mixes timeframes).
+    chart_candles: dict[str, list[dict]] = field(default_factory=dict)
     validator_path: Path = field(default_factory=lambda: Path("data/operational/state.json"))
     events_path: Path = field(default_factory=lambda: Path("data/operational/events.jsonl"))
     readiness_path: Path = field(default_factory=lambda: Path("data/research/status/tim_v1_readiness.json"))
@@ -153,6 +155,27 @@ class DashboardState:
             "last_id": state.get("last_id"),
             "checkpoint_mtime": datetime.fromtimestamp(info.st_mtime, tz=timezone.utc).isoformat(),
         }
+
+    def record_chart_candle(self, candle: dict[str, Any], limit: int = CHART_CANDLE_LIMIT) -> None:
+        """Keep the newest candles per timeframe for the chart; caller holds ``lock``."""
+        timeframe = str(candle.get("timeframe") or "")
+        if not timeframe:
+            return
+        series = self.chart_candles.setdefault(timeframe, [])
+        series[:] = [item for item in series if item.get("open_time") != candle.get("open_time")]
+        series.append(dict(candle))
+        series.sort(key=lambda item: str(item.get("open_time")))
+        del series[:-limit]
+
+    def chart_series(self) -> dict[str, list[dict[str, Any]]]:
+        with self.lock:
+            series = {timeframe: [dict(item) for item in items] for timeframe, items in self.chart_candles.items()}
+        if not series:
+            # Older runtimes only fill recent_candles: group them by timeframe.
+            with self.lock:
+                for item in self.recent_candles:
+                    series.setdefault(str(item.get("timeframe")), []).append(dict(item))
+        return series
 
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
