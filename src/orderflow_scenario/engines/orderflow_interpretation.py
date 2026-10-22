@@ -16,6 +16,14 @@ from src.models.market_data import Candle, Trade
 
 from ..domain import OrderflowInterpretation, OrderflowStatement, OrderflowStatementKind
 from ..domain import ZERO
+from ..positioning import (
+    PositioningInputs,
+    ProfileLevels,
+    interpret_positioning,
+    interpret_profile,
+    open_interest_price_response,
+    window_price_response,
+)
 
 __all__ = ["OrderflowInputs", "OrderflowInterpretationEngine"]
 
@@ -34,6 +42,9 @@ class OrderflowInputs:
     taker_buy_sell_ratio: Decimal | None = None
     volume_bubbles: tuple[str, ...] = ()
     extra_notes: tuple[str, ...] = ()
+    # Funding, liquidations, OI series, orderbook depth; and volume profile / TPO (positioning.py).
+    positioning: PositioningInputs | None = None
+    profile: ProfileLevels | None = None
 
     def __post_init__(self) -> None:
         # net_delta (aggressive buy minus aggressive sell volume) is signed by
@@ -189,30 +200,57 @@ class OrderflowInterpretationEngine:
             )
             absorption_confirmed = True
 
+        # --- 4b. Positioning (funding, liquidations, OI series, orderbook depth) ---
+        # Context values describe a window, so they are compared with the price move over that
+        # window, never with the last close-to-close step.
+        positioning = interpret_positioning(
+            inputs.positioning,
+            window_price_response(candles),
+            open_interest_price_response(candles, inputs.positioning.open_interest) if inputs.positioning else None,
+        )
+        open_interest_with_price = inputs.open_interest_with_price
+        open_interest_trend = inputs.open_interest_trend
+        open_interest_refs: tuple[str, ...] = ("open_interest_with_price",)
+        series_with_price, series_trend = positioning.open_interest_with_price, positioning.open_interest_trend
+        explicit_trends = {value for value in (open_interest_trend, (open_interest_with_price or "").split("_")[0] or None) if value and value != "UNKNOWN"}
+        conflict = bool(
+            (open_interest_with_price and series_with_price and open_interest_with_price != series_with_price)
+            or (series_trend and explicit_trends and explicit_trends != {series_trend})
+        )
+        if conflict:
+            # Two sources disagree: neither is interpreted (fail closed).
+            missing.append("conflict:open_interest_input_vs_series")
+            open_interest_with_price = open_interest_trend = None
+        elif not open_interest_with_price and series_with_price:
+            # Derived from the supplied OI series and the price over the same span, never assumed.
+            open_interest_with_price = series_with_price
+            open_interest_refs = ("open_interest", "candles")
+        open_interest_trend = open_interest_trend or (None if conflict else series_trend)
+
         # --- 5. Open interest interpretation ---
         oi_interpretation: str | None = None
-        if inputs.open_interest_with_price:
+        if open_interest_with_price:
             mapping = {
                 "RISING_WITH_PRICE_UP": "long_accumulation",
                 "RISING_WITH_PRICE_DOWN": "short_accumulation",
                 "FALLING_WITH_PRICE_UP": "short_covering",
                 "FALLING_WITH_PRICE_DOWN": "long_liquidation",
             }
-            oi_interpretation = mapping.get(inputs.open_interest_with_price)
+            oi_interpretation = mapping.get(open_interest_with_price)
             if oi_interpretation:
                 statements.append(
                     OrderflowStatement(
                         kind=OrderflowStatementKind.INTERPRETATION,
                         text=f"open_interest_{oi_interpretation}",
-                        evidence_refs=("open_interest_with_price",),
+                        evidence_refs=open_interest_refs,
                         weight=Decimal("0.7"),
                     )
                 )
-        elif inputs.open_interest_trend:
+        elif open_interest_trend and positioning.open_interest_trend is None:
             statements.append(
                 OrderflowStatement(
                     kind=OrderflowStatementKind.OBSERVATION,
-                    text=f"open_interest_trend={inputs.open_interest_trend}",
+                    text=f"open_interest_trend={open_interest_trend}",
                     evidence_refs=("open_interest_trend",),
                 )
             )
@@ -257,6 +295,19 @@ class OrderflowInterpretationEngine:
             confidence += Decimal("0.15")
         if inputs.delta_divergence is True:
             confidence += Decimal("0.05")
+        # Context data adds a little confidence per category present, at most +0.08,
+        # and does not count towards the observation bonus above.
+        last_price = Decimal(str(candles[-1].close)) if candles else None
+        profile_statements, profile_summary, profile_missing = interpret_profile(inputs.profile, last_price)
+        categories = sum(1 for key in ("funding", "liquidations", "open_interest", "orderbook_depth") if key in positioning.summary)
+        categories += 1 if profile_summary else 0
+        confidence += min(Decimal("0.08"), Decimal("0.02") * categories)
+        statements.extend(positioning.statements)
+        statements.extend(profile_statements)
+        # Gaps are listed once any context is supplied; analyses without context keep their output.
+        if inputs.positioning is not None or inputs.profile is not None:
+            missing.extend(positioning.missing)
+            missing.extend(profile_missing)
         confidence = max(ZERO, min(Decimal("1"), confidence))
 
         return OrderflowInterpretation(
@@ -267,5 +318,7 @@ class OrderflowInterpretationEngine:
             open_interest_interpretation=oi_interpretation,
             statements=tuple(statements),
             confidence=confidence,
-            missing_data=tuple(sorted(missing)),
+            missing_data=tuple(sorted(set(missing))) if (inputs.positioning or inputs.profile) else tuple(sorted(missing)),
+            positioning=positioning.summary if inputs.positioning is not None else {},
+            profile=profile_summary,
         )
