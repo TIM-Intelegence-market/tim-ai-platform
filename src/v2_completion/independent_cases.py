@@ -273,7 +273,8 @@ def validate_review_workbook(workbook: dict[str, Any]) -> dict[str, Any]:
         "approval": bool(workbook.get("approval", False)),
         "status": (
             "PASS"
-            if decisions == len(workbook.get("selected_cases", []))
+            if decisions > 0
+            and decisions == len(workbook.get("selected_cases", []))
             and not invalid_partial
             and workbook.get("approval") is True
             else "PENDING_OR_FAIL"
