@@ -45,7 +45,7 @@
       "thresholds": "terciles (nearest rank) from the calibration period, frozen"
     },
     "liquidity": {
-      "measure": "sum of USDT quote volume over the 60 closed candles before window start",
+      "measure": "sum over the 60 closed candles before window start of close x base volume (USDT approximation; the candles table stores base volume only)",
       "levels": [
         "LOW",
         "MID",
@@ -100,7 +100,7 @@
   "minimums": {
     "units_per_class": 300,
     "units_per_regime_level_per_class": 30,
-    "note": "Proposal; confirm with power simulation S2 before T0. A kind below the minimums is reported NOT_TESTABLE, not as evidence."
+    "note": "Confirmed by power simulation S2 (power_simulation_s2). A kind below the minimums is reported NOT_TESTABLE, not as evidence."
   },
   "evaluation": {
     "outcome_horizons_minutes": [
@@ -113,7 +113,15 @@
       "replay_determinism",
       "lookahead_and_leakage_check"
     ],
-    "run_on": "Read-only copy of the daily Mac DB backup, outside ~/TIM-live."
+    "run_on": "Read-only copy of the daily Mac DB backup, outside ~/TIM-live.",
+    "primary_test": {
+      "comparison": "POSITIVE vs NEGATIVE per testable detector kind and horizon",
+      "test": "chi-square 2x3 on PRICE_INCREASED / PRICE_DECREASED / PRICE_SIDEWAYS (df=2)",
+      "multiplicity": "Bonferroni, family alpha 0.05 over all testable kinds x 3 horizons (5 kinds: alpha 0.0033 per test)",
+      "secondary": "POSITIVE vs NEUTRAL_CONTROL, same test, reported descriptively",
+      "regime_levels": "DESCRIPTIVE_ONLY: 30 units per level are a coverage requirement, not a test; at n=30 only effects of 14 to 37 percentage points are detectable",
+      "blinding": "Interim status reports count units only (label NOT_EVALUATED); outcomes are read once, at the end of the study"
+    }
   },
   "if_minimums_not_met_at_campaign_end": "Parent campaign ends as registered. Only this study keeps drawing windows from ongoing operation until the minimums are met.",
   "prohibitions": [
@@ -124,7 +132,7 @@
     "no outcome label (PRICE_INCREASED/DECREASED/SIDEWAYS) used as a sample class"
   ],
   "open_before_t0": [
-    "power_simulation_s2",
+    "regime_threshold_calibration (scripts/sk_study.py calibrate on the Mac backup, result frozen in artifacts/v2_completion/sk_regime_thresholds.json)",
     "human_approval_of_this_spec"
   ],
   "human_approval": false,
@@ -134,7 +142,7 @@
   "grid_minutes": 30,
   "incomplete_lookback_rule": "Units without a complete 60-minute lookback are excluded and counted (excluded_incomplete_lookback), never kept with an unassigned regime.",
   "integrity": "Every function re-verifies this spec hash; thresholds carry their own hash and the spec hash; the T0 record must also store the git commit and SHA-256 of src/v2_completion/control_regime_study.py.",
-  "spec_hash": "a3c12971e4452bb4eb0cb945bae1d8ba3cbdec1f9fc418566c1a6aed8c040ba7",
+  "spec_hash": "e2205bfdb02ac9a184fe396d1aa0ed18b915ac672f40e2e7a7a316c791827ace",
   "kind_testability_pre_t0": {
     "measured_on": "2026-10-22",
     "source": "Daily backup tim_20261022T011503Z.dump, table public.orderflow_observations, read with pg_restore to stdout (no database connection, nothing restored, ~/TIM-live untouched).",
@@ -253,6 +261,33 @@
     ]
   },
   "done_before_t0": [
-    "kind_testability_on_pre_campaign_data (see kind_testability_pre_t0)"
-  ]
+    "kind_testability_on_pre_campaign_data (see kind_testability_pre_t0)",
+    "power_simulation_s2 (see power_simulation_s2)"
+  ],
+  "power_simulation_s2": {
+    "artifact": "artifacts/v2_completion/sk_power_simulation_s2.json",
+    "code": "src/v2_completion/sk_power.py",
+    "market_data_read": false,
+    "setup": "chi-square 2x3, Bonferroni alpha 0.05/15, power 0.8, 1200 positives, 4000 repetitions per point, sideways share 20/45/70 percent",
+    "minimum_detectable_effect_percentage_points": {
+      "n_neg_300": {
+        "directional": "7 to 12",
+        "volatility": "10 to 13"
+      },
+      "n_neg_500": {
+        "directional": "6 to 10",
+        "volatility": "8 to 11"
+      },
+      "n_neg_850": {
+        "directional": "5 to 9",
+        "volatility": "7 to 9"
+      },
+      "n_neg_30": {
+        "directional": "14 to 28",
+        "volatility": "17 to 37"
+      }
+    },
+    "false_positive_rate_at_zero_effect": "0.002 to 0.005 (target 0.0033)",
+    "conclusion": "300 per class detects only large effects (about 10 percentage points). A null result means 'no large effect', not 'no effect'. Kinds with more NEGATIVE cells get proportionally sharper results; the study keeps collecting after the parent campaign until minimums are met."
+  }
 }
