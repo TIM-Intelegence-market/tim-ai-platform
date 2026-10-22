@@ -38,7 +38,7 @@ gemessen, **[?]** unbekannt. Diese Datei beschreibt, was gilt; sie ändert nicht
 - Abhängigkeiten im Repo sind Bereiche ohne Sperrdatei (`requirements.txt`: asyncpg, websockets,
   pytest, pytest-asyncio, langchain-ollama, langgraph, duckduckgo-search). [V]
 
-## 3. Offene PRs und ihr Rolloutstatus (22.10., 01:00 UTC; #365 seit 01:56 UTC Entwurf mit Korrektur-Commit d86baea nach Uzis Nachprüfung, nicht zu mergen)
+## 3. Offene PRs und ihr Rolloutstatus (22.10., 01:00 UTC; #365 seit 01:56 UTC Entwurf mit Korrektur-Commit d86baea nach Uzis Nachprüfung, am 22.10. ~09:45 UTC auf platform-main 1554101 aktualisiert; D01-A/D02-A als Design freigegeben, nicht zu mergen)
 
 Keiner der offenen PRs ist in `~/TIM-live`. „Merge“ heißt nur: in `platform-main`; ausgerollt wird
 während der Kampagne nichts.

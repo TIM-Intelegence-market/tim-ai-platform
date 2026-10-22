@@ -84,15 +84,25 @@ Jeder alte FAIL (B03 Artefakt-Audit, B04 Research-Qualität, B05 Herkunft) bekom
 Regel: Kein FAIL wird von Hand zu PASS. Eine Legacy-Lücke bleibt Lücke und wird als Grenze des Geltungsbereichs
 ausgewiesen (Beispiel: die vier Kerzenlücken vom Oktober, Readiness-Befund 20.10.).
 
-## 6. Was Uzi entscheidet (ein Satz genügt)
+## 6. Entscheidungsprotokoll
 
-1. D01-A (direkter vollständiger Quell-Descriptor) und D02-A (expliziter Snapshot-Payload mit Hülle) jeweils freigeben oder ablehnen.
+| Datum (UTC) | Entscheider | Entscheidung | Geltungsbereich | Nicht enthalten |
+|---|---|---|---|---|
+| 2026-10-22 09:35 | Uzi (Governance) | **D01-A und D02-A als Design freigegeben.** Wortlaut: „D01-A und D02-A gebe ich als Design frei.“ | Designentscheidung für die neue Vertragsrevision (Abschnitt 2); Grundlage für Registry, Kanonisierung, Validator und Konformitätssuite in einem separaten Implementierungs-PR. | Keine Betriebsfreigabe, kein Freeze von HC-1.0, keine Änderung an Livebetrieb, Datenbank oder alten Artefakten. B07 bleibt offen, bis die Vertragsrevision mit Registry und Testvektoren gesondert freigegeben ist. |
+
+Ebenfalls am 22.10.2026 09:35 UTC festgehalten: S2 bleibt Entwurf 0.2 (Power-Simulation und
+Methodenprüfung vor jeder Studienfreigabe), die in Abschnitt 6.1 Punkt 3 genannten Rollen bleiben
+Vorschlag, bis die Personen sie ausdrücklich annehmen, und PR #365 bleibt Entwurf ohne Merge.
+
+## 6.1 Was Uzi entschieden hat beziehungsweise noch entscheidet
+
+1. D01-A (direkter vollständiger Quell-Descriptor) und D02-A (expliziter Snapshot-Payload mit Hülle): **als Design freigegeben am 22.10.2026 09:35 UTC** (Abschnitt 6).
 2. Danach neue Vertragsrevision mit vollständiger Registry, unabhängigen Testvektoren, Rollen,
    V2-only-Grenze und Cut-over-Policy prüfen und gesondert freigeben. Die unveränderte Spezifikation
    nicht voreilig einfrieren; B07 bleibt bis zum Entscheidungsnachweis offen.
 3. Dispositionsrollen benennen (Vorschlag, nicht entschieden: Chris prüft, Uzi gibt frei).
 
-Erst nach der Designentscheidung folgt ein separater Implementierungs-PR für Registry,
+Nach der Designentscheidung vom 22.10.2026 folgt ein separater Implementierungs-PR für Registry,
 Kanonisierung, Validator und Konformitätssuite sowie ein Dispositionsregister.
 Designfreigabe bedeutet weder Implementierungs- noch Betriebsfreigabe. Livebetrieb, Datenbank
 und alte Artefakte werden durch diese Entscheidungsvorlage nicht verändert.

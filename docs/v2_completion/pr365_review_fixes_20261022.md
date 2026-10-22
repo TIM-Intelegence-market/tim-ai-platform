@@ -58,3 +58,22 @@ Auto-Merge wurde für PR #365 deaktiviert, PR zusätzlich auf Entwurf gesetzt. N
 Keine Migration nötig. Rücknahme bei Bedarf durch Revert des Korrektur-Commits ausschließlich
 im Entwicklungsbranch; kein Live-Rollback erforderlich. Eine unabhängige Prüfung und spätere
 explizite Freigabe bleiben nötig. Die fünf Review-Korrekturen schließen nicht alle 14 Planpakete ab.
+
+## Nachprüfung auf aktualisiertem Stand (22.10.2026, nach Merge von #364 und #366)
+
+Branch mit `platform-main` `1554101` zusammengeführt (keine Konflikte). Uzi hat am 22.10.2026
+09:35 UTC D01-A und D02-A als Design freigegeben; protokolliert in
+`evidenz_zeit_hash_vertrag_t05.md`, Abschnitt 6. S2 bleibt Entwurf 0.2, Rollen bleiben Vorschlag,
+PR #365 bleibt Entwurf ohne Merge. Die laufende V2-Kampagne, Livecode, Dienste und Datenbank
+wurden nicht berührt.
+
+Prüfung im Cloud-Container (Python 3.13.16, Projektanforderungen, keine Live-Datenbank, kein Netz):
+die acht Zieldateien oben plus `tests/test_v2_completion*.py` und `tests/test_manual_review*.py`
+(T04 aus #364/#366): **241 bestanden**, Exit 0; `git diff --check`: Exit 0.
+Breiterer Lauf `python -m pytest tests/ -q -m "not local_env" -x --deselect tests/test_research_lab_guard.py`
+(Guard-Simulation wegen Laufzeit ausgenommen): **6030 bestanden, 89 übersprungen, 21 abgewählt**,
+Exit 0, 5:34 min. Der vollständige CI-Lauf auf dem Mac-Runner (mit Guard-Test) ist der maßgebliche
+Nachweis, da beide vorherigen Commits mit `[skip ci]` gepusht wurden.
+
+**Weiterhin nicht ausgeführt:** Doctor/Validate mit Betriebsabhängigkeiten, Power-Simulation für S2,
+R4-Neulauf, echtes Ollama-Benchmarking, unabhängiges menschliches Review des Gesamtstandes.
