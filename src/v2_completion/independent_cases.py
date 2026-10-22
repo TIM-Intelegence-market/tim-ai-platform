@@ -280,3 +280,204 @@ def validate_review_workbook(workbook: dict[str, Any]) -> dict[str, Any]:
             else "PENDING_OR_FAIL"
         ),
     }
+
+
+# --------------------------------------------------------------------------------------
+# T04 extension (2026-10-22): completeness, approval and authorization are three separate
+# findings, and every attestation is bound to the exact content it was given for.
+# `validate_review_workbook` above stays unchanged (completeness of the case rows plus the
+# supplied approval flag). `validate_review_packet` adds typed decisions, contradiction
+# checks, source binding and hash-bound signatures. A signature here is a recorded
+# attestation (who, when, over which content hash), not a cryptographic proof.
+# --------------------------------------------------------------------------------------
+
+REVIEW_DECISIONS = ("ACCEPT", "REJECT", "EXCLUDE")
+REVIEW_BOOLEAN_FIELDS = (
+    "observation_correct",
+    "label_correct",
+    "future_information_absent",
+    "narrative_adjustment_absent",
+)
+REVIEW_REQUIRED_FIELDS = (
+    "reviewer_id",
+    "reviewed_at_utc",
+    "data_quality",
+    *REVIEW_BOOLEAN_FIELDS,
+    "confidence_0_to_1",
+    "decision",
+    "rationale",
+    "inter_rater_conflict",
+)
+SIGNATURE_ROLES = {"reviewer_signature": "reviewer", "release_authority_signature": "release_authority"}
+CONTENT_HASH_EXCLUDED = ("workbook_hash", "reviewer_signature", "release_authority_signature", "approval")
+
+
+def review_content_hash(workbook: dict[str, Any]) -> str:
+    """Hash of what a signature attests: the case rows with their decisions and the source
+    references. The approval flag, the legacy `workbook_hash` and the signatures themselves are
+    excluded, so a signature cannot be re-used for a workbook whose decisions changed."""
+    return stable_hash({key: value for key, value in workbook.items() if key not in CONTENT_HASH_EXCLUDED})
+
+
+def _is_bool(value: Any) -> bool:
+    return isinstance(value, bool)
+
+
+def _check_review_row(item: dict[str, Any]) -> tuple[str, list[str]]:
+    """Return (state, problems). state: EMPTY, COMPLETE, INVALID."""
+    review = item.get("review")
+    if not isinstance(review, dict):
+        return "INVALID", ["review is not an object"]
+    populated = [k for k, v in review.items() if v not in (None, "")]
+    if not populated:
+        return "EMPTY", []
+    problems: list[str] = []
+    missing = [name for name in REVIEW_REQUIRED_FIELDS if review.get(name) in (None, "")]
+    if missing:
+        problems.append(f"missing: {', '.join(missing)}")
+        return "INVALID", problems
+    if not isinstance(review["reviewer_id"], str):
+        problems.append("reviewer_id must be a string")
+    try:
+        parse_time(str(review["reviewed_at_utc"]))
+    except (ValueError, TypeError):
+        problems.append("reviewed_at_utc must be a timezone-aware ISO timestamp")
+    for name in (*REVIEW_BOOLEAN_FIELDS, "inter_rater_conflict"):
+        if not _is_bool(review[name]):
+            problems.append(f"{name} must be true or false, not {review[name]!r}")
+    confidence = review["confidence_0_to_1"]
+    if _is_bool(confidence) or not isinstance(confidence, (int, float)) or not 0.0 <= float(confidence) <= 1.0:
+        problems.append("confidence_0_to_1 must be a number between 0 and 1")
+    decision = review["decision"]
+    if decision not in REVIEW_DECISIONS:
+        problems.append(f"decision must be one of {REVIEW_DECISIONS}, not {decision!r}")
+    elif all(_is_bool(review[name]) for name in REVIEW_BOOLEAN_FIELDS):
+        flags = [review[name] for name in REVIEW_BOOLEAN_FIELDS]
+        if decision == "ACCEPT" and not all(flags):
+            problems.append("ACCEPT contradicts a false quality flag")
+        if decision == "REJECT" and all(flags):
+            problems.append("REJECT without any false quality flag")
+        if decision == "EXCLUDE" and review.get("exclusion_reason") in (None, ""):
+            problems.append("EXCLUDE requires exclusion_reason")
+    if review.get("inter_rater_conflict") is True and review.get("conflict_resolution") in (None, ""):
+        problems.append("inter_rater_conflict requires conflict_resolution")
+    return ("INVALID" if problems else "COMPLETE"), problems
+
+
+def _check_signature(workbook: dict[str, Any], field: str, content_hash: str) -> tuple[bool, list[str], str | None]:
+    signature = workbook.get(field)
+    if signature in (None, ""):
+        return False, [f"{field} missing"], None
+    if not isinstance(signature, dict):
+        return False, [f"{field} must be an object"], None
+    problems: list[str] = []
+    signer = signature.get("signer_id")
+    if not isinstance(signer, str) or not signer.strip():
+        problems.append(f"{field}.signer_id missing")
+    if signature.get("role") != SIGNATURE_ROLES[field]:
+        problems.append(f"{field}.role must be {SIGNATURE_ROLES[field]!r}")
+    try:
+        parse_time(str(signature.get("signed_at_utc")))
+    except (ValueError, TypeError):
+        problems.append(f"{field}.signed_at_utc must be a timezone-aware ISO timestamp")
+    if signature.get("bound_content_hash") != content_hash:
+        problems.append(f"{field}.bound_content_hash does not match the review content")
+    return (not problems), problems, (signer if isinstance(signer, str) else None)
+
+
+def validate_review_packet(
+    workbook: dict[str, Any], source_sample: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Three separate findings for a manual review workbook.
+
+    completeness: every selected case carries one complete, typed, non-contradictory decision.
+    approval:     the supplied `approval` flag, reported, never inferred.
+    authorization: reviewer and release-authority signatures exist, are bound to the current
+                   review content hash, name distinct persons, and the release authority is not
+                   one of the reviewers.
+    source_binding (when `source_sample` is given): the workbook references the sample's hash
+                   and each case row matches the sample row by observation id, input hash and
+                   validation hash.
+
+    `verdict` is REVIEW_AUTHORIZED only if completeness is PASS, approval is true, authorization
+    is AUTHORIZED and source binding is not MISMATCH. Nothing here authenticates a person; it
+    records who claimed what over which bytes, so a later change is detectable."""
+    cases = workbook.get("selected_cases", [])
+    if not isinstance(cases, list):
+        cases = []
+    complete, empty, invalid = 0, 0, []
+    decisions = {name: 0 for name in REVIEW_DECISIONS}
+    reviewers: set[str] = set()
+    for item in cases:
+        state, problems = _check_review_row(item if isinstance(item, dict) else {})
+        if state == "COMPLETE":
+            complete += 1
+            decisions[item["review"]["decision"]] += 1
+            reviewers.add(item["review"]["reviewer_id"])
+        elif state == "EMPTY":
+            empty += 1
+        else:
+            invalid.append({"observation_id": item.get("observation_id") if isinstance(item, dict) else None,
+                            "problems": problems})
+    completeness = "PASS" if cases and complete == len(cases) and not invalid else "PENDING_OR_FAIL"
+
+    approval_flag = workbook.get("approval", False)
+    approval = approval_flag is True
+
+    content_hash = review_content_hash(workbook)
+    problems: list[str] = []
+    signers: dict[str, str | None] = {}
+    for field in SIGNATURE_ROLES:
+        ok, field_problems, signer = _check_signature(workbook, field, content_hash)
+        problems.extend(field_problems)
+        signers[field] = signer
+    reviewer_signer, authority_signer = signers["reviewer_signature"], signers["release_authority_signature"]
+    if reviewer_signer and authority_signer and reviewer_signer == authority_signer:
+        problems.append("release authority must not be the reviewer signer")
+    if authority_signer and authority_signer in reviewers:
+        problems.append("release authority must not have reviewed cases")
+    authorization = "AUTHORIZED" if not problems else "NOT_AUTHORIZED"
+
+    source_binding = "NOT_CHECKED"
+    source_problems: list[str] = []
+    if source_sample is not None:
+        if workbook.get("source_sample_hash") != source_sample.get("sample_hash"):
+            source_problems.append("source_sample_hash differs from the sample")
+        by_id = {row.get("observation_id"): row for row in source_sample.get("selected_cases", [])}
+        if len(by_id) != len(cases):
+            source_problems.append(f"sample has {len(by_id)} cases, workbook {len(cases)}")
+        for item in cases:
+            if not isinstance(item, dict):
+                continue
+            row = by_id.get(item.get("observation_id"))
+            if row is None:
+                source_problems.append(f"{item.get('observation_id')} not in sample")
+            elif (row.get("input_hash"), row.get("validation_hash"), row.get("outcome")) != (
+                item.get("input_hash"), item.get("validation_hash"), item.get("persisted_outcome")
+            ):
+                source_problems.append(f"{item.get('observation_id')} differs from sample row")
+        source_binding = "BOUND" if not source_problems else "MISMATCH"
+
+    verdict = (
+        "REVIEW_AUTHORIZED"
+        if completeness == "PASS" and approval and authorization == "AUTHORIZED" and source_binding != "MISMATCH"
+        else "NOT_AUTHORIZED"
+    )
+    return {
+        "schema_version": workbook.get("schema_version"),
+        "review_content_hash": content_hash,
+        "selected_count": len(cases),
+        "complete_human_decisions": complete,
+        "empty_reviews": empty,
+        "invalid_reviews": invalid,
+        "decisions": decisions,
+        "reviewers": sorted(reviewers),
+        "completeness": completeness,
+        "approval": approval,
+        "approval_flag_type_ok": _is_bool(approval_flag),
+        "authorization": authorization,
+        "authorization_problems": problems,
+        "source_binding": source_binding,
+        "source_binding_problems": source_problems,
+        "verdict": verdict,
+    }
