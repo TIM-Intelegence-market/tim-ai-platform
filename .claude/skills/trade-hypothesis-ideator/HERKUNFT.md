@@ -10,7 +10,7 @@
 * **Ein-/Ausgabe:** Lokale JSON-Pipeline ohne Netzwerk. Braucht `PyYAML`.
 * **Geprüft (22.10.2026):** Code statisch durchsucht (Netzwerk, Unterprozesse, Löschen, Umgebungsvariablen,
   Order-/Broker-Aufrufe). Keine Order-Ausführung, kein Broker-Zugriff, keine Hooks, keine MCP-Server.
-  Die mitgelieferten Tests wurden **nicht** ausgeführt (Ausführen fremden Codes war in der Cloud-Sitzung gesperrt).
+  Mitgelieferte Tests am 22.10.2026 auf Uzis Wunsch in der Cloud ausgeführt (eigenes venv, Python 3.13): 74 bestanden, 4 fehlgeschlagen: alle im optionalen Strategie-Export (`--export-strategies`), der `edge-candidate-agent/scripts/candidate_contract.py` braucht; dieser Skill wurde bewusst nicht übernommen. Der Export geht in TIM deshalb nicht, die Hypothesen-Pipeline selbst läuft.
   Sie liegen unter `scripts/tests/` und werden von der TIM-Suite (`pytest tests/`) nicht eingesammelt.
 * **TIM-Hinweis:** Hypothesen sind Ideen für das Research Lab, keine Signale.
 * **Grenzen für TIM:** nur Analyse, Papier und Journal. Kein Echtgeld, keine Anbindung an Order-Pfade,

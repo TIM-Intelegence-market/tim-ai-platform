@@ -10,7 +10,7 @@
 * **Ein-/Ausgabe:** Liest nur lokale YAML-Dateien von `trader-memory-core`. Braucht `pyyaml` und `pandas-market-calendars==5.2.2`.
 * **Geprüft (22.10.2026):** Code statisch durchsucht (Netzwerk, Unterprozesse, Löschen, Umgebungsvariablen,
   Order-/Broker-Aufrufe). Keine Order-Ausführung, kein Broker-Zugriff, keine Hooks, keine MCP-Server.
-  Die mitgelieferten Tests wurden **nicht** ausgeführt (Ausführen fremden Codes war in der Cloud-Sitzung gesperrt).
+  Mitgelieferte Tests am 22.10.2026 auf Uzis Wunsch in der Cloud ausgeführt (eigenes venv, Python 3.13): 90 bestanden.
   Sie liegen unter `scripts/tests/` und werden von der TIM-Suite (`pytest tests/`) nicht eingesammelt.
 * **TIM-Hinweis:** Freigabezeitpunkte richten sich nach dem NYSE-Kalender (US-Ostküstenzeit). Für 24/7-Krypto heißt das: Sperren laufen eher länger als nötig (konservativ). Empfehlung, keine Sperre beim Broker.
 * **Grenzen für TIM:** nur Analyse, Papier und Journal. Kein Echtgeld, keine Anbindung an Order-Pfade,
