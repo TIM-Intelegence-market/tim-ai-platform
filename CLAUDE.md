@@ -34,6 +34,7 @@ Originale aus der Bibliothek (Quelle und Grenzen je Skill in `HERKUNFT.md`):
 - `vormachen-vorbereitung`: Record-&-Replay-Aufnahme in ChatGPT/Codex vorbereiten.
 - `humanizer`, `humanizer-de`: Text auf KI-Muster prüfen und in eigener Stimme neu schreiben.
 - `seiten-check`: eigene Webseite auf typische Sicherheitslücken prüfen (nur eigene Domains).
+- `claude-automation-recommender`: Codebase analysieren und Hooks, Skills, MCP-Server, Subagents empfehlen (aus Anthropics Plugin `claude-code-setup`, nur lesend).
 - `canary`: Warnzeichen für ein volles Kontextfenster setzen (nur auf Anfrage, Satz nie hier eintragen).
 
 Aus `ai-resources/KI-Ressourcen.md` abgeleitet:
