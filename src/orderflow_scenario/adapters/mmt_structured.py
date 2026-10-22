@@ -60,4 +60,6 @@ class MMTStructuredDataAdapter:
             estimated_prices=base.estimated_prices,
             missing_fields=base.missing_fields,
             extra_notes=base.extra_notes + ("mmt_structured_export_limited_to_recognized_fields",),
+            positioning=base.positioning,
+            profile=base.profile,
         )
