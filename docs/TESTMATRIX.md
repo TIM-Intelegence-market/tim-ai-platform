@@ -7,7 +7,7 @@ Stand 22.10.2026. Zone B. Nichts hier wird in `~/TIM-live/.venv` installiert.
 - Live: Python 3.13 (Homebrew), Pakete laut `requirements.txt` ohne Sperre. Der Ist-Stand ist nur per
   `~/TIM-live/.venv/bin/pip freeze` auf dem Mac lesbar (T01, offen).
 - CI: `pip install -r requirements.txt` plus `coverage`, `pytest-cov`; frische venv je Lauf (`ci.yml`).
-- Cloud-Container: Python 3.12, `pip install -r requirements.txt`; Research-Lab- und RAG-Tests laufen (347 + 10 grün).
+- Cloud-Container: Python 3.12, `pip install -r requirements.txt`; Research-Lab- und RAG-Tests laufen (grün, Stand d86baea: 80 Tests der acht Zieldateien in 1,4 s).
 
 ## 2. Reproduzierbare Entwicklungsauflösung (Vorschlag, noch nicht im Repo)
 
@@ -49,7 +49,8 @@ von denen 16 % live laufen, bleibt ohne Aussage.
 | Outbox-Idempotenz | gleicher `idempotency_key` erzeugt keine zweite Zeile (vorhanden) |
 | Hashbindung Tagesbelege | geänderter Inhalt bei gleichem Hash → FAIL (PR #353) |
 | Review-Vollständigkeit | leeres Workbook mit `approval=true` → PENDING_OR_FAIL (PR #364) |
-| Zitate | unbekannte ID → `rejected_citations` (vorhanden) |
+| Zitate | unbekannte ID → `rejected_citations` **und** gesamte Antwort verworfen (`test_valid_answer_and_mixed_citations_including_eleventh`, `test_invalid_model_answers_never_preserve_claims`) |
+| Wissenszeit RAG | ohne inhaltsgebundenen Verfügbarkeitsbeleg `<= as_of` nicht im Kontext, Filter vor `limit`, Fallrevision braucht neuen Beleg (`test_late_availability_excluded_before_limit_and_unknown_revisions_fail_closed`, `test_case_revision_requires_new_attestation_and_context_is_snapshot`) |
 
 Mutationstest-Werkzeug: `mutmut` auf genau diese Module, einmalig, Ergebnis als Bericht; kein Dauerlauf in CI.
 

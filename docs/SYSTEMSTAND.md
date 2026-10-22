@@ -31,14 +31,14 @@ gemessen, **[?]** unbekannt. Diese Datei beschreibt, was gilt; sie ändert nicht
   history-recovery, qualification-daily; außerdem awake (caffeinate). Welche der 18 Vorlagen
   tatsächlich geladen sind: [?], nur per `launchctl list` auf dem Mac prüfbar.
 - Suite-Nachweis für f469ad6: push-CI-Lauf 39482022376 (success, 20.10. 19:40 UTC). [N]
-- Python/Paketstand der Live-venv: **nicht erfasst.** Der lesende Export (`~/TIM-live/.venv/bin/pip
-  freeze`, `python --version`, `sw_vers`) muss auf dem Mac erfolgen; die Cloud hat keinen Zugriff.
-  Ablage vorgesehen: `/mnt/project-files/systemstand/pip-freeze-TIM-live-<datum>.txt`. Ein heutiger
-  Export beweist nicht den Stand vom 20.10.; er dokumentiert den Ist-Zustand ab Exportdatum.
+- Python/Paketstand der Live-venv: **erfasst am 22.10. 01:26 UTC** von Uzi, lesend auf dem Mac
+  (`docs/systemstand/live-env-2026-10-22/`: Python 3.13.16, 50 Pakete, Prüfsummen im README). [V]
+  Der Export beweist nicht den Stand vom 20.10.; er dokumentiert den Ist-Zustand ab Exportdatum.
+  Betriebssystemabhängigkeiten (Homebrew, libpq, OpenSSL) sind nicht erfasst. [?]
 - Abhängigkeiten im Repo sind Bereiche ohne Sperrdatei (`requirements.txt`: asyncpg, websockets,
   pytest, pytest-asyncio, langchain-ollama, langgraph, duckduckgo-search). [V]
 
-## 3. Offene PRs und ihr Rolloutstatus (22.10., 01:00 UTC)
+## 3. Offene PRs und ihr Rolloutstatus (22.10., 01:00 UTC; #365 seit 01:56 UTC Entwurf mit Korrektur-Commit d86baea nach Uzis Nachprüfung, nicht zu mergen)
 
 Keiner der offenen PRs ist in `~/TIM-live`. „Merge“ heißt nur: in `platform-main`; ausgerollt wird
 während der Kampagne nichts.
