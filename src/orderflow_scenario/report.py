@@ -43,6 +43,22 @@ def build_report(analysis: AnalysisOutput) -> str:
         sections.append(f"  Absorption-Hypothese: {analysis.orderflow.absorption_hypothesis}.")
     if analysis.orderflow.open_interest_interpretation:
         sections.append(f"  Open Interest: {analysis.orderflow.open_interest_interpretation}.")
+    positioning = analysis.orderflow.positioning
+    if positioning.get("funding"):
+        sections.append(f"  Funding (8h): {positioning['funding']['rate_8h']} ({positioning['funding']['state']}).")
+    if positioning.get("liquidations"):
+        liq = positioning["liquidations"]
+        sections.append(f"  Liquidationen: Long {liq['long_volume']}, Short {liq['short_volume']} ({liq['state']}).")
+    if positioning.get("open_interest"):
+        oi = positioning["open_interest"]
+        sections.append(f"  OI-Verlauf: {oi['trend']} ({oi['change_fraction']} über {oi['points']} Punkte).")
+    if positioning.get("orderbook_depth"):
+        depth = ", ".join(f"{item['depth_pct']} %: {item['imbalance']} {item['state']}" for item in positioning["orderbook_depth"])
+        sections.append(f"  Orderbuchtiefe: {depth} (nur Beobachtung, Orders können zurückgezogen werden).")
+    profile = analysis.orderflow.profile
+    if profile:
+        parts = [f"{key}={profile[key]}" for key in ("point_of_control", "value_area_low", "value_area_high", "price_location", "ib_location", "poor_high", "poor_low", "nearest_naked_poc") if key in profile]
+        sections.append(f"  Profil ({'/'.join(profile.get('source', [])) or 'unbekannt'}): {', '.join(parts)}.")
 
     sections.append("\nDatenqualität:")
     sections.append(f"  {analysis.data_quality.status} (Confidence {analysis.data_quality.confidence}).")
