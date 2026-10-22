@@ -346,6 +346,10 @@ class TIMApplication:
                     "queue_depth", "queue_high_water", "queue_oldest_age", "cursor_age", "recovery_state",
                     "duplicate_total", "out_of_order_total", "health_snapshot_cached", "health_snapshot_stale",
                     "health_snapshot_age_seconds", "health_snapshot_observed_at", "health_snapshot_scope",
+                    "received_total", "raw_persisted_total", "rejected_total", "late_total",
+                    "parse_error_total", "persistence_error_total", "source_to_store_latency",
+                    "event_loop_lag", "worker_latency", "restart_total", "reconnect_total",
+                    "receive_rate_per_second", "persist_rate_per_second", "rate_window_seconds",
                 ) if key in snapshot}
             )
             if snapshot.get("queue_depth") is not None and snapshot.get("health_snapshot_observed_at"):
@@ -383,12 +387,31 @@ class TIMApplication:
                         }
                     )
                 raise
+            metrics = {**metrics, **self._throughput(metrics, started)}
             self._ingestion_health_sample_started = started
             self._ingestion_health_observed_at = datetime.now(timezone.utc).isoformat()
             self._ingestion_health_snapshot = dict(metrics)
             snapshot = {**metrics, **self._health_labels(monotonic(), cached=False)}
             self._publish_health(snapshot)
             return snapshot
+
+    def _throughput(self, metrics: dict, started: float) -> dict:
+        """Receive and persist rates from two consecutive counter samples.
+
+        The counters are lifetime totals in ingestion_metrics; a rate needs the
+        previous sample. The first sample after a start, or a counter that went
+        backwards, yields no rate instead of a guessed one.
+        """
+        previous = self._ingestion_health_snapshot
+        elapsed = started - self._ingestion_health_sample_started
+        if previous is None or elapsed <= 0:
+            return {}
+        rates: dict = {"rate_window_seconds": round(elapsed, 3)}
+        for total, rate in (("received_total", "receive_rate_per_second"), ("raw_persisted_total", "persist_rate_per_second")):
+            now_value, before = metrics.get(total), previous.get(total)
+            if isinstance(now_value, (int, float)) and isinstance(before, (int, float)) and now_value >= before:
+                rates[rate] = round((now_value - before) / elapsed, 3)
+        return rates
 
     def _last_health_for_evidence(self) -> dict:
         """Previous sample (or none) for log evidence without querying the database."""
