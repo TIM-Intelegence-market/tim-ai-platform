@@ -10,7 +10,7 @@
 * **Ein-/Ausgabe:** Manuelle Preiseingabe geht offline. Optional FMP mit `FMP_API_KEY` (US-Aktien, für TIM nicht nötig). Braucht `requests`.
 * **Geprüft (22.10.2026):** Code statisch durchsucht (Netzwerk, Unterprozesse, Löschen, Umgebungsvariablen,
   Order-/Broker-Aufrufe). Keine Order-Ausführung, kein Broker-Zugriff, keine Hooks, keine MCP-Server.
-  Die mitgelieferten Tests wurden **nicht** ausgeführt (Ausführen fremden Codes war in der Cloud-Sitzung gesperrt).
+  Mitgelieferte Tests am 22.10.2026 auf Uzis Wunsch in der Cloud ausgeführt (eigenes venv, Python 3.13): 40 bestanden.
   Sie liegen unter `scripts/tests/` und werden von der TIM-Suite (`pytest tests/`) nicht eingesammelt.
 * **TIM-Hinweis:** Passt zu Arena- und Research-Lab-Auswertungen.
 * **Grenzen für TIM:** nur Analyse, Papier und Journal. Kein Echtgeld, keine Anbindung an Order-Pfade,

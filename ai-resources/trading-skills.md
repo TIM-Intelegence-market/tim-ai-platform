@@ -43,8 +43,11 @@ Nachbetrachtung (`signal-postmortem`). Research-Seite: `trade-hypothesis-ideator
 
 - Nur Analyse, Papier und Journal. Keiner der Skills führt Orders aus oder spricht einen Broker an
   (statisch geprüft, siehe `HERKUNFT.md`). Nicht an TIM-Order-Pfade anbinden.
-- Die mitgelieferten Tests der Skills wurden noch nicht ausgeführt; sie liegen unter `scripts/tests/` und
-  laufen nicht in der TIM-Suite. Ausführen am besten auf dem Mac in einem eigenen venv, nicht in `~/TIM-live`.
+- Testlauf 22.10.2026 (Cloud, eigenes venv, Python 3.13): 1.156 von 1.161 mitgelieferten Tests bestanden.
+  Die 5 Fehlschläge hängen an Upstream-Dateien, die bewusst nicht übernommen wurden: eine Doku-Datei
+  (`edge-strategy-reviewer`, nur Abgleichstest) und der Skill `edge-candidate-agent` (optionaler
+  Strategie-Export von `trade-hypothesis-ideator`, in TIM nicht nutzbar). Die Tests liegen unter
+  `scripts/tests/` und laufen nicht in der TIM-Suite.
 - Lokaler Zustand (`state/`, `reports/`) ist per `.gitignore` aus dem Repo ausgeschlossen.
 - Die SKILL.md-Texte sprechen von „stock“, „shares“ und NYSE-Handelstagen. Für 24/7-Krypto heißt das:
   Kalender-Freigaben im Schutzschalter sind konservativ, Stückzahlen ggf. mit `--fractional`.

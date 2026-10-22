@@ -10,7 +10,7 @@
 * **Ein-/Ausgabe:** Kern läuft offline (`jsonschema`). Optional `fmp_price_adapter.py` mit `FMP_API_KEY` (US-Aktiendaten, für TIM nicht nötig, nicht einrichten). `trader_memory_cli.py` erwartet das Upstream-Layout `skills/...` und ruft `uv` auf; in TIM stattdessen `thesis_store.py`/`thesis_review.py` direkt aufrufen.
 * **Geprüft (22.10.2026):** Code statisch durchsucht (Netzwerk, Unterprozesse, Löschen, Umgebungsvariablen,
   Order-/Broker-Aufrufe). Keine Order-Ausführung, kein Broker-Zugriff, keine Hooks, keine MCP-Server.
-  Die mitgelieferten Tests wurden **nicht** ausgeführt (Ausführen fremden Codes war in der Cloud-Sitzung gesperrt).
+  Mitgelieferte Tests am 22.10.2026 auf Uzis Wunsch in der Cloud ausgeführt (eigenes venv, Python 3.13): 411 bestanden.
   Sie liegen unter `scripts/tests/` und werden von der TIM-Suite (`pytest tests/`) nicht eingesammelt.
 * **TIM-Hinweis:** Zustand liegt standardmäßig unter `state/theses/` relativ zum Arbeitsordner; im Repo per `.gitignore` ausgeschlossen.
 * **Grenzen für TIM:** nur Analyse, Papier und Journal. Kein Echtgeld, keine Anbindung an Order-Pfade,

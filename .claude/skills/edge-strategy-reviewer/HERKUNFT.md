@@ -10,7 +10,7 @@
 * **Ein-/Ausgabe:** Lokale Rechnung, Eingabe YAML/JSON. Braucht `PyYAML`.
 * **Geprüft (22.10.2026):** Code statisch durchsucht (Netzwerk, Unterprozesse, Löschen, Umgebungsvariablen,
   Order-/Broker-Aufrufe). Keine Order-Ausführung, kein Broker-Zugriff, keine Hooks, keine MCP-Server.
-  Die mitgelieferten Tests wurden **nicht** ausgeführt (Ausführen fremden Codes war in der Cloud-Sitzung gesperrt).
+  Mitgelieferte Tests am 22.10.2026 auf Uzis Wunsch in der Cloud ausgeführt (eigenes venv, Python 3.13): 56 bestanden, 1 fehlgeschlagen: der Test vergleicht `assets/bias_checklist.yaml` mit der Upstream-Doku `docs/dev/strategy-research-bias-checklist.md`, die nicht mit übernommen wurde. Die Prüflogik selbst ist nicht betroffen.
   Sie liegen unter `scripts/tests/` und werden von der TIM-Suite (`pytest tests/`) nicht eingesammelt.
 * **TIM-Hinweis:** Erwartet Entwürfe im Format von `edge-strategy-designer` (nicht übernommen); eigene Entwürfe vorher in dieses Format bringen oder nur den Leitfaden nutzen.
 * **Grenzen für TIM:** nur Analyse, Papier und Journal. Kein Echtgeld, keine Anbindung an Order-Pfade,
