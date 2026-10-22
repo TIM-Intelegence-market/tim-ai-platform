@@ -160,14 +160,24 @@ def _controls(days: int = 2, triggers=(), gaps: frozenset[datetime] = frozenset(
 
 
 def test_controls_cover_the_grid_and_negatives_skip_recent_triggers() -> None:
-    trigger = T0 + timedelta(hours=5, minutes=10)
-    result = _controls(triggers=[trigger])
+    # 05:25 lies exactly 5 minutes before 05:30 (inside the negative lookback);
+    # 06:24 lies 6 minutes before 06:30 (outside it)
+    result = _controls(triggers=[T0 + timedelta(hours=5, minutes=25), T0 + timedelta(hours=6, minutes=24)])
     assert result["counts"]["NEUTRAL_CONTROL"] == 96  # 2 days x 48 half hours
     negatives = {c["start_utc"] for c in result["controls"] if c["sample_class"] == "NEGATIVE"}
-    # 05:30 and 06:00 have the trigger in their 60-minute lookback; 05:00 starts before it
-    assert "2026-10-26T05:30:00Z" not in negatives and "2026-10-26T06:00:00Z" not in negatives
-    assert "2026-10-26T05:00:00Z" in negatives and "2026-10-26T06:30:00Z" in negatives
-    assert result["counts"]["NEGATIVE"] == 94
+    assert "2026-10-26T05:30:00Z" not in negatives
+    assert "2026-10-26T05:00:00Z" in negatives and "2026-10-26T06:00:00Z" in negatives
+    assert "2026-10-26T06:30:00Z" in negatives
+    assert result["counts"]["NEGATIVE"] == 95
+
+
+def test_negative_lookback_is_separate_from_regime_lookback() -> None:
+    # Measured before T0: a 60-minute same-kind lookback leaves almost no negatives.
+    assert SPEC["negative_lookback_minutes"] == 5 and SPEC["lookback_minutes"] == 60
+    kinds = SPEC["kind_testability_pre_t0"]["kinds"]
+    assert SPEC["kind_testability_pre_t0"]["outcomes_read"] is False
+    assert kinds["LARGE_INDIVIDUAL_TRADE_ACTIVITY"]["status"] == "NOT_TESTABLE"
+    assert sum(k["status"] == "TESTABLE" for k in kinds.values()) == 5
 
 
 def test_controls_stay_the_same_when_the_range_grows_or_a_gap_appears() -> None:
@@ -297,7 +307,7 @@ def test_realistic_size_runs_fast_enough() -> None:
     # Review: the old random draw took ~60 s for 30 days; the grid is linear.
     import time
     series = bars(T0 - 120 * MIN, 30 * 1440 + 120)
-    triggers = [T0 + i * 7 * MIN for i in range(30 * 1440 // 7)]
+    triggers = [T0 + i * 3 * MIN for i in range(30 * 1440 // 3)]  # every 6-minute lookback holds one
     started = time.monotonic()
     result = sk.build_controls(detector_kind=KIND, bars=series, trigger_minutes=triggers, t0=T0,
                                study_end=T0 + timedelta(days=30), spec=SPEC)

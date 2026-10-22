@@ -16,15 +16,17 @@
   "data_source": "PUBLIC_AGGTRADES_DERIVED_CLOSED_1M_CANDLES (same source and quality rules as the parent campaign; no synthetic, interpolated or forward-filled minutes)",
   "window_minutes": 30,
   "lookback_minutes": 60,
+  "negative_lookback_minutes": 5,
+  "negative_lookback_reason": "Measured before T0 on pre-campaign data (kind_testability_pre_t0): with a 60-minute same-kind lookback almost no grid cell is trigger-free for any kind (0.0 to 4.7 percent). 5 minutes keeps NEGATIVE as 'no signal of this kind right before window start' while leaving enough cells for five of eight kinds. Chosen from trigger frequencies only; no outcome was read. The regime lookback stays 60 minutes.",
   "sample_classes": {
     "POSITIVE": "Per detector kind: greedy non-overlapping 30-minute windows that start at an observation of that kind (same rule as the campaign case audit, restricted to the kind).",
-    "NEGATIVE": "Per detector kind: every valid grid cell with no observation of that kind in the 60 lookback minutes or the start minute. Decided only with knowledge at window start, so the window is not selected on its own (quiet) outcome.",
+    "NEGATIVE": "Per detector kind: every valid grid cell with no observation of that kind in the 5 minutes before window start or the start minute (negative_lookback_minutes). Decided only with knowledge at window start, so the window is not selected on its own (quiet) outcome.",
     "NEUTRAL_CONTROL": "Every valid grid cell, regardless of triggers."
   },
   "controls": {
     "construction": "EXHAUSTIVE_FIXED_GRID: all valid cells on the UTC :00/:30 grid in [T0, study_end); no random draw, no seed. Each cell is judged only by its own data, so a control never changes when the range grows or a gap appears elsewhere.",
     "NEGATIVE": {
-      "trigger_free": "SAME_KIND_IN_LOOKBACK_AND_START_MINUTE"
+      "trigger_free": "SAME_KIND_IN_NEGATIVE_LOOKBACK_AND_START_MINUTE"
     },
     "NEUTRAL_CONTROL": {
       "trigger_free": false
@@ -122,7 +124,6 @@
     "no outcome label (PRICE_INCREASED/DECREASED/SIDEWAYS) used as a sample class"
   ],
   "open_before_t0": [
-    "kind_testability_on_pre_campaign_data (share of trigger-free 30-minute windows per detector kind, read-only on a backup copy)",
     "power_simulation_s2",
     "human_approval_of_this_spec"
   ],
@@ -133,5 +134,125 @@
   "grid_minutes": 30,
   "incomplete_lookback_rule": "Units without a complete 60-minute lookback are excluded and counted (excluded_incomplete_lookback), never kept with an unassigned regime.",
   "integrity": "Every function re-verifies this spec hash; thresholds carry their own hash and the spec hash; the T0 record must also store the git commit and SHA-256 of src/v2_completion/control_regime_study.py.",
-  "spec_hash": "1a53c0c1965cb3d4b2b410f2ef71648d284060f83ae11de5ca7f5e29af701a7f"
+  "spec_hash": "a3c12971e4452bb4eb0cb945bae1d8ba3cbdec1f9fc418566c1a6aed8c040ba7",
+  "kind_testability_pre_t0": {
+    "measured_on": "2026-10-22",
+    "source": "Daily backup tim_20261022T011503Z.dump, table public.orderflow_observations, read with pg_restore to stdout (no database connection, nothing restored, ~/TIM-live untouched).",
+    "symbol": "BTCUSDT",
+    "range_utc": [
+      "2026-10-01T00:00:00Z",
+      "2026-10-20T20:34:00Z"
+    ],
+    "grid_cells": 954,
+    "minutes_with_any_signal": 28435,
+    "minutes_in_range": 28594,
+    "outcomes_read": false,
+    "projection": "expected NEGATIVE cells = share at 5 min x 1632 grid cells (34 days); minimum is 300",
+    "kinds": {
+      "EXTREME_BUY_RATIO_ACTIVITY": {
+        "share_of_minutes_with_signal": 0.158,
+        "negative_eligible_share_by_lookback_minutes": {
+          "0": 0.855,
+          "5": 0.439,
+          "15": 0.166,
+          "30": 0.067,
+          "60": 0.025
+        },
+        "expected_negative_cells_in_34_days_at_5_min": 716,
+        "status": "TESTABLE"
+      },
+      "EXTREME_SELL_RATIO_ACTIVITY": {
+        "share_of_minutes_with_signal": 0.106,
+        "negative_eligible_share_by_lookback_minutes": {
+          "0": 0.868,
+          "5": 0.526,
+          "15": 0.27,
+          "30": 0.137,
+          "60": 0.047
+        },
+        "expected_negative_cells_in_34_days_at_5_min": 858,
+        "status": "TESTABLE"
+      },
+      "FALLING_CVD_ACTIVITY": {
+        "share_of_minutes_with_signal": 0.283,
+        "negative_eligible_share_by_lookback_minutes": {
+          "0": 0.704,
+          "5": 0.122,
+          "15": 0.014,
+          "30": 0.0,
+          "60": 0.0
+        },
+        "expected_negative_cells_in_34_days_at_5_min": 199,
+        "status": "EXPECTED_BELOW_MINIMUM_IN_34_DAYS"
+      },
+      "HIGH_TRADE_FREQUENCY": {
+        "share_of_minutes_with_signal": 0.094,
+        "negative_eligible_share_by_lookback_minutes": {
+          "0": 0.901,
+          "5": 0.529,
+          "15": 0.227,
+          "30": 0.063,
+          "60": 0.01
+        },
+        "expected_negative_cells_in_34_days_at_5_min": 863,
+        "status": "TESTABLE"
+      },
+      "LARGE_INDIVIDUAL_TRADE_ACTIVITY": {
+        "share_of_minutes_with_signal": 0.99,
+        "negative_eligible_share_by_lookback_minutes": {
+          "0": 0.012,
+          "5": 0.0,
+          "15": 0.0,
+          "30": 0.0,
+          "60": 0.0
+        },
+        "expected_negative_cells_in_34_days_at_5_min": 0,
+        "status": "NOT_TESTABLE"
+      },
+      "RISING_CVD_ACTIVITY": {
+        "share_of_minutes_with_signal": 0.31,
+        "negative_eligible_share_by_lookback_minutes": {
+          "0": 0.731,
+          "5": 0.096,
+          "15": 0.012,
+          "30": 0.0,
+          "60": 0.0
+        },
+        "expected_negative_cells_in_34_days_at_5_min": 157,
+        "status": "EXPECTED_BELOW_MINIMUM_IN_34_DAYS"
+      },
+      "STRONG_BUYER_ACTIVITY": {
+        "share_of_minutes_with_signal": 0.163,
+        "negative_eligible_share_by_lookback_minutes": {
+          "0": 0.855,
+          "5": 0.306,
+          "15": 0.073,
+          "30": 0.01,
+          "60": 0.001
+        },
+        "expected_negative_cells_in_34_days_at_5_min": 499,
+        "status": "TESTABLE"
+      },
+      "STRONG_SELLER_ACTIVITY": {
+        "share_of_minutes_with_signal": 0.188,
+        "negative_eligible_share_by_lookback_minutes": {
+          "0": 0.797,
+          "5": 0.231,
+          "15": 0.041,
+          "30": 0.008,
+          "60": 0.001
+        },
+        "expected_negative_cells_in_34_days_at_5_min": 377,
+        "status": "TESTABLE"
+      }
+    },
+    "findings": [
+      "LARGE_INDIVIDUAL_TRADE_ACTIVITY fires in 99 percent of all minutes. It separates nothing and is NOT_TESTABLE; its threshold should be reviewed after the campaign (not during it).",
+      "FALLING_CVD_ACTIVITY and RISING_CVD_ACTIVITY reach about 200 and 160 NEGATIVE cells in 34 days; they need about 52 and 66 days, or are reported as below minimum.",
+      "The first 28.7 campaign hours (until the backup) show the same pattern as the calibration range."
+    ]
+  },
+  "done_before_t0": [
+    "kind_testability_on_pre_campaign_data (see kind_testability_pre_t0)"
+  ]
 }

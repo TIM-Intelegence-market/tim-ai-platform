@@ -44,8 +44,8 @@ LEVELS = ("LOW", "MID", "HIGH")
 UNASSIGNED = "UNASSIGNED"
 CLASSES = ("POSITIVE", "NEGATIVE", "NEUTRAL_CONTROL")
 REQUIRED_SPEC_FIELDS = (
-    "window_minutes", "lookback_minutes", "grid_minutes", "sessions", "weekday_classes",
-    "regimes", "controls", "minimums", "calibration",
+    "window_minutes", "lookback_minutes", "negative_lookback_minutes", "grid_minutes",
+    "sessions", "weekday_classes", "regimes", "controls", "minimums", "calibration",
 )
 
 
@@ -330,6 +330,7 @@ def build_controls(
     grid = int(spec["grid_minutes"])
     window = int(spec["window_minutes"])
     lookback = int(spec["lookback_minutes"])
+    negative_lookback = int(spec["negative_lookback_minutes"])
     if grid < window:
         raise SpecError("grid must be at least as wide as a window, or controls overlap")
     lookup = _bars_by_minute(bars)
@@ -343,7 +344,7 @@ def build_controls(
         if _window_complete(lookup, start, window) and lookback_bars(lookup, start, lookback) is not None:
             stamp = iso(start)
             controls.append({"unit_id": f"NEUTRAL_CONTROL:{stamp}", "sample_class": "NEUTRAL_CONTROL", "start_utc": stamp})
-            if negative_eligible(start, triggers, lookback):
+            if negative_eligible(start, triggers, negative_lookback):
                 controls.append({"unit_id": f"NEGATIVE:{detector_kind}:{stamp}", "sample_class": "NEGATIVE", "start_utc": stamp})
         else:
             skipped_incomplete += 1
@@ -390,7 +391,7 @@ def validate_study(
     triggers = _trigger_set(trigger_minutes)
     grid = int(spec["grid_minutes"])
     window = int(spec["window_minutes"])
-    lookback = int(spec["lookback_minutes"])
+    negative_lookback = int(spec["negative_lookback_minutes"])
     t0 = t0.astimezone(UTC)
     study_end = study_end.astimezone(UTC)
     reasons: list[str] = []
@@ -415,7 +416,7 @@ def validate_study(
             wrong_class.append(unit.unit_id)
         elif unit.sample_class in ("NEGATIVE", "NEUTRAL_CONTROL") and not _on_grid(start, grid):
             wrong_class.append(unit.unit_id)
-        elif unit.sample_class == "NEGATIVE" and not negative_eligible(start, triggers, lookback):
+        elif unit.sample_class == "NEGATIVE" and not negative_eligible(start, triggers, negative_lookback):
             wrong_class.append(unit.unit_id)
     if wrong_class:
         reasons.append("units_violate_class_definition")
@@ -495,7 +496,7 @@ def kind_testability(
     verify_spec(spec)
     grid = int(spec["grid_minutes"])
     window = int(spec["window_minutes"])
-    lookback = int(spec["lookback_minutes"])
+    negative_lookback = int(spec["negative_lookback_minutes"])
     triggers = _trigger_set(trigger_minutes)
     end = end.astimezone(UTC)
     total = 0
@@ -503,7 +504,7 @@ def kind_testability(
     start = _grid_ceil(begin, grid)
     while start + window * MINUTE <= end:
         total += 1
-        eligible += negative_eligible(start, triggers, lookback)
+        eligible += negative_eligible(start, triggers, negative_lookback)
         start += grid * MINUTE
     return {
         "grid_cells": total,
