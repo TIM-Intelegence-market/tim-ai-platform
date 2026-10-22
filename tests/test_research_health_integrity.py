@@ -20,3 +20,21 @@ async def test_research_health_rejects_tampered_content_provenance_schema_and_ve
     assert result["checks"]["report_provenance_deterministic"] is False
     assert result["checks"]["report_version"] is False
     assert result["level"]=="RED"
+
+
+def test_empty_report_folder_with_module_b_off_does_not_isolate_research(tmp_path, monkeypatch):
+    # Mac live setup (23.10.2026): no LLM reports, module B off. The validator
+    # used to call that RED and wrote data/research/isolation.json, which stops
+    # every research trigger.
+    monkeypatch.setenv("TIM_RESEARCH_MODULE_B", "false")
+    result=ResearchHealthChecker(tmp_path,"http://127.0.0.1:1").check()
+    assert result["checks"]["report_integrity"] is True
+    assert "gpt_researcher_import" not in result["critical"]
+    assert result["level"]!="RED" and result["isolated"] is False
+
+
+def test_reports_are_required_when_module_b_is_on(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIM_RESEARCH_MODULE_B", "true")
+    result=ResearchHealthChecker(tmp_path,"http://127.0.0.1:1").check()
+    assert result["checks"]["report_integrity"] is False
+    assert result["level"]=="RED"
