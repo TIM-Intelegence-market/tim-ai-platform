@@ -16,8 +16,8 @@ def build_setup_explanation(
     scenarios: tuple[Scenario, ...],
 ) -> dict[str, object]:
     """Return facts, hypotheses, and explicit data gaps without inventing proof."""
-    supports = _levels(levels, ("range_low", "value_area_low", "session_low", "previous_day_low", "weekly_low", "point_of_control"))
-    resistances = _levels(levels, ("range_high", "value_area_high", "session_high", "previous_day_high", "weekly_high", "point_of_control"))
+    supports = _levels(levels, ("range_low", "value_area_low", "session_low", "previous_day_low", "weekly_low", "point_of_control", "initial_balance_low", "poor_low"))
+    resistances = _levels(levels, ("range_high", "value_area_high", "session_high", "previous_day_high", "weekly_high", "point_of_control", "initial_balance_high", "poor_high"))
     fibs = _fib_levels(levels.range_low, levels.range_high)
     absorption = "UNAVAILABLE"
     if orderflow.absorption_confirmed:
