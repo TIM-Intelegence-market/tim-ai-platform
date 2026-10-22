@@ -2,7 +2,7 @@
 
 | Feld | Wert |
 |---|---|
-| Status | **ENTWURF, nicht freigegeben.** Freigabe durch Uzi macht daraus Version 1.0; danach nur noch Änderungen über das Änderungsprotokoll unten. |
+| Status | **ENTWURF, nicht freigegeben.** Erst vollständige Power-/Implementierungsnachweise und Freigabe durch Uzi erlauben Version 1.0; danach nur noch Änderungen über das Änderungsprotokoll unten. |
 | Erstellt | 2026-10-22, Paket T08 des gemeinsamen Verbesserungsplans (Claude K2, Codex F01/F07) |
 | Protokollbezug | `../PROTOKOLL.md` Version 1.1 (Kosten 4.4, Zufallsvergleich 7.1, Zeitgrenzen 7.3 neu) |
 | Daten bis dahin gesehen | Live-Betrieb seit Juli 2026 inkl. Retrospektive-Trefferquoten im Control Center (deskriptiv, 5/15/30 min). Keine Historie vor Juli 2026 für diese Regeln ausgewertet. |
@@ -22,53 +22,120 @@
   Präregistrierung (S3), erst sinnvoll, wenn S2 die Richtung bestätigt.
 - Zwischen „deskriptiv“, „Vorhersage“ und „Strategie“ wird nachträglich nicht gewechselt.
 
-## 2. Hypothese, Effektgröße, Baseline, Kriterium, Abbruch
+## 2. Festgelegte Hypothesen und Entscheidungsregel (Revision 0.2)
 
-- **H1 (je gerichtete Art K und Horizont h ∈ {5, 15, 30} min):** P(Richtung R(K) | K) − P(Richtung R(K) | Basis) > 0.
-- **Primäre Effektgröße:** Differenz der Trefferquoten in Prozentpunkten, mit 95-%-Intervall aus Block-Bootstrap
-  über Kalendertage (Blöcke, weil Beobachtungen innerhalb eines Tages abhängig sind).
-- **Basisrate:** alle 60-s-Fenster derselben Kalenderwoche ohne Beobachtung der Art K (wie `src/reflection`, PR #361).
-  „Richtung“ = Vorzeichen der Preisänderung nach h Minuten; |Änderung| < 0,10 % gilt als seitwärts und zählt
-  für beide Seiten als Nichttreffer (Schwelle aus `validation.py`).
-- **Kosten:** Für den Richtungsanspruch keine Kosten. Berichtet wird zusätzlich, ob die mittlere Preisänderung in
-  Richtung R(K) nach h Minuten die Round-Trip-Kosten aus Protokoll 4.4 (0,16 % Gebühren und Slippage) übersteigt;
-  das ist eine Vorabinformation für S3, kein Kriterium von S2.
-- **Erfolgskriterium (vorab):** H1 gilt als bestätigt, wenn in Training **und** Validierung die untere Grenze des
-  95-%-Intervalls > 0 ist, nach Holm-Korrektur über die Familie dieser Studie (6 gerichtete Arten × 3 Horizonte =
-  18 Tests, m = 18). Mindestfallzahl je Test 200 Beobachtungen in jedem Abschnitt, sonst KEIN URTEIL.
-- **Abbruchregel:** Zeigt die Fallzahlsimulation (Abschnitt 3) vor dem ersten Lauf, dass < 200 Fälle je Abschnitt
-  erwartbar sind, wird der Test nicht gerechnet und als NICHT_BEURTEILBAR eingetragen; die Schwellen der Regel
-  werden dafür nicht gelockert.
-- **Zulässige Ergebnisse:** BESTANDEN, NICHT_BESTANDEN, NICHT_BEURTEILBAR je Test; die Studie gilt als
-  „Richtung bestätigt“ nur, wenn mindestens ein Test BESTANDEN ist.
+Familie: sechs gerichtete Arten × Horizonte {5, 15, 30} Minuten = 18 Hypothesen.
+Je Hypothese lautet H0: Richtungs-Trefferquote nach K minus Basisrate ≤ 0.
+Käuferarten sind STRONG_BUYER, RISING_CVD und EXTREME_BUY_RATIO; Verkäuferarten
+STRONG_SELLER, FALLING_CVD und EXTREME_SELL_RATIO (jeweils vollständiger `_ACTIVITY`-Typ).
+Die beiden ungerichteten Arten bleiben rein deskriptiv.
 
-## 3. Fallzahl und minimale relevante Effektgröße (vor dem Lauf zu rechnen)
+Ein Treffer erfordert gerichtete Rendite ≥ 0,10 % (Gleichheit zählt); ansonsten Nichttreffer.
+Rendite ist Schlusskurs des vollständigen Horizontfensters / Schlusskurs des Startfensters − 1.
+Fehlende oder unvollständige Start-/Zielfenster werden ausgeschlossen und gezählt, nicht als
+Nichttreffer imputiert. Alle Grenzen und Kalenderwochen verwenden UTC/ISO-Wochen.
 
-- Minimale relevante Effektgröße: +3 Prozentpunkte über Basisrate (darunter trägt keine Strategie die Kosten).
-- Simulation: aus der Beobachtungsdichte der Live-Daten (Juli bis Oktober 2026, nur Zählung, keine Ergebnisse)
-  wird die erwartete Fallzahl je Art für 2020-01 bis 2024-12 hochgerechnet. Power ≥ 0,8 bei α/m = 0,05/18 wird
-  vorab ausgerechnet und in dieses Dokument eingetragen, bevor Ergebnisse angesehen werden.
-- Serielle Abhängigkeit: Beobachtungen derselben Art innerhalb von 30 Minuten gelten als ein Cluster; nur die erste
-  zählt (nicht überlappende Einheiten sind damit *definiert*, nicht als unabhängig *behauptet*, siehe T09).
+Pro Art wird chronologisch nur die erste Beobachtung behalten, danach werden alle weiteren
+innerhalb von strikt weniger als 30 Minuten ausgeschlossen (greedy, kein gleitendes Neuankern).
+Baseline sind alle vollständigen 60-s-Fenster derselben Woche ohne diese Art K, mit identischer
+Labeldefinition. Kontrollfenster dürfen andere Arten enthalten. Wochen ohne mindestens einen
+K-Fall und ein Kontrollfenster sind für beide Gruppen ausgeschlossen und separat berichtet.
+Die Baseline wird auf die Wochenverteilung der K-Fälle standardisiert:
+`delta = sum_w nK_w * (pK_w - pB_w) / sum_w nK_w`.
+Damit wird eine andere zeitliche Verteilung der Kontrollen nicht mit dem Regeleffekt verwechselt.
 
-## 4. Daten und Zeitgrenzen
+**Primärer Test:** Je Trainings-/Validierungsabschnitt werden vollständige Wochen mit allen
+zugehörigen Fällen und Kontrollen als Einheiten verwendet. Moving-block-Bootstrap mit vier
+aufeinanderfolgenden Wochen, B = 19.999, Seed = 20261022. Aus allen möglichen zusammenhängenden
+Vier-Wochen-Blöcken (ohne zyklischen Jahres-/Abschnittsübergang) mit Zurücklegen ziehen, bis die
+ursprüngliche Wochenzahl erreicht ist; Überhang abschneiden. Auch ausgeschlossene Wochen bleiben
+als leere Kalenderpositionen erhalten. `delta*` wird jedes Mal mit den resampelten Zählern und
+Nennern neu berechnet. Degenerierte Ziehungen ohne auswertbare Fälle zählen konservativ im Zähler.
+Einseitiges, nullzentriertes Bootstrap-p:
+`p = (1 + count(delta* - delta >= delta)) / (B + 1)`.
+Diese Inferenz setzt ausreichend schwache Abhängigkeit über Vier-Wochen-Blöcke voraus; sie ist
+keine verteilungsfreie Garantie. Sensitivität mit zwei und acht Wochen wird berichtet, ersetzt
+aber weder primären Test noch Urteil.
 
-- Quelle: Binance-Archiv aggTrades BTCUSDT Spot (`data.binance.vision`), monatlich, Prüfsummen PASS je Datei,
-  Herunterladen und Rechnen **nur in einer getrennten Laborumgebung**, nicht auf dem Kampagnen-Mac.
-- Training 2020-01-01 bis 2022-12-31, Validierung 2023-01-01 bis 2024-12-31 (wie Protokoll 3.2).
-- **Holdout:** Der bestehende Holdout ab 2025-01-01 wird **nicht** benutzt. Die Regeln 1.0.0 wurden im Juli 2026
-  auf Live-Daten entworfen und beobachtet; 2025/26 ist deshalb für sie kein frischer Zeitraum. Prospektiver Test:
-  die laufende Live-Validierung ab 2026-11-24 (nach Ende der Kampagne), ausgewertet frühestens nach 90 Tagen,
-  mit denselben 18 Tests und m = 18.
-- Zeitgrenzen: Beobachtung zu `window_end`, Ergebnis zu `window_end + h`; eine Beobachtung zählt zu dem Abschnitt,
-  in dem `window_end` liegt, und nur, wenn `window_end + h` noch im selben Abschnitt liegt (keine Grenzüberschreitung).
-  Wissenszeit = `window_end` (Fenster abgeschlossen), Ergebnis bekannt ab `window_end + h`.
+Training und Validierung müssen beide tragen: `p_joint = max(p_train, p_validation)`
+(Intersection-Union-Test). Holm wird **einmal über diese 18 p_joint** angewandt, aufsteigend nach
+p, bei Gleichstand Typname/Horizont. Adjustierte p-Werte sind die bei 1 gekappten laufenden Maxima
+von `(18-i+1)*p_(i)`. Nicht beurteilbare Tests bleiben mit p=1 in der Familie.
+
+**BESTANDEN:** Holm-p ≤ 0,05 und delta ≥ 0,03 in beiden Abschnitten, außerdem alle Daten- und
+Power-Voraussetzungen erfüllt. **NICHT_BEURTEILBAR:** fehlende Nachweise, weniger als 200
+K-Fälle oder weniger als 26 auswertbare Wochen in einem Abschnitt oder unzureichende Power.
+Sonst **NICHT_BESTANDEN**. Mindestens ein BESTANDEN erlaubt nur die Aussage, genau diese
+Art/Horizont-Kombination habe den retrospektiven Test bestanden; keine Aussage über alle Regeln.
+95-%-Perzentilintervalle (2,5/97,5 %) werden unadjustiert zur Beschreibung gezeigt und ausdrücklich
+nicht als simultane Intervalle oder zusätzliches Erfolgskriterium bezeichnet.
+
+## 3. Fallzahlprüfung als noch offenes Freigabe-Gate
+
++3 Prozentpunkte sind die vorab gewählte wissenschaftlich relevante Effektgröße, **keine**
+Aussage über Profitabilität oder Kostendeckung. Eine Trefferquote alleine bestimmt weder
+Gewinnhöhe noch Verlusthöhe. Kostenprüfung gehört in eine eigene Strategie-Studie S3.
+
+Vor Einsicht in Archiv-Outcomes muss ein versioniertes Power-Simulationsprotokoll vorliegen:
+10.000 Replikationen, Seed 20261023, tatsächliche wöchentliche Fall-/Kontrollzahlen aus einem
+reinen Zähllauf, Basisraten {0,35; 0,50; 0,65}, wahre Differenz 0,03 und Wochen-ICC {0; 0,05; 0,10}.
+Je Gruppe/Woche unabhängiger Beta-Binomial-Zähler: Mittel p, Konzentration `1/ICC-1`;
+bei ICC=0 Binomial. K verwendet p+0,03, Kontrolle p. Dies ist ein explizites vereinfachtes
+Planungsmodell, keine bewiesene Abhängigkeitsstruktur der Marktdaten.
+Auswertung mit derselben standardisierten Statistik und demselben Vier-Wochen-Test; konservative
+Schwelle 0,05/18 je Abschnitt. Gefordert sind mindestens 90 % Power **je Abschnitt** in jedem
+Szenario für das statistische Kriterium (damit mindestens 80 % für gemeinsames Verwerfen per
+Union-Bound). Die zusätzliche beobachtete Effektgrößenhürde ist separat als Gesamterfolgsrate
+zu berichten; sie ist bei einem wahren Effekt genau an der Grenze nicht mit 80 % zugesichert.
+
+200 Fälle sind lediglich die Untergrenze, kein Power-Nachweis. Kein Hochrechnen der Live-Dichte
+auf frühere Marktjahre als Ersatz für Archiv-Zählungen. Wenn Power oder Modellangemessenheit
+nicht belegt sind: NICHT_BEURTEILBAR. Keine nachträgliche Lockerung der Regeln, Alpha-Werte,
+Horizonwahl oder Mindestzahlen. Simulation, Implementierung und unabhängige Prüfung stehen aus;
+dieser PR führt sie nicht aus und erteilt keine Studienfreigabe.
+
+## 4. Daten, Wissenszeit und prospektive Registrierung
+
+Quelle: Binance-Archiv aggTrades BTCUSDT Spot, Dateiprüfsummen prüfen. Herunterladen,
+Replay und Simulation ausschließlich im getrennten Labor, niemals auf dem Kampagnen-Mac.
+Training [2020-01-01, 2023-01-01), Validierung [2023-01-01, 2025-01-01), UTC.
+Der bestehende Holdout ab 2025-01-01 bleibt gesperrt. Live-Daten Juli–Oktober 2026 sind bereits
+bekannt und kein frischer Bestätigungssatz.
+
+**Ereigniszeit ist keine Wissenszeit.** `window_end` datiert das Marktfenster. Für reale
+Verfügbarkeit zählen nachweisbare Empfangs-, Finalisierungs- und Persistenzzeiten;
+`available_at` ist deren Maximum für genau die verwendete Inhaltsversion. Ein Outcome ist erst
+bekannt, wenn auch seine vollständigen Horizontdaten empfangen, finalisiert und persistiert sind.
+Eine Abschnittsauswertung verwendet nur bis zum Stichtag verfügbare Beobachtungen und Outcomes;
+Start- und Zielereignis müssen zusätzlich im selben Abschnitt liegen. Verspätete Daten werden
+gezählt und ausgeschlossen, niemals rückdatiert. Fehlende Wissenszeit bleibt unbekannt.
+
+Archive liefern keinen Beweis historischer TIM-Verfügbarkeit. Ein Archiv-Replay darf deshalb nur
+als idealisierte Ereigniszeit-Studie unter expliziter Sofortverfügbarkeitsannahme ausgewiesen werden.
+Es beweist weder historische Umsetzbarkeit noch einen realen Point-in-Time-Vorteil. Reale
+Latenz-/Wissenszeitaussagen benötigen eine getrennte Auswertung mit gemessenen Zeitstempeln.
+
+**Prospektiv:** kein automatischer Start am 24.11.2026. Vor dem ersten zulässigen Fall sind in einer
+eigenen unveränderlichen Registrierung Startzeit, Ende exakt 90 Tage später, Datensatz-/Code-Version,
+Wissenszeit-Erfassung, Power-Plan und dieselbe 18er-Familie festzuhalten und freizugeben.
+Start erst nach bestätigtem Kampagnenabschluss und gesonderter Betriebsfreigabe. Ein fehlendes
+Zeitstempel-Feld darf nicht während der Kampagne nachgerüstet werden. Keine Zwischenanalyse,
+kein Verlängern bis zur Signifikanz. Bei zu wenigen Fällen am festen Ende: NICHT_BEURTEILBAR.
+Prospektive Ergebnisse werden separat mit eigener Holm-Korrektur berichtet, nicht mit den
+retrospektiven Ergebnissen gepoolt oder als Ersatz für deren Scheitern verwendet.
 
 ## 5. Bericht
 
-Je Test: Fallzahl, Trefferquote, Basisrate, Differenz mit Intervall, korrigiertes p, Urteil, mittlere Preisänderung
-gegen Kosten, Regimeaufteilung (Trend/Seitwärts nach 1d-Kerzen, Jahr). Zusätzlich Block-Bootstrap statt iid und die
+Je Test: Fallzahl, Trefferquote, Basisrate, Differenz mit Intervall, korrigiertes p, Urteil, mittlere gerichtete Preisänderung
+(rein deskriptiv, ohne Profitabilitätsurteil), Regimeaufteilung (Trend/Seitwärts nach 1d-Kerzen, Jahr). Zusätzlich Block-Bootstrap statt iid und die
 Clusterregel aus Abschnitt 3 ausgewiesen. Alle Datensatz-Hashes und der Commit des Rechenstands werden angegeben.
+Regime sind ausschließlich deskriptiv: Trend, wenn der absolute Return über die letzten
+20 **vor dem Startzeitpunkt abgeschlossenen** UTC-Tageskerzen mindestens 5 % beträgt,
+sonst Seitwärts. Fehlen die 21 nötigen Schlusskurse oder ihre Verfügbarkeitsnachweise,
+lautet das Regime UNBEKANNT (Archive nur unter ihrer ausdrücklich idealisierten Annahme).
+Keine begonnene Tageskerze, kein späteres Tageshoch/-tief; keine Auswahl von Tests anhand
+dieser Aufteilung. Fehlende Fenster, ausgeschlossene Wochen, verspätete Versionen und
+unbekannte Zeiten werden je Art/Horizont/Abschnitt mit Anzahl und Grund berichtet.
 Unabhängige Wiederholung durch eine zweite Person mit denselben Dateien gehört zur Abnahme.
 
 ## 6. Was der Betrieb davon hat
@@ -82,3 +149,5 @@ Kosten, R-Einheit und Kapitalkurve mit Ruinregel) nach Protokoll 1.1.
 | Datum | Version | Änderung | Grund | Bis dahin gesehene Daten |
 |---|---|---|---|---|
 | 2026-10-22 | 0.1 | Entwurf | T08 | Live-Trefferquoten Juli–Okt 2026 (deskriptiv); keine Archivdaten für diese Regeln |
+
+| 2026-10-22 | 0.2 | Wissenszeit getrennt, Test/Multiplikität konkretisiert, Power-Gate und prospektiver Start präzisiert | Review R5 | Keine neuen Ergebnisdaten in dieser Korrektur gelesen |

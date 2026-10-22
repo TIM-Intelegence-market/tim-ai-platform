@@ -12,7 +12,7 @@ Ergebnis in eine Entscheidung ein, die zum Fensterende fiel.
 
 Reproduktion (Test `test_walk_forward_choice_ignores_outcomes_unknown_at_fit_end`): Zwei Verläufe,
 die bis zum Fensterende identisch sind und sich nur im späteren Ergebnis eines offenen Trades
-unterscheiden, führten zu unterschiedlichen Wahlen (`a` bei +5 R, `b` bei −5 R).
+unterscheiden (Signal 98 h, Einstieg 99 h, Fit-Ende 100 h, Ausstieg 150 h), führten zu unterschiedlichen Wahlen (`a` bei +5 R, `b` bei −5 R).
 
 Zweiter Punkt derselben Stelle: Die Zuordnung zum Fenster lief über `entry_time`, der R4-Runner
 (`_split`) und Abschnitt 3.2 des Protokolls ordnen Trades über `signal_time` zu.
@@ -50,3 +50,8 @@ Datensplit (Validierung ab 2023-01-01, Holdout ab 2025-01-01), Kriterien K1–K5
 (m = 48), Holdout-Sperre. Die Jahresstatistik (`expectancy_by_year`) und der Monats-Bootstrap ordnen
 weiter über `entry_time` zu; das ist eine Zuordnung abgeschlossener Trades, keine Auswahl, und
 verschiebt höchstens einen Trade um eine Kerze an der Jahresgrenze.
+
+Review-Korrektur R3: Der ursprünglich eingereichte Test verwendete Signal 99 h und damit
+Einstieg genau am ausgeschlossenen Fit-Ende 100 h. Er konnte den Altfehler nicht erkennen.
+Der korrigierte Test eröffnet eindeutig vor dem Fit-Ende; die Gegenprüfung mit der ursprünglichen
+Implementierung muss scheitern, die Version 1.1 muss beide Szenarien identisch auswählen.

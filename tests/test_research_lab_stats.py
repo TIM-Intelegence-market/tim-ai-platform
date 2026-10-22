@@ -122,8 +122,8 @@ def test_walk_forward_choice_ignores_outcomes_unknown_at_fit_end() -> None:
     fit_end, test_end = 100 * H, 200 * H
     window = Window(0, fit_end, test_end)
     b = [trade(50 * H, 1.0), trade(120 * H, 1.0)]
-    a_future_win = [open_trade(99 * H, 150 * H, 5.0), trade(120 * H, -1.0)]
-    a_future_loss = [open_trade(99 * H, 150 * H, -5.0), trade(120 * H, -1.0)]
+    a_future_win = [open_trade(98 * H, 150 * H, 5.0), trade(120 * H, -1.0)]
+    a_future_loss = [open_trade(98 * H, 150 * H, -5.0), trade(120 * H, -1.0)]
     assert walk_forward({"a": a_future_win, "b": b}, [window]) == walk_forward({"a": a_future_loss, "b": b}, [window])
     assert walk_forward({"a": a_future_win, "b": b}, [window])[1] == ["b"]
 

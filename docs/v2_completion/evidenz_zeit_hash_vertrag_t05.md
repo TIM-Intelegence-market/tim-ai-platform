@@ -15,27 +15,52 @@ die Umsetzung danach ohne Rückfrage startet.
 | `revision` | Version der Regel/des Codes, die das Artefakt erzeugt hat | `rule_version`, `validation_version`, `software_commit`, `PROTOCOL_VERSION` | Pflicht, Teil des Hash-Inputs |
 | `as_of` (Abfragezeit) | Stichtag, zu dem eine Auswertung „weiß“ | `retrospective(as_of=…)`, `OrderflowValidationEngine.validate(as_of=…)`, neu `RAGQwenAssistant.build_context(as_of=…)`, Research Lab `known_at()` | Jede Auswertung nennt `as_of`; es zählt nur, was `available_at <= as_of` hat |
 
-Verbot: `as_of` oder Dateizeiten dürfen nie in einen Hash einfließen (HC-1.0 Abschnitt 7.3). Eine Auswertung ohne
-`as_of` ist keine historische Aussage, sondern ein Blick „von heute“.
+Ein persistierter fachlicher Stichtag gehört zum registrierten Payload und wird mitgehasht.
+Nur flüchtige Ausführungszeiten und Dateimetadaten werden nicht nachträglich in den Hash-Input
+injiziert. `as_of` pauschal auszuschließen wäre falsch: Der Snapshot-Stichtag muss gegen
+Manipulation geschützt sein. Fehlende historische Wissenszeit wird nicht durch Ereigniszeit ersetzt.
 
-## 2. Quellbindung von Evidenz: D01 oder D02
+## 2. Zwei getrennte Entscheidungen: D01 und D02
 
-| Option | Beschreibung | Vorteil | Nachteil |
-|---|---|---|---|
-| **D01 direkte Quellhash-Referenz** | Jedes Evidenzelement trägt `{domain, hash}` der Quelle (`source_hash` der Metrikfenster, `input_hash` der Beobachtung, `validation_hash`). Prüfer rechnet die Quelle neu und vergleicht. | schlank, heute schon so im Code (`previous_source_hash`, `current_source_hash`, `observation_hash`) | Quelle muss abrufbar bleiben (DB, Archiv); bei Löschung ist die Referenz leer |
-| **D02 Snapshot-Payload + äußere Hülle** | Artefakt enthält die kanonisch serialisierte Quelle (Payload) und eine äußere Hülle mit `artifact_hash`, `payload_hash`, Registry-Eintrag | selbsttragend, auch nach Löschung der Quelle prüfbar | Größe (Outbox-Zeilen, Trades), doppelte Daten, Kanonisierung der Payload nötig (TIM-JCS-1) |
+Die [ursprünglichen Ersatztexte vom 21.10.](hc1_d01_d02_resolution_proposal.md) sind hier
+als prüfbare Referenz aufgenommen. Sie beziehen sich auf die unveränderte Spezifikation mit
+SHA256 `a0189a91c30b05fddfa3ad5524137a24c0bae3b4469adedd3dcf5870a20fcacc`.
+Beide Entscheidungen sind miteinander vereinbar; sie sind keine Auswahl „laufende Belege oder Abnahme“.
 
-**Empfehlung:** D01 für laufende Belege (Tagesmanifeste, Beobachtungen, Validierungen), D02 nur für die
-wenigen Abnahme-Artefakte, die ohne Datenbank prüfbar sein müssen (Kampagnen-Abschlussdossier, Holdout-Lauf,
-Manual-Review-Workbook). Begründung: Die Kampagne schreibt heute schon D01-Referenzen; D02 überall würde die
-Datenbank vervielfachen.
+**D01 – Quellreferenzen:** Empfohlen ist der vollständige Descriptor des unmittelbar referenzierten
+Objekts im Feld `source_hash`, einschließlich `digest`, `domain`, `artifact_type`, `algorithm`,
+`canonicalization`, `contract_version` und `logical_source_id`. Kein zusätzlicher Digest der Domäne
+`source`. Der Eigenhash des Verbrauchers bindet den Descriptor samt Identifier. Der Validator löst
+die Quelle auf und prüft deren eigenen Descriptor. Quelle und Verbraucher dürfen beide Domäne
+`artifact` haben; Feldrolle und Typ müssen trotzdem stimmen. Fehlende/ungültige Quellen und Zyklen
+sind Fehler. Legacy-Digests dürfen nicht als HC-1.0 umetikettiert werden.
 
-## 3. Hashdomänen und Registry (aus HC-1.0 Abschnitt 8, hier nur die Entscheidung)
+Das Schema erlaubt ausdrücklich entweder `source_hash` oder `source_hashes`, niemals beide.
+Null- und Leerlisten-Erlaubnis sind getrennt. Mehrfachreferenzen sind bereits vor dem Hashen nach
+`(artifact_type, logical_source_id, digest)` sortiert; doppelte `(artifact_type, logical_source_id)`
+sind auch bei unterschiedlichen Digests ungültig. Der Validator repariert keine Reihenfolge.
 
-Domänen: `artifact_hash`, `source_hash`, `dataset_hash`, `replay_hash`, `manifest_hash`, `report_hash`,
-`snapshot_hash`, `integrity_hash`. Jeder Hash nennt seine Domäne; ein Vergleich über Domänen hinweg ist ein
-Fehler, kein Treffer. Kanonisierung: TIM-JCS-1 (sortierte Schlüssel, keine Leerzeichen, Dezimalzahlen als
-Strings, Zeiten nach 7.3). Registry: `artifact_type`, `schema_version`, `hash_domain`, `required_fields`.
+**D02 – Snapshot-Projektion:** Empfohlen ist die gerichtete Berechnung
+`snapshot_payload` → `snapshot_hash` → äußerer `artifact_hash` (falls das Schema ihn zulässt).
+Der Snapshot-Hash bindet den gesamten persistierten Payload einschließlich Stichtag,
+Quellen, Versionen, Zählungen und Inhalt. Unbekannte Felder sind Schemafehler. Der äußere
+Eigenhash schließt ausschließlich sich selbst aus: Payload und vollständiger Snapshot-Descriptor
+bleiben enthalten. Äußere Metadaten dürfen keinen Payload-Stichtag oder Inhalt überschreiben.
+Ein korrekt neu berechneter Hüllenhash heilt keinen ungültigen inneren Snapshot-Hash.
+
+**Status:** Vorschlag für eine neue freizugebende Vertragsrevision. Weder eine Zustimmung
+noch ein Freeze der unveränderten HC-1.0-Spezifikation wird mit diesem PR behauptet.
+Die heutigen Core-Referenzen sind keine nachträglich erklärten HC-1.0-konformen Descriptoren.
+
+## 3. Registry und Feldbindung
+
+HC-1.0 Abschnitt 9 verlangt elf Angaben je Typ: stabiler Typ-Identifier, Schema-Version,
+erlaubte Hashdomänen, erforderliche Hashdescriptoren, Kanonisierung, Eigenhash-Ausschluss,
+Array-Reihenfolgen, Dezimalregeln, Zeitregeln, optionale Felder und Referenzauflösung.
+Die Revision ergänzt ausdrücklich die Bindung von Eigenobjekt und Quellobjekt sowie erlaubte
+Referenz-Tupel aus Typ/Domäne/Version und die Kardinalität. Feldnamen wie `artifact_hash`
+sind keine Domänennamen: der zugehörige Descriptor verwendet etwa `domain="artifact"`.
+Die Domäne `source` entfällt bei Annahme von D01-A; `snapshot` bleibt für D02.
 
 Fehlerzustände (müssen Tests haben): fehlende Domäne, Domänenverwechslung, manipulierte Quelle,
 Zeit mit Offset statt `Z`, Float statt Dezimalstring, zyklische Referenz (Artefakt referenziert sich selbst),
@@ -61,10 +86,13 @@ ausgewiesen (Beispiel: die vier Kerzenlücken vom Oktober, Readiness-Befund 20.1
 
 ## 6. Was Uzi entscheidet (ein Satz genügt)
 
-1. D01 für laufende Belege, D02 für Abnahme-Artefakte: ja/nein.
-2. HC-1.0 als Vertrag Version 1.0 einfrieren und die Konformitätssuite bauen: ja/nein.
-3. Wer trägt die Dispositionen ein (Vorschlag: Chris als unabhängiger Prüfer, Uzi gibt frei).
+1. D01-A (direkter vollständiger Quell-Descriptor) und D02-A (expliziter Snapshot-Payload mit Hülle) jeweils freigeben oder ablehnen.
+2. Danach neue Vertragsrevision mit vollständiger Registry, unabhängigen Testvektoren, Rollen,
+   V2-only-Grenze und Cut-over-Policy prüfen und gesondert freigeben. Die unveränderte Spezifikation
+   nicht voreilig einfrieren; B07 bleibt bis zum Entscheidungsnachweis offen.
+3. Dispositionsrollen benennen (Vorschlag, nicht entschieden: Chris prüft, Uzi gibt frei).
 
-Nach „ja“ folgt die Umsetzung in zwei PRs: (a) Registry, Kanonisierung, Validator und Suite unter
-`src/v2_completion/evidence_contract.py`; (b) Dispositionsregister als `docs/v2_completion/dispositionen.md`.
-Beides berührt weder `~/TIM-live` noch die Datenbank.
+Erst nach der Designentscheidung folgt ein separater Implementierungs-PR für Registry,
+Kanonisierung, Validator und Konformitätssuite sowie ein Dispositionsregister.
+Designfreigabe bedeutet weder Implementierungs- noch Betriebsfreigabe. Livebetrieb, Datenbank
+und alte Artefakte werden durch diese Entscheidungsvorlage nicht verändert.
