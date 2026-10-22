@@ -1,0 +1,137 @@
+{
+  "study_id": "V2_SK_CONTROL_REGIME_V1",
+  "schema_version": "1.0.0",
+  "status": "PROPOSED_PENDING_HUMAN_APPROVAL",
+  "purpose": "Close the control-class and regime gaps of V2_PROSPECTIVE_QUALIFICATION_V1 without touching the running campaign.",
+  "parent_campaign": {
+    "dataset_id": "V2_PROSPECTIVE_QUALIFICATION_V1",
+    "frozen_commit": "f469ad66d2796ec39d6c8e646acd222ae5826f14",
+    "start_utc": "2026-10-20T20:34:00Z",
+    "relationship": "READ_ONLY_COPIES_OF_THE_SAME_PUBLIC_DATA; PARENT_REGISTRATION_UNCHANGED"
+  },
+  "t0_rule": "T0 = commit time of the merge of this file into platform-main. Recorded afterwards in a separate file so this hash stays stable. Only windows starting at or after T0 count as confirmatory.",
+  "pre_t0_windows": "CALIBRATION_AND_EXPLORATION_ONLY",
+  "market": "BINANCE_SPOT",
+  "symbol": "BTCUSDT",
+  "data_source": "PUBLIC_AGGTRADES_DERIVED_CLOSED_1M_CANDLES (same source and quality rules as the parent campaign; no synthetic, interpolated or forward-filled minutes)",
+  "window_minutes": 30,
+  "lookback_minutes": 60,
+  "sample_classes": {
+    "POSITIVE": "Per detector kind: greedy non-overlapping 30-minute windows that start at an observation of that kind (same rule as the campaign case audit, restricted to the kind).",
+    "NEGATIVE": "Per detector kind: every valid grid cell with no observation of that kind in the 60 lookback minutes or the start minute. Decided only with knowledge at window start, so the window is not selected on its own (quiet) outcome.",
+    "NEUTRAL_CONTROL": "Every valid grid cell, regardless of triggers."
+  },
+  "controls": {
+    "construction": "EXHAUSTIVE_FIXED_GRID: all valid cells on the UTC :00/:30 grid in [T0, study_end); no random draw, no seed. Each cell is judged only by its own data, so a control never changes when the range grows or a gap appears elsewhere.",
+    "NEGATIVE": {
+      "trigger_free": "SAME_KIND_IN_LOOKBACK_AND_START_MINUTE"
+    },
+    "NEUTRAL_CONTROL": {
+      "trigger_free": false
+    },
+    "matching": "No 1:1 matching. Positives are compared with controls within strata (UTC hour, weekday class, volatility and liquidity level) in the evaluation."
+  },
+  "candidate_rule": "A grid cell is valid when its 30 window minutes and 60 lookback minutes all have a closed candle; invalid cells are skipped and counted.",
+  "regimes": {
+    "volatility": {
+      "measure": "sqrt(sum of squared 1m log returns of closes) over the 60 closed candles before window start",
+      "levels": [
+        "LOW",
+        "MID",
+        "HIGH"
+      ],
+      "thresholds": "terciles (nearest rank) from the calibration period, frozen"
+    },
+    "liquidity": {
+      "measure": "sum of USDT quote volume over the 60 closed candles before window start",
+      "levels": [
+        "LOW",
+        "MID",
+        "HIGH"
+      ],
+      "thresholds": "terciles (nearest rank) from the calibration period, frozen"
+    },
+    "session": {
+      "measure": "UTC hour of window start"
+    },
+    "weekday": {
+      "measure": "ISO weekday of window start (UTC)"
+    }
+  },
+  "sessions": [
+    {
+      "name": "ASIA",
+      "start_hour": 0,
+      "end_hour": 8
+    },
+    {
+      "name": "EUROPE",
+      "start_hour": 8,
+      "end_hour": 16
+    },
+    {
+      "name": "US",
+      "start_hour": 16,
+      "end_hour": 24
+    }
+  ],
+  "weekday_classes": {
+    "WEEKDAY": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "WEEKEND": [
+      6,
+      7
+    ]
+  },
+  "calibration": {
+    "start_utc": "2026-10-01T00:00:00Z",
+    "end_utc": "2026-10-20T20:34:00Z",
+    "grid_minutes": 30,
+    "minimum_windows": 300,
+    "rule": "Only complete windows with complete lookback. Thresholds are computed once and frozen with their own hash; never recomputed on evaluation data."
+  },
+  "minimums": {
+    "units_per_class": 300,
+    "units_per_regime_level_per_class": 30,
+    "note": "Proposal; confirm with power simulation S2 before T0. A kind below the minimums is reported NOT_TESTABLE, not as evidence."
+  },
+  "evaluation": {
+    "outcome_horizons_minutes": [
+      5,
+      15,
+      30
+    ],
+    "compare": "Outcome distribution per sample class and per regime level, same outcome definition as the parent campaign.",
+    "also_required": [
+      "replay_determinism",
+      "lookahead_and_leakage_check"
+    ],
+    "run_on": "Read-only copy of the daily Mac DB backup, outside ~/TIM-live."
+  },
+  "if_minimums_not_met_at_campaign_end": "Parent campaign ends as registered. Only this study keeps drawing windows from ongoing operation until the minimums are met.",
+  "prohibitions": [
+    "no change to the parent campaign registration, code, configuration or launchd jobs",
+    "no window before T0 counted as confirmatory",
+    "no hand-picked controls",
+    "no threshold recalibration on evaluation data",
+    "no outcome label (PRICE_INCREASED/DECREASED/SIDEWAYS) used as a sample class"
+  ],
+  "open_before_t0": [
+    "kind_testability_on_pre_campaign_data (share of trigger-free 30-minute windows per detector kind, read-only on a backup copy)",
+    "power_simulation_s2",
+    "human_approval_of_this_spec"
+  ],
+  "human_approval": false,
+  "analysis_unit": "PER_DETECTOR_KIND",
+  "analysis_unit_reason": "Detectors fire about twice per minute in total (3,825 complete validation rows in the first 27.5 campaign hours, daily manifest 2026-10-21), so a window free of ALL triggers almost never exists. Each detector kind is tested on its own against windows free of that kind.",
+  "independence": "WITHIN_CLASS_NON_OVERLAP (grid guarantees it for controls; greedy rule for positives); CROSS_CLASS_OVERLAP_ALLOWED",
+  "grid_minutes": 30,
+  "incomplete_lookback_rule": "Units without a complete 60-minute lookback are excluded and counted (excluded_incomplete_lookback), never kept with an unassigned regime.",
+  "integrity": "Every function re-verifies this spec hash; thresholds carry their own hash and the spec hash; the T0 record must also store the git commit and SHA-256 of src/v2_completion/control_regime_study.py.",
+  "spec_hash": "1a53c0c1965cb3d4b2b410f2ef71648d284060f83ae11de5ca7f5e29af701a7f"
+}
