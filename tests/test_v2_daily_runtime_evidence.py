@@ -15,9 +15,12 @@ SCOPE = "SUPPLIED_SNAPSHOT_NOT_FULL_DAY_PROOF"
 
 
 def campaign():
-    return {"campaign_status": "ACTIVE", "start_utc": "2026-10-19T00:00:00Z",
-            "preregistration_hash": "a" * 64, "software_commit": "b" * 40,
-            "configuration_hash": "c" * 64}
+    # The hash is computed from the content, so the fixture stays valid once
+    # build_daily_manifest checks the campaign hash against its content.
+    value = {"campaign_status": "ACTIVE", "start_utc": "2026-10-19T00:00:00Z",
+             "software_commit": "b" * 40, "configuration_hash": "c" * 64}
+    value["preregistration_hash"] = stable_hash(value)
+    return value
 
 
 def metrics(runtime):
