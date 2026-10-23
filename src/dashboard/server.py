@@ -118,6 +118,10 @@ class DashboardServer:
                     except Exception as exc:  # noqa: BLE001 - malformed stored data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
+                if path == "/api/plan-journal":
+                    from src.dashboard.plan_journal import load as load_plan_journal
+
+                    return self.respond(200, json.dumps(load_plan_journal(outer.state.plan_journal_path), default=str).encode(), "application/json")
                 if path == "/pilot":
                     return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8", csp=PILOT_CSP)
                 if path == "/api/orderflow/history":
@@ -149,6 +153,7 @@ class DashboardServer:
                     "/independent-cases": "Independent Cases",
                     "/v2-readiness": "V2 Readiness", "/mcp": "Graphify & MCP",
                     "/setup-path": "Setup Path",
+                    "/journal": "Plan Journal",
                     "/audit-evidence": "Audit & Evidence",
                     "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow",
                     "/signals": "Signal Research", "/analytics": "Analytics", "/insights": "Insights",
