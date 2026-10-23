@@ -1,0 +1,25 @@
+{
+  "study_id": "V2_SK_CONTROL_REGIME_V1",
+  "t0_utc": "2026-10-23T13:55:24Z",
+  "t0_rule": "Commit time of the merge of PR #370 into platform-main (spec t0_rule).",
+  "merge_commit": "84ee46647c1dcafc65ac54deadbc629ee34fceaa",
+  "pull_request": 370,
+  "approval": {
+    "by": "Uzi",
+    "text": "ja dann merge",
+    "at_utc": "2026-10-23T13:07:33Z",
+    "channel": "Claude project thread"
+  },
+  "spec_hash": "e2205bfdb02ac9a184fe396d1aa0ed18b915ac672f40e2e7a7a316c791827ace",
+  "thresholds_hash": "364f7915e69da57555d68fd10b3e001a2722436d0c42395c6504d2c82a013d6d",
+  "file_sha256_at_t0": {
+    "src/v2_completion/control_regime_study.py": "e0a8466b28050e1497b290cd67c849e302490bb4a86f868cd7eb58629afd7c0a",
+    "src/v2_completion/sk_report.py": "64bd4ca79f882cc90feeb9cea8db5200cbcd5d878f99ca9addb1d825c274559c",
+    "src/v2_completion/sk_power.py": "e23750d0d85fbecacf18bce10027cc5703ee6604df8df4784ec1f7e7366aeaab",
+    "scripts/sk_study.py": "9051283149e926bdc0e559684077c213036ba7da9c1b661dcbf24807490a4f69",
+    "artifacts/v2_completion/sk_control_regime_spec.json": "f35cca09cf7f6d382d3d06eafe5fbf89d604ec6a8993e33227b2bec62bf7c758",
+    "artifacts/v2_completion/sk_regime_thresholds.json": "9039041adc287a521909fe1f0de39341e258828a28854b2768a613bf2657586b"
+  },
+  "running_system_at_t0": "~/TIM-live at 9b1bd58 (detector and ingestion code unchanged since f469ad6)",
+  "note": "Only windows starting at or after t0_utc count as confirmatory. Status reports stay blinded until the minimum counts are reached."
+}
