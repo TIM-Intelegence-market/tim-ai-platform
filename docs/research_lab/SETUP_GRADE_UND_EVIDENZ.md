@@ -94,6 +94,20 @@ gegen den Plan auf den Tick gerundet (Kauf-Limit aufwärts, Verkaufs-Limit abwä
 Update älter als 30 Minuten (`STALE_AFTER`), werden keine neuen Pläne aufgenommen; das wird einmal je Schluss
 als `CANDLE_CLOSE_SKIPPED` festgehalten.
 
+## Lernvorschläge (Abnahme §4, Teil 1)
+
+`src/research_lab/journal_review.py` (`journal-review/1`) liest geschlossene Journal-Fälle und ändert nichts:
+weder Journal noch Grade-Regeln, Äquivalenztabelle oder Kostenmodell (`champion.changed_by_this_proposal=false`).
+Fälle derselben Familie (ScenarioType, Richtung) innerhalb eines Chart-Fensters (80 × 15 min) bilden einen
+Cluster; gezählt werden Cluster, nicht Einträge. Je Familie und Grade: Fälle, Cluster, Brutto-/Netto-Mittel,
+Kostenanteil, Trefferquote, Ausstiegsgründe, Datenlücken und ein Cluster-Block-Bootstrap (95 %, Seed fest) des
+Netto-Mittels. Urteil: `INSUFFICIENT_CASES` unter 30 Clustern, `CANDIDATE_FOR_REGISTRATION`, wenn die untere
+Intervallgrenze über 0 liegt, sonst `NO_POSITIVE_EDGE_FOUND`. Ein Kandidat ist kein neuer Grade und keine
+Freigabe: der einzige vorgesehene nächste Schritt ist eine registrierte Hypothese im Research-Lab-Register mit
+eigenem Train/Validation/Holdout. Vorschläge sind deterministisch (`proposal_id` aus dem Inhalt) und werden als
+eigene Dateien geschrieben (`write_proposal`), nie überschrieben. Keine Schwelle wird aus dem Journal gelernt.
+Ein Übernahme-/Rollback-Pfad existiert bewusst noch nicht (M4 Teil 2, erst mit menschlicher Freigabe).
+
 ## Grenzen
 
 Keine Teilfüllungen, keine Mengenrundung der Position (nur Preis-Tick), kein Funding, kein Simulator mit
