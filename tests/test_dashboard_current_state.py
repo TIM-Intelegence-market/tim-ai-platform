@@ -18,7 +18,9 @@ from src.dashboard.operations import (
     render_operations_page,
 )
 
-NOW = datetime.now(timezone.utc)
+def _now() -> datetime:
+    # Fresh per call: the CI suite reaches these tests ~30 min after import.
+    return datetime.now(timezone.utc)
 
 
 def _iso(value: datetime) -> str:
@@ -47,14 +49,14 @@ def _setup(root: Path, *, aborted: bool = True) -> tuple[Path, Path]:
             "note": "Abgebrochen auf Uzis Wunsch.",
         })
     operational = root / "data/operational"
-    _write(operational / "watchdog_status.json", {"status": "GREEN", "checked_at": _iso(NOW), "checks": {}})
+    _write(operational / "watchdog_status.json", {"status": "GREEN", "checked_at": _iso(_now()), "checks": {}})
     return qualification, operational
 
 
 def _snapshot(root: Path, base: dict | None = None, completion: Path | None = None) -> dict:
     qualification, operational = _setup(root)
     return build_operations_snapshot(
-        base or {"timestamp": _iso(NOW), "operational_health": {}},
+        base or {"timestamp": _iso(_now()), "operational_health": {}},
         completion or root / "missing_completion", root / "missing_legacy",
         operational / "watchdog_status.json", operational / "rolling_liveness.json", qualification,
     )
@@ -71,19 +73,19 @@ def test_aborted_campaign_is_shown_as_aborted_and_not_counted(tmp_path: Path) ->
 
 
 def test_old_readiness_matrix_is_marked_stale_not_current() -> None:
-    old = {"path": "artifacts/v2_completion/implementation_state.json", "captured_at": _iso(NOW - timedelta(days=80))}
+    old = {"path": "artifacts/v2_completion/implementation_state.json", "captured_at": _iso(_now() - timedelta(days=80))}
     result = _current_readiness("FAIL — SAFETY OR DATA INTEGRITY", [], old, {})
     assert result["status"] == "STALE — FAIL — SAFETY OR DATA INTEGRITY"
-    fresh = {"path": "x", "captured_at": _iso(NOW - timedelta(days=2))}
+    fresh = {"path": "x", "captured_at": _iso(_now() - timedelta(days=2))}
     assert _current_readiness("FAIL", [], fresh, {})["status"] == "FAIL"
 
 
 def test_ci_run_of_deployed_commit_replaces_old_test_summary() -> None:
-    deployment = {"commit": "cc6a880abc", "ci_test": {"conclusion": "success", "completed_at_utc": _iso(NOW - timedelta(hours=1)),
+    deployment = {"commit": "cc6a880abc", "ci_test": {"conclusion": "success", "completed_at_utc": _iso(_now() - timedelta(hours=1)),
                                                       "passed": 6500, "failed": 0, "skipped": 40}}
     result = _ci_test_of_deployment(deployment, "2026-08-01T16:18:45Z")
     assert result and result["status"] == "PASS" and result["passed"] == 6500
-    assert _ci_test_of_deployment(deployment, _iso(NOW)) is None  # recorded summary is newer
+    assert _ci_test_of_deployment(deployment, _iso(_now())) is None  # recorded summary is newer
     assert _ci_test_of_deployment({}, "2026-08-01T16:18:45Z") is None
     failed = {**deployment, "ci_test": {**deployment["ci_test"], "conclusion": "failure"}}
     assert _ci_test_of_deployment(failed, None)["status"] == "FAIL"
@@ -92,8 +94,8 @@ def test_ci_run_of_deployed_commit_replaces_old_test_summary() -> None:
 def test_deployment_record_feeds_the_audit_card(tmp_path: Path) -> None:
     _setup(tmp_path)
     _write(tmp_path / "data/operational/deployment.json", {
-        "commit": "cc6a880abcdef", "deployed_at_utc": _iso(NOW),
-        "ci_test": {"conclusion": "success", "completed_at_utc": _iso(NOW - timedelta(hours=1)), "passed": 6500, "failed": 0},
+        "commit": "cc6a880abcdef", "deployed_at_utc": _iso(_now()),
+        "ci_test": {"conclusion": "success", "completed_at_utc": _iso(_now() - timedelta(hours=1)), "passed": 6500, "failed": 0},
     })
     data = _snapshot(tmp_path)
     assert data["audit"]["test_status"] == "PASS"
@@ -104,7 +106,7 @@ def test_live_telemetry_fills_runtime_metrics_only_when_fresh() -> None:
     runtime = {key: {"value": "UNAVAILABLE", "status": "UNAVAILABLE"} for key in (
         "restarts", "queue_age", "cursor_age", "receive_rate", "persist_rate", "drop_count",
         "duplicate_count", "late_count", "source_to_store_latency", "event_loop_lag")}
-    live = {"health_snapshot_observed_at": _iso(NOW - timedelta(seconds=5)), "receive_rate_per_second": 12.345,
+    live = {"health_snapshot_observed_at": _iso(_now() - timedelta(seconds=5)), "receive_rate_per_second": 12.345,
             "persist_rate_per_second": 12.0, "duplicate_total": 1118832.0, "late_total": 3.0, "rejected_total": 0.0,
             "restart_total": 4.0, "event_loop_lag": 0.0021, "source_to_store_latency": 0.41, "cursor_age": 0.4}
     _apply_live_telemetry(runtime, live)
@@ -114,20 +116,20 @@ def test_live_telemetry_fills_runtime_metrics_only_when_fresh() -> None:
     assert "system_health" in runtime["late_count"]["source"]
 
     stale = {key: {"value": "UNAVAILABLE"} for key in runtime}
-    _apply_live_telemetry(stale, {**live, "health_snapshot_observed_at": _iso(NOW - timedelta(minutes=10))})
+    _apply_live_telemetry(stale, {**live, "health_snapshot_observed_at": _iso(_now() - timedelta(minutes=10))})
     assert stale["receive_rate"]["value"] == "UNAVAILABLE"
 
 
 def test_archived_gate_gets_todays_value_next_to_it(tmp_path: Path) -> None:
     completion = tmp_path / "completion"
     _write(completion / "implementation_state.json", {
-        "generated_at_utc": _iso(NOW - timedelta(days=80)), "overall_status": "FAIL",
+        "generated_at_utc": _iso(_now() - timedelta(days=80)), "overall_status": "FAIL",
         "gates": [{"gate_id": "TECH-SECURITY", "status": "FAIL", "open_limitation": "PostgreSQL listens on LAN"},
                   {"gate_id": "V2-B04", "status": "FAIL", "open_limitation": "14 strict units"}],
     })
-    base = {"timestamp": _iso(NOW), "operational_health": {},
+    base = {"timestamp": _iso(_now()), "operational_health": {},
             "system_health": {"postgres_listener": {"listen_addresses": "127.0.0.1,::1", "status": "PASS", "exposed_addresses": [],
-                                                    "checked_at_utc": _iso(NOW), "source": "runtime: SHOW listen_addresses"}}}
+                                                    "checked_at_utc": _iso(_now()), "source": "runtime: SHOW listen_addresses"}}}
     data = _snapshot(tmp_path, base, completion)
     gates = {gate["id"]: gate for gate in data["readiness"]["gates"]}
     assert gates["TECH-SECURITY"]["status"] == "FAIL"  # archived verdict unchanged
