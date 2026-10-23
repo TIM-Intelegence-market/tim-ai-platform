@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from src.dashboard.chart_model import _fmt, _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _hero, _layout, _strip_states
-from src.dashboard.plan_journal import GRADE_NOTE, MAX_HOLD_HOURS, PENDING_HOURS, summary
+from src.dashboard.plan_journal import GRADE_NOTE, MAX_HOLD_HOURS, PENDING_HOURS, counter_trend, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
 STATUS_LABELS = {
@@ -59,6 +59,7 @@ def _row(entry: Mapping[str, Any]) -> str:
     invalid_text = f"15m-Schluss {entry.get('invalidation_side')} {_fmt(invalid)}" if invalid is not None else "–"
     zone = f"{_fmt(min(entry['entry_low'], entry['entry_high']))}–{_fmt(max(entry['entry_low'], entry['entry_high']))}" if entry.get("entry_low") is not None and entry.get("entry_high") is not None else "–"
     direction = str(entry.get("direction"))
+    trend = f" <span class='sev sev--warn'>gegen den Trend ({_safe(entry.get('market_state'))})</span>" if counter_trend(direction, entry.get("market_state")) else ""
     grade = entry.get("setup_grade") or "–"
     grade_title = f"{GRADE_NOTE}; Regeln {entry.get('grade_ruleset_version') or '–'}; Zustand {entry.get('graded_state') or '–'}; " + ", ".join(entry.get("grade_reasons") or [])
     ev_sev, ev_label = EVIDENCE_LABELS.get(str(entry.get("evidence_status")), ("unknown", str(entry.get("evidence_status") or "nicht geprüft")))
@@ -67,7 +68,7 @@ def _row(entry: Mapping[str, Any]) -> str:
     dec_title = ", ".join(entry.get("journal_decision_reasons") or []) + f"; Pipeline: {entry.get('pipeline_decision') or '–'}"
     return (
         f"<tr><td>{_safe(_local(entry.get('created_at')))}</td>"
-        f"<td><span class='tag tag--{_safe(direction.lower())}'>{_safe(direction)}</span> {_safe(entry.get('scenario_id'))}</td>"
+        f"<td><span class='tag tag--{_safe(direction.lower())}'>{_safe(direction)}</span> {_safe(entry.get('scenario_id'))}{trend}</td>"
         f"<td title='{_safe(grade_title)}'>{_safe(grade)}<small> heuristisch</small></td>"
         f"<td title='{_safe(ev_title)}'><span class='sev sev--{ev_sev}'>{_safe(ev_label)}</span></td>"
         f"<td title='{_safe(dec_title)}'><span class='sev sev--{dec_sev}'>{_safe(dec_label)}</span><small> {_safe(entry.get('execution_status') or '–')}</small></td>"
@@ -99,6 +100,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         f"<dl class='metricstrip__item'><dt>Summe (Netto-R)</dt><dd>{_safe(_r_text(stats['sum_net_r']))}<small>nach Gebühren und Slippage, Kostenmodell {_safe(stats['cost_model_version'])}; {stats['net_wins']} netto positiv</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Entscheidungen</dt><dd>{stats['no_trade']} NO_TRADE<small>{stats['paper_trades']} Papier-Trades · kein Setup mit belegter Evidenz</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Long / Short</dt><dd>{_safe(_r_text(long_['sum_r']))} / {_safe(_r_text(short['sum_r']))}<small>{long_['closed']} / {short['closed']} geschlossen</small></dd></dl>"
+        f"<dl class='metricstrip__item'><dt>Gegen den Trend</dt><dd>{stats['counter_trend']['plans']}<small>{stats['counter_trend']['closed']} geschlossen · {_safe(_r_text(stats['counter_trend']['sum_r']))}</small></dd></dl>"
         "</div></section>"
     )
     rows = "".join(_row(e) for e in reversed(entries[-300:])) or "<tr><td colspan='14' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 15m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"

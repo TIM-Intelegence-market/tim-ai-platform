@@ -441,6 +441,14 @@ def _minute_ceil(value: datetime) -> datetime:
     return floor if floor == value else floor + timedelta(minutes=1)
 
 
+AGAINST_TREND = {"LONG": "TREND_DOWN", "SHORT": "TREND_UP"}
+
+
+def counter_trend(direction: Any, market_state: Any) -> bool:
+    """True when a plan trades against TIM's market state (LONG in TREND_DOWN, SHORT in TREND_UP)."""
+    return AGAINST_TREND.get(str(direction)) == str(market_state)
+
+
 def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     entries = list(journal.get("entries") or [])
     closed = [e for e in entries if e.get("status") == "CLOSED" and e.get("gross_r") is not None]
@@ -451,6 +459,7 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
         mine = [e for e in closed if e["direction"] == direction]
         by_direction[direction] = {"closed": len(mine), "sum_r": round(sum(e["gross_r"] for e in mine), 3),
                                    "sum_net_r": round(sum(e.get("net_r") or 0.0 for e in mine), 3)}
+    against = [e for e in closed if counter_trend(e.get("direction"), e.get("market_state"))]
     return {
         "plans": len(entries),
         "open": sum(e.get("status") == OPEN for e in entries),
@@ -466,6 +475,11 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
         "paper_trades": sum(e.get("journal_decision") == PAPER_TRADE for e in entries),
         "no_trade": sum(e.get("journal_decision") == NO_TRADE for e in entries),
         "by_direction": by_direction,
+        "counter_trend": {
+            "plans": sum(counter_trend(e.get("direction"), e.get("market_state")) for e in entries),
+            "closed": len(against),
+            "sum_r": round(sum(e["gross_r"] for e in against), 3),
+        },
     }
 
 
