@@ -77,3 +77,55 @@ def test_timeline_falls_back_to_process_start_without_validator_state() -> None:
     events = state.snapshot()["timeline"]
     assert events and events[0]["event"] == "RUNTIME_START"
     assert events[0]["timestamp"] == state.runtime_started_at
+
+
+GOVERNANCE_ONLY_FAIL = {
+    "validation_status": "FAIL",
+    "checks": {"timestamp_integrity": True, "schema_valid": True, "data_gaps_documented": True, "deterministic": False},
+}
+LIVENESS_PASS = {"datasets": [{"coverage": "100.000%", "status": "PASS", "source": "data/operational/rolling_liveness.json"}]}
+
+
+def test_governance_only_fail_does_not_block_live_candles() -> None:
+    data = _live_data()
+    data["research_quality"] = dict(GOVERNANCE_ONLY_FAIL)
+    data["operations"] = LIVENESS_PASS
+    page = _setup_path_page(data)
+    assert "Frische Daten, mindestens 20 Candles" in page
+    assert "Research-Governance FAIL (Artefakte, nicht Kerzendaten)" in page
+
+
+def test_governance_only_fail_still_blocks_when_liveness_fails() -> None:
+    data = _live_data()
+    data["research_quality"] = dict(GOVERNANCE_ONLY_FAIL)
+    data["operations"] = {"datasets": [{"coverage": "90.000%", "status": "FAIL", "source": "data/operational/rolling_liveness.json"}]}
+    assert "bestätigte Datenqualität fehlt" in _setup_path_page(data)
+
+
+def test_report_fail_on_candle_checks_blocks() -> None:
+    data = _live_data()
+    data["research_quality"] = {"validation_status": "FAIL", "checks": {**GOVERNANCE_ONLY_FAIL["checks"], "timestamp_integrity": False}}
+    data["operations"] = LIVENESS_PASS
+    assert "bestätigte Datenqualität fehlt" in _setup_path_page(data)
+
+
+def test_pipeline_stages_come_from_chart_analysis() -> None:
+    chart = {
+        "levels": {"range_low": 81000.0, "range_high": 82000.0},
+        "analysis": {
+            "market_state": "BALANCE", "auction_state": "ROTATION",
+            "decision": {"status": "NO_TRADE"},
+            "scenarios": [{"plan_text": "PLAN A LONG", "missing_confirmations": ["level_reclaimed"]}],
+        },
+    }
+    page = _setup_path_page(_live_data(), chart)
+    assert "Markt BALANCE · Auktion ROTATION" in page
+    assert "AN KANTE" in page
+    assert "fehlt: level_reclaimed" in page
+    assert "kommen aus TIMs Pipeline" in page
+
+
+def test_pipeline_stages_stay_required_without_analysis() -> None:
+    page = _setup_path_page(_live_data())
+    assert "REQUIRED" in page
+    assert "brauchen TIMs Chart-Analyse" in page
