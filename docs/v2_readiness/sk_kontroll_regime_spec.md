@@ -161,3 +161,11 @@ Erledigt: Prüfbarkeit pro Signaltyp, Power-Simulation S2, Kalibrierung der Terz
 ```
 python -m pytest tests/test_sk_control_regime_study.py tests/test_sk_report_and_power.py -q
 ```
+
+## T0 (Start der Studie)
+
+T0 ist der 23.10.2026, 13:55:24 UTC (15:55 Ortszeit), die Commit-Zeit des Merges von PR #370 (`84ee466`). Uzi hat den Start am selben Tag freigegeben („ja dann merge“). Der Eintrag mit allen Hashes steht in `artifacts/v2_completion/sk_t0_record.json`. Nur Fenster ab T0 zählen bestätigend.
+
+Status abfragen (verblindet, liest keine Ausgänge):
+
+    python scripts/sk_study.py status --dump BACKUP.dump --t0 2026-10-23T13:55:24Z
