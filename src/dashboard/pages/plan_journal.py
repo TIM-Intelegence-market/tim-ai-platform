@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from src.dashboard.chart_model import _fmt, _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _hero, _layout, _strip_states
-from src.dashboard.plan_journal import MAX_HOLD_HOURS, PENDING_HOURS, summary
+from src.dashboard.plan_journal import MAX_HOLD_HOURS, PENDING_HOURS, counter_trend, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
 STATUS_LABELS = {
@@ -52,9 +52,10 @@ def _row(entry: Mapping[str, Any]) -> str:
     invalid_text = f"15m-Schluss {entry.get('invalidation_side')} {_fmt(invalid)}" if invalid is not None else "–"
     zone = f"{_fmt(min(entry['entry_low'], entry['entry_high']))}–{_fmt(max(entry['entry_low'], entry['entry_high']))}" if entry.get("entry_low") is not None and entry.get("entry_high") is not None else "–"
     direction = str(entry.get("direction"))
+    trend = f" <span class='sev sev--warn'>gegen den Trend ({_safe(entry.get('market_state'))})</span>" if counter_trend(direction, entry.get("market_state")) else ""
     return (
         f"<tr><td>{_safe(_local(entry.get('created_at')))}</td>"
-        f"<td><span class='tag tag--{_safe(direction.lower())}'>{_safe(direction)}</span> {_safe(entry.get('scenario_id'))}</td>"
+        f"<td><span class='tag tag--{_safe(direction.lower())}'>{_safe(direction)}</span> {_safe(entry.get('scenario_id'))}{trend}</td>"
         f"<td>{_safe(zone)}</td><td>{_safe(_fmt(entry['entry']))}</td><td>{_safe(_fmt(entry['stop']))}</td>"
         f"<td>{_safe(invalid_text)}</td><td>{_safe(targets)}</td>"
         f"<td><span class='sev sev--{severity}'>{_safe(label)}</span></td><td class='mono'>{_safe(_r_text(entry.get('result_r')))}</td>"
@@ -75,6 +76,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         f"<dl class='metricstrip__item'><dt>Geschlossen</dt><dd>{stats['closed']}<small>Trefferquote {_safe(win_rate)}</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Summe</dt><dd>{_safe(_r_text(stats['sum_r']))}<small>≈ {account:+.2f} % Konto bei {str(account_risk_percent).replace('.', ',')} % Risiko je Plan</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Long / Short</dt><dd>{_safe(_r_text(long_['sum_r']))} / {_safe(_r_text(short['sum_r']))}<small>{long_['closed']} / {short['closed']} geschlossen</small></dd></dl>"
+        f"<dl class='metricstrip__item'><dt>Gegen den Trend</dt><dd>{stats['counter_trend']['plans']}<small>{stats['counter_trend']['closed']} geschlossen · {_safe(_r_text(stats['counter_trend']['sum_r']))}</small></dd></dl>"
         "</div></section>"
     )
     rows = "".join(_row(e) for e in reversed(entries[-300:])) or "<tr><td colspan='10' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 15m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"

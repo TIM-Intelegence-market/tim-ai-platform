@@ -129,3 +129,12 @@ def test_pipeline_stages_stay_required_without_analysis() -> None:
     page = _setup_path_page(_live_data())
     assert "REQUIRED" in page
     assert "brauchen TIMs Chart-Analyse" in page
+
+
+def test_plan_against_market_state_is_marked_on_setup_path() -> None:
+    from src.dashboard.pages.setup_path import _plan_lines
+
+    scenario = {"id": "B", "direction": "LONG", "plan_text": "PLAN B LONG", "state": "WATCH", "missing_confirmations": ["reclaim"]}
+    assert any("Gegen den Trend: Markt TREND_DOWN" in line for line in _plan_lines(scenario, "TREND_DOWN"))
+    assert not any("Gegen den Trend" in line for line in _plan_lines(scenario, "TREND_UP"))
+    assert not any("Gegen den Trend" in line for line in _plan_lines({**scenario, "direction": "SHORT"}, "TREND_DOWN"))

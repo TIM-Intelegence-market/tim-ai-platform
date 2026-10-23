@@ -151,3 +151,16 @@ def test_journal_page_lists_plans_in_local_time_and_sums_r() -> None:
     assert "24.10. 03:59" in page  # 01:59 UTC = 03:59 MESZ
     assert "wartet auf Einstieg" in page
     assert "2 Pläne festgehalten" in journal_note(journal)
+
+
+def test_counter_trend_plans_are_marked_and_counted_not_hidden() -> None:
+    assert pj.counter_trend("LONG", "TREND_DOWN") and pj.counter_trend("SHORT", "TREND_UP")
+    assert not pj.counter_trend("LONG", "TREND_UP") and not pj.counter_trend("SHORT", "RANGE") and not pj.counter_trend("LONG", None)
+    plan = {**_plan("LONG"), "market_state": "TREND_DOWN"}
+    journal = _journal_with(plan)
+    assert journal["entries"][0]["market_state"] == "TREND_DOWN"
+    stats = pj.summary(journal)
+    assert stats["counter_trend"] == {"plans": 1, "closed": 0, "sum_r": 0}
+    page = _plan_journal_page({"operational_health": {}}, journal)
+    assert "gegen den Trend (TREND_DOWN)" in page and "Gegen den Trend" in page
+    assert "gegen den Trend (" not in _plan_journal_page({"operational_health": {}}, _journal_with(_plan("LONG")))

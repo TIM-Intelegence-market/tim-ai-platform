@@ -16,11 +16,14 @@ def _setup_chart(candles: list[dict[str, Any]]) -> str:
     return f"<svg viewBox='0 0 680 280' role='img' aria-label='BTCUSDT Schlusskurse, sichtbares Zeitfenster'><rect x='40' y='26' width='600' height='210' class='setup-chart__frame'/><polyline points='{points}' class='setup-chart__line'/><text x='40' y='18'>{_safe(f'{high:,.2f}')}</text><text x='40' y='258'>{_safe(f'{low:,.2f}')}</text><text x='640' y='258' text-anchor='end'>letzter Schluss {_safe(f'{closes[-1]:,.2f}')}</text></svg>"
 
 
-def _plan_lines(scenario: dict[str, Any]) -> list[str]:
+def _plan_lines(scenario: dict[str, Any], market_state: Any = None) -> list[str]:
     """One plan written out in words, like a hand-drawn chart."""
     from src.dashboard.chart_model import _fmt
+    from src.dashboard.plan_journal import counter_trend
 
     lines = [scenario.get("plan_text") or f"Plan {scenario.get('id')} {scenario.get('direction')}"]
+    if counter_trend(scenario.get("direction"), market_state):
+        lines.append(f"Gegen den Trend: Markt {market_state}. Gegenbewegung an der Range-Kante, nur mit den fehlenden Bestätigungen.")
     invalid = scenario.get("invalidation_level")
     if invalid:
         lines.append(invalid["text"])
@@ -42,7 +45,7 @@ def _plan_chart_section(chart: dict[str, Any], journal_line: str | None = None) 
     cards = "".join(
         f"<article class='sp-plan sp-plan--{_safe(str(s.get('direction', '')).lower())}'><h3>{_safe(lines[0])}</h3><ul>"
         + "".join(f"<li>{_safe(line)}</li>" for line in lines[1:]) + "</ul></article>"
-        for s in plans for lines in [_plan_lines(s)]
+        for s in plans for lines in [_plan_lines(s, analysis.get('market_state'))]
     ) or "<p class='cc-note'>Kein Plan mit Einstiegszone: Der Kurs steht nicht an einer Range-Kante.</p>"
     nxt = chart.get("next_block")
     block = f"Nächste Sperrzeit: {nxt['label']} {nxt['start'][11:16]}–{nxt['end'][11:16]} UTC ({nxt['start'][:10]}). " if nxt else ""
