@@ -17,6 +17,17 @@ TradePlanBuilder. Afterwards every plan is followed on 1m candles:
 Paper only. Nothing here places or suggests an order; it records what TIM's
 rules would have done. When a 1m candle touches the stop and a target, the
 stop counts first. No new entries inside the NY-open block.
+
+Evidence gate (docs/ACCEPTANCE.md section 1): every entry carries, separately,
+the heuristic setup grade of the scenario in its real state (never the forced
+CONFIRMED state of the preview), the evidence status from the hypothesis
+register (fail closed: INSUFFICIENT_EVIDENCE without a reviewed rule
+equivalence), the execution status (RESEARCH_ONLY) and the journal decision
+with its reasons (NO_TRADE unless evidence, execution and pipeline all allow a
+paper trade). The pipeline's own decision is kept as pipeline_decision. These
+fields are fixed when the plan is recorded; following the outcome never
+changes them. Results are gross R (no fees, no slippage) until a cost model
+is attached.
 """
 
 from __future__ import annotations
@@ -29,8 +40,9 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from src.dashboard.chart_model import _time, build_chart_model, clean_candles, ny_open_windows
+from src.research_lab.setup_evidence import DEFAULT_REGISTER_PATH, INSUFFICIENT_EVIDENCE, PASSED_HOLDOUT, RESEARCH_ONLY, evidence_fields
 
-SCHEMA = "tim_plan_journal/1"
+SCHEMA = "tim_plan_journal/2"
 SOURCE = "Setup-Pfad 15m (80 Kerzen), TIM-Regeln, nur Papier"
 PLAN_TIMEFRAME = "15m"
 PLAN_VISIBLE = 80  # same window as the Setup-Pfad page (views.SETUP_CHART_CANDLES)
@@ -39,6 +51,15 @@ MAX_HOLD_HOURS = 48
 THIRD = 1.0 / 3.0
 OPEN, FILLED = "OPEN", "FILLED"
 DONE = {"CLOSED", "INVALIDATED", "REPLACED", "EXPIRED"}
+NO_TRADE, PAPER_TRADE = "NO_TRADE", "PAPER_TRADE"
+PAPER_APPROVED = "PAPER_APPROVED"  # no code path sets this yet; a human approval step would
+GRADE_NOTE = "Heuristischer Grade, kein empirischer Edge-Nachweis"
+# Fields fixed at recording time. evaluate() must never touch them.
+DECISION_FIELDS = (
+    "setup_grade", "grade_reasons", "grade_ruleset_version", "graded_state",
+    "evidence_status", "evidence_ref", "execution_status",
+    "pipeline_decision", "pipeline_decision_reasons", "journal_decision", "journal_decision_reasons",
+)
 
 
 def _iso(value: datetime) -> str:
@@ -89,6 +110,7 @@ def plans_from_model(model: Mapping[str, Any]) -> list[dict[str, Any]]:
         invalid = scenario.get("invalidation_level") or {}
         result.append({
             "scenario_id": scenario.get("id"),
+            "scenario_type": scenario.get("type"),
             "direction": direction,
             "entry_model": scenario.get("entry_model"),
             "plan_text": scenario.get("plan_text"),
@@ -102,10 +124,60 @@ def plans_from_model(model: Mapping[str, Any]) -> list[dict[str, Any]]:
             "scenario_state": scenario.get("state"),
             "score": scenario.get("score"),
             "missing_confirmations": list(scenario.get("missing_confirmations") or []),
-            "decision": (analysis.get("decision") or {}).get("status"),
+            "pipeline_decision": (analysis.get("decision") or {}).get("status"),
+            "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
             "market_state": analysis.get("market_state"),
+            "grade": dict(scenario.get("grade") or {}) or None,
         })
     return result
+
+
+def journal_gate(plan: Mapping[str, Any]) -> tuple[str, list[str]]:
+    """Journal decision for a plan: NO_TRADE with reasons unless every gate is open.
+
+    The gates are evidence (PASSED_HOLDOUT), execution (PAPER_APPROVED), the
+    pipeline (TRADE_PLAN) and the scenario state (CONFIRMED). Nothing in the
+    product sets PAPER_APPROVED today, so the result is NO_TRADE for every plan.
+    """
+    reasons: list[str] = []
+    evidence = plan.get("evidence_status")
+    if evidence is None:
+        reasons.append("evidence_not_evaluated")
+    elif evidence != PASSED_HOLDOUT:
+        reasons.append(f"evidence_{str(evidence).lower()}")
+    execution = plan.get("execution_status") or RESEARCH_ONLY
+    if execution != PAPER_APPROVED:
+        reasons.append(f"execution_{str(execution).lower()}")
+    pipeline = plan.get("pipeline_decision")
+    if pipeline != "TRADE_PLAN":
+        reasons.append(f"pipeline_{str(pipeline or 'unknown').lower()}")
+    graded_state = (plan.get("grade") or {}).get("graded_state")
+    if graded_state != "CONFIRMED":
+        reasons.append("scenario_not_confirmed")
+    return (NO_TRADE if reasons else PAPER_TRADE), reasons
+
+
+def decision_fields(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """The fields of DECISION_FIELDS for a new entry, fail closed when something is missing."""
+    grade = plan.get("grade") or {}
+    evidence_status = plan.get("evidence_status")
+    evidence_ref = plan.get("evidence_ref")
+    if evidence_status is None:
+        evidence_status, evidence_ref = INSUFFICIENT_EVIDENCE, {"reason": "EVIDENCE_NOT_EVALUATED", "variant_ids": []}
+    decision, reasons = journal_gate(plan)
+    return {
+        "setup_grade": grade.get("setup_grade"),
+        "grade_reasons": list(grade.get("grade_reasons") or ["grade_not_computed"]),
+        "grade_ruleset_version": grade.get("grade_ruleset_version"),
+        "graded_state": grade.get("graded_state"),
+        "evidence_status": evidence_status,
+        "evidence_ref": dict(evidence_ref or {}),
+        "execution_status": plan.get("execution_status") or RESEARCH_ONLY,
+        "pipeline_decision": plan.get("pipeline_decision"),
+        "pipeline_decision_reasons": list(plan.get("pipeline_decision_reasons") or []),
+        "journal_decision": decision,
+        "journal_decision_reasons": reasons,
+    }
 
 
 def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at: datetime, timeframe: str = PLAN_TIMEFRAME) -> list[dict[str, Any]]:
@@ -129,16 +201,18 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
         if plan["direction"] in open_directions:
             continue
         key = f"{timeframe}|{plan['direction']}|{_iso(at)}|{plan['entry']}|{plan['stop']}"
+        payload = {k: v for k, v in plan.items() if k not in {"grade", "evidence_status", "evidence_ref", "execution_status", "pipeline_decision", "pipeline_decision_reasons"}}
         entry = {
             "id": hashlib.sha256(key.encode()).hexdigest()[:12],
             "timeframe": timeframe,
             "created_at": _iso(at),
             "last_seen_at": _iso(at),
-            **dict(plan),
+            **payload,
+            **decision_fields(plan),
             "status": OPEN,
             "evaluated_through": _iso(at),
             "tp_hits": [],
-            "result_r": None,
+            "gross_r": None,
         }
         entries.append(entry)
         added.append(entry)
@@ -160,7 +234,7 @@ def _close(entry: dict[str, Any], at: datetime, price: float, reason: str) -> No
     realised = sum(THIRD * _r(entry, entry["targets"][i]) for i in range(len(entry["tp_hits"])))
     rest = 1.0 - THIRD * len(entry["tp_hits"])
     entry.update(status="CLOSED", closed_at=_iso(at), exit_reason=reason, exit_price=price,
-                 result_r=round(realised + rest * _r(entry, price), 3))
+                 gross_r=round(realised + rest * _r(entry, price), 3))
 
 
 def _follow(entry: dict[str, Any], candle: Mapping[str, Any]) -> None:
@@ -241,12 +315,12 @@ def _minute_ceil(value: datetime) -> datetime:
 
 def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     entries = list(journal.get("entries") or [])
-    closed = [e for e in entries if e.get("status") == "CLOSED" and e.get("result_r") is not None]
-    wins = [e for e in closed if e["result_r"] > 0]
+    closed = [e for e in entries if e.get("status") == "CLOSED" and e.get("gross_r") is not None]
+    wins = [e for e in closed if e["gross_r"] > 0]
     by_direction = {}
     for direction in ("LONG", "SHORT"):
         mine = [e for e in closed if e["direction"] == direction]
-        by_direction[direction] = {"closed": len(mine), "sum_r": round(sum(e["result_r"] for e in mine), 3)}
+        by_direction[direction] = {"closed": len(mine), "sum_r": round(sum(e["gross_r"] for e in mine), 3)}
     return {
         "plans": len(entries),
         "open": sum(e.get("status") == OPEN for e in entries),
@@ -254,12 +328,20 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
         "closed": len(closed),
         "wins": len(wins),
         "win_rate": round(len(wins) / len(closed), 3) if closed else None,
-        "sum_r": round(sum(e["result_r"] for e in closed), 3),
+        "sum_r": round(sum(e["gross_r"] for e in closed), 3),
+        "result_basis": "GROSS_R_NO_COSTS",
+        "paper_trades": sum(e.get("journal_decision") == PAPER_TRADE for e in entries),
+        "no_trade": sum(e.get("journal_decision") == NO_TRADE for e in entries),
         "by_direction": by_direction,
     }
 
 
-def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None) -> dict[str, Any]:
+def with_evidence(plans: Sequence[Mapping[str, Any]], timeframe: str = PLAN_TIMEFRAME, register_path: Path | str = DEFAULT_REGISTER_PATH) -> list[dict[str, Any]]:
+    """Plans with their evidence fields from the hypothesis register (fail closed)."""
+    return [{**dict(plan), **evidence_fields(str(plan.get("scenario_type")), timeframe, register_path)} for plan in plans]
+
+
+def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH) -> dict[str, Any]:
     """One journal step: follow outcomes, then record plans at a new 15m close."""
     now = now or datetime.now(timezone.utc)
     journal = load(path)
@@ -269,7 +351,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
         latest = _minute_ceil(closed_15m[-1]["close_time"])
         if journal.get("last_plan_candle") != _iso(latest):
             model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
-            record_plans(journal, plans_from_model(model), latest)
+            record_plans(journal, with_evidence(plans_from_model(model), PLAN_TIMEFRAME, register_path), latest)
             journal["last_plan_candle"] = _iso(latest)
     journal["updated_at"] = _iso(now)
     save(journal, path)

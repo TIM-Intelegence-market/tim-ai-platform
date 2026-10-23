@@ -201,6 +201,18 @@ def test_model_writes_out_plans_invalidation_and_risk() -> None:
     assert model["risk"]["max_leverage"] == 10 and "keine Anlageberatung" in model["risk"]["text"]
 
 
+def test_model_grades_the_scenario_in_its_real_state_not_the_forced_preview() -> None:
+    model = build_chart_model(_state().chart_series(), "5m", now=END + timedelta(seconds=30))
+    previews = [s for s in model["analysis"]["scenarios"] if s["preview"]]
+    assert previews
+    for scenario in previews:
+        grade = scenario["grade"]
+        assert grade["setup_grade"] in {"A", "B", "C"} and grade["grade_ruleset_version"] == "grade/1.0.0"
+        assert grade["graded_state"] == scenario["state"] and scenario["state"] != "CONFIRMED"
+        assert "scenario_confirmed" not in grade["grade_reasons"] and "Edge" in grade["note"]
+    assert all(s["grade"] is None for s in model["analysis"]["scenarios"] if not s["preview"])
+
+
 def test_ny_open_windows_follow_new_york_time() -> None:
     from src.dashboard.chart_model import ny_open_windows
 
