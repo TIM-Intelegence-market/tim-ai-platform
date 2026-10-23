@@ -41,7 +41,7 @@ def _plan_chart_section(chart: dict[str, Any], journal_line: str | None = None) 
     from src.dashboard.pages.chart import _chart_svg
 
     analysis = chart.get("analysis") or {}
-    plans = [s for s in analysis.get("scenarios", []) if s.get("plan_text")]
+    plans = [s for s in (analysis.get("scenarios") or []) if isinstance(s, dict) and s.get("plan_text")]
     cards = "".join(
         f"<article class='sp-plan sp-plan--{_safe(str(s.get('direction', '')).lower())}'><h3>{_safe(lines[0])}</h3><ul>"
         + "".join(f"<li>{_safe(line)}</li>" for line in lines[1:]) + "</ul></article>"
@@ -63,9 +63,18 @@ def _plan_chart_section(chart: dict[str, Any], journal_line: str | None = None) 
 
 
 QUALITY_OK = {"PASS", "VALID", "GREEN", "OK"}
-# Checks in the research report that are about the candle data itself. The other
-# checks (determinism, provenance, output hashes) are about research artifacts.
-CANDLE_DATA_CHECKS = ("timestamp_integrity", "schema_valid", "data_gaps_documented")
+# Issue codes of the research report that are about research artifacts
+# (documentation, provenance, hashes, versions), not about the market data the
+# setup path reads. Every other code (missing source, schema, timestamps,
+# order, mode, data gaps) is about the data and keeps the gate closed.
+GOVERNANCE_ISSUE_CODES = frozenset({
+    "MISSING_DOCUMENTATION", "MISSING_METADATA", "MISSING_REPORT", "INVALID_ARTIFACT",
+    "INVALID_INPUT_HASH", "ARTIFACT_HASH_MISMATCH", "WORD_COUNT_MISMATCH", "VERSION_MISMATCH",
+    "INVALID_PROVENANCE", "OUTPUT_HASH_MISMATCH", "SNAPSHOT_HASH_MISMATCH", "REPORT_HASH_MISMATCH",
+    "PROVENANCE_INCOMPLETE",
+})
+# The only report check that governance issues may turn false.
+GOVERNANCE_CHECKS = frozenset({"deterministic"})
 
 
 def _liveness_evidence(data: dict[str, Any]) -> tuple[str, str] | None:
@@ -75,16 +84,31 @@ def _liveness_evidence(data: dict[str, Any]) -> tuple[str, str] | None:
     return None
 
 
+def _governance_only(quality: dict[str, Any]) -> bool:
+    """True when a failing report lists only artifact-governance issues.
+
+    Needs the issue list and every non-governance check to be true. A report
+    without issues or checks counts as a data failure.
+    """
+    issues = quality.get("issues")
+    checks = quality.get("checks")
+    if not isinstance(issues, list) or not issues or not isinstance(checks, dict) or not checks:
+        return False
+    if not all(isinstance(item, dict) and item.get("code") in GOVERNANCE_ISSUE_CODES for item in issues):
+        return False
+    return all(value is True for key, value in checks.items() if key not in GOVERNANCE_CHECKS)
+
+
 def _quality_evidence(data: dict[str, Any]) -> tuple[str, str]:
     """Return (status, source) for the data-quality part of the analysis gate.
 
     The research quality report (data/research/quality/latest.json) is written
-    hourly by the validator. A FAIL there blocks the gate, unless the report's
-    own candle-data checks all pass and only artifact governance failed
-    (provenance, determinism, output hashes): that is not a problem of the
-    market data the setup path reads, so the measured 24h candle coverage
-    (Rolling Liveness) decides and the governance FAIL stays visible.
-    Without a report, Rolling Liveness decides alone.
+    hourly by the validator. A FAIL there blocks the gate, unless the report
+    lists only artifact-governance issues (provenance, documentation, hashes)
+    and all its data checks pass: then the measured 24h candle coverage
+    (Rolling Liveness) decides and the governance FAIL stays visible. Without
+    a liveness measurement the FAIL stays. Without a report, Rolling Liveness
+    decides alone.
     """
     quality = data.get("research_quality") or {}
     status = quality.get("validation_status") or quality.get("status")
@@ -93,12 +117,8 @@ def _quality_evidence(data: dict[str, Any]) -> tuple[str, str]:
         status = str(status).upper()
         if status in QUALITY_OK:
             return status, "Research-Qualitätsbericht"
-        checks = quality.get("checks") or {}
-        if checks and all(checks.get(key) is True for key in CANDLE_DATA_CHECKS):
-            note = f"Research-Governance {status} (Artefakte, nicht Kerzendaten)"
-            if liveness is not None:
-                return liveness[0], f"{liveness[1]} · {note}"
-            return "PASS", f"Kerzendaten-Prüfungen des Research-Berichts · {note}"
+        if liveness is not None and _governance_only(quality):
+            return liveness[0], f"{liveness[1]} · Research-Governance {status} (Artefakte, nicht Kerzendaten)"
         return status, "Research-Qualitätsbericht"
     if liveness is not None:
         return liveness
@@ -116,7 +136,7 @@ def _pipeline_stages(chart: dict[str, Any] | None) -> dict[str, tuple[str, str, 
     if not analysis.get("market_state"):
         return None
     levels = (chart or {}).get("levels") or {}
-    plans = [s for s in analysis.get("scenarios", []) if s.get("plan_text")]
+    plans = [s for s in (analysis.get("scenarios") or []) if isinstance(s, dict) and s.get("plan_text")]
     decision = (analysis.get("decision") or {}).get("status") or "UNAVAILABLE"
     missing = sorted({str(m) for s in plans for m in (s.get("missing_confirmations") or [])})
     span = ""
