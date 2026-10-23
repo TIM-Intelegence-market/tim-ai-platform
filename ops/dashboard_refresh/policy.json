@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Rules for scripts/dashboard_refresh.py: when ~/TIM-live may follow platform-main and restart the Control Center.",
+  "branch": "platform-main",
+  "repository": "TIM-Intelegence-market/tim-ai-platform",
+  "gh": "/opt/homebrew/bin/gh",
+  "required_check": "test",
+  "min_minutes_between_runtime_restarts": 60,
+  "generated_tracked_files": [
+    "docs/TIM_V1_LIVE_STATUS.md"
+  ],
+  "busy_process_patterns": {
+    "ci_test_job": "Runner.Worker",
+    "db_backup": "tim_db_backup.py|pg_dump"
+  },
+  "studies": [
+    {
+      "id": "V2_SK_CONTROL_REGIME_V1",
+      "active_from_utc": "2026-10-23T13:55:24Z",
+      "ended_marker": "artifacts/v2_completion/sk_end_record.json",
+      "reason": "Detectors and data path must stay unchanged while S-K windows are drawn; a mid-study change makes windows before and after incomparable.",
+      "display_safe_prefixes": [
+        "src/dashboard/",
+        "docs/",
+        "tests/",
+        "tools/mac-worker-dashboard/",
+        "ai-resources/",
+        ".github/",
+        "ops/dashboard_refresh/",
+        "artifacts/v2_completion/sk_"
+      ],
+      "display_safe_files": [
+        "scripts/record_deployment.py",
+        "scripts/dashboard_refresh.py",
+        "src/operational/dashboard_refresh.py"
+      ],
+      "display_safe_suffixes": [
+        ".md"
+      ]
+    }
+  ],
+  "health_checks": [
+    {
+      "name": "control_center",
+      "url": "http://127.0.0.1:8765/api/health",
+      "timeout_seconds": 10
+    },
+    {
+      "name": "control_center_start",
+      "url": "http://127.0.0.1:8765/",
+      "timeout_seconds": 20
+    },
+    {
+      "name": "control_center_chart",
+      "url": "http://127.0.0.1:8765/chart",
+      "timeout_seconds": 20
+    },
+    {
+      "name": "worker_dashboard",
+      "url": "http://127.0.0.1:8767/api/status",
+      "timeout_seconds": 30
+    },
+    {
+      "name": "qwen_chat",
+      "url": "http://127.0.0.1:8770/",
+      "timeout_seconds": 10,
+      "optional": true
+    },
+    {
+      "name": "demo_trading_dashboard",
+      "url": "http://127.0.0.1:8768/",
+      "timeout_seconds": 10,
+      "optional": true
+    }
+  ],
+  "worker_dashboard": {
+    "source_dir": "tools/mac-worker-dashboard",
+    "label": "com.tim.mac-worker-dashboard",
+    "installed_binary": "Library/Application Support/TIM Mac Worker Dashboard/mac-worker-dashboard",
+    "status_url": "http://127.0.0.1:8767/api/status"
+  }
+}
