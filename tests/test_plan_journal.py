@@ -337,8 +337,9 @@ def test_replay_equals_saved_document_and_restart_is_idempotent(tmp_path: Path) 
     assert _view(pj.fold(events)) == _view(json.loads(path.read_text(encoding="utf-8"))) == _view(later)
     assert len(pj.journal_log.read(events_path).events) == len(events)
     close_events = [e for e in events if e["kind"] == "CANDLE_CLOSE_PROCESSED"]
-    assert close_events[0]["payload"]["source_hash"] == pj.journal_log.content_hash(pj.clean_candles(series["15m"], "15m")[-pj.PLAN_VISIBLE:])
-    assert close_events[0]["source_hash"] == close_events[0]["payload"]["source_hash"] != events[0]["source_hash"] or len(events) == 1
+    expected = pj.journal_log.content_hash(pj.clean_candles(series["15m"], "15m")[-pj.PLAN_VISIBLE:])
+    assert len(close_events) == 2 and close_events[-1]["source_hash"] == close_events[-1]["payload"]["source_hash"] == expected
+    assert events[0]["kind"] == "PLAN_RECORDED" and events[0]["source_hash"] != close_events[0]["source_hash"]  # all candles vs. the 80 visible 15m
 
 
 def test_cursor_only_progress_is_written_at_checkpoints_material_changes_at_once(tmp_path: Path) -> None:
