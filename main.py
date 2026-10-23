@@ -42,6 +42,7 @@ log = logging.getLogger("tim")
 # older than FRESH (including its own query time) is always labelled stale.
 HEALTH_SNAPSHOT_INTERVAL_SECONDS = 5.0
 LIVE_EVIDENCE_INTERVAL_SECONDS = 60.0
+PLAN_JOURNAL_INTERVAL_SECONDS = 60  # paper journal of the Setup-Pfad plans
 HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
 
 
@@ -540,6 +541,22 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _plan_journal_loop(self) -> None:
+        # Paper journal only: a failed step is logged and retried, never fatal.
+        from src.dashboard.plan_journal import update as update_plan_journal
+
+        while not self.worker_stop.is_set():
+            try:
+                await asyncio.to_thread(update_plan_journal, self.dashboard_state.plan_journal_path, self.dashboard_state.chart_series())
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - the journal must not stop the runtime
+                log.warning("plan journal update failed: %s", type(error).__name__)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=PLAN_JOURNAL_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
     async def run(self, initialize_schema: bool = False) -> None:
         await self.database.connect()
         with self.dashboard_state.lock:
@@ -556,6 +573,7 @@ class TIMApplication:
         self.dashboard.start()
         worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
         evidence_task = asyncio.create_task(self._live_evidence_loop(), name="tim-live-evidence")
+        journal_task = asyncio.create_task(self._plan_journal_loop(), name="tim-plan-journal")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
@@ -563,6 +581,7 @@ class TIMApplication:
         finally:
             self.worker_stop.set()
             evidence_task.cancel()
+            journal_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's

@@ -58,7 +58,15 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
             chart = build_chart_model(state.chart_series(), "15m", visible=SETUP_CHART_CANDLES)
         except Exception:  # noqa: BLE001 - the setup page falls back to the close-price line
             chart = None
-        return _setup_path_page(data, chart)
+        from src.dashboard.pages.plan_journal import journal_note
+        from src.dashboard.plan_journal import load as load_plan_journal
+
+        return _setup_path_page(data, chart, journal_note(load_plan_journal(state.plan_journal_path)))
+    if page == "Plan Journal":
+        from src.dashboard.pages.plan_journal import _plan_journal_page
+        from src.dashboard.plan_journal import load as load_plan_journal
+
+        return _plan_journal_page(data, load_plan_journal(state.plan_journal_path))
     if page in OPERATIONS_PAGES and page != "Overview":
         return _layout(page, page, render_operations_page(page, data["operations"]), strip=_strip_states(data))
     if page == "Orderflow":
