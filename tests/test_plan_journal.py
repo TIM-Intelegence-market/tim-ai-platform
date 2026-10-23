@@ -26,6 +26,7 @@ def _plan(direction: str = "LONG", entry: float = 100.0, stop: float = 99.0, inv
         "invalidation_level": invalid, "invalidation_side": "<" if direction == "LONG" else ">",
         "scenario_state": "WATCH", "score": 0.5, "missing_confirmations": [], "pipeline_decision": "NO_TRADE",
         "pipeline_decision_reasons": ["NO_SCENARIO_CONFIRMED"], "market_state": "RANGE", "grade": dict(GRADE_A if grade is None else grade),
+        "symbol": "BTCUSDT", "venue": "BINANCE", "market_type": "SPOT", "data_quality": "PASS",
     }
 
 
@@ -127,6 +128,7 @@ def test_plans_from_model_keeps_only_complete_long_and_short_plans() -> None:
     plans = pj.plans_from_model({"analysis": {"decision": {"status": "NO_TRADE", "reasons": ["NO_SCENARIO_CONFIRMED"]}, "scenarios": [good, wrong_side, no_plan, neutral]}})
     assert [p["direction"] for p in plans] == ["LONG"] and plans[0]["invalidation_side"] == "<"
     assert plans[0]["scenario_type"] == "LIQUIDITY_SWEEP_REVERSAL" and plans[0]["grade"] == GRADE_A
+    assert plans[0]["symbol"] is None and plans[0]["data_quality"] is None  # a model without market context stays unknown
     assert plans[0]["pipeline_decision"] == "NO_TRADE" and plans[0]["pipeline_decision_reasons"] == ["NO_SCENARIO_CONFIRMED"]
 
 
@@ -158,6 +160,9 @@ def test_update_runs_tim_pipeline_on_closed_15m_candles_and_saves(tmp_path: Path
         assert entry["setup_grade"] in {"A", "B", "C"} and entry["grade_ruleset_version"] == "grade/1.0.0"
         assert entry["graded_state"] != "CONFIRMED"  # the preview's forced confirmation is not graded
         assert entry["pipeline_decision"] == "NO_TRADE"
+        assert entry["instrument"]["market_type"] == "SPOT" and entry["symbol"] == "BTCUSDT"
+        if entry["direction"] == "SHORT":
+            assert "short_not_executable_on_spot" in entry["journal_decision_reasons"]
 
 
 def test_grade_a_plan_without_evidence_is_no_trade_research_only() -> None:
@@ -183,6 +188,50 @@ def test_gate_stays_closed_even_with_passed_holdout_while_research_only() -> Non
     # Only an explicit PAPER_APPROVED execution status, which nothing sets today, opens the gate.
     assert pj.journal_gate({**plan, "execution_status": "PAPER_APPROVED"}) == ("PAPER_TRADE", [])
     assert pj.journal_gate({**plan, "execution_status": "PAPER_APPROVED", "evidence_status": "NEGATIVE_EVIDENCE"})[1] == ["evidence_negative_evidence"]
+
+
+def test_short_on_spot_unknown_instrument_and_bad_data_close_the_gate() -> None:
+    open_plan = {**_plan(grade={**GRADE_A, "graded_state": "CONFIRMED"}), "pipeline_decision": "TRADE_PLAN",
+                 "evidence_status": "PASSED_HOLDOUT", "evidence_ref": {"variant_ids": ["X"]}, "execution_status": "PAPER_APPROVED"}
+    assert pj.journal_gate(open_plan) == ("PAPER_TRADE", [])
+    short = {**open_plan, "direction": "SHORT"}
+    assert pj.journal_gate(short)[1] == ["short_not_executable_on_spot"]
+    assert pj.journal_gate({**open_plan, "market_type": "FUTURES"})[1] == ["instrument_unknown"]
+    assert pj.journal_gate({**open_plan, "data_quality": "PARTIAL"})[1] == ["data_quality_partial"]
+    assert pj.journal_gate({**open_plan, "data_quality": None})[1] == ["data_quality_unknown"]
+    entry = _journal_with(_plan("SHORT", entry=100.0, stop=101.0, invalid=100.5))["entries"][0]
+    assert "short_not_executable_on_spot" in entry["journal_decision_reasons"]
+    assert entry["instrument"] == {"symbol": "BTCUSDT", "venue": "BINANCE", "market_type": "SPOT", "spec_version": "instrument/1",
+                                   "tick_size": 0.01, "lot_step": 0.00001, "short_executable": False}
+
+
+def test_fill_price_is_rounded_to_the_tick_against_the_plan() -> None:
+    journal = _journal_with(_plan(entry=100.004, stop=99.0, invalid=98.5))
+    pj.evaluate(journal, [_m(0, 99.9, 100.2), _m(1, 98.9, 100.1)], [], T0 + timedelta(minutes=3))
+    entry = journal["entries"][0]
+    assert entry["fill_price"] == 100.01  # a buy limit cannot fill below the next tick
+    journal = _journal_with(_plan("SHORT", entry=100.004, stop=101.0, invalid=101.5))
+    pj.evaluate(journal, [_m(0, 99.8, 100.1), _m(1, 99.9, 101.1)], [], T0 + timedelta(minutes=3))
+    assert journal["entries"][0]["fill_price"] == 100.0
+    assert pj.tick_fill({"entry": 100.004, "direction": "LONG", "instrument": None}) == 100.004
+
+
+def test_stale_market_data_records_no_new_plans(tmp_path: Path) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    series = _series(start)
+    path = tmp_path / "journal.json"
+    late = start + timedelta(minutes=15 * 90) + pj.STALE_AFTER + timedelta(minutes=1)
+    journal = pj.update(path, series, late)
+    assert journal["entries"] == [] and journal["last_plan_candle"] is None
+    assert len(journal["skipped"]) == 1 and journal["skipped"][0]["reason"] == "stale_data"
+    assert len(pj.update(path, series, late + timedelta(minutes=1))["skipped"]) == 1  # noted once
+    # Fresh data for a later close records again.
+    opened = start + timedelta(minutes=15 * 90)
+    series["15m"].append({"timeframe": "15m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=14, seconds=59.999)).isoformat(),
+                          "open": series["15m"][-1]["close"], "high": series["15m"][-1]["close"] + 300, "low": series["15m"][-1]["close"] - 300,
+                          "close": series["15m"][-1]["close"] + 200, "volume": 10.0})
+    fresh = pj.update(path, series, opened + timedelta(minutes=16))
+    assert fresh["last_plan_candle"] is not None
 
 
 def test_decision_fields_never_change_after_the_outcome() -> None:

@@ -327,6 +327,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
         })
     return {
         "analysis_id": analysis.analysis_id,
+        "market": {"symbol": context.symbol, "venue": context.venue, "market_type": context.market_type},
         "market_state": analysis.market_state.primary.value,
         "auction_state": analysis.auction_state.primary.value,
         "data_quality": {"status": analysis.data_quality.status, "confidence": _flt(analysis.data_quality.confidence), "missing": list(analysis.data_quality.missing_fields), "problems": list(analysis.data_quality.problems)},

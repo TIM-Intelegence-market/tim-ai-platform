@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -77,12 +78,20 @@ SLIPPAGE_PER_SIDE = 0.0003
 STOP_SLIPPAGE = 0.0005
 STOP_EXITS = {"STOP", "BREAK_EVEN"}  # executed as stop orders; everything else is a market exit
 PAPER_APPROVED = "PAPER_APPROVED"  # no code path sets this yet; a human approval step would
+# What the paper journal may assume about an instrument (docs/ACCEPTANCE.md section 2).
+# A short on a spot market needs borrowed coins; the journal does not model margin, so it is not executable.
+INSTRUMENT_SPEC_VERSION = "instrument/1"
+INSTRUMENT_SPECS = {
+    ("BINANCE", "SPOT", "BTCUSDT"): {"tick_size": 0.01, "lot_step": 0.00001, "short_executable": False},
+}
+STALE_AFTER = timedelta(minutes=30)  # two 15m intervals without a new close: no new plans
+CANDLE_CLOSE_SKIPPED = "CANDLE_CLOSE_SKIPPED"
 GRADE_NOTE = "Heuristischer Grade, kein empirischer Edge-Nachweis"
 # Fields fixed at recording time. evaluate() must never touch them.
 DECISION_FIELDS = (
     "setup_grade", "grade_reasons", "grade_ruleset_version", "graded_state",
     "evidence_status", "evidence_ref", "execution_status",
-    "pipeline_decision", "pipeline_decision_reasons", "journal_decision", "journal_decision_reasons",
+    "pipeline_decision", "pipeline_decision_reasons", "journal_decision", "journal_decision_reasons", "instrument",
 )
 # Fields that move with every candle. Changes to these alone are written at the
 # next 15m close (checkpoint), not every minute; anything else is written at once.
@@ -179,8 +188,33 @@ def plans_from_model(model: Mapping[str, Any]) -> list[dict[str, Any]]:
             "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
             "market_state": analysis.get("market_state"),
             "grade": dict(scenario.get("grade") or {}) or None,
+            **{k: (analysis.get("market") or {}).get(k) for k in ("symbol", "venue", "market_type")},
+            "data_quality": (analysis.get("data_quality") or {}).get("status"),
         })
     return result
+
+
+def instrument_for(plan: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The instrument spec of a plan, or None when the journal knows nothing about it."""
+    spec = INSTRUMENT_SPECS.get((str(plan.get("venue")), str(plan.get("market_type")), str(plan.get("symbol"))))
+    if spec is None:
+        return None
+    return {"symbol": plan.get("symbol"), "venue": plan.get("venue"), "market_type": plan.get("market_type"), "spec_version": INSTRUMENT_SPEC_VERSION, **spec}
+
+
+def executability(plan: Mapping[str, Any]) -> list[str]:
+    """Reasons why a plan could not be executed even on paper: unknown instrument,
+    short on spot, data quality below PASS."""
+    reasons: list[str] = []
+    spec = instrument_for(plan)
+    if spec is None:
+        reasons.append("instrument_unknown")
+    elif plan.get("direction") == "SHORT" and not spec["short_executable"]:
+        reasons.append("short_not_executable_on_spot")
+    quality = plan.get("data_quality")
+    if quality != "PASS":
+        reasons.append(f"data_quality_{str(quality or 'unknown').lower()}")
+    return reasons
 
 
 def journal_gate(plan: Mapping[str, Any]) -> tuple[str, list[str]]:
@@ -205,6 +239,7 @@ def journal_gate(plan: Mapping[str, Any]) -> tuple[str, list[str]]:
     graded_state = (plan.get("grade") or {}).get("graded_state")
     if graded_state != "CONFIRMED":
         reasons.append("scenario_not_confirmed")
+    reasons.extend(executability(plan))
     return (NO_TRADE if reasons else PAPER_TRADE), reasons
 
 
@@ -228,6 +263,7 @@ def decision_fields(plan: Mapping[str, Any]) -> dict[str, Any]:
         "pipeline_decision_reasons": list(plan.get("pipeline_decision_reasons") or []),
         "journal_decision": decision,
         "journal_decision_reasons": reasons,
+        "instrument": instrument_for(plan),
     }
 
 
@@ -272,6 +308,17 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
         entries.append(entry)
         added.append(entry)
     return added
+
+
+def tick_fill(entry: Mapping[str, Any]) -> float:
+    """The limit entry rounded to the instrument's tick, against the plan (buy up, sell down)."""
+    tick = ((entry.get("instrument") or {}).get("tick_size")) or 0.0
+    price = float(entry["entry"])
+    if tick <= 0:
+        return price
+    steps = price / tick
+    rounded = (math.ceil(steps - 1e-9) if entry["direction"] == "LONG" else math.floor(steps + 1e-9)) * tick
+    return round(rounded, 8)
 
 
 def _blocked(moment: datetime, windows: Sequence[Mapping[str, Any]]) -> bool:
@@ -369,7 +416,7 @@ def evaluate(journal: dict[str, Any], minute_candles: Sequence[Mapping[str, Any]
                     break
                 touched = candle["low"] <= entry["entry"] if long else candle["high"] >= entry["entry"]
                 if touched and not _blocked(candle["open_time"], windows):
-                    entry.update(status=FILLED, filled_at=_iso(candle["open_time"]), fill_price=entry["entry"])
+                    entry.update(status=FILLED, filled_at=_iso(candle["open_time"]), fill_price=tick_fill(entry))
                     # Fill candle: only the stop can trigger (order inside the candle is unknown).
                     stop_hit = candle["low"] <= entry["stop"] if long else candle["high"] >= entry["stop"]
                     if stop_hit:
@@ -455,6 +502,8 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             journal["last_plan_candle_source_hash"] = payload["source_hash"]
         elif kind == CANDLE_REVISION_OBSERVED:
             journal.setdefault("revisions", []).append(deepcopy(payload))
+        elif kind == CANDLE_CLOSE_SKIPPED:
+            journal.setdefault("skipped", []).append(deepcopy(payload))
         else:
             raise journal_log.LogError(f"unknown event kind {kind}")
         journal["updated_at"] = event.get("recorded_at")
@@ -527,7 +576,13 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     if closed_15m:
         latest = _minute_ceil(closed_15m[-1]["close_time"])
         close_hash = journal_log.content_hash(plan_candles[-PLAN_VISIBLE:])
-        if journal.get("last_plan_candle") != _iso(latest):
+        age = now - latest
+        if journal.get("last_plan_candle") != _iso(latest) and age > STALE_AFTER:
+            # Stale market data: no new plans (section 2). Noted once per close; the next close records again.
+            new_events.append({"event_id": journal_log.event_id(CANDLE_CLOSE_SKIPPED, _iso(latest), "stale"), "kind": CANDLE_CLOSE_SKIPPED,
+                               "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
+                               "payload": {"close_time": _iso(latest), "reason": "stale_data", "age_seconds": int(age.total_seconds())}})
+        elif journal.get("last_plan_candle") != _iso(latest):
             model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
             record_plans(journal, with_evidence(plans_from_model(model), PLAN_TIMEFRAME, register_path), latest)
             journal["last_plan_candle"] = _iso(latest)

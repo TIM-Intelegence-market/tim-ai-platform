@@ -84,8 +84,19 @@ treffen enge Stops härter. `net_r = gross_r − fee_r − slippage_r`. Funding 
 keine Perpetual-Position). Nicht gefüllte Pläne tragen keine Kosten. Die Konfigurationswerte des
 Orderflow-Moduls (6/2/2 bp) werden bewusst nicht verwendet, damit Netto-R mit dem Register vergleichbar bleibt.
 
+## Ausführbarkeit (Abnahme §2, Teil 1)
+
+`INSTRUMENT_SPECS` (`instrument/1`) kennt BINANCE/SPOT/BTCUSDT mit Tick 0,01 und Losschritt 0,00001;
+`short_executable=false`, weil das Journal keine Leihe oder Margin modelliert. `executability()` liefert
+Gate-Gründe `instrument_unknown`, `short_not_executable_on_spot`, `data_quality_<status>` (alles außer PASS
+sperrt); sie werden Teil von `journal_decision_reasons`, der Eintrag trägt `instrument`. Der Fill-Preis wird
+gegen den Plan auf den Tick gerundet (Kauf-Limit aufwärts, Verkaufs-Limit abwärts). Sind die 15m-Kerzen beim
+Update älter als 30 Minuten (`STALE_AFTER`), werden keine neuen Pläne aufgenommen; das wird einmal je Schluss
+als `CANDLE_CLOSE_SKIPPED` festgehalten.
+
 ## Grenzen
 
-Kein Tick-/Mengenraster, keine Teilfüllungen, kein Funding, kein Simulator mit Kontozustand. Die Fälle
+Keine Teilfüllungen, keine Mengenrundung der Position (nur Preis-Tick), kein Funding, kein Simulator mit
+Kontozustand, Tages-/Positionsrisiko oder Kill-Switch (ohne Ausführungspfad gibt es nichts zu begrenzen). Die Fälle
 überlappen zeitlich (alle 15 Minuten aus 80-Kerzen-Fenstern) und sind keine unabhängigen Studienfälle.
 Nichts hier ist eine Handels- oder Anlageempfehlung.
