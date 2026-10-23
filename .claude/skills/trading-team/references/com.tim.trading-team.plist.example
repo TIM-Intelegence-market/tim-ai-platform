@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  VORLAGE, nicht eingerichtet. Nur nach Uzis Wort verwenden.
+  Erwartet einen eigenen Checkout unter ~/TIM-trading-team (nicht ~/TIM-live, nicht Documents/TIM/tim).
+  Einrichten:  mkdir -p ~/TIM-trading-team/state/trading-team
+               cp ... ~/Library/LaunchAgents/com.tim.trading-team.plist
+               launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tim.trading-team.plist
+  Stoppen:     launchctl bootout gui/$(id -u)/com.tim.trading-team
+  USERNAME unten ersetzen.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tim.trading-team</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/python3</string>
+    <string>.claude/skills/trading-team/scripts/run_team.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/USERNAME/TIM-trading-team</string>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+  <key>Nice</key><integer>10</integer>
+  <key>LowPriorityIO</key><true/>
+  <key>StandardOutPath</key><string>/Users/USERNAME/TIM-trading-team/state/trading-team/run.log</string>
+  <key>StandardErrorPath</key><string>/Users/USERNAME/TIM-trading-team/state/trading-team/run.err.log</string>
+</dict>
+</plist>
