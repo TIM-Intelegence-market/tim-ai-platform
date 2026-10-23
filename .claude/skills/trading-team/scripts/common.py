@@ -26,7 +26,8 @@ STABLE_BASES = {
     "USDC", "FDUSD", "TUSD", "BUSD", "USDP", "DAI", "USDD", "PYUSD", "EUR", "EURI",
     "AEUR", "USDE", "XUSD", "USD1", "BFUSD", "GBP", "TRY", "BRL",
 }
-LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR")
+# Kein "UP": sonst fielen echte Coins wie JUP oder SYRUP heraus (Binance-Hebel-Token sind ohnehin delistet).
+LEVERAGED_SUFFIXES = ("DOWN", "BULL", "BEAR")
 
 
 def default_data_dir() -> Path:

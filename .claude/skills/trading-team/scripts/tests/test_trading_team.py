@@ -36,8 +36,9 @@ def market(extra=None):
             {"symbol": "AAAUSDT", "quoteVolume": "5000"},
             {"symbol": "BBBUSDT", "quoteVolume": "4000"},
             {"symbol": "USDCUSDT", "quoteVolume": "9999"},
-            {"symbol": "ETHUPUSDT", "quoteVolume": "9999"},
+            {"symbol": "ETHDOWNUSDT", "quoteVolume": "9999"},
             {"symbol": "CCCBTC", "quoteVolume": "9999"},
+            {"symbol": "JUPUSDT", "quoteVolume": "1"},
         ],
         "klines": {
             "AAAUSDT:1h": hour_klines(last_open, 170, last_move=4.0, last_qv=3000),  # Treffer
@@ -53,7 +54,7 @@ def market(extra=None):
 # --- Scanner ---
 
 def test_universe_filters_stables_leveraged_and_non_usdt():
-    assert scanner.select_universe(market().tickers_24h(), 10) == ["AAAUSDT", "BBBUSDT"]
+    assert scanner.select_universe(market().tickers_24h(), 10) == ["AAAUSDT", "BBBUSDT", "JUPUSDT"]
 
 
 def test_scanner_flags_only_move_and_volume_and_dedups(tmp_path):

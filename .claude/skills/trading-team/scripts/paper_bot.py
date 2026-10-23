@@ -91,7 +91,9 @@ def position_size(equity: float, cash: float, cfg: Config) -> tuple[float, float
 
 def open_position(state: dict, ledger: str, symbol: str, buzz: float, key: str, mid_price: float,
                   now: datetime, cfg: Config) -> dict | None:
-    notional, risk_amount = position_size(equity_at_cost(state), state["cash"], cfg)
+    equity = equity_at_cost(state)
+    # Schatten-Trades binden kein Guthaben: Obergrenze ist das Konto, nicht das freie Guthaben.
+    notional, risk_amount = position_size(equity, state["cash"] if ledger == "real" else equity, cfg)
     if notional < MIN_NOTIONAL:
         return None
     entry = mid_price * (1 + cfg.slippage_pct / 100.0)
