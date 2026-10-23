@@ -61,10 +61,12 @@ def test_sk_study_lets_only_display_changes_through():
     studies = dr.active_studies(POLICY, NOW, lambda path: False)
     assert [study["id"] for study in studies] == ["V2_SK_CONTROL_REGIME_V1"]
     safe = ["src/dashboard/operations.py", "docs/x.md", "tests/test_x.py", "tools/mac-worker-dashboard/src/main.rs",
-            "src/orderflow/README.md", "artifacts/v2_completion/sk_t0_record.json", "scripts/dashboard_refresh.py"]
+            "src/orderflow/README.md", "artifacts/v2_completion/sk_t0_record.json", "scripts/dashboard_refresh.py",
+            "src/v2_completion/sk_report.py", "src/v2_completion/control_regime_study.py", "scripts/sk_study.py",
+            "ops/launchd/com.tim.dashboard-refresh.plist"]
     assert dr.study_blockers(studies, safe) == {}
     unsafe = ["src/orderflow/observations.py", "main.py", "config/settings.py", "scripts/tim_history_recovery.py",
-              "requirements.txt", "ops/launchd/com.tim.runtime.plist"]
+              "requirements.txt", "ops/launchd/com.tim.runtime.plist", "src/v2_completion/mac_live.py"]
     assert dr.study_blockers(studies, safe + unsafe) == {"V2_SK_CONTROL_REGIME_V1": sorted(unsafe)}
 
 

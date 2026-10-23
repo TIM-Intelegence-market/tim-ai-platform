@@ -27,16 +27,21 @@
         "ai-resources/",
         ".github/",
         "ops/dashboard_refresh/",
-        "artifacts/v2_completion/sk_"
+        "artifacts/v2_completion/sk_",
+        "src/v2_completion/sk_"
       ],
       "display_safe_files": [
         "scripts/record_deployment.py",
         "scripts/dashboard_refresh.py",
-        "src/operational/dashboard_refresh.py"
+        "src/operational/dashboard_refresh.py",
+        "ops/launchd/com.tim.dashboard-refresh.plist",
+        "scripts/sk_study.py",
+        "src/v2_completion/control_regime_study.py"
       ],
       "display_safe_suffixes": [
         ".md"
-      ]
+      ],
+      "display_safe_note": "Study tooling (sk_*, control_regime_study.py, sk_study.py) runs offline on backup copies and is not imported by the runtime."
     }
   ],
   "health_checks": [
