@@ -42,6 +42,11 @@ Originale aus der Bibliothek (Quelle und Grenzen je Skill in `HERKUNFT.md`):
   `edge-strategy-reviewer`, `trade-hypothesis-ideator`.
 - `canary`: Warnzeichen für ein volles Kontextfenster setzen (nur auf Anfrage, Satz nie hier eintragen).
 
+Subagenten (`.claude/agents/`, Herkunft in `.claude/agents/HERKUNFT.md`):
+
+- `Explore` auf Haiku ("Claude Crew"): schnelle, nur lesende Suche. Opus plant (`/model opusplan`
+  mit Plan-Modus), Sonnet baut, Haiku sucht.
+
 Aus `ai-resources/KI-Ressourcen.md` abgeleitet:
 
 - `playbook-erstellen`: wiederkehrende Aufgabe per Interview in ein Skill-Playbook überführen.
