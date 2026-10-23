@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 from src.models.market_data import Candle
 
+from ..positioning import parse_context
 from .base import AdapterInput
 from .generic import _dt, _period_seconds
 
@@ -92,6 +93,13 @@ class MMTScreenshotAdapter:
                 rejected.append(f"candles[{index}]:{exc}")
 
         missing: list[str] = list(rejected)
+        # Values read off a chart (funding, liquidations, OB depth, profile): estimates like every price here.
+        context = parse_context(data)
+        missing.extend(f"context_rejected:{item}" for item in context.rejected)
+        if context.profile is not None:
+            estimated.append("profile_levels")
+        if context.positioning is not None:
+            estimated.append("positioning_values")
         if not candles:
             missing.append("candles")
         if price_now is None:
@@ -123,4 +131,6 @@ class MMTScreenshotAdapter:
             estimated_prices=tuple(sorted(set(estimated))),
             missing_fields=tuple(sorted(set(missing))),
             extra_notes=("screenshot_derived_data_all_prices_estimated", f"visible_indicators={list(indicators)}", "chart_timeframe=" + timeframe),
+            positioning=context.positioning,
+            profile=context.profile,
         )

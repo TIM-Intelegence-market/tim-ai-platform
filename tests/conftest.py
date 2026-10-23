@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncpg
 import pytest
 
@@ -73,3 +75,41 @@ def pytest_unconfigure(config):
 def enforce_database_isolation(monkeypatch: pytest.MonkeyPatch):
     """Reapply around test-local fakes while retaining the session guard."""
     _install_database_isolation(monkeypatch)
+
+
+# Parallel runs (pytest-xdist, used in CI):
+# - Every module that talks to the shared PostgreSQL test database runs on one worker, so two workers
+#   never touch the same tables at the same time (mark xdist_group, needs `--dist loadgroup`).
+# - Modules that scan the real repository or its runtime files get the mark `serial`. They expect no
+#   other process to write there during the scan; CI runs them in a second, non-parallel step.
+# Without xdist both marks change nothing.
+_POSTGRES_GROUP = "postgres-test-db"
+_POSTGRES_HINT = "TIM_DURABLE_TEST_DATABASE_URL"
+_SERIAL_DIRS = ("tim_manager", "graph_mcp")
+_SERIAL_HINTS = ("scan_project", "refresh_runtime_readonly")
+
+
+def _module_text(path, cache: dict) -> str:
+    if path not in cache:
+        try:
+            cache[path] = path.read_text(encoding="utf-8")
+        except OSError:
+            cache[path] = ""
+    return cache[path]
+
+
+# tryfirst: xdist reads the group mark in its own collection hook, so the mark must already be set.
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(config, items):
+    tests_root = Path(__file__).resolve().parent
+    cache: dict = {}
+    for item in items:
+        text = _module_text(item.path, cache)
+        if _POSTGRES_HINT in text:
+            item.add_marker(pytest.mark.xdist_group(_POSTGRES_GROUP))
+        try:
+            parts = item.path.resolve().relative_to(tests_root).parts
+        except ValueError:
+            parts = ()
+        if (parts and parts[0] in _SERIAL_DIRS) or any(hint in text for hint in _SERIAL_HINTS):
+            item.add_marker(pytest.mark.serial)

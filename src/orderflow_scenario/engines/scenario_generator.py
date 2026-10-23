@@ -37,6 +37,12 @@ class LevelSet:
     midpoint: Decimal | None = None
     point_of_control: Decimal | None = None
     last_price: Decimal | None = None
+    # TPO references (positioning.ProfileLevels): initial balance, unfinished auctions, naked POCs.
+    initial_balance_high: Decimal | None = None
+    initial_balance_low: Decimal | None = None
+    poor_high: Decimal | None = None
+    poor_low: Decimal | None = None
+    naked_pocs: tuple[Decimal, ...] = ()
     # Broncx guidance (see external_context.active_view): his LEVEL prices and current direction.
     external_levels: tuple[Decimal, ...] = ()
     external_bias: str | None = None
@@ -47,6 +53,8 @@ class LevelSet:
                 raise ValueError(f"{name} must be positive")
         if any(value <= 0 for value in self.external_levels):
             raise ValueError("external_levels must be positive")
+        if any(value <= 0 for value in self.naked_pocs):
+            raise ValueError("naked_pocs must be positive")
         if self.external_bias not in {None, "LONG", "SHORT"}:
             raise ValueError("external_bias must be LONG, SHORT or None")
 
@@ -65,6 +73,10 @@ class LevelSet:
             "midpoint",
             "point_of_control",
             "last_price",
+            "initial_balance_high",
+            "initial_balance_low",
+            "poor_high",
+            "poor_low",
         ):
             yield name, getattr(self, name)
 

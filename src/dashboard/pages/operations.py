@@ -164,6 +164,21 @@ def _health_center_sections(data: dict[str, Any]) -> str:
         f"<dd>{_safe(cutover.get('deferred_outbox_count'))}</dd><dt>Policy</dt><dd>{_safe(cutover.get('historical_policy'))}</dd>"
         f"<dt>Receipt hash</dt><dd class='mono'>{_safe(cutover.get('manifest_hash'))}</dd></div></div></section>"
     )
+    # The V1 baseline (72h validator, readiness, quality and audit reports) only
+    # exists where the V1 acceptance ran. Without any of those files every card
+    # would read MISSING:… or None %, which looks like a fault but is not one.
+    v1_archive_present = bool(
+        readiness.get("generated_at") or quality or audit
+        or str(validator.get("status", "UNAVAILABLE")).upper() != "UNAVAILABLE"
+    )
+    v1_archive_note = (
+        "<section class='panel'><div class='panel__head'><div><h2>2 · Historische wissenschaftliche Basis</h2>"
+        "<p class='muted'>Auf diesem Rechner liegt kein V1-Archiv (72h-Validator, tim_v1_readiness.json, "
+        "Research-Quality- und Audit-Bericht). Das ist kein Fehler: diese Berichte entstanden bei der V1-Abnahme "
+        "und werden hier nicht neu geschrieben.</p></div><span class='badge badge--snapshot'>NICHT VORHANDEN</span></div>"
+        "<p>Aktuelle wissenschaftliche Belege stehen unter <a href='/qualification'>Qualifikation</a>, "
+        "<a href='/independent-cases'>Unabhängige Fälle</a> und <a href='/v2-readiness'>V2-Bereitschaft</a>.</p></section>"
+    )
     timelines = _timeline_rows(data.get("timeline", []))
     exceptions_rows, exceptions = _quality_exception_rows(data, archived=True)
     def section(title: str, text: str, cards: list[str], *, badge: str, timestamp: Any) -> str:
@@ -184,8 +199,9 @@ def _health_center_sections(data: dict[str, Any]) -> str:
         "sind eingefrorene wissenschaftliche Befunde und bedeuten nicht automatisch einen aktuellen Systemausfall.</div>"
         + cutover_panel
         + section("1 · Live Operational Health", "Aktueller Betrieb von Persistenz, Stream, Dashboard und Runtime.", operational, badge="green", timestamp=data.get("timestamp"))
-        + section("2 · Historical Scientific Baseline", "Archivierte Evidenz, kein Live-Health-Status. FAIL- und WAITING-Werte bleiben unverändert dokumentiert.", scientific, badge="snapshot", timestamp=quality.get("generated_at") or readiness.get("generated_at"))
-        + section("3 · V2 Governance & Readiness", "Archivierte Governance-Evidenz, kein aktueller Systemfehler. Freigaben bleiben ausschließlich manuell.", governance, badge="snapshot", timestamp=readiness.get("generated_at"))
+        + (section("2 · Historical Scientific Baseline", "Archivierte Evidenz, kein Live-Health-Status. FAIL- und WAITING-Werte bleiben unverändert dokumentiert.", scientific, badge="snapshot", timestamp=quality.get("generated_at") or readiness.get("generated_at"))
+           if v1_archive_present else v1_archive_note)
+        + section("3 · V2 Governance & Readiness", "Archivierte Governance-Evidenz, kein aktueller Systemfehler. Freigaben bleiben ausschließlich manuell.", governance, badge="snapshot", timestamp=readiness.get("generated_at") or (None if v1_archive_present else "kein V1-Archiv auf diesem Rechner"))
         + "<section class='panel'><div class='panel__head'><h2>Health Timeline</h2><span class='badge badge--snapshot'>DIAGNOSTIC TIMELINE</span></div><div class='table-wrap'><table><thead><tr><th>event_id</th><th>event_type</th><th>timestamp_utc</th><th>component_id</th><th>previous_status</th><th>new_status</th><th>reason_code</th><th>evidence_reference</th><th>provenance</th><th>source_hash</th></tr></thead><tbody>" + timelines + "</tbody></table></div></section>"
         + "<section class='panel'><div class='panel__head'><h2>Data Quality Evidence Register</h2><span class='badge badge--snapshot'>ARCHIVIERTE BEFUNDE</span></div><div class='table-wrap'><table><thead><tr><th>Component</th><th>Status</th><th>Reason Code</th><th>Reason Text</th><th>Time Window</th><th>Provenance</th><th>Linked Report</th><th>Linked Blocker</th></tr></thead><tbody>" + exceptions_rows + "</tbody></table></div><p class='count-scope'>Historische Ausnahmen bleiben unverändert sichtbar und werden nicht als aktueller Runtime-Fehler gewertet.</p></section>"
     )

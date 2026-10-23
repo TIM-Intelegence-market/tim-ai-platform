@@ -203,6 +203,14 @@ def _evidence_age(value: Any) -> str:
     return f"{label} · veraltet" if days > 7 else label
 
 
+def _log_growth_text(value: Any) -> Any:
+    """Readable form of the watchdog's largest-log finding instead of a raw dict."""
+    if isinstance(value, dict) and isinstance(value.get("largest_bytes"), (int, float)):
+        name = Path(str(value.get("path") or "")).name or "unbekannte Datei"
+        return f"größte Logdatei {value['largest_bytes'] / 1_048_576:.1f} MB · {name}"
+    return value
+
+
 def _metric(value: Any, source: str, *, status: Any = None, unit: str | None = None) -> dict[str, Any]:
     present = value not in (None, "")
     return {
@@ -211,6 +219,44 @@ def _metric(value: Any, source: str, *, status: Any = None, unit: str | None = N
         "unit": unit,
         "source": source,
     }
+
+
+LIVE_TELEMETRY_FIELDS = (
+    # runtime key, system_health key, unit, rounding
+    ("restarts", "restart_total", None, 0),
+    ("queue_age", "queue_oldest_age", "s", 1),
+    ("cursor_age", "cursor_age", "s", 1),
+    ("receive_rate", "receive_rate_per_second", "events/s", 2),
+    ("persist_rate", "persist_rate_per_second", "events/s", 2),
+    ("drop_count", "rejected_total", None, 0),
+    ("duplicate_count", "duplicate_total", None, 0),
+    ("late_count", "late_total", None, 0),
+    ("source_to_store_latency", "source_to_store_latency", "s (last)", 3),
+    ("event_loop_lag", "event_loop_lag", "s", 3),
+)
+
+
+def _apply_live_telemetry(runtime: dict[str, Any], live_system: dict[str, Any]) -> None:
+    """Fill runtime metrics from the running process's own ingestion telemetry.
+
+    The runtime samples ingestion_metrics every few seconds and publishes it in
+    system_health. A sample older than the freshness window is not live and
+    leaves the persisted value (or UNAVAILABLE) in place. Counters are lifetime
+    totals since the metrics table was created, and are labelled as such.
+    """
+    age = _seconds_since(live_system.get("health_snapshot_observed_at"))
+    if age is None or age > LIVE_FRESH_SECONDS:
+        return
+    source = f"/api/state system_health (ingestion_metrics, sampled {int(age)}s ago)"
+    for key, field, unit, digits in LIVE_TELEMETRY_FIELDS:
+        value = live_system.get(field)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        shown: Any = int(value) if digits == 0 else round(float(value), digits)
+        if key in ("drop_count", "duplicate_count", "late_count", "restarts"):
+            unit = "total"
+        current = runtime.get(key) or {}
+        runtime[key] = _metric(shown, source, status=current.get("status") if current.get("value") not in (None, UNAVAILABLE) else None, unit=unit)
 
 
 def _latest_daily_manifest(root: Path) -> tuple[dict[str, Any], str]:
@@ -226,6 +272,173 @@ def _latest_daily_manifest(root: Path) -> tuple[dict[str, Any], str]:
         return {}, directory.as_posix()
     path = candidates[-1]
     return _read_json(path), path.as_posix()
+
+
+def _running_campaign(root: Path) -> dict[str, Any]:
+    """Read the prospective campaign that scripts/v2_qualification_daily.py maintains.
+
+    The campaign lives in data/qualification (state file plus one immutable
+    manifest per settled UTC day). The older artifacts/v2_completion files only
+    describe the pre-registration, so without this the pages kept showing
+    "NOT STARTED" and 0 cases while the campaign was running.
+    """
+    path = root / "qualification_campaign.json"
+    campaign = _read_json(path)
+    if not campaign.get("campaign_status"):
+        return {}
+    manifests: list[tuple[str, dict[str, Any]]] = []
+    try:
+        files = sorted(item for item in (root / "daily").iterdir() if item.is_file() and item.suffix == ".json")
+    except OSError:
+        files = []
+    for item in files[-400:]:
+        value = _read_json(item)
+        if isinstance(value.get("metrics"), dict):
+            manifests.append((item.as_posix(), value))
+    latest_path, latest = manifests[-1] if manifests else ((root / "daily").as_posix(), {})
+    metrics = latest.get("metrics") or {}
+
+    def total(key: str) -> int | None:
+        values = [entry["metrics"].get(key) for _, entry in manifests]
+        if not values or not all(type(value) is int for value in values):
+            return None
+        return sum(values)
+
+    # An abort is written as its own marker; the campaign state file itself is
+    # frozen and keeps saying ACTIVE. The marker wins.
+    abort_path = root / "campaign_aborted.json"
+    aborted = _read_json(abort_path)
+    is_aborted = str(aborted.get("status", "")).upper() == "ABORTED"
+    return {
+        "status": "ABORTED" if is_aborted else str(campaign.get("campaign_status")),
+        "aborted_at": aborted.get("aborted_at_utc") if is_aborted else None,
+        "abort_note": aborted.get("note") if is_aborted else None,
+        "abort_source": abort_path.as_posix() if is_aborted else None,
+        "dataset_id": campaign.get("dataset_id"),
+        "started_at": campaign.get("start_utc") or campaign.get("activated_at_utc"),
+        "minimum_days": _first(campaign, "duration.pre_registered_minimum_days"),
+        "case_target": campaign.get("case_target") or metrics.get("independent_case_target"),
+        "coverage_target": campaign.get("coverage_target"),
+        "manifests_written": len(manifests),
+        "latest_manifest": latest_path,
+        "latest_day": latest.get("day") or latest.get("utc_date") or (Path(latest_path).stem if manifests else None),
+        "independent_cases": metrics.get("independent_case_count"),
+        "cumulative_coverage": metrics.get("cumulative_coverage"),
+        "observed_minutes": total("observed_minutes"),
+        "expected_minutes": total("expected_minutes"),
+        "source": path.as_posix(),
+    }
+
+
+def _ci_test_of_deployment(deployment: dict[str, Any], recorded_last_test: Any) -> dict[str, Any] | None:
+    """The full-suite CI run of the commit that is deployed, if it is newer.
+
+    data/operational/deployment.json is written by scripts/record_deployment.py
+    when ~/TIM-live is moved to a new commit. The CI job runs the whole suite on
+    exactly that commit, so it is the current test evidence; the old summary
+    file stays the fallback.
+    """
+    test = deployment.get("ci_test") if isinstance(deployment, dict) else None
+    if not isinstance(test, dict) or not test.get("completed_at_utc"):
+        return None
+    newer = _seconds_since(test["completed_at_utc"])
+    older = _seconds_since(recorded_last_test)
+    if newer is None or (older is not None and older < newer):
+        return None
+    conclusion = str(test.get("conclusion", "")).lower()
+    return {
+        "status": "PASS" if conclusion == "success" else "FAIL" if conclusion else UNAVAILABLE,
+        "completed_at": test["completed_at_utc"],
+        "passed": test.get("passed", UNAVAILABLE),
+        "failed": test.get("failed", UNAVAILABLE),
+        "skipped": test.get("skipped", UNAVAILABLE),
+        "source": f"data/operational/deployment.json · CI {test.get('url') or ''} · commit {str(deployment.get('commit') or '')[:7]}",
+    }
+
+
+def _recheck_gates(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Put today's measured state next to each archived gate that has live evidence.
+
+    The archived verdict stays as recorded; ``current_status`` and
+    ``current_note`` say what the same question looks like today, with the
+    source. Gates without a current machine measurement are left alone.
+    """
+    security = snapshot["security"]
+    runtime = snapshot["runtime"]
+    current = snapshot["current_status"]
+    audit = snapshot["audit"]
+    cases = snapshot["independent_cases"]
+    datasets = snapshot["datasets"]
+    rolling = datasets[-1] if datasets else {}
+    qualification = snapshot["qualification"]
+    checks: dict[str, tuple[Any, str]] = {}
+
+    listener = security.get("listener_after") or {}
+    if "runtime: SHOW listen_addresses" in str(listener.get("source")):
+        checks["TECH-SECURITY"] = (
+            security["status"],
+            f"PostgreSQL lauscht nur auf {listener.get('value')} (live geprüft {str(security.get('last_test') or '')[:16]}); Zugangsdaten-Rotation hat keinen aktuellen Nachweis.",
+        )
+    watchdog_state = current.get("watchdog", {}).get("status")
+    cursor_live = "system_health" in str(runtime["cursor_age"].get("source")) or runtime["cursor_age"].get("value") != UNAVAILABLE
+    queue_live = str(runtime["queue_depth"].get("source", "")).startswith("/api/state")
+    if watchdog_state and cursor_live and queue_live:
+        checks["TECH-RUNTIME"] = (
+            watchdog_state,
+            f"Watchdog {watchdog_state}, Cursor-Alter {_metric_value(runtime['cursor_age'])}, Queue {_metric_value(runtime['queue_depth'])}, Log-Rotation {runtime['logs'].get('status')}.",
+        )
+    if audit.get("deployed_commit") not in (None, UNAVAILABLE) and audit.get("test_source", "").startswith("data/operational/deployment.json"):
+        checks["TECH-FULL-SUITE"] = (
+            audit["test_status"],
+            f"CI-Volllauf für laufenden Commit {str(audit['deployed_commit'])[:7]}: {audit['passed']} bestanden, {audit['failed']} fehlgeschlagen ({str(audit['last_test'])[:16]}).",
+        )
+    if rolling.get("coverage") not in (None, UNAVAILABLE):
+        checks["V2-B01"] = (
+            rolling.get("status"),
+            f"Abdeckung der letzten 24 h: {rolling.get('coverage')} ({rolling.get('observed')}/{rolling.get('expected')} Minuten).",
+        )
+    if str(qualification.get("status", "")).upper() == "ABORTED":
+        checks["V2-B04"] = (
+            cases["status"],
+            f"Prospektive Kampagne abgebrochen; {cases['qualification']} von {cases['required']} unabhängigen Fällen bis zum Abbruch, zählen nicht.",
+        )
+    gates = []
+    for gate in snapshot["readiness"]["gates"]:
+        found = checks.get(str(gate.get("id")))
+        if found:
+            gate = {**gate, "current_status": _normalized_status(found[0]), "current_note": found[1]}
+        gates.append(gate)
+    return gates
+
+
+READINESS_STALE_DAYS = 14
+
+
+def _current_readiness(recorded: str, gates: list[dict[str, Any]], source: dict[str, Any], running: dict[str, Any]) -> dict[str, Any]:
+    """V2 readiness as it stands now.
+
+    The gate matrix comes from a completion audit that is only rewritten by
+    hand. Once it is older than READINESS_STALE_DAYS it is shown as history,
+    and the current verdict comes from the prospective campaign: an aborted
+    campaign means V2 is not qualified, whatever the old matrix said.
+    """
+    result = {"status": recorded, "gates": gates, "source": source["path"], "recorded_status": None, "recorded_at": source.get("captured_at")}
+    age = _seconds_since(source.get("captured_at"))
+    stale = age is not None and age > READINESS_STALE_DAYS * 86400
+    state = str(running.get("status", "")).upper() if running else ""
+    if state == "ABORTED":
+        result.update({
+            "status": "NOT QUALIFIED — CAMPAIGN ABORTED",
+            "source": running["abort_source"],
+            "recorded_status": f"HISTORICAL — {recorded}",
+            "current_reason": running.get("abort_note") or "",
+        })
+    elif stale and recorded not in (UNAVAILABLE, "", None):
+        result.update({
+            "status": f"STALE — {recorded}",
+            "recorded_status": f"HISTORICAL — {recorded}",
+        })
+    return result
 
 
 def _load_gaps(completion_root: Path, legacy_root: Path) -> tuple[list[dict[str, Any]], str, str]:
@@ -258,6 +471,7 @@ def build_operations_snapshot(
     legacy_root: Path = Path("artifacts/v2_readiness"),
     live_watchdog_path: Path = Path("data/operational/watchdog_status.json"),
     rolling_liveness_path: Path = Path("data/operational/rolling_liveness.json"),
+    qualification_root: Path = Path("data/qualification"),
 ) -> dict[str, Any]:
     """Build a bounded, read-only control-center contract from persisted evidence.
 
@@ -342,6 +556,7 @@ def build_operations_snapshot(
     protected = evidence["final_protected_state.json"]
     mcp = evidence["mcp_support_status.json"]
     daily, daily_source = _latest_daily_manifest(completion_root)
+    running = _running_campaign(qualification_root)
 
     runtime_baseline = legacy["runtime_observability_snapshot.json"]
     legacy_coverage = legacy["coverage_final.json"]
@@ -473,12 +688,14 @@ def build_operations_snapshot(
         "source_to_store_latency": _metric(_first(queue, "source_to_store_latency_seconds.p95", "latency.source_to_store_p95_seconds", "source_to_store_p95_seconds"), sources["queue_metrics.json"]["path"], unit="s p95"),
         "event_loop_lag": _metric(_first(queue, "event_loop_lag_seconds", "latency.event_loop_lag_seconds"), sources["queue_metrics.json"]["path"], unit="s"),
         "disk": _metric(_first(watchdog, "disk", "disk_status", "metrics.disk", "checks.disk_space.value"), watchdog_source, status=_first(watchdog, "disk.status", "disk_status", "checks.disk_space.status")),
-        "logs": _metric(_first(watchdog, "log_rotation_status", "logs.status", "log_retention.status", "checks.log_growth.value"), watchdog_source, status=_first(watchdog, "log_rotation_status", "logs.status", "checks.log_growth.status")),
+        "logs": _metric(_log_growth_text(_first(watchdog, "log_rotation_status", "logs.status", "log_retention.status", "checks.log_growth.value")), watchdog_source, status=_first(watchdog, "log_rotation_status", "logs.status", "checks.log_growth.status")),
         "watchdog": _metric(_first(watchdog, "status", "watchdog_status", "health.status"), watchdog_source, status=_first(watchdog, "status", "watchdog_status")),
         "collector_freshness": _metric(live.get("data_age_seconds"), "/api/state operational_health.data_age_seconds", status=live.get("stream"), unit="s"),
         "cursor": cursor,
         "queue": queue,
     }
+
+    _apply_live_telemetry(runtime, live_system)
 
     gaps_raw, gaps_source, gaps_scope = _load_gaps(completion_root, legacy_root)
     if current_snapshot["available"]:
@@ -550,10 +767,17 @@ def build_operations_snapshot(
     history_path = operational_root / "history_recovery.json"
     history_report = _read_json(history_path)
     history_status = current_report(history_report, str(history_path), now=datetime.now(timezone.utc))
+    maintenance_report = _read_json(maintenance_path)
+    maintenance_source = str(maintenance_path)
+    if not maintenance_report and history_report:
+        # The Mac runs no tim_maintenance.py timer; com.tim.history-recovery does
+        # the gap maintenance there (every 30 s), so its report is the evidence.
+        maintenance_report = history_report
+        maintenance_source = str(history_path)
     current_status = build_current_status(
-        _read_json(server_health_path), rolling_live, _read_json(maintenance_path), live_watchdog,
+        _read_json(server_health_path), rolling_live, maintenance_report, live_watchdog,
         sources={"runtime": str(server_health_path), "data": str(rolling_liveness_path),
-                 "maintenance": str(maintenance_path), "watchdog": str(live_watchdog_path)},
+                 "maintenance": maintenance_source, "watchdog": str(live_watchdog_path)},
     )
     runtime["status"] = current_status["runtime"]["status"]
     runtime["status_source"] = current_status["runtime"]["source"]
@@ -565,6 +789,8 @@ def build_operations_snapshot(
         frozen,
         _coverage_card("Backfill Candidate", _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.coverage", "coverage", "coverage_percent", "candidate.coverage"), _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.valid_minutes", "valid_observations", "candidate.valid_observations", "imported_rows"), _first(backfill, "coverage_metrics.backfill_eligible_if_governance_approved.expected_minutes", "expected_observations", "candidate.expected_observations"), backfill_status, sources["backfill_candidate_manifest.json"]["path"]),
         _coverage_card("Approved Qualification Dataset", _first(daily, "approved_dataset.coverage", "qualification_dataset.coverage", default=_first(prereg, "approved_dataset.coverage")), _first(daily, "approved_dataset.valid_observations", "qualification_dataset.valid_observations"), _first(daily, "approved_dataset.expected_observations", "qualification_dataset.expected_observations"), _first(daily, "approved_dataset.status", "qualification_dataset.status", default=_first(prereg, "approved_dataset.status")), daily_source),
+        _coverage_card("Prospective Qualification Campaign", running["cumulative_coverage"], running["observed_minutes"], running["expected_minutes"], running["status"], running["latest_manifest"] if running["manifests_written"] else running["source"])
+        if running else
         _coverage_card("Prospective Qualification Campaign", _first(daily, "metrics.coverage", "coverage", "coverage_percent", "campaign.coverage", default=_first(prereg, "campaign.coverage")), _first(daily, "metrics.valid_observations", "valid_observations", "campaign.valid_observations"), _first(daily, "metrics.expected_observations", "expected_observations", "campaign.expected_observations"), _first(daily, "status", "campaign.status", default=_first(prereg, "campaign_status", "status", default=_first(backfill, "coverage_metrics.prospective_qualification.status"))), daily_source if daily else sources["qualification_preregistration.json"]["path"]),
         _coverage_card("Rolling Liveness", _first(rolling_record, "coverage", "coverage_percent"), _first(rolling_record, "valid_observations"), _first(rolling_record, "expected_observations"), _first(rolling_record, "status", default=live.get("stream")), rolling_source),
     ]
@@ -606,6 +832,16 @@ def build_operations_snapshot(
     required_cases = _first(independent, "required_independent_cases", "qualification.required_units", "current.required_units", "frozen.required_units", default=_first(legacy_cases, "current_cutoff_audit.required_independent_cases", default=1000 if legacy_cases else None))
     case_status = _first(independent, "status", "gate_status", "scientific_gate", default=_first(legacy_cases, "current_cutoff_audit.gate_status"))
 
+    if running:
+        # The running campaign is the only source that may count qualification
+        # cases. Until the target is reached the gate waits for time, it has not failed.
+        qualification_cases = running["independent_cases"] if running["independent_cases"] is not None else 0
+        required_cases = running["case_target"] or required_cases
+        if str(running["status"]).upper() == "ACTIVE":
+            reached = isinstance(qualification_cases, int) and isinstance(required_cases, int) and qualification_cases >= required_cases
+            case_status = "PENDING HUMAN APPROVAL" if reached else "TIME GATE"
+        elif str(running["status"]).upper() == "ABORTED":
+            case_status = "ABORTED — NOT COUNTED"
     gates = _first(implementation, "gates", default=_first(readiness, "gates", default=[]))
     if isinstance(gates, dict):
         gates = [{"gate_id": key, **(value if isinstance(value, dict) else {"status": value})} for key, value in gates.items()]
@@ -633,11 +869,14 @@ def build_operations_snapshot(
     mcp_status = _first(mcp, "status", "secure_mcp_status", default=_first(implementation, "mcp_status", default=_first(readiness, "secure_mcp_status")))
 
     last_test = _first(tests, "finished_at_utc", "completed_at_utc", "generated_at_utc")
+    deployment_path = live_watchdog_path.parent / "deployment.json"
+    deployment = _read_json(deployment_path)
+    ci_test = _ci_test_of_deployment(deployment, last_test)
     incidents = [item for item in base.get("timeline", []) if str(item.get("severity", "")).upper() in {"ERROR", "CRITICAL", "HIGH"}]
     last_incident = incidents[-1] if incidents else None
     audit_sources = list(sources.values())
 
-    return {
+    snapshot = {
         "schema_version": "1.0.0",
         "product": "TIM OPERATIONS & RESEARCH CONTROL CENTER",
         "generated_at_utc": base.get("timestamp"),
@@ -670,6 +909,17 @@ def build_operations_snapshot(
             "started_at": _first(daily, "started_at_utc", "campaign.started_at_utc", default=_first(prereg, "start_utc", default=UNAVAILABLE)),
             "latest_manifest": daily_source,
             "source": sources["qualification_preregistration.json"]["path"],
+            "manifests_written": UNAVAILABLE,
+            "minimum_days": UNAVAILABLE,
+        } if not running else {
+            "status": _normalized_status(running["status"]),
+            "campaign_id": running["dataset_id"] or _first(prereg, "campaign_id", "dataset_id", "program_id", default=UNAVAILABLE),
+            "preregistered_at": _first(prereg, "preregistered_at_utc", "generated_at_utc", "created_at_utc", default=UNAVAILABLE),
+            "started_at": running["started_at"] or UNAVAILABLE,
+            "latest_manifest": running["latest_manifest"],
+            "source": running["source"],
+            "manifests_written": running["manifests_written"],
+            "minimum_days": running["minimum_days"] if running["minimum_days"] is not None else UNAVAILABLE,
         },
         "independent_cases": {
             "status": _normalized_status(case_status),
@@ -683,13 +933,14 @@ def build_operations_snapshot(
             "regime_coverage": _first(independent, "regime_coverage", "regimes.status", default=UNAVAILABLE),
             "manual_review": _normalized_status(manual_review, "PENDING HUMAN APPROVAL"),
             "human_approval": _normalized_status(human_approval, "PENDING HUMAN APPROVAL"),
-            "source": sources["independent_case_audit.json"]["path"] if independent else sources["legacy/validated_case_audit.json"]["path"],
+            "source": running["latest_manifest"] if running and running["manifests_written"] else (sources["independent_case_audit.json"]["path"] if independent else sources["legacy/validated_case_audit.json"]["path"]),
         },
-        "readiness": {
-            "status": _normalized_status(_first(implementation, "overall_status", "v2_status", default=_first(readiness, "overall_status"))),
-            "gates": normalized_gates,
-            "source": sources["implementation_state.json"]["path"] if implementation else sources["legacy/v2_readiness_matrix_final.json"]["path"],
-        },
+        "readiness": _current_readiness(
+            _normalized_status(_first(implementation, "overall_status", "v2_status", default=_first(readiness, "overall_status"))),
+            normalized_gates,
+            sources["implementation_state.json"] if implementation else sources["legacy/v2_readiness_matrix_final.json"],
+            running,
+        ),
         "mcp": {
             "status": _normalized_status(mcp_status, "EXTERNAL ACTION REQUIRED"),
             "case_id": _first(mcp, "support_case_id", "case_id", default=_first(implementation, "mcp_support_case_id", default=UNAVAILABLE)),
@@ -699,11 +950,14 @@ def build_operations_snapshot(
             "source": sources["mcp_support_status.json"]["path"],
         },
         "audit": {
-            "test_status": _normalized_status(_first(tests, "overall_test_status", "status")),
-            "last_test": last_test if last_test else UNAVAILABLE,
-            "passed": _first(tests, "full_suite.passed", "passed", default=UNAVAILABLE),
-            "failed": _first(tests, "full_suite.failed", "failed", default=UNAVAILABLE),
-            "warnings": _first(tests, "full_suite.warnings", "warnings.count", "warnings", default=UNAVAILABLE),
+            "test_status": ci_test["status"] if ci_test else _normalized_status(_first(tests, "overall_test_status", "status")),
+            "last_test": ci_test["completed_at"] if ci_test else (last_test if last_test else UNAVAILABLE),
+            "passed": ci_test["passed"] if ci_test else _first(tests, "full_suite.passed", "passed", default=UNAVAILABLE),
+            "failed": ci_test["failed"] if ci_test else _first(tests, "full_suite.failed", "failed", default=UNAVAILABLE),
+            "warnings": ci_test["skipped"] if ci_test else _first(tests, "full_suite.warnings", "warnings.count", "warnings", default=UNAVAILABLE),
+            "test_source": ci_test["source"] if ci_test else sources["final_test_summary.json"]["path"],
+            "deployed_commit": deployment.get("commit") or UNAVAILABLE,
+            "deployed_at": deployment.get("deployed_at_utc") or UNAVAILABLE,
             "doctor": _normalized_status(_first(tests, "doctor.status")),
             "validate": _normalized_status(_first(tests, "validate.status")),
             "protected_state": _normalized_status(_first(protected, "status", "result", default=_first(tests, "protected_state.status"))),
@@ -725,6 +979,8 @@ def build_operations_snapshot(
         "gate_model": base.get("gate_model", {}),
         "sources": sources,
     }
+    snapshot["readiness"]["gates"] = _recheck_gates(snapshot)
+    return snapshot
 
 
 """Control Center page renderers (UI-V3).
@@ -834,7 +1090,8 @@ def _attention_rows(data: dict[str, Any]) -> list[str]:
         item = current[key]
         findings = ", ".join(str(finding["check"]) for finding in item.get("findings", []))
         add(item["status"], title,
-            f"reported={item['reported_status']} · checked={item['checked_at']} · age={item['age_seconds']}s"
+            f"reported={item['reported_status']} · checked={item['checked_at'] or UNAVAILABLE} · "
+            + (f"age={item['age_seconds']}s" if item["age_seconds"] is not None else "age=—")
             + (f" · checks: {findings}" if findings else ""),
             item["source"])
     if security["status"] not in ("PASS",) and severity(security["status"]) != "ok":
@@ -854,12 +1111,19 @@ def _attention_rows(data: dict[str, Any]) -> list[str]:
     if cases["manual_review"] == "PENDING HUMAN APPROVAL":
         add("PENDING HUMAN APPROVAL", "Manual scientific review pending", "No machine-side approval exists; a real human review is required before qualification counts.", str(cases["source"]))
     if severity(readiness["status"]) != "ok":
-        add(readiness["status"], "V2 readiness gate", str(readiness["status"]), str(readiness["source"]))
+        detail = str(readiness["status"])
+        if readiness.get("current_reason"):
+            detail += f" · {readiness['current_reason']}"
+        if readiness.get("recorded_status"):
+            detail += f" · alte Gate-Matrix: {readiness['recorded_status']} (Stand {str(readiness.get('recorded_at') or '')[:10]})"
+        add(readiness["status"], "V2 readiness gate", detail, str(readiness["source"]))
     if severity(mcp["status"]) == "blocked":
         add(mcp["status"], "MCP external action required", f"support case {mcp['case_id']}", str(mcp["source"]))
     last_incident = audit.get("last_incident")
     if isinstance(last_incident, dict) and last_incident:
-        add("WARN", "Runtime incident in bounded timeline", str(last_incident.get("event", UNAVAILABLE)), "see Incidents & Gaps")
+        add("WARN", "Runtime incident in bounded timeline",
+            " · ".join(str(part) for part in (last_incident.get("timestamp"), last_incident.get("event", UNAVAILABLE), last_incident.get("summary")) if part),
+            "see Incidents & Gaps")
     history = data.get("history_recovery", {})
     if history.get("report") and history.get("status") != "PASS":
         add(history.get("status"), "Historical data recovery",
@@ -1014,7 +1278,7 @@ def _overview(data: dict[str, Any]) -> str:
 
     evidence_strip = metric_strip([
         ("Last full test", audit["last_test"], _evidence_age(audit["last_test"]), audit["test_status"]),
-        ("Test result", f"{audit['passed']} pass / {audit['failed']} fail", "", None),
+        ("Test result", f"{audit['passed']} pass / {audit['failed']} fail", f"Commit {str(audit.get('deployed_commit') or UNAVAILABLE)[:7]}", None),
         ("Last incident", str((audit.get("last_incident") or {}).get("event", UNAVAILABLE)) if isinstance(audit.get("last_incident"), dict) else str(audit.get("last_incident", UNAVAILABLE)), "", None),
         ("Data spaces", str(len(data["datasets"])), "coverage rooms", None),
     ])
@@ -1134,11 +1398,11 @@ def _incidents(data: dict[str, Any]) -> str:
     incidents = audit.get("incidents") or []
     incident_rows = "".join(
         "<tr>"
-        f"<td class='mono'>{_safe(item.get('timestamp_utc') or item.get('ts') or UNAVAILABLE)}</td>"
+        f"<td class='mono'>{_safe(item.get('timestamp_utc') or item.get('timestamp') or item.get('ts') or UNAVAILABLE)}</td>"
         f"<td>{evidence_chip(item.get('severity') or 'WARN')}</td>"
         f"<td class='mono'>{_safe(item.get('event', UNAVAILABLE))}</td>"
         f"<td>{_safe(item.get('component_id', UNAVAILABLE))}</td>"
-        f"<td>{_safe(item.get('reason_code', UNAVAILABLE))}</td>"
+        f"<td>{_safe(item.get('reason_code') or item.get('summary') or UNAVAILABLE)}</td>"
         "</tr>"
         for item in incidents[:20]
     ) or "<tr><td colspan='5' class='empty'>No incident in the bounded timeline window.</td></tr>"
@@ -1181,6 +1445,8 @@ def _qualification(data: dict[str, Any]) -> str:
         ("Campaign ID", campaign["campaign_id"], "preregistered identity", None),
         ("Preregistered at", _short_time(campaign["preregistered_at"]), "no retroactive definition", None),
         ("Started at", _short_time(campaign["started_at"]), "only after all technical gates", None),
+        ("Tagesmanifeste", campaign.get("manifests_written", UNAVAILABLE),
+         f"vorregistriertes Minimum {campaign.get('minimum_days', UNAVAILABLE)} Tage", None),
     ])
     return (
         page_head("Qualification", "Pre-registered prospective evidence space with immutable daily manifests.", generated_at=data.get("generated_at_utc"))
@@ -1192,7 +1458,7 @@ def _qualification(data: dict[str, Any]) -> str:
             note="The qualification campaign consumes only the approved dataset room; frozen and candidate rooms stay separate.",
         )
         + f"<section class='panel'><h2>Latest immutable daily manifest</h2><p class='mono'>{_safe(campaign['latest_manifest'])}</p>"
-          f"<p class='count-scope'>Preregistration: {_safe(campaign['source'])}</p></section>"
+          f"<p class='count-scope'>Quelle: {_safe(campaign['source'])}</p></section>"
     )
 
 
@@ -1341,7 +1607,7 @@ def _readiness(data: dict[str, Any]) -> str:
     stale_callout = (
         "<div class='safety-callout safety-callout--info'><b>STALE:</b> "
         + (_safe(archived_note) if archived_note else "No archived snapshot registered.")
-        + " Diese Werte beschreiben den Cut-off-Zustand vom 01.08.2026 und bleiben unverändert dokumentiert. Sie sind keine aktuellen Runtime-FAILs.</div>"
+        + " Diese Werte beschreiben den Cut-off-Zustand vom 01.08.2026 und bleiben unverändert dokumentiert. Wo es heute eine Messung gibt, steht der aktuelle Wert unter „Heute“ direkt dabei.</div>"
     )
     return (
         page_head("V2 Readiness", "Current gate model first, archived governance snapshots explicitly labelled stale. PENDING HUMAN APPROVAL is a governance state, not a technical failure.", generated_at=data.get("generated_at_utc"))
