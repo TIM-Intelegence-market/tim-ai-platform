@@ -503,6 +503,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     now = now or datetime.now(timezone.utc)
     events_path = events_path_for(path)
     state = journal_log.read(events_path)
+    _check_anchor(path, state)
     journal = fold(state.events)
     before = deepcopy(journal)
     source_hash, source_range, minutes, plan_candles = _source(series, now)
@@ -525,8 +526,29 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                                "payload": {"close_time": _iso(latest), "supersedes_source_hash": journal["last_plan_candle_source_hash"], "source_hash": close_hash}})
     new_events = diff_events(before, journal, recorded_at=now, source_hash=source_hash, source_range=source_range) + new_events
     written = journal_log.append(events_path, new_events, state)
+    events = state.events + written
     if written:
-        journal = fold(state.events + written)
+        journal = fold(events)
     journal["checked_at"] = _iso(now)
+    journal["log_seq"] = len(events)
+    journal["log_head"] = events[-1]["hash"] if events else journal_log.GENESIS
     save(journal, path)
     return journal
+
+
+def _check_anchor(path: Path, state: journal_log.LogState) -> None:
+    """The view remembers how long the log was when it was written. A log that
+    is shorter now, or whose event at that point has another hash, lost events
+    (truncation, replaced file) and must not be continued. A dropped tail is
+    only accepted when it lies beyond the anchored length."""
+    try:
+        view = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(view, dict) or view.get("schema") != SCHEMA or not isinstance(view.get("log_seq"), int):
+        return
+    seq, head = view["log_seq"], view.get("log_head")
+    if len(state.events) < seq:
+        raise journal_log.LogError(f"the log has {len(state.events)} events but the view was written at {seq}; events were lost")
+    if seq and state.events[seq - 1]["hash"] != head:
+        raise journal_log.LogError(f"the log diverges from the view at seq {seq - 1}; the log was replaced")

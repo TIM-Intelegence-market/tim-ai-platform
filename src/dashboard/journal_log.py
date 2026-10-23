@@ -49,6 +49,7 @@ class LogState:
     events: list[dict[str, Any]]
     head: str
     valid_bytes: int
+    total_bytes: int = 0
     dropped_tail: str | None = None
     ids: set[str] = field(default_factory=set)
 
@@ -56,7 +57,7 @@ class LogState:
 def read(path: Path) -> LogState:
     """All events with chain verification. Raises LogError on a broken chain."""
     if not path.exists():
-        return LogState([], GENESIS, 0)
+        return LogState([], GENESIS, 0, 0)
     raw = path.read_bytes()
     events: list[dict[str, Any]] = []
     ids: set[str] = set()
@@ -86,15 +87,17 @@ def read(path: Path) -> LogState:
         ids.add(event["event_id"])
         previous = event["hash"]
         offset += len(line) + 1
-    return LogState(events, previous, min(offset, len(raw)), dropped, ids)
+    return LogState(events, previous, min(offset, len(raw)), len(raw), dropped, ids)
 
 
 def append(path: Path, events: Iterable[dict[str, Any]], state: LogState | None = None) -> list[dict[str, Any]]:
     """Append events that are not yet in the log. Returns the written events.
 
     Each input needs `event_id` and `kind`; `seq`, `previous`, `hash` and
-    `log_version` are added here. The file is opened once, the valid prefix is
-    kept and a dropped tail is overwritten."""
+    `log_version` are added here. The file must still be exactly as `state`
+    saw it: if another writer appended in the meantime, LogError is raised and
+    nothing is written (the caller re-reads and re-derives its events). A
+    dropped tail is overwritten; nothing else is ever truncated."""
     state = state or read(path)
     written: list[dict[str, Any]] = []
     previous, seq, ids = state.head, len(state.events), set(state.ids)
@@ -114,7 +117,10 @@ def append(path: Path, events: Iterable[dict[str, Any]], state: LogState | None 
         return []
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("ab") as handle:
-        if state.dropped_tail is not None or (path.exists() and handle.tell() != state.valid_bytes):
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() != state.total_bytes:
+            raise LogError("the log changed since it was read; re-read before appending")
+        if state.dropped_tail is not None:
             handle.truncate(state.valid_bytes)
             handle.seek(state.valid_bytes)
         handle.write(("\n".join(lines) + "\n").encode("utf-8"))

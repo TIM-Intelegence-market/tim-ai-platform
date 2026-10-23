@@ -298,7 +298,7 @@ def _series(start: datetime, count: int = 90) -> dict[str, list[dict]]:
 
 
 def _view(journal: dict) -> dict:
-    return {k: v for k, v in journal.items() if k not in {"checked_at", "integrity"}}
+    return {k: v for k, v in journal.items() if k not in {"checked_at", "integrity", "log_seq", "log_head"}}
 
 
 def test_replay_equals_saved_document_and_restart_is_idempotent(tmp_path: Path) -> None:
@@ -382,6 +382,29 @@ def test_broken_log_blocks_update_and_load_instead_of_an_empty_journal(tmp_path:
     path.unlink()
     with pytest.raises(pj.journal_log.LogError):
         pj.load(path)
+
+
+def test_view_anchor_detects_a_shortened_or_replaced_log(tmp_path: Path) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    series = _series(start)
+    path = tmp_path / "journal.json"
+    journal = pj.update(path, series, start + timedelta(minutes=15 * 90))
+    events_path = pj.events_path_for(path)
+    assert journal["log_seq"] == len(pj.journal_log.read(events_path).events) and journal["log_head"]
+    original = events_path.read_bytes()
+    # Last valid event removed cleanly: the chain is intact, but shorter than the view remembers.
+    lines = original.decode().splitlines()
+    events_path.write_text("\n".join(lines[:-1]) + "\n")
+    with pytest.raises(pj.journal_log.LogError):
+        pj.update(path, series, start + timedelta(minutes=15 * 90 + 1))
+    # Same length, other history: the hash at the anchor differs.
+    events_path.unlink()
+    pj.journal_log.append(events_path, [{"event_id": f"x{i}", "kind": "CANDLE_REVISION_OBSERVED", "recorded_at": "x", "payload": {}} for i in range(len(lines))])
+    with pytest.raises(pj.journal_log.LogError):
+        pj.update(path, series, start + timedelta(minutes=15 * 90 + 1))
+    # The genuine log again: continues.
+    events_path.write_bytes(original)
+    pj.update(path, series, start + timedelta(minutes=15 * 90 + 1))
 
 
 def test_journal_page_lists_plans_in_local_time_and_sums_r() -> None:

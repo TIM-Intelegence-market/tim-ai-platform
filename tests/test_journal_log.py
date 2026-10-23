@@ -57,6 +57,18 @@ def test_truncated_last_line_is_dropped_and_overwritten(tmp_path: Path) -> None:
     assert path.read_bytes().startswith(good)
 
 
+def test_append_refuses_when_another_writer_changed_the_log(tmp_path: Path) -> None:
+    path = tmp_path / "log.jsonl"
+    jl.append(path, _events("a"))
+    stale = jl.read(path)
+    jl.append(path, _events("b"))  # a second process wrote in between
+    before = path.read_bytes()
+    with pytest.raises(jl.LogError):
+        jl.append(path, _events("c"), stale)
+    assert path.read_bytes() == before  # nothing truncated, nothing written
+    assert [e["event_id"] for e in jl.append(path, _events("c"))] == ["c"]
+
+
 def test_events_need_identity_and_kind(tmp_path: Path) -> None:
     with pytest.raises(jl.LogError):
         jl.append(tmp_path / "log.jsonl", [{"kind": "X"}])
