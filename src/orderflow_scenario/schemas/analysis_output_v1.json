@@ -79,7 +79,9 @@
         "open_interest_interpretation": { "type": ["string", "null"] },
         "confidence": { "type": "string" },
         "statements": { "type": "array", "items": { "type": "object" } },
-        "missing_data": { "type": "array", "items": { "type": "string" } }
+        "missing_data": { "type": "array", "items": { "type": "string" } },
+        "positioning": { "type": "object" },
+        "profile": { "type": "object" }
       }
     },
     "scenarios": { "type": "array", "items": { "type": "object" } },

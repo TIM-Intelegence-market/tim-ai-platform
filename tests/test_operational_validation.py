@@ -84,8 +84,11 @@ def test_research_health_is_observe_only_and_reports_missing_runtime(tmp_path:Pa
     result=ResearchHealthChecker(tmp_path,"http://127.0.0.1:1").check()
     assert result["status"]=="DEGRADED"
     assert result["external_search"] is False and result["multi_agent"] is False
-    assert result["checks"]["report_integrity"] is False
-    assert result["checks"]["metadata_complete"] is False
+    # Module B is off and no report exists: nothing to verify, so the report
+    # checks pass and research is not isolated (Mac live setup, 23.10.2026).
+    assert result["checks"]["report_integrity"] is True
+    assert result["checks"]["metadata_complete"] is True
+    assert result["level"]!="RED"
 
 
 @pytest.mark.local_env

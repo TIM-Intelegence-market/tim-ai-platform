@@ -62,6 +62,8 @@ CASE_STATUS_BADGE = {
     "CONFIRMED": "green",
     "CLOSED": "snapshot", "REJECTED": "snapshot", "INVALIDATED": "snapshot",
     "QUARANTINED": "red",
+    # An observation without a linked case is not a fault either.
+    "UNASSIGNED": "snapshot",
 }
 
 

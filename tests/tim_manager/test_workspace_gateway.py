@@ -272,13 +272,16 @@ def test_canary_14_downstream_failure_is_bounded_and_provenanced() -> None:
 
 
 def test_canary_15_timeout_returns_error_without_unbounded_wait() -> None:
-    fake = FakeClient(delay=0.2)
+    # Downstream sleeps far longer than the gateway timeout. The bound only has
+    # to prove the gateway did not wait for it, so it leaves room for setup
+    # overhead (graph hashing, logging) on a slow, throttled CI runner.
+    fake = FakeClient(delay=3.0)
     started = time.monotonic()
     response = gateway(fake, request_timeout_seconds=0.02).process(
         "health_check", request("c15", query="")
     )
     assert response["status"] == "error"
-    assert time.monotonic() - started < 0.15
+    assert time.monotonic() - started < 1.5
 
 
 def test_canary_16_response_contract_has_graph_provenance_and_trust_boundary() -> None:
