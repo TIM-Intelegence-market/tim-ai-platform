@@ -119,7 +119,7 @@ class DashboardServer:
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
                 if path == "/api/plan-journal":
-                    from src.dashboard.plan_journal import load as load_plan_journal
+                    from src.dashboard.plan_journal import load_view as load_plan_journal
 
                     return self.respond(200, json.dumps(load_plan_journal(outer.state.plan_journal_path), default=str).encode(), "application/json")
                 if path == "/pilot":

@@ -11,7 +11,7 @@ Drei Dinge werden getrennt gespeichert und dürfen nicht vermischt werden:
 | `setup_grade` + `grade_reasons` + `grade_ruleset_version` + `graded_state` | Heuristische Regelqualität des Szenarios in seinem tatsächlichen Zustand | `grade_scenario()` | nein |
 | `evidence_status` + `evidence_ref` | Empirische Evidenz der Setup-Familie laut Hypothesenregister | `setup_evidence.evidence_status()` | nein |
 | `execution_status`, `journal_decision`, `journal_decision_reasons`, `pipeline_decision` | Darf gehandelt werden (Papier) und warum nicht | `plan_journal.journal_gate()` | nein |
-| `status`, `gross_r`, `tp_hits`, `exit_reason` | Hypothetischer Verlauf nach TIMs Regeln | `plan_journal.evaluate()` | ja, bis CLOSED |
+| `status`, `gross_r`, `fee_r`, `slippage_r`, `net_r`, `tp_hits`, `exit_reason` | Hypothetischer Verlauf nach TIMs Regeln und Kosten nach Protokoll 1.1 | `plan_journal.evaluate()` | ja, bis CLOSED |
 
 ## Grade `grade/1.0.0`
 
@@ -60,8 +60,32 @@ Pipeline `TRADE_PLAN` und Szenario `CONFIRMED` sind; sonst `NO_TRADE` mit allen 
 Kein Code setzt `PAPER_APPROVED`; das wäre ein eigener menschlicher Freigabeschritt. Die Entscheidung
 der Pipeline bleibt als `pipeline_decision` erhalten.
 
+## Speicherung und Replay
+
+Die einzige Wahrheit ist das append-only, hash-verkettete Ereignislog
+`data/journal/tim_plan_journal.events.jsonl` (`src/dashboard/journal_log.py`). Ereignisse:
+`PLAN_RECORDED` (vollständiger Eintrag bei Aufnahme), `PLAN_UPDATED` (geänderte Felder mit Hash der
+verwendeten Kerzen), `CANDLE_CLOSE_PROCESSED` (verarbeiteter 15m-Schluss mit Hash der 80 sichtbaren
+Kerzen) und `CANDLE_REVISION_OBSERVED` (gleicher 15m-Schluss, anderer Kerzeninhalt; Entscheidungen
+bleiben). `fold()` baut die Sicht `tim_plan_journal.json`; `rebuild()` schreibt sie neu. Regeln, die
+`fold()` erzwingt: kein Ereignis darf ein Entscheidungsfeld ändern, kein Ereignis nach einem Endzustand,
+kein Plan doppelt. Ein Neustart mit denselben Kerzen erzeugt keine Ereignisse. Eine gebrochene Kette
+(editiert, gelöscht, umsortiert) sperrt Journal und Seite; nur eine abgeschnittene letzte Zeile nach
+einem Absturz wird verworfen und vermerkt. Tests: `tests/test_journal_log.py`,
+`tests/test_plan_journal.py` (Replay == Sicht, Neustart ohne Duplikate, Sichtverlust, Revision).
+
+## Kosten (Netto-R)
+
+`gross_r` ist das R-Vielfache vor Kosten. `fee_r` und `slippage_r` folgen Protokoll 1.1 §4.3/§4.4
+(`cost_model_version = protocol/1.1`): Gebühr 0,05 % und Slippage 0,03 % je Seite auf den Einstieg (volle
+Menge), auf jedes Drittel an seinem Ziel und auf den Rest beim Schlusskurs; 0,05 % Slippage, wenn der
+Schluss eine Stop-Ausführung war (STOP, BREAK_EVEN). Kosten in R = Kosten in Preis / Stopabstand, deshalb
+treffen enge Stops härter. `net_r = gross_r − fee_r − slippage_r`. Funding wird nicht gebucht (Spot-Kerzen,
+keine Perpetual-Position). Nicht gefüllte Pläne tragen keine Kosten. Die Konfigurationswerte des
+Orderflow-Moduls (6/2/2 bp) werden bewusst nicht verwendet, damit Netto-R mit dem Register vergleichbar bleibt.
+
 ## Grenzen
 
-Ergebnisse sind Brutto-R ohne Gebühren und Slippage (`gross_r`). Das Journal ist noch ein
-veränderliches Dokument, kein append-only Ereignisprotokoll; Replay und Netto-R folgen in einem
-eigenen Paket. Nichts hier ist eine Handels- oder Anlageempfehlung.
+Kein Tick-/Mengenraster, keine Teilfüllungen, kein Funding, kein Simulator mit Kontozustand. Die Fälle
+überlappen zeitlich (alle 15 Minuten aus 80-Kerzen-Fenstern) und sind keine unabhängigen Studienfälle.
+Nichts hier ist eine Handels- oder Anlageempfehlung.

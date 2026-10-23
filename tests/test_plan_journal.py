@@ -213,7 +213,175 @@ def test_with_evidence_uses_the_register_and_fails_closed(tmp_path: Path) -> Non
 def test_summary_counts_decisions_and_names_the_result_basis() -> None:
     journal = _journal_with(_plan())
     stats = pj.summary(journal)
-    assert stats["no_trade"] == 1 and stats["paper_trades"] == 0 and stats["result_basis"] == "GROSS_R_NO_COSTS"
+    assert stats["no_trade"] == 1 and stats["paper_trades"] == 0 and stats["result_basis"] == "GROSS_R_AND_NET_R"
+    assert stats["cost_model_version"] == "protocol/1.1" and stats["sum_net_r"] == 0.0
+
+
+# --- costs (research protocol 1.1, section 4.3/4.4) -------------------------
+
+
+def _closed(direction: str, candles: list[dict], entry: float = 100.0, stop: float | None = None) -> dict:
+    stop = stop if stop is not None else (99.0 if direction == "LONG" else 101.0)
+    invalid = 98.0 if direction == "LONG" else 102.0
+    journal = _journal_with(_plan(direction, entry=entry, stop=stop, invalid=invalid))
+    pj.evaluate(journal, candles, [], T0 + timedelta(minutes=len(candles) + 1))
+    assert journal["entries"][0]["status"] == "CLOSED"
+    return journal["entries"][0]
+
+
+def test_stop_costs_fee_both_sides_and_stop_slippage_on_exit_long_and_short() -> None:
+    long = _closed("LONG", [_m(0, 99.9, 100.2), _m(1, 98.9, 100.1)])
+    short = _closed("SHORT", [_m(0, 99.8, 100.1), _m(1, 99.9, 101.1)])
+    for entry in (long, short):
+        assert entry["exit_reason"] == "STOP" and entry["gross_r"] == -1.0
+        # fee 5 bp on 100 at entry and on the stop price; slippage 3 bp at entry, 5 bp (stop) at exit; / risk 1.0
+        stop = entry["stop"]
+        assert entry["fee_r"] == round((0.0005 * 100 + 0.0005 * stop) / 1.0, 4)
+        assert entry["slippage_r"] == round((0.0003 * 100 + 0.0005 * stop) / 1.0, 4)
+        assert entry["net_r"] == round(entry["gross_r"] - entry["fee_r"] - entry["slippage_r"], 4) < -1.0
+        assert entry["cost_model_version"] == "protocol/1.1"
+    # Mirror images: equal percentage costs give equal cost in R up to the stop-price difference.
+    assert abs(long["fee_r"] - short["fee_r"]) < 0.0011 and abs(long["slippage_r"] - short["slippage_r"]) < 0.0011
+
+
+def test_three_targets_charge_each_third_once_and_sum_to_one_exit() -> None:
+    entry = _closed("LONG", [_m(0, 99.9, 100.2), _m(1, 100.0, 103.5)])
+    assert entry["exit_reason"] == "TP3" and len(entry["tp_hits"]) == 3
+    thirds = sum(0.0005 * target / 3 for target in (101.5, 102.0, 103.0))
+    assert entry["fee_r"] == round(0.0005 * 100 + thirds, 4)
+    assert entry["slippage_r"] == round(0.0003 * 100 + sum(0.0003 * target / 3 for target in (101.5, 102.0, 103.0)), 4)
+    assert entry["net_r"] == round(entry["gross_r"] - entry["fee_r"] - entry["slippage_r"], 4)
+    assert 0 < entry["net_r"] < entry["gross_r"]
+
+
+def test_break_even_after_tp1_uses_stop_slippage_on_the_rest() -> None:
+    entry = _closed("LONG", [_m(0, 100.2, 100.8), _m(1, 99.9, 100.3), _m(2, 100.2, 101.6), _m(3, 99.95, 100.4)])
+    assert entry["exit_reason"] == "BREAK_EVEN" and entry["gross_r"] == 0.5
+    rest = 2 / 3
+    assert entry["slippage_r"] == round(0.0003 * 100 + 0.0003 * 101.5 / 3 + 0.0005 * 100 * rest, 4)
+    assert entry["fee_r"] == round(0.0005 * 100 + 0.0005 * 101.5 / 3 + 0.0005 * 100 * rest, 4)
+    assert entry["net_r"] < entry["gross_r"]
+
+
+def test_tight_stops_make_the_same_percentage_costs_a_larger_cost_in_r() -> None:
+    wide = _closed("LONG", [_m(0, 99.9, 100.2), _m(1, 98.9, 100.1)], stop=99.0)
+    tight = _closed("LONG", [_m(0, 99.95, 100.2), _m(1, 99.4, 100.1)], stop=99.5)
+    assert tight["gross_r"] == wide["gross_r"] == -1.0
+    assert tight["fee_r"] > wide["fee_r"] and tight["slippage_r"] > wide["slippage_r"]
+
+
+def test_costs_are_never_credits_and_unfilled_plans_carry_no_costs() -> None:
+    journal = _journal_with(_plan())
+    late = _m(24 * 60 + 1, 100.5, 100.9)
+    pj.evaluate(journal, [late], [], T0 + timedelta(hours=25))
+    entry = journal["entries"][0]
+    assert entry["status"] == "EXPIRED" and entry["gross_r"] is None and entry["net_r"] is None
+    for direction, candles in (("LONG", [_m(0, 99.9, 100.2), _m(1, 98.9, 100.1)]), ("SHORT", [_m(0, 99.8, 100.1), _m(1, 99.9, 101.1)])):
+        closed = _closed(direction, candles)
+        assert closed["fee_r"] > 0 and closed["slippage_r"] > 0
+
+
+# --- append-only event log, replay and recovery ------------------------------
+
+
+def _series(start: datetime, count: int = 90) -> dict[str, list[dict]]:
+    series: dict[str, list[dict]] = {"15m": [], "1m": []}
+    price = 100_000.0
+    for i in range(count):
+        opened = start + timedelta(minutes=15 * i)
+        swing = 400 if (i // 10) % 2 else -400
+        close = price + swing
+        series["15m"].append({"timeframe": "15m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=14, seconds=59.999)).isoformat(),
+                              "open": price, "high": max(price, close) + 50, "low": min(price, close) - 50, "close": close, "volume": 10.0})
+        price = close
+    return series
+
+
+def _view(journal: dict) -> dict:
+    return {k: v for k, v in journal.items() if k not in {"checked_at", "integrity"}}
+
+
+def test_replay_equals_saved_document_and_restart_is_idempotent(tmp_path: Path) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    series = _series(start)
+    path = tmp_path / "journal.json"
+    now = start + timedelta(minutes=15 * 90)
+    journal = pj.update(path, series, now)
+    events_path = pj.events_path_for(path)
+    log = pj.journal_log.read(events_path)
+    assert journal["entries"] and log.events
+    kinds = [e["kind"] for e in log.events]
+    assert kinds.count("PLAN_RECORDED") == len(journal["entries"]) and kinds.count("CANDLE_CLOSE_PROCESSED") == 1
+    assert all(e["source_hash"] and e["recorded_at"] and e["hash"] and e["previous"] for e in log.events)
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    assert _view(pj.fold(log.events)) == _view(stored)
+    # Restart with the same candles: nothing new in the log, same view.
+    again = pj.update(path, series, now + timedelta(minutes=1))
+    assert len(pj.journal_log.read(events_path).events) == len(log.events)
+    assert _view(again) == _view(stored)
+    # The view is lost: it comes back from the log alone, byte for byte in content.
+    path.unlink()
+    assert _view(pj.load(path)) == _view(stored) and pj.load(path)["integrity"] == "VIEW_FOLDED_FROM_LOG"
+    rebuilt = pj.rebuild(path)
+    assert _view(rebuilt) == _view(stored) and path.exists()
+    # Following minutes produce PLAN_UPDATED events; the fold stays equal to the view.
+    for i in range(30):
+        opened = now + timedelta(minutes=i)
+        series["1m"].append({"timeframe": "1m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(seconds=59.999)).isoformat(),
+                             "open": 99_500.0, "high": 100_600.0, "low": 99_400.0, "close": 100_000.0, "volume": 1.0})
+    later = pj.update(path, series, now + timedelta(minutes=31))
+    events = pj.journal_log.read(events_path).events
+    assert any(e["kind"] == "PLAN_UPDATED" for e in events)
+    assert _view(pj.fold(events)) == _view(json.loads(path.read_text(encoding="utf-8"))) == _view(later)
+    assert len(pj.journal_log.read(events_path).events) == len(events)
+
+
+def test_same_15m_close_with_other_candles_is_noted_not_rerecorded(tmp_path: Path) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    series = _series(start)
+    path = tmp_path / "journal.json"
+    now = start + timedelta(minutes=15 * 90)
+    first = pj.update(path, series, now)
+    revised = {"15m": [dict(c) for c in series["15m"]], "1m": []}
+    revised["15m"][-1]["close"] += 10.0
+    second = pj.update(path, revised, now + timedelta(seconds=30))
+    assert second["entries"] == first["entries"] and second["last_plan_candle"] == first["last_plan_candle"]
+    assert len(second["revisions"]) == 1
+    revision = second["revisions"][0]
+    assert revision["supersedes_source_hash"] == first["last_plan_candle_source_hash"] and revision["source_hash"] != revision["supersedes_source_hash"]
+    # Offered again: no second revision event.
+    third = pj.update(path, revised, now + timedelta(seconds=60))
+    assert len(third["revisions"]) == 1
+
+
+def test_fold_rejects_changes_to_decisions_and_events_after_close() -> None:
+    journal = _journal_with(_plan())
+    entry = journal["entries"][0]
+    base = {"kind": "PLAN_RECORDED", "recorded_at": "x", "payload": {"entry": entry}}
+    with pytest.raises(pj.journal_log.LogError):
+        pj.fold([base, {"kind": "PLAN_UPDATED", "recorded_at": "x", "payload": {"id": entry["id"], "changes": {"journal_decision": "PAPER_TRADE"}}}])
+    closed = {"kind": "PLAN_UPDATED", "recorded_at": "x", "payload": {"id": entry["id"], "changes": {"status": "CLOSED", "gross_r": -1.0}}}
+    with pytest.raises(pj.journal_log.LogError):
+        pj.fold([base, closed, {"kind": "PLAN_UPDATED", "recorded_at": "x", "payload": {"id": entry["id"], "changes": {"gross_r": 2.0}}}])
+    with pytest.raises(pj.journal_log.LogError):
+        pj.fold([base, base])
+    with pytest.raises(pj.journal_log.LogError):
+        pj.fold([{"kind": "PLAN_UPDATED", "recorded_at": "x", "payload": {"id": "nope", "changes": {}}}])
+
+
+def test_broken_log_blocks_update_and_load_instead_of_an_empty_journal(tmp_path: Path) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    series = _series(start)
+    path = tmp_path / "journal.json"
+    pj.update(path, series, start + timedelta(minutes=15 * 90))
+    events_path = pj.events_path_for(path)
+    lines = events_path.read_text().splitlines()
+    events_path.write_text("\n".join(lines[1:]) + "\n")  # first event deleted
+    with pytest.raises(pj.journal_log.LogError):
+        pj.update(path, series, start + timedelta(minutes=15 * 90 + 1))
+    path.unlink()
+    with pytest.raises(pj.journal_log.LogError):
+        pj.load(path)
 
 
 def test_journal_page_lists_plans_in_local_time_and_sums_r() -> None:
@@ -224,4 +392,15 @@ def test_journal_page_lists_plans_in_local_time_and_sums_r() -> None:
     assert "Plan-Journal" in page and "-1,00 R" in page and "Brutto-R" in page
     assert "24.10. 03:59" in page  # 01:59 UTC = 03:59 MESZ
     assert "wartet auf Einstieg" in page and "keine Evidenz" in page and "heuristisch" in page
-    assert "2 Pläne festgehalten" in journal_note(journal) and "2 × NO_TRADE" in journal_note(journal)
+    assert "Netto-R" in page and "protocol/1.1" in page and "append-only" in page
+    assert "2 Pläne festgehalten" in journal_note(journal) and "2 × NO_TRADE" in journal_note(journal) and "netto" in journal_note(journal)
+
+
+def test_broken_log_locks_the_page_and_the_api_view(tmp_path: Path) -> None:
+    path = tmp_path / "journal.json"
+    pj.events_path_for(path).write_text('{"not": "an event"}\n')
+    view = pj.load_view(path)
+    assert view["blocked"] is True and view["integrity"].startswith("LOG_BROKEN") and view["entries"] == []
+    page = _plan_journal_page({"operational_health": {}}, view)
+    assert "Journal gesperrt" in page and "GESPERRT" in page
+    assert journal_note(view).startswith("Plan-Journal gesperrt")

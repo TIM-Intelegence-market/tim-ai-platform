@@ -74,6 +74,7 @@ def _row(entry: Mapping[str, Any]) -> str:
         f"<td>{_safe(zone)}</td><td>{_safe(_fmt(entry['entry']))}</td><td>{_safe(_fmt(entry['stop']))}</td>"
         f"<td>{_safe(invalid_text)}</td><td>{_safe(targets)}</td>"
         f"<td><span class='sev sev--{severity}'>{_safe(label)}</span></td><td class='mono'>{_safe(_r_text(entry.get('gross_r')))}</td>"
+        f"<td class='mono' title='Gebühren {_safe(_r_text(entry.get('fee_r')))}, Slippage {_safe(_r_text(entry.get('slippage_r')))} ({_safe(entry.get('cost_model_version') or '–')})'>{_safe(_r_text(entry.get('net_r')))}</td>"
         f"<td>{_safe(' · '.join(detail) or '–')}</td></tr>"
     )
 
@@ -81,7 +82,11 @@ def _row(entry: Mapping[str, Any]) -> str:
 def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account_risk_percent: float = 0.5) -> str:
     entries = list(journal.get("entries") or [])
     stats = summary(journal)
-    body = _hero("Plan-Journal", "TIMs Long- und Short-Pläne aus dem Setup-Pfad, automatisch festgehalten und nach TIMs Regeln verfolgt. Nur Papier, keine Empfehlung: "
+    integrity = str(journal.get("integrity") or "")
+    body = ""
+    if integrity.startswith("LOG_BROKEN"):
+        body += f"<section class='state-banner state-banner--crit'><div class='state-banner__primary'><span class='sev sev--crit'>GESPERRT</span><h2 class='state-banner__state'>Journal gesperrt</h2><p class='state-banner__sub'>Das Ereignislog ist beschädigt; es wird nichts geschrieben und nichts gezählt, bis es geprüft ist. {_safe(integrity)}</p></div></section>"
+    body += _hero("Plan-Journal", "TIMs Long- und Short-Pläne aus dem Setup-Pfad, automatisch festgehalten und nach TIMs Regeln verfolgt. Nur Papier, keine Empfehlung: "
                  f"{GRADE_NOTE}. Jeder Plan trägt getrennt Grade, Evidenzstatus und Entscheidung; ohne belegte Evidenz ist die Entscheidung NO_TRADE (RESEARCH_ONLY).")
     win_rate = f"{stats['win_rate'] * 100:.0f} %" if stats["win_rate"] is not None else "–"
     account = stats["sum_r"] * account_risk_percent
@@ -90,19 +95,20 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         "<section class='cc-section'><div class='metricstrip'>"
         f"<dl class='metricstrip__item'><dt>Pläne</dt><dd>{stats['plans']}<small>{stats['open']} warten · {stats['filled']} im Trade</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Geschlossen</dt><dd>{stats['closed']}<small>Trefferquote {_safe(win_rate)}</small></dd></dl>"
-        f"<dl class='metricstrip__item'><dt>Summe (Brutto-R)</dt><dd>{_safe(_r_text(stats['sum_r']))}<small>ohne Gebühren/Slippage; hypothetisch ≈ {account:+.2f} % Konto bei {str(account_risk_percent).replace('.', ',')} % Risiko je Plan</small></dd></dl>"
+        f"<dl class='metricstrip__item'><dt>Summe (Brutto-R)</dt><dd>{_safe(_r_text(stats['sum_r']))}<small>vor Kosten; hypothetisch ≈ {account:+.2f} % Konto bei {str(account_risk_percent).replace('.', ',')} % Risiko je Plan</small></dd></dl>"
+        f"<dl class='metricstrip__item'><dt>Summe (Netto-R)</dt><dd>{_safe(_r_text(stats['sum_net_r']))}<small>nach Gebühren und Slippage, Kostenmodell {_safe(stats['cost_model_version'])}; {stats['net_wins']} netto positiv</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Entscheidungen</dt><dd>{stats['no_trade']} NO_TRADE<small>{stats['paper_trades']} Papier-Trades · kein Setup mit belegter Evidenz</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Long / Short</dt><dd>{_safe(_r_text(long_['sum_r']))} / {_safe(_r_text(short['sum_r']))}<small>{long_['closed']} / {short['closed']} geschlossen</small></dd></dl>"
         "</div></section>"
     )
-    rows = "".join(_row(e) for e in reversed(entries[-300:])) or "<tr><td colspan='13' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 15m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"
+    rows = "".join(_row(e) for e in reversed(entries[-300:])) or "<tr><td colspan='14' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 15m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"
     updated = _local(journal.get("updated_at")) if journal.get("updated_at") else "noch nie"
     body += (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Journal</p>"
         f"<h2>Alle Pläne (neueste zuerst)</h2><p class='cc-section__note'>Zeiten in deutscher Ortszeit. Zuletzt aktualisiert {_safe(updated)}. "
         "<a href='/setup-path'>Setup-Pfad</a> · <a href='/api/plan-journal'>JSON</a></p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Angelegt</th><th>Plan</th><th>Grade</th><th>Evidenz</th><th>Entscheidung</th><th>Zone</th><th>Einstieg</th><th>Stop</th>"
-        "<th>Ungültig bei</th><th>Ziele</th><th>Status</th><th>Brutto-R</th><th>Verlauf</th></tr></thead>"
+        "<th>Ungültig bei</th><th>Ziele</th><th>Status</th><th>Brutto-R</th><th>Netto-R</th><th>Verlauf</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div></section>"
     )
     body += (
@@ -112,7 +118,8 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         f"<li>15m-Schluss jenseits der Ungültigkeitsmarke: vor dem Einstieg ist der Plan ungültig, im Trade wird der Rest zu diesem Schluss geschlossen. Nach {PENDING_HOURS} h ohne Einstieg = abgelaufen.</li>"
         "<li>Im Trade nach TIMs Management: je ein Drittel an TP1 (1,5 R), TP2 (2 R) und TP3 (3 R), Stop nach TP1 auf Einstand. Der strukturelle Trailing-Stop ist nicht nachgebildet.</li>"
         f"<li>Berühren Stop und Ziel dieselbe 1m-Kerze, zählt der Stop. Nach {MAX_HOLD_HOURS} h wird der Rest zum Kerzenkurs geschlossen.</li>"
-        "<li>Ergebnis als Brutto-R (1 R = Abstand Einstieg–Stop). Keine Gebühren, kein Slippage, deshalb kein Netto-Ergebnis. Keine Order, keine Anlageberatung.</li>"
+        "<li>Ergebnis als Brutto-R (1 R = Abstand Einstieg–Stop) und Netto-R nach Forschungsprotokoll 1.1: Gebühr 0,05 % und Slippage 0,03 % je Seite auf Einstieg, jedes Drittel und den Rest, 0,05 % Slippage bei Stop-Ausführung; Kosten in R = Kosten / Stopabstand. Keine Order, keine Anlageberatung.</li>"
+        "<li>Speicherung: Jede Änderung ist ein Ereignis im append-only, hash-verketteten Log (<code>tim_plan_journal.events.jsonl</code>); diese Seite ist eine daraus abgeleitete Sicht. Ein Neustart mit denselben Kerzen erzeugt keine neuen Ereignisse; korrigierte Kerzen zu einem schon verarbeiteten 15m-Schluss werden vermerkt, ändern aber keine Entscheidung.</li>"
         f"<li>Grade A/B/C: {GRADE_NOTE}. Benotet wird der tatsächliche Szenariozustand, nicht die Vorschau. A+ wird nicht vergeben, weil keine geprüfte Regel dafür existiert.</li>"
         "<li>Evidenz: Urteil aus dem Hypothesenregister (docs/research_lab/REGISTER.jsonl) nur über eine geprüfte Regel-Äquivalenz; ohne diese „keine Evidenz“. Entscheidung NO_TRADE, solange Evidenz, Freigabe oder Pipeline fehlen. Grade, Evidenz und Entscheidung werden beim Festhalten gesetzt und danach nie geändert.</li>"
         "</ul></section>"
@@ -123,6 +130,8 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
 def journal_note(journal: Mapping[str, Any]) -> str:
     """One line for the Setup-Pfad page."""
     stats = summary(journal)
+    if str(journal.get("integrity") or "").startswith("LOG_BROKEN"):
+        return "Plan-Journal gesperrt: Ereignislog beschädigt."
     return (f"Plan-Journal: {stats['plans']} Pläne festgehalten, {stats['open']} warten, {stats['filled']} im Trade, "
-            f"{stats['closed']} geschlossen ({_r_text(stats['sum_r'])} brutto). {stats['no_trade']} × NO_TRADE, nur Forschung.")
+            f"{stats['closed']} geschlossen ({_r_text(stats['sum_r'])} brutto, {_r_text(stats['sum_net_r'])} netto). {stats['no_trade']} × NO_TRADE, nur Forschung.")
 
