@@ -324,16 +324,71 @@ def test_replay_equals_saved_document_and_restart_is_idempotent(tmp_path: Path) 
     assert _view(pj.load(path)) == _view(stored) and pj.load(path)["integrity"] == "VIEW_FOLDED_FROM_LOG"
     rebuilt = pj.rebuild(path)
     assert _view(rebuilt) == _view(stored) and path.exists()
-    # Following minutes produce PLAN_UPDATED events; the fold stays equal to the view.
+    # Following minutes plus the next 15m close (a checkpoint) produce PLAN_UPDATED events; the fold stays equal to the view.
     for i in range(30):
         opened = now + timedelta(minutes=i)
         series["1m"].append({"timeframe": "1m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(seconds=59.999)).isoformat(),
                              "open": 99_500.0, "high": 100_600.0, "low": 99_400.0, "close": 100_000.0, "volume": 1.0})
+    series["15m"].append({"timeframe": "15m", "open_time": now.isoformat(), "close_time": (now + timedelta(minutes=14, seconds=59.999)).isoformat(),
+                          "open": 99_500.0, "high": 100_600.0, "low": 99_400.0, "close": 100_000.0, "volume": 10.0})
     later = pj.update(path, series, now + timedelta(minutes=31))
     events = pj.journal_log.read(events_path).events
     assert any(e["kind"] == "PLAN_UPDATED" for e in events)
     assert _view(pj.fold(events)) == _view(json.loads(path.read_text(encoding="utf-8"))) == _view(later)
     assert len(pj.journal_log.read(events_path).events) == len(events)
+    close_events = [e for e in events if e["kind"] == "CANDLE_CLOSE_PROCESSED"]
+    assert close_events[0]["payload"]["source_hash"] == pj.journal_log.content_hash(pj.clean_candles(series["15m"], "15m")[-pj.PLAN_VISIBLE:])
+    assert close_events[0]["source_hash"] == close_events[0]["payload"]["source_hash"] != events[0]["source_hash"] or len(events) == 1
+
+
+def test_cursor_only_progress_is_written_at_checkpoints_material_changes_at_once(tmp_path: Path) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    series = _series(start)
+    path = tmp_path / "journal.json"
+    now = start + timedelta(minutes=15 * 90)
+    first = pj.update(path, series, now)
+    events_path = pj.events_path_for(path)
+    count = len(pj.journal_log.read(events_path).events)
+    entry = first["entries"][0]
+    far = entry["entry"] * (1.5 if entry["direction"] == "LONG" else 0.5)  # never touches entry or invalidation
+
+    def minute(i: int, low: float, high: float) -> dict:
+        opened = now + timedelta(minutes=i)
+        return {"timeframe": "1m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(seconds=59.999)).isoformat(),
+                "open": (low + high) / 2, "high": high, "low": low, "close": (low + high) / 2, "volume": 1.0}
+
+    # Minutes without a fill: only evaluated_through moves; nothing is written, the view still advances.
+    series["1m"] = [minute(i, far * 0.999, far * 1.001) for i in range(5)]
+    step = pj.update(path, series, now + timedelta(minutes=6))
+    assert len(pj.journal_log.read(events_path).events) == count
+    assert step["entries"][0]["evaluated_through"] == first["entries"][0]["evaluated_through"]  # the fold is the view
+    # A fill is material: written at once, together with the cursor it was derived with.
+    series["1m"].append(minute(5, min(entry["entry"], far), max(entry["entry"], far)))
+    filled = pj.update(path, series, now + timedelta(minutes=7))
+    events = pj.journal_log.read(events_path).events
+    assert len(events) == count + 1 and events[-1]["kind"] == "PLAN_UPDATED"
+    assert events[-1]["payload"]["changes"]["status"] == "FILLED" and "evaluated_through" in events[-1]["payload"]["changes"]
+    assert filled["entries"][0]["status"] == "FILLED"
+    # The next 15m close is a checkpoint: cursor-only progress since the fill is written then.
+    series["1m"] += [minute(i, far * 0.999, far * 1.001) for i in range(6, 16)]
+    opened = now
+    series["15m"].append({"timeframe": "15m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=14, seconds=59.999)).isoformat(),
+                          "open": far, "high": far * 1.001, "low": far * 0.999, "close": far, "volume": 10.0})
+    pj.update(path, series, now + timedelta(minutes=16))
+    kinds = [e["kind"] for e in pj.journal_log.read(events_path).events[count + 1:]]
+    assert "CANDLE_CLOSE_PROCESSED" in kinds and kinds.count("PLAN_UPDATED") >= 1
+
+
+def test_load_checks_the_log_behind_a_valid_view(tmp_path: Path) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    path = tmp_path / "journal.json"
+    pj.update(path, _series(start), start + timedelta(minutes=15 * 90))
+    events_path = pj.events_path_for(path)
+    lines = events_path.read_text().splitlines()
+    events_path.write_text("\n".join(lines[:-1]) + "\n")
+    with pytest.raises(pj.journal_log.LogError):
+        pj.load(path)
+    assert pj.load_view(path)["blocked"] is True
 
 
 def test_same_15m_close_with_other_candles_is_noted_not_rerecorded(tmp_path: Path) -> None:

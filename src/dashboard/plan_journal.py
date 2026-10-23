@@ -84,6 +84,9 @@ DECISION_FIELDS = (
     "evidence_status", "evidence_ref", "execution_status",
     "pipeline_decision", "pipeline_decision_reasons", "journal_decision", "journal_decision_reasons",
 )
+# Fields that move with every candle. Changes to these alone are written at the
+# next 15m close (checkpoint), not every minute; anything else is written at once.
+CURSOR_FIELDS = {"evaluated_through", "max_favorable_r", "max_adverse_r", "last_seen_at"}
 
 
 def _iso(value: datetime) -> str:
@@ -99,16 +102,19 @@ def events_path_for(path: Path) -> Path:
 
 
 def load(path: Path) -> dict[str, Any]:
-    """The journal view. If the document is missing or unreadable but the event
-    log exists, the view is folded from the log (read only, nothing written).
-    A broken log raises journal_log.LogError: never a silently empty journal."""
+    """The journal view, checked against its event log. If the document is
+    missing or unreadable but the log exists, the view is folded from the log
+    (read only, nothing written). A broken, shortened or replaced log raises
+    journal_log.LogError: never a silently empty or stale journal."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         data = None
-    if isinstance(data, dict) and data.get("schema") == SCHEMA and isinstance(data.get("entries"), list):
-        return data
     events = events_path_for(path)
+    if isinstance(data, dict) and data.get("schema") == SCHEMA and isinstance(data.get("entries"), list):
+        if events.exists():
+            _check_anchor(path, journal_log.read(events))
+        return data
     if events.exists():
         journal = fold(journal_log.read(events).events)
         journal["integrity"] = "VIEW_FOLDED_FROM_LOG"
@@ -455,8 +461,14 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     return journal
 
 
-def diff_events(before: Mapping[str, Any], after: Mapping[str, Any], *, recorded_at: datetime, source_hash: str, source_range: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Events that turn `before` into `after` (entries and last_plan_candle)."""
+def diff_events(before: Mapping[str, Any], after: Mapping[str, Any], *, recorded_at: datetime, source_hash: str, source_range: Mapping[str, Any],
+                close_source_hash: str | None = None, checkpoint: bool = True) -> list[dict[str, Any]]:
+    """Events that turn `before` into `after` (entries and last_plan_candle).
+
+    `source_hash` names the candles the plan events were derived from;
+    `close_source_hash` the 15m candles behind a processed close. Without
+    `checkpoint`, updates that only move CURSOR_FIELDS are left out: the next
+    update() re-derives them from the same candles."""
     events: list[dict[str, Any]] = []
     old = {e["id"]: e for e in before.get("entries") or []}
     common = {"recorded_at": _iso(recorded_at), "source_hash": source_hash, "source_range": dict(source_range)}
@@ -470,12 +482,13 @@ def diff_events(before: Mapping[str, Any], after: Mapping[str, Any], *, recorded
         removed = [k for k in previous if k not in entry]
         if removed:
             raise journal_log.LogError(f"plan {entry['id']}: fields disappeared: {removed}")
-        if changes:
+        if changes and (checkpoint or not set(changes) <= CURSOR_FIELDS):
             events.append({"event_id": journal_log.event_id(PLAN_UPDATED, entry["id"], changes, source_hash),
                            "kind": PLAN_UPDATED, "aggregate_id": entry["id"], **common, "payload": {"id": entry["id"], "changes": deepcopy(changes)}})
     if after.get("last_plan_candle") != before.get("last_plan_candle"):
-        events.append({"event_id": journal_log.event_id(CANDLE_CLOSE_PROCESSED, after["last_plan_candle"], source_hash), "kind": CANDLE_CLOSE_PROCESSED,
-                       "aggregate_id": "journal", **common, "payload": {"close_time": after["last_plan_candle"], "source_hash": source_hash}})
+        close_hash = close_source_hash or source_hash
+        events.append({"event_id": journal_log.event_id(CANDLE_CLOSE_PROCESSED, after["last_plan_candle"], close_hash), "kind": CANDLE_CLOSE_PROCESSED,
+                       "aggregate_id": "journal", **common, "source_hash": close_hash, "payload": {"close_time": after["last_plan_candle"], "source_hash": close_hash}})
     return events
 
 
@@ -510,25 +523,26 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     evaluate(journal, minutes, plan_candles, now)
     new_events: list[dict[str, Any]] = []
     closed_15m = [c for c in plan_candles if c["close_time"] <= now]
+    checkpoint, close_hash = False, None
     if closed_15m:
         latest = _minute_ceil(closed_15m[-1]["close_time"])
-        visible = plan_candles[-PLAN_VISIBLE:]
-        close_hash = journal_log.content_hash(visible)
+        close_hash = journal_log.content_hash(plan_candles[-PLAN_VISIBLE:])
         if journal.get("last_plan_candle") != _iso(latest):
             model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
             record_plans(journal, with_evidence(plans_from_model(model), PLAN_TIMEFRAME, register_path), latest)
             journal["last_plan_candle"] = _iso(latest)
-            source_hash = close_hash
+            checkpoint = True
         elif journal.get("last_plan_candle_source_hash") not in {None, close_hash}:
             # Same 15m close, other candle content: noted, decisions untouched.
             new_events.append({"event_id": journal_log.event_id(CANDLE_REVISION_OBSERVED, _iso(latest), close_hash), "kind": CANDLE_REVISION_OBSERVED,
                                "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                "payload": {"close_time": _iso(latest), "supersedes_source_hash": journal["last_plan_candle_source_hash"], "source_hash": close_hash}})
-    new_events = diff_events(before, journal, recorded_at=now, source_hash=source_hash, source_range=source_range) + new_events
+    new_events = diff_events(before, journal, recorded_at=now, source_hash=source_hash, source_range=source_range,
+                             close_source_hash=close_hash, checkpoint=checkpoint) + new_events
     written = journal_log.append(events_path, new_events, state)
     events = state.events + written
-    if written:
-        journal = fold(events)
+    # The view is always the fold: cursor-only progress that was not written is re-derived next time.
+    journal = fold(events)
     journal["checked_at"] = _iso(now)
     journal["log_seq"] = len(events)
     journal["log_head"] = events[-1]["hash"] if events else journal_log.GENESIS
