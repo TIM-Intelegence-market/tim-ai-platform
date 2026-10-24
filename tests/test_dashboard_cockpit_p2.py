@@ -246,6 +246,16 @@ def test_failed_deploy_agent_is_red() -> None:
     assert tiles["dashboard_refresh"].state == "fail" and "CI rot" in tiles["dashboard_refresh"].reason
 
 
+def test_study_hold_is_calm_but_other_holds_warn() -> None:
+    study = _services(NOW, svc_dashboard_refresh={"checked_at_utc": NOW.isoformat(), "decision": {
+        "action": "HOLD", "reason": "study_protected_paths", "text": "Studie läuft"}})
+    assert study["dashboard_refresh"].state == "ok" and study["dashboard_refresh"].value == "wartet bis Studienende"
+    assert "Studie läuft" in study["dashboard_refresh"].detail
+    local = _services(NOW, svc_dashboard_refresh={"checked_at_utc": NOW.isoformat(), "decision": {
+        "action": "HOLD", "reason": "local_changes", "text": "Lokale Änderungen"}})
+    assert local["dashboard_refresh"].state == "warn" and local["dashboard_refresh"].value == "angehalten"
+
+
 def test_trading_team_from_its_state_and_log(tmp_path: Path) -> None:
     folder = tmp_path / "tt"
     folder.mkdir()

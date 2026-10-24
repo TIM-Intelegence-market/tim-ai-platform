@@ -321,9 +321,13 @@ def _service_tile(key: str, label: str, report: SourceResult, stamp_key: str, ma
     if key == "dashboard_refresh":
         decision = data.get("decision") if isinstance(data.get("decision"), dict) else {}
         action, reason = str(decision.get("action") or "UNKNOWN"), str(decision.get("reason") or "")
-        raw = "FAIL" if reason in AGENT_FAIL else "WARN" if action == "HOLD" else "PASS" if action in {"UP_TO_DATE", "DEPLOY", "WAIT"} else "WARN"
+        study_hold = action == "HOLD" and reason == "study_protected_paths"
+        raw = ("FAIL" if reason in AGENT_FAIL else "PASS" if study_hold else "WARN" if action == "HOLD"
+               else "PASS" if action in {"UP_TO_DATE", "DEPLOY", "WAIT"} else "WARN")
         commit = str(data.get("deployed_commit") or "")[:7]
-        return make_tile(key, label, {"UP_TO_DATE": "aktuell", "DEPLOY": "spielt auf", "WAIT": "wartet", "HOLD": "angehalten"}.get(action, action),
+        value = "wartet bis Studienende" if study_hold else {
+            "UP_TO_DATE": "aktuell", "DEPLOY": "spielt auf", "WAIT": "wartet", "HOLD": "angehalten"}.get(action, action)
+        return make_tile(key, label, value,
                          raw, reason="" if raw == "PASS" else str(decision.get("text") or reason), source=source, as_of=stamp,
                          max_age_seconds=max_age, href=href, now=now,
                          detail=(str(decision.get("text") or "") + (f" · läuft auf {commit}" if commit else "")).strip(" ·"))

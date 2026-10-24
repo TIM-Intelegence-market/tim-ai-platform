@@ -471,8 +471,11 @@ def test_control_center_summary_of_the_agent(tmp_path):
     assert "vor 3 min" in summary["note"] and "aktuell" in summary["note"]
     hold = {**base, "decision": dr.Decision("HOLD", "study_protected_paths",
                                             {"blocked_files": {"S": ["main.py"]}}).to_dict()}
-    assert _dashboard_refresh(hold, path)["status"] == "BLOCKED"
+    assert _dashboard_refresh(hold, path)["status"] == "WAITING"
+    assert "wartet bis Studienende" in _dashboard_refresh(hold, path)["note"]
     assert "Hält zurück: main.py" in _dashboard_refresh(hold, path)["note"]
+    local = {**base, "decision": dr.Decision("HOLD", "local_changes", {"files": ["main.py"]}).to_dict()}
+    assert _dashboard_refresh(local, path)["status"] == "BLOCKED"
     deferred = {**base, "decision": dr.Decision("WAIT", "busy_deferred", {"deploy_at_latest_utc": "2026-10-24T12:20:00Z"}).to_dict()}
     assert _dashboard_refresh(deferred, path)["status"] == "WAITING"
     assert _dashboard_refresh({**base, "health_ok": False}, path)["status"] == "DEGRADED"

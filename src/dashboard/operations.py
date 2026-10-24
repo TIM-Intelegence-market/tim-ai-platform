@@ -370,6 +370,8 @@ def _dashboard_refresh(status: dict[str, Any], path: Path) -> dict[str, Any]:
         state = "FAIL"
     elif status.get("health_ok") is False:
         state = "DEGRADED"
+    elif action == "HOLD" and decision.get("reason") == "study_protected_paths":
+        state = "WAITING"  # held on purpose until the study ends: not an alarm
     elif action == "HOLD":
         state = "BLOCKED"
     elif action == "WAIT":
@@ -377,10 +379,13 @@ def _dashboard_refresh(status: dict[str, Any], path: Path) -> dict[str, Any]:
     else:
         state = "PASS"
     minutes = "" if age is None else f"vor {int(age // 60)} min"
+    text = str(decision.get("text") or decision.get("reason") or "")
+    if state == "WAITING" and decision.get("reason") == "study_protected_paths":
+        text = f"wartet bis Studienende · {text}"
     return {
         "status": state,
         "value": str(status.get("deployed_commit") or UNAVAILABLE)[:7],
-        "note": " · ".join(part for part in (minutes, str(decision.get("text") or decision.get("reason") or "")) if part),
+        "note": " · ".join(part for part in (minutes, text) if part),
         "reason": decision.get("reason"),
         "source": path.as_posix(),
     }
