@@ -51,6 +51,10 @@
       "id": "V2_SK_CONTROL_REGIME_V1",
       "active_from_utc": "2026-10-23T13:55:24Z",
       "ended_marker": "artifacts/v2_completion/sk_end_record.json",
+      "released_at_utc": "2026-10-24T23:30:05Z",
+      "released_by": "Uzi",
+      "released_text": "halt den dashboard agenten nicht an er soll weiter aktualisieren und das dashboard erweitern",
+      "released_note": "From this time the agent deploys every CI-green platform-main state again, with runtime restarts. The S-K study keeps running; restarts and code changes after this time are study deviations to note in its report.",
       "reason": "Detectors and data path must stay unchanged while S-K windows are drawn; a mid-study change makes windows before and after incomparable.",
       "display_safe": "default",
       "display_safe_note": "Study tooling (sk_*, control_regime_study.py, sk_study.py) runs offline on backup copies and is not imported by the runtime."
