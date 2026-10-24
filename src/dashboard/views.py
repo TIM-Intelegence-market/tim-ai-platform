@@ -61,7 +61,19 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         from src.dashboard.pages.plan_journal import journal_note
         from src.dashboard.plan_journal import load as load_plan_journal
 
-        return _setup_path_page(data, chart, journal_note(load_plan_journal(state.plan_journal_path)))
+        note = journal_note(load_plan_journal(state.plan_journal_path))
+        try:
+            from src.dashboard.session_map import build_session_map, summary_line
+
+            note = f"Vorbereitung: {summary_line(build_session_map(state.chart_series()))}. {note}"
+        except Exception:  # noqa: BLE001 - the setup page renders without the preparation line
+            pass
+        return _setup_path_page(data, chart, note)
+    if page == "Prep":
+        from src.dashboard.pages.prep import _prep_page
+        from src.dashboard.session_map import build_session_map
+
+        return _prep_page(data, build_session_map(state.chart_series()))
     if page == "Plan Journal":
         from src.dashboard.pages.plan_journal import _plan_journal_page
         from src.dashboard.plan_journal import load as load_plan_journal
