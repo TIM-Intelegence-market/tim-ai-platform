@@ -28,6 +28,14 @@ Größe (`position-sizer`) → Checkliste (`pre-trade-discipline-gate`) → Jour
 Nachbetrachtung (`signal-postmortem`). Research-Seite: `trade-hypothesis-ideator` → `edge-strategy-reviewer`
 → `backtest-expert`.
 
+## Ergänzt: `trading-team` (23.10.2026)
+
+Eigener Skill nach der Anleitung „Build a 24/7 AI Trading Team With Claude Code“ (MSB Intel), in TIM neu
+geschrieben: Scanner (Binance-Stundenausschlag + Volumen), Buzz-Tracker (CoinGecko-Trends + RSS-Schlagzeilen),
+Papier-Bot (fiktive 1.000 USD, 1 % Risiko, Stop/Ziel, Gebühren, max. 10 Trades/Tag) mit Schatten-Buch und
+ehrlichem Bericht. Echtgeld-Teile, X-API und Cloud-Server weggelassen. Details:
+`.claude/skills/trading-team/SKILL.md` und `HERKUNFT.md`.
+
 ## Bewusst weggelassen
 
 - US-Aktien-Screener und -Analysen (CANSLIM, VCP, PEAD, Stockbee, Finviz, Value/Dividende, Kanchi, Sektoren,

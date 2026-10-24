@@ -25,6 +25,22 @@ class ResearchResult:
     patterns:list[str];missing_evidence:list[str];citations:list[dict];provenance:str;input_hash:str
 
 
+CACHE_SCHEMA_VERSION="1.0.0"
+CACHE_GENERATOR_VERSION="1.0.0"
+
+
+def cache_record(result:ResearchResult)->dict[str,Any]:
+    """Cache row with the provenance fields required for the V2 scope (V2-B05).
+
+    artifact_hash is the SHA-256 of the canonical row without artifact_hash,
+    the same convention as src/research_ops/audit.py digest().
+    """
+    from src.research_ops.audit import digest
+    row={**asdict(result),"schema_version":CACHE_SCHEMA_VERSION,"generator_version":CACHE_GENERATOR_VERSION}
+    row["artifact_hash"]=digest(row)
+    return row
+
+
 class LocalResearchAgent:
     """Deterministic local researcher. No network, LLM, or database writes."""
     def __init__(self,config:ResearchConfig=research_config)->None:self.config=config
@@ -40,7 +56,7 @@ class LocalResearchAgent:
         self._cache(result);return result
 
     def _cache(self,result:ResearchResult)->None:
-        path=self.config.cache_path;path.parent.mkdir(parents=True,exist_ok=True);row=json.dumps(asdict(result),sort_keys=True)
+        path=self.config.cache_path;path.parent.mkdir(parents=True,exist_ok=True);row=json.dumps(cache_record(result),sort_keys=True)
         existing=set()
         try:existing={json.loads(line).get("input_hash") for line in path.read_text().splitlines() if line.strip()}
         except (OSError,ValueError):pass

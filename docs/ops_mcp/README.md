@@ -6,6 +6,7 @@ JSON-RPC 2.0, protocol `2025-11-25`, no SDK dependency, inputSchema
 enforced server-side, no tracebacks in responses.
 
 Client registration name: `tim-ops` (in `.mcp.json` next to `tim-graph`).
+Codex and Claude Desktop: `docs/mcp_clients.md`.
 
 ## Tools
 
