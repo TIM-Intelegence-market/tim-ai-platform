@@ -47,6 +47,7 @@ fee 0.05 % and slippage 0.03 % per side, 0.05 % on stop executions, costs in R
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 import math
 import os
@@ -70,6 +71,7 @@ OPEN, FILLED = "OPEN", "FILLED"
 DONE = {"CLOSED", "INVALIDATED", "REPLACED", "EXPIRED"}
 RULE_TIM = "tim/1"  # TradePlanBuilder: flat stop, targets 1.5R / 2R / 3R
 RULE_STRUCT = "struct/1"  # src/dashboard/structure_plan.py
+RULE_LEVEL = "level/1"  # src/dashboard/level_plans.py
 NO_TRADE, PAPER_TRADE = "NO_TRADE", "PAPER_TRADE"
 PLAN_RECORDED, PLAN_UPDATED = "PLAN_RECORDED", "PLAN_UPDATED"
 CANDLE_CLOSE_PROCESSED, CANDLE_REVISION_OBSERVED = "CANDLE_CLOSE_PROCESSED", "CANDLE_REVISION_OBSERVED"
@@ -503,8 +505,60 @@ def _structural(plans: list[dict[str, Any]], series: Mapping[str, Sequence[Mappi
     return kept, list(dropped)
 
 
+def _level(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, model: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    """Rule version level/1: plans at the nearest main levels (src/dashboard/level_plans.py).
+
+    Uses only candles closed at ``at``, like struct/1. Returns the plans in the
+    journal's plan shape and the reasons for dropped candidates."""
+    from src.dashboard.level_plans import build_level_plans
+    from src.dashboard.session_map import build_session_map
+    from src.dashboard.structure_plan import candles_until
+
+    closed = candles_until(series, at)
+    try:
+        prep = build_session_map(closed, at)
+    except Exception:  # noqa: BLE001 - without the map there are no main levels
+        return [], ["keine Vorbereitungs-Karte"]
+    result = build_level_plans(prep, closed["30m"], at)
+    analysis = model.get("analysis") or {}
+    plans = []
+    for item in result["plans"]:
+        preview = item["preview"]
+        invalid = item["invalidation_level"]
+        plans.append({
+            "rule": RULE_LEVEL,
+            "scenario_id": item["id"],
+            "scenario_type": item["type"],
+            "direction": item["direction"],
+            "entry_model": item["entry_model"],
+            "plan_text": item["plan_text"],
+            "anchor": item["anchor"],
+            "trend": item["trend"],
+            "location": item["location"],
+            "entry_low": item["entry_low"],
+            "entry_high": item["entry_high"],
+            "entry": float(preview["entry"]),
+            "stop": float(preview["stop"]),
+            "targets": [float(t) for t in preview["targets"][:3]],
+            "target_labels": list(preview["target_labels"][:3]),
+            "invalidation_level": invalid["level"],
+            "invalidation_side": invalid["side"],
+            "scenario_state": item["state"],
+            "score": None,
+            "missing_confirmations": list(item["missing_confirmations"]),
+            "pipeline_decision": (analysis.get("decision") or {}).get("status"),
+            "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
+            "market_state": analysis.get("market_state"),
+            "grade": None,
+            **{k: (analysis.get("market") or {}).get(k) for k in ("symbol", "venue", "market_type")},
+            "data_quality": (analysis.get("data_quality") or {}).get("status"),
+        })
+    return plans, list(result["dropped"])
+
+
 def _skip_key(reason: str) -> str:
-    return reason.split(": ", 1)[-1].split(" nur ")[0]
+    # "LONG: <Level>: nächstes Ziel nur 1.05 R entfernt" -> "nächstes Ziel"; numbers never split a key.
+    return re.sub(r"\d+[.,]\d+|\b\d+(?= ?%)", "x", reason.rsplit(": ", 1)[-1].split(" nur ")[0])
 
 
 def with_evidence(plans: Sequence[Mapping[str, Any]], timeframe: str = PLAN_TIMEFRAME, register_path: Path | str = DEFAULT_REGISTER_PATH) -> list[dict[str, Any]]:
@@ -538,8 +592,8 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         elif kind == CANDLE_CLOSE_PROCESSED:
             journal["last_plan_candle"] = payload["close_time"]
             journal["last_plan_candle_source_hash"] = payload["source_hash"]
-            if payload.get("rule") == RULE_STRUCT:  # TIM-rule events carry no rule field
-                journal["rule"] = RULE_STRUCT
+            if payload.get("rule") in (RULE_STRUCT, RULE_LEVEL):  # TIM-rule events carry no rule field
+                journal["rule"] = payload["rule"]
                 journal.setdefault("structure_skips", {})
                 journal["last_skips"] = []  # a STRUCTURE_PLANS_DROPPED event for this close follows it
         elif kind == CANDLE_REVISION_OBSERVED:
@@ -639,8 +693,12 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
         elif journal.get("last_plan_candle") != _iso(latest):
             model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
             plans = plans_from_model(model)
+            dropped: list[str] = []
             if rule == RULE_STRUCT:
                 plans, dropped = _structural(plans, series, latest)
+            elif rule == RULE_LEVEL:
+                plans, dropped = _level(series, latest, model)
+            if rule != RULE_TIM:
                 if dropped:
                     new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
                                        "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,

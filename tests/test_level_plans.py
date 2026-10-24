@@ -114,3 +114,73 @@ def test_chained_levels_do_not_grow_one_wide_place() -> None:
     prep = {"levels": [{"label": f"Vortag {i}", "price": 100 + i * 0.1, "source": "Vortag"} for i in range(5)]}
     places = anchors(prep)
     assert all(p["high"] - p["low"] <= p["low"] * 0.0015 + 1e-9 for p in places) and len(places) == 3
+
+
+def test_update_with_level_rule_writes_its_own_journal(tmp_path) -> None:
+    from src.dashboard import journal_log
+    from src.dashboard.plan_journal import RULE_LEVEL, events_path_for, fold, load, update
+    from tests.test_structure_plan import _runtime_series
+
+    path = tmp_path / "level.json"
+    now = datetime(2026, 10, 24, 14, 0, 30, tzinfo=timezone.utc)
+    journal = update(path, _runtime_series(), now=now, rule=RULE_LEVEL)
+    assert journal["rule"] == RULE_LEVEL and journal["last_plan_candle"] == "2026-10-24T14:00:00Z"
+    stored = load(path)
+    assert stored["entries"] or stored.get("last_skips"), "a close either records a level plan or says why not"
+    for entry in stored["entries"]:
+        assert entry["rule"] == RULE_LEVEL and entry["scenario_type"] == "LEVEL_REACTION" and len(entry["targets"]) == 3
+        assert entry["evidence_status"] == "INSUFFICIENT_EVIDENCE" and entry["journal_decision"] == "NO_TRADE"
+    replay = fold(journal_log.read(events_path_for(path)).events)
+    assert {k: v for k, v in replay.items() if k not in {"checked_at", "log_seq", "log_head"}} == {
+        k: v for k, v in stored.items() if k not in {"checked_at", "log_seq", "log_head"}}
+    # Same candles again: no new events.
+    seq = journal["log_seq"]
+    assert update(path, _runtime_series(), now=now, rule=RULE_LEVEL)["log_seq"] == seq
+
+
+def test_skip_keys_group_level_reasons_without_numbers() -> None:
+    from src.dashboard.plan_journal import _skip_key
+
+    assert _skip_key("LONG: PWL · Vorwoche Tief: nächstes Ziel nur 1.05 R entfernt") == "nächstes Ziel"
+    assert _skip_key("SHORT: Vortag VAH: Stop 2.3 % entfernt (max. 2 %)") == "Stop x % entfernt (max. x %)"
+    assert _skip_key("LONG: nächstes Ziel nur 0.98 R entfernt") == "nächstes Ziel"
+    assert _skip_key("LONG: X: kein 30m-Swing-Tief unter der Zone") == "kein 30m-Swing-Tief unter der Zone"
+
+
+def test_level_journal_page_and_api(tmp_path) -> None:
+    import json
+    from urllib.request import urlopen
+
+    from src.dashboard.app import DashboardServer, DashboardState
+
+    state = DashboardState()
+    state.plan_journal_path = tmp_path / "tim.json"
+    state.plan_journal_struct_path = tmp_path / "struct.json"
+    state.plan_journal_level_path = tmp_path / "level.json"
+    server = DashboardServer(state, port=0)
+    server.start()
+    port = server.server.server_address[1]
+    try:
+        with urlopen(f"http://127.0.0.1:{port}/journal/level", timeout=5) as response:
+            page = response.read().decode()
+        assert "Plan-Journal: Level-Regel" in page and "level/1" in page
+        with urlopen(f"http://127.0.0.1:{port}/api/plan-journal?rule=level", timeout=5) as response:
+            assert json.loads(response.read())["entries"] == []
+    finally:
+        server.stop()
+
+
+def test_level_plans_enter_the_journal_in_plan_shape(monkeypatch) -> None:
+    import src.dashboard.session_map as session_map
+    from src.dashboard.plan_journal import RULE_LEVEL, _level, empty_journal, record_plans, with_evidence
+
+    candles = _candles()
+    at = candles[-1]["close_time"]
+    series = {"30m": [{**c, "open_time": c["open_time"].isoformat(), "close_time": c["close_time"].isoformat()} for c in candles]}
+    monkeypatch.setattr(session_map, "build_session_map", lambda closed, now: _prep())
+    plans, dropped = _level(series, at, {"analysis": {"market": {"symbol": "BTCUSDT", "venue": "BINANCE", "market_type": "SPOT"}}})
+    long = next(p for p in plans if p["direction"] == "LONG")
+    assert long["rule"] == RULE_LEVEL and long["entry"] == 98.6 and long["invalidation_side"] == "<" and len(long["target_labels"]) == 3
+    added = record_plans(empty_journal(), with_evidence(plans), at)
+    assert {e["direction"] for e in added} == {p["direction"] for p in plans}
+    assert all(e["journal_decision"] == "NO_TRADE" for e in added)
