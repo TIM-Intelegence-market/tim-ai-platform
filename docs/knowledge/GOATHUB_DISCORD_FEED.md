@@ -85,6 +85,37 @@ Einstellbar per Umgebungsvariable: `TIM_GOATHUB_FEED_DIR`, `TIM_GOATHUB_DISCORD_
 (Standard `~/Library/Application Support/TIM/goathub-discord.json`) und
 `TIM_GOATHUB_DISCORD_SECRET_FILE` (Standard: das Broncx-Bot-Geheimnis).
 
+## Gemeinsame Einrichtung mit Treta (Modus `direct`)
+
+Entwurf zur Abstimmung. Nichts davon ist umgesetzt oder vom GoatHub-Team freigegeben.
+
+**Vorgeschlagene Kanäle**
+
+| Kanal | Rolle für TIM | Hinweis |
+| --- | --- | --- |
+| market updates | lesen, Calls erkennen | Marktlage und Einschätzungen |
+| trading lounge | lesen, Calls erkennen | Live-Austausch, viel Rauschen, Note C bleibt Kontext |
+| community | lesen, Calls erkennen | allgemeiner Austausch, nur Beiträge mit Richtung und Symbol zählen |
+| education | nur Wissen, keine Calls | Lehrmaterial ist kein Wirksamkeitsbeleg; Rechte der Autoren klären |
+| bronxc bootcamp | nur Wissen, keine Calls | Katalog siehe `BRONCX_BOOTCAMP_KNOWLEDGE.md`; nur mit Freigabe |
+
+Die Kanal-IDs stehen hier nicht. Sie werden beim `setup` lokal eingetragen (Entwicklermodus,
+„Kanal-ID kopieren“) und nicht committet.
+
+**Schritte für Treta (Admin von The Goat Hub)**
+
+1. Dem TIM-Bot nur diese Kanäle freigeben, mit den Rechten *View Channels* und *Read Message History*.
+   Keine Schreibrechte, keine privaten Kanäle, keine Direktnachrichten.
+2. Im Entwicklerportal den *Message Content Intent* des Bots einschalten.
+3. Den Mitgliedern im Server mitteilen, dass TIM ausgewählte Kanäle liest, wofür und wie lange
+   gespeichert wird; Löschwunsch einzelner Beiträge muss möglich sein.
+
+**Danach** wie unter Einrichtung: `setup` mit Modus `direct`, dann `sync` (erwartet `stored=… complete=True`).
+
+**Offen vor dem Start:** Zustimmung der Kanalbetreiber und Autoren, Speicherdauer, Löschweg.
+Education und Bootcamp laufen erst nach ausdrücklicher Freigabe. Die Konfiguration kennt bisher
+keine Rolle je Kanal; „nur Wissen“ ist noch nicht im Code umgesetzt und wäre ein eigenes Paket.
+
 ## Fehlermeldungen
 
 Wie beim Broncx-Feed: `401` Geheimnis falsch, `403` Bot fehlt das Leserecht im Kanal, `404` Kanal-ID
