@@ -57,16 +57,32 @@ cd ~/TIM-live
 
 | Punkt | Stand |
 |---|---|
-| Vorhandene Felder inventarisiert | per Skript, Lauf auf dem Mac nach Deploy |
-| Fehlende Felder inventarisiert | per Skript |
-| Anzahl betroffener Einträge zu festem Stichtag | per Skript (`--cutoff`) |
-| Nicht rekonstruierbare Einträge klassifiziert | per Skript |
+| Vorhandene Felder inventarisiert | erledigt, Lauf auf dem Mac am 24.10. |
+| Fehlende Felder inventarisiert | erledigt |
+| Anzahl betroffener Einträge zu festem Stichtag | 3.302 Einträge zum Stichtag 2026-10-24T00:51:30Z |
+| Nicht rekonstruierbare Einträge klassifiziert | 0 NON_RECONSTRUCTABLE, 0 CONFLICTING |
 | Keine nachträglichen Metadaten | eingehalten, kein Rewrite |
-| Kein historischer Hash geändert | `bytes_unchanged` im Inventar |
-| V2-Grenze freigegeben | **offen: Freigabe durch Research Lead / Governance Lead** |
-| Herkunft im V2-Bereich 100 % | messbar ab Deploy (`prospective_complete_percent`) |
-| Legacy-Einschränkung freigegeben | **offen: Freigabe durch einen Menschen** |
-| V2-B05 mindestens VERIFIED | **offen** |
+| Kein historischer Hash geändert | `bytes_unchanged: true` |
+| V2-Grenze freigegeben | freigegeben am 24.10.2026 (Uzi): 2026-10-24T00:51:14.905971Z |
+| Herkunft im V2-Bereich 100 % | 100 % (`prospective_complete_percent`) |
+| Legacy-Einschränkung freigegeben | freigegeben am 24.10.2026 (Uzi): 3.301 PARTIAL_LEGACY bleiben unverändert |
+| V2-B05 mindestens VERIFIED | VERIFIED, siehe `TIM_V2_BLOCKER_REGISTER.md` |
+
+## Ergebnis des Inventars (24.10.2026)
+
+Lauf auf dem Mac in `~/TIM-live` (Stand 59388dd), Ausgabe
+`~/Library/Application Support/TIM/provenance/inventory-2026-10-24.json`:
+
+| Wert | Anzahl |
+|---|---|
+| Einträge im Research-Cache | 3.302 |
+| COMPLETE_PROSPECTIVE | 1 |
+| PARTIAL_LEGACY | 3.301 |
+| NON_RECONSTRUCTABLE | 0 |
+| CONFLICTING | 0 |
+| unlesbare Zeilen | 0 |
+| Herkunft im V2-Bereich | 100 % |
+| Dateien unter data/research unverändert | ja |
 
 ## Grenzen
 
@@ -75,4 +91,5 @@ cd ~/TIM-live
   Governance-Freigabe (HC-1.0), nicht dieses Skript.
 - Das Inventar deckt nur den Research-Cache vollständig ab. Für andere JSON-Artefakte listet es die vorhandenen
   Felder auf, klassifiziert sie aber nicht.
-- V2-B05 bleibt OPEN, bis ein Mensch die Grenze und die Einschränkung der Alt-Historie freigibt.
+- Die Prüfung von Bytes und Hashes macht das Inventar selbst (vorher/nachher). Eine getrennte Prüfung durch den Integrity Lead steht noch aus.
+- Das eingefrorene Artefakt `artifacts/v2_readiness/v2_readiness_matrix_final.json` bleibt unverändert und zeigt weiter den alten Stand.
