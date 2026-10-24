@@ -29,6 +29,9 @@ PILOT_STYLE = (
 )
 # Fixed policy: the pilot page has exactly this stylesheet and no script.
 PILOT_CSP = _policy([PILOT_STYLE], [])
+# The page renders a retrospective per case; with thousands of stored cases
+# that took >100 s, blocked the dashboard (watchdog RED) and ended in a 413.
+PILOT_CASE_LIMIT = 48
 PILOT_CASE_FIELDS = ("case_id", "symbol", "timeframe", "opened_at", "status", "outcome")
 STATUS_LABELS = {
     "OPEN": "offen", "COLLECTING_EVIDENCE": "sammelt Belege", "READY_FOR_REVIEW": "zur Prüfung", "MONITORING": "in Beobachtung",
@@ -69,7 +72,14 @@ def render_pilot(state: DashboardState) -> str:
         observations = [dict(item) for item in state.orderflow_observations]
         validations = [dict(item) for item in state.orderflow_validations]
     cases.sort(key=lambda item: str(item.get("opened_at") or ""), reverse=True)
-    items = "".join(_pilot_case(case, observations, validations) for case in cases) or "<p class='empty'>Noch keine Research-Fälle vorhanden.</p>"
+    total = len(cases)
+    shown = cases[:PILOT_CASE_LIMIT]
+    items = "".join(_pilot_case(case, observations, validations) for case in shown) or "<p class='empty'>Noch keine Research-Fälle vorhanden.</p>"
+    scope = (
+        f"<p class='count-scope'>Die neuesten {len(shown)} von {total} Research-Fällen. "
+        "Ältere Fälle stehen unter Research-Fälle und als Beleg-Export bereit.</p>"
+        if total > len(shown) else ""
+    )
     body = (
         "<div class='hero'><div><h1>TIM Research-Belege</h1>"
         "<p>Nachprüfbare Marktanalysen: jeder Fall mit Zeitstempel, verwendeten Daten und SHA-256-Fingerabdruck.</p></div>"
@@ -80,7 +90,7 @@ def render_pilot(state: DashboardState) -> str:
         "<p>Als Zeitnachweis zählt, wann der Hash zuerst veröffentlicht wurde. Der Rückblick zählt vergangene, "
         "gleichartige Fälle aus dem geladenen Verlauf, deren Ausgang zum Zeitpunkt des Falls bereits feststand.</p>"
         f"<p class='safety-callout'>{html.escape(DISCLAIMER)}</p></section>"
-        f"<section class='panel'><h2>Research-Fälle</h2><div class='grid pilot-grid'>{items}</div></section>"
+        f"<section class='panel'><h2>Research-Fälle</h2>{scope}<div class='grid pilot-grid'>{items}</div></section>"
     )
     return (
         "<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"

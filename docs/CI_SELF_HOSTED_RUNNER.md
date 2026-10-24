@@ -19,6 +19,16 @@ Was früher doppelt lief:
 - Bei einem neuen Push in denselben PR ersetzt der neue Lauf den wartenden.
 - `codeql` lief nach jedem Merge über 20 Minuten und hielt auf dem einzigen Runner alle PRs dahinter auf. Es läuft jetzt nachts.
 
+Tempo des Testjobs (seit 2026-10-23): Die Suite lief seriell mit dem Standard-Tracer von Coverage, auf dem Mac
+rund 35 Minuten. Jetzt läuft sie in zwei Schritten:
+- Schritt 1 mit 4 parallelen Prozessen (`pytest-xdist`, `--dist loadgroup`). Alle Testmodule, die die gemeinsame
+  PostgreSQL-Testdatenbank nutzen, laufen zusammen auf einem Prozess (Gruppe `postgres-test-db`).
+- Schritt 2 seriell: Tests mit der Markierung `serial` (`tests/tim_manager/`, `tests/graph_mcp/` und Module, die das
+  echte Repository scannen). Sie scheitern, wenn parallel andere Prozesse Dateien schreiben.
+- `COVERAGE_CORE=sysmon` nutzt die Monitoring-Schnittstelle von Python 3.12+; gleiche Coverage, halbe Laufzeit.
+Beide Markierungen setzt `tests/conftest.py` automatisch. Ein neues Testmodul mit der Datenbank braucht nichts
+extra, solange es `TIM_DURABLE_TEST_DATABASE_URL` liest. Lokal ändert sich nichts: ohne `-n` laufen alle Tests wie bisher.
+
 Pflicht-Checks im Ruleset „platform-main merge conditions“ seit 2026-10-13: `test` und `pr-gate/head`. `TIM full suite` ist kein Pflicht-Check mehr. Das Ruleset hat keine Bypass-Akteure, auch Admins können einen roten oder fehlenden Pflicht-Check nicht übergehen.
 
 Offen für die Auto-Merge-Pipeline: `.github/auto-merge-policy.json` verlangt noch `TIM full suite` als Check im PR. Bevor der Controller eingeschaltet wird, muss entweder dieser Eintrag weg oder `TIM full suite` wieder im PR laufen. Solange der Controller aus ist (`enabled: false`), hat das keine Wirkung.

@@ -20,6 +20,7 @@ from src.data_ingestion.durable import DurableIngestionStore, DurableOutboxWorke
 from src.data_ingestion.ingress import DurableIngress
 from src.data_ingestion.recovery import PersistedTradeReplayService
 from src.dashboard.app import DashboardServer, DashboardState
+from src.dashboard.constants import CHART_CANDLE_LIMIT
 from src.database.connection import Database
 from src.database.repository import MarketRepository
 from src.llm.ollama_client import OllamaClient
@@ -41,6 +42,7 @@ log = logging.getLogger("tim")
 # older than FRESH (including its own query time) is always labelled stale.
 HEALTH_SNAPSHOT_INTERVAL_SECONDS = 5.0
 LIVE_EVIDENCE_INTERVAL_SECONDS = 60.0
+PLAN_JOURNAL_INTERVAL_SECONDS = 60  # paper journal of the Setup-Pfad plans
 HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
 
 
@@ -177,6 +179,7 @@ class TIMApplication:
                 ]
                 self.dashboard_state.recent_candles.append({"symbol":candle.symbol,"timeframe":candle.timeframe,"open_time":candle.open_time.isoformat(),"close_time":candle.close_time.isoformat(),"open":candle.open,"high":candle.high,"low":candle.low,"close":candle.close,"volume":candle.volume,"trade_count":candle.trade_count,"provenance":"PUBLIC_MARKET_DATA"})
                 del self.dashboard_state.recent_candles[:-50]
+                self.dashboard_state.record_chart_candle(self.dashboard_state.recent_candles[-1])
             observations = self.observations.evaluate(history)
             for observation in observations:
                 case = self.cases.ingest(observation)
@@ -308,13 +311,18 @@ class TIMApplication:
         self.observations.restore_seen([str(item.observation_id) for item in historical])
         with self.dashboard_state.lock:
             self.dashboard_state.recent_candles=[{"symbol":candle.symbol,"timeframe":candle.timeframe,"open_time":candle.open_time.isoformat(),"close_time":candle.close_time.isoformat(),"open":candle.open,"high":candle.high,"low":candle.low,"close":candle.close,"volume":candle.volume,"trade_count":candle.trade_count,"provenance":"PUBLIC_MARKET_DATA"} for candle in recent_dashboard_candles]
+            self.dashboard_state.chart_candles={timeframe:[{"symbol":candle.symbol,"timeframe":candle.timeframe,"open_time":candle.open_time.isoformat(),"close_time":candle.close_time.isoformat(),"open":candle.open,"high":candle.high,"low":candle.low,"close":candle.close,"volume":candle.volume,"trade_count":candle.trade_count,"provenance":"PUBLIC_MARKET_DATA"} for candle in candles[-CHART_CANDLE_LIMIT:]] for timeframe,candles in self.history.items()}
             self.dashboard_state.active_observations=[item.to_dict() for item in reversed(historical)]
             self.dashboard_state.research_cases=[item.to_dict() for item in persisted_cases]
             self.dashboard_state.orderflow_observations=list(reversed(persisted_orderflow))
             self.dashboard_state.orderflow_validations=list(reversed(persisted_validations))
             self.dashboard_state.memory_status={"observations":self.memory.size,"method":"deterministic_jaccard"}
             self.dashboard_state.market_status={"symbol":settings.symbol,"timeframes":settings.timeframes,"status":"COLLECTING_PUBLIC_DATA"}
-            self.dashboard_state.system_health["stream"]="starting"
+            # Only the first restore runs before the stream connects. Later
+            # restores (repair/replay after an enrichment error) must not
+            # downgrade a running stream back to "starting" for good.
+            if self.dashboard_state.system_health.get("stream")!="running":
+                self.dashboard_state.system_health["stream"]="starting"
         if hasattr(self.repository,"save_orderflow_observation_with_case"):
             latest_complete=bucket_start(datetime.now(timezone.utc),"1m")
             await self.process_orderflow_window(latest_complete-timedelta(minutes=1),latest_complete)
@@ -339,6 +347,10 @@ class TIMApplication:
                     "queue_depth", "queue_high_water", "queue_oldest_age", "cursor_age", "recovery_state",
                     "duplicate_total", "out_of_order_total", "health_snapshot_cached", "health_snapshot_stale",
                     "health_snapshot_age_seconds", "health_snapshot_observed_at", "health_snapshot_scope",
+                    "received_total", "raw_persisted_total", "rejected_total", "late_total",
+                    "parse_error_total", "persistence_error_total", "source_to_store_latency",
+                    "event_loop_lag", "worker_latency", "restart_total", "reconnect_total",
+                    "receive_rate_per_second", "persist_rate_per_second", "rate_window_seconds",
                 ) if key in snapshot}
             )
             if snapshot.get("queue_depth") is not None and snapshot.get("health_snapshot_observed_at"):
@@ -376,12 +388,31 @@ class TIMApplication:
                         }
                     )
                 raise
+            metrics = {**metrics, **self._throughput(metrics, started)}
             self._ingestion_health_sample_started = started
             self._ingestion_health_observed_at = datetime.now(timezone.utc).isoformat()
             self._ingestion_health_snapshot = dict(metrics)
             snapshot = {**metrics, **self._health_labels(monotonic(), cached=False)}
             self._publish_health(snapshot)
             return snapshot
+
+    def _throughput(self, metrics: dict, started: float) -> dict:
+        """Receive and persist rates from two consecutive counter samples.
+
+        The counters are lifetime totals in ingestion_metrics; a rate needs the
+        previous sample. The first sample after a start, or a counter that went
+        backwards, yields no rate instead of a guessed one.
+        """
+        previous = self._ingestion_health_snapshot
+        elapsed = started - self._ingestion_health_sample_started
+        if previous is None or elapsed <= 0:
+            return {}
+        rates: dict = {"rate_window_seconds": round(elapsed, 3)}
+        for total, rate in (("received_total", "receive_rate_per_second"), ("raw_persisted_total", "persist_rate_per_second")):
+            now_value, before = metrics.get(total), previous.get(total)
+            if isinstance(now_value, (int, float)) and isinstance(before, (int, float)) and now_value >= before:
+                rates[rate] = round((now_value - before) / elapsed, 3)
+        return rates
 
     def _last_health_for_evidence(self) -> dict:
         """Previous sample (or none) for log evidence without querying the database."""
@@ -510,6 +541,22 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _plan_journal_loop(self) -> None:
+        # Paper journal only: a failed step is logged and retried, never fatal.
+        from src.dashboard.plan_journal import update as update_plan_journal
+
+        while not self.worker_stop.is_set():
+            try:
+                await asyncio.to_thread(update_plan_journal, self.dashboard_state.plan_journal_path, self.dashboard_state.chart_series())
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - the journal must not stop the runtime
+                log.warning("plan journal update failed: %s", type(error).__name__)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=PLAN_JOURNAL_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
     async def run(self, initialize_schema: bool = False) -> None:
         await self.database.connect()
         with self.dashboard_state.lock:
@@ -526,6 +573,7 @@ class TIMApplication:
         self.dashboard.start()
         worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
         evidence_task = asyncio.create_task(self._live_evidence_loop(), name="tim-live-evidence")
+        journal_task = asyncio.create_task(self._plan_journal_loop(), name="tim-plan-journal")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
@@ -533,6 +581,7 @@ class TIMApplication:
         finally:
             self.worker_stop.set()
             evidence_task.cancel()
+            journal_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's

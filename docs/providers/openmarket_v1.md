@@ -56,8 +56,45 @@ Die strukturelle Erkennung aus dem ersten Entwurf bleibt nur als Fallback für A
 | REST `TRADE_AGG`: BUY/SELL = Aggressor-Seite? | Nur für WebSocket dokumentiert, wird nicht auf REST übertragen. `net_delta`/`aggressive_*` bleiben leer (`REST_SIDE_AGGRESSOR_SEMANTICS=UNPROVEN`), außer `side_is_aggressor=True` | REST-Doku oder echter Proof |
 | `timestamp` = Beginn des Intervalls | wird geprüft, nicht angenommen: Fenster `[from, from+period)`, Intervall-Raster, `first/lastTimestamp` in `[timestamp, timestamp+Intervall)` → `check:time_semantics` (im Beispiel der Doku erfüllt) | echter Proof |
 | Volumen-Einheit (Base/Quote) | unverändert übernommen (`units=as_reported_by_provider`) | Doku |
-| Schemas von `VOLUME_PROFILE_AGG`, `OPEN_INTEREST_AGG`, `FUNDING_RATE_AGG`, `LIQUIDATION_AGG`, `TPO_AGG` | nicht implementiert | Doku, dann v1.1 |
+| Schemas von `OPEN_INTEREST_AGG`, `FUNDING_RATE_AGG`, `LIQUIDATION_AGG`, `VOLUME_PROFILE_AGG` | seit 21.10.2026 aus echten Antworten belegt und implementiert (v1.1, siehe unten) | erledigt |
+| `TPO_AGG` | nicht implementiert: HTTP 500 `{"code":13,"message":"internal error"}` für jedes getestete Fenster (21.10.2026) | bei OpenMarket melden; TPO-Werte bis dahin nur manuell (`tpo` im JSON) |
+| Orderbuchtiefe | kein OpenMarket-Typ bekannt | nur manuell (`orderbook_depth` im JSON) |
 | echte Authentifizierung und echte Daten | nicht bewiesen (Cloud-Egress gesperrt, kein Key) | `scripts/openmarket_api_proof.py` auf dem Zielhost |
+
+## v1.1: Kontextdaten (21.10.2026)
+
+Quelle: echte Antworten vom Zielhost (`scripts/openmarket_capture_samples.py`, nur lesend), BINANCE_FUTURES BTCUSDT,
+HOUR und FIFTEEN_MINUTES. Testdaten: `tests/fixtures/openmarket_2026_10_21/`. Parser: `context_schemas.py`.
+
+| Typ | Point-Felder | Serien | TIM-Verwendung |
+|---|---|---|---|
+| `OPEN_INTEREST_AGG` | `open high low close timestamp` | eine | `close` je geschlossenem Intervall = OI am Intervallende → OI-Verlauf, Trend, OI-mit-Preis |
+| `FUNDING_RATE_AGG` | `rateOpen rateHigh rateLow rateClose timestamp` | eine | `rateClose` des letzten geschlossenen Intervalls; Bruch je Funding-Intervall (0.0001 = 0,01 %), Intervall 8 h angenommen (`assumed_funding_interval_hours=8`) |
+| `LIQUIDATION_AGG` | `liquidations timestamp` | `id.side` BUY und/oder SELL | Summe je Seite; BUY-Order = Short-Liquidation, SELL = Long-Liquidation (Börsenkonvention, von OpenMarket nicht dokumentiert, im Mitschnitt plausibel; `liquidation_buy_is_short=False` schaltet die Zuordnung ab) |
+| `VOLUME_PROFILE_AGG` | `profile` (flache Liste `[Preis, Buy, Sell, …]`), `timestamp` | eine | über alle geschlossenen Intervalle summiert → POC, Value Area 70 % |
+
+Beobachtet, nicht dokumentiert:
+- Fensterende inklusiv auch hier: Das Intervall ab `from+period` (das laufende) kommt mit und wird verworfen.
+- `LIQUIDATION_AGG` lässt Intervalle ohne Liquidationen weg und kam einmal unsortiert. Innerhalb einer vorhandenen Serie gilt eine Lücke als 0; fehlt eine Seite ganz, bleibt sie unbekannt.
+- `VOLUME_PROFILE_AGG` kommt neueste Stunde zuerst; die Buy/Sell-Spalten je geschlossener Stunde stimmten exakt mit `TRADE_AGG` BUY/SELL überein.
+- Einheiten: OI und Liquidationen in Coin (OI ~97k bei Kurs ~83k), übernommen als `as_reported_by_provider`. Die Auswertung nutzt nur Anteile und relative Änderungen.
+- Rate-Limit 10 Anfragen je Fenster. Ein Analyse-Lauf braucht mit Kontext bis zu 6 Anfragen (Candles, TRADE_AGG, 4 Kontexttypen).
+
+Abweichung vom fail-closed-Grundsatz, bewusst: Die Liquidationsseite ist standardmäßig zugeordnet (BUY = Short-Liquidation),
+anders als die Aggressor-Seite bei `TRADE_AGG`. Grund: Das ist die Konvention der Börsen-Liquidationsfeeds (z. B. Binance
+`forceOrder`); belegt ist sie für OpenMarket nicht. Die Zuordnung steht in jeder Analyse in den Notes; Liquidationen geben
+keinen Score-Hinweis, nur Aussagen.
+
+Zeitbezug: OI-Verlauf und Liquidationen beschreiben ein Fenster. Die Pipeline vergleicht sie deshalb mit der Preisbewegung
+über dasselbe Fenster (OI: letzter Close zu Beginn und Ende der OI-Spanne; Liquidationen: erster Open bis letzter Close),
+nicht mit dem letzten Kerzenschritt. Eine OI-Serie außerhalb des Candle-Fensters wird verworfen
+(`open_interest_series:outside_candle_window`). Widerspricht eine manuelle OI-Angabe der Serie, wird OI gar nicht
+interpretiert (`conflict:open_interest_input_vs_series`).
+
+CLI: `--provider openmarket` holt die vier Typen standardmäßig mit; `--no-context` schaltet das ab,
+`--funding-interval-hours` (Standard 8) setzt das Funding-Intervall des Instruments. Fehlt ein Typ
+(403, 5xx, Schemafehler), steht das in `missing_fields` (`context:<TYP>_unavailable:<KLASSE>`), die Analyse läuft weiter.
+Auswertung in der Pipeline: `src/orderflow_scenario/positioning.py`.
 
 ## Architektur
 
@@ -132,8 +169,9 @@ Grundsatz: fail closed. Marktdaten werden nie erfunden oder ergänzt.
 | aggressive_buy/sell_volume | DERIVED (gesperrt) | Σ BUY bzw. SELL `TRADE_AGG` über gepaarte Intervalle; nur mit `side_is_aggressor=True` |
 | net_delta | DERIVED (gesperrt) | `buy_volume − sell_volume`; nur mit bestätigter Aggressor-Semantik; `derived:net_delta` |
 | price_now, price_timestamp | NOT_REQUIRED | das CLI nimmt den letzten Close (bestehendes Verhalten) |
-| levels (Value Area) | UNKNOWN | `VOLUME_PROFILE_AGG`/`TPO_AGG`, Schema unbelegt |
-| open_interest_with_price | UNKNOWN | `OPEN_INTEREST_AGG`, Schema unbelegt |
+| levels (Value Area) | DERIVED (v1.1) | POC/VAH/VAL aus `VOLUME_PROFILE_AGG`; TPO nicht verfügbar (HTTP 500) |
+| open_interest_with_price | DERIVED (v1.1) | OI-Verlauf aus `OPEN_INTEREST_AGG` plus Preisreaktion der Candles |
+| funding, liquidations | DERIVED (v1.1) | `FUNDING_RATE_AGG`, `LIQUIDATION_AGG` (siehe oben) |
 | delta_divergence, volume_bubbles | NOT_AVAILABLE | MMT-Screenshot-Interpretation, kein API-Feld |
 | trades (roh) | NOT_REQUIRED (v1) | WS `TRADE` dokumentiert, außerhalb des Scopes |
 
