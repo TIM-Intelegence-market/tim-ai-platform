@@ -30,6 +30,23 @@ Use `type(scope): message`, for example:
 Commits should be focused and should not contain generated data, secrets,
 credentials, local databases, or virtual environments.
 
+## License and sign-off
+
+TIM is licensed under the Apache License, Version 2.0 (`LICENSE`, `NOTICE`).
+By contributing, you agree that your contribution is licensed under the same
+terms (Apache 2.0, section 5).
+
+Every commit must carry a Developer Certificate of Origin sign-off
+(<https://developercertificate.org/>). Add it with `git commit -s`, which
+appends:
+
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+The name and e-mail must match the commit author. The repository is private;
+access is granted only to people who actively work on TIM.
+
 ## Pull-request evidence
 
 Every pull request must state:

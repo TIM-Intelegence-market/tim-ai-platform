@@ -363,3 +363,10 @@ def test_texts_for_odd_values(tmp_path: Path) -> None:
     assert tiles["human_review"]["extra"].get("kind") != "parked" and "Freigabe" not in tiles["human_review"]["reason"]
     system = _tiles(build_system(_state_with(tmp_path, snap), now=NOW, sources=_fresh()))
     assert "None" not in system["tests"]["reason"]
+
+
+def test_not_applicable_gate_says_so_instead_of_waiting(tmp_path: Path) -> None:
+    def change(snap):
+        snap["operations"]["readiness"]["gates"] = [_gate("MCP", "Integration", "NOT_APPLICABLE", "NOT_APPLICABLE", "Externer Weg")]
+    tile = _system_tiles_of(tmp_path, change)["gate_MCP"]
+    assert tile["extra"]["state_label"] == "Entfällt" and tile["reason"] == "Externer Weg"

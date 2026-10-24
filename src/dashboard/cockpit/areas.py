@@ -483,7 +483,12 @@ def _gates_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]:
         human = _human_gate(shown)
         archive_only = _missing(current) and not human
         label = f"{_text(gate.get('id'), 12)} {_text(gate.get('name'), 50)}"
-        if human:
+        if human and "NOT APPLICABLE" in str(shown).upper().replace("_", " "):
+            tile = _parked(make_tile(f"gate_{gid}", label, _word(shown), state="unknown",
+                                     reason=_text(gate.get("current_note"), 200) if not _missing(gate.get("current_note"))
+                                     else "Gilt für diesen Stand nicht", source=source, href="/v2-readiness", now=now),
+                           "Entfällt")
+        elif human:
             tile = _parked(make_tile(f"gate_{gid}", label, _word(shown), state="unknown",
                                      reason="Menschlicher Schritt, kein technischer Fehler", source=source, href="/v2-readiness", now=now),
                            "Wartet auf euch")
