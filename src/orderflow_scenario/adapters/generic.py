@@ -15,6 +15,7 @@ from typing import Any, Mapping
 
 from src.models.market_data import Candle, Trade
 
+from ..positioning import parse_context
 from .base import AdapterInput
 
 
@@ -132,7 +133,8 @@ class GenericOrderflowAdapter:
         observed_at = observed_at or datetime.now(timezone.utc)
         candles, candle_missing = self.parse_candles(data)
         trades, trade_missing = self.parse_trades(data)
-        missing = tuple(sorted(set(list(candle_missing) + list(trade_missing))))
+        context = parse_context(data)
+        missing = tuple(sorted(set(list(candle_missing) + list(trade_missing) + [f"context_rejected:{item}" for item in context.rejected])))
         estimated: list[str] = []
         if data.get("estimated_prices"):
             estimated.extend(str(item) for item in data["estimated_prices"])
@@ -153,6 +155,8 @@ class GenericOrderflowAdapter:
             delta_divergence=data.get("delta_divergence"),
             structured=True,
             estimated_prices=tuple(estimated),
+            positioning=context.positioning,
+            profile=context.profile,
             missing_fields=missing,
             extra_notes=tuple(data.get("extra_notes", ())),
         )

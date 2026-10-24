@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+import hashlib
+import json
 
 import pytest
 
@@ -17,6 +19,12 @@ HEAD = "a" * 40
 NOW = datetime(2026, 10, 20, 13, 30, 20, tzinfo=UTC)
 
 
+def seal_report(value):
+    payload = {key: item for key, item in value.items() if key != "report_sha256"}
+    value["report_sha256"] = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+    return value
+
+
 def report(**overrides):
     gates = [{"name": name, "status": "PASS", "evidence": {}, "reasons": []} for name in REQUIRED_START_GATES]
     gates[-1]["evidence"] = {"frozen_commit": HEAD}
@@ -24,7 +32,7 @@ def report(**overrides):
              "context": {"head": HEAD}, "all_start_gates_pass": True, "blocking_start_gates": [],
              "gates": gates, "report_sha256": "f" * 64}
     value.update(overrides)
-    return value
+    return seal_report(value)
 
 
 def test_gates_from_report_accepts_only_fresh_all_pass_for_head() -> None:
@@ -43,7 +51,7 @@ def test_gates_from_report_accepts_only_fresh_all_pass_for_head() -> None:
     broken = report()
     broken["gates"][-1]["evidence"] = {"frozen_commit": "c" * 40}
     with pytest.raises(ValueError, match="frozen commit"):
-        campaign.gates_from_report(broken, report_ref="r", head=HEAD, now=NOW)
+        campaign.gates_from_report(seal_report(broken), report_ref="r", head=HEAD, now=NOW)
 
 
 def test_activation_is_prospective_and_34_days() -> None:
@@ -109,3 +117,76 @@ def test_start_script_requires_named_approval() -> None:
                     "2026-10-20T12:59:10"])
     assert parse_args(["--start-gates", "x.json", "--approved-by", "Uzi", "--decision-ref", "d",
                        "--approved-at", "2026-10-20T12:59:10Z"]).approved_by == "Uzi"
+
+
+def test_start_rejects_changed_report_even_when_gate_decisions_still_look_green():
+    value = report()
+    value["gates"][0]["evidence"] = {"changed_after_evaluation": True}
+    with pytest.raises(ValueError, match="hash"):
+        campaign.gates_from_report(value, report_ref="r", head=HEAD, now=NOW)
+
+
+@pytest.mark.parametrize("declared", [None, "", "f" * 64])
+def test_start_requires_matching_report_hash(declared):
+    value = report()
+    value["report_sha256"] = declared
+    with pytest.raises(ValueError, match="hash"):
+        campaign.gates_from_report(value, report_ref="r", head=HEAD, now=NOW)
+
+
+def test_duplicate_gate_cannot_replace_an_earlier_failure():
+    value = report()
+    duplicate = dict(value["gates"][0])
+    value["gates"][0]["status"] = "FAIL"
+    value["gates"].append(duplicate)
+    with pytest.raises(ValueError, match="exactly once"):
+        campaign.gates_from_report(seal_report(value), report_ref="r", head=HEAD, now=NOW)
+
+
+def test_each_gate_must_pass_despite_a_green_summary():
+    value = report()
+    value["gates"][0]["status"] = "FAIL"
+    with pytest.raises(ValueError, match="do not all pass"):
+        campaign.gates_from_report(seal_report(value), report_ref="r", head=HEAD, now=NOW)
+
+
+@pytest.mark.parametrize("overrides", [{"all_start_gates_pass": "true"}, {"blocking_start_gates": None}])
+def test_summary_must_be_explicitly_true_with_an_empty_blocker_list(overrides):
+    with pytest.raises(ValueError, match="do not all pass"):
+        campaign.gates_from_report(report(**overrides), report_ref="r", head=HEAD, now=NOW)
+
+
+def test_real_collector_report_remains_compatible_and_can_supply_start_gates():
+    from src.v2_completion.start_gate_checks import GateResult, summarize
+
+    rows = [GateResult(name, "PASS", {"frozen_commit": HEAD} if name == "configuration_and_commit_frozen" else {})
+            for name in REQUIRED_START_GATES]
+    value = summarize(rows, now=NOW, context={"head": HEAD})
+    # Captured from the producer before the integrity fix: no report format/hash migration.
+    assert value["report_sha256"] == "fcf4d528b62f88f1c8c3d6acbf872f5fc33fbfbaed8d51041d3c2d268f97276d"
+    gates = campaign.gates_from_report(value, report_ref="r", head=HEAD, now=NOW)
+    assert len(gates) == len(REQUIRED_START_GATES) and all(gate.status == "PASS" for gate in gates)
+
+
+def test_invalid_report_stops_start_script_before_any_campaign_files_are_written(tmp_path, monkeypatch):
+    from scripts import v2_qualification_start as script
+
+    value = report(evaluated_at_utc=datetime.now(UTC).isoformat())
+    value["gates"][0]["evidence"] = {"changed_after_evaluation": True}
+    path = tmp_path / "start-gates.json"
+    raw = json.dumps(value).encode()
+    path.write_bytes(raw)
+    output = tmp_path / "qualification"
+    monkeypatch.setattr(script, "git", lambda *args: HEAD if args == ("rev-parse", "HEAD") else "")
+    with pytest.raises(ValueError, match="hash"):
+        script.main(["--start-gates", str(path), "--approved-by", "Test reviewer",
+                     "--decision-ref", "TEST_ONLY", "--approved-at", "2026-10-20T13:00:00Z",
+                     "--output-dir", str(output), "--baseline", str(tmp_path / "absent-baseline.json")])
+    assert not output.exists()
+    assert path.read_bytes() == raw
+
+
+@pytest.mark.parametrize("rows", [None, {}, [None], [{"name": 123}], []])
+def test_malformed_gate_collections_are_rejected_as_invalid_reports(rows):
+    with pytest.raises(ValueError, match="exactly once"):
+        campaign.gates_from_report(report(gates=rows), report_ref="r", head=HEAD, now=NOW)

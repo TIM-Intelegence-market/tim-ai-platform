@@ -23,6 +23,7 @@ The dashboard stays OBSERVE-only and read-only on `127.0.0.1:8765`. The research
 | `i18n.py` | German label catalog applied to whole text nodes of the final HTML |
 | `views.py` | `render()` for all operator pages |
 | `pages/signals.py`, `pages/operations.py`, `pages/setup_path.py`, `pages/pilot.py` | Signal research; health center, data quality, timeline; setup path; pilot view |
+| `pages/chart.py`, `chart_model.py` | TIM-Chart: SVG candles with range, volume profile (VAH/VAL/POC), BOS and orderflow scenarios |
 | `server.py` | HTTP routing and security headers |
 | `assets/style.css`, `assets/extra.css`, `assets/auto_refresh.html` | Control Center styles, polling script |
 
@@ -30,7 +31,7 @@ The dashboard stays OBSERVE-only and read-only on `127.0.0.1:8765`. The research
 
 Betrieb (Überblick, Laufzeit, Datenqualität, Vorfälle & Lücken, Systemzustand,
 Datenqualitäts-Ausnahmen, Zeitleiste) · Forschung (Beobachtungen, Research-Fälle, Orderflow,
-Signal-Research, Analysen, Erkenntnisse, Unabhängige Fälle, Qualifikation, Setup-Pfad) ·
+Signal-Research, Analysen, Erkenntnisse, Unabhängige Fälle, Qualifikation, Setup-Pfad, TIM-Chart) ·
 Freigabe (V2-Bereitschaft) · System (Sicherheit, Audit & Evidenz, Graphify & MCP) ·
 Werkzeuge (Recherche-Werkzeug, Pilotansicht). Below 820 px the sidebar becomes a horizontally
 scrollable bar above the status matrix.
@@ -79,6 +80,33 @@ Added from `platform-main`:
 | `/exports/case/<id>.json`, `.html` | Verifiable research-case proof (`src/research/case_export.py`); orderflow cases include the `RETROSPECTIVE` block |
 | `/api/orderflow/history` | `{"observations": [...], "validations": [...]}` for exports |
 | `/pilot` | Pilot view for coaches and pilot customers |
+| `/chart?tf=1m\|5m\|15m\|1h` | TIM-Chart (see below) |
+| `/api/chart?tf=…` | The chart model as JSON: candles, levels, profile, BOS, scenarios |
+
+## TIM-Chart
+
+`/chart` draws TIM's own Binance candles (runtime keeps the newest 500 per timeframe in
+`DashboardState.chart_candles`; 120 are shown) as server-rendered SVG, no external scripts.
+Marked levels, all computed by TIM:
+
+- Range high/low of the visible window and the last price.
+- Volume profile with POC and 70 % value area (VAH/VAL). Estimated from the finest timeframe that
+  covers the window, each candle's volume spread evenly over its high–low range (no trades).
+  `build_chart_model(..., profile=...)` accepts an external profile (e.g. OpenMarket) instead.
+- BOS: the latest bullish and bearish break per timeframe (chart timeframe and higher), i.e. the
+  first close beyond a swing high/low confirmed by two candles on each side.
+- Scenarios from the orderflow pipeline (`OBSERVE`): entry zone and trigger, plus a preview stop and
+  targets from `TradePlanBuilder` applied to the unconfirmed scenario. They are labelled as preview;
+  scores are uncalibrated. Without trades the pipeline's decision stays `NO_TRADE`.
+
+Plans are written out like a hand-drawn chart: each zone carries `PLAN A LONG  Limit … (reason)`,
+the invalidation is a solid red line (`Ungültig A: 15m-Schluss < …`, the scenario trigger), the
+preview stop a dashed line with its distance, targets outside the view go into a yellow banner, and
+a footer states 0.5 % account risk, max. 10x and "keine Anlageberatung". NY-open windows
+(15 min before to 30 min after 9:30 New York time, weekdays) are shaded as no-entry time.
+
+`/setup-path` shows the same chart (15m, 80 candles) with one card per plan; without per-timeframe
+candles it keeps the old close-price line. The page refreshes through the normal live update.
 
 ## Pilot view
 

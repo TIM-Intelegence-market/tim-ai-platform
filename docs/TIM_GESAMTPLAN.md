@@ -71,7 +71,7 @@ kommt aus dem Projektspeicher und wurde nicht neu gemessen.
 | V2-B02 | jede Datenlücke erklärt, keine offene | 63 offene Lücken |
 | V2-B03 | Artefakt-Audit | FAIL |
 | V2-B04 | Research-Qualität | FAIL |
-| V2-B05 | Herkunft der Alt-Historie | unvollständig |
+| V2-B05 | Herkunft der Alt-Historie | unvollständig; seit 24.10. VERIFIED (Grenze und Alt-Einschränkung freigegeben) |
 | V2-B06 | manuelle wissenschaftliche Prüfung durch einen Menschen | fehlt |
 | V2-B07 | Governance-Freigabe HC-1.0 | fehlt |
 | V2-B08 | Verantwortungsmatrix (RACI) mit Namen | fehlt |

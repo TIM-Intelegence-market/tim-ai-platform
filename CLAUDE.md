@@ -34,7 +34,20 @@ Originale aus der Bibliothek (Quelle und Grenzen je Skill in `HERKUNFT.md`):
 - `vormachen-vorbereitung`: Record-&-Replay-Aufnahme in ChatGPT/Codex vorbereiten.
 - `humanizer`, `humanizer-de`: Text auf KI-Muster prüfen und in eigener Stimme neu schreiben.
 - `seiten-check`: eigene Webseite auf typische Sicherheitslücken prüfen (nur eigene Domains).
+- `claude-automation-recommender`: Codebase analysieren und Hooks, Skills, MCP-Server, Subagents empfehlen (aus Anthropics Plugin `claude-code-setup`, nur lesend).
+- Trading-Skills aus `tradermonty/claude-trading-skills` (MIT; Auswahl und Grenzen in
+  `ai-resources/trading-skills.md`, je Skill `HERKUNFT.md`; nur Analyse, Papier und Journal, kein Echtgeld):
+  `crypto-regime-analyzer`, `position-sizer`, `futures-position-sizer`, `drawdown-circuit-breaker`,
+  `pre-trade-discipline-gate`, `trader-memory-core`, `signal-postmortem`, `backtest-expert`,
+  `edge-strategy-reviewer`, `trade-hypothesis-ideator`.
+- `trading-team`: Papier-Trading-Team (Scanner, Buzz-Tracker, Papier-Bot, ehrlicher Bericht) nach der
+  MSB-Intel-Anleitung, in TIM neu geschrieben; nur öffentliche Daten, kein Echtgeld (`HERKUNFT.md` im Skill).
 - `canary`: Warnzeichen für ein volles Kontextfenster setzen (nur auf Anfrage, Satz nie hier eintragen).
+
+Subagenten (`.claude/agents/`, Herkunft in `.claude/agents/HERKUNFT.md`):
+
+- `Explore` auf Haiku ("Claude Crew"): schnelle, nur lesende Suche. Opus plant (`/model opusplan`
+  mit Plan-Modus), Sonnet baut, Haiku sucht.
 
 Aus `ai-resources/KI-Ressourcen.md` abgeleitet:
 
