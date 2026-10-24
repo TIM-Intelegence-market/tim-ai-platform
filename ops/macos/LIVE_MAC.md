@@ -76,6 +76,30 @@ cd ~/TIM-live
 - CI-Runner und Issue-Worker teilen sich den Mac. Bei Speicherdruck zuerst den Worker pausieren.
 - Jede Code-Änderung in `~/TIM-live` beendet die Kampagne (neuer Commit, neue Gates).
 
+## TIM Core vor CI (Prioritäten, seit 24.10.)
+
+TIM Core und der CI-Runner teilen sich den Mac mini (8 Kerne: 4 Leistung, 4 Effizienz, 16 GB). launchd
+ordnet sie so:
+
+| Dienst | ProcessType | Nice | Wirkung |
+|---|---|---|---|
+| `com.tim.runtime` | Interactive | 0 | nie gedrosselt, Vorrang auf den Leistungskernen |
+| `com.tim.watchdog`, `com.tim.history-recovery` | Standard | 0 | normale Priorität |
+| `com.tim.ci-runner`, `com.tim.ci-postgres` | Standard | 10 | volle Kerne, solange TIM sie nicht braucht, sonst weicht CI aus |
+| übrige TIM-Agenten (Backup, Worker, Refresh) | Background | – | wie bisher |
+
+Vorher liefen Runtime, Watchdog und CI alle im gedrosselten Band (`ProcessType Background`, Priorität 4).
+Sie waren gleichrangig, und Apps wie Browser oder Musik hatten Vorrang vor beiden. `Background` allein für
+CI machte den Testschritt 45 bis 50 Minuten lang (20. bis 22.10.). `Standard` mit `Nice 10` hält CI schnell,
+solange TIM nichts braucht.
+
+Die Datenbanken bleiben getrennt: TIM nutzt PostgreSQL 18 auf 5432, die CI nutzt PostgreSQL 16 auf 5434
+(Benutzer `timrunner`). Die Testdatenbank in `~/Library/Application Support/TIM/test-postgres` ist ebenfalls
+eigenständig.
+
+Prüfen (ohne sudo): `ps -axo user,nice,pri,command | grep -E "TIM-live/main.py|Runner.Listener|pytest"`.
+Die Runtime darf nicht mehr Priorität 4 (gedrosselt) zeigen, CI-Prozesse zeigen Nice 10.
+
 ## Dashboards automatisch aktuell (`com.tim.dashboard-refresh`)
 
 Seit 23.10.2026 hält `scripts/dashboard_refresh.py` die Dashboards auf dem Mac aktuell. Der Agent läuft

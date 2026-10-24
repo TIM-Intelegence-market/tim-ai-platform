@@ -20,7 +20,7 @@
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>ProcessType</key><string>Background</string>
+  <key>ProcessType</key><string>Standard</string>
   <key>ThrottleInterval</key><integer>10</integer>
   <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/watchdog_launchd.log</string>
   <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/watchdog_launchd.err.log</string>

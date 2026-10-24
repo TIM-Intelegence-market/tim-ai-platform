@@ -27,6 +27,9 @@ PG_DATA="${RUNNER_HOME}/ci-postgres"
 LOG_DIR="${RUNNER_HOME}/Library/Logs"
 RUNNER_PLIST="/Library/LaunchDaemons/com.tim.ci-runner.plist"
 PG_PLIST="/Library/LaunchDaemons/com.tim.ci-postgres.plist"
+# TIM Core (com.tim.runtime, Interactive) has priority over CI on the shared Mac. Standard instead of
+# Background keeps CI on the fast cores when the Mac is idle; Nice 10 makes it yield when TIM needs CPU.
+CI_NICE=10
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf '\nFEHLER: %s\n' "$*" >&2; exit 1; }
@@ -108,6 +111,8 @@ cat > "$PG_PLIST" <<PLIST
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Standard</string>
+  <key>Nice</key><integer>${CI_NICE}</integer>
   <key>StandardOutPath</key><string>${LOG_DIR}/ci-postgres.log</string>
   <key>StandardErrorPath</key><string>${LOG_DIR}/ci-postgres.log</string>
 </dict>
@@ -176,7 +181,8 @@ cat > "$RUNNER_PLIST" <<PLIST
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>ProcessType</key><string>Interactive</string>
+  <key>ProcessType</key><string>Standard</string>
+  <key>Nice</key><integer>${CI_NICE}</integer>
   <key>StandardOutPath</key><string>${LOG_DIR}/ci-runner.log</string>
   <key>StandardErrorPath</key><string>${LOG_DIR}/ci-runner.log</string>
 </dict>
