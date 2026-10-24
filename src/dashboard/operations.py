@@ -1382,6 +1382,40 @@ def _runtime(data: dict[str, Any]) -> str:
     )
 
 
+# A measured snapshot older than this no longer describes the current state.
+STALE_SNAPSHOT_SECONDS = 48 * 3600
+
+
+def _archive_reason(room: dict[str, Any], snapshot_end: Any = None) -> str | None:
+    """Why an evidence room is old stock (finished, frozen, never approved), or None when current."""
+    label = str(room.get("label", ""))
+    status = str(room.get("status", "")).upper()
+    if status.startswith("HISTORICAL") or label == "Frozen Live Capture":
+        return "eingefroren: historisches Fenster, ändert sich nie"
+    if "ABORTED" in status:
+        return "abgebrochen: zählt nicht mehr"
+    if "NOT APPROVED" in status:
+        return "Kandidat: nie freigegeben"
+    if status in ("", UNAVAILABLE) or room.get("coverage") == UNAVAILABLE:
+        return "keine Daten: nichts erzeugt"
+    if label == "Server-Bestandsaufnahme":
+        age = _seconds_since(snapshot_end)
+        if age is None or age > STALE_SNAPSHOT_SECONDS:
+            return f"Stand {str(snapshot_end or UNAVAILABLE)[:10]}: seitdem nicht neu gemessen"
+    return None
+
+
+def _split_rooms(datasets: list[dict[str, Any]], snapshot_end: Any = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    current, archived = [], []
+    for room in datasets:
+        reason = _archive_reason(room, snapshot_end)
+        if reason is None:
+            current.append(room)
+        else:
+            archived.append({**room, "disposition": f"Altbestand · {reason}" + (f" · {room['disposition']}" if room.get("disposition") else "")})
+    return current, archived
+
+
 def _data_quality(data: dict[str, Any]) -> str:
     gaps = data["gaps"]
     snapshot = data.get("current_server_snapshot", {})
@@ -1405,13 +1439,28 @@ def _data_quality(data: dict[str, Any]) -> str:
         ("Loaded gap records", gaps["total_loaded"], f"bounded at {gaps['bounded_at']}", None),
         ("Gap evidence scope", "Server-Bestandsaufnahme" if gaps.get("purpose") == "CURRENT_STATE_NOT_QUALIFICATION" else gaps["scope"], "", None),
     ])
+    current_rooms, archived_rooms = _split_rooms(data["datasets"], snapshot.get("end") if snapshot.get("available") else None)
     datasets = section(
         "Dataset coverage",
-        "Separated evidence rooms",
-        coverage_rows(data["datasets"]),
-        note="Coverage rooms are never mixed. Each row keeps its own observed/expected window and source path.",
-        meta=f"{len(data['datasets'])} evidence rooms",
+        "Aktuelle Evidenzräume",
+        coverage_rows(current_rooms) if current_rooms else "<p class='empty'>Kein aktueller Evidenzraum.</p>",
+        note="Nur Räume, die laufend gemessen werden. Jeder Raum behält sein eigenes Fenster und seine Quelle; Räume werden nie vermischt.",
+        meta=f"{len(current_rooms)} aktuell · {len(archived_rooms)} Altbestand",
     )
+    snapshot_stale = bool(snapshot.get("available")) and _archive_reason({"label": "Server-Bestandsaufnahme", "status": "MEASURED"}, snapshot.get("end")) is not None
+    archive = ""
+    if archived_rooms or (current_panel and snapshot_stale):
+        archive = (
+            "<details class='panel readiness'><summary>Altbestand anzeigen: "
+            f"{len(archived_rooms)} abgeschlossene, eingefrorene oder nie freigegebene Räume"
+            + (" und die alte Server-Bestandsaufnahme" if current_panel and snapshot_stale else "")
+            + "</summary>"
+            + (coverage_rows(archived_rooms) if archived_rooms else "")
+            + (current_panel if snapshot_stale else "")
+            + "<p class='count-scope'>Altbestand bleibt unverändert sichtbar, zählt aber nicht als aktueller Zustand.</p></details>"
+        )
+        if snapshot_stale:
+            current_panel = ""
     freshness = status_rows([
         ("Collector freshness", "live pipeline measurement", data["runtime"]["collector_freshness"]["status"], _metric_value(data["runtime"]["collector_freshness"]), str(data["runtime"]["collector_freshness"]["source"])),
         ("Gap inventory", "persisted gap ledger", "MEASURED", f"{gaps['total_loaded']} rows", str(gaps["source"])),
@@ -1424,6 +1473,7 @@ def _data_quality(data: dict[str, Any]) -> str:
         + section("Gap register", "Open data gaps", gap_strip,
                   note="Gap rows list cause, repairability and backfill status per window.")
         + "<p class='cc-note'>Full register with evidence: <a href='/gaps'>Incidents & Gaps →</a></p>"
+        + archive
     )
 
 
