@@ -147,6 +147,8 @@ class DashboardServer:
 
                     journal_path = outer.state.plan_journal_struct_path if query.get("rule", [""])[0] == "struct" else outer.state.plan_journal_path
                     return self.respond(200, json.dumps(load_plan_journal(journal_path), default=str).encode(), "application/json")
+                if path == "/neu" or path.startswith("/neu/") or path == "/api/cockpit":
+                    return self.cockpit(path, query)
                 if path == "/pilot":
                     return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8", csp=PILOT_CSP)
                 if path == "/api/orderflow/history":
@@ -271,6 +273,25 @@ class DashboardServer:
                         return self.respond(404, b'{"error":"report not found"}', "application/json")
                     return self.respond(200, candidate.read_bytes(), "text/markdown; charset=utf-8" if candidate.suffix == ".md" else "application/json")
                 return self.respond(404, b'{"error":"not found"}', "application/json")
+
+            def cockpit(self, path: str, query: dict[str, list[str]]) -> None:
+                """New Control Center under /neu (display only, runs next to the old pages)."""
+                from src.dashboard import cockpit
+
+                try:
+                    if path == "/api/cockpit":
+                        return self.respond(200, json.dumps(cockpit.build_lage(outer.state), default=str).encode(), "application/json")
+                    key = path.removeprefix("/neu").strip("/") or "lage"
+                    if key not in cockpit.AREA_BY_KEY:
+                        return self.respond(404, b'{"error":"not found"}', "application/json")
+                    if key == "lage":
+                        model = cockpit.build_lage(outer.state)
+                        if query.get("fragment", [""])[0] == "1":
+                            return self.respond(200, json.dumps({"html": cockpit.lage_body(model)}).encode(), "application/json")
+                        return self.respond(200, cockpit.render_lage(model).encode(), "text/html; charset=utf-8", csp=cockpit.COCKPIT_CSP)
+                    return self.respond(200, cockpit.render_area(key).encode(), "text/html; charset=utf-8", csp=cockpit.COCKPIT_CSP)
+                except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                    return self.respond(500, _error_page("Cockpit", exc).encode(), "text/html; charset=utf-8")
 
             def trader_journal_page(self, status: int, form: dict[str, str] | None = None, error: str | None = None, saved: str | None = None) -> None:
                 from src.dashboard import trader_journal
