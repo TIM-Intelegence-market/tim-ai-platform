@@ -606,7 +606,7 @@ def _table(table: Any) -> str:
             return f"<td>{_e(c)}</td>"
         href = str(c.get("href") or "")
         text = _e(c.get("text"))
-        if href.startswith("/") and not href.startswith("//"):
+        if href.startswith("/") and not href.startswith("//") and "\\" not in href:
             text = f"<a href='{_e(href)}'>{text}</a>"
         return f"<td>{text}</td>"
 
@@ -630,8 +630,10 @@ def sections_body(model: dict[str, Any]) -> str:
         out.append(f"<p class='note'>{_e(parked)} {'Punkt wartet' if parked == 1 else 'Punkte warten'} bewusst auf einen Menschen "
                    "oder gelten gerade nicht (grau mit eigenem Wort). Das ist kein Fehler.</p>")
     for section in model.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
         sid = _e(section.get("id"))
-        tiles = section.get("tiles") or []
+        tiles = [t for t in section.get("tiles") or [] if isinstance(t, dict)]
         table = _table(section.get("table"))
         body = (_grid(tiles) if tiles else "") + table
         if not table and section.get("empty"):
@@ -639,7 +641,8 @@ def sections_body(model: dict[str, Any]) -> str:
         if section.get("note"):
             body += f"<p class='note'>{_e(section['note'])}</p>"
         out.append(f"<section id='{sid}' aria-labelledby='h-{sid}'><h2 id='h-{sid}'>{_e(section.get('title'))}</h2>{body}</section>")
-    slow = [f"{name} ({info.get('error')})" for name, info in (model.get("sources") or {}).items()
+    slow = [f"{name} ({info.get('error') or ('letzter Stand von vor ' + str(info.get('stale_seconds')) + ' s' if info.get('stale_seconds') is not None else 'keine Antwort')})"
+            for name, info in (model.get("sources") or {}).items()
             if isinstance(info, dict) and (not info.get("ok") or info.get("stale_seconds") is not None)]
     if slow:
         out.append(f"<p class='note'>Langsame oder fehlende Quellen: {_e('; '.join(slow))}</p>")

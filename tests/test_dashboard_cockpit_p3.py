@@ -263,3 +263,103 @@ def test_area_routes_fast_with_csp_fragment_and_api(server: str, key: str) -> No
     with urlopen(server + f"/api/cockpit?area={key}", timeout=10) as response:
         model = json.loads(response.read())
     assert model["schema"] == "tim_cockpit_area/1" and model["area"] == key and model["mode"] == "OBSERVE"
+
+
+# --- findings of the adversarial review -------------------------------------
+
+def _system_tiles_of(tmp_path: Path, change) -> dict:
+    snap = _snapshot()
+    change(snap)
+    return _tiles(build_system(_state_with(tmp_path, snap), now=NOW, sources=_fresh()))
+
+
+@pytest.mark.parametrize("status", ["FAIL - HUMAN ACTION REQUIRED", "NOT APPLICABLE — FAIL"])
+def test_fault_with_human_word_stays_a_fault(tmp_path: Path, status: str) -> None:
+    def change(snap):
+        snap["operations"]["readiness"]["gates"] = [_gate("G9", "X", "PASS", status)]
+    tile = _system_tiles_of(tmp_path, change)["gate_G9"]
+    assert tile["state"] == "fail" and tile["extra"].get("kind") != "parked"
+
+
+def test_archived_fail_gate_is_yellow_not_parked(tmp_path: Path) -> None:
+    def change(snap):
+        snap["operations"]["readiness"]["gates"] = [_gate(None, "X", "FAIL", None), _gate(None, "Y", "PASS", None)]
+    tiles = _system_tiles_of(tmp_path, change)
+    assert tiles["gate_nr1"]["state"] == "warn" and tiles["gate_nr2"]["extra"]["kind"] == "parked"
+
+
+def test_v2_failure_is_not_parked(tmp_path: Path) -> None:
+    def change(snap):
+        snap["operations"]["readiness"]["status"] = "NOT QUALIFIED - GATE FAIL"
+    tile = _system_tiles_of(tmp_path, change)["v2"]
+    assert tile["state"] == "fail" and tile["extra"].get("kind") != "parked"
+
+
+@pytest.mark.parametrize("metric,state", [({"value": "3", "status": "PASS"}, "fail"), ({"value": 2.0, "status": "PASS"}, "fail"),
+                                          ({"value": "0", "status": "FAIL"}, "ok"), ({"value": "viele", "status": "PASS"}, "unknown")])
+def test_trading_actions_judged_by_the_number_only(tmp_path: Path, metric: dict, state: str) -> None:
+    def change(snap):
+        snap["operations"]["security"]["trading_actions"] = {**metric, "source": "s"}
+    assert _system_tiles_of(tmp_path, change)["sec_trading_actions"]["state"] == state
+
+
+def test_observe_only_needs_observe_value_and_measured_is_not_neutral(tmp_path: Path) -> None:
+    def change(snap):
+        snap["operations"]["security"]["observe_only"] = {"value": False, "status": "TRUE", "source": "s"}
+        snap["operations"]["security"]["lan_exposure"] = {"value": "0.0.0.0", "status": "MEASURED", "source": "s"}
+    tiles = _system_tiles_of(tmp_path, change)
+    assert tiles["sec_observe_only"]["state"] == "fail"
+    assert tiles["sec_lan_exposure"]["state"] == "unknown" and tiles["sec_lan_exposure"]["extra"].get("kind") != "info"
+
+
+def test_mcp_failure_is_red_and_mode_conflict_is_red(tmp_path: Path) -> None:
+    def change(snap):
+        snap["operations"]["mcp"] = {"status": "FAIL", "source": "m"}
+        snap["operations"]["mode"] = "PAPER"
+    tiles = _system_tiles_of(tmp_path, change)
+    assert tiles["mcp"]["state"] == "fail"
+    assert tiles["mode"]["state"] == "fail" and "widersprechen" in tiles["mode"]["reason"]
+
+
+@pytest.mark.parametrize("p0", [2.0, "3"])
+def test_p0_count_as_float_or_text_is_still_red(tmp_path: Path, p0) -> None:
+    snap = _snapshot()
+    snap["operations"]["gaps"] = {"rows": [], "p0": p0, "p1": 0, "source": "g"}
+    assert _tiles(build_betrieb(_state_with(tmp_path, snap), now=NOW, sources=_fresh()))["gaps"]["state"] == "fail"
+
+
+def test_failing_room_is_never_cut_off(tmp_path: Path) -> None:
+    snap = _snapshot()
+    room = {"coverage": "100 %", "status": "PASS", "observed": 1, "expected": 1, "source": "q"}
+    snap["operations"]["datasets"] = [{**room, "label": f"R{i}"} for i in range(5)] + [{**room, "label": "Kaputt", "status": "FAIL"}]
+    model = build_betrieb(_state_with(tmp_path, snap), now=NOW, sources=_fresh())
+    labels = [t["label"] for t in _tiles(model).values()]
+    quality = next(sec for sec in model["sections"] if sec["id"] == "quality")
+    assert "Kaputt" in labels and "weitere 2 grüne" in quality["note"]
+
+
+def test_missing_timestamps_are_not_green(tmp_path: Path) -> None:
+    snap = _snapshot(validator={"status": "RUNNING", "cycles": 1})
+    snap["observations"] = [{"observation_id": "o", "kind": "x"}]
+    tiles = _tiles(build_forschung(_state_with(tmp_path, snap), now=NOW, sources=_fresh()))
+    assert tiles["validator"]["state"] == "unknown" and tiles["observations"]["state"] == "unknown"
+
+
+@pytest.mark.parametrize("build", [build_forschung, build_betrieb, build_system])
+@pytest.mark.parametrize("value", [[1, 2], "kaputt"])
+def test_snapshot_that_is_not_an_object_is_grey(tmp_path: Path, build, value) -> None:
+    model = build(_state_with(tmp_path, value), now=NOW, sources=_fresh())
+    assert "Unerwartetes Format" in _tiles(model)["snapshot"]["reason"]
+    sections_body({**model, "sections": model["sections"] + ["x"]})
+
+
+def test_texts_for_odd_values(tmp_path: Path) -> None:
+    snap = _snapshot()
+    snap["case_counts"]["ready_for_review"] = "0"
+    snap["operations"]["independent_cases"].update(human_approval="REJECTED", manual_review="REJECTED")
+    snap["operations"]["audit"]["test_status"] = None
+    tiles = _tiles(build_forschung(_state_with(tmp_path, snap), now=NOW, sources=_fresh()))
+    assert tiles["cases_review"]["state"] == "ok"
+    assert tiles["human_review"]["extra"].get("kind") != "parked" and "Freigabe" not in tiles["human_review"]["reason"]
+    system = _tiles(build_system(_state_with(tmp_path, snap), now=NOW, sources=_fresh()))
+    assert "None" not in system["tests"]["reason"]

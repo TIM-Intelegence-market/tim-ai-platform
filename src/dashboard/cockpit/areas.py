@@ -9,6 +9,7 @@ written. The full detail pages of the old dashboard stay linked.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -70,13 +71,39 @@ def _local(value: Any) -> str:
 
 def _cell(text: Any, href: str = "") -> dict[str, str]:
     """A table cell; links only to pages of this dashboard (no scheme, no host)."""
-    link = href if href.startswith("/") and not href.startswith("//") else ""
+    link = href if href.startswith("/") and not href.startswith("//") and "\\" not in href else ""
     return {"text": _text(text), "href": link}
 
 
+# Whole words only: "RED" must not match "REQUIRED".
+FAULT_PATTERN = re.compile(r"\b(FAIL\w*|RED|ERROR\w*|BLOCK\w*|MISMATCH\w*|CONFLICT\w*|BROKEN)\b")
+
+
+def _faulty(status: Any) -> bool:
+    return bool(FAULT_PATTERN.search(str(status or "").upper().replace("_", " ")))
+
+
 def _human_gate(status: Any) -> bool:
+    """A step that waits for a person. A status that also names a fault is a fault, not a human step."""
     text = str(status or "").upper().replace("_", " ")
-    return any(word in text for word in HUMAN_WORDS)
+    return any(word in text for word in HUMAN_WORDS) and not _faulty(text)
+
+
+def _count(value: Any) -> int | None:
+    """A non-negative count from int, whole float or digit string; anything else is None."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _parked(tile: Tile, word: str) -> Tile:
@@ -102,7 +129,8 @@ def _section(key: str, title: str, tiles: list[Tile], *, note: str = "", table: 
 
 
 def _snapshot_failed(result: SourceResult, area: str) -> list[dict[str, Any]]:
-    tile = unavailable("snapshot", "TIM-Zustand", result.reason(), "DashboardState.snapshot()")
+    reason = result.reason() if not result.ok else f"Unerwartetes Format ({type(result.value).__name__} statt Objekt)"
+    tile = unavailable("snapshot", "TIM-Zustand", reason, "DashboardState.snapshot()")
     return [_section("snapshot", "Datenquelle", [tile], note=f"Ohne den TIM-Zustand lässt sich der Bereich {area} nicht aufbauen.")]
 
 
@@ -121,14 +149,17 @@ def _metric_tile(key: str, label: str, metric: Any, href: str, *, unit: str = ""
         value = _word(value)
     shown = f"{_num(value)} {unit}".strip() if unit else _num(value)
     status = str(metric.get("status") or "")
-    if not judge or status.upper() == "MEASURED":
+    if not judge:
         return _info(make_tile(key, label, shown, state="ok", source=str(metric.get("source") or ""), href=href, now=now))
+    if status.upper() == "MEASURED":
+        return make_tile(key, label, shown, state="unknown", reason="Gemessen, aber die Quelle bewertet den Wert nicht",
+                         source=str(metric.get("source") or ""), href=href, now=now)
     return make_tile(key, label, shown, status, reason="" if status.upper() in {"PASS", "GREEN"} else f"Status {_word(status)}",
                      source=str(metric.get("source") or ""), href=href, now=now)
 
 
 def _model(key: str, title: str, sections: list[dict[str, Any]], results: dict[str, SourceResult], now: datetime) -> dict[str, Any]:
-    tiles = [tile for section in sections for tile in section["tiles"]]
+    tiles = [tile for section in sections for tile in section["tiles"] if isinstance(tile, Tile)]
     judged = [tile for tile in tiles if (tile.extra or {}).get("kind") not in {"info", "parked"}]
     parked = [tile for tile in tiles if (tile.extra or {}).get("kind") == "parked"]
     needs = attention(judged)
@@ -179,7 +210,7 @@ def _validator_section(data: dict[str, Any], now: datetime) -> dict[str, Any]:
                      "PASS" if status.upper() == "RUNNING" else status,
                      reason="" if status.upper() == "RUNNING" else f"Validator meldet {status}",
                      source="data/runtime/validator_state.json", as_of=validator.get("last_cycle_at"),
-                     max_age_seconds=VALIDATOR_MAX_AGE if validator.get("last_cycle_at") else None, href="/research", now=now)
+                     max_age_seconds=VALIDATOR_MAX_AGE, href="/research", now=now)
     acceptance = validator.get("acceptance") if isinstance(validator.get("acceptance"), dict) else {}
     coverage = acceptance.get("coverage_percent")
     cover = _info(make_tile("coverage", "Abdeckung im Lauf", f"{_num(coverage)} %" if isinstance(coverage, (int, float)) else _text(acceptance.get("status")),
@@ -189,16 +220,18 @@ def _validator_section(data: dict[str, Any], now: datetime) -> dict[str, Any]:
 
 
 def _cases_section(data: dict[str, Any], now: datetime) -> dict[str, Any]:
-    counts = data.get("case_counts") or {}
+    counts = _dict(data.get("case_counts"))
     cases = [c for c in data.get("research_cases") or [] if isinstance(c, dict)]
     latest = max((str(c.get("updated_at") or c.get("opened_at") or "") for c in cases), default="")
     total = make_tile("cases_total", "Research Cases", f"{_num(counts.get('total', 0))} gesamt",
                       "PASS" if counts else "UNAVAILABLE", reason="" if counts else "Keine Fallzählung im TIM-Zustand",
-                      source="/api/state case_counts", as_of=latest or None, max_age_seconds=CASE_MAX_AGE if latest else None,
+                      source="/api/state case_counts", as_of=latest or None, max_age_seconds=CASE_MAX_AGE if counts else None,
                       href="/cases", now=now, detail=f"{_num(counts.get('active', 0))} aktiv, {_num(counts.get('closed', 0))} geschlossen")
-    review = counts.get("ready_for_review", 0) or 0
-    ready = make_tile("cases_review", "Bereit zur Prüfung", _num(review), state="warn" if review else "ok",
-                      reason=("Ein Fall wartet auf deine Prüfung" if review == 1 else f"{_num(review)} Fälle warten auf deine Prüfung") if review else "",
+    review = _count(counts.get("ready_for_review", 0))
+    ready = make_tile("cases_review", "Bereit zur Prüfung", _num(review) if review is not None else "—",
+                      state="unknown" if review is None else ("warn" if review else "ok"),
+                      reason=("Keine lesbare Zahl in der Quelle" if review is None else
+                              "Ein Fall wartet auf deine Prüfung" if review == 1 else f"{_num(review)} Fälle warten auf deine Prüfung") if review != 0 else "",
                       source="/api/state case_counts.ready_for_review", href="/cases", now=now)
     collecting = _info(make_tile("cases_collecting", "Sammeln Belege", _num(counts.get("collecting_evidence", 0)), state="ok",
                                  source="/api/state case_counts", href="/cases", now=now,
@@ -235,7 +268,7 @@ def _observations_section(data: dict[str, Any], now: datetime) -> dict[str, Any]
                      "PASS" if observations else "UNAVAILABLE",
                      reason="" if observations else "Noch keine Beobachtung seit dem Start dieses Prozesses",
                      source="/api/state observations (sichtbares Fenster)", as_of=latest or None,
-                     max_age_seconds=CASE_MAX_AGE if latest else None, href="/observations", now=now, detail=top)
+                     max_age_seconds=CASE_MAX_AGE if observations else None, href="/observations", now=now, detail=top)
     rows = []
     for item in sorted(observations, key=lambda o: str(o.get("observed_at") or ""), reverse=True)[:ROWS_SHOWN]:
         oid = str(item.get("observation_id") or "")
@@ -263,11 +296,13 @@ def _qualification_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]
     cases = _info(make_tile("independent", "Unabhängige Fälle", f"{_num(ind.get('qualification'))} von {_num(required)} für die Kampagne",
                             state="ok", source=str(ind.get("source") or ""), href="/independent-cases", now=now,
                             detail=f"Gesamtbestand {_num(current)}, Kontrollen {_text(ind.get('negative_controls'))}"))
-    approval = str(ind.get("human_approval") or "")
-    human = make_tile("human_review", "Menschliche Prüfung", _word(ind.get("manual_review")), state="unknown",
-                      reason="Wartet auf eure Freigabe (Uzi, Integrity Lead); Agenten geben nichts frei" if _human_gate(approval) or approval else "Kein Status",
+    approval = ind.get("human_approval")
+    waiting = _human_gate(approval) or _human_gate(ind.get("manual_review"))
+    human = make_tile("human_review", "Menschliche Prüfung", _word(ind.get("manual_review") or approval), state="unknown",
+                      reason=("Wartet auf eure Freigabe (Uzi, Integrity Lead); Agenten geben nichts frei" if waiting else
+                              f"Status {_word(approval)}" if not _missing(approval) else "Kein Status in der Quelle"),
                       source=str(ind.get("source") or ""), href="/independent-cases", now=now)
-    if approval or _human_gate(ind.get("manual_review")):
+    if waiting:
         human = _parked(human, "Wartet auf euch")
     return _section("qualification", "Qualifizierung", [campaign, cases, human],
                     note="Eine neue Kampagne beginnt bei Tag 0. Was abgebrochen ist, zählt nicht als bestanden.")
@@ -278,11 +313,11 @@ def build_forschung(state: DashboardState, now: datetime | None = None, budget: 
     now = now or datetime.now(timezone.utc)
     results = (sources or _SOURCES["forschung"]).run({"snapshot": state.snapshot}, budget=budget)
     snap = results["snapshot"]
-    if not snap.ok:
+    if not snap.ok or not isinstance(snap.value, dict):
         sections = _snapshot_failed(snap, "Forschung")
     else:
-        data = snap.value
-        ops = data.get("operations") or {}
+        data = snap.value if isinstance(snap.value, dict) else None
+        ops = _dict((data or {}).get("operations"))
         sections = _safe_sections([
             ("validator", "Forschungslauf", lambda: _validator_section(data, now)),
             ("cases", "Research Cases", lambda: _cases_section(data, now)),
@@ -328,7 +363,7 @@ def _quality_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]:
     from src.dashboard.operations import _archive_reason
 
     gaps = ops.get("gaps") or {}
-    p0, p1 = gaps.get("p0"), gaps.get("p1")
+    p0, p1 = _count(gaps.get("p0")), _count(gaps.get("p1"))
     gap_tile = make_tile("gaps", "Offene Datenlücken", f"P0 {_num(p0)}, P1 {_num(p1)}",
                          state="fail" if isinstance(p0, int) and p0 else ("warn" if isinstance(p1, int) and p1 else
                                                                           ("ok" if isinstance(p0, int) else "unknown")),
@@ -345,17 +380,24 @@ def _quality_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]:
                         href="/gaps", now=now)
     current_rooms = [room for room in ops.get("datasets") or [] if isinstance(room, dict) and _archive_reason(room) is None]
     archived = len([room for room in ops.get("datasets") or [] if isinstance(room, dict)]) - len(current_rooms)
+    failing = [room for room in current_rooms if not str(room.get("status", "")).upper().startswith("PASS")]
+    passing = [room for room in current_rooms if room not in failing]
+    chosen = failing + passing[: max(0, 4 - len(failing))]
+    left_out = len(current_rooms) - len(chosen)
     room_tiles = [make_tile(f"room_{i}", _text(room.get("label"), 40), _text(room.get("coverage")), room.get("status"),
                             reason="" if str(room.get("status", "")).upper().startswith("PASS") else f"Status {room.get('status')}",
                             source=str(room.get("source") or ""), href="/data-quality", now=now,
                             detail=f"{_num(room.get('observed'))} von {_num(room.get('expected'))} Minuten")
-                  for i, room in enumerate(current_rooms[:4])]
+                  for i, room in enumerate(chosen)]
     rows = [[_cell(_local(g.get("start"))), _cell(_local(g.get("end"))), _cell(g.get("priority")), _cell(g.get("root_cause")),
              _cell(g.get("repairability")), _cell(g.get("status"))]
             for g in (gaps.get("rows") or [])[:ROWS_SHOWN] if isinstance(g, dict)]
     table = {"head": ["Von", "Bis", "Priorität", "Ursache", "Reparierbar", "Status"], "rows": rows} if rows else None
     return _section("quality", "Datenqualität", [gap_tile, recover] + room_tiles, table=table, empty="Keine Lücke im Register.",
-                    note=f"Aktuelle Evidenzräume; {archived} abgeschlossene oder eingefrorene Räume stehen auf der alten Seite unter „Altbestand“.")
+                    note=("Aktuelle Evidenzräume" + (f" (weitere {left_out} grüne auf der Seite Datenqualität)" if left_out else "") + "; "
+                          + ("ein abgeschlossener oder eingefrorener Raum steht" if archived == 1 else
+                             f"{archived} abgeschlossene oder eingefrorene Räume stehen")
+                          + " auf der alten Seite unter „Altbestand“."))
 
 
 def _timeline_section(data: dict[str, Any], now: datetime) -> dict[str, Any]:
@@ -381,11 +423,11 @@ def build_betrieb(state: DashboardState, now: datetime | None = None, budget: fl
         "server_health": lambda: _read_json(operational / "server_health.json"),
     }, budget=budget)
     snap = results["snapshot"]
-    if not snap.ok:
+    if not snap.ok or not isinstance(snap.value, dict):
         sections = _safe_sections([("health", "Gesundheit", lambda: _health_section(results, now))]) + _snapshot_failed(snap, "Betrieb")
     else:
-        data = snap.value
-        ops = data.get("operations") or {}
+        data = snap.value if isinstance(snap.value, dict) else None
+        ops = _dict((data or {}).get("operations"))
         sections = _safe_sections([
             ("health", "Gesundheit", lambda: _health_section(results, now)),
             ("runtime", "Datenpipeline", lambda: _runtime_section(ops, now)),
@@ -406,9 +448,11 @@ SECURITY_METRICS = (
 
 
 def _mode_section(data: dict[str, Any], ops: dict[str, Any], now: datetime) -> dict[str, Any]:
-    mode = str(data.get("mode") or ops.get("mode") or "")
-    mode_tile = make_tile("mode", "Betriebsart", mode or "—", state="ok" if mode == "OBSERVE" else "fail",
-                          reason="" if mode == "OBSERVE" else f"Betriebsart {mode or 'unbekannt'} statt OBSERVE",
+    modes = {str(m) for m in (data.get("mode"), ops.get("mode")) if not _missing(m)}
+    mode = " / ".join(sorted(modes))
+    mode_tile = make_tile("mode", "Betriebsart", mode or "—", state="ok" if modes == {"OBSERVE"} else "fail",
+                          reason="" if modes == {"OBSERVE"} else
+                          (f"Quellen widersprechen sich: {mode}" if len(modes) > 1 else f"Betriebsart {mode or 'unbekannt'} statt OBSERVE"),
                           source="/api/state mode", now=now)
     locked = ops.get("trading_locked") is True and ops.get("execution_disabled") is True
     trade = make_tile("trading", "Handel", "gesperrt" if locked else "nicht bestätigt gesperrt", state="ok" if locked else "fail",
@@ -417,10 +461,10 @@ def _mode_section(data: dict[str, Any], ops: dict[str, Any], now: datetime) -> d
     readiness = ops.get("readiness") or {}
     status = str(readiness.get("status") or "UNAVAILABLE")
     v2 = make_tile("v2", "V2-Freigabe", "nicht qualifiziert" if "NOT QUALIFIED" in status.upper() else _word(readiness.get("status")),
-                   state="unknown" if "NOT QUALIFIED" in status.upper() or "STALE" in status.upper() else None,
+                   state="unknown" if ("NOT QUALIFIED" in status.upper() or "STALE" in status.upper()) and not _faulty(status) else None,
                    raw_status=status, reason=_text(readiness.get("current_reason") or status, 200),
                    source=str(readiness.get("source") or ""), href="/v2-readiness", now=now)
-    if "NOT QUALIFIED" in status.upper():
+    if "NOT QUALIFIED" in status.upper() and not _faulty(status):
         v2 = _parked(v2, "Nicht qualifiziert")
     return _section("mode", "Betriebsart und Freigabe", [mode_tile, trade, v2],
                     note="Den Handel kann keine Seite freischalten. Nur eine menschliche Freigabe-Instanz könnte das ändern, und V2 enthält kein Echtgeld.")
@@ -431,7 +475,8 @@ def _gates_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]:
     gates = [g for g in readiness.get("gates") or [] if isinstance(g, dict)]
     source = str(readiness.get("source") or "")
     tiles, rows, passed = [], [], 0
-    for gate in gates:
+    for index, gate in enumerate(gates):
+        gid = gate.get("id") if not _missing(gate.get("id")) else f"nr{index + 1}"
         current = gate.get("current_status")
         recorded = gate.get("status")
         shown = current if not _missing(current) else recorded
@@ -439,15 +484,18 @@ def _gates_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]:
         archive_only = _missing(current) and not human
         label = f"{_text(gate.get('id'), 12)} {_text(gate.get('name'), 50)}"
         if human:
-            tile = _parked(make_tile(f"gate_{gate.get('id')}", label, _word(shown), state="unknown",
+            tile = _parked(make_tile(f"gate_{gid}", label, _word(shown), state="unknown",
                                      reason="Menschlicher Schritt, kein technischer Fehler", source=source, href="/v2-readiness", now=now),
                            "Wartet auf euch")
+        elif archive_only and _faulty(recorded):
+            tile = make_tile(f"gate_{gid}", label, _word(recorded), state="warn",
+                             reason="Archivwert ist ein Fehler, heute nicht neu gemessen", source=source, href="/v2-readiness", now=now)
         elif archive_only:
-            tile = _parked(make_tile(f"gate_{gate.get('id')}", label, _word(recorded), state="unknown",
+            tile = _parked(make_tile(f"gate_{gid}", label, _word(recorded), state="unknown",
                                      reason="Nur Archivwert, heute nicht neu gemessen", source=source, href="/v2-readiness", now=now),
                            "Nur Archiv")
         else:
-            tile = make_tile(f"gate_{gate.get('id')}", label, _word(shown), shown, reason=_text(gate.get("current_note"), 200),
+            tile = make_tile(f"gate_{gid}", label, _word(shown), shown, reason=_text(gate.get("current_note"), 200),
                              source=source, href="/v2-readiness", now=now)
             if tile.state == "ok":
                 tile.reason = ""
@@ -472,9 +520,13 @@ def _security_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]:
     for key, label in SECURITY_METRICS:
         metric = security.get(key)
         if key == "trading_actions" and isinstance(metric, dict):
-            metric = {**metric, "status": "PASS" if metric.get("value") == 0 else "FAIL" if isinstance(metric.get("value"), (int, float)) else metric.get("status")}
-        if key == "observe_only" and isinstance(metric, dict) and str(metric.get("status")).upper() in {"TRUE", "PASS"}:
-            metric = {**metric, "status": "PASS"}
+            # Judged by the number alone: zero is green, any other count red, no readable number grey.
+            count = _count(metric.get("value"))
+            metric = {**metric, "status": "UNAVAILABLE" if count is None else ("PASS" if count == 0 else "FAIL")}
+        if key == "observe_only" and isinstance(metric, dict):
+            value = metric.get("value")
+            ok = value is True or str(value).strip().upper() == "OBSERVE"
+            metric = {**metric, "status": "PASS" if ok else "FAIL"}
         tiles.append(_metric_tile(f"sec_{key}", label, metric, "/security", judge=True, now=now))
     shown, missing = _split_missing(tiles)
     note = f"Zuletzt live geprüft {_local(security.get('last_test'))} Uhr."
@@ -493,7 +545,8 @@ def _audit_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]:
                               as_of=audit.get("deployed_at"), href="/audit-evidence", now=now,
                               detail=f"eingespielt {_local(audit.get('deployed_at'))} Uhr")))
     tests = make_tile("tests", "CI-Test", f"{_num(audit.get('passed'))} grün, {_num(audit.get('failed'))} rot",
-                      audit.get("test_status"), reason="" if str(audit.get("test_status")).upper() == "PASS" else f"Letzter Lauf {audit.get('test_status')}",
+                      audit.get("test_status"), reason="" if str(audit.get("test_status")).upper() == "PASS" else
+                      (f"Letzter Lauf {_word(audit.get('test_status'))}" if not _missing(audit.get("test_status")) else "Kein Testergebnis in der Quelle"),
                       source=_text(audit.get("test_source"), 120), as_of=audit.get("last_test"), href="/audit-evidence", now=now)
     doctor = make_tile("doctor", "Doctor", _word(audit.get("doctor")), audit.get("doctor"),
                        reason="" if str(audit.get("doctor")).upper() == "PASS" else "Doctor ohne PASS", source="final_test_summary.json",
@@ -505,10 +558,13 @@ def _audit_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]:
                           reason="" if str(audit.get("protected_state")).upper().startswith("PASS") else "Prüfsummen weichen ab oder fehlen",
                           source="protected_state", href="/audit-evidence", now=now)
     mcp = ops.get("mcp") or {}
-    mcp_tile = make_tile("mcp", "Secure MCP (extern)", _word(mcp.get("status")), state="unknown",
-                         reason="Externer Weg, gehört nicht zum V2-Kern; wartet auf Schritt bei OpenAI" if "EXTERNAL" in str(mcp.get("status")).upper()
-                         else _text(mcp.get("status")), source=str(mcp.get("source") or ""), href="/mcp", now=now)
-    if "EXTERNAL" in str(mcp.get("status")).upper():
+    mcp_status = str(mcp.get("status") or "")
+    mcp_external = "EXTERNAL" in mcp_status.upper() and not _faulty(mcp_status.upper().replace("BLOCKED", ""))
+    mcp_tile = make_tile("mcp", "Secure MCP (extern)", _word(mcp.get("status")), mcp_status or None,
+                         state="unknown" if mcp_external or _missing(mcp.get("status")) else None,
+                         reason="Externer Weg, gehört nicht zum V2-Kern; wartet auf Schritt bei OpenAI" if mcp_external
+                         else ("" if not _faulty(mcp_status) and mcp_status.upper() in {"PASS", "OK", "GREEN"} else _text(mcp.get("status"))), source=str(mcp.get("source") or ""), href="/mcp", now=now)
+    if mcp_external:
         mcp_tile = _parked(mcp_tile, "Extern")
     incidents = [i for i in audit.get("incidents") or [] if isinstance(i, dict)][:ROWS_SHOWN]
     rows = [[_cell(_local(i.get("timestamp_utc") or i.get("timestamp"))), _cell(i.get("severity")), _cell(i.get("event")),
@@ -523,11 +579,11 @@ def build_system(state: DashboardState, now: datetime | None = None, budget: flo
     now = now or datetime.now(timezone.utc)
     results = (sources or _SOURCES["system"]).run({"snapshot": state.snapshot}, budget=budget)
     snap = results["snapshot"]
-    if not snap.ok:
+    if not snap.ok or not isinstance(snap.value, dict):
         sections = _snapshot_failed(snap, "System & Freigabe")
     else:
-        data = snap.value
-        ops = data.get("operations") or {}
+        data = snap.value if isinstance(snap.value, dict) else None
+        ops = _dict((data or {}).get("operations"))
         sections = _safe_sections([
             ("mode", "Betriebsart und Freigabe", lambda: _mode_section(data, ops, now)),
             ("gates", "V2-Gates", lambda: _gates_section(ops, now)),
