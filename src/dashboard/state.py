@@ -46,6 +46,7 @@ class DashboardState:
     rolling_liveness_path: Path = field(default_factory=lambda: Path("data/operational/rolling_liveness.json"))
     plan_journal_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal.json"))
     plan_journal_struct_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_struct.json"))
+    plan_journal_level_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_level.json"))
     trader_journal_path: Path = field(default_factory=lambda: Path("data/journal/trader_journal.json"))
     qualification_root_path: Path = field(default_factory=lambda: Path("data/qualification"))
     live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))

@@ -488,7 +488,7 @@ def markt_body(model: dict[str, Any]) -> str:
             f"{_e(f'{rate * 100:.0f} %' if isinstance(rate, (int, float)) else '—')} · netto {_e(_rtext(stats.get('sum_net_r')))} · nur Papier</p>"
             f"<h3 class='sub'>Offen</h3><div class='scroll'><table class='tbl'>{head}<tbody>{active}</tbody></table></div>"
             f"<h3 class='sub'>Zuletzt geschlossen</h3><div class='scroll'><table class='tbl'>{head}<tbody>{closed}</tbody></table></div>"
-            "<p class='note'><a href='/journal'>Ganzes Plan-Journal</a> · <a href='/journal/struct'>Struktur-Regel</a></p>"
+            "<p class='note'><a href='/journal'>Ganzes Plan-Journal</a> · <a href='/journal/struct'>Struktur-Regel</a> · <a href='/journal/level'>Level-Regel</a></p>"
         )
 
     tj = model.get("trader_journal") or {}

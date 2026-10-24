@@ -34,6 +34,7 @@ ENTRY_REASONS = {
     "FAILED_RETEST": "gescheiterter Retest",
     "PULLBACK": "Rücksetzer zum POC",
     "ENTRY_ZONE": "Zone",
+    "LEVEL_LIMIT": "Limit am Level",
 }
 NY_OPEN_LOCAL = (9, 30)  # New York stock market open, America/New_York
 NY_OPEN_BLOCK = (timedelta(minutes=15), timedelta(minutes=30))  # before / after the open
@@ -485,6 +486,11 @@ def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timefra
     prep = build_session_map(series, now)
     model["reference_levels"] = prep.get("levels", [])
     model["notes"].extend(prep.get("notes", []))
+    from src.dashboard.level_plans import build_level_plans
+    model["level_plans"] = build_level_plans(prep, clean_candles(series.get("30m") or [], "30m"), now)
+    if model["levels"]["age_seconds"] > TIMEFRAME_SECONDS[timeframe] + 300:
+        minutes = model["levels"]["age_seconds"] // 60
+        model["notes"].insert(0, f"Achtung: letzte {timeframe}-Kerze schloss vor {minutes} min. Die Daten sind veraltet, Pläne nicht aktuell.")
     model["notes"].append("MSS: Schlusskurs gegen die etablierte Swing-Richtung; mechanische Preisstruktur, keine Orderflow-Bestätigung. Poor High/Low und Profile sind Kerzen-Näherungen.")
 
     first, now_or_last = candles[0]["open_time"], max(now, last["close_time"])
