@@ -82,15 +82,25 @@ Seit 23.10.2026 hält `scripts/dashboard_refresh.py` die Dashboards auf dem Mac 
 alle 10 Minuten aus `~/TIM-live` (eigener LaunchAgent, nicht in `LIVE_AGENTS`, damit die Start-Gates
 keinen Drift sehen). Regeln: `ops/dashboard_refresh/policy.json`.
 
-- **Control Center (8765):** neuer Stand von `platform-main` geht nur live, wenn der CI-Job `test` auf genau
-  diesem Commit grün ist, der Stand ein Nachfolger des laufenden ist, kein CI-Testjob (`Runner.Worker`) und
-  kein Backup läuft, keine Qualifizierungskampagne aktiv ist und der letzte Neustart mindestens 60 Minuten her
-  ist. Dann: Checkout, `record_deployment.py` mit CI-Ergebnis und Testzahlen, `timctl restart`, Prüfung auf
+- **Control Center (8765):** neuer Stand von `platform-main` geht nur live, wenn der CI-Job `test` grün ist,
+  der Stand ein Nachfolger des laufenden ist, kein Backup läuft, keine Qualifizierungskampagne aktiv ist und
+  der letzte Neustart lange genug her ist (20 Minuten, wenn nur Anzeige-Pfade geändert wurden, sonst 60).
+  Dann: Checkout, `record_deployment.py` mit CI-Ergebnis und Testzahlen, `timctl restart`, Prüfung auf
   neuen Prozess und `/api/health`. Scheitert etwas, rollt der Agent auf den alten Commit zurück und versucht
   diesen Stand nicht noch einmal.
-- **Laufende Studie (S-K ab 23.10. 15:55):** nur Anzeige-Änderungen (`src/dashboard/`, Doku, Tests,
-  Worker-Dashboard) gehen live. Ändert ein Stand Detektoren, Datenpfad, Konfiguration oder Skripte, hält der
-  Agent an, bis `artifacts/v2_completion/sk_end_record.json` existiert.
+- **Welcher CI-Lauf zählt (seit 24.10.):** der Lauf auf dem Commit selbst oder auf einem Commit mit
+  identischem Baum, also dem PR-Head einer Merge- oder Squash-Zusammenführung (das Ruleset verlangt einen
+  aktuellen Branch, deshalb ist der Baum gleich). Der Agent wartet damit nicht mehr auf den zweiten Lauf nach
+  dem Merge. Stimmt der Baum nicht überein, zählt nur ein Lauf auf dem Commit selbst.
+- **CI-Testjob (`Runner.Worker`):** schiebt den Neustart nur auf, höchstens 20 Minuten ab dem Moment, in dem
+  der Stand einspielbar wäre (`max_defer_minutes`). Der Job nutzt eine eigene PostgreSQL auf 5434; ein
+  Neustart von 20 Sekunden stört ihn nicht. Ein Backup (`pg_dump`) sperrt weiterhin hart.
+- **Laufende Studie (S-K ab 23.10. 15:55):** nur Anzeige-Änderungen (`display_safe` in der Policy:
+  `src/dashboard/`, Doku, Tests, Worker-Dashboard, Agent selbst) gehen live, bis
+  `artifacts/v2_completion/sk_end_record.json` existiert. Enthält der neueste Stand eine geschützte Datei,
+  geht der neueste freigegebene Vorgänger auf der Hauptlinie live (Anzeige-Fixes vor dem gemischten Commit
+  warten nicht mehr). Der Haltegrund steht mit Dateinamen im Control Center („Hält zurück: main.py“) und
+  in `dashboard_refresh.json` unter `held_back`.
 - **Worker-Dashboard (8767):** wird nur neu gebaut, wenn sich `tools/mac-worker-dashboard` geändert hat
   (`cargo build --locked`, Ziel außerhalb des Checkouts). Nur die Binärdatei wird getauscht, die Plist (mit
   `--allow-host` für das Tailnet) bleibt unverändert.

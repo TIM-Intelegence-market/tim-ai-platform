@@ -53,6 +53,50 @@ def test_restart_interval_allows_after_the_limit():
     assert decide(last_restart_at=NOW - timedelta(minutes=61)).action == "DEPLOY"
 
 
+def test_ci_job_only_defers_the_restart_for_a_bounded_time():
+    first = decide(deferred=["ci_test_job"], deferred_since=None, max_defer_minutes=20)
+    assert (first.action, first.reason) == ("WAIT", "busy_deferred")
+    assert first.details["deferred_since_utc"] == dr.iso(NOW)
+    assert first.details["deploy_at_latest_utc"] == dr.iso(NOW + timedelta(minutes=20))
+    expected = (NOW + timedelta(minutes=20)).astimezone().strftime("%H:%M")  # Mac local time, not UTC
+    assert f"Spätestens {expected} Uhr." in first.to_dict()["text"]
+    still = decide(deferred=["ci_test_job"], deferred_since=NOW - timedelta(minutes=19), max_defer_minutes=20)
+    assert still.reason == "busy_deferred"
+    overdue = decide(deferred=["ci_test_job"], deferred_since=NOW - timedelta(minutes=20), max_defer_minutes=20)
+    assert overdue.action == "DEPLOY"
+    # a backup is never deferred, it blocks
+    assert decide(busy=["db_backup"], deferred=["ci_test_job"], deferred_since=NOW - timedelta(hours=1),
+                  max_defer_minutes=20).reason == "busy"
+
+
+def test_study_hold_names_the_files_and_wins_over_pending_ci():
+    hold = decide(ci=None, blockers={"S": ["main.py", "src/a.py", "src/b.py", "src/c.py"]})
+    assert hold.reason == "study_protected_paths"
+    assert hold.to_dict()["text"].endswith("Hält zurück: main.py, src/a.py, src/b.py (+1).")
+    partial = decide(held_back={"target": "d", "commits": 2, "blocked_files": {"S": ["main.py"]}})
+    assert partial.action == "DEPLOY"
+    assert "2 neuere Commits warten wegen main.py" in partial.to_dict()["text"]
+
+
+def test_display_only_and_default_rules_are_shared_by_studies():
+    assert dr.display_only(POLICY, ["src/dashboard/x.py", "docs/a.md", "tests/t.py"])
+    assert not dr.display_only(POLICY, ["src/dashboard/x.py", "main.py"])
+    assert dr.display_only(POLICY, [])  # empty diff counts as display-only
+    own = {"id": "X", "display_safe_prefixes": ["only/"]}
+    assert dr.display_rules(POLICY, own)["display_safe_prefixes"] == ["only/"]
+    assert dr.display_rules(POLICY, own)["display_safe_files"] == []
+    assert dr.display_rules(POLICY, POLICY["studies"][0]) == dr.display_rules(POLICY)
+
+
+def test_furthest_unblocked_picks_the_newest_clean_ancestor():
+    studies = dr.active_studies(POLICY, NOW, lambda path: False)
+    diffs = {"b": ["docs/a.md"], "c": ["docs/a.md", "main.py"], "d": ["docs/a.md", "main.py", "src/dashboard/x.py"]}
+    assert dr.furthest_unblocked(["b", "c", "d"], diffs.__getitem__, studies) == ("b", {"V2_SK_CONTROL_REGIME_V1": ["main.py"]})
+    assert dr.furthest_unblocked(["c", "d"], diffs.__getitem__, studies) == (None, {"V2_SK_CONTROL_REGIME_V1": ["main.py"]})
+    assert dr.furthest_unblocked(["b"], diffs.__getitem__, studies) == ("b", {})
+    assert dr.same_tree("t1", {"x": "t1", "y": "t2", "z": None}) == ["x"]
+
+
 def test_campaign_beats_ci_and_up_to_date_is_not_a_hold_reason():
     assert decide(campaign_active=True, ci=None).reason == "campaign_active"
 
@@ -97,7 +141,9 @@ def test_pick_check_run_takes_newest_named_run():
 def test_small_parsers():
     assert dr.parse_porcelain(" M docs/TIM_V1_LIVE_STATUS.md\n M main.py\n", ["docs/TIM_V1_LIVE_STATUS.md"]) == ["main.py"]
     ps = "/Users/timrunner/actions-runner/bin/Runner.Worker spawnclient 1 2\npython scripts/dashboard_refresh.py pg_dump\n"
-    assert dr.busy_processes(ps, POLICY["busy_process_patterns"]) == ["ci_test_job"]
+    assert dr.busy_processes(ps, POLICY["busy_process_patterns"]) == []
+    assert dr.busy_processes(ps, POLICY["deferrable_process_patterns"]) == ["ci_test_job"]
+    assert dr.busy_processes(ps + "/usr/bin/pg_dump tim\n", POLICY["busy_process_patterns"]) == ["db_backup"]
     assert dr.launchd_pid("state = running\n\tpid = 4242\n") == 4242
     assert dr.launchd_pid("state = not running\n") is None
 
@@ -114,6 +160,8 @@ class Mac:
     def __init__(self, root: Path):
         self.root = root
         self.ci = {"status": "completed", "conclusion": "success"}
+        self.ci_by_sha: dict[str, dict | None] = {}  # sha prefix -> check-run fields, None = no run at all
+        self.pulls_by_sha: dict[str, list[str]] = {}  # merge/squash sha -> PR head shas
         self.ps = ""
         self.pid = 100
         self.restart_ok = True
@@ -127,10 +175,21 @@ class Mac:
         if command[0] == "git":
             return subprocess.run(command, capture_output=True, text=True, check=False)
         if command[0].endswith("gh"):
-            if command[2].endswith("/logs"):
+            endpoint = command[2]
+            if endpoint.endswith("/logs"):
                 return done("== 10 passed, 2 skipped in 5.0s ==")
+            sha = endpoint.split("/commits/")[1].split("/")[0] if "/commits/" in endpoint else ""
+            if "/git/commits/" in endpoint:  # GitHub knows every pushed commit, the live clone does not
+                tree = git(getattr(self, "origin", self.root), "rev-parse", f"{sha}^{{tree}}")
+                return done(json.dumps({"sha": sha, "tree": {"sha": tree}}))
+            if endpoint.endswith("/pulls?per_page=10"):
+                heads = next((v for k, v in self.pulls_by_sha.items() if sha.startswith(k)), [])
+                return done(json.dumps([{"number": i + 1, "head": {"sha": head}} for i, head in enumerate(heads)]))
+            ci = next((v for k, v in self.ci_by_sha.items() if sha.startswith(k)), self.ci)
+            if ci is None:
+                return done(json.dumps({"check_runs": []}))
             return done(json.dumps({"check_runs": [{"id": 9, "name": "test", "started_at": "2026-10-24T10:00:00Z",
-                                                    "completed_at": "2026-10-24T10:30:00Z", "html_url": "ci", **self.ci}]}))
+                                                    "completed_at": "2026-10-24T10:30:00Z", "html_url": "ci", **ci}]}))
         if command[0] == "ps":
             return done(self.ps)
         if command[:2] == ["launchctl", "print"]:
@@ -228,6 +287,8 @@ def test_waits_for_ci_job_and_red_ci(live):
     before = git(root, "rev-parse", "HEAD")
     new_commit(origin, "src/dashboard/page.py", "x\n")
     mac.ps = "/Users/timrunner/actions-runner/bin/Runner.Worker spawnclient\n"
+    assert agent.run_once()["decision"]["reason"] == "busy_deferred"
+    mac.ps = "/usr/bin/pg_dump tim\n"
     assert agent.run_once()["decision"]["reason"] == "busy"
     mac.ps = ""
     mac.ci = {"status": "completed", "conclusion": "failure"}
@@ -243,6 +304,103 @@ def test_study_holds_detector_change(live):
     status = agent.run_once()
     assert status["decision"]["reason"] == "study_protected_paths"
     assert status["decision"]["details"]["blocked_files"] == {"V2_SK_CONTROL_REGIME_V1": ["src/orderflow/observations.py"]}
+
+
+def merge_pr(origin: Path, branch: str, path: str, text: str) -> tuple[str, str]:
+    """A PR merged the way GitHub does it: feature commit, then a merge commit on platform-main."""
+    git(origin, "checkout", "-q", "-b", branch)
+    head = new_commit(origin, path, text)
+    git(origin, "checkout", "-q", "platform-main")
+    git(origin, "merge", "-q", "--no-ff", "-m", f"Merge pull request from {branch}", branch)
+    return head, git(origin, "rev-parse", "HEAD")
+
+
+def test_green_pr_head_counts_for_the_merge_commit_with_the_same_tree(live):
+    origin, root, mac, agent = live
+    head, merge = merge_pr(origin, "feature/a", "src/dashboard/page.py", "x\n")
+    mac.ci_by_sha = {merge: None, head: {"status": "completed", "conclusion": "success"}}
+    status = agent.run_once()
+    assert status["decision"]["action"] == "DEPLOY"
+    assert status["ci"]["tested_commit"] == head and status["ci"]["same_tree_as"] == merge
+    assert git(root, "rev-parse", "HEAD") == merge
+    assert json.loads((root / "data/operational/deployment.json").read_text())["commit"] == merge
+
+
+def test_pr_head_with_a_different_tree_does_not_count(live):
+    origin, root, mac, agent = live
+    head, _ = merge_pr(origin, "feature/a", "src/dashboard/page.py", "x\n")
+    # platform-main moved on after the PR head was tested: the merge tree differs from the head tree
+    merge = new_commit(origin, "docs/later.md", "later\n")
+    mac.ci_by_sha = {merge: None, head: {"status": "completed", "conclusion": "success"}}
+    mac.pulls_by_sha = {merge: [head]}
+    status = agent.run_once()
+    assert (status["decision"]["action"], status["decision"]["reason"]) == ("WAIT", "ci_pending")
+    assert status["ci"] is None
+
+
+def test_squash_merge_found_through_the_pull_request_api(live):
+    origin, root, mac, agent = live
+    git(origin, "checkout", "-q", "-b", "feature/s")
+    head = new_commit(origin, "src/dashboard/page.py", "x\n")
+    git(origin, "checkout", "-q", "platform-main")
+    git(origin, "merge", "-q", "--squash", "feature/s")
+    git(origin, "commit", "-q", "-m", "squash")
+    squash = git(origin, "rev-parse", "HEAD")
+    mac.origin = origin
+    mac.ci_by_sha = {squash: None, head: {"status": "completed", "conclusion": "success"}}
+    mac.pulls_by_sha = {squash: [head]}
+    status = agent.run_once()
+    assert status["decision"]["action"] == "DEPLOY" and status["ci"]["tested_commit"] == head
+
+
+def test_mixed_commit_no_longer_holds_the_display_fixes_before_it(live):
+    origin, root, mac, agent = live
+    agent.policy = {**agent.policy, "studies": POLICY["studies"]}
+    display_fix = new_commit(origin, "src/dashboard/page.py", "fix\n")
+    mixed = new_commit(origin, "main.py", "print(2)\n")
+    later_display = new_commit(origin, "docs/x.md", "doc\n")
+    status = agent.run_once()
+    assert status["decision"]["action"] == "DEPLOY"
+    assert status["deploy"]["result"] == "DEPLOYED"
+    assert git(root, "rev-parse", "HEAD") == display_fix
+    assert status["target_commit"] == later_display and status["deploy_target"] == display_fix
+    assert status["held_back"] == {"target": later_display, "commits": 2,
+                                   "blocked_files": {"V2_SK_CONTROL_REGIME_V1": ["main.py"]}}
+    assert "2 neuere Commits warten wegen main.py" in status["decision"]["text"]
+    # next round: nothing more can go live, and the Control Center text names the file
+    again = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                clock=lambda: NOW + timedelta(hours=2), sleep=lambda seconds: None, uid=501)
+    status = again.run_once()
+    assert (status["decision"]["action"], status["decision"]["reason"]) == ("HOLD", "study_protected_paths")
+    assert "Hält zurück: main.py" in status["decision"]["text"]
+    assert git(root, "rev-parse", "HEAD") == display_fix
+    assert mixed not in git(root, "rev-parse", "HEAD")
+
+
+def test_ci_job_defers_then_deploys_and_display_only_shortens_the_interval(live):
+    origin, root, mac, agent = live
+    new_commit(origin, "src/dashboard/page.py", "x\n")
+    mac.ps = "/Users/timrunner/actions-runner/bin/Runner.Worker spawnclient\n"
+    first = agent.run_once()
+    assert (first["decision"]["action"], first["decision"]["reason"]) == ("WAIT", "busy_deferred")
+    assert first["restart_interval_minutes"] == 20
+    assert json.loads(agent.state_path.read_text())["deferral"]["since_utc"] == dr.iso(NOW)
+    later = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                clock=lambda: NOW + timedelta(minutes=21), sleep=lambda seconds: None, uid=501)
+    status = later.run_once()
+    assert status["decision"]["action"] == "DEPLOY" and status["deploy"]["result"] == "DEPLOYED"
+    assert "deferral" not in json.loads(agent.state_path.read_text())
+    # a second display-only commit may restart after 20 min, a mixed one must wait 60
+    new_commit(origin, "src/dashboard/page.py", "y\n")
+    mac.ps = ""
+    at_25 = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                clock=lambda: NOW + timedelta(minutes=21 + 25), sleep=lambda seconds: None, uid=501)
+    assert at_25.run_once()["decision"]["action"] == "DEPLOY"
+    new_commit(origin, "main.py", "print(3)\n")
+    mixed_at_25 = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                      clock=lambda: NOW + timedelta(minutes=21 + 25 + 25), sleep=lambda seconds: None, uid=501)
+    status = mixed_at_25.run_once()
+    assert (status["decision"]["reason"], status["restart_interval_minutes"]) == ("restart_interval", 60)
 
 
 def test_pause_and_dry_run_change_nothing(live):
@@ -310,8 +468,12 @@ def test_control_center_summary_of_the_agent(tmp_path):
     summary = _dashboard_refresh(base, path)
     assert (summary["status"], summary["value"]) == ("PASS", "abcdef1")
     assert "vor 3 min" in summary["note"] and "aktuell" in summary["note"]
-    hold = {**base, "decision": {"action": "HOLD", "reason": "study_protected_paths", "text": "Studie"}}
+    hold = {**base, "decision": dr.Decision("HOLD", "study_protected_paths",
+                                            {"blocked_files": {"S": ["main.py"]}}).to_dict()}
     assert _dashboard_refresh(hold, path)["status"] == "BLOCKED"
+    assert "Hält zurück: main.py" in _dashboard_refresh(hold, path)["note"]
+    deferred = {**base, "decision": dr.Decision("WAIT", "busy_deferred", {"deploy_at_latest_utc": "2026-10-24T12:20:00Z"}).to_dict()}
+    assert _dashboard_refresh(deferred, path)["status"] == "WAITING"
     assert _dashboard_refresh({**base, "health_ok": False}, path)["status"] == "DEGRADED"
     assert _dashboard_refresh({**base, "deploy": {"result": "ROLLED_BACK"}}, path)["status"] == "FAIL"
     old = {**base, "checked_at_utc": "2026-10-01T00:00:00Z"}
