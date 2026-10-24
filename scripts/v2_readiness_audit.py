@@ -231,6 +231,60 @@ def case_record(
     )
 
 
+def build_case_payload(
+    records: list[ValidatedCaseRecord], *, cutoff: datetime, generated_at: str,
+    case_from: datetime | None = None,
+) -> dict[str, Any]:
+    """Describe measured case counts without granting scientific qualification."""
+    frozen = audit_validated_cases(
+        item for item in records if item.validated_through <= FROZEN_CASE_CUTOFF
+    )
+    current = audit_validated_cases(records)
+    reasons = []
+    if current["statistical_independence_status"] != "PASS":
+        reasons.append("current_independent_windows_below_target")
+    if current["duplicate_observation_id_count"]:
+        reasons.append("current_duplicate_observation_ids")
+    # The persisted validation schema supplies none of these scientific proofs.
+    reasons.extend([
+        "negative_and_neutral_controls_absent",
+        "reviewer_evidence_absent",
+        "inter_rater_evidence_absent",
+        "pre_registered_regime_labels_absent",
+        "manual_scientific_review_pending",
+    ])
+    counts = "; ".join(
+        f"{name}: {audit['strict_independent_30m_windows']}/"
+        f"{audit['required_independent_cases']} strict non-overlapping 30-minute "
+        f"quality-screened windows (count gate {audit['gate_status']})"
+        for name, audit in (("Frozen evidence", frozen), ("current evidence", current))
+    )
+    payload = {
+        "schema_version": "1.0.0",
+        "generated_at_utc": generated_at,
+        "mode": "OBSERVE",
+        "frozen_snapshot_cutoff_utc": iso(FROZEN_CASE_CUTOFF),
+        "frozen_published_count": 1339,
+        "frozen_cutoff_audit": frozen,
+        "current_cutoff_utc": iso(cutoff),
+        "case_window_start_utc": iso(case_from) if case_from is not None else None,
+        "current_cutoff_audit": current,
+        "case_count_gate_status": current["gate_status"],
+        "regime_analysis_status": "DESCRIPTIVE_ONLY_NOT_PRE_REGISTERED",
+        "market_regime_labels": "ABSENT",
+        "volatility_regime_labels": "ABSENT",
+        "liquidity_regime_labels": "ABSENT",
+        "manual_review_status": "PENDING",
+        "gate_status": "FAIL",
+        "gate_reasons": reasons,
+        "gate_reason": counts + ". Scientific gate remains FAIL: " + "; ".join(reasons) + ".",
+        "qualification_counted": False,
+        "v2_approved": False,
+    }
+    payload["artifact_hash"] = hashlib.sha256(compact_json(payload)).hexdigest()
+    return payload
+
+
 async def collect(args: argparse.Namespace) -> dict[str, Any]:
     start = parse_time(args.start)
     end = parse_time(args.end)
@@ -516,26 +570,10 @@ async def collect(args: argparse.Namespace) -> dict[str, Any]:
         "trading_approved": False,
     }
 
-    frozen_cases = [item for item in records if item.validated_through <= FROZEN_CASE_CUTOFF]
-    case_payload = {
-        "schema_version": "1.0.0",
-        "generated_at_utc": coverage_payload["generated_at_utc"],
-        "mode": "OBSERVE",
-        "frozen_snapshot_cutoff_utc": iso(FROZEN_CASE_CUTOFF),
-        "frozen_published_count": 1339,
-        "frozen_cutoff_audit": audit_validated_cases(frozen_cases),
-        "current_cutoff_utc": iso(end),
-        "current_cutoff_audit": audit_validated_cases(records),
-        "regime_analysis_status": "DESCRIPTIVE_ONLY_NOT_PRE_REGISTERED",
-        "market_regime_labels": "ABSENT",
-        "volatility_regime_labels": "ABSENT",
-        "liquidity_regime_labels": "ABSENT",
-        "manual_review_status": "PENDING",
-        "gate_status": "FAIL",
-        "gate_reason": "The frozen 1,339-case evidence and current evidence do not contain 1,000 strict non-overlapping 30-minute quality-screened windows; reviewer and inter-rater evidence are absent.",
-        "v2_approved": False,
-    }
-    case_payload["artifact_hash"] = hashlib.sha256(compact_json(case_payload)).hexdigest()
+    case_payload = build_case_payload(
+        records, cutoff=end, generated_at=coverage_payload["generated_at_utc"],
+        case_from=getattr(args, "case_from", None),
+    )
     return {
         "definition": definition_payload,
         "coverage": coverage_payload,
@@ -579,6 +617,10 @@ async def main() -> int:
         "gap_ranges": len(result["gaps"]),
         "frozen_case_gate": result["cases"]["frozen_cutoff_audit"]["gate_status"],
         "current_case_gate": result["cases"]["current_cutoff_audit"]["gate_status"],
+        "scientific_case_gate": result["cases"]["gate_status"],
+        "scientific_case_gate_reasons": result["cases"]["gate_reasons"],
+        "qualification_counted": result["cases"]["qualification_counted"],
+        "v2_approved": result["cases"]["v2_approved"],
         "output_dir": str(args.output_dir),
     }
     print(stable_json(summary), end="")

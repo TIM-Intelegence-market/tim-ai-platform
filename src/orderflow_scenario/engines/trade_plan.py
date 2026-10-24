@@ -35,6 +35,12 @@ ONE = Decimal("1")
 # Targets as multiples of the stop distance (R). Target 1 at 1.5R meets the
 # 1.5R tier minimum (decision 2026-09-30); below it no plan was ever built.
 TARGET_R = (Decimal("1.5"), Decimal("2"), Decimal("3"))
+# Version of the heuristic grade rules below. The grade describes rule quality
+# (confirmation, score, reward/risk, conflicting evidence). It is not an
+# empirical edge and never a recommendation; see grade_scenario().
+GRADE_RULESET_VERSION = "grade/1.0.0"
+GRADE_SCORE_THRESHOLD = Decimal("0.45")
+GRADE_RR_THRESHOLD = Decimal("2.0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,28 +207,41 @@ class TradePlanBuilder:
         return reward / risk if risk > ZERO else ZERO
 
     def _grade(self, scenario: Scenario, inputs: TradePlanInputs, expected_rr: Decimal) -> tuple[Grade, tuple[str, ...]]:
-        reasons: list[str] = []
-        score = 0
-        if scenario.state == ConfirmationState.CONFIRMED:
-            score += 2
-            reasons.append("scenario_confirmed")
-        if scenario.score >= Decimal("0.45"):
-            score += 1
-            reasons.append(f"score_{scenario.score:.2f}")
-            if "external_weight" in scenario.trade_template:
-                reasons.append(f"score_includes_broncx_weight_{scenario.trade_template['external_weight']}")
-        if expected_rr >= Decimal("2.0"):
-            score += 1
-            reasons.append(f"rr_{expected_rr:.2f}")
-        if not scenario.evidence_against:
-            score += 1
-            reasons.append("no_conflicting_evidence")
-        else:
-            reasons.append("conflicting_evidence_present")
-        if score >= 4:
-            return Grade.A, tuple(reasons)
-        if score == 3:
-            return Grade.B, tuple(reasons)
-        if score == 2:
-            return Grade.C, tuple(reasons)
-        return Grade.C, tuple(reasons)
+        return grade_scenario(scenario, expected_rr)
+
+
+def grade_scenario(scenario: Scenario, expected_rr: Decimal) -> tuple[Grade, tuple[str, ...]]:
+    """Heuristic rule-quality grade of a scenario in the state it actually has.
+
+    Points: confirmed +2, score >= 0.45 +1, reward/risk >= 2 +1, no conflicting
+    evidence +1. A needs 4, B 3, otherwise C. Grade.A_PLUS is never returned:
+    there is no defined and tested rule for it. The grade says nothing about
+    whether the setup has an empirical edge; that is the evidence status of
+    src.research_lab.setup_evidence. Callers that grade a preview must pass the
+    original scenario, not one with a forced CONFIRMED state.
+    """
+    reasons: list[str] = []
+    score = 0
+    if scenario.state == ConfirmationState.CONFIRMED:
+        score += 2
+        reasons.append("scenario_confirmed")
+    else:
+        reasons.append(f"scenario_{scenario.state.value.lower()}")
+    if scenario.score >= GRADE_SCORE_THRESHOLD:
+        score += 1
+        reasons.append(f"score_{scenario.score:.2f}")
+        if "external_weight" in scenario.trade_template:
+            reasons.append(f"score_includes_broncx_weight_{scenario.trade_template['external_weight']}")
+    if expected_rr >= GRADE_RR_THRESHOLD:
+        score += 1
+        reasons.append(f"rr_{expected_rr:.2f}")
+    if not scenario.evidence_against:
+        score += 1
+        reasons.append("no_conflicting_evidence")
+    else:
+        reasons.append("conflicting_evidence_present")
+    if score >= 4:
+        return Grade.A, tuple(reasons)
+    if score == 3:
+        return Grade.B, tuple(reasons)
+    return Grade.C, tuple(reasons)

@@ -9,6 +9,7 @@ import json
 import math
 import os
 from pathlib import Path
+import tempfile
 from typing import Any
 
 
@@ -228,11 +229,21 @@ def activate_campaign(
     return value
 
 
+def validate_campaign_hash(campaign: dict[str, Any]) -> None:
+    """Check content consistency; this checksum is not a human signature."""
+    expected = stable_hash(
+        {key: value for key, value in campaign.items() if key != "preregistration_hash"}
+    )
+    if campaign.get("preregistration_hash") != expected:
+        raise ValueError("qualification campaign content does not match its preregistration hash")
+
+
 def build_daily_manifest(
     preregistration: dict[str, Any], *, day: datetime, metrics: dict[str, Any]
 ) -> dict[str, Any]:
     if preregistration.get("campaign_status") != "ACTIVE":
         raise RuntimeError("daily qualification evidence requires an active campaign")
+    validate_campaign_hash(preregistration)
     if day.tzinfo is None:
         raise ValueError("manifest day must be timezone-aware")
     required = {
@@ -247,6 +258,10 @@ def build_daily_manifest(
     missing = required - set(metrics)
     if missing:
         raise ValueError("daily metrics missing: " + ", ".join(sorted(missing)))
+    runtime = metrics["runtime_status"]
+    reported_actions = runtime.get("trading_actions") if isinstance(runtime, dict) else None
+    # Missing/invalid evidence is unknown, and booleans are not action counts.
+    actions = reported_actions if type(reported_actions) is int and reported_actions >= 0 else None
     payload = {
         "schema_version": SCHEMA_VERSION,
         "dataset_id": DATASET_ID,
@@ -256,7 +271,9 @@ def build_daily_manifest(
         "software_commit": preregistration["software_commit"],
         "configuration_hash": preregistration["configuration_hash"],
         "metrics": metrics,
-        "trading_actions": 0,
+        "trading_actions": actions,
+        "trading_actions_source": "metrics.runtime_status.trading_actions" if actions is not None else None,
+        "runtime_evidence_scope": "SUPPLIED_SNAPSHOT_NOT_FULL_DAY_PROOF",
         "human_approval": False,
     }
     payload["manifest_hash"] = stable_hash(payload)
@@ -272,7 +289,20 @@ def write_immutable_json(path: Path, payload: dict[str, Any]) -> str:
             raise FileExistsError(f"immutable manifest already exists with different content: {path}")
         return "UNCHANGED"
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_bytes(encoded)
-    os.replace(temporary, path)
-    return "CREATED"
+    # A private directory isolates each writer while normal creation retains the
+    # caller's umask. Publish the complete file without replacing any winner.
+    with tempfile.TemporaryDirectory(dir=path.parent, prefix=f".{path.name}.") as directory:
+        temporary = Path(directory) / "manifest.json"
+        with temporary.open("xb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            if path.read_bytes() != encoded:
+                raise FileExistsError(
+                    f"immutable manifest already exists with different content: {path}"
+                ) from None
+            return "UNCHANGED"
+        return "CREATED"

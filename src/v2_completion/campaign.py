@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from src.v2_completion.qualification import REQUIRED_START_GATES, StartGate
+from src.v2_completion.start_gate_checks import start_gate_report_hash
 
 UTC = timezone.utc
 MAX_REPORT_AGE = timedelta(minutes=30)
@@ -31,22 +32,36 @@ def _parse(value: Any) -> datetime | None:
 def gates_from_report(report: dict[str, Any], *, report_ref: str, head: str, now: datetime,
                       max_age: timedelta = MAX_REPORT_AGE) -> list[StartGate]:
     """Turn a start-gate report into StartGates; refuse stale, foreign or failing reports."""
+    if not isinstance(report, dict):
+        raise ValueError("start-gate report must be an object")
+    declared_hash = report.get("report_sha256")
+    if not isinstance(declared_hash, str) or declared_hash != start_gate_report_hash(report):
+        raise ValueError("start-gate report hash is missing or does not match its contents")
     if report.get("kind") != START_GATE_KIND:
         raise ValueError("not a start-gate evaluation report")
     evaluated = _parse(report.get("evaluated_at_utc"))
     if evaluated is None or not timedelta(minutes=-1) <= now - evaluated <= max_age:
         raise ValueError("start-gate report is not fresh")
-    if (report.get("context") or {}).get("head") != head:
+    context = report.get("context")
+    if not isinstance(context, dict) or context.get("head") != head:
         raise ValueError("start-gate report was taken on a different commit than HEAD")
-    if not report.get("all_start_gates_pass") or report.get("blocking_start_gates"):
-        raise ValueError("start gates do not all pass: " + ", ".join(report.get("blocking_start_gates") or []))
-    by_name = {gate.get("name"): gate for gate in report.get("gates", [])}
-    if sorted(by_name) != sorted(REQUIRED_START_GATES):
-        raise ValueError("start-gate report does not cover every required gate")
-    frozen = (by_name["configuration_and_commit_frozen"].get("evidence") or {}).get("frozen_commit")
+    if report.get("all_start_gates_pass") is not True or report.get("blocking_start_gates") != []:
+        raise ValueError("start gates do not all pass")
+    rows = report.get("gates")
+    if (not isinstance(rows, list)
+            or any(not isinstance(row, dict) or not isinstance(row.get("name"), str) for row in rows)
+            or sorted(row["name"] for row in rows) != sorted(REQUIRED_START_GATES)):
+        raise ValueError("start-gate report must cover every required gate exactly once")
+    if any(row.get("status") != "PASS" for row in rows):
+        raise ValueError("start gates do not all pass")
+    by_name = {row["name"]: row for row in rows}
+    evidence = by_name["configuration_and_commit_frozen"].get("evidence")
+    if not isinstance(evidence, dict):
+        raise ValueError("frozen commit evidence is missing or malformed")
+    frozen = evidence.get("frozen_commit")
     if frozen != head:
         raise ValueError("frozen commit in the report differs from HEAD")
-    sha = report.get("report_sha256", "")
+    sha = declared_hash
     return [StartGate(name, by_name[name]["status"], f"{report_ref} sha256={sha} status={by_name[name]['status']}")
             for name in REQUIRED_START_GATES]
 

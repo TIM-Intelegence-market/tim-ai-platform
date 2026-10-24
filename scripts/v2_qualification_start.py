@@ -41,6 +41,17 @@ def git(*args: str) -> str:
                           check=True, capture_output=True, text=True).stdout.strip()
 
 
+def approval_time(value: str) -> datetime:
+    """Parse the recorded approval time without changing its stored representation."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        raise ValueError("approval needs a valid UTC timestamp ending in Z") from None
+    if not value.endswith("Z") or parsed.tzinfo is None:
+        raise ValueError("approval needs a valid UTC timestamp ending in Z")
+    return parsed
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--start-gates", type=Path, required=True)
@@ -50,8 +61,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--baseline", type=Path, default=ROOT / "artifacts/v2_completion/baseline_manifest.json")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_DIR)
     args = parser.parse_args(argv)
-    if not args.approved_by.strip() or not args.decision_ref.strip() or not args.approved_at.endswith("Z"):
-        parser.error("approval needs a name, a decision reference and a UTC time ending in Z")
+    if not args.approved_by.strip() or not args.decision_ref.strip():
+        parser.error("approval needs a name and a decision reference")
+    try:
+        approval_time(args.approved_at)
+    except ValueError as error:
+        parser.error(str(error))
     return args
 
 
@@ -62,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "ALREADY_ACTIVE", "campaign": str(campaign_file)}))
         return 3
     now = datetime.now(UTC)
+    if approval_time(args.approved_at) > now:
+        raise SystemExit("approval timestamp is in the future; refusing to start")
     head = git("rev-parse", "HEAD")
     if git("status", "--porcelain"):
         raise SystemExit("checkout has local changes; refusing to start")

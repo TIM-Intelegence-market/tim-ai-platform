@@ -81,7 +81,7 @@ def _chart_svg(model: dict[str, Any]) -> str:
 
     # Levels widen the price axis when they are close; far ones are named at the edge instead.
     candidates = [profile.get("vah"), profile.get("val"), profile.get("poc")] + [b["level"] for b in model.get("bos", [])]
-    for scenario in analysis.get("scenarios", []):
+    for scenario in (analysis.get("scenarios") or []):
         candidates += [scenario.get("entry_low"), scenario.get("entry_high"), scenario.get("trigger")]
         preview = scenario.get("preview") or {}
         candidates += [preview.get("stop")] + list((preview.get("targets") or [])[:1])
@@ -171,7 +171,7 @@ def _chart_svg(model: dict[str, Any]) -> str:
             return
         plan_lines.setdefault((cls, round(price, 6)), []).append(text)  # same level: one line, joined text
 
-    for scenario in analysis.get("scenarios", []):
+    for scenario in (analysis.get("scenarios") or []):
         sid, direction = scenario["id"], scenario["direction"]
         kind = "long" if direction == "LONG" else "short" if direction == "SHORT" else "neutral"
         lo, hi = scenario.get("entry_low"), scenario.get("entry_high")
@@ -249,7 +249,7 @@ def _chart_svg(model: dict[str, Any]) -> str:
 
 def _scenario_rows(analysis: dict[str, Any]) -> str:
     rows = []
-    for s in analysis.get("scenarios", []):
+    for s in (analysis.get("scenarios") or []):
         preview = s.get("preview") or {}
         zone = f"{_price(s['entry_low'])} – {_price(s['entry_high'])}" if s.get("entry_low") is not None else "keine Zone"
         targets = " / ".join(_price(t) for t in (preview.get("targets") or [])) or "–"
