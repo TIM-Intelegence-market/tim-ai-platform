@@ -37,7 +37,9 @@
       "src/operational/dashboard_refresh.py",
       "ops/launchd/com.tim.dashboard-refresh.plist",
       "scripts/sk_study.py",
-      "src/v2_completion/control_regime_study.py"
+      "src/v2_completion/control_regime_study.py",
+      "LICENSE",
+      "NOTICE"
     ],
     "display_safe_suffixes": [
       ".md"
