@@ -212,18 +212,16 @@ def test_ny_open_windows_follow_new_york_time() -> None:
     assert ny_open_windows(datetime(2026, 10, 24, 0, tzinfo=timezone.utc), datetime(2026, 10, 25, 23, tzinfo=timezone.utc)) == []  # weekend
 
 
-def test_setup_path_shows_written_out_plans_from_chart() -> None:
+def test_setup_path_shows_written_out_plans_from_chart(monkeypatch) -> None:
+    from src.dashboard import views
     from src.dashboard.views import render
 
+    # Fixed clock: with the real time the next NY window can be after the weekend, beyond the 24 h look-ahead.
+    real_build = views.build_chart_model
+    monkeypatch.setattr(views, "build_chart_model", lambda *args, **kwargs: real_build(*args, **{"now": END, **kwargs}))
     page = render(_state(), "Setup Path")
     assert "TIMs Pläne im Chart (15m)" in page and "class='tc-svg'" in page
     assert "PLAN " in page and "Ungültig " in page and "keine Anlageberatung" in page
-    assert "class='sp-plan" in page
-    # The next NY-open block is shown when one starts within 24 h (none from Friday afternoon to Sunday).
-    from src.dashboard.chart_model import ny_open_windows
-
-    now = datetime.now(timezone.utc)
-    upcoming = [w for w in ny_open_windows(now - timedelta(days=1), now + timedelta(hours=24)) if datetime.fromisoformat(w["end"]) >= now]
-    assert ("Nächste Sperrzeit: NY-Eröffnung" in page) == bool(upcoming)
+    assert "class='sp-plan" in page and "Nächste Sperrzeit: NY-Eröffnung" in page
     # Without per-timeframe candles the old close-price line stays.
     assert "setup-chart__line" in render(DashboardState(recent_candles=[{"close": 80_000 + i} for i in range(20)]), "Setup Path")

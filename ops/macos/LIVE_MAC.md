@@ -75,3 +75,32 @@ cd ~/TIM-live
   Fensters aus, Mac schläft nie (`com.tim.awake`, `com.tim.caffeinate`).
 - CI-Runner und Issue-Worker teilen sich den Mac. Bei Speicherdruck zuerst den Worker pausieren.
 - Jede Code-Änderung in `~/TIM-live` beendet die Kampagne (neuer Commit, neue Gates).
+
+## Dashboards automatisch aktuell (`com.tim.dashboard-refresh`)
+
+Seit 23.10.2026 hält `scripts/dashboard_refresh.py` die Dashboards auf dem Mac aktuell. Der Agent läuft
+alle 10 Minuten aus `~/TIM-live` (eigener LaunchAgent, nicht in `LIVE_AGENTS`, damit die Start-Gates
+keinen Drift sehen). Regeln: `ops/dashboard_refresh/policy.json`.
+
+- **Control Center (8765):** neuer Stand von `platform-main` geht nur live, wenn der CI-Job `test` auf genau
+  diesem Commit grün ist, der Stand ein Nachfolger des laufenden ist, kein CI-Testjob (`Runner.Worker`) und
+  kein Backup läuft, keine Qualifizierungskampagne aktiv ist und der letzte Neustart mindestens 60 Minuten her
+  ist. Dann: Checkout, `record_deployment.py` mit CI-Ergebnis und Testzahlen, `timctl restart`, Prüfung auf
+  neuen Prozess und `/api/health`. Scheitert etwas, rollt der Agent auf den alten Commit zurück und versucht
+  diesen Stand nicht noch einmal.
+- **Laufende Studie (S-K ab 23.10. 15:55):** nur Anzeige-Änderungen (`src/dashboard/`, Doku, Tests,
+  Worker-Dashboard) gehen live. Ändert ein Stand Detektoren, Datenpfad, Konfiguration oder Skripte, hält der
+  Agent an, bis `artifacts/v2_completion/sk_end_record.json` existiert.
+- **Worker-Dashboard (8767):** wird nur neu gebaut, wenn sich `tools/mac-worker-dashboard` geändert hat
+  (`cargo build --locked`, Ziel außerhalb des Checkouts). Nur die Binärdatei wird getauscht, die Plist (mit
+  `--allow-host` für das Tailnet) bleibt unverändert.
+- **Prüfung:** jede Runde fragt Control Center, Chart, Worker-Dashboard, Qwen-Chat (8770) und Demo-Dashboard
+  (8768) ab. Ergebnis: `data/operational/dashboard_refresh.json`, im Control Center unter „Latest evidence →
+  Dashboard-Agent“. Verlauf: `~/Library/Application Support/TIM/dashboard-refresh/history.jsonl`.
+
+```sh
+cd ~/TIM-live
+.venv/bin/python scripts/dashboard_refresh.py --dry-run    # nur entscheiden und prüfen
+.venv/bin/python scripts/dashboard_refresh.py --install    # LaunchAgent schreiben und laden
+touch "$HOME/Library/Application Support/TIM/dashboard-refresh/PAUSE"   # anhalten (löschen = weiter)
+```
