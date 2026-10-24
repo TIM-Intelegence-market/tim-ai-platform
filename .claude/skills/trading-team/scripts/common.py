@@ -10,6 +10,7 @@ import csv
 import json
 import os
 import tempfile
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -124,13 +125,13 @@ class BinancePublic:
         return http_get_json(f"{self.base}/api/v3/ticker/24hr", self.timeout)
 
     def klines(self, symbol: str, interval: str, limit: int, start_ms: int | None = None) -> list[list]:
-        url = f"{self.base}/api/v3/klines?symbol={symbol}&interval={interval}&limit={int(limit)}"
+        url = f"{self.base}/api/v3/klines?symbol={urllib.parse.quote(symbol)}&interval={interval}&limit={int(limit)}"
         if start_ms is not None:
             url += f"&startTime={int(start_ms)}"
         return http_get_json(url, self.timeout)
 
     def price(self, symbol: str) -> float:
-        data = http_get_json(f"{self.base}/api/v3/ticker/price?symbol={symbol}", self.timeout)
+        data = http_get_json(f"{self.base}/api/v3/ticker/price?symbol={urllib.parse.quote(symbol)}", self.timeout)
         return float(data["price"])
 
 
