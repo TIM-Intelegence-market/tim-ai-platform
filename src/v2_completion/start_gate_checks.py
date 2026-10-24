@@ -274,6 +274,12 @@ def check_frozen(head: str | None, dirty: list[str] | None, frozen_commit: str |
     return _gate("configuration_and_commit_frozen", reasons, evidence)
 
 
+def start_gate_report_hash(report: dict[str, Any]) -> str:
+    """Existing report hash domain: sorted JSON, omitting only report_sha256."""
+    payload = {key: value for key, value in report.items() if key != "report_sha256"}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
 def summarize(results: list[GateResult], *, now: datetime, context: dict[str, Any]) -> dict[str, Any]:
     names = [result.name for result in results]
     if sorted(names) != sorted(REQUIRED_START_GATES):
@@ -292,5 +298,5 @@ def summarize(results: list[GateResult], *, now: datetime, context: dict[str, An
         "context": context,
         "gates": [result.to_dict() for result in results],
     }
-    report["report_sha256"] = hashlib.sha256(json.dumps(report, sort_keys=True, default=str).encode()).hexdigest()
+    report["report_sha256"] = start_gate_report_hash(report)
     return report
