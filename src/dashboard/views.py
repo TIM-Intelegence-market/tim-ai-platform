@@ -61,12 +61,28 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         from src.dashboard.pages.plan_journal import journal_note
         from src.dashboard.plan_journal import load_view as load_plan_journal
 
-        return _setup_path_page(data, chart, journal_note(load_plan_journal(state.plan_journal_path)))
-    if page == "Plan Journal":
-        from src.dashboard.pages.plan_journal import _plan_journal_page
-        from src.dashboard.plan_journal import load_view as load_plan_journal
+        note = journal_note(load_plan_journal(state.plan_journal_path))
+        try:
+            from src.dashboard.session_map import build_session_map, summary_line
 
-        return _plan_journal_page(data, load_plan_journal(state.plan_journal_path))
+            note = f"Vorbereitung: {summary_line(build_session_map(state.chart_series()))}. {note}"
+        except Exception:  # noqa: BLE001 - the setup page renders without the preparation line
+            pass
+        return _setup_path_page(data, chart, note)
+    if page == "Prep":
+        from src.dashboard.pages.prep import _prep_page
+        from src.dashboard.session_map import build_session_map
+
+        return _prep_page(data, build_session_map(state.chart_series()))
+    if page in {"Plan Journal", "Plan Journal Struct"}:
+        from src.dashboard.pages.plan_journal import _plan_journal_page
+        from src.dashboard.plan_journal import RULE_STRUCT, load_view as load_plan_journal
+
+        tim, struct = load_plan_journal(state.plan_journal_path), load_plan_journal(state.plan_journal_struct_path)
+        struct.setdefault("rule", RULE_STRUCT)
+        if page == "Plan Journal Struct":
+            return _plan_journal_page(data, struct, other=tim)
+        return _plan_journal_page(data, tim, other=struct)
     if page in OPERATIONS_PAGES and page != "Overview":
         return _layout(page, page, render_operations_page(page, data["operations"]), strip=_strip_states(data))
     if page == "Orderflow":

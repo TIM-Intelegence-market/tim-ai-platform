@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hmac
 import json
+import re
+import secrets
 import threading
 from dataclasses import asdict, is_dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -32,10 +35,13 @@ class DashboardServer:
         self.state, self.host, self.port = state, host, port
         self.research_router = research_router or ResearchRouter()
         self.research_lock = threading.Lock()
+        # Form token for the trader journal: a page from another site cannot read it, so it cannot post.
+        self.form_token = secrets.token_urlsafe(32)
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
-            def respond(self, status: int, payload: bytes, content_type: str, csp: str | None = None) -> None:
+            def respond(self, status: int, payload: bytes, content_type: str, csp: str | None = None,
+                        referrer: str = "no-referrer", location: str | None = None) -> None:
                 if len(payload) > MAX_RESPONSE_BYTES:
                     status = 413
                     payload = b'{"error":"response exceeds dashboard limit"}'
@@ -49,7 +55,9 @@ class DashboardServer:
                 self.send_header("Content-Security-Policy", csp or _content_security_policy())
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("X-Frame-Options", "DENY")
-                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("Referrer-Policy", referrer)
+                if location:
+                    self.send_header("Location", location)
                 self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
                 self.send_header("Cross-Origin-Opener-Policy", "same-origin")
                 self.send_header("Cross-Origin-Resource-Policy", "same-origin")
@@ -118,10 +126,27 @@ class DashboardServer:
                     except Exception as exc:  # noqa: BLE001 - malformed stored data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
+                if path == "/api/prep":
+                    from src.dashboard.session_map import build_session_map
+
+                    try:
+                        prep = build_session_map(outer.state.chart_series())
+                    except Exception as exc:  # noqa: BLE001 - malformed stored data must not drop the connection
+                        return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
+                    return self.respond(200, json.dumps(prep, default=str).encode(), "application/json")
+                if path == "/trader-journal":
+                    saved = query.get("saved", [""])[0]
+                    return self.trader_journal_page(200, saved=saved if re.fullmatch(r"TJ-\d{4,5}", saved or "") else None)
+                if path == "/api/trader-journal":
+                    from src.dashboard import trader_journal
+
+                    journal = trader_journal.load(outer.state.trader_journal_path)
+                    return self.respond(200, json.dumps({**journal, "entries": journal["entries"][-500:], "summary": trader_journal.summary(journal)}, default=str).encode(), "application/json")
                 if path == "/api/plan-journal":
                     from src.dashboard.plan_journal import load_view as load_plan_journal
 
-                    return self.respond(200, json.dumps(load_plan_journal(outer.state.plan_journal_path), default=str).encode(), "application/json")
+                    journal_path = outer.state.plan_journal_struct_path if query.get("rule", [""])[0] == "struct" else outer.state.plan_journal_path
+                    return self.respond(200, json.dumps(load_plan_journal(journal_path), default=str).encode(), "application/json")
                 if path == "/pilot":
                     return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8", csp=PILOT_CSP)
                 if path == "/api/orderflow/history":
@@ -152,8 +177,9 @@ class DashboardServer:
                     "/qualification": "Qualification",
                     "/independent-cases": "Independent Cases",
                     "/v2-readiness": "V2 Readiness", "/mcp": "Graphify & MCP",
+                    "/prep": "Prep",
                     "/setup-path": "Setup Path",
-                    "/journal": "Plan Journal",
+                    "/journal": "Plan Journal", "/journal/struct": "Plan Journal Struct",
                     "/audit-evidence": "Audit & Evidence",
                     "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow",
                     "/signals": "Signal Research", "/analytics": "Analytics", "/insights": "Insights",
@@ -246,10 +272,68 @@ class DashboardServer:
                     return self.respond(200, candidate.read_bytes(), "text/markdown; charset=utf-8" if candidate.suffix == ".md" else "application/json")
                 return self.respond(404, b'{"error":"not found"}', "application/json")
 
+            def trader_journal_page(self, status: int, form: dict[str, str] | None = None, error: str | None = None, saved: str | None = None) -> None:
+                from src.dashboard import trader_journal
+                from src.dashboard.pages.trader_journal import journal_csp, render_trader_journal
+                from src.dashboard.session_map import build_session_map, summary_line
+
+                try:
+                    context_line = summary_line(build_session_map(outer.state.chart_series()))
+                except Exception:  # noqa: BLE001 - the journal works without TIM's context line
+                    context_line = "kein Kontext verfügbar"
+                try:
+                    page = render_trader_journal(outer.state.snapshot(), trader_journal.load(outer.state.trader_journal_path), outer.form_token,
+                                                 context_line, form=form, error=error, saved=saved)
+                except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                    return self.respond(500, _error_page("Trader-Journal", exc).encode(), "text/html; charset=utf-8")
+                # same-origin keeps the Origin header on the form post (no-referrer would send "null").
+                return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=journal_csp(page), referrer="same-origin")
+
+            def trader_journal_post(self, path: str) -> None:
+                from src.dashboard import trader_journal
+                from src.dashboard.session_map import build_session_map
+
+                origin = self.headers.get("Origin")
+                if origin is not None and origin != f"http://{self.headers.get('Host')}":
+                    return self.respond(403, b'{"error":"cross-origin form post refused"}', "application/json")
+                if self.headers.get_content_type() != "application/x-www-form-urlencoded":
+                    return self.respond(415, b'{"error":"form encoding required"}', "application/json")
+                try:
+                    size = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    size = -1
+                if size < 1 or size > 8192:
+                    return self.respond(413, b'{"error":"form body must be between 1 and 8192 bytes"}', "application/json")
+                try:
+                    fields = parse_qs(self.rfile.read(size).decode("utf-8"), keep_blank_values=True, strict_parsing=False, max_num_fields=40)
+                except (UnicodeDecodeError, ValueError):
+                    return self.respond(400, b'{"error":"malformed form body"}', "application/json")
+                form = {key: values[0] for key, values in fields.items() if values}
+                if not hmac.compare_digest(str(form.get("token", "")).encode(), outer.form_token.encode()):
+                    return self.respond(403, b'{"error":"form token invalid, reload /trader-journal"}', "application/json")
+                form.pop("token", None)
+                journal_path = outer.state.trader_journal_path
+                try:
+                    if path == "/trader-journal/entry":
+                        try:
+                            model = build_session_map(outer.state.chart_series())
+                        except Exception:  # noqa: BLE001 - an entry is kept even without TIM's context
+                            model = None
+                        entry = trader_journal.add_entry(journal_path, form, model)
+                    elif path == "/trader-journal/review":
+                        entry = trader_journal.add_review(journal_path, form)
+                    else:
+                        entry = trader_journal.cancel_entry(journal_path, form)
+                except trader_journal.JournalError as exc:
+                    return self.trader_journal_page(400, form=form if path == "/trader-journal/entry" else None, error=str(exc))
+                return self.respond(303, b"", "text/plain; charset=utf-8", location=f"/trader-journal?saved={entry['id']}")
+
             def do_POST(self):
                 if not _is_loopback_request_host(self.headers.get("Host")):
                     return self.respond(421, b'{"error":"loopback Host header required"}', "application/json")
                 path = urlparse(self.path).path
+                if path in {"/trader-journal/entry", "/trader-journal/review", "/trader-journal/cancel"}:
+                    return self.trader_journal_post(path)
                 if path not in {"/api/research/quick", "/api/research/deep"}:
                     return self.respond(404, b'{"error":"not found"}', "application/json")
                 try:

@@ -68,6 +68,8 @@ MAX_HOLD_HOURS = 48
 THIRD = 1.0 / 3.0
 OPEN, FILLED = "OPEN", "FILLED"
 DONE = {"CLOSED", "INVALIDATED", "REPLACED", "EXPIRED"}
+RULE_TIM = "tim/1"  # TradePlanBuilder: flat stop, targets 1.5R / 2R / 3R
+RULE_STRUCT = "struct/1"  # src/dashboard/structure_plan.py
 NO_TRADE, PAPER_TRADE = "NO_TRADE", "PAPER_TRADE"
 PLAN_RECORDED, PLAN_UPDATED = "PLAN_RECORDED", "PLAN_UPDATED"
 CANDLE_CLOSE_PROCESSED, CANDLE_REVISION_OBSERVED = "CANDLE_CLOSE_PROCESSED", "CANDLE_REVISION_OBSERVED"
@@ -96,6 +98,8 @@ DECISION_FIELDS = (
 # Fields that move with every candle. Changes to these alone are written at the
 # next 15m close (checkpoint), not every minute; anything else is written at once.
 CURSOR_FIELDS = {"evaluated_through", "max_favorable_r", "max_adverse_r", "last_seen_at"}
+# struct/1 only: plans the structure rule dropped at a close (counted in the view as structure_skips).
+STRUCTURE_PLANS_DROPPED = "STRUCTURE_PLANS_DROPPED"
 
 
 def _iso(value: datetime) -> str:
@@ -483,6 +487,26 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _structural(plans: list[dict[str, Any]], series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime) -> tuple[list[dict[str, Any]], list[str]]:
+    """Rule version struct/1: same plans, stop behind the swing, targets at liquidity.
+
+    Returns the kept plans and the reasons for the dropped ones."""
+    from src.dashboard.session_map import build_session_map
+    from src.dashboard.structure_plan import candles_until, structural_plans
+
+    closed = candles_until(series, at)
+    try:
+        prep = build_session_map(closed, at)
+    except Exception:  # noqa: BLE001 - without the map the 15m swings remain as targets
+        prep = None
+    kept, dropped = structural_plans(plans, closed["15m"], prep)
+    return kept, list(dropped)
+
+
+def _skip_key(reason: str) -> str:
+    return reason.split(": ", 1)[-1].split(" nur ")[0]
+
+
 def with_evidence(plans: Sequence[Mapping[str, Any]], timeframe: str = PLAN_TIMEFRAME, register_path: Path | str = DEFAULT_REGISTER_PATH) -> list[dict[str, Any]]:
     """Plans with their evidence fields from the hypothesis register (fail closed)."""
     return [{**dict(plan), **evidence_fields(str(plan.get("scenario_type")), timeframe, register_path)} for plan in plans]
@@ -514,10 +538,19 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         elif kind == CANDLE_CLOSE_PROCESSED:
             journal["last_plan_candle"] = payload["close_time"]
             journal["last_plan_candle_source_hash"] = payload["source_hash"]
+            if payload.get("rule") == RULE_STRUCT:  # TIM-rule events carry no rule field
+                journal["rule"] = RULE_STRUCT
+                journal.setdefault("structure_skips", {})
+                journal["last_skips"] = []  # a STRUCTURE_PLANS_DROPPED event for this close follows it
         elif kind == CANDLE_REVISION_OBSERVED:
             journal.setdefault("revisions", []).append(deepcopy(payload))
         elif kind == CANDLE_CLOSE_SKIPPED:
             journal.setdefault("skipped", []).append(deepcopy(payload))
+        elif kind == STRUCTURE_PLANS_DROPPED:
+            counts = journal.setdefault("structure_skips", {})
+            for reason in payload.get("reasons") or []:
+                counts[_skip_key(reason)] = counts.get(_skip_key(reason), 0) + 1
+            journal["last_skips"] = list(payload.get("reasons") or [])
         else:
             raise journal_log.LogError(f"unknown event kind {kind}")
         journal["updated_at"] = event.get("recorded_at")
@@ -571,9 +604,13 @@ def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime) ->
     return digest, span, minutes, plan_candles
 
 
-def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH) -> dict[str, Any]:
+def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
+           rule: str = RULE_TIM) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     15m close, append the resulting events, then write the view.
+
+    ``rule`` picks the rule version: TIM's flat stop and R targets, or
+    struct/1 (stop behind the swing, targets at liquidity) in its own file.
 
     A broken event log raises journal_log.LogError and nothing is written."""
     now = now or datetime.now(timezone.utc)
@@ -598,7 +635,14 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                                "payload": {"close_time": _iso(latest), "reason": "stale_data", "age_seconds": int(age.total_seconds())}})
         elif journal.get("last_plan_candle") != _iso(latest):
             model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
-            record_plans(journal, with_evidence(plans_from_model(model), PLAN_TIMEFRAME, register_path), latest)
+            plans = plans_from_model(model)
+            if rule == RULE_STRUCT:
+                plans, dropped = _structural(plans, series, latest)
+                if dropped:
+                    new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
+                                       "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
+                                       "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
+            record_plans(journal, with_evidence(plans, PLAN_TIMEFRAME, register_path), latest)
             journal["last_plan_candle"] = _iso(latest)
             checkpoint = True
         elif journal.get("last_plan_candle_source_hash") not in {None, close_hash}:
@@ -608,6 +652,10 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                                "payload": {"close_time": _iso(latest), "supersedes_source_hash": journal["last_plan_candle_source_hash"], "source_hash": close_hash}})
     new_events = diff_events(before, journal, recorded_at=now, source_hash=source_hash, source_range=source_range,
                              close_source_hash=close_hash, checkpoint=checkpoint) + new_events
+    if rule != RULE_TIM:
+        for event in new_events:
+            if event["kind"] == CANDLE_CLOSE_PROCESSED:
+                event["payload"]["rule"] = rule
     written = journal_log.append(events_path, new_events, state)
     events = state.events + written
     # The view is always the fold: cursor-only progress that was not written is re-derived next time.
