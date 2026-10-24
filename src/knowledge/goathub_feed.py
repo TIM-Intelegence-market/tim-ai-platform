@@ -28,9 +28,12 @@ from typing import Any, Iterable, Sequence
 from .broncx_feed import BroncxGuidance, parse_guidance
 
 __all__ = [
+    "CHANNEL_ROLES",
     "CommunityCall",
     "GoatHubFeedStore",
     "GoatHubMessage",
+    "ROLE_CALLS",
+    "ROLE_KNOWLEDGE",
     "default_goathub_dir",
     "extract_call",
     "good_calls",
@@ -45,6 +48,11 @@ SOURCE_FORWARD = "discord_forward"
 SOURCE_SCREEN = "discord_screen"  # read off the owner's own Discord window by Claude; transcribed, check the original when it matters
 SOURCE_FOLLOW = "discord_follow"  # Discord channel "Follow": the original channel posts into the owner's channel
 SOURCE_MANUAL = "discord_manual"
+# What a channel is for. "calls": messages are checked for trade calls. "knowledge": teaching
+# material (e.g. education, bootcamp); kept verbatim for reading, never turned into calls.
+ROLE_CALLS = "calls"
+ROLE_KNOWLEDGE = "knowledge"
+CHANNEL_ROLES = (ROLE_CALLS, ROLE_KNOWLEDGE)
 GOOD_GRADES = ("A", "B")
 # Reactions that make a call "liked by the community"; a count, not a vote on correctness.
 POPULAR_REACTIONS = 3
@@ -57,6 +65,13 @@ def default_goathub_dir() -> Path:
     if override:
         return Path(override).expanduser()
     return Path(__file__).resolve().parents[2] / "data" / "goathub_feed"
+
+
+def _stored_role(value: Any) -> str:
+    """Older lines have no role (they were all read as calls); an unknown value never becomes a call."""
+    if value in (None, ""):
+        return ROLE_CALLS
+    return str(value) if str(value) in CHANNEL_ROLES else ROLE_KNOWLEDGE
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,10 +88,13 @@ class GoatHubMessage:
     attachments: tuple[str, ...] = ()
     reactions: int = 0
     forwarded_by: str = ""
+    channel_role: str = ROLE_CALLS  # recorded when the message is stored; see CHANNEL_ROLES
 
     def __post_init__(self) -> None:
         if not self.message_id or not self.channel_id:
             raise ValueError("message_id and channel_id are required")
+        if self.channel_role not in CHANNEL_ROLES:
+            raise ValueError(f"channel_role must be one of {', '.join(CHANNEL_ROLES)}")
         if self.posted_at.tzinfo is None or self.received_at.tzinfo is None:
             raise ValueError("message timestamps must be timezone-aware")
         if not self.content.strip() and not self.attachments:
@@ -115,6 +133,7 @@ class GoatHubMessage:
             attachments=tuple(str(item) for item in payload.get("attachments") or ()),
             reactions=int(payload.get("reactions") or 0),
             forwarded_by=str(payload.get("forwarded_by") or ""),
+            channel_role=_stored_role(payload.get("channel_role")),
         )
 
 
@@ -139,6 +158,9 @@ class GoatHubFeedStore:
             except (ValueError, KeyError, TypeError):
                 continue  # a torn last line after a crash must not hide the other messages
             messages.setdefault((message.channel_id, message.message_id), message)
+        knowledge = {channel for channel, role in self.channel_roles().items() if role == ROLE_KNOWLEDGE}
+        if knowledge:  # a channel set to knowledge later also covers the messages stored before
+            messages = {key: replace(item, channel_role=ROLE_KNOWLEDGE) if item.channel_id in knowledge else item for key, item in messages.items()}
         return sorted(messages.values(), key=lambda item: (item.posted_at, item.channel_id, item.message_id))
 
     def append(self, message: GoatHubMessage) -> bool:
@@ -156,20 +178,40 @@ class GoatHubFeedStore:
         self._known.add(key)
         return True
 
-    def cursors(self) -> dict[str, str]:
+    def _state(self, key: str) -> dict[str, str]:
         try:
-            value = json.loads(self.state_path.read_text(encoding="utf-8")).get("cursors") or {}
+            value = json.loads(self.state_path.read_text(encoding="utf-8")).get(key) or {}
         except (OSError, ValueError, AttributeError):
             return {}
-        return {str(key): str(item) for key, item in value.items() if item} if isinstance(value, dict) else {}
+        return {str(name): str(item) for name, item in value.items() if item} if isinstance(value, dict) else {}
+
+    def _write_state(self, key: str, value: dict[str, str]) -> None:
+        state = {"cursors": self.cursors(), "channel_roles": self.channel_roles()}
+        state[key] = value
+        self.root.mkdir(parents=True, exist_ok=True)
+        temporary = self.state_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, self.state_path)
+
+    def cursors(self) -> dict[str, str]:
+        return self._state("cursors")
 
     def set_cursor(self, channel_id: str, message_id: str) -> None:
         cursors = self.cursors()
         cursors[channel_id] = message_id
-        self.root.mkdir(parents=True, exist_ok=True)
-        temporary = self.state_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"cursors": cursors}, sort_keys=True), encoding="utf-8")
-        os.replace(temporary, self.state_path)
+        self._write_state("cursors", cursors)
+
+    def channel_roles(self) -> dict[str, str]:
+        """The role each channel had in the config at its latest sync."""
+        return self._state("channel_roles")
+
+    def set_channel_role(self, channel_id: str, role: str) -> None:
+        if role not in CHANNEL_ROLES:
+            raise ValueError(f"channel_role must be one of {', '.join(CHANNEL_ROLES)}")
+        roles = self.channel_roles()
+        if roles.get(channel_id) != role:
+            roles[channel_id] = role
+            self._write_state("channel_roles", roles)
 
     def messages_until(self, observed_at: datetime) -> list[GoatHubMessage]:
         """Messages TIM already had at ``observed_at`` (no lookahead in replays)."""
@@ -229,8 +271,8 @@ def _community_symbol(text: str) -> str | None:
 
 def extract_call(message: GoatHubMessage, reference_price: Decimal | None = None) -> CommunityCall | None:
     """A call is a message that states a current direction; anything else is conversation."""
-    if not message.content.strip():
-        return None
+    if message.channel_role == ROLE_KNOWLEDGE or not message.content.strip():
+        return None  # knowledge channels hold teaching material, not calls
     text = _SL_TO.sub(r"\1 at ", _SL_ON.sub(r"\1 at", _PERCENT.sub(" ", message.content)))
     guidance = parse_guidance(text, reference_price)
     if guidance.bias not in {"SHORT", "LONG"} or guidance.direction_withdrawn:
@@ -285,7 +327,13 @@ def _quote(text: str) -> list[str]:
 
 
 def _channel_title(message: GoatHubMessage) -> str:
-    return f"#{message.channel_name}" if message.channel_name else f"Kanal {message.channel_id}"
+    title = f"#{message.channel_name}" if message.channel_name else f"Kanal {message.channel_id}"
+    return f"{title} (nur Wissen, keine Calls)" if message.channel_role == ROLE_KNOWLEDGE else title
+
+
+def _channel_heading(messages: Sequence[GoatHubMessage]) -> str:
+    knowledge = [item for item in messages if item.channel_role == ROLE_KNOWLEDGE]
+    return _channel_title(knowledge[0] if knowledge else messages[0])
 
 
 def _call_line(call: CommunityCall) -> str:
@@ -322,7 +370,7 @@ def render_channel_markdown(messages: Sequence[GoatHubMessage], generated_at: da
     for message in messages:
         by_channel[message.channel_id].append(message)
     for channel_messages in by_channel.values():
-        lines += ["", f"## {_channel_title(channel_messages[0])}"]
+        lines += ["", f"## {_channel_heading(channel_messages)}"]
         day = None
         for message in channel_messages:
             stamp = message.posted_at.astimezone(timezone.utc)
@@ -371,7 +419,10 @@ def render_summary_markdown(messages: Sequence[GoatHubMessage], generated_at: da
 
 
 def import_screen_readings(store: GoatHubFeedStore, payload: Sequence[dict[str, Any]], received_at: datetime | None = None) -> tuple[int, int]:
-    """Store messages Claude read off the screen: [{channel_id, channel_name, author, posted_at, content}], idempotent by content hash."""
+    """Store messages Claude read off the screen: [{channel_id, channel_name, author, posted_at, content, channel_role?}], idempotent by content hash.
+
+    A ``channel_role`` of "knowledge" (or a channel synced as knowledge) keeps the messages out of the calls.
+    """
     received_at = received_at or datetime.now(timezone.utc)
     stored = duplicates = 0
     for item in payload:
@@ -388,6 +439,7 @@ def import_screen_readings(store: GoatHubFeedStore, payload: Sequence[dict[str, 
             received_at=received_at, author_name=author, channel_name=str(item.get("channel_name") or ""),
             source=SOURCE_SCREEN, attachments=tuple(str(name) for name in item.get("attachments") or ()),
             reactions=int(item.get("reactions") or 0),
+            channel_role=_stored_role(item.get("channel_role")),
         )
         if store.append(message):
             stored += 1

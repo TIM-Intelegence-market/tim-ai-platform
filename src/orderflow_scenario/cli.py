@@ -21,6 +21,7 @@ from .engines.pipeline import Pipeline, PipelineInputs
 from .config import default_config
 from .domain import MarketContext
 from .schema_validation import validate_analysis
+from .setup_draft import build_setup_draft
 from src.knowledge.broncx_feed import BroncxFeedStore
 from src.knowledge.goathub_feed import GoatHubFeedStore
 from src.market_data.providers.openmarket.errors import OpenMarketError
@@ -137,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--broncx-max-age-hours", type=float, default=24.0, help="Broncx posts older than this are shown as stale and not used")
     parser.add_argument("--goathub-feed", type=Path, default=None, help="GoatHub community feed directory (good calls shown in the report; no score weight, never confirms)")
     parser.add_argument("--goathub-max-age-hours", type=float, default=24.0, help="GoatHub calls older than this are not shown")
+    parser.add_argument("--setup-draft", type=Path, default=None, help="write a Discord-ready setup draft (text only, TIM never posts it) to this file")
     args = parser.parse_args(argv)
 
     try:
@@ -202,6 +204,12 @@ def main(argv: list[str] | None = None) -> int:
         analysis = Pipeline(default_config()).run(pipeline_inputs)
         output = analysis.to_dict()
         sys.stdout.write(json.dumps(output, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        if args.setup_draft is not None:
+            try:
+                args.setup_draft.expanduser().write_text(build_setup_draft(analysis), encoding="utf-8")
+            except OSError as exc:
+                sys.stderr.write(f"ERROR: --setup-draft could not be written: {exc}\n")
+                return 2
 
         if args.validate:
             ok, errors = validate_analysis(output)

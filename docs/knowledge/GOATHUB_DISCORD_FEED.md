@@ -1,6 +1,7 @@
 # GoatHub-Kanal: vollständig in Claudes Memory, gute Calls für TIM
 
-Status: Community-Meinung, nur Beobachtung. Ergänzt den [Broncx-Feed](BRONCX_DISCORD_FEED.md),
+Status: Community-Meinung, nur Beobachtung. TIM führt GoatHub als Quellenklasse
+`HUMAN_COMMUNITY_TRADING_RESEARCH`: menschliche Trading-Forschung, gelesen als Hypothese mit Autor, Zeit und Beleg. Ergänzt den [Broncx-Feed](BRONCX_DISCORD_FEED.md),
 der Broncx' Beiträge aus The Goat Hub gewichtet. Dieser Feed nimmt den ganzen Kanal mit allen Autoren.
 
 ## Was passiert
@@ -17,7 +18,7 @@ der Broncx' Beiträge aus The Goat Hub gewichtet. Dieser Feed nimmt den ganzen K
 4. Eine Claude-Routine im TIM-Projekt liest den Export danach vom Mac und aktualisiert
    `/mnt/project-files/goathub/` und den Memory-Eintrag `goathub-kanal`.
 5. `ofsc --goathub-feed data/goathub_feed` zeigt die guten Calls zum analysierten Symbol im Bericht
-   unter **GOATHUB-COMMUNITY-CALLS**, mit Level-Prüfung gegen die Kerzen (TOUCHED / NOT_REACHED)
+   unter **HUMAN-COMMUNITY-TRADING-RESEARCH**, mit Level-Prüfung gegen die Kerzen (TOUCHED / NOT_REACHED)
    und Invalidierung per Schlusskurs.
 
 ## Was ein guter Call ist
@@ -83,6 +84,64 @@ Das Log steht in `data/operational/goathub_sync.log`. Stoppen:
 Einstellbar per Umgebungsvariable: `TIM_GOATHUB_FEED_DIR`, `TIM_GOATHUB_DISCORD_CONFIG`
 (Standard `~/Library/Application Support/TIM/goathub-discord.json`) und
 `TIM_GOATHUB_DISCORD_SECRET_FILE` (Standard: das Broncx-Bot-Geheimnis).
+
+## Gemeinsame Einrichtung mit Treta (Modus `direct`)
+
+Entwurf zur Abstimmung. Nichts davon ist umgesetzt oder vom GoatHub-Team freigegeben.
+
+**Vorgeschlagene Kategorien** (jede mit mehreren Kanälen)
+
+| Kategorie | Rolle für TIM | Hinweis |
+| --- | --- | --- |
+| market updates | lesen, Calls erkennen | Marktlage und Einschätzungen |
+| trading lounge | lesen, Calls erkennen | Live-Austausch, viel Rauschen, Note C bleibt Kontext |
+| community | lesen, Calls erkennen | allgemeiner Austausch, nur Beiträge mit Richtung und Symbol zählen |
+| education | nur Wissen, keine Calls | Lehrmaterial ist kein Wirksamkeitsbeleg; Rechte der Autoren klären |
+| bronxc bootcamp | nur Wissen, keine Calls | Katalog siehe `BRONCX_BOOTCAMP_KNOWLEDGE.md`; nur mit Freigabe |
+
+Die IDs stehen hier nicht. Sie werden beim `setup` lokal eingetragen (Entwicklermodus, Rechtsklick
+auf den Kategorienamen, „Kategorie-ID kopieren“) und nicht committet.
+
+**Kategorien:** `setup` fragt getrennt nach Kanal- und Kategorie-IDs. Eine Kategorie steht in der
+Config mit `"kind": "category"`. Bei jedem `sync` holt der Bot die Text- und Ankündigungskanäle
+darin (`GET /channels/{id}`, dann `GET /guilds/{guild}/channels`), auch solche, die später
+dazukommen. Jeder Kanal erbt die Rolle der Kategorie; ein eigener Eintrag für einen Kanal hat
+Vorrang. Foren, Threads und Sprachkanäle werden nicht gelesen. Der Bot braucht in jedem dieser
+Kanäle *View Channels* und *Read Message History*; am einfachsten gibt der Admin die Rechte auf
+Kategorie-Ebene und lässt die Kanäle synchronisiert.
+
+**Schritte für Treta (Admin von The Goat Hub)**
+
+1. Dem TIM-Bot nur diese Kategorien freigeben, mit den Rechten *View Channels* und *Read Message History*.
+   Keine Schreibrechte, keine privaten Kanäle, keine Direktnachrichten.
+2. Im Entwicklerportal den *Message Content Intent* des Bots einschalten.
+3. Den Mitgliedern im Server mitteilen, dass TIM ausgewählte Kanäle liest, wofür und wie lange
+   gespeichert wird; Löschwunsch einzelner Beiträge muss möglich sein.
+
+**Danach** wie unter Einrichtung: `setup` mit Modus `direct`, dann `sync` (erwartet `stored=… complete=True`).
+
+**Offen vor dem Start:** Zustimmung der Kanalbetreiber und Autoren, Speicherdauer, Löschweg.
+Education und Bootcamp laufen erst nach ausdrücklicher Freigabe.
+
+**Kanalrollen:** `setup` fragt nach den Kanälen, die nur Wissen liefern. Sie stehen in der Config
+mit `"role": "knowledge"`, alle anderen mit `"role": "calls"` (Standard, auch für ältere Configs).
+Nachrichten aus Wissenskanälen werden gespeichert und exportiert (Überschrift „nur Wissen, keine
+Calls“), aber nie als Call erkannt und nie im TIM-Bericht gezeigt. `sync` merkt sich die Rolle je
+Kanal im Feed (`state.json`): Wird ein Kanal auf Wissen umgestellt, gilt das ab dem nächsten `sync`
+auch für seine schon gespeicherten Nachrichten. Umgekehrt bleibt eine einmal als Wissen
+gespeicherte Nachricht Wissen. Eine unbekannte Rolle in einer gespeicherten Zeile zählt als Wissen,
+nie als Call. `import-screen` nimmt `"channel_role": "knowledge"` je Eintrag an.
+
+Im Modus `forward` gilt die Rolle für den eigenen Weiterleitungskanal: Lehrmaterial nicht in einen
+Call-Kanal weiterleiten, sondern in einen eigenen Kanal mit Rolle Wissen.
+
+## Setup-Entwurf für den Setup-Kanal
+
+`ofsc --input … --setup-draft entwurf.md` schreibt zusätzlich zur Analyse einen Text für Discord
+(unter 2000 Zeichen). TIM postet ihn nie selbst; ein Mensch liest und entscheidet. Ohne Trade-Plan
+steht dort „Kein Setup (NO TRADE)“ mit Gründen und den beobachteten, unbestätigten Szenarien.
+Scores erscheinen nicht, der Haftungshinweis steht immer am Ende. Ein Schreib-Bot ist nicht
+vorgesehen und bräuchte eine eigene Freigabe.
 
 ## Fehlermeldungen
 

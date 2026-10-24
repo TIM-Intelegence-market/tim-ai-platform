@@ -202,11 +202,11 @@ def test_community_calls_are_shown_but_change_nothing() -> None:
     for key in ("decision", "orderflow", "market_state", "data_quality", "scenarios"):
         assert after[key] == before[key], key
     engine = next(item["result"] for item in after["audit"]["engines"] if item["engine"] == "community_calls")
-    assert engine["influences_scores"] is False and [entry["message_id"] for entry in engine["entries"]] == ["1"]
+    assert engine["influences_scores"] is False and engine["source_class"] == "HUMAN_COMMUNITY_TRADING_RESEARCH" and [entry["message_id"] for entry in engine["entries"]] == ["1"]
     assert {level["level"] for level in engine["entries"][0]["levels"]} >= {"83800", "82000"}
     assert validate_analysis(after)[0]
     report = build_report(with_calls)
-    assert "GOATHUB-COMMUNITY-CALLS" in report and "trader1 [A] SHORT BTC" in report
+    assert "HUMAN-COMMUNITY-TRADING-RESEARCH (GoatHub" in report and "trader1 [A] SHORT BTC" in report
 
 
 def test_cli_reads_the_goathub_directory(tmp_path: Path, capsys, monkeypatch) -> None:
@@ -274,3 +274,165 @@ def test_community_calls_name_any_coin_and_ignore_sizes(text: str, grade: str, s
     assert call is not None and call.grade == grade
     assert call.guidance.symbol == symbol
     assert [(level.role, str(level.value)) for level in call.guidance.levels] == levels
+
+
+# --- channel roles (calls vs. knowledge only) ---------------------------------------------------
+
+KNOWLEDGE_CHANNEL = "133456789012345678"
+
+
+def test_knowledge_channel_messages_are_stored_but_never_calls(tmp_path: Path) -> None:
+    config = GoatHubConfig((GoatHubChannel(CHANNEL, "market-updates"), GoatHubChannel(KNOWLEDGE_CHANNEL, "education", "knowledge")), "direct")
+    text = "btc short from 83800, tp 82000, invalid above 84500"
+    fake = FakeDiscord([(200, [discord_message(300000000000000001, MEMBER, text)], {}),
+                        (200, [discord_message(300000000000000002, MEMBER, text)], {})])
+    GoatHubReader(SecretValue("test-secret"), config, GoatHubFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None).sync()
+    stored = {item.channel_id: item for item in GoatHubFeedStore(tmp_path).load()}
+    assert stored[KNOWLEDGE_CHANNEL].channel_role == "knowledge" and stored[CHANNEL].channel_role == "calls"
+    assert extract_call(stored[KNOWLEDGE_CHANNEL], Decimal("83300")) is None
+    assert [call.message.channel_id for call in good_calls(stored.values(), reference_price=Decimal("83300"))] == [CHANNEL]
+    export = write_memory_export(GoatHubFeedStore(tmp_path), [tmp_path / "memory"])
+    full = next(path for path in export if path.name == "GOATHUB_KANAL.md").read_text(encoding="utf-8")
+    assert "#education (nur Wissen, keine Calls)" in full and "1 gute Calls" in full
+
+
+def test_channel_role_is_validated_and_round_trips(tmp_path: Path) -> None:
+    with pytest.raises(DiscordFeedError):
+        GoatHubChannel(CHANNEL, "x", "signals")
+    path = tmp_path / "config.json"
+    config = GoatHubConfig((GoatHubChannel(CHANNEL, "a"), GoatHubChannel(KNOWLEDGE_CHANNEL, "b", "knowledge")), "direct")
+    path.write_text(json.dumps(config.to_dict()), encoding="utf-8")
+    assert GoatHubConfig.load(path) == config
+    path.write_text(json.dumps({"mode": "direct", "channels": [{"id": CHANNEL, "name": "old"}]}), encoding="utf-8")
+    assert GoatHubConfig.load(path).channels[0].role == "calls"  # configs from before roles keep reading calls
+
+
+def test_stored_lines_without_or_with_unknown_role_load_safely(tmp_path: Path) -> None:
+    store = GoatHubFeedStore(tmp_path)
+    tmp_path.mkdir(exist_ok=True)
+    base = message("1", "btc short from 83800, tp 82000, invalid above 84500").to_dict()
+    legacy = {key: value for key, value in base.items() if key != "channel_role"}
+    odd = {**base, "message_id": "2", "channel_role": "signals"}
+    store.messages_path.write_text(json.dumps(legacy) + "\n" + json.dumps(odd) + "\n", encoding="utf-8")
+    roles = {item.message_id: item.channel_role for item in store.load()}
+    assert roles == {"1": "calls", "2": "knowledge"}  # an unknown role never becomes a call
+    with pytest.raises(ValueError):
+        message("3", "gm", channel_role="signals")
+
+
+def test_bot_setup_marks_knowledge_only_channels(tmp_path: Path, capsys) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("goathub_discord_bot", Path(__file__).resolve().parents[1] / "scripts/goathub_discord_bot.py")
+    bot = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bot)
+    config = tmp_path / "goathub.json"
+    common = ["setup", "--config", str(config), "--secret-file", str(tmp_path / "secret")]
+    answers = iter([f"{CHANNEL}=market-updates, {KNOWLEDGE_CHANNEL}=education", "", KNOWLEDGE_CHANNEL, "direct", ""])
+    assert bot.main(common, ask=lambda _: next(answers)) == 0
+    roles = {channel.channel_id: channel.role for channel in GoatHubConfig.load(config).channels}
+    assert roles == {CHANNEL: "calls", KNOWLEDGE_CHANNEL: "knowledge"}
+    assert "knowledge_only=1" in capsys.readouterr().out
+    typo = iter([f"{CHANNEL}=market-updates", "", "999999999999999999", "direct", ""])
+    assert bot.main(common, ask=lambda _: next(typo)) != 0
+
+
+def test_switching_a_synced_channel_to_knowledge_covers_its_stored_messages(tmp_path: Path) -> None:
+    text = "btc short from 83800, tp 82000, invalid above 84500"
+    first = FakeDiscord([(200, [discord_message(300000000000000001, MEMBER, text)], {})])
+    calls_config = GoatHubConfig((GoatHubChannel(KNOWLEDGE_CHANNEL, "education"),), "direct")
+    GoatHubReader(SecretValue("s"), calls_config, GoatHubFeedStore(tmp_path), http_get=first, clock=lambda: NOW, sleep=lambda _: None).sync()
+    assert len(good_calls(GoatHubFeedStore(tmp_path).load(), reference_price=Decimal("83300"))) == 1
+    GoatHubFeedStore(tmp_path).set_cursor(CHANNEL, "1")  # other state survives role writes
+    second = FakeDiscord([(200, [], {})])
+    knowledge_config = GoatHubConfig((GoatHubChannel(KNOWLEDGE_CHANNEL, "education", "knowledge"),), "direct")
+    GoatHubReader(SecretValue("s"), knowledge_config, GoatHubFeedStore(tmp_path), http_get=second, clock=lambda: NOW, sleep=lambda _: None).sync()
+    store = GoatHubFeedStore(tmp_path)
+    assert good_calls(store.load(), reference_price=Decimal("83300")) == []
+    assert store.cursors() == {KNOWLEDGE_CHANNEL: "300000000000000001", CHANNEL: "1"}
+    assert second.urls[0].endswith("after=300000000000000001&limit=100")
+
+
+def test_screen_import_keeps_knowledge_messages_out_of_the_calls(tmp_path: Path) -> None:
+    from src.knowledge.goathub_feed import import_screen_readings
+
+    store = GoatHubFeedStore(tmp_path)
+    payload = [{"channel_id": "education", "channel_name": "education", "author": "teacher", "channel_role": "knowledge",
+                "posted_at": "2026-10-12T10:00:00+00:00", "content": "Long BTC at 60000, SL 58000"}]
+    assert import_screen_readings(store, payload, NOW) == (1, 0)
+    assert good_calls(GoatHubFeedStore(tmp_path).load()) == []
+    other = [{**payload[0], "channel_id": "edu2", "channel_role": ""}]
+    store.set_channel_role("edu2", "knowledge")  # a channel known as knowledge from a sync
+    import_screen_readings(store, other, NOW)
+    assert good_calls(GoatHubFeedStore(tmp_path).load()) == []
+
+
+
+# --- categories (a Discord category stands for all its text channels) ------------------------------
+
+CATEGORY = "143456789012345678"
+EDU_CATEGORY = "153456789012345678"
+GUILD = "163456789012345678"
+
+
+def guild_channels() -> list[dict]:
+    return [
+        {"id": CATEGORY, "type": 4, "name": "MARKET UPDATES"},
+        {"id": "173456789012345678", "type": 0, "name": "btc-updates", "parent_id": CATEGORY, "position": 2},
+        {"id": "183456789012345678", "type": 5, "name": "announcements", "parent_id": CATEGORY, "position": 1},
+        {"id": "193456789012345678", "type": 2, "name": "voice", "parent_id": CATEGORY, "position": 3},
+        {"id": "203456789012345678", "type": 15, "name": "forum", "parent_id": CATEGORY, "position": 4},
+        {"id": "213456789012345678", "type": 0, "name": "lesson-1", "parent_id": EDU_CATEGORY, "position": 1},
+        {"id": "223456789012345679", "type": 0, "name": "general", "parent_id": None, "position": 0},
+    ]
+
+
+def test_category_expands_to_its_text_channels_with_the_category_role(tmp_path: Path) -> None:
+    config = GoatHubConfig((GoatHubChannel(CATEGORY, "market updates", kind="category"),
+                            GoatHubChannel(EDU_CATEGORY, "education", "knowledge", kind="category"),
+                            GoatHubChannel("173456789012345678", "btc-updates", "knowledge")), "direct")
+    fake = FakeDiscord([(200, {"id": CATEGORY, "type": 4, "guild_id": GUILD}, {}), (200, guild_channels(), {}),
+                        (200, {"id": EDU_CATEGORY, "type": 4, "guild_id": GUILD}, {}), (200, guild_channels(), {})])
+    channels = GoatHubReader(SecretValue("s"), config, GoatHubFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None).resolve_channels()
+    assert [(item.channel_id, item.name, item.role) for item in channels] == [
+        ("173456789012345678", "btc-updates", "knowledge"),  # an explicit entry wins over its category
+        ("183456789012345678", "announcements", "calls"),
+        ("213456789012345678", "lesson-1", "knowledge"),
+    ]
+    assert fake.urls[1].endswith(f"/guilds/{GUILD}/channels")
+
+
+def test_category_sync_reads_each_child_and_stores_its_role(tmp_path: Path) -> None:
+    config = GoatHubConfig((GoatHubChannel(EDU_CATEGORY, "education", "knowledge", kind="category"),), "direct")
+    text = "btc short from 83800, tp 82000, invalid above 84500"
+    fake = FakeDiscord([(200, {"id": EDU_CATEGORY, "type": 4, "guild_id": GUILD}, {}), (200, guild_channels(), {}),
+                        (200, [discord_message(310000000000000001, MEMBER, text)], {})])
+    results = GoatHubReader(SecretValue("s"), config, GoatHubFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None).sync()
+    assert [(item.channel_id, item.stored) for item in results] == [("213456789012345678", 1)]
+    stored = GoatHubFeedStore(tmp_path).load()
+    assert stored[0].channel_name == "lesson-1" and stored[0].channel_role == "knowledge"
+    assert good_calls(stored, reference_price=Decimal("83300")) == []
+
+
+def test_a_plain_channel_id_given_as_category_is_refused(tmp_path: Path) -> None:
+    config = GoatHubConfig((GoatHubChannel(CHANNEL, "oops", kind="category"),), "direct")
+    fake = FakeDiscord([(200, {"id": CHANNEL, "type": 0, "guild_id": GUILD}, {})])
+    reader_ = GoatHubReader(SecretValue("s"), config, GoatHubFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None)
+    with pytest.raises(DiscordFeedError, match="not a category"):
+        reader_.resolve_channels()
+    with pytest.raises(DiscordFeedError):
+        GoatHubChannel(CHANNEL, "x", kind="folder")
+
+
+def test_bot_setup_stores_categories_and_round_trips(tmp_path: Path, capsys) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("goathub_discord_bot", Path(__file__).resolve().parents[1] / "scripts/goathub_discord_bot.py")
+    bot = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bot)
+    config = tmp_path / "goathub.json"
+    answers = iter(["", f"{CATEGORY}=market updates, {EDU_CATEGORY}=education", EDU_CATEGORY, "direct", ""])
+    assert bot.main(["setup", "--config", str(config), "--secret-file", str(tmp_path / "secret")], ask=lambda _: next(answers)) == 0
+    loaded = GoatHubConfig.load(config)
+    assert {(item.channel_id, item.kind, item.role) for item in loaded.channels} == {(CATEGORY, "category", "calls"), (EDU_CATEGORY, "category", "knowledge")}
+    assert "channels=0 categories=2 knowledge_only=1" in capsys.readouterr().out

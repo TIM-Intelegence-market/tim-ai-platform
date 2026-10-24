@@ -161,7 +161,7 @@ _NO_INFLUENCE_TEXT = {
 
 
 def _community_section(community: dict[str, Any]) -> list[str]:
-    lines = ["\nGOATHUB-COMMUNITY-CALLS (nur Anzeige, keine Gewichtung, zählt nicht als Bestätigung):"]
+    lines = ["\nHUMAN-COMMUNITY-TRADING-RESEARCH (GoatHub; nur Anzeige, keine Gewichtung, zählt nicht als Bestätigung):"]
     if not community["entries"]:
         lines.append(f"  Kein guter Call zu diesem Symbol (Frist {community['max_age_hours']:g} h).")
         return lines
