@@ -190,10 +190,11 @@ def default_backup_dir() -> Path:
     The Mac mini's com.tim.db-backup agent writes to the user's Application
     Support folder; /var/backups/tim only exists on the Linux server. Checking
     the Linux path on the Mac made every report RED ("backup directory unreadable").
+    The rule lives in tim_db_backup so backup and health always pick the same folder.
     """
-    if sys.platform == "darwin":
-        return Path.home() / "Library/Application Support/TIM/backups/live"
-    return Path("/var/backups/tim")
+    from scripts.tim_db_backup import default_backup_directory
+
+    return default_backup_directory()
 
 
 def main(argv: list[str] | None = None) -> int:
