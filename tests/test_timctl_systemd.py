@@ -147,6 +147,7 @@ def test_start_runs_gates_before_systemctl_start(control, monkeypatch) -> None:
 
     monkeypatch.setattr(instance, "_systemctl", systemctl)
     monkeypatch.setattr(instance, "listeners", lambda port: {"status": "LISTENING", "addresses": [f"127.0.0.1:{port}"], "unsafe": False})
+    monkeypatch.setattr(instance, "dashboard_health", lambda: {"status": "PASS", "mode": "OBSERVE"})
     monkeypatch.setattr(instance, "_wait", lambda predicate, timeout: predicate())
     monkeypatch.setattr(instance, "verify_running", lambda: {"status": "PASS", "mode": "OBSERVE"})
     monkeypatch.setattr(module, "atomic_json", lambda path, payload: events.append("manifest"))
