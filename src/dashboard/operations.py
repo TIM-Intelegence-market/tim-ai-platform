@@ -356,6 +356,36 @@ def _ci_test_of_deployment(deployment: dict[str, Any], recorded_last_test: Any) 
     }
 
 
+def _dashboard_refresh(status: dict[str, Any], path: Path) -> dict[str, Any]:
+    """State of the dashboard refresh agent (scripts/dashboard_refresh.py), for the evidence strip."""
+    decision = status.get("decision") if isinstance(status, dict) else None
+    if not isinstance(decision, dict):
+        return {"status": UNAVAILABLE, "value": UNAVAILABLE, "note": "Agent noch nicht gelaufen", "source": path.as_posix()}
+    age = _seconds_since(status.get("checked_at_utc"))
+    action = str(decision.get("action", ""))
+    deploy = status.get("deploy") if isinstance(status.get("deploy"), dict) else {}
+    if age is None or age > 30 * 60:
+        state = "STALE"
+    elif deploy.get("result") == "ROLLED_BACK":
+        state = "FAIL"
+    elif status.get("health_ok") is False:
+        state = "DEGRADED"
+    elif action == "HOLD":
+        state = "BLOCKED"
+    elif action == "WAIT":
+        state = "WAITING"
+    else:
+        state = "PASS"
+    minutes = "" if age is None else f"vor {int(age // 60)} min"
+    return {
+        "status": state,
+        "value": str(status.get("deployed_commit") or UNAVAILABLE)[:7],
+        "note": " · ".join(part for part in (minutes, str(decision.get("text") or decision.get("reason") or "")) if part),
+        "reason": decision.get("reason"),
+        "source": path.as_posix(),
+    }
+
+
 def _recheck_gates(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     """Put today's measured state next to each archived gate that has live evidence.
 
@@ -872,6 +902,8 @@ def build_operations_snapshot(
     deployment_path = live_watchdog_path.parent / "deployment.json"
     deployment = _read_json(deployment_path)
     ci_test = _ci_test_of_deployment(deployment, last_test)
+    refresh_path = live_watchdog_path.parent / "dashboard_refresh.json"
+    dashboard_refresh = _dashboard_refresh(_read_json(refresh_path), refresh_path)
     incidents = [item for item in base.get("timeline", []) if str(item.get("severity", "")).upper() in {"ERROR", "CRITICAL", "HIGH"}]
     last_incident = incidents[-1] if incidents else None
     audit_sources = list(sources.values())
@@ -958,6 +990,7 @@ def build_operations_snapshot(
             "test_source": ci_test["source"] if ci_test else sources["final_test_summary.json"]["path"],
             "deployed_commit": deployment.get("commit") or UNAVAILABLE,
             "deployed_at": deployment.get("deployed_at_utc") or UNAVAILABLE,
+            "dashboard_refresh": dashboard_refresh,
             "doctor": _normalized_status(_first(tests, "doctor.status")),
             "validate": _normalized_status(_first(tests, "validate.status")),
             "protected_state": _normalized_status(_first(protected, "status", "result", default=_first(tests, "protected_state.status"))),
@@ -1281,6 +1314,8 @@ def _overview(data: dict[str, Any]) -> str:
         ("Test result", f"{audit['passed']} pass / {audit['failed']} fail", f"Commit {str(audit.get('deployed_commit') or UNAVAILABLE)[:7]}", None),
         ("Last incident", str((audit.get("last_incident") or {}).get("event", UNAVAILABLE)) if isinstance(audit.get("last_incident"), dict) else str(audit.get("last_incident", UNAVAILABLE)), "", None),
         ("Data spaces", str(len(data["datasets"])), "coverage rooms", None),
+        ("Dashboard-Agent", (audit.get("dashboard_refresh") or {}).get("value", UNAVAILABLE),
+         (audit.get("dashboard_refresh") or {}).get("note", ""), (audit.get("dashboard_refresh") or {}).get("status", UNAVAILABLE)),
     ])
     evidence = section(
         "Latest evidence",
