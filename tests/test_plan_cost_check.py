@@ -202,3 +202,35 @@ def test_api_serves_cost_fields(tmp_path) -> None:
     assert check["cost_status"] == cc.NOT_TRADABLE_COST
     assert data["cost_check_summary"]["not_tradable_cost"] == 1
     assert math.isfinite(check["cost_r"])
+
+
+# --- page robustness (review of PR #408) -----------------------------------------------------
+
+@pytest.mark.parametrize("field, value", [
+    ("stop", None), ("entry", None), ("stop", "abc"), ("entry", float("nan")),
+    ("entry_low", None), ("invalidation_level", float("inf")),
+])
+def test_page_renders_entries_with_missing_or_invalid_levels(field, value) -> None:
+    journal = _journal(_plan())
+    journal["entries"][0][field] = value
+    page = _plan_journal_page({}, journal)
+    assert "Alle Pläne" in page
+    if field in {"stop", "entry"}:
+        assert "COST_UNKNOWN" in page
+
+
+def test_page_renders_entry_with_missing_target() -> None:
+    journal = _journal(_plan())
+    journal["entries"][0]["targets"] = [101.5, None, 103.0]
+    page = _plan_journal_page({}, journal)
+    assert "TP2 –" in page
+
+
+def test_page_keeps_price_format_for_valid_levels() -> None:
+    page = _plan_journal_page({}, _journal(_plan("LONG", 80593.513, 79787.57787)))
+    assert "80.594" in page and "79.788" in page
+
+
+def test_rounding_tolerance_is_documented_on_the_page() -> None:
+    page = _plan_journal_page({}, _journal(_plan()))
+    assert "4 Nachkommastellen" in page

@@ -52,7 +52,7 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
             pass
 
 
-def run(command: list[str], *, timeout: float = 15) -> subprocess.CompletedProcess[str]:
+def run(command: list[str], *, timeout: float = 15, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
             command,
@@ -61,6 +61,7 @@ def run(command: list[str], *, timeout: float = 15) -> subprocess.CompletedProce
             text=True,
             timeout=timeout,
             cwd=ROOT,
+            env=env,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RuntimeControlError(f"required local command failed: {Path(command[0]).name}") from exc
@@ -105,6 +106,7 @@ class RuntimeControl:
             self.label = SYSTEMD_UNIT
             self.target = f"systemd/{SYSTEMD_UNIT}"
             self.runtime_python = exec_start[0]
+            self.runtime_env = dict(os.environ)
             return
         configured_plist = os.getenv("TIMCTL_PLIST_PATH") if test_mode else None
         self.plist_path = Path(configured_plist or Path.home() / "Library/LaunchAgents/com.tim.runtime.plist")
@@ -117,6 +119,11 @@ class RuntimeControl:
         self.label = str(self.plist["Label"])
         self.target = f"{self.launch_domain}/{self.label}"
         self.runtime_python = str(self.plist["ProgramArguments"][0])
+        # Control checks must use the same secret-provider configuration as the
+        # launchd runtime, rather than whichever provider happens to be active
+        # in the interactive shell running `timctl`.
+        self.runtime_env = dict(os.environ)
+        self.runtime_env.update({str(key): str(value) for key, value in (self.plist.get("EnvironmentVariables") or {}).items()})
 
     def _load_unit(self) -> list[str]:
         try:
@@ -301,7 +308,7 @@ class RuntimeControl:
 
     def secret_gate(self) -> dict[str, str]:
         try:
-            return DatabaseSecretResolver().status(settings.database_endpoint)
+            return DatabaseSecretResolver(self.runtime_env).status(settings.database_endpoint)
         except SecretProviderError as exc:
             raise RuntimeControlError(str(exc)) from exc
 
@@ -360,6 +367,7 @@ class RuntimeControl:
         result = run(
             [self.runtime_python, str(self.ingestion_control), command, "--timeout", str(timeout)],
             timeout=timeout + 10,
+            env=self.runtime_env,
         )
         try:
             payload = json.loads(result.stdout)
@@ -505,8 +513,18 @@ class RuntimeControl:
             "durable_ingestion": self.ingestion_gate("bootstrap", timeout=10),
         }
         self._start_service(self.service_status())
+
+        def dashboard_ready() -> bool:
+            if self.service_status()["state"] != "RUNNING" or self.listeners(self.dashboard_port)["status"] != "LISTENING":
+                return False
+            try:
+                self.dashboard_health()
+            except RuntimeControlError:
+                return False
+            return True
+
         if not self._wait(
-            lambda: self.service_status()["state"] == "RUNNING" and self.listeners(self.dashboard_port)["status"] == "LISTENING",
+            dashboard_ready,
             30,
         ):
             raise RuntimeControlError("TIM safe start timed out")
