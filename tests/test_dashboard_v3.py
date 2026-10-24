@@ -42,7 +42,7 @@ def test_navigation_is_grouped_and_marks_current_page() -> None:
     # Dashboard 4.1: one Control Center navigation holds every live page plus the pilot view.
     assert [group for group, _ in NAV_GROUPS] == ["BETRIEB", "FORSCHUNG", "FREIGABE", "SYSTEM", "WERKZEUGE"]
     routes = [href for _, links in NAV_GROUPS for _, href in links]
-    assert len(routes) == len(set(routes)) == 22 and "/pilot" in routes
+    assert len(routes) == len(set(routes)) == 24 and "/pilot" in routes and "/chart" in routes and "/journal" in routes
     page = render(DashboardState(), "Research Cases")
     assert "<p class='nav__label'>FORSCHUNG</p>" in page
     assert "<a href='/cases' class='active' aria-current='page'>Research-Fälle</a>" in page
@@ -192,6 +192,21 @@ def test_pilot_view_renders_only_allowlisted_fields(tmp_path: Path) -> None:
     assert "case_ofproof" in page and "sammelt Belege" in page and "RETROSPECTIVE" in page
     assert "href='/exports/case/case_ofproof.html'" in page
     assert "keine Empfehlung, keine Prognose" in page
+
+
+def test_pilot_view_is_bounded_to_newest_cases() -> None:
+    # Regression: rendering every stored case (4,500 on the Mac) took >100 s and hit the 413 limit.
+    from datetime import timedelta
+    from src.dashboard.pages.pilot import PILOT_CASE_LIMIT, render_pilot
+    state = DashboardState(research_cases=[
+        {"case_id": f"case_{i:05d}", "symbol": "BTCUSDT", "timeframe": "1m", "status": "OPEN",
+         "opened_at": (OPENED + timedelta(minutes=i)).isoformat(), "evidence": []}
+        for i in range(PILOT_CASE_LIMIT + 25)
+    ])
+    page = render_pilot(state)
+    assert page.count("class='card pilot-case'") == PILOT_CASE_LIMIT
+    assert f"case_{PILOT_CASE_LIMIT + 24:05d}" in page and "case_00000" not in page
+    assert f"Die neuesten {PILOT_CASE_LIMIT} von {PILOT_CASE_LIMIT + 25}" in page
 
 
 def test_pilot_route_is_served(server) -> None:

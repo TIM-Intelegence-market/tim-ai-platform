@@ -1,0 +1,156 @@
+{
+ "_note": "SYNTHETIC example chain for tests and learning. Not real market data.",
+ "symbol": "BTC",
+ "spot": 67000,
+ "as_of": "2026-10-21T12:00:00+00:00",
+ "multiplier": 1,
+ "chain": [
+  {
+   "strike": 60000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 90,
+   "implied_vol": 0.56
+  },
+  {
+   "strike": 65000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 240,
+   "implied_vol": 0.5
+  },
+  {
+   "strike": 70000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 720,
+   "implied_vol": 0.48
+  },
+  {
+   "strike": 75000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 540,
+   "implied_vol": 0.5
+  },
+  {
+   "strike": 80000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 300,
+   "implied_vol": 0.54
+  },
+  {
+   "strike": 55000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 300,
+   "implied_vol": 0.62
+  },
+  {
+   "strike": 60000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 600,
+   "implied_vol": 0.56
+  },
+  {
+   "strike": 65000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 420,
+   "implied_vol": 0.5
+  },
+  {
+   "strike": 70000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 120,
+   "implied_vol": 0.48
+  },
+  {
+   "strike": 75000,
+   "expiry": "2026-10-28T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 30,
+   "implied_vol": 0.5
+  },
+  {
+   "strike": 60000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 150,
+   "implied_vol": 0.56
+  },
+  {
+   "strike": 65000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 400,
+   "implied_vol": 0.5
+  },
+  {
+   "strike": 70000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 1200,
+   "implied_vol": 0.48
+  },
+  {
+   "strike": 75000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 900,
+   "implied_vol": 0.5
+  },
+  {
+   "strike": 80000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 500,
+   "implied_vol": 0.54
+  },
+  {
+   "strike": 55000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 500,
+   "implied_vol": 0.62
+  },
+  {
+   "strike": 60000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 1000,
+   "implied_vol": 0.56
+  },
+  {
+   "strike": 65000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 700,
+   "implied_vol": 0.5
+  },
+  {
+   "strike": 70000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 200,
+   "implied_vol": 0.48
+  },
+  {
+   "strike": 75000,
+   "expiry": "2026-11-27T08:00:00+00:00",
+   "type": "put",
+   "open_interest": 50,
+   "implied_vol": 0.5
+  },
+  {
+   "strike": 66000,
+   "expiry": "2026-10-20T08:00:00+00:00",
+   "type": "call",
+   "open_interest": 999,
+   "implied_vol": 0.5
+  }
+ ]
+}

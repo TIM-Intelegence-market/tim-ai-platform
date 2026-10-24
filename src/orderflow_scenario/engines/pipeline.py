@@ -42,6 +42,7 @@ from ..domain import (
 from ..domain import MarketState as MarketStateModel
 from ..domain import AuctionState as AuctionStateModel
 from ..domain import OrderflowInterpretation
+from ..positioning import PositioningInputs, ProfileLevels
 from .confirmation import ConfirmationEngine, ConfirmationUpdate
 from .data_quality import DataQualityGate, DataQualityInputs
 from .decision import DecisionEngine, DecisionEngineInput
@@ -70,6 +71,9 @@ class PipelineInputs:
     delta_divergence: bool | None = None
     volume_bubbles: tuple[str, ...] = ()
     levels: LevelSet | None = None
+    # Funding, liquidations, OI series, orderbook depth; volume profile / TPO (positioning.py).
+    positioning: PositioningInputs | None = None
+    profile: ProfileLevels | None = None
     screenshot_confidence: float | None = None
     structured: bool = True
     estimated_prices: tuple[str, ...] = ()
@@ -191,9 +195,11 @@ class Pipeline:
                     open_interest_with_price=inputs.open_interest_with_price,
                     delta_divergence=inputs.delta_divergence,
                     volume_bubbles=inputs.volume_bubbles,
+                    positioning=inputs.positioning,
+                    profile=inputs.profile,
                 )
             )
-            levels = inputs.levels or self._levels_from_candles(inputs.candles, inputs.price_now)
+            levels = _with_profile(inputs.levels or self._levels_from_candles(inputs.candles, inputs.price_now), inputs.profile)
             if external_view is not None and external_view.bias is not None:
                 levels = replace(levels, external_levels=external_view.levels, external_bias=external_view.bias)
             scenarios = self.scenario_generator.generate(market_state, auction_state, orderflow, levels)
@@ -355,6 +361,19 @@ class Pipeline:
             session_low=Decimal(min(c.low for c in candles[-6:])),
             last_price=last,
         )
+
+
+def _with_profile(levels: LevelSet, profile: ProfileLevels | None) -> LevelSet:
+    """Profile levels fill only what the caller did not set explicitly."""
+    if profile is None:
+        return levels
+    updates = {}
+    for name in ("point_of_control", "value_area_high", "value_area_low", "initial_balance_high", "initial_balance_low", "poor_high", "poor_low"):
+        if getattr(levels, name) is None and getattr(profile, name) is not None:
+            updates[name] = getattr(profile, name)
+    if not levels.naked_pocs and profile.naked_pocs:
+        updates["naked_pocs"] = profile.naked_pocs
+    return replace(levels, **updates) if updates else levels
 
 
 def _mark_confirmed(plan, scenario: Scenario):

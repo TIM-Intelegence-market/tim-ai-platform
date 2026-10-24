@@ -130,6 +130,8 @@ def test_reader_refuses_symlinked_folders(sandbox):
         RepoReader(sandbox).list_dir("src/state")
 
 
+# Timing limit: runs in the serial CI step so parallel workers do not slow it down.
+@pytest.mark.serial
 def test_parser_bounds_runaway_output():
     import time
     start = time.monotonic()

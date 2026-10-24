@@ -7,10 +7,13 @@ import pytest
 from src.research_lab.backtest.engine import Trade, run_backtest
 from src.research_lab.data.store import HoldoutPermission
 from src.research_lab.stats.inference import (
+    Window,
     holm,
     iid_band,
+    known_at,
     month_block_bootstrap_ci,
     neighbours_positive,
+    signalled_in,
     walk_forward,
     walk_forward_windows,
     year_stability,
@@ -105,6 +108,46 @@ def test_walk_forward_selects_only_on_fit_windows() -> None:
     variant_trades = {"a": [trade(fit, 1.0), trade(test, -1.0)], "b": [trade(fit, -1.0), trade(test, 1.0)]}
     mean, chosen = walk_forward(variant_trades, windows[:1])
     assert chosen == ["a"] and mean == -1.0
+
+
+def open_trade(signal_time: int, exit_time: int, r: float) -> Trade:
+    return Trade(signal_time, signal_time + H, exit_time, 1, 100.0, 101.0, 99.0, "time", 1, r, 0.0, 0.0, 1.0, None)
+
+
+def test_walk_forward_choice_ignores_outcomes_unknown_at_fit_end() -> None:
+    """Method 1.1 (T03): a trade still open at fit_end must not inform the choice.
+
+    Both scenarios are byte-identical up to fit_end; only the later outcome of the
+    open trade differs. The choice may therefore not differ either."""
+    fit_end, test_end = 100 * H, 200 * H
+    window = Window(0, fit_end, test_end)
+    b = [trade(50 * H, 1.0), trade(120 * H, 1.0)]
+    a_future_win = [open_trade(98 * H, 150 * H, 5.0), trade(120 * H, -1.0)]
+    a_future_loss = [open_trade(98 * H, 150 * H, -5.0), trade(120 * H, -1.0)]
+    assert walk_forward({"a": a_future_win, "b": b}, [window]) == walk_forward({"a": a_future_loss, "b": b}, [window])
+    assert walk_forward({"a": a_future_win, "b": b}, [window])[1] == ["b"]
+
+
+def test_walk_forward_boundaries_and_open_trades() -> None:
+    fit_end, test_end = 100 * H, 200 * H
+    window = Window(0, fit_end, test_end)
+    # Closed exactly at fit_end counts for the fit; signalled exactly at fit_end belongs to the test.
+    closed_at_cutoff = open_trade(90 * H, fit_end, 2.0)
+    first_test = trade(fit_end, 0.5)
+    assert known_at([closed_at_cutoff, first_test], 0, fit_end) == [closed_at_cutoff]
+    assert signalled_in([closed_at_cutoff, first_test], fit_end, test_end) == [first_test]
+    # Signalled before fit_end but still open: in neither fit nor test.
+    straddling = open_trade(99 * H, 130 * H, 9.0)
+    assert known_at([straddling], 0, fit_end) == [] and signalled_in([straddling], fit_end, test_end) == []
+    mean, chosen = walk_forward({"a": [straddling, first_test]}, [window])
+    assert chosen == ["a"] and mean == 0.5
+    # Signalled after test_end (late data) never enters the test window.
+    assert signalled_in([trade(test_end, 3.0)], fit_end, test_end) == []
+    # Empty fit window: nothing known, every variant ties at -inf; the sorted name wins deterministically.
+    mean, chosen = walk_forward({"b": [trade(150 * H, 1.0)], "a": [trade(150 * H, -1.0)]}, [window])
+    assert chosen == ["a"] and mean == -1.0
+    # No windows at all.
+    assert walk_forward({"a": [trade(1, 1.0)]}, []) == (0.0, [])
 
 
 # --- register and holdout lock ---------------------------------------------

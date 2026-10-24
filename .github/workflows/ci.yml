@@ -25,7 +25,8 @@ jobs:
   test:
     if: github.event_name != 'schedule'
     runs-on: [self-hosted, macOS, tim-ci]
-    timeout-minutes: 30
+    # The parallel run needs a few minutes; the margin covers a busy Mac.
+    timeout-minutes: 40
     # Isolated test database only (tests/conftest.py refuses any other target): PostgreSQL 16 on the
     # runner host, port 5434, database tim_test, role tim, set up by ops/macos/setup_ci_runner.sh.
     # Service containers are not available on macOS runners.
@@ -41,14 +42,24 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install "coverage>=7,<8" "pytest-cov>=5,<6"
+          pip install "coverage>=7.4,<8" "pytest-cov>=5,<6" "pytest-xdist>=3.6,<4"
       # Tests marked local_env need files, executables or network access that exist
       # only on the developer machine (see pytest.ini); everything else runs here.
+      # Speed: step 1 runs on 4 parallel workers (pytest-xdist); modules using the shared PostgreSQL
+      # test database stay together on one worker (--dist loadgroup). Step 2 runs the tests marked
+      # `serial` (they scan the real repository) alone. Both marks are set in tests/conftest.py.
+      # COVERAGE_CORE=sysmon uses Python's low-overhead monitoring API: same coverage numbers,
+      # about half the runtime of the default tracer.
       - name: Run test suite with coverage
         run: |
-          python -m pytest tests/ -q -m "not local_env" --cov=src --cov-report=xml:coverage.xml \
+          python -m pytest tests/ -q -m "not local_env and not serial" -n 4 --dist loadgroup \
+            --cov=src --cov-report= \
             --junitxml=artifacts/github_toolchain/pytest_full.junit.xml
+          python -m pytest tests/ -q -m "serial and not local_env" \
+            --cov=src --cov-append --cov-report=xml:coverage.xml \
+            --junitxml=artifacts/github_toolchain/pytest_serial.junit.xml
         env:
+          COVERAGE_CORE: sysmon
           TIM_RUNTIME_ENV: test
           TIM_ALLOW_DATABASE_URL_ENV_FOR_TESTS: "true"
           TIM_DATABASE_SECRET_PROVIDER: url-env
@@ -67,7 +78,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: pytest-junit
-          path: artifacts/github_toolchain/pytest_full.junit.xml
+          path: |
+            artifacts/github_toolchain/pytest_full.junit.xml
+            artifacts/github_toolchain/pytest_serial.junit.xml
 
   codeql:
     # Not a merge gate and over 20 minutes on the single Mac runner, where it held up every PR queued
