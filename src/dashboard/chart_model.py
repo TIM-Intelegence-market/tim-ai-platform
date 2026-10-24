@@ -242,7 +242,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
     from src.orderflow_scenario.domain import ConfirmationState, MarketContext
     from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
     from src.orderflow_scenario.engines.scenario_generator import LevelSet
-    from src.orderflow_scenario.engines.trade_plan import TradePlanBuilder, TradePlanInputs
+    from src.orderflow_scenario.engines.trade_plan import GRADE_RULESET_VERSION, TradePlanBuilder, TradePlanInputs, grade_scenario
 
     now = now or datetime.now(timezone.utc)
     model_candles = _to_model_candles(candles)
@@ -267,6 +267,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
     scenarios = []
     for scenario in analysis.scenarios:
         preview = None
+        grade = None
         if scenario.entry_zone_low is not None and scenario.entry_zone_high is not None:
             try:
                 plan = builder.build(TradePlanInputs(
@@ -282,6 +283,13 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
                     "targets": [_flt(plan.target_1), _flt(plan.target_2), _flt(plan.target_3)],
                     "reward_risk": _flt(plan.expected_reward_risk),
                     "note": "Vorschau nach TIM-Regeln, Szenario nicht bestätigt",
+                }
+                # Grade the scenario as it is. The preview plan above was built with a forced
+                # CONFIRMED state, so plan.grade would be two points too good.
+                graded, reasons = grade_scenario(scenario, plan.expected_reward_risk)
+                grade = {
+                    "setup_grade": graded.value, "grade_reasons": list(reasons), "grade_ruleset_version": GRADE_RULESET_VERSION,
+                    "graded_state": scenario.state.value, "note": "Heuristische Regelqualität, kein empirischer Edge-Nachweis",
                 }
         entry_model = str(scenario.trade_template.get("entry_model", ""))
         trigger = _flt(scenario.trigger_level)
@@ -315,9 +323,11 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
             "invalidation": list(scenario.invalidation),
             "missing_confirmations": list(scenario.mandatory_confirmations),
             "preview": preview,
+            "grade": grade,
         })
     return {
         "analysis_id": analysis.analysis_id,
+        "market": {"symbol": context.symbol, "venue": context.venue, "market_type": context.market_type},
         "market_state": analysis.market_state.primary.value,
         "auction_state": analysis.auction_state.primary.value,
         "data_quality": {"status": analysis.data_quality.status, "confidence": _flt(analysis.data_quality.confidence), "missing": list(analysis.data_quality.missing_fields), "problems": list(analysis.data_quality.problems)},

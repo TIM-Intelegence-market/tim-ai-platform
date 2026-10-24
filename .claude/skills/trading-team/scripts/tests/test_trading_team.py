@@ -210,3 +210,12 @@ def test_report_is_strict_with_small_sample(tmp_path):
 
 def test_report_empty(tmp_path):
     assert "Noch keine" in report.render(report.build(tmp_path))
+
+
+def test_non_ascii_symbol_is_url_encoded(monkeypatch):
+    import common
+
+    seen = []
+    monkeypatch.setattr(common, "http_get_json", lambda url, timeout=15.0: seen.append(url) or [])
+    common.BinancePublic().klines("\u725b\u6765USDT", "1h", 5)
+    assert seen[0].isascii() and "%E7%89%9B" in seen[0]

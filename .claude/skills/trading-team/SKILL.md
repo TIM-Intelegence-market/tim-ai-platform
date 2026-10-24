@@ -46,8 +46,9 @@ Live läuft es auf dem Mac.
 ## 24/7 auf dem Mac
 
 Der Server ist raus, TIM läuft auf dem Mac. Vorlage für einen launchd-Dienst:
-`references/com.tim.trading-team.plist.example`. Nicht ohne Uzis Wort einrichten und nicht, während die
-S-K-Studie oder eine Kampagne Ruhe auf dem Mac braucht. Der Bot lädt pro Lauf rund 100 Kerzenreihen
+`references/com.tim.trading-team.plist.example`. Seit 24.10.2026 auf Uzis Wort eingerichtet: Dienst
+`com.tim.trading-team`, Checkout `~/TIM-trading-team`, Daten und Logs in `~/TIM-trading-team/state/trading-team/`.
+Aktualisieren: `git -C ~/TIM-trading-team pull`. Stoppen: `launchctl bootout gui/$(id -u)/com.tim.trading-team`. Der Bot lädt pro Lauf rund 100 Kerzenreihen
 (öffentliche Binance-Gewichtsgrenze wird nicht annähernd erreicht).
 
 ## Bericht bewerten (Schritt „grade it honestly“)
