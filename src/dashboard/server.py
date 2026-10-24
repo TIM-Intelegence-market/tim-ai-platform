@@ -282,7 +282,10 @@ class DashboardServer:
                     if path == "/api/cockpit":
                         area = query.get("area", ["lage"])[0]
                         builders = {"lage": lambda: cockpit.build_lage(outer.state), "mac": lambda: cockpit.build_mac(outer.state),
-                                    "markt": lambda: cockpit.build_markt(outer.state, query.get("tf", [None])[0])}
+                                    "markt": lambda: cockpit.build_markt(outer.state, query.get("tf", [None])[0]),
+                                    "forschung": lambda: cockpit.build_forschung(outer.state),
+                                    "betrieb": lambda: cockpit.build_betrieb(outer.state),
+                                    "system": lambda: cockpit.build_system(outer.state)}
                         if area not in builders:
                             return self.respond(404, b'{"error":"not found"}', "application/json")
                         model = builders[area]()
