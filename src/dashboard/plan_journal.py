@@ -17,20 +17,49 @@ TradePlanBuilder. Afterwards every plan is followed on 1m candles:
 Paper only. Nothing here places or suggests an order; it records what TIM's
 rules would have done. When a 1m candle touches the stop and a target, the
 stop counts first. No new entries inside the NY-open block.
+
+Evidence gate (docs/ACCEPTANCE.md section 1): every entry carries, separately,
+the heuristic setup grade of the scenario in its real state (never the forced
+CONFIRMED state of the preview), the evidence status from the hypothesis
+register (fail closed: INSUFFICIENT_EVIDENCE without a reviewed rule
+equivalence), the execution status (RESEARCH_ONLY) and the journal decision
+with its reasons (NO_TRADE unless evidence, execution and pipeline all allow a
+paper trade). The pipeline's own decision is kept as pipeline_decision. These
+fields are fixed when the plan is recorded; following the outcome never
+changes them.
+
+Storage (docs/ACCEPTANCE.md section 3): the only truth is the append-only,
+hash-chained event log next to the document (`<name>.events.jsonl`, see
+src.dashboard.journal_log). Every change that record_plans() or evaluate()
+make to the in-memory journal is written as a PLAN_RECORDED or PLAN_UPDATED
+event with the hash of the candles it was derived from; the JSON document is
+a view folded from the log and can be rebuilt at any time. A restart with the
+same candles produces no new events. A 15m close that arrives again with other
+candle content is noted as CANDLE_REVISION_OBSERVED; the decisions taken on
+the first content stay as they were.
+
+Results: gross_r is the R multiple before costs; fee_r and slippage_r follow
+research protocol 1.1 (docs/research_lab/PROTOKOLL.md section 4.3/4.4: taker
+fee 0.05 % and slippage 0.03 % per side, 0.05 % on stop executions, costs in R
+= cost in price / stop distance); net_r = gross_r - fee_r - slippage_r.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from src.dashboard import journal_log
 from src.dashboard.chart_model import _time, build_chart_model, clean_candles, ny_open_windows
+from src.research_lab.setup_evidence import DEFAULT_REGISTER_PATH, INSUFFICIENT_EVIDENCE, PASSED_HOLDOUT, RESEARCH_ONLY, evidence_fields
 
-SCHEMA = "tim_plan_journal/1"
+SCHEMA = "tim_plan_journal/2"
 SOURCE = "Setup-Pfad 15m (80 Kerzen), TIM-Regeln, nur Papier"
 PLAN_TIMEFRAME = "15m"
 PLAN_VISIBLE = 80  # same window as the Setup-Pfad page (views.SETUP_CHART_CANDLES)
@@ -39,6 +68,34 @@ MAX_HOLD_HOURS = 48
 THIRD = 1.0 / 3.0
 OPEN, FILLED = "OPEN", "FILLED"
 DONE = {"CLOSED", "INVALIDATED", "REPLACED", "EXPIRED"}
+NO_TRADE, PAPER_TRADE = "NO_TRADE", "PAPER_TRADE"
+PLAN_RECORDED, PLAN_UPDATED = "PLAN_RECORDED", "PLAN_UPDATED"
+CANDLE_CLOSE_PROCESSED, CANDLE_REVISION_OBSERVED = "CANDLE_CLOSE_PROCESSED", "CANDLE_REVISION_OBSERVED"
+# Research protocol 1.1, section 4.4, as fractions of the executed price per side.
+COST_MODEL_VERSION = "protocol/1.1"
+FEE_PER_SIDE = 0.0005
+SLIPPAGE_PER_SIDE = 0.0003
+STOP_SLIPPAGE = 0.0005
+STOP_EXITS = {"STOP", "BREAK_EVEN"}  # executed as stop orders; everything else is a market exit
+PAPER_APPROVED = "PAPER_APPROVED"  # no code path sets this yet; a human approval step would
+# What the paper journal may assume about an instrument (docs/ACCEPTANCE.md section 2).
+# A short on a spot market needs borrowed coins; the journal does not model margin, so it is not executable.
+INSTRUMENT_SPEC_VERSION = "instrument/1"
+INSTRUMENT_SPECS = {
+    ("BINANCE", "SPOT", "BTCUSDT"): {"tick_size": 0.01, "lot_step": 0.00001, "short_executable": False},
+}
+STALE_AFTER = timedelta(minutes=30)  # two 15m intervals without a new close: no new plans
+CANDLE_CLOSE_SKIPPED = "CANDLE_CLOSE_SKIPPED"
+GRADE_NOTE = "Heuristischer Grade, kein empirischer Edge-Nachweis"
+# Fields fixed at recording time. evaluate() must never touch them.
+DECISION_FIELDS = (
+    "setup_grade", "grade_reasons", "grade_ruleset_version", "graded_state",
+    "evidence_status", "evidence_ref", "execution_status",
+    "pipeline_decision", "pipeline_decision_reasons", "journal_decision", "journal_decision_reasons", "instrument",
+)
+# Fields that move with every candle. Changes to these alone are written at the
+# next 15m close (checkpoint), not every minute; anything else is written at once.
+CURSOR_FIELDS = {"evaluated_through", "max_favorable_r", "max_adverse_r", "last_seen_at"}
 
 
 def _iso(value: datetime) -> str:
@@ -49,14 +106,38 @@ def empty_journal() -> dict[str, Any]:
     return {"schema": SCHEMA, "source": SOURCE, "last_plan_candle": None, "entries": []}
 
 
+def events_path_for(path: Path) -> Path:
+    return path.with_name(path.stem + ".events.jsonl")
+
+
 def load(path: Path) -> dict[str, Any]:
+    """The journal view, checked against its event log. If the document is
+    missing or unreadable but the log exists, the view is folded from the log
+    (read only, nothing written). A broken, shortened or replaced log raises
+    journal_log.LogError: never a silently empty or stale journal."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return empty_journal()
-    if not isinstance(data, dict) or data.get("schema") != SCHEMA or not isinstance(data.get("entries"), list):
-        return empty_journal()
-    return data
+        data = None
+    events = events_path_for(path)
+    if isinstance(data, dict) and data.get("schema") == SCHEMA and isinstance(data.get("entries"), list):
+        if events.exists():
+            _check_anchor(path, journal_log.read(events))
+        return data
+    if events.exists():
+        journal = fold(journal_log.read(events).events)
+        journal["integrity"] = "VIEW_FOLDED_FROM_LOG"
+        return journal
+    return empty_journal()
+
+
+def load_view(path: Path) -> dict[str, Any]:
+    """load() for pages and the API: a broken log is shown as a locked journal
+    (integrity LOG_BROKEN, no entries), never as an empty healthy one."""
+    try:
+        return load(path)
+    except journal_log.LogError as error:
+        return {**empty_journal(), "integrity": f"LOG_BROKEN: {error}", "blocked": True}
 
 
 def save(journal: Mapping[str, Any], path: Path) -> None:
@@ -89,6 +170,7 @@ def plans_from_model(model: Mapping[str, Any]) -> list[dict[str, Any]]:
         invalid = scenario.get("invalidation_level") or {}
         result.append({
             "scenario_id": scenario.get("id"),
+            "scenario_type": scenario.get("type"),
             "direction": direction,
             "entry_model": scenario.get("entry_model"),
             "plan_text": scenario.get("plan_text"),
@@ -102,10 +184,87 @@ def plans_from_model(model: Mapping[str, Any]) -> list[dict[str, Any]]:
             "scenario_state": scenario.get("state"),
             "score": scenario.get("score"),
             "missing_confirmations": list(scenario.get("missing_confirmations") or []),
-            "decision": (analysis.get("decision") or {}).get("status"),
+            "pipeline_decision": (analysis.get("decision") or {}).get("status"),
+            "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
             "market_state": analysis.get("market_state"),
+            "grade": dict(scenario.get("grade") or {}) or None,
+            **{k: (analysis.get("market") or {}).get(k) for k in ("symbol", "venue", "market_type")},
+            "data_quality": (analysis.get("data_quality") or {}).get("status"),
         })
     return result
+
+
+def instrument_for(plan: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The instrument spec of a plan, or None when the journal knows nothing about it."""
+    spec = INSTRUMENT_SPECS.get((str(plan.get("venue")), str(plan.get("market_type")), str(plan.get("symbol"))))
+    if spec is None:
+        return None
+    return {"symbol": plan.get("symbol"), "venue": plan.get("venue"), "market_type": plan.get("market_type"), "spec_version": INSTRUMENT_SPEC_VERSION, **spec}
+
+
+def executability(plan: Mapping[str, Any]) -> list[str]:
+    """Reasons why a plan could not be executed even on paper: unknown instrument,
+    short on spot, data quality below PASS."""
+    reasons: list[str] = []
+    spec = instrument_for(plan)
+    if spec is None:
+        reasons.append("instrument_unknown")
+    elif plan.get("direction") == "SHORT" and not spec["short_executable"]:
+        reasons.append("short_not_executable_on_spot")
+    quality = plan.get("data_quality")
+    if quality != "PASS":
+        reasons.append(f"data_quality_{str(quality or 'unknown').lower()}")
+    return reasons
+
+
+def journal_gate(plan: Mapping[str, Any]) -> tuple[str, list[str]]:
+    """Journal decision for a plan: NO_TRADE with reasons unless every gate is open.
+
+    The gates are evidence (PASSED_HOLDOUT), execution (PAPER_APPROVED), the
+    pipeline (TRADE_PLAN) and the scenario state (CONFIRMED). Nothing in the
+    product sets PAPER_APPROVED today, so the result is NO_TRADE for every plan.
+    """
+    reasons: list[str] = []
+    evidence = plan.get("evidence_status")
+    if evidence is None:
+        reasons.append("evidence_not_evaluated")
+    elif evidence != PASSED_HOLDOUT:
+        reasons.append(f"evidence_{str(evidence).lower()}")
+    execution = plan.get("execution_status") or RESEARCH_ONLY
+    if execution != PAPER_APPROVED:
+        reasons.append(f"execution_{str(execution).lower()}")
+    pipeline = plan.get("pipeline_decision")
+    if pipeline != "TRADE_PLAN":
+        reasons.append(f"pipeline_{str(pipeline or 'unknown').lower()}")
+    graded_state = (plan.get("grade") or {}).get("graded_state")
+    if graded_state != "CONFIRMED":
+        reasons.append("scenario_not_confirmed")
+    reasons.extend(executability(plan))
+    return (NO_TRADE if reasons else PAPER_TRADE), reasons
+
+
+def decision_fields(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """The fields of DECISION_FIELDS for a new entry, fail closed when something is missing."""
+    grade = plan.get("grade") or {}
+    evidence_status = plan.get("evidence_status")
+    evidence_ref = plan.get("evidence_ref")
+    if evidence_status is None:
+        evidence_status, evidence_ref = INSUFFICIENT_EVIDENCE, {"reason": "EVIDENCE_NOT_EVALUATED", "variant_ids": []}
+    decision, reasons = journal_gate(plan)
+    return {
+        "setup_grade": grade.get("setup_grade"),
+        "grade_reasons": list(grade.get("grade_reasons") or ["grade_not_computed"]),
+        "grade_ruleset_version": grade.get("grade_ruleset_version"),
+        "graded_state": grade.get("graded_state"),
+        "evidence_status": evidence_status,
+        "evidence_ref": dict(evidence_ref or {}),
+        "execution_status": plan.get("execution_status") or RESEARCH_ONLY,
+        "pipeline_decision": plan.get("pipeline_decision"),
+        "pipeline_decision_reasons": list(plan.get("pipeline_decision_reasons") or []),
+        "journal_decision": decision,
+        "journal_decision_reasons": reasons,
+        "instrument": instrument_for(plan),
+    }
 
 
 def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at: datetime, timeframe: str = PLAN_TIMEFRAME) -> list[dict[str, Any]]:
@@ -128,21 +287,38 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
     for plan in plans:
         if plan["direction"] in open_directions:
             continue
-        key = f"{timeframe}|{plan['direction']}|{_iso(at)}|{plan['entry']}|{plan['stop']}"
+        key = "|".join(str(x) for x in (timeframe, plan["direction"], plan.get("scenario_type"), plan.get("scenario_id"), _iso(at),
+                                        f"{float(plan['entry']):.2f}", f"{float(plan['stop']):.2f}"))
+        payload = {k: v for k, v in plan.items() if k not in {"grade", "evidence_status", "evidence_ref", "execution_status", "pipeline_decision", "pipeline_decision_reasons"}}
         entry = {
             "id": hashlib.sha256(key.encode()).hexdigest()[:12],
             "timeframe": timeframe,
             "created_at": _iso(at),
             "last_seen_at": _iso(at),
-            **dict(plan),
+            **payload,
+            **decision_fields(plan),
             "status": OPEN,
             "evaluated_through": _iso(at),
             "tp_hits": [],
-            "result_r": None,
+            "gross_r": None,
+            "fee_r": None,
+            "slippage_r": None,
+            "net_r": None,
         }
         entries.append(entry)
         added.append(entry)
     return added
+
+
+def tick_fill(entry: Mapping[str, Any]) -> float:
+    """The limit entry rounded to the instrument's tick, against the plan (buy up, sell down)."""
+    tick = ((entry.get("instrument") or {}).get("tick_size")) or 0.0
+    price = float(entry["entry"])
+    if tick <= 0:
+        return price
+    steps = price / tick
+    rounded = (math.ceil(steps - 1e-9) if entry["direction"] == "LONG" else math.floor(steps + 1e-9)) * tick
+    return round(rounded, 8)
 
 
 def _blocked(moment: datetime, windows: Sequence[Mapping[str, Any]]) -> bool:
@@ -155,12 +331,38 @@ def _r(entry: Mapping[str, Any], price: float) -> float:
     return move / risk if risk else 0.0
 
 
+def costs_r(entry: Mapping[str, Any], exit_price: float, reason: str) -> tuple[float, float]:
+    """(fee_r, slippage_r) of a filled plan closed at exit_price after its booked thirds.
+
+    Protocol 1.1: fee and slippage on the whole size at entry, on each third at
+    its target, and on the rest at the final exit; stop slippage only when the
+    final exit was a stop execution. Costs in R = cost in price / stop distance."""
+    risk = abs(float(entry["entry"]) - float(entry["stop"]))
+    if risk <= 0:
+        return 0.0, 0.0
+    fill = float(entry.get("fill_price") or entry["entry"])
+    hits = len(entry.get("tp_hits") or [])
+    rest = 1.0 - THIRD * hits
+    fee = FEE_PER_SIDE * fill
+    slippage = SLIPPAGE_PER_SIDE * fill
+    for index in range(hits):
+        target = float(entry["targets"][index])
+        fee += THIRD * FEE_PER_SIDE * target
+        slippage += THIRD * SLIPPAGE_PER_SIDE * target
+    fee += rest * FEE_PER_SIDE * exit_price
+    slippage += rest * (STOP_SLIPPAGE if reason in STOP_EXITS else SLIPPAGE_PER_SIDE) * exit_price
+    return round(fee / risk, 4), round(slippage / risk, 4)
+
+
 def _close(entry: dict[str, Any], at: datetime, price: float, reason: str) -> None:
-    """Close the rest of the position; earlier thirds stay booked."""
+    """Close the rest of the position; earlier thirds stay booked. Books gross, costs and net."""
     realised = sum(THIRD * _r(entry, entry["targets"][i]) for i in range(len(entry["tp_hits"])))
     rest = 1.0 - THIRD * len(entry["tp_hits"])
+    gross = round(realised + rest * _r(entry, price), 3)
+    fee_r, slippage_r = costs_r(entry, price, reason)
     entry.update(status="CLOSED", closed_at=_iso(at), exit_reason=reason, exit_price=price,
-                 result_r=round(realised + rest * _r(entry, price), 3))
+                 gross_r=gross, fee_r=fee_r, slippage_r=slippage_r, net_r=round(gross - fee_r - slippage_r, 4),
+                 cost_model_version=COST_MODEL_VERSION)
 
 
 def _follow(entry: dict[str, Any], candle: Mapping[str, Any]) -> None:
@@ -214,7 +416,7 @@ def evaluate(journal: dict[str, Any], minute_candles: Sequence[Mapping[str, Any]
                     break
                 touched = candle["low"] <= entry["entry"] if long else candle["high"] >= entry["entry"]
                 if touched and not _blocked(candle["open_time"], windows):
-                    entry.update(status=FILLED, filled_at=_iso(candle["open_time"]), fill_price=entry["entry"])
+                    entry.update(status=FILLED, filled_at=_iso(candle["open_time"]), fill_price=tick_fill(entry))
                     # Fill candle: only the stop can trigger (order inside the candle is unknown).
                     stop_hit = candle["low"] <= entry["stop"] if long else candle["high"] >= entry["stop"]
                     if stop_hit:
@@ -249,12 +451,14 @@ def counter_trend(direction: Any, market_state: Any) -> bool:
 
 def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     entries = list(journal.get("entries") or [])
-    closed = [e for e in entries if e.get("status") == "CLOSED" and e.get("result_r") is not None]
-    wins = [e for e in closed if e["result_r"] > 0]
+    closed = [e for e in entries if e.get("status") == "CLOSED" and e.get("gross_r") is not None]
+    wins = [e for e in closed if e["gross_r"] > 0]
+    net_wins = [e for e in closed if (e.get("net_r") or 0.0) > 0]
     by_direction = {}
     for direction in ("LONG", "SHORT"):
         mine = [e for e in closed if e["direction"] == direction]
-        by_direction[direction] = {"closed": len(mine), "sum_r": round(sum(e["result_r"] for e in mine), 3)}
+        by_direction[direction] = {"closed": len(mine), "sum_r": round(sum(e["gross_r"] for e in mine), 3),
+                                   "sum_net_r": round(sum(e.get("net_r") or 0.0 for e in mine), 3)}
     against = [e for e in closed if counter_trend(e.get("direction"), e.get("market_state"))]
     return {
         "plans": len(entries),
@@ -263,28 +467,171 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
         "closed": len(closed),
         "wins": len(wins),
         "win_rate": round(len(wins) / len(closed), 3) if closed else None,
-        "sum_r": round(sum(e["result_r"] for e in closed), 3),
+        "net_wins": len(net_wins),
+        "sum_r": round(sum(e["gross_r"] for e in closed), 3),
+        "sum_net_r": round(sum(e.get("net_r") or 0.0 for e in closed), 3),
+        "result_basis": "GROSS_R_AND_NET_R",
+        "cost_model_version": COST_MODEL_VERSION,
+        "paper_trades": sum(e.get("journal_decision") == PAPER_TRADE for e in entries),
+        "no_trade": sum(e.get("journal_decision") == NO_TRADE for e in entries),
         "by_direction": by_direction,
         "counter_trend": {
             "plans": sum(counter_trend(e.get("direction"), e.get("market_state")) for e in entries),
             "closed": len(against),
-            "sum_r": round(sum(e["result_r"] for e in against), 3),
+            "sum_r": round(sum(e["gross_r"] for e in against), 3),
         },
     }
 
 
-def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None) -> dict[str, Any]:
-    """One journal step: follow outcomes, then record plans at a new 15m close."""
-    now = now or datetime.now(timezone.utc)
-    journal = load(path)
-    evaluate(journal, series.get("1m") or [], series.get(PLAN_TIMEFRAME) or [], now)
-    closed_15m = [c for c in clean_candles(series.get(PLAN_TIMEFRAME) or [], PLAN_TIMEFRAME) if c["close_time"] <= now]
-    if closed_15m:
-        latest = _minute_ceil(closed_15m[-1]["close_time"])
-        if journal.get("last_plan_candle") != _iso(latest):
-            model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
-            record_plans(journal, plans_from_model(model), latest)
-            journal["last_plan_candle"] = _iso(latest)
-    journal["updated_at"] = _iso(now)
+def with_evidence(plans: Sequence[Mapping[str, Any]], timeframe: str = PLAN_TIMEFRAME, register_path: Path | str = DEFAULT_REGISTER_PATH) -> list[dict[str, Any]]:
+    """Plans with their evidence fields from the hypothesis register (fail closed)."""
+    return [{**dict(plan), **evidence_fields(str(plan.get("scenario_type")), timeframe, register_path)} for plan in plans]
+
+
+def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The journal view from its events. Rejects events that would change a
+    decision field or touch an entry after its terminal state."""
+    journal = empty_journal()
+    by_id: dict[str, dict[str, Any]] = {}
+    for event in events:
+        kind, payload = event.get("kind"), event.get("payload") or {}
+        if kind == PLAN_RECORDED:
+            entry = deepcopy(payload["entry"])
+            if entry["id"] in by_id:
+                raise journal_log.LogError(f"plan {entry['id']} recorded twice")
+            journal["entries"].append(entry)
+            by_id[entry["id"]] = entry
+        elif kind == PLAN_UPDATED:
+            entry = by_id.get(payload.get("id"))
+            if entry is None:
+                raise journal_log.LogError(f"update for unknown plan {payload.get('id')}")
+            changes = payload.get("changes") or {}
+            if set(changes) & set(DECISION_FIELDS):
+                raise journal_log.LogError(f"plan {entry['id']}: decision fields are immutable")
+            if entry.get("status") in DONE:
+                raise journal_log.LogError(f"plan {entry['id']}: event after terminal state {entry.get('status')}")
+            entry.update(deepcopy(changes))
+        elif kind == CANDLE_CLOSE_PROCESSED:
+            journal["last_plan_candle"] = payload["close_time"]
+            journal["last_plan_candle_source_hash"] = payload["source_hash"]
+        elif kind == CANDLE_REVISION_OBSERVED:
+            journal.setdefault("revisions", []).append(deepcopy(payload))
+        elif kind == CANDLE_CLOSE_SKIPPED:
+            journal.setdefault("skipped", []).append(deepcopy(payload))
+        else:
+            raise journal_log.LogError(f"unknown event kind {kind}")
+        journal["updated_at"] = event.get("recorded_at")
+    return journal
+
+
+def diff_events(before: Mapping[str, Any], after: Mapping[str, Any], *, recorded_at: datetime, source_hash: str, source_range: Mapping[str, Any],
+                close_source_hash: str | None = None, checkpoint: bool = True) -> list[dict[str, Any]]:
+    """Events that turn `before` into `after` (entries and last_plan_candle).
+
+    `source_hash` names the candles the plan events were derived from;
+    `close_source_hash` the 15m candles behind a processed close. Without
+    `checkpoint`, updates that only move CURSOR_FIELDS are left out: the next
+    update() re-derives them from the same candles."""
+    events: list[dict[str, Any]] = []
+    old = {e["id"]: e for e in before.get("entries") or []}
+    common = {"recorded_at": _iso(recorded_at), "source_hash": source_hash, "source_range": dict(source_range)}
+    for entry in after.get("entries") or []:
+        previous = old.get(entry["id"])
+        if previous is None:
+            events.append({"event_id": journal_log.event_id(PLAN_RECORDED, entry["id"], entry.get("grade_ruleset_version"), entry.get("evidence_ref", {}).get("register_head_hash")),
+                           "kind": PLAN_RECORDED, "aggregate_id": entry["id"], **common, "payload": {"entry": deepcopy(entry)}})
+            continue
+        changes = {k: v for k, v in entry.items() if previous.get(k) != v}
+        removed = [k for k in previous if k not in entry]
+        if removed:
+            raise journal_log.LogError(f"plan {entry['id']}: fields disappeared: {removed}")
+        if changes and (checkpoint or not set(changes) <= CURSOR_FIELDS):
+            events.append({"event_id": journal_log.event_id(PLAN_UPDATED, entry["id"], changes, source_hash),
+                           "kind": PLAN_UPDATED, "aggregate_id": entry["id"], **common, "payload": {"id": entry["id"], "changes": deepcopy(changes)}})
+    if after.get("last_plan_candle") != before.get("last_plan_candle"):
+        close_hash = close_source_hash or source_hash
+        events.append({"event_id": journal_log.event_id(CANDLE_CLOSE_PROCESSED, after["last_plan_candle"], close_hash), "kind": CANDLE_CLOSE_PROCESSED,
+                       "aggregate_id": "journal", **common, "source_hash": close_hash, "payload": {"close_time": after["last_plan_candle"], "source_hash": close_hash}})
+    return events
+
+
+def rebuild(path: Path) -> dict[str, Any]:
+    """Fold the log and write the view atomically. Raises LogError on a broken log."""
+    journal = fold(journal_log.read(events_path_for(path)).events)
     save(journal, path)
     return journal
+
+
+def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime) -> tuple[str, dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    minutes = clean_candles(series.get("1m") or [], "1m")
+    plan_candles = clean_candles(series.get(PLAN_TIMEFRAME) or [], PLAN_TIMEFRAME)
+    digest = journal_log.content_hash({"1m": minutes, PLAN_TIMEFRAME: plan_candles})
+    span = {"1m_first": _iso(minutes[0]["open_time"]) if minutes else None, "1m_last": _iso(minutes[-1]["close_time"]) if minutes else None,
+            f"{PLAN_TIMEFRAME}_count": len(plan_candles), "now": _iso(now)}
+    return digest, span, minutes, plan_candles
+
+
+def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH) -> dict[str, Any]:
+    """One journal step: fold the log, follow outcomes, record plans at a new
+    15m close, append the resulting events, then write the view.
+
+    A broken event log raises journal_log.LogError and nothing is written."""
+    now = now or datetime.now(timezone.utc)
+    events_path = events_path_for(path)
+    state = journal_log.read(events_path)
+    _check_anchor(path, state)
+    journal = fold(state.events)
+    before = deepcopy(journal)
+    source_hash, source_range, minutes, plan_candles = _source(series, now)
+    evaluate(journal, minutes, plan_candles, now)
+    new_events: list[dict[str, Any]] = []
+    closed_15m = [c for c in plan_candles if c["close_time"] <= now]
+    checkpoint, close_hash = False, None
+    if closed_15m:
+        latest = _minute_ceil(closed_15m[-1]["close_time"])
+        close_hash = journal_log.content_hash(plan_candles[-PLAN_VISIBLE:])
+        age = now - latest
+        if journal.get("last_plan_candle") != _iso(latest) and age > STALE_AFTER:
+            # Stale market data: no new plans (section 2). Noted once per close; the next close records again.
+            new_events.append({"event_id": journal_log.event_id(CANDLE_CLOSE_SKIPPED, _iso(latest), "stale"), "kind": CANDLE_CLOSE_SKIPPED,
+                               "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
+                               "payload": {"close_time": _iso(latest), "reason": "stale_data", "age_seconds": int(age.total_seconds())}})
+        elif journal.get("last_plan_candle") != _iso(latest):
+            model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
+            record_plans(journal, with_evidence(plans_from_model(model), PLAN_TIMEFRAME, register_path), latest)
+            journal["last_plan_candle"] = _iso(latest)
+            checkpoint = True
+        elif journal.get("last_plan_candle_source_hash") not in {None, close_hash}:
+            # Same 15m close, other candle content: noted, decisions untouched.
+            new_events.append({"event_id": journal_log.event_id(CANDLE_REVISION_OBSERVED, _iso(latest), close_hash), "kind": CANDLE_REVISION_OBSERVED,
+                               "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
+                               "payload": {"close_time": _iso(latest), "supersedes_source_hash": journal["last_plan_candle_source_hash"], "source_hash": close_hash}})
+    new_events = diff_events(before, journal, recorded_at=now, source_hash=source_hash, source_range=source_range,
+                             close_source_hash=close_hash, checkpoint=checkpoint) + new_events
+    written = journal_log.append(events_path, new_events, state)
+    events = state.events + written
+    # The view is always the fold: cursor-only progress that was not written is re-derived next time.
+    journal = fold(events)
+    journal["checked_at"] = _iso(now)
+    journal["log_seq"] = len(events)
+    journal["log_head"] = events[-1]["hash"] if events else journal_log.GENESIS
+    save(journal, path)
+    return journal
+
+
+def _check_anchor(path: Path, state: journal_log.LogState) -> None:
+    """The view remembers how long the log was when it was written. A log that
+    is shorter now, or whose event at that point has another hash, lost events
+    (truncation, replaced file) and must not be continued. A dropped tail is
+    only accepted when it lies beyond the anchored length."""
+    try:
+        view = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(view, dict) or view.get("schema") != SCHEMA or not isinstance(view.get("log_seq"), int):
+        return
+    seq, head = view["log_seq"], view.get("log_head")
+    if len(state.events) < seq:
+        raise journal_log.LogError(f"the log has {len(state.events)} events but the view was written at {seq}; events were lost")
+    if seq and state.events[seq - 1]["hash"] != head:
+        raise journal_log.LogError(f"the log diverges from the view at seq {seq - 1}; the log was replaced")
