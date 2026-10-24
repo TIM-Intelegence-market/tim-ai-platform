@@ -149,6 +149,8 @@ def test_dashboard_has_no_execution_controls() -> None:
         assert forbidden not in page
 
 
+# Timing limit: runs in the serial CI step so parallel workers do not slow it down.
+@pytest.mark.serial
 def test_api_is_stable_under_rapid_polling(tmp_path: Path) -> None:
     server=DashboardServer(populated_state(tmp_path),port=0);server.start();port=server.server.server_address[1]
     def request(_:int):
