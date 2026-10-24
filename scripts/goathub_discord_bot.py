@@ -51,18 +51,21 @@ def write_private(path: Path, value: str) -> None:
 
 
 def setup(args: argparse.Namespace, ask: Callable[[str], str]) -> int:
-    raw = [item.strip() for item in ask("Channel ID(s) to read, comma-separated (optionally id=name): ").split(",") if item.strip()]
+    raw = [item.strip() for item in ask("Channel ID(s) to read, comma-separated (optionally id=name; empty if you only use categories): ").split(",") if item.strip()]
     channels = tuple(GoatHubChannel(*(part.strip() for part in item.split("=", 1))) for item in raw)
-    knowledge = {item.strip() for item in ask("Knowledge-only channel IDs (teaching material, never read as calls; comma-separated, empty for none): ").split(",") if item.strip()}
+    raw_categories = [item.strip() for item in ask("Category ID(s): every text channel inside is read, also ones added later (optionally id=name; empty for none): ").split(",") if item.strip()]
+    channels += tuple(GoatHubChannel(*(part.strip() for part in item.split("=", 1)), kind="category") for item in raw_categories)
+    knowledge = {item.strip() for item in ask("Knowledge-only channel or category IDs (teaching material, never read as calls; comma-separated, empty for none): ").split(",") if item.strip()}
     unknown = knowledge - {channel.channel_id for channel in channels}
     if unknown:
-        raise DiscordFeedError(f"knowledge-only ids are not in the channel list: {', '.join(sorted(unknown))}")
+        raise DiscordFeedError(f"knowledge-only ids are not in the channel or category list: {', '.join(sorted(unknown))}")
     channels = tuple(dataclasses.replace(channel, role=ROLE_KNOWLEDGE) if channel.channel_id in knowledge else channel for channel in channels)
     mode = (ask("Mode: 'forward' (you forward posts into your own channel) or 'direct' (bot invited into GoatHub) [forward]: ").strip() or "forward").lower()
     forwarders = [item.strip() for item in ask("Your Discord user ID (several: comma-separated; empty in direct mode): ").split(",") if item.strip()]
     config = GoatHubConfig(channels, mode, frozenset(forwarders))
     write_private(args.config, json.dumps(config.to_dict(), indent=2) + "\n")
-    print(f"STORED config={args.config} channels={len(channels)} knowledge_only={len(knowledge)} mode={mode}")
+    print(f"STORED config={args.config} channels={len(channels) - len(raw_categories)} categories={len(raw_categories)} "
+          f"knowledge_only={len(knowledge)} mode={mode}")
     if not args.secret_file.exists():
         print(f"Bot secret not found at {args.secret_file}: run 'scripts/broncx_discord_bot.py setup' first (same bot).")
     print("Next: python scripts/goathub_discord_bot.py sync")
@@ -85,7 +88,14 @@ def export(args: argparse.Namespace) -> int:
 def sync(args: argparse.Namespace) -> int:
     reader = GoatHubReader(load_bot_secret(args.secret_file), GoatHubConfig.load(args.config), GoatHubFeedStore(args.feed_dir))
     failed = False
-    for channel in reader.config.channels:
+    try:
+        channels = reader.resolve_channels()
+    except (DiscordFeedError, OSError) as exc:
+        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        detail = exc if isinstance(exc, DiscordFeedError) else f"network: {type(exc).__name__}"
+        print(f"{stamp} categories ERROR: {detail}", flush=True)
+        channels, failed = [channel for channel in reader.config.channels if channel.kind == "channel"], True
+    for channel in channels:
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
         try:
             result = reader.sync_channel(channel)

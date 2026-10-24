@@ -89,9 +89,9 @@ Einstellbar per Umgebungsvariable: `TIM_GOATHUB_FEED_DIR`, `TIM_GOATHUB_DISCORD_
 
 Entwurf zur Abstimmung. Nichts davon ist umgesetzt oder vom GoatHub-Team freigegeben.
 
-**Vorgeschlagene Kanäle**
+**Vorgeschlagene Kategorien** (jede mit mehreren Kanälen)
 
-| Kanal | Rolle für TIM | Hinweis |
+| Kategorie | Rolle für TIM | Hinweis |
 | --- | --- | --- |
 | market updates | lesen, Calls erkennen | Marktlage und Einschätzungen |
 | trading lounge | lesen, Calls erkennen | Live-Austausch, viel Rauschen, Note C bleibt Kontext |
@@ -99,12 +99,20 @@ Entwurf zur Abstimmung. Nichts davon ist umgesetzt oder vom GoatHub-Team freigeg
 | education | nur Wissen, keine Calls | Lehrmaterial ist kein Wirksamkeitsbeleg; Rechte der Autoren klären |
 | bronxc bootcamp | nur Wissen, keine Calls | Katalog siehe `BRONCX_BOOTCAMP_KNOWLEDGE.md`; nur mit Freigabe |
 
-Die Kanal-IDs stehen hier nicht. Sie werden beim `setup` lokal eingetragen (Entwicklermodus,
-„Kanal-ID kopieren“) und nicht committet.
+Die IDs stehen hier nicht. Sie werden beim `setup` lokal eingetragen (Entwicklermodus, Rechtsklick
+auf den Kategorienamen, „Kategorie-ID kopieren“) und nicht committet.
+
+**Kategorien:** `setup` fragt getrennt nach Kanal- und Kategorie-IDs. Eine Kategorie steht in der
+Config mit `"kind": "category"`. Bei jedem `sync` holt der Bot die Text- und Ankündigungskanäle
+darin (`GET /channels/{id}`, dann `GET /guilds/{guild}/channels`), auch solche, die später
+dazukommen. Jeder Kanal erbt die Rolle der Kategorie; ein eigener Eintrag für einen Kanal hat
+Vorrang. Foren, Threads und Sprachkanäle werden nicht gelesen. Der Bot braucht in jedem dieser
+Kanäle *View Channels* und *Read Message History*; am einfachsten gibt der Admin die Rechte auf
+Kategorie-Ebene und lässt die Kanäle synchronisiert.
 
 **Schritte für Treta (Admin von The Goat Hub)**
 
-1. Dem TIM-Bot nur diese Kanäle freigeben, mit den Rechten *View Channels* und *Read Message History*.
+1. Dem TIM-Bot nur diese Kategorien freigeben, mit den Rechten *View Channels* und *Read Message History*.
    Keine Schreibrechte, keine privaten Kanäle, keine Direktnachrichten.
 2. Im Entwicklerportal den *Message Content Intent* des Bots einschalten.
 3. Den Mitgliedern im Server mitteilen, dass TIM ausgewählte Kanäle liest, wofür und wie lange

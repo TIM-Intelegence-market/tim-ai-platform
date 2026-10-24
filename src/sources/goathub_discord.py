@@ -48,6 +48,11 @@ __all__ = [
 ]
 
 MODES = ("forward", "direct")
+KIND_CHANNEL = "channel"
+KIND_CATEGORY = "category"  # a Discord category: every text/announcement channel inside it is read
+KINDS = (KIND_CHANNEL, KIND_CATEGORY)
+_CATEGORY_TYPE = 4
+_READABLE_CHANNEL_TYPES = (0, 5)  # text and announcement channels; forums, voice and threads are not read
 PAGE_SIZE = 100
 # One sync reads at most this many pages per channel (10,000 messages); the rest follows on the next run.
 MAX_PAGES = 100
@@ -71,12 +76,15 @@ class GoatHubChannel:
     channel_id: str
     name: str = ""
     role: str = ROLE_CALLS  # "calls": checked for trade calls; "knowledge": teaching material, never a call
+    kind: str = KIND_CHANNEL  # "category": the entry stands for all readable channels in that category
 
     def __post_init__(self) -> None:
         if not _SNOWFLAKE.fullmatch(self.channel_id):
             raise DiscordFeedError("channel id must be a Discord id (15-21 digits); enable Developer Mode and use 'Copy Channel ID'")
         if self.role not in CHANNEL_ROLES:
             raise DiscordFeedError(f"channel role must be one of {', '.join(CHANNEL_ROLES)}")
+        if self.kind not in KINDS:
+            raise DiscordFeedError(f"channel kind must be one of {', '.join(KINDS)}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +116,7 @@ class GoatHubConfig:
         if not isinstance(payload, dict):
             raise DiscordFeedError(f"config file must hold a JSON object: {path}")
         channels = tuple(
-            GoatHubChannel(str(item.get("id", "")), str(item.get("name") or ""), str(item.get("role") or ROLE_CALLS))
+            GoatHubChannel(str(item.get("id", "")), str(item.get("name") or ""), str(item.get("role") or ROLE_CALLS), str(item.get("kind") or KIND_CHANNEL))
             if isinstance(item, dict) else GoatHubChannel(str(item))
             for item in payload.get("channels") or ()
         )
@@ -116,7 +124,7 @@ class GoatHubConfig:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "channels": [{"id": channel.channel_id, "name": channel.name, "role": channel.role} for channel in self.channels],
+            "channels": [{"id": channel.channel_id, "name": channel.name, "role": channel.role, "kind": channel.kind} for channel in self.channels],
             "mode": self.mode,
             "forwarder_ids": sorted(self.forwarder_ids),
         }
@@ -218,7 +226,37 @@ class GoatHubReader:
 
     def sync(self) -> list[SyncResult]:
         """Read every configured channel from its cursor to the newest message (whole history on the first run)."""
-        return [self.sync_channel(channel) for channel in self.config.channels]
+        return [self.sync_channel(channel) for channel in self.resolve_channels()]
+
+    def resolve_channels(self) -> list[GoatHubChannel]:
+        """The channels to read: plain entries as they are, each category expanded to its text channels.
+
+        A channel inside a category takes the category's role; an entry for the channel itself wins.
+        Channels added to a category later are picked up at the next sync.
+        """
+        explicit = [channel for channel in self.config.channels if channel.kind == KIND_CHANNEL]
+        resolved = {channel.channel_id: channel for channel in explicit}
+        for category in self.config.channels:
+            if category.kind != KIND_CATEGORY:
+                continue
+            for child in self.category_channels(category):
+                resolved.setdefault(child.channel_id, child)
+        return list(resolved.values())
+
+    def category_channels(self, category: GoatHubChannel) -> list[GoatHubChannel]:
+        info = self._get(f"{API_BASE}/channels/{category.channel_id}")
+        if not isinstance(info, dict) or info.get("type") != _CATEGORY_TYPE:
+            raise DiscordFeedError(f"{category.channel_id} is not a category; right-click the category name and use 'Copy Category ID'")
+        guild_id = str(info.get("guild_id") or "")
+        if not _SNOWFLAKE.fullmatch(guild_id):
+            raise DiscordFeedError("unexpected Discord response shape")
+        channels = self._get(f"{API_BASE}/guilds/{guild_id}/channels")
+        if not isinstance(channels, list):
+            raise DiscordFeedError("unexpected Discord response shape")
+        children = [item for item in channels if isinstance(item, dict) and str(item.get("parent_id") or "") == category.channel_id
+                    and item.get("type") in _READABLE_CHANNEL_TYPES and _SNOWFLAKE.fullmatch(str(item.get("id", "")))]
+        children.sort(key=lambda item: (int(item.get("position") or 0), int(item["id"])))
+        return [GoatHubChannel(str(item["id"]), str(item.get("name") or ""), category.role) for item in children]
 
     def sync_channel(self, channel: GoatHubChannel) -> SyncResult:
         self.store.set_channel_role(channel.channel_id, channel.role)
