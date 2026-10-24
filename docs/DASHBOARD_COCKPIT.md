@@ -39,6 +39,20 @@ CI-Job, solange er selbst läuft und kein Issue bearbeitet. Arbeitet er an einem
 Issue, ist die CI-Kachel grau ("unbekannt"), nicht grün. Das Cockpit startet keine
 Prozesse und ruft weder `ps` noch `launchctl` auf.
 
+## Aussehen
+
+Gestaltet nach den Anthropic-Plugins `frontend-design` (Plan, Prüfung gegen Standard-Look,
+Bau, Kritik mit Screenshots) und `Design` (Design-Kritik, WCAG-2.1-AA-Prüfung).
+
+- Startseite beginnt mit einem Lage-Satz ("Ein Punkt braucht einen Blick") und dem BTC-Kurs.
+- Kacheln sind Zeilen einer Liste (Zustand, Name, Wert mit Grund, Stand und Quelle), nicht
+  einzelne Karten. Zeilen mit "Prüfen" oder "Fehler" sind farbig hinterlegt.
+- Zustand nie nur über Farbe: Wort plus Form (● OK, ▲ Prüfen, ■ Fehler, ○ Keine Daten).
+- Farben: Seekarten-Blau und Tinte, helles und dunkles Schema; alle Text-Hintergrund-Paare
+  mindestens 4,5:1 Kontrast. Schrift: Avenir Next (Mac), sonst Systemschrift; keine Webfonts
+  (CSP `font-src 'none'`), Ziffern in fester Breite.
+- Schmale Spalten und Handys stapeln die Zeile (CSS Container Query); Tipp-Ziele mindestens 44 px.
+
 ## Kachel-Vertrag und Statusregel
 
 Jede Kachel hat Wert, Zustand, Grund, Quelle und Stand (`src/dashboard/cockpit/tiles.py`).
