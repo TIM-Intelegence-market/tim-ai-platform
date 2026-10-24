@@ -64,16 +64,9 @@ jobs:
           TIM_ALLOW_DATABASE_URL_ENV_FOR_TESTS: "true"
           TIM_DATABASE_SECRET_PROVIDER: url-env
           TIM_DURABLE_TEST_DATABASE_URL: postgresql://tim:tim_ci_only@127.0.0.1:5434/tim_test
-      - name: Upload coverage to Codecov
-        if: success()
-        # Optional report: the Codecov action needs gpg, which the Mac runner does not have.
-        continue-on-error: true
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
-        with:
-          files: coverage.xml
-          flags: unittests
-          fail_ci_if_error: false
-      - name: Upload JUnit artifact
+      # No Codecov upload: its action needs gpg, which the Mac runner does not have. The coverage
+      # report stays available as part of this artifact.
+      - name: Upload JUnit and coverage artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -81,6 +74,7 @@ jobs:
           path: |
             artifacts/github_toolchain/pytest_full.junit.xml
             artifacts/github_toolchain/pytest_serial.junit.xml
+            coverage.xml
 
   codeql:
     # Not a merge gate and over 20 minutes on the single Mac runner, where it held up every PR queued
