@@ -24,13 +24,13 @@ MIN_FIRST_R = 1.5
 STOP_BUFFER = 0.0005  # 0.05 % behind the swing (wicks that only tag the swing)
 MERGE_GAP = 0.0005  # levels closer than 0.05 % count as one place
 SWING_WIDTH = 2
-VISIBLE = 80  # same 15m window as the Setup-Pfad
+VISIBLE = 80  # same 30m window as the Setup-Pfad
 
 
 def candles_until(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime) -> dict[str, list[dict[str, Any]]]:
-    """Closed candles only: the struct rule never looks past the plan's 15m close."""
+    """Closed candles only: the struct rule never looks past the plan's 30m close."""
     result = {}
-    for timeframe in ("15m", "1h"):
+    for timeframe in ("30m", "1h", "4h", "1d", "1w", "1M"):
         result[timeframe] = [c for c in clean_candles(series.get(timeframe) or [], timeframe) if c["close_time"] <= at]
     return result
 
@@ -41,10 +41,10 @@ def _swings(candles: Sequence[Mapping[str, Any]]) -> tuple[list[float], list[flo
 
 
 def liquidity(prep: Mapping[str, Any] | None, highs: Sequence[float], lows: Sequence[float]) -> list[dict[str, Any]]:
-    """Candidate targets: the preparation map's levels plus visible 15m swings."""
+    """Candidate targets: the preparation map's levels plus visible 30m swings."""
     places = [{"price": float(level["price"]), "label": level["label"]} for level in (prep or {}).get("levels") or []]
-    places += [{"price": float(p), "label": "15m Swing-Hoch"} for p in highs]
-    places += [{"price": float(p), "label": "15m Swing-Tief"} for p in lows]
+    places += [{"price": float(p), "label": "30m Swing-Hoch"} for p in highs]
+    places += [{"price": float(p), "label": "30m Swing-Tief"} for p in lows]
     return places
 
 
@@ -101,9 +101,9 @@ def structural_plan(plan: Mapping[str, Any], highs: Sequence[float], lows: Seque
     return rewritten, None
 
 
-def structural_plans(plans: Sequence[Mapping[str, Any]], candles_15m: Sequence[Mapping[str, Any]],
+def structural_plans(plans: Sequence[Mapping[str, Any]], candles_30m: Sequence[Mapping[str, Any]],
                      prep: Mapping[str, Any] | None) -> tuple[list[dict[str, Any]], list[str]]:
-    highs, lows = _swings(candles_15m)
+    highs, lows = _swings(candles_30m)
     places = liquidity(prep, highs, lows)
     kept, dropped = [], []
     for plan in plans:

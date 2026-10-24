@@ -547,8 +547,24 @@ class TIMApplication:
 
         from src.dashboard.plan_journal import RULE_STRUCT, update as update_plan_journal
         from src.dashboard.trader_journal import update as update_trader_journal
+        from src.dashboard.chart_history import TIMEFRAMES, fetch_history
 
+        history_refreshed = {}
         while not self.worker_stop.is_set():
+            for tf in TIMEFRAMES:
+                current = datetime.now(timezone.utc)
+                if (current - history_refreshed.get(tf, datetime.min.replace(tzinfo=timezone.utc))).total_seconds() < 300:
+                    continue
+                try:
+                    rows = await asyncio.to_thread(fetch_history, settings.symbol, tf)
+                    with self.dashboard_state.lock:
+                        for candle in rows:
+                            self.dashboard_state.record_chart_candle(candle)
+                    history_refreshed[tf] = current
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    log.warning("chart history %s refresh failed: %s", tf, type(error).__name__)
             series = self.dashboard_state.chart_series()
             for name, step, path in (("plan journal", update_plan_journal, self.dashboard_state.plan_journal_path),
                                      ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),

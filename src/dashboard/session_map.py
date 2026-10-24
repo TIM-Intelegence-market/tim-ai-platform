@@ -162,15 +162,15 @@ def _thirty(candles: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         opened = _utc(candle["open_time"])
         groups.setdefault(opened.replace(minute=opened.minute - opened.minute % 30, second=0, microsecond=0), []).append(candle)
     return [{"open_time": k, "high": max(c["high"] for c in v), "low": min(c["low"] for c in v), "close": v[-1]["close"],
-             "close_time": k + timedelta(minutes=30), "complete": len(v) == 2} for k, v in sorted(groups.items())]
+             "close_time": k + timedelta(minutes=30), "complete": len(v) == (1 if v[0].get("timeframe") == "30m" else 2)} for k, v in sorted(groups.items())]
 
 
 def poor_extremes(day: Mapping[str, Any]) -> dict[str, Any]:
     """A high/low is poor when two or more 30m periods traded within one profile step of it."""
     blocks = _thirty(day["candles"])
     step = (day.get("profile") or {}).get("step") or max(day["high"] * 0.0005, 1e-9)
-    at_high = sum(b["high"] >= day["high"] - step for b in blocks)
-    at_low = sum(b["low"] <= day["low"] + step for b in blocks)
+    at_high = sum(b["complete"] and b["high"] >= day["high"] - step for b in blocks)
+    at_low = sum(b["complete"] and b["low"] <= day["low"] + step for b in blocks)
     return {"poor_high": at_high >= POOR_PERIODS, "poor_low": at_low >= POOR_PERIODS, "high_periods": at_high, "low_periods": at_low}
 
 
@@ -267,12 +267,13 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
     """Everything the preparation page shows, as JSON-ready data."""
     now = now or datetime.now(timezone.utc)
     hours = clean_candles(series.get("1h") or [], "1h")
-    quarter = clean_candles(series.get("15m") or [], "15m")
+    base_tf = "30m" if series.get("30m") else "15m"
+    quarter = [c for c in clean_candles(series.get(base_tf) or [], base_tf) if c["close_time"] <= now]
     model: dict[str, Any] = {"schema": SCHEMA, "generated_at": now.isoformat(), "read_only": True,
                              "provenance": "PUBLIC_MARKET_DATA (Binance Spot, TIM-Runtime); Profile aus Kerzen geschätzt",
                              "notes": [], "htf": {}, "bias": None, "levels": [], "sessions": [], "initial_balance": None}
     if not quarter or not hours:
-        model["notes"].append("Zu wenige 15m- oder 1h-Kerzen für die Vorbereitung.")
+        model["notes"].append("Zu wenige 30m- oder 1h-Kerzen für die Vorbereitung.")
         return model
     last = quarter[-1]["close"]
     model["last"] = last
@@ -280,16 +281,19 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
 
     states = {}
     for label, seconds in HTF:
-        info = structure(aggregate(hours, label, seconds, now))
+        tf = label.lower()
+        native = [c for c in clean_candles(series.get(tf) or [], tf) if c["close_time"] <= now]
+        info = structure(native or aggregate(hours, label, seconds, now))
         model["htf"][label] = info
         states[label] = info["state"]
     model["bias"] = htf_bias(states)
+    model["htf"]["1M"] = structure([c for c in clean_candles(series.get("1M") or [], "1M") if c["close_time"] <= now])
 
-    days = _periods(quarter, lambda moment: _utc(moment).date(), 96)
+    days = _periods(quarter, lambda moment: _utc(moment).date(), 48 if base_tf == "30m" else 96)
     today_date = _utc(now).date()
     previous = [d for d in days if d["period"] < today_date and d["complete"]]
     today = next((d for d in days if d["period"] == today_date), None)
-    prev_day = previous[-1] if previous else None
+    prev_day = next((d for d in previous if d["period"] == today_date - timedelta(days=1)), None)
     weeks = _periods(hours, lambda moment: _bucket(moment, "1W"), 168)
     this_week = _bucket(now, "1W")
     prev_week = next((w for w in reversed(weeks) if w["period"] < this_week and w["complete"]), None)
@@ -300,7 +304,7 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
         model["previous_day"] = {"day": prev_day["period"].isoformat(), "high": prev_day["high"], "low": prev_day["low"],
                                  **(prev_day["profile"] or {}), **poor_extremes(prev_day)}
     else:
-        model["notes"].append("Kein vollständiger Vortag in den 15m-Kerzen: Vortages-Value fehlt.")
+        model["notes"].append("Kein vollständiger Vortag: Vortages-Value fehlt.")
     model["previous_week"] = ({"week": prev_week["period"].date().isoformat(), "high": prev_week["high"], "low": prev_week["low"], **(prev_week["profile"] or {})}
                               if prev_week else None)
     if not prev_week:
@@ -319,10 +323,12 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
         _level(levels, "Vortag VAH", pd.get("vah"), "Profil Vortag", last)
         _level(levels, "Vortag POC", pd.get("poc"), "Profil Vortag", last)
         _level(levels, "Vortag VAL", pd.get("val"), "Profil Vortag", last)
-        _level(levels, "Vortag Hoch" + (" (poor)" if pd["poor_high"] else ""), pd["high"], "Vortag", last)
-        _level(levels, "Vortag Tief" + (" (poor)" if pd["poor_low"] else ""), pd["low"], "Vortag", last)
+        _level(levels, "PDH · Vortag Hoch" + (" · Poor High" if pd["poor_high"] else ""), pd["high"], "Vortag", last)
+        _level(levels, "PDL · Vortag Tief" + (" · Poor Low" if pd["poor_low"] else ""), pd["low"], "Vortag", last)
     if model["previous_week"]:
         pw = model["previous_week"]
+        _level(levels, "PWH · Vorwoche Hoch", pw["high"], "Vorwoche", last)
+        _level(levels, "PWL · Vorwoche Tief", pw["low"], "Vorwoche", last)
         for key, name in (("vah", "VAH"), ("poc", "POC"), ("val", "VAL")):
             _level(levels, f"Vorwoche {name}", pw.get(key), "Profil Vorwoche", last)
     if today and today["profile"]:

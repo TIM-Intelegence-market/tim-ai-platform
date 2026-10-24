@@ -23,8 +23,8 @@ SETUP_CANDLES = 80  # same window as the Setup-Pfad page (views.SETUP_CHART_CAND
 MARKET_DATA_MAX_AGE = 120
 REPORT_MAX_AGE = 300
 BACKUP_MAX_AGE = 26 * 3600  # daily backup at 03:15 plus slack
-PLAN_JOURNAL_MAX_AGE = 45 * 60  # two 15m closes plus slack
-PRICE_MAX_AGE = {"1m": 180, "5m": 600, "15m": 1800, "1h": 5400}
+PLAN_JOURNAL_MAX_AGE = 45 * 60  # two 30m closes plus slack
+PRICE_MAX_AGE = {"30m": 3900, "1h": 7500, "4h": 29100, "1d": 173100, "1w": 1210000, "1M": 5357100}
 WORDS = {"GREEN": "grün", "PASS": "grün", "YELLOW": "gelb", "WARN": "gelb", "RED": "rot", "FAIL": "rot"}
 UNAVAILABLE_WORDS = {None, "", "NONE", "UNAVAILABLE", "UNKNOWN", "MISSING", "—"}
 SERVER_HEALTH_MAX_AGE = 600
@@ -96,7 +96,7 @@ def _jobs(state: DashboardState) -> dict[str, Any]:
     def chart() -> dict[str, Any]:
         from src.dashboard.chart_model import build_chart_model
 
-        return build_chart_model(series(), "15m", visible=SETUP_CANDLES)
+        return build_chart_model(series(), "30m", visible=SETUP_CANDLES)
 
     def prep() -> dict[str, Any]:
         from src.dashboard.session_map import build_session_map
@@ -273,7 +273,7 @@ def _market_tiles(series: SourceResult, chart: SourceResult, prep: SourceResult,
     plans: list[dict[str, Any]] = []
     price = unavailable("price", "BTC-Preis", series.reason() or "Noch keine Kerzen im Speicher dieses Prozesses", "TIM-Runtime Kerzen", "/chart")
     if series.ok:
-        for timeframe in ("1m", "5m", "15m", "1h"):
+        for timeframe in ("30m", "1h", "4h", "1d", "1w", "1M"):
             candles = [c for c in (series.value or {}).get(timeframe) or [] if isinstance(c, dict) and c.get("close") is not None]
             if candles:
                 last = max(candles, key=lambda c: str(c.get("close_time") or c.get("open_time") or ""))
@@ -285,21 +285,21 @@ def _market_tiles(series: SourceResult, chart: SourceResult, prep: SourceResult,
 
     if not chart.ok:
         for key, label in (("market_state", "Marktzustand"), ("setup", "Setup-Pfad"), ("block", "Nächste Sperrzeit")):
-            tiles.append(_info(unavailable(key, label, chart.reason(), "15m-Chartanalyse", "/setup-path")))
+            tiles.append(_info(unavailable(key, label, chart.reason(), "30m-Chartanalyse", "/setup-path")))
     else:
         model = chart.value or {}
         analysis = model.get("analysis") or {}
         candle_time = (model.get("levels") or {}).get("last_time")
         if analysis.get("market_state"):
             tiles.append(_info(make_tile("market_state", "Marktzustand", str(analysis["market_state"]), "PASS",
-                                         source="TIMs Pipeline auf 15m (80 Kerzen)", as_of=candle_time, max_age_seconds=PRICE_MAX_AGE["15m"],
+                                         source="TIMs Pipeline auf 30m (80 Kerzen)", as_of=candle_time, max_age_seconds=PRICE_MAX_AGE["30m"],
                                          detail=f"Auktion {analysis.get('auction_state') or 'unbekannt'}", href="/setup-path", now=now)))
             scenarios = [s for s in analysis.get("scenarios") or [] if isinstance(s, dict) and s.get("plan_text")]
             decision = str((analysis.get("decision") or {}).get("status") or "UNAVAILABLE")
             missing = sorted({str(m) for s in scenarios for m in (s.get("missing_confirmations") or [])})
             where = "an einer Range-Kante" if scenarios else "in der Range-Mitte, kein Plan"
-            tiles.append(_info(make_tile("setup", "Setup-Pfad", decision, "PASS", source="TIMs Pipeline auf 15m",
-                                         as_of=candle_time, max_age_seconds=PRICE_MAX_AGE["15m"], href="/setup-path", now=now,
+            tiles.append(_info(make_tile("setup", "Setup-Pfad", decision, "PASS", source="TIMs Pipeline auf 30m",
+                                         as_of=candle_time, max_age_seconds=PRICE_MAX_AGE["30m"], href="/setup-path", now=now,
                                          detail=f"Kurs {where}" + (f" · fehlt: {', '.join(missing[:3])}" if missing else ""))))
             from src.dashboard.pages.setup_path import _plan_lines
 
@@ -308,8 +308,8 @@ def _market_tiles(series: SourceResult, chart: SourceResult, prep: SourceResult,
                 plans.append({"direction": str(scenario.get("direction") or ""), "title": lines[0], "lines": lines[1:]})
         else:
             note = "; ".join(str(n) for n in model.get("notes") or []) or "TIMs Chartanalyse hat noch keinen Marktzustand"
-            tiles.append(_info(unavailable("market_state", "Marktzustand", note, "15m-Chartanalyse", "/setup-path")))
-            tiles.append(_info(unavailable("setup", "Setup-Pfad", note, "15m-Chartanalyse", "/setup-path")))
+            tiles.append(_info(unavailable("market_state", "Marktzustand", note, "30m-Chartanalyse", "/setup-path")))
+            tiles.append(_info(unavailable("setup", "Setup-Pfad", note, "30m-Chartanalyse", "/setup-path")))
         block = model.get("next_block")
         if isinstance(block, dict) and block.get("start"):
             tiles.append(_info(make_tile("block", "Nächste Sperrzeit", block.get("label") or "NY-Eröffnung", "PASS",

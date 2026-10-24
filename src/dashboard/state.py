@@ -287,7 +287,11 @@ class DashboardState:
             with self.lock:
                 for item in self.recent_candles:
                     series.setdefault(str(item.get("timeframe")), []).append(dict(item))
-        return series
+        from src.dashboard.chart_model import analytical_series
+
+        enriched = analytical_series(series, datetime.now(timezone.utc))
+        return {tf: [{**c, "open_time": c["open_time"].isoformat(), "close_time": c["close_time"].isoformat()} for c in rows]
+                for tf, rows in enriched.items() if rows}
 
     def snapshot(self) -> dict[str, Any]:
         with self.lock:

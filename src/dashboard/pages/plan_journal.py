@@ -17,7 +17,7 @@ STATUS_LABELS = {
     "REPLACED": ("unknown", "ersetzt"),
     "EXPIRED": ("unknown", "abgelaufen"),
 }
-EXIT_LABELS = {"STOP": "Stop", "BREAK_EVEN": "Break-even nach TP1", "TP3": "TP3", "TIMEOUT": f"nach {MAX_HOLD_HOURS} h", "INVALIDATION": "15m-Schluss jenseits der Ungültigkeit"}
+EXIT_LABELS = {"STOP": "Stop", "BREAK_EVEN": "Break-even nach TP1", "TP3": "TP3", "TIMEOUT": f"nach {MAX_HOLD_HOURS} h", "INVALIDATION": "Schluss jenseits der Ungültigkeit"}
 EVIDENCE_LABELS = {
     "INSUFFICIENT_EVIDENCE": ("unknown", "keine Evidenz"),
     "NEGATIVE_EVIDENCE": ("crit", "negativ belegt"),
@@ -57,7 +57,7 @@ def _row(entry: Mapping[str, Any]) -> str:
     if entry.get("data_gap"):
         detail.append("Datenlücke: " + str(entry["data_gap"]))
     invalid = entry.get("invalidation_level")
-    invalid_text = f"15m-Schluss {entry.get('invalidation_side')} {_fmt(invalid)}" if invalid is not None else "–"
+    invalid_text = f"{entry.get('timeframe', '15m')}-Schluss {entry.get('invalidation_side')} {_fmt(invalid)}" if invalid is not None else "–"
     zone = f"{_fmt(min(entry['entry_low'], entry['entry_high']))}–{_fmt(max(entry['entry_low'], entry['entry_high']))}" if entry.get("entry_low") is not None and entry.get("entry_high") is not None else "–"
     direction = str(entry.get("direction"))
     trend = f" <span class='sev sev--warn'>gegen den Trend ({_safe(entry.get('market_state'))})</span>" if counter_trend(direction, entry.get("market_state")) else ""
@@ -96,7 +96,7 @@ def _compare(tim: Mapping[str, Any], struct: Mapping[str, Any]) -> str:
     return (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Vergleich</p>"
         "<h2>Zwei Regelversionen parallel</h2><p class='cc-section__note'>Gleiche Pläne, gleicher Einstieg, gleiche Ungültigkeit. "
-        "Die Struktur-Regel legt den Stop hinter den nächsten 15m-Swing und die Ziele an die nächsten Liquiditätsorte aus der Vorbereitung; "
+        "Die Struktur-Regel legt den Stop hinter den nächsten 30m-Swing und die Ziele an die nächsten Liquiditätsorte aus der Vorbereitung; "
         f"liegt das erste Ziel unter 1,5 R, gibt es keinen Plan. Verworfen bisher: {_safe(skip_text)}. "
         "Aussagekraft erst nach vielen geschlossenen Plänen.</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Regel</th><th>Pläne</th><th>geschlossen</th><th>Trefferquote</th><th>Summe</th><th>je Plan</th></tr></thead>"
@@ -136,7 +136,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         f"<dl class='metricstrip__item'><dt>Gegen den Trend</dt><dd>{stats['counter_trend']['plans']}<small>{stats['counter_trend']['closed']} geschlossen · {_safe(_r_text(stats['counter_trend']['sum_r']))}</small></dd></dl>"
         "</div></section>"
     )
-    rows = "".join(_row(e) for e in reversed(entries[-300:])) or "<tr><td colspan='14' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 15m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"
+    rows = "".join(_row(e) for e in reversed(entries[-300:])) or "<tr><td colspan='14' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 30m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"
     updated = _local(journal.get("updated_at")) if journal.get("updated_at") else "noch nie"
     body += (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Journal</p>"
@@ -148,15 +148,15 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
     )
     body += (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Regeln</p><h2>So wird gezählt</h2></div></div><ul class='cc-list'>"
-        "<li>Bei jedem 15m-Schluss werden die Pläne des Setup-Pfads festgehalten. Ändert TIM die Marken einer Richtung, wird der alte Plan als „ersetzt“ geschlossen.</li>"
+        "<li>Bei jedem 30m-Schluss werden die Pläne des Setup-Pfads festgehalten. Ändert TIM die Marken einer Richtung, wird der alte Plan als „ersetzt“ geschlossen.</li>"
         "<li>Einstieg als Limit zum Einstiegskurs, geprüft auf 1m-Kerzen. Rund um die NY-Eröffnung (15 min davor bis 30 min danach) kein Einstieg.</li>"
-        f"<li>15m-Schluss jenseits der Ungültigkeitsmarke: vor dem Einstieg ist der Plan ungültig, im Trade wird der Rest zu diesem Schluss geschlossen. Nach {PENDING_HOURS} h ohne Einstieg = abgelaufen.</li>"
-        + ("<li>Struktur-Regel: Stop 0,05 % hinter dem nächsten 15m-Swing jenseits der Einstiegszone, TP1–TP3 an den nächsten Liquiditätsorten "
-           "(Vortag, Vorwoche, naked POC, Sessions, IB, 15m-Swings; fehlende Ziele wiederholen das letzte). Erstes Ziel unter 1,5 R: kein Plan.</li>" if struct else "")
+        f"<li>30m-Schluss jenseits der Ungültigkeitsmarke: vor dem Einstieg ist der Plan ungültig, im Trade wird der Rest zu diesem Schluss geschlossen. Nach {PENDING_HOURS} h ohne Einstieg = abgelaufen.</li>"
+        + ("<li>Struktur-Regel: Stop 0,05 % hinter dem nächsten 30m-Swing jenseits der Einstiegszone, TP1–TP3 an den nächsten Liquiditätsorten "
+           "(Vortag, Vorwoche, naked POC, Sessions, IB, 30m-Swings; fehlende Ziele wiederholen das letzte). Erstes Ziel unter 1,5 R: kein Plan.</li>" if struct else "")
         + "<li>Im Trade nach TIMs Management: je ein Drittel an TP1, TP2 und TP3 (TIM-Regel: 1,5 R, 2 R, 3 R), Stop nach TP1 auf Einstand. Der strukturelle Trailing-Stop ist nicht nachgebildet.</li>"
         f"<li>Berühren Stop und Ziel dieselbe 1m-Kerze, zählt der Stop. Nach {MAX_HOLD_HOURS} h wird der Rest zum Kerzenkurs geschlossen.</li>"
         "<li>Ergebnis als Brutto-R (1 R = Abstand Einstieg–Stop) und Netto-R nach Forschungsprotokoll 1.1: Gebühr 0,05 % und Slippage 0,03 % je Seite auf Einstieg, jedes Drittel und den Rest, 0,05 % Slippage bei Stop-Ausführung; Kosten in R = Kosten / Stopabstand. Keine Order, keine Anlageberatung.</li>"
-        "<li>Speicherung: Jede Änderung ist ein Ereignis im append-only, hash-verketteten Log (<code>tim_plan_journal.events.jsonl</code>); diese Seite ist eine daraus abgeleitete Sicht. Ein Neustart mit denselben Kerzen erzeugt keine neuen Ereignisse; korrigierte Kerzen zu einem schon verarbeiteten 15m-Schluss werden vermerkt, ändern aber keine Entscheidung.</li>"
+        "<li>Speicherung: Jede Änderung ist ein Ereignis im append-only, hash-verketteten Log (<code>tim_plan_journal.events.jsonl</code>); diese Seite ist eine daraus abgeleitete Sicht. Ein Neustart mit denselben Kerzen erzeugt keine neuen Ereignisse; korrigierte Kerzen zu einem schon verarbeiteten 30m-Schluss werden vermerkt, ändern aber keine Entscheidung.</li>"
         f"<li>Grade A/B/C: {GRADE_NOTE}. Benotet wird der tatsächliche Szenariozustand, nicht die Vorschau. A+ wird nicht vergeben, weil keine geprüfte Regel dafür existiert.</li>"
         "<li>Ausführbarkeit (nur Papier): Instrument BINANCE/SPOT/BTCUSDT mit Tick 0,01; der Einstieg wird gegen den Plan auf den Tick gerundet. Ein Short auf Spot gilt als nicht ausführbar (keine Leihe modelliert), Datenqualität unter PASS sperrt, veraltete Kerzen (älter als 30 min) erzeugen keine neuen Pläne.</li>"
         "<li>Evidenz: Urteil aus dem Hypothesenregister (docs/research_lab/REGISTER.jsonl) nur über eine geprüfte Regel-Äquivalenz; ohne diese „keine Evidenz“. Entscheidung NO_TRADE, solange Evidenz, Freigabe oder Pipeline fehlen. Grade, Evidenz und Entscheidung werden beim Festhalten gesetzt und danach nie geändert.</li>"
