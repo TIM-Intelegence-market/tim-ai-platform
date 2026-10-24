@@ -13,17 +13,18 @@ status file is shown with its age, not guessed as running.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from zoneinfo import ZoneInfo
 
 from src.dashboard.cockpit.lage import _broken, _read_json, _system_tiles
 from src.dashboard.cockpit.sources import BudgetedSources, SourceResult
-from src.dashboard.cockpit.tiles import Tile, attention, human_age, make_tile, unavailable, worst
+from src.dashboard.cockpit.tiles import Tile, attention, human_age, make_tile, state_of, unavailable, worst
 from src.dashboard.state import DashboardState
 
 SCHEMA = "tim_cockpit_mac/1"
@@ -50,7 +51,7 @@ SERVICES = (
     ("readiness_inputs.json", "readiness_inputs", "Readiness-Eingaben", "checked_at", 300, "/v2-readiness"),
     ("dashboard_refresh.json", "dashboard_refresh", "Dashboard-Agent", "checked_at_utc", 1800, "/audit-evidence"),
 )
-SERVICE_STATUS = {"GREEN": "PASS", "AMBER": "WARN", "YELLOW": "WARN", "RED": "FAIL", "DEGRADED": "WARN"}
+SERVICE_STATUS = {"GREEN": "PASS", "HEALTHY": "PASS", "CRITICAL": "FAIL", "AMBER": "WARN", "YELLOW": "WARN", "RED": "FAIL", "DEGRADED": "WARN"}
 AGENT_FAIL = {"ci_failed", "previous_attempt_failed"}
 
 _SOURCES = BudgetedSources()
@@ -65,12 +66,17 @@ def trading_team_dir() -> Path:
     return Path(value).expanduser() if value else TRADING_TEAM_DIR
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001 - urllib API
+        raise ValueError(f"Worker-Status leitet um ({code}), wird nicht verfolgt")
+
+
 def fetch_worker(url: str | None = None, timeout: float = WORKER_TIMEOUT) -> dict[str, Any]:
     """GET the worker dashboard status. Loopback only, never through a proxy."""
     url = url or worker_url()
     if not url.startswith(("http://127.0.0.1:", "http://localhost:")):
         raise ValueError("Worker-Status nur über 127.0.0.1")
-    opener = build_opener(ProxyHandler({}))
+    opener = build_opener(ProxyHandler({}), _NoRedirect())
     with opener.open(Request(url, headers={"Accept": "application/json"}), timeout=timeout) as response:
         value = json.loads(response.read(WORKER_MAX_BYTES))
     if not isinstance(value, dict):
@@ -79,12 +85,23 @@ def fetch_worker(url: str | None = None, timeout: float = WORKER_TIMEOUT) -> dic
 
 
 def _epoch_iso(value: Any) -> str | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
         return None
     try:
-        return datetime.fromtimestamp(float(value), timezone.utc).isoformat()
+        moment = datetime.fromtimestamp(float(value), timezone.utc)
+        return moment.isoformat() if moment.year < 9999 else None
     except (OverflowError, OSError, ValueError):
         return None
+
+
+def _list(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _seconds(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return int(value)
 
 
 def _link(url: Any) -> str:
@@ -97,7 +114,7 @@ def _issue_number(value: Any) -> int | None:
         return None
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and value.strip().lstrip("#").isdigit():
+    if isinstance(value, str) and re.fullmatch(r"#?[0-9]{1,9}", value.strip()):
         return int(value.strip().lstrip("#"))
     if isinstance(value, dict):
         for key in ("issue", "number", "issue_number"):
@@ -129,12 +146,11 @@ def _trading_team(directory: Path) -> dict[str, Any]:
         if line.startswith("Papier-Bot:"):
             summary = line.removeprefix("Papier-Bot:").strip()
             break
-    if last_run is None:
-        try:
-            last_run = datetime.fromtimestamp(state_path.stat().st_mtime, timezone.utc).isoformat()
-        except OSError:
-            last_run = None
-    return {"exists": True, "state": state, "last_run": last_run, "summary": summary}
+    try:
+        written = datetime.fromtimestamp(state_path.stat().st_mtime, timezone.utc).isoformat()
+    except OSError:
+        written = None
+    return {"exists": True, "state": state, "last_run": last_run, "state_written": written, "summary": summary}
 
 
 def _jobs(state: DashboardState) -> dict[str, Any]:
@@ -174,14 +190,18 @@ def worker_tiles(result: SourceResult, now: datetime) -> tuple[list[Tile], dict[
                  unavailable("ci_runner", "CI-Runner", "Unbekannt: der Issue-Worker meldet, ob ein CI-Lauf läuft", source, href)],
                 {"reachable": False, "error": reason})
     data = result.value or {}
-    worker = data.get("worker") if isinstance(data.get("worker"), dict) else {}
+    if not isinstance(data.get("worker"), dict):
+        reason = "Worker-Dashboard liefert ein unbekanntes Format (Feld worker fehlt)"
+        return ([unavailable("worker", "Issue-Worker", reason, source, href),
+                 unavailable("ci_runner", "CI-Runner", reason, source, href)], {"reachable": False, "error": reason})
+    worker = data["worker"]
     agent = worker.get("agent") if isinstance(worker.get("agent"), dict) else {}
     log = data.get("log") if isinstance(data.get("log"), dict) else {}
     as_of = _epoch_iso(data.get("generated_at"))
     current = _current(data)
     number = _issue_number(current) if current else None
     paused_ci = worker.get("paused_ci") is True
-    open_items = [item for item in data.get("open") or [] if isinstance(item, dict)]
+    open_items = _list(data.get("open"))
     match = next((item for item in open_items if number is not None and _issue_number(item.get("number")) == number), {})
     developer = worker.get("developer") if isinstance(worker.get("developer"), dict) else {}
     phase = str(developer.get("phase") or (current or {}).get("phase") or "")
@@ -217,12 +237,12 @@ def worker_tiles(result: SourceResult, now: datetime) -> tuple[list[Tile], dict[
         raw = "FAIL" if raw == "FAIL" else "WARN"
         problems.append(f"GitHub nicht erreichbar: {github.get('error') or 'ohne Grund'}")
     error = log.get("last_error") if isinstance(log.get("last_error"), dict) else {}
-    error_age = error.get("age_estimate_secs")
-    recent_error = isinstance(error_age, (int, float)) and not isinstance(error_age, bool) and 0 <= error_age <= WORKER_ERROR_RECENT
+    error_age = _seconds(error.get("age_estimate_secs"))
+    recent_error = error_age is not None and 0 <= error_age <= WORKER_ERROR_RECENT
     if recent_error and error.get("text"):
         raw = "FAIL" if raw == "FAIL" else "WARN"
-        problems.append(f"Fehler {human_age(int(error_age))}: {str(error['text'])[:160]}")
-    stalled = [item for item in data.get("stalled") or [] if isinstance(item, dict)]
+        problems.append(f"Fehler {human_age(error_age)}: {str(error['text'])[:160]}")
+    stalled = _list(data.get("stalled"))
     tiles = [make_tile("worker", "Issue-Worker", value, raw, reason=" · ".join(problems), source=source, as_of=as_of,
                        max_age_seconds=WORKER_MAX_AGE, detail=detail, href=href, now=now)]
     ci_source = "Issue-Worker (paused_ci), Runner mac-mini-tim"
@@ -234,23 +254,25 @@ def worker_tiles(result: SourceResult, now: datetime) -> tuple[list[Tile], dict[
         tiles.append(unavailable("ci_runner", "CI-Runner", "Unbekannt: der Issue-Worker meldet CI-Läufe nur, wenn er selbst läuft und kein Issue bearbeitet",
                                  ci_source, href))
     else:
-        tiles.append(make_tile("ci_runner", "CI-Runner", "frei", "PASS", source=ci_source, as_of=as_of, max_age_seconds=WORKER_MAX_AGE,
-                               href=href, now=now, detail="Kein CI-Job auf dem Mac", extra={"kind": "info"}))
+        # Without a reported run the runner is most likely idle, but the worker cannot tell when its CI pause is switched off.
+        tiles.append(make_tile("ci_runner", "CI-Runner", "kein Lauf gemeldet", "PASS", source=ci_source, as_of=as_of, max_age_seconds=WORKER_MAX_AGE,
+                               href=href, now=now, detail="Der Worker meldet CI-Läufe über seine CI-Pause (Standard: an)", extra={"kind": "info"}))
 
     eligible = [item for item in open_items if item.get("eligible") is True]
     tiles.append(make_tile("queue", "Warteschlange", f"{len(eligible)} bereit · {len(open_items)} offen", "PASS",
                            source=source, as_of=as_of, max_age_seconds=WORKER_MAX_AGE, href=href, now=now,
                            detail="bereit = Labels agent:qwen-ready und status:ready", extra={"kind": "info"}))
-    done = sorted((item for item in data.get("done") or [] if isinstance(item, dict)),
+    done = sorted(_list(data.get("done")),
                   key=lambda item: str(item.get("merged_at") or item.get("closed_at") or item.get("pr_created_at") or ""), reverse=True)
-    if done:
-        last = done[0]
+    merged = [item for item in done if str(item.get("state") or "").upper() == "MERGED"]
+    if merged:
+        last = merged[0]
         pr = last.get("pr_number")
         tiles.append(make_tile("last_done", "Zuletzt erledigt", f"#{last.get('issue')}" + (f" → PR #{pr}" if pr else ""), "PASS",
                                source=source, as_of=last.get("merged_at") or last.get("closed_at"), href=href, now=now,
                                detail=str(last.get("title") or "")[:140], extra={"kind": "info"}))
     else:
-        tiles.append(unavailable("last_done", "Zuletzt erledigt", "Noch kein erledigtes Issue im Worker-Verlauf", source, href))
+        tiles.append(unavailable("last_done", "Zuletzt erledigt", "Noch kein gemergter Worker-PR im Verlauf", source, href))
     ollama = worker.get("ollama") if isinstance(worker.get("ollama"), dict) else {}
     if ollama:
         ok = ollama.get("reachable") is True and ollama.get("model_installed") is True
@@ -260,8 +282,8 @@ def worker_tiles(result: SourceResult, now: datetime) -> tuple[list[Tile], dict[
 
     events = []
     if current:
-        for event in (current.get("events") or [])[-EVENTS_SHOWN:]:
-            if isinstance(event, dict):
+        for event in _list(current.get("events"))[-EVENTS_SHOWN:]:
+            if event:
                 events.append({"at": _epoch_iso(event.get("at")), "phase": str(event.get("phase") or ""),
                                "place": str(event.get("place") or ""), "detail": str(event.get("detail") or "")[:240]})
     details = {
@@ -271,16 +293,16 @@ def worker_tiles(result: SourceResult, now: datetime) -> tuple[list[Tile], dict[
         "paused_ci": paused_ci,
         "last_intake": str((log.get("last_intake") or {}).get("output") or "")[:240] if isinstance(log.get("last_intake"), dict) else "",
         "last_triage": str((log.get("last_triage") or {}).get("text") or "")[:300] if isinstance(log.get("last_triage"), dict) else "",
-        "last_error": ({"text": str(error.get("text") or "")[:300], "age": human_age(int(error_age)) if isinstance(error_age, (int, float)) and not isinstance(error_age, bool) else "Alter unbekannt",
+        "last_error": ({"text": str(error.get("text") or "")[:300], "age": human_age(error_age) if error_age is not None else "Alter unbekannt",
                         "recent": recent_error} if error.get("text") else None),
         "open": [{"number": item.get("number"), "title": str(item.get("title") or "")[:160], "url": _link(item.get("url")),
                   "eligible": item.get("eligible") is True, "stage": str(item.get("stage") or ""),
                   "waiting": str(item.get("waiting_reason") or "")[:200]}
-                 for item in sorted(open_items, key=lambda item: (item.get("eligible") is not True, -int(item.get("number") or 0) if str(item.get("number") or "").isdigit() else 0))[:OPEN_ISSUES_SHOWN]],
+                 for item in sorted(open_items, key=lambda item: (item.get("eligible") is not True, -(_issue_number(item.get("number")) or 0)))[:OPEN_ISSUES_SHOWN]],
         "open_total": len(open_items),
         "done": [{"issue": item.get("issue"), "title": str(item.get("title") or "")[:160], "pr": item.get("pr_number"),
                   "url": _link(item.get("pr_url")), "state": str(item.get("state") or ""),
-                  "at": item.get("merged_at") or item.get("closed_at"), "helpers": [str(h) for h in item.get("helpers") or []][:4]}
+                  "at": item.get("merged_at") or item.get("closed_at"), "helpers": [str(h) for h in item.get("helpers")][:4] if isinstance(item.get("helpers"), list) else []}
                  for item in done[:DONE_SHOWN]],
     }
     return tiles, details
@@ -307,9 +329,10 @@ def _service_tile(key: str, label: str, report: SourceResult, stamp_key: str, ma
                          detail=(str(decision.get("text") or "") + (f" · läuft auf {commit}" if commit else "")).strip(" ·"))
     if key == "validator":
         status = str(data.get("overall_status") or "UNKNOWN").upper()
-        failed = [str(item.get("check") if isinstance(item, dict) else item) for item in data.get("failed_checks") or []]
-        return make_tile(key, label, f"{data.get('checks_pass', '—')}/{data.get('checks_total', '—')} grün", SERVICE_STATUS.get(status, status),
-                         reason="" if status == "PASS" else f"{status}: " + (", ".join(failed[:4]) or "ohne Angabe"),
+        raw = SERVICE_STATUS.get(status, status)
+        failed = [str(item.get("check") if isinstance(item, dict) else item) for item in data.get("failed_checks") or []] if isinstance(data.get("failed_checks"), list) else []
+        return make_tile(key, label, f"{data.get('checks_pass', '—')}/{data.get('checks_total', '—')} grün", raw,
+                         reason="" if state_of(raw) == "ok" else f"{status}: " + (", ".join(failed[:4]) or "ohne Angabe"),
                          source=source, as_of=stamp, max_age_seconds=max_age, href=href, now=now,
                          detail=f"Zyklus {data.get('validator_cycle', '—')}")
     status = str(data.get("status") or "UNKNOWN").upper()
@@ -336,15 +359,19 @@ def _trading_team_tile(result: SourceResult, now: datetime) -> Tile:
     data = result.value or {}
     if not data.get("exists"):
         return unavailable("trading_team", "Trading-Team", "Kein Trading-Team auf diesem Rechner (state.json fehlt)", source, "/neu/mac#dienste")
-    state = data.get("state") or {}
+    state = data.get("state") if isinstance(data.get("state"), dict) else {}
+    if not state:
+        return make_tile("trading_team", "Trading-Team", "—", "WARN", reason="state.json leer oder nicht lesbar", source=source,
+                         as_of=data.get("state_written"), href="/neu/mac#dienste", now=now)
     mode = str(state.get("mode") or "")
-    open_count = len(state.get("open") or []) if isinstance(state.get("open"), list) else 0
-    shadow = len(state.get("shadow_open") or []) if isinstance(state.get("shadow_open"), list) else 0
+    open_count = len(state["open"]) if isinstance(state.get("open"), list) else 0
+    shadow = len(state["shadow_open"]) if isinstance(state.get("shadow_open"), list) else 0
     raw, reason = "PASS", ""
-    if mode and mode != "PAPER_ONLY":
-        raw, reason = "FAIL", f"Modus {mode}, erwartet PAPER_ONLY"
+    if mode != "PAPER_ONLY":
+        raw, reason = "FAIL", f"Modus {mode or 'fehlt'}, erwartet PAPER_ONLY"
+    # state.json is written at the end of a run, so its time shows the last finished run.
     return make_tile("trading_team", "Trading-Team", f"{open_count} offen · {shadow} Schatten", raw, reason=reason,
-                     source=source + " (nur Papier)", as_of=data.get("last_run"), max_age_seconds=900, href="/neu/mac#dienste", now=now,
+                     source=source + " (nur Papier)", as_of=data.get("state_written"), max_age_seconds=900, href="/neu/mac#dienste", now=now,
                      detail=str(data.get("summary") or "")[:200])
 
 
@@ -378,7 +405,8 @@ def build_mac(state: DashboardState, now: datetime | None = None, budget: float 
     try:
         worker, details = worker_tiles(results["worker"], now)
     except Exception as exc:  # noqa: BLE001
-        worker = [unavailable("worker", "Issue-Worker", _broken(exc), "Issue-Worker-Dashboard", "/neu/mac#worker")]
+        worker = [unavailable("worker", "Issue-Worker", _broken(exc), "Issue-Worker-Dashboard", "/neu/mac#worker"),
+                  unavailable("ci_runner", "CI-Runner", _broken(exc), "Issue-Worker-Dashboard", "/neu/mac#worker")]
         details = {"reachable": False, "error": _broken(exc)}
     services = service_tiles(results, now)
     needs = attention(worker + services)

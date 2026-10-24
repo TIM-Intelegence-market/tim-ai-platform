@@ -46,8 +46,9 @@ def _worker(now: datetime = NOW, **change) -> dict:
         "log": {"intake_interval_secs": 300, "last_intake": {"output": "no issue"}, "last_error": {"age_estimate_secs": 315600, "text": "alter Fehler"}},
         "open": [{"number": 401, "title": "Log-Grenze", "url": "https://github.com/TIM-Intelegence-market/tim-ai-platform/issues/401", "eligible": True},
                  {"number": 376, "title": "Journal", "url": "javascript:alert(1)", "eligible": False, "stage": "skipped", "waiting_reason": "Triage"}],
-        "done": [{"issue": 311, "title": "alt", "pr_number": 322, "merged_at": "2026-10-16T16:47:46Z", "pr_url": "https://github.com/x/pull/322"},
-                 {"issue": 331, "title": "neu", "pr_number": 338, "merged_at": "2026-10-20T01:24:37Z", "pr_url": "https://github.com/x/pull/338"}],
+        "done": [{"issue": 311, "title": "alt", "pr_number": 322, "state": "MERGED", "merged_at": "2026-10-16T16:47:46Z", "pr_url": "https://github.com/x/pull/322"},
+                 {"issue": 331, "title": "neu", "pr_number": 338, "state": "MERGED", "merged_at": "2026-10-20T01:24:37Z", "pr_url": "https://github.com/x/pull/338"},
+                 {"issue": 350, "title": "offen", "pr_number": 360, "state": "OPEN", "pr_created_at": "2026-10-23T01:00:00Z", "pr_url": "https://github.com/x/pull/360"}],
     }
     for key, value in change.items():
         if key in data["worker"]:
@@ -75,9 +76,9 @@ def test_idle_worker_waits_and_ci_is_free() -> None:
     tiles = _by_id(tiles)
     assert tiles["worker"].value == "wartet auf Aufgaben" and tiles["worker"].state == "ok"
     assert "alle 5 min" in tiles["worker"].detail
-    assert tiles["ci_runner"].value == "frei"
+    assert tiles["ci_runner"].value == "kein Lauf gemeldet", "the worker cannot prove the runner is idle when its CI pause is off"
     assert tiles["queue"].value == "1 bereit · 2 offen"
-    assert tiles["last_done"].value == "#331 → PR #338", "newest merge first"
+    assert tiles["last_done"].value == "#331 → PR #338", "newest merge first; an open PR is not done"
     assert details["last_error"]["recent"] is False, "an error from days ago is history"
 
 
@@ -153,6 +154,8 @@ def fake_worker():
 
 
 def test_fetch_worker_reads_loopback_and_ignores_proxy(fake_worker: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("no_proxy", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.invalid:1")
     monkeypatch.setenv("http_proxy", "http://proxy.invalid:1")
     assert fetch_worker(fake_worker)["worker"]["paused_ci"] is True
@@ -161,6 +164,51 @@ def test_fetch_worker_reads_loopback_and_ignores_proxy(fake_worker: str, monkeyp
 def test_fetch_worker_refuses_other_hosts() -> None:
     with pytest.raises(ValueError):
         fetch_worker("http://example.com/api/status")
+
+
+class _Redirect(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802 - http.server API
+        self.send_response(302)
+        self.send_header("Location", "http://127.0.0.2:9/elsewhere")
+        self.end_headers()
+
+    def log_message(self, *args) -> None:
+        pass
+
+
+def test_fetch_worker_does_not_follow_redirects() -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Redirect)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with pytest.raises(ValueError, match="leitet um"):
+            fetch_worker(f"http://127.0.0.1:{server.server_address[1]}/api/status")
+    finally:
+        server.shutdown()
+
+
+@pytest.mark.parametrize("change", [
+    {"open": 5}, {"done": [{"issue": 1, "state": "MERGED", "helpers": 3}]}, {"open": [{"number": "²", "eligible": True}]},
+    {"log": {"last_error": {"age_estimate_secs": float("nan"), "text": "x"}}}, {"log": {"last_error": {"age_estimate_secs": float("inf"), "text": "x"}}},
+    {"current": {"issue": 1, "events": 7}}, {"current": {"issue": 1, "worktree_created_at": 253402300799}}, {"generated_at": 253402300799},
+    {"done": [{"issue": 1, "state": "MERGED", "merged_at": "9999-12-31T23:59:59+00:00"}]},
+])
+def test_odd_worker_json_keeps_page_and_ci_tile(change: dict) -> None:
+    tiles, details = worker_tiles(_ok(_worker(**change)), NOW)
+    ids = [t.id for t in tiles]
+    assert "worker" in ids and "ci_runner" in ids
+    model = {"worker": [t.to_dict() for t in tiles], "services": [], "now": [], "worker_details": details, "generated_at": NOW.isoformat()}
+    assert "<h1>Mac jetzt</h1>" in render_mac(model)
+
+
+def test_worker_json_without_worker_object_is_grey() -> None:
+    tiles = _by_id(worker_tiles(_ok({"generated_at": 1}), NOW)[0])
+    assert tiles["worker"].state == "unknown" and "Format" in tiles["worker"].reason and tiles["ci_runner"].state == "unknown"
+
+
+def test_far_future_time_does_not_break_rendering() -> None:
+    from src.dashboard.cockpit.page import local_time
+
+    assert local_time("9999-12-31T23:59:59Z") == "—"
 
 
 # --- background services --------------------------------------------------------
@@ -203,11 +251,20 @@ def test_trading_team_from_its_state_and_log(tmp_path: Path) -> None:
     folder.mkdir()
     (folder / "state.json").write_text(json.dumps({"mode": "PAPER_ONLY", "open": [1], "shadow_open": [1, 2]}))
     (folder / "run.log").write_text(f"--- Lauf {(NOW - timedelta(minutes=2)).isoformat()} ---\nPapier-Bot: Guthaben 1000 USD frei\n")
-    tile = _services(NOW, trading_team=mac_module._trading_team(folder))["trading_team"]
+    now = datetime.now(timezone.utc)
+    tile = _services(now, trading_team=mac_module._trading_team(folder))["trading_team"]
     assert tile.state == "ok" and tile.value == "1 offen · 2 Schatten" and "Guthaben" in tile.detail
     (folder / "state.json").write_text(json.dumps({"mode": "LIVE", "open": []}))
-    tile = _services(NOW, trading_team=mac_module._trading_team(folder))["trading_team"]
+    tile = _services(now, trading_team=mac_module._trading_team(folder))["trading_team"]
     assert tile.state == "fail" and "PAPER_ONLY" in tile.reason
+    (folder / "state.json").write_text("{kaputt")
+    tile = _services(now, trading_team=mac_module._trading_team(folder))["trading_team"]
+    assert tile.state == "warn" and "nicht lesbar" in tile.reason
+
+
+def test_healthy_validator_is_green_without_reason() -> None:
+    tile = _services(NOW, svc_validator={"check_timestamp": NOW.isoformat(), "overall_status": "HEALTHY", "checks_pass": 19, "checks_total": 19})["validator"]
+    assert tile.state == "ok" and tile.reason == ""
 
 
 def test_mac_model_without_any_source_is_grey_not_green(tmp_path: Path) -> None:

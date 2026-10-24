@@ -147,7 +147,7 @@ section>h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:va
 @media (max-width:700px){.chartbox{overflow-x:auto;-webkit-overflow-scrolling:touch}.chartbox .tc-svg{min-width:820px}}
 .dir-long{color:var(--ok);font-weight:700}.dir-short{color:var(--fail);font-weight:700}
 .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.box p{margin:0 0 6px}.box p:last-child{margin:0}
+.box{overflow-wrap:anywhere}.events{overflow-wrap:anywhere}.box p{margin:0 0 6px}.box p:last-child{margin:0}
 .now li{list-style:none;padding:8px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:150px 1fr;gap:4px 12px}
 .now li:last-child{border-bottom:0}.now ul{margin:0;padding:0}.now b{font-weight:700}
 @media (max-width:560px){.now li{grid-template-columns:1fr}}
@@ -228,7 +228,10 @@ def local_time(value: Any, with_date: bool = False) -> str:
     moment = value if isinstance(value, datetime) else _parse_time(value)
     if moment is None:
         return "—"
-    local = moment.astimezone(LOCAL)
+    try:
+        local = moment.astimezone(LOCAL)
+    except (OverflowError, OSError, ValueError):
+        return "—"
     return local.strftime("%d.%m. %H:%M") if with_date else local.strftime("%H:%M")
 
 
@@ -535,7 +538,7 @@ def mac_body(model: dict[str, Any]) -> str:
         + f"<section aria-labelledby='h-now'><h2 id='h-now'>Gerade jetzt</h2><div class='need now'><ul>{now_rows}</ul></div></section>"
         + f"<section id='worker' aria-labelledby='h-worker'><h2 id='h-worker'>Issue-Worker</h2>{_grid(model.get('worker') or [])}"
         + "".join(worker_extra) + lists
-        + "<p class='note'><a href='http://127.0.0.1:8767/'>Volles Worker-Dashboard</a> (nur auf dem Mac oder im Tailnet erreichbar)</p></section>"
+        + "<p class='note'><a href='http://127.0.0.1:8767/'>Volles Worker-Dashboard</a> (Link funktioniert nur direkt am Mac)</p></section>"
         + f"<section id='dienste' aria-labelledby='h-svc'><h2 id='h-svc'>Dienste im Hintergrund</h2>{_grid(model.get('services') or [])}"
         + "<p class='note'>Jede Kachel zeigt das letzte Lebenszeichen des Dienstes aus seiner Statusdatei. Ist es älter als sein Takt erlaubt, wird die Kachel gelb.</p></section>"
         + _more_pages("mac")
