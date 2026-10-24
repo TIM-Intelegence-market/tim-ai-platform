@@ -51,3 +51,18 @@ async def test_restart_replays_from_persisted_boundary_and_flushes_raw_bucket():
     await app.restore_persisted_state()
     assert repo.recovery_since==at
     assert [(item.open_time,item.close,item.trade_count) for item in repo.recovered]==[(at+timedelta(minutes=1),101,1)]
+
+
+@pytest.mark.asyncio
+async def test_later_restore_keeps_a_running_stream_running():
+    # Regression: an enrichment repair calls restore_persisted_state() while the
+    # stream is live; it used to reset the flag to "starting" for the rest of
+    # the process lifetime, so every page showed the live stream as RED.
+    at=datetime(2026,7,20,tzinfo=timezone.utc)
+    case=ResearchCase("case_persisted","BTCUSDT","1m",at,at,status="CLOSED")
+    app=TIMApplication.__new__(TIMApplication);app.repository=PersistedRepository(case);app.history={"1m":[],"5m":[],"15m":[],"1h":[]};app.memory=MarketMemory();app.cases=ResearchCaseEngine();app.observations=ObservationEngine();app.dashboard_state=DashboardState()
+    await app.restore_persisted_state()
+    assert app.dashboard_state.system_health["stream"]=="starting"
+    app.dashboard_state.system_health["stream"]="running"
+    await app.restore_persisted_state()
+    assert app.dashboard_state.system_health["stream"]=="running"

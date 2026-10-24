@@ -60,3 +60,10 @@ exports/
 
 # Rust build output of local tools
 tools/*/target/
+
+# Raw OpenMarket captures (scripts/openmarket_capture_samples.py)
+openmarket-samples/
+
+# Lokaler Zustand der Trading-Skills (.claude/skills, Journale und Berichte)
+/state/
+/reports/

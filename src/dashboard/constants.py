@@ -10,6 +10,9 @@ VISIBLE_LIMIT = 50
 ORDERFLOW_VISIBLE_LIMIT = 100
 
 
+CHART_CANDLE_LIMIT = 500  # /chart: newest candles kept per timeframe (same depth as runtime history)
+
+
 HISTORY_LIMIT = 2000  # /api/orderflow/history: newest observations and validations each
 MAX_RESPONSE_BYTES = 2_000_000
 

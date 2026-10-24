@@ -317,6 +317,10 @@ class OrderflowInterpretation:
     statements: tuple[OrderflowStatement, ...]
     confidence: Decimal
     missing_data: tuple[str, ...]
+    # Funding, liquidations, OI series, orderbook depth (see positioning.py); empty when not supplied.
+    positioning: dict[str, Any] = field(default_factory=dict)
+    # Volume profile / TPO reading; empty when not supplied.
+    profile: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not (ZERO <= self.confidence <= Decimal("1")):
@@ -332,6 +336,8 @@ class OrderflowInterpretation:
             "statements": [item.to_dict() for item in self.statements],
             "confidence": _text(self.confidence),
             "missing_data": list(self.missing_data),
+            "positioning": self.positioning,
+            "profile": self.profile,
         }
 
 

@@ -87,7 +87,7 @@ evidence but may not self-approve V2.
 | V2-B02 DATA_GAPs | 283 current canonical ranges and no signed immutable ledger | **OPEN** |
 | V2-B03 Artifact Audit | Frozen artifact reports 13/15 and `FAIL` | **FAIL / OPEN** |
 | V2-B04 Research Quality | Frozen quality artifact reports `FAIL` | **FAIL / OPEN** |
-| V2-B05 Historical Provenance | Legacy limitations remain; backfill policy conflicts | **OPEN / CONFLICT** |
+| V2-B05 Historical Provenance | Prospective boundary 2026-10-24T00:51:14Z approved, legacy limitation approved, no backfill ([inventory](historical_provenance_inventory.md)) | **VERIFIED** (2026-10-24) |
 | V2-B06 Manual Scientific Review | No completed named independent review | **WAITING / OPEN** |
 | V2-B07 HC-1.0 governance | No Release Authority approval | **OPEN** |
 | V2-B08 Formal responsibility matrix | Generic roles do not constitute named sign-off | **OPEN** |

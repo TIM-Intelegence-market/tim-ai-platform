@@ -1,4 +1,4 @@
-"""Constants fixed by docs/research_lab/PROTOKOLL.md (version 1.0).
+"""Constants fixed by docs/research_lab/PROTOKOLL.md (version 1.1, see its change log).
 
 Changing a value here requires a matching entry in the protocol's change log.
 """
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 
-PROTOCOL_VERSION = "1.0"
+PROTOCOL_VERSION = "1.1"
 
 
 class Split(StrEnum):
