@@ -335,3 +335,33 @@ def test_bot_setup_marks_knowledge_only_channels(tmp_path: Path, capsys) -> None
     assert "knowledge_only=1" in capsys.readouterr().out
     typo = iter([f"{CHANNEL}=market-updates", "999999999999999999", "direct", ""])
     assert bot.main(common, ask=lambda _: next(typo)) != 0
+
+
+def test_switching_a_synced_channel_to_knowledge_covers_its_stored_messages(tmp_path: Path) -> None:
+    text = "btc short from 83800, tp 82000, invalid above 84500"
+    first = FakeDiscord([(200, [discord_message(300000000000000001, MEMBER, text)], {})])
+    calls_config = GoatHubConfig((GoatHubChannel(KNOWLEDGE_CHANNEL, "education"),), "direct")
+    GoatHubReader(SecretValue("s"), calls_config, GoatHubFeedStore(tmp_path), http_get=first, clock=lambda: NOW, sleep=lambda _: None).sync()
+    assert len(good_calls(GoatHubFeedStore(tmp_path).load(), reference_price=Decimal("83300"))) == 1
+    GoatHubFeedStore(tmp_path).set_cursor(CHANNEL, "1")  # other state survives role writes
+    second = FakeDiscord([(200, [], {})])
+    knowledge_config = GoatHubConfig((GoatHubChannel(KNOWLEDGE_CHANNEL, "education", "knowledge"),), "direct")
+    GoatHubReader(SecretValue("s"), knowledge_config, GoatHubFeedStore(tmp_path), http_get=second, clock=lambda: NOW, sleep=lambda _: None).sync()
+    store = GoatHubFeedStore(tmp_path)
+    assert good_calls(store.load(), reference_price=Decimal("83300")) == []
+    assert store.cursors() == {KNOWLEDGE_CHANNEL: "300000000000000001", CHANNEL: "1"}
+    assert second.urls[0].endswith("after=300000000000000001&limit=100")
+
+
+def test_screen_import_keeps_knowledge_messages_out_of_the_calls(tmp_path: Path) -> None:
+    from src.knowledge.goathub_feed import import_screen_readings
+
+    store = GoatHubFeedStore(tmp_path)
+    payload = [{"channel_id": "education", "channel_name": "education", "author": "teacher", "channel_role": "knowledge",
+                "posted_at": "2026-10-12T10:00:00+00:00", "content": "Long BTC at 60000, SL 58000"}]
+    assert import_screen_readings(store, payload, NOW) == (1, 0)
+    assert good_calls(GoatHubFeedStore(tmp_path).load()) == []
+    other = [{**payload[0], "channel_id": "edu2", "channel_role": ""}]
+    store.set_channel_role("edu2", "knowledge")  # a channel known as knowledge from a sync
+    import_screen_readings(store, other, NOW)
+    assert good_calls(GoatHubFeedStore(tmp_path).load()) == []

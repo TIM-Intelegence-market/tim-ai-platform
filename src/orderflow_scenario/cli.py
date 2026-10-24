@@ -205,7 +205,11 @@ def main(argv: list[str] | None = None) -> int:
         output = analysis.to_dict()
         sys.stdout.write(json.dumps(output, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
         if args.setup_draft is not None:
-            args.setup_draft.expanduser().write_text(build_setup_draft(analysis), encoding="utf-8")
+            try:
+                args.setup_draft.expanduser().write_text(build_setup_draft(analysis), encoding="utf-8")
+            except OSError as exc:
+                sys.stderr.write(f"ERROR: --setup-draft could not be written: {exc}\n")
+                return 2
 
         if args.validate:
             ok, errors = validate_analysis(output)

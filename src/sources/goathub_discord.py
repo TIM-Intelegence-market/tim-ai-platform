@@ -221,6 +221,7 @@ class GoatHubReader:
         return [self.sync_channel(channel) for channel in self.config.channels]
 
     def sync_channel(self, channel: GoatHubChannel) -> SyncResult:
+        self.store.set_channel_role(channel.channel_id, channel.role)
         after = self.store.cursors().get(channel.channel_id, "0")
         fetched = stored = duplicates = rejected = empty = 0
         complete = False

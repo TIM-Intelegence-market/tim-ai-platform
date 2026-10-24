@@ -22,6 +22,11 @@ def _safe(text: str) -> str:
     return text if report_is_safe(text) else "(Text siehe Audit)"
 
 
+def _no_mentions(text: str) -> str:
+    """A zero-width space after '@' keeps @everyone, @here and user/role mentions from pinging when posted."""
+    return text.replace("@", "@\u200b")
+
+
 def _num(value: object) -> str:
     return format(value, "f") if hasattr(value, "quantize") else str(value)
 
@@ -73,7 +78,7 @@ def build_setup_draft(analysis: AnalysisOutput) -> str:
             body.append("Beobachtet (noch kein Setup):")
             body.extend(scenarios)
     tail = ["", f"_{DISCLAIMER}_"]
-    text = "\n".join(head + body)
+    text = _no_mentions("\n".join(head + body))
     room = MAX_DRAFT_CHARS - len("\n".join(tail)) - 2
     if len(text) > room:
         text = text[: room - 1].rstrip() + "…"

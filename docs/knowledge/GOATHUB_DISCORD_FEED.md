@@ -118,10 +118,14 @@ Education und Bootcamp laufen erst nach ausdrücklicher Freigabe.
 **Kanalrollen:** `setup` fragt nach den Kanälen, die nur Wissen liefern. Sie stehen in der Config
 mit `"role": "knowledge"`, alle anderen mit `"role": "calls"` (Standard, auch für ältere Configs).
 Nachrichten aus Wissenskanälen werden gespeichert und exportiert (Überschrift „nur Wissen, keine
-Calls“), aber nie als Call erkannt und nie im TIM-Bericht gezeigt. Die Rolle wird beim Abholen an
-jeder Nachricht gespeichert: Wer einen Kanal später umstellt, ändert nur neue Nachrichten. Für
-bereits gespeicherte gilt die alte Rolle, bis der Feed neu aufgebaut wird. Eine unbekannte Rolle in
-einer gespeicherten Zeile zählt als Wissen, nie als Call.
+Calls“), aber nie als Call erkannt und nie im TIM-Bericht gezeigt. `sync` merkt sich die Rolle je
+Kanal im Feed (`state.json`): Wird ein Kanal auf Wissen umgestellt, gilt das ab dem nächsten `sync`
+auch für seine schon gespeicherten Nachrichten. Umgekehrt bleibt eine einmal als Wissen
+gespeicherte Nachricht Wissen. Eine unbekannte Rolle in einer gespeicherten Zeile zählt als Wissen,
+nie als Call. `import-screen` nimmt `"channel_role": "knowledge"` je Eintrag an.
+
+Im Modus `forward` gilt die Rolle für den eigenen Weiterleitungskanal: Lehrmaterial nicht in einen
+Call-Kanal weiterleiten, sondern in einen eigenen Kanal mit Rolle Wissen.
 
 ## Setup-Entwurf für den Setup-Kanal
 

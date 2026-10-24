@@ -26,7 +26,7 @@ def test_no_trade_draft_says_so_and_carries_the_disclaimer() -> None:
 def test_draft_never_shows_scores_or_exceeds_the_discord_limit() -> None:
     analysis = Pipeline().run(pipeline_inputs())
     draft = build_setup_draft(analysis)
-    assert len(draft) <= MAX_DRAFT_CHARS + 120  # disclaimer is appended after the fitted body
+    assert len(draft) <= MAX_DRAFT_CHARS
     assert "score" not in draft.lower()
 
 
@@ -70,3 +70,21 @@ def test_trade_plan_draft_shows_levels_invalidation_and_evidence_gaps() -> None:
     assert format(plan.target_1, "f") in draft and "Ungültig, wenn:" in draft
     assert "Chance/Risiko" in draft and draft.rstrip().endswith(f"_{DISCLAIMER}_")
     assert len(draft) <= MAX_DRAFT_CHARS
+
+
+def test_cli_reports_an_unwritable_draft_path_without_traceback(tmp_path: Path, capsys, monkeypatch) -> None:
+    from src.orderflow_scenario import cli
+
+    source = tmp_path / "input.json"
+    source.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(cli, "_pipeline_inputs", lambda adapter, data: pipeline_inputs())
+    assert cli.main(["--input", str(source), "--setup-draft", str(tmp_path / "missing" / "draft.md")]) == 2
+    assert "--setup-draft could not be written" in capsys.readouterr().err
+
+
+def test_mentions_in_the_draft_cannot_ping() -> None:
+    analysis = Pipeline().run(pipeline_inputs())
+    noisy = replace(analysis, decision=replace(analysis.decision, reason_codes=("@everyone", "<@123456789012345678>", "@here")))
+    draft = build_setup_draft(noisy)
+    assert "@everyone" not in draft and "@here" not in draft and "<@1" not in draft
+    assert "@\u200beveryone" in draft
