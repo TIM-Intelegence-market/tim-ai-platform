@@ -146,7 +146,7 @@ def display_only(policy: dict[str, Any], changed_files: Iterable[str]) -> bool:
 
 
 def active_studies(policy: dict[str, Any], now: datetime, exists: Callable[[str], bool]) -> list[dict[str, Any]]:
-    """Studies that started and have no end marker in the live checkout or the target commit.
+    """Studies that started, have no end marker in the live checkout or the target commit, and were not released.
 
     Each returned study carries its resolved display-safe lists, so :func:`study_blockers` needs no policy.
     """
@@ -158,6 +158,9 @@ def active_studies(policy: dict[str, Any], now: datetime, exists: Callable[[str]
         marker = study.get("ended_marker")
         if marker and exists(marker):
             continue
+        released = parse_time(study.get("released_at_utc"))
+        if released is not None and now >= released:
+            continue  # the owner lifted the hold; the study keeps running, deploys no longer wait for it
         active.append({**study, **display_rules(policy, study)})
     return active
 

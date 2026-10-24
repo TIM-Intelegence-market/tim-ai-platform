@@ -11,6 +11,9 @@ from src.operational import dashboard_refresh as dr
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = dr.load_policy(ROOT / "ops/dashboard_refresh/policy.json")
+# The S-K study as it held deploys before Uzi released it (24.10.): the hold mechanism stays tested.
+STUDY_POLICY = {**POLICY, "studies": [{key: value for key, value in POLICY["studies"][0].items()
+                                       if not key.startswith("released")}]}
 NOW = datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc)
 GREEN = {"status": "completed", "conclusion": "success", "completed_at_utc": "2026-10-24T11:00:00Z", "url": "u", "id": 7}
 
@@ -85,11 +88,11 @@ def test_display_only_and_default_rules_are_shared_by_studies():
     own = {"id": "X", "display_safe_prefixes": ["only/"]}
     assert dr.display_rules(POLICY, own)["display_safe_prefixes"] == ["only/"]
     assert dr.display_rules(POLICY, own)["display_safe_files"] == []
-    assert dr.display_rules(POLICY, POLICY["studies"][0]) == dr.display_rules(POLICY)
+    assert dr.display_rules(STUDY_POLICY, STUDY_POLICY["studies"][0]) == dr.display_rules(POLICY)
 
 
 def test_furthest_unblocked_picks_the_newest_clean_ancestor():
-    studies = dr.active_studies(POLICY, NOW, lambda path: False)
+    studies = dr.active_studies(STUDY_POLICY, NOW, lambda path: False)
     diffs = {"b": ["docs/a.md"], "c": ["docs/a.md", "main.py"], "d": ["docs/a.md", "main.py", "src/dashboard/x.py"]}
     assert dr.furthest_unblocked(["b", "c", "d"], diffs.__getitem__, studies) == ("b", {"V2_SK_CONTROL_REGIME_V1": ["main.py"]})
     assert dr.furthest_unblocked(["c", "d"], diffs.__getitem__, studies) == (None, {"V2_SK_CONTROL_REGIME_V1": ["main.py"]})
@@ -102,7 +105,7 @@ def test_campaign_beats_ci_and_up_to_date_is_not_a_hold_reason():
 
 
 def test_sk_study_lets_only_display_changes_through():
-    studies = dr.active_studies(POLICY, NOW, lambda path: False)
+    studies = dr.active_studies(STUDY_POLICY, NOW, lambda path: False)
     assert [study["id"] for study in studies] == ["V2_SK_CONTROL_REGIME_V1"]
     safe = ["src/dashboard/operations.py", "docs/x.md", "tests/test_x.py", "tools/mac-worker-dashboard/src/main.rs",
             "src/orderflow/README.md", "artifacts/v2_completion/sk_t0_record.json", "scripts/dashboard_refresh.py",
@@ -116,8 +119,16 @@ def test_sk_study_lets_only_display_changes_through():
 
 
 def test_study_ends_with_marker_and_does_not_start_early():
-    assert dr.active_studies(POLICY, NOW, lambda path: path.endswith("sk_end_record.json")) == []
-    assert dr.active_studies(POLICY, datetime(2026, 10, 23, 13, 0, tzinfo=timezone.utc), lambda path: False) == []
+    assert dr.active_studies(STUDY_POLICY, NOW, lambda path: path.endswith("sk_end_record.json")) == []
+    assert dr.active_studies(STUDY_POLICY, datetime(2026, 10, 23, 13, 0, tzinfo=timezone.utc), lambda path: False) == []
+
+
+def test_released_study_no_longer_holds_deploys():
+    released = datetime(2026, 10, 24, 23, 30, 5, tzinfo=timezone.utc)
+    assert [study["id"] for study in dr.active_studies(POLICY, released - timedelta(seconds=1), lambda path: False)] == [
+        "V2_SK_CONTROL_REGIME_V1"]
+    assert dr.active_studies(POLICY, released, lambda path: False) == []
+    assert POLICY["studies"][0]["released_by"] == "Uzi"
 
 
 def test_pytest_counts_reads_last_summary_line():
@@ -300,7 +311,7 @@ def test_waits_for_ci_job_and_red_ci(live):
 
 def test_study_holds_detector_change(live):
     origin, root, mac, agent = live
-    agent.policy = {**agent.policy, "studies": POLICY["studies"]}
+    agent.policy = {**agent.policy, "studies": STUDY_POLICY["studies"]}
     new_commit(origin, "src/orderflow/observations.py", "changed\n")
     status = agent.run_once()
     assert status["decision"]["reason"] == "study_protected_paths"
@@ -356,7 +367,7 @@ def test_squash_merge_found_through_the_pull_request_api(live):
 
 def test_mixed_commit_no_longer_holds_the_display_fixes_before_it(live):
     origin, root, mac, agent = live
-    agent.policy = {**agent.policy, "studies": POLICY["studies"]}
+    agent.policy = {**agent.policy, "studies": STUDY_POLICY["studies"]}
     display_fix = new_commit(origin, "src/dashboard/page.py", "fix\n")
     mixed = new_commit(origin, "main.py", "print(2)\n")
     later_display = new_commit(origin, "docs/x.md", "doc\n")
