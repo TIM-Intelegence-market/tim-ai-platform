@@ -37,7 +37,7 @@ AREAS: list[dict[str, Any]] = [
      "pages": [("Worker-Dashboard", "http://127.0.0.1:8767/", "Volles Dashboard des Issue-Workers"),
                ("Health Center", "/health", "Watchdog und Gesundheitsprüfungen"),
                ("Zeitleiste", "/timeline", "Ereignisse von Watchdog, Backup und Kampagne")]},
-    {"key": "forschung", "label": "Forschung", "href": "/neu/forschung", "built": False,
+    {"key": "forschung", "label": "Forschung", "href": "/neu/forschung", "built": True,
      "text": "Research Cases, Signale, Orderflow, Analytics, Insights und Qualifikation.",
      "pages": [("Research Cases", "/cases", "Alle Fälle mit Status und Beweislage"),
                ("Beobachtungen", "/observations", "Jüngste Beobachtungen der Detektoren"),
@@ -47,7 +47,7 @@ AREAS: list[dict[str, Any]] = [
                ("Insights", "/insights", "Rückblickende Auswertung"),
                ("Unabhängige Fälle", "/independent-cases", "Fälle für die Qualifizierung"),
                ("Qualifikation", "/qualification", "Stand der Qualifizierungskampagne")]},
-    {"key": "betrieb", "label": "Betrieb", "href": "/neu/betrieb", "built": False,
+    {"key": "betrieb", "label": "Betrieb", "href": "/neu/betrieb", "built": True,
      "text": "Runtime, Datenqualität, Lücken, Health, Zeitleiste und Ausnahmen.",
      "pages": [("Runtime", "/runtime", "Prozess, Queue, Cursor, Logs"),
                ("Datenqualität", "/data-quality", "Abdeckung der Datenräume"),
@@ -55,7 +55,7 @@ AREAS: list[dict[str, Any]] = [
                ("Health Center", "/health", "Watchdog und Gesundheitsprüfungen"),
                ("Zeitleiste", "/timeline", "Ereignisse von Watchdog, Backup und Kampagne"),
                ("Ausnahmen", "/exceptions", "Datenqualitäts-Ausnahmen")]},
-    {"key": "system", "label": "System & Freigabe", "href": "/neu/system", "built": False,
+    {"key": "system", "label": "System & Freigabe", "href": "/neu/system", "built": True,
      "text": "V2-Freigabe, Sicherheit, Audit, MCP und Deploy-Verlauf.",
      "pages": [("V2 Readiness", "/v2-readiness", "Gates, Blocker und Verantwortliche"),
                ("Security", "/security", "PostgreSQL-Sicherheitsprüfung"),
@@ -172,7 +172,7 @@ section>h2 a{color:inherit}
 @media (max-width:700px){.chartbox{overflow-x:auto;-webkit-overflow-scrolling:touch}.chartbox .tc-svg{min-width:820px}}
 .dir-long{color:var(--ok);font-weight:600}.dir-short{color:var(--fail);font-weight:600}
 .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;overflow-wrap:anywhere}
-.grid+.box,.box+.note{margin-top:12px}
+.grid+.box,.box+.note,.grid+.scroll{margin-top:12px}main>.need{margin-bottom:20px}
 .events{overflow-wrap:anywhere}.box p{margin:0 0 6px}.box p:last-child{margin:0}
 .now li{display:grid;grid-template-columns:160px 1fr;gap:4px 16px}
 @media (max-width:560px){.now li{grid-template-columns:1fr}}
@@ -264,7 +264,7 @@ def _tile(tile: dict[str, Any]) -> str:
     """One status row: state, label, value with reason, then as-of time and source."""
     state = tile.get("state") or "unknown"
     info = (tile.get("extra") or {}).get("kind") == "info"
-    label = "" if info and state == "ok" else STATE_LABELS.get(state, state)
+    label = "" if info and state == "ok" else ((tile.get("extra") or {}).get("state_label") or STATE_LABELS.get(state, state))
     value = _e(tile.get("value"))
     if tile.get("href"):
         value = f"<a href='{_e(tile['href'])}'>{value}</a>"
@@ -277,7 +277,7 @@ def _tile(tile: dict[str, Any]) -> str:
     if as_of:
         stamp = (f"<span>Stand {local_time(as_of, True)}, <time data-asof='{_e(as_of)}'>{_e(human_age(tile.get('age_seconds')))}</time></span>")
     return (
-        f"<article class='tile s-{_e(state)}{' k-info' if info else ''}' id='t-{_e(tile.get('id'))}'>"
+        f"<article class='tile s-{_e(state)}{' k-info' if info else ''}{' k-parked' if (tile.get('extra') or {}).get('kind') == 'parked' else ''}' id='t-{_e(tile.get('id'))}'>"
         f"<span class='tile__state'>{_e(label)}</span>"
         f"<span class='tile__label'>{_e(tile.get('label'))}</span>"
         f"<div class='tile__body'><div class='tile__value'>{value}</div>"
@@ -593,6 +593,67 @@ def mac_body(model: dict[str, Any]) -> str:
         + "<p class='note'>Jede Kachel zeigt das letzte Lebenszeichen des Dienstes aus seiner Statusdatei. Ist es älter als sein Takt erlaubt, wird die Kachel gelb.</p></section>"
         + _more_pages("mac")
     )
+
+
+def _table(table: Any) -> str:
+    """A small table of cells ({text, href}); links stay inside this dashboard."""
+    if not isinstance(table, dict) or not table.get("rows"):
+        return ""
+    head = "".join(f"<th>{_e(h)}</th>" for h in table.get("head") or [])
+
+    def cell(c: Any) -> str:
+        if not isinstance(c, dict):
+            return f"<td>{_e(c)}</td>"
+        href = str(c.get("href") or "")
+        text = _e(c.get("text"))
+        if href.startswith("/") and not href.startswith("//") and "\\" not in href:
+            text = f"<a href='{_e(href)}'>{text}</a>"
+        return f"<td>{text}</td>"
+
+    rows = "".join("<tr>" + "".join(cell(c) for c in row) + "</tr>" for row in table["rows"] if isinstance(row, list))
+    return f"<div class='scroll'><table class='tbl'><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table></div>"
+
+
+def sections_body(model: dict[str, Any]) -> str:
+    """The refreshable part of Forschung, Betrieb and System & Freigabe."""
+    key = str(model.get("area") or "")
+    parked = model.get("parked") or 0
+    out = [_head(AREA_BY_KEY[key]["label"] if key in AREA_BY_KEY else str(model.get("title") or ""), model,
+                 model.get("overall") or "unknown", _headline(model))]
+    needs = model.get("attention") or []
+    if needs:
+        out.append("<div class='need'><ul>" + "".join(
+            f"<li><b class='s-{_e(t.get('state'))}'>{_e(STATE_LABELS.get(t.get('state'), t.get('state')))}</b>"
+            f"<span><a href='#t-{_e(t.get('id'))}'>{_e(t.get('label'))}</a>: {_e(t.get('reason'))}</span></li>"
+            for t in needs) + "</ul></div>")
+    if parked:
+        out.append(f"<p class='note'>{_e(parked)} {'Punkt wartet' if parked == 1 else 'Punkte warten'} bewusst auf einen Menschen "
+                   "oder gelten gerade nicht (grau mit eigenem Wort). Das ist kein Fehler.</p>")
+    for section in model.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
+        sid = _e(section.get("id"))
+        tiles = [t for t in section.get("tiles") or [] if isinstance(t, dict)]
+        table = _table(section.get("table"))
+        body = (_grid(tiles) if tiles else "") + table
+        if not table and section.get("empty"):
+            body += f"<p class='empty'>{_e(section['empty'])}</p>"
+        if section.get("note"):
+            body += f"<p class='note'>{_e(section['note'])}</p>"
+        out.append(f"<section id='{sid}' aria-labelledby='h-{sid}'><h2 id='h-{sid}'>{_e(section.get('title'))}</h2>{body}</section>")
+    slow = [f"{name} ({info.get('error') or ('letzter Stand von vor ' + str(info.get('stale_seconds')) + ' s' if info.get('stale_seconds') is not None else 'keine Antwort')})"
+            for name, info in (model.get("sources") or {}).items()
+            if isinstance(info, dict) and (not info.get("ok") or info.get("stale_seconds") is not None)]
+    if slow:
+        out.append(f"<p class='note'>Langsame oder fehlende Quellen: {_e('; '.join(slow))}</p>")
+    if key in AREA_BY_KEY:
+        out.append(_more_pages(key))
+    return "".join(out)
+
+
+def render_sections(model: dict[str, Any]) -> str:
+    key = str(model.get("area") or "")
+    return page(AREA_BY_KEY[key]["label"], key, sections_body(model), refresh=True)
 
 
 def page(title: str, active: str, body: str, refresh: bool, fragment: str | None = None) -> str:

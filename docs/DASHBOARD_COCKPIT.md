@@ -1,6 +1,6 @@
 # Neues Control Center (Cockpit) unter /neu
 
-Stand: 24.10.2026, Pakete P1 und P2 des Bauplans "Neues TIM-Dashboard", dazu der Bereich "Mac jetzt" auf Uzis Wunsch.
+Stand: 24.10.2026, Pakete P1 bis P3 des Bauplans "Neues TIM-Dashboard", dazu der Bereich "Mac jetzt" auf Uzis Wunsch.
 
 Das neue Control Center läuft im selben Prozess wie das bisherige (Port 8765) und
 ist unter `http://127.0.0.1:8765/neu` erreichbar. Die bisherigen Seiten bleiben
@@ -13,13 +13,32 @@ unverändert, bis Uzi das neue Dashboard abnimmt und umgeschaltet wird (Paket P4
 | Lage (Startseite) | `/neu` | gebaut (P1) |
 | Markt & Pläne | `/neu/markt?tf=15m` | gebaut (P2): Chart mit Plänen, Vorbereitung, Plan- und Trader-Journal |
 | Mac jetzt | `/neu/mac` | gebaut: CI-Lauf, Issue-Worker, Hintergrunddienste |
-| Forschung | `/neu/forschung` | verweist auf die bisherigen Seiten, Neubau in P3 |
-| Betrieb | `/neu/betrieb` | verweist auf die bisherigen Seiten, Neubau in P3 |
-| System & Freigabe | `/neu/system` | verweist auf die bisherigen Seiten, Neubau in P3 |
+| Forschung | `/neu/forschung` | gebaut (P3): Validator, Research Cases, Beobachtungen, Qualifizierung |
+| Betrieb | `/neu/betrieb` | gebaut (P3): Gesundheit, Datenpipeline, Datenqualität und Lücken, Zeitleiste |
+| System & Freigabe | `/neu/system` | gebaut (P3): Betriebsart und Handelssperre, V2-Gates, Sicherheit, Nachweise |
 
-Maschinenlesbar: `GET /api/cockpit?area=lage|markt|mac` (Modell eines Bereichs, ohne
-`area` die Startseite), `GET /neu?fragment=1`, `/neu/markt?tf=1h&fragment=1`,
-`/neu/mac?fragment=1` (neu gerenderter Seiteninhalt für die Aktualisierung alle 30 Sekunden).
+Maschinenlesbar: `GET /api/cockpit?area=lage|markt|mac|forschung|betrieb|system` (Modell eines
+Bereichs, ohne `area` die Startseite), `GET /neu?fragment=1`, `/neu/markt?tf=1h&fragment=1`,
+`/neu/<bereich>?fragment=1` (neu gerenderter Seiteninhalt für die Aktualisierung alle 30 Sekunden).
+
+## Forschung, Betrieb, System: Aufbau
+
+Alle drei lesen den TIM-Zustand (`/api/state`, Block `operations`); Betrieb zusätzlich
+Backup- und Server-Bericht wie die Startseite (`src/dashboard/cockpit/areas.py`).
+Jeder Bereich besteht aus Abschnitten mit Kacheln und höchstens einer kleinen Tabelle;
+die vollen Detailseiten des bisherigen Dashboards bleiben unten verlinkt.
+
+- Bewusst grau: Ein menschlicher Schritt (Freigabe, Integrity-Prüfung), die abgebrochene
+  Kampagne, ein Gate nur mit Archivwert und der externe MCP-Weg tragen ein eigenes Wort
+  ("Wartet auf euch", "Abgebrochen", "Nur Archiv", "Extern"). Sie bleiben sichtbar, färben
+  aber die Überschrift des Bereichs nicht, weil nichts kaputt ist.
+- Reine Messwerte (Empfangsrate, Neustarts gesamt) sind Information ohne Urteil. Bewertet
+  werden nur Werte mit eigener Grenze (Nachrichtenalter, Datenträger, Logs).
+- Messwerte ohne Wert in der Quelle stehen gesammelt in einer Zeile unter dem Abschnitt.
+- V2-Gates: Grüne Gates stehen nur in der Tabelle, Kacheln zeigen den Rest.
+- Handel gilt nur als gesperrt, wenn `trading_locked` und `execution_disabled` beide
+  wirklich `true` sind; sonst rot.
+- Ein unerwartetes Datenformat macht einen Abschnitt grau, nie die ganze Seite.
 
 ## Mac jetzt: Quellen
 
