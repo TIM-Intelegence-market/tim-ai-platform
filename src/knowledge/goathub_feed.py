@@ -28,9 +28,12 @@ from typing import Any, Iterable, Sequence
 from .broncx_feed import BroncxGuidance, parse_guidance
 
 __all__ = [
+    "CHANNEL_ROLES",
     "CommunityCall",
     "GoatHubFeedStore",
     "GoatHubMessage",
+    "ROLE_CALLS",
+    "ROLE_KNOWLEDGE",
     "default_goathub_dir",
     "extract_call",
     "good_calls",
@@ -45,6 +48,11 @@ SOURCE_FORWARD = "discord_forward"
 SOURCE_SCREEN = "discord_screen"  # read off the owner's own Discord window by Claude; transcribed, check the original when it matters
 SOURCE_FOLLOW = "discord_follow"  # Discord channel "Follow": the original channel posts into the owner's channel
 SOURCE_MANUAL = "discord_manual"
+# What a channel is for. "calls": messages are checked for trade calls. "knowledge": teaching
+# material (e.g. education, bootcamp); kept verbatim for reading, never turned into calls.
+ROLE_CALLS = "calls"
+ROLE_KNOWLEDGE = "knowledge"
+CHANNEL_ROLES = (ROLE_CALLS, ROLE_KNOWLEDGE)
 GOOD_GRADES = ("A", "B")
 # Reactions that make a call "liked by the community"; a count, not a vote on correctness.
 POPULAR_REACTIONS = 3
@@ -57,6 +65,13 @@ def default_goathub_dir() -> Path:
     if override:
         return Path(override).expanduser()
     return Path(__file__).resolve().parents[2] / "data" / "goathub_feed"
+
+
+def _stored_role(value: Any) -> str:
+    """Older lines have no role (they were all read as calls); an unknown value never becomes a call."""
+    if value in (None, ""):
+        return ROLE_CALLS
+    return str(value) if str(value) in CHANNEL_ROLES else ROLE_KNOWLEDGE
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,10 +88,13 @@ class GoatHubMessage:
     attachments: tuple[str, ...] = ()
     reactions: int = 0
     forwarded_by: str = ""
+    channel_role: str = ROLE_CALLS  # recorded when the message is stored; see CHANNEL_ROLES
 
     def __post_init__(self) -> None:
         if not self.message_id or not self.channel_id:
             raise ValueError("message_id and channel_id are required")
+        if self.channel_role not in CHANNEL_ROLES:
+            raise ValueError(f"channel_role must be one of {', '.join(CHANNEL_ROLES)}")
         if self.posted_at.tzinfo is None or self.received_at.tzinfo is None:
             raise ValueError("message timestamps must be timezone-aware")
         if not self.content.strip() and not self.attachments:
@@ -115,6 +133,7 @@ class GoatHubMessage:
             attachments=tuple(str(item) for item in payload.get("attachments") or ()),
             reactions=int(payload.get("reactions") or 0),
             forwarded_by=str(payload.get("forwarded_by") or ""),
+            channel_role=_stored_role(payload.get("channel_role")),
         )
 
 
@@ -229,8 +248,8 @@ def _community_symbol(text: str) -> str | None:
 
 def extract_call(message: GoatHubMessage, reference_price: Decimal | None = None) -> CommunityCall | None:
     """A call is a message that states a current direction; anything else is conversation."""
-    if not message.content.strip():
-        return None
+    if message.channel_role == ROLE_KNOWLEDGE or not message.content.strip():
+        return None  # knowledge channels hold teaching material, not calls
     text = _SL_TO.sub(r"\1 at ", _SL_ON.sub(r"\1 at", _PERCENT.sub(" ", message.content)))
     guidance = parse_guidance(text, reference_price)
     if guidance.bias not in {"SHORT", "LONG"} or guidance.direction_withdrawn:
@@ -285,7 +304,8 @@ def _quote(text: str) -> list[str]:
 
 
 def _channel_title(message: GoatHubMessage) -> str:
-    return f"#{message.channel_name}" if message.channel_name else f"Kanal {message.channel_id}"
+    title = f"#{message.channel_name}" if message.channel_name else f"Kanal {message.channel_id}"
+    return f"{title} (nur Wissen, keine Calls)" if message.channel_role == ROLE_KNOWLEDGE else title
 
 
 def _call_line(call: CommunityCall) -> str:

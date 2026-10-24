@@ -274,3 +274,64 @@ def test_community_calls_name_any_coin_and_ignore_sizes(text: str, grade: str, s
     assert call is not None and call.grade == grade
     assert call.guidance.symbol == symbol
     assert [(level.role, str(level.value)) for level in call.guidance.levels] == levels
+
+
+# --- channel roles (calls vs. knowledge only) ---------------------------------------------------
+
+KNOWLEDGE_CHANNEL = "133456789012345678"
+
+
+def test_knowledge_channel_messages_are_stored_but_never_calls(tmp_path: Path) -> None:
+    config = GoatHubConfig((GoatHubChannel(CHANNEL, "market-updates"), GoatHubChannel(KNOWLEDGE_CHANNEL, "education", "knowledge")), "direct")
+    text = "btc short from 83800, tp 82000, invalid above 84500"
+    fake = FakeDiscord([(200, [discord_message(300000000000000001, MEMBER, text)], {}),
+                        (200, [discord_message(300000000000000002, MEMBER, text)], {})])
+    GoatHubReader(SecretValue("test-secret"), config, GoatHubFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None).sync()
+    stored = {item.channel_id: item for item in GoatHubFeedStore(tmp_path).load()}
+    assert stored[KNOWLEDGE_CHANNEL].channel_role == "knowledge" and stored[CHANNEL].channel_role == "calls"
+    assert extract_call(stored[KNOWLEDGE_CHANNEL], Decimal("83300")) is None
+    assert [call.message.channel_id for call in good_calls(stored.values(), reference_price=Decimal("83300"))] == [CHANNEL]
+    export = write_memory_export(GoatHubFeedStore(tmp_path), [tmp_path / "memory"])
+    full = next(path for path in export if path.name == "GOATHUB_KANAL.md").read_text(encoding="utf-8")
+    assert "#education (nur Wissen, keine Calls)" in full and "1 gute Calls" in full
+
+
+def test_channel_role_is_validated_and_round_trips(tmp_path: Path) -> None:
+    with pytest.raises(DiscordFeedError):
+        GoatHubChannel(CHANNEL, "x", "signals")
+    path = tmp_path / "config.json"
+    config = GoatHubConfig((GoatHubChannel(CHANNEL, "a"), GoatHubChannel(KNOWLEDGE_CHANNEL, "b", "knowledge")), "direct")
+    path.write_text(json.dumps(config.to_dict()), encoding="utf-8")
+    assert GoatHubConfig.load(path) == config
+    path.write_text(json.dumps({"mode": "direct", "channels": [{"id": CHANNEL, "name": "old"}]}), encoding="utf-8")
+    assert GoatHubConfig.load(path).channels[0].role == "calls"  # configs from before roles keep reading calls
+
+
+def test_stored_lines_without_or_with_unknown_role_load_safely(tmp_path: Path) -> None:
+    store = GoatHubFeedStore(tmp_path)
+    tmp_path.mkdir(exist_ok=True)
+    base = message("1", "btc short from 83800, tp 82000, invalid above 84500").to_dict()
+    legacy = {key: value for key, value in base.items() if key != "channel_role"}
+    odd = {**base, "message_id": "2", "channel_role": "signals"}
+    store.messages_path.write_text(json.dumps(legacy) + "\n" + json.dumps(odd) + "\n", encoding="utf-8")
+    roles = {item.message_id: item.channel_role for item in store.load()}
+    assert roles == {"1": "calls", "2": "knowledge"}  # an unknown role never becomes a call
+    with pytest.raises(ValueError):
+        message("3", "gm", channel_role="signals")
+
+
+def test_bot_setup_marks_knowledge_only_channels(tmp_path: Path, capsys) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("goathub_discord_bot", Path(__file__).resolve().parents[1] / "scripts/goathub_discord_bot.py")
+    bot = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bot)
+    config = tmp_path / "goathub.json"
+    common = ["setup", "--config", str(config), "--secret-file", str(tmp_path / "secret")]
+    answers = iter([f"{CHANNEL}=market-updates, {KNOWLEDGE_CHANNEL}=education", KNOWLEDGE_CHANNEL, "direct", ""])
+    assert bot.main(common, ask=lambda _: next(answers)) == 0
+    roles = {channel.channel_id: channel.role for channel in GoatHubConfig.load(config).channels}
+    assert roles == {CHANNEL: "calls", KNOWLEDGE_CHANNEL: "knowledge"}
+    assert "knowledge_only=1" in capsys.readouterr().out
+    typo = iter([f"{CHANNEL}=market-updates", "999999999999999999", "direct", ""])
+    assert bot.main(common, ask=lambda _: next(typo)) != 0

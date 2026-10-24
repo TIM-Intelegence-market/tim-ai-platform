@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from config.secrets import SecretValue
-from src.knowledge.goathub_feed import SOURCE_DIRECT, SOURCE_FOLLOW, SOURCE_FORWARD, SOURCE_MANUAL, GoatHubFeedStore, GoatHubMessage
+from src.knowledge.goathub_feed import CHANNEL_ROLES, ROLE_CALLS, SOURCE_DIRECT, SOURCE_FOLLOW, SOURCE_FORWARD, SOURCE_MANUAL, GoatHubFeedStore, GoatHubMessage
 from src.sources.broncx_discord import (
     API_BASE,
     DiscordFeedError,
@@ -70,10 +70,13 @@ def default_config_path() -> Path:
 class GoatHubChannel:
     channel_id: str
     name: str = ""
+    role: str = ROLE_CALLS  # "calls": checked for trade calls; "knowledge": teaching material, never a call
 
     def __post_init__(self) -> None:
         if not _SNOWFLAKE.fullmatch(self.channel_id):
             raise DiscordFeedError("channel id must be a Discord id (15-21 digits); enable Developer Mode and use 'Copy Channel ID'")
+        if self.role not in CHANNEL_ROLES:
+            raise DiscordFeedError(f"channel role must be one of {', '.join(CHANNEL_ROLES)}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,14 +108,15 @@ class GoatHubConfig:
         if not isinstance(payload, dict):
             raise DiscordFeedError(f"config file must hold a JSON object: {path}")
         channels = tuple(
-            GoatHubChannel(str(item.get("id", "")), str(item.get("name") or "")) if isinstance(item, dict) else GoatHubChannel(str(item))
+            GoatHubChannel(str(item.get("id", "")), str(item.get("name") or ""), str(item.get("role") or ROLE_CALLS))
+            if isinstance(item, dict) else GoatHubChannel(str(item))
             for item in payload.get("channels") or ()
         )
         return cls(channels, str(payload.get("mode") or "forward"), frozenset(str(item) for item in payload.get("forwarder_ids") or ()))
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "channels": [{"id": channel.channel_id, "name": channel.name} for channel in self.channels],
+            "channels": [{"id": channel.channel_id, "name": channel.name, "role": channel.role} for channel in self.channels],
             "mode": self.mode,
             "forwarder_ids": sorted(self.forwarder_ids),
         }
@@ -189,6 +193,7 @@ def message_to_goathub(message: dict[str, Any], channel: GoatHubChannel, receive
         attachments=names,
         reactions=_reaction_count(message),
         forwarded_by=forwarded_by,
+        channel_role=channel.role,
     )
 
 

@@ -20,6 +20,7 @@ Setup guide: docs/knowledge/GOATHUB_DISCORD_FEED.md
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import sys
@@ -30,7 +31,7 @@ from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.knowledge.goathub_feed import GoatHubFeedStore, good_calls, import_screen_readings, write_memory_export  # noqa: E402
+from src.knowledge.goathub_feed import ROLE_KNOWLEDGE, GoatHubFeedStore, good_calls, import_screen_readings, write_memory_export  # noqa: E402
 from src.sources.broncx_discord import DiscordFeedError, load_bot_secret  # noqa: E402
 from src.sources.goathub_discord import (  # noqa: E402
     GoatHubChannel,
@@ -52,11 +53,16 @@ def write_private(path: Path, value: str) -> None:
 def setup(args: argparse.Namespace, ask: Callable[[str], str]) -> int:
     raw = [item.strip() for item in ask("Channel ID(s) to read, comma-separated (optionally id=name): ").split(",") if item.strip()]
     channels = tuple(GoatHubChannel(*(part.strip() for part in item.split("=", 1))) for item in raw)
+    knowledge = {item.strip() for item in ask("Knowledge-only channel IDs (teaching material, never read as calls; comma-separated, empty for none): ").split(",") if item.strip()}
+    unknown = knowledge - {channel.channel_id for channel in channels}
+    if unknown:
+        raise DiscordFeedError(f"knowledge-only ids are not in the channel list: {', '.join(sorted(unknown))}")
+    channels = tuple(dataclasses.replace(channel, role=ROLE_KNOWLEDGE) if channel.channel_id in knowledge else channel for channel in channels)
     mode = (ask("Mode: 'forward' (you forward posts into your own channel) or 'direct' (bot invited into GoatHub) [forward]: ").strip() or "forward").lower()
     forwarders = [item.strip() for item in ask("Your Discord user ID (several: comma-separated; empty in direct mode): ").split(",") if item.strip()]
     config = GoatHubConfig(channels, mode, frozenset(forwarders))
     write_private(args.config, json.dumps(config.to_dict(), indent=2) + "\n")
-    print(f"STORED config={args.config} channels={len(channels)} mode={mode}")
+    print(f"STORED config={args.config} channels={len(channels)} knowledge_only={len(knowledge)} mode={mode}")
     if not args.secret_file.exists():
         print(f"Bot secret not found at {args.secret_file}: run 'scripts/broncx_discord_bot.py setup' first (same bot).")
     print("Next: python scripts/goathub_discord_bot.py sync")

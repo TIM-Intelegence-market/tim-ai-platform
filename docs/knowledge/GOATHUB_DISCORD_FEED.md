@@ -113,8 +113,15 @@ Die Kanal-IDs stehen hier nicht. Sie werden beim `setup` lokal eingetragen (Entw
 **Danach** wie unter Einrichtung: `setup` mit Modus `direct`, dann `sync` (erwartet `stored=… complete=True`).
 
 **Offen vor dem Start:** Zustimmung der Kanalbetreiber und Autoren, Speicherdauer, Löschweg.
-Education und Bootcamp laufen erst nach ausdrücklicher Freigabe. Die Konfiguration kennt bisher
-keine Rolle je Kanal; „nur Wissen“ ist noch nicht im Code umgesetzt und wäre ein eigenes Paket.
+Education und Bootcamp laufen erst nach ausdrücklicher Freigabe.
+
+**Kanalrollen:** `setup` fragt nach den Kanälen, die nur Wissen liefern. Sie stehen in der Config
+mit `"role": "knowledge"`, alle anderen mit `"role": "calls"` (Standard, auch für ältere Configs).
+Nachrichten aus Wissenskanälen werden gespeichert und exportiert (Überschrift „nur Wissen, keine
+Calls“), aber nie als Call erkannt und nie im TIM-Bericht gezeigt. Die Rolle wird beim Abholen an
+jeder Nachricht gespeichert: Wer einen Kanal später umstellt, ändert nur neue Nachrichten. Für
+bereits gespeicherte gilt die alte Rolle, bis der Feed neu aufgebaut wird. Eine unbekannte Rolle in
+einer gespeicherten Zeile zählt als Wissen, nie als Call.
 
 ## Setup-Entwurf für den Setup-Kanal
 
