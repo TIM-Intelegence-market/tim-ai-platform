@@ -6,7 +6,7 @@ from urllib.request import urlopen
 
 from src.dashboard.app import DashboardServer, DashboardState
 from src.dashboard.pages.plan_journal import _plan_journal_page
-from src.dashboard.plan_journal import RULE_STRUCT, empty_journal, load, record_plans, update
+from src.dashboard.plan_journal import RULE_STRUCT, SCHEMA, empty_journal, load, record_plans, update
 from src.dashboard.structure_plan import candles_until, liquidity, structural_plan, structural_plans
 
 T0 = datetime(2026, 10, 21, 10, 0, tzinfo=timezone.utc)
@@ -112,12 +112,19 @@ def test_update_with_struct_rule_writes_its_own_file(tmp_path) -> None:
     assert stored["rule"] == RULE_STRUCT
     for entry in stored["entries"]:
         assert entry["rule"] == RULE_STRUCT and len(entry["targets"]) == 3
-    assert isinstance(stored.get("last_skips"), list)
+    assert isinstance(stored.get("last_skips"), list) and isinstance(stored.get("structure_skips"), dict)
+    # The view stays the fold of the log, also for the struct rule.
+    from src.dashboard import journal_log
+    from src.dashboard.plan_journal import events_path_for, fold
+
+    replay = fold(journal_log.read(events_path_for(path)).events)
+    assert {k: v for k, v in replay.items() if k not in {"checked_at", "log_seq", "log_head"}} == {
+        k: v for k, v in stored.items() if k not in {"checked_at", "log_seq", "log_head"}}
 
 
 def test_page_compares_both_rule_versions() -> None:
     tim = {**empty_journal(), "rule": "tim/1"}
-    struct = {**empty_journal(), "rule": RULE_STRUCT, "skipped": {"nächstes Ziel": 3}}
+    struct = {**empty_journal(), "rule": RULE_STRUCT, "structure_skips": {"nächstes Ziel": 3}}
     page = _plan_journal_page({}, tim, other=struct)
     assert "Zwei Regelversionen parallel" in page and "nächstes Ziel: 3" in page and "/journal/struct" in page
     page = _plan_journal_page({}, struct, other=tim)
@@ -137,6 +144,21 @@ def test_server_serves_struct_journal(tmp_path) -> None:
         with urlopen(f"http://127.0.0.1:{port}/journal", timeout=5) as response:
             assert "Zwei Regelversionen parallel" in response.read().decode()
         with urlopen(f"http://127.0.0.1:{port}/api/plan-journal?rule=struct", timeout=5) as response:
-            assert json.loads(response.read())["schema"] == "tim_plan_journal/1"
+            assert json.loads(response.read())["schema"] == SCHEMA
     finally:
         server.stop()
+
+
+def test_struct_skip_counts_survive_the_fold() -> None:
+    from src.dashboard.plan_journal import CANDLE_CLOSE_PROCESSED, STRUCTURE_PLANS_DROPPED, fold
+
+    reasons = ["LONG: nächstes Ziel nur 1,2 R entfernt"]
+    events = [
+        {"kind": CANDLE_CLOSE_PROCESSED, "recorded_at": "2026-10-24T14:00:30Z", "payload": {"close_time": "2026-10-24T14:00:00Z", "source_hash": "a", "rule": RULE_STRUCT}},
+        {"kind": STRUCTURE_PLANS_DROPPED, "recorded_at": "2026-10-24T14:00:30Z", "payload": {"close_time": "2026-10-24T14:00:00Z", "reasons": reasons}},
+        {"kind": STRUCTURE_PLANS_DROPPED, "recorded_at": "2026-10-24T14:15:30Z", "payload": {"close_time": "2026-10-24T14:15:00Z", "reasons": reasons}},
+        {"kind": CANDLE_CLOSE_PROCESSED, "recorded_at": "2026-10-24T14:30:30Z", "payload": {"close_time": "2026-10-24T14:30:00Z", "source_hash": "b", "rule": RULE_STRUCT}},
+    ]
+    journal = fold(events)
+    assert journal["rule"] == RULE_STRUCT and journal["structure_skips"] == {"nächstes Ziel": 2}
+    assert journal["last_skips"] == []  # the newest close dropped nothing

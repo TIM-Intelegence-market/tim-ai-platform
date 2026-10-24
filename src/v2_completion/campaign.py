@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from src.v2_completion.qualification import REQUIRED_START_GATES, StartGate
+from src.v2_completion.start_gate_checks import start_gate_report_hash
 
 UTC = timezone.utc
 MAX_REPORT_AGE = timedelta(minutes=30)
@@ -31,22 +32,36 @@ def _parse(value: Any) -> datetime | None:
 def gates_from_report(report: dict[str, Any], *, report_ref: str, head: str, now: datetime,
                       max_age: timedelta = MAX_REPORT_AGE) -> list[StartGate]:
     """Turn a start-gate report into StartGates; refuse stale, foreign or failing reports."""
+    if not isinstance(report, dict):
+        raise ValueError("start-gate report must be an object")
+    declared_hash = report.get("report_sha256")
+    if not isinstance(declared_hash, str) or declared_hash != start_gate_report_hash(report):
+        raise ValueError("start-gate report hash is missing or does not match its contents")
     if report.get("kind") != START_GATE_KIND:
         raise ValueError("not a start-gate evaluation report")
     evaluated = _parse(report.get("evaluated_at_utc"))
     if evaluated is None or not timedelta(minutes=-1) <= now - evaluated <= max_age:
         raise ValueError("start-gate report is not fresh")
-    if (report.get("context") or {}).get("head") != head:
+    context = report.get("context")
+    if not isinstance(context, dict) or context.get("head") != head:
         raise ValueError("start-gate report was taken on a different commit than HEAD")
-    if not report.get("all_start_gates_pass") or report.get("blocking_start_gates"):
-        raise ValueError("start gates do not all pass: " + ", ".join(report.get("blocking_start_gates") or []))
-    by_name = {gate.get("name"): gate for gate in report.get("gates", [])}
-    if sorted(by_name) != sorted(REQUIRED_START_GATES):
-        raise ValueError("start-gate report does not cover every required gate")
-    frozen = (by_name["configuration_and_commit_frozen"].get("evidence") or {}).get("frozen_commit")
+    if report.get("all_start_gates_pass") is not True or report.get("blocking_start_gates") != []:
+        raise ValueError("start gates do not all pass")
+    rows = report.get("gates")
+    if (not isinstance(rows, list)
+            or any(not isinstance(row, dict) or not isinstance(row.get("name"), str) for row in rows)
+            or sorted(row["name"] for row in rows) != sorted(REQUIRED_START_GATES)):
+        raise ValueError("start-gate report must cover every required gate exactly once")
+    if any(row.get("status") != "PASS" for row in rows):
+        raise ValueError("start gates do not all pass")
+    by_name = {row["name"]: row for row in rows}
+    evidence = by_name["configuration_and_commit_frozen"].get("evidence")
+    if not isinstance(evidence, dict):
+        raise ValueError("frozen commit evidence is missing or malformed")
+    frozen = evidence.get("frozen_commit")
     if frozen != head:
         raise ValueError("frozen commit in the report differs from HEAD")
-    sha = report.get("report_sha256", "")
+    sha = declared_hash
     return [StartGate(name, by_name[name]["status"], f"{report_ref} sha256={sha} status={by_name[name]['status']}")
             for name in REQUIRED_START_GATES]
 
@@ -88,6 +103,9 @@ def daily_metrics(*, day: date, window: tuple[datetime, datetime], coverage: dic
     start, end = window
     day_gaps = [gap for gap in gaps if _parse(gap["start_utc"]) < end and _parse(gap["end_utc"]) > start]
     health = health or {}
+    runtime_status = {key: health.get(key) for key in ("status", "mode", "trading_actions", "generated_at_utc")}
+    if runtime_status["generated_at_utc"] is None:
+        runtime_status["generated_at_utc"] = health.get("timestamp")
     return {
         "window_start_utc": start.isoformat().replace("+00:00", "Z"),
         "window_end_utc": end.isoformat().replace("+00:00", "Z"),
@@ -105,7 +123,7 @@ def daily_metrics(*, day: date, window: tuple[datetime, datetime], coverage: dic
         "quality_eligible_labels": cases["quality_eligible_labels"],
         "independent_case_count": cases["strict_independent_30m_windows"],
         "independent_case_target": cases["required_independent_cases"],
-        "runtime_status": {key: health.get(key) for key in ("status", "mode", "trading_actions", "generated_at_utc")},
+        "runtime_status": runtime_status,
         "security_status": security,
         "data_manifest_hash": coverage["data_manifest_hash"],
         "database_snapshot": coverage["database_snapshot"],

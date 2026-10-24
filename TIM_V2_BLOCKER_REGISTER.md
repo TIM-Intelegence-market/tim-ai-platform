@@ -27,7 +27,7 @@ approver. No blocker is closed by this document.
 | V2-B02 | 63 unresolved new DATA_GAPs | P0 | Integrity Lead | Gap register; operational evidence | **OPEN** |
 | V2-B03 | Artifact Audit is FAIL | P0 | Integrity Lead | V2-B05; V2-B07 | **OPEN** |
 | V2-B04 | Research Quality is FAIL | P0 | QA Lead | V2-B01; V2-B02; V2-B03; V2-B05 | **OPEN** |
-| V2-B05 | Historical Provenance incomplete | P1 | Research Lead | Legacy classification policy | **OPEN** |
+| V2-B05 | Historical Provenance incomplete | P1 | Research Lead | Legacy classification policy | **VERIFIED** (2026-10-24, see section) |
 | V2-B06 | Manual Scientific Review absent | P0 | Scientific Lead | V2-B01–B05, B07, B08 | **OPEN** |
 | V2-B07 | HC-1.0 governance approval absent | P0 | Governance Lead | Approval workflow; registry/fixture proposals | **OPEN** |
 | V2-B08 | Formal V2 responsibility matrix absent | P0 | Governance Lead | Named role assignments | **OPEN** |
@@ -157,7 +157,25 @@ approver. No blocker is closed by this document.
 - **Closure evidence:** Approved provenance inventory, legacy limitation
   statement and V2-scope boundary.
 - **Priority:** P1
-- **Status:** **OPEN**
+- **Status:** **VERIFIED**
+- **Status change (2026-10-24T01:04:15Z, OPEN → VERIFIED):**
+  - Evidence: `docs/v2_readiness/historical_provenance_inventory.md`; writer fix
+    and read-only inventory in PR #379 (merge 59388dd), live on the Mac since
+    2026-10-24T00:51Z; inventory file on the Mac
+    `~/Library/Application Support/TIM/provenance/inventory-2026-10-24.json`.
+  - Inventory at cut-off 2026-10-24T00:51:30Z: 3,302 cache records,
+    3,301 PARTIAL_LEGACY, 1 COMPLETE_PROSPECTIVE, 0 NON_RECONSTRUCTABLE,
+    0 CONFLICTING, prospective scope 100 % complete, `bytes_unchanged: true`.
+  - V2-scope boundary: 2026-10-24T00:51:14.905971Z (first record with all
+    V2 fields). The earlier 2026-09-01 boundary is withdrawn because it was
+    never enforced.
+  - Legacy limitation: the 3,301 earlier records stay unchanged, are not
+    backfilled and remain documented as a limitation.
+  - Approver: project owner (Uzi), decision in the project thread,
+    2026-10-24T01:04:15Z.
+  - Limitation of the verification: the byte/hash preservation check is the
+    inventory's own before/after hashing. A separate check by the Integrity
+    Lead has not been done yet and can still be added.
 
 ## V2-B06 — Manual Scientific Review
 

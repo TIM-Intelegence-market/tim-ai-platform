@@ -20,7 +20,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.v2_completion.campaign import daily_metrics, day_window, pending_days
-from src.v2_completion.qualification import build_daily_manifest, write_immutable_json
+from src.v2_completion.qualification import (
+    build_daily_manifest,
+    validate_campaign_hash,
+    write_immutable_json,
+)
 from src.v2_completion.start_gate_checks import parse_time, read_json
 
 DEFAULT_DIR = ROOT / "data/qualification"
@@ -54,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     if campaign is None or campaign.get("campaign_status") != "ACTIVE":
         print(json.dumps({"status": "NOT_ACTIVE", "manifests_written": 0}))
         return 0
+    validate_campaign_hash(campaign)
     start = parse_time(campaign["start_utc"])
     daily_dir = args.dir / "daily"
     written = {path.stem for path in daily_dir.glob("*.json")} if daily_dir.exists() else set()

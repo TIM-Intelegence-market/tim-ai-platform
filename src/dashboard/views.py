@@ -59,7 +59,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         except Exception:  # noqa: BLE001 - the setup page falls back to the close-price line
             chart = None
         from src.dashboard.pages.plan_journal import journal_note
-        from src.dashboard.plan_journal import load as load_plan_journal
+        from src.dashboard.plan_journal import load_view as load_plan_journal
 
         note = journal_note(load_plan_journal(state.plan_journal_path))
         try:
@@ -76,7 +76,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         return _prep_page(data, build_session_map(state.chart_series()))
     if page in {"Plan Journal", "Plan Journal Struct"}:
         from src.dashboard.pages.plan_journal import _plan_journal_page
-        from src.dashboard.plan_journal import RULE_STRUCT, load as load_plan_journal
+        from src.dashboard.plan_journal import RULE_STRUCT, load_view as load_plan_journal
 
         tim, struct = load_plan_journal(state.plan_journal_path), load_plan_journal(state.plan_journal_struct_path)
         struct.setdefault("rule", RULE_STRUCT)
