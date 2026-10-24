@@ -50,17 +50,8 @@ export TIM_OBSIDIAN_VAULT="<vault>"                # optional, enables mission/n
 An empty store answers `graph_health` with `"status": "empty"`; build it
 once with `refresh-all` above or the `graph_refresh_code` tool.
 
-Codex (`~/.codex/config.toml`, outside the repo):
-
-```toml
-[mcp_servers.tim-graph]
-command = "<tim worktree>/.venv/bin/python"
-args = ["-m", "src.graph_mcp.mcp_server"]
-env = { TIM_GRAPH_MCP_ROOT = "<tim worktree>", PYTHONPATH = "<tim worktree>" }
-```
-
-Codex starts the server from its own working directory, so
-`TIM_GRAPH_MCP_ROOT` and `PYTHONPATH` must be the absolute worktree path there.
+Codex and Claude Desktop (configured outside the repo): see
+`docs/mcp_clients.md` for both servers, `tim-graph` and `tim-ops`.
 
 ## Acceptance probes
 
