@@ -60,7 +60,8 @@ def anchors(prep: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     places: list[dict[str, Any]] = []
     for level in levels:
         price = float(level["price"])
-        if places and price - places[-1]["high"] <= places[-1]["high"] * CLUSTER_GAP:
+        # Measured from the place's lowest level, so a chain of close levels never grows wider than CLUSTER_GAP.
+        if places and price - places[-1]["low"] <= places[-1]["low"] * CLUSTER_GAP:
             place = places[-1]
             place["high"] = price
             place["labels"].append(level["label"])

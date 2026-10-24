@@ -108,3 +108,9 @@ def test_chart_model_carries_level_plans_and_stale_note() -> None:
     model = build_chart_model(series, "30m", now=now)
     assert model["level_plans"]["rule"] == RULE
     assert model["notes"][0].startswith("Achtung: letzte 30m-Kerze")
+
+
+def test_chained_levels_do_not_grow_one_wide_place() -> None:
+    prep = {"levels": [{"label": f"Vortag {i}", "price": 100 + i * 0.1, "source": "Vortag"} for i in range(5)]}
+    places = anchors(prep)
+    assert all(p["high"] - p["low"] <= p["low"] * 0.0015 + 1e-9 for p in places) and len(places) == 3
