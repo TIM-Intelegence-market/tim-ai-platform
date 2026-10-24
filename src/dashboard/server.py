@@ -145,7 +145,8 @@ class DashboardServer:
                 if path == "/api/plan-journal":
                     from src.dashboard.plan_journal import load_view as load_plan_journal
 
-                    journal_path = outer.state.plan_journal_struct_path if query.get("rule", [""])[0] == "struct" else outer.state.plan_journal_path
+                    rule = query.get("rule", [""])[0]
+                    journal_path = {"struct": outer.state.plan_journal_struct_path, "level": outer.state.plan_journal_level_path}.get(rule, outer.state.plan_journal_path)
                     from src.dashboard.plan_cost_check import with_cost_check
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
                 if path == "/neu" or path.startswith("/neu/") or path == "/api/cockpit":
@@ -182,7 +183,7 @@ class DashboardServer:
                     "/v2-readiness": "V2 Readiness", "/mcp": "Graphify & MCP",
                     "/prep": "Prep",
                     "/setup-path": "Setup Path",
-                    "/journal": "Plan Journal", "/journal/struct": "Plan Journal Struct",
+                    "/journal": "Plan Journal", "/journal/struct": "Plan Journal Struct", "/journal/level": "Plan Journal Level",
                     "/audit-evidence": "Audit & Evidence",
                     "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow",
                     "/signals": "Signal Research", "/analytics": "Analytics", "/insights": "Insights",

@@ -7,7 +7,7 @@ from src.dashboard.chart_model import _fmt, _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _hero, _layout, _strip_states
 from src.dashboard.plan_cost_check import COST_LIMIT_R, COST_UNKNOWN, COST_WITHIN_LIMIT, NOT_TRADABLE_COST, cost_check, cost_summary
-from src.dashboard.plan_journal import GRADE_NOTE, MAX_HOLD_HOURS, PENDING_HOURS, RULE_STRUCT, counter_trend, summary
+from src.dashboard.plan_journal import GRADE_NOTE, MAX_HOLD_HOURS, PENDING_HOURS, RULE_LEVEL, RULE_STRUCT, counter_trend, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
 STATUS_LABELS = {
@@ -128,13 +128,17 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
     entries = list(journal.get("entries") or [])
     stats = summary(journal)
     struct = journal.get("rule") == RULE_STRUCT
+    level = journal.get("rule") == RULE_LEVEL
     integrity = str(journal.get("integrity") or "")
     body = ""
     if integrity.startswith("LOG_BROKEN"):
         body += f"<section class='state-banner state-banner--crit'><div class='state-banner__primary'><span class='sev sev--crit'>GESPERRT</span><h2 class='state-banner__state'>Journal gesperrt</h2><p class='state-banner__sub'>Das Ereignislog ist beschädigt; es wird nichts geschrieben und nichts gezählt, bis es geprüft ist. {_safe(integrity)}</p></div></section>"
     evidence = (f"Nur Papier, keine Empfehlung: {GRADE_NOTE}. Jeder Plan trägt getrennt Grade, Evidenzstatus und Entscheidung; "
                 "ohne belegte Evidenz ist die Entscheidung NO_TRADE (RESEARCH_ONLY).")
-    if struct:
+    if level:
+        body += _hero("Plan-Journal: Level-Regel", "Eigene Pläne an den Hauptleveln (Vortag, Vorwoche, naked POC) aus dem TIM-Chart, mit Stop hinter dem 30m-Swing und Zielen an den nächsten Leveln. "
+                      "Hier misst TIM, ob diese Analysen aufgehen. " + evidence)
+    elif struct:
         body += _hero("Plan-Journal: Struktur-Regel", "Dieselben Pläne mit Stop hinter dem Swing und Zielen an der Liquidität (Broncx), parallel zur TIM-Regel verfolgt. " + evidence)
     else:
         body += _hero("Plan-Journal", "TIMs Long- und Short-Pläne aus dem Setup-Pfad, automatisch festgehalten und nach TIMs Regeln verfolgt. " + evidence)
@@ -161,7 +165,10 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
     body += (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Journal</p>"
         f"<h2>Alle Pläne (neueste zuerst)</h2><p class='cc-section__note'>Zeiten in deutscher Ortszeit. Zuletzt aktualisiert {_safe(updated)}. "
-        "<a href='/setup-path'>Setup-Pfad</a> · " + ("<a href='/journal'>TIM-Regel</a> · <a href='/api/plan-journal?rule=struct'>JSON</a>" if struct else "<a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal'>JSON</a>") + "</p></div></div>"
+        "<a href='/setup-path'>Setup-Pfad</a> · <a href='/chart'>TIM-Chart</a> · "
+        + ("<a href='/journal'>TIM-Regel</a> · <a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal?rule=level'>JSON</a>" if level
+           else "<a href='/journal'>TIM-Regel</a> · <a href='/journal/level'>Level-Regel</a> · <a href='/api/plan-journal?rule=struct'>JSON</a>" if struct
+           else "<a href='/journal/struct'>Struktur-Regel</a> · <a href='/journal/level'>Level-Regel</a> · <a href='/api/plan-journal'>JSON</a>") + "</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Angelegt</th><th>Plan</th><th>Grade</th><th>Evidenz</th><th>Entscheidung</th><th>Zone</th><th>Einstieg</th><th>Stop</th><th>Kosten (Schätzung)</th>"
         "<th>Ungültig bei</th><th>Ziele</th><th>Status</th><th>Brutto-R</th><th>Netto-R</th><th>Verlauf</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div></section>"
@@ -173,6 +180,9 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         f"<li>30m-Schluss jenseits der Ungültigkeitsmarke: vor dem Einstieg ist der Plan ungültig, im Trade wird der Rest zu diesem Schluss geschlossen. Nach {PENDING_HOURS} h ohne Einstieg = abgelaufen.</li>"
         + ("<li>Struktur-Regel: Stop 0,05 % hinter dem nächsten 30m-Swing jenseits der Einstiegszone, TP1–TP3 an den nächsten Liquiditätsorten "
            "(Vortag, Vorwoche, naked POC, Sessions, IB, 30m-Swings; fehlende Ziele wiederholen das letzte). Erstes Ziel unter 1,5 R: kein Plan.</li>" if struct else "")
+        + ("<li>Level-Regel (level/1): je Richtung ein Plan am nächsten Hauptlevel innerhalb 3 % (Vortag/Vorwoche VAH, VAL, POC, Hoch, Tief, naked POC; Level innerhalb 0,15 % zählen als ein Ort). "
+           "Limit am ersten Kontakt, Stop 0,05 % hinter dem nächsten 30m-Swing (höchstens 2 %), TP1–TP3 an den nächsten Leveln und Swings, erstes Ziel mindestens 1,5 R. "
+           "Ungültig bei einem 30m-Schluss jenseits dieses Swings. Gekennzeichnet mit oder gegen den 1D/4h-Trend.</li>" if level else "")
         + "<li>Im Trade nach TIMs Management: je ein Drittel an TP1, TP2 und TP3 (TIM-Regel: 1,5 R, 2 R, 3 R), Stop nach TP1 auf Einstand. Der strukturelle Trailing-Stop ist nicht nachgebildet.</li>"
         f"<li>Berühren Stop und Ziel dieselbe 1m-Kerze, zählt der Stop. Nach {MAX_HOLD_HOURS} h wird der Rest zum Kerzenkurs geschlossen.</li>"
         "<li>Ergebnis als Brutto-R (1 R = Abstand Einstieg–Stop) und Netto-R nach Forschungsprotokoll 1.1: Gebühr 0,05 % und Slippage 0,03 % je Seite auf Einstieg, jedes Drittel und den Rest, 0,05 % Slippage bei Stop-Ausführung; Kosten in R = Kosten / Stopabstand. Keine Order, keine Anlageberatung.</li>"

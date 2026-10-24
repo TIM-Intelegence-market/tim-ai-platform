@@ -349,8 +349,22 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
     if ib:
         _level(levels, "IB Hoch", ib["high"], "Initial Balance", last)
         _level(levels, "IB Tief", ib["low"], "Initial Balance", last)
-    model["levels"] = sorted(levels, key=lambda item: -item["price"])
+    model["levels"] = merge_same_price(sorted(levels, key=lambda item: -item["price"]))
     return model
+
+
+def merge_same_price(levels: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per price: Asia high and IB high at the same print become "Asia Hoch · IB Hoch"."""
+    merged: list[dict[str, Any]] = []
+    for level in levels:
+        if merged and round(merged[-1]["price"], 2) == round(level["price"], 2):
+            item = merged[-1]
+            item["label"] += f" · {level['label']}"
+            if level["source"] not in item["source"].split(" · "):
+                item["source"] += f" · {level['source']}"
+            continue
+        merged.append(dict(level))
+    return merged
 
 
 def summary_line(model: Mapping[str, Any]) -> str:
