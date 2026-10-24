@@ -75,3 +75,77 @@ def test_daily_manifest_rejects_inactive_or_incomplete_metrics() -> None:
     )
     with pytest.raises(ValueError, match="daily metrics missing"):
         build_daily_manifest(active, day=datetime.now(UTC), metrics={})
+
+
+def test_immutable_manifest_preserves_existing_evidence(tmp_path) -> None:
+    from src.v2_completion.qualification import write_immutable_json
+
+    path = tmp_path / "daily" / "2026-10-20.json"
+    assert write_immutable_json(path, {"coverage": 0.95}) == "CREATED"
+    original = path.read_bytes()
+    assert write_immutable_json(path, {"coverage": 0.95}) == "UNCHANGED"
+    with pytest.raises(FileExistsError, match="different content"):
+        write_immutable_json(path, {"coverage": 1.0})
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("same_payload", [False, True])
+def test_parallel_manifest_publication_never_overwrites_the_winner(tmp_path, monkeypatch, same_payload) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    import json
+    from threading import Barrier
+    from src.v2_completion import qualification
+
+    path = tmp_path / "daily" / "2026-10-20.json"
+    barrier = Barrier(2)
+    original_link = qualification.os.link
+
+    def competing_link(source, target):
+        # Both writers have finished their private files before either publishes.
+        barrier.wait(timeout=5)
+        return original_link(source, target)
+
+    monkeypatch.setattr(qualification.os, "link", competing_link)
+    payloads = [{"writer": 1}, {"writer": 1 if same_payload else 2}]
+
+    def publish(payload):
+        try:
+            return qualification.write_immutable_json(path, payload), payload
+        except FileExistsError:
+            return "CONFLICT", payload
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(publish, payload) for payload in payloads]
+        results = [future.result(timeout=10) for future in futures]
+    assert sorted(status for status, _ in results) == sorted(
+        ["CREATED", "UNCHANGED" if same_payload else "CONFLICT"]
+    )
+    winner = next(payload for status, payload in results if status == "CREATED")
+    assert json.loads(path.read_text()) == winner
+    assert list(path.parent.iterdir()) == [path]
+
+
+def test_failed_manifest_publication_leaves_no_partial_evidence(tmp_path, monkeypatch) -> None:
+    from src.v2_completion import qualification
+
+    path = tmp_path / "daily" / "2026-10-20.json"
+
+    def unavailable_link(source, target):
+        raise OSError("publication unavailable")
+
+    monkeypatch.setattr(qualification.os, "link", unavailable_link)
+    with pytest.raises(OSError, match="publication unavailable"):
+        qualification.write_immutable_json(path, {"coverage": 0.95})
+    assert not path.exists()
+    assert list(path.parent.iterdir()) == []
+
+
+def test_new_manifest_retains_normal_file_creation_permissions(tmp_path) -> None:
+    import stat
+    from src.v2_completion.qualification import write_immutable_json
+
+    reference = tmp_path / "normal-file.json"
+    reference.write_text("{}")
+    manifest = tmp_path / "manifest.json"
+    assert write_immutable_json(manifest, {"coverage": 0.95}) == "CREATED"
+    assert stat.S_IMODE(manifest.stat().st_mode) == stat.S_IMODE(reference.stat().st_mode)

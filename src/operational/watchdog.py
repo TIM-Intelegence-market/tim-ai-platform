@@ -245,10 +245,12 @@ class IndependentWatchdog:
                 latest = await connection.fetchval(
                     "SELECT max(ingest_timestamp) FROM agg_trades WHERE symbol=$1", self.symbol
                 )
+                # Filter in WHERE, not in FILTER: the outbox keeps a COMPLETED row per trade, and
+                # scanning them all took up to 28 s on the Mac (database TimeoutError, false RED).
                 queue = await connection.fetchrow(
-                    """SELECT count(*) FILTER (WHERE status IN ('PENDING','PROCESSING','RETRY','QUARANTINED')) AS depth,
-                       EXTRACT(EPOCH FROM (clock_timestamp()-(min(created_at) FILTER (WHERE status IN ('PENDING','PROCESSING','RETRY','QUARANTINED'))))) AS oldest_age
-                       FROM ingestion_outbox"""
+                    """SELECT count(*) AS depth,
+                       EXTRACT(EPOCH FROM (clock_timestamp()-min(created_at))) AS oldest_age
+                       FROM ingestion_outbox WHERE status IN ('PENDING','PROCESSING','RETRY','QUARANTINED')"""
                 )
                 cursor = await connection.fetchrow(
                     """SELECT last_persisted_at,recovery_state FROM ingestion_cursors

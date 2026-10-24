@@ -9,6 +9,7 @@ import json
 import math
 import os
 from pathlib import Path
+import tempfile
 from typing import Any
 
 
@@ -272,7 +273,20 @@ def write_immutable_json(path: Path, payload: dict[str, Any]) -> str:
             raise FileExistsError(f"immutable manifest already exists with different content: {path}")
         return "UNCHANGED"
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_bytes(encoded)
-    os.replace(temporary, path)
-    return "CREATED"
+    # A private directory isolates each writer while normal creation retains the
+    # caller's umask. Publish the complete file without replacing any winner.
+    with tempfile.TemporaryDirectory(dir=path.parent, prefix=f".{path.name}.") as directory:
+        temporary = Path(directory) / "manifest.json"
+        with temporary.open("xb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            if path.read_bytes() != encoded:
+                raise FileExistsError(
+                    f"immutable manifest already exists with different content: {path}"
+                ) from None
+            return "UNCHANGED"
+        return "CREATED"

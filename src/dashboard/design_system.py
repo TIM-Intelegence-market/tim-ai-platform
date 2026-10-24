@@ -401,7 +401,9 @@ def gate_rows(gates: Iterable[dict[str, Any]]) -> str:
         out.append(
             "<div class='gate'>"
             f"<b>{_esc(gate.get('id'))}</b>{evidence_chip(gate.get('status'))}"
-            f"<span>{_esc(gate.get('limitation'))}</span>"
+            f"<span>{_esc(gate.get('limitation'))}"
+            + (f"<br><span class='gate__now'>Heute: {evidence_chip(gate.get('current_status'))} {_esc(gate.get('current_note'))}</span>" if gate.get("current_status") else "")
+            + "</span>"
             f"<span class='gate__owner'>{_esc(gate.get('owner'))}</span></div>"
         )
     return f"<div class='gates'>{''.join(out)}</div>"

@@ -129,7 +129,7 @@ async def run(*, once: bool, interval: float, required_red_cycles: int, cooldown
     for name in ("SIGINT", "SIGTERM"):
         if hasattr(signal, name):
             loop.add_signal_handler(getattr(signal, name), stop.set)
-    final_status = "RED"
+    final_status: str | None = None
     while not stop.is_set():
         report = await watchdog.collect()
         decision = restart_decision(
@@ -162,7 +162,15 @@ async def run(*, once: bool, interval: float, required_red_cycles: int, cooldown
             mode="OBSERVE",
             trading_actions=report.get("trading_actions"),
         )
-        print(json.dumps(report, indent=2, sort_keys=True), flush=True)
+        if once:
+            print(json.dumps(report, indent=2, sort_keys=True), flush=True)
+        elif report["status"] != final_status or report.get("restart_requested"):
+            # The full report already goes to watchdog_status.json and the rotated
+            # watchdog.jsonl. Repeating it on stdout every 30 s grew the
+            # un-rotated launchd log by ~6 MB a day (log_growth YELLOW).
+            print(json.dumps({"checked_at": report.get("checked_at"), "status": report["status"],
+                              "previous_status": final_status, "restart_requested": report.get("restart_requested", False)},
+                             sort_keys=True), flush=True)
         final_status = report["status"]
         if once:
             break

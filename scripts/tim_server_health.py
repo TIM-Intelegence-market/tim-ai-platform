@@ -184,9 +184,21 @@ def collect(backup_dir: Path, disk_path: Path) -> dict[str, Any]:
             "mode": "OBSERVE", "trading_actions": 0}
 
 
+def default_backup_dir() -> Path:
+    """Where tim_db_backup.py writes on this host.
+
+    The Mac mini's com.tim.db-backup agent writes to the user's Application
+    Support folder; /var/backups/tim only exists on the Linux server. Checking
+    the Linux path on the Mac made every report RED ("backup directory unreadable").
+    """
+    if sys.platform == "darwin":
+        return Path.home() / "Library/Application Support/TIM/backups/live"
+    return Path("/var/backups/tim")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="TIM server health and gap check (read-only)")
-    parser.add_argument("--backup-dir", type=Path, default=Path("/var/backups/tim"))
+    parser.add_argument("--backup-dir", type=Path, default=default_backup_dir())
     parser.add_argument("--disk-path", type=Path, default=ROOT)
     args = parser.parse_args(argv)
     report = collect(args.backup_dir, args.disk_path)
