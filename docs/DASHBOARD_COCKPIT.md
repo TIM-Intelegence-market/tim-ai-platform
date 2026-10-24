@@ -1,6 +1,6 @@
 # Neues Control Center (Cockpit) unter /neu
 
-Stand: 24.10.2026, Paket P1 des Bauplans "Neues TIM-Dashboard".
+Stand: 24.10.2026, Pakete P1 und P2 des Bauplans "Neues TIM-Dashboard", dazu der Bereich "Mac jetzt" auf Uzis Wunsch.
 
 Das neue Control Center läuft im selben Prozess wie das bisherige (Port 8765) und
 ist unter `http://127.0.0.1:8765/neu` erreichbar. Die bisherigen Seiten bleiben
@@ -11,13 +11,33 @@ unverändert, bis Uzi das neue Dashboard abnimmt und umgeschaltet wird (Paket P4
 | Bereich | Adresse | Stand |
 | --- | --- | --- |
 | Lage (Startseite) | `/neu` | gebaut (P1) |
-| Markt & Pläne | `/neu/markt` | verweist auf die bisherigen Seiten, Neubau in P2 |
+| Markt & Pläne | `/neu/markt?tf=15m` | gebaut (P2): Chart mit Plänen, Vorbereitung, Plan- und Trader-Journal |
+| Mac jetzt | `/neu/mac` | gebaut: CI-Lauf, Issue-Worker, Hintergrunddienste |
 | Forschung | `/neu/forschung` | verweist auf die bisherigen Seiten, Neubau in P3 |
 | Betrieb | `/neu/betrieb` | verweist auf die bisherigen Seiten, Neubau in P3 |
 | System & Freigabe | `/neu/system` | verweist auf die bisherigen Seiten, Neubau in P3 |
 
-Maschinenlesbar: `GET /api/cockpit` (Modell der Startseite), `GET /neu?fragment=1`
-(neu gerenderter Seiteninhalt für die Aktualisierung alle 30 Sekunden).
+Maschinenlesbar: `GET /api/cockpit?area=lage|markt|mac` (Modell eines Bereichs, ohne
+`area` die Startseite), `GET /neu?fragment=1`, `/neu/markt?tf=1h&fragment=1`,
+`/neu/mac?fragment=1` (neu gerenderter Seiteninhalt für die Aktualisierung alle 30 Sekunden).
+
+## Mac jetzt: Quellen
+
+| Kachel | Quelle | Frischegrenze |
+| --- | --- | --- |
+| Issue-Worker, CI-Runner, Warteschlange, Zuletzt erledigt, Lokales Modell | `GET 127.0.0.1:8767/api/status` (Worker-Dashboard, `TIM_WORKER_STATUS_URL`) | 3 min |
+| TIM-Laufzeit, Watchdog, Backup | wie auf der Startseite | wie dort |
+| Validator | `data/operational/research_cycle_latest.json` | 5 min |
+| Server-Health | `data/operational/server_health.json` | 5 min |
+| Lückenreparatur | `data/operational/history_recovery.json` | 3 min |
+| Readiness-Eingaben | `data/operational/readiness_inputs.json` | 5 min |
+| Dashboard-Agent | `data/operational/dashboard_refresh.json` | 30 min |
+| Trading-Team | `~/TIM-trading-team/state/trading-team/` (`TIM_TRADING_TEAM_STATE`) | 15 min |
+
+Der CI-Runner wird nur über den Issue-Worker gesehen: Er meldet einen laufenden
+CI-Job, solange er selbst läuft und kein Issue bearbeitet. Arbeitet er an einem
+Issue, ist die CI-Kachel grau ("unbekannt"), nicht grün. Das Cockpit startet keine
+Prozesse und ruft weder `ps` noch `launchctl` auf.
 
 ## Kachel-Vertrag und Statusregel
 

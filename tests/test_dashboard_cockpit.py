@@ -26,6 +26,13 @@ from src.dashboard.state import DashboardState
 NOW = datetime(2026, 10, 24, 10, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # The Mac runner has the real worker dashboard on 8767; tests must not read it.
+    monkeypatch.setenv("TIM_WORKER_STATUS_URL", "http://127.0.0.1:9/api/status")
+    monkeypatch.setenv("TIM_TRADING_TEAM_STATE", str(tmp_path / "no-trading-team"))
+
+
 def _state(tmp_path: Path) -> DashboardState:
     op = tmp_path / "operational"
     op.mkdir(exist_ok=True)
@@ -163,7 +170,7 @@ def test_live_runtime_is_green_with_price_and_deploy(tmp_path: Path) -> None:
     assert by_id["ci"]["state"] == "ok" and "4100" in by_id["ci"]["value"]
     assert by_id["price"]["state"] == "ok" and by_id["price"]["value"].endswith(" $")
     assert by_id["market_state"]["state"] == "ok"
-    assert all(info["ok"] for info in model["sources"].values())
+    assert all(info["ok"] for name, info in model["sources"].items() if name != "worker"), "worker dashboard is not running in tests"
 
 
 def test_stale_market_data_is_yellow_not_green(tmp_path: Path) -> None:

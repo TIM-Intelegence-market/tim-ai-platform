@@ -115,9 +115,15 @@ def _jobs(state: DashboardState) -> dict[str, Any]:
         journal = tj.load(state.trader_journal_path)
         return {"exists": state.trader_journal_path.exists(), "summary": tj.summary(journal)}
 
+    def worker() -> dict[str, Any]:
+        from src.dashboard.cockpit.mac import fetch_worker
+
+        return fetch_worker()
+
     operational = state.operational_watchdog_path.parent
     return {
         "snapshot": state.snapshot,
+        "worker": worker,
         "series": series,
         "chart": chart,
         "prep": prep,
@@ -374,6 +380,7 @@ SYSTEM_TILES = (("runtime", "TIM-Laufzeit", "/runtime"), ("market_data", "Marktd
                 ("deploy", "Deploy-Stand", "/audit-evidence"), ("ci", "CI-Test", "/audit-evidence"))
 MARKET_TILES = (("price", "BTC-Preis", "/chart"), ("market_state", "Marktzustand", "/setup-path"), ("setup", "Setup-Pfad", "/setup-path"),
                 ("block", "Nächste Sperrzeit", "/chart"), ("bias", "Übergeordneter Bias", "/prep"))
+MAC_TILES = (("worker", "Issue-Worker", "/neu/mac"), ("ci_runner", "CI-Runner", "/neu/mac"))
 JOURNAL_TILES = (("plan_journal", "Plan-Journal", "/journal"), ("trader_journal", "Trader-Journal", "/trader-journal"))
 
 
@@ -396,7 +403,13 @@ def build_lage(state: DashboardState, now: datetime | None = None, budget: float
         journals = _journal_tiles(results["plan_journal"], results["trader_journal"], now)
     except Exception as exc:  # noqa: BLE001
         journals = [unavailable(key, label, _broken(exc), "Kachelbau Journale", href) for key, label, href in JOURNAL_TILES]
-    needs = attention(system + journals + [t for t in market if t.state in {"fail", "warn"}])
+    try:
+        from src.dashboard.cockpit.mac import worker_tiles
+
+        mac = [t for t in worker_tiles(results["worker"], now)[0] if t.id in {"worker", "ci_runner"}]
+    except Exception as exc:  # noqa: BLE001
+        mac = [unavailable(key, label, _broken(exc), "Kachelbau Mac", "/neu/mac") for key, label, _ in MAC_TILES]
+    needs = attention(system + journals + mac + [t for t in market if t.state in {"fail", "warn"}])
     overall = worst([t.state for t in system])
     if any(t.state == "fail" for t in needs):
         headline = f"{sum(t.state == 'fail' for t in needs)} Fehler, bitte ansehen"
@@ -417,6 +430,7 @@ def build_lage(state: DashboardState, now: datetime | None = None, budget: float
         "market": [t.to_dict() for t in market],
         "plans": plans,
         "journals": [t.to_dict() for t in journals],
+        "mac": [t.to_dict() for t in mac],
         "attention": [t.to_dict() for t in needs],
         "sources": {name: {"ok": r.ok, "seconds": r.seconds, "error": r.error, "stale_seconds": r.stale_seconds} for name, r in results.items()},
     }

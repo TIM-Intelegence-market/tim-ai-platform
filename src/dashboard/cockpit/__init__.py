@@ -6,6 +6,18 @@ Display only: reads what TIM already writes, never writes data or starts work.
 from __future__ import annotations
 
 from src.dashboard.cockpit.lage import build_lage
-from src.dashboard.cockpit.page import AREA_BY_KEY, COCKPIT_CSP, lage_body, render_area, render_lage
+from src.dashboard.cockpit.mac import build_mac
+from src.dashboard.cockpit.markt import build_markt
+from src.dashboard.cockpit.page import (
+    AREA_BY_KEY, COCKPIT_CSP, lage_body, mac_body, markt_body, render_area, render_lage, render_mac, render_markt,
+)
 
-__all__ = ["AREA_BY_KEY", "COCKPIT_CSP", "build_lage", "lage_body", "render_area", "render_lage"]
+# Areas with their own page: (model builder, refreshable body, full page).
+BUILT = {
+    "lage": (build_lage, lage_body, render_lage),
+    "markt": (build_markt, markt_body, render_markt),
+    "mac": (build_mac, mac_body, render_mac),
+}
+
+__all__ = ["AREA_BY_KEY", "BUILT", "COCKPIT_CSP", "build_lage", "build_mac", "build_markt", "lage_body", "mac_body", "markt_body",
+           "render_area", "render_lage", "render_mac", "render_markt"]
