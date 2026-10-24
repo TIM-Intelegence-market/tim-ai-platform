@@ -248,6 +248,10 @@ def build_daily_manifest(
     missing = required - set(metrics)
     if missing:
         raise ValueError("daily metrics missing: " + ", ".join(sorted(missing)))
+    runtime = metrics["runtime_status"]
+    reported_actions = runtime.get("trading_actions") if isinstance(runtime, dict) else None
+    # Missing/invalid evidence is unknown, and booleans are not action counts.
+    actions = reported_actions if type(reported_actions) is int and reported_actions >= 0 else None
     payload = {
         "schema_version": SCHEMA_VERSION,
         "dataset_id": DATASET_ID,
@@ -257,7 +261,9 @@ def build_daily_manifest(
         "software_commit": preregistration["software_commit"],
         "configuration_hash": preregistration["configuration_hash"],
         "metrics": metrics,
-        "trading_actions": 0,
+        "trading_actions": actions,
+        "trading_actions_source": "metrics.runtime_status.trading_actions" if actions is not None else None,
+        "runtime_evidence_scope": "SUPPLIED_SNAPSHOT_NOT_FULL_DAY_PROOF",
         "human_approval": False,
     }
     payload["manifest_hash"] = stable_hash(payload)
