@@ -202,11 +202,11 @@ def test_community_calls_are_shown_but_change_nothing() -> None:
     for key in ("decision", "orderflow", "market_state", "data_quality", "scenarios"):
         assert after[key] == before[key], key
     engine = next(item["result"] for item in after["audit"]["engines"] if item["engine"] == "community_calls")
-    assert engine["influences_scores"] is False and [entry["message_id"] for entry in engine["entries"]] == ["1"]
+    assert engine["influences_scores"] is False and engine["source_class"] == "HUMAN_COMMUNITY_TRADING_RESEARCH" and [entry["message_id"] for entry in engine["entries"]] == ["1"]
     assert {level["level"] for level in engine["entries"][0]["levels"]} >= {"83800", "82000"}
     assert validate_analysis(after)[0]
     report = build_report(with_calls)
-    assert "GOATHUB-COMMUNITY-CALLS" in report and "trader1 [A] SHORT BTC" in report
+    assert "HUMAN-COMMUNITY-TRADING-RESEARCH (GoatHub" in report and "trader1 [A] SHORT BTC" in report
 
 
 def test_cli_reads_the_goathub_directory(tmp_path: Path, capsys, monkeypatch) -> None:

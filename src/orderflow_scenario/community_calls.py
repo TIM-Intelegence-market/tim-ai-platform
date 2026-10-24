@@ -1,5 +1,8 @@
 """GoatHub community calls next to TIM's own analysis (display only).
 
+TIM treats the GoatHub community as HUMAN_COMMUNITY_TRADING_RESEARCH: human trading research
+that is read as a hypothesis with author, time and evidence.
+
 Good calls (grade A/B, see ``src/knowledge/goathub_feed.py``) for the analysed
 symbol are listed with their levels checked against the candles and their
 numeric invalidation checked by close. Unlike Broncx guidance they do not
@@ -18,7 +21,11 @@ from src.models.market_data import Candle
 
 from .external_context import _base, _invalidation_check, _level_check, _reference, _since
 
-__all__ = ["COMMUNITY_CALLS_RULE", "DEFAULT_CALL_MAX_AGE", "build_community_calls"]
+__all__ = ["COMMUNITY_CALLS_RULE", "DEFAULT_CALL_MAX_AGE", "SOURCE_CLASS", "build_community_calls"]
+
+# How TIM classifies the GoatHub community: people sharing trading research, i.e. hypotheses
+# with author, time and evidence, never confirmation.
+SOURCE_CLASS = "HUMAN_COMMUNITY_TRADING_RESEARCH"
 
 DEFAULT_CALL_MAX_AGE = timedelta(hours=24)
 COMMUNITY_CALLS_RULE = (
@@ -64,6 +71,7 @@ def build_community_calls(
         })
     return {
         "rule": COMMUNITY_CALLS_RULE,
+        "source_class": SOURCE_CLASS,
         "influences_scores": False,
         "max_age_hours": _hours(max_age),
         "calls_found": len(calls),

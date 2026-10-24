@@ -1,6 +1,7 @@
 # GoatHub-Kanal: vollständig in Claudes Memory, gute Calls für TIM
 
-Status: Community-Meinung, nur Beobachtung. Ergänzt den [Broncx-Feed](BRONCX_DISCORD_FEED.md),
+Status: Community-Meinung, nur Beobachtung. TIM führt GoatHub als Quellenklasse
+`HUMAN_COMMUNITY_TRADING_RESEARCH`: menschliche Trading-Forschung, gelesen als Hypothese mit Autor, Zeit und Beleg. Ergänzt den [Broncx-Feed](BRONCX_DISCORD_FEED.md),
 der Broncx' Beiträge aus The Goat Hub gewichtet. Dieser Feed nimmt den ganzen Kanal mit allen Autoren.
 
 ## Was passiert
@@ -17,7 +18,7 @@ der Broncx' Beiträge aus The Goat Hub gewichtet. Dieser Feed nimmt den ganzen K
 4. Eine Claude-Routine im TIM-Projekt liest den Export danach vom Mac und aktualisiert
    `/mnt/project-files/goathub/` und den Memory-Eintrag `goathub-kanal`.
 5. `ofsc --goathub-feed data/goathub_feed` zeigt die guten Calls zum analysierten Symbol im Bericht
-   unter **GOATHUB-COMMUNITY-CALLS**, mit Level-Prüfung gegen die Kerzen (TOUCHED / NOT_REACHED)
+   unter **HUMAN-COMMUNITY-TRADING-RESEARCH**, mit Level-Prüfung gegen die Kerzen (TOUCHED / NOT_REACHED)
    und Invalidierung per Schlusskurs.
 
 ## Was ein guter Call ist
