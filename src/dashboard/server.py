@@ -280,15 +280,25 @@ class DashboardServer:
 
                 try:
                     if path == "/api/cockpit":
-                        return self.respond(200, json.dumps(cockpit.build_lage(outer.state), default=str).encode(), "application/json")
+                        area = query.get("area", ["lage"])[0]
+                        builders = {"lage": lambda: cockpit.build_lage(outer.state), "mac": lambda: cockpit.build_mac(outer.state),
+                                    "markt": lambda: cockpit.build_markt(outer.state, query.get("tf", [None])[0])}
+                        if area not in builders:
+                            return self.respond(404, b'{"error":"not found"}', "application/json")
+                        model = builders[area]()
+                        if isinstance(model.get("chart"), dict):
+                            model["chart"].pop("svg", None)  # the JSON carries data, the SVG stays on the page
+                        return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
                     key = path.removeprefix("/neu").strip("/") or "lage"
                     if key not in cockpit.AREA_BY_KEY:
                         return self.respond(404, b'{"error":"not found"}', "application/json")
-                    if key == "lage":
-                        model = cockpit.build_lage(outer.state)
-                        if query.get("fragment", [""])[0] == "1":
-                            return self.respond(200, json.dumps({"html": cockpit.lage_body(model)}).encode(), "application/json")
-                        return self.respond(200, cockpit.render_lage(model).encode(), "text/html; charset=utf-8", csp=cockpit.COCKPIT_CSP)
+                    fragment = query.get("fragment", [""])[0] == "1"
+                    if key in cockpit.BUILT:
+                        build, body, render = cockpit.BUILT[key]
+                        model = build(outer.state, query.get("tf", [None])[0]) if key == "markt" else build(outer.state)
+                        if fragment:
+                            return self.respond(200, json.dumps({"html": body(model)}).encode(), "application/json")
+                        return self.respond(200, render(model).encode(), "text/html; charset=utf-8", csp=cockpit.COCKPIT_CSP)
                     return self.respond(200, cockpit.render_area(key).encode(), "text/html; charset=utf-8", csp=cockpit.COCKPIT_CSP)
                 except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                     return self.respond(500, _error_page("Cockpit", exc).encode(), "text/html; charset=utf-8")
