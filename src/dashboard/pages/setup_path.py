@@ -173,7 +173,7 @@ def _setup_path_page(data: dict[str, Any], chart: dict[str, Any] | None = None, 
         for key, label in (("context", "2 · Kontext"), ("location", "3 · Location"), ("evidence", "4 · Beweis"))
     )
     stage_note = (
-        "<p class='cc-note'>Stufen 2 bis 4 kommen aus TIMs Pipeline auf dem 15m-Chart (gleicher Lauf wie die Pläne oben).</p>"
+        "<p class='cc-note'>Stufen 2 bis 4 kommen aus TIMs Pipeline auf dem 30m-Chart (gleicher Lauf wie die Pläne oben).</p>"
         if stages else "<p class='cc-note'>Stufen 2 bis 4 brauchen TIMs Chart-Analyse; REQUIRED heißt hier: Beleg fehlt, nicht Fehler. </p>"
     )
     body = _hero("Setup Path", "Erklärte BTC-Analyse mit Daten-Governance, drei Zeithorizonten und rückgekoppelter Fehlerprüfung.")

@@ -17,8 +17,8 @@ from src.dashboard.cockpit.tiles import unavailable
 from src.dashboard.state import DashboardState
 
 SCHEMA = "tim_cockpit_markt/1"
-TIMEFRAMES = ("1m", "5m", "15m", "1h")
-DEFAULT_TIMEFRAME = "15m"
+from src.dashboard.chart_history import TIMEFRAMES
+DEFAULT_TIMEFRAME = "30m"
 LEVELS_EACH_SIDE = 4
 CLOSED_SHOWN = 5
 ACTIVE = {"OPEN", "FILLED"}
@@ -44,7 +44,7 @@ def _jobs(state: DashboardState, timeframe: str) -> dict[str, Any]:
     def chart() -> dict[str, Any]:
         from src.dashboard.chart_model import build_chart_model
 
-        return build_chart_model(series(), "15m", visible=SETUP_CANDLES)
+        return build_chart_model(series(), "30m", visible=SETUP_CANDLES)
 
     def chart_other() -> dict[str, Any]:
         from src.dashboard.chart_model import build_chart_model
@@ -69,7 +69,7 @@ def _jobs(state: DashboardState, timeframe: str) -> dict[str, Any]:
         return {"exists": state.trader_journal_path.exists(), "summary": tj.summary(journal), "journal": journal}
 
     jobs = {"series": series, "chart": chart, "prep": prep, "plan_journal": plan_journal, "trader_journal": trader_journal}
-    if timeframe != "15m":
+    if timeframe != "30m":
         jobs[f"chart_{timeframe}"] = chart_other
     return jobs
 
@@ -177,7 +177,7 @@ def build_markt(state: DashboardState, timeframe: str | None = None, now: dateti
     except Exception as exc:  # noqa: BLE001
         journals = [unavailable(key, label, _broken(exc), "Kachelbau Journale", href) for key, label, href in JOURNAL_TILES]
     sections: dict[str, Any] = {}
-    for name, build in (("chart", lambda: _chart(results["chart" if timeframe == "15m" else f"chart_{timeframe}"], timeframe)),
+    for name, build in (("chart", lambda: _chart(results["chart" if timeframe == "30m" else f"chart_{timeframe}"], timeframe)),
                         ("prep", lambda: _prep(results["prep"])),
                         ("plan_journal", lambda: _plan_rows(results["plan_journal"])),
                         ("trader_journal", lambda: _trader_rows(results["trader_journal"]))):

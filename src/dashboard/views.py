@@ -55,7 +55,7 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
     validator = data["validator"]
     if page == "Setup Path":
         try:
-            chart = build_chart_model(state.chart_series(), "15m", visible=SETUP_CHART_CANDLES)
+            chart = build_chart_model(state.chart_series(), "30m", visible=SETUP_CHART_CANDLES)
         except Exception:  # noqa: BLE001 - the setup page falls back to the close-price line
             chart = None
         from src.dashboard.pages.plan_journal import journal_note

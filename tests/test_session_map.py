@@ -186,7 +186,7 @@ def test_build_session_map_without_candles_says_so() -> None:
     model = build_session_map({}, NOW)
     assert model["levels"] == [] and model["notes"]
     page = _prep_page({}, model)
-    assert "Zu wenige 15m- oder 1h-Kerzen" in page
+    assert "Zu wenige 30m- oder 1h-Kerzen" in page
 
 
 def test_prep_page_renders_levels_and_sessions() -> None:

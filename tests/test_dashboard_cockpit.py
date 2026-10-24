@@ -55,7 +55,7 @@ def _live_state(tmp_path: Path, now: datetime) -> DashboardState:
     (op / "deployment.json").write_text(json.dumps({"commit": "ddb8b90abcdef", "deployed_at_utc": (now - timedelta(hours=1)).isoformat(),
                                                      "ci_test": {"completed_at_utc": (now - timedelta(hours=2)).isoformat(), "conclusion": "success", "passed": 4100, "failed": 0}}))
     state.system_health.update({"database": "connected", "stream": "running", "last_raw_persisted_at": (now - timedelta(seconds=5)).isoformat()})
-    price, start = 67000.0, now.replace(second=0) - timedelta(minutes=1500)
+    price, start = 67000.0, now.replace(minute=0, second=0, microsecond=0) - timedelta(minutes=1500)
     minutes = []
     for i in range(1500):
         close = price + 40 * math.sin(i / 23)
@@ -64,7 +64,7 @@ def _live_state(tmp_path: Path, now: datetime) -> DashboardState:
                         "open": price, "high": max(price, close) + 5, "low": min(price, close) - 5, "close": close, "volume": 5.0})
         price = close
     with state.lock:
-        for timeframe, size in (("1m", 1), ("15m", 15), ("1h", 60)):
+        for timeframe, size in (("1m", 1), ("30m", 30), ("1h", 60)):
             for k in range(0, len(minutes) - size + 1, size):
                 group = minutes[k:k + size]
                 state.record_chart_candle({**group[0], "timeframe": timeframe, "close_time": group[-1]["close_time"], "high": max(g["high"] for g in group),

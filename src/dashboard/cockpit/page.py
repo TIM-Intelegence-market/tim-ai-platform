@@ -142,7 +142,7 @@ section>h2 a{color:inherit}
 .page b{display:block;margin-bottom:2px;color:var(--accent);font-weight:600}
 .note{font-size:14px;color:var(--muted)}
 .chartbox{--green:#35d39a;--red:#ff6577;--blue:#70a7ff;--yellow:#f2bd55;--cyan:#51c7d9;--text:#f1f5f9;--text-soft:#c5ced9;--muted:#8491a3;--line:#242e3c;background:#0a0f15;border:1px solid #242e3c;border-radius:10px;padding:6px;overflow:hidden}
-.tc-svg{display:block;width:100%;height:auto}.tc-svg text{font:10.5px ui-monospace,SFMono-Regular,Menlo,monospace}
+.chartbox{overflow-x:auto}.tc-svg{display:block;width:100%;height:auto;min-width:1000px}.tc-svg text{font:10.5px ui-monospace,SFMono-Regular,Menlo,monospace}
 .tc-frame{fill:#0a0f15;stroke:var(--line)}.tc-grid{stroke:#18212d;stroke-width:1}.tc-axis{fill:#5d6a7c}
 .tc-wick{stroke-width:1}.tc-up{stroke:var(--green);fill:var(--green)}.tc-down{stroke:var(--red);fill:var(--red)}.tc-body.tc-down{fill:var(--red)}.tc-body.tc-up{fill:#0a0f15;stroke-width:1.2}
 .tc-value-area{fill:rgba(112,167,255,.06)}.tc-profile{fill:rgba(132,145,163,.22)}.tc-profile--va{fill:rgba(112,167,255,.32)}
@@ -412,7 +412,7 @@ STATUS_WORDS = {"OPEN": "wartet", "FILLED": "im Trade", "CLOSED": "geschlossen",
 def markt_body(model: dict[str, Any]) -> str:
     """The refreshable part of "Markt & Pläne"."""
     chart = model.get("chart") or {}
-    tf = chart.get("timeframe") or model.get("timeframe") or "15m"
+    tf = chart.get("timeframe") or model.get("timeframe") or "30m"
     tabs = "".join(
         f"<a href='/neu/markt?tf={_e(item)}'{' aria-current=page' if item == tf else ''}>{_e(item)}</a>" for item in model.get("timeframes") or []
     )
@@ -518,7 +518,7 @@ def markt_body(model: dict[str, Any]) -> str:
         + f"<section aria-labelledby='h-mkt'><h2 id='h-mkt'>Markt jetzt</h2>{_grid(model.get('market') or [])}</section>"
         + f"<section aria-labelledby='h-chart'><h2 id='h-chart'>TIM-Chart</h2><nav class='tabs' aria-label='Zeitrahmen'>{tabs}</nav>{chart_html}</section>"
         + "<div class='cols'><div>"
-        + f"<section aria-labelledby='h-plans'><h2 id='h-plans'>TIMs Pläne jetzt (15m)</h2>{plan_html}"
+        + f"<section aria-labelledby='h-plans'><h2 id='h-plans'>TIMs Pläne jetzt (30m)</h2>{plan_html}"
         + "<p class='note'>Stop und Ziele sind eine Vorschau nach TIMs Regeln für unbestätigte Szenarien, keine Order und keine Anlageberatung. "
         + "Rund um die NY-Eröffnung (15 min davor bis 30 min danach) keine neuen Einstiege.</p></section>"
         + f"<section aria-labelledby='h-pj'><h2 id='h-pj'>Plan-Journal</h2>{pj_html}</section>"
@@ -684,7 +684,7 @@ def render_area(key: str) -> str:
 
 
 def render_markt(model: dict[str, Any]) -> str:
-    tf = model.get("timeframe") or "15m"
+    tf = model.get("timeframe") or "30m"
     return page("Markt & Pläne", "markt", markt_body(model), refresh=True, fragment=f"/neu/markt?tf={tf}&fragment=1")
 
 
