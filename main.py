@@ -544,14 +544,18 @@ class TIMApplication:
     async def _plan_journal_loop(self) -> None:
         # Paper journal only: a failed step is logged and retried, never fatal.
         from src.dashboard.plan_journal import update as update_plan_journal
+        from src.dashboard.trader_journal import update as update_trader_journal
 
         while not self.worker_stop.is_set():
-            try:
-                await asyncio.to_thread(update_plan_journal, self.dashboard_state.plan_journal_path, self.dashboard_state.chart_series())
-            except asyncio.CancelledError:
-                raise
-            except Exception as error:  # noqa: BLE001 - the journal must not stop the runtime
-                log.warning("plan journal update failed: %s", type(error).__name__)
+            series = self.dashboard_state.chart_series()
+            for name, step, path in (("plan journal", update_plan_journal, self.dashboard_state.plan_journal_path),
+                                     ("trader journal", update_trader_journal, self.dashboard_state.trader_journal_path)):
+                try:
+                    await asyncio.to_thread(step, path, series)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:  # noqa: BLE001 - a journal must not stop the runtime
+                    log.warning("%s update failed: %s", name, type(error).__name__)
             try:
                 await asyncio.wait_for(self.worker_stop.wait(), timeout=PLAN_JOURNAL_INTERVAL_SECONDS)
             except TimeoutError:

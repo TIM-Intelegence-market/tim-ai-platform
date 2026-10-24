@@ -42,7 +42,7 @@ def test_navigation_is_grouped_and_marks_current_page() -> None:
     # Dashboard 4.1: one Control Center navigation holds every live page plus the pilot view.
     assert [group for group, _ in NAV_GROUPS] == ["BETRIEB", "FORSCHUNG", "FREIGABE", "SYSTEM", "WERKZEUGE"]
     routes = [href for _, links in NAV_GROUPS for _, href in links]
-    assert len(routes) == len(set(routes)) == 25 and "/prep" in routes and "/pilot" in routes and "/chart" in routes and "/journal" in routes
+    assert len(routes) == len(set(routes)) == 26 and "/prep" in routes and "/trader-journal" in routes and "/pilot" in routes and "/chart" in routes and "/journal" in routes
     page = render(DashboardState(), "Research Cases")
     assert "<p class='nav__label'>FORSCHUNG</p>" in page
     assert "<a href='/cases' class='active' aria-current='page'>Research-Fälle</a>" in page

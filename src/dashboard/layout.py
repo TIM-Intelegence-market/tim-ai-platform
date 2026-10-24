@@ -97,7 +97,7 @@ NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("Insights", "/insights"),
         ("Independent Cases", "/independent-cases"),
         ("Qualification", "/qualification"),
-        ("Prep", "/prep"),
+        ("Prep", "/prep"), ("Trader Journal", "/trader-journal"),
         ("Setup Path", "/setup-path"),
         ("Plan Journal", "/journal"),
         ("Chart", "/chart"),
@@ -118,7 +118,7 @@ NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
 
 
 # Menu labels that differ from the generic translation of the page key.
-NAV_LABELS = {"Research": "Recherche-Werkzeug", "Chart": "TIM-Chart", "Plan Journal": "Plan-Journal", "Prep": "Vorbereitung"}
+NAV_LABELS = {"Research": "Recherche-Werkzeug", "Chart": "TIM-Chart", "Plan Journal": "Plan-Journal", "Prep": "Vorbereitung", "Trader Journal": "Trader-Journal"}
 
 
 def _strip_states(data: dict[str, Any]) -> list[tuple[str, str, str, str]]:
@@ -213,7 +213,8 @@ def _error_page(page: str, exc: Exception) -> str:
     )
 
 
-def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, str]] | None = None) -> str:
+def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, str]] | None = None, refresh: bool = True) -> str:
+    """Page shell. ``refresh=False`` leaves out the live script (pages with a form keep their input)."""
     nav_parts = []
     for group_label, links in NAV_GROUPS:
         items = "".join(
@@ -235,7 +236,7 @@ def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, s
     )
     matrix = f"<dl class='status-matrix' aria-label='Globaler Systemstatus'>{strip_rows}{trading_row}</dl>" if strip else ""
 
-    return translate_html(f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav>{matrix}<button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT}</body></html>""")
+    return translate_html(f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>OPERATIONS &amp; RESEARCH CONTROL CENTER</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav>{matrix}<button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT if refresh else ''}</body></html>""")
 
 
 def _hero(title: str, text: str) -> str:
