@@ -6,12 +6,43 @@
   "gh": "/opt/homebrew/bin/gh",
   "required_check": "test",
   "min_minutes_between_runtime_restarts": 60,
+  "min_minutes_between_runtime_restarts_display_only": 20,
+  "min_minutes_note": "60 min between restarts when a new commit changes more than the display, 20 min when every changed file is display-safe.",
   "generated_tracked_files": [
     "docs/TIM_V1_LIVE_STATUS.md"
   ],
   "busy_process_patterns": {
-    "ci_test_job": "Runner.Worker",
     "db_backup": "tim_db_backup.py|pg_dump"
+  },
+  "deferrable_process_patterns": {
+    "ci_test_job": "Runner.Worker"
+  },
+  "max_defer_minutes": 20,
+  "busy_note": "busy_process_patterns always block a restart. deferrable_process_patterns delay it until the process is gone or max_defer_minutes have passed since the commit became deployable (the CI job uses its own PostgreSQL on 5434; a 20-second dashboard restart does not disturb it).",
+  "display_safe": {
+    "display_safe_prefixes": [
+      "src/dashboard/",
+      "docs/",
+      "tests/",
+      "tools/mac-worker-dashboard/",
+      "ai-resources/",
+      ".github/",
+      "ops/dashboard_refresh/",
+      "artifacts/v2_completion/sk_",
+      "src/v2_completion/sk_"
+    ],
+    "display_safe_files": [
+      "scripts/record_deployment.py",
+      "scripts/dashboard_refresh.py",
+      "src/operational/dashboard_refresh.py",
+      "ops/launchd/com.tim.dashboard-refresh.plist",
+      "scripts/sk_study.py",
+      "src/v2_completion/control_regime_study.py"
+    ],
+    "display_safe_suffixes": [
+      ".md"
+    ],
+    "note": "Paths that only change what the dashboards show. The runtime restarts, but detectors, data path, configuration and scripts stay untouched."
   },
   "studies": [
     {
@@ -19,28 +50,7 @@
       "active_from_utc": "2026-10-23T13:55:24Z",
       "ended_marker": "artifacts/v2_completion/sk_end_record.json",
       "reason": "Detectors and data path must stay unchanged while S-K windows are drawn; a mid-study change makes windows before and after incomparable.",
-      "display_safe_prefixes": [
-        "src/dashboard/",
-        "docs/",
-        "tests/",
-        "tools/mac-worker-dashboard/",
-        "ai-resources/",
-        ".github/",
-        "ops/dashboard_refresh/",
-        "artifacts/v2_completion/sk_",
-        "src/v2_completion/sk_"
-      ],
-      "display_safe_files": [
-        "scripts/record_deployment.py",
-        "scripts/dashboard_refresh.py",
-        "src/operational/dashboard_refresh.py",
-        "ops/launchd/com.tim.dashboard-refresh.plist",
-        "scripts/sk_study.py",
-        "src/v2_completion/control_regime_study.py"
-      ],
-      "display_safe_suffixes": [
-        ".md"
-      ],
+      "display_safe": "default",
       "display_safe_note": "Study tooling (sk_*, control_regime_study.py, sk_study.py) runs offline on backup copies and is not imported by the runtime."
     }
   ],

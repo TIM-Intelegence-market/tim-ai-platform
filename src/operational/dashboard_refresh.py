@@ -3,10 +3,14 @@
 One run (launchd every 10 minutes, see scripts/dashboard_refresh.py):
 
 1. ``git fetch`` platform-main in the live checkout (~/TIM-live).
-2. Decide with :func:`decide` whether the new commit may go live: CI job ``test`` green on
-   exactly that commit, fast-forward only, no running CI test job or DB backup, no active
-   qualification campaign, at most one runtime restart per interval, and while a registered
-   study runs only display-safe changes (policy ``ops/dashboard_refresh/policy.json``).
+2. Decide with :func:`decide` whether a new commit may go live: CI job ``test`` green on that
+   commit or on a commit with the identical tree (the PR head of a merge under the strict
+   ruleset), fast-forward only, no running DB backup, no active qualification campaign, a CI
+   test job delays the restart for at most ``max_defer_minutes``, at most one runtime restart
+   per interval (shorter when only the display changed), and while a registered study runs only
+   display-safe changes (policy ``ops/dashboard_refresh/policy.json``). When the newest commit
+   touches protected paths, the newest *unblocked* ancestor on the first-parent chain goes live
+   instead, so one mixed commit no longer holds every display fix behind it.
 3. Deploy: detached checkout, ``scripts/record_deployment.py`` with the CI result,
    ``scripts/timctl restart`` and a check that a new runtime process answers. Any failure rolls
    back to the previous commit and blocks that commit for further attempts.
@@ -46,6 +50,7 @@ REASON_TEXT = {
     "ci_pending": "CI-Test auf dem neuen Stand läuft noch oder fehlt.",
     "ci_failed": "CI-Test auf dem neuen Stand ist nicht grün.",
     "study_protected_paths": "Studie läuft: neuer Stand ändert mehr als die Anzeige.",
+    "busy_deferred": "CI-Testjob läuft, Neustart wird kurz verschoben.",
     "local_changes": "Lokale Änderungen in ~/TIM-live.",
     "busy": "CI-Testjob oder Backup läuft gerade.",
     "restart_interval": "Letzter Neustart ist zu kurz her.",
@@ -78,8 +83,35 @@ class Decision:
     details: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"action": self.action, "reason": self.reason, "text": REASON_TEXT.get(self.reason, self.reason),
-                "details": self.details}
+        return {"action": self.action, "reason": self.reason, "text": self.text(), "details": self.details}
+
+    def text(self) -> str:
+        """Reason text with the facts a reader needs (which files hold, until when a restart waits)."""
+        base = REASON_TEXT.get(self.reason, self.reason)
+        held = self.details.get("held_back") or {}
+        if self.reason == "study_protected_paths":
+            return f"{base} Hält zurück: {_file_list(self.details.get('blocked_files'))}."
+        latest = parse_time(self.details.get("deploy_at_latest_utc"))
+        if self.reason == "busy_deferred" and latest:
+            return f"{base} Spätestens {latest.astimezone().strftime('%H:%M')} Uhr."
+        if held:
+            return (f"{base} {held.get('commits', 0)} neuere Commits warten wegen "
+                    f"{_file_list(held.get('blocked_files'))}.")
+        return base
+
+
+def _file_list(blocked: Any, limit: int = 3) -> str:
+    files: list[str] = []
+    if isinstance(blocked, dict):
+        for paths in blocked.values():
+            files.extend(str(path) for path in paths)
+    elif isinstance(blocked, (list, tuple)):
+        files.extend(str(path) for path in blocked)
+    files = sorted(set(files))
+    if not files:
+        return "unbekannt"
+    shown = ", ".join(files[:limit])
+    return shown if len(files) <= limit else f"{shown} (+{len(files) - limit})"
 
 
 def load_policy(path: Path) -> dict[str, Any]:
@@ -89,16 +121,35 @@ def load_policy(path: Path) -> dict[str, Any]:
     return policy
 
 
-def is_display_safe(path: str, study: dict[str, Any]) -> bool:
-    if path in study.get("display_safe_files", []):
+DISPLAY_SAFE_KEYS = ("display_safe_prefixes", "display_safe_files", "display_safe_suffixes")
+
+
+def is_display_safe(path: str, rules: dict[str, Any]) -> bool:
+    if path in rules.get("display_safe_files", []):
         return True
-    if any(path.startswith(prefix) for prefix in study.get("display_safe_prefixes", [])):
+    if any(path.startswith(prefix) for prefix in rules.get("display_safe_prefixes", [])):
         return True
-    return any(path.endswith(suffix) for suffix in study.get("display_safe_suffixes", []))
+    return any(path.endswith(suffix) for suffix in rules.get("display_safe_suffixes", []))
+
+
+def display_rules(policy: dict[str, Any], study: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The display-safe path rules: a study's own lists, or the policy default (``display_safe``)."""
+    if study and any(key in study for key in DISPLAY_SAFE_KEYS):
+        return {key: list(study.get(key, [])) for key in DISPLAY_SAFE_KEYS}
+    default = policy.get("display_safe") or {}
+    return {key: list(default.get(key, [])) for key in DISPLAY_SAFE_KEYS}
+
+
+def display_only(policy: dict[str, Any], changed_files: Iterable[str]) -> bool:
+    rules = display_rules(policy)
+    return all(is_display_safe(path, rules) for path in changed_files)
 
 
 def active_studies(policy: dict[str, Any], now: datetime, exists: Callable[[str], bool]) -> list[dict[str, Any]]:
-    """Studies that started and have no end marker in the live checkout or the target commit."""
+    """Studies that started and have no end marker in the live checkout or the target commit.
+
+    Each returned study carries its resolved display-safe lists, so :func:`study_blockers` needs no policy.
+    """
     active = []
     for study in policy.get("studies", []):
         start = parse_time(study.get("active_from_utc"))
@@ -107,8 +158,29 @@ def active_studies(policy: dict[str, Any], now: datetime, exists: Callable[[str]
         marker = study.get("ended_marker")
         if marker and exists(marker):
             continue
-        active.append(study)
+        active.append({**study, **display_rules(policy, study)})
     return active
+
+
+def furthest_unblocked(chain: list[str], changed_up_to: Callable[[str], list[str]],
+                       studies: list[dict[str, Any]]) -> tuple[str | None, dict[str, list[str]]]:
+    """Newest commit on ``chain`` (oldest first) whose cumulative diff is display-safe for every study.
+
+    Returns ``(commit, blockers_of_the_newest_commit)``; ``commit`` is None when even the oldest is blocked.
+    """
+    newest_blockers: dict[str, list[str]] = {}
+    for index, commit in enumerate(reversed(chain)):
+        blockers = study_blockers(studies, changed_up_to(commit))
+        if index == 0:
+            newest_blockers = blockers
+        if not blockers:
+            return commit, newest_blockers
+    return None, newest_blockers
+
+
+def same_tree(tree: str, candidates: dict[str, str | None]) -> list[str]:
+    """Commits whose tree hash equals ``tree`` (their code is byte-identical, so their CI result counts)."""
+    return [sha for sha, candidate_tree in candidates.items() if candidate_tree and candidate_tree == tree]
 
 
 def study_blockers(studies: Iterable[dict[str, Any]], changed_files: Iterable[str]) -> dict[str, list[str]]:
@@ -137,8 +209,16 @@ def decide(
     blockers: dict[str, list[str]],
     failed_targets: Iterable[str],
     paused: bool,
+    deferred: list[str] | None = None,
+    deferred_since: datetime | None = None,
+    max_defer_minutes: float = 0,
+    held_back: dict[str, Any] | None = None,
 ) -> Decision:
-    """Pure decision; the order puts the hard stops (pause, campaign) first."""
+    """Pure decision; the order puts the hard stops (pause, campaign) first.
+
+    ``busy`` always waits. ``deferred`` (e.g. a running CI test job) waits only until
+    ``max_defer_minutes`` after ``deferred_since``, the moment the commit first became deployable.
+    """
     if paused:
         return Decision("HOLD", "paused")
     if target is None:
@@ -151,13 +231,13 @@ def decide(
         return Decision("HOLD", "not_fast_forward", {"deployed": deployed, "target": target})
     if target in set(failed_targets):
         return Decision("HOLD", "previous_attempt_failed", {"target": target})
+    if blockers:
+        return Decision("HOLD", "study_protected_paths", {"target": target, "blocked_files": blockers})
     conclusion = (ci or {}).get("conclusion")
     if ci is None or ci.get("status") != "completed":
         return Decision("WAIT", "ci_pending", {"target": target})
     if conclusion != "success":
         return Decision("HOLD", "ci_failed", {"target": target, "conclusion": conclusion, "url": ci.get("url")})
-    if blockers:
-        return Decision("HOLD", "study_protected_paths", {"target": target, "blocked_files": blockers})
     if dirty:
         return Decision("HOLD", "local_changes", {"files": dirty})
     if busy:
@@ -165,7 +245,16 @@ def decide(
     if last_restart_at is not None and now - last_restart_at < timedelta(minutes=min_minutes_between_restarts):
         return Decision("WAIT", "restart_interval", {
             "next_possible_at_utc": iso(last_restart_at + timedelta(minutes=min_minutes_between_restarts))})
-    return Decision("DEPLOY", "deploy", {"from": deployed, "to": target})
+    if deferred:
+        since = deferred_since or now
+        latest = since + timedelta(minutes=max_defer_minutes)
+        if now < latest:
+            return Decision("WAIT", "busy_deferred", {"busy": deferred, "deferred_since_utc": iso(since),
+                                                      "deploy_at_latest_utc": iso(latest), "target": target})
+    details: dict[str, Any] = {"from": deployed, "to": target}
+    if held_back:
+        details["held_back"] = held_back
+    return Decision("DEPLOY", "deploy", details)
 
 
 def pytest_counts(log: str) -> dict[str, int]:
@@ -320,18 +409,63 @@ class DashboardRefresh:
             return True  # unreadable campaign file: stay safe
         return status not in {"COMPLETED", "ABORTED", "ENDED", "FINISHED"}
 
-    def ci_result(self, commit: str) -> dict[str, Any] | None:
-        repository = self.policy.get("repository")
-        if not repository:
-            return None
-        result = self.run([self.policy.get("gh", "gh"), "api", f"repos/{repository}/commits/{commit}/check-runs?per_page=100"],
-                          timeout=60)
+    def gh_json(self, endpoint: str, timeout: float = 60) -> Any:
+        result = self.run([self.policy.get("gh", "gh"), "api", endpoint], timeout=timeout)
         if result.returncode != 0:
             return None
         try:
-            return pick_check_run(json.loads(result.stdout), self.policy.get("required_check", "test"))
+            return json.loads(result.stdout)
         except ValueError:
             return None
+
+    def check_run(self, commit: str) -> dict[str, Any] | None:
+        repository = self.policy.get("repository")
+        if not repository:
+            return None
+        payload = self.gh_json(f"repos/{repository}/commits/{commit}/check-runs?per_page=100")
+        return pick_check_run(payload, self.policy.get("required_check", "test")) if isinstance(payload, dict) else None
+
+    def tree_of(self, commit: str) -> str | None:
+        local = self.git("rev-parse", f"{commit}^{{tree}}", timeout=15)
+        if local.returncode == 0 and local.stdout.strip():
+            return local.stdout.strip()
+        repository = self.policy.get("repository")
+        payload = self.gh_json(f"repos/{repository}/git/commits/{commit}") if repository else None
+        return (payload.get("tree") or {}).get("sha") if isinstance(payload, dict) else None
+
+    def tested_equivalents(self, commit: str) -> list[str]:
+        """Commits with the same tree as ``commit``: its second parent (merge) and the heads of its PRs.
+
+        Under the strict ruleset a PR must be current before it merges, so the merge commit's tree equals
+        the tested PR head's tree; a squash merge of a current branch yields the same tree as well.
+        """
+        tree = self.tree_of(commit)
+        if not tree:
+            return []
+        candidates: dict[str, str | None] = {}
+        second_parent = self.git("rev-parse", "--verify", "--quiet", f"{commit}^2", timeout=15)
+        if second_parent.returncode == 0 and second_parent.stdout.strip():
+            candidates[second_parent.stdout.strip()] = None
+        repository = self.policy.get("repository")
+        pulls = self.gh_json(f"repos/{repository}/commits/{commit}/pulls?per_page=10") if repository else None
+        for pull in pulls if isinstance(pulls, list) else []:
+            head = ((pull or {}).get("head") or {}).get("sha") if isinstance(pull, dict) else None
+            if head and head != commit:
+                candidates.setdefault(head, None)
+        for sha in list(candidates):
+            candidates[sha] = self.tree_of(sha)
+        return same_tree(tree, candidates)
+
+    def ci_result(self, commit: str) -> dict[str, Any] | None:
+        """Green ``test`` on the commit itself, else on a commit with the identical tree (PR head)."""
+        direct = self.check_run(commit)
+        if direct and direct.get("status") == "completed" and direct.get("conclusion") == "success":
+            return direct
+        for equivalent in self.tested_equivalents(commit):
+            run = self.check_run(equivalent)
+            if run and run.get("status") == "completed" and run.get("conclusion") == "success":
+                return {**run, "tested_commit": equivalent, "same_tree_as": commit}
+        return direct
 
     def ci_counts(self, check_run_id: Any) -> dict[str, int]:
         repository = self.policy.get("repository")
@@ -354,25 +488,55 @@ class DashboardRefresh:
         changed: list[str] = []
         fast_forward = False
         ci = None
+        chosen = target
+        blockers: dict[str, list[str]] = {}
+        held_back: dict[str, Any] | None = None
+        studies = active_studies(self.policy, now, self.exists_in(target))
         if target and target != deployed:
-            changed = [line for line in self.git("diff", "--name-only", deployed, target).stdout.splitlines() if line]
             fast_forward = self.git("merge-base", "--is-ancestor", deployed, target).returncode == 0
-            ci = self.ci_result(target)
+            def changed_up_to(commit: str) -> list[str]:
+                return [line for line in self.git("diff", "--name-only", deployed, commit).stdout.splitlines() if line]
+
+            changed = changed_up_to(target)
+            if fast_forward and studies:
+                chain = [line for line in self.git("rev-list", "--first-parent", "--reverse",
+                                                   f"{deployed}..{target}").stdout.splitlines() if line] or [target]
+                chosen, blockers = furthest_unblocked(chain, changed_up_to, studies)
+                if chosen is None:
+                    chosen = target
+                elif chosen != target:
+                    held_back = {"target": target, "commits": chain.index(target) - chain.index(chosen),
+                                 "blocked_files": blockers}
+                    blockers = {}
+                    changed = changed_up_to(chosen)
+            if fast_forward and not blockers:
+                ci = self.ci_result(chosen)
         ps_output = self.run(["ps", "-axo", "command="], timeout=15).stdout
         busy = busy_processes(ps_output, self.policy.get("busy_process_patterns", {}))
+        deferred = busy_processes(ps_output, self.policy.get("deferrable_process_patterns", {}))
         dirty = parse_porcelain(self.git("status", "--porcelain", "--untracked-files=no").stdout,
                                 self.policy.get("generated_tracked_files", []))
-        studies = active_studies(self.policy, now, self.exists_in(target))
+        interval_key = ("min_minutes_between_runtime_restarts_display_only"
+                        if changed and display_only(self.policy, changed) else "min_minutes_between_runtime_restarts")
+        min_minutes = float(self.policy.get(interval_key, self.policy.get("min_minutes_between_runtime_restarts", 60)))
+        deferral = state.get("deferral") if isinstance(state.get("deferral"), dict) else {}
+        deferred_since = parse_time(deferral.get("since_utc")) if deferral.get("target") == chosen else None
         decision = decide(
-            deployed=deployed, target=target, is_fast_forward=fast_forward, ci=ci, busy=busy, dirty=dirty,
+            deployed=deployed, target=chosen, is_fast_forward=fast_forward, ci=ci, busy=busy, dirty=dirty,
             campaign_active=self.campaign_active(), last_restart_at=parse_time(state.get("last_restart_at_utc")),
-            now=now, min_minutes_between_restarts=float(self.policy.get("min_minutes_between_runtime_restarts", 60)),
-            blockers=study_blockers(studies, changed), failed_targets=state.get("failed_targets", []), paused=paused,
+            now=now, min_minutes_between_restarts=min_minutes, blockers=blockers,
+            failed_targets=state.get("failed_targets", []), paused=paused, deferred=deferred,
+            deferred_since=deferred_since, max_defer_minutes=float(self.policy.get("max_defer_minutes", 0)),
+            held_back=held_back,
         )
+        if decision.reason == "busy_deferred":
+            state["deferral"] = {"target": chosen, "since_utc": decision.details["deferred_since_utc"]}
+        else:
+            state.pop("deferral", None)
 
         deploy_result = None
-        if decision.action == "DEPLOY" and not dry_run and target and ci:
-            deploy_result = self.deploy(deployed, target, ci, changed, state)
+        if decision.action == "DEPLOY" and not dry_run and chosen and ci:
+            deploy_result = self.deploy(deployed, chosen, ci, changed, state)
         worker = self.refresh_worker_dashboard(state, busy=busy, paused=paused, dry_run=dry_run)
         health = [{"name": check["name"], "optional": bool(check.get("optional")),
                    **self.probe(check["url"], float(check.get("timeout_seconds", 10)))}
@@ -387,6 +551,9 @@ class DashboardRefresh:
             "dry_run": dry_run,
             "deployed_commit": self.git("rev-parse", "HEAD").stdout.strip(),
             "target_commit": target,
+            "deploy_target": chosen,
+            "held_back": held_back,
+            "restart_interval_minutes": min_minutes,
             "decision": decision.to_dict(),
             "ci": ci,
             "active_studies": [study["id"] for study in studies],
