@@ -31,6 +31,8 @@ from src.research_lab.protocol import (
 )
 from src.research_lab.stats.inference import neighbours_positive, walk_forward, walk_forward_windows, year_stability
 from src.research_lab.stats.random_entry import atr_at_signal, atr_series, random_entry_pvalue
+from src.research_lab.stats.snooping import REPS as SNOOPING_REPS
+from src.research_lab.stats.snooping import period_report
 from src.research_lab.stats.register import HypothesisRegister
 
 # Data windows (protocol 3.1/3.2). Spot loads the partial first month 2017-08 for
@@ -99,6 +101,7 @@ def _time_in_market(trades: Sequence[Trade], start: int, end: int, interval_ms: 
 class RunConfig:
     random_runs: int = 10_000
     seed: int = 20260929
+    snooping_reps: int = SNOOPING_REPS  # 0 skips the additional SPA/StepM evaluation
 
 
 def evaluate_variant(spec: VariantSpec, bars: Sequence[Kline], funding: Sequence[FundingRate], config: RunConfig,
@@ -196,6 +199,24 @@ def _neighbours(spec: VariantSpec, results: dict[str, VariantResult], members: S
     return neighbours_positive(grid, expectancy, tuple(spec.params[a] for a in spec.grid_axes))
 
 
+def snooping(trades: dict[str, list[Trade]], specs: Sequence[VariantSpec], config: RunConfig) -> dict:
+    """Additional SPA/StepM evaluation per period (report only, never a verdict).
+
+    Training uses the window all variants share (from the latest data start).
+    """
+    if config.snooping_reps < 1 or not specs:
+        return {}
+    shared = {spec.variant_id: trades[spec.variant_id] for spec in specs}
+    windows = {"train": (max(signal_start(spec) for spec in specs), VALIDATION_START_MS),
+               "validation": (VALIDATION_START_MS, HOLDOUT_START_MS)}
+    out = {}
+    for offset, (name, (lo, hi)) in enumerate(windows.items()):
+        block = period_report(shared, lo, hi, seed=config.seed + 100 + offset, reps=config.snooping_reps)
+        if block is not None:
+            out[name] = block
+    return out
+
+
 def buy_and_hold(bars: Sequence[Kline], start: int, end: int) -> float | None:
     inside = [b for b in bars if start <= b.open_time < end]
     return inside[-1].close / inside[0].open - 1 if inside else None
@@ -225,6 +246,7 @@ def run(store: ArchiveStore, *, specs: Sequence[VariantSpec] = VARIANTS, config:
         results[spec.variant_id], trades[spec.variant_id] = evaluate_variant(spec, bars, funding, config, atr_values)
     context["dataset_hashes"]["funding"] = store.dataset_hash(funding_refs())
     candidates = decide(results, trades, specs)
+    context["snooping"] = snooping(trades, specs, config)
     return results, candidates, context
 
 
@@ -246,6 +268,23 @@ def _fmt(value: float | None, digits: int = 3) -> str:
     if value == float("inf"):
         return "∞"
     return f"{value:.{digits}f}".replace(".", ",")
+
+
+def snooping_lines(blocks: dict) -> list[str]:
+    if not blocks:
+        return []
+    first = next(iter(blocks.values()))
+    lines = ["", "## Zusatz: Glückstest über alle Varianten (SPA/StepM)", "",
+             f"{first['note']}. Frage: Schlägt die beste Variante 0 R pro Tag, oder ist sie nur die glücklichste? "
+             f"Stationärer Bootstrap, Blocklänge {_fmt(first['block_days'], 0)} Tage, {first['reps']} Ziehungen, studentisiert.", "",
+             "| Abschnitt | Tage | Varianten | beste Variante | E[R]/Tag | SPA p (unten/konsistent/oben) | StepM überlegen (α = 5 %) |",
+             "|---|---|---|---|---|---|---|"]
+    for name, b in blocks.items():
+        p = b["spa_p"]
+        lines.append(f"| {name} {b['start']}–{b['end']} | {b['days']} | {b['variants']} | {b['best']} | {_fmt(b['best_mean_r_per_day'], 4)} "
+                     f"| {_fmt(p['lower'], 4)}/{_fmt(p['consistent'], 4)}/{_fmt(p['upper'], 4)} "
+                     f"| {', '.join(b['stepm_superior']) or 'keine'} |")
+    return lines
 
 
 def write_report(out_dir: Path, results: dict[str, VariantResult], candidates: list[str], context: dict,
@@ -282,6 +321,7 @@ def write_report(out_dir: Path, results: dict[str, VariantResult], candidates: l
     if bh:
         lines += ["", f"Kaufen und Halten Spot (Vergleich, kein Kriterium): Training {_fmt((bh.get('train') or 0) * 100, 1)} %, "
                       f"Validierung {_fmt((bh.get('validation') or 0) * 100, 1)} %."]
+    lines += snooping_lines(context.get("snooping") or {})
     lines += ["", "Datensatz-Hashes:", ""] + [f"- {k}: `{v}`" for k, v in context.get("dataset_hashes", {}).items()]
     path = out_dir / f"r4_{stamp}.md"
     path.write_text("\n".join(lines) + "\n")
