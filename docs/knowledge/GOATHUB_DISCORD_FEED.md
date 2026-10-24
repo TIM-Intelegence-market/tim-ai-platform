@@ -116,6 +116,14 @@ Die Kanal-IDs stehen hier nicht. Sie werden beim `setup` lokal eingetragen (Entw
 Education und Bootcamp laufen erst nach ausdrücklicher Freigabe. Die Konfiguration kennt bisher
 keine Rolle je Kanal; „nur Wissen“ ist noch nicht im Code umgesetzt und wäre ein eigenes Paket.
 
+## Setup-Entwurf für den Setup-Kanal
+
+`ofsc --input … --setup-draft entwurf.md` schreibt zusätzlich zur Analyse einen Text für Discord
+(unter 2000 Zeichen). TIM postet ihn nie selbst; ein Mensch liest und entscheidet. Ohne Trade-Plan
+steht dort „Kein Setup (NO TRADE)“ mit Gründen und den beobachteten, unbestätigten Szenarien.
+Scores erscheinen nicht, der Haftungshinweis steht immer am Ende. Ein Schreib-Bot ist nicht
+vorgesehen und bräuchte eine eigene Freigabe.
+
 ## Fehlermeldungen
 
 Wie beim Broncx-Feed: `401` Geheimnis falsch, `403` Bot fehlt das Leserecht im Kanal, `404` Kanal-ID
