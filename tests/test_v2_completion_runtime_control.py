@@ -69,6 +69,20 @@ def test_database_boundary_rejects_wildcard_and_accepts_loopback(control, monkey
     assert instance.database_boundary_gate()["status"] == "PASS"
 
 
+def test_ingestion_gate_uses_the_runtime_plist_environment(control, monkeypatch: pytest.MonkeyPatch) -> None:
+    module, instance = control
+    instance.plist["EnvironmentVariables"] = {"TIM_DATABASE_SECRET_PROVIDER": "file", "TIM_DATABASE_SECRET_FILE": "/tmp/tim-secret"}
+    instance.runtime_env.update(instance.plist["EnvironmentVariables"])
+    captured = {}
+    def fake_run(command, **kwargs):
+        captured.update(kwargs.get("env") or {})
+        return completed(command, stdout='{"status":"PASS","mode":"OBSERVE","trading_actions":0}')
+    monkeypatch.setattr(module, "run", fake_run)
+    assert instance.ingestion_gate("status")["status"] == "PASS"
+    assert captured["TIM_DATABASE_SECRET_PROVIDER"] == "file"
+    assert captured["TIM_DATABASE_SECRET_FILE"] == "/tmp/tim-secret"
+
+
 def test_start_is_fail_closed_before_launchd_when_database_is_exposed(control, monkeypatch: pytest.MonkeyPatch) -> None:
     _, instance = control
     calls: list[str] = []
@@ -156,6 +170,7 @@ def test_start_validates_secret_boundary_and_durable_state_before_bootstrap(
 
     monkeypatch.setattr(instance, "_launchctl", launchctl)
     monkeypatch.setattr(instance, "listeners", lambda port: {"status": "LISTENING", "addresses": [f"127.0.0.1.{port}"], "unsafe": False})
+    monkeypatch.setattr(instance, "dashboard_health", lambda: {"status": "PASS", "mode": "OBSERVE"})
     monkeypatch.setattr(instance, "_wait", lambda predicate, timeout: predicate())
     monkeypatch.setattr(instance, "verify_running", lambda: {"status": "PASS", "mode": "OBSERVE"})
     monkeypatch.setattr(module, "atomic_json", lambda path, payload: events.append("manifest"))
