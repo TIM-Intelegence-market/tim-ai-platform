@@ -19,7 +19,11 @@
   - X (Twitter): Datenzugang kostenpflichtig, Scraping gegen die Regeln; Buzz kommt aus CoinGecko und RSS.
   - Cloud-Server: der Server ist vorerst raus, TIM läuft nur auf dem Mac. Statt Server-Anleitung gibt es
     eine launchd-Vorlage (nicht eingerichtet).
-* **Geprüft (23.10.2026):** 20 eigene Tests offline grün (Python 3.13). Live-Abruf in der Cloud nicht möglich
-  (Binance, CoinGecko und Feeds gesperrt); erster Live-Lauf auf dem Mac steht aus.
+* **Geprüft (23.10.2026):** eigene Tests offline grün (Python 3.13). Live-Abruf in der Cloud nicht möglich
+  (Binance, CoinGecko und Feeds gesperrt).
+* **Live auf dem Mac (24.10.2026, Uzis „ja“):** Binance, CoinGecko-Trends und die drei Feeds liefern Daten.
+  Dauerbetrieb per launchd `com.tim.trading-team` aus eigenem Checkout `~/TIM-trading-team`, alle 5 Minuten.
+  Gefunden und behoben: Binance führt Paare mit chinesischen Zeichen (z. B. `牛来USDT`); Symbole werden jetzt
+  URL-kodiert.
 * **Grenzen für TIM:** nur Papier und Research. Kein Echtgeld, keine Anbindung an Order-Pfade, keine
   Zugangsdaten im Repo. Nicht in `~/TIM-live` einspielen.
