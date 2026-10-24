@@ -68,21 +68,21 @@ def test_all_three_targets_give_plus_2_17_r_and_short_mirrors_long() -> None:
 
 
 def _q(index: int, low: float, high: float, close: float) -> dict:
-    opened = T0 + timedelta(minutes=15 * index)
-    return {"timeframe": "15m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=14, seconds=59.999)).isoformat(),
+    opened = T0 + timedelta(minutes=30 * index)
+    return {"timeframe": "30m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat(),
             "open": high, "high": high, "low": low, "close": close, "volume": 1.0}
 
 
-def test_15m_close_beyond_invalidation_ends_the_plan_before_and_after_fill() -> None:
-    # Short with entry far above: the 15m close above the level comes first.
+def test_30m_close_beyond_invalidation_ends_the_plan_before_and_after_fill() -> None:
+    # Short with entry far above: the 30m close above the level comes first.
     journal = _journal_with(_plan("SHORT", entry=103.0, stop=104.0, invalid=101.0))
-    minutes = [_m(i, 100.5, 101.5, 101.4) for i in range(15)] + [_m(15, 101.2, 101.6)]
-    pj.evaluate(journal, minutes, [_q(0, 100.5, 101.5, 101.4)], T0 + timedelta(minutes=17))
+    minutes = [_m(i, 100.5, 101.5, 101.4) for i in range(30)] + [_m(30, 101.2, 101.6)]
+    pj.evaluate(journal, minutes, [_q(0, 100.5, 101.5, 101.4)], T0 + timedelta(minutes=32))
     assert journal["entries"][0]["status"] == "INVALIDATED"
-    # Long filled, then a 15m close below the level closes the rest there.
+    # Long filled, then a 30m close below the level closes the rest there.
     journal = _journal_with(_plan())
-    minutes = [_m(0, 99.95, 100.3)] + [_m(i, 99.6, 99.9, 99.7) for i in range(1, 15)] + [_m(15, 99.4, 99.6)]
-    pj.evaluate(journal, minutes, [_q(0, 99.4, 100.3, 99.45)], T0 + timedelta(minutes=17))
+    minutes = [_m(0, 99.95, 100.3)] + [_m(i, 99.6, 99.9, 99.7) for i in range(1, 30)] + [_m(30, 99.4, 99.6)]
+    pj.evaluate(journal, minutes, [_q(0, 99.4, 100.3, 99.45)], T0 + timedelta(minutes=32))
     entry = journal["entries"][0]
     assert entry["exit_reason"] == "INVALIDATION" and entry["gross_r"] == -0.55
 
@@ -99,7 +99,7 @@ def test_no_entry_inside_the_ny_open_block() -> None:
 
 def test_new_levels_replace_the_open_plan_and_same_levels_do_not_duplicate() -> None:
     journal = _journal_with(_plan())
-    assert pj.record_plans(journal, [_plan()], T0 + timedelta(minutes=15)) == []
+    assert pj.record_plans(journal, [_plan()], T0 + timedelta(minutes=30)) == []
     assert len(journal["entries"]) == 1
     added = pj.record_plans(journal, [_plan(entry=100.5, stop=99.5)], T0 + timedelta(minutes=30))
     assert len(added) == 1 and journal["entries"][0]["status"] == "REPLACED"
@@ -132,24 +132,24 @@ def test_plans_from_model_keeps_only_complete_long_and_short_plans() -> None:
     assert plans[0]["pipeline_decision"] == "NO_TRADE" and plans[0]["pipeline_decision_reasons"] == ["NO_SCENARIO_CONFIRMED"]
 
 
-def test_update_runs_tim_pipeline_on_closed_15m_candles_and_saves(tmp_path: Path) -> None:
+def test_update_runs_tim_pipeline_on_closed_30m_candles_and_saves(tmp_path: Path) -> None:
     start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
-    series: dict[str, list[dict]] = {"15m": [], "1m": []}
+    series: dict[str, list[dict]] = {"30m": [], "1m": []}
     price = 100_000.0
     for i in range(90):
-        opened = start + timedelta(minutes=15 * i)
+        opened = start + timedelta(minutes=30 * i)
         swing = 400 if (i // 10) % 2 else -400
         close = price + swing
-        series["15m"].append({"timeframe": "15m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=14, seconds=59.999)).isoformat(),
+        series["30m"].append({"timeframe": "30m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat(),
                               "open": price, "high": max(price, close) + 50, "low": min(price, close) - 50, "close": close, "volume": 10.0})
         price = close
     path = tmp_path / "journal.json"
-    now = start + timedelta(minutes=15 * 90)
+    now = start + timedelta(minutes=30 * 90)
     journal = pj.update(path, series, now)
     stored = json.loads(path.read_text())
     assert stored["last_plan_candle"] is not None and stored["schema"] == pj.SCHEMA
     again = pj.update(path, series, now + timedelta(minutes=1))
-    assert len(again["entries"]) == len(journal["entries"])  # same 15m close: nothing new
+    assert len(again["entries"]) == len(journal["entries"])  # same 30m close: nothing new
     # Every recorded plan went through the evidence gate against the real register.
     assert stored["entries"], "the synthetic series must yield at least one plan"
     for entry in stored["entries"]:
@@ -220,17 +220,17 @@ def test_stale_market_data_records_no_new_plans(tmp_path: Path) -> None:
     start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
     series = _series(start)
     path = tmp_path / "journal.json"
-    late = start + timedelta(minutes=15 * 90) + pj.STALE_AFTER + timedelta(minutes=1)
+    late = start + timedelta(minutes=30 * 90) + pj.STALE_AFTER + timedelta(minutes=1)
     journal = pj.update(path, series, late)
     assert journal["entries"] == [] and journal["last_plan_candle"] is None
     assert len(journal["skipped"]) == 1 and journal["skipped"][0]["reason"] == "stale_data"
     assert len(pj.update(path, series, late + timedelta(minutes=1))["skipped"]) == 1  # noted once
     # Fresh data for a later close records again.
-    opened = start + timedelta(minutes=15 * 90)
-    series["15m"].append({"timeframe": "15m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=14, seconds=59.999)).isoformat(),
-                          "open": series["15m"][-1]["close"], "high": series["15m"][-1]["close"] + 300, "low": series["15m"][-1]["close"] - 300,
-                          "close": series["15m"][-1]["close"] + 200, "volume": 10.0})
-    fresh = pj.update(path, series, opened + timedelta(minutes=16))
+    opened = start + timedelta(minutes=30 * 90)
+    series["30m"].append({"timeframe": "30m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat(),
+                          "open": series["30m"][-1]["close"], "high": series["30m"][-1]["close"] + 300, "low": series["30m"][-1]["close"] - 300,
+                          "close": series["30m"][-1]["close"] + 200, "volume": 10.0})
+    fresh = pj.update(path, series, opened + timedelta(minutes=31))
     assert fresh["last_plan_candle"] is not None
 
 
@@ -247,12 +247,12 @@ def test_decision_fields_never_change_after_the_outcome() -> None:
 
 
 def test_with_evidence_uses_the_register_and_fails_closed(tmp_path: Path) -> None:
-    plans = pj.with_evidence([_plan()], "15m", DEFAULT_REGISTER_PATH)
+    plans = pj.with_evidence([_plan()], "30m", DEFAULT_REGISTER_PATH)
     assert plans[0]["evidence_status"] == "INSUFFICIENT_EVIDENCE" and plans[0]["evidence_ref"]["reason"] == "NO_EXPLICIT_RULE_EQUIVALENCE"
     assert plans[0]["evidence_ref"]["register_events"] > 0 and plans[0]["execution_status"] == "RESEARCH_ONLY"
     broken = tmp_path / "register.jsonl"
     broken.write_text('{"kind": "register", "variant": "X", "hypothesis": "H", "params": {}, "previous": "0", "protocol": "1.1", "hash": "bad"}\n')
-    plans = pj.with_evidence([_plan()], "15m", broken)
+    plans = pj.with_evidence([_plan()], "30m", broken)
     assert plans[0]["evidence_status"] == "INSUFFICIENT_EVIDENCE" and plans[0]["evidence_ref"]["reason"].startswith("REGISTER_UNREADABLE")
     journal = pj.empty_journal()
     pj.record_plans(journal, plans, T0)
@@ -334,13 +334,13 @@ def test_costs_are_never_credits_and_unfilled_plans_carry_no_costs() -> None:
 
 
 def _series(start: datetime, count: int = 90) -> dict[str, list[dict]]:
-    series: dict[str, list[dict]] = {"15m": [], "1m": []}
+    series: dict[str, list[dict]] = {"30m": [], "1m": []}
     price = 100_000.0
     for i in range(count):
-        opened = start + timedelta(minutes=15 * i)
+        opened = start + timedelta(minutes=30 * i)
         swing = 400 if (i // 10) % 2 else -400
         close = price + swing
-        series["15m"].append({"timeframe": "15m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=14, seconds=59.999)).isoformat(),
+        series["30m"].append({"timeframe": "30m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat(),
                               "open": price, "high": max(price, close) + 50, "low": min(price, close) - 50, "close": close, "volume": 10.0})
         price = close
     return series
@@ -354,7 +354,7 @@ def test_replay_equals_saved_document_and_restart_is_idempotent(tmp_path: Path) 
     start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
     series = _series(start)
     path = tmp_path / "journal.json"
-    now = start + timedelta(minutes=15 * 90)
+    now = start + timedelta(minutes=30 * 90)
     journal = pj.update(path, series, now)
     events_path = pj.events_path_for(path)
     log = pj.journal_log.read(events_path)
@@ -373,12 +373,12 @@ def test_replay_equals_saved_document_and_restart_is_idempotent(tmp_path: Path) 
     assert _view(pj.load(path)) == _view(stored) and pj.load(path)["integrity"] == "VIEW_FOLDED_FROM_LOG"
     rebuilt = pj.rebuild(path)
     assert _view(rebuilt) == _view(stored) and path.exists()
-    # Following minutes plus the next 15m close (a checkpoint) produce PLAN_UPDATED events; the fold stays equal to the view.
+    # Following minutes plus the next 30m close (a checkpoint) produce PLAN_UPDATED events; the fold stays equal to the view.
     for i in range(30):
         opened = now + timedelta(minutes=i)
         series["1m"].append({"timeframe": "1m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(seconds=59.999)).isoformat(),
                              "open": 99_500.0, "high": 100_600.0, "low": 99_400.0, "close": 100_000.0, "volume": 1.0})
-    series["15m"].append({"timeframe": "15m", "open_time": now.isoformat(), "close_time": (now + timedelta(minutes=14, seconds=59.999)).isoformat(),
+    series["30m"].append({"timeframe": "30m", "open_time": now.isoformat(), "close_time": (now + timedelta(minutes=29, seconds=59.999)).isoformat(),
                           "open": 99_500.0, "high": 100_600.0, "low": 99_400.0, "close": 100_000.0, "volume": 10.0})
     later = pj.update(path, series, now + timedelta(minutes=31))
     events = pj.journal_log.read(events_path).events
@@ -386,16 +386,16 @@ def test_replay_equals_saved_document_and_restart_is_idempotent(tmp_path: Path) 
     assert _view(pj.fold(events)) == _view(json.loads(path.read_text(encoding="utf-8"))) == _view(later)
     assert len(pj.journal_log.read(events_path).events) == len(events)
     close_events = [e for e in events if e["kind"] == "CANDLE_CLOSE_PROCESSED"]
-    expected = pj.journal_log.content_hash(pj.clean_candles(series["15m"], "15m")[-pj.PLAN_VISIBLE:])
+    expected = pj.journal_log.content_hash(pj.clean_candles(series["30m"], "30m")[-pj.PLAN_VISIBLE:])
     assert len(close_events) == 2 and close_events[-1]["source_hash"] == close_events[-1]["payload"]["source_hash"] == expected
-    assert events[0]["kind"] == "PLAN_RECORDED" and events[0]["source_hash"] != close_events[0]["source_hash"]  # all candles vs. the 80 visible 15m
+    assert events[0]["kind"] == "PLAN_RECORDED" and events[0]["source_hash"] != close_events[0]["source_hash"]  # all candles vs. the 80 visible 30m
 
 
 def test_cursor_only_progress_is_written_at_checkpoints_material_changes_at_once(tmp_path: Path) -> None:
     start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
     series = _series(start)
     path = tmp_path / "journal.json"
-    now = start + timedelta(minutes=15 * 90)
+    now = start + timedelta(minutes=30 * 90)
     first = pj.update(path, series, now)
     events_path = pj.events_path_for(path)
     count = len(pj.journal_log.read(events_path).events)
@@ -419,12 +419,12 @@ def test_cursor_only_progress_is_written_at_checkpoints_material_changes_at_once
     assert len(events) == count + 1 and events[-1]["kind"] == "PLAN_UPDATED"
     assert events[-1]["payload"]["changes"]["status"] == "FILLED" and "evaluated_through" in events[-1]["payload"]["changes"]
     assert filled["entries"][0]["status"] == "FILLED"
-    # The next 15m close is a checkpoint: cursor-only progress since the fill is written then.
-    series["1m"] += [minute(i, far * 0.999, far * 1.001) for i in range(6, 16)]
+    # The next 30m close is a checkpoint: cursor-only progress since the fill is written then.
+    series["1m"] += [minute(i, far * 0.999, far * 1.001) for i in range(6, 31)]
     opened = now
-    series["15m"].append({"timeframe": "15m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=14, seconds=59.999)).isoformat(),
+    series["30m"].append({"timeframe": "30m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat(),
                           "open": far, "high": far * 1.001, "low": far * 0.999, "close": far, "volume": 10.0})
-    pj.update(path, series, now + timedelta(minutes=16))
+    pj.update(path, series, now + timedelta(minutes=31))
     kinds = [e["kind"] for e in pj.journal_log.read(events_path).events[count + 1:]]
     assert "CANDLE_CLOSE_PROCESSED" in kinds and kinds.count("PLAN_UPDATED") >= 1
 
@@ -432,7 +432,7 @@ def test_cursor_only_progress_is_written_at_checkpoints_material_changes_at_once
 def test_load_checks_the_log_behind_a_valid_view(tmp_path: Path) -> None:
     start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
     path = tmp_path / "journal.json"
-    pj.update(path, _series(start), start + timedelta(minutes=15 * 90))
+    pj.update(path, _series(start), start + timedelta(minutes=30 * 90))
     events_path = pj.events_path_for(path)
     lines = events_path.read_text().splitlines()
     events_path.write_text("\n".join(lines[:-1]) + "\n")
@@ -441,14 +441,14 @@ def test_load_checks_the_log_behind_a_valid_view(tmp_path: Path) -> None:
     assert pj.load_view(path)["blocked"] is True
 
 
-def test_same_15m_close_with_other_candles_is_noted_not_rerecorded(tmp_path: Path) -> None:
+def test_same_30m_close_with_other_candles_is_noted_not_rerecorded(tmp_path: Path) -> None:
     start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
     series = _series(start)
     path = tmp_path / "journal.json"
-    now = start + timedelta(minutes=15 * 90)
+    now = start + timedelta(minutes=30 * 90)
     first = pj.update(path, series, now)
-    revised = {"15m": [dict(c) for c in series["15m"]], "1m": []}
-    revised["15m"][-1]["close"] += 10.0
+    revised = {"30m": [dict(c) for c in series["30m"]], "1m": []}
+    revised["30m"][-1]["close"] += 10.0
     second = pj.update(path, revised, now + timedelta(seconds=30))
     assert second["entries"] == first["entries"] and second["last_plan_candle"] == first["last_plan_candle"]
     assert len(second["revisions"]) == 1
@@ -478,12 +478,12 @@ def test_broken_log_blocks_update_and_load_instead_of_an_empty_journal(tmp_path:
     start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
     series = _series(start)
     path = tmp_path / "journal.json"
-    pj.update(path, series, start + timedelta(minutes=15 * 90))
+    pj.update(path, series, start + timedelta(minutes=30 * 90))
     events_path = pj.events_path_for(path)
     lines = events_path.read_text().splitlines()
     events_path.write_text("\n".join(lines[1:]) + "\n")  # first event deleted
     with pytest.raises(pj.journal_log.LogError):
-        pj.update(path, series, start + timedelta(minutes=15 * 90 + 1))
+        pj.update(path, series, start + timedelta(minutes=30 * 90 + 1))
     path.unlink()
     with pytest.raises(pj.journal_log.LogError):
         pj.load(path)
@@ -493,7 +493,7 @@ def test_view_anchor_detects_a_shortened_or_replaced_log(tmp_path: Path) -> None
     start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
     series = _series(start)
     path = tmp_path / "journal.json"
-    journal = pj.update(path, series, start + timedelta(minutes=15 * 90))
+    journal = pj.update(path, series, start + timedelta(minutes=30 * 90))
     events_path = pj.events_path_for(path)
     assert journal["log_seq"] == len(pj.journal_log.read(events_path).events) and journal["log_head"]
     original = events_path.read_bytes()
@@ -501,21 +501,21 @@ def test_view_anchor_detects_a_shortened_or_replaced_log(tmp_path: Path) -> None
     lines = original.decode().splitlines()
     events_path.write_text("\n".join(lines[:-1]) + "\n")
     with pytest.raises(pj.journal_log.LogError):
-        pj.update(path, series, start + timedelta(minutes=15 * 90 + 1))
+        pj.update(path, series, start + timedelta(minutes=30 * 90 + 1))
     # Same length, other history: the hash at the anchor differs.
     events_path.unlink()
     pj.journal_log.append(events_path, [{"event_id": f"x{i}", "kind": "CANDLE_REVISION_OBSERVED", "recorded_at": "x", "payload": {}} for i in range(len(lines))])
     with pytest.raises(pj.journal_log.LogError):
-        pj.update(path, series, start + timedelta(minutes=15 * 90 + 1))
+        pj.update(path, series, start + timedelta(minutes=30 * 90 + 1))
     # The genuine log again: continues.
     events_path.write_bytes(original)
-    pj.update(path, series, start + timedelta(minutes=15 * 90 + 1))
+    pj.update(path, series, start + timedelta(minutes=30 * 90 + 1))
 
 
 def test_journal_page_lists_plans_in_local_time_and_sums_r() -> None:
     journal = _journal_with(_plan())
     pj.evaluate(journal, [_m(0, 99.9, 100.2), _m(1, 98.9, 99.5)], [], T0 + timedelta(minutes=3))
-    pj.record_plans(journal, [_plan("SHORT", 101.0, 102.0, 101.5)], T0 + timedelta(minutes=15))
+    pj.record_plans(journal, [_plan("SHORT", 101.0, 102.0, 101.5)], T0 + timedelta(minutes=30))
     page = _plan_journal_page({"operational_health": {}}, journal)
     assert "Plan-Journal" in page and "-1,00 R" in page and "Brutto-R" in page
     assert "24.10. 03:59" in page  # 01:59 UTC = 03:59 MESZ

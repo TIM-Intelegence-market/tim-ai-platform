@@ -124,14 +124,14 @@ def test_model_profile_uses_finest_timeframe_that_covers_the_window() -> None:
 
 
 def test_model_contains_levels_bos_scenarios_and_preview_plan() -> None:
-    model = build_chart_model(_state().chart_series(), "5m", now=END + timedelta(seconds=30))
-    assert model["timeframe"] == "5m" and model["read_only"] is True
-    assert len(model["candles"]) == 120
+    model = build_chart_model(_state().chart_series(), "30m", now=END + timedelta(seconds=30))
+    assert model["timeframe"] == "30m" and model["read_only"] is True
+    assert len(model["candles"]) == 20
     levels = model["levels"]
     assert levels["range_low"] <= levels["last"] <= levels["range_high"] and levels["age_seconds"] == 30
     profile = model["profile"]
     assert profile["val"] <= profile["poc"] <= profile["vah"] and "geschätzt" in profile["source"]
-    assert {b["timeframe"] for b in model["bos"]} <= {"5m", "15m", "1h"}
+    assert {b["timeframe"] for b in model["bos"]} <= {"30m", "1h", "4h", "1d", "1w", "1M"}
     analysis = model["analysis"]
     assert analysis["decision"]["status"] == "NO_TRADE"  # no trades in the dashboard: never more than observation
     assert analysis["data_quality"]["missing"] == ["trades"]
@@ -152,23 +152,23 @@ def test_model_with_external_profile_and_empty_series() -> None:
     model = build_chart_model(_state().chart_series(), "15m", profile={"poc": 83000, "vah": 83100, "val": 82900, "source": "OpenMarket"})
     assert model["profile"]["source"] == "OpenMarket" and model["profile"]["poc"] == 83000
     empty = build_chart_model({}, "unbekannt")
-    assert empty["timeframe"] == "15m" and empty["candles"] == [] and empty["notes"]
+    assert empty["timeframe"] == "30m" and empty["candles"] == [] and empty["notes"]
 
 
 def test_page_draws_svg_with_levels_and_keeps_csp() -> None:
     page = render_chart_page(_state(), "15m")
-    assert "<svg viewBox='0 0 1000 520'" in page and "class='tc-body" in page
+    assert "<svg viewBox='0 0 1200 520'" in page and "class='tc-body" in page
     for marker in ("VAH ", "VAL ", "POC ", "Range-High", "Kurs "):
         assert marker in page
     assert "Vorschau nach TIMs Regeln" in page and "Keine Order" in page
-    assert "aria-current='page'>15m</a>" in page and ">TIM-Chart</a>" in page
+    assert "aria-current='page'>30m</a>" in page and ">TIM-Chart</a>" in page
     assert "<script src" not in page and " style='" not in page  # nothing the CSP would have to allow
     assert page.count("<script>") == 1  # only the shared auto refresh
 
 
 def test_page_without_candles_shows_empty_state() -> None:
     page = render_chart_page(DashboardState(), "1h")
-    assert "Noch keine Kerzen" in page and "<svg viewBox='0 0 1000 520'" not in page
+    assert "Noch keine Kerzen" in page and "<svg viewBox='0 0 1200 520'" not in page
 
 
 def test_server_serves_chart_page_and_json() -> None:
@@ -188,21 +188,21 @@ def test_server_serves_chart_page_and_json() -> None:
 
 
 def test_model_writes_out_plans_invalidation_and_risk() -> None:
-    model = build_chart_model(_state().chart_series(), "5m", now=END + timedelta(seconds=30))
+    model = build_chart_model(_state().chart_series(), "30m", now=END + timedelta(seconds=30))
     plans = [s for s in model["analysis"]["scenarios"] if s["plan_text"]]
     assert plans
     for scenario in plans:
         assert scenario["plan_text"].startswith(f"PLAN {scenario['id']} {scenario['direction']}  Limit ")
         invalid = scenario["invalidation_level"]
         assert invalid["side"] == ("<" if scenario["direction"] == "LONG" else ">")
-        assert invalid["text"].startswith(f"Ungültig {scenario['id']}: 5m-Schluss")
+        assert invalid["text"].startswith(f"Ungültig {scenario['id']}: 30m-Schluss")
         if scenario["preview"]:
             assert scenario["preview"]["stop_text"].startswith(f"Stop {scenario['id']} ")
     assert model["risk"]["max_leverage"] == 10 and "keine Anlageberatung" in model["risk"]["text"]
 
 
 def test_model_grades_the_scenario_in_its_real_state_not_the_forced_preview() -> None:
-    model = build_chart_model(_state().chart_series(), "5m", now=END + timedelta(seconds=30))
+    model = build_chart_model(_state().chart_series(), "30m", now=END + timedelta(seconds=30))
     previews = [s for s in model["analysis"]["scenarios"] if s["preview"]]
     assert previews
     for scenario in previews:
@@ -232,7 +232,7 @@ def test_setup_path_shows_written_out_plans_from_chart(monkeypatch) -> None:
     real_build = views.build_chart_model
     monkeypatch.setattr(views, "build_chart_model", lambda *args, **kwargs: real_build(*args, **{"now": END, **kwargs}))
     page = render(_state(), "Setup Path")
-    assert "TIMs Pläne im Chart (15m)" in page and "class='tc-svg'" in page
+    assert "TIMs Pläne im Chart (30m)" in page and "class='tc-svg'" in page
     assert "PLAN " in page and "Ungültig " in page and "keine Anlageberatung" in page
     assert "class='sp-plan" in page and "Nächste Sperrzeit: NY-Eröffnung" in page
     # Without per-timeframe candles the old close-price line stays.

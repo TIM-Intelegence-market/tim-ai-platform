@@ -320,7 +320,7 @@ def test_markt_model_has_chart_prep_and_journals(tmp_path: Path) -> None:
     state = _live_state(tmp_path, now)
     _journal(tmp_path, now)
     model = build_markt(state, sources=BudgetedSources())
-    assert model["schema"] == "tim_cockpit_markt/1" and model["timeframe"] == "15m"
+    assert model["schema"] == "tim_cockpit_markt/1" and model["timeframe"] == "30m"
     assert model["chart"]["svg"].startswith("<svg") and model["chart"]["decision"]
     assert model["prep"]["ok"] is True and model["prep"]["last"] is not None
     assert [row["id"] for row in model["plan_journal"]["active"]] == ["P-2", "P-1"], "newest plan first"
@@ -335,7 +335,7 @@ def test_markt_timeframe_switch_and_bad_value(tmp_path: Path) -> None:
     state = _live_state(tmp_path, datetime.now(timezone.utc))
     model = build_markt(state, "1h", sources=BudgetedSources())
     assert model["timeframe"] == "1h" and model["chart"]["timeframe"] == "1h"
-    assert timeframe_of("<x>") == "15m" and timeframe_of(None) == "15m"
+    assert timeframe_of("<x>") == "30m" and timeframe_of(None) == "30m"
     assert "aria-current=page>1h<" in markt_body(model)
 
 

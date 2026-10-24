@@ -54,7 +54,7 @@ def test_close_levels_merge_into_one_place() -> None:
 
 def test_liquidity_combines_prep_levels_and_swings() -> None:
     prep = {"levels": [{"price": 105, "label": "Vortag VAH"}]}
-    assert liquidity(prep, [110.0], [90.0]) == [{"price": 105.0, "label": "Vortag VAH"}, {"price": 110.0, "label": "15m Swing-Hoch"}, {"price": 90.0, "label": "15m Swing-Tief"}]
+    assert liquidity(prep, [110.0], [90.0]) == [{"price": 105.0, "label": "Vortag VAH"}, {"price": 110.0, "label": "30m Swing-Hoch"}, {"price": 90.0, "label": "30m Swing-Tief"}]
     assert liquidity(None, [], []) == []
 
 
@@ -64,16 +64,16 @@ def _c(tf: str, opened: datetime, seconds: int, o: float, h: float, l: float, c:
 
 
 def test_candles_until_drops_running_candles() -> None:
-    series = {"15m": [_c("15m", T0, 900, 1, 2, 0.5, 1.5), _c("15m", T0 + timedelta(minutes=15), 900, 1, 2, 0.5, 1.5)],
+    series = {"30m": [_c("30m", T0, 1800, 1, 2, 0.5, 1.5), _c("30m", T0 + timedelta(minutes=30), 1800, 1, 2, 0.5, 1.5)],
               "1h": [_c("1h", T0, 3600, 1, 2, 0.5, 1.5)]}
-    closed = candles_until(series, T0 + timedelta(minutes=15))
-    assert len(closed["15m"]) == 1 and closed["1h"] == []
+    closed = candles_until(series, T0 + timedelta(minutes=30))
+    assert len(closed["30m"]) == 1 and closed["1h"] == []
 
 
 def test_structural_plans_report_dropped_directions() -> None:
     zigzag = []
     for i, (h, l) in enumerate([(101, 99), (102, 100), (104, 101), (103, 97), (101, 96), (102, 98), (105, 99), (109, 104), (108, 103), (106, 101), (107, 102)]):
-        zigzag.append({"open_time": T0 + timedelta(minutes=15 * i), "high": float(h), "low": float(l)})
+        zigzag.append({"open_time": T0 + timedelta(minutes=30 * i), "high": float(h), "low": float(l)})
     kept, dropped = structural_plans([_plan(entry=98.5, low=98, high=99), _plan("SHORT", entry=120, low=119, high=121)], zigzag, None)
     assert len(kept) == 1 and kept[0]["direction"] == "LONG" and kept[0]["stop_swing"] == 96.0 and kept[0]["targets"] == [104.0, 109.0, 109.0]
     assert dropped == ["SHORT: kein Swing-Hoch über der Einstiegszone"]
@@ -91,7 +91,7 @@ def _runtime_series() -> dict:
 
     end = datetime(2026, 10, 24, 14, 0, tzinfo=timezone.utc)
     series = {}
-    for tf, seconds, count in (("1m", 60, 500), ("5m", 300, 500), ("15m", 900, 500), ("1h", 3600, 500)):
+    for tf, seconds, count in (("1m", 60, 500), ("5m", 300, 500), ("30m", 1800, 500), ("1h", 3600, 500)):
         start = end - timedelta(seconds=seconds * count)
         rows, price = [], 80000.0
         for i in range(count):
