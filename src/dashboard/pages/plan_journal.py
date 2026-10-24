@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
@@ -35,6 +36,13 @@ def _local(value: Any) -> str:
     return moment.astimezone(LOCAL).strftime("%d.%m. %H:%M") if moment else "–"
 
 
+def _price(value: Any) -> str:
+    """A price for the table, or "–" when a stored level is missing or not a finite number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return "–"
+    return _fmt(float(value))
+
+
 def _r_text(value: float | None) -> str:
     if value is None:
         return "–"
@@ -60,7 +68,7 @@ def _row(entry: Mapping[str, Any]) -> str:
     severity, label = STATUS_LABELS.get(str(entry.get("status")), ("unknown", str(entry.get("status"))))
     labels = list(entry.get("target_labels") or [])
     targets = " · ".join(
-        f"TP{i} {_fmt(t)}{f' ({labels[i - 1]})' if i <= len(labels) else ''}{' ✓' if i <= len(entry.get('tp_hits') or []) else ''}"
+        f"TP{i} {_price(t)}{f' ({labels[i - 1]})' if i <= len(labels) else ''}{' ✓' if i <= len(entry.get('tp_hits') or []) else ''}"
         for i, t in enumerate(entry.get("targets") or [], start=1)
     )
     detail = []
@@ -75,8 +83,9 @@ def _row(entry: Mapping[str, Any]) -> str:
     if entry.get("data_gap"):
         detail.append("Datenlücke: " + str(entry["data_gap"]))
     invalid = entry.get("invalidation_level")
-    invalid_text = f"{entry.get('timeframe', '15m')}-Schluss {entry.get('invalidation_side')} {_fmt(invalid)}" if invalid is not None else "–"
-    zone = f"{_fmt(min(entry['entry_low'], entry['entry_high']))}–{_fmt(max(entry['entry_low'], entry['entry_high']))}" if entry.get("entry_low") is not None and entry.get("entry_high") is not None else "–"
+    invalid_text = f"{entry.get('timeframe', '15m')}-Schluss {entry.get('invalidation_side')} {_price(invalid)}" if invalid is not None else "–"
+    low, high = entry.get("entry_low"), entry.get("entry_high")
+    zone = f"{_price(min(low, high))}–{_price(max(low, high))}" if _price(low) != "–" and _price(high) != "–" else "–"
     direction = str(entry.get("direction"))
     trend = f" <span class='sev sev--warn'>gegen den Trend ({_safe(entry.get('market_state'))})</span>" if counter_trend(direction, entry.get("market_state")) else ""
     grade = entry.get("setup_grade") or "–"
@@ -91,7 +100,7 @@ def _row(entry: Mapping[str, Any]) -> str:
         f"<td title='{_safe(grade_title)}'>{_safe(grade)}<small> heuristisch</small></td>"
         f"<td title='{_safe(ev_title)}'><span class='sev sev--{ev_sev}'>{_safe(ev_label)}</span></td>"
         f"<td title='{_safe(dec_title)}'><span class='sev sev--{dec_sev}'>{_safe(dec_label)}</span><small> {_safe(entry.get('execution_status') or '–')}</small></td>"
-        f"<td>{_safe(zone)}</td><td>{_safe(_fmt(entry['entry']))}</td><td>{_safe(_fmt(entry['stop']))}</td>"
+        f"<td>{_safe(zone)}</td><td>{_safe(_price(entry.get('entry')))}</td><td>{_safe(_price(entry.get('stop')))}</td>"
         f"{_cost_cell(entry)}<td>{_safe(invalid_text)}</td><td>{_safe(targets)}</td>"
         f"<td><span class='sev sev--{severity}'>{_safe(label)}</span></td><td class='mono'>{_safe(_r_text(entry.get('gross_r')))}</td>"
         f"<td class='mono' title='Gebühren {_safe(_r_text(entry.get('fee_r')))}, Slippage {_safe(_r_text(entry.get('slippage_r')))} ({_safe(entry.get('cost_model_version') or '–')})'>{_safe(_r_text(entry.get('net_r')))}</td>"
@@ -189,6 +198,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         "<li>Speicherung: Jede Änderung ist ein Ereignis im append-only, hash-verketteten Log (<code>tim_plan_journal.events.jsonl</code>); diese Seite ist eine daraus abgeleitete Sicht. Ein Neustart mit denselben Kerzen erzeugt keine neuen Ereignisse; korrigierte Kerzen zu einem schon verarbeiteten 30m-Schluss werden vermerkt, ändern aber keine Entscheidung.</li>"
         f"<li>Kosten-Schwelle (Hypothese, nur Anzeige): geschätzte Roundtrip-Kosten vom Einstieg bis zum Stop nach Protokoll 1.1, Gebühren auf den Kurs jeder Seite. "
         f"Über {_safe(LIMIT_TEXT)} heißt NOT_TRADABLE_COST, genau {_safe(LIMIT_TEXT)} gilt als eingehalten, fehlende oder ungültige Marken ergeben COST_UNKNOWN. "
+        "Verglichen wird der angezeigte Wert auf 4 Nachkommastellen; durch Rundung kann der ungerundete Wert bis etwa 0,0001 R über 0,25 R liegen und trotzdem als eingehalten gelten. "
         "Die Markierung ändert keinen Einstieg, Stop, Grade, keine Entscheidung und keine Ausführung.</li>"
         f"<li>Grade A/B/C: {GRADE_NOTE}. Benotet wird der tatsächliche Szenariozustand, nicht die Vorschau. A+ wird nicht vergeben, weil keine geprüfte Regel dafür existiert.</li>"
         "<li>Ausführbarkeit (nur Papier): Instrument BINANCE/SPOT/BTCUSDT mit Tick 0,01; der Einstieg wird gegen den Plan auf den Tick gerundet. Ein Short auf Spot gilt als nicht ausführbar (keine Leihe modelliert), Datenqualität unter PASS sperrt, veraltete Kerzen (älter als 30 min) erzeugen keine neuen Pläne.</li>"

@@ -20,7 +20,10 @@ prices. Nothing here re-implements the cost rates.
 
 Missing or invalid data gives COST_UNKNOWN, never COST_WITHIN_LIMIT.
 Exactly 0.25 R is within the limit; the limit is applied to the 4-decimal
-cost_r that is shown.
+cost_r that is shown. Fee and slippage are each rounded to 4 decimals by
+costs_r before they are added, so an unrounded cost up to about 0.0001 R
+above the limit can still show as 0.25 R and count as within. Accepted for a
+display-only mark (review of PR #408).
 """
 
 from __future__ import annotations
