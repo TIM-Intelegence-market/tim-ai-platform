@@ -76,6 +76,14 @@ class ProbabilityEngine:
             score += Decimal("0.06")
         if of.open_interest_interpretation and "accumulation" in of.open_interest_interpretation:
             score += Decimal("0.03")
+        # Positioning hints (positioning._bias_hints): small, heuristic, never a confirmation.
+        direction = scenario.direction.value
+        for hint in of.positioning.get("bias_hints", ()):
+            relation, _, _ = hint.partition(":")
+            if relation == f"with_{direction.lower()}":
+                score += Decimal("0.03")
+            elif relation == f"against_{direction.lower()}":
+                score -= Decimal("0.03")
 
         if item.data_quality_confidence is not None:
             score *= item.data_quality_confidence * Decimal("0.5") + Decimal("0.5")

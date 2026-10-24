@@ -17,9 +17,11 @@ from src.llm.prompts import observation_prompt
 from config.settings import settings
 
 from src.dashboard.api import _research_case_detail, _research_cases_collection
+from src.dashboard.chart_model import build_chart_model
 from src.dashboard.constants import HISTORY_LIMIT, MAX_RESPONSE_BYTES
 from src.dashboard.layout import _content_security_policy, _content_security_policy_for, _error_page
 from src.dashboard.security import _is_loopback_request_host, _require_loopback_host
+from src.dashboard.pages.chart import render_chart_page
 from src.dashboard.pages.pilot import PILOT_CSP, render_pilot
 from src.dashboard.state import DashboardState
 from src.dashboard.views import render
@@ -104,6 +106,22 @@ class DashboardServer:
                         return self.respond(404, b'{"error":"not found"}', "application/json")
                     formatter, content_type = exports[extension]
                     return self.respond(200, formatter(insights).encode(), content_type)
+                if path == "/chart":
+                    try:
+                        page = render_chart_page(outer.state, query.get("tf", [None])[0])
+                    except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                        return self.respond(500, _error_page("Chart", exc).encode(), "text/html; charset=utf-8")
+                    return self.respond(200, page.encode(), "text/html; charset=utf-8")
+                if path == "/api/chart":
+                    try:
+                        model = build_chart_model(outer.state.chart_series(), query.get("tf", ["15m"])[0])
+                    except Exception as exc:  # noqa: BLE001 - malformed stored data must not drop the connection
+                        return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
+                    return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
+                if path == "/api/plan-journal":
+                    from src.dashboard.plan_journal import load_view as load_plan_journal
+
+                    return self.respond(200, json.dumps(load_plan_journal(outer.state.plan_journal_path), default=str).encode(), "application/json")
                 if path == "/pilot":
                     return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8", csp=PILOT_CSP)
                 if path == "/api/orderflow/history":
@@ -135,6 +153,7 @@ class DashboardServer:
                     "/independent-cases": "Independent Cases",
                     "/v2-readiness": "V2 Readiness", "/mcp": "Graphify & MCP",
                     "/setup-path": "Setup Path",
+                    "/journal": "Plan Journal",
                     "/audit-evidence": "Audit & Evidence",
                     "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow",
                     "/signals": "Signal Research", "/analytics": "Analytics", "/insights": "Insights",

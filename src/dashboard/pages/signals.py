@@ -22,8 +22,14 @@ def _signal_research_page(state: DashboardState, data: dict[str, Any], selected_
     freshness = _age_seconds(last_capture)
     latest_rule = (selected or {}).get("rule_version") or data.get("readiness", {}).get("schema_version", "MISSING:rule_version")
     pipeline_version = data.get("readiness", {}).get("generator_version") or data.get("research_quality", {}).get("generator_version") or DASHBOARD_VERSION
-    quality_summary = data.get("research_quality", {}).get("validation_status") or data.get("readiness", {}).get("validation_status") or "UNKNOWN"
-    open_validations = sum(1 for item in validations if not item.get("complete"))
+    quality_summary = data.get("research_quality", {}).get("validation_status") or data.get("readiness", {}).get("validation_status")
+    if not quality_summary:
+        # Same fallback as the setup path: measured 24h candle coverage instead of UNKNOWN forever.
+        from src.dashboard.pages.setup_path import _quality_evidence
+        quality_summary = _quality_evidence(data)[0]
+    # Every visible observation without a complete validation is open, including
+    # those whose first validation record has not been written yet.
+    open_validations = counts["awaiting"]
     completed_cases = sum(1 for item in cases if str(item.get("status", "")).upper() == "CLOSED")
     summary_grid = (
         "<div class='meta-grid'>"
