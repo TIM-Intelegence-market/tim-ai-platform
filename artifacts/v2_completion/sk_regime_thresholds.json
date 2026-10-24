@@ -1,0 +1,19 @@
+{
+  "study_id": "V2_SK_CONTROL_REGIME_V1",
+  "spec_hash": "e2205bfdb02ac9a184fe396d1aa0ed18b915ac672f40e2e7a7a316c791827ace",
+  "calibration_start_utc": "2026-10-01T00:00:00Z",
+  "calibration_end_utc": "2026-10-20T20:34:00Z",
+  "thresholds": {
+    "volatility": {
+      "low_max": 0.0019879034773026606,
+      "mid_max": 0.0032008212245080176,
+      "windows": 953
+    },
+    "liquidity": {
+      "low_max": 29820668.43393019,
+      "mid_max": 50445300.62687473,
+      "windows": 953
+    }
+  },
+  "thresholds_hash": "364f7915e69da57555d68fd10b3e001a2722436d0c42395c6504d2c82a013d6d"
+}

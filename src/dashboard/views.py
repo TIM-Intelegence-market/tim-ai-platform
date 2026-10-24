@@ -12,7 +12,10 @@ from src.dashboard.constants import DASHBOARD_VERSION, ORDERFLOW_VISIBLE_LIMIT
 from src.dashboard.helpers import _duration, _json_block, _parse_time, _safe, _short, _status
 from src.dashboard.layout import _hero, _layout, _strip_states
 from src.dashboard.pages.operations import _data_quality_exceptions_page, _health_center_sections, _health_timeline_page
+from src.dashboard.chart_model import build_chart_model
 from src.dashboard.pages.setup_path import _setup_path_page
+
+SETUP_CHART_CANDLES = 80
 from src.dashboard.pages.signals import _signal_research_page
 from src.dashboard.state import DashboardState
 from src.research.case_builder import BUILDER_VERSION, assess
@@ -51,7 +54,19 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
     data = state.snapshot()
     validator = data["validator"]
     if page == "Setup Path":
-        return _setup_path_page(data)
+        try:
+            chart = build_chart_model(state.chart_series(), "15m", visible=SETUP_CHART_CANDLES)
+        except Exception:  # noqa: BLE001 - the setup page falls back to the close-price line
+            chart = None
+        from src.dashboard.pages.plan_journal import journal_note
+        from src.dashboard.plan_journal import load_view as load_plan_journal
+
+        return _setup_path_page(data, chart, journal_note(load_plan_journal(state.plan_journal_path)))
+    if page == "Plan Journal":
+        from src.dashboard.pages.plan_journal import _plan_journal_page
+        from src.dashboard.plan_journal import load_view as load_plan_journal
+
+        return _plan_journal_page(data, load_plan_journal(state.plan_journal_path))
     if page in OPERATIONS_PAGES and page != "Overview":
         return _layout(page, page, render_operations_page(page, data["operations"]), strip=_strip_states(data))
     if page == "Orderflow":

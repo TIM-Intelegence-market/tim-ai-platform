@@ -408,7 +408,8 @@ def test_cli_openmarket_runs_the_scenario_pipeline(monkeypatch, capsys) -> None:
     om, _, _ = client(ok({"points": [falling(i, 100 - i * 0.3) for i in range(30)]}), ok(_per_side_payload()))
     monkeypatch.setattr(cli, "OpenMarketAdapter", lambda include_per_side: OpenMarketAdapter(om, include_per_side=include_per_side))
     code = cli.main(["--provider", "openmarket", "--exchange", "BINANCE_FUTURES", "--raw-symbol", "BTCUSDT",
-                     "--interval", "MINUTE", "--from", str(T0), "--period", "1800", "--market-type", "FUTURES", "--validate"])
+                     "--interval", "MINUTE", "--from", str(T0), "--period", "1800", "--market-type", "FUTURES", "--validate",
+                     "--no-context"])
     captured = capsys.readouterr()
     assert code == 0, captured.err
     assert "schema_validation=PASS" in captured.err
