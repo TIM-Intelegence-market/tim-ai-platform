@@ -117,7 +117,7 @@ def test_daily_manifest_builds_full_payload() -> None:
             "gap_count": 0,
             "case_count": 2000,
             "independent_case_count": 0,
-            "runtime_status": "OK",
+            "runtime_status": {"mode": "OBSERVE", "trading_actions": 0},
             "security_status": "OK",
             "incident_ids": [],
         },
