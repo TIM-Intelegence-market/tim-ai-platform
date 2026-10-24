@@ -39,6 +39,8 @@ MAX_HOLD_HOURS = 48
 THIRD = 1.0 / 3.0
 OPEN, FILLED = "OPEN", "FILLED"
 DONE = {"CLOSED", "INVALIDATED", "REPLACED", "EXPIRED"}
+RULE_TIM = "tim/1"  # TradePlanBuilder: flat stop, targets 1.5R / 2R / 3R
+RULE_STRUCT = "struct/1"  # src/dashboard/structure_plan.py
 
 
 def _iso(value: datetime) -> str:
@@ -259,17 +261,44 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None) -> dict[str, Any]:
-    """One journal step: follow outcomes, then record plans at a new 15m close."""
+def _structural(plans: list[dict[str, Any]], series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, journal: dict[str, Any]) -> list[dict[str, Any]]:
+    """Rule version struct/1: same plans, stop behind the swing, targets at liquidity."""
+    from src.dashboard.session_map import build_session_map
+    from src.dashboard.structure_plan import candles_until, structural_plans
+
+    closed = candles_until(series, at)
+    try:
+        prep = build_session_map(closed, at)
+    except Exception:  # noqa: BLE001 - without the map the 15m swings remain as targets
+        prep = None
+    kept, dropped = structural_plans(plans, closed["15m"], prep)
+    skipped = journal.setdefault("skipped", {})
+    for reason in dropped:
+        key = reason.split(": ", 1)[1].split(" nur ")[0]
+        skipped[key] = skipped.get(key, 0) + 1
+    journal["last_skips"] = dropped
+    return kept
+
+
+def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, rule: str = RULE_TIM) -> dict[str, Any]:
+    """One journal step: follow outcomes, then record plans at a new 15m close.
+
+    ``rule`` picks the rule version: TIM's flat stop and R targets, or
+    struct/1 (stop behind the swing, targets at liquidity) in its own file.
+    """
     now = now or datetime.now(timezone.utc)
     journal = load(path)
+    journal["rule"] = rule
     evaluate(journal, series.get("1m") or [], series.get(PLAN_TIMEFRAME) or [], now)
     closed_15m = [c for c in clean_candles(series.get(PLAN_TIMEFRAME) or [], PLAN_TIMEFRAME) if c["close_time"] <= now]
     if closed_15m:
         latest = _minute_ceil(closed_15m[-1]["close_time"])
         if journal.get("last_plan_candle") != _iso(latest):
             model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
-            record_plans(journal, plans_from_model(model), latest)
+            plans = plans_from_model(model)
+            if rule == RULE_STRUCT:
+                plans = _structural(plans, series, latest, journal)
+            record_plans(journal, plans, latest)
             journal["last_plan_candle"] = _iso(latest)
     journal["updated_at"] = _iso(now)
     save(journal, path)

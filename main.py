@@ -543,12 +543,15 @@ class TIMApplication:
 
     async def _plan_journal_loop(self) -> None:
         # Paper journal only: a failed step is logged and retried, never fatal.
-        from src.dashboard.plan_journal import update as update_plan_journal
+        from functools import partial
+
+        from src.dashboard.plan_journal import RULE_STRUCT, update as update_plan_journal
         from src.dashboard.trader_journal import update as update_trader_journal
 
         while not self.worker_stop.is_set():
             series = self.dashboard_state.chart_series()
             for name, step, path in (("plan journal", update_plan_journal, self.dashboard_state.plan_journal_path),
+                                     ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
                                      ("trader journal", update_trader_journal, self.dashboard_state.trader_journal_path)):
                 try:
                     await asyncio.to_thread(step, path, series)

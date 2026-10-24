@@ -74,11 +74,15 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         from src.dashboard.session_map import build_session_map
 
         return _prep_page(data, build_session_map(state.chart_series()))
-    if page == "Plan Journal":
+    if page in {"Plan Journal", "Plan Journal Struct"}:
         from src.dashboard.pages.plan_journal import _plan_journal_page
-        from src.dashboard.plan_journal import load as load_plan_journal
+        from src.dashboard.plan_journal import RULE_STRUCT, load as load_plan_journal
 
-        return _plan_journal_page(data, load_plan_journal(state.plan_journal_path))
+        tim, struct = load_plan_journal(state.plan_journal_path), load_plan_journal(state.plan_journal_struct_path)
+        struct.setdefault("rule", RULE_STRUCT)
+        if page == "Plan Journal Struct":
+            return _plan_journal_page(data, struct, other=tim)
+        return _plan_journal_page(data, tim, other=struct)
     if page in OPERATIONS_PAGES and page != "Overview":
         return _layout(page, page, render_operations_page(page, data["operations"]), strip=_strip_states(data))
     if page == "Orderflow":

@@ -145,7 +145,8 @@ class DashboardServer:
                 if path == "/api/plan-journal":
                     from src.dashboard.plan_journal import load as load_plan_journal
 
-                    return self.respond(200, json.dumps(load_plan_journal(outer.state.plan_journal_path), default=str).encode(), "application/json")
+                    journal_path = outer.state.plan_journal_struct_path if query.get("rule", [""])[0] == "struct" else outer.state.plan_journal_path
+                    return self.respond(200, json.dumps(load_plan_journal(journal_path), default=str).encode(), "application/json")
                 if path == "/pilot":
                     return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8", csp=PILOT_CSP)
                 if path == "/api/orderflow/history":
@@ -178,7 +179,7 @@ class DashboardServer:
                     "/v2-readiness": "V2 Readiness", "/mcp": "Graphify & MCP",
                     "/prep": "Prep",
                     "/setup-path": "Setup Path",
-                    "/journal": "Plan Journal",
+                    "/journal": "Plan Journal", "/journal/struct": "Plan Journal Struct",
                     "/audit-evidence": "Audit & Evidence",
                     "/observations": "Observations", "/cases": "Research Cases", "/orderflow": "Orderflow",
                     "/signals": "Signal Research", "/analytics": "Analytics", "/insights": "Insights",
