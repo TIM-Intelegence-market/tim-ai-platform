@@ -19,6 +19,7 @@ LABEL_GAP = 13
 ZONE_SPACE = 260  # px right of the last candle reserved for written-out scenario plans
 SCENARIO_NAMES = {
     "BREAKOUT_ACCEPTANCE": "Ausbruch + Annahme",
+    "LEVEL_REACTION": "Level-Reaktion",
     "LIQUIDITY_SWEEP_REVERSAL": "Sweep + Rückeroberung",
     "REJECTION_FAILED_BREAKOUT": "Ablehnung / Fehlausbruch",
     "BALANCE_ROTATION": "Rotation in der Range",
@@ -81,7 +82,8 @@ def _chart_svg(model: dict[str, Any]) -> str:
 
     # Levels widen the price axis when they are close; far ones are named at the edge instead.
     candidates = [profile.get("vah"), profile.get("val"), profile.get("poc")] + [b["level"] for b in model.get("bos", [])]
-    for scenario in (analysis.get("scenarios") or []):
+    level_plans = (model.get("level_plans") or {}).get("plans") or []
+    for scenario in [*(analysis.get("scenarios") or []), *level_plans]:
         candidates += [scenario.get("entry_low"), scenario.get("entry_high"), scenario.get("trigger")]
         preview = scenario.get("preview") or {}
         candidates += [preview.get("stop")] + list((preview.get("targets") or [])[:1])
@@ -172,7 +174,7 @@ def _chart_svg(model: dict[str, Any]) -> str:
             return
         plan_lines.setdefault((cls, round(price, 6)), []).append(text)  # same level: one line, joined text
 
-    for scenario in (analysis.get("scenarios") or []):
+    for scenario in [*(analysis.get("scenarios") or []), *level_plans]:
         sid, direction = scenario["id"], scenario["direction"]
         kind = "long" if direction == "LONG" else "short" if direction == "SHORT" else "neutral"
         lo, hi = scenario.get("entry_low"), scenario.get("entry_high")
@@ -271,6 +273,23 @@ def _scenario_rows(analysis: dict[str, Any]) -> str:
     return "".join(rows) or "<tr><td colspan='10' class='empty'>Keine Szenarien.</td></tr>"
 
 
+def _level_plan_rows(level_plans: dict[str, Any]) -> str:
+    rows = []
+    for p in level_plans.get("plans") or []:
+        preview = p.get("preview") or {}
+        targets = " / ".join(f"{_price(t)} ({label})" for t, label in zip(preview.get("targets") or [], preview.get("target_labels") or []))
+        invalid = (p.get("invalidation_level") or {}).get("text", "–")
+        rows.append(
+            f"<tr><td><b>{_safe(p['id'])}</b></td><td><span class='tc-dir tc-dir--{_safe(p['direction'].lower())}'>{_safe(p['direction'])}</span></td>"
+            f"<td>{_safe(p.get('anchor'))}</td><td>{_safe(p.get('trend'))}</td>"
+            f"<td class='mono'>{_safe(_price(p.get('entry_low')))} – {_safe(_price(p.get('entry_high')))}</td>"
+            f"<td class='mono'>{_safe(_price(preview.get('entry')))}</td><td class='mono'>{_safe(_price(preview.get('stop')))}</td>"
+            f"<td class='mono'>{_safe(targets or '–')}</td><td class='mono'>{_safe(preview.get('reward_risk'))}</td>"
+            f"<td>{_safe(invalid)}</td><td>{_safe(' · '.join(p.get('missing_confirmations') or []))}</td></tr>"
+        )
+    return "".join(rows) or "<tr><td colspan='11' class='empty'>Kein Level-Plan erfüllt die Regeln.</td></tr>"
+
+
 def render_chart_page(state: Any, timeframe: str | None = None) -> str:
     data = state.snapshot()
     model = build_chart_model(state.chart_series(), timeframe or DEFAULT_TIMEFRAME)
@@ -314,6 +333,17 @@ def render_chart_page(state: Any, timeframe: str | None = None) -> str:
         "<p class='cc-section__note'>Orderflow-Pipeline im OBSERVE-Modus, gleiche Regeln wie die CLI.</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>ID</th><th>Richtung</th><th>Szenario</th><th>Einstiegszone</th><th>Trigger</th><th>Stop (Vorschau)</th>"
         f"<th>Ziele (Vorschau)</th><th>Status</th><th>Score</th><th>Fehlende Bestätigung</th></tr></thead><tbody>{_scenario_rows(analysis)}</tbody></table></div></section>"
+    )
+    level_plans = model.get("level_plans") or {}
+    dropped = "".join(f"<li>{_safe(reason)}</li>" for reason in level_plans.get("dropped") or [])
+    body += (
+        "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Level-Pläne (level/1)</p><h2>Pläne an den Hauptleveln</h2>"
+        "<p class='cc-section__note'>Nächstes Hauptlevel unter und über dem Kurs (Vortag, Vorwoche, naked POC). Stop hinter dem 30m-Swing, "
+        "Ziele an den nächsten Leveln, erstes Ziel mindestens 1,5 R. Nur Papier, nicht bestätigt.</p></div></div>"
+        "<div class='table-wrap'><table><thead><tr><th>ID</th><th>Richtung</th><th>Level</th><th>Trend 1D/4h</th><th>Zone</th><th>Einstieg</th><th>Stop</th>"
+        f"<th>Ziele</th><th>R bis Ziel 1</th><th>Ungültig</th><th>Bestätigung nötig</th></tr></thead><tbody>{_level_plan_rows(level_plans)}</tbody></table></div>"
+        + (f"<p class='cc-note'>Verworfen:</p><ul class='cc-note'>{dropped}</ul>" if dropped else "")
+        + "</section>"
     )
     level_rows = [("Range-High", levels.get("range_high")), ("Range-Low", levels.get("range_low")), ("VAH", profile.get("vah")), ("POC", profile.get("poc")), ("VAL", profile.get("val"))]
     level_rows += [(f"{b.get('kind', 'BOS')} {b['timeframe']} {'↑' if b['direction'] == 'UP' else '↓'}", b["level"]) for b in model.get("bos", [])]

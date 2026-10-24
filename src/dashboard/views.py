@@ -74,12 +74,16 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         from src.dashboard.session_map import build_session_map
 
         return _prep_page(data, build_session_map(state.chart_series()))
-    if page in {"Plan Journal", "Plan Journal Struct"}:
+    if page in {"Plan Journal", "Plan Journal Struct", "Plan Journal Level"}:
         from src.dashboard.pages.plan_journal import _plan_journal_page
-        from src.dashboard.plan_journal import RULE_STRUCT, load_view as load_plan_journal
+        from src.dashboard.plan_journal import RULE_LEVEL, RULE_STRUCT, load_view as load_plan_journal
 
         tim, struct = load_plan_journal(state.plan_journal_path), load_plan_journal(state.plan_journal_struct_path)
         struct.setdefault("rule", RULE_STRUCT)
+        if page == "Plan Journal Level":
+            level = load_plan_journal(state.plan_journal_level_path)
+            level.setdefault("rule", RULE_LEVEL)
+            return _plan_journal_page(data, level)
         if page == "Plan Journal Struct":
             return _plan_journal_page(data, struct, other=tim)
         return _plan_journal_page(data, tim, other=struct)
