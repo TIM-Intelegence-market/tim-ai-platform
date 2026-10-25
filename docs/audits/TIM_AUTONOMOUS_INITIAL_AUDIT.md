@@ -107,15 +107,17 @@ Priorität: P0 Datenintegrität/Sicherheit/Kosten/Risiko, P1 Forschung/Multi-Coi
 | A14 | Lokale Modelle messen (Code, Logs, Doku) | P2 | – | – | NOT_STARTED | Reproduzierbares Benchmark-Skript, keine Orders/Risiko aus LLM |
 | A15 | PR #393 tim-ops `data_coverage` | P2 | Chris | – | READY (Review) | Review, Suite, dann Uzis „merge“ |
 | A16 | PR #387 FOMC-Daten | P2 | Chris | – | IN_PROGRESS (Chris) | abwarten |
-| A17 | PR #367 getrennte Runner | P2 | Actions-Minuten | – | BLOCKED | Mit #405/#407 abgleichen, ggf. schließen (Uzi) |
+| A17 | PR #367 getrennte Runner | P2 | – | „25.10. Alle 11 Sichten…“ | READY (schließen) | Überholt durch #405/#407 (Runner entkoppelt); Schließen auf Uzis Wort (Grün-Plan P3) |
 | A18 | PR #333 Auto-Merge | P3 | Policy | – | BLOCKED (Auto-Merge AUS) | ruhen lassen |
-| A19 | Server-Issues #75–#78, #88, #332–#335 | P3 | Server zurück | – | BLOCKED | ruhen lassen bis Uzi den Server zurückholt |
-| A20 | M09-Issues #9, #13–#21 | P3 | – | – | BLOCKED/eingefroren | #13 abnehmen und schließen (Uzi) |
+| A19 | Server-Issues #75–#78, #88, #332–#335 | P3 | Server zurück | – | RUHEND (Label `status:ruhend` seit 25.10.) | ruhen lassen bis Uzi den Server zurückholt |
+| A20 | M09-Issues #9, #13–#21 | P3 | – | – | RUHEND (Label `status:ruhend` seit 25.10.) | #13 abnehmen und schließen (Uzi) |
 | A21 | Hohe Mac-Last klären (Load 11) | P2 | – | – | NOT_STARTED | Prozessliste über 15 min messen |
-| A22 | Offsite-Backup und Restore-Probe (Gutachten K1) | P0 | Uzi (Hardware/Ziel) | – | NOT_STARTED | Ziel klären, Restore auf Testdatenbank proben |
-| A23 | DemoTrader-Altcode entfernen | P3 | – | – | READY | kleiner PR, nur mit Uzis Go |
+| A22 | Offsite-Backup und Restore-Probe (Gutachten K1) | P0 | Uzi (Hardware/Ziel) | „25.10. Alle 11 Sichten…“ (B1–B3) | BLOCKED (Uzi: Ziel) | Ziel klären (externe Platte oder zweiter Rechner), dann Skript und Restore-Probe |
+| A23 | DemoTrader-Altcode entfernen | P3 | Uzi (Go) | „25.10. Alle 11 Sichten…“ (C2) | READY | kleiner PR, nur mit Uzis Go; Umfang in `docs/PAKETINVENTAR.md` (`paper`) |
 | A24 | Qwen-Chat auf dem Mac | P3 | Uzi | „22.10. Qwen-Chat…“ | BLOCKED (Uzi) | Frage im Thread offen |
 | A25 | Hardware-Ausbau GPUs | P3 | Uzi | „21.10. Hardware-Ausbau…“ | BLOCKED (Uzi) | Entscheidung offen |
+
+> **Nachtrag 25.10.2026 (Grün-Plan P1):** A17, A19, A20, A22, A23 nachgeführt; neue Pakete des Grün-Plans (H1, H2, T1, T3, F1, S1, P2) stehen in `docs/audits/GRUEN_PLAN_11_SICHTEN.md`, nicht doppelt hier.
 
 ## 8. Harte Grenzen (unverändert)
 

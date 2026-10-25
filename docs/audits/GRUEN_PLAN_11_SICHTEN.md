@@ -54,6 +54,11 @@ Dashboard-Agenten.
 | C4 Tests ohne Wanduhrzeit | DONE (vorab) | `test_canary_15` prüft seit #380 eine Schranke von 1,5 s gegen 3,0 s Verzögerung, kein enges Zeitmaß mehr |
 | F1 S2 Zähllauf + Power-Simulation | VERIFIED (Werkzeuge), BLOCKED (Lauf: Archive nur außerhalb der Cloud, Ort braucht Uzis Wort) | dieser PR: `scripts/research_lab_s2.py`, `src/research_lab/studies/s2_orderflow.py`, `s2_power.py`, `src/research_lab/data/aggtrades.py`, `tests/test_research_lab_s2.py`; Studie Abschnitt 7 |
 | F2 S2 rechnen | BLOCKED (Freigabe 1.0 nach F1) | – |
+| P1 Register nachführen | DONE | dieser PR: A17, A19, A20, A22, A23 in `docs/audits/TIM_AUTONOMOUS_INITIAL_AUDIT.md` |
+| P2 ruhende Issues kennzeichnen | DONE | Label `status:ruhend` auf #9, #13–#21, #75–#78, #88, #332–#335 (25.10.) |
+| P3 #367 schließen | BLOCKED (Uzis Wort) | überholt durch #405/#407 |
+| I1 Paketinventar entscheiden | DONE (Entscheid), Ausführung auf Uzis Go | dieser PR: `docs/PAKETINVENTAR.md` ohne „offen“, Abschnitt „Entscheidungen vom 25.10.2026“; Archiv-PR für 8 Pakete braucht Uzis Go |
+| C2 DemoTrader-Altcode | BLOCKED (Uzis Go, Audit A23) | Umfang: `src/paper/demo_trader_v1.py`, `scripts/demo_trader_report.py`, `tests/test_demo_trader_v1.py`, `tests/test_paper_demo_setup.py`, `config/paper_demo.json` |
 | S1 Prüfskript Home-Git | VERIFIED (Werkzeug), Lauf auf dem Mac steht aus | dieser PR: `ops/macos/check_home_git_ignore.py`, `tests/test_check_home_git_ignore.py`; Ausgabe des Mac-Laufs nach `docs/governance/` |
 | alle anderen | PLANNED | – |
 
@@ -62,3 +67,4 @@ Statuswerte: PLANNED, RUNNING, BLOCKED (wer), VERIFIED (Nachweis), DONE. Eine De
 ## Änderungsprotokoll
 
 - 25.10.2026: Plan angelegt (Thread „25.10. Alle 11 Sichten auf Grün bringen“).
+- 25.10.2026 (abends): Status D1, H1, H2, T1, T3, F1, S1, P1, P2, I1 eingetragen; offen auf Uzis Wort: P3, C2, Z1, B1, R2, O2, S2/S3 (Sicht 10), Ort für den S2-Lauf, Freigabe S2 1.0.
