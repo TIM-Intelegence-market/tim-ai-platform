@@ -468,7 +468,7 @@ def test_hard_issue_waits_for_the_server_instead_of_spending_attempts(tmp_path, 
     monkeypatch.setattr(runner, "_run_local_task", lambda *a, **k: pytest.fail("ran without server"))
     pipeline = FakePipeline([_issue(82, HARD, _contract(82))])
     assert runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
-                              merge=True) == "No eligible Qwen issue (lane all)."
+                              merge=True) == "No eligible Mac Qwen issue."
     assert not IssueLedger(tmp_path / "issue-ledger.json").entry(82).get("attempts")
     assert not _gh(pipeline, "issue", "edit")
 
@@ -622,6 +622,7 @@ def test_each_lane_maintains_only_its_own_prs_but_respects_the_others(tmp_path):
 def test_hard_lane_takes_only_hard_issues_and_never_triages(tmp_path, monkeypatch):
     monkeypatch.setenv("TIM_WORKER_LANE", "hard")
     monkeypatch.setattr(issue_triage, "ask_claude", lambda prompt, root: pytest.fail("triaged"))
+    monkeypatch.setattr(runner, "_hard_backend", lambda: ("http://127.0.0.2:11434", "qwen3-coder:30b"))
     pipeline = FakePipeline([_issue(90, READY, _contract(90)), _issue(91, body="offen")])
     assert runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False, merge=True,
                               triage=True) == "No eligible Qwen issue (lane hard)."
@@ -634,7 +635,7 @@ def test_easy_lane_skips_hard_issues_and_still_labels_them_in_triage(tmp_path, m
     monkeypatch.setenv("TIM_WORKER_LANE", "easy")
     pipeline = FakePipeline([_issue(93, HARD, _contract(93))])
     assert runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
-                              merge=True, dry_run=True) == "No eligible Qwen issue (lane easy)."
+                              merge=True, dry_run=True) == "No eligible Mac Qwen issue (lane easy)."
     repo = tmp_path / "repo"
     repo.mkdir()
     answer = _big_file_answer(repo, 40_000)
@@ -644,3 +645,11 @@ def test_easy_lane_skips_hard_issues_and_still_labels_them_in_triage(tmp_path, m
     assert "#94 prepared" in runner.process_one(pipeline, tmp_path / "state", pilot_issue=None,
                                                 codex_fallback=False, merge=True, triage=True)
     assert _gh(pipeline, "issue", "edit")[0][-1] == "agent:qwen-hard,status:ready,priority:p1"
+
+
+def test_hard_lane_fails_loudly_without_the_server_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIM_WORKER_LANE", "hard")
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)
+    with pytest.raises(PipelineError, match="server model unavailable"):
+        runner.process_one(FakePipeline([_issue(95, HARD, _contract(95))]), tmp_path, pilot_issue=None,
+                           codex_fallback=False, merge=True)

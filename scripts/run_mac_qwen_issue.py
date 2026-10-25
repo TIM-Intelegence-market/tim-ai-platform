@@ -585,7 +585,13 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
         # Triage needs Claude Code, which only the Mac has; the hard lane never triages.
         if triage and lane != "hard" and pilot_issue is None and not dry_run:
             return _triage_one(pipeline, ledger, issues, pipeline.repository, lane=lane)
-        return f"No eligible Qwen issue (lane {lane})."
+        if lane == "hard":
+            if not dry_run and _hard_backend() is None:
+                # The server worker has nothing else to do; an idle exit would hide a broken model setup.
+                raise PipelineError("server model unavailable (TIM_QWEN_HARD_URL, TIM_QWEN_HARD_MODEL)")
+            return "No eligible Qwen issue (lane hard)."
+        # The Mac dashboard counts idle polls by this prefix.
+        return "No eligible Mac Qwen issue" + (" (lane easy)." if lane == "easy" else ".")
     issue, task = selected
     number = task["issue_number"]
     if dry_run:

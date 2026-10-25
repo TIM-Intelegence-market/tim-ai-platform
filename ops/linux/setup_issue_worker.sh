@@ -38,15 +38,24 @@ done
 cd /
 
 say "1/5 Voraussetzungen"
+# The old worker ran as tim-server; the new one runs the same scripts as timworker, so only tim-server counts.
 if systemctl is-active --quiet tim-qwen-worker.service \
-   || pgrep -f '[r]un_local_qwen|[t]im-qwen-worker' >/dev/null; then
+   || pgrep -u tim-server -f '[r]un_local_qwen|[t]im-qwen-worker' >/dev/null 2>&1; then
   die "der alte tim-qwen-worker läuft noch; erst docs/TIM_CHECKUP.md, Abschnitt Einschalten, Schritt 1"
 fi
-curl -fsS -m 10 http://127.0.0.1:11434/api/tags | python3 -c "
+# Without the checkup drop-in Ollama listens on 127.0.0.1, with it on 127.0.0.2.
+OLLAMA_URL=""
+for url in http://127.0.0.1:11434 http://127.0.0.2:11434; do
+  if curl -fsS -m 10 "${url}/api/tags" 2>/dev/null | python3 -c "
 import json, sys
 names = {m.get('name') for m in json.load(sys.stdin).get('models', [])}
-sys.exit(0 if '${MODEL}' in names else 1)" || die "ollama antwortet nicht mit ${MODEL} (nie ollama pull hier)"
-echo "ollama hat ${MODEL}"
+sys.exit(0 if '${MODEL}' in names else 1)"; then
+    OLLAMA_URL="$url"
+    break
+  fi
+done
+[ -n "$OLLAMA_URL" ] || die "ollama antwortet weder auf 127.0.0.1 noch auf 127.0.0.2 mit ${MODEL} (nie ollama pull hier)"
+echo "ollama hat ${MODEL} auf ${OLLAMA_URL}"
 missing=()
 for pkg in bubblewrap python3.13-venv gh git curl; do
   dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed" || missing+=("$pkg")
@@ -91,7 +100,13 @@ login="$(as_worker gh api user --jq .login)"
 [ "${login,,}" = "${WORKER_LOGIN,,}" ] || die "falscher GitHub-Login: ${login}, erwartet ${WORKER_LOGIN}"
 perms="$(as_worker gh api "repos/${REPO}" --jq '[.permissions.push, .permissions.maintain, .permissions.admin] | @csv')"
 [ "$perms" = "true,false,false" ] || die "Rechte von ${WORKER_LOGIN} sind nicht genau push ohne maintain/admin (${perms})"
-echo "angemeldet als ${login}, Rechte geprüft"
+# A classic token reports its scopes; anything beyond repo work (org admin, deleting repos, keys) is refused.
+# Fine-grained tokens report none and are limited by their own repository and permission settings.
+scopes="$(as_worker gh api -i user 2>/dev/null | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: *//p')"
+if printf '%s' "$scopes" | grep -Eq '(^|, *)(admin:[a-z_]+|delete_repo|delete:packages|write:packages|user)(,|$)'; then
+  die "Token hat zu weite Rechte (${scopes}); einen fine-grained Token nur für ${REPO} nehmen"
+fi
+echo "angemeldet als ${login}, Rechte geprüft${scopes:+ (Scopes: ${scopes})}"
 chmod -R go-rwx "$GH_DIR"
 
 say "4/5 Checkout und venv"
@@ -108,17 +123,20 @@ echo "Checkout $(as_worker git -C "$REPO_DIR" rev-parse --short HEAD)"
 say "5/5 Selbsttest, Probelauf, Units"
 ( cd "$REPO_DIR" && as_worker "${REPO_DIR}/.venv/bin/python" -m src.local_first.sandbox_runner ) \
   || die "Sandbox nicht dicht (Ausgabe oben)"
-( cd "$REPO_DIR" && as_worker env TIM_WORKER_LANE=hard "${REPO_DIR}/.venv/bin/python" \
+( cd "$REPO_DIR" && as_worker env TIM_WORKER_LANE=hard TIM_QWEN_HARD_URL="$OLLAMA_URL" "${REPO_DIR}/.venv/bin/python" \
     scripts/run_mac_qwen_issue.py --state-dir "${WORKER_HOME}/state" --dry-run ) \
   || die "Probelauf fehlgeschlagen (Ausgabe oben)"
 install -m 644 "${SRC_DIR}/tim-issue-worker.service" /etc/systemd/system/tim-issue-worker.service
 install -m 644 "${SRC_DIR}/tim-issue-worker.timer" /etc/systemd/system/tim-issue-worker.timer
 [ -f /etc/tim-issue-worker.env ] || install -m 600 "${SRC_DIR}/tim-issue-worker.env" /etc/tim-issue-worker.env
+sed -i "s|^TIM_QWEN_HARD_URL=.*|TIM_QWEN_HARD_URL=${OLLAMA_URL}|" /etc/tim-issue-worker.env
+grep -q '^TIM_QWEN_HARD_URL=' /etc/tim-issue-worker.env || echo "TIM_QWEN_HARD_URL=${OLLAMA_URL}" >> /etc/tim-issue-worker.env
 systemctl daemon-reload
 systemd-analyze verify /etc/systemd/system/tim-issue-worker.service /etc/systemd/system/tim-issue-worker.timer
 
 say "Fertig. Nichts läuft, nichts ist eingeschaltet."
 echo "Zuerst den Mac auf TIM_WORKER_LANE=easy stellen (docs/mac-qwen-issue-worker.md)."
+echo "Probe:   sudo systemctl start tim-issue-worker   (steht auf --dry-run, schreibt nichts)"
 echo "Pilot:   in /etc/tim-issue-worker.env TIM_WORKER_ARGS=--pilot-issue <Nummer>, dann sudo systemctl start tim-issue-worker"
 echo "Dauer:   TIM_WORKER_ARGS=--merge --self-update, dann sudo systemctl enable --now tim-issue-worker.timer"
 echo "Log:     journalctl -u tim-issue-worker -n 50"

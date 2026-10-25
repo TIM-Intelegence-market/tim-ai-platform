@@ -71,13 +71,18 @@ angezeigt und muss genau Push-Rechte haben, ohne Maintain/Admin. Es startet nich
   `/srv/worker/repo`, Zustand und Ledger `/srv/worker/state`, GitHub-Anmeldung `/srv/worker/.config/gh-tim-mac-worker`.
 - `tim-issue-worker.timer` startet `tim-issue-worker.service` alle 5 Minuten. Vor jedem Lauf prüft der
   Sandbox-Selbsttest, dass Tests in bubblewrap weder Netz noch Zugangsdaten noch TIM-Daten sehen; sonst läuft nichts.
-- Argumente in `/etc/tim-issue-worker.env` (root, 600). Pilot: `TIM_WORKER_ARGS=--pilot-issue <Nummer>` (nur PR,
-  kein Merge), danach `--merge --self-update`.
+- Argumente in `/etc/tim-issue-worker.env` (root, 600). Nach der Einrichtung steht dort `--dry-run` (schreibt nichts).
+  Pilot: `TIM_WORKER_ARGS=--pilot-issue <Nummer>` (nur PR, kein Merge), danach `--merge --self-update`. Dort steht
+  auch `TIM_QWEN_HARD_URL`: Ollama auf 127.0.0.1, nach dem Checkup-Drop-in auf 127.0.0.2. Wandert Ollama später,
+  die Zeile anpassen. Antwortet das Modell nicht, endet jeder Lauf mit Fehler im Journal statt still.
 - Grenzen: `Nice=15`, `IOSchedulingClass=idle`, `CPUQuota=100%`, `MemoryMax=4G`, kein Swap. Das Modell selbst rechnet
   in `ollama.service` mit dessen Grenzen. Läuft gerade ein CI-Job (`Runner.Worker`), beginnt der Worker keine neue
   Aufgabe.
 - Abschottung wie beim Runner (`ProtectSystem=strict`, `ProtectHome=yes`, `InaccessiblePaths` für TIM-Daten,
   `/srv/ci` und die Produktionsdatenbank), schreiben nur unter `/srv/worker`. Kein Codex- und kein Claude-Fallback.
+- Tests in bubblewrap sehen auch `/run` nicht (D-Bus, Journal, Socket der Datenbank).
+- Doppelbearbeitung verhindern die Lanes nur, wenn beide Seiten den neuen Code fahren: Erst den Mac auf
+  `TIM_WORKER_LANE=easy` umstellen, dann den Timer hier einschalten.
 - Anders als bisher liegt damit eine GitHub-Anmeldung auf dem Server: die des Workers, ohne Admin-Rechte, nur für
   `timworker` lesbar.
 

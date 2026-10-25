@@ -53,8 +53,9 @@ BLOCKED_LOCAL_PORTS = (11434,)  # Ollama: tests must not pull, delete or prompt 
 KEYCHAIN_SERVICES = ("com.apple.SecurityServer", "com.apple.securityd.xpc", "com.apple.security.agent")
 
 # Linux server paths that hold TIM's secrets, live data or the production database; the CI runner
-# unit hides the same set. Missing paths are skipped.
-SERVER_HIDDEN_DIRS = ("/etc/tim", "/opt/tim", "/srv/tim", "/srv/ci", "/var/lib/tim", "/var/lib/tim-agent",
+# unit hides the same set. /run goes too: a read-only mount still lets a process connect() to the
+# Unix sockets there (D-Bus, journald, userdb, PostgreSQL). Missing paths are skipped.
+SERVER_HIDDEN_DIRS = ("/run", "/etc/tim", "/opt/tim", "/srv/tim", "/srv/ci", "/var/lib/tim", "/var/lib/tim-agent",
                       "/var/backups", "/srv/postgresql", "/var/lib/postgresql", "/etc/postgresql",
                       "/run/postgresql", "/root")
 # Kinds whose test runs count as sandboxed for TIM_TEST_SANDBOX=required.
@@ -150,6 +151,16 @@ def bubblewrap_argv(argv: list[str], repo_root: Path, scratch: Path,
             hidden.append(path)
             mounts += ["--ro-bind", "/dev/null", path]
     repo, scratch_path = _real(repo_root), _real(scratch)
+    # The Python that runs the tests, read-only again in case a hidden folder holds it (the CI venv lies
+    # below /srv/ci). Only an absolute interpreter path counts; a bare name is found on PATH as usual.
+    runtime = {_real(Path(sys.prefix)), _real(Path(sys.base_prefix))}
+    if argv and os.path.isabs(argv[0]):
+        interpreter = Path(argv[0])
+        runtime.add(_real(interpreter.parent.parent if interpreter.parent.name == "bin" else interpreter.parent))
+    rebinds: list[str] = []
+    for path in sorted(runtime):
+        if os.path.isdir(path) and covered(path):
+            rebinds += ["--ro-bind", path, path]
     command = [
         BWRAP, "--die-with-parent", "--new-session",
         # Own user, PID, IPC, UTS, cgroup and network namespaces: only a private loopback remains.
@@ -157,6 +168,7 @@ def bubblewrap_argv(argv: list[str], repo_root: Path, scratch: Path,
         "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
         *mounts,
         # The repository again, read-only, in case it lies below /tmp or a hidden folder.
+        *rebinds,
         "--ro-bind", repo, repo,
         "--bind", scratch_path, scratch_path,
         "--chdir", repo,
@@ -237,7 +249,17 @@ for item in ("/etc/tim", "/srv/tim", "/opt/tim", os.path.join(home, ".config/gh-
             problems.append("visible: " + item)
     except OSError:
         pass
-for host, port in (("127.0.0.1", 11434), ("127.0.0.1", 5432), ("1.1.1.1", 443)):
+for path in ("/run/dbus/system_bus_socket", "/run/systemd/journal/socket",
+             "/run/postgresql/.s.PGSQL.5432", "/var/run/postgresql/.s.PGSQL.5432"):
+    unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        unix.connect(path)
+        problems.append("reachable: " + path)
+    except OSError:
+        pass
+    finally:
+        unix.close()
+for host, port in (("127.0.0.1", 11434), ("127.0.0.2", 11434), ("127.0.0.1", 5432), ("1.1.1.1", 443)):
     try:
         socket.create_connection((host, port), timeout=2).close()
         problems.append(f"reachable: {host}:{port}")

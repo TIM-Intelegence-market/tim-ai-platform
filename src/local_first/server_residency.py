@@ -15,7 +15,7 @@ def configured_server() -> tuple[str, str] | None:
     url = os.getenv("TIM_QWEN_HARD_URL", "").strip().rstrip("/")
     try:
         parsed = urlsplit(url)
-        if (parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1"}
+        if (parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1", "127.0.0.2"}
                 or parsed.username is not None or parsed.password is not None
                 or parsed.path or parsed.query or parsed.fragment or parsed.port == 0):
             return None
