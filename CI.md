@@ -53,7 +53,7 @@ Zwei Schalter sind bewusst **aus**, beide auf Uzis Entscheidung:
   (`docs/audits/GRUEN_PLAN_11_SICHTEN.md`, Paket R1/R2).
 - **„Branch muss aktuell sein“ (strict) aus seit 25.10.2026.** Ein PR kann grün sein gegen einen älteren Stand von
   `platform-main`. Deshalb nach jedem Merge den Push-Lauf von `test` auf `platform-main` ansehen; ein roter Lauf dort
-  wird sofort repariert (Paket T1 soll das automatisch melden).
+  wird sofort repariert; der Job `report-red-main` in `ci.yml` öffnet dafür ein Issue mit Label `ci-red` (oder kommentiert das offene).
 
 Vor der Meldung „merge-fertig“ bringt der Thread seinen PR auf den aktuellen Stand von `platform-main`, löst Konflikte
 und lässt die volle Suite in der Cloud laufen (`pytest -m "not local_env and not serial" -n 4`, danach

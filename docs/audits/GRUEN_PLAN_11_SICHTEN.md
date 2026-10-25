@@ -49,6 +49,8 @@ Dashboard-Agenten.
 | D1 Einstiegsdoku | VERIFIED | dieser PR: `README.md`, `CI.md`, `docs/TIM_IN_10_MINUTEN.md`, `docs/SYSTEMSTAND.md` |
 | H1 lange Horizonte 1h/4h/24h | VERIFIED (Code), RUNNING (Daten ab Einspielen) | dieser PR: `src/orderflow/validation_long.py`, Migration 008, `tests/test_orderflow_validation_long.py`, `docs/ORDERFLOW_VALIDATION_LONG.md` |
 | H2 4h-/1d-Kerzen | VERIFIED (Code), RUNNING (Daten ab Einspielen) | dieser PR: `src/data_ingestion/derived_candles.py`, Migration 009, `tests/test_derived_candles.py`, `docs/HTF_KERZEN.md` |
+| T1 Push-Rot-Melder | VERIFIED (Code), wirkt ab dem ersten roten Push-Lauf | dieser PR: Job `report-red-main` in `.github/workflows/ci.yml`, Issue mit Label `ci-red` |
+| T3 Coverage-Zahl | VERIFIED (Code) | dieser PR: Schritt „Coverage summary“ schreibt die Zeilenabdeckung in die Lauf-Zusammenfassung; Zahl nach dem ersten Lauf in `docs/TESTMATRIX.md` eintragen |
 | C4 Tests ohne Wanduhrzeit | DONE (vorab) | `test_canary_15` prüft seit #380 eine Schranke von 1,5 s gegen 3,0 s Verzögerung, kein enges Zeitmaß mehr |
 | alle anderen | PLANNED | – |
 
