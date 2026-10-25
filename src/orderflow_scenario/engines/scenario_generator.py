@@ -141,8 +141,15 @@ class ScenarioGenerator:
         absorption_sellers = orderflow.absorption_hypothesis == "PASSIVE_SELLERS"
         absorption_buyers = orderflow.absorption_hypothesis == "PASSIVE_BUYERS"
 
+        # A retest of the breakout edge needs price near or above that edge. Far below it there is
+        # no breakout to retest (25.10.2026: 30m LONG retest at 82.143 with BTC at 80.810, 1W LONG
+        # retest at 126.326 with BTC at 82.116). "Near" is the 1 % window used for external levels;
+        # a reclaim far below the low keeps the lower bound of near_range_low.
+        below_breakout_edge = range_high is not None and last is not None and last < range_high * (1 - BREAKOUT_EDGE_WINDOW)
+        below_reclaim_level = range_low is not None and last is not None and last < range_low * Decimal("0.98")
+
         # --- Scenario A: Breakout / Acceptance / Continuation ---
-        breakout_interest = primary in {MarketStateKind.BREAKOUT_ATTEMPT, MarketStateKind.ACCEPTANCE_ABOVE_VALUE, MarketStateKind.TREND_UP} or near_range_high
+        breakout_interest = (primary in {MarketStateKind.BREAKOUT_ATTEMPT, MarketStateKind.ACCEPTANCE_ABOVE_VALUE, MarketStateKind.TREND_UP} or near_range_high) and not below_breakout_edge
         if breakout_interest:
             trigger = range_high or (last or Decimal("0"))
             entry_low = trigger * Decimal("1.001")
@@ -183,7 +190,7 @@ class ScenarioGenerator:
             )
 
         # --- Scenario B: Liquidity sweep / reversal ---
-        sweep_interest = primary in {MarketStateKind.LIQUIDITY_SWEEP_LOW, MarketStateKind.REJECTION_BELOW_VALUE, MarketStateKind.FAILED_AUCTION_LOW} or near_range_low
+        sweep_interest = (primary in {MarketStateKind.LIQUIDITY_SWEEP_LOW, MarketStateKind.REJECTION_BELOW_VALUE, MarketStateKind.FAILED_AUCTION_LOW} or near_range_low) and not below_reclaim_level
         if sweep_interest:
             trigger = range_low or (last or Decimal("0"))
             entry_low = trigger * Decimal("1.001") if trigger else None
@@ -316,6 +323,8 @@ class ScenarioGenerator:
         return tuple(scenarios)
 
 
+# A breakout retest (scenario A) is proposed only while price is within 1 % below the range high.
+BREAKOUT_EDGE_WINDOW = Decimal("0.01")
 # A Broncx level becomes a scenario only within 1 % of price, and not when TIM already has a trigger within 0.2 %.
 EXTERNAL_LEVEL_WINDOW = Decimal("0.01")
 EXTERNAL_LEVEL_DUPLICATE = Decimal("0.002")

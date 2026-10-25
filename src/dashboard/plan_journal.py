@@ -4,7 +4,9 @@ Each time a 30m candle closes, the plans shown on the Setup-Pfad page are
 written down: entry, stop, invalidation and the three targets from TIM's
 TradePlanBuilder. Afterwards every plan is followed on 1m candles:
 
-- OPEN: waiting for the limit entry. Ends as FILLED, INVALIDATED (30m close
+- OPEN: waiting for the limit entry. A LONG limit above the close at recording
+  (SHORT below) first waits for a 1m close beyond the entry (armed), then for the
+  retest. Plans already beyond their stop or invalidation are not recorded. Ends as FILLED, INVALIDATED (30m close
   beyond the invalidation level first), REPLACED (TIM now proposes other
   levels in the same direction) or EXPIRED (24 h without fill). A plan that
   TIM stops showing stays OPEN like a resting limit order.
@@ -305,6 +307,7 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
             **payload,
             **decision_fields(plan),
             "status": OPEN,
+            **_arming(plan),
             "evaluated_through": _iso(at),
             "tp_hits": [],
             "gross_r": None,
@@ -347,6 +350,20 @@ def drop_invalid_on_arrival(plans: Sequence[Mapping[str, Any]], close: float | N
         else:
             kept.append({**dict(plan), "close_at_record": float(close)})
     return kept, dropped
+
+
+def _arming(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """A LONG limit above the close (SHORT below) is no resting order: it waits for the breakout.
+
+    Such a plan (retest of a breakout edge, reclaim of a lost level) starts unarmed and its
+    limit only counts after a 1m close beyond the entry. Without it the limit "filled" in the
+    first minute at a price the market never traded. Plans recorded without a close stay armed."""
+    close = plan.get("close_at_record")
+    if close is None:
+        return {}
+    entry = float(plan["entry"])
+    waits = (plan["direction"] == "LONG" and entry > float(close)) or (plan["direction"] == "SHORT" and entry < float(close))
+    return {"armed": not waits}
 
 
 def tick_fill(entry: Mapping[str, Any]) -> float:
@@ -453,6 +470,11 @@ def evaluate(journal: dict[str, Any], minute_candles: Sequence[Mapping[str, Any]
                 if candle["open_time"] >= _time(entry["created_at"]) + timedelta(hours=PENDING_HOURS):
                     entry.update(status="EXPIRED", closed_at=_iso(candle["open_time"]), note=f"{PENDING_HOURS} h ohne Einstieg.")
                     break
+                if not entry.get("armed", True):
+                    # Breakout first: a 1m close beyond the entry arms the limit for the retest.
+                    if (long and candle["close"] > entry["entry"]) or (not long and candle["close"] < entry["entry"]):
+                        entry.update(armed=True, armed_at=_iso(candle["close_time"]))
+                    continue
                 touched = candle["low"] <= entry["entry"] if long else candle["high"] >= entry["entry"]
                 if touched and not _blocked(candle["open_time"], windows):
                     entry.update(status=FILLED, filled_at=_iso(candle["open_time"]), fill_price=tick_fill(entry))
