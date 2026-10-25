@@ -39,8 +39,9 @@ cd /
 
 say "1/5 Voraussetzungen"
 # The old worker ran as tim-server; the new one runs the same scripts as timworker, so only tim-server counts.
-if systemctl is-active --quiet tim-qwen-worker.service \
-   || pgrep -u tim-server -f '[r]un_local_qwen|[t]im-qwen-worker' >/dev/null 2>&1; then
+# No backslash line continuations in this script: copying it through PowerShell broke them once (25.10.2026).
+if systemctl is-active --quiet tim-qwen-worker.service ||
+   pgrep -u tim-server -f '[r]un_local_qwen|[t]im-qwen-worker' >/dev/null 2>&1; then
   die "der alte tim-qwen-worker läuft noch; erst docs/TIM_CHECKUP.md, Abschnitt Einschalten, Schritt 1"
 fi
 # Without the checkup drop-in Ollama listens on 127.0.0.1, with it on 127.0.0.2.
@@ -73,8 +74,7 @@ say "2/5 Benutzer ${WORKER_USER}"
 if id "$WORKER_USER" >/dev/null 2>&1; then
   echo "${WORKER_USER} existiert"
 else
-  useradd --system --user-group --home-dir "$WORKER_HOME" --create-home --shell /usr/sbin/nologin \
-    --comment "TIM issue worker (hard lane)" "$WORKER_USER"
+  useradd --system --user-group --home-dir "$WORKER_HOME" --create-home --shell /usr/sbin/nologin --comment "TIM issue worker (hard lane)" "$WORKER_USER"
   echo "${WORKER_USER} angelegt"
 fi
 extra_groups="$(id -Gn "$WORKER_USER" | tr ' ' '\n' | grep -vx "$WORKER_USER" || true)"
@@ -92,8 +92,8 @@ else
   read -rsp "Token einfügen (wird nicht angezeigt): " token </dev/tty
   echo
   [ -n "$token" ] || die "kein Token eingegeben"
-  printf '%s\n' "$token" | as_worker gh auth login --hostname github.com --git-protocol https --with-token \
-    || { unset token; die "Anmeldung abgelehnt"; }
+  printf '%s\n' "$token" | as_worker gh auth login --hostname github.com --git-protocol https --with-token ||
+    { unset token; die "Anmeldung abgelehnt"; }
   unset token
 fi
 login="$(as_worker gh api user --jq .login)"
@@ -121,11 +121,10 @@ as_worker "${REPO_DIR}/.venv/bin/pip" install --quiet -r "${REPO_DIR}/requiremen
 echo "Checkout $(as_worker git -C "$REPO_DIR" rev-parse --short HEAD)"
 
 say "5/5 Selbsttest, Probelauf, Units"
-( cd "$REPO_DIR" && as_worker "${REPO_DIR}/.venv/bin/python" -m src.local_first.sandbox_runner ) \
-  || die "Sandbox nicht dicht (Ausgabe oben)"
-( cd "$REPO_DIR" && as_worker env TIM_WORKER_LANE=hard TIM_QWEN_HARD_URL="$OLLAMA_URL" "${REPO_DIR}/.venv/bin/python" \
-    scripts/run_mac_qwen_issue.py --state-dir "${WORKER_HOME}/state" --dry-run ) \
-  || die "Probelauf fehlgeschlagen (Ausgabe oben)"
+( cd "$REPO_DIR" && as_worker "${REPO_DIR}/.venv/bin/python" -m src.local_first.sandbox_runner ) ||
+  die "Sandbox nicht dicht (Ausgabe oben)"
+( cd "$REPO_DIR" && as_worker env TIM_WORKER_LANE=hard TIM_QWEN_HARD_URL="$OLLAMA_URL" "${REPO_DIR}/.venv/bin/python" scripts/run_mac_qwen_issue.py --state-dir "${WORKER_HOME}/state" --dry-run ) ||
+  die "Probelauf fehlgeschlagen (Ausgabe oben)"
 install -m 644 "${SRC_DIR}/tim-issue-worker.service" /etc/systemd/system/tim-issue-worker.service
 install -m 644 "${SRC_DIR}/tim-issue-worker.timer" /etc/systemd/system/tim-issue-worker.timer
 [ -f /etc/tim-issue-worker.env ] || install -m 600 "${SRC_DIR}/tim-issue-worker.env" /etc/tim-issue-worker.env

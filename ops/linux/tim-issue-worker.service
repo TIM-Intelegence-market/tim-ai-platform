@@ -23,8 +23,7 @@ Environment=TIM_QWEN_HARD_MODEL=qwen3-coder:30b
 EnvironmentFile=/etc/tim-issue-worker.env
 # Model-written tests run in bubblewrap; stop before any work when that sandbox is not sealed here.
 ExecStartPre=/srv/worker/repo/.venv/bin/python -m src.local_first.sandbox_runner
-ExecStart=/srv/worker/repo/.venv/bin/python scripts/run_mac_qwen_issue.py --state-dir /srv/worker/state \
-  --no-codex-fallback --no-claude-fallback $TIM_WORKER_ARGS
+ExecStart=/srv/worker/repo/.venv/bin/python scripts/run_mac_qwen_issue.py --state-dir /srv/worker/state --no-codex-fallback --no-claude-fallback $TIM_WORKER_ARGS
 # 3 = the checkout moved to a newer platform-main; the next timer run uses the new code.
 SuccessExitStatus=3
 # One intake: 40 min task, 10 min review, 30 min merge wait (docs/mac-qwen-issue-worker.md).
