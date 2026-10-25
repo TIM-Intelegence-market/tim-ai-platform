@@ -137,9 +137,15 @@ def run_backtest(
     start_ms: int | None = None,
     end_ms: int | None = None,
     atr_at_signal: Callable[[History], float | None] | None = None,
+    gap_entry_as_loss: bool = False,
 ) -> BacktestResult:
     """Run one variant. Signals are only taken for bars in [start_ms, end_ms);
-    earlier bars serve as indicator warm-up."""
+    earlier bars serve as indicator warm-up.
+
+    gap_entry_as_loss (study S4, section 4.1): a signal whose entry bar opens at
+    or beyond its stop is not dropped as invalid (that would select on the
+    future) but booked as a full loss: -1 R minus the stop-case costs, R taken
+    from the signal bar's close to the stop."""
     result = BacktestResult()
     funding_times = [f.time for f in funding]
     position: Position | None = None
@@ -186,7 +192,16 @@ def run_backtest(
                 # The stop must lie beyond the raw open too, or the trade would be
                 # stopped at the open with a tiny risk and an extreme R.
                 if (entry - signal.stop) * signal.side <= 0 or (bar.open - signal.stop) * signal.side <= 0:
-                    result.invalid_signals += 1
+                    planned = bars[index].close
+                    planned_risk = (planned - signal.stop) * signal.side
+                    if gap_entry_as_loss and planned_risk > 0:
+                        cost = (2 * costs.fee + costs.slippage + costs.stop_slippage) * planned / planned_risk
+                        result.trades.append(
+                            Trade(bars[index].open_time, bar.open_time, bar.open_time, signal.side, bar.open, bar.open,
+                                  signal.stop, "stop_before_entry", 1, -1.0 - cost, 2 * costs.fee * planned / planned_risk,
+                                  0.0, None if atr is None else planned_risk / atr, signal.target_r))
+                    else:
+                        result.invalid_signals += 1
                 else:
                     risk = abs(entry - signal.stop)
                     target = None if signal.target_r is None else entry + signal.side * signal.target_r * risk
