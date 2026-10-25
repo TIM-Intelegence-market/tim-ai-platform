@@ -25,7 +25,7 @@ const TRIAGE_SKIP_LABELS: &[&str] = &[
 ];
 
 /// Mirrors `DEFAULT_TRUSTED_AUTHORS` in `src/local_first/issue_triage.py`.
-const TRUSTED_AUTHORS: &[&str] = &["uezeyiraydin-cell", "apoman74-art"];
+const TRUSTED_AUTHORS: &[&str] = &["uezeyiraydin-cell", "tim-issue-worker-t330"];
 
 const GH_TIMEOUT: Duration = Duration::from_secs(30);
 

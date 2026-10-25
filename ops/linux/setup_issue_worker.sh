@@ -8,7 +8,7 @@
 #      ollama answers with qwen3-coder:30b (never pulls a model), and installs bubblewrap, python3.13-venv, gh,
 #      git and curl with apt,
 #   2. creates the system user `timworker` (no sudo, no extra groups, no login shell), home /srv/worker (700),
-#   3. logs that user in to GitHub as apoman74-art: the token is read from the terminal, never shown, never an
+#   3. logs that user in to GitHub as tim-issue-worker-t330: the token is read from the terminal, never shown, never an
 #      argument; the login must have push but neither admin nor maintain on the repository,
 #   4. clones the repository to /srv/worker/repo (detached at origin/platform-main) with a venv,
 #   5. runs the sandbox self-test and a dry run as timworker, then installs tim-issue-worker.service, .timer and
@@ -19,7 +19,7 @@ set -euo pipefail
 
 REPO="TIM-Intelegence-market/tim-ai-platform"
 WORKER_USER="timworker"
-WORKER_LOGIN="apoman74-art"
+WORKER_LOGIN="tim-issue-worker-t330"
 WORKER_HOME="/srv/worker"
 REPO_DIR="${WORKER_HOME}/repo"
 GH_DIR="${WORKER_HOME}/.config/gh-tim-mac-worker"

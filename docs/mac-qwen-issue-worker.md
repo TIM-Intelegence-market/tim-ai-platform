@@ -2,7 +2,8 @@
 
 `scripts/run_mac_qwen_issue.py` handles one GitHub issue at a time. The Mac is
 TIM's fallback system while the server Qwen 30B model is being built. The
-worker uses the isolated `apoman74-art` GitHub login and stops if that login
+worker uses the isolated `tim-issue-worker-t330` GitHub login (until 25.10.2026
+`apoman74-art`; its existing triage contracts and open PRs are still respected, never merged or closed) and stops if that login
 has Admin or Maintain permissions.
 
 An issue must be open and labelled `agent:qwen-ready`, `status:ready`, and
@@ -184,7 +185,7 @@ LaunchAgent environment to switch either off; a `--github-pilot-issue` never tri
    `skip`. A `ready` answer must pass the same `build_task` validation; the worker then posts the
    contract as its own comment (marker `TIM_QWEN_TRIAGE_V1`) and adds `agent:qwen-ready`,
    `status:ready` and `priority:p0|p1`. A `skip` gets a one-line reason and `agent:not-suitable`.
-   Only issues from trusted authors are triaged (`uezeyiraydin-cell`, `apoman74-art`, plus
+   Only issues from trusted authors are triaged (`uezeyiraydin-cell`, `tim-issue-worker-t330`, plus
    `TIM_TRIAGE_TRUSTED_AUTHORS`); epics, server, observe-only, waiting and blocked issues are never
    triaged. Contracts are read from the issue body or from a worker comment, never from another
    person's comment.

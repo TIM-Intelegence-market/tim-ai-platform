@@ -43,7 +43,7 @@ def test_rejects_changes_outside_issue_allowlist(tmp_path: Path):
 def test_merge_requires_exact_worker_pr_head():
     state = {"state": "OPEN", "mergeStateStatus": "CLEAN", "headRefOid": "expected",
              "headRefName": "codex/issue-5-qwen", "baseRefName": "platform-main",
-             "author": {"login": "apoman74-art"}}
+             "author": {"login": "tim-issue-worker-t330"}}
     pipeline = FakePipeline(states=[state])
     _merge_when_ready(pipeline, 8, "codex/issue-5-qwen", "expected", wait_seconds=1)
     assert pipeline.merges == [("pr", "merge", "8", "--squash")]

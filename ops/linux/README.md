@@ -64,7 +64,7 @@ sudo bash ops/linux/setup_issue_worker.sh
 ```
 
 Das Skript bricht ab, solange der alte `tim-qwen-worker` läuft (erst `docs/TIM_CHECKUP.md`, Abschnitt
-„Einschalten“, Schritt 1), und lädt nie ein Modell. Den Token von `apoman74-art` tippst du selbst; er wird nicht
+„Einschalten“, Schritt 1), und lädt nie ein Modell. Den Token von `tim-issue-worker-t330` tippst du selbst; er wird nicht
 angezeigt und muss genau Push-Rechte haben, ohne Maintain/Admin. Es startet nichts und schaltet nichts ein.
 
 - Benutzer `timworker` ohne sudo, ohne weitere Gruppen, ohne Login-Shell, Home `/srv/worker` (700): Checkout

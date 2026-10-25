@@ -11,7 +11,7 @@ from src.local_first import issue_triage
 from src.local_first.github_issue_queue import build_task, select_ready_issue
 from src.local_first.issue_triage import IssueLedger, attach_worker_contract
 
-WORKER = "apoman74-art"
+WORKER = "tim-issue-worker-t330"
 
 
 def _issue(number, labels=(), body="", author="uezeyiraydin-cell", comments=()):
@@ -653,3 +653,21 @@ def test_hard_lane_fails_loudly_without_the_server_model(tmp_path, monkeypatch):
     with pytest.raises(PipelineError, match="server model unavailable"):
         runner.process_one(FakePipeline([_issue(95, HARD, _contract(95))]), tmp_path, pilot_issue=None,
                            codex_fallback=False, merge=True)
+
+
+def test_legacy_worker_contracts_and_prs_still_count_but_are_never_maintained(tmp_path):
+    legacy = runner.LEGACY_WORKER_LOGINS[0]
+    comment = {"author": {"login": legacy}, "body": issue_triage.TRIAGE_MARKER + "\n" + _contract(7)}
+    issue = attach_worker_contract(_issue(7, READY, body="x", comments=[comment]),
+                                   (WORKER, *runner.LEGACY_WORKER_LOGINS))
+    assert build_task(issue)["issue_number"] == 7
+    stranger = {"author": {"login": "someone-else"}, "body": comment["body"]}
+    assert attach_worker_contract(_issue(8, READY, body="x", comments=[stranger]), (WORKER, legacy))["body"] == "x"
+    base = {"baseRefName": "platform-main", "createdAt": "2026-10-12T10:00:00Z", "mergeStateStatus": "CLEAN"}
+    prs = [{**base, "number": 1, "headRefName": "codex/issue-70-qwen", "author": {"login": legacy}},
+           {**base, "number": 2, "headRefName": "codex/issue-71-qwen", "author": {"login": WORKER}}]
+    pipeline = FakePipeline([], prs)
+    covered = runner._maintain_worker_prs(pipeline, IssueLedger(tmp_path / "l.json"), merge=True,
+                                          now=1_791_800_000.0)
+    assert covered == {70, 71}
+    assert [call[3] for call in _gh(pipeline, "pr", "merge")] == ["2"]

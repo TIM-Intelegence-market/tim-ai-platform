@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-EXPECTED_LOGIN = "apoman74-art"
+EXPECTED_LOGIN = "tim-issue-worker-t330"
 REPO = "TIM-Intelegence-market/tim-ai-platform"
 CONFIG_DIR = Path.home() / ".config/gh-tim-mac-worker"
 
@@ -35,7 +35,7 @@ def gh(*args: str, input_text: str | None = None) -> str:
 def main() -> int:
     CONFIG_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     CONFIG_DIR.chmod(0o700)
-    token = getpass.getpass("Token des Kontos apoman74-art eingeben (Eingabe unsichtbar): ")
+    token = getpass.getpass(f"Token des Kontos {EXPECTED_LOGIN} eingeben (Eingabe unsichtbar): ")
     if not token:
         print("Kein Token eingegeben.", file=sys.stderr)
         return 1
