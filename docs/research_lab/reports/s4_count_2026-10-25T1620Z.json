@@ -1,0 +1,530 @@
+{
+  "study": "S4",
+  "protocol": "S4 1.0",
+  "commit": "c0472b35cc1a3af1abaeef5c46f19718846b04a7",
+  "gate_trades": 1700,
+  "holdout_coin_months": 63,
+  "outcome_blind": true,
+  "created": "2026-10-25T16:20:16+00:00",
+  "dataset_hashes": {
+    "BTCUSDT": "18fa747040d9c340afd2ac3dc4ad3bceb648893f1191ccdaa001593e5fa75ff8",
+    "ETHUSDT": "d8e94d33c085b5176ad63f80bb70d4fe9a9b3fd3c2ddc012b996fcd64d1c9ffa",
+    "SOLUSDT": "279faa7746d426b21e0bacbd79accc9a4ebb12b481941d89be09277ebda47f9d"
+  },
+  "coin_months": {
+    "BTCUSDT": {
+      "train": 36,
+      "validation": 24
+    },
+    "ETHUSDT": {
+      "train": 36,
+      "validation": 24
+    },
+    "SOLUSDT": {
+      "train": 27,
+      "validation": 24
+    }
+  },
+  "variants": {
+    "S4-H1-N24": {
+      "hypothesis": "H1",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 969,
+          "lower": 497,
+          "skipped_cost": 543,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 401,
+          "lower": 240,
+          "skipped_cost": 618,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 1249,
+          "lower": 572,
+          "skipped_cost": 297,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 489,
+          "lower": 261,
+          "skipped_cost": 452,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 1132,
+          "lower": 472,
+          "skipped_cost": 60,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/validation": {
+          "upper": 874,
+          "lower": 406,
+          "skipped_cost": 214,
+          "contradictory": 0,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 2448,
+      "projected_holdout_lower": 901.9,
+      "passes_gate": false
+    },
+    "S4-H1-N72": {
+      "hypothesis": "H1",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 557,
+          "lower": 324,
+          "skipped_cost": 211,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 266,
+          "lower": 179,
+          "skipped_cost": 260,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 670,
+          "lower": 365,
+          "skipped_cost": 130,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 284,
+          "lower": 173,
+          "skipped_cost": 169,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 607,
+          "lower": 302,
+          "skipped_cost": 16,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/validation": {
+          "upper": 447,
+          "lower": 243,
+          "skipped_cost": 60,
+          "contradictory": 0,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 1586,
+      "projected_holdout_lower": 584.3,
+      "passes_gate": false
+    },
+    "S4-H2-sign": {
+      "hypothesis": "H2",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 499,
+          "lower": 319,
+          "skipped_cost": 325,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 240,
+          "lower": 172,
+          "skipped_cost": 356,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 601,
+          "lower": 354,
+          "skipped_cost": 151,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 274,
+          "lower": 173,
+          "skipped_cost": 274,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 556,
+          "lower": 308,
+          "skipped_cost": 39,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/validation": {
+          "upper": 466,
+          "lower": 282,
+          "skipped_cost": 113,
+          "contradictory": 0,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 1608,
+      "projected_holdout_lower": 592.4,
+      "passes_gate": false
+    },
+    "S4-H2-p80": {
+      "hypothesis": "H2",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 193,
+          "lower": 145,
+          "skipped_cost": 82,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 129,
+          "lower": 101,
+          "skipped_cost": 96,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 196,
+          "lower": 153,
+          "skipped_cost": 36,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 149,
+          "lower": 114,
+          "skipped_cost": 85,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 154,
+          "lower": 116,
+          "skipped_cost": 5,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/validation": {
+          "upper": 181,
+          "lower": 144,
+          "skipped_cost": 26,
+          "contradictory": 0,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 773,
+      "projected_holdout_lower": 284.8,
+      "passes_gate": false
+    },
+    "S4-H3-k2": {
+      "hypothesis": "H3",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 1134,
+          "lower": 180,
+          "skipped_cost": 437,
+          "contradictory": 0,
+          "regime_unknown": 113
+        },
+        "BTCUSDT/validation": {
+          "upper": 671,
+          "lower": 127,
+          "skipped_cost": 624,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 1016,
+          "lower": 147,
+          "skipped_cost": 136,
+          "contradictory": 0,
+          "regime_unknown": 98
+        },
+        "ETHUSDT/validation": {
+          "upper": 700,
+          "lower": 137,
+          "skipped_cost": 394,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 668,
+          "lower": 85,
+          "skipped_cost": 32,
+          "contradictory": 0,
+          "regime_unknown": 31
+        },
+        "SOLUSDT/validation": {
+          "upper": 526,
+          "lower": 80,
+          "skipped_cost": 47,
+          "contradictory": 0,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 756,
+      "projected_holdout_lower": 278.5,
+      "passes_gate": false
+    },
+    "S4-H3-k3": {
+      "hypothesis": "H3",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 413,
+          "lower": 86,
+          "skipped_cost": 131,
+          "contradictory": 0,
+          "regime_unknown": 41
+        },
+        "BTCUSDT/validation": {
+          "upper": 279,
+          "lower": 77,
+          "skipped_cost": 178,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 320,
+          "lower": 78,
+          "skipped_cost": 35,
+          "contradictory": 0,
+          "regime_unknown": 27
+        },
+        "ETHUSDT/validation": {
+          "upper": 270,
+          "lower": 68,
+          "skipped_cost": 93,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 158,
+          "lower": 49,
+          "skipped_cost": 5,
+          "contradictory": 0,
+          "regime_unknown": 11
+        },
+        "SOLUSDT/validation": {
+          "upper": 156,
+          "lower": 38,
+          "skipped_cost": 6,
+          "contradictory": 0,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 396,
+      "projected_holdout_lower": 145.9,
+      "passes_gate": false
+    },
+    "S4-H4-d1.5": {
+      "hypothesis": "H4",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 512,
+          "lower": 321,
+          "skipped_cost": 93,
+          "contradictory": 0,
+          "regime_unknown": 38
+        },
+        "BTCUSDT/validation": {
+          "upper": 203,
+          "lower": 142,
+          "skipped_cost": 179,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 662,
+          "lower": 397,
+          "skipped_cost": 41,
+          "contradictory": 0,
+          "regime_unknown": 43
+        },
+        "ETHUSDT/validation": {
+          "upper": 277,
+          "lower": 196,
+          "skipped_cost": 124,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 541,
+          "lower": 336,
+          "skipped_cost": 6,
+          "contradictory": 0,
+          "regime_unknown": 3
+        },
+        "SOLUSDT/validation": {
+          "upper": 466,
+          "lower": 277,
+          "skipped_cost": 26,
+          "contradictory": 0,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 1669,
+      "projected_holdout_lower": 614.9,
+      "passes_gate": false
+    },
+    "S4-H4-d2.5": {
+      "hypothesis": "H4",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 431,
+          "lower": 288,
+          "skipped_cost": 75,
+          "contradictory": 0,
+          "regime_unknown": 38
+        },
+        "BTCUSDT/validation": {
+          "upper": 183,
+          "lower": 132,
+          "skipped_cost": 147,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 558,
+          "lower": 353,
+          "skipped_cost": 26,
+          "contradictory": 0,
+          "regime_unknown": 43
+        },
+        "ETHUSDT/validation": {
+          "upper": 247,
+          "lower": 182,
+          "skipped_cost": 106,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 468,
+          "lower": 297,
+          "skipped_cost": 5,
+          "contradictory": 0,
+          "regime_unknown": 3
+        },
+        "SOLUSDT/validation": {
+          "upper": 411,
+          "lower": 250,
+          "skipped_cost": 21,
+          "contradictory": 0,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 1502,
+      "projected_holdout_lower": 553.4,
+      "passes_gate": false
+    },
+    "S4-H5-london": {
+      "hypothesis": "H5",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 237,
+          "lower": 237,
+          "skipped_cost": 462,
+          "contradictory": 1,
+          "regime_unknown": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 44,
+          "lower": 44,
+          "skipped_cost": 441,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 312,
+          "lower": 312,
+          "skipped_cost": 291,
+          "contradictory": 2,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 80,
+          "lower": 80,
+          "skipped_cost": 396,
+          "contradictory": 0,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 322,
+          "lower": 322,
+          "skipped_cost": 111,
+          "contradictory": 2,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/validation": {
+          "upper": 210,
+          "lower": 210,
+          "skipped_cost": 246,
+          "contradictory": 1,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 1205,
+      "projected_holdout_lower": 443.9,
+      "passes_gate": false
+    },
+    "S4-H5-newyork": {
+      "hypothesis": "H5",
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 325,
+          "lower": 325,
+          "skipped_cost": 362,
+          "contradictory": 5,
+          "regime_unknown": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 154,
+          "lower": 154,
+          "skipped_cost": 430,
+          "contradictory": 2,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 367,
+          "lower": 367,
+          "skipped_cost": 217,
+          "contradictory": 3,
+          "regime_unknown": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 170,
+          "lower": 170,
+          "skipped_cost": 381,
+          "contradictory": 4,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 337,
+          "lower": 337,
+          "skipped_cost": 57,
+          "contradictory": 2,
+          "regime_unknown": 0
+        },
+        "SOLUSDT/validation": {
+          "upper": 274,
+          "lower": 274,
+          "skipped_cost": 129,
+          "contradictory": 5,
+          "regime_unknown": 0
+        }
+      },
+      "lower_total": 1627,
+      "projected_holdout_lower": 599.4,
+      "passes_gate": false
+    }
+  }
+}
