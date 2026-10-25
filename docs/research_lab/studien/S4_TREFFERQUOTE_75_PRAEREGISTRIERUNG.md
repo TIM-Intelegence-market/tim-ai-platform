@@ -1,8 +1,9 @@
-# Studie S4: Strategie mit Trefferquote ≥ 75 % und positivem Netto-Erwartungswert (Präregistrierung, Entwurf)
+# Studie S4: Strategie mit Trefferquote ≥ 75 % und positivem Netto-Erwartungswert (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
-| Status | **ENTWURF 0.5, nicht freigegeben.** Nichts ist gerechnet. Version 1.0 erst nach Uzis Freigabe; danach nur noch Änderungen über das Änderungsprotokoll unten, und nach dem ersten Trainingslauf nur noch strengere. |
+| Version | 1.0 |
+| Status | **FREIGEGEBEN** (Uzi, 2026-10-25, 17:02 Ortszeit). Nichts ist gerechnet. Änderungen nur noch über das Änderungsprotokoll unten, nach dem ersten Trainingslauf nur noch strengere. Die Varianten werden erst nach dem Machbarkeits-Gate (6.1) ins Register eingetragen. |
 | Erstellt | 2026-10-25, Masterprompt Phase D/E (Trading-Forschungsziel B) |
 | Protokollbezug | `../PROTOKOLL.md` Version 1.1: Datensplit 3.2, Backtest 4.1–4.3, Kosten 4.4, Zufallsvergleich 7.1, Holm 7.2, Robustheit 7.3 (Walk-Forward mit `known_at`), Ablauf 8, Stoppregeln 10 |
 | Kostenmodell | ausschließlich `CostModel` / `BASE_COSTS` / `STRESS_COSTS` aus `src/research_lab/protocol.py` (kein eigenes Modell) |
@@ -317,7 +318,7 @@ Zusätzlich beschreibend: Kaufen und Halten je Instrument.
 | O2 | ~~Lesart des 75-%-Kriteriums (K6)~~ erledigt: streng, Untergrenze ≥ 75 % (Uzi per Entscheidungskarte, 25.10.2026) | Uzi |
 | O3 | ~~Unabhängige Methodenprüfung~~ zwei Runden eingearbeitet (0.2, 0.5; zweite Runde mit anderem Modell ohne Vorwissen). Eine Prüfung durch Chris oder Codex bleibt erwünscht, ist aber kein Gate | erledigt |
 | O5 | Machbarkeits-Gate (6.1): ETH/SOL laden und Zähllauf auf dem Mac | Uzis Ja für den Mac-Lauf |
-| O4 | Freigabe Version 1.0 und Registrierung der 10 Varianten (Änderungsprotokoll in `../PROTOKOLL.md`) | Uzi |
+| O4 | ~~Freigabe Version 1.0~~ erledigt 2026-10-25 (Uzi). Registrierung der Varianten, die das Gate bestehen, über `../PROTOKOLL.md` Änderungsprotokoll | nach O5 |
 
 ## Änderungsprotokoll
 
@@ -328,3 +329,4 @@ Zusätzlich beschreibend: Kaufen und Halten je Instrument.
 | 2026-10-25 | 0.3 | K6 strenge Lesart: korrigierte Untergrenze ≥ 75 %; K3 und Power-Gate auf 1 700 Trades | Entscheidung Uzi (O2) | unverändert, keine S4-Ergebnisse |
 | 2026-10-25 | 0.4 | Archivbeginn ETH/SOL eingetragen, Studie mit drei Instrumenten festgelegt (vor jeder Auswertung) | O1 | nur Dateiexistenz 2019-09 bis 2020-10 und 2024-12, eine SOL-Probedatei 2020-09 (Kerzenzahl, Prüfsumme) |
 | 2026-10-25 | 0.5 | Zweite Prüfung eingearbeitet: Machbarkeits-Gate vor Registrierung, Mindesttrades aus K3 abgeleitet (1 700 / 1 950), Untergrenze auch in Training/Validierung, K6 mit zwei Verfahren (das strengere gilt), Designeffekt 2,5, gepoolter monatsblockweiser Zufallsvergleich mit Filtern und ATR-Stops, Kostentor Stop ≥ 1,0 % (passt zu K7), Treffer = Ziel erreicht, Gap-Signale als Verlust, K10 mit Mindestanteil, H2/H3/H4/H5 präzisiert, K4 nach Ausstiegszeit, Auswahl nach E[R]; m im Kopf jetzt „alle Registereinträge“ | Review O3 (zweite Runde) | unverändert, keine S4-Ergebnisse |
+| 2026-10-25 | 1.0 | Freigegeben, Inhalt wie 0.5 | Freigabe durch Uzi | unverändert, keine S4-Ergebnisse, kein Holdout |
