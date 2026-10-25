@@ -505,6 +505,42 @@ def _structural(plans: list[dict[str, Any]], series: Mapping[str, Sequence[Mappi
     return kept, list(dropped)
 
 
+def level_entry(item: Mapping[str, Any], analysis: Mapping[str, Any]) -> dict[str, Any]:
+    """A level/1 plan (src/dashboard/level_plans.py) in the journal's plan shape.
+
+    The chart's analysis card uses the same mapping, so chart and journal judge a plan alike."""
+    preview = item["preview"]
+    invalid = item["invalidation_level"]
+    return {
+        "rule": RULE_LEVEL,
+        "scenario_id": item["id"],
+        "scenario_type": item["type"],
+        "direction": item["direction"],
+        "entry_model": item["entry_model"],
+        "plan_text": item["plan_text"],
+        "anchor": item["anchor"],
+        "trend": item["trend"],
+        "location": item["location"],
+        "entry_low": item["entry_low"],
+        "entry_high": item["entry_high"],
+        "entry": float(preview["entry"]),
+        "stop": float(preview["stop"]),
+        "targets": [float(t) for t in preview["targets"][:3]],
+        "target_labels": list(preview["target_labels"][:3]),
+        "invalidation_level": invalid["level"],
+        "invalidation_side": invalid["side"],
+        "scenario_state": item["state"],
+        "score": None,
+        "missing_confirmations": list(item["missing_confirmations"]),
+        "pipeline_decision": (analysis.get("decision") or {}).get("status"),
+        "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
+        "market_state": analysis.get("market_state"),
+        "grade": None,
+        **{k: (analysis.get("market") or {}).get(k) for k in ("symbol", "venue", "market_type")},
+        "data_quality": (analysis.get("data_quality") or {}).get("status"),
+    }
+
+
 def _level(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, model: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
     """Rule version level/1: plans at the nearest main levels (src/dashboard/level_plans.py).
 
@@ -520,39 +556,7 @@ def _level(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, mode
     except Exception:  # noqa: BLE001 - without the map there are no main levels
         return [], ["keine Vorbereitungs-Karte"]
     result = build_level_plans(prep, closed["30m"], at)
-    analysis = model.get("analysis") or {}
-    plans = []
-    for item in result["plans"]:
-        preview = item["preview"]
-        invalid = item["invalidation_level"]
-        plans.append({
-            "rule": RULE_LEVEL,
-            "scenario_id": item["id"],
-            "scenario_type": item["type"],
-            "direction": item["direction"],
-            "entry_model": item["entry_model"],
-            "plan_text": item["plan_text"],
-            "anchor": item["anchor"],
-            "trend": item["trend"],
-            "location": item["location"],
-            "entry_low": item["entry_low"],
-            "entry_high": item["entry_high"],
-            "entry": float(preview["entry"]),
-            "stop": float(preview["stop"]),
-            "targets": [float(t) for t in preview["targets"][:3]],
-            "target_labels": list(preview["target_labels"][:3]),
-            "invalidation_level": invalid["level"],
-            "invalidation_side": invalid["side"],
-            "scenario_state": item["state"],
-            "score": None,
-            "missing_confirmations": list(item["missing_confirmations"]),
-            "pipeline_decision": (analysis.get("decision") or {}).get("status"),
-            "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
-            "market_state": analysis.get("market_state"),
-            "grade": None,
-            **{k: (analysis.get("market") or {}).get(k) for k in ("symbol", "venue", "market_type")},
-            "data_quality": (analysis.get("data_quality") or {}).get("status"),
-        })
+    plans = [level_entry(item, model.get("analysis") or {}) for item in result["plans"]]
     return plans, list(result["dropped"])
 
 
