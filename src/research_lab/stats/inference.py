@@ -114,9 +114,39 @@ def known_at(trades: Sequence[Trade], start_ms: int, end_ms: int) -> list[Trade]
 
 
 def signalled_in(trades: Sequence[Trade], start_ms: int, end_ms: int) -> list[Trade]:
-    """Trades attributed to [start_ms, end_ms) by their signal time (protocol 3.2:
-    a trade belongs to the period in which its signal fired)."""
+    """Trades whose signal fired in [start_ms, end_ms) (attribution by signal time)."""
     return [t for t in trades if start_ms <= t.signal_time < end_ms]
+
+
+FORCED_CLOSE = "end"  # engine reason for a position closed on the last bar of the data
+
+
+def section_trades(trades: Sequence[Trade], start_ms: int | None, end_ms: int | None) -> list[Trade]:
+    """Trades that count for the section [start_ms, end_ms) under protocol 3.2 (version 1.2).
+
+    A trade belongs to the section in which its signal fired, but only if its exit was
+    fixed by the exit rules (4.2) no later than the section end. A trade still open at the
+    section end would carry prices from the next section into this one (train results
+    from validation prices, validation results from holdout prices), so it counts for no
+    section. A position the engine force-closed on the last bar (reason "end") is open in
+    this sense too: its exit was not a rule exit. None means an open-ended boundary."""
+    kept = []
+    for t in trades:
+        if start_ms is not None and t.signal_time < start_ms:
+            continue
+        if end_ms is not None and (t.signal_time >= end_ms or t.exit_time > end_ms):
+            continue
+        if t.reason == FORCED_CLOSE:
+            continue
+        kept.append(t)
+    return kept
+
+
+def open_at_section_end(trades: Sequence[Trade], start_ms: int | None, end_ms: int | None) -> int:
+    """How many trades signalled in the section were dropped by section_trades (3.2 embargo)."""
+    signalled = [t for t in trades if (start_ms is None or t.signal_time >= start_ms)
+                 and (end_ms is None or t.signal_time < end_ms)]
+    return len(signalled) - len(section_trades(trades, start_ms, end_ms))
 
 
 def walk_forward(variant_trades: Mapping[str, Sequence[Trade]], windows: Sequence[Window]) -> tuple[float, list[str]]:

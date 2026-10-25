@@ -54,6 +54,7 @@ Dashboard-Agenten.
 | C4 Tests ohne Wanduhrzeit | DONE (vorab) | `test_canary_15` prüft seit #380 eine Schranke von 1,5 s gegen 3,0 s Verzögerung, kein enges Zeitmaß mehr |
 | F1 S2 Zähllauf + Power-Simulation | VERIFIED (Werkzeuge), BLOCKED (Lauf: Archive nur außerhalb der Cloud, Ort braucht Uzis Wort) | dieser PR: `scripts/research_lab_s2.py`, `src/research_lab/studies/s2_orderflow.py`, `s2_power.py`, `src/research_lab/data/aggtrades.py`, `tests/test_research_lab_s2.py`; Studie Abschnitt 7 |
 | F2 S2 rechnen | BLOCKED (Freigabe 1.0 nach F1) | – |
+| F4 Survivorship-Grenze und Abschnittsregel (Protokoll 1.2) | VERIFIED (Regel in 3.1/3.2 + Code + Test); Universum mit delisteten Coins nur als Vorschlag, braucht Uzis Wort | PR #429: `docs/research_lab/PROTOKOLL.md`, `src/research_lab/protocol.py`, `stats/inference.py` (`section_trades`), `runner.py`, `stats/guard.py`, `tests/test_research_lab_stats.py` |
 | P1 Register nachführen | DONE | dieser PR: A17, A19, A20, A22, A23 in `docs/audits/TIM_AUTONOMOUS_INITIAL_AUDIT.md` |
 | P2 ruhende Issues kennzeichnen | DONE | Label `status:ruhend` auf #9, #13–#21, #75–#78, #88, #332–#335 (25.10.) |
 | P3 #367 schließen | BLOCKED (Uzis Wort) | überholt durch #405/#407 |
