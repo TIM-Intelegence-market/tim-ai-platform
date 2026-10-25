@@ -21,6 +21,7 @@ from collections.abc import Sequence
 
 from src.research_lab.data.parse import FundingRate, Kline
 from src.research_lab.hypotheses.s5 import normalize_funding
+from src.research_lab.protocol import MAKER_FEE  # protocol entry 1.2: maker fee per limit fill (section 5.3, A1)
 
 MINUTE_MS = 60_000
 STOP_FRACTION = 0.015  # R = 1.5 % of the entry fill
@@ -31,7 +32,6 @@ GAP_BRIDGE_MS = 6 * MINUTE_MS  # up to 5 missing minutes are bridged: the next b
 LOCK_AFTER_EXIT = 5  # bars without orders after target / time / section_end
 LOCK_AFTER_LOSS = 30  # after stop, both, gap
 DELTA_MIN = 0.0001  # trade-through margin: 0.01 % of the limit, at least one tick
-MAKER_FEE = 0.0002  # per limit fill (section 5.3, protocol deviation A1)
 NOMINAL = 1_000.0  # USDT per trade (only matters for the aggTrades latency check)
 
 LONG, SHORT = 1, -1

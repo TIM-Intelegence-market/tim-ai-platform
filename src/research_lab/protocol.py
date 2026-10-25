@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 
-PROTOCOL_VERSION = "1.1"
+PROTOCOL_VERSION = "1.2"
 
 
 class Split(StrEnum):
@@ -57,6 +57,10 @@ FUNDING_INTERVAL_MS = 8 * 3_600_000
 
 BASE_COSTS = CostModel()
 STRESS_COSTS = BASE_COSTS.stressed()
+
+# Protocol entry 1.2 (2026-10-25, Uzi): maker fee per limit fill, only for studies with a trade-through fill rule
+# and a latency check (S6). Every other fill stays taker (section 4.4).
+MAKER_FEE = 0.0002
 
 # Fixed-fractional measuring convention for drawdown (section 4.3), not a sizing advice.
 RISK_PER_TRADE = 0.01
