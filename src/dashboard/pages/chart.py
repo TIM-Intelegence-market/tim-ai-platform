@@ -290,9 +290,106 @@ def _level_plan_rows(level_plans: dict[str, Any]) -> str:
     return "".join(rows) or "<tr><td colspan='11' class='empty'>Kein Level-Plan erfüllt die Regeln.</td></tr>"
 
 
+def _rate(eco: dict[str, Any]) -> str:
+    rate = eco.get("breakeven_hit_rate")
+    return "–" if rate is None else f"{rate * 100:.0f} %"
+
+
+def _r(value: Any) -> str:
+    return "–" if value is None else f"{value:+.2f} R".replace(".", ",")
+
+
+def _card_plan_rows(card: dict[str, Any]) -> str:
+    rows = []
+    for p in card.get("plans") or []:
+        eco = p.get("economics") or {}
+        targets = " / ".join(_price(t) for t in p.get("targets") or [])
+        invalid = p.get("invalidation") or {}
+        primary = " tc-card-plan--primary" if p.get("id") == card.get("primary") else ""
+        rows.append(
+            f"<tr class='tc-card-plan{primary}' data-plan='{_safe(p.get('id'))}'><td><b>{_safe(p.get('id'))}</b><small> {_safe(p['source'])}</small></td>"
+            f"<td><span class='tc-dir tc-dir--{_safe(p['direction'].lower())}'>{_safe(p['direction'])}</span></td>"
+            f"<td class='mono'>{_safe(_price(p.get('entry')))}</td><td class='mono'>{_safe(_price(p.get('stop')))}</td>"
+            f"<td class='mono'>{_safe(invalid.get('side') or '')} {_safe(_price(invalid.get('level')))}</td><td class='mono'>{_safe(targets)}</td>"
+            f"<td class='mono'>{_safe(_r(eco.get('gross_r_tp1')))}</td><td class='mono'>{_safe(_r(eco.get('net_r_tp1')))}</td>"
+            f"<td class='mono'>{_safe(_r(eco.get('net_r_plan')))}</td><td class='mono'>{_safe(_r(eco.get('net_r_stop')))}</td>"
+            f"<td class='mono'>{_safe(str(eco.get('round_trip_pct', '–')).replace('.', ','))} %</td>"
+            f"<td class='mono'>{_safe(_rate(eco))}</td>"
+            f"<td>{_safe((p.get('evidence') or {}).get('status'))}</td><td><b>{_safe(p.get('decision'))}</b></td></tr>"
+        )
+    return "".join(rows) or "<tr><td colspan='14' class='empty'>Kein Plan in diesem Zeitrahmen.</td></tr>"
+
+
+def _card_section(card: dict[str, Any] | None) -> str:
+    """The analysis card (Steckbrief): every field of a full analysis in one block."""
+    if not card or not card.get("data"):
+        return ""
+    data, structure, trend = card["data"], card.get("structure") or {}, card.get("trend") or {}
+    liquidity, orderflow, decision = card.get("liquidity") or {}, card.get("orderflow") or {}, card.get("decision") or {}
+    primary = next((p for p in card.get("plans") or [] if p.get("id") == card.get("primary")), None)
+
+    def levels(items: list[dict[str, Any]]) -> str:
+        return "<br>".join(f"{_safe(i['label'])} {_safe(_price(i['price']))} <small>({_safe(str(i['distance_pct']).replace('.', ','))} %)</small>" for i in items) or "–"
+
+    def item(key: str, name: str, value: str, sub: str = "") -> str:
+        return f"<div class='tc-card__item' data-field='{key}'><dt>{_safe(name)}</dt><dd>{value}{f'<small>{sub}</small>' if sub else ''}</dd></div>"
+
+    age = data.get("age_seconds") or 0
+    items = [
+        item("symbol", "Symbol · Zeitrahmen", f"{_safe(card['symbol'])} · {_safe(card['timeframe'])}", _safe(data.get("provenance") or "")),
+        item("structure", "Marktstruktur", _safe(structure.get("text")), f"Markt {_safe(structure.get('market_state') or '–')} · Auktion {_safe(structure.get('auction_state') or '–')}"),
+        item("trend", "Trendrichtung", f"1D/4h: {_safe(trend.get('htf_bias') or 'kein Bias')} · {_safe(card['timeframe'])}: {_safe(trend.get('tf_trend'))}",
+             _safe(" · ".join(x for x in (trend.get("htf_text"), trend.get("location")) if x))),
+        item("liquidity", "Liquiditätszonen", f"über dem Kurs:<br>{levels(liquidity.get('above') or [])}", f"unter dem Kurs:<br>{levels(liquidity.get('below') or [])}"),
+        item("orderflow", "Orderflow-Beobachtungen", "<br>".join(_safe(o) for o in orderflow.get("observations") or []) or "–", _safe(orderflow.get("limits") or "")),
+    ]
+    if primary:
+        eco = primary.get("economics") or {}
+        invalid = primary.get("invalidation") or {}
+        items += [
+            item("entry", "Einstiegsszenario", _safe(primary.get("plan_text") or primary["id"]), _safe(" · ".join(primary.get("missing_confirmations") or []))),
+            item("stop", "Stop und Invalidierung", f"Stop {_safe(_price(primary['stop']))}", f"ungültig bei 30m-Schluss {_safe(invalid.get('side') or '')} {_safe(_price(invalid.get('level')))}"),
+            item("targets", "Ziele", " / ".join(_safe(_price(t)) for t in primary.get("targets") or []), _safe(" · ".join(primary.get("target_labels") or []))),
+            item("r", "R brutto / netto", f"Ziel 1: {_safe(_r(eco.get('gross_r_tp1')))} / {_safe(_r(eco.get('net_r_tp1')))}",
+                 f"Drittel-Plan netto {_safe(_r(eco.get('net_r_plan')))} · Stop netto {_safe(_r(eco.get('net_r_stop')))}"),
+            item("costs", "Kosten Hin und Zurück", f"{_safe(str(eco.get('round_trip_pct')).replace('.', ','))} % vom Einstieg · {_safe(_r(eco.get('costs_r_tp1')).lstrip('+'))} des Risikos",
+                 f"Gebühr 0,05 % + Slippage 0,03 % je Seite, Stop-Slippage 0,05 % ({_safe(eco.get('cost_model'))}). Nötige Trefferquote {_safe(_rate(eco))}"),
+            item("evidence", "Forschungs-Evidenz", _safe((primary.get("evidence") or {}).get("status")),
+                 _safe(f"{primary.get('scenario_type')} {(primary.get('evidence') or {}).get('timeframe')}: {(primary.get('evidence') or {}).get('reason') or ', '.join((primary.get('evidence') or {}).get('variant_ids') or [])}")),
+        ]
+    else:
+        items.append(item("entry", "Einstiegsszenario", "kein Plan", _safe(" · ".join(card.get("dropped") or [])[:400])))
+    items.append(item("data", "Datenqualität und Datenalter", f"{_safe(data.get('quality') or '–')} · letzte Kerze vor {age // 60} min",
+                      ("<b>veraltet</b> · " if data.get("stale") else "") + _safe(", ".join([*data.get("missing", []), *data.get("problems", [])]) or "keine Mängel gemeldet")))
+    check = card.get("journal_check")
+    if check:
+        items.append(item("journal", "Abgleich mit Plan-Journal level/1", _safe(check.get("text")),
+                          _safe(f"Journal {check.get('journal_last_close') or '–'} · Chart {check.get('chart_last_close') or '–'}")))
+    sev = "blocked" if decision.get("status") == "NO_TRADE" else "warn"
+    reasons = "".join(f"<li>{_safe(r)}</li>" for r in decision.get("reasons_text") or [])
+    return (
+        f"<section class='cc-section tc-card' data-card='{_safe(card.get('schema'))}'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Analyse-Steckbrief</p>"
+        f"<h2>{_safe(card['symbol'])} {_safe(card['timeframe'])}: <span class='sev sev--{sev}' data-field='decision'>{_safe(decision.get('status'))}</span></h2>"
+        f"<p class='cc-section__note'>{_safe(decision.get('summary'))}</p></div></div>"
+        + (f"<p class='cc-note'>Warum kein Trade:</p><ul class='cc-note tc-card__reasons'>{reasons}</ul>" if reasons else "")
+        + f"<dl class='tc-card__grid'>{''.join(items)}</dl>"
+        "<div class='table-wrap'><table class='tc-card__plans'><thead><tr><th>Plan</th><th>Richtung</th><th>Einstieg</th><th>Stop</th><th>Ungültig</th><th>Ziele</th>"
+        "<th>R brutto Ziel 1</th><th>R netto Ziel 1</th><th>R netto Drittel</th><th>R netto Stop</th><th>Kosten</th><th>Trefferquote nötig</th><th>Evidenz</th><th>Entscheidung</th></tr></thead>"
+        f"<tbody>{_card_plan_rows(card)}</tbody></table></div>"
+        "<p class='cc-note'>Nur Papier. Kosten nach Protokoll 1.1 wie im Plan-Journal. Die Entscheidung kommt aus demselben Gate wie das Journal: "
+        "Evidenz PASSED_HOLDOUT, Papier-Freigabe, Pipeline TRADE_PLAN, bestätigtes Szenario, ausführbares Instrument, Datenqualität PASS.</p></section>"
+    )
+
+
 def render_chart_page(state: Any, timeframe: str | None = None) -> str:
+    from datetime import timezone
+
+    from src.dashboard.analysis_card import with_journal_check
+
     data = state.snapshot()
-    model = build_chart_model(state.chart_series(), timeframe or DEFAULT_TIMEFRAME)
+    series, now = state.chart_series(), datetime.now(timezone.utc)
+    model = with_journal_check(build_chart_model(series, timeframe or DEFAULT_TIMEFRAME, now=now, card=True),
+                               series, getattr(state, "plan_journal_level_path", None), now)
     tf = model["timeframe"]
     tabs = "".join(
         f"<a href='/chart?tf={item}' class='tc-tab{' tc-tab--active' if item == tf else ''}'"
@@ -319,6 +416,7 @@ def render_chart_page(state: Any, timeframe: str | None = None) -> str:
         f"<div class='state-banner__metric'><dt>Datenqualität</dt><dd>{_safe(quality.get('status', '–'))}<small>Konfidenz {_safe(quality.get('confidence'))}</small></dd></div>"
         f"<div class='state-banner__metric'><dt>Letzter Kurs</dt><dd>{_safe(_price(levels.get('last')))}<small>vor {_safe(levels.get('age_seconds'))} s</small></dd></div></dl></section>"
     )
+    body += _card_section(model.get("analysis_card"))
     body += f"<section class='cc-section'><div class='cc-surface tc-chart'>{_chart_svg(model)}</div>"
     body += (
         "<p class='cc-note'>Grün/Rot: Einstiegszonen von TIMs Long-/Short-Szenarien. Stop und Ziele sind eine <b>Vorschau nach TIMs Regeln</b> "

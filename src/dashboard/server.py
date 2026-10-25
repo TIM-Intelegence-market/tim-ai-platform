@@ -122,7 +122,11 @@ class DashboardServer:
                     return self.respond(200, page.encode(), "text/html; charset=utf-8")
                 if path == "/api/chart":
                     try:
-                        model = build_chart_model(outer.state.chart_series(), query.get("tf", ["30m"])[0])
+                        from src.dashboard.analysis_card import with_journal_check
+
+                        series, now = outer.state.chart_series(), datetime.now(timezone.utc)
+                        model = with_journal_check(build_chart_model(series, query.get("tf", ["30m"])[0], now=now, card=True),
+                                                   series, outer.state.plan_journal_level_path, now)
                     except Exception as exc:  # noqa: BLE001 - malformed stored data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
