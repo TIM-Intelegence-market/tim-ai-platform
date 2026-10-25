@@ -1,5 +1,14 @@
 # Systemstand TIM (T01 des gemeinsamen Verbesserungsplans)
 
+> **Aktualisierung 25.10.2026.** Dieser Stand beschreibt den 22.10. während der V2-Kampagne. Seitdem hat sich geändert:
+> Die Kampagne wurde am 23.10. abgebrochen (Archiv mit Prüfsummen auf dem Mac); `~/TIM-live` ist nicht mehr eingefroren,
+> sondern folgt `platform-main` über den Dashboard-Agenten `com.tim.dashboard-refresh`; alle in Abschnitt 3 gelisteten
+> PRs außer #333 sind gemergt oder geschlossen; das Ruleset verlangt `test` und `PR gate`, seit 25.10. ohne „Branch muss
+> aktuell sein“ (strict) und ohne Review-Pflicht; der CI-Testjob dauert seit PR #407 rund 3,3 Minuten. Der aktuelle
+> Gesamtstand steht in `docs/TIM_IN_10_MINUTEN.md`, der Erst-Audit mit Register in
+> `docs/audits/TIM_AUTONOMOUS_INITIAL_AUDIT.md`, der Weg zu Grün in `docs/audits/GRUEN_PLAN_11_SICHTEN.md`.
+> Die Abschnitte unten bleiben als Stand vom 22.10. erkennbar und werden nicht rückwirkend umgeschrieben.
+
 Stand 22.10.2026, erstellt aus der Cloud nur lesend. Jede Zeile nennt ihre Quelle.
 **[V]** im Repo oder auf GitHub nachgeprüft, **[N]** aus Projektnotizen übernommen, nicht neu
 gemessen, **[?]** unbekannt. Diese Datei beschreibt, was gilt; sie ändert nichts.

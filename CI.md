@@ -1,7 +1,7 @@
 # CI.md – Merge-Regeln für Pipeline-PRs
 
 Beschreibung für Menschen und Agenten. **Durchgesetzt wird nichts durch diese Datei**, sondern durch
-GitHub (Ruleset) und die Checks unten. Stand: Entwurf, Auto-Merge ist **nicht** aktiv.
+GitHub (Ruleset) und die Checks unten. Stand 25.10.2026: Ruleset aktiv, Auto-Merge ist **nicht** aktiv.
 
 ## Grundsatz
 
@@ -38,18 +38,30 @@ Der Check gilt **nur** für Branches nach dem Schema `claude/issue-N-…`. Ein W
 fällt aus dem Gate. Deshalb darf eine spätere Automatik nie anhand des Branch-Namens entscheiden,
 sondern nur Menschen oder eine getrennte Merge-Identität nehmen PRs in den Merge auf.
 
-## Freigaberegel (entschieden: Mensch genehmigt, GitHub merged)
+## Freigaberegel (Stand 25.10.2026: Mensch sagt „merge“, GitHub prüft)
 
-Pflicht-Review plus Pflicht-Checks `PR gate` und `test` im Ruleset auf `platform-main`; danach darf ein
-Mensch Auto-Merge aktivieren. `TIM full suite` wird **erst später** Pflicht-Check, nachdem die rote Suite
-repariert ist (eigenes Paket); bis dahin ist sie nur Information. Merge ohne Menschen gibt es nicht. Produktivmodus und
-Auto-Merge der Pipeline bleiben ausgeschaltet.
+Das Ruleset „platform-main merge conditions“ steht seit 13.10.2026 und hat keine Bypass-Akteure, auch keine Admins.
+Pflicht-Checks sind `test` (`.github/workflows/ci.yml`) und `PR gate` (`.github/workflows/pr-gate.yml`), beide auf dem
+selbst gehosteten Runner `mac-mini-tim`. `TIM full suite` und der Auto-Merge-Controller laufen nur von Hand
+(`workflow_dispatch`) und sind keine Pflicht.
 
-**Noch nicht technisch erzwungen:** Branch-Protection und Rulesets liefern für dieses private Repository
-derzeit HTTP 403. Bis das Ruleset steht, ist die Regel eine Verabredung, kein Schutz. Außerdem ist
-`TIM full suite` weiterhin rot und darf deshalb noch nicht Pflicht-Check sein.
+Zwei Schalter sind bewusst **aus**, beide auf Uzis Entscheidung:
 
-## Offene Punkte, erst durch den ersten GitHub-Lauf klärbar
+- **Review-Pflicht aus.** Ein grüner PR kann technisch ohne zweites Augenpaar gemergt werden. Die Schranke ist Uzis
+  ausdrückliches „merge“ (Threads liefern PRs merge-fertig, mergen aber nicht von selbst; „go“ heißt bauen). Für
+  kritische Pfade (Journal-Logik, Kostenmodell, `src/database/`) ist eine Review-Pflicht über CODEOWNERS geplant
+  (`docs/audits/GRUEN_PLAN_11_SICHTEN.md`, Paket R1/R2).
+- **„Branch muss aktuell sein“ (strict) aus seit 25.10.2026.** Ein PR kann grün sein gegen einen älteren Stand von
+  `platform-main`. Deshalb nach jedem Merge den Push-Lauf von `test` auf `platform-main` ansehen; ein roter Lauf dort
+  wird sofort repariert (Paket T1 soll das automatisch melden).
+
+Vor der Meldung „merge-fertig“ bringt der Thread seinen PR auf den aktuellen Stand von `platform-main`, löst Konflikte
+und lässt die volle Suite in der Cloud laufen (`pytest -m "not local_env and not serial" -n 4`, danach
+`-m "not local_env and serial"`). Produktivmodus und Auto-Merge der Pipeline bleiben ausgeschaltet.
+
+## Offene Punkte beim ersten GitHub-Lauf (historisch, 2025/26 geklärt)
+
+Das Gate läuft seit Oktober 2026 produktiv auf `platform-main`; die Punkte bleiben als Entwurfsgeschichte stehen.
 
 - Der erste Merge dieses Gates nach `platform-main` ist ein manuell geprüfter Bootstrap-Schritt, weil
   `pull_request_target` nur die Workflow-Datei des Base-Branches nutzt.
@@ -65,9 +77,10 @@ derzeit HTTP 403. Bis das Ruleset steht, ist die Regel eine Verabredung, kein Sc
 - Änderungen an Repository-Einstellungen, Secrets oder Rechten (macht der Repository-Inhaber).
 - Reparatur der roten `TIM full suite` (eigenes Paket).
 
-## Einmalig durch den Repository-Inhaber zu tun
+## Durch den Repository-Inhaber erledigt oder offen
 
-1. Dieses Gate erst nach dem Merge nach `platform-main` aktiv: `pull_request_target` nutzt die Workflow-Datei des Base-Branches.
-2. Ruleset auf `platform-main`: Review erforderlich, Checks `PR gate` und `test` erforderlich (`TIM full suite` erst nach Reparatur ergänzen), Force-Push gesperrt.
-3. Worker-Konto/-Token ohne Schreibrecht auf `platform-main`.
-4. Negativtest: Test-PR mit Änderung in `.github/` muss am `PR gate` scheitern.
+1. Gate nach `platform-main` gemergt und aktiv: erledigt.
+2. Ruleset auf `platform-main` mit Checks `PR gate` und `test`, Force-Push gesperrt: erledigt (13.10.2026). Review-Pflicht
+   und strict: bewusst aus (siehe Freigaberegel). Sicherung des Rulesets liegt auf dem Mac.
+3. Worker-Konto `apoman74-art` nur mit Schreibrecht, kein Merge-Recht auf `platform-main`: erledigt.
+4. Negativtest (Änderung in `.github/` scheitert am `PR gate`): nicht dokumentiert, offen.
