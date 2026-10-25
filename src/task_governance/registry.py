@@ -433,7 +433,13 @@ class TaskRegistry:
             'block_reason=\'\', block_candidates=\'[]\', updated_at=? WHERE fingerprint=? AND state=? AND claim_token=?',
             (MappingState.MAPPED, repository, issue_number, json.dumps(sorted(set(duplicates))), self.clock(),
              fingerprint, MappingState.CLAIMED, token))
-        return self.get(fingerprint) if cur.rowcount == 1 else None
+        if cur.rowcount != 1:
+            return None
+        if duplicates:      # the local audit trail names every issue recorded as a duplicate (#134 G3)
+            self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                            (fingerprint, 'DUPLICATES_RECORDED',
+                             f'#{issue_number} authoritative; duplicates {sorted(set(duplicates))}', self.clock()))
+        return self.get(fingerprint)
 
     @_serialized
     def block(self, fingerprint: str, reason: str, detail: str = '', *, token: int | None = None,
@@ -482,8 +488,15 @@ class TaskRegistry:
         if row is None:
             return None
         merged = sorted(set(row.duplicate_issues) | set(numbers))
+        added = sorted(set(merged) - set(row.duplicate_issues))
+        if not added:
+            return row
+        now = self.clock()
         self.db.execute('UPDATE task_mappings SET duplicate_issues=?, updated_at=? WHERE fingerprint=?',
-                        (json.dumps(merged), self.clock(), fingerprint))
+                        (json.dumps(merged), now, fingerprint))
+        self.db.execute('INSERT INTO governance_incidents(fingerprint,reason,detail,created_at) VALUES(?,?,?,?)',
+                        (fingerprint, 'DUPLICATES_RECORDED',
+                         f'#{row.github_issue_number} authoritative; duplicates added {added}', now))
         return self.get(fingerprint)
 
     @_serialized

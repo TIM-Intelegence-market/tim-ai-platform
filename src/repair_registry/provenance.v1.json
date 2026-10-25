@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "recipes": {
+    "NETWORK_TIMEOUT@2.0.0": {
+      "digest": "36f295c919657d2cfa8aa6506a40ee25e9ed0c5ca0cdf736e454bbb2cc6ed43c",
+      "origin_commit": "29aafdb",
+      "introduced": "2026-09-28",
+      "changed_by": ["PR #302 (#262)"],
+      "evidence_status": "CANDIDATE_EVIDENCE",
+      "evidence_refs": ["docs/mission-09-phase-8-candidate-evidence.md#c1--binance-websocket-disconnect-during-macos-host-sleep", "TIM_WEBSOCKET_FAILURE_ANALYSIS.md"],
+      "note": "C1 (STRONG evidence for the root cause); the bounded reconnect itself is not yet proven under the gate engine (#19)."
+    },
+    "LAUNCHD_LOG_PATH@2.0.0": {
+      "digest": "43518206f0760881b101bff6f942f5bc7b799314d44e7d821309e22383ecc31a",
+      "origin_commit": "29aafdb",
+      "introduced": "2026-09-28",
+      "changed_by": ["PR #302 (#262)"],
+      "evidence_status": "CANDIDATE_EVIDENCE",
+      "evidence_refs": [
+        "docs/TIM_LINUX_QUBE_PLAN.md#2-ausgangslage-und-grenzen-der-bestandsaufnahme",
+        "scripts/tim_log_maintenance.py",
+        "src/operational/logging.py",
+        "tests/test_operational_extra_coverage_v2.py"
+      ],
+      "note": "Origin clarified 2026-10-25: a macOS operating problem reported in chat (launchd -> StandardErrorPath -> com.apple.macl/log rotation -> EX_CONFIG 78), recorded in the Linux/Qube plan as a chat finding, not a checked runtime diagnosis. Countermeasure in code since 58bd3de (2026-09-03): launchd stdout/stderr logs rotate with preserve_inode=True so com.apple.macl stays on the active file; unit test covers the mechanism only. The recipe itself came with the live snapshot 29aafdb. No log excerpt of a real EX_CONFIG 78 incident and no reproduction exist, so this is not REPRODUCED. Its only action is a review."
+    }
+  }
+}

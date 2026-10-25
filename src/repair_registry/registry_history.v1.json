@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "registry": "schemas/bugfixer/remediations.v2.json",
+  "recipes": {
+    "LAUNCHD_LOG_PATH@2.0.0": "43518206f0760881b101bff6f942f5bc7b799314d44e7d821309e22383ecc31a",
+    "NETWORK_TIMEOUT@2.0.0": "36f295c919657d2cfa8aa6506a40ee25e9ed0c5ca0cdf736e454bbb2cc6ed43c"
+  }
+}

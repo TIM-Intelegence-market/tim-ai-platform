@@ -11,6 +11,7 @@ from src.bugfixer.remediation import dry_run, load_registry
 from src.bugfixer.replay import replay
 from src.bugfixer.safety import Policy
 from src.bugfixer.rotation import RotationSeal
+from src.bugfixer.seal import create_seal, write_seal
 from src.bugfixer.evidence import export_bundle, load_bundle
 from src.bugfixer.reproduction import reproduce_known_case
 from src.bugfixer.store import IncidentStore
@@ -44,6 +45,13 @@ def main(argv=None):
     rotation.add_argument('--source', type=Path, required=True)
     rotation.add_argument('--rotated-source', type=Path, required=True)
     rotation.add_argument('--seal', type=Path, required=True)
+    sealing = sub.add_parser('seal-rotation', help='producer side: seal a closed, renamed log segment')
+    sealing.add_argument('--rotated-source', type=Path, required=True)
+    sealing.add_argument('--successor', type=Path, required=True)
+    sealing.add_argument('--generation', type=int, required=True)
+    sealing.add_argument('--out', type=Path, required=True)
+    sealing.add_argument('--attest-writer-closed', action='store_true')
+    sealing.add_argument('--attest-contiguous-successor', action='store_true')
     observing = sub.add_parser('observe')
     observing.add_argument('--source', type=Path, required=True)
     observing.add_argument('--follow', action='store_true')
@@ -51,6 +59,15 @@ def main(argv=None):
     store = None
     try:
         Policy().verify()
+        if args.command == 'seal-rotation':
+            # Producer side: measures files only, never opens the incident store.
+            seal = create_seal(args.rotated_source, args.successor, args.generation,
+                               writer_closed=args.attest_writer_closed,
+                               contiguous_successor=args.attest_contiguous_successor)
+            write_seal(seal, args.out)
+            print(json.dumps({'sealed': True, 'generation': seal.generation, 'size': seal.size,
+                              'sha256': seal.sha256}, sort_keys=True, indent=2))
+            return 0
         if args.command != 'observe' and not args.store.is_file():
             raise ValueError('store does not exist')
         store = IncidentStore(args.store)

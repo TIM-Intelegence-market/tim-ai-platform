@@ -135,3 +135,26 @@ First live finding (2026-10-01, throw-away repository): the REST issue listing d
 macOS with a python.org Python: if the run fails with `SSLCertVerificationError`, the interpreter has no CA file. Run the "Install Certificates.command" that ships with that Python, or set `SSL_CERT_FILE=/etc/ssl/cert.pem` for the one process. Certificate verification stays on; never switch it off.
 
 Exit code 0 means every check passed, 1 a failed check (the output lists each check), 2 a refused call. Do not interpret a single green run as proof of the secondary-rate-limit and abuse-protection behaviour of GitHub; the run proves the contract on the real API for one task.
+
+## Restbefunde #134 (Stand 25.10.2026)
+
+Jeder Punkt aus #134 ist entweder mit Test behoben oder mit Begründung als akzeptiert festgehalten.
+Reproduktionen: `tests/task_governance/test_restbefunde_134.py`.
+
+| Befund | Entscheidung | Beleg |
+|---|---|---|
+| Codex C1: `unblock()` hebt `HINT_CONFLICT` auf | behoben (#185): ohne `hint=` verweigert | `test_plain_unblock_never_lifts_hint_conflict`, `test_unblock_hint_conflict.py` |
+| GLM G1: Legacy-Nummern eines abgelehnten Hints werden ersetzt statt zusammengeführt | akzeptiert. Die Liste gehört zum abgelehnten Hint; ein Zusammenführen würde Issues als Duplikat eines Issues markieren, das der Operator für sie nie genannt hat. Der Operator gibt sie beim `unblock(hint=…, legacy=…)` erneut an. | `test_legacy_numbers_of_a_rejected_hint_are_replaced_not_merged` |
+| GLM G2: Binding auf eine gelöschte Engine-Task | behoben (#249): Sync bricht klar ab | `test_engine_task_missing.py` |
+| GLM G3: Lücke in der Audit-Spur bei Duplikaten | behoben: `map_issue` mit Duplikaten und `add_duplicates` mit neuen Nummern schreiben `DUPLICATES_RECORDED` in `governance_incidents` | `test_adopting_with_legacy_duplicates_leaves_an_audit_incident`, `test_add_duplicates_records_only_new_numbers_once` |
+| `EngineBindingConflict` exportieren, Ausweg nennen | behoben (#186) | `test_second_binding_of_one_identity_is_refused` |
+| UNIQUE-Index auf `engine_bindings.fingerprint` | akzeptiert ohne Migration. `bind_engine_task` prüft und schreibt in einer `BEGIN IMMEDIATE`-Transaktion; ältere Dateien mit Doppelbindung werden beim Öffnen einmal als `ENGINE_BINDING_DUPLICATE` gemeldet und die Abfrage verweigert eine Antwort. Ein UNIQUE-Index würde genau diese Dateien beim Öffnen unbrauchbar machen, statt den Operator entscheiden zu lassen. | `test_duplicate_bindings_from_an_old_file_are_reported_once_and_block_the_lookup` |
+| TOCTOU zwischen GET und PATCH in `update_issue` | akzeptiert: GitHub bietet für Issue-Bodies kein bedingtes Update. Überschrieben wird nur der Abschnitt zwischen `TIM_TASK_BODY_BEGIN/END`, nie Status oder Labels. | Abschnitt „Wiring a real GitHub gateway“ |
+| Fremder Marker im Body | akzeptiert: Ein Issue mit zweitem Marker wird nicht bereinigt; Fremd-Marker werden nur von `trusted_authors` übernommen. | `trusted_authors` oben |
+| Verlorene Registry-Datei | behoben durch Wiederherstellung über den GitHub-Marker; neu anlegen darf nur die designierte Registry | `test_lost_local_state_recovers_mapping_from_github`, `test_a_lost_registry_adopts_but_cannot_create_until_it_is_designated` |
+| Hängender DNS-Worker | akzeptiert: Der Verbindungsaufbau läuft in einem Daemon-Thread mit Frist; nach der Frist wird nichts mehr gesendet, der Thread endet mit dem Prozess. | `test_a_request_the_caller_gave_up_on_during_connect_is_never_sent_later` |
+| Proxy wiederholt eine alte create-Antwort | akzeptiert: Nach jedem Create prüft der Guard per Marker auf Duplikate (`DUPLICATE_AFTER_CREATE`) und mappt nie blind. | `test_task_governance.py` |
+| Keine Repository-Spalte in `engine_bindings` | akzeptiert: Ein Gateway gehört zu genau einem Repository; `task_mappings` speichert das Repository und meldet `REPOSITORY_MISMATCH`. | Abschnitt `_sync` |
+| `max_pages` bei Repos mit mehr als 5000 Issues | akzeptiert: Die Auflistung bricht dann mit Fehler ab, statt zu raten. Das Repo hat derzeit unter 500 Issues und PRs zusammen. | `github_gateway.py` |
+| Semantik `trusted_authors` | festgelegt: Liste der Konten, deren Issues als Aufgabe gelten; `None` vertraut allen und ist eine bewusste Wahl | Abschnitt oben |
+| Kosmetik (Namen, Meldungstexte) | nicht geändert: kein Verhaltensunterschied, Änderungen würden nur bestehende Tests umschreiben | — |

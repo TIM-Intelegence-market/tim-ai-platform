@@ -295,7 +295,7 @@ def test_blocked_ambiguity_resolves_when_a_valid_hint_is_supplied_later(env):
     assert ensure_task(req(), reg, gh, claimant='w').outcome is EnsureOutcome.BLOCKED
     r = ensure_task(req(), reg, gh, claimant='w', authoritative_hint=5)
     assert r.outcome is EnsureOutcome.RECOVERED and r.issue_number == 5 and gh.count() == 2
-    assert [i['reason'] for i in reg.incidents(fp)] == ['AMBIGUOUS_DUPLICATES', 'UNBLOCKED']
+    assert [i['reason'] for i in reg.incidents(fp)] == ['AMBIGUOUS_DUPLICATES', 'UNBLOCKED', 'DUPLICATES_RECORDED']
 
 
 def test_marker_copied_by_untrusted_author_cannot_hijack_or_block(env):
