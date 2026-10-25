@@ -64,6 +64,10 @@ eine Entscheidung von Chris und Uzi, keine Maßnahme dieses Branches.
 - `~/.git` existiert (get_device_info). Prüfen: `git -C ~ remote -v`, `git -C ~ log -1`, `.gitignore`. Weder `.git`
   noch Historie löschen, bevor Zweck und Remote bekannt sind. Risiko: ein `git add .` im Home erfasst Dokumente und
   Konfiguration; Geheimnisse liegen laut Regel nur im Schlüsselbund.
+  **Prüfskript (25.10.2026, Grün-Plan Paket S1):** `python3 ops/macos/check_home_git_ignore.py` fragt nur
+  `git check-ignore` und `git ls-files` und meldet, welche TIM-Datenpfade und Schlüsselorte ein `git add .` im Home
+  erfassen würde und welche verdächtigen Dateien schon erfasst sind (Exit 0 = PASS). Ausgabe gehört als Nachweis
+  in `docs/governance/`, das Skript ändert nichts.
 - Actions: `codecov-action` per SHA gepinnt, `actions/checkout@v7` und `upload-artifact@v7` per Tag. Vorschlag: alle
   per SHA mit Kommentar der Version. Codecov-Upload scheitert still (`continue-on-error`); entweder Token setzen
   oder den Schritt entfernen. CodeQL läuft nachts, Ergebnisse werden nach Beleglage nicht ausgewertet; ein

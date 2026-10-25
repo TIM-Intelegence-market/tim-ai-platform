@@ -54,6 +54,7 @@ Dashboard-Agenten.
 | C4 Tests ohne Wanduhrzeit | DONE (vorab) | `test_canary_15` prüft seit #380 eine Schranke von 1,5 s gegen 3,0 s Verzögerung, kein enges Zeitmaß mehr |
 | F1 S2 Zähllauf + Power-Simulation | VERIFIED (Werkzeuge), BLOCKED (Lauf: Archive nur außerhalb der Cloud, Ort braucht Uzis Wort) | dieser PR: `scripts/research_lab_s2.py`, `src/research_lab/studies/s2_orderflow.py`, `s2_power.py`, `src/research_lab/data/aggtrades.py`, `tests/test_research_lab_s2.py`; Studie Abschnitt 7 |
 | F2 S2 rechnen | BLOCKED (Freigabe 1.0 nach F1) | – |
+| S1 Prüfskript Home-Git | VERIFIED (Werkzeug), Lauf auf dem Mac steht aus | dieser PR: `ops/macos/check_home_git_ignore.py`, `tests/test_check_home_git_ignore.py`; Ausgabe des Mac-Laufs nach `docs/governance/` |
 | alle anderen | PLANNED | – |
 
 Statuswerte: PLANNED, RUNNING, BLOCKED (wer), VERIFIED (Nachweis), DONE. Eine Delegation allein ist kein Abschluss.
