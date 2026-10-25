@@ -1,0 +1,867 @@
+{
+  "study": "S6",
+  "protocol": "S6 0.2 (draft)",
+  "commit": "3be449f38b4ae48ec0936c4358c083f28daf1483",
+  "outcome_blind": "fills only, no exits",
+  "gate": {
+    "fills": 320,
+    "fill_days": 160
+  },
+  "holdout_coin_months": 63,
+  "created": "2026-10-25T22:24:46+00:00",
+  "dataset_hashes": {
+    "BTCUSDT": "3ac45ed81b38268974e745c6f1e52bfc749427477bbfc902ee33582f8846cda9",
+    "ETHUSDT": "c01bbfbb556b787785d9c785a9493b3ae22fe29ca1808e30a945cc7217221a27",
+    "SOLUSDT": "d4b7c7519c830217ff8b2d46587b58ffc1d1c3fe400241a7ca901fd25abbc4f1"
+  },
+  "ticks": {
+    "BTCUSDT": {
+      "2020-01": 0.01,
+      "2020-02": 0.01,
+      "2020-03": 0.01,
+      "2020-04": 0.01,
+      "2020-05": 0.01,
+      "2020-06": 0.01,
+      "2020-07": 0.01,
+      "2020-08": 0.01,
+      "2020-09": 0.01,
+      "2020-10": 0.01,
+      "2020-11": 0.01,
+      "2020-12": 0.01,
+      "2021-01": 0.01,
+      "2021-02": 0.01,
+      "2021-03": 0.01,
+      "2021-04": 0.01,
+      "2021-05": 0.01,
+      "2021-06": 0.01,
+      "2021-07": 0.01,
+      "2021-08": 0.01,
+      "2021-09": 0.01,
+      "2021-10": 0.01,
+      "2021-11": 0.01,
+      "2021-12": 0.01,
+      "2022-01": 0.01,
+      "2022-02": 0.01,
+      "2022-03": 0.01,
+      "2022-04": 0.01,
+      "2022-05": 0.04,
+      "2022-06": 0.1,
+      "2022-07": 0.1,
+      "2022-08": 0.1,
+      "2022-09": 0.1,
+      "2022-10": 0.1,
+      "2022-11": 0.1,
+      "2022-12": 0.1,
+      "2023-01": 0.1,
+      "2023-02": 0.1,
+      "2023-03": 0.1,
+      "2023-04": 0.1,
+      "2023-05": 0.1,
+      "2023-06": 0.1,
+      "2023-07": 0.1,
+      "2023-08": 0.1,
+      "2023-09": 0.1,
+      "2023-10": 0.1,
+      "2023-11": 0.1,
+      "2023-12": 0.1,
+      "2024-01": 0.1,
+      "2024-02": 0.02,
+      "2024-03": 0.1,
+      "2024-04": 0.1,
+      "2024-05": 0.1,
+      "2024-06": 0.1,
+      "2024-07": 0.1,
+      "2024-08": 0.01,
+      "2024-09": 0.1,
+      "2024-10": 0.1,
+      "2024-11": 0.1,
+      "2024-12": 0.1
+    },
+    "ETHUSDT": {
+      "2020-01": 0.01,
+      "2020-02": 0.01,
+      "2020-03": 0.01,
+      "2020-04": 0.01,
+      "2020-05": 0.01,
+      "2020-06": 0.01,
+      "2020-07": 0.01,
+      "2020-08": 0.01,
+      "2020-09": 0.01,
+      "2020-10": 0.01,
+      "2020-11": 0.01,
+      "2020-12": 0.01,
+      "2021-01": 0.01,
+      "2021-02": 0.01,
+      "2021-03": 0.01,
+      "2021-04": 0.01,
+      "2021-05": 0.01,
+      "2021-06": 0.01,
+      "2021-07": 0.01,
+      "2021-08": 0.01,
+      "2021-09": 0.01,
+      "2021-10": 0.01,
+      "2021-11": 0.01,
+      "2021-12": 0.01,
+      "2022-01": 0.01,
+      "2022-02": 0.01,
+      "2022-03": 0.01,
+      "2022-04": 0.01,
+      "2022-05": 0.01,
+      "2022-06": 0.01,
+      "2022-07": 0.01,
+      "2022-08": 0.01,
+      "2022-09": 0.01,
+      "2022-10": 0.01,
+      "2022-11": 0.01,
+      "2022-12": 0.01,
+      "2023-01": 0.01,
+      "2023-02": 0.01,
+      "2023-03": 0.01,
+      "2023-04": 0.01,
+      "2023-05": 0.01,
+      "2023-06": 0.01,
+      "2023-07": 0.01,
+      "2023-08": 0.01,
+      "2023-09": 0.01,
+      "2023-10": 0.01,
+      "2023-11": 0.01,
+      "2023-12": 0.01,
+      "2024-01": 0.01,
+      "2024-02": 0.01,
+      "2024-03": 0.01,
+      "2024-04": 0.01,
+      "2024-05": 0.01,
+      "2024-06": 0.01,
+      "2024-07": 0.01,
+      "2024-08": 0.01,
+      "2024-09": 0.01,
+      "2024-10": 0.01,
+      "2024-11": 0.01,
+      "2024-12": 0.01
+    },
+    "SOLUSDT": {
+      "2020-09": 0.0001,
+      "2020-10": 0.0001,
+      "2020-11": 0.0001,
+      "2020-12": 0.0001,
+      "2021-01": 0.0001,
+      "2021-02": 0.0001,
+      "2021-03": 0.0001,
+      "2021-04": 0.0001,
+      "2021-05": 0.0001,
+      "2021-06": 0.001,
+      "2021-07": 0.001,
+      "2021-08": 0.001,
+      "2021-09": 0.001,
+      "2021-10": 0.001,
+      "2021-11": 0.001,
+      "2021-12": 0.001,
+      "2022-01": 0.001,
+      "2022-02": 0.01,
+      "2022-03": 0.01,
+      "2022-04": 0.01,
+      "2022-05": 0.01,
+      "2022-06": 0.01,
+      "2022-07": 0.01,
+      "2022-08": 0.01,
+      "2022-09": 0.01,
+      "2022-10": 0.01,
+      "2022-11": 0.001,
+      "2022-12": 0.001,
+      "2023-01": 0.001,
+      "2023-02": 0.001,
+      "2023-03": 0.001,
+      "2023-04": 0.001,
+      "2023-05": 0.001,
+      "2023-06": 0.001,
+      "2023-07": 0.001,
+      "2023-08": 0.001,
+      "2023-09": 0.001,
+      "2023-10": 0.001,
+      "2023-11": 0.001,
+      "2023-12": 0.001,
+      "2024-01": 0.001,
+      "2024-02": 0.001,
+      "2024-03": 0.001,
+      "2024-04": 0.001,
+      "2024-05": 0.001,
+      "2024-06": 0.001,
+      "2024-07": 0.001,
+      "2024-08": 0.001,
+      "2024-09": 0.001,
+      "2024-10": 0.001,
+      "2024-11": 0.001,
+      "2024-12": 0.001
+    }
+  },
+  "gaps_over_5min": {
+    "BTCUSDT": [],
+    "ETHUSDT": [],
+    "SOLUSDT": [
+      {
+        "after": "2022-02-25T23:59+00:00",
+        "minutes": 4320
+      },
+      {
+        "after": "2022-03-31T23:59+00:00",
+        "minutes": 2880
+      }
+    ]
+  },
+  "bars": {
+    "BTCUSDT": 2630880,
+    "ETHUSDT": 2630880,
+    "SOLUSDT": 2253180
+  },
+  "coin_months_by_year": {
+    "2020": 27,
+    "2021": 36,
+    "2022": 36,
+    "2023": 36,
+    "2024": 36
+  },
+  "variants": {
+    "S6-k2-t15": {
+      "k": 2.0,
+      "target_r": 0.15,
+      "counts": {
+        "BTCUSDT/train": {
+          "fills": 2183,
+          "both": 0,
+          "fills_unlocked": 5412,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_side": {
+            "long": 1107,
+            "short": 1076
+          }
+        },
+        "BTCUSDT/validation": {
+          "fills": 1348,
+          "both": 0,
+          "fills_unlocked": 3379,
+          "skipped_cross": 47,
+          "no_reference": 0,
+          "by_side": {
+            "long": 656,
+            "short": 692
+          }
+        },
+        "ETHUSDT/train": {
+          "fills": 2001,
+          "both": 1,
+          "fills_unlocked": 5029,
+          "skipped_cross": 7,
+          "no_reference": 121,
+          "by_side": {
+            "long": 1077,
+            "short": 923
+          }
+        },
+        "ETHUSDT/validation": {
+          "fills": 1480,
+          "both": 1,
+          "fills_unlocked": 3739,
+          "skipped_cross": 4,
+          "no_reference": 0,
+          "by_side": {
+            "long": 778,
+            "short": 701
+          }
+        },
+        "SOLUSDT/train": {
+          "fills": 1402,
+          "both": 0,
+          "fills_unlocked": 3681,
+          "skipped_cross": 3,
+          "no_reference": 242,
+          "by_side": {
+            "long": 765,
+            "short": 637
+          }
+        },
+        "SOLUSDT/validation": {
+          "fills": 1129,
+          "both": 0,
+          "fills_unlocked": 2661,
+          "skipped_cross": 0,
+          "no_reference": 0,
+          "by_side": {
+            "long": 602,
+            "short": 527
+          }
+        }
+      },
+      "fills_total": 9543,
+      "both_total": 2,
+      "fills_by_year": {
+        "2020": 1635,
+        "2021": 1734,
+        "2022": 2217,
+        "2023": 2374,
+        "2024": 1583
+      },
+      "fill_days_by_year": {
+        "2020": 361,
+        "2021": 362,
+        "2022": 365,
+        "2023": 365,
+        "2024": 355
+      },
+      "density_per_coin_month": {
+        "2020": 60.556,
+        "2021": 48.167,
+        "2022": 61.583,
+        "2023": 65.944,
+        "2024": 43.972
+      },
+      "weakest_year": "2024",
+      "projected_holdout_fills": 2770.2,
+      "fill_days_per_month": {
+        "2020": 30.08,
+        "2021": 30.17,
+        "2022": 30.42,
+        "2023": 30.42,
+        "2024": 29.58
+      },
+      "weakest_year_days": "2024",
+      "projected_holdout_fill_days": 621.2,
+      "passes_gate": true
+    },
+    "S6-k2-t20": {
+      "k": 2.0,
+      "target_r": 0.2,
+      "counts": {
+        "BTCUSDT/train": {
+          "fills": 2183,
+          "both": 0,
+          "fills_unlocked": 5412,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_side": {
+            "long": 1107,
+            "short": 1076
+          }
+        },
+        "BTCUSDT/validation": {
+          "fills": 1348,
+          "both": 0,
+          "fills_unlocked": 3379,
+          "skipped_cross": 47,
+          "no_reference": 0,
+          "by_side": {
+            "long": 656,
+            "short": 692
+          }
+        },
+        "ETHUSDT/train": {
+          "fills": 2001,
+          "both": 1,
+          "fills_unlocked": 5029,
+          "skipped_cross": 7,
+          "no_reference": 121,
+          "by_side": {
+            "long": 1077,
+            "short": 923
+          }
+        },
+        "ETHUSDT/validation": {
+          "fills": 1480,
+          "both": 1,
+          "fills_unlocked": 3739,
+          "skipped_cross": 4,
+          "no_reference": 0,
+          "by_side": {
+            "long": 778,
+            "short": 701
+          }
+        },
+        "SOLUSDT/train": {
+          "fills": 1402,
+          "both": 0,
+          "fills_unlocked": 3681,
+          "skipped_cross": 3,
+          "no_reference": 242,
+          "by_side": {
+            "long": 765,
+            "short": 637
+          }
+        },
+        "SOLUSDT/validation": {
+          "fills": 1129,
+          "both": 0,
+          "fills_unlocked": 2661,
+          "skipped_cross": 0,
+          "no_reference": 0,
+          "by_side": {
+            "long": 602,
+            "short": 527
+          }
+        }
+      },
+      "fills_total": 9543,
+      "both_total": 2,
+      "fills_by_year": {
+        "2020": 1635,
+        "2021": 1734,
+        "2022": 2217,
+        "2023": 2374,
+        "2024": 1583
+      },
+      "fill_days_by_year": {
+        "2020": 361,
+        "2021": 362,
+        "2022": 365,
+        "2023": 365,
+        "2024": 355
+      },
+      "density_per_coin_month": {
+        "2020": 60.556,
+        "2021": 48.167,
+        "2022": 61.583,
+        "2023": 65.944,
+        "2024": 43.972
+      },
+      "weakest_year": "2024",
+      "projected_holdout_fills": 2770.2,
+      "fill_days_per_month": {
+        "2020": 30.08,
+        "2021": 30.17,
+        "2022": 30.42,
+        "2023": 30.42,
+        "2024": 29.58
+      },
+      "weakest_year_days": "2024",
+      "projected_holdout_fill_days": 621.2,
+      "passes_gate": true
+    },
+    "S6-k2-t25": {
+      "k": 2.0,
+      "target_r": 0.25,
+      "counts": {
+        "BTCUSDT/train": {
+          "fills": 2183,
+          "both": 0,
+          "fills_unlocked": 5412,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_side": {
+            "long": 1107,
+            "short": 1076
+          }
+        },
+        "BTCUSDT/validation": {
+          "fills": 1348,
+          "both": 0,
+          "fills_unlocked": 3379,
+          "skipped_cross": 47,
+          "no_reference": 0,
+          "by_side": {
+            "long": 656,
+            "short": 692
+          }
+        },
+        "ETHUSDT/train": {
+          "fills": 2001,
+          "both": 1,
+          "fills_unlocked": 5029,
+          "skipped_cross": 7,
+          "no_reference": 121,
+          "by_side": {
+            "long": 1077,
+            "short": 923
+          }
+        },
+        "ETHUSDT/validation": {
+          "fills": 1480,
+          "both": 1,
+          "fills_unlocked": 3739,
+          "skipped_cross": 4,
+          "no_reference": 0,
+          "by_side": {
+            "long": 778,
+            "short": 701
+          }
+        },
+        "SOLUSDT/train": {
+          "fills": 1402,
+          "both": 0,
+          "fills_unlocked": 3681,
+          "skipped_cross": 3,
+          "no_reference": 242,
+          "by_side": {
+            "long": 765,
+            "short": 637
+          }
+        },
+        "SOLUSDT/validation": {
+          "fills": 1129,
+          "both": 0,
+          "fills_unlocked": 2661,
+          "skipped_cross": 0,
+          "no_reference": 0,
+          "by_side": {
+            "long": 602,
+            "short": 527
+          }
+        }
+      },
+      "fills_total": 9543,
+      "both_total": 2,
+      "fills_by_year": {
+        "2020": 1635,
+        "2021": 1734,
+        "2022": 2217,
+        "2023": 2374,
+        "2024": 1583
+      },
+      "fill_days_by_year": {
+        "2020": 361,
+        "2021": 362,
+        "2022": 365,
+        "2023": 365,
+        "2024": 355
+      },
+      "density_per_coin_month": {
+        "2020": 60.556,
+        "2021": 48.167,
+        "2022": 61.583,
+        "2023": 65.944,
+        "2024": 43.972
+      },
+      "weakest_year": "2024",
+      "projected_holdout_fills": 2770.2,
+      "fill_days_per_month": {
+        "2020": 30.08,
+        "2021": 30.17,
+        "2022": 30.42,
+        "2023": 30.42,
+        "2024": 29.58
+      },
+      "weakest_year_days": "2024",
+      "projected_holdout_fill_days": 621.2,
+      "passes_gate": true
+    },
+    "S6-k3-t15": {
+      "k": 3.0,
+      "target_r": 0.15,
+      "counts": {
+        "BTCUSDT/train": {
+          "fills": 727,
+          "both": 0,
+          "fills_unlocked": 972,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_side": {
+            "long": 379,
+            "short": 348
+          }
+        },
+        "BTCUSDT/validation": {
+          "fills": 482,
+          "both": 0,
+          "fills_unlocked": 630,
+          "skipped_cross": 46,
+          "no_reference": 0,
+          "by_side": {
+            "long": 249,
+            "short": 233
+          }
+        },
+        "ETHUSDT/train": {
+          "fills": 566,
+          "both": 0,
+          "fills_unlocked": 763,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_side": {
+            "long": 331,
+            "short": 235
+          }
+        },
+        "ETHUSDT/validation": {
+          "fills": 530,
+          "both": 0,
+          "fills_unlocked": 724,
+          "skipped_cross": 45,
+          "no_reference": 0,
+          "by_side": {
+            "long": 306,
+            "short": 224
+          }
+        },
+        "SOLUSDT/train": {
+          "fills": 296,
+          "both": 0,
+          "fills_unlocked": 430,
+          "skipped_cross": 0,
+          "no_reference": 242,
+          "by_side": {
+            "long": 180,
+            "short": 116
+          }
+        },
+        "SOLUSDT/validation": {
+          "fills": 318,
+          "both": 0,
+          "fills_unlocked": 446,
+          "skipped_cross": 0,
+          "no_reference": 0,
+          "by_side": {
+            "long": 188,
+            "short": 130
+          }
+        }
+      },
+      "fills_total": 2919,
+      "both_total": 0,
+      "fills_by_year": {
+        "2020": 580,
+        "2021": 327,
+        "2022": 682,
+        "2023": 960,
+        "2024": 370
+      },
+      "fill_days_by_year": {
+        "2020": 258,
+        "2021": 190,
+        "2022": 267,
+        "2023": 309,
+        "2024": 194
+      },
+      "density_per_coin_month": {
+        "2020": 21.481,
+        "2021": 9.083,
+        "2022": 18.944,
+        "2023": 26.667,
+        "2024": 10.278
+      },
+      "weakest_year": "2021",
+      "projected_holdout_fills": 572.2,
+      "fill_days_per_month": {
+        "2020": 21.5,
+        "2021": 15.83,
+        "2022": 22.25,
+        "2023": 25.75,
+        "2024": 16.17
+      },
+      "weakest_year_days": "2021",
+      "projected_holdout_fill_days": 332.5,
+      "passes_gate": true
+    },
+    "S6-k3-t20": {
+      "k": 3.0,
+      "target_r": 0.2,
+      "counts": {
+        "BTCUSDT/train": {
+          "fills": 727,
+          "both": 0,
+          "fills_unlocked": 972,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_side": {
+            "long": 379,
+            "short": 348
+          }
+        },
+        "BTCUSDT/validation": {
+          "fills": 482,
+          "both": 0,
+          "fills_unlocked": 630,
+          "skipped_cross": 46,
+          "no_reference": 0,
+          "by_side": {
+            "long": 249,
+            "short": 233
+          }
+        },
+        "ETHUSDT/train": {
+          "fills": 566,
+          "both": 0,
+          "fills_unlocked": 763,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_side": {
+            "long": 331,
+            "short": 235
+          }
+        },
+        "ETHUSDT/validation": {
+          "fills": 530,
+          "both": 0,
+          "fills_unlocked": 724,
+          "skipped_cross": 45,
+          "no_reference": 0,
+          "by_side": {
+            "long": 306,
+            "short": 224
+          }
+        },
+        "SOLUSDT/train": {
+          "fills": 296,
+          "both": 0,
+          "fills_unlocked": 430,
+          "skipped_cross": 0,
+          "no_reference": 242,
+          "by_side": {
+            "long": 180,
+            "short": 116
+          }
+        },
+        "SOLUSDT/validation": {
+          "fills": 318,
+          "both": 0,
+          "fills_unlocked": 446,
+          "skipped_cross": 0,
+          "no_reference": 0,
+          "by_side": {
+            "long": 188,
+            "short": 130
+          }
+        }
+      },
+      "fills_total": 2919,
+      "both_total": 0,
+      "fills_by_year": {
+        "2020": 580,
+        "2021": 327,
+        "2022": 682,
+        "2023": 960,
+        "2024": 370
+      },
+      "fill_days_by_year": {
+        "2020": 258,
+        "2021": 190,
+        "2022": 267,
+        "2023": 309,
+        "2024": 194
+      },
+      "density_per_coin_month": {
+        "2020": 21.481,
+        "2021": 9.083,
+        "2022": 18.944,
+        "2023": 26.667,
+        "2024": 10.278
+      },
+      "weakest_year": "2021",
+      "projected_holdout_fills": 572.2,
+      "fill_days_per_month": {
+        "2020": 21.5,
+        "2021": 15.83,
+        "2022": 22.25,
+        "2023": 25.75,
+        "2024": 16.17
+      },
+      "weakest_year_days": "2021",
+      "projected_holdout_fill_days": 332.5,
+      "passes_gate": true
+    },
+    "S6-k3-t25": {
+      "k": 3.0,
+      "target_r": 0.25,
+      "counts": {
+        "BTCUSDT/train": {
+          "fills": 727,
+          "both": 0,
+          "fills_unlocked": 972,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_side": {
+            "long": 379,
+            "short": 348
+          }
+        },
+        "BTCUSDT/validation": {
+          "fills": 482,
+          "both": 0,
+          "fills_unlocked": 630,
+          "skipped_cross": 46,
+          "no_reference": 0,
+          "by_side": {
+            "long": 249,
+            "short": 233
+          }
+        },
+        "ETHUSDT/train": {
+          "fills": 566,
+          "both": 0,
+          "fills_unlocked": 763,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_side": {
+            "long": 331,
+            "short": 235
+          }
+        },
+        "ETHUSDT/validation": {
+          "fills": 530,
+          "both": 0,
+          "fills_unlocked": 724,
+          "skipped_cross": 45,
+          "no_reference": 0,
+          "by_side": {
+            "long": 306,
+            "short": 224
+          }
+        },
+        "SOLUSDT/train": {
+          "fills": 296,
+          "both": 0,
+          "fills_unlocked": 430,
+          "skipped_cross": 0,
+          "no_reference": 242,
+          "by_side": {
+            "long": 180,
+            "short": 116
+          }
+        },
+        "SOLUSDT/validation": {
+          "fills": 318,
+          "both": 0,
+          "fills_unlocked": 446,
+          "skipped_cross": 0,
+          "no_reference": 0,
+          "by_side": {
+            "long": 188,
+            "short": 130
+          }
+        }
+      },
+      "fills_total": 2919,
+      "both_total": 0,
+      "fills_by_year": {
+        "2020": 580,
+        "2021": 327,
+        "2022": 682,
+        "2023": 960,
+        "2024": 370
+      },
+      "fill_days_by_year": {
+        "2020": 258,
+        "2021": 190,
+        "2022": 267,
+        "2023": 309,
+        "2024": 194
+      },
+      "density_per_coin_month": {
+        "2020": 21.481,
+        "2021": 9.083,
+        "2022": 18.944,
+        "2023": 26.667,
+        "2024": 10.278
+      },
+      "weakest_year": "2021",
+      "projected_holdout_fills": 572.2,
+      "fill_days_per_month": {
+        "2020": 21.5,
+        "2021": 15.83,
+        "2022": 22.25,
+        "2023": 25.75,
+        "2024": 16.17
+      },
+      "weakest_year_days": "2021",
+      "projected_holdout_fill_days": 332.5,
+      "passes_gate": true
+    }
+  }
+}
