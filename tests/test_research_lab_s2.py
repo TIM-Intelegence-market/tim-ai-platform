@@ -307,3 +307,32 @@ def test_script_loads_and_rebuilds_weekly_series_from_a_report() -> None:
     by_key = {tuple(int(part) for part in row["week"].split("-W")): row for row in report["weeks"]}
     kind = "FALLING_CVD_ACTIVITY"
     assert module._series_from_report(by_key, "train", kind) == s2.weekly_series(weeks, "train", kind)
+
+
+def test_fetch_with_workers_records_every_day_once_and_resumes(tmp_path) -> None:
+    import importlib.util
+
+    from src.research_lab.data.aggtrades import DirectoryFetcher
+
+    spec = importlib.util.spec_from_file_location("s2_script_workers", Path("scripts/research_lab_s2.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    archive_dir = tmp_path / "archives"
+    archive_dir.mkdir()
+    days = [DAY.date() + timedelta(days=i) for i in range(5)]
+    for i, day in enumerate(days):
+        rows, _ = synthetic_day(60 + i, int(datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp() * 1000))
+        ref = BinanceArchiveRef(day)
+        payload = zipped(ref.filename.replace(".zip", ".csv"), csv_text(rows))
+        (archive_dir / ref.filename).write_bytes(payload)
+        (archive_dir / (ref.filename + ".CHECKSUM")).write_text(f"{hashlib.sha256(payload).hexdigest()}  {ref.filename}\n")
+    store = AggTradeDayStore(tmp_path / "store", DirectoryFetcher(archive_dir))
+    store.fetch(days[0], fast=False)  # already reduced: must be skipped
+    (archive_dir / BinanceArchiveRef(days[0]).filename).unlink()  # a re-download would now fail
+    assert module.fetch(store, days[0], days[-1], verify_days=1, keep_raw=False, workers=2) == 0
+    assert store.present_days() == days
+    assert store.cached(days[0]) is not None and store.cached(days[0] + timedelta(days=30)) is None
+    assert store.manifest()[days[1].isoformat()]["rows"] > 0
+    # a day without archive is reported, the others still land
+    assert module.fetch(store, days[0], days[-1] + timedelta(days=1), verify_days=0, keep_raw=False, workers=2) == 1
+    assert store.present_days() == days

@@ -22,7 +22,7 @@ from src.research_lab.protocol import (
     VALIDATION_START_MS,
     CostModel,
 )
-from src.research_lab.stats.inference import holm, year_stability
+from src.research_lab.stats.inference import holm, open_at_section_end, section_trades, year_stability
 from src.research_lab.stats.random_entry import atr_at_signal, atr_series, random_entry_pvalue
 
 PASSED = "BESTANDEN"
@@ -67,6 +67,7 @@ class StageResult:
     summary: Summary
     trades: list[Trade]
     p: float | None = None
+    open_at_end: int = 0  # trades signalled in the stage but not closed by its end (protocol 3.2, dropped)
 
 
 @dataclass(slots=True)
@@ -79,9 +80,12 @@ class GuardReport:
 def _stage(bars, variant, interval_ms, start, end, config, funding, atr_values, seed_offset, need_p) -> StageResult:
     result = run_backtest(bars, variant.strategy, interval_ms, costs=config.costs, funding=funding,
                           start_ms=start, end_ms=end, atr_at_signal=atr_at_signal)
-    stage = StageResult(summarize(result.trades), result.trades)
+    # Protocol 3.2 (1.2): only trades closed by the stage end count; a trade still open at
+    # the boundary would bring the next stage's prices into this stage's result.
+    trades = section_trades(result.trades, start, end)
+    stage = StageResult(summarize(trades), trades, open_at_end=open_at_section_end(result.trades, start, end))
     if need_p(stage.summary):
-        stage.p = random_entry_pvalue(bars, result.trades, interval_ms, runs=config.random_runs,
+        stage.p = random_entry_pvalue(bars, trades, interval_ms, runs=config.random_runs,
                                       seed=config.seed + seed_offset, costs=config.costs, funding=funding,
                                       start_ms=start, end_ms=end, atr_values=atr_values)
     return stage

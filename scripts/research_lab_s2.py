@@ -1,6 +1,6 @@
 """Study S2: fetch the aggTrades days, run the outcome-blind count, run the power gate (section 3).
 
-    python scripts/research_lab_s2.py fetch --from 2019-12-30 --to 2024-12-29 [--verify-days 3] [--keep-raw]
+    python scripts/research_lab_s2.py fetch --from 2019-12-30 --to 2024-12-29 [--verify-days 3] [--keep-raw] [--workers 4]
     python scripts/research_lab_s2.py count --out docs/research_lab/reports
     python scripts/research_lab_s2.py power --count-file docs/research_lab/reports/s2_count_<stamp>.json --out docs/research_lab/reports
 
@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import json  # noqa: E402
 
-from src.research_lab.data.aggtrades import DEFAULT_ROOT, AggTradeDayStore, days_between, fast_available  # noqa: E402
+from src.research_lab.data.aggtrades import DEFAULT_ROOT, AggTradeDayStore, days_between, fast_available, prepare_day  # noqa: E402
 from src.research_lab.studies import s2_power  # noqa: E402
 from src.research_lab.studies.s2_orderflow import DIRECTIONAL, SECTIONS, build_count_report, count_weeks, render_count_markdown  # noqa: E402
 
@@ -49,25 +49,59 @@ def _stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%MZ")
 
 
-def fetch(store: AggTradeDayStore, first: date, last: date, *, verify_days: int, keep_raw: bool) -> int:
+def fetch(store: AggTradeDayStore, first: date, last: date, *, verify_days: int, keep_raw: bool, workers: int = 1) -> int:
+    """Fetch and reduce every day; with ``workers`` > 1 several days download and reduce at once.
+
+    Already reduced days (manifest + intact file) are skipped, so a restart
+    continues where the last run stopped. Only this process writes the manifest.
+    """
     days = days_between(first, last)
     if not fast_available():
         print("numpy/pandas not installed: using the pure Python reduction (slow, about 30 s per day)")
     failures: list[str] = []
     started = time.time()
-    for index, day in enumerate(days):
-        try:
-            entry = store.fetch(day, keep_raw=keep_raw, verify=index < verify_days)
-        except Exception as error:  # noqa: BLE001 - one bad day must not stop the run; it is reported
-            failures.append(f"{day}: {error}")
-            print(f"{day}: FAILED {error}")
-            continue
-        if index % 25 == 0 or index == len(days) - 1:
+    done = 0
+    pending = [day for day in days if store.cached(day) is None]
+    skipped = len(days) - len(pending)
+    if skipped:
+        print(f"{skipped} days already reduced, {len(pending)} to go")
+
+    def progress(day: date, entry: dict) -> None:
+        nonlocal done
+        done += 1
+        if done % 25 == 0 or done == len(pending):
             elapsed = time.time() - started
-            print(f"{day}: {entry['rows']} rows ({index + 1}/{len(days)}, {elapsed / 60:.1f} min)")
+            rate = done / elapsed * 60 if elapsed else 0.0
+            print(f"{day}: {entry['rows']} rows ({done}/{len(pending)}, {elapsed / 60:.1f} min, {rate:.1f} days/min)")
+
+    verify_set = set(days[:verify_days])
+    if workers <= 1:
+        for day in pending:
+            try:
+                entry = store.fetch(day, keep_raw=keep_raw, verify=day in verify_set)
+            except Exception as error:  # noqa: BLE001 - one bad day must not stop the run; it is reported
+                failures.append(f"{day}: {error}")
+                print(f"{day}: FAILED {error}")
+                continue
+            progress(day, entry)
+    else:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(prepare_day, store, day, keep_raw, day in verify_set): day for day in pending}
+            for future in as_completed(futures):
+                day = futures[future]
+                try:
+                    _, entry = future.result()
+                except Exception as error:  # noqa: BLE001 - reported, run continues
+                    failures.append(f"{day}: {error}")
+                    print(f"{day}: FAILED {error}")
+                    continue
+                store.record(day, entry)
+                progress(day, entry)
     if failures:
         print(f"{len(failures)} days failed:")
-        for line in failures:
+        for line in sorted(failures):
             print("  " + line)
     print(f"{len(days) - len(failures)} days present under {store.root}")
     return 1 if failures else 0
@@ -148,6 +182,7 @@ def _series_from_report(weeks: dict, section: str, kind: str) -> list[tuple[int,
 
 
 def main(argv: list[str] | None = None) -> int:
+    sys.stdout.reconfigure(line_buffering=True)  # progress shows up in a redirected log at once
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     f = sub.add_parser("fetch")
@@ -156,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--to", dest="last", type=date.fromisoformat, default=DEFAULT_LAST)
     f.add_argument("--verify-days", type=int, default=3, help="run fast and reference reduction on the first N days")
     f.add_argument("--keep-raw", action="store_true")
+    f.add_argument("--workers", type=int, default=1, help="days downloaded and reduced at the same time (processes)")
     c = sub.add_parser("count")
     c.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     c.add_argument("--out", type=Path, default=Path("docs/research_lab/reports"))
@@ -168,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--kind", action="append", choices=sorted(DIRECTIONAL), help="restrict to kinds (smoke runs only)")
     args = parser.parse_args(argv)
     if args.command == "fetch":
-        return fetch(AggTradeDayStore(args.root), args.first, args.last, verify_days=args.verify_days, keep_raw=args.keep_raw)
+        return fetch(AggTradeDayStore(args.root), args.first, args.last, verify_days=args.verify_days, keep_raw=args.keep_raw, workers=max(1, args.workers))
     if args.command == "count":
         return count(AggTradeDayStore(args.root), args.out)
     return power(args.count_file, args.out, replications=args.replications, b=args.bootstrap, seed=args.seed, kinds=args.kind)

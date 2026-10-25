@@ -8,14 +8,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from src.research_lab.protocol import HOLDOUT_START_MS, _utc_ms
+from src.research_lab.protocol import HOLDOUT_START_MS, UNIVERSE, _utc_ms
 from src.v2_readiness.backfill import parse_official_checksum, verify_archive
 
 BASE_URL = "https://data.binance.vision/data"
 SYMBOL = "BTCUSDT"
 # Study S4 (docs/research_lab/studien/S4_...) adds ETH and SOL perpetuals; study S5 (funding carry,
-# spot leg) adds the same three spot symbols. Nothing else is in scope.
-USDM_SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
+# spot leg) adds the same three spot symbols. Nothing else is in scope; the universe and its
+# survivorship limit are fixed in protocol.UNIVERSE (protocol 3.1).
+USDM_SYMBOLS = UNIVERSE
 SPOT_SYMBOLS = USDM_SYMBOLS
 
 INTERVAL_MS = {
