@@ -55,12 +55,33 @@ def test_reentry_lock_second_funding_time_after_exit() -> None:
     assert count.skipped_locked == 1
 
 
-def test_gap_closes_the_episode_on_the_last_present_bar() -> None:
+def test_short_gap_is_bridged_long_gap_closes_the_episode() -> None:
     rates = [0.0003] + [0.0002] * 60
-    missing = {50}  # hour 50 is missing in one of the two series
-    count = s5.episodes(funding(rates), hours(600, missing=missing), V7, T0, T0 + 600 * H)
-    assert len(count.episodes) >= 1
+    short = s5.episodes(funding(rates), hours(600, missing={50, 51, 52}), V7, T0, T0 + 600 * H)
+    assert short.episodes[0].reason != "gap" and short.episodes[0].exit_fill > T0 + 60 * H
+    long_gap = set(range(50, 50 + 30))  # 30 missing hours > 24 h bridge
+    count = s5.episodes(funding(rates), hours(600, missing=long_gap), V7, T0, T0 + 600 * H)
     assert count.episodes[0].reason == "gap" and count.episodes[0].exit_fill == T0 + 50 * H
+
+
+def test_fill_inside_a_bridged_gap_moves_to_the_next_bar() -> None:
+    rates = [0.0003] + [0.0002] * 21 + [0.0] + [0.0001] * 10
+    exit_hour = 22 * 8 + 1  # regular fill hour; make it and the next two hours missing
+    count = s5.episodes(funding(rates), hours(600, missing={exit_hour, exit_hour + 1, exit_hour + 2}), V7, T0, T0 + 600 * H)
+    assert count.episodes[0].reason == "regular" and count.episodes[0].exit_fill == T0 + (exit_hour + 3) * H
+    entry = s5.episodes(funding(rates), hours(600, missing={1, 2}), V7, T0, T0 + 600 * H)
+    assert entry.invalid_signals == 0 and entry.episodes[0].entry_fill == T0 + 3 * H
+
+
+def test_funding_times_snap_to_the_hour_within_one_minute() -> None:
+    raw = [FundingRate(T0 + i * F + (3 if i % 2 else 0), 0.0002) for i in range(10)]
+    raw.append(FundingRate(T0 + 10 * F + 120_000, 0.0002))  # 2 min off: kept and reported
+    fixed, check = s5.normalize_funding(raw)
+    assert check.snapped == 5 and check.off_grid == 1 and check.irregular_intervals == 1
+    assert all(f.time % H == 0 for f in fixed[:10])
+    # the count itself works on the raw series
+    count = s5.episodes([FundingRate(T0 + i * F + 2, r) for i, r in enumerate([0.0003] + [0.0001] * 5)], hours(200), V7, T0, T0 + 200 * H)
+    assert count.invalid_signals == 0 and count.episodes[0].entry_fill == T0 + H
 
 
 def test_section_end_and_max_hold() -> None:
@@ -74,7 +95,7 @@ def test_section_end_and_max_hold() -> None:
 
 def test_signal_without_entry_bar_is_invalid() -> None:
     rates = [0.0003] + [0.0001] * 10
-    count = s5.episodes(funding(rates), hours(200, missing={1}), V7, T0, T0 + 200 * H)
+    count = s5.episodes(funding(rates), hours(200, missing=set(range(1, 30))), V7, T0, T0 + 200 * H)
     assert count.invalid_signals == 1 and not count.episodes
 
 

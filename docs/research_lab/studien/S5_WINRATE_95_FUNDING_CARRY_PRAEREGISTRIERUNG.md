@@ -2,7 +2,7 @@
 
 | Feld | Wert |
 |---|---|
-| Version | 0.2 (Entwurf nach adversarialer Prüfung) |
+| Version | 0.3 (Entwurf) |
 | Status | **ENTWURF.** Nichts ist gerechnet. Freigabe durch Uzi steht aus (Abschnitt 11). Varianten kommen erst nach dem Machbarkeits-Gate (6.1) ins Register. |
 | Erstellt | 2026-10-25, Auftrag Uzi 18:38 Ortszeit: „ich will eine winrate von 95% haben“; Entwurfsentscheidungen auf Uzis Wort „ich agiere nach deiner empfehlung“ (18:51) |
 | Vorgänger | S4 (`S4_TREFFERQUOTE_75_PRAEREGISTRIERUNG.md`): am Machbarkeits-Gate beendet; Erkundungen zeigten für 1h-Richtungs-Einstiege 38–53 % Trefferquote und in jeder Ziel-/Stop-Geometrie E[R] < 0 (`../reports/s4_hitrate95_2026-10-25T1733Z.md`) |
@@ -84,13 +84,18 @@ blind (Abschnitt 10).
 | Spot 1h-Kerzen BTCUSDT, ETHUSDT, SOLUSDT | wie oben, `Market.SPOT` (Erweiterung auf ETH/SOL: Commit `ca6856f`) | BTC/ETH ab 2020-01, SOL ab 2020-08 (Listing 2020-08-11), Archive bei Binance vorhanden (HTTP-Prüfung 25.10.) | Ladevorgang auf dem Mac läuft (P2) |
 | Holdout 2025+ | gesperrt durch `HoldoutLocked` in `data/store.py` | ab 2025-01-01 | nie geladen |
 
-Funding-Zeitpunkte sind 00:00, 08:00 und 16:00 UTC; ein Test belegt Abstand 8 h ± 1 min für alle drei Instrumente
-(Abweichungen werden berichtet). Raten werden in ganzzahligen Einheiten von 10⁻⁸ verglichen, nie als Float. Die zum
-Zeitpunkt t gezahlte Rate r_t gilt als **ab t bekannt**; S5 nutzt sie frühestens zur Eröffnung der Stundenkerze, die um
-t + 1 h beginnt (eine Stunde Sicherheitsabstand). Perp- und Spot-Kerzen werden nach Eröffnungszeit gepaart; fehlt eine
-Kerze in einer der beiden Reihen, gilt die Stunde für beide als Lücke. Bekannte Lücken in den SOL-Archiven (2022-02:
-72 h, 2022-04: 48 h) werden übernommen; eine Episode, die in eine Lücke läuft, wird zur letzten gemeinsamen Kerze vor
-der Lücke mit Schlusskursen geschlossen (`gap`) und zählt als Episode.
+Funding-Zeitpunkte sind 00:00, 08:00 und 16:00 UTC. Im Archiv liegen rund 44 % der Zeitstempel um 1–5 ms neben der
+vollen Stunde (Befund 25.10., BTC: 2 403 von 5 481); Zeitstempel innerhalb ± 1 min werden auf die volle Stunde gesetzt
+(`normalize_funding`), weiter abweichende bleiben stehen und werden berichtet, ebenso Abstände ≠ 8 h. Raten werden in
+ganzzahligen Einheiten von 10⁻⁸ verglichen, nie als Float. Die zum Zeitpunkt t gezahlte Rate r_t gilt als **ab t
+bekannt**; S5 nutzt sie frühestens zur Eröffnung der Stundenkerze, die um t + 1 h beginnt (eine Stunde
+Sicherheitsabstand). Perp- und Spot-Kerzen werden nach Eröffnungszeit gepaart; fehlt eine Kerze in einer der beiden
+Reihen, gilt die Stunde für beide als Lücke. **Lücken bis 24 h** (Wartungsfenster der Börse, im Spot-Archiv 15 Fälle
+2020–2024 von 1–6 h) schließen keine Episode: Ein Fill, der in eine solche Lücke fällt, rutscht auf die erste
+vorhandene Kerze danach, die Mark-to-Market-Kurve überspringt die Stunden, Funding in der Lücke wird gebucht. **Lücken
+über 24 h** (SOL-Archive 2022-02: 72 h, 2022-04: 48 h) schließen eine laufende Episode zur letzten gemeinsamen Kerze vor
+der Lücke mit Schlusskursen (`gap`); sie zählt als Episode. Ein Signal, dessen Einstiegskerze erst nach mehr als 24 h
+existiert, verfällt (`invalid_signals`).
 
 ### 3.1 Zeitliche Aufteilung
 
@@ -113,11 +118,11 @@ Funding gebucht) und zählt als Episode. Training und Validierung laden nie Date
   Kriterium).
 - **Einstieg.** Zum Funding-Zeitpunkt t mit r_t > θ, ohne offene Episode und mit erfüllter Wiedereinstiegssperre:
   Signal. Fill beider Seiten zur Eröffnung der 1h-Kerze, die um t + 1 h beginnt (Spot-Open für die Long-Seite,
-  Perp-Open für die Short-Seite), Slippage gegen sich. Fehlt die Kerze um t + 1 h, verfällt das Signal
-  (`invalid_signals`, wird berichtet).
+  Perp-Open für die Short-Seite), Slippage gegen sich. Fehlt die Kerze um t + 1 h, gilt die Lückenregel aus
+  Abschnitt 3 (Fill auf der ersten Kerze danach, sonst `invalid_signals`, wird berichtet).
 - **Mindesthaltedauer H** (4.2): Vor Ablauf von H Tagen ab Einstiegsfill gibt es keinen regulären Ausstieg.
 - **Ausstieg.** Zum ersten Funding-Zeitpunkt t′ ≥ Einstiegsfill + H mit r_t′ ≤ 0 (Rate in 10⁻⁸-Einheiten ≤ 0): Fill
-  beider Seiten zur Eröffnung der Kerze um t′ + 1 h. Die auslösende Rate r_t′ wird noch gebucht (sie ist ≤ 0, also
+  beider Seiten zur Eröffnung der Kerze um t′ + 1 h (Lückenregel aus Abschnitt 3). Die auslösende Rate r_t′ wird noch gebucht (sie ist ≤ 0, also
   konservativ). Eine Episode hat **keinen** Zeit-Stop und kein Kursziel, aber eine **Höchstdauer** von 90 Tagen
   (`max_hold`, Fill zur ersten Kerzeneröffnung nach Ablauf).
 - **Erzwungene Schließung** (`forced_close`): Sobald das Hoch einer **geschlossenen** Perp-Kerze ≥ 1,8 × Perp-Einstiegsfill
@@ -253,8 +258,8 @@ einer Episode sind abhängig, und die Kosten müssten auf Perioden verteilt werd
 
 ### 6.1 Machbarkeits-Gate (vor Registrierung, ergebnisblind)
 
-Episodengrenzen hängen nur von Funding (θ, H, Vorzeichen), Höchstdauer, Lücken und Abschnittsenden ab, nicht vom
-Ergebnis; `forced_close` hängt vom Kurs ab und wird im Gate **nicht** angewendet (der Unterschied wird im Bericht
+Episodengrenzen hängen nur von Funding (θ, H, Vorzeichen), Höchstdauer, Lücken über 24 h und Abschnittsenden ab, nicht
+vom Ergebnis; `forced_close` hängt vom Kurs ab und wird im Gate **nicht** angewendet (der Unterschied wird im Bericht
 beziffert). Ein Zähllauf auf Training und Validierung zählt je Variante und Instrument die Episoden nach genau den Regeln
 aus 4.1 (inklusive Wiedereinstiegssperre, `max_hold`, `gap`, `section_end`), ohne Kurse und ohne R, und rechnet die
 Episodendichte je Coin-Monat des **schwächsten Kalenderjahres** auf 63 Holdout-Coin-Monate (21 × 3) hoch.
@@ -330,3 +335,4 @@ und für alle Registereinträge verbraucht; auch ein KEIN URTEIL (K3) verbraucht
 |---|---|---|---|---|
 | 2026-10-25 | 0.1 | Entwurf: Funding-Carry, 6 Varianten (θ × Ausstiegsregel), Trade = Episode, R = 1 % Nominal, K1–K10, n_min = 800, Machbarkeits-Gate, Zufallsvergleich mit gleichen Episodendauern | Uzis Ziel 95 % (18:38), Empfehlungen angenommen (18:51) | Abschnitt 10; keine S5-Ergebnisse, kein Holdout |
 | 2026-10-25 | 0.2 | Nach adversarialer Prüfung (anderes Modell, 13 Befunde): Stichprobentabelle korrigiert (Wald-Fehler bei p = 0,98/0,99), strenge Lesart als für Carry rechnerisch unerreichbar belegt (137 Episoden bei null Verlierern, 420 R Kosten bei 1 000 Episoden) → K6 jetzt Punktwert ≥ 95 % und CP-Untergrenze ≥ 90 % (unkorrigiert, ein Verfahren, D aus Monatscluster), n_min = 80 effektive Episoden; Stress neu definiert (Protokoll streicht Gutschriften → K7 unerfüllbar), Protokoll-Eintrag 1.2 als offener Punkt; Mark-to-Market-Kurve mit K4 darauf und neuem K11 (MAE) gegen unrealisierte Verluste; Mindesthaltedauer H statt Ausstiegsregel e (Kosten 0,42 R brauchen 14–42 Perioden), Höchstdauer 90 Tage, Wiedereinstiegssperren; `section_end`, Holdout fest 2025-01 bis 2026-09, kein Abschnitt rechnet über sein Ende; Zufallsvergleich mit zufälligen Einstiegen bei gleicher Haltelogik, Roll-Carry-Benchmark; Gate mit Dichte des schwächsten Jahres × 1,5 und Designeffekt-Schätzung; m fest 54; K10 ohne Widerspruch; gebundenes Kapital 2 N; Formel je Bein; Funding-Zeitstempel-Test, ganzzahlige Raten; Walk-Forward-Folge und Nachbarschaft präzisiert; Motor als Neubau benannt | O1 | unverändert, keine S5-Ergebnisse, kein Holdout |
+| 2026-10-25 | 0.3 | Vor dem ersten Zähllauf, aus dem ersten Probelauf des Zählers (nur Zählung, keine Kurse): Funding-Zeitstempel im Archiv liegen zu 44 % um 1–5 ms neben der Stunde → Normalisierung ± 1 min mit Bericht; Wartungslücken bis 24 h schließen keine Episode mehr (Fill rutscht auf die nächste Kerze), nur Lücken über 24 h (`gap`). Vorher zählte der Probelauf die meisten Episoden als `gap` und viele Signale als ungültig; die Regel aus 0.2 war unrealistisch (während einer Wartung hält die Position einfach) | Befund Probelauf P3 | nur Episodenzahlen eines fehlerhaften Probelaufs (72 / 65 / 56 / 51, keine Kurse, keine Ergebnisse); Holdout unberührt |

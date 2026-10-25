@@ -60,7 +60,7 @@ def _year_of(ms: int) -> int:
 
 
 def count(store: ArchiveStore, out_dir: Path) -> int:
-    payload: dict = {"study": "S5", "protocol": "S5 0.2 (draft)", "commit": _commit(), "gate_episodes": GATE,
+    payload: dict = {"study": "S5", "protocol": "S5 0.3 (draft)", "commit": _commit(), "gate_episodes": GATE,
                      "holdout_coin_months": HOLDOUT_COIN_MONTHS, "outcome_blind": True, "funding_sum_check": "not run",
                      "created": datetime.now(timezone.utc).isoformat(timespec="seconds"), "dataset_hashes": {},
                      "coin_months_by_year": {}, "variants": {}}
