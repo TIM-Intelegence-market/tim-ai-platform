@@ -434,12 +434,13 @@ def _risk_note() -> dict[str, Any]:
             "text": f"{str(round(risk, 2)).replace('.', ',')} % Kontorisiko · max. {int(MAX_LEVERAGE)}x · Vorschau nach TIM-Regeln · keine Anlageberatung"}
 
 
-def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timeframe: str = DEFAULT_TIMEFRAME, now: datetime | None = None, visible: int = CHART_VISIBLE, profile: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timeframe: str = DEFAULT_TIMEFRAME, now: datetime | None = None, visible: int = CHART_VISIBLE, profile: Mapping[str, Any] | None = None, card: bool = False) -> dict[str, Any]:
     """Everything the chart page draws, as plain JSON-ready data.
 
     ``series`` maps timeframe -> candle dicts as kept by the runtime. ``profile``
     may carry an external volume profile (poc/vah/val); otherwise it is
-    estimated from 1m candles of the visible window.
+    estimated from 1m candles of the visible window. ``card`` adds the
+    analysis card (``src.dashboard.analysis_card``) for the chart page and API.
     """
     timeframe = timeframe if timeframe in CHART_TIMEFRAMES else DEFAULT_TIMEFRAME
     now = now or datetime.now(timezone.utc)
@@ -453,6 +454,9 @@ def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timefra
     }
     if len(candles) < 2:
         model["notes"].append("Zu wenige Kerzen für diesen Zeitrahmen.")
+        if card:
+            from src.dashboard.analysis_card import build_analysis_card
+            model["analysis_card"] = build_analysis_card(model)
         return model
     model["candles"] = [{**c, "open_time": c["open_time"].isoformat(), "close_time": c["close_time"].isoformat()} for c in candles]
     last = candles[-1]
@@ -485,6 +489,8 @@ def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timefra
     from src.dashboard.session_map import build_session_map
     prep = build_session_map(series, now)
     model["reference_levels"] = prep.get("levels", [])
+    model["bias"] = prep.get("bias")
+    model["location"] = prep.get("location")
     model["notes"].extend(prep.get("notes", []))
     from src.dashboard.level_plans import build_level_plans
     model["level_plans"] = build_level_plans(prep, clean_candles(series.get("30m") or [], "30m"), now)
@@ -504,4 +510,10 @@ def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timefra
             model["analysis"] = run_scenarios(candles, timeframe, model["profile"], now)
         except Exception as exc:  # noqa: BLE001 - the chart must still render
             model["notes"].append(f"Szenario-Analyse nicht verfügbar: {type(exc).__name__}")
+    if card:
+        from src.dashboard.analysis_card import build_analysis_card
+        try:
+            model["analysis_card"] = build_analysis_card(model)
+        except Exception as exc:  # noqa: BLE001 - the chart must still render
+            model["notes"].append(f"Analyse-Steckbrief nicht verfügbar: {type(exc).__name__}")
     return model
