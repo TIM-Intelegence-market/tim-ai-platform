@@ -2,7 +2,7 @@
 
 | Feld | Wert |
 |---|---|
-| Status | **ENTWURF 0.2, nicht freigegeben.** Nichts ist gerechnet. Version 1.0 erst nach Uzis Freigabe; danach nur noch Änderungen über das Änderungsprotokoll unten, und nach dem ersten Trainingslauf nur noch strengere. |
+| Status | **ENTWURF 0.3, nicht freigegeben.** Nichts ist gerechnet. Version 1.0 erst nach Uzis Freigabe; danach nur noch Änderungen über das Änderungsprotokoll unten, und nach dem ersten Trainingslauf nur noch strengere. |
 | Erstellt | 2026-10-25, Masterprompt Phase D/E (Trading-Forschungsziel B) |
 | Protokollbezug | `../PROTOKOLL.md` Version 1.1: Datensplit 3.2, Backtest 4.1–4.3, Kosten 4.4, Zufallsvergleich 7.1, Holm 7.2, Robustheit 7.3 (Walk-Forward mit `known_at`), Ablauf 8, Stoppregeln 10 |
 | Kostenmodell | ausschließlich `CostModel` / `BASE_COSTS` / `STRESS_COSTS` aus `src/research_lab/protocol.py` (kein eigenes Modell) |
@@ -166,10 +166,10 @@ Bewusst nicht registriert: Funding-Extreme (M2 schon gescheitert), BOS-Detektor 
 |---|---|---|
 | K1 | Netto-Erwartungswert (Basiskosten) | > 0 R je Trade |
 | K2 | schlägt zufällige Einstiege (Protokoll 7.1, gleiche Geometrie, gleiche Kosten, gleiche Instrumente) | Holm-Bonferroni, Familien-α 5 %, **m = 58** (alle Registereinträge, verworfene mit p = 1) |
-| K3 | Mindeststichprobe (alle drei Instrumente zusammen) | ≥ 600 Trades; darunter **KEIN URTEIL** |
+| K3 | Mindeststichprobe (alle drei Instrumente zusammen) | ≥ 1 700 Trades; darunter **KEIN URTEIL** |
 | K4 | maximaler Drawdown | ≤ 20 % bei 1 % Risiko je Trade (Protokoll 4.3) |
 | K5 | Profitfaktor netto | > 1,0 (Basiskosten) |
-| K6 | Netto-Trefferquote | Punktwert ≥ 75 % **und** untere einseitige 95-%-Grenze (Monatsblock-Bootstrap, 10 000 Ziehungen) ≥ 70 %. Diese Grenze ist **nicht** für Mehrfachtests korrigiert; die Korrektur trägt K2 |
+| K6 | Netto-Trefferquote | **Strenge Lesart (Uzi, 25.10.2026):** untere einseitige Grenze ≥ 75 %, auf dem Niveau 1 − 0,05/58 (also für alle 58 Registereinträge korrigiert), per Monatsblock-Bootstrap mit 10 000 Ziehungen. Damit ist der Punktwert automatisch über 75 % |
 | K7 | Kostenstress (`STRESS_COSTS`) | E[R] > 0 (strenger als Protokoll 2, dort nur Markierung) |
 | K8 | keine versteckten Großverluste | mittlerer Verlust ≥ −1,30 R; größter Einzelverlust ≥ −3,0 R; Mittel der schlechtesten 5 % der Trades ≥ −1,5 R |
 | K9 | Trefferquote über Zufall | Netto-Trefferquote − Netto-Trefferquote der Zufallseinstiege aus K2 ≥ 10 Prozentpunkte |
@@ -208,21 +208,21 @@ Normalnäherung, einseitig, Power 80 %. Streuung je Trade aus der Geometrie: Gew
 
 | Frage | Annahme | nötige Trades |
 |---|---|---|
-| Trefferquote > 70 %, wahr 80 % (K6, unkorrigiert) | α = 5 % | ~180 |
-| Trefferquote > 70 %, wahr 80 % (korrigiert) | α = 5 % / 58 | ~470 |
-| Trefferquote > 75 %, wahr 80 % (strengere Lesart) | α = 5 % | ~660 |
+| Trefferquote > 75 %, wahr 80 % (K6, gewählte strenge Lesart) | α = 5 % / 58 | ~1 730 |
+| zum Vergleich: Trefferquote > 70 %, wahr 80 % | α = 5 % / 58 | ~470 |
 | E[R] > 0, wahr +0,15 R | α = 5 % / 58 (K2) | ~590 |
 | E[R] > 0, wahr +0,10 R | α = 5 % / 58 | ~1 330 |
 | E[R] > 0, wahr +0,05 R | α = 5 % / 58 | ~5 300 |
 
-Darum K3 = 600 Trades. Ein wahrer Vorteil unter ~0,15 R je Trade ist mit dem Holdout von ~21 Monaten
-voraussichtlich nicht nachweisbar; dann lautet das Urteil ehrlich KEIN URTEIL oder NICHT BESTANDEN.
+Darum K3 = 1 700 Trades (K6 ist die bindende Grenze). Selbst eine wahre Trefferquote von 80 % ist nur mit rund
+1 700 Holdout-Trades nachweisbar. Erreicht keine Variante diese Zahl, lautet das Urteil ehrlich KEIN URTEIL.
+Das ist der bewusst gewählte Preis der strengen Lesart.
 
 **Power-Gate vor dem Trainingslauf:** Ein reiner Zähllauf auf Training und Validierung zählt nur Signale und
 Kostentor-Ausfälle je Variante, **ohne** Ergebnisse (kein Ausstieg, kein R). Weil ohne Ausstiege die Sperre „eine
 Position je Variante und Instrument“ nicht anwendbar ist, werden zwei Zahlen berichtet: Obergrenze = alle Signale,
 Untergrenze = Signale mit mindestens 24 Kerzen Abstand zum zuletzt gezählten (eine Position dauert höchstens
-24 Kerzen). Maßgeblich ist die Untergrenze: Hochgerechnet auf 21 Monate muss sie ≥ 600 Holdout-Trades erwarten lassen. Varianten darunter bleiben registriert (sie zählen für m),
+24 Kerzen). Maßgeblich ist die Untergrenze: Hochgerechnet auf 21 Monate muss sie ≥ 1 700 Holdout-Trades erwarten lassen. Varianten darunter bleiben registriert (sie zählen für m),
 laufen aber mit dem vorab vermerkten Hinweis „voraussichtlich KEIN URTEIL“. Die Zählung wird mit Commit und
 Datensatz-Hash festgehalten, bevor der Trainingslauf startet.
 
@@ -280,7 +280,7 @@ Zusätzlich beschreibend: Kaufen und Halten je Instrument.
 | # | Punkt | Wer |
 |---|---|---|
 | O1 | Archivbeginn ETHUSDT/SOLUSDT USD-M prüfen; BTC-only oder drei Instrumente festlegen | Mac-Lauf + Uzi |
-| O2 | Lesart des 75-%-Kriteriums (K6) bestätigen | Uzi |
+| O2 | ~~Lesart des 75-%-Kriteriums (K6)~~ erledigt: streng, Untergrenze ≥ 75 % (Uzi per Entscheidungskarte, 25.10.2026) | Uzi |
 | O3 | Unabhängige Methodenprüfung: erste Runde eingearbeitet (0.2); zweite Prüfung durch eine andere Person/Modell (z. B. Codex oder Chris) | offen |
 | O4 | Freigabe Version 1.0 und Registrierung der 10 Varianten (Änderungsprotokoll in `../PROTOKOLL.md`) | Uzi |
 
@@ -290,3 +290,4 @@ Zusätzlich beschreibend: Kaufen und Halten je Instrument.
 |---|---|---|---|---|
 | 2026-10-25 | 0.1 | Entwurf | Masterprompt Phase D/E | Abschnitt 10; keine S4-Ergebnisse, kein Holdout |
 | 2026-10-25 | 0.2 | Nach adversarialer Prüfung: Mindesttrades wie Protokoll 8 (500/250), Jahresstabilität ≥ 5 Trades, Kostentor auf Schluss(t), H4/H5 eindeutig, ATR benannt, Nachbarschaft je Parameter, σ aus Geometrie (K3 = 600), K6 als unkorrigiert gekennzeichnet, Zähllauf mit Unter-/Obergrenze, Zufallsbaseline mit Filtern, %-Stop und festem Zeit-Stop | Review O3 (erste Runde) | unverändert, keine S4-Ergebnisse |
+| 2026-10-25 | 0.3 | K6 strenge Lesart: korrigierte Untergrenze ≥ 75 %; K3 und Power-Gate auf 1 700 Trades | Entscheidung Uzi (O2) | unverändert, keine S4-Ergebnisse |
