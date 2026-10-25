@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "recipes": {
+    "NETWORK_TIMEOUT@2.0.0": {
+      "digest": "36f295c919657d2cfa8aa6506a40ee25e9ed0c5ca0cdf736e454bbb2cc6ed43c",
+      "origin_commit": "29aafdb",
+      "introduced": "2026-09-28",
+      "changed_by": ["PR #302 (#262)"],
+      "evidence_status": "CANDIDATE_EVIDENCE",
+      "evidence_refs": ["docs/mission-09-phase-8-candidate-evidence.md#c1--binance-websocket-disconnect-during-macos-host-sleep", "TIM_WEBSOCKET_FAILURE_ANALYSIS.md"],
+      "note": "C1 (STRONG evidence for the root cause); the bounded reconnect itself is not yet proven under the gate engine (#19)."
+    },
+    "LAUNCHD_LOG_PATH@2.0.0": {
+      "digest": "43518206f0760881b101bff6f942f5bc7b799314d44e7d821309e22383ecc31a",
+      "origin_commit": "29aafdb",
+      "introduced": "2026-09-28",
+      "changed_by": ["PR #302 (#262)"],
+      "evidence_status": "UNVERIFIED_ORIGIN",
+      "evidence_refs": [],
+      "note": "Came in with the live runtime snapshot; no matching candidate in the P8 register (C3/C4 are launchd, but A0 + ESCALATE). Its only action is a review, not a change."
+    }
+  }
+}
