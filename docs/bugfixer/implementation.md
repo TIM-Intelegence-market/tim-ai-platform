@@ -111,3 +111,18 @@ Exportdateien enthalten bereinigte Ereignisse, keine Befehle oder ausführbaren
 Pfade. Manipulierte, unbereinigte, übergroße oder über Symlinks gelieferte Belege
 werden abgewiesen. Das Replay bleibt eine Prüfung der Ereignisverarbeitung;
 eine isolierte Reproduktion des eigentlichen Defekts ist der nächste Arbeitsschritt.
+
+## Seal erzeugen (Produzentenseite, #14)
+
+Der Produzent (wer den Log-Schreiber besitzt) benennt das Log um, öffnet den Nachfolger, schließt den alten
+Schreiber und erzeugt danach den Seal. Der Befehl misst nur Größe, Prüfsumme und Dateiidentitäten; die beiden
+Zusicherungen gibt der Produzent ausdrücklich ab. Er öffnet den Incident-Store nicht, schreibt die Seal-Datei
+einmalig mit 0600 und überschreibt nie.
+
+```sh
+.venv/bin/python -m src.bugfixer --store /explicit/observer.sqlite3 seal-rotation --rotated-source /explicit/errors.log.1 --successor /explicit/errors.log --generation 0 --out /explicit/rotation-seal.json --attest-writer-closed --attest-contiguous-successor
+```
+
+Abgelehnt werden: fehlende Zusicherung, copytruncate (gleiche Identität), Symlinks und ein Vorgänger, der mitten
+in einem Datensatz endet. Eine logrotate-/launchd-Anbindung ist Betriebsarbeit (`ops/`) und nicht Teil davon.
+Offen in #14 bleiben die Rate-Limit-Entscheidung und der Laufzeitnachweis auf dem Zielsystem.
