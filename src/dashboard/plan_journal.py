@@ -100,7 +100,8 @@ DECISION_FIELDS = (
 # Fields that move with every candle. Changes to these alone are written at the
 # next 30m close (checkpoint), not every minute; anything else is written at once.
 CURSOR_FIELDS = {"evaluated_through", "max_favorable_r", "max_adverse_r", "last_seen_at"}
-# struct/1 only: plans the structure rule dropped at a close (counted in the view as structure_skips).
+# Plans dropped at a close (counted in the view as structure_skips): by the struct/1 or
+# level/1 rule, and for every rule plans that were already invalid on arrival.
 STRUCTURE_PLANS_DROPPED = "STRUCTURE_PLANS_DROPPED"
 
 
@@ -314,6 +315,38 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
         entries.append(entry)
         added.append(entry)
     return added
+
+
+def invalid_on_arrival(plan: Mapping[str, Any], close: float) -> str | None:
+    """Why a plan is already dead at the 30m close it would be recorded on, or None.
+
+    A plan whose stop or invalidation level the closing price has already
+    passed cannot be traded: a resting limit on the wrong side of the market
+    would fill at once and be stopped in the same minute. Such plans are not
+    written down (25.10.2026: one LONG retest plan 1.5 % above the market was
+    recorded ten times in a row and booked as ten -1.36 R losses)."""
+    long = plan.get("direction") == "LONG"
+    stop = plan.get("stop")
+    if stop is not None and ((long and close <= float(stop)) or (not long and close >= float(stop))):
+        return f"{plan.get('direction')}: Plan {plan.get('scenario_id')}: Schlusskurs {close:.2f} schon jenseits des Stops {float(stop):.2f}"
+    level, side = plan.get("invalidation_level"), plan.get("invalidation_side")
+    if level is not None and ((side == "<" and close < float(level)) or (side == ">" and close > float(level))):
+        return f"{plan.get('direction')}: Plan {plan.get('scenario_id')}: Schlusskurs {close:.2f} schon jenseits der Ungültigkeitsmarke {float(level):.2f}"
+    return None
+
+
+def drop_invalid_on_arrival(plans: Sequence[Mapping[str, Any]], close: float | None) -> tuple[list[dict[str, Any]], list[str]]:
+    """The plans still valid at ``close`` (with ``close_at_record``) and the reasons for the dropped ones."""
+    if close is None:
+        return [dict(plan) for plan in plans], []
+    kept, dropped = [], []
+    for plan in plans:
+        reason = invalid_on_arrival(plan, float(close))
+        if reason:
+            dropped.append(reason)
+        else:
+            kept.append({**dict(plan), "close_at_record": float(close)})
+    return kept, dropped
 
 
 def tick_fill(entry: Mapping[str, Any]) -> float:
@@ -600,6 +633,8 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                 journal["rule"] = payload["rule"]
                 journal.setdefault("structure_skips", {})
                 journal["last_skips"] = []  # a STRUCTURE_PLANS_DROPPED event for this close follows it
+            elif "last_skips" in journal:
+                journal["last_skips"] = []  # tim/1: only plans dropped as invalid on arrival
         elif kind == CANDLE_REVISION_OBSERVED:
             journal.setdefault("revisions", []).append(deepcopy(payload))
         elif kind == CANDLE_CLOSE_SKIPPED:
@@ -702,11 +737,12 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 plans, dropped = _structural(plans, series, latest)
             elif rule == RULE_LEVEL:
                 plans, dropped = _level(series, latest, model)
-            if rule != RULE_TIM:
-                if dropped:
-                    new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
-                                       "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
-                                       "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
+            plans, dead = drop_invalid_on_arrival(plans, closed_30m[-1].get("close"))
+            dropped += dead
+            if dropped:
+                new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
+                                   "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
+                                   "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
             record_plans(journal, with_evidence(plans, PLAN_TIMEFRAME, register_path), latest)
             journal["last_plan_candle"] = _iso(latest)
             checkpoint = True

@@ -545,3 +545,38 @@ def test_counter_trend_plans_are_marked_and_counted_not_hidden() -> None:
     page = _plan_journal_page({"operational_health": {}}, journal)
     assert "gegen den Trend (TREND_DOWN)" in page and "Gegen den Trend" in page
     assert "gegen den Trend (" not in _plan_journal_page({"operational_health": {}}, _journal_with(_plan("LONG")))
+
+
+def test_plan_already_beyond_stop_or_invalidation_is_not_recorded() -> None:
+    # 25.10.2026: LONG retest 82.143 with stop 81.732 while BTC closed near 80.900.
+    long = _plan("LONG", entry=82_142.94, stop=81_732.23, invalid=82_060.88)
+    assert "Stops" in pj.invalid_on_arrival(long, 80_900.0)
+    assert "Ungültigkeitsmarke" in pj.invalid_on_arrival(long, 81_900.0)  # above the stop, below invalidation
+    assert pj.invalid_on_arrival(long, 82_500.0) is None
+    short = _plan("SHORT", entry=100.0, stop=101.0, invalid=100.5)
+    assert pj.invalid_on_arrival(short, 101.2) and pj.invalid_on_arrival(short, 100.7)
+    assert pj.invalid_on_arrival(short, 99.0) is None
+    kept, dropped = pj.drop_invalid_on_arrival([long, _plan("LONG", entry=80_500.0, stop=80_000.0, invalid=80_200.0)], 80_900.0)
+    assert [p["entry"] for p in kept] == [80_500.0] and kept[0]["close_at_record"] == 80_900.0 and len(dropped) == 1
+    assert pj.drop_invalid_on_arrival([long], None) == ([long], [])
+
+
+def test_update_drops_dead_plans_and_does_not_book_repeated_losses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    series = _series(start)
+    last_close = series["30m"][-1]["close"]
+    dead = {**_plan("LONG", entry=last_close + 1_500, stop=last_close + 1_000, invalid=last_close + 1_100), "grade": None}
+    monkeypatch.setattr(pj, "build_chart_model", lambda *a, **k: {"analysis": {}})
+    monkeypatch.setattr(pj, "plans_from_model", lambda model: [dict(dead)])
+    path = tmp_path / "journal.json"
+    now = start + timedelta(minutes=30 * 90)
+    journal = pj.update(path, series, now)
+    assert journal["entries"] == []
+    assert journal["structure_skips"] and any("jenseits des Stops" in r for r in journal["last_skips"])
+    # The next close with the same dead plan again records nothing and books no loss.
+    nxt = series["30m"][-1]
+    opened = datetime.fromisoformat(nxt["open_time"]) + timedelta(minutes=30)
+    series["30m"].append({**nxt, "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat()})
+    again = pj.update(path, series, now + timedelta(minutes=30))
+    assert again["entries"] == [] and pj.summary(again)["sum_net_r"] == 0.0
+    assert pj.rebuild(path)["entries"] == []
