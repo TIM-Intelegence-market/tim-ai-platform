@@ -389,6 +389,24 @@ def test_mixed_commit_no_longer_holds_the_display_fixes_before_it(live):
     assert mixed not in git(root, "rev-parse", "HEAD")
 
 
+def test_new_merges_do_not_restart_the_defer_clock(live):
+    origin, root, mac, agent = live
+    new_commit(origin, "src/dashboard/page.py", "a\n")
+    mac.ps = "/Users/timrunner/actions-runner/bin/Runner.Worker spawnclient\n"
+    assert agent.run_once()["decision"]["reason"] == "busy_deferred"
+    newer = new_commit(origin, "src/dashboard/page.py", "b\n")  # another merge, another CI job
+    at_15 = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                clock=lambda: NOW + timedelta(minutes=15), sleep=lambda seconds: None, uid=501)
+    waiting = at_15.run_once()
+    assert waiting["decision"]["reason"] == "busy_deferred"
+    assert waiting["decision"]["details"]["deferred_since_utc"] == dr.iso(NOW)
+    at_21 = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                clock=lambda: NOW + timedelta(minutes=21), sleep=lambda seconds: None, uid=501)
+    status = at_21.run_once()
+    assert status["decision"]["action"] == "DEPLOY" and status["deploy"]["result"] == "DEPLOYED"
+    assert git(root, "rev-parse", "HEAD") == newer
+
+
 def test_ci_job_defers_then_deploys_and_display_only_shortens_the_interval(live):
     origin, root, mac, agent = live
     new_commit(origin, "src/dashboard/page.py", "x\n")

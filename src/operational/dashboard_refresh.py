@@ -523,7 +523,10 @@ class DashboardRefresh:
                         if changed and display_only(self.policy, changed) else "min_minutes_between_runtime_restarts")
         min_minutes = float(self.policy.get(interval_key, self.policy.get("min_minutes_between_runtime_restarts", 60)))
         deferral = state.get("deferral") if isinstance(state.get("deferral"), dict) else {}
-        deferred_since = parse_time(deferral.get("since_utc")) if deferral.get("target") == chosen else None
+        # The clock starts with the first green commit that is still not live. A newer green commit
+        # keeps it running, so frequent merges (each starting a CI job) cannot postpone a deploy forever.
+        same_wait = deferral.get("target") == chosen or (deferral.get("deployed") == deployed and bool(deployed))
+        deferred_since = parse_time(deferral.get("since_utc")) if same_wait else None
         decision = decide(
             deployed=deployed, target=chosen, is_fast_forward=fast_forward, ci=ci, busy=busy, dirty=dirty,
             campaign_active=self.campaign_active(), last_restart_at=parse_time(state.get("last_restart_at_utc")),
@@ -533,7 +536,8 @@ class DashboardRefresh:
             held_back=held_back,
         )
         if decision.reason == "busy_deferred":
-            state["deferral"] = {"target": chosen, "since_utc": decision.details["deferred_since_utc"]}
+            state["deferral"] = {"target": chosen, "deployed": deployed,
+                                 "since_utc": decision.details["deferred_since_utc"]}
         else:
             state.pop("deferral", None)
 
