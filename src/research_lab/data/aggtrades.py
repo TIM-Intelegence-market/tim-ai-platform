@@ -41,6 +41,24 @@ PX_HEADER = ["window_start_ms", "first_price", "last_price", "high_price", "low_
 HOLDOUT_DAY = date(2025, 1, 1)
 
 
+@dataclass(frozen=True, slots=True)
+class DirectoryFetcher:
+    """Serves archive and checksum files from a local directory by file name (offline runs, tests).
+
+    Picklable, so it works in worker processes under both fork and spawn.
+    """
+
+    root: Path
+
+    def __call__(self, url: str) -> bytes:
+        return (Path(self.root) / url.rsplit("/", 1)[1]).read_bytes()
+
+
+def prepare_day(store: "AggTradeDayStore", day: date, keep_raw: bool, verify: bool) -> tuple[date, dict]:
+    """Worker entry for parallel fetching; importable from every process."""
+    return day, store.prepare(day, keep_raw=keep_raw, verify=verify)
+
+
 def day_start_ms(day: date) -> int:
     return int(datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp() * 1000)
 
@@ -233,18 +251,20 @@ class AggTradeDayStore:
             raise HoldoutLocked(f"{day} lies in the holdout; S2 reads no holdout day")
 
     # -- ingest -------------------------------------------------------------------------------
-    def fetch(self, day: date, *, keep_raw: bool = False, fast: bool | None = None, verify: bool = False) -> dict:
-        """Download, verify, reduce and record one day. Returns its manifest entry.
-
-        ``fast`` picks the pandas path (default: when available); ``verify``
-        runs both paths and refuses the day if they differ.
-        """
-        self.guard(day)
-        manifest = self.manifest()
-        key = day.isoformat()
-        entry = manifest.get(key)
+    def cached(self, day: date) -> dict | None:
+        """The manifest entry of an already reduced day whose aggregate file is intact, else None."""
+        entry = self.manifest().get(day.isoformat())
         if entry and self.agg_path(day).exists() and _sha256(self.agg_path(day)) == entry["agg_sha256"]:
             return entry
+        return None
+
+    def prepare(self, day: date, *, keep_raw: bool = False, fast: bool | None = None, verify: bool = False) -> dict:
+        """Download, verify and reduce one day; write agg/px files; return the manifest entry WITHOUT recording it.
+
+        Safe to run for different days in parallel processes: every file it
+        writes is specific to the day. Only ``record`` touches the manifest.
+        """
+        self.guard(day)
         ref = BinanceArchiveRef(day, self.symbol)
         checksum = self.fetcher(ref.checksum_url).decode("utf-8")
         payload = self.fetcher(ref.url)
@@ -262,11 +282,27 @@ class AggTradeDayStore:
         if keep_raw:
             self.raw_path(day).parent.mkdir(parents=True, exist_ok=True)
             self.raw_path(day).write_bytes(payload)
-        entry = {"archive_sha256": digest, "url": ref.url, "rows": rows, "agg_sha256": _sha256(self.agg_path(day)),
-                 "px_sha256": _sha256(self.px_path(day)), "raw_kept": keep_raw, "reduction": "fast" if use_fast else "reference", "verified_both": verify}
-        manifest[key] = entry
+        return {"archive_sha256": digest, "url": ref.url, "rows": rows, "agg_sha256": _sha256(self.agg_path(day)),
+                "px_sha256": _sha256(self.px_path(day)), "raw_kept": keep_raw, "reduction": "fast" if use_fast else "reference", "verified_both": verify}
+
+    def record(self, day: date, entry: dict) -> dict:
+        """Write one day's entry into the manifest (single writer: the parent process)."""
+        manifest = self.manifest()
+        manifest[day.isoformat()] = entry
         self._write_manifest(manifest)
         return entry
+
+    def fetch(self, day: date, *, keep_raw: bool = False, fast: bool | None = None, verify: bool = False) -> dict:
+        """Download, verify, reduce and record one day. Returns its manifest entry.
+
+        ``fast`` picks the pandas path (default: when available); ``verify``
+        runs both paths and refuses the day if they differ.
+        """
+        self.guard(day)
+        cached = self.cached(day)
+        if cached is not None:
+            return cached
+        return self.record(day, self.prepare(day, keep_raw=keep_raw, fast=fast, verify=verify))
 
     def _write_agg(self, day: date, aggregates: Sequence[MinuteAggregate]) -> None:
         path = self.agg_path(day)

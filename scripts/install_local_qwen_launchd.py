@@ -106,9 +106,10 @@ def _plist_payload(
         "TIM_TEST_SANDBOX": "required",
         "TIM_QWEN_TOOL_LOOP": "0" if disable_qwen_tool_loop else "1",
     }
-    # Server model through the local SSH tunnel (docs/mac-qwen-issue-worker.md, "Hard issues").
+    # Server model through the local SSH tunnel (docs/mac-qwen-issue-worker.md, "Hard issues"), and the
+    # worker lane beside tim-core-01 ("Two workers"); without it a rerun would reset the Mac to lane "all".
     for key in ("TIM_QWEN_HARD_URL", "TIM_QWEN_HARD_MODEL",
-                "TIM_QWEN_SERVER_PREFERRED", "TIM_QWEN_SERVER_KEEP_WARM"):
+                "TIM_QWEN_SERVER_PREFERRED", "TIM_QWEN_SERVER_KEEP_WARM", "TIM_WORKER_LANE"):
         if os.environ.get(key, "").strip():
             environment[key] = os.environ[key].strip()
     if enable_github_escalation or enable_github_intake:

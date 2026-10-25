@@ -21,7 +21,7 @@ from collections.abc import Sequence
 
 from src.research_lab.data.parse import FundingRate, Kline
 from src.research_lab.hypotheses.s5 import normalize_funding
-from src.research_lab.protocol import MAKER_FEE  # protocol entry 1.2: maker fee per limit fill (section 5.3, A1)
+from src.research_lab.protocol import MAKER_FEE  # protocol entry 1.3: maker fee per limit fill (section 5.3, A1)
 
 MINUTE_MS = 60_000
 STOP_FRACTION = 0.015  # R = 1.5 % of the entry fill

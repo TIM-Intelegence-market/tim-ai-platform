@@ -40,7 +40,7 @@ from src.research_lab.hypotheses import s6  # noqa: E402
 from src.research_lab.stats.register import HypothesisRegister  # noqa: E402
 from src.research_lab.studies import s6_eval as ev  # noqa: E402
 from src.research_lab.studies import s6_latency as lat  # noqa: E402
-from src.research_lab.protocol import HOLDOUT_START_MS, _utc_ms  # noqa: E402
+from src.research_lab.protocol import HOLDOUT_START_MS, UNIVERSE_LIMITATION, _utc_ms  # noqa: E402
 
 LAST_MONTH = (2024, 12)
 SYMBOLS = {"BTCUSDT": ((2020, 1), (2020, 1)), "ETHUSDT": ((2020, 1), (2020, 1)), "SOLUSDT": ((2020, 9), (2020, 10))}
@@ -237,7 +237,7 @@ def train(store: ArchiveStore, latency_report: Path, out_dir: Path) -> int:
     if latency["summary"]["pooled"]["raise_delta"]:
         raise SystemExit("latency check demands a higher delta before any training run (section 6.2)")
     payload: dict = {"study": "S6", "protocol": "S6 1.0, sections 5.1, 5.4, 7", "commit": _commit(), "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                     "latency_report": latency_report.name, "lambda": lam, "holdout": "not loaded", "dataset_hashes": {}, "funding_hashes": {},
+                     "latency_report": latency_report.name, "lambda": lam, "holdout": "not loaded", "universe_limitation": UNIVERSE_LIMITATION, "dataset_hashes": {}, "funding_hashes": {},
                      "variants": {}, "walk_forward": {}, "candidates": [], "register_status": {}}
     by_id = {v.variant_id: v for v in s6.S6_VARIANTS}
     trades: dict[str, dict[str, dict[str, list[s6.Trade]]]] = {vid: {sec: {} for sec in SECTIONS} for vid in by_id}  # vid/section/symbol

@@ -3,12 +3,12 @@
 | Feld | Wert |
 |---|---|
 | Version | **1.0 (freigegeben)** |
-| Status | **FREIGEGEBEN UND REGISTRIERT.** Uzi 25.10. 23:45 Ortszeit (Entscheidungskarte „Ja, freigeben und registrieren“). Sechs Varianten im Register (`../REGISTER.jsonl`, m = 54), Protokoll-Eintrag 1.2 für A1–A5. Gate 6.1 bestanden (`../reports/s6_count_2026-10-25T2229Z.md`). Offen: Latenzprüfung 6.2 (P5), dann Training/Validierung (P6). Kein Ausstieg und kein R gerechnet. Holdout zu, nur per Entscheidungskarte. |
+| Status | **FREIGEGEBEN UND REGISTRIERT.** Uzi 25.10. 23:45 Ortszeit (Entscheidungskarte „Ja, freigeben und registrieren“). Sechs Varianten im Register (`../REGISTER.jsonl`, m = 54), Protokoll-Eintrag 1.3 für A1–A5. Gate 6.1 bestanden (`../reports/s6_count_2026-10-25T2229Z.md`). Offen: Latenzprüfung 6.2 (P5), dann Training/Validierung (P6). Kein Ausstieg und kein R gerechnet. Holdout zu, nur per Entscheidungskarte. |
 | Erstellt | 2026-10-25, 20:00 Ortszeit. Auftrag: Uzis Wahl „Neue Studie S6 mit anderer Familie“ (Entscheidungskarte 19:51) und „go“ zum Bauplan (19:58). 0.2 nach adversarialer Prüfung (anderes Modell, 17 Befunde, 20:15) |
 | Freigabe | 2026-10-25, 23:45 Ortszeit, Uzi (Entscheidungskarte); O3 (a)–(c) und O4 damit erledigt |
 | Bauplan | `/mnt/project-files/plaene/s6-maker-mean-reversion-bauplan.md` (Projektablage) |
 | Vorgänger | S4 (Richtungs-Einstiege 1h): am Gate beendet, Einstiege unter Zufall (`S4_TREFFERQUOTE_75_PRAEREGISTRIERUNG.md`). S5 (Funding-Carry): am Gate beendet, 0 hochgerechnete Episoden, 2022 ohne Einstieg (`S5_WINRATE_95_FUNDING_CARRY_PRAEREGISTRIERUNG.md`, `../reports/s5_count_2026-10-25T1836Z.md`) |
-| Protokollbezug | `../PROTOKOLL.md` Version 1.1: Datensplit 3.2, Kosten 4.4, Zufallsvergleich 7.1, Holm 7.2, Robustheit 7.3, Ablauf 8, Stoppregeln 10. **Abweichungen mit Begründung in 5.5**, voran die Maker-Gebühr für Limit-Fills; Protokoll-Eintrag 1.2 vom 25.10. (freigegeben) |
+| Protokollbezug | `../PROTOKOLL.md` Version 1.1: Datensplit 3.2, Kosten 4.4, Zufallsvergleich 7.1, Holm 7.2, Robustheit 7.3, Ablauf 8, Stoppregeln 10. **Abweichungen mit Begründung in 5.5**, voran die Maker-Gebühr für Limit-Fills; Protokoll-Eintrag 1.3 vom 25.10. (freigegeben) |
 | Kostenmodell | `CostModel` aus `src/research_lab/protocol.py` für Taker-Fills; neue Konstante `MAKER_FEE = 0,02 %` je Maker-Fill; Stress nach 5.3 |
 
 Was dieses Dokument nicht ist: kein Profitversprechen, keine Anlageberatung, keine Freigabe für Papier- oder
@@ -243,7 +243,7 @@ Protokoll 4.4 rechnet alle Fills als Taker, „auch wenn ein Limit-Einstieg denk
 Unsicherheit, ob ein Limit wirklich gefüllt worden wäre. S6 begegnet genau dieser Unsicherheit mit der
 Durchhandel-Regel, der Post-only-Regel, der Latenzprüfung (6.2) und dem Fill-Abschlag im Stress und rechnet deshalb
 Limit-Fills als Maker. Das ist eine Abweichung vom Protokoll, die Uzi vor Version 1.0 freigeben muss
-(Protokoll-Eintrag 1.2, nur für Studien mit Durchhandel-Regel und Latenzprüfung). Jeder Bericht weist zusätzlich alle
+(Protokoll-Eintrag 1.3, nur für Studien mit Durchhandel-Regel und Latenzprüfung). Jeder Bericht weist zusätzlich alle
 Kennzahlen mit dem Protokoll-Kostenmodell aus. Gebührensätze gelten pauschal für 2020–2024 (historisch lag die
 Taker-Gebühr zeitweise bei 0,04 %, die Annahme 0,05 % ist konservativ). Gebühren werden je Fill auf das Fill-Nominal
 berechnet und genau einmal abgezogen; Slippage steckt in den Fills. Ein Test je Ausstiegsgrund belegt vor dem
@@ -262,12 +262,12 @@ Trainingslauf: Richtung · Kursdifferenz · q − Gebühren − Funding = Netto.
   trotzdem auf Training gerechnet (nicht registriert, nicht für den Holdout), damit die Regel nicht leerläuft.
 - SPA/StepM wird berichtet, ist kein Kriterium (Protokoll-Änderungsprotokoll 23.10.).
 
-### 5.5 Abweichungen vom Protokoll 1.1 (vollständig, Protokoll-Eintrag 1.2 vom 25.10.)
+### 5.5 Abweichungen vom Protokoll 1.2 (vollständig, Protokoll-Eintrag 1.3 vom 25.10.)
 
 | # | Protokoll | S6 | Grund |
 |---|---|---|---|
 | A1 | 4.4: alle Fills Taker | Maker-Gebühr für Limit-Fills mit Durchhandel-Regel | 5.3 |
-| A2 | 3.2: Trades laufen über die Abschnittsgrenze | `section_end` schließt zur letzten Kerze des Abschnitts | kein Abschnitt liest Daten des nächsten; strenger |
+| A2 | 3.2 (Abschnittsregel 1.2 seit PR #429): am Abschnittsende offene Trades zählen in keinen Abschnitt | `section_end` schließt zur letzten Kerze des Abschnitts (Taker) und zählt; bei 240-min-Zeitstop höchstens ein Trade je Instrument und Abschnitt, Anteil im Bericht | kein Abschnitt liest Daten des nächsten; Zwangsschluss zählt als Kosten |
 | A3 | 8/K3: Short ≥ 500 (Training) / ≥ 200 (Holdout) Trades | zusätzlich ≥ 160 effektive Trades (Tagescluster) | Fills clustern an Crash-Tagen |
 | A4 | 7.1: Zufallsvergleich mit zufälligen Einstiegen | volatilitäts-gematcht (7, A), Pool-Methode wie R4(a) | sonst misst K2 Volatilität statt Einstieg |
 | A5 | 3.1: `gap` schließt vor der Lücke | gleich, zusätzlich Bericht mit Schluss nach der Lücke | Transparenz |
@@ -374,7 +374,7 @@ ihn.
 | P1 | Entwurf 0.1 → adversariale Prüfung (anderes Modell) → 0.2 | erledigt 25.10., Befunde im Änderungsprotokoll |
 | P2 | ~~1m-Klines USD-M BTC/ETH/SOL 2020–2024 auf dem Mac laden~~ erledigt 25.10. (172 Archive, Hashes/Lücken/Ticks im Gate-Bericht) | erledigt |
 | P3 | ~~Zähllauf 6.1~~ erledigt 25.10. 23:29 Ortszeit, Commit 3be449f: alle sechs Varianten bestehen (`../reports/s6_count_2026-10-25T2229Z.md`) | erledigt |
-| P4 | Code (Motor und Zähllauf in `hypotheses/s6.py`, Kennzahlen/Urteil/Baselines in `studies/s6_eval.py`, 18 Tests grün, Commits 6828e04 und 3be449f; offen: `MAKER_FEE` in `protocol.py` erst mit Protokoll-Eintrag 1.2, Baseline C, Latenzprüfung): `hypotheses/s6.py` (Referenz, Tick, Orders, Post-only, Durchhandel-Regel, `both`, Ausstiege inkl. Stop in der Fill-Minute, Sperren, Funding), `MAKER_FEE` und S6-Stress in `protocol.py` (mit Protokoll-Eintrag 1.2), Baselines A/B/C nach 7, Tests: Referenz nur aus geschlossenen Kerzen (121 Schlusskurse), Post-only gegen close und open, δ und Tick-Rundung zuungunsten, `ambiguous` = Stop, Stop in der Fill-Minute, Ziel nicht in der Fill-Minute, Zeitstop Kerze 240, Gebühren genau einmal je Ausstiegsgrund, Funding-Grenzfälle, Lücken ≤ 5 min und > 5 min, `section_end`, `both` als Verlierer, Fill-Abschlag | `pytest tests/test_research_lab_s6.py` grün, Cloud-Suite grün |
+| P4 | Code (Motor und Zähllauf in `hypotheses/s6.py`, Kennzahlen/Urteil/Baselines in `studies/s6_eval.py`, 18 Tests grün, Commits 6828e04 und 3be449f; offen: `MAKER_FEE` in `protocol.py` erst mit Protokoll-Eintrag 1.3, Baseline C, Latenzprüfung): `hypotheses/s6.py` (Referenz, Tick, Orders, Post-only, Durchhandel-Regel, `both`, Ausstiege inkl. Stop in der Fill-Minute, Sperren, Funding), `MAKER_FEE` und S6-Stress in `protocol.py` (mit Protokoll-Eintrag 1.3), Baselines A/B/C nach 7, Tests: Referenz nur aus geschlossenen Kerzen (121 Schlusskurse), Post-only gegen close und open, δ und Tick-Rundung zuungunsten, `ambiguous` = Stop, Stop in der Fill-Minute, Ziel nicht in der Fill-Minute, Zeitstop Kerze 240, Gebühren genau einmal je Ausstiegsgrund, Funding-Grenzfälle, Lücken ≤ 5 min und > 5 min, `section_end`, `both` als Verlierer, Fill-Abschlag | `pytest tests/test_research_lab_s6.py` grün, Cloud-Suite grün |
 | P5 | Latenzprüfung 6.2 an aggTrades (30 Tage, ~3–9 GB Download auf dem Mac, nur ohne CI-Job); Code fertig (`s6_latency.py`, 9 Tests), Lauf steht aus | λ bestimmt; bei λ > 25 % δ erhöhen und P3 wiederholen |
 | P6 | Training und Validierung auf dem Mac (nicht während CI-Jobs), Bericht; Register-Eintrag für alle Gate-Varianten | K1–K10, 5.4 |
 | P7 | Holdout, genau ein Lauf, nur per Entscheidungskarte | Protokoll R6 |
@@ -394,7 +394,7 @@ ihn.
 |---|---|---|
 | O1 | ~~Adversariale Prüfung durch ein anderes Modell~~ erledigt 25.10. (17 Befunde, alle in 0.2 eingearbeitet, Änderungsprotokoll) | erledigt |
 | O2 | ~~1m-Archive geladen, Lücken, Tick je Monat und Hash berichtet (P2)~~ erledigt 25.10.; Gate 6.1 gelaufen, alle sechs Varianten bestehen (P3) | erledigt |
-| O3 | ~~Uzis Wort zu (a) Lesart K6, (b) Abweichungen A1–A5 als Protokoll-Eintrag 1.2, (c) Kenntnisnahme der K2-Power~~ erledigt 25.10. 23:45 (Karte) | erledigt |
+| O3 | ~~Uzis Wort zu (a) Lesart K6, (b) Abweichungen A1–A5 als Protokoll-Eintrag 1.3, (c) Kenntnisnahme der K2-Power~~ erledigt 25.10. 23:45 (Karte) | erledigt |
 | O4 | ~~Freigabe Version 1.0; Registrierung aller sechs Varianten~~ erledigt 25.10. 23:45; Register m = 54. Latenzprüfung 6.2 läuft vor dem Training; bei λ > 25 % wird δ erhöht und der Zähllauf wiederholt (Änderungsprotokoll) | erledigt |
 
 ## Änderungsprotokoll
@@ -405,4 +405,5 @@ ihn.
 | 2026-10-25 | 0.2 | Nach adversarialer Prüfung (anderes Modell, 17 Befunde): Stop wird schon in der Fill-Minute geprüft (Crash-Minuten zählten sonst nie als Verlust); T = 0,10 gestrichen, T = 0,25 ergänzt (Stress-Schwelle 96,1 %, K9 95,7 % bei 0,10); Formel T > c_w + 0,0526·(1 + c_l) statt symmetrischem c, Tabelle 2.1 neu gerechnet mit Stress-Zeile und E[R] bei 95 %; `skipped_both` → Verlierer-Trade `both` (kein stiller Filter); Cluster = Kalendertag über alle Instrumente, n_eff = ⌊n/D⌋, Verlierer_eff = ⌈Verlierer/D⌉, Doppelgrenze offengelegt; n_min 80 → 160 effektiv wegen K2-Power, Power-Tabelle und Warnung für Uzi; Gate ≥ 320 Fills und ≥ 160 Fill-Tage, schwächstes Jahr gepoolt, Blindheit des Gates präzisiert; Zufallsvergleich volatilitäts-gematcht (σ₃₀-Dezil) mit Pool-Methode, Baselines B (Gegenrichtung) und C (ungematcht), Tages-Block-Bootstrap; Register: alle Gate-Varianten, Kandidaten ≤ 2, Training ≥ 500 / Holdout ≥ 200 Trades (Protokoll), K4 in der Validierung, Walk-Forward über alle Varianten, Nachbarn ohne Gate werden für die Nachbarschaftsregel mitgerechnet; Abweichungstabelle 5.5 (A1–A5); Post-only zusätzlich gegen close_{t−1}; Latenzprüfung statt Mengenprüfung, Fill-Abschlag λ im Stress; Tick empirisch je Monat, Rundung zuungunsten; Referenz exakt (121 Schlusskurse, ddof 0, Basisvolumen); Funding-Grenzfälle; Zeitstop = Kerze 240; Lücken: Fenster-Regel, Stop nach überbrückter Lücke, Bericht mit Schluss nach der Lücke; Gebührenhistorie benannt; 139 statt 137 bei m = 60; Nummerierung berichtigt | O1 | unverändert; 1m-Daten im Download, kein Kurs angesehen, kein Holdout |
 | 2026-10-25 | 0.3 | Gate 6.1 ausgewertet (Zähllauf auf dem Mac, Commit 3be449f, 23:29 Ortszeit): alle sechs Varianten bestehen, k = 2 hochgerechnet 2 770 Fills / 621 Fill-Tage, k = 3 572 / 333 (Schwellen 320 / 160); Datenbefunde (SOL-Archivlücken Feb/Apr 2022, empirische Ticks, Post-only selten) im Bericht; P2/P3/O2 erledigt; Kennzahlen-, Urteils- und Baseline-Code (P4) ergänzt. Keine Regel geändert. | P3 | 1m-Fills und Fill-Tage je Variante/Instrument/Jahr gesehen (Marktphasen der Fills bekannt, 6.1); kein Ausstieg, kein R, kein Holdout |
 | 2026-10-25 | 0.4 | Latenzprüfung 6.2 präzisiert, bevor sie läuft: (b) = Trades ≤ L in den ersten 3 s (Orderaufgabe), wörtliche Lesart nur zur Offenlegung; (c) ab und einschließlich (a); „kein Trade jenseits L(1 − δ)“ zählt als zweifelhaft; Ziehung aus der Vereinigung der Fill-Tage beider Familien. Zähllauf intern auf `list_fills` umgestellt (Test belegt identische Zählung zur Gate-Fassung 3be449f). Keine Fill-, Ausstiegs- oder Kostenregel geändert. | P5 | wie 0.3; keine aggTrades gelesen, kein Ausstieg, kein R, kein Holdout |
-| 2026-10-25 | 1.0 | **Freigegeben** (Uzi, 23:45 Ortszeit, Entscheidungskarte): O3 (a)–(c) und O4 bejaht; sechs Varianten registriert (`REGISTER.jsonl`, m = 54), Protokoll-Eintrag 1.2 für A1–A5, `MAKER_FEE` in `protocol.py`. Regeln aus 0.4 unverändert eingefroren. | Freigabe | wie 0.4; kein Ausstieg, kein R, keine aggTrades, kein Holdout |
+| 2026-10-25 | 1.0 | **Freigegeben** (Uzi, 23:45 Ortszeit, Entscheidungskarte): O3 (a)–(c) und O4 bejaht; sechs Varianten registriert (`REGISTER.jsonl`, m = 54), Protokoll-Eintrag 1.3 für A1–A5, `MAKER_FEE` in `protocol.py`. Regeln aus 0.4 unverändert eingefroren. | Freigabe | wie 0.4; kein Ausstieg, kein R, keine aggTrades, kein Holdout |
+| 2026-10-25 | 1.0 | Nachtrag ohne Regeländerung: Der Protokoll-Eintrag für A1–A5 trägt die Nummer 1.3, weil PR #429 (Abschnittsregel 3.2, Universum/Survivorship) am selben Abend als 1.2 gemergt wurde; A2 bezieht sich jetzt auf die Abschnittsregel 1.2. Jeder S6-Bericht nennt die Universum-Grenze (`UNIVERSE_LIMITATION`). | Merge platform-main | unverändert |

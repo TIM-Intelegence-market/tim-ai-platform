@@ -1,4 +1,4 @@
-"""Constants fixed by docs/research_lab/PROTOKOLL.md (version 1.1, see its change log).
+"""Constants fixed by docs/research_lab/PROTOKOLL.md (version 1.3, see its change log).
 
 Changing a value here requires a matching entry in the protocol's change log.
 """
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 
-PROTOCOL_VERSION = "1.2"
+PROTOCOL_VERSION = "1.3"
 
 
 class Split(StrEnum):
@@ -23,6 +23,19 @@ def _utc_ms(year: int, month: int, day: int) -> int:
 
 VALIDATION_START_MS = _utc_ms(2023, 1, 1)
 HOLDOUT_START_MS = _utc_ms(2025, 1, 1)
+
+
+# Instrument universe (protocol 3.1, version 1.2). BTCUSDT for R0-R4; studies S4/S5 added ETH and
+# SOL. The three were chosen in 2026 knowing they survived, so every result is a statement about
+# these instruments only (survivorship/selection limit), never about "crypto" in general.
+UNIVERSE = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
+UNIVERSE_LIMITATION = (
+    "Universum BTCUSDT/ETHUSDT/SOLUSDT, 2026 mit Wissen um das Überleben gewählt (Survivorship-Grenze, "
+    "Protokoll 3.1): Ergebnisse gelten nur für diese Instrumente, nicht für Kryptowährungen allgemein."
+)
+# Section rule (protocol 3.2, version 1.2): a trade counts for the section of its signal only if
+# its exit was fixed by the exit rules no later than the section end. See stats.inference.section_trades.
+SECTION_RULE = "Abschnittsregel 3.2 (1.2): nur Trades, deren Ausstieg spätestens am Abschnittsende feststand"
 
 
 def split_of(open_time_ms: int) -> Split:
@@ -58,7 +71,7 @@ FUNDING_INTERVAL_MS = 8 * 3_600_000
 BASE_COSTS = CostModel()
 STRESS_COSTS = BASE_COSTS.stressed()
 
-# Protocol entry 1.2 (2026-10-25, Uzi): maker fee per limit fill, only for studies with a trade-through fill rule
+# Protocol entry 1.3 (2026-10-25, Uzi): maker fee per limit fill, only for studies with a trade-through fill rule
 # and a latency check (S6). Every other fill stays taker (section 4.4).
 MAKER_FEE = 0.0002
 

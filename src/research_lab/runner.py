@@ -25,11 +25,20 @@ from src.research_lab.protocol import (
     MAX_DRAWDOWN_LIMIT,
     MIN_TRADES_TRAIN,
     PROTOCOL_VERSION,
+    SECTION_RULE,
     STRESS_COSTS,
+    UNIVERSE_LIMITATION,
     VALIDATION_START_MS,
     _utc_ms,
 )
-from src.research_lab.stats.inference import neighbours_positive, walk_forward, walk_forward_windows, year_stability
+from src.research_lab.stats.inference import (
+    neighbours_positive,
+    open_at_section_end,
+    section_trades,
+    walk_forward,
+    walk_forward_windows,
+    year_stability,
+)
 from src.research_lab.stats.random_entry import atr_at_signal, atr_series, random_entry_pvalue
 from src.research_lab.stats.snooping import REPS as SNOOPING_REPS
 from src.research_lab.stats.snooping import period_report
@@ -50,6 +59,7 @@ class PeriodResult:
     summary: Summary
     p: float | None = None
     time_in_market: float = 0.0
+    open_at_end: int = 0  # trades signalled in the period but still open at its end (3.2, not counted)
 
 
 @dataclass(slots=True)
@@ -89,7 +99,8 @@ def all_refs(specs: Sequence[VariantSpec] = VARIANTS) -> list[ArchiveRef]:
 
 
 def _split(trades: Sequence[Trade], start: int, end: int) -> list[Trade]:
-    return [t for t in trades if start <= t.signal_time < end]
+    """Protocol 3.2 (1.2): trades signalled in [start, end) whose exit was fixed by the end."""
+    return section_trades(trades, start, end)
 
 
 def _time_in_market(trades: Sequence[Trade], start: int, end: int, interval_ms: int) -> float:
@@ -126,7 +137,8 @@ def evaluate_variant(spec: VariantSpec, bars: Sequence[Kline], funding: Sequence
         if summary.expectancy_r > 0 and summary.trades >= need:
             p = random_entry_pvalue(bars, trades, spec.interval_ms, runs=config.random_runs, seed=config.seed + offset,
                                     costs=BASE_COSTS, funding=engine_funding, start_ms=lo, end_ms=hi, atr_values=atr_values)
-        results[name] = PeriodResult(summary, p, _time_in_market(trades, lo, hi, spec.interval_ms))
+        results[name] = PeriodResult(summary, p, _time_in_market(trades, lo, hi, spec.interval_ms),
+                                     open_at_section_end(base.trades, lo, hi))
     result = VariantResult(
         spec.variant_id, spec.hypothesis, spec.horizon, dict(spec.params), results["train"], results["validation"],
         summarize(_split(stress.trades, *periods["train"])), summarize(_split(stress.trades, *periods["validation"])),
@@ -293,7 +305,8 @@ def write_report(out_dir: Path, results: dict[str, VariantResult], candidates: l
     out_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "protocol": PROTOCOL_VERSION, "commit": commit, "created": stamp, "random_runs": config.random_runs,
-        "seed": config.seed, "register_m": register_m, "candidates": candidates, **context,
+        "seed": config.seed, "register_m": register_m, "candidates": candidates,
+        "section_rule": SECTION_RULE, "universe_limitation": UNIVERSE_LIMITATION, **context,
         "variants": {k: asdict(v) for k, v in results.items()},
     }
     (out_dir / f"r4_{stamp}.json").write_text(json.dumps(payload, indent=2, default=str, ensure_ascii=False) + "\n")
@@ -303,14 +316,17 @@ def write_report(out_dir: Path, results: dict[str, VariantResult], candidates: l
         f"Protokoll {PROTOCOL_VERSION}, Commit `{commit}`, {config.random_runs} Zufallsläufe, Seed {config.seed}, "
         f"Register m = {register_m}. Holdout nicht geladen.",
         "",
+        f"{SECTION_RULE}; an der Grenze offene Trades zählen in keinen Abschnitt (Spalte „offen T/V“). {UNIVERSE_LIMITATION}",
+        "",
         f"**Kandidaten für den Holdout:** {', '.join(candidates) if candidates else 'keine – kein Vorteil in Training/Validierung gefunden'}",
         "",
-        "| Variante | Trades T/V | E[R] T | E[R] V | E[R] Stress T/V | p T | p V | PF V | DD V | Urteil |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Variante | Trades T/V | offen T/V | E[R] T | E[R] V | E[R] Stress T/V | p T | p V | PF V | DD V | Urteil |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in results.values():
         lines.append(
-            f"| {r.variant_id} | {r.train.summary.trades}/{r.validation.summary.trades} | {_fmt(r.train.summary.expectancy_r)} "
+            f"| {r.variant_id} | {r.train.summary.trades}/{r.validation.summary.trades} | {r.train.open_at_end}/{r.validation.open_at_end} "
+            f"| {_fmt(r.train.summary.expectancy_r)} "
             f"| {_fmt(r.validation.summary.expectancy_r)} | {_fmt(r.stress_train.expectancy_r)}/{_fmt(r.stress_validation.expectancy_r)} "
             f"| {_fmt(r.train.p, 4)} | {_fmt(r.validation.p, 4)} | {_fmt(r.validation.summary.profit_factor, 2)} "
             f"| {_fmt(r.validation.summary.max_drawdown_pct * 100, 1)} % | {r.verdict} |"

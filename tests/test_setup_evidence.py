@@ -5,8 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from src.research_lab.protocol import PROTOCOL_VERSION
-
 from src.research_lab.stats.register import HypothesisRegister, RegisterError
 from src.research_lab import setup_evidence as se
 
@@ -22,7 +20,7 @@ def test_no_explicit_mapping_never_inherits_t1_t3_failure(scenario_type, timefra
     assert verdict.variant_ids == () and verdict.variant_statuses == {}
     assert verdict.register_head_hash and verdict.register_events > 0
     assert verdict.reason == "NO_EXPLICIT_RULE_EQUIVALENCE" and verdict.execution_status == "RESEARCH_ONLY"
-    assert verdict.mapping_version == se.EVIDENCE_MAPPING_VERSION and verdict.protocol_version == PROTOCOL_VERSION
+    assert verdict.mapping_version == se.EVIDENCE_MAPPING_VERSION and verdict.protocol_version == se.PROTOCOL_VERSION
 
 
 def test_entry_model_alone_creates_no_mapping() -> None:

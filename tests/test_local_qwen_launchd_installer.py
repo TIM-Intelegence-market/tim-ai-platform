@@ -106,3 +106,14 @@ def test_github_intake_has_worker_identity_and_pilot_scope(tmp_path: Path) -> No
                                        github_config_dir=tmp_path / "worker-gh")
     assert payload["ProgramArguments"][-4:] == ["--github-intake", "--github-pilot-issue", "166", "--github-merge"]
     assert payload["EnvironmentVariables"]["GH_CONFIG_DIR"] == str(tmp_path / "worker-gh")
+
+
+def test_worker_lane_is_kept_from_installer_environment(tmp_path: Path, monkeypatch) -> None:
+    installer = _load_installer()
+    kwargs = dict(repo=tmp_path, python=tmp_path / "python", worker=tmp_path / "worker.py",
+                  state=tmp_path / "state", logs=tmp_path / "logs", model="qwen3.5:9b",
+                  fallback_models="", interval=5.0)
+    monkeypatch.delenv("TIM_WORKER_LANE", raising=False)
+    assert "TIM_WORKER_LANE" not in installer._plist_payload(**kwargs)["EnvironmentVariables"]
+    monkeypatch.setenv("TIM_WORKER_LANE", "easy")
+    assert installer._plist_payload(**kwargs)["EnvironmentVariables"]["TIM_WORKER_LANE"] == "easy"
