@@ -2,8 +2,8 @@
 
 | Feld | Wert |
 |---|---|
-| Version | 0.3 (Entwurf) |
-| Status | **ENTWURF.** Nichts ist gerechnet. Freigabe durch Uzi steht aus (Abschnitt 11). Varianten kommen erst nach dem Machbarkeits-Gate (6.1) ins Register. |
+| Version | 0.4 (Abschluss) |
+| Status | **BEENDET: NICHT TESTBAR** (25.10., 19:36 Ortszeit, Machbarkeits-Gate 6.1, Bericht `../reports/s5_count_2026-10-25T1836Z.md`). Keine der vier Varianten erreicht 120 hochgerechnete Episoden; alle liegen bei 0, weil 2022 keine einzige Funding-Periode über 0,01 % lag. Keine Variante registriert, kein Trainingslauf, kein Holdout-Lauf, kein Holdout-Platz verbraucht. Version 1.0 wurde nie freigegeben. |
 | Erstellt | 2026-10-25, Auftrag Uzi 18:38 Ortszeit: „ich will eine winrate von 95% haben“; Entwurfsentscheidungen auf Uzis Wort „ich agiere nach deiner empfehlung“ (18:51) |
 | Vorgänger | S4 (`S4_TREFFERQUOTE_75_PRAEREGISTRIERUNG.md`): am Machbarkeits-Gate beendet; Erkundungen zeigten für 1h-Richtungs-Einstiege 38–53 % Trefferquote und in jeder Ziel-/Stop-Geometrie E[R] < 0 (`../reports/s4_hitrate95_2026-10-25T1733Z.md`) |
 | Protokollbezug | `../PROTOKOLL.md` Version 1.1: Datensplit 3.2, Kosten 4.4, Zufallsvergleich 7.1, Holm 7.2, Robustheit 7.3, Ablauf 8, Stoppregeln 10. **Abweichung mit Begründung:** Stressregel für Funding-Gutschriften (5.3), braucht Protokoll-Eintrag 1.2 auf Uzis Wort |
@@ -319,15 +319,20 @@ und für alle Registereinträge verbraucht; auch ein KEIN URTEIL (K3) verbraucht
   S5-Regel gerechnet.
 - Spot-Archive: nur Dateiexistenz bei Binance (HTTP-Status) für ETH 2020-01 und SOL 2020-08.
 - Holdout 2025+: nie geladen.
+- **Zähllauf 6.1 (25.10., 19:36 Ortszeit, ergebnisblind):** Episodenzahlen je Variante, Instrument, Abschnitt und Jahr,
+  Ausstiegsgründe, Mediandauern und Monatscluster (`../reports/s5_count_2026-10-25T1836Z.md`). Dazu aus dem
+  Funding-Archiv je Jahr: Anzahl der Perioden über 0,01 % und über 0,03 %, Anzahl ≤ 0, Jahresmaximum und -minimum
+  (2022: Maximum genau 0,01 % bei allen drei Coins), SOL-Perioden im 2-h-Takt 9.–18.11.2022. Keine Kurse, keine
+  Basis, kein R, keine Funding-Summe je Episode.
 
 ## 11. Offene Punkte vor Version 1.0
 
 | # | Punkt | Wer |
 |---|---|---|
 | O1 | ~~Adversariale Prüfung (anderes Modell)~~ erledigt 25.10., Befunde in 0.2 eingearbeitet (Änderungsprotokoll) | erledigt |
-| O2 | Spot-Archive geladen, Lücken und Hash berichtet | Mac, P2 |
-| O3 | Uzis Wort zu: (a) Lesart K6 (Punktwert ≥ 95 %, Untergrenze ≥ 90 %, unkorrigiert) statt strenger Lesart, (b) S5-Stressregel (Gutschriften ×0,5) als Protokoll-Eintrag 1.2 | Uzi |
-| O4 | Freigabe Version 1.0; Registrierung nur der Varianten, die das Gate 6.1 bestehen | Uzi |
+| O2 | ~~Spot-Archive geladen, Lücken und Hash berichtet~~ erledigt 25.10. (Hashes im Zählbericht) | erledigt |
+| O3 | ~~Uzis Wort zu: (a) Lesart K6 (Punktwert ≥ 95 %, Untergrenze ≥ 90 %, unkorrigiert) statt strenger Lesart, (b) S5-Stressregel (Gutschriften ×0,5) als Protokoll-Eintrag 1.2~~ entfällt: Studie am Gate beendet, kein Protokoll-Eintrag 1.2 nötig | entfällt |
+| O4 | ~~Freigabe Version 1.0; Registrierung nur der Varianten, die das Gate 6.1 bestehen~~ entfällt: keine Variante besteht das Gate | entfällt |
 
 ## Änderungsprotokoll
 
@@ -336,3 +341,4 @@ und für alle Registereinträge verbraucht; auch ein KEIN URTEIL (K3) verbraucht
 | 2026-10-25 | 0.1 | Entwurf: Funding-Carry, 6 Varianten (θ × Ausstiegsregel), Trade = Episode, R = 1 % Nominal, K1–K10, n_min = 800, Machbarkeits-Gate, Zufallsvergleich mit gleichen Episodendauern | Uzis Ziel 95 % (18:38), Empfehlungen angenommen (18:51) | Abschnitt 10; keine S5-Ergebnisse, kein Holdout |
 | 2026-10-25 | 0.2 | Nach adversarialer Prüfung (anderes Modell, 13 Befunde): Stichprobentabelle korrigiert (Wald-Fehler bei p = 0,98/0,99), strenge Lesart als für Carry rechnerisch unerreichbar belegt (137 Episoden bei null Verlierern, 420 R Kosten bei 1 000 Episoden) → K6 jetzt Punktwert ≥ 95 % und CP-Untergrenze ≥ 90 % (unkorrigiert, ein Verfahren, D aus Monatscluster), n_min = 80 effektive Episoden; Stress neu definiert (Protokoll streicht Gutschriften → K7 unerfüllbar), Protokoll-Eintrag 1.2 als offener Punkt; Mark-to-Market-Kurve mit K4 darauf und neuem K11 (MAE) gegen unrealisierte Verluste; Mindesthaltedauer H statt Ausstiegsregel e (Kosten 0,42 R brauchen 14–42 Perioden), Höchstdauer 90 Tage, Wiedereinstiegssperren; `section_end`, Holdout fest 2025-01 bis 2026-09, kein Abschnitt rechnet über sein Ende; Zufallsvergleich mit zufälligen Einstiegen bei gleicher Haltelogik, Roll-Carry-Benchmark; Gate mit Dichte des schwächsten Jahres × 1,5 und Designeffekt-Schätzung; m fest 54; K10 ohne Widerspruch; gebundenes Kapital 2 N; Formel je Bein; Funding-Zeitstempel-Test, ganzzahlige Raten; Walk-Forward-Folge und Nachbarschaft präzisiert; Motor als Neubau benannt | O1 | unverändert, keine S5-Ergebnisse, kein Holdout |
 | 2026-10-25 | 0.3 | Vor dem ersten Zähllauf, aus dem ersten Probelauf des Zählers (nur Zählung, keine Kurse): Funding-Zeitstempel im Archiv liegen zu 44 % um 1–5 ms neben der Stunde → Normalisierung ± 1 min mit Bericht; Wartungslücken bis 24 h schließen keine Episode mehr (Fill rutscht auf die nächste Kerze), nur Lücken über 24 h (`gap`). Vorher zählte der Probelauf die meisten Episoden als `gap` und viele Signale als ungültig; die Regel aus 0.2 war unrealistisch (während einer Wartung hält die Position einfach) | Befund Probelauf P3 | nur Episodenzahlen eines fehlerhaften Probelaufs (72 / 65 / 56 / 51, keine Kurse, keine Ergebnisse); Holdout unberührt |
+| 2026-10-25 | 0.4 | **Abschluss: NICHT TESTBAR.** Zähllauf 6.1 auf Training + Validierung (Commit `f09d36c`, kein CI-Job aktiv): 52 / 49 / 42 / 39 Episoden in 171 Coin-Monaten, Mediandauer 20–65 Tage, keine ungültigen Signale, keine `gap`-Ausstiege; 2022 ohne eine einzige Episode (Jahresmaximum der Funding-Rate genau 0,01 %), darum Hochrechnung aus dem schwächsten Jahr = 0 für alle Varianten; selbst aus dem stärksten Jahr 2020 nur 28–35 Episoden (18–22 effektiv) statt 120. Keine Registrierung, kein Trainingslauf, O3/O4 entfallen. Kein Nachlauf im selben Entwurf (6.1, dritter Fall) | Gate 6.1 | Abschnitt 10 (Zählung und Funding-Jahresstatistik); kein Ergebnis, kein Holdout |
