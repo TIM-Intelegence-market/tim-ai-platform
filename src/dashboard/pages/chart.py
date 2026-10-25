@@ -6,19 +6,20 @@ import math
 from datetime import datetime
 from typing import Any
 
-from src.dashboard.chart_model import CHART_TIMEFRAMES, build_chart_model
+from src.dashboard.chart_model import CHART_TIMEFRAMES, DEFAULT_TIMEFRAME, build_chart_model
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _hero, _layout, _strip_states
 
-WIDTH, HEIGHT = 1000, 520
+WIDTH, HEIGHT = 1200, 520
 PLOT_LEFT, PLOT_RIGHT = 12, 760
 PROFILE_LEFT, PROFILE_RIGHT = 764, 850
 LABEL_X = 856
 TOP, BOTTOM = 18, 478
 LABEL_GAP = 13
-ZONE_SPACE = 330  # px right of the last candle reserved for written-out scenario plans
+ZONE_SPACE = 260  # px right of the last candle reserved for written-out scenario plans
 SCENARIO_NAMES = {
     "BREAKOUT_ACCEPTANCE": "Ausbruch + Annahme",
+    "LEVEL_REACTION": "Level-Reaktion",
     "LIQUIDITY_SWEEP_REVERSAL": "Sweep + Rückeroberung",
     "REJECTION_FAILED_BREAKOUT": "Ablehnung / Fehlausbruch",
     "BALANCE_ROTATION": "Rotation in der Range",
@@ -50,7 +51,7 @@ def _time_label(value: str, timeframe: str) -> str:
         moment = datetime.fromisoformat(value)
     except ValueError:
         return ""
-    return moment.strftime("%d.%m. %H:%M") if timeframe == "1h" else moment.strftime("%H:%M")
+    return moment.strftime("%d.%m.%y") if timeframe in ("1d", "1w", "1M") else moment.strftime("%d.%m. %H:%M")
 
 
 def _spread_labels(labels: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -81,7 +82,8 @@ def _chart_svg(model: dict[str, Any]) -> str:
 
     # Levels widen the price axis when they are close; far ones are named at the edge instead.
     candidates = [profile.get("vah"), profile.get("val"), profile.get("poc")] + [b["level"] for b in model.get("bos", [])]
-    for scenario in analysis.get("scenarios", []):
+    level_plans = (model.get("level_plans") or {}).get("plans") or []
+    for scenario in [*(analysis.get("scenarios") or []), *level_plans]:
         candidates += [scenario.get("entry_low"), scenario.get("entry_high"), scenario.get("trigger")]
         preview = scenario.get("preview") or {}
         candidates += [preview.get("stop")] + list((preview.get("targets") or [])[:1])
@@ -152,7 +154,8 @@ def _chart_svg(model: dict[str, Any]) -> str:
         x1 = next((x(i) - slot / 2 for i, c in enumerate(candles) if c["open_time"] >= window["start"]), x(count - 1))
         x2 = next((x(i) - slot / 2 for i, c in enumerate(candles) if c["open_time"] >= window["end"]), x(count - 1) + slot / 2)
         parts.append(f"<rect x='{x1:.1f}' y='{TOP}' width='{max(2.0, x2 - x1):.1f}' height='{BOTTOM - TOP}' class='tc-block'/>")
-        parts.append(f"<text x='{x1 + 2:.1f}' y='{TOP + 50}' class='tc-block-text'>{_safe(window['label'])}</text>")
+        event_date = datetime.fromisoformat(window["open"]).strftime("%d.%m.")
+        parts.append(f"<text x='{x1 + 2:.1f}' y='{TOP + 50}' class='tc-block-text'><title>NYSE 09:30 America/New_York · {_safe(window['open'])}</title>NY {event_date}</text>")
 
     # Scenarios written out like a hand-drawn plan: zone with text, stop, invalidation, targets.
     zone_x = x(count - 1) + slot + 8
@@ -171,7 +174,7 @@ def _chart_svg(model: dict[str, Any]) -> str:
             return
         plan_lines.setdefault((cls, round(price, 6)), []).append(text)  # same level: one line, joined text
 
-    for scenario in analysis.get("scenarios", []):
+    for scenario in [*(analysis.get("scenarios") or []), *level_plans]:
         sid, direction = scenario["id"], scenario["direction"]
         kind = "long" if direction == "LONG" else "short" if direction == "SHORT" else "neutral"
         lo, hi = scenario.get("entry_low"), scenario.get("entry_high")
@@ -206,7 +209,14 @@ def _chart_svg(model: dict[str, Any]) -> str:
     for bos in model.get("bos", []):
         arrow = "↑" if bos["direction"] == "UP" else "↓"
         start = next((x(i) for i, c in enumerate(candles) if c["open_time"] >= bos["swing_time"]), PLOT_LEFT)
-        hline(bos["level"], f"tc-bos tc-bos--{bos['direction'].lower()}", f"BOS {bos['timeframe']} {arrow}", start)
+        end = next((x(i) for i, c in enumerate(candles) if c["open_time"] >= bos["break_time"]), x(count - 1))
+        if visible(bos["level"]):
+            cls = f"tc-bos tc-bos--{bos['direction'].lower()}"
+            parts.append(f"<line x1='{start:.1f}' x2='{end:.1f}' y1='{y(bos['level']):.1f}' y2='{y(bos['level']):.1f}' class='{cls}'/>")
+            parts.append(f"<text x='{end:.1f}' y='{y(bos['level']) - 5:.1f}' class='tc-bos-text'>{_safe(bos.get('kind', 'BOS'))} {arrow}</text>")
+
+    for reference in model.get("reference_levels", []):
+        hline(reference["price"], "tc-va", reference["label"])
 
     hline(levels.get("range_high"), "tc-range", "Range-High")
     hline(levels.get("range_low"), "tc-range", "Range-Low")
@@ -249,7 +259,7 @@ def _chart_svg(model: dict[str, Any]) -> str:
 
 def _scenario_rows(analysis: dict[str, Any]) -> str:
     rows = []
-    for s in analysis.get("scenarios", []):
+    for s in (analysis.get("scenarios") or []):
         preview = s.get("preview") or {}
         zone = f"{_price(s['entry_low'])} – {_price(s['entry_high'])}" if s.get("entry_low") is not None else "keine Zone"
         targets = " / ".join(_price(t) for t in (preview.get("targets") or [])) or "–"
@@ -263,16 +273,33 @@ def _scenario_rows(analysis: dict[str, Any]) -> str:
     return "".join(rows) or "<tr><td colspan='10' class='empty'>Keine Szenarien.</td></tr>"
 
 
+def _level_plan_rows(level_plans: dict[str, Any]) -> str:
+    rows = []
+    for p in level_plans.get("plans") or []:
+        preview = p.get("preview") or {}
+        targets = " / ".join(f"{_price(t)} ({label})" for t, label in zip(preview.get("targets") or [], preview.get("target_labels") or []))
+        invalid = (p.get("invalidation_level") or {}).get("text", "–")
+        rows.append(
+            f"<tr><td><b>{_safe(p['id'])}</b></td><td><span class='tc-dir tc-dir--{_safe(p['direction'].lower())}'>{_safe(p['direction'])}</span></td>"
+            f"<td>{_safe(p.get('anchor'))}</td><td>{_safe(p.get('trend'))}</td>"
+            f"<td class='mono'>{_safe(_price(p.get('entry_low')))} – {_safe(_price(p.get('entry_high')))}</td>"
+            f"<td class='mono'>{_safe(_price(preview.get('entry')))}</td><td class='mono'>{_safe(_price(preview.get('stop')))}</td>"
+            f"<td class='mono'>{_safe(targets or '–')}</td><td class='mono'>{_safe(preview.get('reward_risk'))}</td>"
+            f"<td>{_safe(invalid)}</td><td>{_safe(' · '.join(p.get('missing_confirmations') or []))}</td></tr>"
+        )
+    return "".join(rows) or "<tr><td colspan='11' class='empty'>Kein Level-Plan erfüllt die Regeln.</td></tr>"
+
+
 def render_chart_page(state: Any, timeframe: str | None = None) -> str:
     data = state.snapshot()
-    model = build_chart_model(state.chart_series(), timeframe or "15m")
+    model = build_chart_model(state.chart_series(), timeframe or DEFAULT_TIMEFRAME)
     tf = model["timeframe"]
     tabs = "".join(
         f"<a href='/chart?tf={item}' class='tc-tab{' tc-tab--active' if item == tf else ''}'"
         f"{' aria-current=\'page\'' if item == tf else ''}>{item}{'' if item in model['available_timeframes'] else ' ·'}</a>"
         for item in CHART_TIMEFRAMES
     )
-    body = _hero("TIM-Chart", "Kerzen aus TIMs eigenen Binance-Daten mit den Marken, die TIM selbst berechnet: Range, Value Area, BOS und Szenarien.")
+    body = _hero("TIM-Chart", "30m bis Monat: Binance-Kerzen mit BOS/MSS, Vortages-Leveln, Poor High/Low, Value Area und Szenarien.")
     body += f"<nav class='tc-tabs' aria-label='Zeitrahmen'>{tabs}</nav>"
     if not model["candles"]:
         body += "<section class='cc-section'><p class='empty'>Noch keine Kerzen für diesen Zeitrahmen. Der Chart erscheint, sobald die Runtime Daten liefert.</p></section>"
@@ -307,8 +334,20 @@ def render_chart_page(state: Any, timeframe: str | None = None) -> str:
         "<div class='table-wrap'><table><thead><tr><th>ID</th><th>Richtung</th><th>Szenario</th><th>Einstiegszone</th><th>Trigger</th><th>Stop (Vorschau)</th>"
         f"<th>Ziele (Vorschau)</th><th>Status</th><th>Score</th><th>Fehlende Bestätigung</th></tr></thead><tbody>{_scenario_rows(analysis)}</tbody></table></div></section>"
     )
+    level_plans = model.get("level_plans") or {}
+    dropped = "".join(f"<li>{_safe(reason)}</li>" for reason in level_plans.get("dropped") or [])
+    body += (
+        "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Level-Pläne (level/1)</p><h2>Pläne an den Hauptleveln</h2>"
+        "<p class='cc-section__note'>Nächstes Hauptlevel unter und über dem Kurs (Vortag, Vorwoche, naked POC). Stop hinter dem 30m-Swing, "
+        "Ziele an den nächsten Leveln, erstes Ziel mindestens 1,5 R. Nur Papier, nicht bestätigt.</p></div></div>"
+        "<div class='table-wrap'><table><thead><tr><th>ID</th><th>Richtung</th><th>Level</th><th>Trend 1D/4h</th><th>Zone</th><th>Einstieg</th><th>Stop</th>"
+        f"<th>Ziele</th><th>R bis Ziel 1</th><th>Ungültig</th><th>Bestätigung nötig</th></tr></thead><tbody>{_level_plan_rows(level_plans)}</tbody></table></div>"
+        + (f"<p class='cc-note'>Verworfen:</p><ul class='cc-note'>{dropped}</ul>" if dropped else "")
+        + "</section>"
+    )
     level_rows = [("Range-High", levels.get("range_high")), ("Range-Low", levels.get("range_low")), ("VAH", profile.get("vah")), ("POC", profile.get("poc")), ("VAL", profile.get("val"))]
-    level_rows += [(f"BOS {b['timeframe']} {'↑' if b['direction'] == 'UP' else '↓'}", b["level"]) for b in model.get("bos", [])]
+    level_rows += [(f"{b.get('kind', 'BOS')} {b['timeframe']} {'↑' if b['direction'] == 'UP' else '↓'}", b["level"]) for b in model.get("bos", [])]
+    level_rows += [(r["label"], r["price"]) for r in model.get("reference_levels", [])]
     body += (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Marken</p><h2>Levels im Chart</h2></div></div>"
         "<div class='metricstrip'>" + "".join(f"<dl class='metricstrip__item'><dt>{_safe(name)}</dt><dd>{_safe(_price(value))}</dd></dl>" for name, value in level_rows) + "</div>"

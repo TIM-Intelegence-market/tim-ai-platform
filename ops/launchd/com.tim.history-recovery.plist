@@ -18,7 +18,7 @@
   </dict>
   <key>RunAtLoad</key><true/>
   <key>StartInterval</key><integer>30</integer>
-  <key>ProcessType</key><string>Background</string>
+  <key>ProcessType</key><string>Standard</string>
   <!-- The full report is written to data/operational/history_recovery.json; stdout would only grow a log. -->
   <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/history_recovery_launchd.err.log</string>

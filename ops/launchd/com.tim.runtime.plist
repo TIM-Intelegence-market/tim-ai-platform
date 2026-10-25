@@ -11,7 +11,7 @@
     <key>TIM_OLLAMA_MODEL</key><string>qwen2.5:7b</string><key>TIM_OLLAMA_URL</key><string>http://127.0.0.1:11434</string>
     <key>TIM_OMNIROUTE_ENABLED</key><string>true</string><key>OMNIROUTE_BASE_URL</key><string>http://localhost:20128/v1</string>
   </dict>
-  <key>KeepAlive</key><true/><key>RunAtLoad</key><true/><key>ProcessType</key><string>Background</string><key>ThrottleInterval</key><integer>10</integer><key>ExitTimeOut</key><integer>45</integer>
+  <key>KeepAlive</key><true/><key>RunAtLoad</key><true/><key>ProcessType</key><string>Interactive</string><key>ThrottleInterval</key><integer>10</integer><key>ExitTimeOut</key><integer>45</integer>
   <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/runtime_launchd.log</string>
   <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim/data/operational/runtime_launchd.err.log</string>
 </dict></plist>

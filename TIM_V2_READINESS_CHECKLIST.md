@@ -78,16 +78,19 @@ Unchecked means not verified; it does not mean assumed failure.
 
 ## F. Historical Provenance — V2-B05
 
-- [ ] Present provenance fields inventoried.
-- [ ] Missing provenance fields inventoried.
-- [ ] Affected record counts recorded at fixed cut-off.
-- [ ] Permanently non-reconstructable records classified.
-- [ ] No retroactive metadata creation performed.
-- [ ] No historical hash changed.
-- [ ] Prospective V2 evidence boundary approved.
-- [ ] New-scope provenance is 100%.
-- [ ] Legacy limitation approved and retained.
-- [ ] V2-B05 status is at least VERIFIED.
+- [x] Present provenance fields inventoried.
+- [x] Missing provenance fields inventoried.
+- [x] Affected record counts recorded at fixed cut-off.
+- [x] Permanently non-reconstructable records classified.
+- [x] No retroactive metadata creation performed.
+- [x] No historical hash changed.
+- [x] Prospective V2 evidence boundary approved.
+- [x] New-scope provenance is 100%.
+- [x] Legacy limitation approved and retained.
+- [x] V2-B05 status is at least VERIFIED.
+
+Evidence and approval: `TIM_V2_BLOCKER_REGISTER.md` (V2-B05, 2026-10-24) and
+`docs/v2_readiness/historical_provenance_inventory.md`.
 
 ## G. HC-1.0 Governance — V2-B07
 

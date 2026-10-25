@@ -71,3 +71,11 @@ TIM includes a restart-safe 72-hour OBSERVE validator, deterministic batch data
 quality reports, and a permanent five-case research benchmark. See
 `docs/OPERATIONAL_VALIDATION.md`, `docs/DATA_QUALITY.md`, and
 `docs/BENCHMARKS.md` for operation and guarantees.
+
+## License
+
+TIM is licensed under the [Apache License, Version 2.0](LICENSE).
+Copyright 2026 Uzi (uezeyiraydin-cell) and the TIM contributors; see
+[`NOTICE`](NOTICE). The repository stays private: access is limited to people
+who actively work on TIM. Contribution rules, including the DCO sign-off, are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).

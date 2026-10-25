@@ -75,3 +75,66 @@ cd ~/TIM-live
   Fensters aus, Mac schläft nie (`com.tim.awake`, `com.tim.caffeinate`).
 - CI-Runner und Issue-Worker teilen sich den Mac. Bei Speicherdruck zuerst den Worker pausieren.
 - Jede Code-Änderung in `~/TIM-live` beendet die Kampagne (neuer Commit, neue Gates).
+
+## TIM Core vor CI (Prioritäten, seit 24.10.)
+
+TIM Core und der CI-Runner teilen sich den Mac mini (8 Kerne: 4 Leistung, 4 Effizienz, 16 GB). launchd
+ordnet sie so:
+
+| Dienst | ProcessType | Nice | Wirkung |
+|---|---|---|---|
+| `com.tim.runtime` | Interactive | 0 | nie gedrosselt, Vorrang auf den Leistungskernen |
+| `com.tim.watchdog`, `com.tim.history-recovery` | Standard | 0 | normale Priorität |
+| `com.tim.ci-runner`, `com.tim.ci-postgres` | Standard | 10 | volle Kerne, solange TIM sie nicht braucht, sonst weicht CI aus |
+| übrige TIM-Agenten (Backup, Worker, Refresh) | Background | – | wie bisher |
+
+Vorher liefen Runtime, Watchdog und CI alle im gedrosselten Band (`ProcessType Background`, Priorität 4).
+Sie waren gleichrangig, und Apps wie Browser oder Musik hatten Vorrang vor beiden. `Background` allein für
+CI machte den Testschritt 45 bis 50 Minuten lang (20. bis 22.10.). `Standard` mit `Nice 10` hält CI schnell,
+solange TIM nichts braucht.
+
+Die Datenbanken bleiben getrennt: TIM nutzt PostgreSQL 18 auf 5432, die CI nutzt PostgreSQL 16 auf 5434
+(Benutzer `timrunner`). Die Testdatenbank in `~/Library/Application Support/TIM/test-postgres` ist ebenfalls
+eigenständig.
+
+Prüfen (ohne sudo): `ps -axo user,nice,pri,command | grep -E "TIM-live/main.py|Runner.Listener|pytest"`.
+Die Runtime darf nicht mehr Priorität 4 (gedrosselt) zeigen, CI-Prozesse zeigen Nice 10.
+
+## Dashboards automatisch aktuell (`com.tim.dashboard-refresh`)
+
+Seit 23.10.2026 hält `scripts/dashboard_refresh.py` die Dashboards auf dem Mac aktuell. Der Agent läuft
+alle 10 Minuten aus `~/TIM-live` (eigener LaunchAgent, nicht in `LIVE_AGENTS`, damit die Start-Gates
+keinen Drift sehen). Regeln: `ops/dashboard_refresh/policy.json`.
+
+- **Control Center (8765):** neuer Stand von `platform-main` geht nur live, wenn der CI-Job `test` grün ist,
+  der Stand ein Nachfolger des laufenden ist, kein Backup läuft, keine Qualifizierungskampagne aktiv ist und
+  der letzte Neustart lange genug her ist (20 Minuten, wenn nur Anzeige-Pfade geändert wurden, sonst 60).
+  Dann: Checkout, `record_deployment.py` mit CI-Ergebnis und Testzahlen, `timctl restart`, Prüfung auf
+  neuen Prozess und `/api/health`. Scheitert etwas, rollt der Agent auf den alten Commit zurück und versucht
+  diesen Stand nicht noch einmal.
+- **Welcher CI-Lauf zählt (seit 24.10.):** der Lauf auf dem Commit selbst oder auf einem Commit mit
+  identischem Baum, also dem PR-Head einer Merge- oder Squash-Zusammenführung (das Ruleset verlangt einen
+  aktuellen Branch, deshalb ist der Baum gleich). Der Agent wartet damit nicht mehr auf den zweiten Lauf nach
+  dem Merge. Stimmt der Baum nicht überein, zählt nur ein Lauf auf dem Commit selbst.
+- **CI-Testjob (`Runner.Worker`):** schiebt den Neustart nur auf, höchstens 20 Minuten ab dem Moment, in dem
+  der Stand einspielbar wäre (`max_defer_minutes`). Der Job nutzt eine eigene PostgreSQL auf 5434; ein
+  Neustart von 20 Sekunden stört ihn nicht. Ein Backup (`pg_dump`) sperrt weiterhin hart.
+- **Laufende Studie (S-K ab 23.10. 15:55):** nur Anzeige-Änderungen (`display_safe` in der Policy:
+  `src/dashboard/`, Doku, Tests, Worker-Dashboard, Agent selbst) gehen live, bis
+  `artifacts/v2_completion/sk_end_record.json` existiert. Enthält der neueste Stand eine geschützte Datei,
+  geht der neueste freigegebene Vorgänger auf der Hauptlinie live (Anzeige-Fixes vor dem gemischten Commit
+  warten nicht mehr). Der Haltegrund steht mit Dateinamen im Control Center („Hält zurück: main.py“) und
+  in `dashboard_refresh.json` unter `held_back`.
+- **Worker-Dashboard (8767):** wird nur neu gebaut, wenn sich `tools/mac-worker-dashboard` geändert hat
+  (`cargo build --locked`, Ziel außerhalb des Checkouts). Nur die Binärdatei wird getauscht, die Plist (mit
+  `--allow-host` für das Tailnet) bleibt unverändert.
+- **Prüfung:** jede Runde fragt Control Center, Chart, Worker-Dashboard, Qwen-Chat (8770) und Demo-Dashboard
+  (8768) ab. Ergebnis: `data/operational/dashboard_refresh.json`, im Control Center unter „Latest evidence →
+  Dashboard-Agent“. Verlauf: `~/Library/Application Support/TIM/dashboard-refresh/history.jsonl`.
+
+```sh
+cd ~/TIM-live
+.venv/bin/python scripts/dashboard_refresh.py --dry-run    # nur entscheiden und prüfen
+.venv/bin/python scripts/dashboard_refresh.py --install    # LaunchAgent schreiben und laden
+touch "$HOME/Library/Application Support/TIM/dashboard-refresh/PAUSE"   # anhalten (löschen = weiter)
+```

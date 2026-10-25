@@ -45,6 +45,9 @@ class DashboardState:
     operational_watchdog_path: Path = field(default_factory=lambda: Path("data/operational/watchdog_status.json"))
     rolling_liveness_path: Path = field(default_factory=lambda: Path("data/operational/rolling_liveness.json"))
     plan_journal_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal.json"))
+    plan_journal_struct_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_struct.json"))
+    plan_journal_level_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_level.json"))
+    trader_journal_path: Path = field(default_factory=lambda: Path("data/journal/trader_journal.json"))
     qualification_root_path: Path = field(default_factory=lambda: Path("data/qualification"))
     live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))
     gate_model_path: Path = field(default_factory=lambda: Path("data/research/status/current_gate_model.json"))
@@ -285,7 +288,11 @@ class DashboardState:
             with self.lock:
                 for item in self.recent_candles:
                     series.setdefault(str(item.get("timeframe")), []).append(dict(item))
-        return series
+        from src.dashboard.chart_model import analytical_series
+
+        enriched = analytical_series(series, datetime.now(timezone.utc))
+        return {tf: [{**c, "open_time": c["open_time"].isoformat(), "close_time": c["close_time"].isoformat()} for c in rows]
+                for tf, rows in enriched.items() if rows}
 
     def snapshot(self) -> dict[str, Any]:
         with self.lock:

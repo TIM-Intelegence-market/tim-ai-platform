@@ -22,9 +22,8 @@ from typing import Any, Mapping, Sequence
 
 from src.dashboard.constants import CHART_CANDLE_LIMIT
 from src.dashboard.helpers import _number
+from src.dashboard.chart_history import TIMEFRAMES as CHART_TIMEFRAMES, DEFAULT_TIMEFRAME
 
-CHART_TIMEFRAMES = ("1m", "5m", "15m", "1h")
-DEFAULT_TIMEFRAME = "15m"
 CHART_VISIBLE = 120  # candles drawn per chart
 VALUE_AREA_SHARE = 0.70
 PROFILE_TARGET_BINS = 60
@@ -35,10 +34,49 @@ ENTRY_REASONS = {
     "FAILED_RETEST": "gescheiterter Retest",
     "PULLBACK": "Rücksetzer zum POC",
     "ENTRY_ZONE": "Zone",
+    "LEVEL_LIMIT": "Limit am Level",
 }
 NY_OPEN_LOCAL = (9, 30)  # New York stock market open, America/New_York
 NY_OPEN_BLOCK = (timedelta(minutes=15), timedelta(minutes=30))  # before / after the open
-TIMEFRAME_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
+TIMEFRAME_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400, "1w": 604800, "1M": 2678400}
+
+
+def analytical_series(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime) -> dict[str, list[dict[str, Any]]]:
+    """Closed analysis intervals; aggregate only complete, contiguous source bars.
+
+    Weeks start Monday UTC; months use calendar boundaries, never 30-day bars.
+    Legacy small candles may supply data but are not active analysis timeframes.
+    """
+    result = {tf: [c for c in clean_candles(rows, tf) if c["close_time"] <= now and c.get("closed", True)] for tf, rows in series.items()}
+    for tf in CHART_TIMEFRAMES:
+        if result.get(tf):
+            continue
+        source = "15m" if tf == "30m" else "1h"
+        groups: dict[datetime, list[dict]] = {}
+        for c in result.get(source, []):
+            t = c["open_time"].astimezone(timezone.utc)
+            if tf == "30m":
+                start = t.replace(minute=t.minute // 30 * 30, second=0, microsecond=0)
+            elif tf == "4h":
+                start = t.replace(hour=t.hour // 4 * 4, minute=0, second=0, microsecond=0)
+            else:
+                start = t.replace(hour=0, minute=0, second=0, microsecond=0)
+                if tf == "1w":
+                    start -= timedelta(days=start.weekday())
+                elif tf == "1M":
+                    start = start.replace(day=1)
+            groups.setdefault(start, []).append(c)
+        built = []
+        for start, rows in sorted(groups.items()):
+            end = (start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)) if tf == "1M" else start + timedelta(seconds=TIMEFRAME_SECONDS[tf])
+            expected = int((end - start).total_seconds() / TIMEFRAME_SECONDS[source])
+            if end > now or len(rows) != expected or any(c["open_time"] != start + timedelta(seconds=i * TIMEFRAME_SECONDS[source]) for i, c in enumerate(rows)):
+                continue
+            built.append({**rows[0], "timeframe": tf, "open_time": start, "close_time": end,
+                          "high": max(c["high"] for c in rows), "low": min(c["low"] for c in rows),
+                          "close": rows[-1]["close"], "volume": sum(c["volume"] for c in rows)})
+        result[tf] = built
+    return result
 
 
 def _time(value: Any) -> datetime | None:
@@ -76,6 +114,8 @@ def clean_candles(raw: Sequence[Mapping[str, Any]], timeframe: str | None = None
             "close_time": _time(item.get("close_time")) or opened,
             "open": open_, "high": high, "low": low, "close": close,
             "volume": volume if volume is not None and math.isfinite(volume) and volume > 0 else 0.0,
+            "closed": item.get("closed", True),
+            "provenance": item.get("provenance", "TIM_RUNTIME_CANDLES"),
         }
     return [by_open[key] for key in sorted(by_open)]
 
@@ -189,6 +229,42 @@ def break_of_structure(candles: Sequence[Mapping[str, Any]], timeframe: str, wid
     return sorted(result, key=lambda item: item["break_index"])
 
 
+def structure_events(candles: Sequence[Mapping[str, Any]], timeframe: str, width: int = PIVOT_WINDOW) -> list[dict[str, Any]]:
+    """Causal swing breaks. Opposite close to established structure = MSS.
+
+    Mechanical price-only interpretation, not an orderflow-confirmed entry.
+    Use the latest confirmed swing on each side, once only; wicks do not count.
+    """
+    confirmed: dict[int, list[dict]] = {}
+    for s in swing_points(candles, width):
+        confirmed.setdefault(s["index"] + width + 1, []).append(s)
+    active, history, broken = {}, {"HIGH": [], "LOW": []}, set()
+    trend, events = None, []
+    for i, candle in enumerate(candles):
+        for s in confirmed.get(i, []):
+            active[s["kind"]] = s
+            history[s["kind"]].append(s["price"])
+        if trend is None and all(len(v) >= 2 for v in history.values()):
+            h, l = history["HIGH"], history["LOW"]
+            if h[-1] > h[-2] and l[-1] > l[-2]:
+                trend = "UP"
+            elif h[-1] < h[-2] and l[-1] < l[-2]:
+                trend = "DOWN"
+        for side, direction in (("HIGH", "UP"), ("LOW", "DOWN")):
+            s = active.get(side)
+            if not s or (side, s["index"]) in broken:
+                continue
+            if not (candle["close"] > s["price"] if direction == "UP" else candle["close"] < s["price"]):
+                continue
+            events.append({"kind": "MSS" if trend is not None and trend != direction else "BOS",
+                           "direction": direction, "timeframe": timeframe, "level": s["price"],
+                           "swing_time": candles[s["index"]]["open_time"].isoformat(),
+                           "break_time": candle["open_time"].isoformat(), "break_index": i})
+            broken.add((side, s["index"]))
+            trend = direction
+    return events
+
+
 def _to_model_candles(candles: Sequence[Mapping[str, Any]]):
     from src.models.market_data import Candle
 
@@ -242,7 +318,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
     from src.orderflow_scenario.domain import ConfirmationState, MarketContext
     from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
     from src.orderflow_scenario.engines.scenario_generator import LevelSet
-    from src.orderflow_scenario.engines.trade_plan import TradePlanBuilder, TradePlanInputs
+    from src.orderflow_scenario.engines.trade_plan import GRADE_RULESET_VERSION, TradePlanBuilder, TradePlanInputs, grade_scenario
 
     now = now or datetime.now(timezone.utc)
     model_candles = _to_model_candles(candles)
@@ -267,6 +343,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
     scenarios = []
     for scenario in analysis.scenarios:
         preview = None
+        grade = None
         if scenario.entry_zone_low is not None and scenario.entry_zone_high is not None:
             try:
                 plan = builder.build(TradePlanInputs(
@@ -282,6 +359,13 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
                     "targets": [_flt(plan.target_1), _flt(plan.target_2), _flt(plan.target_3)],
                     "reward_risk": _flt(plan.expected_reward_risk),
                     "note": "Vorschau nach TIM-Regeln, Szenario nicht bestätigt",
+                }
+                # Grade the scenario as it is. The preview plan above was built with a forced
+                # CONFIRMED state, so plan.grade would be two points too good.
+                graded, reasons = grade_scenario(scenario, plan.expected_reward_risk)
+                grade = {
+                    "setup_grade": graded.value, "grade_reasons": list(reasons), "grade_ruleset_version": GRADE_RULESET_VERSION,
+                    "graded_state": scenario.state.value, "note": "Heuristische Regelqualität, kein empirischer Edge-Nachweis",
                 }
         entry_model = str(scenario.trade_template.get("entry_model", ""))
         trigger = _flt(scenario.trigger_level)
@@ -315,9 +399,11 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
             "invalidation": list(scenario.invalidation),
             "missing_confirmations": list(scenario.mandatory_confirmations),
             "preview": preview,
+            "grade": grade,
         })
     return {
         "analysis_id": analysis.analysis_id,
+        "market": {"symbol": context.symbol, "venue": context.venue, "market_type": context.market_type},
         "market_state": analysis.market_state.primary.value,
         "auction_state": analysis.auction_state.primary.value,
         "data_quality": {"status": analysis.data_quality.status, "confidence": _flt(analysis.data_quality.confidence), "missing": list(analysis.data_quality.missing_fields), "problems": list(analysis.data_quality.problems)},
@@ -329,9 +415,12 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
 def profile_source(series: Mapping[str, Sequence[Mapping[str, Any]]], candles: Sequence[Mapping[str, Any]], timeframe: str) -> tuple[list[dict[str, Any]], str]:
     """Finest timeframe whose candles cover the whole chart window (falls back to the chart's own)."""
     start, end = candles[0]["open_time"], candles[-1]["open_time"]
-    for tf in CHART_TIMEFRAMES[:CHART_TIMEFRAMES.index(timeframe)]:
-        finer = [c for c in clean_candles(series.get(tf) or [], tf) if start <= c["open_time"] <= end + timedelta(seconds=TIMEFRAME_SECONDS[timeframe])]
-        if finer and (finer[0]["open_time"] - start).total_seconds() <= TIMEFRAME_SECONDS[tf]:
+    for tf in [tf for tf in TIMEFRAME_SECONDS if TIMEFRAME_SECONDS[tf] < TIMEFRAME_SECONDS[timeframe]]:
+        finish = candles[-1]["close_time"]
+        finer = [c for c in clean_candles(series.get(tf) or [], tf) if start <= c["open_time"] < finish]
+        if (finer and finer[0]["open_time"] == start
+                and abs((finer[-1]["close_time"] - finish).total_seconds()) < 1
+                and all((b["open_time"] - a["open_time"]).total_seconds() == TIMEFRAME_SECONDS[tf] for a, b in zip(finer, finer[1:]))):
             return finer, tf
     return list(candles), timeframe
 
@@ -354,11 +443,12 @@ def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timefra
     """
     timeframe = timeframe if timeframe in CHART_TIMEFRAMES else DEFAULT_TIMEFRAME
     now = now or datetime.now(timezone.utc)
+    series = analytical_series(series, now)
     candles = clean_candles(series.get(timeframe) or [], timeframe)[-visible:]
     available = [tf for tf in CHART_TIMEFRAMES if clean_candles(series.get(tf) or [], tf)]
     model: dict[str, Any] = {
         "timeframe": timeframe, "timeframes": list(CHART_TIMEFRAMES), "available_timeframes": available,
-        "generated_at": now.isoformat(), "provenance": "PUBLIC_MARKET_DATA (Binance Spot, TIM-Runtime)",
+        "generated_at": now.isoformat(), "provenance": "PUBLIC_MARKET_DATA (Binance Spot; Chart-Kontext, keine wissenschaftliche Rekonstruktion)",
         "read_only": True, "candles": [], "levels": {}, "profile": None, "bos": [], "analysis": None, "notes": [],
     }
     if len(candles) < 2:
@@ -386,14 +476,26 @@ def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timefra
             model["notes"].append("Kein Volumen vorhanden: VAH/VAL/POC nicht berechenbar.")
 
     bos: list[dict[str, Any]] = []
-    for tf in CHART_TIMEFRAMES[CHART_TIMEFRAMES.index(timeframe):]:
+    for tf in (timeframe,):
         tf_candles = clean_candles(series.get(tf) or [], tf)
-        bos.extend(break_of_structure(tf_candles[-CHART_CANDLE_LIMIT:], tf))
+        bos.extend(e for e in structure_events(tf_candles[-CHART_CANDLE_LIMIT:], tf)
+                   if e["break_time"] >= candles[0]["open_time"].isoformat())
     model["bos"] = bos
 
+    from src.dashboard.session_map import build_session_map
+    prep = build_session_map(series, now)
+    model["reference_levels"] = prep.get("levels", [])
+    model["notes"].extend(prep.get("notes", []))
+    from src.dashboard.level_plans import build_level_plans
+    model["level_plans"] = build_level_plans(prep, clean_candles(series.get("30m") or [], "30m"), now)
+    if model["levels"]["age_seconds"] > TIMEFRAME_SECONDS[timeframe] + 300:
+        minutes = model["levels"]["age_seconds"] // 60
+        model["notes"].insert(0, f"Achtung: letzte {timeframe}-Kerze schloss vor {minutes} min. Die Daten sind veraltet, Pläne nicht aktuell.")
+    model["notes"].append("MSS: Schlusskurs gegen die etablierte Swing-Richtung; mechanische Preisstruktur, keine Orderflow-Bestätigung. Poor High/Low und Profile sind Kerzen-Näherungen.")
+
     first, now_or_last = candles[0]["open_time"], max(now, last["close_time"])
-    model["events"] = ny_open_windows(first, now_or_last + timedelta(hours=24))
-    upcoming = [w for w in model["events"] if datetime.fromisoformat(w["end"]) >= now]
+    model["events"] = ny_open_windows(first, last["close_time"]) if timeframe in ("30m", "1h") else []
+    upcoming = [w for w in ny_open_windows(now, now + timedelta(days=4)) if datetime.fromisoformat(w["end"]) >= now]
     model["next_block"] = upcoming[0] if upcoming else None
     model["risk"] = _risk_note()
 

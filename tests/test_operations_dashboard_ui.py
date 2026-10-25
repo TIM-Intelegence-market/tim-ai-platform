@@ -262,7 +262,7 @@ def test_control_center_has_exact_ten_primary_pages_and_explicit_safety_boundary
 @pytest.mark.parametrize("page,title", [
     ("Security", "Credential rotation"),
     ("Runtime", "source to store latency"),
-    ("Data Quality", "Separated evidence rooms"),
+    ("Data Quality", "Aktuelle Evidenzräume"),
     ("Incidents & Gaps", "Root cause"),
     ("Qualification", "Latest immutable daily manifest"),
     ("Independent Cases", "Manual review"),
@@ -377,3 +377,26 @@ def test_frozen_capture_is_shown_as_historical_not_as_live_alarm(tmp_path: Path)
     assert frozen["recorded_status"] in frozen["status"]
     assert severity(frozen["status"]) == "disabled"
     assert severity("FAIL") == "fail"
+
+
+def test_data_quality_moves_finished_rooms_into_collapsed_old_stock(tmp_path: Path) -> None:
+    from src.dashboard.operations import _split_rooms
+
+    rooms = [
+        {"label": "Frozen Live Capture", "status": "HISTORICAL — FAIL", "coverage": "68.1%"},
+        {"label": "Server-Bestandsaufnahme", "status": "FAIL", "coverage": "72.3%"},
+        {"label": "Backfill Candidate", "status": "CANDIDATE PASS — NOT APPROVED", "coverage": "100%"},
+        {"label": "Approved Qualification Dataset", "status": "UNAVAILABLE", "coverage": "UNAVAILABLE"},
+        {"label": "Prospective Qualification Campaign", "status": "ABORTED", "coverage": "100%"},
+        {"label": "Rolling Liveness", "status": "PASS", "coverage": "100%"},
+    ]
+    current, archived = _split_rooms(rooms, "2026-10-20T11:22:00+00:00")
+    assert [r["label"] for r in current] == ["Rolling Liveness"]
+    assert len(archived) == 5 and all(r["disposition"].startswith("Altbestand · ") for r in archived)
+    from datetime import datetime, timezone
+    fresh = datetime.now(timezone.utc).isoformat()
+    current, _ = _split_rooms(rooms, fresh)
+    assert "Server-Bestandsaufnahme" in [r["label"] for r in current]
+    page = render(_state(tmp_path), "Data Quality")
+    assert "<details class='panel readiness'><summary>Altbestand anzeigen" in page
+    assert page.index("Aktuelle Evidenzräume") < page.index("Altbestand anzeigen")
