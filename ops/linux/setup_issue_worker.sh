@@ -8,7 +8,7 @@
 #      ollama answers with qwen3-coder:30b (never pulls a model), and installs bubblewrap, python3.13-venv, gh,
 #      git and curl with apt,
 #   2. creates the system user `timworker` (no sudo, no extra groups, no login shell), home /srv/worker (700),
-#   3. logs that user in to GitHub as apoman74-art: the token is read from the terminal, never shown, never an
+#   3. logs that user in to GitHub as tim-issue-worker-t330: the token is read from the terminal, never shown, never an
 #      argument; the login must have push but neither admin nor maintain on the repository,
 #   4. clones the repository to /srv/worker/repo (detached at origin/platform-main) with a venv,
 #   5. runs the sandbox self-test and a dry run as timworker, then installs tim-issue-worker.service, .timer and
@@ -19,7 +19,7 @@ set -euo pipefail
 
 REPO="TIM-Intelegence-market/tim-ai-platform"
 WORKER_USER="timworker"
-WORKER_LOGIN="apoman74-art"
+WORKER_LOGIN="tim-issue-worker-t330"
 WORKER_HOME="/srv/worker"
 REPO_DIR="${WORKER_HOME}/repo"
 GH_DIR="${WORKER_HOME}/.config/gh-tim-mac-worker"
@@ -28,6 +28,8 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf '\nFEHLER: %s\n' "$*" >&2; exit 1; }
+# A rejected login must not stay on the server: remove the stored token before stopping.
+reject_login() { rm -f "${GH_DIR}/hosts.yml"; die "$1 (Anmeldung wieder gelöscht; Token auf GitHub widerrufen)"; }
 as_worker() { sudo -u "$WORKER_USER" -H env HOME="$WORKER_HOME" GH_CONFIG_DIR="$GH_DIR" "$@"; }
 
 [ "$(uname -s)" = "Linux" ] && [ -r /etc/debian_version ] || die "nur für Debian"
@@ -39,8 +41,9 @@ cd /
 
 say "1/5 Voraussetzungen"
 # The old worker ran as tim-server; the new one runs the same scripts as timworker, so only tim-server counts.
-if systemctl is-active --quiet tim-qwen-worker.service \
-   || pgrep -u tim-server -f '[r]un_local_qwen|[t]im-qwen-worker' >/dev/null 2>&1; then
+# No backslash line continuations in this script: copying it through PowerShell broke them once (25.10.2026).
+if systemctl is-active --quiet tim-qwen-worker.service ||
+   pgrep -u tim-server -f '[r]un_local_qwen|[t]im-qwen-worker' >/dev/null 2>&1; then
   die "der alte tim-qwen-worker läuft noch; erst docs/TIM_CHECKUP.md, Abschnitt Einschalten, Schritt 1"
 fi
 # Without the checkup drop-in Ollama listens on 127.0.0.1, with it on 127.0.0.2.
@@ -73,8 +76,7 @@ say "2/5 Benutzer ${WORKER_USER}"
 if id "$WORKER_USER" >/dev/null 2>&1; then
   echo "${WORKER_USER} existiert"
 else
-  useradd --system --user-group --home-dir "$WORKER_HOME" --create-home --shell /usr/sbin/nologin \
-    --comment "TIM issue worker (hard lane)" "$WORKER_USER"
+  useradd --system --user-group --home-dir "$WORKER_HOME" --create-home --shell /usr/sbin/nologin --comment "TIM issue worker (hard lane)" "$WORKER_USER"
   echo "${WORKER_USER} angelegt"
 fi
 extra_groups="$(id -Gn "$WORKER_USER" | tr ' ' '\n' | grep -vx "$WORKER_USER" || true)"
@@ -92,19 +94,19 @@ else
   read -rsp "Token einfügen (wird nicht angezeigt): " token </dev/tty
   echo
   [ -n "$token" ] || die "kein Token eingegeben"
-  printf '%s\n' "$token" | as_worker gh auth login --hostname github.com --git-protocol https --with-token \
-    || { unset token; die "Anmeldung abgelehnt"; }
+  printf '%s\n' "$token" | as_worker gh auth login --hostname github.com --git-protocol https --with-token ||
+    { unset token; die "Anmeldung abgelehnt"; }
   unset token
 fi
-login="$(as_worker gh api user --jq .login)"
-[ "${login,,}" = "${WORKER_LOGIN,,}" ] || die "falscher GitHub-Login: ${login}, erwartet ${WORKER_LOGIN}"
-perms="$(as_worker gh api "repos/${REPO}" --jq '[.permissions.push, .permissions.maintain, .permissions.admin] | @csv')"
-[ "$perms" = "true,false,false" ] || die "Rechte von ${WORKER_LOGIN} sind nicht genau push ohne maintain/admin (${perms})"
+login="$(as_worker gh api user --jq .login)" || reject_login "Token wird von GitHub nicht angenommen"
+[ "${login,,}" = "${WORKER_LOGIN,,}" ] || reject_login "falscher GitHub-Login: ${login}, erwartet ${WORKER_LOGIN}"
+perms="$(as_worker gh api "repos/${REPO}" --jq '[.permissions.push, .permissions.maintain, .permissions.admin] | @csv')" || reject_login "Token sieht ${REPO} nicht"
+[ "$perms" = "true,false,false" ] || reject_login "Rechte von ${WORKER_LOGIN} sind nicht genau push ohne maintain/admin (${perms})"
 # A classic token reports its scopes; anything beyond repo work (org admin, deleting repos, keys) is refused.
 # Fine-grained tokens report none and are limited by their own repository and permission settings.
 scopes="$(as_worker gh api -i user 2>/dev/null | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: *//p')"
 if printf '%s' "$scopes" | grep -Eq '(^|, *)(admin:[a-z_]+|delete_repo|delete:packages|write:packages|user)(,|$)'; then
-  die "Token hat zu weite Rechte (${scopes}); einen fine-grained Token nur für ${REPO} nehmen"
+  reject_login "Token hat zu weite Rechte (${scopes}); einen fine-grained Token nur für ${REPO} nehmen"
 fi
 echo "angemeldet als ${login}, Rechte geprüft${scopes:+ (Scopes: ${scopes})}"
 chmod -R go-rwx "$GH_DIR"
@@ -121,11 +123,10 @@ as_worker "${REPO_DIR}/.venv/bin/pip" install --quiet -r "${REPO_DIR}/requiremen
 echo "Checkout $(as_worker git -C "$REPO_DIR" rev-parse --short HEAD)"
 
 say "5/5 Selbsttest, Probelauf, Units"
-( cd "$REPO_DIR" && as_worker "${REPO_DIR}/.venv/bin/python" -m src.local_first.sandbox_runner ) \
-  || die "Sandbox nicht dicht (Ausgabe oben)"
-( cd "$REPO_DIR" && as_worker env TIM_WORKER_LANE=hard TIM_QWEN_HARD_URL="$OLLAMA_URL" "${REPO_DIR}/.venv/bin/python" \
-    scripts/run_mac_qwen_issue.py --state-dir "${WORKER_HOME}/state" --dry-run ) \
-  || die "Probelauf fehlgeschlagen (Ausgabe oben)"
+( cd "$REPO_DIR" && as_worker "${REPO_DIR}/.venv/bin/python" -m src.local_first.sandbox_runner ) ||
+  die "Sandbox nicht dicht (Ausgabe oben)"
+( cd "$REPO_DIR" && as_worker env TIM_WORKER_LANE=hard TIM_QWEN_HARD_URL="$OLLAMA_URL" "${REPO_DIR}/.venv/bin/python" scripts/run_mac_qwen_issue.py --state-dir "${WORKER_HOME}/state" --dry-run ) ||
+  die "Probelauf fehlgeschlagen (Ausgabe oben)"
 install -m 644 "${SRC_DIR}/tim-issue-worker.service" /etc/systemd/system/tim-issue-worker.service
 install -m 644 "${SRC_DIR}/tim-issue-worker.timer" /etc/systemd/system/tim-issue-worker.timer
 [ -f /etc/tim-issue-worker.env ] || install -m 600 "${SRC_DIR}/tim-issue-worker.env" /etc/tim-issue-worker.env

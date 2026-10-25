@@ -34,7 +34,11 @@ REPO = "TIM-Intelegence-market/tim-ai-platform"
 HARD_MODEL_DEFAULT = "qwen3-coder:30b"
 HARD_REQUEST_TIMEOUT = "900"
 REVIEW_MAX_DIFF_CHARS = 60_000
-WORKER_LOGIN = "apoman74-art"
+# Mac and tim-core-01 use this account, each with its own token (Barti, 25.10.2026).
+WORKER_LOGIN = "tim-issue-worker-t330"
+# The previous worker account. Its triage contracts and open PRs still count while they exist, so no issue is
+# blocked or started twice by the switch; nothing it authors is ever merged or closed by this worker.
+LEGACY_WORKER_LOGINS = ("apoman74-art",)
 WORKER_BRANCH = re.compile(r"codex/issue-([1-9][0-9]*)-qwen(-hard)?")
 SELF_UPDATED_EXIT = 3
 STALE_PR_SECONDS = 6 * 3600
@@ -388,13 +392,13 @@ def _ci_unavailable(pr: dict) -> bool:
 PR_FIELDS = "number,headRefName,headRefOid,baseRefName,mergeStateStatus,createdAt,author"
 
 
-def _list_worker_prs(pipeline: Pipeline) -> str:
+def _list_worker_prs(pipeline: Pipeline, author: str = WORKER_LOGIN) -> str:
     """The worker's open PRs, with their checks when its token may read them.
 
     The worker's fine-grained token cannot read commit statuses, and GitHub then refuses the whole
     query. Without the checks `_ci_unavailable` sees no failures, so such a PR is treated as before.
     """
-    base = ("pr", "list", "--state", "open", "--author", WORKER_LOGIN, "--limit", "100", "--json")
+    base = ("pr", "list", "--state", "open", "--author", author, "--limit", "100", "--json")
     try:
         return pipeline.github(*base, PR_FIELDS + ",statusCheckRollup")
     except PipelineError as exc:
@@ -410,7 +414,13 @@ def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool
     PRs of the other lane are counted as covered, so neither worker starts an issue the other one
     has a PR for, but they are left to the worker that opened them.
     """
-    prs = json.loads(_list_worker_prs(pipeline))
+    prs, seen = [], set()
+    for author in (WORKER_LOGIN, *LEGACY_WORKER_LOGINS):
+        listed = json.loads(_list_worker_prs(pipeline, author))
+        for pr in listed if isinstance(listed, list) else []:
+            if isinstance(pr, dict) and pr.get("number") not in seen:
+                seen.add(pr.get("number"))
+                prs.append(pr)
     covered: set[int] = set()
     now = time.time() if now is None else now
     for pr in prs if isinstance(prs, list) else []:
@@ -419,7 +429,8 @@ def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool
             continue
         issue = int(match.group(1))
         covered.add(issue)
-        if bool(match.group(2)) != (lane == "hard"):
+        own = str((pr.get("author") or {}).get("login", "")).casefold() == WORKER_LOGIN.casefold()
+        if not own or bool(match.group(2)) != (lane == "hard"):
             continue
         number, status = str(pr.get("number")), pr.get("mergeStateStatus")
         try:
@@ -572,7 +583,7 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
                                        "number,title,body,labels,updatedAt,url,state,author,comments"))
     if not isinstance(issues, list):
         raise PipelineError("GitHub issue list is invalid")
-    issues = [attach_worker_contract(issue, WORKER_LOGIN) if isinstance(issue, dict) else issue
+    issues = [attach_worker_contract(issue, (WORKER_LOGIN, *LEGACY_WORKER_LOGINS)) if isinstance(issue, dict) else issue
               for issue in issues]
     ledger = IssueLedger(state_dir / "issue-ledger.json")
     ledger.reconcile(issues)
