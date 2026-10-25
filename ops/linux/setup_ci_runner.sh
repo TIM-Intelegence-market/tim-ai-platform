@@ -21,8 +21,8 @@ set -euo pipefail
 REPO_URL="https://github.com/TIM-Intelegence-market/tim-ai-platform"
 RUNNER_USER="timrunner"
 RUNNER_NAME="tim-core-01-ci"
-# tim-ci-linux only for the probe run; add tim-ci once ci.yml uses [self-hosted, tim-ci] (ops/linux/README.md).
-RUNNER_LABELS="${RUNNER_LABELS:-tim-ci-linux}"
+# tim-ci: the label ci.yml and pr-gate.yml run on, shared with the Mac mini runner.
+RUNNER_LABELS="${RUNNER_LABELS:-tim-ci}"
 PG_PORT=5434
 PG_VERSION=16
 CI_HOME="/srv/ci"
@@ -155,4 +155,4 @@ systemd-analyze verify /etc/systemd/system/tim-ci-runner.service /etc/systemd/sy
 say "Fertig. Der Server ist weiter im Live-Modus."
 echo "CI-Modus:   sudo tim-mode ci        (zurück nach 6 h automatisch, --hours N ändert das)"
 echo "Live-Modus: sudo tim-mode live"
-echo "Status:     tim-mode status"
+echo "Status:     sudo tim-mode status   (/usr/local/sbin liegt für normale Benutzer nicht im PATH)"

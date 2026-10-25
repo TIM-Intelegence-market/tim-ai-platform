@@ -1,7 +1,7 @@
 name: CI
 
-# Runs on the self-hosted runner on the Mac mini (labels self-hosted, macOS, tim-ci), which uses no
-# GitHub Actions minutes; setup and isolation in docs/CI_SELF_HOSTED_RUNNER.md. Feature branches are
+# Runs on the self-hosted runners with the label tim-ci (Mac mini, and tim-core-01 while it is in CI mode),
+# which use no GitHub Actions minutes; setup and isolation in docs/CI_SELF_HOSTED_RUNNER.md. Feature branches are
 # tested through their pull request, so a push to a PR branch no longer starts a second identical run.
 on:
   push:
@@ -16,7 +16,7 @@ on:
 permissions:
   contents: read
 
-# One runner serves the repository: a newer push to the same PR replaces its queued run.
+# Runners are few and often just the Mac: a newer push to the same PR replaces its queued run.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -24,19 +24,23 @@ concurrency:
 jobs:
   test:
     if: github.event_name != 'schedule'
-    runs-on: [self-hosted, macOS, tim-ci]
+    # Any tim-ci runner: the Mac mini always, tim-core-01 only in CI mode (ops/linux/README.md), so
+    # this job never depends on the server alone.
+    runs-on: [self-hosted, tim-ci]
     # The parallel run needs a few minutes; the margin covers a busy Mac.
     timeout-minutes: 40
     # Isolated test database only (tests/conftest.py refuses any other target): PostgreSQL 16 on the
-    # runner host, port 5434, database tim_test, role tim, set up by ops/macos/setup_ci_runner.sh.
-    # Service containers are not available on macOS runners.
+    # runner host, port 5434, database tim_test, role tim, set up by ops/macos/setup_ci_runner.sh or
+    # ops/linux/setup_ci_runner.sh. Service containers are not available on macOS runners.
     steps:
       - uses: actions/checkout@v7
-      # setup-python cannot install on this runner: the macOS Python package hardcodes
-      # /Users/runner/hostedtoolcache. Use Homebrew's python@3.13 from setup_ci_runner.sh instead.
-      - name: Set up Python 3.13 (Homebrew)
+      # setup-python cannot install on the Mac: the macOS Python package hardcodes
+      # /Users/runner/hostedtoolcache. Each runner brings Python 3.13 from its setup script instead:
+      # Homebrew's python@3.13 on macOS, Debian's python3.13 on Linux.
+      - name: Set up Python 3.13
         run: |
-          /opt/homebrew/bin/python3.13 -m venv "$RUNNER_TEMP/venv"
+          if [ "$RUNNER_OS" = "macOS" ]; then python=/opt/homebrew/bin/python3.13; else python=/usr/bin/python3.13; fi
+          "$python" -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - name: Install dependencies
         run: |

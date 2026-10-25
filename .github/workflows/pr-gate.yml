@@ -15,8 +15,9 @@ permissions:
 jobs:
   gate:
     name: PR gate
-    # Self-hosted runner (docs/CI_SELF_HOSTED_RUNNER.md); this job never executes PR code.
-    runs-on: [self-hosted, macOS, tim-ci]
+    # Any tim-ci runner (docs/CI_SELF_HOSTED_RUNNER.md); it needs only git, gh and python3.
+    # This job never executes PR code.
+    runs-on: [self-hosted, tim-ci]
     timeout-minutes: 5
     steps:
       # The default checkout credentials stay on purpose: the fetch below needs them in a

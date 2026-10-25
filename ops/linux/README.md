@@ -13,7 +13,7 @@ alle Jobs gehen an den Mac. `test` kann deshalb nie nur auf diesem Server laufen
 ## Bedienen
 
 ```bash
-tim-mode status
+sudo tim-mode status          # /usr/local/sbin liegt für normale Benutzer nicht im PATH
 sudo tim-mode ci              # zurück auf Live automatisch nach 6 h; --hours N ändert das, 0 = nie
 sudo tim-mode live            # verweigert, solange ein Job läuft; --wait wartet, --force bricht ihn ab
 ```
@@ -40,9 +40,9 @@ speichert ihn nicht. Es startet nichts; der Server bleibt im Live-Modus.
 - Abschottung: `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, schreiben nur
   unter `/srv/ci`, `/opt/tim` und `/var/backups` sind unsichtbar.
 
-Labels: zuerst nur `tim-ci-linux` für den Probelauf (`.github/workflows/ci-linux-probe.yml`). Wenn `ci.yml`
-auf `[self-hosted, tim-ci]` umgestellt ist, das Label `tim-ci` ergänzen (Settings → Actions → Runners →
-tim-core-01-ci → Labels).
+Label: `tim-ci`, dasselbe wie beim Mac; `ci.yml` und `pr-gate.yml` laufen auf `[self-hosted, tim-ci]`.
+Der Probelauf vom 25.10.2026 lief noch mit dem Zwischen-Label `tim-ci-linux` (Lauf 40192069659, grün). Beim
+Runner von damals `tim-ci` ergänzen und `tim-ci-linux` entfernen: Settings → Actions → Runners → tim-core-01-ci → Labels.
 
 ## Offen
 
