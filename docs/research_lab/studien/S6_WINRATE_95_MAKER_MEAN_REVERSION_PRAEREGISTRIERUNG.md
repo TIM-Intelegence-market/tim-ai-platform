@@ -94,7 +94,7 @@ Genau dagegen stehen K7, K8 und K9.
 
 | Datensatz | Quelle | Zeitraum | Stand |
 |---|---|---|---|
-| USD-M Perpetual **1m**-Kerzen BTCUSDT, ETHUSDT, SOLUSDT | data.binance.vision, monatliche Archive mit Prüfsumme (`src/research_lab/data/archive.py`, Intervall „1m“ vorhanden) | BTC/ETH ab 2020-01, SOL ab 2020-09 (Warm-up), gezählt ab 2020-10, bis 2024-12 | geladen 25.10. 20:04–21:13 Ortszeit (P2, 177 Monatsarchive mit Prüfsumme); Hashes, Tick je Monat und Lücken im Gate-Bericht `../reports/s6_count_2026-10-25T2229Z.md`; SOL hat zwei Archivlücken (26.–28.02.2022, 01.–02.04.2022); kein Kurs angesehen, nur Fills gezählt |
+| USD-M Perpetual **1m**-Kerzen BTCUSDT, ETHUSDT, SOLUSDT | data.binance.vision, monatliche Archive mit Prüfsumme (`src/research_lab/data/archive.py`, Intervall „1m“ vorhanden) | BTC/ETH ab 2020-01, SOL ab 2020-09 (Warm-up), gezählt ab 2020-10, bis 2024-12 | geladen 25.10. 20:04–20:13 Ortszeit (P2, 172 Monatsarchive mit Prüfsumme); Hashes, Tick je Monat und Lücken im Gate-Bericht `../reports/s6_count_2026-10-25T2229Z.md`; SOL hat zwei Archivlücken (26.–28.02.2022, 01.–02.04.2022); kein Kurs angesehen, nur Fills gezählt |
 | USD-M Funding-Raten | wie oben, `Dataset.FUNDING`, Zeitstempel normalisiert wie S5 (`normalize_funding`) | wie oben | geladen (S4/S5) |
 | aggTrades-Stichprobe (Latenzprüfung P5) | data.binance.vision Tagesarchive, Werkzeuge aus S2 (`src/research_lab/data/aggtrades.py`) | 10 Tage je Instrument aus dem Training, Ziehung mit Seed vor jedem Ergebnis | nicht geladen |
 | Holdout 2025+ | gesperrt durch `HoldoutLocked` in `data/store.py` | ab 2025-01-01 | nie geladen |
@@ -363,7 +363,7 @@ ihn.
 | # | Paket | Prüfbefehl |
 |---|---|---|
 | P1 | Entwurf 0.1 → adversariale Prüfung (anderes Modell) → 0.2 | erledigt 25.10., Befunde im Änderungsprotokoll |
-| P2 | ~~1m-Klines USD-M BTC/ETH/SOL 2020–2024 auf dem Mac laden~~ erledigt 25.10. (177 Archive, Hashes/Lücken/Ticks im Gate-Bericht) | erledigt |
+| P2 | ~~1m-Klines USD-M BTC/ETH/SOL 2020–2024 auf dem Mac laden~~ erledigt 25.10. (172 Archive, Hashes/Lücken/Ticks im Gate-Bericht) | erledigt |
 | P3 | ~~Zähllauf 6.1~~ erledigt 25.10. 23:29 Ortszeit, Commit 3be449f: alle sechs Varianten bestehen (`../reports/s6_count_2026-10-25T2229Z.md`) | erledigt |
 | P4 | Code (Motor und Zähllauf in `hypotheses/s6.py`, Kennzahlen/Urteil/Baselines in `studies/s6_eval.py`, 18 Tests grün, Commits 6828e04 und 3be449f; offen: `MAKER_FEE` in `protocol.py` erst mit Protokoll-Eintrag 1.3, Baseline C, Latenzprüfung): `hypotheses/s6.py` (Referenz, Tick, Orders, Post-only, Durchhandel-Regel, `both`, Ausstiege inkl. Stop in der Fill-Minute, Sperren, Funding), `MAKER_FEE` und S6-Stress in `protocol.py` (mit Protokoll-Eintrag 1.3), Baselines A/B/C nach 7, Tests: Referenz nur aus geschlossenen Kerzen (121 Schlusskurse), Post-only gegen close und open, δ und Tick-Rundung zuungunsten, `ambiguous` = Stop, Stop in der Fill-Minute, Ziel nicht in der Fill-Minute, Zeitstop Kerze 240, Gebühren genau einmal je Ausstiegsgrund, Funding-Grenzfälle, Lücken ≤ 5 min und > 5 min, `section_end`, `both` als Verlierer, Fill-Abschlag | `pytest tests/test_research_lab_s6.py` grün, Cloud-Suite grün |
 | P5 | Latenzprüfung 6.2 an aggTrades (30 Tage, ~3–9 GB Download auf dem Mac) | λ bestimmt; bei λ > 25 % δ erhöhen und P3 wiederholen |
