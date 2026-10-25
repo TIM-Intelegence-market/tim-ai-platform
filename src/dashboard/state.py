@@ -20,6 +20,7 @@ class DashboardState:
     research_cases: list[dict] = field(default_factory=list)
     orderflow_observations: list[dict] = field(default_factory=list)
     orderflow_validations: list[dict] = field(default_factory=list)
+    orderflow_validations_long: list[dict] = field(default_factory=list)
     system_health: dict[str, Any] = field(default_factory=lambda: {
         "database": "unknown",
         "stream": "unknown",

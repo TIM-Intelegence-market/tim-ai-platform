@@ -31,6 +31,7 @@ from src.observation.engine import ObservationEngine
 from src.orderflow.metrics import OrderflowMetricsService
 from src.orderflow.observations import OrderflowObservationEngine, OrderflowResearchCaseEngine
 from src.orderflow.validation import OrderflowValidationEngine
+from src.orderflow.validation_long import CANDLE_TIMEFRAME as LONG_CANDLE_TIMEFRAME, LONG_HORIZONS, OrderflowLongValidationEngine
 from src.operational.logging import StructuredLog
 from src.operational.live_evidence import atomic_write_json, check_listener, compute_rolling_liveness
 from src.research.case_builder import ACTIVE_STATUSES, is_builder_case, refresh_case
@@ -62,6 +63,7 @@ class TIMApplication:
         self.orderflow_observations = OrderflowObservationEngine()
         self.orderflow_cases = OrderflowResearchCaseEngine()
         self.orderflow_validation = OrderflowValidationEngine()
+        self.orderflow_validation_long = OrderflowLongValidationEngine()
         self.ollama = OllamaClient(settings.ollama_url, settings.ollama_model)
         self.dashboard_state = DashboardState()
         self.dashboard_state.system_health.update({
@@ -268,6 +270,25 @@ class TIMApplication:
             with self.dashboard_state.lock:
                 self.dashboard_state.orderflow_validations=[item for item in self.dashboard_state.orderflow_validations if item.get("observation_id")!=validation.observation_id]+[validation.to_dict()]
 
+        if hasattr(self.repository,"pending_orderflow_observations_long"):
+            await self.validate_pending_orderflow_long(as_of)
+
+    async def validate_pending_orderflow_long(self,as_of:datetime)->None:
+        """1h / 4h / 24h outcomes from 1-minute candles; research record only, never blocks ingestion."""
+        try:
+            pending=await self.repository.pending_orderflow_observations_long(settings.symbol,as_of)
+            for observation in pending:
+                observed_at=datetime.fromisoformat(observation["observed_at"])
+                end=min(as_of,observed_at+timedelta(minutes=LONG_HORIZONS[-1]))
+                candles=await self.repository.candles_between(settings.symbol,LONG_CANDLE_TIMEFRAME,observed_at-timedelta(minutes=2),end)
+                validation=self.orderflow_validation_long.validate(observation,candles,as_of)
+                if validation is None:continue
+                await self.repository.save_orderflow_validation_long(validation)
+                with self.dashboard_state.lock:
+                    self.dashboard_state.orderflow_validations_long=([item for item in self.dashboard_state.orderflow_validations_long if item.get("observation_id")!=validation.observation_id]+[validation.to_dict()])[-500:]
+        except Exception as error:  # noqa: BLE001 - paper research record; the ingestion path must not fail on it
+            log.warning("long-horizon validation skipped: %s",error)
+
     async def explain(self, observation: Observation) -> None:
         if not settings.enable_ollama:
             return
@@ -293,6 +314,7 @@ class TIMApplication:
         persisted_cases=await self.repository.recent_research_cases(settings.symbol,1000)
         persisted_orderflow=await self.repository.recent_orderflow_observations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_observations") else []
         persisted_validations=await self.repository.recent_orderflow_validations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_validations") else []
+        persisted_validations_long=await self.repository.recent_orderflow_validations_long(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_validations_long") else []
         # Rebuild from the oldest latest persisted candle, rather than merely
         # the current hour. This preserves a raw trade bucket that was active
         # when the prior process stopped and idempotently repairs any completed
@@ -316,6 +338,7 @@ class TIMApplication:
             self.dashboard_state.research_cases=[item.to_dict() for item in persisted_cases]
             self.dashboard_state.orderflow_observations=list(reversed(persisted_orderflow))
             self.dashboard_state.orderflow_validations=list(reversed(persisted_validations))
+            self.dashboard_state.orderflow_validations_long=list(reversed(persisted_validations_long))
             self.dashboard_state.memory_status={"observations":self.memory.size,"method":"deterministic_jaccard"}
             self.dashboard_state.market_status={"symbol":settings.symbol,"timeframes":settings.timeframes,"status":"COLLECTING_PUBLIC_DATA"}
             # Only the first restore runs before the stream connects. Later

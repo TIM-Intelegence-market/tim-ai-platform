@@ -46,7 +46,9 @@ Dashboard-Agenten.
 
 | Paket | Status | PR / Nachweis |
 |---|---|---|
-| D1 Einstiegsdoku | IN_PROGRESS | dieser PR |
+| D1 Einstiegsdoku | VERIFIED | dieser PR: `README.md`, `CI.md`, `docs/TIM_IN_10_MINUTEN.md`, `docs/SYSTEMSTAND.md` |
+| H1 lange Horizonte 1h/4h/24h | VERIFIED (Code), RUNNING (Daten ab Einspielen) | dieser PR: `src/orderflow/validation_long.py`, Migration 008, `tests/test_orderflow_validation_long.py`, `docs/ORDERFLOW_VALIDATION_LONG.md` |
+| C4 Tests ohne Wanduhrzeit | DONE (vorab) | `test_canary_15` prüft seit #380 eine Schranke von 1,5 s gegen 3,0 s Verzögerung, kein enges Zeitmaß mehr |
 | alle anderen | PLANNED | – |
 
 Statuswerte: PLANNED, RUNNING, BLOCKED (wer), VERIFIED (Nachweis), DONE. Eine Delegation allein ist kein Abschluss.
