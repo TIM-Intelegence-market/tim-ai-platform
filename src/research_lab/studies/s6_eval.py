@@ -8,6 +8,7 @@ pool method of section 7 (deterministic for a seed).
 from __future__ import annotations
 
 import math
+import operator
 import random
 from bisect import bisect_right
 from collections.abc import Mapping, Sequence
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 from src.research_lab.data.parse import FundingRate, Kline
 from src.research_lab.hypotheses import s6
 from src.research_lab.hypotheses.s6 import LONG, SHORT, NOMINAL, STOP_FRACTION, Reference, S6Costs, S6Variant, Trade
+from src.research_lab.stats.inference import Window, walk_forward_windows
 
 N_MIN_EFFECTIVE = 160
 HIT_POINT = 0.95
@@ -26,6 +28,18 @@ POOL_PER_DECILE = 2_000
 BASELINE_RUNS = 10_000
 BASELINE_SEED = 20261030
 LAMBDA_MIN = 0.05
+# Protocol cost model (section 5.3, reported only): every leg taker fee + slippage = 0.08 %, stops as before.
+PROTOCOL_COSTS = S6Costs(maker_fee=0.0008)
+MIN_TRADES_TRAIN = 500
+N_MIN_VALIDATION = 183
+P_TRAIN = 0.10
+P_VALIDATION = 0.05
+PF_VALIDATION = 1.1
+YEAR_MIN_TRADES = 30
+YEAR_SHARE = 0.60
+WALK_FORWARD_HIT = 0.90
+GRID_K = (2.0, 3.0)
+GRID_T = (0.15, 0.20, 0.25)
 
 
 # ----------------------------------------------------------------------------- statistics
@@ -256,7 +270,9 @@ def baseline_a_pvalue(fill_deciles: Sequence[tuple[str, int]], pools: Mapping[st
                       runs: int = BASELINE_RUNS, seed: int = BASELINE_SEED) -> tuple[float, float]:
     """p = (1 + runs with E[R] >= observed) / (runs + 1); also the mean baseline expectancy.
 
-    fill_deciles: (pool key, decile) per trade of the variant; pools: pool per key."""
+    fill_deciles: (pool key, decile) per trade of the variant; pools: pool per key. Every run draws one pool
+    trade per fill (with replacement) from the fill's decile; the draws are made fill by fill, which gives the
+    same distribution as run by run and is deterministic for the seed."""
     rng = random.Random(seed + 1)
     choices = []
     for key, d in fill_deciles:
@@ -267,16 +283,12 @@ def baseline_a_pvalue(fill_deciles: Sequence[tuple[str, int]], pools: Mapping[st
         choices.append(rs)
     if not choices:
         return 1.0, 0.0
-    at_least = 0
-    total = 0.0
+    sums = [0.0] * runs
+    for rs in choices:
+        sums = list(map(operator.add, sums, rng.choices(rs, k=runs)))
     n = len(choices)
-    for _ in range(runs):
-        s = sum(rng.choice(rs) for rs in choices)
-        e = s / n
-        total += e
-        if e >= observed_expectancy:
-            at_least += 1
-    return (1 + at_least) / (runs + 1), total / runs
+    at_least = sum(1 for total in sums if total / n >= observed_expectancy)
+    return (1 + at_least) / (runs + 1), sum(sums) / (runs * n)
 
 
 def mirrored_trades(bars: Sequence[Kline], trades: Sequence[Trade], variant: S6Variant, costs: S6Costs, end_ms: int,
@@ -317,3 +329,141 @@ def day_block_bootstrap(trades: Sequence[Trade], *, draws: int = BASELINE_RUNS, 
         means.append(sum(sample) / len(sample))
     means.sort()
     return means[int(0.05 * draws)], means[min(draws - 1, int(0.95 * draws))]
+
+
+# ----------------------------------------------------------------------------- re-pricing, gap alternative (5.3, A5)
+
+
+def reprice(trade: Trade, costs_from: S6Costs, costs_to: S6Costs) -> Trade:
+    """The same fills under another fee schedule (protocol cost model, reported only). Exit prices keep the
+    slippage of the simulated run; only the fee legs change."""
+    if trade.reason == "both":
+        loss_r = -(1 + (costs_to.maker_fee + costs_to.taker_fee + costs_to.stop_slippage) / STOP_FRACTION)
+        fee = (costs_to.maker_fee + costs_to.taker_fee) * NOMINAL
+        return Trade(trade.side, trade.entry_index, trade.entry_time, trade.entry_fill, trade.exit_index, trade.exit_time,
+                     trade.exit_fill, trade.reason, trade.ambiguous, fee, trade.funding, loss_r)
+    q = NOMINAL / trade.entry_fill
+    exit_rate_from = costs_from.maker_fee if trade.reason == "target" else costs_from.taker_fee
+    exit_rate_to = costs_to.maker_fee if trade.reason == "target" else costs_to.taker_fee
+    gross = trade.net_r * STOP_FRACTION * NOMINAL + trade.fees + trade.funding
+    fees = costs_to.maker_fee * NOMINAL + exit_rate_to * q * trade.exit_fill
+    assert abs(trade.fees - (costs_from.maker_fee * NOMINAL + exit_rate_from * q * trade.exit_fill)) < 1e-6
+    net = gross - fees - trade.funding
+    return Trade(trade.side, trade.entry_index, trade.entry_time, trade.entry_fill, trade.exit_index, trade.exit_time,
+                 trade.exit_fill, trade.reason, trade.ambiguous, fees, trade.funding, net / (STOP_FRACTION * NOMINAL))
+
+
+def gap_alternative(trades: Sequence[Trade], bars: Sequence[Kline], costs: S6Costs) -> list[Trade]:
+    """A5: `gap` trades closed on the first bar after the gap at min(stop, open) with stop slippage instead of the
+    last bar before it. Other trades unchanged."""
+    out = []
+    for t in trades:
+        if t.reason != "gap" or t.exit_index + 1 >= len(bars):
+            out.append(t)
+            continue
+        nxt = bars[t.exit_index + 1]
+        stop = t.entry_fill * (1 - STOP_FRACTION * t.side)
+        price = (min(stop, nxt.open) if t.side == LONG else max(stop, nxt.open)) * (1 - costs.stop_slippage * t.side)
+        q = NOMINAL / t.entry_fill
+        fees = costs.maker_fee * NOMINAL + costs.taker_fee * q * price
+        net = t.side * (price - t.entry_fill) * q - fees - t.funding
+        out.append(Trade(t.side, t.entry_index, t.entry_time, t.entry_fill, t.exit_index + 1, nxt.open_time, price, "gap_after",
+                         t.ambiguous, fees, t.funding, net / (STOP_FRACTION * NOMINAL)))
+    return out
+
+
+# ----------------------------------------------------------------------------- training, validation, robustness (5.1, 5.4)
+
+
+def training_verdict(s: Summary, p_baseline: float) -> dict:
+    reasons = []
+    if s.expectancy <= 0:
+        reasons.append("E[R] <= 0")
+    if s.n < MIN_TRADES_TRAIN:
+        reasons.append(f"n < {MIN_TRADES_TRAIN}")
+    if s.n_eff < N_MIN_EFFECTIVE:
+        reasons.append(f"n_eff < {N_MIN_EFFECTIVE}")
+    if p_baseline >= P_TRAIN:
+        reasons.append(f"p >= {P_TRAIN}")
+    if s.hit_rate < HIT_POINT:
+        reasons.append("hit rate < 95 %")
+    if s.hit_lower_bound < HIT_LOWER:
+        reasons.append("lower bound < 90 %")
+    return {"pass": not reasons, "reasons": reasons}
+
+
+def validation_verdict(s: Summary, p_baseline: float, robustness: Mapping[str, bool]) -> dict:
+    reasons = []
+    if s.n_eff < N_MIN_VALIDATION:
+        reasons.append(f"n_eff < {N_MIN_VALIDATION}")
+    if s.expectancy <= 0:
+        reasons.append("E[R] <= 0")
+    if p_baseline >= P_VALIDATION:
+        reasons.append(f"p >= {P_VALIDATION}")
+    if s.profit_factor <= PF_VALIDATION:
+        reasons.append(f"profit factor <= {PF_VALIDATION}")
+    if s.max_drawdown > MAX_DRAWDOWN_R:
+        reasons.append(f"drawdown > {MAX_DRAWDOWN_R:.0f} R")
+    if s.hit_rate < HIT_POINT:
+        reasons.append("hit rate < 95 %")
+    if s.hit_lower_bound < HIT_LOWER:
+        reasons.append("lower bound < 90 %")
+    reasons.extend(f"robustness: {name}" for name, ok in robustness.items() if not ok)
+    return {"pass": not reasons, "reasons": reasons}
+
+
+def year_stability(trades: Sequence[Trade]) -> dict:
+    """E[R] > 0 in at least 60 % of the years with >= 30 trades (training + validation)."""
+    by_year: dict[str, list[float]] = {}
+    for t in trades:
+        by_year.setdefault(s6.day_key(t.entry_time)[:4], []).append(t.net_r)
+    rows = {y: {"n": len(rs), "expectancy": sum(rs) / len(rs)} for y, rs in sorted(by_year.items())}
+    counted = [r for r in rows.values() if r["n"] >= YEAR_MIN_TRADES]
+    positive = sum(1 for r in counted if r["expectancy"] > 0)
+    ok = bool(counted) and positive >= YEAR_SHARE * len(counted) - 1e-9
+    return {"pass": ok, "years": rows, "years_counted": len(counted), "years_positive": positive}
+
+
+def walk_forward(variant_trades: Mapping[str, Sequence[Trade]], start_ms: int, end_ms: int, *, fit_months: int = 24,
+                 test_months: int = 6) -> dict:
+    """Choose the best of all variants per fit window by E[R] of trades closed by the fit end (known_at), measure it
+    on the trades entered in the following test window; chained E[R] > 0 and chained hit rate >= 90 % (section 5.4)."""
+    windows: Sequence[Window] = walk_forward_windows(start_ms, end_ms, fit_months=fit_months, test_months=test_months)
+    chained: list[float] = []
+    chosen = []
+    for w in windows:
+        def fit_mean(variant: str) -> float:
+            rs = [t.net_r for t in variant_trades[variant] if w.fit_start <= t.entry_time < w.fit_end and t.exit_time <= w.fit_end]
+            return sum(rs) / len(rs) if rs else -math.inf
+
+        best = max(sorted(variant_trades), key=fit_mean)
+        chosen.append(best)
+        chained.extend(t.net_r for t in variant_trades[best] if w.fit_end <= t.entry_time < w.test_end)
+    expectancy = sum(chained) / len(chained) if chained else 0.0
+    hit = sum(1 for r in chained if r > 0) / len(chained) if chained else 0.0
+    return {"pass": bool(chained) and expectancy > 0 and hit >= WALK_FORWARD_HIT, "windows": len(windows), "chosen": chosen,
+            "trades": len(chained), "expectancy": expectancy, "hit_rate": hit}
+
+
+def neighbours_positive(variant: S6Variant, train_expectancy: Mapping[str, float]) -> dict:
+    """E[R] > 0 in training for every direct grid neighbour (same T other k; same k adjacent T)."""
+    names = {(v.k, v.target_r): v.variant_id for v in s6.S6_VARIANTS}
+    neighbours = [names[(k, variant.target_r)] for k in GRID_K if k != variant.k]
+    ti = GRID_T.index(variant.target_r)
+    neighbours += [names[(variant.k, GRID_T[j])] for j in (ti - 1, ti + 1) if 0 <= j < len(GRID_T)]
+    values = {n: train_expectancy.get(n, -math.inf) for n in neighbours}
+    return {"pass": all(v > 0 for v in values.values()), "neighbours": values}
+
+
+def select_candidates(validation_expectancy: Mapping[str, float], passed: Sequence[str]) -> list[str]:
+    """At most two candidates, at most one per target, highest validation E[R] first (section 5.1 step 3)."""
+    chosen: list[str] = []
+    used_targets: set[float] = set()
+    by_id = {v.variant_id: v for v in s6.S6_VARIANTS}
+    for vid in sorted(passed, key=lambda v: (-validation_expectancy[v], v)):
+        t = by_id[vid].target_r
+        if t in used_targets or len(chosen) >= 2:
+            continue
+        chosen.append(vid)
+        used_targets.add(t)
+    return chosen
