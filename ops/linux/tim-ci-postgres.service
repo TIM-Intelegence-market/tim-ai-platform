@@ -23,4 +23,5 @@ ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
 ReadWritePaths=/srv/ci/pg16
-InaccessiblePaths=-/opt/tim -/var/backups
+# Same blocked paths as tim-ci-runner.service.
+InaccessiblePaths=-/opt/tim -/etc/tim -/srv/tim -/var/lib/tim -/var/lib/tim-agent -/srv/postgresql -/var/lib/postgresql -/etc/postgresql -/run/postgresql -/var/backups

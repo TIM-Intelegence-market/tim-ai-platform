@@ -38,7 +38,16 @@ speichert ihn nicht. Es startet nichts; der Server bleibt im Live-Modus.
   `/usr/bin/python3.13`.
 - Grenzen der Runner-Unit: `Nice=10`, `CPUQuota=600%` (6 von 8 Kernen), `MemoryMax=16G`; Test-DB `MemoryMax=4G`.
 - Abschottung: `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, schreiben nur
-  unter `/srv/ci`, `/opt/tim` und `/var/backups` sind unsichtbar.
+  unter `/srv/ci`. Unsichtbar sind `/opt/tim`, `/etc/tim` (tim.env, GitHub-App-Schlüssel, DB-Passwort), `/srv/tim`,
+  `/var/lib/tim`, `/var/lib/tim-agent`, `/var/backups` sowie Daten, Konfiguration und Socket der Produktionsdatenbank
+  (`/srv/postgresql`, `/var/lib/postgresql`, `/etc/postgresql`, `/run/postgresql`).
+- `KillMode=control-group`: Beim Stoppen endet der ganze Prozessbaum eines Jobs, nicht nur `run.sh`. `tim-mode live`
+  startet die Live-Dienste erst, wenn kein Prozess von `timrunner` mehr läuft (sonst `pkill -KILL`, und bleibt
+  dann noch einer übrig, bricht es ab).
+- Produktions-PostgreSQL 18 lauscht weiter auf 127.0.0.1:5432. `tim-mode ci` verweigert den Start, solange eine
+  `pg_hba.conf` unter `/etc/postgresql` eine `trust`-Regel hat; ohne die braucht PR-Code ein Passwort, das er nicht hat.
+- `tim-maintenance.timer` ist im CI-Modus angehalten: Er ruft nach einer Log-Bereinigung `timctl start` auf, das
+  würde über `Conflicts=` den laufenden CI-Job beenden. `tim-mode live` startet ihn wieder.
 
 Label: `tim-ci`, dasselbe wie beim Mac; `ci.yml` und `pr-gate.yml` laufen auf `[self-hosted, tim-ci]`.
 Der Probelauf vom 25.10.2026 lief noch mit dem Zwischen-Label `tim-ci-linux` (Lauf 40192069659, grün). Beim
@@ -52,7 +61,13 @@ Runner von damals `tim-ci` ergänzen und `tim-ci-linux` entfernen: Settings → 
   und DNS über `8.8.8.8`. Rückweg: `/var/tmp/tim-resolv-vorher.conf` nach `/etc/resolv.conf` kopieren und die
   alte Standardroute aus `/var/tmp/tim-route-vorher.txt` wiederherstellen.
 
-- Im CI-Modus sammelt tim-runtime nicht, und der Watchdog überwacht nicht. Timer wie `tim-checkup` oder
+- Die Runner-Programme unter `/srv/ci/actions-runner` sind für `timrunner` und damit für PR-Code beschreibbar
+  (nötig für die Selbst-Aktualisierung des Runners). Ein präparierter Testlauf könnte so einen späteren
+  `PR gate`-Lauf und dessen kurzlebiges Token beeinflussen, das Commit-Status setzen darf. Auf dem Mac gilt
+  dasselbe. Begrenzt, weil nur Mitwirkende und der Worker PRs öffnen. Später: Programme root gehören lassen
+  (nur `_work` und `_diag` schreibbar) oder ephemere Runner.
+- Im CI-Modus sammelt tim-runtime nicht, und der Watchdog überwacht nicht. Ein CI-Fenster heißt bis zu 6 Stunden
+  ohne Datensammlung auf dem Server; das ist nur vertretbar, solange TIM hauptsächlich auf dem Mac läuft. Timer wie `tim-checkup` oder
   `tim-server-health` laufen weiter und können das als Ausfall melden; beim ersten CI-Modus beobachten.
 
 ## Entfernen

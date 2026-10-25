@@ -64,8 +64,10 @@ Das Skript lässt jeden Schritt aus, der schon erledigt ist. Ein zweiter Lauf is
 - `tim-core-01` war bis 2026-10-25 bewusst kein Runner, weil dort der Live-Betrieb läuft. Jetzt ist er Runner, aber nur,
   solange der Live-Betrieb gestoppt ist: `tim-ci-runner.service` hat `Conflicts=` auf `tim-runtime`, `tim-watchdog` und
   `timec`, startet nie beim Booten und kehrt nach 6 Stunden automatisch zu Live zurück. Er läuft als `timrunner` ohne
-  sudo und ohne Gruppen, mit `ProtectSystem=strict`, `ProtectHome` und gesperrtem `/opt/tim` und `/var/backups`.
-  Die Produktionsdatenbank (PostgreSQL 18, Port 5432) läuft weiter; `timrunner` hat dafür keine Zugangsdaten, und
+  sudo und ohne Gruppen, mit `ProtectSystem=strict`, `ProtectHome` und gesperrten Pfaden für TIM-Daten, Secrets
+  (`/etc/tim`) und die Produktionsdatenbank (Liste in `ops/linux/README.md`); ein Stopp beendet den ganzen Job-Prozessbaum.
+  Die Produktionsdatenbank (PostgreSQL 18, Port 5432) läuft weiter; `timrunner` hat dafür keine Zugangsdaten, `tim-mode ci`
+  verweigert den Start bei einer `trust`-Regel in deren `pg_hba.conf`, und
   `tests/conftest.py` lässt nur die Testdatenbank zu. Börsen-Keys oder Echtgeld-Zugänge gibt es auf dem Runner nicht.
 
 ## Betrieb
