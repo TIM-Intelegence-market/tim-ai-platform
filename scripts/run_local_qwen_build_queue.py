@@ -210,12 +210,12 @@ def _acceptance_gate(repo: Path, state: Path, task: dict[str, Any], result: dict
     required_outputs = required_outputs_raw if isinstance(required_outputs_raw, list) else []
     output_paths = [_safe_repo_file(repo, str(relative)) for relative in required_outputs]
 
-    from src.local_first.sandbox_runner import configured_mode
+    from src.local_first.sandbox_runner import ENFORCING_KINDS, configured_mode
 
     checks = {
         "developer_status_verifying": result.get("status") == "VERIFYING",
         # When the sandbox is required, the passing test run must have happened inside it.
-        "test_sandbox_enforced": configured_mode() != "required" or tests.get("sandbox") == "seatbelt",
+        "test_sandbox_enforced": configured_mode() != "required" or tests.get("sandbox") in ENFORCING_KINDS,
         "rollback_false": result.get("rollback") is False,
         "authority_local_safety_gates": result.get("authority") == "LOCAL_SAFETY_GATES",
         "targeted_tests_passed": tests.get("returncode") == 0,

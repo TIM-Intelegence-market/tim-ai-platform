@@ -53,6 +53,37 @@ Label: `tim-ci`, dasselbe wie beim Mac; `ci.yml` und `pr-gate.yml` laufen auf `[
 Der Probelauf vom 25.10.2026 lief noch mit dem Zwischen-Label `tim-ci-linux` (Lauf 40192069659, grün). Beim
 Runner von damals `tim-ci` ergänzen und `tim-ci-linux` entfernen: Settings → Actions → Runners → tim-core-01-ci → Labels.
 
+## Issue-Worker für schwere Issues (neben dem Runner)
+
+Auf tim-core-01 läuft zusätzlich der Qwen-Issue-Worker, in beiden Modi. Er nimmt nur Issues mit
+`agent:qwen-hard` und rechnet mit dem lokalen `qwen3-coder:30b`; der Mac nimmt die einfachen
+(`TIM_WORKER_LANE`, siehe `docs/mac-qwen-issue-worker.md`). Einrichten, aus einem Checkout:
+
+```bash
+sudo bash ops/linux/setup_issue_worker.sh
+```
+
+Das Skript bricht ab, solange der alte `tim-qwen-worker` läuft (erst `docs/TIM_CHECKUP.md`, Abschnitt
+„Einschalten“, Schritt 1), und lädt nie ein Modell. Den Token von `apoman74-art` tippst du selbst; er wird nicht
+angezeigt und muss genau Push-Rechte haben, ohne Maintain/Admin. Es startet nichts und schaltet nichts ein.
+
+- Benutzer `timworker` ohne sudo, ohne weitere Gruppen, ohne Login-Shell, Home `/srv/worker` (700): Checkout
+  `/srv/worker/repo`, Zustand und Ledger `/srv/worker/state`, GitHub-Anmeldung `/srv/worker/.config/gh-tim-mac-worker`.
+- `tim-issue-worker.timer` startet `tim-issue-worker.service` alle 5 Minuten. Vor jedem Lauf prüft der
+  Sandbox-Selbsttest, dass Tests in bubblewrap weder Netz noch Zugangsdaten noch TIM-Daten sehen; sonst läuft nichts.
+- Argumente in `/etc/tim-issue-worker.env` (root, 600). Pilot: `TIM_WORKER_ARGS=--pilot-issue <Nummer>` (nur PR,
+  kein Merge), danach `--merge --self-update`.
+- Grenzen: `Nice=15`, `IOSchedulingClass=idle`, `CPUQuota=100%`, `MemoryMax=4G`, kein Swap. Das Modell selbst rechnet
+  in `ollama.service` mit dessen Grenzen. Läuft gerade ein CI-Job (`Runner.Worker`), beginnt der Worker keine neue
+  Aufgabe.
+- Abschottung wie beim Runner (`ProtectSystem=strict`, `ProtectHome=yes`, `InaccessiblePaths` für TIM-Daten,
+  `/srv/ci` und die Produktionsdatenbank), schreiben nur unter `/srv/worker`. Kein Codex- und kein Claude-Fallback.
+- Anders als bisher liegt damit eine GitHub-Anmeldung auf dem Server: die des Workers, ohne Admin-Rechte, nur für
+  `timworker` lesbar.
+
+Ein: `sudo systemctl enable --now tim-issue-worker.timer`. Aus: `sudo systemctl disable --now tim-issue-worker.timer`.
+Log: `journalctl -u tim-issue-worker -n 50`.
+
 ## Vorfall 25.10.2026
 
 Der erste `tim-mode live` lief noch mit `KillMode=process`. systemd beendete nur `run.sh`; `Runner.Listener` lief
@@ -85,4 +116,12 @@ sudo tim-mode live
 cd /srv/ci/actions-runner && sudo -u timrunner ./config.sh remove --token <Token von Settings → Runners>
 sudo rm /etc/systemd/system/tim-ci-runner.service /etc/systemd/system/tim-ci-postgres.service /usr/local/sbin/tim-mode
 sudo systemctl daemon-reload && sudo userdel -r timrunner
+```
+
+Issue-Worker:
+
+```bash
+sudo systemctl disable --now tim-issue-worker.timer
+sudo rm /etc/systemd/system/tim-issue-worker.service /etc/systemd/system/tim-issue-worker.timer /etc/tim-issue-worker.env
+sudo systemctl daemon-reload && sudo userdel -r timworker
 ```

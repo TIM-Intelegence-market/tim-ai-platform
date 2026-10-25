@@ -1,0 +1,10 @@
+# Polls for agent:qwen-hard issues every five minutes; a run that is still busy is not started twice.
+[Unit]
+Description=TIM issue worker every five minutes (hard lane)
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=5min
+
+[Install]
+WantedBy=timers.target
