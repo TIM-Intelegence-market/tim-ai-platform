@@ -158,9 +158,17 @@ Each worker merges, updates or retires only the PRs of its own lane, and neither
 has an open worker PR of the other lane. The issue ledger stays per machine, which is safe because the
 lanes do not overlap. Never run two workers with lane `all`, or `all` beside another lane.
 
-On the Mac, set `TIM_WORKER_LANE=easy` in the LaunchAgent environment and remove
-`TIM_QWEN_SERVER_PREFERRED`, `TIM_QWEN_SERVER_KEEP_WARM` and `TIM_QWEN_HARD_URL`, then rerun the
-installer. Triage then still labels large-file issues `agent:qwen-hard` for the server, without a
+On the Mac, rerun the installer with `TIM_WORKER_LANE=easy` in its environment and without
+`TIM_QWEN_SERVER_PREFERRED`, `TIM_QWEN_SERVER_KEEP_WARM` and `TIM_QWEN_HARD_URL` (the installer copies
+these from its own environment into the LaunchAgent; a variable that is not set is dropped):
+
+```sh
+env -u TIM_QWEN_SERVER_PREFERRED -u TIM_QWEN_SERVER_KEEP_WARM -u TIM_QWEN_HARD_URL TIM_WORKER_LANE=easy \
+  .venv/bin/python scripts/install_local_qwen_launchd.py <same flags as before> --load
+```
+
+Keep the other flags of the current LaunchAgent (`plutil -p ~/Library/LaunchAgents/com.tim.local-qwen-worker.plist`).
+Triage then still labels large-file issues `agent:qwen-hard` for the server, without a
 tunnel. The server worker reaches Ollama directly on `127.0.0.1:11434`, runs model-written tests in
 bubblewrap and has no Codex or Claude fallback. Setup and limits: `ops/linux/README.md`.
 
