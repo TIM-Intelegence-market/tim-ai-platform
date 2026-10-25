@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--funding", action="store_true", help="fetch funding rates instead of klines")
     parser.add_argument("--from", dest="start", type=_month)
     parser.add_argument("--to", dest="end", type=_month)
-    parser.add_argument("--symbol", default="BTCUSDT", help="USD-M only: BTCUSDT, ETHUSDT or SOLUSDT (study S4)")
+    parser.add_argument("--symbol", default="BTCUSDT", help="BTCUSDT, ETHUSDT or SOLUSDT (USD-M: study S4, spot: study S5)")
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     args = parser.parse_args(argv)
     store = ArchiveStore(args.root)
