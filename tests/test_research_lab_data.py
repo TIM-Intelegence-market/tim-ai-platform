@@ -62,7 +62,12 @@ def test_invalid_refs_are_rejected() -> None:
     with pytest.raises(ValueError):
         ArchiveRef(Market.SPOT, Dataset.FUNDING, 2024, 1)
     with pytest.raises(ValueError):
-        ArchiveRef(Market.USDM, Dataset.KLINES, 2024, 1, "1h", symbol="ETHUSDT")
+        ArchiveRef(Market.USDM, Dataset.KLINES, 2024, 1, "1h", symbol="XRPUSDT")
+    with pytest.raises(ValueError):
+        ArchiveRef(Market.SPOT, Dataset.KLINES, 2024, 1, "1h", symbol="ETHUSDT")
+    ArchiveRef(Market.USDM, Dataset.KLINES, 2024, 1, "1h", symbol="ETHUSDT")  # S4 scope
+    sol = ArchiveRef(Market.USDM, Dataset.FUNDING, 2020, 10, symbol="SOLUSDT")
+    assert sol.url.endswith("/futures/um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2020-10.zip")
 
 
 def test_fetch_verifies_checksum_and_loads(tmp_path) -> None:

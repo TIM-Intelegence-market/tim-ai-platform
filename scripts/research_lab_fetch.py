@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--funding", action="store_true", help="fetch funding rates instead of klines")
     parser.add_argument("--from", dest="start", type=_month)
     parser.add_argument("--to", dest="end", type=_month)
+    parser.add_argument("--symbol", default="BTCUSDT", help="USD-M only: BTCUSDT, ETHUSDT or SOLUSDT (study S4)")
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     args = parser.parse_args(argv)
     store = ArchiveStore(args.root)
@@ -44,7 +45,8 @@ def main(argv: list[str] | None = None) -> int:
         if not (args.market and args.start and args.end) or args.funding == bool(args.interval):
             parser.error("give --preset r4, or --market, --from, --to and either --interval or --funding")
         refs = [
-            ArchiveRef(MARKETS[args.market], Dataset.FUNDING if args.funding else Dataset.KLINES, year, month, args.interval)
+            ArchiveRef(MARKETS[args.market], Dataset.FUNDING if args.funding else Dataset.KLINES, year, month, args.interval,
+                       symbol=args.symbol)
             for year, month in months(args.start, args.end)
         ]
     ok = True
