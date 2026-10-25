@@ -146,6 +146,17 @@ class DashboardServer:
 
                     journal = trader_journal.load(outer.state.trader_journal_path)
                     return self.respond(200, json.dumps({**journal, "entries": journal["entries"][-500:], "summary": trader_journal.summary(journal)}, default=str).encode(), "application/json")
+                if path == "/api/candles-derived":
+                    timeframe = query.get("tf", ["4h"])[0]
+                    with outer.state.lock:
+                        rows = [dict(item) for item in outer.state.derived_candles.get(timeframe, [])]
+                    if timeframe not in ("4h", "1d"):
+                        return self.respond(400, json.dumps({"error": "tf must be 4h or 1d"}).encode(), "application/json")
+                    return self.respond(200, json.dumps({"symbol": outer.state.market_status.get("symbol"), "timeframe": timeframe, "source": "derived from persisted 1h candles, complete buckets only", "count": len(rows), "candles": rows}, default=str).encode(), "application/json")
+                if path == "/api/validations-long":
+                    with outer.state.lock:
+                        rows = [dict(item) for item in outer.state.orderflow_validations_long[-500:]]
+                    return self.respond(200, json.dumps({"validation_version": "long-1.0.0", "horizons_minutes": [60, 240, 1440], "mode": "OBSERVE", "note": "Nachprüfung nach 1h, 4h und 24h aus 1-Minuten-Kerzen; nur Messwerte, keine Einstufung.", "count": len(rows), "validations": rows}, default=str).encode(), "application/json")
                 if path == "/api/plan-journal":
                     from src.dashboard.plan_journal import load_view as load_plan_journal
 

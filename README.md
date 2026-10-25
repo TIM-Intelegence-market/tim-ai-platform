@@ -11,9 +11,12 @@ with [CONTRIBUTING.md](CONTRIBUTING.md), report security issues according to
 [docs/governance/repository_governance.md](docs/governance/repository_governance.md)
 for branch, review, merge, and release rules.
 
-The local repository is authoritative for the current source state. A GitHub
-remote has not yet been configured, so no external repository, branch
-protection, or hosted integration is claimed.
+The authoritative source state is branch `platform-main` of the private GitHub
+repository `uezeyiraydin-cell/tim-ai-platform` (organisation
+TIM-Intelegence-market). `main` is outdated and not used. A ruleset on
+`platform-main` requires the checks `test` and `PR gate`, both run on a
+self-hosted runner; merges happen only on the owner's explicit word. Current
+state and rules for newcomers: `docs/TIM_IN_10_MINUTEN.md` (German, dated).
 
 ## Week 2 research layer
 

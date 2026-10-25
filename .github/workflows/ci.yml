@@ -68,6 +68,20 @@ jobs:
           TIM_ALLOW_DATABASE_URL_ENV_FOR_TESTS: "true"
           TIM_DATABASE_SECRET_PROVIDER: url-env
           TIM_DURABLE_TEST_DATABASE_URL: postgresql://tim:tim_ci_only@127.0.0.1:5434/tim_test
+      # Line coverage of src/ as one number in the run summary (Grün-Plan T3): the artifact holds the detail.
+      - name: Coverage summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET, pathlib
+          path = pathlib.Path("coverage.xml")
+          if path.exists():
+              root = ET.parse(path).getroot()
+              print(f"**Zeilenabdeckung src/: {float(root.get('line-rate', 0)) * 100:.1f} %** "
+                    f"({root.get('lines-covered')} von {root.get('lines-valid')} Zeilen)")
+          else:
+              print("Keine coverage.xml (Testlauf abgebrochen).")
+          PY
       # No Codecov upload: its action needs gpg, which the Mac runner does not have. The coverage
       # report stays available as part of this artifact.
       - name: Upload JUnit and coverage artifact
@@ -79,6 +93,38 @@ jobs:
             artifacts/github_toolchain/pytest_full.junit.xml
             artifacts/github_toolchain/pytest_serial.junit.xml
             coverage.xml
+
+  report-red-main:
+    # strict is off in the ruleset since 25.10.2026: a PR can be green against an older platform-main and
+    # still break the merged result. A red push run on platform-main therefore opens (or updates) one
+    # issue labelled ci-red, so nobody has to poll the Actions page (Grün-Plan T1). Pull requests and
+    # dispatches never report here.
+    needs: test
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/platform-main'
+    runs-on: [self-hosted, tim-ci]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/github-script@v8
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HEAD_SHA: ${{ github.sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = process.env.HEAD_SHA.slice(0, 7);
+            const body = `Der Push-Lauf \`test\` auf \`platform-main\` ist rot.\n\n` +
+              `- Commit: ${process.env.HEAD_SHA}\n- Lauf: ${process.env.RUN_URL}\n\n` +
+              `Regel (CI.md): Ein roter Lauf auf platform-main wird sofort repariert; strict ist aus, ` +
+              `deshalb kann ein grüner PR gegen einen älteren Stand das hier auslösen.`;
+            const open = await github.rest.issues.listForRepo({ owner, repo, state: 'open', labels: 'ci-red', per_page: 5 });
+            if (open.data.length > 0) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: open.data[0].number, body: `Erneut rot nach ${sha}.\n\n${body}` });
+              return;
+            }
+            await github.rest.issues.create({ owner, repo, title: `[CI] platform-main rot nach ${sha}`, body, labels: ['ci-red'] });
 
   codeql:
     # Not a merge gate and over 20 minutes on the single Mac runner, where it held up every PR queued

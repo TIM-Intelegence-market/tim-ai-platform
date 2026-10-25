@@ -51,6 +51,15 @@ CREATE TABLE IF NOT EXISTS orderflow_validations (
     validation_version TEXT NOT NULL CHECK (validation_version='1.0.0'), mode TEXT NOT NULL CHECK (mode='OBSERVE')
 );
 CREATE INDEX IF NOT EXISTS orderflow_validations_time_idx ON orderflow_validations(symbol,validated_through DESC);
+CREATE TABLE IF NOT EXISTS orderflow_validations_long (
+    observation_id TEXT PRIMARY KEY REFERENCES orderflow_observations(observation_id) ON DELETE CASCADE,
+    symbol TEXT NOT NULL, observed_at TIMESTAMPTZ NOT NULL, baseline_price DOUBLE PRECISION NOT NULL CHECK (baseline_price > 0),
+    baseline_close_time TIMESTAMPTZ NOT NULL,
+    horizons JSONB NOT NULL, complete BOOLEAN NOT NULL,
+    validation_hash TEXT NOT NULL CHECK (validation_hash ~ '^[0-9a-f]{64}$'), validated_through TIMESTAMPTZ NOT NULL,
+    validation_version TEXT NOT NULL CHECK (validation_version='long-1.0.0'), mode TEXT NOT NULL CHECK (mode='OBSERVE')
+);
+CREATE INDEX IF NOT EXISTS orderflow_validations_long_time_idx ON orderflow_validations_long(symbol,validated_through DESC);
 
 CREATE TABLE IF NOT EXISTS candles (
     symbol TEXT NOT NULL,
@@ -74,13 +83,10 @@ BEGIN
 END
 $tim$;
 CREATE INDEX IF NOT EXISTS candles_lookup_idx ON candles (symbol, timeframe, open_time DESC);
-DO $tim$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='candles_timeframe_allowed') THEN
-        ALTER TABLE candles ADD CONSTRAINT candles_timeframe_allowed CHECK (timeframe IN ('1m','5m','15m','1h'));
-    END IF;
-END
-$tim$;
+-- 4h and 1d are derived from persisted 1h candles (src/data_ingestion/derived_candles.py), never
+-- aggregated from the live trade stream. Dropping and re-adding keeps an older installed check in step.
+ALTER TABLE candles DROP CONSTRAINT IF EXISTS candles_timeframe_allowed;
+ALTER TABLE candles ADD CONSTRAINT candles_timeframe_allowed CHECK (timeframe IN ('1m','5m','15m','1h','4h','1d'));
 
 CREATE TABLE IF NOT EXISTS observations (
     observation_id UUID NOT NULL,

@@ -144,10 +144,50 @@ Besteht kein Test, bleibt TIM ein Beobachtungs- und Forschungssystem; dann wird 
 Paper Trading (V9) wartet auf eine neue Hypothese. Besteht mindestens ein Test, folgt S3 (Strategieanspruch mit
 Kosten, R-Einheit und Kapitalkurve mit Ruinregel) nach Protokoll 1.1.
 
+## 7. Werkzeuge für Zähllauf und Power-Gate (Stand 0.3, noch ohne Lauf)
+
+Skript `scripts/research_lab_s2.py` mit drei Schritten; Module `src/research_lab/studies/s2_orderflow.py`,
+`src/research_lab/studies/s2_power.py`, `src/research_lab/data/aggtrades.py`; Tests `tests/test_research_lab_s2.py`.
+
+1. **`fetch`** lädt die Binance-Tagesarchive `spot/daily/aggTrades/BTCUSDT` vom 2019-12-30 (Montag vor
+   Trainingsbeginn, damit das erste Fenster ein Vorfenster hat) bis 2024-12-29, prüft jede Datei gegen die
+   offizielle Prüfsumme und reduziert sie auf zwei kleine Dateien je Tag: `agg/` mit den sieben Feldern, die
+   die Regeln lesen (Trades, Käufe, Verkäufe, Kauf- und Verkaufsmenge in 1e-8 BTC, größter Trade) und `px/`
+   mit Minutenpreisen für den späteren Ergebnislauf. Das Roharchiv wird danach verworfen (`--keep-raw` behält es).
+   Tage ab 2025-01-01 werden verweigert (Holdout). `manifest.json` hält Archiv-SHA-256 und die SHA-256 beider
+   Dateien fest.
+2. **`count`** liest **nur** `agg/`, spielt die Minutenfenster durch die unveränderte
+   `OrderflowObservationEngine` (RULE_VERSION 1.0.0) und schreibt `s2_count_<Stand>.json/.md`: je ISO-Woche und
+   Art Rohfälle, Fälle nach der 30-Minuten-Regel, Kontrollfenster, auswertbare Fenster, Tage, Abschnitt,
+   Vollständigkeit; je Abschnitt und Art Summen und die Mindestzahlen (200 Fälle, 26 Wochen). Es gibt keine
+   Preisspalte im Eingang und kein Trefferfeld im Ausgang: Der Zähllauf ist durch Konstruktion ergebnisblind.
+3. **`power`** liest die Zähldatei und rechnet die Simulation aus Abschnitt 3 (10 000 Replikationen, Seed 20261023,
+   Basisraten 0,35/0,50/0,65, ICC 0/0,05/0,10, Beta-Binomial je Woche und Gruppe, dieselbe standardisierte
+   Statistik, derselbe Vier-Wochen-Block-Bootstrap mit B = 19 999, Schwelle 0,05/18 je Abschnitt) für die sechs
+   gerichteten Arten in beiden Abschnitten und schreibt `s2_power_<Stand>.json/.md`. Abweichende Parameter
+   (`--replications`, `--bootstrap`, `--kind`) werden in der Datei als „nicht registriert“ markiert; so ein Lauf ist
+   ein Rauchtest, kein Gate-Ergebnis.
+
+**Gleichheitsnachweis statt Regelkopie.** Die Fensterwerte entstehen aus Ganzzahlen (1e-8 BTC) ohne Rundung und
+sind damit Feld für Feld numerisch gleich den Werten von `OrderflowMetricsEngine.calculate`; die Tests prüfen das
+gegen die Live-Engine auf Zufallstagen, einschließlich der daraus folgenden Beobachtungsarten. Der schnelle
+Reduktionspfad (pandas/numpy) wird in den Tests und auf Wunsch je Tag (`--verify-days`) gegen den reinen
+Python-Pfad verglichen; bei Abweichung wird der Tag verworfen.
+
+**Was der Lauf kostet.** Rund 1 826 Tagesarchive mit zusammen etwa 100–300 GB Download (Schätzung aus den
+Dateigrößen 2021–2024, nicht gemessen); die reduzierten Dateien bleiben unter 1 GB. `count` läuft in Minuten.
+`power` braucht mit den registrierten Parametern etwa 5–10 Minuten je Art, Abschnitt und Szenario (gemessen in
+der Cloud auf synthetischen Zählern: 16 Replikationen in 0,3–0,9 s), also 108 Läufe und grob eine Nacht.
+
+**Offen vor dem ersten Lauf.** (a) Wo gerechnet wird: Abschnitt 4 verlangt ein getrenntes Labor, nicht den
+Kampagnen-Mac; die Kampagne ist seit 22.10. abgebrochen, die Cloud erreicht `data.binance.vision` nicht.
+Uzi entscheidet, ob der Mac mini als Labor gilt oder ein anderer Rechner lädt. (b) Nach dem Zähllauf und der
+Power-Simulation: Freigabe 1.0 durch Uzi, erst dann der Ergebnislauf (`px/`).
+
 ## Änderungsprotokoll
 
 | Datum | Version | Änderung | Grund | Bis dahin gesehene Daten |
 |---|---|---|---|---|
 | 2026-10-22 | 0.1 | Entwurf | T08 | Live-Trefferquoten Juli–Okt 2026 (deskriptiv); keine Archivdaten für diese Regeln |
-
 | 2026-10-22 | 0.2 | Wissenszeit getrennt, Test/Multiplikität konkretisiert, Power-Gate und prospektiver Start präzisiert | Review R5 | Keine neuen Ergebnisdaten in dieser Korrektur gelesen |
+| 2026-10-25 | 0.3 | Abschnitt 7: Werkzeuge für Zähllauf, Tagesspeicher und Power-Simulation; keine Regel-, Alpha- oder Horizontänderung | Grün-Plan Sicht 5, Paket F1 | Keine Archivdaten geladen, kein Zähllauf, keine Outcomes; nur synthetische Testdaten |

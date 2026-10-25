@@ -31,6 +31,8 @@ from src.observation.engine import ObservationEngine
 from src.orderflow.metrics import OrderflowMetricsService
 from src.orderflow.observations import OrderflowObservationEngine, OrderflowResearchCaseEngine
 from src.orderflow.validation import OrderflowValidationEngine
+from src.data_ingestion.derived_candles import DERIVE_INTERVAL_SECONDS, DERIVED_TIMEFRAMES, derive_candles, derive_from, source_timeframe
+from src.orderflow.validation_long import CANDLE_TIMEFRAME as LONG_CANDLE_TIMEFRAME, LONG_HORIZONS, OrderflowLongValidationEngine
 from src.operational.logging import StructuredLog
 from src.operational.live_evidence import atomic_write_json, check_listener, compute_rolling_liveness
 from src.research.case_builder import ACTIVE_STATUSES, is_builder_case, refresh_case
@@ -62,6 +64,7 @@ class TIMApplication:
         self.orderflow_observations = OrderflowObservationEngine()
         self.orderflow_cases = OrderflowResearchCaseEngine()
         self.orderflow_validation = OrderflowValidationEngine()
+        self.orderflow_validation_long = OrderflowLongValidationEngine()
         self.ollama = OllamaClient(settings.ollama_url, settings.ollama_model)
         self.dashboard_state = DashboardState()
         self.dashboard_state.system_health.update({
@@ -268,6 +271,25 @@ class TIMApplication:
             with self.dashboard_state.lock:
                 self.dashboard_state.orderflow_validations=[item for item in self.dashboard_state.orderflow_validations if item.get("observation_id")!=validation.observation_id]+[validation.to_dict()]
 
+        if hasattr(self.repository,"pending_orderflow_observations_long"):
+            await self.validate_pending_orderflow_long(as_of)
+
+    async def validate_pending_orderflow_long(self,as_of:datetime)->None:
+        """1h / 4h / 24h outcomes from 1-minute candles; research record only, never blocks ingestion."""
+        try:
+            pending=await self.repository.pending_orderflow_observations_long(settings.symbol,as_of)
+            for observation in pending:
+                observed_at=datetime.fromisoformat(observation["observed_at"])
+                end=min(as_of,observed_at+timedelta(minutes=LONG_HORIZONS[-1]))
+                candles=await self.repository.candles_between(settings.symbol,LONG_CANDLE_TIMEFRAME,observed_at-timedelta(minutes=2),end)
+                validation=self.orderflow_validation_long.validate(observation,candles,as_of)
+                if validation is None:continue
+                await self.repository.save_orderflow_validation_long(validation)
+                with self.dashboard_state.lock:
+                    self.dashboard_state.orderflow_validations_long=([item for item in self.dashboard_state.orderflow_validations_long if item.get("observation_id")!=validation.observation_id]+[validation.to_dict()])[-500:]
+        except Exception as error:  # noqa: BLE001 - paper research record; the ingestion path must not fail on it
+            log.warning("long-horizon validation skipped: %s",error)
+
     async def explain(self, observation: Observation) -> None:
         if not settings.enable_ollama:
             return
@@ -293,6 +315,7 @@ class TIMApplication:
         persisted_cases=await self.repository.recent_research_cases(settings.symbol,1000)
         persisted_orderflow=await self.repository.recent_orderflow_observations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_observations") else []
         persisted_validations=await self.repository.recent_orderflow_validations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_validations") else []
+        persisted_validations_long=await self.repository.recent_orderflow_validations_long(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_validations_long") else []
         # Rebuild from the oldest latest persisted candle, rather than merely
         # the current hour. This preserves a raw trade bucket that was active
         # when the prior process stopped and idempotently repairs any completed
@@ -316,6 +339,7 @@ class TIMApplication:
             self.dashboard_state.research_cases=[item.to_dict() for item in persisted_cases]
             self.dashboard_state.orderflow_observations=list(reversed(persisted_orderflow))
             self.dashboard_state.orderflow_validations=list(reversed(persisted_validations))
+            self.dashboard_state.orderflow_validations_long=list(reversed(persisted_validations_long))
             self.dashboard_state.memory_status={"observations":self.memory.size,"method":"deterministic_jaccard"}
             self.dashboard_state.market_status={"symbol":settings.symbol,"timeframes":settings.timeframes,"status":"COLLECTING_PUBLIC_DATA"}
             # Only the first restore runs before the stream connects. Later
@@ -541,6 +565,38 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _derived_candles_loop(self) -> None:
+        # 4h and 1d candles from persisted 1h candles; research data only, never on the ingestion path.
+        while not self.worker_stop.is_set():
+            try:
+                await self.derive_higher_timeframe_candles(datetime.now(timezone.utc))
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - derived data must not stop the runtime
+                log.warning("derived candles pass failed: %s", error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=DERIVE_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
+    async def derive_higher_timeframe_candles(self, now: datetime) -> dict[str, int]:
+        """One pass: write every complete 4h/1d bucket that is not persisted yet. Returns rows written per timeframe."""
+        written: dict[str, int] = {}
+        if not hasattr(self.repository, "latest_candle_open_time"):
+            return written
+        for timeframe in DERIVED_TIMEFRAMES:
+            latest = await self.repository.latest_candle_open_time(settings.symbol, timeframe)
+            start = derive_from(latest, timeframe) or (now - timedelta(days=90))
+            source = await self.repository.candles_between(settings.symbol, source_timeframe(timeframe), start, now)
+            derived = derive_candles(source, timeframe, now)
+            for candle in derived:
+                await self.repository.upsert_candle(candle)
+            written[timeframe] = len(derived)
+            rows = await self.repository.recent_candle_rows(settings.symbol, timeframe, 300)
+            with self.dashboard_state.lock:
+                self.dashboard_state.derived_candles[timeframe] = rows
+        return written
+
     async def _plan_journal_loop(self) -> None:
         # Paper journal only: a failed step is logged and retried, never fatal.
         from functools import partial
@@ -598,6 +654,7 @@ class TIMApplication:
         worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
         evidence_task = asyncio.create_task(self._live_evidence_loop(), name="tim-live-evidence")
         journal_task = asyncio.create_task(self._plan_journal_loop(), name="tim-plan-journal")
+        derived_task = asyncio.create_task(self._derived_candles_loop(), name="tim-derived-candles")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
@@ -606,6 +663,7 @@ class TIMApplication:
             self.worker_stop.set()
             evidence_task.cancel()
             journal_task.cancel()
+            derived_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's
