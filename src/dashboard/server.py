@@ -116,7 +116,7 @@ class DashboardServer:
                     return self.respond(200, formatter(insights).encode(), content_type)
                 if path == "/chart":
                     try:
-                        page = render_chart_page(outer.state, query.get("tf", [None])[0])
+                        page = render_chart_page(outer.state, query.get("tf", [None])[0], query.get("levels", [None])[0])
                     except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                         return self.respond(500, _error_page("Chart", exc).encode(), "text/html; charset=utf-8")
                     return self.respond(200, page.encode(), "text/html; charset=utf-8")
