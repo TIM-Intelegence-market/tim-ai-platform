@@ -53,6 +53,14 @@ Label: `tim-ci`, dasselbe wie beim Mac; `ci.yml` und `pr-gate.yml` laufen auf `[
 Der Probelauf vom 25.10.2026 lief noch mit dem Zwischen-Label `tim-ci-linux` (Lauf 40192069659, grün). Beim
 Runner von damals `tim-ci` ergänzen und `tim-ci-linux` entfernen: Settings → Actions → Runners → tim-core-01-ci → Labels.
 
+## Vorfall 25.10.2026
+
+Der erste `tim-mode live` lief noch mit `KillMode=process`. systemd beendete nur `run.sh`; `Runner.Listener` lief
+außerhalb der Unit weiter, blieb bei GitHub online und nahm um 16:44, kurz nachdem das Label `tim-ci` gesetzt war,
+einen Job an, während TIM live lief und die Test-DB aus war (Lauf 40208120108, Tests ohne Datenbank rot). Seitdem:
+`KillMode=control-group`, `tim-mode ci` und `tim-mode live` beenden übrig gebliebene `timrunner`-Prozesse, und
+`tim-mode status` warnt im Live-Modus, wenn welche laufen.
+
 ## Offen
 
 - `/opt/tim` ist für alle Benutzer lesbar, also auch für `timrunner` (Warnung der Einrichtung am 25.10.2026).
