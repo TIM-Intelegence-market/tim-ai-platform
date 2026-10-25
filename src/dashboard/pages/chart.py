@@ -10,13 +10,25 @@ from src.dashboard.chart_model import CHART_TIMEFRAMES, DEFAULT_TIMEFRAME, build
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _hero, _layout, _strip_states
 
-WIDTH, HEIGHT = 1200, 520
+WIDTH, HEIGHT = 1200, 600
 PLOT_LEFT, PLOT_RIGHT = 12, 760
 PROFILE_LEFT, PROFILE_RIGHT = 764, 850
 LABEL_X = 856
-TOP, BOTTOM = 18, 478
+TOP, BOTTOM = 18, 558
 LABEL_GAP = 13
 ZONE_SPACE = 260  # px right of the last candle reserved for written-out scenario plans
+ZONE_SPACE_EMPTY = 24  # without any plan the candles use the width
+MAX_MAIN_LEVELS = 8  # main levels (day, week, naked POC) drawn by default, nearest to price first
+MAX_MINOR_LEVELS = 4  # session / IB / running POCs, drawn as short stubs at the right edge
+MAX_STRUCTURE = 3  # newest BOS/MSS marks drawn
+MINOR_STUB = 150  # px a minor level reaches left of the profile
+LEVEL_MERGE = 0.0004  # main levels closer than 0.04 % share one line
+PLAN_TEXT_CHARS = 44  # plan texts are cut to the zone width; the full text is the tooltip
+LEVEL_KINDS = (  # first matching source part wins; order = rank
+    ("naked", ("unberührter Tages-POC",)),
+    ("week", ("Vorwoche", "Profil Vorwoche")),
+    ("day", ("Vortag", "Profil Vortag")),
+)
 SCENARIO_NAMES = {
     "BREAKOUT_ACCEPTANCE": "Ausbruch + Annahme",
     "LEVEL_REACTION": "Level-Reaktion",
@@ -46,6 +58,54 @@ def _nice_ticks(low: float, high: float, count: int = 7) -> list[float]:
     return ticks
 
 
+def level_kind(source: str | None) -> str:
+    """day / week / naked for main levels, minor for sessions, IB and running POCs."""
+    parts = str(source or "").split(" · ")
+    for kind, sources in LEVEL_KINDS:
+        if any(part in sources for part in parts):
+            return kind
+    return "minor"
+
+
+def short_label(label: str) -> str:
+    """Shorter chart label: "PDH · Vortag Hoch · Poor High" -> "PDH · Poor"."""
+    for long, short in ((" · Vortag Hoch", ""), (" · Vortag Tief", ""), (" · Vorwoche Hoch", ""), (" · Vorwoche Tief", ""),
+                        ("Poor High", "Poor"), ("Poor Low", "Poor"), (" (laufend)", " lfd."), ("Vorwoche ", "Vorw. ")):
+        label = label.replace(long, short)
+    return label
+
+
+def chart_levels(references: list[dict[str, Any]], last: float | None, low: float, high: float, show_all: bool = False) -> dict[str, Any]:
+    """Which reference levels the chart draws.
+
+    By default the MAX_MAIN_LEVELS main levels and MAX_MINOR_LEVELS minor levels
+    nearest to price inside the price window; ``show_all`` draws every level in
+    the window. Main levels outside the window are named at the edge (nearest
+    two per side). Returns {"main", "minor", "above", "below", "hidden"}."""
+    anchor = last if last is not None else (low + high) / 2
+    inside = [dict(r, kind=level_kind(r.get("source"))) for r in references if r.get("price") is not None and low <= r["price"] <= high]
+    main = sorted((r for r in inside if r["kind"] != "minor"), key=lambda r: abs(r["price"] - anchor))
+    minor = sorted((r for r in inside if r["kind"] == "minor"), key=lambda r: abs(r["price"] - anchor))
+    if not show_all:
+        main, minor = main[:MAX_MAIN_LEVELS], minor[:MAX_MINOR_LEVELS]
+    hidden = len(inside) - len(main) - len(minor)
+    rank = [kind for kind, _ in LEVEL_KINDS]
+    merged: list[dict[str, Any]] = []
+    for level in sorted(main, key=lambda r: r["price"]):
+        if merged and level["price"] - merged[-1]["low"] <= merged[-1]["low"] * LEVEL_MERGE:
+            place = merged[-1]
+            place["label"] = f"{place['label']} + {level['label']}"
+            if rank.index(level["kind"]) < rank.index(place["kind"]):
+                place["kind"] = level["kind"]
+        else:
+            merged.append({**level, "low": level["price"]})
+    main = merged
+    outside = [r for r in references if r.get("price") is not None and level_kind(r.get("source")) != "minor" and not low <= r["price"] <= high]
+    above = sorted((r for r in outside if r["price"] > high), key=lambda r: r["price"])[:2]
+    below = sorted((r for r in outside if r["price"] < low), key=lambda r: -r["price"])[:2]
+    return {"main": main, "minor": minor, "above": above, "below": below, "hidden": hidden}
+
+
 def _time_label(value: str, timeframe: str) -> str:
     try:
         moment = datetime.fromisoformat(value)
@@ -70,7 +130,7 @@ def _spread_labels(labels: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return labels
 
 
-def _chart_svg(model: dict[str, Any]) -> str:
+def _chart_svg(model: dict[str, Any], show_all: bool = False) -> str:
     candles = model["candles"]
     levels = model["levels"]
     profile = model.get("profile") or {}
@@ -98,7 +158,11 @@ def _chart_svg(model: dict[str, Any]) -> str:
         return price is not None and y_low <= price <= y_high
 
     count = len(candles)
-    slot = (PLOT_RIGHT - PLOT_LEFT - ZONE_SPACE) / count  # free space right of the last candle for zones
+    has_plans = bool(level_plans) or any(
+        s.get("entry_low") is not None or s.get("trigger") is not None or (s.get("preview") or {}).get("stop") is not None
+        for s in analysis.get("scenarios") or [])
+    space = ZONE_SPACE if has_plans else ZONE_SPACE_EMPTY
+    slot = (PLOT_RIGHT - PLOT_LEFT - space) / count  # free space right of the last candle for zones
     body_w = max(1.0, slot * 0.64)
 
     def x(index: int) -> float:
@@ -126,9 +190,9 @@ def _chart_svg(model: dict[str, Any]) -> str:
         parts.append(f"<text x='{PLOT_LEFT + 4}' y='{y(tick) - 3:.1f}' class='tc-axis'>{_safe(_price(tick))}</text>")
 
     step = max(1, count // 6)
-    for index in range(0, count, step):
+    for index in range(step // 2, count, step):  # first label away from the left edge, so none overlap
         parts.append(f"<line x1='{x(index):.1f}' x2='{x(index):.1f}' y1='{TOP}' y2='{BOTTOM}' class='tc-grid'/>")
-        parts.append(f"<text x='{x(index):.1f}' y='{BOTTOM + 16}' text-anchor='{'start' if index == 0 else 'middle'}' class='tc-axis'>{_safe(_time_label(candles[index]['open_time'], timeframe))}</text>")
+        parts.append(f"<text x='{x(index):.1f}' y='{BOTTOM + 16}' text-anchor='middle' class='tc-axis'>{_safe(_time_label(candles[index]['open_time'], timeframe))}</text>")
 
     # Value area band and volume profile bars.
     if profile.get("vah") is not None and profile.get("val") is not None:
@@ -174,6 +238,9 @@ def _chart_svg(model: dict[str, Any]) -> str:
             return
         plan_lines.setdefault((cls, round(price, 6)), []).append(text)  # same level: one line, joined text
 
+    def cut(text: str) -> str:
+        return text if len(text) <= PLAN_TEXT_CHARS else text[:PLAN_TEXT_CHARS - 1] + "…"
+
     for scenario in [*(analysis.get("scenarios") or []), *level_plans]:
         sid, direction = scenario["id"], scenario["direction"]
         kind = "long" if direction == "LONG" else "short" if direction == "SHORT" else "neutral"
@@ -184,7 +251,7 @@ def _chart_svg(model: dict[str, Any]) -> str:
             if visible(lo) or visible(hi):
                 top_price, bottom_price = min(hi, y_high), max(lo, y_low)
                 parts.append(f"<rect x='{zone_x:.1f}' y='{y(top_price):.1f}' width='{zone_w:.1f}' height='{max(2.0, y(bottom_price) - y(top_price)):.1f}' class='tc-zone tc-zone--{kind}'/>")
-                plan_texts.append(f"<text x='{zone_x + 4:.1f}' y='{y(top_price) + 12:.1f}' class='tc-zone-text tc-zone-text--{kind}'>{_safe(plan_text)}</text>")
+                plan_texts.append(f"<text x='{zone_x + 4:.1f}' y='{y(top_price) + 12:.1f}' class='tc-zone-text tc-zone-text--{kind}'><title>{_safe(plan_text)}</title>{_safe(cut(plan_text))}</text>")
             else:
                 (above if lo > y_high else below).append(plan_text)
         elif scenario.get("trigger") is not None:
@@ -204,9 +271,10 @@ def _chart_svg(model: dict[str, Any]) -> str:
 
     for (cls, price), texts in plan_lines.items():
         parts.append(f"<line x1='{zone_x:.1f}' x2='{PROFILE_RIGHT}' y1='{y(price):.1f}' y2='{y(price):.1f}' class='{cls}'/>")
-        plan_texts.append(f"<text x='{zone_x + 4:.1f}' y='{y(price) - 5:.1f}' class='tc-plan-text {cls.split()[0]}-text'>{_safe(' · '.join(texts))}</text>")
+        joined = " · ".join(texts)
+        plan_texts.append(f"<text x='{zone_x + 4:.1f}' y='{y(price) - 5:.1f}' class='tc-plan-text {cls.split()[0]}-text'><title>{_safe(joined)}</title>{_safe(cut(joined))}</text>")
 
-    for bos in model.get("bos", []):
+    for bos in model.get("bos", [])[-MAX_STRUCTURE:]:
         arrow = "↑" if bos["direction"] == "UP" else "↓"
         start = next((x(i) for i, c in enumerate(candles) if c["open_time"] >= bos["swing_time"]), PLOT_LEFT)
         end = next((x(i) for i, c in enumerate(candles) if c["open_time"] >= bos["break_time"]), x(count - 1))
@@ -215,14 +283,19 @@ def _chart_svg(model: dict[str, Any]) -> str:
             parts.append(f"<line x1='{start:.1f}' x2='{end:.1f}' y1='{y(bos['level']):.1f}' y2='{y(bos['level']):.1f}' class='{cls}'/>")
             parts.append(f"<text x='{end:.1f}' y='{y(bos['level']) - 5:.1f}' class='tc-bos-text'>{_safe(bos.get('kind', 'BOS'))} {arrow}</text>")
 
-    for reference in model.get("reference_levels", []):
-        hline(reference["price"], "tc-va", reference["label"])
-
-    hline(levels.get("range_high"), "tc-range", "Range-High")
-    hline(levels.get("range_low"), "tc-range", "Range-Low")
-    hline(profile.get("vah"), "tc-va", "VAH")
-    hline(profile.get("val"), "tc-va", "VAL")
-    hline(profile.get("poc"), "tc-poc", "POC")
+    # Reference levels by rank: main levels as thin lines in their colour, minor ones as stubs at the right edge.
+    shown = chart_levels(model.get("reference_levels", []), levels.get("last"), y_low, y_high, show_all)
+    for reference in shown["main"]:
+        name = short_label(reference["label"])
+        hline(reference["price"], f"tc-lvl tc-lvl--{reference['kind']}", name if len(name) <= 40 else name[:39] + "…")
+    for reference in shown["minor"]:
+        hline(reference["price"], "tc-lvl tc-lvl--minor", short_label(reference["label"]), start=PROFILE_LEFT - MINOR_STUB)
+    for side, items in (("above", shown["above"]), ("below", shown["below"])):
+        (above if side == "above" else below).extend(f"{short_label(r['label'])} {_price(r['price'])}" for r in items)
+    # The chart window's POC only when no main level sits on it; its value area is the shaded band.
+    poc = profile.get("poc")
+    if poc is not None and not any(abs(r["price"] - poc) <= poc * 0.0005 for r in shown["main"]):
+        hline(poc, "tc-poc", "POC Fenster")
 
     for index, candle in enumerate(candles):
         cls = "tc-up" if candle["close"] >= candle["open"] else "tc-down"
@@ -238,16 +311,18 @@ def _chart_svg(model: dict[str, Any]) -> str:
 
     parts.extend(plan_texts)  # on top of lines and candles, readable through the halo
     for item in _spread_labels(labels):
-        parts.append(f"<text x='{LABEL_X}' y='{item['ly']:.1f}' class='tc-label {item['cls'].split()[0]}-text'>{_safe(item['text'])}</text>")
+        parts.append(f"<text x='{LABEL_X}' y='{item['ly']:.1f}' class='tc-label {item['cls'].split()[-1]}-text'>{_safe(item['text'])}</text>")
     banners = [("↑ Ziele über dem Bild: ", targets_above, TOP + 2), ("↓ Ziele unter dem Bild: ", targets_below, BOTTOM - 44)]
     for prefix, items, top in banners:
         if items:
             parts.append(f"<rect x='{PLOT_LEFT + 70}' y='{top}' width='{PLOT_RIGHT - PLOT_LEFT - 140}' height='18' class='tc-banner'/>")
             parts.append(f"<text x='{PLOT_LEFT + 78}' y='{top + 13}' class='tc-banner-text'>{_safe(prefix + ' · '.join(items[:4]))}</text>")
     if above:
-        parts.append(f"<text x='{PLOT_LEFT + 70}' y='{TOP + 34}' class='tc-edge'>{_safe('↑ über dem Bild: ' + ' · '.join(above[:3]))}</text>")
+        parts.append(f"<text x='{PLOT_LEFT + 70}' y='{TOP + 34}' class='tc-edge'>{_safe('↑ über dem Bild: ' + ' · '.join(above[:4]))}</text>")
     if below:
-        parts.append(f"<text x='{PLOT_LEFT + 70}' y='{BOTTOM - 52}' class='tc-edge'>{_safe('↓ unter dem Bild: ' + ' · '.join(below[:3]))}</text>")
+        parts.append(f"<text x='{PLOT_LEFT + 70}' y='{BOTTOM - 52}' class='tc-edge'>{_safe('↓ unter dem Bild: ' + ' · '.join(below[:4]))}</text>")
+    if shown["hidden"]:
+        parts.append(f"<text x='{PROFILE_RIGHT}' y='{BOTTOM + 16}' text-anchor='end' class='tc-axis'>{shown['hidden']} weitere Level ausgeblendet</text>")
     risk = (model.get("risk") or {}).get("text")
     if risk:
         parts.append(f"<rect x='{PLOT_LEFT + 4}' y='{BOTTOM - 20}' width='{min(PLOT_RIGHT - PLOT_LEFT - 8, 8 + 6.4 * len(risk)):.1f}' height='16' class='tc-footer'/>")
@@ -381,7 +456,7 @@ def _card_section(card: dict[str, Any] | None) -> str:
     )
 
 
-def render_chart_page(state: Any, timeframe: str | None = None) -> str:
+def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str | None = None) -> str:
     from datetime import timezone
 
     from src.dashboard.analysis_card import with_journal_check
@@ -391,13 +466,17 @@ def render_chart_page(state: Any, timeframe: str | None = None) -> str:
     model = with_journal_check(build_chart_model(series, timeframe or DEFAULT_TIMEFRAME, now=now, card=True),
                                series, getattr(state, "plan_journal_level_path", None), now)
     tf = model["timeframe"]
+    show_all = levels_mode == "alle"
+    keep = "&levels=alle" if show_all else ""
     tabs = "".join(
-        f"<a href='/chart?tf={item}' class='tc-tab{' tc-tab--active' if item == tf else ''}'"
+        f"<a href='/chart?tf={item}{keep}' class='tc-tab{' tc-tab--active' if item == tf else ''}'"
         f"{' aria-current=\'page\'' if item == tf else ''}>{item}{'' if item in model['available_timeframes'] else ' ·'}</a>"
         for item in CHART_TIMEFRAMES
     )
     body = _hero("TIM-Chart", "30m bis Monat: Binance-Kerzen mit BOS/MSS, Vortages-Leveln, Poor High/Low, Value Area und Szenarien.")
-    body += f"<nav class='tc-tabs' aria-label='Zeitrahmen'>{tabs}</nav>"
+    body += f"<nav class='tc-tabs' aria-label='Zeitrahmen'>{tabs}"
+    body += (f"<span class='tc-tabs__sep'>Level:</span><a href='/chart?tf={tf}' class='tc-tab{'' if show_all else ' tc-tab--active'}'>nahe Hauptlevel</a>"
+             f"<a href='/chart?tf={tf}&levels=alle' class='tc-tab{' tc-tab--active' if show_all else ''}'>alle</a></nav>")
     if not model["candles"]:
         body += "<section class='cc-section'><p class='empty'>Noch keine Kerzen für diesen Zeitrahmen. Der Chart erscheint, sobald die Runtime Daten liefert.</p></section>"
         return _layout("TIM-Chart", "Chart", body, strip=_strip_states(data))
@@ -417,7 +496,12 @@ def render_chart_page(state: Any, timeframe: str | None = None) -> str:
         f"<div class='state-banner__metric'><dt>Letzter Kurs</dt><dd>{_safe(_price(levels.get('last')))}<small>vor {_safe(levels.get('age_seconds'))} s</small></dd></div></dl></section>"
     )
     body += _card_section(model.get("analysis_card"))
-    body += f"<section class='cc-section'><div class='cc-surface tc-chart'>{_chart_svg(model)}</div>"
+    body += f"<section class='cc-section'><div class='cc-surface tc-chart'>{_chart_svg(model, show_all)}</div>"
+    body += (
+        "<p class='cc-note tc-legend'><span class='tc-key tc-key--day'>Vortag</span><span class='tc-key tc-key--week'>Vorwoche</span>"
+        "<span class='tc-key tc-key--naked'>naked POC</span><span class='tc-key tc-key--minor'>Session / IB / laufender POC (kurz am Rand)</span>"
+        f"<span>Gezeigt: {'alle Level' if show_all else f'die {MAX_MAIN_LEVELS} nächsten Hauptlevel und {MAX_MINOR_LEVELS} Nebenlevel'}; alle stehen in der Tabelle unten.</span></p>"
+    )
     body += (
         "<p class='cc-note'>Grün/Rot: Einstiegszonen von TIMs Long-/Short-Szenarien. Stop und Ziele sind eine <b>Vorschau nach TIMs Regeln</b> "
         "(Stop 0,5–1 % hinter der Zone, Ziele 1,5R/2R/3R) für ein <b>nicht bestätigtes</b> Szenario. Scores sind unkalibriert. Keine Order, kein Handel.</p>"

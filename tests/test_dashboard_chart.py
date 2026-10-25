@@ -157,7 +157,7 @@ def test_model_with_external_profile_and_empty_series() -> None:
 
 def test_page_draws_svg_with_levels_and_keeps_csp() -> None:
     page = render_chart_page(_state(), "15m")
-    assert "<svg viewBox='0 0 1200 520'" in page and "class='tc-body" in page
+    assert "<svg viewBox='0 0 1200 600'" in page and "class='tc-body" in page
     for marker in ("VAH ", "VAL ", "POC ", "Range-High", "Kurs "):
         assert marker in page
     assert "Vorschau nach TIMs Regeln" in page and "Keine Order" in page
@@ -168,7 +168,7 @@ def test_page_draws_svg_with_levels_and_keeps_csp() -> None:
 
 def test_page_without_candles_shows_empty_state() -> None:
     page = render_chart_page(DashboardState(), "1h")
-    assert "Noch keine Kerzen" in page and "<svg viewBox='0 0 1200 520'" not in page
+    assert "Noch keine Kerzen" in page and "<svg viewBox='0 0 1200 600'" not in page
 
 
 def test_server_serves_chart_page_and_json() -> None:
@@ -237,3 +237,62 @@ def test_setup_path_shows_written_out_plans_from_chart(monkeypatch) -> None:
     assert "class='sp-plan" in page and "Nächste Sperrzeit: NY-Eröffnung" in page
     # Without per-timeframe candles the old close-price line stays.
     assert "setup-chart__line" in render(DashboardState(recent_candles=[{"close": 80_000 + i} for i in range(20)]), "Setup Path")
+
+
+def test_level_kinds_and_short_labels() -> None:
+    from src.dashboard.pages.chart import level_kind, short_label
+
+    assert level_kind("Vortag") == "day" and level_kind("Profil Vorwoche") == "week"
+    assert level_kind("unberührter Tages-POC") == "naked" and level_kind("Session") == "minor"
+    assert level_kind("Vortag · Session") == "day" and level_kind("Profil Vortag · Vorwoche") == "week"
+    assert short_label("PDH · Vortag Hoch · Poor High") == "PDH · Poor"
+    assert short_label("PWL · Vorwoche Tief") == "PWL" and short_label("heute POC (laufend)") == "heute POC lfd."
+
+
+def test_chart_levels_keep_the_nearest_main_levels_and_merge_close_ones() -> None:
+    from src.dashboard.pages.chart import MAX_MAIN_LEVELS, MAX_MINOR_LEVELS, chart_levels
+
+    refs = [{"label": f"Vortag {i}", "price": 100 + i, "source": "Vortag"} for i in range(-10, 11)]
+    refs += [{"label": f"Asia {i}", "price": 100.5 + i, "source": "Session"} for i in range(-6, 7)]
+    refs += [{"label": "PWH", "price": 103.03, "source": "Vorwoche"}, {"label": "fern", "price": 150.0, "source": "Vorwoche"}]
+    shown = chart_levels(refs, 100.2, 85.0, 115.0)
+    assert len(shown["minor"]) == MAX_MINOR_LEVELS and len(shown["main"]) <= MAX_MAIN_LEVELS
+    assert max(abs(r["price"] - 100.2) for r in shown["main"]) < 6
+    merged = next(r for r in shown["main"] if "PWH" in r["label"])
+    assert merged["label"] == "Vortag 3 + PWH" and merged["kind"] == "week"
+    assert [r["label"] for r in shown["above"]] == ["fern"] and shown["hidden"] > 0
+    everything = chart_levels(refs, 100.2, 85.0, 115.0, show_all=True)
+    assert everything["hidden"] == 0 and len(everything["minor"]) == 13
+
+
+def test_svg_draws_fewer_lines_and_the_toggle_shows_all() -> None:
+    from src.dashboard.pages.chart import MAX_STRUCTURE, _chart_svg
+
+    model = build_chart_model(_state().chart_series(), "15m", now=END)
+    model["reference_levels"] = [{"label": f"Session {i}", "price": model["levels"]["last"] + i, "source": "Session"} for i in range(-8, 9)]
+    model["bos"] = (model.get("bos") or []) + [dict(kind="BOS", direction="UP", timeframe="15m", level=model["levels"]["last"], swing_time=model["candles"][0]["open_time"],
+                                                     break_time=model["candles"][-1]["open_time"], break_index=1)] * 5
+    svg = _chart_svg(model)
+    assert "Range-High" not in svg and "tc-lvl--minor" in svg
+    assert svg.count("class='tc-lvl tc-lvl--minor'") <= 4 and "weitere Level ausgeblendet" in svg
+    assert svg.count("class='tc-bos-text'") <= MAX_STRUCTURE
+    full = _chart_svg(model, show_all=True)
+    assert full.count("class='tc-lvl tc-lvl--minor'") > svg.count("class='tc-lvl tc-lvl--minor'") and "ausgeblendet" not in full
+
+
+def test_page_has_level_toggle() -> None:
+    page = render_chart_page(_state(), "15m", "alle")
+    assert "href='/chart?tf=30m&levels=alle'" in page and "Gezeigt: alle Level" in page
+    assert "nahe Hauptlevel" in render_chart_page(_state(), "15m")
+
+
+def test_candles_use_the_width_without_plans() -> None:
+    import re
+
+    from src.dashboard.pages.chart import _chart_svg
+
+    model = build_chart_model(_state().chart_series(), "15m", now=END)
+    model["analysis"] = {**(model.get("analysis") or {}), "scenarios": []}
+    model["level_plans"] = {"plans": []}
+    bodies = [float(x) for x in re.findall(r"<rect x='([\d.]+)'[^>]*class='tc-body", _chart_svg(model))]
+    assert max(bodies) > 700
