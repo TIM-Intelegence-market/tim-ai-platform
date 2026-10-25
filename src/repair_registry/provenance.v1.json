@@ -15,9 +15,14 @@
       "origin_commit": "29aafdb",
       "introduced": "2026-09-28",
       "changed_by": ["PR #302 (#262)"],
-      "evidence_status": "UNVERIFIED_ORIGIN",
-      "evidence_refs": [],
-      "note": "Came in with the live runtime snapshot; no matching candidate in the P8 register (C3/C4 are launchd, but A0 + ESCALATE). Its only action is a review, not a change."
+      "evidence_status": "CANDIDATE_EVIDENCE",
+      "evidence_refs": [
+        "docs/TIM_LINUX_QUBE_PLAN.md#2-ausgangslage-und-grenzen-der-bestandsaufnahme",
+        "scripts/tim_log_maintenance.py",
+        "src/operational/logging.py",
+        "tests/test_operational_extra_coverage_v2.py"
+      ],
+      "note": "Origin clarified 2026-10-25: a macOS operating problem reported in chat (launchd -> StandardErrorPath -> com.apple.macl/log rotation -> EX_CONFIG 78), recorded in the Linux/Qube plan as a chat finding, not a checked runtime diagnosis. Countermeasure in code since 58bd3de (2026-09-03): launchd stdout/stderr logs rotate with preserve_inode=True so com.apple.macl stays on the active file; unit test covers the mechanism only. The recipe itself came with the live snapshot 29aafdb. No log excerpt of a real EX_CONFIG 78 incident and no reproduction exist, so this is not REPRODUCED. Its only action is a review."
     }
   }
 }
