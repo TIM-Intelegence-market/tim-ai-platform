@@ -143,6 +143,26 @@ up to five lines (`OK` or `PROBLEM` plus findings) into the PR body under
 "Reviewer (advisory, …)". That verdict never blocks the PR and is skipped when
 the server is unreachable.
 
+## Two workers: Mac easy, server hard
+
+Since 25.10.2026 a second worker can run on tim-core-01 beside the CI runner. `TIM_WORKER_LANE`
+splits the issues between them (default `all`: one worker takes both, as before):
+
+| Lane | Machine | Takes | Branches | Triage |
+|---|---|---|---|---|
+| `easy` | Mac | `agent:qwen-ready` without `agent:qwen-hard` | `codex/issue-N-qwen` | yes |
+| `hard` | tim-core-01 | `agent:qwen-hard` | `codex/issue-N-qwen-hard` | never (needs Claude Code) |
+
+Each worker merges, updates or retires only the PRs of its own lane, and neither starts an issue that
+has an open worker PR of the other lane. The issue ledger stays per machine, which is safe because the
+lanes do not overlap. Never run two workers with lane `all`, or `all` beside another lane.
+
+On the Mac, set `TIM_WORKER_LANE=easy` in the LaunchAgent environment and remove
+`TIM_QWEN_SERVER_PREFERRED`, `TIM_QWEN_SERVER_KEEP_WARM` and `TIM_QWEN_HARD_URL`, then rerun the
+installer. Triage then still labels large-file issues `agent:qwen-hard` for the server, without a
+tunnel. The server worker reaches Ollama directly on `127.0.0.1:11434`, runs model-written tests in
+bubblewrap and has no Codex or Claude fallback. Setup and limits: `ops/linux/README.md`.
+
 ## Automatic chain (no manual labelling)
 
 Since the automation change the LaunchAgent needs no manual step per issue. Every five minutes,
@@ -190,7 +210,7 @@ Research and ranking: <https://claude.ai/artifact/FR5gJcqxMhPp7fo9J8av5r>.
 
 **Test sandbox.** `pytest` runs code the model wrote, so every test run goes through
 `src/local_first/sandbox_runner.py`. On macOS it wraps the command in `sandbox-exec` with a
-generated Seatbelt profile: credential folders (`~/.config/gh-tim-mac-worker`, `~/.config/gh`,
+generated Seatbelt profile (Linux: next paragraph): credential folders (`~/.config/gh-tim-mac-worker`, `~/.config/gh`,
 `~/.ssh`, Keychains, Codex and Claude logins, cloud CLIs) are unreadable, Keychain services
 are blocked, `launchctl`, `open`, `osascript` and `security` cannot be started, writes are
 limited to a scratch folder (the worktree stays read-only, because the worker later runs code
@@ -199,6 +219,13 @@ from it outside the sandbox), and only loopback network is allowed, except Ollam
 blocks the task when no sandbox is available; `auto` sandboxes when possible; `off` only drops
 the environment. Token-shaped strings are redacted from test output before it reaches logs or
 helper prompts.
+
+On Linux the same rules come from bubblewrap (`/usr/bin/bwrap`): a read-only view of `/`, empty
+folders over the credential paths above and over TIM's server paths (`/etc/tim`, `/opt/tim`,
+`/srv/tim`, `/srv/ci`, the production PostgreSQL files and socket, `/root`), the worktree read-only, the
+scratch folder writable, and a network namespace with only its own loopback (no Ollama, no database,
+no internet). `python -m src.local_first.sandbox_runner` runs a probe in that sandbox and prints `OK`
+or what it could still reach; the server unit runs it before every poll.
 
 **Constrained output and edits.** The one-shot request passes a JSON schema to Ollama's
 `format`, so only well-formed proposals with allowlisted paths can be decoded. Existing files

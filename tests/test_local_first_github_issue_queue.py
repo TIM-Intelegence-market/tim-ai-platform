@@ -95,3 +95,18 @@ def test_hard_label_is_selectable_and_marked():
     assert is_hard_issue(hard) is True
     assert is_hard_issue({**hard, "labels": ["agent:qwen-ready", "status:ready", "priority:p1"]}) is False
     assert select_ready_issue([{**hard, "labels": ["agent:qwen-hard", "priority:p1"]}]) is None
+
+
+def test_lanes_split_hard_and_easy_issues():
+    issues = [
+        _issue(5, ["agent:qwen-ready", "status:ready", "priority:p0"]),
+        _issue(6, ["agent:qwen-hard", "status:ready", "priority:p1"]),
+        _issue(7, ["agent:qwen-ready", "agent:qwen-hard", "status:ready", "priority:p0"]),
+    ]
+    assert select_ready_issue(issues)["number"] == 5
+    assert select_ready_issue(issues, lane="easy")["number"] == 5
+    # An issue with both labels needs the server model, so only the hard lane takes it.
+    assert select_ready_issue(issues, lane="hard")["number"] == 7
+    assert select_ready_issue(issues, lane="easy", skip={5}) is None
+    with pytest.raises(ValueError):
+        select_ready_issue(issues, lane="fast")

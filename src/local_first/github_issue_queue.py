@@ -14,6 +14,9 @@ TASK_BLOCK = re.compile(r"```json\s+TIM_QWEN_TASK_V1\s*\n(.*?)\n```", re.DOTALL)
 # additionally asks for the big model on tim-server (see scripts/run_mac_qwen_issue.py).
 READY_LABEL = "agent:qwen-ready"
 HARD_LABEL = "agent:qwen-hard"
+# Which issues one worker takes: "hard" only agent:qwen-hard (the worker on tim-core-01), "easy" only
+# the others (the Mac beside it), "all" both (a single worker, as before).
+LANES = ("all", "easy", "hard")
 REJECT_LABELS = {
     "blocked", "epic", "pr:open", "dependency:blocked", "type:epic",
     "status:blocked", "status:waiting", "agent:pr-open", "agent:blocked",
@@ -42,8 +45,11 @@ def _labels(issue: dict[str, Any]) -> set[str] | None:
 
 
 def select_ready_issue(issues: Any, *, only_number: int | None = None,
-                       skip: set[int] | frozenset[int] = frozenset()) -> dict[str, Any] | None:
+                       skip: set[int] | frozenset[int] = frozenset(),
+                       lane: str = "all") -> dict[str, Any] | None:
     """Choose one explicitly labelled, open, small issue with stable ordering."""
+    if lane not in LANES:
+        raise ValueError(f"unknown worker lane: {lane!r}")
     if not isinstance(issues, list):
         return None
     open_numbers = {item.get("number") for item in issues if isinstance(item, dict)
@@ -62,6 +68,8 @@ def select_ready_issue(issues: Any, *, only_number: int | None = None,
         labels = _labels(issue)
         if (labels is None or labels & REJECT_LABELS or "status:ready" not in labels
                 or not labels & {READY_LABEL, HARD_LABEL}):
+            continue
+        if (lane == "hard") != (HARD_LABEL in labels) and lane != "all":
             continue
         body = issue.get("body")
         dependencies = {int(ref) for line in DEPENDENCY_LINE.findall(body or "")

@@ -363,9 +363,10 @@ install_dropin() {
 }
 
 # True while the old Qwen worker (design section 6, F.3/F.4) runs: it expects Ollama on 127.0.0.1.
+# Only tim-server's processes: the issue worker (timworker, ops/linux) runs the same scripts and follows the move.
 old_worker_running() {
   systemctl is-active --quiet tim-qwen-worker.service 2>/dev/null \
-    || pgrep -f 'run_local_qwen|tim-qwen-worker' >/dev/null 2>&1
+    || pgrep -u tim-server -f 'run_local_qwen|tim-qwen-worker' >/dev/null 2>&1
 }
 
 # The drop-in moves Ollama to 127.0.0.2 and cuts it off the network: only on the Qwen path, i.e. an explicit

@@ -7,7 +7,7 @@ from src.local_first import server_residency as residency
 from src.llm.ollama_client import OllamaClient
 
 
-@pytest.mark.parametrize("url", ["http://127.0.0.1:11435", "http://localhost:11435/"])
+@pytest.mark.parametrize("url", ["http://127.0.0.1:11435", "http://localhost:11435/", "http://127.0.0.2:11434"])
 def test_accepts_only_configured_loopback_tunnel(monkeypatch, url):
     monkeypatch.setenv("TIM_QWEN_HARD_URL", url)
     monkeypatch.delenv("TIM_QWEN_HARD_MODEL", raising=False)
