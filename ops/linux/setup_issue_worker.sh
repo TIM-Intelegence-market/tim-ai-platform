@@ -28,6 +28,8 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf '\nFEHLER: %s\n' "$*" >&2; exit 1; }
+# A rejected login must not stay on the server: remove the stored token before stopping.
+reject_login() { rm -f "${GH_DIR}/hosts.yml"; die "$1 (Anmeldung wieder gelöscht; Token auf GitHub widerrufen)"; }
 as_worker() { sudo -u "$WORKER_USER" -H env HOME="$WORKER_HOME" GH_CONFIG_DIR="$GH_DIR" "$@"; }
 
 [ "$(uname -s)" = "Linux" ] && [ -r /etc/debian_version ] || die "nur für Debian"
@@ -96,15 +98,15 @@ else
     { unset token; die "Anmeldung abgelehnt"; }
   unset token
 fi
-login="$(as_worker gh api user --jq .login)"
-[ "${login,,}" = "${WORKER_LOGIN,,}" ] || die "falscher GitHub-Login: ${login}, erwartet ${WORKER_LOGIN}"
-perms="$(as_worker gh api "repos/${REPO}" --jq '[.permissions.push, .permissions.maintain, .permissions.admin] | @csv')"
-[ "$perms" = "true,false,false" ] || die "Rechte von ${WORKER_LOGIN} sind nicht genau push ohne maintain/admin (${perms})"
+login="$(as_worker gh api user --jq .login)" || reject_login "Token wird von GitHub nicht angenommen"
+[ "${login,,}" = "${WORKER_LOGIN,,}" ] || reject_login "falscher GitHub-Login: ${login}, erwartet ${WORKER_LOGIN}"
+perms="$(as_worker gh api "repos/${REPO}" --jq '[.permissions.push, .permissions.maintain, .permissions.admin] | @csv')" || reject_login "Token sieht ${REPO} nicht"
+[ "$perms" = "true,false,false" ] || reject_login "Rechte von ${WORKER_LOGIN} sind nicht genau push ohne maintain/admin (${perms})"
 # A classic token reports its scopes; anything beyond repo work (org admin, deleting repos, keys) is refused.
 # Fine-grained tokens report none and are limited by their own repository and permission settings.
 scopes="$(as_worker gh api -i user 2>/dev/null | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: *//p')"
 if printf '%s' "$scopes" | grep -Eq '(^|, *)(admin:[a-z_]+|delete_repo|delete:packages|write:packages|user)(,|$)'; then
-  die "Token hat zu weite Rechte (${scopes}); einen fine-grained Token nur für ${REPO} nehmen"
+  reject_login "Token hat zu weite Rechte (${scopes}); einen fine-grained Token nur für ${REPO} nehmen"
 fi
 echo "angemeldet als ${login}, Rechte geprüft${scopes:+ (Scopes: ${scopes})}"
 chmod -R go-rwx "$GH_DIR"
