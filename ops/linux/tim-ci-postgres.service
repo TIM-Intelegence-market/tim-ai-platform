@@ -1,0 +1,27 @@
+# TIM CI test database: PostgreSQL 16 on 127.0.0.1:5434 (database tim_test, role tim), only for the CI
+# runner on tim-core-01. Started and stopped together with tim-ci-runner.service; no [Install] section, so
+# it never starts on boot. The production database (PostgreSQL 18 on 5432) is not touched.
+[Unit]
+Description=TIM CI test database (PostgreSQL 16, 127.0.0.1:5434)
+PartOf=tim-ci-runner.service
+
+[Service]
+Type=simple
+User=timrunner
+Group=timrunner
+Environment=LC_ALL=C.UTF-8
+ExecStart=/usr/lib/postgresql/16/bin/postgres -D /srv/ci/pg16
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutStopSec=60
+Restart=on-failure
+Nice=10
+MemoryMax=4G
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/srv/ci/pg16
+# Same blocked paths as tim-ci-runner.service.
+InaccessiblePaths=-/opt/tim -/etc/tim -/srv/tim -/var/lib/tim -/var/lib/tim-agent -/srv/postgresql -/var/lib/postgresql -/etc/postgresql -/run/postgresql -/var/backups

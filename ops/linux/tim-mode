@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Switch tim-core-01 between live mode (TIM services run) and CI mode (the CI runner runs), never both.
+#
+#   tim-mode status                 which mode is active
+#   sudo tim-mode ci [--hours N]    stop the live TIM services, start runner and test database;
+#                                   back to live automatically after N hours (default 6, 0 = never)
+#   sudo tim-mode live [--wait|--force]
+#                                   stop runner and test database, start the TIM services again;
+#                                   refuses while a CI job runs unless --wait (until it ends) or --force
+#
+# The guarantee does not depend on this script: tim-ci-runner.service has Conflicts= on the live units,
+# so systemd stops one side whenever the other starts. Installed by ops/linux/setup_ci_runner.sh.
+set -euo pipefail
+
+RUNNER_UNIT="tim-ci-runner.service"
+PG_UNIT="tim-ci-postgres.service"
+LIVE_UNITS=(tim-runtime.service tim-watchdog.service timec.service)
+# Timers that would start a live unit during CI mode (tim-maintenance runs timctl start after a log cleanup).
+# Paused in CI mode and started again on the way back.
+PAUSED_TIMERS=(tim-maintenance.timer)
+PROD_PG_HBA_GLOB="/etc/postgresql/*/main/pg_hba.conf"
+AUTO_UNIT="tim-mode-auto-live"
+STATE_DIR="/var/lib/tim-mode"
+STOPPED_FILE="${STATE_DIR}/live-units"
+WAIT_MAX_MIN=60
+
+die() { printf 'tim-mode: %s\n' "$*" >&2; exit 1; }
+need_root() { [ "$(id -u)" -eq 0 ] || die "bitte mit sudo starten"; }
+unit_exists() { systemctl cat "$1" >/dev/null 2>&1; }
+job_running() { pgrep -u timrunner -f 'Runner.Worker' >/dev/null 2>&1; }
+# PR code can reach 127.0.0.1:5432. Without a password that only works through a trust rule, so CI mode
+# refuses to start while the production cluster has one.
+prod_pg_has_trust() {
+  local file
+  for file in $PROD_PG_HBA_GLOB; do
+    [ -f "$file" ] || continue
+    grep -Eq '^[[:space:]]*[^#[:space:]].*[[:space:]]trust([[:space:]]|$)' "$file" && { echo "$file"; return 0; }
+  done
+  return 1
+}
+
+status() {
+  local runner; runner="$(systemctl is-active "$RUNNER_UNIT" 2>/dev/null || true)"
+  if [ "$runner" = "active" ]; then
+    echo "Modus: CI"
+    job_running && echo "CI-Job läuft gerade" || echo "kein CI-Job aktiv"
+    systemctl list-timers --all --no-legend "${AUTO_UNIT}.timer" 2>/dev/null | sed 's/^/automatisch zurück auf Live: /'
+  else
+    echo "Modus: Live"
+  fi
+  local unit
+  for unit in "$RUNNER_UNIT" "$PG_UNIT" "${LIVE_UNITS[@]}" "${PAUSED_TIMERS[@]}"; do
+    unit_exists "$unit" && printf '  %-26s %s\n' "$unit" "$(systemctl is-active "$unit" 2>/dev/null || true)"
+  done
+}
+
+to_ci() {
+  need_root
+  local hours=6
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --hours) [ $# -ge 2 ] || die "--hours braucht eine Zahl"; hours="$2"; shift 2 ;;
+      *) die "unbekannte Option $1" ;;
+    esac
+  done
+  [[ "$hours" =~ ^[0-9]+$ ]] || die "--hours muss eine ganze Zahl sein"
+  unit_exists "$RUNNER_UNIT" || die "${RUNNER_UNIT} ist nicht installiert"
+  local hba
+  if hba="$(prod_pg_has_trust)"; then
+    die "${hba} enthält eine trust-Regel; PR-Code käme ohne Passwort an die Produktionsdatenbank. Erst entfernen."
+  fi
+
+  if [ "$(systemctl is-active "$RUNNER_UNIT" 2>/dev/null || true)" != "active" ]; then
+    # Remember which live units and timers ran, so `live` starts exactly those again.
+    mkdir -p "$STATE_DIR"
+    : > "${STOPPED_FILE}.new"
+    local unit paused=()
+    for unit in "${LIVE_UNITS[@]}" "${PAUSED_TIMERS[@]}"; do
+      if [ "$(systemctl is-active "$unit" 2>/dev/null || true)" = "active" ]; then echo "$unit" >> "${STOPPED_FILE}.new"; fi
+    done
+    mv "${STOPPED_FILE}.new" "$STOPPED_FILE"
+    for unit in "${PAUSED_TIMERS[@]}"; do
+      if [ "$(systemctl is-active "$unit" 2>/dev/null || true)" = "active" ]; then paused+=("$unit"); fi
+    done
+    [ "${#paused[@]}" -eq 0 ] || systemctl stop "${paused[@]}"
+    # Conflicts= stops the live units before the runner starts.
+    systemctl start "$RUNNER_UNIT"
+  fi
+
+  systemctl stop "${AUTO_UNIT}.timer" >/dev/null 2>&1 || true
+  systemctl reset-failed "${AUTO_UNIT}.timer" "${AUTO_UNIT}.service" >/dev/null 2>&1 || true
+  if [ "$hours" -gt 0 ]; then
+    systemd-run --quiet --unit="$AUTO_UNIT" --on-active="${hours}h" --timer-property=AccuracySec=1min \
+      "$(readlink -f "$0")" live --wait
+  fi
+  status
+}
+
+to_live() {
+  need_root
+  local mode="refuse"
+  case "${1:-}" in
+    "") ;;
+    --wait) mode="wait" ;;
+    --force) mode="force" ;;
+    *) die "unbekannte Option $1" ;;
+  esac
+  if job_running; then
+    case "$mode" in
+      refuse) die "ein CI-Job läuft; warten mit 'tim-mode live --wait' oder abbrechen mit '--force'" ;;
+      wait)
+        local waited=0
+        while job_running && [ "$waited" -lt "$WAIT_MAX_MIN" ]; do sleep 60; waited=$((waited + 1)); done
+        ;;
+      force) ;;
+    esac
+  fi
+
+  # Stopping a timer leaves its running service alone, so this is safe from the auto-return run too.
+  systemctl stop "${AUTO_UNIT}.timer" >/dev/null 2>&1 || true
+  systemctl stop "$RUNNER_UNIT" "$PG_UNIT"
+  # KillMode=control-group ends the whole job tree; make sure nothing of PR code survived before TIM runs again.
+  if pgrep -u timrunner >/dev/null 2>&1; then
+    pkill -KILL -u timrunner || true
+    sleep 2
+    ! pgrep -u timrunner >/dev/null 2>&1 || die "Prozesse von timrunner laufen noch; Live-Dienste nicht gestartet (pgrep -a -u timrunner)"
+  fi
+
+  local units=()
+  if [ -s "$STOPPED_FILE" ]; then
+    mapfile -t units < "$STOPPED_FILE"
+  else
+    local unit
+    for unit in "${LIVE_UNITS[@]}" "${PAUSED_TIMERS[@]}"; do
+      if unit_exists "$unit" && [ "$(systemctl is-enabled "$unit" 2>/dev/null || true)" = "enabled" ]; then units+=("$unit"); fi
+    done
+  fi
+  [ "${#units[@]}" -eq 0 ] || systemctl start "${units[@]}"
+  rm -f "$STOPPED_FILE"
+  status
+}
+
+case "${1:-status}" in
+  status) status ;;
+  ci) shift; to_ci "$@" ;;
+  live) shift; to_live "$@" ;;
+  *) die "Aufruf: tim-mode status | ci [--hours N] | live [--wait|--force]" ;;
+esac
