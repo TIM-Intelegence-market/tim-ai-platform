@@ -46,6 +46,12 @@ tim-core-01-ci → Labels).
 
 ## Offen
 
+- `/opt/tim` ist für alle Benutzer lesbar, also auch für `timrunner` (Warnung der Einrichtung am 25.10.2026).
+  Die Runner-Unit sperrt den Pfad (`InaccessiblePaths`); die Rechte von `/opt/tim` selbst sind noch zu prüfen.
+- Übergangsweise (bis DSL) bekommt tim-core-01 Internet über die Windows-Internetfreigabe des Laptops an `eno1`
+  und DNS über `8.8.8.8`. Rückweg: `/var/tmp/tim-resolv-vorher.conf` nach `/etc/resolv.conf` kopieren und die
+  alte Standardroute aus `/var/tmp/tim-route-vorher.txt` wiederherstellen.
+
 - Im CI-Modus sammelt tim-runtime nicht, und der Watchdog überwacht nicht. Timer wie `tim-checkup` oder
   `tim-server-health` laufen weiter und können das als Ausfall melden; beim ersten CI-Modus beobachten.
 
