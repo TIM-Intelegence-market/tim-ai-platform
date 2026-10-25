@@ -20,6 +20,7 @@ report; a run with smaller values is not a gate result.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import subprocess
 import sys
 import time
@@ -85,8 +86,6 @@ def fetch(store: AggTradeDayStore, first: date, last: date, *, verify_days: int,
                 continue
             progress(day, entry)
     else:
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-
         with ProcessPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(prepare_day, store, day, keep_raw, day in verify_set): day for day in pending}
             for future in as_completed(futures):
@@ -132,7 +131,7 @@ def count(store: AggTradeDayStore, out_dir: Path) -> int:
     return 0
 
 
-def power(count_file: Path, out_dir: Path, *, replications: int, b: int, seed: int, kinds: list[str] | None) -> int:
+def power(count_file: Path, out_dir: Path, *, replications: int, b: int, seed: int, kinds: list[str] | None, workers: int = 1) -> int:
     report_in = json.loads(count_file.read_text())
     if report_in.get("study") != "S2" or not report_in.get("outcome_blind"):
         print("not an S2 count report"); return 1
@@ -143,16 +142,34 @@ def power(count_file: Path, out_dir: Path, *, replications: int, b: int, seed: i
     selected = kinds or list(DIRECTIONAL)
     results: dict[str, dict[str, list[s2_power.PowerResult]]] = {}
     started = time.time()
-    for section in SECTIONS:
-        results[section] = {}
-        for kind in selected:
-            series = _series_from_report(weeks, section, kind)
-            items = []
-            for scenario in s2_power.scenarios():
-                result = s2_power.simulate_power(series, scenario, replications=replications, seed=seed, b=b)
-                items.append(result)
-                print(f"{section:10s} {kind:32s} {scenario.id}: power {result.power:.3f} ({(time.time() - started) / 60:.1f} min)")
-            results[section][kind] = items
+    scenarios = s2_power.scenarios()
+    tasks = [(section, kind, index, _series_from_report(weeks, section, kind), scenario)
+             for section in SECTIONS for kind in selected for index, scenario in enumerate(scenarios)]
+    slots: dict[tuple[str, str], list[s2_power.PowerResult | None]] = {(section, kind): [None] * len(scenarios) for section in SECTIONS for kind in selected}
+    done = 0
+
+    def record(section: str, kind: str, index: int, result: s2_power.PowerResult) -> None:
+        nonlocal done
+        done += 1
+        slots[(section, kind)][index] = result
+        print(f"{section:10s} {kind:32s} {scenarios[index].id}: power {result.power:.3f} "
+              f"({done}/{len(tasks)}, {(time.time() - started) / 60:.1f} min)")
+
+    if workers <= 1:
+        for section, kind, index, series, scenario in tasks:
+            record(*s2_power.power_task(section, kind, index, series, scenario, replications, seed, b))
+    else:
+        # Every run seeds its own generator (s2_power.power_task), so the result does not depend
+        # on the process layout; the loop below only changes the wall-clock time.
+        print(f"{len(tasks)} runs on {workers} processes")
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(s2_power.power_task, section, kind, index, series, scenario, replications, seed, b)
+                       for section, kind, index, series, scenario in tasks]
+            for future in as_completed(futures):
+                record(*future.result())
+    for (section, kind), items in slots.items():
+        assert all(item is not None for item in items)
+        results.setdefault(section, {})[kind] = items  # type: ignore[arg-type]
     out = s2_power.build_power_report(results, count_report=report_in, commit=_commit(), replications=replications, b=b, seed=seed,
                                       created=datetime.now(timezone.utc).isoformat(timespec="seconds"))
     out["count_file"] = count_file.name
@@ -202,12 +219,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--bootstrap", type=int, default=s2_power.BOOTSTRAP_B)
     p.add_argument("--seed", type=int, default=s2_power.SEED)
     p.add_argument("--kind", action="append", choices=sorted(DIRECTIONAL), help="restrict to kinds (smoke runs only)")
+    p.add_argument("--workers", type=int, default=1, help="runs computed at the same time (processes); results are identical to --workers 1")
     args = parser.parse_args(argv)
     if args.command == "fetch":
         return fetch(AggTradeDayStore(args.root), args.first, args.last, verify_days=args.verify_days, keep_raw=args.keep_raw, workers=max(1, args.workers))
     if args.command == "count":
         return count(AggTradeDayStore(args.root), args.out)
-    return power(args.count_file, args.out, replications=args.replications, b=args.bootstrap, seed=args.seed, kinds=args.kind)
+    return power(args.count_file, args.out, replications=args.replications, b=args.bootstrap, seed=args.seed, kinds=args.kind,
+                 workers=max(1, args.workers))
 
 
 if __name__ == "__main__":
