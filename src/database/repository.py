@@ -15,7 +15,7 @@ from src.orderflow.validation_long import LONG_HORIZONS, OrderflowLongValidation
 from src.observation.engine import candle_input_hash
 
 
-ALLOWED_TIMEFRAMES={"1m","5m","15m","1h"}
+ALLOWED_TIMEFRAMES={"1m","5m","15m","1h","4h","1d"}  # 4h/1d only derived from 1h (derived_candles.py)
 ALLOWED_OBSERVATION_PROVENANCE={"PUBLIC_MARKET_DATA_DETERMINISTIC"}
 ALLOWED_RULE_VERSIONS={"bos":"1.0.0","bronxc":"1.0.0"}
 SHA256_PATTERN=re.compile(r"^[0-9a-f]{64}$")
@@ -206,6 +206,14 @@ class MarketRepository:
     async def recent_orderflow_validations_long(self,symbol:str,limit:int=500)->list[dict]:
         async with self.database.acquire() as con:rows=await con.fetch("SELECT * FROM orderflow_validations_long WHERE symbol=$1 ORDER BY validated_through DESC LIMIT $2",symbol,limit)
         return [{**dict(row),"observed_at":row["observed_at"].isoformat(),"baseline_close_time":row["baseline_close_time"].isoformat(),"validated_through":row["validated_through"].isoformat(),"horizons":_json_value(row["horizons"],list)} for row in rows]
+
+    async def latest_candle_open_time(self,symbol:str,timeframe:str)->datetime|None:
+        async with self.database.acquire() as con:
+            return await con.fetchval("SELECT max(open_time) FROM candles WHERE symbol=$1 AND timeframe=$2",symbol,timeframe)
+
+    async def recent_candle_rows(self,symbol:str,timeframe:str,limit:int=300)->list[dict]:
+        rows=await self.recent_candles(symbol,timeframe,limit)
+        return [{"symbol":c.symbol,"timeframe":c.timeframe,"open_time":c.open_time.isoformat(),"close_time":c.close_time.isoformat(),"open":c.open,"high":c.high,"low":c.low,"close":c.close,"volume":c.volume,"trade_count":c.trade_count,"closed":c.closed} for c in rows]
 
     async def upsert_candle(self, candle: Candle) -> None:
         _validate_candle_for_persistence(candle)

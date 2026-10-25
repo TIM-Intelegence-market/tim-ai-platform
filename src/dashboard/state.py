@@ -21,6 +21,7 @@ class DashboardState:
     orderflow_observations: list[dict] = field(default_factory=list)
     orderflow_validations: list[dict] = field(default_factory=list)
     orderflow_validations_long: list[dict] = field(default_factory=list)
+    derived_candles: dict[str, list[dict]] = field(default_factory=dict)
     system_health: dict[str, Any] = field(default_factory=lambda: {
         "database": "unknown",
         "stream": "unknown",

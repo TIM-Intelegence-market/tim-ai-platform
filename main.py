@@ -31,6 +31,7 @@ from src.observation.engine import ObservationEngine
 from src.orderflow.metrics import OrderflowMetricsService
 from src.orderflow.observations import OrderflowObservationEngine, OrderflowResearchCaseEngine
 from src.orderflow.validation import OrderflowValidationEngine
+from src.data_ingestion.derived_candles import DERIVE_INTERVAL_SECONDS, DERIVED_TIMEFRAMES, derive_candles, derive_from, source_timeframe
 from src.orderflow.validation_long import CANDLE_TIMEFRAME as LONG_CANDLE_TIMEFRAME, LONG_HORIZONS, OrderflowLongValidationEngine
 from src.operational.logging import StructuredLog
 from src.operational.live_evidence import atomic_write_json, check_listener, compute_rolling_liveness
@@ -564,6 +565,38 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _derived_candles_loop(self) -> None:
+        # 4h and 1d candles from persisted 1h candles; research data only, never on the ingestion path.
+        while not self.worker_stop.is_set():
+            try:
+                await self.derive_higher_timeframe_candles(datetime.now(timezone.utc))
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - derived data must not stop the runtime
+                log.warning("derived candles pass failed: %s", error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=DERIVE_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
+    async def derive_higher_timeframe_candles(self, now: datetime) -> dict[str, int]:
+        """One pass: write every complete 4h/1d bucket that is not persisted yet. Returns rows written per timeframe."""
+        written: dict[str, int] = {}
+        if not hasattr(self.repository, "latest_candle_open_time"):
+            return written
+        for timeframe in DERIVED_TIMEFRAMES:
+            latest = await self.repository.latest_candle_open_time(settings.symbol, timeframe)
+            start = derive_from(latest, timeframe) or (now - timedelta(days=90))
+            source = await self.repository.candles_between(settings.symbol, source_timeframe(timeframe), start, now)
+            derived = derive_candles(source, timeframe, now)
+            for candle in derived:
+                await self.repository.upsert_candle(candle)
+            written[timeframe] = len(derived)
+            rows = await self.repository.recent_candle_rows(settings.symbol, timeframe, 300)
+            with self.dashboard_state.lock:
+                self.dashboard_state.derived_candles[timeframe] = rows
+        return written
+
     async def _plan_journal_loop(self) -> None:
         # Paper journal only: a failed step is logged and retried, never fatal.
         from functools import partial
@@ -621,6 +654,7 @@ class TIMApplication:
         worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
         evidence_task = asyncio.create_task(self._live_evidence_loop(), name="tim-live-evidence")
         journal_task = asyncio.create_task(self._plan_journal_loop(), name="tim-plan-journal")
+        derived_task = asyncio.create_task(self._derived_candles_loop(), name="tim-derived-candles")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
@@ -629,6 +663,7 @@ class TIMApplication:
             self.worker_stop.set()
             evidence_task.cancel()
             journal_task.cancel()
+            derived_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's

@@ -83,13 +83,10 @@ BEGIN
 END
 $tim$;
 CREATE INDEX IF NOT EXISTS candles_lookup_idx ON candles (symbol, timeframe, open_time DESC);
-DO $tim$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='candles_timeframe_allowed') THEN
-        ALTER TABLE candles ADD CONSTRAINT candles_timeframe_allowed CHECK (timeframe IN ('1m','5m','15m','1h'));
-    END IF;
-END
-$tim$;
+-- 4h and 1d are derived from persisted 1h candles (src/data_ingestion/derived_candles.py), never
+-- aggregated from the live trade stream. Dropping and re-adding keeps an older installed check in step.
+ALTER TABLE candles DROP CONSTRAINT IF EXISTS candles_timeframe_allowed;
+ALTER TABLE candles ADD CONSTRAINT candles_timeframe_allowed CHECK (timeframe IN ('1m','5m','15m','1h','4h','1d'));
 
 CREATE TABLE IF NOT EXISTS observations (
     observation_id UUID NOT NULL,
