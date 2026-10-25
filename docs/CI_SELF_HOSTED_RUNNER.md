@@ -76,7 +76,8 @@ Das Skript lässt jeden Schritt aus, der schon erledigt ist. Ein zweiter Lauf is
 - Ist tim-core-01 im Live-Modus, gibt es nur einen Runner. Jobs warten deshalb aufeinander. Ist der Mac aus, bleiben Läufe in der Warteschlange und starten, sobald er wieder läuft. Nach 24 Stunden bricht GitHub sie ab.
 
 Probelauf auf tim-core-01 (2026-10-25, Lauf 40192069659): gleiche Befehle wie `test`, 5946 passed und 18 skipped
-im parallelen Schritt, 243 passed im seriellen, Job rund 4 Minuten (Mac rund 14).
+im parallelen Schritt, 243 passed im seriellen, Job rund 4 Minuten. Der Mac braucht ähnlich lange (rund 3 Minuten
+am 25.10.); der Gewinn ist ein zweiter Runner, wenn mehrere PRs gleichzeitig warten, nicht ein schnellerer Lauf.
 
 ## Zurück zu GitHub-Runnern
 
