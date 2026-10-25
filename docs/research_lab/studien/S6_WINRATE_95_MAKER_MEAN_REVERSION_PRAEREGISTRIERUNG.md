@@ -2,7 +2,7 @@
 
 | Feld | Wert |
 |---|---|
-| Version | 0.3 (Entwurf, Gate bestanden) |
+| Version | 0.4 (Entwurf, Gate bestanden, Latenzprüfung vorbereitet) |
 | Status | **ENTWURF, GATE BESTANDEN.** Kein Ausstieg und kein R gerechnet. 1m-Daten geladen (P2), Zähllauf 6.1 gelaufen (P3, 25.10. 23:29 Ortszeit, Commit 3be449f, `../reports/s6_count_2026-10-25T2229Z.md`): **alle sechs Varianten bestehen das Gate** (k = 2 hochgerechnet 2 770 Fills / 621 Fill-Tage, k = 3 572 / 333). Registrierung und Trainingslauf erst nach Uzis Wort zu O3/O4 (Abschnitt 11). Holdout zu. |
 | Erstellt | 2026-10-25, 20:00 Ortszeit. Auftrag: Uzis Wahl „Neue Studie S6 mit anderer Familie“ (Entscheidungskarte 19:51) und „go“ zum Bauplan (19:58). 0.2 nach adversarialer Prüfung (anderes Modell, 17 Befunde, 20:15) |
 | Bauplan | `/mnt/project-files/plaene/s6-maker-mean-reversion-bauplan.md` (Projektablage) |
@@ -320,10 +320,18 @@ Das Kerzen-Tief ist selbst ein echter Trade, darum ist „gab es Trades unter L(
 stattdessen, was Kerzen nicht zeigen: Je Instrument werden 10 Kalendertage aus dem Training mit Seed **20261031**
 gezogen (gleichverteilt über Tage mit mindestens einem Fill laut 6.1). Für jeden Fill dieser Tage wird aus den
 aggTrades bestimmt: (a) der Zeitpunkt des ersten Trades ≤ L(1 − δ) (Kauf) bzw. ≥ L(1 + δ) in der Fill-Minute;
-(b) ob vor diesem Zeitpunkt in derselben Minute bereits Trades ≤ L lagen (Order wäre beim Stellen gekreuzt,
-Post-only hätte sie abgelehnt); (c) die kumulierte Menge zu Preisen jenseits L(1 − δ) nach (a). Ein Fill gilt als
-**zweifelhaft**, wenn (a) in den ersten 3 Sekunden der Minute liegt (Order noch nicht im Buch), (b) zutrifft oder (c)
-< q ist. λ = Anteil zweifelhafter Fills, mindestens 5 %. λ geht als Fill-Abschlag in den Stress (5.3) ein. Liegt
+(b) ob in den ersten 3 Sekunden der Minute, während die Order gestellt wird und noch nicht im Buch liegt, bereits
+Trades ≤ L lagen (Post-only hätte sie abgelehnt); (c) die kumulierte Menge zu Preisen jenseits L(1 − δ) ab (a),
+einschließlich des Trades aus (a). Ein Fill gilt als **zweifelhaft**, wenn (a) in den ersten 3 Sekunden der Minute
+liegt (Order noch nicht im Buch), (b) zutrifft, (c) < q ist oder kein Trade jenseits L(1 − δ) gefunden wird.
+*Klarstellung 0.4 (vor der Prüfung, vor jedem Ergebnis):* 0.2 formulierte (b) als „irgendein Trade ≤ L vor (a)“. Der
+Kurs muss L aber passieren, um L(1 − δ) zu erreichen, darum träfe das fast jeden Fill, obwohl eine ruhende Order dabei
+regulär gefüllt wird; die wörtliche Zählung wird im Bericht zusätzlich ausgewiesen, entscheidet aber nicht über λ.
+Die 10 Tage je Instrument werden aus der Vereinigung der Fill-Tage beider k-Familien gezogen (eine Ziehung, Seed
+20261031, Instrumente in alphabetischer Reihenfolge); geprüft werden alle gezählten Fills beider Familien an diesen
+Tagen, λ je Familie und gepoolt. Umsetzung: `src/research_lab/studies/s6_latency.py`, `scripts/research_lab_s6.py latency`;
+die Tagesarchive der USD-M-Perpetuals werden gegen die Prüfsumme verifiziert, auf die Fill-Minuten reduziert und nicht
+aufbewahrt. λ = Anteil zweifelhafter Fills, mindestens 5 %. λ geht als Fill-Abschlag in den Stress (5.3) ein. Liegt
 λ > 25 %, wird δ **vor** dem ersten Trainingslauf in Schritten von 0,01 % erhöht, bis λ ≤ 25 %, mit Eintrag im
 Änderungsprotokoll, und der Zähllauf 6.1 wird wiederholt. Diese Änderung ist nur strenger möglich. Die Prüfung liest
 keine Ausstiege.
@@ -366,7 +374,7 @@ ihn.
 | P2 | ~~1m-Klines USD-M BTC/ETH/SOL 2020–2024 auf dem Mac laden~~ erledigt 25.10. (172 Archive, Hashes/Lücken/Ticks im Gate-Bericht) | erledigt |
 | P3 | ~~Zähllauf 6.1~~ erledigt 25.10. 23:29 Ortszeit, Commit 3be449f: alle sechs Varianten bestehen (`../reports/s6_count_2026-10-25T2229Z.md`) | erledigt |
 | P4 | Code (Motor und Zähllauf in `hypotheses/s6.py`, Kennzahlen/Urteil/Baselines in `studies/s6_eval.py`, 18 Tests grün, Commits 6828e04 und 3be449f; offen: `MAKER_FEE` in `protocol.py` erst mit Protokoll-Eintrag 1.3, Baseline C, Latenzprüfung): `hypotheses/s6.py` (Referenz, Tick, Orders, Post-only, Durchhandel-Regel, `both`, Ausstiege inkl. Stop in der Fill-Minute, Sperren, Funding), `MAKER_FEE` und S6-Stress in `protocol.py` (mit Protokoll-Eintrag 1.3), Baselines A/B/C nach 7, Tests: Referenz nur aus geschlossenen Kerzen (121 Schlusskurse), Post-only gegen close und open, δ und Tick-Rundung zuungunsten, `ambiguous` = Stop, Stop in der Fill-Minute, Ziel nicht in der Fill-Minute, Zeitstop Kerze 240, Gebühren genau einmal je Ausstiegsgrund, Funding-Grenzfälle, Lücken ≤ 5 min und > 5 min, `section_end`, `both` als Verlierer, Fill-Abschlag | `pytest tests/test_research_lab_s6.py` grün, Cloud-Suite grün |
-| P5 | Latenzprüfung 6.2 an aggTrades (30 Tage, ~3–9 GB Download auf dem Mac) | λ bestimmt; bei λ > 25 % δ erhöhen und P3 wiederholen |
+| P5 | Latenzprüfung 6.2 an aggTrades (30 Tage, ~3–9 GB Download auf dem Mac, nur ohne CI-Job); Code fertig (`s6_latency.py`, 9 Tests), Lauf steht aus | λ bestimmt; bei λ > 25 % δ erhöhen und P3 wiederholen |
 | P6 | Training und Validierung auf dem Mac (nicht während CI-Jobs), Bericht; Register-Eintrag für alle Gate-Varianten | K1–K10, 5.4 |
 | P7 | Holdout, genau ein Lauf, nur per Entscheidungskarte | Protokoll R6 |
 
@@ -395,3 +403,4 @@ ihn.
 | 2026-10-25 | 0.1 | Entwurf: Maker-Mean-Reversion auf 1m-Kerzen (VWAP₃₀, k·σ₃₀-Limits, Post-only, Durchhandel-Regel mit δ), Stop 1 R = 1,5 %, Ziel T ∈ {0,10, 0,15, 0,20} per Limit, Zeitstop 240 min, 6 Varianten k × T, Treffer = Netto > 0, K1–K10, n_min = 80 effektiv mit Tagescluster, Gate ≥ 160 Fills hochgerechnet, Fill-Prüfung an aggTrades, Zufallsvergleich mit gleichen Kosten, S6-Kostenmodell als Protokoll-Abweichung 1.3 | Uzis Wahl S6 (19:51) und „go“ (19:58) | Abschnitt 10; keine 1m-Daten, kein Holdout |
 | 2026-10-25 | 0.2 | Nach adversarialer Prüfung (anderes Modell, 17 Befunde): Stop wird schon in der Fill-Minute geprüft (Crash-Minuten zählten sonst nie als Verlust); T = 0,10 gestrichen, T = 0,25 ergänzt (Stress-Schwelle 96,1 %, K9 95,7 % bei 0,10); Formel T > c_w + 0,0526·(1 + c_l) statt symmetrischem c, Tabelle 2.1 neu gerechnet mit Stress-Zeile und E[R] bei 95 %; `skipped_both` → Verlierer-Trade `both` (kein stiller Filter); Cluster = Kalendertag über alle Instrumente, n_eff = ⌊n/D⌋, Verlierer_eff = ⌈Verlierer/D⌉, Doppelgrenze offengelegt; n_min 80 → 160 effektiv wegen K2-Power, Power-Tabelle und Warnung für Uzi; Gate ≥ 320 Fills und ≥ 160 Fill-Tage, schwächstes Jahr gepoolt, Blindheit des Gates präzisiert; Zufallsvergleich volatilitäts-gematcht (σ₃₀-Dezil) mit Pool-Methode, Baselines B (Gegenrichtung) und C (ungematcht), Tages-Block-Bootstrap; Register: alle Gate-Varianten, Kandidaten ≤ 2, Training ≥ 500 / Holdout ≥ 200 Trades (Protokoll), K4 in der Validierung, Walk-Forward über alle Varianten, Nachbarn ohne Gate werden für die Nachbarschaftsregel mitgerechnet; Abweichungstabelle 5.5 (A1–A5); Post-only zusätzlich gegen close_{t−1}; Latenzprüfung statt Mengenprüfung, Fill-Abschlag λ im Stress; Tick empirisch je Monat, Rundung zuungunsten; Referenz exakt (121 Schlusskurse, ddof 0, Basisvolumen); Funding-Grenzfälle; Zeitstop = Kerze 240; Lücken: Fenster-Regel, Stop nach überbrückter Lücke, Bericht mit Schluss nach der Lücke; Gebührenhistorie benannt; 139 statt 137 bei m = 60; Nummerierung berichtigt | O1 | unverändert; 1m-Daten im Download, kein Kurs angesehen, kein Holdout |
 | 2026-10-25 | 0.3 | Gate 6.1 ausgewertet (Zähllauf auf dem Mac, Commit 3be449f, 23:29 Ortszeit): alle sechs Varianten bestehen, k = 2 hochgerechnet 2 770 Fills / 621 Fill-Tage, k = 3 572 / 333 (Schwellen 320 / 160); Datenbefunde (SOL-Archivlücken Feb/Apr 2022, empirische Ticks, Post-only selten) im Bericht; P2/P3/O2 erledigt; Kennzahlen-, Urteils- und Baseline-Code (P4) ergänzt. Keine Regel geändert. | P3 | 1m-Fills und Fill-Tage je Variante/Instrument/Jahr gesehen (Marktphasen der Fills bekannt, 6.1); kein Ausstieg, kein R, kein Holdout |
+| 2026-10-25 | 0.4 | Latenzprüfung 6.2 präzisiert, bevor sie läuft: (b) = Trades ≤ L in den ersten 3 s (Orderaufgabe), wörtliche Lesart nur zur Offenlegung; (c) ab und einschließlich (a); „kein Trade jenseits L(1 − δ)“ zählt als zweifelhaft; Ziehung aus der Vereinigung der Fill-Tage beider Familien. Zähllauf intern auf `list_fills` umgestellt (Test belegt identische Zählung zur Gate-Fassung 3be449f). Keine Fill-, Ausstiegs- oder Kostenregel geändert. | P5 | wie 0.3; keine aggTrades gelesen, kein Ausstieg, kein R, kein Holdout |

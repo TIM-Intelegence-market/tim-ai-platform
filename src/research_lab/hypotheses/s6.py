@@ -334,43 +334,80 @@ class FillCount:
     fills_by_side: dict = field(default_factory=lambda: {"long": 0, "short": 0})
 
 
-def count_fills(bars: Sequence[Kline], variant: S6Variant, start_ms: int, end_ms: int, costs: S6Costs = BASE_COSTS,
-                reference: Reference | None = None, ticks: dict[str, float] | None = None) -> FillCount:
-    """Outcome-blind: reads prices up to the fill, never a stop or target (section 6.1)."""
+@dataclass(frozen=True, slots=True)
+class Fill:
+    """One bar in which the trade-through rule is met (section 6.1); `counted` is False while a lock is active."""
+
+    index: int
+    open_time: int
+    sides: tuple[int, ...]  # (LONG,), (SHORT,) or (LONG, SHORT) = both
+    limits: tuple[float, ...]  # one per side
+    margins: tuple[float, ...]  # trade-through margin delta per side, absolute price
+    counted: bool
+
+    @property
+    def both(self) -> bool:
+        return len(self.sides) == 2
+
+
+def list_fills(bars: Sequence[Kline], variant: S6Variant, start_ms: int, end_ms: int, costs: S6Costs = BASE_COSTS,
+               reference: Reference | None = None, ticks: dict[str, float] | None = None) -> tuple[list[Fill], int, int]:
+    """Outcome-blind fill events plus (skipped_cross, no_reference); reads prices up to the fill, never an exit."""
     ref = reference or compute_reference(bars)
     ticks = ticks if ticks is not None else empirical_ticks(bars)
-    count = FillCount()
+    fills: list[Fill] = []
+    skipped_cross = no_reference = 0
     i = bisect_left([b.open_time for b in bars], start_ms)
     locked_until = -1
     while i < len(bars) and bars[i].open_time < end_ms:
         if i == 0 or ref.vwap[i] is None:
             if i >= locked_until:
-                count.no_reference += 1
+                no_reference += 1
             i += 1
             continue
         tick = ticks.get(month_key(bars[i].open_time), 0.0)
         b = bars[i]
-        sides = []
+        sides: list[int] = []
+        limits: list[float] = []
+        margins: list[float] = []
         for side in (LONG, SHORT):
             limit = limit_price(ref.vwap[i], ref.sigma30[i], variant.k, side, tick)
             if crosses(bars, i, limit, side):
                 if i >= locked_until:
-                    count.skipped_cross += 1
+                    skipped_cross += 1
                 continue
-            if traded_through(b, limit, side, margin(limit, tick, costs)):
+            delta = margin(limit, tick, costs)
+            if traded_through(b, limit, side, delta):
                 sides.append(side)
+                limits.append(limit)
+                margins.append(delta)
         if sides:
-            count.fills_unlocked += 1
-        if sides and i >= locked_until:
-            count.fills += 1
-            count.fill_days.add(day_key(b.open_time))
-            key = month_key(b.open_time)
-            count.fills_by_month[key] = count.fills_by_month.get(key, 0) + 1
-            if len(sides) == 2:
-                count.both += 1
-                locked_until = i + 1 + LOCK_AFTER_LOSS
-            else:
-                count.fills_by_side["long" if sides[0] == LONG else "short"] += 1
-                locked_until = i + TIME_STOP_BARS + LOCK_AFTER_EXIT  # assumes every trade reaches the time stop
+            counted = i >= locked_until
+            fills.append(Fill(i, b.open_time, tuple(sides), tuple(limits), tuple(margins), counted))
+            if counted:
+                locked_until = i + 1 + LOCK_AFTER_LOSS if len(sides) == 2 else i + TIME_STOP_BARS + LOCK_AFTER_EXIT
         i += 1
+    return fills, skipped_cross, no_reference
+
+
+def count_fills(bars: Sequence[Kline], variant: S6Variant, start_ms: int, end_ms: int, costs: S6Costs = BASE_COSTS,
+                reference: Reference | None = None, ticks: dict[str, float] | None = None) -> FillCount:
+    """Outcome-blind: reads prices up to the fill, never a stop or target (section 6.1).
+
+    Locks assume every trade reaches the time stop (240 bars + 5); `both` locks like a loss (1 + 30 bars).
+    """
+    fills, skipped_cross, no_reference = list_fills(bars, variant, start_ms, end_ms, costs, reference, ticks)
+    count = FillCount(skipped_cross=skipped_cross, no_reference=no_reference)
+    for f in fills:
+        count.fills_unlocked += 1
+        if not f.counted:
+            continue
+        count.fills += 1
+        count.fill_days.add(day_key(f.open_time))
+        key = month_key(f.open_time)
+        count.fills_by_month[key] = count.fills_by_month.get(key, 0) + 1
+        if f.both:
+            count.both += 1
+        else:
+            count.fills_by_side["long" if f.sides[0] == LONG else "short"] += 1
     return count
