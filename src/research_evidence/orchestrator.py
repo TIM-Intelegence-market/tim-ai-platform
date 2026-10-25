@@ -34,6 +34,8 @@ class ResearchRun:
     evidence: dict[str, Evidence] = field(default_factory=dict)
     telemetry: list[dict] = field(default_factory=list)
     failures: list[dict] = field(default_factory=list)
+    browser_budget: BrowserBudget | None = None      # one budget per run: navigation and time limits span all URLs
+    browser_refused: str | None = None
 
 
 class ResearchOrchestrator:
@@ -102,16 +104,20 @@ class ResearchOrchestrator:
     def _fallback_allowed(self, run: ResearchRun, url: str, domain: str, code: str) -> bool:
         if self.fallback is None:
             return False
-        budget = BrowserBudget(self.browser_policy, self.clock)
-        try:
-            budget.start()
-        except PermissionError:
+        if run.browser_budget is None and run.browser_refused is None:
+            budget = BrowserBudget(self.browser_policy, self.clock)
+            try:
+                budget.start()
+                run.browser_budget = budget
+            except PermissionError:
+                run.browser_refused = 'fallback_disabled'
+        if run.browser_budget is None:
             run.telemetry.append({'run_id': run.run_id, 'tool': 'browser_fallback', 'target': domain,
-                                  'ok': False, 'error': 'fallback_disabled', 'fallback_reason': code})
+                                  'ok': False, 'error': run.browser_refused, 'fallback_reason': code})
             return False
-        allowed = budget.navigate(url)
+        allowed = run.browser_budget.navigate(url)
         run.telemetry.append({'run_id': run.run_id, 'tool': 'browser_fallback', 'target': domain, 'ok': allowed,
-                              'fallback_reason': code, 'audit': budget.audit()})
+                              'fallback_reason': code, 'audit': run.browser_budget.audit()[-1]})
         return allowed
 
     def _keep(self, run: ResearchRun, evidence, url: str) -> Evidence | None:

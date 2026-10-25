@@ -129,3 +129,47 @@ def test_cli_dry_run(repo, tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)['action'] == 'dry_run'
     with pytest.raises(SystemExit):
         main(['--repo', str(repo), '--observed', str(observed), '--push-branch', 'x'])
+
+
+@pytest.fixture
+def remote(repo, tmp_path):
+    bare = tmp_path / 'remote.git'
+    subprocess.run(['git', 'init', '-q', '--bare', str(bare)], check=True)
+    git(repo, 'remote', 'add', 'origin', str(bare))
+    git(repo, 'push', '-q', 'origin', 'HEAD:refs/heads/collab-status')
+    return bare
+
+
+def remote_head(bare):
+    return subprocess.run(['git', '-C', str(bare), 'rev-parse', 'refs/heads/collab-status'],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_push_reaches_the_dedicated_branch(repo, remote):
+    result = publish_once(repo, OBSERVED, now=NOW, commit=True, push_branch='collab-status')
+    assert result['action'] == 'published'
+    assert remote_head(remote) == git(repo, 'rev-parse', 'HEAD').strip()
+
+
+def test_other_local_commits_are_never_pushed(repo, remote):
+    (repo / 'private.txt').write_text('local work\n')
+    git(repo, 'add', 'private.txt')
+    git(repo, 'commit', '-q', '-m', 'local work')
+    before = remote_head(remote)
+    result = publish_once(repo, OBSERVED, now=NOW, commit=True, push_branch='collab-status')
+    assert result['action'] == 'safe_stop' and 'outside the snapshot' in result['reasons'][0]
+    assert remote_head(remote) == before
+
+
+def test_a_missing_remote_branch_is_not_created(repo, remote):
+    result = publish_once(repo, OBSERVED, now=NOW, commit=True, push_branch='other-branch')
+    assert result['action'] == 'push_failed'
+    assert subprocess.run(['git', '-C', str(remote), 'rev-parse', '--verify', '-q', 'refs/heads/other-branch'],
+                          capture_output=True).returncode != 0
+
+
+def test_an_unpushed_snapshot_is_pushed_by_the_next_unchanged_run(repo, remote):
+    assert publish_once(repo, OBSERVED, now=NOW, commit=True)['action'] == 'committed'   # e.g. network was down
+    later = publish_once(repo, OBSERVED, now=NOW + timedelta(minutes=5), commit=True, push_branch='collab-status')
+    assert later['action'] == 'skip' and 'push retry: pushed' in later['reasons']
+    assert remote_head(remote) == git(repo, 'rev-parse', 'HEAD').strip()

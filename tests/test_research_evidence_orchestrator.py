@@ -196,3 +196,13 @@ def test_run_ids_differ_per_run_and_question_is_required():
     assert orch.start('q').run_id != orch.start('q').run_id
     with pytest.raises(ValueError):
         orch.start(' ')
+
+
+def test_browser_navigation_budget_spans_the_whole_run():
+    browser = FakeBrowser()
+    pages = {f'https://www.bls.gov/p{i}': ConnectionError('down') for i in range(3)}
+    orch = orchestrator(crawl(pages), fallback=browser,
+                        browser=BrowserPolicy(enabled=True, url_policy=POLICY, max_navigations=2))
+    run = orch.start('q')
+    results = [orch.fetch_web(run, f'https://www.bls.gov/p{i}') for i in range(3)]
+    assert [r is not None for r in results] == [True, True, False] and browser.calls == 2

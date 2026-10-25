@@ -78,6 +78,10 @@ def publish_once(repo: Path, observed, *, now: datetime | None = None, captured_
             return _result('safe_stop', ['index already holds staged changes'])
         plan = plan_publish(doc, previous, [SNAPSHOT_PATH])
         if plan['action'] != 'publish':
+            if plan['action'] == 'skip' and commit and push_branch is not None:
+                # nothing new, but an earlier run may have committed without reaching the remote: retry the push
+                outcome = _guarded_push(git, push_branch)
+                return _result('skip', plan['reasons'] + [f'push retry: {outcome}'], document=doc)
             return _result(plan['action'], plan['reasons'], document=doc)
         if not commit:
             return _result('dry_run', ['snapshot valid and changed; dry run writes nothing'], document=doc, plan=plan)
@@ -98,11 +102,36 @@ def publish_once(repo: Path, observed, *, now: datetime | None = None, captured_
             return _result('safe_stop', ['git commit failed'])
         if push_branch is None:
             return _result('committed', ['snapshot committed locally'], document=doc)
-        pushed = git(['push', '--quiet', 'origin', f'HEAD:refs/heads/{push_branch}'])
-        if pushed.returncode != 0:
-            # The snapshot stays committed locally; the next run retries. TIM itself is not affected.
-            return _result('push_failed', ['push failed; snapshot kept locally'], document=doc)
-        return _result('published', ['snapshot committed and pushed'], document=doc)
+        outcome = _guarded_push(git, push_branch)
+        if outcome == 'pushed':
+            return _result('published', ['snapshot committed and pushed'], document=doc)
+        if outcome.startswith('refused'):
+            return _result('safe_stop', [f'push {outcome}; snapshot kept locally'], document=doc)
+        # The snapshot stays committed locally; the next run retries. TIM itself is not affected.
+        return _result('push_failed', ['push failed; snapshot kept locally'], document=doc)
+
+
+def _guarded_push(git: Git, branch: str) -> str:
+    """Push HEAD only when everything it adds over the remote branch is the snapshot file.
+
+    The remote branch must already exist (an operator creates it once from a clean base); a host checkout that
+    carries other local commits can never leak them through the publisher."""
+    if git(['fetch', '--quiet', 'origin', f'refs/heads/{branch}']).returncode != 0:
+        return 'failed (remote branch unreachable or missing)'
+    changed = git(['diff', '--name-only', 'FETCH_HEAD', 'HEAD'])
+    if changed.returncode != 0:
+        return 'failed (cannot compare with remote)'
+    paths = changed.stdout.split()
+    if not paths:
+        return 'pushed'                      # remote already has this state
+    if paths != [SNAPSHOT_PATH]:
+        return 'refused (HEAD differs from the remote branch outside the snapshot)'
+    ancestor = git(['merge-base', '--is-ancestor', 'FETCH_HEAD', 'HEAD'])
+    if ancestor.returncode != 0:
+        return 'refused (remote branch is not an ancestor of HEAD)'
+    if git(['push', '--quiet', 'origin', f'HEAD:refs/heads/{branch}']).returncode != 0:
+        return 'failed (push rejected or network)'
+    return 'pushed'
 
 
 def derive_health(doc, *, now: datetime, stale_after_seconds: int = STALE_AFTER_SECONDS) -> dict:

@@ -11,7 +11,10 @@ Code: `src/collaboration/publisher.py` (baut auf Prüfer #258, Snapshot #259 und
 5. Plan: nur `artifacts/collaboration/live_status.json`, nur wenn sich mehr als die Zeitstempel geändert hat.
 6. Standard ist Probelauf (Stufe A): nichts schreiben. Mit `--commit`: Datei atomar schreiben, nochmals prüfen,
    genau diesen Pfad stagen, kontrollieren, dass der Index exakt diese eine Datei enthält, committen.
-7. Mit `--push-branch X` auf diesen Branch pushen. Scheitert der Push, bleibt der Commit lokal, TIM läuft weiter.
+7. Mit `--push-branch X` auf diesen Branch pushen. Der Branch muss auf dem Remote schon existieren (einmal von
+   einem sauberen Stand anlegen). Gepusht wird nur, wenn sich HEAD vom Remote-Branch ausschließlich in der
+   Snapshot-Datei unterscheidet; andere lokale Commits des Host-Checkouts gehen so nie mit. Scheitert der Push,
+   bleibt der Commit lokal und der nächste Lauf versucht es erneut. TIM läuft davon unberührt weiter.
 
 Der Publisher liest nur die übergebenen Beobachtungswerte. Er verändert nie Queue, Outbox, Datenbank oder
 Trading-Zustand.
