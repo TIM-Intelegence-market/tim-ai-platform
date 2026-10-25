@@ -52,6 +52,8 @@ Dashboard-Agenten.
 | T1 Push-Rot-Melder | VERIFIED (Code), wirkt ab dem ersten roten Push-Lauf | dieser PR: Job `report-red-main` in `.github/workflows/ci.yml`, Issue mit Label `ci-red` |
 | T3 Coverage-Zahl | VERIFIED (Code) | dieser PR: Schritt „Coverage summary“ schreibt die Zeilenabdeckung in die Lauf-Zusammenfassung; Zahl nach dem ersten Lauf in `docs/TESTMATRIX.md` eintragen |
 | C4 Tests ohne Wanduhrzeit | DONE (vorab) | `test_canary_15` prüft seit #380 eine Schranke von 1,5 s gegen 3,0 s Verzögerung, kein enges Zeitmaß mehr |
+| F1 S2 Zähllauf + Power-Simulation | VERIFIED (Werkzeuge), BLOCKED (Lauf: Archive nur außerhalb der Cloud, Ort braucht Uzis Wort) | dieser PR: `scripts/research_lab_s2.py`, `src/research_lab/studies/s2_orderflow.py`, `s2_power.py`, `src/research_lab/data/aggtrades.py`, `tests/test_research_lab_s2.py`; Studie Abschnitt 7 |
+| F2 S2 rechnen | BLOCKED (Freigabe 1.0 nach F1) | – |
 | alle anderen | PLANNED | – |
 
 Statuswerte: PLANNED, RUNNING, BLOCKED (wer), VERIFIED (Nachweis), DONE. Eine Delegation allein ist kein Abschluss.
