@@ -30,9 +30,10 @@ def test_entry_model_alone_creates_no_mapping() -> None:
 
 def test_shipped_equivalence_table_is_empty_by_design() -> None:
     assert se.RULE_EQUIVALENCES == {}
-    # The repo register has no positive verdict at all; this test documents that fact.
+    # The repo register has no positive holdout verdict; this test documents that fact.
+    # Frozen candidates (status "candidate", holdout pending) may exist without any mapping.
     statuses = {v["status"] for v in HypothesisRegister(se.DEFAULT_REGISTER_PATH).variants().values()}
-    assert "passed_holdout" not in statuses and "candidate" not in statuses
+    assert "passed_holdout" not in statuses
 
 
 def _register(tmp_path: Path, **statuses: str) -> Path:
