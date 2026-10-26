@@ -62,11 +62,12 @@ GROUP_NAMES = {
     "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "naked": "naked POC",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "tpo": "TPO (Tagesprofil)",
+    "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
 }
 TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
-DEFAULT_GROUPS = ("day", "week", "month", "naked", "structure", "trend", "tpo")
+DEFAULT_GROUPS = ("day", "week", "month", "naked", "structure", "trend", "tpo", "vp", "fp")
 
 Fetch = Callable[[str, str, int], list[dict[str, Any]]]
 
@@ -398,8 +399,12 @@ def _level_series(symbol: str, runtime_series: Mapping[str, Sequence[Mapping[str
 
 
 def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
-                     cache: KlineCache | None = None, now: datetime | None = None) -> dict[str, Any]:
-    """Everything the interactive chart draws, as JSON-ready data."""
+                     cache: KlineCache | None = None, now: datetime | None = None, footprint: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Everything the interactive chart draws, as JSON-ready data.
+
+    ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
+    it feeds the volume profiles and footprint bars for the symbol TIM collects.
+    """
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     timeframe = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
     cache = cache or CACHE
@@ -436,10 +441,21 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe)
     times = [c["time"] for c in model["candles"]]
     model["drawings"] = place_drawings(drawings, times)
-    model["tpo"] = []
+    model["tpo"], model["volume_profile"], model["footprint"] = [], [], {"step": None, "bars": [], "note": None}
     if INTERVAL_SECONDS[timeframe] <= 14400:  # profiles per day only make sense on intraday views
         first_time = times[0]
         model["tpo"] = [p for p in tpo_profiles(level_source, now) if _epoch(p["end"]) > first_time]
+        from src.dashboard.footprint_data import footprint_bars, volume_profiles
+
+        if footprint and footprint.get("symbol") == symbol and footprint.get("days"):
+            model["volume_profile"] = [p for p in volume_profiles(footprint, now) if _epoch(p["end"]) > first_time]
+            model["footprint"] = footprint_bars(footprint, times, INTERVAL_SECONDS[timeframe])
+            model["trade_source"] = footprint.get("source")
+            model["trades_updated_at"] = footprint.get("updated_at")
+        elif footprint and footprint.get("days"):
+            model["footprint"]["note"] = f"Volume Profile und Footprint aus echten Trades gibt es nur für {footprint.get('symbol')}: TIM sammelt nur dort Trades."
+        else:
+            model["footprint"]["note"] = "Noch keine Trades aus der TIM-Datenbank (Runtime liefert sie alle 2 Minuten)."
     if not any(d["group"] in ("day", "week") for d in model["drawings"]):
         model["notes"].append("Keine Tages-/Wochenlevel: zu wenige geschlossene 30m- und 1h-Kerzen.")
     return model

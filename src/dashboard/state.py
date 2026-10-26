@@ -22,6 +22,8 @@ class DashboardState:
     orderflow_validations: list[dict] = field(default_factory=list)
     orderflow_validations_long: list[dict] = field(default_factory=list)
     derived_candles: dict[str, list[dict]] = field(default_factory=dict)
+    # Aggregated aggTrades for the chart's footprint and volume profile (src/dashboard/footprint_data.py).
+    footprint: dict[str, Any] = field(default_factory=dict)
     system_health: dict[str, Any] = field(default_factory=lambda: {
         "database": "unknown",
         "stream": "unknown",

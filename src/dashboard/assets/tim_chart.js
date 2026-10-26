@@ -108,6 +108,134 @@
   };
   candles.attachPrimitive(tpo);
 
+  // Volume profile per day from TIM's own trades: bars from the day's right edge to the left,
+  // width = volume per price step, value area brighter, POC yellow; delta per row as a thin mark.
+  const vp = {
+    chart: null, series: null, requestUpdate: null, visible: true,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!vp.visible || !vp.chart || !model || !model.volume_profile || !model.volume_profile.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = vp.chart.timeScale();
+              const count = model.candles.length;
+              for (const day of model.volume_profile) {
+                const start = local(Date.parse(day.start) / 1000);
+                const end = local(Date.parse(day.end) / 1000);
+                let x0 = scale.timeToCoordinate(start);
+                let x1 = scale.timeToCoordinate(end);
+                if (x1 === null) x1 = day.running ? scale.logicalToCoordinate(count - 1) : null;
+                if (x1 === null) x1 = mediaSize.width;
+                if (x0 === null) x0 = 0;
+                if (x1 < 0 || x0 > mediaSize.width) continue;
+                x1 = Math.min(x1, mediaSize.width);
+                const maxWidth = Math.min(Math.max(20, x1 - x0) * 0.35, 120);
+                const unit = maxWidth / Math.max(1e-9, day.max_volume);
+                for (const row of day.rows) {
+                  const yTop = vp.series.priceToCoordinate(row.price + day.step);
+                  const yBottom = vp.series.priceToCoordinate(row.price);
+                  if (yTop === null || yBottom === null) continue;
+                  const height = Math.max(1, yBottom - yTop - 1);
+                  const width = Math.max(1, row.volume * unit);
+                  const inValue = row.price >= day.val && row.price <= day.vah;
+                  ctx.fillStyle = row.price === day.poc ? 'rgba(245,197,66,0.75)' : inValue ? 'rgba(76,141,255,0.42)' : 'rgba(76,141,255,0.18)';
+                  ctx.fillRect(x1 - width - 1, yTop + 0.5, width, height);
+                  ctx.fillStyle = row.delta >= 0 ? 'rgba(38,166,154,0.9)' : 'rgba(239,83,80,0.9)';
+                  ctx.fillRect(x1 - 3, yTop + 0.5, 2, height);  // thin delta mark at the edge: green = more aggressive buying
+                }
+                // Name under the profile (the TPO name sits at the top of the next day, at the same x).
+                const yLabel = vp.series.priceToCoordinate(day.rows[0].price);
+                if (yLabel !== null) {
+                  ctx.fillStyle = 'rgba(140,180,255,0.95)';
+                  ctx.font = '11px ui-monospace, Menlo, monospace';
+                  ctx.textBaseline = 'top';
+                  ctx.textAlign = 'right';
+                  ctx.fillText(`VP ${day.label}${day.running ? ' lfd.' : ''} · POC ${fmt(day.poc)} · Δ ${day.delta >= 0 ? '+' : ''}${fmt(day.delta)}`, x1 - 4, Math.min(mediaSize.height - 14, yLabel + 3));
+                  ctx.textAlign = 'left';
+                }
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(vp);
+
+  // Footprint: bid x ask per price step inside each bar when the bars are wide enough;
+  // imbalances (diagonal 4:1) with a filled background, delta under the bar.
+  const fp = {
+    chart: null, series: null, requestUpdate: null, visible: true,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'top'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!fp.visible || !fp.chart || !model || !model.footprint || !model.footprint.bars.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = fp.chart.timeScale();
+              const step = model.footprint.step;
+              const range = scale.getVisibleLogicalRange();
+              if (!range) return;
+              const barWidth = mediaSize.width / Math.max(1, range.to - range.from);
+              if (barWidth < 26) return;  // too narrow for numbers: zoom in
+              const short = v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+              ctx.font = `${barWidth >= 60 ? 10 : 9}px ui-monospace, Menlo, monospace`;
+              ctx.textBaseline = 'middle';
+              for (const bar of model.footprint.bars) {
+                const x = scale.timeToCoordinate(local(bar.time));
+                if (x === null || x < -barWidth || x > mediaSize.width + barWidth) continue;
+                const half = Math.min(barWidth / 2 - 1, 44);
+                const marks = new Set(bar.imbalances.map(i => i[0] + ':' + i[1]));
+                for (const [price, bid, ask] of bar.levels) {
+                  const yTop = fp.series.priceToCoordinate(price + step);
+                  const yBottom = fp.series.priceToCoordinate(price);
+                  if (yTop === null || yBottom === null) continue;
+                  const height = yBottom - yTop;
+                  if (height < 8) continue;
+                  const y = (yTop + yBottom) / 2;
+                  const bidMark = marks.has(price + ':bid'), askMark = marks.has(price + ':ask');
+                  ctx.fillStyle = 'rgba(11,15,22,0.72)';  // dark cell so the numbers stay readable over the candle body
+                  ctx.fillRect(x - half, yTop + 1, 2 * half, height - 2);
+                  if (bidMark) { ctx.fillStyle = 'rgba(239,83,80,0.45)'; ctx.fillRect(x - half, yTop + 1, half - 1, height - 2); }
+                  if (askMark) { ctx.fillStyle = 'rgba(38,166,154,0.45)'; ctx.fillRect(x + 1, yTop + 1, half - 1, height - 2); }
+                  if (price === bar.poc) { ctx.fillStyle = 'rgba(245,197,66,0.25)'; ctx.fillRect(x - half, yTop + 1, 2 * half, height - 2); }
+                  ctx.textAlign = 'right';
+                  ctx.fillStyle = bidMark ? '#ffd7d9' : 'rgba(255,150,150,0.95)';
+                  ctx.fillText(short(bid), x - 2, y, half - 3);
+                  ctx.textAlign = 'left';
+                  ctx.fillStyle = askMark ? '#d2fff3' : 'rgba(140,230,200,0.95)';
+                  ctx.fillText(short(ask), x + 2, y, half - 3);
+                }
+                const low = Math.min(...bar.levels.map(l => l[0]));
+                const yDelta = fp.series.priceToCoordinate(low);
+                if (yDelta !== null) {
+                  ctx.textAlign = 'center';
+                  ctx.fillStyle = bar.delta >= 0 ? 'rgba(38,166,154,1)' : 'rgba(239,83,80,1)';
+                  ctx.fillText(`Δ ${bar.delta >= 0 ? '+' : '-'}${short(Math.abs(bar.delta))}`, x, yDelta + 9, 2 * half);
+                }
+              }
+              ctx.textAlign = 'left';
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(fp);
+
   function shownGroups() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
@@ -140,6 +268,8 @@
   function applyVisibility(groups) {
     for (const item of lines) item.series.applyOptions({ visible: groups.has(item.group) });
     tpo.visible = groups.has('tpo');
+    vp.visible = groups.has('vp');
+    fp.visible = groups.has('fp');
     if (tpo.requestUpdate) tpo.requestUpdate();
   }
 
@@ -195,7 +325,7 @@
       candles.setData(model.candles.map(c => ({ time: local(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
       volume.setData(model.candles.map(c => ({ time: local(c.time), value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)' })));
       drawLines();
-      tpo.visible = shownGroups().has('tpo');
+      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); }
       if (first || !sameView) {
         const count = model.candles.length;
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - 160), to: count + 8 });
@@ -204,8 +334,9 @@
         chart.timeScale().setVisibleLogicalRange(keep);
       }
       setLegend(null);
-      const notes = (model.notes || []).join(' · ');
-      status.textContent = `${model.candles.length} Kerzen · Level: ${model.level_source || '–'} · ${new Date().toLocaleTimeString('de-DE')}` + (notes ? ' · ' + notes : '');
+      const notes = (model.notes || []).concat(model.footprint && model.footprint.note ? [model.footprint.note] : []).join(' · ');
+      const trades = model.trades_updated_at ? ` · Trades: ${model.trade_source} (Stand ${new Date(model.trades_updated_at).toLocaleTimeString('de-DE')})` : '';
+      status.textContent = `${model.candles.length} Kerzen · Level: ${model.level_source || '–'}${trades} · ${new Date().toLocaleTimeString('de-DE')}` + (notes ? ' · ' + notes : '');
     } catch (error) {
       status.textContent = `Laden fehlgeschlagen (${error.message}). Neuer Versuch in 30 s.`;
     } finally {
