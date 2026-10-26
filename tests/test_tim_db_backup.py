@@ -206,6 +206,25 @@ def test_restore_test_always_drops_the_scratch_database(tmp_path: Path, monkeypa
     calls = log.read_text().splitlines()
     assert calls[0].startswith("dropdb") and calls[1].startswith("createdb") and calls[-1].startswith("dropdb")
     assert all("pw-not-in-argv" not in call for call in calls)
+    # pg_hba.conf admits the TIM role only to its own database: never go through template1/postgres.
+    assert all("--maintenance-db tim" in call for call in calls if call.startswith(("dropdb", "createdb")))
+    assert calls[0] == "dropdb --if-exists --maintenance-db tim tim_restore_test"
+    assert calls[1] == "createdb --maintenance-db tim tim_restore_test"
+
+
+def test_restore_test_reports_space_check_when_scratch_setup_fails(tmp_path: Path, monkeypatch) -> None:
+    tools = {
+        "dropdb": fake_tool(tmp_path, "dropdb", "sys.stderr.write('pg_hba.conf rejects connection')\nsys.exit(1)"),
+        "createdb": fake_tool(tmp_path, "createdb", ""),
+        "pg_restore": fake_tool(tmp_path, "pg_restore", ""),
+        "psql": fake_tool(tmp_path, "psql", "print(100)"),
+    }
+    monkeypatch.setattr(backup, "free_bytes", lambda path: 20 * 2**30)
+    make_dump(tmp_path / "backups", datetime(2026, 10, 1, tzinfo=UTC))
+    with pytest.raises(backup.BackupError, match="dropdb failed") as error:
+        backup.restore_test(tmp_path / "backups", "tim_restore_test", "postgresql://tim@127.0.0.1/tim", PARTS,
+                            tools=tools, storage_path=tmp_path)
+    assert error.value.evidence["restore_space"]["status"] == "PASS"
 
 
 def test_restore_checks_database_disk_before_any_scratch_mutation(tmp_path: Path, monkeypatch) -> None:

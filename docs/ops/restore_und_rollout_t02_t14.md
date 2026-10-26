@@ -11,7 +11,7 @@ Stand 22.10.2026. Alles hier ist Vorbereitung. Keine Kopie, kein Restore, kein R
 | Täglicher Dump | 03:15 Ortszeit nach `~/Library/Application Support/TIM/backups/live`, 3 Stände [N]; PR #356 vereinheitlicht den Pfad für Health und Backup (offen) | `ls -la "$HOME/Library/Application Support/TIM/backups/live"` |
 | Ordner `~/TIM-Backups` | existiert; Inhalt unbekannt | `ls -la ~/TIM-Backups` |
 | Zweite Kopie außerhalb der internen SSD | **keine** bekannt | – |
-| Restore geübt | **nein** (Server-Restore 20.10. war ein anderer Stand, `docs/RESTORE_STORAGE_2026-10-20.md`) | – |
+| Restore geübt | **nein**. Versuch 26.10.2026 11:03 auf dem Mac (`tim_db_backup.py restore-test`): FAIL vor jeder Änderung, `pg_hba.conf` lässt `tim` nur auf die Datenbank `tim` (dropdb über template1). Code-Fix `--maintenance-db tim`; offen: pg_hba-Zeile für `tim_restore_test` und `CREATEDB` für `tim` (Uzi als Postgres-Admin), dann Wiederholung | `data/operational/restore_test.json` |
 | Ziele für Datenverlust/Wiederanlauf | nicht festgelegt | Betreiber (Uzi) legt vor dem Restore fest; Vorschlag: höchstens 24 h Datenverlust, Wiederanlauf unter 4 h |
 
 ### 2. Zweite Kopie (störungsarm, nur abgeschlossene Dumps)
