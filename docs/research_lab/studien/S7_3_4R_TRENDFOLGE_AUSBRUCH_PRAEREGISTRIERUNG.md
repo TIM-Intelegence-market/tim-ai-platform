@@ -3,12 +3,12 @@
 | Feld | Wert |
 |---|---|
 | Studie | S7 |
-| Version | **0.3 (Entwurf, Gate gerechnet, nicht freigegeben)** |
-| Status | ENTWURF, **Zähllauf 6.1 gerechnet (26.10., 10:38 Ortszeit, Commit 2a9d3be, Datensatz-Hash 9ac4d135…)**: S7-D20-T3 und S7-D20-T4 bestehen das Gate, S7-D55-T3/T4 nicht (hochgerechnet 59,5 Holdout-Signal-Wochen, Schwelle 60). Keine Registrierung, kein Ergebnis gerechnet. Holdout zu. Bericht `../reports/s7_count_2026-10-26T0938Z.md` |
+| Version | **1.0 (freigegeben von Uzi am 26.10.2026, 11:37 Ortszeit, per Entscheidungskarte „Ja, freigeben und registrieren“)** |
+| Status | **REGISTRIERT**: S7-D20-T3 und S7-D20-T4 im Register (54 → 56), Zähllauf 6.1 vom 26.10. (Commit 2a9d3be, Datensatz-Hash 9ac4d135…, `../reports/s7_count_2026-10-26T0938Z.md`); S7-D55-T3/T4 nicht registriert (59,5 < 60 Holdout-Signal-Wochen). Training/Validierung (P5) laufen. Holdout zu. |
 | Anlass | Uzi 26.10.2026, 01:38 Ortszeit: „Ich möchte eine Strategie die mir 3-4R bringt pro Trade“; „go“ 10:49 Ortszeit. Bauplan: `/mnt/project-files/plaene/s7-3-4r-trendfolge-bauplan.md` |
 | Lesart des Ziels | **Ziel je Gewinntrade 3 R bzw. 4 R** (Gewinn = Drei- bzw. Vierfaches des Anfangsrisikos). Nicht: Erwartungswert 3–4 R je Trade über alle Trades. Bei Erfolg liegt der Erwartungswert einer solchen Strategie typisch bei +0,2 bis +0,5 R je Trade |
-| Protokoll | `../PROTOKOLL.md` Version **1.2** (Stand dieses Branches). Version 1.3 aus PR #428 enthält nur S6-Ausnahmen (A1–A5), die laut Wortlaut für S6-artige Maker-Studien gelten und für S7 nicht zitiert werden. S7 braucht **keinen neuen Protokoll-Eintrag**; die Abweichungen in 5.5 sind alle strenger |
-| Register | `../REGISTER.jsonl`: 48 Einträge in diesem Branch, 54 nach Merge von PR #428 (S6). m = Zahl der `register`-Zeilen (jede Variante hat zusätzlich eine `status`-Zeile). Nach dem Gate bringt S7 **2** Varianten (D20-T3, D20-T4 → 56 von 60); **für alle Rechnungen gilt m = 60**. Registrierung (P4) erst nach Merge von #428 und Uzis Karte |
+| Protokoll | `../PROTOKOLL.md` Version **1.3** (Branch enthält seit 26.10. den Stand von PR #428); die S6-Ausnahmen 1.3 (A1–A5) gelten laut Wortlaut für S6-artige Maker-Studien und werden für S7 nicht zitiert. S7 braucht **keinen neuen Protokoll-Eintrag**; die Abweichungen in 5.5 sind alle strenger |
+| Register | `../REGISTER.jsonl`: 56 Einträge (48 R4, 10 S4 … 6 S6, **2 S7: D20-T3, D20-T4**, registriert 26.10. nach Uzis Karte). m = Zahl der `register`-Zeilen; **für alle Rechnungen gilt m = 60** |
 | Branch / PR | `claude/project-thread-0yalj1-s7` (ab platform-main 90f4b64), PR folgt |
 | Vorgänger | S4 (NICHT TESTBAR), S5 (NICHT TESTBAR), S6 (NICHT BESTANDEN): Ziele 75 % und 95 % Trefferquote nicht erreichbar, siehe Abschnitt 2.3 |
 
@@ -94,7 +94,7 @@ Instrumente als das Universum.
   Holdouts 2025/26 wie S4 3.1: Die Jahre sind als Marktphase allgemein bekannt; die Regeln von S7 wurden ohne Blick auf
   4h-Kurse dieser Jahre festgelegt, mehr lässt sich nicht garantieren.
 
-## 4. Hypothesen-Register (wird mit Version 1.0 eingefroren)
+## 4. Hypothesen-Register (eingefroren mit Version 1.0)
 
 ### 4.1 Gemeinsame Regeln aller S7-Varianten
 
@@ -361,7 +361,7 @@ Ein Lauf, danach ist der Holdout für S7 und für alle Registereinträge verbrau
 |---|---|---|
 | O1 | ~~Adversariale Prüfung durch ein anderes Modell, Befunde einarbeiten (0.2)~~ erledigt 26.10. | Claude |
 | O2 | ~~4h-Archive laden, Lücken und Hash berichten (P2); Zähllauf 6.1 (P4)~~ erledigt 26.10. | Claude, Mac |
-| O3 | Uzis Wort per Entscheidungskarte: Lesart des Ziels (3–4 R je Gewinntrade), Horizont-Einordnung Mid (5.5), Kenntnisnahme der K2-Power (6), Freigabe 1.0 und Registrierung von S7-D20-T3 und S7-D20-T4 (→ 56) | Uzi |
+| O3 | ~~Uzis Wort per Entscheidungskarte: Lesart des Ziels (3–4 R je Gewinntrade), Horizont-Einordnung Mid (5.5), Kenntnisnahme der K2-Power (6), Freigabe 1.0 und Registrierung von S7-D20-T3 und S7-D20-T4 (→ 56)~~ erledigt 26.10. 11:37 Ortszeit („Ja, freigeben und registrieren“) | Uzi |
 | O4 | Holdout nur per zweiter Entscheidungskarte | Uzi |
 
 ## Änderungsprotokoll
@@ -371,3 +371,4 @@ Ein Lauf, danach ist der Holdout für S7 und für alle Registereinträge verbrau
 | 2026-10-26 | 0.1 | Erstfassung nach Bauplan; 4 statt 6 Varianten (Rücksetzer gestrichen), K2 = Protokoll 7.1 plus A′ als Vorauswahl, Wochencluster, Mindesttrades 300/150/100, K2-Power offengelegt | Uzis „go“ 10:49 | R4-Bericht (M1, L1), S4/S5/S6-Berichte; keine 4h-Kurse |
 | 2026-10-26 | 0.2 | Adversariale Prüfung (anderes Modell, 23 Befunde): K4 25 → **20 R** (Protokoll); K6 nur noch berichtet (p* gilt nicht mit Zeitstop, Zufallstrefferquote 15–23 %/7–14 %, keine „2–4 Punkte“); K9 neu (Netto-R der Treffer ≥ T − 0,5) statt faktischem PF ≥ 1,5; K3 ergebnisfrei (Trades + Signal-Wochen statt n_eff aus Ergebnissen); K10 Seitenanteil nur berichtet; Stop als fester Kurs ab Signalschluss, R = Fill–Stop, `stop_before_entry` statt Verwerfen; Wiedereinstieg und Lücken wie Engine; Baseline A wie `random_entry` (gemeinsame Vorlage, Haltedauer, 31-Kerzen-Rand), Baseline C mit Trendzustand; Horizont Mid festgelegt und offengelegt; Gate 300/150 → 200/100 mit ehrlicher Vorab-Schätzung, Regelstand-Commit vor dem Zähllauf; Power-Tabelle korrigiert (n = 300: 92 %, E = 0,5 R: 42/68/85/97 %, Baseline-E < 0); Protokollstand 1.2/Register 48 im Branch, m = 60; Offenlegung ergänzt (S4-Erkundung, Hitrate-Raster, L1, Kaufen-und-Halten, S1-4h-Fenster, Holdout-Grenze); Zahlen 2.3 korrigiert (19–35 Trades, 68 Varianten) | Befunde der Prüfung | wie 0.1; keine 4h-Kurse |
 | 2026-10-26 | 0.3 | Zähllauf 6.1 gerechnet und eingetragen: D20-T3/D20-T4 bestehen, D55-T3/T4 nicht (59,5 < 60 Holdout-Signal-Wochen); Register-Ziel 54 → 56; Vorab-Schätzung der Signaldichte als zu niedrig vermerkt. Keine Regeländerung | Gate-Ergebnis | zusätzlich: Signalzahlen des Zähllaufs (ergebnisblind, keine Kurse nach dem Signal, kein R) |
+| 2026-10-26 | 1.0 | Freigabe durch Uzi (Karte: Lesart je Gewinntrade, Horizont Mid, K2-Power zur Kenntnis); S7-D20-T3 und S7-D20-T4 registriert (Register 54 → 56, Protokoll 1.3 nach Aufnahme von PR #428 in den Branch). Keine Regeländerung gegenüber 0.2/0.3 | Uzis Entscheidung 11:37 Ortszeit | wie 0.3 |
