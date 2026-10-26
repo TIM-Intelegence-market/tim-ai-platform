@@ -277,6 +277,8 @@ def pytest_counts(log: str) -> dict[str, int]:
 
 def pick_check_run(payload: dict[str, Any], name: str) -> dict[str, Any] | None:
     runs = [run for run in payload.get("check_runs", []) if run.get("name") == name]
+    # A scheduled run (CodeQL only) adds a skipped "test" to the same commit; it says nothing about the code.
+    runs = [run for run in runs if run.get("conclusion") != "skipped"] or runs
     if not runs:
         return None
     run = max(runs, key=lambda item: item.get("started_at") or "")
@@ -518,7 +520,8 @@ class DashboardRefresh:
         busy = busy_processes(ps_output, self.policy.get("busy_process_patterns", {}))
         deferred = busy_processes(ps_output, self.policy.get("deferrable_process_patterns", {}))
         dirty = parse_porcelain(self.git("status", "--porcelain", "--untracked-files=no").stdout,
-                                self.policy.get("generated_tracked_files", []))
+                                [*self.policy.get("generated_tracked_files", []),
+                                 *self.policy.get("preserved_tracked_files", [])])
         interval_key = ("min_minutes_between_runtime_restarts_display_only"
                         if changed and display_only(self.policy, changed) else "min_minutes_between_runtime_restarts")
         min_minutes = float(self.policy.get(interval_key, self.policy.get("min_minutes_between_runtime_restarts", 60)))
@@ -612,6 +615,27 @@ class DashboardRefresh:
             saved.append(relative)
         return saved
 
+    def hold_preserved(self, stamp: str) -> dict[str, bytes]:
+        """Local results the live system wrote into tracked files: backed up, then put back after the checkout."""
+        held = {}
+        for relative in self.policy.get("preserved_tracked_files", []):
+            source = self.root / relative
+            if self.git("diff", "--quiet", "--", relative).returncode == 0 or not source.exists():
+                continue
+            backup = self.state_dir / "generated-backup" / stamp / relative
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, backup)
+            held[relative] = source.read_bytes()
+            self.git("checkout", "--", relative)
+        return held
+
+    def restore_preserved(self, held: dict[str, bytes]) -> list[str]:
+        for relative, content in held.items():
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        return sorted(held)
+
     def install_requirements(self) -> bool:
         result = self.run([str(self.python), "-m", "pip", "install", "-q", "-r", str(self.root / "requirements.txt")],
                           timeout=900)
@@ -621,6 +645,7 @@ class DashboardRefresh:
         stamp = iso(self.clock()).replace(":", "")
         record = {"from": previous, "to": target, "started_at_utc": iso(self.clock())}
         record["generated_files_saved"] = self.save_generated(stamp)
+        held = self.hold_preserved(stamp)
         deployment_file = self.root / "data/operational/deployment.json"
         old_deployment = deployment_file.read_bytes() if deployment_file.exists() else None
         requirements_changed = "requirements.txt" in changed
@@ -654,6 +679,7 @@ class DashboardRefresh:
             record["failure"] = failure
             record["rollback"] = self.rollback(previous, old_deployment, requirements_changed)
             state["failed_targets"] = (list(state.get("failed_targets", [])) + [target])[-20:]
+        record["preserved_files_restored"] = self.restore_preserved(held)
         record["finished_at_utc"] = iso(self.clock())
         return record
 

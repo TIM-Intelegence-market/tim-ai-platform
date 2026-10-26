@@ -150,6 +150,18 @@ def test_pick_check_run_takes_newest_named_run():
     assert dr.pick_check_run({"check_runs": []}, "test") is None
 
 
+def test_skipped_scheduled_run_does_not_hide_the_green_push_run():
+    payload = {"check_runs": [
+        {"id": 1, "name": "test", "status": "completed", "conclusion": "success", "started_at": "2026-10-26T00:40:00Z",
+         "completed_at": "2026-10-26T00:44:00Z", "html_url": "push"},
+        {"id": 2, "name": "test", "status": "completed", "conclusion": "skipped", "started_at": "2026-10-26T07:58:00Z",
+         "completed_at": "2026-10-26T07:58:00Z", "html_url": "schedule"},
+    ]}
+    assert dr.pick_check_run(payload, "test")["url"] == "push"
+    only_skipped = {"check_runs": [payload["check_runs"][1]]}
+    assert dr.pick_check_run(only_skipped, "test")["conclusion"] == "skipped"  # still not green
+
+
 def test_small_parsers():
     assert dr.parse_porcelain(" M docs/TIM_V1_LIVE_STATUS.md\n M main.py\n", ["docs/TIM_V1_LIVE_STATUS.md"]) == ["main.py"]
     ps = "/Users/timrunner/actions-runner/bin/Runner.Worker spawnclient 1 2\npython scripts/dashboard_refresh.py pg_dump\n"
@@ -274,6 +286,25 @@ def test_deploys_records_ci_and_restarts(live):
     saved = json.loads((root / "data/operational/dashboard_refresh.json").read_text())
     assert saved["decision"]["reason"] == "deploy" and saved["health_ok"] is True
     assert agent.run_once()["decision"]["action"] == "UP_TO_DATE"
+
+
+def test_acceptance_report_written_live_survives_the_deploy(live):
+    origin, root, mac, agent = live
+    report = "docs/TIM_72H_ACCEPTANCE_REPORT.md"
+    first = new_commit(origin, report, "old report\n")
+    assert agent.run_once()["deploy"]["result"] == "DEPLOYED"
+    assert git(root, "rev-parse", "HEAD") == first
+    (root / report).write_text("NO-GO 75%\n")  # the 72h monitor writes its result into the tracked file
+    target = new_commit(origin, "src/dashboard/page.py", "x\n")
+    later = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                clock=lambda: NOW + timedelta(hours=2), sleep=lambda seconds: None, uid=501)
+    status = later.run_once()
+    assert status["deploy"]["result"] == "DEPLOYED"
+    assert git(root, "rev-parse", "HEAD") == target
+    assert (root / report).read_text() == "NO-GO 75%\n"
+    assert status["deploy"]["preserved_files_restored"] == [report]
+    backups = list((later.state_dir / "generated-backup").rglob("TIM_72H_ACCEPTANCE_REPORT.md"))
+    assert [path.read_text() for path in backups] == ["NO-GO 75%\n"]
 
 
 def test_failed_restart_rolls_back_and_blocks_that_commit(live):
