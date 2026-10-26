@@ -33,6 +33,8 @@ class AdapterInput:
     open_interest_with_price: str | None = None
     delta_divergence: bool | None = None
     volume_bubbles: tuple[str, ...] = ()
+    # Signed delta per candle, oldest first (optional).
+    delta_series: tuple[Decimal, ...] | None = None
     levels: dict[str, Decimal] | None = None
     structured: bool = True
     screenshot_confidence: float | None = None

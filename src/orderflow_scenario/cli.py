@@ -100,6 +100,7 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
         total_volume=adapted.total_volume,
         open_interest_with_price=adapted.open_interest_with_price,
         delta_divergence=adapted.delta_divergence,
+        delta_series=getattr(adapted, "delta_series", None),
         levels=levels,
         positioning=getattr(adapted, "positioning", None),
         profile=getattr(adapted, "profile", None),

@@ -24,6 +24,11 @@ def build_setup_explanation(
         absorption = f"CONFIRMED_{orderflow.absorption_hypothesis}"
     elif orderflow.absorption_hypothesis:
         absorption = f"HYPOTHESIS_{orderflow.absorption_hypothesis}"
+    exhaustion = "UNAVAILABLE"
+    if orderflow.exhaustion_confirmed:
+        exhaustion = f"CONFIRMED_{orderflow.exhaustion_hypothesis}"
+    elif orderflow.exhaustion_hypothesis:
+        exhaustion = f"HYPOTHESIS_{orderflow.exhaustion_hypothesis}"
 
     missing = list(dict.fromkeys((*data_quality.missing_fields, *orderflow.missing_data, *market_state.missing_data)))
     if not fibs:
@@ -37,6 +42,8 @@ def build_setup_explanation(
             "resistances": resistances,
             "fibonacci_retracements": fibs,
             "absorption_status": absorption,
+            "exhaustion_status": exhaustion,
+            "orderflow_reaction": orderflow.reaction,
             "orderflow_price_response": orderflow.price_response,
         },
         "interpretations": {
@@ -44,7 +51,7 @@ def build_setup_explanation(
                 {"scenario_id": item.scenario_id, "for": list(item.evidence_for), "against": list(item.evidence_against), "mandatory": list(item.mandatory_confirmations), "invalidation": list(item.invalidation)}
                 for item in scenarios
             ],
-            "rule": "A setup is conditional until its mandatory confirmations are observed; no individual level, Fibonacci ratio, or absorption hypothesis is proof by itself.",
+            "rule": "A setup is conditional until its mandatory confirmations are observed; no individual level, Fibonacci ratio, absorption or exhaustion hypothesis is proof by itself.",
         },
         "missing_evidence": missing,
     }

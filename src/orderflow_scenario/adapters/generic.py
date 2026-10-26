@@ -153,6 +153,7 @@ class GenericOrderflowAdapter:
             total_volume=_dec(data.get("total_volume")),
             open_interest_with_price=data.get("open_interest_with_price"),
             delta_divergence=data.get("delta_divergence"),
+            delta_series=tuple(_dec(item) for item in data["delta_series"]) if data.get("delta_series") else None,
             structured=True,
             estimated_prices=tuple(estimated),
             positioning=context.positioning,

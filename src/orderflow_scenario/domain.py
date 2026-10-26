@@ -321,17 +321,28 @@ class OrderflowInterpretation:
     positioning: dict[str, Any] = field(default_factory=dict)
     # Volume profile / TPO reading; empty when not supplied.
     profile: dict[str, Any] = field(default_factory=dict)
+    # Reaction read: ABSORPTION | EXHAUSTION | CONTINUATION | UNRESOLVED (orderflow_interpretation.py).
+    reaction: str = "UNRESOLVED"
+    exhaustion_hypothesis: str | None = None  # BUYERS_EXHAUSTED | SELLERS_EXHAUSTED
+    exhaustion_confirmed: bool = False
 
     def __post_init__(self) -> None:
         if not (ZERO <= self.confidence <= Decimal("1")):
             raise ValueError("confidence must be within [0,1]")
+        if self.reaction not in {"ABSORPTION", "EXHAUSTION", "CONTINUATION", "UNRESOLVED"}:
+            raise ValueError("invalid reaction")
+        if self.absorption_hypothesis and self.exhaustion_hypothesis:
+            raise ValueError("absorption and exhaustion are mutually exclusive reads")
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "aggressive_side": self.aggressive_side,
             "price_response": self.price_response,
+            "reaction": self.reaction,
             "absorption_hypothesis": self.absorption_hypothesis,
             "absorption_confirmed": self.absorption_confirmed,
+            "exhaustion_hypothesis": self.exhaustion_hypothesis,
+            "exhaustion_confirmed": self.exhaustion_confirmed,
             "open_interest_interpretation": self.open_interest_interpretation,
             "statements": [item.to_dict() for item in self.statements],
             "confidence": _text(self.confidence),

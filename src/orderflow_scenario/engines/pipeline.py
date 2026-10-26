@@ -70,6 +70,8 @@ class PipelineInputs:
     open_interest_with_price: str | None = None
     delta_divergence: bool | None = None
     volume_bubbles: tuple[str, ...] = ()
+    # Signed delta per candle, oldest first (optional; confirms or refutes exhaustion).
+    delta_series: tuple[Decimal, ...] | None = None
     levels: LevelSet | None = None
     # Funding, liquidations, OI series, orderbook depth; volume profile / TPO (positioning.py).
     positioning: PositioningInputs | None = None
@@ -195,6 +197,7 @@ class Pipeline:
                     open_interest_with_price=inputs.open_interest_with_price,
                     delta_divergence=inputs.delta_divergence,
                     volume_bubbles=inputs.volume_bubbles,
+                    delta_series=inputs.delta_series,
                     positioning=inputs.positioning,
                     profile=inputs.profile,
                 )
