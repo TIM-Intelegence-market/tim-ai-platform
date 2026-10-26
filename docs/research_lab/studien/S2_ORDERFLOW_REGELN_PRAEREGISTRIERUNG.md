@@ -2,7 +2,7 @@
 
 | Feld | Wert |
 |---|---|
-| Status | **ENTWURF, nicht freigegeben.** Erst vollständige Power-/Implementierungsnachweise und Freigabe durch Uzi erlauben Version 1.0; danach nur noch Änderungen über das Änderungsprotokoll unten. |
+| Status | **BEENDET: NICHT BEURTEILBAR (Uzis Entscheid 2026-10-26, 01:24 Ortszeit).** Zähllauf PASS (`../reports/s2_count_2026-10-25T2249Z.md`), Power-Gate mit registrierten Parametern NICHT BESTANDEN (`../reports/s2_power_2026-10-25T2345Z.md`): keine der sechs gerichteten Arten erreicht in allen Szenarien 90 % Power. Kein Ergebnislauf, keine Freigabe 1.0, keine Lockerung; Archiv-Outcomes (`px/`) wurden nicht gelesen und bleiben ungelesen. **Folge für den Betrieb:** Die Live-Orderflow-Regeln (RULE_VERSION 1.0.0) gelten als Beobachtungen, nicht als Signale; daraus wird keine Strategie (S3) gebaut (Abschnitte 6 und 8). |
 | Erstellt | 2026-10-22, Paket T08 des gemeinsamen Verbesserungsplans (Claude K2, Codex F01/F07) |
 | Protokollbezug | `../PROTOKOLL.md` Version 1.1 (Kosten 4.4, Zufallsvergleich 7.1, Zeitgrenzen 7.3 neu) |
 | Daten bis dahin gesehen | Live-Betrieb seit Juli 2026 inkl. Retrospektive-Trefferquoten im Control Center (deskriptiv, 5/15/30 min). Keine Historie vor Juli 2026 für diese Regeln ausgewertet. |
@@ -144,7 +144,7 @@ Besteht kein Test, bleibt TIM ein Beobachtungs- und Forschungssystem; dann wird 
 Paper Trading (V9) wartet auf eine neue Hypothese. Besteht mindestens ein Test, folgt S3 (Strategieanspruch mit
 Kosten, R-Einheit und Kapitalkurve mit Ruinregel) nach Protokoll 1.1.
 
-## 7. Werkzeuge für Zähllauf und Power-Gate (Stand 0.3, noch ohne Lauf)
+## 7. Werkzeuge für Zähllauf und Power-Gate (Stand 0.3; Läufe siehe Abschnitt 8)
 
 Skript `scripts/research_lab_s2.py` mit drei Schritten; Module `src/research_lab/studies/s2_orderflow.py`,
 `src/research_lab/studies/s2_power.py`, `src/research_lab/data/aggtrades.py`; Tests `tests/test_research_lab_s2.py`.
@@ -184,6 +184,40 @@ Kampagnen-Mac; die Kampagne ist seit 22.10. abgebrochen, die Cloud erreicht `dat
 Uzi entscheidet, ob der Mac mini als Labor gilt oder ein anderer Rechner lädt. (b) Nach dem Zähllauf und der
 Power-Simulation: Freigabe 1.0 durch Uzi, erst dann der Ergebnislauf (`px/`).
 
+## 8. Ergebnis von Zähllauf und Power-Gate (2026-10-26)
+
+**Zähllauf (ergebnisblind, PASS):** 1 827 Archivtage (2019-12-30 bis 2024-12-29), 0 fehlend, Datensatz-Hash
+`7109c81e…`, keine Preise gelesen. Training 155/155 Wochen, Validierung 104/104. Alle acht Arten liegen über den
+Mindestzahlen (200 Fälle, 26 Wochen); die sechs gerichteten mit 9 620 bis 48 163 Fällen je Abschnitt. Bericht
+`../reports/s2_count_2026-10-25T2249Z.md`. Nebenbefund: `LARGE_INDIVIDUAL_TRADE_ACTIVITY` hat mehr Fälle als
+Kontrollfenster (Training 32 516 gegen 4 191), weil der größte Trade eines 60-s-Fensters fast immer ≥ 2×/3× des
+Durchschnitts ist; die Regel trennt live kaum etwas. Sie ist deskriptiv und nicht Teil des Gates.
+
+**Power-Gate (NICHT BESTANDEN):** 108 Läufe mit den registrierten Parametern (10 000 Replikationen, Seed 20261023,
+B = 19 999, Schwelle 0,05/18). Ohne Wochen-Korrelation (ICC 0) liegt die Power in allen 36 Szenarien bei 1,00; mit
+ICC 0,05 bei 0,20–0,40, mit ICC 0,10 bei 0,10–0,18. Alle 72 Szenarien mit ICC > 0 verfehlen die geforderten 90 %,
+in beiden Abschnitten und für alle sechs gerichteten Arten. Bericht `../reports/s2_power_2026-10-25T2345Z.md`.
+Ursache ist nicht die Fallzahl, sondern die angenommene Häufung innerhalb der Woche: Schon bei ICC 0,05 streut die
+wahre Wochenrate um ≈ 0,11, die Differenz von 0,03 liegt dann über 155 Wochen bei ≈ 2,4 Standardfehlern, bei der
+konservativen Schwelle zu wenig. Mehr Fälle je Woche helfen nicht; nur mehr Wochen würden helfen, und die Wochen sind
+durch den Datensplit fest.
+
+**Folge nach Abschnitt 3:** NICHT BEURTEILBAR. Der Ergebnislauf auf `px/` findet unter dieser Registrierung nicht
+statt; Regeln, Alpha, Horizonte, Mindestzahlen und Effektgröße werden nicht nachträglich gelockert. Die Preisdateien
+(`px/`) bleiben ungelesen, damit eine spätere, anders registrierte Studie dieselben Daten noch unbelastet nutzen kann.
+
+**Entscheid Uzi (2026-10-26, 01:24 Ortszeit): Option 1.** S2 ist beendet; die Live-Orderflow-Regeln werden als Beobachtungen geführt, nicht als Signale. Eine neue Registrierung (Option 2) ist damit nicht ausgeschlossen, sie wäre eine eigene Studie mit eigenem Power-Gate.
+
+**Zur Entscheidung standen (keine Empfehlung zur Lockerung):**
+
+1. S2 hier beenden und die Live-Orderflow-Regeln als Beobachtungen führen, nicht als Signale (Konsequenz für
+   Sicht 5 des Grün-Plans: „Entscheidung über die Live-Regeln dokumentiert“).
+2. Eine neue Studie S2b mit vorab anderer Registrierung, zum Beispiel eine größere, vorher begründete Mindest-Effektgröße
+   (+8 statt +3 Prozentpunkte), ein anderes Cluster (Tag statt Woche, dann ist die ICC-Annahme neu zu begründen) oder
+   ein anderer Horizont. Das wäre eine neue Vorab-Registrierung, deren Power-Gate ebenfalls vor jedem Outcome-Blick
+   bestanden sein muss; dieses Ergebnis bleibt als Vorgeschichte dokumentiert.
+3. Nichts weiter rechnen; der S2-Datenspeicher (397 MB reduziert) bleibt auf dem Mac für spätere Studien.
+
 ## Änderungsprotokoll
 
 | Datum | Version | Änderung | Grund | Bis dahin gesehene Daten |
@@ -191,3 +225,5 @@ Power-Simulation: Freigabe 1.0 durch Uzi, erst dann der Ergebnislauf (`px/`).
 | 2026-10-22 | 0.1 | Entwurf | T08 | Live-Trefferquoten Juli–Okt 2026 (deskriptiv); keine Archivdaten für diese Regeln |
 | 2026-10-22 | 0.2 | Wissenszeit getrennt, Test/Multiplikität konkretisiert, Power-Gate und prospektiver Start präzisiert | Review R5 | Keine neuen Ergebnisdaten in dieser Korrektur gelesen |
 | 2026-10-25 | 0.3 | Abschnitt 7: Werkzeuge für Zähllauf, Tagesspeicher und Power-Simulation; keine Regel-, Alpha- oder Horizontänderung | Grün-Plan Sicht 5, Paket F1 | Keine Archivdaten geladen, kein Zähllauf, keine Outcomes; nur synthetische Testdaten |
+| 2026-10-26 | 0.4 | Abschnitt 8: Zähllauf PASS, Power-Gate NICHT BESTANDEN (alle 72 Szenarien mit ICC > 0 unter 90 %), Status NICHT BEURTEILBAR, Optionen für Uzi; keine Regel-, Alpha-, Horizont- oder Effektgrößenänderung | Grün-Plan Sicht 5, Pakete F1/F2 | Zähler (Fälle/Kontrollfenster je Woche) aus dem Archiv 2019-12-30 bis 2024-12-29; keine Outcomes, keine Preise gelesen |
+| 2026-10-26 | 0.4 | Status BEENDET: NICHT BEURTEILBAR nach Uzis Entscheid (Option 1 in Abschnitt 8): Live-Regeln = Beobachtungen, keine Signale, kein S3 | Entscheid Uzi auf der Karte im Thread „25.10. Alle 11 Sichten auf Grün bringen“ | unverändert: keine Outcomes, keine Preise gelesen |

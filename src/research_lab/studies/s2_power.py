@@ -180,6 +180,14 @@ def simulate_power(weekly: Sequence[tuple[int, int]], scenario: Scenario, *, rep
     return PowerResult(scenario, replications, rejections, joint, evaluable)
 
 
+def power_task(section: str, kind: str, index: int, weekly: Sequence[tuple[int, int]], scenario: Scenario,
+               replications: int, seed: int, b: int) -> tuple[str, str, int, PowerResult]:
+    """Worker entry for one (section, kind, scenario) run. Each run seeds its own generator from
+    (seed, scenario), so running the 108 registered runs in several processes gives byte-identical
+    results to the sequential loop; only the order of completion differs."""
+    return section, kind, index, simulate_power(weekly, scenario, replications=replications, seed=seed, b=b)
+
+
 def build_power_report(results: dict[str, dict[str, list[PowerResult]]], *, count_report: dict, commit: str, replications: int, b: int, seed: int, created: str) -> dict:
     """results[section][kind] -> PowerResult per scenario."""
     sections = {}

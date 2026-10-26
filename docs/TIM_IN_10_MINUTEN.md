@@ -50,9 +50,10 @@ Plan-Journal → Control Center. Alles in `main.py`; rund 11.000 von 81.000 Zeil
 ## Was gerade gilt (die drei nächsten Schritte)
 
 1. Backup außerhalb des Mac und eine geübte Wiederherstellung (`docs/ops/restore_und_rollout_t02_t14.md`).
-2. Nachweisen, ob die Orderflow-Regeln überhaupt etwas vorhersagen: Studie S2 auf Archivdaten
-   (`docs/research_lab/studien/S2_ORDERFLOW_REGELN_PRAEREGISTRIERUNG.md`, noch Entwurf), dazu die Nachprüfung um
-   1h, 4h und 24h erweitern und 4h- und Tageskerzen aufbauen.
+2. Studie S2 (Orderflow-Regeln auf Archivdaten) ist am 26.10.2026 am Power-Gate beendet worden: NICHT BEURTEILBAR,
+   die Live-Orderflow-Regeln gelten als Beobachtungen, nicht als Signale
+   (`docs/research_lab/studien/S2_ORDERFLOW_REGELN_PRAEREGISTRIERUNG.md`, Abschnitt 8). Offen bleibt die
+   Nachprüfung um 1h, 4h und 24h (läuft seit 24.10., Auswertung nach 30 Tagen).
 3. Die 11 Sichten der Gesamtbild-Analyse auf Grün bringen: `docs/audits/GRUEN_PLAN_11_SICHTEN.md`.
 
 Der Erst-Audit mit dem Aufgabenregister A01 bis A25 steht in `docs/audits/TIM_AUTONOMOUS_INITIAL_AUDIT.md`.

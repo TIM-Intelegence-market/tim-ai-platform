@@ -336,3 +336,30 @@ def test_fetch_with_workers_records_every_day_once_and_resumes(tmp_path) -> None
     # a day without archive is reported, the others still land
     assert module.fetch(store, days[0], days[-1] + timedelta(days=1), verify_days=0, keep_raw=False, workers=2) == 1
     assert store.present_days() == days
+
+
+def test_power_with_workers_matches_the_sequential_run(tmp_path) -> None:
+    pytest.importorskip("numpy")
+    spec = importlib.util.spec_from_file_location("s2_script_power_workers", Path("scripts/research_lab_s2.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    days = []
+    for offset in range(14):
+        day = DAY + timedelta(days=offset)
+        rows, _ = synthetic_day(70 + offset, int(day.timestamp() * 1000))
+        days.append((day.date(), s2.aggregate_rows(rows, int(day.timestamp() * 1000))))
+    report = s2.build_count_report(s2.count_weeks(days), commit="c" * 40, dataset_hash="d" * 64, days=14, missing_days=[])
+    count_file = tmp_path / "s2_count_test.json"
+    count_file.write_text(json.dumps(report))
+    kinds = ["STRONG_BUYER_ACTIVITY", "FALLING_CVD_ACTIVITY"]
+    outs = {}
+    for label, workers in (("one", 1), ("two", 2)):
+        out_dir = tmp_path / label
+        assert module.power(count_file, out_dir, replications=4, b=199, seed=7, kinds=kinds, workers=workers) == 0
+        written = list(out_dir.glob("s2_power_*.json"))
+        assert len(written) == 1
+        outs[label] = json.loads(written[0].read_text())
+    assert outs["one"]["sections"] == outs["two"]["sections"]
+    assert outs["one"]["gate"] == outs["two"]["gate"] and outs["two"]["registered_parameters"] is False
+    for section in ("train", "validation"):
+        assert set(outs["two"]["sections"][section]) == set(kinds)
