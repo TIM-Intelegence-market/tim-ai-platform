@@ -177,3 +177,36 @@ sleep 60; cat data/operational/backup_mirror.json
 
 Erwartet: `"status": "PASS"`, `"copied": true`, `"external": true`. Rücknahme: `launchctl bootout
 gui/$(id -u)/com.tim.db-backup-mirror` und die Plist löschen; die Kopien auf der SSD bleiben.
+
+## USV (Entscheidung 26.10.2026: ja)
+
+Uzi hat am 26.10.2026 entschieden, eine USV anzuschaffen (Grün-Plan Sicht 9, Paket O2). Sie soll einen kurzen
+Stromausfall überbrücken und den Mac bei einem langen Ausfall sauber herunterfahren, damit PostgreSQL nicht hart
+abbricht.
+
+**Was dran muss:** Mac mini und Router/Modem. Ohne Internet bekommt TIM keine Marktdaten, und dann nützt auch ein
+laufender Mac wenig. Zusammen sind das grob 40 bis 80 W.
+
+**Was für ein Gerät:** eine Line-interactive-USV mit 600 bis 900 VA, Schuko-Steckdosen und **USB-Anschluss (HID)**.
+macOS erkennt solche Geräte ohne Treiber. Beispiele: APC Back-UPS 750/850 (Schuko) oder Eaton Ellipse ECO 650 USB DIN.
+Bei 60 W reicht das erfahrungsgemäß für 15 bis 30 Minuten. Das sind Herstellerangaben, gemessen wird nach dem Einbau.
+
+**Einrichten nach dem Anschließen (USB-Kabel an den Mac):**
+
+```sh
+pmset -g ps
+sudo pmset -u haltlevel 30 haltremain 10
+sudo pmset -a autorestart 1
+pmset -g
+```
+
+Erwartet: `pmset -g ps` nennt die USV, `pmset -g` zeigt `autorestart 1` (am 26.10. schon gesetzt; vor dem Einbau zeigt `pmset -g ps` nur `AC Power`). Der Mac fährt bei 30 % Akku oder spätestens
+10 Minuten vor leer herunter. Kommt der Strom zurück, startet er von selbst.
+
+**Danach einmal prüfen:**
+
+1. USV-Stecker 1 Minute ziehen: `pmset -g ps` muss `UPS Power` zeigen, TIM läuft weiter (`/api/health`).
+2. Stecker wieder rein: `AC Power`.
+3. Offen und vor dem ersten Ernstfall zu klären: Die TIM-Dienste (`com.tim.runtime` u. a.) sind LaunchAgents und
+   starten erst, wenn Uzi angemeldet ist. Nach einem Neustart durch Stromausfall laufen sie also nur mit
+   automatischer Anmeldung, sonst erst nach Uzis Login. PostgreSQL (EDB, LaunchDaemon) startet ohne Anmeldung.
