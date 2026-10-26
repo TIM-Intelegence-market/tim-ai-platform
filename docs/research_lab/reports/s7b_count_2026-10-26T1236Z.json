@@ -1,0 +1,347 @@
+{
+  "study": "S7b",
+  "parent": "S7",
+  "protocol": "S7b (Präregistrierung, Zähllauf)",
+  "rules_commit_note": "Regelstand = commit; Änderung danach = neue Studie",
+  "commit": "26cd763616d8d75161940d07afa6a6a5b04b7e65",
+  "outcome_blind": true,
+  "lock": {
+    "max_positions": 1,
+    "priority": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT"
+    ],
+    "lock_bars": 30
+  },
+  "gate": {
+    "train": 100,
+    "train_weeks": 60,
+    "validation": 50,
+    "validation_weeks": 30,
+    "holdout": 50,
+    "holdout_weeks": 30
+  },
+  "projection": "schwächstes Kalenderjahr, je Kalendermonat x 21",
+  "holdout_months": 21,
+  "created": "2026-10-26T12:36:37+00:00",
+  "dataset_hash": "9ac4d1357e57e84ebd08ce2eedf19766d27e27bbeae1e21dc68e8e3073415ecc",
+  "bars": {
+    "BTCUSDT": 10962,
+    "ETHUSDT": 10962,
+    "SOLUSDT": 9389
+  },
+  "coin_months_by_year": {
+    "2020": 27,
+    "2021": 36,
+    "2022": 36,
+    "2023": 36,
+    "2024": 36
+  },
+  "variants": {
+    "S7b-D20-T3": {
+      "params": {
+        "interval": "4h",
+        "channel": 20,
+        "target_r": 3.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30,
+        "max_positions": 1,
+        "priority": "BTCUSDT>ETHUSDT>SOLUSDT",
+        "parent": "S7"
+      },
+      "registrable": true,
+      "upper_all_instruments": 2104,
+      "skipped_gap": 31,
+      "ties": 473,
+      "totals": {
+        "train": {
+          "lower": 156,
+          "weeks": 139
+        },
+        "validation": {
+          "lower": 108,
+          "weeks": 93
+        }
+      },
+      "by_symbol": {
+        "BTCUSDT/train": 60,
+        "BTCUSDT/validation": 44,
+        "ETHUSDT/train": 50,
+        "ETHUSDT/validation": 21,
+        "SOLUSDT/train": 46,
+        "SOLUSDT/validation": 43
+      },
+      "instrument_shares": {
+        "train": {
+          "BTCUSDT": 0.38461538461538464,
+          "ETHUSDT": 0.32051282051282054,
+          "SOLUSDT": 0.2948717948717949
+        },
+        "validation": {
+          "BTCUSDT": 0.4074074074074074,
+          "ETHUSDT": 0.19444444444444445,
+          "SOLUSDT": 0.39814814814814814
+        }
+      },
+      "by_year": {
+        "2020": {
+          "lower": 45,
+          "weeks": 39
+        },
+        "2021": {
+          "lower": 59,
+          "weeks": 53
+        },
+        "2022": {
+          "lower": 52,
+          "weeks": 47
+        },
+        "2023": {
+          "lower": 54,
+          "weeks": 46
+        },
+        "2024": {
+          "lower": 54,
+          "weeks": 47
+        }
+      },
+      "projected_holdout_lower": 78.8,
+      "projected_holdout_weeks": 68.2,
+      "weakest_year_signals": 2020,
+      "weakest_year_weeks": 2020,
+      "passes_gate": true
+    },
+    "S7b-D20-T4": {
+      "params": {
+        "interval": "4h",
+        "channel": 20,
+        "target_r": 4.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30,
+        "max_positions": 1,
+        "priority": "BTCUSDT>ETHUSDT>SOLUSDT",
+        "parent": "S7"
+      },
+      "registrable": true,
+      "upper_all_instruments": 2104,
+      "skipped_gap": 31,
+      "ties": 473,
+      "totals": {
+        "train": {
+          "lower": 156,
+          "weeks": 139
+        },
+        "validation": {
+          "lower": 108,
+          "weeks": 93
+        }
+      },
+      "by_symbol": {
+        "BTCUSDT/train": 60,
+        "BTCUSDT/validation": 44,
+        "ETHUSDT/train": 50,
+        "ETHUSDT/validation": 21,
+        "SOLUSDT/train": 46,
+        "SOLUSDT/validation": 43
+      },
+      "instrument_shares": {
+        "train": {
+          "BTCUSDT": 0.38461538461538464,
+          "ETHUSDT": 0.32051282051282054,
+          "SOLUSDT": 0.2948717948717949
+        },
+        "validation": {
+          "BTCUSDT": 0.4074074074074074,
+          "ETHUSDT": 0.19444444444444445,
+          "SOLUSDT": 0.39814814814814814
+        }
+      },
+      "by_year": {
+        "2020": {
+          "lower": 45,
+          "weeks": 39
+        },
+        "2021": {
+          "lower": 59,
+          "weeks": 53
+        },
+        "2022": {
+          "lower": 52,
+          "weeks": 47
+        },
+        "2023": {
+          "lower": 54,
+          "weeks": 46
+        },
+        "2024": {
+          "lower": 54,
+          "weeks": 47
+        }
+      },
+      "projected_holdout_lower": 78.8,
+      "projected_holdout_weeks": 68.2,
+      "weakest_year_signals": 2020,
+      "weakest_year_weeks": 2020,
+      "passes_gate": true
+    },
+    "S7b-D55-T3": {
+      "params": {
+        "interval": "4h",
+        "channel": 55,
+        "target_r": 3.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30,
+        "max_positions": 1,
+        "priority": "BTCUSDT>ETHUSDT>SOLUSDT",
+        "parent": "S7"
+      },
+      "registrable": false,
+      "upper_all_instruments": 1440,
+      "skipped_gap": 19,
+      "ties": 293,
+      "totals": {
+        "train": {
+          "lower": 126,
+          "weeks": 112
+        },
+        "validation": {
+          "lower": 96,
+          "weeks": 86
+        }
+      },
+      "by_symbol": {
+        "BTCUSDT/train": 52,
+        "BTCUSDT/validation": 42,
+        "ETHUSDT/train": 38,
+        "ETHUSDT/validation": 20,
+        "SOLUSDT/train": 36,
+        "SOLUSDT/validation": 34
+      },
+      "instrument_shares": {
+        "train": {
+          "BTCUSDT": 0.4126984126984127,
+          "ETHUSDT": 0.30158730158730157,
+          "SOLUSDT": 0.2857142857142857
+        },
+        "validation": {
+          "BTCUSDT": 0.4375,
+          "ETHUSDT": 0.20833333333333334,
+          "SOLUSDT": 0.3541666666666667
+        }
+      },
+      "by_year": {
+        "2020": {
+          "lower": 37,
+          "weeks": 32
+        },
+        "2021": {
+          "lower": 52,
+          "weeks": 46
+        },
+        "2022": {
+          "lower": 37,
+          "weeks": 35
+        },
+        "2023": {
+          "lower": 48,
+          "weeks": 44
+        },
+        "2024": {
+          "lower": 48,
+          "weeks": 42
+        }
+      },
+      "projected_holdout_lower": 64.8,
+      "projected_holdout_weeks": 56.0,
+      "weakest_year_signals": 2020,
+      "weakest_year_weeks": 2020,
+      "passes_gate": false
+    },
+    "S7b-D55-T4": {
+      "params": {
+        "interval": "4h",
+        "channel": 55,
+        "target_r": 4.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30,
+        "max_positions": 1,
+        "priority": "BTCUSDT>ETHUSDT>SOLUSDT",
+        "parent": "S7"
+      },
+      "registrable": false,
+      "upper_all_instruments": 1440,
+      "skipped_gap": 19,
+      "ties": 293,
+      "totals": {
+        "train": {
+          "lower": 126,
+          "weeks": 112
+        },
+        "validation": {
+          "lower": 96,
+          "weeks": 86
+        }
+      },
+      "by_symbol": {
+        "BTCUSDT/train": 52,
+        "BTCUSDT/validation": 42,
+        "ETHUSDT/train": 38,
+        "ETHUSDT/validation": 20,
+        "SOLUSDT/train": 36,
+        "SOLUSDT/validation": 34
+      },
+      "instrument_shares": {
+        "train": {
+          "BTCUSDT": 0.4126984126984127,
+          "ETHUSDT": 0.30158730158730157,
+          "SOLUSDT": 0.2857142857142857
+        },
+        "validation": {
+          "BTCUSDT": 0.4375,
+          "ETHUSDT": 0.20833333333333334,
+          "SOLUSDT": 0.3541666666666667
+        }
+      },
+      "by_year": {
+        "2020": {
+          "lower": 37,
+          "weeks": 32
+        },
+        "2021": {
+          "lower": 52,
+          "weeks": 46
+        },
+        "2022": {
+          "lower": 37,
+          "weeks": 35
+        },
+        "2023": {
+          "lower": 48,
+          "weeks": 44
+        },
+        "2024": {
+          "lower": 48,
+          "weeks": 42
+        }
+      },
+      "projected_holdout_lower": 64.8,
+      "projected_holdout_weeks": 56.0,
+      "weakest_year_signals": 2020,
+      "weakest_year_weeks": 2020,
+      "passes_gate": false
+    }
+  }
+}
