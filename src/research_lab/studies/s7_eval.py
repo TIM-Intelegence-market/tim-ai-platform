@@ -164,9 +164,12 @@ def hit_report(s: Summary) -> dict:
             "losers_eff": s.losers_eff}
 
 
-def sample_ok(s: Summary, section: str) -> bool:
+Minimums = Mapping[str, tuple[int, int]]
+
+
+def sample_ok(s: Summary, section: str, minimums: Minimums = MIN_TRADES) -> bool:
     """K3 and the training/validation minimums: trades and signal weeks, both outcome-free."""
-    n_min, weeks_min = MIN_TRADES[section]
+    n_min, weeks_min = minimums[section]
     return s.n >= n_min and s.signal_weeks >= weeks_min
 
 
@@ -174,14 +177,14 @@ def sample_ok(s: Summary, section: str) -> bool:
 
 
 def judge(trades_by_symbol: TradesBySymbol, stress_by_symbol: TradesBySymbol, target_r: float, baseline_p: float,
-          significant: bool, *, ignored_signals: int = 0) -> dict[str, dict]:
+          significant: bool, *, ignored_signals: int = 0, minimums: Minimums = MIN_TRADES) -> dict[str, dict]:
     """K1-K10 of section 5.2 on pooled holdout trades. `significant` is the Holm decision over all candidates."""
     s = summarize(trades_by_symbol, target_r, ignored_signals=ignored_signals)
-    n_min, weeks_min = MIN_TRADES["holdout"]
+    n_min, weeks_min = minimums["holdout"]
     out: dict[str, dict] = {}
     out["K1"] = {"pass": s.expectancy > 0, "expectancy": s.expectancy}
     out["K2"] = {"pass": significant, "p": baseline_p, "m": HOLM_M}
-    out["K3"] = {"pass": sample_ok(s, "holdout"), "n": s.n, "signal_weeks": s.signal_weeks, "min": [n_min, weeks_min],
+    out["K3"] = {"pass": sample_ok(s, "holdout", minimums), "n": s.n, "signal_weeks": s.signal_weeks, "min": [n_min, weeks_min],
                  "design_effect": s.design_effect, "n_eff": s.n_eff}
     out["K4"] = {"pass": s.max_drawdown <= MAX_DRAWDOWN_R, "max_drawdown": s.max_drawdown}
     out["K5"] = {"pass": s.profit_factor > 1.0, "profit_factor": s.profit_factor}
@@ -214,8 +217,8 @@ def holm_significant(pvalues: Mapping[str, float], m: int = HOLM_M, alpha: float
 # ----------------------------------------------------------------------------- training, validation (5.1), robustness (5.4)
 
 
-def training_verdict(s: Summary, p_a: float, p_a_prime: float) -> dict:
-    n_min, weeks_min = MIN_TRADES["train"]
+def training_verdict(s: Summary, p_a: float, p_a_prime: float, minimums: Minimums = MIN_TRADES) -> dict:
+    n_min, weeks_min = minimums["train"]
     reasons = []
     if s.expectancy <= 0:
         reasons.append("E[R] <= 0")
@@ -230,8 +233,9 @@ def training_verdict(s: Summary, p_a: float, p_a_prime: float) -> dict:
     return {"pass": not reasons, "reasons": reasons}
 
 
-def validation_verdict(s: Summary, p_a: float, p_a_prime: float, robustness: Mapping[str, bool]) -> dict:
-    n_min, weeks_min = MIN_TRADES["validation"]
+def validation_verdict(s: Summary, p_a: float, p_a_prime: float, robustness: Mapping[str, bool],
+                       minimums: Minimums = MIN_TRADES) -> dict:
+    n_min, weeks_min = minimums["validation"]
     reasons = []
     if s.n < n_min:
         reasons.append(f"n < {n_min}")
@@ -261,8 +265,9 @@ def year_rule(train: Summary, validation: Summary) -> bool:
     return year_stability(merged, min_trades=YEAR_MIN_TRADES, share=YEAR_SHARE)
 
 
-def neighbour_rule(train_expectancy: Mapping[str, float], variant: s7.S7Variant) -> bool:
-    by_point = {(v.channel, v.target_r): train_expectancy[v.variant_id] for v in s7.S7_VARIANTS if v.variant_id in train_expectancy}
+def neighbour_rule(train_expectancy: Mapping[str, float], variant: s7.S7Variant,
+                   variants: Sequence[s7.S7Variant] = s7.S7_VARIANTS) -> bool:
+    by_point = {(v.channel, v.target_r): train_expectancy[v.variant_id] for v in variants if v.variant_id in train_expectancy}
     return neighbours_positive(GRID, by_point, (variant.channel, variant.target_r))
 
 
@@ -273,10 +278,10 @@ def walk_forward_rule(trades_by_variant: Mapping[str, Sequence[Trade]], start_ms
     return chained > 0, chained, chosen
 
 
-def select_candidates(validation_expectancy: Mapping[str, float]) -> list[str]:
+def select_candidates(validation_expectancy: Mapping[str, float], variants: Sequence[s7.S7Variant] = s7.S7_VARIANTS) -> list[str]:
     """At most one candidate per target T (the higher validation E[R]), at most two in all (5.1 step 3)."""
     best: dict[float, tuple[float, str]] = {}
-    for variant in s7.S7_VARIANTS:
+    for variant in variants:
         if variant.variant_id not in validation_expectancy:
             continue
         score = (validation_expectancy[variant.variant_id], variant.variant_id)
