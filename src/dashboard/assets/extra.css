@@ -82,3 +82,19 @@ caption{text-align:left;padding:11px 13px;color:var(--muted);font-size:11px;back
 .tc-lvl--day-text{fill:var(--blue)}.tc-lvl--week-text{fill:#c58cff}.tc-lvl--naked-text{fill:var(--yellow)}.tc-lvl--minor-text{fill:#8491a3}
 .tc-tabs__sep{margin-left:14px;align-self:center;color:var(--muted);font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace}
 .tc-legend{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center}.tc-key{display:inline-flex;align-items:center;gap:6px}.tc-key::before{content:"";width:18px;height:0;border-top:2px solid}.tc-key--day::before{border-color:var(--blue)}.tc-key--week::before{border-color:#c58cff}.tc-key--naked::before{border-top-style:dashed;border-color:var(--yellow)}.tc-key--minor::before{width:8px;border-top-style:dotted;border-color:#8491a3}
+
+/* Interactive TIM chart (/chart, tim_chart.js) */
+.tc-live__bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin:8px 0}
+.tc-live__layers{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.85rem}
+.tc-layer{display:inline-flex;align-items:center;gap:4px;cursor:pointer;border-left:3px solid currentColor;padding-left:6px}
+.tc-layer input{accent-color:currentColor}
+.tc-layer--day{color:#4c8dff}.tc-layer--week{color:#b07cff}.tc-layer--month{color:#ff9f43}.tc-layer--naked{color:#f5c542}
+.tc-layer--running,.tc-layer--tpo{color:#5ec8d8}.tc-layer--vp{color:#4c8dff}.tc-layer--fp{color:#26a69a}.tc-layer--session,.tc-layer--ib{color:#8a94a6}.tc-layer--structure{color:#35d39a}.tc-layer--trend{color:#e879c6}
+.tc-live__actions{display:flex;gap:6px}
+.tc-live__actions button{cursor:pointer;font:inherit}
+.tc-live__frame{border:1px solid rgba(120,134,156,.25);border-radius:8px;overflow:hidden;background:#0b0f16}
+.tc-live__chart{height:min(72vh,720px);min-height:420px;width:100%}
+.tc-live__legend{margin:0;min-height:1.4em;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c3cad6;padding:6px 10px;border-bottom:1px solid rgba(120,134,156,.18)}
+.tc-live__status{min-height:1.2em}
+.tc-plan-view>summary{cursor:pointer;font-weight:600;margin:4px 0 10px}
+@media (max-width:640px){.tc-live__chart{height:62vh;min-height:340px}}

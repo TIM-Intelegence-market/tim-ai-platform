@@ -24,7 +24,7 @@ from src.dashboard.chart_model import build_chart_model
 from src.dashboard.constants import HISTORY_LIMIT, MAX_RESPONSE_BYTES
 from src.dashboard.layout import _content_security_policy, _content_security_policy_for, _error_page
 from src.dashboard.security import _is_loopback_request_host, _require_loopback_host
-from src.dashboard.pages.chart import render_chart_page
+from src.dashboard.pages.chart import CHART_SCRIPTS, render_chart_page
 from src.dashboard.pages.pilot import PILOT_CSP, render_pilot
 from src.dashboard.state import DashboardState
 from src.dashboard.views import render
@@ -115,11 +115,25 @@ class DashboardServer:
                     formatter, content_type = exports[extension]
                     return self.respond(200, formatter(insights).encode(), content_type)
                 if path == "/chart":
+                    from src.dashboard.pages.chart import CHART_CSP
+
                     try:
-                        page = render_chart_page(outer.state, query.get("tf", [None])[0], query.get("levels", [None])[0])
+                        page = render_chart_page(outer.state, query.get("tf", [None])[0], query.get("levels", [None])[0], query.get("symbol", [None])[0])
                     except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                         return self.respond(500, _error_page("Chart", exc).encode(), "text/html; charset=utf-8")
-                    return self.respond(200, page.encode(), "text/html; charset=utf-8")
+                    return self.respond(200, page.encode(), "text/html; charset=utf-8", csp=CHART_CSP)
+                if path in CHART_SCRIPTS:
+                    return self.respond(200, CHART_SCRIPTS[path], "text/javascript; charset=utf-8")
+                if path == "/api/chart/live":
+                    from src.dashboard.chart_live import build_live_chart
+
+                    try:
+                        with outer.state.lock:
+                            footprint = dict(outer.state.footprint)
+                        model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint)
+                    except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection
+                        return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
+                    return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
                 if path == "/api/chart":
                     try:
                         from src.dashboard.analysis_card import with_journal_check

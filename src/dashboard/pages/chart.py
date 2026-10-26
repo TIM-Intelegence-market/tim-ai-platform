@@ -1,4 +1,9 @@
-"""TIM chart page: candles from TIM's own data with levels and scenarios (read-only SVG)."""
+"""TIM chart page: interactive chart (BTC/ETH/SOL, every timeframe) plus TIM's analysis for BTC.
+
+The top chart is TradingView Lightweight Charts (Apache 2.0, served locally) fed by
+/api/chart/live; every level is a labelled segment from the moment it formed. Below,
+for BTC only: analysis card, plan view (SVG with zones, stop, targets) and tables.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +11,22 @@ import math
 from datetime import datetime
 from typing import Any
 
+from pathlib import Path
+
+from src.dashboard.chart_live import DEFAULT_SYMBOL, GROUP_STYLE, SYMBOL_NAMES, SYMBOLS, VIEW_TIMEFRAMES
 from src.dashboard.chart_model import CHART_TIMEFRAMES, DEFAULT_TIMEFRAME, build_chart_model
 from src.dashboard.helpers import _safe
-from src.dashboard.layout import _hero, _layout, _strip_states
+from src.dashboard.layout import _content_security_policy, _hero, _layout, _strip_states
+
+_ASSETS = Path(__file__).resolve().parent.parent / "assets"
+LIB_PATH = "/assets/chart/lightweight-charts-4.2.3.js"
+APP_PATH = "/assets/chart/tim_chart.js"
+CHART_SCRIPTS = {
+    LIB_PATH: (_ASSETS / "vendor" / "lightweight-charts-4.2.3.standalone.production.js").read_bytes(),
+    APP_PATH: (_ASSETS / "tim_chart.js").read_bytes(),
+}
+# Same policy as every page, plus the two local script files above ('self'; nothing from outside).
+CHART_CSP = _content_security_policy().replace("script-src ", "script-src 'self' ", 1)
 
 WIDTH, HEIGHT = 1200, 600
 PLOT_LEFT, PLOT_RIGHT = 12, 760
@@ -456,12 +474,54 @@ def _card_section(card: dict[str, Any] | None) -> str:
     )
 
 
-def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str | None = None) -> str:
+def _live_section(symbol: str, view: str) -> str:
+    """Toolbar and container of the interactive chart; tim_chart.js fills it."""
+    symbols = "".join(
+        f"<a href='/chart?symbol={item}&amp;tf={view}' class='tc-tab{' tc-tab--active' if item == symbol else ''}'"
+        f"{' aria-current=\'page\'' if item == symbol else ''} title='{_safe(SYMBOL_NAMES[item])}'>{item.removesuffix('USDT')}</a>"
+        for item in SYMBOLS)
+    frames = "".join(
+        f"<a href='/chart?symbol={symbol}&amp;tf={item}' data-tf='{item}' class='tc-tab{' tc-tab--active' if item == view else ''}'"
+        f"{' aria-current=\'page\'' if item == view else ''}>{item}</a>"
+        for item in VIEW_TIMEFRAMES)
+    return (
+        f"<section class='cc-section tc-live' id='tc-live' data-keep-view='chart' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
+        f"<nav class='tc-tabs' aria-label='Coin'>{symbols}<span class='tc-tabs__sep'>Zeitrahmen:</span>{frames}</nav>"
+        "<div class='tc-live__bar'><div id='tc-live-layers' class='tc-live__layers' aria-label='Linien ein- und ausblenden'></div>"
+        "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Zu jetzt</button>"
+        "<button type='button' class='tc-tab' data-action='fit'>Alles zeigen</button>"
+        "<button type='button' class='tc-tab' data-action='reset'>Linien zurücksetzen</button></div></div>"
+        "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
+        "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interaktiver Kerzenchart'></div></div>"
+        "<p id='tc-live-status' class='cc-note tc-live__status'>Chart lädt… (braucht JavaScript)</p>"
+        "<p class='cc-note'>Mausrad = zoomen, ziehen = verschieben, Preisachse ziehen = Höhe ändern, Doppelklick auf die Achse = zurücksetzen. "
+        "Jede Linie beginnt dort, wo das Level entstanden ist (Hochs/Tiefs an ihrer Kerze, Profile am Beginn ihres Tages/ihrer Woche), "
+        "und trägt Zeitrahmen und Namen, z. B. <b>1D VAH</b> oder <b>1W POC</b>. Ein ← heißt: Beginn liegt links außerhalb der geladenen Kerzen. "
+        "<b>TPO</b>: Tagesprofil aus 30-Minuten-Perioden (Buchstaben A, B, C … ab 00:00 UTC) hinter den Kerzen, Value Area heller, POC gelb, Single Prints orange; "
+        "auf Zeitrahmen bis 4h. <b>Volume Profile</b> und <b>Footprint</b> kommen aus TIMs eigenen Trades (Datenbank, nur BTC): "
+        "das Profil je Tag rechts am Tagesende (Volumen je Preisstufe, Value Area, POC gelb, grüner/roter Strich = Delta), "
+        "der Footprint zeigt je Kerze Bid × Ask je Preisstufe, sobald die Kerzen breit genug sind (reinzoomen), Imbalances 4:1 gefüllt, Δ unter der Kerze. "
+        "Zeiten in deiner Ortszeit. Nur Anzeige, keine Order. "
+        "Chart: <a href='https://www.tradingview.com/' rel='noopener noreferrer'>TradingView Lightweight Charts</a> (Apache 2.0).</p>"
+        f"<script src='{LIB_PATH}'></script><script src='{APP_PATH}'></script></section>"
+    )
+
+
+def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str | None = None, symbol: str | None = None) -> str:
     from datetime import timezone
 
     from src.dashboard.analysis_card import with_journal_check
 
+    symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
+    view = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_TIMEFRAME
     data = state.snapshot()
+    body = _hero("TIM-Chart", "BTC, ETH und SOL in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
+    body += _live_section(symbol, view)
+    if symbol != "BTCUSDT":
+        body += ("<section class='cc-section'><p class='cc-note'>Steckbrief, Szenarien, Level-Pläne und Plan-Journale gibt es nur für BTC. "
+                 f"{_safe(SYMBOL_NAMES[symbol])} ist reine Anzeige aus öffentlichen Binance-Kerzen; die Multi-Coin-Runtime ist aus.</p></section>")
+        return _layout("TIM-Chart", "Chart", body, strip=_strip_states(data))
+
     series, now = state.chart_series(), datetime.now(timezone.utc)
     model = with_journal_check(build_chart_model(series, timeframe or DEFAULT_TIMEFRAME, now=now, card=True),
                                series, getattr(state, "plan_journal_level_path", None), now)
@@ -473,8 +533,7 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
         f"{' aria-current=\'page\'' if item == tf else ''}>{item}{'' if item in model['available_timeframes'] else ' ·'}</a>"
         for item in CHART_TIMEFRAMES
     )
-    body = _hero("TIM-Chart", "30m bis Monat: Binance-Kerzen mit BOS/MSS, Vortages-Leveln, Poor High/Low, Value Area und Szenarien.")
-    body += f"<nav class='tc-tabs' aria-label='Zeitrahmen'>{tabs}"
+    body += f"<nav class='tc-tabs' aria-label='Analyse-Zeitrahmen'><span class='tc-tabs__sep'>Analyse (BTC):</span>{tabs}"
     body += (f"<span class='tc-tabs__sep'>Level:</span><a href='/chart?tf={tf}' class='tc-tab{'' if show_all else ' tc-tab--active'}'>nahe Hauptlevel</a>"
              f"<a href='/chart?tf={tf}&levels=alle' class='tc-tab{' tc-tab--active' if show_all else ''}'>alle</a></nav>")
     if not model["candles"]:
@@ -496,7 +555,8 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
         f"<div class='state-banner__metric'><dt>Letzter Kurs</dt><dd>{_safe(_price(levels.get('last')))}<small>vor {_safe(levels.get('age_seconds'))} s</small></dd></div></dl></section>"
     )
     body += _card_section(model.get("analysis_card"))
-    body += f"<section class='cc-section'><div class='cc-surface tc-chart'>{_chart_svg(model, show_all)}</div>"
+    body += (f"<section class='cc-section'><details class='tc-plan-view'><summary>Plan-Ansicht {_safe(tf)}: Zonen, Stop und Ziele von TIMs Plänen (Bild)</summary>"
+             f"<div class='cc-surface tc-chart'>{_chart_svg(model, show_all)}</div>")
     body += (
         "<p class='cc-note tc-legend'><span class='tc-key tc-key--day'>Vortag</span><span class='tc-key tc-key--week'>Vorwoche</span>"
         "<span class='tc-key tc-key--naked'>naked POC</span><span class='tc-key tc-key--minor'>Session / IB / laufender POC (kurz am Rand)</span>"
@@ -509,7 +569,7 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     body += f"<p class='cc-note'>Volume Profile: {_safe(profile.get('source', 'nicht verfügbar'))}. Value Area {int(profile.get('value_area_share', 0.7) * 100)} %. BOS: erster Schlusskurs jenseits eines bestätigten Swing-Hochs/-Tiefs. Zeiten in UTC.</p>"
     for note in model.get("notes", []):
         body += f"<p class='cc-note'>{_safe(note)}</p>"
-    body += "</section>"
+    body += "</details></section>"
     body += (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Szenarien</p><h2>Was TIM aus diesen Kerzen ableitet</h2>"
         "<p class='cc-section__note'>Orderflow-Pipeline im OBSERVE-Modus, gleiche Regeln wie die CLI.</p></div></div>"
