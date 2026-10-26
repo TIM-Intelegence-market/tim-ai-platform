@@ -1,0 +1,1346 @@
+{
+  "study": "S7b",
+  "parent": "S7",
+  "protocol": "1.3",
+  "commit": "f87d8a3e4daa60d65f79f839a6d597e2b23bea7d",
+  "created": "2026-10-26T13:04:50+00:00",
+  "dataset_hash": "9ac4d1357e57e84ebd08ce2eedf19766d27e27bbeae1e21dc68e8e3073415ecc",
+  "random_runs": 10000,
+  "seed": 20261101,
+  "holm_m": 60,
+  "register_m": 58,
+  "registered": [
+    "S7b-D20-T3",
+    "S7b-D20-T4"
+  ],
+  "minimums": {
+    "train": [
+      200,
+      100
+    ],
+    "validation": [
+      100,
+      50
+    ],
+    "holdout": [
+      100,
+      60
+    ]
+  },
+  "lock": {
+    "max_positions": 1,
+    "priority": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT"
+    ]
+  },
+  "stress_rule": "eigener Portfolio-Lauf mit Stresskosten (Trade-Auswahl kann abweichen, n wird berichtet)",
+  "section_rule": "Abschnittsregel 3.2 (1.2)",
+  "universe_limitation": "Universum BTCUSDT/ETHUSDT/SOLUSDT, 2026 mit Wissen um das Überleben gewählt (Survivorship-Grenze, Protokoll 3.1): Ergebnisse gelten nur für diese Instrumente, nicht für Kryptowährungen allgemein.",
+  "variants": {
+    "S7b-D20-T3": {
+      "registered": true,
+      "params": {
+        "interval": "4h",
+        "channel": 20,
+        "target_r": 3.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30,
+        "max_positions": 1,
+        "priority": "BTCUSDT>ETHUSDT>SOLUSDT",
+        "parent": "S7"
+      },
+      "ignored_signals": {
+        "train": 978,
+        "validation": 627
+      },
+      "locked_signals": {
+        "train": 614,
+        "validation": 426
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 292,
+            "hits": 71,
+            "hit_rate": 0.24315068493150685,
+            "expectancy": 0.22668516907125713,
+            "profit_factor": 1.3516868018916568,
+            "max_drawdown": 20.75084849448671,
+            "mean_loss": -1.0284869808925503,
+            "worst_loss": -1.5163126867851375,
+            "mean_win": 2.333992540111411,
+            "design_effect": 1.1876186183848445,
+            "n_eff": 245,
+            "losers_eff": 187,
+            "hit_lower_bound": 0.19259035023966833,
+            "mean_stop_fraction": 0.04428534871198258,
+            "p_star": 0.25986797245787213,
+            "by_reason": {
+              "stop": 175,
+              "target": 71,
+              "time": 46
+            },
+            "by_side": {
+              "long": 166,
+              "short": 126
+            },
+            "by_symbol": {
+              "BTCUSDT": 145,
+              "ETHUSDT": 75,
+              "SOLUSDT": 72
+            },
+            "expectancy_by_symbol": {
+              "BTCUSDT": 0.10878774029671986,
+              "ETHUSDT": 0.4204660967189578,
+              "SOLUSDT": 0.262262357942512
+            },
+            "expectancy_by_side": {
+              "long": 0.18259719187952206,
+              "short": 0.2847693294984636
+            },
+            "expectancy_by_year": {
+              "2020": [
+                94,
+                0.5284332836532337
+              ],
+              "2021": [
+                116,
+                -0.02633924900345267
+              ],
+              "2022": [
+                82,
+                0.2387157754854099
+              ]
+            },
+            "mean_bars_held": 12.770547945205479,
+            "signal_weeks": 143,
+            "mean_hit_r": 2.932253386931927,
+            "ignored_signals": 978
+          },
+          "stress_expectancy": 0.1840784345255697,
+          "stress_n": 290,
+          "open_at_section_end": 0,
+          "iid_drawdown_over_limit": 0.239,
+          "baselines": {
+            "A": {
+              "p": 0.00039996000399960006,
+              "expectancy": -0.009431182972347992,
+              "hit_rate": 0.0761159420289855,
+              "pool_sizes": {
+                "BTCUSDT": 7250,
+                "ETHUSDT": 5000,
+                "SOLUSDT": 5000
+              }
+            },
+            "A'": {
+              "p": 0.00039996000399960006,
+              "expectancy": -0.009885774530589165,
+              "hit_rate": 0.07278333333333334,
+              "pool_sizes": {
+                "BTCUSDT/0": 2000,
+                "BTCUSDT/1": 2000,
+                "BTCUSDT/2": 2000,
+                "BTCUSDT/3": 2000,
+                "BTCUSDT/4": 2000,
+                "BTCUSDT/5": 2000,
+                "BTCUSDT/6": 2000,
+                "BTCUSDT/7": 2000,
+                "BTCUSDT/8": 2000,
+                "BTCUSDT/9": 2000,
+                "ETHUSDT/0": 2000,
+                "ETHUSDT/1": 2000,
+                "ETHUSDT/2": 2000,
+                "ETHUSDT/3": 2000,
+                "ETHUSDT/4": 2000,
+                "ETHUSDT/5": 2000,
+                "ETHUSDT/6": 2000,
+                "ETHUSDT/7": 2000,
+                "ETHUSDT/8": 2000,
+                "ETHUSDT/9": 2000,
+                "SOLUSDT/0": 2000,
+                "SOLUSDT/1": 2000,
+                "SOLUSDT/2": 2000,
+                "SOLUSDT/3": 2000,
+                "SOLUSDT/4": 2000,
+                "SOLUSDT/5": 2000,
+                "SOLUSDT/6": 2000,
+                "SOLUSDT/7": 2000,
+                "SOLUSDT/8": 2000,
+                "SOLUSDT/9": 2000
+              }
+            },
+            "C": {
+              "p": 0.004199580041995801,
+              "expectancy": 0.03825232009097612,
+              "hit_rate": 0.08446666666666666,
+              "pool_sizes": {
+                "BTCUSDT/long": 5000,
+                "BTCUSDT/short": 5000,
+                "ETHUSDT/long": 5000,
+                "ETHUSDT/short": 5000,
+                "SOLUSDT/long": 5000,
+                "SOLUSDT/short": 5000
+              }
+            },
+            "B": {
+              "n": 292,
+              "expectancy": -0.11314060449579534,
+              "hit_rate": 0.14383561643835616
+            }
+          },
+          "buy_and_hold": {
+            "BTCUSDT": 1.300265806885942,
+            "ETHUSDT": 8.263475836431226,
+            "SOLUSDT": 2.4362934362934365
+          },
+          "bootstrap_ci_95": [
+            0.01749682993417283,
+            0.4581630186211553
+          ],
+          "reversed_priority": {
+            "n": 297,
+            "expectancy": 0.21228307846575845,
+            "max_drawdown": 14.607049965394872,
+            "by_symbol": {
+              "BTCUSDT": 67,
+              "ETHUSDT": 122,
+              "SOLUSDT": 108
+            }
+          }
+        },
+        "validation": {
+          "summary": {
+            "n": 207,
+            "hits": 54,
+            "hit_rate": 0.2608695652173913,
+            "expectancy": 0.2722986795455722,
+            "profit_factor": 1.4473936503742373,
+            "max_drawdown": 10.948151671109322,
+            "mean_loss": -1.0160249656950258,
+            "worst_loss": -1.165183520346881,
+            "mean_win": 2.197023161591767,
+            "design_effect": 1.0,
+            "n_eff": 207,
+            "losers_eff": 153,
+            "hit_lower_bound": 0.21106719615778324,
+            "mean_stop_fraction": 0.030227186533405646,
+            "p_star": 0.2644498234509767,
+            "by_reason": {
+              "stop": 115,
+              "target": 54,
+              "time": 38
+            },
+            "by_side": {
+              "long": 131,
+              "short": 76
+            },
+            "by_symbol": {
+              "BTCUSDT": 97,
+              "ETHUSDT": 47,
+              "SOLUSDT": 63
+            },
+            "expectancy_by_symbol": {
+              "BTCUSDT": 0.4081835101454668,
+              "ETHUSDT": 0.018661549018470662,
+              "SOLUSDT": 0.25230052980881046
+            },
+            "expectancy_by_side": {
+              "long": 0.2765328206928184,
+              "short": 0.26500035730492416
+            },
+            "expectancy_by_year": {
+              "2023": [
+                102,
+                0.3139586372119397
+              ],
+              "2024": [
+                105,
+                0.23182900638395812
+              ]
+            },
+            "mean_bars_held": 12.618357487922705,
+            "signal_weeks": 101,
+            "mean_hit_r": 2.921295305811855,
+            "ignored_signals": 627
+          },
+          "stress_expectancy": 0.20402097101077782,
+          "stress_n": 207,
+          "open_at_section_end": 0,
+          "iid_drawdown_over_limit": 0.059,
+          "baselines": {
+            "A": {
+              "p": 0.00029997000299970003,
+              "expectancy": -0.05967575089481802,
+              "hit_rate": 0.0724,
+              "pool_sizes": {
+                "BTCUSDT": 5000,
+                "ETHUSDT": 5000,
+                "SOLUSDT": 5000
+              }
+            },
+            "A'": {
+              "p": 0.00019998000199980003,
+              "expectancy": -0.039727999374217955,
+              "hit_rate": 0.0702,
+              "pool_sizes": {
+                "BTCUSDT/0": 2000,
+                "BTCUSDT/1": 2000,
+                "BTCUSDT/2": 2000,
+                "BTCUSDT/3": 2000,
+                "BTCUSDT/4": 2000,
+                "BTCUSDT/5": 2000,
+                "BTCUSDT/6": 2000,
+                "BTCUSDT/7": 2000,
+                "BTCUSDT/8": 2000,
+                "BTCUSDT/9": 2000,
+                "ETHUSDT/0": 2000,
+                "ETHUSDT/1": 2000,
+                "ETHUSDT/2": 2000,
+                "ETHUSDT/3": 2000,
+                "ETHUSDT/4": 2000,
+                "ETHUSDT/5": 2000,
+                "ETHUSDT/6": 2000,
+                "ETHUSDT/7": 2000,
+                "ETHUSDT/8": 2000,
+                "ETHUSDT/9": 2000,
+                "SOLUSDT/0": 2000,
+                "SOLUSDT/1": 2000,
+                "SOLUSDT/2": 2000,
+                "SOLUSDT/3": 2000,
+                "SOLUSDT/4": 2000,
+                "SOLUSDT/5": 2000,
+                "SOLUSDT/6": 2000,
+                "SOLUSDT/7": 2000,
+                "SOLUSDT/8": 2000,
+                "SOLUSDT/9": 2000
+              }
+            },
+            "C": {
+              "p": 0.0007999200079992001,
+              "expectancy": -0.016448131781922826,
+              "hit_rate": 0.0872,
+              "pool_sizes": {
+                "BTCUSDT/long": 5000,
+                "BTCUSDT/short": 5000,
+                "ETHUSDT/long": 5000,
+                "ETHUSDT/short": 5000,
+                "SOLUSDT/long": 5000,
+                "SOLUSDT/short": 5000
+              }
+            },
+            "B": {
+              "n": 207,
+              "expectancy": -0.3306546044260077,
+              "hit_rate": 0.10144927536231885
+            }
+          },
+          "buy_and_hold": {
+            "BTCUSDT": 4.656773998488283,
+            "ETHUSDT": 1.7895410082769003,
+            "SOLUSDT": 17.982744783306583
+          },
+          "bootstrap_ci_95": [
+            0.016008542070472555,
+            0.540868213227884
+          ],
+          "reversed_priority": {
+            "n": 206,
+            "expectancy": 0.14797773687433774,
+            "max_drawdown": 15.6873640376653,
+            "by_symbol": {
+              "BTCUSDT": 34,
+              "ETHUSDT": 64,
+              "SOLUSDT": 108
+            }
+          }
+        }
+      },
+      "training_verdict": {
+        "pass": true,
+        "reasons": []
+      },
+      "validation_verdict": {
+        "pass": true,
+        "reasons": []
+      },
+      "robustness": {
+        "Jahresstabilität": true,
+        "Walk-Forward": true,
+        "Nachbarschaft": true
+      },
+      "status": "candidate"
+    },
+    "S7b-D20-T4": {
+      "registered": true,
+      "params": {
+        "interval": "4h",
+        "channel": 20,
+        "target_r": 4.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30,
+        "max_positions": 1,
+        "priority": "BTCUSDT>ETHUSDT>SOLUSDT",
+        "parent": "S7"
+      },
+      "ignored_signals": {
+        "train": 1004,
+        "validation": 645
+      },
+      "locked_signals": {
+        "train": 612,
+        "validation": 432
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 266,
+            "hits": 44,
+            "hit_rate": 0.16541353383458646,
+            "expectancy": 0.2653378397428646,
+            "profit_factor": 1.39802342163887,
+            "max_drawdown": 13.386687533361524,
+            "mean_loss": -1.0250052590725287,
+            "worst_loss": -1.25765961672435,
+            "mean_win": 2.665653496679026,
+            "design_effect": 1.0,
+            "n_eff": 266,
+            "losers_eff": 222,
+            "hit_lower_bound": 0.12899183527936078,
+            "mean_stop_fraction": 0.04454299282802584,
+            "p_star": 0.2078953874038426,
+            "by_reason": {
+              "stop": 165,
+              "target": 44,
+              "time": 57
+            },
+            "by_side": {
+              "long": 150,
+              "short": 116
+            },
+            "by_symbol": {
+              "BTCUSDT": 125,
+              "ETHUSDT": 75,
+              "SOLUSDT": 66
+            },
+            "expectancy_by_symbol": {
+              "BTCUSDT": 0.0982324474657293,
+              "ETHUSDT": 0.4170656125921731,
+              "SOLUSDT": 0.40940740142383086
+            },
+            "expectancy_by_side": {
+              "long": 0.2491794348161639,
+              "short": 0.28623232887221894
+            },
+            "expectancy_by_year": {
+              "2020": [
+                81,
+                0.5854584480015022
+              ],
+              "2021": [
+                111,
+                0.1106568580988928
+              ],
+              "2022": [
+                74,
+                0.14695702479058398
+              ]
+            },
+            "mean_bars_held": 14.161654135338345,
+            "signal_weeks": 139,
+            "mean_hit_r": 3.9168859448300584,
+            "ignored_signals": 1004
+          },
+          "stress_expectancy": 0.2113081133115982,
+          "stress_n": 266,
+          "open_at_section_end": 0,
+          "iid_drawdown_over_limit": 0.252,
+          "baselines": {
+            "A": {
+              "p": 0.000999900009999,
+              "expectancy": -0.0004818006992126598,
+              "hit_rate": 0.04830769230769231,
+              "pool_sizes": {
+                "BTCUSDT": 6250,
+                "ETHUSDT": 5000,
+                "SOLUSDT": 5000
+              }
+            },
+            "A'": {
+              "p": 0.0008999100089991,
+              "expectancy": 0.01639542830197211,
+              "hit_rate": 0.046283333333333336,
+              "pool_sizes": {
+                "BTCUSDT/0": 2000,
+                "BTCUSDT/1": 2000,
+                "BTCUSDT/2": 2000,
+                "BTCUSDT/3": 2000,
+                "BTCUSDT/4": 2000,
+                "BTCUSDT/5": 2000,
+                "BTCUSDT/6": 2000,
+                "BTCUSDT/7": 2000,
+                "BTCUSDT/8": 2000,
+                "BTCUSDT/9": 2000,
+                "ETHUSDT/0": 2000,
+                "ETHUSDT/1": 2000,
+                "ETHUSDT/2": 2000,
+                "ETHUSDT/3": 2000,
+                "ETHUSDT/4": 2000,
+                "ETHUSDT/5": 2000,
+                "ETHUSDT/6": 2000,
+                "ETHUSDT/7": 2000,
+                "ETHUSDT/8": 2000,
+                "ETHUSDT/9": 2000,
+                "SOLUSDT/0": 2000,
+                "SOLUSDT/1": 2000,
+                "SOLUSDT/2": 2000,
+                "SOLUSDT/3": 2000,
+                "SOLUSDT/4": 2000,
+                "SOLUSDT/5": 2000,
+                "SOLUSDT/6": 2000,
+                "SOLUSDT/7": 2000,
+                "SOLUSDT/8": 2000,
+                "SOLUSDT/9": 2000
+              }
+            },
+            "C": {
+              "p": 0.0072992700729927005,
+              "expectancy": 0.05994890467151085,
+              "hit_rate": 0.0574,
+              "pool_sizes": {
+                "BTCUSDT/long": 5000,
+                "BTCUSDT/short": 5000,
+                "ETHUSDT/long": 5000,
+                "ETHUSDT/short": 5000,
+                "SOLUSDT/long": 5000,
+                "SOLUSDT/short": 5000
+              }
+            },
+            "B": {
+              "n": 266,
+              "expectancy": -0.05873188597884829,
+              "hit_rate": 0.09774436090225563
+            }
+          },
+          "buy_and_hold": {
+            "BTCUSDT": 1.300265806885942,
+            "ETHUSDT": 8.263475836431226,
+            "SOLUSDT": 2.4362934362934365
+          },
+          "bootstrap_ci_95": [
+            0.02930375998366747,
+            0.5225461977680099
+          ],
+          "reversed_priority": {
+            "n": 262,
+            "expectancy": 0.24997667128721662,
+            "max_drawdown": 18.336382648072643,
+            "by_symbol": {
+              "BTCUSDT": 57,
+              "ETHUSDT": 106,
+              "SOLUSDT": 99
+            }
+          }
+        },
+        "validation": {
+          "summary": {
+            "n": 189,
+            "hits": 32,
+            "hit_rate": 0.1693121693121693,
+            "expectancy": 0.25053524384655806,
+            "profit_factor": 1.383988982479141,
+            "max_drawdown": 12.00534357365401,
+            "mean_loss": -1.027615444877417,
+            "worst_loss": -1.2186885479115308,
+            "mean_win": 2.4734060068447756,
+            "design_effect": 1.115106220301284,
+            "n_eff": 169,
+            "losers_eff": 141,
+            "hit_lower_bound": 0.12038485193554249,
+            "mean_stop_fraction": 0.03045528291151588,
+            "p_star": 0.21154276879546755,
+            "by_reason": {
+              "stop": 112,
+              "target": 32,
+              "time": 45
+            },
+            "by_side": {
+              "long": 120,
+              "short": 69
+            },
+            "by_symbol": {
+              "BTCUSDT": 85,
+              "ETHUSDT": 45,
+              "SOLUSDT": 59
+            },
+            "expectancy_by_symbol": {
+              "BTCUSDT": 0.42554727568642364,
+              "ETHUSDT": -0.15138665659939704,
+              "SOLUSDT": 0.304949867807226
+            },
+            "expectancy_by_side": {
+              "long": 0.2549926800218,
+              "short": 0.24278318093309392
+            },
+            "expectancy_by_year": {
+              "2023": [
+                97,
+                0.38243435103517653
+              ],
+              "2024": [
+                92,
+                0.1114677069194277
+              ]
+            },
+            "mean_bars_held": 13.994708994708995,
+            "signal_weeks": 101,
+            "mean_hit_r": 3.921857971656082,
+            "ignored_signals": 645
+          },
+          "stress_expectancy": 0.17903785993505994,
+          "stress_n": 189,
+          "open_at_section_end": 0,
+          "iid_drawdown_over_limit": 0.164,
+          "baselines": {
+            "A": {
+              "p": 0.001999800019998,
+              "expectancy": -0.03589958032403352,
+              "hit_rate": 0.04953333333333333,
+              "pool_sizes": {
+                "BTCUSDT": 5000,
+                "ETHUSDT": 5000,
+                "SOLUSDT": 5000
+              }
+            },
+            "A'": {
+              "p": 0.0035996400359964,
+              "expectancy": -0.01434548864286825,
+              "hit_rate": 0.04833333333333333,
+              "pool_sizes": {
+                "BTCUSDT/0": 2000,
+                "BTCUSDT/1": 2000,
+                "BTCUSDT/2": 2000,
+                "BTCUSDT/3": 2000,
+                "BTCUSDT/4": 2000,
+                "BTCUSDT/5": 2000,
+                "BTCUSDT/6": 2000,
+                "BTCUSDT/7": 2000,
+                "BTCUSDT/8": 2000,
+                "BTCUSDT/9": 2000,
+                "ETHUSDT/0": 2000,
+                "ETHUSDT/1": 2000,
+                "ETHUSDT/2": 2000,
+                "ETHUSDT/3": 2000,
+                "ETHUSDT/4": 2000,
+                "ETHUSDT/5": 2000,
+                "ETHUSDT/6": 2000,
+                "ETHUSDT/7": 2000,
+                "ETHUSDT/8": 2000,
+                "ETHUSDT/9": 2000,
+                "SOLUSDT/0": 2000,
+                "SOLUSDT/1": 2000,
+                "SOLUSDT/2": 2000,
+                "SOLUSDT/3": 2000,
+                "SOLUSDT/4": 2000,
+                "SOLUSDT/5": 2000,
+                "SOLUSDT/6": 2000,
+                "SOLUSDT/7": 2000,
+                "SOLUSDT/8": 2000,
+                "SOLUSDT/9": 2000
+              }
+            },
+            "C": {
+              "p": 0.006399360063993601,
+              "expectancy": -0.00013535579867870882,
+              "hit_rate": 0.05803333333333333,
+              "pool_sizes": {
+                "BTCUSDT/long": 5000,
+                "BTCUSDT/short": 5000,
+                "ETHUSDT/long": 5000,
+                "ETHUSDT/short": 5000,
+                "SOLUSDT/long": 5000,
+                "SOLUSDT/short": 5000
+              }
+            },
+            "B": {
+              "n": 189,
+              "expectancy": -0.3809531973744519,
+              "hit_rate": 0.0582010582010582
+            }
+          },
+          "buy_and_hold": {
+            "BTCUSDT": 4.656773998488283,
+            "ETHUSDT": 1.7895410082769003,
+            "SOLUSDT": 17.982744783306583
+          },
+          "bootstrap_ci_95": [
+            -0.062336192934385505,
+            0.5982036434398684
+          ],
+          "reversed_priority": {
+            "n": 188,
+            "expectancy": 0.1449351652102295,
+            "max_drawdown": 18.20530911184666,
+            "by_symbol": {
+              "BTCUSDT": 34,
+              "ETHUSDT": 57,
+              "SOLUSDT": 97
+            }
+          }
+        }
+      },
+      "training_verdict": {
+        "pass": true,
+        "reasons": []
+      },
+      "validation_verdict": {
+        "pass": true,
+        "reasons": []
+      },
+      "robustness": {
+        "Jahresstabilität": true,
+        "Walk-Forward": true,
+        "Nachbarschaft": true
+      },
+      "status": "candidate"
+    },
+    "S7b-D55-T3": {
+      "registered": false,
+      "params": {
+        "interval": "4h",
+        "channel": 55,
+        "target_r": 3.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30,
+        "max_positions": 1,
+        "priority": "BTCUSDT>ETHUSDT>SOLUSDT",
+        "parent": "S7"
+      },
+      "ignored_signals": {
+        "train": 647,
+        "validation": 408
+      },
+      "locked_signals": {
+        "train": 379,
+        "validation": 265
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 225,
+            "hits": 63,
+            "hit_rate": 0.28,
+            "expectancy": 0.3535478306719056,
+            "profit_factor": 1.5710106778721067,
+            "max_drawdown": 13.682260433539952,
+            "mean_loss": -1.0319358416361415,
+            "worst_loss": -1.5163126867851375,
+            "mean_win": 2.431773339133976,
+            "design_effect": 1.0,
+            "n_eff": 225,
+            "losers_eff": 162,
+            "hit_lower_bound": 0.23093422432310565,
+            "mean_stop_fraction": 0.047016424022980764,
+            "p_star": 0.25929537369965444,
+            "by_reason": {
+              "stop": 130,
+              "target": 63,
+              "time": 32
+            },
+            "by_side": {
+              "long": 136,
+              "short": 89
+            },
+            "by_symbol": {
+              "BTCUSDT": 103,
+              "ETHUSDT": 63,
+              "SOLUSDT": 59
+            },
+            "expectancy_by_symbol": {
+              "BTCUSDT": 0.42360562730754814,
+              "ETHUSDT": 0.20191612393474528,
+              "SOLUSDT": 0.39315536407817553
+            },
+            "expectancy_by_side": {
+              "long": 0.32712794724705585,
+              "short": 0.39391978736605804
+            },
+            "expectancy_by_year": {
+              "2020": [
+                69,
+                0.6683182503804421
+              ],
+              "2021": [
+                94,
+                0.06653103251685205
+              ],
+              "2022": [
+                62,
+                0.43839331561845424
+              ]
+            },
+            "mean_bars_held": 12.453333333333333,
+            "signal_weeks": 123,
+            "mean_hit_r": 2.9239896849755542,
+            "ignored_signals": 647
+          },
+          "stress_expectancy": 0.30722457203798104,
+          "stress_n": 225,
+          "open_at_section_end": 0,
+          "iid_drawdown_over_limit": 0.048,
+          "baselines": {
+            "A": {
+              "p": 9.999000099990002e-05,
+              "expectancy": -0.023426014631955688,
+              "hit_rate": 0.07372937293729373,
+              "pool_sizes": {
+                "BTCUSDT": 5150,
+                "ETHUSDT": 5000,
+                "SOLUSDT": 5000
+              }
+            },
+            "A'": {
+              "p": 9.999000099990002e-05,
+              "expectancy": -0.020794918365347012,
+              "hit_rate": 0.07088333333333334,
+              "pool_sizes": {
+                "BTCUSDT/0": 2000,
+                "BTCUSDT/1": 2000,
+                "BTCUSDT/2": 2000,
+                "BTCUSDT/3": 2000,
+                "BTCUSDT/4": 2000,
+                "BTCUSDT/5": 2000,
+                "BTCUSDT/6": 2000,
+                "BTCUSDT/7": 2000,
+                "BTCUSDT/8": 2000,
+                "BTCUSDT/9": 2000,
+                "ETHUSDT/0": 2000,
+                "ETHUSDT/1": 2000,
+                "ETHUSDT/2": 2000,
+                "ETHUSDT/3": 2000,
+                "ETHUSDT/4": 2000,
+                "ETHUSDT/5": 2000,
+                "ETHUSDT/6": 2000,
+                "ETHUSDT/7": 2000,
+                "ETHUSDT/8": 2000,
+                "ETHUSDT/9": 2000,
+                "SOLUSDT/0": 2000,
+                "SOLUSDT/1": 2000,
+                "SOLUSDT/2": 2000,
+                "SOLUSDT/3": 2000,
+                "SOLUSDT/4": 2000,
+                "SOLUSDT/5": 2000,
+                "SOLUSDT/6": 2000,
+                "SOLUSDT/7": 2000,
+                "SOLUSDT/8": 2000,
+                "SOLUSDT/9": 2000
+              }
+            },
+            "C": {
+              "p": 9.999000099990002e-05,
+              "expectancy": 0.04588025575262524,
+              "hit_rate": 0.08383333333333333,
+              "pool_sizes": {
+                "BTCUSDT/long": 5000,
+                "BTCUSDT/short": 5000,
+                "ETHUSDT/long": 5000,
+                "ETHUSDT/short": 5000,
+                "SOLUSDT/long": 5000,
+                "SOLUSDT/short": 5000
+              }
+            },
+            "B": {
+              "n": 225,
+              "expectancy": -0.09694090540233932,
+              "hit_rate": 0.14222222222222222
+            }
+          },
+          "buy_and_hold": {
+            "BTCUSDT": 1.300265806885942,
+            "ETHUSDT": 8.263475836431226,
+            "SOLUSDT": 2.4362934362934365
+          },
+          "bootstrap_ci_95": [
+            0.12380463506853948,
+            0.6013364237218541
+          ]
+        },
+        "validation": {
+          "summary": {
+            "n": 160,
+            "hits": 34,
+            "hit_rate": 0.2125,
+            "expectancy": 0.06559401564839615,
+            "profit_factor": 1.097618064777698,
+            "max_drawdown": 12.136015559304438,
+            "mean_loss": -1.0239168946603843,
+            "worst_loss": -1.2053698202388967,
+            "mean_win": 2.1455693898742494,
+            "design_effect": 1.0,
+            "n_eff": 160,
+            "losers_eff": 126,
+            "hit_lower_bound": 0.16053472526954116,
+            "mean_stop_fraction": 0.031024594313755243,
+            "p_star": 0.26407902531510563,
+            "by_reason": {
+              "stop": 99,
+              "target": 34,
+              "time": 27
+            },
+            "by_side": {
+              "long": 107,
+              "short": 53
+            },
+            "by_symbol": {
+              "BTCUSDT": 74,
+              "ETHUSDT": 38,
+              "SOLUSDT": 48
+            },
+            "expectancy_by_symbol": {
+              "BTCUSDT": 0.22750365725401325,
+              "ETHUSDT": -0.1349969120845216,
+              "SOLUSDT": -0.02521553070503706
+            },
+            "expectancy_by_side": {
+              "long": 0.1132817918698348,
+              "short": -0.030681306157149833
+            },
+            "expectancy_by_year": {
+              "2023": [
+                77,
+                0.11563533267298173
+              ],
+              "2024": [
+                83,
+                0.01917014322799745
+              ]
+            },
+            "mean_bars_held": 12.24375,
+            "signal_weeks": 97,
+            "mean_hit_r": 2.916188171893041,
+            "ignored_signals": 408
+          },
+          "stress_expectancy": -0.00940215641543984,
+          "stress_n": 160,
+          "open_at_section_end": 0,
+          "iid_drawdown_over_limit": 0.366,
+          "baselines": {
+            "A": {
+              "p": 0.21347865213478653,
+              "expectancy": -0.01080597376629386,
+              "hit_rate": 0.07786666666666667,
+              "pool_sizes": {
+                "BTCUSDT": 5000,
+                "ETHUSDT": 5000,
+                "SOLUSDT": 5000
+              }
+            },
+            "A'": {
+              "p": 0.15008499150084992,
+              "expectancy": -0.03100638251914212,
+              "hit_rate": 0.0725,
+              "pool_sizes": {
+                "BTCUSDT/0": 2000,
+                "BTCUSDT/1": 2000,
+                "BTCUSDT/2": 2000,
+                "BTCUSDT/3": 2000,
+                "BTCUSDT/4": 2000,
+                "BTCUSDT/5": 2000,
+                "BTCUSDT/6": 2000,
+                "BTCUSDT/7": 2000,
+                "BTCUSDT/8": 2000,
+                "BTCUSDT/9": 2000,
+                "ETHUSDT/0": 2000,
+                "ETHUSDT/1": 2000,
+                "ETHUSDT/2": 2000,
+                "ETHUSDT/3": 2000,
+                "ETHUSDT/4": 2000,
+                "ETHUSDT/5": 2000,
+                "ETHUSDT/7": 2000,
+                "ETHUSDT/8": 2000,
+                "ETHUSDT/9": 2000,
+                "SOLUSDT/0": 2000,
+                "SOLUSDT/1": 2000,
+                "SOLUSDT/2": 2000,
+                "SOLUSDT/3": 2000,
+                "SOLUSDT/4": 2000,
+                "SOLUSDT/5": 2000,
+                "SOLUSDT/6": 2000,
+                "SOLUSDT/7": 2000,
+                "SOLUSDT/8": 2000,
+                "SOLUSDT/9": 2000
+              }
+            },
+            "C": {
+              "p": 0.20267973202679732,
+              "expectancy": -0.012657724990765907,
+              "hit_rate": 0.08156666666666666,
+              "pool_sizes": {
+                "BTCUSDT/long": 5000,
+                "BTCUSDT/short": 5000,
+                "ETHUSDT/long": 5000,
+                "ETHUSDT/short": 5000,
+                "SOLUSDT/long": 5000,
+                "SOLUSDT/short": 5000
+              }
+            },
+            "B": {
+              "n": 160,
+              "expectancy": -0.197281320456237,
+              "hit_rate": 0.11875
+            }
+          },
+          "buy_and_hold": {
+            "BTCUSDT": 4.656773998488283,
+            "ETHUSDT": 1.7895410082769003,
+            "SOLUSDT": 17.982744783306583
+          },
+          "bootstrap_ci_95": [
+            -0.2276074522000157,
+            0.3633588473741623
+          ]
+        }
+      },
+      "training_verdict": {
+        "pass": true,
+        "reasons": []
+      },
+      "status": "nicht registriert (nur Nachbar)"
+    },
+    "S7b-D55-T4": {
+      "registered": false,
+      "params": {
+        "interval": "4h",
+        "channel": 55,
+        "target_r": 4.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30,
+        "max_positions": 1,
+        "priority": "BTCUSDT>ETHUSDT>SOLUSDT",
+        "parent": "S7"
+      },
+      "ignored_signals": {
+        "train": 674,
+        "validation": 416
+      },
+      "locked_signals": {
+        "train": 382,
+        "validation": 255
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 198,
+            "hits": 40,
+            "hit_rate": 0.20202020202020202,
+            "expectancy": 0.520860333426711,
+            "profit_factor": 1.8699836979221547,
+            "max_drawdown": 14.27995767559544,
+            "mean_loss": -1.0219211109119994,
+            "worst_loss": -1.25765961672435,
+            "mean_win": 2.7033316449302522,
+            "design_effect": 1.0628053220469014,
+            "n_eff": 186,
+            "losers_eff": 149,
+            "hit_lower_bound": 0.1519621566466599,
+            "mean_stop_fraction": 0.047591111822487486,
+            "p_star": 0.20739012772390952,
+            "by_reason": {
+              "stop": 111,
+              "target": 40,
+              "time": 47
+            },
+            "by_side": {
+              "long": 119,
+              "short": 79
+            },
+            "by_symbol": {
+              "BTCUSDT": 87,
+              "ETHUSDT": 57,
+              "SOLUSDT": 54
+            },
+            "expectancy_by_symbol": {
+              "BTCUSDT": 0.5696362209541155,
+              "ETHUSDT": 0.29806314941717194,
+              "SOLUSDT": 0.6774517644204061
+            },
+            "expectancy_by_side": {
+              "long": 0.5639015449034636,
+              "short": 0.4560261034807166
+            },
+            "expectancy_by_year": {
+              "2020": [
+                58,
+                1.1071751975692192
+              ],
+              "2021": [
+                86,
+                0.15566823702242785
+              ],
+              "2022": [
+                54,
+                0.47271696621380116
+              ]
+            },
+            "mean_bars_held": 14.313131313131313,
+            "signal_weeks": 119,
+            "mean_hit_r": 3.912153334436746,
+            "ignored_signals": 674
+          },
+          "stress_expectancy": 0.4713304070308511,
+          "stress_n": 198,
+          "open_at_section_end": 0,
+          "iid_drawdown_over_limit": 0.017,
+          "baselines": {
+            "A": {
+              "p": 9.999000099990002e-05,
+              "expectancy": -0.03443800739896001,
+              "hit_rate": 0.04713333333333333,
+              "pool_sizes": {
+                "BTCUSDT": 5000,
+                "ETHUSDT": 5000,
+                "SOLUSDT": 5000
+              }
+            },
+            "A'": {
+              "p": 9.999000099990002e-05,
+              "expectancy": -0.0004648404079673647,
+              "hit_rate": 0.04586666666666667,
+              "pool_sizes": {
+                "BTCUSDT/0": 2000,
+                "BTCUSDT/1": 2000,
+                "BTCUSDT/2": 2000,
+                "BTCUSDT/3": 2000,
+                "BTCUSDT/4": 2000,
+                "BTCUSDT/5": 2000,
+                "BTCUSDT/6": 2000,
+                "BTCUSDT/7": 2000,
+                "BTCUSDT/8": 2000,
+                "BTCUSDT/9": 2000,
+                "ETHUSDT/0": 2000,
+                "ETHUSDT/1": 2000,
+                "ETHUSDT/2": 2000,
+                "ETHUSDT/3": 2000,
+                "ETHUSDT/4": 2000,
+                "ETHUSDT/5": 2000,
+                "ETHUSDT/6": 2000,
+                "ETHUSDT/7": 2000,
+                "ETHUSDT/8": 2000,
+                "ETHUSDT/9": 2000,
+                "SOLUSDT/0": 2000,
+                "SOLUSDT/1": 2000,
+                "SOLUSDT/2": 2000,
+                "SOLUSDT/3": 2000,
+                "SOLUSDT/4": 2000,
+                "SOLUSDT/5": 2000,
+                "SOLUSDT/6": 2000,
+                "SOLUSDT/7": 2000,
+                "SOLUSDT/8": 2000,
+                "SOLUSDT/9": 2000
+              }
+            },
+            "C": {
+              "p": 9.999000099990002e-05,
+              "expectancy": 0.06134807588850013,
+              "hit_rate": 0.05636666666666667,
+              "pool_sizes": {
+                "BTCUSDT/long": 5000,
+                "BTCUSDT/short": 5000,
+                "ETHUSDT/long": 5000,
+                "ETHUSDT/short": 5000,
+                "SOLUSDT/long": 5000,
+                "SOLUSDT/short": 5000
+              }
+            },
+            "B": {
+              "n": 198,
+              "expectancy": -0.10525204222575836,
+              "hit_rate": 0.08080808080808081
+            }
+          },
+          "buy_and_hold": {
+            "BTCUSDT": 1.300265806885942,
+            "ETHUSDT": 8.263475836431226,
+            "SOLUSDT": 2.4362934362934365
+          },
+          "bootstrap_ci_95": [
+            0.22606939991447111,
+            0.8273229549922005
+          ]
+        },
+        "validation": {
+          "summary": {
+            "n": 152,
+            "hits": 23,
+            "hit_rate": 0.1513157894736842,
+            "expectancy": 0.06916493485267028,
+            "profit_factor": 1.0966194263413798,
+            "max_drawdown": 16.475728609748124,
+            "mean_loss": -1.0265006773147356,
+            "worst_loss": -1.2186885479115308,
+            "mean_win": 2.5939596063688666,
+            "design_effect": 1.0,
+            "n_eff": 152,
+            "losers_eff": 129,
+            "hit_lower_bound": 0.10567915117045558,
+            "mean_stop_fraction": 0.03148104491566034,
+            "p_star": 0.2111671424897821,
+            "by_reason": {
+              "stop": 100,
+              "target": 23,
+              "time": 29
+            },
+            "by_side": {
+              "long": 101,
+              "short": 51
+            },
+            "by_symbol": {
+              "BTCUSDT": 67,
+              "ETHUSDT": 37,
+              "SOLUSDT": 48
+            },
+            "expectancy_by_symbol": {
+              "BTCUSDT": 0.11784185158530416,
+              "ETHUSDT": -0.004093921695522426,
+              "SOLUSDT": 0.057690440502600714
+            },
+            "expectancy_by_side": {
+              "long": 0.18306811589906777,
+              "short": -0.15640803153333255
+            },
+            "expectancy_by_year": {
+              "2023": [
+                76,
+                0.1649607454892447
+              ],
+              "2024": [
+                76,
+                -0.02663087578390413
+              ]
+            },
+            "mean_bars_held": 13.06578947368421,
+            "signal_weeks": 97,
+            "mean_hit_r": 3.9116263991513165,
+            "ignored_signals": 416
+          },
+          "stress_expectancy": 0.0020243870606813236,
+          "stress_n": 152,
+          "open_at_section_end": 0,
+          "iid_drawdown_over_limit": 0.476,
+          "baselines": {
+            "A": {
+              "p": 0.24987501249875013,
+              "expectancy": -0.0019921928213926456,
+              "hit_rate": 0.0526,
+              "pool_sizes": {
+                "BTCUSDT": 5000,
+                "ETHUSDT": 5000,
+                "SOLUSDT": 5000
+              }
+            },
+            "A'": {
+              "p": 0.22497750224977503,
+              "expectancy": -0.007278435682963043,
+              "hit_rate": 0.045083333333333336,
+              "pool_sizes": {
+                "BTCUSDT/0": 2000,
+                "BTCUSDT/1": 2000,
+                "BTCUSDT/2": 2000,
+                "BTCUSDT/3": 2000,
+                "BTCUSDT/4": 2000,
+                "BTCUSDT/5": 2000,
+                "BTCUSDT/6": 2000,
+                "BTCUSDT/7": 2000,
+                "BTCUSDT/8": 2000,
+                "BTCUSDT/9": 2000,
+                "ETHUSDT/0": 2000,
+                "ETHUSDT/1": 2000,
+                "ETHUSDT/2": 2000,
+                "ETHUSDT/3": 2000,
+                "ETHUSDT/4": 2000,
+                "ETHUSDT/5": 2000,
+                "ETHUSDT/6": 2000,
+                "ETHUSDT/7": 2000,
+                "ETHUSDT/8": 2000,
+                "ETHUSDT/9": 2000,
+                "SOLUSDT/0": 2000,
+                "SOLUSDT/1": 2000,
+                "SOLUSDT/2": 2000,
+                "SOLUSDT/3": 2000,
+                "SOLUSDT/4": 2000,
+                "SOLUSDT/5": 2000,
+                "SOLUSDT/6": 2000,
+                "SOLUSDT/7": 2000,
+                "SOLUSDT/8": 2000,
+                "SOLUSDT/9": 2000
+              }
+            },
+            "C": {
+              "p": 0.2662733726627337,
+              "expectancy": 0.002627617365061852,
+              "hit_rate": 0.054533333333333336,
+              "pool_sizes": {
+                "BTCUSDT/long": 5000,
+                "BTCUSDT/short": 5000,
+                "ETHUSDT/long": 5000,
+                "ETHUSDT/short": 5000,
+                "SOLUSDT/long": 5000,
+                "SOLUSDT/short": 5000
+              }
+            },
+            "B": {
+              "n": 152,
+              "expectancy": -0.14487900989856695,
+              "hit_rate": 0.08552631578947369
+            }
+          },
+          "buy_and_hold": {
+            "BTCUSDT": 4.656773998488283,
+            "ETHUSDT": 1.7895410082769003,
+            "SOLUSDT": 17.982744783306583
+          },
+          "bootstrap_ci_95": [
+            -0.302700898872696,
+            0.47422370829173854
+          ]
+        }
+      },
+      "training_verdict": {
+        "pass": false,
+        "reasons": [
+          "n < 200"
+        ]
+      },
+      "status": "nicht registriert (nur Nachbar)"
+    }
+  },
+  "candidates": [
+    "S7b-D20-T3",
+    "S7b-D20-T4"
+  ],
+  "walk_forward": {
+    "pass": true,
+    "chained_expectancy": 0.1947181801044145,
+    "chosen": [
+      "S7b-D55-T4",
+      "S7b-D55-T4",
+      "S7b-D55-T4",
+      "S7b-D55-T4",
+      "S7b-D55-T4",
+      "S7b-D20-T3"
+    ]
+  }
+}
