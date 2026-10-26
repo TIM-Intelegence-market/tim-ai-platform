@@ -1,5 +1,7 @@
 # Live-Status-Publisher für Kollaboratoren (#67)
 
+> **Archiviert am 26.10.2026** (Grün-Plan Paket I1, `docs/PAKETINVENTAR.md`): Der Code `src/collaboration/` und seine Tests sind aus `platform-main` entfernt und stehen im Zweig `archiv/unerreichte-pakete-2026-10-26` (Stand 06c8bc2). Diese Seite beschreibt den archivierten Stand.
+
 Code: `src/collaboration/publisher.py` (baut auf Prüfer #258, Snapshot #259 und Veröffentlichungsplan #260 auf).
 
 ## Ablauf eines Laufs

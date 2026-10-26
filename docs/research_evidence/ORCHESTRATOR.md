@@ -1,5 +1,7 @@
 # Research-Evidenz-Ablauf (#144)
 
+> **Archiviert am 26.10.2026** (Grün-Plan Paket I1, `docs/PAKETINVENTAR.md`): Der Code `src/research_evidence/` und seine Tests sind aus `platform-main` entfernt und stehen im Zweig `archiv/unerreichte-pakete-2026-10-26` (Stand 06c8bc2). Diese Seite beschreibt den archivierten Stand.
+
 `src/research_evidence/orchestrator.py::ResearchOrchestrator` verbindet die gelieferten Bausteine #252–#257 zu
 einem Lauf:
 

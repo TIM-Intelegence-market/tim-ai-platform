@@ -113,7 +113,7 @@ Priorität: P0 Datenintegrität/Sicherheit/Kosten/Risiko, P1 Forschung/Multi-Coi
 | A20 | M09-Issues #9, #13–#21 | P3 | – | – | RUHEND (Label `status:ruhend` seit 25.10.) | #13 abnehmen und schließen (Uzi) |
 | A21 | Hohe Mac-Last klären (Load 11) | P2 | – | – | NOT_STARTED | Prozessliste über 15 min messen |
 | A22 | Offsite-Backup und Restore-Probe (Gutachten K1) | P0 | Uzi (Hardware/Ziel) | „25.10. Alle 11 Sichten…“ (B1–B3) | BLOCKED (Uzi: Ziel) | Ziel klären (externe Platte oder zweiter Rechner), dann Skript und Restore-Probe |
-| A23 | DemoTrader-Altcode entfernen | P3 | Uzi (Go) | „25.10. Alle 11 Sichten…“ (C2) | READY | kleiner PR, nur mit Uzis Go; Umfang in `docs/PAKETINVENTAR.md` (`paper`) |
+| A23 | DemoTrader-Altcode entfernen | P3 | Claude | „25.10. Alle 11 Sichten…“ (C2) | DONE 26.10. | Archiv-PR nach Uzis „weiter“; Stand vorher im Zweig `archiv/unerreichte-pakete-2026-10-26` |
 | A24 | Qwen-Chat auf dem Mac | P3 | Uzi | „22.10. Qwen-Chat…“ | BLOCKED (Uzi) | Frage im Thread offen |
 | A25 | Hardware-Ausbau GPUs | P3 | Uzi | „21.10. Hardware-Ausbau…“ | BLOCKED (Uzi) | Entscheidung offen |
 
