@@ -1,6 +1,6 @@
 # S8: Lokale BTC-Orderflow-Prognose (Trade-only) – Präregistrierung
 
-**Status: ENTWURF 0.1, nicht registriert.** Kein Registereintrag, keine Auswertung, keine Ergebnisse.
+**Status: ENTWURF 0.2, nicht registriert.** Kein Registereintrag, keine Auswertung, keine Ergebnisse.
 Grundlage: Uzis Bauplan „TIM: Bauplan für lokale BTC-Orderflow-KI“ (26.10.2026), Pakete P0 und P1.
 Dieser Entwurf hält Fragestellung, Daten, Merkmale, Zielwert und Datensplit fest, **bevor** ein Ergebnis
 angesehen wird. Er ändert weder das Protokoll (1.3) noch S2.
@@ -108,17 +108,14 @@ in den letzten 60), `warm`, `complete`.
   (Log-Loss-Verbesserung gegenüber der Basisrate), Fallzahl-/Power-Gate mit Tages-Cluster, Stoppregeln.
   Ohne bestandenes Gate gilt wie bei S2: „nicht beurteilbar“.
 
-## 7. Registerfrage (Entscheidung nötig)
+## 7. Einordnung im Register (entschieden)
 
-Das Register in `platform-main` steht bei m = 54 von 60; mit dem offenen PR #437 (S7/S7b) wären es 58. Für S8
-(2 Kandidaten, ggf. Referenzen) reicht das knapp oder gar nicht. Zwei saubere Wege:
-
-1. S8 nutzt den Archiv-Holdout nie (wie in diesem Entwurf) und läuft als eigene Familie mit eigenem
-   prospektivem Test (P4, neue Daten ab Registrierung). Dann braucht es einen Protokolleintrag, der das
-   festhält, und keine Plätze im Holdout-Register.
-2. S8 trägt seine Modellkandidaten ins bestehende Register ein; dann ist das Budget praktisch erschöpft.
-
-Empfehlung: Weg 1. Die Entscheidung trifft Uzi vor der Registrierung.
+**Uzi, 26.10.2026, 20:49 Ortszeit, per Entscheidungskarte: „Eigene Familie, prospektiv“.** S8 läuft außerhalb des
+Holdout-Registers (Protokoll-Änderungsprotokoll, Eintrag vom 26.10.); es belegt keine Plätze (m bleibt 58 von 60)
+und lädt den Archiv-Holdout ab 2025 nie. Training und Validierung dienen der Modellwahl; eine Bestätigung ist nur
+über einen eigenen prospektiven Test auf neuen Live-Daten möglich. Dessen Startzeit, Dauer, Fallzahl-/Power-Gate,
+kleinster interessierender Effekt und Stoppregeln werden in Version 1.0 dieser Registrierung festgelegt, **bevor**
+die prospektiven Daten beginnen. S8-Ergebnisse sind keine Setup-Evidenz nach dem bestehenden Register.
 
 ## 8. Werkzeug (Stand dieses Entwurfs)
 
@@ -168,7 +165,7 @@ noch nicht erfolgt.
 | Holdout-Sperre | `HoldoutLocked`, `protocol.HOLDOUT_START_MS` | wiederverwendet |
 | Live-Metriken | `src/orderflow/metrics.py` (Delta, CVD, Größen) | gleiche Aggressor-Definition (Käufer ist Maker → Verkauf) |
 | Feature-/Dataset-Verträge | `src/tim_v2/features`, `src/tim_v2/dataset` | später: S8-Merkmale dort als `FeatureDefinition` eintragen |
-| Register | `docs/research_lab/REGISTER.jsonl`, m = 54/60 | siehe Abschnitt 7 |
+| Register | `docs/research_lab/REGISTER.jsonl`, m = 58/60 | S8 außerhalb, siehe Abschnitt 7 |
 | Trainer, Modellartefakt | fehlt | P3 |
 | Prognosejournal, Anzeige | fehlt (Plan-Journal als Vorlage) | P4 |
 | Orderbuch-Collector | fehlt | P2, Vertrag: `S8_DEPTH_DATENVERTRAG_ENTWURF.md` |
@@ -179,3 +176,4 @@ noch nicht erfolgt.
 | Datum | Version | Änderung | Bis dahin gesehene Daten |
 |---|---|---|---|
 | 2026-10-26 | 0.1 | Entwurf: Frage, Daten, Split, Merkmale 1.0.0, Label 1.0.0, Werkzeug, offene Entscheidungen | keine Archivdaten geladen, keine Outcomes; nur synthetische Testdaten |
+| 2026-10-26 | 0.2 | Abschnitt 7: Uzis Entscheid „Eigene Familie, prospektiv“ (Karte 20:49 Ortszeit), Protokoll-Einordnung; Registerstand 58/60 | unverändert: keine Archivdaten, keine Outcomes |
