@@ -39,23 +39,23 @@ Tests geladen. *in ops/CI*: ein Skript dieses Pakets oder das Paket selbst wird 
 | `sources` | 729 | 0 | 726 | 3 | broncx_discord_bot.py,goathub_discord_bot.py,passive_ingest.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
 | `repair_diagnosis` | 693 | 0 | 637 | 56 |  |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `research_intelligence` | 670 | 0 | 669 | 1 |  |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
-| `server_readiness` | 660 | 0 | 0 | 660 |  |  | UNERREICHT | ARCHIVIEREN: Tag `archiv/<paket>-2026-10` setzen und mit Tests aus `platform-main` nehmen, nur mit Uzis Go; Claude |
-| `research_evidence` | 626 | 0 | 0 | 626 |  |  | UNERREICHT | ARCHIVIEREN: Tag `archiv/<paket>-2026-10` setzen und mit Tests aus `platform-main` nehmen, nur mit Uzis Go; Claude |
+| `server_readiness` | 660 | 0 | 0 | 660 |  |  | UNERREICHT | ARCHIVIERT 26.10.2026: mit Tests aus `platform-main` entfernt, Stand 06c8bc2 im Zweig `archiv/unerreichte-pakete-2026-10-26`; Claude |
+| `research_evidence` | 626 | 0 | 0 | 626 |  |  | UNERREICHT | ARCHIVIERT 26.10.2026: mit Tests aus `platform-main` entfernt, Stand 06c8bc2 im Zweig `archiv/unerreichte-pakete-2026-10-26`; Claude |
 | `v2_readiness` | 617 | 0 | 596 | 21 | binance_backfill_probe.py,research_lab_alfred_ingest.py,research_lab_cpi_volatility.py,research_lab_fetch.py… |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `orchestration` | 453 | 0 | 453 | 0 | tim_orchestrator.py |  | WERKZEUG | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `database` | 441 | 440 | 0 | 1 | audit_historical_gap_closure.py,backfill_gaps.py,bench_outbox_worker.py,classify_ingestion_gaps.py… | ja | LIVE | Betrieb (Uzi), Pflege Claude |
 | `repair_gates` | 433 | 0 | 169 | 264 | m09_p1_10_repair_proof.py,m09_p1_14_self_heal_proof.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `insights` | 418 | 418 | 0 | 0 | export_case.py,live_readonly_validate.py,research_case_browser_e2e.py,verify_case.py |  | LIVE | Betrieb (Uzi), Pflege Claude |
 | `ops_mcp` | 353 | 0 | 353 | 0 |  |  | WERKZEUG | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
-| `repair_observe` | 341 | 0 | 0 | 341 |  |  | UNERREICHT | ARCHIVIEREN: Tag `archiv/<paket>-2026-10` setzen und mit Tests aus `platform-main` nehmen, nur mit Uzis Go; Claude |
+| `repair_observe` | 341 | 0 | 0 | 341 |  |  | UNERREICHT | ARCHIVIERT 26.10.2026: mit Tests aus `platform-main` entfernt, Stand 06c8bc2 im Zweig `archiv/unerreichte-pakete-2026-10-26`; Claude |
 | `research_ops` | 335 | 169 | 166 | 0 | export_case.py,live_readonly_validate.py,research_case_browser_e2e.py,research_infrastructure_review.py… |  | LIVE | Betrieb (Uzi), Pflege Claude |
 | `options_gamma` | 334 | 0 | 0 | 334 |  |  | UNERREICHT | BEHALTEN mit Frist 30.11. (gemergt 21.10. mit #360, Einstieg fehlt): Einstieg oder Archiv; Claude |
 | `orderflow` | 290 | 283 | 0 | 7 | audit_historical_gap_closure.py,backfill_gaps.py,classify_ingestion_gaps.py,export_case.py… | ja | LIVE | Betrieb (Uzi), Pflege Claude |
-| `collaboration` | 288 | 0 | 0 | 288 |  |  | UNERREICHT | ARCHIVIEREN: Tag `archiv/<paket>-2026-10` setzen und mit Tests aus `platform-main` nehmen, nur mit Uzis Go; Claude |
+| `collaboration` | 288 | 0 | 0 | 288 |  |  | UNERREICHT | ARCHIVIERT 26.10.2026: mit Tests aus `platform-main` entfernt, Stand 06c8bc2 im Zweig `archiv/unerreichte-pakete-2026-10-26`; Claude |
 | `analysis` | 272 | 94 | 161 | 17 | audit_historical_gap_closure.py,backfill_gaps.py,classify_ingestion_gaps.py,materialize_research_cases.py… | ja | LIVE+WERKZEUG | Betrieb (Uzi), Pflege Claude |
-| `repair_workflow` | 270 | 0 | 0 | 270 |  |  | UNERREICHT | ARCHIVIEREN: Tag `archiv/<paket>-2026-10` setzen und mit Tests aus `platform-main` nehmen, nur mit Uzis Go; Claude |
-| `paper` | 261 | 0 | 258 | 3 | demo_trader_report.py |  | WERKZEUG (teils unerreicht) | WERKZEUG, `demo_trader_v1` ist Altcode (A23): Entfernen nur mit Uzis Go; `automation.py` bleibt; Claude |
-| `repair_repro` | 225 | 0 | 0 | 225 |  |  | UNERREICHT | ARCHIVIEREN: Tag `archiv/<paket>-2026-10` setzen und mit Tests aus `platform-main` nehmen, nur mit Uzis Go; Claude |
+| `repair_workflow` | 270 | 0 | 0 | 270 |  |  | UNERREICHT | ARCHIVIERT 26.10.2026: mit Tests aus `platform-main` entfernt, Stand 06c8bc2 im Zweig `archiv/unerreichte-pakete-2026-10-26`; Claude |
+| `paper` | 261 | 0 | 258 | 3 | demo_trader_report.py |  | WERKZEUG (teils unerreicht) | WERKZEUG; Altcode `demo_trader_v1.py` + `scripts/demo_trader_report.py` + Tests + `config/paper_demo.json` am 26.10.2026 entfernt (A23, Grün-Plan C2), Stand im Zweig `archiv/unerreichte-pakete-2026-10-26`; `automation.py` bleibt; Claude |
+| `repair_repro` | 225 | 0 | 0 | 225 |  |  | UNERREICHT | BEHALTEN (Korrektur 26.10.2026): `src/repair_gates/integrity.py` importiert `repair_repro.guards`, und `repair_gates` hängt an `task_engine/fix_first.py`; bleibt, solange `repair_gates` bleibt (Frist 30.11.); Claude |
 | `repair_registry` | 217 | 0 | 96 | 121 |  |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `acceptance` | 214 | 0 | 211 | 3 | acceptance_check.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `analytics` | 154 | 149 | 0 | 5 | live_readonly_validate.py,research_case_browser_e2e.py |  | LIVE | Betrieb (Uzi), Pflege Claude |
@@ -66,8 +66,8 @@ Tests geladen. *in ops/CI*: ein Skript dieses Pakets oder das Paket selbst wird 
 | `news` | 66 | 0 | 63 | 3 | passive_ingest.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `observation` | 53 | 50 | 0 | 3 | audit_historical_gap_closure.py,backfill_gaps.py,classify_ingestion_gaps.py,materialize_research_cases.py… | ja | LIVE | Betrieb (Uzi), Pflege Claude |
 | `memory` | 53 | 50 | 0 | 3 |  |  | LIVE | Betrieb (Uzi), Pflege Claude |
-| `repair_recipes` | 51 | 0 | 0 | 51 |  |  | UNERREICHT | ARCHIVIEREN: Tag `archiv/<paket>-2026-10` setzen und mit Tests aus `platform-main` nehmen, nur mit Uzis Go; Claude |
-| `longterm` | 45 | 0 | 0 | 45 |  |  | UNERREICHT | ARCHIVIEREN: Tag `archiv/<paket>-2026-10` setzen und mit Tests aus `platform-main` nehmen, nur mit Uzis Go; Claude |
+| `repair_recipes` | 51 | 0 | 0 | 51 |  |  | UNERREICHT | ARCHIVIERT 26.10.2026: mit Tests aus `platform-main` entfernt, Stand 06c8bc2 im Zweig `archiv/unerreichte-pakete-2026-10-26`; Claude |
+| `longterm` | 45 | 0 | 0 | 45 |  |  | UNERREICHT | ARCHIVIERT 26.10.2026: mit Tests aus `platform-main` entfernt, Stand 06c8bc2 im Zweig `archiv/unerreichte-pakete-2026-10-26`; Claude |
 | `benchmark` | 24 | 0 | 21 | 3 | operational_validation.py,run_benchmarks.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 
 **Summe:** 67386 Zeilen, davon 10924 live (16 %), 49688 Werkzeug (73 %), 6774 unerreicht (10 %).
@@ -86,10 +86,24 @@ abgebrochen). Löschen und Taggen sind Ausführung und passieren erst auf Uzis G
 | LIVE: Betrieb Uzi, Pflege Claude | `dashboard`, `data_ingestion`, `database`, `research`, `insights`, `operational`, `orderflow`, `analytics`, `llm`, `models`, `observation`, `memory`, `analysis`, `research_ops` | Kern der Runtime; Änderungen nur über PR mit voller Suite. |
 | WERKZEUG in ops/CI: Claude | `tim_manager`, `local_first`, `task_governance`, `v2_completion`, `knowledge`, `agents`, `agent_infra`, `sources` | Werden von Mac-Agenten, Worker oder CI aufgerufen. |
 | WERKZEUG ohne ops-Bezug: Nutzung bis 30.11. nachweisen | `orderflow_scenario`, `research_lab`, `bugfixer`, `graph_mcp`, `collection_reporting`, `control_portal`, `task_engine`, `market_data`, `obsidian_vault`, `repair_diagnosis`, `research_intelligence`, `v2_readiness`, `orchestration`, `repair_gates`, `ops_mcp`, `repair_registry`, `acceptance`, `quality`, `assistant`, `news`, `benchmark` | Erreichbar nur über Skripte oder MCP; `research_lab` ist durch S1/S4/S2 belegt, `graph_mcp`/`ops_mcp` durch die MCP-Clients auf dem Mac (#384). Für den Rest gilt: Aufruf im Protokoll oder Archiv. |
-| WERKZEUG, Altcode markiert | `paper` | `demo_trader_v1.py` + Skript + Tests sind A23 (Entfernen nur mit Uzis Go); `automation.py` bleibt. |
+| WERKZEUG, Altcode entfernt | `paper` | `demo_trader_v1.py` + Skript + Tests + `config/paper_demo.json` am 26.10.2026 entfernt (A23); `automation.py` bleibt. |
 
 Doppelungen aus Prüfauftrag 2 (Reparatur-, Aufgaben-, Readiness-, Research-Familien) werden nicht zusammengelegt,
 solange die Pakete ruhen oder archiviert werden; ein Zusammenlegen ohne Nutzer wäre Arbeit ohne Nutzen.
+
+## Ausführung vom 26.10.2026 (Uzis „weiter“, Grün-Plan I1 und C2)
+
+- Sicherung des Stands vor dem Entfernen: Zweig `archiv/unerreichte-pakete-2026-10-26` auf `06c8bc2` (ein Tag ließ sich
+  aus der Cloud nicht pushen, HTTP 403; der Zweig ist für Cloud-Threads nicht löschbar).
+- Entfernt aus `platform-main`: `src/server_readiness`, `src/research_evidence`, `src/collaboration`, `src/repair_workflow`,
+  `src/repair_observe`, `src/repair_recipes`, `src/longterm` samt Tests (`tests/test_<paket>_*.py`), dazu der DemoTrader-Altcode
+  (`src/paper/demo_trader_v1.py`, `scripts/demo_trader_report.py`, `tests/test_demo_trader_v1.py`, `tests/test_paper_demo_setup.py`,
+  `config/paper_demo.json`). Beschreibende Seiten unter `docs/research_evidence/`, `docs/bugfixer/repair_pipeline.md` und
+  `docs/collaboration/` tragen einen Archiv-Hinweis; `README.md` nennt `src/longterm` nicht mehr.
+- Korrektur gegenüber dem Entscheid vom 25.10.: `repair_repro` bleibt. Der Entscheid „von keinem Einstieg erreichbar“ war
+  für dieses Paket falsch: `src/repair_gates/integrity.py` importiert `repair_repro.guards`, und `repair_gates` wird von
+  `src/task_engine/fix_first.py` genutzt. Es folgt der Frist von `repair_gates` (30.11.).
+- Die Zeilenzahlen in der Tabelle oben sind der Stand vom 25.10. und wurden nicht neu gemessen.
 
 ## Prüfaufträge aus der Tabelle
 
