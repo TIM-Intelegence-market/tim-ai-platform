@@ -28,6 +28,7 @@ from src.models.market_data import Candle, Trade
 
 from ..domain import OrderflowInterpretation, OrderflowStatement, OrderflowStatementKind
 from ..domain import ZERO
+from ..footprint import FootprintReading, FootprintSeries, analyze_footprint
 from ..positioning import (
     PositioningInputs,
     ProfileLevels,
@@ -66,6 +67,9 @@ class OrderflowInputs:
     # Signed delta per candle (oldest first, aligned with the tail of ``candles``). Optional;
     # used to confirm or refute exhaustion (fading delta, delta flip).
     delta_series: tuple[Decimal, ...] | None = None
+    # Bid/ask volume per price level and candle (footprint.py). Optional; supplies the
+    # delta series when none is given and confirms or refutes the reaction read.
+    footprint: FootprintSeries | None = None
 
     def __post_init__(self) -> None:
         # net_delta (aggressive buy minus aggressive sell volume) is signed by
@@ -134,6 +138,22 @@ class OrderflowInterpretationEngine:
         total = inputs.total_volume
         candles = inputs.candles or []
         trades = inputs.trades or []
+        footprint: FootprintReading | None = None
+        delta_series = inputs.delta_series
+        if inputs.footprint is not None:
+            footprint = analyze_footprint(inputs.footprint)
+            if delta_series is None:
+                delta_series = inputs.footprint.delta_series
+            if net_delta is None:
+                # The last bar's delta matches the close-to-close price response below.
+                net_delta = inputs.footprint.last.delta
+                statements.append(
+                    OrderflowStatement(
+                        kind=OrderflowStatementKind.OBSERVATION,
+                        text="net_delta_derived_from_footprint_last_bar",
+                        evidence_refs=("footprint",),
+                    )
+                )
 
         # --- 1. Observations from raw metrics ---
         if net_delta is not None:
@@ -305,8 +325,48 @@ class OrderflowInterpretationEngine:
             )
             absorption_confirmed = True
 
+        # --- 4a. Footprint: per-level evidence confirms or refutes the reaction read ---
+        if footprint is not None:
+            statements.extend(footprint.statements)
+            if absorption_hypothesis and footprint.absorption_cluster == absorption_hypothesis:
+                statements.append(
+                    OrderflowStatement(
+                        kind=OrderflowStatementKind.CONFIRMATION,
+                        text="absorption_supported_by_footprint_cluster",
+                        evidence_refs=("footprint",),
+                        weight=Decimal("0.9"),
+                    )
+                )
+                absorption_confirmed = True
+            if exhaustion_hypothesis:
+                aggressor_stack = footprint.stacked_buy if delta_direction else footprint.stacked_sell
+                finished_at_extreme = footprint.finished_high if delta_direction else footprint.finished_low
+                thin_at_extreme = footprint.thin_extreme == ("BUYERS_THIN_AT_HIGH" if delta_direction else "SELLERS_THIN_AT_LOW")
+                if aggressor_stack >= 3:
+                    # Stacked imbalances on the aggressor's side: the push is alive, not exhausted.
+                    statements.append(
+                        OrderflowStatement(
+                            kind=OrderflowStatementKind.REFUTATION,
+                            text="exhaustion_refuted_stacked_imbalances",
+                            evidence_refs=("footprint",),
+                        )
+                    )
+                    exhaustion_hypothesis = None
+                    if flow_with_price:
+                        reaction = "CONTINUATION"
+                elif finished_at_extreme or thin_at_extreme:
+                    statements.append(
+                        OrderflowStatement(
+                            kind=OrderflowStatementKind.CONFIRMATION,
+                            text="exhaustion_supported_by_finished_auction" if finished_at_extreme else "exhaustion_supported_by_thin_extreme",
+                            evidence_refs=("footprint",),
+                            weight=Decimal("0.9"),
+                        )
+                    )
+                    exhaustion_confirmed = True
+
         if exhaustion_hypothesis:
-            shape = _delta_series_shape(inputs.delta_series, delta_direction)
+            shape = _delta_series_shape(delta_series, delta_direction)
             if shape in {"FADING", "FLIP"}:
                 statements.append(
                     OrderflowStatement(
@@ -329,7 +389,7 @@ class OrderflowInterpretationEngine:
                 exhaustion_hypothesis = None
                 if flow_with_price:
                     reaction = "CONTINUATION"
-            elif inputs.delta_series is None:
+            elif delta_series is None:
                 missing.append("delta_series")
 
         if absorption_hypothesis:
@@ -445,4 +505,5 @@ class OrderflowInterpretationEngine:
             reaction=reaction,
             exhaustion_hypothesis=exhaustion_hypothesis,
             exhaustion_confirmed=exhaustion_confirmed,
+            footprint=footprint.summary if footprint is not None else {},
         )

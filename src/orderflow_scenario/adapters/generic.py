@@ -16,6 +16,7 @@ from typing import Any, Mapping
 from src.models.market_data import Candle, Trade
 
 from ..positioning import parse_context
+from ..footprint import FootprintSeries, footprint_from_levels
 from .base import AdapterInput
 
 
@@ -47,6 +48,25 @@ def _period_seconds(item: Mapping[str, Any], timeframe: str) -> int:
     if not count.isdigit() or unit not in _UNIT_SECONDS:
         raise ValueError(f"period_seconds missing and timeframe {timeframe!r} unknown")
     return int(count) * _UNIT_SECONDS[unit]
+
+
+def _footprint(raw: Any) -> FootprintSeries | None:
+    """``footprint``: list of bars ``{"open_time": iso, "levels": [[price, bid, ask], ...]}``."""
+    if not raw:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError("footprint must be a list of bars")
+    bars = []
+    for index, bar in enumerate(raw):
+        if not isinstance(bar, Mapping) or not isinstance(bar.get("levels"), list):
+            raise ValueError(f"footprint[{index}] needs a levels list")
+        rows = []
+        for row in bar["levels"]:
+            if not isinstance(row, (list, tuple)) or len(row) != 3:
+                raise ValueError(f"footprint[{index}].levels rows must be [price, bid, ask]")
+            rows.append(tuple(_dec(value) for value in row))
+        bars.append((_dt(bar.get("open_time")), rows))
+    return footprint_from_levels(bars, source="generic_json")
 
 
 def _record(item: Candle | Trade) -> dict[str, Any]:
@@ -154,6 +174,8 @@ class GenericOrderflowAdapter:
             open_interest_with_price=data.get("open_interest_with_price"),
             delta_divergence=data.get("delta_divergence"),
             delta_series=tuple(_dec(item) for item in data["delta_series"]) if data.get("delta_series") else None,
+            footprint=_footprint(data.get("footprint")),
+            footprint_tick_size=_dec(data.get("footprint_tick_size")),
             structured=True,
             estimated_prices=tuple(estimated),
             positioning=context.positioning,

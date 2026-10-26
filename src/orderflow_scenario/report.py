@@ -44,6 +44,17 @@ def build_report(analysis: AnalysisOutput) -> str:
         sections.append(f"  Absorption-Hypothese: {analysis.orderflow.absorption_hypothesis}.")
     if analysis.orderflow.exhaustion_hypothesis:
         sections.append(f"  Exhaustion-Hypothese: {analysis.orderflow.exhaustion_hypothesis}.")
+    footprint = analysis.orderflow.footprint
+    if footprint:
+        edges = f"Hoch {'fertig' if footprint['finished_high'] else 'offen'}, Tief {'fertig' if footprint['finished_low'] else 'offen'}"
+        sections.append(
+            f"  Footprint ({footprint['source']}, {footprint['bars']} Kerzen, {footprint['levels']} Stufen): Delta {footprint['last_delta']}, "
+            f"Imbalances Kauf {footprint['buy_imbalances']}/Verkauf {footprint['sell_imbalances']} (stacked {footprint['stacked_buy']}/{footprint['stacked_sell']}), "
+            f"Auktion {edges}, POC {footprint['poc']} ({footprint['poc_location'] or 'n/a'})"
+            + (f", Absorptions-Cluster {footprint['absorption_cluster']}" if footprint.get('absorption_cluster') else "")
+            + (f", dünnes Extrem {footprint['thin_extreme']}" if footprint.get('thin_extreme') else "")
+            + "."
+        )
     if analysis.orderflow.open_interest_interpretation:
         sections.append(f"  Open Interest: {analysis.orderflow.open_interest_interpretation}.")
     positioning = analysis.orderflow.positioning

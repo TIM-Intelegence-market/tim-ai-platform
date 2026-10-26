@@ -325,6 +325,8 @@ class OrderflowInterpretation:
     reaction: str = "UNRESOLVED"
     exhaustion_hypothesis: str | None = None  # BUYERS_EXHAUSTED | SELLERS_EXHAUSTED
     exhaustion_confirmed: bool = False
+    # Footprint reading of the last bar (footprint.py); empty when no footprint was supplied.
+    footprint: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not (ZERO <= self.confidence <= Decimal("1")):
@@ -349,6 +351,7 @@ class OrderflowInterpretation:
             "missing_data": list(self.missing_data),
             "positioning": self.positioning,
             "profile": self.profile,
+            "footprint": self.footprint,
         }
 
 

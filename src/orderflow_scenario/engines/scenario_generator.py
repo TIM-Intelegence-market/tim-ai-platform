@@ -142,6 +142,9 @@ class ScenarioGenerator:
         absorption_buyers = orderflow.absorption_hypothesis == "PASSIVE_BUYERS"
         buyers_exhausted = orderflow.exhaustion_hypothesis == "BUYERS_EXHAUSTED"
         sellers_exhausted = orderflow.exhaustion_hypothesis == "SELLERS_EXHAUSTED"
+        # Footprint: three or more stacked imbalances are aggression with continuation bias.
+        stacked_buy = (orderflow.footprint or {}).get("stacked_buy", 0) >= 3
+        stacked_sell = (orderflow.footprint or {}).get("stacked_sell", 0) >= 3
 
         # --- Scenario A: Breakout / Acceptance / Continuation ---
         breakout_interest = primary in {MarketStateKind.BREAKOUT_ATTEMPT, MarketStateKind.ACCEPTANCE_ABOVE_VALUE, MarketStateKind.TREND_UP} or near_range_high
@@ -156,11 +159,15 @@ class ScenarioGenerator:
                 evidence_for = evidence_for + ["absorption_hypothesis_passive_sellers"]
             if sellers_exhausted:
                 evidence_for = evidence_for + ["exhaustion_hypothesis_sellers_exhausted"]
+            if stacked_buy:
+                evidence_for = evidence_for + ["footprint_stacked_buy_imbalances"]
             evidence_against = []
             if absorption_buyers:
                 evidence_against = evidence_against + ["absorption_hypothesis_passive_buyers"]
             if buyers_exhausted:
                 evidence_against = evidence_against + ["exhaustion_hypothesis_buyers_exhausted"]
+            if stacked_sell:
+                evidence_against = evidence_against + ["footprint_stacked_sell_imbalances"]
             if delta_bearish:
                 evidence_against = evidence_against + ["delta_bearish"]
             scenarios.append(
@@ -202,6 +209,8 @@ class ScenarioGenerator:
             if sellers_exhausted:
                 evidence_for = evidence_for + ["exhaustion_hypothesis_sellers_exhausted"]
             evidence_against = []
+            if stacked_sell:
+                evidence_against = evidence_against + ["footprint_stacked_sell_imbalances"]
             if orderflow.open_interest_interpretation == "short_accumulation":
                 evidence_against = evidence_against + ["short_accumulation_conflicts_reversal"]
             scenarios.append(
@@ -243,6 +252,8 @@ class ScenarioGenerator:
             if buyers_exhausted:
                 evidence_for = evidence_for + ["exhaustion_hypothesis_buyers_exhausted"]
             evidence_against = []
+            if stacked_buy:
+                evidence_against = evidence_against + ["footprint_stacked_buy_imbalances"]
             if orderflow.open_interest_interpretation == "long_accumulation":
                 evidence_against = evidence_against + ["long_accumulation_conflicts_rejection"]
             scenarios.append(

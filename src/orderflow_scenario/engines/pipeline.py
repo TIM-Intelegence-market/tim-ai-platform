@@ -24,6 +24,7 @@ from src.models.market_data import Candle, Trade
 
 from ..audit import AuditBuilder, analysis_id_for
 from ..explanation import build_setup_explanation
+from ..footprint import FootprintSeries
 from ..community_calls import DEFAULT_CALL_MAX_AGE, build_community_calls
 from ..external_context import DEFAULT_MAX_AGE, active_view, apply_external_weight, build_external_context
 from ..config import OrderflowScenarioConfig, default_config
@@ -72,6 +73,8 @@ class PipelineInputs:
     volume_bubbles: tuple[str, ...] = ()
     # Signed delta per candle, oldest first (optional; confirms or refutes exhaustion).
     delta_series: tuple[Decimal, ...] | None = None
+    # Bid/ask volume per price level and candle (footprint.py), optional.
+    footprint: FootprintSeries | None = None
     levels: LevelSet | None = None
     # Funding, liquidations, OI series, orderbook depth; volume profile / TPO (positioning.py).
     positioning: PositioningInputs | None = None
@@ -122,6 +125,8 @@ class Pipeline:
         observed_at = inputs.observed_at or utc_now()
         audit = AuditBuilder()
         audit.add_input("candles", [{"symbol": c.symbol, "timeframe": c.timeframe, "open_time": c.open_time.isoformat(), "open": c.open, "high": c.high, "low": c.low, "close": c.close, "volume": c.volume, "closed": c.closed} for c in inputs.candles])
+        if inputs.footprint is not None:
+            audit.add_input("footprint", {"source": inputs.footprint.source, "bars": len(inputs.footprint.bars), "last_bar": inputs.footprint.last.to_dict()})
         if inputs.trades:
             audit.add_input("trades", [{"symbol": t.symbol, "trade_id": t.trade_id, "event_time": t.event_time.isoformat(), "price": t.price, "quantity": t.quantity, "buyer_is_maker": t.buyer_is_maker} for t in inputs.trades])
 
@@ -198,6 +203,7 @@ class Pipeline:
                     delta_divergence=inputs.delta_divergence,
                     volume_bubbles=inputs.volume_bubbles,
                     delta_series=inputs.delta_series,
+                    footprint=inputs.footprint,
                     positioning=inputs.positioning,
                     profile=inputs.profile,
                 )

@@ -15,9 +15,9 @@ weiterhin Ort (HTF-Level), zweite unabhängige Evidenz und eine Invalidierung
 | Aggressor / Market Order | Wer den Preis bezahlt („kauf mir x BTC, egal zu welchem Preis“). Market Orders sind die schwerere Hand; Limit Orders nutzen eher große Teilnehmer (Bootcamp, CVD-Abschnitt). | `net_delta`, `aggressive_buy_volume`, `aggressive_sell_volume` |
 | Delta | Aggressive Käufe minus aggressive Verkäufe je Kerze oder Preisstufe. | `net_delta` (Fenster), `delta_series` (je Kerze, optional) |
 | CVD | Laufende Summe des Deltas. Steigender Kurs bei fallendem CVD = aggressives Verkaufen in passive Bids (bullisch gelesen). Spot-CVD kann keine Shorts enthalten; Spot gegen Perp vergleichen. | nur Eingabe `delta_divergence`, kein eigener CVD-Lauf |
-| Footprint | Bid-/Ask-Volumen je Preisstufe innerhalb einer Kerze. Links Verkäufer (in den Bid), rechts Käufer (in den Ask). | **fehlt** (Broncx-Gap P4) |
-| Imbalance | Eine Seite überwiegt die andere diagonal um ein Vielfaches; Bootcamp: 400-618 %. Drei oder mehr hintereinander = „stacked“, Aggression mit Fortsetzungsneigung, kann aber absorbiert werden. | fehlt (braucht Footprint) |
-| Finished / Unfinished Auction | Kerzenextrem mit Null auf einer Seite = Auktion beendet, oft lokales Hoch/Tief. Beide Seiten > 0 am Extrem = unerledigt, Preis kommt oft zurück (Magnet). | fehlt (braucht Footprint) |
+| Footprint | Bid-/Ask-Volumen je Preisstufe innerhalb einer Kerze. Links Verkäufer (in den Bid), rechts Käufer (in den Ask). | `src/orderflow_scenario/footprint.py`: aus Binance-aggTrades (`buyer_is_maker`) oder OpenMarket `VOLUME_PROFILE_AGG` je Intervall |
+| Imbalance | Eine Seite überwiegt die andere diagonal um ein Vielfaches; Bootcamp: 400-618 %. Drei oder mehr hintereinander = „stacked“, Aggression mit Fortsetzungsneigung, kann aber absorbiert werden. | F1/F2 in `analyze_footprint` (Faktor 4, Stapel ≥ 3) |
+| Finished / Unfinished Auction | Kerzenextrem mit Null auf einer Seite = Auktion beendet, oft lokales Hoch/Tief. Beide Seiten > 0 am Extrem = unerledigt, Preis kommt oft zurück (Magnet). | F3 in `analyze_footprint` |
 | Trapped / Puking | Gefangene Positionen schließen („puken“); jedes Schließen eröffnet die Gegenposition und treibt den Kurs. Hohes Delta ohne Follow-through in einen Orderblock = Puken. | Szenario-Belege `buyers_trapped`, `positive_delta_without_progress` |
 | Volume Bubbles / RVOL | Große Marktorders und relatives Volumen als Bestätigung am Level. | `volume_bubbles` (Eingabe), `volume_ratio` (neu) |
 | Open Interest | Offene Kontrakte. OI steigt + Preis fällt = Shorts stapeln sich; OI fällt + Preis steigt = Short Covering. | `positioning.py`, `open_interest_with_price` |
@@ -69,19 +69,40 @@ SELLERS_EXHAUSTED; Szenario C (Rejection short) Beleg bei BUYERS_EXHAUSTED. Eine
 Exhaustion zählt in der heuristischen Wahrscheinlichkeit wie eine bestätigte Absorption
 (+0,06). Bericht: Zeilen „Reaktion“, „Exhaustion-Hypothese“, Evidenzkette „Exhaustion“.
 
+### 2a. Footprint je Preisstufe (`src/orderflow_scenario/footprint.py`)
+
+Ein Footprint-Balken enthält je Kerze und Preisstufe das Volumen in den Bid (aggressive
+Verkäufe) und in den Ask (aggressive Käufe). Quellen: Binance-aggTrades mit `buyer_is_maker`
+(`footprint_from_trades`, Tick-Größe nötig) oder OpenMarket `VOLUME_PROFILE_AGG` je Intervall
+(`footprint_from_levels`, Bid = Sell, Ask = Buy; nur wenn `side_is_aggressor` belegt ist, sonst
+`missing_data`). Gelesen wird der letzte Balken:
+
+| Regel | Bedingung | Ergebnis |
+| --- | --- | --- |
+| F1 Imbalance | Ask auf Stufe p ≥ 4 × Bid auf p − 1 Tick (Kauf) bzw. Bid auf p ≥ 4 × Ask auf p + 1 Tick (Verkauf); eine Null auf der Gegenseite zählt | `buy_imbalances`, `sell_imbalances` |
+| F2 Stacked | ≥ 3 gleichseitige Imbalances auf aufeinanderfolgenden Stufen | `stacked_buy`/`stacked_sell`; Szenario A Beleg (Kauf) / Gegenbeleg (Verkauf), B Gegenbeleg (Verkauf), C Gegenbeleg (Kauf); **widerlegt** eine Exhaustion-Hypothese der Aggressorseite (`exhaustion_refuted_stacked_imbalances`) |
+| F3 Auktionsrand | Hoch oder Tief mit Null auf einer Seite = finished, beide > 0 = unfinished | `finished_high/low`; finished am Extrem in Bewegungsrichtung **bestätigt** Exhaustion (`exhaustion_supported_by_finished_auction`) |
+| F4 Cluster | Eine Stufe ≥ 3 × mittleres Stufenvolumen, in den äußeren 20 % der Range, Aggressor drückt hinein | `absorption_cluster` PASSIVE_SELLERS/PASSIVE_BUYERS; passend zur Hypothese **bestätigt** Absorption (`absorption_supported_by_footprint_cluster`) |
+| F5 Dünnes Extrem | Randstufe in Bewegungsrichtung ≤ 25 % des mittleren Stufenvolumens („N x 0“) | `thin_extreme`; **bestätigt** Exhaustion (`exhaustion_supported_by_thin_extreme`) |
+| F6 Delta und POC | Delta je Balken liefert `delta_series`, wenn keine übergeben wurde; fehlt `net_delta`, gilt das Delta des letzten Balkens; POC-Lage UPPER/MIDDLE/LOWER (P-/b-Form-Hinweis) | `footprint.last_delta`, `poc_location` |
+
+Eingabe: JSON `footprint: [{"open_time", "levels": [[Preis, Bid, Ask], …]}]` oder `footprint_tick_size`
+plus Trades (CLI baut den Footprint). Ausgabe: `orderflow.footprint` im Analyse-JSON, Zeile
+„Footprint“ im Bericht, `facts.footprint` in der Evidenzkette.
+
 ### Was TIM dabei noch nicht sieht
 
-- Kein Footprint je Preisstufe: „N x 0“, Imbalances, stacked Imbalances und finished/unfinished
-  Auctions sind nicht messbar. Erst mit Broncx-Gap P4 (Footprint aus Spot-aggTrades) oder
-  OpenMarket-Daten je Preisstufe.
-- `delta_series` liefert bisher nur der generische JSON-Adapter (`delta_series: [...]`).
-  Der OpenMarket-Adapter hat die Buy/Sell-Punkte je Intervall (TRADE_AGG), reicht sie aber noch
-  nicht als Serie durch.
+- Der OpenMarket-Footprint hängt an `side_is_aggressor` (REST-Seitensemantik laut Adapter
+  noch unbewiesen); bis dahin bleibt dort nur das Profil (POC/VA) und `missing_data` nennt
+  `footprint:VOLUME_PROFILE_AGG_side_semantics_unverified`. Stufenbreite dort 5 USD, also grob.
+- Live-aggTrades aus der TIM-Datenbank sind noch nicht an die Pipeline angeschlossen; der
+  Footprint aus Trades läuft über JSON-Eingaben (CLI).
 - Der Marktzustand `EXHAUSTION` in `engines/market_state.py` ist nur ein Kerzenbild (langer
   Docht, Körper < 15 %, Volumen ≥ 1,3x). Das ist im Bootcamp-Sinn eher Excess/SFP-Docht und
   wird von keinem Szenario genutzt; maßgeblich ist die Reaktion der Orderflow-Engine.
 - `src/analysis/bronxc_rules.py` nennt eine Kerze mit kleinem Körper und hohem Volumen
   `ABSORPTION_CONTEXT`. Das passt zu R1/R2 (Anstrengung ohne Fortschritt), kennt aber kein Delta.
+- Schwellen (1,2 / 0,7 / 0,8; 4x; 3x; 25 %) stammen aus den Quellen und sind nicht kalibriert.
 
 ## 3. Weitere Bootcamp-Regeln (Status in TIM)
 
@@ -96,14 +117,17 @@ Exhaustion zählt in der heuristischen Wahrscheinlichkeit wie eine bestätigte A
 | OI: steigt in Grind-down = Shorts stapeln sich (Squeeze-Kandidat); Checkliste „Lows gesweept + BOS + wicky highs + OI hoch + CVD runter + Retest Support/FVG“ | OI-Abschnitt | OI-Lesart ja, Checkliste als Ganzes nein |
 | Orderbuch-Skew: Bid/Ask-Verhältnis bis x % Tiefe; schwere Bid-Seite = Widerstand nach unten, Orders können verschwinden | Walkthrough | `orderbook_depth` nur als Beobachtung |
 | Grind/TWAP: gleichmäßiger Anstieg mit Stützen an den Hochs; nach Ende des TWAP große Expansion | Trade Breakdowns | fehlt |
-| Stacked Imbalances: Aggression, Fortsetzung wahrscheinlich, es sei denn absorbiert; viele davon, daher nur Konfluenz | Footprint | fehlt (Footprint) |
-| Finished Auction: lokales Top/Bottom, Unfinished: Magnet, nur an Schlüssellevels | Footprint | fehlt (Footprint) |
+| Stacked Imbalances: Aggression, Fortsetzung wahrscheinlich, es sei denn absorbiert; viele davon, daher nur Konfluenz | Footprint | F2, nur Beleg/Gegenbeleg in Szenarien |
+| Finished Auction: lokales Top/Bottom, Unfinished: Magnet, nur an Schlüssellevels | Footprint | F3 als Beobachtung; Magnet-Logik (Rückkehr zum unfinished Rand) fehlt |
 
 ## 4. Prüfung
 
 `tests/test_orderflow_absorption_exhaustion.py` deckt R1-R4, Bestätigung, Widerlegung,
 Zwei-Kerzen-Rückfall, Adapter, Pipeline, Bericht und den Ausschluss beider Lesarten ab.
-`tests/test_orderflow_signed_delta.py` bleibt unverändert grün (alte Lesart mit zwei Kerzen).
+`tests/test_orderflow_footprint.py` deckt F1-F6, beide Builder, die Bestätigungen und
+Widerlegungen in der Engine, Szenario-Belege, JSON-Adapter, CLI aus Trades, Bericht und den
+OpenMarket-Adapter (Delta-Serie aus TRADE_AGG, Footprint aus VOLUME_PROFILE_AGG, gesperrt ohne
+Seitennachweis) ab. `tests/test_orderflow_signed_delta.py` bleibt unverändert grün.
 
 ## Quellen
 

@@ -44,6 +44,7 @@ def build_setup_explanation(
             "absorption_status": absorption,
             "exhaustion_status": exhaustion,
             "orderflow_reaction": orderflow.reaction,
+            "footprint": orderflow.footprint,
             "orderflow_price_response": orderflow.price_response,
         },
         "interpretations": {

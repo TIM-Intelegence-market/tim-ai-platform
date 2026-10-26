@@ -81,6 +81,12 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
             )
         )
     last = candles[-1].close if candles else None
+    footprint = getattr(adapted, "footprint", None)
+    tick_size = getattr(adapted, "footprint_tick_size", None)
+    if footprint is None and tick_size is not None and trades and candles:
+        from .footprint import footprint_from_trades
+
+        footprint = footprint_from_trades(trades, candles, tick_size)
     levels = None
     if adapted.levels:
         from .engines.scenario_generator import LevelSet
@@ -101,6 +107,7 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
         open_interest_with_price=adapted.open_interest_with_price,
         delta_divergence=adapted.delta_divergence,
         delta_series=getattr(adapted, "delta_series", None),
+        footprint=footprint,
         levels=levels,
         positioning=getattr(adapted, "positioning", None),
         profile=getattr(adapted, "profile", None),
