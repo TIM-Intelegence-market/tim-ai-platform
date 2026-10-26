@@ -9,7 +9,7 @@ import pytest
 
 from src.dashboard import plan_journal as pj
 from src.dashboard.chart_model import _time
-from src.dashboard.pages.plan_journal import _plan_journal_page, journal_note
+from src.dashboard.pages.plan_journal import _plan_journal_page, _r_text, journal_note
 from src.research_lab.setup_evidence import DEFAULT_REGISTER_PATH, EVIDENCE_MAPPING_VERSION
 
 T0 = datetime(2026, 10, 24, 2, 0, tzinfo=timezone.utc)  # Saturday night: no NY-open block
@@ -831,3 +831,125 @@ def test_late_recorded_plan_does_not_trade_the_minutes_of_the_previous_stop() ->
     # Later minutes still fill it.
     pj.evaluate(journal, [_m(4, 99.95, 100.3)], [], T0 + timedelta(minutes=6))
     assert journal["entries"][1]["status"] == "FILLED"
+
+
+def test_plans_above_the_cost_limit_or_with_unknown_costs_are_not_recorded() -> None:
+    # 26.10.2026 level/1: stop 82 $ under the entry at ~80.240 = ~1,76 R costs per stop.
+    tight = _plan("LONG", entry=80_240.0, stop=80_157.9, invalid=80_198.0)
+    wide = _plan("LONG", entry=79_448.0, stop=78_654.0, invalid=79_369.0)
+    broken = {**_plan("SHORT", entry=100.0, stop=101.0), "stop": None}
+    kept, dropped = pj.drop_costly([tight, wide, broken])
+    assert [p["entry"] for p in kept] == [79_448.0]
+    assert any("Kosten 1,76 R über 0,25 R" in r for r in dropped) and any("Kosten unbekannt" in r for r in dropped)
+    assert pj._skip_key(dropped[0]) == "Kosten x R über x R"
+
+
+def test_a_level_lost_by_a_stop_is_not_traded_again_until_a_close_reclaims_it() -> None:
+    journal = _journal_with(_plan())
+    pj.evaluate(journal, [_m(0, 99.9, 100.2), _m(1, 98.9, 99.5)], [], T0 + timedelta(minutes=3))
+    assert journal["entries"][0]["exit_reason"] == "STOP"
+    entries = journal["entries"]
+
+    def close(minutes: int, price: float) -> dict:
+        end = T0 + timedelta(minutes=minutes)
+        return {"timeframe": "30m", "open_time": end - timedelta(minutes=30), "close_time": end, "close": price}
+
+    same, other = _plan(), _plan(entry=98.0, stop=97.0, invalid=97.5)
+    kept, dropped = pj.drop_lost_levels([same, other], entries, [close(30, 100.3)])
+    assert [p["entry"] for p in kept] == [98.0] and "noch nicht zurückerobert" in dropped[0]
+    assert pj._skip_key(dropped[0]) == "Level nach Stop noch nicht zurückerobert"
+    # A 30m close above the top of the zone (100.5) reclaims the level.
+    kept, dropped = pj.drop_lost_levels([same], entries, [close(30, 100.3), close(60, 100.6)])
+    assert kept and not dropped
+    # The short side mirrors it and a close before the stop does not count.
+    short_journal = _journal_with(_plan("SHORT", entry=100.0, stop=101.0, invalid=100.5))
+    pj.evaluate(short_journal, [_m(0, 99.8, 100.1), _m(1, 100.5, 101.1)], [], T0 + timedelta(minutes=3))
+    kept, _ = pj.drop_lost_levels([_plan("SHORT", entry=100.0, stop=101.0, invalid=100.5)], short_journal["entries"], [close(0, 99.0)])
+    assert kept == []
+    kept, _ = pj.drop_lost_levels([_plan("SHORT", entry=100.0, stop=101.0, invalid=100.5)], short_journal["entries"], [close(30, 99.4)])
+    assert kept
+
+
+def _closed_journal() -> dict:
+    journal = _journal_with(_plan())
+    pj.evaluate(journal, [_m(0, 99.9, 100.2), _m(1, 98.9, 99.5)], [], T0 + timedelta(minutes=3))
+    pj.record_plans(journal, [_plan("SHORT", 101.0, 102.0, 101.5)], T0 + timedelta(minutes=30))
+    return journal
+
+
+def test_corrections_exclude_closed_entries_of_their_rule_from_every_sum() -> None:
+    journal = _closed_journal()
+    closed, waiting = journal["entries"]
+    corrections = [{"rule": "tim/1", "id": closed["id"], "category": "PHANTOM_INVALID_ON_ARRIVAL", "reason": "Phantom", "approved": "Uzi"},
+                   {"rule": "tim/1", "id": waiting["id"], "reason": "offen"},  # not closed: never excluded
+                   {"rule": "level/1", "id": closed["id"], "reason": "andere Regel"}]
+    events = pj.correction_events(journal, "tim/1", corrections, recorded_at=T0 + timedelta(hours=1), source_hash="h", source_range={})
+    assert [e["payload"]["id"] for e in events] == [closed["id"]] and events[0]["kind"] == pj.ENTRY_EXCLUDED
+    before = pj.summary(journal)
+    assert before["sum_net_r"] < 0 and before["excluded"]["plans"] == 0
+    closed["excluded"] = {"reason": "Phantom"}
+    after = pj.summary(journal)
+    assert after["closed"] == 0 and after["sum_r"] == 0.0 and after["sum_net_r"] == 0.0 and after["plans"] == 1
+    assert after["excluded"] == {"plans": 1, "sum_r": -1.0, "sum_net_r": before["sum_net_r"]}
+    assert pj.correction_events(journal, "tim/1", corrections, recorded_at=T0, source_hash="h", source_range={}) == []
+    page = _plan_journal_page({"operational_health": {}}, journal)
+    assert "NICHT GEZÄHLT: Phantom" in page and "Nicht gezählt" in page
+
+
+def test_update_writes_each_correction_once_and_replay_keeps_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    series = _series(start)
+    path = tmp_path / "journal.json"
+    now = start + timedelta(minutes=30 * 90)
+    last_close = series["30m"][-1]["close"]
+    first = {**_plan("LONG", entry=last_close - 500, stop=last_close - 1_500, invalid=last_close - 1_200), "grade": None}
+    monkeypatch.setattr(pj, "build_chart_model", lambda *a, **k: {"analysis": {}})
+    monkeypatch.setattr(pj, "plans_from_model", lambda model: [dict(first)])
+    journal = pj.update(path, series, now)
+    entry_id = journal["entries"][0]["id"]
+    corrections = tmp_path / "corrections.json"
+    corrections.write_text(json.dumps({"exclude": [{"rule": "tim/1", "id": entry_id, "reason": "Test"}]}))
+    monkeypatch.setattr(pj, "CORRECTIONS_PATH", corrections)
+    # Next close: new levels replace the open plan (terminal), then the correction is written.
+    monkeypatch.setattr(pj, "plans_from_model", lambda model: [{**first, "entry": last_close - 600, "entry_low": last_close - 600}])
+    nxt = series["30m"][-1]
+    opened = datetime.fromisoformat(nxt["open_time"]) + timedelta(minutes=30)
+    series["30m"].append({**nxt, "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat()})
+    journal = pj.update(path, series, now + timedelta(minutes=30))
+    replaced = next(e for e in journal["entries"] if e["id"] == entry_id)
+    assert replaced["status"] == "REPLACED" and replaced["excluded"]["reason"] == "Test"
+    kinds = [e["kind"] for e in pj.journal_log.read(pj.events_path_for(path)).events]
+    assert kinds.count(pj.ENTRY_EXCLUDED) == 1
+    pj.update(path, series, now + timedelta(minutes=31))
+    kinds = [e["kind"] for e in pj.journal_log.read(pj.events_path_for(path)).events]
+    assert kinds.count(pj.ENTRY_EXCLUDED) == 1
+    assert pj.rebuild(path)["entries"][0]["excluded"]["reason"] == "Test"
+
+
+def test_fold_rejects_a_correction_of_an_open_or_unknown_plan() -> None:
+    journal = _closed_journal()
+    waiting = journal["entries"][1]
+    recorded = {"kind": pj.PLAN_RECORDED, "recorded_at": "x", "payload": {"entry": waiting}}
+    with pytest.raises(pj.journal_log.LogError):
+        pj.fold([recorded, {"kind": pj.ENTRY_EXCLUDED, "recorded_at": "y", "payload": {"id": waiting["id"]}}])
+    with pytest.raises(pj.journal_log.LogError):
+        pj.fold([{"kind": pj.ENTRY_EXCLUDED, "recorded_at": "y", "payload": {"id": "missing"}}])
+
+
+def test_the_corrections_file_lists_checked_ids_once_per_rule() -> None:
+    items = pj.load_corrections()
+    keys = [(i["rule"], i["id"]) for i in items]
+    assert len(keys) == len(set(keys)) == 27
+    assert all(i["rule"] in {pj.RULE_TIM, pj.RULE_STRUCT, pj.RULE_LEVEL} and len(i["id"]) == 12 and i["reason"] and i["approved"] for i in items)
+    assert {i["category"] for i in items} == {"PHANTOM_INVALID_ON_ARRIVAL", "DOUBLE_BOOKING"}
+
+
+def test_comparison_shows_all_three_rules_net_of_costs_and_the_current_stop_rule() -> None:
+    tim = _closed_journal()
+    struct = {**pj.empty_journal(), "rule": pj.RULE_STRUCT}
+    level = {**pj.empty_journal(), "rule": pj.RULE_LEVEL}
+    page = _plan_journal_page({"operational_health": {}}, tim, other=struct, level_journal=level)
+    net = _r_text(pj.summary(tim)["sum_net_r"])
+    assert "Regelversionen parallel" in page and "/journal/level'>Level-Regel" in page and "Summe netto" in page and net in page
+    assert "be_cost/1" in page and "nicht nachgebildet" not in page
+    assert "% Konto" in page and "." not in page.split("% Konto")[0].rsplit("≈", 1)[1]

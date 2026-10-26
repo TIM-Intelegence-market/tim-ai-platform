@@ -1,0 +1,194 @@
+{
+ "note": "Geprüfte Korrekturen am Plan-Journal. Einträge bleiben im Log und auf der Seite, zählen aber nicht in Summen. Neue Einträge nur mit Uzis ausdrücklichem Wort.",
+ "exclude": [
+  {
+   "rule": "tim/1",
+   "id": "d2be4677638b",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "34b7fcc49c71",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "0f57f2f74d83",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "c956dbd67a8f",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "ede55211c214",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "28b61e3e1cb2",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "afbac040c960",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "5dc018feaca8",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "cb00bb3b524e",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "ea8281d602d1",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "558e95d1d708",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "a96082b8808b",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "8b4da86407c9",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "28da6d342eb1",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "235facf430ef",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "92fe00337ee5",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "6038d15419e6",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "8eb7f4d29c3c",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "31f247385381",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "5b681b196133",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "tim/1",
+   "id": "54d8ea377623",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "struct/1",
+   "id": "da9c60d33441",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "struct/1",
+   "id": "1e4e61e09edd",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "struct/1",
+   "id": "a8a6c6e941d7",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "struct/1",
+   "id": "ccbbd1c4550a",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "struct/1",
+   "id": "6d995439acaf",
+   "category": "PHANTOM_INVALID_ON_ARRIVAL",
+   "reason": "Phantom: Schlusskurs beim Aufschreiben lag schon jenseits von Stop/Ungültigkeit (Binance 30m-Schluss geprüft); Fix #417 war noch nicht live",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  },
+  {
+   "rule": "level/1",
+   "id": "af5058047f36",
+   "category": "DOUBLE_BOOKING",
+   "reason": "Doppelbuchung: Plan von 13:00 UTC erst 13:04 aufgeschrieben und über die Minuten des vorigen Stops (646d6e6b2695, 13:03) ausgewertet",
+   "approved": "Uzi 26.10.2026 22:17 Ortszeit (Karte: Alles bauen)"
+  }
+ ]
+}

@@ -128,6 +128,12 @@ CURSOR_FIELDS = {"evaluated_through", "max_favorable_r", "max_adverse_r", "last_
 # Plans dropped at a close (counted in the view as structure_skips): by the struct/1 or
 # level/1 rule, and for every rule plans that were already invalid on arrival.
 STRUCTURE_PLANS_DROPPED = "STRUCTURE_PLANS_DROPPED"
+# Correction of an already closed entry: it stays in the log and on the page, but is not counted.
+# Written once per entry listed in CORRECTIONS_PATH; nothing in the entry itself changes.
+ENTRY_EXCLUDED = "ENTRY_EXCLUDED"
+CORRECTIONS_PATH = Path(__file__).with_name("plan_journal_corrections.json")
+# Exits that mean the market went through the plan's level (no later plan at the same level until it is reclaimed).
+LOST_EXITS = {"STOP", "INVALIDATION"}
 
 
 def _iso(value: datetime) -> str:
@@ -360,6 +366,87 @@ def _start_after_previous(entries: Sequence[Mapping[str, Any]], direction: str, 
         if closed and _time(closed) > start:
             start = _time(closed)
     return start
+
+
+def drop_costly(plans: Sequence[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The plans whose estimated stop-out costs stay within COST_LIMIT_R, and the reasons for the others.
+
+    Uzi 26.10.2026: plans above the 0,25 R limit are no longer written down. Before, the
+    limit was a display mark only and the level rule booked ~1,8 R costs on every stop
+    (stop 0,05 % behind the swing). Unknown costs are dropped as well (fail closed)."""
+    from src.dashboard.plan_cost_check import COST_LIMIT_R, COST_WITHIN_LIMIT, cost_check
+
+    kept, dropped = [], []
+    for plan in plans:
+        check = cost_check(plan)
+        if check["cost_status"] == COST_WITHIN_LIMIT:
+            kept.append(dict(plan))
+        elif check["cost_r"] is None:
+            dropped.append(f"{plan.get('direction')}: Plan {plan.get('scenario_id')}: Kosten unbekannt")
+        else:
+            dropped.append(f"{plan.get('direction')}: Plan {plan.get('scenario_id')}: Kosten {check['cost_r']:.2f} R über {COST_LIMIT_R:.2f} R".replace(".", ","))
+    return kept, dropped
+
+
+def _local_text(moment: datetime) -> str:
+    return _iso(moment).replace("T", " ")[:16] + " UTC"
+
+
+def _zone_edge(item: Mapping[str, Any]) -> float:
+    """The far side of the entry zone seen from the stop: the top for a LONG, the bottom for a SHORT."""
+    prices = [float(item[key]) for key in ("entry", "entry_low", "entry_high") if item.get(key) is not None]
+    return max(prices) if item.get("direction") == "LONG" else min(prices)
+
+
+def drop_lost_levels(plans: Sequence[Mapping[str, Any]], entries: Sequence[Mapping[str, Any]], closes: Sequence[Mapping[str, Any]],
+                     timeframe: str = PLAN_TIMEFRAME) -> tuple[list[dict[str, Any]], list[str]]:
+    """Plans not at a level that a stopped trade in the same direction lost, unless it was reclaimed since.
+
+    After a stop (or a close beyond the invalidation) the level counts as lost. A new plan with
+    the same entry and stop waits until a 30m close beyond the far side of that trade's entry
+    zone (LONG above, SHORT below). 26.10.2026: level/1 bought the previous day's VAL seven
+    times in a row and was stopped seven times."""
+    kept, dropped = [], []
+    for plan in plans:
+        lost = [e for e in entries if e.get("direction") == plan.get("direction") and e.get("timeframe", timeframe) == timeframe
+                and e.get("exit_reason") in LOST_EXITS and e.get("closed_at") and _same_levels(e, plan)]
+        if not lost:
+            kept.append(dict(plan))
+            continue
+        last = max(lost, key=lambda e: _time(e["closed_at"]))
+        edge, since = _zone_edge(last), _time(last["closed_at"])
+        long = plan.get("direction") == "LONG"
+        reclaimed = any(c["close_time"] > since and ((long and c["close"] > edge) or (not long and c["close"] < edge)) for c in closes)
+        if reclaimed:
+            kept.append(dict(plan))
+        else:
+            dropped.append(f"{plan.get('direction')}: Plan {plan.get('scenario_id')} (Stop {_local_text(since)}, wartet auf {'Schluss über' if long else 'Schluss unter'} {edge:.2f}): "
+                           "Level nach Stop noch nicht zurückerobert")
+    return kept, dropped
+
+
+def load_corrections(path: Path | str | None = None) -> list[dict[str, Any]]:
+    """Reviewed corrections (entries not to count), from the file next to this module. Missing file: none."""
+    try:
+        data = json.loads(Path(path or CORRECTIONS_PATH).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    return [dict(item) for item in data.get("exclude") or []]
+
+
+def correction_events(journal: Mapping[str, Any], rule: str, corrections: Sequence[Mapping[str, Any]], *, recorded_at: datetime,
+                      source_hash: str, source_range: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """ENTRY_EXCLUDED events for the listed entries of this rule that are closed and not yet excluded."""
+    by_id = {e["id"]: e for e in journal.get("entries") or []}
+    events = []
+    for item in corrections:
+        entry = by_id.get(item.get("id"))
+        if item.get("rule") != rule or entry is None or entry.get("excluded") or entry.get("status") not in DONE:
+            continue
+        payload = {"id": entry["id"], "reason": str(item.get("reason") or ""), "category": str(item.get("category") or ""), "approved": str(item.get("approved") or "")}
+        events.append({"event_id": journal_log.event_id(ENTRY_EXCLUDED, entry["id"]), "kind": ENTRY_EXCLUDED, "aggregate_id": entry["id"],
+                       "recorded_at": _iso(recorded_at), "source_hash": source_hash, "source_range": dict(source_range), "payload": payload})
+    return events
 
 
 def invalid_on_arrival(plan: Mapping[str, Any], close: float) -> str | None:
@@ -678,7 +765,10 @@ def counter_trend(direction: Any, market_state: Any) -> bool:
 
 
 def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
-    entries = list(journal.get("entries") or [])
+    """Counts and sums. Entries excluded by a reviewed correction are left out and counted separately."""
+    every = list(journal.get("entries") or [])
+    entries = [e for e in every if not e.get("excluded")]
+    excluded = [e for e in every if e.get("excluded")]
     closed = [e for e in entries if e.get("status") == "CLOSED" and e.get("gross_r") is not None]
     wins = [e for e in closed if e["gross_r"] > 0]
     net_wins = [e for e in closed if (e.get("net_r") or 0.0) > 0]
@@ -703,6 +793,8 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
         "paper_trades": sum(e.get("journal_decision") == PAPER_TRADE for e in entries),
         "no_trade": sum(e.get("journal_decision") == NO_TRADE for e in entries),
         "by_direction": by_direction,
+        "excluded": {"plans": len(excluded), "sum_r": round(sum(e.get("gross_r") or 0.0 for e in excluded), 3),
+                     "sum_net_r": round(sum(e.get("net_r") or 0.0 for e in excluded), 3)},
         "counter_trend": {
             "plans": sum(counter_trend(e.get("direction"), e.get("market_state")) for e in entries),
             "closed": len(against),
@@ -828,6 +920,14 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             journal.setdefault("revisions", []).append(deepcopy(payload))
         elif kind == CANDLE_CLOSE_SKIPPED:
             journal.setdefault("skipped", []).append(deepcopy(payload))
+        elif kind == ENTRY_EXCLUDED:
+            entry = by_id.get(payload.get("id"))
+            if entry is None:
+                raise journal_log.LogError(f"correction for unknown plan {payload.get('id')}")
+            if entry.get("status") not in DONE:
+                raise journal_log.LogError(f"plan {entry['id']}: only closed plans can be excluded")
+            entry["excluded"] = {"reason": payload.get("reason"), "category": payload.get("category"), "approved": payload.get("approved"),
+                                 "at": event.get("recorded_at")}
         elif kind == STRUCTURE_PLANS_DROPPED:
             counts = journal.setdefault("structure_skips", {})
             for reason in payload.get("reasons") or []:
@@ -928,6 +1028,10 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 plans, dropped = _level(series, latest, model)
             plans, dead = drop_invalid_on_arrival(plans, closed_30m[-1].get("close"))
             dropped += dead
+            plans, lost = drop_lost_levels(plans, journal.get("entries") or [], closed_30m)
+            dropped += lost
+            plans, costly = drop_costly(plans)
+            dropped += costly
             if dropped:
                 new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
                                    "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
@@ -947,6 +1051,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
         for event in new_events:
             if event["kind"] == CANDLE_CLOSE_PROCESSED:
                 event["payload"]["rule"] = rule
+    new_events += correction_events(journal, rule, load_corrections(), recorded_at=now, source_hash=source_hash, source_range=source_range)
     written = journal_log.append(events_path, new_events, state)
     events = state.events + written
     # The view is always the fold: cursor-only progress that was not written is re-derived next time.
