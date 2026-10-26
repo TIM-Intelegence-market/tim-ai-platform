@@ -4,7 +4,7 @@
 |---|---|
 | Studie | S7 |
 | Version | **1.0 (freigegeben von Uzi am 26.10.2026, 11:37 Ortszeit, per Entscheidungskarte „Ja, freigeben und registrieren“)** |
-| Status | **REGISTRIERT**: S7-D20-T3 und S7-D20-T4 im Register (54 → 56), Zähllauf 6.1 vom 26.10. (Commit 2a9d3be, Datensatz-Hash 9ac4d135…, `../reports/s7_count_2026-10-26T0938Z.md`); S7-D55-T3/T4 nicht registriert (59,5 < 60 Holdout-Signal-Wochen). Training/Validierung (P5) laufen. Holdout zu. |
+| Status | **ABGESCHLOSSEN – NICHT BESTANDEN (`failed_validation`)**: S7-D20-T3 und S7-D20-T4 bestehen das Training, scheitern in der Validierung 2023–2024 an **K4 (maximaler Drawdown 30,2 R bzw. 30,8 R > 20 R)**; alle anderen Kriterien erfüllt. Kein Kandidat, **Holdout nicht geladen**. Bericht `../reports/s7_train_2026-10-26T1049Z.md` (26.10., 11:49 Ortszeit, Commit 2406691). Register-Status gesetzt (Abschnitt 12). Zähllauf 6.1: `../reports/s7_count_2026-10-26T0938Z.md`; S7-D55-T3/T4 nicht registriert (59,5 < 60 Holdout-Signal-Wochen) |
 | Anlass | Uzi 26.10.2026, 01:38 Ortszeit: „Ich möchte eine Strategie die mir 3-4R bringt pro Trade“; „go“ 10:49 Ortszeit. Bauplan: `/mnt/project-files/plaene/s7-3-4r-trendfolge-bauplan.md` |
 | Lesart des Ziels | **Ziel je Gewinntrade 3 R bzw. 4 R** (Gewinn = Drei- bzw. Vierfaches des Anfangsrisikos). Nicht: Erwartungswert 3–4 R je Trade über alle Trades. Bei Erfolg liegt der Erwartungswert einer solchen Strategie typisch bei +0,2 bis +0,5 R je Trade |
 | Protokoll | `../PROTOKOLL.md` Version **1.3** (Branch enthält seit 26.10. den Stand von PR #428); die S6-Ausnahmen 1.3 (A1–A5) gelten laut Wortlaut für S6-artige Maker-Studien und werden für S7 nicht zitiert. S7 braucht **keinen neuen Protokoll-Eintrag**; die Abweichungen in 5.5 sind alle strenger |
@@ -362,7 +362,49 @@ Ein Lauf, danach ist der Holdout für S7 und für alle Registereinträge verbrau
 | O1 | ~~Adversariale Prüfung durch ein anderes Modell, Befunde einarbeiten (0.2)~~ erledigt 26.10. | Claude |
 | O2 | ~~4h-Archive laden, Lücken und Hash berichten (P2); Zähllauf 6.1 (P4)~~ erledigt 26.10. | Claude, Mac |
 | O3 | ~~Uzis Wort per Entscheidungskarte: Lesart des Ziels (3–4 R je Gewinntrade), Horizont-Einordnung Mid (5.5), Kenntnisnahme der K2-Power (6), Freigabe 1.0 und Registrierung von S7-D20-T3 und S7-D20-T4 (→ 56)~~ erledigt 26.10. 11:37 Ortszeit („Ja, freigeben und registrieren“) | Uzi |
-| O4 | Holdout nur per zweiter Entscheidungskarte | Uzi |
+| O4 | ~~Holdout nur per zweiter Entscheidungskarte~~ entfallen: kein Kandidat nach der Validierung (Abschnitt 12) | Uzi |
+
+## 12. Ergebnis Training und Validierung (26.10.2026, 11:49 Ortszeit)
+
+Lauf `scripts/research_lab_s7.py train --commit-register` auf dem Mac (Worktree `s7-gate`, Commit 2406691, Datensatz-Hash
+9ac4d135…, 10 000 Zufallsläufe, Seed 20261101, Holm m = 60). Bericht: `../reports/s7_train_2026-10-26T1049Z.md` und `.json`
+(vom Mac per Git gepusht, Commit 7956e7f). Einzeltrades (`s7_train_2026-10-26T1049Z_trades.json`, 1,4 MB, SHA-256
+8106fd37…) bleiben auf dem Mac. Holdout 2025+ wurde nicht geladen.
+
+| Kriterium | S7-D20-T3 Training | S7-D20-T3 Validierung | S7-D20-T4 Training | S7-D20-T4 Validierung |
+|---|---:|---:|---:|---:|
+| n / Signal-Wochen (K3) | 557 / 142 | 420 / 103 | 509 / 141 | 383 / 102 |
+| E[R] netto (K1) | +0,232 | +0,190 | +0,284 | +0,243 |
+| 95-%-CI Monatsblock | 0,06 … 0,42 | −0,04 … 0,43 | 0,07 … 0,51 | −0,05 … 0,56 |
+| p gegen A / A′ / C (K2) | 0,0001 / 0,0002 / 0,0003 | 0,0001 / 0,0002 / 0,0005 | 0,0001 / 0,0001 / 0,0001 | 0,0002 / 0,0003 / 0,0003 |
+| Profitfaktor (K5) | 1,36 | 1,29 | 1,43 | 1,37 |
+| **Max. Drawdown (K4, ≤ 20 R)** | 22,3 | **30,2** | 22,0 | **30,8** |
+| Trefferquote (K6, nur Bericht) | 25,3 % | 25,0 % | 17,5 % | 16,7 % |
+| Stress-E (K7) | +0,189 | +0,116 | +0,235 | +0,164 |
+| Schlechtester Trade / mittlerer Verlust (K8) | −1,52 / −1,03 | −1,21 / −1,03 | −1,52 / −1,02 | −1,21 / −1,03 |
+| Zeitstop-Anteil (K8, ≤ 50 %) | 14,7 % | 15,2 % | 21,2 % | 22,7 % |
+| Mittleres Netto-R der Treffer (K9, ≥ T − 0,5) | 2,92 | 2,93 | 3,91 | 3,92 |
+| Anteil je Instrument BTC/ETH/SOL (K10, ≥ 15 %) | 36/36/28 % | 31/34/35 % | 36/36/28 % | 32/33/35 % |
+| E[R] long / short (berichtet) | +0,25 / +0,21 | +0,29 / +0,02 | +0,30 / +0,26 | +0,35 / +0,06 |
+| Baseline-E A / A′ / C / B | −0,03 / −0,01 / +0,04 / −0,16 | −0,04 / −0,04 / −0,01 / −0,24 | −0,03 / +0,00 / +0,06 / −0,10 | −0,02 / −0,02 / −0,01 / −0,27 |
+
+Robustheit (berichtet, alle Regeln erfüllt): Jahresstabilität (jedes Jahr 2020–2024 mit ≥ 20 Trades hat E > 0), Walk-Forward
+24/6 über alle vier Varianten mit verkettetem Test-E[R] +0,21 (gewählt wurde fünfmal D55-T4, einmal D55-T3), Nachbarschaft
+positiv. Die nicht registrierten Nachbarn D55-T3/T4 liegen in der Validierung bei E +0,18/+0,24 und DD 22,2/20,0 R.
+
+**Urteil nach Abschnitt 5 (vorab festgelegt, alle Kriterien müssen erfüllt sein):** Training bestanden (Regel 5.3; dort ist
+K4 nicht Teil der Regel, der Trainings-DD von 22 R wird berichtet). Validierung **nicht bestanden**, einziges verletztes
+Kriterium ist K4. Beide Register-Einträge erhalten `failed_validation`; es gibt keinen Kandidaten, der Holdout bleibt zu.
+K4 wird nicht nachträglich gelockert: Der Grenzwert 20 R ist der Protokollwert (K4 = 20 % bei 1 % Risiko) und stand vor
+dem Lauf fest.
+
+Einordnung, keine Neubewertung: Der Erwartungswert ist in Training und Validierung positiv, und alle Zufallsvergleiche liegen
+mit p ≤ 0,0005 unter der Holm-Schwelle für m = 60 (0,05/60 ≈ 0,0008). Trefferquote und Netto-R der Treffer entsprechen der
+Vorab-Rechnung in Abschnitt 2. Bei 25 % bzw. 17 % Trefferquote und drei parallel gehandelten Instrumenten sind Verlustserien
+von 30 R über 420 Trades statistisch erwartbar. Die Regeln liefern also das Ziel „3–4 R je Gewinntrade" mit positivem
+Netto-Erwartungswert, sind aber unter der im Protokoll festgelegten Drawdown-Grenze nicht tragfähig. Ein Nachfolger (zum
+Beispiel mit höchstens einer offenen Position über alle Instrumente oder einer Portfolio-Regel) müsste vorab neu registriert
+werden und kostet Register-Plätze (56 von 60 belegt). Das ist Uzis Entscheidung und nicht Teil dieser Studie.
 
 ## Änderungsprotokoll
 
@@ -372,3 +414,4 @@ Ein Lauf, danach ist der Holdout für S7 und für alle Registereinträge verbrau
 | 2026-10-26 | 0.2 | Adversariale Prüfung (anderes Modell, 23 Befunde): K4 25 → **20 R** (Protokoll); K6 nur noch berichtet (p* gilt nicht mit Zeitstop, Zufallstrefferquote 15–23 %/7–14 %, keine „2–4 Punkte“); K9 neu (Netto-R der Treffer ≥ T − 0,5) statt faktischem PF ≥ 1,5; K3 ergebnisfrei (Trades + Signal-Wochen statt n_eff aus Ergebnissen); K10 Seitenanteil nur berichtet; Stop als fester Kurs ab Signalschluss, R = Fill–Stop, `stop_before_entry` statt Verwerfen; Wiedereinstieg und Lücken wie Engine; Baseline A wie `random_entry` (gemeinsame Vorlage, Haltedauer, 31-Kerzen-Rand), Baseline C mit Trendzustand; Horizont Mid festgelegt und offengelegt; Gate 300/150 → 200/100 mit ehrlicher Vorab-Schätzung, Regelstand-Commit vor dem Zähllauf; Power-Tabelle korrigiert (n = 300: 92 %, E = 0,5 R: 42/68/85/97 %, Baseline-E < 0); Protokollstand 1.2/Register 48 im Branch, m = 60; Offenlegung ergänzt (S4-Erkundung, Hitrate-Raster, L1, Kaufen-und-Halten, S1-4h-Fenster, Holdout-Grenze); Zahlen 2.3 korrigiert (19–35 Trades, 68 Varianten) | Befunde der Prüfung | wie 0.1; keine 4h-Kurse |
 | 2026-10-26 | 0.3 | Zähllauf 6.1 gerechnet und eingetragen: D20-T3/D20-T4 bestehen, D55-T3/T4 nicht (59,5 < 60 Holdout-Signal-Wochen); Register-Ziel 54 → 56; Vorab-Schätzung der Signaldichte als zu niedrig vermerkt. Keine Regeländerung | Gate-Ergebnis | zusätzlich: Signalzahlen des Zähllaufs (ergebnisblind, keine Kurse nach dem Signal, kein R) |
 | 2026-10-26 | 1.0 | Freigabe durch Uzi (Karte: Lesart je Gewinntrade, Horizont Mid, K2-Power zur Kenntnis); S7-D20-T3 und S7-D20-T4 registriert (Register 54 → 56, Protokoll 1.3 nach Aufnahme von PR #428 in den Branch). Keine Regeländerung gegenüber 0.2/0.3 | Uzis Entscheidung 11:37 Ortszeit | wie 0.3 |
+| 2026-10-26 | 1.0 (Ergebnis) | Training/Validierung gerechnet (Abschnitt 12): beide registrierten Varianten `failed_validation` wegen K4 (DD 30,2/30,8 R > 20 R), alle anderen Kriterien erfüllt; kein Kandidat, Holdout zu. Keine Regeländerung | Lauf 11:49 Ortszeit | zusätzlich: Trades 2020-01 bis 2024-12 (Training und Validierung), kein Holdout |
