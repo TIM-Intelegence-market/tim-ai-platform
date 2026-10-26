@@ -21,7 +21,9 @@ Die V2-Qualifizierungskampagne vom 20.10. wurde am 23.10. auf Uzis Wunsch abgebr
 unter `~/Library/Application Support/TIM/campaign-archive/v2-qual-2026-10-20`. Seitdem folgt `~/TIM-live` wieder
 `platform-main`: Der Dashboard-Agent (`com.tim.dashboard-refresh`) spielt jeden Merge ein und startet die Runtime neu
 (1 bis 2 Minuten Datenlücke je Einspielen). **In `~/TIM-live` arbeitet niemand direkt**, auch Codex nicht; das hielt am
-24.10. den Agenten an.
+24.10. den Agenten an. Hängt der Agent länger als 2 Stunden aus demselben Grund (oder musste er zurückrollen), fragt er
+die Claude-CLI auf dem Mac ohne Werkzeuge um eine Diagnose und legt dazu ein GitHub-Issue an (Label `dashboard-agent`);
+die Behebung kommt als PR. Neuen grünen Agent-Code auf `platform-main` lädt er vor jeder Runde selbst.
 
 Dienste (launchd, Stand Audit 25.10.): `com.tim.runtime` (Ingestion, Beobachtungen, Journal, Control Center auf
 http://127.0.0.1:8765), `com.tim.watchdog`, `com.tim.validator`, `com.tim.server-health`, `com.tim.history-recovery`,
