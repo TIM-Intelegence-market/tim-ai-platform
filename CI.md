@@ -49,8 +49,8 @@ Zwei Schalter sind bewusst **aus**, beide auf Uzis Entscheidung:
 
 - **Review-Pflicht aus.** Ein grüner PR kann technisch ohne zweites Augenpaar gemergt werden. Die Schranke ist Uzis
   ausdrückliches „merge“ (Threads liefern PRs merge-fertig, mergen aber nicht von selbst; „go“ heißt bauen). Für
-  kritische Pfade (Journal-Logik, Kostenmodell, `src/database/`) ist eine Review-Pflicht über CODEOWNERS geplant
-  (`docs/audits/GRUEN_PLAN_11_SICHTEN.md`, Paket R1/R2).
+  kritische Pfade (Journal-Logik, Kostenmodell, `src/database/` u. a.) stehen Uzi und Chris seit 26.10.2026 als
+  Code-Eigner in `.github/CODEOWNERS` (R1); Pflicht wird es erst mit dem Ruleset-Schalter „Review von Code-Eignern“ (R2, Uzi).
 - **„Branch muss aktuell sein“ (strict) aus seit 25.10.2026.** Ein PR kann grün sein gegen einen älteren Stand von
   `platform-main`. Deshalb nach jedem Merge den Push-Lauf von `test` auf `platform-main` ansehen; ein roter Lauf dort
   wird sofort repariert; der Job `report-red-main` in `ci.yml` öffnet dafür ein Issue mit Label `ci-red` (oder kommentiert das offene).

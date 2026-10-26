@@ -1,21 +1,34 @@
-# TIM CODEOWNERS
-# Phase 10 — CODEOWNERS & PR template (v2.0)
+# TIM CODEOWNERS (Stand 26.10.2026, Grün-Plan Sicht 8, Paket R1)
+#
+# Wirkung erst, wenn im Ruleset "platform-main merge conditions" der Schalter
+# "Require review from Code Owners" an ist (R2, Uzis Schalter). Dann braucht ein PR,
+# der eine Datei unten ändert, die Freigabe eines Code-Eigners, der den PR nicht selbst
+# geöffnet hat. PRs aus Claude-Threads laufen unter uezeyiraydin-cell; deren Freigabe
+# kommt also von fleckbarti-ai (Chris), Chris' PRs gibt Uzi frei.
+#
+# Bewusst KEINE Zeile "*": Sonst bräuchte jeder PR ein Review, und Uzis eigene PRs
+# wären ohne Chris blockiert. Pflicht gilt nur für die kritischen Pfade unten.
+# Später passende Zeile gewinnt.
 
-# Default owner for all files (repository owner, User plan account)
-* @uezeyiraydin-cell
+# Sicherheit und Regeln
+SECURITY.md @uezeyiraydin-cell @fleckbarti-ai
+TIM_SECURITY_ZERO_TRUST_CONSTITUTION.md @uezeyiraydin-cell @fleckbarti-ai
+CI.md @uezeyiraydin-cell @fleckbarti-ai
 
-# Security-sensitive paths require the repository owner's review
-SECURITY.md @uezeyiraydin-cell
-TIM_SECURITY_ZERO_TRUST_CONSTITUTION.md @uezeyiraydin-cell
-config/ @uezeyiraydin-cell
-scripts/ @uezeyiraydin-cell
+# GitHub-Werkzeuge: Workflows, PR-Gate-Policy, diese Datei
+/.github/ @uezeyiraydin-cell @fleckbarti-ai
 
-# GitHub toolchain configuration
-.github/workflows/ @uezeyiraydin-cell
-.github/dependabot.yml @uezeyiraydin-cell
-.github/CODEOWNERS @uezeyiraydin-cell
-codecov.yml @uezeyiraydin-cell
-sonar-project.properties @uezeyiraydin-cell
+# Laufzeit-Konfiguration (Sicherheits- und Handelsgrenzen)
+/config/ @uezeyiraydin-cell @fleckbarti-ai
 
-# Database schema and migrations are protected (OBSERVE-only guarantees)
-src/database/ @uezeyiraydin-cell
+# Datenbank: Schema, Migrationen, Schutzlogik (nur beobachtend)
+/src/database/ @uezeyiraydin-cell @fleckbarti-ai
+
+# Plan-Journal und Kostenmodell (Papier-Ergebnisse, R-Buchung)
+/src/dashboard/plan_journal.py @uezeyiraydin-cell @fleckbarti-ai
+/src/dashboard/journal_log.py @uezeyiraydin-cell @fleckbarti-ai
+/src/dashboard/plan_cost_check.py @uezeyiraydin-cell @fleckbarti-ai
+
+# Research-Protokoll (Kosten, Holdout-Grenze, Mehrfachtest-Regeln)
+/src/research_lab/protocol.py @uezeyiraydin-cell @fleckbarti-ai
+/docs/research_lab/PROTOKOLL.md @uezeyiraydin-cell @fleckbarti-ai
