@@ -150,6 +150,18 @@ def test_pick_check_run_takes_newest_named_run():
     assert dr.pick_check_run({"check_runs": []}, "test") is None
 
 
+def test_skipped_scheduled_run_does_not_hide_the_green_push_run():
+    payload = {"check_runs": [
+        {"id": 1, "name": "test", "status": "completed", "conclusion": "success", "started_at": "2026-10-26T00:40:00Z",
+         "completed_at": "2026-10-26T00:44:00Z", "html_url": "push"},
+        {"id": 2, "name": "test", "status": "completed", "conclusion": "skipped", "started_at": "2026-10-26T07:58:00Z",
+         "completed_at": "2026-10-26T07:58:00Z", "html_url": "schedule"},
+    ]}
+    assert dr.pick_check_run(payload, "test")["url"] == "push"
+    only_skipped = {"check_runs": [payload["check_runs"][1]]}
+    assert dr.pick_check_run(only_skipped, "test")["conclusion"] == "skipped"  # still not green
+
+
 def test_small_parsers():
     assert dr.parse_porcelain(" M docs/TIM_V1_LIVE_STATUS.md\n M main.py\n", ["docs/TIM_V1_LIVE_STATUS.md"]) == ["main.py"]
     ps = "/Users/timrunner/actions-runner/bin/Runner.Worker spawnclient 1 2\npython scripts/dashboard_refresh.py pg_dump\n"
@@ -179,6 +191,7 @@ class Mac:
         self.restart_ok = True
         self.health_ok = True
         self.calls: list[list[str]] = []
+        self.issues: list[dict] = []  # gh issue create/comment calls with the body file's text
 
     def __call__(self, command, *, cwd=None, timeout=120, env=None):
         command = [str(part) for part in command]
@@ -186,6 +199,12 @@ class Mac:
         done = lambda out="", code=0: subprocess.CompletedProcess(command, code, out, "")  # noqa: E731
         if command[0] == "git":
             return subprocess.run(command, capture_output=True, text=True, check=False)
+        if command[0].endswith("gh") and command[1] == "issue":
+            body = Path(command[command.index("--body-file") + 1]).read_text()
+            self.issues.append({"command": command[2], "args": command[3:], "body": body})
+            if command[2] == "create":
+                return done(f"https://github.com/o/r/issues/{500 + len(self.issues)}\n")
+            return done()
         if command[0].endswith("gh"):
             endpoint = command[2]
             if endpoint.endswith("/logs"):
@@ -244,8 +263,9 @@ def live(tmp_path):
     home = tmp_path / "home"
     policy = {**POLICY, "repository": "o/r", "gh": "gh", "studies": [], "health_checks": POLICY["health_checks"][:1]}
     mac = Mac(root)
+    mac.asked = []
     agent = dr.DashboardRefresh(root, home, policy, runner=mac, probe=mac.probe, clock=lambda: NOW,
-                                sleep=lambda seconds: None, uid=501)
+                                sleep=lambda seconds: None, uid=501, ask=lambda text, timeout: mac.asked.append(text) or "Ursache: X")
     return origin, root, mac, agent
 
 
@@ -274,6 +294,25 @@ def test_deploys_records_ci_and_restarts(live):
     saved = json.loads((root / "data/operational/dashboard_refresh.json").read_text())
     assert saved["decision"]["reason"] == "deploy" and saved["health_ok"] is True
     assert agent.run_once()["decision"]["action"] == "UP_TO_DATE"
+
+
+def test_acceptance_report_written_live_survives_the_deploy(live):
+    origin, root, mac, agent = live
+    report = "docs/TIM_72H_ACCEPTANCE_REPORT.md"
+    first = new_commit(origin, report, "old report\n")
+    assert agent.run_once()["deploy"]["result"] == "DEPLOYED"
+    assert git(root, "rev-parse", "HEAD") == first
+    (root / report).write_text("NO-GO 75%\n")  # the 72h monitor writes its result into the tracked file
+    target = new_commit(origin, "src/dashboard/page.py", "x\n")
+    later = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                clock=lambda: NOW + timedelta(hours=2), sleep=lambda seconds: None, uid=501)
+    status = later.run_once()
+    assert status["deploy"]["result"] == "DEPLOYED"
+    assert git(root, "rev-parse", "HEAD") == target
+    assert (root / report).read_text() == "NO-GO 75%\n"
+    assert status["deploy"]["preserved_files_restored"] == [report]
+    backups = list((later.state_dir / "generated-backup").rglob("TIM_72H_ACCEPTANCE_REPORT.md"))
+    assert [path.read_text() for path in backups] == ["NO-GO 75%\n"]
 
 
 def test_failed_restart_rolls_back_and_blocks_that_commit(live):
@@ -387,6 +426,24 @@ def test_mixed_commit_no_longer_holds_the_display_fixes_before_it(live):
     assert "Hält zurück: main.py" in status["decision"]["text"]
     assert git(root, "rev-parse", "HEAD") == display_fix
     assert mixed not in git(root, "rev-parse", "HEAD")
+
+
+def test_new_merges_do_not_restart_the_defer_clock(live):
+    origin, root, mac, agent = live
+    new_commit(origin, "src/dashboard/page.py", "a\n")
+    mac.ps = "/Users/timrunner/actions-runner/bin/Runner.Worker spawnclient\n"
+    assert agent.run_once()["decision"]["reason"] == "busy_deferred"
+    newer = new_commit(origin, "src/dashboard/page.py", "b\n")  # another merge, another CI job
+    at_15 = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                clock=lambda: NOW + timedelta(minutes=15), sleep=lambda seconds: None, uid=501)
+    waiting = at_15.run_once()
+    assert waiting["decision"]["reason"] == "busy_deferred"
+    assert waiting["decision"]["details"]["deferred_since_utc"] == dr.iso(NOW)
+    at_21 = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe,
+                                clock=lambda: NOW + timedelta(minutes=21), sleep=lambda seconds: None, uid=501)
+    status = at_21.run_once()
+    assert status["decision"]["action"] == "DEPLOY" and status["deploy"]["result"] == "DEPLOYED"
+    assert git(root, "rev-parse", "HEAD") == newer
 
 
 def test_ci_job_defers_then_deploys_and_display_only_shortens_the_interval(live):
@@ -507,8 +564,151 @@ def test_script_writes_a_failure_status_when_the_agent_crashes(tmp_path, monkeyp
     def boom(self, *, dry_run=False):
         raise RuntimeError("kaputt")
 
+    monkeypatch.setattr(script, "newer_agent", lambda agent: None)  # no fetch or gh against the real repo
     monkeypatch.setattr(script.DashboardRefresh, "run_once", boom)
     monkeypatch.setattr(script.DashboardRefresh, "write_json", lambda self, path, payload: written.update(payload))
     with pytest.raises(RuntimeError):
         script.main([])
     assert written["decision"]["reason"] == "agent_error" and written["health_ok"] is False
+
+
+# ---------- help requests: ask Claude and open one issue when the agent stays stuck ----------
+
+def agent_at(agent, mac, when):
+    return dr.DashboardRefresh(agent.root, agent.home, agent.policy, runner=mac, probe=mac.probe, clock=lambda: when,
+                               sleep=lambda seconds: None, uid=501, ask=agent.ask)
+
+
+def test_stuck_agent_asks_claude_once_and_opens_one_issue(live):
+    origin, root, mac, agent = live
+    (root / "main.py").write_text("print('local edit')\n")  # someone edits the live checkout
+    target = new_commit(origin, "src/dashboard/page.py", "x\n")
+    first = agent.run_once()
+    assert first["decision"]["reason"] == "local_changes"
+    assert first["help"]["result"] == "WATCHING" and first["help"]["ask_at_utc"] == "2026-10-24T14:00:00Z"
+    assert mac.issues == [] and mac.asked == []
+    assert agent_at(agent, mac, NOW + timedelta(minutes=110)).run_once()["help"]["result"] == "WATCHING"
+    later = agent_at(agent, mac, NOW + timedelta(minutes=125)).run_once()
+    assert later["help"]["result"] == "REQUESTED" and later["help"]["issue_url"].endswith("/501")
+    assert len(mac.asked) == 1 and '"local_changes"' in mac.asked[0] and "main.py" in mac.asked[0]
+    created = mac.issues[0]
+    assert created["command"] == "create" and "--label" in created["args"]
+    assert "lokale Änderungen" in " ".join(created["args"]) and "Ursache: X" in created["body"]
+    assert target[:12] in created["body"]
+    again = agent_at(agent, mac, NOW + timedelta(hours=3)).run_once()
+    assert again["help"]["result"] == "REQUESTED" and len(mac.issues) == 1 and len(mac.asked) == 1
+    reminded = agent_at(agent, mac, NOW + timedelta(hours=9)).run_once()
+    assert reminded["help"]["result"] == "REMINDED" and mac.issues[-1]["command"] == "comment"
+    assert mac.issues[-1]["args"][0] == "501"
+
+
+def test_normal_waiting_never_asks_and_a_fixed_problem_resets(live):
+    origin, root, mac, agent = live
+    new_commit(origin, "src/dashboard/page.py", "x\n")
+    mac.ci = {"status": "in_progress", "conclusion": None}
+    for minutes in (0, 200, 400):
+        status = agent_at(agent, mac, NOW + timedelta(minutes=minutes)).run_once()
+        assert status["decision"]["reason"] == "ci_pending" and status["help"] is None
+    assert mac.issues == [] and "stuck" not in json.loads(agent.state_path.read_text())
+
+
+def test_rolled_back_deploy_asks_at_once_and_claude_failure_still_opens_the_issue(live):
+    origin, root, mac, agent = live
+    new_commit(origin, "src/dashboard/page.py", "broken\n")
+    mac.health_ok = False
+
+    def no_claude(text, timeout):
+        raise FileNotFoundError("Claude Code CLI is unavailable")
+
+    broken = dr.DashboardRefresh(root, agent.home, agent.policy, runner=mac, probe=mac.probe, clock=lambda: NOW,
+                                 sleep=lambda seconds: None, uid=501, ask=no_claude)
+    status = broken.run_once()
+    assert status["deploy"]["result"] == "ROLLED_BACK"
+    assert status["help"]["result"] == "REQUESTED" and status["help"]["claude_asked"] is False
+    assert "Claude war nicht erreichbar" in mac.issues[0]["body"]
+    mac.health_ok = True
+    held = agent_at(agent, mac, NOW + timedelta(hours=3)).run_once()
+    assert held["decision"]["reason"] == "previous_attempt_failed"
+    assert held["help"]["result"] == "REQUESTED" and len(mac.issues) == 1  # same problem, no second issue
+
+
+def test_missing_label_falls_back_to_an_issue_without_label():
+    calls = []
+
+    def gh(argv, body):
+        calls.append(argv)
+        return (1, "") if "--label" in argv else (0, "https://github.com/o/r/issues/7\n")
+
+    state = {"stuck": {"key": "ci_failed:abc", "reason": "ci_failed", "target": "abc", "since_utc": "2026-10-24T08:00:00Z"}}
+    result = dr.dashboard_help.request_help(state=state, status={"decision": {"action": "HOLD"}}, history=[],
+                                            config=dr.dashboard_help.settings(POLICY), now=NOW,
+                                            ask=lambda text, timeout: "ok", gh=gh, repository="o/r")
+    assert result["issue_url"] == "https://github.com/o/r/issues/7" and len(calls) == 2
+    assert dr.dashboard_help.problem({"action": "HOLD", "reason": "paused"}, None, "t", dr.dashboard_help.DEFAULTS) is None
+    assert dr.dashboard_help.problem({"action": "HOLD", "reason": "study_protected_paths"}, None, "t",
+                                     dr.dashboard_help.DEFAULTS) is None
+
+
+def test_control_center_names_the_help_issue(tmp_path):
+    from src.dashboard.operations import _dashboard_refresh
+
+    fresh = dr.iso(datetime.now(timezone.utc) - timedelta(minutes=2))
+    status = {"checked_at_utc": fresh, "deployed_commit": "abcdef1234", "health_ok": True,
+              "decision": dr.Decision("HOLD", "local_changes", {"files": ["main.py"]}).to_dict(),
+              "help": {"result": "REQUESTED", "issue_url": "https://github.com/o/r/issues/501"}}
+    summary = _dashboard_refresh(status, tmp_path / "s.json")
+    assert "Hilfe bei Claude angefragt (Issue #501)" in summary["note"]
+    assert summary["help_issue"].endswith("/501")
+
+
+# ---------- self-update: the newest green agent code decides, not the old one ----------
+
+def load_script():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("dashboard_refresh_script_selfupdate", ROOT / "scripts/dashboard_refresh.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    return script
+
+
+def test_newer_green_agent_code_is_loaded_before_the_round(live):
+    import sys
+
+    import src.operational as package
+
+    origin, root, mac, agent = live
+    for relative in ("src/operational/dashboard_help.py", "src/operational/dashboard_refresh.py",
+                     "ops/dashboard_refresh/policy.json"):
+        new_commit(origin, relative, (ROOT / relative).read_text())
+    agent.git("fetch", "--quiet", "origin", "platform-main")
+    git(root, "checkout", "-q", "--detach", "origin/platform-main")
+    script = load_script()
+    assert script.newer_agent(agent) is None  # same code live: nothing to load
+    policy = json.loads((ROOT / "ops/dashboard_refresh/policy.json").read_text())
+    policy["max_defer_minutes"] = 7
+    target = new_commit(origin, "ops/dashboard_refresh/policy.json", json.dumps(policy))
+    mac.ci = {"status": "in_progress", "conclusion": None}
+    assert script.newer_agent(agent) is None  # not green yet: the old code keeps deciding
+    mac.ci = {"status": "completed", "conclusion": "success"}
+    newer = script.newer_agent(agent)
+    assert newer["commit"] == target and set(newer["files"]) == set(script.AGENT_FILES)
+    saved = {name: sys.modules.get(name) for name in ("src.operational.dashboard_refresh", "src.operational.dashboard_help")}
+    saved_attributes = {name: getattr(package, name, None) for name in ("dashboard_refresh", "dashboard_help")}
+    try:
+        loaded = script.load_agent(newer, agent.home)
+        assert loaded.policy["max_defer_minutes"] == 7
+        assert loaded.agent_source["commit"] == target
+        assert type(loaded).__module__ == "src.operational.dashboard_refresh" and type(loaded) is not dr.DashboardRefresh
+    finally:
+        for name, module in saved.items():
+            sys.modules[name] = module
+        for name, module in saved_attributes.items():
+            setattr(package, name, module)
+
+
+def test_red_or_diverged_target_is_not_loaded(live):
+    origin, root, mac, agent = live
+    new_commit(origin, "src/operational/dashboard_refresh.py", "raise SystemExit('bad')\n")
+    mac.ci = {"status": "completed", "conclusion": "failure"}
+    assert load_script().newer_agent(agent) is None

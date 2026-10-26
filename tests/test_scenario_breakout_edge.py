@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from src.orderflow_scenario.domain import MarketStateKind, ScenarioType
 from src.orderflow_scenario.engines.scenario_generator import LevelSet, ScenarioGenerator
 
-FLOW = SimpleNamespace(aggressive_side="BUYERS", absorption_hypothesis=None, open_interest_interpretation=None)
+FLOW = SimpleNamespace(aggressive_side="BUYERS", absorption_hypothesis=None, exhaustion_hypothesis=None, footprint={}, open_interest_interpretation=None)
 
 
 def _types(primary: MarketStateKind, last: str, high: str = "82060.88", low: str = "79220.74") -> set:

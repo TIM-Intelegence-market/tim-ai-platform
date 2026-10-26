@@ -19,7 +19,7 @@ STATUS_LABELS = {
     "REPLACED": ("unknown", "ersetzt"),
     "EXPIRED": ("unknown", "abgelaufen"),
 }
-EXIT_LABELS = {"STOP": "Stop", "BREAK_EVEN": "Break-even nach TP1", "TP3": "TP3", "TIMEOUT": f"nach {MAX_HOLD_HOURS} h", "INVALIDATION": "Schluss jenseits der Ungültigkeit"}
+EXIT_LABELS = {"STOP": "Stop", "BREAK_EVEN": "Break-even nach TP1", "BREAK_EVEN_COSTS": "Break-even + Kosten nach TP1", "COST_STOP": "Stop auf Break-even + Kosten (TIM-Urteil)", "TRAIL_STOP": "nachgezogener Stop (Swing)", "TP3": "TP3", "TIMEOUT": f"nach {MAX_HOLD_HOURS} h", "INVALIDATION": "Schluss jenseits der Ungültigkeit"}
 EVIDENCE_LABELS = {
     "INSUFFICIENT_EVIDENCE": ("unknown", "keine Evidenz"),
     "NEGATIVE_EVIDENCE": ("crit", "negativ belegt"),
@@ -74,6 +74,11 @@ def _row(entry: Mapping[str, Any]) -> str:
     detail = []
     if entry.get("filled_at"):
         detail.append(f"Einstieg {_local(entry['filled_at'])}")
+    if entry.get("tim_verdict"):
+        detail.append(f"TIM-Urteil {_local(entry.get('tim_verdict_at'))}: {entry['tim_verdict']} ({', '.join(entry.get('tim_verdict_reasons') or [])})")
+    if entry.get("cost_stop_at"):
+        kind = "hinter Swing" if entry.get("cost_stop_kind") == "SWING" else "auf BE + Kosten"
+        detail.append(f"Stop {kind} {_price(entry.get('cost_stop'))} ab {_local(entry['cost_stop_at'])}")
     if entry.get("exit_reason"):
         detail.append(f"Ausstieg {EXIT_LABELS.get(entry['exit_reason'], entry['exit_reason'])} {_local(entry.get('closed_at'))}")
     elif entry.get("closed_at"):

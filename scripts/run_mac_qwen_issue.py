@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.github_issue_pipeline import DirectoryLock, Pipeline, PipelineError, WorkerIdentity
-from src.local_first.github_issue_queue import build_task, is_hard_issue, select_ready_issue
+from src.local_first.github_issue_queue import LANES, build_task, is_hard_issue, select_ready_issue
 from src.local_first import issue_triage
 from src.local_first.issue_triage import IssueLedger, attach_worker_contract, contract_hash
 from src.local_first.patch_executor import redact_diagnostic_secrets
@@ -34,8 +34,12 @@ REPO = "TIM-Intelegence-market/tim-ai-platform"
 HARD_MODEL_DEFAULT = "qwen3-coder:30b"
 HARD_REQUEST_TIMEOUT = "900"
 REVIEW_MAX_DIFF_CHARS = 60_000
-WORKER_LOGIN = "apoman74-art"
-WORKER_BRANCH = re.compile(r"codex/issue-([1-9][0-9]*)-qwen")
+# Mac and tim-core-01 use this account, each with its own token (Barti, 25.10.2026).
+WORKER_LOGIN = "tim-issue-worker-t330"
+# The previous worker account. Its triage contracts and open PRs still count while they exist, so no issue is
+# blocked or started twice by the switch; nothing it authors is ever merged or closed by this worker.
+LEGACY_WORKER_LOGINS = ("apoman74-art",)
+WORKER_BRANCH = re.compile(r"codex/issue-([1-9][0-9]*)-qwen(-hard)?")
 SELF_UPDATED_EXIT = 3
 STALE_PR_SECONDS = 6 * 3600
 # Jobs that normally run for minutes; failing within seconds means no runner started them.
@@ -43,6 +47,23 @@ LONG_CHECKS = frozenset({"test", "TIM full suite"})
 NO_RUNNER_SECONDS = 15
 # The CI runner mac-mini-tim shares this Mac; a worker job beside a test job doubles its runtime.
 CI_JOB_PROCESS = "Runner.Worker"
+
+
+def worker_lane() -> str:
+    """TIM_WORKER_LANE: "hard" on tim-core-01, "easy" on the Mac beside it, "all" (default) for one worker."""
+    lane = os.environ.get("TIM_WORKER_LANE", "all").strip().lower() or "all"
+    if lane not in LANES:
+        raise PipelineError(f"unknown TIM_WORKER_LANE {lane!r}; expected one of {', '.join(LANES)}")
+    return lane
+
+
+def worker_branch(number: int, lane: str) -> str:
+    """The hard lane has its own branches, so two workers never maintain each other's PRs."""
+    return f"codex/issue-{number}-qwen" + ("-hard" if lane == "hard" else "")
+
+
+def worker_name(lane: str) -> str:
+    return "Server-Qwen-Worker" if lane == "hard" else "Mac-Qwen-Worker"
 
 
 def ci_job_running() -> bool:
@@ -371,13 +392,13 @@ def _ci_unavailable(pr: dict) -> bool:
 PR_FIELDS = "number,headRefName,headRefOid,baseRefName,mergeStateStatus,createdAt,author"
 
 
-def _list_worker_prs(pipeline: Pipeline) -> str:
+def _list_worker_prs(pipeline: Pipeline, author: str = WORKER_LOGIN) -> str:
     """The worker's open PRs, with their checks when its token may read them.
 
     The worker's fine-grained token cannot read commit statuses, and GitHub then refuses the whole
     query. Without the checks `_ci_unavailable` sees no failures, so such a PR is treated as before.
     """
-    base = ("pr", "list", "--state", "open", "--author", WORKER_LOGIN, "--limit", "100", "--json")
+    base = ("pr", "list", "--state", "open", "--author", author, "--limit", "100", "--json")
     try:
         return pipeline.github(*base, PR_FIELDS + ",statusCheckRollup")
     except PipelineError as exc:
@@ -387,9 +408,19 @@ def _list_worker_prs(pipeline: Pipeline) -> str:
 
 
 def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool,
-                         now: float | None = None) -> set[int]:
-    """Finish or retire the worker's own open PRs; return the issue numbers they cover."""
-    prs = json.loads(_list_worker_prs(pipeline))
+                         now: float | None = None, lane: str = "all") -> set[int]:
+    """Finish or retire this lane's open PRs; return the issue numbers all worker PRs cover.
+
+    PRs of the other lane are counted as covered, so neither worker starts an issue the other one
+    has a PR for, but they are left to the worker that opened them.
+    """
+    prs, seen = [], set()
+    for author in (WORKER_LOGIN, *LEGACY_WORKER_LOGINS):
+        listed = json.loads(_list_worker_prs(pipeline, author))
+        for pr in listed if isinstance(listed, list) else []:
+            if isinstance(pr, dict) and pr.get("number") not in seen:
+                seen.add(pr.get("number"))
+                prs.append(pr)
     covered: set[int] = set()
     now = time.time() if now is None else now
     for pr in prs if isinstance(prs, list) else []:
@@ -398,6 +429,9 @@ def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool
             continue
         issue = int(match.group(1))
         covered.add(issue)
+        own = str((pr.get("author") or {}).get("login", "")).casefold() == WORKER_LOGIN.casefold()
+        if not own or bool(match.group(2)) != (lane == "hard"):
+            continue
         number, status = str(pr.get("number")), pr.get("mergeStateStatus")
         try:
             created = calendar.timegm(time.strptime(str(pr.get("createdAt")), "%Y-%m-%dT%H:%M:%SZ"))
@@ -416,7 +450,7 @@ def _maintain_worker_prs(pipeline: Pipeline, ledger: IssueLedger, *, merge: bool
                 # No --delete-branch: on the detached worker checkout gh fails after closing, which
                 # skipped the attempt count below. The next attempt deletes the old branch anyway.
                 pipeline.github("pr", "close", number, "--comment",
-                                "Der Mac-Qwen-Worker schließt diesen PR und versucht es neu "
+                                f"Der {worker_name(lane)} schließt diesen PR und versucht es neu "
                                 f"(Zustand {status}).")
                 covered.discard(issue)
                 contract = (ledger.entry(issue).get("attempts") or {}).get("contract")
@@ -444,7 +478,8 @@ def _clear_leftovers(pipeline: Pipeline, state_dir: Path, number: int, branch: s
         pipeline.command("git", "push", "--no-verify", "origin", "--delete", branch)
 
 
-def _triage_one(pipeline: Pipeline, ledger: IssueLedger, issues: list, repo_root: Path) -> str:
+def _triage_one(pipeline: Pipeline, ledger: IssueLedger, issues: list, repo_root: Path,
+                lane: str = "all") -> str:
     candidates = issue_triage.triage_candidates(issues, ledger)
     if not candidates:
         return "No eligible Mac Qwen issue; nothing left to triage."
@@ -453,7 +488,8 @@ def _triage_one(pipeline: Pipeline, ledger: IssueLedger, issues: list, repo_root
     issue = candidates[0]
     number = issue["number"]
     # Files the Mac model cannot see in full are only accepted while the server model answers.
-    allow_hard = _hard_backend() is not None
+    # With lane "easy" the server worker takes agent:qwen-hard, even when this Mac has no tunnel.
+    allow_hard = lane == "easy" or _hard_backend() is not None
     try:
         raw = issue_triage.ask_claude(issue_triage.triage_prompt(issue, allow_hard=allow_hard), repo_root)
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
@@ -500,11 +536,11 @@ def _create_subtasks(pipeline: Pipeline, ledger: IssueLedger, parent: dict, resu
 
 
 def _select(pipeline: Pipeline, ledger: IssueLedger, issues: list, *, pilot_issue: int | None,
-            skip: set[int], dry_run: bool) -> tuple[dict, dict] | None:
+            skip: set[int], dry_run: bool, lane: str = "all") -> tuple[dict, dict] | None:
     """Pick the next workable issue; a broken contract or used-up attempts never block the queue."""
     hard_ready: bool | None = None
     while True:
-        issue = select_ready_issue(issues, only_number=pilot_issue, skip=skip)
+        issue = select_ready_issue(issues, only_number=pilot_issue, skip=skip, lane=lane)
         if issue is None:
             return None
         number = issue["number"]
@@ -535,6 +571,7 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
                 codex_fallback: bool, merge: bool, dry_run: bool = False,
                 claude_fallback: bool = False, triage: bool = False,
                 update: bool = False) -> str:
+    lane = worker_lane()
     pipeline.verify_worker_identity()
     if pipeline.repository_slug() != REPO:
         raise PipelineError("unexpected TIM repository")
@@ -546,27 +583,35 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
                                        "number,title,body,labels,updatedAt,url,state,author,comments"))
     if not isinstance(issues, list):
         raise PipelineError("GitHub issue list is invalid")
-    issues = [attach_worker_contract(issue, WORKER_LOGIN) if isinstance(issue, dict) else issue
+    issues = [attach_worker_contract(issue, (WORKER_LOGIN, *LEGACY_WORKER_LOGINS)) if isinstance(issue, dict) else issue
               for issue in issues]
     ledger = IssueLedger(state_dir / "issue-ledger.json")
     ledger.reconcile(issues)
-    skip = set() if dry_run else _maintain_worker_prs(pipeline, ledger, merge=merge)
+    skip = set() if dry_run else _maintain_worker_prs(pipeline, ledger, merge=merge, lane=lane)
     if not dry_run and ci_job_running():
-        return "CI job running on this Mac; issue work paused until it ends."
-    selected =_select(pipeline, ledger, issues, pilot_issue=pilot_issue, skip=skip, dry_run=dry_run)
+        return "CI job running on this machine; issue work paused until it ends."
+    selected = _select(pipeline, ledger, issues, pilot_issue=pilot_issue, skip=skip, dry_run=dry_run,
+                       lane=lane)
     if selected is None:
-        if triage and pilot_issue is None and not dry_run:
-            return _triage_one(pipeline, ledger, issues, pipeline.repository)
-        return "No eligible Mac Qwen issue."
+        # Triage needs Claude Code, which only the Mac has; the hard lane never triages.
+        if triage and lane != "hard" and pilot_issue is None and not dry_run:
+            return _triage_one(pipeline, ledger, issues, pipeline.repository, lane=lane)
+        if lane == "hard":
+            if not dry_run and _hard_backend() is None:
+                # The server worker has nothing else to do; an idle exit would hide a broken model setup.
+                raise PipelineError("server model unavailable (TIM_QWEN_HARD_URL, TIM_QWEN_HARD_MODEL)")
+            return "No eligible Qwen issue (lane hard)."
+        # The Mac dashboard counts idle polls by this prefix.
+        return "No eligible Mac Qwen issue" + (" (lane easy)." if lane == "easy" else ".")
     issue, task = selected
     number = task["issue_number"]
     if dry_run:
-        return f"Eligible Mac Qwen issue #{number}: {issue.get('title', '')}"
+        return f"Eligible Qwen issue #{number} (lane {lane}): {issue.get('title', '')}"
     base = pipeline.default_base_ref()
     if base != "origin/platform-main":
         raise PipelineError("unexpected TIM base branch")
-    branch = f"codex/issue-{number}-qwen"
-    worktree = state_dir / "worktrees" / f"issue-{number}-qwen"
+    branch = worker_branch(number, lane)
+    worktree = state_dir / "worktrees" / branch.removeprefix("codex/")
     digest = contract_hash(task)
     previous_attempts = copy.deepcopy(ledger.entry(number).get("attempts"))
     attempt = ledger.start_attempt(number, digest)
@@ -583,11 +628,13 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
         pipeline.worktree_git(worktree, gitdir, "add", "--", *paths)
         pipeline.worktree_git(worktree, gitdir, "-c", f"user.name={WORKER_LOGIN}",
                               "-c", f"user.email={WORKER_LOGIN}@users.noreply.github.com",
-                              "commit", "--no-verify", "-m", f"fix(issue-{number}): Mac Qwen repair")
+                              "commit", "--no-verify", "-m",
+                              f"fix(issue-{number}): {'Server' if lane == 'hard' else 'Mac'} Qwen repair")
         head = pipeline.worktree_git(worktree, gitdir, "rev-parse", "HEAD")
         pipeline.worktree_git(worktree, gitdir, "push", "--no-verify", "origin", branch)
         provider = outcome["result"].get("fallback_provider") or outcome["result"].get("provider")
-        body_lines = [f"Closes #{number}", "", "Mac Qwen issue repair.", "",
+        body_lines = [f"Closes #{number}", "",
+                      "Server Qwen issue repair (tim-core-01)." if lane == "hard" else "Mac Qwen issue repair.", "",
                       f"Local acceptance: {outcome['acceptance']['status']}",
                       f"Implementation provider: {provider}"]
         if outcome.get("model"):

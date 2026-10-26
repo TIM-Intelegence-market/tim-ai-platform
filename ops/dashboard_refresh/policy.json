@@ -11,6 +11,19 @@
   "generated_tracked_files": [
     "docs/TIM_V1_LIVE_STATUS.md"
   ],
+  "preserved_tracked_files": [
+    "docs/TIM_72H_ACCEPTANCE_REPORT.md"
+  ],
+  "preserved_note": "Results the live system writes into tracked files (the 72h acceptance monitor). They do not block a deploy; the agent backs them up, checks out the new commit and writes the live content back.",
+  "help": {
+    "enabled": true,
+    "after_minutes": 120,
+    "remind_hours": 6,
+    "reasons": ["fetch_failed", "not_fast_forward", "previous_attempt_failed", "ci_failed", "local_changes"],
+    "labels": ["dashboard-agent"],
+    "claude_timeout_seconds": 180
+  },
+  "help_note": "When the same reason holds for after_minutes (a rolled-back deploy at once), the agent asks the Claude Code CLI without tools for a diagnosis and opens one GitHub issue per reason and target (reminder comment at most every remind_hours). It never changes its rules or ~/TIM-live because of the answer. Waiting on purpose (restart interval, CI job, study, campaign, PAUSE) is not a problem.",
   "busy_process_patterns": {
     "db_backup": "tim_db_backup.py|pg_dump"
   },

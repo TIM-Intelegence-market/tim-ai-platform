@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Version | 1.0 |
-| Status | **FREIGEGEBEN** (Uzi, 2026-10-25, 17:02 Ortszeit). Nichts ist gerechnet. Änderungen nur noch über das Änderungsprotokoll unten, nach dem ersten Trainingslauf nur noch strengere. Die Varianten werden erst nach dem Machbarkeits-Gate (6.1) ins Register eingetragen. |
+| Status | **BEENDET: NICHT TESTBAR** (Machbarkeits-Gate 6.1, 2026-10-25, 17:20 Ortszeit). Keine Variante erreicht hochgerechnet 1 700 Trades (beste ≈ 900), Bericht `../reports/s4_count_2026-10-25T1620Z.md`. Kein Register-Eintrag, kein Trainingslauf, kein Holdout. Freigegeben war Version 1.0 (Uzi, 2026-10-25, 17:02 Ortszeit). |
 | Erstellt | 2026-10-25, Masterprompt Phase D/E (Trading-Forschungsziel B) |
 | Protokollbezug | `../PROTOKOLL.md` Version 1.1: Datensplit 3.2, Backtest 4.1–4.3, Kosten 4.4, Zufallsvergleich 7.1, Holm 7.2, Robustheit 7.3 (Walk-Forward mit `known_at`), Ablauf 8, Stoppregeln 10 |
 | Kostenmodell | ausschließlich `CostModel` / `BASE_COSTS` / `STRESS_COSTS` aus `src/research_lab/protocol.py` (kein eigenes Modell) |
@@ -317,8 +317,8 @@ Zusätzlich beschreibend: Kaufen und Halten je Instrument.
 | O1 | ~~Archivbeginn ETH/SOL~~ erledigt 2026-10-25: drei Instrumente, SOL ab 2020-10 (Abschnitt 3) | Mac |
 | O2 | ~~Lesart des 75-%-Kriteriums (K6)~~ erledigt: streng, Untergrenze ≥ 75 % (Uzi per Entscheidungskarte, 25.10.2026) | Uzi |
 | O3 | ~~Unabhängige Methodenprüfung~~ zwei Runden eingearbeitet (0.2, 0.5; zweite Runde mit anderem Modell ohne Vorwissen). Eine Prüfung durch Chris oder Codex bleibt erwünscht, ist aber kein Gate | erledigt |
-| O5 | Machbarkeits-Gate (6.1): ETH/SOL laden und Zähllauf auf dem Mac | Uzis Ja für den Mac-Lauf |
-| O4 | ~~Freigabe Version 1.0~~ erledigt 2026-10-25 (Uzi). Registrierung der Varianten, die das Gate bestehen, über `../PROTOKOLL.md` Änderungsprotokoll | nach O5 |
+| O5 | ~~Machbarkeits-Gate (6.1)~~ erledigt 2026-10-25: keine Variante besteht, S4 nicht testbar (`../reports/s4_count_2026-10-25T1620Z.md`) | erledigt |
+| O4 | ~~Freigabe Version 1.0~~ erledigt 2026-10-25 (Uzi). Registrierung entfällt, weil keine Variante das Gate besteht | entfällt |
 
 ## Änderungsprotokoll
 
@@ -330,3 +330,7 @@ Zusätzlich beschreibend: Kaufen und Halten je Instrument.
 | 2026-10-25 | 0.4 | Archivbeginn ETH/SOL eingetragen, Studie mit drei Instrumenten festgelegt (vor jeder Auswertung) | O1 | nur Dateiexistenz 2019-09 bis 2020-10 und 2024-12, eine SOL-Probedatei 2020-09 (Kerzenzahl, Prüfsumme) |
 | 2026-10-25 | 0.5 | Zweite Prüfung eingearbeitet: Machbarkeits-Gate vor Registrierung, Mindesttrades aus K3 abgeleitet (1 700 / 1 950), Untergrenze auch in Training/Validierung, K6 mit zwei Verfahren (das strengere gilt), Designeffekt 2,5, gepoolter monatsblockweiser Zufallsvergleich mit Filtern und ATR-Stops, Kostentor Stop ≥ 1,0 % (passt zu K7), Treffer = Ziel erreicht, Gap-Signale als Verlust, K10 mit Mindestanteil, H2/H3/H4/H5 präzisiert, K4 nach Ausstiegszeit, Auswahl nach E[R]; m im Kopf jetzt „alle Registereinträge“ | Review O3 (zweite Runde) | unverändert, keine S4-Ergebnisse |
 | 2026-10-25 | 1.0 | Freigegeben, Inhalt wie 0.5 | Freigabe durch Uzi | unverändert, keine S4-Ergebnisse, kein Holdout |
+| 2026-10-25 | 1.0 | **Klarstellung (strenger), P1:** Ein Signal, dessen Einstiegskerze schon am oder jenseits des Stops öffnet, wird als voller Verlust gebucht: −1 R minus Stopfall-Kosten (`BASE_COSTS`), R = Abstand Schluss(t) zum Stop (`run_backtest(..., gap_entry_as_loss=True)`, Grund `stop_before_entry`). Bei H4 gilt für „Hoch vor Tief“ das früheste höchste Hoch und das späteste tiefste Tief (Short spiegelbildlich) | Umsetzung P1 | unverändert, keine S4-Ergebnisse |
+| 2026-10-25 | 1.0 | **Machbarkeits-Gate (6.1) gelaufen, Studie beendet:** keine der 10 Varianten erreicht hochgerechnet 1 700 Trades (Untergrenze, beste S4-H1-N24 ≈ 902). S4 ist mit der strengen Lesart nicht testbar; kein Register-Eintrag, kein Trainingslauf, kein Holdout. Keine Lockerung in diesem Entwurf | Abschnitt 6.1, Zähllauf Commit `c0472b3` | nur Signalzahlen und Kostentor-Ausfälle Training/Validierung (ergebnisblind), keine Ausstiege, kein R, keine Trefferquote, kein Holdout |
+| 2026-10-25 | 1.0 | **Erkundung nach Studienende (nicht bestätigend):** auf Uzis Wunsch Trefferquote und E[R] der 10 Varianten auf 2020–2024 gerechnet (`../reports/s4_explore_2026-10-25T1630Z.md`): 38–53 %, alle E[R] < 0. Keine Änderung an Regeln oder Urteil | Uzi, „go“ 17:28 Ortszeit | Training und Validierung aller Varianten jetzt gesehen; Holdout unberührt |
+| 2026-10-25 | 1.0 | **Erkundung 95 % (nicht bestätigend):** Uzi will das Ziel auf 95 % heben. Raster Ziel 0,05–0,75 R × Stop 1×/2×/4× mit den eingefrorenen S4-Einstiegen (`../reports/s4_hitrate95_2026-10-25T1733Z.md`): maximal 92 %, alle 210 Zellen E[R] < 0. Keine Änderung an S4; ein 95-%-Ziel wäre eine neue Studie | Uzi, 18:19 Ortszeit | 2020–2024 schon gesehen; Holdout unberührt |

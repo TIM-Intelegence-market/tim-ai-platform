@@ -48,7 +48,7 @@ TRIAGE_SKIP_LABELS = REJECT_LABELS | {
     "external-action", "status:external-action", "archive", "duplicate", "agent:pilot",
     LABEL_READY, LABEL_HARD, LABEL_NOT_SUITABLE, LABEL_BLOCKED, LABEL_SPLIT,
 }
-DEFAULT_TRUSTED_AUTHORS = ("uezeyiraydin-cell", "apoman74-art")
+DEFAULT_TRUSTED_AUTHORS = ("uezeyiraydin-cell", "tim-issue-worker-t330")
 MAX_TRIAGE_CALLS_PER_VERSION = 2
 MAX_TRIAGE_CALLS_PER_DAY = 30
 MAX_ATTEMPTS_PER_CONTRACT = 2
@@ -84,11 +84,13 @@ def _label_names(issue: dict[str, Any]) -> set[str]:
             for item in issue.get("labels") or [] if isinstance(item, (dict, str))}
 
 
-def attach_worker_contract(issue: dict[str, Any], worker_login: str) -> dict[str, Any]:
+def attach_worker_contract(issue: dict[str, Any], worker_login: str | tuple[str, ...]) -> dict[str, Any]:
     """Use the newest triage contract the worker itself posted when the body has none.
 
-    Only comments by the worker login count, so nobody else can inject a contract by commenting.
+    Only comments by the worker login (or one of the given worker logins) count, so nobody else can
+    inject a contract by commenting.
     """
+    logins = {worker_login.casefold()} if isinstance(worker_login, str) else {item.casefold() for item in worker_login}
     body = issue.get("body") if isinstance(issue.get("body"), str) else ""
     if TASK_BLOCK.search(body):
         return issue
@@ -98,7 +100,7 @@ def attach_worker_contract(issue: dict[str, Any], worker_login: str) -> dict[str
         author = comment.get("author")
         login = author.get("login") if isinstance(author, dict) else author
         text = comment.get("body")
-        if (isinstance(login, str) and login.casefold() == worker_login.casefold()
+        if (isinstance(login, str) and login.casefold() in logins
                 and isinstance(text, str) and TRIAGE_MARKER in text and TASK_BLOCK.search(text)):
             return {**issue, "body": f"{body}\n\n{text}"}
     return issue

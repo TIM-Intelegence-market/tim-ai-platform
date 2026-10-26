@@ -1,0 +1,39 @@
+# GitHub Actions runner for TIM CI on tim-core-01 (docs/CI_SELF_HOSTED_RUNNER.md). Runs PR code, so it may
+# only run while the live TIM services are stopped: Conflicts= makes systemd stop them when the runner starts
+# and stop the runner when one of them starts. Switch with `sudo tim-mode ci|live`. No [Install] section, so
+# the server always boots into live mode.
+[Unit]
+Description=TIM CI runner (GitHub Actions, CI mode only)
+Wants=network-online.target
+After=network-online.target tim-ci-postgres.service
+Requires=tim-ci-postgres.service
+Conflicts=tim-runtime.service tim-watchdog.service timec.service
+
+[Service]
+Type=simple
+User=timrunner
+Group=timrunner
+WorkingDirectory=/srv/ci/actions-runner
+ExecStart=/srv/ci/actions-runner/run.sh
+Environment=HOME=/srv/ci
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=LC_ALL=C.UTF-8
+# Stop the whole job tree, not just run.sh: nothing a PR test started in the background may keep running
+# once the live services are back (tim-mode live also checks that no timrunner process is left).
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+Restart=on-failure
+RestartSec=15
+# Limits for the whole job tree, so ollama, caddy and PostgreSQL 18 keep enough room.
+Nice=10
+CPUQuota=600%
+MemoryMax=16G
+# PR code sees no TIM data or secrets, no admin home, no production PostgreSQL socket, config or data,
+# and cannot write outside /srv/ci. The leading - skips paths that do not exist on this host.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/srv/ci
+InaccessiblePaths=-/opt/tim -/etc/tim -/srv/tim -/var/lib/tim -/var/lib/tim-agent -/srv/postgresql -/var/lib/postgresql -/etc/postgresql -/run/postgresql -/var/backups

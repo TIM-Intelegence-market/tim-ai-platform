@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -29,6 +31,63 @@ from src.operational.dashboard_refresh import DashboardRefresh, iso, load_policy
 from src.v2_completion.mac_live import render_plist  # noqa: E402
 
 LABEL = "com.tim.dashboard-refresh"
+DEFAULT_POLICY = ROOT / "ops/dashboard_refresh/policy.json"
+# Loaded in this order; a module may import the ones before it.
+AGENT_FILES = ("src/operational/dashboard_help.py", "src/operational/dashboard_refresh.py",
+               "ops/dashboard_refresh/policy.json")
+
+
+def newer_agent(agent: DashboardRefresh) -> dict | None:
+    """Agent code and rules of the newest CI-green platform-main commit, when they differ from the live ones.
+
+    The old code must not decide whether its own fix may go live (on 25.10. and 26.10. it held because of
+    problems the next commit had fixed). The new code is trusted exactly as far as a deploy trusts it:
+    a fast-forward of the live checkout on platform-main with a green CI job ``test``.
+    """
+    if agent.git("fetch", "--quiet", "origin", agent.branch, timeout=180).returncode != 0:
+        return None
+    head = agent.git("rev-parse", "HEAD").stdout.strip()
+    target = agent.git("rev-parse", f"origin/{agent.branch}").stdout.strip()
+    if not head or not target or head == target:
+        return None
+    if agent.git("merge-base", "--is-ancestor", head, target).returncode != 0:
+        return None
+    if agent.git("diff", "--quiet", head, target, "--", *AGENT_FILES).returncode == 0:
+        return None
+    ci = agent.ci_result(target)
+    if not ci or ci.get("status") != "completed" or ci.get("conclusion") != "success":
+        return None
+    folder = agent.state_dir / "agent-next"
+    shutil.rmtree(folder, ignore_errors=True)
+    files = {}
+    for relative in AGENT_FILES:
+        shown = agent.git("show", f"{target}:{relative}")
+        if shown.returncode != 0:
+            continue
+        path = folder / target[:12] / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(shown.stdout, encoding="utf-8")
+        files[relative] = path
+    if "src/operational/dashboard_refresh.py" not in files or "ops/dashboard_refresh/policy.json" not in files:
+        return None
+    return {"commit": target, "files": files}
+
+
+def load_agent(newer: dict, home: Path) -> DashboardRefresh:
+    module = None
+    for relative, path in newer["files"].items():
+        if not relative.endswith(".py"):
+            continue
+        name = relative[:-3].replace("/", ".")
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        parent, _, child = name.rpartition(".")
+        setattr(sys.modules[parent], child, module)
+    agent = module.DashboardRefresh(ROOT, home, module.load_policy(newer["files"]["ops/dashboard_refresh/policy.json"]))
+    agent.agent_source = {"commit": newer["commit"], "files": sorted(newer["files"])}
+    return agent
 
 
 def install(home: Path) -> int:
@@ -65,6 +124,13 @@ def main(argv: list[str] | None = None) -> int:
         except BlockingIOError:
             print(json.dumps({"result": "ALREADY_RUNNING"}))
             return 0
+        if args.policy == DEFAULT_POLICY:
+            try:
+                newer = newer_agent(agent)
+                if newer:
+                    agent = load_agent(newer, home)
+            except Exception as exc:  # a broken new version must not stop the working one
+                agent.agent_source = {"error": f"{type(exc).__name__}: {exc}"[:300]}
         try:
             status = agent.run_once(dry_run=args.dry_run)
         except Exception as exc:  # the Control Center must see a crash, not an old green status

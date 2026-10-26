@@ -79,10 +79,38 @@ einem Absturz wird verworfen und vermerkt. Tests: `tests/test_journal_log.py`,
 `gross_r` ist das R-Vielfache vor Kosten. `fee_r` und `slippage_r` folgen Protokoll 1.1 §4.3/§4.4
 (`cost_model_version = protocol/1.1`): Gebühr 0,05 % und Slippage 0,03 % je Seite auf den Einstieg (volle
 Menge), auf jedes Drittel an seinem Ziel und auf den Rest beim Schlusskurs; 0,05 % Slippage, wenn der
-Schluss eine Stop-Ausführung war (STOP, BREAK_EVEN). Kosten in R = Kosten in Preis / Stopabstand, deshalb
+Schluss eine Stop-Ausführung war (STOP, BREAK_EVEN, BREAK_EVEN_COSTS, COST_STOP). Kosten in R = Kosten in Preis / Stopabstand, deshalb
 treffen enge Stops härter. `net_r = gross_r − fee_r − slippage_r`. Funding wird nicht gebucht (Spot-Kerzen,
 keine Perpetual-Position). Nicht gefüllte Pläne tragen keine Kosten. Die Konfigurationswerte des
 Orderflow-Moduls (6/2/2 bp) werden bewusst nicht verwendet, damit Netto-R mit dem Register vergleichbar bleibt.
+
+## Stop auf Break-even plus Kosten (`be_cost/1`)
+
+Regel von Uzi (25.10.2026), gilt für jeden Plan, der ab dann ins Journal kommt (`stop_rule = be_cost/1`);
+ältere Einträge ohne `stop_rule` behalten die alte Regel (Stop nach TP1 auf den Einstieg). Der neue Stop ist
+der Preis, bei dem der Rest der Position nach Protokoll-1.1-Kosten genau 0 R bringt
+(`cost_stop_level`: LONG `Fill · (1 + 0,05 % + 0,03 %) / (1 − 0,05 % − 0,05 %)`, SHORT gespiegelt, auf den
+Tick weg vom Einstieg gerundet; bei BTC ≈ 0,18 % über dem Einstieg).
+
+- Nach TP1 zieht der Stop auf diesen Preis (Ausstieg `BREAK_EVEN_COSTS`). Liegt er wegen eines sehr engen
+  Stops jenseits von TP1, bleibt es beim Einstieg (`BREAK_EVEN`).
+- Vor TP1 beurteilt TIM den laufenden Trade selbst, an jedem 30m-Schluss aus seinem Chartmodell
+  (`judge_trades`, `verdict/1`, kein fester Timer). Voraussetzung: der 30m-Schluss liegt mindestens
+  `COST_STOP_MIN_GAP_R` = 0,1 R jenseits des Kostenpreises, sonst HALTEN (`price_not_beyond_cost_level`).
+  Dann SICHERN, wenn die Struktur seit dem Einstieg die Richtung bestätigt hat (BOS/MSS in Trade-Richtung,
+  `structure_confirms_*`) oder die These schwächer wird (Strukturbruch dagegen `structure_against_*`,
+  Marktzustand dagegen `market_state_against`, bestätigtes Gegen-Szenario `opposite_scenario_*`) oder das
+  Sicherheitsnetz greift (`FALLBACK_HOURS` = 4 h im Trade oder `FALLBACK_MFE_R` = 0,75 R gesehen, Uzis Wahl
+  „Zeit oder R, was zuerst“); sonst HALTEN (`thesis_intact`). Urteil, Gründe und Zeitpunkt stehen am Eintrag (`tim_verdict`,
+  `tim_verdict_reasons`, `tim_verdict_at`); SICHERN setzt `cost_stop`/`cost_stop_at`, gültig ab der nächsten
+  1m-Kerze, Ausstieg `COST_STOP`. Das Urteil wird je 30m-Schluss erneuert, bis der Stop gezogen ist.
+- Sobald der Stop geschützt ist (nach TP1 oder nach SICHERN), zieht TIM ihn wie ein Orderflow-Trader
+  hinter die letzte bestätigte 30m-Swing-Marke seit dem Einstieg nach (`swing_stop`: Swing-Tief für Long,
+  Swing-Hoch für Short, Pivotbreite wie `chart_model.PIVOT_WINDOW`), nur weiter in den Gewinn, und nur wenn
+  der 30m-Schluss mindestens 0,1 R jenseits der Marke liegt (`cost_stop_kind = SWING`, Ausstieg
+  `TRAIL_STOP`). Ein Stop wandert nie zurück.
+
+Nur Papier; die Regel ändert keine Entscheidungsfelder und keine Kostensätze.
 
 ## Ausführbarkeit (Abnahme §2, Teil 1)
 

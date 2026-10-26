@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from src.dashboard import plan_journal as pj
+from src.dashboard.chart_model import _time
 from src.dashboard.pages.plan_journal import _plan_journal_page, journal_note
 from src.research_lab.setup_evidence import DEFAULT_REGISTER_PATH, EVIDENCE_MAPPING_VERSION
 
@@ -44,7 +45,9 @@ def _journal_with(plan: dict) -> dict:
 
 
 def test_long_fill_then_tp1_then_break_even_books_a_third_of_1_5_r() -> None:
+    # Entries recorded before be_cost/1 (no stop_rule) keep the old rule: stop to the entry after TP1.
     journal = _journal_with(_plan())
+    journal["entries"][0].pop("stop_rule")
     candles = [_m(0, 100.2, 100.8), _m(1, 99.9, 100.3), _m(2, 100.2, 101.6), _m(3, 99.95, 100.4)]
     pj.evaluate(journal, candles, [], T0 + timedelta(minutes=5))
     entry = journal["entries"][0]
@@ -269,10 +272,12 @@ def test_summary_counts_decisions_and_names_the_result_basis() -> None:
 # --- costs (research protocol 1.1, section 4.3/4.4) -------------------------
 
 
-def _closed(direction: str, candles: list[dict], entry: float = 100.0, stop: float | None = None) -> dict:
+def _closed(direction: str, candles: list[dict], entry: float = 100.0, stop: float | None = None, legacy: bool = False) -> dict:
     stop = stop if stop is not None else (99.0 if direction == "LONG" else 101.0)
     invalid = 98.0 if direction == "LONG" else 102.0
     journal = _journal_with(_plan(direction, entry=entry, stop=stop, invalid=invalid))
+    if legacy:
+        journal["entries"][0].pop("stop_rule")
     pj.evaluate(journal, candles, [], T0 + timedelta(minutes=len(candles) + 1))
     assert journal["entries"][0]["status"] == "CLOSED"
     return journal["entries"][0]
@@ -304,7 +309,7 @@ def test_three_targets_charge_each_third_once_and_sum_to_one_exit() -> None:
 
 
 def test_break_even_after_tp1_uses_stop_slippage_on_the_rest() -> None:
-    entry = _closed("LONG", [_m(0, 100.2, 100.8), _m(1, 99.9, 100.3), _m(2, 100.2, 101.6), _m(3, 99.95, 100.4)])
+    entry = _closed("LONG", [_m(0, 100.2, 100.8), _m(1, 99.9, 100.3), _m(2, 100.2, 101.6), _m(3, 99.95, 100.4)], legacy=True)
     assert entry["exit_reason"] == "BREAK_EVEN" and entry["gross_r"] == 0.5
     rest = 2 / 3
     assert entry["slippage_r"] == round(0.0003 * 100 + 0.0003 * 101.5 / 3 + 0.0005 * 100 * rest, 4)
@@ -613,3 +618,198 @@ def test_resting_limits_and_short_mirror_are_armed_or_wait_as_expected() -> None
     assert pj._arming({**_plan("SHORT", entry=100.0, stop=101.0, invalid=100.5), "close_at_record": 100.5}) == {"armed": False}
     assert pj._arming({**_plan("SHORT", entry=100.0, stop=101.0, invalid=100.5), "close_at_record": 99.5}) == {"armed": True}
     assert pj._arming(_plan("LONG")) == {}  # recorded without a close: legacy behaviour
+
+
+# Stop rule be_cost/1 (Uzi, 25.10.2026): stop to break-even plus costs after TP1 and after some time in the trade.
+
+def _rest_net_r(entry: dict, level: float) -> float:
+    """Net R of the whole position closed at level on a stop, before any target."""
+    risk = abs(entry["entry"] - entry["stop"])
+    fill = entry.get("fill_price") or entry["entry"]
+    move = level - fill if entry["direction"] == "LONG" else fill - level
+    costs = (pj.FEE_PER_SIDE + pj.SLIPPAGE_PER_SIDE) * fill + (pj.FEE_PER_SIDE + pj.STOP_SLIPPAGE) * level
+    return (move - costs) / risk
+
+
+def test_new_entries_carry_the_cost_stop_rule() -> None:
+    assert _journal_with(_plan())["entries"][0]["stop_rule"] == pj.STOP_RULE_COST
+
+
+def test_cost_stop_level_closes_the_rest_at_net_zero_long_and_short() -> None:
+    for direction, stop in (("LONG", 99.0), ("SHORT", 101.0)):
+        entry = _journal_with(_plan(direction, stop=stop))["entries"][0]
+        entry["fill_price"] = 100.0
+        level = pj.cost_stop_level(entry)
+        assert (level > 100.0) if direction == "LONG" else (level < 100.0)
+        assert 0 <= _rest_net_r(entry, level) < 0.01  # covers the costs, rounded to the tick against us
+    long_entry = _journal_with(_plan())["entries"][0]
+    assert pj.cost_stop_level(long_entry) == 100.19  # 100 * 1.0008 / 0.999 = 100.1802 -> next tick up
+
+
+def test_after_tp1_the_stop_sits_at_break_even_plus_costs() -> None:
+    entry = _closed("LONG", [_m(0, 100.2, 100.8), _m(1, 99.9, 100.3), _m(2, 100.2, 101.6), _m(3, 99.95, 100.4)])
+    assert entry["exit_reason"] == "BREAK_EVEN_COSTS" and entry["exit_price"] == 100.19
+    assert entry["gross_r"] == round(1.5 / 3 + 2 / 3 * 0.19, 3)
+    assert entry["net_r"] > 0
+    # The same path under the old rule ends below zero after costs.
+    old = _closed("LONG", [_m(0, 100.2, 100.8), _m(1, 99.9, 100.3), _m(2, 100.2, 101.6), _m(3, 99.95, 100.4)], legacy=True)
+    assert entry["net_r"] > old["net_r"]
+
+
+def _c30(k: int, low: float, high: float, close: float, start: datetime = T0) -> dict:
+    opened = start + timedelta(minutes=30 * k)
+    return {"timeframe": "30m", "open_time": opened, "close_time": opened + timedelta(minutes=29, seconds=59.999),
+            "open": close, "high": high, "low": low, "close": close, "volume": 1.0}
+
+
+def _filled(direction: str = "LONG", mfe: float = 0.0) -> dict:
+    journal = _journal_with(_plan(direction, stop=99.0 if direction == "LONG" else 101.0, invalid=98.0 if direction == "LONG" else 102.0))
+    fill = _m(0, 99.9, 100.3) if direction == "LONG" else _m(0, 99.7, 100.1)
+    pj.evaluate(journal, [fill], [], T0 + timedelta(minutes=2))
+    entry = journal["entries"][0]
+    assert entry["status"] == "FILLED"
+    entry["max_favorable_r"] = mfe
+    return journal
+
+
+QUIET = {"bos": [], "market_state": "RANGE", "scenarios": []}
+LATER = T0 + timedelta(minutes=30)
+
+
+def test_verdict_halten_while_the_thesis_is_intact_and_price_is_not_far_enough() -> None:
+    entry = _filled()["entries"][0]
+    assert pj.judge_trade(entry, QUIET, 100.25, LATER) == ("HALTEN", ["price_not_beyond_cost_level"])  # 100.25 < 100.19 + 0.1 R
+    assert pj.judge_trade(entry, QUIET, 100.5, LATER) == ("HALTEN", ["thesis_intact"])
+
+
+def test_verdict_sichern_on_structure_market_state_opposite_scenario_and_fallbacks() -> None:
+    entry = _filled()["entries"][0]
+    after, before = (T0 + timedelta(minutes=10)).isoformat(), (T0 - timedelta(hours=1)).isoformat()
+    bos = {"bos": [{"kind": "BOS", "direction": "UP", "break_time": after}]}
+    assert pj.judge_trade(entry, {**QUIET, **bos}, 100.5, LATER) == ("SICHERN", ["structure_confirms_bos"])
+    old = {"bos": [{"kind": "BOS", "direction": "UP", "break_time": before}]}
+    assert pj.judge_trade(entry, {**QUIET, **old}, 100.5, LATER)[0] == "HALTEN"  # a break before the fill is not earned by this trade
+    mss = {"bos": [{"kind": "MSS", "direction": "DOWN", "break_time": after}]}
+    assert pj.judge_trade(entry, {**QUIET, **mss}, 100.5, LATER) == ("SICHERN", ["structure_against_mss"])
+    assert pj.judge_trade(entry, {**QUIET, "market_state": "TREND_DOWN"}, 100.5, LATER) == ("SICHERN", ["market_state_against"])
+    opposite = {"scenarios": [{"direction": "SHORT", "state": "CONFIRMED"}, {"direction": "LONG", "state": "CONFIRMED"}]}
+    assert pj.judge_trade(entry, {**QUIET, **opposite}, 100.5, LATER) == ("SICHERN", ["opposite_scenario_confirmed"])
+    watching = {"scenarios": [{"direction": "SHORT", "state": "WATCHING"}]}
+    assert pj.judge_trade(entry, {**QUIET, **watching}, 100.5, LATER)[0] == "HALTEN"
+    assert pj.judge_trade(entry, QUIET, 100.5, T0 + timedelta(hours=pj.FALLBACK_HOURS)) == ("SICHERN", ["fallback_4h_in_trade"])
+    entry["max_favorable_r"] = pj.FALLBACK_MFE_R
+    assert pj.judge_trade(entry, QUIET, 100.5, LATER) == ("SICHERN", ["fallback_mfe_0.75r"])
+    # Even with every reason, no move while price sits on the level.
+    assert pj.judge_trade(entry, {**QUIET, **mss}, 100.2, LATER) == ("HALTEN", ["price_not_beyond_cost_level"])
+
+
+def test_sichern_moves_the_stop_from_the_next_candle_and_books_net_zero() -> None:
+    journal = _filled()
+    entry = journal["entries"][0]
+    pj.judge_trades(journal, {**QUIET, "market_state": "TREND_DOWN"}, [_c30(0, 99.9, 100.6, 100.5)])
+    assert entry["tim_verdict"] == "SICHERN" and entry["tim_verdict_reasons"] == ["market_state_against"]
+    assert entry["cost_stop"] == 100.19 and entry["cost_stop_kind"] == "BREAK_EVEN_COSTS" and entry["cost_stop_at"] == pj._iso(T0 + timedelta(minutes=29, seconds=59.999))
+    pj.evaluate(journal, [_m(31, 100.1, 100.4)], [], T0 + timedelta(minutes=33))
+    assert entry["status"] == "CLOSED" and entry["exit_reason"] == "COST_STOP" and entry["exit_price"] == 100.19
+    assert 0 <= entry["net_r"] < 0.01
+    assert entry["slippage_r"] == round(0.0003 * 100 + 0.0005 * 100.19, 4)  # stop execution
+
+
+def test_halten_leaves_the_original_stop_and_is_judged_again_at_the_next_close() -> None:
+    journal = _filled()
+    entry = journal["entries"][0]
+    pj.judge_trades(journal, QUIET, [_c30(0, 99.9, 100.6, 100.5)])
+    assert entry["tim_verdict"] == "HALTEN" and "cost_stop" not in entry
+    pj.evaluate(journal, [_m(31, 100.1, 100.4)], [], T0 + timedelta(minutes=33))
+    assert entry["status"] == "FILLED"
+    pj.judge_trades(journal, {**QUIET, "bos": [{"kind": "BOS", "direction": "UP", "break_time": (T0 + timedelta(minutes=40)).isoformat()}]},
+                    [_c30(0, 99.9, 100.6, 100.5), _c30(1, 100.1, 100.7, 100.6)])
+    assert entry["tim_verdict"] == "SICHERN" and entry["cost_stop"] == 100.19
+
+
+def test_short_mirrors_the_verdict() -> None:
+    journal = _filled("SHORT")
+    entry = journal["entries"][0]
+    pj.judge_trades(journal, {**QUIET, "market_state": "TREND_UP"}, [_c30(0, 99.4, 100.1, 99.5)])
+    assert entry["cost_stop"] == pj.cost_stop_level(entry) < 100.0
+    pj.evaluate(journal, [_m(31, 99.6, 99.9)], [], T0 + timedelta(minutes=33))
+    assert entry["exit_reason"] == "COST_STOP" and entry["net_r"] >= 0
+
+
+def test_entries_without_a_stop_rule_are_not_judged() -> None:
+    journal = _filled()
+    journal["entries"][0].pop("stop_rule")
+    pj.judge_trades(journal, {**QUIET, "market_state": "TREND_DOWN"}, [_c30(0, 99.9, 100.6, 100.5)])
+    assert "tim_verdict" not in journal["entries"][0] and "cost_stop" not in journal["entries"][0]
+
+
+def test_protected_stop_trails_behind_confirmed_swing_lows_and_never_back() -> None:
+    journal = _filled()
+    entry = journal["entries"][0]
+    entry.update(cost_stop=100.19, cost_stop_at=pj._iso(T0), cost_stop_kind="BREAK_EVEN_COSTS")
+    # 30m candles since the fill: a swing low at 100.6 (k=3), confirmed two candles later.
+    candles = [_c30(0, 99.9, 100.6, 100.5), _c30(1, 100.8, 101.0, 100.9), _c30(2, 100.9, 101.2, 101.0), _c30(3, 100.6, 101.3, 101.1),
+               _c30(4, 100.9, 101.5, 101.4), _c30(5, 101.0, 101.6, 101.5)]
+    pj.judge_trades(journal, QUIET, candles[:5])
+    assert entry["cost_stop"] == 100.19  # the swing at k=3 is not confirmed yet (needs 2 candles after it)
+    pj.judge_trades(journal, QUIET, candles)
+    assert entry["cost_stop"] == 100.6 and entry["cost_stop_kind"] == "SWING"
+    # A later, lower swing (k=6) never pulls the stop back; a higher one (k=10) trails further.
+    more = candles + [_c30(6, 100.3, 101.7, 101.6), _c30(7, 100.8, 101.8, 101.7), _c30(8, 101.2, 101.9, 101.8)]
+    pj.judge_trades(journal, QUIET, more)
+    assert entry["cost_stop"] == 100.6
+    higher = more + [_c30(9, 101.2, 102.0, 101.9), _c30(10, 101.1, 102.1, 102.0), _c30(11, 101.3, 102.4, 102.3), _c30(12, 101.5, 102.5, 102.4)]
+    pj.judge_trades(journal, QUIET, higher)
+    assert entry["cost_stop"] == 101.1
+    pj.evaluate(journal, [_m(13 * 30, 101.0, 101.4)], [], T0 + timedelta(minutes=13 * 30 + 2))
+    assert entry["exit_reason"] == "TRAIL_STOP" and entry["exit_price"] == 101.1 and entry["gross_r"] == 1.1
+
+
+def test_after_tp1_the_stop_trails_as_well_and_a_swing_behind_the_cost_level_is_ignored() -> None:
+    journal = _filled()
+    entry = journal["entries"][0]
+    pj.evaluate(journal, [_m(1, 100.2, 101.6)], [], T0 + timedelta(minutes=3))
+    assert len(entry["tp_hits"]) == 1 and entry["status"] == "FILLED"
+    candles = [_c30(0, 99.9, 101.6, 101.5), _c30(1, 101.2, 101.7, 101.6), _c30(2, 101.4, 101.8, 101.7), _c30(3, 101.0, 101.9, 101.8),
+               _c30(4, 101.5, 102.0, 101.9), _c30(5, 101.6, 102.1, 102.0)]
+    pj.judge_trades(journal, QUIET, candles)
+    assert entry["cost_stop"] == 101.0 and entry["cost_stop_kind"] == "SWING"  # swing low k=3
+    behind = candles + [_c30(6, 100.1, 102.2, 102.1), _c30(7, 101.3, 102.3, 102.2), _c30(8, 101.5, 102.4, 102.3)]
+    pj.judge_trades(journal, QUIET, behind)
+    assert entry["cost_stop"] == 101.0  # the swing at k=6 (100.1) lies behind the protected stop: ignored
+    pj.evaluate(journal, [_m(9 * 30, 100.9, 101.5)], [], T0 + timedelta(minutes=9 * 30 + 2))
+    assert entry["exit_reason"] == "TRAIL_STOP" and entry["gross_r"] == round(1.5 / 3 + 2 / 3 * 1.0, 3)
+
+
+def test_update_judges_filled_plans_at_each_30m_close(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    start = datetime(2026, 10, 24, 0, 0, tzinfo=timezone.utc)
+    series: dict[str, list[dict]] = {"30m": [], "1m": []}
+    price = 100.0
+    for k in range(90):
+        opened = start + timedelta(minutes=30 * k)
+        series["30m"].append({"timeframe": "30m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat(),
+                              "open": price, "high": price + 0.3, "low": price - 0.3, "close": price, "volume": 1.0})
+    now = start + timedelta(minutes=30 * 90)
+    monkeypatch.setattr(pj, "build_chart_model", lambda *a, **k: {**QUIET, "market_state": "TREND_DOWN", "scenarios": []})
+    monkeypatch.setattr(pj, "plans_from_model", lambda model: [])
+    path = tmp_path / "journal.json"
+    pj.update(path, series, now)
+    # Inject a filled plan into the log the way a real fill would be stored, then let the next close judge it.
+    journal = pj.load(path)
+    plan = _plan(entry=99.8, stop=98.8, invalid=98.0)
+    before = pj.deepcopy(journal)
+    pj.record_plans(journal, [plan], now)
+    entry = journal["entries"][-1]
+    entry.update(status="FILLED", filled_at=pj._iso(now + timedelta(minutes=1)), fill_price=99.8, max_favorable_r=0.0, max_adverse_r=0.0)
+    from src.dashboard import journal_log
+    state = journal_log.read(pj.events_path_for(path))
+    written = journal_log.append(pj.events_path_for(path), pj.diff_events(before, journal, recorded_at=now, source_hash="x", source_range={}), state)
+    assert written
+    pj.save({**pj.fold(state.events + written), "log_seq": len(state.events) + len(written), "log_head": written[-1]["hash"]}, path)
+    opened = now
+    series["30m"].append({"timeframe": "30m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat(),
+                          "open": 100.0, "high": 100.6, "low": 99.9, "close": 100.5, "volume": 1.0})
+    result = pj.update(path, series, now + timedelta(minutes=31))
+    judged = [e for e in result["entries"] if e["id"] == entry["id"]][0]
+    assert judged["tim_verdict"] == "SICHERN" and judged["cost_stop"] == pj.cost_stop_level(judged)
+    assert any(e["kind"] == "PLAN_UPDATED" and "tim_verdict" in e["payload"]["changes"] for e in journal_log.read(pj.events_path_for(path)).events)

@@ -116,6 +116,10 @@ keinen Drift sehen). Regeln: `ops/dashboard_refresh/policy.json`.
   identischem Baum, also dem PR-Head einer Merge- oder Squash-Zusammenführung (das Ruleset verlangt einen
   aktuellen Branch, deshalb ist der Baum gleich). Der Agent wartet damit nicht mehr auf den zweiten Lauf nach
   dem Merge. Stimmt der Baum nicht überein, zählt nur ein Lauf auf dem Commit selbst.
+- **Deploy-Fenster (Entscheid Uzi 25.10.2026, PR #410):** Der Agent wartet nicht auf Studienenden; jeder
+  eingespielte Stand ist ein Neustart von 1–2 Minuten Datenlücke. Die Lücken bleiben bewusst begrenzt durch
+  den Mindestabstand oben (20/60 Minuten) und die Sammelwirkung des Dashboard-Agenten (mehrere Merges in
+  einem Fenster = ein Neustart). Das ist die dokumentierte Ausnahme zur 95-%-Regel (Grün-Plan M2).
 - **CI-Testjob (`Runner.Worker`):** schiebt den Neustart nur auf, höchstens 20 Minuten ab dem Moment, in dem
   der Stand einspielbar wäre (`max_defer_minutes`). Der Job nutzt eine eigene PostgreSQL auf 5434; ein
   Neustart von 20 Sekunden stört ihn nicht. Ein Backup (`pg_dump`) sperrt weiterhin hart.
@@ -138,3 +142,38 @@ cd ~/TIM-live
 .venv/bin/python scripts/dashboard_refresh.py --install    # LaunchAgent schreiben und laden
 touch "$HOME/Library/Application Support/TIM/dashboard-refresh/PAUSE"   # anhalten (löschen = weiter)
 ```
+
+## Zweite Kopie der Datenbank-Dumps auf externer SSD (`com.tim.db-backup-mirror`)
+
+Uzis Entscheid vom 26.10.2026 (Grün-Plan B1): zweites Backup-Ziel ist eine externe SSD am Mac mini, kein
+zweiter Rechner. Der tägliche Dump (`com.tim.db-backup`, 03:15, `~/Library/Application Support/TIM/backups/live`)
+bleibt unverändert; ein zweiter LaunchAgent kopiert um 05:15 den neuesten geprüften Dump samt Prüfsumme auf die SSD.
+
+- **Voraussetzung (Uzi, einmalig):** SSD per Festplattendienstprogramm als APFS (verschlüsselt, Passwort im
+  Schlüsselbund, „Beim Starten automatisch aktivieren“) mit dem Namen `TIM-Backup` formatieren. Sie wird dann unter
+  `/Volumes/TIM-Backup` eingehängt; der Agent legt dort `live/` an. Platz: mindestens das Fünffache eines Dumps
+  (Stand 26.10.: 7,8 GB je Dump, 14 Stände = rund 110 GB).
+- **Was der Agent tut:** `scripts/tim_db_backup.py mirror` prüft zuerst, dass das Ziel ein eigenes, externes Volume
+  ist (Mount-Punkt nicht die Systemplatte und nicht das Volume der Quelle; `diskutil info` muss ein externes Gerät
+  melden). Ohne eingehängte SSD endet der Lauf mit `FAIL` und schreibt nichts. Dann wird der neueste Dump mit
+  passender Prüfsumme in eine temporäre Datei kopiert, die Kopie gegen die Prüfsumme geprüft und erst dann
+  umbenannt; alte Kopien werden nach `--keep-count 14` beziehungsweise 14 Tagen entfernt, die neueste nie. Kein
+  Datenbankzugriff, kein Passwort, `Nice 5` und `LowPriorityIO`.
+- **Nachweis:** `data/operational/backup_mirror.json` im Live-Checkout (Status, Quelle, Kopie, Prüfsumme, Volume),
+  Log `data/operational/db_backup_mirror_launchd.log`.
+- **Grenze:** Die SSD hängt am selben Rechner. Gegen Diebstahl oder Brand schützt sie nur, wenn sie regelmäßig
+  getauscht oder außer Haus gebracht wird; das bleibt Handarbeit und steht so im Restrisiko von T02.
+
+Einrichten (nach Merge und Aktualisierung von `~/TIM-live`; die Vorlage zeigt auf `/Users/tim/Documents/TIM/tim`
+und wird auf den Live-Checkout umgeschrieben):
+
+```sh
+cd ~/TIM-live
+sed "s|/Users/tim/Documents/TIM/tim|$HOME/TIM-live|g" ops/launchd/com.tim.db-backup-mirror.plist > ~/Library/LaunchAgents/com.tim.db-backup-mirror.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tim.db-backup-mirror.plist
+launchctl kickstart -k gui/$(id -u)/com.tim.db-backup-mirror
+sleep 60; cat data/operational/backup_mirror.json
+```
+
+Erwartet: `"status": "PASS"`, `"copied": true`, `"external": true`. Rücknahme: `launchctl bootout
+gui/$(id -u)/com.tim.db-backup-mirror` und die Plist löschen; die Kopien auf der SSD bleiben.

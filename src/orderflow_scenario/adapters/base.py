@@ -7,6 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from ..footprint import FootprintSeries
 from ..positioning import PositioningInputs, ProfileLevels
 
 
@@ -33,6 +34,12 @@ class AdapterInput:
     open_interest_with_price: str | None = None
     delta_divergence: bool | None = None
     volume_bubbles: tuple[str, ...] = ()
+    # Signed delta per candle, oldest first (optional).
+    delta_series: tuple[Decimal, ...] | None = None
+    # Bid/ask volume per price level and candle (footprint.py), optional.
+    footprint: FootprintSeries | None = None
+    # When set and trades carry buyer_is_maker, the CLI builds the footprint from the trades.
+    footprint_tick_size: Decimal | None = None
     levels: dict[str, Decimal] | None = None
     structured: bool = True
     screenshot_confidence: float | None = None

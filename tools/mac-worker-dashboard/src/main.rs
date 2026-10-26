@@ -42,7 +42,7 @@ impl Config {
             state_dir: home.join("Library/Application Support/TIM Mac Issue Worker"),
             log_dir: home.join("Library/Logs/TIM"),
             repo: "TIM-Intelegence-market/tim-ai-platform".into(),
-            worker_login: "apoman74-art".into(),
+            worker_login: "tim-issue-worker-t330".into(),
             worker_label: "com.tim.local-qwen-worker".into(),
             gh: "/opt/homebrew/bin/gh".into(),
             ollama_url: "http://127.0.0.1:11434".into(),

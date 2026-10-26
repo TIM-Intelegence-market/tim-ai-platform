@@ -11,10 +11,11 @@ from src.research.case_builder import Gap
 from src.research.case_engine import ResearchCase
 from src.orderflow.observations import OrderflowObservation
 from src.orderflow.validation import OrderflowValidation
+from src.orderflow.validation_long import LONG_HORIZONS, OrderflowLongValidation
 from src.observation.engine import candle_input_hash
 
 
-ALLOWED_TIMEFRAMES={"1m","5m","15m","1h"}
+ALLOWED_TIMEFRAMES={"1m","5m","15m","1h","4h","1d"}  # 4h/1d only derived from 1h (derived_candles.py)
 ALLOWED_OBSERVATION_PROVENANCE={"PUBLIC_MARKET_DATA_DETERMINISTIC"}
 ALLOWED_RULE_VERSIONS={"bos":"1.0.0","bronxc":"1.0.0"}
 SHA256_PATTERN=re.compile(r"^[0-9a-f]{64}$")
@@ -170,6 +171,49 @@ class MarketRepository:
     async def recent_orderflow_validations(self,symbol:str,limit:int=500)->list[dict]:
         async with self.database.acquire() as con:rows=await con.fetch("SELECT * FROM orderflow_validations WHERE symbol=$1 ORDER BY validated_through DESC LIMIT $2",symbol,limit)
         return [{**dict(row),"observed_at":row["observed_at"].isoformat(),"validated_through":row["validated_through"].isoformat(),"horizons":_json_value(row["horizons"],list)} for row in rows]
+
+    async def pending_orderflow_observations_long(self,symbol:str,as_of:datetime,limit:int=200)->list[dict]:
+        """Observations whose next long horizon (1h, 4h, 24h) has just become reachable.
+
+        Each horizon is evaluated once, when its target time has passed. The stored
+        validated_through equals the target of the last evaluated horizon, so the
+        next horizon is due when as_of has passed it. Observations older than the
+        lookback are left to offline reconciliation, like the short engine.
+        """
+        first,*rest=LONG_HORIZONS;last=LONG_HORIZONS[-1]
+        stages=" OR ".join(f"(v.validated_through = o.observed_at + interval '{prev} minutes' AND $2 >= o.observed_at + interval '{nxt} minutes')" for prev,nxt in zip(LONG_HORIZONS,rest))
+        query=f"""SELECT o.* FROM orderflow_observations o LEFT JOIN orderflow_validations_long v USING(observation_id)
+        WHERE o.symbol=$1 AND o.observed_at>=$3 AND (
+            (v.observation_id IS NULL AND $2 >= o.observed_at + interval '{first} minutes')
+            OR ({stages})
+        ) AND (v.observation_id IS NULL OR v.validated_through < o.observed_at + interval '{last} minutes')
+        ORDER BY o.observed_at,o.observation_id LIMIT $4"""
+        oldest=as_of-timedelta(minutes=last)-timedelta(hours=4)
+        async with self.database.acquire() as con:rows=await con.fetch(query,symbol,as_of,oldest,limit)
+        return [{**dict(row),"observed_at":row["observed_at"].isoformat(),"evidence":_json_value(row["evidence"],list)} for row in rows]
+
+    async def candles_between(self,symbol:str,timeframe:str,start:datetime,end:datetime)->list[Candle]:
+        async with self.database.acquire() as con:
+            rows=await con.fetch("SELECT * FROM candles WHERE symbol=$1 AND timeframe=$2 AND close_time>=$3 AND close_time<=$4 ORDER BY open_time",symbol,timeframe,start,end)
+        return [Candle(row["symbol"],row["timeframe"],row["open_time"],row["close_time"],row["open"],row["high"],row["low"],row["close"],row["volume"],row["trade_count"],row["closed"]) for row in rows]
+
+    async def save_orderflow_validation_long(self,validation:OrderflowLongValidation)->None:
+        query="""INSERT INTO orderflow_validations_long(observation_id,symbol,observed_at,baseline_price,baseline_close_time,horizons,complete,validation_hash,validated_through,validation_version,mode)
+        VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11) ON CONFLICT(observation_id) DO UPDATE SET horizons=EXCLUDED.horizons,complete=EXCLUDED.complete,validation_hash=EXCLUDED.validation_hash,validated_through=EXCLUDED.validated_through"""
+        async with self.database.acquire() as con:
+            await con.execute(query,validation.observation_id,validation.symbol,validation.observed_at,float(validation.baseline_price),validation.baseline_close_time,json.dumps([item.to_dict() for item in validation.horizons]),validation.complete,validation.validation_hash,validation.validated_through,validation.validation_version,validation.mode)
+
+    async def recent_orderflow_validations_long(self,symbol:str,limit:int=500)->list[dict]:
+        async with self.database.acquire() as con:rows=await con.fetch("SELECT * FROM orderflow_validations_long WHERE symbol=$1 ORDER BY validated_through DESC LIMIT $2",symbol,limit)
+        return [{**dict(row),"observed_at":row["observed_at"].isoformat(),"baseline_close_time":row["baseline_close_time"].isoformat(),"validated_through":row["validated_through"].isoformat(),"horizons":_json_value(row["horizons"],list)} for row in rows]
+
+    async def latest_candle_open_time(self,symbol:str,timeframe:str)->datetime|None:
+        async with self.database.acquire() as con:
+            return await con.fetchval("SELECT max(open_time) FROM candles WHERE symbol=$1 AND timeframe=$2",symbol,timeframe)
+
+    async def recent_candle_rows(self,symbol:str,timeframe:str,limit:int=300)->list[dict]:
+        rows=await self.recent_candles(symbol,timeframe,limit)
+        return [{"symbol":c.symbol,"timeframe":c.timeframe,"open_time":c.open_time.isoformat(),"close_time":c.close_time.isoformat(),"open":c.open,"high":c.high,"low":c.low,"close":c.close,"volume":c.volume,"trade_count":c.trade_count,"closed":c.closed} for c in rows]
 
     async def upsert_candle(self, candle: Candle) -> None:
         _validate_candle_for_persistence(candle)

@@ -203,3 +203,24 @@ def test_candidate_limit_and_final_no_verdict(tmp_path) -> None:
     register.set_status("M1-40", "no_verdict")
     with pytest.raises(RegisterError, match="final"):
         register.set_status("M1-40", "passed_holdout")
+
+
+def test_section_trades_drops_trades_open_at_the_section_end() -> None:
+    """Protocol 3.2 (1.2): a trade counts for the section of its signal only if its exit
+    was fixed by the section end; open or force-closed trades count for no section."""
+    from src.research_lab.stats.inference import open_at_section_end, section_trades
+
+    end = _utc_ms(2023, 1, 1)
+    closed_before = open_trade(_utc_ms(2022, 12, 1), _utc_ms(2022, 12, 20), 1.0)
+    closed_at_boundary = open_trade(_utc_ms(2022, 12, 20), end, 1.0)  # stop on the last bar, exit_time == end
+    straddling = open_trade(_utc_ms(2022, 12, 28), _utc_ms(2023, 1, 9), 2.0)  # exit priced in validation
+    next_section = open_trade(end, _utc_ms(2023, 1, 3), 1.0)
+    forced = Trade(_utc_ms(2022, 12, 30), _utc_ms(2022, 12, 30) + H, end, 1, 100.0, 101.0, 99.0, "end", 1, 0.5, 0.0, 0.0, 1.0, None)
+    trades = [closed_before, closed_at_boundary, straddling, next_section, forced]
+    assert section_trades(trades, None, end) == [closed_before, closed_at_boundary]
+    assert open_at_section_end(trades, None, end) == 2
+    assert section_trades(trades, end, _utc_ms(2025, 1, 1)) == [next_section]
+    # Open-ended boundary: only the forced close is dropped.
+    assert section_trades(trades, None, None) == [closed_before, closed_at_boundary, straddling, next_section]
+    # Old attribution by signal time alone would have counted the straddling trade.
+    assert straddling in signalled_in(trades, 0, end)

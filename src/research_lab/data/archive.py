@@ -8,11 +8,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from src.research_lab.protocol import HOLDOUT_START_MS, _utc_ms
+from src.research_lab.protocol import HOLDOUT_START_MS, UNIVERSE, _utc_ms
 from src.v2_readiness.backfill import parse_official_checksum, verify_archive
 
 BASE_URL = "https://data.binance.vision/data"
 SYMBOL = "BTCUSDT"
+# Study S4 (docs/research_lab/studien/S4_...) adds ETH and SOL perpetuals; study S5 (funding carry,
+# spot leg) adds the same three spot symbols. Nothing else is in scope; the universe and its
+# survivorship limit are fixed in protocol.UNIVERSE (protocol 3.1).
+USDM_SYMBOLS = UNIVERSE
+SPOT_SYMBOLS = USDM_SYMBOLS
 
 INTERVAL_MS = {
     "1m": 60_000,
@@ -46,8 +51,9 @@ class ArchiveRef:
     symbol: str = SYMBOL
 
     def __post_init__(self) -> None:
-        if self.symbol != SYMBOL:
-            raise ValueError("research lab scope is fixed to BTCUSDT")
+        allowed = USDM_SYMBOLS if self.market is Market.USDM else SPOT_SYMBOLS
+        if self.symbol not in allowed:
+            raise ValueError(f"research lab scope for {self.market.value} is {', '.join(allowed)}")
         if not 1 <= self.month <= 12 or self.year < 2017:
             raise ValueError("invalid archive month")
         if self.dataset is Dataset.KLINES:

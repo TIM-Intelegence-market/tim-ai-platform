@@ -11,7 +11,7 @@ from src.local_first import issue_triage
 from src.local_first.github_issue_queue import build_task, select_ready_issue
 from src.local_first.issue_triage import IssueLedger, attach_worker_contract
 
-WORKER = "apoman74-art"
+WORKER = "tim-issue-worker-t330"
 
 
 def _issue(number, labels=(), body="", author="uezeyiraydin-cell", comments=()):
@@ -591,3 +591,83 @@ def test_failure_detail_scrubs_known_tokens_before_truncation(tmp_path):
     result.write_text(json.dumps({"codex_fallback_detail": "x" * 65 + " ghp_" + "a" * 32}))
     detail = runner._failure_detail(2, result, tmp_path / "missing.json")
     assert "ghp_" not in detail
+
+
+def test_worker_lane_comes_from_the_environment(monkeypatch):
+    monkeypatch.delenv("TIM_WORKER_LANE", raising=False)
+    assert runner.worker_lane() == "all"
+    monkeypatch.setenv("TIM_WORKER_LANE", " Hard ")
+    assert runner.worker_lane() == "hard"
+    assert runner.worker_branch(12, "hard") == "codex/issue-12-qwen-hard"
+    assert runner.worker_branch(12, "easy") == runner.worker_branch(12, "all") == "codex/issue-12-qwen"
+    monkeypatch.setenv("TIM_WORKER_LANE", "fast")
+    with pytest.raises(PipelineError):
+        runner.worker_lane()
+
+
+def test_each_lane_maintains_only_its_own_prs_but_respects_the_others(tmp_path):
+    base = {"baseRefName": "platform-main", "createdAt": "2026-10-12T10:00:00Z",
+            "author": {"login": WORKER}, "mergeStateStatus": "CLEAN"}
+    prs = [{**base, "number": 1, "headRefName": "codex/issue-80-qwen"},
+           {**base, "number": 2, "headRefName": "codex/issue-81-qwen-hard"}]
+    now = 1_791_800_000.0
+    for lane, mine in (("hard", "2"), ("easy", "1")):
+        pipeline = FakePipeline([], prs)
+        covered = runner._maintain_worker_prs(pipeline, IssueLedger(tmp_path / f"{lane}.json"),
+                                              merge=True, now=now, lane=lane)
+        assert covered == {80, 81}
+        assert [call[3] for call in _gh(pipeline, "pr", "merge")] == [mine]
+
+
+def test_hard_lane_takes_only_hard_issues_and_never_triages(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIM_WORKER_LANE", "hard")
+    monkeypatch.setattr(issue_triage, "ask_claude", lambda prompt, root: pytest.fail("triaged"))
+    monkeypatch.setattr(runner, "_hard_backend", lambda: ("http://127.0.0.2:11434", "qwen3-coder:30b"))
+    pipeline = FakePipeline([_issue(90, READY, _contract(90)), _issue(91, body="offen")])
+    assert runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False, merge=True,
+                              triage=True) == "No eligible Qwen issue (lane hard)."
+    pipeline = FakePipeline([_issue(90, READY, _contract(90)), _issue(92, HARD, _contract(92))])
+    assert "#92 (lane hard)" in runner.process_one(pipeline, tmp_path, pilot_issue=None,
+                                                    codex_fallback=False, merge=True, dry_run=True)
+
+
+def test_easy_lane_skips_hard_issues_and_still_labels_them_in_triage(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIM_WORKER_LANE", "easy")
+    pipeline = FakePipeline([_issue(93, HARD, _contract(93))])
+    assert runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
+                              merge=True, dry_run=True) == "No eligible Mac Qwen issue (lane easy)."
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    answer = _big_file_answer(repo, 40_000)
+    monkeypatch.setattr(issue_triage, "ask_claude", lambda prompt, root: answer)
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)  # this Mac has no server tunnel
+    pipeline = FakePipeline([_issue(94, body="groß")], repository=repo)
+    assert "#94 prepared" in runner.process_one(pipeline, tmp_path / "state", pilot_issue=None,
+                                                codex_fallback=False, merge=True, triage=True)
+    assert _gh(pipeline, "issue", "edit")[0][-1] == "agent:qwen-hard,status:ready,priority:p1"
+
+
+def test_hard_lane_fails_loudly_without_the_server_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIM_WORKER_LANE", "hard")
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)
+    with pytest.raises(PipelineError, match="server model unavailable"):
+        runner.process_one(FakePipeline([_issue(95, HARD, _contract(95))]), tmp_path, pilot_issue=None,
+                           codex_fallback=False, merge=True)
+
+
+def test_legacy_worker_contracts_and_prs_still_count_but_are_never_maintained(tmp_path):
+    legacy = runner.LEGACY_WORKER_LOGINS[0]
+    comment = {"author": {"login": legacy}, "body": issue_triage.TRIAGE_MARKER + "\n" + _contract(7)}
+    issue = attach_worker_contract(_issue(7, READY, body="x", comments=[comment]),
+                                   (WORKER, *runner.LEGACY_WORKER_LOGINS))
+    assert build_task(issue)["issue_number"] == 7
+    stranger = {"author": {"login": "someone-else"}, "body": comment["body"]}
+    assert attach_worker_contract(_issue(8, READY, body="x", comments=[stranger]), (WORKER, legacy))["body"] == "x"
+    base = {"baseRefName": "platform-main", "createdAt": "2026-10-12T10:00:00Z", "mergeStateStatus": "CLEAN"}
+    prs = [{**base, "number": 1, "headRefName": "codex/issue-70-qwen", "author": {"login": legacy}},
+           {**base, "number": 2, "headRefName": "codex/issue-71-qwen", "author": {"login": WORKER}}]
+    pipeline = FakePipeline([], prs)
+    covered = runner._maintain_worker_prs(pipeline, IssueLedger(tmp_path / "l.json"), merge=True,
+                                          now=1_791_800_000.0)
+    assert covered == {70, 71}
+    assert [call[3] for call in _gh(pipeline, "pr", "merge")] == ["2"]

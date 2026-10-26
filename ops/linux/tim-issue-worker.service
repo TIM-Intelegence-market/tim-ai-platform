@@ -1,0 +1,47 @@
+# Qwen issue worker on tim-core-01, hard lane: only issues labelled agent:qwen-hard, with the local
+# qwen3-coder:30b. The Mac takes the easy lane (docs/mac-qwen-issue-worker.md). Started every five minutes by
+# tim-issue-worker.timer; runs in live and in CI mode, beside the CI runner. Set up with
+# ops/linux/setup_issue_worker.sh, arguments in /etc/tim-issue-worker.env.
+[Unit]
+Description=TIM issue worker (hard lane, agent:qwen-hard)
+Wants=network-online.target
+After=network-online.target ollama.service
+
+[Service]
+Type=oneshot
+User=timworker
+Group=timworker
+WorkingDirectory=/srv/worker/repo
+Environment=HOME=/srv/worker
+Environment=PATH=/srv/worker/repo/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=LC_ALL=C.UTF-8
+Environment=TIM_WORKER_LANE=hard
+Environment=TIM_QWEN_HARD_URL=http://127.0.0.1:11434
+Environment=TIM_QWEN_HARD_MODEL=qwen3-coder:30b
+# Root-owned, so the worker cannot widen its own arguments; also sets TIM_QWEN_HARD_URL (Ollama on
+# 127.0.0.1 or, with the checkup drop-in, 127.0.0.2) and overrides the default above.
+EnvironmentFile=/etc/tim-issue-worker.env
+# Model-written tests run in bubblewrap; stop before any work when that sandbox is not sealed here.
+ExecStartPre=/srv/worker/repo/.venv/bin/python -m src.local_first.sandbox_runner
+ExecStart=/srv/worker/repo/.venv/bin/python scripts/run_mac_qwen_issue.py --state-dir /srv/worker/state --no-codex-fallback --no-claude-fallback $TIM_WORKER_ARGS
+# 3 = the checkout moved to a newer platform-main; the next timer run uses the new code.
+SuccessExitStatus=3
+# One intake: 40 min task, 10 min review, 30 min merge wait (docs/mac-qwen-issue-worker.md).
+TimeoutStartSec=100min
+KillMode=control-group
+# Below the CI runner (Nice=10) and the live services. The model itself runs in ollama.service with its
+# own CPU and memory limits; this unit only holds git, Python and the sandboxed pytest runs.
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=100%
+MemoryMax=4G
+MemorySwapMax=0
+# No TIM data or secrets, no CI runner files, no production PostgreSQL socket, config or data; writes only
+# under /srv/worker. bubblewrap needs user namespaces and its own /proc, so RestrictNamespaces, PrivateUsers,
+# ProtectProc and ProtectKernelTunables stay off. The leading - skips paths that do not exist on this host.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/srv/worker
+InaccessiblePaths=-/opt/tim -/etc/tim -/srv/tim -/srv/ci -/var/lib/tim -/var/lib/tim-agent -/srv/postgresql -/var/lib/postgresql -/etc/postgresql -/run/postgresql -/var/backups

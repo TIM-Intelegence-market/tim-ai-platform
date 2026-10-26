@@ -43,10 +43,10 @@ def _market_context(data: Any, observed) -> MarketContext:
     )
 
 
-def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
+def _pipeline_inputs(adapter, data: dict[str, Any], observed_at=None) -> PipelineInputs:
     from decimal import Decimal
 
-    adapted = adapter.adapt(data)
+    adapted = adapter.adapt(data, observed_at=observed_at) if observed_at is not None else adapter.adapt(data)
     rejected = [item for item in adapted.missing_fields if item.startswith("candles[")]
     if not adapted.candles and rejected:
         # Every supplied candle was unusable: an input error, not a market condition.
@@ -81,6 +81,12 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
             )
         )
     last = candles[-1].close if candles else None
+    footprint = getattr(adapted, "footprint", None)
+    tick_size = getattr(adapted, "footprint_tick_size", None)
+    if footprint is None and tick_size is not None and trades and candles:
+        from .footprint import footprint_from_trades
+
+        footprint = footprint_from_trades(trades, candles, tick_size)
     levels = None
     if adapted.levels:
         from .engines.scenario_generator import LevelSet
@@ -100,6 +106,8 @@ def _pipeline_inputs(adapter, data: dict[str, Any]) -> PipelineInputs:
         total_volume=adapted.total_volume,
         open_interest_with_price=adapted.open_interest_with_price,
         delta_divergence=adapted.delta_divergence,
+        delta_series=getattr(adapted, "delta_series", None),
+        footprint=footprint,
         levels=levels,
         positioning=getattr(adapted, "positioning", None),
         profile=getattr(adapted, "profile", None),
@@ -119,6 +127,56 @@ def adapters_name(adapted) -> str:
     return adapted.symbol if hasattr(adapted, "symbol") else "UNKNOWN"
 
 
+def _parse_utc(text: str | None, label: str):
+    from datetime import datetime, timezone
+
+    if not text:
+        raise ValueError(f"--footprint-source requires --{label}")
+    value = text.strip()
+    if value[-1:] in ("Z", "z"):
+        value = value[:-1] + "+00:00"
+    moment = datetime.fromisoformat(value)
+    return moment.replace(tzinfo=timezone.utc) if moment.tzinfo is None else moment.astimezone(timezone.utc)
+
+
+def _footprint_payload(args) -> tuple[dict[str, Any], Any, str]:
+    """Candles + trades for the window from the chosen source as a generic-adapter payload."""
+    from decimal import Decimal, InvalidOperation
+
+    from . import footprint_sources as sources
+
+    start, end = _parse_utc(args.start, "start"), _parse_utc(args.end, "end")
+    try:
+        tick = Decimal(str(args.tick))
+    except InvalidOperation:
+        raise ValueError(f"--tick is not a number: {args.tick!r}") from None
+    notes: list[str] = []
+    if args.footprint_source == "db":
+        url = args.database_url
+        if not url:
+            from config.settings import settings
+
+            url = settings.database_url
+        candles, trades, db_notes = sources.load_from_database(url, args.symbol, args.timeframe, start, end)
+        notes.extend(db_notes)
+        source = "tim_agg_trades"
+    else:
+        root = args.archive_root or sources.DEFAULT_ARCHIVE_ROOT
+        candles, trades, missing_days = sources.load_from_archives(
+            root, args.symbol, args.timeframe, start, end, market=args.market, download=args.download,
+        )
+        source = f"binance_archive_{args.market}"
+        notes.extend(f"archive_day_missing={day}" for day in missing_days)
+    if not trades:
+        raise ValueError(f"no trades for {args.symbol} between {start.isoformat()} and {end.isoformat()} from {source}")
+    payload = sources.payload_for_pipeline(
+        symbol=args.symbol, timeframe=args.timeframe, candles=candles, trades=trades, tick_size=tick, observed_at=end,
+        market_type="FUTURES" if args.market.startswith("futures") else "SPOT", source=source, notes=notes,
+    )
+    evidence = json.dumps({"footprint_source": source, "candles": len(candles), "trades": len(trades), "tick": str(tick), "notes": notes}, sort_keys=True)
+    return payload, end, "footprint_evidence=" + evidence
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ofsc", description="Orderflow Scenario and Trade Decision Manager (observation-only).")
     parser.add_argument("--input", default=None, help="path to JSON input; defaults to stdin")
@@ -133,6 +191,17 @@ def main(argv: list[str] | None = None) -> int:
     openmarket.add_argument("--no-per-side", action="store_true", help="skip the TRADE_AGG per-side request")
     openmarket.add_argument("--no-context", action="store_true", help="skip open interest, funding, liquidations and volume profile requests")
     openmarket.add_argument("--funding-interval-hours", type=int, default=8, help="funding interval of the instrument (default 8)")
+    footprint = parser.add_argument_group("footprint", "build candles, trades and footprint from TIM's agg_trades table or Binance daily archives (instead of --input)")
+    footprint.add_argument("--footprint-source", choices=["db", "archive"], default=None, help="db: TIM PostgreSQL (read-only); archive: data.binance.vision daily aggTrades zips under --archive-root")
+    footprint.add_argument("--symbol", default="BTCUSDT", help="exchange symbol (default BTCUSDT)")
+    footprint.add_argument("--timeframe", default="5m", help="candle timeframe for the footprint bars: 1m, 5m, 15m, 1h, 4h, 1d (default 5m)")
+    footprint.add_argument("--start", default=None, help="window start, ISO-8601 UTC (e.g. 2026-10-25T12:00:00Z)")
+    footprint.add_argument("--end", default=None, help="window end (exclusive), ISO-8601 UTC; also the analysis time")
+    footprint.add_argument("--tick", default="10", help="price step of the footprint levels in quote currency (default 10)")
+    footprint.add_argument("--archive-root", type=Path, default=None, help="directory of the daily archives (default data/footprint/archives)")
+    footprint.add_argument("--market", choices=["spot", "futures-um", "futures-cm"], default="spot", help="archive market (default spot)")
+    footprint.add_argument("--download", action="store_true", help="download missing archive days from data.binance.vision (not reachable from the cloud)")
+    footprint.add_argument("--database-url", default=None, help="PostgreSQL URL for --footprint-source db (default: TIM settings)")
     parser.add_argument("--validate", action="store_true", help="also print schema validation status")
     parser.add_argument("--broncx-feed", type=Path, default=None, help="Broncx Discord feed directory (external guidance: weights scenario scores, adds level scenarios, never confirms)")
     parser.add_argument("--broncx-max-age-hours", type=float, default=24.0, help="Broncx posts older than this are shown as stale and not used")
@@ -142,7 +211,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        if args.provider == "openmarket":
+        footprint_observed_at = None
+        if args.footprint_source is not None:
+            payload, footprint_observed_at, evidence_line = _footprint_payload(args)
+            sys.stderr.write(evidence_line + "\n")
+            args.provider = "generic"
+        elif args.provider == "openmarket":
             payload = {
                 "exchange": args.exchange, "raw_symbol": args.raw_symbol, "interval": args.interval,
                 "from": args.from_seconds, "period": args.period, "market_type": args.market_type,
@@ -172,7 +246,10 @@ def main(argv: list[str] | None = None) -> int:
             adapter = GenericOrderflowAdapter()
             adapt_input = payload
 
-        pipeline_inputs = _pipeline_inputs(adapter, adapt_input)
+        if footprint_observed_at is not None:
+            pipeline_inputs = _pipeline_inputs(adapter, adapt_input, observed_at=footprint_observed_at)
+        else:
+            pipeline_inputs = _pipeline_inputs(adapter, adapt_input)
         if args.provider == "openmarket":
             evidence = getattr(adapter, "last_input", None)
             if evidence is not None:

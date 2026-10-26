@@ -116,7 +116,7 @@ class DashboardServer:
                     return self.respond(200, formatter(insights).encode(), content_type)
                 if path == "/chart":
                     try:
-                        page = render_chart_page(outer.state, query.get("tf", [None])[0])
+                        page = render_chart_page(outer.state, query.get("tf", [None])[0], query.get("levels", [None])[0])
                     except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                         return self.respond(500, _error_page("Chart", exc).encode(), "text/html; charset=utf-8")
                     return self.respond(200, page.encode(), "text/html; charset=utf-8")
@@ -146,6 +146,17 @@ class DashboardServer:
 
                     journal = trader_journal.load(outer.state.trader_journal_path)
                     return self.respond(200, json.dumps({**journal, "entries": journal["entries"][-500:], "summary": trader_journal.summary(journal)}, default=str).encode(), "application/json")
+                if path == "/api/candles-derived":
+                    timeframe = query.get("tf", ["4h"])[0]
+                    with outer.state.lock:
+                        rows = [dict(item) for item in outer.state.derived_candles.get(timeframe, [])]
+                    if timeframe not in ("4h", "1d"):
+                        return self.respond(400, json.dumps({"error": "tf must be 4h or 1d"}).encode(), "application/json")
+                    return self.respond(200, json.dumps({"symbol": outer.state.market_status.get("symbol"), "timeframe": timeframe, "source": "derived from persisted 1h candles, complete buckets only", "count": len(rows), "candles": rows}, default=str).encode(), "application/json")
+                if path == "/api/validations-long":
+                    with outer.state.lock:
+                        rows = [dict(item) for item in outer.state.orderflow_validations_long[-500:]]
+                    return self.respond(200, json.dumps({"validation_version": "long-1.0.0", "horizons_minutes": [60, 240, 1440], "mode": "OBSERVE", "note": "Nachprüfung nach 1h, 4h und 24h aus 1-Minuten-Kerzen; nur Messwerte, keine Einstufung.", "count": len(rows), "validations": rows}, default=str).encode(), "application/json")
                 if path == "/api/plan-journal":
                     from src.dashboard.plan_journal import load_view as load_plan_journal
 
@@ -155,6 +166,16 @@ class DashboardServer:
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
                 if path == "/neu" or path.startswith("/neu/") or path == "/api/cockpit":
                     return self.cockpit(path, query)
+                if path in ("/graphify", "/graphify/"):
+                    from src.dashboard.pages.graphify import graph_page
+
+                    status, page, csp = graph_page()
+                    return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=csp)
+                if path == "/graphify/report":
+                    from src.dashboard.pages.graphify import report_text
+
+                    status, text = report_text()
+                    return self.respond(status, text.encode(), "text/plain; charset=utf-8")
                 if path == "/pilot":
                     return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8", csp=PILOT_CSP)
                 if path == "/api/orderflow/history":

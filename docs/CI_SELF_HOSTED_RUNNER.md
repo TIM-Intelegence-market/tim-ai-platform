@@ -1,14 +1,20 @@
-# CI auf dem eigenen Runner (Mac mini)
+# CI auf den eigenen Runnern (Mac mini und tim-core-01)
 
-Stand 2026-10-13. Seit dem 12.10. um 22:56 UTC startete GitHub keine Jobs mehr auf den eigenen Runnern von GitHub. Jeder Lauf brach nach etwa 3 Sekunden ab, ohne Runner und ohne Log. Das Kontingent an Actions-Minuten der Organisation war erschöpft. Deshalb laufen die Workflows jetzt auf einem selbst betriebenen Runner auf dem Mac mini. GitHub rechnet dafür keine Minuten ab, auch nicht bei privaten Repos.
+Stand 2026-10-13. Seit dem 12.10. um 22:56 UTC startete GitHub keine Jobs mehr auf den eigenen Runnern von GitHub. Jeder Lauf brach nach etwa 3 Sekunden ab, ohne Runner und ohne Log. Das Kontingent an Actions-Minuten der Organisation war erschöpft. Deshalb laufen die Workflows jetzt auf selbst betriebenen Runnern. GitHub rechnet dafür keine Minuten ab, auch nicht bei privaten Repos.
+
+Seit 2026-10-25 gibt es zwei Runner mit dem Label `tim-ci`:
+- `mac-mini-tim` auf dem Mac mini, immer verfügbar.
+- `tim-core-01-ci` auf dem Server `tim-core-01`, nur im CI-Modus. Der Server läuft entweder live (TIM-Dienste) oder als
+  CI-Runner, nie beides; umgeschaltet wird mit `sudo tim-mode ci|live`. Im Live-Modus ist der Runner bei GitHub offline
+  und alle Jobs gehen an den Mac. Einrichtung, Isolation und Bedienung: `ops/linux/README.md`.
 
 ## Was wo läuft
 
 | Workflow | Job | Runner | Wann |
 |---|---|---|---|
-| `ci.yml` | `test` (Pflicht-Check) | `[self-hosted, macOS, tim-ci]` | jeder PR, Push auf `platform-main`, manuell |
+| `ci.yml` | `test` (Pflicht-Check) | `[self-hosted, tim-ci]` (Mac oder tim-core-01) | jeder PR, Push auf `platform-main`, manuell |
 | `ci.yml` | `codeql` | `[self-hosted, macOS, tim-ci]` | täglich 02:30 UTC auf `platform-main` und manuell |
-| `pr-gate.yml` | `PR gate` (Pflicht-Check) | `[self-hosted, macOS, tim-ci]` | jeder PR gegen `platform-main` |
+| `pr-gate.yml` | `PR gate` (Pflicht-Check) | `[self-hosted, tim-ci]` (Mac oder tim-core-01) | jeder PR gegen `platform-main` |
 | `tim-priority-board.yml` | `prioritize` | `[self-hosted, macOS, tim-ci]` | täglich 07:00 UTC |
 | `tim-full-suite.yml` | `TIM full suite` | GitHub (`ubuntu-latest`) | nur manuell |
 | `auto-merge-controller.yml` | Controller | GitHub (`ubuntu-latest`) | nur manuell, inaktiv |
@@ -55,13 +61,25 @@ Das Skript lässt jeden Schritt aus, der schon erledigt ist. Ein zweiter Lauf is
 - Der Runner führt Code aus PR-Branches aus, und zwar als `timrunner`. Dieser Benutzer kommt nicht an die Daten des Admin-Kontos, also an Schlüssel, SSH-Zugang zu `tim-server`, den Ollama-Worker oder die Checkouts unter `Documents`. Das Skript warnt, wenn das Home-Verzeichnis des Admins für andere lesbar ist.
 - Auf dem Runner liegen keine Secrets. `pr-gate.yml` bekommt nur das kurzlebige `github.token` des Laufs und führt keinen PR-Code aus.
 - Der Runner ist nur für dieses Repo registriert, nicht für die ganze Organisation. Das Repo ist privat, Forks fremder Personen können keine Läufe auslösen.
-- Der Server `tim-core-01` ist bewusst kein Runner, weil dort der Live-Betrieb läuft.
+- `tim-core-01` war bis 2026-10-25 bewusst kein Runner, weil dort der Live-Betrieb läuft. Jetzt ist er Runner, aber nur,
+  solange der Live-Betrieb gestoppt ist: `tim-ci-runner.service` hat `Conflicts=` auf `tim-runtime`, `tim-watchdog` und
+  `timec`, startet nie beim Booten und kehrt nach 6 Stunden automatisch zu Live zurück. Er läuft als `timrunner` ohne
+  sudo und ohne Gruppen, mit `ProtectSystem=strict`, `ProtectHome` und gesperrten Pfaden für TIM-Daten, Secrets
+  (`/etc/tim`) und die Produktionsdatenbank (Liste in `ops/linux/README.md`); ein Stopp beendet den ganzen Job-Prozessbaum.
+  Die Produktionsdatenbank (PostgreSQL 18, Port 5432) läuft weiter; `timrunner` hat dafür keine Zugangsdaten, `tim-mode ci`
+  verweigert den Start bei einer `trust`-Regel in deren `pg_hba.conf`, und
+  `tests/conftest.py` lässt nur die Testdatenbank zu. Börsen-Keys oder Echtgeld-Zugänge gibt es auf dem Runner nicht.
 
 ## Betrieb
 
 - Status: `sudo launchctl print system/com.tim.ci-runner | grep state` und `sudo tail -n 30 /Users/timrunner/Library/Logs/ci-runner.log`
 - Neustart: `sudo launchctl kickstart -k system/com.tim.ci-runner`
-- Es gibt nur einen Runner. Jobs warten deshalb aufeinander. Ist der Mac aus, bleiben Läufe in der Warteschlange und starten, sobald er wieder läuft. Nach 24 Stunden bricht GitHub sie ab.
+- Mac: Status und Neustart wie oben. tim-core-01: `sudo tim-mode status`, Log mit `journalctl -u tim-ci-runner -n 50`.
+- Ist tim-core-01 im Live-Modus, gibt es nur einen Runner. Jobs warten deshalb aufeinander. Ist der Mac aus, bleiben Läufe in der Warteschlange und starten, sobald er wieder läuft. Nach 24 Stunden bricht GitHub sie ab.
+
+Probelauf auf tim-core-01 (2026-10-25, Lauf 40192069659): gleiche Befehle wie `test`, 5946 passed und 18 skipped
+im parallelen Schritt, 243 passed im seriellen, Job rund 4 Minuten. Der Mac braucht ähnlich lange (rund 3 Minuten
+am 25.10.); der Gewinn ist ein zweiter Runner, wenn mehrere PRs gleichzeitig warten, nicht ein schnellerer Lauf.
 
 ## Zurück zu GitHub-Runnern
 

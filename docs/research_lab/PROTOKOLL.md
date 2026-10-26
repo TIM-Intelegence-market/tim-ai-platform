@@ -2,10 +2,10 @@
 
 | Feld | Wert |
 |---|---|
-| Version | 1.0 |
+| Version | 1.2 (Änderungsprotokoll am Ende) |
 | Status | **FREIGEGEBEN** |
 | Erstellt | 2026-09-29 |
-| Freigabe | 2026-09-29, Uzi |
+| Freigabe | 2026-09-29, Uzi (1.0); 1.1 am 2026-10-22 und 1.2 am 2026-10-25 je mit dem Merge des PR durch Uzi |
 | Bezug | Bauplan „TIM Research Lab“ (Paket R0), TIM Constitution Band 8 |
 
 Dieses Protokoll wird **vor dem ersten Test** festgeschrieben. Nach der Freigabe
@@ -75,6 +75,19 @@ aufgefüllt. Läuft ein Trade in eine Lücke, wird er zum letzten Kurs vor der L
 geschlossen und gezählt. Verwerfen würde mit späterem Wissen entscheiden und
 Ausfälle in Crash-Phasen verschweigen.
 
+**Universum und Survivorship (1.2):** Das Labor rechnet nur auf BTCUSDT (R0–R4) sowie
+ETHUSDT und SOLUSDT (Studien S4 und S5); `src/research_lab/protocol.py` (`UNIVERSE`) lässt
+nichts anderes zu. Die drei wurden 2026 ausgewählt, also mit dem Wissen, dass sie bis heute
+gelistet und liquide sind. Jedes Ergebnis ist deshalb eine Aussage über diese drei Instrumente,
+nicht über „Krypto“ oder Altcoins allgemein: Eine Regel, die hier besteht, hätte auf Coins, die
+2020 gelistet waren und später verschwanden (etwa LUNA oder FTT), anders aussehen können.
+Diese Grenze steht in jedem Bericht (`UNIVERSE_LIMITATION`) und wird bei jedem Urteil mitgenannt.
+Vorschlag für ein Universum ohne diesen Fehler, als Entscheid für Uzi und nicht Teil von 1.2:
+point-in-time, also alle USD-M-Perpetuals, die zum jeweiligen Signalzeitpunkt bei Binance gelistet
+waren, einschließlich später delisteter; ein Delisting schließt offene Trades zum letzten Kurs und
+wird gezählt (wie eine Datenlücke in 3.1). Vorher auf dem Mac zu prüfen: ob `data.binance.vision`
+die Archive delisteter Symbole weiter vorhält (aus der Cloud nicht erreichbar).
+
 **In R1 zu prüfen (hier nicht verifiziert):** genauer Archivbeginn für Spot
 (erwartet August 2017), Perpetual-Klines und fundingRate (erwartet September 2019).
 Weicht der Beginn ab, verschiebt sich nur der Anfang des Trainingszeitraums. Die
@@ -96,9 +109,19 @@ Reihe entsteht. Die Kosten werden trotzdem wie beim Perpetual gerechnet
 
 Indikatoren dürfen Daten vor Abschnittsbeginn als Vorlauf nutzen (zum Beispiel
 200 Tage für einen Durchschnitt), aber nie Daten nach dem Signalzeitpunkt.
-Trades, die über eine Abschnittsgrenze laufen, zählen zu dem Abschnitt, in dem sie
-eröffnet wurden. Holdout-Daten werden vor R6 nicht geladen, nicht geplottet und
-nicht zusammengefasst. Der Loader verweigert sie ohne Holdout-Freigabe.
+**Abschnittsregel (1.2, strenger):** Ein Trade zählt zu dem Abschnitt, in dem sein
+Signal fiel, aber nur, wenn sein Ausstieg nach den Regeln in 4.2 spätestens am
+Abschnittsende feststand. Ein am Abschnittsende noch offener Trade bekäme seinen
+Ausstiegskurs aus dem nächsten Abschnitt (Trainingsergebnis aus Validierungskursen,
+Validierungsergebnis aus Holdout-Kursen); er zählt in keinen Abschnitt, auch dann nicht,
+wenn der Backtest ihn am Datenende zwangsschließt. Die Zahl dieser Trades wird je
+Abschnitt ausgewiesen („offen T/V“). Ein fester Zeitpuffer zwischen den Abschnitten ist
+damit nicht nötig: Der Ausschluss setzt am einzelnen Trade an und ist für jede Haltedauer
+exakt. Bis 1.1 zählten solche Trades zu dem Abschnitt ihrer Eröffnung. Im Walk-Forward
+(7.3) gilt dieselbe Logik seit 1.1 (`known_at`); Code: `stats.inference.section_trades`,
+genutzt im R4-Runner und im Wächter (`stats/guard.py`). Holdout-Daten werden vor R6 nicht
+geladen, nicht geplottet und nicht zusammengefasst. Der Loader verweigert sie ohne
+Holdout-Freigabe.
 
 ### 3.3 Bekannte Grenze des Holdouts
 
@@ -356,3 +379,4 @@ Kriterien und Raster nur noch erlaubt, wenn sie strenger machen.
 | 2026-09-29 | 1.0 | Befund nach 3.1, keine Regeländerung: Das Binance-Monatsarchiv für USD-M (Klines 1d/1h/15m/5m und fundingRate) beginnt mit 2020-01, nicht 2019-09. Wie in 3.1 vorgesehen verschiebt sich nur der Trainingsbeginn für Mid und Short auf 2020-01-01; Validierungs- und Holdout-Grenzen bleiben. Tagesarchive werden nicht ergänzt (Funding fehlt dort). Alle USD-M-Monate 2020-01 bis 2024-12 vollständig, Checksummen PASS | R4 | USD-M 2020-01 bis 2024-12 und Spot 2017-08 bis 2024-12 geladen und auf Vollständigkeit geprüft, keine Auswertung |
 | 2026-10-22 | 1.1 | **Methodenkorrektur 7.3 Walk-Forward (strenger), Paket T03 des Verbesserungsplans:** Die Wahl der besten Rastervariante am Ende eines Anpassungsfensters nutzte bisher jeden Trade, dessen Einstieg im Fenster lag, auch wenn er erst nach dem Fensterende geschlossen wurde. Damit floss das spätere Ergebnis offener Trades in eine Entscheidung ein, die zu diesem Zeitpunkt fiel (Zukunftsinformation, Codex-Befund F01). Neu: In die Anpassung zählen nur Trades, deren Signal im Fenster lag **und** deren Ausstieg spätestens am Fensterende bekannt war (`known_at`). Ins Testfenster zählen Trades mit Signal im Testfenster (`signalled_in`, Signalzeit statt Einstiegszeit, wie in 3.2 und im R4-Runner). Ein am Fensterende noch offener Trade zählt in keines der beiden. Regressionstest: zwei bis zum Fensterende byte-gleiche Verläufe mit unterschiedlichem späteren Ergebnis müssen dieselbe Wahl ergeben. Betroffen ist allein die Robustheitsregel Walk-Forward; Split, Kriterien, Raster und Holdout-Grenze sind unverändert. Der R4-Bericht vom 29.09. (`reports/r4_2026-09-29T2219Z.md`) wurde mit Version 1.0 gerechnet und bleibt unverändert erhalten; seine Walk-Forward-Werte gelten als durch diesen Befund eingeschränkt (siehe `reports/METHODENBEFUND_2026-10-22_walk_forward.md`). Kein Kandidat hing allein am Walk-Forward, das Gesamtergebnis „kein Vorteil in Training/Validierung“ bleibt bestehen. Holdout nicht geladen | T03 | Training/Validierung bis 2024-12 (R4), Holdout nicht geladen |
 | 2026-10-23 | 1.1 | **Zusatzauswertung, keine Regeländerung:** Der R4-Bericht bekommt einen Glückstest über alle Varianten gemeinsam (`src/research_lab/stats/snooping.py`): Hansens SPA-Test (studentisiert, p-Werte unten/konsistent/oben) und das schrittweise Verfahren StepM nach Romano-Wolf (α = 5 %, mit der konsistenten SPA-Zentrierung, also Step-SPA nach Hsu, Hsu und Kuan 2010, wie in arch), beide mit stationärem Bootstrap über Tagesreihen. Vorab festgelegt: Benchmark 0 R pro Tag (nicht handeln), Trade am Schlusstag gebucht, Tage ohne Trade 0 R, Blocklänge 10 Tage, 10 000 Ziehungen, Seed = Lauf-Seed + 100 (Training) bzw. + 101 (Validierung), Training im gemeinsamen Fenster ab dem spätesten Datenbeginn. Nur Training und Validierung, der Holdout wird dafür nicht geladen. Das Ergebnis ändert kein Urteil und keine Kandidatenliste; ob es künftig ein Kriterium wird, entscheidet Uzi vor dem nächsten Register | Zweiter Glückstest, der die Abhängigkeit zwischen verwandten Varianten berücksichtigt (Holm in 7.2 nimmt Unabhängigkeit an) | keine neuen Labordaten ausgewertet |
+| 2026-10-25 | 1.2 | **Abschnittsregel 3.2 (strenger) und Universum/Survivorship in 3.1 (Grün-Programm, Sicht Forschung, PR #429):** (a) Ein Trade zählt nur dann zu dem Abschnitt seines Signals, wenn sein Ausstieg spätestens am Abschnittsende feststand; am Abschnittsende offene oder am Datenende zwangsgeschlossene Trades zählen in keinen Abschnitt und werden je Abschnitt gezählt ausgewiesen. Bis 1.1 flossen so Validierungskurse in Trainingsergebnisse (Trainingsentscheid mit Zukunftsinformation); zwischen Validierung und Holdout schnitt der Runner die Daten ab, wodurch offene Trades künstlich zum Grenzkurs geschlossen wurden. Umsetzung `stats.inference.section_trades`, R4-Runner (`_split`, Spalte „offen T/V“ im Bericht), Wächter (`_stage`). Betroffen sind nur Trades über eine Grenze, bei Zeit-Stops bis 20 Tageskerzen also höchstens wenige je Variante; der R4-Bericht vom 29.09. bleibt unverändert erhalten und gilt als durch diesen Befund eingeschränkt, das Gesamtergebnis „kein Vorteil“ hängt an keinem Grenz-Trade. Ein fester Puffer wird nicht eingeführt (Ausschluss je Trade ist exakt). (b) Universum BTCUSDT/ETHUSDT/SOLUSDT als Survivorship-Grenze festgehalten (`protocol.UNIVERSE`, `UNIVERSE_LIMITATION` in jedem Bericht); Vorschlag point-in-time-Universum mit delisteten Coins liegt bei Uzi. Split-Grenzen, Kriterien, Raster und Holdout-Grenze unverändert; Holdout nicht geladen | Grün-Programm Sicht Forschung (Uzi: Survivorship und Leaky Validation prüfen) | Training/Validierung bis 2024-12 (R4, S4-Zähllauf), Holdout nicht geladen |

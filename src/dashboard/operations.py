@@ -382,11 +382,18 @@ def _dashboard_refresh(status: dict[str, Any], path: Path) -> dict[str, Any]:
     text = str(decision.get("text") or decision.get("reason") or "")
     if state == "WAITING" and decision.get("reason") == "study_protected_paths":
         text = f"wartet bis Studienende · {text}"
+    help_request = status.get("help") if isinstance(status.get("help"), dict) else {}
+    if help_request.get("result") in {"REQUESTED", "REMINDED"} and help_request.get("issue_url"):
+        number = str(help_request["issue_url"]).rstrip("/").rsplit("/", 1)[-1]
+        text = f"{text} · Hilfe bei Claude angefragt (Issue #{number})"
+    elif help_request.get("result") == "ISSUE_FAILED":
+        text = f"{text} · Hilfe-Anfrage gescheitert"
     return {
         "status": state,
         "value": str(status.get("deployed_commit") or UNAVAILABLE)[:7],
         "note": " · ".join(part for part in (minutes, text) if part),
         "reason": decision.get("reason"),
+        "help_issue": help_request.get("issue_url"),
         "source": path.as_posix(),
     }
 
@@ -1731,8 +1738,18 @@ def _mcp(data: dict[str, Any]) -> str:
         ("Developer mode", "external state", None, mcp["developer_mode"], ""),
         ("Tunnel permissions", "read · manage · use checked separately", None, mcp["tunnel_permissions"], ""),
     ])
+    from src.dashboard.pages.graphify import graph_status
+
+    graph = graph_status()
+    graph_rows = status_rows([
+        ("Graphify-Graph", "stündlich vom Mac-Job com.tim.obsidian-refresh", graph["status"], graph["status"],
+         graph["updated_at_utc"] or "noch kein Graph"),
+    ])
     return (
         page_head("Graphify & MCP", "Separate external support path; never part of the V2 core release gate.", generated_at=data.get("generated_at_utc"))
+        + "<section class='panel'><b><a href='/graphify'>Graphify-Graph öffnen</a></b> · "
+        "<a href='/graphify/report'>Bericht (GRAPH_REPORT.md)</a></section>"
+        + section("Graphify", "Code-Graph von TIM", graph_rows)
         + section("MCP status", "External integration", rows)
         + "<section class='panel safety-callout'><b>Separation:</b> the MCP status cannot override TIM security, data or science gates.</section>"
     )

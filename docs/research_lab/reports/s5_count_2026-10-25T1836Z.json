@@ -1,0 +1,372 @@
+{
+  "study": "S5",
+  "protocol": "S5 0.3 (draft)",
+  "commit": "f09d36c51548372febe41d90a00eaa082ec3b525",
+  "gate_episodes": 120,
+  "holdout_coin_months": 63,
+  "outcome_blind": true,
+  "funding_sum_check": "not run",
+  "created": "2026-10-25T18:35:58+00:00",
+  "dataset_hashes": {
+    "BTCUSDT": "6298724373d7d172be4fcf6f0fd233007538f4329dd00fbe560f29e4fc5d1345",
+    "ETHUSDT": "beded8e40cb875370e7e3eb201c9a906545ff93cf9b884cbb4b688f15db8af45",
+    "SOLUSDT": "9a70432e54b68cc8dc3db5c6222755bf08abde8eeb983217441ed842152d74c6"
+  },
+  "coin_months_by_year": {
+    "2020": 27,
+    "2021": 36,
+    "2022": 36,
+    "2023": 36,
+    "2024": 36
+  },
+  "variants": {
+    "S5-t01-h7": {
+      "theta_units": 10000,
+      "hold_days": 7,
+      "counts": {
+        "BTCUSDT/train": {
+          "episodes": 10,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 9
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 1,
+          "median_days": 63.333333333333336
+        },
+        "BTCUSDT/validation": {
+          "episodes": 6,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 5
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 55.333333333333336
+        },
+        "ETHUSDT/train": {
+          "episodes": 9,
+          "by_reason": {
+            "max_hold": 3,
+            "regular": 6
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 3,
+          "median_days": 58.333333333333336
+        },
+        "ETHUSDT/validation": {
+          "episodes": 7,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 5,
+            "section_end": 1
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 54.625
+        },
+        "SOLUSDT/train": {
+          "episodes": 11,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 10
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 3,
+          "median_days": 22.666666666666668
+        },
+        "SOLUSDT/validation": {
+          "episodes": 9,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 8
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 20.666666666666668
+        }
+      },
+      "episodes_total": 52,
+      "episodes_by_year": {
+        "2020": 15,
+        "2021": 15,
+        "2023": 13,
+        "2024": 9
+      },
+      "density_per_coin_month": {
+        "2020": 0.556,
+        "2021": 0.417,
+        "2022": 0.0,
+        "2023": 0.361,
+        "2024": 0.25
+      },
+      "weakest_year": "2022",
+      "projected_holdout": 0.0,
+      "passes_gate": false,
+      "mean_episodes_per_month_cluster": 2.17,
+      "planning_design_effect_rho_0_5": 1.58,
+      "projected_effective": 0.0
+    },
+    "S5-t01-h21": {
+      "theta_units": 10000,
+      "hold_days": 21,
+      "counts": {
+        "BTCUSDT/train": {
+          "episodes": 10,
+          "by_reason": {
+            "max_hold": 2,
+            "regular": 8
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 1,
+          "median_days": 63.333333333333336
+        },
+        "BTCUSDT/validation": {
+          "episodes": 6,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 5
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 55.333333333333336
+        },
+        "ETHUSDT/train": {
+          "episodes": 8,
+          "by_reason": {
+            "max_hold": 3,
+            "regular": 5
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 4,
+          "median_days": 65.0
+        },
+        "ETHUSDT/validation": {
+          "episodes": 7,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 5,
+            "section_end": 1
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 54.625
+        },
+        "SOLUSDT/train": {
+          "episodes": 9,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 8
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 3,
+          "median_days": 26.0
+        },
+        "SOLUSDT/validation": {
+          "episodes": 9,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 8
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 23.0
+        }
+      },
+      "episodes_total": 49,
+      "episodes_by_year": {
+        "2020": 13,
+        "2021": 14,
+        "2023": 13,
+        "2024": 9
+      },
+      "density_per_coin_month": {
+        "2020": 0.481,
+        "2021": 0.389,
+        "2022": 0.0,
+        "2023": 0.361,
+        "2024": 0.25
+      },
+      "weakest_year": "2022",
+      "projected_holdout": 0.0,
+      "passes_gate": false,
+      "mean_episodes_per_month_cluster": 1.96,
+      "planning_design_effect_rho_0_5": 1.48,
+      "projected_effective": 0.0
+    },
+    "S5-t03-h7": {
+      "theta_units": 30000,
+      "hold_days": 7,
+      "counts": {
+        "BTCUSDT/train": {
+          "episodes": 9,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 8
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 1,
+          "median_days": 50.333333333333336
+        },
+        "BTCUSDT/validation": {
+          "episodes": 4,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 3
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 51.666666666666664
+        },
+        "ETHUSDT/train": {
+          "episodes": 9,
+          "by_reason": {
+            "max_hold": 3,
+            "regular": 6
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 1,
+          "median_days": 57.666666666666664
+        },
+        "ETHUSDT/validation": {
+          "episodes": 5,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 3,
+            "section_end": 1
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 49.625
+        },
+        "SOLUSDT/train": {
+          "episodes": 10,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 9
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 1,
+          "median_days": 26.0
+        },
+        "SOLUSDT/validation": {
+          "episodes": 5,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 4
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 38.333333333333336
+        }
+      },
+      "episodes_total": 42,
+      "episodes_by_year": {
+        "2020": 14,
+        "2021": 14,
+        "2023": 8,
+        "2024": 6
+      },
+      "density_per_coin_month": {
+        "2020": 0.519,
+        "2021": 0.389,
+        "2022": 0.0,
+        "2023": 0.222,
+        "2024": 0.167
+      },
+      "weakest_year": "2022",
+      "projected_holdout": 0.0,
+      "passes_gate": false,
+      "mean_episodes_per_month_cluster": 2.0,
+      "planning_design_effect_rho_0_5": 1.5,
+      "projected_effective": 0.0
+    },
+    "S5-t03-h21": {
+      "theta_units": 30000,
+      "hold_days": 21,
+      "counts": {
+        "BTCUSDT/train": {
+          "episodes": 9,
+          "by_reason": {
+            "max_hold": 2,
+            "regular": 7
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 1,
+          "median_days": 57.666666666666664
+        },
+        "BTCUSDT/validation": {
+          "episodes": 4,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 3
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 51.666666666666664
+        },
+        "ETHUSDT/train": {
+          "episodes": 8,
+          "by_reason": {
+            "max_hold": 3,
+            "regular": 5
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 2,
+          "median_days": 64.66666666666667
+        },
+        "ETHUSDT/validation": {
+          "episodes": 5,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 3,
+            "section_end": 1
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 49.625
+        },
+        "SOLUSDT/train": {
+          "episodes": 8,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 7
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 1,
+          "median_days": 26.666666666666668
+        },
+        "SOLUSDT/validation": {
+          "episodes": 5,
+          "by_reason": {
+            "max_hold": 1,
+            "regular": 4
+          },
+          "invalid_signals": 0,
+          "skipped_locked": 0,
+          "median_days": 38.333333333333336
+        }
+      },
+      "episodes_total": 39,
+      "episodes_by_year": {
+        "2020": 12,
+        "2021": 13,
+        "2023": 8,
+        "2024": 6
+      },
+      "density_per_coin_month": {
+        "2020": 0.444,
+        "2021": 0.361,
+        "2022": 0.0,
+        "2023": 0.222,
+        "2024": 0.167
+      },
+      "weakest_year": "2022",
+      "projected_holdout": 0.0,
+      "passes_gate": false,
+      "mean_episodes_per_month_cluster": 1.86,
+      "planning_design_effect_rho_0_5": 1.43,
+      "projected_effective": 0.0
+    }
+  }
+}

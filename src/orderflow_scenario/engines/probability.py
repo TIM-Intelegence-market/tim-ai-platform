@@ -72,7 +72,7 @@ class ProbabilityEngine:
             score += Decimal("0.04") * min(len(scenario.evidence_for), 3)
         if scenario.evidence_against:
             score -= Decimal("0.05") * min(len(scenario.evidence_against), 2)
-        if of.absorption_confirmed:
+        if of.absorption_confirmed or of.exhaustion_confirmed:
             score += Decimal("0.06")
         if of.open_interest_interpretation and "accumulation" in of.open_interest_interpretation:
             score += Decimal("0.03")

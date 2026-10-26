@@ -60,6 +60,7 @@ AREAS: list[dict[str, Any]] = [
      "pages": [("V2 Readiness", "/v2-readiness", "Gates, Blocker und Verantwortliche"),
                ("Security", "/security", "PostgreSQL-Sicherheitsprüfung"),
                ("Audit & Evidence", "/audit-evidence", "Tests, Deploy-Stand, Vorfälle"),
+               ("Graphify-Graph", "/graphify", "Code-Graph von TIM, stündlich neu"),
                ("Graphify & MCP", "/mcp", "MCP-Anbindung")]},
 ]
 AREA_BY_KEY = {area["key"]: area for area in AREAS}
@@ -404,7 +405,7 @@ def _head(title: str, model: dict[str, Any], pill_state: str | None = None, pill
             f"<span class='meta'>Stand {local_time(model.get('generated_at'), True)} Uhr. {_e(model.get('safety'))}</span></div>")
 
 
-EXIT_WORDS = {"STOP": "Stop", "BREAK_EVEN": "Break-even", "TP3": "TP3", "TIMEOUT": "Zeitablauf", "INVALIDATION": "ungültig"}
+EXIT_WORDS = {"STOP": "Stop", "BREAK_EVEN": "Break-even", "BREAK_EVEN_COSTS": "BE + Kosten", "COST_STOP": "BE + Kosten", "TRAIL_STOP": "Trail-Stop", "TP3": "TP3", "TIMEOUT": "Zeitablauf", "INVALIDATION": "ungültig"}
 STATUS_WORDS = {"OPEN": "wartet", "FILLED": "im Trade", "CLOSED": "geschlossen", "INVALIDATED": "ungültig", "EXPIRED": "abgelaufen",
                 "REPLACED": "ersetzt", "NO_TRADE": "kein Trade"}
 

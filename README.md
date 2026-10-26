@@ -1,5 +1,7 @@
 # TIM — Transparent Intelligence for Markets
 
+Stand 26.10.2026 (Einstieg für Menschen: `docs/TIM_IN_10_MINUTEN.md`; Systemstand: `docs/SYSTEMSTAND.md`; Merge-Regeln: `CI.md`).
+
 TIM provides a local, observation-only BTCUSDT research pipeline: public Binance aggregate trades, deterministic multi-timeframe candle aggregation, TimescaleDB persistence, BOS and Broncx context observations, plus optional explanation-only Ollama summaries.
 
 ## Repository governance
@@ -11,9 +13,12 @@ with [CONTRIBUTING.md](CONTRIBUTING.md), report security issues according to
 [docs/governance/repository_governance.md](docs/governance/repository_governance.md)
 for branch, review, merge, and release rules.
 
-The local repository is authoritative for the current source state. A GitHub
-remote has not yet been configured, so no external repository, branch
-protection, or hosted integration is claimed.
+The authoritative source state is branch `platform-main` of the private GitHub
+repository `uezeyiraydin-cell/tim-ai-platform` (organisation
+TIM-Intelegence-market). `main` is outdated and not used. A ruleset on
+`platform-main` requires the checks `test` and `PR gate`, both run on a
+self-hosted runner; merges happen only on the owner's explicit word. Current
+state and rules for newcomers: `docs/TIM_IN_10_MINUTEN.md` (German, dated).
 
 ## Week 2 research layer
 
@@ -28,7 +33,6 @@ All Week 2 components remain research-only. They contain no trading, prediction,
 
 - `src/news`: authorized news records and deterministic links to historical observations.
 - `src/knowledge`: authorized GoatHub/personal material with searchable citations and hashes.
-- `src/longterm`: descriptive macro, dominance and sector context.
 - `src/assistant`: OBSERVE-only short-term evidence explanation.
 - `src/paper`: disabled-by-default TEST_ONLY research journaling; no exchange interface.
 - `docs/VISION_2030.md`: roadmap and governance.

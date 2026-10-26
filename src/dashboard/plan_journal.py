@@ -11,8 +11,21 @@ TradePlanBuilder. Afterwards every plan is followed on 1m candles:
   levels in the same direction) or EXPIRED (24 h without fill). A plan that
   TIM stops showing stays OPEN like a resting limit order.
 - FILLED: followed with TIM's management plan: one third out at each target,
-  stop to break-even after target 1, the last third at target 3 (the
-  structural trailing stop is not modelled). A 30m close beyond the
+  the last third at target 3 (the structural trailing stop is not modelled).
+  Stop rule be_cost/1 (Uzi, 25.10.2026, every plan recorded from then on):
+  the stop moves to break-even plus costs, the price at which the rest of
+  the position closes at net 0 R (cost_stop_level), after target 1 and when
+  TIM's own judgement of the running trade says so. At every 30m close TIM
+  judges each filled plan from its chart model (judge_trades): SICHERN moves
+  the stop, HALTEN leaves it; a safety net (FALLBACK_HOURS in the trade or
+  FALLBACK_MFE_R reached) also says SICHERN. The verdict, its reasons and the
+  close are written on the entry (tim_verdict, tim_verdict_reasons,
+  tim_verdict_at), the move as cost_stop / cost_stop_at / cost_stop_kind, in
+  force from the next 1m candle. Once protected, the stop trails behind the
+  latest confirmed 30m swing in the trade's favour (swing low for a long,
+  swing high for a short) like an orderflow trader locks in profit; it only
+  ever moves further into profit. Entries without a stop_rule were recorded
+  before and keep the old rule (stop to the entry after target 1). A 30m close beyond the
   invalidation level closes the rest at that close. Ends as CLOSED with a
   result in R.
 
@@ -82,7 +95,17 @@ COST_MODEL_VERSION = "protocol/1.1"
 FEE_PER_SIDE = 0.0005
 SLIPPAGE_PER_SIDE = 0.0003
 STOP_SLIPPAGE = 0.0005
-STOP_EXITS = {"STOP", "BREAK_EVEN"}  # executed as stop orders; everything else is a market exit
+# Stop rule of an entry, fixed when it is recorded. Entries without one keep the old rule.
+STOP_RULE_COST = "be_cost/1"
+COST_STOP_MIN_GAP_R = 0.1  # the 30m close must be at least this far beyond the new stop
+VERDICT_RULESET = "verdict/1"
+FALLBACK_HOURS = 4.0  # safety net: in the trade this long, the stop may move without a structure reason
+FALLBACK_MFE_R = 0.75  # safety net: this much open profit seen, likewise
+KIND_COSTS, KIND_SWING = "BREAK_EVEN_COSTS", "SWING"
+HALTEN, SICHERN = "HALTEN", "SICHERN"
+STRUCTURE_FOR = {"LONG": "UP", "SHORT": "DOWN"}
+CONFIRMED_STATES = {"CONFIRMED", "PARTIALLY_CONFIRMED"}
+STOP_EXITS = {"STOP", "BREAK_EVEN", "BREAK_EVEN_COSTS", "COST_STOP", "TRAIL_STOP"}  # executed as stop orders; everything else is a market exit
 PAPER_APPROVED = "PAPER_APPROVED"  # no code path sets this yet; a human approval step would
 # What the paper journal may assume about an instrument (docs/ACCEPTANCE.md section 2).
 # A short on a spot market needs borrowed coins; the journal does not model margin, so it is not executable.
@@ -308,6 +331,7 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
             **decision_fields(plan),
             "status": OPEN,
             **_arming(plan),
+            "stop_rule": STOP_RULE_COST,
             "evaluated_through": _iso(at),
             "tp_hits": [],
             "gross_r": None,
@@ -410,6 +434,131 @@ def costs_r(entry: Mapping[str, Any], exit_price: float, reason: str) -> tuple[f
     return round(fee / risk, 4), round(slippage / risk, 4)
 
 
+def cost_stop_level(entry: Mapping[str, Any]) -> float:
+    """Break-even plus costs: the stop price at which the rest of a filled plan closes at net 0 R.
+
+    Protocol 1.1 on the rest: fee and slippage at the fill, fee and stop
+    slippage at the stop. LONG: fill * (1 + fee + slippage) / (1 - fee - stop
+    slippage); SHORT mirrored. Rounded to the tick away from the entry, so the
+    level never covers less than the costs."""
+    fill = float(entry.get("fill_price") or entry["entry"])
+    if entry["direction"] == "LONG":
+        level = fill * (1 + FEE_PER_SIDE + SLIPPAGE_PER_SIDE) / (1 - FEE_PER_SIDE - STOP_SLIPPAGE)
+    else:
+        level = fill * (1 - FEE_PER_SIDE - SLIPPAGE_PER_SIDE) / (1 + FEE_PER_SIDE + STOP_SLIPPAGE)
+    tick = ((entry.get("instrument") or {}).get("tick_size")) or 0.0
+    if tick > 0:
+        steps = level / tick
+        level = (math.ceil(steps - 1e-9) if entry["direction"] == "LONG" else math.floor(steps + 1e-9)) * tick
+    return round(level, 8)
+
+
+def _active_stop(entry: Mapping[str, Any], candle: Mapping[str, Any] | None = None) -> tuple[float, str]:
+    """The stop in force for a FILLED entry on this candle and the exit reason it books."""
+    if entry.get("stop_rule") != STOP_RULE_COST:
+        return (entry["entry"], "BREAK_EVEN") if entry["tp_hits"] else (entry["stop"], "STOP")
+    stop, reason = entry["stop"], "STOP"
+    if entry["tp_hits"]:
+        level = cost_stop_level(entry)
+        # A stop so tight that the costs reach target 1 cannot sit behind it: fall back to the entry.
+        stop, reason = (level, "BREAK_EVEN_COSTS") if _r(entry, level) < _r(entry, entry["targets"][0]) else (entry["entry"], "BREAK_EVEN")
+    if entry.get("cost_stop") is not None and (candle is None or candle["open_time"] >= _time(entry["cost_stop_at"])):
+        protected = float(entry["cost_stop"])
+        if _r(entry, protected) > _r(entry, stop):
+            stop, reason = protected, ("TRAIL_STOP" if entry.get("cost_stop_kind") == KIND_SWING else "COST_STOP")
+    return stop, reason
+
+
+def judge_trade(entry: Mapping[str, Any], model: Mapping[str, Any], close: float, at: datetime | None = None) -> tuple[str, list[str]]:
+    """TIM's verdict on a filled plan at a 30m close: SICHERN (stop to break-even plus
+    costs) or HALTEN (original stop stays), with reason codes.
+
+    Price only decides whether a move is possible: the close must be at least
+    COST_STOP_MIN_GAP_R beyond the cost level, so the stop never sits on the
+    market. Then TIM's chart model at that close decides. SICHERN when the
+    market structure confirmed the trade direction since the fill (BOS/MSS in
+    its direction: the move is earned), or when the thesis weakens: a
+    structure break against it, the market state against it, or a scenario in
+    the opposite direction that is confirmed. The safety net Uzi chose
+    (FALLBACK_HOURS in the trade, or FALLBACK_MFE_R of open profit seen) says
+    SICHERN as well. HALTEN otherwise: the plan runs as intended and keeps its
+    room."""
+    direction = entry["direction"]
+    level = cost_stop_level(entry)
+    if _r(entry, close) - _r(entry, level) < COST_STOP_MIN_GAP_R:
+        return HALTEN, ["price_not_beyond_cost_level"]
+    filled_at = str(entry.get("filled_at") or "")
+    reasons: list[str] = []
+    if at is not None and filled_at and at - _time(filled_at) >= timedelta(hours=FALLBACK_HOURS):
+        reasons.append(f"fallback_{FALLBACK_HOURS:g}h_in_trade")
+    if float(entry.get("max_favorable_r") or 0.0) >= FALLBACK_MFE_R:
+        reasons.append(f"fallback_mfe_{FALLBACK_MFE_R:g}r")
+    with_us, against = STRUCTURE_FOR[direction], STRUCTURE_FOR["SHORT" if direction == "LONG" else "LONG"]
+    for event in model.get("bos") or []:
+        if str(event.get("break_time") or "") < filled_at:
+            continue
+        if event.get("direction") == with_us:
+            reasons.append(f"structure_confirms_{str(event.get('kind', 'BOS')).lower()}")
+        elif event.get("direction") == against:
+            reasons.append(f"structure_against_{str(event.get('kind', 'BOS')).lower()}")
+    if counter_trend(direction, model.get("market_state")):
+        reasons.append("market_state_against")
+    for scenario in model.get("scenarios") or []:
+        if scenario.get("direction") not in {"LONG", "SHORT"} or scenario.get("direction") == direction:
+            continue
+        if scenario.get("state") in CONFIRMED_STATES:
+            reasons.append(f"opposite_scenario_{str(scenario.get('state')).lower()}")
+    reasons = sorted(set(reasons))
+    return (SICHERN, reasons) if reasons else (HALTEN, ["thesis_intact"])
+
+
+def swing_stop(entry: Mapping[str, Any], candles: Sequence[Mapping[str, Any]], close: float) -> float | None:
+    """The latest confirmed 30m swing behind the trade since its fill (swing low for
+    a long, swing high for a short), when it lies beyond the current protected stop
+    and the close is at least COST_STOP_MIN_GAP_R beyond it. Else None."""
+    from src.dashboard.chart_model import PIVOT_WINDOW, swing_points
+
+    long = entry["direction"] == "LONG"
+    filled = _time(entry["filled_at"])
+    current = entry.get("cost_stop")
+    floor = float(current) if current is not None else (cost_stop_level(entry) if entry["tp_hits"] else None)
+    if floor is None:
+        return None
+    best = None
+    for swing in swing_points(candles, PIVOT_WINDOW):
+        if swing["kind"] != ("LOW" if long else "HIGH") or candles[swing["index"]]["open_time"] < filled:
+            continue
+        price = float(swing["price"])
+        if (price > floor if long else price < floor) and _r(entry, close) - _r(entry, price) >= COST_STOP_MIN_GAP_R:
+            best = price  # swings come in time order: the latest wins
+    return best
+
+
+def judge_trades(journal: dict[str, Any], model: Mapping[str, Any], candles: Sequence[Mapping[str, Any]]) -> None:
+    """TIM judges every filled be_cost/1 plan at the 30m close ``candles[-1]``:
+    SICHERN moves the stop to break-even plus costs, a protected stop trails
+    behind the latest confirmed swing; both in force from the next 1m candle."""
+    if not candles:
+        return
+    close_candle = candles[-1]
+    at = _iso(close_candle["close_time"])
+    close = float(close_candle["close"])
+    for entry in journal.get("entries", []):
+        if entry.get("status") != FILLED or entry.get("stop_rule") != STOP_RULE_COST:
+            continue
+        if not entry.get("filled_at") or _time(entry["filled_at"]) > close_candle["close_time"]:
+            continue
+        if not entry["tp_hits"] and entry.get("cost_stop") is None:
+            verdict, reasons = judge_trade(entry, model, close, close_candle["close_time"])
+            entry.update(tim_verdict=verdict, tim_verdict_reasons=reasons, tim_verdict_at=at, tim_verdict_ruleset=VERDICT_RULESET)
+            if verdict == SICHERN:
+                entry.update(cost_stop=cost_stop_level(entry), cost_stop_at=at, cost_stop_kind=KIND_COSTS)
+            continue
+        trailed = swing_stop(entry, candles, close)
+        if trailed is not None:
+            entry.update(cost_stop=trailed, cost_stop_at=at, cost_stop_kind=KIND_SWING)
+
+
 def _close(entry: dict[str, Any], at: datetime, price: float, reason: str) -> None:
     """Close the rest of the position; earlier thirds stay booked. Books gross, costs and net."""
     realised = sum(THIRD * _r(entry, entry["targets"][i]) for i in range(len(entry["tp_hits"])))
@@ -424,11 +573,11 @@ def _close(entry: dict[str, Any], at: datetime, price: float, reason: str) -> No
 def _follow(entry: dict[str, Any], candle: Mapping[str, Any]) -> None:
     """One 1m candle for a FILLED position (stop first, then targets in order)."""
     long = entry["direction"] == "LONG"
-    stop = entry["entry"] if entry["tp_hits"] else entry["stop"]
+    stop, reason = _active_stop(entry, candle)
     entry["max_favorable_r"] = round(max(entry.get("max_favorable_r", 0.0), _r(entry, candle["high"] if long else candle["low"])), 3)
     entry["max_adverse_r"] = round(min(entry.get("max_adverse_r", 0.0), _r(entry, candle["low"] if long else candle["high"])), 3)
     if (long and candle["low"] <= stop) or (not long and candle["high"] >= stop):
-        _close(entry, candle["close_time"], stop, "BREAK_EVEN" if entry["tp_hits"] else "STOP")
+        _close(entry, candle["close_time"], stop, reason)
         return
     for index in range(len(entry["tp_hits"]), 3):
         target = entry["targets"][index]
@@ -766,6 +915,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                                    "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                    "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
             record_plans(journal, with_evidence(plans, PLAN_TIMEFRAME, register_path), latest)
+            judge_trades(journal, model, closed_30m)
             journal["last_plan_candle"] = _iso(latest)
             checkpoint = True
         elif journal.get("last_plan_candle_source_hash") not in {None, close_hash}:
