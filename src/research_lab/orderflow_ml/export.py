@@ -22,7 +22,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
 
-from src.research_lab.orderflow_ml.bars import BAR_VERSION, MINUTE_MS, MinuteBar
+from src.research_lab.orderflow_ml.bars import BAR_VERSION, MINUTE_MS, DayProfile, MinuteBar
 from src.research_lab.orderflow_ml.features import FEATURE_NAMES, FEATURE_VERSION, QUALITY_NAMES, TIME_BASIS, WARMUP_BARS, BarSeries, FeatureRow, features_at
 from src.research_lab.orderflow_ml.labels import LABEL_VERSION, OK, LabelConfig, LabelRow, label_at
 from src.research_lab.orderflow_ml.store import HOLDOUT_DAY, MinuteBarStore, day_start_ms, days_between, guard, sha256_file
@@ -80,20 +80,33 @@ def purged(decision_ms: int, cfg: LabelConfig, section: str) -> bool:
     return decision_ms + cfg.horizon_min * MINUTE_MS > SECTIONS[section][1]
 
 
-def day_window(load: Callable[[date], list[MinuteBar]], day: date, present: set[date], horizon_min: int) -> tuple[BarSeries, int]:
-    """Bars of the previous day (if present), the day, and the first minutes of the next day (if present)."""
+ProfileLoader = Callable[[date], DayProfile]
+
+
+def day_window(load: Callable[[date], list[MinuteBar]], day: date, present: set[date], horizon_min: int,
+               load_profile: ProfileLoader | None = None) -> tuple[BarSeries, int]:
+    """Bars of the previous day (if present), the day, and the first minutes of the next day (if present).
+
+    Profiles of the previous day and the day itself feed the Volume-Profile/TPO features; the next
+    day's profile is never loaded.
+    """
     from datetime import timedelta
 
     prev, nxt = day - timedelta(days=1), day + timedelta(days=1)
     bars: list[MinuteBar] = []
     offset = 0
+    profiles: dict[int, DayProfile] = {}
     if prev in present:
         bars += load(prev)
         offset = len(bars)
+        if load_profile is not None:
+            profiles[day_start_ms(prev)] = load_profile(prev)
+    if load_profile is not None:
+        profiles[day_start_ms(day)] = load_profile(day)
     bars += load(day)
     if nxt in present and nxt < HOLDOUT_DAY:
         bars += load(nxt)[: horizon_min + 1]
-    return BarSeries(bars), offset
+    return BarSeries(bars, profiles), offset
 
 
 def exclusion_reason(row: FeatureRow, label: LabelRow, is_purged: bool) -> str | None:
@@ -127,8 +140,9 @@ class DayResult:
     rows: int
 
 
-def export_day(load: Callable[[date], list[MinuteBar]], day: date, present: set[date], cfg: ExportConfig) -> DayResult:
-    series, offset = day_window(load, day, present, cfg.label.horizon_min)
+def export_day(load: Callable[[date], list[MinuteBar]], day: date, present: set[date], cfg: ExportConfig,
+               load_profile: ProfileLoader | None = None) -> DayResult:
+    series, offset = day_window(load, day, present, cfg.label.horizon_min, load_profile)
     features: list[list[str]] = []
     labels: list[list[str]] = []
     exclusions: Counter = Counter()
@@ -179,12 +193,13 @@ def run_export(store: MinuteBarStore, cfg: ExportConfig, out_root: Path | str, *
                                         "bar_quality": Counter()} for name in SECTIONS}
     manifest_bars = store.manifest()
     for day in days:
-        result = export_day(load, day, present, cfg)
+        result = export_day(load, day, present, cfg, store.load_profile)
         name = section_of(day_start_ms(day))
         f_sha = _write_csv(out / "features" / f"{cfg.symbol}-{day.isoformat()}.csv", FEATURE_HEADER, result.features)
         l_sha = _write_csv(out / "labels" / f"{cfg.symbol}-{day.isoformat()}.csv", LABEL_HEADER, result.labels)
         per_day[day.isoformat()] = {"section": name, "features_sha256": f_sha, "labels_sha256": l_sha,
                                     "bars_sha256": manifest_bars[day.isoformat()]["bars_sha256"],
+                                    "profile_sha256": manifest_bars[day.isoformat()]["profile_sha256"],
                                     "archive_sha256": manifest_bars[day.isoformat()]["archive_sha256"]}
         sec = sections[name]
         sec["days"] += 1
@@ -248,7 +263,7 @@ def replay(store: MinuteBarStore, decision_ms: int, cfg: ExportConfig, export_di
     present = set(store.present_days()) & set(days_between(cfg.first_day, cfg.last_day))
     if day not in present:
         raise ValueError(f"{day} is not part of this export range or has not been fetched")
-    series, offset = day_window(store.load, day, present, cfg.label.horizon_min)
+    series, offset = day_window(store.load, day, present, cfg.label.horizon_min, store.load_profile)
     i = offset + (minute_start - day_start_ms(day)) // MINUTE_MS
     row = features_at(series, i)
     section = section_of(minute_start)

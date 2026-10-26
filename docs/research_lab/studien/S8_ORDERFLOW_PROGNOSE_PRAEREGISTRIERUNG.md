@@ -46,7 +46,7 @@ liest einen Validierungspreis). Merkmale dürfen in die Vergangenheit über die 
 Für Walk-forward innerhalb eines Abschnitts (P3) gilt dasselbe Purging an jeder Blockgrenze; zusätzlich ein
 Abstand von 5 Minuten (Horizont). Keine zufällige Aufteilung benachbarter Minuten.
 
-## 4. Merkmale (Version 1.0.0) – Datenwörterbuch
+## 4. Merkmale (Version 1.1.0) – Datenwörterbuch
 
 Entscheidungszeit t = Ende der Minute. Alle Merkmale lesen nur Minuten bis t, höchstens bis zum Beginn des
 Vortags zurück. Die ersten 120 Minuten nach einer Datenlücke (fehlender Tag) gelten als Aufwärmphase und werden
@@ -82,6 +82,22 @@ ausgeschlossen. Kerzenkontext nur aus bei t **geschlossenen** Uhrstunden.
 | `prev_hour_dist_low` | ln(Preis bei t / Tief dieser geschlossenen Stunde) |
 | `hour_utc` | Stunde von t in UTC (0..23) |
 | `weekday` | Wochentag von t in UTC (0 = Montag) |
+| `vp_prev_poc_dist` | ln(Preis bei t / POC des Volumenprofils des Vortags, Mitte der Preisstufe) |
+| `vp_prev_va_pos` | (Preis − VAL) / (VAH − VAL) der Value Area (70 %) des Vortags; < 0 darunter, > 1 darüber |
+| `vp_prev_va_width` | ln(VAH / VAL) der Value Area des Vortags |
+| `vp_dev_poc_dist` | ln(Preis bei t / POC des laufenden Tagesprofils bis t) |
+| `vp_dev_va_pos` | Lage des Preises in der Value Area des laufenden Tagesprofils bis t |
+| `tpo_prev_poc_dist` | ln(Preis bei t / TPO-POC des Vortags, 30-Minuten-Perioden) |
+| `tpo_prev_va_pos` | Lage des Preises in der TPO-Value-Area (70 %) des Vortags |
+
+**Volume Profile und TPO (seit 1.1.0, auf Uzis Wunsch vom 26.10. vor jeder Auswertung ergänzt):** Der Exporter
+zählt das aggressive Volumen je Minute und Preisstufe. Die Stufenbreite gilt für einen ganzen UTC-Tag und ist die
+größte Zahl der Form 1/2/5 × 10^k USDT, die 0,1 % des ersten Trades des Tages nicht übersteigt (bei 30 000 USDT also
+20 USDT). Regeln: POC = Stufe mit dem größten Wert (Gleichstand: tiefere Stufe); Value Area = vom POC aus jeweils die
+größere Nachbarstufe hinzunehmen (leere Stufen zählen 0, Gleichstand: obere), bis ≥ 70 % erreicht sind; TPO = 48
+Perioden à 30 Minuten, jede markiert die Stufen von ihrem Tief bis Hoch einmal. Vortagsprofile nur, wenn der ganze
+Vortag vorliegt; das laufende Tagesprofil nutzt nur Minuten bis t. Die Merkmale sind Bezugsabstände, keine
+Handelsregeln (kein „POC-Magnet“ o. ä. als Hypothese).
 
 Qualitätsspalten je Zeile: `stale_ms` (Alter des letzten Trades bei t), `empty_minutes_60` (Minuten ohne Trade
 in den letzten 60), `warm`, `complete`.
@@ -132,8 +148,9 @@ Der Export schreibt Merkmale und Labels in getrennte Dateien, dazu `split_manife
 Hash, Code-Commit, Eingangs-, Merkmals- und Label-Hash, Zählungen je Abschnitt) und `quality_report.md`.
 Der Bericht ist ergebnisblind: Er zählt Ausschlussgründe und Label-*Status*, keine Klassenverteilung.
 
-Abnahme P1 (Bauplan) und Nachweis in den Tests: gleiche Eingaben → gleiche Hashes; spätere Daten ändern keine
-frühere Merkmalszeile (abgeschnittene und manipulierte Zukunft); doppelte Trades, Id-Lücken, Zeitrücksprünge,
+Abnahme P1 (Bauplan) und Nachweis in den Tests: Volumen je Preisstufe summiert sich zum Minutenvolumen, POC/Value
+Area/TPO an Handbeispielen, laufendes Profil kausal; gleiche Eingaben → gleiche Hashes; spätere Daten ändern keine
+frühere Merkmalszeile (abgeschnittene und manipulierte Zukunft, auch im Preisstufen-Profil); doppelte Trades, Id-Lücken, Zeitrücksprünge,
 leere Minuten, fehlende Tage und Trades außerhalb des UTC-Tags werden erkannt; Replay vom Archiv bis zum Label
 stimmt mit dem Export überein; Holdout-Tage werden vor dem Abruf verweigert.
 
@@ -176,4 +193,4 @@ noch nicht erfolgt.
 | Datum | Version | Änderung | Bis dahin gesehene Daten |
 |---|---|---|---|
 | 2026-10-26 | 0.1 | Entwurf: Frage, Daten, Split, Merkmale 1.0.0, Label 1.0.0, Werkzeug, offene Entscheidungen | keine Archivdaten geladen, keine Outcomes; nur synthetische Testdaten |
-| 2026-10-26 | 0.2 | Abschnitt 7: Uzis Entscheid „Eigene Familie, prospektiv“ (Karte 20:49 Ortszeit), Protokoll-Einordnung; Registerstand 58/60 | unverändert: keine Archivdaten, keine Outcomes |
+| 2026-10-26 | 0.2 | Merkmale 1.1.0 mit Volume Profile und TPO (Uzis Wunsch, 20:02 Ortszeit); Balkenversion 1.1.0 mit Profildatei; Abschnitt 7: Uzis Entscheid „Eigene Familie, prospektiv“ (Karte 20:49 Ortszeit), Protokoll-Einordnung; Registerstand 58/60 | unverändert: keine Archivdaten, keine Outcomes |

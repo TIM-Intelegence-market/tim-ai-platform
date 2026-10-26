@@ -15,7 +15,9 @@ import pytest
 from src.research_lab.data.aggtrades import AggTradeDayStore
 from src.research_lab.data.store import HoldoutLocked
 from src.research_lab.orderflow_ml import __main__ as cli
-from src.research_lab.orderflow_ml.bars import MINUTE_MS, MinuteBar, TradeTick, decimal_to_e8, reduce_trades, ticks_from_rows
+from src.research_lab.orderflow_ml.bars import (MINUTE_MS, MinuteBar, TradeTick, decimal_to_e8, nice_width_e8, reduce_trades,
+                                                reduce_trades_with_profile, ticks_from_rows)
+from src.research_lab.orderflow_ml.profile import tpo_histogram, value_area, volume_histogram
 from src.research_lab.orderflow_ml.export import FEATURE_HEADER, ExportConfig, crosscheck_s2, replay, run_export
 from src.research_lab.orderflow_ml.features import FEATURE_NAMES, WARMUP_BARS, BarSeries, features_at
 from src.research_lab.orderflow_ml.labels import LabelConfig, label_at
@@ -142,17 +144,23 @@ def test_store_detects_changed_bar_file(tmp_path: Path) -> None:
 
 # -- features: no look-ahead ---------------------------------------------------------------------------------
 def _series(tmp_path: Path) -> BarSeries:
-    store = filled_store(tmp_path, [date(2020, 2, 2), date(2020, 2, 3)])
-    return BarSeries(store.load(date(2020, 2, 2)) + store.load(date(2020, 2, 3)))
+    days = [date(2020, 2, 2), date(2020, 2, 3)]
+    store = filled_store(tmp_path, days)
+    return BarSeries(store.load(days[0]) + store.load(days[1]), {day_start_ms(d): store.load_profile(d) for d in days})
 
 
 def test_future_bars_never_change_a_feature(tmp_path: Path) -> None:
     full = _series(tmp_path)
+    full_profiles = full.profiles
     rng = random.Random(7)
     for i in [0, 59, WARMUP_BARS - 1, 600, 1439, 1440, 2000]:
-        truncated = BarSeries(full.bars[: i + 1])
+        cut = full.start[i]
+        profiles = {d: p for d, p in full_profiles.items()}
+        future_profiles = {d: replace(p, entries=tuple(e if d + e[0] * MINUTE_MS <= cut else (e[0], e[1] + 7, e[2] * 3, 1) for e in p.entries))
+                           for d, p in profiles.items()}
+        truncated = BarSeries(full.bars[: i + 1], profiles)
         tampered = full.bars[: i + 1] + [MinuteBar.empty(b.window_start_ms) if rng.random() < 0.5 else b for b in full.bars[i + 1:]]
-        assert features_at(truncated, i) == features_at(full, i) == features_at(BarSeries(tampered), i)
+        assert features_at(truncated, i) == features_at(full, i) == features_at(BarSeries(tampered, future_profiles), i)
 
 
 def test_features_are_complete_after_warmup_and_flag_warmup(tmp_path: Path) -> None:
@@ -254,3 +262,62 @@ def test_data_dictionary_in_preregistration_lists_every_feature() -> None:
     text = (Path(__file__).resolve().parents[1] / "docs/research_lab/studien/S8_ORDERFLOW_PROGNOSE_PRAEREGISTRIERUNG.md").read_text()
     missing = [name for name in FEATURE_NAMES if f"| `{name}` |" not in text]
     assert missing == []
+
+
+# -- Volume Profile and TPO (feature version 1.1.0) -----------------------------------------------------------
+def test_nice_width_is_about_ten_basis_points() -> None:
+    assert nice_width_e8(30_000 * 10**8) == 20 * 10**8  # 30 USD target -> 20
+    assert nice_width_e8(9_000 * 10**8) == 5 * 10**8
+    assert nice_width_e8(69_000 * 10**8) == 50 * 10**8
+    assert nice_width_e8(1 * 10**8) == 10**6  # floor 0.01 USDT
+
+
+def test_value_area_rules_by_hand() -> None:
+    assert value_area({}) is None
+    # POC 12 (40); neighbours 13:30 vs 11:10 -> 13; 70 of 100 reached
+    assert value_area({10: 5, 11: 10, 12: 40, 13: 30, 14: 5, 15: 10}) == (12, 12, 13)
+    # POC 12 (40); 13:20 vs 11:25 -> 11 (65); 13:20 vs 10:5 -> 13 (85 of 100)
+    assert value_area({10: 5, 11: 25, 12: 40, 13: 20, 14: 10}) == (12, 11, 13)
+    assert value_area({1: 10, 2: 10}) == (1, 1, 2)  # POC tie -> lower bin
+    assert value_area({1: 5, 2: 10, 3: 5}) == (2, 2, 3)  # expansion tie -> upper bin
+    assert value_area({1: 10, 4: 1}) == (1, 1, 1)  # one bin already holds 70 %
+
+
+def test_tpo_histogram_marks_each_bin_once_per_period() -> None:
+    start = day_start_ms(date(2020, 1, 1))
+    w = 10 * 10**8
+
+    def bar(minute: int, lo: int, hi: int) -> MinuteBar:
+        return MinuteBar(start + minute * MINUTE_MS, 1, 1, 1, 0, 1, 0, 0, 0, lo * 10**8, hi * 10**8, hi * 10**8, lo * 10**8,
+                         start + minute * MINUTE_MS + 1)
+
+    bars = [MinuteBar.empty(start + m * MINUTE_MS) for m in range(60)]
+    bars[0], bars[5] = bar(0, 100, 105), bar(5, 112, 119)  # period 1: bins 10..11
+    bars[40] = bar(40, 111, 111)  # period 2: bin 11
+    assert tpo_histogram(bars, w) == {10: 1, 11: 2}
+
+
+def test_profile_volume_matches_bars_and_developing_profile_is_causal(tmp_path: Path) -> None:
+    s = _series(tmp_path)
+    day1 = s.start[1440]
+    profile = s.profiles[day1]
+    per_minute: dict[int, int] = {}
+    for minute, _, buy, sell in profile.entries:
+        per_minute[minute] = per_minute.get(minute, 0) + buy + sell
+    assert all(per_minute.get(m, 0) == s.volume[1440 + m] for m in range(1440))
+    for m in (0, 37, 900, 1439):
+        va = value_area(volume_histogram(profile.entries, m))
+        w = profile.width_e8
+        assert s.vp_dev[1440 + m] == (va[0] * w + w // 2, va[1] * w, (va[2] + 1) * w)
+    row = features_at(s, 1440 + 700)
+    names = ("vp_prev_poc_dist", "vp_prev_va_pos", "vp_dev_poc_dist", "tpo_prev_poc_dist", "tpo_prev_va_pos")
+    assert all(row.values[FEATURE_NAMES.index(n)] is not None for n in names)
+    assert all(features_at(s, i).values[FEATURE_NAMES.index("vp_prev_poc_dist")] is None for i in (0, 1439))  # day 1 has no previous day
+
+
+def test_reduction_profile_uses_first_trade_width() -> None:
+    start = day_start_ms(date(2020, 3, 1))
+    ticks = [TradeTick(1, 30_000 * 10**8, 10**8, start + 5, False), TradeTick(2, 30_045 * 10**8, 2 * 10**8, start + 61_000, True)]
+    _, _, profile = reduce_trades_with_profile(ticks, start)
+    assert profile.width_e8 == 20 * 10**8
+    assert profile.entries == ((0, 1500, 10**8, 0), (1, 1502, 0, 2 * 10**8))
