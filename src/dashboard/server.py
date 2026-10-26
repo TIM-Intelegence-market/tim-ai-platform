@@ -171,10 +171,15 @@ class DashboardServer:
 
                     status, page, csp = graph_page()
                     return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=csp)
-                if path == "/graphify/report":
-                    from src.dashboard.pages.graphify import report_text
+                if path == "/graphify/communities":
+                    from src.dashboard.pages.graphify import graph_page
 
-                    status, text = report_text()
+                    status, page, csp = graph_page(name="graph.html")
+                    return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=csp)
+                if path in ("/graphify/report", "/graphify/luecken"):
+                    from src.dashboard.pages.graphify import GAP_REPORT, report_text
+
+                    status, text = report_text(name=GAP_REPORT) if path.endswith("luecken") else report_text()
                     return self.respond(status, text.encode(), "text/plain; charset=utf-8")
                 if path == "/pilot":
                     return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8", csp=PILOT_CSP)

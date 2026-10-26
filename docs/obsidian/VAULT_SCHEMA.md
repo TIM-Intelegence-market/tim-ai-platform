@@ -82,10 +82,42 @@ läuft stündlich `python -m src.obsidian_vault.auto_refresh --repo ~/Documents/
    `refresh-docs`.
 4. Graphify-Ansicht: `graphify update`, Kopie von `graph.html` nach
    `~/Documents/TIM/TIM Graph Ansicht/` (nur bei neuem Stand).
-5. Vault-Git: committet nur den Ordner `Automatisch`, andere Änderungen bleiben offen.
+5. Graph-Knoten: `graph_hubs sync` hängt neue Notizen an ihren Bereichs-Knoten (siehe unten).
+6. Vault-Git: committet nur den Ordner `Automatisch` und die dabei geänderten
+   Knoten-Notizen, andere Änderungen bleiben offen.
 
 Status: `~/Library/Application Support/TIM/obsidian-refresh/status.json`.
 Löst den alten Job `com.tim.graph-refresh` (täglich nur `refresh-docs`) ab.
+
+## Ein TIM-Graph (Knoten-Struktur)
+
+Der Obsidian-Graph ist ein zusammenhängender Baum mit Querverbindungen:
+`TIM Home` → ein Knoten (MOC) je Bereich → alle Notizen des Bereichs.
+
+| Ordner | Knoten | Farbe |
+|---|---|---|
+| 01 Home | TIM Home | weiß |
+| 10 Architektur | Architecture MOC | hellblau |
+| 20 Incidents | Incidents MOC | rot |
+| 30 Missionen | Missions MOC | orange |
+| 40 Systeme | Systems MOC | blau |
+| 50 Daten & QA | Data QA MOC | grün |
+| 60 Agenten & Tools | Agents & Tools MOC | lila |
+| 70 Entscheidungen | Decisions MOC | pink |
+| 75 Research | Research MOC | gelb |
+| 80 Runbooks | Runbooks MOC | türkis |
+| 90 Berichte | Reports MOC | grau |
+| 00 Inbox | (in TIM Home unter „Eingang“) | hellgrün |
+| Claude Memory (neben `TIM/`) | eigener Graph, bleibt unberührt | ocker |
+
+`python -m src.obsidian_vault.graph_hubs sync` schreibt in jeden Knoten einen Block
+zwischen `<!-- tim-graph:start -->` und `<!-- tim-graph:end -->` mit Links auf alle
+Notizen des Ordners (Unterordner eingeschlossen; Wochen-PR-Notizen hängen an
+`TIM Stand automatisch`). Fehlende Knoten legt er an. Text außerhalb der Markierungen
+bleibt unberührt. `check` meldet unverbundene Notizen und veraltete Blöcke (Exit 1),
+`settings` schreibt die Graph-Ansicht aus `docs/obsidian/graph.json`
+(Filter ohne 95 Archiv/99 Vorlagen, ungelöste Links aus, Farbe je Bereich) nach
+`.obsidian/graph.json` und behält den Zoom. Der stündliche Job ruft `sync` selbst auf.
 
 ## Dashboards
 

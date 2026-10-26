@@ -14,6 +14,11 @@
 !config/**
 !TIM_MASTER_PROMPTS/
 !TIM_MASTER_PROMPTS/**
+# Entry points (CLIs, launchd jobs): without them half of the wiring is invisible
+!scripts/
+!scripts/**
+!tools/
+!tools/**
 
 # Sanitized metadata representation for content-excluded groups
 !graphify-metadata/
