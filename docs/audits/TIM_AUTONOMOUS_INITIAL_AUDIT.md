@@ -92,7 +92,7 @@ Priorität: P0 Datenintegrität/Sicherheit/Kosten/Risiko, P1 Forschung/Multi-Coi
 | ID | Ziel | P | Abhängig von | Thread / Branch | Status | Nächster Schritt |
 |---|---|---|---|---|---|---|
 | A01 | `~/TIM-live` auf `platform-main` bringen (36 Commits) | P0 | #410 | „23.10. Dashboard-Aktualisierungs-Agent“ | DONE 26.10. (Dashboard-Agent hält `~/TIM-live` automatisch auf platform-main, Stand 26.10. 5cbb6b8, nächster Deploy wartet nur auf grünen CI-Test) | – |
-| A02 | Kosten-Schwelle 0,25 R live sehen | P0 | A01 | „24.10. ChatGPT-Befunde…“ | READY (gemergt #408) | Nach A01 `/journal` und `cost_check` prüfen |
+| A02 | Kosten-Schwelle 0,25 R live sehen | P0 | A01 | „24.10. ChatGPT-Befunde…“ | DONE 26.10. (live auf 5cbb6b8: `/api/plan-journal` cost_check/1, Schwelle 0,25 R, 25 Pläne, 21 NOT_TRADABLE_COST, 4 innerhalb, 0 unbekannt; Seite /journal zeigt Spalte „Kosten (Schätzung)“, nur Anzeige) | – |
 | A03 | Kosten-Schwelle prüfen (LONG/SHORT, Gebühren, Slippage, Rundung, fehlende Stops) + Kostenstudie mit Varianten | P0 | – | „24.10. ChatGPT-Befunde…“ | NOT_STARTED | Tests gegen `src/dashboard/plan_cost_check.py`, Varianten nur als Forschung |
 | A04 | Plan-Journal-Abnahme (#376) | P1 | A01 | – | IN_PROGRESS | Akzeptanzkriterien #376 gegen Live prüfen, dann Uzi |
 | A05 | Analyse-Steckbrief je Zeitrahmen (Paket 2) | P1 | – | „24.10. TIM-Chart-Pläne…“ | IN_PROGRESS | Thread baut; Vorschau 8769 bleibt bis Abnahme |
