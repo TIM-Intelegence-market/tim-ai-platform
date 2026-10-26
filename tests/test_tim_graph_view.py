@@ -73,3 +73,17 @@ def test_unknown_package_gets_its_own_layer():
     assert tv.layer_of("src/brand_new") == "neu"
     assert tv.layer_of("src/paper") == "trading"
     assert tv.layer_of("src (Kern)") == "werkzeuge"
+
+
+def test_code_naming_a_schema_file_links_it(tmp_path: Path):
+    repo, graph = make_repo(tmp_path)
+    (repo / "schemas").mkdir()
+    (repo / "schemas/plan.v1.json").write_text("{}", encoding="utf-8")
+    (repo / "src/paper/book.py").write_text('SCHEMA = "plan.v1.json"\n', encoding="utf-8")
+    raw = json.loads(graph.read_text())
+    raw["nodes"].append(node("schema", "schemas/plan.v1.json"))
+    graph.write_text(json.dumps(raw))
+    out = tmp_path / "out"
+    tv.build(graph, repo, out)
+    data = json.loads((out / "tim-graph-areas.json").read_text())
+    assert ("schemas", "src/paper") in {(e["a"], e["b"]) for e in data["edges"]}

@@ -68,7 +68,9 @@ PACKAGE_LAYER = {
     "ui": ("dashboard", "control_portal"),
 }
 _PKG_TO_LAYER = {pkg: layer for layer, pkgs in PACKAGE_LAYER.items() for pkg in pkgs}
-_PATH_REF = re.compile(r"(?<![\w/.-])((?:src|scripts|tools|tests)/[A-Za-z0-9_./-]*[A-Za-z0-9_])")
+_PATH_REF = re.compile(r"(?<![\w/.-])((?:src|scripts|tools|tests|schemas|config|docs|TIM_MASTER_PROMPTS)"
+                       r"/[A-Za-z0-9_./-]*[A-Za-z0-9_])")
+_DATA_SUFFIXES = (".json", ".sql", ".yaml", ".yml", ".toml")
 _MODULE_REF = re.compile(r"(?<![\w.])(src(?:\.[A-Za-z_][A-Za-z0-9_]*)+)")
 _MD_LINK = re.compile(r"\]\(([^)#\s]+\.md)(?:#[^)]*)?\)")
 
@@ -154,6 +156,28 @@ def add_document_links(model: Model, repo: Path) -> None:
         for target in targets - {doc}:
             model.file_edges[tuple(sorted((doc, target)))] += 1
             model.kinds["dokument"] += 1
+
+
+def add_data_file_links(model: Model, repo: Path) -> None:
+    """Code that names a schema/config/SQL file (by unique file name) uses it."""
+    by_name: dict[str, list[str]] = defaultdict(list)
+    for path in model.files:
+        if path.endswith(_DATA_SUFFIXES):
+            by_name[path.rsplit("/", 1)[-1]].append(path)
+    names = {name: paths[0] for name, paths in by_name.items() if len(paths) == 1}
+    if not names:
+        return
+    pattern = re.compile("|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)))
+    for code in sorted(f for f in model.files if f.endswith(".py")):
+        try:
+            text = (repo / code).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for hit in set(pattern.findall(text)):
+            target = names[hit]
+            if target != code:
+                model.file_edges[tuple(sorted((code, target)))] += 1
+                model.kinds["dokument"] += 1
 
 
 def assign_areas(model: Model) -> None:
@@ -245,6 +269,8 @@ def build_view(model: Model) -> dict:
         if x != y:
             area_edges[tuple(sorted((x, y)))] += count
     linked_areas = {a for pair in area_edges for a in pair}
+    linked_areas |= {area for area, paths in files_by_area.items()  # only package markers
+                     if all(p.endswith("__init__.py") for p in paths)}
     areas = []
     for area, paths in sorted(files_by_area.items()):
         islands = sorted(p for p in paths if degree[p] == 0 and not p.endswith("__init__.py"))
@@ -264,7 +290,8 @@ def build_view(model: Model) -> dict:
 
 def components(view: dict) -> int:
     """Connected parts among areas (without the TIM/layer hub)."""
-    parent = {a["id"]: a["id"] for a in view["areas"]}
+    parent = {a["id"]: a["id"] for a in view["areas"]
+              if not all(p.endswith("__init__.py") for p in a.get("file_list", ["x"]))}
 
     def find(x: str) -> str:
         while parent[x] != x:
@@ -272,7 +299,8 @@ def components(view: dict) -> int:
             x = parent[x]
         return x
     for edge in view["edges"]:
-        parent[find(edge["a"])] = find(edge["b"])
+        if edge["a"] in parent and edge["b"] in parent:
+            parent[find(edge["a"])] = find(edge["b"])
     return len({find(a) for a in parent})
 
 
@@ -384,6 +412,7 @@ def build(graph_path: Path, repo: Path, out: Path) -> dict:
     commit = str(graph.get("built_at_commit") or "")
     model = load_graphify(graph)
     add_document_links(model, repo)
+    add_data_file_links(model, repo)
     assign_areas(model)
     view = build_view(model)
     py_files = sorted(f for f in model.files if f.endswith(".py"))
