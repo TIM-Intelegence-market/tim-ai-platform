@@ -31,7 +31,6 @@ All Week 2 components remain research-only. They contain no trading, prediction,
 
 - `src/news`: authorized news records and deterministic links to historical observations.
 - `src/knowledge`: authorized GoatHub/personal material with searchable citations and hashes.
-- `src/longterm`: descriptive macro, dominance and sector context.
 - `src/assistant`: OBSERVE-only short-term evidence explanation.
 - `src/paper`: disabled-by-default TEST_ONLY research journaling; no exchange interface.
 - `docs/VISION_2030.md`: roadmap and governance.

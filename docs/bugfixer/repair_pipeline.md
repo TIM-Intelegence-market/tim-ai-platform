@@ -1,5 +1,7 @@
 # Isolierter Reparatur-Ablauf (#17, #18, #20)
 
+> **Archiviert am 26.10.2026** (Grün-Plan Paket I1, `docs/PAKETINVENTAR.md`): `src/repair_workflow/`, `src/repair_observe/`, `src/repair_recipes/` und ihre Tests sind aus `platform-main` entfernt und stehen im Zweig `archiv/unerreichte-pakete-2026-10-26` (Stand 06c8bc2). `src/repair_repro/` bleibt, weil `src/repair_gates/integrity.py` es importiert. Diese Seite beschreibt den archivierten Stand.
+
 `src/repair_workflow/pipeline.py::run_patch_pipeline` verbindet die einzeln gelieferten Bausteine in der
 Reihenfolge, die #20 verlangt, und hält vor jedem Merge an:
 
