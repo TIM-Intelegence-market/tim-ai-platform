@@ -3,12 +3,12 @@
 | Feld | Wert |
 |---|---|
 | Studie | S7 |
-| Version | **0.2 (Entwurf nach adversarialer Prüfung, nicht freigegeben)** |
-| Status | ENTWURF. Keine Registrierung, kein Zähllauf, kein Ergebnis. Holdout zu. |
+| Version | **0.3 (Entwurf, Gate gerechnet, nicht freigegeben)** |
+| Status | ENTWURF, **Zähllauf 6.1 gerechnet (26.10., 10:38 Ortszeit, Commit 2a9d3be, Datensatz-Hash 9ac4d135…)**: S7-D20-T3 und S7-D20-T4 bestehen das Gate, S7-D55-T3/T4 nicht (hochgerechnet 59,5 Holdout-Signal-Wochen, Schwelle 60). Keine Registrierung, kein Ergebnis gerechnet. Holdout zu. Bericht `../reports/s7_count_2026-10-26T0938Z.md` |
 | Anlass | Uzi 26.10.2026, 01:38 Ortszeit: „Ich möchte eine Strategie die mir 3-4R bringt pro Trade“; „go“ 10:49 Ortszeit. Bauplan: `/mnt/project-files/plaene/s7-3-4r-trendfolge-bauplan.md` |
 | Lesart des Ziels | **Ziel je Gewinntrade 3 R bzw. 4 R** (Gewinn = Drei- bzw. Vierfaches des Anfangsrisikos). Nicht: Erwartungswert 3–4 R je Trade über alle Trades. Bei Erfolg liegt der Erwartungswert einer solchen Strategie typisch bei +0,2 bis +0,5 R je Trade |
 | Protokoll | `../PROTOKOLL.md` Version **1.2** (Stand dieses Branches). Version 1.3 aus PR #428 enthält nur S6-Ausnahmen (A1–A5), die laut Wortlaut für S6-artige Maker-Studien gelten und für S7 nicht zitiert werden. S7 braucht **keinen neuen Protokoll-Eintrag**; die Abweichungen in 5.5 sind alle strenger |
-| Register | `../REGISTER.jsonl`: 48 Einträge in diesem Branch, 54 nach Merge von PR #428 (S6). m = Zahl der `register`-Zeilen (jede Variante hat zusätzlich eine `status`-Zeile). S7 bringt **4** (→ 58 von 60); **für alle Rechnungen gilt m = 60**. Registrierung (P4) erst nach Merge von #428 |
+| Register | `../REGISTER.jsonl`: 48 Einträge in diesem Branch, 54 nach Merge von PR #428 (S6). m = Zahl der `register`-Zeilen (jede Variante hat zusätzlich eine `status`-Zeile). Nach dem Gate bringt S7 **2** Varianten (D20-T3, D20-T4 → 56 von 60); **für alle Rechnungen gilt m = 60**. Registrierung (P4) erst nach Merge von #428 und Uzis Karte |
 | Branch / PR | `claude/project-thread-0yalj1-s7` (ab platform-main 90f4b64), PR folgt |
 | Vorgänger | S4 (NICHT TESTBAR), S5 (NICHT TESTBAR), S6 (NICHT BESTANDEN): Ziele 75 % und 95 % Trefferquote nicht erreichbar, siehe Abschnitt 2.3 |
 
@@ -270,6 +270,19 @@ Signalkerze mit mindestens einem Signal der unteren Zählung, über alle Instrum
 - Besteht keine Variante → **S7 ist nicht testbar**, Ende ohne Register-Eintrag und ohne Trainingslauf. Keine
   Lockerung im selben Entwurf.
 
+**Ergebnis des Zähllaufs (26.10., Commit 2a9d3be, Hash 9ac4d135…, `../reports/s7_count_2026-10-26T0938Z.md`):**
+
+| Variante | Training (untere Zählung / Wochen) | Validierung | Holdout hochgerechnet (Signale / Wochen) | Gate |
+|---|---:|---:|---:|---|
+| S7-D20-T3, S7-D20-T4 | 341 / 138 | 260 / 102 | 196,0 / 70,0 | **bestanden** |
+| S7-D55-T3, S7-D55-T4 | 263 / 121 | 203 / 95 | 145,2 / **59,5** | nicht bestanden (Wochen-Schwelle 60) |
+
+Die D55-Varianten scheitern um eine halbe Woche an der vorab festgelegten Wochen-Schwelle; nach der Regel oben werden sie
+nicht registriert und nicht gelockert. Sie werden nach 5.4 nur als Nachbarn auf Training gerechnet. Die Vorab-Schätzung
+(1,5–2,5 Signale je Coin-Monat) war zu niedrig: gemessen 3,1–3,4 (D20) bzw. 2,3–2,7 (D55) je Coin-Monat. Lücken: SOL
+2020-09 (Listungsmonat, 79 Kerzen), 2022-02 (18), 2022-04 (12); 31 (D20) bzw. 19 (D55) SOL-Signale im Training wegen
+Lücken im Indikatorfenster nicht erzeugt.
+
 Das Gate liest Kurse bis zum Signal und ist deshalb nur bezüglich der Ergebnisse blind; Marktrichtung und Signaldichte
 sind sichtbar. Darum: **Der Regelstand (Commit) wird vor dem Zähllauf festgehalten; jede Änderung an N, SMA, ATR,
 Zeitstop, Stop, Ziel oder Filter nach dem Zähllauf ist eine neue Studie, keine Fassung 1.0 von S7.** Der Zählbericht
@@ -321,7 +334,7 @@ Ein Lauf, danach ist der Holdout für S7 und für alle Registereinträge verbrau
 | P1 | Entwurf 0.1 → adversariale Prüfung (anderes Modell) → 0.2 | Befunde im Änderungsprotokoll |
 | P2 | 4h-Klines USD-M BTC/ETH/SOL 2020–2024 und Funding auf dem Mac laden (`scripts/research_lab_s7.py fetch`), Lücken, Hash | Fetch-Protokoll, Hash im Gate-Bericht |
 | P3 | Code: `hypotheses/s7.py` (Indikatoren, Signal, Varianten, ergebnisblinder Zähler), Lauf über `backtest.engine.run_backtest`, Baselines A/A′/B/C, Kennzahlen/Urteil in `studies/s7_eval.py`; Tests: Kanal ohne Kerze t, SMA-Filter, Signal nur auf geschlossenen Kerzen, Einstieg nächste Eröffnung, Stop-Minimum 1 %, Ziel T·R, Stop gewinnt, Zeitstop Kerze 30, Lücken, Funding, Kosten je Ausstiegsgrund, Zähler gegen Engine-Signale | `pytest tests/test_research_lab_s7*.py tests/test_research_lab_clustered.py` grün |
-| P4 | Zähllauf 6.1 auf dem Mac (nicht während CI-Jobs), Regelstand-Commit vorher; Bericht `s7_count_<stamp>.md`; bei Bestehen Entscheidungskarte: Freigabe 1.0 + Registrierung (54 → 58, nach Merge #428) + Kenntnisnahme K2-Power | Bericht mit Commit und Hash |
+| P4 | ~~Zähllauf 6.1 auf dem Mac~~ erledigt 26.10. (Commit 2a9d3be, Hash 9ac4d135…, 2 von 4 Varianten bestehen); Entscheidungskarte: Freigabe 1.0 + Registrierung D20-T3/D20-T4 (54 → 56, nach Merge #428) + Kenntnisnahme K2-Power | `../reports/s7_count_2026-10-26T0938Z.md` |
 | P5 | Training/Validierung, Baselines, Stress, Robustheit; Register-Status; Bericht `s7_train_<stamp>.md` | K1–K10, 5.4 |
 | P6 | Holdout, genau ein Lauf, nur per Entscheidungskarte, nur mit Kandidatin | Protokoll R6 |
 
@@ -347,8 +360,8 @@ Ein Lauf, danach ist der Holdout für S7 und für alle Registereinträge verbrau
 | # | Punkt | Wer |
 |---|---|---|
 | O1 | ~~Adversariale Prüfung durch ein anderes Modell, Befunde einarbeiten (0.2)~~ erledigt 26.10. | Claude |
-| O2 | 4h-Archive laden, Lücken und Hash berichten (P2); Zähllauf 6.1 (P4) | Claude, Mac |
-| O3 | Uzis Wort per Entscheidungskarte: Lesart des Ziels (3–4 R je Gewinntrade), Horizont-Einordnung Mid (5.5), Kenntnisnahme der K2-Power (6), Freigabe 1.0 und Registrierung der Gate-Varianten (→ 58) | Uzi |
+| O2 | ~~4h-Archive laden, Lücken und Hash berichten (P2); Zähllauf 6.1 (P4)~~ erledigt 26.10. | Claude, Mac |
+| O3 | Uzis Wort per Entscheidungskarte: Lesart des Ziels (3–4 R je Gewinntrade), Horizont-Einordnung Mid (5.5), Kenntnisnahme der K2-Power (6), Freigabe 1.0 und Registrierung von S7-D20-T3 und S7-D20-T4 (→ 56) | Uzi |
 | O4 | Holdout nur per zweiter Entscheidungskarte | Uzi |
 
 ## Änderungsprotokoll
@@ -357,3 +370,4 @@ Ein Lauf, danach ist der Holdout für S7 und für alle Registereinträge verbrau
 |---|---|---|---|---|
 | 2026-10-26 | 0.1 | Erstfassung nach Bauplan; 4 statt 6 Varianten (Rücksetzer gestrichen), K2 = Protokoll 7.1 plus A′ als Vorauswahl, Wochencluster, Mindesttrades 300/150/100, K2-Power offengelegt | Uzis „go“ 10:49 | R4-Bericht (M1, L1), S4/S5/S6-Berichte; keine 4h-Kurse |
 | 2026-10-26 | 0.2 | Adversariale Prüfung (anderes Modell, 23 Befunde): K4 25 → **20 R** (Protokoll); K6 nur noch berichtet (p* gilt nicht mit Zeitstop, Zufallstrefferquote 15–23 %/7–14 %, keine „2–4 Punkte“); K9 neu (Netto-R der Treffer ≥ T − 0,5) statt faktischem PF ≥ 1,5; K3 ergebnisfrei (Trades + Signal-Wochen statt n_eff aus Ergebnissen); K10 Seitenanteil nur berichtet; Stop als fester Kurs ab Signalschluss, R = Fill–Stop, `stop_before_entry` statt Verwerfen; Wiedereinstieg und Lücken wie Engine; Baseline A wie `random_entry` (gemeinsame Vorlage, Haltedauer, 31-Kerzen-Rand), Baseline C mit Trendzustand; Horizont Mid festgelegt und offengelegt; Gate 300/150 → 200/100 mit ehrlicher Vorab-Schätzung, Regelstand-Commit vor dem Zähllauf; Power-Tabelle korrigiert (n = 300: 92 %, E = 0,5 R: 42/68/85/97 %, Baseline-E < 0); Protokollstand 1.2/Register 48 im Branch, m = 60; Offenlegung ergänzt (S4-Erkundung, Hitrate-Raster, L1, Kaufen-und-Halten, S1-4h-Fenster, Holdout-Grenze); Zahlen 2.3 korrigiert (19–35 Trades, 68 Varianten) | Befunde der Prüfung | wie 0.1; keine 4h-Kurse |
+| 2026-10-26 | 0.3 | Zähllauf 6.1 gerechnet und eingetragen: D20-T3/D20-T4 bestehen, D55-T3/T4 nicht (59,5 < 60 Holdout-Signal-Wochen); Register-Ziel 54 → 56; Vorab-Schätzung der Signaldichte als zu niedrig vermerkt. Keine Regeländerung | Gate-Ergebnis | zusätzlich: Signalzahlen des Zähllaufs (ergebnisblind, keine Kurse nach dem Signal, kein R) |
