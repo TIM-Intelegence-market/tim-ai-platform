@@ -90,13 +90,37 @@ Eingabe: JSON `footprint: [{"open_time", "levels": [[Preis, Bid, Ask], …]}]` o
 plus Trades (CLI baut den Footprint). Ausgabe: `orderflow.footprint` im Analyse-JSON, Zeile
 „Footprint“ im Bericht, `facts.footprint` in der Evidenzkette.
 
+### 2b. Datenquellen für den Footprint (`src/orderflow_scenario/footprint_sources.py`)
+
+Für einen Footprint braucht TIM einzelne Trades mit Aggressorseite. Zwei kostenlose Quellen
+sind angeschlossen, beide liefern Binance-aggTrades (`is_buyer_maker` = True heißt aggressiver
+Verkauf, also Bid):
+
+| Quelle | Aufruf | Was passiert |
+| --- | --- | --- |
+| TIM-Tabelle `agg_trades` (Live-Mitschrift des Websocket-Streams) | `ofsc --footprint-source db --symbol BTCUSDT --timeframe 5m --start … --end … --tick 10` | Nur Lesen über `MarketRepository`. Kerzen kommen aus der Tabelle `candles`; fehlen sie im Fenster, werden sie aus den Trades gebildet (Notiz `candles_derived_from_trades`). Datenbank-URL aus den TIM-Settings oder `--database-url`. |
+| Binance Public Data (`data.binance.vision`, Tagesarchive `<SYMBOL>-aggTrades-<Tag>.zip` + `.CHECKSUM`) | `ofsc --footprint-source archive --archive-root <Ordner> --download …` | Archive liegen unter `<Ordner>/<spot|futures/um|futures/cm>/`. `--download` holt fehlende Tage und prüft die SHA-256 gegen die Prüfsummendatei; ohne `--download` werden fehlende Tage nur gemeldet (Notiz `archive_day_missing=<Tag>`). Höchstens 31 Tage je Analyse. Die Cloud erreicht den Host nicht, Downloads laufen auf dem Mac. |
+
+In beiden Fällen entsteht die Eingabe für den generischen Adapter (`payload_for_pipeline`:
+Kerzen, Trades, `footprint_tick_size`, Notiz `footprint_source=tim_agg_trades` bzw.
+`footprint_source=binance_archive_<Markt>`), und die CLI baut
+den Footprint mit `footprint_from_trades`. `--end` ist zugleich der Analysezeitpunkt. Auf
+stderr steht eine Zeile `footprint_evidence={…}` mit Kerzen-, Trade-Zahl, Tick und Notizen.
+Ohne Trades im Fenster endet der Lauf mit Fehler statt mit einem leeren Footprint.
+
+Abgrenzung zur S2-Studie: `src/research_lab/data/aggtrades.py` hat die Holdout-Sperre
+(ab 2025-01-01 nur mit R6-Erlaubnis) und dient Forschungsaussagen. Der Footprint-Lader hier
+dient der Analyse aktueller Tage und trägt keine Forschungs-Evidenz.
+
 ### Was TIM dabei noch nicht sieht
 
 - Der OpenMarket-Footprint hängt an `side_is_aggressor` (REST-Seitensemantik laut Adapter
   noch unbewiesen); bis dahin bleibt dort nur das Profil (POC/VA) und `missing_data` nennt
   `footprint:VOLUME_PROFILE_AGG_side_semantics_unverified`. Stufenbreite dort 5 USD, also grob.
-- Live-aggTrades aus der TIM-Datenbank sind noch nicht an die Pipeline angeschlossen; der
-  Footprint aus Trades läuft über JSON-Eingaben (CLI).
+- Der Footprint aus der TIM-Tabelle `agg_trades` reicht nur so weit zurück, wie der
+  Websocket-Mitschnitt auf dem Mac lückenlos war; Lücken erscheinen als fehlende Kerzen,
+  nicht als Fehler. Ältere Tage kommen aus den Binance-Archiven (2b), die erst am Folgetag
+  bereitstehen.
 - Der Marktzustand `EXHAUSTION` in `engines/market_state.py` ist nur ein Kerzenbild (langer
   Docht, Körper < 15 %, Volumen ≥ 1,3x). Das ist im Bootcamp-Sinn eher Excess/SFP-Docht und
   wird von keinem Szenario genutzt; maßgeblich ist die Reaktion der Orderflow-Engine.
@@ -127,12 +151,17 @@ Zwei-Kerzen-Rückfall, Adapter, Pipeline, Bericht und den Ausschluss beider Lesa
 `tests/test_orderflow_footprint.py` deckt F1-F6, beide Builder, die Bestätigungen und
 Widerlegungen in der Engine, Szenario-Belege, JSON-Adapter, CLI aus Trades, Bericht und den
 OpenMarket-Adapter (Delta-Serie aus TRADE_AGG, Footprint aus VOLUME_PROFILE_AGG, gesperrt ohne
-Seitennachweis) ab. `tests/test_orderflow_signed_delta.py` bleibt unverändert grün.
+Seitennachweis) ab. `tests/test_orderflow_footprint_sources.py` deckt Archiv-URL und Märkte,
+Download mit Prüfsumme und Zwischenspeicher, Fenster und Seiten aus dem Archiv, Kerzenbildung
+ohne Auffüllen, fehlende Tage, den Datenbankpfad über ein Repository-Double, die Nutzlast und
+den `ofsc`-Archivpfad samt Fail-closed-Fällen ab, ohne Netz und ohne Datenbank.
+`tests/test_orderflow_signed_delta.py` bleibt unverändert grün.
 
 ## Quellen
 
 - Broncx-Bootcamp-PDF (Eigentümer-Kopie, nur Lernquelle): Footprint-, CVD-, OI-, AMT-, Profil-Abschnitte und Trade Breakdowns.
 - LuxAlgo Library, „Absorption & Exhaustion“: https://www.luxalgo.com/library/concept/absorption-and-exhaustion/
+- Binance Public Data (Tagesarchive aggTrades, Spalten und Prüfsummen): https://github.com/binance/binance-public-data und https://data.binance.vision/
 - LuxAlgo Library, „Footprint Concepts“: https://www.luxalgo.com/library/concept/footprint-concepts/
 - ATAS, „Footprint Patterns“ (stacked imbalances, finished/unfinished auction, absorption): https://learn.atas.net/volume-basics/volume-analysis/footprint-patterns
 - NexusFi, „Advanced Footprint Chart Patterns“ (Delta Exhaustion, Delta Failure, Absorption; Trefferquoten dort sind unbelegte Eigenangaben): https://nexusfi.com/a/strategies/advanced-footprint-chart-patterns
