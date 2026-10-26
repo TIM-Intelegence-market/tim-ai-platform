@@ -82,9 +82,17 @@ MISSING_CSP = ("default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; "
                "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 
-def graph_page(directory: Path | None = None) -> tuple[int, str, str]:
-    """(status, html, csp) for `/graphify`."""
-    path = (directory or view_dir()) / "graph.html"
+TIM_VIEW = "tim-graph.html"  # built by src/tim_graph_view after each graphify run
+GAP_REPORT = "TIM_GRAPH_LUECKEN.md"
+
+
+def graph_page(directory: Path | None = None, name: str | None = None) -> tuple[int, str, str]:
+    """(status, html, csp) for `/graphify` (TIM view, else graphify's own page) and
+    `/graphify/communities` (`name="graph.html"`: graphify's community view)."""
+    folder = directory or view_dir()
+    if name is None:
+        name = TIM_VIEW if (folder / TIM_VIEW).exists() else "graph.html"
+    path = folder / name
     try:
         if path.stat().st_size > MAX_BYTES:
             return 413, _missing_page("Die Graph-Datei ist zu groß für die Anzeige."), MISSING_CSP
@@ -94,13 +102,14 @@ def graph_page(directory: Path | None = None) -> tuple[int, str, str]:
     csp = graph_csp(page)
     if csp is None:
         return 500, _missing_page("Die Graph-Datei enthält unerwartete Skripte und wird nicht angezeigt."), MISSING_CSP
-    page = re.sub(r"<title>.*?</title>", "<title>TIM Graphify-Graph</title>", page, count=1, flags=re.S)
+    title = "TIM-Graph" if name == TIM_VIEW else "TIM Graphify-Graph"
+    page = re.sub(r"<title>.*?</title>", f"<title>{title}</title>", page, count=1, flags=re.S)
     return 200, page, csp
 
 
-def report_text(directory: Path | None = None) -> tuple[int, str]:
-    """(status, markdown) for `/graphify/report`."""
-    path = (directory or view_dir()) / "GRAPH_REPORT.md"
+def report_text(directory: Path | None = None, name: str = "GRAPH_REPORT.md") -> tuple[int, str]:
+    """(status, markdown) for `/graphify/report` and `/graphify/luecken` (GAP_REPORT)."""
+    path = (directory or view_dir()) / name
     try:
         return 200, path.read_text(encoding="utf-8")[:MAX_BYTES]
     except OSError:
