@@ -13,6 +13,7 @@ for the full time stop (30 bars) across all instruments.
 """
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -44,6 +45,7 @@ class LockedCount:
     lower: int  # signals at least 30 bars (in time) after the last counted one, over all instruments
     skipped_gap: int
     lower_times: tuple[tuple[int, str], ...]  # (open time, symbol) of the lower-bound signals
+    ties: int = 0  # time stamps on which two or more instruments emitted a signal (the priority decides there)
 
 
 def count_signals_locked(bars_by_symbol: Mapping[str, Sequence[Kline]], variant: s7.S7Variant,
@@ -77,4 +79,5 @@ def count_signals_locked(bars_by_symbol: Mapping[str, Sequence[Kline]], variant:
         if last is None or time - last >= LOCK_MS:
             lower.append((time, symbol))
             last = time
-    return LockedCount(len(emitted), len(lower), skipped_gap, tuple(lower))
+    ties = sum(1 for n in Counter(time for time, _, _ in emitted).values() if n > 1)
+    return LockedCount(len(emitted), len(lower), skipped_gap, tuple(lower), ties)

@@ -265,8 +265,8 @@ def year_rule(train: Summary, validation: Summary) -> bool:
     return year_stability(merged, min_trades=YEAR_MIN_TRADES, share=YEAR_SHARE)
 
 
-def neighbour_rule(train_expectancy: Mapping[str, float], variant: s7.S7Variant,
-                   variants: Sequence[s7.S7Variant] = s7.S7_VARIANTS) -> bool:
+def neighbour_rule(train_expectancy: Mapping[str, float], variant: s7.S7Variant, variants: Sequence[s7.S7Variant]) -> bool:
+    """Neighbours positive in the (N, T) grid; `variants` names the study's grid (S7 or S7b ids)."""
     by_point = {(v.channel, v.target_r): train_expectancy[v.variant_id] for v in variants if v.variant_id in train_expectancy}
     return neighbours_positive(GRID, by_point, (variant.channel, variant.target_r))
 
@@ -278,7 +278,7 @@ def walk_forward_rule(trades_by_variant: Mapping[str, Sequence[Trade]], start_ms
     return chained > 0, chained, chosen
 
 
-def select_candidates(validation_expectancy: Mapping[str, float], variants: Sequence[s7.S7Variant] = s7.S7_VARIANTS) -> list[str]:
+def select_candidates(validation_expectancy: Mapping[str, float], variants: Sequence[s7.S7Variant]) -> list[str]:
     """At most one candidate per target T (the higher validation E[R]), at most two in all (5.1 step 3)."""
     best: dict[float, tuple[float, str]] = {}
     for variant in variants:

@@ -99,6 +99,8 @@ class BacktestResult:
     invalid_signals: int = 0
     gap_closes: int = 0
     locked_signals: int = 0  # refused by the portfolio position cap (run_portfolio); also counted in ignored_signals
+    ignored_times: list[int] = field(default_factory=list)  # open times of every ignored signal (own position or cap)
+    locked_times: list[int] = field(default_factory=list)  # open times of the signals refused by the cap only
 
 
 def exit_on_bar(bar: Kline, side: int, stop: float, target: float | None) -> tuple[float, str, int] | None:
@@ -162,8 +164,9 @@ class _Runner:
 
     @property
     def busy(self) -> bool:
-        """An open position or a pending entry occupies one portfolio slot."""
-        return self.position is not None or self.pending is not None
+        """An open position or a pending entry occupies one portfolio slot. A position that
+        exits by rule at the next open does not (it makes room, as in ``run_backtest``)."""
+        return (self.position is not None and not self.exit_next_open) or self.pending is not None
 
     def _close(self, t: int, raw_price: float, reason: str, moment: int, slip: float) -> None:
         position = self.position
@@ -242,9 +245,12 @@ class _Runner:
         # signal on the same bar (reversal, e.g. L1 long/short).
         if (self.position is not None and not self.exit_next_open) or self.pending is not None:
             self.result.ignored_signals += 1
+            self.result.ignored_times.append(bar.open_time)
         elif may_enter is not None and not may_enter():
             self.result.ignored_signals += 1
             self.result.locked_signals += 1
+            self.result.ignored_times.append(bar.open_time)
+            self.result.locked_times.append(bar.open_time)
         elif t + 1 < len(self.bars):
             self.pending = (t, signal, self.atr_at_signal(history) if self.atr_at_signal else None)
         else:

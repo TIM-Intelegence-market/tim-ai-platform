@@ -121,15 +121,15 @@ def test_training_and_validation_verdicts_list_reasons() -> None:
 
 def test_candidate_selection_one_per_target_at_most_two() -> None:
     scores = {"S7-D20-T3": 0.2, "S7-D55-T3": 0.3, "S7-D20-T4": 0.1, "S7-D55-T4": 0.05}
-    assert ev.select_candidates(scores) == ["S7-D20-T4", "S7-D55-T3"]
-    assert ev.select_candidates({"S7-D20-T3": 0.2}) == ["S7-D20-T3"]
-    assert ev.select_candidates({}) == []
+    assert ev.select_candidates(scores, s7.S7_VARIANTS) == ["S7-D20-T4", "S7-D55-T3"]
+    assert ev.select_candidates({"S7-D20-T3": 0.2}, s7.S7_VARIANTS) == ["S7-D20-T3"]
+    assert ev.select_candidates({}, s7.S7_VARIANTS) == []
 
 
 def test_neighbour_rule_and_year_rule() -> None:
     train = {"S7-D20-T3": 0.2, "S7-D20-T4": 0.1, "S7-D55-T3": -0.1, "S7-D55-T4": 0.3}
-    assert not ev.neighbour_rule(train, s7.S7_VARIANTS[0])  # D20-T3 has neighbour D55-T3 <= 0
-    assert ev.neighbour_rule({"S7-D20-T3": 0.2, "S7-D20-T4": 0.1, "S7-D55-T3": 0.1, "S7-D55-T4": 0.3}, s7.S7_VARIANTS[0])
+    assert not ev.neighbour_rule(train, s7.S7_VARIANTS[0], s7.S7_VARIANTS)  # D20-T3 has neighbour D55-T3 <= 0
+    assert ev.neighbour_rule({"S7-D20-T3": 0.2, "S7-D20-T4": 0.1, "S7-D55-T3": 0.1, "S7-D55-T4": 0.3}, s7.S7_VARIANTS[0], s7.S7_VARIANTS)
     good = ev.summarize({"BTCUSDT": _trades(40, 40, 10)}, 3.0)
     bad = ev.summarize({"BTCUSDT": [trade(i, -1.0, "stop") for i in range(60)]}, 3.0)
     assert ev.year_rule(good, good)

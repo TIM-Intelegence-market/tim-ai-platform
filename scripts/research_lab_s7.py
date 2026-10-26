@@ -349,7 +349,7 @@ def train(store: ArchiveStore, out_dir: Path, *, runs: int = ev.BASELINE_RUNS, r
         summary_val = ev.summarize({sym: section_trades(all_trades[vid][sym], *_section_windows(sym)["validation"]) for sym in SYMBOLS},
                                    variant.target_r)
         robustness = {"Jahresstabilität": ev.year_rule(summary_train, summary_val), "Walk-Forward": wf_ok,
-                      "Nachbarschaft": ev.neighbour_rule(train_expectancy, variant)}
+                      "Nachbarschaft": ev.neighbour_rule(train_expectancy, variant, s7.S7_VARIANTS)}
         entry["validation_verdict"] = ev.validation_verdict(summary_val, va.get("baselines", {}).get("A", {}).get("p", 1.0),
                                                             va.get("baselines", {}).get("A'", {}).get("p", 1.0), robustness)
         entry["robustness"] = robustness
@@ -358,7 +358,7 @@ def train(store: ArchiveStore, out_dir: Path, *, runs: int = ev.BASELINE_RUNS, r
             entry["status"] = "validated"
         else:
             entry["status"] = "failed_validation"
-    candidates = ev.select_candidates(validation_expectancy)
+    candidates = ev.select_candidates(validation_expectancy, s7.S7_VARIANTS)
     for vid in validation_expectancy:
         payload["variants"][vid]["status"] = "candidate" if vid in candidates else "not_selected"
     payload["candidates"] = candidates
