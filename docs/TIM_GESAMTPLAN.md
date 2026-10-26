@@ -138,6 +138,11 @@ Shadow und Limited Live) liegt ausdrücklich außerhalb von "fertig" und braucht
 **Entschieden (Uzi, 06.10.2026):** Ziel ist **#82 komplett**, also auch MID und LONG. Die Historie dafür wird
 heruntergeladen (Binance-Archiv), nicht live abgewartet. An den Regeln wird auf der Historie gearbeitet.
 
+**Entschieden (Uzi, 26.10.2026, Entscheidungskarte im Thread „25.10. Alle 11 Sichten auf Grün bringen“):** Das Ziel
+„Trefferquote ≥ 75 %“ aus dem Masterprompt vom 25.10. ist **gestrichen**; Messlatte für V2 ist allein die Definition of
+Done aus #82. Die Trefferquote bleibt Forschungsfrage ohne Gate (S4 am 25.10. nicht testbar, S5 nicht testbar, S6 nicht
+bestanden, S7 Ziel 3–4 R läuft).
+
 Damit das Anpassen der Regeln nicht zur Kurvenanpassung wird, gilt die Dreiteilung aus `docs/research_lab/PROTOKOLL.md` §3 (Spot-Archiv laut Protokoll erwartet ab 2017-08, Funding ab 2019-09):
 
 | Datenteil | Zweck | Regel |
@@ -354,3 +359,4 @@ Feste Wartezeiten, die sich nicht durch mehr Bauen verkürzen lassen: 72 h (B1),
 | 2026-10-06 | v0.4: Alarm über GitHub-Issue + Qwen-Diagnose auf dem Server (B2-B2c), Uzis Vorschlag | Uzi im Thread, 23:30 UTC |
 | 2026-10-17 | v0.5: Neues Ziel V2-Trading-Version (Uzi 09:38 UTC). Abschnitt 0: V2 im Repo = Paper (V2.8) + Shadow (V2.9), kein Echtgeld; 8 V2-Blocker offen (Belege August); Reihenfolge V1-V10, neue Phase S (Shadow); Fragen F8-F11; F7 erledigt | dieser Thread |
 | 2026-10-17 | v0.6: Plan ins Repo verlegt (docs/TIM_GESAMTPLAN.md) mit Arbeitsregeln für ChatGPT/Codex, Uzi 09:53 UTC | PR |
+| 2026-10-26 | v0.7: Z1 entschieden: 75-%-Ziel gestrichen, DoD aus #82 ist die Messlatte (Uzi auf Entscheidungskarte, 11:09 Ortszeit) | Thread „25.10. Alle 11 Sichten auf Grün bringen“, PR #441 |

@@ -19,7 +19,7 @@ in Dateien.
 
 | Nr | Sicht | Stand 25.10. | Grün-Kriterium | Pakete | Nachweis | Wer |
 |---|---|---|---|---|---|---|
-| 1 | Inhaber und Ziel | GELB | Zieldefinition V2 im Gesamtplan enthält Uzis Entscheid zum 75-%-Ziel (Messlatte oder nicht) und die DoD aus #82 | Z1 Entscheid eintragen | Eintrag im Änderungsprotokoll von `docs/TIM_GESAMTPLAN.md` | Uzi entscheidet, Claude trägt ein |
+| 1 | Inhaber und Ziel | GRÜN (Z1 entschieden 26.10.) | Zieldefinition V2 im Gesamtplan enthält Uzis Entscheid zum 75-%-Ziel (Messlatte oder nicht) und die DoD aus #82 | Z1 Entscheid eintragen | Eintrag im Änderungsprotokoll von `docs/TIM_GESAMTPLAN.md` | Uzi entscheidet, Claude trägt ein |
 | 2 | Projektleitung | GELB (P1–P3 erledigt) | Kein offenes P0 im Register; höchstens 3 offene PRs; ruhende Issues (M09, Server) als `status:ruhend` gekennzeichnet oder geschlossen; ein Plan | P1 Register pflegen, P2 Issues kennzeichnen, P3 #367 schließen (überholt durch #407) | Register-Tabelle im Audit, GitHub-Listen | Claude, Schließen auf Uzis Wort |
 | 3 | Architektur | GELB | 4h- und 1d-Kerzen live; Nachprüfung 1h/4h/24h läuft als eigene Version neben 5/15/30; Paketinventar entschieden (jedes UNERREICHT-Paket archiviert oder mit Einstieg); Symbol-Kopplung mit Umbaupfad dokumentiert | H1 lange Horizonte, H2 HTF-Kerzen, I1 Inventar entscheiden | `src/orderflow/validation.py` v2 mit Tests; `TIM_TIMEFRAMES` enthält 4h,1d; `docs/PAKETINVENTAR.md` ohne „offen“ | Claude |
 | 4 | Technik und Code | GELB (C2 erledigt, C3 Sperrdatei offen) | #417 gemergt; DemoTrader-Altcode entfernt; Abhängigkeiten gesperrt (`requirements.lock` oder Constraints) und gegen Live-venv geprüft; kein Test misst Wanduhrzeit | C1 #417, C2 A23 Altcode, C3 Sperrdatei, C4 canary ohne Zeitmessung | Suite grün, `pip freeze` = Sperrdatei | Claude, Merge Uzi |
@@ -74,7 +74,7 @@ Dashboard-Agenten.
 | R1 CODEOWNERS | DONE (vorhanden): `.github/CODEOWNERS`, Eigner uezeyiraydin-cell für config/, scripts/, workflows, src/database/ | `.github/CODEOWNERS` |
 | R2 Ruleset „Review von Code-Eignern“ | BLOCKED (Uzi): Schalter im Ruleset `platform-main merge conditions`; Vorsicht: ohne Bypass blockiert es auch Uzis eigene PRs, Chris müsste Eigner werden | GitHub-Einstellungen |
 | T2 Server-Runner | DONE 25.10.: `tim-core-01-ci` auf Chris' Server aktiv (PR #416) | Runner-Liste |
-| Z1 75-%-Ziel | BLOCKED (Uzi): Entscheid steht aus; seit 25.10. sind S4 (≥75 %) und S5 (95 %) als nicht testbar beendet, S6 nicht bestanden, S7 (3–4 R) in Arbeit | Eintrag ins Änderungsprotokoll von `docs/TIM_GESAMTPLAN.md` nach Entscheid |
+| Z1 75-%-Ziel | DONE 26.10. 11:09: Uzi auf der Karte „75 % streichen, DoD aus #82 gilt“; eingetragen als v0.7 im Gesamtplan | `docs/TIM_GESAMTPLAN.md` Abschnitt 1 und Änderungsprotokoll |
 | alle anderen | PLANNED | – |
 
 Statuswerte: PLANNED, RUNNING, BLOCKED (wer), VERIFIED (Nachweis), DONE. Eine Delegation allein ist kein Abschluss.
@@ -86,3 +86,4 @@ Statuswerte: PLANNED, RUNNING, BLOCKED (wer), VERIFIED (Nachweis), DONE. Eine De
 - 26.10.2026 (10:05, Uzis „weiter“): P3 (#367 geschlossen), I1 (Archiv von 7 Paketen, `repair_repro` bleibt), C2 (DemoTrader-Altcode) als Archiv-PR; S1 auf dem Mac FAIL → behoben → PASS; O1 erste Messung (während CI-Job); F4-Folge: delistete Symbole auf data.binance.vision vorhanden. Weiter offen auf Uzis Wort: Z1, B1, R2, O2, Tailnet, 2FA, Studie mit delisteten Coins.
 - 26.10.2026 (10:45): PR #436 gemergt. C3 (Sperrdatei), D2, D3, M2, O3, R1, T2 eingetragen; M1 und B3 brauchen Uzis Terminal (Cloud und Mac-Sitzung dürfen die Live-DB nicht lesen); F3 bleibt Zeit (ab 24.11.); B1/B2, R2, O2, Tailnet, 2FA, Z1 bleiben bei Uzi.
 - 26.10.2026 (11:10): PR #440 gemergt (3a18466). M1 VERIFIED (Uzis Terminal-Lauf, 1m lückenlos). B3 FAIL an pg_hba/template1: Code-Fix `--maintenance-db`, Admin-Schritte bei Uzi.
+- 26.10.2026 (11:12): Z1 entschieden (75 % gestrichen, DoD #82), Sicht 1 GRÜN.
