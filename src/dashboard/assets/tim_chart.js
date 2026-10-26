@@ -21,7 +21,15 @@
   // library rejects times that are not strictly ascending.
   const OFFSET = -new Date().getTimezoneOffset() * 60;
   const local = t => t + OFFSET;
-  const fmt = v => v == null ? '–' : Number(v).toLocaleString('de-DE', { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
+  // The public view (src/dashboard/public_en.py) sets data-lang='en'; the Control Center stays German.
+  const EN = root.dataset.lang === 'en';
+  const LOCALE = EN ? 'en-US' : 'de-DE';
+  const T = EN
+    ? { running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of',
+        failed: m => `Loading failed (${m}). Retrying in 30 s.` }
+    : { running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand',
+        failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
+  const fmt = v => v == null ? '–' : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
 
   const chart = LWC.createChart(box, {
     autoSize: true,
@@ -30,7 +38,7 @@
     crosshair: { mode: LWC.CrosshairMode.Normal },
     rightPriceScale: { borderColor: 'rgba(120,134,156,0.35)', scaleMargins: { top: 0.06, bottom: 0.18 } },
     timeScale: { borderColor: 'rgba(120,134,156,0.35)', timeVisible: true, secondsVisible: false, rightOffset: 8 },
-    localization: { locale: 'de-DE', priceFormatter: fmt },
+    localization: { locale: LOCALE, priceFormatter: fmt },
   });
   const candles = chart.addCandlestickSeries({
     upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
@@ -97,7 +105,7 @@
                   ctx.fillStyle = 'rgba(94,200,216,0.95)';
                   ctx.font = '11px ui-monospace, Menlo, monospace';
                   ctx.textBaseline = 'bottom';
-                  ctx.fillText(`TPO ${day.label}${day.running ? ' lfd.' : ''} · POC ${fmt(day.poc)}${anyLetters ? '' : ' · ' + day.periods + ' Perioden'}`, x0 + 2, Math.max(12, yLabel - 2));
+                  ctx.fillText(`TPO ${day.label}${day.running ? T.running : ''} · POC ${fmt(day.poc)}${anyLetters ? '' : ' · ' + day.periods + T.periods}`, x0 + 2, Math.max(12, yLabel - 2));
                 }
               }
             });
@@ -157,7 +165,7 @@
                   ctx.font = '11px ui-monospace, Menlo, monospace';
                   ctx.textBaseline = 'top';
                   ctx.textAlign = 'right';
-                  ctx.fillText(`VP ${day.label}${day.running ? ' lfd.' : ''} · POC ${fmt(day.poc)} · Δ ${day.delta >= 0 ? '+' : ''}${fmt(day.delta)}`, x1 - 4, Math.min(mediaSize.height - 14, yLabel + 3));
+                  ctx.fillText(`VP ${day.label}${day.running ? T.running : ''} · POC ${fmt(day.poc)} · Δ ${day.delta >= 0 ? '+' : ''}${fmt(day.delta)}`, x1 - 4, Math.min(mediaSize.height - 14, yLabel + 3));
                   ctx.textAlign = 'left';
                 }
               }
@@ -299,9 +307,9 @@
   function setLegend(bar) {
     if (!model) return;
     const head = `${model.symbol} · ${model.timeframe}`;
-    if (!bar) { legend.textContent = `${head} · Kurs ${fmt(model.last)}`; return; }
+    if (!bar) { legend.textContent = `${head} · ${T.price} ${fmt(model.last)}`; return; }
     const change = bar.open ? ((bar.close - bar.open) / bar.open * 100) : 0;
-    legend.textContent = `${head} · O ${fmt(bar.open)} H ${fmt(bar.high)} L ${fmt(bar.low)} C ${fmt(bar.close)} (${change >= 0 ? '+' : ''}${change.toFixed(2).replace('.', ',')} %)`;
+    legend.textContent = `${head} · O ${fmt(bar.open)} H ${fmt(bar.high)} L ${fmt(bar.low)} C ${fmt(bar.close)} (${change >= 0 ? '+' : ''}${(EN ? change.toFixed(2) : change.toFixed(2).replace('.', ','))} %)`;
   }
 
   chart.subscribeCrosshairMove(param => {
@@ -311,7 +319,7 @@
 
   async function load() {
     clearTimeout(timer);
-    status.textContent = 'Lade…';
+    status.textContent = T.loading;
     try {
       const ticket = ++request;  // only the newest request may draw (a slow 1h answer must not overwrite 4h)
       const response = await fetch(`/api/chart/live?symbol=${encodeURIComponent(symbol)}&tf=${encodeURIComponent(timeframe)}`, { cache: 'no-store' });
@@ -335,10 +343,10 @@
       }
       setLegend(null);
       const notes = (model.notes || []).concat(model.footprint && model.footprint.note ? [model.footprint.note] : []).join(' · ');
-      const trades = model.trades_updated_at ? ` · Trades: ${model.trade_source} (Stand ${new Date(model.trades_updated_at).toLocaleTimeString('de-DE')})` : '';
-      status.textContent = `${model.candles.length} Kerzen · Level: ${model.level_source || '–'}${trades} · ${new Date().toLocaleTimeString('de-DE')}` + (notes ? ' · ' + notes : '');
+      const trades = model.trades_updated_at ? ` · Trades: ${model.trade_source} (${T.asOf} ${new Date(model.trades_updated_at).toLocaleTimeString(LOCALE)})` : '';
+      status.textContent = `${model.candles.length} ${T.candles} · Level: ${model.level_source || '–'}${trades} · ${new Date().toLocaleTimeString(LOCALE)}` + (notes ? ' · ' + notes : '');
     } catch (error) {
-      status.textContent = `Laden fehlgeschlagen (${error.message}). Neuer Versuch in 30 s.`;
+      status.textContent = T.failed(error.message);
     } finally {
       timer = setTimeout(load, 30000);
     }
