@@ -17,7 +17,8 @@ MINUTES_PER_DAY = 1_440
 DAY_MS = 86_400_000
 E8 = 10**8
 LARGE_TRADE_SATS = E8  # one BTC per aggTrade counts as "large" (fixed for bar version 1)
-BAR_VERSION = "1.0.0"
+BAR_VERSION = "1.1.0"  # 1.1.0: volume per price bin per minute (profile file)
+PROFILE_STEP_DIVISOR = 1000  # bin width about 0.1 % of the first trade price of the day
 
 
 class TradeTick(NamedTuple):
@@ -133,7 +134,44 @@ class ReductionQuality:
                 "time_regressions": self.time_regressions, "empty_minutes": self.empty_minutes}
 
 
+def nice_width_e8(price_e8: int) -> int:
+    """Largest 1/2/5 x 10^k (in 1e-8 USDT, at least 0.01 USDT) not above price / PROFILE_STEP_DIVISOR."""
+    target = max(price_e8 // PROFILE_STEP_DIVISOR, 10**6)
+    best = 10**6
+    scale = 10**6
+    while scale <= target:
+        for factor in (1, 2, 5):
+            if factor * scale <= target:
+                best = factor * scale
+        scale *= 10
+    return best
+
+
+@dataclass(frozen=True, slots=True)
+class DayProfile:
+    """Aggressive volume per (minute of day, price bin) on one bin width fixed for the whole UTC day.
+
+    ``width_e8`` comes from the first trade of the day, so a developing profile
+    never needs a price that was not yet known. Bin b covers [b * width, (b + 1) * width).
+    """
+
+    day_start_ms: int
+    width_e8: int
+    entries: tuple[tuple[int, int, int, int], ...]  # (minute, bin, buy_sats, sell_sats), sorted
+
+    def as_rows(self) -> list[list[int]]:
+        return [list(e) for e in self.entries]
+
+
+PROFILE_HEADER = ["minute", "bin", "buy_sats", "sell_sats"]
+
+
 def reduce_trades(ticks: Iterable[TradeTick], day_start_ms: int) -> tuple[list[MinuteBar], ReductionQuality]:
+    bars, quality, _ = reduce_trades_with_profile(ticks, day_start_ms)
+    return bars, quality
+
+
+def reduce_trades_with_profile(ticks: Iterable[TradeTick], day_start_ms: int) -> tuple[list[MinuteBar], ReductionQuality, DayProfile]:
     """One UTC day of ticks -> 1440 bars. Trades outside the day raise (time zone or file errors).
 
     Ids must ascend; an exact repeat of the previous id is a duplicate row and is
@@ -146,6 +184,8 @@ def reduce_trades(ticks: Iterable[TradeTick], day_start_ms: int) -> tuple[list[M
     previous_id: int | None = None
     previous_time = -1
     seen_at_previous: TradeTick | None = None
+    width = 0
+    cells: dict[tuple[int, int], list[int]] = {}
     for tick in ticks:
         quality.rows += 1
         if previous_id is not None:
@@ -165,6 +205,10 @@ def reduce_trades(ticks: Iterable[TradeTick], day_start_ms: int) -> tuple[list[M
             raise ValueError(f"trade at {tick.time_ms} lies outside the UTC day starting {day_start_ms}")
         if tick.qty_sats <= 0 or tick.price_e8 <= 0:
             raise ValueError("zero quantity or price")
+        if not width:
+            width = nice_width_e8(tick.price_e8)
+        cell = cells.setdefault((minute, tick.price_e8 // width), [0, 0])
+        cell[1 if tick.buyer_is_maker else 0] += tick.qty_sats
         quote = tick.price_e8 * tick.qty_sats  # 1e-16 USDT, summed exactly, divided once per minute
         slot = acc[minute]
         if slot is None:
@@ -198,4 +242,5 @@ def reduce_trades(ticks: Iterable[TradeTick], day_start_ms: int) -> tuple[list[M
             continue
         bars.append(MinuteBar(start, slot[0], slot[1], slot[2], slot[3], slot[4], slot[5], slot[6] // E8, slot[7] // E8,
                               slot[8], slot[9], slot[10], slot[11], slot[12]))
-    return bars, quality
+    entries = tuple((m, b, v[0], v[1]) for (m, b), v in sorted(cells.items()))
+    return bars, quality, DayProfile(day_start_ms, width, entries)

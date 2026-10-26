@@ -19,7 +19,8 @@ from typing import Callable, Iterable
 
 from src.research_lab.data.aggtrades import read_rows
 from src.research_lab.data.store import HoldoutLocked, http_fetch
-from src.research_lab.orderflow_ml.bars import BAR_HEADER, BAR_VERSION, MINUTE_MS, MINUTES_PER_DAY, MinuteBar, reduce_trades, ticks_from_rows
+from src.research_lab.orderflow_ml.bars import (BAR_HEADER, BAR_VERSION, MINUTE_MS, MINUTES_PER_DAY, PROFILE_HEADER, DayProfile, MinuteBar,
+                                                reduce_trades_with_profile, ticks_from_rows)
 from src.research_lab.protocol import HOLDOUT_START_MS
 from src.v2_readiness.backfill import BinanceArchiveRef, parse_official_checksum, verify_archive
 
@@ -58,6 +59,9 @@ class MinuteBarStore:
     def bar_path(self, day: date) -> Path:
         return self.root / "bars" / f"{self.symbol}-{day.isoformat()}.csv"
 
+    def profile_path(self, day: date) -> Path:
+        return self.root / "profile" / f"{self.symbol}-{day.isoformat()}.csv"
+
     def manifest(self) -> dict[str, dict]:
         path = self.root / MANIFEST
         return json.loads(path.read_text()) if path.exists() else {}
@@ -80,18 +84,25 @@ class MinuteBarStore:
         payload = self.fetcher(ref.url)
         if not verify_archive(payload, digest):
             raise ValueError(f"checksum mismatch for {ref.filename}")
-        bars, quality = reduce_trades(ticks_from_rows(read_rows(payload)), day_start_ms(day))
+        bars, quality, profile = reduce_trades_with_profile(ticks_from_rows(read_rows(payload)), day_start_ms(day))
         path = self.bar_path(day)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", newline="") as handle:
             writer = csv.writer(handle, lineterminator="\n")
             writer.writerow(BAR_HEADER)
             writer.writerows(bar.as_row() for bar in bars)
+        ppath = self.profile_path(day)
+        ppath.parent.mkdir(parents=True, exist_ok=True)
+        with ppath.open("w", newline="") as handle:
+            writer = csv.writer(handle, lineterminator="\n")
+            writer.writerow(PROFILE_HEADER)
+            writer.writerows(profile.as_rows())
         if keep_raw:
             raw = self.root / "raw" / ref.filename
             raw.parent.mkdir(parents=True, exist_ok=True)
             raw.write_bytes(payload)
         return {"archive_sha256": digest, "url": ref.url, "bar_version": BAR_VERSION, "bars_sha256": sha256_file(path),
+                "profile_sha256": sha256_file(ppath), "profile_width_e8": profile.width_e8,
                 "quality": quality.as_dict(), "raw_kept": keep_raw, "time_basis": "exchange_event_time"}
 
     def record(self, day: date, entry: dict) -> dict:
@@ -103,7 +114,9 @@ class MinuteBarStore:
     def cached(self, day: date) -> dict | None:
         entry = self.manifest().get(day.isoformat())
         path = self.bar_path(day)
-        if entry and entry.get("bar_version") == BAR_VERSION and path.exists() and sha256_file(path) == entry["bars_sha256"]:
+        ppath = self.profile_path(day)
+        if entry and entry.get("bar_version") == BAR_VERSION and path.exists() and sha256_file(path) == entry["bars_sha256"] \
+                and ppath.exists() and sha256_file(ppath) == entry["profile_sha256"]:
             return entry
         return None
 
@@ -117,8 +130,8 @@ class MinuteBarStore:
         guard(day)
         entry = self.manifest().get(day.isoformat())
         path = self.bar_path(day)
-        if entry is None or not path.exists():
-            raise FileNotFoundError(f"{day} has not been fetched")
+        if entry is None or not path.exists() or entry.get("bar_version") != BAR_VERSION:
+            raise FileNotFoundError(f"{day} has not been fetched with bar version {BAR_VERSION}")
         if sha256_file(path) != entry["bars_sha256"]:
             raise ValueError(f"{day}: bar file changed on disk since it was verified")
         with path.open(newline="") as handle:
@@ -131,7 +144,26 @@ class MinuteBarStore:
             raise ValueError(f"{day}: bar file is not one full day")
         return bars
 
+    def load_profile(self, day: date) -> DayProfile:
+        """Volume per minute and price bin of a day, verified against the manifest."""
+        guard(day)
+        entry = self.manifest().get(day.isoformat())
+        path = self.profile_path(day)
+        if entry is None or not path.exists() or entry.get("bar_version") != BAR_VERSION:
+            raise FileNotFoundError(f"{day} has no profile of bar version {BAR_VERSION}")
+        if sha256_file(path) != entry["profile_sha256"]:
+            raise ValueError(f"{day}: profile file changed on disk since it was verified")
+        with path.open(newline="") as handle:
+            reader = csv.reader(handle)
+            if next(reader) != PROFILE_HEADER:
+                raise ValueError(f"{day}: unexpected profile layout")
+            entries = tuple(tuple(int(v) for v in row) for row in reader)
+        if list(entries) != sorted(entries) or any(not 0 <= e[0] < MINUTES_PER_DAY for e in entries):
+            raise ValueError(f"{day}: profile rows out of order or outside the day")
+        return DayProfile(day_start_ms(day), int(entry["profile_width_e8"]), entries)  # type: ignore[arg-type]
+
     def dataset_hash(self, days: Iterable[date]) -> str:
         manifest = self.manifest()
-        entries = sorted((d.isoformat(), manifest[d.isoformat()]["archive_sha256"], manifest[d.isoformat()]["bars_sha256"]) for d in days)
+        entries = sorted((d.isoformat(), manifest[d.isoformat()]["archive_sha256"], manifest[d.isoformat()]["bars_sha256"],
+                          manifest[d.isoformat()]["profile_sha256"]) for d in days)
         return hashlib.sha256(json.dumps(entries).encode()).hexdigest()

@@ -15,11 +15,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Sequence
+from typing import Mapping, Sequence
 
-from src.research_lab.orderflow_ml.bars import E8, MINUTE_MS, MinuteBar
+from src.research_lab.orderflow_ml.bars import DAY_MS, E8, MINUTE_MS, MINUTES_PER_DAY, DayProfile, MinuteBar
+from src.research_lab.orderflow_ml.profile import tpo_histogram, value_area, volume_histogram
 
-FEATURE_VERSION = "1.0.0"
+FEATURE_VERSION = "1.1.0"  # 1.1.0: Volume Profile and TPO features
 TIME_BASIS = "exchange_event_time_proxy"
 HOUR_MS = 3_600_000
 WARMUP_BARS = 121  # the previous closed clock hour can reach 120 minutes back
@@ -30,6 +31,8 @@ FEATURE_NAMES: tuple[str, ...] = (
     "mean_trade_btc_5", "largest_trade_btc_5", "large_trade_share_5",
     "ret_1", "ret_5", "ret_15", "ret_60", "vol_60", "range_15", "pos_in_range_60",
     "prev_hour_ret", "prev_hour_dist_high", "prev_hour_dist_low", "hour_utc", "weekday",
+    "vp_prev_poc_dist", "vp_prev_va_pos", "vp_prev_va_width", "vp_dev_poc_dist", "vp_dev_va_pos",
+    "tpo_prev_poc_dist", "tpo_prev_va_pos",
 )
 QUALITY_NAMES: tuple[str, ...] = ("stale_ms", "empty_minutes_60")
 
@@ -63,13 +66,20 @@ DEFINITIONS: dict[str, str] = {
     "prev_hour_dist_low": "ln(Preis bei t / Tief dieser geschlossenen Stunde)",
     "hour_utc": "Stunde von t in UTC (0..23)",
     "weekday": "Wochentag von t in UTC (0 = Montag)",
+    "vp_prev_poc_dist": "ln(Preis bei t / POC des Volumenprofils des Vortags, Mitte der Preisstufe)",
+    "vp_prev_va_pos": "(Preis − VAL) / (VAH − VAL) der Value Area (70 %) des Vortags; < 0 darunter, > 1 darüber",
+    "vp_prev_va_width": "ln(VAH / VAL) der Value Area des Vortags",
+    "vp_dev_poc_dist": "ln(Preis bei t / POC des laufenden Tagesprofils bis t)",
+    "vp_dev_va_pos": "Lage des Preises in der Value Area des laufenden Tagesprofils bis t",
+    "tpo_prev_poc_dist": "ln(Preis bei t / TPO-POC des Vortags, 30-Minuten-Perioden)",
+    "tpo_prev_va_pos": "Lage des Preises in der TPO-Value-Area (70 %) des Vortags",
 }
 
 
 class BarSeries:
     """A contiguous run of minute bars with causal helper arrays."""
 
-    def __init__(self, bars: Sequence[MinuteBar]) -> None:
+    def __init__(self, bars: Sequence[MinuteBar], profiles: Mapping[int, DayProfile] | None = None) -> None:
         if not bars:
             raise ValueError("empty series")
         for a, b in zip(bars, bars[1:]):
@@ -100,12 +110,68 @@ class BarSeries:
         self.px = px  # last trade price at or before the end of each minute (0 = none yet)
         self.last_ms = last_ms
         self.ret1: list[float | None] = [None] + [math.log(px[j] / px[j - 1]) if px[j] and px[j - 1] else None for j in range(1, len(px))]
+        self._profiles(dict(profiles or {}))
+
+    def _profiles(self, profiles: dict[int, DayProfile]) -> None:
+        """Per index: (poc, val, vah) price edges in e8 of the developing day profile and of the previous day.
+
+        Developing: entries of the index's own day up to its minute. Previous day: only when all
+        1440 bars of that day are in this series and its profile is given (VP) / its width is known (TPO).
+        """
+        n = len(self.bars)
+        self.profiles = profiles
+        self.vp_dev: list[tuple[int, int, int] | None] = [None] * n
+        self.vp_prev: list[tuple[int, int, int] | None] = [None] * n
+        self.tpo_prev: list[tuple[int, int, int] | None] = [None] * n
+        index_of = {start: i for i, start in enumerate(self.start)}
+        day_starts = sorted({s - s % DAY_MS for s in self.start})
+        for day in day_starts:
+            first = index_of.get(day)
+            idx = [index_of[day + m * MINUTE_MS] for m in range(MINUTES_PER_DAY) if day + m * MINUTE_MS in index_of]
+            profile = profiles.get(day)
+            if profile is not None and profile.width_e8:
+                hist: dict[int, int] = {}
+                entries = profile.entries
+                k = 0
+                summary = None
+                for i in idx:
+                    minute = (self.start[i] - day) // MINUTE_MS
+                    changed = False
+                    while k < len(entries) and entries[k][0] <= minute:
+                        _, b, buy, sell = entries[k]
+                        hist[b] = hist.get(b, 0) + buy + sell
+                        k += 1
+                        changed = True
+                    if changed:
+                        summary = _edges(value_area(hist), profile.width_e8)
+                    self.vp_dev[i] = summary
+            prev = profiles.get(day - DAY_MS)
+            prev_first = index_of.get(day - DAY_MS)
+            if prev is None or not prev.width_e8 or first is None or prev_first is None or first - prev_first != MINUTES_PER_DAY:
+                continue
+            vp = _edges(value_area(volume_histogram(prev.entries)), prev.width_e8)
+            tpo = _edges(value_area(tpo_histogram(self.bars[prev_first:first], prev.width_e8)), prev.width_e8)
+            for i in idx:
+                self.vp_prev[i] = vp
+                self.tpo_prev[i] = tpo
 
     def __len__(self) -> int:
         return len(self.bars)
 
     def decision_ms(self, i: int) -> int:
         return self.start[i] + MINUTE_MS
+
+
+def _edges(va: tuple[int, int, int] | None, width: int) -> tuple[int, int, int] | None:
+    """POC centre, value-area low edge and high edge in e8."""
+    if va is None:
+        return None
+    poc, val, vah = va
+    return poc * width + width // 2, val * width, (vah + 1) * width
+
+
+def _va_pos(px: int, edges: tuple[int, int, int] | None) -> float | None:
+    return (px - edges[1]) / (edges[2] - edges[1]) if edges and px else None
 
 
 def _ratio(num: float, den: float) -> float | None:
@@ -171,6 +237,10 @@ def features_at(s: BarSeries, i: int) -> FeatureRow:
         _ratio(v5, v60 / 12), _ratio(v5 / E8, n5), max(window(s.largest, 5)) / E8, _ratio(sum(window(s.large, 5)), n5),
         ret(1), ret(5), ret(15), ret(60), vol_60, range_15, pos_60,
         prev_ret, dist_hi, dist_lo, stamp.hour, stamp.weekday(),
+        _log_ratio(px, s.vp_prev[i][0]) if s.vp_prev[i] else None, _va_pos(px, s.vp_prev[i]),
+        _log_ratio(s.vp_prev[i][2], s.vp_prev[i][1]) if s.vp_prev[i] else None,
+        _log_ratio(px, s.vp_dev[i][0]) if s.vp_dev[i] else None, _va_pos(px, s.vp_dev[i]),
+        _log_ratio(px, s.tpo_prev[i][0]) if s.tpo_prev[i] else None, _va_pos(px, s.tpo_prev[i]),
     )
     stale = t - s.last_ms[i] if s.last_ms[i] else None
     return FeatureRow(t, values, stale, sum(window(s.empty, 60)), warm)
