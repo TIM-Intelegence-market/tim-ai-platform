@@ -1,0 +1,370 @@
+{
+  "study": "S7",
+  "protocol": "S7 0.2 (Entwurf)",
+  "rules_commit_note": "Regelstand = commit; Änderung danach = neue Studie",
+  "commit": "2a9d3be2ed2bce7601944a278155b1efad6e4d05",
+  "outcome_blind": true,
+  "gate": {
+    "train": 200,
+    "train_weeks": 100,
+    "validation": 100,
+    "validation_weeks": 50,
+    "holdout": 100,
+    "holdout_weeks": 60
+  },
+  "holdout_coin_months": 63,
+  "holdout_months": 21,
+  "created": "2026-10-26T09:38:09+00:00",
+  "dataset_hash": "9ac4d1357e57e84ebd08ce2eedf19766d27e27bbeae1e21dc68e8e3073415ecc",
+  "dataset_hashes": {
+    "BTCUSDT": "168dad5cbfb16cca6e4a639a7461cfb2c5657a075ded1d5a1f1e11e21f3c5ae4",
+    "ETHUSDT": "b86bb1c7729c3bebf17c8b6e98a4c462989cba47d54debad9511f392bcff3843",
+    "SOLUSDT": "de9e8c3211701186b92ef918e5dd9150b772023916500598b5a07957ec02d123"
+  },
+  "bars": {
+    "BTCUSDT": 10962,
+    "ETHUSDT": 10962,
+    "SOLUSDT": 9389
+  },
+  "coin_months_by_year": {
+    "2020": 27,
+    "2021": 36,
+    "2022": 36,
+    "2023": 36,
+    "2024": 36
+  },
+  "variants": {
+    "S7-D20-T3": {
+      "params": {
+        "interval": "4h",
+        "channel": 20,
+        "target_r": 3.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30
+      },
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 426,
+          "lower": 126,
+          "skipped_gap": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 257,
+          "lower": 86,
+          "skipped_gap": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 488,
+          "lower": 122,
+          "skipped_gap": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 270,
+          "lower": 86,
+          "skipped_gap": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 356,
+          "lower": 93,
+          "skipped_gap": 31
+        },
+        "SOLUSDT/validation": {
+          "upper": 307,
+          "lower": 88,
+          "skipped_gap": 0
+        }
+      },
+      "totals": {
+        "train": {
+          "upper": 1270,
+          "lower": 341,
+          "weeks": 138
+        },
+        "validation": {
+          "upper": 834,
+          "lower": 260,
+          "weeks": 102
+        }
+      },
+      "by_year": {
+        "2020": {
+          "lower": 84,
+          "weeks": 40
+        },
+        "2021": {
+          "lower": 140,
+          "weeks": 53
+        },
+        "2022": {
+          "lower": 117,
+          "weeks": 46
+        },
+        "2023": {
+          "lower": 128,
+          "weeks": 49
+        },
+        "2024": {
+          "lower": 132,
+          "weeks": 53
+        }
+      },
+      "projected_holdout_lower": 196.0,
+      "projected_holdout_weeks": 70.0,
+      "weakest_year_signals": 2020,
+      "weakest_year_weeks": 2020,
+      "passes_gate": true
+    },
+    "S7-D20-T4": {
+      "params": {
+        "interval": "4h",
+        "channel": 20,
+        "target_r": 4.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30
+      },
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 426,
+          "lower": 126,
+          "skipped_gap": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 257,
+          "lower": 86,
+          "skipped_gap": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 488,
+          "lower": 122,
+          "skipped_gap": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 270,
+          "lower": 86,
+          "skipped_gap": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 356,
+          "lower": 93,
+          "skipped_gap": 31
+        },
+        "SOLUSDT/validation": {
+          "upper": 307,
+          "lower": 88,
+          "skipped_gap": 0
+        }
+      },
+      "totals": {
+        "train": {
+          "upper": 1270,
+          "lower": 341,
+          "weeks": 138
+        },
+        "validation": {
+          "upper": 834,
+          "lower": 260,
+          "weeks": 102
+        }
+      },
+      "by_year": {
+        "2020": {
+          "lower": 84,
+          "weeks": 40
+        },
+        "2021": {
+          "lower": 140,
+          "weeks": 53
+        },
+        "2022": {
+          "lower": 117,
+          "weeks": 46
+        },
+        "2023": {
+          "lower": 128,
+          "weeks": 49
+        },
+        "2024": {
+          "lower": 132,
+          "weeks": 53
+        }
+      },
+      "projected_holdout_lower": 196.0,
+      "projected_holdout_weeks": 70.0,
+      "weakest_year_signals": 2020,
+      "weakest_year_weeks": 2020,
+      "passes_gate": true
+    },
+    "S7-D55-T3": {
+      "params": {
+        "interval": "4h",
+        "channel": 55,
+        "target_r": 3.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30
+      },
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 281,
+          "lower": 96,
+          "skipped_gap": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 186,
+          "lower": 67,
+          "skipped_gap": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 342,
+          "lower": 95,
+          "skipped_gap": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 178,
+          "lower": 67,
+          "skipped_gap": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 249,
+          "lower": 72,
+          "skipped_gap": 19
+        },
+        "SOLUSDT/validation": {
+          "upper": 204,
+          "lower": 69,
+          "skipped_gap": 0
+        }
+      },
+      "totals": {
+        "train": {
+          "upper": 872,
+          "lower": 263,
+          "weeks": 121
+        },
+        "validation": {
+          "upper": 568,
+          "lower": 203,
+          "weeks": 95
+        }
+      },
+      "by_year": {
+        "2020": {
+          "lower": 63,
+          "weeks": 34
+        },
+        "2021": {
+          "lower": 117,
+          "weeks": 48
+        },
+        "2022": {
+          "lower": 83,
+          "weeks": 40
+        },
+        "2023": {
+          "lower": 101,
+          "weeks": 48
+        },
+        "2024": {
+          "lower": 102,
+          "weeks": 47
+        }
+      },
+      "projected_holdout_lower": 145.2,
+      "projected_holdout_weeks": 59.5,
+      "weakest_year_signals": 2022,
+      "weakest_year_weeks": 2020,
+      "passes_gate": false
+    },
+    "S7-D55-T4": {
+      "params": {
+        "interval": "4h",
+        "channel": 55,
+        "target_r": 4.0,
+        "sma": 200,
+        "atr": 14,
+        "atr_factor": 1.5,
+        "min_stop": 0.01,
+        "time_stop": 30
+      },
+      "counts": {
+        "BTCUSDT/train": {
+          "upper": 281,
+          "lower": 96,
+          "skipped_gap": 0
+        },
+        "BTCUSDT/validation": {
+          "upper": 186,
+          "lower": 67,
+          "skipped_gap": 0
+        },
+        "ETHUSDT/train": {
+          "upper": 342,
+          "lower": 95,
+          "skipped_gap": 0
+        },
+        "ETHUSDT/validation": {
+          "upper": 178,
+          "lower": 67,
+          "skipped_gap": 0
+        },
+        "SOLUSDT/train": {
+          "upper": 249,
+          "lower": 72,
+          "skipped_gap": 19
+        },
+        "SOLUSDT/validation": {
+          "upper": 204,
+          "lower": 69,
+          "skipped_gap": 0
+        }
+      },
+      "totals": {
+        "train": {
+          "upper": 872,
+          "lower": 263,
+          "weeks": 121
+        },
+        "validation": {
+          "upper": 568,
+          "lower": 203,
+          "weeks": 95
+        }
+      },
+      "by_year": {
+        "2020": {
+          "lower": 63,
+          "weeks": 34
+        },
+        "2021": {
+          "lower": 117,
+          "weeks": 48
+        },
+        "2022": {
+          "lower": 83,
+          "weeks": 40
+        },
+        "2023": {
+          "lower": 101,
+          "weeks": 48
+        },
+        "2024": {
+          "lower": 102,
+          "weeks": 47
+        }
+      },
+      "projected_holdout_lower": 145.2,
+      "projected_holdout_weeks": 59.5,
+      "weakest_year_signals": 2022,
+      "weakest_year_weeks": 2020,
+      "passes_gate": false
+    }
+  }
+}

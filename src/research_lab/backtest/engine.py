@@ -6,7 +6,7 @@ reading a later bar raises IndexError. Entries fill at the next bar's open.
 from __future__ import annotations
 
 import bisect
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Callable, overload
 
@@ -98,6 +98,9 @@ class BacktestResult:
     ignored_signals: int = 0
     invalid_signals: int = 0
     gap_closes: int = 0
+    locked_signals: int = 0  # refused by the portfolio position cap (run_portfolio); also counted in ignored_signals
+    ignored_times: list[int] = field(default_factory=list)  # open times of every ignored signal (own position or cap)
+    locked_times: list[int] = field(default_factory=list)  # open times of the signals refused by the cap only
 
 
 def exit_on_bar(bar: Kline, side: int, stop: float, target: float | None) -> tuple[float, str, int] | None:
@@ -127,6 +130,138 @@ def _funding_cost(funding: Sequence[FundingRate], times: list[int], side: int, n
     return total
 
 
+class _Runner:
+    """State machine for one instrument. ``run_backtest`` steps a single runner over its
+    bars; ``run_portfolio`` steps several in lockstep so that a position cap can be shared.
+
+    Each bar is processed in two phases: ``pre_signal`` closes a position that ended with a
+    gap or by rule, fills a pending entry at the open and applies stop/target/time stop;
+    ``signal`` evaluates the exit rule and the strategy on the closed bar and books the
+    pending entry for the next open."""
+
+    def __init__(self, bars: Sequence[Kline], strategy: Strategy, interval_ms: int, *, costs: CostModel, funding: Sequence[FundingRate],
+                 start_ms: int | None, end_ms: int | None, atr_at_signal: Callable[[History], float | None] | None,
+                 gap_entry_as_loss: bool) -> None:
+        self.bars = bars
+        self.strategy = strategy
+        self.interval_ms = interval_ms
+        self.costs = costs
+        self.funding = funding
+        self.funding_times = [f.time for f in funding]
+        self.start_ms = start_ms
+        self.end_ms = end_ms
+        self.atr_at_signal = atr_at_signal
+        self.gap_entry_as_loss = gap_entry_as_loss
+        self.result = BacktestResult()
+        self.position: Position | None = None
+        self.pending: tuple[int, Signal, float | None] | None = None  # (signal index, signal, atr)
+        self.exit_next_open = False
+        self.signal_time = 0
+        self.signal_atr: float | None = None
+        self.time_stop: int | None = None
+        self.exit_rule: ExitRule | None = None
+        self.target_r: float | None = None
+
+    @property
+    def busy(self) -> bool:
+        """An open position or a pending entry occupies one portfolio slot. A position that
+        exits by rule at the next open does not (it makes room, as in ``run_backtest``)."""
+        return (self.position is not None and not self.exit_next_open) or self.pending is not None
+
+    def _close(self, t: int, raw_price: float, reason: str, moment: int, slip: float) -> None:
+        position = self.position
+        assert position is not None
+        self.exit_next_open = False
+        side, entry = position.side, position.entry_price
+        exit_price = raw_price * (1 - side * slip)
+        risk = abs(entry - position.stop)
+        fees = self.costs.fee * (entry + exit_price)
+        fund = _funding_cost(self.funding, self.funding_times, side, entry, self.bars[position.entry_index].open_time, moment, self.costs)
+        pnl = side * (exit_price - entry) - fees - fund
+        self.result.trades.append(
+            Trade(self.signal_time, self.bars[position.entry_index].open_time, moment, side, entry, exit_price, position.stop, reason,
+                  t - position.entry_index + 1, pnl / risk, fees / risk, fund / risk,
+                  None if self.signal_atr is None else risk / self.signal_atr, self.target_r)
+        )
+        self.position = None
+
+    def pre_signal(self, t: int) -> None:
+        bars, costs = self.bars, self.costs
+        bar = bars[t]
+        contiguous = t > 0 and bar.open_time - bars[t - 1].open_time == self.interval_ms
+
+        if self.position is not None and not contiguous:
+            self._close(t - 1, bars[t - 1].close, "gap", bars[t - 1].close_time + 1, costs.slippage)
+            self.result.gap_closes += 1
+        if self.position is not None and self.exit_next_open:
+            self._close(t, bar.open, "rule", bar.open_time, costs.slippage)
+        if self.pending is not None:
+            index, signal, atr = self.pending
+            self.pending = None
+            if not contiguous:
+                self.result.invalid_signals += 1
+            else:
+                entry = bar.open * (1 + signal.side * costs.slippage)
+                # The stop must lie beyond the raw open too, or the trade would be
+                # stopped at the open with a tiny risk and an extreme R.
+                if (entry - signal.stop) * signal.side <= 0 or (bar.open - signal.stop) * signal.side <= 0:
+                    planned = bars[index].close
+                    planned_risk = (planned - signal.stop) * signal.side
+                    if self.gap_entry_as_loss and planned_risk > 0:
+                        cost = (2 * costs.fee + costs.slippage + costs.stop_slippage) * planned / planned_risk
+                        self.result.trades.append(
+                            Trade(bars[index].open_time, bar.open_time, bar.open_time, signal.side, bar.open, bar.open,
+                                  signal.stop, "stop_before_entry", 1, -1.0 - cost, 2 * costs.fee * planned / planned_risk,
+                                  0.0, None if atr is None else planned_risk / atr, signal.target_r))
+                    else:
+                        self.result.invalid_signals += 1
+                else:
+                    risk = abs(entry - signal.stop)
+                    target = None if signal.target_r is None else entry + signal.side * signal.target_r * risk
+                    self.position = Position(signal.side, t, entry, signal.stop, target)
+                    self.signal_time, self.signal_atr = bars[index].open_time, atr
+                    self.time_stop, self.exit_rule, self.target_r = signal.time_stop_bars, signal.exit_rule, signal.target_r
+        if self.position is not None:
+            hit = exit_on_bar(bar, self.position.side, self.position.stop, self.position.target)
+            if hit is not None:
+                price, reason, moment = hit
+                self._close(t, price, reason, moment, costs.stop_slippage if reason.startswith("stop") else costs.slippage)
+            elif self.time_stop is not None and t - self.position.entry_index + 1 >= self.time_stop:
+                self._close(t, bar.close, "time", bar.close_time + 1, costs.slippage)
+
+    def signal(self, t: int, may_enter: Callable[[], bool] | None = None) -> None:
+        """Evaluate the strategy on bar t. ``may_enter`` is the portfolio's capacity check; a
+        signal it refuses is counted as ignored and as locked."""
+        bar = self.bars[t]
+        in_range = (self.start_ms is None or bar.open_time >= self.start_ms) and (self.end_ms is None or bar.open_time < self.end_ms)
+        history = History(self.bars, t)
+        if self.position is not None and self.exit_rule is not None and self.exit_rule(history, self.position):
+            self.exit_next_open = True
+        signal = self.strategy(history) if in_range else None
+        if signal is None:
+            return
+        self.result.signals.append((bar.open_time, signal.side, signal.stop))
+        # A position that exits by rule at the next open makes room for a
+        # signal on the same bar (reversal, e.g. L1 long/short).
+        if (self.position is not None and not self.exit_next_open) or self.pending is not None:
+            self.result.ignored_signals += 1
+            self.result.ignored_times.append(bar.open_time)
+        elif may_enter is not None and not may_enter():
+            self.result.ignored_signals += 1
+            self.result.locked_signals += 1
+            self.result.ignored_times.append(bar.open_time)
+            self.result.locked_times.append(bar.open_time)
+        elif t + 1 < len(self.bars):
+            self.pending = (t, signal, self.atr_at_signal(history) if self.atr_at_signal else None)
+        else:
+            self.result.invalid_signals += 1  # no next bar to enter on
+
+    def finish(self) -> None:
+        if self.position is not None:
+            last = len(self.bars) - 1
+            self._close(last, self.bars[last].close, "end", self.bars[last].close_time + 1, self.costs.slippage)
+
+
 def run_backtest(
     bars: Sequence[Kline],
     strategy: Strategy,
@@ -146,93 +281,70 @@ def run_backtest(
     or beyond its stop is not dropped as invalid (that would select on the
     future) but booked as a full loss: -1 R minus the stop-case costs, R taken
     from the signal bar's close to the stop."""
-    result = BacktestResult()
-    funding_times = [f.time for f in funding]
-    position: Position | None = None
-    pending: tuple[int, Signal, float | None] | None = None  # (signal index, signal, atr)
-    exit_next_open = False
-    signal_time = 0
-    signal_atr: float | None = None
-    time_stop: int | None = None
-    exit_rule: ExitRule | None = None
-    target_r: float | None = None
+    runner = _Runner(bars, strategy, interval_ms, costs=costs, funding=funding, start_ms=start_ms, end_ms=end_ms,
+                     atr_at_signal=atr_at_signal, gap_entry_as_loss=gap_entry_as_loss)
+    for t in range(len(bars)):
+        runner.pre_signal(t)
+        runner.signal(t)
+    runner.finish()
+    return runner.result
 
-    def close(t: int, raw_price: float, reason: str, moment: int, slip: float) -> None:
-        nonlocal position, exit_next_open
-        assert position is not None
-        exit_next_open = False
-        side, entry = position.side, position.entry_price
-        exit_price = raw_price * (1 - side * slip)
-        risk = abs(entry - position.stop)
-        fees = costs.fee * (entry + exit_price)
-        fund = _funding_cost(funding, funding_times, side, entry, bars[position.entry_index].open_time, moment, costs)
-        pnl = side * (exit_price - entry) - fees - fund
-        result.trades.append(
-            Trade(signal_time, bars[position.entry_index].open_time, moment, side, entry, exit_price, position.stop, reason,
-                  t - position.entry_index + 1, pnl / risk, fees / risk, fund / risk,
-                  None if signal_atr is None else risk / signal_atr, target_r)
-        )
-        position = None
 
-    for t, bar in enumerate(bars):
-        contiguous = t > 0 and bar.open_time - bars[t - 1].open_time == interval_ms
+def run_portfolio(
+    bars_by_symbol: Mapping[str, Sequence[Kline]],
+    strategies: Mapping[str, Strategy],
+    interval_ms: int,
+    *,
+    priority: Sequence[str],
+    costs: CostModel = BASE_COSTS,
+    funding_by_symbol: Mapping[str, Sequence[FundingRate]] | None = None,
+    start_ms_by_symbol: Mapping[str, int | None] | None = None,
+    end_ms: int | None = None,
+    atr_at_signal: Callable[[History], float | None] | None = None,
+    gap_entry_as_loss: bool = False,
+    max_positions: int = 1,
+) -> dict[str, BacktestResult]:
+    """Several instruments in lockstep with at most ``max_positions`` open or pending
+    positions over all of them (study S7b).
 
-        if position is not None and not contiguous:
-            close(t - 1, bars[t - 1].close, "gap", bars[t - 1].close_time + 1, costs.slippage)
-            result.gap_closes += 1
-        if position is not None and exit_next_open:
-            close(t, bar.open, "rule", bar.open_time, costs.slippage)
-        if pending is not None:
-            index, signal, atr = pending
-            pending = None
-            if not contiguous:
-                result.invalid_signals += 1
-            else:
-                entry = bar.open * (1 + signal.side * costs.slippage)
-                # The stop must lie beyond the raw open too, or the trade would be
-                # stopped at the open with a tiny risk and an extreme R.
-                if (entry - signal.stop) * signal.side <= 0 or (bar.open - signal.stop) * signal.side <= 0:
-                    planned = bars[index].close
-                    planned_risk = (planned - signal.stop) * signal.side
-                    if gap_entry_as_loss and planned_risk > 0:
-                        cost = (2 * costs.fee + costs.slippage + costs.stop_slippage) * planned / planned_risk
-                        result.trades.append(
-                            Trade(bars[index].open_time, bar.open_time, bar.open_time, signal.side, bar.open, bar.open,
-                                  signal.stop, "stop_before_entry", 1, -1.0 - cost, 2 * costs.fee * planned / planned_risk,
-                                  0.0, None if atr is None else planned_risk / atr, signal.target_r))
-                    else:
-                        result.invalid_signals += 1
-                else:
-                    risk = abs(entry - signal.stop)
-                    target = None if signal.target_r is None else entry + signal.side * signal.target_r * risk
-                    position = Position(signal.side, t, entry, signal.stop, target)
-                    signal_time, signal_atr = bars[index].open_time, atr
-                    time_stop, exit_rule, target_r = signal.time_stop_bars, signal.exit_rule, signal.target_r
-        if position is not None:
-            hit = exit_on_bar(bar, position.side, position.stop, position.target)
-            if hit is not None:
-                price, reason, moment = hit
-                close(t, price, reason, moment, costs.stop_slippage if reason.startswith("stop") else costs.slippage)
-            elif time_stop is not None and t - position.entry_index + 1 >= time_stop:
-                close(t, bar.close, "time", bar.close_time + 1, costs.slippage)
+    Bars are visited in order of their open time. For every time stamp, phase one runs
+    ``pre_signal`` for every instrument that has a bar there (exits and pending entries),
+    phase two evaluates the strategies in ``priority`` order. A signal arriving while the
+    cap is reached lapses (``ignored_signals`` and ``locked_signals``); nothing is queued.
+    An exit on bar t frees the slot for signals on the close of the same bar, exactly as
+    the single-instrument engine re-enters on its own exit bar. Per instrument the
+    results are identical to ``run_backtest`` whenever the cap never binds."""
+    order = list(priority)
+    if sorted(order) != sorted(bars_by_symbol) or len(order) != len(set(order)):
+        raise ValueError("priority must list every instrument exactly once")
+    if max_positions < 1:
+        raise ValueError("max_positions must be at least 1")
+    funding_by_symbol = funding_by_symbol or {}
+    start_ms_by_symbol = start_ms_by_symbol or {}
+    runners = {
+        sym: _Runner(bars_by_symbol[sym], strategies[sym], interval_ms, costs=costs, funding=funding_by_symbol.get(sym, ()),
+                     start_ms=start_ms_by_symbol.get(sym), end_ms=end_ms, atr_at_signal=atr_at_signal,
+                     gap_entry_as_loss=gap_entry_as_loss)
+        for sym in order
+    }
+    index = {sym: {bar.open_time: i for i, bar in enumerate(bars_by_symbol[sym])} for sym in order}
+    for sym in order:
+        if len(index[sym]) != len(bars_by_symbol[sym]):
+            raise ValueError(f"{sym}: duplicate open times")
+    times = sorted(set().union(*(index[sym].keys() for sym in order)))
 
-        in_range = (start_ms is None or bar.open_time >= start_ms) and (end_ms is None or bar.open_time < end_ms)
-        history = History(bars, t)
-        if position is not None and exit_rule is not None and exit_rule(history, position):
-            exit_next_open = True
-        signal = strategy(history) if in_range else None
-        if signal is not None:
-            result.signals.append((bar.open_time, signal.side, signal.stop))
-            # A position that exits by rule at the next open makes room for a
-            # signal on the same bar (reversal, e.g. L1 long/short).
-            if (position is not None and not exit_next_open) or pending is not None:
-                result.ignored_signals += 1
-            elif t + 1 < len(bars):
-                pending = (t, signal, atr_at_signal(history) if atr_at_signal else None)
-            else:
-                result.invalid_signals += 1  # no next bar to enter on
+    def may_enter() -> bool:
+        return sum(1 for r in runners.values() if r.busy) < max_positions
 
-    if position is not None:
-        last = len(bars) - 1
-        close(last, bars[last].close, "end", bars[last].close_time + 1, costs.slippage)
-    return result
+    for time in times:
+        for sym in order:
+            i = index[sym].get(time)
+            if i is not None:
+                runners[sym].pre_signal(i)
+        for sym in order:
+            i = index[sym].get(time)
+            if i is not None:
+                runners[sym].signal(i, may_enter)
+    for runner in runners.values():
+        runner.finish()
+    return {sym: runners[sym].result for sym in order}
