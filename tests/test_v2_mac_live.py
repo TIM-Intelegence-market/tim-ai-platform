@@ -33,6 +33,14 @@ def test_other_home_is_rendered_too() -> None:
     assert value["EnvironmentVariables"]["TIM_DATABASE_SECRET_FILE"].startswith("/Users/x/Library/")
 
 
+def test_template_user_name_becomes_the_home_owner() -> None:
+    template = (REPO / "ops/launchd/com.tim.runtime.plist").read_bytes()
+    assert b"<key>UserName</key><string>tim-user</string>" in template
+    value = plistlib.loads(mac_live.render_plist(template, Path("/Users/x/TIM-live"), Path("/Users/x")))
+    assert value["UserName"] == "x"
+    assert b"tim-user" not in mac_live.render_plist(template, Path("/Users/x/TIM-live"), Path("/Users/x"))
+
+
 def test_launchd_drift(tmp_path: Path) -> None:
     root = tmp_path / "live"
     (root / "ops/launchd").mkdir(parents=True)

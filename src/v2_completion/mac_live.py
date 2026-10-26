@@ -16,6 +16,7 @@ from pathlib import Path
 
 TEMPLATE_ROOT = "/Users/tim/Documents/TIM/tim"
 TEMPLATE_HOME = "/Users/tim"
+TEMPLATE_USER = "tim-user"
 LIVE_AGENTS = ("com.tim.runtime", "com.tim.watchdog", "com.tim.server-health", "com.tim.history-recovery",
                "com.tim.qualification-daily")
 JSONL_BOUND = 2 * 10 * 1024 * 1024
@@ -25,6 +26,8 @@ LOG_BOUND = 512 * 1024 * 1024
 def render_plist(template: bytes, root: Path, home: Path) -> bytes:
     """Point a repository launchd template at ``root`` (checkout) and ``home``."""
     text = template.decode("utf-8").replace(TEMPLATE_ROOT, str(root))
+    text = text.replace(f"<key>UserName</key><string>{TEMPLATE_USER}</string>",
+                        f"<key>UserName</key><string>{home.name}</string>")
     return text.replace(TEMPLATE_HOME + "/", str(home) + "/").replace(
         f"<string>{TEMPLATE_HOME}</string>", f"<string>{home}</string>").encode("utf-8")
 

@@ -169,7 +169,7 @@ und wird auf den Live-Checkout umgeschrieben):
 
 ```sh
 cd ~/TIM-live
-sed "s|/Users/tim/Documents/TIM/tim|$HOME/TIM-live|g" ops/launchd/com.tim.db-backup-mirror.plist > ~/Library/LaunchAgents/com.tim.db-backup-mirror.plist
+sed -e "s|/Users/tim/Documents/TIM/tim|$HOME/TIM-live|g" -e "s|/Users/tim/|$HOME/|g" ops/launchd/com.tim.db-backup-mirror.plist > ~/Library/LaunchAgents/com.tim.db-backup-mirror.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tim.db-backup-mirror.plist
 launchctl kickstart -k gui/$(id -u)/com.tim.db-backup-mirror
 sleep 60; cat data/operational/backup_mirror.json

@@ -73,7 +73,7 @@ git pull --ff-only origin platform-main
 .venv/bin/python scripts/goathub_discord_bot.py setup   # Kanal-ID(s), Modus, deine Nutzer-ID
 .venv/bin/python scripts/goathub_discord_bot.py sync    # erwartet: stored=… complete=True
 .venv/bin/python scripts/goathub_discord_bot.py calls   # zeigt die guten Calls
-cp ops/launchd/com.tim.goathub-sync.plist ~/Library/LaunchAgents/
+sed -e "s|/Users/tim/Documents/TIM/tim|$PWD|g" -e "s|/Users/tim/|$HOME/|g" -e "s|<string>tim-user</string>|<string>$USER</string>|g" ops/launchd/com.tim.goathub-sync.plist > ~/Library/LaunchAgents/com.tim.goathub-sync.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tim.goathub-sync.plist
 ```
 

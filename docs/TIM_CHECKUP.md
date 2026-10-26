@@ -614,7 +614,7 @@ nie anfasst.
    vertretbar (Restrisiko R12).
 4. **LaunchAgent einrichten:** plist kopieren, die vier Platzhalter `EINTRAGEN` ersetzen, laden.
    ```bash
-   cp ops/launchd/com.tim.outside-watch.plist ~/Library/LaunchAgents/
+   sed -e "s|/Users/tim/Documents/TIM/tim|$PWD|g" -e "s|/Users/tim/|$HOME/|g" -e "s|<string>tim-user</string>|<string>$USER</string>|g" ops/launchd/com.tim.outside-watch.plist > ~/Library/LaunchAgents/com.tim.outside-watch.plist
    P=~/Library/LaunchAgents/com.tim.outside-watch.plist
    plutil -replace EnvironmentVariables.TIM_WATCH_ISSUE -string <W> "$P"
    plutil -replace EnvironmentVariables.TIM_WATCH_APP_ID -string <App-ID> "$P"

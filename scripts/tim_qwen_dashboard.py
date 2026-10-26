@@ -23,7 +23,7 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 
-DEFAULT_QWEN_REPO = Path("/Users/tim/Documents/TIM/tim-local-qwen")
+DEFAULT_QWEN_REPO = Path.home() / "Documents/TIM/tim-local-qwen"
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 LAUNCH_AGENT = "com.tim.local-qwen-worker"
 TASK_ID = re.compile(r"[A-Za-z0-9_-]{1,120}\Z")

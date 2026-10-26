@@ -19,15 +19,15 @@ if [[ ! -x "${PG_BIN}/initdb" ]]; then
 fi
 
 if [[ ! -d "${PGDATA}" ]]; then
-  "${PG_BIN}/initdb" -D "${PGDATA}" -E UTF8 -U tim-user \
+  "${PG_BIN}/initdb" -D "${PGDATA}" -E UTF8 -U "$(id -un)" \
     --auth-local=peer --auth-host=scram-sha-256 >/dev/null
   mkdir -p "${SOCKET_DIR}"
-  cat >> "${PGDATA}/postgresql.conf" << 'EOF'
+  cat >> "${PGDATA}/postgresql.conf" << EOF
 
 # TIM isolated test cluster (pytest only, never production)
 port = 5433
 listen_addresses = 'localhost'
-unix_socket_directories = '/Users/tim/Library/Application Support/TIM/test-postgres/sockets'
+unix_socket_directories = '${SOCKET_DIR}'
 max_connections = 20
 shared_buffers = 64MB
 EOF
@@ -61,7 +61,7 @@ SECRET = Path(os.environ["SECRET_FILE"])
 
 
 async def main() -> None:
-    conn = await asyncpg.connect(host=SOCKET, port=5433, database="postgres", user="tim-user")
+    conn = await asyncpg.connect(host=SOCKET, port=5433, database="postgres", user=os.environ.get("USER") or os.getlogin())
     try:
         exists = await conn.fetchval("SELECT 1 FROM pg_roles WHERE rolname='tim_test'")
         if exists:

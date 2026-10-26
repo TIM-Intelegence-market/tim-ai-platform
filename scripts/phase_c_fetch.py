@@ -18,7 +18,7 @@ def checkpoint_state():
 
 async def main():
     import asyncpg
-    pw = Path("/Users/tim/Library/Application Support/TIM/test-database-password").read_text().strip()
+    pw = (Path.home() / "Library/Application Support/TIM/test-database-password").read_text().strip()
     # verify isolation
     conn = await asyncpg.connect(host="127.0.0.1", port=5433, database="tim_test", user="tim_test", password=pw)
     try:

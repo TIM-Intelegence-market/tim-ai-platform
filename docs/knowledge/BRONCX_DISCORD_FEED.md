@@ -116,7 +116,7 @@ Dann zählt der Zeitpunkt deiner Nachricht.
 7. **Dauerbetrieb** (startet mit der Anmeldung und läuft dann durchgehend):
 
    ```sh
-   cp ops/launchd/com.tim.broncx-discord-feed.plist ~/Library/LaunchAgents/
+   sed -e "s|/Users/tim/Documents/TIM/tim|$PWD|g" -e "s|/Users/tim/|$HOME/|g" -e "s|<string>tim-user</string>|<string>$USER</string>|g" ops/launchd/com.tim.broncx-discord-feed.plist > ~/Library/LaunchAgents/com.tim.broncx-discord-feed.plist
    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tim.broncx-discord-feed.plist
    ```
 

@@ -5,8 +5,10 @@ if [[ $EUID -ne 0 ]]; then
   print -u2 'Bitte mit sudo ausführen.'
   exit 1
 fi
-ROOT=/Users/tim/Documents/TIM/tim
-USER_ID=$(id -u tim-user)
+TIM_USER=${SUDO_USER:?Bitte mit sudo aus dem eigenen Konto starten.}
+TIM_HOME=$(dscl . -read "/Users/$TIM_USER" NFSHomeDirectory | awk '{print $2}')
+ROOT=${TIM_ROOT:-$TIM_HOME/Documents/TIM/tim}
+USER_ID=$(id -u "$TIM_USER")
 wait_for_system_unload() {
   local name="$1"
   for _ in {1..15}; do
@@ -18,7 +20,7 @@ wait_for_system_unload() {
   print -u2 "Systemdienst $name beendet sich nicht rechtzeitig. Installation abgebrochen."
   return 1
 }
-if [[ ! -f "/Users/tim/Library/Application Support/TIM/database-password" ]]; then
+if [[ ! -f "$TIM_HOME/Library/Application Support/TIM/database-password" ]]; then
   print -u2 'Dienst-Schlüssel fehlt. Zuerst ohne sudo ausführen: .venv/bin/python scripts/provision_tim_daemon_secret.py'
   exit 2
 fi
@@ -31,7 +33,11 @@ rm -f /Library/LaunchDaemons/com.tim.ollama.plist
 for name in com.tim.awake com.tim.runtime com.tim.coverage-worker com.tim.local-qwen-worker; do
   launchctl bootout system/$name 2>/dev/null || true
   wait_for_system_unload "$name"
-  install -o root -g wheel -m 644 "$ROOT/ops/launchd/$name.plist" "/Library/LaunchDaemons/$name.plist"
+  sed -e "s|/Users/tim/Documents/TIM/tim|$ROOT|g" -e "s|/Users/tim/|$TIM_HOME/|g" -e "s|<string>/Users/tim</string>|<string>$TIM_HOME</string>|g" \
+    -e "s|<key>UserName</key><string>tim-user</string>|<key>UserName</key><string>$TIM_USER</string>|g" \
+    "$ROOT/ops/launchd/$name.plist" > "/tmp/$name.plist"
+  install -o root -g wheel -m 644 "/tmp/$name.plist" "/Library/LaunchDaemons/$name.plist"
+  rm -f "/tmp/$name.plist"
   launchctl bootstrap system "/Library/LaunchDaemons/$name.plist"
 done
 print 'TIM 24/7-Systemdienste sind installiert. Status: sudo launchctl print system/com.tim.runtime'
