@@ -319,6 +319,7 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
     for plan in plans:
         if plan["direction"] in open_directions:
             continue
+        start = _start_after_previous(entries, plan["direction"], timeframe, at)
         key = "|".join(str(x) for x in (timeframe, plan["direction"], plan.get("scenario_type"), plan.get("scenario_id"), _iso(at),
                                         f"{float(plan['entry']):.2f}", f"{float(plan['stop']):.2f}"))
         payload = {k: v for k, v in plan.items() if k not in {"grade", "evidence_status", "evidence_ref", "execution_status", "pipeline_decision", "pipeline_decision_reasons"}}
@@ -332,7 +333,7 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
             "status": OPEN,
             **_arming(plan),
             "stop_rule": STOP_RULE_COST,
-            "evaluated_through": _iso(at),
+            "evaluated_through": _iso(start),
             "tp_hits": [],
             "gross_r": None,
             "fee_r": None,
@@ -342,6 +343,23 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
         entries.append(entry)
         added.append(entry)
     return added
+
+
+def _start_after_previous(entries: Sequence[Mapping[str, Any]], direction: str, timeframe: str, at: datetime) -> datetime:
+    """The first minute a new plan may trade: its close, or later if the previous trade in this direction ended later.
+
+    A 30m close can be processed minutes late (busy Mac). The previous trade may then have
+    been stopped after that close, and a new plan evaluated from the close would trade the
+    same minutes again and book the same stop twice (26.10.2026, level/1: plan of 13:00
+    written at 13:04, "filled" 13:01 and stopped 13:03 like the trade before it)."""
+    start = at
+    for entry in entries:
+        if entry.get("direction") != direction or entry.get("timeframe") != timeframe or not entry.get("filled_at"):
+            continue
+        closed = entry.get("closed_at")
+        if closed and _time(closed) > start:
+            start = _time(closed)
+    return start
 
 
 def invalid_on_arrival(plan: Mapping[str, Any], close: float) -> str | None:

@@ -813,3 +813,21 @@ def test_update_judges_filled_plans_at_each_30m_close(tmp_path: Path, monkeypatc
     judged = [e for e in result["entries"] if e["id"] == entry["id"]][0]
     assert judged["tim_verdict"] == "SICHERN" and judged["cost_stop"] == pj.cost_stop_level(judged)
     assert any(e["kind"] == "PLAN_UPDATED" and "tim_verdict" in e["payload"]["changes"] for e in journal_log.read(pj.events_path_for(path)).events)
+
+
+def test_late_recorded_plan_does_not_trade_the_minutes_of_the_previous_stop() -> None:
+    # 26.10.2026 level/1: the 13:00 close was processed at 13:04, after the previous trade
+    # had been stopped at 13:03. The new plan must not "fill" and stop in those same minutes.
+    journal = _journal_with(_plan())
+    candles = [_m(0, 100.1, 100.4), _m(1, 99.9, 100.3), _m(2, 98.9, 99.8)]
+    pj.evaluate(journal, candles, [], T0 + timedelta(minutes=4))
+    first = journal["entries"][0]
+    assert first["exit_reason"] == "STOP" and pj._time(first["closed_at"]) > T0 + timedelta(minutes=2)
+    pj.record_plans(journal, [_plan()], T0)  # same 30m close, written late
+    second = journal["entries"][1]
+    assert second["status"] == "OPEN" and second["evaluated_through"] == first["closed_at"]
+    pj.evaluate(journal, [*candles, _m(3, 100.1, 100.6)], [], T0 + timedelta(minutes=5))
+    assert journal["entries"][1]["status"] == "OPEN" and journal["entries"][1].get("fill_price") is None
+    # Later minutes still fill it.
+    pj.evaluate(journal, [_m(4, 99.95, 100.3)], [], T0 + timedelta(minutes=6))
+    assert journal["entries"][1]["status"] == "FILLED"
