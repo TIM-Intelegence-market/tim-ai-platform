@@ -69,7 +69,7 @@ def test_page_is_csp_clean_and_escapes(tmp_path: Path):
     assert graph_csp(page) is not None
 
 
-def test_layers_cover_all_src_packages():
-    packages = [p.name for p in (Path(__file__).resolve().parents[1] / "src").iterdir()
-                if p.is_dir() and not p.name.startswith(("_", "."))]
-    assert [p for p in packages if p not in tv._PKG_TO_LAYER] == []
+def test_unknown_package_gets_its_own_layer():
+    assert tv.layer_of("src/brand_new") == "neu"
+    assert tv.layer_of("src/paper") == "trading"
+    assert tv.layer_of("src (Kern)") == "werkzeuge"

@@ -50,6 +50,7 @@ LAYERS: dict[str, tuple[str, str]] = {  # key -> (label, colour)
     "werkzeuge": ("Werkzeuge & Konfiguration", "#14B8A6"),
     "doku": ("Doku", "#94A3B8"),
     "tests": ("Tests ohne Code-Bezug", "#64748B"),
+    "neu": ("Noch keiner Schicht zugeordnet", "#F5F5F4"),
 }
 PACKAGE_LAYER = {
     "daten": ("data_ingestion", "database", "market_data", "multi_symbol", "observation",
@@ -77,7 +78,7 @@ def area_of(path: str) -> str:
     if parts[0] in ("src", "docs", "tests") and len(parts) > 2:
         return f"{parts[0]}/{parts[1]}"
     if parts[0] == "src":
-        return "src (Kern)"
+        return "src (Kern)"  # files directly in src/
     if parts[0] == "docs":
         return "docs (Hauptordner)"
     return parts[0] if len(parts) > 1 else "(Wurzel)"
@@ -85,7 +86,7 @@ def area_of(path: str) -> str:
 
 def layer_of(area: str) -> str:
     if area.startswith("src/"):
-        return _PKG_TO_LAYER.get(area[4:], "werkzeuge")
+        return _PKG_TO_LAYER.get(area[4:], "neu")
     if area.startswith("docs") or area == "TIM_MASTER_PROMPTS":
         return "doku"
     if area.startswith("tests"):
