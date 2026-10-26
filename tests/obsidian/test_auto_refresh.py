@@ -138,7 +138,9 @@ def test_vault_commit_only_touches_auto_folder(tmp_path: Path):
     report = ar.run(clone, vault, skip_graph=True, skip_graphify=True)
     assert report.vault_commit == "committed"
     changed = sh(vault, "show", "--name-only", "--format=", "HEAD").split("\n")
-    assert all(line.startswith("TIM/90 Berichte/Automatisch/") for line in changed if line)
+    assert all(line.startswith("TIM/90 Berichte/Automatisch/") or line in report.hubs_written
+               for line in changed if line)
+    assert report.hubs_written == ["TIM/90 Berichte/Reports MOC.md"]
     assert "TIM/01 Home/TIM Current Status.md" in sh(vault, "status", "--porcelain")
 
 

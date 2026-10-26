@@ -15,7 +15,10 @@ One run (launchd `com.tim.obsidian-refresh`, hourly on the Mac):
 4. Graphify view (only when platform-main moved): `graphify update` and a copy of `graph.html` to
    `~/Documents/TIM/TIM Graph Ansicht/`; the tracked `graphify-out/` in
    the clone is restored afterwards so the next fast-forward is not blocked.
-5. Vault git: commits only the automatic folder, never other changes.
+5. Graph hubs: `graph_hubs.sync` attaches new notes to their area MOC and the
+   MOCs to `TIM Home` (only inside the `tim-graph` markers), so the Obsidian
+   graph stays one connected TIM graph.
+6. Vault git: commits only the automatic folder and the hub notes it changed.
 
 Status goes to `~/Library/Application Support/TIM/obsidian-refresh/status.json`.
 
@@ -40,6 +43,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from src.obsidian_vault import graph_hubs  # noqa: E402
 from src.obsidian_vault.schema import DEFAULT_VAULT, load_schema, vault_path  # noqa: E402
 
 BRANCH = "platform-main"
@@ -109,6 +113,7 @@ class Report:
     graph: str = "skipped"
     graphify: str = "skipped"
     vault_commit: str = "skipped"
+    hubs_written: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 
@@ -280,16 +285,26 @@ def refresh_graphify(repo: Path, view_dir: Path, report: Report) -> None:
     git(repo, "clean", "-fdq", "--", "graphify-out", check=False)
 
 
+def sync_hubs(vault: Path, report: Report, dry_run: bool = False) -> None:
+    try:
+        changed = graph_hubs.sync(vault, dry_run)
+    except (OSError, ValueError) as exc:
+        report.errors.append(f"graph_hubs: {exc}")
+        return
+    report.hubs_written = [path.relative_to(vault).as_posix() for path in changed]
+
+
 def commit_vault(vault: Path, report: Report) -> None:
     if not (vault / ".git").exists():
         report.vault_commit = "no_git"
         return
-    rel = str(Path(load_schema().content_root) / AUTO_DIR)
-    git(vault, "add", "--", rel)
-    if not git(vault, "diff", "--cached", "--name-only", "--", rel).strip():
+    rels = [str(Path(load_schema().content_root) / AUTO_DIR), *report.hubs_written]
+    git(vault, "add", "--", *rels)
+    if not git(vault, "diff", "--cached", "--name-only", "--", *rels).strip():
         report.vault_commit = "nothing"
         return
-    git(vault, "commit", "--quiet", "-m", "Automatisch: PR-Wochen und TIM-Stand", "--", rel)
+    git(vault, "commit", "--quiet", "-m", "Automatisch: PR-Wochen, TIM-Stand und Graph-Knoten",
+        "--", *rels)
     report.vault_commit = "committed"
 
 
@@ -319,6 +334,7 @@ def run(repo: Path, vault: Path, dry_run: bool = False, skip_graph: bool = False
     notes = {f"PRs {week}": render_week(week, items) for week, items in weeks.items()}
     notes[OVERVIEW] = render_overview(report.head, prs, list(weeks))
     write_notes(vault, notes, report, dry_run)
+    sync_hubs(vault, report, dry_run)
     if dry_run:
         return report
     same_head = previous.get("head") == report.head
