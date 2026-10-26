@@ -1,0 +1,4334 @@
+{
+  "study": "S6",
+  "protocol": "S6 1.0, sections 5.1, 5.4, 7",
+  "commit": "8d5086c0fd6da5fbdac1bec7715f5b0623fc8965",
+  "created": "2026-10-25T23:27:44+00:00",
+  "latency_report": "s6_latency_2026-10-25T2257Z.json",
+  "lambda": 0.05,
+  "holdout": "not loaded",
+  "universe_limitation": "Universum BTCUSDT/ETHUSDT/SOLUSDT, 2026 mit Wissen um das Überleben gewählt (Survivorship-Grenze, Protokoll 3.1): Ergebnisse gelten nur für diese Instrumente, nicht für Kryptowährungen allgemein.",
+  "dataset_hashes": {
+    "BTCUSDT": "3ac45ed81b38268974e745c6f1e52bfc749427477bbfc902ee33582f8846cda9",
+    "ETHUSDT": "c01bbfbb556b787785d9c785a9493b3ae22fe29ca1808e30a945cc7217221a27",
+    "SOLUSDT": "d4b7c7519c830217ff8b2d46587b58ffc1d1c3fe400241a7ca901fd25abbc4f1"
+  },
+  "funding_hashes": {
+    "BTCUSDT": "780fad8557e7c54b221a5190158e1ca0c011b428c7c319276d8cb347ced89873",
+    "ETHUSDT": "2f4467f6fb6bc8e309c17e17f39b39d113bd7c0cf6070e1473df42ad07c150aa",
+    "SOLUSDT": "3f105cd6940c33987d7080d53d6bc4b7c28a65373c6c30e5b530e99bffde5c83"
+  },
+  "variants": {
+    "S6-k2-t15": {
+      "k": 2.0,
+      "target_r": 0.15,
+      "counts": {
+        "BTCUSDT/train": {
+          "trades": 3072,
+          "skipped_cross": 35,
+          "no_reference": 121,
+          "by_reason": {
+            "section_end": 1,
+            "stop": 422,
+            "target": 2489,
+            "time": 160
+          },
+          "stress_trades": 2931
+        },
+        "BTCUSDT/validation": {
+          "trades": 1794,
+          "skipped_cross": 53,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 194,
+            "target": 1402,
+            "time": 198
+          },
+          "stress_trades": 1675
+        },
+        "ETHUSDT/train": {
+          "trades": 2863,
+          "skipped_cross": 43,
+          "no_reference": 121,
+          "by_reason": {
+            "both": 2,
+            "stop": 438,
+            "target": 2357,
+            "time": 66
+          },
+          "stress_trades": 2746
+        },
+        "ETHUSDT/validation": {
+          "trades": 2037,
+          "skipped_cross": 46,
+          "no_reference": 0,
+          "by_reason": {
+            "both": 1,
+            "stop": 235,
+            "target": 1648,
+            "time": 153
+          },
+          "stress_trades": 1924
+        },
+        "SOLUSDT/train": {
+          "trades": 2020,
+          "skipped_cross": 39,
+          "no_reference": 242,
+          "by_reason": {
+            "both": 1,
+            "stop": 346,
+            "target": 1667,
+            "time": 6
+          },
+          "stress_trades": 1957
+        },
+        "SOLUSDT/validation": {
+          "trades": 1567,
+          "skipped_cross": 6,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 226,
+            "target": 1321,
+            "time": 20
+          },
+          "stress_trades": 1502
+        }
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 7955,
+            "hits": 6517,
+            "hit_rate": 0.8192331866750472,
+            "expectancy": -0.07231003228897222,
+            "profit_factor": 0.5846777433813374,
+            "max_drawdown": 576.3633140736606,
+            "mean_loss": -0.9631515953830263,
+            "worst_loss": -1.2094119607376468,
+            "mean_win": 0.12425743245389255,
+            "design_effect": 1.4040832901609543,
+            "n_eff": 5665,
+            "losers_eff": 1025,
+            "hit_lower_bound": 0.8104421635841099,
+            "by_reason": {
+              "both": 3,
+              "section_end": 1,
+              "stop": 1206,
+              "target": 6513,
+              "time": 232
+            },
+            "by_side": {
+              "long": 4256,
+              "short": 3696,
+              "both": 3
+            }
+          },
+          "baseline_a": {
+            "p": 1.0,
+            "mean_expectancy": -0.04703834196733906,
+            "hit_rate_pool": 0.8198833333333333
+          },
+          "baseline_b_mirrored": {
+            "n": 7952,
+            "hits": 6169,
+            "hit_rate": 0.7757796780684104,
+            "expectancy": -0.1063210591001684,
+            "profit_factor": 0.4756867957012067,
+            "max_drawdown": 848.2686512416346,
+            "mean_loss": -0.9043853677941773,
+            "worst_loss": -1.2075485764076257,
+            "mean_win": 0.12434009544698961,
+            "design_effect": 1.383842093303889,
+            "n_eff": 5746,
+            "losers_eff": 1289,
+            "hit_lower_bound": 0.7664287700349799,
+            "by_reason": {
+              "section_end": 1,
+              "stop": 1299,
+              "target": 6168,
+              "time": 484
+            },
+            "by_side": {
+              "long": 3696,
+              "short": 4256,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.04950577639576228,
+            "expectancy_protocol_costs": -0.12429538306735721
+          },
+          "stress_after_haircut": {
+            "n": 7252,
+            "hits": 5790,
+            "hit_rate": 0.7984004412575841,
+            "expectancy": -0.13240259706567784,
+            "profit_factor": 0.3689663799744921,
+            "max_drawdown": 1521.604560279185,
+            "mean_loss": -1.0407691930774183,
+            "worst_loss": -1.2883633051754861,
+            "mean_win": 0.096963890562848,
+            "design_effect": 1.4086577184306206,
+            "n_eff": 5148,
+            "losers_eff": 1038,
+            "hit_lower_bound": 0.7889489630841342,
+            "by_reason": {
+              "both": 3,
+              "section_end": 2,
+              "stop": 1224,
+              "target": 5790,
+              "time": 233
+            },
+            "by_side": {
+              "long": 3907,
+              "short": 3342,
+              "both": 3
+            }
+          },
+          "protocol_costs": {
+            "n": 7955,
+            "hits": 6509,
+            "hit_rate": 0.8182275298554368,
+            "expectancy": -0.14506545579325114,
+            "profit_factor": 0.20011734232745487,
+            "max_drawdown": 1154.412981077679,
+            "mean_loss": -0.9977221571086202,
+            "worst_loss": -1.2494119607376468,
+            "mean_win": 0.04435559046608571,
+            "design_effect": 1.3975721570056532,
+            "n_eff": 5692,
+            "losers_eff": 1035,
+            "hit_lower_bound": 0.8095487039139874,
+            "by_reason": {
+              "both": 3,
+              "section_end": 1,
+              "stop": 1206,
+              "target": 6513,
+              "time": 232
+            },
+            "by_side": {
+              "long": 4256,
+              "short": 3696,
+              "both": 3
+            }
+          },
+          "gap_after": {
+            "n": 7955,
+            "hits": 6517,
+            "hit_rate": 0.8192331866750472,
+            "expectancy": -0.07231003228897222,
+            "profit_factor": 0.5846777433813374,
+            "max_drawdown": 576.3633140736606,
+            "mean_loss": -0.9631515953830263,
+            "worst_loss": -1.2094119607376468,
+            "mean_win": 0.12425743245389255,
+            "design_effect": 1.4040832901609543,
+            "n_eff": 5665,
+            "losers_eff": 1025,
+            "hit_lower_bound": 0.8104421635841099,
+            "by_reason": {
+              "both": 3,
+              "section_end": 1,
+              "stop": 1206,
+              "target": 6513,
+              "time": 232
+            },
+            "by_side": {
+              "long": 4256,
+              "short": 3696,
+              "both": 3
+            }
+          },
+          "bootstrap_90": [
+            -0.08182239624715701,
+            -0.0628064732558507
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 3072,
+              "hits": 2492,
+              "hit_rate": 0.8111979166666666,
+              "expectancy": -0.06545169543722891,
+              "profit_factor": 0.604577193248721,
+              "max_drawdown": 201.85641156056784,
+              "mean_loss": -0.8767028213773714,
+              "worst_loss": -1.117577107093123,
+              "mean_win": 0.12336277207692949,
+              "design_effect": 1.0947174553761934,
+              "n_eff": 2806,
+              "losers_eff": 530,
+              "hit_lower_bound": 0.7985483138892802,
+              "by_reason": {
+                "section_end": 1,
+                "stop": 422,
+                "target": 2489,
+                "time": 160
+              },
+              "by_side": {
+                "long": 1580,
+                "short": 1492,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 2863,
+              "hits": 2358,
+              "hit_rate": 0.8236115962277332,
+              "expectancy": -0.07248354070189535,
+              "profit_factor": 0.584620187908922,
+              "max_drawdown": 210.69301018455798,
+              "mean_loss": -0.989290831429058,
+              "worst_loss": -1.1127662069650628,
+              "mean_win": 0.12386407669302288,
+              "design_effect": 1.0209790929996998,
+              "n_eff": 2804,
+              "losers_eff": 495,
+              "hit_lower_bound": 0.8111961595614233,
+              "by_reason": {
+                "both": 2,
+                "stop": 438,
+                "target": 2357,
+                "time": 66
+              },
+              "by_side": {
+                "long": 1560,
+                "short": 1301,
+                "both": 2
+              }
+            },
+            "SOLUSDT": {
+              "n": 2020,
+              "hits": 1667,
+              "hit_rate": 0.8252475247524752,
+              "expectancy": -0.08249421853766356,
+              "profit_factor": 0.557909368919658,
+              "max_drawdown": 167.64647340282343,
+              "mean_loss": -1.0677974161196655,
+              "worst_loss": -1.2094119607376468,
+              "mean_win": 0.12615126961257442,
+              "design_effect": 1.12342365442237,
+              "n_eff": 1798,
+              "losers_eff": 315,
+              "hit_lower_bound": 0.8093912752259316,
+              "by_reason": {
+                "both": 1,
+                "stop": 346,
+                "target": 1667,
+                "time": 6
+              },
+              "by_side": {
+                "long": 1116,
+                "short": 903,
+                "both": 1
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 4256,
+              "hits": 3531,
+              "hit_rate": 0.8296522556390977,
+              "expectancy": -0.06273280194662031,
+              "profit_factor": 0.6212446441064114,
+              "max_drawdown": 268.8739994531639,
+              "mean_loss": -0.9722982756468167,
+              "worst_loss": -1.2094119607376468,
+              "mean_win": 0.1240230656355497,
+              "design_effect": 1.35568835424656,
+              "n_eff": 3139,
+              "losers_eff": 535,
+              "hit_lower_bound": 0.818138655205851,
+              "by_reason": {
+                "section_end": 1,
+                "stop": 621,
+                "target": 3529,
+                "time": 105
+              },
+              "by_side": {
+                "long": 4256,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 3696,
+              "hits": 2986,
+              "hit_rate": 0.8079004329004329,
+              "expectancy": -0.08252042796914447,
+              "profit_factor": 0.5493936420946093,
+              "max_drawdown": 305.87096765365845,
+              "mean_loss": -0.9533179497420419,
+              "worst_loss": -1.117577107093123,
+              "mean_win": 0.12453457553345336,
+              "design_effect": 1.3204432375663397,
+              "n_eff": 2799,
+              "losers_eff": 538,
+              "hit_lower_bound": 0.7951226398774789,
+              "by_reason": {
+                "stop": 585,
+                "target": 2984,
+                "time": 127
+              },
+              "by_side": {
+                "long": 0,
+                "short": 3696,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 3,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2020": {
+                "n": 2374,
+                "expectancy": -0.08784220984823003
+              },
+              "2021": {
+                "n": 2385,
+                "expectancy": -0.08448444166132721
+              },
+              "2022": {
+                "n": 3196,
+                "expectancy": -0.05168758051214347
+              }
+            },
+            "years_counted": 3,
+            "years_positive": 0
+          }
+        },
+        "validation": {
+          "summary": {
+            "n": 5398,
+            "hits": 4391,
+            "hit_rate": 0.8134494257132271,
+            "expectancy": -0.05107418568979103,
+            "profit_factor": 0.662543969240913,
+            "max_drawdown": 277.31748986552157,
+            "mean_loss": -0.8113115651665953,
+            "worst_loss": -1.0984512467049803,
+            "mean_win": 0.12327312497592108,
+            "design_effect": 1.4763853557250435,
+            "n_eff": 3656,
+            "losers_eff": 683,
+            "hit_lower_bound": 0.8022599210573425,
+            "by_reason": {
+              "both": 1,
+              "stop": 655,
+              "target": 4371,
+              "time": 371
+            },
+            "by_side": {
+              "long": 2837,
+              "short": 2560,
+              "both": 1
+            }
+          },
+          "baseline_a": {
+            "p": 0.8467153284671532,
+            "mean_expectancy": -0.04606053280186658,
+            "hit_rate_pool": 0.7657833333333334
+          },
+          "baseline_b_mirrored": {
+            "n": 5397,
+            "hits": 4032,
+            "hit_rate": 0.7470817120622568,
+            "expectancy": -0.09359544624079863,
+            "profit_factor": 0.49665477238730793,
+            "max_drawdown": 506.9299162581803,
+            "mean_loss": -0.7352051332479246,
+            "worst_loss": -1.1172269432610702,
+            "mean_win": 0.12361616654807212,
+            "design_effect": 1.3760417104637084,
+            "n_eff": 3922,
+            "losers_eff": 992,
+            "hit_lower_bound": 0.7353890376516006,
+            "by_reason": {
+              "stop": 670,
+              "target": 4025,
+              "time": 702
+            },
+            "by_side": {
+              "long": 2560,
+              "short": 2837,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.04655416625236695,
+            "expectancy_protocol_costs": -0.11873554188447236
+          },
+          "stress_after_haircut": {
+            "n": 4845,
+            "hits": 3839,
+            "hit_rate": 0.7923632610939112,
+            "expectancy": -0.10545709425501751,
+            "profit_factor": 0.42083352801010293,
+            "max_drawdown": 882.1982044472915,
+            "mean_loss": -0.8769365849376657,
+            "worst_loss": -1.1774024851636982,
+            "mean_win": 0.09670710674179,
+            "design_effect": 1.4716621804565755,
+            "n_eff": 3292,
+            "losers_eff": 684,
+            "hit_lower_bound": 0.7802502827226175,
+            "by_reason": {
+              "both": 1,
+              "stop": 648,
+              "target": 3836,
+              "time": 360
+            },
+            "by_side": {
+              "long": 2548,
+              "short": 2296,
+              "both": 1
+            }
+          },
+          "protocol_costs": {
+            "n": 5398,
+            "hits": 4376,
+            "hit_rate": 0.8106706187476843,
+            "expectancy": -0.12346963544329587,
+            "profit_factor": 0.22287452272675276,
+            "max_drawdown": 666.7001521953204,
+            "mean_loss": -0.8391720357661226,
+            "worst_loss": -1.1384512467049803,
+            "mean_win": 0.04368023958639542,
+            "design_effect": 1.4869911618560245,
+            "n_eff": 3630,
+            "losers_eff": 688,
+            "hit_lower_bound": 0.7994467585460237,
+            "by_reason": {
+              "both": 1,
+              "stop": 655,
+              "target": 4371,
+              "time": 371
+            },
+            "by_side": {
+              "long": 2837,
+              "short": 2560,
+              "both": 1
+            }
+          },
+          "gap_after": {
+            "n": 5398,
+            "hits": 4391,
+            "hit_rate": 0.8134494257132271,
+            "expectancy": -0.05107418568979103,
+            "profit_factor": 0.662543969240913,
+            "max_drawdown": 277.31748986552157,
+            "mean_loss": -0.8113115651665953,
+            "worst_loss": -1.0984512467049803,
+            "mean_win": 0.12327312497592108,
+            "design_effect": 1.4763853557250435,
+            "n_eff": 3656,
+            "losers_eff": 683,
+            "hit_lower_bound": 0.8022599210573425,
+            "by_reason": {
+              "both": 1,
+              "stop": 655,
+              "target": 4371,
+              "time": 371
+            },
+            "by_side": {
+              "long": 2837,
+              "short": 2560,
+              "both": 1
+            }
+          },
+          "bootstrap_90": [
+            -0.06200936486489682,
+            -0.040065504427592734
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 1794,
+              "hits": 1410,
+              "hit_rate": 0.7859531772575251,
+              "expectancy": -0.05127976124359721,
+              "profit_factor": 0.6530720530188799,
+              "max_drawdown": 92.3595361125498,
+              "mean_loss": -0.6905544411876634,
+              "worst_loss": -1.0863818099490303,
+              "mean_win": 0.1228205771241485,
+              "design_effect": 1.1067703296983944,
+              "n_eff": 1620,
+              "losers_eff": 347,
+              "hit_lower_bound": 0.7683495460408089,
+              "by_reason": {
+                "stop": 194,
+                "target": 1402,
+                "time": 198
+              },
+              "by_side": {
+                "long": 899,
+                "short": 895,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 2037,
+              "hits": 1660,
+              "hit_rate": 0.8149239077074129,
+              "expectancy": -0.04726980244948364,
+              "profit_factor": 0.6791291465815231,
+              "max_drawdown": 96.3101106069136,
+              "mean_loss": -0.7959819080350224,
+              "worst_loss": -1.0856342747717211,
+              "mean_win": 0.12276903116843692,
+              "design_effect": 1.015891543608453,
+              "n_eff": 2005,
+              "losers_eff": 372,
+              "hit_lower_bound": 0.7995968019180004,
+              "by_reason": {
+                "both": 1,
+                "stop": 235,
+                "target": 1648,
+                "time": 153
+              },
+              "by_side": {
+                "long": 1092,
+                "short": 944,
+                "both": 1
+              }
+            },
+            "SOLUSDT": {
+              "n": 1567,
+              "hits": 1321,
+              "hit_rate": 0.8430121250797703,
+              "expectancy": -0.05578428531772842,
+              "profit_factor": 0.6527507610075457,
+              "max_drawdown": 89.17152008825875,
+              "mean_loss": -1.0233035015345338,
+              "worst_loss": -1.0984512467049803,
+              "mean_win": 0.12438961868630952,
+              "design_effect": 1.0,
+              "n_eff": 1567,
+              "losers_eff": 246,
+              "hit_lower_bound": 0.8271018653530346,
+              "by_reason": {
+                "stop": 226,
+                "target": 1321,
+                "time": 20
+              },
+              "by_side": {
+                "long": 846,
+                "short": 721,
+                "both": 0
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 2837,
+              "hits": 2364,
+              "hit_rate": 0.8332745858301022,
+              "expectancy": -0.033297170000065456,
+              "profit_factor": 0.7550032890179463,
+              "max_drawdown": 97.81202338046079,
+              "mean_loss": -0.8151645117667584,
+              "worst_loss": -1.0984512467049803,
+              "mean_win": 0.1231424461825258,
+              "design_effect": 1.4185527976506502,
+              "n_eff": 1999,
+              "losers_eff": 334,
+              "hit_lower_bound": 0.8185819932342272,
+              "by_reason": {
+                "stop": 313,
+                "target": 2355,
+                "time": 169
+              },
+              "by_side": {
+                "long": 2837,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 2560,
+              "hits": 2027,
+              "hit_rate": 0.791796875,
+              "expectancy": -0.07037280588410402,
+              "profit_factor": 0.581365318641238,
+              "max_drawdown": 181.26609342011884,
+              "mean_loss": -0.8073882402571948,
+              "worst_loss": -1.0810156290425748,
+              "mean_win": 0.12342552984399534,
+              "design_effect": 1.3920971579420374,
+              "n_eff": 1838,
+              "losers_eff": 383,
+              "hit_lower_bound": 0.7754262707413212,
+              "by_reason": {
+                "stop": 342,
+                "target": 2016,
+                "time": 202
+              },
+              "by_side": {
+                "long": 0,
+                "short": 2560,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 5,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2023": {
+                "n": 3375,
+                "expectancy": -0.04791422066106258
+              },
+              "2024": {
+                "n": 2023,
+                "expectancy": -0.05634600080198012
+              }
+            },
+            "years_counted": 2,
+            "years_positive": 0
+          }
+        }
+      },
+      "training": {
+        "pass": false,
+        "reasons": [
+          "E[R] <= 0",
+          "p >= 0.1",
+          "hit rate < 95 %",
+          "lower bound < 90 %"
+        ]
+      },
+      "robustness": {
+        "year_stability_all": {
+          "pass": false,
+          "years": {
+            "2020": {
+              "n": 2374,
+              "expectancy": -0.08784220984823003
+            },
+            "2021": {
+              "n": 2385,
+              "expectancy": -0.08448444166132721
+            },
+            "2022": {
+              "n": 3196,
+              "expectancy": -0.05168758051214347
+            },
+            "2023": {
+              "n": 3375,
+              "expectancy": -0.04791422066106258
+            },
+            "2024": {
+              "n": 2023,
+              "expectancy": -0.05634600080198012
+            }
+          },
+          "years_counted": 5,
+          "years_positive": 0
+        },
+        "neighbours": {
+          "pass": false,
+          "neighbours": {
+            "S6-k3-t15": -0.10852623227355147,
+            "S6-k2-t20": -0.07081533968941407
+          }
+        }
+      },
+      "validation": {
+        "pass": false,
+        "reasons": [
+          "not run: training failed"
+        ]
+      }
+    },
+    "S6-k2-t20": {
+      "k": 2.0,
+      "target_r": 0.2,
+      "counts": {
+        "BTCUSDT/train": {
+          "trades": 2968,
+          "skipped_cross": 32,
+          "no_reference": 121,
+          "by_reason": {
+            "section_end": 1,
+            "stop": 481,
+            "target": 2270,
+            "time": 216
+          },
+          "stress_trades": 2847
+        },
+        "BTCUSDT/validation": {
+          "trades": 1706,
+          "skipped_cross": 53,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 218,
+            "target": 1226,
+            "time": 262
+          },
+          "stress_trades": 1603
+        },
+        "ETHUSDT/train": {
+          "trades": 2780,
+          "skipped_cross": 43,
+          "no_reference": 121,
+          "by_reason": {
+            "both": 2,
+            "section_end": 1,
+            "stop": 506,
+            "target": 2178,
+            "time": 93
+          },
+          "stress_trades": 2679
+        },
+        "ETHUSDT/validation": {
+          "trades": 1956,
+          "skipped_cross": 45,
+          "no_reference": 0,
+          "by_reason": {
+            "both": 1,
+            "stop": 265,
+            "target": 1483,
+            "time": 207
+          },
+          "stress_trades": 1856
+        },
+        "SOLUSDT/train": {
+          "trades": 1980,
+          "skipped_cross": 37,
+          "no_reference": 242,
+          "by_reason": {
+            "both": 1,
+            "stop": 394,
+            "target": 1572,
+            "time": 13
+          },
+          "stress_trades": 1922
+        },
+        "SOLUSDT/validation": {
+          "trades": 1539,
+          "skipped_cross": 3,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 248,
+            "target": 1261,
+            "time": 30
+          },
+          "stress_trades": 1475
+        }
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 7728,
+            "hits": 6041,
+            "hit_rate": 0.7817028985507246,
+            "expectancy": -0.07081533968941407,
+            "profit_factor": 0.6573874215083878,
+            "max_drawdown": 549.3892779960804,
+            "mean_loss": -0.946838851959688,
+            "worst_loss": -1.2094119607376468,
+            "mean_win": 0.1738215855216358,
+            "design_effect": 1.3942112408640845,
+            "n_eff": 5542,
+            "losers_eff": 1211,
+            "hit_lower_bound": 0.7721574136237969,
+            "by_reason": {
+              "both": 3,
+              "section_end": 2,
+              "stop": 1381,
+              "target": 6020,
+              "time": 322
+            },
+            "by_side": {
+              "long": 4131,
+              "short": 3594,
+              "both": 3
+            }
+          },
+          "baseline_a": {
+            "p": 1.0,
+            "mean_expectancy": -0.04768428830360223,
+            "hit_rate_pool": 0.77465
+          },
+          "baseline_b_mirrored": {
+            "n": 7725,
+            "hits": 5709,
+            "hit_rate": 0.7390291262135922,
+            "expectancy": -0.10213935003875034,
+            "profit_factor": 0.5576030438660373,
+            "max_drawdown": 791.153264381192,
+            "mean_loss": -0.8846855219989652,
+            "worst_loss": -1.2075485764076257,
+            "mean_win": 0.1741985519881884,
+            "design_effect": 1.3870105132272197,
+            "n_eff": 5569,
+            "losers_eff": 1454,
+            "hit_lower_bound": 0.7290495067139191,
+            "by_reason": {
+              "section_end": 1,
+              "stop": 1423,
+              "target": 5701,
+              "time": 600
+            },
+            "by_side": {
+              "long": 3594,
+              "short": 4131,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.04920037650408709,
+            "expectancy_protocol_costs": -0.12553162727989964
+          },
+          "stress_after_haircut": {
+            "n": 7075,
+            "hits": 5372,
+            "hit_rate": 0.7592932862190813,
+            "expectancy": -0.13433060368267621,
+            "profit_factor": 0.4534737709433921,
+            "max_drawdown": 1738.9632382245554,
+            "mean_loss": -1.0211175796973317,
+            "worst_loss": -1.2883633051754861,
+            "mean_win": 0.14679341347163471,
+            "design_effect": 1.4269338135578282,
+            "n_eff": 4958,
+            "losers_eff": 1194,
+            "hit_lower_bound": 0.7489762868325297,
+            "by_reason": {
+              "both": 3,
+              "section_end": 2,
+              "stop": 1391,
+              "target": 5368,
+              "time": 311
+            },
+            "by_side": {
+              "long": 3803,
+              "short": 3269,
+              "both": 3
+            }
+          },
+          "protocol_costs": {
+            "n": 7728,
+            "hits": 6030,
+            "hit_rate": 0.78027950310559,
+            "expectancy": -0.14198330411920437,
+            "profit_factor": 0.3410271765436228,
+            "max_drawdown": 1098.1249049818807,
+            "mean_loss": -0.9806165117385901,
+            "worst_loss": -1.2494119607376468,
+            "mean_win": 0.09416913145918983,
+            "design_effect": 1.395061631452148,
+            "n_eff": 5539,
+            "losers_eff": 1218,
+            "hit_lower_bound": 0.7707525362554758,
+            "by_reason": {
+              "both": 3,
+              "section_end": 2,
+              "stop": 1381,
+              "target": 6020,
+              "time": 322
+            },
+            "by_side": {
+              "long": 4131,
+              "short": 3594,
+              "both": 3
+            }
+          },
+          "gap_after": {
+            "n": 7728,
+            "hits": 6041,
+            "hit_rate": 0.7817028985507246,
+            "expectancy": -0.07081533968941407,
+            "profit_factor": 0.6573874215083878,
+            "max_drawdown": 549.3892779960804,
+            "mean_loss": -0.946838851959688,
+            "worst_loss": -1.2094119607376468,
+            "mean_win": 0.1738215855216358,
+            "design_effect": 1.3942112408640845,
+            "n_eff": 5542,
+            "losers_eff": 1211,
+            "hit_lower_bound": 0.7721574136237969,
+            "by_reason": {
+              "both": 3,
+              "section_end": 2,
+              "stop": 1381,
+              "target": 6020,
+              "time": 322
+            },
+            "by_side": {
+              "long": 4131,
+              "short": 3594,
+              "both": 3
+            }
+          },
+          "bootstrap_90": [
+            -0.08151296390727931,
+            -0.060175097307085
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 2968,
+              "hits": 2286,
+              "hit_rate": 0.7702156334231806,
+              "expectancy": -0.06394085047338838,
+              "profit_factor": 0.6751544032032771,
+              "max_drawdown": 191.7205473555219,
+              "mean_loss": -0.8566056726325298,
+              "worst_loss": -1.117577107093123,
+              "mean_win": 0.1725409556125847,
+              "design_effect": 1.0968366661583917,
+              "n_eff": 2705,
+              "losers_eff": 622,
+              "hit_lower_bound": 0.7563491523717734,
+              "by_reason": {
+                "section_end": 1,
+                "stop": 481,
+                "target": 2270,
+                "time": 216
+              },
+              "by_side": {
+                "long": 1525,
+                "short": 1443,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 2780,
+              "hits": 2183,
+              "hit_rate": 0.7852517985611511,
+              "expectancy": -0.07266231124424452,
+              "profit_factor": 0.6523904070255135,
+              "max_drawdown": 209.59671067654418,
+              "mean_loss": -0.973392329096172,
+              "worst_loss": -1.1502070973469611,
+              "mean_win": 0.17366651177801873,
+              "design_effect": 1.0217316117057522,
+              "n_eff": 2720,
+              "losers_eff": 585,
+              "hit_lower_bound": 0.7715598567999228,
+              "by_reason": {
+                "both": 2,
+                "section_end": 1,
+                "stop": 506,
+                "target": 2178,
+                "time": 93
+              },
+              "by_side": {
+                "long": 1515,
+                "short": 1263,
+                "both": 2
+              }
+            },
+            "SOLUSDT": {
+              "n": 1980,
+              "hits": 1572,
+              "hit_rate": 0.793939393939394,
+              "expectancy": -0.07852690689685626,
+              "profit_factor": 0.6400823890312178,
+              "max_drawdown": 156.90068430775088,
+              "mean_loss": -1.0588158187504748,
+              "worst_loss": -1.2094119607376468,
+              "mean_win": 0.1758992228972127,
+              "design_effect": 1.0581403040441284,
+              "n_eff": 1871,
+              "losers_eff": 386,
+              "hit_lower_bound": 0.7777013604391924,
+              "by_reason": {
+                "both": 1,
+                "stop": 394,
+                "target": 1572,
+                "time": 13
+              },
+              "by_side": {
+                "long": 1091,
+                "short": 888,
+                "both": 1
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 4131,
+              "hits": 3292,
+              "hit_rate": 0.7969014766400387,
+              "expectancy": -0.055854139117315786,
+              "profit_factor": 0.7124030350110403,
+              "max_drawdown": 234.4343347904897,
+              "mean_loss": -0.9562342563914392,
+              "worst_loss": -1.2094119607376468,
+              "mean_win": 0.1736169782560103,
+              "design_effect": 1.3337836528911085,
+              "n_eff": 3097,
+              "losers_eff": 630,
+              "hit_lower_bound": 0.7843124928055089,
+              "by_reason": {
+                "section_end": 2,
+                "stop": 700,
+                "target": 3284,
+                "time": 145
+              },
+              "by_side": {
+                "long": 4131,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 3594,
+              "hits": 2749,
+              "hit_rate": 0.7648859209794101,
+              "expectancy": -0.08716958720816928,
+              "profit_factor": 0.6043333659452202,
+              "max_drawdown": 315.5827609382935,
+              "mean_loss": -0.9370373989864808,
+              "worst_loss": -1.117577107093123,
+              "mean_win": 0.17406660811837607,
+              "design_effect": 1.2938891676237478,
+              "n_eff": 2777,
+              "losers_eff": 654,
+              "hit_lower_bound": 0.75086640171696,
+              "by_reason": {
+                "stop": 681,
+                "target": 2736,
+                "time": 177
+              },
+              "by_side": {
+                "long": 0,
+                "short": 3594,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 4,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2020": {
+                "n": 2314,
+                "expectancy": -0.0832919787504974
+              },
+              "2021": {
+                "n": 2327,
+                "expectancy": -0.08633304412991549
+              },
+              "2022": {
+                "n": 3087,
+                "expectancy": -0.04976556935562927
+              }
+            },
+            "years_counted": 3,
+            "years_positive": 0
+          }
+        },
+        "validation": {
+          "summary": {
+            "n": 5201,
+            "hits": 4024,
+            "hit_rate": 0.7736973658911748,
+            "expectancy": -0.044311846877250996,
+            "profit_factor": 0.7503074925580997,
+            "max_drawdown": 231.67949173230886,
+            "mean_loss": -0.784196196801136,
+            "worst_loss": -1.1103318227742895,
+            "mean_win": 0.17210064811788134,
+            "design_effect": 1.544221251275362,
+            "n_eff": 3368,
+            "losers_eff": 763,
+            "hit_lower_bound": 0.761269869119296,
+            "by_reason": {
+              "both": 1,
+              "stop": 731,
+              "target": 3970,
+              "time": 499
+            },
+            "by_side": {
+              "long": 2736,
+              "short": 2464,
+              "both": 1
+            }
+          },
+          "baseline_a": {
+            "p": 0.29457054294570545,
+            "mean_expectancy": -0.047326714599082866,
+            "hit_rate_pool": 0.7102333333333334
+          },
+          "baseline_b_mirrored": {
+            "n": 5200,
+            "hits": 3649,
+            "hit_rate": 0.7017307692307693,
+            "expectancy": -0.09052021215900069,
+            "profit_factor": 0.5728754655587562,
+            "max_drawdown": 473.90929256237604,
+            "mean_loss": -0.7105302799729376,
+            "worst_loss": -1.1363865350158722,
+            "mean_win": 0.17301380131850444,
+            "design_effect": 1.3634551114071378,
+            "n_eff": 3813,
+            "losers_eff": 1138,
+            "hit_lower_bound": 0.6891156836894379,
+            "by_reason": {
+              "stop": 725,
+              "target": 3628,
+              "time": 847
+            },
+            "by_side": {
+              "long": 2464,
+              "short": 2736,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.04757646125965663,
+            "expectancy_protocol_costs": -0.11689411222862103
+          },
+          "stress_after_haircut": {
+            "n": 4687,
+            "hits": 3500,
+            "hit_rate": 0.7467463196074248,
+            "expectancy": -0.10440347864101586,
+            "profit_factor": 0.5105927531008264,
+            "max_drawdown": 999.86076522331,
+            "mean_loss": -0.8423426834231763,
+            "worst_loss": -1.1892825972076215,
+            "mean_win": 0.145863331666534,
+            "design_effect": 1.538783673839708,
+            "n_eff": 3045,
+            "losers_eff": 772,
+            "hit_lower_bound": 0.7331656370123605,
+            "by_reason": {
+              "both": 1,
+              "stop": 724,
+              "target": 3476,
+              "time": 486
+            },
+            "by_side": {
+              "long": 2461,
+              "short": 2225,
+              "both": 1
+            }
+          },
+          "protocol_costs": {
+            "n": 5201,
+            "hits": 4002,
+            "hit_rate": 0.7694674101134398,
+            "expectancy": -0.11485156425719141,
+            "profit_factor": 0.3845461799918131,
+            "max_drawdown": 597.4859467223567,
+            "mean_loss": -0.8094855742420674,
+            "worst_loss": -1.1503318227742896,
+            "mean_win": 0.09326092399165073,
+            "design_effect": 1.5427243939922115,
+            "n_eff": 3371,
+            "losers_eff": 778,
+            "hit_lower_bound": 0.7569523767752298,
+            "by_reason": {
+              "both": 1,
+              "stop": 731,
+              "target": 3970,
+              "time": 499
+            },
+            "by_side": {
+              "long": 2736,
+              "short": 2464,
+              "both": 1
+            }
+          },
+          "gap_after": {
+            "n": 5201,
+            "hits": 4024,
+            "hit_rate": 0.7736973658911748,
+            "expectancy": -0.044311846877250996,
+            "profit_factor": 0.7503074925580997,
+            "max_drawdown": 231.67949173230886,
+            "mean_loss": -0.784196196801136,
+            "worst_loss": -1.1103318227742895,
+            "mean_win": 0.17210064811788134,
+            "design_effect": 1.544221251275362,
+            "n_eff": 3368,
+            "losers_eff": 763,
+            "hit_lower_bound": 0.761269869119296,
+            "by_reason": {
+              "both": 1,
+              "stop": 731,
+              "target": 3970,
+              "time": 499
+            },
+            "by_side": {
+              "long": 2736,
+              "short": 2464,
+              "both": 1
+            }
+          },
+          "bootstrap_90": [
+            -0.05696418216387243,
+            -0.03138636482792963
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 1706,
+              "hits": 1250,
+              "hit_rate": 0.7327080890973037,
+              "expectancy": -0.05295495526083772,
+              "profit_factor": 0.7028261147366988,
+              "max_drawdown": 90.77765378945298,
+              "mean_loss": -0.6666688255638474,
+              "worst_loss": -1.1103318227742895,
+              "mean_win": 0.17092786462570023,
+              "design_effect": 1.1381911459526124,
+              "n_eff": 1498,
+              "losers_eff": 401,
+              "hit_lower_bound": 0.7128313770765455,
+              "by_reason": {
+                "stop": 218,
+                "target": 1226,
+                "time": 262
+              },
+              "by_side": {
+                "long": 862,
+                "short": 844,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 1956,
+              "hits": 1513,
+              "hit_rate": 0.773517382413088,
+              "expectancy": -0.04164522445168016,
+              "profit_factor": 0.760745950615142,
+              "max_drawdown": 81.47958204480179,
+              "mean_loss": -0.7685480666058876,
+              "worst_loss": -1.0856342747717211,
+              "mean_win": 0.17118885292724506,
+              "design_effect": 1.058466531373109,
+              "n_eff": 1847,
+              "losers_eff": 419,
+              "hit_lower_bound": 0.7565301009064964,
+              "by_reason": {
+                "both": 1,
+                "stop": 265,
+                "target": 1483,
+                "time": 207
+              },
+              "by_side": {
+                "long": 1043,
+                "short": 912,
+                "both": 1
+              }
+            },
+            "SOLUSDT": {
+              "n": 1539,
+              "hits": 1261,
+              "hit_rate": 0.8193632228719948,
+              "expectancy": -0.03812001488376017,
+              "profit_factor": 0.7893711212629826,
+              "max_drawdown": 60.139922801777104,
+              "mean_loss": -1.0019105959403396,
+              "worst_loss": -1.099703229026069,
+              "mean_win": 0.1743572107575793,
+              "design_effect": 1.0,
+              "n_eff": 1539,
+              "losers_eff": 278,
+              "hit_lower_bound": 0.8024598007068982,
+              "by_reason": {
+                "stop": 248,
+                "target": 1261,
+                "time": 30
+              },
+              "by_side": {
+                "long": 831,
+                "short": 708,
+                "both": 0
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 2736,
+              "hits": 2168,
+              "hit_rate": 0.7923976608187134,
+              "expectancy": -0.025782554089991635,
+              "profit_factor": 0.840780441397607,
+              "max_drawdown": 76.17036705837046,
+              "mean_loss": -0.7800048071962854,
+              "worst_loss": -1.1103318227742895,
+              "mean_win": 0.17181811000796723,
+              "design_effect": 1.477385969385105,
+              "n_eff": 1851,
+              "losers_eff": 385,
+              "hit_lower_bound": 0.7758784406117215,
+              "by_reason": {
+                "stop": 356,
+                "target": 2139,
+                "time": 241
+              },
+              "by_side": {
+                "long": 2736,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 2464,
+              "hits": 1856,
+              "hit_rate": 0.7532467532467533,
+              "expectancy": -0.06446625309186904,
+              "profit_factor": 0.668296628875312,
+              "max_drawdown": 159.09367534345515,
+              "mean_loss": -0.787625317676722,
+              "worst_loss": -1.0827161834983081,
+              "mean_win": 0.17243068185834137,
+              "design_effect": 1.4325649844521782,
+              "n_eff": 1719,
+              "losers_eff": 425,
+              "hit_lower_bound": 0.7350444910661434,
+              "by_reason": {
+                "stop": 375,
+                "target": 1831,
+                "time": 258
+              },
+              "by_side": {
+                "long": 0,
+                "short": 2464,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 9,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2023": {
+                "n": 3234,
+                "expectancy": -0.041987493998169104
+              },
+              "2024": {
+                "n": 1967,
+                "expectancy": -0.04813338079232515
+              }
+            },
+            "years_counted": 2,
+            "years_positive": 0
+          }
+        }
+      },
+      "training": {
+        "pass": false,
+        "reasons": [
+          "E[R] <= 0",
+          "p >= 0.1",
+          "hit rate < 95 %",
+          "lower bound < 90 %"
+        ]
+      },
+      "robustness": {
+        "year_stability_all": {
+          "pass": false,
+          "years": {
+            "2020": {
+              "n": 2314,
+              "expectancy": -0.0832919787504974
+            },
+            "2021": {
+              "n": 2327,
+              "expectancy": -0.08633304412991549
+            },
+            "2022": {
+              "n": 3087,
+              "expectancy": -0.04976556935562927
+            },
+            "2023": {
+              "n": 3234,
+              "expectancy": -0.041987493998169104
+            },
+            "2024": {
+              "n": 1967,
+              "expectancy": -0.04813338079232515
+            }
+          },
+          "years_counted": 5,
+          "years_positive": 0
+        },
+        "neighbours": {
+          "pass": false,
+          "neighbours": {
+            "S6-k3-t20": -0.10477620116066234,
+            "S6-k2-t15": -0.07231003228897222,
+            "S6-k2-t25": -0.06925622622653985
+          }
+        }
+      },
+      "validation": {
+        "pass": false,
+        "reasons": [
+          "not run: training failed"
+        ]
+      }
+    },
+    "S6-k2-t25": {
+      "k": 2.0,
+      "target_r": 0.25,
+      "counts": {
+        "BTCUSDT/train": {
+          "trades": 2895,
+          "skipped_cross": 32,
+          "no_reference": 121,
+          "by_reason": {
+            "section_end": 1,
+            "stop": 520,
+            "target": 2084,
+            "time": 290
+          },
+          "stress_trades": 2773
+        },
+        "BTCUSDT/validation": {
+          "trades": 1648,
+          "skipped_cross": 52,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 234,
+            "target": 1088,
+            "time": 326
+          },
+          "stress_trades": 1552
+        },
+        "ETHUSDT/train": {
+          "trades": 2704,
+          "skipped_cross": 40,
+          "no_reference": 121,
+          "by_reason": {
+            "both": 2,
+            "section_end": 1,
+            "stop": 565,
+            "target": 2017,
+            "time": 119
+          },
+          "stress_trades": 2613
+        },
+        "ETHUSDT/validation": {
+          "trades": 1889,
+          "skipped_cross": 47,
+          "no_reference": 0,
+          "by_reason": {
+            "both": 1,
+            "stop": 283,
+            "target": 1337,
+            "time": 268
+          },
+          "stress_trades": 1801
+        },
+        "SOLUSDT/train": {
+          "trades": 1939,
+          "skipped_cross": 42,
+          "no_reference": 242,
+          "by_reason": {
+            "both": 1,
+            "stop": 440,
+            "target": 1477,
+            "time": 21
+          },
+          "stress_trades": 1886
+        },
+        "SOLUSDT/validation": {
+          "trades": 1509,
+          "skipped_cross": 2,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 270,
+            "target": 1193,
+            "time": 46
+          },
+          "stress_trades": 1447
+        }
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 7538,
+            "hits": 5631,
+            "hit_rate": 0.7470151233749005,
+            "expectancy": -0.06925622622653985,
+            "profit_factor": 0.7061950981784811,
+            "max_drawdown": 524.0916465578838,
+            "mean_loss": -0.9317624962219728,
+            "worst_loss": -1.2094119607376468,
+            "mean_win": 0.2228409957378165,
+            "design_effect": 1.3765340293786112,
+            "n_eff": 5476,
+            "losers_eff": 1386,
+            "hit_lower_bound": 0.7370437179096072,
+            "by_reason": {
+              "both": 3,
+              "section_end": 2,
+              "stop": 1525,
+              "target": 5578,
+              "time": 430
+            },
+            "by_side": {
+              "long": 4021,
+              "short": 3514,
+              "both": 3
+            }
+          },
+          "baseline_a": {
+            "p": 0.9997000299970003,
+            "mean_expectancy": -0.049816069234768175,
+            "hit_rate_pool": 0.7330166666666666
+          },
+          "baseline_b_mirrored": {
+            "n": 7535,
+            "hits": 5340,
+            "hit_rate": 0.7086927670869276,
+            "expectancy": -0.09426524707548659,
+            "profit_factor": 0.6271428891979768,
+            "max_drawdown": 712.984565100566,
+            "mean_loss": -0.8678764667956708,
+            "worst_loss": -1.2075485764076257,
+            "mean_win": 0.2237266306933906,
+            "design_effect": 1.3939318482179222,
+            "n_eff": 5405,
+            "losers_eff": 1575,
+            "hit_lower_bound": 0.6982622574475654,
+            "by_reason": {
+              "section_end": 1,
+              "stop": 1507,
+              "target": 5320,
+              "time": 707
+            },
+            "by_side": {
+              "long": 3514,
+              "short": 4021,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.05122744122761882,
+            "expectancy_protocol_costs": -0.12563647674337025
+          },
+          "stress_after_haircut": {
+            "n": 6908,
+            "hits": 4978,
+            "hit_rate": 0.7206137811233353,
+            "expectancy": -0.13796036101643633,
+            "profit_factor": 0.5058880800584831,
+            "max_drawdown": 1928.7738980560152,
+            "mean_loss": -0.9993647140186614,
+            "worst_loss": -1.2883633051754861,
+            "mean_win": 0.19601119408486833,
+            "design_effect": 1.3914500541950054,
+            "n_eff": 4964,
+            "losers_eff": 1388,
+            "hit_lower_bound": 0.7097139127189928,
+            "by_reason": {
+              "both": 3,
+              "section_end": 2,
+              "stop": 1530,
+              "target": 4953,
+              "time": 420
+            },
+            "by_side": {
+              "long": 3699,
+              "short": 3206,
+              "both": 3
+            }
+          },
+          "protocol_costs": {
+            "n": 7538,
+            "hits": 5615,
+            "hit_rate": 0.7448925444414964,
+            "expectancy": -0.13886583991396156,
+            "profit_factor": 0.4352441901008766,
+            "max_drawdown": 1048.089368502447,
+            "mean_loss": -0.9638546940489463,
+            "worst_loss": -1.2494119607376468,
+            "mean_win": 0.14367264031784177,
+            "design_effect": 1.3857910632987225,
+            "n_eff": 5439,
+            "losers_eff": 1388,
+            "hit_lower_bound": 0.7348946422469442,
+            "by_reason": {
+              "both": 3,
+              "section_end": 2,
+              "stop": 1525,
+              "target": 5578,
+              "time": 430
+            },
+            "by_side": {
+              "long": 4021,
+              "short": 3514,
+              "both": 3
+            }
+          },
+          "gap_after": {
+            "n": 7538,
+            "hits": 5631,
+            "hit_rate": 0.7470151233749005,
+            "expectancy": -0.06925622622653985,
+            "profit_factor": 0.7061950981784811,
+            "max_drawdown": 524.0916465578838,
+            "mean_loss": -0.9317624962219728,
+            "worst_loss": -1.2094119607376468,
+            "mean_win": 0.2228409957378165,
+            "design_effect": 1.3765340293786112,
+            "n_eff": 5476,
+            "losers_eff": 1386,
+            "hit_lower_bound": 0.7370437179096072,
+            "by_reason": {
+              "both": 3,
+              "section_end": 2,
+              "stop": 1525,
+              "target": 5578,
+              "time": 430
+            },
+            "by_side": {
+              "long": 4021,
+              "short": 3514,
+              "both": 3
+            }
+          },
+          "bootstrap_90": [
+            -0.08099219412226064,
+            -0.05760226030806074
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 2895,
+              "hits": 2122,
+              "hit_rate": 0.7329879101899828,
+              "expectancy": -0.059756057681834646,
+              "profit_factor": 0.7302065640426714,
+              "max_drawdown": 174.0794562812311,
+              "mean_loss": -0.8295061931144925,
+              "worst_loss": -1.1238486778192531,
+              "mean_win": 0.22064773811903457,
+              "design_effect": 1.0786048817886844,
+              "n_eff": 2684,
+              "losers_eff": 717,
+              "hit_lower_bound": 0.7184428978448245,
+              "by_reason": {
+                "section_end": 1,
+                "stop": 520,
+                "target": 2084,
+                "time": 290
+              },
+              "by_side": {
+                "long": 1482,
+                "short": 1413,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 2704,
+              "hits": 2029,
+              "hit_rate": 0.7503698224852071,
+              "expectancy": -0.07367791404013051,
+              "profit_factor": 0.6943439070905962,
+              "max_drawdown": 202.5726973203302,
+              "mean_loss": -0.9656220597865929,
+              "worst_loss": -1.1502070973469611,
+              "mean_win": 0.22305067067098927,
+              "design_effect": 1.0035743472006757,
+              "n_eff": 2694,
+              "losers_eff": 673,
+              "hit_lower_bound": 0.7360832411415407,
+              "by_reason": {
+                "both": 2,
+                "section_end": 1,
+                "stop": 565,
+                "target": 2017,
+                "time": 119
+              },
+              "by_side": {
+                "long": 1472,
+                "short": 1230,
+                "both": 2
+              }
+            },
+            "SOLUSDT": {
+              "n": 1939,
+              "hits": 1480,
+              "hit_rate": 0.7632800412583806,
+              "expectancy": -0.07727414478712386,
+              "profit_factor": 0.6903399338580536,
+              "max_drawdown": 151.1943799639047,
+              "mean_loss": -1.054178437171785,
+              "worst_loss": -1.2094119607376468,
+              "mean_win": 0.2256981999456866,
+              "design_effect": 1.0708644632271846,
+              "n_eff": 1810,
+              "losers_eff": 429,
+              "hit_lower_bound": 0.7459559812578639,
+              "by_reason": {
+                "both": 1,
+                "stop": 440,
+                "target": 1477,
+                "time": 21
+              },
+              "by_side": {
+                "long": 1067,
+                "short": 871,
+                "both": 1
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 4021,
+              "hits": 3072,
+              "hit_rate": 0.763989057448396,
+              "expectancy": -0.05284947324989225,
+              "profit_factor": 0.7629471881046326,
+              "max_drawdown": 217.044773226611,
+              "mean_loss": -0.9446336509088162,
+              "worst_loss": -1.2094119607376468,
+              "mean_win": 0.22263984465320633,
+              "design_effect": 1.3009411224718517,
+              "n_eff": 3090,
+              "losers_eff": 730,
+              "hit_lower_bound": 0.7508408069035492,
+              "by_reason": {
+                "section_end": 2,
+                "stop": 777,
+                "target": 3045,
+                "time": 197
+              },
+              "by_side": {
+                "long": 4021,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 3514,
+              "hits": 2559,
+              "hit_rate": 0.728229937393284,
+              "expectancy": -0.08716724569090514,
+              "profit_factor": 0.6508038425679091,
+              "max_drawdown": 310.60742668425274,
+              "mean_loss": -0.9185065398773148,
+              "worst_loss": -1.117577107093123,
+              "mean_win": 0.2230824713657659,
+              "design_effect": 1.2923420315378686,
+              "n_eff": 2719,
+              "losers_eff": 739,
+              "hit_lower_bound": 0.7138133993835146,
+              "by_reason": {
+                "stop": 748,
+                "target": 2533,
+                "time": 233
+              },
+              "by_side": {
+                "long": 0,
+                "short": 3514,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 7,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2020": {
+                "n": 2256,
+                "expectancy": -0.0834343339034035
+              },
+              "2021": {
+                "n": 2280,
+                "expectancy": -0.08664169178984023
+              },
+              "2022": {
+                "n": 3002,
+                "expectancy": -0.04539724141530425
+              }
+            },
+            "years_counted": 3,
+            "years_positive": 0
+          }
+        },
+        "validation": {
+          "summary": {
+            "n": 5046,
+            "hits": 3720,
+            "hit_rate": 0.737217598097503,
+            "expectancy": -0.038012231046983695,
+            "profit_factor": 0.8096854536611966,
+            "max_drawdown": 192.67187901054652,
+            "mean_loss": -0.7600726377245837,
+            "worst_loss": -1.1103318227742895,
+            "mean_win": 0.21936736552680597,
+            "design_effect": 1.5829587797504672,
+            "n_eff": 3187,
+            "losers_eff": 838,
+            "hit_lower_bound": 0.723914994909825,
+            "by_reason": {
+              "both": 1,
+              "stop": 787,
+              "target": 3618,
+              "time": 640
+            },
+            "by_side": {
+              "long": 2646,
+              "short": 2399,
+              "both": 1
+            }
+          },
+          "baseline_a": {
+            "p": 0.032596740325967405,
+            "mean_expectancy": -0.04931737636030164,
+            "hit_rate_pool": 0.66315
+          },
+          "baseline_b_mirrored": {
+            "n": 5045,
+            "hits": 3347,
+            "hit_rate": 0.6634291377601585,
+            "expectancy": -0.0873291773641401,
+            "profit_factor": 0.6273482844027131,
+            "max_drawdown": 445.1709454434429,
+            "mean_loss": -0.6962732795710629,
+            "worst_loss": -1.1363865350158722,
+            "mean_win": 0.22160033728998446,
+            "design_effect": 1.445350400482892,
+            "n_eff": 3490,
+            "losers_eff": 1175,
+            "hit_lower_bound": 0.6499247026661195,
+            "by_reason": {
+              "stop": 767,
+              "target": 3307,
+              "time": 971
+            },
+            "by_side": {
+              "long": 2399,
+              "short": 2646,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.049629884837507895,
+            "expectancy_protocol_costs": -0.11533962574604245
+          },
+          "stress_after_haircut": {
+            "n": 4560,
+            "hits": 3219,
+            "hit_rate": 0.7059210526315789,
+            "expectancy": -0.1012680184096283,
+            "profit_factor": 0.5749400823044043,
+            "max_drawdown": 1086.3931053565193,
+            "mean_loss": -0.8101365438900223,
+            "worst_loss": -1.1892825972076215,
+            "mean_win": 0.19403881373364865,
+            "design_effect": 1.5759453040173463,
+            "n_eff": 2893,
+            "losers_eff": 851,
+            "hit_lower_bound": 0.6915838709977069,
+            "by_reason": {
+              "both": 1,
+              "stop": 775,
+              "target": 3167,
+              "time": 617
+            },
+            "by_side": {
+              "long": 2392,
+              "short": 2167,
+              "both": 1
+            }
+          },
+          "protocol_costs": {
+            "n": 5046,
+            "hits": 3689,
+            "hit_rate": 0.7310741181133571,
+            "expectancy": -0.10670071591944326,
+            "profit_factor": 0.49279001229935826,
+            "max_drawdown": 538.6049115914216,
+            "mean_loss": -0.7822524554588761,
+            "worst_loss": -1.1503318227742896,
+            "mean_win": 0.14180123869020986,
+            "design_effect": 1.592245306606835,
+            "n_eff": 3169,
+            "losers_eff": 853,
+            "hit_lower_bound": 0.7175579723703034,
+            "by_reason": {
+              "both": 1,
+              "stop": 787,
+              "target": 3618,
+              "time": 640
+            },
+            "by_side": {
+              "long": 2646,
+              "short": 2399,
+              "both": 1
+            }
+          },
+          "gap_after": {
+            "n": 5046,
+            "hits": 3720,
+            "hit_rate": 0.737217598097503,
+            "expectancy": -0.038012231046983695,
+            "profit_factor": 0.8096854536611966,
+            "max_drawdown": 192.67187901054652,
+            "mean_loss": -0.7600726377245837,
+            "worst_loss": -1.1103318227742895,
+            "mean_win": 0.21936736552680597,
+            "design_effect": 1.5829587797504672,
+            "n_eff": 3187,
+            "losers_eff": 838,
+            "hit_lower_bound": 0.723914994909825,
+            "by_reason": {
+              "both": 1,
+              "stop": 787,
+              "target": 3618,
+              "time": 640
+            },
+            "by_side": {
+              "long": 2646,
+              "short": 2399,
+              "both": 1
+            }
+          },
+          "bootstrap_90": [
+            -0.05219418900500907,
+            -0.023857620539192284
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 1648,
+              "hits": 1135,
+              "hit_rate": 0.6887135922330098,
+              "expectancy": -0.05246522208216915,
+              "profit_factor": 0.7400655338671543,
+              "max_drawdown": 86.9992046191921,
+              "mean_loss": -0.648406692864191,
+              "worst_loss": -1.1103318227742895,
+              "mean_win": 0.21688982154001338,
+              "design_effect": 1.1501592079081449,
+              "n_eff": 1432,
+              "losers_eff": 447,
+              "hit_lower_bound": 0.6670849434278995,
+              "by_reason": {
+                "stop": 234,
+                "target": 1088,
+                "time": 326
+              },
+              "by_side": {
+                "long": 825,
+                "short": 823,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 1889,
+              "hits": 1391,
+              "hit_rate": 0.7363684489147697,
+              "expectancy": -0.03480605468583961,
+              "profit_factor": 0.8212763987459374,
+              "max_drawdown": 66.54807127947016,
+              "mean_loss": -0.7387125996854376,
+              "worst_loss": -1.0895624165029125,
+              "mean_win": 0.21720362138159374,
+              "design_effect": 1.089587445709247,
+              "n_eff": 1733,
+              "losers_eff": 458,
+              "hit_lower_bound": 0.7177187401837934,
+              "by_reason": {
+                "both": 1,
+                "stop": 283,
+                "target": 1337,
+                "time": 268
+              },
+              "by_side": {
+                "long": 1003,
+                "short": 885,
+                "both": 1
+              }
+            },
+            "SOLUSDT": {
+              "n": 1509,
+              "hits": 1194,
+              "hit_rate": 0.7912524850894632,
+              "expectancy": -0.02624148082843866,
+              "profit_factor": 0.8711597094176895,
+              "max_drawdown": 40.82759543033358,
+              "mean_loss": -0.9756978080638736,
+              "worst_loss": -1.099703229026069,
+              "mean_win": 0.22424322861809567,
+              "design_effect": 1.0,
+              "n_eff": 1509,
+              "losers_eff": 315,
+              "hit_lower_bound": 0.7732981525612501,
+              "by_reason": {
+                "stop": 270,
+                "target": 1193,
+                "time": 46
+              },
+              "by_side": {
+                "long": 818,
+                "short": 691,
+                "both": 0
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 2646,
+              "hits": 2002,
+              "hit_rate": 0.7566137566137566,
+              "expectancy": -0.018119782388730597,
+              "profit_factor": 0.9015117963975491,
+              "max_drawdown": 55.515343071442395,
+              "mean_loss": -0.7559146008940107,
+              "worst_loss": -1.1103318227742895,
+              "mean_win": 0.21921281657100988,
+              "design_effect": 1.5273726533357794,
+              "n_eff": 1732,
+              "losers_eff": 422,
+              "hit_lower_bound": 0.7387803951898386,
+              "by_reason": {
+                "stop": 384,
+                "target": 1949,
+                "time": 313
+              },
+              "by_side": {
+                "long": 2646,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 2399,
+              "hits": 1718,
+              "hit_rate": 0.7161317215506461,
+              "expectancy": -0.059518455048978146,
+              "profit_factor": 0.7253966362108386,
+              "max_drawdown": 146.33489912006797,
+              "mean_loss": -0.76353497011315,
+              "worst_loss": -1.0827862932994816,
+              "mean_win": 0.21954746273839146,
+              "design_effect": 1.4048459040235854,
+              "n_eff": 1707,
+              "losers_eff": 485,
+              "hit_lower_bound": 0.6973611921376758,
+              "by_reason": {
+                "stop": 403,
+                "target": 1669,
+                "time": 327
+              },
+              "by_side": {
+                "long": 0,
+                "short": 2399,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 16,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2023": {
+                "n": 3125,
+                "expectancy": -0.03222317204112703
+              },
+              "2024": {
+                "n": 1921,
+                "expectancy": -0.047429622714501705
+              }
+            },
+            "years_counted": 2,
+            "years_positive": 0
+          }
+        }
+      },
+      "training": {
+        "pass": false,
+        "reasons": [
+          "E[R] <= 0",
+          "p >= 0.1",
+          "hit rate < 95 %",
+          "lower bound < 90 %"
+        ]
+      },
+      "robustness": {
+        "year_stability_all": {
+          "pass": false,
+          "years": {
+            "2020": {
+              "n": 2256,
+              "expectancy": -0.0834343339034035
+            },
+            "2021": {
+              "n": 2280,
+              "expectancy": -0.08664169178984023
+            },
+            "2022": {
+              "n": 3002,
+              "expectancy": -0.04539724141530425
+            },
+            "2023": {
+              "n": 3125,
+              "expectancy": -0.03222317204112703
+            },
+            "2024": {
+              "n": 1921,
+              "expectancy": -0.047429622714501705
+            }
+          },
+          "years_counted": 5,
+          "years_positive": 0
+        },
+        "neighbours": {
+          "pass": false,
+          "neighbours": {
+            "S6-k3-t25": -0.10070771550407649,
+            "S6-k2-t20": -0.07081533968941407
+          }
+        }
+      },
+      "validation": {
+        "pass": false,
+        "reasons": [
+          "not run: training failed"
+        ]
+      }
+    },
+    "S6-k3-t15": {
+      "k": 3.0,
+      "target_r": 0.15,
+      "counts": {
+        "BTCUSDT/train": {
+          "trades": 805,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_reason": {
+            "stop": 135,
+            "target": 624,
+            "time": 46
+          },
+          "stress_trades": 766
+        },
+        "BTCUSDT/validation": {
+          "trades": 534,
+          "skipped_cross": 46,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 60,
+            "target": 430,
+            "time": 44
+          },
+          "stress_trades": 511
+        },
+        "ETHUSDT/train": {
+          "trades": 638,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_reason": {
+            "stop": 104,
+            "target": 518,
+            "time": 16
+          },
+          "stress_trades": 620
+        },
+        "ETHUSDT/validation": {
+          "trades": 608,
+          "skipped_cross": 45,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 89,
+            "target": 486,
+            "time": 33
+          },
+          "stress_trades": 583
+        },
+        "SOLUSDT/train": {
+          "trades": 328,
+          "skipped_cross": 0,
+          "no_reference": 242,
+          "by_reason": {
+            "stop": 80,
+            "target": 247,
+            "time": 1
+          },
+          "stress_trades": 320
+        },
+        "SOLUSDT/validation": {
+          "trades": 359,
+          "skipped_cross": 1,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 82,
+            "target": 276,
+            "time": 1
+          },
+          "stress_trades": 349
+        }
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 1771,
+            "hits": 1393,
+            "hit_rate": 0.7865612648221344,
+            "expectancy": -0.10852623227355147,
+            "profit_factor": 0.4731085076866027,
+            "max_drawdown": 192.70090623064354,
+            "mean_loss": -0.9650288590151922,
+            "worst_loss": -1.0867182390376233,
+            "mean_win": 0.12389156593774801,
+            "design_effect": 1.207780218637273,
+            "n_eff": 1466,
+            "losers_eff": 313,
+            "hit_lower_bound": 0.7681297928716813,
+            "by_reason": {
+              "stop": 319,
+              "target": 1389,
+              "time": 63
+            },
+            "by_side": {
+              "long": 999,
+              "short": 772,
+              "both": 0
+            }
+          },
+          "baseline_a": {
+            "p": 1.0,
+            "mean_expectancy": -0.045696642976209574,
+            "hit_rate_pool": 0.8198833333333333
+          },
+          "baseline_b_mirrored": {
+            "n": 1771,
+            "hits": 1119,
+            "hit_rate": 0.6318464144551101,
+            "expectancy": -0.2698163979544522,
+            "profit_factor": 0.2251606721538839,
+            "max_drawdown": 478.83190797568716,
+            "mean_loss": -0.9458617209392473,
+            "worst_loss": -1.0875146919743226,
+            "mean_win": 0.12409026029942297,
+            "design_effect": 1.404871030649831,
+            "n_eff": 1260,
+            "losers_eff": 465,
+            "hit_lower_bound": 0.607984618704573,
+            "by_reason": {
+              "section_end": 1,
+              "stop": 511,
+              "target": 1119,
+              "time": 140
+            },
+            "by_side": {
+              "long": 772,
+              "short": 999,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.04950577639576228,
+            "expectancy_protocol_costs": -0.12429538306735721
+          },
+          "stress_after_haircut": {
+            "n": 1620,
+            "hits": 1236,
+            "hit_rate": 0.762962962962963,
+            "expectancy": -0.1708263661591952,
+            "profit_factor": 0.30224634136928163,
+            "max_drawdown": 396.6137758718057,
+            "mean_loss": -1.032848374666161,
+            "worst_loss": -1.1677688330656506,
+            "mean_win": 0.09698629667792037,
+            "design_effect": 1.2066736233155688,
+            "n_eff": 1342,
+            "losers_eff": 319,
+            "hit_lower_bound": 0.7423927680691849,
+            "by_reason": {
+              "stop": 321,
+              "target": 1236,
+              "time": 63
+            },
+            "by_side": {
+              "long": 907,
+              "short": 713,
+              "both": 0
+            }
+          },
+          "protocol_costs": {
+            "n": 1771,
+            "hits": 1389,
+            "hit_rate": 0.7843026538678712,
+            "expectancy": -0.17990743234688855,
+            "profit_factor": 0.16143423618160746,
+            "max_drawdown": 318.79701594754886,
+            "mean_loss": -0.9946428753920836,
+            "worst_loss": -1.1267182390376231,
+            "mean_win": 0.04415947855538973,
+            "design_effect": 1.2062652244462981,
+            "n_eff": 1468,
+            "losers_eff": 317,
+            "hit_lower_bound": 0.7656400949675677,
+            "by_reason": {
+              "stop": 319,
+              "target": 1389,
+              "time": 63
+            },
+            "by_side": {
+              "long": 999,
+              "short": 772,
+              "both": 0
+            }
+          },
+          "gap_after": {
+            "n": 1771,
+            "hits": 1393,
+            "hit_rate": 0.7865612648221344,
+            "expectancy": -0.10852623227355147,
+            "profit_factor": 0.4731085076866027,
+            "max_drawdown": 192.70090623064354,
+            "mean_loss": -0.9650288590151922,
+            "worst_loss": -1.0867182390376233,
+            "mean_win": 0.12389156593774801,
+            "design_effect": 1.207780218637273,
+            "n_eff": 1466,
+            "losers_eff": 313,
+            "hit_lower_bound": 0.7681297928716813,
+            "by_reason": {
+              "stop": 319,
+              "target": 1389,
+              "time": 63
+            },
+            "by_side": {
+              "long": 999,
+              "short": 772,
+              "both": 0
+            }
+          },
+          "bootstrap_90": [
+            -0.12931053938814227,
+            -0.08810525485769165
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 805,
+              "hits": 628,
+              "hit_rate": 0.7801242236024845,
+              "expectancy": -0.10336960504531935,
+              "profit_factor": 0.4811458725890715,
+              "max_drawdown": 84.06103749176559,
+              "mean_loss": -0.9060876168188354,
+              "worst_loss": -1.0867182390376233,
+              "mean_win": 0.12287416578893598,
+              "design_effect": 1.0,
+              "n_eff": 805,
+              "losers_eff": 177,
+              "hit_lower_bound": 0.7547480993901835,
+              "by_reason": {
+                "stop": 135,
+                "target": 624,
+                "time": 46
+              },
+              "by_side": {
+                "long": 421,
+                "short": 384,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 638,
+              "hits": 518,
+              "hit_rate": 0.8119122257053292,
+              "expectancy": -0.08390527327343653,
+              "profit_factor": 0.5453175559670117,
+              "max_drawdown": 56.986874405671344,
+              "mean_loss": -0.981116327284614,
+              "worst_loss": -1.084665585793279,
+              "mean_win": 0.12394284734691345,
+              "design_effect": 1.0,
+              "n_eff": 638,
+              "losers_eff": 120,
+              "hit_lower_bound": 0.7846237593292433,
+              "by_reason": {
+                "stop": 104,
+                "target": 518,
+                "time": 16
+              },
+              "by_side": {
+                "long": 371,
+                "short": 267,
+                "both": 0
+              }
+            },
+            "SOLUSDT": {
+              "n": 328,
+              "hits": 247,
+              "hit_rate": 0.7530487804878049,
+              "expectancy": -0.16907274678818623,
+              "profit_factor": 0.360145166018746,
+              "max_drawdown": 56.954056380892,
+              "mean_loss": -1.0699931019340134,
+              "worst_loss": -1.0810144964591402,
+              "mean_win": 0.1263707704863563,
+              "design_effect": 1.0,
+              "n_eff": 328,
+              "losers_eff": 81,
+              "hit_lower_bound": 0.7107346505691898,
+              "by_reason": {
+                "stop": 80,
+                "target": 247,
+                "time": 1
+              },
+              "by_side": {
+                "long": 207,
+                "short": 121,
+                "both": 0
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 999,
+              "hits": 785,
+              "hit_rate": 0.7857857857857858,
+              "expectancy": -0.11329285486856747,
+              "profit_factor": 0.4623164770002205,
+              "max_drawdown": 113.6730224781622,
+              "mean_loss": -0.9836203554412353,
+              "worst_loss": -1.085640470113018,
+              "mean_win": 0.12396840006461841,
+              "design_effect": 1.309814757859632,
+              "n_eff": 762,
+              "losers_eff": 164,
+              "hit_lower_bound": 0.7588311933803251,
+              "by_reason": {
+                "stop": 187,
+                "target": 783,
+                "time": 29
+              },
+              "by_side": {
+                "long": 999,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 772,
+              "hits": 608,
+              "hit_rate": 0.7875647668393783,
+              "expectancy": -0.10235802505538961,
+              "profit_factor": 0.4878322261010575,
+              "max_drawdown": 79.27458639494427,
+              "mean_loss": -0.9407692234348677,
+              "worst_loss": -1.0867182390376233,
+              "mean_win": 0.12379236398118014,
+              "design_effect": 1.202755041957234,
+              "n_eff": 641,
+              "losers_eff": 137,
+              "hit_lower_bound": 0.7579014704250168,
+              "by_reason": {
+                "stop": 132,
+                "target": 606,
+                "time": 34
+              },
+              "by_side": {
+                "long": 0,
+                "short": 772,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 2,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2020": {
+                "n": 644,
+                "expectancy": -0.10878706758785604
+              },
+              "2021": {
+                "n": 361,
+                "expectancy": -0.17709542506162787
+              },
+              "2022": {
+                "n": 766,
+                "expectancy": -0.07599169371100875
+              }
+            },
+            "years_counted": 3,
+            "years_positive": 0
+          }
+        },
+        "validation": {
+          "summary": {
+            "n": 1501,
+            "hits": 1197,
+            "hit_rate": 0.7974683544303798,
+            "expectancy": -0.08214741518035935,
+            "profit_factor": 0.5448923359315373,
+            "max_drawdown": 125.93111436086225,
+            "mean_loss": -0.891223977260925,
+            "worst_loss": -1.0810163251292246,
+            "mean_win": 0.12333234661787952,
+            "design_effect": 1.464998152325223,
+            "n_eff": 1024,
+            "losers_eff": 208,
+            "hit_lower_bound": 0.7750832875845579,
+            "by_reason": {
+              "stop": 231,
+              "target": 1192,
+              "time": 78
+            },
+            "by_side": {
+              "long": 848,
+              "short": 653,
+              "both": 0
+            }
+          },
+          "baseline_a": {
+            "p": 1.0,
+            "mean_expectancy": -0.04602959292416189,
+            "hit_rate_pool": 0.7657833333333334
+          },
+          "baseline_b_mirrored": {
+            "n": 1501,
+            "hits": 976,
+            "hit_rate": 0.6502331778814124,
+            "expectancy": -0.20704261077264005,
+            "profit_factor": 0.27971323575024337,
+            "max_drawdown": 311.1414769987441,
+            "mean_loss": -0.8218180768426072,
+            "worst_loss": -1.1173050743727897,
+            "mean_win": 0.12365115939819274,
+            "design_effect": 1.4080490788626334,
+            "n_eff": 1066,
+            "losers_eff": 373,
+            "hit_lower_bound": 0.6253097343601235,
+            "by_reason": {
+              "stop": 316,
+              "target": 975,
+              "time": 210
+            },
+            "by_side": {
+              "long": 653,
+              "short": 848,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.04655416625236695,
+            "expectancy_protocol_costs": -0.11873554188447236
+          },
+          "stress_after_haircut": {
+            "n": 1370,
+            "hits": 1055,
+            "hit_rate": 0.7700729927007299,
+            "expectancy": -0.14421830911181452,
+            "profit_factor": 0.3407173627431803,
+            "max_drawdown": 299.6879825400591,
+            "mean_loss": -0.9513904207620922,
+            "worst_loss": -1.1620670745378363,
+            "mean_win": 0.09678568630983242,
+            "design_effect": 1.4456714791836456,
+            "n_eff": 947,
+            "losers_eff": 218,
+            "hit_lower_bound": 0.7461628245420738,
+            "by_reason": {
+              "stop": 235,
+              "target": 1054,
+              "time": 81
+            },
+            "by_side": {
+              "long": 780,
+              "short": 590,
+              "both": 0
+            }
+          },
+          "protocol_costs": {
+            "n": 1501,
+            "hits": 1194,
+            "hit_rate": 0.7954696868754164,
+            "expectancy": -0.15392432656231686,
+            "profit_factor": 0.18414088636507267,
+            "max_drawdown": 231.2280778906311,
+            "mean_loss": -0.9224321042849871,
+            "worst_loss": -1.1210163251292249,
+            "mean_win": 0.043673569384801894,
+            "design_effect": 1.4533819042278282,
+            "n_eff": 1032,
+            "losers_eff": 212,
+            "hit_lower_bound": 0.7727895990014505,
+            "by_reason": {
+              "stop": 231,
+              "target": 1192,
+              "time": 78
+            },
+            "by_side": {
+              "long": 848,
+              "short": 653,
+              "both": 0
+            }
+          },
+          "gap_after": {
+            "n": 1501,
+            "hits": 1197,
+            "hit_rate": 0.7974683544303798,
+            "expectancy": -0.08214741518035935,
+            "profit_factor": 0.5448923359315373,
+            "max_drawdown": 125.93111436086225,
+            "mean_loss": -0.891223977260925,
+            "worst_loss": -1.0810163251292246,
+            "mean_win": 0.12333234661787952,
+            "design_effect": 1.464998152325223,
+            "n_eff": 1024,
+            "losers_eff": 208,
+            "hit_lower_bound": 0.7750832875845579,
+            "by_reason": {
+              "stop": 231,
+              "target": 1192,
+              "time": 78
+            },
+            "by_side": {
+              "long": 848,
+              "short": 653,
+              "both": 0
+            }
+          },
+          "bootstrap_90": [
+            -0.1048521565556125,
+            -0.05957547198290648
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 534,
+              "hits": 433,
+              "hit_rate": 0.8108614232209738,
+              "expectancy": -0.04601105364268991,
+              "profit_factor": 0.6839799388181022,
+              "max_drawdown": 27.56237472627273,
+              "mean_loss": -0.7697813927189431,
+              "worst_loss": -1.0810163251292246,
+              "mean_win": 0.12281297464068552,
+              "design_effect": 1.1009418011429828,
+              "n_eff": 485,
+              "losers_eff": 92,
+              "hit_lower_bound": 0.7786125918638457,
+              "by_reason": {
+                "stop": 60,
+                "target": 430,
+                "time": 44
+              },
+              "by_side": {
+                "long": 279,
+                "short": 255,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 608,
+              "hits": 488,
+              "hit_rate": 0.8026315789473685,
+              "expectancy": -0.07275150924780424,
+              "profit_factor": 0.5759552541060425,
+              "max_drawdown": 44.85015239452426,
+              "mean_loss": -0.869265921638658,
+              "worst_loss": -1.0810036208247635,
+              "mean_win": 0.12311269052043848,
+              "design_effect": 1.0,
+              "n_eff": 608,
+              "losers_eff": 120,
+              "hit_lower_bound": 0.7741859363927748,
+              "by_reason": {
+                "stop": 89,
+                "target": 486,
+                "time": 33
+              },
+              "by_side": {
+                "long": 356,
+                "short": 252,
+                "both": 0
+              }
+            },
+            "SOLUSDT": {
+              "n": 359,
+              "hits": 276,
+              "hit_rate": 0.7688022284122563,
+              "expectancy": -0.1518118382113036,
+              "profit_factor": 0.38675520065530133,
+              "max_drawdown": 57.128294093000775,
+              "mean_loss": -1.0707500942899875,
+              "worst_loss": -1.0810049000011894,
+              "mean_win": 0.12453553589931513,
+              "design_effect": 1.006308470561301,
+              "n_eff": 356,
+              "losers_eff": 83,
+              "hit_lower_bound": 0.7269978978012294,
+              "by_reason": {
+                "stop": 82,
+                "target": 276,
+                "time": 1
+              },
+              "by_side": {
+                "long": 213,
+                "short": 146,
+                "both": 0
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 848,
+              "hits": 692,
+              "hit_rate": 0.8160377358490566,
+              "expectancy": -0.06388396814984312,
+              "profit_factor": 0.612004323989388,
+              "max_drawdown": 59.70905236431983,
+              "mean_loss": -0.8950272390437356,
+              "worst_loss": -1.0789812910020815,
+              "mean_win": 0.12348359002854879,
+              "design_effect": 1.4205703912142806,
+              "n_eff": 596,
+              "losers_eff": 110,
+              "hit_lower_bound": 0.7873135257981635,
+              "by_reason": {
+                "stop": 118,
+                "target": 691,
+                "time": 39
+              },
+              "by_side": {
+                "long": 848,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 653,
+              "hits": 505,
+              "hit_rate": 0.7733537519142419,
+              "expectancy": -0.10586472464724717,
+              "profit_factor": 0.47352979607470563,
+              "max_drawdown": 70.85970454985595,
+              "mean_loss": -0.8872151337601245,
+              "worst_loss": -1.0810163251292246,
+              "mean_win": 0.12312509822147726,
+              "design_effect": 1.5218001396353191,
+              "n_eff": 429,
+              "losers_eff": 98,
+              "hit_lower_bound": 0.7357086320756011,
+              "by_reason": {
+                "stop": 113,
+                "target": 501,
+                "time": 39
+              },
+              "by_side": {
+                "long": 0,
+                "short": 653,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 2,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2023": {
+                "n": 1099,
+                "expectancy": -0.07596953886434098
+              },
+              "2024": {
+                "n": 402,
+                "expectancy": -0.0990366840144494
+              }
+            },
+            "years_counted": 2,
+            "years_positive": 0
+          }
+        }
+      },
+      "training": {
+        "pass": false,
+        "reasons": [
+          "E[R] <= 0",
+          "p >= 0.1",
+          "hit rate < 95 %",
+          "lower bound < 90 %"
+        ]
+      },
+      "robustness": {
+        "year_stability_all": {
+          "pass": false,
+          "years": {
+            "2020": {
+              "n": 644,
+              "expectancy": -0.10878706758785604
+            },
+            "2021": {
+              "n": 361,
+              "expectancy": -0.17709542506162787
+            },
+            "2022": {
+              "n": 766,
+              "expectancy": -0.07599169371100875
+            },
+            "2023": {
+              "n": 1099,
+              "expectancy": -0.07596953886434098
+            },
+            "2024": {
+              "n": 402,
+              "expectancy": -0.0990366840144494
+            }
+          },
+          "years_counted": 5,
+          "years_positive": 0
+        },
+        "neighbours": {
+          "pass": false,
+          "neighbours": {
+            "S6-k2-t15": -0.07231003228897222,
+            "S6-k3-t20": -0.10477620116066234
+          }
+        }
+      },
+      "validation": {
+        "pass": false,
+        "reasons": [
+          "not run: training failed"
+        ]
+      }
+    },
+    "S6-k3-t20": {
+      "k": 3.0,
+      "target_r": 0.2,
+      "counts": {
+        "BTCUSDT/train": {
+          "trades": 798,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_reason": {
+            "stop": 154,
+            "target": 575,
+            "time": 69
+          },
+          "stress_trades": 761
+        },
+        "BTCUSDT/validation": {
+          "trades": 526,
+          "skipped_cross": 46,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 72,
+            "target": 391,
+            "time": 63
+          },
+          "stress_trades": 503
+        },
+        "ETHUSDT/train": {
+          "trades": 631,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_reason": {
+            "stop": 116,
+            "target": 492,
+            "time": 23
+          },
+          "stress_trades": 614
+        },
+        "ETHUSDT/validation": {
+          "trades": 603,
+          "skipped_cross": 45,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 97,
+            "target": 455,
+            "time": 51
+          },
+          "stress_trades": 575
+        },
+        "SOLUSDT/train": {
+          "trades": 325,
+          "skipped_cross": 0,
+          "no_reference": 242,
+          "by_reason": {
+            "stop": 87,
+            "target": 237,
+            "time": 1
+          },
+          "stress_trades": 318
+        },
+        "SOLUSDT/validation": {
+          "trades": 356,
+          "skipped_cross": 0,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 88,
+            "target": 266,
+            "time": 2
+          },
+          "stress_trades": 347
+        }
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 1754,
+            "hits": 1314,
+            "hit_rate": 0.7491448118586089,
+            "expectancy": -0.10477620116066234,
+            "profit_factor": 0.5532779173650448,
+            "max_drawdown": 184.13181366659998,
+            "mean_loss": -0.9349796092450958,
+            "worst_loss": -1.0931142408790118,
+            "mean_win": 0.17322189591479484,
+            "design_effect": 1.2226352658278312,
+            "n_eff": 1434,
+            "losers_eff": 360,
+            "hit_lower_bound": 0.7294017453424188,
+            "by_reason": {
+              "stop": 357,
+              "target": 1304,
+              "time": 93
+            },
+            "by_side": {
+              "long": 991,
+              "short": 763,
+              "both": 0
+            }
+          },
+          "baseline_a": {
+            "p": 1.0,
+            "mean_expectancy": -0.0473072407607548,
+            "hit_rate_pool": 0.77465
+          },
+          "baseline_b_mirrored": {
+            "n": 1754,
+            "hits": 1045,
+            "hit_rate": 0.5957810718358039,
+            "expectancy": -0.27067575968669594,
+            "profit_factor": 0.2767673058356048,
+            "max_drawdown": 475.9790721790321,
+            "mean_loss": -0.9258799249131304,
+            "worst_loss": -1.0875146919743226,
+            "mean_win": 0.17385988925640647,
+            "design_effect": 1.4228198337430218,
+            "n_eff": 1232,
+            "losers_eff": 499,
+            "hit_lower_bound": 0.5714065473706718,
+            "by_reason": {
+              "section_end": 1,
+              "stop": 540,
+              "target": 1043,
+              "time": 170
+            },
+            "by_side": {
+              "long": 763,
+              "short": 991,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.04920037650408709,
+            "expectancy_protocol_costs": -0.12553162727989964
+          },
+          "stress_after_haircut": {
+            "n": 1608,
+            "hits": 1164,
+            "hit_rate": 0.7238805970149254,
+            "expectancy": -0.1713794095696687,
+            "profit_factor": 0.38224645451958456,
+            "max_drawdown": 446.0971411725615,
+            "mean_loss": -1.0047232909291925,
+            "worst_loss": -1.1741649462143897,
+            "mean_win": 0.14649402971179915,
+            "design_effect": 1.2445335154603658,
+            "n_eff": 1292,
+            "losers_eff": 357,
+            "hit_lower_bound": 0.7024687967558954,
+            "by_reason": {
+              "stop": 357,
+              "target": 1160,
+              "time": 91
+            },
+            "by_side": {
+              "long": 898,
+              "short": 710,
+              "both": 0
+            }
+          },
+          "protocol_costs": {
+            "n": 1754,
+            "hits": 1308,
+            "hit_rate": 0.7457240592930444,
+            "expectancy": -0.1745278823644758,
+            "profit_factor": 0.28655583600499174,
+            "max_drawdown": 306.31650706327514,
+            "mean_loss": -0.9620542439616933,
+            "worst_loss": -1.133114240879012,
+            "mean_win": 0.09400174857769465,
+            "design_effect": 1.2138386758535906,
+            "n_eff": 1445,
+            "losers_eff": 368,
+            "hit_lower_bound": 0.7257702255612153,
+            "by_reason": {
+              "stop": 357,
+              "target": 1304,
+              "time": 93
+            },
+            "by_side": {
+              "long": 991,
+              "short": 763,
+              "both": 0
+            }
+          },
+          "gap_after": {
+            "n": 1754,
+            "hits": 1314,
+            "hit_rate": 0.7491448118586089,
+            "expectancy": -0.10477620116066234,
+            "profit_factor": 0.5532779173650448,
+            "max_drawdown": 184.13181366659998,
+            "mean_loss": -0.9349796092450958,
+            "worst_loss": -1.0931142408790118,
+            "mean_win": 0.17322189591479484,
+            "design_effect": 1.2226352658278312,
+            "n_eff": 1434,
+            "losers_eff": 360,
+            "hit_lower_bound": 0.7294017453424188,
+            "by_reason": {
+              "stop": 357,
+              "target": 1304,
+              "time": 93
+            },
+            "by_side": {
+              "long": 991,
+              "short": 763,
+              "both": 0
+            }
+          },
+          "bootstrap_90": [
+            -0.1273314453573265,
+            -0.08277348959759118
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 798,
+              "hits": 584,
+              "hit_rate": 0.731829573934837,
+              "expectancy": -0.10597052968389532,
+              "profit_factor": 0.542115030191312,
+              "max_drawdown": 85.51469213347684,
+              "mean_loss": -0.8630139884696463,
+              "worst_loss": -1.0931142408790118,
+              "mean_win": 0.17143923089855453,
+              "design_effect": 1.0,
+              "n_eff": 798,
+              "losers_eff": 214,
+              "hit_lower_bound": 0.7047960750990726,
+              "by_reason": {
+                "stop": 154,
+                "target": 575,
+                "time": 69
+              },
+              "by_side": {
+                "long": 418,
+                "short": 380,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 631,
+              "hits": 493,
+              "hit_rate": 0.7812995245641838,
+              "expectancy": -0.07420254601924488,
+              "profit_factor": 0.6465788857851925,
+              "max_drawdown": 51.83708564581083,
+              "mean_loss": -0.9600118372348724,
+              "worst_loss": -1.0848434908772338,
+              "mean_win": 0.17375218458472386,
+              "design_effect": 1.0,
+              "n_eff": 631,
+              "losers_eff": 138,
+              "hit_lower_bound": 0.7524858909549721,
+              "by_reason": {
+                "stop": 116,
+                "target": 492,
+                "time": 23
+              },
+              "by_side": {
+                "long": 368,
+                "short": 263,
+                "both": 0
+              }
+            },
+            "SOLUSDT": {
+              "n": 325,
+              "hits": 237,
+              "hit_rate": 0.7292307692307692,
+              "expectancy": -0.16120359264587625,
+              "profit_factor": 0.44397452193281345,
+              "max_drawdown": 54.314530187944776,
+              "mean_loss": -1.070731829510517,
+              "worst_loss": -1.0810144964591402,
+              "mean_win": 0.1765115332785473,
+              "design_effect": 1.0644988004530362,
+              "n_eff": 305,
+              "losers_eff": 83,
+              "hit_lower_bound": 0.682763712526373,
+              "by_reason": {
+                "stop": 87,
+                "target": 237,
+                "time": 1
+              },
+              "by_side": {
+                "long": 205,
+                "short": 120,
+                "both": 0
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 991,
+              "hits": 756,
+              "hit_rate": 0.7628657921291625,
+              "expectancy": -0.09842084520666405,
+              "profit_factor": 0.5737510561180459,
+              "max_drawdown": 97.5350575998042,
+              "mean_loss": -0.9737098572424406,
+              "worst_loss": -1.085640470113018,
+              "mean_win": 0.1736597339314411,
+              "design_effect": 1.3887521168528405,
+              "n_eff": 713,
+              "losers_eff": 170,
+              "hit_lower_bound": 0.7338402393024815,
+              "by_reason": {
+                "stop": 202,
+                "target": 753,
+                "time": 36
+              },
+              "by_side": {
+                "long": 991,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 763,
+              "hits": 558,
+              "hit_rate": 0.7313237221494102,
+              "expectancy": -0.113030667412841,
+              "profit_factor": 0.5276180552422256,
+              "max_drawdown": 86.59675606679585,
+              "mean_loss": -0.8905815200774079,
+              "worst_loss": -1.0931142408790118,
+              "mean_win": 0.1726286960212741,
+              "design_effect": 1.146254756959416,
+              "n_eff": 665,
+              "losers_eff": 179,
+              "hit_lower_bound": 0.7010553260167807,
+              "by_reason": {
+                "stop": 155,
+                "target": 551,
+                "time": 57
+              },
+              "by_side": {
+                "long": 0,
+                "short": 763,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 2,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2020": {
+                "n": 638,
+                "expectancy": -0.10672783494764468
+              },
+              "2021": {
+                "n": 358,
+                "expectancy": -0.18779420063762528
+              },
+              "2022": {
+                "n": 758,
+                "expectancy": -0.06392450436798762
+              }
+            },
+            "years_counted": 3,
+            "years_positive": 0
+          }
+        },
+        "validation": {
+          "summary": {
+            "n": 1485,
+            "hits": 1127,
+            "hit_rate": 0.7589225589225589,
+            "expectancy": -0.0751039099516363,
+            "profit_factor": 0.6346441053484524,
+            "max_drawdown": 115.79142343022025,
+            "mean_loss": -0.8526874196893302,
+            "worst_loss": -1.0843546998856395,
+            "mean_win": 0.17190132206796832,
+            "design_effect": 1.4771845912037072,
+            "n_eff": 1005,
+            "losers_eff": 243,
+            "hit_lower_bound": 0.7349492544529285,
+            "by_reason": {
+              "stop": 257,
+              "target": 1112,
+              "time": 116
+            },
+            "by_side": {
+              "long": 841,
+              "short": 644,
+              "both": 0
+            }
+          },
+          "baseline_a": {
+            "p": 0.9955004499550045,
+            "mean_expectancy": -0.04753290993533505,
+            "hit_rate_pool": 0.7102333333333334
+          },
+          "baseline_b_mirrored": {
+            "n": 1485,
+            "hits": 912,
+            "hit_rate": 0.6141414141414141,
+            "expectancy": -0.20112342549547618,
+            "profit_factor": 0.3462675947401606,
+            "max_drawdown": 299.0406358054549,
+            "mean_loss": -0.797323336781358,
+            "worst_loss": -1.1173050743727897,
+            "mean_win": 0.17346270297690347,
+            "design_effect": 1.3571311992935464,
+            "n_eff": 1094,
+            "losers_eff": 423,
+            "hit_lower_bound": 0.5884651211934108,
+            "by_reason": {
+              "stop": 329,
+              "target": 910,
+              "time": 246
+            },
+            "by_side": {
+              "long": 644,
+              "short": 841,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.04757646125965663,
+            "expectancy_protocol_costs": -0.11689411222862103
+          },
+          "stress_after_haircut": {
+            "n": 1353,
+            "hits": 978,
+            "hit_rate": 0.7228381374722838,
+            "expectancy": -0.14258332800541682,
+            "profit_factor": 0.42634613561549495,
+            "max_drawdown": 336.2920652479436,
+            "mean_loss": -0.8967788406611827,
+            "worst_loss": -1.1633054821104778,
+            "mean_win": 0.14660206795154868,
+            "design_effect": 1.4310130889190027,
+            "n_eff": 945,
+            "losers_eff": 263,
+            "hit_lower_bound": 0.6966908168344403,
+            "by_reason": {
+              "stop": 259,
+              "target": 976,
+              "time": 118
+            },
+            "by_side": {
+              "long": 773,
+              "short": 580,
+              "both": 0
+            }
+          },
+          "protocol_costs": {
+            "n": 1485,
+            "hits": 1118,
+            "hit_rate": 0.7528619528619529,
+            "expectancy": -0.14507182911675362,
+            "profit_factor": 0.32637544792940193,
+            "max_drawdown": 217.11884623249867,
+            "mean_loss": -0.8714160776212194,
+            "worst_loss": -1.1243546998856395,
+            "mean_win": 0.09336139020447981,
+            "design_effect": 1.4774839615931588,
+            "n_eff": 1005,
+            "losers_eff": 249,
+            "hit_lower_bound": 0.728808776430632,
+            "by_reason": {
+              "stop": 257,
+              "target": 1112,
+              "time": 116
+            },
+            "by_side": {
+              "long": 841,
+              "short": 644,
+              "both": 0
+            }
+          },
+          "gap_after": {
+            "n": 1485,
+            "hits": 1127,
+            "hit_rate": 0.7589225589225589,
+            "expectancy": -0.0751039099516363,
+            "profit_factor": 0.6346441053484524,
+            "max_drawdown": 115.79142343022025,
+            "mean_loss": -0.8526874196893302,
+            "worst_loss": -1.0843546998856395,
+            "mean_win": 0.17190132206796832,
+            "design_effect": 1.4771845912037072,
+            "n_eff": 1005,
+            "losers_eff": 243,
+            "hit_lower_bound": 0.7349492544529285,
+            "by_reason": {
+              "stop": 257,
+              "target": 1112,
+              "time": 116
+            },
+            "by_side": {
+              "long": 841,
+              "short": 644,
+              "both": 0
+            }
+          },
+          "bootstrap_90": [
+            -0.10008528927607047,
+            -0.050153847423535174
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 526,
+              "hits": 398,
+              "hit_rate": 0.7566539923954373,
+              "expectancy": -0.04980813839039434,
+              "profit_factor": 0.7219481434610439,
+              "max_drawdown": 30.474639861887898,
+              "mean_loss": -0.7361228270358634,
+              "worst_loss": -1.0843546998856395,
+              "mean_win": 0.17091618358603794,
+              "design_effect": 1.0682887711782378,
+              "n_eff": 492,
+              "losers_eff": 120,
+              "hit_lower_bound": 0.7221344016953057,
+              "by_reason": {
+                "stop": 72,
+                "target": 391,
+                "time": 63
+              },
+              "by_side": {
+                "long": 274,
+                "short": 252,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 603,
+              "hits": 463,
+              "hit_rate": 0.7678275290215588,
+              "expectancy": -0.06029122844434622,
+              "profit_factor": 0.6855160640465375,
+              "max_drawdown": 37.2276509749104,
+              "mean_loss": -0.8257430801834729,
+              "worst_loss": -1.0810036208247635,
+              "mean_win": 0.1711628951916748,
+              "design_effect": 1.0,
+              "n_eff": 603,
+              "losers_eff": 140,
+              "hit_lower_bound": 0.7377709017449062,
+              "by_reason": {
+                "stop": 97,
+                "target": 455,
+                "time": 51
+              },
+              "by_side": {
+                "long": 355,
+                "short": 248,
+                "both": 0
+              }
+            },
+            "SOLUSDT": {
+              "n": 356,
+              "hits": 266,
+              "hit_rate": 0.7471910112359551,
+              "expectancy": -0.13756914250812277,
+              "profit_factor": 0.4868239974209408,
+              "max_drawdown": 53.23673188493196,
+              "mean_loss": -1.0603815906944831,
+              "worst_loss": -1.0832993495409549,
+              "mean_win": 0.17466063319402922,
+              "design_effect": 1.0551167300048772,
+              "n_eff": 337,
+              "losers_eff": 86,
+              "hit_lower_bound": 0.7027371702616706,
+              "by_reason": {
+                "stop": 88,
+                "target": 266,
+                "time": 2
+              },
+              "by_side": {
+                "long": 212,
+                "short": 144,
+                "both": 0
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 841,
+              "hits": 657,
+              "hit_rate": 0.7812128418549346,
+              "expectancy": -0.05289469331853489,
+              "profit_factor": 0.7173763110403432,
+              "max_drawdown": 48.77763287933733,
+              "mean_loss": -0.8554245608171075,
+              "worst_loss": -1.0843546998856395,
+              "mean_win": 0.17186252984697098,
+              "design_effect": 1.3359374731461313,
+              "n_eff": 629,
+              "losers_eff": 138,
+              "hit_lower_bound": 0.7517135685432143,
+              "by_reason": {
+                "stop": 132,
+                "target": 649,
+                "time": 60
+              },
+              "by_side": {
+                "long": 841,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 644,
+              "hits": 470,
+              "hit_rate": 0.7298136645962733,
+              "expectancy": -0.1041069397473479,
+              "profit_factor": 0.5465773981529154,
+              "max_drawdown": 69.47457519829715,
+              "mean_loss": -0.8497929716001862,
+              "worst_loss": -1.0810163251292246,
+              "mean_win": 0.17195554864072415,
+              "design_effect": 1.4830622746074749,
+              "n_eff": 434,
+              "losers_eff": 118,
+              "hit_lower_bound": 0.6907317853726131,
+              "by_reason": {
+                "stop": 125,
+                "target": 463,
+                "time": 56
+              },
+              "by_side": {
+                "long": 0,
+                "short": 644,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 3,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2023": {
+                "n": 1083,
+                "expectancy": -0.07232848882028128
+              },
+              "2024": {
+                "n": 402,
+                "expectancy": -0.08258097732789865
+              }
+            },
+            "years_counted": 2,
+            "years_positive": 0
+          }
+        }
+      },
+      "training": {
+        "pass": false,
+        "reasons": [
+          "E[R] <= 0",
+          "p >= 0.1",
+          "hit rate < 95 %",
+          "lower bound < 90 %"
+        ]
+      },
+      "robustness": {
+        "year_stability_all": {
+          "pass": false,
+          "years": {
+            "2020": {
+              "n": 638,
+              "expectancy": -0.10672783494764468
+            },
+            "2021": {
+              "n": 358,
+              "expectancy": -0.18779420063762528
+            },
+            "2022": {
+              "n": 758,
+              "expectancy": -0.06392450436798762
+            },
+            "2023": {
+              "n": 1083,
+              "expectancy": -0.07232848882028128
+            },
+            "2024": {
+              "n": 402,
+              "expectancy": -0.08258097732789865
+            }
+          },
+          "years_counted": 5,
+          "years_positive": 0
+        },
+        "neighbours": {
+          "pass": false,
+          "neighbours": {
+            "S6-k2-t20": -0.07081533968941407,
+            "S6-k3-t15": -0.10852623227355147,
+            "S6-k3-t25": -0.10070771550407649
+          }
+        }
+      },
+      "validation": {
+        "pass": false,
+        "reasons": [
+          "not run: training failed"
+        ]
+      }
+    },
+    "S6-k3-t25": {
+      "k": 3.0,
+      "target_r": 0.25,
+      "counts": {
+        "BTCUSDT/train": {
+          "trades": 787,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_reason": {
+            "stop": 165,
+            "target": 538,
+            "time": 84
+          },
+          "stress_trades": 750
+        },
+        "BTCUSDT/validation": {
+          "trades": 523,
+          "skipped_cross": 46,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 78,
+            "target": 354,
+            "time": 91
+          },
+          "stress_trades": 502
+        },
+        "ETHUSDT/train": {
+          "trades": 628,
+          "skipped_cross": 30,
+          "no_reference": 121,
+          "by_reason": {
+            "stop": 133,
+            "target": 466,
+            "time": 29
+          },
+          "stress_trades": 611
+        },
+        "ETHUSDT/validation": {
+          "trades": 591,
+          "skipped_cross": 45,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 104,
+            "target": 415,
+            "time": 72
+          },
+          "stress_trades": 570
+        },
+        "SOLUSDT/train": {
+          "trades": 321,
+          "skipped_cross": 0,
+          "no_reference": 242,
+          "by_reason": {
+            "stop": 92,
+            "target": 227,
+            "time": 2
+          },
+          "stress_trades": 313
+        },
+        "SOLUSDT/validation": {
+          "trades": 355,
+          "skipped_cross": 0,
+          "no_reference": 0,
+          "by_reason": {
+            "stop": 90,
+            "target": 260,
+            "time": 5
+          },
+          "stress_trades": 346
+        }
+      },
+      "sections": {
+        "train": {
+          "summary": {
+            "n": 1736,
+            "hits": 1244,
+            "hit_rate": 0.716589861751152,
+            "expectancy": -0.10070771550407649,
+            "profit_factor": 0.6128194075219574,
+            "max_drawdown": 175.28311672449001,
+            "mean_loss": -0.9177698414358283,
+            "worst_loss": -1.0931142408790118,
+            "mean_win": 0.22243904169722728,
+            "design_effect": 1.2457561348406088,
+            "n_eff": 1393,
+            "losers_eff": 395,
+            "hit_lower_bound": 0.6958892224594309,
+            "by_reason": {
+              "stop": 390,
+              "target": 1231,
+              "time": 115
+            },
+            "by_side": {
+              "long": 982,
+              "short": 754,
+              "both": 0
+            }
+          },
+          "baseline_a": {
+            "p": 1.0,
+            "mean_expectancy": -0.049043304768314186,
+            "hit_rate_pool": 0.7330166666666666
+          },
+          "baseline_b_mirrored": {
+            "n": 1736,
+            "hits": 987,
+            "hit_rate": 0.5685483870967742,
+            "expectancy": -0.26585282117471576,
+            "profit_factor": 0.3233170746159678,
+            "max_drawdown": 463.0842098378478,
+            "mean_loss": -0.9105922679848243,
+            "worst_loss": -1.0885729338088692,
+            "mean_win": 0.2234175391705439,
+            "design_effect": 1.4496285946994423,
+            "n_eff": 1197,
+            "losers_eff": 517,
+            "hit_lower_bound": 0.5440140675068762,
+            "by_reason": {
+              "section_end": 1,
+              "stop": 558,
+              "target": 983,
+              "time": 194
+            },
+            "by_side": {
+              "long": 754,
+              "short": 982,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.05122744122761882,
+            "expectancy_protocol_costs": -0.12563647674337025
+          },
+          "stress_after_haircut": {
+            "n": 1590,
+            "hits": 1092,
+            "hit_rate": 0.6867924528301886,
+            "expectancy": -0.17563215894622733,
+            "profit_factor": 0.4330618622941486,
+            "max_drawdown": 492.5672029306828,
+            "mean_loss": -0.9890907689371138,
+            "worst_loss": -1.1741649462143897,
+            "mean_win": 0.19534072363203409,
+            "design_effect": 1.2431968680515146,
+            "n_eff": 1278,
+            "losers_eff": 401,
+            "hit_lower_bound": 0.664183406879502,
+            "by_reason": {
+              "section_end": 1,
+              "stop": 393,
+              "target": 1082,
+              "time": 114
+            },
+            "by_side": {
+              "long": 889,
+              "short": 701,
+              "both": 0
+            }
+          },
+          "protocol_costs": {
+            "n": 1736,
+            "hits": 1238,
+            "hit_rate": 0.7131336405529954,
+            "expectancy": -0.16908925268492556,
+            "profit_factor": 0.3771822496166207,
+            "max_drawdown": 293.8337699230794,
+            "mean_loss": -0.9464014592881537,
+            "worst_loss": -1.133114240879012,
+            "mean_win": 0.14359368664335195,
+            "design_effect": 1.2462783995399003,
+            "n_eff": 1392,
+            "losers_eff": 400,
+            "hit_lower_bound": 0.6920125475696601,
+            "by_reason": {
+              "stop": 390,
+              "target": 1231,
+              "time": 115
+            },
+            "by_side": {
+              "long": 982,
+              "short": 754,
+              "both": 0
+            }
+          },
+          "gap_after": {
+            "n": 1736,
+            "hits": 1244,
+            "hit_rate": 0.716589861751152,
+            "expectancy": -0.10070771550407649,
+            "profit_factor": 0.6128194075219574,
+            "max_drawdown": 175.28311672449001,
+            "mean_loss": -0.9177698414358283,
+            "worst_loss": -1.0931142408790118,
+            "mean_win": 0.22243904169722728,
+            "design_effect": 1.2457561348406088,
+            "n_eff": 1393,
+            "losers_eff": 395,
+            "hit_lower_bound": 0.6958892224594309,
+            "by_reason": {
+              "stop": 390,
+              "target": 1231,
+              "time": 115
+            },
+            "by_side": {
+              "long": 982,
+              "short": 754,
+              "both": 0
+            }
+          },
+          "bootstrap_90": [
+            -0.12511681605838093,
+            -0.077496573482584
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 787,
+              "hits": 550,
+              "hit_rate": 0.6988564167725541,
+              "expectancy": -0.09986363452070693,
+              "profit_factor": 0.6059900618879379,
+              "max_drawdown": 79.94371035734366,
+              "mean_loss": -0.8416404080697865,
+              "worst_loss": -1.0931142408790118,
+              "mean_win": 0.21977472062680548,
+              "design_effect": 1.0,
+              "n_eff": 787,
+              "losers_eff": 237,
+              "hit_lower_bound": 0.6707978593275961,
+              "by_reason": {
+                "stop": 165,
+                "target": 538,
+                "time": 84
+              },
+              "by_side": {
+                "long": 413,
+                "short": 374,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 628,
+              "hits": 467,
+              "hit_rate": 0.7436305732484076,
+              "expectancy": -0.07630063691997198,
+              "profit_factor": 0.6853912254452024,
+              "max_drawdown": 54.20479426245531,
+              "mean_loss": -0.9459999204059147,
+              "worst_loss": -1.089163237087616,
+              "mean_win": 0.22353145010623102,
+              "design_effect": 1.0,
+              "n_eff": 628,
+              "losers_eff": 161,
+              "hit_lower_bound": 0.7133566507297523,
+              "by_reason": {
+                "stop": 133,
+                "target": 466,
+                "time": 29
+              },
+              "by_side": {
+                "long": 367,
+                "short": 261,
+                "both": 0
+              }
+            },
+            "SOLUSDT": {
+              "n": 321,
+              "hits": 227,
+              "hit_rate": 0.7071651090342679,
+              "expectancy": -0.15052683414809354,
+              "profit_factor": 0.5156852428906232,
+              "max_drawdown": 48.997961666328436,
+              "mean_loss": -1.0613616817929352,
+              "worst_loss": -1.0851648608315358,
+              "mean_win": 0.22664706751981445,
+              "design_effect": 1.0111268170471923,
+              "n_eff": 317,
+              "losers_eff": 93,
+              "hit_lower_bound": 0.661650090680571,
+              "by_reason": {
+                "stop": 92,
+                "target": 227,
+                "time": 2
+              },
+              "by_side": {
+                "long": 202,
+                "short": 119,
+                "both": 0
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 982,
+              "hits": 722,
+              "hit_rate": 0.7352342158859471,
+              "expectancy": -0.08938915516689631,
+              "profit_factor": 0.6469820430242009,
+              "max_drawdown": 87.78015037389217,
+              "mean_loss": -0.9563705083695034,
+              "worst_loss": -1.085640470113018,
+              "mean_win": 0.22282019640190956,
+              "design_effect": 1.4048703759929542,
+              "n_eff": 698,
+              "losers_eff": 186,
+              "hit_lower_bound": 0.7045783241560725,
+              "by_reason": {
+                "stop": 218,
+                "target": 716,
+                "time": 48
+              },
+              "by_side": {
+                "long": 982,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 754,
+              "hits": 522,
+              "hit_rate": 0.6923076923076923,
+              "expectancy": -0.1154488643782289,
+              "profit_factor": 0.5709498963407701,
+              "max_drawdown": 87.5029663505975,
+              "mean_loss": -0.8745104733205028,
+              "worst_loss": -1.0931142408790118,
+              "mean_win": 0.22191185070722616,
+              "design_effect": 1.195871623065609,
+              "n_eff": 630,
+              "losers_eff": 195,
+              "hit_lower_bound": 0.6587638001192091,
+              "by_reason": {
+                "stop": 172,
+                "target": 515,
+                "time": 67
+              },
+              "by_side": {
+                "long": 0,
+                "short": 754,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 2,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2020": {
+                "n": 630,
+                "expectancy": -0.1011231244931087
+              },
+              "2021": {
+                "n": 356,
+                "expectancy": -0.1863816444513696
+              },
+              "2022": {
+                "n": 750,
+                "expectancy": -0.05969221367964095
+              }
+            },
+            "years_counted": 3,
+            "years_positive": 0
+          }
+        },
+        "validation": {
+          "summary": {
+            "n": 1469,
+            "hits": 1061,
+            "hit_rate": 0.7222600408441117,
+            "expectancy": -0.06627374347578023,
+            "profit_factor": 0.7043189798454841,
+            "max_drawdown": 103.60844603259369,
+            "mean_loss": -0.8070114325135495,
+            "worst_loss": -1.0843546998856395,
+            "mean_win": 0.21857166380735818,
+            "design_effect": 1.4195856270735825,
+            "n_eff": 1034,
+            "losers_eff": 288,
+            "hit_lower_bound": 0.6976053893700697,
+            "by_reason": {
+              "stop": 272,
+              "target": 1029,
+              "time": 168
+            },
+            "by_side": {
+              "long": 829,
+              "short": 640,
+              "both": 0
+            }
+          },
+          "baseline_a": {
+            "p": 0.9345065493450655,
+            "mean_expectancy": -0.04949263310128803,
+            "hit_rate_pool": 0.66315
+          },
+          "baseline_b_mirrored": {
+            "n": 1469,
+            "hits": 851,
+            "hit_rate": 0.5793056501021103,
+            "expectancy": -0.1996505658268497,
+            "profit_factor": 0.3919728099078345,
+            "max_drawdown": 293.7584583417578,
+            "mean_loss": -0.7805143018798835,
+            "worst_loss": -1.1173050743727897,
+            "mean_win": 0.22217527304597626,
+            "design_effect": 1.419976555914519,
+            "n_eff": 1034,
+            "losers_eff": 436,
+            "hit_lower_bound": 0.5524502710100356,
+            "by_reason": {
+              "stop": 343,
+              "target": 844,
+              "time": 282
+            },
+            "by_side": {
+              "long": 640,
+              "short": 829,
+              "both": 0
+            }
+          },
+          "baseline_c_unmatched": {
+            "expectancy": -0.049629884837507895,
+            "expectancy_protocol_costs": -0.11533962574604245
+          },
+          "stress_after_haircut": {
+            "n": 1347,
+            "hits": 918,
+            "hit_rate": 0.6815144766146993,
+            "expectancy": -0.13386819616012882,
+            "profit_factor": 0.49887667620908505,
+            "max_drawdown": 359.83250363124023,
+            "mean_loss": -0.8387704047348253,
+            "worst_loss": -1.1633054821104778,
+            "mean_win": 0.19554688823915747,
+            "design_effect": 1.3531527071145375,
+            "n_eff": 995,
+            "losers_eff": 318,
+            "hit_lower_bound": 0.6552077420629046,
+            "by_reason": {
+              "stop": 271,
+              "target": 911,
+              "time": 165
+            },
+            "by_side": {
+              "long": 768,
+              "short": 579,
+              "both": 0
+            }
+          },
+          "protocol_costs": {
+            "n": 1469,
+            "hits": 1049,
+            "hit_rate": 0.7140912185159973,
+            "expectancy": -0.13431008890694687,
+            "profit_factor": 0.4294814011443691,
+            "max_drawdown": 200.4883776404702,
+            "mean_loss": -0.8234008955897664,
+            "worst_loss": -1.1243546998856395,
+            "mean_win": 0.14158899479828113,
+            "design_effect": 1.3923166144855526,
+            "n_eff": 1055,
+            "losers_eff": 302,
+            "hit_lower_bound": 0.6899546965670299,
+            "by_reason": {
+              "stop": 272,
+              "target": 1029,
+              "time": 168
+            },
+            "by_side": {
+              "long": 829,
+              "short": 640,
+              "both": 0
+            }
+          },
+          "gap_after": {
+            "n": 1469,
+            "hits": 1061,
+            "hit_rate": 0.7222600408441117,
+            "expectancy": -0.06627374347578023,
+            "profit_factor": 0.7043189798454841,
+            "max_drawdown": 103.60844603259369,
+            "mean_loss": -0.8070114325135495,
+            "worst_loss": -1.0843546998856395,
+            "mean_win": 0.21857166380735818,
+            "design_effect": 1.4195856270735825,
+            "n_eff": 1034,
+            "losers_eff": 288,
+            "hit_lower_bound": 0.6976053893700697,
+            "by_reason": {
+              "stop": 272,
+              "target": 1029,
+              "time": 168
+            },
+            "by_side": {
+              "long": 829,
+              "short": 640,
+              "both": 0
+            }
+          },
+          "bootstrap_90": [
+            -0.09285720372282562,
+            -0.03981893018857939
+          ],
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 523,
+              "hits": 375,
+              "hit_rate": 0.7170172084130019,
+              "expectancy": -0.044166522199618564,
+              "profit_factor": 0.7763223655160931,
+              "max_drawdown": 26.806526180394343,
+              "mean_loss": -0.6977673038042067,
+              "worst_loss": -1.0843546998856395,
+              "mean_win": 0.21378791960699225,
+              "design_effect": 1.0901837615975654,
+              "n_eff": 479,
+              "losers_eff": 136,
+              "hit_lower_bound": 0.680206542413872,
+              "by_reason": {
+                "stop": 78,
+                "target": 354,
+                "time": 91
+              },
+              "by_side": {
+                "long": 273,
+                "short": 250,
+                "both": 0
+              }
+            },
+            "ETHUSDT": {
+              "n": 591,
+              "hits": 426,
+              "hit_rate": 0.7208121827411168,
+              "expectancy": -0.05811323625871133,
+              "profit_factor": 0.7310499427269016,
+              "max_drawdown": 37.580187787927336,
+              "mean_loss": -0.7739394010404921,
+              "worst_loss": -1.0810889982861944,
+              "mean_win": 0.2191433768609925,
+              "design_effect": 1.0,
+              "n_eff": 591,
+              "losers_eff": 165,
+              "hit_lower_bound": 0.6888330923800986,
+              "by_reason": {
+                "stop": 104,
+                "target": 415,
+                "time": 72
+              },
+              "by_side": {
+                "long": 345,
+                "short": 246,
+                "both": 0
+              }
+            },
+            "SOLUSDT": {
+              "n": 355,
+              "hits": 260,
+              "hit_rate": 0.7323943661971831,
+              "expectancy": -0.11242849415949933,
+              "profit_factor": 0.5939396905704893,
+              "max_drawdown": 46.02298191908799,
+              "mean_loss": -1.0346431824297306,
+              "worst_loss": -1.0832993495409549,
+              "mean_win": 0.2245345650161621,
+              "design_effect": 1.036599090323998,
+              "n_eff": 342,
+              "losers_eff": 92,
+              "hit_lower_bound": 0.6886850379884852,
+              "by_reason": {
+                "stop": 90,
+                "target": 260,
+                "time": 5
+              },
+              "by_side": {
+                "long": 211,
+                "short": 144,
+                "both": 0
+              }
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 829,
+              "hits": 615,
+              "hit_rate": 0.7418576598311218,
+              "expectancy": -0.04339960765911673,
+              "profit_factor": 0.7892485135545905,
+              "max_drawdown": 43.043222646222226,
+              "mean_loss": -0.7977299806442341,
+              "worst_loss": -1.0843546998856395,
+              "mean_win": 0.21908283107066392,
+              "design_effect": 1.301496612861949,
+              "n_eff": 636,
+              "losers_eff": 165,
+              "hit_lower_bound": 0.710393653755469,
+              "by_reason": {
+                "stop": 140,
+                "target": 599,
+                "time": 90
+              },
+              "by_side": {
+                "long": 829,
+                "short": 0,
+                "both": 0
+              }
+            },
+            "short": {
+              "n": 640,
+              "hits": 446,
+              "hit_rate": 0.696875,
+              "expectancy": -0.09590289752580218,
+              "profit_factor": 0.6128714647629946,
+              "max_drawdown": 64.5078768898225,
+              "mean_loss": -0.8172497350910418,
+              "worst_loss": -1.0810889982861944,
+              "mean_win": 0.21786680311916756,
+              "design_effect": 1.4511676071958772,
+              "n_eff": 441,
+              "losers_eff": 134,
+              "hit_lower_bound": 0.6580753167792658,
+              "by_reason": {
+                "stop": 132,
+                "target": 430,
+                "time": 78
+              },
+              "by_side": {
+                "long": 0,
+                "short": 640,
+                "both": 0
+              }
+            }
+          },
+          "bars_held_median": 4,
+          "year_stability": {
+            "pass": false,
+            "years": {
+              "2023": {
+                "n": 1070,
+                "expectancy": -0.061512521079681866
+              },
+              "2024": {
+                "n": 399,
+                "expectancy": -0.07904193386130717
+              }
+            },
+            "years_counted": 2,
+            "years_positive": 0
+          }
+        }
+      },
+      "training": {
+        "pass": false,
+        "reasons": [
+          "E[R] <= 0",
+          "p >= 0.1",
+          "hit rate < 95 %",
+          "lower bound < 90 %"
+        ]
+      },
+      "robustness": {
+        "year_stability_all": {
+          "pass": false,
+          "years": {
+            "2020": {
+              "n": 630,
+              "expectancy": -0.1011231244931087
+            },
+            "2021": {
+              "n": 356,
+              "expectancy": -0.1863816444513696
+            },
+            "2022": {
+              "n": 750,
+              "expectancy": -0.05969221367964095
+            },
+            "2023": {
+              "n": 1070,
+              "expectancy": -0.061512521079681866
+            },
+            "2024": {
+              "n": 399,
+              "expectancy": -0.07904193386130717
+            }
+          },
+          "years_counted": 5,
+          "years_positive": 0
+        },
+        "neighbours": {
+          "pass": false,
+          "neighbours": {
+            "S6-k2-t25": -0.06925622622653985,
+            "S6-k3-t20": -0.10477620116066234
+          }
+        }
+      },
+      "validation": {
+        "pass": false,
+        "reasons": [
+          "not run: training failed"
+        ]
+      }
+    }
+  },
+  "walk_forward": {
+    "pass": false,
+    "windows": 6,
+    "chosen": [
+      "S6-k2-t20",
+      "S6-k2-t25",
+      "S6-k2-t25",
+      "S6-k2-t25",
+      "S6-k2-t25",
+      "S6-k2-t25"
+    ],
+    "trades": 8081,
+    "expectancy": -0.04260116622878619,
+    "hit_rate": 0.750897166192303
+  },
+  "candidates": [],
+  "register_status": {
+    "S6-k2-t15": {
+      "status": "failed_train",
+      "note": "Training: E[R] <= 0; p >= 0.1; hit rate < 95 %; lower bound < 90 %"
+    },
+    "S6-k2-t20": {
+      "status": "failed_train",
+      "note": "Training: E[R] <= 0; p >= 0.1; hit rate < 95 %; lower bound < 90 %"
+    },
+    "S6-k2-t25": {
+      "status": "failed_train",
+      "note": "Training: E[R] <= 0; p >= 0.1; hit rate < 95 %; lower bound < 90 %"
+    },
+    "S6-k3-t15": {
+      "status": "failed_train",
+      "note": "Training: E[R] <= 0; p >= 0.1; hit rate < 95 %; lower bound < 90 %"
+    },
+    "S6-k3-t20": {
+      "status": "failed_train",
+      "note": "Training: E[R] <= 0; p >= 0.1; hit rate < 95 %; lower bound < 90 %"
+    },
+    "S6-k3-t25": {
+      "status": "failed_train",
+      "note": "Training: E[R] <= 0; p >= 0.1; hit rate < 95 %; lower bound < 90 %"
+    }
+  }
+}

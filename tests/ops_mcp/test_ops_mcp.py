@@ -138,8 +138,8 @@ def test_tool_health_uses_registry_probes():
 
 def test_research_register_matches_committed_chain():
     register = call(server(), "research_register")
-    assert register["chain_valid"] is True and register["m"] == 48
-    assert sum(register["by_status"].values()) == 48
+    assert register["chain_valid"] is True and register["m"] == 54
+    assert sum(register["by_status"].values()) == 54
 
 
 def test_research_register_detects_tampering(tmp_path: Path):
