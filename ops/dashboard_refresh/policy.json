@@ -11,6 +11,10 @@
   "generated_tracked_files": [
     "docs/TIM_V1_LIVE_STATUS.md"
   ],
+  "preserved_tracked_files": [
+    "docs/TIM_72H_ACCEPTANCE_REPORT.md"
+  ],
+  "preserved_note": "Results the live system writes into tracked files (the 72h acceptance monitor). They do not block a deploy; the agent backs them up, checks out the new commit and writes the live content back.",
   "busy_process_patterns": {
     "db_backup": "tim_db_backup.py|pg_dump"
   },
