@@ -66,6 +66,27 @@ In den geprüften Bereich verschiebt Uzi die Notiz in Obsidian.
 `pr_drafts` überspringt jeden PR, dessen URL schon irgendwo im Vault steht (auch im
 Master-Entwurf), und schreibt keinen Entwurf doppelt.
 
+## Automatisch aktuell (Mac)
+
+launchd `com.tim.obsidian-refresh` (`ops/launchd/com.tim.obsidian-refresh.plist`)
+läuft stündlich `python -m src.obsidian_vault.auto_refresh --repo ~/Documents/TIM/tim-graph`:
+
+1. Klon `tim-graph` per fast-forward auf `origin/platform-main`. Lokale Änderungen an
+   versionierten Dateien bleiben stehen, der Lauf meldet dann `pull: local_changes`.
+2. Vault: je Kalenderwoche eine Notiz `PRs JJJJ-Www` (gemergte PRs mit Link und
+   Wikilinks zu den berührten System-Notizen) und die Übersicht `TIM Stand automatisch`,
+   alle in `TIM/90 Berichte/Automatisch/` mit Tag `automatisch`. Eine Datei dort ohne
+   diesen Tag wird nie überschrieben. Ausnahme von der Inbox-Regel, weil die Notizen
+   nur Fakten aus Git wiedergeben und keine Freigabe brauchen.
+3. Graph-MCP-Datenbank: `refresh-all`, wenn platform-main sich bewegt hat, sonst nur
+   `refresh-docs`.
+4. Graphify-Ansicht: `graphify update`, Kopie von `graph.html` nach
+   `~/Documents/TIM/TIM Graph Ansicht/` (nur bei neuem Stand).
+5. Vault-Git: committet nur den Ordner `Automatisch`, andere Änderungen bleiben offen.
+
+Status: `~/Library/Application Support/TIM/obsidian-refresh/status.json`.
+Löst den alten Job `com.tim.graph-refresh` (täglich nur `refresh-docs`) ab.
+
 ## Dashboards
 
 `docs/obsidian/dashboards/TIM Cockpit.base` gehört nach `TIM/01 Home/` im Vault

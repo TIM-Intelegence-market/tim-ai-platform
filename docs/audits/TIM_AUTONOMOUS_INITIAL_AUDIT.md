@@ -91,9 +91,9 @@ Priorität: P0 Datenintegrität/Sicherheit/Kosten/Risiko, P1 Forschung/Multi-Coi
 
 | ID | Ziel | P | Abhängig von | Thread / Branch | Status | Nächster Schritt |
 |---|---|---|---|---|---|---|
-| A01 | `~/TIM-live` auf `platform-main` bringen (36 Commits) | P0 | #410 | „23.10. Dashboard-Aktualisierungs-Agent“ | IN_PROGRESS | Agent spielt ein; danach Health und Seiten prüfen |
-| A02 | Kosten-Schwelle 0,25 R live sehen | P0 | A01 | „24.10. ChatGPT-Befunde…“ | READY (gemergt #408) | Nach A01 `/journal` und `cost_check` prüfen |
-| A03 | Kosten-Schwelle prüfen (LONG/SHORT, Gebühren, Slippage, Rundung, fehlende Stops) + Kostenstudie mit Varianten | P0 | – | „24.10. ChatGPT-Befunde…“ | NOT_STARTED | Tests gegen `src/dashboard/plan_cost_check.py`, Varianten nur als Forschung |
+| A01 | `~/TIM-live` auf `platform-main` bringen (36 Commits) | P0 | #410 | „23.10. Dashboard-Aktualisierungs-Agent“ | DONE 26.10. (Dashboard-Agent hält `~/TIM-live` automatisch auf platform-main, Stand 26.10. 5cbb6b8, nächster Deploy wartet nur auf grünen CI-Test) | – |
+| A02 | Kosten-Schwelle 0,25 R live sehen | P0 | A01 | „24.10. ChatGPT-Befunde…“ | DONE 26.10. (live auf 5cbb6b8: `/api/plan-journal` cost_check/1, Schwelle 0,25 R, 25 Pläne, 21 NOT_TRADABLE_COST, 4 innerhalb, 0 unbekannt; Seite /journal zeigt Spalte „Kosten (Schätzung)“, nur Anzeige) | – |
+| A03 | Kosten-Schwelle prüfen (LONG/SHORT, Gebühren, Slippage, Rundung, fehlende Stops) + Kostenstudie mit Varianten | P0 | – | „24.10. ChatGPT-Befunde…“ | DONE | 26.10.: erledigt durch PR #413 (Studie K1): `tests/test_plan_cost_check_rules.py` prüft LONG/SHORT, unabhängige Formel, Rundung, Mindest-Stopabstand, ungültige und fehlende Preise, alle drei Plan-Regeln; Varianten 0,10–0,50 R und ohne Grenze in `src/research_lab/studies/cost_threshold.py` (nur Forschung, kein Filter). Lauf auf den Mac-Journalen steht aus; erwartet `INSUFFICIENT_CASES` (Journal seit 23.10.) |
 | A04 | Plan-Journal-Abnahme (#376) | P1 | A01 | – | IN_PROGRESS | Akzeptanzkriterien #376 gegen Live prüfen, dann Uzi |
 | A05 | Analyse-Steckbrief je Zeitrahmen (Paket 2) | P1 | – | „24.10. TIM-Chart-Pläne…“ | IN_PROGRESS | Thread baut; Vorschau 8769 bleibt bis Abnahme |
 | A06 | Abnahme `/neu` (5 Bereiche) und Umschalten (P4) | P1 | A01 | „24.10. Neues TIM-Dashboard“ | BLOCKED (Uzis Abnahme) | Abnahmebericht alt vs. neu, dann Entscheidung Uzi |
@@ -112,10 +112,11 @@ Priorität: P0 Datenintegrität/Sicherheit/Kosten/Risiko, P1 Forschung/Multi-Coi
 | A19 | Server-Issues #75–#78, #88, #332–#335 | P3 | Server zurück | – | RUHEND (Label `status:ruhend` seit 25.10.) | ruhen lassen bis Uzi den Server zurückholt |
 | A20 | M09-Issues #9, #13–#21 | P3 | – | – | RUHEND (Label `status:ruhend` seit 25.10.) | #13 abnehmen und schließen (Uzi) |
 | A21 | Hohe Mac-Last klären (Load 11) | P2 | – | – | NOT_STARTED | Prozessliste über 15 min messen |
-| A22 | Offsite-Backup und Restore-Probe (Gutachten K1) | P0 | Uzi (Hardware/Ziel) | „25.10. Alle 11 Sichten…“ (B1–B3) | BLOCKED (Uzi: Ziel) | Ziel klären (externe Platte oder zweiter Rechner), dann Skript und Restore-Probe |
-| A23 | DemoTrader-Altcode entfernen | P3 | Uzi (Go) | „25.10. Alle 11 Sichten…“ (C2) | READY | kleiner PR, nur mit Uzis Go; Umfang in `docs/PAKETINVENTAR.md` (`paper`) |
+| A22 | Offsite-Backup und Restore-Probe (Gutachten K1) | P0 | Uzi (Hardware/Ziel) | „25.10. Alle 11 Sichten…“ (B1–B3) | DONE 26.10. (Restore-Probe PASS 26,5 min; zweite Kopie außerhalb des Mac von Uzi bewusst nicht gewünscht, Restrisiko in `docs/ops/restore_und_rollout_t02_t14.md`) | – |
+| A23 | DemoTrader-Altcode entfernen | P3 | Claude | „25.10. Alle 11 Sichten…“ (C2) | DONE 26.10. | Archiv-PR nach Uzis „weiter“; Stand vorher im Zweig `archiv/unerreichte-pakete-2026-10-26` |
 | A24 | Qwen-Chat auf dem Mac | P3 | Uzi | „22.10. Qwen-Chat…“ | BLOCKED (Uzi) | Frage im Thread offen |
 | A25 | Hardware-Ausbau GPUs | P3 | Uzi | „21.10. Hardware-Ausbau…“ | BLOCKED (Uzi) | Entscheidung offen |
+| A26 | Monatlicher Doku-Check (README, CI.md, TIM_IN_10_MINUTEN, SYSTEMSTAND, LIVE_MAC: Stand-Datum und Inhalt) | P3 | Claude | „25.10. Alle 11 Sichten…“ (D3) | RECURRING, nächste Fälligkeit 25.11.2026 | jede Datei nennt ihr Stand-Datum; Abweichungen als kleiner PR |
 
 > **Nachtrag 25.10.2026 (Grün-Plan P1):** A17, A19, A20, A22, A23 nachgeführt; neue Pakete des Grün-Plans (H1, H2, T1, T3, F1, S1, P2) stehen in `docs/audits/GRUEN_PLAN_11_SICHTEN.md`, nicht doppelt hier.
 

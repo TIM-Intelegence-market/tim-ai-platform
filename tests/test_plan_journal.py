@@ -412,20 +412,30 @@ def test_cursor_only_progress_is_written_at_checkpoints_material_changes_at_once
         return {"timeframe": "1m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(seconds=59.999)).isoformat(),
                 "open": (low + high) / 2, "high": high, "low": low, "close": (low + high) / 2, "volume": 1.0}
 
+    series["1m"] = []
+    k = 0
+    if not entry.get("armed", True):
+        # A LONG limit above the close waits for the breakout: the arming 1m close is material, written at once.
+        series["1m"] = [minute(0, entry["entry"] * 1.0005, entry["entry"] * 1.001)]
+        armed = pj.update(path, series, now + timedelta(minutes=1))
+        assert armed["entries"][0]["armed"] is True and armed["entries"][0]["status"] == "OPEN"
+        count, k = count + 1, 1
+        assert len(pj.journal_log.read(events_path).events) == count
+        first = armed
     # Minutes without a fill: only evaluated_through moves; nothing is written, the view still advances.
-    series["1m"] = [minute(i, far * 0.999, far * 1.001) for i in range(5)]
-    step = pj.update(path, series, now + timedelta(minutes=6))
+    series["1m"] += [minute(k + i, far * 0.999, far * 1.001) for i in range(5)]
+    step = pj.update(path, series, now + timedelta(minutes=k + 6))
     assert len(pj.journal_log.read(events_path).events) == count
     assert step["entries"][0]["evaluated_through"] == first["entries"][0]["evaluated_through"]  # the fold is the view
     # A fill is material: written at once, together with the cursor it was derived with.
-    series["1m"].append(minute(5, min(entry["entry"], far), max(entry["entry"], far)))
-    filled = pj.update(path, series, now + timedelta(minutes=7))
+    series["1m"].append(minute(k + 5, min(entry["entry"], far), max(entry["entry"], far)))
+    filled = pj.update(path, series, now + timedelta(minutes=k + 7))
     events = pj.journal_log.read(events_path).events
     assert len(events) == count + 1 and events[-1]["kind"] == "PLAN_UPDATED"
     assert events[-1]["payload"]["changes"]["status"] == "FILLED" and "evaluated_through" in events[-1]["payload"]["changes"]
     assert filled["entries"][0]["status"] == "FILLED"
     # The next 30m close is a checkpoint: cursor-only progress since the fill is written then.
-    series["1m"] += [minute(i, far * 0.999, far * 1.001) for i in range(6, 31)]
+    series["1m"] += [minute(i, far * 0.999, far * 1.001) for i in range(k + 6, 31)]
     opened = now
     series["30m"].append({"timeframe": "30m", "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat(),
                           "open": far, "high": far * 1.001, "low": far * 0.999, "close": far, "volume": 10.0})
@@ -550,6 +560,64 @@ def test_counter_trend_plans_are_marked_and_counted_not_hidden() -> None:
     page = _plan_journal_page({"operational_health": {}}, journal)
     assert "gegen den Trend (TREND_DOWN)" in page and "Gegen den Trend" in page
     assert "gegen den Trend (" not in _plan_journal_page({"operational_health": {}}, _journal_with(_plan("LONG")))
+
+
+def test_plan_already_beyond_stop_or_invalidation_is_not_recorded() -> None:
+    # 25.10.2026: LONG retest 82.143 with stop 81.732 while BTC closed near 80.900.
+    long = _plan("LONG", entry=82_142.94, stop=81_732.23, invalid=82_060.88)
+    assert "Stops" in pj.invalid_on_arrival(long, 80_900.0)
+    assert "Ungültigkeitsmarke" in pj.invalid_on_arrival(long, 81_900.0)  # above the stop, below invalidation
+    assert pj.invalid_on_arrival(long, 82_500.0) is None
+    short = _plan("SHORT", entry=100.0, stop=101.0, invalid=100.5)
+    assert pj.invalid_on_arrival(short, 101.2) and pj.invalid_on_arrival(short, 100.7)
+    assert pj.invalid_on_arrival(short, 99.0) is None
+    kept, dropped = pj.drop_invalid_on_arrival([long, _plan("LONG", entry=80_500.0, stop=80_000.0, invalid=80_200.0)], 80_900.0)
+    assert [p["entry"] for p in kept] == [80_500.0] and kept[0]["close_at_record"] == 80_900.0 and len(dropped) == 1
+    assert pj.drop_invalid_on_arrival([long], None) == ([long], [])
+
+
+def test_update_drops_dead_plans_and_does_not_book_repeated_losses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    series = _series(start)
+    last_close = series["30m"][-1]["close"]
+    dead = {**_plan("LONG", entry=last_close + 1_500, stop=last_close + 1_000, invalid=last_close + 1_100), "grade": None}
+    monkeypatch.setattr(pj, "build_chart_model", lambda *a, **k: {"analysis": {}})
+    monkeypatch.setattr(pj, "plans_from_model", lambda model: [dict(dead)])
+    path = tmp_path / "journal.json"
+    now = start + timedelta(minutes=30 * 90)
+    journal = pj.update(path, series, now)
+    assert journal["entries"] == []
+    assert journal["structure_skips"] and any("jenseits des Stops" in r for r in journal["last_skips"])
+    # The next close with the same dead plan again records nothing and books no loss.
+    nxt = series["30m"][-1]
+    opened = datetime.fromisoformat(nxt["open_time"]) + timedelta(minutes=30)
+    series["30m"].append({**nxt, "open_time": opened.isoformat(), "close_time": (opened + timedelta(minutes=29, seconds=59.999)).isoformat()})
+    again = pj.update(path, series, now + timedelta(minutes=30))
+    assert again["entries"] == [] and pj.summary(again)["sum_net_r"] == 0.0
+    assert pj.rebuild(path)["entries"] == []
+
+
+def test_long_limit_above_the_close_waits_for_the_breakout_before_it_can_fill() -> None:
+    plan = {**_plan("LONG", entry=100.0, stop=99.0, invalid=99.2), "close_at_record": 99.6}
+    journal = _journal_with(plan)
+    assert journal["entries"][0]["armed"] is False
+    # Price trades through the entry from below without a close above it: no fill, not armed.
+    pj.evaluate(journal, [_m(0, 99.5, 100.2, close=99.8)], [], T0 + timedelta(minutes=2))
+    assert journal["entries"][0]["status"] == "OPEN" and journal["entries"][0]["armed"] is False
+    # A 1m close above the entry arms the limit; that candle itself does not fill.
+    pj.evaluate(journal, [_m(0, 99.5, 100.2, close=99.8), _m(1, 99.9, 100.6, close=100.4)], [], T0 + timedelta(minutes=3))
+    entry = journal["entries"][0]
+    assert entry["armed"] is True and entry["status"] == "OPEN" and entry["armed_at"]
+    # The retest fills at the limit.
+    pj.evaluate(journal, [_m(2, 99.95, 100.3, close=100.1)], [], T0 + timedelta(minutes=4))
+    assert journal["entries"][0]["status"] == "FILLED"
+
+
+def test_resting_limits_and_short_mirror_are_armed_or_wait_as_expected() -> None:
+    assert pj._arming({**_plan("LONG", entry=100.0), "close_at_record": 100.5}) == {"armed": True}  # buy limit below market
+    assert pj._arming({**_plan("SHORT", entry=100.0, stop=101.0, invalid=100.5), "close_at_record": 100.5}) == {"armed": False}
+    assert pj._arming({**_plan("SHORT", entry=100.0, stop=101.0, invalid=100.5), "close_at_record": 99.5}) == {"armed": True}
+    assert pj._arming(_plan("LONG")) == {}  # recorded without a close: legacy behaviour
 
 
 # Stop rule be_cost/1 (Uzi, 25.10.2026): stop to break-even plus costs after TP1 and after some time in the trade.

@@ -67,3 +67,7 @@ openmarket-samples/
 # Lokaler Zustand der Trading-Skills (.claude/skills, Journale und Berichte)
 /state/
 /reports/
+
+# Coverage-Zwischendateien (pytest-cov, xdist)
+.coverage.*
+coverage.xml

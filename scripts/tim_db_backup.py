@@ -5,6 +5,8 @@ backup        pg_dump -Fc into the backup directory, sha256 next to it, prune ol
               (by age and by count; before the dump only as far as free space requires).
 restore-test  restore the newest verified dump into a scratch database, compare row
               counts with the live database up to the dump's newest timestamp, drop it.
+mirror        copy the newest verified dump to a second volume (external SSD), verify the
+              copy's checksum, prune old copies there. Needs no database access.
 
 The password comes from TIM's secret provider and reaches the PostgreSQL tools only
 through PGPASSWORD, never through argv or a log line.
@@ -35,6 +37,9 @@ UTC = timezone.utc
 DUMP_PATTERN = re.compile(r"^tim_(\d{8}T\d{6}Z)\.dump$")
 REPORT_PATH = ROOT / "data/operational/restore_test.json"
 BACKUP_REPORT_PATH = ROOT / "data/operational/backup_last_run.json"
+MIRROR_REPORT_PATH = ROOT / "data/operational/backup_mirror.json"
+# Second copy: an external volume mounted on the Mac (APFS, encrypted), never the system disk.
+DEFAULT_MIRROR_TARGET = Path("/Volumes/TIM-Backup/live")
 # A new dump needs room for about the size of the previous one plus growth.
 SPACE_FACTOR = 1.25
 # Before a new dump exists, space pruning never goes below this many verified-or-not old dumps.
@@ -156,11 +161,11 @@ def free_bytes(directory: Path) -> int:
     return shutil.disk_usage(directory).free
 
 
-def remove_stale_temporaries(directory: Path, now: datetime) -> list[str]:
+def remove_stale_temporaries(directory: Path, now: datetime, prefix: str = ".tim_dump.") -> list[str]:
     """pg_dump runs killed hard (OOM, power loss) leave .tim_dump.* behind; the unit is a oneshot."""
     removed: list[str] = []
     for path in directory.iterdir():
-        if path.name.startswith(".tim_dump.") and path.is_file() and not path.is_symlink():
+        if path.name.startswith(prefix) and path.is_file() and not path.is_symlink():
             modified = datetime.fromtimestamp(path.stat().st_mtime, UTC)
             if now - modified > STALE_TEMPORARY:
                 path.unlink()
@@ -168,14 +173,16 @@ def remove_stale_temporaries(directory: Path, now: datetime) -> list[str]:
     return sorted(removed)
 
 
-def make_room(directory: Path) -> tuple[list[str], int, int]:
+def make_room(directory: Path, needed: int | None = None) -> tuple[list[str], int, int]:
     """Free space for the next dump by deleting the oldest dumps, keeping MIN_KEPT_BEFORE_DUMP.
 
     Returns (removed, needed, free). Raises BackupError before pg_dump starts when even that is
     not enough, so a full disk fails fast with a readable reason instead of an ENOSPC mid-dump.
+    Without ``needed`` the requirement is estimated from the newest dump in ``directory``.
     """
     existing = dumps(directory)
-    needed = int(existing[-1].stat().st_size * SPACE_FACTOR) if existing else 0
+    if needed is None:
+        needed = int(existing[-1].stat().st_size * SPACE_FACTOR) if existing else 0
     removed: list[str] = []
     free = free_bytes(directory)
     while free < needed and len(existing) > MIN_KEPT_BEFORE_DUMP:
@@ -349,8 +356,15 @@ def restore_test(
     scratch = scratch_name(parts["database"], scratch)
     space = restore_space_check(parts, storage_path, psql=tools["psql"])
     dump, checksum = verified_newest(directory)
-    run_pg([tools["dropdb"], "--if-exists", scratch], parts, timeout=300)
-    run_pg([tools["createdb"], scratch], parts, timeout=300)
+    # dropdb/createdb connect to a maintenance database first; pg_hba.conf on the Mac admits the
+    # TIM role only to its own database, so template1/postgres would be rejected (B3, 26.10.2026).
+    maintenance = ["--maintenance-db", parts["database"]]
+    try:
+        run_pg([tools["dropdb"], "--if-exists", *maintenance, scratch], parts, timeout=300)
+        run_pg([tools["createdb"], *maintenance, scratch], parts, timeout=300)
+    except BackupError as exc:
+        exc.evidence["restore_space"] = space
+        raise
     try:
         run_pg([tools["pg_restore"], "--no-owner", "--exit-on-error", "--dbname", scratch, str(dump)], parts, timeout=7200)
         restored = asyncio.run(count_rows(with_database(database_url, scratch), None))
@@ -359,7 +373,7 @@ def restore_test(
         exc.evidence["restore_space"] = space
         raise
     finally:
-        run_pg([tools["dropdb"], "--if-exists", scratch], parts, timeout=300)
+        run_pg([tools["dropdb"], "--if-exists", *maintenance, scratch], parts, timeout=300)
     result = compare(restored, live)
     return {
         **result,
@@ -373,9 +387,131 @@ def restore_test(
     }
 
 
+def device_of(path: Path) -> int:
+    return os.stat(path).st_dev
+
+
+def mount_point(path: Path) -> Path:
+    """Nearest existing ancestor of ``path`` that is a mount point."""
+    current = path
+    while not current.exists():
+        if current.parent == current:
+            break
+        current = current.parent
+    current = current.resolve()
+    while not os.path.ismount(current) and current.parent != current:
+        current = current.parent
+    return current
+
+
+def volume_check(target: Path, source: Path, *, diskutil: str | None = None) -> dict[str, Any]:
+    """Refuse a mirror target that lives on the system disk or on the volume holding the source dumps.
+
+    The nearest mount point of ``target`` must be a separate volume from ``/`` and from ``source``.
+    With ``diskutil`` (macOS) the volume must also report an external or removable device, so an
+    APFS volume carved out of the internal disk is rejected as well. Absent SSD: the mount point
+    collapses to /Volumes or / and the check fails before anything is written.
+    """
+    if not target.is_absolute():
+        raise BackupError("mirror target must be an absolute path")
+    mount = mount_point(target)
+    evidence: dict[str, Any] = {"target": str(target), "mount_point": str(mount), "external": None}
+    system_devices = {device_of(Path("/"))}
+    if source.exists():
+        system_devices.add(device_of(source))
+    if mount == Path("/") or device_of(mount) in system_devices:
+        raise BackupError(
+            f"mirror target {target} is not on a separate mounted volume (mount point {mount}); "
+            "attach the backup SSD first, nothing was written",
+            evidence={"volume": evidence},
+        )
+    if diskutil:
+        try:
+            result = subprocess.run([diskutil, "info", "-plist", str(mount)], capture_output=True, timeout=60, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise BackupError("diskutil could not run", evidence={"volume": evidence}) from exc
+        if result.returncode != 0:
+            raise BackupError(f"diskutil failed for {mount}", evidence={"volume": evidence})
+        import plistlib
+
+        try:
+            info = plistlib.loads(result.stdout)
+        except Exception as exc:  # noqa: BLE001 - any malformed plist is a hard stop
+            raise BackupError("diskutil output is not a plist", evidence={"volume": evidence}) from exc
+        external = bool(info.get("RemovableMediaOrExternalDevice")) or info.get("Internal") is False
+        evidence["external"] = external
+        evidence["encrypted"] = info.get("Encrypted")
+        evidence["file_system"] = info.get("FilesystemName") or info.get("FilesystemType")
+        if not external:
+            raise BackupError(f"mirror volume {mount} is an internal disk, not an external SSD",
+                              evidence={"volume": evidence})
+    return evidence
+
+
+def mirror(
+    directory: Path,
+    target: Path,
+    keep_days: int,
+    *,
+    keep_count: int | None = None,
+    diskutil: str | None = None,
+) -> dict[str, Any]:
+    """Copy the newest verified dump to ``target`` on a separate volume and verify the copy."""
+    started = utc_now()
+    volume = volume_check(target, directory, diskutil=diskutil)
+    dump, checksum = verified_newest(directory)
+    target.mkdir(parents=True, exist_ok=True, mode=0o750)
+    stale = remove_stale_temporaries(target, started, prefix=".tim_mirror.")
+    copy = target / dump.name
+    sidecar = copy.with_name(copy.name + ".sha256")
+    copied = False
+    made_room: list[str] = []
+    needed = 0
+    free = free_bytes(target)
+    if copy.is_file() and sidecar.is_file() and sha256_file(copy) == checksum:
+        pass  # already mirrored and intact
+    else:
+        if copy.exists():
+            remove_dump(copy)
+        needed = int(dump.stat().st_size * SPACE_FACTOR)
+        made_room, needed, free = make_room(target, needed)
+        descriptor, temporary = tempfile.mkstemp(prefix=".tim_mirror.", dir=target)
+        os.close(descriptor)
+        try:
+            shutil.copyfile(dump, temporary)
+            os.chmod(temporary, 0o640)
+            actual = sha256_file(Path(temporary))
+            if actual != checksum:
+                raise BackupError(f"mirror copy of {dump.name} does not match the source checksum")
+            os.replace(temporary, copy)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+        sidecar.write_text(f"{checksum}  {copy.name}\n", encoding="utf-8")
+        copied = True
+    return {
+        "status": "PASS",
+        "command": "mirror",
+        "started_at": started.isoformat(),
+        "completed_at": utc_now().isoformat(),
+        "source": str(dump),
+        "mirrored": str(copy),
+        "bytes": copy.stat().st_size,
+        "sha256": checksum,
+        "copied": copied,
+        "pruned": sorted(made_room + prune(target, keep_days, utc_now(), keep_count)),
+        "pruned_for_space": made_room,
+        "removed_temporaries": stale,
+        "space_needed_bytes": needed,
+        "space_free_before_bytes": free,
+        "volume": volume,
+        "trading_actions": 0,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="TIM PostgreSQL backup and restore test (OBSERVE only)")
-    parser.add_argument("command", choices=("backup", "restore-test"))
+    parser.add_argument("command", choices=("backup", "restore-test", "mirror"))
     parser.add_argument("--dir", type=Path, default=default_backup_directory())
     parser.add_argument("--keep-days", type=int, default=14)
     parser.add_argument("--keep-count", type=int, default=None,
@@ -383,20 +519,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scratch-db", default="tim_restore_test")
     parser.add_argument("--restore-storage-path", type=Path,
                         help="operator-confirmed local filesystem holding PostgreSQL data, indexes and temp files")
+    parser.add_argument("--target", type=Path, default=DEFAULT_MIRROR_TARGET,
+                        help="mirror: folder on the external backup volume (default /Volumes/TIM-Backup/live)")
+    parser.add_argument("--no-diskutil", action="store_true",
+                        help="mirror: skip the external-device check via diskutil (tests, Linux)")
     args = parser.parse_args(argv)
     if args.keep_count is not None and args.keep_count < 1:
         parser.error("--keep-count must be at least 1")
-    report_path = BACKUP_REPORT_PATH if args.command == "backup" else REPORT_PATH
+    report_path = {"backup": BACKUP_REPORT_PATH, "restore-test": REPORT_PATH, "mirror": MIRROR_REPORT_PATH}[args.command]
     try:
-        from config.settings import settings
-
-        database_url = settings.database_url
-        parts = connection_parts(database_url)
-        if args.command == "backup":
-            payload = backup(args.dir, args.keep_days, parts, keep_count=args.keep_count)
+        if args.command == "mirror":
+            # No database access: the mirror reads finished dumps only and needs no secret.
+            diskutil = None if args.no_diskutil or sys.platform != "darwin" else shutil.which("diskutil")
+            payload = mirror(args.dir, args.target, args.keep_days, keep_count=args.keep_count, diskutil=diskutil)
         else:
-            payload = restore_test(args.dir, args.scratch_db, database_url, parts,
-                                   storage_path=args.restore_storage_path)
+            from config.settings import settings
+
+            database_url = settings.database_url
+            parts = connection_parts(database_url)
+            if args.command == "backup":
+                payload = backup(args.dir, args.keep_days, parts, keep_count=args.keep_count)
+            else:
+                payload = restore_test(args.dir, args.scratch_db, database_url, parts,
+                                       storage_path=args.restore_storage_path)
     except Exception as exc:  # fail closed and leave evidence, never a secret
         payload = {"status": "FAIL", "command": args.command, "reason": f"{type(exc).__name__}: {exc}"[:500],
                    "completed_at": utc_now().isoformat(), "trading_actions": 0}

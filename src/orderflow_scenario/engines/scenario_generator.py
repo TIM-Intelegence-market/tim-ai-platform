@@ -140,9 +140,21 @@ class ScenarioGenerator:
         delta_bearish = orderflow.aggressive_side == "SELLERS"
         absorption_sellers = orderflow.absorption_hypothesis == "PASSIVE_SELLERS"
         absorption_buyers = orderflow.absorption_hypothesis == "PASSIVE_BUYERS"
+        buyers_exhausted = orderflow.exhaustion_hypothesis == "BUYERS_EXHAUSTED"
+        sellers_exhausted = orderflow.exhaustion_hypothesis == "SELLERS_EXHAUSTED"
+        # Footprint: three or more stacked imbalances are aggression with continuation bias.
+        stacked_buy = (orderflow.footprint or {}).get("stacked_buy", 0) >= 3
+        stacked_sell = (orderflow.footprint or {}).get("stacked_sell", 0) >= 3
+
+        # A retest of the breakout edge needs price near or above that edge. Far below it there is
+        # no breakout to retest (25.10.2026: 30m LONG retest at 82.143 with BTC at 80.810, 1W LONG
+        # retest at 126.326 with BTC at 82.116). "Near" is the 1 % window used for external levels;
+        # a reclaim far below the low keeps the lower bound of near_range_low.
+        below_breakout_edge = range_high is not None and last is not None and last < range_high * (1 - BREAKOUT_EDGE_WINDOW)
+        below_reclaim_level = range_low is not None and last is not None and last < range_low * Decimal("0.98")
 
         # --- Scenario A: Breakout / Acceptance / Continuation ---
-        breakout_interest = primary in {MarketStateKind.BREAKOUT_ATTEMPT, MarketStateKind.ACCEPTANCE_ABOVE_VALUE, MarketStateKind.TREND_UP} or near_range_high
+        breakout_interest = (primary in {MarketStateKind.BREAKOUT_ATTEMPT, MarketStateKind.ACCEPTANCE_ABOVE_VALUE, MarketStateKind.TREND_UP} or near_range_high) and not below_breakout_edge
         if breakout_interest:
             trigger = range_high or (last or Decimal("0"))
             entry_low = trigger * Decimal("1.001")
@@ -152,9 +164,17 @@ class ScenarioGenerator:
                 evidence_for = evidence_for + ["delta_constructive"]
             if absorption_sellers:
                 evidence_for = evidence_for + ["absorption_hypothesis_passive_sellers"]
+            if sellers_exhausted:
+                evidence_for = evidence_for + ["exhaustion_hypothesis_sellers_exhausted"]
+            if stacked_buy:
+                evidence_for = evidence_for + ["footprint_stacked_buy_imbalances"]
             evidence_against = []
             if absorption_buyers:
                 evidence_against = evidence_against + ["absorption_hypothesis_passive_buyers"]
+            if buyers_exhausted:
+                evidence_against = evidence_against + ["exhaustion_hypothesis_buyers_exhausted"]
+            if stacked_sell:
+                evidence_against = evidence_against + ["footprint_stacked_sell_imbalances"]
             if delta_bearish:
                 evidence_against = evidence_against + ["delta_bearish"]
             scenarios.append(
@@ -183,7 +203,7 @@ class ScenarioGenerator:
             )
 
         # --- Scenario B: Liquidity sweep / reversal ---
-        sweep_interest = primary in {MarketStateKind.LIQUIDITY_SWEEP_LOW, MarketStateKind.REJECTION_BELOW_VALUE, MarketStateKind.FAILED_AUCTION_LOW} or near_range_low
+        sweep_interest = (primary in {MarketStateKind.LIQUIDITY_SWEEP_LOW, MarketStateKind.REJECTION_BELOW_VALUE, MarketStateKind.FAILED_AUCTION_LOW} or near_range_low) and not below_reclaim_level
         if sweep_interest:
             trigger = range_low or (last or Decimal("0"))
             entry_low = trigger * Decimal("1.001") if trigger else None
@@ -193,7 +213,11 @@ class ScenarioGenerator:
                 evidence_for = evidence_for + ["delta_strongly_negative_without_follow_through"]
             if absorption_buyers:
                 evidence_for = evidence_for + ["absorption_hypothesis_passive_buyers"]
+            if sellers_exhausted:
+                evidence_for = evidence_for + ["exhaustion_hypothesis_sellers_exhausted"]
             evidence_against = []
+            if stacked_sell:
+                evidence_against = evidence_against + ["footprint_stacked_sell_imbalances"]
             if orderflow.open_interest_interpretation == "short_accumulation":
                 evidence_against = evidence_against + ["short_accumulation_conflicts_reversal"]
             scenarios.append(
@@ -211,7 +235,7 @@ class ScenarioGenerator:
                         "reclaim_holds",
                         "invalidatable_stop_available",
                     ),
-                    optional=("delta_negative_divergence", "buyer_absorption", "open_interest_falling", "long_liquidations_ending", "cvd_stabilizing"),
+                    optional=("delta_negative_divergence", "buyer_absorption", "seller_exhaustion", "open_interest_falling", "long_liquidations_ending", "cvd_stabilizing"),
                     invalidation=("acceptance_below_level", "value_migrating_down", "open_interest_rising_with_price_fall", "reclaim_fails"),
                     trigger_level=trigger,
                     entry_low=entry_low,
@@ -232,7 +256,11 @@ class ScenarioGenerator:
                 evidence_for = evidence_for + ["positive_delta_limited_progress"]
             if absorption_sellers:
                 evidence_for = evidence_for + ["absorption_hypothesis_passive_sellers"]
+            if buyers_exhausted:
+                evidence_for = evidence_for + ["exhaustion_hypothesis_buyers_exhausted"]
             evidence_against = []
+            if stacked_buy:
+                evidence_against = evidence_against + ["footprint_stacked_buy_imbalances"]
             if orderflow.open_interest_interpretation == "long_accumulation":
                 evidence_against = evidence_against + ["long_accumulation_conflicts_rejection"]
             scenarios.append(
@@ -250,7 +278,7 @@ class ScenarioGenerator:
                         "retest_from_below_fails",
                         "valid_invalidation_above",
                     ),
-                    optional=("positive_delta_without_progress", "seller_absorption", "open_interest_rising_into_rejection", "buyers_trapped"),
+                    optional=("positive_delta_without_progress", "seller_absorption", "buyer_exhaustion", "open_interest_rising_into_rejection", "buyers_trapped"),
                     invalidation=("acceptance_above_level", "value_migrating_up", "constructive_breakout", "sellers_cannot_create_retreat"),
                     trigger_level=trigger,
                     entry_low=entry_low,
@@ -316,6 +344,8 @@ class ScenarioGenerator:
         return tuple(scenarios)
 
 
+# A breakout retest (scenario A) is proposed only while price is within 1 % below the range high.
+BREAKOUT_EDGE_WINDOW = Decimal("0.01")
 # A Broncx level becomes a scenario only within 1 % of price, and not when TIM already has a trigger within 0.2 %.
 EXTERNAL_LEVEL_WINDOW = Decimal("0.01")
 EXTERNAL_LEVEL_DUPLICATE = Decimal("0.002")

@@ -27,6 +27,12 @@ nur `httpx`/Standardbibliothek: zu verifizieren). Die Umstellung der CI auf die 
 
 ## 3. Abdeckung nach Bereichen (statt einer Zahl über `src/`)
 
+**Gemessen 26.10.2026 (Grün-Plan T3), Stand `platform-main` 2fbbe78, Cloud, Python 3.13.17, beide Suite-Teile
+(6106 + 245 Tests, `--cov=src`):** Zeilenabdeckung `src/` **89,7 %** (42 827 von 47 762 Zeilen). Niedrigste
+Pakete: `orderflow_scenario.execution` 0 %, `control_portal` 59,9 %, `agent_infra` 72,2 %, `research_intelligence`
+74,8 %, `llm` 75,5 %, `operational` 78,1 %. Die CI schreibt dieselbe Zahl je Lauf in die Lauf-Zusammenfassung
+(Schritt „Coverage summary“); die Bereichswerte unten bleiben die Messlatte, die Gesamtzahl ist nur die Hausnummer.
+
 | Bereich | Pakete | Zielwert | Warum |
 |---|---|---|---|
 | Ingestion/Persistenz | `data_ingestion`, `database`, `models` | ≥ 90 % Zeilen, Mutationstests auf Cursor, Outbox, Lückenauflösung | hier entsteht die Evidenz |

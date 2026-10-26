@@ -44,6 +44,7 @@ from src.market_data.providers.openmarket.context_schemas import (
 )
 from src.market_data.providers.openmarket.schemas import INTERVAL_SECONDS, ns_to_datetime, parse_candles
 
+from ..footprint import footprint_from_levels
 from ..positioning import PositioningInputs, ProfileLevels
 from .base import AdapterInput
 
@@ -212,15 +213,19 @@ class OpenMarketAdapter:
         else:
             missing.append("total_volume")
 
-        aggressive_buy = aggressive_sell = net_delta = None
+        aggressive_buy = aggressive_sell = net_delta = delta_series = None
         if self.include_per_side:
-            aggressive_buy, aggressive_sell, net_delta = self._per_side(request, observed_at, missing, notes)
+            aggressive_buy, aggressive_sell, net_delta, delta_series = self._per_side(request, observed_at, missing, notes)
         else:
             missing.append("aggressive_volume:per_side_not_requested")
 
-        positioning = profile = None
+        positioning = profile = footprint = None
         if self.context_types:
-            positioning, profile = self._context(request, observed_at, missing, notes)
+            opens_closes = {
+                datetime.fromisoformat(candle["open_time"]): (Decimal(str(candle["open"])), Decimal(str(candle["close"])))
+                for candle in candles
+            }
+            positioning, profile, footprint = self._context(request, observed_at, missing, notes, opens_closes)
             missing.append(f"tpo:{TPO}_not_requested_provider_returned_http_500_on_2026-10-21")
             missing.append("orderbook_depth:no_documented_openmarket_type")
         else:
@@ -240,6 +245,8 @@ class OpenMarketAdapter:
             aggressive_buy_volume=aggressive_buy,
             aggressive_sell_volume=aggressive_sell,
             total_volume=total_volume,
+            delta_series=delta_series,
+            footprint=footprint,
             structured=True,
             screenshot_confidence=None,
             missing_fields=tuple(sorted(set(missing))),
@@ -272,10 +279,10 @@ class OpenMarketAdapter:
             notes.append(f"schema:{data_type}_unexpected_fields={','.join(sorted(parsed.unexpected_fields))}")
         return points, parsed.sides
 
-    def _context(self, request: OpenMarketRequest, observed_at: datetime, missing: list[str], notes: list[str]):
+    def _context(self, request: OpenMarketRequest, observed_at: datetime, missing: list[str], notes: list[str], opens_closes=None):
         funding = long_liq = short_liq = None
         open_interest: tuple = ()
-        profile = None
+        profile = footprint = None
         for data_type in self.context_types:
             if data_type in DERIVATIVES_ONLY and request.market_type != "FUTURES":
                 missing.append(f"context:{data_type}_futures_only")
@@ -328,6 +335,21 @@ class OpenMarketAdapter:
                         f"value_area={summary.value_area_fraction} rows={summary.rows} intervals={summary.intervals} "
                         f"buy={summary.buy_volume} sell={summary.sell_volume}"
                     )
+                    # Per-interval rows are a footprint (bid = Sell, ask = Buy) only once the
+                    # side semantics are proven; until then the profile stays levels-only.
+                    if self.side_is_aggressor:
+                        footprint = footprint_from_levels(
+                            (
+                                (ns_to_datetime(point.timestamp_ns), [(row.price, row.sell_volume, row.buy_volume) for row in point.rows])
+                                for point in points
+                            ),
+                            source="openmarket_volume_profile",
+                            opens_closes=opens_closes,
+                        )
+                        if footprint is not None:
+                            notes.append(f"derived:footprint=VOLUME_PROFILE_AGG_rows bid=Sell ask=Buy bars={len(footprint.bars)}")
+                    else:
+                        missing.append("footprint:VOLUME_PROFILE_AGG_side_semantics_unverified")
         try:
             positioning = PositioningInputs(
                 funding_rate=funding,
@@ -341,7 +363,7 @@ class OpenMarketAdapter:
             positioning = None
         if positioning is not None and positioning.is_empty():
             positioning = None
-        return positioning, profile
+        return positioning, profile, footprint
 
     def _per_side(self, request: OpenMarketRequest, observed_at: datetime, missing: list[str], notes: list[str]):
         data_type = "TRADE_AGG"
@@ -361,7 +383,7 @@ class OpenMarketAdapter:
             if error.kind in {OpenMarketErrorKind.NO_SECRET, OpenMarketErrorKind.INVALID_SECRET, OpenMarketErrorKind.NOT_CONFIGURED}:
                 raise
             missing.append(f"aggressive_volume:TRADE_AGG_unavailable:{error.kind.value}")
-            return None, None, None
+            return None, None, None, None
         points, report = dedupe_candles(
             parsed.points, exchange=request.exchange, raw_symbol=request.raw_symbol,
             interval=request.interval, data_type=data_type,
@@ -380,7 +402,7 @@ class OpenMarketAdapter:
         volumes = side_volumes(points)
         if volumes is None:
             missing.append("aggressive_volume:no_paired_BUY_SELL_intervals")
-            return None, None, None
+            return None, None, None, None
         notes.append(
             f"per_side:buy_volume={volumes.buy_volume} sell_volume={volumes.sell_volume} "
             f"paired_intervals={volumes.paired_intervals} unpaired_intervals={volumes.unpaired_intervals}"
@@ -389,6 +411,11 @@ class OpenMarketAdapter:
             missing.append("aggressive_volume:TRADE_AGG_side_semantics_unverified")
             missing.append("net_delta")
             notes.append("verify:delta_definition=false")
-            return None, None, None
+            return None, None, None, None
         notes.append("derived:net_delta=true derivation=buy_volume_minus_sell_volume source=TRADE_AGG units=as_reported_by_provider")
-        return volumes.buy_volume, volumes.sell_volume, volumes.buy_volume - volumes.sell_volume
+        # Delta per closed interval, oldest first, paired intervals only (never zero-filled).
+        buy = {p.timestamp_ns: p.volume for p in points if p.side == "BUY"}
+        sell = {p.timestamp_ns: p.volume for p in points if p.side == "SELL"}
+        delta_series = tuple(buy[t] - sell[t] for t in sorted(buy.keys() & sell.keys()))
+        notes.append(f"derived:delta_series=TRADE_AGG_buy_minus_sell_per_interval intervals={len(delta_series)}")
+        return volumes.buy_volume, volumes.sell_volume, volumes.buy_volume - volumes.sell_volume, delta_series

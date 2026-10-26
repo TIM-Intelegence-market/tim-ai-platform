@@ -10,28 +10,31 @@ Stand 22.10.2026. Alles hier ist Vorbereitung. Keine Kopie, kein Restore, kein R
 |---|---|---|
 | Täglicher Dump | 03:15 Ortszeit nach `~/Library/Application Support/TIM/backups/live`, 3 Stände [N]; PR #356 vereinheitlicht den Pfad für Health und Backup (offen) | `ls -la "$HOME/Library/Application Support/TIM/backups/live"` |
 | Ordner `~/TIM-Backups` | existiert; Inhalt unbekannt | `ls -la ~/TIM-Backups` |
-| Zweite Kopie außerhalb der internen SSD | **keine** bekannt | – |
-| Restore geübt | **nein** (Server-Restore 20.10. war ein anderer Stand, `docs/RESTORE_STORAGE_2026-10-20.md`) | – |
+| Zweite Kopie außerhalb der internen SSD | **keine, bewusst** (Uzi 26.10.2026 13:46: „Nur interne Platte, Risiko annehmen“). Restrisiko: Plattendefekt, Diebstahl oder Verschlüsselung des Mac trifft Datenbank und Dumps zugleich; die Daten (Marktdaten, Papier-Journal) wären nur aus Binance-Archiven und Neuberechnung wiederherstellbar. Agent `com.tim.db-backup-mirror` liegt bereit für eine spätere SSD | – |
+| Restore geübt | **ja, PASS am 26.10.2026** (Uzi im Terminal, `tim_db_backup.py restore-test`): Dump `tim_20261026T021505Z.dump` (sha256 8aad01c6…9777c) in Scratch-DB `tim_restore_test`, 13:18:57 bis 13:45:30 Ortszeit (26,5 min). `agg_trades` 77.140.898 = 77.140.898 live bis Dump-Zeitpunkt; `candles` 178.300 gegen 178.302 live, Differenz 2 = nach dem Dump nachgetragene Kerzen (`backfilled_after_dump`). Scratch-DB gelöscht, Health durchgehend GREEN. Voraussetzungen auf dem Mac: `CREATEDB` für `tim`, pg_hba-Zeile `host tim_restore_test tim 127.0.0.1/32 scram-sha-256` **vor** dem include der Härtung (`tim-observe-hba.conf` weist sonst alles außer tim→tim ab) | `b3_restore_test.json` im Worktree s2-zaehllauf |
 | Ziele für Datenverlust/Wiederanlauf | nicht festgelegt | Betreiber (Uzi) legt vor dem Restore fest; Vorschlag: höchstens 24 h Datenverlust, Wiederanlauf unter 4 h |
 
 ### 2. Zweite Kopie (störungsarm, nur abgeschlossene Dumps)
 
-Voraussetzungen: externe SSD am Mac, APFS verschlüsselt (Passwort im Schlüsselbund), Zielordner
-`/Volumes/TIM-Backup/live/`. Platz: mindestens das Fünffache eines Dumps.
+Stand 26.10.2026: automatisiert als LaunchAgent `com.tim.db-backup-mirror` (`ops/launchd/`), Anleitung in
+`ops/macos/LIVE_MAC.md`. Voraussetzung: externe SSD am Mac, APFS verschlüsselt (Passwort im Schlüsselbund), Name
+`TIM-Backup`, Zielordner `/Volumes/TIM-Backup/live/`. Platz: mindestens das Fünffache eines Dumps.
+
+Der Agent kopiert täglich um 05:15 (zwei Stunden nach dem Dump) den neuesten Dump mit gültiger Prüfsumme, prüft die
+Kopie gegen dieselbe Prüfsumme, hält 14 Stände und schreibt `data/operational/backup_mirror.json`. Ohne eingehängte
+SSD oder auf der internen Platte bricht er vor dem Schreiben ab (`FAIL`, Grund im Bericht). Läuft der Dump um 05:15
+noch, wird der Stand vom Vortag kopiert; der Bericht nennt die Quelle.
+
+Lesende Prüfung von Hand:
 
 ```sh
-# nur lesend prüfen, bevor kopiert wird
-du -sh "$HOME/Library/Application Support/TIM/backups/live"/*
-df -h /Volumes/TIM-Backup
-# Kopie eines fertigen Dumps (ältester zuerst, einzeln, mit Prüfsumme; nie die Datei, die gerade geschrieben wird)
-SRC="$HOME/Library/Application Support/TIM/backups/live/<dump>"
-nice -n 19 rsync -a --bwlimit=20000 "$SRC" /Volumes/TIM-Backup/live/
-shasum -a 256 "$SRC" "/Volumes/TIM-Backup/live/$(basename "$SRC")"
+ls -la /Volumes/TIM-Backup/live
+cat ~/TIM-live/data/operational/backup_mirror.json
 ```
 
-Lastgrenze: `--bwlimit` 20 MB/s, `nice 19`, nur nach 03:30 Ortszeit, abbrechen wenn `server_health.json` Frische
-verliert. Wöchentlich eine Kopie außer Haus (zweite SSD oder verschlüsselter Cloud-Speicher). Wenn das nicht
-störungsarm geht, wird das Restrisiko hier eingetragen und nicht als „gesichert“ ausgegeben.
+Lastgrenze: `Nice 5`, `LowPriorityIO`, nur nach 03:30 Ortszeit. Wöchentlich eine Kopie außer Haus (zweite SSD oder
+verschlüsselter Cloud-Speicher) bleibt Handarbeit; solange das nicht geschieht, steht hier das Restrisiko „ein
+Standort“ und nicht „gesichert“.
 
 ### 3. Restore (Zone B, nicht auf dem Kampagnen-Mac)
 
