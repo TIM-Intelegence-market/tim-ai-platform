@@ -93,7 +93,7 @@ plus Kosten). Code: `src/research_lab/hypotheses/s7.py` (unverändert).
 6. Unterschiedliche Datenanfänge: Jedes Instrument zählt Signale erst ab seinem Zählbeginn (SOL ab 2020-10), vorher
    dient es nur dem Indikator-Aufwärmen; eine Position eines früher startenden Instruments sperrt die später startenden.
 7. Ohne bindende Grenze sind die Ergebnisse je Instrument identisch mit `run_backtest` (Test); die Einzel-Engine liefert
-   nach dem Umbau bit-gleich dieselben Trades wie vor dem Umbau (Golden-Fixture `tests/fixtures/research_lab/engine_golden_7cefb19.json`,
+   nach dem Umbau dieselben Trades wie vor dem Umbau, bis auf die letzte Gleitkommastelle der Plattform (Golden-Fixture `tests/fixtures/research_lab/engine_golden_7cefb19.json`,
    S7-Regression auf dem Mac mit identischer Trades-Datei, SHA-256 8106fd37…).
 
 ### 4.3 Varianten
