@@ -46,6 +46,25 @@ def simulate_trade(
     funding_times: list[int],
 ) -> float | None:
     """Net R of one trade entered at the open after signal_index, or None if no entry is possible."""
+    detail = simulate_trade_detail(bars, signal_index, side, risk, target_r, max_bars, interval_ms, costs, funding, funding_times)
+    return None if detail is None else detail[0]
+
+
+def simulate_trade_detail(
+    bars: Sequence[Kline],
+    signal_index: int,
+    side: int,
+    risk: float,
+    target_r: float | None,
+    max_bars: int,
+    interval_ms: int,
+    costs: CostModel,
+    funding: Sequence[FundingRate],
+    funding_times: list[int],
+) -> tuple[float, str, int] | None:
+    """(net R, exit reason, bars held) of one trade entered at the open after signal_index, or None.
+
+    Reasons follow the engine: stop, stop_gap, target, target_gap, time, gap, end."""
     first = signal_index + 1
     if first >= len(bars) or bars[first].open_time - bars[signal_index].open_time != interval_ms or risk <= 0:
         return None
@@ -53,11 +72,13 @@ def simulate_trade(
     stop = entry - side * risk
     target = None if target_r is None else entry + side * target_r * risk
     exit_raw = slip = moment = None
+    reason = "end"
     t = first
     while t < len(bars):
         bar = bars[t]
         if t > first and bar.open_time - bars[t - 1].open_time != interval_ms:
-            exit_raw, slip, moment = bars[t - 1].close, costs.slippage, bars[t - 1].close_time + 1
+            exit_raw, slip, moment, reason = bars[t - 1].close, costs.slippage, bars[t - 1].close_time + 1, "gap"
+            t -= 1
             break
         hit = exit_on_bar(bar, side, stop, target)
         if hit is not None:
@@ -65,16 +86,17 @@ def simulate_trade(
             slip = costs.stop_slippage if reason.startswith("stop") else costs.slippage
             break
         if t - first + 1 >= max_bars:
-            exit_raw, slip, moment = bar.close, costs.slippage, bar.close_time + 1
+            exit_raw, slip, moment, reason = bar.close, costs.slippage, bar.close_time + 1, "time"
             break
         t += 1
     if exit_raw is None:
         last = bars[-1]
+        t = len(bars) - 1
         exit_raw, slip, moment = last.close, costs.slippage, last.close_time + 1
     exit_price = exit_raw * (1 - side * slip)
     fees = costs.fee * (entry + exit_price)
     fund = _funding_cost(funding, funding_times, side, entry, bars[first].open_time, moment, costs)
-    return (side * (exit_price - entry) - fees - fund) / risk
+    return (side * (exit_price - entry) - fees - fund) / risk, reason, t - first + 1
 
 
 def random_entry_pvalue(
