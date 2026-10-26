@@ -137,9 +137,13 @@ def test_tool_health_uses_registry_probes():
 
 
 def test_research_register_matches_committed_chain():
+    # m folgt dem eingecheckten Register (Zahl der register-Zeilen), damit jede neue Studie den Test nicht bricht.
+    lines = (ROOT / "docs/research_lab/REGISTER.jsonl").read_text().splitlines()
+    expected = sum(1 for line in lines if json.loads(line).get("kind") == "register")
+    assert expected >= 54
     register = call(server(), "research_register")
-    assert register["chain_valid"] is True and register["m"] == 54
-    assert sum(register["by_status"].values()) == 54
+    assert register["chain_valid"] is True and register["m"] == expected
+    assert sum(register["by_status"].values()) == expected
 
 
 def test_research_register_detects_tampering(tmp_path: Path):
