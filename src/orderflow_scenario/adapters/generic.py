@@ -50,7 +50,7 @@ def _period_seconds(item: Mapping[str, Any], timeframe: str) -> int:
     return int(count) * _UNIT_SECONDS[unit]
 
 
-def _footprint(raw: Any) -> FootprintSeries | None:
+def _footprint(raw: Any, tick_size: Decimal | None = None) -> FootprintSeries | None:
     """``footprint``: list of bars ``{"open_time": iso, "levels": [[price, bid, ask], ...]}``."""
     if not raw:
         return None
@@ -66,7 +66,7 @@ def _footprint(raw: Any) -> FootprintSeries | None:
                 raise ValueError(f"footprint[{index}].levels rows must be [price, bid, ask]")
             rows.append(tuple(_dec(value) for value in row))
         bars.append((_dt(bar.get("open_time")), rows))
-    return footprint_from_levels(bars, source="generic_json")
+    return footprint_from_levels(bars, source="generic_json", tick_size=tick_size)
 
 
 def _record(item: Candle | Trade) -> dict[str, Any]:
@@ -81,6 +81,15 @@ def _dec(value: Any) -> Decimal | None:
         return Decimal(str(value))
     except (InvalidOperation, TypeError) as exc:
         raise ValueError(f"invalid decimal value: {value!r}") from exc
+
+
+def _aggressor_flag(value: Any) -> bool | None:
+    """Keep missing sides unknown; never interpret text through Python truthiness."""
+    if value is None or type(value) is bool:
+        return value
+    if isinstance(value, str) and value.strip().lower() in {"true", "false"}:
+        return value.strip().lower() == "true"
+    raise ValueError("buyer_is_maker must be a boolean or true/false text")
 
 
 class GenericOrderflowAdapter:
@@ -142,7 +151,7 @@ class GenericOrderflowAdapter:
                         quantity=float(item["quantity"]),
                         event_time=event_time,
                         trade_id=int(item["trade_id"]) if item.get("trade_id") is not None else None,
-                        buyer_is_maker=bool(item["buyer_is_maker"]) if item.get("buyer_is_maker") is not None else None,
+                        buyer_is_maker=_aggressor_flag(item.get("buyer_is_maker")),
                     )
                 )
             except (KeyError, TypeError, ValueError) as exc:
@@ -150,7 +159,7 @@ class GenericOrderflowAdapter:
         return tuple(trades), tuple(missing)
 
     def adapt(self, data: Mapping[str, Any], observed_at: datetime | None = None) -> AdapterInput:
-        observed_at = observed_at or datetime.now(timezone.utc)
+        observed_at = observed_at or _dt(data.get("observed_at")) or datetime.now(timezone.utc)
         candles, candle_missing = self.parse_candles(data)
         trades, trade_missing = self.parse_trades(data)
         context = parse_context(data)
@@ -174,7 +183,7 @@ class GenericOrderflowAdapter:
             open_interest_with_price=data.get("open_interest_with_price"),
             delta_divergence=data.get("delta_divergence"),
             delta_series=tuple(_dec(item) for item in data["delta_series"]) if data.get("delta_series") else None,
-            footprint=_footprint(data.get("footprint")),
+            footprint=_footprint(data.get("footprint"), tick_size=_dec(data.get("footprint_tick_size"))),
             footprint_tick_size=_dec(data.get("footprint_tick_size")),
             structured=True,
             estimated_prices=tuple(estimated),
