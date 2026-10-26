@@ -61,9 +61,12 @@ def make_vault(tmp_path: Path) -> Path:
 def test_parse_merge_log_both_subject_shapes():
     log = ("a\x1f2026-10-20\x1fMerge pull request #431 from o/b\x1fGraph schneller\n\x1e"
            "b\x1f2026-10-26\x1fMerge pull request #432: S2 beendet\x1f\x1e"
-           "c\x1f2026-10-26\x1fMerge branch 'x'\x1f\x1e")
+           "c\x1f2026-10-26\x1fMerge branch 'x'\x1f\x1e"
+           "d\x1f2026-10-24\x1fdocs(license): Apache (#401)\x1f\x1e"
+           "e\x1f2026-10-24\x1fdirekter Commit\x1f\x1e")
     assert ar.parse_merge_log(log) == [("a", 431, "2026-10-20", "Graph schneller"),
-                                       ("b", 432, "2026-10-26", "S2 beendet")]
+                                       ("b", 432, "2026-10-26", "S2 beendet"),
+                                       ("d", 401, "2026-10-24", "docs(license): Apache")]
 
 
 def test_links_for_maps_paths_to_existing_notes():

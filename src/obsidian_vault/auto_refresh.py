@@ -44,6 +44,7 @@ from src.obsidian_vault.schema import DEFAULT_VAULT, load_schema, vault_path  # 
 
 BRANCH = "platform-main"
 _MERGE_SUBJECT = re.compile(r"^Merge pull request #(\d+)(.*)$")
+_SQUASH_SUBJECT = re.compile(r"^(.+?) \(#(\d+)\)$")
 AUTO_DIR = Path("90 Berichte") / "Automatisch"
 TAG = "automatisch"
 OVERVIEW = "TIM Stand automatisch"
@@ -127,8 +128,9 @@ def links_for(files: tuple[str, ...] | list[str]) -> tuple[str, ...]:
 def parse_merge_log(log: str) -> list[tuple[str, int, str, str]]:
     """`git log --format=%H%x1f%cs%x1f%s%x1f%b%x1e` -> (sha, number, date, title).
 
-    Two subject shapes exist: `Merge pull request #N: title` and
-    `Merge pull request #N from owner/branch` with the title in the body."""
+    Merge commits come as `Merge pull request #N: title` or
+    `Merge pull request #N from owner/branch` (title in the body); squash
+    merges as `title (#N)`. Other commits are ignored."""
     out: list[tuple[str, int, str, str]] = []
     for record in log.split("\x1e"):
         parts = record.strip("\n").split("\x1f")
@@ -136,6 +138,10 @@ def parse_merge_log(log: str) -> list[tuple[str, int, str, str]]:
             continue
         sha, day, subject, body = parts[0].strip(), parts[1], parts[2], parts[3]
         match = _MERGE_SUBJECT.match(subject)
+        squash = _SQUASH_SUBJECT.match(subject)
+        if squash and not match:
+            out.append((sha, int(squash.group(2)), day, squash.group(1).strip()))
+            continue
         if not match:
             continue
         digits, tail = match.group(1), match.group(2)
@@ -148,7 +154,7 @@ def parse_merge_log(log: str) -> list[tuple[str, int, str, str]]:
 
 
 def merged_prs(repo: Path, ref: str, since: str = SINCE) -> list[MergedPr]:
-    log = git(repo, "log", ref, "--first-parent", "--merges", f"--since={since}",
+    log = git(repo, "log", ref, "--first-parent", f"--since={since}",
               "--format=%H%x1f%cs%x1f%s%x1f%b%x1e")
     prs = []
     for sha, number, day, title in parse_merge_log(log):
