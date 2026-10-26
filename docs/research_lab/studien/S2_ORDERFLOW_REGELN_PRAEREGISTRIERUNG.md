@@ -2,7 +2,7 @@
 
 | Feld | Wert |
 |---|---|
-| Status | **ENTWURF 0.4, Power-Gate NICHT BESTANDEN (2026-10-26, 00:46 Ortszeit).** Zähllauf PASS (`../reports/s2_count_2026-10-25T2249Z.md`), Power-Simulation mit registrierten Parametern: keine der sechs gerichteten Arten erreicht in allen Szenarien 90 % Power (`../reports/s2_power_2026-10-25T2345Z.md`). Nach Abschnitt 3 heißt das **NICHT BEURTEILBAR**: kein Ergebnislauf (`px/`) unter dieser Registrierung, keine Freigabe 1.0, keine nachträgliche Lockerung. Archiv-Outcomes wurden nicht gelesen. Wie es weitergeht, entscheidet Uzi (Abschnitt 8). |
+| Status | **BEENDET: NICHT BEURTEILBAR (Uzis Entscheid 2026-10-26, 01:24 Ortszeit).** Zähllauf PASS (`../reports/s2_count_2026-10-25T2249Z.md`), Power-Gate mit registrierten Parametern NICHT BESTANDEN (`../reports/s2_power_2026-10-25T2345Z.md`): keine der sechs gerichteten Arten erreicht in allen Szenarien 90 % Power. Kein Ergebnislauf, keine Freigabe 1.0, keine Lockerung; Archiv-Outcomes (`px/`) wurden nicht gelesen und bleiben ungelesen. **Folge für den Betrieb:** Die Live-Orderflow-Regeln (RULE_VERSION 1.0.0) gelten als Beobachtungen, nicht als Signale; daraus wird keine Strategie (S3) gebaut (Abschnitte 6 und 8). |
 | Erstellt | 2026-10-22, Paket T08 des gemeinsamen Verbesserungsplans (Claude K2, Codex F01/F07) |
 | Protokollbezug | `../PROTOKOLL.md` Version 1.1 (Kosten 4.4, Zufallsvergleich 7.1, Zeitgrenzen 7.3 neu) |
 | Daten bis dahin gesehen | Live-Betrieb seit Juli 2026 inkl. Retrospektive-Trefferquoten im Control Center (deskriptiv, 5/15/30 min). Keine Historie vor Juli 2026 für diese Regeln ausgewertet. |
@@ -206,7 +206,9 @@ durch den Datensplit fest.
 statt; Regeln, Alpha, Horizonte, Mindestzahlen und Effektgröße werden nicht nachträglich gelockert. Die Preisdateien
 (`px/`) bleiben ungelesen, damit eine spätere, anders registrierte Studie dieselben Daten noch unbelastet nutzen kann.
 
-**Was Uzi entscheiden kann (keine Empfehlung zur Lockerung):**
+**Entscheid Uzi (2026-10-26, 01:24 Ortszeit): Option 1.** S2 ist beendet; die Live-Orderflow-Regeln werden als Beobachtungen geführt, nicht als Signale. Eine neue Registrierung (Option 2) ist damit nicht ausgeschlossen, sie wäre eine eigene Studie mit eigenem Power-Gate.
+
+**Zur Entscheidung standen (keine Empfehlung zur Lockerung):**
 
 1. S2 hier beenden und die Live-Orderflow-Regeln als Beobachtungen führen, nicht als Signale (Konsequenz für
    Sicht 5 des Grün-Plans: „Entscheidung über die Live-Regeln dokumentiert“).
@@ -224,3 +226,4 @@ statt; Regeln, Alpha, Horizonte, Mindestzahlen und Effektgröße werden nicht na
 | 2026-10-22 | 0.2 | Wissenszeit getrennt, Test/Multiplikität konkretisiert, Power-Gate und prospektiver Start präzisiert | Review R5 | Keine neuen Ergebnisdaten in dieser Korrektur gelesen |
 | 2026-10-25 | 0.3 | Abschnitt 7: Werkzeuge für Zähllauf, Tagesspeicher und Power-Simulation; keine Regel-, Alpha- oder Horizontänderung | Grün-Plan Sicht 5, Paket F1 | Keine Archivdaten geladen, kein Zähllauf, keine Outcomes; nur synthetische Testdaten |
 | 2026-10-26 | 0.4 | Abschnitt 8: Zähllauf PASS, Power-Gate NICHT BESTANDEN (alle 72 Szenarien mit ICC > 0 unter 90 %), Status NICHT BEURTEILBAR, Optionen für Uzi; keine Regel-, Alpha-, Horizont- oder Effektgrößenänderung | Grün-Plan Sicht 5, Pakete F1/F2 | Zähler (Fälle/Kontrollfenster je Woche) aus dem Archiv 2019-12-30 bis 2024-12-29; keine Outcomes, keine Preise gelesen |
+| 2026-10-26 | 0.4 | Status BEENDET: NICHT BEURTEILBAR nach Uzis Entscheid (Option 1 in Abschnitt 8): Live-Regeln = Beobachtungen, keine Signale, kein S3 | Entscheid Uzi auf der Karte im Thread „25.10. Alle 11 Sichten auf Grün bringen“ | unverändert: keine Outcomes, keine Preise gelesen |
