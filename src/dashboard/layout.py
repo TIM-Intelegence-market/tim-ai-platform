@@ -109,6 +109,7 @@ NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("Security", "/security"),
         ("Audit & Evidence", "/audit-evidence"),
         ("Graphify & MCP", "/mcp"),
+        ("Graphify-Graph", "/graphify"),
     ]),
     ("WERKZEUGE", [
         ("Research", "/research"),

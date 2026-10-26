@@ -1731,8 +1731,18 @@ def _mcp(data: dict[str, Any]) -> str:
         ("Developer mode", "external state", None, mcp["developer_mode"], ""),
         ("Tunnel permissions", "read · manage · use checked separately", None, mcp["tunnel_permissions"], ""),
     ])
+    from src.dashboard.pages.graphify import graph_status
+
+    graph = graph_status()
+    graph_rows = status_rows([
+        ("Graphify-Graph", "stündlich vom Mac-Job com.tim.obsidian-refresh", graph["status"], graph["status"],
+         graph["updated_at_utc"] or "noch kein Graph"),
+    ])
     return (
         page_head("Graphify & MCP", "Separate external support path; never part of the V2 core release gate.", generated_at=data.get("generated_at_utc"))
+        + "<section class='panel'><b><a href='/graphify'>Graphify-Graph öffnen</a></b> · "
+        "<a href='/graphify/report'>Bericht (GRAPH_REPORT.md)</a></section>"
+        + section("Graphify", "Code-Graph von TIM", graph_rows)
         + section("MCP status", "External integration", rows)
         + "<section class='panel safety-callout'><b>Separation:</b> the MCP status cannot override TIM security, data or science gates.</section>"
     )
