@@ -10,28 +10,31 @@ Stand 22.10.2026. Alles hier ist Vorbereitung. Keine Kopie, kein Restore, kein R
 |---|---|---|
 | Täglicher Dump | 03:15 Ortszeit nach `~/Library/Application Support/TIM/backups/live`, 3 Stände [N]; PR #356 vereinheitlicht den Pfad für Health und Backup (offen) | `ls -la "$HOME/Library/Application Support/TIM/backups/live"` |
 | Ordner `~/TIM-Backups` | existiert; Inhalt unbekannt | `ls -la ~/TIM-Backups` |
-| Zweite Kopie außerhalb der internen SSD | **keine** bekannt | – |
+| Zweite Kopie außerhalb der internen SSD | Ziel entschieden (Uzi 26.10.2026): externe SSD `TIM-Backup` am Mac mini. Agent `com.tim.db-backup-mirror` (05:15, `tim_db_backup.py mirror`) im Repo; **noch keine Kopie**, bis die SSD hängt und der Agent geladen ist | `cat ~/TIM-live/data/operational/backup_mirror.json` |
 | Restore geübt | **nein**. Versuch 26.10.2026 11:03 auf dem Mac (`tim_db_backup.py restore-test`): FAIL vor jeder Änderung, `pg_hba.conf` lässt `tim` nur auf die Datenbank `tim` (dropdb über template1). Code-Fix `--maintenance-db tim`; offen: pg_hba-Zeile für `tim_restore_test` und `CREATEDB` für `tim` (Uzi als Postgres-Admin), dann Wiederholung | `data/operational/restore_test.json` |
 | Ziele für Datenverlust/Wiederanlauf | nicht festgelegt | Betreiber (Uzi) legt vor dem Restore fest; Vorschlag: höchstens 24 h Datenverlust, Wiederanlauf unter 4 h |
 
 ### 2. Zweite Kopie (störungsarm, nur abgeschlossene Dumps)
 
-Voraussetzungen: externe SSD am Mac, APFS verschlüsselt (Passwort im Schlüsselbund), Zielordner
-`/Volumes/TIM-Backup/live/`. Platz: mindestens das Fünffache eines Dumps.
+Stand 26.10.2026: automatisiert als LaunchAgent `com.tim.db-backup-mirror` (`ops/launchd/`), Anleitung in
+`ops/macos/LIVE_MAC.md`. Voraussetzung: externe SSD am Mac, APFS verschlüsselt (Passwort im Schlüsselbund), Name
+`TIM-Backup`, Zielordner `/Volumes/TIM-Backup/live/`. Platz: mindestens das Fünffache eines Dumps.
+
+Der Agent kopiert täglich um 05:15 (zwei Stunden nach dem Dump) den neuesten Dump mit gültiger Prüfsumme, prüft die
+Kopie gegen dieselbe Prüfsumme, hält 14 Stände und schreibt `data/operational/backup_mirror.json`. Ohne eingehängte
+SSD oder auf der internen Platte bricht er vor dem Schreiben ab (`FAIL`, Grund im Bericht). Läuft der Dump um 05:15
+noch, wird der Stand vom Vortag kopiert; der Bericht nennt die Quelle.
+
+Lesende Prüfung von Hand:
 
 ```sh
-# nur lesend prüfen, bevor kopiert wird
-du -sh "$HOME/Library/Application Support/TIM/backups/live"/*
-df -h /Volumes/TIM-Backup
-# Kopie eines fertigen Dumps (ältester zuerst, einzeln, mit Prüfsumme; nie die Datei, die gerade geschrieben wird)
-SRC="$HOME/Library/Application Support/TIM/backups/live/<dump>"
-nice -n 19 rsync -a --bwlimit=20000 "$SRC" /Volumes/TIM-Backup/live/
-shasum -a 256 "$SRC" "/Volumes/TIM-Backup/live/$(basename "$SRC")"
+ls -la /Volumes/TIM-Backup/live
+cat ~/TIM-live/data/operational/backup_mirror.json
 ```
 
-Lastgrenze: `--bwlimit` 20 MB/s, `nice 19`, nur nach 03:30 Ortszeit, abbrechen wenn `server_health.json` Frische
-verliert. Wöchentlich eine Kopie außer Haus (zweite SSD oder verschlüsselter Cloud-Speicher). Wenn das nicht
-störungsarm geht, wird das Restrisiko hier eingetragen und nicht als „gesichert“ ausgegeben.
+Lastgrenze: `Nice 5`, `LowPriorityIO`, nur nach 03:30 Ortszeit. Wöchentlich eine Kopie außer Haus (zweite SSD oder
+verschlüsselter Cloud-Speicher) bleibt Handarbeit; solange das nicht geschieht, steht hier das Restrisiko „ein
+Standort“ und nicht „gesichert“.
 
 ### 3. Restore (Zone B, nicht auf dem Kampagnen-Mac)
 

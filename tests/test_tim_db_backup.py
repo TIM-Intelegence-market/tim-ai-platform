@@ -284,3 +284,123 @@ def test_main_writes_fail_report_without_secret(tmp_path: Path, monkeypatch) -> 
     assert backup.main(["backup", "--dir", str(tmp_path / "b")]) == 2
     report = (tmp_path / "report.json").read_text()
     assert '"status": "FAIL"' in report
+
+
+def fake_volume(monkeypatch, mount: Path, *, external_device: bool = True) -> None:
+    """Pretend ``mount`` is its own volume (device 2) while / and everything else is device 1."""
+    monkeypatch.setattr(backup, "mount_point", lambda path: mount if str(path).startswith(str(mount)) else Path("/"))
+    monkeypatch.setattr(backup, "device_of", lambda path: 2 if external_device and path == mount else 1)
+
+
+def test_mirror_copies_newest_verified_dump_and_checks_the_copy(tmp_path: Path, monkeypatch) -> None:
+    now = datetime(2026, 10, 26, 5, 15, tzinfo=UTC)
+    source = tmp_path / "live"
+    make_dump(source, now - timedelta(days=1), b"older")
+    newest = make_dump(source, now, b"newest dump")
+    volume = tmp_path / "Volumes" / "TIM-Backup"
+    volume.mkdir(parents=True)
+    fake_volume(monkeypatch, volume)
+    target = volume / "live"
+    result = backup.mirror(source, target, 14)
+    copy = target / newest.name
+    assert result["status"] == "PASS" and result["copied"] is True and copy.read_bytes() == b"newest dump"
+    assert (target / (copy.name + ".sha256")).read_text().split()[0] == hashlib.sha256(b"newest dump").hexdigest()
+    assert result["volume"]["mount_point"] == str(volume) and result["volume"]["external"] is None
+    # second run: nothing to copy, copy verified in place
+    again = backup.mirror(source, target, 14)
+    assert again["copied"] is False and again["pruned"] == []
+
+
+def test_mirror_replaces_a_damaged_copy_and_prunes_by_count(tmp_path: Path, monkeypatch) -> None:
+    now = datetime(2026, 10, 26, 5, 15, tzinfo=UTC)
+    source = tmp_path / "live"
+    newest = make_dump(source, now, b"good")
+    volume = tmp_path / "Volumes" / "TIM-Backup"
+    target = volume / "live"
+    target.mkdir(parents=True)
+    fake_volume(monkeypatch, volume)
+    for days in (1, 2, 3):
+        make_dump(target, now - timedelta(days=days), b"old copy")
+    damaged = target / newest.name
+    damaged.write_bytes(b"bit rot")
+    stale = target / ".tim_mirror.abc"
+    stale.write_bytes(b"half")
+    os.utime(stale, (now.timestamp() - 7 * 3600,) * 2)
+    result = backup.mirror(source, target, 14, keep_count=2)
+    assert damaged.read_bytes() == b"good" and result["copied"] is True
+    assert len(result["pruned"]) == 2 and not stale.exists() and result["removed_temporaries"] == [".tim_mirror.abc"]
+    assert sorted(p.name for p in target.iterdir() if p.suffix == ".dump") == sorted(
+        [newest.name, f"tim_{backup.stamp(now - timedelta(days=1))}.dump"])
+
+
+def test_mirror_refuses_system_disk_and_missing_volume(tmp_path: Path, monkeypatch) -> None:
+    now = datetime(2026, 10, 26, 5, 15, tzinfo=UTC)
+    source = tmp_path / "live"
+    make_dump(source, now, b"dump")
+    volume = tmp_path / "Volumes" / "TIM-Backup"
+    volume.mkdir(parents=True)
+    fake_volume(monkeypatch, volume, external_device=False)
+    with pytest.raises(backup.BackupError, match="not on a separate mounted volume") as info:
+        backup.mirror(source, volume / "live", 14)
+    assert info.value.evidence["volume"]["mount_point"] == str(volume)
+    assert not (volume / "live").exists()
+    with pytest.raises(backup.BackupError, match="absolute"):
+        backup.mirror(source, Path("Volumes/relative"), 14)
+    # unmounted SSD: the nearest mount point is / (nothing exists under /Volumes/TIM-Backup)
+    monkeypatch.setattr(backup, "mount_point", lambda path: Path("/"))
+    with pytest.raises(backup.BackupError, match="attach the backup SSD"):
+        backup.mirror(source, tmp_path / "gone" / "live", 14)
+
+
+def test_mirror_rejects_internal_volume_via_diskutil(tmp_path: Path, monkeypatch) -> None:
+    import plistlib
+
+    now = datetime(2026, 10, 26, 5, 15, tzinfo=UTC)
+    source = tmp_path / "live"
+    make_dump(source, now, b"dump")
+    volume = tmp_path / "Volumes" / "TIM-Backup"
+    volume.mkdir(parents=True)
+    fake_volume(monkeypatch, volume)
+    internal = plistlib.dumps({"Internal": True, "RemovableMediaOrExternalDevice": False, "Encrypted": False})
+    tool = fake_tool(tmp_path, "diskutil", f"sys.stdout.buffer.write({internal!r})")
+    with pytest.raises(backup.BackupError, match="internal disk"):
+        backup.mirror(source, volume / "live", 14, diskutil=tool)
+    external = plistlib.dumps({"Internal": False, "RemovableMediaOrExternalDevice": True, "Encrypted": True,
+                               "FilesystemName": "APFS"})
+    tool = fake_tool(tmp_path, "diskutil", f"sys.stdout.buffer.write({external!r})")
+    result = backup.mirror(source, volume / "live", 14, diskutil=tool)
+    assert result["volume"] == {"target": str(volume / "live"), "mount_point": str(volume), "external": True,
+                                "encrypted": True, "file_system": "APFS"}
+
+
+def test_mirror_bad_copy_leaves_no_file(tmp_path: Path, monkeypatch) -> None:
+    now = datetime(2026, 10, 26, 5, 15, tzinfo=UTC)
+    source = tmp_path / "live"
+    newest = make_dump(source, now, b"dump")
+    volume = tmp_path / "Volumes" / "TIM-Backup"
+    volume.mkdir(parents=True)
+    fake_volume(monkeypatch, volume)
+    monkeypatch.setattr(backup.shutil, "copyfile", lambda src, dst: Path(dst).write_bytes(b"truncated"))
+    with pytest.raises(backup.BackupError, match="does not match"):
+        backup.mirror(source, volume / "live", 14)
+    assert list((volume / "live").iterdir()) == [] and newest.exists()
+
+
+def test_main_mirror_needs_no_database_secret(tmp_path: Path, monkeypatch) -> None:
+    now = datetime(2026, 10, 26, 5, 15, tzinfo=UTC)
+    source = tmp_path / "live"
+    make_dump(source, now, b"dump")
+    volume = tmp_path / "Volumes" / "TIM-Backup"
+    volume.mkdir(parents=True)
+    fake_volume(monkeypatch, volume)
+    monkeypatch.setattr(backup, "MIRROR_REPORT_PATH", tmp_path / "backup_mirror.json")
+    monkeypatch.delenv("TIM_DATABASE_SECRET_PROVIDER", raising=False)
+    monkeypatch.setitem(sys.modules, "config.settings", None)  # importing settings would raise ImportError
+    code = backup.main(["mirror", "--dir", str(source), "--target", str(volume / "live"), "--no-diskutil"])
+    report = __import__("json").loads((tmp_path / "backup_mirror.json").read_text())
+    assert code == 0 and report["status"] == "PASS" and report["command"] == "mirror"
+    # unmounted volume: FAIL report with the mount evidence, exit 2
+    monkeypatch.setattr(backup, "mount_point", lambda path: Path("/"))
+    code = backup.main(["mirror", "--dir", str(source), "--target", str(tmp_path / "gone"), "--no-diskutil"])
+    report = __import__("json").loads((tmp_path / "backup_mirror.json").read_text())
+    assert code == 2 and report["status"] == "FAIL" and report["volume"]["mount_point"] == "/"
