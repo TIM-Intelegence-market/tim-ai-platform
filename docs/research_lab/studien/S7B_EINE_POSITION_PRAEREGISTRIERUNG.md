@@ -3,8 +3,8 @@
 | Feld | Wert |
 |---|---|
 | Studie | S7b (Ableitung aus S7, offen deklariert) |
-| Version | **0.2 (Entwurf nach adversarialer Prüfung, nicht freigegeben)** |
-| Status | ENTWURF: keine Registrierung, kein Lauf, Holdout zu. Vor der Registrierung: offizieller ergebnisblinder Zähllauf (6.1) auf dem 0.2-Stand, Uzis Freigabe per Entscheidungskarte |
+| Version | **0.3 (Entwurf mit Gate-Ergebnis, nicht freigegeben)** |
+| Status | ENTWURF: keine Registrierung, kein Lauf, Holdout zu. Gate 6.1 bestanden (Zähllauf 26.10. 13:36 Ortszeit, Commit 26cd763, `../reports/s7b_count_2026-10-26T1236Z.md`). Es fehlt nur Uzis Freigabe per Entscheidungskarte (1.0, Registrierung 56 → 58) |
 | Anlass | S7 scheiterte am 26.10.2026 in der Validierung **nur an K4** (maximaler Drawdown 30,2 R bzw. 30,8 R > 20 R), alle anderen Kriterien erfüllt (`S7_3_4R_TRENDFOLGE_AUSBRUCH_PRAEREGISTRIERUNG.md` Abschnitt 12). Uzi wählte am 26.10. 12:34 Ortszeit per Karte „S7b: eine Position über alle Coins“ |
 | Hypothese | Dieselben Regeln wie S7 mit **höchstens einer offenen Position über alle drei Instrumente zusammen** halten den Drawdown unter 20 R, ohne dass der Netto-Erwartungswert je Trade verloren geht |
 | Lesart des Ziels | wie S7: Ziel je Gewinntrade 3 R bzw. 4 R; Erwartungswert je Trade voraussichtlich +0,1 bis +0,4 R |
@@ -204,6 +204,15 @@ früher enden). Die Mindestzahlen in 5.1 gelten für die echten Trades; das Gate
 für eine offensichtlich zu kleine Stichprobe verbraucht wird. Fällt eine Variante durch, wird sie nicht registriert;
 fallen beide durch, ist S7b **NICHT TESTBAR** und endet ohne Lauf. Registriert werden nur N-20-Varianten.
 
+**Ergebnis (26.10. 13:36 Ortszeit, Mac, Commit 26cd763, Datensatz-Hash 9ac4d135…, `../reports/s7b_count_2026-10-26T1236Z.{md,json}`):**
+
+| Variante | Training (untere) / Wochen | Validierung (untere) / Wochen | Holdout hochgerechnet / Wochen (schwächstes Jahr 2020) | Ties | Gate |
+|---|---:|---:|---:|---:|---|
+| S7b-D20-T3, -T4 | 156 / 139 | 108 / 93 | 78,8 / 68,2 | 473 | **BESTANDEN** (registrierbar) |
+| S7b-D55-T3, -T4 | 126 / 112 | 96 / 86 | 64,8 / 56,0 | 293 | nur Nachbar |
+
+Beide N-20-Varianten liegen über allen Schwellen; das schwächste Jahr ist 2020 (SOL erst ab Oktober, konservativ). Anteil je Instrument (Vorschau auf K10): BTC 38–41 %, ETH 19–32 %, SOL 30–40 %, alle über 15 %. 473 Ties bei 2 104 ungesperrten Signalen: die Reihenfolge entscheidet oft, die gespiegelte Reihenfolge wird deshalb mitberichtet (2). Erwartete echte Tradezahl mit Faktor ≈ 0,61 aus S7: Training ≈ 255, Validierung ≈ 175, Holdout ≈ 130; die S7-Mindestzahlen 200/100/100 sind erreichbar, im Holdout ohne großen Spielraum.
+
 ## 7. Zufallsvergleiche (Baselines)
 
 Wie S7 Abschnitt 7, unverändert: A (Protokoll 7.1, gemeinsame Vorlage Seite/Stopabstand/T/Haltedauer, gepoolt je
@@ -244,7 +253,7 @@ Sperrdatei, Register und Bericht werden gemeinsam committet.
 |---|---|---|
 | P1 | Entwurf 0.1 → adversariale Prüfung (anderes Modell) → 0.2 | Befunde im Änderungsprotokoll (erledigt 26.10.) |
 | P2 | Code: `engine.run_portfolio` (Positionsgrenze, zwei Phasen, Reihenfolge, Zeitlisten), `hypotheses/s7b.py` (Varianten, gesperrter Zähler, Ties), `scripts/research_lab_s7b.py` (count, register, train, holdout); S7-Engine-Pfad unverändert | `pytest tests/test_research_lab_s7b.py tests/test_research_lab_backtest.py tests/test_research_lab_s7*.py` grün (27 S7b-Tests inkl. Golden-Fixture); **S7-Regression auf dem Mac: `research_lab_s7.py train` liefert dieselbe Trades-Datei (SHA-256 8106fd37…)** (erledigt) |
-| P3 | Offizieller Zähllauf 6.1 auf dem Mac auf dem 0.2-Stand, Bericht `s7b_count_<stamp>.md` ins Repo | Gate-Tabelle, Commit-Hash im Bericht = 0.2-Commit |
+| P3 | Offizieller Zähllauf 6.1 auf dem Mac auf dem 0.2-Stand, Bericht `s7b_count_<stamp>.md` ins Repo | erledigt: `../reports/s7b_count_2026-10-26T1236Z.md`, Commit 26cd763 |
 | P4 | Entscheidungskarte: Freigabe 1.0, Registrierung S7b-D20-T3/T4 (56 → 58), Kenntnisnahme Power 6, Holdout-Verbrauch 8 und letzte Registerplätze | Register-Zeilen |
 | P5 | Training/Validierung mit Positionsgrenze, Baselines, Stress, Robustheit; Register-Status; Bericht `s7b_train_<stamp>.md` | K1–K10, 5.4 |
 | P6 | Holdout, ein Lauf, nur per Karte, nur mit Kandidatin (8) | Protokoll R6 |
@@ -261,7 +270,7 @@ Holdout.
 | # | Punkt | Wer |
 |---|---|---|
 | O1 | ~~Adversariale Prüfung durch ein anderes Modell, Befunde einarbeiten (0.2)~~ erledigt 26.10. | Claude |
-| O2 | ~~S7-Regression nach dem Engine-Umbau auf dem Mac (Trades-Hash gleich)~~ erledigt; offizieller Zähllauf 6.1 auf dem 0.2-Stand | Claude, Mac |
+| O2 | ~~S7-Regression nach dem Engine-Umbau auf dem Mac (Trades-Hash gleich); offizieller Zähllauf 6.1 auf dem 0.2-Stand~~ erledigt 26.10. 13:36 | Claude, Mac |
 | O3 | Uzis Wort per Entscheidungskarte: Freigabe 1.0, Registrierung 56 → 58, Kenntnisnahme Power (6), Holdout-Verbrauch (8), zwei verbleibende Registerplätze | Uzi |
 | O4 | Holdout nur per weiterer Entscheidungskarte | Uzi |
 
@@ -271,3 +280,4 @@ Holdout.
 |---|---|---|---|---|
 | 2026-10-26 | 0.1 | Erstfassung als offen deklarierte Ableitung aus S7: Positionsgrenze 1 (4.2), Reihenfolge BTC > ETH > SOL, Signale verfallen; Mindestzahlen Training 150/80, Validierung 100/50, Holdout 50/30; Gate mit globaler 30-Kerzen-Sperre 100/60, 50/30, 50/30; Power bei 80–90 Holdout-Trades offengelegt; Baselines ohne Positionsgrenze | Uzis Wahl „S7b“ 12:34 Ortszeit | S7-Ergebnisse Training/Validierung (alle vier Varianten), ergebnisblinde Vorzählung der Positionsgrenze; kein Lauf mit Positionsgrenze, kein Holdout |
 | 2026-10-26 | 0.2 | **Nach adversarialer Prüfung (anderes Modell, 17 Befunde):** (a) Mindestzahlen zurück auf S7 (Training 200/100, Holdout 100/60): Die Hochrechnung 80–90 Holdout-Trades war falsch (untere Gate-Schranke statt Erwartung), erwartet sind ≈ 140–155; Power-Tabelle neu mit T = 4 und n = 140/155. (b) Vorzählung als „ohne R, aber mit ergebnisabhängigen Ausstiegszeiten“ eingeordnet, nicht mehr als ergebnisblind. (c) Offengelegt, dass E[R] je Instrument vor der Wahl der Reihenfolge bekannt war; Ties und gespiegelte Reihenfolge werden berichtet. (d) Gate-Hochrechnung je Kalendermonat statt je Coin-Monat (ein Platz skaliert mit Monaten). (e) Stress als eigener Portfolio-Lauf mit berichtetem n. (f) Permutationsanteil zu K4 berichtet. (g) Holdout-Befehl festgelegt: flacher Start 2025-01-01, Fenster bis 2026-10-01, Sperrdatei einmalig, m = 58 im Lock gegen Holm m = 60, Verbrauch für das ganze Register. (h) Engine: `busy`-Regel, Lücken, `stop_before_entry`, Datenanfänge in 4.2 festgehalten; Golden-Fixture der alten Engine als Regressionstest. (i) `register` verweigert ohne Version 1.0 und bei fremder Studie; Nachbarschaftsregel mit S7b-Raster. (j) Verhältnis Schranke/echte Trades (S7 ≈ 0,61) und Folge für die Registerplätze (58 von 60) ergänzt; Protokoll-10-Einordnung (neuer Eintrag, keine Neuparametrierung). Keine Lockerung gegenüber S7 | Prüfbefunde | zusätzlich: Zähllauf 6.1 auf dem 0.1-Stand (Signalzahlen ohne R, Commit 410cbd0); kein Lauf mit Positionsgrenze, kein Holdout |
+| 2026-10-26 | 0.3 | Gate-Ergebnis 6.1 eingetragen (D20 bestanden, D55 nur Nachbar), Status und offene Punkte aktualisiert; keine Regeländerung | Zähllauf 13:36 Ortszeit | zusätzlich: Signalzahlen, Wochen, Ties und Instrumentanteile des Zähllaufs (ohne R); kein Lauf mit Positionsgrenze, kein Holdout |
