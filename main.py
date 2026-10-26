@@ -75,6 +75,12 @@ class TIMApplication:
             "ollama_availability": "PENDING" if settings.enable_ollama else "DISABLED_BY_POLICY",
         })
         self.dashboard = DashboardServer(self.dashboard_state, settings.dashboard_host, settings.dashboard_port)
+        self.public_dashboard = None
+        if settings.public_dashboard_enabled:
+            from src.dashboard.public_server import PublicDashboardServer
+
+            # Loopback only; a tunnel on this machine publishes it (ops/macos/PUBLIC_DASHBOARD.md).
+            self.public_dashboard = PublicDashboardServer(self.dashboard_state, "127.0.0.1", settings.public_dashboard_port)
         self.history: dict[str, list[Candle]] = {timeframe: [] for timeframe in settings.timeframes}
         self.queue_log = StructuredLog(Path("data/operational/queue.jsonl"))
         self.worker_stop = asyncio.Event()
@@ -668,6 +674,8 @@ class TIMApplication:
         await self.durable_store.record_metric("restart_total")
         await self.restore_persisted_state()
         self.dashboard.start()
+        if self.public_dashboard is not None:
+            self.public_dashboard.start()
         worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
         evidence_task = asyncio.create_task(self._live_evidence_loop(), name="tim-live-evidence")
         journal_task = asyncio.create_task(self._plan_journal_loop(), name="tim-plan-journal")
@@ -695,6 +703,8 @@ class TIMApplication:
                 except asyncio.CancelledError:
                     pass
             self.dashboard.stop()
+            if self.public_dashboard is not None:
+                self.public_dashboard.stop()
             await self.database.close()
 
 
