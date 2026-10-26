@@ -116,6 +116,10 @@ keinen Drift sehen). Regeln: `ops/dashboard_refresh/policy.json`.
   identischem Baum, also dem PR-Head einer Merge- oder Squash-Zusammenführung (das Ruleset verlangt einen
   aktuellen Branch, deshalb ist der Baum gleich). Der Agent wartet damit nicht mehr auf den zweiten Lauf nach
   dem Merge. Stimmt der Baum nicht überein, zählt nur ein Lauf auf dem Commit selbst.
+- **Deploy-Fenster (Entscheid Uzi 25.10.2026, PR #410):** Der Agent wartet nicht auf Studienenden; jeder
+  eingespielte Stand ist ein Neustart von 1–2 Minuten Datenlücke. Die Lücken bleiben bewusst begrenzt durch
+  den Mindestabstand oben (20/60 Minuten) und die Sammelwirkung des Dashboard-Agenten (mehrere Merges in
+  einem Fenster = ein Neustart). Das ist die dokumentierte Ausnahme zur 95-%-Regel (Grün-Plan M2).
 - **CI-Testjob (`Runner.Worker`):** schiebt den Neustart nur auf, höchstens 20 Minuten ab dem Moment, in dem
   der Stand einspielbar wäre (`max_defer_minutes`). Der Job nutzt eine eigene PostgreSQL auf 5434; ein
   Neustart von 20 Sekunden stört ihn nicht. Ein Backup (`pg_dump`) sperrt weiterhin hart.

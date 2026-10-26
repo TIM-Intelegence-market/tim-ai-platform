@@ -116,6 +116,7 @@ Priorität: P0 Datenintegrität/Sicherheit/Kosten/Risiko, P1 Forschung/Multi-Coi
 | A23 | DemoTrader-Altcode entfernen | P3 | Claude | „25.10. Alle 11 Sichten…“ (C2) | DONE 26.10. | Archiv-PR nach Uzis „weiter“; Stand vorher im Zweig `archiv/unerreichte-pakete-2026-10-26` |
 | A24 | Qwen-Chat auf dem Mac | P3 | Uzi | „22.10. Qwen-Chat…“ | BLOCKED (Uzi) | Frage im Thread offen |
 | A25 | Hardware-Ausbau GPUs | P3 | Uzi | „21.10. Hardware-Ausbau…“ | BLOCKED (Uzi) | Entscheidung offen |
+| A26 | Monatlicher Doku-Check (README, CI.md, TIM_IN_10_MINUTEN, SYSTEMSTAND, LIVE_MAC: Stand-Datum und Inhalt) | P3 | Claude | „25.10. Alle 11 Sichten…“ (D3) | RECURRING, nächste Fälligkeit 25.11.2026 | jede Datei nennt ihr Stand-Datum; Abweichungen als kleiner PR |
 
 > **Nachtrag 25.10.2026 (Grün-Plan P1):** A17, A19, A20, A22, A23 nachgeführt; neue Pakete des Grün-Plans (H1, H2, T1, T3, F1, S1, P2) stehen in `docs/audits/GRUEN_PLAN_11_SICHTEN.md`, nicht doppelt hier.
 
