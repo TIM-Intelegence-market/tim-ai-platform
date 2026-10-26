@@ -349,8 +349,15 @@ def restore_test(
     scratch = scratch_name(parts["database"], scratch)
     space = restore_space_check(parts, storage_path, psql=tools["psql"])
     dump, checksum = verified_newest(directory)
-    run_pg([tools["dropdb"], "--if-exists", scratch], parts, timeout=300)
-    run_pg([tools["createdb"], scratch], parts, timeout=300)
+    # dropdb/createdb connect to a maintenance database first; pg_hba.conf on the Mac admits the
+    # TIM role only to its own database, so template1/postgres would be rejected (B3, 26.10.2026).
+    maintenance = ["--maintenance-db", parts["database"]]
+    try:
+        run_pg([tools["dropdb"], "--if-exists", *maintenance, scratch], parts, timeout=300)
+        run_pg([tools["createdb"], *maintenance, scratch], parts, timeout=300)
+    except BackupError as exc:
+        exc.evidence["restore_space"] = space
+        raise
     try:
         run_pg([tools["pg_restore"], "--no-owner", "--exit-on-error", "--dbname", scratch, str(dump)], parts, timeout=7200)
         restored = asyncio.run(count_rows(with_database(database_url, scratch), None))
@@ -359,7 +366,7 @@ def restore_test(
         exc.evidence["restore_space"] = space
         raise
     finally:
-        run_pg([tools["dropdb"], "--if-exists", scratch], parts, timeout=300)
+        run_pg([tools["dropdb"], "--if-exists", *maintenance, scratch], parts, timeout=300)
     result = compare(restored, live)
     return {
         **result,
