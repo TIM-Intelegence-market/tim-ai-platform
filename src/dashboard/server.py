@@ -166,6 +166,16 @@ class DashboardServer:
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
                 if path == "/neu" or path.startswith("/neu/") or path == "/api/cockpit":
                     return self.cockpit(path, query)
+                if path in ("/graphify", "/graphify/"):
+                    from src.dashboard.pages.graphify import graph_page
+
+                    status, page, csp = graph_page()
+                    return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=csp)
+                if path == "/graphify/report":
+                    from src.dashboard.pages.graphify import report_text
+
+                    status, text = report_text()
+                    return self.respond(status, text.encode(), "text/plain; charset=utf-8")
                 if path == "/pilot":
                     return self.respond(200, render_pilot(outer.state).encode(), "text/html; charset=utf-8", csp=PILOT_CSP)
                 if path == "/api/orderflow/history":

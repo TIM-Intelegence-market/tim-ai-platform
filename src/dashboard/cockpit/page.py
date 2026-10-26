@@ -60,6 +60,7 @@ AREAS: list[dict[str, Any]] = [
      "pages": [("V2 Readiness", "/v2-readiness", "Gates, Blocker und Verantwortliche"),
                ("Security", "/security", "PostgreSQL-Sicherheitsprüfung"),
                ("Audit & Evidence", "/audit-evidence", "Tests, Deploy-Stand, Vorfälle"),
+               ("Graphify-Graph", "/graphify", "Code-Graph von TIM, stündlich neu"),
                ("Graphify & MCP", "/mcp", "MCP-Anbindung")]},
 ]
 AREA_BY_KEY = {area["key"]: area for area in AREAS}
