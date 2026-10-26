@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from datetime import datetime, timedelta, timezone
 from urllib.request import urlopen
 
@@ -162,8 +163,11 @@ def test_page_draws_svg_with_levels_and_keeps_csp() -> None:
         assert marker in page
     assert "Vorschau nach TIMs Regeln" in page and "Keine Order" in page
     assert "aria-current='page'>30m</a>" in page and ">TIM-Chart</a>" in page
-    assert "<script src" not in page and " style='" not in page  # nothing the CSP would have to allow
-    assert page.count("<script>") == 1  # only the shared auto refresh
+    assert " style='" not in page  # nothing the CSP would have to allow
+    assert page.count("<script>") == 1  # only the shared auto refresh inline
+    # The interactive chart: two local script files, nothing from outside.
+    assert set(re.findall(r"<script src='([^']+)'>", page)) == {"/assets/chart/lightweight-charts-4.2.3.js", "/assets/chart/tim_chart.js"}
+    assert "data-keep-view='chart'" in page and "id='tc-live'" in page
 
 
 def test_page_without_candles_shows_empty_state() -> None:
@@ -178,7 +182,9 @@ def test_server_serves_chart_page_and_json() -> None:
     try:
         with urlopen(f"http://127.0.0.1:{port}/chart?tf=5m", timeout=5) as response:
             assert response.status == 200
-            assert response.headers["Content-Security-Policy"] == _content_security_policy()
+            csp = response.headers["Content-Security-Policy"]
+            assert csp == _content_security_policy().replace("script-src ", "script-src 'self' ", 1)
+            assert "unsafe" not in csp and "http" not in csp
             assert b"TIM-Chart" in response.read()
         with urlopen(f"http://127.0.0.1:{port}/api/chart?tf=1h", timeout=5) as response:
             model = json.loads(response.read())
