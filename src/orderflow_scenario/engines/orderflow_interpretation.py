@@ -28,7 +28,7 @@ from src.models.market_data import Candle, Trade
 
 from ..domain import OrderflowInterpretation, OrderflowStatement, OrderflowStatementKind
 from ..domain import ZERO
-from ..footprint import FootprintReading, FootprintSeries, analyze_footprint
+from ..footprint import STACK_MIN, FootprintReading, FootprintSeries, analyze_footprint
 from ..positioning import (
     PositioningInputs,
     ProfileLevels,
@@ -342,7 +342,7 @@ class OrderflowInterpretationEngine:
                 aggressor_stack = footprint.stacked_buy if delta_direction else footprint.stacked_sell
                 finished_at_extreme = footprint.finished_high if delta_direction else footprint.finished_low
                 thin_at_extreme = footprint.thin_extreme == ("BUYERS_THIN_AT_HIGH" if delta_direction else "SELLERS_THIN_AT_LOW")
-                if aggressor_stack >= 3:
+                if aggressor_stack >= STACK_MIN:
                     # Stacked imbalances on the aggressor's side: the push is alive, not exhausted.
                     statements.append(
                         OrderflowStatement(
