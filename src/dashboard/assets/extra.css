@@ -89,7 +89,7 @@ caption{text-align:left;padding:11px 13px;color:var(--muted);font-size:11px;back
 .tc-layer{display:inline-flex;align-items:center;gap:4px;cursor:pointer;border-left:3px solid currentColor;padding-left:6px}
 .tc-layer input{accent-color:currentColor}
 .tc-layer--day{color:#4c8dff}.tc-layer--week{color:#b07cff}.tc-layer--month{color:#ff9f43}.tc-layer--naked{color:#f5c542}
-.tc-layer--running,.tc-layer--tpo{color:#5ec8d8}.tc-layer--session,.tc-layer--ib{color:#8a94a6}.tc-layer--structure{color:#35d39a}.tc-layer--trend{color:#e879c6}
+.tc-layer--running,.tc-layer--tpo{color:#5ec8d8}.tc-layer--vp{color:#4c8dff}.tc-layer--fp{color:#26a69a}.tc-layer--session,.tc-layer--ib{color:#8a94a6}.tc-layer--structure{color:#35d39a}.tc-layer--trend{color:#e879c6}
 .tc-live__actions{display:flex;gap:6px}
 .tc-live__actions button{cursor:pointer;font:inherit}
 .tc-live__frame{border:1px solid rgba(120,134,156,.25);border-radius:8px;overflow:hidden;background:#0b0f16}

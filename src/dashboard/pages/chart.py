@@ -498,7 +498,10 @@ def _live_section(symbol: str, view: str) -> str:
         "Jede Linie beginnt dort, wo das Level entstanden ist (Hochs/Tiefs an ihrer Kerze, Profile am Beginn ihres Tages/ihrer Woche), "
         "und trägt Zeitrahmen und Namen, z. B. <b>1D VAH</b> oder <b>1W POC</b>. Ein ← heißt: Beginn liegt links außerhalb der geladenen Kerzen. "
         "<b>TPO</b>: Tagesprofil aus 30-Minuten-Perioden (Buchstaben A, B, C … ab 00:00 UTC) hinter den Kerzen, Value Area heller, POC gelb, Single Prints orange; "
-        "auf Zeitrahmen bis 4h. Zeiten in deiner Ortszeit. Nur Anzeige, keine Order. "
+        "auf Zeitrahmen bis 4h. <b>Volume Profile</b> und <b>Footprint</b> kommen aus TIMs eigenen Trades (Datenbank, nur BTC): "
+        "das Profil je Tag rechts am Tagesende (Volumen je Preisstufe, Value Area, POC gelb, grüner/roter Strich = Delta), "
+        "der Footprint zeigt je Kerze Bid × Ask je Preisstufe, sobald die Kerzen breit genug sind (reinzoomen), Imbalances 4:1 gefüllt, Δ unter der Kerze. "
+        "Zeiten in deiner Ortszeit. Nur Anzeige, keine Order. "
         "Chart: <a href='https://www.tradingview.com/' rel='noopener noreferrer'>TradingView Lightweight Charts</a> (Apache 2.0).</p>"
         f"<script src='{LIB_PATH}'></script><script src='{APP_PATH}'></script></section>"
     )

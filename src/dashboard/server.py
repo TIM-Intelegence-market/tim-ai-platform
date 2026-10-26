@@ -128,7 +128,9 @@ class DashboardServer:
                     from src.dashboard.chart_live import build_live_chart
 
                     try:
-                        model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series())
+                        with outer.state.lock:
+                            footprint = dict(outer.state.footprint)
+                        model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint)
                     except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
