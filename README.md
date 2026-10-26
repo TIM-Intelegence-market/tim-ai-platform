@@ -1,5 +1,7 @@
 # TIM — Transparent Intelligence for Markets
 
+Stand 26.10.2026 (Einstieg für Menschen: `docs/TIM_IN_10_MINUTEN.md`; Systemstand: `docs/SYSTEMSTAND.md`; Merge-Regeln: `CI.md`).
+
 TIM provides a local, observation-only BTCUSDT research pipeline: public Binance aggregate trades, deterministic multi-timeframe candle aggregation, TimescaleDB persistence, BOS and Broncx context observations, plus optional explanation-only Ollama summaries.
 
 ## Repository governance
