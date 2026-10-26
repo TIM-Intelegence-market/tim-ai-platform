@@ -74,8 +74,8 @@ Dashboard-Agenten.
 | B2 Backup-Skript auf zweites Ziel | DONE (Code, PR #442): `tim_db_backup.py mirror` + `ops/launchd/com.tim.db-backup-mirror.plist` liegen bereit, **nicht installiert** (kein Ziel). Wird eine externe SSD `TIM-Backup` angeschlossen, reicht der Block in `ops/macos/LIVE_MAC.md` | `scripts/tim_db_backup.py`, `ops/macos/LIVE_MAC.md` |
 | S2 Tailnet | DONE 26.10. 12:32 (Uzi: „chris bleibt“): Tailnet `tailnet.example.ts.net` bleibt bei Chris' Konto; Fallback bei Ausfall: Dashboards nur lokal auf dem Mac (127.0.0.1) | Memory-Eintrag; `docs/governance/` |
 | S3 2FA | DONE 26.10. 12:32 (Uzi: „ja“ auf die Frage nach 2FA für GitHub, Binance-Testnet, Apple-Konto); keine eigene Prüfung durch Claude möglich | Uzis Wort im Thread |
-| R1 CODEOWNERS | DONE (26.10., Uzis „go“): `.github/CODEOWNERS` neu, Uzi und Chris (fleckbarti-ai) gemeinsam Eigner nur der kritischen Pfade (`.github/`, `config/`, `src/database/`, Plan-Journal, Kostenmodell, Research-Protokoll, Sicherheitsregeln); keine `*`-Zeile, damit Uzis übrige PRs nicht auf Chris warten | `.github/CODEOWNERS` |
-| R2 Ruleset „Review von Code-Eignern“ | BLOCKED (Uzi): Schalter im Ruleset `platform-main merge conditions`, erst nach Merge von R1. Danach braucht jeder PR, der einen kritischen Pfad ändert, Chris' Freigabe (Claude-PRs laufen unter Uzis Konto) | GitHub-Einstellungen |
+| R1 CODEOWNERS | DONE (vorhanden): `.github/CODEOWNERS`, Eigner uezeyiraydin-cell für config/, scripts/, workflows, src/database/ | `.github/CODEOWNERS` |
+| R2 Ruleset „Review von Code-Eignern“ | BLOCKED (Uzi): Schalter im Ruleset `platform-main merge conditions`; Vorsicht: ohne Bypass blockiert es auch Uzis eigene PRs, Chris müsste Eigner werden | GitHub-Einstellungen |
 | T2 Server-Runner | DONE 25.10.: `tim-core-01-ci` auf Chris' Server aktiv (PR #416) | Runner-Liste |
 | Z1 75-%-Ziel | DONE 26.10. 11:09: Uzi auf der Karte „75 % streichen, DoD aus #82 gilt“; eingetragen als v0.7 im Gesamtplan | `docs/TIM_GESAMTPLAN.md` Abschnitt 1 und Änderungsprotokoll |
 | alle anderen | PLANNED | – |
@@ -95,4 +95,3 @@ Statuswerte: PLANNED, RUNNING, BLOCKED (wer), VERIFIED (Nachweis), DONE. Eine De
 - 26.10.2026 (14:00): PR #445 gemergt. Sicht 11 GRÜN. Stand: GRÜN 1, 3, 6, 7, 10, 11; GELB 2 (PR-Zahl, P0 A02/A03), 4 (#417), 8 (Ruleset, B05), 9 (USV, Lastmessung ohne CI), 5 (F3 ab 24.11.).
 - 26.10.2026 (16:30): PR #417 auf platform-main gebracht (Merge-Commit, Konflikte: Scharfschaltung und Stop-Regel be_cost/1 beide behalten) und gemergt. Sicht 4 GRÜN. A03 war schon durch #413 (Studie K1) erledigt, Register nachgezogen: kein offenes P0. Sicht 2 bleibt GELB nur wegen der PR-Zahl. Stand: GRÜN 1, 3, 4, 6, 7, 10, 11; GELB 2, 8, 9, 5.
 - 26.10.2026 (19:40): Uzi wählt auf der Karte „#428 mergen und #333 schließen“. #428 gemergt (074ccc4), #333 geschlossen. Sicht 2 GRÜN. Stand: GRÜN 1, 2, 3, 4, 6, 7, 10, 11; GELB 8 (Ruleset, B05), 9 (USV, Lastmessung ohne CI); 5 (F3 ab 24.11.).
-- 26.10.2026 (19:55): Uzis „go“ für R1. CODEOWNERS-PR mit Chris als zweitem Eigner der kritischen Pfade. Danach R2 (Uzis Schalter) und R4 (Chris' B05-Prüfung) offen.
