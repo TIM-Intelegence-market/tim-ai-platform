@@ -189,3 +189,12 @@ def test_random_baseline_rejects_trades_without_atr() -> None:
     t = Trade(bars[300].open_time, bars[301].open_time, bars[305].open_time, 1, 100.0, 101.0, 98.0, "target", 5, 2.9, 0.05, 0.0, None, 3.0)
     with pytest.raises(ValueError):
         ev.random_baseline(data, {"BTCUSDT": [t]}, runs=10)
+
+
+def test_trend_series_matches_pointwise_trend() -> None:
+    bars = walk(400, 9, drift=0.001)
+    series = ev.trend_series(bars)
+    assert len(series) == 400 and all(v is None for v in series[:199])
+    assert all(series[i] == ev.trend_at(bars, i) for i in range(199, 400, 7))
+    data = ev.SectionData(bars, ev.atr_series_contiguous(bars), (), bars[250].open_time, bars[-1].open_time + H4, series)
+    assert data.trend(300) == series[300]

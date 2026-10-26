@@ -297,6 +297,7 @@ class SectionData:
     funding: Sequence[FundingRate]
     start_ms: int
     end_ms: int
+    trend_values: Sequence[int | None] | None = None  # from trend_series, optional cache for baseline C
 
     def candidates(self) -> list[int]:
         """Bars of the section with a contiguous ATR window, at least EDGE_BARS before the section end."""
@@ -307,12 +308,9 @@ class SectionData:
 
     def trend(self, i: int) -> int | None:
         """+1 above the SMA 200, -1 below, None without a contiguous SMA window (baseline C)."""
-        history = self.bars[: i + 1]
-        if len(history) < s7.SMA_PERIOD or not s7.contiguous(history, s7.SMA_PERIOD):
-            return None
-        sma = sma_close(history, s7.SMA_PERIOD)
-        close = self.bars[i].close
-        return 1 if close > sma else -1 if close < sma else None
+        if self.trend_values is not None:
+            return self.trend_values[i]
+        return trend_at(self.bars, i)
 
     def index_of(self, open_time: int) -> int:
         times = [b.open_time for b in self.bars]
@@ -321,6 +319,31 @@ class SectionData:
             raise ValueError("signal time not in bars")
         return i
 
+
+def trend_at(bars: Sequence[Kline], i: int) -> int | None:
+    history = History(bars, i)
+    if len(history) < s7.SMA_PERIOD or not s7.contiguous(history, s7.SMA_PERIOD):
+        return None
+    sma = sma_close(history, s7.SMA_PERIOD)
+    close = bars[i].close
+    return 1 if close > sma else -1 if close < sma else None
+
+
+def trend_series(bars: Sequence[Kline]) -> list[int | None]:
+    """SMA 200 trend state per bar (baseline C), computed once per instrument."""
+    closes = [b.close for b in bars]
+    out: list[int | None] = []
+    running = 0.0
+    for i, close in enumerate(closes):
+        running += close
+        if i >= s7.SMA_PERIOD:
+            running -= closes[i - s7.SMA_PERIOD]
+        if i + 1 < s7.SMA_PERIOD or not s7.contiguous(History(bars, i), s7.SMA_PERIOD):
+            out.append(None)
+            continue
+        sma = running / s7.SMA_PERIOD
+        out.append(1 if close > sma else -1 if close < sma else None)
+    return out
 
 def atr_series_contiguous(bars: Sequence[Kline]) -> list[float | None]:
     """ATR14 per bar, None where a 4h bar is missing inside the ATR window (section 3)."""
