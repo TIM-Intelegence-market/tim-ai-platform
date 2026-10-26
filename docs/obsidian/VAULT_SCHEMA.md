@@ -108,6 +108,7 @@ Der Obsidian-Graph ist ein zusammenhängender Baum mit Querverbindungen:
 | 80 Runbooks | Runbooks MOC | türkis |
 | 90 Berichte | Reports MOC | grau |
 | 00 Inbox | (in TIM Home unter „Eingang“) | hellgrün |
+| Claude Memory (neben `TIM/`) | eigener Graph, bleibt unberührt | ocker |
 
 `python -m src.obsidian_vault.graph_hubs sync` schreibt in jeden Knoten einen Block
 zwischen `<!-- tim-graph:start -->` und `<!-- tim-graph:end -->` mit Links auf alle

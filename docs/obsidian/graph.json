@@ -90,6 +90,13 @@
         "a": 1,
         "rgb": 10741301
       }
+    },
+    {
+      "query": "path:\"Claude Memory\"",
+      "color": {
+        "a": 1,
+        "rgb": 14066524
+      }
     }
   ],
   "collapse-display": false,
