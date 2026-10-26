@@ -1,8 +1,6 @@
 # Orderflow-Regeln für TIM: Absorption, Exhaustion und Umfeld
 
-Stand: 2026-10-26. Quellen: Broncx-Bootcamp-PDF (Seiten laut
-[BRONCX_BOOTCAMP_KNOWLEDGE.md](BRONCX_BOOTCAMP_KNOWLEDGE.md), Abschnitt „Footprint delta“
-77-90, 183-187) und die unter „Quellen“ genannten öffentlichen Texte. Das Dokument ist
+Stand: 2026-10-26. Quellen: Broncx-Bootcamp (nicht öffentlich, Abschnitt „Footprint delta“) und die unter „Quellen“ genannten öffentlichen Texte. Das Dokument ist
 Lernstoff und Regelbuch für die Orderflow-Engine, kein Handelssignal und kein Nachweis
 für einen Edge. Jede Regel ist eine Beobachtung mit Bedingungen; eine Entscheidung braucht
 weiterhin Ort (HTF-Level), zweite unabhängige Evidenz und eine Invalidierung

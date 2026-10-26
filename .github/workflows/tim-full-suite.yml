@@ -1,7 +1,7 @@
 name: TIM full suite
 
 # Manual only: every pull request already runs the same suite as the required check `test`
-# (ci.yml, self-hosted runner). This variant against TimescaleDB in Docker needs GitHub-hosted
+# (ci.yml). This variant against TimescaleDB in Docker needs GitHub-hosted
 # minutes; start it by hand when a change touches TimescaleDB-specific behaviour.
 on:
   workflow_dispatch:

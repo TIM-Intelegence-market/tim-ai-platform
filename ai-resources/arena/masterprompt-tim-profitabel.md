@@ -105,8 +105,7 @@ Worten nicht vor, aber sie zeigen, was er bisher geplant hat:
   `docs/autonomous_trader/IMPLEMENTATION_ROADMAP.md`: die Stufen L0 bis L6 (Daten → Beobachtungen →
   Setup-Vorschläge → Paper Orders → Shadow → Limited Live → überwachte Autonomie),
   die Zielarchitektur und die Phasen 0 bis 10 mit ihren Gates.
-- `docs/knowledge/BRONCX_BOOTCAMP_KNOWLEDGE.md` und
-  `docs/knowledge/BRONCX_DISCORD_FEED.md`: die Trading-Methode, an der sich TIM
+- `docs/knowledge/BRONCX_DISCORD_FEED.md` (der Bootcamp-Katalog ist nicht öffentlich): die Trading-Methode, an der sich TIM
   orientiert (Orderflow, Auction Market Theory, Marktstruktur, Liquidität;
   Kette Kontext → Ort → Struktur → Orderflow → Reaktion → Szenario →
   Invalidierung).

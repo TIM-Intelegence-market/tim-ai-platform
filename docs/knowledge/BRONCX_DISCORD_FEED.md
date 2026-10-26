@@ -1,7 +1,7 @@
 # Broncx-Discord-Feed: aktuelle Sicht als Leitfaden für TIM
 
 Status: externe Meinung, fließt gewichtet in die Analyse ein. Ergänzt den
-[Bootcamp-Katalog](BRONCX_BOOTCAMP_KNOWLEDGE.md) um Broncx' aktuellen Gedankengang.
+Bootcamp-Wissen (Katalog nicht öffentlich) um Broncx' aktuellen Gedankengang.
 
 ## Wofür TIM die Beiträge nutzt
 

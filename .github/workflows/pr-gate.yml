@@ -15,9 +15,8 @@ permissions:
 jobs:
   gate:
     name: PR gate
-    # Any tim-ci runner (docs/CI_SELF_HOSTED_RUNNER.md); it needs only git, gh and python3.
-    # This job never executes PR code.
-    runs-on: [self-hosted, tim-ci]
+    # GitHub-hosted runner; it needs only git, gh and python3. This job never executes PR code.
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       # The default checkout credentials stay on purpose: the fetch below needs them in a
@@ -43,9 +42,8 @@ jobs:
         id: gate
         continue-on-error: true
         run: |
-          # Forced (+): the self-hosted runner keeps its work tree between runs, so pr/head may still
-          # point at another PR's head and a plain fetch is rejected as non-fast-forward. The SHA
-          # check below still pins the gate to the triggering commit.
+          # Forced (+) so a leftover pr/head can never block the fetch. The SHA check below still pins
+          # the gate to the triggering commit.
           git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
           fetched="$(git rev-parse refs/remotes/pr/head)"
           if [ "$fetched" != "$HEAD_SHA" ]; then

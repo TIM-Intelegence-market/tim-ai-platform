@@ -19,3 +19,11 @@ sonar-project.properties @uezeyiraydin-cell
 
 # Database schema and migrations are protected (OBSERVE-only guarantees)
 src/database/ @uezeyiraydin-cell
+
+# Public repository: operations, agent rules and CI need a maintainer review
+ops/ @uezeyiraydin-cell
+.claude/ @uezeyiraydin-cell
+CLAUDE.md @uezeyiraydin-cell
+AGENTS.md @uezeyiraydin-cell
+CI.md @uezeyiraydin-cell
+.github/ @uezeyiraydin-cell

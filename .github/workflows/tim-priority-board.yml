@@ -1,8 +1,7 @@
 name: TIM Priority Board
 
 on:
-  schedule:
-    - cron: "0 7 * * *"
+  # Manual only in the public repository; the daily run stays in the maintainers' private setup.
   workflow_dispatch:
 
 permissions:
@@ -17,7 +16,7 @@ concurrency:
 
 jobs:
   prioritize:
-    runs-on: [self-hosted, macOS, tim-ci]
+    runs-on: ubuntu-latest
     # Enforces SPEC.timeout_seconds (600 s) of the Project Manager Agent.
     timeout-minutes: 10
     env:
@@ -29,12 +28,9 @@ jobs:
       TOP_N: "5"
     steps:
       - uses: actions/checkout@v4
-      # setup-python cannot install on this runner: the macOS Python package hardcodes
-      # /Users/runner/hostedtoolcache. Use Homebrew's python@3.13 from setup_ci_runner.sh instead.
-      - name: Set up Python 3.13 (Homebrew)
-        run: |
-          /opt/homebrew/bin/python3.13 -m venv "$RUNNER_TEMP/venv"
-          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Prioritize TIM GitHub work
         env:
           GITHUB_TOKEN: ${{ github.token }}

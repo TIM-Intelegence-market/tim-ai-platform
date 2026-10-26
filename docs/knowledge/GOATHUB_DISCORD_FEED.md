@@ -97,7 +97,7 @@ Entwurf zur Abstimmung. Nichts davon ist umgesetzt oder vom GoatHub-Team freigeg
 | trading lounge | lesen, Calls erkennen | Live-Austausch, viel Rauschen, Note C bleibt Kontext |
 | community | lesen, Calls erkennen | allgemeiner Austausch, nur Beiträge mit Richtung und Symbol zählen |
 | education | nur Wissen, keine Calls | Lehrmaterial ist kein Wirksamkeitsbeleg; Rechte der Autoren klären |
-| bronxc bootcamp | nur Wissen, keine Calls | Katalog siehe `BRONCX_BOOTCAMP_KNOWLEDGE.md`; nur mit Freigabe |
+| bronxc bootcamp | nur Wissen, keine Calls | Katalog nicht öffentlich; nur mit Freigabe |
 
 Die IDs stehen hier nicht. Sie werden beim `setup` lokal eingetragen (Entwicklermodus, Rechtsklick
 auf den Kategorienamen, „Kategorie-ID kopieren“) und nicht committet.
