@@ -33,6 +33,13 @@ NOW = datetime(2026, 10, 24, 14, 0, 30, tzinfo=timezone.utc)
 REAL_MAP = session_map.build_session_map
 
 
+def _without_cost_filter(monkeypatch) -> None:
+    """These tests compare chart and journal; the fixture levels give tight stops the cost filter would drop."""
+    from src.dashboard import plan_journal
+
+    monkeypatch.setattr(plan_journal, "drop_costly", lambda plans: ([dict(p) for p in plans], []))
+
+
 def _with_levels(series, now=None):
     """The real preparation map with main levels placed so that a level/1 long exists."""
     prep = REAL_MAP(series, now)
@@ -129,6 +136,7 @@ def test_every_timeframe_gets_a_card() -> None:
 
 
 def test_chart_and_level_journal_agree(monkeypatch, tmp_path) -> None:
+    _without_cost_filter(monkeypatch)
     monkeypatch.setattr(session_map, "build_session_map", _with_levels)
     series = _runtime_series()
     path = tmp_path / "level.json"
@@ -156,6 +164,9 @@ def test_journal_check_states() -> None:
     assert journal_check(card, {"last_plan_candle": close, "entries": [entry]}, close)["state"] == "MATCH"
     assert journal_check(card, {"last_plan_candle": "2026-10-24T13:30:00Z", "entries": []}, close)["state"] == "JOURNAL_BEHIND"
     assert journal_check(card, {"last_plan_candle": close, "entries": []}, close)["state"] == "MISSING"
+    skip = "LONG: Plan L1: Kosten 1,76 R über 0,25 R"
+    filtered = journal_check(card, {"last_plan_candle": close, "entries": [], "last_skips": [skip]}, close)
+    assert filtered["state"] == "FILTERED" and filtered["plans"][0]["journal_skip"] == skip
     older = {**entry, "stop": 98.5, "created_at": "2026-10-24T12:00:00Z"}
     assert journal_check(card, {"last_plan_candle": close, "entries": [older]}, close)["state"] == "RESTING"
     assert journal_check(card, {"last_plan_candle": close, "entries": [{**entry, "stop": 98.5}]}, close)["state"] == "MISMATCH"
@@ -192,6 +203,7 @@ def _live_series() -> dict:
 
 
 def test_page_api_and_journal_show_the_same_plan(monkeypatch, tmp_path) -> None:
+    _without_cost_filter(monkeypatch)
     monkeypatch.setattr(session_map, "build_session_map", _with_levels)
     series = _live_series()
     state, server, port = _server(tmp_path, series)
@@ -223,6 +235,7 @@ def _node_playwright() -> bool:
 
 @pytest.mark.skipif(not _node_playwright(), reason="node with playwright not installed (cloud sandbox has it, the Mac runner not)")
 def test_browser_renders_the_card_on_every_timeframe(monkeypatch, tmp_path) -> None:
+    _without_cost_filter(monkeypatch)
     monkeypatch.setattr(session_map, "build_session_map", _with_levels)
     state, server, port = _server(tmp_path, _live_series())
     try:

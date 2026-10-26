@@ -80,13 +80,13 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
 
         tim, struct = load_plan_journal(state.plan_journal_path), load_plan_journal(state.plan_journal_struct_path)
         struct.setdefault("rule", RULE_STRUCT)
+        level = load_plan_journal(state.plan_journal_level_path)
+        level.setdefault("rule", RULE_LEVEL)
         if page == "Plan Journal Level":
-            level = load_plan_journal(state.plan_journal_level_path)
-            level.setdefault("rule", RULE_LEVEL)
-            return _plan_journal_page(data, level)
+            return _plan_journal_page(data, level, other=tim, level_journal=struct)
         if page == "Plan Journal Struct":
-            return _plan_journal_page(data, struct, other=tim)
-        return _plan_journal_page(data, tim, other=struct)
+            return _plan_journal_page(data, struct, other=tim, level_journal=level)
+        return _plan_journal_page(data, tim, other=struct, level_journal=level)
     if page in OPERATIONS_PAGES and page != "Overview":
         return _layout(page, page, render_operations_page(page, data["operations"]), strip=_strip_states(data))
     if page == "Orderflow":

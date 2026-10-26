@@ -126,7 +126,7 @@ def test_page_compares_both_rule_versions() -> None:
     tim = {**empty_journal(), "rule": "tim/1"}
     struct = {**empty_journal(), "rule": RULE_STRUCT, "structure_skips": {"nächstes Ziel": 3}}
     page = _plan_journal_page({}, tim, other=struct)
-    assert "Zwei Regelversionen parallel" in page and "nächstes Ziel: 3" in page and "/journal/struct" in page
+    assert "Regelversionen parallel" in page and "nächstes Ziel: 3" in page and "/journal/struct" in page
     page = _plan_journal_page({}, struct, other=tim)
     assert "Plan-Journal: Struktur-Regel" in page and "Struktur-Regel: Stop 0,05 %" in page
 
@@ -142,7 +142,7 @@ def test_server_serves_struct_journal(tmp_path) -> None:
         with urlopen(f"http://127.0.0.1:{port}/journal/struct", timeout=5) as response:
             assert "Struktur-Regel" in response.read().decode()
         with urlopen(f"http://127.0.0.1:{port}/journal", timeout=5) as response:
-            assert "Zwei Regelversionen parallel" in response.read().decode()
+            assert "Regelversionen parallel" in response.read().decode()
         with urlopen(f"http://127.0.0.1:{port}/api/plan-journal?rule=struct", timeout=5) as response:
             assert json.loads(response.read())["schema"] == SCHEMA
     finally:

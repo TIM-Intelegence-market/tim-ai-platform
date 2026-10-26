@@ -5,6 +5,10 @@ NOT_TRADABLE_COST. The mark is information on the page and in the JSON view
 only: it is never written to the journal or its event log and it changes no
 entry, stop, target, grade, evidence, journal decision or execution status.
 
+Since 26.10.2026 (Uzi) the plan journal also uses cost_check as a filter: a new
+plan above the limit (or with unknown costs) is not written down
+(plan_journal.drop_costly). Entries already in the journal keep their mark only.
+
 The 0.25 R limit is a hypothesis (Uzi, 24.10.2026). Whether it is a good
 limit is to be checked later on backtests and paper trades.
 

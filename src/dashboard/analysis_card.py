@@ -46,6 +46,7 @@ JOURNAL_STATES = {
     "RESTING": "Journal hält einen älteren Plan dieser Richtung (ein Plan je Richtung)",
     "MISMATCH": "Chart und Journal weichen ab",
     "MISSING": "Plan nicht im Journal",
+    "FILTERED": "Journal schreibt den Plan nicht auf (Kosten über der Schwelle oder Level nach Stop nicht zurückerobert)",
     "NO_JOURNAL": "Level-Journal nicht lesbar",
 }
 
@@ -278,8 +279,9 @@ def journal_check(card: Mapping[str, Any], journal: Mapping[str, Any] | None, la
     rows = []
     for plan in (p for p in card.get("plans") or [] if p["source"] == "level/1"):
         entry = live.get(plan["direction"])
+        skipped = [r for r in journal.get("last_skips") or [] if str(r).startswith(f"{plan['direction']}: Plan {plan['id']}")]
         if entry is None:
-            state = "JOURNAL_BEHIND" if behind else "MISSING"
+            state = "JOURNAL_BEHIND" if behind else "FILTERED" if skipped else "MISSING"
         elif _same(entry["entry"], plan["entry"]) and _same(entry["stop"], plan["stop"]) and all(
                 _same(a, b) for a, b in zip(entry.get("targets") or [], plan["targets"])):
             state = "MATCH"
@@ -293,10 +295,11 @@ def journal_check(card: Mapping[str, Any], journal: Mapping[str, Any] | None, la
                      "journal_id": (entry or {}).get("id"), "journal_status": (entry or {}).get("status"),
                      "journal_decision": (entry or {}).get("journal_decision"),
                      "decision_equal": entry is None or entry.get("journal_decision") == plan["decision"],
+                     "journal_skip": skipped[0] if skipped and entry is None else None,
                      "journal": {k: (entry or {}).get(k) for k in ("entry", "stop", "targets", "created_at")} if entry else None})
     states = {row["state"] for row in rows}
     overall = "MISMATCH" if "MISMATCH" in states else "JOURNAL_BEHIND" if "JOURNAL_BEHIND" in states else (
-        "MISSING" if "MISSING" in states else "RESTING" if "RESTING" in states else "MATCH")
+        "MISSING" if "MISSING" in states else "FILTERED" if "FILTERED" in states else "RESTING" if "RESTING" in states else "MATCH")
     if not rows:
         overall = "JOURNAL_BEHIND" if behind else "MATCH"
     return {"state": overall, "text": JOURNAL_STATES[overall] if rows else ("Kein Level-Plan, nichts abzugleichen" if not behind else JOURNAL_STATES[overall]),

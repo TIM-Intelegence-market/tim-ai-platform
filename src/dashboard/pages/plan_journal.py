@@ -8,7 +8,7 @@ from src.dashboard.chart_model import _fmt, _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _hero, _layout, _strip_states
 from src.dashboard.plan_cost_check import COST_LIMIT_R, COST_UNKNOWN, COST_WITHIN_LIMIT, NOT_TRADABLE_COST, cost_check, cost_summary
-from src.dashboard.plan_journal import GRADE_NOTE, MAX_HOLD_HOURS, PENDING_HOURS, RULE_LEVEL, RULE_STRUCT, counter_trend, summary
+from src.dashboard.plan_journal import GRADE_NOTE, MAX_HOLD_HOURS, PENDING_HOURS, RULE_LEVEL, RULE_STRUCT, RULE_TIM, counter_trend, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
 STATUS_LABELS = {
@@ -87,6 +87,8 @@ def _row(entry: Mapping[str, Any]) -> str:
         detail.append(str(entry["note"]))
     if entry.get("data_gap"):
         detail.append("Datenlücke: " + str(entry["data_gap"]))
+    if entry.get("excluded"):
+        detail.insert(0, "NICHT GEZÄHLT: " + str(entry["excluded"].get("reason") or entry["excluded"].get("category") or "korrigiert"))
     invalid = entry.get("invalidation_level")
     invalid_text = f"{entry.get('timeframe', '15m')}-Schluss {entry.get('invalidation_side')} {_price(invalid)}" if invalid is not None else "–"
     low, high = entry.get("entry_low"), entry.get("entry_high")
@@ -113,32 +115,43 @@ def _row(entry: Mapping[str, Any]) -> str:
     )
 
 
-def _compare(tim: Mapping[str, Any], struct: Mapping[str, Any]) -> str:
-    """Both rule versions side by side on the same market."""
+COMPARE_ROWS = (
+    (RULE_TIM, "TIM-Regel (Stop pauschal, Ziele 1,5/2/3 R)", "/journal"),
+    (RULE_STRUCT, "Struktur-Regel (Stop hinter dem Swing, Ziele an Liquidität)", "/journal/struct"),
+    (RULE_LEVEL, "Level-Regel (Hauptlevel, Stop hinter dem Swing)", "/journal/level"),
+)
+
+
+def _compare(journals: Mapping[str, Mapping[str, Any]]) -> str:
+    """All rule versions side by side on the same market, net of costs."""
     rows = []
-    for name, journal, href in (("TIM-Regel (Stop pauschal, Ziele 1,5/2/3 R)", tim, "/journal"),
-                                ("Struktur-Regel (Stop hinter dem Swing, Ziele an Liquidität)", struct, "/journal/struct")):
+    for rule, name, href in COMPARE_ROWS:
+        journal = journals.get(rule)
+        if journal is None:
+            continue
         stats = summary(journal)
         win_rate = f"{stats['win_rate'] * 100:.0f} %" if stats["win_rate"] is not None else "–"
+        excluded = stats["excluded"]["plans"]
         rows.append(f"<tr><td><a href='{href}'>{_safe(name)}</a></td><td>{stats['plans']}</td><td>{stats['closed']}</td>"
-                    f"<td>{_safe(win_rate)}</td><td class='mono'>{_safe(_r_text(stats['sum_r']))}</td>"
-                    f"<td class='mono'>{_safe(_r_text(stats['sum_r'] / stats['closed'] if stats['closed'] else None))}</td></tr>")
-    skipped = struct.get("structure_skips") or {}
+                    f"<td>{_safe(win_rate)}</td><td class='mono'>{_safe(_r_text(stats['sum_net_r']))}</td>"
+                    f"<td class='mono'>{_safe(_r_text(stats['sum_net_r'] / stats['closed'] if stats['closed'] else None))}</td>"
+                    f"<td class='mono'>{_safe(_r_text(stats['sum_r']))}</td><td>{excluded}</td></tr>")
+    skipped = (journals.get(RULE_STRUCT) or {}).get("structure_skips") or {}
     skip_text = ", ".join(f"{reason}: {count}" for reason, count in sorted(skipped.items(), key=lambda item: -item[1])) or "noch keine"
     return (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Vergleich</p>"
-        "<h2>Zwei Regelversionen parallel</h2><p class='cc-section__note'>Gleiche Pläne, gleicher Einstieg, gleiche Ungültigkeit. "
+        "<h2>Regelversionen parallel</h2><p class='cc-section__note'>Gleicher Markt, gleiche Kerzen. "
         "Die Struktur-Regel legt den Stop hinter den nächsten 30m-Swing und die Ziele an die nächsten Liquiditätsorte aus der Vorbereitung; "
-        f"liegt das erste Ziel unter 1,5 R, gibt es keinen Plan. Verworfen bisher: {_safe(skip_text)}. "
-        "Aussagekraft erst nach vielen geschlossenen Plänen.</p></div></div>"
-        "<div class='table-wrap'><table><thead><tr><th>Regel</th><th>Pläne</th><th>geschlossen</th><th>Trefferquote</th><th>Summe</th><th>je Plan</th></tr></thead>"
+        f"liegt das erste Ziel unter 1,5 R, gibt es keinen Plan (verworfen bisher: {_safe(skip_text)}). Die Level-Regel handelt die Hauptlevel aus dem TIM-Chart. "
+        "Summe und je Plan netto nach Kosten; korrigierte Einträge (Phantome, Doppelbuchung) zählen nicht. Aussagekraft erst nach vielen geschlossenen Plänen.</p></div></div>"
+        "<div class='table-wrap'><table><thead><tr><th>Regel</th><th>Pläne</th><th>geschlossen</th><th>Trefferquote</th><th>Summe netto</th><th>je Plan netto</th><th>Summe brutto</th><th>nicht gezählt</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div></section>"
     )
 
 
 def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account_risk_percent: float = 0.5,
-                       other: Mapping[str, Any] | None = None) -> str:
-    """``journal`` is the shown rule version; ``other`` the parallel one for the comparison."""
+                       other: Mapping[str, Any] | None = None, level_journal: Mapping[str, Any] | None = None) -> str:
+    """``journal`` is the shown rule version; ``other`` and ``level_journal`` the parallel ones for the comparison."""
     entries = list(journal.get("entries") or [])
     stats = summary(journal)
     struct = journal.get("rule") == RULE_STRUCT
@@ -156,21 +169,25 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         body += _hero("Plan-Journal: Struktur-Regel", "Dieselben Pläne mit Stop hinter dem Swing und Zielen an der Liquidität (Broncx), parallel zur TIM-Regel verfolgt. " + evidence)
     else:
         body += _hero("Plan-Journal", "TIMs Long- und Short-Pläne aus dem Setup-Pfad, automatisch festgehalten und nach TIMs Regeln verfolgt. " + evidence)
-    if other is not None:
-        body += _compare(other if struct else journal, journal if struct else other)
+    journals = {str(j.get("rule") or RULE_TIM): j for j in (journal, other, level_journal) if j is not None}
+    if len(journals) > 1:
+        body += _compare(journals)
     win_rate = f"{stats['win_rate'] * 100:.0f} %" if stats["win_rate"] is not None else "–"
-    account = stats["sum_r"] * account_risk_percent
+    account = stats["sum_net_r"] * account_risk_percent
+    excluded = stats["excluded"]
     long_, short = stats["by_direction"]["LONG"], stats["by_direction"]["SHORT"]
     costs = cost_summary(journal)
     body += (
         "<section class='cc-section'><div class='metricstrip'>"
         f"<dl class='metricstrip__item'><dt>Pläne</dt><dd>{stats['plans']}<small>{stats['open']} warten · {stats['filled']} im Trade</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Geschlossen</dt><dd>{stats['closed']}<small>Trefferquote {_safe(win_rate)}</small></dd></dl>"
-        f"<dl class='metricstrip__item'><dt>Summe (Brutto-R)</dt><dd>{_safe(_r_text(stats['sum_r']))}<small>vor Kosten; hypothetisch ≈ {account:+.2f} % Konto bei {str(account_risk_percent).replace('.', ',')} % Risiko je Plan</small></dd></dl>"
-        f"<dl class='metricstrip__item'><dt>Summe (Netto-R)</dt><dd>{_safe(_r_text(stats['sum_net_r']))}<small>nach Gebühren und Slippage, Kostenmodell {_safe(stats['cost_model_version'])}; {stats['net_wins']} netto positiv</small></dd></dl>"
+        f"<dl class='metricstrip__item'><dt>Summe (Brutto-R)</dt><dd>{_safe(_r_text(stats['sum_r']))}<small>vor Kosten</small></dd></dl>"
+        f"<dl class='metricstrip__item'><dt>Summe (Netto-R)</dt><dd>{_safe(_r_text(stats['sum_net_r']))}<small>nach Gebühren und Slippage, Kostenmodell {_safe(stats['cost_model_version'])}; {stats['net_wins']} netto positiv; "
+        f"hypothetisch ≈ {f'{account:+.2f}'.replace('.', ',')} % Konto bei {str(account_risk_percent).replace('.', ',')} % Risiko je Plan</small></dd></dl>"
+        f"<dl class='metricstrip__item'><dt>Nicht gezählt</dt><dd>{excluded['plans']}<small>korrigiert (Phantome, Doppelbuchung) · {_safe(_r_text(excluded['sum_net_r']))} netto herausgerechnet</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Entscheidungen</dt><dd>{stats['no_trade']} NO_TRADE<small>{stats['paper_trades']} Papier-Trades · kein Setup mit belegter Evidenz</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Long / Short</dt><dd>{_safe(_r_text(long_['sum_r']))} / {_safe(_r_text(short['sum_r']))}<small>{long_['closed']} / {short['closed']} geschlossen</small></dd></dl>"
-        f"<dl class='metricstrip__item'><dt>Kosten über {_safe(LIMIT_TEXT)}</dt><dd>{costs['not_tradable_cost']}<small>NOT_TRADABLE_COST · {costs['cost_within_limit']} eingehalten · {costs['cost_unknown']} unbekannt; nur Anzeige</small></dd></dl>"
+        f"<dl class='metricstrip__item'><dt>Kosten über {_safe(LIMIT_TEXT)}</dt><dd>{costs['not_tradable_cost']}<small>NOT_TRADABLE_COST · {costs['cost_within_limit']} eingehalten · {costs['cost_unknown']} unbekannt; seit 26.10. werden solche Pläne nicht mehr aufgeschrieben</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Gegen den Trend</dt><dd>{stats['counter_trend']['plans']}<small>{stats['counter_trend']['closed']} geschlossen · {_safe(_r_text(stats['counter_trend']['sum_r']))}</small></dd></dl>"
         "</div></section>"
     )
@@ -197,14 +214,20 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         + ("<li>Level-Regel (level/1): je Richtung ein Plan am nächsten Hauptlevel innerhalb 3 % (Vortag/Vorwoche VAH, VAL, POC, Hoch, Tief, naked POC; Level innerhalb 0,15 % zählen als ein Ort). "
            "Limit am ersten Kontakt, Stop 0,05 % hinter dem nächsten 30m-Swing (höchstens 2 %), TP1–TP3 an den nächsten Leveln und Swings, erstes Ziel mindestens 1,5 R. "
            "Ungültig bei einem 30m-Schluss jenseits dieses Swings. Gekennzeichnet mit oder gegen den 1D/4h-Trend.</li>" if level else "")
-        + "<li>Im Trade nach TIMs Management: je ein Drittel an TP1, TP2 und TP3 (TIM-Regel: 1,5 R, 2 R, 3 R), Stop nach TP1 auf Einstand. Der strukturelle Trailing-Stop ist nicht nachgebildet.</li>"
+        + "<li>Im Trade nach TIMs Management: je ein Drittel an TP1, TP2 und TP3 (TIM-Regel: 1,5 R, 2 R, 3 R). Stop-Regel be_cost/1 (seit 26.10.): nach TP1 Stop auf Einstieg plus Kosten; "
+        "vor TP1 urteilt TIM an jedem 30m-Schluss (HALTEN oder SICHERN) und zieht den Stop auf Einstieg plus Kosten, wenn der Schluss weit genug darüber liegt; "
+        "danach folgt der Stop der letzten bestätigten 30m-Swing-Marke, nie zurück. Ältere Einträge ohne Stop-Regel: Stop nach TP1 auf Einstand.</li>"
+        "<li>Nicht aufgeschrieben werden: Pläne, deren Stop oder Ungültigkeit der Schlusskurs schon überschritten hat; Pläne über der Kosten-Schwelle; "
+        "Pläne am selben Level wie ein gestoppter Trade derselben Richtung, bis ein 30m-Schluss das Level zurückerobert. Ein Plan, der verspätet aufgeschrieben wird, handelt erst ab dem Ende des vorigen Trades.</li>"
+        "<li>Korrekturen: geprüfte Fehlbuchungen (Phantome vor dem Fix vom 26.10., eine Doppelbuchung) bleiben im Log und in der Tabelle, sind als „nicht gezählt“ markiert und fehlen in allen Summen. "
+        "Die Liste steht im Repo (<code>src/dashboard/plan_journal_corrections.json</code>); jede Markierung ist ein eigenes Ereignis im Log.</li>"
         f"<li>Berühren Stop und Ziel dieselbe 1m-Kerze, zählt der Stop. Nach {MAX_HOLD_HOURS} h wird der Rest zum Kerzenkurs geschlossen.</li>"
         "<li>Ergebnis als Brutto-R (1 R = Abstand Einstieg–Stop) und Netto-R nach Forschungsprotokoll 1.1: Gebühr 0,05 % und Slippage 0,03 % je Seite auf Einstieg, jedes Drittel und den Rest, 0,05 % Slippage bei Stop-Ausführung; Kosten in R = Kosten / Stopabstand. Keine Order, keine Anlageberatung.</li>"
         "<li>Speicherung: Jede Änderung ist ein Ereignis im append-only, hash-verketteten Log (<code>tim_plan_journal.events.jsonl</code>); diese Seite ist eine daraus abgeleitete Sicht. Ein Neustart mit denselben Kerzen erzeugt keine neuen Ereignisse; korrigierte Kerzen zu einem schon verarbeiteten 30m-Schluss werden vermerkt, ändern aber keine Entscheidung.</li>"
-        f"<li>Kosten-Schwelle (Hypothese, nur Anzeige): geschätzte Roundtrip-Kosten vom Einstieg bis zum Stop nach Protokoll 1.1, Gebühren auf den Kurs jeder Seite. "
+        f"<li>Kosten-Schwelle (Hypothese; seit 26.10. Filter für neue Pläne): geschätzte Roundtrip-Kosten vom Einstieg bis zum Stop nach Protokoll 1.1, Gebühren auf den Kurs jeder Seite. "
         f"Über {_safe(LIMIT_TEXT)} heißt NOT_TRADABLE_COST, genau {_safe(LIMIT_TEXT)} gilt als eingehalten, fehlende oder ungültige Marken ergeben COST_UNKNOWN. "
         "Verglichen wird der angezeigte Wert auf 4 Nachkommastellen; durch Rundung kann der ungerundete Wert bis etwa 0,0001 R über 0,25 R liegen und trotzdem als eingehalten gelten. "
-        "Die Markierung ändert keinen Einstieg, Stop, Grade, keine Entscheidung und keine Ausführung.</li>"
+        "Die Markierung ändert keinen Einstieg, Stop, Grade und keine Entscheidung; ein Plan über der Schwelle wird nur nicht mehr aufgeschrieben.</li>"
         f"<li>Grade A/B/C: {GRADE_NOTE}. Benotet wird der tatsächliche Szenariozustand, nicht die Vorschau. A+ wird nicht vergeben, weil keine geprüfte Regel dafür existiert.</li>"
         "<li>Ausführbarkeit (nur Papier): Instrument BINANCE/SPOT/BTCUSDT mit Tick 0,01; der Einstieg wird gegen den Plan auf den Tick gerundet. Ein Short auf Spot gilt als nicht ausführbar (keine Leihe modelliert), Datenqualität unter PASS sperrt, veraltete Kerzen (älter als 30 min) erzeugen keine neuen Pläne.</li>"
         "<li>Evidenz: Urteil aus dem Hypothesenregister (docs/research_lab/REGISTER.jsonl) nur über eine geprüfte Regel-Äquivalenz; ohne diese „keine Evidenz“. Entscheidung NO_TRADE, solange Evidenz, Freigabe oder Pipeline fehlen. Grade, Evidenz und Entscheidung werden beim Festhalten gesetzt und danach nie geändert.</li>"
