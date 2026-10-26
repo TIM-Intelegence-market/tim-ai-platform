@@ -246,7 +246,10 @@ def main(argv: list[str] | None = None) -> int:
             adapter = GenericOrderflowAdapter()
             adapt_input = payload
 
-        pipeline_inputs = _pipeline_inputs(adapter, adapt_input, observed_at=footprint_observed_at)
+        if footprint_observed_at is not None:
+            pipeline_inputs = _pipeline_inputs(adapter, adapt_input, observed_at=footprint_observed_at)
+        else:
+            pipeline_inputs = _pipeline_inputs(adapter, adapt_input)
         if args.provider == "openmarket":
             evidence = getattr(adapter, "last_input", None)
             if evidence is not None:
