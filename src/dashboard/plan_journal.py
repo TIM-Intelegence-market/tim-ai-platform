@@ -4,7 +4,9 @@ Each time a 30m candle closes, the plans shown on the Setup-Pfad page are
 written down: entry, stop, invalidation and the three targets from TIM's
 TradePlanBuilder. Afterwards every plan is followed on 1m candles:
 
-- OPEN: waiting for the limit entry. Ends as FILLED, INVALIDATED (30m close
+- OPEN: waiting for the limit entry. A LONG limit above the close at recording
+  (SHORT below) first waits for a 1m close beyond the entry (armed), then for the
+  retest. Plans already beyond their stop or invalidation are not recorded. Ends as FILLED, INVALIDATED (30m close
   beyond the invalidation level first), REPLACED (TIM now proposes other
   levels in the same direction) or EXPIRED (24 h without fill). A plan that
   TIM stops showing stays OPEN like a resting limit order.
@@ -123,7 +125,8 @@ DECISION_FIELDS = (
 # Fields that move with every candle. Changes to these alone are written at the
 # next 30m close (checkpoint), not every minute; anything else is written at once.
 CURSOR_FIELDS = {"evaluated_through", "max_favorable_r", "max_adverse_r", "last_seen_at"}
-# struct/1 only: plans the structure rule dropped at a close (counted in the view as structure_skips).
+# Plans dropped at a close (counted in the view as structure_skips): by the struct/1 or
+# level/1 rule, and for every rule plans that were already invalid on arrival.
 STRUCTURE_PLANS_DROPPED = "STRUCTURE_PLANS_DROPPED"
 
 
@@ -327,6 +330,7 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
             **payload,
             **decision_fields(plan),
             "status": OPEN,
+            **_arming(plan),
             "stop_rule": STOP_RULE_COST,
             "evaluated_through": _iso(at),
             "tp_hits": [],
@@ -338,6 +342,52 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
         entries.append(entry)
         added.append(entry)
     return added
+
+
+def invalid_on_arrival(plan: Mapping[str, Any], close: float) -> str | None:
+    """Why a plan is already dead at the 30m close it would be recorded on, or None.
+
+    A plan whose stop or invalidation level the closing price has already
+    passed cannot be traded: a resting limit on the wrong side of the market
+    would fill at once and be stopped in the same minute. Such plans are not
+    written down (25.10.2026: one LONG retest plan 1.5 % above the market was
+    recorded ten times in a row and booked as ten -1.36 R losses)."""
+    long = plan.get("direction") == "LONG"
+    stop = plan.get("stop")
+    if stop is not None and ((long and close <= float(stop)) or (not long and close >= float(stop))):
+        return f"{plan.get('direction')}: Plan {plan.get('scenario_id')}: Schlusskurs {close:.2f} schon jenseits des Stops {float(stop):.2f}"
+    level, side = plan.get("invalidation_level"), plan.get("invalidation_side")
+    if level is not None and ((side == "<" and close < float(level)) or (side == ">" and close > float(level))):
+        return f"{plan.get('direction')}: Plan {plan.get('scenario_id')}: Schlusskurs {close:.2f} schon jenseits der Ungültigkeitsmarke {float(level):.2f}"
+    return None
+
+
+def drop_invalid_on_arrival(plans: Sequence[Mapping[str, Any]], close: float | None) -> tuple[list[dict[str, Any]], list[str]]:
+    """The plans still valid at ``close`` (with ``close_at_record``) and the reasons for the dropped ones."""
+    if close is None:
+        return [dict(plan) for plan in plans], []
+    kept, dropped = [], []
+    for plan in plans:
+        reason = invalid_on_arrival(plan, float(close))
+        if reason:
+            dropped.append(reason)
+        else:
+            kept.append({**dict(plan), "close_at_record": float(close)})
+    return kept, dropped
+
+
+def _arming(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """A LONG limit above the close (SHORT below) is no resting order: it waits for the breakout.
+
+    Such a plan (retest of a breakout edge, reclaim of a lost level) starts unarmed and its
+    limit only counts after a 1m close beyond the entry. Without it the limit "filled" in the
+    first minute at a price the market never traded. Plans recorded without a close stay armed."""
+    close = plan.get("close_at_record")
+    if close is None:
+        return {}
+    entry = float(plan["entry"])
+    waits = (plan["direction"] == "LONG" and entry > float(close)) or (plan["direction"] == "SHORT" and entry < float(close))
+    return {"armed": not waits}
 
 
 def tick_fill(entry: Mapping[str, Any]) -> float:
@@ -569,6 +619,11 @@ def evaluate(journal: dict[str, Any], minute_candles: Sequence[Mapping[str, Any]
                 if candle["open_time"] >= _time(entry["created_at"]) + timedelta(hours=PENDING_HOURS):
                     entry.update(status="EXPIRED", closed_at=_iso(candle["open_time"]), note=f"{PENDING_HOURS} h ohne Einstieg.")
                     break
+                if not entry.get("armed", True):
+                    # Breakout first: a 1m close beyond the entry arms the limit for the retest.
+                    if (long and candle["close"] > entry["entry"]) or (not long and candle["close"] < entry["entry"]):
+                        entry.update(armed=True, armed_at=_iso(candle["close_time"]))
+                    continue
                 touched = candle["low"] <= entry["entry"] if long else candle["high"] >= entry["entry"]
                 if touched and not _blocked(candle["open_time"], windows):
                     entry.update(status=FILLED, filled_at=_iso(candle["open_time"]), fill_price=tick_fill(entry))
@@ -749,6 +804,8 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                 journal["rule"] = payload["rule"]
                 journal.setdefault("structure_skips", {})
                 journal["last_skips"] = []  # a STRUCTURE_PLANS_DROPPED event for this close follows it
+            elif "last_skips" in journal:
+                journal["last_skips"] = []  # tim/1: only plans dropped as invalid on arrival
         elif kind == CANDLE_REVISION_OBSERVED:
             journal.setdefault("revisions", []).append(deepcopy(payload))
         elif kind == CANDLE_CLOSE_SKIPPED:
@@ -851,11 +908,12 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 plans, dropped = _structural(plans, series, latest)
             elif rule == RULE_LEVEL:
                 plans, dropped = _level(series, latest, model)
-            if rule != RULE_TIM:
-                if dropped:
-                    new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
-                                       "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
-                                       "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
+            plans, dead = drop_invalid_on_arrival(plans, closed_30m[-1].get("close"))
+            dropped += dead
+            if dropped:
+                new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
+                                   "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
+                                   "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
             record_plans(journal, with_evidence(plans, PLAN_TIMEFRAME, register_path), latest)
             judge_trades(journal, model, closed_30m)
             journal["last_plan_candle"] = _iso(latest)
