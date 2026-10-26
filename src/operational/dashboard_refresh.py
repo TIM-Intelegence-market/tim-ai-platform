@@ -37,6 +37,8 @@ from typing import Any, Callable, Iterable
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
+from src.operational import dashboard_help
+
 SCHEMA_VERSION = "1.0.0"
 HISTORY_LIMIT = 500
 
@@ -341,13 +343,19 @@ def default_runner(command: list[str], *, cwd: Path | None = None, timeout: floa
         return subprocess.CompletedProcess(command, 124, "", f"{type(exc).__name__}: {exc}")
 
 
+def ask_claude(prompt: str, timeout: int) -> str:
+    """Claude Code CLI in print mode without tools (same guard as the issue worker's advisor)."""
+    from src.local_first.claude_cli_fallback import advise_text
+    return advise_text(prompt, timeout=timeout)
+
+
 class DashboardRefresh:
     """IO side: reads git, gh, ps and launchctl, deploys and writes the status file."""
 
     def __init__(self, root: Path, home: Path, policy: dict[str, Any], *, runner: Runner = default_runner,
                  probe: Callable[[str, float], dict[str, Any]] = http_probe,
                  clock: Callable[[], datetime] = utc_now, sleep: Callable[[float], None] = time.sleep,
-                 uid: int | None = None) -> None:
+                 uid: int | None = None, ask: Callable[[str, int], str] | None = None) -> None:
         self.root = root
         self.home = home
         self.policy = policy
@@ -361,6 +369,7 @@ class DashboardRefresh:
         self.status_path = root / "data/operational/dashboard_refresh.json"
         self.python = root / ".venv/bin/python"
         self.branch = policy.get("branch", "platform-main")
+        self.ask = ask or ask_claude
 
     # ---------- small helpers ----------
     def git(self, *args: str, timeout: float = 60) -> subprocess.CompletedProcess:
@@ -390,6 +399,30 @@ class DashboardRefresh:
         temporary = path.with_name(".history.jsonl.tmp")
         temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
         os.replace(temporary, path)
+
+    def read_history(self, limit: int = 12) -> list[dict[str, Any]]:
+        entries = []
+        try:
+            lines = (self.state_dir / "history.jsonl").read_text(encoding="utf-8").splitlines()[-limit:]
+        except OSError:
+            return []
+        for line in lines:
+            try:
+                entries.append(json.loads(line))
+            except ValueError:
+                continue
+        return entries
+
+    def gh_with_body(self, argv: list[str], body: str | None) -> tuple[int, str]:
+        """gh with ``--body-file -`` replaced by a file in the state folder (the runner has no stdin)."""
+        command = [self.policy.get("gh", "gh"), *argv]
+        if body is not None:
+            body_file = self.state_dir / "help-body.md"
+            body_file.parent.mkdir(parents=True, exist_ok=True)
+            body_file.write_text(body, encoding="utf-8")
+            command = [str(body_file) if part == "-" else part for part in command]
+        result = self.run(command, timeout=60)
+        return result.returncode, result.stdout
 
     def runtime_pid(self) -> int | None:
         result = self.run(["launchctl", "print", f"gui/{self.uid}/com.tim.runtime"], timeout=15)
@@ -551,8 +584,6 @@ class DashboardRefresh:
         health = [{"name": check["name"], "optional": bool(check.get("optional")),
                    **self.probe(check["url"], float(check.get("timeout_seconds", 10)))}
                   for check in self.policy.get("health_checks", [])]
-        if not dry_run:
-            self.write_json(self.state_path, state)
 
         status = {
             "schema_version": SCHEMA_VERSION,
@@ -573,12 +604,20 @@ class DashboardRefresh:
             "health_ok": all(item["ok"] for item in health if not item["optional"]),
             "last_restart_at_utc": state.get("last_restart_at_utc"),
             "mode": "OBSERVE",
+            "agent_source": getattr(self, "agent_source", None),
         }
         if not dry_run:
+            help_config = dashboard_help.settings(self.policy)
+            dashboard_help.track(state, dashboard_help.problem(status["decision"], deploy_result, chosen, help_config), now)
+            status["help"] = dashboard_help.request_help(
+                state=state, status=status, history=self.read_history(), config=help_config, now=now,
+                ask=self.ask, gh=self.gh_with_body, repository=self.policy.get("repository", ""))
+            self.write_json(self.state_path, state)
             self.write_json(self.status_path, status)
             self.append_history({key: status[key] for key in ("checked_at_utc", "deployed_commit", "target_commit", "health_ok")}
                                 | {"action": decision.action, "reason": decision.reason,
-                                   "deploy": (deploy_result or {}).get("result"), "worker": worker.get("result")})
+                                   "deploy": (deploy_result or {}).get("result"), "worker": worker.get("result"),
+                                   "help": (status.get("help") or {}).get("result")})
         return status
 
     # ---------- Control Center ----------

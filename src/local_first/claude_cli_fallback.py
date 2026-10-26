@@ -68,6 +68,11 @@ def advise(outbound: dict[str, Any], *, timeout: int = 180) -> str:
     )
 
 
+def advise_text(prompt: str, *, timeout: int = 180) -> str:
+    """Free-form advice for another TIM agent (the dashboard agent); the caller frames and stores it."""
+    return _ask(prompt, timeout=timeout)
+
+
 def propose(prompt: str, *, timeout: int = 300) -> dict[str, Any]:
     """Return untrusted JSON; the caller must bind it to its local safety contract."""
     raw = _ask(

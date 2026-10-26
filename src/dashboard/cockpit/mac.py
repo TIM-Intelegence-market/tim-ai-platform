@@ -325,12 +325,16 @@ def _service_tile(key: str, label: str, report: SourceResult, stamp_key: str, ma
         raw = ("FAIL" if reason in AGENT_FAIL else "PASS" if study_hold else "WARN" if action == "HOLD"
                else "PASS" if action in {"UP_TO_DATE", "DEPLOY", "WAIT"} else "WARN")
         commit = str(data.get("deployed_commit") or "")[:7]
+        help_request = data.get("help") if isinstance(data.get("help"), dict) else {}
+        asked = (f" · Hilfe angefragt: Issue #{str(help_request['issue_url']).rstrip('/').rsplit('/', 1)[-1]}"
+                 if help_request.get("issue_url") and help_request.get("result") in {"REQUESTED", "REMINDED"} else "")
         value = "wartet bis Studienende" if study_hold else {
             "UP_TO_DATE": "aktuell", "DEPLOY": "spielt auf", "WAIT": "wartet", "HOLD": "angehalten"}.get(action, action)
         return make_tile(key, label, value,
                          raw, reason="" if raw == "PASS" else str(decision.get("text") or reason), source=source, as_of=stamp,
                          max_age_seconds=max_age, href=href, now=now,
-                         detail=(str(decision.get("text") or "") + (f" · läuft auf {commit}" if commit else "")).strip(" ·"))
+                         detail=(str(decision.get("text") or "") + (f" · läuft auf {commit}" if commit else "")
+                                 + asked).strip(" ·"))
     if key == "validator":
         status = str(data.get("overall_status") or "UNKNOWN").upper()
         raw = SERVICE_STATUS.get(status, status)
