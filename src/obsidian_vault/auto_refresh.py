@@ -13,7 +13,8 @@ One run (launchd `com.tim.obsidian-refresh`, hourly on the Mac):
 3. Graph MCP database: `refresh-all` (code + docs + runtime, read-only)
    when platform-main moved, otherwise only the cheap `refresh-docs`.
 4. Graphify view (only when platform-main moved): `graphify update` and a copy of `graph.html` to
-   `~/Documents/TIM/TIM Graph Ansicht/`; the tracked `graphify-out/` in
+   `~/Documents/TIM/TIM Graph Ansicht/`, then the TIM area view `tim-graph.html` and
+   the gap report `TIM_GRAPH_LUECKEN.md` (src/tim_graph_view); the tracked `graphify-out/` in
    the clone is restored afterwards so the next fast-forward is not blocked.
 5. Graph hubs: `graph_hubs.sync` attaches new notes to their area MOC and the
    MOCs to `TIM Home` (only inside the `tim-graph` markers), so the Obsidian
@@ -44,6 +45,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.obsidian_vault import graph_hubs  # noqa: E402
+from src.tim_graph_view import build as tim_graph_view  # noqa: E402
 from src.obsidian_vault.schema import DEFAULT_VAULT, load_schema, vault_path  # noqa: E402
 
 BRANCH = "platform-main"
@@ -112,6 +114,7 @@ class Report:
     notes_refused: list[str] = field(default_factory=list)
     graph: str = "skipped"
     graphify: str = "skipped"
+    tim_view: str = "skipped"
     vault_commit: str = "skipped"
     hubs_written: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -277,6 +280,7 @@ def refresh_graphify(repo: Path, view_dir: Path, report: Report) -> None:
             if (repo / "graphify-out" / name).exists():
                 shutil.copy2(repo / "graphify-out" / name, view_dir / name)
         report.graphify = "ok"
+        build_tim_view(repo, view_dir, report)
     else:
         report.graphify = f"error {result.returncode}"
         report.errors.append((result.stderr or result.stdout).strip()[-500:])
@@ -292,6 +296,18 @@ def sync_hubs(vault: Path, report: Report, dry_run: bool = False) -> None:
         report.errors.append(f"graph_hubs: {exc}")
         return
     report.hubs_written = [path.relative_to(vault).as_posix() for path in changed]
+
+
+def build_tim_view(repo: Path, view_dir: Path, report: Report) -> None:
+    """TIM area view + gap report next to graphify's files (see src/tim_graph_view)."""
+    try:
+        summary = tim_graph_view.build(view_dir / "graph.json", repo, view_dir)
+    except (OSError, ValueError, KeyError) as exc:
+        report.tim_view = "error"
+        report.errors.append(f"tim_graph_view: {exc}")
+        return
+    report.tim_view = (f"ok {summary['areas']} Bereiche, {summary['area_parts']} Teile, "
+                       f"{summary['island_files']} Inseln")
 
 
 def commit_vault(vault: Path, report: Report) -> None:
