@@ -4,7 +4,7 @@
 |---|---|
 | Studie | S7b (Ableitung aus S7, offen deklariert) |
 | Version | **1.0 (eingefroren, freigegeben von Uzi am 26.10.2026, 13:52 Ortszeit per Entscheidungskarte)** |
-| Status | FREIGEGEBEN: Gate 6.1 bestanden (Zähllauf 26.10. 13:36 Ortszeit, Commit 26cd763, `../reports/s7b_count_2026-10-26T1236Z.md`); S7b-D20-T3/T4 registriert (56 → 58). Uzi hat mit der Karte die Vorbelastung (2), die geringe Power von K2 (6), den Holdout-Verbrauch für das ganze Register (8) und die zwei verbleibenden Registerplätze zur Kenntnis genommen. **Training/Validierung BESTANDEN (26.10. 14:05 Ortszeit, Abschnitt 12): zwei Kandidatinnen S7b-D20-T3/T4 (`candidate`), Holdout offen, nur per weiterer Karte** |
+| Status | FREIGEGEBEN: Gate 6.1 bestanden (Zähllauf 26.10. 13:36 Ortszeit, Commit 26cd763, `../reports/s7b_count_2026-10-26T1236Z.md`); S7b-D20-T3/T4 registriert (56 → 58). Uzi hat mit der Karte die Vorbelastung (2), die geringe Power von K2 (6), den Holdout-Verbrauch für das ganze Register (8) und die zwei verbleibenden Registerplätze zur Kenntnis genommen. **BEENDET OHNE HOLDOUT-URTEIL (Uzis Karte „Nein, S7b ohne Holdout beenden“, 26.10. 20:47 Ortszeit, Abschnitt 13).** Training/Validierung bestanden (Abschnitt 12), S7b-D20-T3/T4 bleiben im Register eingefrorene Kandidatinnen (`candidate`); der Holdout 2025+ wurde nie geladen und bleibt für das ganze Register unverbraucht |
 | Anlass | S7 scheiterte am 26.10.2026 in der Validierung **nur an K4** (maximaler Drawdown 30,2 R bzw. 30,8 R > 20 R), alle anderen Kriterien erfüllt (`S7_3_4R_TRENDFOLGE_AUSBRUCH_PRAEREGISTRIERUNG.md` Abschnitt 12). Uzi wählte am 26.10. 12:34 Ortszeit per Karte „S7b: eine Position über alle Coins“ |
 | Hypothese | Dieselben Regeln wie S7 mit **höchstens einer offenen Position über alle drei Instrumente zusammen** halten den Drawdown unter 20 R, ohne dass der Netto-Erwartungswert je Trade verloren geht |
 | Lesart des Ziels | wie S7: Ziel je Gewinntrade 3 R bzw. 4 R; Erwartungswert je Trade voraussichtlich +0,1 bis +0,4 R |
@@ -256,7 +256,7 @@ Sperrdatei, Register und Bericht werden gemeinsam committet.
 | P3 | Offizieller Zähllauf 6.1 auf dem Mac auf dem 0.2-Stand, Bericht `s7b_count_<stamp>.md` ins Repo | erledigt: `../reports/s7b_count_2026-10-26T1236Z.md`, Commit 26cd763 |
 | P4 | Entscheidungskarte: Freigabe 1.0, Registrierung S7b-D20-T3/T4 (56 → 58), Kenntnisnahme Power 6, Holdout-Verbrauch 8 und letzte Registerplätze | Register-Zeilen |
 | P5 | Training/Validierung mit Positionsgrenze, Baselines, Stress, Robustheit; Register-Status; Bericht `s7b_train_<stamp>.md` | erledigt 26.10. 14:05: `../reports/s7b_train_2026-10-26T1305Z.md`, beide bestanden (Abschnitt 12) |
-| P6 | Holdout, ein Lauf, nur per Karte, nur mit Kandidatin (8) | Protokoll R6 |
+| P6 | Holdout, ein Lauf, nur per Karte, nur mit Kandidatin (8) | entfällt: Uzi beendete S7b am 26.10. 20:47 ohne Holdout (Abschnitt 13) |
 
 ## 10. Bis zur Erstellung gesehene Daten
 
@@ -272,7 +272,7 @@ Holdout.
 | O1 | ~~Adversariale Prüfung durch ein anderes Modell, Befunde einarbeiten (0.2)~~ erledigt 26.10. | Claude |
 | O2 | ~~S7-Regression nach dem Engine-Umbau auf dem Mac (Trades-Hash gleich); offizieller Zähllauf 6.1 auf dem 0.2-Stand~~ erledigt 26.10. 13:36 | Claude, Mac |
 | O3 | ~~Uzis Wort per Entscheidungskarte: Freigabe 1.0, Registrierung 56 → 58, Kenntnisnahme Power (6), Holdout-Verbrauch (8), zwei verbleibende Registerplätze~~ erledigt 26.10. 13:52 | Uzi |
-| O4 | Holdout nur per weiterer Entscheidungskarte | Uzi |
+| O4 | ~~Holdout nur per weiterer Entscheidungskarte~~ Karte 26.10. 20:47: „Nein, S7b ohne Holdout beenden“ (Abschnitt 13) | Uzi |
 
 ## 12. Ergebnis Training/Validierung (26.10.2026, Mac-Lauf 14:05 Ortszeit)
 
@@ -315,6 +315,28 @@ gleichbleibendem E[R] (S7: +0,19 / +0,24).**
 5. Training und Validierung sind durch S7 vorbelastet (Abschnitt 2); nur der Holdout 2025+ ist unberührt. Beide
    Kandidatinnen gehen gemeinsam in den einen Holdout-Lauf; er verbraucht den Holdout für alle 58 Registereinträge.
 
+## 13. Abschluss ohne Holdout (Uzis Entscheidung 26.10.2026, 20:47 Ortszeit)
+
+Die Entscheidungskarte nach Abschnitt 8 (Kandidatinnen S7b-D20-T3/T4, Hash 10bd9c43…, m = 58, Holm m = 60,
+Power K2 ≈ 10–17 %, Verbrauch des Holdouts für das ganze Register) wurde Uzi am 26.10. um 20:45 Ortszeit gestellt.
+Uzi wählte **„Nein, S7b ohne Holdout beenden“**.
+
+Folgen:
+
+1. **Kein Holdout-Lauf.** Die Archive 2025-01 bis 2026-09 wurden nie geladen, `HOLDOUT_LOCK.json` existiert nicht,
+   der Holdout bleibt für alle 58 Registereinträge unverbraucht. Eine spätere Studie kann ihn mit einer neuen Karte
+   weiter nutzen; das Register läuft mit 58 von 60 Plätzen weiter.
+2. **Register-Status bleibt `candidate`.** Nach `register.py` kann eine eingefrorene Kandidatin nur durch den Holdout
+   entschieden werden (`passed_holdout`, `failed_holdout`, `no_verdict`); einen Status „zurückgezogen“ gibt es
+   bewusst nicht, und er wird hier nicht nachträglich eingeführt. Beide Varianten stehen damit als
+   **„Kandidatin ohne Holdout-Urteil“** im Register; `setup_evidence` würde sie als `CANDIDATE_FROZEN` führen, eine
+   Regel-Äquivalenz ist nicht eingetragen (Tabelle leer).
+3. **Ergebnisstand:** Training/Validierung bestanden (Abschnitt 12), aber kein Urteil nach Protokoll R6. S7b gilt
+   **nicht** als bestätigte Strategie und wird nicht in Papier- oder Live-Pfade übernommen. Die S7b-Zahlen sind durch S7
+   vorbelastet (Abschnitt 2) und ohne Holdout nicht als Out-of-Sample-Nachweis lesbar.
+4. Sollte Uzi den Holdout später doch wollen, gilt weiter Abschnitt 8 unverändert (neue Karte, derselbe Befehl,
+   derselbe Kandidatinnen-Hash, solange der Register-Kopf fbf91e7d68a0… unverändert bleibt).
+
 ## Änderungsprotokoll
 
 | Datum | Version | Änderung | Grund | Bis dahin gesehene Daten |
@@ -324,3 +346,4 @@ gleichbleibendem E[R] (S7: +0,19 / +0,24).**
 | 2026-10-26 | 0.3 | Gate-Ergebnis 6.1 eingetragen (D20 bestanden, D55 nur Nachbar), Status und offene Punkte aktualisiert; keine Regeländerung | Zähllauf 13:36 Ortszeit | zusätzlich: Signalzahlen, Wochen, Ties und Instrumentanteile des Zähllaufs (ohne R); kein Lauf mit Positionsgrenze, kein Holdout |
 | 2026-10-26 | 1.0 | Eingefroren und freigegeben; S7b-D20-T3 und S7b-D20-T4 registriert (Register 56 → 58, Gate-Bericht `s7b_count_2026-10-26T1236Z`, Gate-Commit 26cd763). Keine inhaltliche Änderung gegenüber 0.3 | Uzis Karte „Ja, freigeben und registrieren“ 13:52 Ortszeit | wie 0.3; kein Lauf mit Positionsgrenze, kein Holdout |
 | 2026-10-26 | 1.0 | Abschnitt 12 ergänzt: Ergebnis Training/Validierung (beide Varianten bestanden, Status `candidate`), Statuszeile aktualisiert; keine Regeländerung, Version bleibt 1.0 | Mac-Lauf 14:05 Ortszeit, Commit f637c1e | zusätzlich: alle Trainings- und Validierungsergebnisse mit Positionsgrenze (R, DD, Baselines); kein Holdout |
+| 2026-10-26 | 1.0 | Abschnitt 13 ergänzt: S7b auf Uzis Karte ohne Holdout beendet; Status, O4 und P6 aktualisiert; Register unverändert (`candidate`), kein Lock, keine Regeländerung | Uzis Karte „Nein, S7b ohne Holdout beenden“ 20:47 Ortszeit | wie Abschnitt 12; kein Holdout |
