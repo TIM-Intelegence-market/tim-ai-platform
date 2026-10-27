@@ -203,10 +203,11 @@ class PublicDashboardServer:
 
             with self.state.lock:
                 footprint = dict(self.state.footprint)
+                gamma = dict(self.state.gamma)
             from src.dashboard.chart_live import load_plan_journals
 
             model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
-                                     plan_journals=load_plan_journals(self.journal_paths()))
+                                     plan_journals=load_plan_journals(self.journal_paths()), gamma=gamma)
             from src.dashboard.public_en import english_chart_model
 
             return json.dumps(english_chart_model(model), default=str).encode()

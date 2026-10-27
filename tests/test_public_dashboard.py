@@ -246,3 +246,23 @@ def test_public_chart_carries_tims_plans(server, tmp_path):
     assert model["groups"]["plans_mid"] == "TIM plans MID 1h" and "plans_mid" in model["default_groups"]
     assert "plans_old" in model["groups"] and "plans_old" not in model["default_groups"]  # test versions start hidden
     assert json.loads(_get(base + "/api/chart/live?symbol=ETHUSDT&tf=30m")[2])["plans"] == []
+
+
+def test_public_chart_carries_options_gamma_in_english(server):
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from src.options_gamma import build_gamma_snapshot
+
+    public, base = server
+    data = json.loads((Path(__file__).parent / "fixtures" / "options_gamma" / "deribit_book_summary_sample.json").read_text())
+    with public.state.lock:
+        snapshot = build_gamma_snapshot(data["result"], data["index_price"], datetime.fromisoformat(data["as_of"]))
+        public.state.gamma = {"BTCUSDT": {**snapshot, "as_of": datetime.now(timezone.utc).isoformat()}}  # fresh, not stale
+    model = json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")[2])
+    gamma = [d for d in model["drawings"] if d["group"] == "gamma"]
+    assert model["groups"]["gamma"] == "Options gamma (Deribit)" and "gamma" in model["default_groups"]
+    assert {"Opt Gamma Flip", "Opt Call Wall", "Opt Put Wall"} <= {d["label"] for d in gamma}
+    text = json.dumps([(d["label"], d["note"]) for d in gamma], ensure_ascii=False)
+    for word in ("hoch", "tief", "Händler", "Verfall", "größtes"):
+        assert word not in text, word
