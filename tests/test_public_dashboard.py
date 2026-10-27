@@ -107,6 +107,17 @@ def test_rate_limit_per_client(server):
     assert _get(base + "/robots.txt", headers={"CF-Connecting-IP": "203.0.113.10"})[0] == 200
 
 
+
+def test_rate_limit_per_client_behind_ngrok(server):
+    # ngrok appends the visitor address to X-Forwarded-For; a forged first entry does not help.
+    public, base = server
+    public.limiter = RateLimiter(per_minute=2)
+    visitor = {"X-Forwarded-For": "198.51.100.1, 203.0.113.20"}
+    codes = [_get(base + "/robots.txt", headers=visitor)[0] for _ in range(3)]
+    assert codes == [200, 200, 429]
+    assert _get(base + "/robots.txt", headers={"X-Forwarded-For": "198.51.100.1, 203.0.113.21"})[0] == 200
+
+
 def test_rate_limiter_window_resets():
     clock = [0.0]
     limiter = RateLimiter(per_minute=1, clock=lambda: clock[0])
