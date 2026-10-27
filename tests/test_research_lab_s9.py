@@ -192,3 +192,10 @@ def test_count_script_writes_an_outcome_blind_report(tmp_path) -> None:
     assert row["train"]["upper"] == 1 and not row["passes_gate"]
     assert "r" not in row["train"] and "expectancy" not in json.dumps(report)
     assert (tmp_path / next(tmp_path.glob("s9_count_*.md")).name).read_text().startswith("# S9 Zähllauf")
+
+
+def test_section_counts_leave_out_the_warm_up() -> None:
+    bars = _bars(_with_reaction(LONG) + _path([121, 160], 3.0)[1:])
+    after = bars[len(LONG) + 2].open_time  # after the CHoCH and the signal
+    count = s9.count_signals(bars, s9.S9_VARIANTS[0], after, bars[-1].open_time + 1)
+    assert count.upper == 0 and count.counts.choch == 0 and count.counts.emitted == 0

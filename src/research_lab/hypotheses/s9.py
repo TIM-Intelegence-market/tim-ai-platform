@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timedelta, timezone
 
 from src.research_lab.backtest.engine import History, Signal, Strategy
@@ -371,9 +371,12 @@ def count_signals(bars: Sequence[Kline], variant: S9Variant, start_ms: int, end_
     detector = Detector(variant, counts)
     upper = lower = 0
     last: int | None = None
+    before: Counts | None = None
     for t, bar in enumerate(bars):
         if bar.open_time >= end_ms:
             break
+        if before is None and bar.open_time >= start_ms:
+            before = replace(counts, rr_taken=list(counts.rr_taken))  # events before the section are warm-up
         signal = detector.step(bar)
         if signal is None or bar.open_time < start_ms:
             continue
@@ -381,5 +384,8 @@ def count_signals(bars: Sequence[Kline], variant: S9Variant, start_ms: int, end_
         if last is None or t - last >= TIME_STOP_BARS:
             lower += 1
             last = t
+    if before is not None:
+        counts = Counts(*(getattr(counts, f.name) - getattr(before, f.name) for f in fields(Counts) if f.name != "rr_taken"),
+                        rr_taken=counts.rr_taken[len(before.rr_taken):])
     return SignalCount(upper, lower, counts)
 

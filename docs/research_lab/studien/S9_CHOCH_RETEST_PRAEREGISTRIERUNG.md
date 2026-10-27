@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S9 |
-| Version | **0.2 – Uzis Go „ja lass laufen“ am 27.10.2026 19:38 Ortszeit; Regeln eingefroren mit dem Code `src/research_lab/hypotheses/s9.py`; Registerfrage offen (Abschnitt 9)** |
+| Version | **1.0 – BEENDET am Machbarkeits-Gate (27.10.2026). Uzis Go „ja lass laufen“ 19:38 Ortszeit; Regeln eingefroren mit Commit 71fa3db; nichts registriert, kein Ergebnis in R berechnet (Abschnitt 10)** |
 | Anlass | Uzi 27.10.2026: Wissen aus dem GoatHub-Lernheft „How to identify direction (M15 · M5 · M3)“ mitnehmen, Gold in die Analyse. Auswertung des Hefts: `/mnt/project-files/goathub/education-durchgang-2026-10-27.md`, Abschnitt 8 |
 | Quelle der Regeln | Community-Lernheft (XAUUSD, erfundene Beispielpreise, „keine empirisch belegte Trefferquote“). Die Regeln unten sind eine mechanische Übersetzung; wo das Heft Ermessen lässt, steht die gewählte Festlegung in 4.3 |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kriterien K1–K5 unverändert |
@@ -117,10 +117,23 @@ Machbarkeits-Gate 5.1, nicht für eine Regeländerung.
 
 ## 9. Register
 
-Das Protokoll-Register ist mit 58 von 60 Einträgen fast voll. Uzi entscheidet per Karte zwischen (a) eigener Familie
-außerhalb des Registers wie S8 (alle vier Varianten, kein Holdout-Anspruch, Bestätigung nur prospektiv im
-Papier-Journal) und (b) den letzten zwei Plätzen (S9-B50-I, S9-B50-Z). Bis dahin wird nichts registriert und nur
-das ergebnisblinde Gate gerechnet.
+Das Protokoll-Register ist mit 58 von 60 Einträgen fast voll. Die Frage an Uzi (eigene Familie oder letzte zwei
+Plätze) hat sich mit dem Gate erledigt: **S9 belegt keinen Registerplatz**, m bleibt 58.
+
+## 10. Ergebnis (Zähllauf auf dem Mac, 27.10.2026 19:49 Ortszeit)
+
+Bericht: `../reports/s9_count_2026-10-27T1849Z.md` (Commit 71fa3db, Datensatz-Hash `ade39f08…`, 175 392 Kerzen).
+
+- Alle vier Varianten verfehlen das Gate 5.1 deutlich: höchstens **11 Signale im Training** (nötig 500) und
+  **6 in der Validierung** (nötig 250); hochgerechneter Holdout 3,5 (nötig 200).
+- 2020–2022 gab es 1 867 CHoCH nach 4.1. Rund 75 % scheitern an **R:R < 2** (das Impulsextrem liegt meist näher am
+  Einstieg als das Doppelte des Abstands zum Ursprung), etwa 16 % am verletzten Ursprung, der Rest verfällt oder wird
+  ersetzt. Die Zonen-Bedingung (Variante Z) filtert kaum (64 von 1 867).
+- **Befund:** Die Regel des Lernhefts in dieser mechanischen Fassung kommt auf BTC 15m 2020–2024 nur etwa 3-mal im
+  Jahr vor. Ein Test auf Vorteil ist damit nicht möglich; es wurde kein R, keine Trefferquote und kein Zufallsvergleich
+  gerechnet. Das ist **kein** Beleg, dass die Idee nichts taugt, nur dass diese Fassung zu selten ist.
+- Nach 5.1 werden die Regeln nicht nachträglich gelockert. Eine andere Fassung (z. B. Ziel als festes R-Vielfaches
+  statt Impulsextrem, oder ohne R:R-Filter) wäre eine neue Studie mit eigener Präregistrierung und Uzis Go.
 
 ## Änderungsprotokoll
 
@@ -128,3 +141,5 @@ das ergebnisblinde Gate gerechnet.
 - 0.2 (27.10.2026): Uzis Go; Regeln präzisiert und als Code eingefroren (Referenz aktiv nach LL-Docht statt nach
   bestätigtem LL-Pivot, Ziel als R-Vielfaches, Zufallsvergleich nach Protokoll 7.1 mit 10 000 Läufen, Gate 5.1),
   vor jedem Kontakt mit Marktdaten.
+- 1.0 (27.10.2026): Zähllauf auf dem Mac, Gate verfehlt, Studie beendet (Abschnitt 10). Nachträglich behoben: die
+  Diagnosezahlen je Ausschlussgrund zählten in der Validierung ab 2020 (Signalzahlen und Gate nicht betroffen).
