@@ -5,9 +5,9 @@
   "repository": "TIM-Intelegence-market/tim-ai-platform",
   "gh": "/opt/homebrew/bin/gh",
   "required_check": "test",
-  "min_minutes_between_runtime_restarts": 60,
-  "min_minutes_between_runtime_restarts_display_only": 20,
-  "min_minutes_note": "60 min between restarts when a new commit changes more than the display, 20 min when every changed file is display-safe.",
+  "min_minutes_between_runtime_restarts": 5,
+  "min_minutes_between_runtime_restarts_display_only": 5,
+  "min_minutes_note": "Uzi 27.10.2026: at most one runtime restart every 5 min, display-only or not (was 60/20). The agent itself runs every 5 min (StartInterval 300).",
   "generated_tracked_files": [
     "docs/TIM_V1_LIVE_STATUS.md"
   ],

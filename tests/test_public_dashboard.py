@@ -18,8 +18,8 @@ from tests.test_chart_live import NOW, fake_fetch
 
 @pytest.fixture
 def server(tmp_path, monkeypatch):
-    monkeypatch.setattr(chart_live.CACHE, "fetch", fake_fetch())
-    monkeypatch.setattr(chart_live.CACHE, "rows", {})
+    # A fresh cache: another test may have left the shared one in its pause after an exchange error.
+    monkeypatch.setattr(chart_live, "CACHE", chart_live.KlineCache(fake_fetch()))
     state = DashboardState()
     state.plan_journal_path = tmp_path / "tim.json"
     state.plan_journal_struct_path = tmp_path / "struct.json"
