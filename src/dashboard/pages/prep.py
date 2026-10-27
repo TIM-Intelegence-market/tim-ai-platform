@@ -30,6 +30,33 @@ def _pct(value: float) -> str:
     return f"{value:+.2f} %".replace(".", ",")
 
 
+def _htf_section(htf: Mapping[str, Any]) -> str:
+    """Month, quarter and year value plus the anchored VWAPs (``htf_levels``)."""
+    profile_rows = "".join(
+        f"<tr><td>{_safe(p['name'])}</td><td>{_price(p.get('vah'))}</td><td>{_price(p.get('poc'))}</td><td>{_price(p.get('val'))}</td>"
+        f"<td>{_price(p.get('high'))} / {_price(p.get('low'))}</td><td>{_safe(p.get('estimate'))}</td></tr>"
+        for p in htf.get("profiles") or []
+    ) or "<tr><td colspan='6' class='empty'>Noch kein Monats-, Quartals- oder Jahresprofil.</td></tr>"
+    vwap_rows = "".join(
+        f"<tr><td>{_safe(v['name'])}</td><td class='mono'>{_price(v.get('value'))}</td><td class='mono'>{_price(v.get('upper'))} / {_price(v.get('lower'))}</td>"
+        f"<td>{_safe(v.get('source'))}-Kerzen, {_safe(v.get('candles'))} Stück, bis {_safe(_local(v.get('through')))}</td></tr>"
+        for v in htf.get("vwaps") or []
+    ) or "<tr><td colspan='4' class='empty'>Noch kein VWAP.</td></tr>"
+    notes = "".join(f"<li>{_safe(n)}</li>" for n in htf.get("notes") or [])
+    return (
+        "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>2b · Höhere Zeitebenen</p>"
+        "<h2>Monat, Quartal, Jahr und VWAP</h2><p class='cc-section__note'>Das, was man sonst morgens von Hand aus den Y/Q/M/W-Charts abschreibt. "
+        "Profile aus Tageskerzen (Jahr notfalls aus Wochenkerzen), VWAP aus dem typischen Preis (Hoch + Tief + Schluss) / 3 jeder geschlossenen Kerze. "
+        "Beides sind Schätzungen und können von TradingView abweichen.</p></div></div>"
+        "<div class='table-wrap'><table><thead><tr><th>Profil</th><th>VAH</th><th>POC</th><th>VAL</th><th>Hoch / Tief</th><th>Methode</th></tr></thead>"
+        f"<tbody>{profile_rows}</tbody></table></div>"
+        "<div class='table-wrap'><table><thead><tr><th>VWAP</th><th>Wert</th><th>Band ±1 Sigma</th><th>Quelle</th></tr></thead>"
+        f"<tbody>{vwap_rows}</tbody></table></div>"
+        + (f"<ul class='cc-list'>{notes}</ul>" if notes else "")
+        + "</section>"
+    )
+
+
 def _prep_page(data: dict[str, Any], model: Mapping[str, Any]) -> str:
     body = _hero("Vorbereitung", "Bias von oben, Vortages- und Wochen-Value, naked POCs und Sessions: Broncx' Schritte 1 bis 3 auf einer Seite. Nur Beobachtung, keine Order.")
     bias = model.get("bias") or {}
@@ -77,14 +104,18 @@ def _prep_page(data: dict[str, Any], model: Mapping[str, Any]) -> str:
         f"<tbody>{value_rows or '<tr><td colspan=6 class=empty>Kein vollständiges Profil.</td></tr>'}</tbody></table></div>"
         f"<p class='cc-note'>{_safe(ib_text)}</p></section>"
     )
+    body += _htf_section(model.get("htf_levels") or {})
     last = model.get("last")
     level_rows = []
     marked = False
-    for level in model.get("levels") or []:
+    # Display only: the plan journals keep reading model["levels"] alone.
+    shown = sorted([*(model.get("levels") or []), *((model.get("htf_levels") or {}).get("levels") or [])], key=lambda item: -item["price"])
+    for level in shown:
         if not marked and last is not None and level["price"] < last:
             level_rows.append(f"<tr class='row--current'><td colspan='4'><b>Kurs {_safe(_price(last))}</b></td></tr>")
             marked = True
-        level_rows.append(f"<tr><td>{_safe(level['label'])}</td><td class='mono'>{_safe(_price(level['price']))}</td><td class='mono'>{_safe(_pct(level['distance_pct']))}</td><td>{_safe(level['source'])}</td></tr>")
+        distance = _pct(level["distance_pct"]) if isinstance(level.get("distance_pct"), (int, float)) else "–"
+        level_rows.append(f"<tr><td>{_safe(level['label'])}</td><td class='mono'>{_safe(_price(level['price']))}</td><td class='mono'>{_safe(distance)}</td><td>{_safe(level['source'])}</td></tr>")
     if not marked and last is not None:
         level_rows.append(f"<tr class='row--current'><td colspan='4'><b>Kurs {_safe(_price(last))}</b></td></tr>")
     body += (

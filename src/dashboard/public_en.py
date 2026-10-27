@@ -30,7 +30,8 @@ NAV = (("/chart", "Chart"), ("/journal", "Paper journal"))
 REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
-    "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "naked": "naked POC",
+    "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "quarter": "Quarter (1Q)", "year": "Year (1Y)",
+    "vwap": "VWAP (week, month, 12M)", "naked": "naked POC",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trend lines", "tpo": "TPO (day profile)",
     "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
@@ -48,6 +49,15 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^Vortag ", "Prior day "),
     (r"^Vorwoche ab ", "Prior week from "),
     (r"^Vormonat ", "Prior month "),
+    (r"^Vorquartal ", "Prior quarter "),
+    (r"^Vorjahr ", "Prior year "),
+    (r"aus Tageskerzen geschätzt", "estimated from daily candles"),
+    (r"aus Wochenkerzen geschätzt, Ränder ungefähr", "estimated from weekly candles, edges approximate"),
+    (r"^VWAP Woche ab ", "VWAP week from "),
+    (r"^VWAP Monat ab ", "VWAP month from "),
+    (r"^VWAP 12 Monate", "VWAP 12 months"),
+    (r", aus (\w+)-Kerzen$", r", from \1 candles"),
+    (r", Linie aus den gezeigten Kerzen$", ", line from the shown candles"),
     (r"unberührter Tages-POC", "untouched daily POC"),
     (r"laufendes Tagesprofil", "running day profile"),
     (r"laufendes Wochenprofil", "running week profile"),
@@ -163,7 +173,7 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         f"<nav class='tc-tabs' aria-label='Coin'>{symbols}<span class='tc-tabs__sep'>Timeframe:</span>{frames}</nav>"
         "<div class='tc-live__bar'><div id='tc-live-layers' class='tc-live__layers' aria-label='Show or hide lines'></div>"
         "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Go to now</button>"
-        "<button type='button' class='tc-tab' data-action='fit'>Show all</button>"
+        "<button type='button' class='tc-tab' data-action='fit'>Show all</button><button type='button' class='tc-tab' data-action='footprint' title='Last candles large, footprint with numbers'>Footprint</button>"
         "<button type='button' class='tc-tab' data-action='plans'>Only TIM's trades</button><button type='button' class='tc-tab' data-action='none'>Untick all</button><button type='button' class='tc-tab' data-action='reset'>Reset lines</button></div></div>"
         "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
         "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interactive candlestick chart'></div></div>"
@@ -177,8 +187,10 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         "<b>TPO</b>: day profile from 30-minute periods (letters A, B, C … from 00:00 UTC) behind the candles, value area lighter, "
         "POC yellow, single prints orange; on timeframes up to 4h. <b>Volume profile</b> and <b>footprint</b> come from TIM's own "
         "recorded trades (BTC only): the profile per day at the day's right edge (volume per price step, value area, POC yellow, "
-        "green/red tick = delta); the footprint shows bid × ask per price step for each candle once candles are wide enough (zoom in), "
-        "4:1 imbalances filled, Δ below the candle. Times in Central European time. Display only, no orders. "
+        "green/red tick = delta); the <b>footprint</b> (5m to 4h, “Footprint” button) follows the zoom: medium = one colour column per candle (green/red = delta, "
+        "strong = high volume), close = bid × ask per price step next to a slim candle, finer steps the closer you zoom, POC framed yellow, "
+        "4:1 imbalances bold (green = buyers, red = sellers), stacked imbalances (3+) as a bar at the side, unfinished auction at the high/low "
+        "dotted orange, Δ and volume (V) below the candle. Times in Central European time. Display only, no orders. "
         "Chart: <a href='https://www.tradingview.com/' rel='noopener noreferrer'>TradingView Lightweight Charts</a> (Apache 2.0).</p>"
         f"<script src='{LIB_PATH}'></script><script src='{APP_PATH}'></script></section>"
     )

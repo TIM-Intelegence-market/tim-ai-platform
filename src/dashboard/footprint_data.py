@@ -27,8 +27,9 @@ TICK_BY_SYMBOL = {"BTCUSDT": 5.0, "ETHUSDT": 0.5, "SOLUSDT": 0.05}  # finest pri
 DAYS_KEPT = 7  # finished days plus the running day
 RECHECK_SECONDS = 3600  # a finished day is aggregated again after this long (late inserts from catch-up or backfill)
 PROFILE_BINS = 40  # price rows per day profile
-FOOTPRINT_ROWS = 14  # target price rows per footprint bar
-IMBALANCE_RATIO = 4.0  # diagonal bid/ask ratio that marks an imbalance (same as orderflow_scenario.footprint)
+FOOTPRINT_ROWS = 40  # target price rows per footprint bar (finest step sent; the chart merges rows to fit the zoom)
+IMBALANCE_RATIO = 4.0  # diagonal bid/ask ratio that marks an imbalance (same as orderflow_scenario.footprint, F1)
+STACK_MIN = 3  # consecutive same-side imbalances that count as stacked (orderflow_scenario.footprint, F2)
 MAX_FOOTPRINT_BARS = 400  # bars carried to the browser per view
 SOURCE = "TIM agg_trades (Binance Spot aggTrades, eigene Datenbank)"
 VALUE_AREA_SHARE = 0.7
@@ -160,9 +161,41 @@ def volume_profiles(store: Mapping[str, Any] | None, now: datetime, bins: int = 
     return result
 
 
+def _imbalances(prices: Sequence[float], grouped: Mapping[float, Sequence[float]]) -> list[list[Any]]:
+    """Diagonal imbalances (F1): ask at a level against bid one level below, bid against ask one level above.
+
+    A zero on the opposite side counts, as in orderflow_scenario.footprint and common footprint tools.
+    """
+    found: list[list[Any]] = []
+    for index, price in enumerate(prices):
+        bid, ask = grouped[price]
+        if index > 0 and ask > 0 and ask >= IMBALANCE_RATIO * grouped[prices[index - 1]][0]:
+            found.append([price, "ask"])
+        if index + 1 < len(prices) and bid > 0 and bid >= IMBALANCE_RATIO * grouped[prices[index + 1]][1]:
+            found.append([price, "bid"])
+    return found
+
+
+def _stacks(prices: Sequence[float], imbalances: Sequence[Sequence[Any]], step: float) -> list[list[Any]]:
+    """Runs of at least ``STACK_MIN`` neighbouring same-side imbalances (F2) as [low, high, side]."""
+    stacks: list[list[Any]] = []
+    for side in ("ask", "bid"):
+        marked = {price for price, kind in imbalances if kind == side}
+        run: list[float] = []
+        for price in list(prices) + [math.inf]:
+            if price in marked and (not run or abs(price - run[-1] - step) < step * 1e-6):
+                run.append(price)
+                continue
+            if len(run) >= STACK_MIN:
+                stacks.append([run[0], run[-1], side])
+            run = [price] if price in marked else []
+    return sorted(stacks)
+
+
 def footprint_bars(store: Mapping[str, Any] | None, times: Sequence[int], timeframe_seconds: int,
                    candles: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
-    """Footprint per shown candle: bid x ask per price step, delta, total, POC, imbalances.
+    """Footprint per shown candle: bid x ask per price step, delta, total, POC, imbalances,
+    stacked imbalances and unfinished auctions at the candle's high and low.
 
     ``times`` are the candle open times (UTC epoch seconds) of the view. Bars coarser
     than the stored bucket are sums of buckets; finer views get no footprint. The
@@ -197,28 +230,22 @@ def footprint_bars(store: Mapping[str, Any] | None, times: Sequence[int], timefr
     step = math.ceil(step / tick) * tick
     bars = []
     for bar_time in sorted(by_bar):
+        ticks = by_bar[bar_time]
         grouped: dict[float, list[float]] = {}
-        for level, (bid, ask) in by_bar[bar_time].items():
+        for level, (bid, ask) in ticks.items():
             price = math.floor(level / step) * step
             cell = grouped.setdefault(round(price, 8), [0.0, 0.0])
             cell[0] += bid
             cell[1] += ask
         prices = sorted(grouped)
         levels = [[p, round(grouped[p][0], 4), round(grouped[p][1], 4)] for p in prices]
-        imbalances = []  # diagonal: ask at a level against bid one level below, bid against ask one level above
-        for index, price in enumerate(prices):
-            bid, ask = grouped[price]
-            if index > 0:
-                below_bid = grouped[prices[index - 1]][0]
-                if ask > 0 and ask >= IMBALANCE_RATIO * max(below_bid, 1e-12) and below_bid >= 0:
-                    imbalances.append([price, "ask"])
-            if index + 1 < len(prices):
-                above_ask = grouped[prices[index + 1]][1]
-                if bid > 0 and bid >= IMBALANCE_RATIO * max(above_ask, 1e-12):
-                    imbalances.append([price, "bid"])
+        imbalances = _imbalances(prices, grouped)
         total_bid = sum(v[0] for v in grouped.values())
         total_ask = sum(v[1] for v in grouped.values())
         poc = max(prices, key=lambda p: (grouped[p][0] + grouped[p][1], -p))
+        # F3 auction edges on the finest tick: both sides traded at the extreme = unfinished auction.
+        top, bottom = ticks[max(ticks)], ticks[min(ticks)]
         bars.append({"time": bar_time, "levels": levels, "delta": round(total_ask - total_bid, 4), "total": round(total_bid + total_ask, 4),
-                     "poc": poc, "imbalances": imbalances})
+                     "poc": poc, "imbalances": imbalances, "stacked": _stacks(prices, imbalances, step),
+                     "unfinished_high": min(top) > 0, "unfinished_low": min(bottom) > 0})
     return {"step": step, "bars": bars, "note": None, "bar_seconds": timeframe_seconds, "span_seconds": span}

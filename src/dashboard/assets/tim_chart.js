@@ -177,10 +177,50 @@
   };
   candles.attachPrimitive(vp);
 
-  // Footprint: bid x ask per price step inside each bar when the bars are wide enough;
-  // imbalances (diagonal 4:1) with a filled background, delta under the bar.
+  // Footprint like TradingView's: rows follow the zoom (finer price steps the closer you get).
+  // Far out: a short hint. Medium zoom: one heat column per candle (colour = delta, strength = volume).
+  // Close: bid × ask numbers per row next to a slim candle, POC framed, 4:1 imbalances coloured,
+  // stacked imbalances (3+) as a bar at the side, unfinished auctions dotted, Δ and volume under the candle.
+  const FP = { heatWidth: 8, numberWidth: 40, numberRow: 13, heatRow: 3, ratio: 4, stack: 3, merges: [1, 2, 4, 5, 10, 20, 25, 50, 100, 200] };
+  const FP_TEXT = EN
+    ? { zoom: 'Footprint: zoom in (or the “Footprint” button)', vol: 'V' }
+    : { zoom: 'Footprint: hineinzoomen (oder Knopf „Footprint“)', vol: 'V' };
+  // Rows of one bar at ``k`` times the sent step: sums per row, imbalances and stacks for that row size.
+  function fpRows(bar, step, k) {
+    const size = step * k;
+    const cells = new Map();
+    for (const [price, bid, ask] of bar.levels) {
+      const index = Math.floor(price / size + 1e-9);
+      const cell = cells.get(index) || { index, price: index * size, bid: 0, ask: 0 };
+      cell.bid += bid; cell.ask += ask;
+      cells.set(index, cell);
+    }
+    const rows = [...cells.values()].sort((a, b) => a.index - b.index);
+    let poc = rows[0];
+    for (const row of rows) {
+      if (row.bid + row.ask > poc.bid + poc.ask) poc = row;
+    }
+    rows.forEach((row, i) => {
+      const below = rows[i - 1], above = rows[i + 1];
+      // Same rule as the server and orderflow_scenario.footprint (F1): diagonal, a zero on the other side counts.
+      row.askImb = !!below && below.index === row.index - 1 && row.ask > 0 && row.ask >= FP.ratio * below.bid;
+      row.bidImb = !!above && above.index === row.index + 1 && row.bid > 0 && row.bid >= FP.ratio * above.ask;
+      row.poc = row === poc;
+    });
+    const stacks = [];
+    for (const side of ['ask', 'bid']) {
+      let run = [];
+      for (const row of rows.concat([null])) {
+        const marked = row && (side === 'ask' ? row.askImb : row.bidImb);
+        if (marked && (!run.length || run[run.length - 1].index === row.index - 1)) { run.push(row); continue; }
+        if (run.length >= FP.stack) stacks.push({ side, low: run[0].price, high: run[run.length - 1].price + size });
+        run = marked ? [row] : [];
+      }
+    }
+    return { size, rows, stacks };
+  }
   const fp = {
-    chart: null, series: null, requestUpdate: null, visible: true,
+    chart: null, series: null, requestUpdate: null, visible: true, byTime: new Map(),
     attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
     detached() { this.chart = null; this.series = null; },
     updateAllViews() {},
@@ -196,43 +236,104 @@
               const scale = fp.chart.timeScale();
               const step = model.footprint.step;
               const range = scale.getVisibleLogicalRange();
-              if (!range) return;
+              if (!range || !step) return;
               const barWidth = mediaSize.width / Math.max(1, range.to - range.from);
-              if (barWidth < 26) return;  // too narrow for numbers: zoom in
-              const short = v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
-              ctx.font = `${barWidth >= 60 ? 10 : 9}px ui-monospace, Menlo, monospace`;
               ctx.textBaseline = 'middle';
+              if (barWidth < FP.heatWidth) {
+                ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = 'rgba(195,202,214,0.75)';
+                ctx.fillText(FP_TEXT.zoom, mediaSize.width / 2, 14);
+                ctx.textAlign = 'left';
+                return;
+              }
+              const y0 = fp.series.priceToCoordinate(model.last || model.footprint.bars[model.footprint.bars.length - 1].poc);
+              const y1 = fp.series.priceToCoordinate((model.last || model.footprint.bars[model.footprint.bars.length - 1].poc) + step);
+              if (y0 === null || y1 === null) return;
+              const perStep = Math.max(1e-6, Math.abs(y0 - y1));
+              const pick = need => FP.merges.find(k => k * perStep >= need) || FP.merges[FP.merges.length - 1];
+              const numbers = barWidth >= FP.numberWidth;
+              const k = pick(numbers ? FP.numberRow : FP.heatRow);
+              const half = numbers ? Math.min(barWidth / 2 - 2, 70) : Math.max(2, Math.min(barWidth * 0.42, 30));
+              const short = v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v > 0 ? v.toFixed(3).replace(/^0/, '') : '0';
               for (const bar of model.footprint.bars) {
                 const x = scale.timeToCoordinate(local(bar.time));
                 if (x === null || x < -barWidth || x > mediaSize.width + barWidth) continue;
-                const half = Math.min(barWidth / 2 - 1, 44);
-                const marks = new Set(bar.imbalances.map(i => i[0] + ':' + i[1]));
-                for (const [price, bid, ask] of bar.levels) {
-                  const yTop = fp.series.priceToCoordinate(price + step);
-                  const yBottom = fp.series.priceToCoordinate(price);
-                  if (yTop === null || yBottom === null) continue;
-                  const height = yBottom - yTop;
-                  if (height < 8) continue;
-                  const y = (yTop + yBottom) / 2;
-                  const bidMark = marks.has(price + ':bid'), askMark = marks.has(price + ':ask');
-                  ctx.fillStyle = 'rgba(11,15,22,0.72)';  // dark cell so the numbers stay readable over the candle body
-                  ctx.fillRect(x - half, yTop + 1, 2 * half, height - 2);
-                  if (bidMark) { ctx.fillStyle = 'rgba(239,83,80,0.45)'; ctx.fillRect(x - half, yTop + 1, half - 1, height - 2); }
-                  if (askMark) { ctx.fillStyle = 'rgba(38,166,154,0.45)'; ctx.fillRect(x + 1, yTop + 1, half - 1, height - 2); }
-                  if (price === bar.poc) { ctx.fillStyle = 'rgba(245,197,66,0.25)'; ctx.fillRect(x - half, yTop + 1, 2 * half, height - 2); }
-                  ctx.textAlign = 'right';
-                  ctx.fillStyle = bidMark ? '#ffd7d9' : 'rgba(255,150,150,0.95)';
-                  ctx.fillText(short(bid), x - 2, y, half - 3);
-                  ctx.textAlign = 'left';
-                  ctx.fillStyle = askMark ? '#d2fff3' : 'rgba(140,230,200,0.95)';
-                  ctx.fillText(short(ask), x + 2, y, half - 3);
+                const { size, rows, stacks } = fpRows(bar, step, k);
+                const maxVolume = Math.max(...rows.map(r => r.bid + r.ask), 1e-12);
+                const maxDelta = Math.max(...rows.map(r => Math.abs(r.ask - r.bid)), 1e-12);
+                const candle = fp.byTime.get(bar.time);
+                const left = numbers ? x - half + 6 : x - half;  // numbers: a slim candle sits in the first 5 px
+                const width = x + half - left;
+                const mid = left + width / 2;
+                const fontSize = Math.max(8, Math.min(11, Math.floor(k * perStep) - 3));
+                ctx.font = `${fontSize}px ui-monospace, Menlo, monospace`;
+                let bottomY = -Infinity, topY = Infinity;
+                if (numbers) {  // one dark backdrop over the whole bar, so the candle body never shows through empty rows
+                  const yAllTop = fp.series.priceToCoordinate(rows[rows.length - 1].price + size), yAllBottom = fp.series.priceToCoordinate(rows[0].price);
+                  if (yAllTop !== null && yAllBottom !== null) { ctx.fillStyle = 'rgba(11,15,22,0.96)'; ctx.fillRect(left - 1, yAllTop, width + 2, yAllBottom - yAllTop); }
                 }
-                const low = Math.min(...bar.levels.map(l => l[0]));
-                const yDelta = fp.series.priceToCoordinate(low);
-                if (yDelta !== null) {
+                for (const row of rows) {
+                  const yTop = fp.series.priceToCoordinate(row.price + size);
+                  const yBottom = fp.series.priceToCoordinate(row.price);
+                  if (yTop === null || yBottom === null) continue;
+                  const height = Math.max(1, yBottom - yTop);
+                  bottomY = Math.max(bottomY, yBottom); topY = Math.min(topY, yTop);
+                  const delta = row.ask - row.bid;
+                  const shade = delta >= 0 ? '38,166,154' : '239,83,80';
+                  if (numbers) {
+                    ctx.fillStyle = 'rgba(11,15,22,0.94)';
+                    ctx.fillRect(left, yTop, width, height - 1);
+                    ctx.fillStyle = `rgba(${shade},${(0.10 + 0.45 * Math.abs(delta) / maxDelta).toFixed(3)})`;
+                    ctx.fillRect(left, yTop, width, height - 1);
+                    ctx.fillStyle = 'rgba(120,134,156,0.35)';
+                    ctx.fillRect(mid, yTop, 1, height - 1);
+                    ctx.textAlign = 'right';
+                    ctx.font = `${row.bidImb ? 'bold ' : ''}${fontSize}px ui-monospace, Menlo, monospace`;
+                    ctx.fillStyle = row.bidImb ? '#ff6b6b' : 'rgba(235,190,190,0.95)';
+                    ctx.fillText(short(row.bid), mid - 3, yTop + height / 2, width / 2 - 4);
+                    ctx.textAlign = 'left';
+                    ctx.font = `${row.askImb ? 'bold ' : ''}${fontSize}px ui-monospace, Menlo, monospace`;
+                    ctx.fillStyle = row.askImb ? '#3ee6c4' : 'rgba(185,235,220,0.95)';
+                    ctx.fillText(short(row.ask), mid + 4, yTop + height / 2, width / 2 - 4);
+                  } else {
+                    ctx.fillStyle = `rgba(${shade},${(0.18 + 0.72 * (row.bid + row.ask) / maxVolume).toFixed(3)})`;
+                    ctx.fillRect(left, yTop, width, Math.max(1, height - (height > 4 ? 1 : 0)));
+                  }
+                  if (row.poc) {
+                    ctx.strokeStyle = '#f5c542'; ctx.lineWidth = 1;
+                    ctx.strokeRect(left + 0.5, yTop + 0.5, width - 1, Math.max(1, height - 2));
+                  }
+                }
+                if (topY === Infinity) continue;
+                for (const s of stacks) {  // stacked imbalances: bar at the side the aggressor pushed from
+                  const yHigh = fp.series.priceToCoordinate(s.high), yLow = fp.series.priceToCoordinate(s.low);
+                  if (yHigh === null || yLow === null) continue;
+                  ctx.fillStyle = s.side === 'ask' ? '#3ee6c4' : '#ff6b6b';
+                  ctx.fillRect(s.side === 'ask' ? x + half + 1 : left - 3, yHigh, 2, yLow - yHigh);
+                }
+                ctx.strokeStyle = '#ffa726'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+                if (bar.unfinished_high) { ctx.beginPath(); ctx.moveTo(left, topY - 1.5); ctx.lineTo(left + width, topY - 1.5); ctx.stroke(); }
+                if (bar.unfinished_low) { ctx.beginPath(); ctx.moveTo(left, bottomY + 1.5); ctx.lineTo(left + width, bottomY + 1.5); ctx.stroke(); }
+                ctx.setLineDash([]);
+                if (numbers && candle) {  // slim candle left of the cells
+                  const yH = fp.series.priceToCoordinate(candle.high), yL = fp.series.priceToCoordinate(candle.low);
+                  const yO = fp.series.priceToCoordinate(candle.open), yC = fp.series.priceToCoordinate(candle.close);
+                  if (yH !== null && yL !== null && yO !== null && yC !== null) {
+                    ctx.fillStyle = candle.close >= candle.open ? '#26a69a' : '#ef5350';
+                    ctx.fillRect(x - half + 1.5, yH, 1, yL - yH);
+                    ctx.fillRect(x - half, Math.min(yO, yC), 4, Math.max(1, Math.abs(yC - yO)));
+                  }
+                }
+                if (barWidth >= 26) {  // Δ and volume under the candle
+                  ctx.font = `${barWidth >= 60 ? 10 : 9}px ui-monospace, Menlo, monospace`;
                   ctx.textAlign = 'center';
                   ctx.fillStyle = bar.delta >= 0 ? 'rgba(38,166,154,1)' : 'rgba(239,83,80,1)';
-                  ctx.fillText(`Δ ${bar.delta >= 0 ? '+' : '-'}${short(Math.abs(bar.delta))}`, x, yDelta + 9, 2 * half);
+                  ctx.fillText(`Δ ${bar.delta >= 0 ? '+' : '-'}${short(Math.abs(bar.delta))}`, x, bottomY + 9, 2 * half + 4);
+                  if (numbers) {
+                    ctx.fillStyle = 'rgba(195,202,214,0.85)';
+                    ctx.fillText(`${FP_TEXT.vol} ${short(bar.total)}`, x, bottomY + 20, 2 * half + 4);
+                  }
                 }
               }
               ctx.textAlign = 'left';
@@ -244,9 +345,11 @@
   };
   candles.attachPrimitive(fp);
 
-  // Layers added after a visitor saved a choice (e.g. TIM's plans) start visible: only keys the
-  // visitor has seen before can be hidden by a saved choice.
+  // Layers added after a visitor saved a choice (e.g. TIM's plans, footprint) start visible: only keys the
+  // visitor has seen before can be hidden by a saved choice. Saves from before this list existed knew
+  // neither the plans nor volume profile and footprint.
   const KNOWN = 'tim-chart-layers-known-v1';
+  const LEGACY_NEW = ['vp', 'fp'];
   function shownGroups() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
@@ -254,7 +357,7 @@
         const known = new Set(JSON.parse(localStorage.getItem(KNOWN) || '[]'));
         const groups = new Set(saved);
         for (const key of (model ? model.default_groups : [])) if (!known.has(key) && known.size) groups.add(key);
-        if (!known.size) for (const key of (model ? model.default_groups : [])) if (key.startsWith('plans_')) groups.add(key);
+        if (!known.size) for (const key of (model ? model.default_groups : [])) if (key.startsWith('plans_') || LEGACY_NEW.includes(key)) groups.add(key);
         return groups;
       }
     } catch (error) { /* private window: defaults */ }
@@ -359,13 +462,15 @@
     const groups = shownGroups();
     for (const d of model.drawings) {
       const series = chart.addLineSeries({
-        color: d.color, lineWidth: d.group === 'trend' || d.group === 'week' || d.group === 'month' ? 2 : 1,
+        color: d.color, lineWidth: ['trend', 'week', 'month', 'quarter', 'year', 'vwap'].includes(d.group) ? 2 : 1,
         // Finished segments (BOS/MSS, broken trend lines) get no label on the price axis: they are history, not a live level.
         lineStyle: STYLE[d.style] ?? LWC.LineStyle.Solid, lastValueVisible: !d.finished, priceLineVisible: false,
         crosshairMarkerVisible: false, title: d.finished ? '' : d.label, visible: groups.has(d.group),
         autoscaleInfoProvider: () => null,  // levels never squeeze the candles
       });
-      const points = [{ time: local(d.t1), value: d.p1 }, { time: local(d.t2), value: d.p2 }];
+      // A running line (VWAP) brings its own points; levels and segments have two.
+      const points = d.curve ? d.curve.map(([t, v]) => ({ time: local(t), value: v }))
+        : [{ time: local(d.t1), value: d.p1 }, { time: local(d.t2), value: d.p2 }];
       const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
       if (mid) points.splice(1, 0, { time: local(d.tm), value: d.p1 });  // BOS/MSS: horizontal, label in the middle
       series.setData(points);
@@ -410,6 +515,7 @@
       const keep = first ? null : chart.timeScale().getVisibleLogicalRange();
       const sameView = model && model.symbol === next.symbol && model.timeframe === next.timeframe;
       model = next;
+      fp.byTime = new Map(model.candles.map(c => [c.time, c]));
       buildLayers();
       candles.setData(model.candles.map(c => ({ time: local(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
       volume.setData(model.candles.map(c => ({ time: local(c.time), value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)' })));
@@ -466,7 +572,17 @@
       layers.querySelectorAll('input').forEach(node => { node.checked = false; });
       saveGroups(groups); applyVisibility(groups);
     }
+    if (action.dataset.action === 'footprint' && model) {  // the last candles, about 70 px each: room for bid × ask numbers
+      const count = model.candles.length;
+      const shown = Math.max(3, Math.floor((box.clientWidth - 80) / 70));  // 80 px: price axis
+      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - shown), to: count + 1 });
+      if (!fp.visible) {
+        const groups = shownGroups(); groups.add('fp'); saveGroups(groups); applyVisibility(groups);
+        const input = layers.querySelector("input[value='fp']"); if (input) input.checked = true;
+      }
+    }
     if (action.dataset.action === 'reset') { try { localStorage.removeItem(STORE); } catch (error) { /* ignore */ }
+      try { localStorage.removeItem(KNOWN); } catch (error) { /* ignore */ }
       const groups = new Set(model ? model.default_groups : []);
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
       applyVisibility(groups); }

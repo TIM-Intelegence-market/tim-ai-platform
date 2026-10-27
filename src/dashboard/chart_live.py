@@ -58,10 +58,14 @@ GROUP_STYLE = {
     "ib": ("#8a94a6", "dashed"),
     "structure": ("#35d39a", "solid"),
     "trend": ("#e879c6", "solid"),
+    "quarter": ("#f08c4a", "solid"),
+    "year": ("#ff5c9a", "solid"),
+    "vwap": ("#3fd0c9", "solid"),
     "gamma": ("#ffb020", "solid"),  # each gamma level brings its own colour (gamma_data.LEVEL_STYLE)
 }
 GROUP_NAMES = {
-    "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "naked": "naked POC",
+    "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "quarter": "Quartal (1Q)", "year": "Jahr (1Y)",
+    "vwap": "VWAP (Woche, Monat, 12M)", "naked": "naked POC",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "tpo": "TPO (Tagesprofil)",
     "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
@@ -217,6 +221,14 @@ def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datet
         for key, name in (("high", "High"), ("low", "Low")):
             moment = _extreme_time(days, month["open_time"], month["close_time"], month[key], key) if days else month["open_time"]
             add("month", "1M", name, month[key], moment, note)
+    for profile in (prep.get("htf_levels") or {}).get("profiles") or []:
+        group = {"1M": "month", "1Q": "quarter", "1Y": "year"}[profile["tf"]]
+        start = datetime.fromisoformat(profile["start"])
+        for key, name in (("vah", "VAH"), ("poc", "POC"), ("val", "VAL")):
+            add(group, profile["tf"], name, profile.get(key), start, f"{profile['name']}, {profile['estimate']}")
+        if group != "month":  # the month's high/low is drawn above from the monthly candle
+            add(group, profile["tf"], "High", profile.get("high"), start, profile["name"])
+            add(group, profile["tf"], "Low", profile.get("low"), start, profile["name"])
     prev_day = pd["day"] if pd else None
     for item in prep.get("naked_pocs") or []:
         if item["day"] == prev_day:
@@ -422,6 +434,31 @@ def trend_drawings(candles: Sequence[Mapping[str, Any]], timeframe: str, width: 
     return result
 
 
+def vwap_drawings(vwaps: Sequence[Mapping[str, Any]], candles: Sequence[Mapping[str, Any]], timeframe: str,
+                  now: datetime) -> list[dict[str, Any]]:
+    """Anchored VWAPs: a running line over the shown candles when the anchor is in view, else the current value.
+
+    The line is recomputed from the shown candles (typical price, including the
+    running candle); the current value comes from the session map's VWAP.
+    """
+    from src.dashboard.htf_levels import vwap_curve
+
+    out = []
+    first = candles[0]["open_time"] if candles else None
+    for item in vwaps:
+        anchor = datetime.fromisoformat(item["anchor"])
+        base = {"group": "vwap", "tf": item["tf"], "name": "VWAP", "label": f"{item['tf']} VWAP", "price": float(item["value"]),
+                "note": f"{item['name']}, aus {item['source']}-Kerzen"}
+        if first is not None and anchor >= first and INTERVAL_SECONDS[timeframe] <= 86400 and item["key"] != "rolling":
+            curve = vwap_curve([c for c in candles if c["open_time"] >= anchor])
+            if len(curve) >= 2:
+                out.append({**base, "price": curve[-1][1], "start": curve[0][0].isoformat(), "note": f"{item['name']}, Linie aus den gezeigten Kerzen",
+                            "curve": [[_epoch(moment), value] for moment, value in curve]})
+                continue
+        out.append({**base, "start": now.isoformat()})
+    return out
+
+
 def place_drawings(drawings: Sequence[Mapping[str, Any]], times: Sequence[int]) -> list[dict[str, Any]]:
     """Snap every drawing onto the shown candle times (the chart's time axis).
 
@@ -454,7 +491,15 @@ def place_drawings(drawings: Sequence[Mapping[str, Any]], times: Sequence[int]) 
         finished = (item["group"] == "structure" and not item.get("open")) or bool(item.get("broken"))  # history, not a live level
         result = {**item, "color": color, "style": style, "t1": times[index], "t2": times[end_index], "clipped": clipped, "finished": finished,
                   "bars": end_index - index}
-        if item["group"] == "trend":
+        if item.get("curve"):
+            # A running line (VWAP): keep only points on shown candles, one per candle.
+            shown = set(times)
+            curve = [[t, v] for t, v in item["curve"] if t in shown]
+            if len(curve) < 2:
+                continue
+            result.update({"curve": curve, "t1": curve[0][0], "t2": curve[-1][0], "p1": curve[0][1], "p2": curve[-1][1],
+                           "bars": len(curve) - 1})
+        elif item["group"] == "trend":
             # Straight in candle steps: recompute the start value at the snapped start index.
             anchor = max(0, bisect_right(times, _epoch(item["anchor_time"])) - 1)
             first = max(0, bisect_right(times, start) - 1)
@@ -663,6 +708,9 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     if INTERVAL_SECONDS[timeframe] >= 86400:
         drawings = [d for d in drawings if d["group"] not in INTRADAY_ONLY]
     drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe)
+    from src.dashboard.htf_levels import build_htf_levels
+
+    drawings += vwap_drawings(build_htf_levels(level_source, now)["vwaps"], candles, timeframe, now)
     if gamma and gamma.get(symbol):
         from src.dashboard.gamma_data import chart_drawings as gamma_drawings
 
