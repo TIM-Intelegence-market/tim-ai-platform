@@ -25,9 +25,9 @@
   const EN = root.dataset.lang === 'en';
   const LOCALE = EN ? 'en-US' : 'de-DE';
   const T = EN
-    ? { running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of',
+    ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of',
         failed: m => `Loading failed (${m}). Retrying in 30 s.` }
-    : { running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand',
+    : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
   const fmt = v => v == null ? '–' : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
 
@@ -293,10 +293,24 @@
       const long = plan.direction === 'LONG';
       const waiting = plan.status === 'OPEN';
       const closed = plan.status === 'CLOSED';
+      // A running trade whose stop TIM already moved: the SL is drawn as steps up to where it stands now.
+      const steps = plan.stop_steps || [];
+      const trailing = !closed && steps.length > 1;
+      if (trailing) {
+        const points = steps.map(([time, value]) => ({ time: local(time), value }));
+        if (plan.t2 > steps[steps.length - 1][0]) points.push({ time: local(plan.t2), value: steps[steps.length - 1][1] });
+        const series = chart.addLineSeries({
+          color: '#ffb020', lineWidth: 2, lineStyle: LWC.LineStyle.Solid, lineType: LWC.LineType.WithSteps,
+          lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+          title: T.slNow, visible: groups.has(plan.group), autoscaleInfoProvider: () => null,
+        });
+        series.setData(points);
+        lines.push({ series, group: plan.group, plan });
+      }
       const legs = closed
         ? [[plan.entry, long ? 'rgba(53,211,154,0.7)' : 'rgba(255,101,119,0.7)', 1, 'solid', '']]
         : [[plan.entry, '#70a7ff', 2, waiting ? 'dashed' : 'solid', `${plan.label} ${long ? 'L' : 'S'}`],
-           [plan.stop, '#ff6577', 1, 'dashed', 'SL'],
+           ...(trailing ? [] : [[plan.stop, '#ff6577', 1, 'dashed', 'SL']]),
            ...plan.targets.map((value, index) => [value, '#35d39a', 1, 'dotted', `TP${index + 1}`])];
       for (const [value, color, width, style, title] of legs) {
         const series = chart.addLineSeries({

@@ -606,9 +606,15 @@ def _steps(entry: Mapping[str, Any]) -> list[tuple[Any, str]]:
     if entry.get("tim_verdict_at") and entry.get("tim_verdict"):
         verdict = "protect the trade" if entry["tim_verdict"] == "SICHERN" else "hold"
         steps.append((entry["tim_verdict_at"], f"TIM judged the running trade: {verdict}."))
-    if entry.get("cost_stop_at") and entry.get("cost_stop") is not None:
-        kind = "behind the latest swing" if entry.get("cost_stop_kind") == "SWING" else "to break-even + costs"
-        steps.append((entry["cost_stop_at"], f"Stop moved {kind}: {_price(entry.get('cost_stop'))}."))
+    moves = entry.get("stop_path") or ([[entry["cost_stop_at"], entry["cost_stop"], entry.get("cost_stop_kind")]]
+                                       if entry.get("cost_stop_at") and entry.get("cost_stop") is not None else [])
+    for at, price, kind in moves:
+        where = "behind the latest swing" if str(kind).upper() == "SWING" else "to break-even + costs"
+        steps.append((at, f"Stop moved {where}: {_price(price)}."))
+    review = entry.get("stop_review") or {}
+    if review.get("checked_through"):
+        steps.append((review["checked_through"], "The stop was only a wick: price closed back beyond it right after." if review.get("wick")
+                      else "Not a wick: price stayed beyond the stop after it was hit."))
     if entry.get("closed_at"):
         end = STATUS_EN.get(str(entry.get("status")), "closed")
         if entry.get("status") == "CLOSED":

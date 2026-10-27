@@ -591,12 +591,23 @@ def plan_overlays(journals: Mapping[str, Sequence[Mapping[str, Any]]], times: Se
             if t2 == t1:
                 index = times.index(t1)
                 t2 = times[min(index + 1, len(times) - 1)]
+            # A running trade: where the stop stood since the fill and where it is now (Uzi 27.10.2026).
+            steps = []
+            if entry.get("status") == "FILLED":
+                from src.dashboard.plan_journal import stop_steps
+                for at, price, kind in stop_steps(entry):
+                    when = snap(at) or first
+                    if steps and steps[-1][0] == when:
+                        steps[-1] = [when, price, kind]
+                    else:
+                        steps.append([when, price, kind])
             plans.append({
                 "id": entry.get("id"), "journal": key, "group": layer, "label": label, "direction": entry.get("direction"),
                 "status": entry.get("status"), "entry": float(entry.get("fill_price") or entry["entry"]), "stop": float(entry["stop"]),
                 "targets": [float(t) for t in entry.get("targets") or [] if t is not None], "t1": t1, "t2": t2,
                 "fill_t": snap(entry.get("filled_at")), "close_t": snap(entry.get("closed_at")),
                 "net_r": entry.get("net_r"), "exit_reason": entry.get("exit_reason"), "clipped": _epoch(start) < first,
+                "stop_steps": steps, "stop_now": steps[-1][1] if steps else float(entry["stop"]),
             })
     plans.sort(key=lambda item: item["t1"])
     return plans[-PLAN_LIMIT:]
