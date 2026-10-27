@@ -7,18 +7,20 @@ correlation of daily changes with BTC.
 
 Sources (public, no key):
 - BTC and gold: Binance spot daily klines (BTCUSDT, PAXGUSDT = tokenised gold).
-- US dollar, Nasdaq, 10-year yield: FRED CSV (DTWEXBGS, NASDAQCOM, DGS10). FRED publishes
-  with a delay (the broad dollar index about a week), so every row shows its own date.
+- US dollar, Nasdaq, 10-year yield: official FRED API (DTWEXBGS, NASDAQCOM, DGS10) with the
+  key from TIM's FRED secret model (``research_lab.external.fred_secret``, keychain/file/env);
+  without a key these rows stay empty with a note. FRED publishes with a delay (the broad
+  dollar index about a week), so every row shows its own date.
 - BTC dominance: CoinGecko /global, a snapshot only. TIM stores one value per UTC day in
   ``data/macro/btc_dominance.jsonl`` and builds its own history from there.
 """
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 import math
+import os
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -34,7 +36,7 @@ MEAN_DAYS = 20
 CHANGE_STEPS = 5
 MIN_OVERLAP = 20  # common days needed for a correlation
 DOMINANCE_PATH = Path("data/macro/btc_dominance.jsonl")
-FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}&cosd={start}"
+FRED_URL = "https://api.stlouisfed.org/fred/series/observations?series_id={series}&observation_start={start}&file_type=json&api_key={key}"
 COINGECKO_GLOBAL = "https://api.coingecko.com/api/v3/global"
 BINANCE_KLINES = "https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit=120"
 
@@ -67,18 +69,32 @@ def _http(url: str) -> bytes:
 
 
 def parse_fred(raw: bytes) -> Series:
-    """FRED CSV (date, value); '.' marks a missing day and is skipped."""
-    rows = csv.reader(io.StringIO(raw.decode("utf-8", "replace")))
-    next(rows, None)
+    """FRED API JSON (observations with date/value); '.' marks a missing day and is skipped."""
     out: Series = []
-    for row in rows:
-        if len(row) < 2:
-            continue
+    for row in json.loads(raw).get("observations") or []:
         try:
-            out.append((date.fromisoformat(row[0]), float(row[1])))
-        except ValueError:
+            out.append((date.fromisoformat(str(row["date"])), float(row["value"])))
+        except (KeyError, TypeError, ValueError):
             continue
     return out
+
+
+def fred_key() -> str | None:
+    """FRED key from TIM's secret model; None when none is configured. Never logged.
+
+    Uses ``TIM_FRED_SECRET_PROVIDER`` like the research lab. On the Mac without that variable
+    the bar reads the Keychain entry ``com.tim.fred`` / ``tim`` (the resolver's defaults), so
+    the runtime needs no extra launchd setting.
+    """
+    try:
+        from src.research_lab.external.fred_secret import PROVIDER_ENV, FredSecretError, FredSecretResolver
+
+        env = dict(os.environ)
+        if not env.get(PROVIDER_ENV) and sys.platform == "darwin":
+            env[PROVIDER_ENV] = "keychain"
+        return FredSecretResolver(env).api_key().reveal()
+    except (ImportError, FredSecretError, Exception):  # noqa: BLE001 - no key = rows without data
+        return None
 
 
 def parse_klines(raw: bytes, now: datetime) -> Series:
@@ -176,16 +192,22 @@ def load_dominance(path: Path) -> list[dict[str, Any]]:
     return out
 
 
-def build_macro_bar(fetch: Fetch = _http, now: datetime | None = None, dominance_path: Path = DOMINANCE_PATH) -> dict[str, Any]:
+def build_macro_bar(fetch: Fetch = _http, now: datetime | None = None, dominance_path: Path = DOMINANCE_PATH,
+                    key: Callable[[], str | None] = fred_key) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     notes: list[str] = []
+    api_key = key()
+    if api_key is None:
+        notes.append("FRED-Key fehlt: Dollar, Nasdaq und 10J-Zins bleiben leer (Key mit scripts/fred_store_key.py hinterlegen).")
     start = date(now.year - 1, now.month, 1).isoformat()  # one year back is enough for 120 daily values
 
     def load(market_source: str, ref: str) -> Series:
         try:
             if market_source == "binance":
                 return parse_klines(fetch(BINANCE_KLINES.format(symbol=ref)), now)
-            return parse_fred(fetch(FRED_URL.format(series=ref, start=start)))[-120:]
+            if api_key is None:
+                return []
+            return parse_fred(fetch(FRED_URL.format(series=ref, start=start, key=api_key)))[-120:]
         except Exception as exc:  # noqa: BLE001 - one missing source must not drop the bar
             notes.append(f"{ref}: nicht erreichbar ({type(exc).__name__}).")
             return []
@@ -205,7 +227,9 @@ def build_macro_bar(fetch: Fetch = _http, now: datetime | None = None, dominance
     history = record_dominance(dominance_path, value, now) if value is not None else load_dominance(dominance_path)
     if history:
         series = [(date.fromisoformat(h["date"]), h["btc_dominance"]) for h in history]
-        dominance.update(describe(series, "bp", btc_changes))
+        dominance.update(describe(series, "bp", btc_changes) if len(series) > 1 else
+                         {"status": "OK", "last": series[-1][1], "date": series[-1][0].isoformat(), "change": None, "above_mean": None,
+                          "corr_btc": None, "relation": "Verlauf baut sich ab heute auf"})
         dominance["change_unit"] = "Prozentpunkte"
         if dominance.get("change") is not None:
             dominance["change"] = dominance["change"] / 100  # bp of a percentage -> percentage points
