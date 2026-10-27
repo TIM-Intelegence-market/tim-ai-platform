@@ -130,7 +130,7 @@ def test_prep_banner_links_the_form() -> None:
     entry = dp.build_entry(_form(), T0, 1)
     assert "max 2,5 R, 3 Trades, Schluss 21:30" in prep_banner(entry)
     assert "No-Trade-Tag" in prep_banner(dp.build_entry({"kind": "NO_TRADE_DAY"}, T0, 2))
-    assert "noch nicht vorbereitet" in _prep_page({}, {"levels": [], "htf": {}, "notes": ["Keine Daten."]}, None, with_day=True)
+    assert "noch nicht vorbereitet" in _prep_page({}, {"levels": [], "htf": {}, "notes": ["Keine Daten."]}, day_entry=None, with_day=True)
     assert "noch nicht vorbereitet" not in _prep_page({}, {"levels": [], "htf": {}, "notes": []})
 
 

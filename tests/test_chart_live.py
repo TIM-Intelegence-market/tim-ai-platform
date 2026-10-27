@@ -19,7 +19,7 @@ from src.dashboard.chart_live import (INTERVAL_SECONDS, KlineCache, build_live_c
 from src.dashboard.pages.chart import APP_PATH, CHART_SCRIPTS, LIB_PATH, render_chart_page
 
 NOW = datetime(2026, 10, 26, 21, 10, tzinfo=timezone.utc)  # Monday evening
-BASE = {"BTCUSDT": 113_000.0, "ETHUSDT": 4_050.0, "SOLUSDT": 196.0}
+BASE = {"BTCUSDT": 113_000.0, "ETHUSDT": 4_050.0, "SOLUSDT": 196.0, "PAXGUSDT": 4_010.0}
 LIB_SHA256 = "c7dda807d662a95b3d257119ed315cec669e3bdf5aaece75c480a39307f23540"
 
 

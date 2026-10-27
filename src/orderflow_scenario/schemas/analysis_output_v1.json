@@ -81,7 +81,8 @@
         "statements": { "type": "array", "items": { "type": "object" } },
         "missing_data": { "type": "array", "items": { "type": "string" } },
         "positioning": { "type": "object" },
-        "profile": { "type": "object" }
+        "profile": { "type": "object" },
+        "gamma": { "type": "object" }
       }
     },
     "scenarios": { "type": "array", "items": { "type": "object" } },

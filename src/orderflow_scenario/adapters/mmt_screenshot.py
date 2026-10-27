@@ -133,4 +133,5 @@ class MMTScreenshotAdapter:
             extra_notes=("screenshot_derived_data_all_prices_estimated", f"visible_indicators={list(indicators)}", "chart_timeframe=" + timeframe),
             positioning=context.positioning,
             profile=context.profile,
+            gamma=context.gamma,
         )
