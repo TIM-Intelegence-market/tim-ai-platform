@@ -28,7 +28,8 @@ NAV = (("/chart", "Chart"), ("/journal", "Paper journal"))
 REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
-    "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "naked": "naked POC",
+    "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "quarter": "Quarter (1Q)", "year": "Year (1Y)",
+    "vwap": "VWAP (week, month, 12M)", "naked": "naked POC",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trend lines", "tpo": "TPO (day profile)",
     "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
@@ -43,6 +44,15 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^Vortag ", "Prior day "),
     (r"^Vorwoche ab ", "Prior week from "),
     (r"^Vormonat ", "Prior month "),
+    (r"^Vorquartal ", "Prior quarter "),
+    (r"^Vorjahr ", "Prior year "),
+    (r"aus Tageskerzen geschätzt", "estimated from daily candles"),
+    (r"aus Wochenkerzen geschätzt, Ränder ungefähr", "estimated from weekly candles, edges approximate"),
+    (r"^VWAP Woche ab ", "VWAP week from "),
+    (r"^VWAP Monat ab ", "VWAP month from "),
+    (r"^VWAP 12 Monate", "VWAP 12 months"),
+    (r", aus (\w+)-Kerzen$", r", from \1 candles"),
+    (r", Linie aus den gezeigten Kerzen$", ", line from the shown candles"),
     (r"unberührter Tages-POC", "untouched daily POC"),
     (r"laufendes Tagesprofil", "running day profile"),
     (r"laufendes Wochenprofil", "running week profile"),

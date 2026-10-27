@@ -78,7 +78,7 @@ def test_live_chart_draws_labelled_segments_from_their_origin() -> None:
     for d in model["drawings"]:
         assert d["label"].startswith(d["tf"]) and d["label"].strip()
         assert d["t1"] in times and d["t2"] in times and d["t1"] < d["t2"], d
-        if d["group"] not in ("trend", "structure"):
+        if d["group"] not in ("trend", "structure") and not d.get("curve"):  # a VWAP line runs with price
             assert d["t2"] == times[-1] and d["p1"] == d["p2"] == d["price"]
     # Levels are segments, not lines across the chart: the previous day starts yesterday, not at the first candle.
     day = next(d for d in model["drawings"] if d["label"] == "1D VAH")

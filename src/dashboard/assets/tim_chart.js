@@ -287,13 +287,15 @@
     const groups = shownGroups();
     for (const d of model.drawings) {
       const series = chart.addLineSeries({
-        color: d.color, lineWidth: d.group === 'trend' || d.group === 'week' || d.group === 'month' ? 2 : 1,
+        color: d.color, lineWidth: ['trend', 'week', 'month', 'quarter', 'year', 'vwap'].includes(d.group) ? 2 : 1,
         // Finished segments (BOS/MSS, broken trend lines) get no label on the price axis: they are history, not a live level.
         lineStyle: STYLE[d.style] ?? LWC.LineStyle.Solid, lastValueVisible: !d.finished, priceLineVisible: false,
         crosshairMarkerVisible: false, title: d.finished ? '' : d.label, visible: groups.has(d.group),
         autoscaleInfoProvider: () => null,  // levels never squeeze the candles
       });
-      const points = [{ time: local(d.t1), value: d.p1 }, { time: local(d.t2), value: d.p2 }];
+      // A running line (VWAP) brings its own points; levels and segments have two.
+      const points = d.curve ? d.curve.map(([t, v]) => ({ time: local(t), value: v }))
+        : [{ time: local(d.t1), value: d.p1 }, { time: local(d.t2), value: d.p2 }];
       const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
       if (mid) points.splice(1, 0, { time: local(d.tm), value: d.p1 });  // BOS/MSS: horizontal, label in the middle
       series.setData(points);
