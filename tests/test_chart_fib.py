@@ -66,3 +66,12 @@ def test_fib_lines_run_to_newest_candle_and_translate() -> None:
     placed = place_drawings(drawings, times)
     assert placed and all(d["t2"] == times[-1] and d["p1"] == d["p2"] and not d["finished"] for d in placed)
     assert english_text(drawings[0]["note"]) == "Long fib, swing low → high (wicks), zone, not a signal"
+
+
+def test_live_chart_draws_structure_and_trend_only_once() -> None:
+    from tests.test_chart_live import _model
+
+    model = _model()
+    keys = [(d["group"], d["label"], d["t1"], d["t2"], d["p1"], d["p2"]) for d in model["drawings"]
+            if d["group"] in ("structure", "trend", "fib")]
+    assert keys and len(keys) == len(set(keys))

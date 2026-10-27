@@ -758,11 +758,10 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     drawings = level_drawings(level_source, now)
     if INTERVAL_SECONDS[timeframe] >= 86400:
         drawings = [d for d in drawings if d["group"] not in INTRADAY_ONLY]
-    drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe)
+    drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe) + fib_drawings(candles, timeframe)
     from src.dashboard.htf_levels import build_htf_levels
 
     drawings += vwap_drawings(build_htf_levels(level_source, now)["vwaps"], candles, timeframe, now)
-    drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe) + fib_drawings(candles, timeframe)
     if gamma and gamma.get(symbol):
         from src.dashboard.gamma_data import chart_drawings as gamma_drawings
 
