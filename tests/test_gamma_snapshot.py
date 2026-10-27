@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -163,7 +164,7 @@ def test_prep_block_status_and_staleness() -> None:
     assert drawings == [] and notes and "ausgeblendet" in notes[0]
 
 
-def test_chart_draws_gamma_group_with_own_colours_and_public_view_hides_it() -> None:
+def test_chart_draws_gamma_group_with_own_colours_also_in_the_public_view() -> None:
     snap = _snapshot(as_of=CHART_NOW - timedelta(minutes=3))
     model = build_live_chart("BTCUSDT", "30m", None, cache=KlineCache(fake_fetch()), now=CHART_NOW, gamma={"BTCUSDT": snap})
     gamma = [d for d in model["drawings"] if d["group"] == "gamma"]
@@ -172,11 +173,20 @@ def test_chart_draws_gamma_group_with_own_colours_and_public_view_hides_it() -> 
     assert flip["color"] == gamma_data.LEVEL_STYLE["flip"][0] and flip["p1"] == flip["p2"] == flip["price"]
     assert flip["t2"] == model["candles"][-1]["time"] and flip["bars"] > 1
     assert "gamma" in model["groups"] and "gamma" in model["default_groups"]
-    # Other symbols and the public English view carry no gamma.
+    # Other symbols carry no gamma.
     eth = build_live_chart("ETHUSDT", "30m", None, cache=KlineCache(fake_fetch()), now=CHART_NOW, gamma={"BTCUSDT": snap})
     assert not any(d["group"] == "gamma" for d in eth["drawings"])
+    # The public English view shows gamma too, with English labels and notes (Uzi 27.10.2026).
     public = english_chart_model(model)
-    assert "gamma" not in public["groups"] and "gamma" not in public["default_groups"]
+    assert public["groups"]["gamma"] == "Options gamma (Deribit)" and "gamma" in public["default_groups"]
+    public_gamma = [d for d in public["drawings"] if d["group"] == "gamma"]
+    labels = {d["label"] for d in public_gamma}
+    assert {"Opt Gamma Flip", "Opt Call Wall", "Opt Put Wall"} <= labels
+    assert any(label.startswith("Opt EM high ") for label in labels) and any(label.startswith("Opt EM low ") for label in labels)
+    for d in public_gamma:
+        assert not re.search(r"[äöüß]|hoch|tief|Händler|Verfall", f"{d['name']} {d['label']} {d['note']}"), d
+    stale_note = gamma_data.chart_drawings(snap, CHART_NOW + timedelta(hours=1))[1][0]
+    assert english_chart_model({"notes": [stale_note]})["notes"] == ["Gamma: Deribit data is 63 min old, levels hidden."]
 
 
 def test_server_serves_gamma_and_adds_it_to_prep(monkeypatch) -> None:
@@ -191,7 +201,9 @@ def test_server_serves_gamma_and_adds_it_to_prep(monkeypatch) -> None:
         assert missing.value.code == 404
         with urlopen(f"http://127.0.0.1:{port}/api/prep", timeout=10) as response:
             assert json.loads(response.read())["gamma"]["status"] == "MISSING"
-        gamma_data.refresh(state, "BTCUSDT", fetch=_fake_deribit(), now=datetime.now(timezone.utc))
+        gamma_data.refresh(state, "BTCUSDT", fetch=_fake_deribit(), now=AS_OF)
+        with state.lock:  # the fixture's expiries lie in the past later on: only the age is made current
+            state.gamma["BTCUSDT"] = {**state.gamma["BTCUSDT"], "as_of": datetime.now(timezone.utc).isoformat()}
         with urlopen(f"http://127.0.0.1:{port}/api/gamma?symbol=BTCUSDT", timeout=5) as response:
             body = json.loads(response.read())
         assert body["stale"] is False and body["all_expiries"]["call_wall"] == 80000.0

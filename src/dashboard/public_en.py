@@ -37,8 +37,8 @@ GROUPS_EN = {
     "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
     "plans_short": "TIM plans SHORT 15m", "plans_mid": "TIM plans MID 1h", "plans_long": "TIM plans LONG 1D",
     "plans_old": "TIM plans, test versions 30m",
+    "gamma": "Options gamma (Deribit)",
 }
-PRIVATE_GROUPS = frozenset({"gamma"})
 # Ordered (pattern, replacement) pairs for labels, names and notes of the drawings.
 TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"POC lfd\.", "POC (running)"),
@@ -75,6 +75,15 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^Long-Fib Swing-Tief → Hoch \(Docht\), Zone, kein Signal", "Long fib, swing low → high (wicks), zone, not a signal"),
     (r"^Short-Fib Swing-Hoch → Tief \(Docht\), Zone, kein Signal", "Short fib, swing high → low (wicks), zone, not a signal"),
     (r"durch die letzten zwei Swing-Tiefs \((\d+) Kerzen je Seite\)", r"through the last two swing lows (\1 candles per side)"),
+    # Options gamma levels (gamma_data.py).
+    (r"^(Opt )?EM hoch ", r"\1EM high "),
+    (r"^(Opt )?EM tief ", r"\1EM low "),
+    (r"^darüber dämpfen Händler eher, darunter verstärken sie Bewegungen$",
+     "above it dealer hedging tends to dampen moves, below it to amplify them (estimate)"),
+    (r"^größtes Call-Gamma über dem Preis$", "largest call gamma above the price (estimate)"),
+    (r"^größtes Put-Gamma unter dem Preis$", "largest put gamma below the price (estimate)"),
+    (r"^Hauptverfall (\S+) \((\d+) % des OI\)$", r"main expiry \1 (\2 % of open interest)"),
+    (r"^erwartete Bewegung bis Verfall, ATM-IV ([\d.]+) %$", r"expected move until expiry, ATM IV \1 %"),
 )
 NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Kerzen aus der TIM-Runtime", "Candles from the TIM runtime (exchange not reachable)."),
@@ -83,6 +92,7 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Volume Profile und Footprint aus echten Trades gibt es nur für (\w+)", r"Volume profile and footprint from real trades exist only for \1: TIM collects trades only there."),
     (r"^Gold über PAXG", "Gold via PAXG (tokenised gold, 1 PAXG = 1 troy ounce): trades around the clock, real gold does not; "
                          "weekend candles and thinner liquidity can shift levels against XAUUSD."),
+    (r"^Gamma: Deribit-Stand ist (\d+) min alt", r"Gamma: Deribit data is \1 min old, levels hidden."),
     (r"^Noch keine Trades", "No trades from the TIM database yet (the runtime delivers them every 2 minutes)."),
     (r"^(Level \S+: )?Börse nicht erreichbar", r"\1Exchange not reachable, retrying shortly."),
 )
@@ -115,9 +125,7 @@ def english_note(note: Any) -> Any:
 def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     out = dict(model)
     # The public view gets no options gamma (German-only levels, not part of the public scope).
-    out["groups"] = {key: GROUPS_EN.get(key, value) for key, value in (model.get("groups") or {}).items() if key not in PRIVATE_GROUPS}
-    if "default_groups" in model:
-        out["default_groups"] = [key for key in model["default_groups"] if key not in PRIVATE_GROUPS]
+    out["groups"] = {key: GROUPS_EN.get(key, value) for key, value in (model.get("groups") or {}).items()}
     out["drawings"] = [{**d, "name": english_text(d.get("name")), "label": english_text(d.get("label")), "note": english_text(d.get("note"))}
                        for d in model.get("drawings") or []]
     out["notes"] = [english_note(n) for n in model.get("notes") or []]
