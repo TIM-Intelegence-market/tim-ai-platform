@@ -121,8 +121,10 @@ class PublicDashboardServer:
                     self.wfile.write(payload)
 
             def client(self) -> str:
-                # Cloudflare sets the visitor address; without the tunnel the peer is local.
-                return (self.headers.get("CF-Connecting-IP") or self.client_address[0] or "?")[:64]
+                # The tunnel names the visitor: Cloudflare in CF-Connecting-IP, ngrok as the last
+                # X-Forwarded-For entry (the one the tunnel appended). Without a tunnel the peer is local.
+                forwarded = [part.strip() for part in (self.headers.get("X-Forwarded-For") or "").split(",") if part.strip()]
+                return (self.headers.get("CF-Connecting-IP") or (forwarded[-1] if forwarded else "") or self.client_address[0] or "?")[:64]
 
             def do_HEAD(self):
                 self.do_GET(head=True)
