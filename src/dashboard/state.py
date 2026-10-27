@@ -26,6 +26,8 @@ class DashboardState:
     footprint: dict[str, Any] = field(default_factory=dict)
     # Options gamma snapshot per symbol from Deribit's public book (src/dashboard/gamma_data.py).
     gamma: dict[str, Any] = field(default_factory=dict)
+    # Estimated liquidation heatmap per symbol from Binance's public futures data (src/dashboard/liquidation_data.py).
+    liquidation: dict[str, Any] = field(default_factory=dict)
     system_health: dict[str, Any] = field(default_factory=lambda: {
         "database": "unknown",
         "stream": "unknown",
