@@ -114,6 +114,17 @@ INSTRUMENT_SPECS = {
     ("BINANCE", "SPOT", "BTCUSDT"): {"tick_size": 0.01, "lot_step": 0.00001, "short_executable": False},
 }
 STALE_AFTER = timedelta(minutes=60)  # two 30m intervals without a new close: no new plans
+# Three horizons (Uzi 27.10.2026: "TIM soll in drei verschiedenen Zeitfenstern laufen", card: SHORT 15m · MID 1h · LONG 1D).
+# Same TIM rule (tim/1) and cost limit, one journal file per horizon. Waiting and holding times
+# scale with the timeframe; they are fixed on each entry when it is recorded.
+HORIZONS = {"SHORT": "15m", "MID": "1h", "LONG": "1d"}
+TIMEFRAME_MINUTES = {"15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440}
+HORIZON_HOURS = {"15m": (12, 24), "30m": (PENDING_HOURS, MAX_HOLD_HOURS), "1h": (24, 72), "1d": (24 * 7, 24 * 21)}  # (wait for entry, max in trade)
+
+
+def stale_after(timeframe: str) -> timedelta:
+    """Two intervals without a new close: no new plans (never less than an hour)."""
+    return max(STALE_AFTER, timedelta(minutes=2 * TIMEFRAME_MINUTES.get(timeframe, 30)))
 CANDLE_CLOSE_SKIPPED = "CANDLE_CLOSE_SKIPPED"
 GRADE_NOTE = "Heuristischer Grade, kein empirischer Edge-Nachweis"
 # Fields fixed at recording time. evaluate() must never touch them.
@@ -339,6 +350,8 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
             "status": OPEN,
             **_arming(plan),
             "stop_rule": STOP_RULE_COST,
+            **({"pending_hours": HORIZON_HOURS[timeframe][0], "max_hold_hours": HORIZON_HOURS[timeframe][1]}
+               if timeframe != PLAN_TIMEFRAME and timeframe in HORIZON_HOURS else {}),
             "evaluated_through": _iso(start),
             "tp_hits": [],
             "gross_r": None,
@@ -721,8 +734,9 @@ def evaluate(journal: dict[str, Any], minute_candles: Sequence[Mapping[str, Any]
                 _close(entry, broken[0]["close_time"], broken[0]["close"], "INVALIDATION")
                 break
             if entry["status"] == OPEN:
-                if candle["open_time"] >= _time(entry["created_at"]) + timedelta(hours=PENDING_HOURS):
-                    entry.update(status="EXPIRED", closed_at=_iso(candle["open_time"]), note=f"{PENDING_HOURS} h ohne Einstieg.")
+                pending = entry.get("pending_hours", PENDING_HOURS)
+                if candle["open_time"] >= _time(entry["created_at"]) + timedelta(hours=pending):
+                    entry.update(status="EXPIRED", closed_at=_iso(candle["open_time"]), note=f"{pending} h ohne Einstieg.")
                     break
                 if not entry.get("armed", True):
                     # Breakout first: a 1m close beyond the entry arms the limit for the retest.
@@ -738,7 +752,7 @@ def evaluate(journal: dict[str, Any], minute_candles: Sequence[Mapping[str, Any]
                         _close(entry, candle["close_time"], entry["stop"], "STOP")
                         break
                 continue
-            if candle["open_time"] >= _time(entry["filled_at"]) + timedelta(hours=MAX_HOLD_HOURS):
+            if candle["open_time"] >= _time(entry["filled_at"]) + timedelta(hours=entry.get("max_hold_hours", MAX_HOLD_HOURS)):
                 _close(entry, candle["open_time"], candle["open"], "TIMEOUT")
                 break
             _follow(entry, candle)
@@ -977,20 +991,22 @@ def rebuild(path: Path) -> dict[str, Any]:
     return journal
 
 
-def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime) -> tuple[str, dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
+            timeframe: str = PLAN_TIMEFRAME) -> tuple[str, dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     minutes = clean_candles(series.get("1m") or [], "1m")
-    plan_candles = clean_candles(series.get(PLAN_TIMEFRAME) or [], PLAN_TIMEFRAME)
+    plan_candles = clean_candles(series.get(timeframe) or [], timeframe)
     legacy = clean_candles(series.get("15m") or [], "15m")
-    digest = journal_log.content_hash({"1m": minutes, PLAN_TIMEFRAME: plan_candles, "legacy_15m": legacy})
+    digest = journal_log.content_hash({"1m": minutes, timeframe: plan_candles, "legacy_15m": legacy})
     span = {"1m_first": _iso(minutes[0]["open_time"]) if minutes else None, "1m_last": _iso(minutes[-1]["close_time"]) if minutes else None,
-            f"{PLAN_TIMEFRAME}_count": len(plan_candles), "now": _iso(now)}
+            f"{timeframe}_count": len(plan_candles), "now": _iso(now)}
     return digest, span, minutes, plan_candles
 
 
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
-           rule: str = RULE_TIM) -> dict[str, Any]:
+           rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
-    30m close, append the resulting events, then write the view.
+    close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
+    see HORIZONS), append the resulting events, then write the view.
 
     ``rule`` picks the rule version: TIM's flat stop and R targets, or
     struct/1 (stop behind the swing, targets at liquidity) in its own file.
@@ -1004,7 +1020,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     _check_anchor(path, state)
     journal = fold(state.events)
     before = deepcopy(journal)
-    source_hash, source_range, minutes, plan_candles = _source(series, now)
+    source_hash, source_range, minutes, plan_candles = _source(series, now, timeframe)
     evaluate(journal, minutes, [*plan_candles, *series.get("15m", [])], now)
     new_events: list[dict[str, Any]] = []
     closed_30m = [c for c in plan_candles if c["close_time"] <= now]
@@ -1013,13 +1029,13 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
         latest = _minute_ceil(closed_30m[-1]["close_time"])
         close_hash = journal_log.content_hash(plan_candles[-PLAN_VISIBLE:])
         age = now - latest
-        if journal.get("last_plan_candle") != _iso(latest) and age > STALE_AFTER:
+        if journal.get("last_plan_candle") != _iso(latest) and age > stale_after(timeframe):
             # Stale market data: no new plans (section 2). Noted once per close; the next close records again.
             new_events.append({"event_id": journal_log.event_id(CANDLE_CLOSE_SKIPPED, _iso(latest), "stale"), "kind": CANDLE_CLOSE_SKIPPED,
                                "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                "payload": {"close_time": _iso(latest), "reason": "stale_data", "age_seconds": int(age.total_seconds())}})
         elif journal.get("last_plan_candle") != _iso(latest):
-            model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
+            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE)
             plans = plans_from_model(model)
             dropped: list[str] = []
             if rule == RULE_STRUCT:
@@ -1036,7 +1052,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
                                    "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                    "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
-            record_plans(journal, with_evidence(plans, PLAN_TIMEFRAME, register_path), latest)
+            record_plans(journal, with_evidence(plans, timeframe, register_path), latest, timeframe)
             judge_trades(journal, model, closed_30m)
             journal["last_plan_candle"] = _iso(latest)
             checkpoint = True

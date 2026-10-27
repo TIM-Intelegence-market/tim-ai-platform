@@ -64,11 +64,20 @@ GROUP_NAMES = {
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "tpo": "TPO (Tagesprofil)",
     "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
+    "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
+    "plans_old": "TIM-Pläne Testversionen 30m",
 }
 TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
-DEFAULT_GROUPS = ("day", "week", "month", "naked", "structure", "trend", "tpo", "vp", "fp")
+DEFAULT_GROUPS = ("day", "week", "month", "naked", "structure", "trend", "tpo", "vp", "fp",
+                  "plans_short", "plans_mid", "plans_long", "plans_old")
+# TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
+# Journal key -> (layer, short label); the earlier 30m test versions share one layer.
+PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
+                 "tim": ("plans_old", "TIM 30m"), "struct": ("plans_old", "Struktur 30m"), "level": ("plans_old", "Level 30m")}
+PLAN_LIMIT = 40  # newest plans drawn per chart
+PLAN_SHOWN = {"OPEN", "FILLED", "CLOSED"}  # never-filled plans (replaced, expired, invalidated) stay in the journal only
 
 Fetch = Callable[[str, str, int], list[dict[str, Any]]]
 
@@ -534,12 +543,73 @@ def _level_series(symbol: str, runtime_series: Mapping[str, Sequence[Mapping[str
             for tf, rows in series.items() if rows}, "Binance-Klines (nur Anzeige)", notes
 
 
+def load_plan_journals(paths: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Entries of TIM's paper journals by journal key (missing or locked journals: none)."""
+    from src.dashboard.plan_journal import load_view
+
+    result = {}
+    for key, path in paths.items():
+        if key in PLAN_JOURNALS and path is not None:
+            try:
+                result[key] = list(load_view(path).get("entries") or [])
+            except Exception:  # noqa: BLE001 - a journal must never break the chart
+                result[key] = []
+    return result
+
+
+def plan_overlays(journals: Mapping[str, Sequence[Mapping[str, Any]]], times: Sequence[int]) -> list[dict[str, Any]]:
+    """TIM's paper plans placed on the shown candles: entry, stop and targets from the plan
+    (or fill) until it closed, plus fill and exit times for markers. Corrected entries and
+    plans that were never filled are left out; a plan that waits for its entry is drawn dashed."""
+    if len(times) < 2:
+        return []
+    first, last = times[0], times[-1]
+
+    def snap(value: Any) -> int | None:
+        if not value:
+            return None
+        moment = _epoch(value)
+        return times[max(0, bisect_right(times, moment) - 1)] if moment >= first else None
+
+    plans = []
+    for key, entries in journals.items():
+        layer, label = PLAN_JOURNALS.get(key, (None, None))
+        if layer is None:
+            continue
+        for entry in entries:
+            if entry.get("excluded") or entry.get("status") not in PLAN_SHOWN or entry.get("entry") is None or entry.get("stop") is None:
+                continue
+            start = entry.get("filled_at") or entry.get("created_at")
+            end_moment = _epoch(entry["closed_at"]) if entry.get("closed_at") else last
+            if not start or end_moment < first:
+                continue
+            t1 = snap(start) or first
+            t2 = snap(entry.get("closed_at")) if entry.get("closed_at") else last
+            if t2 is None or t2 < t1:
+                continue
+            if t2 == t1:
+                index = times.index(t1)
+                t2 = times[min(index + 1, len(times) - 1)]
+            plans.append({
+                "id": entry.get("id"), "journal": key, "group": layer, "label": label, "direction": entry.get("direction"),
+                "status": entry.get("status"), "entry": float(entry.get("fill_price") or entry["entry"]), "stop": float(entry["stop"]),
+                "targets": [float(t) for t in entry.get("targets") or [] if t is not None], "t1": t1, "t2": t2,
+                "fill_t": snap(entry.get("filled_at")), "close_t": snap(entry.get("closed_at")),
+                "net_r": entry.get("net_r"), "exit_reason": entry.get("exit_reason"), "clipped": _epoch(start) < first,
+            })
+    plans.sort(key=lambda item: item["t1"])
+    return plans[-PLAN_LIMIT:]
+
+
 def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
-                     cache: KlineCache | None = None, now: datetime | None = None, footprint: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                     cache: KlineCache | None = None, now: datetime | None = None, footprint: Mapping[str, Any] | None = None,
+                     plan_journals: Mapping[str, Sequence[Mapping[str, Any]]] | None = None) -> dict[str, Any]:
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
     it feeds the volume profiles and footprint bars for the symbol TIM collects.
+    ``plan_journals`` (journal key -> entries, see ``load_plan_journals``) adds TIM's paper
+    plans for BTCUSDT, the only symbol the journals follow.
     """
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     timeframe = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
@@ -548,7 +618,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model: dict[str, Any] = {"symbol": symbol, "name": SYMBOL_NAMES[symbol], "timeframe": timeframe, "symbols": list(SYMBOLS),
                              "timeframes": list(VIEW_TIMEFRAMES), "generated_at": now.isoformat(), "read_only": True,
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
-                             "default_groups": list(DEFAULT_GROUPS), "notes": []}
+                             "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": []}
     rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
     if error:
         model["notes"].append(error)
@@ -577,6 +647,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe)
     times = [c["time"] for c in model["candles"]]
     model["drawings"] = place_drawings(drawings, times)
+    model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
     model["tpo"], model["volume_profile"], model["footprint"] = [], [], {"step": None, "bars": [], "note": None}
     if INTERVAL_SECONDS[timeframe] <= 14400:  # profiles per day only make sense on intraday views
         first_time = times[0]
