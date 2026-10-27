@@ -57,8 +57,12 @@ def _htf_section(htf: Mapping[str, Any]) -> str:
     )
 
 
-def _prep_page(data: dict[str, Any], model: Mapping[str, Any]) -> str:
+def _prep_page(data: dict[str, Any], model: Mapping[str, Any], day_entry: Mapping[str, Any] | None = None, with_day: bool = False) -> str:
     body = _hero("Vorbereitung", "Bias von oben, Vortages- und Wochen-Value, naked POCs und Sessions: Broncx' Schritte 1 bis 3 auf einer Seite. Nur Beobachtung, keine Order.")
+    if with_day:
+        from src.dashboard.pages.my_day import prep_banner
+
+        body += prep_banner(day_entry)
     bias = model.get("bias") or {}
     where = model.get("location") or {}
     if not model.get("levels") and not model.get("htf"):

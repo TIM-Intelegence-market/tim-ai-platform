@@ -97,7 +97,7 @@ NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("Insights", "/insights"),
         ("Independent Cases", "/independent-cases"),
         ("Qualification", "/qualification"),
-        ("Prep", "/prep"), ("Trader Journal", "/trader-journal"),
+        ("Prep", "/prep"), ("My Day", "/my-day"), ("Trader Journal", "/trader-journal"),
         ("Setup Path", "/setup-path"),
         ("Plan Journal", "/journal"),
         ("Chart", "/chart"),
@@ -119,7 +119,7 @@ NAV_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
 
 
 # Menu labels that differ from the generic translation of the page key.
-NAV_LABELS = {"Research": "Recherche-Werkzeug", "Chart": "TIM-Chart", "Plan Journal": "Plan-Journal", "Prep": "Vorbereitung", "Trader Journal": "Trader-Journal"}
+NAV_LABELS = {"Research": "Recherche-Werkzeug", "Chart": "TIM-Chart", "Plan Journal": "Plan-Journal", "Prep": "Vorbereitung", "My Day": "Mein Tag", "Trader Journal": "Trader-Journal"}
 
 
 def _strip_states(data: dict[str, Any]) -> list[tuple[str, str, str, str]]:

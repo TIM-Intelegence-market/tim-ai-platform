@@ -56,6 +56,7 @@ class DashboardState:
     plan_journal_mid_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_mid.json"))
     plan_journal_long_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_long.json"))
     trader_journal_path: Path = field(default_factory=lambda: Path("data/journal/trader_journal.json"))
+    daily_prep_path: Path = field(default_factory=lambda: Path("data/journal/daily_prep.json"))
     qualification_root_path: Path = field(default_factory=lambda: Path("data/qualification"))
     live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))
     gate_model_path: Path = field(default_factory=lambda: Path("data/research/status/current_gate_model.json"))

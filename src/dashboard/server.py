@@ -158,6 +158,14 @@ class DashboardServer:
                 if path == "/trader-journal":
                     saved = query.get("saved", [""])[0]
                     return self.trader_journal_page(200, saved=saved if re.fullmatch(r"TJ-\d{4,5}", saved or "") else None)
+                if path == "/my-day":
+                    saved = query.get("saved", [""])[0]
+                    return self.my_day_page(200, saved=saved if re.fullmatch(r"DP-\d{4,5}", saved or "") else None)
+                if path == "/api/my-day":
+                    from src.dashboard import daily_prep
+
+                    log = daily_prep.load(outer.state.daily_prep_path)
+                    return self.respond(200, json.dumps({**log, "entries": log["entries"][-200:], "today": daily_prep.today(log)}, default=str).encode(), "application/json")
                 if path == "/api/trader-journal":
                     from src.dashboard import trader_journal
 
@@ -372,29 +380,75 @@ class DashboardServer:
                 # same-origin keeps the Origin header on the form post (no-referrer would send "null").
                 return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=journal_csp(page), referrer="same-origin")
 
-            def trader_journal_post(self, path: str) -> None:
-                from src.dashboard import trader_journal
-                from src.dashboard.session_map import build_session_map
-
+            def checked_form(self, reload_path: str, max_fields: int = 40) -> dict[str, str] | None:
+                """Same-origin, form-encoded, size-limited body with the page's token; None after an error response."""
                 origin = self.headers.get("Origin")
                 if origin is not None and origin != f"http://{self.headers.get('Host')}":
-                    return self.respond(403, b'{"error":"cross-origin form post refused"}', "application/json")
+                    self.respond(403, b'{"error":"cross-origin form post refused"}', "application/json")
+                    return None
                 if self.headers.get_content_type() != "application/x-www-form-urlencoded":
-                    return self.respond(415, b'{"error":"form encoding required"}', "application/json")
+                    self.respond(415, b'{"error":"form encoding required"}', "application/json")
+                    return None
                 try:
                     size = int(self.headers.get("Content-Length", "0"))
                 except ValueError:
                     size = -1
                 if size < 1 or size > 8192:
-                    return self.respond(413, b'{"error":"form body must be between 1 and 8192 bytes"}', "application/json")
+                    self.respond(413, b'{"error":"form body must be between 1 and 8192 bytes"}', "application/json")
+                    return None
                 try:
-                    fields = parse_qs(self.rfile.read(size).decode("utf-8"), keep_blank_values=True, strict_parsing=False, max_num_fields=40)
+                    fields = parse_qs(self.rfile.read(size).decode("utf-8"), keep_blank_values=True, strict_parsing=False, max_num_fields=max_fields)
                 except (UnicodeDecodeError, ValueError):
-                    return self.respond(400, b'{"error":"malformed form body"}', "application/json")
+                    self.respond(400, b'{"error":"malformed form body"}', "application/json")
+                    return None
                 form = {key: values[0] for key, values in fields.items() if values}
                 if not hmac.compare_digest(str(form.get("token", "")).encode(), outer.form_token.encode()):
-                    return self.respond(403, b'{"error":"form token invalid, reload /trader-journal"}', "application/json")
+                    self.respond(403, json.dumps({"error": f"form token invalid, reload {reload_path}"}).encode(), "application/json")
+                    return None
                 form.pop("token", None)
+                return form
+
+            def my_day_page(self, status: int, form: dict[str, str] | None = None, error: str | None = None, saved: str | None = None) -> None:
+                from src.dashboard import daily_prep
+                from src.dashboard.pages.my_day import my_day_csp, render_my_day
+                from src.dashboard.session_map import build_session_map
+
+                try:
+                    model = build_session_map(outer.state.chart_series())
+                except Exception:  # noqa: BLE001 - the prep form works without TIM's levels
+                    model = None
+                try:
+                    log = daily_prep.load(outer.state.daily_prep_path)
+                    page = render_my_day(outer.state.snapshot(), log, outer.form_token, daily_prep.suggested_levels(model),
+                                         (model or {}).get("last"), daily_prep.today(log), form=form, error=error, saved=saved)
+                except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                    return self.respond(500, _error_page("Mein Tag", exc).encode(), "text/html; charset=utf-8")
+                return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=my_day_csp(page), referrer="same-origin")
+
+            def my_day_post(self) -> None:
+                from src.dashboard import daily_prep
+                from src.dashboard.session_map import build_session_map
+
+                form = self.checked_form("/my-day", max_fields=60)
+                if form is None:
+                    return None
+                try:
+                    model = build_session_map(outer.state.chart_series())
+                except Exception:  # noqa: BLE001 - a prep is kept even without TIM's context
+                    model = None
+                try:
+                    entry = daily_prep.add_entry(outer.state.daily_prep_path, form, model)
+                except daily_prep.PrepError as exc:
+                    return self.my_day_page(400, form=form, error=str(exc))
+                return self.respond(303, b"", "text/plain; charset=utf-8", location=f"/my-day?saved={entry['id']}")
+
+            def trader_journal_post(self, path: str) -> None:
+                from src.dashboard import trader_journal
+                from src.dashboard.session_map import build_session_map
+
+                form = self.checked_form("/trader-journal")
+                if form is None:
+                    return None
                 journal_path = outer.state.trader_journal_path
                 try:
                     if path == "/trader-journal/entry":
@@ -417,6 +471,8 @@ class DashboardServer:
                 path = urlparse(self.path).path
                 if path in {"/trader-journal/entry", "/trader-journal/review", "/trader-journal/cancel"}:
                     return self.trader_journal_post(path)
+                if path == "/my-day/save":
+                    return self.my_day_post()
                 if path not in {"/api/research/quick", "/api/research/deep"}:
                     return self.respond(404, b'{"error":"not found"}', "application/json")
                 try:

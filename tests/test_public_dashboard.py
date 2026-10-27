@@ -60,7 +60,7 @@ def test_chart_page_is_english_with_disclaimer(server):
 
 def test_internal_routes_are_not_served(server):
     _, base = server
-    for path in ("/api/state", "/api/health", "/neu", "/neu/mac", "/neu/system", "/trader-journal", "/api/llm/explain",
+    for path in ("/api/state", "/api/health", "/neu", "/neu/mac", "/neu/system", "/trader-journal", "/my-day", "/api/my-day", "/api/llm/explain",
                  "/api/rag", "/reports/x", "/setup-path", "/graphify", "/api/cockpit?area=mac", "/exports/analytics.json"):
         assert _get(base + path)[0] == 404, path
 
