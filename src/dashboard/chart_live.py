@@ -67,6 +67,7 @@ GROUP_STYLE = {
     "year": ("#ff5c9a", "solid"),
     "vwap": ("#3fd0c9", "solid"),
     "fib": ("#c9a227", "dotted"),
+    "gamma": ("#ffb020", "solid"),  # each gamma level brings its own colour (gamma_data.LEVEL_STYLE)
 }
 GROUP_NAMES = {
     "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "quarter": "Quartal (1Q)", "year": "Jahr (1Y)",
@@ -76,13 +77,14 @@ GROUP_NAMES = {
     "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
     "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
     "plans_old": "TIM-Pläne Testversionen 30m",
+    "gamma": "Options-Gamma (Deribit)",
 }
 TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
 DEFAULT_GROUPS = ("day", "week", "month", "naked", "structure", "trend", "tpo", "vp", "fp",
-                  "plans_short", "plans_mid", "plans_long")
+                  "plans_short", "plans_mid", "plans_long", "gamma")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
@@ -527,6 +529,7 @@ def place_drawings(drawings: Sequence[Mapping[str, Any]], times: Sequence[int]) 
                 continue  # a finished segment that lies before the shown window
             index = end_index - 1
         color, style = GROUP_STYLE[item["group"]]
+        color, style = item.get("color", color), item.get("style", style)
         if item["group"] == "structure":
             color = "#35d39a" if item.get("direction") == "UP" else "#ff5c6c"
             if item["name"].startswith("MSS") or item.get("open"):
@@ -709,13 +712,16 @@ def plan_overlays(journals: Mapping[str, Sequence[Mapping[str, Any]]], times: Se
 
 def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
                      cache: KlineCache | None = None, now: datetime | None = None, footprint: Mapping[str, Any] | None = None,
-                     plan_journals: Mapping[str, Sequence[Mapping[str, Any]]] | None = None) -> dict[str, Any]:
+                     plan_journals: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+                     gamma: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
     it feeds the volume profiles and footprint bars for the symbol TIM collects.
     ``plan_journals`` (journal key -> entries, see ``load_plan_journals``) adds TIM's paper
     plans for BTCUSDT, the only symbol the journals follow.
+    ``gamma`` is ``DashboardState.gamma`` (snapshot per symbol, gamma_data.py): options
+    levels (flip, walls, max pain, expected move) as group "gamma".
     """
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     timeframe = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
@@ -757,6 +763,12 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
 
     drawings += vwap_drawings(build_htf_levels(level_source, now)["vwaps"], candles, timeframe, now)
     drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe) + fib_drawings(candles, timeframe)
+    if gamma and gamma.get(symbol):
+        from src.dashboard.gamma_data import chart_drawings as gamma_drawings
+
+        gamma_items, gamma_notes = gamma_drawings(gamma[symbol], now)
+        drawings += gamma_items
+        model["notes"].extend(gamma_notes)
     times = [c["time"] for c in model["candles"]]
     model["drawings"] = place_drawings(drawings, times)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []

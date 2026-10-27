@@ -38,6 +38,7 @@ GROUPS_EN = {
     "plans_short": "TIM plans SHORT 15m", "plans_mid": "TIM plans MID 1h", "plans_long": "TIM plans LONG 1D",
     "plans_old": "TIM plans, test versions 30m",
 }
+PRIVATE_GROUPS = frozenset({"gamma"})
 # Ordered (pattern, replacement) pairs for labels, names and notes of the drawings.
 TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"POC lfd\.", "POC (running)"),
@@ -113,7 +114,10 @@ def english_note(note: Any) -> Any:
 
 def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     out = dict(model)
-    out["groups"] = {key: GROUPS_EN.get(key, value) for key, value in (model.get("groups") or {}).items()}
+    # The public view gets no options gamma (German-only levels, not part of the public scope).
+    out["groups"] = {key: GROUPS_EN.get(key, value) for key, value in (model.get("groups") or {}).items() if key not in PRIVATE_GROUPS}
+    if "default_groups" in model:
+        out["default_groups"] = [key for key in model["default_groups"] if key not in PRIVATE_GROUPS]
     out["drawings"] = [{**d, "name": english_text(d.get("name")), "label": english_text(d.get("label")), "note": english_text(d.get("note"))}
                        for d in model.get("drawings") or []]
     out["notes"] = [english_note(n) for n in model.get("notes") or []]

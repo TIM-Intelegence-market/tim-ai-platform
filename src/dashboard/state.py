@@ -24,6 +24,8 @@ class DashboardState:
     derived_candles: dict[str, list[dict]] = field(default_factory=dict)
     # Aggregated aggTrades for the chart's footprint and volume profile (src/dashboard/footprint_data.py).
     footprint: dict[str, Any] = field(default_factory=dict)
+    # Options gamma snapshot per symbol from Deribit's public book (src/dashboard/gamma_data.py).
+    gamma: dict[str, Any] = field(default_factory=dict)
     system_health: dict[str, Any] = field(default_factory=lambda: {
         "database": "unknown",
         "stream": "unknown",

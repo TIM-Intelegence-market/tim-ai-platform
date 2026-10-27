@@ -96,11 +96,35 @@ print(p.regime, round(p.net_gex), p.call_wall, p.put_wall, round(p.gamma_flip))"
 Ergebnis: `POSITIVE_GAMMA 2857362 70000.0 65000.0 64196`. Der Kurs liegt über dem Gamma Flip,
 zwischen Put Wall 65 000 und Call Wall 70 000.
 
+### Echte Daten im Control Center (seit 27.10.2026)
+
+Die Runtime liest alle 5 Minuten Deribits öffentliches Optionsbuch (`get_book_summary_by_currency`
+und `get_index_price`, kein Key, kein Konto; `src/dashboard/gamma_data.py`) und rechnet daraus mit
+`src/options_gamma/snapshot.py` einen Schnappschuss (Strikes ±35 % um den Preis):
+
+- **Gamma Flip**: der Preis, an dem das geschätzte Händler-Gamma das Vorzeichen wechselt, der
+  Schnittpunkt nächst am aktuellen Preis (Suche ±15 %).
+- **Call Wall / Put Wall**: größtes Call-Gamma über dem Preis, größtes Put-Gamma unter dem Preis.
+  Zusätzlich die drei größten Open-Interest-Strikes je Seite.
+- **Max Pain** und **Expected Move** (ATM-IV × √Zeit) des Hauptverfalls, das ist der Verfall mit
+  dem meisten Open Interest in den nächsten 7 Tagen.
+
+Wo es auftaucht:
+
+- `/api/gamma?symbol=BTCUSDT`: ganzer Schnappschuss mit Alter (`stale` nach 20 Minuten).
+- `/api/prep` → `gamma`: Regime, Level, `analysis_input`.
+- Chart `/chart`: Gruppe „Options-Gamma (Deribit)“ (Flip orange, Call Wall grün, Put Wall rot,
+  Max Pain grau gestrichelt, Expected Move gepunktet). Nicht in der öffentlichen englischen Ansicht.
+- Orderflow-Analyse: Eingabefeld `gamma` (der `analysis_input`-Block). Daraus werden Aussagen
+  wie `above_gamma_flip_dealer_hedging_dampens_moves`, ohne Punkte, ohne Einfluss auf
+  Konfidenz oder Entscheidung.
+
+Alle Werte beruhen auf der Annahme „Händler long Calls, short Puts“. IBIT- und CME-Optionen
+fehlen. Ohne Studie bekommt Gamma kein Gewicht.
+
 Noch offen und bewusst nicht gebaut:
 
-- Echte BTC-Optionsdaten (Deribit, öffentliche Read-only-API). Braucht Allowlist und wird
-  erst nach der V2-Qualifizierung angebunden, damit die laufende Kampagne unberührt bleibt.
-- Einbindung in Observation Engine und Control Center.
+- Einbindung in die Observation Engine.
 - Gamma-Scalping-Simulation als Backtest.
 - Ob GEX bei BTC überhaupt etwas erklärt, ist nicht belegt. Der Optionsmarkt ist dünner als
   bei SPX. Das muss eine Studie zeigen, bevor die Beobachtung Gewicht bekommt.

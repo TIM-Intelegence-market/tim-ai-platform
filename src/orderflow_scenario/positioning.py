@@ -24,6 +24,13 @@ JSON input (all fields optional; same keys for every adapter)::
     "tpo": {"poc": 83250, "vah": 83550, "val": 82950, "ib_high": 83400,
             "ib_low": 83000, "poor_high": 83600, "poor_low": null,
             "naked_pocs": [82500, 84100]}
+    "gamma": {"as_of": "...Z", "gamma_flip": 79410, "call_wall": 82000, "put_wall": 75000,
+              "net_gex": 48600000, "max_pain": 78000, "expected_move_low": 77385,
+              "expected_move_high": 82360, "source": "DERIBIT_PUBLIC_OPTIONS_BOOK_SUMMARY"}
+
+``gamma`` is the ``analysis_input`` block of the Control Center's ``/api/gamma`` (or
+``/api/prep`` -> ``gamma``): options levels estimated under the convention that
+dealers are long calls and short puts. It only adds statements, never a score hint.
 
 Orderbook ``imbalance`` is ``(bid - ask) / (bid + ask)`` within ``depth_pct``
 percent of the mid price: negative means more resting asks than bids.
@@ -174,11 +181,68 @@ class ProfileLevels:
         ) and not self.naked_pocs
 
 
+@dataclass(frozen=True, slots=True)
+class GammaContext:
+    """Options gamma levels (estimates; see the module docstring)."""
+
+    gamma_flip: Decimal | None = None
+    call_wall: Decimal | None = None
+    put_wall: Decimal | None = None
+    max_pain: Decimal | None = None
+    net_gex: Decimal | None = None
+    expected_move_low: Decimal | None = None
+    expected_move_high: Decimal | None = None
+    as_of: datetime | None = None
+    source: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.call_wall is not None and self.put_wall is not None and self.call_wall < self.put_wall:
+            raise ValueError("call_wall must be >= put_wall")
+        if self.expected_move_low is not None and self.expected_move_high is not None and self.expected_move_low > self.expected_move_high:
+            raise ValueError("expected_move_low must be <= expected_move_high")
+
+    def is_empty(self) -> bool:
+        return all(getattr(self, name) is None for name in ("gamma_flip", "call_wall", "put_wall", "max_pain", "net_gex", "expected_move_low", "expected_move_high"))
+
+
 @dataclass(slots=True)
 class ParsedContext:
     positioning: PositioningInputs | None = None
     profile: ProfileLevels | None = None
+    gamma: GammaContext | None = None
     rejected: list[str] = field(default_factory=list)
+
+
+def _parse_gamma(raw: Any, rejected: list[str]) -> GammaContext | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        rejected.append("gamma:not_an_object")
+        return None
+    values: dict[str, Any] = {}
+    for key in ("gamma_flip", "call_wall", "put_wall", "max_pain", "expected_move_low", "expected_move_high"):
+        try:
+            values[key] = _price(raw.get(key), f"gamma.{key}")
+        except ValueError as exc:
+            rejected.append(f"gamma.{key}:{exc}")
+    if raw.get("net_gex") is not None:
+        try:
+            values["net_gex"] = _dec(raw["net_gex"], "gamma.net_gex")
+        except ValueError as exc:
+            rejected.append(f"gamma.net_gex:{exc}")
+    if raw.get("as_of") is not None:
+        try:
+            values["as_of"] = _time(raw["as_of"], "gamma.as_of")
+        except ValueError as exc:
+            rejected.append(f"gamma.as_of:{exc}")
+    if isinstance(raw.get("source"), str):
+        values["source"] = raw["source"][:80]
+    try:
+        gamma = GammaContext(**values)
+    except ValueError as exc:
+        rejected.append(f"gamma:{exc}")
+        return None
+    return None if gamma.is_empty() else gamma
 
 
 def _parse_orderbook(raw: Any, rejected: list[str]) -> tuple[OrderbookDepth, ...]:
@@ -361,6 +425,7 @@ def parse_context(data: Mapping[str, Any]) -> ParsedContext:
         positioning = None
     result.positioning = None if positioning is None or positioning.is_empty() else positioning
     result.profile = _parse_profile(data, rejected)
+    result.gamma = _parse_gamma(data.get("gamma"), rejected)
     return result
 
 
@@ -606,3 +671,48 @@ def interpret_profile(profile: ProfileLevels | None, last_price: Decimal | None)
         summary["nearest_naked_poc"] = str(nearest)
         statements.append(_statement(obs, f"nearest_naked_poc={nearest}", ("tpo",)))
     return tuple(statements), summary, ()
+
+
+GAMMA_NEAR = Decimal("0.003")  # within 0.3 % of the flip counts as AT_FLIP
+
+
+def interpret_gamma(gamma: GammaContext | None, last_price: Decimal | None) -> tuple[tuple[OrderflowStatement, ...], dict[str, Any]]:
+    """Where price trades relative to the options gamma levels. Context only: no score hint."""
+    if gamma is None:
+        return (), {}
+    obs, interp, hyp = OrderflowStatementKind.OBSERVATION, OrderflowStatementKind.INTERPRETATION, OrderflowStatementKind.HYPOTHESIS
+    summary: dict[str, Any] = {"source": gamma.source, "as_of": None if gamma.as_of is None else gamma.as_of.isoformat(),
+                               "assumption": "dealers_long_calls_short_puts"}
+    for name in ("gamma_flip", "call_wall", "put_wall", "max_pain", "net_gex", "expected_move_low", "expected_move_high"):
+        value = getattr(gamma, name)
+        if value is not None:
+            summary[name] = str(value)
+    statements: list[OrderflowStatement] = []
+    if gamma.net_gex is not None:
+        regime = "POSITIVE_GAMMA" if gamma.net_gex > ZERO else "NEGATIVE_GAMMA" if gamma.net_gex < ZERO else "NEUTRAL_GAMMA"
+        summary["regime"] = regime
+        statements.append(_statement(obs, f"options_net_gex={gamma.net_gex} regime={regime}", ("gamma",)))
+    if last_price is None:
+        return tuple(statements), summary
+    flip = gamma.gamma_flip
+    if flip is not None:
+        distance = (last_price - flip) / flip
+        location = "AT_FLIP" if abs(distance) <= GAMMA_NEAR else "ABOVE_FLIP" if distance > ZERO else "BELOW_FLIP"
+        summary["price_vs_flip"] = location
+        statements.append(_statement(obs, f"price_{location.lower()} gamma_flip={flip}", ("gamma",)))
+        if location == "ABOVE_FLIP":
+            statements.append(_statement(interp, "above_gamma_flip_dealer_hedging_dampens_moves", ("gamma",), "0.4"))
+        elif location == "BELOW_FLIP":
+            statements.append(_statement(interp, "below_gamma_flip_dealer_hedging_amplifies_moves", ("gamma",), "0.4"))
+        else:
+            statements.append(_statement(hyp, "at_gamma_flip_regime_can_switch", ("gamma",), "0.3"))
+    if gamma.call_wall is not None and gamma.call_wall > last_price:
+        statements.append(_statement(obs, f"call_wall_above_price={gamma.call_wall}", ("gamma",)))
+    if gamma.put_wall is not None and gamma.put_wall < last_price:
+        statements.append(_statement(obs, f"put_wall_below_price={gamma.put_wall}", ("gamma",)))
+    low, high = gamma.expected_move_low, gamma.expected_move_high
+    if low is not None and high is not None:
+        band = "OUTSIDE_EXPECTED_MOVE" if last_price > high or last_price < low else "INSIDE_EXPECTED_MOVE"
+        summary["expected_move_location"] = band
+        statements.append(_statement(obs, f"price_{band.lower()} low={low} high={high}", ("gamma",)))
+    return tuple(statements), summary

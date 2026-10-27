@@ -111,6 +111,7 @@ def _pipeline_inputs(adapter, data: dict[str, Any], observed_at=None) -> Pipelin
         levels=levels,
         positioning=getattr(adapted, "positioning", None),
         profile=getattr(adapted, "profile", None),
+        gamma=getattr(adapted, "gamma", None),
         structured=adapted.structured,
         screenshot_confidence=adapted.screenshot_confidence,
         estimated_prices=adapted.estimated_prices,

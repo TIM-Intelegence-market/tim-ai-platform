@@ -180,6 +180,7 @@ class GenericOrderflowAdapter:
             estimated_prices=tuple(estimated),
             positioning=context.positioning,
             profile=context.profile,
+            gamma=context.gamma,
             missing_fields=missing,
             extra_notes=tuple(data.get("extra_notes", ())),
         )
