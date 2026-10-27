@@ -49,6 +49,7 @@ def test_chart_page_is_english_with_disclaimer(server):
     assert status == 200
     assert "<html lang='en'>" in body and "Research, not financial advice. Observation and paper tracking only" in body and "research, not financial advice" in body
     assert "data-lang='en'" in body and "data-tf='4h'" in body and "data-symbol='ETHUSDT'" in body
+    assert "data-action='none'>Untick all</button>" in body
     assert "script-src 'self'" in headers["Content-Security-Policy"]
     assert headers["X-Robots-Tag"] == "noindex, nofollow"
     # No German UI words and no link into the internal Control Center.
@@ -141,3 +142,107 @@ def test_journal_page_rows():
              "status": "CLOSED", "exit_reason": "STOP", "gross_r": -1.0, "net_r": -1.12, "excluded": {"reason": "Phantom"}}
     page = journal_page({"tim/1": {"entries": [entry]}}, "tim/1")
     assert "not counted (corrected) · closed (stop)" in page and "-1.12 R" in page and "TP1 101,500.00" in page
+
+
+def _entry(minutes: int, status: str, net: float | None = None, excluded: bool = False, direction: str = "LONG") -> dict:
+    from datetime import timedelta
+
+    created = NOW + timedelta(minutes=minutes)
+    entry = {"created_at": created.isoformat(), "direction": direction, "entry": 100000.0, "stop": 99000.0,
+             "targets": [101500.0, 102000.0, 103000.0], "status": status}
+    if status in ("FILLED", "CLOSED"):
+        entry["filled_at"] = (created + timedelta(minutes=5)).isoformat()
+    if status == "CLOSED":
+        entry.update(closed_at=(created + timedelta(hours=1)).isoformat(), exit_reason="STOP" if net < 0 else "TP3",
+                     gross_r=net + 0.2, net_r=net)
+    if excluded:
+        entry["excluded"] = {"reason": "Phantom"}
+    return entry
+
+
+def test_journal_page_puts_counted_trades_first_and_folds_the_rest():
+    entries = ([_entry(i, "CLOSED", -1.36, excluded=True) for i in range(21)]
+               + [_entry(100, "CLOSED", 1.21), _entry(200, "CLOSED", -2.06, direction="SHORT"),
+                  _entry(300, "REPLACED"), _entry(400, "OPEN"), _entry(500, "FILLED", direction="SHORT")])
+    page = journal_page({"tim/1": {"entries": entries}, "struct/1": {"entries": []}, "level/1": {"entries": []}}, "tim/1")
+    main, corrected = page.split("Corrected entries, not counted", 1)
+    # Headline: only the two counted trades, net −0.85 R, one win.
+    assert "-0.85 R" in main and "-0.42 R" in main and "50 %" in main and "1 in trade · 1 waiting for entry" in main
+    assert "not counted (corrected)" not in main  # corrected rows live only in the folded section
+    assert corrected.count("not counted (corrected)") == 21 and "<small>(21)</small>" in page.split("Corrected entries")[1][:40]
+    assert "Plans that never triggered" in main and "replaced" in main
+    assert "<details class='pj-more'>" in page and "<polyline" in page  # folded sections and the result curve
+    assert "class='pj-res pj-res--win'>Win<" in main and "class='pj-res pj-res--loss'>Loss<" in main
+    assert "pj-tab pj-tab--active' href='/journal?rule=tim' aria-current='page'" in page and "/journal?rule=struct" in page
+    assert " style=" not in page  # the CSP allows no inline style attributes
+
+
+def test_journal_page_csp_matches_its_style(server):
+    import base64
+    import hashlib
+
+    _, base = server
+    status, headers, body = _get(base + "/journal")
+    style = re.search(r"<style>(.*?)</style>", body, re.S).group(1)
+    digest = base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()
+    assert status == 200 and f"style-src 'sha256-{digest}'" in headers["Content-Security-Policy"]
+    assert "script-src 'none'" in headers["Content-Security-Policy"] and "<script" not in body
+
+
+def test_journal_page_shows_the_three_timeframes_first():
+    page = journal_page({"short": {"entries": []}, "mid": {"entries": [_entry(100, "CLOSED", 1.21)]}, "long": {"entries": []},
+                         "tim": {"entries": [_entry(100, "CLOSED", -1.0)]}}, "")
+    tabs = page.split("aria-label='Timeframe'>", 1)[1].split("</nav>", 1)[0]
+    assert [n in tabs for n in ("SHORT · 15m", "MID · 1h", "LONG · 1D")] == [True, True, True]
+    assert "pj-tab pj-tab--active' href='/journal' aria-current='page'><b>MID · 1h" in tabs  # MID is the default
+    assert "TIM rule 30m" in page.split("Earlier test versions", 1)[1] and "no plan yet" in tabs
+    assert "+1.21 R" in page and "/journal/trade?rule=mid&amp;id=" in page and "/chart?tf=1h" in page
+
+
+@pytest.mark.parametrize("entry,text", [
+    (_entry(1, "CLOSED", -1.2), "Price went against the plan and hit the stop."),
+    ({**_entry(1, "CLOSED", 0.3), "exit_reason": "BREAK_EVEN_COSTS", "tp_hits": ["x"]}, "A third was taken at TP1 at 101,500.00; the rest closed at break-even + costs."),
+    ({**_entry(1, "CLOSED", 2.1), "exit_reason": "TP3", "tp_hits": ["a", "b", "c"]}, "All three targets were reached."),
+    (_entry(1, "OPEN"), "Waiting for price to reach the entry."),
+    (_entry(1, "REPLACED"), "Never filled: TIM drew new levels in the same direction."),
+])
+def test_explain_says_what_happened_in_plain_words(entry, text):
+    from src.dashboard.public_en import explain
+
+    sentence = explain({**entry, "scenario_type": "LIQUIDITY_SWEEP_REVERSAL", "market_state": "BALANCE"})
+    assert sentence.startswith("Long on a reversal after a liquidity sweep in a range: entry 100,000.00, stop 99,000.00 (1.00 % away).")
+    assert sentence.endswith(text)
+
+
+def test_trade_page_has_every_number_and_unknown_ids_are_404(server, tmp_path):
+    public, base = server
+    entry = {**_entry(100, "CLOSED", -1.18), "id": "abc123def456", "fee_r": 0.1, "slippage_r": 0.08, "exit_price": 99000.0,
+             "max_favorable_r": 0.4, "max_adverse_r": -1.0, "timeframe": "1h"}
+    public.state.plan_journal_mid_path = tmp_path / "mid.json"
+    public.state.plan_journal_mid_path.write_text(json.dumps({"schema": "tim_plan_journal/2", "entries": [entry]}))
+    status, headers, body = _get(base + "/journal/trade?rule=mid&id=abc123def456")
+    assert status == 200 and "Long · MID · 1h · closed · -1.18 R" in body and "Price went against the plan and hit the stop." in body
+    assert "-0.10 R" in body and "-0.08 R" in body and "Worst during trade" in body and "<ol class='pj-steps'>" in body
+    assert "script-src 'none'" in headers["Content-Security-Policy"]
+    assert _get(base + "/journal/trade?rule=mid&id=ffffffffffff")[0] == 404
+    assert _get(base + "/journal/trade?rule=mid&id=<script>")[0] == 404
+    status, _, body = _get(base + "/api/plan-journal?rule=mid")
+    assert status == 200 and json.loads(body)["entries"][0]["id"] == "abc123def456"
+
+
+def test_public_chart_carries_tims_plans(server, tmp_path):
+    from datetime import timedelta
+
+    public, base = server
+    opened = NOW - timedelta(hours=6)
+    entry = {**_entry(0, "CLOSED", -1.18), "id": "abc123def456", "created_at": opened.isoformat(), "filled_at": opened.isoformat(),
+             "closed_at": (opened + timedelta(hours=2)).isoformat(), "entry": 113000.0, "stop": 112500.0}
+    public.state.plan_journal_struct_path = tmp_path / "struct.json"
+    public.state.plan_journal_struct_path.write_text(json.dumps({"schema": "tim_plan_journal/2", "entries": [entry, {**entry, "id": "x", "excluded": {"r": 1}}]}))
+    model = json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")[2])
+    assert [(p["id"], p["group"], p["label"]) for p in model["plans"]] == [("abc123def456", "plans_old", "Structure 30m")]
+    plan = model["plans"][0]
+    assert plan["fill_t"] <= plan["close_t"] and plan["net_r"] == -1.18 and plan["entry"] == 113000.0
+    assert model["groups"]["plans_mid"] == "TIM plans MID 1h" and "plans_mid" in model["default_groups"]
+    assert "plans_old" in model["groups"] and "plans_old" not in model["default_groups"]  # test versions start hidden
+    assert json.loads(_get(base + "/api/chart/live?symbol=ETHUSDT&tf=30m")[2])["plans"] == []

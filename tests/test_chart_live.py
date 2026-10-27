@@ -323,3 +323,18 @@ def test_structure_drawings_show_open_levels_and_labels() -> None:
         assert d["finished"] is (not d.get("open"))
         if not d.get("open"):
             assert d["t1"] < d["tm"] < d["t2"] or d["t2"] - d["t1"] <= 3600
+
+
+def test_running_plan_carries_its_stop_steps():
+    from src.dashboard import plan_journal as pj
+
+    times = [1_761_271_200 + 1800 * i for i in range(20)]  # 2025-10-24 02:00 UTC, 30m apart
+    iso = lambda t: datetime.fromtimestamp(t, timezone.utc).isoformat()
+    entry = {"id": "run1", "status": "FILLED", "direction": "LONG", "entry": 100.0, "fill_price": 100.0, "stop": 99.0,
+             "targets": [101.5, 102.0, 103.0], "created_at": iso(times[2]), "filled_at": iso(times[3]), "tp_hits": [],
+             "stop_rule": pj.STOP_RULE_COST, "stop_path": [[iso(times[6]), 100.4, pj.KIND_COSTS], [iso(times[9] + 60), 100.9, pj.KIND_SWING]]}
+    closed = {**entry, "id": "done1", "status": "CLOSED", "closed_at": iso(times[12]), "exit_reason": "TRAIL_STOP", "net_r": 0.5}
+    plans = {p["id"]: p for p in chart_live.plan_overlays({"mid": [entry, closed]}, times)}
+    run = plans["run1"]
+    assert [s[0] for s in run["stop_steps"]] == [times[3], times[6], times[9]] and run["stop_now"] == 100.9
+    assert plans["done1"]["stop_steps"] == []

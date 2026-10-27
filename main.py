@@ -624,13 +624,13 @@ class TIMApplication:
         # Paper journal only: a failed step is logged and retried, never fatal.
         from functools import partial
 
-        from src.dashboard.plan_journal import RULE_LEVEL, RULE_STRUCT, update as update_plan_journal
+        from src.dashboard.plan_journal import HORIZONS, RULE_LEVEL, RULE_STRUCT, update as update_plan_journal
         from src.dashboard.trader_journal import update as update_trader_journal
-        from src.dashboard.chart_history import TIMEFRAMES, fetch_history
+        from src.dashboard.chart_history import JOURNAL_TIMEFRAMES, TIMEFRAMES, fetch_history
 
         history_refreshed = {}
         while not self.worker_stop.is_set():
-            for tf in TIMEFRAMES:
+            for tf in (*TIMEFRAMES, *JOURNAL_TIMEFRAMES):
                 current = datetime.now(timezone.utc)
                 if (current - history_refreshed.get(tf, datetime.min.replace(tzinfo=timezone.utc))).total_seconds() < 300:
                     continue
@@ -648,6 +648,9 @@ class TIMApplication:
             for name, step, path in (("plan journal", update_plan_journal, self.dashboard_state.plan_journal_path),
                                      ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
                                      ("plan journal level", partial(update_plan_journal, rule=RULE_LEVEL), self.dashboard_state.plan_journal_level_path),
+                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"]), self.dashboard_state.plan_journal_short_path),
+                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"]), self.dashboard_state.plan_journal_mid_path),
+                                     ("plan journal long", partial(update_plan_journal, timeframe=HORIZONS["LONG"]), self.dashboard_state.plan_journal_long_path),
                                      ("trader journal", update_trader_journal, self.dashboard_state.trader_journal_path)):
                 try:
                     await asyncio.to_thread(step, path, series)
