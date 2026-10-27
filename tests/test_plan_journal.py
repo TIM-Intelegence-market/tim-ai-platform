@@ -953,3 +953,39 @@ def test_comparison_shows_all_three_rules_net_of_costs_and_the_current_stop_rule
     assert "Regelversionen parallel" in page and "/journal/level'>Level-Regel" in page and "Summe netto" in page and net in page
     assert "be_cost/1" in page and "nicht nachgebildet" not in page
     assert "% Konto" in page and "." not in page.split("% Konto")[0].rsplit("≈", 1)[1]
+
+
+@pytest.mark.parametrize("timeframe,minutes,hours", [("15m", 15, (12, 24)), ("1h", 60, (24, 72)), ("1d", 1440, (168, 504))])
+def test_horizon_journals_record_on_their_own_timeframe(tmp_path: Path, timeframe: str, minutes: int, hours: tuple[int, int]) -> None:
+    """SHORT 15m, MID 1h, LONG 1D (Uzi 27.10.2026): same TIM rule, own close, own waiting and holding time."""
+    assert pj.HORIZONS == {"SHORT": "15m", "MID": "1h", "LONG": "1d"}
+    start = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
+    series: dict[str, list[dict]] = {timeframe: [], "1m": []}
+    price = 100_000.0
+    step = 1200 if timeframe == "1d" else 400
+    for i in range(90):
+        opened = start + timedelta(minutes=minutes * i)
+        close = price + (step if (i // 10) % 2 else -step)
+        series[timeframe].append({"timeframe": timeframe, "open_time": opened.isoformat(),
+                                  "close_time": (opened + timedelta(minutes=minutes) - timedelta(milliseconds=1)).isoformat(),
+                                  "open": price, "high": max(price, close) + 50, "low": min(price, close) - 50, "close": close, "volume": 10.0})
+        price = close
+    now = start + timedelta(minutes=minutes * 90)
+    journal = pj.update(tmp_path / f"{timeframe}.json", series, now, timeframe=timeframe)
+    assert journal["last_plan_candle"] == (start + timedelta(minutes=minutes * 90)).isoformat().replace("+00:00", "Z")
+    assert journal["entries"], "the synthetic series must yield a plan"
+    for entry in journal["entries"]:
+        assert entry["timeframe"] == timeframe
+        assert (entry["pending_hours"], entry["max_hold_hours"]) == hours
+    # A close older than two intervals (at least an hour) is stale: no plans.
+    stale = pj.update(tmp_path / f"{timeframe}-stale.json", series, now + pj.stale_after(timeframe) + timedelta(minutes=1), timeframe=timeframe)
+    assert stale["entries"] == []
+
+
+def test_entry_hours_override_the_30m_defaults() -> None:
+    plan = _plan()
+    journal = _journal_with(plan)
+    entry = journal["entries"][0]
+    entry["pending_hours"] = 1
+    pj.evaluate(journal, [_m(61 + i, 101.0, 102.0) for i in range(3)], [], T0 + timedelta(hours=2))
+    assert entry["status"] == "EXPIRED" and entry["note"] == "1 h ohne Einstieg."

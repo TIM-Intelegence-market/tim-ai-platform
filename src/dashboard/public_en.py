@@ -34,6 +34,8 @@ GROUPS_EN = {
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trend lines", "tpo": "TPO (day profile)",
     "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
+    "plans_short": "TIM plans SHORT 15m", "plans_mid": "TIM plans MID 1h", "plans_long": "TIM plans LONG 1D",
+    "plans_old": "TIM plans, test versions 30m",
 }
 # Ordered (pattern, replacement) pairs for labels, names and notes of the drawings.
 TEXT_EN: tuple[tuple[str, str], ...] = (
@@ -101,6 +103,8 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     out["drawings"] = [{**d, "name": english_text(d.get("name")), "label": english_text(d.get("label")), "note": english_text(d.get("note"))}
                        for d in model.get("drawings") or []]
     out["notes"] = [english_note(n) for n in model.get("notes") or []]
+    plan_labels = {"Struktur 30m": "Structure 30m"}
+    out["plans"] = [{**p, "label": plan_labels.get(p.get("label"), p.get("label"))} for p in model.get("plans") or []]
     if isinstance(model.get("footprint"), dict):
         out["footprint"] = {**model["footprint"], "note": english_note(model["footprint"].get("note"))}
     for key in ("level_source", "trade_source"):
@@ -156,7 +160,7 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         "<div class='tc-live__bar'><div id='tc-live-layers' class='tc-live__layers' aria-label='Show or hide lines'></div>"
         "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Go to now</button>"
         "<button type='button' class='tc-tab' data-action='fit'>Show all</button>"
-        "<button type='button' class='tc-tab' data-action='reset'>Reset lines</button></div></div>"
+        "<button type='button' class='tc-tab' data-action='plans'>Only TIM's trades</button><button type='button' class='tc-tab' data-action='reset'>Reset lines</button></div></div>"
         "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
         "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interactive candlestick chart'></div></div>"
         "<p id='tc-live-status' class='cc-note tc-live__status'>Chart loading… (needs JavaScript)</p>"
@@ -177,16 +181,43 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
     return shell("Chart", "/chart", body)
 
 
-RULES_EN = (
-    (RULE_TIM, "TIM rule", "fixed stop, targets at 1.5 / 2 / 3 R"),
-    (RULE_STRUCT, "Structure rule", "stop behind the 30m swing, targets at liquidity"),
-    (RULE_LEVEL, "Level rule", "main levels from the chart, stop behind the swing"),
+# --- paper journal ------------------------------------------------------------
+
+# Journals on the public page. The three horizons come first (Uzi 27.10.2026: SHORT 15m, MID 1h,
+# LONG 1D, same TIM rule); the earlier test versions stay visible below them.
+HORIZONS_EN = (
+    ("short", "SHORT · 15m", "Intraday: a plan at every 15-minute close, waits up to 12 h for its entry, holds up to 24 h"),
+    ("mid", "MID · 1h", "Session: a plan at every hourly close, waits up to 24 h, holds up to 3 days"),
+    ("long", "LONG · 1D", "Structure: a plan at every daily close, waits up to 7 days, holds up to 3 weeks"),
 )
+EARLIER_EN = (
+    ("tim", "TIM rule 30m", "first version: fixed stop, targets at 1.5 / 2 / 3 R"),
+    ("struct", "Structure rule 30m", "stop behind the 30m swing, targets at liquidity"),
+    ("level", "Level rule 30m", "main levels from the chart, stop behind the swing"),
+)
+JOURNAL_KEYS = tuple(key for key, _, _ in HORIZONS_EN + EARLIER_EN)
+DEFAULT_JOURNAL = "mid"
+CHART_TF = {"short": "15m", "mid": "1h", "long": "1d", "tim": "30m", "struct": "30m", "level": "30m"}
+ALIASES = {RULE_TIM: "tim", RULE_STRUCT: "struct", RULE_LEVEL: "level"}  # older callers pass rule ids
+RULES_EN = tuple((rule, name, text) for rule, (_, name, text) in zip((RULE_TIM, RULE_STRUCT, RULE_LEVEL), EARLIER_EN))
 STATUS_EN = {"OPEN": "waiting for entry", "FILLED": "in trade", "CLOSED": "closed", "INVALIDATED": "invalidated before entry",
              "REPLACED": "replaced", "EXPIRED": "expired"}
 EXIT_EN = {"STOP": "stop", "BREAK_EVEN": "break-even after TP1", "BREAK_EVEN_COSTS": "break-even + costs after TP1",
            "COST_STOP": "stop at break-even + costs", "TRAIL_STOP": "trailing stop", "TP3": "TP3", "TIMEOUT": "time limit",
            "INVALIDATION": "close beyond invalidation"}
+SETUP_EN = {
+    "LIQUIDITY_SWEEP_REVERSAL": "a reversal after a liquidity sweep",
+    "BREAKOUT_ACCEPTANCE": "a breakout that held (acceptance)",
+    "FAILED_RETEST": "a failed retest",
+    "FAILED_CONTINUATION": "a failed continuation",
+    "REJECTION_FAILED_BREAKOUT": "a failed breakout (rejection)",
+    "BALANCE_ROTATION": "a rotation inside the range",
+    "EXHAUSTION_REVERSAL": "an exhaustion reversal",
+    "LEVEL_REACTION": "a reaction at a main level",
+}
+MARKET_EN = {"BALANCE": "range", "RANGE": "range", "TREND_UP": "uptrend", "TREND_DOWN": "downtrend", "IMBALANCE_UP": "push up",
+             "IMBALANCE_DOWN": "push down"}
+_ID = re.compile(r"^[0-9a-f]{6,32}$")
 
 
 def _r(value: Any) -> str:
@@ -198,7 +229,7 @@ def _price(value: Any) -> str:
 
 
 def _when(value: Any) -> str:
-    moment = _time(value)
+    moment = _time(value) if value else None
     return moment.astimezone(LOCAL).strftime("%Y-%m-%d %H:%M") if moment else "–"
 
 
@@ -240,13 +271,33 @@ JOURNAL_CSS = (
     ".pj-trades table{min-width:0}.pj-trades .pj-wide{display:none}.pj-trades td,.pj-trades th{padding:9px 8px}}"
 )
 JOURNAL_STYLE = CSS + EXTRA_CSS + JOURNAL_CSS
-RULE_HREF = {RULE_TIM: "/journal", RULE_STRUCT: "/journal?rule=struct", RULE_LEVEL: "/journal?rule=level"}
-RULE_KEY = {RULE_TIM: "", RULE_STRUCT: "?rule=struct", RULE_LEVEL: "?rule=level"}
+JOURNAL_CSS += (
+    ".pj-tabs--small{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-top:-10px}"
+    ".pj-tabs--small .pj-tab{padding:9px 12px}.pj-tabs--small .pj-tab b{font-size:13px}.pj-tabs--small .pj-tab .pj-tab__num{font-size:14px;margin-top:4px}"
+    ".pj-label{margin:0 0 8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}"
+    ".pj-why{white-space:normal!important;min-width:260px;color:var(--text-soft)}"
+    ".pj-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}"
+    ".pj-facts dl{margin:0;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);"
+    "display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13px}"
+    ".pj-facts dt{color:var(--muted)}.pj-facts dd{margin:0;font-family:var(--font-mono);text-align:right}"
+    ".pj-story{font-size:17px;line-height:1.55;max-width:820px;color:var(--text)}"
+    ".pj-steps{margin:0;padding:0 0 0 18px;color:var(--text-soft)}.pj-steps li{margin:4px 0}"
+    "@media(max-width:640px){.pj-trades table,.pj-trades tbody{display:block;min-width:0}.pj-trades thead{display:none}"
+    ".pj-trades tr{display:grid;grid-template-columns:auto auto 1fr auto;gap:6px 10px;align-items:center;border-bottom:1px solid var(--line)}"
+    ".pj-trades tr td{border:0;padding:10px 12px 0}.pj-trades .pj-why{order:4;grid-column:1/-1;min-width:0;padding-top:0}"
+    ".pj-trades .pj-c-res{order:2}.pj-trades .pj-c-net{order:3;text-align:right}.pj-trades .pj-c-more{order:5;grid-column:1/-1;padding:0 12px 10px}"
+    ".pj-trades .pj-day td{grid-column:1/-1;padding:7px 12px}}"
+)
+JOURNAL_STYLE = CSS + EXTRA_CSS + JOURNAL_CSS
 NEVER_TRIGGERED = ("INVALIDATED", "REPLACED", "EXPIRED")
 
 
+def journal_href(key: str) -> str:
+    return "/journal" if key == DEFAULT_JOURNAL else f"/journal?rule={key}"
+
+
 def journal_csp() -> str:
-    """The journal has its own style block (no script at all), so it gets its own hash."""
+    """The journal pages have their own style block (no script at all), so they get their own hash."""
     style_hash = base64.b64encode(hashlib.sha256(JOURNAL_STYLE.encode()).digest()).decode()
     return (f"default-src 'none'; style-src 'sha256-{style_hash}'; script-src 'none'; connect-src 'none'; img-src 'self' data:; "
             "font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -267,6 +318,54 @@ def _sort_key(entry: Mapping[str, Any], field: str) -> float:
     return moment.timestamp() if moment else 0.0
 
 
+def _pct(a: Any, b: Any) -> str:
+    try:
+        return f"{abs(float(a) - float(b)) / float(b) * 100:.2f} %"
+    except (TypeError, ValueError, ZeroDivisionError):
+        return "–"
+
+
+def explain(entry: Mapping[str, Any]) -> str:
+    """One or two plain sentences: what TIM planned and what happened."""
+    side = "Long" if entry.get("direction") == "LONG" else "Short"
+    setup = SETUP_EN.get(str(entry.get("scenario_type")), "a setup from TIM's chart analysis")
+    market = MARKET_EN.get(str(entry.get("market_state")), "")
+    plan = (f"{side} on {setup}" + (f" in a {market}" if market else "")
+            + f": entry {_price(entry.get('fill_price') or entry.get('entry'))}, stop {_price(entry.get('stop'))} "
+            f"({_pct(entry.get('stop'), entry.get('entry'))} away).")
+    status, reason = entry.get("status"), str(entry.get("exit_reason") or "")
+    hits = len(entry.get("tp_hits") or [])
+    targets = entry.get("targets") or []
+    if status == "OPEN":
+        return plan + " Waiting for price to reach the entry."
+    if status == "FILLED":
+        return plan + (f" In the trade, {hits} of 3 targets reached." if hits else " In the trade.")
+    if status == "INVALIDATED":
+        return plan + " Cancelled before the entry: a close beyond the invalidation level."
+    if status == "REPLACED":
+        return plan + " Never filled: TIM drew new levels in the same direction."
+    if status == "EXPIRED":
+        return plan + " Never filled: price did not come back to the entry in time."
+    if reason == "STOP" and not hits:
+        what = "Price went against the plan and hit the stop."
+    elif reason == "TP3":
+        what = "All three targets were reached."
+    elif reason in ("BREAK_EVEN", "BREAK_EVEN_COSTS") or (reason in ("COST_STOP", "STOP") and hits):
+        first = f" at {_price(targets[0])}" if targets else ""
+        what = f"A third was taken at TP1{first}; the rest closed at break-even" + (" + costs." if reason != "BREAK_EVEN" else ".")
+    elif reason == "COST_STOP":
+        what = "TIM moved the stop to break-even + costs to protect the trade; price came back and closed it there."
+    elif reason == "TRAIL_STOP":
+        what = f"TIM trailed the stop behind the latest swing to lock in profit; it closed the rest ({hits} of 3 targets hit)."
+    elif reason == "TIMEOUT":
+        what = "Closed at the time limit without reaching the targets."
+    elif reason == "INVALIDATION":
+        what = "A close beyond the invalidation level ended the trade."
+    else:
+        what = "Closed."
+    return f"{plan} {what}"
+
+
 def _curve(trades: list[Mapping[str, Any]]) -> str:
     """Cumulative net R over the counted closed trades, oldest first, as a small inline SVG."""
     if not trades:
@@ -283,7 +382,8 @@ def _curve(trades: list[Mapping[str, Any]]) -> str:
     def y(value: float) -> float:
         return round(pad + (high - value) / span * (height - 2 * pad), 1)
 
-    line = " ".join(f"{round(pad + i * step, 1)},{y(v)}" for i, v in enumerate(points))
+    coords = [(round(pad + i * step, 1), y(v)) for i, v in enumerate(points)]
+    line = " ".join(f"{x},{yy}" for x, yy in coords)
     colour = "#35d39a" if total > 0 else "#ff6577" if total < 0 else "#8491a3"
     zero = y(0.0)
     return ("<div class='pj-curve'><p>Net result after each closed trade (R, counted trades only, oldest left)</p>"
@@ -291,17 +391,20 @@ def _curve(trades: list[Mapping[str, Any]]) -> str:
             f"aria-label='Cumulative net result: {_safe(_r(total))} after {len(trades)} trades'>"
             f"<line x1='{pad}' x2='{width - pad}' y1='{zero}' y2='{zero}' stroke='#344154' stroke-dasharray='4 4' stroke-width='1'/>"
             f"<polyline points='{line}' fill='none' stroke='{colour}' stroke-width='2.5' stroke-linejoin='round' vector-effect='non-scaling-stroke'/>"
-            f"<circle cx='{line.rsplit(' ', 1)[-1].split(',')[0]}' cy='{y(total)}' r='4' fill='{colour}'/></svg></div>")
+            f"<circle cx='{coords[-1][0]}' cy='{coords[-1][1]}' r='4' fill='{colour}'/></svg></div>")
 
 
-def _rule_tab(rule: str, name: str, text: str, journal: Mapping[str, Any] | None, active: bool) -> str:
+def _tab(key: str, name: str, text: str, journal: Mapping[str, Any] | None, active: bool, small: bool = False) -> str:
     stats = summary(journal or {})
-    number = (f"<span class='pj-tab__num {_tone(stats['sum_net_r'])}'>{_safe(_r(stats['sum_net_r']))}</span>"
-              f"<small>{stats['closed']} closed trade{'s' if stats['closed'] != 1 else ''}</small>") if stats["closed"] else \
-        "<span class='pj-tab__num pj-flat'>–</span><small>no closed trade yet</small>"
+    if stats["closed"]:
+        number = (f"<span class='pj-tab__num {_tone(stats['sum_net_r'])}'>{_safe(_r(stats['sum_net_r']))}</span>"
+                  f"<small>{stats['closed']} closed trade{'s' if stats['closed'] != 1 else ''}</small>")
+    else:
+        number = ("<span class='pj-tab__num pj-flat'>–</span><small>"
+                  + ("no closed trade yet" if (journal or {}).get("entries") else "no plan yet") + "</small>")
     current = " aria-current='page'" if active else ""
-    return (f"<a class='pj-tab{' pj-tab--active' if active else ''}' href='{RULE_HREF[rule]}'{current}>"
-            f"<b>{_safe(name)}</b><small>{_safe(text)}</small>{number}</a>")
+    return (f"<a class='pj-tab{' pj-tab--active' if active else ''}' href='{journal_href(key)}'{current}>"
+            f"<b>{_safe(name)}</b>" + ("" if small else f"<small>{_safe(text)}</small>") + f"{number}</a>")
 
 
 def _kpis(stats: Mapping[str, Any], waiting: int, in_trade: int) -> str:
@@ -329,13 +432,19 @@ def _targets(entry: Mapping[str, Any]) -> str:
     return " · ".join(f"{_price(t)}" for t in entry.get("targets") or [] if t is not None) or "–"
 
 
-def _now_card(entry: Mapping[str, Any]) -> str:
+def _detail_href(key: str, entry: Mapping[str, Any]) -> str:
+    return f"/journal/trade?rule={key}&amp;id={_safe(str(entry.get('id') or ''))}"
+
+
+def _now_card(key: str, entry: Mapping[str, Any]) -> str:
     direction = str(entry.get("direction") or "").lower()
     state = "in trade" if entry.get("status") == FILLED else "waiting for entry"
     since = entry.get("filled_at") if entry.get("status") == FILLED else entry.get("created_at")
     return (f"<article class='pj-plan pj-plan--{_safe(direction)}'><header>{_direction(entry)}<span class='cc-note'>{_safe(state)}</span></header>"
+            f"<p class='cc-note'>{_safe(explain(entry))}</p>"
             f"<dl><dt>Since</dt><dd>{_safe(_when(since))}</dd><dt>Entry</dt><dd>{_safe(_price(entry.get('entry')))}</dd>"
-            f"<dt>Stop</dt><dd>{_safe(_price(entry.get('stop')))}</dd><dt>Targets</dt><dd>{_safe(_targets(entry))}</dd></dl></article>")
+            f"<dt>Stop</dt><dd>{_safe(_price(entry.get('stop')))}</dd><dt>Targets</dt><dd>{_safe(_targets(entry))}</dd></dl>"
+            f"<p class='cc-note'><a href='{_detail_href(key, entry)}'>Details</a></p></article>")
 
 
 def _result(net: Any) -> str:
@@ -350,19 +459,19 @@ def _exit(entry: Mapping[str, Any]) -> str:
     return EXIT_EN.get(str(reason), str(reason).lower()) if reason else "–"
 
 
-def _trade_rows(trades: list[Mapping[str, Any]]) -> str:
+def _trade_rows(key: str, trades: list[Mapping[str, Any]]) -> str:
     rows, day = [], None
     for entry in trades:
         moment = _time(_closed_at(entry))
         label = moment.astimezone(LOCAL).strftime("%a %d %b %Y") if moment else "–"
         if label != day:
             day = label
-            rows.append(f"<tr class='pj-day'><td colspan='7'>{_safe(label)}</td></tr>")
+            rows.append(f"<tr class='pj-day'><td colspan='6'>{_safe(label)}</td></tr>")
         rows.append(
             f"<tr><td>{_safe(moment.astimezone(LOCAL).strftime('%H:%M') if moment else '–')}</td><td>{_direction(entry)}</td>"
-            f"<td class='mono pj-wide'>{_safe(_price(entry.get('entry')))}</td><td class='mono pj-wide'>{_safe(_price(entry.get('stop')))}</td>"
-            f"<td>{_safe(_exit(entry))}</td><td>{_result(entry.get('net_r'))}</td>"
-            f"<td class='mono {_tone(entry.get('net_r'))}'>{_safe(_r(entry.get('net_r')))}</td></tr>")
+            f"<td class='pj-why'>{_safe(explain(entry))}</td><td class='pj-c-res'>{_result(entry.get('net_r'))}</td>"
+            f"<td class='mono pj-c-net {_tone(entry.get('net_r'))}'>{_safe(_r(entry.get('net_r')))}</td>"
+            f"<td class='pj-c-more'><a href='{_detail_href(key, entry)}'>Details</a></td></tr>")
     return "".join(rows)
 
 
@@ -377,17 +486,31 @@ def _more(title: str, note: str, body: str, count: int) -> str:
             f"<div class='pj-more__body'><p>{_safe(note)}</p>{body}</div></details>")
 
 
-def journal_page(journals: Mapping[str, Mapping[str, Any]], shown: str = RULE_TIM) -> str:
-    """One rule at a time: headline numbers, result curve, open plans, closed trades; the rest folded away."""
-    if shown not in RULE_HREF:
-        shown = RULE_TIM
-    tabs = "".join(_rule_tab(rule, name, text, journals.get(rule), rule == shown)
-                   for rule, name, text in RULES_EN if rule in journals or rule == shown)
+def _normal(journals: Mapping[str, Mapping[str, Any]], shown: str) -> tuple[dict[str, Mapping[str, Any]], str]:
+    keyed = {ALIASES.get(key, key): value for key, value in journals.items()}
+    shown = ALIASES.get(shown, shown)
+    if shown not in JOURNAL_KEYS:
+        shown = DEFAULT_JOURNAL if DEFAULT_JOURNAL in keyed or not keyed else next(iter(keyed))
+    return keyed, shown
+
+
+def journal_page(journals: Mapping[str, Mapping[str, Any]], shown: str = DEFAULT_JOURNAL) -> str:
+    """One journal at a time: headline numbers, result curve, open plans, closed trades explained in a sentence;
+    the rest folded away. Every trade links to its detail page."""
+    journals, shown = _normal(journals, shown)
+    horizon_tabs = "".join(_tab(key, name, text, journals.get(key), key == shown) for key, name, text in HORIZONS_EN
+                           if key in journals or key == shown)
+    earlier_tabs = "".join(_tab(key, name, text, journals.get(key), key == shown, small=True) for key, name, text in EARLIER_EN
+                           if key in journals)
     journal = journals.get(shown) or {}
-    name, rule_text = next(((n, t) for r, n, t in RULES_EN if r == shown), ("TIM rule", ""))
-    body = _hero("Paper journal", "TIM writes down long and short plans by itself and follows each one on 1-minute candles. "
-                 "Paper only, no orders. 1 R = distance from entry to stop; net = after 0.05 % fees and 0.03 % slippage per side.")
-    body += f"<nav class='pj-tabs' aria-label='Rule version'>{tabs}</nav>"
+    name, rule_text = next(((n, t) for k, n, t in HORIZONS_EN + EARLIER_EN if k == shown), ("", ""))
+    body = _hero("Paper journal", "TIM writes down long and short plans by itself and follows each one on 1-minute candles, "
+                 "in three timeframes. Paper only, no orders. 1 R = distance from entry to stop; net = after 0.05 % fees and "
+                 "0.03 % slippage per side.")
+    if horizon_tabs:
+        body += f"<p class='pj-label'>Timeframes</p><nav class='pj-tabs' aria-label='Timeframe'>{horizon_tabs}</nav>"
+    if earlier_tabs:
+        body += f"<p class='pj-label'>Earlier test versions (30m)</p><nav class='pj-tabs pj-tabs--small' aria-label='Earlier versions'>{earlier_tabs}</nav>"
 
     if str(journal.get("integrity") or "").startswith("LOG_BROKEN"):
         body += "<section class='cc-section'><p class='pj-empty'>Journal locked: the event log needs a check.</p></section>"
@@ -405,66 +528,136 @@ def journal_page(journals: Mapping[str, Mapping[str, Any]], shown: str = RULE_TI
 
     body += (f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>{_safe(name)}</p>"
              f"<h2>Result so far</h2><p class='cc-section__note'>{_safe(rule_text)}. Few closed trades say little; "
-             "the numbers only mean something after many.</p></div></div>"
+             "the numbers only mean something after many. "
+             f"<a href='/chart?tf={CHART_TF[shown]}'>See the plans on the chart</a>.</p></div></div>"
              f"{_kpis(stats, len(now) - in_trade, in_trade)}{_curve(trades)}</section>")
 
-    cards = "".join(_now_card(e) for e in now) or "<p class='pj-empty'>No open plan right now.</p>"
+    cards = "".join(_now_card(shown, e) for e in now) or "<p class='pj-empty'>No open plan right now.</p>"
     body += ("<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Now</p>"
              f"<h2>Open plans</h2></div></div><div class='pj-now'>{cards}</div></section>")
 
     latest = list(reversed(trades))[:100]
-    trade_table = (_table(("Closed", "Side", "Entry", "Stop", "Exit", "Result", "Net R"), _trade_rows(latest),
-                          "pj-trades", ("Entry", "Stop"))
-                   if latest else "<p class='pj-empty'>No closed trade yet.</p>")
+    empty = "No plans yet." if not every else "No closed trade yet."
+    trade_table = (_table(("Closed", "Side", "What happened", "Result", "Net R", ""), _trade_rows(shown, latest), "pj-trades")
+                   if latest else f"<p class='pj-empty'>{empty}</p>")
     body += ("<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Trades</p>"
              f"<h2>Closed trades{' (latest 100)' if len(trades) > 100 else ''}</h2>"
-             "<p class='cc-section__note'>Newest first, Central European time.</p></div></div>"
+             "<p class='cc-section__note'>Newest first, Central European time. Details shows every number of a trade.</p></div></div>"
              f"{trade_table}")
     if never:
-        rows = "".join(_plan_row(e) for e in never[:100])
+        rows = "".join(_plan_row(e, shown) for e in never[:100])
         body += _more("Plans that never triggered", "Written down, but price never reached the entry, a newer plan replaced it, "
-                      "or it ran out after 24 hours. They cost nothing and are not counted.", _plan_table(rows), len(never))
+                      "or it ran out of time. They cost nothing and are not counted.", _plan_table(rows), len(never))
     if excluded:
-        rows = "".join(_plan_row(e) for e in sorted(excluded, key=lambda e: _sort_key(e, "created_at"), reverse=True)[:100])
+        rows = "".join(_plan_row(e, shown) for e in sorted(excluded, key=lambda e: _sort_key(e, "created_at"), reverse=True)[:100])
         body += _more("Corrected entries, not counted", "Booking errors found in review (plans recorded after their stop had "
                       "already been hit, one double booking). They stay listed for transparency but are left out of every number.",
                       _plan_table(rows), len(excluded))
-    if not every:
-        body = body.replace("<p class='pj-empty'>No closed trade yet.</p>", "<p class='pj-empty'>No plans yet.</p>", 1)
     body += "</section>"
 
     rows = []
-    for rule, rname, text in RULES_EN:
-        other = journals.get(rule)
+    for key, rname, _ in HORIZONS_EN + EARLIER_EN:
+        other = journals.get(key)
         if other is None:
             continue
         s = summary(other)
         rate = f"{s['win_rate'] * 100:.0f} %" if s["win_rate"] is not None else "–"
         per = s["sum_net_r"] / s["closed"] if s["closed"] else None
-        rows.append(f"<tr><td><a href='{RULE_HREF[rule]}'>{_safe(rname)}</a></td><td>{s['plans']}</td><td>{s['closed']}</td>"
+        rows.append(f"<tr><td><a href='{journal_href(key)}'>{_safe(rname)}</a></td><td>{s['plans']}</td><td>{s['closed']}</td>"
                     f"<td>{_safe(rate)}</td><td class='mono {_tone(s['sum_net_r'] if s['closed'] else None)}'>{_safe(_r(s['sum_net_r'] if s['closed'] else None))}</td>"
                     f"<td class='mono'>{_safe(_r(per))}</td><td class='mono'>{_safe(_r(s['sum_r'] if s['closed'] else None))}</td>"
                     f"<td>{s['excluded']['plans']}</td></tr>")
     body += ("<section class='cc-section'>" + _more(
-        "Compare the three rules", "Same market, same candles, different stops and targets. Win rate here counts gross R above 0.",
-        _table(("Rule", "Plans", "Closed", "Win rate", "Net sum", "Net per trade", "Gross sum", "Not counted"), "".join(rows)), len(rows))
-        + f"<p class='cc-note'>Raw data as JSON: <a href='/api/plan-journal{RULE_KEY[shown]}'>{_safe(name)}</a>.</p></section>")
+        "Compare all journals", "Same market, same candles, different timeframes and rules. Win rate here counts gross R above 0.",
+        _table(("Journal", "Plans", "Closed", "Win rate", "Net sum", "Net per trade", "Gross sum", "Not counted"), "".join(rows)), len(rows))
+        + f"<p class='cc-note'>Raw data as JSON: <a href='/api/plan-journal?rule={shown}'>{_safe(name)}</a>.</p></section>")
     return shell("Paper journal", "/journal", body, extra_css=JOURNAL_CSS)
 
 
 def _plan_table(rows: str) -> str:
-    return _table(("Created", "Plan", "Entry", "Stop", "Targets", "Status", "Gross R", "Net R"), rows)
+    return _table(("Created", "Plan", "Entry", "Stop", "Targets", "Status", "Net R", ""), rows)
 
 
-def _plan_row(entry: Mapping[str, Any]) -> str:
+def _plan_row(entry: Mapping[str, Any], key: str = DEFAULT_JOURNAL) -> str:
     status = STATUS_EN.get(str(entry.get("status")), str(entry.get("status") or "–").lower())
     if entry.get("exit_reason"):
         status += f" ({EXIT_EN.get(str(entry['exit_reason']), str(entry['exit_reason']).lower())})"
     if entry.get("excluded"):
         status = "not counted (corrected) · " + status
     targets = " · ".join(f"TP{i} {_price(t)}" for i, t in enumerate(entry.get("targets") or [], start=1) if t is not None) or "–"
-    direction = str(entry.get("direction") or "–")
-    return (f"<tr><td>{_safe(_when(entry.get('created_at')))}</td><td><span class='tag tag--{_safe(direction.lower())}'>{_safe(direction)}</span></td>"
+    return (f"<tr><td>{_safe(_when(entry.get('created_at')))}</td><td>{_direction(entry)}</td>"
             f"<td class='mono'>{_safe(_price(entry.get('entry')))}</td><td class='mono'>{_safe(_price(entry.get('stop')))}</td>"
-            f"<td>{_safe(targets)}</td><td>{_safe(status)}</td><td class='mono'>{_safe(_r(entry.get('gross_r')))}</td>"
-            f"<td class='mono'>{_safe(_r(entry.get('net_r')))}</td></tr>")
+            f"<td>{_safe(targets)}</td><td>{_safe(status)}</td>"
+            f"<td class='mono'>{_safe(_r(entry.get('net_r')))}</td><td><a href='{_detail_href(key, entry)}'>Details</a></td></tr>")
+
+
+# --- one trade -----------------------------------------------------------------
+
+def _steps(entry: Mapping[str, Any]) -> list[tuple[Any, str]]:
+    """What happened, in time order."""
+    steps: list[tuple[Any, str]] = [(entry.get("created_at"), f"Plan written at the {entry.get('timeframe') or ''} close.")]
+    if entry.get("armed_at"):
+        steps.append((entry["armed_at"], "Price broke through the entry first; the limit waited for the retest."))
+    if entry.get("filled_at"):
+        steps.append((entry["filled_at"], f"Filled at {_price(entry.get('fill_price') or entry.get('entry'))}."))
+    for index, moment in enumerate(entry.get("tp_hits") or [], start=1):
+        target = (entry.get("targets") or [None] * 3)[index - 1] if index <= len(entry.get("targets") or []) else None
+        steps.append((moment, f"TP{index} reached ({_price(target)}): a third taken."))
+    if entry.get("tim_verdict_at") and entry.get("tim_verdict"):
+        verdict = "protect the trade" if entry["tim_verdict"] == "SICHERN" else "hold"
+        steps.append((entry["tim_verdict_at"], f"TIM judged the running trade: {verdict}."))
+    if entry.get("cost_stop_at") and entry.get("cost_stop") is not None:
+        kind = "behind the latest swing" if entry.get("cost_stop_kind") == "SWING" else "to break-even + costs"
+        steps.append((entry["cost_stop_at"], f"Stop moved {kind}: {_price(entry.get('cost_stop'))}."))
+    if entry.get("closed_at"):
+        end = STATUS_EN.get(str(entry.get("status")), "closed")
+        if entry.get("status") == "CLOSED":
+            end = f"Closed ({_exit(entry)}) at {_price(entry.get('exit_price'))}: {_r(entry.get('net_r'))} net."
+        steps.append((entry["closed_at"], end[:1].upper() + end[1:]))
+    return sorted(steps, key=lambda item: _sort_key({"t": item[0]}, "t"))
+
+
+def _facts(title: str, pairs: list[tuple[str, str]]) -> str:
+    return f"<dl aria-label='{_safe(title)}'>" + "".join(f"<dt>{_safe(k)}</dt><dd>{_safe(v)}</dd>" for k, v in pairs) + "</dl>"
+
+
+def trade_page(journals: Mapping[str, Mapping[str, Any]], key: str, trade_id: str) -> str | None:
+    """Every number of one plan. None when the journal or the id is unknown."""
+    journals, key = _normal(journals, key)
+    if not _ID.match(trade_id or ""):
+        return None
+    entry = next((e for e in (journals.get(key) or {}).get("entries") or [] if e.get("id") == trade_id), None)
+    if entry is None:
+        return None
+    name = next((n for k, n, _ in HORIZONS_EN + EARLIER_EN if k == key), key)
+    side = "Long" if entry.get("direction") == "LONG" else "Short"
+    status = STATUS_EN.get(str(entry.get("status")), str(entry.get("status") or "").lower())
+    head = f"{side} · {name} · {status}" + (f" · {_r(entry.get('net_r'))}" if entry.get("net_r") is not None else "")
+    targets = entry.get("targets") or []
+    plan = [("Created", _when(entry.get("created_at"))), ("Entry", _price(entry.get("entry"))),
+            ("Entry zone", f"{_price(entry.get('entry_low'))} – {_price(entry.get('entry_high'))}"),
+            ("Stop", f"{_price(entry.get('stop'))} ({_pct(entry.get('stop'), entry.get('entry'))})"),
+            *[(f"TP{i}", _price(t)) for i, t in enumerate(targets, start=1)],
+            ("Invalidation", f"close {entry.get('invalidation_side') or ''} {_price(entry.get('invalidation_level'))}")]
+    result = [("Filled", _when(entry.get("filled_at"))), ("Fill price", _price(entry.get("fill_price"))),
+              ("Closed", _when(entry.get("closed_at"))), ("Exit", f"{_exit(entry)} at {_price(entry.get('exit_price'))}"),
+              ("Gross", _r(entry.get("gross_r"))), ("Fees", _r(-(entry.get("fee_r") or 0)) if entry.get("fee_r") is not None else "–"),
+              ("Slippage", _r(-(entry.get("slippage_r") or 0)) if entry.get("slippage_r") is not None else "–"),
+              ("Net", _r(entry.get("net_r"))), ("Best during trade", _r(entry.get("max_favorable_r"))),
+              ("Worst during trade", _r(entry.get("max_adverse_r")))]
+    context = [("Timeframe", str(entry.get("timeframe") or "–")),
+               ("Setup", SETUP_EN.get(str(entry.get("scenario_type")), str(entry.get("scenario_type") or "–")).removeprefix("a ").removeprefix("an ")),
+               ("Market", MARKET_EN.get(str(entry.get("market_state")), str(entry.get("market_state") or "–")).lower()),
+               ("Setup grade", f"{entry.get('setup_grade') or '–'} (heuristic)"), ("Data quality", str(entry.get("data_quality") or "–").lower()),
+               ("Counted", "no, corrected" if entry.get("excluded") else "yes"), ("Id", str(entry.get("id")))]
+    steps = "".join(f"<li><span class='mono'>{_safe(_when(moment))}</span> {_safe(text)}</li>" for moment, text in _steps(entry))
+    body = _hero(head, "One plan from TIM's paper journal. Paper only, no orders.")
+    body += (f"<section class='cc-section'><p class='pj-story'>{_safe(explain(entry))}</p>"
+             f"<p class='cc-note'><a href='{journal_href(key)}'>← back to {_safe(name)}</a> · "
+             f"<a href='/chart?tf={CHART_TF.get(key, '30m')}'>see it on the chart</a></p></section>")
+    body += ("<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Numbers</p><h2>Key data</h2></div></div>"
+             f"<div class='pj-facts'>{_facts('Plan', plan)}{_facts('Result', result)}{_facts('Context', context)}</div></section>")
+    body += ("<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Timeline</p><h2>What happened</h2>"
+             "<p class='cc-section__note'>Central European time.</p></div></div>"
+             f"<ol class='pj-steps'>{steps}</ol></section>")
+    return shell("Paper trade", "/journal", body, extra_css=JOURNAL_CSS)
