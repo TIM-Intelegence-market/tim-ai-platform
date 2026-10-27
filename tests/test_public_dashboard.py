@@ -141,3 +141,48 @@ def test_journal_page_rows():
              "status": "CLOSED", "exit_reason": "STOP", "gross_r": -1.0, "net_r": -1.12, "excluded": {"reason": "Phantom"}}
     page = journal_page({"tim/1": {"entries": [entry]}}, "tim/1")
     assert "not counted (corrected) · closed (stop)" in page and "-1.12 R" in page and "TP1 101,500.00" in page
+
+
+def _entry(minutes: int, status: str, net: float | None = None, excluded: bool = False, direction: str = "LONG") -> dict:
+    from datetime import timedelta
+
+    created = NOW + timedelta(minutes=minutes)
+    entry = {"created_at": created.isoformat(), "direction": direction, "entry": 100000.0, "stop": 99000.0,
+             "targets": [101500.0, 102000.0, 103000.0], "status": status}
+    if status in ("FILLED", "CLOSED"):
+        entry["filled_at"] = (created + timedelta(minutes=5)).isoformat()
+    if status == "CLOSED":
+        entry.update(closed_at=(created + timedelta(hours=1)).isoformat(), exit_reason="STOP" if net < 0 else "TP3",
+                     gross_r=net + 0.2, net_r=net)
+    if excluded:
+        entry["excluded"] = {"reason": "Phantom"}
+    return entry
+
+
+def test_journal_page_puts_counted_trades_first_and_folds_the_rest():
+    entries = ([_entry(i, "CLOSED", -1.36, excluded=True) for i in range(21)]
+               + [_entry(100, "CLOSED", 1.21), _entry(200, "CLOSED", -2.06, direction="SHORT"),
+                  _entry(300, "REPLACED"), _entry(400, "OPEN"), _entry(500, "FILLED", direction="SHORT")])
+    page = journal_page({"tim/1": {"entries": entries}, "struct/1": {"entries": []}, "level/1": {"entries": []}}, "tim/1")
+    main, corrected = page.split("Corrected entries, not counted", 1)
+    # Headline: only the two counted trades, net −0.85 R, one win.
+    assert "-0.85 R" in main and "-0.42 R" in main and "50 %" in main and "1 in trade · 1 waiting for entry" in main
+    assert "not counted (corrected)" not in main  # corrected rows live only in the folded section
+    assert corrected.count("not counted (corrected)") == 21 and "<small>(21)</small>" in page.split("Corrected entries")[1][:40]
+    assert "Plans that never triggered" in main and "replaced" in main
+    assert "<details class='pj-more'>" in page and "<polyline" in page  # folded sections and the result curve
+    assert "class='pj-res pj-res--win'>Win<" in main and "class='pj-res pj-res--loss'>Loss<" in main
+    assert "pj-tab pj-tab--active' href='/journal' aria-current='page'" in page and "/journal?rule=struct" in page
+    assert " style=" not in page  # the CSP allows no inline style attributes
+
+
+def test_journal_page_csp_matches_its_style(server):
+    import base64
+    import hashlib
+
+    _, base = server
+    status, headers, body = _get(base + "/journal")
+    style = re.search(r"<style>(.*?)</style>", body, re.S).group(1)
+    digest = base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()
+    assert status == 200 and f"style-src 'sha256-{digest}'" in headers["Content-Security-Policy"]
+    assert "script-src 'none'" in headers["Content-Security-Policy"] and "<script" not in body

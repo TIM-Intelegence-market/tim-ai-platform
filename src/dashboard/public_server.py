@@ -151,8 +151,10 @@ class PublicDashboardServer:
                     key = path + "?" + urlencode(sorted(query.items()))
                     if path in PAGES:
                         page = outer.cache.get(key, PAGE_TTL, lambda: outer.render_page(path, query))
+                        from src.dashboard.public_en import journal_csp
+
                         return self.respond(200, page.encode(), "text/html; charset=utf-8",
-                                            csp=CHART_CSP if path == "/chart" else None, head=head)
+                                            csp=CHART_CSP if path == "/chart" else journal_csp(), head=head)
                     payload = outer.cache.get(key, API_TTL, lambda: outer.render_api(path, query))
                     return self.respond(200, payload, "application/json", head=head)
                 except Exception as exc:  # noqa: BLE001 - a visitor gets a short error, never a trace
