@@ -16,7 +16,7 @@ import re
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
-from src.dashboard.chart_live import SYMBOL_NAMES, SYMBOLS, VIEW_TIMEFRAMES
+from src.dashboard.chart_live import SYMBOL_NAMES, SYMBOLS, VIEW_TIMEFRAMES, tab_label
 from src.dashboard.chart_model import _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import CSS, EXTRA_CSS
@@ -33,7 +33,7 @@ GROUPS_EN = {
     "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "quarter": "Quarter (1Q)", "year": "Year (1Y)",
     "vwap": "VWAP (week, month, 12M)", "naked": "naked POC",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
-    "structure": "BOS / MSS", "trend": "Trend lines", "tpo": "TPO (day profile)",
+    "structure": "BOS / MSS", "trend": "Trend lines", "fib": "Fibonacci (last swing)", "tpo": "TPO (day profile)",
     "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
     "plans_short": "TIM plans SHORT 15m", "plans_mid": "TIM plans MID 1h", "plans_long": "TIM plans LONG 1D",
     "plans_old": "TIM plans, test versions 30m",
@@ -72,6 +72,8 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^Schlusskurs darüber = BOS", "A close above = BOS"),
     (r"^Schlusskurs darunter = BOS", "A close below = BOS"),
     (r"durch die letzten zwei Swing-Hochs \((\d+) Kerzen je Seite\)", r"through the last two swing highs (\1 candles per side)"),
+    (r"^Long-Fib Swing-Tief → Hoch \(Docht\), Zone, kein Signal", "Long fib, swing low → high (wicks), zone, not a signal"),
+    (r"^Short-Fib Swing-Hoch → Tief \(Docht\), Zone, kein Signal", "Short fib, swing high → low (wicks), zone, not a signal"),
     (r"durch die letzten zwei Swing-Tiefs \((\d+) Kerzen je Seite\)", r"through the last two swing lows (\1 candles per side)"),
 )
 NOTES_EN: tuple[tuple[str, str], ...] = (
@@ -79,6 +81,8 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Keine Kerzen", "No candles for this selection."),
     (r"^Keine Tages-/Wochenlevel", "No day/week levels yet: too few closed 30m and 1h candles."),
     (r"^Volume Profile und Footprint aus echten Trades gibt es nur für (\w+)", r"Volume profile and footprint from real trades exist only for \1: TIM collects trades only there."),
+    (r"^Gold über PAXG", "Gold via PAXG (tokenised gold, 1 PAXG = 1 troy ounce): trades around the clock, real gold does not; "
+                         "weekend candles and thinner liquidity can shift levels against XAUUSD."),
     (r"^Noch keine Trades", "No trades from the TIM database yet (the runtime delivers them every 2 minutes)."),
     (r"^(Level \S+: )?Börse nicht erreichbar", r"\1Exchange not reachable, retrying shortly."),
 )
@@ -124,7 +128,7 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     for key in ("level_source", "trade_source"):
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])
-    out["name"] = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana"}.get(str(model.get("symbol")), model.get("name"))
+    out["name"] = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "PAXGUSDT": "Gold (PAXG)"}.get(str(model.get("symbol")), model.get("name"))
     return out
 
 
@@ -160,13 +164,13 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
     view = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
     symbols = "".join(
         f"<a href='/chart?symbol={item}&amp;tf={view}' class='tc-tab{' tc-tab--active' if item == symbol else ''}'"
-        + (" aria-current='page'" if item == symbol else "") + f">{item.removesuffix('USDT')}</a>"
+        + (" aria-current='page'" if item == symbol else "") + f">{tab_label(item)}</a>"
         for item in SYMBOLS)
     frames = "".join(
         f"<a href='/chart?symbol={symbol}&amp;tf={item}' data-tf='{item}' class='tc-tab{' tc-tab--active' if item == view else ''}'"
         + (" aria-current='page'" if item == view else "") + f">{item}</a>"
         for item in VIEW_TIMEFRAMES)
-    body = _hero("TIM chart", "BTC, ETH and SOL on every timeframe: zoom, pan, crosshair. "
+    body = _hero("TIM chart", "BTC, ETH, SOL and gold on every timeframe: zoom, pan, crosshair. "
                  "Levels are drawn as labelled segments from the moment they formed.")
     body += (
         f"<section class='cc-section tc-live' id='tc-live' data-lang='en' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
