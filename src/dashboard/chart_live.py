@@ -2,7 +2,7 @@
 
 Read-only display data, never research data and never orders:
 
-- candles of BTC, ETH or SOL in every Binance interval (public klines, cached
+- candles of BTC, ETH, SOL or gold (PAXG) in every Binance interval (public klines, cached
   briefly); the newest, still open candle is shown but flagged ``closed=False``
   and never enters a level,
 - drawings: every level as a labelled segment from the moment it formed to the
@@ -11,7 +11,7 @@ Read-only display data, never research data and never orders:
   confirmed swing highs and lows.
 
 Levels for BTC come from the runtime series (the same data the plan journals
-use); ETH and SOL are display only and fetched on demand. The multi-coin
+use); ETH, SOL and gold are display only and fetched on demand. The multi-coin
 runtime stays off: nothing here writes to a journal, the database or a plan.
 """
 
@@ -29,8 +29,13 @@ from urllib.request import urlopen
 
 from src.dashboard.chart_model import _nice_step, analytical_series, clean_candles, structure_events, swing_points
 
-SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
-SYMBOL_NAMES = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana"}
+# PAXGUSDT = tokenised gold (1 PAXG = 1 troy ounce), the gold market Binance offers with the
+# same public klines (Uzi 27.10.2026: gold into the analysis). It trades 24/7, real gold does not.
+SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "PAXGUSDT")
+SYMBOL_NAMES = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "PAXGUSDT": "Gold (PAXG)"}
+SYMBOL_TABS = {"PAXGUSDT": "GOLD"}
+GOLD_NOTE = ("Gold über PAXG (tokenisiertes Gold, 1 PAXG = 1 Feinunze): handelt rund um die Uhr, echtes Gold nicht; "
+             "Wochenend-Kerzen und dünnere Liquidität können Level gegenüber XAUUSD verschieben.")
 DEFAULT_SYMBOL = "BTCUSDT"
 # Every interval Binance Spot offers, as on TradingView.
 VIEW_TIMEFRAMES = ("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "3d", "1w", "1M")
@@ -89,6 +94,11 @@ PLAN_SHOWN = {"OPEN", "FILLED", "CLOSED"}
 FIB_RATIOS = (0.382, 0.5, 0.618, 0.786, 0.886, 0.941)  # never-filled plans (replaced, expired, invalidated) stay in the journal only
 
 Fetch = Callable[[str, str, int], list[dict[str, Any]]]
+
+
+def tab_label(symbol: str) -> str:
+    """Short name on the coin tabs: BTC, ETH, SOL, GOLD."""
+    return SYMBOL_TABS.get(symbol, symbol.removesuffix("USDT"))
 
 
 def fetch_klines(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
@@ -715,6 +725,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                              "timeframes": list(VIEW_TIMEFRAMES), "generated_at": now.isoformat(), "read_only": True,
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
                              "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": []}
+    if symbol == "PAXGUSDT":
+        model["notes"].append(GOLD_NOTE)
     rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
     if error:
         model["notes"].append(error)

@@ -13,7 +13,7 @@ from typing import Any
 
 from pathlib import Path
 
-from src.dashboard.chart_live import DEFAULT_SYMBOL, GROUP_STYLE, SYMBOL_NAMES, SYMBOLS, VIEW_TIMEFRAMES
+from src.dashboard.chart_live import DEFAULT_SYMBOL, GROUP_STYLE, SYMBOL_NAMES, SYMBOLS, VIEW_TIMEFRAMES, tab_label
 from src.dashboard.chart_model import CHART_TIMEFRAMES, DEFAULT_TIMEFRAME, build_chart_model
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _content_security_policy, _hero, _layout, _strip_states
@@ -478,7 +478,7 @@ def _live_section(symbol: str, view: str) -> str:
     """Toolbar and container of the interactive chart; tim_chart.js fills it."""
     symbols = "".join(
         f"<a href='/chart?symbol={item}&amp;tf={view}' class='tc-tab{' tc-tab--active' if item == symbol else ''}'"
-        f"{' aria-current=\'page\'' if item == symbol else ''} title='{_safe(SYMBOL_NAMES[item])}'>{item.removesuffix('USDT')}</a>"
+        f"{' aria-current=\'page\'' if item == symbol else ''} title='{_safe(SYMBOL_NAMES[item])}'>{tab_label(item)}</a>"
         for item in SYMBOLS)
     frames = "".join(
         f"<a href='/chart?symbol={symbol}&amp;tf={item}' data-tf='{item}' class='tc-tab{' tc-tab--active' if item == view else ''}'"
@@ -518,7 +518,7 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     view = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_TIMEFRAME
     data = state.snapshot()
-    body = _hero("TIM-Chart", "BTC, ETH und SOL in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
+    body = _hero("TIM-Chart", "BTC, ETH, SOL und Gold in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
     body += _live_section(symbol, view)
     if symbol != "BTCUSDT":
         body += ("<section class='cc-section'><p class='cc-note'>Steckbrief, Szenarien, Level-Pläne und Plan-Journale gibt es nur für BTC. "
