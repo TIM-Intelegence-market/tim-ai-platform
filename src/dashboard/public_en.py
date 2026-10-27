@@ -160,7 +160,7 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         "<div class='tc-live__bar'><div id='tc-live-layers' class='tc-live__layers' aria-label='Show or hide lines'></div>"
         "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Go to now</button>"
         "<button type='button' class='tc-tab' data-action='fit'>Show all</button>"
-        "<button type='button' class='tc-tab' data-action='plans'>Only TIM's trades</button><button type='button' class='tc-tab' data-action='reset'>Reset lines</button></div></div>"
+        "<button type='button' class='tc-tab' data-action='plans'>Only TIM's trades</button><button type='button' class='tc-tab' data-action='none'>Untick all</button><button type='button' class='tc-tab' data-action='reset'>Reset lines</button></div></div>"
         "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
         "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interactive candlestick chart'></div></div>"
         "<p id='tc-live-status' class='cc-note tc-live__status'>Chart loading… (needs JavaScript)</p>"
