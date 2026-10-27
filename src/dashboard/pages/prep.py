@@ -57,8 +57,13 @@ def _htf_section(htf: Mapping[str, Any]) -> str:
     )
 
 
-def _prep_page(data: dict[str, Any], model: Mapping[str, Any]) -> str:
+def _prep_page(data: dict[str, Any], model: Mapping[str, Any], macro: Mapping[str, Any] | None | bool = False) -> str:
+    """``macro``: the macro bar (``macro_bar.build_macro_bar``), None while it loads, False = no macro section."""
     body = _hero("Vorbereitung", "Bias von oben, Vortages- und Wochen-Value, naked POCs und Sessions: Broncx' Schritte 1 bis 3 auf einer Seite. Nur Beobachtung, keine Order.")
+    if macro is not False:
+        from src.dashboard.macro_bar import macro_rows_html
+
+        body += macro_rows_html(macro if isinstance(macro, Mapping) else None, _safe)
     bias = model.get("bias") or {}
     where = model.get("location") or {}
     if not model.get("levels") and not model.get("htf"):

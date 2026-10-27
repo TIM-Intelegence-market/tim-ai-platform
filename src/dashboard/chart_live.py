@@ -2,7 +2,7 @@
 
 Read-only display data, never research data and never orders:
 
-- candles of BTC, ETH or SOL in every Binance interval (public klines, cached
+- candles of BTC, ETH, SOL or gold (PAXG) in every Binance interval (public klines, cached
   briefly); the newest, still open candle is shown but flagged ``closed=False``
   and never enters a level,
 - drawings: every level as a labelled segment from the moment it formed to the
@@ -11,7 +11,7 @@ Read-only display data, never research data and never orders:
   confirmed swing highs and lows.
 
 Levels for BTC come from the runtime series (the same data the plan journals
-use); ETH and SOL are display only and fetched on demand. The multi-coin
+use); ETH, SOL and gold are display only and fetched on demand. The multi-coin
 runtime stays off: nothing here writes to a journal, the database or a plan.
 """
 
@@ -29,8 +29,13 @@ from urllib.request import urlopen
 
 from src.dashboard.chart_model import _nice_step, analytical_series, clean_candles, structure_events, swing_points
 
-SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
-SYMBOL_NAMES = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana"}
+# PAXGUSDT = tokenised gold (1 PAXG = 1 troy ounce), the gold market Binance offers with the
+# same public klines (Uzi 27.10.2026: gold into the analysis). It trades 24/7, real gold does not.
+SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "PAXGUSDT")
+SYMBOL_NAMES = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "PAXGUSDT": "Gold (PAXG)"}
+SYMBOL_TABS = {"PAXGUSDT": "GOLD"}
+GOLD_NOTE = ("Gold über PAXG (tokenisiertes Gold, 1 PAXG = 1 Feinunze): handelt rund um die Uhr, echtes Gold nicht; "
+             "Wochenend-Kerzen und dünnere Liquidität können Level gegenüber XAUUSD verschieben.")
 DEFAULT_SYMBOL = "BTCUSDT"
 # Every interval Binance Spot offers, as on TradingView.
 VIEW_TIMEFRAMES = ("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "3d", "1w", "1M")
@@ -61,12 +66,13 @@ GROUP_STYLE = {
     "quarter": ("#f08c4a", "solid"),
     "year": ("#ff5c9a", "solid"),
     "vwap": ("#3fd0c9", "solid"),
+    "fib": ("#c9a227", "dotted"),
 }
 GROUP_NAMES = {
     "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "quarter": "Quartal (1Q)", "year": "Jahr (1Y)",
     "vwap": "VWAP (Woche, Monat, 12M)", "naked": "naked POC",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
-    "structure": "BOS / MSS", "trend": "Trendlinien", "tpo": "TPO (Tagesprofil)",
+    "structure": "BOS / MSS", "trend": "Trendlinien", "fib": "Fibonacci (letzter Swing)", "tpo": "TPO (Tagesprofil)",
     "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
     "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
     "plans_old": "TIM-Pläne Testversionen 30m",
@@ -82,9 +88,17 @@ DEFAULT_GROUPS = ("day", "week", "month", "naked", "structure", "trend", "tpo", 
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
                  "tim": ("plans_old", "TIM 30m"), "struct": ("plans_old", "Struktur 30m"), "level": ("plans_old", "Level 30m")}
 PLAN_LIMIT = 40  # newest plans drawn per chart
-PLAN_SHOWN = {"OPEN", "FILLED", "CLOSED"}  # never-filled plans (replaced, expired, invalidated) stay in the journal only
+PLAN_SHOWN = {"OPEN", "FILLED", "CLOSED"}
+# Fibonacci zones of the newest swing leg. 0.886 and 0.941 come from the GoatHub EDUCATION
+# lesson (02.10.2026): zones where price often reacts. Display only, never a signal or a score.
+FIB_RATIOS = (0.382, 0.5, 0.618, 0.786, 0.886, 0.941)  # never-filled plans (replaced, expired, invalidated) stay in the journal only
 
 Fetch = Callable[[str, str, int], list[dict[str, Any]]]
+
+
+def tab_label(symbol: str) -> str:
+    """Short name on the coin tabs: BTC, ETH, SOL, GOLD."""
+    return SYMBOL_TABS.get(symbol, symbol.removesuffix("USDT"))
 
 
 def fetch_klines(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
@@ -457,6 +471,41 @@ def vwap_drawings(vwaps: Sequence[Mapping[str, Any]], candles: Sequence[Mapping[
     return out
 
 
+def fib_drawings(candles: Sequence[Mapping[str, Any]], timeframe: str, width: int = STRUCTURE_PIVOT) -> list[dict[str, Any]]:
+    """Fibonacci retracement of the newest swing leg, drawn from the leg's start to the newest candle.
+
+    Anchors as in the community lesson: long = last wick low to last wick high, short = last
+    wick high to last wick low. The newest confirmed swing (``structure_swings``) starts the
+    leg; its other end is the most extreme wick of the closed candles after it. A low starts a
+    leg up (levels below the high), a high a leg down (levels above the low). 0 and 1 are the
+    two anchors. A picture of zones, not a signal.
+    """
+    closed = [c for c in candles if c.get("closed", True)]
+    swings = structure_swings(closed, width)
+    if not swings:
+        return []
+    start = max(swings, key=lambda s: s["index"])
+    after = closed[start["index"] + 1:]
+    if not after:
+        return []
+    up = start["kind"] == "LOW"
+    end = max(after, key=lambda c: c["high"]) if up else min(after, key=lambda c: c["low"])
+    low, high = (start["price"], end["high"]) if up else (end["low"], start["price"])
+    span = high - low
+    if span <= 0:
+        return []
+    side = "Long" if up else "Short"
+    anchors = "Swing-Tief → Hoch" if up else "Swing-Hoch → Tief"
+    result = []
+    for ratio in FIB_RATIOS:
+        price = high - span * ratio if up else low + span * ratio
+        name = f"Fib {ratio:g}"
+        result.append({"group": "fib", "tf": timeframe, "name": name, "label": f"{timeframe} {name}", "price": price,
+                       "start": closed[start["index"]]["open_time"].isoformat(), "ratio": ratio, "direction": "UP" if up else "DOWN",
+                       "note": f"{side}-Fib {anchors} (Docht), Zone, kein Signal"})
+    return result
+
+
 def place_drawings(drawings: Sequence[Mapping[str, Any]], times: Sequence[int]) -> list[dict[str, Any]]:
     """Snap every drawing onto the shown candle times (the chart's time axis).
 
@@ -676,6 +725,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                              "timeframes": list(VIEW_TIMEFRAMES), "generated_at": now.isoformat(), "read_only": True,
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
                              "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": []}
+    if symbol == "PAXGUSDT":
+        model["notes"].append(GOLD_NOTE)
     rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
     if error:
         model["notes"].append(error)
@@ -705,6 +756,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     from src.dashboard.htf_levels import build_htf_levels
 
     drawings += vwap_drawings(build_htf_levels(level_source, now)["vwaps"], candles, timeframe, now)
+    drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe) + fib_drawings(candles, timeframe)
     times = [c["time"] for c in model["candles"]]
     model["drawings"] = place_drawings(drawings, times)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []

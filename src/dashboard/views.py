@@ -73,7 +73,9 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         from src.dashboard.pages.prep import _prep_page
         from src.dashboard.session_map import build_session_map
 
-        return _prep_page(data, build_session_map(state.chart_series()))
+        from src.dashboard.macro_bar import CACHE as MACRO_CACHE
+
+        return _prep_page(data, build_session_map(state.chart_series()), macro=MACRO_CACHE.snapshot())
     if page in {"Plan Journal", "Plan Journal Struct", "Plan Journal Level"}:
         from src.dashboard.pages.plan_journal import _plan_journal_page
         from src.dashboard.plan_journal import RULE_LEVEL, RULE_STRUCT, load_view as load_plan_journal
