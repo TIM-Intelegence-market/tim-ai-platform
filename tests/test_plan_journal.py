@@ -953,3 +953,110 @@ def test_comparison_shows_all_three_rules_net_of_costs_and_the_current_stop_rule
     assert "Regelversionen parallel" in page and "/journal/level'>Level-Regel" in page and "Summe netto" in page and net in page
     assert "be_cost/1" in page and "nicht nachgebildet" not in page
     assert "% Konto" in page and "." not in page.split("% Konto")[0].rsplit("≈", 1)[1]
+
+
+@pytest.mark.parametrize("timeframe,minutes,hours", [("15m", 15, (12, 24)), ("1h", 60, (24, 72)), ("1d", 1440, (168, 504))])
+def test_horizon_journals_record_on_their_own_timeframe(tmp_path: Path, timeframe: str, minutes: int, hours: tuple[int, int]) -> None:
+    """SHORT 15m, MID 1h, LONG 1D (Uzi 27.10.2026): same TIM rule, own close, own waiting and holding time."""
+    assert pj.HORIZONS == {"SHORT": "15m", "MID": "1h", "LONG": "1d"}
+    start = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
+    series: dict[str, list[dict]] = {timeframe: [], "1m": []}
+    price = 100_000.0
+    step = 1200 if timeframe == "1d" else 400
+    for i in range(90):
+        opened = start + timedelta(minutes=minutes * i)
+        close = price + (step if (i // 10) % 2 else -step)
+        series[timeframe].append({"timeframe": timeframe, "open_time": opened.isoformat(),
+                                  "close_time": (opened + timedelta(minutes=minutes) - timedelta(milliseconds=1)).isoformat(),
+                                  "open": price, "high": max(price, close) + 50, "low": min(price, close) - 50, "close": close, "volume": 10.0})
+        price = close
+    now = start + timedelta(minutes=minutes * 90)
+    journal = pj.update(tmp_path / f"{timeframe}.json", series, now, timeframe=timeframe)
+    assert journal["last_plan_candle"] == (start + timedelta(minutes=minutes * 90)).isoformat().replace("+00:00", "Z")
+    assert journal["entries"], "the synthetic series must yield a plan"
+    for entry in journal["entries"]:
+        assert entry["timeframe"] == timeframe
+        assert (entry["pending_hours"], entry["max_hold_hours"]) == hours
+    # A close older than two intervals (at least an hour) is stale: no plans.
+    stale = pj.update(tmp_path / f"{timeframe}-stale.json", series, now + pj.stale_after(timeframe) + timedelta(minutes=1), timeframe=timeframe)
+    assert stale["entries"] == []
+
+
+def test_entry_hours_override_the_30m_defaults() -> None:
+    plan = _plan()
+    journal = _journal_with(plan)
+    entry = journal["entries"][0]
+    entry["pending_hours"] = 1
+    pj.evaluate(journal, [_m(61 + i, 101.0, 102.0) for i in range(3)], [], T0 + timedelta(hours=2))
+    assert entry["status"] == "EXPIRED" and entry["note"] == "1 h ohne Einstieg."
+
+
+def _horizon_stop(timeframe: str = "1h") -> dict:
+    journal = _journal_with(_plan())
+    pj.evaluate(journal, [_m(0, 99.9, 100.2), _m(1, 98.9, 99.5)], [], T0 + timedelta(minutes=3))
+    entry = journal["entries"][0]
+    assert entry["exit_reason"] == "STOP"
+    entry["timeframe"] = timeframe
+    return journal
+
+
+def _close_at(minutes: int, price: float, timeframe: str = "1h") -> dict:
+    end = T0 + timedelta(minutes=minutes)
+    return {"timeframe": timeframe, "open_time": end - timedelta(hours=1), "close_time": end, "close": price}
+
+
+def test_horizon_lock_matches_a_nearby_entry_and_waits_four_closes() -> None:
+    """Uzi 27.10.2026 (card: lock + wick count): TIM's flat stop shifts a little each close, so the
+    horizon journals treat an entry within 0,1 % as the same lost level and wait at least 4 closes."""
+    entries = _horizon_stop()["entries"]
+    nearby = _plan(entry=100.05, stop=99.05)
+    far = _plan(entry=100.5, stop=99.5)
+    kept, dropped = pj.drop_lost_levels([nearby, far], entries, [_close_at(60, 100.3)], "1h")
+    assert [p["entry"] for p in kept] == [100.5] and "4 Schlüsse" in dropped[0]
+    # Reclaimed (close above 100.5) but only two closes since the stop: still locked.
+    kept, _ = pj.drop_lost_levels([nearby], entries, [_close_at(60, 100.6), _close_at(120, 100.7)], "1h")
+    assert kept == []
+    kept, _ = pj.drop_lost_levels([nearby], entries, [_close_at(60 * i, 100.6) for i in range(1, 5)], "1h")
+    assert kept
+    # The lock of one timeframe does not block another one; the 30m journals keep the exact match.
+    assert pj.drop_lost_levels([nearby], entries, [], "15m")[0]
+    entries[0]["timeframe"] = "30m"
+    assert pj.drop_lost_levels([nearby], entries, [], "30m")[0]
+
+
+def test_horizon_stops_are_reviewed_once_for_a_wick() -> None:
+    journal = _horizon_stop("15m")
+    entry = journal["entries"][0]
+    now = T0 + timedelta(hours=2)
+    one = [_close_at(15, 99.5, "15m")]
+    assert pj.stop_reviews(journal, one, now) == []  # needs two closes after the stop
+    back = pj.stop_reviews(journal, [*one, _close_at(30, 98.0, "15m")], now)
+    assert back == [{"id": entry["id"], "wick": True, "closes": [99.5, 98.0], "checked_through": back[0]["checked_through"], "rule": "wick/1"}]
+    below = pj.stop_reviews(journal, [_close_at(15, 98.5, "15m"), _close_at(30, 98.7, "15m")], now)
+    assert below[0]["wick"] is False
+    # Folded from the log, once, after the terminal state; the summary counts it.
+    events = [{"kind": pj.PLAN_RECORDED, "recorded_at": "x", "payload": {"entry": dict(entry)}},
+              {"kind": pj.STOP_REVIEWED, "recorded_at": "y", "payload": back[0]}]
+    folded = pj.fold(events)
+    assert folded["entries"][0]["stop_review"]["wick"] is True
+    assert pj.summary(folded)["stop_reviews"] == {"reviewed": 1, "wick": 1}
+    assert pj.stop_reviews(folded, [*one, _close_at(30, 98.0, "15m")], now) == []
+    with pytest.raises(pj.journal_log.LogError):
+        pj.fold([*events, events[1]])
+    # 30m journals are not reviewed.
+    assert pj.stop_reviews(_horizon_stop("30m"), [*one, _close_at(30, 98.0, "15m")], now) == []
+
+
+def test_stop_steps_follow_the_protected_stop_and_never_go_back() -> None:
+    """Uzi 27.10.2026: the chart shows where the SL stands now; stop_path keeps every move."""
+    entry = {**_plan(), "status": "FILLED", "filled_at": "2026-10-24T02:00:00Z", "fill_price": 100.0, "stop_rule": pj.STOP_RULE_COST,
+             "tp_hits": [], "stop_path": [["2026-10-24T03:00:00Z", 100.4, pj.KIND_COSTS], ["2026-10-24T04:00:00Z", 100.9, pj.KIND_SWING],
+                                          ["2026-10-24T05:00:00Z", 100.6, pj.KIND_SWING]]}
+    steps = pj.stop_steps(entry)
+    assert [(at[11:16], price) for at, price, _ in steps] == [("02:00", 99.0), ("03:00", 100.4), ("04:00", 100.9)]
+    # Old entries without stop_path: the latest cost_stop; TP1 lifts the stop to break-even plus costs.
+    old = {k: v for k, v in entry.items() if k != "stop_path"}
+    assert pj.stop_steps({**old, "cost_stop": 100.5, "cost_stop_at": "2026-10-24T03:00:00Z"})[-1][1] == 100.5
+    after_tp1 = pj.stop_steps({**old, "tp_hits": ["2026-10-24T03:30:00Z"]})
+    assert after_tp1[-1][2] in {"BREAK_EVEN_COSTS", "BREAK_EVEN"} and after_tp1[-1][1] >= 100.0
+    assert pj.stop_steps({**old, "filled_at": None}) == []

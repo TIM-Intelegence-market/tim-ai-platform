@@ -26,9 +26,9 @@ from src.dashboard.layout import _content_security_policy
 from src.dashboard.security import _require_loopback_host
 
 DEFAULT_PORT = 8780
-PAGES = ("/chart", "/journal")
+PAGES = ("/chart", "/journal", "/journal/trade")
 # Query keys a public page or API may pass on; everything else is dropped before rendering.
-QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/api/chart/live": ("symbol", "tf"), "/api/plan-journal": ("rule",)}
+QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/api/chart/live": ("symbol", "tf"), "/api/plan-journal": ("rule",)}
 PAGE_TTL = 10.0        # seconds a rendered public page is reused
 API_TTL = 5.0          # seconds a data answer is reused
 RATE_PER_MINUTE = 120  # requests per client and minute
@@ -38,7 +38,7 @@ MAX_URL = 512
 
 def clean_query(path: str, query: dict[str, list[str]]) -> dict[str, str]:
     """Only the allowed keys, one short value each."""
-    return {key: query[key][0][:16] for key in QUERY_KEYS.get(path, ()) if query.get(key) and query[key][0]}
+    return {key: query[key][0][:32 if key == "id" else 16] for key in QUERY_KEYS.get(path, ()) if query.get(key) and query[key][0]}
 
 
 class RateLimiter:
@@ -151,8 +151,12 @@ class PublicDashboardServer:
                     key = path + "?" + urlencode(sorted(query.items()))
                     if path in PAGES:
                         page = outer.cache.get(key, PAGE_TTL, lambda: outer.render_page(path, query))
+                        if page is None:
+                            return self.respond(404, b'{"error":"not found"}', "application/json", head=head)
+                        from src.dashboard.public_en import journal_csp
+
                         return self.respond(200, page.encode(), "text/html; charset=utf-8",
-                                            csp=CHART_CSP if path == "/chart" else None, head=head)
+                                            csp=CHART_CSP if path == "/chart" else journal_csp(), head=head)
                     payload = outer.cache.get(key, API_TTL, lambda: outer.render_api(path, query))
                     return self.respond(200, payload, "application/json", head=head)
                 except Exception as exc:  # noqa: BLE001 - a visitor gets a short error, never a trace
@@ -172,17 +176,26 @@ class PublicDashboardServer:
         self.httpd.daemon_threads = True
         self.thread = threading.Thread(target=self.httpd.serve_forever, name="tim-public-dashboard", daemon=True)
 
-    def render_page(self, path: str, query: dict[str, str]) -> str:
+    def journal_paths(self) -> dict[str, Any]:
+        """Public journal key -> journal file (the three horizons first, then the earlier 30m versions)."""
+        from src.dashboard.state import plan_journal_paths
+
+        return plan_journal_paths(self.state)
+
+    def journals(self) -> dict[str, Any]:
+        from src.dashboard.plan_journal import load_view
+
+        # A horizon journal that has not started yet (no file) still gets its tab.
+        return {key: load_view(path) for key, path in self.journal_paths().items()}
+
+    def render_page(self, path: str, query: dict[str, str]) -> str | None:
         from src.dashboard import public_en
 
         if path == "/chart":
             return public_en.chart_page(query.get("symbol"), query.get("tf"))
-        from src.dashboard.plan_journal import RULE_LEVEL, RULE_STRUCT, RULE_TIM, load_view
-
-        journals = {RULE_TIM: load_view(self.state.plan_journal_path), RULE_STRUCT: load_view(self.state.plan_journal_struct_path),
-                    RULE_LEVEL: load_view(self.state.plan_journal_level_path)}
-        shown = {"struct": RULE_STRUCT, "level": RULE_LEVEL}.get(query.get("rule", ""), RULE_TIM)
-        return public_en.journal_page(journals, shown)
+        if path == "/journal/trade":
+            return public_en.trade_page(self.journals(), query.get("rule", ""), query.get("id", ""))
+        return public_en.journal_page(self.journals(), query.get("rule", public_en.DEFAULT_JOURNAL))
 
     def render_api(self, path: str, query: dict[str, str]) -> bytes:
         if path == "/api/chart/live":
@@ -190,15 +203,17 @@ class PublicDashboardServer:
 
             with self.state.lock:
                 footprint = dict(self.state.footprint)
-            model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint)
+            from src.dashboard.chart_live import load_plan_journals
+
+            model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
+                                     plan_journals=load_plan_journals(self.journal_paths()))
             from src.dashboard.public_en import english_chart_model
 
             return json.dumps(english_chart_model(model), default=str).encode()
         from src.dashboard.plan_cost_check import with_cost_check
         from src.dashboard.plan_journal import load_view
 
-        journal_path = {"struct": self.state.plan_journal_struct_path, "level": self.state.plan_journal_level_path}.get(
-            query.get("rule", ""), self.state.plan_journal_path)
+        journal_path = self.journal_paths().get(query.get("rule", ""), self.state.plan_journal_path)
         return json.dumps(with_cost_check(load_view(journal_path)), default=str).encode()
 
     def start(self) -> None:

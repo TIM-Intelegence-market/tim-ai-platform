@@ -25,9 +25,9 @@
   const EN = root.dataset.lang === 'en';
   const LOCALE = EN ? 'en-US' : 'de-DE';
   const T = EN
-    ? { running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of',
+    ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of',
         failed: m => `Loading failed (${m}). Retrying in 30 s.` }
-    : { running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand',
+    : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
   const fmt = v => v == null ? '–' : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
 
@@ -244,15 +244,27 @@
   };
   candles.attachPrimitive(fp);
 
+  // Layers added after a visitor saved a choice (e.g. TIM's plans) start visible: only keys the
+  // visitor has seen before can be hidden by a saved choice.
+  const KNOWN = 'tim-chart-layers-known-v1';
   function shownGroups() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
-      if (Array.isArray(saved)) return new Set(saved);
+      if (Array.isArray(saved)) {
+        const known = new Set(JSON.parse(localStorage.getItem(KNOWN) || '[]'));
+        const groups = new Set(saved);
+        for (const key of (model ? model.default_groups : [])) if (!known.has(key) && known.size) groups.add(key);
+        if (!known.size) for (const key of (model ? model.default_groups : [])) if (key.startsWith('plans_')) groups.add(key);
+        return groups;
+      }
     } catch (error) { /* private window: defaults */ }
     return new Set(model ? model.default_groups : []);
   }
   function saveGroups(groups) {
-    try { localStorage.setItem(STORE, JSON.stringify([...groups])); } catch (error) { /* ignore */ }
+    try {
+      localStorage.setItem(STORE, JSON.stringify([...groups]));
+      if (model) localStorage.setItem(KNOWN, JSON.stringify(Object.keys(model.groups)));
+    } catch (error) { /* ignore */ }
   }
 
   function buildLayers() {
@@ -273,7 +285,67 @@
     layers.dataset.built = '1';
   }
 
+  // TIM's paper plans. A running or waiting plan shows entry (blue, dashed while waiting), stop (red)
+  // and targets (green). A closed trade keeps only a short entry line from fill to exit: its stop and
+  // targets are history and made the candles unreadable (Uzi 27.10.2026). Arrows mark the fill, a dot the exit.
+  function drawPlans(groups) {
+    for (const plan of model.plans || []) {
+      const long = plan.direction === 'LONG';
+      const waiting = plan.status === 'OPEN';
+      const closed = plan.status === 'CLOSED';
+      // A running trade whose stop TIM already moved: the SL is drawn as steps up to where it stands now.
+      const steps = plan.stop_steps || [];
+      const trailing = !closed && steps.length > 1;
+      if (trailing) {
+        const points = steps.map(([time, value]) => ({ time: local(time), value }));
+        if (plan.t2 > steps[steps.length - 1][0]) points.push({ time: local(plan.t2), value: steps[steps.length - 1][1] });
+        const series = chart.addLineSeries({
+          color: '#ffb020', lineWidth: 2, lineStyle: LWC.LineStyle.Solid, lineType: LWC.LineType.WithSteps,
+          lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+          title: T.slNow, visible: groups.has(plan.group), autoscaleInfoProvider: () => null,
+        });
+        series.setData(points);
+        lines.push({ series, group: plan.group, plan });
+      }
+      const legs = closed
+        ? [[plan.entry, long ? 'rgba(53,211,154,0.7)' : 'rgba(255,101,119,0.7)', 1, 'solid', '']]
+        : [[plan.entry, '#70a7ff', 2, waiting ? 'dashed' : 'solid', `${plan.label} ${long ? 'L' : 'S'}`],
+           ...(trailing ? [] : [[plan.stop, '#ff6577', 1, 'dashed', 'SL']]),
+           ...plan.targets.map((value, index) => [value, '#35d39a', 1, 'dotted', `TP${index + 1}`])];
+      for (const [value, color, width, style, title] of legs) {
+        const series = chart.addLineSeries({
+          color, lineWidth: width, lineStyle: STYLE[style], lastValueVisible: false, priceLineVisible: false,
+          crosshairMarkerVisible: false, title, visible: groups.has(plan.group),
+          autoscaleInfoProvider: () => null,
+        });
+        series.setData([{ time: local(plan.t1), value }, { time: local(plan.t2), value }]);
+        lines.push({ series, group: plan.group, plan });
+      }
+    }
+  }
+
+  function planMarkers(groups) {
+    const marks = [];
+    for (const plan of (model && model.plans) || []) {
+      if (!groups.has(plan.group)) continue;
+      const long = plan.direction === 'LONG';
+      // Closed trades: the arrow alone, the result sits at the exit dot (no stacked names).
+      if (plan.fill_t != null) {
+        marks.push({ time: local(plan.fill_t), position: long ? 'belowBar' : 'aboveBar', color: long ? '#35d39a' : '#ff6577',
+                     shape: long ? 'arrowUp' : 'arrowDown', size: 0.8, text: plan.status === 'CLOSED' ? '' : `${plan.label} ${long ? 'L' : 'S'}` });
+      }
+      if (plan.close_t != null && plan.net_r != null) {
+        const r = Number(plan.net_r);
+        marks.push({ time: local(plan.close_t), position: long ? 'aboveBar' : 'belowBar', color: r > 0 ? '#35d39a' : r < 0 ? '#ff6577' : '#8491a3',
+                     shape: 'circle', text: `${r >= 0 ? '+' : ''}${EN ? r.toFixed(2) : r.toFixed(2).replace('.', ',')} R` });
+      }
+    }
+    marks.sort((a, b) => a.time - b.time);
+    candles.setMarkers(marks);
+  }
+
   function applyVisibility(groups) {
+    planMarkers(groups);
     for (const item of lines) item.series.applyOptions({ visible: groups.has(item.group) });
     tpo.visible = groups.has('tpo');
     vp.visible = groups.has('vp');
@@ -309,6 +381,8 @@
       }]);
       lines.push({ series, group: d.group, drawing: d });
     }
+    drawPlans(groups);
+    planMarkers(groups);
   }
 
   function setLegend(bar) {
@@ -380,6 +454,18 @@
     if (!action) return;
     if (action.dataset.action === 'now') chart.timeScale().scrollToRealTime();
     if (action.dataset.action === 'fit') chart.timeScale().fitContent();
+    if (action.dataset.action === 'plans') {
+      // Only TIM's current paper plans (SHORT, MID, LONG) on the candles: levels and the 30m test versions off.
+      const groups = new Set(Object.keys(model ? model.groups : {}).filter(key => key.startsWith('plans_') && key !== 'plans_old'));
+      layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
+      saveGroups(groups); applyVisibility(groups);
+    }
+    if (action.dataset.action === 'none') {
+      // Every tick off: only the candles stay.
+      const groups = new Set();
+      layers.querySelectorAll('input').forEach(node => { node.checked = false; });
+      saveGroups(groups); applyVisibility(groups);
+    }
     if (action.dataset.action === 'reset') { try { localStorage.removeItem(STORE); } catch (error) { /* ignore */ }
       const groups = new Set(model ? model.default_groups : []);
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });

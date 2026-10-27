@@ -53,6 +53,10 @@ class DashboardState:
     plan_journal_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal.json"))
     plan_journal_struct_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_struct.json"))
     plan_journal_level_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_level.json"))
+    # Horizon journals (Uzi 27.10.2026): TIM rule on 15m / 1h / 1d, see plan_journal.HORIZONS.
+    plan_journal_short_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_short.json"))
+    plan_journal_mid_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_mid.json"))
+    plan_journal_long_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_long.json"))
     trader_journal_path: Path = field(default_factory=lambda: Path("data/journal/trader_journal.json"))
     qualification_root_path: Path = field(default_factory=lambda: Path("data/qualification"))
     live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))
@@ -446,3 +450,11 @@ class DashboardState:
             "source_window_complete": len(observations) < 500 and len(validations) < 500 and len(cases) < 1000,
         }
         return ResearchInsightsEngine().analyze(observations, validations, cases, manifest, quality)
+
+
+def plan_journal_paths(state: Any) -> dict[str, Path]:
+    """Journal key -> file of TIM's paper journals: the three horizons, then the earlier 30m versions."""
+    paths = {"short": getattr(state, "plan_journal_short_path", None), "mid": getattr(state, "plan_journal_mid_path", None),
+             "long": getattr(state, "plan_journal_long_path", None), "tim": getattr(state, "plan_journal_path", None),
+             "struct": getattr(state, "plan_journal_struct_path", None), "level": getattr(state, "plan_journal_level_path", None)}
+    return {key: Path(path) for key, path in paths.items() if path is not None}

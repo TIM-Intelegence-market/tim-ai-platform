@@ -12,9 +12,14 @@ liefert ausschließlich:
 | Pfad | Inhalt |
 | --- | --- |
 | `/chart?symbol=&tf=` | interaktiver Chart (BTC/ETH/SOL, alle Zeitrahmen, Level, TPO, Volume Profile, Footprint) |
-| `/journal?rule=` | Papier-Journale: Regelvergleich und die letzten 100 Pläne |
+| `/journal?rule=` | Papier-Journal je Regel: Ergebnis netto, Ergebniskurve, offene Pläne, geschlossene Trades; nie ausgelöste Pläne, korrigierte Einträge und Regelvergleich eingeklappt |
 | `/api/chart/live`, `/api/plan-journal` | die Daten dieser beiden Seiten |
 | `/assets/chart/*.js`, `/robots.txt` | Chart-Skripte, Suchmaschinen-Sperre |
+
+Aktuell hält sie der Dashboard-Agent (`com.tim.dashboard-refresh`): Sie läuft im selben Runtime-Prozess wie
+das Control Center und kommt mit jedem Deploy mit. Solange die Flag-Datei existiert, prüft der Agent nach
+jedem Neustart zusätzlich `/chart` und `/journal` auf 8780 und rollt zurück, wenn sie nicht antworten
+(`health_checks` mit `when_file` in `ops/dashboard_refresh/policy.json`).
 
 Alles andere ist 404 (Mac, System, Betrieb, Freigaben, Worker, `/api/state`, LLM, Research-Router,
 Exporte, Trader-Journal). POST/PUT/DELETE sind 405. Je Besucher 120 Anfragen pro Minute (danach 429),
