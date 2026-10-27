@@ -174,3 +174,77 @@ def test_repository_query_aggregates_per_bucket_level_and_side() -> None:
         asyncio.run(repo.agg_trade_levels("BTCUSDT", NOW, DAY, 5.0, 300))
     with pytest.raises(ValueError):
         asyncio.run(repo.agg_trade_levels("BTCUSDT", DAY, NOW, 0, 300))
+
+
+def _store(rows_by_bucket: dict[int, list[tuple[float, float, float]]], tick: float = 5.0) -> dict:
+    """A footprint store with given [level, bid, ask] rows per 5-minute bucket."""
+    rows = [[bucket, level, bid, ask] for bucket, levels in sorted(rows_by_bucket.items()) for level, bid, ask in levels]
+    return {"symbol": "BTCUSDT", "tick": tick, "bucket_seconds": BUCKET_SECONDS, "source": "test", "updated_at": NOW.isoformat(),
+            "days": {"2026-10-26": rows}, "complete": {}}
+
+
+def test_footprint_bars_mark_stacked_imbalances_and_auction_edges() -> None:
+    start = int(DAY.timestamp())
+    # Buyers lift the ask three levels in a row against thin bids one level below: a stacked buy imbalance.
+    # The high (120) traded on both sides: unfinished auction; the low (100) only on the bid: finished.
+    levels = [(100.0, 1.0, 0.0), (105.0, 1.0, 8.0), (110.0, 1.0, 8.0), (115.0, 1.0, 8.0), (120.0, 1.0, 1.0)]
+    result = footprint_bars(_store({start: levels, start + 300: levels}), [start, start + 300], 300)
+    assert result["step"] == 5.0  # rows small enough to keep the tick
+    bar = result["bars"][0]
+    assert [[105.0, "ask"], [110.0, "ask"], [115.0, "ask"]] == [i for i in bar["imbalances"] if i[1] == "ask"]
+    assert bar["stacked"] == [[105.0, 115.0, "ask"]]
+    assert bar["unfinished_high"] is True and bar["unfinished_low"] is False
+    # Two imbalances are no stack; a gap in the run breaks it.
+    short = footprint_bars(_store({start: levels[:3] + [(115.0, 1.0, 1.0)], start + 300: levels}), [start, start + 300], 300)
+    assert short["bars"][0]["stacked"] == []
+
+
+def test_footprint_rows_stay_fine_enough_for_zooming() -> None:
+    start = int(DAY.timestamp())
+    # A 300 USD range per bar: about 30 rows are sent (the chart merges them when zoomed out).
+    levels = [(100_000.0 + 5 * i, 1.0, 1.0) for i in range(60)]
+    result = footprint_bars(_store({start: levels, start + 300: levels}), [start, start + 300], 300)
+    assert 20 <= len(result["bars"][0]["levels"]) <= 60
+    assert result["step"] % 5.0 == 0
+
+
+def test_browser_shows_footprint_after_the_button(tmp_path, monkeypatch) -> None:
+    import shutil
+    import subprocess
+    import json
+    from pathlib import Path
+
+    from src.dashboard import chart_live
+    from src.dashboard.public_server import PublicDashboardServer
+    from tests.test_chart_live import fake_fetch
+
+    if not shutil.which("node") or subprocess.run(["node", "-e", "require('playwright')"], capture_output=True, timeout=30, check=False).returncode:
+        pytest.skip("node with playwright not installed (cloud sandbox has it, the Mac runner not)")
+    fetch = fake_fetch()
+    monkeypatch.setattr(chart_live, "CACHE", KlineCache(fetch))
+    # Trades inside every 5m candle: bid x ask on each 5 USD tick between low and high.
+    rows: dict[int, list[tuple[float, float, float]]] = {}
+    for candle in fetch("BTCUSDT", "5m", 1000)[-300:]:
+        bucket = int(datetime.fromisoformat(candle["open_time"]).timestamp())
+        low, high = int(candle["low"] // 5) * 5, int(candle["high"] // 5) * 5
+        rows[bucket] = [(float(level), 1.0 + (level // 5) % 3, 2.0 + (level // 5) % 4) for level in range(low, high + 5, 5)]
+    store = _store(rows)
+    store["days"] = {datetime.fromtimestamp(min(rows), timezone.utc).date().isoformat(): store["days"]["2026-10-26"]}
+    state = DashboardState()
+    state.footprint = store
+    state.plan_journal_path = state.plan_journal_struct_path = state.plan_journal_level_path = tmp_path / "none.json"
+    server = PublicDashboardServer(state, "127.0.0.1", 0)
+    server.start()
+    try:
+        script = Path(__file__).resolve().parent.parent / "scripts" / "chart_footprint_check.mjs"
+        result = subprocess.run(["node", str(script), f"http://127.0.0.1:{server.httpd.server_address[1]}", str(tmp_path)],
+                                capture_output=True, text=True, timeout=180, check=False)
+    finally:
+        server.stop()
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(result.stdout.strip().splitlines()[-1])
+    assert report["errors"] == []
+    assert report["yellowZoomedOut"] == 0  # zoomed out: only the hint, no cells
+    assert report["yellowFootprint"] > 100  # after the button: POC frames of the bid x ask cells
+    assert {"day", "tpo", "vp", "fp"} <= set(report["legacyChecked"]) and "week" not in report["legacyChecked"]
+    assert (tmp_path / "footprint-5m.png").stat().st_size > 10_000
