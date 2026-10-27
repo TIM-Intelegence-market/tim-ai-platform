@@ -9,6 +9,9 @@ Builds the trader's preparation in the order the Broncx bootcamp teaches it
 - naked POCs (daily POCs no later candle has traded through),
 - Asia, London and New York session high/low,
 - initial balance (first 90 minutes of the UTC day) and its width,
+- month, quarter and year value plus weekly, monthly and 12-month VWAPs
+  (``htf_levels``, under ``htf_levels`` and not in ``levels``, which the plan
+  journals read),
 - poor highs/lows of the previous day (two or more 30-minute periods at
   the extreme),
 - where price is against the previous day's value, with a mechanical
@@ -26,6 +29,7 @@ from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from src.dashboard.chart_model import _fmt, clean_candles, swing_points, volume_profile
+from src.dashboard.htf_levels import build_htf_levels
 
 SCHEMA = "tim_session_map/1"
 HTF = (("4h", 4 * 3600), ("1D", 86400), ("1W", 7 * 86400))
@@ -272,6 +276,7 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
     model: dict[str, Any] = {"schema": SCHEMA, "generated_at": now.isoformat(), "read_only": True,
                              "provenance": "PUBLIC_MARKET_DATA (Binance Spot, TIM-Runtime); Profile aus Kerzen geschätzt",
                              "notes": [], "htf": {}, "bias": None, "levels": [], "sessions": [], "initial_balance": None}
+    model["htf_levels"] = build_htf_levels(series, now, quarter[-1]["close"] if quarter else None)
     if not quarter or not hours:
         model["notes"].append("Zu wenige 30m- oder 1h-Kerzen für die Vorbereitung.")
         return model
