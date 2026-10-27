@@ -57,9 +57,15 @@ def _htf_section(htf: Mapping[str, Any]) -> str:
     )
 
 
-def _prep_page(data: dict[str, Any], model: Mapping[str, Any], macro: Mapping[str, Any] | None | bool = False) -> str:
-    """``macro``: the macro bar (``macro_bar.build_macro_bar``), None while it loads, False = no macro section."""
+def _prep_page(data: dict[str, Any], model: Mapping[str, Any], macro: Mapping[str, Any] | None | bool = False,
+               day_entry: Mapping[str, Any] | None = None, with_day: bool = False) -> str:
+    """``macro``: the macro bar (``macro_bar.build_macro_bar``), None while it loads, False = no macro section.
+    ``with_day``: show today's "Mein Tag" banner for ``day_entry``."""
     body = _hero("Vorbereitung", "Bias von oben, Vortages- und Wochen-Value, naked POCs und Sessions: Broncx' Schritte 1 bis 3 auf einer Seite. Nur Beobachtung, keine Order.")
+    if with_day:
+        from src.dashboard.pages.my_day import prep_banner
+
+        body += prep_banner(day_entry)
     if macro is not False:
         from src.dashboard.macro_bar import macro_rows_html
 
