@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+import plistlib
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,10 @@ import pytest
 from src.operational import dashboard_refresh as dr
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY = dr.load_policy(ROOT / "ops/dashboard_refresh/policy.json")
+LIVE_POLICY = dr.load_policy(ROOT / "ops/dashboard_refresh/policy.json")
+# The restart-interval logic is tested with distinct values (60 min, 20 min display-only);
+# the live values are checked separately in test_live_policy_intervals.
+POLICY = {**LIVE_POLICY, "min_minutes_between_runtime_restarts": 60, "min_minutes_between_runtime_restarts_display_only": 20}
 # The S-K study as it held deploys before Uzi released it (24.10.): the hold mechanism stays tested.
 STUDY_POLICY = {**POLICY, "studies": [{key: value for key, value in POLICY["studies"][0].items()
                                        if not key.startswith("released")}]}
@@ -712,3 +716,11 @@ def test_red_or_diverged_target_is_not_loaded(live):
     new_commit(origin, "src/operational/dashboard_refresh.py", "raise SystemExit('bad')\n")
     mac.ci = {"status": "completed", "conclusion": "failure"}
     assert load_script().newer_agent(agent) is None
+
+
+def test_live_policy_intervals():
+    # Uzi 27.10.2026: the agent checks every 5 minutes and may restart the runtime after 5 minutes.
+    assert LIVE_POLICY["min_minutes_between_runtime_restarts"] == 5
+    assert LIVE_POLICY["min_minutes_between_runtime_restarts_display_only"] == 5
+    plist = plistlib.loads((ROOT / "ops/launchd/com.tim.dashboard-refresh.plist").read_bytes())
+    assert plist["StartInterval"] == 300
