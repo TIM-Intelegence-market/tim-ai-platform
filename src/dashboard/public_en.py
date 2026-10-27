@@ -33,7 +33,7 @@ GROUPS_EN = {
     "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "quarter": "Quarter (1Q)", "year": "Year (1Y)",
     "vwap": "VWAP (week, month, 12M)", "naked": "naked POC",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
-    "structure": "BOS / MSS", "trend": "Trend lines", "tpo": "TPO (day profile)",
+    "structure": "BOS / MSS", "trend": "Trend lines", "fib": "Fibonacci (last swing)", "tpo": "TPO (day profile)",
     "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
     "plans_short": "TIM plans SHORT 15m", "plans_mid": "TIM plans MID 1h", "plans_long": "TIM plans LONG 1D",
     "plans_old": "TIM plans, test versions 30m",
@@ -71,6 +71,8 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^Schlusskurs darüber = BOS", "A close above = BOS"),
     (r"^Schlusskurs darunter = BOS", "A close below = BOS"),
     (r"durch die letzten zwei Swing-Hochs \((\d+) Kerzen je Seite\)", r"through the last two swing highs (\1 candles per side)"),
+    (r"^Long-Fib Swing-Tief → Hoch \(Docht\), Zone, kein Signal", "Long fib, swing low → high (wicks), zone, not a signal"),
+    (r"^Short-Fib Swing-Hoch → Tief \(Docht\), Zone, kein Signal", "Short fib, swing high → low (wicks), zone, not a signal"),
     (r"durch die letzten zwei Swing-Tiefs \((\d+) Kerzen je Seite\)", r"through the last two swing lows (\1 candles per side)"),
 )
 NOTES_EN: tuple[tuple[str, str], ...] = (
