@@ -293,11 +293,18 @@
         crosshairMarkerVisible: false, title: d.finished ? '' : d.label, visible: groups.has(d.group),
         autoscaleInfoProvider: () => null,  // levels never squeeze the candles
       });
-      series.setData([{ time: local(d.t1), value: d.p1 }, { time: local(d.t2), value: d.p2 }]);
-      // Name at the start of the segment; short segments (a level from the last few candles) keep only the
-      // label on the price axis, otherwise the texts pile up at the right edge.
+      const points = [{ time: local(d.t1), value: d.p1 }, { time: local(d.t2), value: d.p2 }];
+      const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
+      if (mid) points.splice(1, 0, { time: local(d.tm), value: d.p1 });  // BOS/MSS: horizontal, label in the middle
+      series.setData(points);
+      // Name at the start of the segment (BOS/MSS: in the middle, above a break up, below a break down);
+      // short segments (a level from the last few candles) keep only the label on the price axis,
+      // otherwise the texts pile up at the right edge.
+      const structure = d.group === 'structure';
       series.setMarkers([{
-        time: local(d.t1), position: d.p2 >= model.last ? 'aboveBar' : 'belowBar', color: d.color, shape: 'circle', size: 0.4,
+        time: local(mid ? d.tm : d.t1),
+        position: structure ? (d.direction === 'UP' ? 'aboveBar' : 'belowBar') : (d.p2 >= model.last ? 'aboveBar' : 'belowBar'),
+        color: d.color, shape: structure ? (d.direction === 'UP' ? 'arrowUp' : 'arrowDown') : 'circle', size: structure ? 0.6 : 0.4,
         text: d.bars >= SHORT_BARS || d.finished ? d.label + (d.clipped ? ' ←' : '') : '',
       }]);
       lines.push({ series, group: d.group, drawing: d });

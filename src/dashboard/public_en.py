@@ -49,6 +49,13 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r" \(läuft\)", " (running)"),
     (r"Initial Balance \(90 min ab 00:00 UTC\)", "Initial Balance (first 90 min from 00:00 UTC)"),
     (r"Schlusskurs jenseits des bestätigten Swings", "Close beyond the confirmed swing"),
+    (r"BOS-Ziel", "BOS target"),
+    (r"^Bruch des Swings, per Schlusskurs \(Docht zählt nicht\)", "Break of the swing, by the close (a wick does not count)"),
+    (r"^Bruch des (Strong Low|Strong High), per Schlusskurs \(Docht zählt nicht\)", r"Break of the \1, by the close (a wick does not count)"),
+    (r"^Trend aufwärts; Schlusskurs darunter = MSS", "Uptrend; a close below = MSS"),
+    (r"^Trend abwärts; Schlusskurs darüber = MSS", "Downtrend; a close above = MSS"),
+    (r"^Schlusskurs darüber = BOS", "A close above = BOS"),
+    (r"^Schlusskurs darunter = BOS", "A close below = BOS"),
     (r"durch die letzten zwei Swing-Hochs \((\d+) Kerzen je Seite\)", r"through the last two swing highs (\1 candles per side)"),
     (r"durch die letzten zwei Swing-Tiefs \((\d+) Kerzen je Seite\)", r"through the last two swing lows (\1 candles per side)"),
 )
@@ -150,6 +157,9 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interactive candlestick chart'></div></div>"
         "<p id='tc-live-status' class='cc-note tc-live__status'>Chart loading… (needs JavaScript)</p>"
         "<p class='cc-note'>Mouse wheel = zoom, drag = pan, drag the price axis = change height, double-click the axis = reset. "
+        "<b>BOS / MSS</b> count only on a close (a wick through the level is a sweep): BOS = break of the last swing in trend direction, "
+        "MSS = close beyond the <b>Strong Low</b> (uptrend) or <b>Strong High</b> (downtrend), the low/high the last push came from. "
+        "Dashed and running to now: the open Strong Low/High and the <b>BOS target</b>. Swings: 3 candles per side. "
         "Every line starts where its level formed (highs/lows at their candle, profiles at the start of their day/week) and carries "
         "timeframe and name, e.g. <b>1D VAH</b> or <b>1W POC</b>. A ← means the start lies left of the loaded candles. "
         "<b>TPO</b>: day profile from 30-minute periods (letters A, B, C … from 00:00 UTC) behind the candles, value area lighter, "
