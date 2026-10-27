@@ -46,6 +46,7 @@ HEALTH_SNAPSHOT_INTERVAL_SECONDS = 5.0
 LIVE_EVIDENCE_INTERVAL_SECONDS = 60.0
 PLAN_JOURNAL_INTERVAL_SECONDS = 60  # paper journal of the Setup-Pfad plans
 FOOTPRINT_INTERVAL_SECONDS = 120  # chart footprint / volume profile from aggregated aggTrades
+GAMMA_INTERVAL_SECONDS = 300  # options gamma from Deribit's public book (display and analysis context only)
 HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
 
 
@@ -588,6 +589,22 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _gamma_loop(self) -> None:
+        # Options gamma from Deribit's public options book (no key); display and analysis context, never on the ingestion path.
+        from src.dashboard.gamma_data import refresh as refresh_gamma
+
+        while not self.worker_stop.is_set():
+            try:
+                await asyncio.to_thread(refresh_gamma, self.dashboard_state, settings.symbol)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - options context must not stop the runtime
+                log.warning("gamma refresh failed: %s: %s", type(error).__name__, error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=GAMMA_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
     async def _derived_candles_loop(self) -> None:
         # 4h and 1d candles from persisted 1h candles; research data only, never on the ingestion path.
         while not self.worker_stop.is_set():
@@ -681,6 +698,7 @@ class TIMApplication:
         journal_task = asyncio.create_task(self._plan_journal_loop(), name="tim-plan-journal")
         derived_task = asyncio.create_task(self._derived_candles_loop(), name="tim-derived-candles")
         footprint_task = asyncio.create_task(self._footprint_loop(), name="tim-chart-footprint")
+        gamma_task = asyncio.create_task(self._gamma_loop(), name="tim-options-gamma")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
@@ -691,6 +709,7 @@ class TIMApplication:
             journal_task.cancel()
             derived_task.cancel()
             footprint_task.cancel()
+            gamma_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's

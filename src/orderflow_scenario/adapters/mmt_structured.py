@@ -62,4 +62,5 @@ class MMTStructuredDataAdapter:
             extra_notes=base.extra_notes + ("mmt_structured_export_limited_to_recognized_fields",),
             positioning=base.positioning,
             profile=base.profile,
+            gamma=base.gamma,
         )

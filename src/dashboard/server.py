@@ -130,7 +130,9 @@ class DashboardServer:
                     try:
                         with outer.state.lock:
                             footprint = dict(outer.state.footprint)
-                        model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint)
+                            gamma = dict(outer.state.gamma)
+                        model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(),
+                                                 footprint=footprint, gamma=gamma)
                     except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
@@ -147,11 +149,26 @@ class DashboardServer:
                 if path == "/api/prep":
                     from src.dashboard.session_map import build_session_map
 
+                    from src.dashboard.gamma_data import prep_block
+
                     try:
                         prep = build_session_map(outer.state.chart_series())
+                        with outer.state.lock:
+                            gamma = outer.state.gamma.get(str(outer.state.market_status.get("symbol") or "BTCUSDT"))
+                        prep["gamma"] = prep_block(gamma)
                     except Exception as exc:  # noqa: BLE001 - malformed stored data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(prep, default=str).encode(), "application/json")
+                if path == "/api/gamma":
+                    from src.dashboard.gamma_data import with_age
+
+                    symbol = query.get("symbol", ["BTCUSDT"])[0]
+                    with outer.state.lock:
+                        snapshot = outer.state.gamma.get(symbol)
+                    current = with_age(snapshot)
+                    if current is None:
+                        return self.respond(404, json.dumps({"error": "no gamma snapshot", "symbol": symbol}).encode(), "application/json")
+                    return self.respond(200, json.dumps(current, default=str).encode(), "application/json")
                 if path == "/trader-journal":
                     saved = query.get("saved", [""])[0]
                     return self.trader_journal_page(200, saved=saved if re.fullmatch(r"TJ-\d{4,5}", saved or "") else None)
