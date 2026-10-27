@@ -41,7 +41,8 @@ LEVEL_LIMIT = 500  # same depth as the runtime chart history
 INTERVAL_SECONDS = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400,
                     "6h": 21600, "12h": 43200, "1d": 86400, "3d": 259200, "1w": 604800, "1M": 2678400}
 INTRADAY_ONLY = ("session", "ib", "running")  # not drawn on 1d and above
-MAX_STRUCTURE = 4  # newest BOS/MSS segments
+MAX_STRUCTURE = 6  # newest BOS/MSS segments
+STRUCTURE_PIVOT = 3  # candles on each side of a structure swing (journals keep their own width)
 TREND_PIVOT = 5  # wider pivots for trend lines than for BOS: only clear swings
 PROVENANCE = "BINANCE_PUBLIC_KLINES_CHART_DISPLAY"
 FAIL_PAUSE = 30.0  # seconds without exchange requests after a failure (one slow page, not seven)
@@ -228,15 +229,146 @@ def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datet
     return out
 
 
-def structure_drawings(candles: Sequence[Mapping[str, Any]], timeframe: str) -> list[dict[str, Any]]:
-    """Newest BOS/MSS on the shown candles as segments from swing to break."""
-    closed = [c for c in candles if c.get("closed", True)]
+def structure_swings(candles: Sequence[Mapping[str, Any]], width: int = STRUCTURE_PIVOT) -> list[dict[str, Any]]:
+    """Swing highs/lows for the chart's market structure.
+
+    Like ``chart_model.swing_points`` but equal highs (double tops) and equal
+    lows count: the last of two equal extremes is the swing (``>=`` to the
+    left, ``>`` to the right). The plan journals keep their own swing rule.
+    """
     result = []
-    for event in structure_events(closed, timeframe)[-MAX_STRUCTURE:]:
+    for index in range(width, len(candles) - width):
+        candle = candles[index]
+        left, right = candles[index - width:index], candles[index + 1:index + width + 1]
+        if all(candle["high"] >= c["high"] for c in left) and all(candle["high"] > c["high"] for c in right):
+            result.append({"index": index, "price": candle["high"], "kind": "HIGH"})
+        if all(candle["low"] <= c["low"] for c in left) and all(candle["low"] < c["low"] for c in right):
+            result.append({"index": index, "price": candle["low"], "kind": "LOW"})
+    return result
+
+
+def market_structure(candles: Sequence[Mapping[str, Any]], timeframe: str, width: int = STRUCTURE_PIVOT) -> dict[str, Any]:
+    """BOS and MSS of the swing structure, causal, decided by the close (wicks never break).
+
+    - No trend yet: the first close beyond the latest confirmed swing high or low is a BOS
+      and sets the trend.
+    - Uptrend: BOS up = close above the highest swing high confirmed since the last break
+      and above the broken level (the top of the leg; a wick through it is a sweep, not a
+      break). At every break up, the lowest low between the broken swing and the break
+      becomes the protected low (origin of the impulse, "Strong Low"); every new, higher
+      swing high lifts it to the last confirmed swing low before that high (the higher low
+      that launched the move).
+      MSS down = close below the protected low. Internal swing lows of a pullback do not
+      flip the trend. Downtrend mirrored.
+    A swing is known at the close of the ``width``-th candle after it (confirmation); that
+    close and later ones can break it.
+    Mechanical price structure for the display, not an orderflow signal and not a plan.
+
+    Returns ``events`` (oldest first) and the state after the last closed candle:
+    ``trend``, ``protected`` (the level whose close-break would be the next MSS) and
+    ``target`` (the swing whose close-break would be the next BOS), each with its candle index.
+    """
+    by_confirm: dict[int, list[dict[str, Any]]] = {}
+    for s in structure_swings(candles, width):
+        by_confirm.setdefault(s["index"] + width, []).append(s)  # known at the close of the width-th candle after it
+    trend: str | None = None
+    last_break, last_level = -1, None
+    latest: dict[str, dict[str, Any]] = {}  # before a trend: newest confirmed swing per side
+    seen: dict[str, list[dict[str, Any]]] = {"HIGH": [], "LOW": []}  # all confirmed swings, oldest first
+    pending: dict[str, dict[str, Any] | None] = {"HIGH": None, "LOW": None}  # next BOS level per side
+    protected: dict[str, Any] | None = None  # {"index", "price"} on the opposite side of the trend
+    events: list[dict[str, Any]] = []
+
+    def emit(kind: str, direction: str, index: int, price: float, i: int) -> None:
+        events.append({"kind": kind, "direction": direction, "timeframe": timeframe, "level": price,
+                       "swing_time": candles[index]["open_time"].isoformat(),
+                       "break_time": candles[i]["open_time"].isoformat(), "break_index": i, "swing_index": index})
+
+    def origin(direction: str, start: int, end: int) -> dict[str, Any]:
+        """Extreme between the broken level and the break: lowest low after a break up, highest high after a break down."""
+        span = range(start, end + 1)
+        if direction == "UP":
+            index = min(span, key=lambda j: (candles[j]["low"], -j))
+            return {"index": index, "price": candles[index]["low"]}
+        index = max(span, key=lambda j: (candles[j]["high"], j))
+        return {"index": index, "price": candles[index]["high"]}
+
+    for i, candle in enumerate(candles):
+        for s in by_confirm.get(i, []):
+            latest[s["kind"]] = s
+            seen[s["kind"]].append(s)
+            # Next BOS level: the most extreme swing after the last break and beyond the broken level
+            # (a higher high in an uptrend, a lower low in a downtrend); internal swings of a pullback do not count.
+            beyond = last_level is None or (s["price"] > last_level if s["kind"] == "HIGH" else s["price"] < last_level)
+            current = pending[s["kind"]]
+            extreme = current is None or (s["price"] > current["price"] if s["kind"] == "HIGH" else s["price"] < current["price"])
+            if s["index"] >= last_break and beyond and extreme:
+                if trend is not None and s["kind"] == ("HIGH" if trend == "UP" else "LOW"):
+                    # A new extreme of the trend leg (also a wick-only higher high / lower low): the protected
+                    # level moves up (down) to the last confirmed swing low (high) before it, the higher low
+                    # (lower high) that launched the move. It only ever tightens.
+                    before = [x for x in seen["LOW" if trend == "UP" else "HIGH"] if x["index"] < s["index"]]
+                    if before:
+                        candidate = {"index": before[-1]["index"], "price": before[-1]["price"]}
+                        if protected is None or (candidate["price"] > protected["price"] if trend == "UP" else candidate["price"] < protected["price"]):
+                            protected = candidate
+                pending[s["kind"]] = s
+        close = candle["close"]
+        if trend is None:
+            for side, direction in (("HIGH", "UP"), ("LOW", "DOWN")):
+                s = latest.get(side)
+                if s and (close > s["price"] if direction == "UP" else close < s["price"]):
+                    emit("BOS", direction, s["index"], s["price"], i)
+                    trend, last_break, last_level, protected = direction, i, s["price"], origin(direction, s["index"], i)
+                    pending = {"HIGH": None, "LOW": None}
+                    break
+            continue
+        side = "HIGH" if trend == "UP" else "LOW"
+        target = pending[side]
+        if target and (close > target["price"] if trend == "UP" else close < target["price"]):
+            emit("BOS", trend, target["index"], target["price"], i)
+            last_break, last_level, protected = i, target["price"], origin(trend, target["index"], i)
+            pending = {"HIGH": None, "LOW": None}
+            continue
+        if protected and (close < protected["price"] if trend == "UP" else close > protected["price"]):
+            direction = "DOWN" if trend == "UP" else "UP"
+            emit("MSS", direction, protected["index"], protected["price"], i)
+            trend, last_break, last_level, protected = direction, i, protected["price"], origin(direction, protected["index"], i)
+            pending = {"HIGH": None, "LOW": None}
+    target = pending["HIGH" if trend == "UP" else "LOW"] if trend else None
+    return {"events": events, "trend": trend, "protected": protected, "target": target}
+
+
+def structure_drawings(candles: Sequence[Mapping[str, Any]], timeframe: str) -> list[dict[str, Any]]:
+    """Newest BOS/MSS as segments from the broken level to the break, plus the open structure levels.
+
+    The open levels run to the newest candle: "Strong Low"/"Strong High" (a close beyond = MSS)
+    and "BOS-Ziel" (a close beyond = next BOS in the trend direction).
+    """
+    closed = [c for c in candles if c.get("closed", True)]
+    structure = market_structure(closed, timeframe)
+    result = []
+    for event in structure["events"][-MAX_STRUCTURE:]:
         arrow = "↑" if event["direction"] == "UP" else "↓"
+        what = "Bruch des Swings" if event["kind"] == "BOS" else "Bruch des " + ("Strong Low" if event["direction"] == "DOWN" else "Strong High")
         result.append({"group": "structure", "tf": timeframe, "name": f"{event['kind']} {arrow}", "label": f"{timeframe} {event['kind']} {arrow}",
                        "price": event["level"], "start": event["swing_time"], "end": event["break_time"],
-                       "direction": event["direction"], "note": "Schlusskurs jenseits des bestätigten Swings"})
+                       "direction": event["direction"], "note": f"{what}, per Schlusskurs (Docht zählt nicht)"})
+    trend = structure["trend"]
+    if trend:
+        level = structure["protected"]
+        name = "Strong Low" if trend == "UP" else "Strong High"
+        if level:
+            result.append({"group": "structure", "tf": timeframe, "name": name, "label": f"{timeframe} {name}", "open": True,
+                           "price": level["price"], "start": closed[level["index"]]["open_time"].isoformat(),
+                           "direction": "DOWN" if trend == "UP" else "UP",
+                           "note": f"Trend {'auf' if trend == 'UP' else 'ab'}wärts; Schlusskurs {'darunter' if trend == 'UP' else 'darüber'} = MSS"})
+        target = structure["target"]
+        if target:
+            arrow = "↑" if trend == "UP" else "↓"
+            result.append({"group": "structure", "tf": timeframe, "name": f"BOS-Ziel {arrow}", "label": f"{timeframe} BOS-Ziel {arrow}", "open": True,
+                           "price": target["price"], "start": closed[target["index"]]["open_time"].isoformat(), "direction": trend,
+                           "note": f"Schlusskurs {'darüber' if trend == 'UP' else 'darunter'} = BOS"})
     return result
 
 
@@ -301,10 +433,12 @@ def place_drawings(drawings: Sequence[Mapping[str, Any]], times: Sequence[int]) 
         color, style = GROUP_STYLE[item["group"]]
         if item["group"] == "structure":
             color = "#35d39a" if item.get("direction") == "UP" else "#ff5c6c"
-            if item["name"].startswith("MSS"):
-                color = "#ffb020"
+            if item["name"].startswith("MSS") or item.get("open"):
+                color = "#ffb020" if not item["name"].startswith("BOS") else color
+            if item.get("open"):
+                style = "dashed"
         clipped = start < times[0]
-        finished = item["group"] == "structure" or bool(item.get("broken"))  # history, not a live level
+        finished = (item["group"] == "structure" and not item.get("open")) or bool(item.get("broken"))  # history, not a live level
         result = {**item, "color": color, "style": style, "t1": times[index], "t2": times[end_index], "clipped": clipped, "finished": finished,
                   "bars": end_index - index}
         if item["group"] == "trend":
@@ -318,6 +452,8 @@ def place_drawings(drawings: Sequence[Mapping[str, Any]], times: Sequence[int]) 
             result["p2"] = item["anchor_price"] + slope * (end_index - anchor)
         else:
             result["p1"] = result["p2"] = item["price"]
+        if item["group"] == "structure" and not item.get("open"):
+            result["tm"] = times[(index + end_index) // 2]  # label in the middle of the segment, as on TradingView
         placed.append(result)
     return placed
 

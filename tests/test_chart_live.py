@@ -14,8 +14,8 @@ import pytest
 
 from src.dashboard import chart_live
 from src.dashboard.app import DashboardServer, DashboardState
-from src.dashboard.chart_live import (INTERVAL_SECONDS, KlineCache, build_live_chart, fetch_klines, place_drawings,
-                                      trend_drawings)
+from src.dashboard.chart_live import (INTERVAL_SECONDS, KlineCache, build_live_chart, fetch_klines, market_structure,
+                                      place_drawings, structure_drawings, structure_swings, trend_drawings)
 from src.dashboard.pages.chart import APP_PATH, CHART_SCRIPTS, LIB_PATH, render_chart_page
 
 NOW = datetime(2026, 10, 26, 21, 10, tzinfo=timezone.utc)  # Monday evening
@@ -92,7 +92,9 @@ def test_open_candle_never_feeds_levels_or_structure() -> None:
     open_time = model["candles"][-1]["time"]
     for d in model["drawings"]:
         if d["group"] in ("structure", "trend"):
-            assert d["t2"] < open_time or d["group"] == "trend" and not d.get("broken")
+            # Finished BOS/MSS and broken trend lines end on a closed candle; open structure levels and
+            # unbroken trend lines run to the newest candle, but their price comes from closed candles only.
+            assert d["t2"] < open_time or (d["group"] == "trend" and not d.get("broken")) or d.get("open")
 
 
 def test_unknown_symbol_and_timeframe_fall_back_and_fetch_rejects_them() -> None:
@@ -228,3 +230,96 @@ def test_live_chart_carries_tpo_only_on_intraday_views() -> None:
     assert _model(tf="1d")["tpo"] == []
     app = CHART_SCRIPTS[APP_PATH].decode()
     assert "attachPrimitive(tpo)" in app and "useMediaCoordinateSpace" in app
+
+
+# --- BOS / MSS (swing structure) -----------------------------------------------------------------
+
+def _path(points: list[float], start: datetime = datetime(2026, 10, 1, tzinfo=timezone.utc)) -> list[dict]:
+    """Candles walking through ``points`` (close of each candle); the wick in the direction of the
+    candle is 10 long, the other one 5, so neighbouring candles never share a high or low."""
+    rows, previous = [], points[0]
+    for i, close in enumerate(points):
+        t = start + timedelta(hours=i)
+        up = close >= previous
+        rows.append({"open_time": t, "open": previous, "close": close, "high": max(previous, close) + (10 if up else 5),
+                     "low": min(previous, close) - (5 if up else 10), "closed": True})
+        previous = close
+    return rows
+
+
+def _kinds(events: list[dict]) -> list[tuple]:
+    return [(e["kind"], e["direction"]) for e in events]
+
+
+def test_structure_swings_count_equal_highs_and_lows() -> None:
+    # Double top: two candles with the same high. The plain pivot rule (strictly higher than all
+    # neighbours) finds neither; the structure swing takes the second one.
+    candles = _path([100, 110, 120, 130, 130, 120, 110, 100, 90])
+    for c in candles:
+        c["high"] = max(c["open"], c["close"])
+        c["low"] = min(c["open"], c["close"])
+    candles[3]["high"] = candles[4]["high"] = 135
+    highs = [s for s in structure_swings(candles, 2) if s["kind"] == "HIGH"]
+    assert [(s["index"], s["price"]) for s in highs] == [(4, 135)]
+
+
+def test_bos_needs_a_close_and_a_wick_is_only_a_sweep() -> None:
+    up = [100, 120, 140, 160, 150, 140, 130, 140, 150, 160, 185]
+    events = market_structure(_path(up), "1h", 2)["events"]
+    assert [(e["kind"], e["direction"], e["level"], e["break_index"]) for e in events] == [("BOS", "UP", 170, 10)]
+    # Same path but the last close stays below the swing high (only the wick goes through): no break.
+    candles = _path(up)
+    candles[-1]["close"], candles[-1]["high"] = 165, 190
+    assert market_structure(candles, "1h", 2)["events"] == []
+
+
+def test_pullback_inside_an_uptrend_is_not_an_mss() -> None:
+    # Higher highs with a small internal dip: the internal swing low breaks, the protected low holds.
+    path = [100, 120, 140, 165, 150, 140, 130, 140, 160, 180, 200, 190, 185, 175, 185, 190, 180, 170, 160, 170, 180, 200, 220, 230]
+    result = market_structure(_path(path), "1h", 2)
+    assert all(kind == "BOS" for kind, _ in _kinds(result["events"])), _kinds(result["events"])
+    assert result["trend"] == "UP"
+    # The old rule (any close against the last break = MSS) flips here twice: MSS down on the dip, MSS up after it.
+    from src.dashboard.chart_model import structure_events
+    assert [e["kind"] for e in structure_events(_path(path), "1h", 2)] == ["BOS", "MSS", "MSS"]
+
+
+def test_close_below_the_strong_low_is_an_mss_and_starts_a_downtrend() -> None:
+    path = [100, 120, 140, 160, 150, 140, 130, 140, 160, 180, 200, 190, 180, 170, 150, 125, 110, 100, 95, 90, 100, 105, 100, 95, 85, 80, 70]
+    result = market_structure(_path(path), "1h", 2)
+    kinds = _kinds(result["events"])
+    assert ("MSS", "DOWN") in kinds
+    mss = next(e for e in result["events"] if e["kind"] == "MSS")
+    assert mss["level"] == 120  # the higher low (130 - 10) that launched the move to the high
+    assert mss["swing_time"] < mss["break_time"]
+    assert result["trend"] == "DOWN"
+    after = kinds[kinds.index(("MSS", "DOWN")) + 1:]
+    assert after and all(k == ("BOS", "DOWN") for k in after)
+
+
+def test_structure_is_causal_future_candles_do_not_change_past_events() -> None:
+    path = [100, 120, 140, 160, 150, 140, 130, 140, 160, 180, 200, 190, 180, 170, 150, 125, 110, 100, 95, 90, 100, 105]
+    candles = _path(path + [100, 95, 85, 80, 70, 90, 120, 150])
+    full = market_structure(candles, "1h", 2)["events"]
+    for n in range(10, len(candles)):
+        partial = market_structure(candles[:n], "1h", 2)["events"]
+        assert partial == [e for e in full if e["break_index"] < n]
+
+
+def test_structure_drawings_show_open_levels_and_labels() -> None:
+    path = [100, 120, 140, 160, 150, 140, 130, 140, 160, 180, 200, 190, 180, 185, 195, 205, 215]
+    candles = _path(path)
+    candles.append({**candles[-1], "open_time": candles[-1]["open_time"] + timedelta(hours=1), "close": 400, "high": 410, "closed": False})
+    drawings = structure_drawings(candles, "1h")
+    names = [d["name"] for d in drawings]
+    assert "Strong Low" in names
+    assert all(d["label"].startswith("1h ") for d in drawings)
+    for d in drawings:
+        assert d["price"] < 400  # the open candle never sets a level
+    finished = [d for d in drawings if not d.get("open")]
+    assert finished and all(d["end"] > d["start"] for d in finished)
+    times = [int(c["open_time"].timestamp()) for c in candles]
+    for d in place_drawings(drawings, times):
+        assert d["finished"] is (not d.get("open"))
+        if not d.get("open"):
+            assert d["t1"] < d["tm"] < d["t2"] or d["t2"] - d["t1"] <= 3600
