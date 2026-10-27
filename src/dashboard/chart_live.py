@@ -70,8 +70,9 @@ GROUP_NAMES = {
 TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
+# The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
 DEFAULT_GROUPS = ("day", "week", "month", "naked", "structure", "trend", "tpo", "vp", "fp",
-                  "plans_short", "plans_mid", "plans_long", "plans_old")
+                  "plans_short", "plans_mid", "plans_long")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),

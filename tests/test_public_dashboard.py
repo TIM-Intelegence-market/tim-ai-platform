@@ -49,6 +49,7 @@ def test_chart_page_is_english_with_disclaimer(server):
     assert status == 200
     assert "<html lang='en'>" in body and "Research, not financial advice. Observation and paper tracking only" in body and "research, not financial advice" in body
     assert "data-lang='en'" in body and "data-tf='4h'" in body and "data-symbol='ETHUSDT'" in body
+    assert "data-action='none'>Untick all</button>" in body
     assert "script-src 'self'" in headers["Content-Security-Policy"]
     assert headers["X-Robots-Tag"] == "noindex, nofollow"
     # No German UI words and no link into the internal Control Center.
@@ -243,4 +244,5 @@ def test_public_chart_carries_tims_plans(server, tmp_path):
     plan = model["plans"][0]
     assert plan["fill_t"] <= plan["close_t"] and plan["net_r"] == -1.18 and plan["entry"] == 113000.0
     assert model["groups"]["plans_mid"] == "TIM plans MID 1h" and "plans_mid" in model["default_groups"]
+    assert "plans_old" in model["groups"] and "plans_old" not in model["default_groups"]  # test versions start hidden
     assert json.loads(_get(base + "/api/chart/live?symbol=ETHUSDT&tf=30m")[2])["plans"] == []

@@ -285,19 +285,23 @@
     layers.dataset.built = '1';
   }
 
-  // TIM's paper plans: entry (blue), stop (red), targets (green) from the fill until the close;
-  // a plan still waiting for its entry is dashed. Arrows mark the fill, a dot the exit with its net R.
+  // TIM's paper plans. A running or waiting plan shows entry (blue, dashed while waiting), stop (red)
+  // and targets (green). A closed trade keeps only a short entry line from fill to exit: its stop and
+  // targets are history and made the candles unreadable (Uzi 27.10.2026). Arrows mark the fill, a dot the exit.
   function drawPlans(groups) {
     for (const plan of model.plans || []) {
       const long = plan.direction === 'LONG';
       const waiting = plan.status === 'OPEN';
-      const legs = [[plan.entry, '#70a7ff', 2, waiting ? 'dashed' : 'solid', `${plan.label} ${long ? 'L' : 'S'}`],
-                    [plan.stop, '#ff6577', 1, 'dashed', 'SL'],
-                    ...plan.targets.map((value, index) => [value, '#35d39a', 1, 'dotted', `TP${index + 1}`])];
+      const closed = plan.status === 'CLOSED';
+      const legs = closed
+        ? [[plan.entry, long ? 'rgba(53,211,154,0.7)' : 'rgba(255,101,119,0.7)', 1, 'solid', '']]
+        : [[plan.entry, '#70a7ff', 2, waiting ? 'dashed' : 'solid', `${plan.label} ${long ? 'L' : 'S'}`],
+           [plan.stop, '#ff6577', 1, 'dashed', 'SL'],
+           ...plan.targets.map((value, index) => [value, '#35d39a', 1, 'dotted', `TP${index + 1}`])];
       for (const [value, color, width, style, title] of legs) {
         const series = chart.addLineSeries({
           color, lineWidth: width, lineStyle: STYLE[style], lastValueVisible: false, priceLineVisible: false,
-          crosshairMarkerVisible: false, title: plan.status === 'CLOSED' ? '' : title, visible: groups.has(plan.group),
+          crosshairMarkerVisible: false, title, visible: groups.has(plan.group),
           autoscaleInfoProvider: () => null,
         });
         series.setData([{ time: local(plan.t1), value }, { time: local(plan.t2), value }]);
@@ -311,9 +315,10 @@
     for (const plan of (model && model.plans) || []) {
       if (!groups.has(plan.group)) continue;
       const long = plan.direction === 'LONG';
+      // Closed trades: the arrow alone, the result sits at the exit dot (no stacked names).
       if (plan.fill_t != null) {
         marks.push({ time: local(plan.fill_t), position: long ? 'belowBar' : 'aboveBar', color: long ? '#35d39a' : '#ff6577',
-                     shape: long ? 'arrowUp' : 'arrowDown', text: `${plan.label} ${long ? 'L' : 'S'}` });
+                     shape: long ? 'arrowUp' : 'arrowDown', size: 0.8, text: plan.status === 'CLOSED' ? '' : `${plan.label} ${long ? 'L' : 'S'}` });
       }
       if (plan.close_t != null && plan.net_r != null) {
         const r = Number(plan.net_r);
@@ -436,9 +441,15 @@
     if (action.dataset.action === 'now') chart.timeScale().scrollToRealTime();
     if (action.dataset.action === 'fit') chart.timeScale().fitContent();
     if (action.dataset.action === 'plans') {
-      // Only TIM's paper plans on the candles: hide every level layer.
-      const groups = new Set(Object.keys(model ? model.groups : {}).filter(key => key.startsWith('plans_')));
+      // Only TIM's current paper plans (SHORT, MID, LONG) on the candles: levels and the 30m test versions off.
+      const groups = new Set(Object.keys(model ? model.groups : {}).filter(key => key.startsWith('plans_') && key !== 'plans_old'));
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
+      saveGroups(groups); applyVisibility(groups);
+    }
+    if (action.dataset.action === 'none') {
+      // Every tick off: only the candles stay.
+      const groups = new Set();
+      layers.querySelectorAll('input').forEach(node => { node.checked = false; });
       saveGroups(groups); applyVisibility(groups);
     }
     if (action.dataset.action === 'reset') { try { localStorage.removeItem(STORE); } catch (error) { /* ignore */ }
