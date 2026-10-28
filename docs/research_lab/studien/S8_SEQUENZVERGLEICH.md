@@ -32,10 +32,10 @@ Keine Runtime, kein ursprüngliches Kampagnenregister und keine Originalbelege w
   Referenz zur Einordnung: aus dem Training geschätzte Klassenbasisrate.
 - Gepaarter Monatsblock-Bootstrap, 4000 Ziehungen, Seed 20261028, 95%-Perzentilintervall. Alle Minuten des
   ausgewählten Blocks bleiben zusammen. Mindestens 24 Validierungsmonate für ein numerisches Urteil.
-- Als anfängliche praktische Prüfschwelle ist 1 % relative Verbesserung vorgeschlagen; die Nutzerfrage
-  dazu wurde vor Datenabruf gestellt. Die konkrete im Lauf verwendete Schwelle wird vor Fit in `plan.json`
-  eingefroren und im Ergebnis ausgewiesen. Die Rohverbesserung und das Intervall werden unabhängig davon
-  vollständig berichtet. Keine rückwirkende Änderung nach Ergebnissen.
+- Uzi bestätigte am 28.10.2026 vor dem ersten Modell-Fit die praktische Prüfschwelle: **mindestens 1 %
+  weniger Log-Loss**. Sie entspricht unverändert der bereits vor Datenabruf in `plan.json` eingefrorenen
+  vorgeschlagenen Schwelle. Bis zur Bestätigung wurden nur technische und ergebnisblinde Qualitätsprüfungen
+  durchgeführt, keine Modellresultate betrachtet. Rohverbesserung und Intervall werden vollständig berichtet.
 - Urteil: Untergrenze > praktische Schwelle → praktischer Vorteil in dieser Stichprobenvalidierung;
   Untergrenze > 0 → messbar, praktische Größe ggf. unbestätigt; Obergrenze < 0 → schlechter;
   Obergrenze < praktische Schwelle → kein praktischer Vorteil nachgewiesen; sonst unklar.
