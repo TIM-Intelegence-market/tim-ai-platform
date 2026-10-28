@@ -47,6 +47,7 @@ LIVE_EVIDENCE_INTERVAL_SECONDS = 60.0
 PLAN_JOURNAL_INTERVAL_SECONDS = 60  # paper journal of the Setup-Pfad plans
 FOOTPRINT_INTERVAL_SECONDS = 120  # chart footprint / volume profile from aggregated aggTrades
 GAMMA_INTERVAL_SECONDS = 300  # options gamma from Deribit's public book (display and analysis context only)
+LIQUIDATION_INTERVAL_SECONDS = 300  # estimated liquidation heatmap from Binance futures open interest (display only)
 HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
 
 
@@ -605,6 +606,25 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _liquidation_loop(self) -> None:
+        # Estimated liquidation heatmap from Binance's public futures open interest (no key), for every chart coin;
+        # display and analysis context, never on the ingestion path.
+        from src.dashboard.liquidation_data import SYMBOLS as LIQUIDATION_SYMBOLS
+        from src.dashboard.liquidation_data import refresh as refresh_liquidation
+
+        while not self.worker_stop.is_set():
+            for symbol in LIQUIDATION_SYMBOLS:
+                try:
+                    await asyncio.to_thread(refresh_liquidation, self.dashboard_state, symbol)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:  # noqa: BLE001 - chart context must not stop the runtime
+                    log.warning("liquidation heatmap refresh failed for %s: %s: %s", symbol, type(error).__name__, error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=LIQUIDATION_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
     async def _derived_candles_loop(self) -> None:
         # 4h and 1d candles from persisted 1h candles; research data only, never on the ingestion path.
         while not self.worker_stop.is_set():
@@ -702,6 +722,7 @@ class TIMApplication:
         derived_task = asyncio.create_task(self._derived_candles_loop(), name="tim-derived-candles")
         footprint_task = asyncio.create_task(self._footprint_loop(), name="tim-chart-footprint")
         gamma_task = asyncio.create_task(self._gamma_loop(), name="tim-options-gamma")
+        liquidation_task = asyncio.create_task(self._liquidation_loop(), name="tim-liquidation-heatmap")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
@@ -713,6 +734,7 @@ class TIMApplication:
             derived_task.cancel()
             footprint_task.cancel()
             gamma_task.cancel()
+            liquidation_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's

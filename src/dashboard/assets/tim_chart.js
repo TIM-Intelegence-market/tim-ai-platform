@@ -177,6 +177,54 @@
   };
   candles.attachPrimitive(vp);
 
+  // Estimated liquidation heatmap (src/liquidation_map): one band per price row from the period the
+  // positions were opened until a candle traded through it (or to the right edge while still open).
+  // Colour by size against the strongest cell: teal (small), yellow, red (large). An estimate, not orders.
+  function heatColor(share, open) {
+    const s = Math.max(0, Math.min(1, share));
+    const [r, g, b] = s < 0.5 ? [Math.round(40 + 410 * s), Math.round(170 + 50 * s), Math.round(160 - 250 * s)]
+      : [255, Math.round(195 - 230 * (s - 0.5)), Math.round(35 - 30 * (s - 0.5))];
+    const alpha = (open ? 0.22 : 0.10) + (open ? 0.50 : 0.25) * s;
+    return `rgba(${r},${Math.max(0, g)},${Math.max(0, b)},${alpha.toFixed(3)})`;
+  }
+  const liq = {
+    chart: null, series: null, requestUpdate: null, visible: true,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            const heat = model && model.liquidation;
+            if (!liq.visible || !liq.chart || !heat || !heat.cells || !heat.cells.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = liq.chart.timeScale();
+              const firstTime = local(model.candles[0].time);
+              const right = scale.logicalToCoordinate(model.candles.length - 1 + 8);
+              const max = Math.max(1, heat.max_usd);
+              for (const cell of heat.cells) {
+                const start = local(cell.start), end = cell.end == null ? null : local(cell.end);
+                let x0 = start < firstTime ? 0 : scale.timeToCoordinate(start);
+                let x1 = end == null ? (right === null ? mediaSize.width : right) : scale.timeToCoordinate(end);
+                if (x0 === null || x1 === null || x1 < 0 || x0 > mediaSize.width) continue;
+                const yTop = liq.series.priceToCoordinate(cell.price + heat.step);
+                const yBottom = liq.series.priceToCoordinate(cell.price);
+                if (yTop === null || yBottom === null) continue;
+                ctx.fillStyle = heatColor(cell.usd / max, cell.end == null);
+                ctx.fillRect(Math.max(0, x0), yTop, Math.max(1, Math.min(mediaSize.width, x1) - Math.max(0, x0)), Math.max(1, yBottom - yTop));
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(liq);
+
   // Footprint like TradingView's: rows follow the zoom (finer price steps the closer you get).
   // Far out: a short hint. Medium zoom: one heat column per candle (colour = delta, strength = volume).
   // Close: bid × ask numbers per row next to a slim candle, POC framed, 4:1 imbalances coloured,
@@ -453,6 +501,7 @@
     tpo.visible = groups.has('tpo');
     vp.visible = groups.has('vp');
     fp.visible = groups.has('fp');
+    liq.visible = groups.has('liq');
     if (tpo.requestUpdate) tpo.requestUpdate();
   }
 
@@ -520,7 +569,7 @@
       candles.setData(model.candles.map(c => ({ time: local(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
       volume.setData(model.candles.map(c => ({ time: local(c.time), value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)' })));
       drawLines();
-      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); }
+      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); }
       if (first || !sameView) {
         const count = model.candles.length;
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - 160), to: count + 8 });
