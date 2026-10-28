@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S10 |
-| Version | **0.2 – Regeln eingefroren als Code (`src/research_lab/hypotheses/s10.py`), Uzis Entscheidungen vom 28.10.2026 (Abschnitt 8); nichts registriert, keine Marktdaten ausgewertet** |
+| Version | **1.0 – BEENDET am Machbarkeits-Gate (28.10.2026). Regeln eingefroren mit Commit c9b3914 vor dem Zähllauf; nichts registriert, kein Ergebnis in R berechnet (Abschnitt 9)** |
 | Anlass | Uzi 28.10.2026 („go“ auf den Studienvorschlag): Methode des Orderflow-Traders Fabio Valentini (YouTube „Fabervaale ENG“) für TIM prüfen. Auswertung des Kanals: `/mnt/project-files/analysen/fabervaale-2026-10-28/fabervaale-kanal.md` |
 | Quelle der Regeln | Zwei Methodenvideos („The Simplest Orderflow Trading Model“, „My Signature Orderflow Model“), gelesen als Untertitel. Grundidee: Opening Range Breakout nach Toby Crabel (1990). Die Videos zeigen ausgewählte Tage ohne Kosten und ohne Gesamtstatistik; der Autor arbeitet für DeepCharts und bewirbt dessen bezahlte Indikatoren. Die Regeln unten sind eine mechanische Übersetzung; wo die Videos Ermessen lassen, steht die gewählte Festlegung in 4 und 8 |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kriterien K1–K5 unverändert |
@@ -135,11 +135,23 @@ Keine Kurse für S10 ausgewertet. Gesehen: die zwei Videos (NQ-Future, Herbst 20
 3. **Effektive Fallzahl:** Kriterium (Abschnitt 5).
 4. **New-York-Open bei Krypto:** BTC hat keine Kassasitzung. Die Studie nimmt an, dass die Eröffnung der US-Aktien
    (09:30 New York) auch bei BTC Volumen und Richtung bündelt. Die beschreibende Statistik (Volumen je Halbstunde)
-   kommt in den Zählbericht.
+   war für den Zählbericht vorgesehen, ist im Zähllauf 1.0 aber nicht enthalten (Studie am Gate beendet).
 
-## 9. Ergebnis
+## 9. Ergebnis (Zähllauf auf dem Mac, 28.10.2026 02:04 Ortszeit)
 
-Noch keins.
+Bericht: `../reports/s10_count_2026-10-28T0105Z.md` (Commit c9b3914, Datensatz-Hash `66fc5809…`, 1m/5m BTC/ETH/SOL bis 2024-12).
+
+- **Beide Varianten verfehlen das Gate 5.1.** S10-P: Training 241 Signale (nötig 500) an 164 Tagen, Validierung 250
+  (Gate 250 erreicht) an 173 Tagen (nötig 183), hochgerechneter Holdout 84 (nötig 200, schwächstes Jahr 2020).
+  S10-O: 15 / 7 Signale.
+- **Engpass ist der IB-Breitenfilter 4.1.5:** An rund 70 % der Handelstage (BTC 854 von 1 258, ETH 911, SOL 776 von
+  1 090) ist die IB schmaler als 0,25 · Tages-ATR. Bei den übrigen Tagen endet etwa jeder zweite mit einem Signal.
+- Variante O scheitert zusätzlich an der Absorption (die meisten Reaktionsschlüsse ohne Absorptionskerze davor).
+- **Befund:** In dieser Fassung ist S10 zu selten für einen Test. Es wurde kein R, keine Trefferquote und kein
+  Zufallsvergleich gerechnet. Das ist kein Beleg, dass die Idee nichts taugt.
+- Nach 5.1 werden die Regeln nicht gelockert. Eine Fassung ohne oder mit kleinerem IB-Filter wäre eine neue Studie mit
+  eigener Präregistrierung und Uzis Go; die Filterwahl wäre dann durch diese (ergebnisblinden) Zählungen vorbelastet.
+- Kein Registerplatz belegt (58/60), keine Protokoll-Einordnung nötig.
 
 ## Änderungsprotokoll
 
@@ -147,3 +159,4 @@ Noch keins.
 - 0.2 (28.10.2026): Uzis Entscheidungen (8), Regeln als Code eingefroren vor jedem Kontakt mit Marktdaten; präzisiert:
   5m-Vorlauf ab 08:15, Tages-ATR aus UTC-Tagen, Variante O wartet auf späteren Reaktionsschluss mit Absorption,
   Gate zusätzlich mit Signaltagen. Zähllauf: `scripts/research_lab_s10.py fetch` und `count` auf dem Mac.
+- 1.0 (28.10.2026): Zähllauf auf dem Mac, Gate verfehlt, Studie beendet (Abschnitt 9).
