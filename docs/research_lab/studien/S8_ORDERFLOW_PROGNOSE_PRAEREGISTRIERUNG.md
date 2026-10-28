@@ -1,6 +1,8 @@
 # S8: Lokale BTC-Orderflow-Prognose (Trade-only) – Präregistrierung
 
-**Status: ENTWURF 0.2, nicht registriert.** Kein Registereintrag, keine Auswertung, keine Ergebnisse.
+**Status: ursprünglicher S8-Entwurf 0.2 weiterhin ohne prospektive Registrierung.** Der separat autorisierte
+historische Sequenzvergleich vom 28.10.2026 ist abgeschlossen: kein praktischer Zusatznutzen im Primärmodell.
+Details: [Ergebnisbericht](../reports/s8_sequence_ablation_2026-10-28.md). Das ist keine prospektive Bestätigung.
 Grundlage: Uzis Bauplan „TIM: Bauplan für lokale BTC-Orderflow-KI“ (26.10.2026), Pakete P0 und P1.
 Dieser Entwurf hält Fragestellung, Daten, Merkmale, Zielwert und Datensplit fest, **bevor** ein Ergebnis
 angesehen wird. Er ändert weder das Protokoll (1.3) noch S2.
