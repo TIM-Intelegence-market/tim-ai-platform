@@ -106,10 +106,10 @@ def _prepare_day(root_day: tuple[str, str]) -> tuple[str, dict]:
     return iso, store.cached(day) or store.prepare(day)
 
 
-def fetch_cohort(root: Path, out: Path, workers: int = 2) -> None:
+def fetch_cohort(root: Path, out: Path, workers: int = 4) -> None:
     envelope = read_plan(out)
-    if not 1 <= workers <= 2:
-        raise ValueError("use one or two download/reduction workers")
+    if not 1 <= workers <= 4:
+        raise ValueError("use between one and four download/reduction workers")
     store = MinuteBarStore(root)
     days = envelope["plan"]["cohort"]
     errors = {}
