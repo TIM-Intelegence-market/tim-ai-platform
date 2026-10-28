@@ -1,0 +1,6 @@
+# Isolated Python 3.13 comparison environment; not runtime dependencies.
+numpy==2.5.4
+scikit-learn==1.9.1
+catboost==1.2.10
+threadpoolctl==3.7.0
+joblib==1.6.0

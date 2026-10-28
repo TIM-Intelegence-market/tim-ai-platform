@@ -167,7 +167,11 @@ def test_features_are_complete_after_warmup_and_flag_warmup(tmp_path: Path) -> N
     s = _series(tmp_path)
     assert not features_at(s, WARMUP_BARS - 2).warm
     row = features_at(s, 1500)
-    assert row.warm and row.complete and len(row.values) == len(FEATURE_NAMES)
+    assert row.warm and len(row.values) == len(FEATURE_NAMES)
+    # Sequence correlation requires at least three events in the current minute.
+    assert row.complete == (s.bars[1500].trade_count >= 3)
+    complete = next(features_at(s, i) for i in range(1440, 2000) if s.bars[i].trade_count >= 3)
+    assert complete.complete
     assert row.values[FEATURE_NAMES.index("hour_utc")] == datetime.fromtimestamp(row.decision_ms / 1000, tz=timezone.utc).hour
 
 
@@ -208,7 +212,7 @@ def test_export_is_deterministic_purges_boundaries_and_replays(tmp_path: Path) -
     assert (a["features_hash"], a["labels_hash"]) == (b["features_hash"], b["labels_hash"])
     train, val = a["sections"]["train"], a["sections"]["validation"]
     assert train["days"] == 2 and val["days"] == 1
-    assert train["exclusions"]["purged_section_end"] == 5  # decisions 23:56 ... 00:00 would read 2023 prices
+    assert train["label_status"]["purged_section_end"] == 5  # all five targets purged, even with incomplete sequence features
     assert "warmup" not in val["exclusions"]  # 2023-01-01 looks back into 2022-12-31 (past data)
     assert train["exclusions"]["warmup"] == WARMUP_BARS - 1  # only the first day of the run has no history
     assert val["label_status"]["beyond_data"] == 5
