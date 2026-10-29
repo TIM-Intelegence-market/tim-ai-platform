@@ -53,9 +53,12 @@ def test_dashboard_serves_html_and_json() -> None:
     server.start()
     port = server.server.server_address[1]
     try:
-        with urlopen(f"http://127.0.0.1:{port}/", timeout=2) as response:
+        with urlopen(f"http://127.0.0.1:{port}/uebersicht-alt", timeout=2) as response:
             assert response.status == 200
             assert b'TIM Research-Dashboard' in response.read()
+        with urlopen(f"http://127.0.0.1:{port}/", timeout=2) as response:  # the start page is "Heute"
+            assert response.status == 200
+            assert b"<title>Lage \xc2\xb7 TIM</title>" in response.read()
         with urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as response:
             assert response.status == 200
             assert response.headers["Cache-Control"] == "no-cache, no-store, must-revalidate"
@@ -193,7 +196,7 @@ def test_professional_research_navigation_and_overview_cards(tmp_path: Path) -> 
     page=render(populated_state(tmp_path))
     for label in ('Research-Überblick','Datenqualität','Stream-Status','Validator-Status','Laufzeit','Aktive Research-Fälle','Abgeschlossene Research-Fälle','Dashboard-Version'):
         assert label in page
-    for route in ("/observations","/cases","/signals","/health","/timeline","/research"):
+    for route in ("/","/chart","/journal","/neu/forschung","/neu/betrieb"):  # the five areas of the one navigation
         assert f"href='{route}'" in page
     assert "<article class='card'" in page
     assert '"symbol":"BTCUSDT"' not in page
@@ -329,7 +332,7 @@ def test_all_research_ui_routes_respond_quickly(tmp_path: Path) -> None:
     server=DashboardServer(populated_state(tmp_path),port=0);server.start();port=server.server.server_address[1]
     try:
         durations=[]
-        for path in ("/","/observations","/cases","/orderflow","/signals","/analytics","/insights","/health","/timeline","/research"):
+        for path in ("/uebersicht-alt","/observations","/cases","/orderflow","/signals","/analytics","/insights","/health","/timeline","/research"):
             started=time.monotonic()
             with urlopen(f"http://127.0.0.1:{port}{path}",timeout=2) as response:
                 assert response.status==200 and b"OBSERVE" in response.read()
