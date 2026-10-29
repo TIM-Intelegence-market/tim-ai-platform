@@ -171,26 +171,25 @@ def _error_page(page: str, exc: Exception) -> str:
     )
 
 
-def _nav_html(path: str) -> str:
-    """Five areas; the active area lists its pages right below it."""
-    parts = []
+def _nav_html(path: str) -> tuple[str, str]:
+    """The five areas, and the pages of the active area for the second row."""
+    main, subs = [], []
     for area in nav_links(path):
         current = bool(area["current"])
-        parts.append(
-            f"<a href='{_safe(area['href'])}'{(' class=' + chr(39) + ('active' if not area['pages'] else 'area') + chr(39)) if current else ''}"
-            f"{' aria-current=\'page\'' if current and not area['pages'] else ''}>{_safe(area['label'])}</a>"
-        )
+        css = (" class='active' aria-current='page'" if not area["pages"] else " class='area'") if current else ""
+        main.append(f"<a href='{_safe(area['href'])}'{css}>{_safe(area['label'])}</a>")
         for sub in area["pages"]:  # type: ignore[union-attr]
-            parts.append(
+            subs.append(
                 f"<a href='{_safe(sub['href'])}' class='sub{' active' if sub['current'] else ''}'"
-                f"{' aria-current=\'page\'' if sub['current'] else ''}>{_safe(sub['label'])}</a>"
+                f"{' aria-current=' + chr(39) + 'page' + chr(39) if sub['current'] else ''}>{_safe(sub['label'])}</a>"
             )
-    return "".join(parts)
+    return "".join(main), "".join(subs)
 
 
 def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, str]] | None = None, refresh: bool = True) -> str:
     """Page shell. ``refresh=False`` leaves out the live script (pages with a form keep their input)."""
-    nav = _nav_html(PAGE_PATHS.get(page, ""))
+    nav, subnav = _nav_html(PAGE_PATHS.get(page, ""))
+    subnav_html = f"<nav class='subnav' aria-label='Seiten in diesem Bereich'><div class='subnav__in'>{subnav}</div></nav>" if subnav else ""
 
     strip_rows = "".join(
         f"<div class='status-matrix__row{' status-matrix__row--locked' if label == 'TRADING' else ''}'>"
@@ -203,7 +202,7 @@ def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, s
     )
     matrix = f"<dl class='status-matrix' aria-label='Globaler Systemstatus'>{strip_rows}{trading_row}</dl>" if strip else ""
 
-    return translate_html(f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>Control Center</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav>{matrix}<button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div></header><main id='main-content' class='shell' tabindex='-1'>{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT if refresh else ''}</body></html>""")
+    return translate_html(f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body class='cc'><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>Control Center</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav><button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div>{subnav_html}</header><main id='main-content' class='shell' tabindex='-1'>{matrix}{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT if refresh else ''}</body></html>""")
 
 
 def _hero(title: str, text: str) -> str:

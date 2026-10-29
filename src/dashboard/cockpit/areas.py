@@ -9,8 +9,10 @@ written. The full detail pages of the old dashboard stay linked.
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from src.dashboard.cockpit.lage import _broken, _info, _system_tiles, UNAVAILABLE_WORDS
@@ -278,34 +280,46 @@ def _observations_section(data: dict[str, Any], now: datetime) -> dict[str, Any]
     return _section("observations", "Jüngste Beobachtungen", [tile], table=table, empty="Keine Beobachtung im Fenster.")
 
 
-def _qualification_section(ops: dict[str, Any], now: datetime) -> dict[str, Any]:
-    qual = ops.get("qualification") or {}
-    ind = ops.get("independent_cases") or {}
-    readiness = ops.get("readiness") or {}
-    status = str(qual.get("status") or "UNAVAILABLE")
-    aborted = "ABORTED" in status.upper()
-    campaign = make_tile("campaign", "Kampagne", "abgebrochen" if aborted else _word(qual.get("status")),
-                         state="unknown" if aborted else None, raw_status=None if aborted else status,
-                         reason=(readiness.get("current_reason") or "Kampagne abgebrochen, zählt nicht") if aborted else
-                         ("" if status.upper() in {"RUNNING", "ACTIVE", "PASS"} else f"Kampagne {status}"),
-                         source=str(qual.get("source") or ""), href="/qualification", now=now,
-                         detail=f"{_text(qual.get('campaign_id'))}, {_num(qual.get('manifests_written'))} von mindestens {_num(qual.get('minimum_days'))} Tagesmanifesten")
-    if aborted:
-        campaign = _parked(campaign, "Abgebrochen")
-    current, required = ind.get("current"), ind.get("required")
-    cases = _info(make_tile("independent", "Unabhängige Fälle", f"{_num(ind.get('qualification'))} von {_num(required)} für die Kampagne",
-                            state="ok", source=str(ind.get("source") or ""), href="/independent-cases", now=now,
-                            detail=f"Gesamtbestand {_num(current)}, Kontrollen {_text(ind.get('negative_controls'))}"))
-    approval = ind.get("human_approval")
-    waiting = _human_gate(approval) or _human_gate(ind.get("manual_review"))
-    human = make_tile("human_review", "Menschliche Prüfung", _word(ind.get("manual_review") or approval), state="unknown",
-                      reason=("Wartet auf eure Freigabe (Uzi, Integrity Lead); Agenten geben nichts frei" if waiting else
-                              f"Status {_word(approval)}" if not _missing(approval) else "Kein Status in der Quelle"),
-                      source=str(ind.get("source") or ""), href="/independent-cases", now=now)
-    if waiting:
-        human = _parked(human, "Wartet auf euch")
-    return _section("qualification", "Qualifizierung", [campaign, cases, human],
-                    note="Eine neue Kampagne beginnt bei Tag 0. Was abgebrochen ist, zählt nicht als bestanden.")
+LOGBOOK_PATH = Path("docs/research_lab/LOGBUCH.json")
+LOGBOOK_STATUS = {
+    "running": ("läuft", "ok"), "waiting": ("wartet auf Daten", "unknown"), "confirmed": ("bestätigt", "ok"),
+    "candidate": ("Kandidat, ohne Holdout", "unknown"), "failed": ("nicht bestanden", "unknown"),
+    "not_testable": ("nicht testbar", "unknown"), "aborted": ("abgebrochen", "unknown"),
+}
+
+
+def _logbook_section(path: Path, now: datetime) -> dict[str, Any]:
+    """One row per study: what was tested, what came out, why it ended."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        entries = [e for e in data.get("entries") or [] if isinstance(e, dict)]
+    except (OSError, ValueError, AttributeError) as exc:
+        return _section("logbook", "Logbuch", [_info(make_tile("logbook", "Logbuch", "—", state="unknown",
+                        reason=f"Logbuch nicht lesbar: {type(exc).__name__}", source=str(path), now=now))])
+    entries.sort(key=lambda e: str(e.get("started") or ""), reverse=True)
+    running = sum(e.get("status") == "running" for e in entries)
+    ended = sum(e.get("status") in {"failed", "not_testable", "aborted"} for e in entries)
+    confirmed = [str(e.get("id")) for e in entries if e.get("status") == "confirmed"]
+    tiles = [
+        _info(make_tile("studies_running", "Laufen gerade", _num(running), state="ok", source=str(path), now=now)),
+        _info(make_tile("studies_ended", "Beendet ohne Vorteil", _num(ended), state="ok", source=str(path), now=now,
+                        detail="nicht bestanden, nicht testbar oder abgebrochen")),
+        _info(make_tile("studies_confirmed", "Bestätigt", ", ".join(confirmed) or "keine", state="ok", source=str(path), now=now,
+                        detail="beschreibende Befunde, keine Handelsregel")),
+    ]
+    rows = []
+    for e in entries:
+        label, _ = LOGBOOK_STATUS.get(str(e.get("status")), (str(e.get("status") or "—"), "unknown"))
+        rows.append([
+            {"text": f"{_text(e.get('id'), 12)} · {_text(e.get('title'), 120)}", "href": ""},
+            _cell(".".join(reversed(str(e.get("started")).split("-"))) if e.get("started") else "—"),
+            _cell(label),
+            {"text": _text(e.get("result"), 400), "href": ""},
+            {"text": _text(e.get("lesson"), 300) or "—", "href": ""},
+        ])
+    note = f"Stand {data.get('updated') or '—'}. Quelle: {path}; jede Zeile fasst Präregistrierung und Bericht der Studie zusammen."
+    return _section("logbook", "Logbuch der Studien", tiles, table={"head": ["Studie", "Begonnen", "Stand", "Ergebnis", "Gelernt"], "rows": rows},
+                    note=note)
 
 
 def build_forschung(state: DashboardState, now: datetime | None = None, budget: float = 1.5,
@@ -317,12 +331,11 @@ def build_forschung(state: DashboardState, now: datetime | None = None, budget: 
         sections = _snapshot_failed(snap, "Forschung")
     else:
         data = snap.value if isinstance(snap.value, dict) else None
-        ops = _dict((data or {}).get("operations"))
         sections = _safe_sections([
+            ("logbook", "Logbuch der Studien", lambda: _logbook_section(LOGBOOK_PATH, now)),
             ("validator", "Forschungslauf", lambda: _validator_section(data, now)),
             ("cases", "Research Cases", lambda: _cases_section(data, now)),
             ("observations", "Jüngste Beobachtungen", lambda: _observations_section(data, now)),
-            ("qualification", "Qualifizierung", lambda: _qualification_section(ops, now)),
         ])
     return _model("forschung", "Forschung", sections, results, now)
 
