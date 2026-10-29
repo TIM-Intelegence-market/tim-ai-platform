@@ -134,6 +134,23 @@ class MarketRepository:
             rows=await con.fetch(query,symbol,start,end,float(bucket_seconds),float(tick))
         return [{"bucket":row["bucket"],"level":float(row["level"]),"bid":float(row["bid"]),"ask":float(row["ask"]),"trades":int(row["trades"])} for row in rows]
 
+    async def agg_trade_bubbles(self,symbol:str,start:datetime,end:datetime,min_usd:float,limit:int)->list[dict]:
+        """Read-only large market orders for the chart's volume bubbles.
+
+        aggTrades with the same trade time (ms) and aggressor side are one taker order that swept
+        several prices; they are summed. ``buy`` is True when the buyer was aggressive (not maker).
+        Only orders worth at least ``min_usd`` come back, the largest ``limit`` of the range."""
+        if start.tzinfo is None or end.tzinfo is None or end<=start:raise ValueError("A valid timezone-aware aggTrade range is required")
+        if min_usd<=0 or limit<=0:raise ValueError("min_usd and limit must be > 0")
+        query="""SELECT trade_time,NOT buyer_is_maker AS buy,sum(quantity) AS quantity,sum(price*quantity)/sum(quantity) AS price,
+        sum(price*quantity) AS usd,count(*) AS trades
+        FROM agg_trades WHERE symbol=$1 AND trade_time>=$2 AND trade_time<$3 GROUP BY trade_time,buyer_is_maker
+        HAVING sum(price*quantity)>=$4 ORDER BY usd DESC,trade_time LIMIT $5"""
+        async with self.database.acquire() as con:
+            rows=await con.fetch(query,symbol,start,end,float(min_usd),int(limit))
+        return [{"time":row["trade_time"],"buy":bool(row["buy"]),"quantity":float(row["quantity"]),"price":float(row["price"]),
+                 "usd":float(row["usd"]),"trades":int(row["trades"])} for row in rows]
+
     async def agg_trade_count(self,symbol:str)->int:
         async with self.database.acquire() as con:return int(await con.fetchval("SELECT count(*) FROM agg_trades WHERE symbol=$1",symbol))
 

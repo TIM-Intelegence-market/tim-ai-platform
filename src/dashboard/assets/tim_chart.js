@@ -406,6 +406,73 @@
   };
   candles.attachPrimitive(fp);
 
+  // Volume bubbles: large market orders from TIM's trades (one taker order = aggTrades of the same
+  // millisecond and side). Circle at the order's time inside its candle and its average price; area
+  // follows the order size against the largest in view; green = aggressive buyer, red = aggressive seller.
+  const BUBBLE = { minR: 2.5, maxR: 22, labelR: 11, pxPer: 14, minCount: 20 };
+  const bubbles = {
+    chart: null, series: null, requestUpdate: null, visible: true,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'top'; },
+      renderer() {
+        return {
+          draw(target) {
+            const data = model && model.bubbles;
+            if (!bubbles.visible || !bubbles.chart || !data || !data.items || !data.items.length || model.candles.length < 2) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = bubbles.chart.timeScale();
+              const range = scale.getVisibleLogicalRange();
+              if (!range) return;
+              const barWidth = mediaSize.width / Math.max(1, range.to - range.from);
+              const n = model.candles.length;
+              const seconds = Math.max(1, model.candles[n - 1].time - model.candles[n - 2].time);
+              // Only the largest orders in view (about one per 14 px of width), sized against the largest of them:
+              // zoomed out the big ones stand out, zoomed in the smaller ones appear.
+              const placed = [];
+              for (const item of data.items) {
+                const center = scale.timeToCoordinate(local(item.bar));
+                const y = bubbles.series.priceToCoordinate(item.price);
+                if (center === null || y === null) continue;
+                const x = center + ((item.time - item.bar) / seconds - 0.5) * barWidth;
+                if (x < -BUBBLE.maxR || x > mediaSize.width + BUBBLE.maxR) continue;
+                placed.push({ item, x, y });
+              }
+              placed.sort((a, b) => b.item.usd - a.item.usd);  // biggest first, small ones drawn on top stay visible
+              const order = placed.slice(0, Math.max(BUBBLE.minCount, Math.round(mediaSize.width / BUBBLE.pxPer)));
+              if (!order.length) return;
+              const max = Math.max(1, order[0].item.usd);
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
+              for (const { item, x, y } of order) {
+                const r = Math.max(BUBBLE.minR, BUBBLE.maxR * Math.sqrt(item.usd / max));
+                const buy = item.side > 0;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fillStyle = buy ? 'rgba(38,200,140,0.30)' : 'rgba(239,83,80,0.30)';
+                ctx.fill();
+                ctx.lineWidth = 1.2;
+                ctx.strokeStyle = buy ? 'rgba(38,220,150,0.95)' : 'rgba(255,92,88,0.95)';
+                ctx.stroke();
+                if (r >= BUBBLE.labelR) {
+                  ctx.fillStyle = '#e8edf5';
+                  ctx.fillText(item.quantity >= 100 ? item.quantity.toFixed(0) : item.quantity.toFixed(1), x, y);
+                }
+              }
+              ctx.textAlign = 'left';
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(bubbles);
+
   // Layers added after a visitor saved a choice (e.g. TIM's plans, footprint) start visible: only keys the
   // visitor has seen before can be hidden by a saved choice. Saves from before this list existed knew
   // neither the plans nor volume profile and footprint.
@@ -517,6 +584,7 @@
     vp.visible = groups.has('vp');
     fp.visible = groups.has('fp');
     liq.visible = groups.has('liq');
+    bubbles.visible = groups.has('bubbles');
     if (tpo.requestUpdate) tpo.requestUpdate();
   }
 
@@ -584,7 +652,7 @@
       candles.setData(model.candles.map(c => ({ time: local(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
       volume.setData(model.candles.map(c => ({ time: local(c.time), value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)' })));
       drawLines();
-      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); }
+      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); bubbles.visible = groups.has('bubbles'); }
       if (first || !sameView) {
         const count = model.candles.length;
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - 160), to: count + 8 });
