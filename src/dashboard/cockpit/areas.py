@@ -1,4 +1,4 @@
-"""Data models of the cockpit areas "Forschung", "Betrieb" and "System & Freigabe" (P3).
+"""Data models of the cockpit areas "Forschung", "Betrieb" and "Freigabe & Sicherheit" (P3).
 
 Each area is a list of sections; a section holds status tiles and, where it
 helps, one small table. Everything comes from what TIM already writes: the
@@ -585,7 +585,7 @@ def build_system(state: DashboardState, now: datetime | None = None, budget: flo
     results = (sources or _SOURCES["system"]).run({"snapshot": state.snapshot}, budget=budget)
     snap = results["snapshot"]
     if not snap.ok or not isinstance(snap.value, dict):
-        sections = _snapshot_failed(snap, "System & Freigabe")
+        sections = _snapshot_failed(snap, "Freigabe & Sicherheit")
     else:
         data = snap.value if isinstance(snap.value, dict) else None
         ops = _dict((data or {}).get("operations"))
@@ -595,7 +595,7 @@ def build_system(state: DashboardState, now: datetime | None = None, budget: flo
             ("security", "Sicherheit", lambda: _security_section(ops, now)),
             ("audit", "Prüfung und Nachweise", lambda: _audit_section(ops, now)),
         ])
-    return _model("system", "System & Freigabe", sections, results, now)
+    return _model("system", "Freigabe & Sicherheit", sections, results, now)
 
 
 BUILDERS = {"forschung": build_forschung, "betrieb": build_betrieb, "system": build_system}

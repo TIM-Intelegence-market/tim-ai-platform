@@ -222,6 +222,12 @@ class DashboardServer:
                     journal_path = {"struct": outer.state.plan_journal_struct_path, "level": outer.state.plan_journal_level_path}.get(rule, outer.state.plan_journal_path)
                     from src.dashboard.plan_cost_check import with_cost_check
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
+                if path == "/":
+                    return self.cockpit("/neu", query)
+                if path == "/archiv":
+                    from src.dashboard.pages.archive import render_archive
+
+                    return self.respond(200, render_archive().encode(), "text/html; charset=utf-8")
                 if path == "/neu" or path.startswith("/neu/") or path == "/api/cockpit":
                     return self.cockpit(path, query)
                 if path in ("/graphify", "/graphify/"):
@@ -264,7 +270,7 @@ class DashboardServer:
                     proof_page = case_export_html(export)
                     return self.respond(200, proof_page.encode(), "text/html; charset=utf-8", csp=_content_security_policy_for(proof_page))
                 pages = {
-                    "/": "Overview", "/security": "Security", "/runtime": "Runtime",
+                    "/uebersicht-alt": "Overview", "/security": "Security", "/runtime": "Runtime",
                     "/data-quality": "Data Quality", "/gaps": "Incidents & Gaps",
                     "/qualification": "Qualification",
                     "/independent-cases": "Independent Cases",

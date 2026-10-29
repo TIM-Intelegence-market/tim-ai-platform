@@ -98,3 +98,6 @@ caption{text-align:left;padding:11px 13px;color:var(--muted);font-size:11px;back
 .tc-live__status{min-height:1.2em}
 .tc-plan-view>summary{cursor:pointer;font-weight:600;margin:4px 0 10px}
 @media (max-width:640px){.tc-live__chart{height:62vh;min-height:340px}}
+.nav a.area{color:var(--text)}.nav a.sub{padding:6px 12px 6px 26px;font-size:12px;font-weight:500}.nav a.sub.active:before{left:14px}
+@media(max-width:820px){.nav{flex-wrap:wrap;overflow-x:visible}.nav a.sub{padding:6px 9px;font-size:12px}.nav a.sub.active:before{display:none}.nav a.sub.active{text-decoration:underline}}
+.archive-list{display:grid;gap:10px;margin-top:14px}.archive-list a{display:block;padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:#0b1119}.archive-list a b{display:block;color:var(--text)}.archive-list a span{color:var(--muted);font-size:13px}

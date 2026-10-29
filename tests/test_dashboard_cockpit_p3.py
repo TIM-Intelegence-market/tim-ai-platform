@@ -186,7 +186,7 @@ def test_system_trading_lock_and_gates(tmp_path: Path) -> None:
     assert tiles["mcp"]["extra"]["kind"] == "parked"
     assert tiles["deploy"]["value"] == "2718756"
     html = sections_body(model)
-    assert "<h1>System &amp; Freigabe</h1>" in html
+    assert "<h1>Freigabe &amp; Sicherheit</h1>" in html
 
 
 def test_unlocked_trading_is_red(tmp_path: Path) -> None:

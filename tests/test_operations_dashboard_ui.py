@@ -11,7 +11,7 @@ from src.dashboard.app import DashboardServer, DashboardState, render
 
 OPERATIONS_ROUTES = {
     # Dashboard 4.1: titles are rendered with the German labels from src/dashboard/i18n.py
-    "/": "Betriebsüberblick",
+    "/uebersicht-alt": "Betriebsüberblick",
     "/security": "Sicherheit",
     "/runtime": "Laufzeit",
     "/data-quality": "Datenqualität",
@@ -243,9 +243,10 @@ def test_current_empty_gap_inventory_does_not_reuse_an_old_gap(tmp_path: Path) -
 
 def test_control_center_has_exact_ten_primary_pages_and_explicit_safety_boundary(tmp_path: Path) -> None:
     page = render(_state(tmp_path))
-    for route, title in OPERATIONS_ROUTES.items():
+    # The old overview now lives in "Archiv V2"; the page carries the one five-area navigation.
+    assert OPERATIONS_ROUTES["/uebersicht-alt"] in page
+    for route in ("/", "/chart", "/journal", "/neu/forschung", "/neu/betrieb", "/archiv"):
         assert f"href='{route}'" in page
-        assert title in page
     assert page.count("aria-current='page'") == 1
     for invariant in ("OBSERVE-ONLY", "TRADING LOCKED", "EXECUTION DISABLED", "NO SHELL", "NO GIT", "NO SECRETS"):
         assert invariant in page
