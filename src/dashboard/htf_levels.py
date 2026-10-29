@@ -5,9 +5,9 @@ Fills the part of a trader's morning prep that is usually typed in by hand
 
 - value of the previous month, quarter and year (VAH, POC, VAL) and their
   high/low,
-- anchored VWAPs: this week (Monday 00:00 UTC), this month (1st, 00:00 UTC)
-  and the last twelve months (rolling, 365 days), each with one standard
-  deviation band.
+- anchored VWAPs: this week (Monday 00:00 UTC), this month, this quarter and
+  this year (1st, 00:00 UTC), each with its volume-weighted standard deviation
+  (the chart draws ±1σ and ±2σ bands around the weekly VWAP, as Broncx does).
 
 Everything comes from candles, not trades: profiles spread each candle's
 volume evenly over its range (``chart_model.volume_profile``), the VWAP uses
@@ -27,7 +27,6 @@ from src.dashboard.chart_model import clean_candles, volume_profile
 
 COMPLETE_SHARE = 0.9  # a period counts when 90 % of its candles are there
 TF_SECONDS = {"30m": 1800, "1h": 3600, "1d": 86400, "1w": 604800}
-ROLLING_DAYS = 365
 
 
 def _utc(value: datetime) -> datetime:
@@ -122,18 +121,27 @@ def vwap(candles: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     variance = sum(volume * (price - value) ** 2 for price, volume in typical) / total
     sigma = math.sqrt(max(variance, 0.0))
     return {"value": round(value, 8), "sigma": round(sigma, 8),
-            "upper": round(value + sigma, 8), "lower": round(value - sigma, 8)}
+            "upper": round(value + sigma, 8), "lower": round(value - sigma, 8),
+            "upper2": round(value + 2 * sigma, 8), "lower2": round(value - 2 * sigma, 8)}
 
 
 def vwap_curve(candles: Sequence[Mapping[str, Any]]) -> list[tuple[datetime, float]]:
     """Running VWAP after each candle: (open time, value) for drawing it as a line."""
-    weighted = volume = 0.0
+    return [(moment, value) for moment, value, _ in vwap_band_curve(candles)]
+
+
+def vwap_band_curve(candles: Sequence[Mapping[str, Any]]) -> list[tuple[datetime, float, float]]:
+    """Running VWAP and its running volume-weighted standard deviation: (open time, value, sigma)."""
+    weighted = squares = volume = 0.0
     curve = []
     for candle in candles:
-        weighted += (candle["high"] + candle["low"] + candle["close"]) / 3 * candle["volume"]
+        typical = (candle["high"] + candle["low"] + candle["close"]) / 3
+        weighted += typical * candle["volume"]
+        squares += typical * typical * candle["volume"]
         volume += candle["volume"]
         if volume > 0:
-            curve.append((candle["open_time"], round(weighted / volume, 8)))
+            value = weighted / volume
+            curve.append((candle["open_time"], round(value, 8), round(math.sqrt(max(squares / volume - value * value, 0.0)), 8)))
     return curve
 
 
@@ -184,12 +192,20 @@ def build_htf_levels(series: Mapping[str, Sequence[Mapping[str, Any]]], now: dat
     today = now.date()
     week_anchor = _start(today - timedelta(days=today.weekday()))
     month_anchor = _start(month_start(today))
-    rolling_anchor = _start(today - timedelta(days=ROLLING_DAYS))
-    specs = (
+    quarter_anchor = _start(quarter_start(today))
+    year_anchor = _start(year_start(today))
+    # Anchored like Broncx' VWAPs (week, month, quarter, year); the quarter is left out while it
+    # starts with the month (same line twice), the year while it starts with the quarter.
+    specs = [
         ("week", "1W", f"VWAP Woche ab {week_anchor:%d.%m.}", week_anchor, (("1h", hours), ("1d", days))),
         ("month", "1M", f"VWAP Monat ab {month_anchor:%d.%m.}", month_anchor, (("1h", hours), ("1d", days))),
-        ("rolling", "12M", "VWAP 12 Monate", rolling_anchor, (("1d", days),)),
-    )
+    ]
+    if quarter_anchor != month_anchor:
+        specs.append(("quarter", "1Q", f"VWAP Quartal ab {quarter_anchor:%d.%m.}", quarter_anchor, (("1h", hours), ("1d", days))))
+    else:
+        model["notes"].append(f"VWAP Quartal ab {quarter_anchor:%d.%m.} = VWAP Monat (gleicher Anker).")
+    if year_anchor != quarter_anchor:
+        specs.append(("year", "1Y", f"VWAP Jahr ab {year_anchor:%d.%m.%Y}", year_anchor, (("1d", days),)))
     for key, tf, name, anchor, sources in specs:
         if anchor >= now:
             continue

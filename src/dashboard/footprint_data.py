@@ -24,7 +24,7 @@ from src.dashboard.chart_model import _nice_step
 
 BUCKET_SECONDS = 300  # finest time bucket kept; footprint bars from 5m upwards
 TICK_BY_SYMBOL = {"BTCUSDT": 5.0, "ETHUSDT": 0.5, "SOLUSDT": 0.05}  # finest price level kept
-DAYS_KEPT = 7  # finished days plus the running day
+DAYS_KEPT = 14  # finished days plus the running day: always covers the previous full week (Mon-Sun)
 RECHECK_SECONDS = 3600  # a finished day is aggregated again after this long (late inserts from catch-up or backfill)
 PROFILE_BINS = 40  # price rows per day profile
 FOOTPRINT_ROWS = 40  # target price rows per footprint bar (finest step sent; the chart merges rows to fit the zoom)
@@ -121,6 +121,40 @@ def _value_area(volumes: Mapping[int, float], poc: int) -> tuple[int, int]:
     return below + 1, above - 1
 
 
+def profile_from_rows(rows: Sequence[Sequence[float]], tick: float, bins: int = PROFILE_BINS) -> dict[str, Any] | None:
+    """Volume profile of stored rows ``[bucket, level, bid, ask]``: rows per price step, POC, value area.
+
+    ``poc``, ``vah`` and ``val`` are row edges (``poc`` = lower edge of the fullest row);
+    ``poc_mid`` is the centre of that row, the price a level line uses.
+    """
+    if not rows:
+        return None
+    low, high = min(r[1] for r in rows), max(r[1] for r in rows) + tick
+    step = max(tick, _nice_step(max(high - low, tick), bins))
+    step = math.ceil(step / tick) * tick  # a whole number of ticks, so levels fall on row edges
+    first = math.floor(low / step) * step
+    bid: dict[int, float] = {}
+    ask: dict[int, float] = {}
+    for _, level, b, a in rows:
+        index = int((level - first) // step)
+        bid[index] = bid.get(index, 0.0) + b
+        ask[index] = ask.get(index, 0.0) + a
+    volumes = {i: bid.get(i, 0.0) + ask.get(i, 0.0) for i in set(bid) | set(ask)}
+    if not volumes:
+        return None
+    poc = min(sorted(volumes), key=lambda i: (-volumes[i], i))
+    val_index, vah_index = _value_area(volumes, poc)
+    total = sum(volumes.values())
+    return {
+        "step": step, "total": round(total, 4), "delta": round(sum(ask.values()) - sum(bid.values()), 4),
+        "poc": round(first + poc * step, 8), "poc_mid": round(first + poc * step + step / 2, 8),
+        "vah": round(first + vah_index * step + step, 8), "val": round(first + val_index * step, 8),
+        "high": round(high, 8), "low": round(low, 8), "max_volume": round(max(volumes.values()), 4),
+        "rows": [{"price": round(first + i * step, 8), "volume": round(volumes[i], 4), "bid": round(bid.get(i, 0.0), 4),
+                  "ask": round(ask.get(i, 0.0), 4), "delta": round(ask.get(i, 0.0) - bid.get(i, 0.0), 4)} for i in sorted(volumes)],
+    }
+
+
 def volume_profiles(store: Mapping[str, Any] | None, now: datetime, bins: int = PROFILE_BINS) -> list[dict[str, Any]]:
     """One volume profile per day in the store: rows per price step with bid/ask/delta, POC, VAH/VAL."""
     if not store or not store.get("days"):
@@ -129,34 +163,15 @@ def volume_profiles(store: Mapping[str, Any] | None, now: datetime, bins: int = 
     tick = float(store["tick"])
     result = []
     for key in sorted(store["days"]):
-        rows = store["days"][key]
-        if not rows:
+        profile = profile_from_rows(store["days"][key], tick, bins)
+        if profile is None:
             continue
-        low, high = min(r[1] for r in rows), max(r[1] for r in rows) + tick
-        step = max(tick, _nice_step(max(high - low, tick), bins))
-        step = math.ceil(step / tick) * tick  # a whole number of ticks, so levels fall on row edges
-        first = math.floor(low / step) * step
-        bid: dict[int, float] = {}
-        ask: dict[int, float] = {}
-        for _, level, b, a in rows:
-            index = int((level - first) // step)
-            bid[index] = bid.get(index, 0.0) + b
-            ask[index] = ask.get(index, 0.0) + a
-        volumes = {i: bid.get(i, 0.0) + ask.get(i, 0.0) for i in set(bid) | set(ask)}
-        if not volumes:
-            continue
-        poc = min(sorted(volumes), key=lambda i: (-volumes[i], i))
-        val_index, vah_index = _value_area(volumes, poc)
-        total = sum(volumes.values())
         day = date.fromisoformat(key)
         start = _day_start(day)
         result.append({
             "day": key, "label": f"{day.day:02d}.{day.month:02d}.", "start": start.isoformat(), "end": (start + timedelta(days=1)).isoformat(),
-            "running": day == today, "step": step, "total": round(total, 4), "delta": round(sum(ask.values()) - sum(bid.values()), 4),
-            "poc": round(first + poc * step, 8), "vah": round(first + vah_index * step + step, 8), "val": round(first + val_index * step, 8),
-            "max_volume": round(max(volumes.values()), 4),
-            "rows": [{"price": round(first + i * step, 8), "volume": round(volumes[i], 4), "bid": round(bid.get(i, 0.0), 4),
-                      "ask": round(ask.get(i, 0.0), 4), "delta": round(ask.get(i, 0.0) - bid.get(i, 0.0), 4)} for i in sorted(volumes)],
+            "running": day == today, "complete": key in (store.get("complete") or {}),
+            **{k: profile[k] for k in ("step", "total", "delta", "poc", "poc_mid", "vah", "val", "max_volume", "rows")},
         })
     return result
 
