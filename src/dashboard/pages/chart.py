@@ -501,6 +501,8 @@ def _live_section(symbol: str, view: str) -> str:
         "auf Zeitrahmen bis 4h. <b>Volume Profile</b> und <b>Footprint</b> kommen aus TIMs eigenen Trades (Datenbank, nur BTC): "
         "das Profil je Tag rechts am Tagesende (Volumen je Preisstufe, Value Area, POC gelb, grüner/roter Strich = Delta), "
         "der <b>Footprint</b> (5m bis 4h, Knopf „Footprint“) folgt dem Zoom: mittel = Farbsäule je Kerze (grün/rot = Delta, kräftig = viel Volumen), nah = Bid × Ask je Preisstufe neben einer schmalen Kerze, Preisstufen werden beim Reinzoomen feiner, POC gelb umrandet, Imbalances 4:1 fett (grün = Käufer, rot = Verkäufer), gestapelte Imbalances (3+) als Balken an der Seite, unfertige Auktion am Hoch/Tief orange gepunktet, Δ und Volumen (V) unter der Kerze. "
+        "<b>Volume Bubbles</b> (Zeitrahmen bis 4h) = große Market Orders aus TIMs Trades (alle aggTrades einer Taker-Order, gleiche Millisekunde und Seite, ab 100.000 USD): "
+        "grün = aggressiver Käufer, rot = aggressiver Verkäufer, Kreisfläche = Ordergröße gegenüber der größten im Bild, die größten tragen ihre Größe in BTC; gezeigt werden die größten im Bild, beim Reinzoomen kommen kleinere dazu. "
         "<b>BOS / MSS</b> zählen nur per Schlusskurs (ein Docht durch das Level ist ein Sweep): BOS = Bruch des letzten Swings in Trendrichtung, "
         "MSS = Schlusskurs jenseits des <b>Strong Low</b> (im Aufwärtstrend) bzw. <b>Strong High</b> (im Abwärtstrend), also des Tiefs/Hochs, "
         "aus dem der letzte Schub kam. Gestrichelt und bis jetzt: das offene Strong Low/High und das <b>BOS-Ziel</b>. Swings: 3 Kerzen je Seite. "

@@ -77,7 +77,7 @@ GROUP_NAMES = {
     "vwap_bands": "VWAP-Bänder Woche (±1σ, ±2σ)", "naked": "naked POC",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "fib": "Fibonacci (letzter Swing)", "tpo": "TPO (Tagesprofil)",
-    "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
+    "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)", "bubbles": "Volume Bubbles (große Market Orders)",
     "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
@@ -87,7 +87,7 @@ TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
-DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp",
+DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
                   "plans_short", "plans_mid", "plans_long", "gamma", "liq")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
@@ -853,7 +853,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
-    it feeds the volume profiles and footprint bars for the symbol TIM collects.
+    it feeds the volume profiles, footprint bars and volume bubbles (large market orders) for the symbol TIM collects.
     ``plan_journals`` (journal key -> entries, see ``load_plan_journals``) adds TIM's paper
     plans for BTCUSDT, the only symbol the journals follow.
     ``gamma`` is ``DashboardState.gamma`` (snapshot per symbol, gamma_data.py): options
@@ -917,14 +917,16 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model["drawings"] = place_drawings(drawings, times)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
     model["tpo"], model["volume_profile"], model["footprint"] = [], [], {"step": None, "bars": [], "note": None}
+    model["bubbles"] = {"items": [], "min_usd": None, "max_usd": None, "note": None}
     if INTERVAL_SECONDS[timeframe] <= 14400:  # profiles per day only make sense on intraday views
         first_time = times[0]
         model["tpo"] = [p for p in tpo_profiles(level_source, now) if _epoch(p["end"]) > first_time]
-        from src.dashboard.footprint_data import footprint_bars, volume_profiles
+        from src.dashboard.footprint_data import footprint_bars, volume_bubbles, volume_profiles
 
         if footprint and footprint.get("symbol") == symbol and footprint.get("days"):
             model["volume_profile"] = [p for p in volume_profiles(footprint, now) if _epoch(p["end"]) > first_time]
             model["footprint"] = footprint_bars(footprint, times, INTERVAL_SECONDS[timeframe])
+            model["bubbles"] = volume_bubbles(footprint, times, INTERVAL_SECONDS[timeframe])
             model["trade_source"] = footprint.get("source")
             model["trades_updated_at"] = footprint.get("updated_at")
         elif footprint and footprint.get("days"):
