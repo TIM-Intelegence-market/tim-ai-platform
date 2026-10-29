@@ -107,17 +107,29 @@ def _series() -> dict[str, list[dict]]:
 def test_build_htf_levels_lists_profiles_vwaps_and_sorted_levels() -> None:
     model = build_htf_levels(_series(), NOW, last=101.0)
     assert [p["tf"] for p in model["profiles"]] == ["1M", "1Q", "1Y"]
-    assert [v["key"] for v in model["vwaps"]] == ["week", "month", "rolling"]
-    week, month, rolling = model["vwaps"]
+    # Anchored like Broncx: week, month, year; the quarter starts with the month in October (same line).
+    assert [v["key"] for v in model["vwaps"]] == ["week", "month", "year"]
+    week, month, year = model["vwaps"]
     assert week["source"] == "1h" and week["anchor"] == "2026-10-26T00:00:00+00:00"
     assert month["anchor"] == "2026-10-01T00:00:00+00:00"
-    assert rolling["source"] == "1d" and rolling["candles"] == 365
+    assert year["source"] == "1d" and year["anchor"] == "2026-01-01T00:00:00+00:00" and year["candles"] == 299
+    assert week["upper2"] == pytest.approx(week["value"] + 2 * week["sigma"]) and week["lower2"] == pytest.approx(week["value"] - 2 * week["sigma"])
     prices = [level["price"] for level in model["levels"]]
     assert prices == sorted(prices, reverse=True)
     labels = {level["label"] for level in model["levels"]}
-    assert {"1M VAL", "1Q POC", "1Y VAH", "1W VWAP", "12M VWAP"} <= labels
+    assert {"1M VAL", "1Q POC", "1Y VAH", "1W VWAP", "1Y VWAP"} <= labels and "12M VWAP" not in labels
     assert all("distance_pct" in level and level["side"] in ("über", "unter", "am Kurs") for level in model["levels"])
-    assert model["notes"] == []
+    assert model["notes"] == ["VWAP Quartal ab 01.10. = VWAP Monat (gleicher Anker)."]
+
+
+def test_quarter_vwap_has_its_own_anchor_once_the_month_moves_on() -> None:
+    later = NOW + timedelta(days=10)  # 06.11.: month from 01.11., quarter from 01.10.
+    series = _series()
+    series["1d"] = series["1d"] + _days(date(2026, 10, 27), date(2026, 11, 6))
+    model = build_htf_levels(series, later)
+    keys = {v["key"]: v for v in model["vwaps"]}
+    assert keys["quarter"]["anchor"] == "2026-10-01T00:00:00+00:00" and keys["quarter"]["tf"] == "1Q"
+    assert keys["month"]["anchor"] == "2026-11-01T00:00:00+00:00"
 
 
 def test_empty_series_gives_notes_not_errors() -> None:
@@ -138,8 +150,8 @@ def test_plan_journal_levels_stay_untouched() -> None:
 
 def test_prep_page_shows_the_higher_timeframes_and_merges_them_into_the_level_map() -> None:
     html = _prep_page({}, build_session_map(_series(), NOW))
-    assert "2b · Höhere Zeitebenen" in html and "Vorjahr 2025" in html and "VWAP 12 Monate" in html
-    assert "1Y VAH" in html and "12M VWAP" in html
+    assert "2b · Höhere Zeitebenen" in html and "Vorjahr 2025" in html and "VWAP Jahr ab 01.01.2026" in html
+    assert "1Y VAH" in html and "1Y VWAP" in html
 
 
 def test_live_chart_draws_vwap_as_a_line_when_the_anchor_is_in_view() -> None:
@@ -153,9 +165,29 @@ def test_live_chart_draws_vwap_as_a_line_when_the_anchor_is_in_view() -> None:
     placed = place_drawings(drawn, times)[0]
     assert placed["t1"] == int(datetime(2026, 10, 26, tzinfo=timezone.utc).timestamp()) and placed["t2"] == times[-1]
     assert placed["p2"] == pytest.approx(placed["curve"][-1][1]) and placed["bars"] == len(placed["curve"]) - 1
-    # Anchor not in the shown candles: only the current value is shown.
+    # The weekly VWAP brings ±1σ/±2σ bands that run with the line (Broncx: weekly VWAP ±2σ).
+    bands = [d for d in drawn if d["group"] == "vwap_bands"]
+    assert [d["name"] for d in bands] == ["VWAP +2σ", "VWAP +1σ", "VWAP −1σ", "VWAP −2σ"]
+    line = drawn[0]["curve"]
+    for band, factor in zip(bands, (2, 1, -1, -2)):
+        assert len(band["curve"]) == len(line)
+        assert (band["curve"][-1][1] - line[-1][1]) * factor > 0
+    assert bands[0]["curve"][-1][1] - line[-1][1] == pytest.approx(2 * (bands[1]["curve"][-1][1] - line[-1][1]))
+    # Anchor not in the shown candles: only the current value is shown, the bands at their current values.
     flat = vwap_drawings(vwaps, candles[-5:], "1h", NOW)
     assert "curve" not in flat[0] and flat[0]["start"] == NOW.isoformat()
+    flat_bands = [d for d in flat if d["group"] == "vwap_bands"]
+    assert [d["price"] for d in flat_bands] == pytest.approx([vwaps[0]["upper2"], vwaps[0]["upper"], vwaps[0]["lower"], vwaps[0]["lower2"]])
+
+
+def test_running_sigma_matches_the_closed_formula() -> None:
+    from src.dashboard.htf_levels import vwap_band_curve
+
+    start = datetime(2026, 10, 26, tzinfo=timezone.utc)
+    candles = [_c(start + timedelta(hours=i), 3600, 80100 + 37 * (i % 7), 79900 - 11 * (i % 5), 80000 + 13 * (i % 9), 1 + i % 4, "1h") for i in range(48)]
+    _, value, sigma = vwap_band_curve(candles)[-1]
+    closed = vwap(candles)
+    assert value == pytest.approx(closed["value"]) and sigma == pytest.approx(closed["sigma"], rel=1e-6)
 
 
 def test_live_chart_and_public_view_carry_the_new_groups_in_english() -> None:

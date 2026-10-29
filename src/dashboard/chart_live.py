@@ -66,13 +66,15 @@ GROUP_STYLE = {
     "quarter": ("#f08c4a", "solid"),
     "year": ("#ff5c9a", "solid"),
     "vwap": ("#3fd0c9", "solid"),
+    "vwap_bands": ("#3fd0c9", "dotted"),
     "fib": ("#c9a227", "dotted"),
     "gamma": ("#ffb020", "solid"),  # each gamma level brings its own colour (gamma_data.LEVEL_STYLE)
     "liq": ("#ff6b3d", "dashed"),  # cluster levels bring their own colour (liquidation_data.LEVEL_COLOR)
 }
 GROUP_NAMES = {
     "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "quarter": "Quartal (1Q)", "year": "Jahr (1Y)",
-    "vwap": "VWAP (Woche, Monat, 12M)", "naked": "naked POC",
+    "vwap": "VWAP (Woche, Monat, Quartal, Jahr)",
+    "vwap_bands": "VWAP-Bänder Woche (±1σ, ±2σ)", "naked": "naked POC",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "fib": "Fibonacci (letzter Swing)", "tpo": "TPO (Tagesprofil)",
     "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
@@ -85,7 +87,7 @@ TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
-DEFAULT_GROUPS = ("day", "week", "month", "naked", "structure", "trend", "tpo", "vp", "fp",
+DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp",
                   "plans_short", "plans_mid", "plans_long", "gamma", "liq")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
@@ -190,12 +192,15 @@ def _short_day(day: date) -> str:
     return f"{day.day:02d}.{day.month:02d}."
 
 
-def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime) -> list[dict[str, Any]]:
+def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
+                   trades: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     """Every reference level with timeframe, name and the moment it formed.
 
     Uses the session map (same rules as /prep and the level plans) and adds
     where each level starts: profile levels at the start of their day/week,
-    highs and lows at the candle that printed them.
+    highs and lows at the candle that printed them. With ``trades`` (TIM's
+    aggTrades store, ``DashboardState.footprint``) the value levels and naked
+    POCs of the days it covers come from the real trades (``trade_levels``).
     """
     from src.dashboard.session_map import build_session_map
 
@@ -266,7 +271,118 @@ def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datet
     if ib:
         add("ib", "", "IB High", ib["high"], today, "Initial Balance (90 min ab 00:00 UTC)")
         add("ib", "", "IB Low", ib["low"], today, "Initial Balance (90 min ab 00:00 UTC)")
+    if trades and trades.get("days"):
+        out = trade_levels(out, trades, series, now)
     return out
+
+
+TRADE_NOTE = "echte Trades"
+
+
+def _week_rows(store: Mapping[str, Any], monday: date, last: date) -> list[list[float]] | None:
+    """Stored rows of the days ``monday`` .. ``last``, or None when a day is missing or was not read in full."""
+    days, complete = store.get("days") or {}, store.get("complete") or {}
+    rows: list[list[float]] = []
+    day = monday
+    while day <= last:
+        key = day.isoformat()
+        if key not in days:
+            return None
+        if key not in complete and day != last:
+            return None
+        rows.extend(days[key])
+        day += timedelta(days=1)
+    return rows
+
+
+def trade_levels(drawings: Sequence[Mapping[str, Any]], store: Mapping[str, Any], series: Mapping[str, Sequence[Mapping[str, Any]]],
+                 now: datetime) -> list[dict[str, Any]]:
+    """Value levels and naked POCs from TIM's own trades instead of the candle estimate (Beirat 29.10.2026).
+
+    For every day the store covers: previous day VAH/POC/VAL, previous week value (when all
+    seven days are stored), the running day/week POC, and naked POCs of both kinds, as Broncx
+    marks them: vPOC (most volume, real trades) and tPOC (most 30m periods). A POC is naked
+    while no later trade (vPOC) or closed candle (tPOC) has printed inside its row. Days older
+    than the store keep the candle estimate, marked as such. The plan journals do not read
+    this (they call ``build_session_map`` directly), so their rules stay unchanged.
+    """
+    from src.dashboard.footprint_data import profile_from_rows, volume_profiles
+
+    tick = float(store["tick"])
+    profiles = {p["day"]: p for p in volume_profiles(store, now)}
+    if not profiles:
+        return [dict(d) for d in drawings]
+    first_day = min(profiles)
+    today = now.astimezone(timezone.utc).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    monday = today - timedelta(days=today.weekday())
+    replaced: set[tuple[str, str]] = set()
+    added: list[dict[str, Any]] = []
+
+    def add(group: str, tf: str, name: str, price: float, start: datetime, note: str) -> None:
+        added.append({"group": group, "tf": tf, "name": name, "label": f"{tf} {name}".strip(), "price": float(price),
+                      "start": start.isoformat(), "note": note, "source": "trades"})
+
+    previous = profiles.get(yesterday)
+    if previous and previous["complete"]:
+        day = date.fromisoformat(yesterday)
+        note = f"Vortag {_short_day(day)}, {TRADE_NOTE}"
+        for key, name in (("vah", "VAH"), ("poc_mid", "POC"), ("val", "VAL")):
+            add("day", "1D", name, previous[key], _day_start(day), note)
+        replaced |= {("day", "VAH"), ("day", "POC"), ("day", "VAL")}
+    week_rows = _week_rows(store, monday - timedelta(days=7), monday - timedelta(days=1))
+    week = profile_from_rows(week_rows, tick) if week_rows else None
+    if week:
+        start = _day_start(monday - timedelta(days=7))
+        note = f"Vorwoche ab {_short_day(start.date())}, {TRADE_NOTE}"
+        for key, name in (("vah", "VAH"), ("poc_mid", "POC"), ("val", "VAL")):
+            add("week", "1W", name, week[key], start, note)
+        replaced |= {("week", "VAH"), ("week", "POC"), ("week", "VAL")}
+    running = profiles.get(today.isoformat())
+    if running:
+        add("running", "1D", "POC lfd.", running["poc_mid"], _day_start(today), f"laufendes Tagesprofil, {TRADE_NOTE}")
+        replaced.add(("running_day", ""))
+        this_week_rows = _week_rows(store, monday, today)
+        this_week = profile_from_rows(this_week_rows, tick) if this_week_rows else None
+        if this_week:
+            add("running", "1W", "POC lfd.", this_week["poc_mid"], _day_start(monday), f"laufendes Wochenprofil, {TRADE_NOTE}")
+            replaced.add(("running_week", ""))
+
+    # Naked vPOCs: no later trade inside the POC row (stored levels are multiples of the tick).
+    levels_by_day = {key: {round(float(r[1]), 8) for r in rows} for key, rows in store["days"].items()}
+    for key, profile in sorted(profiles.items()):
+        if not profile["complete"] or key in (today.isoformat(), yesterday):
+            continue
+        later: set[float] = set().union(*(v for k, v in levels_by_day.items() if k > key))
+        inside = {round(profile["poc"] + i * tick, 8) for i in range(max(1, round(profile["step"] / tick)))}
+        if not inside & later:
+            day = date.fromisoformat(key)
+            add("naked", "1D", f"nPOC {_short_day(day)}", profile["poc_mid"], _day_start(day), f"unberührter Volumen-POC (vPOC), {TRADE_NOTE}")
+    # Naked tPOCs: no later closed candle inside the TPO POC row.
+    base_tf = "30m" if series.get("30m") else "15m"
+    candles = [c for c in clean_candles(series.get(base_tf) or [], base_tf) if c["close_time"] <= now]
+    for profile in tpo_profiles(series, now, days=14):
+        if profile["running"] or profile["day"] == yesterday or profile["periods"] < 44:
+            continue
+        end = datetime.fromisoformat(profile["end"])
+        low, high = profile["poc"], profile["poc"] + profile["step"]
+        if not any(c["open_time"] >= end and c["low"] < high and c["high"] >= low for c in candles):
+            day = date.fromisoformat(profile["day"])
+            add("naked", "1D", f"tPOC {_short_day(day)}", low + profile["step"] / 2, _day_start(day), "unberührter TPO-POC (Zeit, 30m-Perioden)")
+
+    result = []
+    for item in drawings:
+        group, name = item["group"], item["name"]
+        if (group, name) in replaced:
+            continue
+        if group == "running" and ((item["tf"] == "1D" and ("running_day", "") in replaced) or (item["tf"] == "1W" and ("running_week", "") in replaced)):
+            continue
+        if group == "naked":
+            if item["start"][:10] >= first_day:
+                continue  # covered by the trades: vPOC/tPOC above decide
+            item = {**item, "note": "unberührter Tages-POC (Schätzung aus Kerzen)"}
+        result.append(dict(item))
+    return result + added
 
 
 def structure_swings(candles: Sequence[Mapping[str, Any]], width: int = STRUCTURE_PIVOT) -> list[dict[str, Any]]:
@@ -450,14 +566,20 @@ def trend_drawings(candles: Sequence[Mapping[str, Any]], timeframe: str, width: 
     return result
 
 
+BAND_KEYS = ("week",)  # VWAPs drawn with ±1σ/±2σ bands (Broncx: weekly VWAP ±2σ)
+BANDS = ((2, "+2σ"), (1, "+1σ"), (-1, "−1σ"), (-2, "−2σ"))
+
+
 def vwap_drawings(vwaps: Sequence[Mapping[str, Any]], candles: Sequence[Mapping[str, Any]], timeframe: str,
                   now: datetime) -> list[dict[str, Any]]:
     """Anchored VWAPs: a running line over the shown candles when the anchor is in view, else the current value.
 
     The line is recomputed from the shown candles (typical price, including the
-    running candle); the current value comes from the session map's VWAP.
+    running candle); the current value comes from the session map's VWAP. The
+    weekly VWAP brings its ±1σ and ±2σ bands (group "vwap_bands"), running with
+    the line or, when the anchor is not in view, as the current band values.
     """
-    from src.dashboard.htf_levels import vwap_curve
+    from src.dashboard.htf_levels import vwap_band_curve
 
     out = []
     first = candles[0]["open_time"] if candles else None
@@ -465,13 +587,25 @@ def vwap_drawings(vwaps: Sequence[Mapping[str, Any]], candles: Sequence[Mapping[
         anchor = datetime.fromisoformat(item["anchor"])
         base = {"group": "vwap", "tf": item["tf"], "name": "VWAP", "label": f"{item['tf']} VWAP", "price": float(item["value"]),
                 "note": f"{item['name']}, aus {item['source']}-Kerzen"}
-        if first is not None and anchor >= first and INTERVAL_SECONDS[timeframe] <= 86400 and item["key"] != "rolling":
-            curve = vwap_curve([c for c in candles if c["open_time"] >= anchor])
+        bands = item["key"] in BAND_KEYS and item.get("sigma") is not None
+        if first is not None and anchor >= first and INTERVAL_SECONDS[timeframe] <= 86400:
+            curve = vwap_band_curve([c for c in candles if c["open_time"] >= anchor])
             if len(curve) >= 2:
-                out.append({**base, "price": curve[-1][1], "start": curve[0][0].isoformat(), "note": f"{item['name']}, Linie aus den gezeigten Kerzen",
-                            "curve": [[_epoch(moment), value] for moment, value in curve]})
+                note = f"{item['name']}, Linie aus den gezeigten Kerzen"
+                out.append({**base, "price": curve[-1][1], "start": curve[0][0].isoformat(), "note": note,
+                            "curve": [[_epoch(moment), value] for moment, value, _ in curve]})
+                if bands:
+                    for factor, name in BANDS:
+                        out.append({**base, "group": "vwap_bands", "name": f"VWAP {name}", "label": f"{item['tf']} VWAP {name}",
+                                    "price": curve[-1][1] + factor * curve[-1][2], "start": curve[0][0].isoformat(), "note": f"{note}, Band {name}",
+                                    "curve": [[_epoch(moment), value + factor * sigma] for moment, value, sigma in curve]})
                 continue
         out.append({**base, "start": now.isoformat()})
+        if bands:
+            for factor, name in BANDS:
+                out.append({**base, "group": "vwap_bands", "name": f"VWAP {name}", "label": f"{item['tf']} VWAP {name}",
+                            "price": float(item["value"]) + factor * float(item["sigma"]), "start": now.isoformat(),
+                            "note": f"{base['note']}, Band {name}"})
     return out
 
 
@@ -759,7 +893,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     level_source, source_name, notes = _level_series(symbol, runtime_series, cache, now)
     model["notes"].extend(notes)
     model["level_source"] = source_name
-    drawings = level_drawings(level_source, now)
+    trades = footprint if footprint and footprint.get("symbol") == symbol and footprint.get("days") else None
+    drawings = level_drawings(level_source, now, trades)
     if INTERVAL_SECONDS[timeframe] >= 86400:
         drawings = [d for d in drawings if d["group"] not in INTRADAY_ONLY]
     drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe) + fib_drawings(candles, timeframe)

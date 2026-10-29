@@ -16,14 +16,27 @@
   let symbol = root.dataset.symbol, timeframe = root.dataset.tf, timer = null, model = null, first = true, request = 0;
   let lines = [];
 
-  // Times arrive in UTC seconds; the chart shows the viewer's current local time. One fixed
-  // offset for all points: a per-point offset would fold the hour at the DST change and the
-  // library rejects times that are not strictly ascending.
-  const OFFSET = -new Date().getTimezoneOffset() * 60;
-  const local = t => t + OFFSET;
   // The public view (src/dashboard/public_en.py) sets data-lang='en'; the Control Center stays German.
   const EN = root.dataset.lang === 'en';
   const LOCALE = EN ? 'en-US' : 'de-DE';
+  // Times stay in UTC seconds on the axis (strictly ascending, also across the DST change); only the
+  // labels show the viewer's local time, per point, so candles before and after the change both
+  // carry the clock time Discord and TradingView show (a fixed offset put earlier candles one hour off).
+  const local = t => t;
+  const ZONE = { hour12: false };
+  const TIME_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, hour: '2-digit', minute: '2-digit' });
+  const DAY_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, day: '2-digit', month: '2-digit' });
+  const MONTH_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, month: 'short', year: '2-digit' });
+  const YEAR_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, year: 'numeric' });
+  const FULL_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const asDate = t => new Date(Number(t) * 1000);
+  const tickLabel = (t, type) => {
+    const d = asDate(t);
+    if (type === 0) return YEAR_FMT.format(d);
+    if (type === 1) return MONTH_FMT.format(d);
+    if (type === 2) return DAY_FMT.format(d);
+    return TIME_FMT.format(d);
+  };
   const T = EN
     ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of',
         failed: m => `Loading failed (${m}). Retrying in 30 s.` }
@@ -37,8 +50,8 @@
     grid: { vertLines: { color: 'rgba(120,134,156,0.10)' }, horzLines: { color: 'rgba(120,134,156,0.10)' } },
     crosshair: { mode: LWC.CrosshairMode.Normal },
     rightPriceScale: { borderColor: 'rgba(120,134,156,0.35)', scaleMargins: { top: 0.06, bottom: 0.18 } },
-    timeScale: { borderColor: 'rgba(120,134,156,0.35)', timeVisible: true, secondsVisible: false, rightOffset: 8 },
-    localization: { locale: LOCALE, priceFormatter: fmt },
+    timeScale: { borderColor: 'rgba(120,134,156,0.35)', timeVisible: true, secondsVisible: false, rightOffset: 8, tickMarkFormatter: tickLabel },
+    localization: { locale: LOCALE, priceFormatter: fmt, timeFormatter: t => FULL_FMT.format(asDate(t)) },
   });
   const candles = chart.addCandlestickSeries({
     upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
@@ -405,6 +418,8 @@
         const known = new Set(JSON.parse(localStorage.getItem(KNOWN) || '[]'));
         const groups = new Set(saved);
         for (const key of (model ? model.default_groups : [])) if (!known.has(key) && known.size) groups.add(key);
+        // VWAP became a default layer together with its bands (Beirat 29.10.2026): switch the line on with them once.
+        if (known.size && !known.has('vwap_bands') && groups.has('vwap_bands')) groups.add('vwap');
         if (!known.size) for (const key of (model ? model.default_groups : [])) if (key.startsWith('plans_') || LEGACY_NEW.includes(key)) groups.add(key);
         return groups;
       }
