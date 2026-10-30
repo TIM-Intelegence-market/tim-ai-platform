@@ -212,9 +212,10 @@ class PublicDashboardServer:
             model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
                                      plan_journals=load_plan_journals(self.journal_paths()), gamma=gamma,
                                      liquidation=liquidation)
+            from src.dashboard.pages.chart import APP_VERSION
             from src.dashboard.public_en import english_chart_model
 
-            return json.dumps(english_chart_model(model), default=str).encode()
+            return json.dumps({**english_chart_model(model), "app_version": APP_VERSION}, default=str).encode()
         from src.dashboard.plan_cost_check import with_cost_check
         from src.dashboard.plan_journal import load_view
 

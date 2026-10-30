@@ -20,7 +20,7 @@ from src.dashboard.chart_live import SYMBOL_NAMES, SYMBOLS, VIEW_TIMEFRAMES, tab
 from src.dashboard.chart_model import _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import CSS, EXTRA_CSS
-from src.dashboard.pages.chart import APP_PATH, LIB_PATH
+from src.dashboard.pages.chart import APP_SRC, LIB_PATH
 from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RULE_TIM, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
@@ -225,7 +225,7 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         "circle area = order size against the largest in view, the largest carry their size in BTC; only the largest in view are shown, zooming in adds smaller ones. <b>Fibonacci</b> as in TradingView on the last big swing (wick to wick; a swing counts after a move of 3 average candle ranges against it, "
         "and while price only pulls back the fib stays on the impulse): 1 = start, 0 = end, zones 0.236 to 1 plus 0.886/0.941 and 1.618. Times in Central European time. Display only, no orders. "
         "Chart: <a href='https://www.tradingview.com/' rel='noopener noreferrer'>TradingView Lightweight Charts</a> (Apache 2.0).</p>"
-        f"<script src='{LIB_PATH}'></script><script src='{APP_PATH}'></script></section>"
+        f"<script src='{LIB_PATH}'></script><script src='{APP_SRC}'></script></section>"
     )
     return shell("Chart", "/chart", body)
 
