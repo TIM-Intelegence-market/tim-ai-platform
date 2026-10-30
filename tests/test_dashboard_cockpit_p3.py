@@ -120,12 +120,11 @@ def test_forschung_shows_cases_waiting_for_review_and_parks_human_steps(tmp_path
     assert tiles["validator"]["state"] == "ok" and tiles["validator"]["value"] == "läuft, 4.200 Zyklen"
     assert tiles["cases_total"]["value"] == "1.086 gesamt"
     assert tiles["cases_review"]["state"] == "warn" and tiles["cases_review"]["reason"] == "6 Fälle warten auf deine Prüfung"
-    assert tiles["campaign"]["state"] == "unknown" and tiles["campaign"]["value"] == "abgebrochen"
-    assert tiles["campaign"]["extra"]["kind"] == "parked" and "abgebrochen" in tiles["campaign"]["reason"]
-    assert tiles["human_review"]["extra"]["state_label"] == "Wartet auf euch"
-    # Only the review queue needs a look: parked tiles neither count nor turn the headline grey.
+    # 29.10.2026: the aborted V2 campaign left Forschung (it lives on /archiv); the logbook leads instead.
+    assert "campaign" not in tiles and "human_review" not in tiles
+    assert model["sections"][0]["id"] == "logbook" and tiles["studies_confirmed"]["value"] == "S1"
     assert [t["id"] for t in model["attention"]] == ["cases_review"]
-    assert model["overall"] == "warn" and model["headline"] == "Ein Punkt braucht einen Blick" and model["parked"] == 2
+    assert model["overall"] == "warn" and model["headline"] == "Ein Punkt braucht einen Blick"
 
 
 def test_forschung_tables_link_inside_and_escape_text(tmp_path: Path) -> None:
@@ -133,7 +132,7 @@ def test_forschung_tables_link_inside_and_escape_text(tmp_path: Path) -> None:
     assert "<h1>Forschung</h1>" in html
     assert "href='/cases?id=case-abc'" in html and "bereit zur Prüfung" in html
     assert "case-&lt;script&gt;" in html and "Bid-Absorption &lt;b&gt;" in html
-    assert "Wartet auf euch" in html and "bewusst" in html
+    assert "Logbuch der Studien" in html and "nicht testbar" in html and "Wartet auf euch" not in html
 
 
 def test_stale_validator_turns_yellow(tmp_path: Path) -> None:
@@ -360,7 +359,6 @@ def test_texts_for_odd_values(tmp_path: Path) -> None:
     snap["operations"]["audit"]["test_status"] = None
     tiles = _tiles(build_forschung(_state_with(tmp_path, snap), now=NOW, sources=_fresh()))
     assert tiles["cases_review"]["state"] == "ok"
-    assert tiles["human_review"]["extra"].get("kind") != "parked" and "Freigabe" not in tiles["human_review"]["reason"]
     system = _tiles(build_system(_state_with(tmp_path, snap), now=NOW, sources=_fresh()))
     assert "None" not in system["tests"]["reason"]
 

@@ -79,7 +79,10 @@ a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius
 .nav a:hover{color:var(--ink);text-decoration:none}
 .nav a[aria-current=page]{color:var(--ink);border-bottom-color:var(--accent)}
 .nav a.area{color:var(--ink);border-bottom-color:var(--accent)}
-.subnav{border-top:1px solid var(--line)}.subnav__in{max-width:1280px;margin:0 auto;padding:0 16px;display:flex;flex-wrap:wrap;gap:2px 14px}
+.subnav{border-top:1px solid var(--line)}
+.todo{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.todo li{display:grid;grid-template-columns:1.4rem 14rem minmax(0,1fr);gap:4px 10px;padding:10px 16px;border-top:1px solid var(--line);align-items:baseline}.todo li:first-child{border-top:0}.todo li.done .todo__mark{color:var(--ok)}.todo li.open .todo__mark{color:var(--warn)}
+@media (max-width:700px){.todo li{grid-template-columns:1.4rem minmax(0,1fr)}.todo li .note{grid-column:2}}
+.fold>summary{cursor:pointer;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-weight:600;list-style-position:inside}.fold[open]>summary{margin-bottom:8px}.subnav__in{max-width:1280px;margin:0 auto;padding:0 16px;display:flex;flex-wrap:wrap;gap:2px 14px}
 .subnav a{padding:8px 0;color:var(--muted);font-size:13px;font-weight:500}.subnav a[aria-current=page]{color:var(--ink);font-weight:650;text-decoration:underline;text-underline-offset:5px}
 .live{font-size:13px;color:var(--muted);white-space:nowrap}
 .live[data-state=fail]{color:var(--fail)}
@@ -335,6 +338,18 @@ def lage_body(model: dict[str, Any]) -> str:
         + (f"<p class='meta'>Stand <time data-asof='{_e(price['as_of'])}'>{_e(human_age(price.get('age_seconds')))}</time></p>" if price.get("as_of") else "")
         + "</div>"
     )
+    today = model.get("today") or []
+    today_html = "<ul class='todo'>" + "".join(
+        f"<li class='{'done' if item.get('done') else ('open' if item.get('done') is False else 'unknown')}'>"
+        f"<span class='todo__mark' aria-hidden='true'>{'✓' if item.get('done') else '○'}</span>"
+        f"<a href='{_e(item.get('href') or '#')}'>{_e(item.get('label'))}</a><span class='note'>{_e(item.get('text'))}</span></li>"
+        for item in today) + "</ul>"
+    system_tiles = model.get("system") or []
+    system_ok = bool(system_tiles) and all(t.get("state") == "ok" for t in system_tiles)
+    system_summary = (f"System läuft: {len(system_tiles)} von {len(system_tiles)} grün" if system_ok
+                      else f"System: {sum(t.get('state') == 'ok' for t in system_tiles)} von {len(system_tiles)} grün, bitte ansehen")
+    system_html = (f"<details class='fold'{'' if system_ok else ' open'}><summary class='s-{'ok' if system_ok else 'warn'}'>{_e(system_summary)}</summary>"
+                   f"{_grid(system_tiles)}</details>")
     return (
         f"<div class='head'><h1>Lage</h1>"
         f"<span class='meta'>Stand {local_time(model.get('generated_at'), True)} Uhr. {_e(model.get('safety'))}</span></div>"
@@ -342,7 +357,8 @@ def lage_body(model: dict[str, Any]) -> str:
         f"<section aria-labelledby='h-need'><h2 id='h-need'>Braucht dich</h2><div class='need'>{need_html}</div></section></div>"
         f"{hero_market}</div>"
         f"<div class='cols'><div>"
-        f"<section aria-labelledby='h-system'><h2 id='h-system'>System</h2>{_grid(model.get('system') or [])}</section>"
+        + (f"<section aria-labelledby='h-today'><h2 id='h-today'>Heute zu tun</h2>{today_html}</section>" if today else "")
+        + f"<section aria-labelledby='h-system'><h2 id='h-system'>System</h2>{system_html}</section>"
         f"<section aria-labelledby='h-market'><h2 id='h-market'>Markt jetzt</h2>{_grid(market)}</section>"
         f"<section aria-labelledby='h-plans'><h2 id='h-plans'>TIMs Pläne jetzt</h2>{plan_html}"
         "<p class='note'>Stop und Ziele sind eine Vorschau nach TIMs Regeln, keine Order und keine Anlageberatung.</p></section>"

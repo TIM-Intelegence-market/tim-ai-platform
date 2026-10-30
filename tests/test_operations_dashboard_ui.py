@@ -261,15 +261,15 @@ def test_control_center_has_exact_ten_primary_pages_and_explicit_safety_boundary
 
 
 @pytest.mark.parametrize("page,title", [
-    ("Security", "Credential rotation"),
-    ("Runtime", "source to store latency"),
+    ("Security", "Wechsel der Zugangsdaten"),
+    ("Runtime", "Latenz Quelle bis Speicher"),
     ("Data Quality", "Aktuelle Evidenzräume"),
     ("Incidents & Gaps", "Root cause"),
     ("Qualification", "Latest immutable daily manifest"),
     ("Independent Cases", "Manual review"),
     ("V2 Readiness", "PENDING HUMAN APPROVAL"),
     ("Graphify & MCP", "Tunnel permissions"),
-    ("Audit & Evidence", "Protected state"),
+    ("Audit & Evidence", "Geschützter Zustand"),
 ])
 def test_each_operations_page_renders_required_real_or_unavailable_state(tmp_path: Path, page: str, title: str) -> None:
     markup = render(_state(tmp_path), page)
