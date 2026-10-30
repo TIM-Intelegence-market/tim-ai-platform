@@ -238,6 +238,72 @@
   };
   candles.attachPrimitive(liq);
 
+  // Fibonacci retracement of the newest swing leg (src/dashboard/chart_live.fib_retracement), drawn like
+  // TradingView's Fib tool: dashed line from the swing start to its end, coloured zones between the levels
+  // from the swing start to the newest candle, level and price on the left. Display only, not a signal.
+  const FIB_COLORS = { '0': '#787b86', '0.236': '#f23645', '0.382': '#ff9800', '0.5': '#4caf50', '0.618': '#089981',
+                       '0.786': '#00bcd4', '0.886': '#9575cd', '0.941': '#ba68c8', '1': '#787b86', '1.618': '#2962ff' };
+  const fibColor = ratio => FIB_COLORS[String(ratio)] || '#c9a227';
+  const alpha = (hex, a) => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
+  const fib = {
+    chart: null, series: null, requestUpdate: null, visible: false,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            const leg = model && model.fib;
+            if (!fib.visible || !fib.chart || !leg || !leg.levels || !leg.levels.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = fib.chart.timeScale();
+              let x0 = scale.timeToCoordinate(local(leg.start));
+              const xEnd = scale.timeToCoordinate(local(leg.end));
+              const x1 = scale.logicalToCoordinate(model.candles.length - 1 + 3);
+              if (x0 === null) x0 = local(leg.start) < local(model.candles[0].time) ? 0 : null;
+              if (x0 === null || x1 === null || x1 < 0 || x0 > mediaSize.width) return;
+              const left = Math.max(0, x0), right = Math.min(mediaSize.width, x1);
+              const levels = [...leg.levels].sort((a, b) => a.ratio - b.ratio);
+              const ys = levels.map(level => fib.series.priceToCoordinate(level.price));
+              for (let i = 0; i + 1 < levels.length; i++) {  // zone between two levels in the colour of the outer one
+                if (ys[i] === null || ys[i + 1] === null) continue;
+                ctx.fillStyle = alpha(fibColor(levels[i + 1].ratio), 0.12);
+                ctx.fillRect(left, Math.min(ys[i], ys[i + 1]), right - left, Math.abs(ys[i + 1] - ys[i]));
+              }
+              ctx.font = '11px ui-monospace, Menlo, monospace';
+              ctx.textBaseline = 'middle';
+              const inside = x0 < 130;  // no room left of the swing: labels go inside the zones
+              ctx.textAlign = inside ? 'left' : 'right';
+              levels.forEach((level, i) => {
+                const y = ys[i];
+                if (y === null) return;
+                const color = fibColor(level.ratio);
+                ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([]);
+                ctx.beginPath(); ctx.moveTo(left, Math.round(y) + 0.5); ctx.lineTo(right, Math.round(y) + 0.5); ctx.stroke();
+                ctx.fillStyle = color;
+                const text = `${level.ratio} (${fmt(level.price)})` + (level.ratio === 0 ? ` · Fib ${leg.tf}` : '');
+                ctx.fillText(text, inside ? left + 4 : left - 6, inside ? y - 7 : y);
+              });
+              // the swing itself: from its start (level 1) to its end (level 0)
+              const yA = fib.series.priceToCoordinate(leg.start_price), yB = fib.series.priceToCoordinate(leg.end_price);
+              if (yA !== null && yB !== null && xEnd !== null) {
+                ctx.strokeStyle = 'rgba(195,202,214,0.75)'; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+                ctx.beginPath(); ctx.moveTo(x0, yA); ctx.lineTo(xEnd, yB); ctx.stroke();
+                ctx.setLineDash([]);
+              }
+              ctx.textAlign = 'left';
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(fib);
+
   // Footprint like TradingView's: rows follow the zoom (finer price steps the closer you get).
   // Far out: a short hint. Medium zoom: one heat column per candle (colour = delta, strength = volume).
   // Close: bid × ask numbers per row next to a slim candle, POC framed, 4:1 imbalances coloured,
@@ -584,6 +650,7 @@
     vp.visible = groups.has('vp');
     fp.visible = groups.has('fp');
     liq.visible = groups.has('liq');
+    fib.visible = groups.has('fib');
     bubbles.visible = groups.has('bubbles');
     if (tpo.requestUpdate) tpo.requestUpdate();
   }
@@ -652,7 +719,7 @@
       candles.setData(model.candles.map(c => ({ time: local(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
       volume.setData(model.candles.map(c => ({ time: local(c.time), value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)' })));
       drawLines();
-      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); bubbles.visible = groups.has('bubbles'); }
+      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); fib.visible = groups.has('fib'); bubbles.visible = groups.has('bubbles'); }
       if (first || !sameView) {
         const count = model.candles.length;
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - 160), to: count + 8 });
