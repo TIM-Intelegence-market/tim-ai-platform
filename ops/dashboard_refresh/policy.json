@@ -5,9 +5,9 @@
   "repository": "TIM-Intelegence-market/tim-ai-platform",
   "gh": "/opt/homebrew/bin/gh",
   "required_check": "test",
-  "min_minutes_between_runtime_restarts": 60,
-  "min_minutes_between_runtime_restarts_display_only": 20,
-  "min_minutes_note": "60 min between restarts when a new commit changes more than the display, 20 min when every changed file is display-safe.",
+  "min_minutes_between_runtime_restarts": 5,
+  "min_minutes_between_runtime_restarts_display_only": 5,
+  "min_minutes_note": "Uzi 27.10.2026: at most one runtime restart every 5 min, display-only or not (was 60/20). The agent itself runs every 5 min (StartInterval 300).",
   "generated_tracked_files": [
     "docs/TIM_V1_LIVE_STATUS.md"
   ],
@@ -73,6 +73,7 @@
       "display_safe_note": "Study tooling (sk_*, control_regime_study.py, sk_study.py) runs offline on backup copies and is not imported by the runtime."
     }
   ],
+  "health_checks_note": "Uzi 27.10.2026: the agent also keeps the public read-only view (chart + paper journal, 127.0.0.1:8780, served by the same runtime process) current. A check with when_file only counts while that file (relative to home) exists, here the public view's flag file; an after_restart check must answer right after a runtime restart, otherwise the deploy is rolled back.",
   "health_checks": [
     {
       "name": "control_center",
@@ -88,6 +89,20 @@
       "name": "control_center_chart",
       "url": "http://127.0.0.1:8765/chart",
       "timeout_seconds": 20
+    },
+    {
+      "name": "public_chart",
+      "url": "http://127.0.0.1:8780/chart",
+      "timeout_seconds": 20,
+      "when_file": "Library/Application Support/TIM/public-dashboard.enabled",
+      "after_restart": true
+    },
+    {
+      "name": "public_journal",
+      "url": "http://127.0.0.1:8780/journal",
+      "timeout_seconds": 20,
+      "when_file": "Library/Application Support/TIM/public-dashboard.enabled",
+      "after_restart": true
     },
     {
       "name": "worker_dashboard",

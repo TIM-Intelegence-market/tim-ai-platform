@@ -1,0 +1,194 @@
+{
+  "study": "S10",
+  "commit": "c9b3914ee1fa09d1246888092f1a119fdacf75ff",
+  "outcome_blind": true,
+  "created": "2026-10-28T01:04:13+00:00",
+  "dataset_hash": "66fc58094a51e2681ccb1322413ac43650bb98b74456cd664bfc99ed3ac209c7",
+  "gate": {
+    "train": 500,
+    "validation": 250,
+    "holdout": 200,
+    "holdout_months": 21,
+    "days": {
+      "train": 160,
+      "validation": 183
+    }
+  },
+  "symbols": {
+    "BTCUSDT": {
+      "first_month": "2020-01",
+      "trading_days": 1258,
+      "bars_5m": 526176
+    },
+    "ETHUSDT": {
+      "first_month": "2020-01",
+      "trading_days": 1258,
+      "bars_5m": 526176
+    },
+    "SOLUSDT": {
+      "first_month": "2020-09",
+      "trading_days": 1090,
+      "bars_5m": 450636
+    }
+  },
+  "variants": {
+    "S10-P": {
+      "params": {
+        "interval": "5m",
+        "orderflow": false,
+        "ib_minutes": 30,
+        "bins": 40,
+        "value_area": 0.7,
+        "min_ib_atr_1d": 0.25,
+        "stop_buffer_atr": 0.1,
+        "target_r": 2.0,
+        "absorption_volume_ratio": 1.2,
+        "absorption_range_ratio": 0.8
+      },
+      "funnel": {
+        "BTCUSDT": {
+          "days": 1258,
+          "data_missing": 0,
+          "atr_missing": 10,
+          "ib_narrow": 854,
+          "no_breakout": 70,
+          "invalidated": 26,
+          "no_retest": 100,
+          "no_reaction": 6,
+          "no_absorption": 0,
+          "no_entry_bar": 0,
+          "signals": 192
+        },
+        "ETHUSDT": {
+          "days": 1258,
+          "data_missing": 0,
+          "atr_missing": 10,
+          "ib_narrow": 911,
+          "no_breakout": 58,
+          "invalidated": 21,
+          "no_retest": 92,
+          "no_reaction": 3,
+          "no_absorption": 0,
+          "no_entry_bar": 0,
+          "signals": 163
+        },
+        "SOLUSDT": {
+          "days": 1090,
+          "data_missing": 10,
+          "atr_missing": 32,
+          "ib_narrow": 776,
+          "no_breakout": 46,
+          "invalidated": 19,
+          "no_retest": 69,
+          "no_reaction": 2,
+          "no_absorption": 0,
+          "no_entry_bar": 0,
+          "signals": 136
+        }
+      },
+      "train": {
+        "signals": 241,
+        "signal_days": 164,
+        "btc": 87,
+        "long": 118,
+        "short": 123
+      },
+      "validation": {
+        "signals": 250,
+        "signal_days": 173,
+        "btc": 105,
+        "long": 114,
+        "short": 136
+      },
+      "by_year": {
+        "2020": 48,
+        "2021": 70,
+        "2022": 123,
+        "2023": 84,
+        "2024": 166
+      },
+      "weakest_year": 2020,
+      "projected_holdout": 84.0,
+      "passes_gate": false
+    },
+    "S10-O": {
+      "params": {
+        "interval": "5m",
+        "orderflow": true,
+        "ib_minutes": 30,
+        "bins": 40,
+        "value_area": 0.7,
+        "min_ib_atr_1d": 0.25,
+        "stop_buffer_atr": 0.1,
+        "target_r": 2.0,
+        "absorption_volume_ratio": 1.2,
+        "absorption_range_ratio": 0.8
+      },
+      "funnel": {
+        "BTCUSDT": {
+          "days": 1258,
+          "data_missing": 0,
+          "atr_missing": 10,
+          "ib_narrow": 854,
+          "no_breakout": 70,
+          "invalidated": 72,
+          "no_retest": 100,
+          "no_reaction": 6,
+          "no_absorption": 141,
+          "no_entry_bar": 0,
+          "signals": 5
+        },
+        "ETHUSDT": {
+          "days": 1258,
+          "data_missing": 0,
+          "atr_missing": 10,
+          "ib_narrow": 911,
+          "no_breakout": 58,
+          "invalidated": 58,
+          "no_retest": 92,
+          "no_reaction": 3,
+          "no_absorption": 116,
+          "no_entry_bar": 0,
+          "signals": 10
+        },
+        "SOLUSDT": {
+          "days": 1090,
+          "data_missing": 10,
+          "atr_missing": 32,
+          "ib_narrow": 776,
+          "no_breakout": 46,
+          "invalidated": 58,
+          "no_retest": 69,
+          "no_reaction": 2,
+          "no_absorption": 90,
+          "no_entry_bar": 0,
+          "signals": 7
+        }
+      },
+      "train": {
+        "signals": 15,
+        "signal_days": 15,
+        "btc": 2,
+        "long": 6,
+        "short": 9
+      },
+      "validation": {
+        "signals": 7,
+        "signal_days": 6,
+        "btc": 3,
+        "long": 2,
+        "short": 5
+      },
+      "by_year": {
+        "2020": 4,
+        "2021": 3,
+        "2022": 8,
+        "2023": 2,
+        "2024": 5
+      },
+      "weakest_year": 2023,
+      "projected_holdout": 3.5,
+      "passes_gate": false
+    }
+  }
+}

@@ -1,6 +1,6 @@
 ---
 name: beirat
-description: Beruft einen Beirat aus fünf Rollen, die eine Idee von fünf Seiten auseinandernehmen, danach fällt ein Vorsitzender ein Urteil, MACHEN, UMBAUEN oder LASSEN, mit dem billigsten Test, der die Idee vorher prüft. Verwenden wenn jemand seine Geschäftsidee, sein Angebot, seinen Preis oder einen Plan geprüft haben will, wenn er sagt "sag mir ehrlich", "zerleg das", "beruf den Beirat", "roast", "ist das eine gute Idee", "soll ich das bauen", oder wenn jemand merkt, dass die KI ihm zu allem zustimmt.
+description: Beruft einen Beirat aus fünf Rollen, die eine Idee von fünf Seiten auseinandernehmen, danach fällt ein Vorsitzender ein Urteil, MACHEN, UMBAUEN oder LASSEN, mit dem billigsten Test, der die Idee vorher prüft. Verwenden wenn jemand seine Geschäftsidee, sein Angebot, seinen Preis oder einen Plan geprüft haben will, wenn er sagt "sag mir ehrlich", "zerleg das", "beruf den Beirat", "schneller Beirat", "frag den Gegner", "roast", "ist das eine gute Idee", "soll ich das bauen", oder wenn jemand merkt, dass die KI ihm zu allem zustimmt.
 ---
 
 # Der Beirat
@@ -29,6 +29,26 @@ danach wird gearbeitet.
 3. **Dein Vorsprung.** Was du schon hast: Fähigkeiten, Publikum, Kunden, Werkzeuge.
 4. **Deine Grenzen.** Budget, Zeit, wie schnell der erste Euro kommen muss.
 
+Drei Dinge machen das Urteil deutlich schärfer und werden in derselben einen
+Rückfrage mit erbeten, wenn sie fehlen:
+
+5. **Die Optionen.** Zwei oder drei, und "weitermachen wie bisher" zählt immer als
+   eine. Ohne Gegenoption bewertet der Beirat nur, ob die Idee gut klingt.
+6. **Wie Erfolg aussieht, und bis wann.** Eine Zahl und ein Datum, sonst kann der
+   billigste Test nichts entscheiden.
+7. **Wohin du tendierst, und warum.** Die Tendenz geht in den Auftrag, damit der
+   Beirat sie gezielt angreift, statt ihr zuzustimmen. Der Gegner bekommt sie
+   ausdrücklich als Ziel.
+
+Vorlage zum Kopieren:
+
+```
+Beirat: Entscheidung: [ein Satz]. Optionen: [A], [B], weitermachen wie bisher.
+Für wen und womit Geld: [ ]. Vorsprung: [ ]. Zahlen: [ ]. Grenzen: Budget [ ],
+Stunden pro Woche [ ], Deadline [ ]. Erfolg: [was, bis wann].
+Ich tendiere zu [Option], weil [Grund].
+```
+
 Sagt jemand "leg einfach los" oder steht schon genug da, wird nicht gefragt. Ein
 Durchgang Fragen, nie zwei. Wer drei Runden fragt, hat den Beirat nicht berufen,
 sondern ein Formular ausgefüllt.
@@ -36,6 +56,24 @@ sondern ein Formular ausgefüllt.
 Aus den Antworten wird **ein kurzer Absatz** geschrieben, der Auftrag. Er geht
 wortgleich an alle fünf Rollen, damit alle dieselbe Sache beurteilen und nicht
 fünf verschiedene.
+
+## Die Modi
+
+Nicht jede Frage braucht den vollen Beirat. Jede Rolle ist auf Weg A ein eigener
+Agent und verbraucht Kontingent, deshalb wird der Modus nach Gewicht der Frage
+gewählt. Nennt der Nutzer keinen, gilt: schwer umkehrbar oder teuer heißt voll,
+sonst schnell. Der gewählte Modus steht in der ersten Zeile der Antwort.
+
+| Modus | Auslöser | Was läuft |
+|---|---|---|
+| **Voll** | "Beirat", "beruf den Beirat", "roast" | Alle fünf Rollen, danach das Urteil |
+| **Schnell** | "schneller Beirat", "kurz prüfen", "--quick" | Nur Gegner, Logiker und Käufer, danach das Urteil in derselben Form |
+| **Einzeln** | "frag den Gegner", "nur der Käufer" | Eine Rolle, kein Urteil, nur ihre vier Punkte |
+
+Im Schnellmodus steht unter dem Urteil ausdrücklich, welche Rollen fehlten. Die
+Sicherheit des Urteils ist dort höchstens "mittel". Kippt das Urteil im
+Schnellmodus auf LASSEN oder ist die Lage knapp, wird der volle Beirat angeboten,
+nicht stillschweigend nachgeschoben.
 
 ## Die Sitzung
 
@@ -109,6 +147,10 @@ Chance behält]
 
 Darunter die fünf Noten in einer Zeile:
 `Gegner X/10 · Ausbauer X/10 · Logiker X/10 · Rechercheur X/10 · Käufer X/10`
+
+Hat der Nutzer Optionen genannt, folgt darunter eine Zeile mit dem Urteil je
+Option, zum Beispiel `A: UMBAUEN · B: LASSEN · weitermachen: MACHEN`. Hat er eine
+Tendenz genannt, sagt das Urteil in einem Satz, ob sie hält oder nicht.
 
 ## Regeln
 

@@ -96,6 +96,12 @@ def _total_gex(live: Sequence[tuple[OptionQuote, float]], spot: float, rate: flo
     return sum(_quote_gex(q, spot, years, rate) for q, years in live)
 
 
+def gex_at(chain: Sequence[OptionQuote], price: float, as_of: datetime, rate: float = 0.0) -> float:
+    """Total estimated GEX if the underlying traded at ``price``; expired quotes are left out."""
+    live = [(q, _years(as_of, q.expiry)) for q in chain]
+    return _total_gex([(q, years) for q, years in live if years > 0], price, rate)
+
+
 def _gamma_flip(live: Sequence[tuple[OptionQuote, float]], rate: float) -> float | None:
     """Hypothetical spot where total GEX changes sign, scanned over the strike range.
 

@@ -1,0 +1,133 @@
+{
+  "schema": "tim_research_logbook/1",
+  "purpose": "Ein Eintrag je Studie: was geprüft wurde, was herauskam und warum sie beendet ist. Damit keine tote Idee unbemerkt zweimal getestet wird. Quelle der Wahrheit bleiben Präregistrierung und Bericht; dieses Logbuch fasst sie nur zusammen.",
+  "updated": "2026-10-29",
+  "entries": [
+    {
+      "id": "S8",
+      "title": "Orderflow-KI: Richtung der nächsten 5 Minuten aus Orderflow-Merkmalen",
+      "started": "2026-10-26",
+      "status": "running",
+      "result": "Läuft. Merkmale 1.1 mit Volume Profile und TPO gebaut, Archivlauf 2020–2024 auf dem Mac. Eigene Familie, wird prospektiv geprüft; noch keine Auswertung.",
+      "lesson": "",
+      "doc": "docs/research_lab/studien/S8_ORDERFLOW_PROGNOSE_PRAEREGISTRIERUNG.md"
+    },
+    {
+      "id": "F4",
+      "title": "Perp-Daten: 48-h-Probe der Futures-Trades neben Spot",
+      "started": "2026-10-29",
+      "status": "running",
+      "result": "Läuft bis 31.10. Prüft, ob sich Perp-Trades lückenlos sammeln lassen, bevor CVD Spot gegen Perp gebaut wird.",
+      "lesson": "",
+      "doc": ""
+    },
+    {
+      "id": "S10",
+      "title": "IB-Ausbruch New York mit Retest an POC/Value-Kante",
+      "started": "2026-10-28",
+      "status": "not_testable",
+      "result": "Am Machbarkeits-Gate gescheitert: S10-P 241 von 500 nötigen Signalen im Training, S10-O 15. Der IB-Filter (0,25 × Tages-ATR) streicht rund 70 % der Tage.",
+      "lesson": "Eine Variante ohne Filter (S11) hat Uzi am 28.10. abgelehnt.",
+      "doc": "docs/research_lab/reports/s10_count_2026-10-28T0105Z.md"
+    },
+    {
+      "id": "S9",
+      "title": "CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft)",
+      "started": "2026-10-27",
+      "status": "not_testable",
+      "result": "Am Machbarkeits-Gate gescheitert: höchstens 11 Signale im Training statt 500. Die meisten Setups fallen an R:R < 2 oder am verletzten Ursprung raus.",
+      "lesson": "Regeln aus Lernheften erzeugen mechanisch übersetzt zu wenige Fälle für einen Test.",
+      "doc": "docs/research_lab/reports/s9_count_2026-10-27T1849Z.md"
+    },
+    {
+      "id": "S7b",
+      "title": "Trendfolge-Ausbruch 3–4 R mit höchstens einer Position",
+      "started": "2026-10-26",
+      "status": "candidate",
+      "result": "Training und Validierung bestanden (D20-T3: E +0,27 R, PF 1,45, DD 10,9 R). Auf Uzis Wahl ohne Holdout beendet: Kandidat, keine bestätigte Strategie, nicht für Papier oder Live.",
+      "lesson": "Der Holdout 2025+ ist unverbraucht und kann den Kandidaten später entscheiden.",
+      "doc": "docs/research_lab/studien/S7B_EINE_POSITION_PRAEREGISTRIERUNG.md"
+    },
+    {
+      "id": "S7",
+      "title": "Trendfolge-Ausbruch 3–4 R (Donchian, SMA200)",
+      "started": "2026-10-26",
+      "status": "failed",
+      "result": "Nicht bestanden: Erwartung positiv (+0,19/+0,24 R), aber Drawdown 30 R über der Grenze von 20 R.",
+      "lesson": "Führte direkt zu S7b mit nur einer Position.",
+      "doc": "docs/research_lab/reports/s7_train_2026-10-26T1049Z.md"
+    },
+    {
+      "id": "S6",
+      "title": "Trefferquote 95 % mit Maker-Limits an der VWAP-Abweichung",
+      "started": "2026-10-25",
+      "status": "failed",
+      "result": "Nicht bestanden: Treffer 72–82 %, Erwartung −0,07 bis −0,11 R. Zufällige Einstiege mit gleicher Geometrie treffen genauso oft.",
+      "lesson": "Eine hohe Trefferquote kommt aus dem Verhältnis von Ziel zu Stop, nicht aus dem Einstieg.",
+      "doc": "docs/research_lab/reports/s6_train_2026-10-25T2338Z.md"
+    },
+    {
+      "id": "S5",
+      "title": "Trefferquote 95 % mit Funding-Carry",
+      "started": "2026-10-25",
+      "status": "not_testable",
+      "result": "Nicht testbar: zu wenige Episoden (2022 gar keine, weil die Funding-Rate nie über 0,01 % lag).",
+      "lesson": "Seltene Signale scheitern an der Stichprobe, häufige hatten in S4 negative Erwartung.",
+      "doc": "docs/research_lab/reports/s5_count_2026-10-25T1836Z.md"
+    },
+    {
+      "id": "S4",
+      "title": "Trefferquote 75 % mit Ziel 0,75 R (Sweep, Delta, Regime)",
+      "started": "2026-10-25",
+      "status": "not_testable",
+      "result": "Am Gate gescheitert, keine der 10 Varianten hat genug Trades. Die Erkundung danach: alle Varianten mit negativer Erwartung (−0,12 bis −0,23 R).",
+      "lesson": "Trefferquote ist kein Hebel, solange der Einstieg keinen Vorteil hat.",
+      "doc": "docs/research_lab/reports/s4_count_2026-10-25T1620Z.md"
+    },
+    {
+      "id": "K1",
+      "title": "Kosten-Schwelle 0,25 R für Plan-Journal-Pläne",
+      "started": "2026-10-25",
+      "status": "waiting",
+      "result": "Zu wenige Fälle (2 geschlossene, 30 nötig). In etwa vier Wochen erneut auswerten.",
+      "lesson": "",
+      "doc": "docs/research_lab/reports/k1_kosten_schwelle_2026-10-25.md"
+    },
+    {
+      "id": "S2",
+      "title": "TIMs Live-Orderflow-Regeln als Hypothese",
+      "started": "2026-10-22",
+      "status": "not_testable",
+      "result": "Nicht beurteilbar: Zähllauf bestanden, aber das Power-Gate nicht. Mit den Fallzahlen ließe sich ein realistischer Effekt nicht nachweisen.",
+      "lesson": "",
+      "doc": "docs/research_lab/studien/S2_ORDERFLOW_REGELN_PRAEREGISTRIERUNG.md"
+    },
+    {
+      "id": "V2",
+      "title": "V2-Qualifizierungskampagne",
+      "started": "2026-10-20",
+      "status": "aborted",
+      "result": "Am 22.10. auf Uzis Wunsch abgebrochen, 54 von 1000 unabhängigen Fällen. Zählt nicht. Die Seiten liegen unter System → Archiv V2.",
+      "lesson": "",
+      "doc": "/archiv"
+    },
+    {
+      "id": "R4",
+      "title": "48 Orderflow- und Struktur-Varianten mit Glückstest (SPA/StepM)",
+      "started": "2026-09-29",
+      "status": "failed",
+      "result": "Kein Vorteil in Training und Validierung. Der Glückstest bestätigt es (SPA p 0,46 / 0,43, StepM wählt keine Variante).",
+      "lesson": "",
+      "doc": "docs/research_lab/reports/r4_2026-09-29T2219Z.md"
+    },
+    {
+      "id": "S1",
+      "title": "BTC-Schwankung an CPI-Terminen",
+      "started": "2026-10-13",
+      "status": "confirmed",
+      "result": "Bestätigt für die CPI-Stunde: Schwankung im Median 1,40-mal so groß wie sonst. 4h und 24h nicht bestätigt.",
+      "lesson": "Beschreibend, keine Handelsregel. Erklärt die Sperrzeit um Termine.",
+      "doc": "docs/research_lab/reports/s1_cpi_volatility.md"
+    }
+  ]
+}

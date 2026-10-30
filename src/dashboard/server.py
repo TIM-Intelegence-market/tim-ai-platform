@@ -24,10 +24,13 @@ from src.dashboard.chart_model import build_chart_model
 from src.dashboard.constants import HISTORY_LIMIT, MAX_RESPONSE_BYTES
 from src.dashboard.layout import _content_security_policy, _content_security_policy_for, _error_page
 from src.dashboard.security import _is_loopback_request_host, _require_loopback_host
-from src.dashboard.pages.chart import render_chart_page
+from src.dashboard.pages.chart import CHART_SCRIPTS, render_chart_page
 from src.dashboard.pages.pilot import PILOT_CSP, render_pilot
-from src.dashboard.state import DashboardState
+from src.dashboard.state import DashboardState, plan_journal_paths
 from src.dashboard.views import render
+
+JOURNAL_PAGES = {"/journal": "Plan Journal", "/journal/struct": "Plan Journal Struct", "/journal/level": "Plan Journal Level"}
+
 
 class DashboardServer:
     def __init__(self, state: DashboardState, host: str = "127.0.0.1", port: int = 8765, research_router: ResearchRouter | None = None) -> None:
@@ -115,11 +118,31 @@ class DashboardServer:
                     formatter, content_type = exports[extension]
                     return self.respond(200, formatter(insights).encode(), content_type)
                 if path == "/chart":
+                    from src.dashboard.pages.chart import CHART_CSP
+
                     try:
-                        page = render_chart_page(outer.state, query.get("tf", [None])[0], query.get("levels", [None])[0])
+                        page = render_chart_page(outer.state, query.get("tf", [None])[0], query.get("levels", [None])[0], query.get("symbol", [None])[0])
                     except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                         return self.respond(500, _error_page("Chart", exc).encode(), "text/html; charset=utf-8")
-                    return self.respond(200, page.encode(), "text/html; charset=utf-8")
+                    return self.respond(200, page.encode(), "text/html; charset=utf-8", csp=CHART_CSP)
+                if path in CHART_SCRIPTS:
+                    return self.respond(200, CHART_SCRIPTS[path], "text/javascript; charset=utf-8")
+                if path == "/api/chart/live":
+                    from src.dashboard.chart_live import build_live_chart
+
+                    try:
+                        with outer.state.lock:
+                            footprint = dict(outer.state.footprint)
+                            gamma = dict(outer.state.gamma)
+                            liquidation = dict(outer.state.liquidation)
+                        from src.dashboard.chart_live import load_plan_journals
+
+                        model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint,
+                                                 plan_journals=load_plan_journals(plan_journal_paths(outer.state)), gamma=gamma,
+                                                 liquidation=liquidation)
+                    except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection
+                        return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
+                    return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
                 if path == "/api/chart":
                     try:
                         from src.dashboard.analysis_card import with_journal_check
@@ -130,17 +153,55 @@ class DashboardServer:
                     except Exception as exc:  # noqa: BLE001 - malformed stored data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
+                if path == "/api/macro":
+                    from src.dashboard.macro_bar import CACHE as MACRO_CACHE
+
+                    macro = MACRO_CACHE.snapshot()
+                    return self.respond(200, json.dumps(macro or {"status": "LOADING"}, default=str).encode(), "application/json")
                 if path == "/api/prep":
                     from src.dashboard.session_map import build_session_map
 
+                    from src.dashboard.gamma_data import prep_block
+
                     try:
                         prep = build_session_map(outer.state.chart_series())
+                        with outer.state.lock:
+                            gamma = outer.state.gamma.get(str(outer.state.market_status.get("symbol") or "BTCUSDT"))
+                        prep["gamma"] = prep_block(gamma)
                     except Exception as exc:  # noqa: BLE001 - malformed stored data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(prep, default=str).encode(), "application/json")
+                if path == "/api/gamma":
+                    from src.dashboard.gamma_data import with_age
+
+                    symbol = query.get("symbol", ["BTCUSDT"])[0]
+                    with outer.state.lock:
+                        snapshot = outer.state.gamma.get(symbol)
+                    current = with_age(snapshot)
+                    if current is None:
+                        return self.respond(404, json.dumps({"error": "no gamma snapshot", "symbol": symbol}).encode(), "application/json")
+                    return self.respond(200, json.dumps(current, default=str).encode(), "application/json")
+                if path == "/api/liquidation":
+                    from src.dashboard.liquidation_data import with_age as liquidation_with_age
+
+                    symbol = query.get("symbol", ["BTCUSDT"])[0]
+                    with outer.state.lock:
+                        heatmap = outer.state.liquidation.get(symbol)
+                    current = liquidation_with_age(heatmap)
+                    if current is None:
+                        return self.respond(404, json.dumps({"error": "no liquidation estimate", "symbol": symbol}).encode(), "application/json")
+                    return self.respond(200, json.dumps(current, default=str).encode(), "application/json")
                 if path == "/trader-journal":
                     saved = query.get("saved", [""])[0]
                     return self.trader_journal_page(200, saved=saved if re.fullmatch(r"TJ-\d{4,5}", saved or "") else None)
+                if path == "/my-day":
+                    saved = query.get("saved", [""])[0]
+                    return self.my_day_page(200, saved=saved if re.fullmatch(r"DP-\d{4,5}", saved or "") else None)
+                if path == "/api/my-day":
+                    from src.dashboard import daily_prep
+
+                    log = daily_prep.load(outer.state.daily_prep_path)
+                    return self.respond(200, json.dumps({**log, "entries": log["entries"][-200:], "today": daily_prep.today(log)}, default=str).encode(), "application/json")
                 if path == "/api/trader-journal":
                     from src.dashboard import trader_journal
 
@@ -164,6 +225,15 @@ class DashboardServer:
                     journal_path = {"struct": outer.state.plan_journal_struct_path, "level": outer.state.plan_journal_level_path}.get(rule, outer.state.plan_journal_path)
                     from src.dashboard.plan_cost_check import with_cost_check
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
+                if path == "/":
+                    return self.cockpit("/neu", query)
+                if path in JOURNAL_PAGES:
+                    saved = query.get("saved", [""])[0]
+                    return self.plan_journal_page(200, path, saved=saved if re.fullmatch(r"PN-\d{5}", saved or "") else None)
+                if path == "/archiv":
+                    from src.dashboard.pages.archive import render_archive
+
+                    return self.respond(200, render_archive().encode(), "text/html; charset=utf-8")
                 if path == "/neu" or path.startswith("/neu/") or path == "/api/cockpit":
                     return self.cockpit(path, query)
                 if path in ("/graphify", "/graphify/"):
@@ -206,7 +276,7 @@ class DashboardServer:
                     proof_page = case_export_html(export)
                     return self.respond(200, proof_page.encode(), "text/html; charset=utf-8", csp=_content_security_policy_for(proof_page))
                 pages = {
-                    "/": "Overview", "/security": "Security", "/runtime": "Runtime",
+                    "/uebersicht-alt": "Overview", "/security": "Security", "/runtime": "Runtime",
                     "/data-quality": "Data Quality", "/gaps": "Incidents & Gaps",
                     "/qualification": "Qualification",
                     "/independent-cases": "Independent Cases",
@@ -355,29 +425,99 @@ class DashboardServer:
                 # same-origin keeps the Origin header on the form post (no-referrer would send "null").
                 return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=journal_csp(page), referrer="same-origin")
 
-            def trader_journal_post(self, path: str) -> None:
-                from src.dashboard import trader_journal
-                from src.dashboard.session_map import build_session_map
-
+            def checked_form(self, reload_path: str, max_fields: int = 40) -> dict[str, str] | None:
+                """Same-origin, form-encoded, size-limited body with the page's token; None after an error response."""
                 origin = self.headers.get("Origin")
                 if origin is not None and origin != f"http://{self.headers.get('Host')}":
-                    return self.respond(403, b'{"error":"cross-origin form post refused"}', "application/json")
+                    self.respond(403, b'{"error":"cross-origin form post refused"}', "application/json")
+                    return None
                 if self.headers.get_content_type() != "application/x-www-form-urlencoded":
-                    return self.respond(415, b'{"error":"form encoding required"}', "application/json")
+                    self.respond(415, b'{"error":"form encoding required"}', "application/json")
+                    return None
                 try:
                     size = int(self.headers.get("Content-Length", "0"))
                 except ValueError:
                     size = -1
                 if size < 1 or size > 8192:
-                    return self.respond(413, b'{"error":"form body must be between 1 and 8192 bytes"}', "application/json")
+                    self.respond(413, b'{"error":"form body must be between 1 and 8192 bytes"}', "application/json")
+                    return None
                 try:
-                    fields = parse_qs(self.rfile.read(size).decode("utf-8"), keep_blank_values=True, strict_parsing=False, max_num_fields=40)
+                    fields = parse_qs(self.rfile.read(size).decode("utf-8"), keep_blank_values=True, strict_parsing=False, max_num_fields=max_fields)
                 except (UnicodeDecodeError, ValueError):
-                    return self.respond(400, b'{"error":"malformed form body"}', "application/json")
+                    self.respond(400, b'{"error":"malformed form body"}', "application/json")
+                    return None
                 form = {key: values[0] for key, values in fields.items() if values}
                 if not hmac.compare_digest(str(form.get("token", "")).encode(), outer.form_token.encode()):
-                    return self.respond(403, b'{"error":"form token invalid, reload /trader-journal"}', "application/json")
+                    self.respond(403, json.dumps({"error": f"form token invalid, reload {reload_path}"}).encode(), "application/json")
+                    return None
                 form.pop("token", None)
+                return form
+
+            def my_day_page(self, status: int, form: dict[str, str] | None = None, error: str | None = None, saved: str | None = None) -> None:
+                from src.dashboard import daily_prep
+                from src.dashboard.pages.my_day import my_day_csp, render_my_day
+                from src.dashboard.session_map import build_session_map
+
+                try:
+                    model = build_session_map(outer.state.chart_series())
+                except Exception:  # noqa: BLE001 - the prep form works without TIM's levels
+                    model = None
+                try:
+                    log = daily_prep.load(outer.state.daily_prep_path)
+                    page = render_my_day(outer.state.snapshot(), log, outer.form_token, daily_prep.suggested_levels(model),
+                                         (model or {}).get("last"), daily_prep.today(log), form=form, error=error, saved=saved)
+                except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                    return self.respond(500, _error_page("Mein Tag", exc).encode(), "text/html; charset=utf-8")
+                return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=my_day_csp(page), referrer="same-origin")
+
+            def my_day_post(self) -> None:
+                from src.dashboard import daily_prep
+                from src.dashboard.session_map import build_session_map
+
+                form = self.checked_form("/my-day", max_fields=60)
+                if form is None:
+                    return None
+                try:
+                    model = build_session_map(outer.state.chart_series())
+                except Exception:  # noqa: BLE001 - a prep is kept even without TIM's context
+                    model = None
+                try:
+                    entry = daily_prep.add_entry(outer.state.daily_prep_path, form, model)
+                except daily_prep.PrepError as exc:
+                    return self.my_day_page(400, form=form, error=str(exc))
+                return self.respond(303, b"", "text/plain; charset=utf-8", location=f"/my-day?saved={entry['id']}")
+
+            def plan_journal_page(self, status: int, path: str, error: str | None = None, saved: str | None = None) -> None:
+                from src.dashboard.pages.plan_journal import journal_page_for
+                from src.dashboard.pages.trader_journal import journal_csp
+
+                try:
+                    page = journal_page_for(outer.state, outer.state.snapshot(), JOURNAL_PAGES[path], outer.form_token, error=error, saved=saved)
+                except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                    return self.respond(500, _error_page(JOURNAL_PAGES[path], exc).encode(), "text/html; charset=utf-8")
+                return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=journal_csp(page), referrer="same-origin")
+
+            def plan_note_post(self) -> None:
+                from src.dashboard import plan_notes
+                from src.dashboard.pages.plan_journal import known_plan_keys
+
+                form = self.checked_form("/journal")
+                if form is None:
+                    return None
+                back = form.get("back") if form.get("back") in JOURNAL_PAGES else "/journal"
+                try:
+                    note = plan_notes.add_note(outer.state.plan_notes_path, form, known_plan_keys(outer.state))
+                except plan_notes.NoteError as exc:
+                    return self.plan_journal_page(400, back, error=str(exc))
+                return self.respond(303, b"", "text/plain; charset=utf-8", location=f"{back}?saved={note['id']}")
+
+            def trader_journal_post(self, path: str) -> None:
+                from src.dashboard import trader_journal
+                from src.dashboard.session_map import build_session_map
+
+                form = self.checked_form("/trader-journal")
+                if form is None:
+                    return None
                 journal_path = outer.state.trader_journal_path
                 try:
                     if path == "/trader-journal/entry":
@@ -400,6 +540,10 @@ class DashboardServer:
                 path = urlparse(self.path).path
                 if path in {"/trader-journal/entry", "/trader-journal/review", "/trader-journal/cancel"}:
                     return self.trader_journal_post(path)
+                if path == "/my-day/save":
+                    return self.my_day_post()
+                if path == "/journal/note":
+                    return self.plan_note_post()
                 if path not in {"/api/research/quick", "/api/research/deep"}:
                     return self.respond(404, b'{"error":"not found"}', "application/json")
                 try:
