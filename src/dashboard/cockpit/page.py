@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from src.dashboard.cockpit.tiles import STATE_LABELS, human_age
 from src.dashboard.helpers import _parse_time
+from src.dashboard.navigation import links as nav_links
 
 LOCAL = ZoneInfo("Europe/Berlin")
 REFRESH_SECONDS = 30
@@ -38,15 +39,13 @@ AREAS: list[dict[str, Any]] = [
                ("Health Center", "/health", "Watchdog und Gesundheitsprüfungen"),
                ("Zeitleiste", "/timeline", "Ereignisse von Watchdog, Backup und Kampagne")]},
     {"key": "forschung", "label": "Forschung", "href": "/neu/forschung", "built": True,
-     "text": "Research Cases, Signale, Orderflow, Analytics, Insights und Qualifikation.",
+     "text": "Research Cases, Signale, Orderflow, Analytics und Insights.",
      "pages": [("Research Cases", "/cases", "Alle Fälle mit Status und Beweislage"),
                ("Beobachtungen", "/observations", "Jüngste Beobachtungen der Detektoren"),
                ("Orderflow", "/orderflow", "Orderflow-Beobachtungen und Validierungen"),
                ("Signalforschung", "/signals", "Signale mit Kontext und Rückblick"),
                ("Analytics", "/analytics", "Auswertung über Fälle und Beobachtungen"),
-               ("Insights", "/insights", "Rückblickende Auswertung"),
-               ("Unabhängige Fälle", "/independent-cases", "Fälle für die Qualifizierung"),
-               ("Qualifikation", "/qualification", "Stand der Qualifizierungskampagne")]},
+               ("Insights", "/insights", "Rückblickende Auswertung")]},
     {"key": "betrieb", "label": "Betrieb", "href": "/neu/betrieb", "built": True,
      "text": "Runtime, Datenqualität, Lücken, Health, Zeitleiste und Ausnahmen.",
      "pages": [("Runtime", "/runtime", "Prozess, Queue, Cursor, Logs"),
@@ -55,9 +54,9 @@ AREAS: list[dict[str, Any]] = [
                ("Health Center", "/health", "Watchdog und Gesundheitsprüfungen"),
                ("Zeitleiste", "/timeline", "Ereignisse von Watchdog, Backup und Kampagne"),
                ("Ausnahmen", "/exceptions", "Datenqualitäts-Ausnahmen")]},
-    {"key": "system", "label": "System & Freigabe", "href": "/neu/system", "built": True,
-     "text": "V2-Freigabe, Sicherheit, Audit, MCP und Deploy-Verlauf.",
-     "pages": [("V2 Readiness", "/v2-readiness", "Gates, Blocker und Verantwortliche"),
+    {"key": "system", "label": "Freigabe & Sicherheit", "href": "/neu/system", "built": True,
+     "text": "Handelssperre, Sicherheit, Audit, MCP und Deploy-Verlauf; die V2-Kampagne steht im Archiv.",
+     "pages": [("Archiv V2", "/archiv", "Seiten der abgebrochenen V2-Kampagne"),
                ("Security", "/security", "PostgreSQL-Sicherheitsprüfung"),
                ("Audit & Evidence", "/audit-evidence", "Tests, Deploy-Stand, Vorfälle"),
                ("Graphify-Graph", "/graphify", "Code-Graph von TIM, stündlich neu"),
@@ -79,7 +78,12 @@ a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius
 .nav a{display:flex;align-items:center;padding:12px 10px;color:var(--muted);font-weight:600;font-size:14px;border-bottom:3px solid transparent;margin-bottom:-1px}
 .nav a:hover{color:var(--ink);text-decoration:none}
 .nav a[aria-current=page]{color:var(--ink);border-bottom-color:var(--accent)}
-.nav a.old{margin-left:auto;font-weight:500}
+.nav a.area{color:var(--ink);border-bottom-color:var(--accent)}
+.subnav{border-top:1px solid var(--line)}
+.todo{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.todo li{display:grid;grid-template-columns:1.4rem 14rem minmax(0,1fr);gap:4px 10px;padding:10px 16px;border-top:1px solid var(--line);align-items:baseline}.todo li:first-child{border-top:0}.todo li.done .todo__mark{color:var(--ok)}.todo li.open .todo__mark{color:var(--warn)}
+@media (max-width:700px){.todo li{grid-template-columns:1.4rem minmax(0,1fr)}.todo li .note{grid-column:2}}
+.fold>summary{cursor:pointer;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-weight:600;list-style-position:inside}.fold[open]>summary{margin-bottom:8px}.subnav__in{max-width:1280px;margin:0 auto;padding:0 16px;display:flex;flex-wrap:wrap;gap:2px 14px}
+.subnav a{padding:8px 0;color:var(--muted);font-size:13px;font-weight:500}.subnav a[aria-current=page]{color:var(--ink);font-weight:650;text-decoration:underline;text-underline-offset:5px}
 .live{font-size:13px;color:var(--muted);white-space:nowrap}
 .live[data-state=fail]{color:var(--fail)}
 main{max-width:1280px;margin:0 auto;padding:22px 16px 40px}
@@ -180,7 +184,7 @@ section>h2 a{color:inherit}
 .sub{font-size:15px;font-weight:600;margin:16px 0 6px;color:var(--ink)}
 .events{margin:6px 0 0;padding-left:18px;font-size:14px}.events li{margin:0 0 3px}
 footer{max-width:1280px;margin:0 auto;padding:0 16px 30px;color:var(--muted);font-size:13px}
-@media (max-width:700px){.nav{order:3;flex-basis:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}.nav a{white-space:nowrap}.nav a.old{margin-left:0}.live{margin-left:auto}}
+@media (max-width:700px){body{padding-bottom:calc(58px + env(safe-area-inset-bottom))}.nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;padding:0 0 env(safe-area-inset-bottom);background:var(--panel);border-top:1px solid var(--line)}.nav a{justify-content:center;padding:16px 2px 17px;margin:0;font-size:12.5px;white-space:nowrap;border-bottom:0;border-top:3px solid transparent}.nav a.area,.nav a[aria-current=page]{border-top-color:var(--accent)}.subnav__in{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}.subnav a{white-space:nowrap}.live{margin-left:auto}}
 @media (max-width:560px){.head h1{font-size:22px}}
 @media (max-width:700px){.tabs a{padding:11px 16px}}
 """
@@ -334,6 +338,18 @@ def lage_body(model: dict[str, Any]) -> str:
         + (f"<p class='meta'>Stand <time data-asof='{_e(price['as_of'])}'>{_e(human_age(price.get('age_seconds')))}</time></p>" if price.get("as_of") else "")
         + "</div>"
     )
+    today = model.get("today") or []
+    today_html = "<ul class='todo'>" + "".join(
+        f"<li class='{'done' if item.get('done') else ('open' if item.get('done') is False else 'unknown')}'>"
+        f"<span class='todo__mark' aria-hidden='true'>{'✓' if item.get('done') else '○'}</span>"
+        f"<a href='{_e(item.get('href') or '#')}'>{_e(item.get('label'))}</a><span class='note'>{_e(item.get('text'))}</span></li>"
+        for item in today) + "</ul>"
+    system_tiles = model.get("system") or []
+    system_ok = bool(system_tiles) and all(t.get("state") == "ok" for t in system_tiles)
+    system_summary = (f"System läuft: {len(system_tiles)} von {len(system_tiles)} grün" if system_ok
+                      else f"System: {sum(t.get('state') == 'ok' for t in system_tiles)} von {len(system_tiles)} grün, bitte ansehen")
+    system_html = (f"<details class='fold'{'' if system_ok else ' open'}><summary class='s-{'ok' if system_ok else 'warn'}'>{_e(system_summary)}</summary>"
+                   f"{_grid(system_tiles)}</details>")
     return (
         f"<div class='head'><h1>Lage</h1>"
         f"<span class='meta'>Stand {local_time(model.get('generated_at'), True)} Uhr. {_e(model.get('safety'))}</span></div>"
@@ -341,7 +357,8 @@ def lage_body(model: dict[str, Any]) -> str:
         f"<section aria-labelledby='h-need'><h2 id='h-need'>Braucht dich</h2><div class='need'>{need_html}</div></section></div>"
         f"{hero_market}</div>"
         f"<div class='cols'><div>"
-        f"<section aria-labelledby='h-system'><h2 id='h-system'>System</h2>{_grid(model.get('system') or [])}</section>"
+        + (f"<section aria-labelledby='h-today'><h2 id='h-today'>Heute zu tun</h2>{today_html}</section>" if today else "")
+        + f"<section aria-labelledby='h-system'><h2 id='h-system'>System</h2>{system_html}</section>"
         f"<section aria-labelledby='h-market'><h2 id='h-market'>Markt jetzt</h2>{_grid(market)}</section>"
         f"<section aria-labelledby='h-plans'><h2 id='h-plans'>TIMs Pläne jetzt</h2>{plan_html}"
         "<p class='note'>Stop und Ziele sind eine Vorschau nach TIMs Regeln, keine Order und keine Anlageberatung.</p></section>"
@@ -489,7 +506,7 @@ def markt_body(model: dict[str, Any]) -> str:
             f"{_e(f'{rate * 100:.0f} %' if isinstance(rate, (int, float)) else '—')} · netto {_e(_rtext(stats.get('sum_net_r')))} · nur Papier</p>"
             f"<h3 class='sub'>Offen</h3><div class='scroll'><table class='tbl'>{head}<tbody>{active}</tbody></table></div>"
             f"<h3 class='sub'>Zuletzt geschlossen</h3><div class='scroll'><table class='tbl'>{head}<tbody>{closed}</tbody></table></div>"
-            "<p class='note'><a href='/journal'>Ganzes Plan-Journal</a> · <a href='/journal/struct'>Struktur-Regel</a> · <a href='/journal/level'>Level-Regel</a></p>"
+            "<p class='note'><a href='/journal'>Ganzes Plan-Journal</a> · <a href='/journal/struct'>Struktur-Regel</a></p>"
         )
 
     tj = model.get("trader_journal") or {}
@@ -658,17 +675,24 @@ def render_sections(model: dict[str, Any]) -> str:
 
 
 def page(title: str, active: str, body: str, refresh: bool, fragment: str | None = None) -> str:
+    areas = nav_links(AREA_BY_KEY[active]["href"])
     nav = "".join(
-        f"<a href='{_e(a['href'])}'{' aria-current=page' if a['key'] == active else ''}>{_e(a['label'])}</a>" for a in AREAS
-    ) + "<a class='old' href='/'>Bisheriges Dashboard</a>"
+        f"<a href='{_e(a['href'])}'{' aria-current=page' if a['current'] and not a['pages'] else (' class=area' if a['current'] else '')}>{_e(a['label'])}</a>" for a in areas
+    )
+    subs = next((a["pages"] for a in areas if a["current"]), [])
+    subnav = "".join(
+        f"<a href='{_e(s['href'])}'{' aria-current=page' if s['current'] else ''}>{_e(s['label'])}</a>" for s in subs  # type: ignore[union-attr]
+    )
     fragment = fragment or AREA_BY_KEY[active]["href"] + "?fragment=1"
     return (
         "<!doctype html><html lang='de'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='light dark'>"
         f"<title>{_e(title)} · TIM</title><style>{STYLE}</style></head><body>"
-        f"<header class='top'><div class='top__in'><a class='brand' href='/neu'>TIM<small>Control Center</small></a>"
+        f"<header class='top'><div class='top__in'><a class='brand' href='/'>TIM<small>Control Center</small></a>"
         f"<nav class='nav' aria-label='Bereiche'>{nav}</nav>"
-        f"<span id='live' class='live' aria-live='polite'>{'● Live, alle ' + str(REFRESH_SECONDS) + ' s' if refresh else ''}</span></div></header>"
+        f"<span id='live' class='live' aria-live='polite'>{'● Live, alle ' + str(REFRESH_SECONDS) + ' s' if refresh else ''}</span></div>"
+        + (f"<nav class='subnav' aria-label='Seiten in diesem Bereich'><div class='subnav__in'>{subnav}</div></nav>" if subnav else "")
+        + "</header>"
         f"<main id='cockpit' data-fragment='{_e(fragment)}'>{body}</main>"
         "<footer>TIM beobachtet nur und handelt auf Papier: keine Orders, keine Shell- oder Git-Aktionen. Alle Zeiten in deutscher Ortszeit.</footer>"
         + (f"<script>{SCRIPT}</script>" if refresh else "")

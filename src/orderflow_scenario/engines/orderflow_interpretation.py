@@ -30,8 +30,10 @@ from ..domain import OrderflowInterpretation, OrderflowStatement, OrderflowState
 from ..domain import ZERO
 from ..footprint import STACK_MIN, FootprintReading, FootprintSeries, analyze_footprint
 from ..positioning import (
+    GammaContext,
     PositioningInputs,
     ProfileLevels,
+    interpret_gamma,
     interpret_positioning,
     interpret_profile,
     open_interest_price_response,
@@ -64,6 +66,8 @@ class OrderflowInputs:
     # Funding, liquidations, OI series, orderbook depth; and volume profile / TPO (positioning.py).
     positioning: PositioningInputs | None = None
     profile: ProfileLevels | None = None
+    # Options gamma levels (positioning.py): statements only, no confidence and no score.
+    gamma: GammaContext | None = None
     # Signed delta per candle (oldest first, aligned with the tail of ``candles``). Optional;
     # used to confirm or refute exhaustion (fading delta, delta flip).
     delta_series: tuple[Decimal, ...] | None = None
@@ -485,6 +489,8 @@ class OrderflowInterpretationEngine:
         confidence += min(Decimal("0.08"), Decimal("0.02") * categories)
         statements.extend(positioning.statements)
         statements.extend(profile_statements)
+        gamma_statements, gamma_summary = interpret_gamma(inputs.gamma, last_price)
+        statements.extend(gamma_statements)
         # Gaps are listed once any context is supplied; analyses without context keep their output.
         if inputs.positioning is not None or inputs.profile is not None:
             missing.extend(positioning.missing)
@@ -502,6 +508,7 @@ class OrderflowInterpretationEngine:
             missing_data=tuple(sorted(set(missing))) if (inputs.positioning or inputs.profile) else tuple(sorted(missing)),
             positioning=positioning.summary if inputs.positioning is not None else {},
             profile=profile_summary,
+            gamma=gamma_summary,
             reaction=reaction,
             exhaustion_hypothesis=exhaustion_hypothesis,
             exhaustion_confirmed=exhaustion_confirmed,

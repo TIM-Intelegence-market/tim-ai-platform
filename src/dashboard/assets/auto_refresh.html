@@ -72,6 +72,8 @@
   async function refreshView(force) {
     const main=byId('main-content');
     if(!main||viewRefreshing||(!force&&viewBusy(main)))return;
+    // A live widget (the interactive chart) refreshes its own data: the re-render keeps that node, so zoom and scroll stay.
+    const keep=main.querySelector('[data-keep-view]');
     viewRefreshing=true;
     if(location.pathname==='/setup-path')status('yellow','Neue Daten erkannt – aktualisiere Analyse…');
     const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),15000);
@@ -85,6 +87,7 @@
       const values={};main.querySelectorAll('input[id],select[id],textarea[id]').forEach(node=>{values[node.id]=node.value;});
       const top=window.scrollY;
       main.replaceChildren(...[...fresh.childNodes].map(node=>document.importNode(node,true)));
+      if(keep){const slot=main.querySelector('[data-keep-view]');if(slot)slot.replaceWith(keep);}
       main.querySelectorAll('details').forEach((node,index)=>{if(index<open.length)node.open=open[index];});
       Object.entries(values).forEach(([id,value])=>{const node=byId(id);if(node&&main.contains(node))node.value=value;});
       if(doc.title)document.title=doc.title;

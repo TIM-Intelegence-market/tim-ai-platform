@@ -73,20 +73,15 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
         from src.dashboard.pages.prep import _prep_page
         from src.dashboard.session_map import build_session_map
 
-        return _prep_page(data, build_session_map(state.chart_series()))
-    if page in {"Plan Journal", "Plan Journal Struct", "Plan Journal Level"}:
-        from src.dashboard.pages.plan_journal import _plan_journal_page
-        from src.dashboard.plan_journal import RULE_LEVEL, RULE_STRUCT, load_view as load_plan_journal
+        from src.dashboard import daily_prep
+        from src.dashboard.macro_bar import CACHE as MACRO_CACHE
 
-        tim, struct = load_plan_journal(state.plan_journal_path), load_plan_journal(state.plan_journal_struct_path)
-        struct.setdefault("rule", RULE_STRUCT)
-        level = load_plan_journal(state.plan_journal_level_path)
-        level.setdefault("rule", RULE_LEVEL)
-        if page == "Plan Journal Level":
-            return _plan_journal_page(data, level, other=tim, level_journal=struct)
-        if page == "Plan Journal Struct":
-            return _plan_journal_page(data, struct, other=tim, level_journal=level)
-        return _plan_journal_page(data, tim, other=struct, level_journal=level)
+        return _prep_page(data, build_session_map(state.chart_series()), macro=MACRO_CACHE.snapshot(),
+                          day_entry=daily_prep.today(daily_prep.load(state.daily_prep_path)), with_day=True)
+    if page in {"Plan Journal", "Plan Journal Struct", "Plan Journal Level"}:
+        from src.dashboard.pages.plan_journal import journal_page_for
+
+        return journal_page_for(state, data, page)
     if page in OPERATIONS_PAGES and page != "Overview":
         return _layout(page, page, render_operations_page(page, data["operations"]), strip=_strip_states(data))
     if page == "Orderflow":

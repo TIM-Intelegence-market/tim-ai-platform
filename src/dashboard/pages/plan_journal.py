@@ -8,6 +8,7 @@ from src.dashboard.chart_model import _fmt, _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _hero, _layout, _strip_states
 from src.dashboard.plan_cost_check import COST_LIMIT_R, COST_UNKNOWN, COST_WITHIN_LIMIT, NOT_TRADABLE_COST, cost_check, cost_summary
+from src.dashboard import plan_notes
 from src.dashboard.plan_journal import GRADE_NOTE, MAX_HOLD_HOURS, PENDING_HOURS, RULE_LEVEL, RULE_STRUCT, RULE_TIM, counter_trend, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
@@ -64,7 +65,7 @@ def _cost_cell(entry: Mapping[str, Any]) -> str:
             f"<br><span class='sev sev--{COST_LABELS[status]}'>{_safe(status)}</span></td>")
 
 
-def _row(entry: Mapping[str, Any]) -> str:
+def _row(entry: Mapping[str, Any], note: Mapping[str, Any] | None = None) -> str:
     severity, label = STATUS_LABELS.get(str(entry.get("status")), ("unknown", str(entry.get("status"))))
     labels = list(entry.get("target_labels") or [])
     targets = " · ".join(
@@ -87,6 +88,8 @@ def _row(entry: Mapping[str, Any]) -> str:
         detail.append(str(entry["note"]))
     if entry.get("data_gap"):
         detail.append("Datenlücke: " + str(entry["data_gap"]))
+    if note:
+        detail.append(f"Deine Notiz: {plan_notes.DECISIONS.get(str(note.get('decision')), note.get('decision'))}, {note.get('reason')}")
     if entry.get("excluded"):
         detail.insert(0, "NICHT GEZÄHLT: " + str(entry["excluded"].get("reason") or entry["excluded"].get("category") or "korrigiert"))
     invalid = entry.get("invalidation_level")
@@ -118,7 +121,6 @@ def _row(entry: Mapping[str, Any]) -> str:
 COMPARE_ROWS = (
     (RULE_TIM, "TIM-Regel (Stop pauschal, Ziele 1,5/2/3 R)", "/journal"),
     (RULE_STRUCT, "Struktur-Regel (Stop hinter dem Swing, Ziele an Liquidität)", "/journal/struct"),
-    (RULE_LEVEL, "Level-Regel (Hauptlevel, Stop hinter dem Swing)", "/journal/level"),
 )
 
 
@@ -142,16 +144,59 @@ def _compare(journals: Mapping[str, Mapping[str, Any]]) -> str:
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Vergleich</p>"
         "<h2>Regelversionen parallel</h2><p class='cc-section__note'>Gleicher Markt, gleiche Kerzen. "
         "Die Struktur-Regel legt den Stop hinter den nächsten 30m-Swing und die Ziele an die nächsten Liquiditätsorte aus der Vorbereitung; "
-        f"liegt das erste Ziel unter 1,5 R, gibt es keinen Plan (verworfen bisher: {_safe(skip_text)}). Die Level-Regel handelt die Hauptlevel aus dem TIM-Chart. "
+        f"liegt das erste Ziel unter 1,5 R, gibt es keinen Plan (verworfen bisher: {_safe(skip_text)}). "
         "Summe und je Plan netto nach Kosten; korrigierte Einträge (Phantome, Doppelbuchung) zählen nicht. Aussagekraft erst nach vielen geschlossenen Plänen.</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Regel</th><th>Pläne</th><th>geschlossen</th><th>Trefferquote</th><th>Summe netto</th><th>je Plan netto</th><th>Summe brutto</th><th>nicht gezählt</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div></section>"
     )
 
 
+def _note_section(journal: Mapping[str, Any], notes: Mapping[str, Any], token: str | None, page_path: str) -> str:
+    """Plans of the last days without the trader's note, each with a short form."""
+    rule = str(journal.get("rule") or RULE_TIM)
+    open_plans = plan_notes.missing(journal.get("entries") or [], rule, notes)
+    if not open_plans:
+        return ("<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Deine Notizen</p>"
+                f"<h2>Alles notiert</h2><p class='cc-section__note'>Zu jedem Plan der letzten {plan_notes.OPEN_DAYS} Tage steht deine Zeile.</p></div></div></section>")
+    forms = []
+    for entry in open_plans[:12]:
+        pid = _safe(entry.get("id"))
+        head = f"{_safe(_local(entry.get('created_at')))} · {_safe(entry.get('direction'))} {_safe(entry.get('scenario_id'))} · Einstieg {_safe(_price(entry.get('entry')))}"
+        if token is None:
+            forms.append(f"<li>{head}</li>")
+            continue
+        choices = "".join(
+            f"<label class='note-choice'><input type='radio' name='decision' value='{code}' required> {_safe(label)}</label>"
+            for code, label in plan_notes.DECISIONS.items()
+        )
+        forms.append(
+            f"<li><form method='post' action='/journal/note' class='note-form'><p><b>{head}</b></p>"
+            f"<input type='hidden' name='token' value='{_safe(token)}'><input type='hidden' name='plan_id' value='{pid}'>"
+            f"<input type='hidden' name='rule' value='{_safe(rule)}'><input type='hidden' name='back' value='{_safe(page_path)}'>"
+            f"<div class='note-choices'>{choices}</div>"
+            f"<label for='nr-{pid}'>Warum?</label><input id='nr-{pid}' name='reason' minlength='{plan_notes.MIN_REASON}' maxlength='{plan_notes.MAX_REASON}' required>"
+            "<button type='submit'>Notiz speichern</button></form></li>"
+        )
+    more = f" Gezeigt werden die neuesten 12 von {len(open_plans)}." if len(open_plans) > 12 else ""
+    return (
+        "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Deine Notizen</p>"
+        f"<h2>{len(open_plans)} {'Plan wartet' if len(open_plans) == 1 else 'Pläne warten'} auf deine Zeile</h2>"
+        "<p class='cc-section__note'>Hast du den Plan genommen, ausgelassen oder nur beobachtet, und warum? "
+        "Erst mit dieser Zeile lässt sich später erklären, warum das Journal im Plus oder Minus steht. "
+        f"Die Notiz ändert keinen Plan und keine Zählung.{more}</p></div></div>"
+        f"<ul class='note-list'>{''.join(forms)}</ul></section>"
+    )
+
+
 def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account_risk_percent: float = 0.5,
-                       other: Mapping[str, Any] | None = None, level_journal: Mapping[str, Any] | None = None) -> str:
-    """``journal`` is the shown rule version; ``other`` and ``level_journal`` the parallel ones for the comparison."""
+                       other: Mapping[str, Any] | None = None, level_journal: Mapping[str, Any] | None = None,
+                       notes: Mapping[str, Any] | None = None, token: str | None = None, page_path: str = "/journal",
+                       error: str | None = None, saved: str | None = None) -> str:
+    """``journal`` is the shown rule version; ``other`` and ``level_journal`` the parallel ones for the comparison.
+
+    ``notes`` are the trader's plan notes (latest per plan); with a form ``token`` the page offers the note forms.
+    """
+    notes = notes or {}
     entries = list(journal.get("entries") or [])
     stats = summary(journal)
     struct = journal.get("rule") == RULE_STRUCT
@@ -169,6 +214,11 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         body += _hero("Plan-Journal: Struktur-Regel", "Dieselben Pläne mit Stop hinter dem Swing und Zielen an der Liquidität (Broncx), parallel zur TIM-Regel verfolgt. " + evidence)
     else:
         body += _hero("Plan-Journal", "TIMs Long- und Short-Pläne aus dem Setup-Pfad, automatisch festgehalten und nach TIMs Regeln verfolgt. " + evidence)
+    if error:
+        body += f"<section class='state-banner state-banner--fail'><div class='state-banner__primary'><h2 class='state-banner__state'>Notiz nicht gespeichert</h2><p class='state-banner__sub'>{_safe(error)}</p></div></section>"
+    elif saved:
+        body += f"<section class='state-banner state-banner--ok'><div class='state-banner__primary'><h2 class='state-banner__state'>Notiz gespeichert: {_safe(saved)}</h2></div></section>"
+    body += _note_section(journal, notes, token, page_path)
     journals = {str(j.get("rule") or RULE_TIM): j for j in (journal, other, level_journal) if j is not None}
     if len(journals) > 1:
         body += _compare(journals)
@@ -191,15 +241,16 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         f"<dl class='metricstrip__item'><dt>Gegen den Trend</dt><dd>{stats['counter_trend']['plans']}<small>{stats['counter_trend']['closed']} geschlossen · {_safe(_r_text(stats['counter_trend']['sum_r']))}</small></dd></dl>"
         "</div></section>"
     )
-    rows = "".join(_row(e) for e in reversed(entries[-300:])) or "<tr><td colspan='15' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 30m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"
+    rule = str(journal.get("rule") or RULE_TIM)
+    rows = "".join(_row(e, notes.get(plan_notes.key(rule, e.get("id")))) for e in reversed(entries[-300:])) or "<tr><td colspan='15' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 30m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"
     updated = _local(journal.get("updated_at")) if journal.get("updated_at") else "noch nie"
     body += (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Journal</p>"
         f"<h2>Alle Pläne (neueste zuerst)</h2><p class='cc-section__note'>Zeiten in deutscher Ortszeit. Zuletzt aktualisiert {_safe(updated)}. "
         "<a href='/setup-path'>Setup-Pfad</a> · <a href='/chart'>TIM-Chart</a> · "
         + ("<a href='/journal'>TIM-Regel</a> · <a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal?rule=level'>JSON</a>" if level
-           else "<a href='/journal'>TIM-Regel</a> · <a href='/journal/level'>Level-Regel</a> · <a href='/api/plan-journal?rule=struct'>JSON</a>" if struct
-           else "<a href='/journal/struct'>Struktur-Regel</a> · <a href='/journal/level'>Level-Regel</a> · <a href='/api/plan-journal'>JSON</a>") + "</p></div></div>"
+           else "<a href='/journal'>TIM-Regel</a> · <a href='/api/plan-journal?rule=struct'>JSON</a>" if struct
+           else "<a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal'>JSON</a>") + "</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Angelegt</th><th>Plan</th><th>Grade</th><th>Evidenz</th><th>Entscheidung</th><th>Zone</th><th>Einstieg</th><th>Stop</th><th>Kosten (Schätzung)</th>"
         "<th>Ungültig bei</th><th>Ziele</th><th>Status</th><th>Brutto-R</th><th>Netto-R</th><th>Verlauf</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div></section>"
@@ -244,3 +295,32 @@ def journal_note(journal: Mapping[str, Any]) -> str:
     return (f"Plan-Journal: {stats['plans']} Pläne festgehalten, {stats['open']} warten, {stats['filled']} im Trade, "
             f"{stats['closed']} geschlossen ({_r_text(stats['sum_r'])} brutto, {_r_text(stats['sum_net_r'])} netto). {stats['no_trade']} × NO_TRADE, nur Forschung.")
 
+
+
+def journal_page_for(state: Any, data: dict[str, Any], page: str, token: str | None = None,
+                     error: str | None = None, saved: str | None = None) -> str:
+    """The plan journal page of one rule, with the trader's notes."""
+    from src.dashboard.plan_journal import load_view as load_plan_journal
+
+    tim, struct = load_plan_journal(state.plan_journal_path), load_plan_journal(state.plan_journal_struct_path)
+    struct.setdefault("rule", RULE_STRUCT)
+    level = load_plan_journal(state.plan_journal_level_path)
+    level.setdefault("rule", RULE_LEVEL)
+    tim.setdefault("rule", RULE_TIM)
+    notes = plan_notes.latest(plan_notes.load(state.plan_notes_path))
+    kwargs = {"notes": notes, "token": token, "error": error, "saved": saved}
+    if page == "Plan Journal Level":
+        return _plan_journal_page(data, level, other=tim, level_journal=struct, page_path="/journal/level", **kwargs)
+    if page == "Plan Journal Struct":
+        return _plan_journal_page(data, struct, other=tim, level_journal=level, page_path="/journal/struct", **kwargs)
+    return _plan_journal_page(data, tim, other=struct, level_journal=level, page_path="/journal", **kwargs)
+
+
+def known_plan_keys(state: Any) -> set[str]:
+    from src.dashboard.plan_journal import load_view as load_plan_journal
+
+    out = set()
+    for path, rule in ((state.plan_journal_path, RULE_TIM), (state.plan_journal_struct_path, RULE_STRUCT), (state.plan_journal_level_path, RULE_LEVEL)):
+        for entry in load_plan_journal(path).get("entries") or []:
+            out.add(plan_notes.key(rule, entry.get("id")))
+    return out

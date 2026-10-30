@@ -12,10 +12,12 @@ from urllib.request import urlopen
 
 TIMEFRAMES = ("30m", "1h", "4h", "1d", "1w", "1M")
 DEFAULT_TIMEFRAME = "30m"
+# Fetched for the SHORT horizon journal (15m plans) only; not an analysis or chart tab timeframe.
+JOURNAL_TIMEFRAMES = ("15m",)
 
 
 def fetch_history(symbol: str, timeframe: str, now: datetime | None = None) -> list[dict]:
-    if timeframe not in TIMEFRAMES:
+    if timeframe not in TIMEFRAMES and timeframe not in JOURNAL_TIMEFRAMES:
         raise ValueError("Unsupported chart timeframe")
     now = now or datetime.now(timezone.utc)
     query = urlencode({"symbol": symbol, "interval": timeframe, "limit": 500})

@@ -321,6 +321,8 @@ class OrderflowInterpretation:
     positioning: dict[str, Any] = field(default_factory=dict)
     # Volume profile / TPO reading; empty when not supplied.
     profile: dict[str, Any] = field(default_factory=dict)
+    # Options gamma reading (positioning.interpret_gamma); empty when not supplied.
+    gamma: dict[str, Any] = field(default_factory=dict)
     # Reaction read: ABSORPTION | EXHAUSTION | CONTINUATION | UNRESOLVED (orderflow_interpretation.py).
     reaction: str = "UNRESOLVED"
     exhaustion_hypothesis: str | None = None  # BUYERS_EXHAUSTED | SELLERS_EXHAUSTED
@@ -351,6 +353,7 @@ class OrderflowInterpretation:
             "missing_data": list(self.missing_data),
             "positioning": self.positioning,
             "profile": self.profile,
+            "gamma": self.gamma,
             "footprint": self.footprint,
         }
 
