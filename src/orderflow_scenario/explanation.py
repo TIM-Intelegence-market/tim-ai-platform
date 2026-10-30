@@ -66,4 +66,4 @@ def _fib_levels(low: Decimal | None, high: Decimal | None) -> dict[str, str]:
     if low is None or high is None or high <= low:
         return {}
     span = high - low
-    return {str(ratio): str((high - span * ratio).quantize(Decimal("0.01"))) for ratio in (Decimal("0.382"), Decimal("0.5"), Decimal("0.618"), Decimal("0.786"))}
+    return {str(ratio): str((high - span * ratio).quantize(Decimal("0.01"))) for ratio in (Decimal("0.382"), Decimal("0.5"), Decimal("0.618"), Decimal("0.786"), Decimal("0.886"), Decimal("0.941"))}

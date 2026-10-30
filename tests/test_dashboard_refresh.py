@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+import plistlib
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,10 @@ import pytest
 from src.operational import dashboard_refresh as dr
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY = dr.load_policy(ROOT / "ops/dashboard_refresh/policy.json")
+LIVE_POLICY = dr.load_policy(ROOT / "ops/dashboard_refresh/policy.json")
+# The restart-interval logic is tested with distinct values (60 min, 20 min display-only);
+# the live values are checked separately in test_live_policy_intervals.
+POLICY = {**LIVE_POLICY, "min_minutes_between_runtime_restarts": 60, "min_minutes_between_runtime_restarts_display_only": 20}
 # The S-K study as it held deploys before Uzi released it (24.10.): the hold mechanism stays tested.
 STUDY_POLICY = {**POLICY, "studies": [{key: value for key, value in POLICY["studies"][0].items()
                                        if not key.startswith("released")}]}
@@ -712,3 +716,57 @@ def test_red_or_diverged_target_is_not_loaded(live):
     new_commit(origin, "src/operational/dashboard_refresh.py", "raise SystemExit('bad')\n")
     mac.ci = {"status": "completed", "conclusion": "failure"}
     assert load_script().newer_agent(agent) is None
+
+
+def test_live_policy_intervals():
+    # Uzi 27.10.2026: the agent checks every 5 minutes and may restart the runtime after 5 minutes.
+    assert LIVE_POLICY["min_minutes_between_runtime_restarts"] == 5
+    assert LIVE_POLICY["min_minutes_between_runtime_restarts_display_only"] == 5
+    plist = plistlib.loads((ROOT / "ops/launchd/com.tim.dashboard-refresh.plist").read_bytes())
+    assert plist["StartInterval"] == 300
+
+
+PUBLIC_FLAG = "Library/Application Support/TIM/public-dashboard.enabled"
+
+
+def test_public_view_checks_follow_the_flag_file(live):
+    _, _, _, agent = live
+    agent.policy = {**agent.policy, "health_checks": LIVE_POLICY["health_checks"]}
+    names = lambda **kw: [c["name"] for c in agent.enabled_checks(**kw)]  # noqa: E731
+    assert "public_journal" not in names() and names(after_restart=True) == []
+    flag = agent.home / PUBLIC_FLAG
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.write_text("")
+    assert {"public_chart", "public_journal"} <= set(names())
+    assert names(after_restart=True) == ["public_chart", "public_journal"]
+
+
+def test_public_view_down_after_restart_rolls_back(live):
+    origin, root, mac, agent = live
+    agent.policy = {**agent.policy, "health_checks": agent.policy["health_checks"]
+                    + [c for c in LIVE_POLICY["health_checks"] if c["name"].startswith("public_")]}
+    flag = agent.home / PUBLIC_FLAG
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.write_text("")
+    previous = git(root, "rev-parse", "HEAD")
+    mac.probe = lambda url, timeout: {"url": url, "ok": ":8780/" not in url, "http_status": 200 if ":8780/" not in url else 502}
+    agent.probe = mac.probe
+    new_commit(origin, "src/dashboard/public_en.py", "x\n")
+    status = agent.run_once()
+    restart = status["deploy"]["restart"]
+    assert [p["name"] for p in restart["pages"]] == ["public_chart", "public_journal"] and not restart["ok"]
+    assert status["deploy"]["result"] != "DEPLOYED" and git(root, "rev-parse", "HEAD") == previous
+    assert status["health_ok"] is False
+
+
+def test_public_view_up_after_restart_deploys(live):
+    origin, root, mac, agent = live
+    agent.policy = {**agent.policy, "health_checks": agent.policy["health_checks"]
+                    + [c for c in LIVE_POLICY["health_checks"] if c["name"].startswith("public_")]}
+    flag = agent.home / PUBLIC_FLAG
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.write_text("")
+    target = new_commit(origin, "src/dashboard/public_en.py", "y\n")
+    status = agent.run_once()
+    assert status["deploy"]["result"] == "DEPLOYED" and git(root, "rev-parse", "HEAD") == target
+    assert all(p["ok"] for p in status["deploy"]["restart"]["pages"]) and status["health_ok"] is True

@@ -583,7 +583,7 @@ class DashboardRefresh:
         worker = self.refresh_worker_dashboard(state, busy=busy, paused=paused, dry_run=dry_run)
         health = [{"name": check["name"], "optional": bool(check.get("optional")),
                    **self.probe(check["url"], float(check.get("timeout_seconds", 10)))}
-                  for check in self.policy.get("health_checks", [])]
+                  for check in self.enabled_checks()]
 
         status = {
             "schema_version": SCHEMA_VERSION,
@@ -625,6 +625,13 @@ class DashboardRefresh:
         return self.run([str(self.python), str(self.root / "scripts/timctl"), command], timeout=timeout,
                         env=dict(os.environ))
 
+    def enabled_checks(self, *, after_restart: bool = False) -> list[dict[str, Any]]:
+        """Health checks that apply on this Mac. A check with ``when_file`` (relative to home) only counts
+        while that file exists, e.g. the public view on 8780 only while its flag file is there."""
+        return [check for check in self.policy.get("health_checks", [])
+                if (not check.get("when_file") or (self.home / check["when_file"]).exists())
+                and (not after_restart or check.get("after_restart"))]
+
     def restart_runtime(self) -> dict[str, Any]:
         before = self.runtime_pid()
         restart = self.timctl("restart")
@@ -637,9 +644,19 @@ class DashboardRefresh:
         verified = self.timctl("verify-running", timeout=120).returncode == 0
         after = self.runtime_pid()
         health = self.probe("http://127.0.0.1:8765/api/health", 10)
-        ok = verified and after is not None and after != before and health["ok"]
+        # Pages served by the same runtime process (the public view on 8780) must answer too, or the deploy rolls back.
+        pages = []
+        for check in self.enabled_checks(after_restart=True):
+            result = self.probe(check["url"], float(check.get("timeout_seconds", 10)))
+            for _ in range(2):
+                if result["ok"]:
+                    break
+                self.sleep(5)
+                result = self.probe(check["url"], float(check.get("timeout_seconds", 10)))
+            pages.append({"name": check["name"], **result})
+        ok = verified and after is not None and after != before and health["ok"] and all(page["ok"] for page in pages)
         return {"ok": ok, "pid_before": before, "pid_after": after, "verify_running": verified,
-                "health": health, "attempts": attempts}
+                "health": health, "pages": pages, "attempts": attempts}
 
     def save_generated(self, stamp: str) -> list[str]:
         saved = []

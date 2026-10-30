@@ -18,6 +18,9 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
     return value
 
 
+PUBLIC_DASHBOARD_FLAG = Path("~/Library/Application Support/TIM/public-dashboard.enabled")
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     database_host: str = field(default_factory=lambda: os.getenv("TIM_DATABASE_HOST", "127.0.0.1"))
@@ -32,6 +35,11 @@ class Settings:
     enable_ollama: bool = field(default_factory=lambda: os.getenv("TIM_ENABLE_OLLAMA", "false").lower() == "true")
     dashboard_host: str = field(default_factory=lambda: os.getenv("TIM_DASHBOARD_HOST", "127.0.0.1"))
     dashboard_port: int = field(default_factory=lambda: int(os.getenv("TIM_DASHBOARD_PORT", "8765")))
+    # Public read-only English view (src/dashboard/public_server.py), off unless the owner turns it on.
+    # On with TIM_PUBLIC_DASHBOARD=true or the owner's flag file (no plist change needed on the Mac).
+    public_dashboard_enabled: bool = field(default_factory=lambda: os.getenv("TIM_PUBLIC_DASHBOARD", "false").lower() == "true"
+                                           or PUBLIC_DASHBOARD_FLAG.expanduser().is_file())
+    public_dashboard_port: int = field(default_factory=lambda: int(os.getenv("TIM_PUBLIC_DASHBOARD_PORT", "8780")))
     allowed_news_hosts: tuple[str, ...] = field(default_factory=lambda: _csv("TIM_ALLOWED_NEWS_HOSTS", ""))
     allowed_knowledge_roots: tuple[Path, ...] = field(default_factory=lambda: tuple(Path(item).expanduser() for item in _csv("TIM_ALLOWED_KNOWLEDGE_ROOTS", "")))
     source_snapshot_root: Path = field(default_factory=lambda: Path(os.getenv("TIM_SOURCE_SNAPSHOT_ROOT", "data/source_snapshots")).expanduser())

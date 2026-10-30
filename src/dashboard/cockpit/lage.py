@@ -115,6 +115,20 @@ def _jobs(state: DashboardState) -> dict[str, Any]:
         journal = tj.load(state.trader_journal_path)
         return {"exists": state.trader_journal_path.exists(), "summary": tj.summary(journal)}
 
+    def today() -> dict[str, Any]:
+        from src.dashboard import daily_prep, plan_notes
+        from src.dashboard import trader_journal as tj
+        from src.dashboard.plan_journal import RULE_LEVEL, RULE_STRUCT, RULE_TIM, load_view
+
+        notes = plan_notes.latest(plan_notes.load(state.plan_notes_path))
+        missing = 0
+        for path, rule in ((state.plan_journal_path, RULE_TIM), (state.plan_journal_struct_path, RULE_STRUCT),
+                           (state.plan_journal_level_path, RULE_LEVEL)):
+            missing += len(plan_notes.missing(load_view(path).get("entries") or [], rule, notes))
+        prep = daily_prep.today(daily_prep.load(state.daily_prep_path))
+        return {"prep": prep, "notes_missing": missing,
+                "reviews_open": tj.summary(tj.load(state.trader_journal_path))["review_open"]}
+
     def worker() -> dict[str, Any]:
         from src.dashboard.cockpit.mac import fetch_worker
 
@@ -129,6 +143,7 @@ def _jobs(state: DashboardState) -> dict[str, Any]:
         "prep": prep,
         "plan_journal": plan_journal,
         "trader_journal": trader_journal,
+        "today": today,
         "backup": lambda: _read_json(operational / "backup_last_run.json"),
         "server_health": lambda: _read_json(operational / "server_health.json"),
     }
@@ -384,6 +399,28 @@ MAC_TILES = (("worker", "Issue-Worker", "/neu/mac"), ("ci_runner", "CI-Runner", 
 JOURNAL_TILES = (("plan_journal", "Plan-Journal", "/journal"), ("trader_journal", "Trader-Journal", "/trader-journal"))
 
 
+def _today_items(result: SourceResult) -> list[dict[str, Any]]:
+    """The short to-do list of the day: prep, notes on TIM's plans, open reviews."""
+    if not result.ok:
+        return [{"label": "Heute", "done": None, "text": result.reason(), "href": "/my-day"}]
+    value = result.value
+    prep = value.get("prep")
+    if prep:
+        kind = {"PREP": "ausgefüllt", "SKIP": "heute übersprungen", "NO_TRADE_DAY": "No-Trade-Tag"}.get(str(prep.get("kind")), "ausgefüllt")
+        prep_item = {"label": "Mein Tag", "done": True, "text": kind, "href": "/my-day"}
+    else:
+        prep_item = {"label": "Mein Tag", "done": False, "text": "heute noch nicht ausgefüllt", "href": "/my-day"}
+    notes = int(value.get("notes_missing") or 0)
+    reviews = int(value.get("reviews_open") or 0)
+    return [
+        prep_item,
+        {"label": "Notizen zu TIMs Plänen", "done": notes == 0,
+         "text": "alle notiert" if notes == 0 else f"{notes} {'Plan wartet' if notes == 1 else 'Pläne warten'} auf deine Zeile", "href": "/journal"},
+        {"label": "Rückblicke im Trader-Journal", "done": reviews == 0,
+         "text": "keiner offen" if reviews == 0 else f"{reviews} offen", "href": "/trader-journal"},
+    ]
+
+
 def _broken(exc: Exception) -> str:
     return f"Unerwartetes Datenformat: {type(exc).__name__}: {str(exc)[:120]}"
 
@@ -409,6 +446,10 @@ def build_lage(state: DashboardState, now: datetime | None = None, budget: float
         mac = [t for t in worker_tiles(results["worker"], now)[0] if t.id in {"worker", "ci_runner"}]
     except Exception as exc:  # noqa: BLE001
         mac = [unavailable(key, label, _broken(exc), "Kachelbau Mac", "/neu/mac") for key, label, _ in MAC_TILES]
+    try:
+        today = _today_items(results["today"])
+    except Exception as exc:  # noqa: BLE001
+        today = [{"label": "Heute", "done": None, "text": _broken(exc), "href": "/my-day"}]
     needs = attention(system + journals + mac + [t for t in market if t.state in {"fail", "warn"}])
     overall = worst([t.state for t in system])
     if any(t.state == "fail" for t in needs):
@@ -429,6 +470,7 @@ def build_lage(state: DashboardState, now: datetime | None = None, budget: float
         "system": [t.to_dict() for t in system],
         "market": [t.to_dict() for t in market],
         "plans": plans,
+        "today": today,
         "journals": [t.to_dict() for t in journals],
         "mac": [t.to_dict() for t in mac],
         "attention": [t.to_dict() for t in needs],
