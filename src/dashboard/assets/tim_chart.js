@@ -473,6 +473,175 @@
   };
   candles.attachPrimitive(bubbles);
 
+  // TIM's trades as position boxes, like TradingView's long/short tool (Uzi 30.10.2026): green zone from
+  // the entry to the last target, red zone from the entry to the original stop, entry line between them,
+  // the other targets as thin lines inside the green zone. Labels on a running or waiting trade: target with
+  // distance in %, open P&L at the current price and the reward/risk ratio, stop with distance in %.
+  // Closed trades keep a faint box without text (their result sits at the exit dot). The stop TIM moved
+  // stays the orange step line drawn above the box, unchanged.
+  const PT = EN
+    ? { target: 'Target', stop: 'Stop', open: 'Open P&L', rr: 'Reward/Risk', wait: 'Waiting for entry' }
+    : { target: 'Ziel', stop: 'Stop', open: 'Offener G&V', rr: 'Chance/Risiko', wait: 'Wartet auf Einstieg' };
+  const num = (v, digits) => EN ? v.toFixed(digits) : v.toFixed(digits).replace('.', ',');
+  const signed = (v, digits) => (v > 0 ? '+' : v < 0 ? '−' : '') + num(Math.abs(v), digits);
+  function positionGeometry(plan) {
+    const targets = plan.targets || [];
+    if (!targets.length || plan.entry == null || plan.stop == null) return null;
+    const long = plan.direction === 'LONG';
+    const target = long ? Math.max(...targets) : Math.min(...targets);
+    const risk = Math.abs(plan.entry - plan.stop);
+    const reward = Math.abs(target - plan.entry);
+    return { long, target, rr: risk > 0 ? reward / risk : null,
+             targetPct: (target - plan.entry) / plan.entry * 100, stopPct: (plan.stop - plan.entry) / plan.entry * 100 };
+  }
+  function openResult(plan, price) {
+    const long = plan.direction === 'LONG';
+    const move = long ? price - plan.entry : plan.entry - price;
+    const risk = Math.abs(plan.entry - plan.stop);
+    return { pct: move / plan.entry * 100, r: risk > 0 ? move / risk : null };
+  }
+  // One label box; `placed` holds the boxes already drawn this frame, a label that would cover one moves
+  // down (or up at the bottom edge) until it is free, so two trades close together stay readable.
+  function label(ctx, text, x, y, fill, size, placed) {
+    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    const lines = String(text).split('\n');
+    const width = Math.max(...lines.map(line => ctx.measureText(line).width)) + 10;
+    const height = 15 * lines.length + 3;
+    const left = Math.max(2, Math.min(x, size.width - width - 2));
+    const hits = top => placed.some(b => left < b.x + b.w && b.x < left + width && top < b.y + b.h && b.y < top + height);
+    for (let step = 0, start = y; step < 8 && hits(y); step++) {
+      const blocker = placed.find(b => left < b.x + b.w && b.x < left + width && y < b.y + b.h && b.y < y + height);
+      y = start > size.height / 2 ? blocker.y - height - 2 : blocker.y + blocker.h + 2;
+    }
+    placed.push({ x: left, y, w: width, h: height });
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(left, y, width, height, 3); else ctx.rect(left, y, width, height);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'top';
+    lines.forEach((line, i) => ctx.fillText(line, left + 5, y + 3 + 15 * i));
+    return height;
+  }
+  const positions = {
+    chart: null, series: null, requestUpdate: null, groups: new Set(),
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.boxView, this.labelView]; },
+    // Box corners in pixels for every plan in view (null: hidden or outside).
+    place(plan, mediaSize) {
+      if (!this.groups.has(plan.group)) return null;
+      const g = positionGeometry(plan);
+      if (!g) return null;
+      const scale = this.chart.timeScale();
+      let x1 = scale.timeToCoordinate(local(plan.t1));
+      let x2 = scale.timeToCoordinate(local(plan.t2));
+      if (x1 === null || x2 === null) return null;
+      if (plan.status !== 'CLOSED') {
+        // A trade that still runs or waits reaches a few bars into the free space on the right, as on TradingView.
+        const range = scale.getVisibleLogicalRange();
+        const bar = range ? mediaSize.width / Math.max(1, range.to - range.from) : 6;
+        x2 += 6 * bar;
+      }
+      x2 = Math.max(x2, x1 + 4);
+      if (x2 < 0 || x1 > mediaSize.width) return null;
+      const y = price => this.series.priceToCoordinate(price);
+      const yEntry = y(plan.entry), yTarget = y(g.target), yStop = y(plan.stop);
+      if (yEntry === null || yTarget === null || yStop === null) return null;
+      return { g, x1, x2, yEntry, yTarget, yStop, y };
+    },
+    boxView: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!positions.chart || !model || !model.plans || !model.plans.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              for (const plan of model.plans) {
+                const p = positions.place(plan, mediaSize);
+                if (!p) continue;
+                const closed = plan.status === 'CLOSED';
+                const waiting = plan.status === 'OPEN';
+                const alpha = closed ? 0.10 : waiting ? 0.12 : 0.22;
+                const width = p.x2 - p.x1;
+                ctx.fillStyle = `rgba(38,166,154,${alpha})`;
+                ctx.fillRect(p.x1, Math.min(p.yEntry, p.yTarget), width, Math.abs(p.yTarget - p.yEntry));
+                ctx.fillStyle = `rgba(239,83,80,${alpha})`;
+                ctx.fillRect(p.x1, Math.min(p.yEntry, p.yStop), width, Math.abs(p.yStop - p.yEntry));
+                ctx.lineWidth = 1;
+                ctx.setLineDash(waiting ? [4, 3] : []);
+                ctx.strokeStyle = `rgba(38,166,154,${closed ? 0.35 : 0.8})`;
+                ctx.strokeRect(p.x1 + 0.5, Math.min(p.yEntry, p.yTarget) + 0.5, width - 1, Math.abs(p.yTarget - p.yEntry));
+                ctx.strokeStyle = `rgba(239,83,80,${closed ? 0.35 : 0.8})`;
+                ctx.strokeRect(p.x1 + 0.5, Math.min(p.yEntry, p.yStop) + 0.5, width - 1, Math.abs(p.yStop - p.yEntry));
+                // Targets before the last one: thin dotted lines inside the green zone.
+                ctx.setLineDash([2, 3]);
+                ctx.strokeStyle = `rgba(53,211,154,${closed ? 0.35 : 0.75})`;
+                for (const value of plan.targets || []) {
+                  if (value === p.g.target) continue;
+                  const yt = p.y(value);
+                  if (yt === null) continue;
+                  ctx.beginPath(); ctx.moveTo(p.x1, Math.round(yt) + 0.5); ctx.lineTo(p.x2, Math.round(yt) + 0.5); ctx.stroke();
+                }
+                // Entry line: grey across the box (the blue line series with the axis label lies on top while it runs).
+                ctx.setLineDash(waiting ? [4, 3] : []);
+                ctx.strokeStyle = closed ? 'rgba(195,202,214,0.45)' : 'rgba(195,202,214,0.9)';
+                ctx.lineWidth = closed ? 1 : 1.5;
+                ctx.beginPath(); ctx.moveTo(p.x1, Math.round(p.yEntry) + 0.5); ctx.lineTo(p.x2, Math.round(p.yEntry) + 0.5); ctx.stroke();
+                ctx.setLineDash([]);
+              }
+            });
+          },
+        };
+      },
+    },
+    labelView: {
+      zOrder() { return 'top'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!positions.chart || !model || !model.plans || !model.plans.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const placed = [];
+              // Newest trade first: its labels get the free spots.
+              for (const plan of [...model.plans].reverse()) {
+                if (plan.status === 'CLOSED') continue;
+                const p = positions.place(plan, mediaSize);
+                if (!p || p.x2 - Math.max(0, p.x1) < 40) continue;
+                const g = p.g;
+                const x = Math.max(0, p.x1);
+                const name = `${plan.label} · ${g.long ? 'Long' : 'Short'}`;
+                const top = Math.min(p.yTarget, p.yStop), bottom = Math.max(p.yTarget, p.yStop);
+                const targetText = `${name} · ${PT.target}: ${fmt(g.target)} (${signed(g.targetPct, 2)} %)`;
+                const stopText = `${PT.stop}: ${fmt(plan.stop)} (${signed(g.stopPct, 2)} %)`;
+                const green = 'rgba(16,128,110,0.95)', red = 'rgba(190,52,58,0.95)';
+                const [aboveText, aboveFill, belowText, belowFill] = g.long
+                  ? [targetText, green, stopText, red] : [stopText, red, targetText, green];
+                label(ctx, aboveText, x, Math.max(2, top - 20), aboveFill, mediaSize, placed);
+                label(ctx, belowText, x, Math.min(mediaSize.height - 20, bottom + 3), belowFill, mediaSize, placed);
+                const rr = g.rr == null ? '–' : num(g.rr, 2);
+                let middle;
+                if (plan.status === 'OPEN') middle = `${PT.wait} · ${PT.rr}: ${rr}`;
+                else {
+                  const res = openResult(plan, model.last);
+                  middle = `${PT.open}: ${signed(res.pct, 2)} %${res.r == null ? '' : ` (${signed(res.r, 2)} R)`}\n${PT.rr}: ${rr}`;
+                }
+                // Below the entry line on a long, above it on a short: inside the red zone, as on TradingView.
+                const h = middle.includes('\n') ? 33 : 18;
+                const yMid = g.long ? p.yEntry + 4 : p.yEntry - h - 4;
+                const res = plan.status === 'FILLED' ? openResult(plan, model.last) : null;
+                label(ctx, middle, x + 4, yMid, res && res.pct < 0 ? 'rgba(150,40,48,0.95)' : res ? 'rgba(16,128,110,0.95)' : 'rgba(70,80,98,0.95)', mediaSize, placed);
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(positions);
+
   // Layers added after a visitor saved a choice (e.g. TIM's plans, footprint) start visible: only keys the
   // visitor has seen before can be hidden by a saved choice. Saves from before this list existed knew
   // neither the plans nor volume profile and footprint.
@@ -540,9 +709,14 @@
         series.setData(points);
         lines.push({ series, group: plan.group, plan });
       }
+      // Box (zones, targets, labels): the positions primitive. A plan without targets keeps the old lines.
+      // A boxed running or waiting plan keeps only its blue entry line on top of the box.
+      const boxed = positionGeometry(plan) !== null;
+      const entryLeg = [plan.entry, '#70a7ff', 2, waiting ? 'dashed' : 'solid', `${plan.label} ${long ? 'L' : 'S'}`];
       const legs = closed
-        ? [[plan.entry, long ? 'rgba(53,211,154,0.7)' : 'rgba(255,101,119,0.7)', 1, 'solid', '']]
-        : [[plan.entry, '#70a7ff', 2, waiting ? 'dashed' : 'solid', `${plan.label} ${long ? 'L' : 'S'}`],
+        ? (boxed ? [] : [[plan.entry, long ? 'rgba(53,211,154,0.7)' : 'rgba(255,101,119,0.7)', 1, 'solid', '']])
+        : boxed ? [entryLeg]
+        : [entryLeg,
            ...(trailing ? [] : [[plan.stop, '#ff6577', 1, 'dashed', 'SL']]),
            ...plan.targets.map((value, index) => [value, '#35d39a', 1, 'dotted', `TP${index + 1}`])];
       for (const [value, color, width, style, title] of legs) {
@@ -585,6 +759,8 @@
     fp.visible = groups.has('fp');
     liq.visible = groups.has('liq');
     bubbles.visible = groups.has('bubbles');
+    positions.groups = groups;
+    if (positions.requestUpdate) positions.requestUpdate();
     if (tpo.requestUpdate) tpo.requestUpdate();
   }
 
@@ -618,6 +794,7 @@
       }]);
       lines.push({ series, group: d.group, drawing: d });
     }
+    positions.groups = groups;
     drawPlans(groups);
     planMarkers(groups);
   }
