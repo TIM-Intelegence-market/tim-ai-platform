@@ -121,7 +121,6 @@ def _row(entry: Mapping[str, Any], note: Mapping[str, Any] | None = None) -> str
 COMPARE_ROWS = (
     (RULE_TIM, "TIM-Regel (Stop pauschal, Ziele 1,5/2/3 R)", "/journal"),
     (RULE_STRUCT, "Struktur-Regel (Stop hinter dem Swing, Ziele an Liquidität)", "/journal/struct"),
-    (RULE_LEVEL, "Level-Regel (Hauptlevel, Stop hinter dem Swing)", "/journal/level"),
 )
 
 
@@ -145,7 +144,7 @@ def _compare(journals: Mapping[str, Mapping[str, Any]]) -> str:
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Vergleich</p>"
         "<h2>Regelversionen parallel</h2><p class='cc-section__note'>Gleicher Markt, gleiche Kerzen. "
         "Die Struktur-Regel legt den Stop hinter den nächsten 30m-Swing und die Ziele an die nächsten Liquiditätsorte aus der Vorbereitung; "
-        f"liegt das erste Ziel unter 1,5 R, gibt es keinen Plan (verworfen bisher: {_safe(skip_text)}). Die Level-Regel handelt die Hauptlevel aus dem TIM-Chart. "
+        f"liegt das erste Ziel unter 1,5 R, gibt es keinen Plan (verworfen bisher: {_safe(skip_text)}). "
         "Summe und je Plan netto nach Kosten; korrigierte Einträge (Phantome, Doppelbuchung) zählen nicht. Aussagekraft erst nach vielen geschlossenen Plänen.</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Regel</th><th>Pläne</th><th>geschlossen</th><th>Trefferquote</th><th>Summe netto</th><th>je Plan netto</th><th>Summe brutto</th><th>nicht gezählt</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div></section>"
@@ -250,8 +249,8 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         f"<h2>Alle Pläne (neueste zuerst)</h2><p class='cc-section__note'>Zeiten in deutscher Ortszeit. Zuletzt aktualisiert {_safe(updated)}. "
         "<a href='/setup-path'>Setup-Pfad</a> · <a href='/chart'>TIM-Chart</a> · "
         + ("<a href='/journal'>TIM-Regel</a> · <a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal?rule=level'>JSON</a>" if level
-           else "<a href='/journal'>TIM-Regel</a> · <a href='/journal/level'>Level-Regel</a> · <a href='/api/plan-journal?rule=struct'>JSON</a>" if struct
-           else "<a href='/journal/struct'>Struktur-Regel</a> · <a href='/journal/level'>Level-Regel</a> · <a href='/api/plan-journal'>JSON</a>") + "</p></div></div>"
+           else "<a href='/journal'>TIM-Regel</a> · <a href='/api/plan-journal?rule=struct'>JSON</a>" if struct
+           else "<a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal'>JSON</a>") + "</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Angelegt</th><th>Plan</th><th>Grade</th><th>Evidenz</th><th>Entscheidung</th><th>Zone</th><th>Einstieg</th><th>Stop</th><th>Kosten (Schätzung)</th>"
         "<th>Ungültig bei</th><th>Ziele</th><th>Status</th><th>Brutto-R</th><th>Netto-R</th><th>Verlauf</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div></section>"

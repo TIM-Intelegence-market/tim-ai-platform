@@ -239,13 +239,12 @@ HORIZONS_EN = (
 EARLIER_EN = (
     ("tim", "TIM rule 30m", "first version: fixed stop, targets at 1.5 / 2 / 3 R"),
     ("struct", "Structure rule 30m", "stop behind the 30m swing, targets at liquidity"),
-    ("level", "Level rule 30m", "main levels from the chart, stop behind the swing"),
 )
 JOURNAL_KEYS = tuple(key for key, _, _ in HORIZONS_EN + EARLIER_EN)
 DEFAULT_JOURNAL = "mid"
 CHART_TF = {"short": "15m", "mid": "1h", "long": "1d", "tim": "30m", "struct": "30m", "level": "30m"}
 ALIASES = {RULE_TIM: "tim", RULE_STRUCT: "struct", RULE_LEVEL: "level"}  # older callers pass rule ids
-RULES_EN = tuple((rule, name, text) for rule, (_, name, text) in zip((RULE_TIM, RULE_STRUCT, RULE_LEVEL), EARLIER_EN))
+RULES_EN = tuple((rule, name, text) for rule, (_, name, text) in zip((RULE_TIM, RULE_STRUCT), EARLIER_EN))
 STATUS_EN = {"OPEN": "waiting for entry", "FILLED": "in trade", "CLOSED": "closed", "INVALIDATED": "invalidated before entry",
              "REPLACED": "replaced", "EXPIRED": "expired"}
 EXIT_EN = {"STOP": "stop", "BREAK_EVEN": "break-even after TP1", "BREAK_EVEN_COSTS": "break-even + costs after TP1",
