@@ -147,6 +147,8 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     out["plans"] = [{**p, "label": plan_labels.get(p.get("label"), p.get("label"))} for p in model.get("plans") or []]
     if isinstance(model.get("footprint"), dict):
         out["footprint"] = {**model["footprint"], "note": english_note(model["footprint"].get("note"))}
+    if isinstance(model.get("fib"), dict):
+        out["fib"] = {**model["fib"], "note": english_text(model["fib"].get("note"))}
     if isinstance(model.get("bubbles"), dict):
         out["bubbles"] = {**model["bubbles"], "note": english_note(model["bubbles"].get("note"))}
     for key in ("level_source", "trade_source"):
@@ -220,7 +222,8 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         "4:1 imbalances bold (green = buyers, red = sellers), stacked imbalances (3+) as a bar at the side, unfinished auction at the high/low "
         "dotted orange, Δ and volume (V) below the candle. <b>Volume bubbles</b> (timeframes up to 4h) = large market orders from TIM's trades "
         "(all aggTrades of one taker order, same millisecond and side, from 100,000 USD): green = aggressive buyer, red = aggressive seller, "
-        "circle area = order size against the largest in view, the largest carry their size in BTC; only the largest in view are shown, zooming in adds smaller ones. Times in Central European time. Display only, no orders. "
+        "circle area = order size against the largest in view, the largest carry their size in BTC; only the largest in view are shown, zooming in adds smaller ones. <b>Fibonacci</b> as in TradingView on the last big swing (wick to wick; a swing counts after a move of 3 average candle ranges against it, "
+        "and while price only pulls back the fib stays on the impulse): 1 = start, 0 = end, zones 0.236 to 1 plus 0.886/0.941 and 1.618. Times in Central European time. Display only, no orders. "
         "Chart: <a href='https://www.tradingview.com/' rel='noopener noreferrer'>TradingView Lightweight Charts</a> (Apache 2.0).</p>"
         f"<script src='{LIB_PATH}'></script><script src='{APP_PATH}'></script></section>"
     )
