@@ -43,7 +43,7 @@ from ..domain import (
 from ..domain import MarketState as MarketStateModel
 from ..domain import AuctionState as AuctionStateModel
 from ..domain import OrderflowInterpretation
-from ..positioning import PositioningInputs, ProfileLevels
+from ..positioning import GammaContext, PositioningInputs, ProfileLevels
 from .confirmation import ConfirmationEngine, ConfirmationUpdate
 from .data_quality import DataQualityGate, DataQualityInputs
 from .decision import DecisionEngine, DecisionEngineInput
@@ -79,6 +79,7 @@ class PipelineInputs:
     # Funding, liquidations, OI series, orderbook depth; volume profile / TPO (positioning.py).
     positioning: PositioningInputs | None = None
     profile: ProfileLevels | None = None
+    gamma: GammaContext | None = None
     screenshot_confidence: float | None = None
     structured: bool = True
     estimated_prices: tuple[str, ...] = ()
@@ -206,6 +207,7 @@ class Pipeline:
                     footprint=inputs.footprint,
                     positioning=inputs.positioning,
                     profile=inputs.profile,
+                    gamma=inputs.gamma,
                 )
             )
             levels = _with_profile(inputs.levels or self._levels_from_candles(inputs.candles, inputs.price_now), inputs.profile)

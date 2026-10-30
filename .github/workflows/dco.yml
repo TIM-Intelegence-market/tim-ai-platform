@@ -11,6 +11,8 @@ permissions:
 jobs:
   dco:
     name: DCO sign-off
+    # Bots (Dependabot) cannot sign off; their PRs are reviewed by a maintainer instead.
+    if: github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
