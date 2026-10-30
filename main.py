@@ -45,6 +45,9 @@ log = logging.getLogger("tim")
 HEALTH_SNAPSHOT_INTERVAL_SECONDS = 5.0
 LIVE_EVIDENCE_INTERVAL_SECONDS = 60.0
 PLAN_JOURNAL_INTERVAL_SECONDS = 60  # paper journal of the Setup-Pfad plans
+FOOTPRINT_INTERVAL_SECONDS = 120  # chart footprint / volume profile from aggregated aggTrades
+GAMMA_INTERVAL_SECONDS = 300  # options gamma from Deribit's public book (display and analysis context only)
+LIQUIDATION_INTERVAL_SECONDS = 300  # estimated liquidation heatmap from Binance futures open interest (display only)
 HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
 
 
@@ -74,6 +77,12 @@ class TIMApplication:
             "ollama_availability": "PENDING" if settings.enable_ollama else "DISABLED_BY_POLICY",
         })
         self.dashboard = DashboardServer(self.dashboard_state, settings.dashboard_host, settings.dashboard_port)
+        self.public_dashboard = None
+        if settings.public_dashboard_enabled:
+            from src.dashboard.public_server import PublicDashboardServer
+
+            # Loopback only; a tunnel on this machine publishes it (ops/macos/PUBLIC_DASHBOARD.md).
+            self.public_dashboard = PublicDashboardServer(self.dashboard_state, "127.0.0.1", settings.public_dashboard_port)
         self.history: dict[str, list[Candle]] = {timeframe: [] for timeframe in settings.timeframes}
         self.queue_log = StructuredLog(Path("data/operational/queue.jsonl"))
         self.worker_stop = asyncio.Event()
@@ -565,6 +574,57 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _footprint_loop(self) -> None:
+        # Footprint / volume profile store for /chart from aggregated aggTrades; display only, never on the ingestion path.
+        from src.dashboard.footprint_data import refresh as refresh_footprint
+
+        while not self.worker_stop.is_set():
+            try:
+                await refresh_footprint(self.repository, self.dashboard_state, settings.symbol, datetime.now(timezone.utc))
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - chart data must not stop the runtime
+                log.warning("footprint refresh failed: %s: %s", type(error).__name__, error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=FOOTPRINT_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
+    async def _gamma_loop(self) -> None:
+        # Options gamma from Deribit's public options book (no key); display and analysis context, never on the ingestion path.
+        from src.dashboard.gamma_data import refresh as refresh_gamma
+
+        while not self.worker_stop.is_set():
+            try:
+                await asyncio.to_thread(refresh_gamma, self.dashboard_state, settings.symbol)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - options context must not stop the runtime
+                log.warning("gamma refresh failed: %s: %s", type(error).__name__, error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=GAMMA_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
+    async def _liquidation_loop(self) -> None:
+        # Estimated liquidation heatmap from Binance's public futures open interest (no key), for every chart coin;
+        # display and analysis context, never on the ingestion path.
+        from src.dashboard.liquidation_data import SYMBOLS as LIQUIDATION_SYMBOLS
+        from src.dashboard.liquidation_data import refresh as refresh_liquidation
+
+        while not self.worker_stop.is_set():
+            for symbol in LIQUIDATION_SYMBOLS:
+                try:
+                    await asyncio.to_thread(refresh_liquidation, self.dashboard_state, symbol)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:  # noqa: BLE001 - chart context must not stop the runtime
+                    log.warning("liquidation heatmap refresh failed for %s: %s: %s", symbol, type(error).__name__, error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=LIQUIDATION_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
     async def _derived_candles_loop(self) -> None:
         # 4h and 1d candles from persisted 1h candles; research data only, never on the ingestion path.
         while not self.worker_stop.is_set():
@@ -601,13 +661,13 @@ class TIMApplication:
         # Paper journal only: a failed step is logged and retried, never fatal.
         from functools import partial
 
-        from src.dashboard.plan_journal import RULE_LEVEL, RULE_STRUCT, update as update_plan_journal
+        from src.dashboard.plan_journal import HORIZONS, RULE_STRUCT, update as update_plan_journal
         from src.dashboard.trader_journal import update as update_trader_journal
-        from src.dashboard.chart_history import TIMEFRAMES, fetch_history
+        from src.dashboard.chart_history import JOURNAL_TIMEFRAMES, TIMEFRAMES, fetch_history
 
         history_refreshed = {}
         while not self.worker_stop.is_set():
-            for tf in TIMEFRAMES:
+            for tf in (*TIMEFRAMES, *JOURNAL_TIMEFRAMES):
                 current = datetime.now(timezone.utc)
                 if (current - history_refreshed.get(tf, datetime.min.replace(tzinfo=timezone.utc))).total_seconds() < 300:
                     continue
@@ -624,7 +684,9 @@ class TIMApplication:
             series = self.dashboard_state.chart_series()
             for name, step, path in (("plan journal", update_plan_journal, self.dashboard_state.plan_journal_path),
                                      ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
-                                     ("plan journal level", partial(update_plan_journal, rule=RULE_LEVEL), self.dashboard_state.plan_journal_level_path),
+                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"]), self.dashboard_state.plan_journal_short_path),
+                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"]), self.dashboard_state.plan_journal_mid_path),
+                                     ("plan journal long", partial(update_plan_journal, timeframe=HORIZONS["LONG"]), self.dashboard_state.plan_journal_long_path),
                                      ("trader journal", update_trader_journal, self.dashboard_state.trader_journal_path)):
                 try:
                     await asyncio.to_thread(step, path, series)
@@ -651,10 +713,15 @@ class TIMApplication:
         await self.durable_store.record_metric("restart_total")
         await self.restore_persisted_state()
         self.dashboard.start()
+        if self.public_dashboard is not None:
+            self.public_dashboard.start()
         worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
         evidence_task = asyncio.create_task(self._live_evidence_loop(), name="tim-live-evidence")
         journal_task = asyncio.create_task(self._plan_journal_loop(), name="tim-plan-journal")
         derived_task = asyncio.create_task(self._derived_candles_loop(), name="tim-derived-candles")
+        footprint_task = asyncio.create_task(self._footprint_loop(), name="tim-chart-footprint")
+        gamma_task = asyncio.create_task(self._gamma_loop(), name="tim-options-gamma")
+        liquidation_task = asyncio.create_task(self._liquidation_loop(), name="tim-liquidation-heatmap")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
@@ -664,6 +731,9 @@ class TIMApplication:
             evidence_task.cancel()
             journal_task.cancel()
             derived_task.cancel()
+            footprint_task.cancel()
+            gamma_task.cancel()
+            liquidation_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's
@@ -676,6 +746,8 @@ class TIMApplication:
                 except asyncio.CancelledError:
                     pass
             self.dashboard.stop()
+            if self.public_dashboard is not None:
+                self.public_dashboard.stop()
             await self.database.close()
 
 

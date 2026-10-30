@@ -71,3 +71,13 @@ Die englische Urfassung dieses Aufbaus stammt aus einem offen geteilten
 Regel gegen das Weichwerden bei Widerspruch und sämtliche deutschen Texte sind
 eigene Arbeit. Die Zahlen stammen aus Anthropics öffentlicher Veröffentlichung und
 sind mit Quelle genannt. Es besteht keine Verbindung zu Anthropic.
+
+## Ergänzung vom 29.10.2026
+
+Checkliste (Optionen, Erfolg bis wann, eigene Tendenz), die Modi Schnell und
+Einzeln sowie das Urteil je Option sind als Idee aus dem MIT-lizenzierten Skill
+`roast-room` (github.com/nateherkai/roast-room, Nate Herk / AI Automation Society)
+übernommen, wie ihn ein Gratis-Guide von @reposprites vom 28.10.2026 beschreibt.
+Übernommen wurde nur das Prinzip, kein Code und kein Text; das Repo selbst wurde
+nicht geklont oder installiert. Nicht übernommen: Berater, die echte Personen aus
+deren öffentlichen Aussagen nachspielen, der Browser-Raum und der PDF-Export.

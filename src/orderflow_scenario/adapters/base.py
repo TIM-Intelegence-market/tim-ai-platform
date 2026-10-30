@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any
 
 from ..footprint import FootprintSeries
-from ..positioning import PositioningInputs, ProfileLevels
+from ..positioning import GammaContext, PositioningInputs, ProfileLevels
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +49,8 @@ class AdapterInput:
     # Funding, liquidations, OI series, orderbook depth; volume profile / TPO (see positioning.py).
     positioning: PositioningInputs | None = None
     profile: ProfileLevels | None = None
+    # Options gamma levels (flip, walls, max pain, expected move), context only.
+    gamma: GammaContext | None = None
 
 
 @dataclass(frozen=True, slots=True)

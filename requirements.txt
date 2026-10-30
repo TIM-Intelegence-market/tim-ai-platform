@@ -1,6 +1,8 @@
 asyncpg>=0.30,<1
 websockets>=14,<18
-pytest>=8,<10
+# pytest 9.2 ignores the group suffix pytest-xdist 3.8 puts on node ids (--dist loadgroup): the
+# PostgreSQL test modules then run on all four CI workers at once and deadlock. Lift once xdist supports 9.2.
+pytest>=8,<9.2
 pytest-asyncio>=0.25,<2
 langchain-ollama>=1.1,<2
 langgraph>=1.2,<2

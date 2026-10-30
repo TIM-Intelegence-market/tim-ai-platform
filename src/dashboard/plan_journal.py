@@ -114,6 +114,17 @@ INSTRUMENT_SPECS = {
     ("BINANCE", "SPOT", "BTCUSDT"): {"tick_size": 0.01, "lot_step": 0.00001, "short_executable": False},
 }
 STALE_AFTER = timedelta(minutes=60)  # two 30m intervals without a new close: no new plans
+# Three horizons (Uzi 27.10.2026: "TIM soll in drei verschiedenen Zeitfenstern laufen", card: SHORT 15m · MID 1h · LONG 1D).
+# Same TIM rule (tim/1) and cost limit, one journal file per horizon. Waiting and holding times
+# scale with the timeframe; they are fixed on each entry when it is recorded.
+HORIZONS = {"SHORT": "15m", "MID": "1h", "LONG": "1d"}
+TIMEFRAME_MINUTES = {"15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440}
+HORIZON_HOURS = {"15m": (12, 24), "30m": (PENDING_HOURS, MAX_HOLD_HOURS), "1h": (24, 72), "1d": (24 * 7, 24 * 21)}  # (wait for entry, max in trade)
+
+
+def stale_after(timeframe: str) -> timedelta:
+    """Two intervals without a new close: no new plans (never less than an hour)."""
+    return max(STALE_AFTER, timedelta(minutes=2 * TIMEFRAME_MINUTES.get(timeframe, 30)))
 CANDLE_CLOSE_SKIPPED = "CANDLE_CLOSE_SKIPPED"
 GRADE_NOTE = "Heuristischer Grade, kein empirischer Edge-Nachweis"
 # Fields fixed at recording time. evaluate() must never touch them.
@@ -131,6 +142,12 @@ STRUCTURE_PLANS_DROPPED = "STRUCTURE_PLANS_DROPPED"
 # Correction of an already closed entry: it stays in the log and on the page, but is not counted.
 # Written once per entry listed in CORRECTIONS_PATH; nothing in the entry itself changes.
 ENTRY_EXCLUDED = "ENTRY_EXCLUDED"
+# Horizon journals (SHORT / MID / LONG, Uzi 27.10.2026): after a stop, a stop that was only a wick
+# is marked once the next closes are known; the event may follow the terminal state like a correction.
+STOP_REVIEWED = "STOP_REVIEWED"
+WICK_CLOSES = 2  # closes of the plan timeframe after the stop that are checked
+LOCK_TOLERANCE = 0.001  # horizon journals: a new entry within 0,1 % of a lost one counts as the same level
+LOCK_MIN_CLOSES = 4  # ... and stays locked for at least this many closes of the plan timeframe
 CORRECTIONS_PATH = Path(__file__).with_name("plan_journal_corrections.json")
 # Exits that mean the market went through the plan's level (no later plan at the same level until it is reclaimed).
 LOST_EXITS = {"STOP", "INVALIDATION"}
@@ -339,6 +356,8 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
             "status": OPEN,
             **_arming(plan),
             "stop_rule": STOP_RULE_COST,
+            **({"pending_hours": HORIZON_HOURS[timeframe][0], "max_hold_hours": HORIZON_HOURS[timeframe][1]}
+               if timeframe != PLAN_TIMEFRAME and timeframe in HORIZON_HOURS else {}),
             "evaluated_through": _iso(start),
             "tp_hits": [],
             "gross_r": None,
@@ -398,6 +417,16 @@ def _zone_edge(item: Mapping[str, Any]) -> float:
     return max(prices) if item.get("direction") == "LONG" else min(prices)
 
 
+def _near_level(entry: Mapping[str, Any], plan: Mapping[str, Any]) -> bool:
+    """Horizon journals: TIM's flat stop moves a little with every close, so an exact match
+    misses the same level; the entry within LOCK_TOLERANCE counts as the same level."""
+    try:
+        old, new = float(entry["entry"]), float(plan["entry"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return abs(new - old) <= LOCK_TOLERANCE * old
+
+
 def drop_lost_levels(plans: Sequence[Mapping[str, Any]], entries: Sequence[Mapping[str, Any]], closes: Sequence[Mapping[str, Any]],
                      timeframe: str = PLAN_TIMEFRAME) -> tuple[list[dict[str, Any]], list[str]]:
     """Plans not at a level that a stopped trade in the same direction lost, unless it was reclaimed since.
@@ -405,11 +434,16 @@ def drop_lost_levels(plans: Sequence[Mapping[str, Any]], entries: Sequence[Mappi
     After a stop (or a close beyond the invalidation) the level counts as lost. A new plan with
     the same entry and stop waits until a 30m close beyond the far side of that trade's entry
     zone (LONG above, SHORT below). 26.10.2026: level/1 bought the previous day's VAL seven
-    times in a row and was stopped seven times."""
+    times in a row and was stopped seven times.
+
+    Horizon journals (15m / 1h / 1d, Uzi 27.10.2026): the same level means an entry within
+    LOCK_TOLERANCE, and the lock holds for at least LOCK_MIN_CLOSES closes even when reclaimed."""
+    horizon = timeframe != PLAN_TIMEFRAME
+    same = _near_level if horizon else _same_levels
     kept, dropped = [], []
     for plan in plans:
-        lost = [e for e in entries if e.get("direction") == plan.get("direction") and e.get("timeframe", timeframe) == timeframe
-                and e.get("exit_reason") in LOST_EXITS and e.get("closed_at") and _same_levels(e, plan)]
+        lost = [e for e in entries if e.get("direction") == plan.get("direction") and e.get("timeframe", PLAN_TIMEFRAME) == timeframe
+                and e.get("exit_reason") in LOST_EXITS and e.get("closed_at") and same(e, plan)]
         if not lost:
             kept.append(dict(plan))
             continue
@@ -417,10 +451,12 @@ def drop_lost_levels(plans: Sequence[Mapping[str, Any]], entries: Sequence[Mappi
         edge, since = _zone_edge(last), _time(last["closed_at"])
         long = plan.get("direction") == "LONG"
         reclaimed = any(c["close_time"] > since and ((long and c["close"] > edge) or (not long and c["close"] < edge)) for c in closes)
-        if reclaimed:
+        waited = not horizon or sum(c["close_time"] > since for c in closes) >= LOCK_MIN_CLOSES
+        if reclaimed and waited:
             kept.append(dict(plan))
         else:
-            dropped.append(f"{plan.get('direction')}: Plan {plan.get('scenario_id')} (Stop {_local_text(since)}, wartet auf {'Schluss über' if long else 'Schluss unter'} {edge:.2f}): "
+            wait = f"{'Schluss über' if long else 'Schluss unter'} {edge:.2f}" + (f" und {LOCK_MIN_CLOSES} Schlüsse" if horizon else "")
+            dropped.append(f"{plan.get('direction')}: Plan {plan.get('scenario_id')} (Stop {_local_text(since)}, wartet auf {wait}): "
                            "Level nach Stop noch nicht zurückerobert")
     return kept, dropped
 
@@ -574,6 +610,31 @@ def _active_stop(entry: Mapping[str, Any], candle: Mapping[str, Any] | None = No
     return stop, reason
 
 
+def stop_steps(entry: Mapping[str, Any]) -> list[tuple[str, float, str]]:
+    """Where the stop of a filled plan stood over time: (from, price, reason), oldest first.
+
+    Starts at the original stop, moves to break-even (plus costs) after TP1 and to every
+    protected or trailed stop TIM set, and never back. Entries written before stop_path
+    existed fall back to their latest cost_stop."""
+    if not entry.get("filled_at"):
+        return []
+    steps = [(str(entry["filled_at"]), float(entry["stop"]), "STOP")]
+    moves = [(str(at), float(price), kind) for at, price, kind in entry.get("stop_path") or []]
+    if not moves and entry.get("cost_stop") is not None:
+        moves = [(str(entry.get("cost_stop_at") or entry["filled_at"]), float(entry["cost_stop"]), str(entry.get("cost_stop_kind") or KIND_COSTS))]
+    if entry.get("tp_hits"):
+        if entry.get("stop_rule") == STOP_RULE_COST:
+            level = cost_stop_level(entry)
+            be = (level, "BREAK_EVEN_COSTS") if _r(entry, level) < _r(entry, entry["targets"][0]) else (float(entry["entry"]), "BREAK_EVEN")
+        else:
+            be = (float(entry["entry"]), "BREAK_EVEN")
+        moves.append((str(entry["tp_hits"][0]), *be))
+    for at, price, kind in sorted(moves, key=lambda item: _time(item[0])):
+        if _r(entry, price) > _r(entry, steps[-1][1]):
+            steps.append((at, price, kind))
+    return steps
+
+
 def judge_trade(entry: Mapping[str, Any], model: Mapping[str, Any], close: float, at: datetime | None = None) -> tuple[str, list[str]]:
     """TIM's verdict on a filled plan at a 30m close: SICHERN (stop to break-even plus
     costs) or HALTEN (original stop stays), with reason codes.
@@ -657,11 +718,14 @@ def judge_trades(journal: dict[str, Any], model: Mapping[str, Any], candles: Seq
             verdict, reasons = judge_trade(entry, model, close, close_candle["close_time"])
             entry.update(tim_verdict=verdict, tim_verdict_reasons=reasons, tim_verdict_at=at, tim_verdict_ruleset=VERDICT_RULESET)
             if verdict == SICHERN:
-                entry.update(cost_stop=cost_stop_level(entry), cost_stop_at=at, cost_stop_kind=KIND_COSTS)
+                entry.update(cost_stop=cost_stop_level(entry), cost_stop_at=at, cost_stop_kind=KIND_COSTS,
+                             stop_path=[*entry.get("stop_path", []), [at, cost_stop_level(entry), KIND_COSTS]])
             continue
         trailed = swing_stop(entry, candles, close)
         if trailed is not None:
-            entry.update(cost_stop=trailed, cost_stop_at=at, cost_stop_kind=KIND_SWING)
+            # stop_path: every move of the protected stop, so the chart can draw where the SL stood (Uzi 27.10.2026).
+            entry.update(cost_stop=trailed, cost_stop_at=at, cost_stop_kind=KIND_SWING,
+                         stop_path=[*entry.get("stop_path", []), [at, trailed, KIND_SWING]])
 
 
 def _close(entry: dict[str, Any], at: datetime, price: float, reason: str) -> None:
@@ -721,8 +785,9 @@ def evaluate(journal: dict[str, Any], minute_candles: Sequence[Mapping[str, Any]
                 _close(entry, broken[0]["close_time"], broken[0]["close"], "INVALIDATION")
                 break
             if entry["status"] == OPEN:
-                if candle["open_time"] >= _time(entry["created_at"]) + timedelta(hours=PENDING_HOURS):
-                    entry.update(status="EXPIRED", closed_at=_iso(candle["open_time"]), note=f"{PENDING_HOURS} h ohne Einstieg.")
+                pending = entry.get("pending_hours", PENDING_HOURS)
+                if candle["open_time"] >= _time(entry["created_at"]) + timedelta(hours=pending):
+                    entry.update(status="EXPIRED", closed_at=_iso(candle["open_time"]), note=f"{pending} h ohne Einstieg.")
                     break
                 if not entry.get("armed", True):
                     # Breakout first: a 1m close beyond the entry arms the limit for the retest.
@@ -738,7 +803,7 @@ def evaluate(journal: dict[str, Any], minute_candles: Sequence[Mapping[str, Any]
                         _close(entry, candle["close_time"], entry["stop"], "STOP")
                         break
                 continue
-            if candle["open_time"] >= _time(entry["filled_at"]) + timedelta(hours=MAX_HOLD_HOURS):
+            if candle["open_time"] >= _time(entry["filled_at"]) + timedelta(hours=entry.get("max_hold_hours", MAX_HOLD_HOURS)):
                 _close(entry, candle["open_time"], candle["open"], "TIMEOUT")
                 break
             _follow(entry, candle)
@@ -748,6 +813,30 @@ def evaluate(journal: dict[str, Any], minute_candles: Sequence[Mapping[str, Any]
             entry["evaluated_through"] = _iso(fresh[-1]["close_time"])
         elif fresh:
             entry["evaluated_through"] = entry.get("closed_at", entry["evaluated_through"])
+
+
+def stop_reviews(journal: Mapping[str, Any], closes: Sequence[Mapping[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    """Payloads for stops in the horizon journals that can be judged now: was it only a wick?
+
+    A stop counts as a wick when one of the next WICK_CLOSES closes of the plan timeframe is back
+    on the trade's side of the stop (LONG above, SHORT below). Uzi 27.10.2026: TIM was often
+    stopped below the swing low, then the price ran to the target."""
+    reviews = []
+    for entry in journal.get("entries") or []:
+        timeframe = entry.get("timeframe", PLAN_TIMEFRAME)
+        if timeframe == PLAN_TIMEFRAME or entry.get("exit_reason") != "STOP" or entry.get("stop_review") or not entry.get("closed_at"):
+            continue
+        since = _time(entry["closed_at"])
+        after = [c for c in closes if c.get("timeframe", timeframe) == timeframe and since < c["close_time"] <= now]
+        after.sort(key=lambda c: c["close_time"])
+        if len(after) < WICK_CLOSES:
+            continue
+        stop, long = float(entry["stop"]), entry.get("direction") == "LONG"
+        checked = after[:WICK_CLOSES]
+        wick = any((long and c["close"] > stop) or (not long and c["close"] < stop) for c in checked)
+        reviews.append({"id": entry["id"], "wick": wick, "closes": [round(float(c["close"]), 2) for c in checked],
+                        "checked_through": _iso(checked[-1]["close_time"]), "rule": "wick/1"})
+    return reviews
 
 
 def _minute_ceil(value: datetime) -> datetime:
@@ -793,6 +882,9 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
         "paper_trades": sum(e.get("journal_decision") == PAPER_TRADE for e in entries),
         "no_trade": sum(e.get("journal_decision") == NO_TRADE for e in entries),
         "by_direction": by_direction,
+        # Horizon journals: stops judged after the next closes (wick = price back beyond the stop at once).
+        "stop_reviews": {"reviewed": sum(bool(e.get("stop_review")) for e in closed),
+                         "wick": sum(bool((e.get("stop_review") or {}).get("wick")) for e in closed)},
         "excluded": {"plans": len(excluded), "sum_r": round(sum(e.get("gross_r") or 0.0 for e in excluded), 3),
                      "sum_net_r": round(sum(e.get("net_r") or 0.0 for e in excluded), 3)},
         "counter_trend": {
@@ -928,6 +1020,13 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                 raise journal_log.LogError(f"plan {entry['id']}: only closed plans can be excluded")
             entry["excluded"] = {"reason": payload.get("reason"), "category": payload.get("category"), "approved": payload.get("approved"),
                                  "at": event.get("recorded_at")}
+        elif kind == STOP_REVIEWED:
+            entry = by_id.get(payload.get("id"))
+            if entry is None:
+                raise journal_log.LogError(f"stop review for unknown plan {payload.get('id')}")
+            if entry.get("exit_reason") != "STOP" or entry.get("stop_review"):
+                raise journal_log.LogError(f"plan {entry['id']}: stop review only once and only after a stop")
+            entry["stop_review"] = {k: v for k, v in payload.items() if k != "id"}
         elif kind == STRUCTURE_PLANS_DROPPED:
             counts = journal.setdefault("structure_skips", {})
             for reason in payload.get("reasons") or []:
@@ -977,20 +1076,22 @@ def rebuild(path: Path) -> dict[str, Any]:
     return journal
 
 
-def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime) -> tuple[str, dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
+            timeframe: str = PLAN_TIMEFRAME) -> tuple[str, dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     minutes = clean_candles(series.get("1m") or [], "1m")
-    plan_candles = clean_candles(series.get(PLAN_TIMEFRAME) or [], PLAN_TIMEFRAME)
+    plan_candles = clean_candles(series.get(timeframe) or [], timeframe)
     legacy = clean_candles(series.get("15m") or [], "15m")
-    digest = journal_log.content_hash({"1m": minutes, PLAN_TIMEFRAME: plan_candles, "legacy_15m": legacy})
+    digest = journal_log.content_hash({"1m": minutes, timeframe: plan_candles, "legacy_15m": legacy})
     span = {"1m_first": _iso(minutes[0]["open_time"]) if minutes else None, "1m_last": _iso(minutes[-1]["close_time"]) if minutes else None,
-            f"{PLAN_TIMEFRAME}_count": len(plan_candles), "now": _iso(now)}
+            f"{timeframe}_count": len(plan_candles), "now": _iso(now)}
     return digest, span, minutes, plan_candles
 
 
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
-           rule: str = RULE_TIM) -> dict[str, Any]:
+           rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
-    30m close, append the resulting events, then write the view.
+    close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
+    see HORIZONS), append the resulting events, then write the view.
 
     ``rule`` picks the rule version: TIM's flat stop and R targets, or
     struct/1 (stop behind the swing, targets at liquidity) in its own file.
@@ -1004,7 +1105,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     _check_anchor(path, state)
     journal = fold(state.events)
     before = deepcopy(journal)
-    source_hash, source_range, minutes, plan_candles = _source(series, now)
+    source_hash, source_range, minutes, plan_candles = _source(series, now, timeframe)
     evaluate(journal, minutes, [*plan_candles, *series.get("15m", [])], now)
     new_events: list[dict[str, Any]] = []
     closed_30m = [c for c in plan_candles if c["close_time"] <= now]
@@ -1013,13 +1114,13 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
         latest = _minute_ceil(closed_30m[-1]["close_time"])
         close_hash = journal_log.content_hash(plan_candles[-PLAN_VISIBLE:])
         age = now - latest
-        if journal.get("last_plan_candle") != _iso(latest) and age > STALE_AFTER:
+        if journal.get("last_plan_candle") != _iso(latest) and age > stale_after(timeframe):
             # Stale market data: no new plans (section 2). Noted once per close; the next close records again.
             new_events.append({"event_id": journal_log.event_id(CANDLE_CLOSE_SKIPPED, _iso(latest), "stale"), "kind": CANDLE_CLOSE_SKIPPED,
                                "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                "payload": {"close_time": _iso(latest), "reason": "stale_data", "age_seconds": int(age.total_seconds())}})
         elif journal.get("last_plan_candle") != _iso(latest):
-            model = build_chart_model(series, PLAN_TIMEFRAME, now=latest, visible=PLAN_VISIBLE)
+            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE)
             plans = plans_from_model(model)
             dropped: list[str] = []
             if rule == RULE_STRUCT:
@@ -1028,7 +1129,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 plans, dropped = _level(series, latest, model)
             plans, dead = drop_invalid_on_arrival(plans, closed_30m[-1].get("close"))
             dropped += dead
-            plans, lost = drop_lost_levels(plans, journal.get("entries") or [], closed_30m)
+            plans, lost = drop_lost_levels(plans, journal.get("entries") or [], closed_30m, timeframe)
             dropped += lost
             plans, costly = drop_costly(plans)
             dropped += costly
@@ -1036,7 +1137,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
                                    "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                    "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
-            record_plans(journal, with_evidence(plans, PLAN_TIMEFRAME, register_path), latest)
+            record_plans(journal, with_evidence(plans, timeframe, register_path), latest, timeframe)
             judge_trades(journal, model, closed_30m)
             journal["last_plan_candle"] = _iso(latest)
             checkpoint = True
@@ -1052,6 +1153,9 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
             if event["kind"] == CANDLE_CLOSE_PROCESSED:
                 event["payload"]["rule"] = rule
     new_events += correction_events(journal, rule, load_corrections(), recorded_at=now, source_hash=source_hash, source_range=source_range)
+    for review in stop_reviews(journal, clean_candles(plan_candles, timeframe), now):
+        new_events.append({"event_id": journal_log.event_id(STOP_REVIEWED, review["id"]), "kind": STOP_REVIEWED, "aggregate_id": review["id"],
+                           "recorded_at": _iso(now), "source_hash": source_hash, "source_range": source_range, "payload": review})
     written = journal_log.append(events_path, new_events, state)
     events = state.events + written
     # The view is always the fold: cursor-only progress that was not written is re-derived next time.

@@ -6,3 +6,7 @@ See the LICENSE file for the full license text.
 
 Third-party components keep their own licenses and notices, recorded next to
 the component (for example HERKUNFT.md files for imported skills).
+
+The TIM chart page bundles TradingView Lightweight Charts 4.2.3
+(Copyright TradingView, Inc., Apache License 2.0), see
+src/dashboard/assets/vendor/HERKUNFT.md.
