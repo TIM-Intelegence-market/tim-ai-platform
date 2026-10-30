@@ -460,5 +460,6 @@ def plan_journal_paths(state: Any) -> dict[str, Path]:
     """Journal key -> file of TIM's paper journals: the three horizons, then the earlier 30m versions."""
     paths = {"short": getattr(state, "plan_journal_short_path", None), "mid": getattr(state, "plan_journal_mid_path", None),
              "long": getattr(state, "plan_journal_long_path", None), "tim": getattr(state, "plan_journal_path", None),
-             "struct": getattr(state, "plan_journal_struct_path", None), "level": getattr(state, "plan_journal_level_path", None)}
+             "struct": getattr(state, "plan_journal_struct_path", None)}
+    # The level rule (level/1) is retired (Uzi 30.10.2026): no new plans, hidden from journals and chart; its file stays.
     return {key: Path(path) for key, path in paths.items() if path is not None}

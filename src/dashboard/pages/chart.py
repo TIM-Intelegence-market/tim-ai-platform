@@ -506,6 +506,8 @@ def _live_section(symbol: str, view: str) -> str:
         "<b>BOS / MSS</b> zählen nur per Schlusskurs (ein Docht durch das Level ist ein Sweep): BOS = Bruch des letzten Swings in Trendrichtung, "
         "MSS = Schlusskurs jenseits des <b>Strong Low</b> (im Aufwärtstrend) bzw. <b>Strong High</b> (im Abwärtstrend), also des Tiefs/Hochs, "
         "aus dem der letzte Schub kam. Gestrichelt und bis jetzt: das offene Strong Low/High und das <b>BOS-Ziel</b>. Swings: 3 Kerzen je Seite. "
+        "<b>Fibonacci</b> wie in TradingView auf dem letzten großen Swing (Docht zu Docht, ein Swing zählt ab 3 durchschnittlichen Kerzenspannen Gegenbewegung; "
+        "solange der Kurs nur zurückläuft, bleibt die Fib auf dem Impuls): 1 = Start, 0 = Ende, Zonen 0,236 bis 1 plus 0,886/0,941 und 1,618. "
         "Zeiten in deiner Ortszeit. Nur Anzeige, keine Order. "
         "Chart: <a href='https://www.tradingview.com/' rel='noopener noreferrer'>TradingView Lightweight Charts</a> (Apache 2.0).</p>"
         f"<script src='{LIB_PATH}'></script><script src='{APP_PATH}'></script></section>"

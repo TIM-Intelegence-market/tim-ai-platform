@@ -95,9 +95,15 @@ PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"),
                  "tim": ("plans_old", "TIM 30m"), "struct": ("plans_old", "Struktur 30m"), "level": ("plans_old", "Level 30m")}
 PLAN_LIMIT = 40  # newest plans drawn per chart
 PLAN_SHOWN = {"OPEN", "FILLED", "CLOSED"}
-# Fibonacci zones of the newest swing leg. 0.886 and 0.941 come from the GoatHub EDUCATION
-# lesson (02.10.2026): zones where price often reacts. Display only, never a signal or a score.
-FIB_RATIOS = (0.382, 0.5, 0.618, 0.786, 0.886, 0.941)  # never-filled plans (replaced, expired, invalidated) stay in the journal only
+# Fibonacci retracement of the newest swing leg, drawn like TradingView's Fib tool (Uzi 30.10.2026):
+# 0 = end of the leg, 1 = its start, zones between the levels, 1.618 beyond the start.
+# 0.886 and 0.941 come from the GoatHub EDUCATION lesson (02.10.2026): zones where price often reacts.
+# Display only, never a signal or a score.
+FIB_RATIOS = (0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 0.886, 0.941, 1.0, 1.618)
+# A swing counts once price moved this many average candle ranges (ATR) against it (TradingView Auto Fib: 3).
+FIB_ATR_MULT = 3.0
+FIB_ATR_BARS = 100  # closed candles behind the average range
+FIB_MAX_STEPS = 6  # older legs looked at when the newest moves are pullbacks
 
 Fetch = Callable[[str, str, int], list[dict[str, Any]]]
 
@@ -609,39 +615,101 @@ def vwap_drawings(vwaps: Sequence[Mapping[str, Any]], candles: Sequence[Mapping[
     return out
 
 
-def fib_drawings(candles: Sequence[Mapping[str, Any]], timeframe: str, width: int = STRUCTURE_PIVOT) -> list[dict[str, Any]]:
-    """Fibonacci retracement of the newest swing leg, drawn from the leg's start to the newest candle.
+def zigzag_pivots(candles: Sequence[Mapping[str, Any]], threshold: float) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Swing highs/lows that matter: a wick extreme becomes a pivot once price moved ``threshold`` against it.
 
-    Anchors as in the community lesson: long = last wick low to last wick high, short = last
-    wick high to last wick low. The newest confirmed swing (``structure_swings``) starts the
-    leg; its other end is the most extreme wick of the closed candles after it. A low starts a
-    leg up (levels below the high), a high a leg down (levels above the low). 0 and 1 are the
-    two anchors. A picture of zones, not a signal.
+    Walks the candles in time order (causal, wicks). Returns the confirmed pivots (oldest first,
+    alternating HIGH/LOW) and the running extreme of the leg since the last pivot (not confirmed yet).
+    """
+    if not candles:
+        return [], None
+    pivots: list[dict[str, Any]] = []
+    high = {"index": 0, "price": candles[0]["high"], "kind": "HIGH"}
+    low = {"index": 0, "price": candles[0]["low"], "kind": "LOW"}
+    direction: str | None = None  # "UP" = hunting the next high, "DOWN" = hunting the next low
+    for i, c in enumerate(candles):
+        if direction in (None, "UP") and c["high"] > high["price"]:
+            high = {"index": i, "price": c["high"], "kind": "HIGH"}
+        if direction in (None, "DOWN") and c["low"] < low["price"]:
+            low = {"index": i, "price": c["low"], "kind": "LOW"}
+        if direction is None:
+            if high["price"] - low["price"] >= threshold:
+                # the older extreme starts the first leg
+                first, direction = (low, "UP") if low["index"] < high["index"] else (high, "DOWN")
+                pivots.append(first)
+            continue
+        # Within one candle the order of high and low is unknown: the reversal needs a later candle.
+        if direction == "UP" and high["index"] < i and high["price"] - c["low"] >= threshold:
+            pivots.append(high)
+            direction = "DOWN"
+            low = min(({"index": j, "price": candles[j]["low"], "kind": "LOW"} for j in range(high["index"] + 1, i + 1)),
+                      key=lambda x: (x["price"], -x["index"]))
+        elif direction == "DOWN" and low["index"] < i and c["high"] - low["price"] >= threshold:
+            pivots.append(low)
+            direction = "UP"
+            high = max(({"index": j, "price": candles[j]["high"], "kind": "HIGH"} for j in range(low["index"] + 1, i + 1)),
+                       key=lambda x: (x["price"], x["index"]))
+    running = None if direction is None else (high if direction == "UP" else low)
+    return pivots, running
+
+
+def average_range(candles: Sequence[Mapping[str, Any]], bars: int = FIB_ATR_BARS) -> float:
+    """Mean true range of the newest ``bars`` candles (0 without candles)."""
+    tail = list(candles[-(bars + 1):])
+    ranges = [max(c["high"], p["close"]) - min(c["low"], p["close"]) for p, c in zip(tail, tail[1:])]
+    if not ranges and tail:
+        ranges = [tail[0]["high"] - tail[0]["low"]]
+    return sum(ranges) / len(ranges) if ranges else 0.0
+
+
+def fib_retracement(candles: Sequence[Mapping[str, Any]], timeframe: str,
+                    mult: float = FIB_ATR_MULT) -> dict[str, Any] | None:
+    """Fibonacci retracement of the newest swing leg, like a Fib drawn by hand in TradingView.
+
+    Swings come from a zigzag on the closed candles' wicks: a high or low counts once price moved
+    ``mult`` x the average candle range against it, so small wiggles never start a new leg.
+    The leg is the newest move that every later candle stayed inside: while price only pulls back
+    (bounce, lower high, drift) the fib stays on the impulse; once a candle trades beyond the leg,
+    the running move from the last pivot to its extreme so far is the new leg.
+    Level 0 sits at the end of the leg, 1 at its start, as in TradingView. The open candle never
+    moves an anchor. A picture of zones, not a signal.
     """
     closed = [c for c in candles if c.get("closed", True)]
-    swings = structure_swings(closed, width)
-    if not swings:
-        return []
-    start = max(swings, key=lambda s: s["index"])
-    after = closed[start["index"] + 1:]
-    if not after:
-        return []
-    up = start["kind"] == "LOW"
-    end = max(after, key=lambda c: c["high"]) if up else min(after, key=lambda c: c["low"])
-    low, high = (start["price"], end["high"]) if up else (end["low"], start["price"])
-    span = high - low
-    if span <= 0:
-        return []
-    side = "Long" if up else "Short"
-    anchors = "Swing-Tief → Hoch" if up else "Swing-Hoch → Tief"
-    result = []
-    for ratio in FIB_RATIOS:
-        price = high - span * ratio if up else low + span * ratio
-        name = f"Fib {ratio:g}"
-        result.append({"group": "fib", "tf": timeframe, "name": name, "label": f"{timeframe} {name}", "price": price,
-                       "start": closed[start["index"]]["open_time"].isoformat(), "ratio": ratio, "direction": "UP" if up else "DOWN",
-                       "note": f"{side}-Fib {anchors} (Docht), Zone, kein Signal"})
-    return result
+    if len(closed) < 3:
+        return None
+    threshold = mult * average_range(closed)
+    if threshold <= 0:
+        return None
+    pivots, running = zigzag_pivots(closed, threshold)
+    if not pivots or running is None:
+        return None
+    points = pivots + [running]
+    legs = list(zip(points, points[1:]))
+    if not legs:
+        return None
+    # Start with the running leg and step back while an older leg still holds everything after it
+    # (a later high/low beyond its range would be a break): the moves after it are only pullbacks.
+    chosen = len(legs) - 1
+    for k in range(len(legs) - 2, max(-1, len(legs) - 1 - FIB_MAX_STEPS), -1):
+        a, b = legs[k]
+        low, high = min(a["price"], b["price"]), max(a["price"], b["price"])
+        later = closed[b["index"] + 1:]
+        if later and (min(c["low"] for c in later) < low or max(c["high"] for c in later) > high):
+            break
+        chosen = k
+    start, end = legs[chosen]
+    span = end["price"] - start["price"]
+    if span == 0 or end["index"] <= start["index"]:
+        return None
+    up = span > 0
+    levels = [{"ratio": ratio, "price": end["price"] - span * ratio} for ratio in FIB_RATIOS]
+    side, anchors = ("Long", "Swing-Tief → Hoch") if up else ("Short", "Swing-Hoch → Tief")
+    finished = chosen != len(legs) - 1
+    return {"group": "fib", "tf": timeframe, "direction": "UP" if up else "DOWN",
+            "start": _epoch(closed[start["index"]]["open_time"]), "start_price": start["price"],
+            "end": _epoch(closed[end["index"]]["open_time"]), "end_price": end["price"],
+            "finished": finished, "levels": levels, "threshold": round(threshold, 8),
+            "note": f"{side}-Fib {anchors} (Docht), Zone, kein Signal"}
 
 
 def place_drawings(drawings: Sequence[Mapping[str, Any]], times: Sequence[int]) -> list[dict[str, Any]]:
@@ -868,7 +936,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model: dict[str, Any] = {"symbol": symbol, "name": SYMBOL_NAMES[symbol], "timeframe": timeframe, "symbols": list(SYMBOLS),
                              "timeframes": list(VIEW_TIMEFRAMES), "generated_at": now.isoformat(), "read_only": True,
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
-                             "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None}
+                             "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None}
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
     rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
@@ -897,7 +965,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     drawings = level_drawings(level_source, now, trades)
     if INTERVAL_SECONDS[timeframe] >= 86400:
         drawings = [d for d in drawings if d["group"] not in INTRADAY_ONLY]
-    drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe) + fib_drawings(candles, timeframe)
+    drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe)
     from src.dashboard.htf_levels import build_htf_levels
 
     drawings += vwap_drawings(build_htf_levels(level_source, now)["vwaps"], candles, timeframe, now)
@@ -915,6 +983,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         model["notes"].extend(liq_notes)
     times = [c["time"] for c in model["candles"]]
     model["drawings"] = place_drawings(drawings, times)
+    model["fib"] = fib_retracement(candles, timeframe)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
     model["tpo"], model["volume_profile"], model["footprint"] = [], [], {"step": None, "bars": [], "note": None}
     model["bubbles"] = {"items": [], "min_usd": None, "max_usd": None, "note": None}
