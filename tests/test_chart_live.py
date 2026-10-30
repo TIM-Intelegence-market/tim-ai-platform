@@ -338,3 +338,14 @@ def test_running_plan_carries_its_stop_steps():
     run = plans["run1"]
     assert [s[0] for s in run["stop_steps"]] == [times[3], times[6], times[9]] and run["stop_now"] == 100.9
     assert plans["done1"]["stop_steps"] == []
+
+
+def test_trades_are_drawn_as_position_boxes_and_the_moved_stop_stays_a_step_line():
+    """TIM's trades as long/short boxes (Uzi 30.10.2026): zones, labels and the reward/risk ratio are
+    drawn on the canvas; the stop TIM moved keeps its own orange step line."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "candles.attachPrimitive(positions);" in script
+    for text in ("Offener G&V", "Chance/Risiko", "Wartet auf Einstieg", "Open P&L", "Reward/Risk"):
+        assert text in script
+    assert "lineType: LWC.LineType.WithSteps" in script and "title: T.slNow" in script
+    assert "positions.groups = groups;" in script  # the box follows the plan layer's checkbox
