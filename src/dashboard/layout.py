@@ -19,6 +19,8 @@ CSS = (_ASSETS / "style.css").read_text(encoding="utf-8")
 
 EXTRA_CSS = (_ASSETS / "extra.css").read_text(encoding="utf-8")
 EXTRA_CSS = EXTRA_CSS + design_system.COMPONENT_CSS
+# Light look and phone bar for pages with body.cc (P3); inert for the public view.
+EXTRA_CSS = EXTRA_CSS + (_ASSETS / "light.css").read_text(encoding="utf-8")
 
 
 AUTO_REFRESH_SCRIPT = (_ASSETS / "auto_refresh.html").read_text(encoding="utf-8")
@@ -202,7 +204,7 @@ def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, s
     )
     matrix = f"<dl class='status-matrix' aria-label='Globaler Systemstatus'>{strip_rows}{trading_row}</dl>" if strip else ""
 
-    return translate_html(f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body class='cc'><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>Control Center</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav><button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div>{subnav_html}</header><main id='main-content' class='shell' tabindex='-1'>{matrix}{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT if refresh else ''}</body></html>""")
+    return translate_html(f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='light dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body class='cc'><a class='skip-link' href='#main-content'>Zum Hauptinhalt springen</a><header class='topbar'><div class='topbar__inner'><a class='brand' href='/' aria-label='TIM Control Center Startseite'>TIM<small>Control Center</small></a><nav class='nav' aria-label='Hauptnavigation'>{nav}</nav><button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button></div>{subnav_html}</header><main id='main-content' class='shell' tabindex='-1'>{matrix}{body}</main><footer class='footer'>TIM · OBSERVE-only · read-only control surface · keine Trading-, Shell- oder Git-Aktionen</footer>{AUTO_REFRESH_SCRIPT if refresh else ''}</body></html>""")
 
 
 def _hero(title: str, text: str) -> str:
