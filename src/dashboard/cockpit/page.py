@@ -184,7 +184,7 @@ section>h2 a{color:inherit}
 .sub{font-size:15px;font-weight:600;margin:16px 0 6px;color:var(--ink)}
 .events{margin:6px 0 0;padding-left:18px;font-size:14px}.events li{margin:0 0 3px}
 footer{max-width:1280px;margin:0 auto;padding:0 16px 30px;color:var(--muted);font-size:13px}
-@media (max-width:700px){.nav{order:3;flex-basis:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}.nav a{white-space:nowrap}.live{margin-left:auto}}
+@media (max-width:700px){body{padding-bottom:calc(58px + env(safe-area-inset-bottom))}.nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;padding:0 0 env(safe-area-inset-bottom);background:var(--panel);border-top:1px solid var(--line)}.nav a{justify-content:center;padding:16px 2px 17px;margin:0;font-size:12.5px;white-space:nowrap;border-bottom:0;border-top:3px solid transparent}.nav a.area,.nav a[aria-current=page]{border-top-color:var(--accent)}.subnav__in{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}.subnav a{white-space:nowrap}.live{margin-left:auto}}
 @media (max-width:560px){.head h1{font-size:22px}}
 @media (max-width:700px){.tabs a{padding:11px 16px}}
 """
