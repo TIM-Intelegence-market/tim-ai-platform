@@ -944,13 +944,14 @@ def test_the_corrections_file_lists_checked_ids_once_per_rule() -> None:
     assert {i["category"] for i in items} == {"PHANTOM_INVALID_ON_ARRIVAL", "DOUBLE_BOOKING"}
 
 
-def test_comparison_shows_all_three_rules_net_of_costs_and_the_current_stop_rule() -> None:
+def test_comparison_shows_the_rules_net_of_costs_and_the_current_stop_rule() -> None:
+    """The level rule is retired (Uzi 30.10.2026): no row and no link in the comparison."""
     tim = _closed_journal()
     struct = {**pj.empty_journal(), "rule": pj.RULE_STRUCT}
     level = {**pj.empty_journal(), "rule": pj.RULE_LEVEL}
     page = _plan_journal_page({"operational_health": {}}, tim, other=struct, level_journal=level)
     net = _r_text(pj.summary(tim)["sum_net_r"])
-    assert "Regelversionen parallel" in page and "/journal/level'>Level-Regel" in page and "Summe netto" in page and net in page
+    assert "Regelversionen parallel" in page and "/journal/struct'>Struktur-Regel" in page and "Level-Regel" not in page and "Summe netto" in page and net in page
     assert "be_cost/1" in page and "nicht nachgebildet" not in page
     assert "% Konto" in page and "." not in page.split("% Konto")[0].rsplit("≈", 1)[1]
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -92,8 +93,8 @@ def test_chart_api_is_english(server):
 
 def test_journal_page_english_and_empty_journals(server):
     _, base = server
-    status, _, body = _get(base + "/journal?rule=level")
-    assert status == 200 and "Paper journal" in body and "Level rule" in body and "Research, not financial advice. Observation and paper tracking only" in body
+    status, _, body = _get(base + "/journal?rule=level")  # retired rule (Uzi 30.10.2026): falls back to the default journal
+    assert status == 200 and "Paper journal" in body and "Level rule" not in body and "MID · 1h" in body and "Research, not financial advice. Observation and paper tracking only" in body
     assert "No plans yet." in body
     status, _, body = _get(base + "/api/plan-journal?rule=struct")
     assert status == 200 and "entries" in json.loads(body)
@@ -277,3 +278,19 @@ def test_public_chart_carries_options_gamma_in_english(server):
     text = json.dumps([(d["label"], d["note"]) for d in gamma], ensure_ascii=False)
     for word in ("hoch", "tief", "Händler", "Verfall", "größtes"):
         assert word not in text, word
+
+
+def test_level_rule_is_retired_from_journals_and_chart(tmp_path):
+    """Uzi 30.10.2026: "level rule 30m rausnehmen", no new trades. Its file is kept, just no longer listed."""
+    from types import SimpleNamespace
+
+    from src.dashboard.public_en import JOURNAL_KEYS, journal_page
+    from src.dashboard.state import plan_journal_paths
+
+    state = SimpleNamespace(plan_journal_path=tmp_path / "t.json", plan_journal_struct_path=tmp_path / "s.json",
+                            plan_journal_level_path=tmp_path / "l.json")
+    assert "level" not in plan_journal_paths(state) and "level" not in JOURNAL_KEYS
+    page = journal_page({"tim": {"entries": []}, "struct": {"entries": []}, "level/1": {"entries": []}}, "level")
+    assert "Level rule" not in page
+    main_source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+    assert "rule=RULE_LEVEL" not in main_source
