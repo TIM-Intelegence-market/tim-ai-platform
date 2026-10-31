@@ -38,7 +38,8 @@ const changed = () => {
   return count;
 };
 
-const browser = await chromium.launch();
+// CHROMIUM_PATH: use a Chromium already on the machine instead of Playwright's own download.
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const rows = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

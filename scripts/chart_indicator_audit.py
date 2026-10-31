@@ -1064,9 +1064,7 @@ def check_liquidation(raw: Raw) -> None:
     if not api or not oi_rows or not kl:
         report("Liquidations-Heatmap", "Futures-Daten", None, "nicht gelesen")
         return
-    est = api.get("estimate", api)
-    if "analysis" not in est:
-        est = next((v for v in est.values() if isinstance(v, dict) and "analysis" in v), est)
+    est = api if "analysis" in api else next((v for v in api.values() if isinstance(v, dict) and "analysis" in v), api)
     oi = {int(r["timestamp"]) // 1000: float(r["sumOpenInterest"]) for r in oi_rows}
     latest = max(oi)
     now_oi = load(raw.folder / "fapi_oi_now.json")
