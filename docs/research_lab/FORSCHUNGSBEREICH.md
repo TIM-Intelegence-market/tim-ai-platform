@@ -92,6 +92,37 @@ python -m src.research_lab.workshop draft --idea I-0001 --spec spec.json --dry-r
 python -m src.research_lab.workshop draft --idea I-0001 --spec spec.json             # Entwurf schreiben
 ```
 
+## Reflexion jedes Trades
+
+Uzi 31.10.2026: „er soll jeden trade reflektieren“. `src/research_lab/workshop/trade_reflection.py` liest die
+Plan-Journale (nur lesend) und schreibt für **jeden geschlossenen Papier-Trade** genau einen Eintrag nach
+`data/research/trade_reflections.jsonl` (append-only, Hash-Kette, liegt nur auf dem Mac, nicht im Repo).
+
+Ein Eintrag enthält die Fakten (netto/brutto R, Kosten, bestes Plus, tiefstes Minus, Ausstieg, Ziele, TIMs Urteil,
+Marktzustand) und die Lehren nach festen Regeln (`trade-reflection/1.0`):
+
+| Lehre | Wann |
+|---|---|
+| Kosten haben den Gewinn aufgefressen | brutto > 0, netto ≤ 0 |
+| Gewinn verschenkt | bestes Plus ≥ 1 R, netto ≤ 0 |
+| Sofort falsch | tiefstes Minus ≤ −0,8 R und bestes Plus < 0,3 R |
+| Stop per Docht | Stop-Prüfung meldet Docht |
+| Gegen den Trend | Richtung gegen TIMs Marktzustand |
+| Zeit abgelaufen / Ungültig / Alle Ziele / Datenlücke | Ausstieg TIMEOUT / INVALIDATION / TP3 / Kerzenlücke |
+
+Die Reflexion sagt nur, was passiert ist. Sie behauptet nicht, was mit anderen Regeln passiert wäre, und ändert
+keinen Stop, kein Ziel, keine Kosten. Taucht eine Verlust-Lehre in mindestens 30 % von mindestens 20 Trades eines
+Journals auf, wird daraus **eine** Idee im Ideen-Eingang (Quelle „Reflexion jedes Papier-Trades“). Ab dort gilt der
+normale Weg: Prüfung, Studie, prospektiver Test.
+
+```bash
+python -m src.research_lab.workshop reflect-trades --journal ~/TIM-live/data/journal/tim_plan_journal.json --dry-run
+python -m src.research_lab.workshop reflect-trades --journal <journal.json> [--journal ...] --ideas
+```
+
+Automatisch nach jedem Trade läuft das mit dem Zeitplan (F6, stündlich auf dem Mac). Anzeige je Trade im
+Journal-Bildschirm des neuen Control Centers (F9).
+
 ## Verhältnis zur Lern-Spur
 
 Die Lernschleife (Champion/Herausforderer, Bauplan „TIM lernt aktiv aus Trades“) ist die Spur „Lernen“ in diesem
@@ -110,3 +141,4 @@ F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 |---|---|---|
 | 2026-10-31 | 1.0 | Satzung angelegt (F0), Ideen-Eingang und Ideen-Prüfung (F1, F2) |
 | 2026-10-31 | 1.0 | Studien-Generator (F3) |
+| 2026-10-31 | 1.0 | Reflexion jedes Trades (Uzis Wunsch), Quelle `trade_reflexion` |

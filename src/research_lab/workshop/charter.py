@@ -22,6 +22,7 @@ SOURCES = {
     "uzi": "Uzi",
     "journal_review": "Plan-Journal (Lernvorschlag)",
     "reflection": "Wöchentliche Reflexion",
+    "trade_reflexion": "Reflexion jedes Papier-Trades",
     "logbook_lesson": "Lehre aus dem Logbuch",
     "community": "GoatHub/Broncx (nur Frage, kein Beleg)",
     "ki_runde": "Wöchentliche KI-Runde",

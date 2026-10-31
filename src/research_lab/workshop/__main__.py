@@ -6,6 +6,7 @@
     python -m src.research_lab.workshop check [--record]
     python -m src.research_lab.workshop import --journal-review FILE | --reflection FILE
     python -m src.research_lab.workshop draft --idea I-0001 --spec spec.json [--dry-run]
+    python -m src.research_lab.workshop reflect-trades --journal ~/TIM-live/data/journal/tim_plan_journal.json [--dry-run] [--ideas]
     python -m src.research_lab.workshop charter
 
 Reads and writes only the idea queue (default docs/research_lab/IDEEN.jsonl) and, for
@@ -59,6 +60,11 @@ def main(argv: list[str] | None = None) -> int:
     draft.add_argument("--studies-dir", type=Path, default=Path("docs/research_lab/studien"))
     draft.add_argument("--register", type=Path, default=Path("docs/research_lab/REGISTER.jsonl"))
     draft.add_argument("--dry-run", action="store_true", help="Entwurf nur anzeigen, nichts schreiben")
+    trades = sub.add_parser("reflect-trades", help="jeden geschlossenen Papier-Trade reflektieren")
+    trades.add_argument("--journal", action="append", required=True, type=Path)
+    trades.add_argument("--log", type=Path, default=Path("data/research/trade_reflections.jsonl"))
+    trades.add_argument("--dry-run", action="store_true")
+    trades.add_argument("--ideas", action="store_true", help="wiederkehrende Muster als Ideen eintragen")
     sub.add_parser("charter")
     args = parser.parse_args(argv)
     queue = IdeaQueue(args.queue)
@@ -96,6 +102,22 @@ def main(argv: list[str] | None = None) -> int:
                                       studies_dir=args.studies_dir, register_path=args.register,
                                       logbook_path=args.logbook, write=not args.dry_run)
             print(text if args.dry_run else path)
+        elif args.command == "reflect-trades":
+            from src.dashboard.plan_journal import load_view
+            from src.research_lab.workshop.trade_reflection import ReflectionLog, patterns, propose_ideas, reflect_journal
+            log = ReflectionLog(args.log)
+            for path in args.journal:
+                fresh = reflect_journal(load_view(path), log, name=path.stem, write=not args.dry_run)
+                print(f"{path.stem}: {len(fresh)} neue Trades reflektiert")
+                for item in fresh:
+                    print(f"  {item['trade_id']}  {item['summary']}")
+                    for text in item["lesson_text"]:
+                        print(f"        - {text}")
+            if not args.dry_run:
+                print(json.dumps(patterns(log.records()), ensure_ascii=False))
+                if args.ideas:
+                    added = propose_ideas(log.records(), queue)
+                    print("Neue Ideen: " + (" ".join(added) if added else "keine"))
         elif args.command == "charter":
             print(f"{charter.CHARTER_VERSION}, Stufe {charter.STAGE}, Budget {charter.MONTHLY_STUDY_BUDGET} Studien/Monat")
             for line in charter.FIXED_LIMITS:
