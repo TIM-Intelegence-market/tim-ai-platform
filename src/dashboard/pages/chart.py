@@ -521,6 +521,18 @@ def _live_section(symbol: str, view: str) -> str:
     )
 
 
+def _summary_section(state: Any) -> str:
+    """Short text of what TIM's analysis says now (BTC); never breaks the page."""
+    from src.dashboard.analysis_summary import build_summary, render_de
+    from src.dashboard.chart_live import load_plan_journals
+    from src.dashboard.state import plan_journal_paths
+
+    try:
+        return render_de(build_summary(state.chart_series(), load_plan_journals(plan_journal_paths(state))))
+    except Exception as exc:  # noqa: BLE001 - the chart must still render
+        return f"<section class='cc-section tc-summary'><p class='cc-note'>Zusammenfassung nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
+
+
 def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str | None = None, symbol: str | None = None) -> str:
     from datetime import timezone
 
@@ -530,6 +542,7 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     view = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_TIMEFRAME
     data = state.snapshot()
     body = _hero("TIM-Chart", "BTC, ETH, SOL und Gold in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
+    body += _summary_section(state)
     body += _live_section(symbol, view)
     if symbol != "BTCUSDT":
         body += ("<section class='cc-section'><p class='cc-note'>Steckbrief, Szenarien, Level-Pläne und Plan-Journale gibt es nur für BTC. "
