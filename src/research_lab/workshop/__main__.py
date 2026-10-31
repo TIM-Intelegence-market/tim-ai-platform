@@ -5,9 +5,12 @@
     python -m src.research_lab.workshop list [--json]
     python -m src.research_lab.workshop check [--record]
     python -m src.research_lab.workshop import --journal-review FILE | --reflection FILE
+    python -m src.research_lab.workshop draft --idea I-0001 --spec spec.json [--dry-run]
+    python -m src.research_lab.workshop reflect-trades --journal ~/TIM-live/data/journal/tim_plan_journal.json [--dry-run] [--ideas]
     python -m src.research_lab.workshop charter
 
-Reads and writes only the idea queue (default docs/research_lab/IDEEN.jsonl).
+Reads and writes only the idea queue (default docs/research_lab/IDEEN.jsonl) and, for
+``draft``, one new pre-registration draft under docs/research_lab/studien/.
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.research_lab.workshop import charter
+from src.research_lab.workshop.generator import DraftError, create_draft
 from src.research_lab.workshop.check import DATA_CATALOGUE, check_ideas, load_logbook, record
 from src.research_lab.workshop.ideas import DEFAULT_PATH, STATUSES, IdeaError, IdeaQueue
 from src.research_lab.workshop.sources import import_journal_review, import_reflection
@@ -50,6 +54,17 @@ def main(argv: list[str] | None = None) -> int:
     group = imp.add_mutually_exclusive_group(required=True)
     group.add_argument("--journal-review", type=Path)
     group.add_argument("--reflection", type=Path)
+    draft = sub.add_parser("draft")
+    draft.add_argument("--idea", required=True)
+    draft.add_argument("--spec", required=True, type=Path)
+    draft.add_argument("--studies-dir", type=Path, default=Path("docs/research_lab/studien"))
+    draft.add_argument("--register", type=Path, default=Path("docs/research_lab/REGISTER.jsonl"))
+    draft.add_argument("--dry-run", action="store_true", help="Entwurf nur anzeigen, nichts schreiben")
+    trades = sub.add_parser("reflect-trades", help="jeden geschlossenen Papier-Trade reflektieren")
+    trades.add_argument("--journal", action="append", required=True, type=Path)
+    trades.add_argument("--log", type=Path, default=Path("data/research/trade_reflections.jsonl"))
+    trades.add_argument("--dry-run", action="store_true")
+    trades.add_argument("--ideas", action="store_true", help="wiederkehrende Muster als Ideen eintragen")
     sub.add_parser("charter")
     args = parser.parse_args(argv)
     queue = IdeaQueue(args.queue)
@@ -82,11 +97,32 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 added = import_reflection(queue, json.loads(args.reflection.read_text(encoding="utf-8")))
             print(" ".join(added) if added else "nichts Neues")
+        elif args.command == "draft":
+            path, text = create_draft(queue, args.idea, json.loads(args.spec.read_text(encoding="utf-8")), now=_now(),
+                                      studies_dir=args.studies_dir, register_path=args.register,
+                                      logbook_path=args.logbook, write=not args.dry_run)
+            print(text if args.dry_run else path)
+        elif args.command == "reflect-trades":
+            from src.dashboard.plan_journal import load_view
+            from src.research_lab.workshop.trade_reflection import ReflectionLog, patterns, propose_ideas, reflect_journal
+            log = ReflectionLog(args.log)
+            for path in args.journal:
+                fresh = reflect_journal(load_view(path), log, name=path.stem, write=not args.dry_run)
+                print(f"{path.stem}: {len(fresh)} neue Trades reflektiert")
+                for item in fresh:
+                    print(f"  {item['trade_id']}  {item['summary']}")
+                    for text in item["lesson_text"]:
+                        print(f"        - {text}")
+            if not args.dry_run:
+                print(json.dumps(patterns(log.records()), ensure_ascii=False))
+                if args.ideas:
+                    added = propose_ideas(log.records(), queue)
+                    print("Neue Ideen: " + (" ".join(added) if added else "keine"))
         elif args.command == "charter":
             print(f"{charter.CHARTER_VERSION}, Stufe {charter.STAGE}, Budget {charter.MONTHLY_STUDY_BUDGET} Studien/Monat")
             for line in charter.FIXED_LIMITS:
                 print(f"- {line}")
-    except IdeaError as error:
+    except (IdeaError, DraftError) as error:
         print(f"Fehler: {error}", file=sys.stderr)
         return 2
     return 0

@@ -68,6 +68,61 @@ python -m src.research_lab.workshop check --record   # schreibt geänderte Ergeb
 python -m src.research_lab.workshop list
 ```
 
+## Studien-Generator (F3)
+
+Aus einer Idee mit Status „bereit“ und einer Spezifikation (JSON) schreibt der Generator einen
+Präregistrierungs-Entwurf nach `docs/research_lab/studien/<Sn>_..._PRAEREGISTRIERUNG_ENTWURF.md`.
+
+- Vorlagen und Pflichtfelder: alle brauchen `question`, `data`, `metric`, `min_effect`, `min_cases`, `stop_rule`,
+  `limits`; dazu **Regel-Backtest** `variants` (je `id`, `rule`, feste `params`), `costs`, `random_baseline`;
+  **Ereignis-Studie** `events`, `comparison`; **Modellvergleich** `model`, `features`, `label`,
+  `prospective_window` (`start`, `days`). Eine abgeleitete Idee braucht `prior_burden` (Vorbelastung).
+- Fehlt ein Feld oder reicht der Zeitraum in den Holdout, entsteht kein Entwurf.
+- Name: nächste freie Nummer; auch Namen, die nur im Logbuch stehen (z. B. das abgelehnte S11), gelten als vergeben.
+- Register: Regel-Backtests zeigen m vorher/nachher und brechen ab, wenn das Register (60) voll wäre.
+  Ereignis-Studien und Modellvergleiche sind eigene Familien ohne Registerplätze (wie S1, S8).
+- Ab 5 Varianten steht der Glückstest SPA/StepM als Pflicht im Entwurf.
+- Der Entwurf trägt den SHA-256 der Spezifikation. Die Idee wechselt auf „Studien-Entwurf angelegt“ und
+  verbraucht einen Platz im Monatsbudget.
+- Der Generator schreibt **nichts** ins Register und lädt keine Daten. In Stufe 1 gibt Uzi jeden Entwurf frei;
+  die Registrierung folgt danach wie bisher nach `PROTOKOLL.md`.
+
+```bash
+python -m src.research_lab.workshop draft --idea I-0001 --spec spec.json --dry-run   # nur anzeigen
+python -m src.research_lab.workshop draft --idea I-0001 --spec spec.json             # Entwurf schreiben
+```
+
+## Reflexion jedes Trades
+
+Uzi 31.10.2026: „er soll jeden trade reflektieren“. `src/research_lab/workshop/trade_reflection.py` liest die
+Plan-Journale (nur lesend) und schreibt für **jeden geschlossenen Papier-Trade** genau einen Eintrag nach
+`data/research/trade_reflections.jsonl` (append-only, Hash-Kette, liegt nur auf dem Mac, nicht im Repo).
+
+Ein Eintrag enthält die Fakten (netto/brutto R, Kosten, bestes Plus, tiefstes Minus, Ausstieg, Ziele, TIMs Urteil,
+Marktzustand), die Wissenszeit `known_at` (ab wann alle Fakten feststanden; für die Lernschleife) und die Lehren nach festen Regeln (`trade-reflection/1.0`):
+
+| Lehre | Wann |
+|---|---|
+| Kosten haben den Gewinn aufgefressen | brutto > 0, netto ≤ 0 |
+| Gewinn verschenkt | bestes Plus ≥ 1 R, netto ≤ 0 |
+| Sofort falsch | tiefstes Minus ≤ −0,8 R und bestes Plus < 0,3 R |
+| Stop per Docht | Stop-Prüfung meldet Docht |
+| Gegen den Trend | Richtung gegen TIMs Marktzustand |
+| Zeit abgelaufen / Ungültig / Alle Ziele / Datenlücke | Ausstieg TIMEOUT / INVALIDATION / TP3 / Kerzenlücke |
+
+Die Reflexion sagt nur, was passiert ist. Sie behauptet nicht, was mit anderen Regeln passiert wäre, und ändert
+keinen Stop, kein Ziel, keine Kosten. Taucht eine Verlust-Lehre in mindestens 30 % von mindestens 20 Trades eines
+Journals auf, wird daraus **eine** Idee im Ideen-Eingang (Quelle „Reflexion jedes Papier-Trades“). Ab dort gilt der
+normale Weg: Prüfung, Studie, prospektiver Test.
+
+```bash
+python -m src.research_lab.workshop reflect-trades --journal ~/TIM-live/data/journal/tim_plan_journal.json --dry-run
+python -m src.research_lab.workshop reflect-trades --journal <journal.json> [--journal ...] --ideas
+```
+
+Automatisch nach jedem Trade läuft das mit dem Zeitplan (F6, stündlich auf dem Mac). Anzeige je Trade im
+Journal-Bildschirm des neuen Control Centers (F9).
+
 ## Verhältnis zur Lern-Spur
 
 Die Lernschleife (Champion/Herausforderer, Bauplan „TIM lernt aktiv aus Trades“) ist die Spur „Lernen“ in diesem
@@ -76,7 +131,7 @@ läuft über den Ideen-Eingang hier (`import --journal-review`), nicht über ein
 
 ## Nächste Pakete
 
-F3 Studien-Generator aus Vorlagen, F4 Auftrags-Runner mit Ergebnis-Bündel, F5 Bericht und Logbuch automatisch plus
+F4 Auftrags-Runner mit Ergebnis-Bündel, F5 Bericht und Logbuch automatisch plus
 Monats-Reflexion, F6 Zeitplan, F7 Schattenbetrieb für Updates (auf dem Lern-Register), F8 Server als Rechenhost,
 F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 
@@ -85,3 +140,5 @@ F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 | Datum | Version | Änderung |
 |---|---|---|
 | 2026-10-31 | 1.0 | Satzung angelegt (F0), Ideen-Eingang und Ideen-Prüfung (F1, F2) |
+| 2026-10-31 | 1.0 | Studien-Generator (F3) |
+| 2026-10-31 | 1.0 | Reflexion jedes Trades (Uzis Wunsch), Quelle `trade_reflexion` |
