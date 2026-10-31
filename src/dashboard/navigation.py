@@ -1,11 +1,13 @@
 """The one navigation of the Control Center.
 
-Five areas, ordered by what the user does in a day: today, chart, journal,
-research, system. Every page belongs to exactly one area and shows up as a
-sub-link there. Pages of the aborted V2 campaign live only on /archiv.
+Four screens (new Control Center, 31.10.2026): Cockpit, Journal, Forschung,
+System. Each screen is one page of its own; the first entry of an area is that
+screen. The older detail pages stay reachable as further entries of their area
+and show a row with a way back to the screen. Pages of the aborted V2 campaign
+live only on /archiv.
 
-New pages are added here as a sub-link of an existing area, never as a sixth
-area. ``tests/test_navigation.py`` fails if the top level grows past five
+New pages are added here as an entry of an existing area, never as a fifth
+area. ``tests/test_navigation.py`` fails if the top level grows past four
 entries or a label slips back into English.
 """
 from __future__ import annotations
@@ -21,22 +23,22 @@ class Area(TypedDict):
 
 
 AREAS: list[Area] = [
-    {"key": "heute", "label": "Heute", "href": "/", "pages": [
-        ("Lage", "/"),
+    {"key": "cockpit", "label": "Cockpit", "href": "/", "pages": [
+        ("Cockpit", "/"),
+        ("TIM-Chart", "/chart"),
         ("Markt & Pläne", "/neu/markt"),
         ("Vorbereitung", "/prep"),
         ("Mein Tag", "/my-day"),
         ("Setup-Pfad", "/setup-path"),
     ]},
-    {"key": "chart", "label": "Chart", "href": "/chart", "pages": [
-        ("TIM-Chart", "/chart"),
-    ]},
-    {"key": "journal", "label": "Journal", "href": "/journal", "pages": [
+    {"key": "journal", "label": "Journal", "href": "/trades", "pages": [
+        ("Journal", "/trades"),
         ("Plan-Journal", "/journal"),
         ("Trader-Journal", "/trader-journal"),
     ]},
-    {"key": "forschung", "label": "Forschung", "href": "/neu/forschung", "pages": [
-        ("Überblick", "/neu/forschung"),
+    {"key": "forschung", "label": "Forschung", "href": "/forschung", "pages": [
+        ("Logbuch", "/forschung"),
+        ("Forschung im Detail", "/neu/forschung"),
         ("Research-Fälle", "/cases"),
         ("Beobachtungen", "/observations"),
         ("Orderflow", "/orderflow"),
@@ -45,7 +47,8 @@ AREAS: list[Area] = [
         ("Erkenntnisse", "/insights"),
         ("Recherche-Werkzeug", "/research"),
     ]},
-    {"key": "system", "label": "System", "href": "/neu/betrieb", "pages": [
+    {"key": "system", "label": "System", "href": "/system", "pages": [
+        ("Ampel", "/system"),
         ("Betrieb", "/neu/betrieb"),
         ("Mac jetzt", "/neu/mac"),
         ("Freigabe & Sicherheit", "/neu/system"),
@@ -59,7 +62,7 @@ AREAS: list[Area] = [
         ("Audit & Evidenz", "/audit-evidence"),
         ("Graphify & MCP", "/mcp"),
         ("Graphify-Graph", "/graphify"),
-        ("Archiv V2", "/archiv"),
+        ("Archiv", "/archiv"),
     ]},
 ]
 AREA_BY_KEY = {area["key"]: area for area in AREAS}
@@ -108,11 +111,11 @@ def locate(path: str) -> tuple[str, str]:
 
 
 def links(path: str) -> list[dict[str, object]]:
-    """The navigation for one page: five areas, the active one with its sub-links."""
+    """The navigation for one page: four areas, the active one with its pages."""
     active, page = locate(path)
     out: list[dict[str, object]] = []
     for area in AREAS:
         current = area["key"] == active
         subs = [{"label": label, "href": href, "current": href == page} for label, href in area["pages"]] if current and len(area["pages"]) > 1 else []
-        out.append({"label": area["label"], "href": area["href"], "current": current, "pages": subs})
+        out.append({"key": area["key"], "label": area["label"], "href": area["href"], "current": current, "pages": subs})
     return out
