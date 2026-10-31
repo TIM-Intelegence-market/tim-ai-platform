@@ -276,6 +276,34 @@ Holdout-Zeitraum (Uzis Entscheidung); Erkundungen sind davon nicht betroffen.
 
 Die Archivdaten liegen auf dem Mac in einem Worktree (z. B. `--archive ~/Documents/TIM/worktrees/s4-zaehllauf/data/research_lab`).
 
+## Selbst-Verbesserung aus den eigenen Trades (F11)
+
+Uzi, 31.10.: „TIM soll seine trades reflektieren koennen, um einfach besser zu traden.“ Die Wochenrunde (F6)
+führt dafür `src/research_lab/workshop/self_improve.py` aus. Uzi muss dafür keine Regel formulieren.
+
+1. **Filter aus Lehren.** Jede Lehre der Trade-Reflexion hat einen festen Filter, der solche Trades auslässt:
+   `MIT_TREND` (gegen TIMs Marktzustand), `KOSTEN_DECKEL` (geplante Kosten über 0,15 R, also Stop zu eng),
+   `OHNE_GRADE_C`, `NUR_BESTAETIGT` (fehlende Bestätigung). Die Filter lesen nur, was beim Planen bekannt war.
+   Die Schwellen stehen im Code fest und werden nicht an die Trades angepasst.
+2. **Rückblick.** Jeder Filter wird an allen abgeschlossenen Trades der Plan-Journale nachgerechnet: Was
+   haben die Trades gebracht, die er ausgelassen hätte? Das ist ein In-Sample-Ergebnis, weil die Lehren aus
+   denselben Trades stammen. Es entscheidet nur, ob ein Filter beobachtet wird: Es müssen mindestens 20 Trades
+   da sein und mindestens 8 wegfallen, höchstens 90 % aller Trades, und die weggefallenen müssen zusammen im
+   Minus sein.
+3. **30 Tage Beobachtung.** Es zählen nur Trades, die nach dem Start geplant wurden. An TIM ändert sich nichts.
+4. **Ein Urteil je Fenster.** Bestanden heißt: mindestens 20 neue Trades, davon mindestens 5 weggefallen, und
+   das Bootstrap-Band der weggefallenen Trades liegt ganz unter null (Bonferroni über die vier Filter). Danach
+   steht „bereit für deine Entscheidung“. Nur Uzis Ja ändert TIMs Regel, per PR. Bei zu wenigen Trades beginnt
+   ein neues Fenster. Ein nicht bestandener Filter wird nicht wiederholt.
+
+Protokoll: `data/research/self_improve/log.jsonl` (Hash-Kette). Anzeige: Karte „Selbst-Verbesserung“ unter
+/forschung. Von Hand ansehen: `python -m src.research_lab.workshop learn` (nur lesen, mit `--write` wie die
+Wochenrunde).
+
+Rückblick am 31.10. auf 29 Trades: Trades gegen den Trend brachten zusammen +2,50 R. Die Lehre „gegen den
+Trend“ hätte als Regel also geschadet. Trades mit Kosten über 0,15 R brachten −3,87 R (17 Trades). Grade C und
+fehlende Bestätigung betreffen alle 29 Trades und taugen deshalb nicht als Filter.
+
 ## Nächste Pakete
 
 F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
@@ -292,4 +320,5 @@ F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
 | 2026-10-31 | 1.0 | Zeitplan auf dem Mac (F6) |
 | 2026-10-31 | 1.0 | Schattenbetrieb für Updates (F7) |
 | 2026-10-31 | 1.0 | Anzeige im Forschung-Bildschirm (F9) |
+| 2026-10-31 | 1.0 | Selbst-Verbesserung aus den eigenen Trades (F11) |
 | 2026-10-31 | 1.0 | Regel-Anfrage (F10): Regel aus Bausteinen, Erkundung ohne Registerplatz, Weg zur Studie |

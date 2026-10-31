@@ -68,6 +68,7 @@ def test_one_wakeup_writes_only_under_data_research(tmp_path: Path) -> None:
     assert summary["ran"]["trades"]["new_reflections"] == {"tim_plan_journal": 25, "tim_plan_journal_short": 1}
     assert summary["ran"]["trades"]["ideas"]  # costs ate the profit in every trade -> one idea
     assert summary["ran"]["weekly"]["ki"] == "übersprungen"
+    assert set(summary["ran"]["weekly"]["self_improve"]) == {"MIT_TREND", "KOSTEN_DECKEL", "OHNE_GRADE_C", "NUR_BESTAETIGT"}
     assert summary["ran"]["monthly"]["report"] == "data/research/reports/forschung_2026-10.md"
     new = {p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file()} - {
         p.relative_to(tmp_path).as_posix() for p in before}

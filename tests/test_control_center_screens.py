@@ -135,6 +135,7 @@ def test_forschung_shows_the_workshop(tmp_path: Path, state) -> None:
     empty = forschung_body(state, book, tmp_path)
     assert "Forschungswerkstatt" in empty and "Keine offenen Ideen" in empty and "Kein Kandidat" in empty
     assert "Noch keine Regel getestet" in empty
+    assert "Selbst-Verbesserung" in empty and "noch kein Anlass" in empty
     research = tmp_path / "data/research"
     queue = IdeaQueue(research / "IDEEN.jsonl")
     queue.add(source="uzi", title="Funding <Extrem>", hypothesis="Nach extremem Funding dreht BTC", data=["archive_usdm_klines"])

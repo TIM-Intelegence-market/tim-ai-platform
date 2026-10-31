@@ -330,6 +330,16 @@ TASK_WORDS = {"trades": "Trade-Reflexion (stündlich)", "weekly": "Forschungsrun
 IDEA_TAGS = {"ready": "l", "new": "", "waiting_data": "w", "waiting_budget": "w"}
 
 
+LEARN_WORDS = {"beobachtet nicht": "noch kein Anlass", "beobachtung": "30 Tage Beobachtung",
+               "bestanden": "bereit für deine Entscheidung", "nicht_bestanden": "nicht bestanden",
+               "zu_wenig": "zu wenige neue Trades", "trifft_fast_alle": "trifft fast alle Trades",
+               "rueckblick_dagegen": "Rückblick spricht dagegen"}
+
+
+def _signed(value: float) -> str:
+    return f"{value:+.2f}".replace(".", ",")
+
+
 RULE_WORDS = {"candidate": "Kandidat", "failed": "nicht bestanden", "not_testable": "zu wenige Trades"}
 
 
@@ -372,6 +382,16 @@ def _workshop_card(root: Path) -> str:
     rule_tests = ((f"<p class='mut sm'>{tests['count']} Regeln erkundet, {tests['candidates']} Kandidaten. Bei vielen Versuchen "
                    "ist ein zufällig guter dabei; ein Kandidat braucht eine echte Studie.</p>" + rule_tests) if tests["count"] else
                   "<p class='mut'>Noch keine Regel getestet. Schreib eine Regel in den Chat, TIM prüft sie auf 2020 bis 2024.</p>")
+    learn = data.get("self_improve")
+    learning = ("<p class='mut sm'>Aus jeder wiederkehrenden Lehre wird ein fester Filter. TIM rechnet ihn an den eigenen "
+                f"Trades nach ({learn['trades']} abgeschlossen) und beobachtet ihn dann 30 Tage an neuen Trades. Erst mit deinem "
+                "Ja ändert sich die Regel.</p>" + "".join(
+                    f"<div class='row'><span>{_e(f['text'])}<br><span class='mut sm'>Rückblick: {f['dropped']} Trades fielen weg, "
+                    f"zusammen {_e(_signed(f['dropped_net_r']))} R"
+                    + (f" · bis {_e(local_time(f['window_end'], with_date=True))}" if f.get("window_end") else "")
+                    + (f" · {_e(f['detail'])}" if f["detail"] else "") + "</span></span>"
+                    f"<span><span class='tag {'up' if f['state'] == 'bestanden' else ''}'>{_e(LEARN_WORDS.get(f['state'], f['state']))}</span></span></div>"
+                    for f in learn["filters"])) if learn else "<p class='mut'>Noch keine Daten.</p>"
     notes = "".join(f"<p class='mut sm'>{_e(n)}</p>" for n in data["notes"])
     reflection = (f"<p class='mut sm'>Letzte Monats-Reflexion: {_e(data['last_reflection'])}</p>" if data["last_reflection"] else "")
     return (f"<div class='card'><h2>Forschungswerkstatt <span>läuft auf dem Mac</span></h2>{head}</div>"
@@ -379,7 +399,8 @@ def _workshop_card(root: Path) -> str:
             f"<div class='stack'><div class='card'><h2>Zeitplan</h2>{plan or '<p class=mut>Noch kein Lauf.</p>'}{reflection}{notes}</div>"
             f"<div class='card'><h2>Lehren aus den Trades</h2>{lessons}</div>"
             f"<div class='card'><h2>Schattenbetrieb</h2>{shadows}</div>"
-            f"<div class='card'><h2>Regel-Tests <span>Erkundung, kein Beleg</span></h2>{rule_tests}</div></div></div>")
+            f"<div class='card'><h2>Regel-Tests <span>Erkundung, kein Beleg</span></h2>{rule_tests}</div></div></div>"
+            f"<div class='card'><h2>Selbst-Verbesserung <span>TIM lernt aus seinen Trades</span></h2>{learning}</div>")
 
 
 def forschung_body(state: Any, path: Path = LOGBOOK, research_root: Path = Path(".")) -> str:
