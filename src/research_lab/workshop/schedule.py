@@ -215,7 +215,8 @@ class Workshop:
     def run_weekly(self, now: datetime) -> dict[str, Any]:
         queue, logbook, at = self.queue(), self.logbook(), _iso(now)
         written = record(queue, check_ideas(queue, logbook, now=at), now=at)
-        result: dict[str, Any] = {"checked": written, "ki_ideas": [], "ki_rejected": []}
+        result: dict[str, Any] = {"checked": written, "ki_ideas": [], "ki_rejected": [],
+                                  "shadow_evaluated": self.evaluate_shadows(now)}
         year, week, _ = now.isocalendar()
         week_key = f"{year}-W{week:02d}"
         used = sum(1 for i in queue.ideas().values() if i["source"] == "ki_runde"
@@ -248,6 +249,27 @@ class Workshop:
                                                                  **result}, ensure_ascii=False, indent=2) + "\n",
                                                      encoding="utf-8")
         return result
+
+    def evaluate_shadows(self, now: datetime) -> list[dict[str, Any]]:
+        """F7: shadow candidates whose window has ended get their one evaluation; promoting stays Uzi's."""
+        from src.research_lab.learning.registry import ModelRegister
+        from src.research_lab.workshop import shadow
+        path = self.root / shadow.REGISTER_PATH
+        if not path.exists():
+            return []
+        register, done = ModelRegister(path), []
+        for model_id in register.overdue(now):
+            family = register.state()["models"][model_id]["family"]
+            if not family.endswith("-schatten"):
+                continue
+            journal = shadow.ShadowJournal(family[: -len("-schatten")], model_id, folder=self.root / shadow.SHADOW_DIR)
+            try:
+                entry = shadow.evaluate(register, journal, at=datetime.now(timezone.utc))
+            except ValueError as error:  # shown in the status, retried next week
+                done.append({"model_id": model_id, "error": str(error)[:300]})
+                continue
+            done.append({"model_id": model_id, "verdict": entry["verdict"], "reasons": entry["reasons"]})
+        return done
 
     def run_monthly(self, now: datetime) -> dict[str, Any]:
         from src.research_lab.workshop.report import monthly_reflection, render_reflection
