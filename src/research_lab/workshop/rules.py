@@ -628,11 +628,12 @@ def evaluate(rule: Mapping[str, Any], bars: Sequence[Kline], funding: Sequence[F
         status = "candidate" if passed else "failed"
         verdict = ("Kandidat für eine echte Studie (Registerplatz, Holdout nur mit Uzis Wort, danach Schattenlauf)"
                    if passed else "kein Vorteil nach Kosten gegenüber Zufallseinstiegen")
-    val_p = comparison["validation"]["p_value"]
+    val_p, val_random = comparison["validation"]["p_value"], comparison["validation"]["random_median_r"]
+    random_text = (f"Zufallseinstiege im Mittel {_num(val_random)} R, p = {_num(val_p)}" if val_p is not None
+                   else "kein Zufallsvergleich")
     result = (f"{rule['title']}: Training {train['trades']} Trades, {_num(train['expectancy_r'])} R je Trade; "
               f"Validierung {val['trades']} Trades, {_num(val['expectancy_r'])} R je Trade "
-              f"(doppelte Kosten {_num(stressed['validation']['expectancy_r'])} R), Zufall p = "
-              f"{_num(val_p) if val_p is not None else '–'}. Ergebnis: {verdict}.")
+              f"(doppelte Kosten {_num(stressed['validation']['expectancy_r'])} R; {random_text}). Ergebnis: {verdict}.")
     lesson = (f"Erkundung, kein Beleg: {verdict}. Training und Validierung sind damit gesehen; "
               "eine Studie dazu muss das als Vorbelastung nennen.")
     return {"status": status, "result": result, "lesson": lesson, "edge": False,
@@ -678,8 +679,11 @@ class ExplorationLog:
 
 def exploration_note(rows: Sequence[Mapping[str, Any]]) -> str:
     n = len(rows)
-    return (f"Bisher {n} Regeln erkundet; bei {n} Versuchen sind rund {_num(round(n * ALPHA, 1))} zufällig gute "
-            "Ergebnisse zu erwarten. Ein Kandidat ist deshalb nur ein Grund für eine echte Studie.")
+    if n == 0:
+        return "Noch keine Regel erkundet."
+    return (f"Bisher {n} {'Regel' if n == 1 else 'Regeln'} erkundet; bei so vielen Versuchen sind rund "
+            f"{_num(round(n * ALPHA, 1))} zufällig gute Ergebnisse zu erwarten. Ein Kandidat ist deshalb nur ein Grund "
+            "für eine echte Studie.")
 
 
 def render_markdown(run_id: str, rule: Mapping[str, Any], outcome: Mapping[str, Any], note: str) -> str:
@@ -687,14 +691,17 @@ def render_markdown(run_id: str, rule: Mapping[str, Any], outcome: Mapping[str, 
     words = {"candidate": "Kandidat für eine Studie", "failed": "nicht bestanden", "not_testable": "nicht prüfbar"}
     lines = [f"# {run_id}: {rule['title']} (Erkundung)", "", f"**Ergebnis: {words.get(outcome['status'], outcome['status'])}.** "
              f"{outcome['result']}", "", "## Regel", "", describe(rule), "",
-             "## Zahlen", "", "| Abschnitt | Trades | R je Trade | Summe R | Trefferquote | doppelte Kosten R/Trade | Zufall p |",
-             "|---|---:|---:|---:|---:|---:|---:|"]
+             "## Zahlen", "", "| Abschnitt | Trades | R je Trade | Summe R | Trefferquote | doppelte Kosten R/Trade | "
+             "Zufall R/Trade (Median) | Zufall p |", "|---|---:|---:|---:|---:|---:|---:|---:|"]
     for name, label in (("train", "Training 2020–2022"), ("validation", "Validierung 2023–2024")):
         f, s, r = m["base_costs"][name], m["stress_costs"][name], m["random"][name]
         lines.append(f"| {label} | {f['trades']} | {_num(f['expectancy_r'])} | {_num(f['net_r'])} | "
                      f"{_num(round(f['win_rate'] * 100, 1))} % | {_num(s['expectancy_r'])} | "
+                     f"{_num(r['random_median_r']) if r['random_median_r'] is not None else '–'} | "
                      f"{_num(r['p_value']) if r['p_value'] is not None else '–'} |")
-    lines += ["", f"Mindestens {m['min_cases']['train']} Trades im Training und {m['min_cases']['validation']} in der "
+    lines += ["", "Zufall p ist der Anteil der Zufallsläufe, die mindestens so gut waren wie die Regel. Ein kleiner p-Wert bei "
+              "negativem R heißt nur: Zufall war noch schlechter, ein Vorteil ist das nicht.", "",
+              f"Mindestens {m['min_cases']['train']} Trades im Training und {m['min_cases']['validation']} in der "
               f"Validierung, Mindesteffekt {_num(m['min_effect_r'])} R, Zufallsvergleich {m['random']['validation']['runs']} "
               f"Läufe: Zufallseinstiege zu Zeiten, die dieselben Filter bestehen, mit Stop-Abständen aus den eigenen Signalen, "
               f"gleichem Ziel und Zeitstopp (Seed {m['random_seed']}).", ""]

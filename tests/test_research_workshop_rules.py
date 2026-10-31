@@ -202,6 +202,7 @@ def test_exploration_log_counts_every_run_and_detects_tampering(tmp_path):
     second = log.append(rule(title="B"), outcome, at="2026-10-31T18:05:00Z", requested_by="uzi", data_hash=None)
     assert (first["run"], second["run"]) == ("R-0001", "R-0002") and second["prev"] == first["hash"]
     assert "2 Regeln erkundet" in rules.exploration_note(log.records())
+    assert rules.exploration_note([]) == "Noch keine Regel erkundet."
     text = (tmp_path / "log.jsonl").read_text().replace('"failed"', '"candidate"', 1)
     (tmp_path / "log.jsonl").write_text(text)
     with pytest.raises(rules.RuleError, match="Hash-Kette"):
