@@ -12,6 +12,8 @@
     python -m src.research_lab.workshop run (--job J-0001 | --pending) [--ssh tim-research@host --remote-dir DIR]
     python -m src.research_lab.workshop verify --bundle data/research/bundles/J-0001
     python -m src.research_lab.workshop jobs
+    python -m src.research_lab.workshop report --bundle data/research/bundles/J-0001 --title "..." [--draft PATH]
+    python -m src.research_lab.workshop reflect-month [--month 2026-10] [--write]
     python -m src.research_lab.workshop charter
 
 Reads and writes only the idea queue (default docs/research_lab/IDEEN.jsonl) and, for
@@ -88,6 +90,14 @@ def main(argv: list[str] | None = None) -> int:
     vf = sub.add_parser("verify")
     vf.add_argument("--bundle", required=True, type=Path)
     sub.add_parser("jobs")
+    rp = sub.add_parser("report", help="Bericht und Logbuch aus einem geprüften Bündel")
+    rp.add_argument("--bundle", required=True, type=Path)
+    rp.add_argument("--title", required=True)
+    rp.add_argument("--draft")
+    rm = sub.add_parser("reflect-month", help="Monats-Reflexion der Forschung")
+    rm.add_argument("--month")
+    rm.add_argument("--trades-log", type=Path, default=Path("data/research/trade_reflections.jsonl"))
+    rm.add_argument("--write", action="store_true", help="Bericht unter docs/research_lab/reports/ ablegen")
     sub.add_parser("charter")
     args = parser.parse_args(argv)
     queue = IdeaQueue(args.queue)
@@ -162,6 +172,23 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 for job in jobs.jobs().values():
                     print(f"{job['job']}  {job['study']}  {job['host']}  {job['status']}  {' '.join(job['command'])}")
+        elif args.command == "report":
+            from src.research_lab.workshop.report import report_from_bundle
+            print(report_from_bundle(args.bundle, title=args.title, draft=args.draft, logbook=args.logbook))
+        elif args.command == "reflect-month":
+            from zoneinfo import ZoneInfo
+            from src.research_lab.workshop.report import monthly_reflection, render_reflection
+            from src.research_lab.workshop.trade_reflection import ReflectionLog
+            month = args.month or datetime.now(ZoneInfo(charter.LOCAL_TIMEZONE)).strftime("%Y-%m")
+            data = monthly_reflection(month, queue=queue, logbook=load_logbook(args.logbook),
+                                      trade_records=ReflectionLog(args.trades_log).records())
+            text = render_reflection(data)
+            if args.write:
+                path = Path("docs/research_lab/reports") / f"forschung_{month}.md"
+                path.write_text(text, encoding="utf-8")
+                print(path)
+            else:
+                print(text)
         elif args.command == "charter":
             print(f"{charter.CHARTER_VERSION}, Stufe {charter.STAGE}, Budget {charter.MONTHLY_STUDY_BUDGET} Studien/Monat")
             for line in charter.FIXED_LIMITS:

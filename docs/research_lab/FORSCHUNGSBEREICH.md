@@ -116,6 +116,26 @@ python -m src.research_lab.workshop run --pending
 python -m src.research_lab.workshop verify --bundle data/research/bundles/J-0001
 ```
 
+## Bericht, Logbuch und Monats-Reflexion (F5)
+
+`src/research_lab/workshop/report.py`.
+
+- **Ergebnisvertrag:** Eine Studie schreibt `out/result.json` in ihr Bündel: `status` (bestätigt, Kandidat,
+  nicht bestanden, nicht testbar, wartet, abgebrochen), `result`, `lesson` (Pflicht, auch beim Nullergebnis),
+  optional `metrics` und `edge` (nur bei bestätigtem Handelsvorteil nach Kosten).
+- **Bericht und Logbuch:** `report` prüft das Bündel erneut, schreibt den Bericht nach
+  `docs/research_lab/reports/` und trägt die Studie ins Logbuch ein (mit Inhalts-Hash des Bündels). Ein Lauf mit
+  Fehler-Exit, ein verändertes Bündel oder ein fehlendes Pflichtfeld ändern das Logbuch nicht.
+- **Monats-Reflexion:** `reflect-month` zählt neue Ideen je Quelle, was aus den Studien jeder Quelle wurde,
+  welche fehlenden Daten Ideen blockieren, die häufigsten Lehren der Papier-Trades und die ehrliche Zahl
+  „Handelsvorteile nach Kosten belegt“ (heute 0; S1 ist ein bestätigter Markteffekt, kein Handelsvorteil).
+  Daraus höchstens drei Vorschläge. `--write` legt den Bericht als `reports/forschung_JJJJ-MM.md` ab.
+
+```bash
+python -m src.research_lab.workshop report --bundle data/research/bundles/J-0001 --title "POC-Retest London" --draft <entwurf.md>
+python -m src.research_lab.workshop reflect-month --month 2026-10
+```
+
 ## Reflexion jedes Trades
 
 Uzi 31.10.2026: „er soll jeden trade reflektieren“. `src/research_lab/workshop/trade_reflection.py` liest die
@@ -155,8 +175,7 @@ läuft über den Ideen-Eingang hier (`import --journal-review`), nicht über ein
 
 ## Nächste Pakete
 
-F5 Bericht und Logbuch automatisch plus
-Monats-Reflexion, F6 Zeitplan, F7 Schattenbetrieb für Updates (auf dem Lern-Register), F8 Server als Rechenhost,
+F6 Zeitplan, F7 Schattenbetrieb für Updates (auf dem Lern-Register), F8 Server als Rechenhost,
 F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 
 ## Änderungsprotokoll
@@ -167,3 +186,4 @@ F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 | 2026-10-31 | 1.0 | Studien-Generator (F3) |
 | 2026-10-31 | 1.0 | Reflexion jedes Trades (Uzis Wunsch), Quelle `trade_reflexion` |
 | 2026-10-31 | 1.0 | Auftrags-Runner und Ergebnis-Bündel (F4) |
+| 2026-10-31 | 1.0 | Bericht, Logbuch und Monats-Reflexion (F5) |
