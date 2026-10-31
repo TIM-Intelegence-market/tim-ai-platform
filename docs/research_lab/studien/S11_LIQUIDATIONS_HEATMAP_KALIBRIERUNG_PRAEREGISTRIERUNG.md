@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S11 (Research Lab; nicht zu verwechseln mit dem Testfall „S11“ in `docs/tim_manager/`) |
-| Version | **0.1 – ENTWURF.** Noch kein Sammler, keine Daten, kein Ergebnis |
+| Version | **0.2 – ENTWURF.** Noch kein Sammler, keine Daten, kein Ergebnis |
 | Anlass | Uzi 31.10.2026 („go“ auf die Empfehlung N1). Grundlage: Auswertung des Berichts „Orderflow verstehen und prüfen“ (Deep Research, 28.10.2026), `/mnt/project-files/analysen/orderflow-research-2026-10-28/bewertung.md` |
 | Protokoll | `../PROTOKOLL.md`; eigene **prospektive** Familie wie S8 und L1 (kein Archiv, kein Holdout berührt) |
 | Art | Kalibrierung eines Anzeigemodells. **Keine Handelsregel, kein Signal, kein Echtgeld** |
@@ -48,19 +48,27 @@ Seiten-Konvention (vor dem Bau mit einem echten Ereignis je Börse prüfen und i
   (Durchschnittspreis), Menge = `z` (ausgeführt), Zeit = `T`.
 - Bybit: `S = Buy` → „long“, `S = Sell` → „short“; Preis = `p`, Menge = `v`, Zeit = `T`.
 
+Ereignisse und Duplikate:
+
+- Binance: gezählt wird nur eine Nachricht mit `X = FILLED`. Nachrichten mit anderem Status werden gezählt und
+  berichtet, aber nicht ausgewertet. Gleiche Nachrichten (gleiches `T`, `S`, `ap`, `z`) zählen einmal.
+- Bybit: gleiche Einträge (gleiches `T`, `S`, `v`, `p`) zählen einmal.
+
 Notional je Ereignis = Preis × Menge in USDT.
 
 Bekannte Verzerrung, die beide Modelle gleich trifft: Liquidiert wird nach dem **Mark Price**, gemeldet wird der
 Ausführungs- bzw. Bankruptcy-Preis. Beide können einige Zeilen vom geschätzten Niveau entfernt liegen. Weil TIM und
-Baseline dieselbe Schrittweite und dieselben Ereignisse nutzen, verschiebt das den Vergleich nicht einseitig, senkt
-aber beide Trefferanteile.
+Baseline dieselbe Schrittweite und dieselben Ereignisse nutzen, trifft die Verschiebung beide. Weil die Modelle
+unterschiedliche Abstandsprofile haben können, ist eine einseitige Wirkung aber nicht ausgeschlossen. Deshalb gibt
+es die Sekundäranalyse mit ±1 Zeile Toleranz (4.4).
 
 ### 3.2 Eingefrorene Heatmap-Stände
 
-Viermal am Tag, zu den Fensteranfängen t ∈ {00:00, 06:00, 12:00, 18:00 UTC}, holt der Sammler OI-Historie und
-Kerzen genau wie `liquidation_data.fetch_heatmap` (BTCUSDT, 30 min, 500 Perioden) und speichert die **rohen
-Antworten**. Kerzen mit Eröffnung > t − 1800 s (die laufende) und OI-Stände nach t werden verworfen, bevor gerechnet
-wird. Gespeichert werden Rohantworten, Ergebnis von `build_heatmap`, `input_hash` und Code-Commit. So lässt sich
+Viermal am Tag, zu den Fensteranfängen t ∈ {00:00, 06:00, 12:00, 18:00 UTC}, holt der Sammler um **t + 120 s**
+OI-Historie und Kerzen genau wie `liquidation_data.fetch_heatmap` (BTCUSDT, 30 min, 500 Perioden) und speichert die
+**rohen Antworten**. Vor dem Rechnen werden Kerzen mit Eröffnung > t − 1800 s (die laufende) und OI-Stände mit
+Zeitstempel > t verworfen. Liegen OI-Zeitstempel nicht auf Kerzen-Eröffnungszeiten, ist der Stand ungültig (gezählt,
+nicht repariert). Gespeichert werden Rohantworten, Ergebnis von `build_heatmap`, `input_hash` und Code-Commit. So lässt sich
 jeder Stand später exakt nachrechnen (Binance hält die OI-Historie nur 30 Tage).
 
 ### 3.3 Ablage und Qualität
@@ -72,7 +80,7 @@ jeder Stand später exakt nachrechnen (Binance hält die OI-Historie nur 30 Tage
   Neuaufbau wird als `gap`-Eintrag mit Beginn und Ende geschrieben. Ein Feed ohne Nachricht ist **kein** Wert null,
   sondern nur dann null, wenn die Verbindung nachweislich stand (Ping/Pong-Protokoll je Minute).
 - Ein Fenster ist **gültig**, wenn der primäre Feed ≥ 99 % der 6 Stunden verbunden war, der Heatmap-Stand vollständig
-  ist (≥ 450 OI-Perioden) und mindestens ein Long- oder Short-Ereignis vorkam. Ungültige Fenster werden gezählt und
+  ist (`periods_with_oi` ≥ 450 und in beiden Modellen je Seite ≥ 10 aktive Zeilen, 4.2) und mindestens ein Long- oder Short-Ereignis vorkam. Ungültige Fenster werden gezählt und
   mit Grund berichtet, nie aufgefüllt.
 
 ## 4. Messung
@@ -86,26 +94,34 @@ aus dem Fenster.
 
 Für Modell m, Fenster t und Seite s ∈ {long, short}:
 
-1. Aus dem Stand von t nur die **aktiven** Zellen (`end = None`) der Seite s nehmen. Long-Zellen liegen unter, Short-
-   Zellen über dem Preis.
-2. Die **10 stärksten Zeilen** (nach `usd`, Gleichstand: näher am Preis zuerst) bilden die Vorhersage V(m, t, s).
-3. Jedes gemeldete Ereignis der Seite s im Fenster wird mit der Schrittweite `step` des Stands der Zeile
-   `floor(Preis / step) × step` zugeordnet.
-4. T(m, t, s) = Notional der Ereignisse in V(m, t, s) / Notional aller Ereignisse der Seite s im Fenster.
-   Seiten ohne Ereignis fallen für dieses Fenster weg.
+1. Die Auswertung rechnet beide Modelle mit demselben Algorithmus wie `build_heatmap` nach, aber **ohne die
+   Anzeige-Filter** `MIN_SHARE` (Untergrenze 2 %) und `MAX_CELLS` (400 Zellen). Diese Filter dienen nur der
+   Darstellung und würden die Zahl der verfügbaren Zeilen je Modell ungleich machen.
+2. Aus dem Stand von t nur die **aktiven** Zellen (`end = None`) der Seite s nehmen, und zwar Long-Zellen mit
+   `price + step ≤ last` und Short-Zellen mit `price > last` (dieselben Filter wie `analysis` in `build_heatmap`).
+3. Die **10 stärksten Zeilen** (nach `usd`, Gleichstand: näher am Preis zuerst) bilden die Vorhersage V(m, t, s).
+4. Jedes gemeldete Ereignis der Seite s im Fenster wird mit `heatmap._row(Preis, step)` (Schrittweite des Stands)
+   einer Zeile zugeordnet.
+5. T(m, t, s) = Notional der Ereignisse in V(m, t, s) / Notional aller Ereignisse der Seite s im Fenster.
+   Eine Seite ohne Ereignis fällt für dieses Fenster in beiden Modellen weg.
 5. T(m, t) = notional-gewichtetes Mittel über die vorhandenen Seiten.
 
 ### 4.3 Die beiden Modelle
 
 - **TIM:** `build_heatmap` unverändert mit den eingefrorenen Eingaben.
-- **Preis-Baseline:** derselbe Aufruf mit denselben Kerzen, aber OI künstlich ersetzt durch
-  `oi[t_k] = 1 + k` (jede Periode gleich viel neues OI, nie Abbau). Hebel-Mischung, Seitenanteil, Schrittweite,
+- **Preis-Baseline:** derselbe Aufruf mit denselben Kerzen, aber OI an **genau denselben Zeitstempeln** wie die
+  echten OI-Daten ersetzt durch `oi_base[ts] = 1 + Rang(ts)` (jede Periode gleich viel neues OI, nie Abbau).
+  `periods_with_oi` muss in beiden Modellen gleich sein, sonst ist der Stand ungültig. Hebel-Mischung, Seitenanteil, Schrittweite,
   Sweep-Regel und Top-10 bleiben gleich. Damit unterscheidet sich nur die OI-Information.
 
 ### 4.4 Zusätzlich berichtet (nicht entscheidend)
 
-- Zufallsvergleich: 10 zufällige Zeilen je Seite, gleichverteilt im Preisbereich der aktiven Zellen des TIM-Stands
-  (Seed 20261031, 999 Ziehungen je Fenster); Anteil der Fenster, in denen TIM über dem Median liegt.
+- Zufallsvergleich mit gleichem Abstand: Für jede der 10 TIM-Zeilen im Abstand d Zeilen vom Preis wird eine
+  Zufallszeile derselben Seite gleichverteilt aus [d − 5, d + 5] gezogen, ohne Doppelte (Seed 20261031, 999 Ziehungen
+  je Fenster). Berichtet wird der Anteil der Fenster, in denen TIM über dem Median der Ziehungen liegt.
+- Toleranz: dieselbe Rechnung mit V erweitert um je eine Nachbarzeile (±1 Zeile) in beiden Modellen.
+- Ungewichtet: Anteil der **Ereignisse** statt des Notionals in V, damit wenige große Liquidationen nicht alles
+  bestimmen.
 - Dieselbe Auswertung mit Bybit-Ereignissen (andere Börse, Bankruptcy Price).
 - Anteil der Ereignisse, die überhaupt in **irgendeiner** aktiven Zelle liegen (Abdeckung der Karte).
 - Getrennt nach Regime: ruhige und hektische Fenster (Fenster-Spanne unter/über dem Median aller gültigen Fenster).
@@ -116,8 +132,9 @@ D(t) = T(TIM, t) − T(Baseline, t) je gültigem Fenster.
 
 **Bestanden**, wenn beides gilt:
 
-1. Mittelwert von D > 0 mit einseitigem 95-%-Konfidenzintervall aus einem Block-Bootstrap über Kalendertage
-   (B = 9 999, Seed 20261031), dessen Untergrenze > 0 liegt;
+1. Mittelwert von D > 0 mit einseitigem 95-%-Konfidenzintervall, dessen Untergrenze > 0 liegt. Methode:
+   Moving-Block-Bootstrap über Kalendertage (UTC), Blocklänge 7 Tage, ein Tag wird mit allen seinen gültigen
+   Fenstern gezogen, B = 9 999, Seed 20261031, Perzentil-Intervall (5-%-Quantil der Bootstrap-Mittelwerte);
 2. Mittelwert von D ≥ 0,05 (5 Prozentpunkte; kleiner gilt als praktisch bedeutungslos).
 
 **Nicht bestanden** in jedem anderen Fall. Kein zweiter Versuch mit anderen Parametern (andere Top-N, andere
@@ -132,14 +149,18 @@ Fensterlänge, andere Hebel) unter dem Namen S11; das wäre eine neue Studie mit
 
 ## 6. Dauer und Machbarkeits-Gate (ergebnisblind)
 
-- Laufzeit: **8 Wochen** ab dem ersten vollständigen Tag (224 Fenster).
+- Start: 00:00 UTC des ersten vollständigen Tages, an dem Sammler und Heatmap-Stände laufen, nachdem Uzi Version 1.0
+  freigegeben hat. Der Startzeitpunkt wird vor dem ersten Fenster in diese Datei eingetragen.
+- Laufzeit: **genau 56 Tage** ab Start (224 Fenster), Ende = Start + 56 Tage, 00:00 UTC.
 - **Gate nach 14 Tagen**, ohne D zu rechnen: Gezählt werden nur gültige Fenster (Abschnitt 3.3). Hochgerechnet auf
   8 Wochen müssen ≥ 150 gültige Fenster herauskommen.
   - Erfüllt: weiterlaufen bis 8 Wochen.
-  - Nicht erfüllt: **einmal** auf 12 Wochen verlängern. Reicht auch das nach Hochrechnung nicht, endet S11 als
-    „nicht beurteilbar“.
-- Eine Power-Rechnung ist vorab nicht möglich, weil TIM die Streuung von T nicht kennt. Nach dem Gate wird sie mit
-  den Fallzahlen (nicht mit D) als Planungsrechnung nachgetragen; die Regel in Abschnitt 5 ändert sich dadurch nicht.
+  - Nicht erfüllt: Die Entscheidung fällt am selben Gate (Tag 14): **einmal** auf genau 84 Tage verlängern, wenn die
+    Hochrechnung auf 84 Tage ≥ 150 ergibt. Sonst endet S11 sofort als „nicht beurteilbar“. Später wird nicht mehr
+    verlängert.
+- Eine Power-Rechnung gibt es nicht. Sie bräuchte die Streuung von T oder D, und die ließe sich nur messen, indem
+  man echte Ereignisse gegen die Stände rechnet. Das wäre eine Teil-Entblindung. Das Gate zählt deshalb nur
+  Fallzahlen.
 - Zwischenergebnisse für D werden nicht angesehen. Ausgewertet wird einmal am Ende.
 
 ## 7. Arbeitspakete (erst nach Uzis Freigabe der Version 1.0)
@@ -170,3 +191,4 @@ Die API-Dokumentationen von Binance (forceOrder) und Bybit (allLiquidation) wurd
 | Datum | Version | Änderung | Gesehene Daten |
 |---|---|---|---|
 | 2026-10-31 | 0.1 | Entwurf: Frage, Daten, Messung, Entscheidungsregel, Gate, Pakete | keine Liquidationsdaten |
+| 2026-10-31 | 0.2 | Nach adversarialer Prüfung: Anzeige-Filter aus der Auswertung, Baseline auf echten OI-Zeitstempeln, `_row` für Ereignisse, Seitenfilter wie `analysis`, Duplikate/`FILLED`, Abruf t + 120 s, abstandsgleicher Zufallsvergleich, ±1-Zeile- und ungewichtete Sekundärmaße, Moving-Block-Bootstrap 7 Tage, feste Start-/Endzeit und Verlängerungsregel, keine Power-Rechnung (Entblindung) | keine Liquidationsdaten |
