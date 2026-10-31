@@ -495,6 +495,8 @@ def _live_section(symbol: str, view: str) -> str:
         "<div class='tc-live__bar'><div id='tc-live-layers' class='tc-live__layers' aria-label='Linien ein- und ausblenden'></div>"
         "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Zu jetzt</button>"
         "<button type='button' class='tc-tab' data-action='fit'>Alles zeigen</button><button type='button' class='tc-tab' data-action='footprint' title='Letzte Kerzen groß, Footprint mit Zahlen'>Footprint</button>"
+        "<span class='tc-market' role='group' aria-label='Trades für Volume Profile, Footprint und Delta'><button type='button' class='tc-tab' data-action='market' data-market='spot' title='Volume Profile, Footprint, Delta aus Spot-Trades'>Spot</button>"
+        "<button type='button' class='tc-tab' data-action='market' data-market='perp' title='Volume Profile, Footprint, Delta aus Perp-Trades (Binance Futures)'>Perp</button></span>"
         "<button type='button' class='tc-tab' data-action='plans'>Nur TIMs Trades</button><button type='button' class='tc-tab' data-action='none'>Alle Haken weg</button><button type='button' class='tc-tab' data-action='reset'>Linien zurücksetzen</button></div></div>"
         "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
         "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interaktiver Kerzenchart'></div></div>"

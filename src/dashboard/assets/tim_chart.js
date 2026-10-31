@@ -29,6 +29,9 @@
   const SHORT_BARS = 12;
   const STYLE = { solid: LWC.LineStyle.Solid, dotted: LWC.LineStyle.Dotted, dashed: LWC.LineStyle.Dashed };
   let symbol = root.dataset.symbol, timeframe = root.dataset.tf, timer = null, model = null, first = true, request = 0;
+  // Spot or perp trades behind volume profile, footprint, delta and bubbles (Beirat 29.10.2026, F5).
+  const MARKET_STORE = 'tim-chart-market-v1';
+  let market = (() => { try { return localStorage.getItem(MARKET_STORE) || 'spot'; } catch (error) { return 'spot'; } })();
   let lines = [];
 
   // The public view (src/dashboard/public_en.py) sets data-lang='en'; the Control Center stays German.
@@ -57,6 +60,11 @@
         failed: m => `Loading failed (${m}). Retrying in 30 s.` }
     : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
+  const P = EN
+    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', oi: 'OI (BTC)', oiZ: 'OI Z 7.5d',
+        health: (ok, n, gaps) => `Perp check: ${ok}/${n} h equal to Binance, ${gaps} gaps` }
+    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', oi: 'OI (BTC)', oiZ: 'OI Z 7,5 T',
+        health: (ok, n, gaps) => `Perp-Prüfung: ${ok}/${n} h gleich mit Binance, ${gaps} Lücken` };
   const fmt = v => v == null ? '–' : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
 
   const chart = LWC.createChart(box, {
@@ -74,6 +82,59 @@
   });
   const volume = chart.addHistogramSeries({ priceScaleId: 'vol', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
   chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+
+  // Lower bands under the candles: CVD spot vs. perp (each on its own scale, perp volume is 8-12x spot)
+  // and open interest with its 7.5-day Z-score. Lightweight Charts 4 has no panes, so each band is a
+  // price scale with its own margins; the candles move up while a band is on.
+  const band = { lastValueVisible: true, priceLineVisible: false, crosshairMarkerVisible: false };
+  const cvdSpot = chart.addLineSeries({ ...band, priceScaleId: 'cvd_spot', color: '#5ec8d8', lineWidth: 2, title: P.cvdSpot, visible: false });
+  const cvdPerp = chart.addLineSeries({ ...band, priceScaleId: 'cvd_perp', color: '#ffb020', lineWidth: 2, title: P.cvdPerp, visible: false });
+  const oiZ = chart.addHistogramSeries({ ...band, priceScaleId: 'oi_z', title: P.oiZ, visible: false, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
+  const oiLine = chart.addLineSeries({ ...band, priceScaleId: 'oi', color: '#c3cad6', lineWidth: 1, title: P.oi, visible: false,
+                                       priceFormat: { type: 'volume' } });
+  const BAND = 0.15;
+  function layoutBands(groups) {
+    const shown = ['cvd', 'oi'].filter(key => groups.has(key) && model && model[key] && (key === 'cvd' ? model.cvd.spot.length || model.cvd.perp.length : model.oi.points.length));
+    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.06, bottom: 0.18 + BAND * shown.length } });
+    shown.forEach((key, index) => {
+      const top = 0.82 - BAND * (shown.length - index) + 0.01;
+      const margins = { top, bottom: 1 - top - BAND + 0.02 };
+      for (const id of key === 'cvd' ? ['cvd_spot', 'cvd_perp'] : ['oi', 'oi_z']) chart.priceScale(id).applyOptions({ scaleMargins: margins, visible: false });
+    });
+    cvdSpot.applyOptions({ visible: shown.includes('cvd') });
+    cvdPerp.applyOptions({ visible: shown.includes('cvd') });
+    oiLine.applyOptions({ visible: shown.includes('oi') });
+    oiZ.applyOptions({ visible: shown.includes('oi') });
+  }
+  function drawBands() {
+    const cvd = (model && model.cvd) || { spot: [], perp: [] };
+    cvdSpot.setData(cvd.spot.map(([t, v]) => ({ time: local(t), value: v })));
+    cvdPerp.setData(cvd.perp.map(([t, v]) => ({ time: local(t), value: v })));
+    // Open interest is hourly: each candle takes the last hour that began at or before it.
+    const oi = model && model.oi;
+    const at = (points, t) => { let found = null; for (const p of points) { if (p[0] <= t) found = p; else break; } return found; };
+    const oiPoints = [], zPoints = [];
+    if (oi && model.candles.length) {
+      for (const c of model.candles) {
+        const p = at(oi.points, c.time); if (p) oiPoints.push({ time: local(c.time), value: p[1] });
+        const z = at(oi.z, c.time);
+        if (z) zPoints.push({ time: local(c.time), value: z[1], color: z[1] >= 2 ? 'rgba(255,107,61,0.85)' : z[1] <= -2 ? 'rgba(63,182,255,0.85)' : 'rgba(132,145,163,0.45)' });
+      }
+    }
+    oiLine.setData(oiPoints);
+    oiZ.setData(zPoints);
+  }
+  function showMarket() {
+    const m = model && model.markets;
+    root.querySelectorAll('[data-market]').forEach(node => {
+      const key = node.dataset.market;
+      const active = m ? m.active === key : market === key;
+      // A tick instead of the tab colour: the page's button style would hide the active tab's text.
+      node.textContent = (active ? '✓ ' : '') + (key === 'perp' ? 'Perp' : 'Spot');
+      node.setAttribute('aria-pressed', active ? 'true' : 'false');
+      node.disabled = !!m && !m.available.includes(key) && !active;
+    });
+  }
 
   // TPO profiles (Market Profile per day) drawn on the chart canvas behind the candles:
   // one row per price step, width = number of 30-minute periods that traded there,
@@ -841,6 +902,7 @@
     liq.visible = groups.has('liq');
     fib.visible = groups.has('fib');
     bubbles.visible = groups.has('bubbles');
+    layoutBands(groups);
     positions.groups = groups;
     if (positions.requestUpdate) positions.requestUpdate();
     if (tpo.requestUpdate) tpo.requestUpdate();
@@ -899,7 +961,7 @@
     status.textContent = T.loading;
     try {
       const ticket = ++request;  // only the newest request may draw (a slow 1h answer must not overwrite 4h)
-      const response = await fetch(`/api/chart/live?symbol=${encodeURIComponent(symbol)}&tf=${encodeURIComponent(timeframe)}`, { cache: 'no-store' });
+      const response = await fetch(`/api/chart/live?symbol=${encodeURIComponent(symbol)}&tf=${encodeURIComponent(timeframe)}&market=${encodeURIComponent(market)}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const next = await response.json();
       if (ticket !== request) return;
@@ -912,7 +974,9 @@
       candles.setData(model.candles.map(c => ({ time: local(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
       volume.setData(model.candles.map(c => ({ time: local(c.time), value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)' })));
       drawLines();
-      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); fib.visible = groups.has('fib'); bubbles.visible = groups.has('bubbles'); }
+      drawBands();
+      showMarket();
+      { const groups = shownGroups(); layoutBands(groups); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); fib.visible = groups.has('fib'); bubbles.visible = groups.has('bubbles'); }
       if (first || !sameView) {
         const count = model.candles.length;
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - 160), to: count + 8 });
@@ -923,7 +987,11 @@
       setLegend(null);
       const notes = (model.notes || []).concat(model.footprint && model.footprint.note ? [model.footprint.note] : []).join(' · ');
       const trades = model.trades_updated_at ? ` · Trades: ${model.trade_source} (${T.asOf} ${new Date(model.trades_updated_at).toLocaleTimeString(LOCALE)})` : '';
-      status.textContent = `${model.candles.length} ${T.candles} · Level: ${model.level_source || '–'}${trades} · ${new Date().toLocaleTimeString(LOCALE)}` + (notes ? ' · ' + notes : '');
+      const h = model.perp_health;
+      const health = h && h.checks ? ' · ' + P.health(h.checks_ok, h.checks, h.gaps) : '';
+      const bandNotes = [model.cvd && model.cvd.note].filter(Boolean);
+      const allNotes = [notes, ...bandNotes].filter(Boolean).join(' · ');
+      status.textContent = `${model.candles.length} ${T.candles} · Level: ${model.level_source || '–'}${trades}${health} · ${new Date().toLocaleTimeString(LOCALE)}` + (allNotes ? ' · ' + allNotes : '');
     } catch (error) {
       status.textContent = T.failed(error.message);
     } finally {
@@ -950,6 +1018,13 @@
     }
     const action = event.target.closest && event.target.closest('[data-action]');
     if (!action) return;
+    if (action.dataset.action === 'market' && action.dataset.market && action.dataset.market !== market) {
+      market = action.dataset.market;
+      try { localStorage.setItem(MARKET_STORE, market); } catch (error) { /* ignore */ }
+      showMarket();
+      load();
+      return;
+    }
     if (action.dataset.action === 'now') chart.timeScale().scrollToRealTime();
     if (action.dataset.action === 'fit') chart.timeScale().fitContent();
     if (action.dataset.action === 'plans') {

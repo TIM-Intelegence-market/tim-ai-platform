@@ -135,11 +135,14 @@ class DashboardServer:
                             footprint = dict(outer.state.footprint)
                             gamma = dict(outer.state.gamma)
                             liquidation = dict(outer.state.liquidation)
+                            perp = dict(getattr(outer.state, "perp_flow", None) or {})
+                            open_interest = dict(getattr(outer.state, "open_interest", None) or {})
                         from src.dashboard.chart_live import load_plan_journals
 
                         model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint,
                                                  plan_journals=load_plan_journals(plan_journal_paths(outer.state)), gamma=gamma,
-                                                 liquidation=liquidation)
+                                                 liquidation=liquidation, perp=perp, open_interest=open_interest,
+                                                 market=query.get("market", [None])[0])
                         from src.dashboard.pages.chart import APP_VERSION
                         model["app_version"] = APP_VERSION
                     except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection

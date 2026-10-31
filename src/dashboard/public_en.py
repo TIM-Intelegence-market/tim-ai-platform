@@ -39,6 +39,7 @@ GROUPS_EN = {
     "plans_old": "TIM plans, test versions 30m",
     "gamma": "Options gamma (Deribit)",
     "liq": "Liquidation heatmap (estimate)",
+    "cvd": "CVD spot vs. perp", "oi": "Open interest + Z-score (7.5 d)",
 }
 # Ordered (pattern, replacement) pairs for labels, names and notes of the drawings.
 TEXT_EN: tuple[tuple[str, str], ...] = (
@@ -110,11 +111,17 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Keine großen Market Orders", "No large market orders in the shown window."),
     (r"^Noch keine Trades", "No trades from the TIM database yet (the runtime delivers them every 2 minutes)."),
     (r"^(Level \S+: )?Börse nicht erreichbar", r"\1Exchange not reachable, retrying shortly."),
+    (r"^Perp-Trades noch nicht da", "Perp trades not there yet (the collector starts with the previous day): showing spot."),
+    (r"^Open Interest: Binance-Stand älter", "Open interest: Binance data older than 3 h, hidden."),
+    (r"^CVD nur Spot", "CVD spot only: no perp trades in the shown window yet."),
+    (r"^CVD nur Perp", "CVD perp only: no spot trades in the shown window."),
+    (r"^CVD ab (\d+)m", r"CVD from \1m."),
 )
 SOURCES_EN = {
     "TIM-Runtime (wie Plan-Journale)": "TIM runtime (same as the plan journals)",
     "Binance-Klines (nur Anzeige)": "Binance klines (display only)",
     "TIM agg_trades (Binance Spot aggTrades, eigene Datenbank)": "TIM agg_trades (Binance spot aggTrades, own database)",
+    "Binance USD-M Perp aggTrades (BTCUSDT, öffentlich, TIM-Sammler)": "Binance USD-M perp aggTrades (BTCUSDT, public, TIM collector)",
 }
 _GERMAN = re.compile(r"[äöüÄÖÜß]|\b(?:und|nicht|Kerzen|keine|noch|für|aus|der|die|das)\b")
 
@@ -151,6 +158,10 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
         out["fib"] = {**model["fib"], "note": english_text(model["fib"].get("note"))}
     if isinstance(model.get("bubbles"), dict):
         out["bubbles"] = {**model["bubbles"], "note": english_note(model["bubbles"].get("note"))}
+    if isinstance(model.get("cvd"), dict):
+        out["cvd"] = {**model["cvd"], "note": english_note(model["cvd"].get("note"))}
+    if isinstance(model.get("oi"), dict):
+        out["oi"] = {**model["oi"], "source": "Binance USD-M open interest (BTCUSDT, 1h, public)"}
     for key in ("level_source", "trade_source"):
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])
@@ -204,6 +215,8 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         "<div class='tc-live__bar'><div id='tc-live-layers' class='tc-live__layers' aria-label='Show or hide lines'></div>"
         "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Go to now</button>"
         "<button type='button' class='tc-tab' data-action='fit'>Show all</button><button type='button' class='tc-tab' data-action='footprint' title='Last candles large, footprint with numbers'>Footprint</button>"
+        "<span class='tc-market' role='group' aria-label='Trades behind volume profile, footprint and delta'><button type='button' class='tc-tab' data-action='market' data-market='spot' title='Volume profile, footprint, delta from spot trades'>Spot</button>"
+        "<button type='button' class='tc-tab' data-action='market' data-market='perp' title='Volume profile, footprint, delta from perp trades (Binance futures)'>Perp</button></span>"
         "<button type='button' class='tc-tab' data-action='plans'>Only TIM's trades</button><button type='button' class='tc-tab' data-action='none'>Untick all</button><button type='button' class='tc-tab' data-action='reset'>Reset lines</button></div></div>"
         "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
         "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interactive candlestick chart'></div></div>"
