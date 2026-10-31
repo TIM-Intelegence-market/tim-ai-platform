@@ -1,4 +1,4 @@
-# Research Lab – Externe Daten (BTC Research Engine V1: Data & Events, V1.1: Live-Ingest)
+# Research Lab – Externe Daten (BTC Research Engine V1: Data & Events, V1.1: Live-Ingest, V1.2: FOMC)
 
 | Feld | Wert |
 |---|---|
@@ -8,6 +8,7 @@
 | Verifikationsbericht | `docs/research_lab/reports/alfred_cpi_v1_1_verification.md` (+ `.json`) |
 | Transform-Version | `1.0.0` (`records.TRANSFORM_VERSION`) |
 | Erste Quelle | ALFRED, US-CPI `CPIAUCSL` (alle Vintages) |
+| Zweite Quelle (V1.2) | FOMC-Erklärungen von www.federalreserve.gov, siehe Abschnitt 11; Tests `tests/test_research_lab_external_fomc.py` |
 
 Dieses Modul macht externe Daten für die BTC-Forschung **zeitlich korrekt**
 nutzbar. Es erzeugt keine Prognose, kein Signal, keine Aussage „X treibt BTC“
@@ -290,12 +291,88 @@ oder abgebrochene Speichervorgänge frühere Bundles nicht beschädigen. Paging 
   2005–2024 abgeleitet (wo ein solches Terminpaar vorkommt: 2 bis 6 Tage); ein abweichender künftiger Abstand würde den
   Termin als normalen Release behandeln (fail-closed: Januar dann als fehlend markiert).
 
-## 11. Roadmap
+## 11. FOMC-Erklärungen (V1.2: FOMC Event / Rate Decision Data Foundation)
+
+Code: `fomc.py` (Seiten lesen, Ereignis, Qualität, Point-in-Time, Replay),
+`fomc_live.py` (Abruf, Fenster, Fixture), `fomc_verify.py` (Real-Data-Bericht);
+Skript `scripts/research_lab_fomc_ingest.py`. Parser-Version `fomc.PARSER_VERSION`.
+
+**Ereignis.** Ein Ereignis ist die **Veröffentlichung** einer FOMC-Erklärung
+(Pressemitteilung „Federal Reserve issues FOMC statement“), nicht die Sitzung
+und nicht der Beschluss. Öffentlich ist der Beschluss erst zur Uhrzeit aus der
+Zeile „For release at …“ der Erklärung selbst. Erfasst werden alle Erklärungen,
+die die Jahreslisten der Fed nennen, also auch außerplanmäßige (z. B. 03.03.2020
+10:00 EST, Sonntag 15.03.2020 17:00 EDT) und solche ohne Zinsänderung.
+
+**Quellen.** Jahreslisten `/newsevents/pressreleases/YYYY-press.htm` (bis 2019)
+bzw. `YYYY-press-fomc.htm` (ab 2020) sagen, welche Erklärungen es gibt; die
+Seite jeder Erklärung liefert Datum, Uhrzeit, Zielspanne und „Last Update“.
+Gelesen werden die Listen 2016 (nur Vorlauf) bis 2024. Links einer Liste auf
+Erklärungen eines anderen Jahres (z. B. ein Kasten mit aktuellen Meldungen)
+werden weder abgerufen noch verwendet; Holdout-Seiten werden nie angefragt. Nur
+`https://www.federalreserve.gov/` wird kontaktiert; eine Weiterleitung nur auf
+denselben Host, protokolliert als `final_url`. Kein Schlüssel nötig.
+
+**Zeit.** Die Uhrzeit wird in `America/New_York` am Veröffentlichungstag gelesen.
+Das Zonenlabel der Seite (`EST`/`EDT`) muss zur Sommerzeitregel dieses Tages
+passen, sonst `EVENT_TIME_INCONSISTENT`. Eine Uhrzeit wird nie aus einer Regel
+(„meist 14:00“) ergänzt. `available_at = event_time` nur bei Status `OK`, sonst
+Ende des Veröffentlichungstags in New York (`END_OF_RELEASE_DAY`), ohne
+Ereigniszeit.
+
+**Zielspanne und Entscheidung.** Die Spanne kommt aus den Sätzen der Erklärung,
+die „target range“ oder „federal funds rate“ nennen; Sätze abweichender
+Stimmen („preferred“, „dissent“, „voting against“) zählen nicht. Genau eine
+Spanne, sonst `RANGE_UNKNOWN`. Die Vorher-Spanne ist die der unmittelbar
+vorangehenden Erklärung, nur wenn beide `OK` sind; `decision` (`RAISE`,
+`LOWER`, `MAINTAIN`) und `change_bp` werden daraus berechnet, sonst
+`NOT_DETERMINED`. Keine Erwartungen, kein „Surprise“, keine Futures.
+
+**Qualität (fail-closed).**
+
+| Status | Wann |
+|---|---|
+| `OK` | Uhrzeit belegt und DST-konsistent, Seitendatum = Listendatum, „Last Update“ = Veröffentlichungstag, genau eine Spanne |
+| `EVENT_TIME_UNKNOWN` | keine Zeile „For release at“ |
+| `EVENT_TIME_INCONSISTENT` | Zeile unlesbar oder mehrfach, Zonenlabel passt nicht, Uhrzeit existiert an dem Tag nicht |
+| `SOURCE_CONFLICT` | Datum auf der Seite weicht vom Datum im Listenlink ab |
+| `DOCUMENT_UPDATED` | „Last Update“ fehlt oder liegt nach dem Veröffentlichungstag |
+| `RANGE_UNKNOWN` | keine, mehrere oder keine aufsteigende Spanne |
+| `MISSING_STATEMENT` | in der Liste genannt, Seite nicht abrufbar (HTTP 404/410) |
+
+Ein Ereignis, das nicht `OK` ist, bleibt sichtbar und gezählt, hat aber keine
+Ereigniszeit, keine Entscheidung und keine BTC-Fenster (`EVENT_NOT_OK`).
+Payload-Ebene `NOT_READY`: falsche Quelle, fehlende oder leere Jahresliste, Jahr
+im Holdout, Seite nicht als FOMC-Erklärung erkennbar, nicht angefragte Seiten,
+doppelte Ereignis-ID. Eine Erklärung, die erst nach dem Abruf sichtbar würde,
+wird abgewiesen (`AVAILABLE_AFTER_INGESTION`).
+
+**Point-in-Time und Holdout.** `FomcStore.visible(T)` zeigt nur Ereignisse mit
+`available_at <= T` und innerhalb der Abdeckung. Die Holdout-Sperre sitzt im
+Fenster (`StatementWindow` bis 2024), im Parser (Jahr ≥ 2025 = `NOT_READY`),
+im Store und im Replay, nicht nur im Replay.
+
+**Replay.** `run_fomc_replay` nutzt `ReplayConfig`, `BtcSeries` und
+`align_event` wie der CPI-Replay; `dataset_id`, `content_hash` und
+`output_hash` wie in Abschnitt 8 (Abrufzeit und Weiterleitungsziel nur in der
+Provenienz). Ein gemeinsamer Replay von CPI und FOMC ist nicht Teil von V1.2.
+
+**Grenzen V1.2.** Die Art der Sitzung (`kind`) bleibt `UNKNOWN_KIND`: der
+aktuelle Sitzungskalender der Fed reicht in den Holdout und wird nicht geladen.
+Die Seitenstruktur ist an synthetischen Seiten getestet, die dem Text der echten
+Seiten folgen; das unveränderte Fixture 2019–2020 und der Real-Data-Bericht
+`docs/research_lab/reports/fomc_v1_2_verification.md` entstehen mit
+`scripts/research_lab_fomc_ingest.py` aus echten Seiten und sind Voraussetzung
+für den Abschluss von V1.2. Die Gegenprobe der Spannen mit FRED
+(`DFEDTARL`/`DFEDTARU`, Wirksamkeit am Tag D oder D+1) läuft nur im Bericht,
+nie als Eingabe.
+
+## 12. Roadmap
 
 Reihenfolge der BTC Research Engine: **V1 (#128) → V1.1 (#139) → V1.2 → V2**.
 
-- **V1.2** ist der nächste Schritt. Ihr fachlicher und technischer Umfang ist noch
-  nicht festgelegt und wird vor Beginn eigens spezifiziert.
+- **V1.2 — FOMC Event / Rate Decision Data Foundation:** FOMC-Erklärungen und
+  Zinsentscheidungen als zweite externe Ereignisfamilie (Abschnitt 11).
 - **V2 — Historical Relationship Analysis** (Event Studies, Lead/Lag, rollierende
   Zusammenhänge, mehrere Forschungshorizonte) folgt später. V2 beginnt erst, wenn
   die V1-Datenbasis ausreichend breit, sauber, reproduzierbar und
