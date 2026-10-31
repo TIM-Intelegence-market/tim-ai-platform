@@ -182,7 +182,7 @@ Nice 15, gedrosselte Festplatte. Logik: `src/research_lab/workshop/schedule.py`,
 | Aufgabe | Wann (Ortszeit) | Was |
 |---|---|---|
 | `trades` | stündlich | jeden neu geschlossenen Papier-Trade der Journale tim, struct, short, mid, long reflektieren; wiederkehrende Muster als Idee |
-| `weekly` | ab Sonntag 02:00, einmal je Woche | alle Ideen prüfen (`check --record`), danach KI-Runde |
+| `weekly` | ab Sonntag 02:00, einmal je Woche | alle Ideen prüfen (`check --record`), abgelaufene Schatten-Fenster bewerten (F7), danach KI-Runde |
 | `monthly` | ab dem 1. 03:00, einmal je Monat | Monats-Reflexion des Vormonats |
 
 - Die Automatik schreibt nur unter `data/research/` (nicht versioniert): Ideen-Liste `data/research/IDEEN.jsonl`,
@@ -200,10 +200,34 @@ Nice 15, gedrosselte Festplatte. Logik: `src/research_lab/workshop/schedule.py`,
 - Abnahme: eine Woche Probelauf auf dem Mac; Laufzeiten stehen je Aufgabe im Status (`seconds`), CI-Laufzeiten
   der Woche werden mit der Vorwoche verglichen.
 
+## Schattenbetrieb für Updates (F7)
+
+Code `src/research_lab/workshop/shadow.py`, aufgesetzt auf das Lernregister (`src/research_lab/learning/registry.py`,
+unverändert; abgestimmt mit der Lern-Spur am 31.10.). Ein Ergebnis „Kandidat“ ändert nichts an TIM, bevor es
+30 Tage auf ungesehenen Live-Daten mitgelaufen ist:
+
+1. `shadow-start`: je Studie eine eigene Familie `<Studie>-schatten` mit festen Regeln (Konfiguration = Hash der
+   registrierten Variante, Kennzahl Netto-R je Trade, 30 Tage, Mindestzahl Trades, kleinster Effekt, Intervall
+   99,5 %, Freigabe nur Uzi), Champion `kein-trade` (0 R) und der Kandidat als Herausforderer. Das Fenster beginnt
+   einen Horizont nach der Anmeldung; das Register lehnt Vor- und Rückdatieren ab.
+2. Pläne des Kandidaten gehen in ein eigenes Schatten-Journal `data/research/shadow/<Studie>.jsonl` (Hash-Kette,
+   Kennung `schatten:<Studie>`, jede Zeile `counts_in_net_r: false`). Ein Plan wird mit der echten Uhrzeit zur
+   Entscheidung geschrieben, nur im Fenster, nie nachträglich; jedes Ergebnis genau einmal und nach dem Plan.
+   Das Papier-Journal und sein Netto-R sehen davon nichts.
+3. Bewertung genau einmal nach Fensterende (sonntags in der Forschungsrunde, F6): mittleres Netto-R je Trade minus
+   0 R mit Bootstrap-Intervall 99,5 %. Offene Pläne oder mehr als 10 % Datenlücken ergeben „kein Urteil“.
+4. Wechsel nur mit Uzis Freigabe (`approvers = ["Uzi"]`); Rückweg ohne Freigabe nur zu einem früheren Champion.
+
+Register `data/research/shadow/register.jsonl` (nur auf dem Mac); jede Bewertung nennt den Kopf-Hash, der mit dem
+Bericht per PR ins Repo kommt. Zufallsprüfung: Eine Münzwurf-Strategie mit Kosten und eine Strategie ohne Vorteil
+werden in je 1 000 Simulationen in unter 5 % befördert (`tests/test_research_workshop_shadow.py`).
+
+Grenze: Die Pläne liefert der Live-Code der jeweiligen Studie über `ShadowJournal.record_plan` und
+`record_outcome`; einen allgemeinen Plan-Erzeuger gibt es nicht.
+
 ## Nächste Pakete
 
-F7 Schattenbetrieb für Updates (auf dem Lern-Register), F8 Server als Rechenhost,
-F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
+F8 Server als Rechenhost, F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 
 ## Änderungsprotokoll
 
@@ -215,3 +239,4 @@ F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 | 2026-10-31 | 1.0 | Auftrags-Runner und Ergebnis-Bündel (F4) |
 | 2026-10-31 | 1.0 | Bericht, Logbuch und Monats-Reflexion (F5) |
 | 2026-10-31 | 1.0 | Zeitplan auf dem Mac (F6) |
+| 2026-10-31 | 1.0 | Schattenbetrieb für Updates (F7) |

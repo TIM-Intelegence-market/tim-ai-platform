@@ -14,6 +14,9 @@
     python -m src.research_lab.workshop jobs
     python -m src.research_lab.workshop report --bundle data/research/bundles/J-0001 --title "..." [--draft PATH]
     python -m src.research_lab.workshop reflect-month [--month 2026-10] [--write]
+    python -m src.research_lab.workshop shadow-start --study S12 --model-id S12-v1 --variant-hash H --code-commit C \\
+                                                     --study-version S12/1.0 --cost-rule kosten/1 --min-trades 30 --min-effect 0.05
+    python -m src.research_lab.workshop shadow-status
     python -m src.research_lab.workshop charter
 
 Reads and writes only the idea queue (default data/research/IDEEN.jsonl, on the Mac in ~/TIM-live) and, for
@@ -98,6 +101,17 @@ def main(argv: list[str] | None = None) -> int:
     rm.add_argument("--month")
     rm.add_argument("--trades-log", type=Path, default=Path("data/research/trade_reflections.jsonl"))
     rm.add_argument("--write", action="store_true", help="Bericht unter docs/research_lab/reports/ ablegen")
+    sh = sub.add_parser("shadow-start", help="F7: Kandidat 30 Tage im Schattenbetrieb anmelden")
+    sh.add_argument("--study", required=True)
+    sh.add_argument("--model-id", required=True)
+    sh.add_argument("--variant-hash", required=True)
+    sh.add_argument("--code-commit", required=True)
+    sh.add_argument("--study-version", required=True)
+    sh.add_argument("--cost-rule", required=True)
+    sh.add_argument("--min-trades", type=int, required=True)
+    sh.add_argument("--min-effect", type=float, required=True)
+    sh.add_argument("--horizon-minutes", type=int, default=1440)
+    sub.add_parser("shadow-status", help="F7: Stand aller Schatten-Kandidaten (nur lesen)")
     sub.add_parser("charter")
     args = parser.parse_args(argv)
     queue = IdeaQueue(args.queue)
@@ -189,11 +203,23 @@ def main(argv: list[str] | None = None) -> int:
                 print(path)
             else:
                 print(text)
+        elif args.command in {"shadow-start", "shadow-status"}:
+            from src.research_lab.learning.registry import ModelRegister
+            from src.research_lab.workshop import shadow
+            register = ModelRegister(shadow.REGISTER_PATH)
+            if args.command == "shadow-start":
+                entry = shadow.start(register, args.study, model_id=args.model_id, variant_hash=args.variant_hash,
+                                     code_commit=args.code_commit, study_version=args.study_version,
+                                     cost_rule=args.cost_rule, min_trades=args.min_trades, min_effect=args.min_effect,
+                                     horizon_minutes=args.horizon_minutes, at=datetime.now(timezone.utc))
+                print(f"{args.model_id}: Fenster {entry['window_start']} bis {entry['window_end']}")
+            else:
+                print(json.dumps({"head": register.head(), "shadows": shadow.status(register)}, ensure_ascii=False, indent=2))
         elif args.command == "charter":
             print(f"{charter.CHARTER_VERSION}, Stufe {charter.STAGE}, Budget {charter.MONTHLY_STUDY_BUDGET} Studien/Monat")
             for line in charter.FIXED_LIMITS:
                 print(f"- {line}")
-    except (IdeaError, DraftError, ValueError) as error:
+    except (IdeaError, DraftError, ValueError) as error:  # LearningError and ShadowError are ValueErrors
         print(f"Fehler: {error}", file=sys.stderr)
         return 2
     return 0
