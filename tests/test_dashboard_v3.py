@@ -38,15 +38,15 @@ def test_catalog_has_no_empty_or_identical_noise() -> None:
     assert all(key and value for key, value in DE.items())
 
 
-def test_navigation_has_five_areas_and_marks_current_page() -> None:
-    # 29.10.2026: one navigation with five areas; every live page is a sub-link of one area.
-    assert [area["label"] for area in AREAS] == ["Heute", "Chart", "Journal", "Forschung", "System"]
+def test_navigation_has_four_screens_and_marks_current_page() -> None:
+    # 31.10.2026: one navigation with four screens; every live page is an entry of one area.
+    assert [area["label"] for area in AREAS] == ["Cockpit", "Journal", "Forschung", "System"]
     routes = [href for area in AREAS for _, href in area["pages"]]
     assert len(routes) == len(set(routes)) and {"/graphify", "/prep", "/my-day", "/trader-journal", "/chart", "/journal", "/archiv"} <= set(routes)
     assert {href for _, href, _ in ARCHIVE}.isdisjoint(routes)  # V2 campaign pages only on /archiv
     page = render(DashboardState(), "Research Cases")
-    assert "<a href='/neu/forschung' class='area'>Forschung</a>" in page
-    assert "<a href='/cases' class='sub active' aria-current='page'>Research-Fälle</a>" in page
+    assert "<a href='/forschung' class='area'><span class='ncc-ico' aria-hidden='true'>⚗</span>Forschung</a>" in page
+    assert "<a href='/cases' aria-current='page'>Research-Fälle</a>" in page
     assert page.count("aria-current='page'") == 1 and "aria-label='Hauptnavigation'" in page
     assert ">Recherche-Werkzeug</a>" in page
 

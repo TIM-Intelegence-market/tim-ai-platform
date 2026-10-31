@@ -38,6 +38,9 @@ class DashboardServer:
         self.state, self.host, self.port = state, host, port
         self.research_router = research_router or ResearchRouter()
         self.research_lock = threading.Lock()
+        from src.dashboard.shell import use_state
+
+        use_state(state)  # header facts (price, system light, next blocked window) for every page
         # Form token for the trader journal: a page from another site cannot read it, so it cannot post.
         self.form_token = secrets.token_urlsafe(32)
         outer = self
@@ -230,8 +233,16 @@ class DashboardServer:
                     journal_path = {"struct": outer.state.plan_journal_struct_path, "level": outer.state.plan_journal_level_path}.get(rule, outer.state.plan_journal_path)
                     from src.dashboard.plan_cost_check import with_cost_check
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
-                if path == "/":
-                    return self.cockpit("/neu", query)
+                if path in ("/", "/trades", "/forschung", "/system"):
+                    from src.dashboard.screens import SCREEN_CSP, render as render_screen
+
+                    try:
+                        content_type, page = render_screen(path, outer.state, fragment=query.get("fragment", [""])[0] == "1")
+                    except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                        return self.respond(500, _error_page("Control Center", exc).encode(), "text/html; charset=utf-8")
+                    return self.respond(200, page.encode(), content_type, csp=SCREEN_CSP)
+                if path in ("/neu", "/neu/", "/neu/lage"):
+                    return self.respond(303, b"", "text/plain; charset=utf-8", location="/")
                 if path in JOURNAL_PAGES:
                     saved = query.get("saved", [""])[0]
                     return self.plan_journal_page(200, path, saved=saved if re.fullmatch(r"PN-\d{5}", saved or "") else None)

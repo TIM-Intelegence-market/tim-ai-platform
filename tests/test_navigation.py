@@ -1,8 +1,8 @@
-"""One navigation, five areas (Beirat 29.10.2026).
+"""One navigation, four screens (new Control Center 31.10.2026).
 
 These tests keep the Control Center from growing back into a 28-entry menu:
-the top level stays at five German areas, every listed page is served, the
-V2 campaign pages live only on /archiv, and the start page is "Heute".
+the top level stays at four German screens, every listed page is served, the
+V2 campaign pages live only on /archiv, and the start page is the Cockpit.
 """
 from __future__ import annotations
 
@@ -23,8 +23,9 @@ ENGLISH = {"overview", "runtime", "data", "quality", "incidents", "gaps", "healt
            "path", "readiness", "security", "evidence", "needs", "attention", "today", "settings", "journey"}
 
 
-def test_top_level_has_exactly_five_german_areas() -> None:
-    assert len(AREAS) == 5, "Neue Seiten gehören als Unterpunkt in einen der fünf Bereiche, nicht als sechster Bereich."
+def test_top_level_has_exactly_four_german_screens() -> None:
+    assert len(AREAS) == 4, "Neue Seiten gehören als Unterpunkt in einen der vier Bereiche, nicht als fünfter Bereich."
+    assert [area["pages"][0][1] for area in AREAS] == [area["href"] for area in AREAS]  # first entry = the screen itself
     labels = [area["label"] for area in AREAS] + [label for area in AREAS for label, _ in area["pages"]]
     for label in labels:
         words = {w.lower() for w in re.findall(r"[A-Za-zÄÖÜäöüß]+", label)}
@@ -38,13 +39,13 @@ def test_every_page_belongs_to_one_area_and_archive_stays_out() -> None:
     assert archive.isdisjoint(hrefs)
     for href in archive:
         assert locate(href) == ("system", "/archiv")
-    assert locate("/neu") == ("heute", "/") and locate("/journal/struct") == ("journal", "/journal")
+    assert locate("/neu") == ("cockpit", "/") and locate("/journal/struct") == ("journal", "/journal")
 
 
 def test_links_open_only_the_active_area() -> None:
     nav = links("/runtime")
-    assert [a["label"] for a in nav] == ["Heute", "Chart", "Journal", "Forschung", "System"]
-    assert [bool(a["pages"]) for a in nav] == [False, False, False, False, True]
+    assert [a["label"] for a in nav] == ["Cockpit", "Journal", "Forschung", "System"]
+    assert [bool(a["pages"]) for a in nav] == [False, False, False, True]
     assert sum(1 for a in nav for s in a["pages"] if s["current"]) == 1  # type: ignore[union-attr]
 
 
@@ -72,14 +73,27 @@ def test_every_navigation_target_is_served(server: int) -> None:
         assert status in allowed, f"{href} -> {status}"
 
 
-def test_start_page_is_heute_without_old_menu(server: int) -> None:
+def test_start_page_is_the_cockpit_without_sub_menu(server: int) -> None:
     status, page = _get(server, "/")
     assert status == 200
-    assert "<title>Lage · TIM</title>" in page
+    assert "<title>Cockpit · TIM</title>" in page
     assert "Bisheriges Dashboard" not in page and "Needs attention" not in page
-    nav = page.split("aria-label='Bereiche'>", 1)[1].split("</nav>", 1)[0]
-    assert nav.count("<a ") == 5
-    assert "aria-label='Seiten in diesem Bereich'" in page and "href='/neu/markt'" in page
+    nav = page.split("aria-label='Hauptnavigation'>", 1)[1].split("</nav>", 1)[0]
+    assert nav.count("<a ") == 4 and "href='/' aria-current='page'" in nav
+    assert "aria-label='Seiten in diesem Bereich'" not in page  # a screen has no sub-menu
+
+
+def test_detail_page_shows_way_back_to_its_screen(server: int) -> None:
+    status, page = _get(server, "/runtime")
+    assert status == 200
+    sub = page.split("aria-label='Seiten in diesem Bereich'>", 1)[1].split("</nav>", 1)[0]
+    assert "href='/system' class='ncc-back'>← Ampel</a>" in sub and "aria-current='page'>Laufzeit</a>" in sub
+
+
+def test_old_start_paths_lead_to_the_cockpit(server: int) -> None:
+    for path in ("/neu", "/neu/"):
+        with urlopen(f"http://127.0.0.1:{server}{path}", timeout=10) as response:  # follows the 303
+            assert response.status == 200 and "<title>Cockpit · TIM</title>" in response.read().decode()
 
 
 def test_archive_page_lists_the_campaign_pages(server: int) -> None:

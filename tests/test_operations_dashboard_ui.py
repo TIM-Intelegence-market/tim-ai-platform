@@ -243,9 +243,9 @@ def test_current_empty_gap_inventory_does_not_reuse_an_old_gap(tmp_path: Path) -
 
 def test_control_center_has_exact_ten_primary_pages_and_explicit_safety_boundary(tmp_path: Path) -> None:
     page = render(_state(tmp_path))
-    # The old overview now lives in "Archiv V2"; the page carries the one five-area navigation.
+    # The old overview now lives in "Archiv V2"; the page carries the one four-screen navigation.
     assert OPERATIONS_ROUTES["/uebersicht-alt"] in page
-    for route in ("/", "/chart", "/journal", "/neu/forschung", "/neu/betrieb", "/archiv"):
+    for route in ("/", "/trades", "/forschung", "/system", "/archiv"):
         assert f"href='{route}'" in page
     assert page.count("aria-current='page'") == 1
     for invariant in ("OBSERVE-ONLY", "TRADING LOCKED", "EXECUTION DISABLED", "NO SHELL", "NO GIT", "NO SECRETS"):
