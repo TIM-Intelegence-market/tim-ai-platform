@@ -62,13 +62,16 @@ def _row(price: float, step: float) -> float:
 
 def build_heatmap(candles: Sequence[Candle], open_interest: Mapping[int, float], as_of: datetime,
                   symbol: str = "BTCUSDT", period_seconds: int = 1800,
-                  leverage_mix: Sequence[tuple[int, float]] = LEVERAGE_MIX) -> dict[str, Any]:
+                  leverage_mix: Sequence[tuple[int, float]] = LEVERAGE_MIX,
+                  min_share: float = MIN_SHARE, max_cells: int = MAX_CELLS) -> dict[str, Any]:
     """Liquidation estimate per price row.
 
     ``candles`` are futures candles in time order (open time in epoch seconds).
     ``open_interest`` maps a snapshot time (epoch seconds) to open interest in coins.
     The change between the snapshots at ``t`` and ``t + period`` belongs to the candle
     opened at ``t`` and is placed at that candle's typical price.
+    ``min_share`` and ``max_cells`` only thin out the result for display; study S12
+    evaluates with ``min_share=0`` and no cell limit.
     """
     candles = sorted(candles, key=lambda c: c.time)
     if len(candles) < 2:
@@ -109,11 +112,11 @@ def build_heatmap(candles: Sequence[Candle], open_interest: Mapping[int, float],
     cells = [{"side": side, "price": row, "usd": cell["usd"], "start": cell["start"], "end": None}
              for (side, row), cell in active.items()]
     strongest = max((c["usd"] for c in cells), default=0.0)
-    floor = strongest * MIN_SHARE
+    floor = strongest * min_share
     cells = [c for c in cells if c["usd"] >= floor and c["usd"] > 0]
     cells += [c for c in swept if c["usd"] >= floor and c["usd"] > 0]
     cells.sort(key=lambda c: c["usd"], reverse=True)
-    cells = cells[:MAX_CELLS]
+    cells = cells[:max_cells]
     for cell in cells:
         cell["usd"] = round(cell["usd"], 2)
     above = _cluster([c for c in cells if c["end"] is None and c["side"] == "short" and c["price"] > last], step)
