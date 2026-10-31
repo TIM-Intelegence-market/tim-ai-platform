@@ -92,6 +92,30 @@ python -m src.research_lab.workshop draft --idea I-0001 --spec spec.json --dry-r
 python -m src.research_lab.workshop draft --idea I-0001 --spec spec.json             # Entwurf schreiben
 ```
 
+## Auftrags-Runner und Ergebnis-Bündel (F4)
+
+`src/research_lab/workshop/runner.py`. Freigaben und Aufträge stehen lokal in `data/research/jobs/jobs.jsonl`
+(Hash-Kette), Ergebnisse als Bündel unter `data/research/bundles/<Auftrag>/` (beides nur auf dem Mac).
+
+- **Freigabe (Stufe 1):** Ohne festgehaltene Freigabe von Uzi mit Beleg (Datum, Nachricht) nimmt der Runner
+  keinen Auftrag an. `--commit-register` nur, wenn die Freigabe die Registrierung ausdrücklich erlaubt.
+- **Nur Labor:** erlaubt sind `scripts/research_lab_*.py` und Module unter `src.research_lab`. Ein Argument, das
+  den Holdout nennt oder ein Datum ab 2025-01-01 enthält, wird abgewiesen, bevor etwas startet.
+- **Rechner:** `mac` läuft lokal mit `nice 15`. `server` läuft über ssh auf Chris' Rechenhost: Der Mac baut die
+  Verbindung auf und holt die Ausgaben per rsync ab. Der Commit dort muss dem Commit auf dem Mac entsprechen,
+  sonst wird das Ergebnis verworfen. Einrichtung des Hosts ist F8.
+- **Bündel:** Manifest mit Commit, Befehl, Hashes aller Eingaben und Ausgaben, Exit-Code und Hash des
+  Ausgabeprotokolls. Der Inhalts-Hash lässt Auftragsnummer, Rechner und Zeiten weg: Derselbe Auftrag auf
+  denselben Eingaben ergibt überall denselben Hash. `verify` rechnet alles nach und weist jede Änderung ab.
+- Der Runner merged nichts, pusht nichts und fasst die Runtime nicht an.
+
+```bash
+python -m src.research_lab.workshop approve --study S12 --reference "Uzi 31.10. 16:00 im Thread"
+python -m src.research_lab.workshop submit --study S12 -- scripts/research_lab_s12.py --count
+python -m src.research_lab.workshop run --pending
+python -m src.research_lab.workshop verify --bundle data/research/bundles/J-0001
+```
+
 ## Reflexion jedes Trades
 
 Uzi 31.10.2026: „er soll jeden trade reflektieren“. `src/research_lab/workshop/trade_reflection.py` liest die
@@ -131,7 +155,7 @@ läuft über den Ideen-Eingang hier (`import --journal-review`), nicht über ein
 
 ## Nächste Pakete
 
-F4 Auftrags-Runner mit Ergebnis-Bündel, F5 Bericht und Logbuch automatisch plus
+F5 Bericht und Logbuch automatisch plus
 Monats-Reflexion, F6 Zeitplan, F7 Schattenbetrieb für Updates (auf dem Lern-Register), F8 Server als Rechenhost,
 F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 
@@ -142,3 +166,4 @@ F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 | 2026-10-31 | 1.0 | Satzung angelegt (F0), Ideen-Eingang und Ideen-Prüfung (F1, F2) |
 | 2026-10-31 | 1.0 | Studien-Generator (F3) |
 | 2026-10-31 | 1.0 | Reflexion jedes Trades (Uzis Wunsch), Quelle `trade_reflexion` |
+| 2026-10-31 | 1.0 | Auftrags-Runner und Ergebnis-Bündel (F4) |
