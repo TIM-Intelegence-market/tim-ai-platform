@@ -42,7 +42,7 @@ Holdout-Zugriff, gebrochene Hash-Kette) fällt TIM selbst auf Stufe 0 zurück un
 
 ## Ideen-Eingang und Ideen-Prüfung (F1, F2)
 
-Ideen stehen in `docs/research_lab/IDEEN.jsonl`: eine Zeile je Idee oder Statuswechsel, Hash-Kette, nie
+Ideen stehen in `data/research/IDEEN.jsonl` (seit F6 nur auf dem Mac in `~/TIM-live`, nicht versioniert; Anzeige folgt mit F9): eine Zeile je Idee oder Statuswechsel, Hash-Kette, nie
 überschreiben. Quellen: Uzi, Plan-Journal (`journal_review`), wöchentliche Reflexion, Lehren aus dem Logbuch,
 GoatHub/Broncx (nur als Frage), KI-Runde. Dieselbe Hypothese kommt nicht zweimal hinein; derselbe Lernvorschlag
 wird nur einmal importiert.
@@ -173,9 +173,36 @@ Die Lernschleife (Champion/Herausforderer, Bauplan „TIM lernt aktiv aus Trades
 Bereich. Ihr Modell-Register liegt in `src/research_lab/learning/` (eigener Thread). Der wöchentliche Journal-Lernweg
 läuft über den Ideen-Eingang hier (`import --journal-review`), nicht über einen zweiten Weg.
 
+## Zeitplan auf dem Mac (F6)
+
+LaunchAgent `com.tim.research-workshop` (`ops/launchd/com.tim.research-workshop.plist`), alle 15 Minuten,
+Nice 15, gedrosselte Festplatte. Logik: `src/research_lab/workshop/schedule.py`, Aufruf
+`scripts/research_workshop_schedule.py` (`--dry-run`, `--task trades|weekly|monthly`, `--no-ki`, `--install`).
+
+| Aufgabe | Wann (Ortszeit) | Was |
+|---|---|---|
+| `trades` | stündlich | jeden neu geschlossenen Papier-Trade der Journale tim, struct, short, mid, long reflektieren; wiederkehrende Muster als Idee |
+| `weekly` | ab Sonntag 02:00, einmal je Woche | alle Ideen prüfen (`check --record`), danach KI-Runde |
+| `monthly` | ab dem 1. 03:00, einmal je Monat | Monats-Reflexion des Vormonats |
+
+- Die Automatik schreibt nur unter `data/research/` (nicht versioniert): Ideen-Liste `data/research/IDEEN.jsonl`,
+  Trade-Reflexionen, KI-Runden (`ki_runde/<Woche>.json` mit Frage und Antwort), Monatsberichte (`reports/`),
+  Status `schedule/state.json` und Verlauf `schedule/history.jsonl`. Der Live-Checkout bleibt sauber; was nach
+  `docs/` soll, kommt per PR.
+- KI-Runde: Claude Code ohne Werkzeuge bekommt Satzung, bisherige Studien, Ideen-Liste und Trade-Muster als Daten
+  und darf höchstens die freien Plätze der Woche (3) vorschlagen, jede mit Gegenargument. Die Antwort gilt als
+  nicht vertrauenswürdig: unbekannte Daten, fehlendes Gegenargument oder zu lange Texte werden verworfen, danach
+  gelten die Grenzen der Ideen-Liste und die Ideen-Prüfung (Holdout, schon getestet, Daten, Budget). Fällt die
+  KI aus, läuft die Woche ohne sie weiter.
+- Kein Studien-Entwurf, keine Freigabe, kein Lauf und keine Regeländerung im Zeitplan (Stufe 1).
+- Rücksicht auf CI: Läuft ein CI-Job (`Runner.Worker`), wartet jede Aufgabe; nach 3 Stunden Warten läuft sie
+  trotzdem, gedrosselt. Pause: Datei `data/research/schedule/PAUSE` anlegen.
+- Abnahme: eine Woche Probelauf auf dem Mac; Laufzeiten stehen je Aufgabe im Status (`seconds`), CI-Laufzeiten
+  der Woche werden mit der Vorwoche verglichen.
+
 ## Nächste Pakete
 
-F6 Zeitplan, F7 Schattenbetrieb für Updates (auf dem Lern-Register), F8 Server als Rechenhost,
+F7 Schattenbetrieb für Updates (auf dem Lern-Register), F8 Server als Rechenhost,
 F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 
 ## Änderungsprotokoll
@@ -187,3 +214,4 @@ F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 | 2026-10-31 | 1.0 | Reflexion jedes Trades (Uzis Wunsch), Quelle `trade_reflexion` |
 | 2026-10-31 | 1.0 | Auftrags-Runner und Ergebnis-Bündel (F4) |
 | 2026-10-31 | 1.0 | Bericht, Logbuch und Monats-Reflexion (F5) |
+| 2026-10-31 | 1.0 | Zeitplan auf dem Mac (F6) |

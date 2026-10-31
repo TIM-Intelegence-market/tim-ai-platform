@@ -16,7 +16,7 @@
     python -m src.research_lab.workshop reflect-month [--month 2026-10] [--write]
     python -m src.research_lab.workshop charter
 
-Reads and writes only the idea queue (default docs/research_lab/IDEEN.jsonl) and, for
+Reads and writes only the idea queue (default data/research/IDEEN.jsonl, on the Mac in ~/TIM-live) and, for
 ``draft``, one new pre-registration draft under docs/research_lab/studien/.
 """
 from __future__ import annotations

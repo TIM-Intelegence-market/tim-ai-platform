@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tim.research-workshop</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/tim/Documents/TIM/tim/.venv/bin/python</string>
+    <string>/Users/tim/Documents/TIM/tim/scripts/research_workshop_schedule.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>/Users/tim</string>
+    <key>PATH</key><string>/opt/homebrew/bin:/Users/tim/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONDONTWRITEBYTECODE</key><string>1</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>900</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>LowPriorityIO</key><true/>
+  <key>Nice</key><integer>15</integer>
+  <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim/data/research/schedule/launchd.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim/data/research/schedule/launchd.err.log</string>
+</dict>
+</plist>

@@ -125,7 +125,7 @@ def render(study_id: str, idea: Mapping[str, Any], spec: Mapping[str, Any], *, r
         f"| Studie | {study_id} |",
         f"| Version | **Entwurf 0.1 – wartet auf Uzis Freigabe (Forschungsbereich Stufe {charter.STAGE}); vorher werden keine Daten geladen** |",
         f"| Erzeugt | {created} Ortszeit vom Studien-Generator (`src/research_lab/workshop/generator.py`) |",
-        f"| Idee | {idea['id']} aus Quelle „{charter.SOURCES[idea['source']]}“ (`docs/research_lab/IDEEN.jsonl`) |",
+        f"| Idee | {idea['id']} aus Quelle „{charter.SOURCES[idea['source']]}“ (`data/research/IDEEN.jsonl` auf dem Mac) |",
         f"| Vorlage | {charter.TEMPLATES[template]} |",
         f"| Spezifikation | SHA-256 `{digest}` |",
         f"| Protokoll | `../PROTOKOLL.md` Version {PROTOCOL_VERSION} |",

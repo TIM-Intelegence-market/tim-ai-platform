@@ -60,7 +60,7 @@ def test_handshake_and_tool_list():
     assert init["result"]["serverInfo"]["name"] == SERVER_NAME
     listed = instance.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})
     names = [tool["name"] for tool in listed["result"]["tools"]]
-    assert names == [tool["name"] for tool in TOOLS] and len(names) == 8
+    assert names == [tool["name"] for tool in TOOLS] and len(names) == 9
 
 
 def test_tasks_not_configured():
