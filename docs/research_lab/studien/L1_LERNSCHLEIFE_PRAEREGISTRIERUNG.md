@@ -84,11 +84,11 @@ wird mit Version 1.0 festgelegt; vorher wird nichts eingetragen.
 
 1. Kleinster Effekt und Kalibrierungstoleranz (E4).
 2. Prospektiver Starttermin (frühestens, wenn S8 P3/P4 laufen).
-3. Einordnungssatz im Protokoll-Änderungsprotokoll (nach dem Merge des Forschungsbereichs F0, damit es dort
-   keinen Konflikt gibt).
+3. ~~Einordnungssatz im Protokoll-Änderungsprotokoll~~ erledigt am 31.10. (Protokoll 1.3, Eintrag „Lernschleife L1“).
 
 ## Änderungsprotokoll
 
 | Datum | Version | Änderung | Bis dahin gesehene Daten |
 |---|---|---|---|
 | 2026-10-31 | 0.1 | Entwurf: Frage, Einordnung, Sperren, feste Regeln (E1–E3, E5, E6), Lernregister L1 | keine; nur synthetische Testdaten |
+| 2026-10-31 | 0.1 | Einordnung im Protokoll-Änderungsprotokoll eingetragen (keine Regeländerung) | unverändert |
