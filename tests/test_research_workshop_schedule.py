@@ -98,9 +98,13 @@ def test_ki_answer_is_untrusted() -> None:
     good = {"title": "Funding-Extrem", "hypothesis": "Nach extremem Funding dreht BTC", "data": ["archive_usdm_klines"],
             "template": "ereignis_studie", "period": ["2021-01-01", "2024-12-31"], "counterargument": "Zu selten", "tags": ["x"]}
     raw = "```json\n" + json.dumps({"ideas": [good, {**good, "data": ["geheim"]}, {**good, "counterargument": ""},
-                                               {**good, "hypothesis": "x" * 500}, "Unsinn"]}) + "\n```"
-    parsed = parse_ki_answer(raw)
+                                               {**good, "hypothesis": "x" * 1600}, "Unsinn"]}) + "\n```"
+    dropped: list[str] = []
+    parsed = parse_ki_answer(raw, dropped)
     assert len(parsed) == 1 and parsed[0]["period"] == ("2021-01-01", "2024-12-31")
+    assert len(dropped) == 4 and "hypothesis" in dropped[2]
+    long_but_fine = {**good, "hypothesis": "y" * 700}  # a real answer on 31.10. was dropped at 400 characters
+    assert len(parse_ki_answer(json.dumps({"ideas": [long_but_fine]}))) == 1
     assert parse_ki_answer("keine JSON-Antwort") == []
 
 

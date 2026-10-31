@@ -44,7 +44,7 @@ MONTHLY_AT = (1, 3)                       # 1st of the month, 03:00 local
 MAX_DEFER_MINUTES = 180
 BUSY_PATTERNS = {"ci_test_job": r"Runner\.Worker"}
 TASKS = ("trades", "weekly", "monthly")
-TEXT_LIMIT = 400
+TEXT_LIMITS = {"title": 200, "hypothesis": 1500, "counterargument": 1500}
 
 Ask = Callable[[str], str]
 
@@ -116,27 +116,37 @@ def ki_prompt(queue: IdeaQueue, logbook: Iterable[Mapping[str, Any]], trade_patt
     )
 
 
-def parse_ki_answer(raw: str) -> list[dict[str, Any]]:
-    """Untrusted model output -> list of idea fields the queue accepts; anything malformed is dropped."""
+def parse_ki_answer(raw: str, dropped: list[str] | None = None) -> list[dict[str, Any]]:
+    """Untrusted model output -> list of idea fields the queue accepts; anything malformed is dropped.
+
+    Each dropped item's reason goes into ``dropped`` when a list is passed (kept in the round's file).
+    """
+    dropped = [] if dropped is None else dropped
     fenced = re.search(r"```(?:json)?\s*\n(.*?)\n```", raw, re.DOTALL)
     try:
         payload = json.loads(fenced.group(1) if fenced else raw)
     except (json.JSONDecodeError, TypeError):
+        dropped.append("Antwort ist kein JSON")
         return []
     items = payload.get("ideas") if isinstance(payload, dict) else None
     clean = []
-    for item in items if isinstance(items, list) else []:
+    for n, item in enumerate(items if isinstance(items, list) else [], 1):
         if not isinstance(item, dict):
+            dropped.append(f"Idee {n}: kein Objekt")
             continue
         text = {k: item.get(k) for k in ("title", "hypothesis", "counterargument")}
-        if not all(isinstance(v, str) and v.strip() and len(v) <= TEXT_LIMIT for v in text.values()):
+        bad = [k for k, v in text.items() if not (isinstance(v, str) and v.strip() and len(v) <= TEXT_LIMITS[k])]
+        if bad:
+            dropped.append(f"Idee {n}: {', '.join(bad)} fehlt oder ist zu lang")
             continue
         data = item.get("data")
         if not isinstance(data, list) or not data or not all(isinstance(d, str) and d in DATA_CATALOGUE for d in data):
+            dropped.append(f"Idee {n}: unbekannte oder fehlende Daten {data!r}"[:200])
             continue
         template = item.get("template")
         period = item.get("period")
         if period is not None and not (isinstance(period, list) and len(period) == 2 and all(isinstance(p, str) for p in period)):
+            dropped.append(f"Idee {n}: Zeitraum unlesbar")
             continue
         tags = [t for t in item.get("tags") or [] if isinstance(t, str) and len(t) <= 40][:6]
         clean.append({**text, "data": data, "template": template if template in charter.TEMPLATES else None,
@@ -219,7 +229,10 @@ class Workshop:
                 raw = self.ask(prompt)
             except Exception as exc:  # CLI missing, timeout: the round is skipped, not the week
                 raw, result["ki"] = "", f"Fehler: {type(exc).__name__}"[:200]
-            for n, idea in enumerate(parse_ki_answer(raw)[:slots], 1):
+            dropped: list[str] = []
+            parsed = parse_ki_answer(raw, dropped)
+            result["ki_rejected"].extend(dropped)
+            for n, idea in enumerate(parsed[:slots], 1):
                 try:
                     idea_id = queue.add(source="ki_runde", at=at, source_ref=f"ki:{week_key}:{n}", **idea)
                 except IdeaError as error:
