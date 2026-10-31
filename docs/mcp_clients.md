@@ -25,6 +25,9 @@ Optionale Variablen, nur ergänzen, wenn vorhanden (keine Zugangsdaten):
 - `TIM_OBSIDIAN_VAULT` bei `tim-graph`: Pfad zum Obsidian-Vault für Missions- und Notizkontext.
 - `TIM_OPS_TASK_DB` bei `tim-ops`: Pfad zur Task-Engine-SQLite. Ohne sie antworten die
   Task-Werkzeuge mit `not_configured`, die übrigen Werkzeuge laufen trotzdem.
+- `TIM_OPS_COVERAGE_DSN` bei `tim-ops`: Verbindung der Nur-Lese-Rolle `tim_ops_ro` für
+  `data_coverage`. Das Passwort gehört in `~/.pgpass`, nicht in die DSN und nicht in die
+  Client-Konfiguration (`docs/ops_mcp/README.md`).
 
 ## Codex
 

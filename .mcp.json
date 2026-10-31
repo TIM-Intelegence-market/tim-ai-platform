@@ -20,7 +20,8 @@
       ],
       "env": {
         "TIM_OPS_MCP_ROOT": "${TIM_OPS_MCP_ROOT:-.}",
-        "TIM_OPS_TASK_DB": "${TIM_OPS_TASK_DB:-}"
+        "TIM_OPS_TASK_DB": "${TIM_OPS_TASK_DB:-}",
+        "TIM_OPS_COVERAGE_DSN": "${TIM_OPS_COVERAGE_DSN:-}"
       }
     }
   }

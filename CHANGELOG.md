@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — BTC Research Engine V1.2: FOMC Event / Rate Decision Data Foundation
+
+- FOMC statements as the second external event family (`src/research_lab/external/fomc.py`):
+  the event is the statement's publication at the time stated in its "For release at" line
+  (New York, EST/EDT checked against the DST rule of that day); target range from the
+  decision sentences (dissents excluded), previous range, decision and change in bp;
+  scheduled, unscheduled and no-change statements.
+- Quality states `OK`, `EVENT_TIME_UNKNOWN`, `EVENT_TIME_INCONSISTENT`, `SOURCE_CONFLICT`,
+  `DOCUMENT_UPDATED`, `RANGE_UNKNOWN`, `MISSING_STATEMENT`; non-OK statements stay visible
+  but get no event time, decision or BTC windows. Holdout locked in window, parser, store
+  and replay. Deterministic `run_fomc_replay` with `dataset_id`/`content_hash`/`output_hash`.
+- Read-only download from www.federalreserve.gov only (`fomc_live.py`,
+  `scripts/research_lab_fomc_ingest.py`), same-host redirects recorded, yearly lists
+  2016–2024; real-data report and FRED cross-check in `fomc_verify.py`.
+- Tests: `tests/test_research_lab_external_fomc.py` (no network).
+
 ## Unreleased — Kerzen für DEFERRED-Zeiträume nachbauen (B5, Teil 1)
 
 - Neu: `src/data_ingestion/deferred_candles.py` und
