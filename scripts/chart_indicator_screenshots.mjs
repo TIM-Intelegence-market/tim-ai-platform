@@ -60,6 +60,8 @@ try {
     if (!(await input.count())) { rows.push({ layer, tf, present: false }); continue; }
     await page.click("button[data-action='none']");
     await input.check();
+    // The footprint only shows when zoomed in: the "Footprint" button zooms to the last candles.
+    if (layer === "fp") { await page.click("button[data-action='footprint']"); await page.waitForTimeout(900); }
     await page.waitForTimeout(900);
     const changedPixels = await page.evaluate(changed);
     const legend = await page.$$eval("#tc-live-legend *", nodes => nodes.map(n => n.textContent.trim()).filter(Boolean).slice(0, 12));

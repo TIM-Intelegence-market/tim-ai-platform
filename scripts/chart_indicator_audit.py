@@ -349,9 +349,8 @@ def check_extremes(raw: Raw) -> None:
                f"Chart {fmt(d['price'] if d else None)} / Binance {fmt(prev_month[key] if prev_month else None)}")
     for group in ("quarter", "year"):
         for d in raw.drawings("30m", group):
-            if d["name"] in ("High", "Low"):
-                start = d.get("start") or ""
-                report("Quartal/Jahr", f"{d['tf']} {d['name']}", None, f"{fmt(d['price'])} ({d.get('note', '')})")
+            report("Quartal/Jahr", f"{d['tf']} {d['name']}", None, f"{fmt(d['price'])} ({d.get('note', '')}; Profil aus Tageskerzen geschätzt, nicht nachgerechnet)"
+                   if d["name"] in ("VAH", "POC", "VAL") else f"{fmt(d['price'])} ({d.get('note', '')})")
 
 
 # ---- profiles from trades
