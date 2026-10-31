@@ -212,6 +212,7 @@ class PublicDashboardServer:
     def render_api(self, path: str, query: dict[str, str]) -> bytes:
         if path == "/api/chart/live":
             from src.dashboard.chart_live import build_live_chart
+            from src.dashboard.market_context import chart_context
 
             with self.state.lock:
                 footprint = dict(self.state.footprint)
@@ -224,7 +225,8 @@ class PublicDashboardServer:
             model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
                                      plan_journals=load_plan_journals(self.journal_paths()), gamma=gamma,
                                      liquidation=liquidation, perp=perp, open_interest=open_interest,
-                                     market=query.get("market"))
+                                     market=query.get("market"),
+                                     context=chart_context(query.get("symbol")))
             from src.dashboard.pages.chart import APP_VERSION
             from src.dashboard.public_en import english_chart_model
 
