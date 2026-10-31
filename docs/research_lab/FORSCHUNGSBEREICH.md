@@ -233,6 +233,49 @@ und ihre häufigsten Lehren, letzte Läufe des Zeitplans (mit Fehlern und Warten
 und den Schattenbetrieb. Nur lesen (`src/research_lab/workshop/overview.py`); eine kaputte Datei erscheint als
 Hinweis, nie als leerer gesunder Stand.
 
+## Regel-Anfrage (F10)
+
+Uzi beschreibt eine Regel in Worten, TIM testet sie ohne neuen Code (`src/research_lab/workshop/rules.py`,
+Schema `tim_rule/1`). Bausteine:
+
+| Teil | Bausteine |
+|---|---|
+| Markt | BTCUSDT, ETHUSDT, SOLUSDT (USD-M Perp), Zeitrahmen 15m, 30m, 1h, 4h, 1d (fehlende aus 5m zusammengesetzt) |
+| Einstieg | `sma_cross` {n}, `breakout` {n}, `prev_day_level` {high, low, close, poc, vah, val; retest oder break}, `vwap_cross` (Tages-VWAP) |
+| Filter | `hours` (Ortszeit Deutschland), `weekdays`, `trend` (mit SMA n) |
+| Stop | `atr` {k}, `signal_bar` (hinter dem Docht + Puffer in ATR), `percent` |
+| Ausstieg | Ziel in R und/oder Zeitstopp in Kerzen; Stop und Ziel in derselben Kerze zählen als Stop |
+
+POC/VAH/VAL des Vortags kommen aus den Kerzen (Volumen gleichmäßig über die Spanne jeder Kerze, 50 Stufen,
+Value Area 70 %): eine Näherung, kein echtes Volume Profile aus Einzeltrades. Alle Bausteine sehen nur
+geschlossene Kerzen; gekauft wird zur Eröffnung der nächsten Kerze (Engine aus R0–R4).
+
+Ablauf:
+
+1. **Übersetzen:** `rule-from-text --text "..."` fragt die Claude-CLI. Die Antwort gilt als nicht vertrauenswürdig;
+   nur eine Regel, die `validate` besteht, wird gespeichert (`data/research/rules/specs/`). Was sich nicht abbilden
+   lässt, steht im Feld `note` und wird angezeigt, nie stillschweigend weggelassen. Im Chat kann Claude die Regel
+   auch direkt als JSON schreiben.
+2. **Vorschau:** `rule-preview` zeigt die Regel in Worten, den Regel-Hash und die Mindestzahl der Trades.
+   Uzi sagt ja oder nein, bevor gerechnet wird.
+3. **Erkundung:** `rule-test` rechnet Training (2020–2022) und Validierung (2023–2024) mit Protokollkosten, mit
+   doppelten Kosten und gegen Zufallseinstiege: gleiche Filter-Zeiten, Stop-Abstände (in ATR) aus den eigenen
+   Signalen, gleiches Ziel und gleicher Zeitstopp. So misst der Vergleich nur den Einstiegszeitpunkt.
+   „Kandidat“ heißt: Mindestzahl Trades erreicht (Protokoll, Validierung die Hälfte), in beiden Abschnitten mehr
+   als 0,05 R je Trade, mit doppelten Kosten in der Validierung noch positiv und in beiden Abschnitten Zufall
+   p < 0,05. Die Erkundung belegt **keinen** Registerplatz und beweist nichts. Jede Erkundung steht mit Hash-Kette
+   in `data/research/rules/log.jsonl`, Bericht unter `data/research/rules/runs/R-nnnn/`. Die Anzeige nennt die Zahl
+   aller Versuche, denn bei 20 Versuchen ist ein zufällig guter zu erwarten.
+4. **Studie:** `rule-study --spec regel.json --run R-nnnn` legt die Idee an und schreibt die Generator-Spezifikation
+   (eine Variante, ein Registerplatz, Vorbelastung aus der Erkundung). Danach wie gehabt `check --record`,
+   `draft`, Uzis Freigabe, `submit -- scripts/research_lab_rule.py --spec ...`, `run`, `report`. Der Holdout bleibt
+   bis zu Uzis ausdrücklichem Wort zu; ein bestandener Holdout führt in den Schattenbetrieb (F7).
+
+Stand 31.10.: Das Holdout-Register hat m = 58 von 60. Für mehr als zwei neue Regel-Studien braucht es einen neuen
+Holdout-Zeitraum (Uzis Entscheidung); Erkundungen sind davon nicht betroffen.
+
+Die Archivdaten liegen auf dem Mac in einem Worktree (z. B. `--archive ~/Documents/TIM/worktrees/s4-zaehllauf/data/research_lab`).
+
 ## Nächste Pakete
 
 F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
@@ -249,3 +292,4 @@ F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
 | 2026-10-31 | 1.0 | Zeitplan auf dem Mac (F6) |
 | 2026-10-31 | 1.0 | Schattenbetrieb für Updates (F7) |
 | 2026-10-31 | 1.0 | Anzeige im Forschung-Bildschirm (F9) |
+| 2026-10-31 | 1.0 | Regel-Anfrage (F10): Regel aus Bausteinen, Erkundung ohne Registerplatz, Weg zur Studie |
