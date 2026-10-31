@@ -7,6 +7,7 @@ for BTC only: analysis card, plan view (SVG with zones, stop, targets) and table
 
 from __future__ import annotations
 
+import hashlib
 import math
 from datetime import datetime
 from typing import Any
@@ -25,6 +26,10 @@ CHART_SCRIPTS = {
     LIB_PATH: (_ASSETS / "vendor" / "lightweight-charts-4.2.3.standalone.production.js").read_bytes(),
     APP_PATH: (_ASSETS / "tim_chart.js").read_bytes(),
 }
+# Short content hash of the chart script: in the script tag (?v=, so a reload never runs a cached old
+# copy) and in every /api/chart/live answer (an open tab sees an update and reloads itself).
+APP_VERSION = hashlib.sha256(CHART_SCRIPTS[APP_PATH]).hexdigest()[:12]
+APP_SRC = f"{APP_PATH}?v={APP_VERSION}"
 # Same policy as every page, plus the two local script files above ('self'; nothing from outside).
 CHART_CSP = _content_security_policy().replace("script-src ", "script-src 'self' ", 1)
 
@@ -510,7 +515,7 @@ def _live_section(symbol: str, view: str) -> str:
         "solange der Kurs nur zurückläuft, bleibt die Fib auf dem Impuls): 1 = Start, 0 = Ende, Zonen 0,236 bis 1 plus 0,886/0,941 und 1,618. "
         "Zeiten in deiner Ortszeit. Nur Anzeige, keine Order. "
         "Chart: <a href='https://www.tradingview.com/' rel='noopener noreferrer'>TradingView Lightweight Charts</a> (Apache 2.0).</p>"
-        f"<script src='{LIB_PATH}'></script><script src='{APP_PATH}'></script></section>"
+        f"<script src='{LIB_PATH}'></script><script src='{APP_SRC}'></script></section>"
     )
 
 

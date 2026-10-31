@@ -6,6 +6,21 @@
   const root = document.getElementById('tc-live');
   if (!root || !window.LightweightCharts) return;
   const LWC = window.LightweightCharts;
+  // Version of this script as the page loaded it (?v= in the script tag). The API answer names the version
+  // the server runs now; a tab left open across an update reloads itself once, otherwise it keeps drawing
+  // with the old code for hours (Uzi 30.10.2026: no position boxes after the merge).
+  const SCRIPT_VERSION = (() => {
+    try { return new URL(document.currentScript.src).searchParams.get('v') || ''; } catch (error) { return ''; }
+  })();
+  function reloadOnNewVersion(version) {
+    if (!version || !SCRIPT_VERSION || version === SCRIPT_VERSION) return false;
+    try {
+      if (sessionStorage.getItem('tim-chart-reloaded') === version) return false;  // never a reload loop
+      sessionStorage.setItem('tim-chart-reloaded', version);
+    } catch (error) { return false; }
+    location.reload();
+    return true;
+  }
   const box = document.getElementById('tc-live-chart');
   const legend = document.getElementById('tc-live-legend');
   const status = document.getElementById('tc-live-status');
@@ -888,6 +903,7 @@
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const next = await response.json();
       if (ticket !== request) return;
+      if (reloadOnNewVersion(next.app_version)) return;
       const keep = first ? null : chart.timeScale().getVisibleLogicalRange();
       const sameView = model && model.symbol === next.symbol && model.timeframe === next.timeframe;
       model = next;

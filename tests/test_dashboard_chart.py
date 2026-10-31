@@ -166,7 +166,9 @@ def test_page_draws_svg_with_levels_and_keeps_csp() -> None:
     assert " style='" not in page  # nothing the CSP would have to allow
     assert page.count("<script>") == 1  # only the shared auto refresh inline
     # The interactive chart: two local script files, nothing from outside.
-    assert set(re.findall(r"<script src='([^']+)'>", page)) == {"/assets/chart/lightweight-charts-4.2.3.js", "/assets/chart/tim_chart.js"}
+    sources = set(re.findall(r"<script src='([^']+)'>", page))
+    assert {src.split("?")[0] for src in sources} == {"/assets/chart/lightweight-charts-4.2.3.js", "/assets/chart/tim_chart.js"}
+    assert all(src.startswith("/assets/chart/") for src in sources)
     assert "data-keep-view='chart'" in page and "id='tc-live'" in page
 
 

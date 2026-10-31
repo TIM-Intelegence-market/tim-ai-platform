@@ -140,6 +140,8 @@ class DashboardServer:
                         model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint,
                                                  plan_journals=load_plan_journals(plan_journal_paths(outer.state)), gamma=gamma,
                                                  liquidation=liquidation)
+                        from src.dashboard.pages.chart import APP_VERSION
+                        model["app_version"] = APP_VERSION
                     except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(model, default=str).encode(), "application/json")

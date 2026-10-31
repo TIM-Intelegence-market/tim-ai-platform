@@ -255,6 +255,8 @@ def test_public_chart_carries_tims_plans(server, tmp_path):
     assert [(p["id"], p["group"], p["label"]) for p in model["plans"]] == [("abc123def456", "plans_old", "Structure 30m")]
     plan = model["plans"][0]
     assert plan["fill_t"] <= plan["close_t"] and plan["net_r"] == -1.18 and plan["entry"] == 113000.0
+    from src.dashboard.pages.chart import APP_VERSION
+    assert model["app_version"] == APP_VERSION  # an open public tab reloads after an update
     assert model["groups"]["plans_mid"] == "TIM plans MID 1h" and "plans_mid" in model["default_groups"]
     assert "plans_old" in model["groups"] and "plans_old" not in model["default_groups"]  # test versions start hidden
     assert json.loads(_get(base + "/api/chart/live?symbol=ETHUSDT&tf=30m")[2])["plans"] == []
