@@ -1,4 +1,4 @@
-"""TIM OPS MCP server (#152 M3): line-delimited JSON-RPC 2.0 over stdio,
+"""TIM OPS MCP server (#152 M3, M3b): line-delimited JSON-RPC 2.0 over stdio,
 same conventions and argument validation as src/graph_mcp/mcp_server.py.
 Every tool is read-only; errors are structured results, never tracebacks."""
 from __future__ import annotations
@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from src.graph_mcp.mcp_server import PROTOCOL_VERSION, ToolError, _validate_arguments
 from src.ops_mcp import SCHEMA_VERSION, SERVER_NAME
+from src.ops_mcp.coverage import MAX_HOURS, SYMBOL, TIMEFRAMES, CoverageReader
 from src.ops_mcp.readers import MAX_LIMIT, ResearchReader, SourceError, TaskReader
 from src.task_engine.model import TaskState
 
@@ -40,6 +41,12 @@ TOOLS: list[dict[str, Any]] = [
      "inputSchema": _schema({}, [])},
     {"name": "research_report", "description": "Per-variant train/validation summary of one report",
      "inputSchema": _schema({"name": {"type": "string", "minLength": 1}, **_LIMIT}, ["name"])},
+    {"name": "data_coverage",
+     "description": "Candle coverage, missing ranges and open ingestion gaps (Postgres, read-only)",
+     "inputSchema": _schema({"symbol": {"type": "string", "minLength": 2},
+                             "timeframe": {"type": "string", "enum": list(TIMEFRAMES)},
+                             "hours": {"type": "integer", "minimum": 1, "maximum": MAX_HOURS},
+                             **_LIMIT}, [])},
 ]
 
 
@@ -50,9 +57,11 @@ def _default_health() -> dict:
 
 class OpsMcpServer:
     def __init__(self, tasks: TaskReader, research: ResearchReader,
-                 health: Callable[[], dict] = _default_health) -> None:
+                 health: Callable[[], dict] = _default_health,
+                 coverage: CoverageReader | None = None) -> None:
         self.tasks = tasks
         self.research = research
+        self.coverage = coverage or CoverageReader(None)
         self.health = health
         self._initialized = False
 
@@ -96,7 +105,9 @@ class OpsMcpServer:
         _validate_arguments(schema["inputSchema"], arguments)
         if name == "ops_health":
             payload = {"status": "ok", "read_only_tim": True, "schema_version": SCHEMA_VERSION,
-                       "task_store": "configured" if self.tasks.path else "not_configured"}
+                       "task_store": "configured" if self.tasks.path else "not_configured",
+                       "coverage_db": ("configured" if self.coverage.configured
+                                       else "not_configured")}
         elif name == "task_summary":
             payload = self.tasks.summary()
         elif name == "task_list":
@@ -110,6 +121,12 @@ class OpsMcpServer:
             payload = self.research.register()
         elif name == "research_reports":
             payload = self.research.reports()
+        elif name == "data_coverage":
+            symbol = arguments.get("symbol", "BTCUSDT")
+            if not SYMBOL.fullmatch(symbol):
+                raise ToolError("argument symbol must match [A-Z0-9]{2,20}")
+            payload = self.coverage.coverage(symbol, arguments.get("timeframe", "1m"),
+                                             arguments.get("hours", 24), arguments.get("limit"))
         else:
             payload = self.research.report(arguments["name"], arguments.get("limit"))
         return {"content": [{"type": "text",
@@ -142,7 +159,8 @@ class OpsMcpServer:
 def main() -> int:
     root = Path(os.environ.get("TIM_OPS_MCP_ROOT", ".")).resolve()
     task_db = os.environ.get("TIM_OPS_TASK_DB") or None
-    OpsMcpServer(TaskReader(Path(task_db) if task_db else None), ResearchReader(root)).serve()
+    OpsMcpServer(TaskReader(Path(task_db) if task_db else None), ResearchReader(root),
+                 coverage=CoverageReader(os.environ.get("TIM_OPS_COVERAGE_DSN"))).serve()
     return 0
 
 
