@@ -4,8 +4,8 @@ The agent wakes every 15 minutes and runs whatever is due:
 
 - ``trades``  hourly: reflect every newly closed paper trade of the plan journals and turn
   recurring loss patterns into ideas (source ``trade_reflexion``).
-- ``weekly``  once per week, from Sunday 02:00 local time: check all ideas (``check --record``)
-  and run the AI round (Claude Code CLI without tools, at most three ideas with a counterargument,
+- ``weekly``  once per week, from Sunday 02:00 local time: check all ideas (``check --record``),
+  run the self-improvement pass (F11: filters from trade lessons, watched 30 days) and run the AI round (Claude Code CLI without tools, at most three ideas with a counterargument,
   source ``ki_runde``). The answer is untrusted: every idea is validated and goes through the queue's
   own limits. No study is drafted, approved or run here (stage 1: Uzi approves each study).
 - ``monthly`` once per month, from the 1st 03:00 local time: monthly reflection of the previous month.
@@ -216,7 +216,8 @@ class Workshop:
         queue, logbook, at = self.queue(), self.logbook(), _iso(now)
         written = record(queue, check_ideas(queue, logbook, now=at), now=at)
         result: dict[str, Any] = {"checked": written, "ki_ideas": [], "ki_rejected": [],
-                                  "shadow_evaluated": self.evaluate_shadows(now)}
+                                  "shadow_evaluated": self.evaluate_shadows(now),
+                                  "self_improve": self.run_self_improve(now)}
         year, week, _ = now.isocalendar()
         week_key = f"{year}-W{week:02d}"
         used = sum(1 for i in queue.ideas().values() if i["source"] == "ki_runde"
@@ -249,6 +250,24 @@ class Workshop:
                                                                  **result}, ensure_ascii=False, indent=2) + "\n",
                                                      encoding="utf-8")
         return result
+
+    def journals(self) -> dict[str, Mapping[str, Any]]:
+        found = {}
+        for name in JOURNALS:
+            path = self.root / JOURNAL_DIR / f"{name}.json"
+            if path.exists():
+                found[name] = self.load_journal(path)
+        return found
+
+    def run_self_improve(self, now: datetime) -> dict[str, Any]:
+        """F11: filters from the trade lessons, look back, watch forward, judge once (changes nothing in TIM)."""
+        from src.research_lab.workshop import self_improve
+        try:
+            report = self_improve.step(self.journals(), self.reflections().records(),
+                                       self_improve.LearningLog(self.research / "self_improve/log.jsonl"), now)
+        except Exception as exc:  # a broken journal must not stop the weekly round
+            return {"error": f"{type(exc).__name__}: {exc}"[:200]}
+        return {key: value["status"] for key, value in report["filters"].items()}
 
     def evaluate_shadows(self, now: datetime) -> list[dict[str, Any]]:
         """F7: shadow candidates whose window has ended get their one evaluation; promoting stays Uzi's."""

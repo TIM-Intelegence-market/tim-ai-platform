@@ -33,7 +33,7 @@ def overview(root: Path | str = ".", now: datetime | None = None) -> dict[str, A
     result: dict[str, Any] = {"stage": charter.STAGE, "budget": charter.MONTHLY_STUDY_BUDGET, "month": month,
                               "notes": notes, "ideas": [], "idea_counts": {}, "drafts_this_month": 0,
                               "trades": None, "schedule": {}, "shadows": [], "last_reflection": None,
-                              "rule_tests": {"count": 0, "candidates": 0, "recent": []}}
+                              "rule_tests": {"count": 0, "candidates": 0, "recent": []}, "self_improve": None}
     try:
         ideas = list(IdeaQueue(research / "IDEEN.jsonl").ideas().values())
         result["idea_counts"] = dict(Counter(i["status"] for i in ideas))
@@ -87,6 +87,17 @@ def overview(root: Path | str = ".", now: datetime | None = None) -> dict[str, A
                                            for r in rows[-3:][::-1]]}
     except Exception as error:  # noqa: BLE001
         notes.append(f"Regel-Tests nicht lesbar: {type(error).__name__}")
+    try:
+        from src.dashboard.plan_journal import load_view
+        from src.research_lab.workshop import self_improve
+        from src.research_lab.workshop.schedule import JOURNALS
+        from src.research_lab.workshop.trade_reflection import ReflectionLog
+        journals = {name: load_view(Path(root) / "data/journal" / f"{name}.json") for name in JOURNALS
+                    if (Path(root) / "data/journal" / f"{name}.json").exists()}
+        result["self_improve"] = self_improve.status(journals, ReflectionLog(research / "trade_reflections.jsonl").records(),
+                                                     self_improve.LearningLog(research / "self_improve/log.jsonl"), now)
+    except Exception as error:  # noqa: BLE001
+        notes.append(f"Selbst-Verbesserung nicht lesbar: {type(error).__name__}")
     reports = sorted((research / "reports").glob("forschung_*.md")) if (research / "reports").is_dir() else []
     if reports:
         result["last_reflection"] = reports[-1].stem.removeprefix("forschung_")

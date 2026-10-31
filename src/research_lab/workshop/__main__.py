@@ -22,6 +22,7 @@
     python -m src.research_lab.workshop rule-test --spec regel.json [--archive DIR] [--random-runs 200]
     python -m src.research_lab.workshop rule-study --spec regel.json [--run R-0001]
     python -m src.research_lab.workshop rule-log
+    python -m src.research_lab.workshop learn [--write]
     python -m src.research_lab.workshop charter
 
 Reads and writes only the idea queue (default data/research/IDEEN.jsonl, on the Mac in ~/TIM-live) and, for
@@ -133,6 +134,9 @@ def main(argv: list[str] | None = None) -> int:
     rs.add_argument("--run", help="Erkundung, deren Ergebnis die Studie als Vorbelastung nennen muss")
     rs.add_argument("--out-dir", type=Path, default=Path("data/research/rules/studies"))
     sub.add_parser("rule-log", help="F10: alle Erkundungen")
+    ls = sub.add_parser("learn", help="F11: Selbst-Verbesserung aus den Trade-Lehren (Standard: nur anzeigen)")
+    ls.add_argument("--journal-dir", type=Path, default=Path("data/journal"))
+    ls.add_argument("--write", action="store_true", help="Beobachtungen starten und fällige Fenster auswerten")
     sub.add_parser("charter")
     args = parser.parse_args(argv)
     queue = IdeaQueue(args.queue)
@@ -236,6 +240,19 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{args.model_id}: Fenster {entry['window_start']} bis {entry['window_end']}")
             else:
                 print(json.dumps({"head": register.head(), "shadows": shadow.status(register)}, ensure_ascii=False, indent=2))
+        elif args.command == "learn":
+            from src.dashboard.plan_journal import load_view
+            from src.research_lab.workshop import self_improve
+            from src.research_lab.workshop.schedule import JOURNALS
+            from src.research_lab.workshop.trade_reflection import ReflectionLog
+            journals = {n: load_view(args.journal_dir / f"{n}.json") for n in JOURNALS if (args.journal_dir / f"{n}.json").exists()}
+            report = self_improve.step(journals, ReflectionLog().records(), self_improve.LearningLog(),
+                                       datetime.now(timezone.utc), write=args.write)
+            print(f"{report['trades']} abgeschlossene Trades, {report['reflected']} reflektiert")
+            for key, item in report["filters"].items():
+                look = item["lookback"]
+                print(f"{key:<15} {item['status']:<17} weg {look['dropped']:>3} Trades, {look['dropped_net_r']:+.2f} R "
+                      f"(Band {look['interval'][0]:+.2f} bis {look['interval'][1]:+.2f} R je Trade)  {item['text']}")
         elif args.command.startswith("rule-"):
             return _rule_command(args, queue)
         elif args.command == "charter":
