@@ -28,6 +28,9 @@ class DashboardState:
     gamma: dict[str, Any] = field(default_factory=dict)
     # Estimated liquidation heatmap per symbol from Binance's public futures data (src/dashboard/liquidation_data.py).
     liquidation: dict[str, Any] = field(default_factory=dict)
+    # BTC perp trades in the footprint store's shape, and hourly open interest with its Z-score (src/dashboard/perp_flow.py).
+    perp_flow: dict[str, Any] = field(default_factory=dict)
+    open_interest: dict[str, Any] = field(default_factory=dict)
     system_health: dict[str, Any] = field(default_factory=lambda: {
         "database": "unknown",
         "stream": "unknown",

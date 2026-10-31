@@ -315,3 +315,46 @@ def volume_bubbles(store: Mapping[str, Any] | None, times: Sequence[int], timefr
         items.append({"time": round(moment, 3), "bar": bar, "price": price, "quantity": quantity, "usd": round(usd, 2), "side": int(side)})
     return {"items": items, "min_usd": round(min(i["usd"] for i in items), 2), "max_usd": round(max(i["usd"] for i in items), 2),
             "floor_usd": store.get("bubble_min_usd", BUBBLE_MIN_USD), "note": None}
+
+
+def bar_deltas(store: Mapping[str, Any] | None, times: Sequence[int], timeframe_seconds: int) -> dict[int, float]:
+    """Taker delta (ask - bid) per shown candle from the stored buckets; candles without trades are left out."""
+    if not store or not store.get("days") or len(times) < 2:
+        return {}
+    bucket = int(store["bucket_seconds"])
+    if timeframe_seconds < bucket or timeframe_seconds % bucket:
+        return {}
+    first_time, last_time = times[0], times[-1] + timeframe_seconds
+    result: dict[int, float] = {}
+    for key in sorted(store["days"]):
+        for bucket_time, _, bid, ask in store["days"][key]:
+            if first_time <= bucket_time < last_time:
+                bar = times[max(0, bisect_right(times, bucket_time) - 1)]
+                result[bar] = result.get(bar, 0.0) + ask - bid
+    return result
+
+
+def cvd_lines(spot: Mapping[str, Any] | None, perp: Mapping[str, Any] | None, times: Sequence[int], timeframe_seconds: int) -> dict[str, Any]:
+    """Cumulative volume delta of spot and perp over the shown candles, both from the same start.
+
+    The lines start at the first candle that has trades in both records (perp collection may
+    begin later than spot), so the two curves compare the same stretch of time.
+    """
+    empty = {"spot": [], "perp": [], "start": None, "note": None}
+    spot_bars, perp_bars = bar_deltas(spot, times, timeframe_seconds), bar_deltas(perp, times, timeframe_seconds)
+    if not spot_bars and not perp_bars:
+        bucket = int((spot or perp or {}).get("bucket_seconds") or BUCKET_SECONDS)
+        return {**empty, "note": f"CVD ab {bucket // 60}m." if timeframe_seconds < bucket else None}
+    both = set(spot_bars) & set(perp_bars)
+    start = min(both) if both else min(set(spot_bars) | set(perp_bars))
+    lines: dict[str, list[list[float]]] = {}
+    for name, bars in (("spot", spot_bars), ("perp", perp_bars)):
+        total, points = 0.0, []
+        for bar in times:
+            if bar < start or (bar not in bars and not points):
+                continue
+            total += bars.get(bar, 0.0)
+            points.append([bar, round(total, 3)])
+        lines[name] = points
+    note = None if both else ("CVD nur Spot: noch keine Perp-Trades im Fenster." if spot_bars else "CVD nur Perp: keine Spot-Trades im Fenster.")
+    return {"spot": lines["spot"], "perp": lines["perp"], "start": start, "note": note}

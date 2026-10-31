@@ -82,13 +82,17 @@ GROUP_NAMES = {
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
     "liq": "Liquidations-Heatmap (Schätzung)",
+    "cvd": "CVD Spot vs. Perp", "oi": "Open Interest + Z-Score (7,5 T)",
 }
+# Footprint, volume profile, delta and bubbles from spot or perp trades (Beirat 29.10.2026, F5); levels stay on spot.
+MARKETS = {"spot": "Spot", "perp": "Perp"}
+DEFAULT_MARKET = "spot"
 TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
 DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
-                  "plans_short", "plans_mid", "plans_long", "gamma", "liq")
+                  "plans_short", "plans_mid", "plans_long", "gamma", "liq", "cvd", "oi")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
@@ -917,7 +921,9 @@ def plan_overlays(journals: Mapping[str, Sequence[Mapping[str, Any]]], times: Se
 def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
                      cache: KlineCache | None = None, now: datetime | None = None, footprint: Mapping[str, Any] | None = None,
                      plan_journals: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
-                     gamma: Mapping[str, Any] | None = None, liquidation: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                     gamma: Mapping[str, Any] | None = None, liquidation: Mapping[str, Any] | None = None,
+                     perp: Mapping[str, Any] | None = None, open_interest: Mapping[str, Any] | None = None,
+                     market: str | None = None) -> dict[str, Any]:
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
@@ -928,6 +934,10 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     levels (flip, walls, max pain, expected move) as group "gamma".
     ``liquidation`` is ``DashboardState.liquidation`` (estimate per symbol, liquidation_data.py):
     heat cells under model key ``liquidation`` and the strongest clusters as group "liq".
+    ``perp`` is ``DashboardState.perp_flow`` (perp_flow.py, same shape as ``footprint``) and
+    ``market`` ("spot" or "perp") picks which trades feed volume profile, footprint and bubbles;
+    the levels stay on spot. Both feed the CVD lines (group "cvd"). ``open_interest`` is
+    ``DashboardState.open_interest``: hourly open interest with its 7.5-day Z-score (group "oi").
     """
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     timeframe = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
@@ -936,7 +946,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model: dict[str, Any] = {"symbol": symbol, "name": SYMBOL_NAMES[symbol], "timeframe": timeframe, "symbols": list(SYMBOLS),
                              "timeframes": list(VIEW_TIMEFRAMES), "generated_at": now.isoformat(), "read_only": True,
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
-                             "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None}
+                             "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None,
+                             "markets": {"names": MARKETS, "active": DEFAULT_MARKET, "available": []}, "cvd": None, "oi": None}
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
     rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
@@ -982,6 +993,13 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         drawings += liq_items
         model["notes"].extend(liq_notes)
     times = [c["time"] for c in model["candles"]]
+    if open_interest and open_interest.get("symbol") == symbol:
+        from src.dashboard.perp_flow import oi_chart
+
+        model["oi"] = oi_chart(open_interest, times[0], now)
+        if model["oi"] and model["oi"]["stale"]:
+            model["notes"].append("Open Interest: Binance-Stand älter als 3 h, ausgeblendet.")
+            model["oi"] = None
     model["drawings"] = place_drawings(drawings, times)
     model["fib"] = fib_retracement(candles, timeframe)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
@@ -992,12 +1010,26 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         model["tpo"] = [p for p in tpo_profiles(level_source, now) if _epoch(p["end"]) > first_time]
         from src.dashboard.footprint_data import footprint_bars, volume_bubbles, volume_profiles
 
-        if footprint and footprint.get("symbol") == symbol and footprint.get("days"):
-            model["volume_profile"] = [p for p in volume_profiles(footprint, now) if _epoch(p["end"]) > first_time]
-            model["footprint"] = footprint_bars(footprint, times, INTERVAL_SECONDS[timeframe])
-            model["bubbles"] = volume_bubbles(footprint, times, INTERVAL_SECONDS[timeframe])
-            model["trade_source"] = footprint.get("source")
-            model["trades_updated_at"] = footprint.get("updated_at")
+        spot_trades = footprint if footprint and footprint.get("symbol") == symbol and footprint.get("days") else None
+        perp_trades = perp if perp and perp.get("symbol") == symbol and perp.get("days") else None
+        available = [key for key, store in (("spot", spot_trades), ("perp", perp_trades)) if store]
+        active = market if market in available else (available[0] if available else DEFAULT_MARKET)
+        model["markets"] = {"names": MARKETS, "active": active, "available": available}
+        if market == "perp" and active != "perp":
+            model["notes"].append("Perp-Trades noch nicht da (Sammler startet mit dem Vortag): Spot gezeigt.")
+        trades_shown = perp_trades if active == "perp" else spot_trades
+        if trades_shown:
+            model["volume_profile"] = [p for p in volume_profiles(trades_shown, now) if _epoch(p["end"]) > first_time]
+            model["footprint"] = footprint_bars(trades_shown, times, INTERVAL_SECONDS[timeframe])
+            model["bubbles"] = volume_bubbles(trades_shown, times, INTERVAL_SECONDS[timeframe])
+            model["trade_source"] = trades_shown.get("source")
+            model["trades_updated_at"] = trades_shown.get("updated_at")
+        if spot_trades or perp_trades:
+            from src.dashboard.footprint_data import cvd_lines
+
+            model["cvd"] = cvd_lines(spot_trades, perp_trades, times, INTERVAL_SECONDS[timeframe])
+        if perp_trades:
+            model["perp_health"] = perp_trades.get("health")
         elif footprint and footprint.get("days"):
             model["footprint"]["note"] = f"Volume Profile und Footprint aus echten Trades gibt es nur für {footprint.get('symbol')}: TIM sammelt nur dort Trades."
         else:

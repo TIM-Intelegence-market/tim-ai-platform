@@ -625,6 +625,13 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _perp_flow_loop(self) -> None:
+        # BTC perp trades (fromId, gapless, resumes after a restart) and open interest from Binance's public
+        # futures endpoints for the chart; display only, never on the ingestion path.
+        from src.dashboard.perp_flow import run as run_perp_flow
+
+        await run_perp_flow(self.dashboard_state, self.worker_stop, log=log)
+
     async def _derived_candles_loop(self) -> None:
         # 4h and 1d candles from persisted 1h candles; research data only, never on the ingestion path.
         while not self.worker_stop.is_set():
@@ -722,6 +729,7 @@ class TIMApplication:
         footprint_task = asyncio.create_task(self._footprint_loop(), name="tim-chart-footprint")
         gamma_task = asyncio.create_task(self._gamma_loop(), name="tim-options-gamma")
         liquidation_task = asyncio.create_task(self._liquidation_loop(), name="tim-liquidation-heatmap")
+        perp_task = asyncio.create_task(self._perp_flow_loop(), name="tim-perp-flow")
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
@@ -734,6 +742,7 @@ class TIMApplication:
             footprint_task.cancel()
             gamma_task.cancel()
             liquidation_task.cancel()
+            perp_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's

@@ -28,7 +28,7 @@ from src.dashboard.security import _require_loopback_host
 DEFAULT_PORT = 8780
 PAGES = ("/chart", "/journal", "/journal/trade")
 # Query keys a public page or API may pass on; everything else is dropped before rendering.
-QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/api/chart/live": ("symbol", "tf"), "/api/plan-journal": ("rule",)}
+QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/api/chart/live": ("symbol", "tf", "market"), "/api/plan-journal": ("rule",)}
 PAGE_TTL = 10.0        # seconds a rendered public page is reused
 API_TTL = 5.0          # seconds a data answer is reused
 RATE_PER_MINUTE = 120  # requests per client and minute
@@ -207,11 +207,14 @@ class PublicDashboardServer:
                 footprint = dict(self.state.footprint)
                 gamma = dict(self.state.gamma)
                 liquidation = dict(self.state.liquidation)
+                perp = dict(getattr(self.state, "perp_flow", None) or {})
+                open_interest = dict(getattr(self.state, "open_interest", None) or {})
             from src.dashboard.chart_live import load_plan_journals
 
             model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
                                      plan_journals=load_plan_journals(self.journal_paths()), gamma=gamma,
-                                     liquidation=liquidation)
+                                     liquidation=liquidation, perp=perp, open_interest=open_interest,
+                                     market=query.get("market"))
             from src.dashboard.pages.chart import APP_VERSION
             from src.dashboard.public_en import english_chart_model
 
