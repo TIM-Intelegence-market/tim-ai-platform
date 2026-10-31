@@ -134,6 +134,7 @@ def test_forschung_shows_the_workshop(tmp_path: Path, state) -> None:
     book.write_text(json.dumps({"entries": []}))
     empty = forschung_body(state, book, tmp_path)
     assert "Forschungswerkstatt" in empty and "Keine offenen Ideen" in empty and "Kein Kandidat" in empty
+    assert "Noch keine Regel getestet" in empty
     research = tmp_path / "data/research"
     queue = IdeaQueue(research / "IDEEN.jsonl")
     queue.add(source="uzi", title="Funding <Extrem>", hypothesis="Nach extremem Funding dreht BTC", data=["archive_usdm_klines"])
@@ -147,7 +148,12 @@ def test_forschung_shows_the_workshop(tmp_path: Path, state) -> None:
     now = datetime.now(timezone.utc).replace(microsecond=0)
     shadow.start(ModelRegister(tmp_path / shadow.REGISTER_PATH), "S12", model_id="S12-v1", variant_hash="h", code_commit="c",
                  study_version="v", cost_rule="k", min_trades=30, min_effect=0.05, horizon_minutes=60, at=now)
+    from src.research_lab.workshop import rules
+    rules.ExplorationLog(tmp_path / rules.LOG_PATH).append(
+        {"title": "POC <Retest>"}, {"status": "failed", "result": "kein Vorteil"}, at="2026-10-31T18:00:00Z",
+        requested_by="uzi", data_hash=None)
     body = forschung_body(state, book, tmp_path)
+    assert "R-0001" in body and "POC &lt;Retest&gt;" in body and "1 Regeln erkundet, 0 Kandidaten" in body
     assert "Funding &lt;Extrem&gt;" in body and "<Extrem>" not in body  # escaped
     assert "Kosten haben den Gewinn aufgefressen" in body and "S12-v1" in body
     assert "31.10. 16:44" in body and "Fehler" in body and "noch nie" in body

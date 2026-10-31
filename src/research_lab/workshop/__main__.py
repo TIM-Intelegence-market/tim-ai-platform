@@ -17,6 +17,11 @@
     python -m src.research_lab.workshop shadow-start --study S12 --model-id S12-v1 --variant-hash H --code-commit C \\
                                                      --study-version S12/1.0 --cost-rule kosten/1 --min-trades 30 --min-effect 0.05
     python -m src.research_lab.workshop shadow-status
+    python -m src.research_lab.workshop rule-from-text --text "Long am Vortages-POC-Retest, Stop unter dem Docht, Ziel 2R"
+    python -m src.research_lab.workshop rule-preview --spec regel.json
+    python -m src.research_lab.workshop rule-test --spec regel.json [--archive DIR] [--random-runs 200]
+    python -m src.research_lab.workshop rule-study --spec regel.json [--run R-0001]
+    python -m src.research_lab.workshop rule-log
     python -m src.research_lab.workshop charter
 
 Reads and writes only the idea queue (default data/research/IDEEN.jsonl, on the Mac in ~/TIM-live) and, for
@@ -112,6 +117,22 @@ def main(argv: list[str] | None = None) -> int:
     sh.add_argument("--min-effect", type=float, required=True)
     sh.add_argument("--horizon-minutes", type=int, default=1440)
     sub.add_parser("shadow-status", help="F7: Stand aller Schatten-Kandidaten (nur lesen)")
+    rt = sub.add_parser("rule-from-text", help="F10: Regel in Worten über die Claude-CLI in tim_rule/1 übersetzen")
+    rt.add_argument("--text", required=True)
+    rt.add_argument("--save-dir", type=Path, default=Path("data/research/rules/specs"))
+    rv = sub.add_parser("rule-preview", help="F10: Regel prüfen und in Worten zeigen (nichts wird gerechnet)")
+    rv.add_argument("--spec", required=True, type=Path)
+    rx = sub.add_parser("rule-test", help="F10: Erkundung auf Training und Validierung (kein Registerplatz)")
+    rx.add_argument("--spec", required=True, type=Path)
+    rx.add_argument("--archive", type=Path, default=Path("data/research_lab"))
+    rx.add_argument("--random-runs", type=int, default=200)
+    rx.add_argument("--seed", type=int, default=0)
+    rx.add_argument("--by", default="uzi", help="wer die Erkundung angefragt hat")
+    rs = sub.add_parser("rule-study", help="F10: Regel als Idee und Generator-Spezifikation für eine echte Studie")
+    rs.add_argument("--spec", required=True, type=Path)
+    rs.add_argument("--run", help="Erkundung, deren Ergebnis die Studie als Vorbelastung nennen muss")
+    rs.add_argument("--out-dir", type=Path, default=Path("data/research/rules/studies"))
+    sub.add_parser("rule-log", help="F10: alle Erkundungen")
     sub.add_parser("charter")
     args = parser.parse_args(argv)
     queue = IdeaQueue(args.queue)
@@ -215,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{args.model_id}: Fenster {entry['window_start']} bis {entry['window_end']}")
             else:
                 print(json.dumps({"head": register.head(), "shadows": shadow.status(register)}, ensure_ascii=False, indent=2))
+        elif args.command.startswith("rule-"):
+            return _rule_command(args, queue)
         elif args.command == "charter":
             print(f"{charter.CHARTER_VERSION}, Stufe {charter.STAGE}, Budget {charter.MONTHLY_STUDY_BUDGET} Studien/Monat")
             for line in charter.FIXED_LIMITS:
@@ -222,6 +245,71 @@ def main(argv: list[str] | None = None) -> int:
     except (IdeaError, DraftError, ValueError) as error:  # LearningError and ShadowError are ValueErrors
         print(f"Fehler: {error}", file=sys.stderr)
         return 2
+    return 0
+
+
+def _ask_claude(prompt: str) -> str:
+    from src.local_first.claude_cli_fallback import advise_text
+    return advise_text(prompt, timeout=180)
+
+
+def _rule_command(args: argparse.Namespace, queue: IdeaQueue, ask=None) -> int:
+    from src.research_lab.workshop import rules
+    if args.command == "rule-log":
+        rows = rules.ExplorationLog().records()
+        for row in rows:
+            print(f"{row['run']}  {row['at']}  {row['status']:<12}  {row['title']}")
+        print(rules.exploration_note(rows))
+        return 0
+    if args.command == "rule-from-text":
+        rule = rules.parse_translation((ask or _ask_claude)(rules.translate_prompt(args.text)))
+        args.save_dir.mkdir(parents=True, exist_ok=True)
+        path = args.save_dir / f"{rules.rule_hash(rule)[:12]}.json"
+        path.write_text(json.dumps(rule, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(rules.describe(rule))
+        if rule.get("note"):
+            print(f"Nicht abbildbar: {rule['note']}")
+        print(f"\nGespeichert: {path} (noch nichts gerechnet)")
+        return 0
+    rule = json.loads(args.spec.read_text(encoding="utf-8"))
+    problems = rules.validate(rule)
+    if problems:
+        print("Regel ungültig:\n- " + "\n- ".join(problems), file=sys.stderr)
+        return 2
+    if args.command == "rule-preview":
+        print(rules.describe(rule))
+        print(f"\nRegel-Hash {rules.rule_hash(rule)}. Mindestens {rules.min_cases(rule)['train']} Trades im Training, "
+              f"{rules.min_cases(rule)['validation']} in der Validierung.")
+        print(rules.exploration_note(rules.ExplorationLog().records()))
+        return 0
+    if args.command == "rule-test":
+        from src.research_lab.data.store import ArchiveStore
+        try:
+            entry, path = rules.explore(rule, store=ArchiveStore(args.archive), log=rules.ExplorationLog(),
+                                        runs_dir=rules.RUNS_DIR, at=_now(), requested_by=args.by,
+                                        random_runs=args.random_runs, seed=args.seed)
+        except FileNotFoundError as error:
+            print(f"Fehler: Archivdaten fehlen unter {args.archive} ({error}); --archive auf den Archiv-Ordner setzen",
+                  file=sys.stderr)
+            return 2
+        print(f"{entry['run']}: {entry['result']}\nBericht: {path}")
+        return 0
+    if args.run and args.run not in {row["run"] for row in rules.ExplorationLog().records()}:
+        print(f"Fehler: Erkundung {args.run} steht nicht im Erkundungs-Log", file=sys.stderr)
+        return 2
+    spec = rules.study_spec(rule, exploration=args.run)
+    idea_id = queue.add(source="uzi", title=rule["title"], hypothesis=spec["question"], data=["archive_usdm_klines"],
+                        tags=["regel-anfrage", rule["entry"]["type"], rule["timeframe"]], template="regel_backtest",
+                        period=tuple(spec["period"]), counterargument="Kerzenregel; viele ähnliche Regeln sind schon gescheitert.",
+                        source_ref=f"rule:{rules.rule_hash(rule)}")
+    if not idea_id:
+        print("Diese Regel steht schon in der Ideen-Liste", file=sys.stderr)
+        return 2
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    path = args.out_dir / f"{idea_id}.json"
+    path.write_text(json.dumps(spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"{idea_id} angelegt, Spezifikation {path}. Weiter: `check --record`, dann `draft --idea {idea_id} --spec {path}` "
+          "(belegt 1 Registerplatz und 1 Platz im Monatsbudget; Uzi gibt den Entwurf frei).")
     return 0
 
 
