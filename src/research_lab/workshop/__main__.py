@@ -7,6 +7,11 @@
     python -m src.research_lab.workshop import --journal-review FILE | --reflection FILE
     python -m src.research_lab.workshop draft --idea I-0001 --spec spec.json [--dry-run]
     python -m src.research_lab.workshop reflect-trades --journal ~/TIM-live/data/journal/tim_plan_journal.json [--dry-run] [--ideas]
+    python -m src.research_lab.workshop approve --study S12 --reference "Uzi 31.10. 16:00 im Thread" [--register]
+    python -m src.research_lab.workshop submit --study S12 [--host mac|server] [--input DIR] -- scripts/research_lab_s12.py --count
+    python -m src.research_lab.workshop run (--job J-0001 | --pending) [--ssh tim-research@host --remote-dir DIR]
+    python -m src.research_lab.workshop verify --bundle data/research/bundles/J-0001
+    python -m src.research_lab.workshop jobs
     python -m src.research_lab.workshop charter
 
 Reads and writes only the idea queue (default docs/research_lab/IDEEN.jsonl) and, for
@@ -65,6 +70,24 @@ def main(argv: list[str] | None = None) -> int:
     trades.add_argument("--log", type=Path, default=Path("data/research/trade_reflections.jsonl"))
     trades.add_argument("--dry-run", action="store_true")
     trades.add_argument("--ideas", action="store_true", help="wiederkehrende Muster als Ideen eintragen")
+    ok = sub.add_parser("approve", help="Uzis Freigabe einer Studie festhalten")
+    ok.add_argument("--study", required=True)
+    ok.add_argument("--reference", required=True)
+    ok.add_argument("--register", action="store_true")
+    sm = sub.add_parser("submit")
+    sm.add_argument("--study", required=True)
+    sm.add_argument("--host", default="mac", choices=["mac", "server"])
+    sm.add_argument("--input", action="append", default=[])
+    sm.add_argument("job_command", nargs=argparse.REMAINDER)
+    rn = sub.add_parser("run")
+    which = rn.add_mutually_exclusive_group(required=True)
+    which.add_argument("--job")
+    which.add_argument("--pending", action="store_true")
+    rn.add_argument("--ssh", help="Rechenhost, z. B. tim-research@tim-core-01")
+    rn.add_argument("--remote-dir")
+    vf = sub.add_parser("verify")
+    vf.add_argument("--bundle", required=True, type=Path)
+    sub.add_parser("jobs")
     sub.add_parser("charter")
     args = parser.parse_args(argv)
     queue = IdeaQueue(args.queue)
@@ -118,11 +141,32 @@ def main(argv: list[str] | None = None) -> int:
                 if args.ideas:
                     added = propose_ideas(log.records(), queue)
                     print("Neue Ideen: " + (" ".join(added) if added else "keine"))
+        elif args.command in {"approve", "submit", "run", "verify", "jobs"}:
+            from src.research_lab.workshop import runner
+            jobs = runner.JobQueue()
+            if args.command == "approve":
+                jobs.approve(args.study, by="uzi", reference=args.reference, register=args.register)
+                print(f"{args.study} freigegeben")
+            elif args.command == "submit":
+                command = [c for c in args.job_command if c != "--"]
+                print(jobs.submit(args.study, command, host=args.host, inputs=args.input))
+            elif args.command == "run":
+                targets = [args.job] if args.job else [j["job"] for j in jobs.pending("server" if args.ssh else "mac")]
+                executor = runner.ssh_executor(args.ssh, args.remote_dir) if args.ssh else None
+                for job_id in targets:
+                    manifest = runner.run_job(jobs, job_id, executor=executor)
+                    print(f"{job_id}: Exit {manifest['exit_code']}, Inhalt {manifest['content_hash'][:16]}")
+            elif args.command == "verify":
+                manifest = runner.verify_bundle(args.bundle)
+                print(f"{manifest['job']} geprüft, Inhalt {manifest['content_hash']}")
+            else:
+                for job in jobs.jobs().values():
+                    print(f"{job['job']}  {job['study']}  {job['host']}  {job['status']}  {' '.join(job['command'])}")
         elif args.command == "charter":
             print(f"{charter.CHARTER_VERSION}, Stufe {charter.STAGE}, Budget {charter.MONTHLY_STUDY_BUDGET} Studien/Monat")
             for line in charter.FIXED_LIMITS:
                 print(f"- {line}")
-    except (IdeaError, DraftError) as error:
+    except (IdeaError, DraftError, ValueError) as error:
         print(f"Fehler: {error}", file=sys.stderr)
         return 2
     return 0
