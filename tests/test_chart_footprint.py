@@ -202,6 +202,19 @@ def test_footprint_bars_mark_stacked_imbalances_and_auction_edges() -> None:
     assert short["bars"][0]["stacked"] == []
 
 
+def test_footprint_imbalance_compares_with_the_row_one_step_away_even_when_empty() -> None:
+    start = int(DAY.timestamp())
+    # 100 bid 4, 105 nothing traded, 110 ask 3 / bid 1, 115 ask 1: the row below 110 is empty (zero bid),
+    # so 110's ask is an imbalance; the populated row two steps down (bid 4) must not be used.
+    levels = [(100.0, 4.0, 0.5), (110.0, 1.0, 3.0), (115.0, 0.1, 1.0)]
+    result = footprint_bars(_store({start: levels, start + 300: levels}), [start, start + 300], 300)
+    assert result["step"] == 5.0
+    bar = result["bars"][0]
+    assert [110.0, "ask"] in bar["imbalances"]
+    # 100's bid against the empty row 105 (zero ask) counts as well; the highest row has nothing above.
+    assert [100.0, "bid"] in bar["imbalances"] and [115.0, "bid"] not in bar["imbalances"]
+
+
 def test_footprint_rows_stay_fine_enough_for_zooming() -> None:
     start = int(DAY.timestamp())
     # A 300 USD range per bar: about 30 rows are sent (the chart merges them when zoomed out).

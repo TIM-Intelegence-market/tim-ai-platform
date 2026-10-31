@@ -120,3 +120,22 @@ def test_untouched_tpo_poc_is_marked_as_tpoc() -> None:
     assert "tPOC 25.10." in tpocs and 90000.0 <= tpocs["tPOC 25.10."]["price"] <= 90400.0
     assert "Zeit" in tpocs["tPOC 25.10."]["note"]
     assert "tPOC 26.10." not in tpocs  # its POC was traded the next day
+
+
+def test_tpoc_reaches_back_as_far_as_the_longer_30m_history() -> None:
+    # The runtime keeps about ten days of 30m candles; a day older than that (here 17.10., untouched)
+    # only gets its tPOC when the chart passes the longer Binance 30m history (Prüfung 31.10.2026).
+    old = date(2026, 10, 17)
+    recent = []
+    for offset in range(6, 0, -1):
+        recent += _half_hours(NOW.date() - timedelta(days=offset), 80000.0, 81000.0)
+    longer = []
+    day = old
+    while day < NOW.date():
+        longer += _half_hours(day, 95000.0, 95400.0) if day == old else _half_hours(day, 80000.0, 81000.0)
+        day += timedelta(days=1)
+    short = trade_levels(ESTIMATE, _store(), {"30m": recent}, NOW)
+    assert not any(d["name"] == "tPOC 17.10." for d in short)
+    full = trade_levels(ESTIMATE, _store(), {"30m": recent}, NOW, {"30m": longer})
+    tpoc = next(d for d in full if d["name"] == "tPOC 17.10.")
+    assert 95000.0 <= tpoc["price"] <= 95400.0

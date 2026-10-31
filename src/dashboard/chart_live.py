@@ -88,6 +88,7 @@ GROUP_NAMES = {
 MARKETS = {"spot": "Spot", "perp": "Perp"}
 DEFAULT_MARKET = "spot"
 TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
+DAYS_KEPT_TPO = 14  # days the naked tPOC check looks back (same as the trade store, footprint_data.DAYS_KEPT)
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
@@ -203,7 +204,8 @@ def _short_day(day: date) -> str:
 
 
 def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
-                   trades: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+                   trades: Mapping[str, Any] | None = None,
+                   tpo_series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None) -> list[dict[str, Any]]:
     """Every reference level with timeframe, name and the moment it formed.
 
     Uses the session map (same rules as /prep and the level plans) and adds
@@ -282,7 +284,7 @@ def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datet
         add("ib", "", "IB High", ib["high"], today, "Initial Balance (90 min ab 00:00 UTC)")
         add("ib", "", "IB Low", ib["low"], today, "Initial Balance (90 min ab 00:00 UTC)")
     if trades and trades.get("days"):
-        out = trade_levels(out, trades, series, now)
+        out = trade_levels(out, trades, series, now, tpo_series)
     return out
 
 
@@ -306,7 +308,7 @@ def _week_rows(store: Mapping[str, Any], monday: date, last: date) -> list[list[
 
 
 def trade_levels(drawings: Sequence[Mapping[str, Any]], store: Mapping[str, Any], series: Mapping[str, Sequence[Mapping[str, Any]]],
-                 now: datetime) -> list[dict[str, Any]]:
+                 now: datetime, tpo_series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None) -> list[dict[str, Any]]:
     """Value levels and naked POCs from TIM's own trades instead of the candle estimate (Beirat 29.10.2026).
 
     For every day the store covers: previous day VAH/POC/VAL, previous week value (when all
@@ -368,10 +370,13 @@ def trade_levels(drawings: Sequence[Mapping[str, Any]], store: Mapping[str, Any]
         if not inside & later:
             day = date.fromisoformat(key)
             add("naked", "1D", f"nPOC {_short_day(day)}", profile["poc_mid"], _day_start(day), f"unberührter Volumen-POC (vPOC), {TRADE_NOTE}")
-    # Naked tPOCs: no later closed candle inside the TPO POC row.
-    base_tf = "30m" if series.get("30m") else "15m"
-    candles = [c for c in clean_candles(series.get(base_tf) or [], base_tf) if c["close_time"] <= now]
-    for profile in tpo_profiles(series, now, days=14):
+    # Naked tPOCs: no later closed candle inside the TPO POC row. ``tpo_series`` (longer 30m history) lets
+    # the check reach as far back as the trades: the runtime keeps ~10 days of 30m candles, so older days
+    # (complete in the store) silently lost their tPOC (Prüfung 31.10.2026: tPOC 21.10. missing).
+    time_series = tpo_series if tpo_series and tpo_series.get("30m") else series
+    base_tf = "30m" if time_series.get("30m") else "15m"
+    candles = [c for c in clean_candles(time_series.get(base_tf) or [], base_tf) if c["close_time"] <= now]
+    for profile in tpo_profiles(time_series, now, days=DAYS_KEPT_TPO):
         if profile["running"] or profile["day"] == yesterday or profile["periods"] < 44:
             continue
         end = datetime.fromisoformat(profile["end"])
@@ -973,7 +978,13 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model["notes"].extend(notes)
     model["level_source"] = source_name
     trades = footprint if footprint and footprint.get("symbol") == symbol and footprint.get("days") else None
-    drawings = level_drawings(level_source, now, trades)
+    tpo_series = None
+    if trades:
+        # Longer 30m history for the naked tPOC check than the runtime keeps (same Binance candles, cached).
+        longer, _ = cache.get(symbol, "30m", VIEW_LIMIT)
+        if len(longer) > len(level_source.get("30m") or []):
+            tpo_series = {"30m": longer}
+    drawings = level_drawings(level_source, now, trades, tpo_series)
     if INTERVAL_SECONDS[timeframe] >= 86400:
         drawings = [d for d in drawings if d["group"] not in INTRADAY_ONLY]
     drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe)

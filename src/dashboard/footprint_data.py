@@ -199,17 +199,22 @@ def volume_profiles(store: Mapping[str, Any] | None, now: datetime, bins: int = 
     return result
 
 
-def _imbalances(prices: Sequence[float], grouped: Mapping[float, Sequence[float]]) -> list[list[Any]]:
-    """Diagonal imbalances (F1): ask at a level against bid one level below, bid against ask one level above.
+def _imbalances(prices: Sequence[float], grouped: Mapping[float, Sequence[float]], step: float) -> list[list[Any]]:
+    """Diagonal imbalances (F1): ask at a level against bid one step below, bid against ask one step above.
 
-    A zero on the opposite side counts, as in orderflow_scenario.footprint and common footprint tools.
+    The neighbour is the row one price step away, also when nothing traded there: an empty row counts
+    as zero, as in orderflow_scenario.footprint and common footprint tools. Comparing with the next row
+    that has trades instead would skip the gap and measure against a row two or more steps away.
     """
     found: list[list[Any]] = []
-    for index, price in enumerate(prices):
+    empty = (0.0, 0.0)
+    for price in prices:
         bid, ask = grouped[price]
-        if index > 0 and ask > 0 and ask >= IMBALANCE_RATIO * grouped[prices[index - 1]][0]:
+        below = grouped.get(round(price - step, 8), empty)
+        above = grouped.get(round(price + step, 8), empty)
+        if price != prices[0] and ask > 0 and ask >= IMBALANCE_RATIO * below[0]:
             found.append([price, "ask"])
-        if index + 1 < len(prices) and bid > 0 and bid >= IMBALANCE_RATIO * grouped[prices[index + 1]][1]:
+        if price != prices[-1] and bid > 0 and bid >= IMBALANCE_RATIO * above[1]:
             found.append([price, "bid"])
     return found
 
@@ -277,7 +282,7 @@ def footprint_bars(store: Mapping[str, Any] | None, times: Sequence[int], timefr
             cell[1] += ask
         prices = sorted(grouped)
         levels = [[p, round(grouped[p][0], 4), round(grouped[p][1], 4)] for p in prices]
-        imbalances = _imbalances(prices, grouped)
+        imbalances = _imbalances(prices, grouped, step)
         total_bid = sum(v[0] for v in grouped.values())
         total_ask = sum(v[1] for v in grouped.values())
         poc = max(prices, key=lambda p: (grouped[p][0] + grouped[p][1], -p))
