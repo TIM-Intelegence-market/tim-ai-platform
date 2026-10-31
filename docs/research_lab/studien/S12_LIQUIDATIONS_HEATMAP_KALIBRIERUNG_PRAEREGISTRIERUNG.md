@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S12 (S11 ist laut Logbuch vergeben: von Uzi am 28.10. abgelehnte Variante ohne Filter) |
-| Version | **0.3 – ENTWURF.** Noch kein Sammler, keine Daten, kein Ergebnis |
+| Version | **0.4 – ENTWURF.** Sammler gebaut (L1–L3), noch nicht gestartet, keine Daten, kein Ergebnis |
 | Anlass | Uzi 31.10.2026 („go“ auf die Empfehlung N1). Grundlage: Auswertung des Berichts „Orderflow verstehen und prüfen“ (Deep Research, 28.10.2026), `/mnt/project-files/analysen/orderflow-research-2026-10-28/bewertung.md` |
 | Protokoll | `../PROTOKOLL.md`; eigene **prospektive** Familie wie S8 und L1 (kein Archiv, kein Holdout berührt) |
 | Art | Kalibrierung eines Anzeigemodells. **Keine Handelsregel, kein Signal, kein Echtgeld** |
@@ -68,17 +68,24 @@ Viermal am Tag, zu den Fensteranfängen t ∈ {00:00, 06:00, 12:00, 18:00 UTC}, 
 OI-Historie und Kerzen genau wie `liquidation_data.fetch_heatmap` (BTCUSDT, 30 min, 500 Perioden) und speichert die
 **rohen Antworten**. Vor dem Rechnen werden Kerzen mit Eröffnung > t − 1800 s (die laufende) und OI-Stände mit
 Zeitstempel > t verworfen. Liegen OI-Zeitstempel nicht auf Kerzen-Eröffnungszeiten, ist der Stand ungültig (gezählt,
-nicht repariert). Gespeichert werden Rohantworten, Ergebnis von `build_heatmap`, `input_hash` und Code-Commit. So lässt sich
+nicht repariert). Scheitert der Abruf, wird jede Minute neu versucht; ein Stand, der später als t + 15 min geholt
+wurde, ist ungültig (der Mac kann schlafen oder offline sein). Gespeichert werden Rohantworten, Ergebnis von `build_heatmap`, `input_hash` und Code-Commit. So lässt sich
 jeder Stand später exakt nachrechnen (Binance hält die OI-Historie nur 30 Tage).
 
 ### 3.3 Ablage und Qualität
 
-- Tagesdateien (UTC), append-only, gzip, mit Tagesmanifest (Zeilen, Prüfsumme, Verbindungen, Lücken) unter
+- Tagesdateien (UTC), append-only, eine Zeile je Eintrag (unkomprimiert, damit ein Absturz höchstens eine Zeile
+  kostet), mit Tagesmanifest (Zeilen, Prüfsumme, Verbindungen, Lücken, defekte Zeilen) unter
   `data/research_lab/liquidations/` auf dem Mac. Nicht in der Runtime-Datenbank, solange S12 Labor ist.
 - Je Nachricht: Rohtext unverändert, `receive_ns`, `session_id`, `payload_sha256`.
-- Binance-forceOrder hat keine Sequenznummer. Lücken sind deshalb **Verbindungslücken**: jede Trennung und jeder
-  Neuaufbau wird als `gap`-Eintrag mit Beginn und Ende geschrieben. Ein Feed ohne Nachricht ist **kein** Wert null,
-  sondern nur dann null, wenn die Verbindung nachweislich stand (Ping/Pong-Protokoll je Minute).
+- Binance-forceOrder hat keine Sequenznummer. Lücken sind deshalb **Verbindungslücken**: jede Verbindung schreibt
+  `connect` und `disconnect` (mit Grund), ein gescheiterter Versuch `connect_failed`; das Tagesmanifest listet die
+  Lücken mit Beginn und Ende. Ein Feed ohne Nachricht ist **kein** Wert null, sondern nur dann null, wenn die
+  Verbindung nachweislich stand.
+- „Verbunden“ heißt: Jede Minute geht ein Websocket-Ping hinaus; nur wenn das Pong binnen 10 s kommt, wird `alive`
+  geschrieben, sonst endet die Verbindung. Zwischen zwei Lebenszeichen derselben Verbindung (jede Nachricht und jedes
+  `alive`) dürfen höchstens 75 s liegen. Längere Pausen und alles nach einem `disconnect` zählen als Lücke. Lehnt
+  Bybit das Abo ab, endet die Verbindung ebenfalls.
 - Ein Fenster ist **gültig**, wenn der primäre Feed ≥ 99 % der 6 Stunden verbunden war, der Heatmap-Stand vollständig
   ist (`periods_with_oi` ≥ 450 und in beiden Modellen je Seite ≥ 10 aktive Zeilen, 4.2) und mindestens ein Long- oder Short-Ereignis vorkam. Ungültige Fenster werden gezählt und
   mit Grund berichtet, nie aufgefüllt.
@@ -167,9 +174,15 @@ Fensterlänge, andere Hebel) unter dem Namen S12; das wäre eine neue Studie mit
 
 | Paket | Inhalt | Prüfung |
 |---|---|---|
-| L1 | Sammler für Binance forceOrder und Bybit allLiquidation, Rohablage, Lücken, Tagesmanifest; launchd auf dem Mac | Tests mit aufgezeichneten Beispielnachrichten, Lückentest, Neustart-Test; 24 h Probelauf |
+| L1 | Sammler für Binance forceOrder und Bybit allLiquidation, Rohablage, Lücken, Tagesmanifest; launchd auf dem Mac | Tests mit Beispielnachrichten aus der Doku, Lückentest; 24 h Probelauf |
 | L2 | Heatmap-Stände 4× täglich mit Rohantworten und `input_hash`, Nachrechnen bit-genau | Test: gespeicherter Stand = neu gerechneter Stand |
 | L3 | Zählskript fürs Gate (nur Gültigkeit, kein D) | Test mit synthetischen Daten |
+
+**Stand 31.10.2026 (Uzis Wahl „Sammler bauen“):** L1–L3 gebaut in `src/research_lab/liquidations/`
+(`events`, `store`, `collector`, `snapshots`, `gate`, CLI `python -m src.research_lab.liquidations`), Tests in
+`tests/test_research_lab_s12_liquidations.py`, launchd-Vorlage `launchd/com.tim.s12-liquidations.plist.template`.
+`build_heatmap` hat dafür die Parameter `min_share` und `max_cells` bekommen (Standard unverändert, Anzeige gleich).
+Daten liegen unter `~/Library/Application Support/TIM/research-lab/liquidations/`. L4 folgt erst nach dem Gate.
 | L4 | Auswertung (Abschnitte 4 und 5) | Tests nur mit synthetischen Daten, bis zum Ende keine echte Auswertung |
 
 Alles läuft auf dem Mac, nur lesend gegenüber den Börsen, ohne Konto. Die Runtime und das Control Center werden
@@ -182,9 +195,11 @@ Die API-Dokumentationen von Binance (forceOrder) und Bybit (allLiquidation) wurd
 
 ## 9. Offene Punkte vor Version 1.0
 
-1. Seiten-Konvention je Börse an einem echten Ereignis bestätigen (Abschnitt 3.1).
-2. Bybit-Endpunkt-URL auf der Connect-Seite nachlesen.
-3. Uzi: Freigabe von Version 1.0 und Start des Sammlers.
+1. Seiten-Konvention je Börse an einem echten Ereignis bestätigen (Abschnitt 3.1), CLI `sides`.
+2. An echten Binance-Antworten prüfen, ob der OI-Zeitstempel den Stand **zu** diesem Zeitpunkt meint (nicht eine
+   Periode, die danach beginnt). Sonst wäre der letzte OI-Wert bis zu 30 min jünger als t (Look-ahead).
+3. Bybit-Endpunkt-URL auf der Connect-Seite nachlesen.
+4. Uzi: Freigabe von Version 1.0 und Start des Sammlers.
 
 ## Änderungsprotokoll
 
@@ -193,3 +208,4 @@ Die API-Dokumentationen von Binance (forceOrder) und Bybit (allLiquidation) wurd
 | 2026-10-31 | 0.1 | Entwurf: Frage, Daten, Messung, Entscheidungsregel, Gate, Pakete | keine Liquidationsdaten |
 | 2026-10-31 | 0.2 | Nach adversarialer Prüfung: Anzeige-Filter aus der Auswertung, Baseline auf echten OI-Zeitstempeln, `_row` für Ereignisse, Seitenfilter wie `analysis`, Duplikate/`FILLED`, Abruf t + 120 s, abstandsgleicher Zufallsvergleich, ±1-Zeile- und ungewichtete Sekundärmaße, Moving-Block-Bootstrap 7 Tage, feste Start-/Endzeit und Verlängerungsregel, keine Power-Rechnung (Entblindung) | keine Liquidationsdaten |
 | 2026-10-31 | 0.3 | Umbenannt von S11 in S12 (S11 im Logbuch vergeben, `next_study_id`) | keine Liquidationsdaten |
+| 2026-10-31 | 0.4 | L1–L3 gebaut; Abrufregel (Wiederholung, ungültig nach t + 15 min) und Definition „verbunden“ (Ping/Pong je Minute, Lebenszeichen ≤ 75 s) nach zweiter adversarialer Prüfung; offener Punkt OI-Zeitstempel | keine Liquidationsdaten |
