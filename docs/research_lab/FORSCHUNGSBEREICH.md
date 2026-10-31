@@ -99,7 +99,7 @@ Plan-Journale (nur lesend) und schreibt für **jeden geschlossenen Papier-Trade*
 `data/research/trade_reflections.jsonl` (append-only, Hash-Kette, liegt nur auf dem Mac, nicht im Repo).
 
 Ein Eintrag enthält die Fakten (netto/brutto R, Kosten, bestes Plus, tiefstes Minus, Ausstieg, Ziele, TIMs Urteil,
-Marktzustand) und die Lehren nach festen Regeln (`trade-reflection/1.0`):
+Marktzustand), die Wissenszeit `known_at` (ab wann alle Fakten feststanden; für die Lernschleife) und die Lehren nach festen Regeln (`trade-reflection/1.0`):
 
 | Lehre | Wann |
 |---|---|

@@ -87,6 +87,8 @@ def reflect(entry: Mapping[str, Any]) -> dict[str, Any]:
         lessons.append("FULL_TARGET")
     if entry.get("data_gap"):
         lessons.append("DATA_GAP")
+    # known_at: when every fact used here was known (trade end, or later for the wick review).
+    known = [str(t) for t in (entry.get("closed_at"), (entry.get("stop_review") or {}).get("checked_through")) if t]
     outcome = "win" if net >= FLAT_NET_R else "loss" if net <= -FLAT_NET_R else "flat"
     word = {"win": "Gewinn", "loss": "Verlust", "flat": "etwa null"}[outcome]
     summary = (f"{entry.get('direction')} {entry.get('timeframe', '30m')}: {word} {net:+.2f} R netto "
@@ -96,6 +98,7 @@ def reflect(entry: Mapping[str, Any]) -> dict[str, Any]:
         "trade_id": entry["id"], "timeframe": entry.get("timeframe", "30m"), "direction": entry.get("direction"),
         "scenario_type": entry.get("scenario_type"), "setup_grade": entry.get("setup_grade"),
         "created_at": entry.get("created_at"), "closed_at": entry.get("closed_at"),
+        "known_at": max(known) if known else None,
         "facts": {"net_r": net, "gross_r": gross, "cost_r": round(cost, 4), "mfe_r": mfe, "mae_r": mae,
                   "exit_reason": exit_reason, "targets_hit": len(entry.get("tp_hits") or []),
                   "tim_verdict": entry.get("tim_verdict"), "market_state": entry.get("market_state")},

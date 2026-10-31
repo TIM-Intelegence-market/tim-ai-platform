@@ -31,6 +31,9 @@ def test_lessons_follow_the_facts() -> None:
     instant = reflect(_trade(3, gross_r=-1.0, net_r=-1.1, max_favorable_r=0.1, max_adverse_r=-1.0, exit_reason="STOP",
                              tp_hits=[], stop_review={"wick": True}, market_state="TREND_DOWN", data_gap="x"))
     assert instant["lessons"] == ["WRONG_AT_ONCE", "STOP_BY_WICK", "AGAINST_TREND", "DATA_GAP"]
+    assert costs["known_at"] == "2026-10-30T14:00:00Z"
+    late = reflect(_trade(5, stop_review={"wick": True, "checked_through": "2026-10-30T16:00:00Z"}))
+    assert late["known_at"] == "2026-10-30T16:00:00Z"
     full = reflect(_trade(4, gross_r=2.17, net_r=2.0, exit_reason="TP3", tp_hits=["a", "b", "c"]))
     assert full["lessons"] == ["FULL_TARGET"] and full["outcome"] == "win"
     assert full["automatic_rule_change"] is False and "+2.00 R netto" in full["summary"]
