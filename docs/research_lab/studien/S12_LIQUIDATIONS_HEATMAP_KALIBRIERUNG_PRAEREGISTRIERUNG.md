@@ -1,9 +1,9 @@
-# S11: Trifft die geschätzte Liquidations-Heatmap echte Liquidationen? (Präregistrierung, Entwurf)
+# S12: Trifft die geschätzte Liquidations-Heatmap echte Liquidationen? (Präregistrierung, Entwurf)
 
 | Feld | Wert |
 |---|---|
-| Studie | S11 (Research Lab; nicht zu verwechseln mit dem Testfall „S11“ in `docs/tim_manager/`) |
-| Version | **0.2 – ENTWURF.** Noch kein Sammler, keine Daten, kein Ergebnis |
+| Studie | S12 (S11 ist laut Logbuch vergeben: von Uzi am 28.10. abgelehnte Variante ohne Filter) |
+| Version | **0.3 – ENTWURF.** Noch kein Sammler, keine Daten, kein Ergebnis |
 | Anlass | Uzi 31.10.2026 („go“ auf die Empfehlung N1). Grundlage: Auswertung des Berichts „Orderflow verstehen und prüfen“ (Deep Research, 28.10.2026), `/mnt/project-files/analysen/orderflow-research-2026-10-28/bewertung.md` |
 | Protokoll | `../PROTOKOLL.md`; eigene **prospektive** Familie wie S8 und L1 (kein Archiv, kein Holdout berührt) |
 | Art | Kalibrierung eines Anzeigemodells. **Keine Handelsregel, kein Signal, kein Echtgeld** |
@@ -21,7 +21,7 @@ Das folgt der Regel aus dem Bericht: Eine Orderflow- oder Derivate-Information z
 derselben Methode ohne diese Information etwas hinzufügt.
 
 **Nicht geprüft:** ob Liquidationen den Preis anziehen („Magnet“), ob nach Liquidationswellen eine Richtung folgt,
-ob man damit handeln kann. Das wären eigene Studien mit eigener Präregistrierung und frühestens nach S11 sinnvoll.
+ob man damit handeln kann. Das wären eigene Studien mit eigener Präregistrierung und frühestens nach S12 sinnvoll.
 
 ## 2. Was TIM schon hat und Vorbelastung
 
@@ -29,7 +29,7 @@ ob man damit handeln kann. Das wären eigene Studien mit eigener Präregistrieru
   500 Perioden, Binance `/futures/data/openInterestHist` und `/fapi/v1/klines`).
 - OpenMarket liefert `LIQUIDATION_AGG` (Summen je Intervall und Seite, ohne Preis, Herkunft nicht dokumentiert,
   `src/market_data/providers/openmarket/context_schemas.py`). Für eine Prüfung **nach Preisstufe** reicht das nicht.
-- Perp-aggTrades und OI-Z-Score sammelt seit F5 `src/dashboard/perp_flow.py`; S11 nutzt diese Daten nicht.
+- Perp-aggTrades und OI-Z-Score sammelt seit F5 `src/dashboard/perp_flow.py`; S12 nutzt diese Daten nicht.
 - **Vorbelastung:** Uzi und die Threads haben die Heatmap im Chart gesehen (seit 28.10.). Gemeldete Liquidationen
   hat TIM nie gespeichert; ein Ergebnis kennt niemand.
 
@@ -74,7 +74,7 @@ jeder Stand später exakt nachrechnen (Binance hält die OI-Historie nur 30 Tage
 ### 3.3 Ablage und Qualität
 
 - Tagesdateien (UTC), append-only, gzip, mit Tagesmanifest (Zeilen, Prüfsumme, Verbindungen, Lücken) unter
-  `data/research_lab/liquidations/` auf dem Mac. Nicht in der Runtime-Datenbank, solange S11 Labor ist.
+  `data/research_lab/liquidations/` auf dem Mac. Nicht in der Runtime-Datenbank, solange S12 Labor ist.
 - Je Nachricht: Rohtext unverändert, `receive_ns`, `session_id`, `payload_sha256`.
 - Binance-forceOrder hat keine Sequenznummer. Lücken sind deshalb **Verbindungslücken**: jede Trennung und jeder
   Neuaufbau wird als `gap`-Eintrag mit Beginn und Ende geschrieben. Ein Feed ohne Nachricht ist **kein** Wert null,
@@ -138,7 +138,7 @@ D(t) = T(TIM, t) − T(Baseline, t) je gültigem Fenster.
 2. Mittelwert von D ≥ 0,05 (5 Prozentpunkte; kleiner gilt als praktisch bedeutungslos).
 
 **Nicht bestanden** in jedem anderen Fall. Kein zweiter Versuch mit anderen Parametern (andere Top-N, andere
-Fensterlänge, andere Hebel) unter dem Namen S11; das wäre eine neue Studie mit offener Vorbelastung.
+Fensterlänge, andere Hebel) unter dem Namen S12; das wäre eine neue Studie mit offener Vorbelastung.
 
 **Folgen:**
 
@@ -156,7 +156,7 @@ Fensterlänge, andere Hebel) unter dem Namen S11; das wäre eine neue Studie mit
   8 Wochen müssen ≥ 150 gültige Fenster herauskommen.
   - Erfüllt: weiterlaufen bis 8 Wochen.
   - Nicht erfüllt: Die Entscheidung fällt am selben Gate (Tag 14): **einmal** auf genau 84 Tage verlängern, wenn die
-    Hochrechnung auf 84 Tage ≥ 150 ergibt. Sonst endet S11 sofort als „nicht beurteilbar“. Später wird nicht mehr
+    Hochrechnung auf 84 Tage ≥ 150 ergibt. Sonst endet S12 sofort als „nicht beurteilbar“. Später wird nicht mehr
     verlängert.
 - Eine Power-Rechnung gibt es nicht. Sie bräuchte die Streuung von T oder D, und die ließe sich nur messen, indem
   man echte Ereignisse gegen die Stände rechnet. Das wäre eine Teil-Entblindung. Das Gate zählt deshalb nur
@@ -192,3 +192,4 @@ Die API-Dokumentationen von Binance (forceOrder) und Bybit (allLiquidation) wurd
 |---|---|---|---|
 | 2026-10-31 | 0.1 | Entwurf: Frage, Daten, Messung, Entscheidungsregel, Gate, Pakete | keine Liquidationsdaten |
 | 2026-10-31 | 0.2 | Nach adversarialer Prüfung: Anzeige-Filter aus der Auswertung, Baseline auf echten OI-Zeitstempeln, `_row` für Ereignisse, Seitenfilter wie `analysis`, Duplikate/`FILLED`, Abruf t + 120 s, abstandsgleicher Zufallsvergleich, ±1-Zeile- und ungewichtete Sekundärmaße, Moving-Block-Bootstrap 7 Tage, feste Start-/Endzeit und Verlängerungsregel, keine Power-Rechnung (Entblindung) | keine Liquidationsdaten |
+| 2026-10-31 | 0.3 | Umbenannt von S11 in S12 (S11 im Logbuch vergeben, `next_study_id`) | keine Liquidationsdaten |
