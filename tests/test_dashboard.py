@@ -56,9 +56,9 @@ def test_dashboard_serves_html_and_json() -> None:
         with urlopen(f"http://127.0.0.1:{port}/uebersicht-alt", timeout=2) as response:
             assert response.status == 200
             assert b'TIM Research-Dashboard' in response.read()
-        with urlopen(f"http://127.0.0.1:{port}/", timeout=2) as response:  # the start page is "Heute"
+        with urlopen(f"http://127.0.0.1:{port}/", timeout=10) as response:  # the start page is the Cockpit
             assert response.status == 200
-            assert b"<title>Lage \xc2\xb7 TIM</title>" in response.read()
+            assert b"<title>Cockpit \xc2\xb7 TIM</title>" in response.read()
         with urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as response:
             assert response.status == 200
             assert response.headers["Cache-Control"] == "no-cache, no-store, must-revalidate"
@@ -196,7 +196,7 @@ def test_professional_research_navigation_and_overview_cards(tmp_path: Path) -> 
     page=render(populated_state(tmp_path))
     for label in ('Research-Überblick','Datenqualität','Stream-Status','Validator-Status','Laufzeit','Aktive Research-Fälle','Abgeschlossene Research-Fälle','Dashboard-Version'):
         assert label in page
-    for route in ("/","/chart","/journal","/neu/forschung","/neu/betrieb"):  # the five areas of the one navigation
+    for route in ("/","/trades","/forschung","/system"):  # the four screens of the one navigation
         assert f"href='{route}'" in page
     assert "<article class='card'" in page
     assert '"symbol":"BTCUSDT"' not in page

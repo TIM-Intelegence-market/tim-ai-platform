@@ -162,7 +162,7 @@ def test_page_draws_svg_with_levels_and_keeps_csp() -> None:
     for marker in ("VAH ", "VAL ", "POC ", "Range-High", "Kurs "):
         assert marker in page
     assert "Vorschau nach TIMs Regeln" in page and "Keine Order" in page
-    assert "aria-current='page'>30m</a>" in page and ">Chart</a>" in page
+    assert "aria-current='page'>30m</a>" in page and ">TIM-Chart</a>" in page
     assert " style='" not in page  # nothing the CSP would have to allow
     assert page.count("<script>") == 1  # only the shared auto refresh inline
     # The interactive chart: two local script files, nothing from outside.

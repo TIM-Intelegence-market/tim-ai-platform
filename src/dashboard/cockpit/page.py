@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from src.dashboard.cockpit.tiles import STATE_LABELS, human_age
 from src.dashboard.helpers import _parse_time
-from src.dashboard.navigation import links as nav_links
+from src.dashboard.shell import SHELL_CSS
 
 LOCAL = ZoneInfo("Europe/Berlin")
 REFRESH_SECONDS = 30
@@ -65,8 +65,7 @@ AREAS: list[dict[str, Any]] = [
 AREA_BY_KEY = {area["key"]: area for area in AREAS}
 
 STYLE = """
-:root{--bg:#edf1f3;--panel:#fff;--ink:#16222e;--muted:#52616e;--line:#d3dce2;--accent:#0e5a73;--ok:#23744a;--warn:#8a5600;--fail:#b02a22;--unknown:#5f6b77;--okbg:#e7f2ec;--warnbg:#fbf1dd;--failbg:#fbe6e4;--unknownbg:#eef1f3;--rowwarn:#fdf6e8;--rowfail:#fdf0ef}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1a22;--panel:#15232e;--ink:#e2e9ee;--muted:#9aaab6;--line:#263744;--accent:#7cc4dd;--ok:#5cc48d;--warn:#e5a84b;--fail:#f37f75;--unknown:#93a0ab;--okbg:#143026;--warnbg:#33280f;--failbg:#3a1a19;--unknownbg:#1c2b36;--rowwarn:#221f14;--rowfail:#271a1c}}
+:root{color-scheme:dark;--bg:#0b0f14;--panel:#121820;--ink:#e6edf3;--muted:#8b98a8;--line:#232d3a;--accent:#8fb4ff;--ok:#2ecc8f;--warn:#f5b942;--fail:#ff5c6c;--unknown:#8b98a8;--okbg:#123326;--warnbg:#3a2e12;--failbg:#3a1820;--unknownbg:#18202a;--rowwarn:#1d1a12;--rowfail:#22151a}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Avenir Next",Avenir,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
@@ -187,7 +186,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 30px;color:var(--muted);fon
 @media (max-width:700px){body{padding-bottom:calc(58px + env(safe-area-inset-bottom))}.nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;padding:0 0 env(safe-area-inset-bottom);background:var(--panel);border-top:1px solid var(--line)}.nav a{justify-content:center;padding:16px 2px 17px;margin:0;font-size:12.5px;white-space:nowrap;border-bottom:0;border-top:3px solid transparent}.nav a.area,.nav a[aria-current=page]{border-top-color:var(--accent)}.subnav__in{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}.subnav a{white-space:nowrap}.live{margin-left:auto}}
 @media (max-width:560px){.head h1{font-size:22px}}
 @media (max-width:700px){.tabs a{padding:11px 16px}}
-"""
+""" + SHELL_CSS
 
 SCRIPT = """
 (() => {
@@ -675,26 +674,17 @@ def render_sections(model: dict[str, Any]) -> str:
 
 
 def page(title: str, active: str, body: str, refresh: bool, fragment: str | None = None) -> str:
-    areas = nav_links(AREA_BY_KEY[active]["href"])
-    nav = "".join(
-        f"<a href='{_e(a['href'])}'{' aria-current=page' if a['current'] and not a['pages'] else (' class=area' if a['current'] else '')}>{_e(a['label'])}</a>" for a in areas
-    )
-    subs = next((a["pages"] for a in areas if a["current"]), [])
-    subnav = "".join(
-        f"<a href='{_e(s['href'])}'{' aria-current=page' if s['current'] else ''}>{_e(s['label'])}</a>" for s in subs  # type: ignore[union-attr]
-    )
+    """Full page in the common frame (``shell.frame``); ``#cockpit`` holds the refreshable body."""
+    from src.dashboard.shell import frame
+
     fragment = fragment or AREA_BY_KEY[active]["href"] + "?fragment=1"
+    live = f"<span id='live' class='live' aria-live='polite'>{'● Live, alle ' + str(REFRESH_SECONDS) + ' s' if refresh else ''}</span>"
+    inner = frame(AREA_BY_KEY[active]["href"], f"<div id='cockpit' data-fragment='{_e(fragment)}'>{body}</div>", live=live)
     return (
         "<!doctype html><html lang='de'><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='light dark'>"
-        f"<title>{_e(title)} · TIM</title><style>{STYLE}</style></head><body>"
-        f"<header class='top'><div class='top__in'><a class='brand' href='/'>TIM<small>Control Center</small></a>"
-        f"<nav class='nav' aria-label='Bereiche'>{nav}</nav>"
-        f"<span id='live' class='live' aria-live='polite'>{'● Live, alle ' + str(REFRESH_SECONDS) + ' s' if refresh else ''}</span></div>"
-        + (f"<nav class='subnav' aria-label='Seiten in diesem Bereich'><div class='subnav__in'>{subnav}</div></nav>" if subnav else "")
-        + "</header>"
-        f"<main id='cockpit' data-fragment='{_e(fragment)}'>{body}</main>"
-        "<footer>TIM beobachtet nur und handelt auf Papier: keine Orders, keine Shell- oder Git-Aktionen. Alle Zeiten in deutscher Ortszeit.</footer>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'>"
+        f"<title>{_e(title)} · TIM</title><style>{STYLE}</style></head><body class='ncc'>"
+        + inner
         + (f"<script>{SCRIPT}</script>" if refresh else "")
         + "</body></html>"
     )
