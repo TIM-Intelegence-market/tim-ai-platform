@@ -16,7 +16,7 @@ from typing import Any, Iterable
 from src.research_lab.workshop import charter
 
 GENESIS = "0" * 64
-DEFAULT_PATH = Path("docs/research_lab/IDEEN.jsonl")
+DEFAULT_PATH = Path("data/research/IDEEN.jsonl")  # live on the Mac, not versioned (F6)
 SCHEMA = "tim_research_ideas/1"
 
 STATUSES = {
