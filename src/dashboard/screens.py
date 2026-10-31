@@ -330,6 +330,9 @@ TASK_WORDS = {"trades": "Trade-Reflexion (stündlich)", "weekly": "Forschungsrun
 IDEA_TAGS = {"ready": "l", "new": "", "waiting_data": "w", "waiting_budget": "w"}
 
 
+RULE_WORDS = {"candidate": "Kandidat", "failed": "nicht bestanden", "not_testable": "zu wenige Trades"}
+
+
 def _workshop_card(root: Path) -> str:
     """F9: what the research workshop on the Mac is doing (read only, data/research/)."""
     from src.research_lab.workshop.overview import overview
@@ -362,13 +365,21 @@ def _workshop_card(root: Path) -> str:
         for task, info in data["schedule"].items())
     if data.get("schedule_paused"):
         plan += "<p class='warnc sm'>Zeitplan pausiert (PAUSE-Datei).</p>"
+    tests = data.get("rule_tests") or {"count": 0, "candidates": 0, "recent": []}
+    rule_tests = "".join(
+        f"<div class='row'><span><b>{_e(r['run'])}</b> {_e(r['title'])}<br><span class='mut sm'>{_e(local_time(r['at'], with_date=True))}</span></span>"
+        f"<span><span class='tag'>{_e(RULE_WORDS.get(r['status'], r['status']))}</span></span></div>" for r in tests["recent"])
+    rule_tests = ((f"<p class='mut sm'>{tests['count']} Regeln erkundet, {tests['candidates']} Kandidaten. Bei vielen Versuchen "
+                   "ist ein zufällig guter dabei; ein Kandidat braucht eine echte Studie.</p>" + rule_tests) if tests["count"] else
+                  "<p class='mut'>Noch keine Regel getestet. Schreib eine Regel in den Chat, TIM prüft sie auf 2020 bis 2024.</p>")
     notes = "".join(f"<p class='mut sm'>{_e(n)}</p>" for n in data["notes"])
     reflection = (f"<p class='mut sm'>Letzte Monats-Reflexion: {_e(data['last_reflection'])}</p>" if data["last_reflection"] else "")
     return (f"<div class='card'><h2>Forschungswerkstatt <span>läuft auf dem Mac</span></h2>{head}</div>"
             f"<div class='two'><div class='card'><h2>Ideen-Liste <span>nächste zuerst</span></h2>{ideas}</div>"
             f"<div class='stack'><div class='card'><h2>Zeitplan</h2>{plan or '<p class=mut>Noch kein Lauf.</p>'}{reflection}{notes}</div>"
             f"<div class='card'><h2>Lehren aus den Trades</h2>{lessons}</div>"
-            f"<div class='card'><h2>Schattenbetrieb</h2>{shadows}</div></div></div>")
+            f"<div class='card'><h2>Schattenbetrieb</h2>{shadows}</div>"
+            f"<div class='card'><h2>Regel-Tests <span>Erkundung, kein Beleg</span></h2>{rule_tests}</div></div></div>")
 
 
 def forschung_body(state: Any, path: Path = LOGBOOK, research_root: Path = Path(".")) -> str:

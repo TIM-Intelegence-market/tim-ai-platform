@@ -32,7 +32,8 @@ def overview(root: Path | str = ".", now: datetime | None = None) -> dict[str, A
     notes: list[str] = []
     result: dict[str, Any] = {"stage": charter.STAGE, "budget": charter.MONTHLY_STUDY_BUDGET, "month": month,
                               "notes": notes, "ideas": [], "idea_counts": {}, "drafts_this_month": 0,
-                              "trades": None, "schedule": {}, "shadows": [], "last_reflection": None}
+                              "trades": None, "schedule": {}, "shadows": [], "last_reflection": None,
+                              "rule_tests": {"count": 0, "candidates": 0, "recent": []}}
     try:
         ideas = list(IdeaQueue(research / "IDEEN.jsonl").ideas().values())
         result["idea_counts"] = dict(Counter(i["status"] for i in ideas))
@@ -78,6 +79,14 @@ def overview(root: Path | str = ".", now: datetime | None = None) -> dict[str, A
             result["shadows"] = shadow.status(ModelRegister(register_file), Path(root) / shadow.SHADOW_DIR)
     except Exception as error:  # noqa: BLE001
         notes.append(f"Schattenbetrieb nicht lesbar: {type(error).__name__}")
+    try:
+        from src.research_lab.workshop import rules
+        rows = rules.ExplorationLog(Path(root) / rules.LOG_PATH).records()
+        result["rule_tests"] = {"count": len(rows), "candidates": sum(r["status"] == "candidate" for r in rows),
+                                "recent": [{"run": r["run"], "title": r["title"], "status": r["status"], "at": r["at"]}
+                                           for r in rows[-3:][::-1]]}
+    except Exception as error:  # noqa: BLE001
+        notes.append(f"Regel-Tests nicht lesbar: {type(error).__name__}")
     reports = sorted((research / "reports").glob("forschung_*.md")) if (research / "reports").is_dir() else []
     if reports:
         result["last_reflection"] = reports[-1].stem.removeprefix("forschung_")
