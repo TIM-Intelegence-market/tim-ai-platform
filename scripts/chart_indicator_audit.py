@@ -908,15 +908,18 @@ def check_footprint(raw: Raw) -> None:
             imb, ties = [], set()
             for i, p in enumerate(prices):
                 bid, ask = mine[p]
+                # Rule (docstring F1): the diagonal row one step away; an empty row there counts as zero.
+                below = mine.get(round(p - step, 8), [0.0, 0.0])
+                above = mine.get(round(p + step, 8), [0.0, 0.0])
                 if i > 0 and ask > 0:
-                    other = 4 * mine[prices[i - 1]][0]
+                    other = 4 * below[0]
                     if ask >= other:
                         imb.append([p, "ask"])
                     if abs(ask - other) <= 1e-9 * max(ask, 1e-12):
                         ties.add((p, "ask"))  # exactly 400 %: float rounding decides, not a finding
                     gaps += round((p - prices[i - 1]) / step) > 1
                 if i + 1 < len(prices) and bid > 0:
-                    other = 4 * mine[prices[i + 1]][1]
+                    other = 4 * above[1]
                     if bid >= other:
                         imb.append([p, "bid"])
                     if abs(bid - other) <= 1e-9 * max(bid, 1e-12):
@@ -940,8 +943,8 @@ def check_footprint(raw: Raw) -> None:
             auction_bad += (min(top) > 0) != b["unfinished_high"] or (min(bottom) > 0) != b["unfinished_low"]
         report("Footprint", f"{tf}: Bid × Ask je Zeile = Binance-aggTrades (eigene Summe)", checked > 0 and mism == 0,
                f"{checked} Kerzen mit eigenen Trades verglichen, {mism} abweichend" + (f" (z. B. {example})" if example else ""))
-        report("Footprint", f"{tf}: Imbalance-Nachbar ist eine leere Zeile übersprungen", None,
-               f"{gaps} von {rows_total} Zeilen vergleichen diagonal mit einer nicht benachbarten Zeile (leere Zeile dazwischen)")
+        report("Footprint", f"{tf}: Zeilen mit leerer Nachbarzeile (Randfall Imbalance)", None,
+               f"{gaps} von {rows_total} Zeilen haben eine leere Zeile direkt darunter")
         report("Footprint", f"{tf}: POC, Imbalances 400 %, Stacked ≥3, Unfinished Auction", checked > 0 and not (poc_bad or imb_bad or stack_bad or auction_bad),
                f"POC {poc_bad}, Imbalance {imb_bad}, Stacked {stack_bad}, Auction {auction_bad} Kerzen abweichend (von {checked})")
 

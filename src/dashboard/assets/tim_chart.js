@@ -403,11 +403,14 @@
     for (const row of rows) {
       if (row.bid + row.ask > poc.bid + poc.ask) poc = row;
     }
-    rows.forEach((row, i) => {
-      const below = rows[i - 1], above = rows[i + 1];
-      // Same rule as the server and orderflow_scenario.footprint (F1): diagonal, a zero on the other side counts.
-      row.askImb = !!below && below.index === row.index - 1 && row.ask > 0 && row.ask >= FP.ratio * below.bid;
-      row.bidImb = !!above && above.index === row.index + 1 && row.bid > 0 && row.bid >= FP.ratio * above.ask;
+    const lowest = rows[0].index, highest = rows[rows.length - 1].index;
+    rows.forEach(row => {
+      // Same rule as the server and orderflow_scenario.footprint (F1): diagonal, one row away; an empty row
+      // in between counts as zero (Prüfung 31.10.2026: before, a gap hid the imbalance here and the server
+      // compared with a row two steps away).
+      const below = cells.get(row.index - 1) || { bid: 0, ask: 0 }, above = cells.get(row.index + 1) || { bid: 0, ask: 0 };
+      row.askImb = row.index > lowest && row.ask > 0 && row.ask >= FP.ratio * below.bid;
+      row.bidImb = row.index < highest && row.bid > 0 && row.bid >= FP.ratio * above.ask;
       row.poc = row === poc;
     });
     const stacks = [];
