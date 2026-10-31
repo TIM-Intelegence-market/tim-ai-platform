@@ -215,15 +215,16 @@ def describe(rule: Mapping[str, Any]) -> str:
     else:
         level = LEVELS[entry["level"]]
         if entry["mode"] == "retest":
-            trigger = (f"Retest am {level}: die Kerze berührt das Level von der richtigen Seite und schließt wieder "
-                       "dahinter (Long: Docht darunter, Schluss darüber)")
+            how = {"long": "Docht darunter, Schluss darüber", "short": "Docht darüber, Schluss darunter",
+                   "both": "Long: Docht darunter, Schluss darüber; Short umgekehrt"}[rule["side"]]
+            trigger = f"Retest am {level}: die Kerze berührt das Level und schließt wieder auf der Handelsseite ({how})"
         else:
             trigger = f"Schlusskurs bricht durch das {level}"
         if entry["level"] in PROFILE_LEVELS:
             trigger += (f" (Volume Profile aus den {rule['timeframe']}-Kerzen des Vortags genähert, "
                         f"{PROFILE_BINS} Preisstufen, Value Area 70 %)")
     parts = [f"{rule['title']}: {side} auf {rule['symbol']} (USD-M Perp), Zeitrahmen {rule['timeframe']}.",
-             f"Einstieg: {trigger}; gekauft wird zur Eröffnung der nächsten Kerze."]
+             f"Einstieg: {trigger}; Einstieg zur Eröffnung der nächsten Kerze."]
     for item in rule.get("filters") or []:
         if item["type"] == "hours":
             parts.append(f"Nur Signale zwischen {item['from']}:00 und {item['to']}:00 Ortszeit (Deutschland).")

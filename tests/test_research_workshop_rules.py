@@ -307,3 +307,8 @@ def test_cli_rule_test_names_a_missing_archive(tmp_path, capsys, monkeypatch):
     assert main(["--queue", str(tmp_path / "q.jsonl"), "rule-test", "--spec", str(spec), "--archive", str(tmp_path / "leer")]) == 2
     assert "Archivdaten fehlen" in capsys.readouterr().err
     assert not (tmp_path / "data/research/rules/log.jsonl").exists()
+
+
+def test_short_retest_reads_the_right_way_round():
+    text = rules.describe(rule(side="short", entry={"type": "prev_day_level", "level": "high", "mode": "retest"}))
+    assert "Docht darüber, Schluss darunter" in text and "Long:" not in text
