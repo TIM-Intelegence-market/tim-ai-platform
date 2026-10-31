@@ -194,7 +194,7 @@ def _hero(title: str, text: str) -> str:
     return f"<div class='hero'><div><h1>{_safe(title)}</h1><p>{_safe(text)}</p></div><div class='observe'>OBSERVE • READ-ONLY</div></div>"
 
 
-def chart_page(symbol: str | None, timeframe: str | None) -> str:
+def chart_page(symbol: str | None, timeframe: str | None, summary: str = "") -> str:
     from src.dashboard.chart_live import DEFAULT_SYMBOL, DEFAULT_VIEW
 
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
@@ -209,6 +209,7 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         for item in VIEW_TIMEFRAMES)
     body = _hero("TIM chart", "BTC, ETH, SOL and gold on every timeframe: zoom, pan, crosshair. "
                  "Levels are drawn as labelled segments from the moment they formed.")
+    body += summary
     body += (
         f"<section class='cc-section tc-live' id='tc-live' data-lang='en' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
         f"<nav class='tc-tabs' aria-label='Coin'>{symbols}<span class='tc-tabs__sep'>Timeframe:</span>{frames}</nav>"
