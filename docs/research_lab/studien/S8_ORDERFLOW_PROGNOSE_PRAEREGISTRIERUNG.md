@@ -1,6 +1,8 @@
 # S8: Lokale BTC-Orderflow-Prognose (Trade-only) – Präregistrierung
 
-**Status: ENTWURF 0.2, nicht registriert.** Kein Registereintrag, keine Auswertung, keine Ergebnisse.
+**Status: ursprünglicher S8-Entwurf 0.2 weiterhin ohne prospektive Registrierung.** Der separat autorisierte
+historische Sequenzvergleich vom 28.10.2026 ist abgeschlossen: kein praktischer Zusatznutzen im Primärmodell.
+Details: [Ergebnisbericht](../reports/s8_sequence_ablation_2026-10-28.md). Das ist keine prospektive Bestätigung.
 Grundlage: Uzis Bauplan „TIM: Bauplan für lokale BTC-Orderflow-KI“ (26.10.2026), Pakete P0 und P1.
 Dieser Entwurf hält Fragestellung, Daten, Merkmale, Zielwert und Datensplit fest, **bevor** ein Ergebnis
 angesehen wird. Er ändert weder das Protokoll (1.3) noch S2.
@@ -46,7 +48,7 @@ liest einen Validierungspreis). Merkmale dürfen in die Vergangenheit über die 
 Für Walk-forward innerhalb eines Abschnitts (P3) gilt dasselbe Purging an jeder Blockgrenze; zusätzlich ein
 Abstand von 5 Minuten (Horizont). Keine zufällige Aufteilung benachbarter Minuten.
 
-## 4. Merkmale (Version 1.1.0) – Datenwörterbuch
+## 4. Merkmale (Version 1.2.0) – Datenwörterbuch
 
 Entscheidungszeit t = Ende der Minute. Alle Merkmale lesen nur Minuten bis t, höchstens bis zum Beginn des
 Vortags zurück. Die ersten 120 Minuten nach einer Datenlücke (fehlender Tag) gelten als Aufwärmphase und werden
@@ -89,6 +91,9 @@ ausgeschlossen. Kerzenkontext nur aus bei t **geschlossenen** Uhrstunden.
 | `vp_dev_va_pos` | Lage des Preises in der Value Area des laufenden Tagesprofils bis t |
 | `tpo_prev_poc_dist` | ln(Preis bei t / TPO-POC des Vortags, 30-Minuten-Perioden) |
 | `tpo_prev_va_pos` | Lage des Preises in der TPO-Value-Area (70 %) des Vortags |
+| `last_run_norm_1` | Vorzeichen × Länge der letzten gleichgerichteten aggTrade-Folge / Ereigniszahl der abgeschlossenen Minute; kein Übertrag über Minutengrenzen |
+| `sign_autocorr_1` | Pearson-Korrelation benachbarter Aggressorzeichen in aggTrade-ID-Reihenfolge innerhalb der abgeschlossenen Minute; fehlt bei < 3 Ereignissen; konstante Randfolge wird explizit als 0 kodiert, nicht als Unabhängigkeitsbeweis |
+| `burst_share_1` | Anteil des BTC-Volumens im stärksten festen UTC-Sekundenbucket der abgeschlossenen Minute; 60 Buckets, keine gleitende nachträglich gewählte Grenze |
 
 **Volume Profile und TPO (seit 1.1.0, auf Uzis Wunsch vom 26.10. vor jeder Auswertung ergänzt):** Der Exporter
 zählt das aggressive Volumen je Minute und Preisstufe. Die Stufenbreite gilt für einen ganzen UTC-Tag und ist die
@@ -194,3 +199,16 @@ noch nicht erfolgt.
 |---|---|---|---|
 | 2026-10-26 | 0.1 | Entwurf: Frage, Daten, Split, Merkmale 1.0.0, Label 1.0.0, Werkzeug, offene Entscheidungen | keine Archivdaten geladen, keine Outcomes; nur synthetische Testdaten |
 | 2026-10-26 | 0.2 | Merkmale 1.1.0 mit Volume Profile und TPO (Uzis Wunsch, 20:02 Ortszeit); Balkenversion 1.1.0 mit Profildatei; Abschnitt 7: Uzis Entscheid „Eigene Familie, prospektiv“ (Karte 20:49 Ortszeit), Protokoll-Einordnung; Registerstand 58/60 | unverändert: keine Archivdaten, keine Outcomes |
+| 2026-10-28 | Sequenzergänzung 1.2.0 | Uzi autorisiert drei Sequenzmerkmale und einen direkten historischen Vergleich, ausdrücklich ohne Holdout. Die bisherigen 35 Merkmale bleiben als feste Referenzliste erhalten. Eigener Laborplan und Ergebnisse; keine Änderung des Holdout-Registers oder der Runtime. | Definitionen und Vergleich vor Abruf der neuen Stichprobe festgelegt; kein trainiertes bisheriges S8-Modell vorhanden |
+
+## 11. Autorisierter Sequenzvergleich (28.10.2026)
+
+Die drei neuen Merkmale werden zusammen als **ein** Block geprüft. Ein eigener eingefrorener Plan entsteht
+vor dem Abruf über `python -m src.research_lab.orderflow_ml.sequence_study plan`; Beschreibung in
+`S8_SEQUENZVERGLEICH.md`. Der Vergleich umfasst eine zeitlich verteilte Kalenderstichprobe, nicht die
+vollständige Historie. Primär: derselbe feste CatBoost auf 35 gegenüber 38 Merkmalen; ergänzend logistische
+Regression. Derselbe Zeilenfilter, dasselbe Label, dieselben Train-/Validierungsgrenzen. Kein Zugriff ab 2025.
+
+Dies ist ein autorisierter explorativer Merkmalsvergleich. Die ursprüngliche prospektive S8-Bestätigung
+bleibt offen; dieses Ergebnis ist weder Setup-Freigabe noch Nettoertragsnachweis. Die Angaben zum früheren
+Bestand in Abschnitt 10 beschreiben den damaligen Ausgangsstand.

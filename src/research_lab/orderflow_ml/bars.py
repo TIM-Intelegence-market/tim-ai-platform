@@ -17,7 +17,7 @@ MINUTES_PER_DAY = 1_440
 DAY_MS = 86_400_000
 E8 = 10**8
 LARGE_TRADE_SATS = E8  # one BTC per aggTrade counts as "large" (fixed for bar version 1)
-BAR_VERSION = "1.1.0"  # 1.1.0: volume per price bin per minute (profile file)
+BAR_VERSION = "1.2.0"  # 1.2.0: sufficient statistics for within-minute sequence features
 PROFILE_STEP_DIVISOR = 1000  # bin width about 0.1 % of the first trade price of the day
 
 
@@ -47,6 +47,11 @@ class MinuteBar:
     high_price_e8: int
     low_price_e8: int
     last_trade_ms: int  # 0 when the minute has no trade
+    first_sign: int = 0  # +1 buy, -1 sell; zero means absent/legacy statistics
+    last_sign: int = 0
+    signed_tail_run: int = 0
+    sign_product_sum: int = 0  # sum(sign[i-1] * sign[i]) within this minute, aggTrade-id order
+    peak_second_sats: int = 0  # largest total volume of the 60 fixed UTC second buckets
 
     def __post_init__(self) -> None:
         if self.window_start_ms % MINUTE_MS:
@@ -63,6 +68,15 @@ class MinuteBar:
                 raise ValueError("inconsistent prices")
             if not self.window_start_ms <= self.last_trade_ms < self.window_start_ms + MINUTE_MS:
                 raise ValueError("last trade outside the minute")
+        if self.first_sign:
+            if self.first_sign not in (-1, 1) or self.last_sign not in (-1, 1):
+                raise ValueError("invalid sequence sign")
+            if not 1 <= abs(self.signed_tail_run) <= self.trade_count or self.signed_tail_run * self.last_sign <= 0:
+                raise ValueError("invalid last run")
+            if abs(self.sign_product_sum) > self.trade_count - 1:
+                raise ValueError("invalid adjacent sign sum")
+            if not 0 < self.peak_second_sats <= self.buy_sats + self.sell_sats:
+                raise ValueError("invalid peak-second volume")
 
     @property
     def has_trades(self) -> bool:
@@ -181,6 +195,7 @@ def reduce_trades_with_profile(ticks: Iterable[TradeTick], day_start_ms: int) ->
         raise ValueError("day_start_ms must be a UTC midnight")
     quality = ReductionQuality()
     acc: list[list[int] | None] = [None] * MINUTES_PER_DAY
+    second_volume: list[dict[int, int] | None] = [None] * MINUTES_PER_DAY
     previous_id: int | None = None
     previous_time = -1
     seen_at_previous: TradeTick | None = None
@@ -213,7 +228,20 @@ def reduce_trades_with_profile(ticks: Iterable[TradeTick], day_start_ms: int) ->
         slot = acc[minute]
         if slot is None:
             # count, buy_count, buy_sats, sell_sats, largest, large, buy_quote, sell_quote, first, last, high, low, last_ms
-            slot = acc[minute] = [0, 0, 0, 0, 0, 0, 0, 0, tick.price_e8, 0, tick.price_e8, tick.price_e8, 0]
+            slot = acc[minute] = [0, 0, 0, 0, 0, 0, 0, 0, tick.price_e8, 0, tick.price_e8, tick.price_e8, 0,
+                                  0, 0, 0, 0, 0]
+            second_volume[minute] = {}
+        sign = -1 if tick.buyer_is_maker else 1
+        if slot[14]:
+            slot[16] += slot[14] * sign
+        else:
+            slot[13] = sign
+        slot[15] = slot[15] + sign if slot[14] == sign else sign
+        slot[14] = sign
+        seconds = second_volume[minute]
+        second = (tick.time_ms - day_start_ms) % MINUTE_MS // 1000
+        seconds[second] = seconds.get(second, 0) + tick.qty_sats
+        slot[17] = max(slot[17], seconds[second])
         slot[0] += 1
         if tick.buyer_is_maker:
             slot[3] += tick.qty_sats
@@ -241,6 +269,6 @@ def reduce_trades_with_profile(ticks: Iterable[TradeTick], day_start_ms: int) ->
             bars.append(MinuteBar.empty(start))
             continue
         bars.append(MinuteBar(start, slot[0], slot[1], slot[2], slot[3], slot[4], slot[5], slot[6] // E8, slot[7] // E8,
-                              slot[8], slot[9], slot[10], slot[11], slot[12]))
+                              slot[8], slot[9], slot[10], slot[11], slot[12], *slot[13:18]))
     entries = tuple((m, b, v[0], v[1]) for (m, b), v in sorted(cells.items()))
     return bars, quality, DayProfile(day_start_ms, width, entries)

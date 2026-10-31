@@ -20,12 +20,12 @@ from typing import Mapping, Sequence
 from src.research_lab.orderflow_ml.bars import DAY_MS, E8, MINUTE_MS, MINUTES_PER_DAY, DayProfile, MinuteBar
 from src.research_lab.orderflow_ml.profile import tpo_histogram, value_area, volume_histogram
 
-FEATURE_VERSION = "1.1.0"  # 1.1.0: Volume Profile and TPO features
+FEATURE_VERSION = "1.2.0"  # 1.2.0: three within-minute sequence features, baseline unchanged
 TIME_BASIS = "exchange_event_time_proxy"
 HOUR_MS = 3_600_000
 WARMUP_BARS = 121  # the previous closed clock hour can reach 120 minutes back
 
-FEATURE_NAMES: tuple[str, ...] = (
+BASE_FEATURE_NAMES: tuple[str, ...] = (
     "delta_norm_1", "cvd_norm_5", "cvd_norm_15", "cvd_norm_60", "cvd_btc_5", "cvd_btc_15", "cvd_btc_60",
     "buy_count_share_5", "trades_5", "trade_rate_5_vs_60", "volume_btc_5", "volume_usdt_5", "volume_rel_5_vs_60",
     "mean_trade_btc_5", "largest_trade_btc_5", "large_trade_share_5",
@@ -34,6 +34,8 @@ FEATURE_NAMES: tuple[str, ...] = (
     "vp_prev_poc_dist", "vp_prev_va_pos", "vp_prev_va_width", "vp_dev_poc_dist", "vp_dev_va_pos",
     "tpo_prev_poc_dist", "tpo_prev_va_pos",
 )
+SEQUENCE_FEATURE_NAMES = ("last_run_norm_1", "sign_autocorr_1", "burst_share_1")
+FEATURE_NAMES = BASE_FEATURE_NAMES + SEQUENCE_FEATURE_NAMES
 QUALITY_NAMES: tuple[str, ...] = ("stale_ms", "empty_minutes_60")
 
 # One line per feature for the data dictionary; units are part of the text.
@@ -73,7 +75,32 @@ DEFINITIONS: dict[str, str] = {
     "vp_dev_va_pos": "Lage des Preises in der Value Area des laufenden Tagesprofils bis t",
     "tpo_prev_poc_dist": "ln(Preis bei t / TPO-POC des Vortags, 30-Minuten-Perioden)",
     "tpo_prev_va_pos": "Lage des Preises in der TPO-Value-Area (70 %) des Vortags",
+    "last_run_norm_1": "Vorzeichen und Länge der letzten gleichgerichteten aggTrade-Folge / Ereigniszahl der Minute",
+    "sign_autocorr_1": "Pearson-Korrelation benachbarter Aggressorzeichen in der Minute; mindestens 3 Ereignisse; konstante Randfolge = 0",
+    "burst_share_1": "BTC-Volumen des stärksten festen UTC-Sekundenbuckets / Gesamt-BTC der Minute",
 }
+
+
+def sequence_features(bar: MinuteBar) -> tuple[float | None, float | None, float | None]:
+    """Past-only sufficient statistics; no cross-minute run carry and no imputation of absent sequences.
+
+    Pearson correlation of (s[0],...,s[n-2]) and (s[1],...,s[n-1]).
+    A constant marginal has no defined correlation: we explicitly encode it as
+    zero, not as evidence of independence; the run feature still identifies it.
+    Fewer than three events, and legacy bars without signs, remain missing.
+    """
+    n = bar.trade_count
+    if not n or bar.first_sign not in (-1, 1):
+        return None, None, None
+    autocorr = None
+    if n >= 3:
+        pairs = n - 1
+        total = 2 * bar.buy_count - n
+        left, right = total - bar.last_sign, total - bar.first_sign
+        var_left, var_right = pairs * pairs - left * left, pairs * pairs - right * right
+        autocorr = ((pairs * bar.sign_product_sum - left * right) / math.sqrt(var_left * var_right)
+                    if var_left and var_right else 0.0)
+    return (bar.signed_tail_run / n, autocorr, bar.peak_second_sats / (bar.buy_sats + bar.sell_sats))
 
 
 class BarSeries:
@@ -241,6 +268,7 @@ def features_at(s: BarSeries, i: int) -> FeatureRow:
         _log_ratio(s.vp_prev[i][2], s.vp_prev[i][1]) if s.vp_prev[i] else None,
         _log_ratio(px, s.vp_dev[i][0]) if s.vp_dev[i] else None, _va_pos(px, s.vp_dev[i]),
         _log_ratio(px, s.tpo_prev[i][0]) if s.tpo_prev[i] else None, _va_pos(px, s.tpo_prev[i]),
+        *sequence_features(s.bars[i]),
     )
     stale = t - s.last_ms[i] if s.last_ms[i] else None
     return FeatureRow(t, values, stale, sum(window(s.empty, 60)), warm)
