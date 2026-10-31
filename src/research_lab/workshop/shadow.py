@@ -193,14 +193,17 @@ class ShadowJournal:
 
 def bootstrap_interval(values: Sequence[float], level: float = CI_LEVEL, draws: int = BOOTSTRAP_DRAWS,
                        seed: int = 0) -> tuple[float, float]:
-    import numpy as np
-    data = np.asarray(values, dtype=float)
-    if data.size == 0:
+    """Percentile bootstrap of the mean (standard library only; numpy is not a TIM dependency)."""
+    import random
+    data = [float(v) for v in values]
+    if not data:
         return 0.0, 0.0
-    rng = np.random.default_rng(seed)
-    means = data[rng.integers(0, data.size, size=(draws, data.size))].mean(axis=1)
+    rng, size = random.Random(seed), len(data)
+    means = sorted(sum(rng.choices(data, k=size)) / size for _ in range(draws))
     tail = (1 - level) / 2
-    return float(np.quantile(means, tail)), float(np.quantile(means, 1 - tail))
+    low = means[max(0, min(draws - 1, int(math.floor(tail * (draws - 1)))))]
+    high = means[max(0, min(draws - 1, int(math.ceil((1 - tail) * (draws - 1)))))]
+    return low, high
 
 
 def metrics(register: ModelRegister, journal: ShadowJournal, *, seed: int = 0) -> dict[str, Any]:

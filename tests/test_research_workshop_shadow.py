@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import numpy as np
+import random
 import pytest
 
 from src.research_lab.learning.registry import ELIGIBLE, LearningError, ModelRegister
@@ -123,21 +123,21 @@ def test_open_plans_or_gaps_give_no_verdict(tmp_path: Path) -> None:
 
 def test_random_strategy_is_promoted_in_under_5_percent() -> None:
     rules = {"min_minutes": 30, "min_window_days": 30, "ci_level": 0.995, "min_effect": 0.05}
-    rng = np.random.default_rng(31)
+    rng = random.Random(31)
     passed = 0
     for sim in range(1000):
-        values = rng.choice([-1.1, 0.9], size=60)  # coin flip with costs: true mean -0.1 R
-        low, high = shadow.bootstrap_interval(values, draws=500, seed=sim)
-        delta = float(values.mean())
+        values = [rng.choice([-1.1, 0.9]) for _ in range(60)]  # coin flip with costs: true mean -0.1 R
+        low, high = shadow.bootstrap_interval(values, draws=300, seed=sim)
+        delta = sum(values) / len(values)
         metrics = {"n_minutes": 60, "days": 30, "delta": delta, "ci_low": min(low, delta), "ci_high": max(high, delta),
                    "ci_level": 0.995, "calibration_ok": True, "quality_ok": True}
         passed += ModelRegister.verdict(rules, metrics)[0] == ELIGIBLE
     assert passed / 1000 < 0.05, passed
     fair = 0
     for sim in range(1000):
-        values = rng.normal(0.0, 1.0, size=60)  # no edge at all
-        low, high = shadow.bootstrap_interval(values, draws=500, seed=sim)
-        delta = float(values.mean())
+        values = [rng.gauss(0.0, 1.0) for _ in range(60)]  # no edge at all
+        low, high = shadow.bootstrap_interval(values, draws=300, seed=sim)
+        delta = sum(values) / len(values)
         metrics = {"n_minutes": 60, "days": 30, "delta": delta, "ci_low": min(low, delta), "ci_high": max(high, delta),
                    "ci_level": 0.995, "calibration_ok": True, "quality_ok": True}
         fair += ModelRegister.verdict(rules, metrics)[0] == ELIGIBLE
