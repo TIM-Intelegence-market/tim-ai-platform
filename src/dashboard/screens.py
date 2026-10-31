@@ -59,6 +59,7 @@ main:has(>#cockpit>.scr){max-width:none;padding:0}
 .lights .dot[data-s=ok]{background:var(--ok)}.lights .dot[data-s=warn]{background:var(--warn)}.lights .dot[data-s=fail]{background:var(--fail)}
 .lights .why{margin:0 0 12px 28px;padding:10px 12px;border-radius:10px;background:var(--unknownbg);font-size:14px}
 .lights .why p{margin:0 0 4px}
+.nw{white-space:nowrap}
 .links{display:flex;flex-wrap:wrap;gap:6px 18px}.links a{font-weight:600}
 .study{display:grid;grid-template-columns:4.2rem minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line);align-items:baseline}
 .study:first-of-type{border-top:0}.study b{font-weight:700}.study p{margin:2px 0 0;color:var(--muted);font-size:13.5px}
@@ -325,7 +326,52 @@ STUDY_TAGS = {"running": ("läuft", "w"), "waiting": ("wartet auf Daten", ""), "
               "aborted": ("abgebrochen", "")}
 
 
-def forschung_body(state: Any, path: Path = LOGBOOK) -> str:
+TASK_WORDS = {"trades": "Trade-Reflexion (stündlich)", "weekly": "Forschungsrunde (sonntags)", "monthly": "Monats-Reflexion (am 1.)"}
+IDEA_TAGS = {"ready": "l", "new": "", "waiting_data": "w", "waiting_budget": "w"}
+
+
+def _workshop_card(root: Path) -> str:
+    """F9: what the research workshop on the Mac is doing (read only, data/research/)."""
+    from src.research_lab.workshop.overview import overview
+
+    data = overview(root)
+    counts = data["idea_counts"]
+    open_count = sum(counts.get(k, 0) for k in IDEA_TAGS)
+    trades = data["trades"] or {"count": 0, "top": []}
+    head = (f"<div class='kpi3'><div><span class='mut sm'>Offene Ideen</span><b>{open_count}</b><span class='mut sm'>"
+            f"{counts.get('ready', 0)} bereit</span></div>"
+            f"<div><span class='mut sm'>Studien-Budget {_e(data['month'])}</span><b>{data['drafts_this_month']} / {data['budget']}</b>"
+            f"<span class='mut sm'>Stufe {data['stage']}: du gibst jede Studie frei</span></div>"
+            f"<div><span class='mut sm'>Reflektierte Trades</span><b>{trades['count']}</b><span class='mut sm'>Papier, alle Journale</span></div></div>")
+    ideas = "".join(
+        f"<div class='row'><span><b>{_e(i['id'])}</b> {_e(i['title'])}<br><span class='mut sm'>{_e(i['source'])}"
+        + (f" · {_e(i['reason'])}" if i["reason"] else "") + "</span></span>"
+        f"<span><span class='tag {IDEA_TAGS.get(i['status'], '')}'>{_e(i['status_text'])}</span></span></div>"
+        for i in data["ideas"]) or "<p class='mut'>Keine offenen Ideen.</p>"
+    lessons = "".join(f"<div class='row'><span>{_e(t['text'])}</span><span class='mut nw'>{t['count']} ({round(t['share'] * 100)} %)</span></div>"
+                      for t in trades["top"]) or "<p class='mut'>Noch keine Muster.</p>"
+    shadows = "".join(
+        f"<div class='row'><span><b>{_e(r['study'])}</b> {_e(r['model_id'])}<br><span class='mut sm'>Fenster bis {_e(local_time(r['window_end'], with_date=True))} · "
+        f"{r['closed']} von {r['plans']} Plänen abgeschlossen</span></span>"
+        f"<span><span class='tag'>{_e(r['verdict'] or 'läuft')}</span></span></div>"
+        for r in data["shadows"]) or "<p class='mut'>Kein Kandidat im Schattenbetrieb. Ein Kandidat läuft 30 Tage mit und zählt nie im Netto-R.</p>"
+    plan = "".join(
+        f"<div class='row'><span>{_e(TASK_WORDS[task])}</span><span class='{'' if info.get('ok') is not False else 'dn'}'>"
+        + (_e(local_time(info["last_run"], with_date=True)) if info.get("last_run") else "noch nie")
+        + (" · wartet auf CI-Job" if info.get("held") else "") + (" · Fehler" if info.get("ok") is False else "") + "</span></div>"
+        for task, info in data["schedule"].items())
+    if data.get("schedule_paused"):
+        plan += "<p class='warnc sm'>Zeitplan pausiert (PAUSE-Datei).</p>"
+    notes = "".join(f"<p class='mut sm'>{_e(n)}</p>" for n in data["notes"])
+    reflection = (f"<p class='mut sm'>Letzte Monats-Reflexion: {_e(data['last_reflection'])}</p>" if data["last_reflection"] else "")
+    return (f"<div class='card'><h2>Forschungswerkstatt <span>läuft auf dem Mac</span></h2>{head}</div>"
+            f"<div class='two'><div class='card'><h2>Ideen-Liste <span>nächste zuerst</span></h2>{ideas}</div>"
+            f"<div class='stack'><div class='card'><h2>Zeitplan</h2>{plan or '<p class=mut>Noch kein Lauf.</p>'}{reflection}{notes}</div>"
+            f"<div class='card'><h2>Lehren aus den Trades</h2>{lessons}</div>"
+            f"<div class='card'><h2>Schattenbetrieb</h2>{shadows}</div></div></div>")
+
+
+def forschung_body(state: Any, path: Path = LOGBOOK, research_root: Path = Path(".")) -> str:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         entries = [e for e in data.get("entries") or [] if isinstance(e, dict)]
@@ -348,7 +394,8 @@ def forschung_body(state: Any, path: Path = LOGBOOK) -> str:
     more = ("<div class='links'><a href='/neu/forschung'>Forschung im Detail</a><a href='/cases'>Research-Fälle</a><a href='/observations'>Beobachtungen</a>"
             "<a href='/orderflow'>Orderflow</a><a href='/signals'>Signal-Research</a><a href='/analytics'>Analysen</a><a href='/insights'>Erkenntnisse</a>"
             "<a href='/research'>Recherche-Werkzeug</a></div>")
-    return (f"<div class='scr'><div class='kpis'>{kpis}</div>"
+    workshop = _safe(lambda: _workshop_card(research_root), "Forschungswerkstatt")
+    return (f"<div class='scr'><div class='kpis'>{kpis}</div>{workshop}"
             f"<div class='card'><h2>Logbuch der Studien <span>neueste zuerst</span></h2>{rows or '<p class=mut>Noch keine Studie eingetragen.</p>'}</div>"
             f"<div class='card'><h2>Mehr Forschung</h2>{more}</div></div>")
 
