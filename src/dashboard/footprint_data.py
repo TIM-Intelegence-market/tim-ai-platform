@@ -8,7 +8,9 @@ the dashboard. Finished days are kept as they are; only the running day is read 
 From that store the chart builds, per view:
 
 - volume profiles per UTC day (volume per price step, POC, value area 70 %, delta),
-- footprint bars for the shown timeframe (bid x ask per price step, delta, imbalances).
+- footprint bars for the shown timeframe (bid x ask per price step, delta, imbalances),
+- volume bubbles: large market orders (aggTrades of one taker order, same millisecond and
+  side, summed; ``MarketRepository.agg_trade_bubbles``) as circles at time and price.
 
 Display only: nothing here writes, trades or changes a plan. Only the symbol TIM
 collects (BTCUSDT) has data; other coins show nothing.
@@ -17,6 +19,7 @@ collects (BTCUSDT) has data; other coins show nothing.
 from __future__ import annotations
 
 import math
+from bisect import bisect_right
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Mapping, Sequence
 
@@ -24,7 +27,7 @@ from src.dashboard.chart_model import _nice_step
 
 BUCKET_SECONDS = 300  # finest time bucket kept; footprint bars from 5m upwards
 TICK_BY_SYMBOL = {"BTCUSDT": 5.0, "ETHUSDT": 0.5, "SOLUSDT": 0.05}  # finest price level kept
-DAYS_KEPT = 7  # finished days plus the running day
+DAYS_KEPT = 14  # finished days plus the running day: always covers the previous full week (Mon-Sun)
 RECHECK_SECONDS = 3600  # a finished day is aggregated again after this long (late inserts from catch-up or backfill)
 PROFILE_BINS = 40  # price rows per day profile
 FOOTPRINT_ROWS = 40  # target price rows per footprint bar (finest step sent; the chart merges rows to fit the zoom)
@@ -33,6 +36,9 @@ STACK_MIN = 3  # consecutive same-side imbalances that count as stacked (orderfl
 MAX_FOOTPRINT_BARS = 400  # bars carried to the browser per view
 SOURCE = "TIM agg_trades (Binance Spot aggTrades, eigene Datenbank)"
 VALUE_AREA_SHARE = 0.7
+BUBBLE_MIN_USD = 100_000.0  # smallest market order kept as a bubble (USD notional of one taker order)
+BUBBLES_PER_DAY = 2000  # largest orders kept per day (a busy day has a few thousand above the floor)
+MAX_BUBBLES_VIEW = 400  # largest orders in the shown window carried to the browser
 
 
 def tick_for(symbol: str, price: float | None = None) -> float:
@@ -57,6 +63,19 @@ def _rows(records: Sequence[Mapping[str, Any]]) -> list[list[float]]:
     return [[_epoch(r["bucket"]), float(r["level"]), float(r["bid"]), float(r["ask"])] for r in records]
 
 
+def _epoch_ms(value: Any) -> int:
+    moment = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return int(round(moment.timestamp() * 1000))
+
+
+def _bubble_rows(records: Sequence[Mapping[str, Any]]) -> list[list[float]]:
+    """Compact rows [time_ms, price, quantity, side] (side 1 = aggressive buyer, -1 = aggressive seller), by time."""
+    rows = [[_epoch_ms(r["time"]), round(float(r["price"]), 8), round(float(r["quantity"]), 8), 1 if r["buy"] else -1] for r in records]
+    return sorted(rows)
+
+
 async def refresh(repository: Any, state: Any, symbol: str, now: datetime | None = None, days: int = DAYS_KEPT) -> dict[str, Any]:
     """Fill ``state.footprint`` for the last ``days`` days plus today; returns what was fetched.
 
@@ -69,6 +88,7 @@ async def refresh(repository: Any, state: Any, symbol: str, now: datetime | None
     with state.lock:
         current = dict(state.footprint) if state.footprint and state.footprint.get("symbol") == symbol and state.footprint.get("tick") == tick else {}
         kept = dict(current.get("days") or {})
+        bubbles = dict(current.get("bubbles") or {})
         # Day -> epoch of the last read that covered the whole day. A finished day is read again once an hour
         # (one per pass, oldest first), so trades a catch-up or backfill inserts later still reach the profile.
         complete = dict(current.get("complete") or {})
@@ -79,7 +99,7 @@ async def refresh(repository: Any, state: Any, symbol: str, now: datetime | None
     error: Exception | None = None
     for day in wanted:
         key = day.isoformat()
-        if key in complete and key not in recheck:
+        if key in complete and key not in recheck and key in bubbles:
             continue
         start = _day_start(day)
         end = min(start + timedelta(days=1), now)
@@ -87,17 +107,20 @@ async def refresh(repository: Any, state: Any, symbol: str, now: datetime | None
             continue
         try:
             records = await repository.agg_trade_levels(symbol, start, end, tick, BUCKET_SECONDS)
+            large = await repository.agg_trade_bubbles(symbol, start, end, BUBBLE_MIN_USD, BUBBLES_PER_DAY)
         except Exception as exc:  # noqa: BLE001 - keep the days read so far, report the failure once
             error = exc
             break
         kept[key] = _rows(records)
+        bubbles[key] = _bubble_rows(large)
         fetched[key] = len(records)
         if end == start + timedelta(days=1):
             complete[key] = int(now.timestamp())
     keys = sorted(kept)[-(days + 1):]
     store = {"symbol": symbol, "tick": tick, "bucket_seconds": BUCKET_SECONDS, "source": SOURCE,
              "updated_at": (current.get("updated_at") if error else None) or now.isoformat(),
-             "days": {k: kept[k] for k in keys}, "complete": {k: v for k, v in complete.items() if k in keys}}
+             "days": {k: kept[k] for k in keys}, "bubbles": {k: bubbles[k] for k in keys if k in bubbles},
+             "bubble_min_usd": BUBBLE_MIN_USD, "complete": {k: v for k, v in complete.items() if k in keys}}
     with state.lock:
         state.footprint = store
     if error is not None:
@@ -121,6 +144,40 @@ def _value_area(volumes: Mapping[int, float], poc: int) -> tuple[int, int]:
     return below + 1, above - 1
 
 
+def profile_from_rows(rows: Sequence[Sequence[float]], tick: float, bins: int = PROFILE_BINS) -> dict[str, Any] | None:
+    """Volume profile of stored rows ``[bucket, level, bid, ask]``: rows per price step, POC, value area.
+
+    ``poc``, ``vah`` and ``val`` are row edges (``poc`` = lower edge of the fullest row);
+    ``poc_mid`` is the centre of that row, the price a level line uses.
+    """
+    if not rows:
+        return None
+    low, high = min(r[1] for r in rows), max(r[1] for r in rows) + tick
+    step = max(tick, _nice_step(max(high - low, tick), bins))
+    step = math.ceil(step / tick) * tick  # a whole number of ticks, so levels fall on row edges
+    first = math.floor(low / step) * step
+    bid: dict[int, float] = {}
+    ask: dict[int, float] = {}
+    for _, level, b, a in rows:
+        index = int((level - first) // step)
+        bid[index] = bid.get(index, 0.0) + b
+        ask[index] = ask.get(index, 0.0) + a
+    volumes = {i: bid.get(i, 0.0) + ask.get(i, 0.0) for i in set(bid) | set(ask)}
+    if not volumes:
+        return None
+    poc = min(sorted(volumes), key=lambda i: (-volumes[i], i))
+    val_index, vah_index = _value_area(volumes, poc)
+    total = sum(volumes.values())
+    return {
+        "step": step, "total": round(total, 4), "delta": round(sum(ask.values()) - sum(bid.values()), 4),
+        "poc": round(first + poc * step, 8), "poc_mid": round(first + poc * step + step / 2, 8),
+        "vah": round(first + vah_index * step + step, 8), "val": round(first + val_index * step, 8),
+        "high": round(high, 8), "low": round(low, 8), "max_volume": round(max(volumes.values()), 4),
+        "rows": [{"price": round(first + i * step, 8), "volume": round(volumes[i], 4), "bid": round(bid.get(i, 0.0), 4),
+                  "ask": round(ask.get(i, 0.0), 4), "delta": round(ask.get(i, 0.0) - bid.get(i, 0.0), 4)} for i in sorted(volumes)],
+    }
+
+
 def volume_profiles(store: Mapping[str, Any] | None, now: datetime, bins: int = PROFILE_BINS) -> list[dict[str, Any]]:
     """One volume profile per day in the store: rows per price step with bid/ask/delta, POC, VAH/VAL."""
     if not store or not store.get("days"):
@@ -129,34 +186,15 @@ def volume_profiles(store: Mapping[str, Any] | None, now: datetime, bins: int = 
     tick = float(store["tick"])
     result = []
     for key in sorted(store["days"]):
-        rows = store["days"][key]
-        if not rows:
+        profile = profile_from_rows(store["days"][key], tick, bins)
+        if profile is None:
             continue
-        low, high = min(r[1] for r in rows), max(r[1] for r in rows) + tick
-        step = max(tick, _nice_step(max(high - low, tick), bins))
-        step = math.ceil(step / tick) * tick  # a whole number of ticks, so levels fall on row edges
-        first = math.floor(low / step) * step
-        bid: dict[int, float] = {}
-        ask: dict[int, float] = {}
-        for _, level, b, a in rows:
-            index = int((level - first) // step)
-            bid[index] = bid.get(index, 0.0) + b
-            ask[index] = ask.get(index, 0.0) + a
-        volumes = {i: bid.get(i, 0.0) + ask.get(i, 0.0) for i in set(bid) | set(ask)}
-        if not volumes:
-            continue
-        poc = min(sorted(volumes), key=lambda i: (-volumes[i], i))
-        val_index, vah_index = _value_area(volumes, poc)
-        total = sum(volumes.values())
         day = date.fromisoformat(key)
         start = _day_start(day)
         result.append({
             "day": key, "label": f"{day.day:02d}.{day.month:02d}.", "start": start.isoformat(), "end": (start + timedelta(days=1)).isoformat(),
-            "running": day == today, "step": step, "total": round(total, 4), "delta": round(sum(ask.values()) - sum(bid.values()), 4),
-            "poc": round(first + poc * step, 8), "vah": round(first + vah_index * step + step, 8), "val": round(first + val_index * step, 8),
-            "max_volume": round(max(volumes.values()), 4),
-            "rows": [{"price": round(first + i * step, 8), "volume": round(volumes[i], 4), "bid": round(bid.get(i, 0.0), 4),
-                      "ask": round(ask.get(i, 0.0), 4), "delta": round(ask.get(i, 0.0) - bid.get(i, 0.0), 4)} for i in sorted(volumes)],
+            "running": day == today, "complete": key in (store.get("complete") or {}),
+            **{k: profile[k] for k in ("step", "total", "delta", "poc", "poc_mid", "vah", "val", "max_volume", "rows")},
         })
     return result
 
@@ -249,3 +287,31 @@ def footprint_bars(store: Mapping[str, Any] | None, times: Sequence[int], timefr
                      "poc": poc, "imbalances": imbalances, "stacked": _stacks(prices, imbalances, step),
                      "unfinished_high": min(top) > 0, "unfinished_low": min(bottom) > 0})
     return {"step": step, "bars": bars, "note": None, "bar_seconds": timeframe_seconds, "span_seconds": span}
+
+
+def volume_bubbles(store: Mapping[str, Any] | None, times: Sequence[int], timeframe_seconds: int) -> dict[str, Any]:
+    """Large market orders in the shown window: one bubble per taker order at its time and average price.
+
+    ``time`` is the exact moment (UTC epoch seconds, ms precision), ``bar`` the open time of the
+    candle it falls into, ``side`` 1 for an aggressive buyer (green) and -1 for a seller (red).
+    Only the ``MAX_BUBBLES_VIEW`` largest orders of the window are sent, oldest first.
+    """
+    empty = {"items": [], "min_usd": None, "max_usd": None, "note": None}
+    if not store or not store.get("bubbles") or len(times) < 2:
+        return empty
+    first_time, last_time = times[0], times[-1] + timeframe_seconds
+    found = []
+    for key in sorted(store["bubbles"]):
+        for time_ms, price, quantity, side in store["bubbles"][key]:
+            moment = time_ms / 1000.0
+            if first_time <= moment < last_time:
+                found.append((price * quantity, moment, price, quantity, side))
+    if not found:
+        return {**empty, "note": "Keine großen Market Orders im gezeigten Fenster."}
+    found = sorted(found, reverse=True)[:MAX_BUBBLES_VIEW]
+    items = []
+    for usd, moment, price, quantity, side in sorted(found, key=lambda item: item[1]):
+        bar = times[max(0, bisect_right(times, moment) - 1)]
+        items.append({"time": round(moment, 3), "bar": bar, "price": price, "quantity": quantity, "usd": round(usd, 2), "side": int(side)})
+    return {"items": items, "min_usd": round(min(i["usd"] for i in items), 2), "max_usd": round(max(i["usd"] for i in items), 2),
+            "floor_usd": store.get("bubble_min_usd", BUBBLE_MIN_USD), "note": None}

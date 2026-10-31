@@ -33,6 +33,9 @@ class FakeRepository:
             moment += timedelta(seconds=bucket_seconds)
         return rows
 
+    async def agg_trade_bubbles(self, symbol, start, end, min_usd, limit):
+        return []  # volume bubbles have their own tests (test_chart_bubbles.py)
+
 
 def test_refresh_reads_today_every_time_and_finished_days_once() -> None:
     state, repo = DashboardState(), FakeRepository()

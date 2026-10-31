@@ -20,7 +20,7 @@ from src.dashboard.chart_live import SYMBOL_NAMES, SYMBOLS, VIEW_TIMEFRAMES, tab
 from src.dashboard.chart_model import _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import CSS, EXTRA_CSS
-from src.dashboard.pages.chart import APP_PATH, LIB_PATH
+from src.dashboard.pages.chart import APP_SRC, LIB_PATH
 from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RULE_TIM, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
@@ -31,10 +31,10 @@ REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
     "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "quarter": "Quarter (1Q)", "year": "Year (1Y)",
-    "vwap": "VWAP (week, month, 12M)", "naked": "naked POC",
+    "vwap": "VWAP (week, month, quarter, year)", "vwap_bands": "VWAP bands week (±1σ, ±2σ)", "naked": "naked POC",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trend lines", "fib": "Fibonacci (last swing)", "tpo": "TPO (day profile)",
-    "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
+    "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)", "bubbles": "Volume bubbles (large market orders)",
     "plans_short": "TIM plans SHORT 15m", "plans_mid": "TIM plans MID 1h", "plans_long": "TIM plans LONG 1D",
     "plans_old": "TIM plans, test versions 30m",
     "gamma": "Options gamma (Deribit)",
@@ -57,8 +57,15 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^VWAP Woche ab ", "VWAP week from "),
     (r"^VWAP Monat ab ", "VWAP month from "),
     (r"^VWAP 12 Monate", "VWAP 12 months"),
-    (r", aus (\w+)-Kerzen$", r", from \1 candles"),
-    (r", Linie aus den gezeigten Kerzen$", ", line from the shown candles"),
+    (r"^VWAP Quartal ab ", "VWAP quarter from "),
+    (r"^VWAP Jahr ab ", "VWAP year from "),
+    (r", Band ([+−]\dσ)$", r", band \1"),
+    (r", echte Trades$", ", real trades"),
+    (r"unberührter Volumen-POC \(vPOC\)", "untouched volume POC (vPOC)"),
+    (r"unberührter TPO-POC \(Zeit, 30m-Perioden\)", "untouched TPO POC (time, 30m periods)"),
+    (r" \(Schätzung aus Kerzen\)", " (estimated from candles)"),
+    (r", aus (\w+)-Kerzen(?=,|$)", r", from \1 candles"),
+    (r", Linie aus den gezeigten Kerzen(?=,|$)", ", line from the shown candles"),
     (r"unberührter Tages-POC", "untouched daily POC"),
     (r"laufendes Tagesprofil", "running day profile"),
     (r"laufendes Wochenprofil", "running week profile"),
@@ -100,6 +107,7 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
                          "weekend candles and thinner liquidity can shift levels against XAUUSD."),
     (r"^Gamma: Deribit-Stand ist (\d+) min alt", r"Gamma: Deribit data is \1 min old, levels hidden."),
     (r"^Liquidations-Heatmap: Binance-Stand ist (\d+) min alt", r"Liquidation heatmap: Binance data is \1 min old, hidden."),
+    (r"^Keine großen Market Orders", "No large market orders in the shown window."),
     (r"^Noch keine Trades", "No trades from the TIM database yet (the runtime delivers them every 2 minutes)."),
     (r"^(Level \S+: )?Börse nicht erreichbar", r"\1Exchange not reachable, retrying shortly."),
 )
@@ -139,6 +147,10 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     out["plans"] = [{**p, "label": plan_labels.get(p.get("label"), p.get("label"))} for p in model.get("plans") or []]
     if isinstance(model.get("footprint"), dict):
         out["footprint"] = {**model["footprint"], "note": english_note(model["footprint"].get("note"))}
+    if isinstance(model.get("fib"), dict):
+        out["fib"] = {**model["fib"], "note": english_text(model["fib"].get("note"))}
+    if isinstance(model.get("bubbles"), dict):
+        out["bubbles"] = {**model["bubbles"], "note": english_note(model["bubbles"].get("note"))}
     for key in ("level_source", "trade_source"):
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])
@@ -208,9 +220,12 @@ def chart_page(symbol: str | None, timeframe: str | None) -> str:
         "green/red tick = delta); the <b>footprint</b> (5m to 4h, “Footprint” button) follows the zoom: medium = one colour column per candle (green/red = delta, "
         "strong = high volume), close = bid × ask per price step next to a slim candle, finer steps the closer you zoom, POC framed yellow, "
         "4:1 imbalances bold (green = buyers, red = sellers), stacked imbalances (3+) as a bar at the side, unfinished auction at the high/low "
-        "dotted orange, Δ and volume (V) below the candle. Times in Central European time. Display only, no orders. "
+        "dotted orange, Δ and volume (V) below the candle. <b>Volume bubbles</b> (timeframes up to 4h) = large market orders from TIM's trades "
+        "(all aggTrades of one taker order, same millisecond and side, from 100,000 USD): green = aggressive buyer, red = aggressive seller, "
+        "circle area = order size against the largest in view, the largest carry their size in BTC; only the largest in view are shown, zooming in adds smaller ones. <b>Fibonacci</b> as in TradingView on the last big swing (wick to wick; a swing counts after a move of 3 average candle ranges against it, "
+        "and while price only pulls back the fib stays on the impulse): 1 = start, 0 = end, zones 0.236 to 1 plus 0.886/0.941 and 1.618. Times in Central European time. Display only, no orders. "
         "Chart: <a href='https://www.tradingview.com/' rel='noopener noreferrer'>TradingView Lightweight Charts</a> (Apache 2.0).</p>"
-        f"<script src='{LIB_PATH}'></script><script src='{APP_PATH}'></script></section>"
+        f"<script src='{LIB_PATH}'></script><script src='{APP_SRC}'></script></section>"
     )
     return shell("Chart", "/chart", body)
 
@@ -227,13 +242,12 @@ HORIZONS_EN = (
 EARLIER_EN = (
     ("tim", "TIM rule 30m", "first version: fixed stop, targets at 1.5 / 2 / 3 R"),
     ("struct", "Structure rule 30m", "stop behind the 30m swing, targets at liquidity"),
-    ("level", "Level rule 30m", "main levels from the chart, stop behind the swing"),
 )
 JOURNAL_KEYS = tuple(key for key, _, _ in HORIZONS_EN + EARLIER_EN)
 DEFAULT_JOURNAL = "mid"
 CHART_TF = {"short": "15m", "mid": "1h", "long": "1d", "tim": "30m", "struct": "30m", "level": "30m"}
 ALIASES = {RULE_TIM: "tim", RULE_STRUCT: "struct", RULE_LEVEL: "level"}  # older callers pass rule ids
-RULES_EN = tuple((rule, name, text) for rule, (_, name, text) in zip((RULE_TIM, RULE_STRUCT, RULE_LEVEL), EARLIER_EN))
+RULES_EN = tuple((rule, name, text) for rule, (_, name, text) in zip((RULE_TIM, RULE_STRUCT), EARLIER_EN))
 STATUS_EN = {"OPEN": "waiting for entry", "FILLED": "in trade", "CLOSED": "closed", "INVALIDATED": "invalidated before entry",
              "REPLACED": "replaced", "EXPIRED": "expired"}
 EXIT_EN = {"STOP": "stop", "BREAK_EVEN": "break-even after TP1", "BREAK_EVEN_COSTS": "break-even + costs after TP1",

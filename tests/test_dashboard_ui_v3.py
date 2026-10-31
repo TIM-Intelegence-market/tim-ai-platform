@@ -158,11 +158,11 @@ def test_incidents_are_bounded_and_newest_first(tmp_path: Path) -> None:
     assert isinstance(incidents, list) and len(incidents) <= 20
 
 
-def test_grouped_navigation_has_five_labelled_groups(tmp_path: Path) -> None:
-    page = render(_state(tmp_path))
-    for group in ("BETRIEB", "FORSCHUNG", "FREIGABE", "SYSTEM", "WERKZEUGE"):
-        assert f"<p class='nav__label'>{group}</p>" in page
-    assert page.count("class='nav__group'") == 5
+def test_navigation_has_five_areas(tmp_path: Path) -> None:
+    page = render(_state(tmp_path), "Runtime")
+    for label in ("Heute", "Chart", "Journal", "Forschung", "System"):
+        assert f">{label}</a>" in page
+    assert "class='nav__label'" not in page and "<a href='/runtime' class='sub active' aria-current='page'>Laufzeit</a>" in page
 
 
 def _gate_model(path: Path, *, research: list[tuple[str, str]] | None = None,

@@ -66,16 +66,18 @@ GROUP_STYLE = {
     "quarter": ("#f08c4a", "solid"),
     "year": ("#ff5c9a", "solid"),
     "vwap": ("#3fd0c9", "solid"),
+    "vwap_bands": ("#3fd0c9", "dotted"),
     "fib": ("#c9a227", "dotted"),
     "gamma": ("#ffb020", "solid"),  # each gamma level brings its own colour (gamma_data.LEVEL_STYLE)
     "liq": ("#ff6b3d", "dashed"),  # cluster levels bring their own colour (liquidation_data.LEVEL_COLOR)
 }
 GROUP_NAMES = {
     "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "quarter": "Quartal (1Q)", "year": "Jahr (1Y)",
-    "vwap": "VWAP (Woche, Monat, 12M)", "naked": "naked POC",
+    "vwap": "VWAP (Woche, Monat, Quartal, Jahr)",
+    "vwap_bands": "VWAP-Bänder Woche (±1σ, ±2σ)", "naked": "naked POC",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "fib": "Fibonacci (letzter Swing)", "tpo": "TPO (Tagesprofil)",
-    "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
+    "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)", "bubbles": "Volume Bubbles (große Market Orders)",
     "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
@@ -85,7 +87,7 @@ TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
-DEFAULT_GROUPS = ("day", "week", "month", "naked", "structure", "trend", "tpo", "vp", "fp",
+DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
                   "plans_short", "plans_mid", "plans_long", "gamma", "liq")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
@@ -93,9 +95,15 @@ PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"),
                  "tim": ("plans_old", "TIM 30m"), "struct": ("plans_old", "Struktur 30m"), "level": ("plans_old", "Level 30m")}
 PLAN_LIMIT = 40  # newest plans drawn per chart
 PLAN_SHOWN = {"OPEN", "FILLED", "CLOSED"}
-# Fibonacci zones of the newest swing leg. 0.886 and 0.941 come from the GoatHub EDUCATION
-# lesson (02.10.2026): zones where price often reacts. Display only, never a signal or a score.
-FIB_RATIOS = (0.382, 0.5, 0.618, 0.786, 0.886, 0.941)  # never-filled plans (replaced, expired, invalidated) stay in the journal only
+# Fibonacci retracement of the newest swing leg, drawn like TradingView's Fib tool (Uzi 30.10.2026):
+# 0 = end of the leg, 1 = its start, zones between the levels, 1.618 beyond the start.
+# 0.886 and 0.941 come from the GoatHub EDUCATION lesson (02.10.2026): zones where price often reacts.
+# Display only, never a signal or a score.
+FIB_RATIOS = (0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 0.886, 0.941, 1.0, 1.618)
+# A swing counts once price moved this many average candle ranges (ATR) against it (TradingView Auto Fib: 3).
+FIB_ATR_MULT = 3.0
+FIB_ATR_BARS = 100  # closed candles behind the average range
+FIB_MAX_STEPS = 6  # older legs looked at when the newest moves are pullbacks
 
 Fetch = Callable[[str, str, int], list[dict[str, Any]]]
 
@@ -190,12 +198,15 @@ def _short_day(day: date) -> str:
     return f"{day.day:02d}.{day.month:02d}."
 
 
-def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime) -> list[dict[str, Any]]:
+def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
+                   trades: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     """Every reference level with timeframe, name and the moment it formed.
 
     Uses the session map (same rules as /prep and the level plans) and adds
     where each level starts: profile levels at the start of their day/week,
-    highs and lows at the candle that printed them.
+    highs and lows at the candle that printed them. With ``trades`` (TIM's
+    aggTrades store, ``DashboardState.footprint``) the value levels and naked
+    POCs of the days it covers come from the real trades (``trade_levels``).
     """
     from src.dashboard.session_map import build_session_map
 
@@ -266,7 +277,118 @@ def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datet
     if ib:
         add("ib", "", "IB High", ib["high"], today, "Initial Balance (90 min ab 00:00 UTC)")
         add("ib", "", "IB Low", ib["low"], today, "Initial Balance (90 min ab 00:00 UTC)")
+    if trades and trades.get("days"):
+        out = trade_levels(out, trades, series, now)
     return out
+
+
+TRADE_NOTE = "echte Trades"
+
+
+def _week_rows(store: Mapping[str, Any], monday: date, last: date) -> list[list[float]] | None:
+    """Stored rows of the days ``monday`` .. ``last``, or None when a day is missing or was not read in full."""
+    days, complete = store.get("days") or {}, store.get("complete") or {}
+    rows: list[list[float]] = []
+    day = monday
+    while day <= last:
+        key = day.isoformat()
+        if key not in days:
+            return None
+        if key not in complete and day != last:
+            return None
+        rows.extend(days[key])
+        day += timedelta(days=1)
+    return rows
+
+
+def trade_levels(drawings: Sequence[Mapping[str, Any]], store: Mapping[str, Any], series: Mapping[str, Sequence[Mapping[str, Any]]],
+                 now: datetime) -> list[dict[str, Any]]:
+    """Value levels and naked POCs from TIM's own trades instead of the candle estimate (Beirat 29.10.2026).
+
+    For every day the store covers: previous day VAH/POC/VAL, previous week value (when all
+    seven days are stored), the running day/week POC, and naked POCs of both kinds, as Broncx
+    marks them: vPOC (most volume, real trades) and tPOC (most 30m periods). A POC is naked
+    while no later trade (vPOC) or closed candle (tPOC) has printed inside its row. Days older
+    than the store keep the candle estimate, marked as such. The plan journals do not read
+    this (they call ``build_session_map`` directly), so their rules stay unchanged.
+    """
+    from src.dashboard.footprint_data import profile_from_rows, volume_profiles
+
+    tick = float(store["tick"])
+    profiles = {p["day"]: p for p in volume_profiles(store, now)}
+    if not profiles:
+        return [dict(d) for d in drawings]
+    first_day = min(profiles)
+    today = now.astimezone(timezone.utc).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    monday = today - timedelta(days=today.weekday())
+    replaced: set[tuple[str, str]] = set()
+    added: list[dict[str, Any]] = []
+
+    def add(group: str, tf: str, name: str, price: float, start: datetime, note: str) -> None:
+        added.append({"group": group, "tf": tf, "name": name, "label": f"{tf} {name}".strip(), "price": float(price),
+                      "start": start.isoformat(), "note": note, "source": "trades"})
+
+    previous = profiles.get(yesterday)
+    if previous and previous["complete"]:
+        day = date.fromisoformat(yesterday)
+        note = f"Vortag {_short_day(day)}, {TRADE_NOTE}"
+        for key, name in (("vah", "VAH"), ("poc_mid", "POC"), ("val", "VAL")):
+            add("day", "1D", name, previous[key], _day_start(day), note)
+        replaced |= {("day", "VAH"), ("day", "POC"), ("day", "VAL")}
+    week_rows = _week_rows(store, monday - timedelta(days=7), monday - timedelta(days=1))
+    week = profile_from_rows(week_rows, tick) if week_rows else None
+    if week:
+        start = _day_start(monday - timedelta(days=7))
+        note = f"Vorwoche ab {_short_day(start.date())}, {TRADE_NOTE}"
+        for key, name in (("vah", "VAH"), ("poc_mid", "POC"), ("val", "VAL")):
+            add("week", "1W", name, week[key], start, note)
+        replaced |= {("week", "VAH"), ("week", "POC"), ("week", "VAL")}
+    running = profiles.get(today.isoformat())
+    if running:
+        add("running", "1D", "POC lfd.", running["poc_mid"], _day_start(today), f"laufendes Tagesprofil, {TRADE_NOTE}")
+        replaced.add(("running_day", ""))
+        this_week_rows = _week_rows(store, monday, today)
+        this_week = profile_from_rows(this_week_rows, tick) if this_week_rows else None
+        if this_week:
+            add("running", "1W", "POC lfd.", this_week["poc_mid"], _day_start(monday), f"laufendes Wochenprofil, {TRADE_NOTE}")
+            replaced.add(("running_week", ""))
+
+    # Naked vPOCs: no later trade inside the POC row (stored levels are multiples of the tick).
+    levels_by_day = {key: {round(float(r[1]), 8) for r in rows} for key, rows in store["days"].items()}
+    for key, profile in sorted(profiles.items()):
+        if not profile["complete"] or key in (today.isoformat(), yesterday):
+            continue
+        later: set[float] = set().union(*(v for k, v in levels_by_day.items() if k > key))
+        inside = {round(profile["poc"] + i * tick, 8) for i in range(max(1, round(profile["step"] / tick)))}
+        if not inside & later:
+            day = date.fromisoformat(key)
+            add("naked", "1D", f"nPOC {_short_day(day)}", profile["poc_mid"], _day_start(day), f"unberührter Volumen-POC (vPOC), {TRADE_NOTE}")
+    # Naked tPOCs: no later closed candle inside the TPO POC row.
+    base_tf = "30m" if series.get("30m") else "15m"
+    candles = [c for c in clean_candles(series.get(base_tf) or [], base_tf) if c["close_time"] <= now]
+    for profile in tpo_profiles(series, now, days=14):
+        if profile["running"] or profile["day"] == yesterday or profile["periods"] < 44:
+            continue
+        end = datetime.fromisoformat(profile["end"])
+        low, high = profile["poc"], profile["poc"] + profile["step"]
+        if not any(c["open_time"] >= end and c["low"] < high and c["high"] >= low for c in candles):
+            day = date.fromisoformat(profile["day"])
+            add("naked", "1D", f"tPOC {_short_day(day)}", low + profile["step"] / 2, _day_start(day), "unberührter TPO-POC (Zeit, 30m-Perioden)")
+
+    result = []
+    for item in drawings:
+        group, name = item["group"], item["name"]
+        if (group, name) in replaced:
+            continue
+        if group == "running" and ((item["tf"] == "1D" and ("running_day", "") in replaced) or (item["tf"] == "1W" and ("running_week", "") in replaced)):
+            continue
+        if group == "naked":
+            if item["start"][:10] >= first_day:
+                continue  # covered by the trades: vPOC/tPOC above decide
+            item = {**item, "note": "unberührter Tages-POC (Schätzung aus Kerzen)"}
+        result.append(dict(item))
+    return result + added
 
 
 def structure_swings(candles: Sequence[Mapping[str, Any]], width: int = STRUCTURE_PIVOT) -> list[dict[str, Any]]:
@@ -450,14 +572,20 @@ def trend_drawings(candles: Sequence[Mapping[str, Any]], timeframe: str, width: 
     return result
 
 
+BAND_KEYS = ("week",)  # VWAPs drawn with ±1σ/±2σ bands (Broncx: weekly VWAP ±2σ)
+BANDS = ((2, "+2σ"), (1, "+1σ"), (-1, "−1σ"), (-2, "−2σ"))
+
+
 def vwap_drawings(vwaps: Sequence[Mapping[str, Any]], candles: Sequence[Mapping[str, Any]], timeframe: str,
                   now: datetime) -> list[dict[str, Any]]:
     """Anchored VWAPs: a running line over the shown candles when the anchor is in view, else the current value.
 
     The line is recomputed from the shown candles (typical price, including the
-    running candle); the current value comes from the session map's VWAP.
+    running candle); the current value comes from the session map's VWAP. The
+    weekly VWAP brings its ±1σ and ±2σ bands (group "vwap_bands"), running with
+    the line or, when the anchor is not in view, as the current band values.
     """
-    from src.dashboard.htf_levels import vwap_curve
+    from src.dashboard.htf_levels import vwap_band_curve
 
     out = []
     first = candles[0]["open_time"] if candles else None
@@ -465,49 +593,123 @@ def vwap_drawings(vwaps: Sequence[Mapping[str, Any]], candles: Sequence[Mapping[
         anchor = datetime.fromisoformat(item["anchor"])
         base = {"group": "vwap", "tf": item["tf"], "name": "VWAP", "label": f"{item['tf']} VWAP", "price": float(item["value"]),
                 "note": f"{item['name']}, aus {item['source']}-Kerzen"}
-        if first is not None and anchor >= first and INTERVAL_SECONDS[timeframe] <= 86400 and item["key"] != "rolling":
-            curve = vwap_curve([c for c in candles if c["open_time"] >= anchor])
+        bands = item["key"] in BAND_KEYS and item.get("sigma") is not None
+        if first is not None and anchor >= first and INTERVAL_SECONDS[timeframe] <= 86400:
+            curve = vwap_band_curve([c for c in candles if c["open_time"] >= anchor])
             if len(curve) >= 2:
-                out.append({**base, "price": curve[-1][1], "start": curve[0][0].isoformat(), "note": f"{item['name']}, Linie aus den gezeigten Kerzen",
-                            "curve": [[_epoch(moment), value] for moment, value in curve]})
+                note = f"{item['name']}, Linie aus den gezeigten Kerzen"
+                out.append({**base, "price": curve[-1][1], "start": curve[0][0].isoformat(), "note": note,
+                            "curve": [[_epoch(moment), value] for moment, value, _ in curve]})
+                if bands:
+                    for factor, name in BANDS:
+                        out.append({**base, "group": "vwap_bands", "name": f"VWAP {name}", "label": f"{item['tf']} VWAP {name}",
+                                    "price": curve[-1][1] + factor * curve[-1][2], "start": curve[0][0].isoformat(), "note": f"{note}, Band {name}",
+                                    "curve": [[_epoch(moment), value + factor * sigma] for moment, value, sigma in curve]})
                 continue
         out.append({**base, "start": now.isoformat()})
+        if bands:
+            for factor, name in BANDS:
+                out.append({**base, "group": "vwap_bands", "name": f"VWAP {name}", "label": f"{item['tf']} VWAP {name}",
+                            "price": float(item["value"]) + factor * float(item["sigma"]), "start": now.isoformat(),
+                            "note": f"{base['note']}, Band {name}"})
     return out
 
 
-def fib_drawings(candles: Sequence[Mapping[str, Any]], timeframe: str, width: int = STRUCTURE_PIVOT) -> list[dict[str, Any]]:
-    """Fibonacci retracement of the newest swing leg, drawn from the leg's start to the newest candle.
+def zigzag_pivots(candles: Sequence[Mapping[str, Any]], threshold: float) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Swing highs/lows that matter: a wick extreme becomes a pivot once price moved ``threshold`` against it.
 
-    Anchors as in the community lesson: long = last wick low to last wick high, short = last
-    wick high to last wick low. The newest confirmed swing (``structure_swings``) starts the
-    leg; its other end is the most extreme wick of the closed candles after it. A low starts a
-    leg up (levels below the high), a high a leg down (levels above the low). 0 and 1 are the
-    two anchors. A picture of zones, not a signal.
+    Walks the candles in time order (causal, wicks). Returns the confirmed pivots (oldest first,
+    alternating HIGH/LOW) and the running extreme of the leg since the last pivot (not confirmed yet).
+    """
+    if not candles:
+        return [], None
+    pivots: list[dict[str, Any]] = []
+    high = {"index": 0, "price": candles[0]["high"], "kind": "HIGH"}
+    low = {"index": 0, "price": candles[0]["low"], "kind": "LOW"}
+    direction: str | None = None  # "UP" = hunting the next high, "DOWN" = hunting the next low
+    for i, c in enumerate(candles):
+        if direction in (None, "UP") and c["high"] > high["price"]:
+            high = {"index": i, "price": c["high"], "kind": "HIGH"}
+        if direction in (None, "DOWN") and c["low"] < low["price"]:
+            low = {"index": i, "price": c["low"], "kind": "LOW"}
+        if direction is None:
+            if high["price"] - low["price"] >= threshold:
+                # the older extreme starts the first leg
+                first, direction = (low, "UP") if low["index"] < high["index"] else (high, "DOWN")
+                pivots.append(first)
+            continue
+        # Within one candle the order of high and low is unknown: the reversal needs a later candle.
+        if direction == "UP" and high["index"] < i and high["price"] - c["low"] >= threshold:
+            pivots.append(high)
+            direction = "DOWN"
+            low = min(({"index": j, "price": candles[j]["low"], "kind": "LOW"} for j in range(high["index"] + 1, i + 1)),
+                      key=lambda x: (x["price"], -x["index"]))
+        elif direction == "DOWN" and low["index"] < i and c["high"] - low["price"] >= threshold:
+            pivots.append(low)
+            direction = "UP"
+            high = max(({"index": j, "price": candles[j]["high"], "kind": "HIGH"} for j in range(low["index"] + 1, i + 1)),
+                       key=lambda x: (x["price"], x["index"]))
+    running = None if direction is None else (high if direction == "UP" else low)
+    return pivots, running
+
+
+def average_range(candles: Sequence[Mapping[str, Any]], bars: int = FIB_ATR_BARS) -> float:
+    """Mean true range of the newest ``bars`` candles (0 without candles)."""
+    tail = list(candles[-(bars + 1):])
+    ranges = [max(c["high"], p["close"]) - min(c["low"], p["close"]) for p, c in zip(tail, tail[1:])]
+    if not ranges and tail:
+        ranges = [tail[0]["high"] - tail[0]["low"]]
+    return sum(ranges) / len(ranges) if ranges else 0.0
+
+
+def fib_retracement(candles: Sequence[Mapping[str, Any]], timeframe: str,
+                    mult: float = FIB_ATR_MULT) -> dict[str, Any] | None:
+    """Fibonacci retracement of the newest swing leg, like a Fib drawn by hand in TradingView.
+
+    Swings come from a zigzag on the closed candles' wicks: a high or low counts once price moved
+    ``mult`` x the average candle range against it, so small wiggles never start a new leg.
+    The leg is the newest move that every later candle stayed inside: while price only pulls back
+    (bounce, lower high, drift) the fib stays on the impulse; once a candle trades beyond the leg,
+    the running move from the last pivot to its extreme so far is the new leg.
+    Level 0 sits at the end of the leg, 1 at its start, as in TradingView. The open candle never
+    moves an anchor. A picture of zones, not a signal.
     """
     closed = [c for c in candles if c.get("closed", True)]
-    swings = structure_swings(closed, width)
-    if not swings:
-        return []
-    start = max(swings, key=lambda s: s["index"])
-    after = closed[start["index"] + 1:]
-    if not after:
-        return []
-    up = start["kind"] == "LOW"
-    end = max(after, key=lambda c: c["high"]) if up else min(after, key=lambda c: c["low"])
-    low, high = (start["price"], end["high"]) if up else (end["low"], start["price"])
-    span = high - low
-    if span <= 0:
-        return []
-    side = "Long" if up else "Short"
-    anchors = "Swing-Tief → Hoch" if up else "Swing-Hoch → Tief"
-    result = []
-    for ratio in FIB_RATIOS:
-        price = high - span * ratio if up else low + span * ratio
-        name = f"Fib {ratio:g}"
-        result.append({"group": "fib", "tf": timeframe, "name": name, "label": f"{timeframe} {name}", "price": price,
-                       "start": closed[start["index"]]["open_time"].isoformat(), "ratio": ratio, "direction": "UP" if up else "DOWN",
-                       "note": f"{side}-Fib {anchors} (Docht), Zone, kein Signal"})
-    return result
+    if len(closed) < 3:
+        return None
+    threshold = mult * average_range(closed)
+    if threshold <= 0:
+        return None
+    pivots, running = zigzag_pivots(closed, threshold)
+    if not pivots or running is None:
+        return None
+    points = pivots + [running]
+    legs = list(zip(points, points[1:]))
+    if not legs:
+        return None
+    # Start with the running leg and step back while an older leg still holds everything after it
+    # (a later high/low beyond its range would be a break): the moves after it are only pullbacks.
+    chosen = len(legs) - 1
+    for k in range(len(legs) - 2, max(-1, len(legs) - 1 - FIB_MAX_STEPS), -1):
+        a, b = legs[k]
+        low, high = min(a["price"], b["price"]), max(a["price"], b["price"])
+        later = closed[b["index"] + 1:]
+        if later and (min(c["low"] for c in later) < low or max(c["high"] for c in later) > high):
+            break
+        chosen = k
+    start, end = legs[chosen]
+    span = end["price"] - start["price"]
+    if span == 0 or end["index"] <= start["index"]:
+        return None
+    up = span > 0
+    levels = [{"ratio": ratio, "price": end["price"] - span * ratio} for ratio in FIB_RATIOS]
+    side, anchors = ("Long", "Swing-Tief → Hoch") if up else ("Short", "Swing-Hoch → Tief")
+    finished = chosen != len(legs) - 1
+    return {"group": "fib", "tf": timeframe, "direction": "UP" if up else "DOWN",
+            "start": _epoch(closed[start["index"]]["open_time"]), "start_price": start["price"],
+            "end": _epoch(closed[end["index"]]["open_time"]), "end_price": end["price"],
+            "finished": finished, "levels": levels, "threshold": round(threshold, 8),
+            "note": f"{side}-Fib {anchors} (Docht), Zone, kein Signal"}
 
 
 def place_drawings(drawings: Sequence[Mapping[str, Any]], times: Sequence[int]) -> list[dict[str, Any]]:
@@ -719,7 +921,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
-    it feeds the volume profiles and footprint bars for the symbol TIM collects.
+    it feeds the volume profiles, footprint bars and volume bubbles (large market orders) for the symbol TIM collects.
     ``plan_journals`` (journal key -> entries, see ``load_plan_journals``) adds TIM's paper
     plans for BTCUSDT, the only symbol the journals follow.
     ``gamma`` is ``DashboardState.gamma`` (snapshot per symbol, gamma_data.py): options
@@ -734,7 +936,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model: dict[str, Any] = {"symbol": symbol, "name": SYMBOL_NAMES[symbol], "timeframe": timeframe, "symbols": list(SYMBOLS),
                              "timeframes": list(VIEW_TIMEFRAMES), "generated_at": now.isoformat(), "read_only": True,
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
-                             "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None}
+                             "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None}
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
     rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
@@ -759,10 +961,11 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     level_source, source_name, notes = _level_series(symbol, runtime_series, cache, now)
     model["notes"].extend(notes)
     model["level_source"] = source_name
-    drawings = level_drawings(level_source, now)
+    trades = footprint if footprint and footprint.get("symbol") == symbol and footprint.get("days") else None
+    drawings = level_drawings(level_source, now, trades)
     if INTERVAL_SECONDS[timeframe] >= 86400:
         drawings = [d for d in drawings if d["group"] not in INTRADAY_ONLY]
-    drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe) + fib_drawings(candles, timeframe)
+    drawings += structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe)
     from src.dashboard.htf_levels import build_htf_levels
 
     drawings += vwap_drawings(build_htf_levels(level_source, now)["vwaps"], candles, timeframe, now)
@@ -780,16 +983,19 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         model["notes"].extend(liq_notes)
     times = [c["time"] for c in model["candles"]]
     model["drawings"] = place_drawings(drawings, times)
+    model["fib"] = fib_retracement(candles, timeframe)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
     model["tpo"], model["volume_profile"], model["footprint"] = [], [], {"step": None, "bars": [], "note": None}
+    model["bubbles"] = {"items": [], "min_usd": None, "max_usd": None, "note": None}
     if INTERVAL_SECONDS[timeframe] <= 14400:  # profiles per day only make sense on intraday views
         first_time = times[0]
         model["tpo"] = [p for p in tpo_profiles(level_source, now) if _epoch(p["end"]) > first_time]
-        from src.dashboard.footprint_data import footprint_bars, volume_profiles
+        from src.dashboard.footprint_data import footprint_bars, volume_bubbles, volume_profiles
 
         if footprint and footprint.get("symbol") == symbol and footprint.get("days"):
             model["volume_profile"] = [p for p in volume_profiles(footprint, now) if _epoch(p["end"]) > first_time]
             model["footprint"] = footprint_bars(footprint, times, INTERVAL_SECONDS[timeframe])
+            model["bubbles"] = volume_bubbles(footprint, times, INTERVAL_SECONDS[timeframe])
             model["trade_source"] = footprint.get("source")
             model["trades_updated_at"] = footprint.get("updated_at")
         elif footprint and footprint.get("days"):

@@ -61,6 +61,7 @@ class DashboardState:
     plan_journal_long_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_long.json"))
     trader_journal_path: Path = field(default_factory=lambda: Path("data/journal/trader_journal.json"))
     daily_prep_path: Path = field(default_factory=lambda: Path("data/journal/daily_prep.json"))
+    plan_notes_path: Path = field(default_factory=lambda: Path("data/journal/plan_notes.json"))
     qualification_root_path: Path = field(default_factory=lambda: Path("data/qualification"))
     live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))
     gate_model_path: Path = field(default_factory=lambda: Path("data/research/status/current_gate_model.json"))
@@ -459,5 +460,6 @@ def plan_journal_paths(state: Any) -> dict[str, Path]:
     """Journal key -> file of TIM's paper journals: the three horizons, then the earlier 30m versions."""
     paths = {"short": getattr(state, "plan_journal_short_path", None), "mid": getattr(state, "plan_journal_mid_path", None),
              "long": getattr(state, "plan_journal_long_path", None), "tim": getattr(state, "plan_journal_path", None),
-             "struct": getattr(state, "plan_journal_struct_path", None), "level": getattr(state, "plan_journal_level_path", None)}
+             "struct": getattr(state, "plan_journal_struct_path", None)}
+    # The level rule (level/1) is retired (Uzi 30.10.2026): no new plans, hidden from journals and chart; its file stays.
     return {key: Path(path) for key, path in paths.items() if path is not None}

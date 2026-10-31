@@ -13,7 +13,7 @@ from src.orderflow.validation import VALIDATION_VERSION
 from src.research.case_export import verify_case_export
 from src.dashboard.helpers import _case_status
 from src.dashboard.i18n import DE, translate_html
-from src.dashboard.layout import NAV_GROUPS
+from src.dashboard.navigation import AREAS, ARCHIVE
 
 
 def test_translation_touches_only_whole_text_nodes() -> None:
@@ -38,16 +38,17 @@ def test_catalog_has_no_empty_or_identical_noise() -> None:
     assert all(key and value for key, value in DE.items())
 
 
-def test_navigation_is_grouped_and_marks_current_page() -> None:
-    # Dashboard 4.1: one Control Center navigation holds every live page plus the pilot view.
-    assert [group for group, _ in NAV_GROUPS] == ["BETRIEB", "FORSCHUNG", "FREIGABE", "SYSTEM", "WERKZEUGE"]
-    routes = [href for _, links in NAV_GROUPS for _, href in links]
-    assert len(routes) == len(set(routes)) == 28 and "/graphify" in routes and "/prep" in routes and "/my-day" in routes and "/trader-journal" in routes and "/pilot" in routes and "/chart" in routes and "/journal" in routes
+def test_navigation_has_five_areas_and_marks_current_page() -> None:
+    # 29.10.2026: one navigation with five areas; every live page is a sub-link of one area.
+    assert [area["label"] for area in AREAS] == ["Heute", "Chart", "Journal", "Forschung", "System"]
+    routes = [href for area in AREAS for _, href in area["pages"]]
+    assert len(routes) == len(set(routes)) and {"/graphify", "/prep", "/my-day", "/trader-journal", "/chart", "/journal", "/archiv"} <= set(routes)
+    assert {href for _, href, _ in ARCHIVE}.isdisjoint(routes)  # V2 campaign pages only on /archiv
     page = render(DashboardState(), "Research Cases")
-    assert "<p class='nav__label'>FORSCHUNG</p>" in page
-    assert "<a href='/cases' class='active' aria-current='page'>Research-Fälle</a>" in page
+    assert "<a href='/neu/forschung' class='area'>Forschung</a>" in page
+    assert "<a href='/cases' class='sub active' aria-current='page'>Research-Fälle</a>" in page
     assert page.count("aria-current='page'") == 1 and "aria-label='Hauptnavigation'" in page
-    assert ">Recherche-Werkzeug</a>" in page  # menu label of /research differs from the generic "Forschung"
+    assert ">Recherche-Werkzeug</a>" in page
 
 
 def test_safety_markers_stay_visible_after_redesign() -> None:
@@ -296,7 +297,7 @@ def test_stored_markup_is_escaped_and_never_whitelisted_by_the_csp(tmp_path) -> 
     server = DashboardServer(DashboardState(validator_path=validator), port=0)
     server.start()
     try:
-        status, csp, page = _fetch(server.server.server_address[1], "/")
+        status, csp, page = _fetch(server.server.server_address[1], "/uebersicht-alt")
     finally:
         server.stop()
     assert status == 200

@@ -16,7 +16,7 @@ from src.dashboard import chart_live
 from src.dashboard.app import DashboardServer, DashboardState
 from src.dashboard.chart_live import (INTERVAL_SECONDS, KlineCache, build_live_chart, fetch_klines, market_structure,
                                       place_drawings, structure_drawings, structure_swings, trend_drawings)
-from src.dashboard.pages.chart import APP_PATH, CHART_SCRIPTS, LIB_PATH, render_chart_page
+from src.dashboard.pages.chart import APP_PATH, APP_SRC, APP_VERSION, CHART_SCRIPTS, LIB_PATH, render_chart_page
 
 NOW = datetime(2026, 10, 26, 21, 10, tzinfo=timezone.utc)  # Monday evening
 BASE = {"BTCUSDT": 113_000.0, "ETHUSDT": 4_050.0, "SOLUSDT": 196.0, "PAXGUSDT": 4_010.0}
@@ -195,9 +195,13 @@ def test_server_serves_scripts_and_live_json(monkeypatch) -> None:
         with urlopen(f"http://127.0.0.1:{port}/api/chart/live?symbol=SOLUSDT&tf=15m", timeout=10) as response:
             model = json.loads(response.read())
         assert model["symbol"] == "SOLUSDT" and model["timeframe"] == "15m" and model["candles"] and model["drawings"]
+        # The script tag carries the script's version, the API names it: an open tab reloads after an update.
+        assert model["app_version"] == APP_VERSION
+        with urlopen(f"http://127.0.0.1:{port}{APP_SRC}", timeout=5) as response:
+            assert response.read() == CHART_SCRIPTS[APP_PATH]
         with urlopen(f"http://127.0.0.1:{port}/chart?symbol=SOLUSDT&tf=15m", timeout=5) as response:
             assert "script-src 'self' " in response.headers["Content-Security-Policy"]
-            assert b"tc-live" in response.read()
+            assert f"<script src='{APP_SRC}'>".encode() in response.read()
     finally:
         server.stop()
 
@@ -338,3 +342,20 @@ def test_running_plan_carries_its_stop_steps():
     run = plans["run1"]
     assert [s[0] for s in run["stop_steps"]] == [times[3], times[6], times[9]] and run["stop_now"] == 100.9
     assert plans["done1"]["stop_steps"] == []
+
+
+def test_trades_are_drawn_as_position_boxes_and_the_moved_stop_stays_a_step_line():
+    """TIM's trades as long/short boxes (Uzi 30.10.2026): zones, labels and the reward/risk ratio are
+    drawn on the canvas; the stop TIM moved keeps its own orange step line."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "candles.attachPrimitive(positions);" in script
+    for text in ("Offener G&V", "Chance/Risiko", "Wartet auf Einstieg", "Open P&L", "Reward/Risk"):
+        assert text in script
+    assert "lineType: LWC.LineType.WithSteps" in script and "title: T.slNow" in script
+    assert "positions.groups = groups;" in script  # the box follows the plan layer's checkbox
+
+
+def test_open_tab_reloads_once_when_the_server_runs_a_newer_script():
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "if (reloadOnNewVersion(next.app_version)) return;" in script
+    assert "sessionStorage.getItem('tim-chart-reloaded') === version" in script  # one reload per version, no loop

@@ -180,7 +180,7 @@ def test_explorer_shows_status_cards_active_action_and_detail() -> None:
     snap = _snapshot()
     state = DashboardState(research_cases=snap["research_cases"])
     page = render(state, "Research Cases")
-    for label in ("Fälle gesamt", "Open", "Sammelt Belege", "Review bereit", "Bestätigt", "Verworfen", "In Quarantäne"):
+    for label in ("Fälle gesamt", "Offen", "Sammelt Belege", "Review bereit", "Bestätigt", "Verworfen", "In Quarantäne"):
         assert f"<div class='card__label'>{label}</div>" in page
     assert "Alle aktiven Cases anzeigen" in page and "ALL ACTIVE" in page
     assert BUILDER_VERSION in page and "OBSERVE / READ-ONLY" in page

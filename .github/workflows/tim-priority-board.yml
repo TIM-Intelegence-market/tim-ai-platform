@@ -27,7 +27,7 @@ jobs:
       PRIORITY_TRUSTED_AUTHORS: uezeyiraydin-cell,fleckbarti-ai
       TOP_N: "5"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
@@ -39,7 +39,7 @@ jobs:
           python scripts/tim_priority_agent.py --record-path priority_board_run.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Keep replayable run record
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: priority-board-run
           path: priority_board_run.json

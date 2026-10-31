@@ -7,6 +7,7 @@ for BTC only: analysis card, plan view (SVG with zones, stop, targets) and table
 
 from __future__ import annotations
 
+import hashlib
 import math
 from datetime import datetime
 from typing import Any
@@ -25,6 +26,10 @@ CHART_SCRIPTS = {
     LIB_PATH: (_ASSETS / "vendor" / "lightweight-charts-4.2.3.standalone.production.js").read_bytes(),
     APP_PATH: (_ASSETS / "tim_chart.js").read_bytes(),
 }
+# Short content hash of the chart script: in the script tag (?v=, so a reload never runs a cached old
+# copy) and in every /api/chart/live answer (an open tab sees an update and reloads itself).
+APP_VERSION = hashlib.sha256(CHART_SCRIPTS[APP_PATH]).hexdigest()[:12]
+APP_SRC = f"{APP_PATH}?v={APP_VERSION}"
 # Same policy as every page, plus the two local script files above ('self'; nothing from outside).
 CHART_CSP = _content_security_policy().replace("script-src ", "script-src 'self' ", 1)
 
@@ -501,12 +506,16 @@ def _live_section(symbol: str, view: str) -> str:
         "auf Zeitrahmen bis 4h. <b>Volume Profile</b> und <b>Footprint</b> kommen aus TIMs eigenen Trades (Datenbank, nur BTC): "
         "das Profil je Tag rechts am Tagesende (Volumen je Preisstufe, Value Area, POC gelb, grüner/roter Strich = Delta), "
         "der <b>Footprint</b> (5m bis 4h, Knopf „Footprint“) folgt dem Zoom: mittel = Farbsäule je Kerze (grün/rot = Delta, kräftig = viel Volumen), nah = Bid × Ask je Preisstufe neben einer schmalen Kerze, Preisstufen werden beim Reinzoomen feiner, POC gelb umrandet, Imbalances 4:1 fett (grün = Käufer, rot = Verkäufer), gestapelte Imbalances (3+) als Balken an der Seite, unfertige Auktion am Hoch/Tief orange gepunktet, Δ und Volumen (V) unter der Kerze. "
+        "<b>Volume Bubbles</b> (Zeitrahmen bis 4h) = große Market Orders aus TIMs Trades (alle aggTrades einer Taker-Order, gleiche Millisekunde und Seite, ab 100.000 USD): "
+        "grün = aggressiver Käufer, rot = aggressiver Verkäufer, Kreisfläche = Ordergröße gegenüber der größten im Bild, die größten tragen ihre Größe in BTC; gezeigt werden die größten im Bild, beim Reinzoomen kommen kleinere dazu. "
         "<b>BOS / MSS</b> zählen nur per Schlusskurs (ein Docht durch das Level ist ein Sweep): BOS = Bruch des letzten Swings in Trendrichtung, "
         "MSS = Schlusskurs jenseits des <b>Strong Low</b> (im Aufwärtstrend) bzw. <b>Strong High</b> (im Abwärtstrend), also des Tiefs/Hochs, "
         "aus dem der letzte Schub kam. Gestrichelt und bis jetzt: das offene Strong Low/High und das <b>BOS-Ziel</b>. Swings: 3 Kerzen je Seite. "
+        "<b>Fibonacci</b> wie in TradingView auf dem letzten großen Swing (Docht zu Docht, ein Swing zählt ab 3 durchschnittlichen Kerzenspannen Gegenbewegung; "
+        "solange der Kurs nur zurückläuft, bleibt die Fib auf dem Impuls): 1 = Start, 0 = Ende, Zonen 0,236 bis 1 plus 0,886/0,941 und 1,618. "
         "Zeiten in deiner Ortszeit. Nur Anzeige, keine Order. "
         "Chart: <a href='https://www.tradingview.com/' rel='noopener noreferrer'>TradingView Lightweight Charts</a> (Apache 2.0).</p>"
-        f"<script src='{LIB_PATH}'></script><script src='{APP_PATH}'></script></section>"
+        f"<script src='{LIB_PATH}'></script><script src='{APP_SRC}'></script></section>"
     )
 
 

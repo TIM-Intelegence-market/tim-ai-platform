@@ -6,6 +6,21 @@
   const root = document.getElementById('tc-live');
   if (!root || !window.LightweightCharts) return;
   const LWC = window.LightweightCharts;
+  // Version of this script as the page loaded it (?v= in the script tag). The API answer names the version
+  // the server runs now; a tab left open across an update reloads itself once, otherwise it keeps drawing
+  // with the old code for hours (Uzi 30.10.2026: no position boxes after the merge).
+  const SCRIPT_VERSION = (() => {
+    try { return new URL(document.currentScript.src).searchParams.get('v') || ''; } catch (error) { return ''; }
+  })();
+  function reloadOnNewVersion(version) {
+    if (!version || !SCRIPT_VERSION || version === SCRIPT_VERSION) return false;
+    try {
+      if (sessionStorage.getItem('tim-chart-reloaded') === version) return false;  // never a reload loop
+      sessionStorage.setItem('tim-chart-reloaded', version);
+    } catch (error) { return false; }
+    location.reload();
+    return true;
+  }
   const box = document.getElementById('tc-live-chart');
   const legend = document.getElementById('tc-live-legend');
   const status = document.getElementById('tc-live-status');
@@ -16,14 +31,27 @@
   let symbol = root.dataset.symbol, timeframe = root.dataset.tf, timer = null, model = null, first = true, request = 0;
   let lines = [];
 
-  // Times arrive in UTC seconds; the chart shows the viewer's current local time. One fixed
-  // offset for all points: a per-point offset would fold the hour at the DST change and the
-  // library rejects times that are not strictly ascending.
-  const OFFSET = -new Date().getTimezoneOffset() * 60;
-  const local = t => t + OFFSET;
   // The public view (src/dashboard/public_en.py) sets data-lang='en'; the Control Center stays German.
   const EN = root.dataset.lang === 'en';
   const LOCALE = EN ? 'en-US' : 'de-DE';
+  // Times stay in UTC seconds on the axis (strictly ascending, also across the DST change); only the
+  // labels show the viewer's local time, per point, so candles before and after the change both
+  // carry the clock time Discord and TradingView show (a fixed offset put earlier candles one hour off).
+  const local = t => t;
+  const ZONE = { hour12: false };
+  const TIME_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, hour: '2-digit', minute: '2-digit' });
+  const DAY_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, day: '2-digit', month: '2-digit' });
+  const MONTH_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, month: 'short', year: '2-digit' });
+  const YEAR_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, year: 'numeric' });
+  const FULL_FMT = new Intl.DateTimeFormat(LOCALE, { ...ZONE, weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const asDate = t => new Date(Number(t) * 1000);
+  const tickLabel = (t, type) => {
+    const d = asDate(t);
+    if (type === 0) return YEAR_FMT.format(d);
+    if (type === 1) return MONTH_FMT.format(d);
+    if (type === 2) return DAY_FMT.format(d);
+    return TIME_FMT.format(d);
+  };
   const T = EN
     ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of',
         failed: m => `Loading failed (${m}). Retrying in 30 s.` }
@@ -37,8 +65,8 @@
     grid: { vertLines: { color: 'rgba(120,134,156,0.10)' }, horzLines: { color: 'rgba(120,134,156,0.10)' } },
     crosshair: { mode: LWC.CrosshairMode.Normal },
     rightPriceScale: { borderColor: 'rgba(120,134,156,0.35)', scaleMargins: { top: 0.06, bottom: 0.18 } },
-    timeScale: { borderColor: 'rgba(120,134,156,0.35)', timeVisible: true, secondsVisible: false, rightOffset: 8 },
-    localization: { locale: LOCALE, priceFormatter: fmt },
+    timeScale: { borderColor: 'rgba(120,134,156,0.35)', timeVisible: true, secondsVisible: false, rightOffset: 8, tickMarkFormatter: tickLabel },
+    localization: { locale: LOCALE, priceFormatter: fmt, timeFormatter: t => FULL_FMT.format(asDate(t)) },
   });
   const candles = chart.addCandlestickSeries({
     upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
@@ -225,6 +253,72 @@
   };
   candles.attachPrimitive(liq);
 
+  // Fibonacci retracement of the newest swing leg (src/dashboard/chart_live.fib_retracement), drawn like
+  // TradingView's Fib tool: dashed line from the swing start to its end, coloured zones between the levels
+  // from the swing start to the newest candle, level and price on the left. Display only, not a signal.
+  const FIB_COLORS = { '0': '#787b86', '0.236': '#f23645', '0.382': '#ff9800', '0.5': '#4caf50', '0.618': '#089981',
+                       '0.786': '#00bcd4', '0.886': '#9575cd', '0.941': '#ba68c8', '1': '#787b86', '1.618': '#2962ff' };
+  const fibColor = ratio => FIB_COLORS[String(ratio)] || '#c9a227';
+  const alpha = (hex, a) => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
+  const fib = {
+    chart: null, series: null, requestUpdate: null, visible: false,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            const leg = model && model.fib;
+            if (!fib.visible || !fib.chart || !leg || !leg.levels || !leg.levels.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = fib.chart.timeScale();
+              let x0 = scale.timeToCoordinate(local(leg.start));
+              const xEnd = scale.timeToCoordinate(local(leg.end));
+              const x1 = scale.logicalToCoordinate(model.candles.length - 1 + 3);
+              if (x0 === null) x0 = local(leg.start) < local(model.candles[0].time) ? 0 : null;
+              if (x0 === null || x1 === null || x1 < 0 || x0 > mediaSize.width) return;
+              const left = Math.max(0, x0), right = Math.min(mediaSize.width, x1);
+              const levels = [...leg.levels].sort((a, b) => a.ratio - b.ratio);
+              const ys = levels.map(level => fib.series.priceToCoordinate(level.price));
+              for (let i = 0; i + 1 < levels.length; i++) {  // zone between two levels in the colour of the outer one
+                if (ys[i] === null || ys[i + 1] === null) continue;
+                ctx.fillStyle = alpha(fibColor(levels[i + 1].ratio), 0.12);
+                ctx.fillRect(left, Math.min(ys[i], ys[i + 1]), right - left, Math.abs(ys[i + 1] - ys[i]));
+              }
+              ctx.font = '11px ui-monospace, Menlo, monospace';
+              ctx.textBaseline = 'middle';
+              const inside = x0 < 130;  // no room left of the swing: labels go inside the zones
+              ctx.textAlign = inside ? 'left' : 'right';
+              levels.forEach((level, i) => {
+                const y = ys[i];
+                if (y === null) return;
+                const color = fibColor(level.ratio);
+                ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([]);
+                ctx.beginPath(); ctx.moveTo(left, Math.round(y) + 0.5); ctx.lineTo(right, Math.round(y) + 0.5); ctx.stroke();
+                ctx.fillStyle = color;
+                const text = `${level.ratio} (${fmt(level.price)})` + (level.ratio === 0 ? ` · Fib ${leg.tf}` : '');
+                ctx.fillText(text, inside ? left + 4 : left - 6, inside ? y - 7 : y);
+              });
+              // the swing itself: from its start (level 1) to its end (level 0)
+              const yA = fib.series.priceToCoordinate(leg.start_price), yB = fib.series.priceToCoordinate(leg.end_price);
+              if (yA !== null && yB !== null && xEnd !== null) {
+                ctx.strokeStyle = 'rgba(195,202,214,0.75)'; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+                ctx.beginPath(); ctx.moveTo(x0, yA); ctx.lineTo(xEnd, yB); ctx.stroke();
+                ctx.setLineDash([]);
+              }
+              ctx.textAlign = 'left';
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(fib);
+
   // Footprint like TradingView's: rows follow the zoom (finer price steps the closer you get).
   // Far out: a short hint. Medium zoom: one heat column per candle (colour = delta, strength = volume).
   // Close: bid × ask numbers per row next to a slim candle, POC framed, 4:1 imbalances coloured,
@@ -393,6 +487,242 @@
   };
   candles.attachPrimitive(fp);
 
+  // Volume bubbles: large market orders from TIM's trades (one taker order = aggTrades of the same
+  // millisecond and side). Circle at the order's time inside its candle and its average price; area
+  // follows the order size against the largest in view; green = aggressive buyer, red = aggressive seller.
+  const BUBBLE = { minR: 2.5, maxR: 22, labelR: 11, pxPer: 14, minCount: 20 };
+  const bubbles = {
+    chart: null, series: null, requestUpdate: null, visible: true,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'top'; },
+      renderer() {
+        return {
+          draw(target) {
+            const data = model && model.bubbles;
+            if (!bubbles.visible || !bubbles.chart || !data || !data.items || !data.items.length || model.candles.length < 2) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = bubbles.chart.timeScale();
+              const range = scale.getVisibleLogicalRange();
+              if (!range) return;
+              const barWidth = mediaSize.width / Math.max(1, range.to - range.from);
+              const n = model.candles.length;
+              const seconds = Math.max(1, model.candles[n - 1].time - model.candles[n - 2].time);
+              // Only the largest orders in view (about one per 14 px of width), sized against the largest of them:
+              // zoomed out the big ones stand out, zoomed in the smaller ones appear.
+              const placed = [];
+              for (const item of data.items) {
+                const center = scale.timeToCoordinate(local(item.bar));
+                const y = bubbles.series.priceToCoordinate(item.price);
+                if (center === null || y === null) continue;
+                const x = center + ((item.time - item.bar) / seconds - 0.5) * barWidth;
+                if (x < -BUBBLE.maxR || x > mediaSize.width + BUBBLE.maxR) continue;
+                placed.push({ item, x, y });
+              }
+              placed.sort((a, b) => b.item.usd - a.item.usd);  // biggest first, small ones drawn on top stay visible
+              const order = placed.slice(0, Math.max(BUBBLE.minCount, Math.round(mediaSize.width / BUBBLE.pxPer)));
+              if (!order.length) return;
+              const max = Math.max(1, order[0].item.usd);
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
+              for (const { item, x, y } of order) {
+                const r = Math.max(BUBBLE.minR, BUBBLE.maxR * Math.sqrt(item.usd / max));
+                const buy = item.side > 0;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fillStyle = buy ? 'rgba(38,200,140,0.30)' : 'rgba(239,83,80,0.30)';
+                ctx.fill();
+                ctx.lineWidth = 1.2;
+                ctx.strokeStyle = buy ? 'rgba(38,220,150,0.95)' : 'rgba(255,92,88,0.95)';
+                ctx.stroke();
+                if (r >= BUBBLE.labelR) {
+                  ctx.fillStyle = '#e8edf5';
+                  ctx.fillText(item.quantity >= 100 ? item.quantity.toFixed(0) : item.quantity.toFixed(1), x, y);
+                }
+              }
+              ctx.textAlign = 'left';
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(bubbles);
+
+  // TIM's trades as position boxes, like TradingView's long/short tool (Uzi 30.10.2026): green zone from
+  // the entry to the last target, red zone from the entry to the original stop, entry line between them,
+  // the other targets as thin lines inside the green zone. Labels on a running or waiting trade: target with
+  // distance in %, open P&L at the current price and the reward/risk ratio, stop with distance in %.
+  // Closed trades keep a faint box without text (their result sits at the exit dot). The stop TIM moved
+  // stays the orange step line drawn above the box, unchanged.
+  const PT = EN
+    ? { target: 'Target', stop: 'Stop', open: 'Open P&L', rr: 'Reward/Risk', wait: 'Waiting for entry' }
+    : { target: 'Ziel', stop: 'Stop', open: 'Offener G&V', rr: 'Chance/Risiko', wait: 'Wartet auf Einstieg' };
+  const num = (v, digits) => EN ? v.toFixed(digits) : v.toFixed(digits).replace('.', ',');
+  const signed = (v, digits) => (v > 0 ? '+' : v < 0 ? '−' : '') + num(Math.abs(v), digits);
+  function positionGeometry(plan) {
+    const targets = plan.targets || [];
+    if (!targets.length || plan.entry == null || plan.stop == null) return null;
+    const long = plan.direction === 'LONG';
+    const target = long ? Math.max(...targets) : Math.min(...targets);
+    const risk = Math.abs(plan.entry - plan.stop);
+    const reward = Math.abs(target - plan.entry);
+    return { long, target, rr: risk > 0 ? reward / risk : null,
+             targetPct: (target - plan.entry) / plan.entry * 100, stopPct: (plan.stop - plan.entry) / plan.entry * 100 };
+  }
+  function openResult(plan, price) {
+    const long = plan.direction === 'LONG';
+    const move = long ? price - plan.entry : plan.entry - price;
+    const risk = Math.abs(plan.entry - plan.stop);
+    return { pct: move / plan.entry * 100, r: risk > 0 ? move / risk : null };
+  }
+  // One label box; `placed` holds the boxes already drawn this frame, a label that would cover one moves
+  // down (or up at the bottom edge) until it is free, so two trades close together stay readable.
+  function label(ctx, text, x, y, fill, size, placed) {
+    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    const lines = String(text).split('\n');
+    const width = Math.max(...lines.map(line => ctx.measureText(line).width)) + 10;
+    const height = 15 * lines.length + 3;
+    const left = Math.max(2, Math.min(x, size.width - width - 2));
+    const hits = top => placed.some(b => left < b.x + b.w && b.x < left + width && top < b.y + b.h && b.y < top + height);
+    for (let step = 0, start = y; step < 8 && hits(y); step++) {
+      const blocker = placed.find(b => left < b.x + b.w && b.x < left + width && y < b.y + b.h && b.y < y + height);
+      y = start > size.height / 2 ? blocker.y - height - 2 : blocker.y + blocker.h + 2;
+    }
+    placed.push({ x: left, y, w: width, h: height });
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(left, y, width, height, 3); else ctx.rect(left, y, width, height);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'top';
+    lines.forEach((line, i) => ctx.fillText(line, left + 5, y + 3 + 15 * i));
+    return height;
+  }
+  const positions = {
+    chart: null, series: null, requestUpdate: null, groups: new Set(),
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.boxView, this.labelView]; },
+    // Box corners in pixels for every plan in view (null: hidden or outside).
+    place(plan, mediaSize) {
+      if (!this.groups.has(plan.group)) return null;
+      const g = positionGeometry(plan);
+      if (!g) return null;
+      const scale = this.chart.timeScale();
+      let x1 = scale.timeToCoordinate(local(plan.t1));
+      let x2 = scale.timeToCoordinate(local(plan.t2));
+      if (x1 === null || x2 === null) return null;
+      if (plan.status !== 'CLOSED') {
+        // A trade that still runs or waits reaches a few bars into the free space on the right, as on TradingView.
+        const range = scale.getVisibleLogicalRange();
+        const bar = range ? mediaSize.width / Math.max(1, range.to - range.from) : 6;
+        x2 += 6 * bar;
+      }
+      x2 = Math.max(x2, x1 + 4);
+      if (x2 < 0 || x1 > mediaSize.width) return null;
+      const y = price => this.series.priceToCoordinate(price);
+      const yEntry = y(plan.entry), yTarget = y(g.target), yStop = y(plan.stop);
+      if (yEntry === null || yTarget === null || yStop === null) return null;
+      return { g, x1, x2, yEntry, yTarget, yStop, y };
+    },
+    boxView: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!positions.chart || !model || !model.plans || !model.plans.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              for (const plan of model.plans) {
+                const p = positions.place(plan, mediaSize);
+                if (!p) continue;
+                const closed = plan.status === 'CLOSED';
+                const waiting = plan.status === 'OPEN';
+                const alpha = closed ? 0.10 : waiting ? 0.12 : 0.22;
+                const width = p.x2 - p.x1;
+                ctx.fillStyle = `rgba(38,166,154,${alpha})`;
+                ctx.fillRect(p.x1, Math.min(p.yEntry, p.yTarget), width, Math.abs(p.yTarget - p.yEntry));
+                ctx.fillStyle = `rgba(239,83,80,${alpha})`;
+                ctx.fillRect(p.x1, Math.min(p.yEntry, p.yStop), width, Math.abs(p.yStop - p.yEntry));
+                ctx.lineWidth = 1;
+                ctx.setLineDash(waiting ? [4, 3] : []);
+                ctx.strokeStyle = `rgba(38,166,154,${closed ? 0.35 : 0.8})`;
+                ctx.strokeRect(p.x1 + 0.5, Math.min(p.yEntry, p.yTarget) + 0.5, width - 1, Math.abs(p.yTarget - p.yEntry));
+                ctx.strokeStyle = `rgba(239,83,80,${closed ? 0.35 : 0.8})`;
+                ctx.strokeRect(p.x1 + 0.5, Math.min(p.yEntry, p.yStop) + 0.5, width - 1, Math.abs(p.yStop - p.yEntry));
+                // Targets before the last one: thin dotted lines inside the green zone.
+                ctx.setLineDash([2, 3]);
+                ctx.strokeStyle = `rgba(53,211,154,${closed ? 0.35 : 0.75})`;
+                for (const value of plan.targets || []) {
+                  if (value === p.g.target) continue;
+                  const yt = p.y(value);
+                  if (yt === null) continue;
+                  ctx.beginPath(); ctx.moveTo(p.x1, Math.round(yt) + 0.5); ctx.lineTo(p.x2, Math.round(yt) + 0.5); ctx.stroke();
+                }
+                // Entry line: grey across the box (the blue line series with the axis label lies on top while it runs).
+                ctx.setLineDash(waiting ? [4, 3] : []);
+                ctx.strokeStyle = closed ? 'rgba(195,202,214,0.45)' : 'rgba(195,202,214,0.9)';
+                ctx.lineWidth = closed ? 1 : 1.5;
+                ctx.beginPath(); ctx.moveTo(p.x1, Math.round(p.yEntry) + 0.5); ctx.lineTo(p.x2, Math.round(p.yEntry) + 0.5); ctx.stroke();
+                ctx.setLineDash([]);
+              }
+            });
+          },
+        };
+      },
+    },
+    labelView: {
+      zOrder() { return 'top'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!positions.chart || !model || !model.plans || !model.plans.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const placed = [];
+              // Newest trade first: its labels get the free spots.
+              for (const plan of [...model.plans].reverse()) {
+                if (plan.status === 'CLOSED') continue;
+                const p = positions.place(plan, mediaSize);
+                if (!p || p.x2 - Math.max(0, p.x1) < 40) continue;
+                const g = p.g;
+                const x = Math.max(0, p.x1);
+                const name = `${plan.label} · ${g.long ? 'Long' : 'Short'}`;
+                const top = Math.min(p.yTarget, p.yStop), bottom = Math.max(p.yTarget, p.yStop);
+                const targetText = `${name} · ${PT.target}: ${fmt(g.target)} (${signed(g.targetPct, 2)} %)`;
+                const stopText = `${PT.stop}: ${fmt(plan.stop)} (${signed(g.stopPct, 2)} %)`;
+                const green = 'rgba(16,128,110,0.95)', red = 'rgba(190,52,58,0.95)';
+                const [aboveText, aboveFill, belowText, belowFill] = g.long
+                  ? [targetText, green, stopText, red] : [stopText, red, targetText, green];
+                label(ctx, aboveText, x, Math.max(2, top - 20), aboveFill, mediaSize, placed);
+                label(ctx, belowText, x, Math.min(mediaSize.height - 20, bottom + 3), belowFill, mediaSize, placed);
+                const rr = g.rr == null ? '–' : num(g.rr, 2);
+                let middle;
+                if (plan.status === 'OPEN') middle = `${PT.wait} · ${PT.rr}: ${rr}`;
+                else {
+                  const res = openResult(plan, model.last);
+                  middle = `${PT.open}: ${signed(res.pct, 2)} %${res.r == null ? '' : ` (${signed(res.r, 2)} R)`}\n${PT.rr}: ${rr}`;
+                }
+                // Below the entry line on a long, above it on a short: inside the red zone, as on TradingView.
+                const h = middle.includes('\n') ? 33 : 18;
+                const yMid = g.long ? p.yEntry + 4 : p.yEntry - h - 4;
+                const res = plan.status === 'FILLED' ? openResult(plan, model.last) : null;
+                label(ctx, middle, x + 4, yMid, res && res.pct < 0 ? 'rgba(150,40,48,0.95)' : res ? 'rgba(16,128,110,0.95)' : 'rgba(70,80,98,0.95)', mediaSize, placed);
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(positions);
+
   // Layers added after a visitor saved a choice (e.g. TIM's plans, footprint) start visible: only keys the
   // visitor has seen before can be hidden by a saved choice. Saves from before this list existed knew
   // neither the plans nor volume profile and footprint.
@@ -405,6 +735,8 @@
         const known = new Set(JSON.parse(localStorage.getItem(KNOWN) || '[]'));
         const groups = new Set(saved);
         for (const key of (model ? model.default_groups : [])) if (!known.has(key) && known.size) groups.add(key);
+        // VWAP became a default layer together with its bands (Beirat 29.10.2026): switch the line on with them once.
+        if (known.size && !known.has('vwap_bands') && groups.has('vwap_bands')) groups.add('vwap');
         if (!known.size) for (const key of (model ? model.default_groups : [])) if (key.startsWith('plans_') || LEGACY_NEW.includes(key)) groups.add(key);
         return groups;
       }
@@ -458,9 +790,14 @@
         series.setData(points);
         lines.push({ series, group: plan.group, plan });
       }
+      // Box (zones, targets, labels): the positions primitive. A plan without targets keeps the old lines.
+      // A boxed running or waiting plan keeps only its blue entry line on top of the box.
+      const boxed = positionGeometry(plan) !== null;
+      const entryLeg = [plan.entry, '#70a7ff', 2, waiting ? 'dashed' : 'solid', `${plan.label} ${long ? 'L' : 'S'}`];
       const legs = closed
-        ? [[plan.entry, long ? 'rgba(53,211,154,0.7)' : 'rgba(255,101,119,0.7)', 1, 'solid', '']]
-        : [[plan.entry, '#70a7ff', 2, waiting ? 'dashed' : 'solid', `${plan.label} ${long ? 'L' : 'S'}`],
+        ? (boxed ? [] : [[plan.entry, long ? 'rgba(53,211,154,0.7)' : 'rgba(255,101,119,0.7)', 1, 'solid', '']])
+        : boxed ? [entryLeg]
+        : [entryLeg,
            ...(trailing ? [] : [[plan.stop, '#ff6577', 1, 'dashed', 'SL']]),
            ...plan.targets.map((value, index) => [value, '#35d39a', 1, 'dotted', `TP${index + 1}`])];
       for (const [value, color, width, style, title] of legs) {
@@ -502,6 +839,10 @@
     vp.visible = groups.has('vp');
     fp.visible = groups.has('fp');
     liq.visible = groups.has('liq');
+    fib.visible = groups.has('fib');
+    bubbles.visible = groups.has('bubbles');
+    positions.groups = groups;
+    if (positions.requestUpdate) positions.requestUpdate();
     if (tpo.requestUpdate) tpo.requestUpdate();
   }
 
@@ -535,6 +876,7 @@
       }]);
       lines.push({ series, group: d.group, drawing: d });
     }
+    positions.groups = groups;
     drawPlans(groups);
     planMarkers(groups);
   }
@@ -561,6 +903,7 @@
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const next = await response.json();
       if (ticket !== request) return;
+      if (reloadOnNewVersion(next.app_version)) return;
       const keep = first ? null : chart.timeScale().getVisibleLogicalRange();
       const sameView = model && model.symbol === next.symbol && model.timeframe === next.timeframe;
       model = next;
@@ -569,7 +912,7 @@
       candles.setData(model.candles.map(c => ({ time: local(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
       volume.setData(model.candles.map(c => ({ time: local(c.time), value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)' })));
       drawLines();
-      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); }
+      { const groups = shownGroups(); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); fib.visible = groups.has('fib'); bubbles.visible = groups.has('bubbles'); }
       if (first || !sameView) {
         const count = model.candles.length;
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - 160), to: count + 8 });

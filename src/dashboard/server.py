@@ -29,6 +29,9 @@ from src.dashboard.pages.pilot import PILOT_CSP, render_pilot
 from src.dashboard.state import DashboardState, plan_journal_paths
 from src.dashboard.views import render
 
+JOURNAL_PAGES = {"/journal": "Plan Journal", "/journal/struct": "Plan Journal Struct", "/journal/level": "Plan Journal Level"}
+
+
 class DashboardServer:
     def __init__(self, state: DashboardState, host: str = "127.0.0.1", port: int = 8765, research_router: ResearchRouter | None = None) -> None:
         host = _require_loopback_host(host)
@@ -137,6 +140,8 @@ class DashboardServer:
                         model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint,
                                                  plan_journals=load_plan_journals(plan_journal_paths(outer.state)), gamma=gamma,
                                                  liquidation=liquidation)
+                        from src.dashboard.pages.chart import APP_VERSION
+                        model["app_version"] = APP_VERSION
                     except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(model, default=str).encode(), "application/json")
@@ -222,6 +227,15 @@ class DashboardServer:
                     journal_path = {"struct": outer.state.plan_journal_struct_path, "level": outer.state.plan_journal_level_path}.get(rule, outer.state.plan_journal_path)
                     from src.dashboard.plan_cost_check import with_cost_check
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
+                if path == "/":
+                    return self.cockpit("/neu", query)
+                if path in JOURNAL_PAGES:
+                    saved = query.get("saved", [""])[0]
+                    return self.plan_journal_page(200, path, saved=saved if re.fullmatch(r"PN-\d{5}", saved or "") else None)
+                if path == "/archiv":
+                    from src.dashboard.pages.archive import render_archive
+
+                    return self.respond(200, render_archive().encode(), "text/html; charset=utf-8")
                 if path == "/neu" or path.startswith("/neu/") or path == "/api/cockpit":
                     return self.cockpit(path, query)
                 if path in ("/graphify", "/graphify/"):
@@ -264,7 +278,7 @@ class DashboardServer:
                     proof_page = case_export_html(export)
                     return self.respond(200, proof_page.encode(), "text/html; charset=utf-8", csp=_content_security_policy_for(proof_page))
                 pages = {
-                    "/": "Overview", "/security": "Security", "/runtime": "Runtime",
+                    "/uebersicht-alt": "Overview", "/security": "Security", "/runtime": "Runtime",
                     "/data-quality": "Data Quality", "/gaps": "Incidents & Gaps",
                     "/qualification": "Qualification",
                     "/independent-cases": "Independent Cases",
@@ -475,6 +489,30 @@ class DashboardServer:
                     return self.my_day_page(400, form=form, error=str(exc))
                 return self.respond(303, b"", "text/plain; charset=utf-8", location=f"/my-day?saved={entry['id']}")
 
+            def plan_journal_page(self, status: int, path: str, error: str | None = None, saved: str | None = None) -> None:
+                from src.dashboard.pages.plan_journal import journal_page_for
+                from src.dashboard.pages.trader_journal import journal_csp
+
+                try:
+                    page = journal_page_for(outer.state, outer.state.snapshot(), JOURNAL_PAGES[path], outer.form_token, error=error, saved=saved)
+                except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                    return self.respond(500, _error_page(JOURNAL_PAGES[path], exc).encode(), "text/html; charset=utf-8")
+                return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=journal_csp(page), referrer="same-origin")
+
+            def plan_note_post(self) -> None:
+                from src.dashboard import plan_notes
+                from src.dashboard.pages.plan_journal import known_plan_keys
+
+                form = self.checked_form("/journal")
+                if form is None:
+                    return None
+                back = form.get("back") if form.get("back") in JOURNAL_PAGES else "/journal"
+                try:
+                    note = plan_notes.add_note(outer.state.plan_notes_path, form, known_plan_keys(outer.state))
+                except plan_notes.NoteError as exc:
+                    return self.plan_journal_page(400, back, error=str(exc))
+                return self.respond(303, b"", "text/plain; charset=utf-8", location=f"{back}?saved={note['id']}")
+
             def trader_journal_post(self, path: str) -> None:
                 from src.dashboard import trader_journal
                 from src.dashboard.session_map import build_session_map
@@ -506,6 +544,8 @@ class DashboardServer:
                     return self.trader_journal_post(path)
                 if path == "/my-day/save":
                     return self.my_day_post()
+                if path == "/journal/note":
+                    return self.plan_note_post()
                 if path not in {"/api/research/quick", "/api/research/deep"}:
                     return self.respond(404, b'{"error":"not found"}', "application/json")
                 try:
