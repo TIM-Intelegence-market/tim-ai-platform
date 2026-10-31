@@ -225,9 +225,17 @@ werden in je 1 000 Simulationen in unter 5 % befördert (`tests/test_research_wo
 Grenze: Die Pläne liefert der Live-Code der jeweiligen Studie über `ShadowJournal.record_plan` und
 `record_outcome`; einen allgemeinen Plan-Erzeuger gibt es nicht.
 
+## Anzeige (F9)
+
+Der Bildschirm „Forschung“ des Control Centers (`/forschung`) zeigt über dem Logbuch die Forschungswerkstatt:
+offene Ideen (nächste zuerst, mit Quelle und Prüfgrund), Studien-Budget des Monats, Zahl der reflektierten Trades
+und ihre häufigsten Lehren, letzte Läufe des Zeitplans (mit Fehlern und Warten auf CI), letzte Monats-Reflexion
+und den Schattenbetrieb. Nur lesen (`src/research_lab/workshop/overview.py`); eine kaputte Datei erscheint als
+Hinweis, nie als leerer gesunder Stand.
+
 ## Nächste Pakete
 
-F8 Server als Rechenhost, F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
+F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
 
 ## Änderungsprotokoll
 
@@ -240,3 +248,4 @@ F8 Server als Rechenhost, F9 Anzeige im Forschung-Bildschirm des neuen Control C
 | 2026-10-31 | 1.0 | Bericht, Logbuch und Monats-Reflexion (F5) |
 | 2026-10-31 | 1.0 | Zeitplan auf dem Mac (F6) |
 | 2026-10-31 | 1.0 | Schattenbetrieb für Updates (F7) |
+| 2026-10-31 | 1.0 | Anzeige im Forschung-Bildschirm (F9) |
