@@ -332,7 +332,8 @@ IDEA_TAGS = {"ready": "l", "new": "", "waiting_data": "w", "waiting_budget": "w"
 
 LEARN_WORDS = {"beobachtet nicht": "noch kein Anlass", "beobachtung": "30 Tage Beobachtung",
                "bestanden": "bereit für deine Entscheidung", "nicht_bestanden": "nicht bestanden",
-               "zu_wenig": "zu wenige neue Trades"}
+               "zu_wenig": "zu wenige neue Trades", "trifft_fast_alle": "trifft fast alle Trades",
+               "rueckblick_dagegen": "Rückblick spricht dagegen"}
 
 
 def _signed(value: float) -> str:

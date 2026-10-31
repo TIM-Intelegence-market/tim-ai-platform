@@ -11,8 +11,9 @@ The loop, run by the weekly task of the timetable (F6):
 2. **Look back.** Each filter is applied to all closed trades of the plan journals: what did the trades it
    would have dropped bring? This is in-sample, because the lessons came from the same trades. It only
    decides whether a filter is worth watching.
-3. **Watch forward.** A filter whose lesson repeats (at least 30 % of at least 20 trades) and whose dropped
-   trades lost money starts a 30-day observation. Only trades planned after the start count. Nothing in
+3. **Watch forward.** A filter whose dropped trades lost money (at least 20 trades looked at, at least 8
+   dropped, at most 90 % of all) starts a 30-day observation. Whether its lesson repeats is shown, not
+   required: the four filters are fixed in advance and the forward test corrects for all of them. Only trades planned after the start count. Nothing in
    TIM changes; the observation never counts in the net R.
 4. **Judge once.** After the window, with enough new trades, the filter passes only if the dropped trades
    lost money with a bootstrap interval entirely below zero (Bonferroni over all filters). A passed filter
@@ -40,6 +41,7 @@ LESSON_MIN_TRADES = 20       # as the trade reflection's idea rule
 LESSON_MIN_SHARE = 0.30
 LOOKBACK_MIN_TRADES = 20
 LOOKBACK_MIN_DROPPED = 8
+MAX_DROPPED_SHARE = 0.9      # a filter that drops (almost) every trade is "do not trade", not a filter
 FORWARD_MIN_TRADES = 20
 FORWARD_MIN_DROPPED = 5
 ALPHA = 0.05
@@ -221,7 +223,9 @@ def step(journals: Mapping[str, Mapping[str, Any]], reflections: Sequence[Mappin
         passed = any(d["verdict"] == "bestanden" for d in done)
         if passed:
             entry["status"] = "bestanden"
-        elif current is None and frequent and look["trades"] >= LOOKBACK_MIN_TRADES \
+        elif look["dropped"] > MAX_DROPPED_SHARE * look["trades"]:
+            entry["status"] = "trifft_fast_alle"
+        elif current is None and look["trades"] >= LOOKBACK_MIN_TRADES \
                 and look["dropped"] >= LOOKBACK_MIN_DROPPED and look["dropped_net_r"] < 0 \
                 and not any(d["verdict"] == "nicht_bestanden" for d in done):
             start = now.astimezone(timezone.utc).replace(microsecond=0)
@@ -233,6 +237,8 @@ def step(journals: Mapping[str, Mapping[str, Any]], reflections: Sequence[Mappin
             entry["status"] = "beobachtung"
             entry["window_end"] = window["end"]
             entry["started"] = True
+        if entry["status"] == "beobachtet nicht" and look["dropped"] and look["dropped_net_r"] >= 0:
+            entry["status"] = "rueckblick_dagegen"
         report["filters"][key] = entry
     return report
 
@@ -256,6 +262,10 @@ def status(journals: Mapping[str, Mapping[str, Any]], reflections: Sequence[Mapp
             state = last["verdict"]["verdict"]
         if any(w["verdict"] and w["verdict"]["verdict"] == "bestanden" for w in history):
             state = "bestanden"
+        elif state == "beobachtet nicht" and look["dropped"] > MAX_DROPPED_SHARE * look["trades"]:
+            state = "trifft_fast_alle"
+        elif state == "beobachtet nicht" and look["dropped_net_r"] >= 0 and look["dropped"]:
+            state = "rueckblick_dagegen"
         out["filters"].append({"key": key, "text": rule.text, "state": state, "detail": detail,
                                "dropped": look["dropped"], "dropped_net_r": look["dropped_net_r"],
                                "window_end": last["end"] if last and last["verdict"] is None else None})
