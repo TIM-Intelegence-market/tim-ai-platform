@@ -193,9 +193,15 @@ def _sigma(moves: list[array], s: int, k: int) -> float | None:
     return total / LOOKBACK_SESSIONS
 
 
+def entry_possible(check: Check) -> bool:
+    """An entry may be decided here: not the session end, band and catastrophe stop computable."""
+    return (check.entry_allowed and check.upper is not None and check.lower is not None
+            and check.risk is not None and check.risk > 0)
+
+
 def entry_side(check: Check, close: float) -> int:
     """+1 above the upper band, -1 below the lower band, 0 inside or not computable."""
-    if not check.entry_allowed or check.upper is None or check.lower is None or check.risk is None or check.risk <= 0:
+    if not entry_possible(check):
         return 0
     if close > check.upper:
         return 1
