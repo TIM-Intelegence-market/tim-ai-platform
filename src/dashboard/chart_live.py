@@ -83,6 +83,7 @@ GROUP_NAMES = {
     "gamma": "Options-Gamma (Deribit)",
     "liq": "Liquidations-Heatmap (Schätzung)",
     "cvd": "CVD Spot vs. Perp", "oi": "Open Interest + Z-Score (7,5 T)",
+    "funding": "Funding Rate (Binance Perp)", "premium": "Coinbase-Premium (USD vs. USDT)",
 }
 # Footprint, volume profile, delta and bubbles from spot or perp trades (Beirat 29.10.2026, F5); levels stay on spot.
 MARKETS = {"spot": "Spot", "perp": "Perp"}
@@ -928,7 +929,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                      plan_journals: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
                      gamma: Mapping[str, Any] | None = None, liquidation: Mapping[str, Any] | None = None,
                      perp: Mapping[str, Any] | None = None, open_interest: Mapping[str, Any] | None = None,
-                     market: str | None = None) -> dict[str, Any]:
+                     market: str | None = None, context: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
@@ -943,6 +944,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     ``market`` ("spot" or "perp") picks which trades feed volume profile, footprint and bubbles;
     the levels stay on spot. Both feed the CVD lines (group "cvd"). ``open_interest`` is
     ``DashboardState.open_interest``: hourly open interest with its 7.5-day Z-score (group "oi").
+    ``context`` is ``market_context.CACHE.snapshot(symbol)``: funding rate (group "funding") and
+    Coinbase premium (group "premium") for this symbol; both start hidden.
     """
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     timeframe = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
@@ -952,7 +955,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                              "timeframes": list(VIEW_TIMEFRAMES), "generated_at": now.isoformat(), "read_only": True,
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
                              "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None,
-                             "markets": {"names": MARKETS, "active": DEFAULT_MARKET, "available": []}, "cvd": None, "oi": None}
+                             "markets": {"names": MARKETS, "active": DEFAULT_MARKET, "available": []}, "cvd": None, "oi": None,
+                             "funding": None, "premium": None}
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
     rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
@@ -1011,6 +1015,17 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         if model["oi"] and model["oi"]["stale"]:
             model["notes"].append("Open Interest: Binance-Stand älter als 3 h, ausgeblendet.")
             model["oi"] = None
+    if context:
+        from src.dashboard.market_context import funding_chart, premium_chart
+
+        for key, part, label in (("funding", funding_chart, "Funding Rate"), ("premium", premium_chart, "Coinbase-Premium")):
+            snapshot = context.get(key)
+            if not snapshot or snapshot.get("symbol") != symbol:
+                continue
+            model[key] = part(snapshot, times[0], now)
+            if model[key] and model[key]["stale"]:
+                model["notes"].append(f"{label}: Stand älter als 3 h, ausgeblendet.")
+                model[key] = None
     model["drawings"] = place_drawings(drawings, times)
     model["fib"] = fib_retracement(candles, timeframe)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []

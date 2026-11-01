@@ -132,6 +132,7 @@ class DashboardServer:
                     return self.respond(200, CHART_SCRIPTS[path], "text/javascript; charset=utf-8")
                 if path == "/api/chart/live":
                     from src.dashboard.chart_live import build_live_chart
+                    from src.dashboard.market_context import chart_context
 
                     try:
                         with outer.state.lock:
@@ -145,7 +146,8 @@ class DashboardServer:
                         model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint,
                                                  plan_journals=load_plan_journals(plan_journal_paths(outer.state)), gamma=gamma,
                                                  liquidation=liquidation, perp=perp, open_interest=open_interest,
-                                                 market=query.get("market", [None])[0])
+                                                 market=query.get("market", [None])[0],
+                                                 context=chart_context(query.get("symbol", [None])[0]))
                         from src.dashboard.pages.chart import APP_VERSION
                         model["app_version"] = APP_VERSION
                     except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection

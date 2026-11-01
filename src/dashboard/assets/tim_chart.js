@@ -61,9 +61,9 @@
     : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
   const P = EN
-    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', oi: 'OI (BTC)', oiZ: 'OI Z 7.5d',
+    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', oi: 'OI (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %',
         health: (ok, n, gaps) => `Perp check: ${ok}/${n} h equal to Binance, ${gaps} gaps` }
-    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', oi: 'OI (BTC)', oiZ: 'OI Z 7,5 T',
+    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', oi: 'OI (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %',
         health: (ok, n, gaps) => `Perp-Prüfung: ${ok}/${n} h gleich mit Binance, ${gaps} Lücken` };
   const fmt = v => v == null ? '–' : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
 
@@ -92,19 +92,34 @@
   const oiZ = chart.addHistogramSeries({ ...band, priceScaleId: 'oi_z', title: P.oiZ, visible: false, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
   const oiLine = chart.addLineSeries({ ...band, priceScaleId: 'oi', color: '#c3cad6', lineWidth: 1, title: P.oi, visible: false,
                                        priceFormat: { type: 'volume' } });
+  // Funding (scaled to 8 h so symbols compare) and Coinbase premium (Coinbase USD vs. Binance USDT in USD), both start hidden.
+  const fundingBars = chart.addHistogramSeries({ ...band, priceScaleId: 'funding', title: P.funding, visible: false,
+                                                 priceFormat: { type: 'price', precision: 4, minMove: 0.0001 } });
+  const premiumLine = chart.addBaselineSeries({ ...band, priceScaleId: 'premium', title: P.premium, visible: false, baseValue: { type: 'price', price: 0 },
+                                               topLineColor: '#26a69a', topFillColor1: 'rgba(38,166,154,0.28)', topFillColor2: 'rgba(38,166,154,0.04)',
+                                               bottomLineColor: '#ef5350', bottomFillColor1: 'rgba(239,83,80,0.04)', bottomFillColor2: 'rgba(239,83,80,0.28)',
+                                               lineWidth: 1, priceFormat: { type: 'price', precision: 3, minMove: 0.001 } });
   const BAND = 0.15;
+  const BAND_SCALES = { cvd: ['cvd_spot', 'cvd_perp'], oi: ['oi', 'oi_z'], funding: ['funding'], premium: ['premium'] };
+  const bandHasData = key => {
+    const part = model && model[key];
+    if (!part) return false;
+    return key === 'cvd' ? part.spot.length || part.perp.length : part.points.length;
+  };
   function layoutBands(groups) {
-    const shown = ['cvd', 'oi'].filter(key => groups.has(key) && model && model[key] && (key === 'cvd' ? model.cvd.spot.length || model.cvd.perp.length : model.oi.points.length));
+    const shown = ['cvd', 'oi', 'funding', 'premium'].filter(key => groups.has(key) && bandHasData(key));
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.06, bottom: 0.18 + BAND * shown.length } });
     shown.forEach((key, index) => {
       const top = 0.82 - BAND * (shown.length - index) + 0.01;
       const margins = { top, bottom: 1 - top - BAND + 0.02 };
-      for (const id of key === 'cvd' ? ['cvd_spot', 'cvd_perp'] : ['oi', 'oi_z']) chart.priceScale(id).applyOptions({ scaleMargins: margins, visible: false });
+      for (const id of BAND_SCALES[key]) chart.priceScale(id).applyOptions({ scaleMargins: margins, visible: false });
     });
     cvdSpot.applyOptions({ visible: shown.includes('cvd') });
     cvdPerp.applyOptions({ visible: shown.includes('cvd') });
     oiLine.applyOptions({ visible: shown.includes('oi') });
     oiZ.applyOptions({ visible: shown.includes('oi') });
+    fundingBars.applyOptions({ visible: shown.includes('funding') });
+    premiumLine.applyOptions({ visible: shown.includes('premium') });
   }
   function drawBands() {
     const cvd = (model && model.cvd) || { spot: [], perp: [] };
@@ -123,6 +138,23 @@
     }
     oiLine.setData(oiPoints);
     oiZ.setData(zPoints);
+    // Funding per settlement and the hourly premium: each candle takes the last value that began at or before it.
+    const fundingPoints = [], premiumPoints = [];
+    const fund = model && model.funding, prem = model && model.premium;
+    if (model && model.candles.length) {
+      for (const c of model.candles) {
+        const f = fund && at(fund.points, c.time);
+        if (f) {
+          const v = f[2];
+          const color = v >= fund.high_8h ? 'rgba(255,107,61,0.85)' : v < 0 ? 'rgba(63,182,255,0.85)' : 'rgba(132,145,163,0.45)';
+          fundingPoints.push({ time: local(c.time), value: v, color });
+        }
+        const p = prem && at(prem.points, c.time);
+        if (p) premiumPoints.push({ time: local(c.time), value: p[1] });
+      }
+    }
+    fundingBars.setData(fundingPoints);
+    premiumLine.setData(premiumPoints);
   }
   function showMarket() {
     const m = model && model.markets;
