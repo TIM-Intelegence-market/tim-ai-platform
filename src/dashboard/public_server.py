@@ -2,7 +2,8 @@
 
 Runs next to the Control Center on its own loopback port and serves a fixed
 allowlist: the interactive chart, the paper plan journals and the two data
-APIs they need. Nothing else: no Mac, system, worker or approval pages, no
+APIs they need, plus the live test account (``/live``, from a status file
+the local live trader writes). Nothing else: no Mac, system, worker or approval pages, no
 ``/api/state``, no LLM call, no form and no POST. The pages are English
 renders from ``src/dashboard/public_en.py``; the German Control Center on 8765
 is unchanged. Every page carries the note "research, not financial advice".
@@ -15,9 +16,11 @@ started by the owner outside TIM (see ``ops/macos/PUBLIC_DASHBOARD.md``).
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -26,14 +29,17 @@ from src.dashboard.layout import _content_security_policy
 from src.dashboard.security import _require_loopback_host
 
 DEFAULT_PORT = 8780
-PAGES = ("/chart", "/journal", "/journal/trade")
+PAGES = ("/chart", "/journal", "/journal/trade", "/live")
 # Query keys a public page or API may pass on; everything else is dropped before rendering.
-QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/api/chart/live": ("symbol", "tf", "market"), "/api/plan-journal": ("rule",)}
+QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/live": (), "/api/chart/live": ("symbol", "tf", "market"), "/api/plan-journal": ("rule",)}
 PAGE_TTL = 10.0        # seconds a rendered public page is reused
 API_TTL = 5.0          # seconds a data answer is reused
 RATE_PER_MINUTE = 120  # requests per client and minute
 MAX_BUSY = 8           # renders running at the same time
 MAX_URL = 512
+# Written every few minutes by the local live trader (outside the repo, read-only key, no secrets inside).
+LIVE_STATUS_FILE = Path(os.environ.get("TIM_LIVE_STATUS_FILE", Path.home() / "Library/Application Support/TIM/live_status.json"))
+MAX_LIVE_STATUS_BYTES = 16_384
 
 
 def clean_query(path: str, query: dict[str, list[str]]) -> dict[str, str]:
@@ -90,6 +96,7 @@ class PublicDashboardServer:
                  limiter: RateLimiter | None = None, cache: TTLCache | None = None) -> None:
         host = _require_loopback_host(host)
         self.state, self.host, self.port = state, host, port
+        self.live_status_file = LIVE_STATUS_FILE
         self.limiter, self.cache = limiter or RateLimiter(), cache or TTLCache()
         self.busy = threading.BoundedSemaphore(MAX_BUSY)
         outer = self
@@ -200,11 +207,24 @@ class PublicDashboardServer:
         except Exception:  # noqa: BLE001 - the public chart must still render
             return ""
 
+    def live_status(self) -> dict[str, Any] | None:
+        """The live trader's status file; missing, too big or broken means "no live data"."""
+        try:
+            path = self.live_status_file
+            if path.stat().st_size > MAX_LIVE_STATUS_BYTES:
+                return None
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return data if isinstance(data, dict) else None
+
     def render_page(self, path: str, query: dict[str, str]) -> str | None:
         from src.dashboard import public_en
 
         if path == "/chart":
             return public_en.chart_page(query.get("symbol"), query.get("tf"), self.summary_html())
+        if path == "/live":
+            return public_en.live_page(self.live_status())
         if path == "/journal/trade":
             return public_en.trade_page(self.journals(), query.get("rule", ""), query.get("id", ""))
         return public_en.journal_page(self.journals(), query.get("rule", public_en.DEFAULT_JOURNAL))

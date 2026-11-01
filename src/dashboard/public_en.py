@@ -26,7 +26,7 @@ from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RU
 LOCAL = ZoneInfo("Europe/Berlin")
 DISCLAIMER = ("Research, not financial advice. Observation and paper tracking only: no orders, no recommendations. "
               "Data: public Binance candles and TIM's own analysis; the view can be delayed or incomplete.")
-NAV = (("/chart", "Chart"), ("/journal", "Paper journal"))
+NAV = (("/chart", "Chart"), ("/journal", "Paper journal"), ("/live", "Live account"))
 REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
@@ -179,7 +179,7 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
 
 # --- pages -------------------------------------------------------------------
 
-def shell(title: str, active: str, body: str, extra_css: str = "") -> str:
+def shell(title: str, active: str, body: str, extra_css: str = "", disclaimer: str = DISCLAIMER) -> str:
     """English page frame: same styles as the Control Center (so its CSP hash fits), no live script.
 
     A page with ``extra_css`` must be served with a CSP that hashes the longer style (``journal_csp``)."""
@@ -192,7 +192,7 @@ def shell(title: str, active: str, body: str, extra_css: str = "") -> str:
         "<header class='topbar'><div class='topbar__inner'><a class='brand' href='/chart' aria-label='TIM home'>TIM"
         "<small>TRADING INTELLIGENCE MACHINE · PUBLIC READ-ONLY VIEW</small></a>"
         f"<nav class='nav' aria-label='Main navigation'><div class='nav__group'>{nav}</div></nav></div></header>"
-        f"<main id='main-content' class='shell' tabindex='-1'><section class='cc-section'><p class='cc-note'><b>{_safe(DISCLAIMER)}</b></p></section>{body}</main>"
+        f"<main id='main-content' class='shell' tabindex='-1'><section class='cc-section'><p class='cc-note'><b>{_safe(disclaimer)}</b></p></section>{body}</main>"
         f"<footer class='footer'>TIM · public read-only view · research, not financial advice · <a href='{REPO}' rel='noopener noreferrer'>source code</a></footer>"
         "</body></html>"
     )
@@ -737,3 +737,62 @@ def trade_page(journals: Mapping[str, Mapping[str, Any]], key: str, trade_id: st
              "<p class='cc-section__note'>Central European time.</p></div></div>"
              f"<ol class='pj-steps'>{steps}</ol></section>")
     return shell("Paper trade", "/journal", body, extra_css=JOURNAL_CSS)
+
+
+# --- live account ------------------------------------------------------------
+
+LIVE_DISCLAIMER = ("Research, not financial advice. This page shows TIM's one small real-money test account; "
+                   "it is not a recommendation and not an offer. Values come from the exchange every few minutes and can be delayed.")
+LIVE_STALE_MINUTES = 20
+
+
+def _usd(value: Any) -> str:
+    return f"{value:,.2f} $" if isinstance(value, (int, float)) else "–"
+
+
+def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:
+    """The real-money test account: value, change since start, position, today's trades. Read from a small
+    status file the live trader writes; no keys, no order ids, nothing that could move money."""
+    from datetime import datetime, timezone
+
+    now = now or datetime.now(timezone.utc)
+    body = _hero("Live account", "TIM trades its 15m paper plans on a small real-money futures account (BTC perpetual), "
+                 "automatically, with hard limits: at most 1 $ risk per trade including costs, 3 $ loss per day, 3 trades per day.")
+    if not status or status.get("schema") != "tim-live-status/1":
+        body += "<section class='cc-section'><p class='pj-empty'>No live data right now.</p></section>"
+        return shell("Live account", "/live", body, extra_css=JOURNAL_CSS, disclaimer=LIVE_DISCLAIMER)
+    eq, start = status.get("equity_usd"), status.get("start_equity_usd")
+    change = eq - start if isinstance(eq, (int, float)) and isinstance(start, (int, float)) else None
+    pct = f"{change / start * 100:+.2f} %" if change is not None and start else "–"
+    updated = _time(status.get("updated_at"))
+    stale = updated is None or (now - updated).total_seconds() > LIVE_STALE_MINUTES * 60
+    pos = status.get("position") if isinstance(status.get("position"), Mapping) else None
+    if pos:
+        side = str(pos.get("side") or "").upper()
+        pos_text = f"<strong>{_safe(side)}</strong>"
+        pos_note = f"{pos.get('size_btc')} BTC at {_price(pos.get('entry'))}"
+    else:
+        pos_text, pos_note = "<strong>none</strong>", "flat, waiting for a fresh 15m plan"
+    if status.get("stopped"):
+        auto, auto_note = "stopped", "emergency stop is set"
+    elif status.get("auto_active"):
+        auto, auto_note = "running", "trades new 15m plans automatically"
+    else:
+        auto, auto_note = "paused", "no valid release"
+    tiles = (
+        ("Account value", f"<strong>{_safe(_usd(eq))}</strong>", f"{status.get('venue') or ''} · {status.get('symbol') or ''}"),
+        ("Since start", f"<strong class='{_tone(change)}'>{_safe((f'{change:+.2f} $' if change is not None else '–'))}</strong>",
+         f"{pct} · start {_usd(start)} on {_when(status.get('start_at'))}"),
+        ("Position", pos_text, pos_note),
+        ("Trades today", f"<strong>{int(status.get('trades_today') or 0)}</strong>", f"{int(status.get('open_orders') or 0)} open orders"),
+        ("Automatic trading", f"<strong>{_safe(auto)}</strong>", auto_note),
+    )
+    kpis = "<div class='pj-kpis'>" + "".join(
+        f"<div class='pj-kpi'><span>{label}</span>{value}<small>{_safe(note)}</small></div>" for label, value, note in tiles) + "</div>"
+    note = (f"Updated {_when(status.get('updated_at'))} (Central European time)."
+            + (" The data is older than expected; the Mac or the status job may be down." if stale else ""))
+    body += ("<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Real money</p>"
+             f"<h2>Account now</h2><p class='cc-section__note'>{_safe(note)} "
+             "The trades follow the <a href='/journal'>15m paper journal</a>.</p></div></div>"
+             f"{kpis}</section>")
+    return shell("Live account", "/live", body, extra_css=JOURNAL_CSS, disclaimer=LIVE_DISCLAIMER)

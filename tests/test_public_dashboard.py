@@ -296,3 +296,55 @@ def test_level_rule_is_retired_from_journals_and_chart(tmp_path):
     assert "Level rule" not in page
     main_source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
     assert "rule=RULE_LEVEL" not in main_source
+
+
+def _live_status(**over):
+    status = {"schema": "tim-live-status/1", "updated_at": "2026-11-02T09:00:00+00:00", "venue": "Kraken Futures",
+              "symbol": "PF_XBTUSD", "equity_usd": 58.3, "start_equity_usd": 57.05, "start_at": "2026-11-01T15:09:45+00:00",
+              "position": None, "open_orders": 0, "trades_today": 1, "stopped": False, "auto_active": True,
+              "risk_per_trade_usd": 1.0}
+    status.update(over)
+    return status
+
+
+def test_live_page_shows_account_and_is_linked(server, tmp_path):
+    public, base = server
+    public.live_status_file = tmp_path / "live_status.json"
+    status, headers, body = _get(base + "/live")
+    assert status == 200 and "No live data right now." in body
+    public.cache.items.clear()
+    public.live_status_file = tmp_path / "live_status2.json"
+    public.live_status_file.write_text(json.dumps(_live_status(position={"side": "short", "size_btc": 0.0002, "entry": 77719.5})))
+    status, headers, body = _get(base + "/live")
+    assert status == 200
+    assert "58.30 $" in body and "+1.25 $" in body and "SHORT" in body and "0.0002 BTC at 77,719.50" in body
+    assert "real-money test account" in body and "running" in body
+    assert "script-src 'none'" in headers["Content-Security-Policy"]
+    _, _, chart = _get(base + "/chart")
+    assert "href='/live'" in chart
+
+
+def test_live_page_flags_stale_stop_and_broken_files(tmp_path):
+    from datetime import datetime, timezone
+
+    from src.dashboard.public_en import live_page
+
+    later = datetime(2026, 11, 2, 10, 0, tzinfo=timezone.utc)
+    page = live_page(_live_status(stopped=True), now=later)
+    assert "older than expected" in page and "stopped" in page and "emergency stop" in page
+    fresh = live_page(_live_status(), now=datetime(2026, 11, 2, 9, 5, tzinfo=timezone.utc))
+    assert "older than expected" not in fresh and "none" in fresh
+    assert "No live data right now." in live_page({"schema": "other"})
+    assert "<script" not in live_page(_live_status(symbol="<script>x</script>"))
+
+    public = PublicDashboardServer(DashboardState(), "127.0.0.1", 0)
+    try:
+        public.live_status_file = tmp_path / "broken.json"
+        public.live_status_file.write_text("{not json")
+        assert public.live_status() is None
+        public.live_status_file.write_text("[1, 2]")
+        assert public.live_status() is None
+        public.live_status_file.write_text("x" * 20_000)
+        assert public.live_status() is None
+    finally:
+        public.httpd.server_close()
