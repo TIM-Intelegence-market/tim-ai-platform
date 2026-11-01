@@ -33,7 +33,8 @@ def overview(root: Path | str = ".", now: datetime | None = None) -> dict[str, A
     result: dict[str, Any] = {"stage": charter.STAGE, "budget": charter.MONTHLY_STUDY_BUDGET, "month": month,
                               "notes": notes, "ideas": [], "idea_counts": {}, "drafts_this_month": 0,
                               "trades": None, "schedule": {}, "shadows": [], "last_reflection": None,
-                              "rule_tests": {"count": 0, "candidates": 0, "recent": []}, "self_improve": None}
+                              "rule_tests": {"count": 0, "candidates": 0, "recent": []}, "self_improve": None,
+                              "forward": None}
     try:
         ideas = list(IdeaQueue(research / "IDEEN.jsonl").ideas().values())
         result["idea_counts"] = dict(Counter(i["status"] for i in ideas))
@@ -98,6 +99,16 @@ def overview(root: Path | str = ".", now: datetime | None = None) -> dict[str, A
                                                      self_improve.LearningLog(research / "self_improve/log.jsonl"), now)
     except Exception as error:  # noqa: BLE001
         notes.append(f"Selbst-Verbesserung nicht lesbar: {type(error).__name__}")
+    try:
+        from src.research_lab.forward import s7b as forward
+        status_file = Path(root) / forward.FOLDER / "status.json"
+        if status_file.exists():
+            result["forward"] = json.loads(status_file.read_text(encoding="utf-8"))
+            run = json.loads((research / "schedule/state.json").read_text(encoding="utf-8")).get("forward") \
+                if (research / "schedule/state.json").exists() else None
+            result["forward"]["last_step"] = run
+    except Exception as error:  # noqa: BLE001
+        notes.append(f"S7b-Vorwärtstest nicht lesbar: {type(error).__name__}")
     reports = sorted((research / "reports").glob("forschung_*.md")) if (research / "reports").is_dir() else []
     if reports:
         result["last_reflection"] = reports[-1].stem.removeprefix("forschung_")

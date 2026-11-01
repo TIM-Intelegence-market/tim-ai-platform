@@ -4,7 +4,7 @@
 |---|---|
 | Studie | S7b (Ableitung aus S7, offen deklariert) |
 | Version | **1.0 (eingefroren, freigegeben von Uzi am 26.10.2026, 13:52 Ortszeit per Entscheidungskarte)** |
-| Status | FREIGEGEBEN: Gate 6.1 bestanden (Zähllauf 26.10. 13:36 Ortszeit, Commit 26cd763, `../reports/s7b_count_2026-10-26T1236Z.md`); S7b-D20-T3/T4 registriert (56 → 58). Uzi hat mit der Karte die Vorbelastung (2), die geringe Power von K2 (6), den Holdout-Verbrauch für das ganze Register (8) und die zwei verbleibenden Registerplätze zur Kenntnis genommen. **BEENDET OHNE HOLDOUT-URTEIL (Uzis Karte „Nein, S7b ohne Holdout beenden“, 26.10. 20:47 Ortszeit, Abschnitt 13).** Training/Validierung bestanden (Abschnitt 12), S7b-D20-T3/T4 bleiben im Register eingefrorene Kandidatinnen (`candidate`); der Holdout 2025+ wurde nie geladen und bleibt für das ganze Register unverbraucht |
+| Status | FREIGEGEBEN: Gate 6.1 bestanden (Zähllauf 26.10. 13:36 Ortszeit, Commit 26cd763, `../reports/s7b_count_2026-10-26T1236Z.md`); S7b-D20-T3/T4 registriert (56 → 58). Uzi hat mit der Karte die Vorbelastung (2), die geringe Power von K2 (6), den Holdout-Verbrauch für das ganze Register (8) und die zwei verbleibenden Registerplätze zur Kenntnis genommen. **BEENDET OHNE HOLDOUT-URTEIL (Uzis Karte „Nein, S7b ohne Holdout beenden“, 26.10. 20:47 Ortszeit, Abschnitt 13).** Training/Validierung bestanden (Abschnitt 12), S7b-D20-T3/T4 bleiben im Register eingefrorene Kandidatinnen (`candidate`); der Holdout 2025+ wurde nie geladen und bleibt für das ganze Register unverbraucht. **Seit 01.11.2026 Papier-Vorwärtstest auf Live-Kerzen (Abschnitt 14)** |
 | Anlass | S7 scheiterte am 26.10.2026 in der Validierung **nur an K4** (maximaler Drawdown 30,2 R bzw. 30,8 R > 20 R), alle anderen Kriterien erfüllt (`S7_3_4R_TRENDFOLGE_AUSBRUCH_PRAEREGISTRIERUNG.md` Abschnitt 12). Uzi wählte am 26.10. 12:34 Ortszeit per Karte „S7b: eine Position über alle Coins“ |
 | Hypothese | Dieselben Regeln wie S7 mit **höchstens einer offenen Position über alle drei Instrumente zusammen** halten den Drawdown unter 20 R, ohne dass der Netto-Erwartungswert je Trade verloren geht |
 | Lesart des Ziels | wie S7: Ziel je Gewinntrade 3 R bzw. 4 R; Erwartungswert je Trade voraussichtlich +0,1 bis +0,4 R |
@@ -337,6 +337,30 @@ Folgen:
 4. Sollte Uzi den Holdout später doch wollen, gilt weiter Abschnitt 8 unverändert (neue Karte, derselbe Befehl,
    derselbe Kandidatinnen-Hash, solange der Register-Kopf fbf91e7d68a0… unverändert bleibt).
 
+## 14. Vorwärtsbeobachtung im Papier (Uzis Wort 01.11.2026, 09:04 Ortszeit)
+
+Uzi schrieb am 01.11.2026 „go s7b-Journal“ (Anlass: Lückenanalyse „Was TIM zum profitablen Trader fehlt“). Damit laufen
+die zwei eingefrorenen Kandidatinnen **S7b-D20-T3 und S7b-D20-T4 als Papier-Vorwärtstest** auf neuen Live-Kerzen mit.
+Das ändert Punkt 3 von Abschnitt 13 nur insoweit, dass S7b beobachtet wird; S7b bleibt unbestätigt.
+
+- **Regeln unverändert (4.1, 4.2):** derselbe Code (`s7.breakout`, `engine.run_portfolio`, Positionsgrenze 1,
+  BTC > ETH > SOL, `gap_entry_as_loss`, Basis-Kosten, Funding). Modul `src/research_lab/forward/s7b.py`.
+- **Daten:** geschlossene 4h-Kerzen und Funding von Binance USD-M (öffentliche REST-Schnittstelle), lokal unter
+  `data/research/forward/S7b/` zwischengespeichert; eine einmal gespeicherte Kerze wird nie ersetzt.
+- **Prospektiv:** Start ist die erste 4h-Eröffnung nach dem ersten Lauf (Start-Ereignis im Journal, einmalig). Es zählen
+  nur Signale ab diesem Zeitpunkt. Das Journal ist eine Hash-Kette; jedes Signal steht mit echter Uhrzeit und Verzögerung
+  nach Kerzenschluss darin (über 4 h: als „spät“ markiert), jeder geschlossene Trade einmal. Weicht eine Nachrechnung
+  von einem eingetragenen Trade ab, wird das als `mismatch` vermerkt, nie überschrieben.
+- **Takt:** die Forschungswerkstatt (`com.tim.research-workshop`) macht bei jedem Aufwachen (15 min) einen Schritt;
+  Anzeige auf dem Forschung-Bildschirm des Control Centers. PAUSE hält auch diesen Schritt an.
+- **Was es nicht ist:** kein Holdout (2025+ bleibt unberührt und unverbraucht), kein Register-Eintrag (Status bleibt
+  `candidate`, `REGISTER.jsonl` unverändert), keine Order, zählt nicht im Netto-R des Plan-Journals, keine Grundlage für
+  Echtgeld. Ein formales Urteil ist nicht festgelegt; als Orientierung gilt die Holdout-Mindestzahl von 100 Trades (5.1),
+  bei etwa 8 bis 9 Trades im Monat (Validierung: 207 bzw. 189 Trades in 24 Monaten) also rund ein Jahr. Bei einer
+  Trefferquote von 26 % bzw. 17 % sind lange Verlustserien normal; einzelne Wochen sagen nichts.
+- Eine Auswertungsregel mit Kriterien wäre eine eigene, vorab festgelegte Ergänzung (neue Zeile im Änderungsprotokoll),
+  bevor die Zahlen angesehen werden.
+
 ## Änderungsprotokoll
 
 | Datum | Version | Änderung | Grund | Bis dahin gesehene Daten |
@@ -347,3 +371,4 @@ Folgen:
 | 2026-10-26 | 1.0 | Eingefroren und freigegeben; S7b-D20-T3 und S7b-D20-T4 registriert (Register 56 → 58, Gate-Bericht `s7b_count_2026-10-26T1236Z`, Gate-Commit 26cd763). Keine inhaltliche Änderung gegenüber 0.3 | Uzis Karte „Ja, freigeben und registrieren“ 13:52 Ortszeit | wie 0.3; kein Lauf mit Positionsgrenze, kein Holdout |
 | 2026-10-26 | 1.0 | Abschnitt 12 ergänzt: Ergebnis Training/Validierung (beide Varianten bestanden, Status `candidate`), Statuszeile aktualisiert; keine Regeländerung, Version bleibt 1.0 | Mac-Lauf 14:05 Ortszeit, Commit f637c1e | zusätzlich: alle Trainings- und Validierungsergebnisse mit Positionsgrenze (R, DD, Baselines); kein Holdout |
 | 2026-10-26 | 1.0 | Abschnitt 13 ergänzt: S7b auf Uzis Karte ohne Holdout beendet; Status, O4 und P6 aktualisiert; Register unverändert (`candidate`), kein Lock, keine Regeländerung | Uzis Karte „Nein, S7b ohne Holdout beenden“ 20:47 Ortszeit | wie Abschnitt 12; kein Holdout |
+| 2026-11-01 | 1.0 | Abschnitt 14 ergänzt: Papier-Vorwärtstest der Kandidatinnen auf Live-Kerzen (`src/research_lab/forward/s7b.py`), Regeln, Register und Holdout unverändert | Uzis Wort „go s7b-Journal“ 01.11. 09:04 Ortszeit | wie Abschnitt 13; keine Live-Ergebnisse, kein Holdout |

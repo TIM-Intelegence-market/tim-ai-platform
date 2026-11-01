@@ -1,7 +1,7 @@
 {
   "schema": "tim_research_logbook/1",
   "purpose": "Ein Eintrag je Studie: was geprüft wurde, was herauskam und warum sie beendet ist. Damit keine tote Idee unbemerkt zweimal getestet wird. Quelle der Wahrheit bleiben Präregistrierung und Bericht; dieses Logbuch fasst sie nur zusammen.",
-  "updated": "2026-10-29",
+  "updated": "2026-11-01",
   "entries": [
     {
       "id": "S8",
@@ -44,7 +44,7 @@
       "title": "Trendfolge-Ausbruch 3–4 R mit höchstens einer Position",
       "started": "2026-10-26",
       "status": "candidate",
-      "result": "Training und Validierung bestanden (D20-T3: E +0,27 R, PF 1,45, DD 10,9 R). Auf Uzis Wahl ohne Holdout beendet: Kandidat, keine bestätigte Strategie, nicht für Papier oder Live.",
+      "result": "Training und Validierung bestanden (D20-T3: E +0,27 R, PF 1,45, DD 10,9 R). Auf Uzis Wahl ohne Holdout beendet: Kandidat, keine bestätigte Strategie, nicht für Live. Seit 01.11.2026 Papier-Vorwärtstest auf Live-Kerzen (Abschnitt 14, Anzeige Forschung).",
       "lesson": "Der Holdout 2025+ ist unverbraucht und kann den Kandidaten später entscheiden.",
       "doc": "docs/research_lab/studien/S7B_EINE_POSITION_PRAEREGISTRIERUNG.md"
     },
