@@ -1,9 +1,9 @@
-# S12: Trifft die geschätzte Liquidations-Heatmap echte Liquidationen? (Präregistrierung, Entwurf)
+# S12: Trifft die geschätzte Liquidations-Heatmap echte Liquidationen? (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
 | Studie | S12 (S11 ist laut Logbuch vergeben: von Uzi am 28.10. abgelehnte Variante ohne Filter) |
-| Version | **1.0 – ZUR FREIGABE.** Sammler L1–L3 gebaut, Probelauf seit 31.10.2026 (zählt nicht zur Studie), kein Ergebnis |
+| Version | **1.0 – FREIGEGEBEN** von Uzi am 01.11.2026. Eingefrorener Code: Commit `228a30c`. Start 02.11.2026 00:00 UTC. Kein Ergebnis |
 | Anlass | Uzi 31.10.2026 („go“ auf die Empfehlung N1). Grundlage: Auswertung des Berichts „Orderflow verstehen und prüfen“ (Deep Research, 28.10.2026), `/mnt/project-files/analysen/orderflow-research-2026-10-28/bewertung.md` |
 | Protokoll | `../PROTOKOLL.md`; eigene **prospektive** Familie wie S8 und L1 (kein Archiv, kein Holdout berührt) |
 | Art | Kalibrierung eines Anzeigemodells. **Keine Handelsregel, kein Signal, kein Echtgeld** |
@@ -164,6 +164,13 @@ Fensterlänge, andere Hebel) unter dem Namen S12; das wäre eine neue Studie mit
 
 - Start: 00:00 UTC des ersten vollständigen Tages, an dem Sammler und Heatmap-Stände laufen, nachdem Uzi Version 1.0
   freigegeben hat. Der Startzeitpunkt wird vor dem ersten Fenster in diese Datei eingetragen.
+- **Eingetragen 01.11.2026:** Start = **02.11.2026 00:00 UTC**, eingefrorener Code = Commit `228a30c`.
+  - Bedingung: Der Sammler auf dem Mac läuft vor dem Start auf `228a30c`. Sonst rückt der Start auf 00:00 UTC des
+    ersten vollen Tages mit diesem Stand; der Grund wird hier vermerkt.
+  - Gate: 16.11.2026 00:00 UTC (`gate --start 2026-11-02`). Ende: 28.12.2026 00:00 UTC, bei Verlängerung
+    25.01.2027 00:00 UTC.
+  - Codeänderungen am Sammler während der Laufzeit nur bei Ausfällen, mit Eintrag im Änderungsprotokoll; die
+    Messung (Abschnitte 3 bis 5) bleibt fest.
 - Laufzeit: **genau 56 Tage** ab Start (224 Fenster), Ende = Start + 56 Tage, 00:00 UTC.
 - **Gate nach 14 Tagen**, ohne D zu rechnen: Gezählt werden nur gültige Fenster (Abschnitt 3.3). Hochgerechnet auf
   8 Wochen müssen ≥ 150 gültige Fenster herauskommen.
@@ -210,8 +217,7 @@ unbekannt. Daten des Probelaufs zählen nicht zur Studie.
 1. ~~Seiten-Konvention~~ erledigt 01.11. (Abschnitt 3.1).
 2. ~~OI-Zeitstempel~~ erledigt 01.11.: Regel OI ≤ t − 1800 s (Abschnitt 3.2), unabhängig von der Bedeutung.
 3. ~~Bybit-Endpunkt~~ erledigt: liefert im Probelauf.
-4. Offen: Uzis Freigabe von Version 1.0. Danach wird der Sammler auf den Stand 1.0 gebracht; der Start (Abschnitt 6)
-   wird hier eingetragen.
+4. ~~Freigabe~~ erledigt 01.11.: Uzi hat Version 1.0 freigegeben; Start und Commit stehen in Abschnitt 6.
 
 ## Änderungsprotokoll
 
@@ -222,3 +228,4 @@ unbekannt. Daten des Probelaufs zählen nicht zur Studie.
 | 2026-10-31 | 0.3 | Umbenannt von S11 in S12 (S11 im Logbuch vergeben, `next_study_id`) | keine Liquidationsdaten |
 | 2026-10-31 | 0.4 | L1–L3 gebaut; Abrufregel (Wiederholung, ungültig nach t + 15 min) und Definition „verbunden“ (Ping/Pong je Minute, Lebenszeichen ≤ 75 s) nach zweiter adversarialer Prüfung; offener Punkt OI-Zeitstempel | keine Liquidationsdaten |
 | 2026-11-01 | 1.0 | Nach Probelauf: Seiten bestätigt, OI nur bis t − 1800 s, Raster-Prüfung statt Kerzen-Abgleich (der alte Abgleich erklärte jeden echten Stand für ungültig), offene Punkte 1–3 erledigt | Probelauf-Ausgaben wie Abschnitt 8, kein D |
+| 2026-11-01 | 1.0 | Freigabe durch Uzi; Start 02.11.2026 00:00 UTC und Commit `228a30c` eingetragen | keine neuen |
