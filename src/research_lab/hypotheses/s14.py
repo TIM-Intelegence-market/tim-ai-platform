@@ -226,10 +226,17 @@ class PairTrade:
     cost_r: float
     funding_r: float
 
+    @property
+    def bars_held(self) -> int:
+        """Name shared with the engine's trades (shared key figures)."""
+        return self.hours_held
+
 
 def simulate_trade(pair: PairSeries, signals: Signals, entry: Entry, costs: CostModel = BASE_COSTS,
-                   y_funding: Sequence[FundingRate] = (), x_funding: Sequence[FundingRate] = ()) -> PairTrade | None:
-    """Both legs from the open after the signal hour to the exit; None if there is no next hour."""
+                   y_funding: Sequence[FundingRate] = (), x_funding: Sequence[FundingRate] = (),
+                   funding_times: tuple[list[int], list[int]] | None = None) -> PairTrade | None:
+    """Both legs from the open after the signal hour to the exit; None if there is no next hour.
+    ``funding_times``: precomputed times of (y_funding, x_funding), for many calls."""
     t0 = entry.index
     first = t0 + 1
     times = pair.times
@@ -259,17 +266,20 @@ def simulate_trade(pair: PairSeries, signals: Signals, entry: Entry, costs: Cost
         break
     if exit_at is None:
         exit_at, close_of = len(times) - 1, True
-    legs = ((side, 1.0, pair.y_open, pair.y_close, y_funding), (-side, f.beta, pair.x_open, pair.x_close, x_funding))
+    if funding_times is None:
+        funding_times = ([r.time for r in y_funding], [r.time for r in x_funding])
+    legs = ((side, 1.0, pair.y_open, pair.y_close, y_funding, funding_times[0]),
+            (-side, f.beta, pair.x_open, pair.x_close, x_funding, funding_times[1]))
     pnl = fees = fund = 0.0
     entry_ms = times[first]
     exit_ms = times[exit_at] + HOUR_MS if close_of else times[exit_at]
-    for q, w, opens, closes, funding in legs:
+    for q, w, opens, closes, funding, ftimes in legs:
         p_in = opens[first] * (1 + q * costs.slippage)
         raw_out = closes[exit_at] if close_of else opens[exit_at]
         p_out = raw_out * (1 - q * costs.slippage)
         pnl += w * q * (p_out / p_in - 1)
         fees += costs.fee * w * (1 + p_out / p_in)
-        fund += _funding_cost(funding, [r.time for r in funding], q, w, entry_ms, exit_ms, costs)
+        fund += _funding_cost(funding, ftimes, q, w, entry_ms, exit_ms, costs)
     risk = (STOP_Z - ENTRY_Z) * f.sigma
     hours = exit_at - first + (1 if close_of else 0)
     return PairTrade(pair.name, times[t0], entry_ms, exit_ms, side, reason, hours, f.beta, f.sigma,
@@ -280,12 +290,13 @@ def run_pair(pair: PairSeries, variant: S14Variant, start_ms: int, end_ms: int, 
              y_funding: Sequence[FundingRate] = (), x_funding: Sequence[FundingRate] = ()) -> list[PairTrade]:
     """One position at a time; the next entry needs a new crossing after the exit hour."""
     signals = Signals(pair, variant)
+    ftimes = ([r.time for r in y_funding], [r.time for r in x_funding])
     trades: list[PairTrade] = []
     busy_until = -1  # open time of the exit fill; signals before it are ignored
     for e in entries(signals, start_ms, end_ms):
         if pair.times[e.index] < busy_until:
             continue
-        trade = simulate_trade(pair, signals, e, costs, y_funding, x_funding)
+        trade = simulate_trade(pair, signals, e, costs, y_funding, x_funding, ftimes)
         if trade is None:
             continue
         trades.append(trade)

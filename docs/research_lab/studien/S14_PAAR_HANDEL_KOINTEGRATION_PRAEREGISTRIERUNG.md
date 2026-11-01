@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S14 (nächste freie Nummer laut `workshop.generator.next_study_id`, 01.11.2026) |
-| Version | **0.2 – Entwurf, Zähllauf 5.1 gelaufen (W168 und W720 bestehen, beide K-Varianten nicht). Regeln als Code (`src/research_lab/hypotheses/s14.py`, Tests `tests/test_research_lab_s14.py`), Zählskript `scripts/research_lab_s14.py count`. Nichts registriert, kein R und kein Ergebnis für S14 gesehen** |
+| Version | **0.3 – Entwurf, Zufallsvergleich und Auswertung als Code, Zähllauf 5.1 gelaufen (W168 und W720 bestehen, beide K-Varianten nicht). Regeln als Code (`src/research_lab/hypotheses/s14.py`, Tests `tests/test_research_lab_s14.py`), Zählskript `scripts/research_lab_s14.py count`. Nichts registriert, kein R und kein Ergebnis für S14 gesehen** |
 | Anlass | Uzi 01.11.2026 („go“ auf den Vorschlag aus dem Reel `instagram.com/reel/DfKfQNPotER`, Kanal nishantaqc): Pairs Trading mit Kointegration, z-Wert ±2, Ausstieg bei Rückkehr |
 | Quelle der Regeln | Lehrbuch-Standard nach Engle und Granger (1987) und Gatev, Goetzmann, Rouwenhorst (2006, „Pairs Trading“). Das Reel nennt nur die Grundidee (Kointegration, Absicherungsverhältnis aus Regression, Einstieg bei 2 Standardabweichungen, Ausstieg bei Rückkehr). Alle Zahlen unten sind vorab gesetzt und werden nicht optimiert |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kriterien K1–K5 unverändert, Horizont „Short“ (Signale auf 1h-Kerzen) |
@@ -73,7 +73,7 @@ Ergebnisblinder Zähllauf: nur die Einstiegssignale (Kreuzen von |z| = 2, mit Fi
 
 ## 6. Zufallsvergleich
 
-Protokoll 7.1 mit Pool-Methode nach R4(a): zufällige Einstiege nur an Stunden, an denen die Variante ein Signal hätte geben **können** (Fenster vollständig, β > 0, Filter erfüllt), gleiche Variante, gleiches Paar, gleicher Abschnitt. Richtung aus den echten Trades gezogen, danach exakt derselbe Ausstieg 4.3 mit den an dieser Stunde eingefrorenen α, β, σ. 10 000 Läufe, Seed 20261102. Wird vor Version 1.0 als Code gebaut.
+Protokoll 7.1 mit Pool-Methode nach R4(a): zufällige Einstiege nur an Stunden, an denen die Variante ein Signal hätte geben **können** (Fenster vollständig, β > 0, Filter erfüllt), gleiche Variante, gleiches Paar, gleicher Abschnitt. Richtung aus den echten Trades gezogen, danach exakt derselbe Ausstieg 4.3 mit den an dieser Stunde eingefrorenen α, β, σ. 10 000 Läufe, Seed 20261102. Als Code: `src/research_lab/studies/s14_random.py` (Tests `tests/test_research_lab_s14_run.py`; ein zufälliger Trade auf einer echten Signalstunde ergibt exakt den echten Trade).
 
 ## 7. Bis zur Erstellung gesehene Daten
 
@@ -96,9 +96,11 @@ Der Kointegrationsfilter lässt nur 10 % (W168) bzw. 6 % (W720) der Signale durc
 
 1. **Einordnung:** eigene Familie wie S13 (empfohlen) oder Registerplätze. Uzi entscheidet vor jedem Ergebnis.
 2. ~~Zähllauf 5.1 auf dem Mac~~ erledigt (7.1).
-3. Für W168 und W720: Zufallsvergleich (Abschnitt 6) und Auswertung als Code, danach Regeln mit Commit-Hash einfrieren (1.0), erst dann ein Lauf mit R.
+3. ~~Zufallsvergleich und Auswertung als Code~~ erledigt: `s14_random.py`, `s14_eval.py`, `scripts/research_lab_s14.py run` (nur W168 und W720). Nachbarschaft: W168 braucht E[R] > 0 im Training von W720 und umgekehrt.
+4. Nach der Einordnung: Regeln mit Commit-Hash einfrieren (1.0), erst dann ein Lauf mit R.
 
 ## Änderungsprotokoll
 
 - 0.1 (01.11.2026): Entwurf auf Uzis „go“. Regeln als Code, Zählskript. Nichts registriert, keine Marktdaten ausgewertet.
 - 0.2 (01.11.2026): Zähllauf 5.1 eingetragen (7.1). W168 und W720 bestehen das Gate, W168-K und W720-K nicht. Weiter kein R gesehen.
+- 0.3 (01.11.2026): Zufallsvergleich und Auswertung als Code (Abschnitt 6, 8). Keine Regeländerung, kein R gesehen.
