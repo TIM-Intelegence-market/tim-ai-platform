@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.research_lab.workshop.ideas import IdeaQueue
-from src.research_lab.workshop.report import ReportError, monthly_reflection, render_reflection, report_from_bundle
+from src.research_lab.workshop.report import ReportError, _local, monthly_reflection, render_reflection, report_from_bundle
 from src.research_lab.workshop.runner import JobQueue, RunResult, run_job
 
 AT = "2026-10-31T15:00:00Z"
@@ -23,6 +23,12 @@ def _bundle(tmp_path: Path, result: dict | None, *, exit_code: int = 0) -> Path:
             (outdir / "result.json").write_text(json.dumps(result))
         return RunResult(exit_code, "ok\n", "", host="mac")
     return Path(run_job(queue, job, workdir=tmp_path, bundles_dir=tmp_path / "b", executor=executor)["bundle_dir"])
+
+
+def _finished_date(bundle: Path) -> str:
+    # run_job stempelt finished_at mit der echten Uhrzeit; das Berichtsdatum folgt der lokalen Zeitzone.
+    finished = json.loads((bundle / "manifest.json").read_text())["finished_at"]
+    return _local(finished).date().isoformat()
 
 
 @pytest.fixture()
@@ -42,7 +48,7 @@ def test_report_and_logbook_entry_from_bundle(tmp_path: Path, logbook: Path) -> 
     assert "**nicht testbar**" in text and "Filter zu streng" in text and "| signale | 241 |" in text
     data = json.loads(logbook.read_text())
     assert data["entries"][0]["id"] == "S12" and data["entries"][0]["status"] == "not_testable"
-    assert data["entries"][0]["doc"] == report.as_posix() and data["updated"] == "2026-10-31"
+    assert data["entries"][0]["doc"] == report.as_posix() and data["updated"] == _finished_date(bundle)
     assert any(e["id"] == "S1" for e in data["entries"])
     with pytest.raises(ReportError, match="gibt es schon"):
         report_from_bundle(bundle, title="x", logbook=logbook, reports_dir=tmp_path / "reports")

@@ -21,6 +21,13 @@ sudo tim-mode live            # verweigert, solange ein Job läuft; --wait warte
 Die Garantie „nie beides“ hängt nicht am Skript: `tim-ci-runner.service` hat `Conflicts=` auf die drei
 Live-Units. Startet jemand `tim-runtime` von Hand, stoppt systemd den Runner, und umgekehrt.
 
+## Zugang für Uzi
+
+- Zugang über Chris' Gateway im Tailnet, mit eigenem SSH-Schlüssel (nur die öffentliche Hälfte wird weitergegeben).
+- Per sudo sind nur die Start-/Stopp-Skripte erlaubt, sonst nichts.
+- Der CI-Modus stoppt die Live-Dienste auf dem Server (siehe oben). Der Mac ist davon nicht betroffen.
+- Tailnet-Hostname, Port und Benutzernamen stehen bewusst nicht in diesem öffentlichen Repo.
+
 ## Einrichten (einmalig)
 
 ```bash
