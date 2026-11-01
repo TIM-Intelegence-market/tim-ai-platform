@@ -25,3 +25,6 @@
 *.sqlite binary
 *.sqlite3 binary
 *.db binary
+
+# Real federalreserve.gov pages stay byte for byte as downloaded (CRLF); provenance.json holds their SHA-256.
+tests/fixtures/research_lab/fomc_statements_2019_2020/*.html -text
