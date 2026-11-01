@@ -257,6 +257,16 @@ def test_self_update_fast_forwards_only_a_clean_checkout():
         assert not any(call[:2] == ("git", "checkout") for call in blocked.calls)
 
 
+def test_dry_run_still_follows_platform_main(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "self_update", lambda pipeline: "TIM_SELF_UPDATED a -> b")
+    pipeline = FakePipeline([_issue(94, READY, _contract(94))])
+    assert runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False, merge=False,
+                              dry_run=True, update=True) == "TIM_SELF_UPDATED a -> b"
+    monkeypatch.setattr(runner, "self_update", lambda pipeline: None)
+    assert "#94" in runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False,
+                                       merge=False, dry_run=True, update=True)
+
+
 def _split_answer(*subtasks):
     return json.dumps({"decision": "split", "reason": "Sammel-Issue", "subtasks": list(subtasks)})
 

@@ -72,6 +72,7 @@ angezeigt und muss genau Push-Rechte haben, ohne Maintain/Admin. Es startet nich
 - `tim-issue-worker.timer` startet `tim-issue-worker.service` alle 5 Minuten. Vor jedem Lauf prüft der
   Sandbox-Selbsttest, dass Tests in bubblewrap weder Netz noch Zugangsdaten noch TIM-Daten sehen; sonst läuft nichts.
 - Argumente in `/etc/tim-issue-worker.env` (root, 600). Nach der Einrichtung steht dort `--dry-run` (schreibt nichts).
+  Mit `--dry-run --self-update` zieht der Checkout zusätzlich platform-main nach (neue Python-Pakete nicht).
   Pilot: `TIM_WORKER_ARGS=--pilot-issue <Nummer>` (nur PR, kein Merge), danach `--merge --self-update`. Dort steht
   auch `TIM_QWEN_HARD_URL`: Ollama auf 127.0.0.1, nach dem Checkup-Drop-in auf 127.0.0.2. Wandert Ollama später,
   die Zeile anpassen. Antwortet das Modell nicht, endet jeder Lauf mit Fehler im Journal statt still.
