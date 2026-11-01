@@ -10,6 +10,7 @@ history: data/research/schedule/history.jsonl. Writes only under data/research/.
     .venv/bin/python scripts/research_workshop_schedule.py --install          # write and load the LaunchAgent
 
 Pause: touch data/research/schedule/PAUSE (delete to resume). Without AI round: --no-ki.
+Every real wake-up also steps the S7b forward journal (paper only, data/research/forward/S7b/); --no-forward skips it.
 """
 from __future__ import annotations
 
@@ -36,6 +37,14 @@ def ask_claude(prompt: str) -> str:
     return advise_text(prompt, timeout=KI_TIMEOUT)
 
 
+def forward_step(root: Path) -> dict:
+    """One step of the S7b forward journal (paper only), data under data/research/forward/S7b/."""
+    from src.research_lab.forward.s7b import FOLDER, ForwardJournal
+    commit = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                            check=False).stdout.strip()
+    return ForwardJournal(root / FOLDER).step(code_commit=commit)
+
+
 def install(home: Path) -> int:
     from src.v2_completion.mac_live import render_plist
     if sys.platform != "darwin":
@@ -60,10 +69,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--task", choices=TASKS)
     parser.add_argument("--no-ki", action="store_true", help="weekly round without the AI ideas")
     parser.add_argument("--install", action="store_true")
+    parser.add_argument("--no-forward", action="store_true", help="skip the S7b forward journal step")
     args = parser.parse_args(argv)
     if args.install:
         return install(Path.home())
-    workshop = Workshop(ROOT, ask=None if args.no_ki else ask_claude)
+    workshop = Workshop(ROOT, ask=None if args.no_ki else ask_claude, forward=None if args.no_forward else forward_step)
     workshop.state_dir.mkdir(parents=True, exist_ok=True)
     with open(workshop.state_dir / "run.lock", "w") as lock:
         try:

@@ -40,6 +40,7 @@ GROUPS_EN = {
     "gamma": "Options gamma (Deribit)",
     "liq": "Liquidation heatmap (estimate)",
     "cvd": "CVD spot vs. perp", "oi": "Open interest + Z-score (7.5 d)",
+    "funding": "Funding rate (Binance perp)", "premium": "Coinbase premium (USD vs. USDT)",
 }
 # Ordered (pattern, replacement) pairs for labels, names and notes of the drawings.
 TEXT_EN: tuple[tuple[str, str], ...] = (
@@ -113,6 +114,8 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^(Level \S+: )?Börse nicht erreichbar", r"\1Exchange not reachable, retrying shortly."),
     (r"^Perp-Trades noch nicht da", "Perp trades not there yet (the collector starts with the previous day): showing spot."),
     (r"^Open Interest: Binance-Stand älter", "Open interest: Binance data older than 3 h, hidden."),
+    (r"^Funding Rate: Stand älter", "Funding rate: data older than 3 h, hidden."),
+    (r"^Coinbase-Premium: Stand älter", "Coinbase premium: data older than 3 h, hidden."),
     (r"^CVD nur Spot", "CVD spot only: no perp trades in the shown window yet."),
     (r"^CVD nur Perp", "CVD perp only: no spot trades in the shown window."),
     (r"^CVD ab (\d+)m", r"CVD from \1m."),
@@ -162,6 +165,11 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
         out["cvd"] = {**model["cvd"], "note": english_note(model["cvd"].get("note"))}
     if isinstance(model.get("oi"), dict):
         out["oi"] = {**model["oi"], "source": "Binance USD-M open interest (BTCUSDT, 1h, public)"}
+    symbol = str(model.get("symbol"))
+    if isinstance(model.get("funding"), dict):
+        out["funding"] = {**model["funding"], "source": f"Binance USD-M funding ({symbol}, public)"}
+    if isinstance(model.get("premium"), dict):
+        out["premium"] = {**model["premium"], "source": f"Coinbase USD vs. Binance {symbol} × Coinbase USDT-USD (1h, public)"}
     for key in ("level_source", "trade_source"):
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])

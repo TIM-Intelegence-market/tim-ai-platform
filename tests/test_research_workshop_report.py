@@ -42,8 +42,7 @@ def test_report_and_logbook_entry_from_bundle(tmp_path: Path, logbook: Path) -> 
     assert "**nicht testbar**" in text and "Filter zu streng" in text and "| signale | 241 |" in text
     data = json.loads(logbook.read_text())
     assert data["entries"][0]["id"] == "S12" and data["entries"][0]["status"] == "not_testable"
-    # The run finishes now, so the logbook date is the local date of the run, not of AT.
-    assert data["entries"][0]["doc"] == report.as_posix() and data["updated"] == data["entries"][0]["started"]
+    assert data["entries"][0]["doc"] == report.as_posix() and data["updated"] == data["entries"][0]["started"]  # the bundle's finish date (real clock)
     assert any(e["id"] == "S1" for e in data["entries"])
     with pytest.raises(ReportError, match="gibt es schon"):
         report_from_bundle(bundle, title="x", logbook=logbook, reports_dir=tmp_path / "reports")
