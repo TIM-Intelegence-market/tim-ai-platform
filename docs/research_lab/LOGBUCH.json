@@ -4,6 +4,15 @@
   "updated": "2026-11-01",
   "entries": [
     {
+      "id": "S13",
+      "title": "Noise-Band-Ausbruch (Intraday-Momentum nach Zarattini/Aziz/Barbon 2024), NY-Sitzung und UTC-Tag",
+      "started": "2026-11-01",
+      "status": "failed",
+      "result": "Nicht bestanden: beide Varianten im Training negativ nach Kosten (S13-NY −0,044 R bei 1 732 Trades, S13-UTC −0,042 R bei 9 554). S13-NY in der Validierung +0,030 R, aber Drawdown 29 % über der Grenze; Walk-Forward −0,021 R.",
+      "lesson": "Das SPY-Ergebnis der Studie überträgt sich nicht auf BTC/ETH/SOL 1m. Mit doppelten Kosten sind alle Abschnitte negativ. Eigene Familie, Holdout nie geladen.",
+      "doc": "docs/research_lab/reports/s13_run_2026-11-01T1844Z.md"
+    },
+    {
       "id": "S8",
       "title": "Orderflow-KI: Richtung der nächsten 5 Minuten aus Orderflow-Merkmalen",
       "started": "2026-10-26",
