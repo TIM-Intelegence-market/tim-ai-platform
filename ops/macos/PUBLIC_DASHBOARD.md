@@ -13,6 +13,7 @@ liefert ausschließlich:
 | --- | --- |
 | `/chart?symbol=&tf=` | interaktiver Chart (BTC/ETH/SOL, alle Zeitrahmen, Level, TPO, Volume Profile, Footprint) |
 | `/journal?rule=` | Papier-Journal je Regel: Ergebnis netto, Ergebniskurve, offene Pläne, geschlossene Trades; nie ausgelöste Pläne, korrigierte Einträge und Regelvergleich eingeklappt |
+| `/live` | Echtgeld-Testkonto (Kraken Futures): Kontowert, Veränderung seit Start, Position, Trades heute, Automatik an/aus. Quelle: `~/Library/Application Support/TIM/live_status.json` (schreibt der lokale live-trader alle 5 Minuten mit dem Lese-Key; keine Keys, keine Order-IDs). Fehlt die Datei: „No live data right now.“ |
 | `/api/chart/live`, `/api/plan-journal` | die Daten dieser beiden Seiten |
 | `/assets/chart/*.js`, `/robots.txt` | Chart-Skripte, Suchmaschinen-Sperre |
 
