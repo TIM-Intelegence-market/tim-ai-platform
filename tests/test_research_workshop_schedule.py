@@ -68,6 +68,7 @@ def test_one_wakeup_writes_only_under_data_research(tmp_path: Path) -> None:
     assert summary["ran"]["trades"]["new_reflections"] == {"tim_plan_journal": 25, "tim_plan_journal_short": 1}
     assert summary["ran"]["trades"]["ideas"]  # costs ate the profit in every trade -> one idea
     assert summary["ran"]["weekly"]["ki"] == "übersprungen"
+    assert set(summary["ran"]["weekly"]["self_improve"]) == {"MIT_TREND", "KOSTEN_DECKEL", "OHNE_GRADE_C", "NUR_BESTAETIGT"}
     assert summary["ran"]["monthly"]["report"] == "data/research/reports/forschung_2026-10.md"
     new = {p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file()} - {
         p.relative_to(tmp_path).as_posix() for p in before}
@@ -98,9 +99,13 @@ def test_ki_answer_is_untrusted() -> None:
     good = {"title": "Funding-Extrem", "hypothesis": "Nach extremem Funding dreht BTC", "data": ["archive_usdm_klines"],
             "template": "ereignis_studie", "period": ["2021-01-01", "2024-12-31"], "counterargument": "Zu selten", "tags": ["x"]}
     raw = "```json\n" + json.dumps({"ideas": [good, {**good, "data": ["geheim"]}, {**good, "counterargument": ""},
-                                               {**good, "hypothesis": "x" * 500}, "Unsinn"]}) + "\n```"
-    parsed = parse_ki_answer(raw)
+                                               {**good, "hypothesis": "x" * 1600}, "Unsinn"]}) + "\n```"
+    dropped: list[str] = []
+    parsed = parse_ki_answer(raw, dropped)
     assert len(parsed) == 1 and parsed[0]["period"] == ("2021-01-01", "2024-12-31")
+    assert len(dropped) == 4 and "hypothesis" in dropped[2]
+    long_but_fine = {**good, "hypothesis": "y" * 700}  # a real answer on 31.10. was dropped at 400 characters
+    assert len(parse_ki_answer(json.dumps({"ideas": [long_but_fine]}))) == 1
     assert parse_ki_answer("keine JSON-Antwort") == []
 
 

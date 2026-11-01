@@ -182,7 +182,7 @@ Nice 15, gedrosselte Festplatte. Logik: `src/research_lab/workshop/schedule.py`,
 | Aufgabe | Wann (Ortszeit) | Was |
 |---|---|---|
 | `trades` | stündlich | jeden neu geschlossenen Papier-Trade der Journale tim, struct, short, mid, long reflektieren; wiederkehrende Muster als Idee |
-| `weekly` | ab Sonntag 02:00, einmal je Woche | alle Ideen prüfen (`check --record`), danach KI-Runde |
+| `weekly` | ab Sonntag 02:00, einmal je Woche | alle Ideen prüfen (`check --record`), abgelaufene Schatten-Fenster bewerten (F7), danach KI-Runde |
 | `monthly` | ab dem 1. 03:00, einmal je Monat | Monats-Reflexion des Vormonats |
 
 - Die Automatik schreibt nur unter `data/research/` (nicht versioniert): Ideen-Liste `data/research/IDEEN.jsonl`,
@@ -200,10 +200,113 @@ Nice 15, gedrosselte Festplatte. Logik: `src/research_lab/workshop/schedule.py`,
 - Abnahme: eine Woche Probelauf auf dem Mac; Laufzeiten stehen je Aufgabe im Status (`seconds`), CI-Laufzeiten
   der Woche werden mit der Vorwoche verglichen.
 
+## Schattenbetrieb für Updates (F7)
+
+Code `src/research_lab/workshop/shadow.py`, aufgesetzt auf das Lernregister (`src/research_lab/learning/registry.py`,
+unverändert; abgestimmt mit der Lern-Spur am 31.10.). Ein Ergebnis „Kandidat“ ändert nichts an TIM, bevor es
+30 Tage auf ungesehenen Live-Daten mitgelaufen ist:
+
+1. `shadow-start`: je Studie eine eigene Familie `<Studie>-schatten` mit festen Regeln (Konfiguration = Hash der
+   registrierten Variante, Kennzahl Netto-R je Trade, 30 Tage, Mindestzahl Trades, kleinster Effekt, Intervall
+   99,5 %, Freigabe nur Uzi), Champion `kein-trade` (0 R) und der Kandidat als Herausforderer. Das Fenster beginnt
+   einen Horizont nach der Anmeldung; das Register lehnt Vor- und Rückdatieren ab.
+2. Pläne des Kandidaten gehen in ein eigenes Schatten-Journal `data/research/shadow/<Studie>.jsonl` (Hash-Kette,
+   Kennung `schatten:<Studie>`, jede Zeile `counts_in_net_r: false`). Ein Plan wird mit der echten Uhrzeit zur
+   Entscheidung geschrieben, nur im Fenster, nie nachträglich; jedes Ergebnis genau einmal und nach dem Plan.
+   Das Papier-Journal und sein Netto-R sehen davon nichts.
+3. Bewertung genau einmal nach Fensterende (sonntags in der Forschungsrunde, F6): mittleres Netto-R je Trade minus
+   0 R mit Bootstrap-Intervall 99,5 %. Offene Pläne oder mehr als 10 % Datenlücken ergeben „kein Urteil“.
+4. Wechsel nur mit Uzis Freigabe (`approvers = ["Uzi"]`); Rückweg ohne Freigabe nur zu einem früheren Champion.
+
+Register `data/research/shadow/register.jsonl` (nur auf dem Mac); jede Bewertung nennt den Kopf-Hash, der mit dem
+Bericht per PR ins Repo kommt. Zufallsprüfung: Eine Münzwurf-Strategie mit Kosten und eine Strategie ohne Vorteil
+werden in je 1 000 Simulationen in unter 5 % befördert (`tests/test_research_workshop_shadow.py`).
+
+Grenze: Die Pläne liefert der Live-Code der jeweiligen Studie über `ShadowJournal.record_plan` und
+`record_outcome`; einen allgemeinen Plan-Erzeuger gibt es nicht.
+
+## Anzeige (F9)
+
+Der Bildschirm „Forschung“ des Control Centers (`/forschung`) zeigt über dem Logbuch die Forschungswerkstatt:
+offene Ideen (nächste zuerst, mit Quelle und Prüfgrund), Studien-Budget des Monats, Zahl der reflektierten Trades
+und ihre häufigsten Lehren, letzte Läufe des Zeitplans (mit Fehlern und Warten auf CI), letzte Monats-Reflexion
+und den Schattenbetrieb. Nur lesen (`src/research_lab/workshop/overview.py`); eine kaputte Datei erscheint als
+Hinweis, nie als leerer gesunder Stand.
+
+## Regel-Anfrage (F10)
+
+Uzi beschreibt eine Regel in Worten, TIM testet sie ohne neuen Code (`src/research_lab/workshop/rules.py`,
+Schema `tim_rule/1`). Bausteine:
+
+| Teil | Bausteine |
+|---|---|
+| Markt | BTCUSDT, ETHUSDT, SOLUSDT (USD-M Perp), Zeitrahmen 15m, 30m, 1h, 4h, 1d (fehlende aus 5m zusammengesetzt) |
+| Einstieg | `sma_cross` {n}, `breakout` {n}, `prev_day_level` {high, low, close, poc, vah, val; retest oder break}, `vwap_cross` (Tages-VWAP) |
+| Filter | `hours` (Ortszeit Deutschland), `weekdays`, `trend` (mit SMA n) |
+| Stop | `atr` {k}, `signal_bar` (hinter dem Docht + Puffer in ATR), `percent` |
+| Ausstieg | Ziel in R und/oder Zeitstopp in Kerzen; Stop und Ziel in derselben Kerze zählen als Stop |
+
+POC/VAH/VAL des Vortags kommen aus den Kerzen (Volumen gleichmäßig über die Spanne jeder Kerze, 50 Stufen,
+Value Area 70 %): eine Näherung, kein echtes Volume Profile aus Einzeltrades. Alle Bausteine sehen nur
+geschlossene Kerzen; gekauft wird zur Eröffnung der nächsten Kerze (Engine aus R0–R4).
+
+Ablauf:
+
+1. **Übersetzen:** `rule-from-text --text "..."` fragt die Claude-CLI. Die Antwort gilt als nicht vertrauenswürdig;
+   nur eine Regel, die `validate` besteht, wird gespeichert (`data/research/rules/specs/`). Was sich nicht abbilden
+   lässt, steht im Feld `note` und wird angezeigt, nie stillschweigend weggelassen. Im Chat kann Claude die Regel
+   auch direkt als JSON schreiben.
+2. **Vorschau:** `rule-preview` zeigt die Regel in Worten, den Regel-Hash und die Mindestzahl der Trades.
+   Uzi sagt ja oder nein, bevor gerechnet wird.
+3. **Erkundung:** `rule-test` rechnet Training (2020–2022) und Validierung (2023–2024) mit Protokollkosten, mit
+   doppelten Kosten und gegen Zufallseinstiege: gleiche Filter-Zeiten, Stop-Abstände (in ATR) aus den eigenen
+   Signalen, gleiches Ziel und gleicher Zeitstopp. So misst der Vergleich nur den Einstiegszeitpunkt.
+   „Kandidat“ heißt: Mindestzahl Trades erreicht (Protokoll, Validierung die Hälfte), in beiden Abschnitten mehr
+   als 0,05 R je Trade, mit doppelten Kosten in der Validierung noch positiv und in beiden Abschnitten Zufall
+   p < 0,05. Die Erkundung belegt **keinen** Registerplatz und beweist nichts. Jede Erkundung steht mit Hash-Kette
+   in `data/research/rules/log.jsonl`, Bericht unter `data/research/rules/runs/R-nnnn/`. Die Anzeige nennt die Zahl
+   aller Versuche, denn bei 20 Versuchen ist ein zufällig guter zu erwarten.
+4. **Studie:** `rule-study --spec regel.json --run R-nnnn` legt die Idee an und schreibt die Generator-Spezifikation
+   (eine Variante, ein Registerplatz, Vorbelastung aus der Erkundung). Danach wie gehabt `check --record`,
+   `draft`, Uzis Freigabe, `submit -- scripts/research_lab_rule.py --spec ...`, `run`, `report`. Der Holdout bleibt
+   bis zu Uzis ausdrücklichem Wort zu; ein bestandener Holdout führt in den Schattenbetrieb (F7).
+
+Stand 31.10.: Das Holdout-Register hat m = 58 von 60. Für mehr als zwei neue Regel-Studien braucht es einen neuen
+Holdout-Zeitraum (Uzis Entscheidung); Erkundungen sind davon nicht betroffen.
+
+Die Archivdaten liegen auf dem Mac in einem Worktree (z. B. `--archive ~/Documents/TIM/worktrees/s4-zaehllauf/data/research_lab`).
+
+## Selbst-Verbesserung aus den eigenen Trades (F11)
+
+Uzi, 31.10.: „TIM soll seine trades reflektieren koennen, um einfach besser zu traden.“ Die Wochenrunde (F6)
+führt dafür `src/research_lab/workshop/self_improve.py` aus. Uzi muss dafür keine Regel formulieren.
+
+1. **Filter aus Lehren.** Jede Lehre der Trade-Reflexion hat einen festen Filter, der solche Trades auslässt:
+   `MIT_TREND` (gegen TIMs Marktzustand), `KOSTEN_DECKEL` (geplante Kosten über 0,15 R, also Stop zu eng),
+   `OHNE_GRADE_C`, `NUR_BESTAETIGT` (fehlende Bestätigung). Die Filter lesen nur, was beim Planen bekannt war.
+   Die Schwellen stehen im Code fest und werden nicht an die Trades angepasst.
+2. **Rückblick.** Jeder Filter wird an allen abgeschlossenen Trades der Plan-Journale nachgerechnet: Was
+   haben die Trades gebracht, die er ausgelassen hätte? Das ist ein In-Sample-Ergebnis, weil die Lehren aus
+   denselben Trades stammen. Es entscheidet nur, ob ein Filter beobachtet wird: Es müssen mindestens 20 Trades
+   da sein und mindestens 8 wegfallen, höchstens 90 % aller Trades, und die weggefallenen müssen zusammen im
+   Minus sein.
+3. **30 Tage Beobachtung.** Es zählen nur Trades, die nach dem Start geplant wurden. An TIM ändert sich nichts.
+4. **Ein Urteil je Fenster.** Bestanden heißt: mindestens 20 neue Trades, davon mindestens 5 weggefallen, und
+   das Bootstrap-Band der weggefallenen Trades liegt ganz unter null (Bonferroni über die vier Filter). Danach
+   steht „bereit für deine Entscheidung“. Nur Uzis Ja ändert TIMs Regel, per PR. Bei zu wenigen Trades beginnt
+   ein neues Fenster. Ein nicht bestandener Filter wird nicht wiederholt.
+
+Protokoll: `data/research/self_improve/log.jsonl` (Hash-Kette). Anzeige: Karte „Selbst-Verbesserung“ unter
+/forschung. Von Hand ansehen: `python -m src.research_lab.workshop learn` (nur lesen, mit `--write` wie die
+Wochenrunde).
+
+Rückblick am 31.10. auf 29 Trades: Trades gegen den Trend brachten zusammen +2,50 R. Die Lehre „gegen den
+Trend“ hätte als Regel also geschadet. Trades mit Kosten über 0,15 R brachten −3,87 R (17 Trades). Grade C und
+fehlende Bestätigung betreffen alle 29 Trades und taugen deshalb nicht als Filter.
+
 ## Nächste Pakete
 
-F7 Schattenbetrieb für Updates (auf dem Lern-Register), F8 Server als Rechenhost,
-F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
+F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
 
 ## Änderungsprotokoll
 
@@ -215,3 +318,7 @@ F9 Anzeige im Forschung-Bildschirm des neuen Control Centers.
 | 2026-10-31 | 1.0 | Auftrags-Runner und Ergebnis-Bündel (F4) |
 | 2026-10-31 | 1.0 | Bericht, Logbuch und Monats-Reflexion (F5) |
 | 2026-10-31 | 1.0 | Zeitplan auf dem Mac (F6) |
+| 2026-10-31 | 1.0 | Schattenbetrieb für Updates (F7) |
+| 2026-10-31 | 1.0 | Anzeige im Forschung-Bildschirm (F9) |
+| 2026-10-31 | 1.0 | Selbst-Verbesserung aus den eigenen Trades (F11) |
+| 2026-10-31 | 1.0 | Regel-Anfrage (F10): Regel aus Bausteinen, Erkundung ohne Registerplatz, Weg zur Studie |

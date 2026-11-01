@@ -120,3 +120,46 @@ def test_screens_and_fragments_are_served(state) -> None:
                 assert "html" in json.loads(response.read())
     finally:
         srv.stop()
+
+
+def test_forschung_shows_the_workshop(tmp_path: Path, state) -> None:
+    from datetime import datetime, timezone
+
+    from src.research_lab.learning.registry import ModelRegister
+    from src.research_lab.workshop import shadow
+    from src.research_lab.workshop.ideas import IdeaQueue
+    from src.research_lab.workshop.trade_reflection import ReflectionLog, reflect_journal
+
+    book = tmp_path / "LOGBUCH.json"
+    book.write_text(json.dumps({"entries": []}))
+    empty = forschung_body(state, book, tmp_path)
+    assert "Forschungswerkstatt" in empty and "Keine offenen Ideen" in empty and "Kein Kandidat" in empty
+    assert "Noch keine Regel getestet" in empty
+    assert "Selbst-Verbesserung" in empty and "noch kein Anlass" in empty
+    research = tmp_path / "data/research"
+    queue = IdeaQueue(research / "IDEEN.jsonl")
+    queue.add(source="uzi", title="Funding <Extrem>", hypothesis="Nach extremem Funding dreht BTC", data=["archive_usdm_klines"])
+    trade = {"id": "p1", "status": "CLOSED", "direction": "LONG", "timeframe": "30m", "market_state": "RANGE", "gross_r": 0.1,
+             "fee_r": 0.1, "slippage_r": 0.05, "net_r": -0.05, "max_favorable_r": 0.5, "max_adverse_r": -0.2,
+             "exit_reason": "BREAK_EVEN_COSTS", "tp_hits": [], "created_at": "2026-10-30T10:00:00Z", "closed_at": "2026-10-30T14:00:00Z"}
+    reflect_journal({"entries": [trade]}, ReflectionLog(research / "trade_reflections.jsonl"), name="tim", at="2026-10-31T14:00:00Z")
+    (research / "schedule").mkdir()
+    (research / "schedule/state.json").write_text(json.dumps({"trades": {"last_run": "2026-10-31T15:44:23Z", "last_result": {"ok": True}},
+                                                             "weekly": {"last_run": "2026-10-31T15:44:29Z", "last_result": {"ok": False}}}))
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    shadow.start(ModelRegister(tmp_path / shadow.REGISTER_PATH), "S12", model_id="S12-v1", variant_hash="h", code_commit="c",
+                 study_version="v", cost_rule="k", min_trades=30, min_effect=0.05, horizon_minutes=60, at=now)
+    from src.research_lab.workshop import rules
+    rules.ExplorationLog(tmp_path / rules.LOG_PATH).append(
+        {"title": "POC <Retest>"}, {"status": "failed", "result": "kein Vorteil"}, at="2026-10-31T18:00:00Z",
+        requested_by="uzi", data_hash=None)
+    body = forschung_body(state, book, tmp_path)
+    assert "R-0001" in body and "POC &lt;Retest&gt;" in body and "1 Regeln erkundet, 0 Kandidaten" in body
+    assert "Funding &lt;Extrem&gt;" in body and "<Extrem>" not in body  # escaped
+    assert "Kosten haben den Gewinn aufgefressen" in body and "S12-v1" in body
+    assert "31.10. 16:44" in body and "Fehler" in body and "noch nie" in body
+    assert "0 / 4" in body
+    (research / "IDEEN.jsonl").write_text("kaputt\n")
+    assert "Ideen-Liste nicht lesbar" in forschung_body(state, book, tmp_path)
+    # nothing in the screen writes: the register still has its 3 entries
+    assert len(ModelRegister(tmp_path / shadow.REGISTER_PATH).events()) == 3

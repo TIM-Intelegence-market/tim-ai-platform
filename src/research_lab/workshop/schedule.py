@@ -4,8 +4,8 @@ The agent wakes every 15 minutes and runs whatever is due:
 
 - ``trades``  hourly: reflect every newly closed paper trade of the plan journals and turn
   recurring loss patterns into ideas (source ``trade_reflexion``).
-- ``weekly``  once per week, from Sunday 02:00 local time: check all ideas (``check --record``)
-  and run the AI round (Claude Code CLI without tools, at most three ideas with a counterargument,
+- ``weekly``  once per week, from Sunday 02:00 local time: check all ideas (``check --record``),
+  run the self-improvement pass (F11: filters from trade lessons, watched 30 days) and run the AI round (Claude Code CLI without tools, at most three ideas with a counterargument,
   source ``ki_runde``). The answer is untrusted: every idea is validated and goes through the queue's
   own limits. No study is drafted, approved or run here (stage 1: Uzi approves each study).
 - ``monthly`` once per month, from the 1st 03:00 local time: monthly reflection of the previous month.
@@ -15,6 +15,13 @@ stays clean. What should go into ``docs/`` comes by pull request.
 
 While a CI job runs (``Runner.Worker``) or ``data/research/schedule/PAUSE`` exists, nothing runs.
 A task that has been waiting for the CI job for ``MAX_DEFER_MINUTES`` runs anyway (niced).
+
+Forward journal (Uzi 2026-11-01, "go s7b-Journal"): when ``forward`` is set (the LaunchAgent script sets
+it), every wake-up also runs one step of the S7b forward observation (src/research_lab/forward/s7b.py):
+a few public REST calls, then the study engine on the cached 4h bars. It is light, so it does not wait
+for a CI job; PAUSE holds it like everything else. Its result lands in the state and the summary under ``forward``
+(not under ``ran``, so a failing network call does not fail the wake-up); the history gets a line only when
+the step wrote new events or failed.
 """
 from __future__ import annotations
 
@@ -44,7 +51,7 @@ MONTHLY_AT = (1, 3)                       # 1st of the month, 03:00 local
 MAX_DEFER_MINUTES = 180
 BUSY_PATTERNS = {"ci_test_job": r"Runner\.Worker"}
 TASKS = ("trades", "weekly", "monthly")
-TEXT_LIMIT = 400
+TEXT_LIMITS = {"title": 200, "hypothesis": 1500, "counterargument": 1500}
 
 Ask = Callable[[str], str]
 
@@ -116,27 +123,37 @@ def ki_prompt(queue: IdeaQueue, logbook: Iterable[Mapping[str, Any]], trade_patt
     )
 
 
-def parse_ki_answer(raw: str) -> list[dict[str, Any]]:
-    """Untrusted model output -> list of idea fields the queue accepts; anything malformed is dropped."""
+def parse_ki_answer(raw: str, dropped: list[str] | None = None) -> list[dict[str, Any]]:
+    """Untrusted model output -> list of idea fields the queue accepts; anything malformed is dropped.
+
+    Each dropped item's reason goes into ``dropped`` when a list is passed (kept in the round's file).
+    """
+    dropped = [] if dropped is None else dropped
     fenced = re.search(r"```(?:json)?\s*\n(.*?)\n```", raw, re.DOTALL)
     try:
         payload = json.loads(fenced.group(1) if fenced else raw)
     except (json.JSONDecodeError, TypeError):
+        dropped.append("Antwort ist kein JSON")
         return []
     items = payload.get("ideas") if isinstance(payload, dict) else None
     clean = []
-    for item in items if isinstance(items, list) else []:
+    for n, item in enumerate(items if isinstance(items, list) else [], 1):
         if not isinstance(item, dict):
+            dropped.append(f"Idee {n}: kein Objekt")
             continue
         text = {k: item.get(k) for k in ("title", "hypothesis", "counterargument")}
-        if not all(isinstance(v, str) and v.strip() and len(v) <= TEXT_LIMIT for v in text.values()):
+        bad = [k for k, v in text.items() if not (isinstance(v, str) and v.strip() and len(v) <= TEXT_LIMITS[k])]
+        if bad:
+            dropped.append(f"Idee {n}: {', '.join(bad)} fehlt oder ist zu lang")
             continue
         data = item.get("data")
         if not isinstance(data, list) or not data or not all(isinstance(d, str) and d in DATA_CATALOGUE for d in data):
+            dropped.append(f"Idee {n}: unbekannte oder fehlende Daten {data!r}"[:200])
             continue
         template = item.get("template")
         period = item.get("period")
         if period is not None and not (isinstance(period, list) and len(period) == 2 and all(isinstance(p, str) for p in period)):
+            dropped.append(f"Idee {n}: Zeitraum unlesbar")
             continue
         tags = [t for t in item.get("tags") or [] if isinstance(t, str) and len(t) <= 40][:6]
         clean.append({**text, "data": data, "template": template if template in charter.TEMPLATES else None,
@@ -152,6 +169,7 @@ class Workshop:
     ask: Ask | None = None
     ps: Callable[[], str] = field(default=lambda: subprocess.run(["ps", "-axo", "command"], capture_output=True,
                                                                   text=True, check=False).stdout)
+    forward: Callable[[Path], Mapping[str, Any]] | None = None
 
     @property
     def research(self) -> Path:
@@ -205,7 +223,9 @@ class Workshop:
     def run_weekly(self, now: datetime) -> dict[str, Any]:
         queue, logbook, at = self.queue(), self.logbook(), _iso(now)
         written = record(queue, check_ideas(queue, logbook, now=at), now=at)
-        result: dict[str, Any] = {"checked": written, "ki_ideas": [], "ki_rejected": []}
+        result: dict[str, Any] = {"checked": written, "ki_ideas": [], "ki_rejected": [],
+                                  "shadow_evaluated": self.evaluate_shadows(now),
+                                  "self_improve": self.run_self_improve(now)}
         year, week, _ = now.isocalendar()
         week_key = f"{year}-W{week:02d}"
         used = sum(1 for i in queue.ideas().values() if i["source"] == "ki_runde"
@@ -219,7 +239,10 @@ class Workshop:
                 raw = self.ask(prompt)
             except Exception as exc:  # CLI missing, timeout: the round is skipped, not the week
                 raw, result["ki"] = "", f"Fehler: {type(exc).__name__}"[:200]
-            for n, idea in enumerate(parse_ki_answer(raw)[:slots], 1):
+            dropped: list[str] = []
+            parsed = parse_ki_answer(raw, dropped)
+            result["ki_rejected"].extend(dropped)
+            for n, idea in enumerate(parsed[:slots], 1):
                 try:
                     idea_id = queue.add(source="ki_runde", at=at, source_ref=f"ki:{week_key}:{n}", **idea)
                 except IdeaError as error:
@@ -235,6 +258,45 @@ class Workshop:
                                                                  **result}, ensure_ascii=False, indent=2) + "\n",
                                                      encoding="utf-8")
         return result
+
+    def journals(self) -> dict[str, Mapping[str, Any]]:
+        found = {}
+        for name in JOURNALS:
+            path = self.root / JOURNAL_DIR / f"{name}.json"
+            if path.exists():
+                found[name] = self.load_journal(path)
+        return found
+
+    def run_self_improve(self, now: datetime) -> dict[str, Any]:
+        """F11: filters from the trade lessons, look back, watch forward, judge once (changes nothing in TIM)."""
+        from src.research_lab.workshop import self_improve
+        try:
+            report = self_improve.step(self.journals(), self.reflections().records(),
+                                       self_improve.LearningLog(self.research / "self_improve/log.jsonl"), now)
+        except Exception as exc:  # a broken journal must not stop the weekly round
+            return {"error": f"{type(exc).__name__}: {exc}"[:200]}
+        return {key: value["status"] for key, value in report["filters"].items()}
+
+    def evaluate_shadows(self, now: datetime) -> list[dict[str, Any]]:
+        """F7: shadow candidates whose window has ended get their one evaluation; promoting stays Uzi's."""
+        from src.research_lab.learning.registry import ModelRegister
+        from src.research_lab.workshop import shadow
+        path = self.root / shadow.REGISTER_PATH
+        if not path.exists():
+            return []
+        register, done = ModelRegister(path), []
+        for model_id in register.overdue(now):
+            family = register.state()["models"][model_id]["family"]
+            if not family.endswith("-schatten"):
+                continue
+            journal = shadow.ShadowJournal(family[: -len("-schatten")], model_id, folder=self.root / shadow.SHADOW_DIR)
+            try:
+                entry = shadow.evaluate(register, journal, at=datetime.now(timezone.utc))
+            except ValueError as error:  # shown in the status, retried next week
+                done.append({"model_id": model_id, "error": str(error)[:300]})
+                continue
+            done.append({"model_id": model_id, "verdict": entry["verdict"], "reasons": entry["reasons"]})
+        return done
 
     def run_monthly(self, now: datetime) -> dict[str, Any]:
         from src.research_lab.workshop.report import monthly_reflection, render_reflection
@@ -278,9 +340,20 @@ class Workshop:
             result["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
             state[task] = {"last_run": _iso(now), "last_result": result}
             summary["ran"][task] = result
+        if self.forward is not None and not only and not dry_run:
+            started = datetime.now(timezone.utc)
+            try:
+                status = self.forward(self.root)
+                result = {"ok": True, "new_events": status.get("new_events", 0)}
+            except Exception as exc:  # network or data problem: shown in the status, retried next wake-up
+                result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:500]}
+            result["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
+            state["forward"] = {"last_run": _iso(now), "last_result": result}
+            summary["forward"] = result  # in the history only when something happened (see below)
         if not dry_run:
             state["schema"], state["checked_at"] = SCHEMA, _iso(now)
             self.write_state(state)
-            if summary["ran"]:
+            forward = summary.get("forward") or {}
+            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False:
                 self.log(summary)
         return summary
