@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S14 (nächste freie Nummer laut `workshop.generator.next_study_id`, 01.11.2026) |
-| Version | **0.1 – Entwurf. Regeln als Code (`src/research_lab/hypotheses/s14.py`, Tests `tests/test_research_lab_s14.py`), Zählskript `scripts/research_lab_s14.py count`. Nichts registriert, keine Kurse für S14 ausgewertet** |
+| Version | **0.2 – Entwurf, Zähllauf 5.1 gelaufen (W168 und W720 bestehen, beide K-Varianten nicht). Regeln als Code (`src/research_lab/hypotheses/s14.py`, Tests `tests/test_research_lab_s14.py`), Zählskript `scripts/research_lab_s14.py count`. Nichts registriert, kein R und kein Ergebnis für S14 gesehen** |
 | Anlass | Uzi 01.11.2026 („go“ auf den Vorschlag aus dem Reel `instagram.com/reel/DfKfQNPotER`, Kanal nishantaqc): Pairs Trading mit Kointegration, z-Wert ±2, Ausstieg bei Rückkehr |
 | Quelle der Regeln | Lehrbuch-Standard nach Engle und Granger (1987) und Gatev, Goetzmann, Rouwenhorst (2006, „Pairs Trading“). Das Reel nennt nur die Grundidee (Kointegration, Absicherungsverhältnis aus Regression, Einstieg bei 2 Standardabweichungen, Ausstieg bei Rückkehr). Alle Zahlen unten sind vorab gesetzt und werden nicht optimiert |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kriterien K1–K5 unverändert, Horizont „Short“ (Signale auf 1h-Kerzen) |
@@ -79,12 +79,26 @@ Protokoll 7.1 mit Pool-Methode nach R4(a): zufällige Einstiege nur an Stunden, 
 
 Für S14 wurden keine Kurse ausgewertet. Gesehen sind nur das Reel und das in Abschnitt 2 genannte Allgemeinwissen.
 
+### 7.1 Zähllauf 5.1 (01.11.2026, ergebnisblind)
+
+Bericht `../reports/s14_count_2026-11-01T2250Z.md` (Commit `56fcd10`, Datensatz-Hash `182b222e…`, auf dem Mac). Gezählt wurden nur Einstiegssignale, keine Ausstiege und kein R.
+
+| Variante | Training Signale (Tage) | Validierung Signale (Tage) | Gate |
+|---|---:|---:|---|
+| S14-W168 | 1725 (645) | 1433 (501) | bestanden |
+| S14-W168-K | 161 (106) | 149 (98) | nicht bestanden |
+| S14-W720 | 754 (348) | 663 (289) | bestanden |
+| S14-W720-K | 54 (33) | 28 (16) | nicht bestanden |
+
+Der Kointegrationsfilter lässt nur 10 % (W168) bzw. 6 % (W720) der Signale durch. Beide K-Varianten scheiden damit vor jedem Ergebnis aus und werden nicht ausgewertet. Das Gate wird nicht gelockert. Für die Nachbarschaftsregel bleiben W168 und W720 ohne Filter.
+
 ## 8. Offene Punkte vor Version 1.0
 
 1. **Einordnung:** eigene Familie wie S13 (empfohlen) oder Registerplätze. Uzi entscheidet vor jedem Ergebnis.
-2. Zähllauf 5.1 auf dem Mac (`python scripts/research_lab_s14.py count`, 5m-Daten aus dem S10-Abruf).
-3. Besteht eine Variante: Zufallsvergleich (Abschnitt 6) und Auswertung als Code, danach Regeln mit Commit-Hash einfrieren (1.0), erst dann ein Lauf mit R.
+2. ~~Zähllauf 5.1 auf dem Mac~~ erledigt (7.1).
+3. Für W168 und W720: Zufallsvergleich (Abschnitt 6) und Auswertung als Code, danach Regeln mit Commit-Hash einfrieren (1.0), erst dann ein Lauf mit R.
 
 ## Änderungsprotokoll
 
 - 0.1 (01.11.2026): Entwurf auf Uzis „go“. Regeln als Code, Zählskript. Nichts registriert, keine Marktdaten ausgewertet.
+- 0.2 (01.11.2026): Zähllauf 5.1 eingetragen (7.1). W168 und W720 bestehen das Gate, W168-K und W720-K nicht. Weiter kein R gesehen.
