@@ -146,21 +146,36 @@ def random_pvalue(instruments: Mapping[str, Instrument], trades: Mapping[str, Se
 
     ``trades``: the variant's trades of this section per instrument, already cut by protocol 3.2."""
     counts = {sym: len(ts) for sym, ts in trades.items() if ts}
-    total = sum(counts.values())
-    if not total:
+    if not counts:
         return RandomResult(1.0, 0.0, 0.0, {}, {})
     observed_sum = sum(t.r for ts in trades.values() for t in ts)
     rng = random.Random(seed)
     pools: dict[str, list[float]] = {}
     for sym in sorted(counts):
         n = counts[sym]
-        size = min(runs * n, max(POOL_FACTOR * n, MIN_POOL))
+        size = pool_size(n, runs)
         sides = [t.side for t in trades[sym]]
         pools[sym] = [sim.r for sim in draw_pool(instruments[sym], sides, start_ms, end_ms, size, rng, costs, sym)]
+    return pvalue_from_pools(pools, counts, observed_sum, runs, rng)
+
+
+def pool_size(n: int, runs: int = RUNS) -> int:
+    return min(runs * n, max(POOL_FACTOR * n, MIN_POOL))
+
+
+def pvalue_from_pools(pools: Mapping[str, Sequence[float]], counts: Mapping[str, int], observed_sum: float, runs: int,
+                      rng: random.Random) -> RandomResult:
+    """Each run draws counts[sym] pool results per instrument; p = (1 + runs >= observed) / (1 + runs).
+    The script builds the pools one instrument at a time (memory) with the same rng, in sorted order,
+    which gives exactly the result of ``random_pvalue``."""
+    total = sum(counts.values())
+    if not total:
+        return RandomResult(1.0, 0.0, 0.0, {}, {})
+    symbols = sorted(counts)
     at_least = 0
     for _ in range(runs):
-        if sum(sum(rng.choices(pools[sym], k=counts[sym])) for sym in sorted(counts)) >= observed_sum:
+        if sum(sum(rng.choices(pools[sym], k=counts[sym])) for sym in symbols) >= observed_sum:
             at_least += 1
-    all_pool = [r for p in pools.values() for r in p]
+    all_pool = [r for sym in symbols for r in pools[sym]]
     return RandomResult((1 + at_least) / (1 + runs), observed_sum / total, sum(all_pool) / len(all_pool),
-                        counts, {sym: len(p) for sym, p in pools.items()})
+                        dict(counts), {sym: len(pools[sym]) for sym in symbols})
