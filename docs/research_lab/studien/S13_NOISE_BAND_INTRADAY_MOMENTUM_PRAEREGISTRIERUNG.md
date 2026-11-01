@@ -8,7 +8,8 @@
 | Quelle der Regeln | Zarattini, Aziz, Barbon (2024): „Beat the Market: An Effective Intraday Momentum Strategy for S&P500 ETF (SPY)“, SSRN 4824172 / Swiss Finance Institute RP 24-97. Original gelesen am 01.11.2026 (Fassung der Universität St. Gallen, Alexandria); Abgleich und Abweichungen in Abschnitt 4.6 |
 | Anlass-Quelle | Zwei Instagram-Reels von @AlgorithmicTrading („Noise Band“, Oktober 2026): NQ/ES ab 2018, nach eigener Aussage breiteres Band als die Studie, sechs Walk-Forward-Tests, 2 000 Läufe auf gemischten Daten, Drawdown 30 %, Trefferquote ~50 %. Werbung für eigenen Kanal, kein Code gesehen |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kriterien K1–K5 unverändert |
-| Holdout | ab 2025-01-01, wird nur mit Uzis ausdrücklichem Wort geladen |
+| Holdout | S13 ist eigene Familie (Uzi 01.11.2026) und lädt den Holdout ab 2025-01-01 nie |
+| Ergebnis | **NICHT BESTANDEN** (beide Varianten im Training, E[R] < 0), Auswertung 01.11.2026 19:44 Uhr, Abschnitt 9 |
 
 ## 1. Fragestellung
 
@@ -112,6 +113,20 @@ Für S13 wurden keine Kurse ausgewertet. Gesehen sind: die Zusammenfassung der S
 3. ~~Code~~ in 0.2 gebaut (12 Tests, u. a. kein Blick in spätere Kerzen, NY-Kalender mit Sommerzeit, Lückenregel, Engine-Läufe). ~~Zufallsvergleich (Abschnitt 6) als Code~~ und ~~Einfrieren~~ in 1.0 erledigt (Commit `a6c2ef1`, 9 weitere Tests). Danach der Zähllauf auf dem Mac (`python scripts/research_lab_s13.py count`, Daten aus dem S10-Abruf, ein Instrument nach dem anderen im Speicher).
 4. **Universum:** gepoolt über BTC/ETH/SOL wie bei S7 und S10, BTC allein wird beschreibend berichtet.
 
+## 9. Ergebnis (01.11.2026)
+
+Auswertung auf dem Mac, Commit `e9efba9`, Bericht `../reports/s13_run_2026-11-01T1844Z.md` (dazu `.json`). 10 000 Zufallsläufe, Holdout nicht geladen.
+
+| Variante | Training E[R] (n) | Validierung E[R] (n) | Urteil |
+|---|---:|---:|---|
+| S13-NY | −0,044 (1 732), PF 0,79 | +0,030 (1 335), PF 1,15, DD 29 % | nicht bestanden (Training) |
+| S13-UTC | −0,042 (9 554), PF 0,74 | −0,084 (7 409), PF 0,59 | nicht bestanden (Training) |
+
+- Beide Varianten verlieren im Training nach Kosten. Damit sind sie nach Protokoll 8 Schritt 1 draußen. Walk-Forward (−0,021 R) und Jahresstabilität sind ebenfalls nicht erfüllt.
+- S13-NY ist in der Validierung leicht positiv und schlägt dort den Zufall (p = 0,0001, Zufallsmittel −0,046 R). Der Drawdown liegt mit 29 % aber über der Grenze von 20 %, und im Training war die Variante negativ. Das reicht nicht. Getragen wird die Validierung von 2023 und von Long-Trades (+0,094 R), also vom Aufwärtsmarkt.
+- Mit doppelten Kosten sind alle vier Abschnitte negativ. Gebühren kosten im Mittel 0,03 bis 0,06 R je Trade, Funding fällt kaum ins Gewicht.
+- S13 ist abgeschlossen. Varianten wie „nur NY, nur Long“ oder andere Bandbreiten wären nach diesem Ergebnis gewählt und bräuchten eine neue Studie mit eigenen Daten.
+
 ## Änderungsprotokoll
 
 - 0.1 (01.11.2026): Entwurf aus der Zusammenfassung der Studie und den zwei Reels. Nichts registriert, keine Marktdaten ausgewertet.
@@ -120,3 +135,4 @@ Für S13 wurden keine Kurse ausgewertet. Gesehen sind: die Zusammenfassung der S
 - 1.0, Nachtrag (01.11.2026): Zähllauf 5.1 auf dem Mac, beide Varianten bestehen das Gate. Regeln unverändert. Vor jedem Ergebnis entscheidet Uzi die Einordnung (Abschnitt 8, Punkt 1).
 - 1.0, Nachtrag (01.11.2026, 19:36 Uhr): Uzi entscheidet „eigene Familie“ (8.1). Regeln unverändert.
 - 1.0, Nachtrag (01.11.2026): Auswertungscode für Abschnitt 5 (`src/research_lab/studies/s13_eval.py`, `scripts/research_lab_s13.py run`). Der Zufallsvergleich wird je Instrument nacheinander aufgebaut (`pvalue_from_pools`), damit nur ein Instrument im Speicher liegt. Ein Test zeigt, dass p und Zufallsmittel exakt gleich wie mit `random_pvalue` sind. Regeln (`s13.py`) unverändert seit `a6c2ef1`. Nicht umgesetzt ist die beschreibende Rendite mit Volatilitätsziel (4.4), das steht im Bericht.
+- 1.0, Ergebnis (01.11.2026, 19:44 Uhr): Auswertung nach Abschnitt 5, beide Varianten nicht bestanden (Abschnitt 9). Regeln unverändert.

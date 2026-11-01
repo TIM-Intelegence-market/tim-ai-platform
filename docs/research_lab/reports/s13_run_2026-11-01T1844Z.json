@@ -1,0 +1,338 @@
+{
+  "study": "S13",
+  "commit": "e9efba90e07952938fdffdf7dc716d3fb7e2b01d",
+  "created": "2026-11-01T18:44:04+00:00",
+  "dataset_hash": "3cf3e6a166c70e3f630ccf1b16c9d0112587842b5f18fd3eb3b90499d2b3ed4b",
+  "runs": 10000,
+  "seed": 20261101,
+  "symbols": {
+    "BTCUSDT": {
+      "first_month": "2020-01",
+      "bars_1m": 2630880,
+      "funding_rates": 5481
+    },
+    "ETHUSDT": {
+      "first_month": "2020-01",
+      "bars_1m": 2630880,
+      "funding_rates": 5481
+    },
+    "SOLUSDT": {
+      "first_month": "2020-09",
+      "bars_1m": 2253180,
+      "funding_rates": 4786
+    }
+  },
+  "family": "eigene Familie, kein Holdout (Protokoll 01.11.2026)",
+  "variants": {
+    "S13-NY": {
+      "train": {
+        "figures": {
+          "n": 1732,
+          "expectancy_r": -0.04423922357190888,
+          "median_r": -0.13272298324944498,
+          "profit_factor": 0.7935363861792665,
+          "win_rate": 0.28983833718244806,
+          "avg_win_r": 0.5866444783902677,
+          "avg_loss_r": -0.3017218401450899,
+          "max_drawdown_r": 92.43487301763152,
+          "max_drawdown_pct": 0.9243487301763151,
+          "design_effect": 1.4898780039448176,
+          "n_eff": 1162,
+          "signal_days": 551,
+          "by_reason": {
+            "rule": 1653,
+            "stop": 79
+          },
+          "session_end_share": 0.2846420323325635,
+          "catastrophe_stop_share": 0.04561200923787529,
+          "mean_funding_r": 0.000907893931121149,
+          "mean_fee_r": 0.0392136375881494,
+          "mean_bars_held": 95.26732101616628,
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 636,
+              "expectancy_r": -0.05621500325772049
+            },
+            "ETHUSDT": {
+              "n": 637,
+              "expectancy_r": -0.05280445610510047
+            },
+            "SOLUSDT": {
+              "n": 459,
+              "expectancy_r": -0.015758506787988992
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 839,
+              "expectancy_r": -0.03962962999591133
+            },
+            "short": {
+              "n": 893,
+              "expectancy_r": -0.04857007352740937
+            }
+          },
+          "by_year": {
+            "2020": {
+              "n": 482,
+              "expectancy_r": -0.09573184814642939
+            },
+            "2021": {
+              "n": 684,
+              "expectancy_r": -0.03935831801102547
+            },
+            "2022": {
+              "n": 566,
+              "expectancy_r": -0.006287093463649817
+            }
+          }
+        },
+        "p": null,
+        "random_mean_r": null,
+        "verdict": {
+          "pass": false,
+          "reasons": [
+            "E[R] <= 0",
+            "p nicht berechnet"
+          ]
+        },
+        "stress_expectancy_r": -0.10691417515362849,
+        "stress_n": 1732
+      },
+      "validation": {
+        "figures": {
+          "n": 1335,
+          "expectancy_r": 0.03026766813362728,
+          "median_r": -0.1153818217540647,
+          "profit_factor": 1.1527388964462186,
+          "win_rate": 0.32134831460674157,
+          "avg_win_r": 0.7108602603089308,
+          "avg_loss_r": -0.29199968511494356,
+          "max_drawdown_r": 29.336704590075982,
+          "max_drawdown_pct": 0.29336704590075985,
+          "design_effect": 1.4493177086833022,
+          "n_eff": 921,
+          "signal_days": 395,
+          "by_reason": {
+            "rule": 1290,
+            "stop": 45
+          },
+          "session_end_share": 0.3048689138576779,
+          "catastrophe_stop_share": 0.033707865168539325,
+          "mean_funding_r": -0.0001028224281474006,
+          "mean_fee_r": 0.048109920861790195,
+          "mean_bars_held": 102.4501872659176,
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 432,
+              "expectancy_r": 0.020489838633148974
+            },
+            "ETHUSDT": {
+              "n": 452,
+              "expectancy_r": 0.03426134573625054
+            },
+            "SOLUSDT": {
+              "n": 451,
+              "expectancy_r": 0.03563103857225459
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 634,
+              "expectancy_r": 0.0940788856295362
+            },
+            "short": {
+              "n": 701,
+              "expectancy_r": -0.027444617019591354
+            }
+          },
+          "by_year": {
+            "2023": {
+              "n": 643,
+              "expectancy_r": 0.07528755263570129
+            },
+            "2024": {
+              "n": 692,
+              "expectancy_r": -0.011564392176825884
+            }
+          }
+        },
+        "p": 9.999000099990002e-05,
+        "random_mean_r": -0.04556049443721,
+        "verdict": {
+          "pass": false,
+          "reasons": [
+            "DD > 20%"
+          ]
+        },
+        "stress_expectancy_r": -0.047875066161739026,
+        "stress_n": 1335
+      },
+      "year_stability": false,
+      "verdict": "NICHT BESTANDEN (Training)"
+    },
+    "S13-UTC": {
+      "train": {
+        "figures": {
+          "n": 9554,
+          "expectancy_r": -0.041809481513606785,
+          "median_r": -0.09958156243468946,
+          "profit_factor": 0.7376569128803564,
+          "win_rate": 0.21697718233200752,
+          "avg_win_r": 0.5418081189366801,
+          "avg_loss_r": -0.2035310809967567,
+          "max_drawdown_r": 425.5608436224228,
+          "max_drawdown_pct": 4.255608436224228,
+          "design_effect": 1.508329427589719,
+          "n_eff": 6334,
+          "signal_days": 1054,
+          "by_reason": {
+            "rule": 9356,
+            "stop": 198
+          },
+          "session_end_share": 0.1162863722001256,
+          "catastrophe_stop_share": 0.020724303956458027,
+          "mean_funding_r": 0.000144173521702445,
+          "mean_fee_r": 0.03173956256181378,
+          "mean_bars_held": 156.6079129160561,
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 3428,
+              "expectancy_r": -0.06272579782663223
+            },
+            "ETHUSDT": {
+              "n": 3452,
+              "expectancy_r": -0.03533218554864058
+            },
+            "SOLUSDT": {
+              "n": 2674,
+              "expectancy_r": -0.02335716040291573
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 4704,
+              "expectancy_r": -0.03792643971144109
+            },
+            "short": {
+              "n": 4850,
+              "expectancy_r": -0.04557563174811965
+            }
+          },
+          "by_year": {
+            "2020": {
+              "n": 2543,
+              "expectancy_r": -0.054188957988602474
+            },
+            "2021": {
+              "n": 3540,
+              "expectancy_r": -0.03355305983700331
+            },
+            "2022": {
+              "n": 3471,
+              "expectancy_r": -0.041160309534137546
+            }
+          }
+        },
+        "p": null,
+        "random_mean_r": null,
+        "verdict": {
+          "pass": false,
+          "reasons": [
+            "E[R] <= 0",
+            "p nicht berechnet"
+          ]
+        },
+        "stress_expectancy_r": -0.09208492410050881,
+        "stress_n": 9554
+      },
+      "validation": {
+        "figures": {
+          "n": 7409,
+          "expectancy_r": -0.08421784002118549,
+          "median_r": -0.127198992021505,
+          "profit_factor": 0.5859226201435929,
+          "win_rate": 0.20016196517748683,
+          "avg_win_r": 0.5953622589892491,
+          "avg_loss_r": -0.25428488133614907,
+          "max_drawdown_r": 628.2024931228136,
+          "max_drawdown_pct": 6.282024931228136,
+          "design_effect": 1.652087656938604,
+          "n_eff": 4484,
+          "signal_days": 720,
+          "by_reason": {
+            "rule": 7204,
+            "stop": 205
+          },
+          "session_end_share": 0.11148603050344176,
+          "catastrophe_stop_share": 0.02766905115400189,
+          "mean_funding_r": 0.00017089175701456442,
+          "mean_fee_r": 0.055372651092069736,
+          "mean_bars_held": 147.08813605074909,
+          "by_symbol": {
+            "BTCUSDT": {
+              "n": 2444,
+              "expectancy_r": -0.09988085966286699
+            },
+            "ETHUSDT": {
+              "n": 2468,
+              "expectancy_r": -0.09172778916413847
+            },
+            "SOLUSDT": {
+              "n": 2497,
+              "expectancy_r": -0.06146454627305671
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 3872,
+              "expectancy_r": -0.07677876076533667
+            },
+            "short": {
+              "n": 3537,
+              "expectancy_r": -0.09236149704087636
+            }
+          },
+          "by_year": {
+            "2023": {
+              "n": 3668,
+              "expectancy_r": -0.09592585903196577
+            },
+            "2024": {
+              "n": 3741,
+              "expectancy_r": -0.07273828542841829
+            }
+          }
+        },
+        "p": null,
+        "random_mean_r": null,
+        "verdict": {
+          "pass": false,
+          "reasons": [
+            "E[R] <= 0",
+            "p nicht berechnet",
+            "PF <= 1.1",
+            "DD > 20%"
+          ]
+        },
+        "stress_expectancy_r": -0.16888238336726508,
+        "stress_n": 7409
+      },
+      "year_stability": false,
+      "verdict": "NICHT BESTANDEN (Training)"
+    }
+  },
+  "walk_forward": {
+    "pass": false,
+    "chained_expectancy_r": -0.02131920462642509,
+    "chosen": [
+      "S13-UTC",
+      "S13-UTC",
+      "S13-NY",
+      "S13-NY",
+      "S13-NY",
+      "S13-NY"
+    ],
+    "windows": 6
+  }
+}
