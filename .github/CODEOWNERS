@@ -1,29 +1,29 @@
 # TIM CODEOWNERS
 # Phase 10 — CODEOWNERS & PR template (v2.0)
 
-# Default owner for all files (repository owner, User plan account)
-* @uezeyiraydin-cell
+# Default owners for all files (Uzi and Chris, both may approve and merge)
+* @uezeyiraydin-cell @fleckbarti-ai
 
 # Security-sensitive paths require the repository owner's review
-SECURITY.md @uezeyiraydin-cell
-TIM_SECURITY_ZERO_TRUST_CONSTITUTION.md @uezeyiraydin-cell
-config/ @uezeyiraydin-cell
-scripts/ @uezeyiraydin-cell
+SECURITY.md @uezeyiraydin-cell @fleckbarti-ai
+TIM_SECURITY_ZERO_TRUST_CONSTITUTION.md @uezeyiraydin-cell @fleckbarti-ai
+config/ @uezeyiraydin-cell @fleckbarti-ai
+scripts/ @uezeyiraydin-cell @fleckbarti-ai
 
 # GitHub toolchain configuration
-.github/workflows/ @uezeyiraydin-cell
-.github/dependabot.yml @uezeyiraydin-cell
-.github/CODEOWNERS @uezeyiraydin-cell
-codecov.yml @uezeyiraydin-cell
-sonar-project.properties @uezeyiraydin-cell
+.github/workflows/ @uezeyiraydin-cell @fleckbarti-ai
+.github/dependabot.yml @uezeyiraydin-cell @fleckbarti-ai
+.github/CODEOWNERS @uezeyiraydin-cell @fleckbarti-ai
+codecov.yml @uezeyiraydin-cell @fleckbarti-ai
+sonar-project.properties @uezeyiraydin-cell @fleckbarti-ai
 
 # Database schema and migrations are protected (OBSERVE-only guarantees)
-src/database/ @uezeyiraydin-cell
+src/database/ @uezeyiraydin-cell @fleckbarti-ai
 
 # Public repository: operations, agent rules and CI need a maintainer review
-ops/ @uezeyiraydin-cell
-.claude/ @uezeyiraydin-cell
-CLAUDE.md @uezeyiraydin-cell
-AGENTS.md @uezeyiraydin-cell
-CI.md @uezeyiraydin-cell
-.github/ @uezeyiraydin-cell
+ops/ @uezeyiraydin-cell @fleckbarti-ai
+.claude/ @uezeyiraydin-cell @fleckbarti-ai
+CLAUDE.md @uezeyiraydin-cell @fleckbarti-ai
+AGENTS.md @uezeyiraydin-cell @fleckbarti-ai
+CI.md @uezeyiraydin-cell @fleckbarti-ai
+.github/ @uezeyiraydin-cell @fleckbarti-ai
