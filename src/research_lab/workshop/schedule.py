@@ -19,7 +19,9 @@ A task that has been waiting for the CI job for ``MAX_DEFER_MINUTES`` runs anywa
 Forward journal (Uzi 2026-11-01, "go s7b-Journal"): when ``forward`` is set (the LaunchAgent script sets
 it), every wake-up also runs one step of the S7b forward observation (src/research_lab/forward/s7b.py):
 a few public REST calls, then the study engine on the cached 4h bars. It is light, so it does not wait
-for a CI job; PAUSE holds it like everything else. Its result lands in the state under ``forward``.
+for a CI job; PAUSE holds it like everything else. Its result lands in the state and the summary under ``forward``
+(not under ``ran``, so a failing network call does not fail the wake-up); the history gets a line only when
+the step wrote new events or failed.
 """
 from __future__ import annotations
 
@@ -347,10 +349,11 @@ class Workshop:
                 result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:500]}
             result["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
             state["forward"] = {"last_run": _iso(now), "last_result": result}
-            summary["ran"]["forward"] = result
+            summary["forward"] = result  # in the history only when something happened (see below)
         if not dry_run:
             state["schema"], state["checked_at"] = SCHEMA, _iso(now)
             self.write_state(state)
-            if summary["ran"]:
+            forward = summary.get("forward") or {}
+            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False:
                 self.log(summary)
         return summary

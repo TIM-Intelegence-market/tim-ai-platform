@@ -15,7 +15,7 @@ from src.research_lab.protocol import BASE_COSTS
 from src.research_lab.stats.random_entry import atr_at_signal
 
 H4 = fwd.INTERVAL_MS
-T0 = int(datetime(2026, 3, 1, tzinfo=timezone.utc).timestamp() * 1000)
+T0 = int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp() * 1000) - 300 * 4 * 3_600_000  # warm-up ends before the start
 
 
 def _price(sym: str, i: int) -> float:
@@ -211,6 +211,14 @@ def test_bad_kline_rows_are_refused() -> None:
         fwd.parse_kline(nan)
 
 
+def test_start_inside_the_holdout_window_is_refused(tmp_path: Path) -> None:
+    clock = Clock(datetime(2026, 9, 30, 12, tzinfo=timezone.utc))
+    journal = fwd.ForwardJournal(tmp_path, fetch=FakeExchange(), clock=clock)
+    with pytest.raises(fwd.ForwardError, match="holdout"):
+        journal.start()
+    assert not journal.journal_path.exists()
+
+
 def test_drawdown() -> None:
     assert fwd.max_drawdown([]) == 0
     assert fwd.max_drawdown([1, -1, -1, 3, -2]) == 2
@@ -227,20 +235,24 @@ def test_workshop_steps_forward_and_survives_its_failure(tmp_path: Path) -> None
     now = datetime(2026, 11, 1, 2, 30, tzinfo=timezone.utc)
     workshop = Workshop(tmp_path, ask=None, ps=lambda: "", forward=forward)
     summary = workshop.run_once(now)
-    assert summary["ran"]["forward"]["ok"] is True and summary["ran"]["forward"]["new_events"] == 2
+    assert summary["forward"]["ok"] is True and summary["forward"]["new_events"] == 2
     assert seen == [tmp_path]
     assert workshop.read_state()["forward"]["last_result"]["ok"] is True
-    assert "forward" not in workshop.run_once(now, dry_run=True)["ran"]
-    assert "forward" not in workshop.run_once(now, only="trades")["ran"]
+    assert "forward" not in workshop.run_once(now, dry_run=True)
+    assert "forward" not in workshop.run_once(now, only="trades")
+    quiet = Workshop(tmp_path, ps=lambda: "", forward=lambda root: {"new_events": 0})
+    lines = len((tmp_path / "data/research/schedule/history.jsonl").read_text().splitlines())
+    quiet.run_once(now + timedelta(minutes=15))  # nothing due, nothing new: no history line
+    assert len((tmp_path / "data/research/schedule/history.jsonl").read_text().splitlines()) == lines
 
     def broken(root: Path) -> dict:
         raise OSError("network down")
 
     failing = Workshop(tmp_path, ask=None, ps=lambda: "", forward=broken).run_once(now + timedelta(hours=2))
-    assert failing["ran"]["forward"]["ok"] is False and "network down" in failing["ran"]["forward"]["error"]
+    assert failing["forward"]["ok"] is False and "network down" in failing["forward"]["error"]
     assert failing["ran"]["trades"]["ok"] is True
     (tmp_path / "data/research/schedule/PAUSE").touch()
-    assert "forward" not in Workshop(tmp_path, ps=lambda: "", forward=forward).run_once(now + timedelta(hours=4))["ran"]
+    assert "forward" not in Workshop(tmp_path, ps=lambda: "", forward=forward).run_once(now + timedelta(hours=4))
     assert Workshop(tmp_path, ps=lambda: "").forward is None  # tests and other callers: no network unless asked
 
 
@@ -258,3 +270,83 @@ def test_forschung_screen_shows_the_forward_card(tmp_path: Path) -> None:
     assert "S7b-Vorwärtstest" in html and "S7b-D20-T3" in html and "von 100 Trades" in html
     assert "Noch kein Lauf" in _forward_card(None)
     assert overview(tmp_path / "empty")["forward"] is None
+
+
+class LaggingExchange(FakeExchange):
+    """ETH answers up to ``lag`` bars late, as an exchange hiccup would."""
+
+    lag = 2
+
+    def __call__(self, path: str, params: dict) -> list:
+        rows = super().__call__(path, params)
+        if path == "/fapi/v1/klines" and params["symbol"] == "ETHUSDT":
+            return [r for r in rows if r[6] + self.lag * H4 < self.now_ms]
+        return rows
+
+
+def test_lagging_coin_never_changes_logged_trades(tmp_path: Path) -> None:
+    exchange = LaggingExchange()
+    clock = Clock(datetime.fromtimestamp((T0 + 400 * H4 - 30 * 60_000) / 1000, tz=timezone.utc))
+    exchange.now_ms = int(clock().timestamp() * 1000)
+    journal = fwd.ForwardJournal(tmp_path / "S7b", fetch=exchange, clock=clock)
+    journal.step()
+    for _ in range(300):
+        _advance(exchange, clock, 1)
+        status = journal.step()
+        # the slot is shared, so all coins are simulated only up to the newest bar every coin has
+        assert status["simulated_through"] == status["last_closed_bar"]["ETHUSDT"] < status["last_closed_bar"]["BTCUSDT"]
+    exchange.lag = 0
+    _advance(exchange, clock, 1)
+    journal.step()
+    events = journal.events()
+    assert not [e for e in events if e["kind"] == "mismatch"]
+    # what was logged step by step equals one fresh run over all bars
+    full = FakeExchange()
+    fresh_clock = Clock(datetime.fromtimestamp((T0 + 400 * H4 - 30 * 60_000) / 1000, tz=timezone.utc))
+    fresh = fwd.ForwardJournal(tmp_path / "fresh", fetch=full, clock=fresh_clock)
+    assert fresh.start()["start_ms"] == events[0]["start_ms"]
+    fresh_clock.moment, full.now_ms = clock.moment, exchange.now_ms
+    fresh.step()
+    fresh_events = [e for e in fresh.events() if e["kind"] == "trade"]
+    key = lambda e: (e["variant"], e["symbol"], e["signal_time"], e["r"])  # noqa: E731
+    assert sorted(map(key, (e for e in events if e["kind"] == "trade"))) == sorted(map(key, fresh_events))
+
+
+def test_pending_signal_gets_its_final_status(tmp_path: Path) -> None:
+    journal, exchange, clock = _journal(tmp_path)
+    journal.step()
+    for _ in range(300):
+        _advance(exchange, clock, 1)
+        journal.step()
+    events = journal.events()
+    final: dict = {}
+    for e in events:
+        if e["kind"] in ("signal", "signal_status"):
+            final[(e["variant"], e["symbol"], e["signal_time"])] = e["status"]
+    assert any(e["kind"] == "signal_status" for e in events)
+    last = max(t for _, _, t in final)
+    assert all(status != "pending" for (_, _, t), status in final.items() if t < last)
+    taken = {k for k, v in final.items() if v == "taken"}
+    traded = {(e["variant"], e["symbol"], e["signal_time"]) for e in events if e["kind"] == "trade"}
+    assert traded <= taken
+    t3 = journal.status()["variants"]["S7b-D20-T3"]
+    assert t3["signals"] == t3["signal_status"]["taken"] + t3["signal_status"]["pending"]
+    assert t3["invalid_signals"] >= 0
+
+
+def test_torn_last_line_is_dropped_and_logged_trade_that_vanishes_is_reported(tmp_path: Path) -> None:
+    journal, exchange, clock = _journal(tmp_path)
+    journal.step()
+    _advance(exchange, clock, 400)
+    journal.step()
+    with journal.journal_path.open("a") as handle:
+        handle.write('{"kind": "trade", "half')  # crash while writing
+    count = len(journal.events())
+    trade = next(e for e in journal.events() if e["kind"] == "trade")
+    # forge nothing: append a valid fake trade through the journal itself, then let the recompute miss it
+    journal._append([{**{k: trade[k] for k in trade if k not in ("hash", "previous", "schema", "study", "counts_in_net_r")},
+                      "signal_time": trade["signal_time"] + 1}])
+    assert len(journal.events()) == count + 1  # torn line gone, chain intact
+    journal.step()
+    missing = [e for e in journal.events() if e["kind"] == "mismatch" and e["key"].endswith("|missing")]
+    assert len(missing) == 1 and missing[0]["recomputed"] is None

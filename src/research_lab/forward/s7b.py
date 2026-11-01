@@ -25,6 +25,7 @@ import fcntl
 import hashlib
 import json
 import math
+import os
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,11 +53,15 @@ INTERVAL_MS = s7.INTERVAL_MS
 SYMBOLS: tuple[str, ...] = s7b.PRIORITY
 VARIANTS: tuple[s7.S7Variant, ...] = s7b.GATE_VARIANTS  # S7b-D20-T3, S7b-D20-T4: the registered candidates
 WARMUP_BARS = 260  # >= the 200-bar warm-up of the rule, with room for one or two missing bars
+CLOSE_MARGIN_MS = 60_000  # a bar counts as closed one minute after its close time (clock skew to Binance)
 LATE_AFTER_MS = INTERVAL_MS  # a signal first written more than one bar after its close is flagged as late
 # Reference numbers from the study (section 12, validation 2023-2024) and its holdout minimum (section 5.1).
 REFERENCE = {"S7b-D20-T3": {"e_r": 0.272, "n": 207, "months": 24, "hit_rate": 0.261},
              "S7b-D20-T4": {"e_r": 0.251, "n": 189, "months": 24, "hit_rate": 0.169}}
 MIN_TRADES = 100
+# End of the S7b holdout window (section 8: 2025-01-01 up to 2026-10-01). The forward journal never counts a
+# signal before it, so it cannot compute S7b outcomes inside the holdout, even with a wrong clock.
+HOLDOUT_END_MS = int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp() * 1000)
 # Register entries of the two candidates (docs/research_lab/REGISTER.jsonl), for the start event.
 REGISTER_HASHES = {"S7b-D20-T3": "def643b5ba4875d59697452dafe933b56ef1b1289020be7ba8afc18a7d4d8c94",
                    "S7b-D20-T4": "c46780f19669b3d1c6277fe7295ed24b637d1c3a0f3a1af3bce1dd3c9080ae4a"}
@@ -160,8 +165,11 @@ class ForwardJournal:
     def events(self) -> list[dict[str, Any]]:
         if not self.journal_path.exists():
             return []
+        text = self.journal_path.read_text(encoding="utf-8")
+        if text and not text.endswith("\n"):
+            text = text[: text.rfind("\n") + 1]  # a torn last line (crash while writing) is not part of the chain
         events, previous = [], GENESIS
-        for line in self.journal_path.read_text(encoding="utf-8").splitlines():
+        for line in text.splitlines():
             if not line.strip():
                 continue
             event = json.loads(line)
@@ -178,6 +186,9 @@ class ForwardJournal:
         self.folder.mkdir(parents=True, exist_ok=True)
         with self.journal_path.open("a", encoding="utf-8") as handle:
             fcntl.flock(handle, fcntl.LOCK_EX)
+            raw = self.journal_path.read_bytes()
+            if raw and not raw.endswith(b"\n"):
+                os.truncate(self.journal_path, raw.rfind(b"\n") + 1)  # drop a torn last line (bytes, not characters)
             events = self.events()
             previous = events[-1]["hash"] if events else GENESIS
             for body in bodies:
@@ -205,7 +216,7 @@ class ForwardJournal:
                                                   "limit": str(KLINE_LIMIT)})
             if not isinstance(rows, list):
                 raise ForwardError(f"{symbol}: klines answer is not a list")
-            fresh = [b for b in (parse_kline(r) for r in rows) if b.open_time >= cursor and b.close_time < now_ms]
+            fresh = [b for b in (parse_kline(r) for r in rows) if b.open_time >= cursor and b.close_time + CLOSE_MARGIN_MS < now_ms]
             for bar in fresh:
                 if bars and bar.open_time <= bars[-1].open_time:
                     raise ForwardError(f"{symbol}: klines out of order")
@@ -243,6 +254,8 @@ class ForwardJournal:
             raise ForwardError("journal has events but no start event")
         now = self.clock()
         start_ms = first_open_at_or_after(_ms(now))
+        if start_ms < HOLDOUT_END_MS:
+            raise ForwardError("start inside the S7b holdout window (before 2026-10-01): refused")
         self._append([{"kind": "start", "at": _iso_ms(_ms(now)), "start_ms": start_ms, "start": _iso_ms(start_ms),
                        "variants": [v.variant_id for v in VARIANTS], "register_hashes": REGISTER_HASHES,
                        "symbols": list(SYMBOLS), "rules": "S7b 1.0, Abschnitt 4 (unverändert), Kosten BASE_COSTS",
@@ -258,78 +271,112 @@ class ForwardJournal:
                              gap_entry_as_loss=True, max_positions=s7b.MAX_POSITIONS)
 
     def step(self, *, code_commit: str = "") -> dict[str, Any]:
+        """One step under a lock file, so a manual run and the LaunchAgent never interleave."""
+        self.folder.mkdir(parents=True, exist_ok=True)
+        with (self.folder / "step.lock").open("w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            return self._step(code_commit)
+
+    def _step(self, code_commit: str) -> dict[str, Any]:
         start = self.start(code_commit=code_commit)
         start_ms = int(start["start_ms"])
+        if start_ms < HOLDOUT_END_MS:
+            raise ForwardError("journal start lies inside the S7b holdout window: refused")
         now = self.clock()
         now_ms = _ms(now)
         from_ms = start_ms - WARMUP_BARS * INTERVAL_MS
-        bars = {sym: self.update_bars(sym, from_ms, now_ms) for sym in SYMBOLS}
+        cached = {sym: self.update_bars(sym, from_ms, now_ms) for sym in SYMBOLS}
         funding = {sym: self.update_funding(sym, start_ms, now_ms) for sym in SYMBOLS}
-        last_closed = {sym: (b[-1].open_time if b else None) for sym, b in bars.items()}
+        last_closed = {sym: (b[-1].open_time if b else None) for sym, b in cached.items()}
+        # All three coins are simulated only up to the newest bar they all have: a coin that lags behind
+        # would otherwise free the shared position slot and change which signal is taken.
+        horizon = min((t for t in last_closed.values() if t is not None), default=None)
+        if horizon is None or any(t is None for t in last_closed.values()):
+            raise ForwardError("no closed bars for every coin yet")
+        bars = {sym: [b for b in rows if b.open_time <= horizon] for sym, rows in cached.items()}
         events = self.events()
-        logged_signals = {(e["variant"], e["symbol"], e["signal_time"]) for e in events if e["kind"] == "signal"}
+        signal_status: dict[tuple[str, str, int], str] = {}
+        for e in events:
+            if e["kind"] in ("signal", "signal_status"):
+                signal_status[(e["variant"], e["symbol"], e["signal_time"])] = e["status"]
         logged_trades = {(e["variant"], e["symbol"], e["signal_time"]): e for e in events if e["kind"] == "trade"}
         mismatches = {e["key"] for e in events if e["kind"] == "mismatch"}
         new: list[dict[str, Any]] = []
         variants: dict[str, Any] = {}
         for variant in VARIANTS:
+            vid = variant.variant_id
             results = self.simulate(bars, funding, start_ms, variant)
-            closed: list[tuple[str, Trade]] = []
+            seen_trades: set[tuple[str, str, int]] = set()
             open_trades: list[dict[str, Any]] = []
             pending: list[dict[str, Any]] = []
+            pending_count = 0
             for sym in SYMBOLS:
-                result, sym_bars = results[sym], bars[sym]
-                last_bar = sym_bars[-1] if sym_bars else None
+                result = results[sym]
                 ignored, locked = set(result.ignored_times), set(result.locked_times)
                 for time, side, stop in result.signals:
                     if time < start_ms:
                         continue
                     status = "locked" if time in locked else "ignored" if time in ignored else "taken"
-                    if last_bar is not None and time == last_bar.open_time and status == "taken":
-                        # no next bar yet: the entry (and, with two coins on one bar, the priority) is still open
+                    if time == horizon and status == "taken":
+                        # no next bar yet: the engine books it as invalid; entry and priority are still open
                         status = "pending"
-                    if (variant.variant_id, sym, time) not in logged_signals:
+                        pending_count += 1
+                        pending.append({"symbol": sym, "side": "LONG" if side == 1 else "SHORT", "stop": stop,
+                                        "signal": _iso_ms(time), "entry_at": _iso_ms(time + INTERVAL_MS)})
+                    key = (vid, sym, time)
+                    if key not in signal_status:
                         delay = now_ms - (time + INTERVAL_MS)
-                        new.append({"kind": "signal", "variant": variant.variant_id, "symbol": sym, "signal_time": time,
+                        new.append({"kind": "signal", "variant": vid, "symbol": sym, "signal_time": time,
                                     "signal": _iso_ms(time), "side": "LONG" if side == 1 else "SHORT", "stop": stop,
                                     "status": status, "at": _iso_ms(now_ms), "delay_minutes": round(delay / 60000, 1),
                                     "late": delay > LATE_AFTER_MS})
-                        logged_signals.add((variant.variant_id, sym, time))
-                    if status == "pending":
-                        pending.append({"symbol": sym, "side": "LONG" if side == 1 else "SHORT", "stop": stop,
-                                        "signal": _iso_ms(time), "entry_at": _iso_ms(time + INTERVAL_MS)})
+                    elif signal_status[key] != status:
+                        # a pending signal got its final status (taken, or locked by a coin earlier in priority)
+                        new.append({"kind": "signal_status", "variant": vid, "symbol": sym, "signal_time": time,
+                                    "previous_status": signal_status[key], "status": status, "at": _iso_ms(now_ms)})
+                    signal_status[key] = status
                 for trade in result.trades:
                     if trade.signal_time < start_ms:
                         continue
-                    if trade.reason == "end":  # still open at the last closed bar
+                    if trade.reason == "end":  # still open at the last common bar
                         open_trades.append({"symbol": sym, "side": "LONG" if trade.side == 1 else "SHORT",
                                             "entry": trade.entry_price, "stop": trade.stop, "entry_time": _iso_ms(trade.entry_time),
                                             "signal": _iso_ms(trade.signal_time), "bars_held": trade.bars_held,
                                             "unrealized_r": round(trade.r, 3), "target_r": trade.target_r})
                         continue
-                    closed.append((sym, trade))
-                    key = (variant.variant_id, sym, trade.signal_time)
-                    body = _trade_body(variant.variant_id, sym, trade)
+                    key = (vid, sym, trade.signal_time)
+                    seen_trades.add(key)
+                    body = _trade_body(vid, sym, trade)
                     logged = logged_trades.get(key)
                     if logged is None:
                         new.append({**body, "at": _iso_ms(now_ms)})
                         logged_trades[key] = body
                     elif any(logged.get(f) != body[f] for f in TRADE_FIELDS):
-                        mkey = f"{variant.variant_id}|{sym}|{trade.signal_time}|{_digest('', body)[:16]}"
+                        mkey = f"{vid}|{sym}|{trade.signal_time}|{_digest('', body)[:16]}"
                         if mkey not in mismatches:
-                            new.append({"kind": "mismatch", "key": mkey, "variant": variant.variant_id, "symbol": sym,
+                            new.append({"kind": "mismatch", "key": mkey, "variant": vid, "symbol": sym,
                                         "signal_time": trade.signal_time, "logged": {f: logged.get(f) for f in TRADE_FIELDS},
                                         "recomputed": {f: body[f] for f in TRADE_FIELDS}, "at": _iso_ms(now_ms)})
                             mismatches.add(mkey)
+            for key, logged in logged_trades.items():
+                if key[0] == vid and key not in seen_trades:  # a logged trade the recompute no longer has
+                    mkey = f"{vid}|{key[1]}|{key[2]}|missing"
+                    if mkey not in mismatches:
+                        new.append({"kind": "mismatch", "key": mkey, "variant": vid, "symbol": key[1], "signal_time": key[2],
+                                    "logged": {f: logged.get(f) for f in TRADE_FIELDS}, "recomputed": None,
+                                    "at": _iso_ms(now_ms)})
+                        mismatches.add(mkey)
             # The cap admits one entry: with an open trade nothing is pending (the engine marks it locked);
             # with two signals on the same last bar, the first in priority order (BTC > ETH > SOL) wins.
-            variants[variant.variant_id] = {"open": open_trades, "pending": [] if open_trades else pending[:1],
-                                            "locked_signals": sum(len(r.locked_times) for r in results.values()),
-                                            "invalid_signals": sum(r.invalid_signals for r in results.values())}
+            variants[vid] = {"open": open_trades, "pending": [] if open_trades else pending[:1],
+                             "locked_signals": sum(len(r.locked_times) for r in results.values()),
+                             "invalid_signals": sum(r.invalid_signals for r in results.values()) - pending_count,
+                             "signal_status": {status: sum(1 for k, v in signal_status.items() if k[0] == vid and v == status)
+                                               for status in ("taken", "pending", "locked", "ignored")}}
         self._append(new)
         status = {"schema": SCHEMA, "study": STUDY, "checked_at": _iso_ms(now_ms), "start": start["start"],
                   "last_closed_bar": {sym: (_iso_ms(t) if t is not None else None) for sym, t in last_closed.items()},
-                  "new_events": len(new), **summary(self.events(), variants)}
+                  "simulated_through": _iso_ms(horizon), "new_events": len(new), **summary(self.events(), variants)}
         self._write_json(self.status_path, status)
         return status
 
@@ -372,12 +419,13 @@ def summary(events: Sequence[Mapping[str, Any]], live: Mapping[str, Any] | None 
                      "mean_r": round(sum(values) / len(values), 3) if values else None,
                      "hits": sum(e["reason"] in ("target", "target_gap") for e in trades),
                      "wins": sum(v > 0 for v in values), "max_drawdown_r": round(max_drawdown(values), 3),
-                     "signals": sum(1 for e in events if e.get("kind") == "signal" and e.get("variant") == vid
-                                    and e.get("status") in ("taken", "pending")),
+                     "signals": None,  # taken signals, from the live step (signal_status), see below
                      "late_signals": sum(1 for e in events if e.get("kind") == "signal" and e.get("variant") == vid and e.get("late")),
                      "mismatches": sum(1 for e in events if e.get("kind") == "mismatch" and e.get("variant") == vid),
                      "reference_e_r": reference["e_r"], "reference_hit_rate": reference["hit_rate"],
                      "reference_trades_per_month": round(reference["n"] / reference["months"], 1), "min_trades": MIN_TRADES,
                      "recent": [{k: e[k] for k in ("symbol", "side", "signal", "exit", "reason", "r")} for e in trades[-5:][::-1]],
                      **{k: v for k, v in (live.get(vid) or {}).items()}}
+        statuses = rows[vid].get("signal_status") or {}
+        rows[vid]["signals"] = statuses.get("taken", 0) + statuses.get("pending", 0)
     return {"variants": rows}

@@ -360,6 +360,15 @@ Das ändert Punkt 3 von Abschnitt 13 nur insoweit, dass S7b beobachtet wird; S7b
   Trefferquote von 26 % bzw. 17 % sind lange Verlustserien normal; einzelne Wochen sagen nichts.
 - Eine Auswertungsregel mit Kriterien wäre eine eigene, vorab festgelegte Ergänzung (neue Zeile im Änderungsprotokoll),
   bevor die Zahlen angesehen werden.
+- **Sperre:** Ein Start vor dem Ende des Holdout-Fensters (2026-10-01, Abschnitt 8) wird verweigert; das Journal kann
+  S7b-Ergebnisse im Holdout-Zeitraum nicht berechnen.
+- **Offenlegung (Vorbelastung des Holdouts):** Beim Bau wurde am 01.11.2026 einmal ein Probelauf mit echten Daten auf
+  dem Mac gemacht, mit einem künstlich zurückdatierten Start 2026-07-04 (Wegwerf-Ordner, danach gelöscht). Er hat
+  S7b-Ergebnisse für 2026-07-04 bis 2026-11-01 sichtbar gemacht, also für die letzten knapp drei Monate des
+  Holdout-Fensters: D20-T3 35 Trades, −5,8 R (−0,17 R je Trade), D20-T4 30 Trades, −6,1 R; größter Rückgang je 12,1 R.
+  Das war ein Fehler in der Prüfmethode, keine Holdout-Auswertung nach Abschnitt 8 (kein Lock, kein Register-Eintrag).
+  Ein späterer Holdout-Lauf von S7b ist dadurch für diesen Teil nicht mehr ergebnisblind; das muss auf einer künftigen
+  Holdout-Karte stehen. Ab dem Start zählt der Vorwärtstest nur neue Kerzen.
 
 ## Änderungsprotokoll
 
@@ -371,4 +380,4 @@ Das ändert Punkt 3 von Abschnitt 13 nur insoweit, dass S7b beobachtet wird; S7b
 | 2026-10-26 | 1.0 | Eingefroren und freigegeben; S7b-D20-T3 und S7b-D20-T4 registriert (Register 56 → 58, Gate-Bericht `s7b_count_2026-10-26T1236Z`, Gate-Commit 26cd763). Keine inhaltliche Änderung gegenüber 0.3 | Uzis Karte „Ja, freigeben und registrieren“ 13:52 Ortszeit | wie 0.3; kein Lauf mit Positionsgrenze, kein Holdout |
 | 2026-10-26 | 1.0 | Abschnitt 12 ergänzt: Ergebnis Training/Validierung (beide Varianten bestanden, Status `candidate`), Statuszeile aktualisiert; keine Regeländerung, Version bleibt 1.0 | Mac-Lauf 14:05 Ortszeit, Commit f637c1e | zusätzlich: alle Trainings- und Validierungsergebnisse mit Positionsgrenze (R, DD, Baselines); kein Holdout |
 | 2026-10-26 | 1.0 | Abschnitt 13 ergänzt: S7b auf Uzis Karte ohne Holdout beendet; Status, O4 und P6 aktualisiert; Register unverändert (`candidate`), kein Lock, keine Regeländerung | Uzis Karte „Nein, S7b ohne Holdout beenden“ 20:47 Ortszeit | wie Abschnitt 12; kein Holdout |
-| 2026-11-01 | 1.0 | Abschnitt 14 ergänzt: Papier-Vorwärtstest der Kandidatinnen auf Live-Kerzen (`src/research_lab/forward/s7b.py`), Regeln, Register und Holdout unverändert | Uzis Wort „go s7b-Journal“ 01.11. 09:04 Ortszeit | wie Abschnitt 13; keine Live-Ergebnisse, kein Holdout |
+| 2026-11-01 | 1.0 | Abschnitt 14 ergänzt: Papier-Vorwärtstest der Kandidatinnen auf Live-Kerzen (`src/research_lab/forward/s7b.py`), Regeln, Register und Holdout unverändert | Uzis Wort „go s7b-Journal“ 01.11. 09:04 Ortszeit | wie Abschnitt 13, zusätzlich Probelauf 2026-07-04 bis 2026-11-01 (Teil des Holdout-Fensters, offengelegt in Abschnitt 14) |
