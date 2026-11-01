@@ -13,7 +13,7 @@ from pathlib import Path
 
 from config.settings import settings
 from src.data_ingestion.aggregator import CandleAggregator
-from src.data_ingestion.aggregator import bucket_start
+from src.data_ingestion.aggregator import bucket_start, startup_replay_start
 from src.data_ingestion.binance_ws import BinanceTradeStream
 from src.data_ingestion.catchup import CatchUpCoordinator, PublicBinanceAggTradeClient
 from src.data_ingestion.durable import DurableIngestionStore, DurableOutboxWorker, OutboxItem
@@ -325,12 +325,13 @@ class TIMApplication:
         persisted_orderflow=await self.repository.recent_orderflow_observations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_observations") else []
         persisted_validations=await self.repository.recent_orderflow_validations(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_validations") else []
         persisted_validations_long=await self.repository.recent_orderflow_validations_long(settings.symbol,500) if hasattr(self.repository,"recent_orderflow_validations_long") else []
-        # Rebuild from the oldest latest persisted candle, rather than merely
-        # the current hour. This preserves a raw trade bucket that was active
-        # when the prior process stopped and idempotently repairs any completed
-        # candles yielded during replay before live streaming resumes.
+        # Rebuild from the oldest latest persisted candle, so a raw trade bucket
+        # that was active when the prior process stopped is preserved, but never
+        # from before the current bucket of the largest timeframe: closed candles
+        # are written by the outbox worker, and an unbounded replay scanned tens
+        # of millions of trades on every start (tim-core-01, 2026-11-01).
         latest_persisted=[candles[-1].open_time for candles in self.history.values() if candles]
-        recovery_start=min(latest_persisted) if latest_persisted else bucket_start(datetime.now(timezone.utc),"1h")
+        recovery_start=startup_replay_start(latest_persisted,settings.timeframes,datetime.now(timezone.utc))
         if hasattr(self, "durable_store") and hasattr(self.durable_store, "processed_trades_since"):
             recovery_trades = await self.durable_store.processed_trades_since(settings.symbol, recovery_start)
         else:
