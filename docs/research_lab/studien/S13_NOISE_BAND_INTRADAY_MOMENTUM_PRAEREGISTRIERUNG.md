@@ -1,14 +1,15 @@
-# S13: Noise-Band-Ausbruch (Intraday-Momentum) für BTC/ETH/SOL (Präregistrierung, Entwurf)
+# S13: Noise-Band-Ausbruch (Intraday-Momentum) für BTC/ETH/SOL (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
 | Studie | S13 (nächste freie Nummer laut `workshop.generator.next_study_id`, 01.11.2026) |
-| Version | **0.2 – Entwurf. Original gelesen, Regeln als Code (`src/research_lab/hypotheses/s13.py`, Tests `tests/test_research_lab_s13.py`), noch nicht eingefroren. Nichts registriert, keine Kurse für S13 ausgewertet** |
+| Version | **1.0 – eingefroren am 01.11.2026 auf Uzis „go“ (19:12 Uhr). Eingefrorener Code: Commit `a6c2ef1` (Regeln `src/research_lab/hypotheses/s13.py`, Zufallsvergleich `src/research_lab/studies/s13_random.py`, Zählskript `scripts/research_lab_s13.py`). Nichts registriert, keine Kurse für S13 ausgewertet** |
 | Anlass | Uzi 01.11.2026 („go“ auf den Vorschlag aus der Reel-Auswertung): `/mnt/project-files/analysen/reels-chris-2026-11-01/bericht.md`, Punkt 1 |
 | Quelle der Regeln | Zarattini, Aziz, Barbon (2024): „Beat the Market: An Effective Intraday Momentum Strategy for S&P500 ETF (SPY)“, SSRN 4824172 / Swiss Finance Institute RP 24-97. Original gelesen am 01.11.2026 (Fassung der Universität St. Gallen, Alexandria); Abgleich und Abweichungen in Abschnitt 4.6 |
 | Anlass-Quelle | Zwei Instagram-Reels von @AlgorithmicTrading („Noise Band“, Oktober 2026): NQ/ES ab 2018, nach eigener Aussage breiteres Band als die Studie, sechs Walk-Forward-Tests, 2 000 Läufe auf gemischten Daten, Drawdown 30 %, Trefferquote ~50 %. Werbung für eigenen Kanal, kein Code gesehen |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kriterien K1–K5 unverändert |
-| Holdout | ab 2025-01-01, wird nur mit Uzis ausdrücklichem Wort geladen |
+| Holdout | S13 ist eigene Familie (Uzi 01.11.2026) und lädt den Holdout ab 2025-01-01 nie |
+| Ergebnis | **NICHT BESTANDEN** (beide Varianten im Training, E[R] < 0), Auswertung 01.11.2026 19:44 Uhr, Abschnitt 9 |
 
 ## 1. Fragestellung
 
@@ -80,9 +81,26 @@ K1–K5 aus dem Protokoll, Horizont „Short“, ausgewertet mit dem allgemeinen
 
 Ergebnisblinder Zähllauf: nur Einstiegssignale (erster Ausbruch je Tag und Instrument), keine Ausstiege, kein R. Eine Variante wird nur ausgewertet, wenn sie gepoolt im Training ≥ 500 und in der Validierung ≥ 250 Signale an mindestens 160 bzw. 183 verschiedenen Tagen hat. Grobe Schätzung vorab: S13-UTC hat bis zu ~1 100 Tage je Instrument im Training, S13-NY ~750; das Gate sollte erreichbar sein. Besteht eine Variante nicht, wird sie nicht gelockert.
 
+**Ergebnis des Zähllaufs (01.11.2026, 19:31 Uhr, Mac, Commit `5998bcf`):** Beide Varianten bestehen das Gate. Bericht: `../reports/s13_count_2026-11-01T1832Z.md` (dazu `.json`, Datensatz-Hash `85765c4a…`).
+
+| Variante | Training Signale (Tage) | Validierung Signale (Tage) |
+|---|---:|---:|
+| S13-NY | 1 119 (551) | 868 (395) |
+| S13-UTC | 2 712 (1 054) | 2 025 (720) |
+
+Der Lauf war ergebnisblind: keine Ausstiege, kein R. Holdout 2025+ wurde nicht geladen. Bei SOL fehlt in 38 (NY) bzw. 47 (UTC) Sitzungen das Band, weil Daten fehlen. Bei BTC und ETH fehlt es in keiner Sitzung.
+
 ## 6. Zufallsvergleich
 
 Protokoll 7.1 mit Pool-Methode nach R4(a): Zufällige Einstiege nur an **denselben Prüfzeitpunkten** (gleiche Variante, Instrument, Abschnitt), Richtung aus den echten Trades gezogen, danach exakt derselbe Ausstieg 4.3 (Band/VWAP, Sitzungsende, Katastrophen-Stop), dieselbe R-Einheit und dieselben Kosten. 10 000 Läufe, Seed 20261101.
+
+**Umsetzung (1.0):** `src/research_lab/studies/s13_random.py`.
+- Erlaubt sind nur Prüfzeitpunkte, an denen auch ein echter Einstieg entschieden werden könnte: nicht das Sitzungsende, Band und Katastrophen-Stop berechenbar.
+- Die Richtung wird aus den echten Trades desselben Instruments und Abschnitts gezogen.
+- `simulate_trade` bildet die Engine für eine Position nach. Die Tests zeigen, dass das Ergebnis mit `run_backtest` übereinstimmt: für die echten Signale, für zufällige Signale, bei Datenlücken und beim Katastrophen-Stop. Das umfasst Füllpreise, Gebühren, Slippage und Funding.
+- Wie in Protokoll 3.2 zählt ein Zufallstrade nur, wenn sein Ausstieg bis zum Abschnittsende feststeht. Sonst wird er neu gezogen.
+- Gepoolt wird so: Jeder Lauf zieht je Instrument so viele Zufallstrades, wie die Variante dort hatte. Die Mischung aus BTC, ETH und SOL bleibt damit die echte.
+- Pool je Instrument und Abschnitt: min(10 000 · n, max(50 · n, 5 000)), wie in R4(a). Der Seed ist 20261101 für beide Abschnitte.
 
 ## 7. Bis zur Erstellung gesehene Daten
 
@@ -90,12 +108,31 @@ Für S13 wurden keine Kurse ausgewertet. Gesehen sind: die Zusammenfassung der S
 
 ## 8. Festlegungen und offene Punkte vor Version 1.0
 
-1. **Register:** Zuerst kommt der Zähllauf 5.1, der keinen Registerplatz belegt. Besteht eine Variante, läuft S13 wie von Uzi für S10 entschieden (28.10.2026) als **eigene Familie** (kein Archiv-Holdout, Bestätigung nur prospektiv auf neuen Daten). Die letzten zwei Registerplätze (58/60) bleiben frei. Vor jedem Ergebnis ist eine Protokoll-Einordnung wie bei S8 nötig. Uzi kann stattdessen die zwei Registerplätze wählen. Dann ist das Register voll und der Holdout für diesen Registerzeitraum verbraucht.
+1. **Register:** Zuerst kommt der Zähllauf 5.1, der keinen Registerplatz belegt. Besteht eine Variante, läuft S13 wie von Uzi für S10 entschieden (28.10.2026) als **eigene Familie** (kein Archiv-Holdout, Bestätigung nur prospektiv auf neuen Daten). Die letzten zwei Registerplätze (58/60) bleiben frei. Vor jedem Ergebnis ist eine Protokoll-Einordnung wie bei S8 nötig. Uzi kann stattdessen die zwei Registerplätze wählen. Dann ist das Register voll und der Holdout für diesen Registerzeitraum verbraucht. **Entschieden 01.11.2026, 19:36 Uhr (Uzi, Entscheidungskarte): eigene Familie.** Protokoll-Einordnung im Änderungsprotokoll von `../PROTOKOLL.md` (Eintrag vom 01.11.2026). Register bleibt 58/60, der Holdout ab 2025 wird für S13 nie geladen.
 2. ~~Originalstudie lesen~~ erledigt in 0.2 (4.6).
-3. ~~Code~~ in 0.2 gebaut (12 Tests, u. a. kein Blick in spätere Kerzen, NY-Kalender mit Sommerzeit, Lückenregel, Engine-Läufe). Offen: Zufallsvergleich (Abschnitt 6) als Code, danach Regeln mit Commit-Hash einfrieren (Version 1.0), erst dann Zähllauf auf dem Mac (`python scripts/research_lab_s13.py count`, Daten aus dem S10-Abruf, ein Instrument nach dem anderen im Speicher).
+3. ~~Code~~ in 0.2 gebaut (12 Tests, u. a. kein Blick in spätere Kerzen, NY-Kalender mit Sommerzeit, Lückenregel, Engine-Läufe). ~~Zufallsvergleich (Abschnitt 6) als Code~~ und ~~Einfrieren~~ in 1.0 erledigt (Commit `a6c2ef1`, 9 weitere Tests). Danach der Zähllauf auf dem Mac (`python scripts/research_lab_s13.py count`, Daten aus dem S10-Abruf, ein Instrument nach dem anderen im Speicher).
 4. **Universum:** gepoolt über BTC/ETH/SOL wie bei S7 und S10, BTC allein wird beschreibend berichtet.
+
+## 9. Ergebnis (01.11.2026)
+
+Auswertung auf dem Mac, Commit `e9efba9`, Bericht `../reports/s13_run_2026-11-01T1844Z.md` (dazu `.json`). 10 000 Zufallsläufe, Holdout nicht geladen.
+
+| Variante | Training E[R] (n) | Validierung E[R] (n) | Urteil |
+|---|---:|---:|---|
+| S13-NY | −0,044 (1 732), PF 0,79 | +0,030 (1 335), PF 1,15, DD 29 % | nicht bestanden (Training) |
+| S13-UTC | −0,042 (9 554), PF 0,74 | −0,084 (7 409), PF 0,59 | nicht bestanden (Training) |
+
+- Beide Varianten verlieren im Training nach Kosten. Damit sind sie nach Protokoll 8 Schritt 1 draußen. Walk-Forward (−0,021 R) und Jahresstabilität sind ebenfalls nicht erfüllt.
+- S13-NY ist in der Validierung leicht positiv und schlägt dort den Zufall (p = 0,0001, Zufallsmittel −0,046 R). Der Drawdown liegt mit 29 % aber über der Grenze von 20 %, und im Training war die Variante negativ. Das reicht nicht. Getragen wird die Validierung von 2023 und von Long-Trades (+0,094 R), also vom Aufwärtsmarkt.
+- Mit doppelten Kosten sind alle vier Abschnitte negativ. Gebühren kosten im Mittel 0,03 bis 0,06 R je Trade, Funding fällt kaum ins Gewicht.
+- S13 ist abgeschlossen. Varianten wie „nur NY, nur Long“ oder andere Bandbreiten wären nach diesem Ergebnis gewählt und bräuchten eine neue Studie mit eigenen Daten.
 
 ## Änderungsprotokoll
 
 - 0.1 (01.11.2026): Entwurf aus der Zusammenfassung der Studie und den zwei Reels. Nichts registriert, keine Marktdaten ausgewertet.
 - 0.2 (01.11.2026): Original gelesen (4.6). Regeln als Code mit Tests, Zählskript. R-Einheit auf den Katastrophen-Stop umgestellt (4.4). Ausstieg zur Eröffnung nach dem Prüfzeitpunkt und bei fehlendem Band präzisiert (4.3). Weiterhin keine Marktdaten ausgewertet.
+- 1.0 (01.11.2026, Uzi „go“): Zufallsvergleich als Code (Abschnitt 6, Umsetzung). In `s13.py` wurde nur die Bedingung „Einstieg entscheidbar“ als `entry_possible` herausgezogen, das Verhalten ist unverändert. Regeln eingefroren mit Commit `a6c2ef1`. Bis hier keine Marktdaten für S13 ausgewertet. Der Zähllauf 5.1 folgt ergebnisblind auf genau diesem Code.
+- 1.0, Nachtrag (01.11.2026): Zähllauf 5.1 auf dem Mac, beide Varianten bestehen das Gate. Regeln unverändert. Vor jedem Ergebnis entscheidet Uzi die Einordnung (Abschnitt 8, Punkt 1).
+- 1.0, Nachtrag (01.11.2026, 19:36 Uhr): Uzi entscheidet „eigene Familie“ (8.1). Regeln unverändert.
+- 1.0, Nachtrag (01.11.2026): Auswertungscode für Abschnitt 5 (`src/research_lab/studies/s13_eval.py`, `scripts/research_lab_s13.py run`). Der Zufallsvergleich wird je Instrument nacheinander aufgebaut (`pvalue_from_pools`), damit nur ein Instrument im Speicher liegt. Ein Test zeigt, dass p und Zufallsmittel exakt gleich wie mit `random_pvalue` sind. Regeln (`s13.py`) unverändert seit `a6c2ef1`. Nicht umgesetzt ist die beschreibende Rendite mit Volatilitätsziel (4.4), das steht im Bericht.
+- 1.0, Ergebnis (01.11.2026, 19:44 Uhr): Auswertung nach Abschnitt 5, beide Varianten nicht bestanden (Abschnitt 9). Regeln unverändert.
