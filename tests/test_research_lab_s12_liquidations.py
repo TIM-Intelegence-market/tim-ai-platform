@@ -327,7 +327,7 @@ def test_display_filters_are_off_and_baseline_has_no_oi_information():
     candles = [c for c in (Candle(int(k[0]) // 1000, float(k[2]), float(k[3]), float(k[4])) for k in klines)
                if c.time <= int(T0.timestamp()) - PERIOD]
     display = build_heatmap(candles, {int(r["timestamp"]) // 1000: float(r["sumOpenInterest"]) for r in oi_rows
-                                      if int(r["timestamp"]) // 1000 <= int(T0.timestamp())}, T0)
+                                      if int(r["timestamp"]) // 1000 <= int(T0.timestamp()) - PERIOD}, T0)
     assert display["input_hash"] == tim["input_hash"]
     # the display drops cells under 2 % of the strongest one; the study keeps them
     assert len(tim["cells"]) > len(display["cells"])
@@ -351,7 +351,7 @@ def test_invalid_states():
     late = {"t": T0.isoformat(), "fetched_at": (T0 + timedelta(minutes=16)).isoformat(),
             "open_interest": oi_rows, "klines": klines}
     reasons = snapshots.compute(late)["reasons"]
-    assert any("after t" in r for r in reasons) and any("not on candle open times" in r for r in reasons)
+    assert any("after t" in r for r in reasons) and any("not on the 30 min grid" in r for r in reasons)
     short_oi, short_k = _raw_answers(T0, periods=300)
     few = {"t": T0.isoformat(), "fetched_at": T0.isoformat(), "open_interest": short_oi, "klines": short_k}
     assert any("periods_with_oi" in r for r in snapshots.compute(few)["reasons"])
@@ -420,3 +420,18 @@ def test_second_run_on_same_folder_exits(tmp_path):
             _lock(tmp_path)
     finally:
         held.close()
+
+
+def test_oi_only_up_to_t_minus_one_period_and_older_stamps_are_fine():
+    """Real answer seen on 01.11.: the oldest OI stamp lies one period before the first kline."""
+    oi_rows, klines = _raw_answers(T0)
+    klines = klines[1:]  # oldest OI stamp now has no kline: must not make the state invalid
+    t_s = int(T0.timestamp())
+    raw = {"t": T0.isoformat(), "fetched_at": T0.isoformat(), "open_interest": oi_rows, "klines": klines}
+    result = snapshots.compute(raw)
+    assert result["valid"], result["reasons"]
+    changed = json.loads(json.dumps(raw))
+    for row in changed["open_interest"]:
+        if int(row["timestamp"]) // 1000 > t_s - PERIOD:
+            row["sumOpenInterest"] = "1"  # values at t or later must not matter
+    assert snapshots.compute(changed) == result

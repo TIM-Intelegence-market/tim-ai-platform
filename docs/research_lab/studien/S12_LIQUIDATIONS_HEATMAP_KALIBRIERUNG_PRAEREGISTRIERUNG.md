@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S12 (S11 ist laut Logbuch vergeben: von Uzi am 28.10. abgelehnte Variante ohne Filter) |
-| Version | **0.4 – ENTWURF.** Sammler gebaut (L1–L3), noch nicht gestartet, keine Daten, kein Ergebnis |
+| Version | **1.0 – ZUR FREIGABE.** Sammler L1–L3 gebaut, Probelauf seit 31.10.2026 (zählt nicht zur Studie), kein Ergebnis |
 | Anlass | Uzi 31.10.2026 („go“ auf die Empfehlung N1). Grundlage: Auswertung des Berichts „Orderflow verstehen und prüfen“ (Deep Research, 28.10.2026), `/mnt/project-files/analysen/orderflow-research-2026-10-28/bewertung.md` |
 | Protokoll | `../PROTOKOLL.md`; eigene **prospektive** Familie wie S8 und L1 (kein Archiv, kein Holdout berührt) |
 | Art | Kalibrierung eines Anzeigemodells. **Keine Handelsregel, kein Signal, kein Echtgeld** |
@@ -40,9 +40,11 @@ ob man damit handeln kann. Das wären eigene Studien mit eigener Präregistrieru
 | Quelle | Rolle | Stream | Bekannte Grenze |
 |---|---|---|---|
 | Binance USD-M Futures | **primär** (gleiche Börse wie die Heatmap) | `btcusdt@forceOrder`, Basis laut Doku am 31.10. `wss://fstream.binance.com/market/ws/` | Je Symbol nur die **letzte** Liquidation je 1000 ms (Doku: „only the latest one liquidation order within 1000ms will be pushed“). Untererfassung bei Wellen |
-| Bybit V5 linear | Robustheit (andere Börse) | `allLiquidation.BTCUSDT`, 500 ms | Preisfeld `p` ist der **Bankruptcy Price**, nicht der Ausführungspreis; `S = Buy` heißt: Long wurde liquidiert. Endpunkt-URL vor dem Bau auf der Connect-Seite nachlesen |
+| Bybit V5 linear | Robustheit (andere Börse) | `allLiquidation.BTCUSDT`, 500 ms | Preisfeld `p` ist der **Bankruptcy Price**, nicht der Ausführungspreis; `S = Buy` heißt: Long wurde liquidiert. Endpunkt `wss://stream.bybit.com/v5/public/linear` liefert im Probelauf Daten |
 
-Seiten-Konvention (vor dem Bau mit einem echten Ereignis je Börse prüfen und im Datenvertrag festhalten):
+Seiten-Konvention, im Probelauf am 01.11.2026 an echten Ereignissen geprüft: Liquidierte Longs liegen unter,
+liquidierte Shorts über dem Kurs. Binance: SELL 77 917–78 035, BUY 78 114 USDT. Bybit: Buy 77 679–77 873,
+Sell 78 458–78 470 USDT (Ausgabe von `sides`, 09:00–12:00 Ortszeit).
 
 - Binance: Zwangs-**SELL** schließt einen Long → Zelle „long“ der Heatmap; Zwangs-**BUY** → „short“. Preis = `ap`
   (Durchschnittspreis), Menge = `z` (ausgeführt), Zeit = `T`.
@@ -67,8 +69,12 @@ es die Sekundäranalyse mit ±1 Zeile Toleranz (4.4).
 Viermal am Tag, zu den Fensteranfängen t ∈ {00:00, 06:00, 12:00, 18:00 UTC}, holt der Sammler um **t + 120 s**
 OI-Historie und Kerzen genau wie `liquidation_data.fetch_heatmap` (BTCUSDT, 30 min, 500 Perioden) und speichert die
 **rohen Antworten**. Vor dem Rechnen werden Kerzen mit Eröffnung > t − 1800 s (die laufende) und OI-Stände mit
-Zeitstempel > t verworfen. Liegen OI-Zeitstempel nicht auf Kerzen-Eröffnungszeiten, ist der Stand ungültig (gezählt,
-nicht repariert). Scheitert der Abruf, wird jede Minute neu versucht; ein Stand, der später als t + 15 min geholt
+Zeitstempel > t − 1800 s verworfen. Grund: Ob ein OI-Zeitstempel den Stand zu diesem Zeitpunkt oder am Ende seiner
+30-min-Periode meint, ist nicht dokumentiert; die strengere Lesart schließt einen Blick in die Zukunft in beiden
+Fällen aus. Im Probelauf (01.11.2026, Abruf 07:02 Ortszeit für t = 06:00 UTC) war der jüngste Stempel ohnehin
+t − 1800 s, es geht also nichts verloren. Liegen OI-Zeitstempel nicht auf dem 30-min-Raster, ist der Stand ungültig
+(gezählt, nicht repariert). Ältere OI-Stempel ohne passende Kerze sind normal (Binance liefert die OI-Historie eine
+Periode früher beginnend) und werden von `build_heatmap` übergangen. Scheitert der Abruf, wird jede Minute neu versucht; ein Stand, der später als t + 15 min geholt
 wurde, ist ungültig (der Mac kann schlafen oder offline sein). Gespeichert werden Rohantworten, Ergebnis von `build_heatmap`, `input_hash` und Code-Commit. So lässt sich
 jeder Stand später exakt nachrechnen (Binance hält die OI-Historie nur 30 Tage).
 
@@ -183,6 +189,9 @@ Fensterlänge, andere Hebel) unter dem Namen S12; das wäre eine neue Studie mit
 `tests/test_research_lab_s12_liquidations.py`, launchd-Vorlage `launchd/com.tim.s12-liquidations.plist.template`.
 `build_heatmap` hat dafür die Parameter `min_share` und `max_cells` bekommen (Standard unverändert, Anzeige gleich).
 Daten liegen unter `~/Library/Application Support/TIM/research-lab/liquidations/`. L4 folgt erst nach dem Gate.
+
+| Paket | Inhalt | Prüfung |
+|---|---|---|
 | L4 | Auswertung (Abschnitte 4 und 5) | Tests nur mit synthetischen Daten, bis zum Ende keine echte Auswertung |
 
 Alles läuft auf dem Mac, nur lesend gegenüber den Börsen, ohne Konto. Die Runtime und das Control Center werden
@@ -190,16 +199,19 @@ nicht verändert.
 
 ## 8. Bis zur Erstellung gesehene Daten
 
-Keine gemeldeten Liquidationen gespeichert oder ausgewertet. Die Heatmap ist seit 28.10.2026 im Chart sichtbar.
-Die API-Dokumentationen von Binance (forceOrder) und Bybit (allLiquidation) wurden am 31.10.2026 nachgelesen.
+Die Heatmap ist seit 28.10.2026 im Chart sichtbar. Die API-Dokumentationen von Binance (forceOrder) und Bybit
+(allLiquidation) wurden am 31.10.2026 nachgelesen. Probelauf seit 31.10.2026 16:48 Ortszeit: gesehen wurden nur
+die Ausgaben von `sides` (12 Ereignisse, Seite, Preis, Menge), `verify` (3 Stände OK), das Manifest vom 31.10.
+(Zeilen, Abdeckung) und die Zeitstempel eines Stands. Kein Ereignis wurde gegen Heatmap-Zeilen gerechnet; D ist
+unbekannt. Daten des Probelaufs zählen nicht zur Studie.
 
 ## 9. Offene Punkte vor Version 1.0
 
-1. Seiten-Konvention je Börse an einem echten Ereignis bestätigen (Abschnitt 3.1), CLI `sides`.
-2. An echten Binance-Antworten prüfen, ob der OI-Zeitstempel den Stand **zu** diesem Zeitpunkt meint (nicht eine
-   Periode, die danach beginnt). Sonst wäre der letzte OI-Wert bis zu 30 min jünger als t (Look-ahead).
-3. Bybit-Endpunkt-URL auf der Connect-Seite nachlesen.
-4. Uzi: Freigabe von Version 1.0 und Start des Sammlers.
+1. ~~Seiten-Konvention~~ erledigt 01.11. (Abschnitt 3.1).
+2. ~~OI-Zeitstempel~~ erledigt 01.11.: Regel OI ≤ t − 1800 s (Abschnitt 3.2), unabhängig von der Bedeutung.
+3. ~~Bybit-Endpunkt~~ erledigt: liefert im Probelauf.
+4. Offen: Uzis Freigabe von Version 1.0. Danach wird der Sammler auf den Stand 1.0 gebracht; der Start (Abschnitt 6)
+   wird hier eingetragen.
 
 ## Änderungsprotokoll
 
@@ -209,3 +221,4 @@ Die API-Dokumentationen von Binance (forceOrder) und Bybit (allLiquidation) wurd
 | 2026-10-31 | 0.2 | Nach adversarialer Prüfung: Anzeige-Filter aus der Auswertung, Baseline auf echten OI-Zeitstempeln, `_row` für Ereignisse, Seitenfilter wie `analysis`, Duplikate/`FILLED`, Abruf t + 120 s, abstandsgleicher Zufallsvergleich, ±1-Zeile- und ungewichtete Sekundärmaße, Moving-Block-Bootstrap 7 Tage, feste Start-/Endzeit und Verlängerungsregel, keine Power-Rechnung (Entblindung) | keine Liquidationsdaten |
 | 2026-10-31 | 0.3 | Umbenannt von S11 in S12 (S11 im Logbuch vergeben, `next_study_id`) | keine Liquidationsdaten |
 | 2026-10-31 | 0.4 | L1–L3 gebaut; Abrufregel (Wiederholung, ungültig nach t + 15 min) und Definition „verbunden“ (Ping/Pong je Minute, Lebenszeichen ≤ 75 s) nach zweiter adversarialer Prüfung; offener Punkt OI-Zeitstempel | keine Liquidationsdaten |
+| 2026-11-01 | 1.0 | Nach Probelauf: Seiten bestätigt, OI nur bis t − 1800 s, Raster-Prüfung statt Kerzen-Abgleich (der alte Abgleich erklärte jeden echten Stand für ungültig), offene Punkte 1–3 erledigt | Probelauf-Ausgaben wie Abschnitt 8, kein D |

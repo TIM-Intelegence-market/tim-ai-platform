@@ -5,11 +5,13 @@ exactly what the Control Center fetches (``src.dashboard.liquidation_data``: Bin
 interest history and 30 min klines, 500 periods) and stores the **raw answers**. Everything else
 is recomputed from them, so a stored state can be checked bit for bit (``verify``):
 
-- candles opened after t - 1800 s (the running one) and OI stamps after t are dropped;
+- candles opened after t - 1800 s (the running one) and OI stamps after t - 1800 s are dropped
+  (the meaning of a stamp, state at that moment or at the end of its period, is not documented;
+  observed 01.11.2026: at t + 120 s the newest stamp is t - 1800);
 - model ``tim``: ``build_heatmap`` unchanged, but without the display filters
   (``min_share = 0``, no cell limit);
 - model ``baseline``: same call and candles, OI replaced at the same stamps by ``1 + rank``;
-- validity: OI stamps on candle open times, equal ``periods_with_oi`` >= 450 in both models,
+- validity: OI stamps on the 30 min grid, equal ``periods_with_oi`` >= 450 in both models,
   at least 10 active rows per side in both models, fetched no later than t + 15 min.
 """
 from __future__ import annotations
@@ -95,17 +97,19 @@ def compute(raw: Mapping[str, Any]) -> dict[str, Any]:
     t = datetime.fromisoformat(raw["t"])
     t_s = int(t.timestamp())
     candles = [c for c in liquidation_data.parse_candles(raw["klines"]) if c.time <= t_s - PERIOD_SECONDS]
-    oi = {ts: v for ts, v in liquidation_data.parse_open_interest(raw["open_interest"]).items() if ts <= t_s}
+    # OI stamps only up to t - 1800: whether a stamp means the state at that moment or at the end
+    # of its 30 min period is not documented, so the stricter reading rules out any look-ahead.
+    oi = {ts: v for ts, v in liquidation_data.parse_open_interest(raw["open_interest"]).items()
+          if ts <= t_s - PERIOD_SECONDS}
     reasons = []
     fetched = datetime.fromisoformat(raw["fetched_at"])
     if fetched - t > MAX_FETCH_DELAY:
         reasons.append(f"fetched {int((fetched - t).total_seconds())} s after t")
     if len(candles) < 2 or len(oi) < 2:
         return {"valid": False, "reasons": reasons + ["fewer than two candles or OI stamps"], "tim": None, "baseline": None}
-    open_times = {c.time for c in candles} | {candles[-1].time + PERIOD_SECONDS}
-    off_grid = sorted(ts for ts in oi if ts not in open_times)
+    off_grid = sorted(ts for ts in oi if ts % PERIOD_SECONDS)
     if off_grid:
-        reasons.append(f"{len(off_grid)} OI stamps not on candle open times")
+        reasons.append(f"{len(off_grid)} OI stamps not on the 30 min grid")
     baseline_oi = {ts: 1.0 + rank for rank, ts in enumerate(sorted(oi))}
     tim, baseline = _model(candles, oi, t), _model(candles, baseline_oi, t)
     if tim["periods_with_oi"] != baseline["periods_with_oi"]:
