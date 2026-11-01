@@ -575,7 +575,9 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
     pipeline.verify_worker_identity()
     if pipeline.repository_slug() != REPO:
         raise PipelineError("unexpected TIM repository")
-    if update and not dry_run:
+    # Following platform-main moves only the worker's own checkout and writes nothing to GitHub, so a
+    # dry run updates too: the server worker keeps current code while it is still on --dry-run.
+    if update:
         moved = self_update(pipeline)
         if moved:
             return moved
