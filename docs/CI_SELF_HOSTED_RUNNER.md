@@ -1,6 +1,8 @@
 # CI auf den eigenen Runnern (Mac mini und tim-core-01)
 
-Stand 2026-10-13. Seit dem 12.10. um 22:56 UTC startete GitHub keine Jobs mehr auf den eigenen Runnern von GitHub. Jeder Lauf brach nach etwa 3 Sekunden ab, ohne Runner und ohne Log. Das Kontingent an Actions-Minuten der Organisation war erschöpft. Deshalb laufen die Workflows jetzt auf selbst betriebenen Runnern. GitHub rechnet dafür keine Minuten ab, auch nicht bei privaten Repos.
+Stand 2026-11-01. Dieses Repo ist öffentlich, und alle Workflows laufen auf GitHub-gehosteten Runnern (`ubuntu-latest`); `ci.yml` sagt das selbst im Kopfkommentar. Die Runner `mac-mini-tim` und `tim-core-01-ci` bekommen von diesem Repo keine Jobs mehr. Der Rest dieser Datei beschreibt den Aufbau vom 13. bis 25.10.2026, als die Workflows kurzzeitig auf `[self-hosted, tim-ci]` liefen (Grund: das Actions-Kontingent der Organisation war erschöpft, Läufe brachen nach etwa 3 Sekunden ab). Er gilt nur, wenn jemand die Workflows wieder auf eigene Runner umstellt.
+
+**Empfehlung:** Runner, die keine Jobs mehr bekommen, bei GitHub abmelden (Settings → Actions → Runners → Runner entfernen). Sonst bleibt an einem öffentlichen Repo ein Self-hosted-Runner registriert, auf dem später ein umgestellter Workflow Code aus fremden PRs ausführen könnte. Das Abmelden macht ein Maintainer von Hand; diese Datei meldet nichts ab.
 
 Seit 2026-10-25 gibt es zwei Runner mit dem Label `tim-ci`:
 - `mac-mini-tim` auf dem Mac mini, immer verfügbar.
@@ -8,7 +10,7 @@ Seit 2026-10-25 gibt es zwei Runner mit dem Label `tim-ci`:
   CI-Runner, nie beides; umgeschaltet wird mit `sudo tim-mode ci|live`. Im Live-Modus ist der Runner bei GitHub offline
   und alle Jobs gehen an den Mac. Einrichtung, Isolation und Bedienung: `ops/linux/README.md`.
 
-## Was wo läuft
+## Was wo läuft (Stand 13. bis 25.10.2026, heute nicht mehr gültig)
 
 | Workflow | Job | Runner | Wann |
 |---|---|---|---|
@@ -60,7 +62,7 @@ Das Skript lässt jeden Schritt aus, der schon erledigt ist. Ein zweiter Lauf is
 
 - Der Runner führt Code aus PR-Branches aus, und zwar als `timrunner`. Dieser Benutzer kommt nicht an die Daten des Admin-Kontos, also an Schlüssel, SSH-Zugang zu `tim-server`, den Ollama-Worker oder die Checkouts unter `Documents`. Das Skript warnt, wenn das Home-Verzeichnis des Admins für andere lesbar ist.
 - Auf dem Runner liegen keine Secrets. `pr-gate.yml` bekommt nur das kurzlebige `github.token` des Laufs und führt keinen PR-Code aus.
-- Der Runner ist nur für dieses Repo registriert, nicht für die ganze Organisation. Das Repo ist privat, Forks fremder Personen können keine Läufe auslösen.
+- Der Runner ist nur für dieses Repo registriert, nicht für die ganze Organisation. Das Repo ist öffentlich: Läufe aus Forks sind nur mit Freigabe möglich und ein Self-hosted-Runner sollte daran nicht registriert bleiben (siehe Empfehlung oben).
 - `tim-core-01` war bis 2026-10-25 bewusst kein Runner, weil dort der Live-Betrieb läuft. Jetzt ist er Runner, aber nur,
   solange der Live-Betrieb gestoppt ist: `tim-ci-runner.service` hat `Conflicts=` auf `tim-runtime`, `tim-watchdog` und
   `timec`, startet nie beim Booten und kehrt nach 6 Stunden automatisch zu Live zurück. Er läuft als `timrunner` ohne
