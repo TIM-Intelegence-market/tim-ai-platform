@@ -80,6 +80,15 @@ K1–K5 aus dem Protokoll, Horizont „Short“, ausgewertet mit dem allgemeinen
 
 Ergebnisblinder Zähllauf: nur Einstiegssignale (erster Ausbruch je Tag und Instrument), keine Ausstiege, kein R. Eine Variante wird nur ausgewertet, wenn sie gepoolt im Training ≥ 500 und in der Validierung ≥ 250 Signale an mindestens 160 bzw. 183 verschiedenen Tagen hat. Grobe Schätzung vorab: S13-UTC hat bis zu ~1 100 Tage je Instrument im Training, S13-NY ~750; das Gate sollte erreichbar sein. Besteht eine Variante nicht, wird sie nicht gelockert.
 
+**Ergebnis des Zähllaufs (01.11.2026, 19:31 Uhr, Mac, Commit `5998bcf`):** Beide Varianten bestehen das Gate. Bericht: `../reports/s13_count_2026-11-01T1832Z.md` (dazu `.json`, Datensatz-Hash `85765c4a…`).
+
+| Variante | Training Signale (Tage) | Validierung Signale (Tage) |
+|---|---:|---:|
+| S13-NY | 1 119 (551) | 868 (395) |
+| S13-UTC | 2 712 (1 054) | 2 025 (720) |
+
+Der Lauf war ergebnisblind: keine Ausstiege, kein R. Holdout 2025+ wurde nicht geladen. Bei SOL fehlt in 38 (NY) bzw. 47 (UTC) Sitzungen das Band, weil Daten fehlen. Bei BTC und ETH fehlt es in keiner Sitzung.
+
 ## 6. Zufallsvergleich
 
 Protokoll 7.1 mit Pool-Methode nach R4(a): Zufällige Einstiege nur an **denselben Prüfzeitpunkten** (gleiche Variante, Instrument, Abschnitt), Richtung aus den echten Trades gezogen, danach exakt derselbe Ausstieg 4.3 (Band/VWAP, Sitzungsende, Katastrophen-Stop), dieselbe R-Einheit und dieselben Kosten. 10 000 Läufe, Seed 20261101.
@@ -108,3 +117,4 @@ Für S13 wurden keine Kurse ausgewertet. Gesehen sind: die Zusammenfassung der S
 - 0.1 (01.11.2026): Entwurf aus der Zusammenfassung der Studie und den zwei Reels. Nichts registriert, keine Marktdaten ausgewertet.
 - 0.2 (01.11.2026): Original gelesen (4.6). Regeln als Code mit Tests, Zählskript. R-Einheit auf den Katastrophen-Stop umgestellt (4.4). Ausstieg zur Eröffnung nach dem Prüfzeitpunkt und bei fehlendem Band präzisiert (4.3). Weiterhin keine Marktdaten ausgewertet.
 - 1.0 (01.11.2026, Uzi „go“): Zufallsvergleich als Code (Abschnitt 6, Umsetzung). In `s13.py` wurde nur die Bedingung „Einstieg entscheidbar“ als `entry_possible` herausgezogen, das Verhalten ist unverändert. Regeln eingefroren mit Commit `a6c2ef1`. Bis hier keine Marktdaten für S13 ausgewertet. Der Zähllauf 5.1 folgt ergebnisblind auf genau diesem Code.
+- 1.0, Nachtrag (01.11.2026): Zähllauf 5.1 auf dem Mac, beide Varianten bestehen das Gate. Regeln unverändert. Vor jedem Ergebnis entscheidet Uzi die Einordnung (Abschnitt 8, Punkt 1).
