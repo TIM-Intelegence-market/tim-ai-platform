@@ -99,9 +99,24 @@ Der Kointegrationsfilter lässt nur 10 % (W168) bzw. 6 % (W720) der Signale durc
 3. ~~Zufallsvergleich und Auswertung als Code~~ erledigt: `s14_random.py`, `s14_eval.py`, `scripts/research_lab_s14.py run` (nur W168 und W720). Nachbarschaft: W168 braucht E[R] > 0 im Training von W720 und umgekehrt.
 4. ~~Einfrieren~~ erledigt (1.0, Commit `f26a6d8`). Danach ein Lauf mit R auf dem Mac (`python scripts/research_lab_s14.py run`).
 
+## 9. Ergebnis (02.11.2026)
+
+Auswertung auf dem Mac, Commit `e17349a` (Code wie eingefroren `f26a6d8`), Bericht `../reports/s14_run_2026-11-01T2308Z.md` (dazu `.json`). 10 000 Zufallsläufe vorgesehen, Holdout nicht geladen.
+
+| Variante | Training E[R] (n) | Validierung E[R] (n) | Urteil |
+|---|---:|---:|---|
+| S14-W168 | −0,241 (750), PF 0,64 | −0,357 (620), PF 0,51 | nicht bestanden (Training) |
+| S14-W720 | −0,189 (232), PF 0,60 | −0,209 (195), PF 0,56 | nicht bestanden (Training) |
+
+- Beide Varianten verlieren in jedem Abschnitt, jedem Jahr und jedem Paar. Damit sind sie nach Protokoll 8 Schritt 1 draußen. Der Zufallsvergleich wurde nicht gebraucht (er läuft nur bei E[R] > 0). Walk-Forward (−0,182 R), Jahresstabilität und Nachbarschaft sind ebenfalls nicht erfüllt. S14-W720 hat außerdem zu wenige Trades (232 statt 500).
+- Der Abstand läuft nach 2 σ eher weiter als zurück: Bei W168 enden 57 % (Training) und 60 % (Validierung) der Trades am Stop bei 4 σ, nur etwa ein Drittel kehrt zu 0 zurück. Bei W720 endet fast die Hälfte über den Zeitstop.
+- Mit doppelten Kosten ist alles noch negativer. Gebühren kosten 0,03 bis 0,10 R je Trade, Funding fällt kaum ins Gewicht. Das Problem ist das Signal, nicht die Kosten.
+- S14 ist abgeschlossen. Andere Schwellen, Fenster oder Paare wären nach diesem Ergebnis gewählt und bräuchten eine neue Studie.
+
 ## Änderungsprotokoll
 
 - 0.1 (01.11.2026): Entwurf auf Uzis „go“. Regeln als Code, Zählskript. Nichts registriert, keine Marktdaten ausgewertet.
 - 0.2 (01.11.2026): Zähllauf 5.1 eingetragen (7.1). W168 und W720 bestehen das Gate, W168-K und W720-K nicht. Weiter kein R gesehen.
 - 0.3 (01.11.2026): Zufallsvergleich und Auswertung als Code (Abschnitt 6, 8). Keine Regeländerung, kein R gesehen.
 - 1.0 (02.11.2026): Einordnung eigene Familie (Uzi), Regeln und Code mit Commit `f26a6d8` eingefroren. Kein R gesehen.
+- 1.0, Ergebnis (02.11.2026): Abschnitt 9 ergänzt, keine Regeländerung. NICHT BESTANDEN.

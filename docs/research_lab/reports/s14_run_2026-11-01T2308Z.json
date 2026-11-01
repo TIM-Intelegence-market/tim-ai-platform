@@ -1,0 +1,365 @@
+{
+  "study": "S14",
+  "commit": "e17349a5381beabf997de24eb3204a50d14a424c",
+  "created": "2026-11-01T23:08:52+00:00",
+  "dataset_hash": "67fd3ea0d6f628c88899979705305aa0c56abf696b67f7557a9fd74c4a330e59",
+  "runs": 10000,
+  "seed": 20261102,
+  "symbols": {
+    "BTCUSDT": {
+      "first_month": "2020-01",
+      "bars_5m": 526176,
+      "hours": 43848,
+      "funding_rates": 5481
+    },
+    "ETHUSDT": {
+      "first_month": "2020-01",
+      "bars_5m": 526176,
+      "hours": 43848,
+      "funding_rates": 5481
+    },
+    "SOLUSDT": {
+      "first_month": "2020-09",
+      "bars_5m": 450636,
+      "hours": 37553,
+      "funding_rates": 4786
+    }
+  },
+  "family": "eigene Familie, kein Holdout",
+  "variants": {
+    "S14-W168": {
+      "train": {
+        "figures": {
+          "n": 750,
+          "expectancy_r": -0.24123026559172975,
+          "median_r": -0.8528610201716869,
+          "profit_factor": 0.6352277766984795,
+          "win_rate": 0.38266666666666665,
+          "avg_win_r": 1.0977890175239442,
+          "avg_loss_r": -1.071248698106197,
+          "max_drawdown_r": 180.92269919379711,
+          "max_drawdown_pct": 1.809226991937971,
+          "design_effect": 1.2628941012201338,
+          "n_eff": 593,
+          "signal_days": 494,
+          "by_reason": {
+            "gap": 1,
+            "rule": 242,
+            "stop": 429,
+            "time": 78
+          },
+          "session_end_share": null,
+          "catastrophe_stop_share": 0.572,
+          "mean_funding_r": -0.0028967845279216707,
+          "mean_fee_r": 0.07418778772087424,
+          "mean_bars_held": 39.46666666666667,
+          "by_symbol": {
+            "ETH/BTC": {
+              "n": 308,
+              "expectancy_r": -0.3583052920927976
+            },
+            "SOL/BTC": {
+              "n": 217,
+              "expectancy_r": -0.1399942439767501
+            },
+            "SOL/ETH": {
+              "n": 225,
+              "expectancy_r": -0.17860408127227054
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 382,
+              "expectancy_r": -0.19856571713180865
+            },
+            "short": {
+              "n": 368,
+              "expectancy_r": -0.2855179218734957
+            }
+          },
+          "by_year": {
+            "2020": {
+              "n": 151,
+              "expectancy_r": -0.3903984549042264
+            },
+            "2021": {
+              "n": 272,
+              "expectancy_r": -0.19474390693780894
+            },
+            "2022": {
+              "n": 327,
+              "expectancy_r": -0.21101587099747734
+            }
+          }
+        },
+        "p": null,
+        "random_mean_r": null,
+        "verdict": {
+          "pass": false,
+          "reasons": [
+            "E[R] <= 0",
+            "p nicht berechnet"
+          ]
+        },
+        "stress_expectancy_r": -0.38401536559662064,
+        "stress_n": 750
+      },
+      "validation": {
+        "figures": {
+          "n": 620,
+          "expectancy_r": -0.35650819554601576,
+          "median_r": -0.8945385496711538,
+          "profit_factor": 0.5101358256884455,
+          "win_rate": 0.3580645161290323,
+          "avg_win_r": 1.0368558402452386,
+          "avg_loss_r": -1.133711250685861,
+          "max_drawdown_r": 223.8799623028774,
+          "max_drawdown_pct": 2.238799623028774,
+          "design_effect": 1.1227412297715051,
+          "n_eff": 552,
+          "signal_days": 388,
+          "by_reason": {
+            "rule": 187,
+            "stop": 370,
+            "time": 63
+          },
+          "session_end_share": null,
+          "catastrophe_stop_share": 0.5967741935483871,
+          "mean_funding_r": -0.0007684669711245869,
+          "mean_fee_r": 0.10435823965231093,
+          "mean_bars_held": 38.461290322580645,
+          "by_symbol": {
+            "ETH/BTC": {
+              "n": 214,
+              "expectancy_r": -0.4409982135234002
+            },
+            "SOL/BTC": {
+              "n": 210,
+              "expectancy_r": -0.33254334469026975
+            },
+            "SOL/ETH": {
+              "n": 196,
+              "expectancy_r": -0.28993551612023194
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 310,
+              "expectancy_r": -0.3468918482261413
+            },
+            "short": {
+              "n": 310,
+              "expectancy_r": -0.36612454286589013
+            }
+          },
+          "by_year": {
+            "2023": {
+              "n": 318,
+              "expectancy_r": -0.43824100049842213
+            },
+            "2024": {
+              "n": 302,
+              "expectancy_r": -0.2704451757616938
+            }
+          }
+        },
+        "p": null,
+        "random_mean_r": null,
+        "verdict": {
+          "pass": false,
+          "reasons": [
+            "E[R] <= 0",
+            "p nicht berechnet",
+            "PF <= 1.1",
+            "DD > 20%"
+          ]
+        },
+        "stress_expectancy_r": -0.5408123422260172,
+        "stress_n": 620
+      },
+      "year_stability": false,
+      "neighbours": {
+        "pass": false,
+        "neighbours": {
+          "S14-W720": -0.18859755607389467
+        }
+      },
+      "verdict": "NICHT BESTANDEN (Training)"
+    },
+    "S14-W720": {
+      "train": {
+        "figures": {
+          "n": 232,
+          "expectancy_r": -0.18859755607389467,
+          "median_r": -0.2902002698046536,
+          "profit_factor": 0.5969358296138679,
+          "win_rate": 0.40948275862068967,
+          "avg_win_r": 0.6821091782649826,
+          "avg_loss_r": -0.792372298863627,
+          "max_drawdown_r": 44.01903294743052,
+          "max_drawdown_pct": 0.4401903294743052,
+          "design_effect": 1.1380129365279126,
+          "n_eff": 203,
+          "signal_days": 190,
+          "by_reason": {
+            "gap": 1,
+            "rule": 37,
+            "stop": 81,
+            "time": 113
+          },
+          "session_end_share": null,
+          "catastrophe_stop_share": 0.34913793103448276,
+          "mean_funding_r": -0.005091325403809809,
+          "mean_fee_r": 0.030614031592744777,
+          "mean_bars_held": 81.375,
+          "by_symbol": {
+            "ETH/BTC": {
+              "n": 100,
+              "expectancy_r": -0.19436360075443848
+            },
+            "SOL/BTC": {
+              "n": 63,
+              "expectancy_r": -0.19770455985306726
+            },
+            "SOL/ETH": {
+              "n": 69,
+              "expectancy_r": -0.17192587917328228
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 123,
+              "expectancy_r": -0.13934196526738013
+            },
+            "short": {
+              "n": 109,
+              "expectancy_r": -0.24417955303904407
+            }
+          },
+          "by_year": {
+            "2020": {
+              "n": 37,
+              "expectancy_r": -0.21625012405837987
+            },
+            "2021": {
+              "n": 89,
+              "expectancy_r": -0.21079745888802057
+            },
+            "2022": {
+              "n": 106,
+              "expectancy_r": -0.16030570356556298
+            }
+          }
+        },
+        "p": null,
+        "random_mean_r": null,
+        "verdict": {
+          "pass": false,
+          "reasons": [
+            "n < 500",
+            "E[R] <= 0",
+            "p nicht berechnet"
+          ]
+        },
+        "stress_expectancy_r": -0.26466874288214065,
+        "stress_n": 232
+      },
+      "validation": {
+        "figures": {
+          "n": 195,
+          "expectancy_r": -0.20949479833618698,
+          "median_r": -0.2715644345504087,
+          "profit_factor": 0.5576812298556677,
+          "win_rate": 0.40512820512820513,
+          "avg_win_r": 0.6519757194522718,
+          "avg_loss_r": -0.7961859268300512,
+          "max_drawdown_r": 44.67691473369919,
+          "max_drawdown_pct": 0.4467691473369919,
+          "design_effect": 1.0873722441382603,
+          "n_eff": 179,
+          "signal_days": 160,
+          "by_reason": {
+            "rule": 31,
+            "stop": 64,
+            "time": 100
+          },
+          "session_end_share": null,
+          "catastrophe_stop_share": 0.3282051282051282,
+          "mean_funding_r": -0.00043509069821873745,
+          "mean_fee_r": 0.03879680059489764,
+          "mean_bars_held": 85.72307692307692,
+          "by_symbol": {
+            "ETH/BTC": {
+              "n": 67,
+              "expectancy_r": -0.11005996250978303
+            },
+            "SOL/BTC": {
+              "n": 70,
+              "expectancy_r": -0.23194981449728438
+            },
+            "SOL/ETH": {
+              "n": 58,
+              "expectancy_r": -0.29725829607915677
+            }
+          },
+          "by_side": {
+            "long": {
+              "n": 99,
+              "expectancy_r": -0.15561299295473763
+            },
+            "short": {
+              "n": 96,
+              "expectancy_r": -0.2650604101358066
+            }
+          },
+          "by_year": {
+            "2023": {
+              "n": 100,
+              "expectancy_r": -0.20095826896452895
+            },
+            "2024": {
+              "n": 95,
+              "expectancy_r": -0.21848061872740596
+            }
+          }
+        },
+        "p": null,
+        "random_mean_r": null,
+        "verdict": {
+          "pass": false,
+          "reasons": [
+            "n < 250",
+            "n_eff < 183",
+            "E[R] <= 0",
+            "p nicht berechnet",
+            "PF <= 1.1",
+            "DD > 20%"
+          ]
+        },
+        "stress_expectancy_r": -0.289130866399374,
+        "stress_n": 195
+      },
+      "year_stability": false,
+      "neighbours": {
+        "pass": false,
+        "neighbours": {
+          "S14-W168": -0.24123026559172975
+        }
+      },
+      "verdict": "NICHT BESTANDEN (Training)"
+    }
+  },
+  "walk_forward": {
+    "pass": false,
+    "chained_expectancy_r": -0.182015778798672,
+    "chosen": [
+      "S14-W720",
+      "S14-W720",
+      "S14-W720",
+      "S14-W720",
+      "S14-W720",
+      "S14-W720"
+    ],
+    "windows": 6
+  }
+}
