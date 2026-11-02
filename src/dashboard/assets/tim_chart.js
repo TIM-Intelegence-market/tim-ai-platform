@@ -924,6 +924,13 @@
                      shape: 'circle', text: `${r >= 0 ? '+' : ''}${EN ? r.toFixed(2) : r.toFixed(2).replace('.', ',')} R` });
       }
     }
+    // US-CPI and FOMC release dates (display only): a small square above the candle the release fell in.
+    if (groups.has('macro')) {
+      for (const ev of (model && model.macro) || []) {
+        marks.push({ time: local(ev.time), position: 'aboveBar', color: ev.upcoming ? '#8491a3' : '#f0b429', shape: 'square', size: 0.6,
+                     text: ev.kind === 'CPI' ? 'CPI' : 'FOMC' });
+      }
+    }
     marks.sort((a, b) => a.time - b.time);
     candles.setMarkers(marks);
   }
