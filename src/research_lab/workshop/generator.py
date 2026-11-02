@@ -171,6 +171,29 @@ def _slug(text: str) -> str:
     return "_".join(words[:5]) or "STUDIE"
 
 
+def render_draft(idea: Mapping[str, Any], spec: Mapping[str, Any], *, now: str,
+                 studies_dir: Path = STUDIES_DIR, register_path: Path = REGISTER_PATH,
+                 logbook_path: Path = LOGBOOK_PATH) -> tuple[Path, str, str]:
+    """Validate ``spec`` for ``idea`` and return (path, Markdown, spec hash) without writing anything.
+
+    Shared by ``create_draft`` on the Mac and the research lane of the issue worker, which only sees the idea
+    through its GitHub issue and therefore cannot check the monthly budget itself.
+    """
+    problems = validate(idea, spec)
+    if problems:
+        raise DraftError("Entwurf unvollständig:\n- " + "\n- ".join(problems))
+    template = spec.get("template") or idea["template"]
+    register_text, _, _ = _register_line(template, len(spec.get("variants") or []), HypothesisRegister(register_path))
+    study_id = spec.get("study_id") or next_study_id(studies_dir, logbook_path)
+    if int(study_id.lstrip("S")) in used_study_ids(studies_dir, logbook_path):
+        raise DraftError(f"Studien-Name {study_id} ist schon vergeben")
+    created = datetime.fromisoformat(now.replace("Z", "+00:00")).astimezone(ZoneInfo(charter.LOCAL_TIMEZONE)).strftime("%Y-%m-%d %H:%M")
+    digest = spec_hash({**spec, "study_id": study_id, "idea": idea["id"]})
+    text = render(study_id, idea, {**spec, "template": template}, register_text=register_text, created=created, digest=digest)
+    path = studies_dir / f"{study_id}_{_slug(spec.get('title') or idea['title'])}_PRAEREGISTRIERUNG_ENTWURF.md"
+    return path, text, digest
+
+
 def create_draft(queue: IdeaQueue, idea_id: str, spec: Mapping[str, Any], *, now: str,
                  studies_dir: Path = STUDIES_DIR, register_path: Path = REGISTER_PATH,
                  logbook_path: Path = LOGBOOK_PATH, write: bool = True) -> tuple[Path, str]:
@@ -184,18 +207,9 @@ def create_draft(queue: IdeaQueue, idea_id: str, spec: Mapping[str, Any], *, now
     used = sum(1 for i in ideas.values() for status, at in i["history"] if status == "study_draft" and _local_month(at) == month)
     if used >= charter.MONTHLY_STUDY_BUDGET:
         raise DraftError(f"Budget {charter.MONTHLY_STUDY_BUDGET} Studien im Monat {month} ist verbraucht")
-    problems = validate(idea, spec)
-    if problems:
-        raise DraftError("Entwurf unvollständig:\n- " + "\n- ".join(problems))
-    template = spec.get("template") or idea["template"]
-    register_text, _, _ = _register_line(template, len(spec.get("variants") or []), HypothesisRegister(register_path))
-    study_id = spec.get("study_id") or next_study_id(studies_dir, logbook_path)
-    if int(study_id.lstrip("S")) in used_study_ids(studies_dir, logbook_path):
-        raise DraftError(f"Studien-Name {study_id} ist schon vergeben")
-    created = datetime.fromisoformat(now.replace("Z", "+00:00")).astimezone(ZoneInfo(charter.LOCAL_TIMEZONE)).strftime("%Y-%m-%d %H:%M")
-    digest = spec_hash({**spec, "study_id": study_id, "idea": idea_id})
-    text = render(study_id, idea, {**spec, "template": template}, register_text=register_text, created=created, digest=digest)
-    path = studies_dir / f"{study_id}_{_slug(spec.get('title') or idea['title'])}_PRAEREGISTRIERUNG_ENTWURF.md"
+    path, text, digest = render_draft(idea, spec, now=now, studies_dir=studies_dir, register_path=register_path,
+                                      logbook_path=logbook_path)
+    study_id = path.name.split("_", 1)[0]
     if write:
         if path.exists():
             raise DraftError(f"{path} gibt es schon")

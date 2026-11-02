@@ -304,6 +304,26 @@ Rückblick am 31.10. auf 29 Trades: Trades gegen den Trend brachten zusammen +2,
 Trend“ hätte als Regel also geschadet. Trades mit Kosten über 0,15 R brachten −3,87 R (17 Trades). Grade C und
 fehlende Bestätigung betreffen alle 29 Trades und taugen deshalb nicht als Filter.
 
+## Research-Spur des Issue-Workers (F12)
+
+Uzi 02.11.: Die Issue-Worker arbeiten zuerst an Issues. Ist keins mehr da, schreiben sie Studien-Entwürfe.
+Code: `src/research_lab/workshop/worker_lane.py`, eingebunden in `scripts/run_mac_qwen_issue.py`.
+
+1. **Mac** (Spur easy): Jede Idee mit Status „bereit“ wird ein GitHub-Issue mit Label `research:idea`, solange das
+   Monatsbudget (4 Entwürfe) noch Platz hat; offene Research-Issues zählen mit. Liegt ein Entwurf auf
+   platform-main, setzt der Mac die Idee auf „Studien-Entwurf angelegt“. Pfad der Ideen-Liste:
+   `TIM_RESEARCH_IDEAS` in der LaunchAgent-plist.
+2. **Server** (Spur hard, qwen3-coder:30b auf tim-core-01): nimmt das älteste freie Research-Issue, setzt
+   `research:in-progress`, lässt das Modell die Spezifikation schreiben (höchstens eine Korrektur-Runde) und gibt
+   sie durch denselben Generator wie `workshop draft`. Nur ein vollständiger Entwurf wird ein **Draft-PR**
+   (`codex/research-<Issue>`), der das Issue beim Merge schließt. Nach zwei gescheiterten Versuchen:
+   `research:blocked`; Label entfernen gibt zwei neue Versuche frei.
+3. **Grenzen:** Der Worker rechnet nicht, lädt keine Daten, schreibt nicht ins Register, erteilt keine Freigabe und
+   merged keinen Research-PR. Das Modell schreibt nur Text; das ist nicht F8 (Server als Rechenhost).
+   Ein Entwurf wartet wie jeder andere auf Uzis Freigabe. Abschalten: `TIM_WORKER_RESEARCH=0`.
+4. Research-Issues werden nie zu Code-Verträgen triagiert. Lehnt Uzi einen Entwurf ab (PR zu), bleibt das Issue
+   mit `research:in-progress` offen, bis er es schließt oder das Label entfernt (dann neuer Entwurf).
+
 ## Nächste Pakete
 
 F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
@@ -322,3 +342,4 @@ F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
 | 2026-10-31 | 1.0 | Anzeige im Forschung-Bildschirm (F9) |
 | 2026-10-31 | 1.0 | Selbst-Verbesserung aus den eigenen Trades (F11) |
 | 2026-10-31 | 1.0 | Regel-Anfrage (F10): Regel aus Bausteinen, Erkundung ohne Registerplatz, Weg zur Studie |
+| 2026-11-02 | 1.0 | Research-Spur des Issue-Workers (F12): bereite Ideen als Issues, Entwürfe vom Server-Modell als Draft-PR |
