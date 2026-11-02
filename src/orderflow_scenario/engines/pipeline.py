@@ -127,7 +127,12 @@ class Pipeline:
         audit = AuditBuilder()
         audit.add_input("candles", [{"symbol": c.symbol, "timeframe": c.timeframe, "open_time": c.open_time.isoformat(), "open": c.open, "high": c.high, "low": c.low, "close": c.close, "volume": c.volume, "closed": c.closed} for c in inputs.candles])
         if inputs.footprint is not None:
-            audit.add_input("footprint", {"source": inputs.footprint.source, "bars": len(inputs.footprint.bars), "last_bar": inputs.footprint.last.to_dict()})
+            audit.add_input("footprint", {
+                "source": inputs.footprint.source,
+                "bars": [bar.to_dict() for bar in inputs.footprint.bars],
+                "tick_size": str(inputs.footprint.tick_size) if inputs.footprint.tick_size is not None else None,
+                "skipped_trades": inputs.footprint.skipped_trades,
+            })
         if inputs.trades:
             audit.add_input("trades", [{"symbol": t.symbol, "trade_id": t.trade_id, "event_time": t.event_time.isoformat(), "price": t.price, "quantity": t.quantity, "buyer_is_maker": t.buyer_is_maker} for t in inputs.trades])
 

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from src.research_lab.orderflow_ml.bars import MINUTE_MS
 from src.research_lab.orderflow_ml.features import BarSeries
 
-LABEL_VERSION = "1.0.0"
+LABEL_VERSION = "1.0.1"
 UP, DOWN, NEUTRAL = "up", "down", "neutral"
 OK = "ok"
 
@@ -26,7 +26,10 @@ class LabelConfig:
     cost_floor: float = 0.0016  # round trip of the protocol taker model: 2 x (0.05 % fee + 0.03 % slippage)
 
     def __post_init__(self) -> None:
-        if self.horizon_min <= 0 or self.stale_limit_ms <= 0 or self.threshold_k < 0 or self.cost_floor < 0:
+        if (type(self.horizon_min) is not int or type(self.stale_limit_ms) is not int
+                or not 0 < self.horizon_min <= 1440 or self.stale_limit_ms <= 0
+                or not math.isfinite(self.threshold_k) or not math.isfinite(self.cost_floor)
+                or self.threshold_k < 0 or self.cost_floor < 0):
             raise ValueError("invalid label configuration")
 
 
@@ -53,7 +56,7 @@ def label_at(s: BarSeries, i: int, vol_60: float | None, cfg: LabelConfig) -> La
         raise AssertionError("series is not contiguous")
     if not s.last_ms[j] or horizon_end - s.last_ms[j] > cfg.stale_limit_ms:
         return LabelRow(t, "stale_target")
-    if vol_60 is None:
+    if vol_60 is None or not math.isfinite(vol_60) or vol_60 < 0:
         return LabelRow(t, "no_volatility")
     start, target = s.px[i], s.px[j]
     move = math.log(target / start)

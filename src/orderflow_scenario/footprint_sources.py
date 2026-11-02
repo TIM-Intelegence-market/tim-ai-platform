@@ -59,16 +59,30 @@ def download_archive(symbol: str, day: date, root: Path, *, market: str = "spot"
     target_dir = Path(root) / market
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / archive_filename(symbol, day)
-    if target.exists():
-        return target
+    checksum = target.with_suffix(target.suffix + ".CHECKSUM")
     url = archive_url(symbol, day, market)
+    if target.exists():
+        if verify:
+            if not checksum.exists():
+                checksum_bytes = fetcher(url + ".CHECKSUM")
+                _verify_payload(target.read_bytes(), checksum_bytes, target.name)
+                checksum.write_bytes(checksum_bytes)
+            else:
+                _verify_payload(target.read_bytes(), checksum.read_bytes(), target.name)
+        return target
     payload = fetcher(url)
     if verify:
-        digest = parse_official_checksum(fetcher(url + ".CHECKSUM").decode("utf-8"), expected_filename=target.name)
-        if not verify_archive(payload, digest):
-            raise ValueError(f"checksum mismatch for {target.name}")
+        checksum_bytes = fetcher(url + ".CHECKSUM")
+        _verify_payload(payload, checksum_bytes, target.name)
+        checksum.write_bytes(checksum_bytes)
     target.write_bytes(payload)
     return target
+
+
+def _verify_payload(payload: bytes, checksum: bytes, filename: str) -> None:
+    digest = parse_official_checksum(checksum.decode("utf-8"), expected_filename=filename)
+    if not verify_archive(payload, digest):
+        raise ValueError(f"checksum mismatch for {filename}")
 
 
 def trades_from_archive(path: Path, symbol: str, start: datetime, end: datetime) -> list[Trade]:
@@ -98,7 +112,7 @@ def trades_from_archive(path: Path, symbol: str, start: datetime, end: datetime)
 
 
 def candles_from_trades(trades: Sequence[Trade], symbol: str, timeframe: str, start: datetime, end: datetime) -> list[Candle]:
-    """OHLCV buckets from trades; a bucket without trades produces no candle (never filled)."""
+    """Complete OHLCV buckets inside the requested window; gaps are never filled."""
     _check_range(start, end)
     step = timedelta(seconds=timeframe_seconds(timeframe))
     buckets: dict[datetime, list[Trade]] = {}
@@ -108,8 +122,10 @@ def candles_from_trades(trades: Sequence[Trade], symbol: str, timeframe: str, st
         buckets.setdefault(bucket_start(trade.event_time, timeframe), []).append(trade)
     candles: list[Candle] = []
     for open_time in sorted(buckets):
-        items = sorted(buckets[open_time], key=lambda t: (t.event_time, t.trade_id or 0))
         close_time = open_time + step
+        if open_time < start or close_time > end:
+            continue  # A clipped boundary bucket is not a complete candle.
+        items = sorted(buckets[open_time], key=lambda t: (t.event_time, t.trade_id or 0))
         candles.append(
             Candle(
                 symbol=symbol,
@@ -137,7 +153,7 @@ async def load_from_repository(repo: Any, symbol: str, timeframe: str, start: da
     _check_range(start, end)
     trades = await repo.agg_trades_between(symbol, start, end)
     candles = await repo.candles_between(symbol, timeframe, start, end)
-    candles = [candle for candle in candles if candle.open_time >= start and candle.close_time <= end]
+    candles = [candle for candle in candles if candle.closed and candle.open_time >= start and candle.close_time <= end]
     notes: list[str] = []
     if not candles and trades:
         candles = candles_from_trades(trades, symbol, timeframe, start, end)
@@ -178,6 +194,8 @@ def load_from_archives(
     ``download=True``; otherwise it is reported and skipped.
     """
     _check_range(start, end)
+    if market not in MARKETS:
+        raise ValueError(f"market must be one of {', '.join(MARKETS)}")
     first, last = start.date(), (end - timedelta(microseconds=1)).date()
     if (last - first).days + 1 > MAX_ARCHIVE_DAYS:
         raise ValueError(f"at most {MAX_ARCHIVE_DAYS} archive days per analysis")
@@ -186,13 +204,17 @@ def load_from_archives(
     day = first
     while day <= last:
         path = Path(root) / market / archive_filename(symbol, day)
-        if not path.exists():
-            if download:
-                path = download_archive(symbol, day, Path(root), market=market, fetcher=fetcher)
-            else:
-                missing.append(day.isoformat())
-                day += timedelta(days=1)
-                continue
+        if download:
+            path = download_archive(symbol, day, Path(root), market=market, fetcher=fetcher)
+        elif not path.exists():
+            missing.append(day.isoformat())
+            day += timedelta(days=1)
+            continue
+        else:
+            checksum = path.with_suffix(path.suffix + ".CHECKSUM")
+            if not checksum.exists():
+                raise ValueError(f"missing checksum for {path.name}; use --download to retrieve it")
+            _verify_payload(path.read_bytes(), checksum.read_bytes(), path.name)
         trades.extend(trades_from_archive(path, symbol, start, end))
         day += timedelta(days=1)
     trades.sort(key=lambda t: (t.event_time, t.trade_id or 0))

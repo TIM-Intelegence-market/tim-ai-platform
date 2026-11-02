@@ -21,7 +21,7 @@ def inputs(**extra) -> PipelineInputs:
         for i, m in enumerate(mids)
     )
     last = candles[-1].close
-    trades = tuple(Trade("BTCUSDT", last, 1.0, NOW + timedelta(seconds=i), i, False) for i in range(5))
+    trades = tuple(Trade("BTCUSDT", last, 1.0, NOW - timedelta(seconds=4 - i), i, False) for i in range(5))
     return PipelineInputs(
         market_context=MarketContext("BTCUSDT", "BINANCE", "FUTURES", "4H", NOW),
         candles=candles,
