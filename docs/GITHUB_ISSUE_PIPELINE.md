@@ -94,6 +94,42 @@ Before analysing, the runner inspects the issue's branch: nothing left over star
 
 `python3 scripts/github_issue_pipeline.py --maintain` finds open PRs of the worker identity on `claude/issue-N-*` branches whose merge state is `BEHIND`, calls GitHub's update-branch with the expected head SHA, waits for the new head, refuses an identity change or conflicts and re-validates the updated diff (protected paths, non-regular entries). A new head SHA makes CI and the PR gate run again; nothing is merged by the runner.
 
+## MCP context for the Codex analysis
+
+Package M4 (rest) of the MCP epic: the Codex analysis should be able to use
+TIM's read-only MCP servers `tim-graph` (code and knowledge graph) and
+`tim-ops` (Task Engine, tool health, Research Lab, data coverage) as context.
+This file only documents the state; `scripts/github_issue_pipeline.py` is a
+protected path, so any change to it is an owner PR.
+
+Current state:
+
+- The runner starts the analysis as `codex exec --model … -C <repo> --sandbox read-only`
+  without its own MCP options. Codex therefore loads the servers from
+  `~/.codex/config.toml` of the account the runner uses. On the Mac that config
+  carries `tim-graph` and `tim-ops` (`docs/mcp_clients.md`), so the servers are
+  available to the analysis run.
+- `analysis_prompt` does not mention the servers yet. Whether Codex calls them
+  is left to the model. Not verified yet: that a non-interactive
+  `codex exec` run calls MCP tools without an approval prompt.
+- The Claude worker stays without MCP tools (step 3 above); this does not change.
+
+Risk before pointing the prompt at `tim-ops`: the analysis is posted verbatim
+as an issue comment, and this repository is public. Task titles, Research Lab
+results or coverage numbers that Codex quotes from `tim-ops` would become
+public. `tim-graph` answers about code are already public. Options for the
+owner, in order of preference:
+
+1. Point the prompt only at `tim-graph`, and use `tim-ops` only in runs whose
+   analysis is not posted to a public issue.
+2. Allow `tim-ops` but add a rule to the prompt to cite counts and states
+   only, never task text or research results, and review the comment before
+   it is posted.
+
+Acceptance once the owner decides: one pilot run on an `agent:pilot` issue
+with the Codex log showing `tim-graph`/`tim-ops` tool calls (or none) and the
+posted comment checked for private content.
+
 ## Safety and recovery
 
 - An OS file lock permits one run only and releases automatically after a process crash.
