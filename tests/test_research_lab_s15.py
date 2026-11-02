@@ -177,7 +177,7 @@ def store():
 
 def test_run_evaluates_gate_passing_variants(tmp_path, store, monkeypatch):
     mod = _script()
-    monkeypatch.setattr(s15, "GATE", {"train": 1, "validation": 1})
+    monkeypatch.setattr(mod.s15, "GATE", {"train": 1, "validation": 1})
     assert mod.run(store, tmp_path) == 0
     res = json.loads(next(tmp_path.glob("s15_run_*.json")).read_text())
     assert set(res["variants"]) == {"S15-4h", "S15-1d"}
