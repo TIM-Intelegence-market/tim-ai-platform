@@ -3,11 +3,11 @@
 | Feld | Wert |
 |---|---|
 | Studie | S15 (nächste freie Nummer nach S14, 02.11.2026) |
-| Version | **0.2, Entwurf vom 02.11.2026 (Zähllauf eingetragen, Abschnitt 7.1).** Regeln als Code (`src/research_lab/studies/s15.py`, Skript `scripts/research_lab_s15.py`, Tests `tests/test_research_lab_s15.py`). Nichts registriert, keine Prognose und kein Fehlermaß für S15 gesehen |
+| Version | **1.0, eingefroren am 02.11.2026 nach Uzis Einordnung (19:14 Uhr). Eingefrorener Code: Commit `3bf6f80` (`src/research_lab/studies/s15.py`, Skript `scripts/research_lab_s15.py`, Tests `tests/test_research_lab_s15.py`). Zähllauf bestanden. Nichts registriert, kein Fehlermaß für S15 gesehen** |
 | Anlass | Uzi 02.11.2026 („go“ auf den Vorschlag aus der Auswertung des Accounts quantfinancetogo, `/mnt/project-files/analysen/quantfinancetogo-2026-11-02/bericht.md`, Teil 39 und Video „GARCH Model Explained“) |
 | Quelle der Regeln | Bollerslev (1986, GARCH), Engle (1982, ARCH), RiskMetrics (1996, EWMA λ = 0,94), Patton (2011, QLIKE als robustes Fehlermaß bei verrauschter Ziel-Varianz), Diebold und Mariano (1995), Newey und West (1987/1994, Lag-Regel). Alle Zahlen unten sind vorab gesetzt und werden nicht optimiert |
 | Protokoll | `../PROTOKOLL.md` Version 1.3: Datensplit (Training bis 2022, Validierung 2023–2024, Holdout ab 2025 nie geladen) |
-| Einordnung | **Vorschlag: Prognosestudie ohne Registerplatz.** S15 erzeugt keine Trades und kein Handelssignal, es wird nur die Güte einer Schwankungsprognose verglichen. Damit verbraucht sie keinen der 60 Plätze im Holdout-Register (58/60 bleibt). Entscheidung durch Uzi vor Version 1.0 |
+| Einordnung | **Prognosestudie ohne Registerplatz** (Uzi per Karte 02.11.2026, 19:14 Uhr; `../PROTOKOLL.md` Eintrag 2026-11-02). S15 erzeugt keine Trades und kein Handelssignal, es wird nur die Güte einer Schwankungsprognose verglichen. Register bleibt 58/60, der Holdout ab 2025 wird nie geladen |
 
 ## 1. Fragestellung
 
@@ -94,11 +94,12 @@ Im Datensatz fehlt keine Periode (BTC und ETH je 1827 Tage, SOL 1564 Tage, alle 
 
 ## 8. Offene Punkte vor Version 1.0
 
-1. Einordnung (Vorschlag: Prognosestudie ohne Registerplatz), Entscheidung Uzi.
+1. ~~Einordnung~~ entschieden: Prognosestudie ohne Registerplatz (Uzi 02.11.2026).
 2. ~~Zähllauf 5.1 auf dem Mac~~ erledigt (7.1).
-3. Einfrieren (1.0), danach ein Lauf mit Fehlermaß auf dem Mac (`python scripts/research_lab_s15.py run`).
+3. ~~Einfrieren~~ erledigt (1.0, Commit `3bf6f80`). Danach ein Lauf mit Fehlermaß auf dem Mac (`python scripts/research_lab_s15.py run`).
 
 ## Änderungsprotokoll
 
 - 0.1 (02.11.2026): Entwurf auf Uzis „go“. Regeln als Code, Zähl- und Auswerteskript, 10 Tests auf synthetischen Daten. Nichts registriert, keine Marktdaten ausgewertet.
 - 0.2 (02.11.2026): Zähllauf eingetragen (7.1), beide Varianten bestehen. Nach unabhängiger Prüfung präzisiert, alles vor jedem Ergebnis: Einlaufzeit und B1 zählen vorhandene Perioden (4.3, Tabelle 4); Kriterium 4 verlangt beide Jahre und nutzt das gepoolte d; ausgelassene Perioden werden gezählt; das Gate wird im Auswerteskript erzwungen; MSE auch gegen EWMA. Weiter kein Fehlermaß gesehen.
+- 1.0 (02.11.2026): Einordnung Prognosestudie ohne Registerplatz (Uzi), Regeln und Code mit Commit `3bf6f80` eingefroren. Kein Fehlermaß gesehen.
