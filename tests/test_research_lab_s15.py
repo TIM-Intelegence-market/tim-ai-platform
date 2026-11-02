@@ -129,7 +129,12 @@ def test_verdict_rules():
     assert not s15.verdict(good, good | {"p_one_sided": 0.06}, {"A": 1, "B": 1}, {"2023": 1})["passed"]
     assert not s15.verdict(good, good, {"A": 1, "B": -1, "C": -1}, {"2023": 1})["passed"]
     assert not s15.verdict(good, good, {"A": 1, "B": 1}, {"2023": 1, "2024": -0.01})["passed"]
-    assert not s15.verdict(good | {"n": 499}, good, {"A": 1, "B": 1}, {"2023": 1})["passed"]
+    assert not s15.verdict(good | {"n": 499}, good, {"A": 1, "B": 1}, {"2023": 1, "2024": 1})["passed"]
+    both = {"2023": 1, "2024": 1}
+    assert not s15.verdict(good, good, {"A": 1, "B": 1}, {"2023": 1})["passed"]  # missing year fails
+    assert s15.verdict(good | {"p_one_sided": 0.07}, good, {"A": 1, "B": 1}, both)["passed"]
+    assert not s15.verdict(good | {"p_one_sided": 0.11}, good, {"A": 1, "B": 1}, both)["passed"]
+    assert not s15.verdict(good | {"mean": -0.01, "p_one_sided": 0.001}, good, {"A": 1, "B": 1}, both)["passed"]
 
 
 # ---------------------------------------------------------------- script on a fake store
@@ -153,7 +158,7 @@ class FakeStore:
             for _ in range(DAYS * 288):
                 lp += rng.gauss(0, 0.002)
                 closes.append(math.exp(lp))
-            self.bars[sym] = _bars(START, closes)
+            self.bars[sym] = _bars(START, closes) + _bars(HOLDOUT_START_MS, closes[:288])  # one holdout day
         self.requested: list = []
 
     def load_klines(self, refs):
@@ -170,6 +175,18 @@ def store():
     return FakeStore()
 
 
+def test_run_evaluates_gate_passing_variants(tmp_path, store, monkeypatch):
+    mod = _script()
+    monkeypatch.setattr(s15, "GATE", {"train": 1, "validation": 1})
+    assert mod.run(store, tmp_path) == 0
+    res = json.loads(next(tmp_path.glob("s15_run_*.json")).read_text())
+    assert set(res["variants"]) == {"S15-4h", "S15-1d"}
+    d1 = res["variants"]["S15-1d"]
+    assert d1["validation"]["dm_rolling"]["n"] == 20  # the holdout day is cut off
+    assert set(d1["validation"]["by_year"]) == {"2023"}
+    assert not d1["verdict"]["checks"]["years"]
+
+
 def test_count_and_run_scripts(tmp_path, store):
     mod = _script()
     assert mod.count(store, tmp_path) == 0
@@ -181,5 +198,6 @@ def test_count_and_run_scripts(tmp_path, store):
     assert not d1["passes_gate"]
     assert mod.run(store, tmp_path) == 0
     res = json.loads(next(tmp_path.glob("s15_run_*.json")).read_text())
-    assert set(res["variants"]) == {"S15-4h", "S15-1d"}
+    assert res["variants"] == {}  # both variants are below the count gate here: no outcome is computed
+    assert not mod.count_rows({v: {"X": []} for v in ("S15-4h", "S15-1d")})["S15-1d"]["passes_gate"]
     assert (tmp_path / next(tmp_path.glob("s15_run_*.json")).name.replace(".json", ".md")).exists()

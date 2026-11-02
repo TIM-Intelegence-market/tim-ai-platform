@@ -269,15 +269,21 @@ def usable(f: Forecast) -> bool:
     return f.rv > 0 and f.rolling > 0 and f.ewma > 0 and f.garch > 0
 
 
-def pooled_differences(by_symbol: Mapping[str, Sequence[Forecast]], benchmark: str = "rolling",
-                       loss: Callable[[float, float], float] = qlike) -> list[float]:
-    """Cross-sectional mean of loss(benchmark) - loss(garch) per period start, in time order."""
+def pooled_by_start(by_symbol: Mapping[str, Sequence[Forecast]], benchmark: str = "rolling",
+                    loss: Callable[[float, float], float] = qlike) -> dict[int, float]:
+    """Cross-sectional mean of loss(benchmark) - loss(garch) per period start (usable forecasts only)."""
     acc: dict[int, list[float]] = {}
     for fs in by_symbol.values():
         for f in fs:
             if usable(f):
                 acc.setdefault(f.start, []).append(loss(f.rv, getattr(f, benchmark)) - loss(f.rv, f.garch))
-    return [statistics.fmean(acc[k]) for k in sorted(acc)]
+    return {k: statistics.fmean(acc[k]) for k in sorted(acc)}
+
+
+def pooled_differences(by_symbol: Mapping[str, Sequence[Forecast]], benchmark: str = "rolling",
+                       loss: Callable[[float, float], float] = qlike) -> list[float]:
+    """The pooled differences of ``pooled_by_start`` in time order."""
+    return list(pooled_by_start(by_symbol, benchmark, loss).values())
 
 
 # ---------------------------------------------------------------- verdict (preregistration section 5)
@@ -287,16 +293,20 @@ P_MAX = {"train": 0.10, "validation": 0.05}
 MIN_SYMBOLS_BETTER = 2
 
 
+VALIDATION_YEARS = ("2023", "2024")
+
+
 def verdict(train: Mapping, validation: Mapping, validation_by_symbol: Mapping[str, float],
-            validation_by_year: Mapping[str, float]) -> dict:
+            validation_by_year: Mapping[str, float], years: Sequence[str] = VALIDATION_YEARS) -> dict:
     """``train``/``validation``: diebold_mariano() of the pooled QLIKE difference rolling - garch.
-    ``validation_by_symbol``/``validation_by_year``: mean difference per symbol / per calendar year."""
+    ``validation_by_symbol``: mean difference per symbol; ``validation_by_year``: mean pooled difference
+    per calendar year. Every year in ``years`` must be present and positive."""
     checks = {
         "train_n": train["n"] >= GATE["train"],
         "train_better": train["mean"] > 0 and train["p_one_sided"] < P_MAX["train"],
         "validation_n": validation["n"] >= GATE["validation"],
         "validation_better": validation["mean"] > 0 and validation["p_one_sided"] < P_MAX["validation"],
         "symbols": sum(1 for v in validation_by_symbol.values() if v > 0) >= MIN_SYMBOLS_BETTER,
-        "years": bool(validation_by_year) and all(v > 0 for v in validation_by_year.values()),
+        "years": all(validation_by_year.get(y, 0.0) > 0 for y in years),
     }
     return {"checks": checks, "passed": all(checks.values())}

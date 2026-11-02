@@ -91,7 +91,8 @@ def count(store: ArchiveStore, out_dir: Path) -> int:
 
 
 def section_result(by_symbol: dict[str, list[s15.Forecast]]) -> dict:
-    d = s15.pooled_differences(by_symbol)
+    pooled = s15.pooled_by_start(by_symbol)
+    d = list(pooled.values())
     usable = {sym: [f for f in fs if s15.usable(f)] for sym, fs in by_symbol.items()}
     loss = {}
     for name in ("rolling", "ewma", "garch"):
@@ -99,25 +100,30 @@ def section_result(by_symbol: dict[str, list[s15.Forecast]]) -> dict:
         m = [s15.mse(f.rv, getattr(f, name)) for fs in usable.values() for f in fs]
         loss[name] = {"qlike": statistics.fmean(q) if q else None, "mse": statistics.fmean(m) if m else None}
     years: dict[str, list[float]] = {}
-    for fs in usable.values():
-        for f in fs:
-            years.setdefault(year_of(f.start), []).append(s15.qlike(f.rv, f.rolling) - s15.qlike(f.rv, f.garch))
+    for start, x in pooled.items():
+        years.setdefault(year_of(start), []).append(x)
     return {
         "dm_rolling": s15.diebold_mariano(d),
         "dm_ewma": s15.diebold_mariano(s15.pooled_differences(by_symbol, "ewma")),
         "dm_rolling_mse": s15.diebold_mariano(s15.pooled_differences(by_symbol, "rolling", s15.mse)),
+        "dm_ewma_mse": s15.diebold_mariano(s15.pooled_differences(by_symbol, "ewma", s15.mse)),
         "by_symbol": {sym: statistics.fmean(s15.qlike(f.rv, f.rolling) - s15.qlike(f.rv, f.garch) for f in fs) if fs else 0.0
                       for sym, fs in sorted(usable.items())},
         "by_year": {y: statistics.fmean(v) for y, v in sorted(years.items())},
         "loss": loss,
         "zero_rv": sum(1 for fs in by_symbol.values() for f in fs if f.rv <= 0),
+        "excluded": sum(1 for fs in by_symbol.values() for f in fs if not s15.usable(f)),
     }
 
 
 def run(store: ArchiveStore, out_dir: Path) -> int:
     series, info = load_periods(store)
-    payload = _header(store) | {"symbols": info, "variants": {}}
+    gate = count_rows(series)
+    payload = _header(store) | {"symbols": info, "variants": {}, "gate_counts": gate}
     for v in s15.S15_VARIANTS:
+        if not gate[v.variant_id]["passes_gate"]:
+            print(f"{v.variant_id}: below the count gate 5.1, not evaluated", flush=True)
+            continue
         forecasts: dict[str, dict[str, list]] = {sec: {} for sec in SECTIONS}
         refits: dict[str, list] = {}
         for symbol, ps in series[v.variant_id].items():
@@ -177,16 +183,21 @@ def run_markdown(p: dict) -> str:
     lines = ["# S15 Auswertung Training und Validierung (Prognosestudie, kein Holdout)", "", _source(p), "",
              "Differenz d = QLIKE(14-Tage-Varianz) − QLIKE(GARCH), gepoolt je Periodenstart. d > 0 heißt: GARCH ist besser. "
              "p einseitig aus Diebold-Mariano mit Newey-West.", "",
-             "| Variante | Abschnitt | n | Ø d | t | p | Ø d gegen EWMA (p) | QLIKE 14 T / EWMA / GARCH |",
-             "|---|---|---:|---:|---:|---:|---:|---|"]
+             "| Variante | Abschnitt | n | Ø d | t | p | Ø d gegen EWMA (p) | MSE: p gegen 14 T / gegen EWMA | QLIKE 14 T / EWMA / GARCH | ausgelassen (RV = 0) |",
+             "|---|---|---:|---:|---:|---:|---:|---|---|---:|"]
     for vid, v in p["variants"].items():
         for sec, name in (("train", "Training"), ("validation", "Validierung")):
             r = v[sec]
             dm, de, lo = r["dm_rolling"], r["dm_ewma"], r["loss"]
             lines.append(f"| {vid} | {name} | {dm['n']} | {_f(dm['mean'], 4)} | {_f(dm['t'], 2)} | {_f(dm['p_one_sided'], 4)} | "
                          f"{_f(de['mean'], 4)} ({_f(de['p_one_sided'], 3)}) | "
-                         f"{_f(lo['rolling']['qlike'])} / {_f(lo['ewma']['qlike'])} / {_f(lo['garch']['qlike'])} |")
+                         f"{_f(r['dm_rolling_mse']['p_one_sided'], 3)} / {_f(r['dm_ewma_mse']['p_one_sided'], 3)} | "
+                         f"{_f(lo['rolling']['qlike'])} / {_f(lo['ewma']['qlike'])} / {_f(lo['garch']['qlike'])} | "
+                         f"{r['excluded']} ({r['zero_rv']}) |")
     lines.append("")
+    for vid, g in p["gate_counts"].items():
+        if vid not in p["variants"]:
+            lines.append(f"**{vid}: am Zähl-Gate gescheitert, nicht ausgewertet.**")
     for vid, v in p["variants"].items():
         c = v["verdict"]["checks"]
         val = v["validation"]
@@ -197,8 +208,13 @@ def run_markdown(p: dict) -> str:
         lf = v["last_fit"]
         lines.append("Letzte Schätzung (α, β, Halbwertszeit in Perioden): " + "; ".join(
             f"{s} {_f(g['alpha'])}, {_f(g['beta'])}, {_f(g['half_life_periods'], 1)}" for s, g in lf.items()) + ".")
+        if v["verdict"]["passed"]:
+            ewma_p = val["dm_ewma"]["p_one_sided"]
+            lines.append("Lesart 5.2: " + ("GARCH liegt auch vor EWMA (p < 0,05), GARCH ist die Empfehlung."
+                                           if val["dm_ewma"]["mean"] > 0 and ewma_p < 0.05
+                                           else "GARCH liegt nicht klar vor EWMA, Empfehlung ist EWMA als einfachere Wahl."))
         lines.append("")
-    lines += ["Beschreibend (ohne Urteil): MSE-Vergleich und EWMA. Liegt GARCH nicht klar vor EWMA, ist EWMA die einfachere Wahl (Präregistrierung 5.2).",
+    lines += ["Beschreibend (ohne Urteil): EWMA und MSE. Ausgelassen sind Perioden mit RV = 0 oder einer Prognose ≤ 0.",
               "", f"Holdout 2025+ nicht geladen. {UNIVERSE_LIMITATION}"]
     return "\n".join(lines) + "\n"
 
