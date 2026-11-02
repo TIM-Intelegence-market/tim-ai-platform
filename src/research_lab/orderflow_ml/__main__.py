@@ -25,7 +25,8 @@ from src.research_lab.orderflow_ml.store import DEFAULT_ROOT, MinuteBarStore, da
 
 def _code_version() -> str:
     try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        root = Path(__file__).resolve().parents[3]
+        return subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
 
@@ -67,7 +68,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "replay":
         cfg = ExportConfig(date.fromisoformat(args.first), date.fromisoformat(args.last))
-        stamp = datetime.fromisoformat(args.decision.replace("Z", "+00:00")).astimezone(timezone.utc)
+        stamp = datetime.fromisoformat(args.decision.replace("Z", "+00:00"))
+        if stamp.utcoffset() is None:
+            raise ValueError("--decision requires an explicit timezone (Z or UTC offset)")
+        stamp = stamp.astimezone(timezone.utc)
         print(json.dumps(replay(store, int(stamp.timestamp() * 1000), cfg, args.export_dir), indent=2, default=str))
         return 0
     from src.research_lab.data.aggtrades import AggTradeDayStore

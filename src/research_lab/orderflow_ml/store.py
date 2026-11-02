@@ -130,8 +130,18 @@ class MinuteBarStore:
         guard(day)
         entry = self.manifest().get(day.isoformat())
         path = self.bar_path(day)
-        if entry is None or not path.exists() or entry.get("bar_version") != BAR_VERSION:
-            raise FileNotFoundError(f"{day} has not been fetched with bar version {BAR_VERSION}")
+        if entry is None or not path.exists():
+            raise FileNotFoundError(f"{day} has not been fetched")
+        if entry.get("bar_version") != BAR_VERSION:
+            raise ValueError(f"{day}: incompatible bar version")
+        quality = entry.get("quality")
+        if not isinstance(quality, dict) or any(
+            type(quality.get(key)) is not int or quality[key] < 0
+            for key in ("id_gaps", "time_regressions")
+        ):
+            raise ValueError(f"{day}: missing or invalid source quality evidence")
+        if quality["id_gaps"] or quality["time_regressions"]:
+            raise ValueError(f"{day}: source quality blocks export (id gaps or time regressions)")
         if sha256_file(path) != entry["bars_sha256"]:
             raise ValueError(f"{day}: bar file changed on disk since it was verified")
         with path.open(newline="") as handle:
@@ -164,6 +174,7 @@ class MinuteBarStore:
 
     def dataset_hash(self, days: Iterable[date]) -> str:
         manifest = self.manifest()
-        entries = sorted((d.isoformat(), manifest[d.isoformat()]["archive_sha256"], manifest[d.isoformat()]["bars_sha256"],
-                          manifest[d.isoformat()]["profile_sha256"]) for d in days)
-        return hashlib.sha256(json.dumps(entries).encode()).hexdigest()
+        # Quality and bar semantics determine whether these bytes can be used.
+        # Bind their provenance too, rather than hashing only the two files.
+        entries = sorted((d.isoformat(), manifest[d.isoformat()]) for d in days)
+        return hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()

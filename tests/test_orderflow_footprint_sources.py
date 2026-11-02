@@ -195,7 +195,10 @@ def test_payload_for_pipeline_carries_tick_and_source(tmp_path):
 
 def test_cli_footprint_from_archive(tmp_path, capsys):
     (tmp_path / "spot").mkdir()
-    (tmp_path / "spot" / sources.archive_filename(SYMBOL, DAY)).write_bytes(_archive(_rows()))
+    archive = tmp_path / "spot" / sources.archive_filename(SYMBOL, DAY)
+    payload = _archive(_rows())
+    archive.write_bytes(payload)
+    archive.with_suffix(".zip.CHECKSUM").write_text(f"{hashlib.sha256(payload).hexdigest()}  {archive.name}\n")
     code = cli.main([
         "--footprint-source", "archive", "--archive-root", str(tmp_path), "--symbol", SYMBOL, "--timeframe", "5m",
         "--start", START.isoformat().replace("+00:00", "Z"), "--end", END.isoformat(), "--tick", "10", "--validate",

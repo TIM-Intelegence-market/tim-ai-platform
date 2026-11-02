@@ -29,7 +29,7 @@ from src.research_lab.orderflow_ml.store import HOLDOUT_DAY, MinuteBarStore, day
 from src.research_lab.protocol import HOLDOUT_START_MS, PROTOCOL_VERSION, VALIDATION_START_MS
 
 STUDY = "S8"
-EXPORT_SCHEMA = "1.0.0"
+EXPORT_SCHEMA = "1.0.1"
 TRAIN_START = date(2020, 1, 1)
 SECTIONS: dict[str, tuple[int, int]] = {
     "train": (day_start_ms(TRAIN_START), VALIDATION_START_MS),
@@ -172,13 +172,20 @@ def _write_csv(path: Path, header: list[str], rows: Iterable[list[str]]) -> str:
 
 def run_export(store: MinuteBarStore, cfg: ExportConfig, out_root: Path | str, *, code_version: str = "unknown") -> dict:
     """Write features, labels, split manifest and quality report for every present day in the range."""
+    if cfg.symbol != store.symbol:
+        raise ValueError("export symbol does not match the source store symbol")
     wanted = days_between(cfg.first_day, cfg.last_day)
     for day in wanted:
         guard(day)
     present = set(store.present_days()) & set(wanted)
     days = sorted(present)
+    if not days:
+        raise ValueError("no source days available for export")
     missing = [d for d in wanted if d not in present]
     out = Path(out_root) / cfg.export_id()
+    # A config id is not a data version: a later fetch or code change must not
+    # silently replace files referenced by an earlier experiment.
+    out.mkdir(parents=True, exist_ok=False)
     cache: dict[date, list[MinuteBar]] = {}
 
     def load(day: date) -> list[MinuteBar]:
@@ -255,6 +262,8 @@ def quality_report(split: dict) -> str:
 
 def replay(store: MinuteBarStore, decision_ms: int, cfg: ExportConfig, export_dir: Path | str | None = None) -> dict:
     """Recompute one decision from the verified bar files and, if given, compare with the exported rows."""
+    if cfg.symbol != store.symbol:
+        raise ValueError("export symbol does not match the source store symbol")
     if decision_ms % MINUTE_MS:
         raise ValueError("decision_ms must be a minute boundary")
     minute_start = decision_ms - MINUTE_MS
@@ -277,7 +286,7 @@ def replay(store: MinuteBarStore, decision_ms: int, cfg: ExportConfig, export_di
         "last_bar_used": series.bars[i].as_row(),
         "features": dict(zip(FEATURE_NAMES, row.values)), "warm": row.warm, "complete": row.complete,
         "stale_ms": row.stale_ms, "label": asdict(label),
-        "target_bar": series.bars[i + cfg.label.horizon_min].as_row() if i + cfg.label.horizon_min < len(series) else None,
+        "target_bar": series.bars[i + cfg.label.horizon_min].as_row() if not is_purged and i + cfg.label.horizon_min < len(series) else None,
     }
     if export_dir is not None:
         stem = f"{cfg.symbol}-{day.isoformat()}.csv"

@@ -96,6 +96,7 @@ def _pipeline_inputs(adapter, data: dict[str, Any], observed_at=None) -> Pipelin
     notes = set(getattr(adapted, "extra_notes", ()) or ())
     return PipelineInputs(
         market_context=_market_context(adapted, adapted.observed_at),
+        observed_at=adapted.observed_at,
         candles=tuple(candles),
         trades=tuple(trades),
         price_now=adapted.price_now if adapted.price_now is not None else (Decimal(str(last)) if last is not None else None),
@@ -153,6 +154,8 @@ def _footprint_payload(args) -> tuple[dict[str, Any], Any, str]:
         raise ValueError(f"--tick is not a number: {args.tick!r}") from None
     notes: list[str] = []
     if args.footprint_source == "db":
+        if args.market != "spot":
+            raise ValueError("--footprint-source db contains Spot trades; --market must be spot")
         url = args.database_url
         if not url:
             from config.settings import settings
