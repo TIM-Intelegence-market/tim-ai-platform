@@ -1,0 +1,259 @@
+{
+  "study": "S14",
+  "commit": "56fcd1039c48e252b8887acec1be22e98c0b4694",
+  "outcome_blind": true,
+  "upper_bound": true,
+  "created": "2026-11-01T22:49:32+00:00",
+  "dataset_hash": "182b222e0fa12cae397ea4866ee619d6e5102854bf7658468d9cafdbb60844e2",
+  "gate": {
+    "train": 500,
+    "validation": 250,
+    "days": {
+      "train": 160,
+      "validation": 183
+    }
+  },
+  "symbols": {
+    "BTCUSDT": {
+      "first_month": "2020-01",
+      "bars_5m": 526176,
+      "hours": 43848
+    },
+    "ETHUSDT": {
+      "first_month": "2020-01",
+      "bars_5m": 526176,
+      "hours": 43848
+    },
+    "SOLUSDT": {
+      "first_month": "2020-09",
+      "bars_5m": 450636,
+      "hours": 37553
+    }
+  },
+  "variants": {
+    "S14-W168": {
+      "params": {
+        "interval": "1h",
+        "window_hours": 168,
+        "cointegration_filter": false,
+        "entry_z": 2.0,
+        "exit_z": 0.0,
+        "stop_z": 4.0,
+        "time_stop_hours": 120,
+        "eg_critical": -3.34
+      },
+      "funnel": {
+        "ETH/BTC": {
+          "hours": 43848,
+          "signals": 1181
+        },
+        "SOL/BTC": {
+          "hours": 37553,
+          "signals": 980
+        },
+        "SOL/ETH": {
+          "hours": 37553,
+          "signals": 997
+        }
+      },
+      "train": {
+        "signals": 1725,
+        "signal_days": 645,
+        "by_pair": {
+          "ETH/BTC": 713,
+          "SOL/BTC": 475,
+          "SOL/ETH": 537
+        },
+        "long": 892,
+        "short": 833
+      },
+      "validation": {
+        "signals": 1433,
+        "signal_days": 501,
+        "by_pair": {
+          "ETH/BTC": 468,
+          "SOL/BTC": 505,
+          "SOL/ETH": 460
+        },
+        "long": 756,
+        "short": 677
+      },
+      "by_year": {
+        "2020": 347,
+        "2021": 641,
+        "2022": 737,
+        "2023": 718,
+        "2024": 715
+      },
+      "passes_gate": true
+    },
+    "S14-W168-K": {
+      "params": {
+        "interval": "1h",
+        "window_hours": 168,
+        "cointegration_filter": true,
+        "entry_z": 2.0,
+        "exit_z": 0.0,
+        "stop_z": 4.0,
+        "time_stop_hours": 120,
+        "eg_critical": -3.34
+      },
+      "funnel": {
+        "ETH/BTC": {
+          "hours": 43848,
+          "signals": 135
+        },
+        "SOL/BTC": {
+          "hours": 37553,
+          "signals": 98
+        },
+        "SOL/ETH": {
+          "hours": 37553,
+          "signals": 77
+        }
+      },
+      "train": {
+        "signals": 161,
+        "signal_days": 106,
+        "by_pair": {
+          "ETH/BTC": 70,
+          "SOL/BTC": 53,
+          "SOL/ETH": 38
+        },
+        "long": 75,
+        "short": 86
+      },
+      "validation": {
+        "signals": 149,
+        "signal_days": 98,
+        "by_pair": {
+          "ETH/BTC": 65,
+          "SOL/BTC": 45,
+          "SOL/ETH": 39
+        },
+        "long": 73,
+        "short": 76
+      },
+      "by_year": {
+        "2020": 31,
+        "2021": 27,
+        "2022": 103,
+        "2023": 68,
+        "2024": 81
+      },
+      "passes_gate": false
+    },
+    "S14-W720": {
+      "params": {
+        "interval": "1h",
+        "window_hours": 720,
+        "cointegration_filter": false,
+        "entry_z": 2.0,
+        "exit_z": 0.0,
+        "stop_z": 4.0,
+        "time_stop_hours": 120,
+        "eg_critical": -3.34
+      },
+      "funnel": {
+        "ETH/BTC": {
+          "hours": 43848,
+          "signals": 558
+        },
+        "SOL/BTC": {
+          "hours": 37553,
+          "signals": 428
+        },
+        "SOL/ETH": {
+          "hours": 37553,
+          "signals": 431
+        }
+      },
+      "train": {
+        "signals": 754,
+        "signal_days": 348,
+        "by_pair": {
+          "ETH/BTC": 324,
+          "SOL/BTC": 192,
+          "SOL/ETH": 238
+        },
+        "long": 403,
+        "short": 351
+      },
+      "validation": {
+        "signals": 663,
+        "signal_days": 289,
+        "by_pair": {
+          "ETH/BTC": 234,
+          "SOL/BTC": 236,
+          "SOL/ETH": 193
+        },
+        "long": 342,
+        "short": 321
+      },
+      "by_year": {
+        "2020": 108,
+        "2021": 281,
+        "2022": 365,
+        "2023": 341,
+        "2024": 322
+      },
+      "passes_gate": true
+    },
+    "S14-W720-K": {
+      "params": {
+        "interval": "1h",
+        "window_hours": 720,
+        "cointegration_filter": true,
+        "entry_z": 2.0,
+        "exit_z": 0.0,
+        "stop_z": 4.0,
+        "time_stop_hours": 120,
+        "eg_critical": -3.34
+      },
+      "funnel": {
+        "ETH/BTC": {
+          "hours": 43848,
+          "signals": 49
+        },
+        "SOL/BTC": {
+          "hours": 37553,
+          "signals": 23
+        },
+        "SOL/ETH": {
+          "hours": 37553,
+          "signals": 10
+        }
+      },
+      "train": {
+        "signals": 54,
+        "signal_days": 33,
+        "by_pair": {
+          "ETH/BTC": 26,
+          "SOL/BTC": 20,
+          "SOL/ETH": 8
+        },
+        "long": 38,
+        "short": 16
+      },
+      "validation": {
+        "signals": 28,
+        "signal_days": 16,
+        "by_pair": {
+          "ETH/BTC": 23,
+          "SOL/BTC": 3,
+          "SOL/ETH": 2
+        },
+        "long": 18,
+        "short": 10
+      },
+      "by_year": {
+        "2020": 16,
+        "2021": 9,
+        "2022": 29,
+        "2023": 26,
+        "2024": 2
+      },
+      "passes_gate": false
+    }
+  }
+}

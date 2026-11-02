@@ -1,0 +1,1215 @@
+{
+  "bundle_id": "60a72e567840476c52b068ba5f739d950ff55b5b3f42f40bf6899e70f90779a4",
+  "fred_cross_check": [
+    {
+      "decision": "NOT_DETERMINED",
+      "event_id": "FOMC:2016-01-27:monetary20160127a",
+      "range": "0.25 to 0.5",
+      "result": "NO_FRED_VALUE"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2016-03-16:monetary20160316a",
+      "range": "0.25 to 0.5",
+      "result": "NO_FRED_VALUE"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2016-04-27:monetary20160427a",
+      "range": "0.25 to 0.5",
+      "result": "NO_FRED_VALUE"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2016-06-15:monetary20160615a",
+      "range": "0.25 to 0.5",
+      "result": "NO_FRED_VALUE"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2016-07-27:monetary20160727a",
+      "range": "0.25 to 0.5",
+      "result": "NO_FRED_VALUE"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2016-09-21:monetary20160921a",
+      "range": "0.25 to 0.5",
+      "result": "NO_FRED_VALUE"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2016-11-02:monetary20161102a",
+      "range": "0.25 to 0.5",
+      "result": "NO_FRED_VALUE"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2016-12-14:monetary20161214a",
+      "range": "0.5 to 0.75",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2017-02-01:monetary20170201a",
+      "range": "0.5 to 0.75",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2017-03-15:monetary20170315a",
+      "range": "0.75 to 1",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2017-05-03:monetary20170503a",
+      "range": "0.75 to 1",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2017-06-14:monetary20170614a",
+      "range": "1 to 1.25",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2017-07-26:monetary20170726a",
+      "range": "1 to 1.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2017-09-20:monetary20170920a",
+      "range": "1 to 1.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2017-11-01:monetary20171101a",
+      "range": "1 to 1.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2017-12-13:monetary20171213a",
+      "range": "1.25 to 1.5",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "NOT_DETERMINED",
+      "event_id": "FOMC:2018-03-21:monetary20180321a",
+      "range": "1.5 to 1.75",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2018-05-02:monetary20180502a",
+      "range": "1.5 to 1.75",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2018-06-13:monetary20180613a",
+      "range": "1.75 to 2",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2018-08-01:monetary20180801a",
+      "range": "1.75 to 2",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2018-09-26:monetary20180926a",
+      "range": "2 to 2.25",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2018-11-08:monetary20181108a",
+      "range": "2 to 2.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2018-12-19:monetary20181219a",
+      "range": "2.25 to 2.5",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2019-01-30:monetary20190130a",
+      "range": "2.25 to 2.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2019-03-20:monetary20190320a",
+      "range": "2.25 to 2.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2019-05-01:monetary20190501a",
+      "range": "2.25 to 2.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2019-06-19:monetary20190619a",
+      "range": "2.25 to 2.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "LOWER",
+      "event_id": "FOMC:2019-07-31:monetary20190731a",
+      "range": "2 to 2.25",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "LOWER",
+      "event_id": "FOMC:2019-09-18:monetary20190918a",
+      "range": "1.75 to 2",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "LOWER",
+      "event_id": "FOMC:2019-10-30:monetary20191030a",
+      "range": "1.5 to 1.75",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2019-12-11:monetary20191211a",
+      "range": "1.5 to 1.75",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2020-01-29:monetary20200129a",
+      "range": "1.5 to 1.75",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "LOWER",
+      "event_id": "FOMC:2020-03-03:monetary20200303a",
+      "range": "1 to 1.25",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "LOWER",
+      "event_id": "FOMC:2020-03-15:monetary20200315a",
+      "range": "0 to 0.25",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2020-03-23:monetary20200323a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2020-04-29:monetary20200429a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2020-06-10:monetary20200610a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2020-07-29:monetary20200729a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2020-09-16:monetary20200916a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2020-11-05:monetary20201105a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2020-12-16:monetary20201216a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2021-01-27:monetary20210127a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2021-03-17:monetary20210317a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2021-04-28:monetary20210428a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2021-06-16:monetary20210616a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2021-07-28:monetary20210728a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2021-09-22:monetary20210922a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2021-11-03:monetary20211103a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2021-12-15:monetary20211215a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2022-01-26:monetary20220126a",
+      "range": "0 to 0.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2022-03-16:monetary20220316a",
+      "range": "0.25 to 0.5",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2022-05-04:monetary20220504a",
+      "range": "0.75 to 1",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2022-06-15:monetary20220615a",
+      "range": "1.5 to 1.75",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2022-07-27:monetary20220727a",
+      "range": "2.25 to 2.5",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2022-09-21:monetary20220921a",
+      "range": "3 to 3.25",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2022-11-02:monetary20221102a",
+      "range": "3.75 to 4",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2022-12-14:monetary20221214a",
+      "range": "4.25 to 4.5",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2023-02-01:monetary20230201a",
+      "range": "4.5 to 4.75",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2023-03-22:monetary20230322a",
+      "range": "4.75 to 5",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2023-05-03:monetary20230503a",
+      "range": "5 to 5.25",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2023-06-14:monetary20230614a",
+      "range": "5 to 5.25",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "RAISE",
+      "event_id": "FOMC:2023-07-26:monetary20230726a",
+      "range": "5.25 to 5.5",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2023-09-20:monetary20230920a",
+      "range": "5.25 to 5.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2023-11-01:monetary20231101a",
+      "range": "5.25 to 5.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2023-12-13:monetary20231213a",
+      "range": "5.25 to 5.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2024-01-31:monetary20240131a",
+      "range": "5.25 to 5.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2024-03-20:monetary20240320a",
+      "range": "5.25 to 5.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2024-05-01:monetary20240501a",
+      "range": "5.25 to 5.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2024-06-12:monetary20240612a",
+      "range": "5.25 to 5.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "MAINTAIN",
+      "event_id": "FOMC:2024-07-31:monetary20240731a",
+      "range": "5.25 to 5.5",
+      "result": "MATCH_SAME_DAY"
+    },
+    {
+      "decision": "LOWER",
+      "event_id": "FOMC:2024-09-18:monetary20240918a",
+      "range": "4.75 to 5",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "LOWER",
+      "event_id": "FOMC:2024-11-07:monetary20241107a",
+      "range": "4.5 to 4.75",
+      "result": "MATCH_NEXT_DAY"
+    },
+    {
+      "decision": "LOWER",
+      "event_id": "FOMC:2024-12-18:monetary20241218a",
+      "range": "4.25 to 4.5",
+      "result": "MATCH_NEXT_DAY"
+    }
+  ],
+  "ingested_at": "2026-11-01T14:44:40.771846+00:00",
+  "payload_sha256": {
+    "list-2016": "e80d4d45d5c1ecf1e500eda494490efa3560c990e4b48f140ef855a6df6f33d1",
+    "list-2017": "d51cea7a65fe2ff1abcf7dac6a6545db04ecdcb7e038391b9b50f24fa94b9979",
+    "list-2018": "8976bdc03b561fd4427e07eefe36dc4c88dfb9fcc1bd837b26e1c605a871aaf4",
+    "list-2019": "348f888d24153e96b4b4303e7898e0e03171a82b338af182b2ef2a97d482f502",
+    "list-2020": "b71566209b97635d657954b7a961a69eb04d06b8ab4d4bead66d420a02268fdc",
+    "list-2021": "c613856948c51781122d476ec44d8a724af29a2e41b0689ef41cd1bfb6ebfca5",
+    "list-2022": "9de618587e12583c8bef404b7e06b18a79f7b7b3084f322f27b59cd9a7a72ff9",
+    "list-2023": "2f4d64c8aeefe033393f1c890b64d47631c88a0deaec261740463b66246b9f68",
+    "list-2024": "4b5ddc031a4c28abb92657ad70256704145141e46d56b9c86a8ddb25d9b98c10",
+    "statement-monetary20160127a": "3063ffe9ec5a1337115b652dc53e22a164c577736cf9b73dcb4d486411bca285",
+    "statement-monetary20160316a": "85a76a329bfca0ae2c12f1ee4554c8df72fafa7855d4028a61dc2472aa4f09ec",
+    "statement-monetary20160427a": "f034de647ef18e96d60bd9a154510feb767d463d811f67338e63c5470df6c566",
+    "statement-monetary20160615a": "00674f6fd27d1c126013454c7deaba3716d0aa90aa1bf04e6542d66063fd4513",
+    "statement-monetary20160727a": "054d61eb94580cbac23501997ad016447ddda06c9ba16fa299842c3ffcd0c5e6",
+    "statement-monetary20160921a": "0fff8611026bbe9c78e8a4861d5379f9d7ac49fc3e0e5b9fdbd1a6873a9aa731",
+    "statement-monetary20161102a": "9281ae815c68dc2db6bf00a51ec46708a614bf77081113690c5da5c90ac11bda",
+    "statement-monetary20161214a": "5f45da1ce8227fd8fc375d59953124da91bf01c7607c8b7d6973bc4b0f2007b8",
+    "statement-monetary20170201a": "fd6bfb895a9745543eebbd0e57bb38d122fdc45460e02d87fce54f1bf8a85b11",
+    "statement-monetary20170315a": "749f931d660c48777ecc3457a2823205963f35e3c88ed72d48da9c62ca2db9a8",
+    "statement-monetary20170503a": "6ac7f010c208b93fae7d07dc0739679ec2e4cce69f18ce9433689aa062cfd075",
+    "statement-monetary20170614a": "73937868c9e7abe1e4e6b171045ecba5764b2af198ae8238978020b51ef58c25",
+    "statement-monetary20170726a": "059ea1258222ffb959e02397c75d897f4c45ed9ec62c6263bbdbff1a6e5562e3",
+    "statement-monetary20170920a": "d4ef2dc69ddcf77c34519d8ed7d598d41dcb2c152f65c252b5c4614003fa8670",
+    "statement-monetary20171101a": "ec1b505eba3c7870995b7bed9bb734f4f96d2293a80d9b670fd2669f947d606e",
+    "statement-monetary20171213a": "870e07c38a3fa277b1a4b6e54b45bb286b308c5f37ca2e0894c0ffb2575e4245",
+    "statement-monetary20180131a": "4bc46577b84316c6d181171a28094c6f82ed74a823810aeaa8db7166e1af4145",
+    "statement-monetary20180321a": "1db3c371eb5e950502301020f26bb57672d5dcb54214154a3250f8315db2962b",
+    "statement-monetary20180502a": "883dd718ea5726f76a50054ce00b5f3284c8b73979981916f9c382c9e969fc96",
+    "statement-monetary20180613a": "144d347a366eba4e759edc72569c4315ed005f54a30017d37c901421220be029",
+    "statement-monetary20180801a": "af2e88d53cbe445054ee5d3b6733063df6124691819674a8b9f12c1306f746af",
+    "statement-monetary20180926a": "29235baef5d0ab2515bbecbedc4fc3e4942615e5e8048bcbb20069d37d972e35",
+    "statement-monetary20181108a": "f08176d02c0155cce0ebac9866473d539ebbc72091e143221c8750b30f6b58e7",
+    "statement-monetary20181219a": "b63999a2fa90cf96235652cb11afef3f5bc0a9b2b7778e26fe8b4f02027d01f4",
+    "statement-monetary20190130a": "6b6b0380ca68ff2124c608aff0eb29067934ffaa0c346f9631fc3c756df261ec",
+    "statement-monetary20190320a": "017e2845fc9dfd42e13aa108318eb473580884883ac571a81ddeb9d4f7dc6702",
+    "statement-monetary20190501a": "e58ea8b4a5e9d55e38713b2056495ec46f1baa3d4af280abfc04289130523eee",
+    "statement-monetary20190619a": "180a05eb8db18c2e8125f97e88f24b2cf757504dc25c33f74bd7773b196f2477",
+    "statement-monetary20190731a": "34bd5d50ac7bfd48a0db56caabc741e20f33c186ef18e23829d696c1717e0a56",
+    "statement-monetary20190918a": "65b2b349d654d0a583e387cededb6bf444f67b3a607667072c33160255c6105d",
+    "statement-monetary20191030a": "5f8d7409570c13c6b14634414d6c318fc418dcad429f2af88b6942bb0624c32d",
+    "statement-monetary20191211a": "a29e84719a18b5c7a237385d5f7c5227aeacf1bf7bb7101a14b33f19f5b8441c",
+    "statement-monetary20200129a": "762109c1931c26af46757385fe5a3dd8ea9a2dc7e391ccb28ae67cde9ab9bf97",
+    "statement-monetary20200303a": "10033d9a1bd66e44e33c3ef4252800faffdd7371ab59aa65ea0cf51e82d9414e",
+    "statement-monetary20200315a": "4eac413081e034b720c70d3db7dc8e58a5d715d5fa117ca18d3a9f79da589fa3",
+    "statement-monetary20200323a": "90211006b1dc1e19f2d0d0ecdc23cf392080f0cad1870b07cf0b3ed25d14520f",
+    "statement-monetary20200429a": "347d7511b271ed33dc4c8a7b1ac945208c4a663cfa7993fc368c7c34bfbc2102",
+    "statement-monetary20200610a": "95806bdc551303cf115e776d9430325b95bef492f33ab93e6934269b3dfffaaa",
+    "statement-monetary20200729a": "eb6ce87337164147a41c2d48727485bb30ad43d275ea5ba6049b3e9e7fc30fd1",
+    "statement-monetary20200916a": "719cf118ac21ed6c16a1f24b10e9fb0d701f6ddd28e5fee9371bdf6c0bd3cb59",
+    "statement-monetary20201105a": "35990dfbe8141f4dad5ab7768f83de57475818575f7fbb90e4188aec101a13e1",
+    "statement-monetary20201216a": "995b73521d89c40ab57e96722b25d9a98a159310902d65a264293cc7b522ded0",
+    "statement-monetary20210127a": "407daea84bd5c474736b70304b969c752367aa0e57f126a6c54d17fd1434a656",
+    "statement-monetary20210317a": "e4ca17d6481141e7915f637fc5fb55cab3d94a8c8a3e2a80e675bc535a2e2d46",
+    "statement-monetary20210428a": "5eb662dc03042cf7effff12246137313744916966c9e8fd752dfa46575845915",
+    "statement-monetary20210616a": "7bd93aec05b9a7080f2a41af0cdc125581a64393cc18a6f6afb33e2113357f8d",
+    "statement-monetary20210728a": "d593171d41a3236fe845f1ef572c83ba031863fbde3d00c6a77561066663e201",
+    "statement-monetary20210922a": "6d5ccc1fda0e850313af62d7ea4876d2a5ff477340b3b2d97a7eda6c772242a8",
+    "statement-monetary20211103a": "7559852885c9390683f5dfd7b8c9cff809b8518cc79c865ab52c6c4c5ecd2881",
+    "statement-monetary20211215a": "9c0ddff6cca08fb802fdfeeb719ba3634481b024bb1cfaf0ca13c8e8b0e7ca56",
+    "statement-monetary20220126a": "94e15527df19cdc3812113d1747eeacac07e4f50ed44ec955c0adc20549749b8",
+    "statement-monetary20220316a": "6d5cc80e9f3a5c707bdd683613cedfc673911d4548f50339b08e3df20324df35",
+    "statement-monetary20220504a": "996befc8db26deb65030402f037f9dec7ec183fe68ef4b0321cfdf464cea8367",
+    "statement-monetary20220615a": "1249492715d981204d156669a53d50ebd36f25826766fecb598bc7adac9e7ab4",
+    "statement-monetary20220727a": "7571d198e424db6084c142786046c8d6c4386783a43f30c16331f04564cac1ac",
+    "statement-monetary20220921a": "4a098fffff8774c2813374bea11591c756e93e1d7d88b921ee5e0541628b2a14",
+    "statement-monetary20221102a": "811f3d76f56f3f6b3c2ea106292553756d6be482d83ad87d5fb5a6e8b3994853",
+    "statement-monetary20221214a": "d7297e913b87cf881fcc816ce3979e970d8a1d939a9f4df2864c0905d191688e",
+    "statement-monetary20230201a": "fefc364a9729b73ffdd6e69eedb82e05e430e20ebe7418c57b95ff1634975c48",
+    "statement-monetary20230322a": "9d1f35aca4e70e40a233ac9c5783b4611b983ddc3f448c4452c546d5853f8a91",
+    "statement-monetary20230503a": "9c33429dd96fcf503d63a66a78f6649efd6b5f44e495f6b618e480cf95caf46a",
+    "statement-monetary20230614a": "c620f0965896207cccccdd19f630cb749c04a324244011e639380b961708fe7c",
+    "statement-monetary20230726a": "a2febcbf6e2753c03e8ec1980c1bd939cc70beca1993fa9756b7581a40ca2885",
+    "statement-monetary20230920a": "7828faefd40fb9a6d594a899b350091578b6f144dd3ca1d7044ceed687ec07ef",
+    "statement-monetary20231101a": "344cc6ea01a5857e92eeacd1c74259ffc9c605f344574665d808a58d3dcb0716",
+    "statement-monetary20231213a": "35ffb8a3d88bab522edf66c030bbd3640ec09e7fe46f9901434af9da4df71930",
+    "statement-monetary20240131a": "9e0b3728065b1ec636d2dc7de9d8e25149b970c34bb2d209041d05fe64b226c4",
+    "statement-monetary20240320a": "0c1442f9ffb64bcc448b8522e49eddd8e192abdf99444d13d948a4505a812d8b",
+    "statement-monetary20240501a": "bfeadee035ab09c634a23631241768dd680208e1d175bd3858994ba3ec48147f",
+    "statement-monetary20240612a": "2f802aab3308befc6d132bf1870594cd5efb5c3e846d7b1c6b26891dfe38c7b3",
+    "statement-monetary20240731a": "897c42eaf58eec0964ab6c874aa5570f14eb60baa5c5b87826520b6ae0397c4d",
+    "statement-monetary20240918a": "cc410e3a8228f1196a921106e0adaeddb5757542f0ab78672c6e47c7d8bd2357",
+    "statement-monetary20241107a": "7a21ccdf60e3ffc7ed17986a00af39ff90f95d22a55e497507e732f120307096",
+    "statement-monetary20241218a": "6342ecedb3249aee7b595113530d8b3b7f4171650e76edb97af9d687b9cdcd66"
+  },
+  "replay": {
+    "alignment_status": {
+      "ALIGNED": 73,
+      "EVENT_NOT_OK": 1
+    },
+    "all_checks_pass": true,
+    "as_of_cuts": {
+      "2019-12-31T00:00:00+00:00": true,
+      "2020-03-16T00:00:00+00:00": true,
+      "2022-06-30T00:00:00+00:00": true
+    },
+    "as_of_unchanged": true,
+    "btc_candles": 64467,
+    "btc_excluded": 57,
+    "content_hash": "81fde9bc471a0ba47349123314c93587a12af8dbc073a82230c08e5b2e642930",
+    "dataset_id": "1e3e108afcab7295a1e766021b0d05d3ee99f286d93b1078a67e8890b84bd450",
+    "leaks": [],
+    "no_lookahead": true,
+    "order_independent": true,
+    "output_hash": "d2006139f3ef96022dd86a4226cce7c40cd26079403cd2b8319c7482f3a13eea",
+    "repeat_identical": true
+  },
+  "summary": {
+    "coverage_end": "2025-01-01T05:00:00+00:00",
+    "decisions": [
+      {
+        "change_bp": null,
+        "decision": "NOT_DETERMINED",
+        "event_id": "FOMC:2016-01-27:monetary20160127a",
+        "event_time": "2016-01-27T19:00:00+00:00",
+        "previous": null,
+        "range": "0.25 to 0.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2016-03-16:monetary20160316a",
+        "event_time": "2016-03-16T18:00:00+00:00",
+        "previous": "0.25 to 0.5",
+        "range": "0.25 to 0.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2016-04-27:monetary20160427a",
+        "event_time": "2016-04-27T18:00:00+00:00",
+        "previous": "0.25 to 0.5",
+        "range": "0.25 to 0.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2016-06-15:monetary20160615a",
+        "event_time": "2016-06-15T18:00:00+00:00",
+        "previous": "0.25 to 0.5",
+        "range": "0.25 to 0.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2016-07-27:monetary20160727a",
+        "event_time": "2016-07-27T18:00:00+00:00",
+        "previous": "0.25 to 0.5",
+        "range": "0.25 to 0.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2016-09-21:monetary20160921a",
+        "event_time": "2016-09-21T18:00:00+00:00",
+        "previous": "0.25 to 0.5",
+        "range": "0.25 to 0.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2016-11-02:monetary20161102a",
+        "event_time": "2016-11-02T18:00:00+00:00",
+        "previous": "0.25 to 0.5",
+        "range": "0.25 to 0.5"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2016-12-14:monetary20161214a",
+        "event_time": "2016-12-14T19:00:00+00:00",
+        "previous": "0.25 to 0.5",
+        "range": "0.5 to 0.75"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2017-02-01:monetary20170201a",
+        "event_time": "2017-02-01T19:00:00+00:00",
+        "previous": "0.5 to 0.75",
+        "range": "0.5 to 0.75"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2017-03-15:monetary20170315a",
+        "event_time": "2017-03-15T18:00:00+00:00",
+        "previous": "0.5 to 0.75",
+        "range": "0.75 to 1"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2017-05-03:monetary20170503a",
+        "event_time": "2017-05-03T18:00:00+00:00",
+        "previous": "0.75 to 1",
+        "range": "0.75 to 1"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2017-06-14:monetary20170614a",
+        "event_time": "2017-06-14T18:00:00+00:00",
+        "previous": "0.75 to 1",
+        "range": "1 to 1.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2017-07-26:monetary20170726a",
+        "event_time": "2017-07-26T18:00:00+00:00",
+        "previous": "1 to 1.25",
+        "range": "1 to 1.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2017-09-20:monetary20170920a",
+        "event_time": "2017-09-20T18:00:00+00:00",
+        "previous": "1 to 1.25",
+        "range": "1 to 1.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2017-11-01:monetary20171101a",
+        "event_time": "2017-11-01T18:00:00+00:00",
+        "previous": "1 to 1.25",
+        "range": "1 to 1.25"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2017-12-13:monetary20171213a",
+        "event_time": "2017-12-13T19:00:00+00:00",
+        "previous": "1 to 1.25",
+        "range": "1.25 to 1.5"
+      },
+      {
+        "change_bp": null,
+        "decision": "NOT_DETERMINED",
+        "event_id": "FOMC:2018-01-31:monetary20180131a",
+        "event_time": null,
+        "previous": null,
+        "range": "1.25 to 1.5"
+      },
+      {
+        "change_bp": null,
+        "decision": "NOT_DETERMINED",
+        "event_id": "FOMC:2018-03-21:monetary20180321a",
+        "event_time": "2018-03-21T18:00:00+00:00",
+        "previous": null,
+        "range": "1.5 to 1.75"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2018-05-02:monetary20180502a",
+        "event_time": "2018-05-02T18:00:00+00:00",
+        "previous": "1.5 to 1.75",
+        "range": "1.5 to 1.75"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2018-06-13:monetary20180613a",
+        "event_time": "2018-06-13T18:00:00+00:00",
+        "previous": "1.5 to 1.75",
+        "range": "1.75 to 2"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2018-08-01:monetary20180801a",
+        "event_time": "2018-08-01T18:00:00+00:00",
+        "previous": "1.75 to 2",
+        "range": "1.75 to 2"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2018-09-26:monetary20180926a",
+        "event_time": "2018-09-26T18:00:00+00:00",
+        "previous": "1.75 to 2",
+        "range": "2 to 2.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2018-11-08:monetary20181108a",
+        "event_time": "2018-11-08T19:00:00+00:00",
+        "previous": "2 to 2.25",
+        "range": "2 to 2.25"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2018-12-19:monetary20181219a",
+        "event_time": "2018-12-19T19:00:00+00:00",
+        "previous": "2 to 2.25",
+        "range": "2.25 to 2.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2019-01-30:monetary20190130a",
+        "event_time": "2019-01-30T19:00:00+00:00",
+        "previous": "2.25 to 2.5",
+        "range": "2.25 to 2.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2019-03-20:monetary20190320a",
+        "event_time": "2019-03-20T18:00:00+00:00",
+        "previous": "2.25 to 2.5",
+        "range": "2.25 to 2.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2019-05-01:monetary20190501a",
+        "event_time": "2019-05-01T18:00:00+00:00",
+        "previous": "2.25 to 2.5",
+        "range": "2.25 to 2.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2019-06-19:monetary20190619a",
+        "event_time": "2019-06-19T18:00:00+00:00",
+        "previous": "2.25 to 2.5",
+        "range": "2.25 to 2.5"
+      },
+      {
+        "change_bp": -25,
+        "decision": "LOWER",
+        "event_id": "FOMC:2019-07-31:monetary20190731a",
+        "event_time": "2019-07-31T18:00:00+00:00",
+        "previous": "2.25 to 2.5",
+        "range": "2 to 2.25"
+      },
+      {
+        "change_bp": -25,
+        "decision": "LOWER",
+        "event_id": "FOMC:2019-09-18:monetary20190918a",
+        "event_time": "2019-09-18T18:00:00+00:00",
+        "previous": "2 to 2.25",
+        "range": "1.75 to 2"
+      },
+      {
+        "change_bp": -25,
+        "decision": "LOWER",
+        "event_id": "FOMC:2019-10-30:monetary20191030a",
+        "event_time": "2019-10-30T18:00:00+00:00",
+        "previous": "1.75 to 2",
+        "range": "1.5 to 1.75"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2019-12-11:monetary20191211a",
+        "event_time": "2019-12-11T19:00:00+00:00",
+        "previous": "1.5 to 1.75",
+        "range": "1.5 to 1.75"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2020-01-29:monetary20200129a",
+        "event_time": "2020-01-29T19:00:00+00:00",
+        "previous": "1.5 to 1.75",
+        "range": "1.5 to 1.75"
+      },
+      {
+        "change_bp": -50,
+        "decision": "LOWER",
+        "event_id": "FOMC:2020-03-03:monetary20200303a",
+        "event_time": "2020-03-03T15:00:00+00:00",
+        "previous": "1.5 to 1.75",
+        "range": "1 to 1.25"
+      },
+      {
+        "change_bp": -100,
+        "decision": "LOWER",
+        "event_id": "FOMC:2020-03-15:monetary20200315a",
+        "event_time": "2020-03-15T21:00:00+00:00",
+        "previous": "1 to 1.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2020-03-23:monetary20200323a",
+        "event_time": "2020-03-23T12:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2020-04-29:monetary20200429a",
+        "event_time": "2020-04-29T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2020-06-10:monetary20200610a",
+        "event_time": "2020-06-10T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2020-07-29:monetary20200729a",
+        "event_time": "2020-07-29T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2020-09-16:monetary20200916a",
+        "event_time": "2020-09-16T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2020-11-05:monetary20201105a",
+        "event_time": "2020-11-05T19:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2020-12-16:monetary20201216a",
+        "event_time": "2020-12-16T19:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2021-01-27:monetary20210127a",
+        "event_time": "2021-01-27T19:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2021-03-17:monetary20210317a",
+        "event_time": "2021-03-17T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2021-04-28:monetary20210428a",
+        "event_time": "2021-04-28T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2021-06-16:monetary20210616a",
+        "event_time": "2021-06-16T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2021-07-28:monetary20210728a",
+        "event_time": "2021-07-28T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2021-09-22:monetary20210922a",
+        "event_time": "2021-09-22T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2021-11-03:monetary20211103a",
+        "event_time": "2021-11-03T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2021-12-15:monetary20211215a",
+        "event_time": "2021-12-15T19:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2022-01-26:monetary20220126a",
+        "event_time": "2022-01-26T19:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0 to 0.25"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2022-03-16:monetary20220316a",
+        "event_time": "2022-03-16T18:00:00+00:00",
+        "previous": "0 to 0.25",
+        "range": "0.25 to 0.5"
+      },
+      {
+        "change_bp": 50,
+        "decision": "RAISE",
+        "event_id": "FOMC:2022-05-04:monetary20220504a",
+        "event_time": "2022-05-04T18:00:00+00:00",
+        "previous": "0.25 to 0.5",
+        "range": "0.75 to 1"
+      },
+      {
+        "change_bp": 75,
+        "decision": "RAISE",
+        "event_id": "FOMC:2022-06-15:monetary20220615a",
+        "event_time": "2022-06-15T18:00:00+00:00",
+        "previous": "0.75 to 1",
+        "range": "1.5 to 1.75"
+      },
+      {
+        "change_bp": 75,
+        "decision": "RAISE",
+        "event_id": "FOMC:2022-07-27:monetary20220727a",
+        "event_time": "2022-07-27T18:00:00+00:00",
+        "previous": "1.5 to 1.75",
+        "range": "2.25 to 2.5"
+      },
+      {
+        "change_bp": 75,
+        "decision": "RAISE",
+        "event_id": "FOMC:2022-09-21:monetary20220921a",
+        "event_time": "2022-09-21T18:00:00+00:00",
+        "previous": "2.25 to 2.5",
+        "range": "3 to 3.25"
+      },
+      {
+        "change_bp": 75,
+        "decision": "RAISE",
+        "event_id": "FOMC:2022-11-02:monetary20221102a",
+        "event_time": "2022-11-02T18:00:00+00:00",
+        "previous": "3 to 3.25",
+        "range": "3.75 to 4"
+      },
+      {
+        "change_bp": 50,
+        "decision": "RAISE",
+        "event_id": "FOMC:2022-12-14:monetary20221214a",
+        "event_time": "2022-12-14T19:00:00+00:00",
+        "previous": "3.75 to 4",
+        "range": "4.25 to 4.5"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2023-02-01:monetary20230201a",
+        "event_time": "2023-02-01T19:00:00+00:00",
+        "previous": "4.25 to 4.5",
+        "range": "4.5 to 4.75"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2023-03-22:monetary20230322a",
+        "event_time": "2023-03-22T18:00:00+00:00",
+        "previous": "4.5 to 4.75",
+        "range": "4.75 to 5"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2023-05-03:monetary20230503a",
+        "event_time": "2023-05-03T18:00:00+00:00",
+        "previous": "4.75 to 5",
+        "range": "5 to 5.25"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2023-06-14:monetary20230614a",
+        "event_time": "2023-06-14T18:00:00+00:00",
+        "previous": "5 to 5.25",
+        "range": "5 to 5.25"
+      },
+      {
+        "change_bp": 25,
+        "decision": "RAISE",
+        "event_id": "FOMC:2023-07-26:monetary20230726a",
+        "event_time": "2023-07-26T18:00:00+00:00",
+        "previous": "5 to 5.25",
+        "range": "5.25 to 5.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2023-09-20:monetary20230920a",
+        "event_time": "2023-09-20T18:00:00+00:00",
+        "previous": "5.25 to 5.5",
+        "range": "5.25 to 5.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2023-11-01:monetary20231101a",
+        "event_time": "2023-11-01T18:00:00+00:00",
+        "previous": "5.25 to 5.5",
+        "range": "5.25 to 5.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2023-12-13:monetary20231213a",
+        "event_time": "2023-12-13T19:00:00+00:00",
+        "previous": "5.25 to 5.5",
+        "range": "5.25 to 5.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2024-01-31:monetary20240131a",
+        "event_time": "2024-01-31T19:00:00+00:00",
+        "previous": "5.25 to 5.5",
+        "range": "5.25 to 5.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2024-03-20:monetary20240320a",
+        "event_time": "2024-03-20T18:00:00+00:00",
+        "previous": "5.25 to 5.5",
+        "range": "5.25 to 5.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2024-05-01:monetary20240501a",
+        "event_time": "2024-05-01T18:00:00+00:00",
+        "previous": "5.25 to 5.5",
+        "range": "5.25 to 5.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2024-06-12:monetary20240612a",
+        "event_time": "2024-06-12T18:00:00+00:00",
+        "previous": "5.25 to 5.5",
+        "range": "5.25 to 5.5"
+      },
+      {
+        "change_bp": 0,
+        "decision": "MAINTAIN",
+        "event_id": "FOMC:2024-07-31:monetary20240731a",
+        "event_time": "2024-07-31T18:00:00+00:00",
+        "previous": "5.25 to 5.5",
+        "range": "5.25 to 5.5"
+      },
+      {
+        "change_bp": -50,
+        "decision": "LOWER",
+        "event_id": "FOMC:2024-09-18:monetary20240918a",
+        "event_time": "2024-09-18T18:00:00+00:00",
+        "previous": "5.25 to 5.5",
+        "range": "4.75 to 5"
+      },
+      {
+        "change_bp": -25,
+        "decision": "LOWER",
+        "event_id": "FOMC:2024-11-07:monetary20241107a",
+        "event_time": "2024-11-07T19:00:00+00:00",
+        "previous": "4.75 to 5",
+        "range": "4.5 to 4.75"
+      },
+      {
+        "change_bp": -25,
+        "decision": "LOWER",
+        "event_id": "FOMC:2024-12-18:monetary20241218a",
+        "event_time": "2024-12-18T19:00:00+00:00",
+        "previous": "4.5 to 4.75",
+        "range": "4.25 to 4.5"
+      }
+    ],
+    "issues": [
+      {
+        "available_at": "2018-02-01T05:00:00+00:00",
+        "code": "DOCUMENT_UPDATED",
+        "detail": "Last Update 2018-02-01 differs from release day 2018-01-31",
+        "record_id": "FOMC:2018-01-31:monetary20180131a",
+        "record_type": "PolicyStatementEvent",
+        "severity": "WARNING"
+      }
+    ],
+    "not_2pm_releases": [
+      "FOMC:2020-03-03:monetary20200303a",
+      "FOMC:2020-03-15:monetary20200315a",
+      "FOMC:2020-03-23:monetary20200323a"
+    ],
+    "not_ok": [
+      {
+        "detail": "Last Update 2018-02-01 differs from release day 2018-01-31",
+        "event_id": "FOMC:2018-01-31:monetary20180131a",
+        "status": "DOCUMENT_UPDATED"
+      }
+    ],
+    "payload_count": 83,
+    "redirected": [],
+    "release_times": {
+      "10:00 a.m. EST": 1,
+      "2:00 p.m. EDT": 44,
+      "2:00 p.m. EST": 19,
+      "5:00 p.m. EDT": 1,
+      "8:00 a.m. EDT": 1
+    },
+    "state": "READY",
+    "statements_per_year": {
+      "2016": 8,
+      "2017": 8,
+      "2018": 8,
+      "2019": 8,
+      "2020": 10,
+      "2021": 8,
+      "2022": 8,
+      "2023": 8,
+      "2024": 8
+    },
+    "statements_total": 74,
+    "status_counts": {
+      "DOCUMENT_UPDATED": 1,
+      "OK": 65
+    },
+    "weekend_releases": [
+      "FOMC:2020-03-15:monetary20200315a"
+    ],
+    "years": [
+      2016,
+      2017,
+      2018,
+      2019,
+      2020,
+      2021,
+      2022,
+      2023,
+      2024
+    ]
+  },
+  "window": {
+    "first_year": 2016,
+    "last_year": 2024,
+    "name": "fomc-research-2017-2024"
+  }
+}

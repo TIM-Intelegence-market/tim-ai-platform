@@ -104,4 +104,4 @@ def test_archive_page_lists_the_campaign_pages(server: int) -> None:
 
 
 def test_public_read_only_view_keeps_its_own_menu() -> None:
-    assert PUBLIC_NAV == (("/chart", "Chart"), ("/journal", "Paper journal"))
+    assert PUBLIC_NAV == (("/chart", "Chart"), ("/journal", "Paper journal"), ("/live", "Live account"))

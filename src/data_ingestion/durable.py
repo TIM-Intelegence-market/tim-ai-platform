@@ -579,15 +579,22 @@ class DurableIngestionStore:
         return CursorState.from_row(row) if row else None
 
     async def processed_trades_since(self, symbol: str, since: datetime) -> list[Trade]:
-        """Replay only legacy or acknowledged raw work; pending work stays pending."""
+        """Replay only legacy or acknowledged raw work; pending work stays pending.
+
+        NOT EXISTS on unfinished work only, so PostgreSQL probes the small partial
+        index ingestion_outbox_worker_order_active_idx instead of joining every
+        COMPLETED outbox row (a hash join over the whole outbox spilled ~12 GB to
+        pgsql_tmp per start on tim-core-01).
+        """
         async with self.database.acquire() as connection:
             rows = await connection.fetch(
                 """SELECT raw.symbol,raw.aggregate_trade_id,raw.trade_time,raw.price,raw.quantity,raw.buyer_is_maker
                    FROM agg_trades raw
-                   LEFT JOIN ingestion_outbox work ON work.symbol=raw.symbol
-                       AND work.aggregate_trade_id=raw.aggregate_trade_id AND work.worker_name='CANDLE_V1'
                    WHERE raw.symbol=$1 AND raw.trade_time>=$2
-                   AND (work.outbox_id IS NULL OR work.status='COMPLETED')
+                   AND NOT EXISTS (
+                       SELECT 1 FROM ingestion_outbox work
+                       WHERE work.worker_name='CANDLE_V1' AND work.aggregate_trade_id=raw.aggregate_trade_id
+                         AND work.symbol=raw.symbol AND work.status<>'COMPLETED')
                    ORDER BY raw.trade_time,raw.aggregate_trade_id""",
                 symbol,
                 since,

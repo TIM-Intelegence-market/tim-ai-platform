@@ -2,12 +2,13 @@ from datetime import datetime,timedelta,timezone
 
 import pytest
 
+import main
 from main import TIMApplication
 from src.dashboard.app import DashboardState
 from src.memory.market_memory import MarketMemory
 from src.observation.engine import ObservationEngine
 from src.research.case_engine import ResearchCase,ResearchCaseEngine
-from src.data_ingestion.aggregator import CandleAggregator
+from src.data_ingestion.aggregator import CandleAggregator,startup_replay_start
 from src.models.market_data import Candle,Trade
 
 
@@ -37,9 +38,17 @@ class RecoveryRepository(PersistedRepository):
     async def upsert_candle(self,candle):self.recovered.append(candle)
 
 
+def frozen_clock(monkeypatch,value):
+    class Frozen(datetime):
+        @classmethod
+        def now(cls,tz=None):return value if tz is not None else value.replace(tzinfo=None)
+    monkeypatch.setattr(main,"datetime",Frozen)
+
+
 @pytest.mark.asyncio
-async def test_restart_replays_from_persisted_boundary_and_flushes_raw_bucket():
+async def test_restart_replays_from_persisted_boundary_and_flushes_raw_bucket(monkeypatch):
     at=datetime(2026,7,20,12,tzinfo=timezone.utc)
+    frozen_clock(monkeypatch,at+timedelta(minutes=3))
     case=ResearchCase("case_persisted","BTCUSDT","1m",at,at,status="CLOSED",outcome="documented")
     persisted=Candle("BTCUSDT","1m",at,at+timedelta(minutes=1),100,100,100,100,1,1)
     trades=[
@@ -66,3 +75,30 @@ async def test_later_restore_keeps_a_running_stream_running():
     app.dashboard_state.system_health["stream"]="running"
     await app.restore_persisted_state()
     assert app.dashboard_state.system_health["stream"]=="running"
+
+
+@pytest.mark.asyncio
+async def test_restart_replay_never_reaches_behind_the_current_largest_bucket(monkeypatch):
+    # tim-core-01, 2026-11-01: a 1h candle days old pulled the startup replay back
+    # over 81 million trades on every start. The replay only rebuilds open buckets.
+    now=datetime(2026,11,1,14,37,12,tzinfo=timezone.utc)
+    frozen_clock(monkeypatch,now)
+    stale=datetime(2026,10,25,9,tzinfo=timezone.utc)
+    fresh=datetime(2026,11,1,14,35,tzinfo=timezone.utc)
+    case=ResearchCase("case_persisted","BTCUSDT","1m",now,now,status="CLOSED")
+    candles={"1m":[Candle("BTCUSDT","1m",fresh,fresh+timedelta(minutes=1),1,1,1,1,1,1)],
+             "1h":[Candle("BTCUSDT","1h",stale,stale+timedelta(hours=1),1,1,1,1,1,1)]}
+    repo=RecoveryRepository(case,candles,[])
+    app=TIMApplication.__new__(TIMApplication);app.repository=repo;app.aggregator=CandleAggregator(("1m","1h"));app.history={"1m":[],"1h":[]};app.memory=MarketMemory();app.cases=ResearchCaseEngine();app.observations=ObservationEngine();app.dashboard_state=DashboardState()
+    await app.restore_persisted_state()
+    assert repo.recovery_since==datetime(2026,11,1,14,tzinfo=timezone.utc)
+
+
+def test_startup_replay_start_keeps_a_recent_boundary_and_bounds_a_stale_one():
+    now=datetime(2026,11,1,14,37,12,tzinfo=timezone.utc)
+    hour=datetime(2026,11,1,14,tzinfo=timezone.utc)
+    recent=datetime(2026,11,1,14,15,tzinfo=timezone.utc)
+    assert startup_replay_start([recent,datetime(2026,11,1,14,30,tzinfo=timezone.utc)],("1m","15m","1h"),now)==recent
+    assert startup_replay_start([datetime(2026,10,1,tzinfo=timezone.utc)],("1m","15m","1h"),now)==hour
+    assert startup_replay_start([],("1m","15m","1h"),now)==hour
+    assert startup_replay_start([datetime(2026,10,1,tzinfo=timezone.utc)],("1m","5m"),now)==datetime(2026,11,1,14,35,tzinfo=timezone.utc)

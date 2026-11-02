@@ -1,0 +1,141 @@
+{
+  "study": "S13",
+  "commit": "5998bcfed9811bf9fc21ee9387a94569c1ff9869",
+  "outcome_blind": true,
+  "created": "2026-11-01T18:31:40+00:00",
+  "dataset_hash": "85765c4abdb6b5a845195dd7162b2ab8b9b540973f94cfc25b9dce3ce97458b5",
+  "gate": {
+    "train": 500,
+    "validation": 250,
+    "days": {
+      "train": 160,
+      "validation": 183
+    }
+  },
+  "symbols": {
+    "BTCUSDT": {
+      "first_month": "2020-01",
+      "bars_1m": 2630880
+    },
+    "ETHUSDT": {
+      "first_month": "2020-01",
+      "bars_1m": 2630880
+    },
+    "SOLUSDT": {
+      "first_month": "2020-09",
+      "bars_1m": 2253180
+    }
+  },
+  "variants": {
+    "S13-NY": {
+      "params": {
+        "interval": "1m",
+        "anchor": "ny",
+        "lookback_sessions": 14,
+        "band_multiplier": 1.0,
+        "check_minutes": 30,
+        "catastrophe_sigma": 3.0
+      },
+      "funnel": {
+        "BTCUSDT": {
+          "sessions": 1258,
+          "warmup": 14,
+          "no_band": 0,
+          "no_breakout": 529,
+          "signals": 715
+        },
+        "ETHUSDT": {
+          "sessions": 1258,
+          "warmup": 14,
+          "no_band": 0,
+          "no_breakout": 559,
+          "signals": 685
+        },
+        "SOLUSDT": {
+          "sessions": 1090,
+          "warmup": 14,
+          "no_band": 38,
+          "no_breakout": 451,
+          "signals": 587
+        }
+      },
+      "train": {
+        "signals": 1119,
+        "signal_days": 551,
+        "btc": 425,
+        "long": 558,
+        "short": 561
+      },
+      "validation": {
+        "signals": 868,
+        "signal_days": 395,
+        "btc": 290,
+        "long": 425,
+        "short": 443
+      },
+      "by_year": {
+        "2020": 300,
+        "2021": 438,
+        "2022": 381,
+        "2023": 429,
+        "2024": 439
+      },
+      "passes_gate": true
+    },
+    "S13-UTC": {
+      "params": {
+        "interval": "1m",
+        "anchor": "utc",
+        "lookback_sessions": 14,
+        "band_multiplier": 1.0,
+        "check_minutes": 30,
+        "catastrophe_sigma": 3.0
+      },
+      "funnel": {
+        "BTCUSDT": {
+          "sessions": 1827,
+          "warmup": 14,
+          "no_band": 0,
+          "no_breakout": 159,
+          "signals": 1654
+        },
+        "ETHUSDT": {
+          "sessions": 1827,
+          "warmup": 14,
+          "no_band": 0,
+          "no_breakout": 144,
+          "signals": 1669
+        },
+        "SOLUSDT": {
+          "sessions": 1583,
+          "warmup": 14,
+          "no_band": 47,
+          "no_breakout": 108,
+          "signals": 1414
+        }
+      },
+      "train": {
+        "signals": 2712,
+        "signal_days": 1054,
+        "btc": 988,
+        "long": 1344,
+        "short": 1368
+      },
+      "validation": {
+        "signals": 2025,
+        "signal_days": 720,
+        "btc": 666,
+        "long": 1047,
+        "short": 978
+      },
+      "by_year": {
+        "2020": 739,
+        "2021": 1026,
+        "2022": 947,
+        "2023": 1002,
+        "2024": 1023
+      },
+      "passes_gate": true
+    }
+  }
+}

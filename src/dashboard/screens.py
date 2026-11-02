@@ -400,7 +400,47 @@ def _workshop_card(root: Path) -> str:
             f"<div class='card'><h2>Lehren aus den Trades</h2>{lessons}</div>"
             f"<div class='card'><h2>Schattenbetrieb</h2>{shadows}</div>"
             f"<div class='card'><h2>Regel-Tests <span>Erkundung, kein Beleg</span></h2>{rule_tests}</div></div></div>"
-            f"<div class='card'><h2>Selbst-Verbesserung <span>TIM lernt aus seinen Trades</span></h2>{learning}</div>")
+            f"<div class='card'><h2>Selbst-Verbesserung <span>TIM lernt aus seinen Trades</span></h2>{learning}</div>"
+            f"{_forward_card(data.get('forward'))}")
+
+
+FORWARD_REASONS = {"target": "Ziel", "target_gap": "Ziel (Lücke)", "stop": "Stop", "stop_gap": "Stop (Lücke)",
+                   "time": "Zeitstopp", "gap": "Datenlücke", "rule": "Regel", "stop_before_entry": "Stop vor Einstieg"}
+
+
+def _forward_card(data: dict[str, Any] | None) -> str:
+    """S7b forward journal (paper only): frozen candidates on live 4h bars, read from data/research/forward/S7b."""
+    intro = ("<p class='mut sm'>Die zwei eingefrorenen S7b-Kandidatinnen (4h-Ausbruch in Trendrichtung, höchstens eine Position "
+             "über BTC/ETH/SOL) laufen ab dem Start unverändert auf neuen Live-Kerzen mit. Nur Papier, zählt nie im Netto-R, "
+             "ändert kein Register und nicht den Holdout. Eine Aussage gibt es erst ab etwa 100 Trades; einzelne Wochen sind Zufall.</p>")
+    if not data:
+        return f"<div class='card'><h2>S7b-Vorwärtstest <span>Papier</span></h2>{intro}<p class='mut'>Noch kein Lauf.</p></div>"
+    step = (data.get("last_step") or {}).get("last_result") or {}
+    head = (f"<p class='mut sm'>Start {_e(local_time(data.get('start'), with_date=True))} · zuletzt geprüft "
+            f"{_e(local_time(data.get('checked_at'), with_date=True))}" + (" · <span class='dn'>letzter Lauf mit Fehler</span>" if step.get("ok") is False else "")
+            + "</p>")
+    rows = []
+    for vid, v in (data.get("variants") or {}).items():
+        mean = "—" if v.get("mean_r") is None else f"{_signed(v['mean_r'])} R"
+        drawdown = f"{float(v.get('max_drawdown_r') or 0.0):.2f}".replace(".", ",")
+        line = (f"<div class='row'><span><b>{_e(vid)}</b> Ziel {_e(v.get('target_r'))} R<br><span class='mut sm'>"
+                f"{v.get('trades', 0)} von {v.get('min_trades', 100)} Trades · zusammen {_e(_signed(v.get('net_r') or 0.0))} R · je Trade {_e(mean)} "
+                f"(Studie {_e(_signed(v.get('reference_e_r') or 0.0))} R, etwa {_e(v.get('reference_trades_per_month'))} Trades im Monat) · "
+                f"größter Rückgang {_e(drawdown)} R</span>")
+        for o in v.get("open") or []:
+            line += (f"<br><span class='sm'>Offen: {_e(o['symbol'])} {_e(o['side'])} ab {_e(o['entry'])}, Stop {_e(round(o['stop'], 4))}, "
+                     f"jetzt {_e(_signed(o['unrealized_r']))} R</span>")
+        for p in v.get("pending") or []:
+            line += f"<br><span class='sm'>Signal: {_e(p['symbol'])} {_e(p['side'])}, Einstieg zur Eröffnung {_e(local_time(p['entry_at'], with_date=True))}</span>"
+        for t in v.get("recent") or []:
+            line += (f"<br><span class='mut sm'>{_e(t['symbol'])} {_e(t['side'])} · {_e(FORWARD_REASONS.get(t['reason'], t['reason']))} "
+                     f"{_e(_signed(t['r']))} R · {_e(local_time(t['exit'], with_date=True))}</span>")
+        if v.get("mismatches"):
+            line += f"<br><span class='warnc sm'>{v['mismatches']} Abweichung(en) zwischen Journal und Nachrechnung, bitte ansehen</span>"
+        if v.get("late_signals"):
+            line += f"<br><span class='mut sm'>{v['late_signals']} Signal(e) erst nach über 4 h eingetragen (Mac aus?)</span>"
+        rows.append(line + "</span></div>")
+    return f"<div class='card'><h2>S7b-Vorwärtstest <span>Papier, 4h</span></h2>{intro}{head}{''.join(rows)}</div>"
 
 
 def forschung_body(state: Any, path: Path = LOGBOOK, research_root: Path = Path(".")) -> str:

@@ -82,3 +82,21 @@ class CandleAggregator:
 
     def snapshots(self) -> list[Candle]:
         return [item.freeze(closed=False) for item in self._active.values()]
+
+
+def startup_replay_start(latest_open_times: Iterable[datetime], timeframes: Iterable[str], now: datetime) -> datetime:
+    """Earliest trade time the startup replay has to read.
+
+    The replay only rebuilds the in-memory buckets that are still open. Closed
+    candles are already written per trade by the durable outbox worker, so the
+    replay never needs to go back further than the start of the current bucket
+    of the largest timeframe. Without this bound one stale timeframe (for
+    example 1h after a long outage) pulled the replay back days and made every
+    start scan tens of millions of trades.
+    """
+    largest = max(timeframes, key=timeframe_seconds)
+    floor = bucket_start(now, largest)
+    latest = list(latest_open_times)
+    if not latest:
+        return floor
+    return max(min(latest), floor)

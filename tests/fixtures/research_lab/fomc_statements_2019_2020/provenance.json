@@ -1,0 +1,116 @@
+{
+  "bundle_id": "d3138dd471e36b5657ad993804935d0f13b2d2ee2e825c869ad01187d3f16b88",
+  "description": "Real federalreserve.gov pages (FOMC statements and yearly lists), unmodified (see src/research_lab/external/fomc_live.py)",
+  "payload_sha256": {
+    "list-2019": "ccb17ec467abb124c75e317893e3fa9b402ab829567439f1ac1e50ed14ff2e20",
+    "list-2020": "8ffb211dbc9c6e9ad37ddddf4c9c5c747913d708b8f960f9945ba6948c0f2673",
+    "statement-monetary20190130a": "9259e7b2593ad2f4560f452a9f0f9abb4965be63077fc5039497753060b04333",
+    "statement-monetary20190320a": "afe3a8411e41bdde7ce94388a6aa52cc5f35c076edd6e410a670a20bb13d0f3b",
+    "statement-monetary20190501a": "55e905b451c2389da195015946f32ddabe60bfabebc3d0ed6823c66c006e4ed3",
+    "statement-monetary20190619a": "4fbbb39ba7a3298c335364493abcd6dd578ca17be1a3ed98bcceb65dce71b968",
+    "statement-monetary20190731a": "9a0cddb9f1a1503b52275b015974812b10bd75c5d21698b533f95bee2b554cb0",
+    "statement-monetary20190918a": "88e373ba59797d48322e3a53740d3b17fa8256331e58694fee44608aa5d9d1cf",
+    "statement-monetary20191030a": "57d3d0d264aceef2d3b185368bddb406a0a86cf214a8c101b150a4ea8fe7c978",
+    "statement-monetary20191211a": "ab4c9799113001d7f18e9dea8e2e6f445bf6a9ed78844ec36edd457ef4dca3e8",
+    "statement-monetary20200129a": "8909a8386f15f4b040b8a1e72b0f03ec0a1d2674889f9a18f329d5cca363a8fc",
+    "statement-monetary20200303a": "027fe9afdc7b6119c3cbbef7bf585ff0bfa4b2c892cfb226c4c1173220cee061",
+    "statement-monetary20200315a": "4bbc3d9b689ddb0a956161780f105f646485f1d71663e14a1b0ef7332d4c942d",
+    "statement-monetary20200323a": "463bb59cf1d65359dfbd19a5ab3f4ff38436a52e4fcca57e6d7e4ae1d3899e9e",
+    "statement-monetary20200429a": "4beb4d7d1ec80adc635ca3d677759a65d49e91ca03e17ab065b815f471a45d19",
+    "statement-monetary20200610a": "666b7ffc7997f5297fb7c209e4c1e0d769b1fcd44c64f9cfc3acf3bb04c1df40",
+    "statement-monetary20200729a": "73b929373193a183a65ce420704cadfc33e3351626b5df605e175577d513ac42",
+    "statement-monetary20200916a": "1c7bbe5366b0c65405179f38722518a72ecc73071acb1e4140d44550d36699bd",
+    "statement-monetary20201105a": "ffe5a0a57d7b5cef428ef3ae952f46f9cf785259d695c51356cc6c1262370d67",
+    "statement-monetary20201216a": "77d95e76303b639785f27c0897aa162d283244394af7c0321a63e8087e5b04a6"
+  },
+  "requests": {
+    "list-2019": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/2019-press.htm"
+    },
+    "list-2020": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/2020-press-fomc.htm"
+    },
+    "statement-monetary20190130a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190130a.htm"
+    },
+    "statement-monetary20190320a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190320a.htm"
+    },
+    "statement-monetary20190501a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190501a.htm"
+    },
+    "statement-monetary20190619a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190619a.htm"
+    },
+    "statement-monetary20190731a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190731a.htm"
+    },
+    "statement-monetary20190918a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190918a.htm"
+    },
+    "statement-monetary20191030a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20191030a.htm"
+    },
+    "statement-monetary20191211a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20191211a.htm"
+    },
+    "statement-monetary20200129a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200129a.htm"
+    },
+    "statement-monetary20200303a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200303a.htm"
+    },
+    "statement-monetary20200315a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200315a.htm"
+    },
+    "statement-monetary20200323a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200323a.htm"
+    },
+    "statement-monetary20200429a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200429a.htm"
+    },
+    "statement-monetary20200610a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200610a.htm"
+    },
+    "statement-monetary20200729a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200729a.htm"
+    },
+    "statement-monetary20200916a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200916a.htm"
+    },
+    "statement-monetary20201105a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20201105a.htm"
+    },
+    "statement-monetary20201216a": {
+      "status": "200",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20201216a.htm"
+    }
+  },
+  "retrieved_at": "2026-11-01T14:44:12.102815+00:00",
+  "source": "FEDERAL_RESERVE",
+  "source_identifier": "FOMC_STATEMENTS",
+  "window": {
+    "first_year": 2019,
+    "last_year": 2020,
+    "name": "fomc-fixture-2019-2020"
+  }
+}

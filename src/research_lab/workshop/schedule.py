@@ -15,6 +15,13 @@ stays clean. What should go into ``docs/`` comes by pull request.
 
 While a CI job runs (``Runner.Worker``) or ``data/research/schedule/PAUSE`` exists, nothing runs.
 A task that has been waiting for the CI job for ``MAX_DEFER_MINUTES`` runs anyway (niced).
+
+Forward journal (Uzi 2026-11-01, "go s7b-Journal"): when ``forward`` is set (the LaunchAgent script sets
+it), every wake-up also runs one step of the S7b forward observation (src/research_lab/forward/s7b.py):
+a few public REST calls, then the study engine on the cached 4h bars. It is light, so it does not wait
+for a CI job; PAUSE holds it like everything else. Its result lands in the state and the summary under ``forward``
+(not under ``ran``, so a failing network call does not fail the wake-up); the history gets a line only when
+the step wrote new events or failed.
 """
 from __future__ import annotations
 
@@ -162,6 +169,7 @@ class Workshop:
     ask: Ask | None = None
     ps: Callable[[], str] = field(default=lambda: subprocess.run(["ps", "-axo", "command"], capture_output=True,
                                                                   text=True, check=False).stdout)
+    forward: Callable[[Path], Mapping[str, Any]] | None = None
 
     @property
     def research(self) -> Path:
@@ -332,9 +340,20 @@ class Workshop:
             result["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
             state[task] = {"last_run": _iso(now), "last_result": result}
             summary["ran"][task] = result
+        if self.forward is not None and not only and not dry_run:
+            started = datetime.now(timezone.utc)
+            try:
+                status = self.forward(self.root)
+                result = {"ok": True, "new_events": status.get("new_events", 0)}
+            except Exception as exc:  # network or data problem: shown in the status, retried next wake-up
+                result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:500]}
+            result["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
+            state["forward"] = {"last_run": _iso(now), "last_result": result}
+            summary["forward"] = result  # in the history only when something happened (see below)
         if not dry_run:
             state["schema"], state["checked_at"] = SCHEMA, _iso(now)
             self.write_state(state)
-            if summary["ran"]:
+            forward = summary.get("forward") or {}
+            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False:
                 self.log(summary)
         return summary
