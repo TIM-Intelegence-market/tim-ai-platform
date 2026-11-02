@@ -1,7 +1,7 @@
 {
   "schema": "tim_research_logbook/1",
   "purpose": "Ein Eintrag je Studie: was geprüft wurde, was herauskam und warum sie beendet ist. Damit keine tote Idee unbemerkt zweimal getestet wird. Quelle der Wahrheit bleiben Präregistrierung und Bericht; dieses Logbuch fasst sie nur zusammen.",
-  "updated": "2026-11-01",
+  "updated": "2026-11-02",
   "entries": [
     {
       "id": "S13",
@@ -11,6 +11,15 @@
       "result": "Nicht bestanden: beide Varianten im Training negativ nach Kosten (S13-NY −0,044 R bei 1 732 Trades, S13-UTC −0,042 R bei 9 554). S13-NY in der Validierung +0,030 R, aber Drawdown 29 % über der Grenze; Walk-Forward −0,021 R.",
       "lesson": "Das SPY-Ergebnis der Studie überträgt sich nicht auf BTC/ETH/SOL 1m. Mit doppelten Kosten sind alle Abschnitte negativ. Eigene Familie, Holdout nie geladen.",
       "doc": "docs/research_lab/reports/s13_run_2026-11-01T1844Z.md"
+    },
+    {
+      "id": "S14",
+      "title": "Paar-Handel (Statistical Arbitrage) ETH/BTC, SOL/BTC, SOL/ETH, 1h, Fenster 7 und 30 Tage",
+      "started": "2026-11-01",
+      "status": "failed",
+      "result": "Nicht bestanden: beide ausgewerteten Varianten verlieren in Training und Validierung nach Kosten (S14-W168 −0,241 R bei 750 Trades und −0,357 R bei 620; S14-W720 −0,189 R bei 232 und −0,209 R bei 195). Die Varianten mit Kointegrationsfilter scheiterten schon am Zähl-Gate; Walk-Forward −0,182 R.",
+      "lesson": "Der Abstand zwischen BTC, ETH und SOL läuft nach 2 Standardabweichungen eher weiter als zurück: 57 bis 60 % der W168-Trades enden am Stop bei 4σ. Jedes Paar und jedes Jahr ist negativ. Eigene Familie, Holdout nie geladen.",
+      "doc": "docs/research_lab/reports/s14_run_2026-11-01T2308Z.md"
     },
     {
       "id": "S8",
