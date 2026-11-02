@@ -98,8 +98,24 @@ Im Datensatz fehlt keine Periode (BTC und ETH je 1827 Tage, SOL 1564 Tage, alle 
 2. ~~Zähllauf 5.1 auf dem Mac~~ erledigt (7.1).
 3. ~~Einfrieren~~ erledigt (1.0, Commit `3bf6f80`). Danach ein Lauf mit Fehlermaß auf dem Mac (`python scripts/research_lab_s15.py run`).
 
+## 9. Ergebnis (02.11.2026)
+
+Auswertung auf dem Mac, Commit `a51d3d7` (Code wie eingefroren `3bf6f80`), Bericht `../reports/s15_run_2026-11-02T1815Z.md` (dazu `.json`), Laufzeit 20 s. Holdout nicht geladen, keine Periode ausgelassen.
+
+| Variante | Training Ø d (p) | Validierung Ø d (p) | QLIKE Validierung 14 T / EWMA / GARCH | Urteil |
+|---|---:|---:|---|---|
+| S15-4h | 0,180 (< 0,0001) | 0,236 (0,026) | 0,758 / 0,595 / 0,522 | **bestanden** |
+| S15-1d | 0,104 (0,003) | 0,444 (0,108) | 0,846 / 0,480 / 0,402 | nicht bestanden (Validierung nicht signifikant) |
+
+- **S15-4h besteht alle vier Kriterien:** GARCH ist in der Validierung bei allen drei Coins und in beiden Jahren besser als die 14-Tage-Varianz. Nach der Lesart 5.2 liegt GARCH auch vor EWMA (Ø d 0,074, p 0,014). Empfehlung für 4h: GARCH.
+- **S15-1d** zeigt dieselbe Richtung mit großem Abstand, aber zu viel Streuung (t 1,24, 731 Tage). Das Kriterium p < 0,05 ist nicht erfüllt, das Urteil bleibt „nicht bestanden“.
+- Auf beiden Zeitebenen ist die 14-Tage-Varianz das schlechteste der drei Modelle. EWMA holt den größten Teil des Abstands auf (beschreibend).
+- **Grenzfall:** Bei BTC (4h und 1d) und ETH (1d) liegt die geschätzte Persistenz α + β in jeder Schätzung an der Obergrenze 0,9999. Das Modell ist dort praktisch ein integriertes GARCH, nahe an EWMA mit kleinem Grundwert ω, und hat keine feste Langfrist-Varianz. Für die Ein-Schritt-Prognose ist das zulässig, eine Prognose über viele Perioden voraus wäre damit aber nicht verlässlich. Bei SOL und ETH-4h liegt die Persistenz bei 0,96 bis 0,998.
+- S15 ändert nichts an TIM. Ob GARCH-4h in 1 R, Stops oder Positionsgrößen kommt, ist ein eigener Schritt mit eigener Freigabe, zuerst im Papier (Abschnitt 6).
+
 ## Änderungsprotokoll
 
 - 0.1 (02.11.2026): Entwurf auf Uzis „go“. Regeln als Code, Zähl- und Auswerteskript, 10 Tests auf synthetischen Daten. Nichts registriert, keine Marktdaten ausgewertet.
 - 0.2 (02.11.2026): Zähllauf eingetragen (7.1), beide Varianten bestehen. Nach unabhängiger Prüfung präzisiert, alles vor jedem Ergebnis: Einlaufzeit und B1 zählen vorhandene Perioden (4.3, Tabelle 4); Kriterium 4 verlangt beide Jahre und nutzt das gepoolte d; ausgelassene Perioden werden gezählt; das Gate wird im Auswerteskript erzwungen; MSE auch gegen EWMA. Weiter kein Fehlermaß gesehen.
 - 1.0 (02.11.2026): Einordnung Prognosestudie ohne Registerplatz (Uzi), Regeln und Code mit Commit `3bf6f80` eingefroren. Kein Fehlermaß gesehen.
+- 1.0, Ergebnis (02.11.2026): Abschnitt 9 ergänzt, keine Regeländerung. S15-4h BESTANDEN, S15-1d NICHT BESTANDEN.
