@@ -4,8 +4,9 @@ Two lower bands next to CVD and open interest:
 
 - ``funding``: Binance USD-M funding rate per settlement (``/fapi/v1/fundingRate``, about the
   last 500 settlements) plus the running rate of the next settlement (``/fapi/v1/premiumIndex``).
-  BTC, ETH and SOL settle every 8 h, PAXG every 4 h; the chart shows the rate per settlement and
-  ``rate_8h`` (scaled to 8 h) so symbols compare. Binance's base rate is 0.01 % per 8 h.
+  BTC, ETH and SOL settle every 8 h, PAXG every 4 h (XMR: interval read from the data); the chart
+  shows the rate per settlement and ``rate_8h`` (scaled to 8 h) so symbols compare. Binance's base
+  rate is 0.01 % per 8 h.
 - ``premium``: Coinbase premium per hour, Coinbase ``<COIN>-USD`` close against Binance spot
   ``<COIN>USDT`` close converted to USD with Coinbase's ``USDT-USD`` close of the same hour.
   Without that correction the line would partly show the USDT price instead of US demand.
@@ -44,6 +45,10 @@ FUNDING_SOURCE = "Binance USD-M Funding ({symbol}, öffentlich)"
 PREMIUM_SOURCE = "Coinbase {product} vs. Binance {symbol} × Coinbase USDT-USD (1h, öffentlich)"
 
 Fetch = Callable[[str], Any]
+
+
+class NotOffered(ValueError):
+    """The market has no such series (e.g. no Coinbase product for XMR): not a failure, nothing to retry."""
 
 
 def fetch_json(url: str) -> Any:
@@ -136,7 +141,7 @@ def coinbase_premium(fetch: Fetch | None = None, symbol: str = "BTCUSDT", now: d
     """Hourly Coinbase premium in % and in USD, USDT converted with Coinbase's USDT-USD close."""
     product = COINBASE_PRODUCTS.get(symbol)
     if product is None:
-        raise ValueError(f"premium: no Coinbase product for {symbol}")
+        raise NotOffered(f"premium: no Coinbase product for {symbol}")
     fetch = fetch or fetch_json
     coinbase = _coinbase_closes(fetch(_url(COINBASE, f"/products/{product}/candles", {"granularity": "3600"})))
     usdt = _coinbase_closes(fetch(_url(COINBASE, "/products/USDT-USD/candles", {"granularity": "3600"})))
@@ -211,16 +216,19 @@ class ContextCache:
 
     def refresh(self, symbol: str) -> None:
         results: dict[str, dict[str, Any]] = {}
+        expected = len(self._builders)
         for key, build in self._builders.items():
             try:
                 results[key] = build(symbol)
+            except NotOffered:
+                expected -= 1  # e.g. no Coinbase premium for XMR: not retried every FAIL_PAUSE
             except Exception:  # noqa: BLE001 - keep the last value, the chart marks it stale later
                 continue
         with self._lock:
             for key, value in results.items():
                 self._values[(key, symbol)] = value
             self._at[symbol] = time.monotonic()
-            self._failed[symbol] = len(results) < len(self._builders)
+            self._failed[symbol] = len(results) < expected
             self._running.discard(symbol)
 
     def snapshot(self, symbol: str, background: bool = True) -> dict[str, Any]:

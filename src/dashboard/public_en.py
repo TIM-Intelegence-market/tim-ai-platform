@@ -108,6 +108,9 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Volume Profile und Footprint aus echten Trades gibt es nur für (\w+)", r"Volume profile and footprint from real trades exist only for \1: TIM collects trades only there."),
     (r"^Gold über PAXG", "Gold via PAXG (tokenised gold, 1 PAXG = 1 troy ounce): trades around the clock, real gold does not; "
                          "weekend candles and thinner liquidity can shift levels against XAUUSD."),
+    (r"^Monero über den Binance-Perpetual", "Monero via the Binance perpetual XMRUSDT (USD-M futures): Binance ended XMR spot "
+                                            "in February 2024. The perp price can differ slightly from spot because of funding; "
+                                            "display only, no paper trading."),
     (r"^Gamma: Deribit-Stand ist (\d+) min alt", r"Gamma: Deribit data is \1 min old, levels hidden."),
     (r"^Liquidations-Heatmap: Binance-Stand ist (\d+) min alt", r"Liquidation heatmap: Binance data is \1 min old, hidden."),
     (r"^Keine großen Market Orders", "No large market orders in the shown window."),
@@ -174,7 +177,8 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     for key in ("level_source", "trade_source"):
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])
-    out["name"] = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "PAXGUSDT": "Gold (PAXG)"}.get(str(model.get("symbol")), model.get("name"))
+    out["name"] = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "XMRUSDT": "Monero (XMR perp)",
+                   "PAXGUSDT": "Gold (PAXG)"}.get(str(model.get("symbol")), model.get("name"))
     return out
 
 
@@ -216,7 +220,7 @@ def chart_page(symbol: str | None, timeframe: str | None, summary: str = "") -> 
         f"<a href='/chart?symbol={symbol}&amp;tf={item}' data-tf='{item}' class='tc-tab{' tc-tab--active' if item == view else ''}'"
         + (" aria-current='page'" if item == view else "") + f">{item}</a>"
         for item in VIEW_TIMEFRAMES)
-    body = _hero("TIM chart", "BTC, ETH, SOL and gold on every timeframe: zoom, pan, crosshair. "
+    body = _hero("TIM chart", "BTC, ETH, SOL, XMR and gold on every timeframe: zoom, pan, crosshair. "
                  "Levels are drawn as labelled segments from the moment they formed.")
     body += summary
     body += (
