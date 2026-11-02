@@ -280,7 +280,7 @@ def _now_utc() -> str:
 
 def _research_issues(pipeline: Pipeline) -> list[dict]:
     listed = json.loads(pipeline.github("issue", "list", "--state", "all", "--label", research.LABEL_IDEA,
-                                        "--limit", "500", "--json", "number,title,body,labels,state"))
+                                        "--limit", "500", "--json", "number,title,body,labels,state,author"))
     return [issue for issue in listed if isinstance(issue, dict)] if isinstance(listed, list) else []
 
 
@@ -292,19 +292,29 @@ def _ensure_research_labels(pipeline: Pipeline) -> None:
             pipeline.github("label", "create", name, "--color", color, "--description", description)
 
 
+def _platform_main_drafts(pipeline: Pipeline) -> dict[str, str]:
+    """Draft name -> text of every pre-registration draft on origin/platform-main, independent of the checkout."""
+    pipeline.command("git", "fetch", "--quiet", "origin", "platform-main")
+    listed = pipeline.command("git", "ls-tree", "--name-only", "origin/platform-main", f"{STUDIES_DIR.as_posix()}/")
+    return {Path(name).name: pipeline.command("git", "show", f"origin/platform-main:{name}")
+            for name in listed.splitlines() if name.endswith("_PRAEREGISTRIERUNG_ENTWURF.md")}
+
+
 def _research_sync(pipeline: Pipeline, state_dir: Path) -> str | None:
-    """Mac side: ready ideas become research issues; a draft on platform-main marks its idea drafted."""
+    """Mac side: released ready ideas become research issues; a draft on platform-main marks its idea drafted."""
     configured = os.environ.get("TIM_RESEARCH_IDEAS", "").strip()
     if not configured or not Path(configured).expanduser().is_file():
         return None
     from src.research_lab.workshop.ideas import IdeaQueue
     queue = IdeaQueue(Path(configured).expanduser())
     marked = []
-    for idea_id, path in research.landed_drafts(pipeline.repository / STUDIES_DIR).items():
+    # Mark first, from platform-main itself: a merged draft must count against the budget before any export.
+    for idea_id, name in research.landed_drafts(_platform_main_drafts(pipeline)).items():
         if queue.ideas().get(idea_id, {}).get("status") == "ready":
-            queue.set_status(idea_id, "study_draft", [f"{path.name} auf platform-main"], by="tim")
+            queue.set_status(idea_id, "study_draft", [f"{name} auf platform-main"], by="tim")
             marked.append(idea_id)
-    exports = research.ideas_to_export(queue.ideas(), _research_issues(pipeline), now=_now_utc())
+    public = research.public_ideas(os.environ.get("TIM_RESEARCH_PUBLIC_IDEAS"))
+    exports = research.ideas_to_export(queue.ideas(), _research_issues(pipeline), now=_now_utc(), public=public)
     created = []
     if exports:
         _ensure_research_labels(pipeline)
@@ -343,12 +353,39 @@ def _research_spec(idea: dict, backend: tuple[str, str], worktree: Path) -> tupl
     raise PipelineError(f"study spec incomplete after two rounds: {problems[0][:200]}")
 
 
+def _settle_claims(pipeline: Pipeline, ledger: IssueLedger, issues: list[dict], prs: dict) -> set[int]:
+    """Release claims of interrupted runs; a draft PR Uzi closed unmerged blocks its issue. Returns the blocked."""
+    blocked = set()
+    for number, kind in research.stale_claims(issues, prs).items():
+        pipeline.github("issue", "edit", str(number), "--remove-label", research.LABEL_CLAIMED)
+        if kind == "rejected":
+            issue = next(item for item in issues if item.get("number") == number)
+            ledger.exhaust(number, issue_triage.body_hash(issue), "draft PR closed without merge")
+            pipeline.github("issue", "edit", str(number), "--add-label", research.LABEL_BLOCKED)
+            pipeline.github("issue", "comment", str(number), "--body",
+                            "Der Studien-Entwurf wurde ohne Merge geschlossen. Die Research-Spur fasst diese Idee "
+                            "nicht mehr an; Label `research:blocked` entfernen gibt zwei neue Versuche frei.")
+            blocked.add(number)
+    return blocked
+
+
 def _research_draft(pipeline: Pipeline, state_dir: Path, ledger: IssueLedger) -> str | None:
     """Server side: the server model writes one study draft and opens a draft PR. Never merges."""
+    listed = json.loads(pipeline.github("pr", "list", "--state", "all", "--limit", "200", "--json",
+                                        "number,headRefName,state,mergedAt") or "[]")
+    prs = research.research_prs(listed if isinstance(listed, list) else [])
     issues = [issue for issue in _research_issues(pipeline) if str(issue.get("state", "")).lower() == "open"]
-    skip = set()
+    # GitHub may list the issue before its new label shows up; never reopen what was just blocked.
+    skip = _settle_claims(pipeline, ledger, issues, prs)
+    waiting = sorted(pr["number"] for own in prs.values() for pr in own if str(pr.get("state", "")).upper() == "OPEN")
+    if waiting:
+        # One draft at a time: the next study number is only known once this one is merged or closed.
+        return None
+    issues = [issue for issue in _research_issues(pipeline) if str(issue.get("state", "")).lower() == "open"]
     for issue in issues:
         number, digest = issue["number"], issue_triage.body_hash(issue)
+        if number in skip:
+            continue
         labels = {str((label or {}).get("name")) for label in issue.get("labels") or ()}
         if ledger.exhausted(number, digest):
             if research.LABEL_BLOCKED in labels:
@@ -356,7 +393,7 @@ def _research_draft(pipeline: Pipeline, state_dir: Path, ledger: IssueLedger) ->
             else:  # a person removed research:blocked: fresh attempts
                 ledger.entry(number).pop("attempts", None)
                 ledger.save()
-    issue = research.select_research_issue(issues, skip=skip)
+    issue = research.select_research_issue(issues, authors=issue_triage.trusted_authors(), skip=skip)
     if issue is None:
         return None
     number, digest = issue["number"], issue_triage.body_hash(issue)

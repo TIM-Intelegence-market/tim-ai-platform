@@ -27,10 +27,14 @@ def _idea(idea_id="I-0001", template="ereignis_studie", **extra):
             "derived_from": None, "counterargument": "Effekt ist bekannt", **extra}
 
 
-def _issue(number, idea=None, labels=(research.LABEL_IDEA, "status:ready"), state="OPEN"):
+WORKER = "tim-issue-worker-t330"
+TRUSTED = {WORKER, "uezeyiraydin-cell"}
+
+
+def _issue(number, idea=None, labels=(research.LABEL_IDEA, "status:ready"), state="OPEN", author=WORKER):
     body = research.idea_issue(idea or _idea())[1]
     return {"number": number, "title": f"Issue {number}", "state": state, "body": body,
-            "labels": [{"name": name} for name in labels]}
+            "labels": [{"name": name} for name in labels], "author": {"login": author}}
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +43,7 @@ def _quiet(monkeypatch):
     monkeypatch.delenv("TIM_QWEN_HARD_URL", raising=False)
     monkeypatch.delenv("TIM_RESEARCH_IDEAS", raising=False)
     monkeypatch.delenv("TIM_WORKER_RESEARCH", raising=False)
+    monkeypatch.delenv("TIM_RESEARCH_PUBLIC_IDEAS", raising=False)
 
 
 def test_idea_issue_round_trip_and_rejects_bad_blocks():
@@ -57,18 +62,28 @@ def test_export_skips_known_ideas_and_respects_the_monthly_budget():
     ideas["I-0007"]["status"] = "new"
     ideas["I-0006"] = {**ideas["I-0006"], "status": "study_draft", "history": [("study_draft", NOW)]}
     issues = [_issue(10, _idea("I-0001"), state="CLOSED"), _issue(11, _idea("I-0002"))]
-    exported = research.ideas_to_export(ideas, issues, now=NOW)
+    public = {f"I-000{n}" for n in range(1, 8)}
+    exported = research.ideas_to_export(ideas, issues, now=NOW, public=public)
     # Budget 4: one draft this month and one open research issue leave two slots.
     assert [idea["id"] for idea in exported] == ["I-0003", "I-0004"]
-    assert research.ideas_to_export(ideas, issues, now="2026-12-01T12:00:00Z")[0]["id"] == "I-0003"
+    assert research.ideas_to_export(ideas, issues, now="2026-12-01T12:00:00Z", public=public)[0]["id"] == "I-0003"
+
+
+def test_only_ideas_released_for_the_public_repo_are_exported():
+    ideas = {f"I-000{n}": {**_idea(f"I-000{n}"), "status": "ready", "history": []} for n in range(1, 4)}
+    assert research.ideas_to_export(ideas, [], now=NOW, public=set()) == []
+    assert [i["id"] for i in research.ideas_to_export(ideas, [], now=NOW, public={"I-0002"})] == ["I-0002"]
+    assert research.public_ideas(" I-0002, I-0003 ,x, I-12 ,") == {"I-0002", "I-0003"}
+    assert research.public_ideas(None) == set()
 
 
 def test_select_takes_oldest_free_issue_only():
     issues = [_issue(9, labels=(research.LABEL_IDEA, research.LABEL_CLAIMED)),
               _issue(12), _issue(11), _issue(8, labels=(research.LABEL_IDEA, research.LABEL_BLOCKED)),
               _issue(7, labels=("status:ready",)), {**_issue(6), "body": "kein Block"}, _issue(5, state="CLOSED")]
-    assert research.select_research_issue(issues)["number"] == 11
-    assert research.select_research_issue(issues, skip={11, 12}) is None
+    assert research.select_research_issue(issues, authors=TRUSTED)["number"] == 11
+    assert research.select_research_issue(issues, authors=TRUSTED, skip={11, 12}) is None
+    assert research.select_research_issue([_issue(3, author="fremd")], authors=TRUSTED) is None
 
 
 def test_parse_spec_accepts_plain_or_fenced_json_and_rejects_the_rest():
@@ -98,10 +113,21 @@ def test_render_draft_uses_the_generator_and_writes_nothing(tmp_path):
                      register_path=tmp_path / "REGISTER.jsonl", logbook_path=tmp_path / "LOGBUCH.json")
 
 
-def test_landed_drafts_find_their_idea(tmp_path):
-    (tmp_path / "S5_X_PRAEREGISTRIERUNG_ENTWURF.md").write_text("| Idee | I-0003 aus Quelle x |\n", encoding="utf-8")
-    (tmp_path / "S6_Y_PRAEREGISTRIERUNG.md").write_text("| Idee | I-0004 aus Quelle x |\n", encoding="utf-8")
-    assert research.landed_drafts(tmp_path) == {"I-0003": tmp_path / "S5_X_PRAEREGISTRIERUNG_ENTWURF.md"}
+def test_landed_drafts_find_their_idea():
+    drafts = {"S5_X_PRAEREGISTRIERUNG_ENTWURF.md": "| Idee | I-0003 aus Quelle x |\n",
+              "S6_Y_PRAEREGISTRIERUNG.md": "| Idee | I-0004 aus Quelle x |\n",
+              "S7_Z_PRAEREGISTRIERUNG_ENTWURF.md": "keine Idee"}
+    assert research.landed_drafts(drafts) == {"I-0003": "S5_X_PRAEREGISTRIERUNG_ENTWURF.md"}
+
+
+def test_stale_claims_release_or_block():
+    claimed = (research.LABEL_IDEA, research.LABEL_CLAIMED)
+    issues = [_issue(1, labels=claimed), _issue(2, labels=claimed), _issue(3, labels=claimed), _issue(4)]
+    prs = research.research_prs([
+        {"number": 21, "headRefName": "codex/research-1", "state": "OPEN", "mergedAt": None},
+        {"number": 22, "headRefName": "codex/research-2", "state": "CLOSED", "mergedAt": None},
+        {"number": 23, "headRefName": "codex/issue-3-qwen", "state": "CLOSED", "mergedAt": None}])
+    assert research.stale_claims(issues, prs) == {2: "rejected", 3: "release"}
 
 
 def test_research_ideas_are_never_triaged():
@@ -109,8 +135,17 @@ def test_research_ideas_are_never_triaged():
 
 
 class FakePipeline:
-    def __init__(self, issues, repository):
+    def __init__(self, issues, repository, drafts=None, prs=()):
         self.issues, self.repository, self.calls = issues, repository, []
+        self.drafts, self.prs = drafts or {}, list(prs)
+
+    def command(self, *args, **kwargs):
+        self.calls.append(args)
+        if args[:2] == ("git", "ls-tree"):
+            return "\n".join(f"docs/research_lab/studien/{name}" for name in self.drafts)
+        if args[:2] == ("git", "show"):
+            return self.drafts[args[2].rsplit("/", 1)[1]]
+        return ""
 
     def verify_worker_identity(self):
         pass
@@ -122,7 +157,9 @@ class FakePipeline:
         self.calls.append(args)
         if args[:2] == ("issue", "list"):
             return json.dumps(self.issues)
-        if args[:2] in {("pr", "list"), ("label", "list")}:
+        if args[:2] == ("pr", "list"):
+            return json.dumps(self.prs)
+        if args[:2] == ("label", "list"):
             return "[]"
         if args[:2] == ("issue", "create"):
             return "https://github.com/x/y/issues/77"
@@ -132,7 +169,7 @@ class FakePipeline:
 def _queue(tmp_path, statuses):
     queue = IdeaQueue(tmp_path / "IDEEN.jsonl")
     for title, status in statuses:
-        idea_id = queue.add(source="ki_runde", title=title, hypothesis=f"Hypothese {title}", template="ereignis_studie",
+        idea_id = queue.add(source="uzi", title=title, hypothesis=f"Hypothese {title}", template="ereignis_studie",
                             counterargument="dagegen", at="2026-10-26T10:00:00Z")
         if status != "new":
             queue.set_status(idea_id, status, at="2026-10-26T11:00:00Z")
@@ -140,20 +177,19 @@ def _queue(tmp_path, statuses):
 
 
 def test_mac_sync_creates_issues_and_marks_landed_drafts(tmp_path, monkeypatch):
-    queue = _queue(tmp_path, [("A", "ready"), ("B", "ready"), ("C", "new")])
-    repo = tmp_path / "repo"
-    studies = repo / "docs/research_lab/studien"
-    studies.mkdir(parents=True)
-    (studies / "S9_A_PRAEREGISTRIERUNG_ENTWURF.md").write_text("| Idee | I-0001 aus Quelle x |\n", encoding="utf-8")
+    queue = _queue(tmp_path, [("A", "ready"), ("B", "ready"), ("C", "new"), ("D", "ready")])
     monkeypatch.setenv("TIM_RESEARCH_IDEAS", str(queue.path))
-    pipeline = FakePipeline([], repo)
+    monkeypatch.setenv("TIM_RESEARCH_PUBLIC_IDEAS", "I-0001,I-0002")
+    pipeline = FakePipeline([], tmp_path, drafts={"S9_A_PRAEREGISTRIERUNG_ENTWURF.md": "| Idee | I-0001 aus Quelle x |\n"})
     message = runner._research_sync(pipeline, tmp_path / "state")
     assert "I-0001" in message and "I-0002 -> https://github.com/x/y/issues/77" in message
     assert queue.ideas()["I-0001"]["status"] == "study_draft" and queue.ideas()["I-0002"]["status"] == "ready"
     created = [call for call in pipeline.calls if call[:2] == ("issue", "create")]
+    # I-0004 is ready but not released for the public repository.
     assert len(created) == 1 and research.LABEL_IDEA in created[0] and "status:ready" in created[0]
     labels = {call[2] for call in pipeline.calls if call[:2] == ("label", "create")}
     assert labels == set(research.LABELS)
+    assert ("git", "fetch", "--quiet", "origin", "platform-main") in pipeline.calls
 
 
 def test_mac_sync_does_nothing_without_an_idea_file(tmp_path, monkeypatch):
@@ -203,7 +239,7 @@ def test_draft_failure_releases_the_claim_and_blocks_after_two_attempts(tmp_path
         raise PipelineError("git worktree add failed")
 
     pipeline = FakePipeline([_issue(11)], tmp_path)
-    monkeypatch.setattr(pipeline, "command", broken, raising=False)
+    monkeypatch.setattr(pipeline, "command", broken)
     monkeypatch.setattr(pipeline, "default_base_ref", lambda: "origin/platform-main", raising=False)
     ledger = IssueLedger(tmp_path / "ledger.json")
     for _ in range(2):
@@ -213,3 +249,21 @@ def test_draft_failure_releases_the_claim_and_blocks_after_two_attempts(tmp_path
     assert sum(research.LABEL_CLAIMED in call and "--remove-label" in call for call in edits) == 2
     assert any(research.LABEL_BLOCKED in call and "--add-label" in call for call in edits)
     assert any(call[:2] == ("issue", "comment") for call in pipeline.calls)
+
+
+def test_draft_waits_while_a_research_pr_is_open_and_settles_closed_drafts(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_hard_backend", lambda: ("http://127.0.0.1:11435", "qwen3-coder:30b"))
+    claimed = (research.LABEL_IDEA, research.LABEL_CLAIMED)
+    ledger = IssueLedger(tmp_path / "ledger.json")
+    open_pr = FakePipeline([_issue(11, labels=claimed), _issue(12)], tmp_path,
+                           prs=[{"number": 30, "headRefName": "codex/research-11", "state": "OPEN", "mergedAt": None}])
+    assert runner._research_draft(open_pr, tmp_path, ledger) is None
+    assert not any(call[:2] == ("issue", "edit") for call in open_pr.calls)
+    rejected = FakePipeline([_issue(11, labels=claimed)], tmp_path,
+                            prs=[{"number": 30, "headRefName": "codex/research-11", "state": "CLOSED", "mergedAt": None}])
+    monkeypatch.setattr(runner, "_hard_backend", lambda: None)
+    runner._research_draft(rejected, tmp_path, ledger)
+    edits = [call for call in rejected.calls if call[:2] == ("issue", "edit")]
+    assert ("issue", "edit", "11", "--remove-label", research.LABEL_CLAIMED) in edits
+    assert ("issue", "edit", "11", "--add-label", research.LABEL_BLOCKED) in edits
+    assert ledger.exhausted(11, issue_triage.body_hash(_issue(11, labels=claimed)))

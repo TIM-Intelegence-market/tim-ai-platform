@@ -2,11 +2,13 @@
 
 The issue worker works on code issues first. Only when none is left does it turn to research:
 
-1. On the Mac (lane easy or all), every idea with status "ready" in ``data/research/IDEEN.jsonl`` becomes one
-   GitHub issue labelled ``research:idea``, as long as the monthly study budget allows another draft. A draft
-   that has landed on platform-main marks its idea "study_draft" in the idea list.
+1. On the Mac (lane easy or all), every idea with status "ready" in ``data/research/IDEEN.jsonl`` that Uzi
+   released for the public repository (``TIM_RESEARCH_PUBLIC_IDEAS``) becomes one GitHub issue labelled
+   ``research:idea``, as long as the monthly study budget allows another draft. A draft that has landed on
+   platform-main marks its idea "study_draft" in the idea list.
 2. On tim-core-01 (lane hard or all), the server model writes the study spec for one such issue. The spec runs
-   through the same generator as ``workshop draft``; only a complete draft becomes a pull request.
+   through the same generator as ``workshop draft``; only a complete draft becomes a pull request, and only one
+   research PR is open at a time, so two drafts never take the same study number.
 
 Nothing here computes a study, loads data, writes the register, approves or merges. A draft still waits for
 Uzi's approval (charter stage 1); the pull request is never merged by the worker.
@@ -15,12 +17,11 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from src.research_lab.workshop import charter
 from src.research_lab.workshop.check import HOLDOUT_START, _local_month
-from src.research_lab.workshop.generator import REQUIRED, STUDIES_DIR
+from src.research_lab.workshop.generator import REQUIRED
 
 LABEL_IDEA = "research:idea"
 LABEL_CLAIMED = "research:in-progress"
@@ -34,6 +35,7 @@ BLOCK = "TIM_RESEARCH_IDEA_V1"
 IDEA_BLOCK = re.compile(r"```json " + BLOCK + r"\n(.*?)\n```", re.S)
 IDEA_ID = re.compile(r"I-\d{4}")
 DRAFT_IDEA = re.compile(r"^\| Idee \| (I-\d{4}) ", re.M)
+RESEARCH_BRANCH = re.compile(r"codex/research-([1-9][0-9]*)")
 IDEA_FIELDS = ("id", "source", "title", "hypothesis", "data", "tags", "template", "period", "derived_from",
                "counterargument")
 SPEC_FIELDS = {"question", "data", "metric", "min_effect", "min_cases", "stop_rule", "limits", "variants", "costs",
@@ -95,13 +97,20 @@ def issue_idea_id(issue: Mapping[str, Any]) -> str | None:
         return None
 
 
-def ideas_to_export(ideas: Mapping[str, Mapping[str, Any]], issues: Iterable[Mapping[str, Any]], *,
-                    now: str) -> list[dict[str, Any]]:
-    """Ready ideas without an issue, oldest first, within the monthly study budget.
+def public_ideas(value: str | None) -> set[str]:
+    """Idea ids Uzi released for the public repository (TIM_RESEARCH_PUBLIC_IDEAS, comma separated)."""
+    return {item.strip() for item in (value or "").split(",") if IDEA_ID.fullmatch(item.strip())}
 
+
+def ideas_to_export(ideas: Mapping[str, Mapping[str, Any]], issues: Iterable[Mapping[str, Any]], *,
+                    now: str, public: Iterable[str]) -> list[dict[str, Any]]:
+    """Released ready ideas without an issue, oldest first, within the monthly study budget.
+
+    The repository is public and the idea list is not, so only ids in ``public`` ever leave the Mac.
     ``issues`` are all research issues, open and closed: a closed one means the idea was handled. Open
     research issues count against the budget, because each of them will become one draft.
     """
+    public = set(public)
     issues = list(issues)
     exported = {issue_idea_id(issue) for issue in issues} - {None}
     open_issues = sum(1 for issue in issues if str(issue.get("state", "")).lower() == "open")
@@ -109,22 +118,35 @@ def ideas_to_export(ideas: Mapping[str, Mapping[str, Any]], issues: Iterable[Map
     drafted = sum(1 for idea in ideas.values() for status, at in idea.get("history", ())
                   if status == "study_draft" and _local_month(at) == month)
     room = max(0, charter.MONTHLY_STUDY_BUDGET - drafted - open_issues)
-    ready = [dict(idea) for idea in ideas.values() if idea.get("status") == "ready" and idea.get("id") not in exported]
+    ready = [dict(idea) for idea in ideas.values()
+             if idea.get("status") == "ready" and idea.get("id") in public and idea.get("id") not in exported]
     return sorted(ready, key=lambda idea: idea["id"])[:room]
 
 
-def landed_drafts(studies_dir: Path = STUDIES_DIR) -> dict[str, Path]:
-    """Idea id -> draft file for every pre-registration draft on this checkout."""
-    found: dict[str, Path] = {}
-    for path in sorted(studies_dir.glob("*_PRAEREGISTRIERUNG_ENTWURF.md")) if studies_dir.exists() else ():
-        match = DRAFT_IDEA.search(path.read_text(encoding="utf-8"))
+def landed_drafts(drafts: Mapping[str, str]) -> dict[str, str]:
+    """Idea id -> draft name for the given pre-registration drafts (name -> text, read from platform-main)."""
+    found: dict[str, str] = {}
+    for name in sorted(drafts):
+        if not name.endswith("_PRAEREGISTRIERUNG_ENTWURF.md"):
+            continue
+        match = DRAFT_IDEA.search(drafts[name])
         if match:
-            found.setdefault(match.group(1), path)
+            found.setdefault(match.group(1), name)
     return found
 
 
-def select_research_issue(issues: Iterable[Mapping[str, Any]], *, skip: set[int] = frozenset()) -> dict | None:
-    """The oldest open research issue that nobody works on and that has no draft PR yet."""
+def _author(issue: Mapping[str, Any]) -> str:
+    author = issue.get("author")
+    return str(author.get("login", "") if isinstance(author, Mapping) else author or "").casefold()
+
+
+def select_research_issue(issues: Iterable[Mapping[str, Any]], *, authors: Iterable[str],
+                          skip: set[int] = frozenset()) -> dict | None:
+    """The oldest open research issue from a trusted author that nobody works on.
+
+    Only the Mac worker and Uzi write research issues; anyone else's text never reaches the server model.
+    """
+    authors = {name.casefold() for name in authors}
     candidates = []
     for issue in issues:
         if not isinstance(issue, Mapping) or str(issue.get("state", "")).lower() != "open":
@@ -133,10 +155,41 @@ def select_research_issue(issues: Iterable[Mapping[str, Any]], *, skip: set[int]
         number = issue.get("number")
         if (LABEL_IDEA not in labels or labels & {LABEL_CLAIMED, LABEL_BLOCKED}
                 or not isinstance(number, int) or isinstance(number, bool) or number in skip
-                or issue_idea_id(issue) is None):
+                or _author(issue) not in authors or issue_idea_id(issue) is None):
             continue
         candidates.append((number, dict(issue)))
     return min(candidates, key=lambda item: item[0])[1] if candidates else None
+
+
+def research_prs(prs: Iterable[Mapping[str, Any]]) -> dict[int, list[dict[str, Any]]]:
+    """Issue number -> its research PRs (branch codex/research-<n>), from a `gh pr list --state all` answer."""
+    found: dict[int, list[dict[str, Any]]] = {}
+    for pr in prs:
+        match = RESEARCH_BRANCH.fullmatch(str(pr.get("headRefName", ""))) if isinstance(pr, Mapping) else None
+        if match:
+            found.setdefault(int(match.group(1)), []).append(dict(pr))
+    return found
+
+
+def stale_claims(issues: Iterable[Mapping[str, Any]], prs: Mapping[int, list[Mapping[str, Any]]]) -> dict[int, str]:
+    """Claimed open issues without an open draft PR: 'rejected' when a PR was closed unmerged, else 'release'.
+
+    The server works on one research issue at a time, so at the start of a run a claim without an open PR
+    is either a draft Uzi closed or the leftover of an interrupted run.
+    """
+    result: dict[int, str] = {}
+    for issue in issues:
+        labels = {str(label.get("name") if isinstance(label, Mapping) else label) for label in issue.get("labels") or ()}
+        number = issue.get("number")
+        if (str(issue.get("state", "")).lower() != "open" or LABEL_CLAIMED not in labels
+                or not isinstance(number, int)):
+            continue
+        own = prs.get(number, [])
+        if any(str(pr.get("state", "")).upper() == "OPEN" for pr in own):
+            continue
+        rejected = any(str(pr.get("state", "")).upper() == "CLOSED" and not pr.get("mergedAt") for pr in own)
+        result[number] = "rejected" if rejected else "release"
+    return result
 
 
 def spec_prompt(idea: Mapping[str, Any], *, problems: Iterable[str] = ()) -> str:
