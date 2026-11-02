@@ -41,6 +41,7 @@ GROUPS_EN = {
     "liq": "Liquidation heatmap (estimate)",
     "cvd": "CVD spot vs. perp", "oi": "Open interest + Z-score (7.5 d)",
     "funding": "Funding rate (Binance perp)", "premium": "Coinbase premium (USD vs. USDT)",
+    "macro": "Release dates (US CPI, FOMC)",
 }
 # Ordered (pattern, replacement) pairs for labels, names and notes of the drawings.
 TEXT_EN: tuple[tuple[str, str], ...] = (
