@@ -26,6 +26,8 @@ from src.local_first import issue_triage
 from src.local_first.issue_triage import IssueLedger, attach_worker_contract, contract_hash
 from src.local_first.patch_executor import redact_diagnostic_secrets
 from src.local_first.server_residency import configured_server, SERVER_OPTIONS
+from src.research_lab.workshop import worker_lane as research
+from src.research_lab.workshop.generator import DraftError, LOGBOOK_PATH, REGISTER_PATH, STUDIES_DIR, render_draft
 
 REPO = "TIM-Intelegence-market/tim-ai-platform"
 # Big model on tim-server, reached through the local SSH tunnel (LaunchAgent com.tim.server-ollama-tunnel).
@@ -265,6 +267,195 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
         raise PipelineError("local task acceptance is not FIXED: " + _failure_detail(returncode, result, acceptance))
     return {"acceptance": evidence, "result": outcome,
             "model": f"{backend[1]}@tim-server" if backend else None}
+
+
+def research_enabled() -> bool:
+    """Research lane when no issue is left; TIM_WORKER_RESEARCH=0 switches it off."""
+    return os.environ.get("TIM_WORKER_RESEARCH", "1") != "0"
+
+
+def _now_utc() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _research_issues(pipeline: Pipeline) -> list[dict]:
+    listed = json.loads(pipeline.github("issue", "list", "--state", "all", "--label", research.LABEL_IDEA,
+                                        "--limit", "500", "--json", "number,title,body,labels,state,author"))
+    return [issue for issue in listed if isinstance(issue, dict)] if isinstance(listed, list) else []
+
+
+def _ensure_research_labels(pipeline: Pipeline) -> None:
+    listed = json.loads(pipeline.github("label", "list", "--limit", "500", "--json", "name") or "[]")
+    existing = {item.get("name") for item in listed if isinstance(item, dict)}
+    for name, (color, description) in research.LABELS.items():
+        if name not in existing:
+            pipeline.github("label", "create", name, "--color", color, "--description", description)
+
+
+def _platform_main_drafts(pipeline: Pipeline) -> dict[str, str]:
+    """Draft name -> text of every pre-registration draft on origin/platform-main, independent of the checkout."""
+    pipeline.command("git", "fetch", "--quiet", "origin", "platform-main")
+    listed = pipeline.command("git", "ls-tree", "--name-only", "origin/platform-main", f"{STUDIES_DIR.as_posix()}/")
+    return {Path(name).name: pipeline.command("git", "show", f"origin/platform-main:{name}")
+            for name in listed.splitlines() if name.endswith("_PRAEREGISTRIERUNG_ENTWURF.md")}
+
+
+def _research_sync(pipeline: Pipeline, state_dir: Path) -> str | None:
+    """Mac side: released ready ideas become research issues; a draft on platform-main marks its idea drafted."""
+    configured = os.environ.get("TIM_RESEARCH_IDEAS", "").strip()
+    if not configured or not Path(configured).expanduser().is_file():
+        return None
+    from src.research_lab.workshop.ideas import IdeaQueue
+    queue = IdeaQueue(Path(configured).expanduser())
+    marked = []
+    # Mark first, from platform-main itself: a merged draft must count against the budget before any export.
+    for idea_id, name in research.landed_drafts(_platform_main_drafts(pipeline)).items():
+        if queue.ideas().get(idea_id, {}).get("status") == "ready":
+            queue.set_status(idea_id, "study_draft", [f"{name} auf platform-main"], by="tim")
+            marked.append(idea_id)
+    public = research.public_ideas(os.environ.get("TIM_RESEARCH_PUBLIC_IDEAS"))
+    exports = research.ideas_to_export(queue.ideas(), _research_issues(pipeline), now=_now_utc(), public=public)
+    created = []
+    if exports:
+        _ensure_research_labels(pipeline)
+    for idea in exports:
+        title, body = research.idea_issue(idea)
+        body_path = state_dir / "runs" / f"research-{idea['id']}-issue.md"
+        body_path.parent.mkdir(parents=True, exist_ok=True)
+        body_path.write_text(body, encoding="utf-8")
+        url = pipeline.github("issue", "create", "--title", title, "--body-file", str(body_path),
+                              "--label", research.LABEL_IDEA, "--label", "status:ready")
+        created.append(f"{idea['id']} -> {url.strip()}")
+    parts = ([f"ideas drafted on platform-main: {', '.join(marked)}"] if marked else []) + \
+            ([f"research issues created: {'; '.join(created)}"] if created else [])
+    return "Research lane: " + "; ".join(parts) if parts else None
+
+
+def _research_spec(idea: dict, backend: tuple[str, str], worktree: Path) -> tuple[Path, str]:
+    """Ask the server model for the study spec; one corrected retry when the generator rejects it."""
+    from src.llm.ollama_client import OllamaClient
+    import asyncio
+    # A cold 30B load on the server's four Ollama cores alone can take five minutes.
+    client = OllamaClient(backend[0], backend[1], timeout=1500, observation_only=False, keep_alive=-1)
+    problems: list[str] = []
+    for _round in range(2):
+        message = asyncio.run(client.chat(
+            [{"role": "user", "content": research.spec_prompt(idea, problems=problems)}],
+            options={**SERVER_OPTIONS, "num_predict": 3000, "temperature": 0}))
+        try:
+            spec = research.parse_spec(str(message.get("content") or ""))
+            path, text, _digest = render_draft(idea, spec, now=_now_utc(), studies_dir=worktree / STUDIES_DIR,
+                                               register_path=worktree / REGISTER_PATH,
+                                               logbook_path=worktree / LOGBOOK_PATH)
+            return path, text
+        except (research.ResearchLaneError, DraftError, ValueError, KeyError, TypeError) as exc:
+            problems = [str(exc)[:600]]
+    raise PipelineError(f"study spec incomplete after two rounds: {problems[0][:200]}")
+
+
+def _settle_claims(pipeline: Pipeline, ledger: IssueLedger, issues: list[dict], prs: dict) -> set[int]:
+    """Release claims of interrupted runs; a draft PR Uzi closed unmerged blocks its issue. Returns the blocked."""
+    blocked = set()
+    for number, kind in research.stale_claims(issues, prs).items():
+        pipeline.github("issue", "edit", str(number), "--remove-label", research.LABEL_CLAIMED)
+        if kind == "rejected":
+            issue = next(item for item in issues if item.get("number") == number)
+            ledger.exhaust(number, issue_triage.body_hash(issue), "draft PR closed without merge")
+            pipeline.github("issue", "edit", str(number), "--add-label", research.LABEL_BLOCKED)
+            pipeline.github("issue", "comment", str(number), "--body",
+                            "Der Studien-Entwurf wurde ohne Merge geschlossen. Die Research-Spur fasst diese Idee "
+                            "nicht mehr an; Label `research:blocked` entfernen gibt zwei neue Versuche frei.")
+            blocked.add(number)
+    return blocked
+
+
+def _research_draft(pipeline: Pipeline, state_dir: Path, ledger: IssueLedger) -> str | None:
+    """Server side: the server model writes one study draft and opens a draft PR. Never merges."""
+    listed = json.loads(pipeline.github("pr", "list", "--state", "all", "--limit", "200", "--json",
+                                        "number,headRefName,state,mergedAt") or "[]")
+    prs = research.research_prs(listed if isinstance(listed, list) else [])
+    issues = [issue for issue in _research_issues(pipeline) if str(issue.get("state", "")).lower() == "open"]
+    # GitHub may list the issue before its new label shows up; never reopen what was just blocked.
+    skip = _settle_claims(pipeline, ledger, issues, prs)
+    waiting = sorted(pr["number"] for own in prs.values() for pr in own if str(pr.get("state", "")).upper() == "OPEN")
+    if waiting:
+        # One draft at a time: the next study number is only known once this one is merged or closed.
+        return None
+    issues = [issue for issue in _research_issues(pipeline) if str(issue.get("state", "")).lower() == "open"]
+    for issue in issues:
+        number, digest = issue["number"], issue_triage.body_hash(issue)
+        if number in skip:
+            continue
+        labels = {str((label or {}).get("name")) for label in issue.get("labels") or ()}
+        if ledger.exhausted(number, digest):
+            if research.LABEL_BLOCKED in labels:
+                skip.add(number)
+            else:  # a person removed research:blocked: fresh attempts
+                ledger.entry(number).pop("attempts", None)
+                ledger.save()
+    issue = research.select_research_issue(issues, authors=issue_triage.trusted_authors(), skip=skip)
+    if issue is None:
+        return None
+    number, digest = issue["number"], issue_triage.body_hash(issue)
+    backend = _hard_backend()
+    if backend is None:
+        return f"Research issue #{number} waiting for server model."
+    idea = research.parse_idea_issue(issue["body"])
+    branch = f"codex/research-{number}"
+    worktree = state_dir / "worktrees" / f"research-{number}"
+    attempt = ledger.start_attempt(number, digest)
+    _ensure_research_labels(pipeline)
+    pipeline.github("issue", "edit", str(number), "--add-label", research.LABEL_CLAIMED)
+    try:
+        _clear_leftovers(pipeline, state_dir, number, branch, worktree, attempt)
+        worktree.parent.mkdir(parents=True, exist_ok=True)
+        pipeline.command("git", "worktree", "add", "-b", branch, str(worktree), pipeline.default_base_ref())
+        gitdir = Path(pipeline.command("git", "rev-parse", "--absolute-git-dir", cwd=worktree))
+        path, text = _research_spec(idea, backend, worktree)
+        path.write_text(text, encoding="utf-8")
+        relative = path.relative_to(worktree).as_posix()
+        pipeline.worktree_git(worktree, gitdir, "add", "--", relative)
+        pipeline.worktree_git(worktree, gitdir, "-c", f"user.name={WORKER_LOGIN}",
+                              "-c", f"user.email={WORKER_LOGIN}@users.noreply.github.com",
+                              "commit", "--no-verify", "-m", f"research({idea['id']}): Studien-Entwurf")
+        pipeline.worktree_git(worktree, gitdir, "push", "--no-verify", "origin", branch)
+        body = "\n".join([
+            f"Closes #{number}", "",
+            f"Präregistrierungs-Entwurf für Idee {idea['id']}, geschrieben vom Research-Spur-Worker "
+            f"({backend[1]} auf tim-server) und vom Studien-Generator geprüft.", "",
+            f"Datei: `{relative}`", "",
+            "Wartet auf Uzis Freigabe (Forschungsbereich Stufe 1). Der Worker merged diesen PR nie; "
+            "vor der Freigabe wird nichts gerechnet und nichts registriert.", ""])
+        body_path = state_dir / "runs" / f"research-{number}-pr.md"
+        body_path.parent.mkdir(parents=True, exist_ok=True)
+        body_path.write_text(body, encoding="utf-8")
+        url = pipeline.github("pr", "create", "--draft", "--base", "platform-main", "--head", branch,
+                              "--title", f"research({idea['id']}): Studien-Entwurf {path.name.split('_', 1)[0]}",
+                              "--body-file", str(body_path))
+    except (PipelineError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        pipeline.github("issue", "edit", str(number), "--remove-label", research.LABEL_CLAIMED)
+        if ledger.record_failure(number, digest, str(exc)):
+            pipeline.github("issue", "edit", str(number), "--add-label", research.LABEL_BLOCKED)
+            pipeline.github("issue", "comment", str(number), "--body",
+                            "Die Research-Spur hat nach zwei Versuchen keinen vollständigen Studien-Entwurf "
+                            "geschafft. Label `research:blocked` entfernen gibt zwei neue Versuche frei.\n\n"
+                            + "\n".join(f"- `{error}`" for error in ledger.errors(number)))
+        raise
+    return url.strip()
+
+
+def _research_step(pipeline: Pipeline, state_dir: Path, ledger: IssueLedger, lane: str) -> str | None:
+    """Idle work after the issue queue: Mac syncs ideas, the server (or a single worker) drafts studies."""
+    messages = []
+    if lane != "hard":
+        synced = _research_sync(pipeline, state_dir)
+        if synced:
+            messages.append(synced)
+    if lane in ("hard", "all"):
+        drafted = _research_draft(pipeline, state_dir, ledger)
+        if drafted:
+            messages.append(drafted)
+    return " | ".join(messages) or None
 
 
 def _review_patch(task: dict, diff: str) -> dict[str, str] | None:
@@ -597,12 +788,23 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
     if selected is None:
         # Triage needs Claude Code, which only the Mac has; the hard lane never triages.
         if triage and lane != "hard" and pilot_issue is None and not dry_run:
-            return _triage_one(pipeline, ledger, issues, pipeline.repository, lane=lane)
+            idle = _triage_one(pipeline, ledger, issues, pipeline.repository, lane=lane)
+            if not idle.startswith("No eligible") or not research_enabled():
+                return idle
+        else:
+            idle = None
+        if lane == "hard" and not dry_run and _hard_backend() is None:
+            # The server worker has nothing else to do; an idle exit would hide a broken model setup.
+            raise PipelineError("server model unavailable (TIM_QWEN_HARD_URL, TIM_QWEN_HARD_MODEL)")
+        # Issues always come first; research is the idle work.
+        if research_enabled() and pilot_issue is None and not dry_run:
+            done = _research_step(pipeline, state_dir, ledger, lane)
+            if done:
+                return done
         if lane == "hard":
-            if not dry_run and _hard_backend() is None:
-                # The server worker has nothing else to do; an idle exit would hide a broken model setup.
-                raise PipelineError("server model unavailable (TIM_QWEN_HARD_URL, TIM_QWEN_HARD_MODEL)")
             return "No eligible Qwen issue (lane hard)."
+        if idle:
+            return idle
         # The Mac dashboard counts idle polls by this prefix.
         return "No eligible Mac Qwen issue" + (" (lane easy)." if lane == "easy" else ".")
     issue, task = selected
