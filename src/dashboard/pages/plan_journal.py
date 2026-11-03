@@ -227,6 +227,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
     excluded = stats["excluded"]
     long_, short = stats["by_direction"]["LONG"], stats["by_direction"]["SHORT"]
     costs = cost_summary(journal)
+    vol = stats.get("vol_sizing") or {"closed": 0, "sum_net_r": 0.0, "sum_vol_net_r": 0.0, "mean_weight": None}
     body += (
         "<section class='cc-section'><div class='metricstrip'>"
         f"<dl class='metricstrip__item'><dt>Pläne</dt><dd>{stats['plans']}<small>{stats['open']} warten · {stats['filled']} im Trade</small></dd></dl>"
@@ -234,6 +235,8 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         f"<dl class='metricstrip__item'><dt>Summe (Brutto-R)</dt><dd>{_safe(_r_text(stats['sum_r']))}<small>vor Kosten</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Summe (Netto-R)</dt><dd>{_safe(_r_text(stats['sum_net_r']))}<small>nach Gebühren und Slippage, Kostenmodell {_safe(stats['cost_model_version'])}; {stats['net_wins']} netto positiv; "
         f"hypothetisch ≈ {f'{account:+.2f}'.replace('.', ',')} % Konto bei {str(account_risk_percent).replace('.', ',')} % Risiko je Plan</small></dd></dl>"
+        f"<dl class='metricstrip__item'><dt>Netto-R mit GARCH-Größe</dt><dd>{_safe(_r_text(vol['sum_vol_net_r']))}<small>{vol['closed']} geschlossene Pläne mit 4h-Prognose (S15) · ohne Gewicht {_safe(_r_text(vol['sum_net_r']))} · "
+        f"mittleres Gewicht {_safe(str(vol['mean_weight']).replace('.', ',') if vol['mean_weight'] is not None else '–')}; nur Papier, Vergleich zur festen Größe</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Nicht gezählt</dt><dd>{excluded['plans']}<small>korrigiert (Phantome, Doppelbuchung) · {_safe(_r_text(excluded['sum_net_r']))} netto herausgerechnet</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Entscheidungen</dt><dd>{stats['no_trade']} NO_TRADE<small>{stats['paper_trades']} Papier-Trades · kein Setup mit belegter Evidenz</small></dd></dl>"
         f"<dl class='metricstrip__item'><dt>Long / Short</dt><dd>{_safe(_r_text(long_['sum_r']))} / {_safe(_r_text(short['sum_r']))}<small>{long_['closed']} / {short['closed']} geschlossen</small></dd></dl>"

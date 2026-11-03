@@ -1,0 +1,19 @@
+{
+  "created": "2026-11-03T08:11:42.689101+00:00",
+  "params_from": "docs/research_lab/reports/s15_run_2026-11-02T1815Z.json",
+  "warmup": 84,
+  "sigma_ref": {
+    "BTCUSDT": {
+      "n": 4386,
+      "median": 0.9787
+    },
+    "ETHUSDT": {
+      "n": 4386,
+      "median": 1.1443
+    },
+    "SOLUSDT": {
+      "n": 4386,
+      "median": 1.7967
+    }
+  }
+}

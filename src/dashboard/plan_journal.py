@@ -29,6 +29,11 @@ TradePlanBuilder. Afterwards every plan is followed on 1m candles:
   invalidation level closes the rest at that close. Ends as CLOSED with a
   result in R.
 
+GARCH-4h paper sizing (Uzi 2026-11-02, "Dann für 4H morgen"): every plan recorded from then on
+carries ``vol_4h`` from src.research_lab.vol_4h (frozen S15-4h forecast from the closed 4h candles
+before the close: sigma, stop in sigma, weight, size at 1 $ risk). summary() adds net R multiplied
+with that weight next to the plain net R; plans, stops and counts are unchanged.
+
 Paper only. Nothing here places or suggests an order; it records what TIM's
 rules would have done. When a 1m candle touches the stop and a target, the
 stop counts first. No new entries inside the NY-open block.
@@ -853,6 +858,11 @@ def counter_trend(direction: Any, market_state: Any) -> bool:
     return AGAINST_TREND.get(str(direction)) == str(market_state)
 
 
+def _vol_weighted(closed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    from src.research_lab import vol_4h
+    return vol_4h.weighted(closed)
+
+
 def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     """Counts and sums. Entries excluded by a reviewed correction are left out and counted separately."""
     every = list(journal.get("entries") or [])
@@ -882,6 +892,8 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
         "paper_trades": sum(e.get("journal_decision") == PAPER_TRADE for e in entries),
         "no_trade": sum(e.get("journal_decision") == NO_TRADE for e in entries),
         "by_direction": by_direction,
+        # Paper sizing from GARCH-4h (S15-4h): net R plain and multiplied with the plan's weight.
+        "vol_sizing": _vol_weighted(closed),
         # Horizon journals: stops judged after the next closes (wick = price back beyond the stop at once).
         "stop_reviews": {"reviewed": sum(bool(e.get("stop_review")) for e in closed),
                          "wick": sum(bool((e.get("stop_review") or {}).get("wick")) for e in closed)},
@@ -969,6 +981,19 @@ def _level(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, mode
 def _skip_key(reason: str) -> str:
     # "LONG: <Level>: nächstes Ziel nur 1.05 R entfernt" -> "nächstes Ziel"; numbers never split a key.
     return re.sub(r"\d+[.,]\d+|\b\d+(?= ?%)", "x", reason.rsplit(": ", 1)[-1].split(" nur ")[0])
+
+
+def with_vol_4h(plans: Sequence[Mapping[str, Any]], candles_4h: Sequence[Mapping[str, Any]], at: datetime) -> list[dict[str, Any]]:
+    """Paper sizing from the frozen GARCH-4h forecast (S15-4h, src.research_lab.vol_4h), fixed on the plan.
+
+    Only adds the field ``vol_4h`` (sigma, stop in sigma, weight, size at 1 $ risk); entry, stop,
+    targets and counting stay as they are. Without enough closed 4h candles the field is left out."""
+    from src.research_lab import vol_4h
+    out = []
+    for plan in plans:
+        fields = vol_4h.sizing(plan, candles_4h, at)
+        out.append({**plan, "vol_4h": fields} if fields else dict(plan))
+    return out
 
 
 def with_evidence(plans: Sequence[Mapping[str, Any]], timeframe: str = PLAN_TIMEFRAME, register_path: Path | str = DEFAULT_REGISTER_PATH) -> list[dict[str, Any]]:
@@ -1137,6 +1162,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
                                    "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                    "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
+            plans = with_vol_4h(plans, series.get("4h") or [], latest)
             record_plans(journal, with_evidence(plans, timeframe, register_path), latest, timeframe)
             judge_trades(journal, model, closed_30m)
             journal["last_plan_candle"] = _iso(latest)

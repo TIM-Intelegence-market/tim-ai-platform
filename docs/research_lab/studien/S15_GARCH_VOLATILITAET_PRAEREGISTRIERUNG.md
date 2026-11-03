@@ -113,9 +113,18 @@ Auswertung auf dem Mac, Commit `a51d3d7` (Code wie eingefroren `3bf6f80`), Beric
 - **Grenzfall:** Bei BTC (4h und 1d) und ETH (1d) liegt die geschätzte Persistenz α + β in jeder Schätzung an der Obergrenze 0,9999. Das Modell ist dort praktisch ein integriertes GARCH, nahe an EWMA mit kleinem Grundwert ω, und hat keine feste Langfrist-Varianz. Für die Ein-Schritt-Prognose ist das zulässig, eine Prognose über viele Perioden voraus wäre damit aber nicht verlässlich. Bei SOL und ETH-4h liegt die Persistenz bei 0,96 bis 0,998.
 - S15 ändert nichts an TIM. Ob GARCH-4h in 1 R, Stops oder Positionsgrößen kommt, ist ein eigener Schritt mit eigener Freigabe, zuerst im Papier (Abschnitt 6).
 
+## 10. Papier-Schritt GARCH-4h (03.11.2026)
+
+Auf Uzis Wort „Dann für 4H morgen“ (02.11.2026) nutzt das Papier-Journal die 4h-Prognose für 1 R und Positionsgrößen, ohne an Plänen, Stops oder Zählung etwas zu ändern (`src/research_lab/vol_4h.py`, Aufruf in `src/dashboard/plan_journal.py`).
+
+- **Feste Parameter:** die letzte Schätzung aus dem Ergebnislauf (`last_fit`, Daten bis 2024-12). Es wird nichts neu geschätzt und kein Ergebnis aus 2025 oder später ausgewertet. Die Rekursion startet mit dem Mittel von r² der ersten 84 geschlossenen 4h-Kerzen und läuft dann über alle bis zum Planzeitpunkt; mit β ≈ 0,93 ist der Startwert danach vergessen.
+- **Je Plan festgehalten (Feld `vol_4h`):** σ der nächsten 4h-Rendite in Prozent, Stop-Abstand in σ, 1 σ als Preisabstand (Referenz-1R, kein Stop), Gewicht w = σ_ref / σ begrenzt auf 0,5 bis 2, Risiko 1 $ × w und die Größe in Coins. σ_ref ist der Median der GARCH-4h-σ in der Validierung 2023–2024 mit denselben Parametern (BTC 0,979 %, ETH 1,144 %, SOL 1,797 %; auf dem Mac am 03.11.2026 mit `scripts/research_lab_s15_sigma_ref.py` berechnet, Commit `6d6319c`, Bericht `../reports/s15_sigma_ref_2026-11-03.json`).
+- **Vergleich:** Das Journal zeigt neben Netto-R die Summe Netto-R × w der geschlossenen Pläne mit Feld. Ob TIM die Größen danach wirklich so wählt, entscheidet Uzi nach einer Beobachtungszeit. Kein Echtgeld, keine Order.
+
 ## Änderungsprotokoll
 
 - 0.1 (02.11.2026): Entwurf auf Uzis „go“. Regeln als Code, Zähl- und Auswerteskript, 10 Tests auf synthetischen Daten. Nichts registriert, keine Marktdaten ausgewertet.
 - 0.2 (02.11.2026): Zähllauf eingetragen (7.1), beide Varianten bestehen. Nach unabhängiger Prüfung präzisiert, alles vor jedem Ergebnis: Einlaufzeit und B1 zählen vorhandene Perioden (4.3, Tabelle 4); Kriterium 4 verlangt beide Jahre und nutzt das gepoolte d; ausgelassene Perioden werden gezählt; das Gate wird im Auswerteskript erzwungen; MSE auch gegen EWMA. Weiter kein Fehlermaß gesehen.
 - 1.0 (02.11.2026): Einordnung Prognosestudie ohne Registerplatz (Uzi), Regeln und Code mit Commit `3bf6f80` eingefroren. Kein Fehlermaß gesehen.
 - 1.0, Ergebnis (02.11.2026): Abschnitt 9 ergänzt, keine Regeländerung. S15-4h BESTANDEN, S15-1d NICHT BESTANDEN.
+- 1.0, Papier-Schritt (03.11.2026): Abschnitt 10 ergänzt. GARCH-4h mit festen Parametern im Papier-Journal für 1 R und Positionsgröße, keine Regeländerung an S15.
