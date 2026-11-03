@@ -10,6 +10,8 @@ Every fact comes from code that already draws or plans on the chart, nothing is 
 - higher-timeframe bias: ``session_map.htf_bias`` (1D and 4h decide, 1W confirms),
 - structure per timeframe: ``chart_live.market_structure`` (the BOS/MSS drawn in the chart),
 - location against the prior day's value area: ``session_map.location``,
+- value context (today's developing value against the prior day's) and its playbook:
+  ``session_map.value_context`` / ``value_playbook`` (Uzi 03.11.2026),
 - nearest main levels above and below: the session map's reference levels,
 - TIM's paper plans: waiting (OPEN) and running (FILLED) entries of the plan journals.
 
@@ -50,6 +52,16 @@ LOCATION_EN = {"ABOVE_ACCEPTED": "above the prior day's value area and accepted 
                "ABOVE_NOT_ACCEPTED": "above the prior day's VAH, not accepted yet",
                "IN_VALUE": "inside the prior day's value area", "BELOW_NOT_ACCEPTED": "below the prior day's VAL, not accepted yet",
                "BELOW_ACCEPTED": "below the prior day's value area and accepted there"}
+CONTEXT_EN = {"HIGHER": ("value higher", "trend up: buy pullbacks."),
+              "OVERLAP_HIGHER": ("value overlapping higher", "leaning up, weaker: be picky with longs."),
+              "INSIDE": ("value inside", "balance: fade the edges."),
+              "OVERLAP_LOWER": ("value overlapping lower", "leaning down, weaker: be picky with shorts."),
+              "LOWER": ("value lower", "trend down: sell rallies."),
+              "WIDER": ("value wider than the prior day", "no direction: no playbook."),
+              "EARLY": ("too early", "today's value needs two hours of the UTC day."),
+              "UNKNOWN": ("unknown", "no complete prior-day profile.")}
+CONFIRMATION_EN = ("Confirmation on the footprint: first absorption (buyers or sellers get nowhere), then the other side "
+                   "takes control (large bubbles in trade direction). Observation only, no fixed threshold.")
 TREND_DE = {"UP": "aufwärts", "DOWN": "abwärts", None: "noch ohne Trend"}
 TREND_EN = {"UP": "up", "DOWN": "down", None: "no trend yet"}
 LEVEL_EN = (
@@ -110,6 +122,15 @@ def _levels(references: Sequence[Mapping[str, Any]], last: float) -> dict[str, l
     return {"above": above, "below": below}
 
 
+def _value_context(context: Mapping[str, Any]) -> dict[str, Any]:
+    def lvl(item: Mapping[str, Any] | None) -> dict[str, Any] | None:
+        return {"label": str(item["label"]), "price": round(float(item["price"]), 2)} if item else None
+
+    return {"state": context.get("state", "UNKNOWN"),
+            "playbook": [{"direction": p["direction"], "entry": [lvl(e) for e in p["entry"]], "invalid": lvl(p.get("invalid")),
+                          "target": lvl(p.get("target")), "picky": bool(p.get("picky"))} for p in context.get("playbook") or []]}
+
+
 def _plans(journals: Mapping[str, Sequence[Mapping[str, Any]]]) -> list[dict[str, Any]]:
     rows = []
     for key, name in JOURNALS:
@@ -146,6 +167,7 @@ def build_summary(series: Mapping[str, Sequence[Mapping[str, Any]]], journals: M
         weekly_confirms=bool((prep.get("bias") or {}).get("weekly_confirms")),
         htf={label: (info or {}).get("state", "UNKNOWN") for label, info in (prep.get("htf") or {}).items()},
         location=(prep.get("location") or {}).get("state", "UNKNOWN"),
+        value_context=_value_context(prep.get("value_context") or {}),
         structure=_structure(clean, now),
         levels=_levels(prep.get("levels") or [], float(last["close"])),
         plans=_plans(journals or {}),
@@ -235,6 +257,40 @@ def _plan_text(plans: Sequence[Mapping[str, Any]], de: bool) -> str:
     return ("Papier-Pläne: " if de else "Paper plans: ") + (", " if de else ", ").join(parts) + "."
 
 
+def _context_text(context: Mapping[str, Any] | None, de: bool) -> str:
+    from src.dashboard.session_map import CONFIRMATION_TEXT, VALUE_CONTEXT_TEXT
+
+    if not context:
+        return ""
+    state = context.get("state", "UNKNOWN")
+    label, hint = (VALUE_CONTEXT_TEXT if de else CONTEXT_EN).get(state, (state, ""))
+    price = _price_de if de else _price_en
+    name = (lambda x: x) if de else level_en
+    head = ("Volume-Profile-Kontext (heutiger gegen Vortages-Value): " if de else "Volume profile context (today's value against the prior day's): ")
+    text = f"<p class='tc-summary__context' data-context='{_safe(state)}'>{head}<b>{_safe(label)}</b>, {_safe(hint)}"
+    items = []
+    for play in context.get("playbook") or []:
+        entries = (" oder " if de else " or ").join(f"{_safe(name(e['label']))} {_safe(price(e['price']))}" for e in play["entry"])
+        invalid = play.get("invalid")
+        target = play.get("target")
+        if de:
+            line = f"<b>{_safe(play['direction'])}</b> am {entries}"
+            line += f", ungültig {_safe(invalid['label'])} {_safe(price(invalid['price']))}" if invalid else ""
+            line += f", Ziel {_safe(target['label'])} {_safe(price(target['price']))}" if target else ", kein naked POC als Ziel in Richtung"
+            line += " (wählerisch)" if play.get("picky") else ""
+        else:
+            inv = (invalid["label"].replace("über Vortag VAH angenommen", "accepted above prior day VAH")
+                   .replace("unter Vortag VAL angenommen", "accepted below prior day VAL")) if invalid else ""
+            line = f"<b>{_safe(play['direction'])}</b> at {entries}"
+            line += f", invalid {_safe(level_en(inv))} {_safe(price(invalid['price']))}" if invalid else ""
+            line += f", target {_safe(level_en(target['label']))} {_safe(price(target['price']))}" if target else ", no naked POC as target in that direction"
+            line += " (be picky)" if play.get("picky") else ""
+        items.append(f"<li>{line}</li>")
+    if items:
+        text += "</p><ul class='tc-summary__playbook'>" + "".join(items) + "</ul><p class='cc-note'>" + _safe(CONFIRMATION_TEXT if de else CONFIRMATION_EN)
+    return text + "</p>"
+
+
 def _render(summary: Mapping[str, Any], de: bool) -> str:
     eyebrow = "Was TIM gerade sagt" if de else "What TIM's analysis says now"
     if not summary.get("available"):
@@ -268,7 +324,7 @@ def _render(summary: Mapping[str, Any], de: bool) -> str:
     structure = _structure_items(summary.get("structure") or [], de)
     return (
         f"<section class='cc-section tc-summary' data-summary='{SCHEMA}'><p class='cc-section__eyebrow'>{eyebrow}</p>{stale}"
-        f"<p class='tc-summary__lead'>{head}{where}</p><p>{levels}</p>"
+        f"<p class='tc-summary__lead'>{head}{where}</p>{_context_text(summary.get('value_context'), de)}<p>{levels}</p>"
         + (f"<p>{structure_head}</p><ul class='tc-summary__tf'>{structure}</ul>" if structure else "")
         + f"<p>{_plan_text(summary.get('plans') or [], de)}</p><p class='cc-note'>{footer}</p></section>"
     )
