@@ -21,7 +21,7 @@ from src.dashboard.chart_model import _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import CSS, EXTRA_CSS
 from src.dashboard.pages.chart import APP_SRC, LIB_PATH
-from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RULE_TIM, summary
+from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RULE_TIM, RULE_VP, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
 DISCLAIMER = ("Research, not financial advice. Observation and paper tracking only: no orders, no recommendations. "
@@ -269,12 +269,13 @@ HORIZONS_EN = (
 EARLIER_EN = (
     ("tim", "TIM rule 30m", "first version: fixed stop, targets at 1.5 / 2 / 3 R"),
     ("struct", "Structure rule 30m", "stop behind the 30m swing, targets at liquidity"),
+    ("vp", "Volume profile rule 30m", "reaction at yesterday's value by today's context, stop behind the touch, target a naked POC"),
 )
 JOURNAL_KEYS = tuple(key for key, _, _ in HORIZONS_EN + EARLIER_EN)
 DEFAULT_JOURNAL = "mid"
-CHART_TF = {"short": "15m", "mid": "1h", "long": "1d", "tim": "30m", "struct": "30m", "level": "30m"}
-ALIASES = {RULE_TIM: "tim", RULE_STRUCT: "struct", RULE_LEVEL: "level"}  # older callers pass rule ids
-RULES_EN = tuple((rule, name, text) for rule, (_, name, text) in zip((RULE_TIM, RULE_STRUCT), EARLIER_EN))
+CHART_TF = {"short": "15m", "mid": "1h", "long": "1d", "tim": "30m", "struct": "30m", "level": "30m", "vp": "30m"}
+ALIASES = {RULE_TIM: "tim", RULE_STRUCT: "struct", RULE_LEVEL: "level", RULE_VP: "vp"}  # older callers pass rule ids
+RULES_EN = tuple((rule, name, text) for rule, (_, name, text) in zip((RULE_TIM, RULE_STRUCT, RULE_VP), EARLIER_EN))
 STATUS_EN = {"OPEN": "waiting for entry", "FILLED": "in trade", "CLOSED": "closed", "INVALIDATED": "invalidated before entry",
              "REPLACED": "replaced", "EXPIRED": "expired"}
 EXIT_EN = {"STOP": "stop", "BREAK_EVEN": "break-even after TP1", "BREAK_EVEN_COSTS": "break-even + costs after TP1",
@@ -289,6 +290,7 @@ SETUP_EN = {
     "BALANCE_ROTATION": "a rotation inside the range",
     "EXHAUSTION_REVERSAL": "an exhaustion reversal",
     "LEVEL_REACTION": "a reaction at a main level",
+    "VP_CONTEXT": "a reaction at yesterday's value (volume profile context)",
 }
 MARKET_EN = {"BALANCE": "range", "RANGE": "range", "TREND_UP": "uptrend", "TREND_DOWN": "downtrend", "IMBALANCE_UP": "push up",
              "IMBALANCE_DOWN": "push down"}

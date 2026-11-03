@@ -92,6 +92,7 @@ DONE = {"CLOSED", "INVALIDATED", "REPLACED", "EXPIRED"}
 RULE_TIM = "tim/1"  # TradePlanBuilder: flat stop, targets 1.5R / 2R / 3R
 RULE_STRUCT = "struct/1"  # src/dashboard/structure_plan.py
 RULE_LEVEL = "level/1"  # src/dashboard/level_plans.py
+RULE_VP = "vp/1"  # src/dashboard/vp_plans.py (volume-profile context, Uzi 03.11.2026)
 NO_TRADE, PAPER_TRADE = "NO_TRADE", "PAPER_TRADE"
 PLAN_RECORDED, PLAN_UPDATED = "PLAN_RECORDED", "PLAN_UPDATED"
 CANDLE_CLOSE_PROCESSED, CANDLE_REVISION_OBSERVED = "CANDLE_CLOSE_PROCESSED", "CANDLE_REVISION_OBSERVED"
@@ -978,6 +979,30 @@ def _level(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, mode
     return plans, list(result["dropped"])
 
 
+def _vp(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, model: Mapping[str, Any],
+        footprint: Mapping[str, Any] | None) -> tuple[list[dict[str, Any]], list[str]]:
+    """Rule version vp/1: reactions at the previous day's value by context (src/dashboard/vp_plans.py).
+
+    Uses only candles closed at ``at``; the footprint store gives the touch candle's delta."""
+    from src.dashboard.session_map import build_session_map
+    from src.dashboard.structure_plan import candles_until
+    from src.dashboard.vp_plans import build_vp_plans
+
+    closed = candles_until(series, at)
+    try:
+        prep = build_session_map(closed, at)
+    except Exception:  # noqa: BLE001 - without the map there is no value context
+        return [], ["keine Vorbereitungs-Karte"]
+    result = build_vp_plans(prep, closed["30m"], at, footprint)
+    analysis = model.get("analysis") or {}
+    plans = [{**item, "pipeline_decision": (analysis.get("decision") or {}).get("status"),
+              "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
+              "market_state": analysis.get("market_state"),
+              **{k: (analysis.get("market") or {}).get(k) for k in ("symbol", "venue", "market_type")},
+              "data_quality": (analysis.get("data_quality") or {}).get("status")} for item in result["plans"]]
+    return plans, list(result["dropped"])
+
+
 def _skip_key(reason: str) -> str:
     # "LONG: <Level>: nächstes Ziel nur 1.05 R entfernt" -> "nächstes Ziel"; numbers never split a key.
     return re.sub(r"\d+[.,]\d+|\b\d+(?= ?%)", "x", reason.rsplit(": ", 1)[-1].split(" nur ")[0])
@@ -1027,7 +1052,7 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         elif kind == CANDLE_CLOSE_PROCESSED:
             journal["last_plan_candle"] = payload["close_time"]
             journal["last_plan_candle_source_hash"] = payload["source_hash"]
-            if payload.get("rule") in (RULE_STRUCT, RULE_LEVEL):  # TIM-rule events carry no rule field
+            if payload.get("rule") in (RULE_STRUCT, RULE_LEVEL, RULE_VP):  # TIM-rule events carry no rule field
                 journal["rule"] = payload["rule"]
                 journal.setdefault("structure_skips", {})
                 journal["last_skips"] = []  # a STRUCTURE_PLANS_DROPPED event for this close follows it
@@ -1113,13 +1138,14 @@ def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
 
 
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
-           rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME) -> dict[str, Any]:
+           rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
 
     ``rule`` picks the rule version: TIM's flat stop and R targets, or
-    struct/1 (stop behind the swing, targets at liquidity) in its own file.
+    struct/1 (stop behind the swing, targets at liquidity) or vp/1 (volume-profile context,
+    ``footprint`` = the aggTrades store for the touch candle's delta) in its own file.
 
     A broken event log raises journal_log.LogError and nothing is written."""
     now = now or datetime.now(timezone.utc)
@@ -1152,6 +1178,8 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 plans, dropped = _structural(plans, series, latest)
             elif rule == RULE_LEVEL:
                 plans, dropped = _level(series, latest, model)
+            elif rule == RULE_VP:
+                plans, dropped = _vp(series, latest, model, footprint)
             plans, dead = drop_invalid_on_arrival(plans, closed_30m[-1].get("close"))
             dropped += dead
             plans, lost = drop_lost_levels(plans, journal.get("entries") or [], closed_30m, timeframe)

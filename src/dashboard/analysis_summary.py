@@ -37,7 +37,7 @@ STALE_SECONDS = 1800 + 300  # one 30m candle plus five minutes, as the analysis 
 # Main levels only (prior day, prior week, running day/week POC, naked POCs); sessions and IB stay in the chart.
 MAIN_LEVEL_PREFIXES = ("Vortag ", "PDH", "PDL", "PWH", "PWL", "Vorwoche ", "heute POC", "Woche POC", "naked POC")
 # Journals summarised: the three horizons and the earlier 30m versions that still run (level/1 is retired).
-JOURNALS = (("short", "15m"), ("mid", "1h"), ("long", "1D"), ("tim", "30m TIM"), ("struct", "30m Struktur"))
+JOURNALS = (("short", "15m"), ("mid", "1h"), ("long", "1D"), ("tim", "30m TIM"), ("struct", "30m Struktur"), ("vp", "30m VP"))
 JOURNALS_EN = {"30m Struktur": "30m structure"}
 
 BIAS_DE = {"LONG": "Long-Bias (1D und 4h aufwärts)", "SHORT": "Short-Bias (1D und 4h abwärts)",

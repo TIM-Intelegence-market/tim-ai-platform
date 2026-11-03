@@ -110,7 +110,8 @@ DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "struct
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
-                 "tim": ("plans_old", "TIM 30m"), "struct": ("plans_old", "Struktur 30m"), "level": ("plans_old", "Level 30m")}
+                 "tim": ("plans_old", "TIM 30m"), "struct": ("plans_old", "Struktur 30m"), "level": ("plans_old", "Level 30m"),
+                 "vp": ("plans_old", "VP 30m")}
 PLAN_LIMIT = 40  # newest plans drawn per chart
 PLAN_SHOWN = {"OPEN", "FILLED", "CLOSED"}
 # Fibonacci retracement of the newest swing leg, drawn like TradingView's Fib tool (Uzi 30.10.2026):

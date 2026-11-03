@@ -44,7 +44,7 @@ LOCAL = ZoneInfo(charter.LOCAL_TIMEZONE)
 RESEARCH_DIR = Path("data/research")
 JOURNAL_DIR = Path("data/journal")
 JOURNALS = ("tim_plan_journal", "tim_plan_journal_struct", "tim_plan_journal_short",
-            "tim_plan_journal_mid", "tim_plan_journal_long")
+            "tim_plan_journal_mid", "tim_plan_journal_long", "tim_plan_journal_vp")
 TRADES_EVERY = timedelta(minutes=55)      # hourly, with slack for the 15-minute wake-up
 WEEKLY_AT = (6, 2)                        # Sunday (isoweekday 7 -> weekday 6), 02:00 local
 MONTHLY_AT = (1, 3)                       # 1st of the month, 03:00 local
