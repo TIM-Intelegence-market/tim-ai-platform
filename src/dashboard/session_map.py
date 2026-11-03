@@ -15,7 +15,12 @@ Builds the trader's preparation in the order the Broncx bootcamp teaches it
 - poor highs/lows of the previous day (two or more 30-minute periods at
   the extreme),
 - where price is against the previous day's value, with a mechanical
-  acceptance rule (two 30-minute closes beyond the edge).
+  acceptance rule (two 30-minute closes beyond the edge),
+- the value context (today's developing value against the previous day's value:
+  higher, overlap higher, inside, overlap lower, lower, wider) with the matching
+  playbook of entry, invalidation and target levels (``value_context``; reel
+  "Volume profile + orderflow" by tradingelder, Uzi 03.11.2026). The footprint
+  confirmation (absorption, then control) is named, not computed.
 
 TIM keeps candles, not trades, in the dashboard, so every profile is an
 estimate: each candle's volume is spread evenly over its high-low range
@@ -59,6 +64,19 @@ LOCATION_TEXT = {
                        "Broncx-Intraday-Modell Short: Rücklauf zum Vortages-VAL als Ort, Stop über dem Swing."),
     "UNKNOWN": ("unbekannt", "Kein vollständiges Vortagesprofil vorhanden."),
 }
+MIN_TODAY_CANDLES = 4  # 30m candles (two hours) before today's developing value is compared
+VALUE_CONTEXT_TEXT = {
+    "HIGHER": ("Value höher", "Trend hoch: Rücksetzer kaufen."),
+    "OVERLAP_HIGHER": ("Value überlappend höher", "leicht hoch, schwächer: wählerisch kaufen."),
+    "INSIDE": ("Value innerhalb", "Balance: die Ränder gegen die Bewegung handeln."),
+    "OVERLAP_LOWER": ("Value überlappend tiefer", "leicht tief, schwächer: wählerisch verkaufen."),
+    "LOWER": ("Value tiefer", "Trend runter: Anstiege verkaufen."),
+    "WIDER": ("Value breiter als am Vortag", "keine Richtung: kein Playbook."),
+    "EARLY": ("noch zu früh", f"erst ab {MIN_TODAY_CANDLES // 2} Stunden UTC-Tag gibt es einen heutigen Value."),
+    "UNKNOWN": ("unbekannt", "Kein vollständiges Vortagesprofil vorhanden."),
+}
+CONFIRMATION_TEXT = ("Bestätigung im Footprint: erst Absorption (Käufer bzw. Verkäufer kommen nicht weiter), "
+                     "dann Kontrolle der Gegenseite (große Bubbles in Richtung des Trades). Nur Beobachtung, keine feste Schwelle.")
 STRUCTURE_TEXT = {"UP": "aufwärts (höhere Hochs und Tiefs)", "DOWN": "abwärts (tiefere Hochs und Tiefs)",
                   "RANGE": "seitwärts", "UNKNOWN": "zu wenig Daten"}
 
@@ -260,6 +278,61 @@ def location(price: float, value: Mapping[str, Any] | None, blocks: Sequence[Map
     return {"state": key, "label": label, "hint": hint}
 
 
+def value_context(today: Mapping[str, Any] | None, previous: Mapping[str, Any] | None, today_candles: int) -> str:
+    """Today's developing value area against the previous day's value area (same UTC day split as the profiles).
+
+    HIGHER: today's POC above the previous VAH; LOWER: below the previous VAL. Otherwise INSIDE when today's
+    value sits within the previous one, OVERLAP_HIGHER / OVERLAP_LOWER when both edges moved the same way,
+    and WIDER when today's value reaches past both edges."""
+    if not previous or previous.get("vah") is None or previous.get("val") is None:
+        return "UNKNOWN"
+    if not today or today_candles < MIN_TODAY_CANDLES:
+        return "EARLY"
+    poc, vah, val = today["poc"], today["vah"], today["val"]
+    if poc > previous["vah"]:
+        return "HIGHER"
+    if poc < previous["val"]:
+        return "LOWER"
+    if vah <= previous["vah"] and val >= previous["val"]:
+        return "INSIDE"
+    if vah > previous["vah"] and val > previous["val"]:
+        return "OVERLAP_HIGHER"
+    if vah < previous["vah"] and val < previous["val"]:
+        return "OVERLAP_LOWER"
+    return "WIDER"
+
+
+def value_playbook(context: str, previous: Mapping[str, Any] | None, nakeds: Sequence[Mapping[str, Any]], last: float,
+                   previous_day: str | None = None) -> list[dict[str, Any]]:
+    """Levels for the context: where to look for entries, what invalidates the idea, where the target is.
+
+    Trend contexts: first entry at the previous value edge (VAH for longs, VAL for shorts), second at the
+    previous POC, invalid beyond the opposite edge, target the nearest naked POC in trade direction (other than
+    the previous day's own POC). Inside: fade both edges towards the previous POC. Overlap = same levels, pickier."""
+    if not previous or context not in ("HIGHER", "OVERLAP_HIGHER", "INSIDE", "OVERLAP_LOWER", "LOWER"):
+        return []
+    vah, poc, val = previous["vah"], previous["poc"], previous["val"]
+    targets = [n for n in nakeds if n.get("day") != previous_day]
+
+    def naked(direction: int) -> dict[str, Any] | None:
+        side = [n for n in targets if (n["price"] - last) * direction > 0]
+        best = min(side, key=lambda n: abs(n["price"] - last), default=None)
+        return {"label": f"naked POC {best['day'][8:10]}.{best['day'][5:7]}.", "price": best["price"]} if best else None
+
+    if context == "INSIDE":
+        return [
+            {"direction": "SHORT", "entry": [{"label": "Vortag VAH", "price": vah}], "invalid": {"label": "über Vortag VAH angenommen", "price": vah},
+             "target": {"label": "Vortag POC", "price": poc}},
+            {"direction": "LONG", "entry": [{"label": "Vortag VAL", "price": val}], "invalid": {"label": "unter Vortag VAL angenommen", "price": val},
+             "target": {"label": "Vortag POC", "price": poc}},
+        ]
+    if context in ("HIGHER", "OVERLAP_HIGHER"):
+        return [{"direction": "LONG", "entry": [{"label": "Vortag VAH", "price": vah}, {"label": "Vortag POC", "price": poc}],
+                 "invalid": {"label": "Vortag VAL", "price": val}, "target": naked(1), "picky": context == "OVERLAP_HIGHER"}]
+    return [{"direction": "SHORT", "entry": [{"label": "Vortag VAL", "price": val}, {"label": "Vortag POC", "price": poc}],
+             "invalid": {"label": "Vortag VAH", "price": vah}, "target": naked(-1), "picky": context == "OVERLAP_LOWER"}]
+
+
 def _level(levels: list[dict[str, Any]], label: str, price: float | None, source: str, last: float) -> None:
     if price is None:
         return
@@ -321,6 +394,17 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
     model["initial_balance"] = initial_balance(today["candles"] if today else [], [d["high"] - d["low"] for d in previous], now)
     nakeds = naked_pocs(previous, quarter)
     model["naked_pocs"] = nakeds
+    context = value_context(today["profile"] if today else None, model["previous_day"] if prev_day and prev_day["profile"] else None,
+                            today["count"] if today else 0)
+    label, hint = VALUE_CONTEXT_TEXT[context]
+    model["value_context"] = {
+        "state": context, "label": label, "hint": hint,
+        "today": {k: today["profile"][k] for k in ("poc", "vah", "val")} if today and today["profile"] else None,
+        "playbook": value_playbook(context, model["previous_day"], nakeds, last,
+                                   prev_day["period"].isoformat() if prev_day else None),
+        "confirmation": CONFIRMATION_TEXT,
+        "source": "Reel tradingelder 'Volume profile + orderflow' (Uzi 03.11.2026); Profile aus Kerzen geschätzt, UTC-Tag statt RTH",
+    }
 
     levels: list[dict[str, Any]] = []
     if model["previous_day"]:

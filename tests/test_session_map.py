@@ -18,6 +18,8 @@ from src.dashboard.session_map import (
     sessions,
     structure,
     summary_line,
+    value_context,
+    value_playbook,
 )
 
 NOW = datetime(2026, 10, 24, 14, 0, tzinfo=timezone.utc)
@@ -218,3 +220,49 @@ def test_server_serves_prep_page_and_json() -> None:
             assert model["schema"] == "tim_session_map/1" and model["levels"]
     finally:
         server.stop()
+
+
+PREV = {"vah": 110.0, "poc": 105.0, "val": 100.0}
+
+
+def _today(poc: float, vah: float, val: float) -> dict:
+    return {"poc": poc, "vah": vah, "val": val}
+
+
+def test_value_context_classes_follow_the_reel() -> None:
+    assert value_context(_today(112, 115, 108), PREV, 10) == "HIGHER"  # POC above prior VAH
+    assert value_context(_today(98, 102, 95), PREV, 10) == "LOWER"  # POC below prior VAL
+    assert value_context(_today(105, 109, 101), PREV, 10) == "INSIDE"
+    assert value_context(_today(108, 112, 104), PREV, 10) == "OVERLAP_HIGHER"
+    assert value_context(_today(102, 106, 97), PREV, 10) == "OVERLAP_LOWER"
+    assert value_context(_today(105, 112, 98), PREV, 10) == "WIDER"
+    assert value_context(_today(112, 115, 108), PREV, 3) == "EARLY"  # under two hours of today
+    assert value_context(_today(112, 115, 108), None, 10) == "UNKNOWN"
+    assert value_context(None, PREV, 0) == "EARLY"
+
+
+def test_value_playbook_levels_per_context() -> None:
+    nakeds = [{"day": "2026-10-20", "price": 120.0}, {"day": "2026-10-21", "price": 130.0}, {"day": "2026-10-22", "price": 90.0},
+              {"day": "2026-10-23", "price": 105.0}]
+    (long_,) = value_playbook("HIGHER", PREV, nakeds, 112.0, "2026-10-23")
+    assert long_["direction"] == "LONG" and [e["price"] for e in long_["entry"]] == [110.0, 105.0]
+    assert long_["invalid"]["price"] == 100.0 and long_["target"] == {"label": "naked POC 20.10.", "price": 120.0}
+    assert long_["picky"] is False
+    (short,) = value_playbook("OVERLAP_LOWER", PREV, nakeds, 103.0, "2026-10-23")
+    assert short["direction"] == "SHORT" and [e["price"] for e in short["entry"]] == [100.0, 105.0]
+    assert short["invalid"]["price"] == 110.0 and short["target"]["price"] == 90.0 and short["picky"] is True
+    fade = value_playbook("INSIDE", PREV, nakeds, 106.0, "2026-10-23")
+    assert [(p["direction"], p["entry"][0]["price"], p["target"]["price"]) for p in fade] == [("SHORT", 110.0, 105.0), ("LONG", 100.0, 105.0)]
+    assert value_playbook("WIDER", PREV, nakeds, 106.0) == [] and value_playbook("EARLY", PREV, nakeds, 106.0) == []
+    (none_above,) = value_playbook("HIGHER", PREV, [{"day": "2026-10-22", "price": 90.0}], 112.0)
+    assert none_above["target"] is None
+
+
+def test_build_session_map_has_a_value_context() -> None:
+    model = build_session_map(_series(trend=6.0), NOW)
+    context = model["value_context"]
+    assert context["state"] in {"HIGHER", "OVERLAP_HIGHER", "INSIDE", "OVERLAP_LOWER", "LOWER", "WIDER"}
+    assert context["today"]["val"] <= context["today"]["poc"] <= context["today"]["vah"]
+    assert context["state"] == value_context(context["today"], model["previous_day"], 100)
+    assert "Absorption" in context["confirmation"]
+    json.dumps(model, default=str)

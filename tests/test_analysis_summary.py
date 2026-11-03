@@ -95,6 +95,25 @@ def test_texts_in_both_languages():
     assert "No open paper plans" in render_en(build_summary(_runtime_series(), {}, NOW))
 
 
+def test_value_context_and_playbook_in_both_languages():
+    summary = build_summary(_runtime_series(), _plans(), NOW)
+    summary["value_context"] = {"state": "HIGHER", "playbook": [
+        {"direction": "LONG", "entry": [{"label": "Vortag VAH", "price": 80500.0}, {"label": "Vortag POC", "price": 80200.0}],
+         "invalid": {"label": "Vortag VAL", "price": 79900.0}, "target": {"label": "naked POC 20.10.", "price": 81500.0}, "picky": False}]}
+    de, en = render_de(summary), render_en(summary)
+    assert "Value höher" in de and "<b>LONG</b> am Vortag VAH 80.500 oder Vortag POC 80.200, ungültig Vortag VAL 79.900, Ziel naked POC 20.10. 81.500" in de
+    assert "Absorption" in de
+    assert "value higher" in en and "<b>LONG</b> at Prior day VAH 80,500 or Prior day POC 80,200, invalid Prior day VAL 79,900" in en
+    summary["value_context"] = {"state": "INSIDE", "playbook": [
+        {"direction": "SHORT", "entry": [{"label": "Vortag VAH", "price": 80500.0}], "invalid": {"label": "über Vortag VAH angenommen", "price": 80500.0},
+         "target": {"label": "Vortag POC", "price": 80200.0}, "picky": False}]}
+    visible = re.sub(r"<[^>]+>", " ", render_en(summary))
+    for word in ("Vortag", "über", "angenommen", "Ziel", "ungültig"):
+        assert word not in visible
+    live = build_summary(_runtime_series(), _plans(), NOW)["value_context"]
+    assert live["state"] in {"HIGHER", "OVERLAP_HIGHER", "INSIDE", "OVERLAP_LOWER", "LOWER", "WIDER", "EARLY", "UNKNOWN"}
+
+
 def test_level_labels_in_english():
     assert level_en("PDH · Vortag Hoch · Poor High") == "PDH (prior day high) · Poor High"
     assert level_en("Vortag POC · Vorwoche POC") == "Prior day POC · Prior week POC"
