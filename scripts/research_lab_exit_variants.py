@@ -51,11 +51,12 @@ def load_candles(path: Path) -> list[dict[str, Any]]:
     by_open: dict[datetime, dict[str, Any]] = {}
     for row in rows:
         opened = _moment(row["open_time"])
-        values = [float(row[key]) for key in ("open", "high", "low", "close")]
+        values = [float(row[key] if key in row else row[key[0]]) for key in ("open", "high", "low", "close")]
         if min(values) <= 0 or values[2] > min(values[0], values[3]) or values[1] < max(values[0], values[3]):
             continue
+        volume = row.get("volume") or row.get("v") or 0.0
         by_open[opened] = {"open_time": opened, "close_time": opened + timedelta(minutes=1),
-                           "open": values[0], "high": values[1], "low": values[2], "close": values[3]}
+                           "open": values[0], "high": values[1], "low": values[2], "close": values[3], "volume": float(volume)}
     return [by_open[key] for key in sorted(by_open)]
 
 
@@ -69,6 +70,18 @@ def load_store(paths: list[Path]) -> dict[str, list[list[float]]]:
         else:
             days[payload["day"]] = payload["rows"]
     return days
+
+
+def taker_deltas(path: Path, volumes: dict[datetime, float]) -> dict[str, list[list[float]]]:
+    """Spot delta per minute from a taker-buy CSV (open_time, taker_buy_volume...) and the candle volume:
+    delta = 2 * taker_buy - volume, as rows [minute, 0, bid, ask] of one pseudo day."""
+    rows = []
+    for row in csv.DictReader(path.read_text().splitlines()):
+        opened = _moment(row["open_time"])
+        buy = float(next(value for key, value in row.items() if key.startswith("taker_buy")))
+        if opened in volumes:
+            rows.append([int(opened.timestamp()), 0.0, volumes[opened] - buy, buy])
+    return {"spot": rows}
 
 
 def deltas_by_bar(days: dict[str, list[list[float]]], bar_seconds: int) -> dict[int, float]:
@@ -125,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candles", type=Path, required=True)
     parser.add_argument("--perp-dir", type=Path)
     parser.add_argument("--spot-store", type=Path)
+    parser.add_argument("--spot-taker", type=Path, help="CSV open_time,taker_buy_volume per 1m (spot delta)")
+    parser.add_argument("--of-source", choices=["perp", "spot"], default="perp")
     parser.add_argument("--costs", choices=["kraken", "protocol"], default="kraken")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -132,15 +147,18 @@ def main(argv: list[str] | None = None) -> int:
     minutes = load_candles(args.candles)
     perp_days = load_store(sorted(args.perp_dir.glob("**/perp-*.json*"))) if args.perp_dir else {}
     spot_days = load_store([args.spot_store]) if args.spot_store else {}
+    if args.spot_taker:
+        spot_days = taker_deltas(args.spot_taker, {c["open_time"]: c["volume"] for c in minutes})
     first_bucket = lambda days: min((int(r[0]) for rows in days.values() for r in rows[:1]), default=None)  # noqa: E731
     report: dict[str, Any] = {
-        "created_at": ev._iso(datetime.now(timezone.utc)), "costs": costs.name, "variants": list(ev.VARIANTS),
+        "created_at": ev._iso(datetime.now(timezone.utc)), "costs": costs.name, "of_source": args.of_source, "variants": list(ev.VARIANTS),
         "candles": {"count": len(minutes), "first": ev._iso(minutes[0]["open_time"]) if minutes else None,
                     "last": ev._iso(minutes[-1]["close_time"]) if minutes else None},
         "perp": {"days": sorted(perp_days), "first": ev._iso(datetime.fromtimestamp(first_bucket(perp_days), tz=timezone.utc)) if perp_days else None},
         "spot": {"days": sorted(spot_days), "first": ev._iso(datetime.fromtimestamp(first_bucket(spot_days), tz=timezone.utc)) if spot_days else None},
         "journals": {},
     }
+    plans = {}
     for path in args.journal:
         journal = json.loads(path.read_text())
         rows = []
@@ -148,10 +166,11 @@ def main(argv: list[str] | None = None) -> int:
             if entry.get("excluded") or not entry.get("filled_at"):
                 continue
             timeframe = str(entry.get("timeframe") or "30m")
-            plan = ev.aggregate(minutes, timeframe)
-            higher = ev.aggregate(minutes, ev.HIGHER.get(timeframe, timeframe))
+            if timeframe not in plans:
+                plans[timeframe] = (ev.aggregate(minutes, timeframe), ev.aggregate(minutes, ev.HIGHER.get(timeframe, timeframe)))
+            plan, higher = plans[timeframe]
             bar_seconds = ev.TIMEFRAME_MINUTES[timeframe] * 60
-            deltas = deltas_by_bar(perp_days, bar_seconds) or deltas_by_bar(spot_days, bar_seconds)
+            deltas = deltas_by_bar(perp_days if args.of_source == "perp" else spot_days, bar_seconds)
             row = ev.evaluate_entry(entry, minutes, plan, higher, deltas, costs)
             if row:
                 rows.append(row)

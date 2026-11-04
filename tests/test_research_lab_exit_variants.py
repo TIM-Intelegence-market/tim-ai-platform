@@ -134,3 +134,14 @@ def test_summary_and_script(tmp_path) -> None:
     assert summary["trades"] == 1 and summary["reached_tp2"] == 1
     assert summary["LAEUFER"]["sum_r"] > summary["FEST"]["sum_r"]
     assert "Ausstiegs-Varianten" in (tmp_path / "out" / "ausstieg_varianten.md").read_text()
+
+
+def test_csv_aliases_and_spot_taker_delta(tmp_path) -> None:
+    from scripts import research_lab_exit_variants as script
+
+    (tmp_path / "c.csv").write_text("open_time,o,h,l,c,volume\n2026-11-04T00:00:00Z,10,11,9,10.5,4\n")
+    (tmp_path / "t.csv").write_text("open_time,taker_buy_volume_derived\n2026-11-04T00:00:00Z,3\n")
+    candles = script.load_candles(tmp_path / "c.csv")
+    assert candles[0]["close"] == 10.5 and candles[0]["volume"] == 4.0
+    days = script.taker_deltas(tmp_path / "t.csv", {c["open_time"]: c["volume"] for c in candles})
+    assert script.deltas_by_bar(days, 900) == {int(T0.timestamp()): 2.0}  # 2 * 3 - 4
