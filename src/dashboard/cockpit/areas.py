@@ -426,7 +426,7 @@ def _timeline_section(data: dict[str, Any], now: datetime) -> dict[str, Any]:
 
 def build_betrieb(state: DashboardState, now: datetime | None = None, budget: float = 1.5,
                   sources: BudgetedSources | None = None) -> dict[str, Any]:
-    from src.dashboard.cockpit.lage import _read_json
+    from src.dashboard.cockpit.lage import _read_json, own_data_tiles
 
     now = now or datetime.now(timezone.utc)
     operational = state.operational_watchdog_path.parent
@@ -434,6 +434,7 @@ def build_betrieb(state: DashboardState, now: datetime | None = None, budget: fl
         "snapshot": state.snapshot,
         "backup": lambda: _read_json(operational / "backup_last_run.json"),
         "server_health": lambda: _read_json(operational / "server_health.json"),
+        "own_data": lambda: own_data_tiles(state),
     }, budget=budget)
     snap = results["snapshot"]
     if not snap.ok or not isinstance(snap.value, dict):
@@ -447,7 +448,16 @@ def build_betrieb(state: DashboardState, now: datetime | None = None, budget: fl
             ("quality", "Datenqualität", lambda: _quality_section(ops, now)),
             ("timeline", "Zeitleiste", lambda: _timeline_section(data, now)),
         ])
+    sections += _safe_sections([("own_data", "Eigene Marktdaten", lambda: _own_data_section(results["own_data"]))])
     return _model("betrieb", "Betrieb", sections, results, now)
+
+
+def _own_data_section(result: SourceResult) -> dict[str, Any]:
+    note = ("Daten, die TIM selbst sammelt und die sich später nicht mehr holen lassen. "
+            "Jede Kachel zeigt, wie alt der neueste Eintrag ist; ein stehender Sammler wird nach Minuten gelb.")
+    if not result.ok or not isinstance(result.value, list):
+        return _section("own_data", "Eigene Marktdaten", [unavailable("own_data", "Eigene Daten", result.reason() or "Unerwartetes Format", "own_data.status")], note=note)
+    return _section("own_data", "Eigene Marktdaten", result.value, note=note)
 
 
 # --- System & Freigabe ----------------------------------------------------------
