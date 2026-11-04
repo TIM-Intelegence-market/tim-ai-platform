@@ -758,13 +758,15 @@ def _usd(value: Any) -> str:
 
 
 # Which paper journals the live trader may open trades from (Uzi 03.11.2026: only MID 1h). The status file may
-# name them in "timeframes"; without that field the page shows the current setting.
+# name them in "entry_timeframes" (or "timeframes"); without that field the page shows the current setting.
 LIVE_TIMEFRAMES = ("1h",)
 LIVE_JOURNAL_LINK = {"15m": "/journal?rule=short", "1h": "/journal", "1d": "/journal?rule=long"}
 
 
 def _live_timeframes(status: Mapping[str, Any] | None) -> tuple[str, ...]:
-    tfs = status.get("timeframes") if isinstance(status, Mapping) else None
+    tfs = None
+    if isinstance(status, Mapping):
+        tfs = status.get("entry_timeframes", status.get("timeframes"))
     if isinstance(tfs, (list, tuple)):
         picked = tuple(tf for tf in LIVE_JOURNAL_LINK if tf in tfs)
         if picked:

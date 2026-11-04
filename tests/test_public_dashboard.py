@@ -363,3 +363,5 @@ def test_live_page_names_the_traded_timeframes():
     assert "15m and 1h paper plans" in both and "href='/journal?rule=short'>15m paper journal" in both
     assert "<x>" not in both
     assert "fresh 1h plan" in live_page(_live_status(timeframes="15m"), now=now)
+    three = live_page(_live_status(entry_timeframes=["1d", "1h", "15m"]), now=now)
+    assert "15m and 1h and 1d paper plans" in three and "href='/journal?rule=long'>1d paper journal" in three
