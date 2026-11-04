@@ -134,6 +134,14 @@ def test_state_at_uses_only_rows_fetched_before_the_signal():
     assert mf.state_at(rows, datetime(2026, 11, 2, tzinfo=timezone.utc)) is None
 
 
+def test_state_at_is_strictly_before_and_refuses_rows_older_than_48_hours():
+    rows = [{"abruf_utc": "2026-11-04T08:00:00+00:00", "f5_sperre_long": "ja"}]
+    fetched = datetime(2026, 11, 4, 8, tzinfo=timezone.utc)
+    assert mf.state_at(rows, fetched) is None  # same moment: not known before the signal
+    assert mf.state_at(rows, fetched + timedelta(hours=48))["f5_sperre_long"] == "ja"
+    assert mf.state_at(rows, fetched + timedelta(hours=48, seconds=1)) is None  # daily fetch failed for days
+
+
 def test_barometer_is_descriptive_and_marks_unevaluated_drivers():
     data = _full_data()
     for _, sid, _ in mf.DRIVERS:

@@ -45,6 +45,7 @@ LOOKBACK_DAYS = 200
 STALE_DAYS = 10  # a daily series whose latest value is older than this gives no state
 WINDOW = (91, 98)  # the comparison value is the latest day between 98 and 91 days before the latest day
 RRP_MAX_LAG_DAYS = 4
+MAX_STATE_AGE = timedelta(hours=48)  # an older log row gives no filter state for a signal
 F5_SERIES = "DFII10"
 F3_SERIES = ("WALCL", "WTREGEN", "RRPONTSYD")
 LOG_FIELDS = ["datum_utc", "abruf_utc", "f5_stichtag", "f5_wert", "f5_stichtag_13w", "f5_wert_13w", "f5_sperre_long",
@@ -227,12 +228,17 @@ def append_log(path: Path, row: Mapping[str, Any]) -> bool:
 
 
 def state_at(rows: Sequence[Mapping[str, str]], signal_time: datetime) -> Mapping[str, str] | None:
-    """The log row a shadow signal is judged by: the latest row fetched at or before the signal (point in time)."""
-    best = None
+    """The log row a shadow signal is judged by (point in time).
+
+    The latest row fetched strictly before the signal. ``None`` ("ohne Filterstand") when there is no such
+    row or when it is older than MAX_STATE_AGE, so a failed daily fetch never lets an old state judge a signal."""
+    best, best_time = None, None
     for row in rows:
         fetched = datetime.fromisoformat(row["abruf_utc"])
-        if fetched <= signal_time and (best is None or fetched >= datetime.fromisoformat(best["abruf_utc"])):
-            best = row
+        if fetched < signal_time and (best_time is None or fetched >= best_time):
+            best, best_time = row, fetched
+    if best_time is None or signal_time - best_time > MAX_STATE_AGE:
+        return None
     return best
 
 

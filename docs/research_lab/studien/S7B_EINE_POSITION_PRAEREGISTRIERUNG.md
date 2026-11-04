@@ -382,9 +382,9 @@ Der Holdout bleibt zu. Diese Regeln sind vor dem Start eingefroren und werden ni
   Shorts werden nie gesperrt. Berechnung nach `src/research_lab/forward/macro_filters.py` (Einheiten je Reihe von
   FRED gelesen, alles in Mrd. USD).
 - **Zeitpunkt:** Die Filterzustände stehen einmal täglich im Log `f35_log.csv` (Abrufzeit in UTC, Rohantworten mit
-  sha256). Ein Signal wird nach der letzten Logzeile beurteilt, deren Abruf **vor** dem Signal liegt (`state_at`).
-  Gibt es keine solche Zeile oder steht dort „unbekannt“, wird das Signal nicht gesperrt und als „ohne Filterstand“
-  gezählt.
+  sha256). Ein Signal wird nach der letzten Logzeile beurteilt, deren Abruf **strikt vor** dem Signal liegt (`state_at`).
+  Gibt es keine solche Zeile, ist sie älter als 48 Stunden (Abruf ausgefallen) oder steht dort „unbekannt“, wird
+  das Signal nicht gesperrt und als „ohne Filterstand“ gezählt.
 - **Drei Papier-Reihen:** S7b ohne Filter, S7b mit F5, S7b mit F3. Ein gesperrtes Signal macht in der gefilterten
   Reihe den Platz frei (Positionsgrenze 1, BTC > ETH > SOL), wie bei der Erkundung auf 2017–2024.
 - **Zählung:** Bewertet wird genau einmal, sobald **S7b ohne Filter 60 geschlossene Trades** ab dem Start des
