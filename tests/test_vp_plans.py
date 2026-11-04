@@ -113,4 +113,26 @@ def test_vp_journal_is_listed_for_the_public_page_and_runs_in_main(tmp_path) -> 
     page = journal_page({"tim": {"entries": []}, "vp/1": {"entries": []}}, "vp")
     assert "Volume profile rule 30m" in page
     main_source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
-    assert "rule=RULE_VP, footprint=footprint" in main_source
+    assert "rule=RULE_VP, footprint=footprint, gamma=gamma" in main_source
+
+
+def test_gamma_walls_are_recorded_without_look_ahead() -> None:
+    from src.dashboard.vp_plans import gex_context
+
+    at = T0 + timedelta(hours=6)
+    snap = {"as_of": (at - timedelta(minutes=4)).isoformat(),
+            "all_expiries": {"call_wall": 101.2, "put_wall": 95.0, "gamma_flip": 99.0, "regime": "POSITIVE_GAMMA_REGIME"}}
+    gex = gex_context(snap, 101.0, at)
+    assert gex["usable"] and gex["call_wall_dist_pct"] == 0.198 and gex["put_wall_dist_pct"] == -5.941 and gex["wall_at_level"] is True
+    assert gex["age_seconds"] == 240 and gex["regime"] == "POSITIVE_GAMMA_REGIME"
+    later = {**snap, "as_of": (at + timedelta(minutes=1)).isoformat()}
+    assert gex_context(later, 101.0, at) == {"as_of": later["as_of"], "usable": False, "reason": "after the close"}
+    old = {**snap, "as_of": (at - timedelta(hours=1)).isoformat()}
+    assert gex_context(old, 101.0, at)["reason"] == "stale" and gex_context(None, 101.0, at) is None
+    candle = _candle(10, 100.6, 101.5, 101.3)
+    plan, _ = vp_plan(_long_item(), "HIGHER", candle, None, None, gex)
+    assert plan["gex"]["call_wall"] == 101.2
+    candles = [_candle(i, 100.0, 100.5, 100.2) for i in range(10)] + [candle]
+    snap_now = {**snap, "as_of": (candle["close_time"] - timedelta(minutes=2)).isoformat()}
+    result = build_vp_plans({"value_context": {"state": "HIGHER", "playbook": [_long_item()]}}, candles, candle["close_time"], gamma=snap_now)
+    assert result["plans"][0]["gex"]["usable"] and result["plans"][0]["gex"]["call_wall_dist_pct"] == 0.198

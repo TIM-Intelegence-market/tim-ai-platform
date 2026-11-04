@@ -23,6 +23,9 @@ Fixed before the first plan (no tuning on the journal's own results):
 - recorded, not filtered (for the later "lessons -> filter" step): the candle's taker delta from
   TIM's aggTrades (``absorption`` = delta against the trade at the touch) and its volume against
   the average 30m volume of the same UTC half hour over the last ``HOUR_DAYS`` days.
+- also recorded (Uzi 04.11.2026, reel DfTgoOTx6Qs on call walls): the newest options-gamma
+  snapshot taken by the close (``gex``: call wall, put wall, flip, regime, distances in %),
+  so a later check can ask whether a value edge holds better near a wall. Never a filter.
 
 The journal's own gates still apply (invalid on arrival, lost levels, cost limit 0.25 R).
 Paper only: no order, no real money.
@@ -42,7 +45,9 @@ TRADED = ("HIGHER", "LOWER", "INSIDE")
 PICKY = ("OVERLAP_HIGHER", "OVERLAP_LOWER")
 STALE_SECONDS = 3600
 MIN_R = 1.0  # target at least as far from the entry as the stop
-HOUR_DAYS = 14  # days behind the same-half-hour volume average
+HOUR_DAYS = 14
+GEX_MAX_AGE_SECONDS = 1200  # same freshness as the dashboard (gamma_data.STALE_AFTER)
+WALL_NEAR_PCT = 0.3  # a wall within 0.3 % of the touched level counts as "at the level"  # days behind the same-half-hour volume average
 SOURCE = "Reels tradingelder (DfQG9buhylb) + skydweller.trades (DfQwG8pumy5), Uzi 03.11.2026"
 
 
@@ -67,6 +72,28 @@ def volume_vs_hour(candles: Sequence[Mapping[str, Any]], candle: Mapping[str, An
     return round(candle["volume"] / (sum(earlier) / len(earlier)), 3)
 
 
+def gex_context(snapshot: Mapping[str, Any] | None, level: float, at: datetime) -> dict[str, Any] | None:
+    """Walls and flip of the newest gamma snapshot taken by ``at`` (no look-ahead), against the touched level."""
+    if not snapshot:
+        return None
+    try:
+        taken = datetime.fromisoformat(str(snapshot["as_of"]))
+        overall = snapshot["all_expiries"]
+    except (KeyError, TypeError, ValueError):
+        return None
+    age = (at - taken).total_seconds()
+    if age < 0 or age > GEX_MAX_AGE_SECONDS:
+        return {"as_of": snapshot.get("as_of"), "usable": False, "reason": "after the close" if age < 0 else "stale"}
+
+    def distance(price: Any) -> float | None:
+        return None if price is None else round((float(price) - level) / level * 100, 3)
+
+    walls = {"call_wall": overall.get("call_wall"), "put_wall": overall.get("put_wall"), "gamma_flip": overall.get("gamma_flip")}
+    dist = {f"{key}_dist_pct": distance(price) for key, price in walls.items()}
+    return {"as_of": snapshot["as_of"], "usable": True, "age_seconds": int(age), "regime": overall.get("regime"), **walls, **dist,
+            "wall_at_level": any(v is not None and abs(v) <= WALL_NEAR_PCT for k, v in dist.items() if k != "gamma_flip_dist_pct")}
+
+
 def _touched(item: Mapping[str, Any], candle: Mapping[str, Any]) -> dict[str, Any] | None:
     """The deepest entry level the candle touched and closed back beyond, or None."""
     long = item["direction"] == "LONG"
@@ -81,7 +108,7 @@ def _touched(item: Mapping[str, Any], candle: Mapping[str, Any]) -> dict[str, An
 
 
 def vp_plan(item: Mapping[str, Any], context: str, candle: Mapping[str, Any], delta: float | None,
-            volume_ratio: float | None) -> tuple[dict[str, Any] | None, str | None]:
+            volume_ratio: float | None, gex: Mapping[str, Any] | None = None) -> tuple[dict[str, Any] | None, str | None]:
     """One plan from one playbook entry at the closed candle; returns (plan, None) or (None, reason)."""
     direction = item["direction"]
     long = direction == "LONG"
@@ -133,13 +160,14 @@ def vp_plan(item: Mapping[str, Any], context: str, candle: Mapping[str, Any], de
         "delta": delta,
         "absorption": absorption,
         "volume_vs_hour": volume_ratio,
+        "gex": dict(gex) if gex else None,
         "vp_source": SOURCE,
         "grade": None,
     }, None
 
 
 def build_vp_plans(prep: Mapping[str, Any] | None, candles_30m: Sequence[Mapping[str, Any]], now: datetime,
-                   footprint: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                   footprint: Mapping[str, Any] | None = None, gamma: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Plans for the 30m candle closed at ``now``: at most one per direction."""
     result: dict[str, Any] = {"rule": RULE, "plans": [], "dropped": []}
     done = [c for c in candles_30m if c["close_time"] <= now]
@@ -154,7 +182,9 @@ def build_vp_plans(prep: Mapping[str, Any] | None, candles_30m: Sequence[Mapping
     delta = bar_delta(footprint, candle)
     ratio = volume_vs_hour(done, candle)
     for item in context.get("playbook") or []:
-        plan, reason = vp_plan(item, state, candle, delta, ratio)
+        level = _touched(item, candle)
+        gex = gex_context(gamma, float(level["price"]), candle["close_time"]) if level else None
+        plan, reason = vp_plan(item, state, candle, delta, ratio, gex)
         if plan:
             result["plans"].append(plan)
         elif reason:

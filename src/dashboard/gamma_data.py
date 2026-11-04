@@ -7,7 +7,10 @@ in ``DashboardState.gamma``. Consumers:
 
 - ``/api/gamma`` (full snapshot plus age and freshness),
 - ``/api/prep`` (``gamma`` block: regime, levels, analysis input),
-- the interactive chart (group "gamma": flip, walls, max pain, expected move).
+- the interactive chart (group "gamma": flip, walls, max pain, expected move),
+- a level log (``append_level_log``, one JSON line per snapshot) so a later study can
+  ask how price reacted at the walls (reel DfTgoOTx6Qs, Uzi 04.11.2026). Deribit keeps
+  no history of these levels, so the log only grows from the day it was switched on.
 
 Display and analysis context only: nothing here trades, writes a plan or
 changes a score. A failed read keeps the last snapshot, which then turns stale.
@@ -16,6 +19,7 @@ changes a score. A failed read keeps the last snapshot, which then turns stale.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping
 from urllib.parse import urlencode
@@ -80,7 +84,40 @@ def refresh(state: Any, symbol: str, fetch: Fetch | None = None, now: datetime |
     snapshot = fetch_snapshot(currency, fetch=fetch, now=now)
     with state.lock:
         state.gamma = {**state.gamma, symbol: snapshot}
+    log_path = getattr(state, "gamma_log_path", None)
+    if log_path is not None:
+        append_level_log(snapshot, symbol, Path(log_path))
     return snapshot
+
+
+def level_record(snapshot: Mapping[str, Any], symbol: str) -> dict[str, Any]:
+    """The compact line of the level log: walls, flip, max pain and regime of one snapshot."""
+    overall, main = snapshot["all_expiries"], snapshot["main_expiry"]
+    return {
+        "symbol": symbol, "as_of": snapshot["as_of"], "spot": snapshot["spot"],
+        "call_wall": overall["call_wall"], "put_wall": overall["put_wall"], "gamma_flip": overall["gamma_flip"],
+        "regime": overall["regime"], "net_gex_usd_per_1pct": overall["net_gex_usd_per_1pct"],
+        "main_expiry": main.get("expiry"), "main_call_wall": main["call_wall"], "main_put_wall": main["put_wall"],
+        "max_pain": main["max_pain"], "oi_walls": overall["oi_walls"],
+    }
+
+
+def append_level_log(snapshot: Mapping[str, Any], symbol: str, path: Path) -> bool:
+    """Append one line per new snapshot; the same ``as_of`` twice is written once. Returns whether it wrote."""
+    record = level_record(snapshot, symbol)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            handle.seek(max(0, handle.tell() - 4096))
+            tail = handle.read().decode("utf-8", "replace").strip().splitlines()
+        if tail and json.loads(tail[-1]).get("as_of") == record["as_of"] and json.loads(tail[-1]).get("symbol") == symbol:
+            return False
+    except (OSError, ValueError):
+        pass
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+    return True
 
 
 def with_age(snapshot: Mapping[str, Any] | None, now: datetime | None = None) -> dict[str, Any] | None:
