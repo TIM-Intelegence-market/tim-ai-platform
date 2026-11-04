@@ -103,7 +103,7 @@ def proposal(events: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
 
 
 def build(journals: Mapping[str, Mapping[str, Any]], learning: Mapping[str, Any], events: Sequence[Mapping[str, Any]],
-          now: datetime) -> dict[str, Any]:
+          now: datetime, exit_shadow: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The week in numbers. ``learning`` is the report of ``self_improve.step`` from the same round."""
     since = now - timedelta(days=7)
     trades = si.closed(journals)
@@ -133,7 +133,8 @@ def build(journals: Mapping[str, Mapping[str, Any]], learning: Mapping[str, Any]
     return {"version": VERSION, "week": f"{year}-W{week:02d}", "at": si._iso(now), "journals": rows,
             "trades": len(trades), "week_trades": sum(r["week_closed"] for r in rows),
             "week_net_r": round(sum(r["week_net_r"] for r in rows), 3), "filters": filters,
-            "proposal": proposal(events), "changes_tim": False}
+            "proposal": proposal(events), "changes_tim": False,
+            "exit_shadow": (exit_shadow or {}).get("summary")}
 
 
 def render(report: Mapping[str, Any]) -> str:
@@ -169,6 +170,12 @@ def render(report: Mapping[str, Any]) -> str:
         if look.get("dropped"):
             detail += f" (Rückblick: {look['dropped']} gestrichen, {_r(look['dropped_net_r'])})"
         lines.append(f"- {line['text']}: {detail}")
+    shadow = report.get("exit_shadow")
+    if shadow:
+        lines.append("")
+        lines.append(f"Schatten-Journal Läufer (MID 1h): {shadow['trades']} von {shadow['target']} Trades mit TP2. "
+                     f"Läufer gegen festen TP3 {_r(shadow['LAEUFER']['vs_fest'])}, mit Orderflow-Filter "
+                     f"{_r(shadow['OF_LAEUFER']['vs_fest'])}, weiter Stop {_r(shadow['LAEUFER_WEIT']['vs_fest'])}.")
     lines.append("")
     lines.append("Nur Papier. TIM ändert nichts ohne dein Ja; Holdout 2025 bleibt gesperrt.")
     return "\n".join(lines) + "\n"

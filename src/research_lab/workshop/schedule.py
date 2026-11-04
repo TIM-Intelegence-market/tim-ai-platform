@@ -282,7 +282,8 @@ class Workshop:
             return {"error": f"{type(exc).__name__}: {exc}"[:200]}
         result: dict[str, Any] = {key: value["status"] for key, value in report["filters"].items()}
         try:
-            week = weekly_report.build(journals, report, log.events(), now)
+            from src.dashboard.exit_shadow import DEFAULT_PATH as shadow_path, load as load_shadow
+            week = weekly_report.build(journals, report, log.events(), now, load_shadow(self.root / shadow_path))
             folder = self.research / "reports"
             folder.mkdir(parents=True, exist_ok=True)
             (folder / f"woche_{week['week']}.json").write_text(json.dumps(week, ensure_ascii=False, indent=2) + "\n",
