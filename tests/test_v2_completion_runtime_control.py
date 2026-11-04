@@ -284,10 +284,10 @@ def _mac_dashboard(module, instance, monkeypatch, *, ifconfig_hosts, open_hosts,
     monkeypatch.setattr(mac_live, "reachable", lambda host, port, timeout=2.0: (host, port) in answering)
 
 
-def _remote_view(tmp_path, monkeypatch, hosts):
+def _remote_view(tmp_path, monkeypatch, hosts, users=None):
     path = tmp_path / "dashboard-remote-view.json"
     if hosts is not None:
-        path.write_text(json.dumps({"hosts": hosts}), encoding="utf-8")
+        path.write_text(json.dumps({"hosts": hosts, **({"users": users} if users else {})}), encoding="utf-8")
     monkeypatch.setenv("TIM_DASHBOARD_REMOTE_VIEW_FILE", str(path))
 
 
@@ -365,3 +365,33 @@ def test_blocked_tailnet_view_names_the_failed_condition(control, monkeypatch, t
     assert instance.tailnet_view_block_reason(instance.listeners(8765)) == "tailscale cli not found"
     _remote_view(tmp_path / "off", monkeypatch, None)
     assert instance.tailnet_view_block_reason(instance.listeners(8765)) == "no remote-view file with a *.ts.net host"
+
+
+HOST = "zeyirs-mac-mini.tailce31c7.ts.net"
+
+
+def test_serve_status_with_a_notice_before_the_json_is_read(control, monkeypatch, tmp_path) -> None:
+    module, instance = control
+    _remote_view(tmp_path, monkeypatch, [HOST])
+    _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=[TAILNET], open_hosts=[TAILNET],
+                   serve_status='Warning: client version differs\n{"TCP": {"8765": {"HTTP": true}}}\n')
+    assert instance.tailnet_view_block_reason(instance.listeners(8765)) is None
+
+
+def test_unreadable_serve_status_needs_login_check_in_owner_file(control, monkeypatch, tmp_path) -> None:
+    module, instance = control
+    _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=[TAILNET], open_hosts=[TAILNET],
+                   serve_status="The Tailscale GUI is not running")
+    _remote_view(tmp_path, monkeypatch, [HOST])
+    reason = instance.tailnet_view_block_reason(instance.listeners(8765))
+    assert reason.startswith("tailscale serve status is not JSON") and "GUI is not running" in reason
+    _remote_view(tmp_path, monkeypatch, [HOST], users=["owner@example.com"])
+    assert instance.tailnet_view_block_reason(instance.listeners(8765)) is None
+
+
+def test_funnel_on_blocks_even_with_login_check(control, monkeypatch, tmp_path) -> None:
+    module, instance = control
+    _remote_view(tmp_path, monkeypatch, [HOST], users=["owner@example.com"])
+    _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=[TAILNET], open_hosts=[TAILNET],
+                   serve_status='{"AllowFunnel": {"%s:443": true}}' % HOST)
+    assert instance.tailnet_view_block_reason(instance.listeners(8765)) == "tailscale funnel is on"

@@ -79,19 +79,31 @@ REMOTE_VIEW_FILE = Path.home() / "Library/Application Support/TIM/dashboard-remo
 TAILNET_NETWORKS = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
 
 
-def remote_view_hosts() -> frozenset[str]:
+def _remote_view_raw() -> dict[str, Any]:
     path = Path(os.environ.get(REMOTE_VIEW_FILE_ENV) or REMOTE_VIEW_FILE)
     try:
         if path.stat().st_size > 4096:
-            return frozenset()
+            return {}
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return frozenset()
-    hosts = raw.get("hosts", []) if isinstance(raw, dict) else []
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def remote_view_hosts() -> frozenset[str]:
+    hosts = _remote_view_raw().get("hosts", [])
     return frozenset(
         host.strip().lower().rstrip(".")
-        for host in hosts
+        for host in (hosts if isinstance(hosts, list) else [])
         if isinstance(host, str) and host.strip().lower().rstrip(".").endswith(".ts.net")
+    )
+
+
+def remote_view_users() -> frozenset[str]:
+    """Tailscale logins the dashboard requires on every remote request (src/dashboard/security.py)."""
+    users = _remote_view_raw().get("users", [])
+    return frozenset(
+        user.strip().lower() for user in (users if isinstance(users, list) else []) if isinstance(user, str) and user.strip()
     )
 
 
@@ -100,6 +112,26 @@ TAILSCALE_CLI_CANDIDATES = (
     "/opt/homebrew/bin/tailscale",
     "/usr/local/bin/tailscale",
 )
+
+
+SERVE_STATUS_UNREADABLE = "tailscale serve status is not JSON"
+FUNNEL_ON = "tailscale funnel is on"
+
+
+def parse_serve_status(text: str) -> dict[str, Any] | None:
+    """The JSON object in ``tailscale serve status --json`` output.
+
+    Run from a launchd agent, the Tailscale app can print a notice before the JSON (seen 04.11.,
+    Issue #108), so decoding starts at the first ``{``. None when no JSON object is found.
+    """
+    start = text.find("{")
+    if start < 0:
+        return None
+    try:
+        status, _ = json.JSONDecoder().raw_decode(text[start:])
+    except ValueError:
+        return None
+    return status if isinstance(status, dict) else None
 
 
 def tailscale_funnel_block_reason() -> str | None:
@@ -111,15 +143,13 @@ def tailscale_funnel_block_reason() -> str | None:
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip().splitlines()[-1:] or [""]
         return f"tailscale serve status failed (exit {result.returncode}: {detail[0][:160]})"
-    try:
-        status = json.loads(result.stdout or "{}")
-    except ValueError:
-        return "tailscale serve status is not JSON"
-    if not isinstance(status, dict):
-        return "tailscale serve status is not a JSON object"
+    status = parse_serve_status(result.stdout or "{}")
+    if status is None:
+        snippet = " ".join((result.stdout or "").split())[:160]
+        return f"{SERVE_STATUS_UNREADABLE} ({snippet})"
     funnel = status.get("AllowFunnel") or {}
     if not isinstance(funnel, dict) or any(funnel.values()):
-        return "tailscale funnel is on"
+        return FUNNEL_ON
     return None
 
 
@@ -373,8 +403,9 @@ class RuntimeControl:
         on macOS, only while the owner's remote-view file (src/dashboard/security.py) names a
         ``*.ts.net`` host, only when lsof shows the dashboard bound to loopback alone, and only when
         every answering address is a Tailscale address, and only when ``tailscale serve status`` shows no
-        Funnel route (fail-closed if the CLI is missing or unreadable). A LAN, public, Funnel or wildcard
-        exposure stays BLOCKED.
+        Funnel route. If the CLI is missing or its output unreadable, it is accepted only when the owner
+        file also lists Tailscale logins (the dashboard then refuses any request without one, which
+        Funnel traffic never has). A LAN, public, Funnel or wildcard exposure stays BLOCKED.
         """
         return self.tailnet_view_block_reason(listener) is None
 
@@ -398,7 +429,15 @@ class RuntimeControl:
         outside = [host for host in exposed if not is_tailnet_address(host)]
         if outside:
             return f"answers on non-tailnet address ({', '.join(outside)})"
-        return tailscale_funnel_block_reason()
+        funnel = tailscale_funnel_block_reason()
+        if funnel is None:
+            return None
+        if funnel == FUNNEL_ON or not remote_view_users():
+            return funnel
+        # Funnel state unreadable (CLI unusable from this context): still accepted when the dashboard
+        # demands an allowed Tailscale login on every remote request. Funnel traffic from the internet
+        # carries no tailnet login, so src/dashboard/security.py refuses it either way.
+        return None
 
     def static_observe_gate(self) -> dict[str, Any]:
         try:
