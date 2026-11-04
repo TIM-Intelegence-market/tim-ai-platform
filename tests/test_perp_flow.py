@@ -154,7 +154,7 @@ def test_hourly_check_against_binance_candles(tmp_path) -> None:
     assert any(not r["ok"] for r in flow.check())
 
 
-def test_saved_files_are_gzip_json_per_day_and_old_days_go(tmp_path) -> None:
+def test_saved_files_are_gzip_json_per_day_and_old_days_move_to_the_archive(tmp_path) -> None:
     trades = make_trades()
     flow = PerpFlow(tmp_path, fetch=FakeBinance(trades), clock=lambda: NOW.timestamp())
     collect(flow)
@@ -165,6 +165,27 @@ def test_saved_files_are_gzip_json_per_day_and_old_days_go(tmp_path) -> None:
     flow.prune()
     flow.save()
     assert not list(tmp_path.glob("perp-2026-10-30*"))
+    # 04.11.2026: TIM's own history is never deleted, the day leaves only the chart's window
+    archived = tmp_path / "archive" / "perp-2026-10-30.json.gz"
+    assert json.loads(gzip.decompress(archived.read_bytes())) == payload
+    # a restart loads only the chart's window, the archive stays untouched
+    again = PerpFlow(tmp_path, fetch=FakeBinance(trades), clock=flow.clock)
+    again.load()
+    assert "2026-10-30" not in again.days and archived.exists()
+
+
+def test_open_interest_hours_are_appended_once_to_the_archive(tmp_path) -> None:
+    start = int((NOW - timedelta(hours=9)).timestamp())
+    rows = [{"timestamp": (start + i * 3600) * 1000, "sumOpenInterest": str(90_000 + i), "sumOpenInterestValue": "7.2e9"}
+            for i in range(10)]
+    path = perp_flow.oi_archive_path(tmp_path)
+    assert path.name == "oi-BTCUSDT-1h.jsonl"
+    assert perp_flow.append_oi_archive(open_interest(lambda p, q: rows[:6], now=NOW), path) == 6
+    assert perp_flow.append_oi_archive(open_interest(lambda p, q: rows, now=NOW), path) == 4
+    assert perp_flow.append_oi_archive(open_interest(lambda p, q: rows, now=NOW), path) == 0
+    lines = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [line["t"] for line in lines] == [start + i * 3600 for i in range(10)]
+    assert lines[-1] == {"t": start + 9 * 3600, "oi": 90_009.0, "oi_usd": 7.2e9}
 
 
 def test_zscore_uses_the_last_window_values() -> None:
@@ -270,3 +291,4 @@ def test_runtime_loop_publishes_and_saves(tmp_path) -> None:
     asyncio.run(go())
     assert state.perp_flow["market"] == "perp" and state.perp_flow["days"]
     assert state.open_interest["points"] and (tmp_path / "state.json").exists()
+    assert len((tmp_path / "oi-BTCUSDT-1h.jsonl").read_text().splitlines()) == 200

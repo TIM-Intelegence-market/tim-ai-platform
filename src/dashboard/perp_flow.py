@@ -11,10 +11,13 @@ stores spot trades in PostgreSQL; this module adds the perp side without touchin
   (5-minute buckets, 5 $ levels) plus large taker orders for the bubbles; no raw trade is kept.
 - The rows are saved per UTC day under ``data/perp_flow/`` together with the next id. After a
   restart the runtime goes on from that id and catches up, so a restart leaves no gap either.
+- The chart reads the last ``DAYS_KEPT`` days. Older day files are never deleted: they move to
+  ``data/perp_flow/archive/`` and stay there as TIM's own orderflow history (04.11.2026).
 - Once an hour the last full hours are compared with Binance's 1h perp candle (volume and taker
   buy volume). The result is shown on the chart, so a broken record cannot hide.
 - ``open_interest`` reads the hourly open interest history and adds the Z-score over 7.5 days
-  (180 hours), the window Broncx uses.
+  (180 hours), the window Broncx uses. Binance keeps only 30 days of it, so every new hour is
+  appended to ``data/perp_flow/oi-BTCUSDT-1h.jsonl`` and kept for good (``append_oi_archive``).
 
 Nothing here trades, writes a plan or changes a score. Public endpoints only, no key, no account.
 """
@@ -58,6 +61,7 @@ MAX_BYTES = 8_000_000
 SOURCE = "Binance USD-M Perp aggTrades (BTCUSDT, öffentlich, TIM-Sammler)"
 OI_SOURCE = "Binance USD-M Open Interest (BTCUSDT, 1h, öffentlich)"
 DATA_DIR = Path("data/perp_flow")
+ARCHIVE_NAME = "archive"  # sub folder of the data folder: day files older than DAYS_KEPT
 
 Fetch = Callable[[str, Mapping[str, str]], Any]
 
@@ -146,9 +150,12 @@ class PerpFlow:
             self._write(self.directory / f"perp-{key}.json.gz", gzip.compress(json.dumps(payload).encode()))
         self._dirty.clear()
         kept = set(self.days)
+        archive = self.directory / ARCHIVE_NAME
         for path in self.directory.glob("perp-*.json.gz"):
             if path.name[5:15] not in kept:
-                path.unlink(missing_ok=True)
+                # Out of the chart's window, but kept: TIM's own history is never deleted.
+                archive.mkdir(parents=True, exist_ok=True)
+                os.replace(path, archive / path.name)
         state = {"symbol": self.symbol, "tick": TICK, "next_id": self.next_id, "segments": self.segments,
                  "gaps": self.gaps[-50:], "checks": self.checks[-CHECK_KEEP:], "updated_at": self.updated_at}
         self._write(self.directory / "state.json", json.dumps(state).encode())
@@ -378,6 +385,36 @@ def oi_chart(snapshot: Mapping[str, Any] | None, first_time: int, now: datetime 
             "window_hours": snapshot.get("window_hours", OI_WINDOW), "as_of": snapshot["as_of"], "stale": stale, "source": snapshot.get("source")}
 
 
+def oi_archive_path(directory: Path | str = DATA_DIR, symbol: str = SYMBOL) -> Path:
+    return Path(directory) / f"oi-{symbol}-{OI_PERIOD}.jsonl"
+
+
+def append_oi_archive(snapshot: Mapping[str, Any], path: Path) -> int:
+    """Append the hours of ``snapshot`` newer than the file's last line. Returns how many were added.
+
+    One JSON line per hour: ``{"t": epoch seconds, "oi": BTC, "oi_usd": USD}``. Binance keeps 30 days
+    of this history; the file keeps all of it from the first run on.
+    """
+    last = None
+    if path.exists():
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            handle.seek(max(0, handle.tell() - 4096))
+            for line in reversed(handle.read().decode("utf-8", "replace").splitlines()):
+                try:
+                    last = int(json.loads(line)["t"])
+                    break
+                except (ValueError, KeyError, TypeError):
+                    continue
+    lines = [json.dumps({"t": int(t), "oi": oi, "oi_usd": usd}, sort_keys=True)
+             for t, oi, usd in snapshot.get("points") or [] if last is None or int(t) > last]
+    if lines:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+    return len(lines)
+
+
 async def run(state: Any, stop: Any, directory: Path | str = DATA_DIR, log: Any = None,
               flow: PerpFlow | None = None, oi_fetch: Fetch | None = None) -> None:
     """Runtime loop (main.py): collect, check, save and publish to ``state.perp_flow`` / ``state.open_interest``.
@@ -428,6 +465,7 @@ async def run(state: Any, stop: Any, directory: Path | str = DATA_DIR, log: Any 
                 snapshot = await asyncio.to_thread(open_interest, oi_fetch)
                 with state.lock:
                     state.open_interest = snapshot
+                await asyncio.to_thread(append_oi_archive, snapshot, oi_archive_path(flow.directory, flow.symbol))
             except asyncio.CancelledError:
                 raise
             except Exception as error:  # noqa: BLE001

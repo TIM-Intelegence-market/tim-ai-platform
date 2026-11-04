@@ -279,11 +279,15 @@ def test_restore_requires_explicit_local_storage_path_before_pg_call(tmp_path: P
 
 def test_main_writes_fail_report_without_secret(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(backup, "BACKUP_REPORT_PATH", tmp_path / "report.json")
+    monkeypatch.setattr(backup, "FILES_REPORT_PATH", tmp_path / "files.json")
+    monkeypatch.setattr(backup, "own_data_sources", lambda: {"perp_flow": tmp_path / "none"})
     monkeypatch.setenv("TIM_DATABASE_SECRET_PROVIDER", "file")
     monkeypatch.setenv("TIM_DATABASE_SECRET_FILE", str(tmp_path / "missing"))
-    assert backup.main(["backup", "--dir", str(tmp_path / "b")]) == 2
+    assert backup.main(["backup", "--dir", str(tmp_path / "b"), "--no-diskutil"]) == 2
     report = (tmp_path / "report.json").read_text()
     assert '"status": "FAIL"' in report
+    # the own-data copy runs anyway and reports on its own (here: no folder to copy)
+    assert '"status": "FAIL"' in (tmp_path / "files.json").read_text()
 
 
 def fake_volume(monkeypatch, mount: Path, *, external_device: bool = True) -> None:
@@ -404,3 +408,64 @@ def test_main_mirror_needs_no_database_secret(tmp_path: Path, monkeypatch) -> No
     code = backup.main(["mirror", "--dir", str(source), "--target", str(tmp_path / "gone"), "--no-diskutil"])
     report = __import__("json").loads((tmp_path / "backup_mirror.json").read_text())
     assert code == 2 and report["status"] == "FAIL" and report["volume"]["mount_point"] == "/"
+
+
+# --- own collected data (files) ---------------------------------------------------------------
+
+def _own_data(tmp_path: Path) -> dict[str, Path]:
+    perp = tmp_path / "data" / "perp_flow"
+    (perp / "archive").mkdir(parents=True)
+    (perp / "perp-2026-11-04.json.gz").write_bytes(b"today")
+    (perp / "archive" / "perp-2026-10-20.json.gz").write_bytes(b"old day")
+    (perp / "state.json.tmp").write_bytes(b"half written")
+    liq = tmp_path / "liq"
+    (liq / "raw" / "binance").mkdir(parents=True)
+    (liq / "raw" / "binance" / "2026-11-04.jsonl").write_text('{"kind":"alive"}\n')
+    (liq / "run.lock").write_text("pid")
+    return {"perp_flow": perp, "options": tmp_path / "data" / "options", "liquidations": liq}
+
+
+def test_files_backup_archives_own_data_without_temporaries_and_keeps_seven(tmp_path: Path) -> None:
+    import tarfile
+
+    sources = _own_data(tmp_path)
+    target_dir = tmp_path / "backups"
+    for day in range(9):
+        old = target_dir / f"tim_files_202610{10 + day:02d}T021500Z.tar.gz"
+        target_dir.mkdir(exist_ok=True)
+        old.write_bytes(b"old")
+    result = backup.files_backup(target_dir, sources)
+    archive = Path(result["archive"])
+    assert result["status"] == "PASS" and result["mirror"] is False and "options" not in result["sources"]
+    assert (archive.with_name(archive.name + ".sha256")).read_text().split()[0] == hashlib.sha256(archive.read_bytes()).hexdigest()
+    with tarfile.open(archive) as tar:
+        names = sorted(tar.getnames())
+    assert names == ["liquidations/raw/binance/2026-11-04.jsonl", "perp_flow/archive/perp-2026-10-20.json.gz",
+                     "perp_flow/perp-2026-11-04.json.gz"]
+    assert len(backup.files_archives(target_dir)) == backup.FILES_KEEP_COUNT and archive in backup.files_archives(target_dir)
+    # the database dumps' pattern never matches the file copies (prune of dumps leaves them alone)
+    assert backup.dumps(target_dir) == []
+
+
+def test_files_backup_copies_to_a_mounted_mirror_volume(tmp_path: Path, monkeypatch) -> None:
+    sources = _own_data(tmp_path)
+    volume = tmp_path / "Volumes" / "TIM-Backup"
+    volume.mkdir(parents=True)
+    fake_volume(monkeypatch, volume)
+    result = backup.files_backup(tmp_path / "backups", sources, mirror_target=volume / "live")
+    copy = Path(result["mirror"])
+    assert copy.parent == volume / "live" and copy.read_bytes() == Path(result["archive"]).read_bytes()
+    # without the volume: still PASS, the report says why there is no second copy
+    monkeypatch.setattr(backup, "mount_point", lambda path: Path("/"))
+    alone = backup.files_backup(tmp_path / "backups", sources, mirror_target=tmp_path / "gone")
+    assert alone["status"] == "PASS" and alone["mirror"] is False and "separate mounted volume" in alone["mirror_reason"]
+
+
+def test_main_files_needs_no_database_secret(tmp_path: Path, monkeypatch) -> None:
+    sources = _own_data(tmp_path)
+    monkeypatch.setattr(backup, "FILES_REPORT_PATH", tmp_path / "backup_files.json")
+    monkeypatch.setattr(backup, "own_data_sources", lambda: sources)
+    monkeypatch.setitem(sys.modules, "config.settings", None)
+    code = backup.main(["files", "--dir", str(tmp_path / "b"), "--target", str(tmp_path / "gone"), "--no-diskutil"])
+    report = __import__("json").loads((tmp_path / "backup_files.json").read_text())
+    assert code == 0 and report["status"] == "PASS" and report["files"]["perp_flow"] == 2
