@@ -23,6 +23,8 @@
     python -m src.research_lab.workshop rule-study --spec regel.json [--run R-0001]
     python -m src.research_lab.workshop rule-log
     python -m src.research_lab.workshop learn [--write]
+    python -m src.research_lab.workshop woche [--json]
+    python -m src.research_lab.workshop entscheiden --filter KOSTEN_DECKEL --antwort ja|nein --reference "Uzi 08.11. im Thread"
     python -m src.research_lab.workshop charter
 
 Reads and writes only the idea queue (default data/research/IDEEN.jsonl, on the Mac in ~/TIM-live) and, for
@@ -134,6 +136,13 @@ def main(argv: list[str] | None = None) -> int:
     rs.add_argument("--run", help="Erkundung, deren Ergebnis die Studie als Vorbelastung nennen muss")
     rs.add_argument("--out-dir", type=Path, default=Path("data/research/rules/studies"))
     sub.add_parser("rule-log", help="F10: alle Erkundungen")
+    wk = sub.add_parser("woche", help="Wochenbericht der Lernschleife zeigen (rechnet nach, schreibt nichts)")
+    wk.add_argument("--journal-dir", type=Path, default=Path("data/journal"))
+    wk.add_argument("--json", action="store_true")
+    dec = sub.add_parser("entscheiden", help="Uzis Ja/Nein zu einem bestandenen Filter festhalten")
+    dec.add_argument("--filter", required=True)
+    dec.add_argument("--antwort", required=True, choices=["ja", "nein"])
+    dec.add_argument("--reference", required=True, help='z. B. "Uzi 08.11. 10:12 im Thread"')
     ls = sub.add_parser("learn", help="F11: Selbst-Verbesserung aus den Trade-Lehren (Standard: nur anzeigen)")
     ls.add_argument("--journal-dir", type=Path, default=Path("data/journal"))
     ls.add_argument("--write", action="store_true", help="Beobachtungen starten und fällige Fenster auswerten")
@@ -253,6 +262,21 @@ def main(argv: list[str] | None = None) -> int:
                 look = item["lookback"]
                 print(f"{key:<15} {item['status']:<17} weg {look['dropped']:>3} Trades, {look['dropped_net_r']:+.2f} R "
                       f"(Band {look['interval'][0]:+.2f} bis {look['interval'][1]:+.2f} R je Trade)  {item['text']}")
+        elif args.command == "woche":
+            from src.dashboard.plan_journal import load_view
+            from src.research_lab.workshop import self_improve, weekly_report
+            from src.research_lab.workshop.schedule import JOURNALS
+            from src.research_lab.workshop.trade_reflection import ReflectionLog
+            journals = {n: load_view(args.journal_dir / f"{n}.json") for n in JOURNALS if (args.journal_dir / f"{n}.json").exists()}
+            log, now = self_improve.LearningLog(), datetime.now(timezone.utc)
+            learning = self_improve.step(journals, ReflectionLog().records(), log, now, write=False)
+            week = weekly_report.build(journals, learning, log.events(), now)
+            print(json.dumps(week, ensure_ascii=False, indent=2) if args.json else weekly_report.render(week))
+        elif args.command == "entscheiden":
+            from src.research_lab.workshop import self_improve, weekly_report
+            event = weekly_report.record_decision(self_improve.LearningLog(), args.filter, args.antwort, by="Uzi",
+                                                  reference=args.reference, at=datetime.now(timezone.utc))
+            print(f"{event['filter']}: {event['answer']} festgehalten. Nächster Schritt: {event['next']}")
         elif args.command.startswith("rule-"):
             return _rule_command(args, queue)
         elif args.command == "charter":
