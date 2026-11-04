@@ -84,13 +84,7 @@ def taker_deltas(path: Path, volumes: dict[datetime, float]) -> dict[str, list[l
     return {"spot": rows}
 
 
-def deltas_by_bar(days: dict[str, list[list[float]]], bar_seconds: int) -> dict[int, float]:
-    result: dict[int, float] = {}
-    for rows in days.values():
-        for bucket, _, bid, ask in rows:
-            bar = int(bucket) // bar_seconds * bar_seconds
-            result[bar] = result.get(bar, 0.0) + float(ask) - float(bid)
-    return result
+deltas_by_bar = ev.store_deltas
 
 
 def _local(value: Any) -> str:

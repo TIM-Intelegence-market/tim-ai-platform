@@ -160,62 +160,88 @@ def aggregate(minutes: Sequence[Mapping[str, Any]], timeframe: str) -> list[dict
     return result
 
 
-def follow_rest(entry: Mapping[str, Any], minutes: Sequence[Mapping[str, Any]], plan: Sequence[Mapping[str, Any]],
-                higher: Sequence[Mapping[str, Any]], variant: str, deltas: Mapping[int, float] | None = None) -> dict[str, Any]:
-    """Follow the last third from the TP2 hit under ``variant``. Returns exit time, price, reason
-    (or ``OFFEN`` with the last close when the data ends first) and the orderflow verdict if asked."""
-    long = entry["direction"] == "LONG"
+def start_run(entry: Mapping[str, Any], variant: str) -> dict[str, Any]:
+    """State of the last third at the TP2 hit: the journal's stop then, nothing seen yet."""
     start = _time(entry["tp_hits"][1])
+    return {"variant": variant, "status": "OFFEN", "stop": stop_at(entry, start), "seen": _iso(start),
+            "through": _iso(start), "of_verdict": None, "best_price": None}
+
+
+def advance(entry: Mapping[str, Any], run: dict[str, Any], minutes: Sequence[Mapping[str, Any]],
+            plan: Sequence[Mapping[str, Any]], higher: Sequence[Mapping[str, Any]],
+            deltas: Mapping[int, float] | None = None) -> dict[str, Any]:
+    """Follow an open run (``start_run``) on the 1m candles after ``run["through"]``; resumable.
+
+    A plan close completed since the previous minute is checked for invalidation first, then the
+    trail moves (in force from this minute on). Then timeout, stop, and at the TP3 touch the variant's
+    rule. A run that ends gets ``status`` CLOSED with exit time, price and reason. A first candle that
+    opens after ``through`` is noted as ``data_gap`` (the run goes on, the gap stays visible)."""
+    if run.get("status") != "OFFEN":
+        return run
+    variant = run["variant"]
+    long = entry["direction"] == "LONG"
+    initial = stop_at(entry, _time(entry["tp_hits"][1]))
     deadline = _time(entry["filled_at"]) + timedelta(hours=float(entry.get("max_hold_hours") or 48))
-    stop = stop_at(entry, start)
     tp3 = float(entry["targets"][2])
     level, side = entry.get("invalidation_level"), entry.get("invalidation_side")
-    timeframe = str(entry.get("timeframe") or "30m")
-    bar_seconds = TIMEFRAME_MINUTES.get(timeframe, 30) * 60
+    bar_seconds = TIMEFRAME_MINUTES.get(str(entry.get("timeframe") or "30m"), 30) * 60
     trail_on = higher if variant == "LAEUFER_WEIT" else plan
     trail_closes = [c["close_time"] for c in trail_on]
     plan_closes = [c["close_time"] for c in plan]
     runner = variant in {"LAEUFER", "LAEUFER_WEIT"}
-    verdict: bool | None = None
-    seen = start
-    result: dict[str, Any] = {"variant": variant}
-    best_price = None
+    through, seen = _time(run["through"]), _time(run["seen"])
+
+    def close(at: datetime, price: float, reason: str) -> dict[str, Any]:
+        run.update(status="CLOSED", exit_at=_iso(at), exit_price=price, exit_reason=reason)
+        return run
+
     for candle in minutes:
-        if candle["open_time"] < start:
-            continue
         opened = candle["open_time"]
-        # Closes completed since the previous minute: invalidation, then the trail.
+        if opened < through:
+            continue
+        if opened > through and not run.get("data_gap"):
+            run["data_gap"] = f"1m-Kerzen fehlen zwischen {_iso(through)} und {_iso(opened)}"
         if level is not None:
             for index in _closes_between(plan, plan_closes, seen, opened):
-                close = plan[index]["close"]
-                if (side == "<" and close < level) or (side == ">" and close > level):
-                    return {**result, "exit_at": _iso(plan[index]["close_time"]), "exit_price": close,
-                            "exit_reason": "INVALIDATION", "of_verdict": verdict, "best_price": best_price}
+                price = plan[index]["close"]
+                if (side == "<" and price < level) or (side == ">" and price > level):
+                    return close(plan[index]["close_time"], price, "INVALIDATION")
         # Every variant trails like the journal (LAEUFER_WEIT on the higher timeframe), from the next minute on.
         new = _closes_between(trail_on, trail_closes, seen, opened)
         if new:
-            last = new[-1]
-            stop = _trail(entry, trail_on[: last + 1], float(trail_on[last]["close"]), stop)
+            run["stop"] = _trail(entry, trail_on[: new[-1] + 1], float(trail_on[new[-1]]["close"]), float(run["stop"]))
         seen = opened
+        run["seen"], run["through"] = _iso(opened), _iso(candle["close_time"])
+        through = candle["close_time"]
         if opened >= deadline:
-            return {**result, "exit_at": _iso(opened), "exit_price": candle["open"], "exit_reason": "TIMEOUT",
-                    "of_verdict": verdict, "best_price": best_price}
+            return close(opened, candle["open"], "TIMEOUT")
         extreme = candle["high"] if long else candle["low"]
-        best_price = extreme if best_price is None or (extreme > best_price if long else extreme < best_price) else best_price
+        best = run.get("best_price")
+        run["best_price"] = extreme if best is None or (extreme > best if long else extreme < best) else best
+        stop = float(run["stop"])
         if (long and candle["low"] <= stop) or (not long and candle["high"] >= stop):
-            reason = "RUNNER_STOP" if r_of(entry, stop) > r_of(entry, stop_at(entry, start)) else "STOP"
-            return {**result, "exit_at": _iso(candle["close_time"]), "exit_price": stop, "exit_reason": reason,
-                    "of_verdict": verdict, "best_price": best_price}
+            return close(candle["close_time"], stop, "RUNNER_STOP" if r_of(entry, stop) > r_of(entry, initial) else "STOP")
         touched = (long and candle["high"] >= tp3) or (not long and candle["low"] <= tp3)
-        if touched and not runner and verdict is None:
+        if touched and not runner and run.get("of_verdict") is None and not run.get("of_checked"):
             if variant == "OF_LAEUFER":
-                verdict = orderflow_agrees(entry, deltas or {}, bar_seconds, opened)
-            if not verdict:
-                return {**result, "exit_at": _iso(candle["close_time"]), "exit_price": tp3, "exit_reason": "TP3",
-                        "of_verdict": verdict, "best_price": best_price}
+                run["of_verdict"] = orderflow_agrees(entry, deltas or {}, bar_seconds, opened)
+                run["of_checked"] = True
+            if not run.get("of_verdict"):
+                return close(candle["close_time"], tp3, "TP3")
+    return run
+
+
+def follow_rest(entry: Mapping[str, Any], minutes: Sequence[Mapping[str, Any]], plan: Sequence[Mapping[str, Any]],
+                higher: Sequence[Mapping[str, Any]], variant: str, deltas: Mapping[int, float] | None = None) -> dict[str, Any]:
+    """Follow the last third from the TP2 hit under ``variant`` in one go. Returns exit time, price, reason
+    (or ``OFFEN`` with the last close when the data ends first) and the orderflow verdict if asked."""
+    run = advance(entry, start_run(entry, variant), minutes, plan, higher, deltas)
+    result = {"variant": variant, "of_verdict": run.get("of_verdict"), "best_price": run.get("best_price")}
+    if run["status"] == "CLOSED":
+        return {**result, "exit_at": run["exit_at"], "exit_price": run["exit_price"], "exit_reason": run["exit_reason"]}
     last = minutes[-1] if minutes else None
     return {**result, "exit_at": None, "exit_price": last["close"] if last else None, "exit_reason": "OFFEN",
-            "of_verdict": verdict, "best_price": best_price, "marked_at": _iso(last["close_time"]) if last else None}
+            "marked_at": _iso(last["close_time"]) if last else None}
 
 
 def evaluate_entry(entry: Mapping[str, Any], minutes: Sequence[Mapping[str, Any]], plan: Sequence[Mapping[str, Any]],
@@ -253,6 +279,17 @@ def evaluate_entry(entry: Mapping[str, Any], minutes: Sequence[Mapping[str, Any]
         variants[name] = {**rest, "gross_r": gross, "net_r": net}
     base["variants"] = variants
     return base
+
+
+def store_deltas(days: Mapping[str, Sequence[Sequence[float]]] | None, bar_seconds: int) -> dict[int, float]:
+    """Taker delta (ask - bid) per bar from footprint-store day rows [bucket, level, bid, ask]
+    (spot store ``DashboardState.footprint["days"]`` or the perp day files)."""
+    result: dict[int, float] = {}
+    for rows in (days or {}).values():
+        for bucket, _, bid, ask in rows:
+            bar = int(bucket) // bar_seconds * bar_seconds
+            result[bar] = result.get(bar, 0.0) + float(ask) - float(bid)
+    return result
 
 
 def summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

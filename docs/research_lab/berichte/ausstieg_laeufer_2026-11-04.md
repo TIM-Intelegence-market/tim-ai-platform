@@ -33,3 +33,9 @@ Mit Protokollkosten (5/3/5 bps) gleiche Reihenfolge, alle Werte ~0,1 R je Trade 
 ## Vorschlag
 Schatten-Journal neben dem MID-Journal: gleiche Einstiege, letztes Drittel als Läufer (1h-Swing) und als
 Orderflow-Läufer, täglich neu gerechnet. Bewertung nach 30 Trades mit TP2, erst dann eine Regeländerung.
+
+## Schatten-Journal (Uzi „go“ 04.11.2026 17:08)
+`src/dashboard/exit_shadow.py`, läuft in der Runtime neben dem MID-Journal (jede Minute nach den Journalen),
+Datei `data/journal/tim_exit_shadow_mid.json`. Nur Trades, deren TP2 nach dem Start liegt (prospektiv).
+Liest das MID-Journal, schreibt es nie. Orderflow: Spot-Delta aus TIMs Trade-Speicher. Kosten Kraken 5 bps.
+Stand im Sonntagsbericht („Schatten-Journal Läufer“). Bewertung nach 30 Trades mit TP2; Regeländerung nur mit Uzi.
