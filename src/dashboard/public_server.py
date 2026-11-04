@@ -233,13 +233,13 @@ class PublicDashboardServer:
         if path == "/api/chart/live":
             from src.dashboard.chart_live import build_live_chart
             from src.dashboard.market_context import chart_context
+            from src.dashboard.perp_flow import chart_inputs as perp_chart_inputs
 
             with self.state.lock:
                 footprint = dict(self.state.footprint)
                 gamma = dict(self.state.gamma)
                 liquidation = dict(self.state.liquidation)
-                perp = dict(getattr(self.state, "perp_flow", None) or {})
-                open_interest = dict(getattr(self.state, "open_interest", None) or {})
+                perp, open_interest = perp_chart_inputs(self.state, query.get("symbol"))
             from src.dashboard.chart_live import load_plan_journals
 
             model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
