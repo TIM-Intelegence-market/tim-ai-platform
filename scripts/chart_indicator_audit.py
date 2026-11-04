@@ -6,7 +6,8 @@ Two steps, so the raw data can be kept as evidence and the check rerun offline:
   collect: reads the live chart API (/api/chart/live, /api/gamma, /api/liquidation) and the
            raw data behind it straight from the sources: Binance Spot klines and aggTrades
            (REST for today, data.binance.vision daily archives with SHA-256 check for
-           finished days), Binance futures open interest and klines, Deribit options book.
+           finished days), Binance futures open interest, klines and funding, Deribit options
+           book, Coinbase BTC-USD and USDT-USD hourly candles.
   analyze: recomputes each indicator with its own code (nothing from src/ is imported) and
            compares it with what the chart API sends. One row per check: PASS, FAIL or INFO.
 
@@ -40,6 +41,8 @@ SPOT = "https://api.binance.com"
 FAPI = "https://fapi.binance.com"
 ARCHIVE = "https://data.binance.vision/data/spot/daily/aggTrades"
 DERIBIT = "https://www.deribit.com/api/v2/public"
+COINBASE = "https://api.exchange.coinbase.com"
+OI_WINDOW = 180  # hours in the open-interest Z-score window (7.5 days)
 SYMBOL = "BTCUSDT"
 VIEWS = ("5m", "15m", "30m", "1h", "4h", "1d", "1w")
 SECONDS = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400, "1w": 604800}
@@ -212,7 +215,7 @@ def rest_trades(book: TradeBook, start_ms: int, end_ms: int) -> dict[str, Any]:
 # --------------------------------------------------------------------------- collect
 
 
-def collect(base: str, out: Path, archive_cache: Path, days_back: int) -> None:
+def collect(base: str, out: Path, archive_cache: Path, days_back: int, public_base: str | None = None) -> None:
     out.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {"base": base, "started": datetime.now(timezone.utc).isoformat()}
     for tf in VIEWS:
@@ -241,6 +244,28 @@ def collect(base: str, out: Path, archive_cache: Path, days_back: int) -> None:
         save(out / "fapi_oi_now.json", get_json(f"{FAPI}/fapi/v1/openInterest", {"symbol": SYMBOL}))
     except Exception as exc:  # noqa: BLE001
         meta["fapi_error"] = str(exc)
+    # Lower bands (CVD, open interest, funding, Coinbase premium) and the perp view of the chart.
+    for tf in ("30m", "1h"):
+        try:
+            save(out / f"api_{tf}_perp.json", get_json(f"{base}/api/chart/live", {"symbol": SYMBOL, "tf": tf, "market": "perp"}, timeout=60))
+        except Exception as exc:  # noqa: BLE001
+            meta[f"api_{tf}_perp_error"] = str(exc)
+    sources = [("fapi_oi_1h.json", f"{FAPI}/futures/data/openInterestHist", {"symbol": SYMBOL, "period": "1h", "limit": 500}),
+               ("fapi_funding.json", f"{FAPI}/fapi/v1/fundingRate", {"symbol": SYMBOL, "limit": 500}),
+               ("fapi_premium_index.json", f"{FAPI}/fapi/v1/premiumIndex", {"symbol": SYMBOL}),
+               ("cb_btc_usd.json", f"{COINBASE}/products/BTC-USD/candles", {"granularity": 3600}),
+               ("cb_usdt_usd.json", f"{COINBASE}/products/USDT-USD/candles", {"granularity": 3600})]
+    sources += [(f"fapi_kl_{tf}.json", f"{FAPI}/fapi/v1/klines", {"symbol": SYMBOL, "interval": tf, "limit": 1000}) for tf in ("15m", "30m", "1h", "4h")]
+    for name, url, params in sources:
+        try:
+            save(out / name, get_json(url, params))
+        except Exception as exc:  # noqa: BLE001
+            meta[f"{name}_error"] = str(exc)
+    if public_base:
+        try:
+            save(out / "public_30m.json", get_json(f"{public_base}/api/chart/live", {"symbol": SYMBOL, "tf": "30m"}, timeout=60))
+        except Exception as exc:  # noqa: BLE001
+            meta["public_error"] = str(exc)
     # Trades: archives for finished days, REST for today up to the API read.
     book = TradeBook()
     today = t0.date()
@@ -859,10 +884,11 @@ def check_footprint(raw: Raw) -> None:
         # 1) every bar against the Binance candle: volume and delta (taker buy) - independent of our trades
         worst_v = worst_d = 0.0
         n = 0
+        stored = epoch(raw.api[tf].get("trades_updated_at") or raw.t0.isoformat())
         for b in bars:
             c = kl.get(b["time"])
-            if not c:
-                continue
+            if not c or b["time"] + SECONDS[tf] > stored - 60:
+                continue  # TIM's trade store had not reached the end of this candle yet
             n += 1
             worst_v = max(worst_v, abs(b["total"] - c["volume"]))
             worst_d = max(worst_d, abs(b["delta"] - (2 * c["taker_buy"] - c["volume"])))
@@ -1171,6 +1197,207 @@ def check_placement(raw: Raw) -> None:
     report("Zeitachse", "Jede Linie beginnt an der Kerze ihres Entstehens (alle Ansichten)", not problems, "; ".join(problems[:4]) if problems else "alle Linien richtig eingerastet")
 
 
+
+# ---- lower bands: CVD, open interest, funding, Coinbase premium (added 04.11.2026)
+
+
+def own_bar_deltas(raw: Raw, times: list[int], sec: int) -> dict[int, float]:
+    """Taker delta (buyer - seller aggressor) per shown candle from our own aggTrades."""
+    out: dict[int, float] = {}
+    if not times:
+        return out
+    end = times[-1] + sec
+    for item in raw.trades.values():
+        for t, _lv, bid, ask in item["rows"]:
+            if times[0] <= t < end:
+                bar = times[max(0, bisect_right(times, t) - 1)]
+                out[bar] = out.get(bar, 0.0) + ask - bid
+    return out
+
+
+def kline_deltas(rows: list[list[Any]] | None, now_ms: int) -> dict[int, float]:
+    """Taker delta per closed Binance candle: 2 x taker buy volume - volume."""
+    return {c["t"]: 2 * c["taker_buy"] - c["volume"] for c in klines_to_candles(rows or [], now_ms) if c["closed"]}
+
+
+def check_cvd(raw: Raw) -> None:
+    for tf in ("5m", "15m", "30m", "1h", "4h"):
+        api = raw.api[tf] or {}
+        cvd = api.get("cvd") or {}
+        sec = SECONDS[tf]
+        if not cvd.get("spot") and not cvd.get("perp"):
+            report("CVD Spot vs. Perp", f"{tf}: Linien vorhanden", None, cvd.get("note") or "keine CVD-Linien")
+            continue
+        times = [c["time"] for c in api["candles"]]
+        updated = epoch(api.get("trades_updated_at") or raw.t0.isoformat())
+        for name, line in (("spot", cvd.get("spot") or []), ("perp", cvd.get("perp") or [])):
+            if not line:
+                report("CVD Spot vs. Perp", f"{tf} {name}: Linie vorhanden", None, cvd.get("note") or "leer")
+                continue
+            ok_start = line[0][0] == cvd.get("start")
+            steps = {line[0][0]: line[0][1]}
+            steps.update({b[0]: b[1] - a[1] for a, b in zip(line, line[1:])})
+            # Independent source 1: Binance candles (spot klines or perp fapi klines) for every closed bar.
+            kl = kline_deltas(load(raw.folder / (f"fapi_kl_{tf}.json" if name == "perp" else f"kl_{tf}.json")), raw.now_ms) if (name == "spot" or tf != "5m") else {}
+            n = worst = 0.0
+            for bar, step in steps.items():
+                if bar in kl and bar + sec <= updated - 60:
+                    n += 1
+                    worst = max(worst, abs(step - kl[bar]))
+            if kl:
+                report("CVD Spot vs. Perp", f"{tf} {name}: Delta je Kerze = Binance-Kerze (2×Taker-Kauf − Volumen)", n > 0 and worst <= 0.02 and ok_start,
+                       f"{int(n)} Kerzen, größte Abweichung {worst:.4f} BTC; Linie startet {utc(line[0][0]):%d.%m. %H:%M}, Start {'=' if ok_start else '≠'} 'start'")
+            # Independent source 2 (spot only): our own aggTrades, cumulative value at the last fully covered bar.
+            if name == "spot":
+                mine = own_bar_deltas(raw, times, sec)
+                total = 0.0
+                worst_cum, n2 = 0.0, 0
+                for bar, value in line:
+                    total += mine.get(bar, 0.0)
+                    day = utc(bar).date().isoformat()
+                    if bar + sec <= updated - 60 and (day in raw.archive_days or day == raw.t0.date().isoformat()):
+                        n2 += 1
+                        worst_cum = max(worst_cum, abs(value - total))
+                report("CVD Spot vs. Perp", f"{tf} spot: kumuliert = eigene Trades", n2 > 0 and worst_cum <= 0.05,
+                       f"{n2} Punkte, größte Abweichung {worst_cum:.4f} BTC, letzter Wert {fmt(line[-1][1], 1)} BTC")
+
+
+def check_open_interest(raw: Raw) -> None:
+    rows = load(raw.folder / "fapi_oi_1h.json") or []
+    pts = sorted((int(r["timestamp"]) // 1000, float(r["sumOpenInterest"])) for r in rows)
+    mine = dict(pts)
+    values = [v for _, v in pts]
+    z = {}
+    for i in range(OI_WINDOW - 1, len(values)):
+        part = values[i + 1 - OI_WINDOW:i + 1]
+        mean = sum(part) / len(part)
+        sd = math.sqrt(sum((x - mean) ** 2 for x in part) / len(part))
+        z[pts[i][0]] = (values[i] - mean) / sd if sd > 0 else 0.0
+    for tf in ("30m", "1h", "4h"):
+        oi = (raw.api[tf] or {}).get("oi")
+        if not oi:
+            report("Open Interest", f"{tf}: Ebene vorhanden", None, "keine OI-Daten (evtl. älter als 3 h ausgeblendet)")
+            continue
+        both = [(t, v) for t, v in oi["points"] if t in mine]
+        worst = max((abs(v - mine[t]) for t, v in both), default=0.0)
+        report("Open Interest", f"{tf}: OI je Stunde = Binance openInterestHist", len(both) > 0 and worst <= 0.001,
+               f"{len(both)} Stunden, größte Abweichung {worst:.4f} BTC, letzter Wert {fmt(oi['last'], 0)} BTC")
+        zb = [(t, v) for t, v in oi["z"] if t in z]
+        worst_z = max((abs(v - z[t]) for t, v in zb), default=0.0)
+        # TIM's window can start a few hours earlier or later than ours (snapshot vs. our read): same hours, same values.
+        report("Open Interest", f"{tf}: Z-Score (180 h, eigene Rechnung)", len(zb) > 0 and worst_z <= 0.002,
+               f"{len(zb)} Werte, größte Abweichung {worst_z:.4f}, letzter Z {oi.get('last_z')}")
+
+
+def check_funding(raw: Raw) -> None:
+    rows = load(raw.folder / "fapi_funding.json") or []
+    mine = {int(r["fundingTime"]) // 1000: float(r["fundingRate"]) * 100 for r in rows}
+    idx = load(raw.folder / "fapi_premium_index.json") or {}
+    for tf in ("1h", "4h"):
+        f = (raw.api[tf] or {}).get("funding")
+        if not f:
+            report("Funding Rate", f"{tf}: Ebene vorhanden", None, "keine Daten (Ebene ist standardmäßig aus; leer = Quelle fehlte oder älter als 3 h)")
+            continue
+        both = [p for p in f["points"] if p[0] in mine]
+        worst = max((abs(p[1] - mine[p[0]]) for p in both), default=0.0)
+        scale = 8.0 / float(f["interval_hours"])
+        worst8 = max((abs(p[2] - p[1] * scale) for p in both), default=0.0)
+        report("Funding Rate", f"{tf}: Satz je Abrechnung = Binance fundingRate", len(both) > 0 and worst <= 1e-5 and worst8 <= 1e-5,
+               f"{len(both)} Abrechnungen, größte Abweichung {worst:.6f} %, Intervall {f['interval_hours']} h")
+        if idx and f.get("current") is not None:
+            cur = float(idx["lastFundingRate"]) * 100
+            report("Funding Rate", f"{tf}: laufender Satz", None,
+                   f"TIM {f['current']:.5f} %, Binance bei unserem Abruf {cur:.5f} % (ändert sich laufend, nur Hinweis)")
+
+
+def check_premium(raw: Raw) -> None:
+    def closes(rows: Any, ms: bool) -> dict[int, float]:
+        return {(int(r[0]) // 1000 if ms else int(r[0])): float(r[4]) for r in rows or []}
+    cb = closes(load(raw.folder / "cb_btc_usd.json"), False)
+    usdt = closes(load(raw.folder / "cb_usdt_usd.json"), False)
+    bn = {c["t"]: c["close"] for c in raw.kl["1h"] if c["closed"]}
+    for tf in ("1h", "4h"):
+        p = (raw.api[tf] or {}).get("premium")
+        if not p:
+            report("Coinbase-Premium", f"{tf}: Ebene vorhanden", None, "keine Daten (Ebene ist standardmäßig aus)")
+            continue
+        n = 0
+        worst_pct = worst_usd = 0.0
+        for t, pct, usd in p["points"]:
+            if t in cb and t in usdt and t in bn and (t + 3600) * 1000 < raw.now_ms - 3600_000:
+                b_usd = bn[t] * usdt[t]
+                n += 1
+                worst_pct = max(worst_pct, abs(pct - (cb[t] / b_usd - 1) * 100))
+                worst_usd = max(worst_usd, abs(usd - (cb[t] - b_usd)))
+        report("Coinbase-Premium", f"{tf}: Prämie je Stunde = Coinbase BTC-USD gegen Binance × USDT-USD", n > 0 and worst_pct <= 0.002,
+               f"{n} Stunden, größte Abweichung {worst_pct:.4f} %-Punkte / {worst_usd:.2f} USD, letzter Wert {p.get('last')} %")
+
+
+def check_macro(raw: Raw) -> None:
+    ny = ZoneInfo("America/New_York")
+    want = {"CPI": (8, 30), "FOMC": (14, 0)}
+    for tf in ("1h", "4h", "1d"):
+        api = raw.api[tf] or {}
+        markers = api.get("macro") or []
+        times = [c["time"] for c in api["candles"]]
+        if not markers:
+            report("Termine CPI/FOMC", f"{tf}: Marker", None, "keine Marker im sichtbaren Bereich (Kalenderdatei fehlt oder leer?)")
+            continue
+        bad = []
+        for m in markers:
+            at = datetime.fromisoformat(m["at"])
+            local = at.astimezone(ny)
+            snap = times[max(0, bisect_right(times, int(at.timestamp())) - 1)]
+            if m["time"] != snap or (local.hour, local.minute) != want.get(m["kind"]) or m["upcoming"] != (at > raw.t0):
+                bad.append(f"{m['kind']} {at:%d.%m.%Y %H:%M} (New York {local:%H:%M})")
+        dates = ", ".join(f"{m['kind']} {datetime.fromisoformat(m['at']):%d.%m.%y}" for m in markers[-6:])
+        report("Termine CPI/FOMC", f"{tf}: Marker an der richtigen Kerze, Uhrzeit = 08:30 (CPI) / 14:00 (FOMC) New York", not bad,
+               ("; ".join(bad[:4]) if bad else f"{len(markers)} Marker, zuletzt: {dates}"))
+
+
+def check_perp_view(raw: Raw) -> None:
+    for tf in ("30m", "1h"):
+        api = load(raw.folder / f"api_{tf}_perp.json")
+        if not api:
+            report("Perp-Ansicht", f"{tf}", None, "nicht geladen")
+            continue
+        markets = api.get("markets") or {}
+        if markets.get("active") != "perp":
+            report("Perp-Ansicht", f"{tf}: aktiv", False, f"aktiv {markets.get('active')}, verfügbar {markets.get('available')}")
+            continue
+        kl = {c["t"]: c for c in klines_to_candles(load(raw.folder / f"fapi_kl_{tf}.json") or [], raw.now_ms) if c["closed"]}
+        bars = (api.get("footprint") or {}).get("bars") or []
+        updated = epoch(api.get("trades_updated_at") or raw.t0.isoformat())
+        n = 0
+        worst_v = worst_d = 0.0
+        for b in bars:
+            c = kl.get(b["time"])
+            if c and b["time"] + SECONDS[tf] <= updated - 60:
+                n += 1
+                worst_v = max(worst_v, abs(b["total"] - c["volume"]))
+                worst_d = max(worst_d, abs(b["delta"] - (2 * c["taker_buy"] - c["volume"])))
+        report("Perp-Ansicht", f"{tf}: Footprint aus Perp-Trades = Binance-Futures-Kerze (Volumen, Delta)", n > 0 and worst_v <= 0.05 and worst_d <= 0.1,
+               f"{n} Kerzen, größte Abweichung Volumen {worst_v:.4f} BTC, Delta {worst_d:.4f} BTC; Quelle {api.get('trade_source')}")
+
+
+def check_public(raw: Raw) -> None:
+    pub = load(raw.folder / "public_30m.json")
+    if not pub:
+        report("Öffentlicher Link", "30m", None, raw.meta.get("public_error", "nicht geladen"))
+        return
+    own = raw.api["30m"]
+    a = {c["time"]: c for c in own["candles"] if c["closed"]}
+    b = [c for c in pub["candles"] if c["closed"] and c["time"] in a]
+    bad = [c for c in b if any(abs(c[k] - a[c["time"]][k]) > 1e-9 * max(1.0, abs(c[k])) for k in ("open", "high", "low", "close"))]
+    # Only levels that cannot move between the two reads (no running POC, VWAP or plans).
+    fixed = ("day", "week", "month", "quarter", "year", "naked", "structure", "session", "ib")
+    # Group, timeframe and price: the public page translates the labels to English on purpose.
+    la = {(d["group"], d.get("tf"), round(float(d.get("price") or 0), 2)) for d in own["drawings"] if d["group"] in fixed}
+    lb = {(d["group"], d.get("tf"), round(float(d.get("price") or 0), 2)) for d in pub["drawings"] if d["group"] in fixed}
+    report("Öffentlicher Link", "30m: Kerzen und Linien = Control Center", not bad and len(b) > 0 and la == lb,
+           f"{len(b)} Kerzen, {len(bad)} abweichend; Linien {len(la)} / {len(lb)}, nur intern {len(la - lb)}, nur öffentlich {len(lb - la)}")
+
+
 def analyze(folder: Path, journal_dir: Path | None) -> int:
     raw = Raw(folder)
     report("Daten", "Rohdaten", None, f"API gelesen {raw.t0:%d.%m. %H:%M} UTC; Archive {sorted(raw.archive_days)[:1]}…{sorted(raw.archive_days)[-1:]}; heute REST {raw.meta.get('rest_today')}")
@@ -1187,7 +1414,10 @@ def analyze(folder: Path, journal_dir: Path | None) -> int:
              ("VWAP", lambda: check_vwap(raw)), ("Fibonacci", lambda: check_fib(raw)), ("Footprint", lambda: check_footprint(raw)),
              ("Volume Bubbles", lambda: check_bubbles(raw)), ("Options-Gamma", lambda: check_gamma(raw)),
              ("Liquidations-Heatmap", lambda: check_liquidation(raw)), ("Positions-Boxen", lambda: check_plans(raw, journal_dir)),
-             ("Zeitachse", lambda: check_placement(raw)))
+             ("Zeitachse", lambda: check_placement(raw)), ("CVD Spot vs. Perp", lambda: check_cvd(raw)),
+             ("Open Interest", lambda: check_open_interest(raw)), ("Funding Rate", lambda: check_funding(raw)),
+             ("Coinbase-Premium", lambda: check_premium(raw)), ("Termine CPI/FOMC", lambda: check_macro(raw)),
+             ("Perp-Ansicht", lambda: check_perp_view(raw)), ("Öffentlicher Link", lambda: check_public(raw)))
     for name, fn in steps:
         try:
             fn()
@@ -1212,12 +1442,14 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--out", required=True, type=Path)
     c.add_argument("--archive-cache", type=Path, default=None)
     c.add_argument("--days", type=int, default=14, help="finished days read from the Binance archive")
+    c.add_argument("--public-base", default=None, help="public chart (e.g. https://tim-online.online), compared with --base")
     a = sub.add_parser("analyze")
     a.add_argument("--raw", required=True, type=Path)
     a.add_argument("--journal-dir", type=Path, default=None, help="folder with tim_plan_journal*.json (read only)")
     args = parser.parse_args(argv)
     if args.command == "collect":
-        collect(args.base.rstrip("/"), args.out, args.archive_cache or args.out / "archive", args.days)
+        collect(args.base.rstrip("/"), args.out, args.archive_cache or args.out / "archive", args.days,
+                (args.public_base or "").rstrip("/") or None)
         return 0
     return analyze(args.raw, args.journal_dir)
 
