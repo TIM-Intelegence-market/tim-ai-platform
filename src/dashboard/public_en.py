@@ -757,13 +757,30 @@ def _usd(value: Any) -> str:
     return f"{value:,.2f} $" if isinstance(value, (int, float)) else "–"
 
 
+# Which paper journals the live trader may open trades from (Uzi 03.11.2026: only MID 1h). The status file may
+# name them in "timeframes"; without that field the page shows the current setting.
+LIVE_TIMEFRAMES = ("1h",)
+LIVE_JOURNAL_LINK = {"15m": "/journal?rule=short", "1h": "/journal", "1d": "/journal?rule=long"}
+
+
+def _live_timeframes(status: Mapping[str, Any] | None) -> tuple[str, ...]:
+    tfs = status.get("timeframes") if isinstance(status, Mapping) else None
+    if isinstance(tfs, (list, tuple)):
+        picked = tuple(tf for tf in LIVE_JOURNAL_LINK if tf in tfs)
+        if picked:
+            return picked
+    return LIVE_TIMEFRAMES
+
+
 def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:
     """The real-money test account: value, change since start, position, today's trades. Read from a small
     status file the live trader writes; no keys, no order ids, nothing that could move money."""
     from datetime import datetime, timezone
 
     now = now or datetime.now(timezone.utc)
-    body = _hero("Live account", "TIM trades its 15m paper plans on a small real-money futures account (BTC perpetual), "
+    tfs = _live_timeframes(status)
+    tf_text = " and ".join(tfs)
+    body = _hero("Live account", f"TIM trades its {tf_text} paper plans on a small real-money futures account (BTC perpetual), "
                  "automatically, with hard limits: at most 1 $ risk per trade including costs, 3 $ loss per day, 3 trades per day.")
     if not status or status.get("schema") != "tim-live-status/1":
         body += "<section class='cc-section'><p class='pj-empty'>No live data right now.</p></section>"
@@ -779,11 +796,11 @@ def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:
         pos_text = f"<strong>{_safe(side)}</strong>"
         pos_note = f"{pos.get('size_btc')} BTC at {_price(pos.get('entry'))}"
     else:
-        pos_text, pos_note = "<strong>none</strong>", "flat, waiting for a fresh 15m plan"
+        pos_text, pos_note = "<strong>none</strong>", f"flat, waiting for a fresh {tf_text} plan"
     if status.get("stopped"):
         auto, auto_note = "stopped", "emergency stop is set"
     elif status.get("auto_active"):
-        auto, auto_note = "running", "trades new 15m plans automatically"
+        auto, auto_note = "running", f"trades new {tf_text} plans automatically"
     else:
         auto, auto_note = "paused", "no valid release"
     tiles = (
@@ -800,6 +817,7 @@ def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:
             + (" The data is older than expected; the Mac or the status job may be down." if stale else ""))
     body += ("<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Real money</p>"
              f"<h2>Account now</h2><p class='cc-section__note'>{_safe(note)} "
-             "The trades follow the <a href='/journal'>15m paper journal</a>.</p></div></div>"
+             "The trades follow the " + " and ".join(f"<a href='{LIVE_JOURNAL_LINK[tf]}'>{tf} paper journal</a>" for tf in tfs)
+             + ".</p></div></div>"
              f"{kpis}</section>")
     return shell("Live account", "/live", body, extra_css=JOURNAL_CSS, disclaimer=LIVE_DISCLAIMER)

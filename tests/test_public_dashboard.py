@@ -348,3 +348,18 @@ def test_live_page_flags_stale_stop_and_broken_files(tmp_path):
         assert public.live_status() is None
     finally:
         public.httpd.server_close()
+
+
+def test_live_page_names_the_traded_timeframes():
+    from datetime import datetime, timezone
+
+    from src.dashboard.public_en import live_page
+
+    now = datetime(2026, 11, 2, 9, 5, tzinfo=timezone.utc)
+    page = live_page(_live_status(), now=now)
+    assert "15m" not in page and "fresh 1h plan" in page and "trades new 1h plans" in page
+    assert "href='/journal'>1h paper journal" in page
+    both = live_page(_live_status(timeframes=["1h", "15m", "<x>"]), now=now)
+    assert "15m and 1h paper plans" in both and "href='/journal?rule=short'>15m paper journal" in both
+    assert "<x>" not in both
+    assert "fresh 1h plan" in live_page(_live_status(timeframes="15m"), now=now)
