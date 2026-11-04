@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import json
 import os
 import plistlib
 import subprocess
@@ -246,3 +247,112 @@ def test_macos_listeners_fall_back_to_lsof_and_probes_without_netstat(control, m
     open_ports.add(("192.168.10.23", 5432))
     assert instance.listeners(5432)["unsafe"] is True
     assert instance.listeners(6000) == {"status": "CLOSED", "addresses": [], "unsafe": False}
+
+
+def _mac_dashboard(module, instance, monkeypatch, *, ifconfig_hosts, open_hosts, lsof_bind="127.0.0.1:8765",
+                   serve_status='{"TCP": {"8765": {"HTTP": true}}}', cli=True):
+    """Fake macOS probes for port 8765: lsof bindings, interface addresses, answering hosts, tailscale serve."""
+    from src.v2_completion import mac_live
+
+    cli_path = Path(module.__file__).parent / "tailscale-fake-cli-does-not-exist"
+    if cli:
+        cli_path = Path(os.environ["PYTEST_TMP_CLI"])
+    monkeypatch.setattr(module, "TAILSCALE_CLI_CANDIDATES", (str(cli_path),))
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    ifconfig = "lo0: flags\n\tinet 127.0.0.1 netmask 0xff000000\n" + "".join(
+        f"if{index}: flags\n\tinet {host} netmask 0xffffffff\n" for index, host in enumerate(ifconfig_hosts)
+    )
+    lsof = (
+        "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n"
+        f"Python 7 tim-user 5u IPv4 0x1 0t0 TCP {lsof_bind} (LISTEN)\n"
+        if lsof_bind else ""
+    )
+
+    def fake_run(command, **kwargs):
+        name = Path(command[0]).name
+        if name == "netstat":
+            return completed(command, stdout="Active Internet connections (including servers)\n")
+        if name == "lsof":
+            return completed(command, stdout=lsof) if lsof else completed(command, 1)
+        if name == cli_path.name:
+            return completed(command, stdout=serve_status)
+        return completed(command, stdout=ifconfig)
+
+    monkeypatch.setattr(module, "run", fake_run)
+    answering = {("127.0.0.1", 8765), *((host, 8765) for host in open_hosts)}
+    monkeypatch.setattr(mac_live, "reachable", lambda host, port, timeout=2.0: (host, port) in answering)
+
+
+def _remote_view(tmp_path, monkeypatch, hosts):
+    path = tmp_path / "dashboard-remote-view.json"
+    if hosts is not None:
+        path.write_text(json.dumps({"hosts": hosts}), encoding="utf-8")
+    monkeypatch.setenv("TIM_DASHBOARD_REMOTE_VIEW_FILE", str(path))
+
+
+TAILNET = "100.89.59.102"
+
+
+@pytest.fixture(autouse=True)
+def _fake_tailscale_cli(tmp_path, monkeypatch):
+    cli = tmp_path / "Tailscale"
+    cli.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PYTEST_TMP_CLI", str(cli))
+
+
+def test_tailnet_view_blocked_when_funnel_is_on_or_cli_missing(control, monkeypatch, tmp_path) -> None:
+    module, instance = control
+    _remote_view(tmp_path, monkeypatch, ["zeyirs-mac-mini.tailce31c7.ts.net"])
+    _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=[TAILNET], open_hosts=[TAILNET],
+                   serve_status='{"AllowFunnel": {"zeyirs-mac-mini.tailce31c7.ts.net:443": true}}')
+    assert instance.tailnet_view_only(instance.listeners(8765)) is False
+    _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=[TAILNET], open_hosts=[TAILNET], cli=False)
+    assert instance.tailnet_view_only(instance.listeners(8765)) is False
+
+
+def test_tailscale_serve_proxy_counts_as_tailnet_view_only_with_owner_file(control, monkeypatch, tmp_path) -> None:
+    module, instance = control
+    _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=["192.168.10.23", TAILNET], open_hosts=[TAILNET])
+    _remote_view(tmp_path, monkeypatch, ["zeyirs-mac-mini.tailce31c7.ts.net"])
+    listener = instance.listeners(8765)
+    assert listener["unsafe"] is True  # the raw probe still reports the exposure
+    assert instance.tailnet_view_only(listener) is True
+
+
+@pytest.mark.parametrize(
+    ("hosts", "open_hosts", "lsof_bind"),
+    [
+        (None, [TAILNET], "127.0.0.1:8765"),  # phone access not switched on by the owner
+        (["example.com"], [TAILNET], "127.0.0.1:8765"),  # only *.ts.net names count
+        (["mac.tailce31c7.ts.net"], [TAILNET, "192.168.10.23"], "127.0.0.1:8765"),  # LAN answers too
+        (["mac.tailce31c7.ts.net"], [TAILNET], "*:8765"),  # dashboard bound to every interface
+        (["mac.tailce31c7.ts.net"], [TAILNET], None),  # binding not proven by lsof
+    ],
+)
+def test_tailnet_view_stays_blocked_outside_the_narrow_case(control, monkeypatch, tmp_path, hosts, open_hosts, lsof_bind) -> None:
+    module, instance = control
+    _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=["192.168.10.23", TAILNET],
+                   open_hosts=open_hosts, lsof_bind=lsof_bind)
+    _remote_view(tmp_path, monkeypatch, hosts)
+    listener = instance.listeners(8765)
+    assert listener["unsafe"] is True
+    assert instance.tailnet_view_only(listener) is False
+
+
+def test_verify_running_passes_with_tailscale_serve_and_blocks_without_owner_file(control, monkeypatch, tmp_path) -> None:
+    module, instance = control
+    for gate in ("static_observe_gate", "secret_gate", "database_boundary_gate"):
+        monkeypatch.setattr(instance, gate, lambda: {"status": "PASS"})
+    monkeypatch.setattr(instance, "ingestion_gate", lambda command, **kwargs: {"status": "PASS"})
+    monkeypatch.setattr(instance, "service_status", lambda: {"loaded": True, "state": "RUNNING", "pid": 42})
+    monkeypatch.setattr(instance, "dashboard_health", lambda: {"status": "PASS", "mode": "OBSERVE"})
+    _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=["192.168.10.23", TAILNET], open_hosts=[TAILNET])
+
+    _remote_view(tmp_path, monkeypatch, ["zeyirs-mac-mini.tailce31c7.ts.net"])
+    result = instance.verify_running()
+    assert result["status"] == "PASS" and result["dashboard_tailnet_view"] == [TAILNET]
+
+    _remote_view(tmp_path / "off", monkeypatch, None)
+    with pytest.raises(module.RuntimeControlError, match="not proven loopback-only"):
+        instance.verify_running()
