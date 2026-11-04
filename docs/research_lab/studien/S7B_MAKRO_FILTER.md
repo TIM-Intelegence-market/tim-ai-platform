@@ -66,7 +66,7 @@ Es gibt genau einen Lauf, und alle Zahlen werden ausgegeben. **Folge:** Laut `PR
 
 ## 6. Entscheidung (Uzi, 04.11.2026)
 
-- **A, Schattenbetrieb: freigegeben.** Gezählt werden 60 Trades von S7b ohne Filter. Das Ergebnis wird als Beobachtung berichtet, nicht als Bestätigung. Die eingefrorenen Regeln stehen in `S7B_EINE_POSITION_PRAEREGISTRIERUNG.md`, Abschnitt 15.
+- **A, Schattenbetrieb: freigegeben.** Gezählt werden 60 Trades von S7b ohne Filter. Das Ergebnis wird als Beobachtung berichtet, nicht als Bestätigung. Die eingefrorenen Regeln stehen in `S7B_EINE_POSITION_PRAEREGISTRIERUNG.md`, Abschnitt 15. Auf Bartis Wunsch kamen hinzu (04.11.): mindestens 30 Trades je gefilterter Reihe, getrennte Aussagen „besser als ungefiltert“ und „profitabel“ sowie ein zweites Urteil bei 150 Trades.
 - **B, Holdout-Lauf: jetzt nicht.** Gründe: Der Lauf würde den Holdout für alle 58 Registereinträge verbrauchen, Juli bis Oktober 2026 sind schon gesehen, und der Glückstest ist nicht bestanden.
 - **C, Satzung: freigegeben.** Der Holdout wird nur mit Zustimmung von Uzi und Barti geöffnet, Uzis ausdrückliches Wort bleibt Pflicht (`../FORSCHUNGSBEREICH.md`).
 - **D, Termin-Marker:** Die Termindatei für den Chart liegt seit 04.11. in `~/TIM-live/data/macro/calendar.json` (239 Termine).
