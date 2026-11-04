@@ -23,7 +23,7 @@ from src.dashboard.api import _research_case_detail, _research_cases_collection
 from src.dashboard.chart_model import build_chart_model
 from src.dashboard.constants import HISTORY_LIMIT, MAX_RESPONSE_BYTES
 from src.dashboard.layout import _content_security_policy, _content_security_policy_for, _error_page
-from src.dashboard.security import _is_loopback_request_host, _require_loopback_host
+from src.dashboard.security import _is_loopback_request_host, _is_remote_view_request, _require_loopback_host
 from src.dashboard.pages.chart import CHART_SCRIPTS, render_chart_page
 from src.dashboard.pages.pilot import PILOT_CSP, render_pilot
 from src.dashboard.state import DashboardState, plan_journal_paths
@@ -71,7 +71,9 @@ class DashboardServer:
                 self.wfile.write(payload)
 
             def do_GET(self):
-                if not _is_loopback_request_host(self.headers.get("Host")):
+                host = self.headers.get("Host")
+                if not (_is_loopback_request_host(host)
+                        or _is_remote_view_request(host, self.headers.get("Tailscale-User-Login"))):
                     return self.respond(421, b'{"error":"loopback Host header required"}', "application/json")
                 parsed = urlparse(self.path)
                 path, query = parsed.path, parse_qs(parsed.query)
@@ -554,6 +556,8 @@ class DashboardServer:
                 return self.respond(303, b"", "text/plain; charset=utf-8", location=f"/trader-journal?saved={entry['id']}")
 
             def do_POST(self):
+                if _is_remote_view_request(self.headers.get("Host"), self.headers.get("Tailscale-User-Login")):
+                    return self.respond(403, b'{"error":"remote view is read-only"}', "application/json")
                 if not _is_loopback_request_host(self.headers.get("Host")):
                     return self.respond(421, b'{"error":"loopback Host header required"}', "application/json")
                 path = urlparse(self.path).path
