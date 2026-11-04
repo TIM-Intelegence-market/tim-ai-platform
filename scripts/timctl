@@ -102,22 +102,29 @@ TAILSCALE_CLI_CANDIDATES = (
 )
 
 
-def tailscale_funnel_off() -> bool:
-    """True only when ``tailscale serve status --json`` is readable and enables no Funnel (public) route."""
+def tailscale_funnel_block_reason() -> str | None:
+    """None when ``tailscale serve status --json`` is readable and enables no Funnel (public) route."""
     cli = next((path for path in TAILSCALE_CLI_CANDIDATES if Path(path).is_file()), None) or shutil.which("tailscale")
     if cli is None:
-        return False
+        return "tailscale cli not found"
     result = run([cli, "serve", "status", "--json"], timeout=10)
     if result.returncode != 0:
-        return False
+        detail = (result.stderr or result.stdout or "").strip().splitlines()[-1:] or [""]
+        return f"tailscale serve status failed (exit {result.returncode}: {detail[0][:160]})"
     try:
         status = json.loads(result.stdout or "{}")
     except ValueError:
-        return False
+        return "tailscale serve status is not JSON"
     if not isinstance(status, dict):
-        return False
+        return "tailscale serve status is not a JSON object"
     funnel = status.get("AllowFunnel") or {}
-    return isinstance(funnel, dict) and not any(funnel.values())
+    if not isinstance(funnel, dict) or any(funnel.values()):
+        return "tailscale funnel is on"
+    return None
+
+
+def tailscale_funnel_off() -> bool:
+    return tailscale_funnel_block_reason() is None
 
 
 def is_tailnet_address(host: str) -> bool:
@@ -369,18 +376,29 @@ class RuntimeControl:
         Funnel route (fail-closed if the CLI is missing or unreadable). A LAN, public, Funnel or wildcard
         exposure stays BLOCKED.
         """
+        return self.tailnet_view_block_reason(listener) is None
+
+    def tailnet_view_block_reason(self, listener: dict[str, Any]) -> str | None:
+        """None when the exposure is the accepted tailnet view, else the first condition that failed."""
         exposure = listener.get("exposure") or {}
         exposed = exposure.get("exposed") or []
-        if self.service_manager != "launchd" or not exposure.get("lsof_bound") or not exposed:
-            return False
+        if self.service_manager != "launchd":
+            return "not macOS"
+        if not exposed:
+            return "exposure addresses unknown"
+        if not exposure.get("lsof_bound"):
+            return "dashboard binding not visible in lsof"
         if not remote_view_hosts():
-            return False
+            return "no remote-view file with a *.ts.net host"
         if not listener.get("addresses") or not all(
             address in {f"127.0.0.1:{self.dashboard_port}", f"[::1]:{self.dashboard_port}"}
             for address in listener["addresses"]
         ):
-            return False
-        return all(is_tailnet_address(host) for host in exposed) and tailscale_funnel_off()
+            return f"dashboard bound beyond loopback ({', '.join(listener.get('addresses') or [])})"
+        outside = [host for host in exposed if not is_tailnet_address(host)]
+        if outside:
+            return f"answers on non-tailnet address ({', '.join(outside)})"
+        return tailscale_funnel_block_reason()
 
     def static_observe_gate(self) -> dict[str, Any]:
         try:
@@ -507,9 +525,12 @@ class RuntimeControl:
         if not service["loaded"] or service["state"] != "RUNNING":
             raise RuntimeControlError(f"TIM {self.service_manager} service is not running")
         dashboard_listener = self.listeners(self.dashboard_port)
-        tailnet_view = dashboard_listener["unsafe"] and self.tailnet_view_only(dashboard_listener)
-        if dashboard_listener["status"] != "LISTENING" or (dashboard_listener["unsafe"] and not tailnet_view):
-            raise RuntimeControlError("TIM dashboard is not proven loopback-only")
+        if dashboard_listener["status"] != "LISTENING":
+            raise RuntimeControlError("TIM dashboard is not proven loopback-only (not listening)")
+        blocked = self.tailnet_view_block_reason(dashboard_listener) if dashboard_listener["unsafe"] else None
+        if blocked:
+            raise RuntimeControlError(f"TIM dashboard is not proven loopback-only ({blocked})")
+        tailnet_view = bool(dashboard_listener["unsafe"])
         if any(
             not any(token in address for token in ("127.0.0.1", "::1", "localhost"))
             for address in dashboard_listener["addresses"]

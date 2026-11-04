@@ -356,3 +356,12 @@ def test_verify_running_passes_with_tailscale_serve_and_blocks_without_owner_fil
     _remote_view(tmp_path / "off", monkeypatch, None)
     with pytest.raises(module.RuntimeControlError, match="not proven loopback-only"):
         instance.verify_running()
+
+
+def test_blocked_tailnet_view_names_the_failed_condition(control, monkeypatch, tmp_path) -> None:
+    module, instance = control
+    _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=[TAILNET], open_hosts=[TAILNET], cli=False)
+    _remote_view(tmp_path, monkeypatch, ["zeyirs-mac-mini.tailce31c7.ts.net"])
+    assert instance.tailnet_view_block_reason(instance.listeners(8765)) == "tailscale cli not found"
+    _remote_view(tmp_path / "off", monkeypatch, None)
+    assert instance.tailnet_view_block_reason(instance.listeners(8765)) == "no remote-view file with a *.ts.net host"
