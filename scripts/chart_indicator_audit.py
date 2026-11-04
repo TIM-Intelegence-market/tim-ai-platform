@@ -884,10 +884,11 @@ def check_footprint(raw: Raw) -> None:
         # 1) every bar against the Binance candle: volume and delta (taker buy) - independent of our trades
         worst_v = worst_d = 0.0
         n = 0
+        stored = epoch(raw.api[tf].get("trades_updated_at") or raw.t0.isoformat())
         for b in bars:
             c = kl.get(b["time"])
-            if not c:
-                continue
+            if not c or b["time"] + SECONDS[tf] > stored - 60:
+                continue  # TIM's trade store had not reached the end of this candle yet
             n += 1
             worst_v = max(worst_v, abs(b["total"] - c["volume"]))
             worst_d = max(worst_d, abs(b["delta"] - (2 * c["taker_buy"] - c["volume"])))
@@ -1390,8 +1391,9 @@ def check_public(raw: Raw) -> None:
     bad = [c for c in b if any(abs(c[k] - a[c["time"]][k]) > 1e-9 * max(1.0, abs(c[k])) for k in ("open", "high", "low", "close"))]
     # Only levels that cannot move between the two reads (no running POC, VWAP or plans).
     fixed = ("day", "week", "month", "quarter", "year", "naked", "structure", "session", "ib")
-    la = {(d["group"], d["label"], round(float(d.get("price") or 0), 2)) for d in own["drawings"] if d["group"] in fixed}
-    lb = {(d["group"], d["label"], round(float(d.get("price") or 0), 2)) for d in pub["drawings"] if d["group"] in fixed}
+    # Group, timeframe and price: the public page translates the labels to English on purpose.
+    la = {(d["group"], d.get("tf"), round(float(d.get("price") or 0), 2)) for d in own["drawings"] if d["group"] in fixed}
+    lb = {(d["group"], d.get("tf"), round(float(d.get("price") or 0), 2)) for d in pub["drawings"] if d["group"] in fixed}
     report("Öffentlicher Link", "30m: Kerzen und Linien = Control Center", not bad and len(b) > 0 and la == lb,
            f"{len(b)} Kerzen, {len(bad)} abweichend; Linien {len(la)} / {len(lb)}, nur intern {len(la - lb)}, nur öffentlich {len(lb - la)}")
 
