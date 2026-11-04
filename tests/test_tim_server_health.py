@@ -73,6 +73,22 @@ def test_overall_is_the_worst_check() -> None:
     assert health.overall({}) == "RED"
 
 
+def test_not_applicable_checks_do_not_count_towards_overall() -> None:
+    na = {"status": health.NOT_APPLICABLE}
+    assert health.overall({"a": {"status": "GREEN"}, "time_sync": na}) == "GREEN"
+    assert health.overall({"a": {"status": "RED"}, "time_sync": na}) == "RED"
+    assert health.overall({"time_sync": na}) == "RED"  # nothing measured is never healthy
+
+
+def test_time_sync_is_not_applicable_on_macos(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(health.sys, "platform", "darwin")
+    monkeypatch.setattr(health, "command_output", lambda command: None)
+    monkeypatch.setenv("TIM_DATABASE_SECRET_PROVIDER", "file")
+    monkeypatch.setenv("TIM_DATABASE_SECRET_FILE", str(tmp_path / "missing"))
+    report = health.collect(tmp_path, tmp_path)
+    assert report["checks"]["time_sync"]["status"] == health.NOT_APPLICABLE
+
+
 def test_unreachable_database_is_red_not_a_crash(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("TIM_DATABASE_SECRET_PROVIDER", "file")
     monkeypatch.setenv("TIM_DATABASE_SECRET_FILE", str(tmp_path / "missing"))
