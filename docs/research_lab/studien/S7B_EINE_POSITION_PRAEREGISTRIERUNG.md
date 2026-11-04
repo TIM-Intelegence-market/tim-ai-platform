@@ -397,7 +397,8 @@ Der Holdout bleibt zu. Diese Regeln sind vor dem Start eingefroren und werden ni
 - **Mindestzahl je gefilterter Reihe:** Hat eine gefilterte Reihe beim Stichtag weniger als 30 geschlossene Trades,
   lautet das Ergebnis für diesen Filter „kein Urteil“. Die Zahlen werden trotzdem berichtet.
 - **Zwei getrennte Aussagen:** (1) „Filter besser als ungefiltert“ (Differenz und Rückgang wie oben) und
-  (2) „S7b mit Filter profitabel“ (mittleres R je Trade nach Basiskosten über 0). Das eine folgt nicht aus dem anderen,
+  (2) „S7b mit Filter profitabel“ (mittleres R je Trade nach Basiskosten über 0, berichtet mit einem
+  Bootstrap-Intervall 95 % über die Trades). Das eine folgt nicht aus dem anderen,
   auch weil S7b ungefiltert zuletzt im Minus lag (Abschnitt 14).
 - **Weiterlauf und zweites Urteil:** Nach dem Stichtag laufen die drei Reihen unverändert weiter. Ein zweites, genau
   einmal bewertetes Urteil folgt bei 150 geschlossenen Trades von S7b ohne Filter, mit denselben Regeln und derselben
