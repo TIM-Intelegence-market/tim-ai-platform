@@ -25,6 +25,15 @@ EXTERNAL_LOGS = (
     "data/operational/validator_launchd.err.log",
 )
 
+# stdout/stderr of short interval jobs (com.tim.server-health runs a few seconds every 60 s).
+# No process keeps them open between runs, so they are rotated in place without a safe stop;
+# preserve_inode keeps the file launchd opens. A line written during the copy can be lost,
+# which is acceptable: server_health.json holds the current status.
+SHORT_JOB_LOGS = (
+    "data/operational/server_health_launchd.log",
+    "data/operational/server_health_launchd.err.log",
+)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="TIM bounded log retention (OBSERVE-only)")
@@ -47,6 +56,8 @@ def main() -> int:
     reports = []
     for relative in COOPERATIVE_LOGS:
         reports.append(LogRotator(ROOT / relative, policy).rotate_if_needed())
+    for relative in SHORT_JOB_LOGS:
+        reports.append(LogRotator(ROOT / relative, policy, preserve_inode=True).rotate_if_needed())
     for relative in EXTERNAL_LOGS:
         path = ROOT / relative
         if not arguments.service_stopped and path.exists() and path.stat().st_size > policy.max_bytes:
