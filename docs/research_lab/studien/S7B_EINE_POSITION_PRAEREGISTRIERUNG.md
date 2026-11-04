@@ -370,6 +370,35 @@ Das ändert Punkt 3 von Abschnitt 13 nur insoweit, dass S7b beobachtet wird; S7b
   Ein späterer Holdout-Lauf von S7b ist dadurch für diesen Teil nicht mehr ergebnisblind; das muss auf einer künftigen
   Holdout-Karte stehen. Ab dem Start zählt der Vorwärtstest nur neue Kerzen.
 
+## 15. Schattenbetrieb mit Makro-Filtern F5 und F3 (Uzis Entscheidung 04.11.2026)
+
+Uzi hat am 04.11.2026 zum Antrag „S7b mit Makro-Filtern“ (`S7B_MAKRO_FILTER.md`) **A und C freigegeben, B nicht**.
+Der Holdout bleibt zu. Diese Regeln sind vor dem Start eingefroren und werden nicht mehr geändert.
+
+- **Kandidatin:** S7b-D20-T3 aus dem Papier-Vorwärtstest (Abschnitt 14), Regeln und Code unverändert. Die Filter
+  ändern nichts an diesem Journal. Sie werden nur daneben ausgewertet.
+- **F5:** kein neuer Long, wenn der 10-jährige Realzins (FRED DFII10) über 13 Wochen gestiegen ist.
+  **F3:** kein neuer Long, wenn die Netto-Liquidität WALCL − WTREGEN − RRPONTSYD über 13 Wochen gefallen ist.
+  Shorts werden nie gesperrt. Berechnung nach `src/research_lab/forward/macro_filters.py` (Einheiten je Reihe von
+  FRED gelesen, alles in Mrd. USD).
+- **Zeitpunkt:** Die Filterzustände stehen einmal täglich im Log `f35_log.csv` (Abrufzeit in UTC, Rohantworten mit
+  sha256). Ein Signal wird nach der letzten Logzeile beurteilt, deren Abruf **vor** dem Signal liegt (`state_at`).
+  Gibt es keine solche Zeile oder steht dort „unbekannt“, wird das Signal nicht gesperrt und als „ohne Filterstand“
+  gezählt.
+- **Drei Papier-Reihen:** S7b ohne Filter, S7b mit F5, S7b mit F3. Ein gesperrtes Signal macht in der gefilterten
+  Reihe den Platz frei (Positionsgrenze 1, BTC > ETH > SOL), wie bei der Erkundung auf 2017–2024.
+- **Zählung:** Bewertet wird genau einmal, sobald **S7b ohne Filter 60 geschlossene Trades** ab dem Start des
+  Vorwärtstests hat (bei 8 bis 9 Trades im Monat etwa 7 Monate). Die gefilterten Reihen haben dann weniger Trades.
+  Die Zahl wird berichtet und ist keine eigene Schwelle.
+- **Bericht:** mittleres R je Trade nach Basiskosten für alle drei Reihen, die Differenz der Filter zu ungefiltert,
+  der größte Rückgang, die Zahl der Trades und der gesperrten Signale. Als Orientierung gilt mindestens +0,05 R je
+  Trade und ein Rückgang, der nicht größer ist. **Das Ergebnis ist eine Beobachtung, keine Bestätigung**: Bei
+  60 Trades lässt sich ein Abstand von 0,05 R nicht verlässlich von Zufall trennen (Uzi, 04.11.).
+- **Vorbelastung:** Fünf Filter wurden auf 2017–2024 erkundet, und der Glückstest über alle fünf ist nicht bestanden
+  (p = 0,066, F5 allein 0,017). Juli bis Oktober 2026 sind durch den Probelauf aus Abschnitt 14 schon gesehen.
+- **Was es nicht ist:** kein Holdout, kein Registereintrag, keine Order, kein Echtgeld, zählt nicht im Netto-R des
+  Plan-Journals. Ein Wechsel an TIM braucht danach eine eigene Studie und Uzis Karte.
+
 ## Änderungsprotokoll
 
 | Datum | Version | Änderung | Grund | Bis dahin gesehene Daten |
@@ -381,3 +410,4 @@ Das ändert Punkt 3 von Abschnitt 13 nur insoweit, dass S7b beobachtet wird; S7b
 | 2026-10-26 | 1.0 | Abschnitt 12 ergänzt: Ergebnis Training/Validierung (beide Varianten bestanden, Status `candidate`), Statuszeile aktualisiert; keine Regeländerung, Version bleibt 1.0 | Mac-Lauf 14:05 Ortszeit, Commit f637c1e | zusätzlich: alle Trainings- und Validierungsergebnisse mit Positionsgrenze (R, DD, Baselines); kein Holdout |
 | 2026-10-26 | 1.0 | Abschnitt 13 ergänzt: S7b auf Uzis Karte ohne Holdout beendet; Status, O4 und P6 aktualisiert; Register unverändert (`candidate`), kein Lock, keine Regeländerung | Uzis Karte „Nein, S7b ohne Holdout beenden“ 20:47 Ortszeit | wie Abschnitt 12; kein Holdout |
 | 2026-11-01 | 1.0 | Abschnitt 14 ergänzt: Papier-Vorwärtstest der Kandidatinnen auf Live-Kerzen (`src/research_lab/forward/s7b.py`), Regeln, Register und Holdout unverändert | Uzis Wort „go s7b-Journal“ 01.11. 09:04 Ortszeit | wie Abschnitt 13, zusätzlich Probelauf 2026-07-04 bis 2026-11-01 (Teil des Holdout-Fensters, offengelegt in Abschnitt 14) |
+| 2026-11-04 | 1.0 | Abschnitt 15 ergänzt: Schattenbetrieb mit den Makro-Filtern F5 und F3, Zählung nach 60 Trades von S7b ohne Filter, Bericht als Beobachtung; Regeln und Register unverändert | Uzis Entscheidung A und C, nicht B (privater PR #460, 04.11. 13:25 Ortszeit) | wie Abschnitt 14, zusätzlich die Erkundung F1–F5 auf 2017–2024 (`S7B_MAKRO_FILTER.md`); kein Holdout |
