@@ -980,7 +980,7 @@ def _level(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, mode
 
 
 def _vp(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, model: Mapping[str, Any],
-        footprint: Mapping[str, Any] | None) -> tuple[list[dict[str, Any]], list[str]]:
+        footprint: Mapping[str, Any] | None, gamma: Mapping[str, Any] | None = None) -> tuple[list[dict[str, Any]], list[str]]:
     """Rule version vp/1: reactions at the previous day's value by context (src/dashboard/vp_plans.py).
 
     Uses only candles closed at ``at``; the footprint store gives the touch candle's delta."""
@@ -993,7 +993,7 @@ def _vp(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, model: 
         prep = build_session_map(closed, at)
     except Exception:  # noqa: BLE001 - without the map there is no value context
         return [], ["keine Vorbereitungs-Karte"]
-    result = build_vp_plans(prep, closed["30m"], at, footprint)
+    result = build_vp_plans(prep, closed["30m"], at, footprint, gamma)
     analysis = model.get("analysis") or {}
     plans = [{**item, "pipeline_decision": (analysis.get("decision") or {}).get("status"),
               "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
@@ -1138,14 +1138,16 @@ def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
 
 
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
-           rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None) -> dict[str, Any]:
+           rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None,
+           gamma: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
 
     ``rule`` picks the rule version: TIM's flat stop and R targets, or
     struct/1 (stop behind the swing, targets at liquidity) or vp/1 (volume-profile context,
-    ``footprint`` = the aggTrades store for the touch candle's delta) in its own file.
+    ``footprint`` = the aggTrades store for the touch candle's delta, ``gamma`` = the options-gamma
+    snapshot for the wall distances) in its own file.
 
     A broken event log raises journal_log.LogError and nothing is written."""
     now = now or datetime.now(timezone.utc)
@@ -1179,7 +1181,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
             elif rule == RULE_LEVEL:
                 plans, dropped = _level(series, latest, model)
             elif rule == RULE_VP:
-                plans, dropped = _vp(series, latest, model, footprint)
+                plans, dropped = _vp(series, latest, model, footprint, gamma)
             plans, dead = drop_invalid_on_arrival(plans, closed_30m[-1].get("close"))
             dropped += dead
             plans, lost = drop_lost_levels(plans, journal.get("entries") or [], closed_30m, timeframe)
