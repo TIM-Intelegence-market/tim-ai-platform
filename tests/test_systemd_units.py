@@ -209,7 +209,8 @@ def test_ollama_dropin_limits() -> None:
     environment = dict(item.split("=", 1) for item in service["Environment"].split())
     host, port = _endpoint()
     assert environment == {"OLLAMA_HOST": f"{host}:{port}", "OLLAMA_NUM_PARALLEL": "1",
-                           "OLLAMA_MAX_LOADED_MODELS": "1", "OLLAMA_KEEP_ALIVE": "10m", "OLLAMA_NO_CLOUD": "1"}
+                           "OLLAMA_MAX_LOADED_MODELS": "1", "OLLAMA_KEEP_ALIVE": "10m",
+                           "OLLAMA_LOAD_TIMEOUT": "20m", "OLLAMA_NO_CLOUD": "1"}
     assert "AllowedCPUs" not in "\n".join(line for line in DROPIN.read_text(encoding="utf-8").splitlines()
                                            if not line.startswith("#"))
 
