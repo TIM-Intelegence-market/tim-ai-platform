@@ -357,6 +357,7 @@ def restore_test(
     *,
     tools: dict[str, str] | None = None,
     storage_path: Path | None = None,
+    tablespace: str | None = None,
 ) -> dict[str, Any]:
     tools = {"dropdb": "dropdb", "createdb": "createdb", "pg_restore": "pg_restore", "psql": "psql", **(tools or {})}
     scratch = scratch_name(parts["database"], scratch)
@@ -367,7 +368,10 @@ def restore_test(
     maintenance = ["--maintenance-db", parts["database"]]
     try:
         run_pg([tools["dropdb"], "--if-exists", *maintenance, scratch], parts, timeout=300)
-        run_pg([tools["createdb"], *maintenance, scratch], parts, timeout=300)
+        # A dedicated scratch tablespace keeps the restored copy off the live data filesystem;
+        # storage_path must then be the tablespace's filesystem.
+        placement = ["--tablespace", tablespace] if tablespace else []
+        run_pg([tools["createdb"], *maintenance, *placement, scratch], parts, timeout=300)
     except BackupError as exc:
         exc.evidence["restore_space"] = space
         raise
@@ -644,6 +648,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scratch-db", default="tim_restore_test")
     parser.add_argument("--restore-storage-path", type=Path,
                         help="operator-confirmed local filesystem holding PostgreSQL data, indexes and temp files")
+    parser.add_argument("--restore-tablespace", default=None,
+                        help="restore-test: create the scratch database in this tablespace; "
+                             "--restore-storage-path must then point at its filesystem")
     parser.add_argument("--target", type=Path, default=DEFAULT_MIRROR_TARGET,
                         help="mirror: folder on the external backup volume (default /Volumes/TIM-Backup/live)")
     parser.add_argument("--no-diskutil", action="store_true",
@@ -670,7 +677,8 @@ def main(argv: list[str] | None = None) -> int:
                 payload = backup(args.dir, args.keep_days, parts, keep_count=args.keep_count)
             else:
                 payload = restore_test(args.dir, args.scratch_db, database_url, parts,
-                                       storage_path=args.restore_storage_path)
+                                       storage_path=args.restore_storage_path,
+                                       tablespace=args.restore_tablespace)
     except Exception as exc:  # fail closed and leave evidence, never a secret
         payload = {"status": "FAIL", "command": args.command, "reason": f"{type(exc).__name__}: {exc}"[:500],
                    "completed_at": utc_now().isoformat(), "trading_actions": 0}
