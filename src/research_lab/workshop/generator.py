@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 from src.research_lab.protocol import MAX_REGISTER_ENTRIES, PROTOCOL_VERSION
 from src.research_lab.stats.register import HypothesisRegister
 from src.research_lab.workshop import charter
-from src.research_lab.workshop.check import HOLDOUT_START, _holdout, _local_month
+from src.research_lab.workshop.check import DATA_CATALOGUE, HOLDOUT_START, _holdout, _local_month
 from src.research_lab.workshop.ideas import IdeaQueue
 
 STUDIES_DIR = Path("docs/research_lab/studien")
@@ -41,6 +41,11 @@ class DraftError(ValueError):
     pass
 
 
+# A stop rule that waits for significance is optional stopping: it must not depend on the result.
+RESULT_STOP_RE = re.compile(r"p[-\s]?wert|p[-\s]?value|\bp\s*[<≤=]|signifikan|significan", re.I)
+WORDS_RE = re.compile(r"[A-Za-zÄÖÜäöüß]{3,}")
+
+
 def _filled(value: Any) -> bool:
     if value is None:
         return False
@@ -51,44 +56,38 @@ def _filled(value: Any) -> bool:
     return True
 
 
-TEXT_FIELDS = ("question", "metric", "min_effect", "stop_rule", "comparison", "costs", "random_baseline")
-TEXT_LIST_FIELDS = ("data", "events", "limits")
-# A stop rule that ends the study once a p-value crosses a threshold is optional stopping (PROTOKOLL.md 10).
-P_VALUE_STOP = re.compile(r"p\s*-?\s*(wert|value)|\bp\s*[<>≤≥=]|signifikan|significan", re.I)
+# Fields that must be prose. events and comparison may be objects; render() turns them into text.
+TEXT_FIELDS = ("question", "metric", "costs", "random_baseline")
 STUDY_REF = re.compile(r"\bS(\d+)\b")
 
 
-def _text(value: Any) -> bool:
-    """Prose, not a bare number or a serialized object: needs at least one letter or unit sign."""
+def _is_text(value: Any) -> bool:
+    """Prose, not a bare number: needs at least one letter or a percent sign."""
     return isinstance(value, str) and bool(re.search(r"[^\W\d_]|%", value))
 
 
 def _content_problems(idea: Mapping[str, Any], spec: Mapping[str, Any], template: str) -> list[str]:
+    """Checks beyond the result-dependent stop rule, the numeric min_effect and the limits in validate()."""
     problems = []
     for field in TEXT_FIELDS:
-        if field in REQUIRED[template] and _filled(spec.get(field)) and not _text(spec[field]):
-            problems.append(f"{field!r} muss Text sein, nicht {type(spec[field]).__name__} ({str(spec[field])[:60]!r})")
-    for field in TEXT_LIST_FIELDS:
-        value = spec.get(field)
-        if field in REQUIRED[template] and _filled(value):
-            if not isinstance(value, list) or not all(_text(item) for item in value):
-                problems.append(f"{field!r} muss eine Liste aus Texten sein ({str(value)[:80]!r})")
+        if field in REQUIRED[template] and _filled(spec.get(field)) and not _is_text(spec[field]):
+            problems.append(f"{field!r} muss Text sein ({str(spec[field])[:60]!r})")
+    data = spec.get("data")
+    if _filled(data) and (not isinstance(data, list) or not all(_is_text(item) for item in data)):
+        problems.append(f"'data' muss eine Liste von Datenquellen (Texten) sein ({str(data)[:80]!r})")
     effect = spec.get("min_effect")
-    if _text(effect) and not re.search(r"\d", effect):
-        problems.append(f"'min_effect' braucht Zahl und Einheit, z. B. '0,05 R' oder '10 %' ({effect!r})")
+    if isinstance(effect, str) and _filled(effect) and not (re.search(r"\d", effect) and _is_text(effect)):
+        problems.append(f"min_effect braucht Zahl und Einheit, z. B. '0,05 R' oder '10 %' ({effect!r})")
     cases = spec.get("min_cases")
     if _filled(cases) and not ((isinstance(cases, int) and not isinstance(cases, bool) and cases > 0)
                                or (isinstance(cases, str) and re.search(r"\d", cases))):
         problems.append(f"'min_cases' muss eine positive Zahl sein ({cases!r})")
-    if isinstance(spec.get("stop_rule"), str) and P_VALUE_STOP.search(spec["stop_rule"]):
-        problems.append("'stop_rule' darf nicht an einem p-Wert abbrechen (optionales Stoppen, PROTOKOLL.md 10); "
-                        "nur feste Fallzahl, Zähllauf oder Zeitgrenze")
     mentioned = " ".join(str(idea.get(k) or "") for k in ("title", "hypothesis", "counterargument", "derived_from"))
     mentioned += " " + str(spec.get("question") or "") + " " + str(spec.get("title") or "")
     studies = sorted({f"S{n}" for n in STUDY_REF.findall(mentioned)}, key=lambda s: int(s[1:]))
     burden = spec.get("prior_burden")
     if studies:
-        if not _text(burden):
+        if not _is_text(burden):
             problems.append(f"Idee nennt {', '.join(studies)}: Pflichtfeld 'prior_burden' (Vorbelastung) fehlt")
         else:
             missing = [s for s in studies if not re.search(rf"\b{s}\b", burden)]
@@ -120,6 +119,15 @@ def validate(idea: Mapping[str, Any], spec: Mapping[str, Any]) -> list[str]:
     for field in REQUIRED[template]:
         if not _filled(spec.get(field)):
             problems.append(f"Pflichtfeld {field!r} fehlt")
+    if _filled(spec.get("stop_rule")) and RESULT_STOP_RE.search(_text(spec["stop_rule"])):
+        problems.append("stop_rule darf nicht vom Ergebnis abhängen (kein Stopp bei p-Wert oder Signifikanz); "
+                        "feste Fallzahl oder fester Zeitraum")
+    if isinstance(spec.get("min_effect"), (int, float)) and not isinstance(spec.get("min_effect"), bool):
+        problems.append("min_effect braucht eine Einheit als Text (z. B. '0,1 Prozentpunkte Median-Rendite' oder '0,05 R')")
+    limits = spec.get("limits")
+    for item in limits if isinstance(limits, (list, tuple)) else [limits] if _filled(limits) else []:
+        if not WORDS_RE.search(_text(item)):
+            problems.append(f"limits: jede Grenze ist ein Satz, keine bloße Zahl ({_text(item)[:40]!r})")
     problems.extend(_content_problems(idea, spec, template))
     if idea.get("derived_from") and not _filled(spec.get("prior_burden")):
         problems.append(f"Idee ist Ableitung von {idea['derived_from']}: Pflichtfeld 'prior_burden' (Vorbelastung) fehlt")
@@ -151,12 +159,28 @@ def _register_line(template: str, n_variants: int, register: HypothesisRegister)
     return (f"{n_variants} Varianten im Holdout-Register: m = {m} → {after} von {MAX_REGISTER_ENTRIES}.", m, after)
 
 
+def _text(value: Any) -> str:
+    """One readable line for a model-written value; never Python's repr of a dict or list."""
+    if isinstance(value, dict):
+        return "; ".join(f"{k}: {_text(v)}" for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_text(item) for item in value)
+    return str(value)
+
+
 def _bullets(value: Any) -> str:
     if isinstance(value, (list, tuple)):
-        return "\n".join(f"- {item}" for item in value)
+        return "\n".join(f"- {_text(item)}" for item in value)
     if isinstance(value, dict):
-        return "\n".join(f"- {k}: {v}" for k, v in value.items())
+        return "\n".join(f"- {k}: {_text(v)}" for k, v in value.items())
     return str(value)
+
+
+def _data_bullets(value: Any) -> str:
+    """Data source keys with their catalogue label, so a reader sees that archive_usdm_klines includes funding."""
+    items = value if isinstance(value, (list, tuple)) else [value]
+    return "\n".join(f"- {_text(item)}" + (f" ({DATA_CATALOGUE[item].label})" if isinstance(item, str) and item in DATA_CATALOGUE else "")
+                     for item in items)
 
 
 def render(study_id: str, idea: Mapping[str, Any], spec: Mapping[str, Any], *, register_text: str,
@@ -186,7 +210,7 @@ def render(study_id: str, idea: Mapping[str, Any], spec: Mapping[str, Any], *, r
         lines += [f"Gegenargument: {idea['counterargument']}", ""]
     lines += ["## 3. Vorbelastung", "",
               str(spec.get("prior_burden") or "Keine bekannte Vorbelastung angegeben; Ideen-Prüfung fand keine ähnliche Studie."), "",
-              "## 4. Daten", "", _bullets(spec["data"]), ""]
+              "## 4. Daten", "", _data_bullets(spec["data"]), ""]
     if spec.get("period"):
         lines += [f"Zeitraum: {spec['period'][0]} bis {spec['period'][1]}.", ""]
     if template == "regel_backtest":
@@ -194,15 +218,15 @@ def render(study_id: str, idea: Mapping[str, Any], spec: Mapping[str, Any], *, r
         lines += [f"| {v['id']} | {v['rule']} | `{json.dumps(v['params'], sort_keys=True, ensure_ascii=False)}` |" for v in variants]
         lines += ["", f"Kosten: {spec['costs']}", "", f"Zufallsvergleich: {spec['random_baseline']}", ""]
     elif template == "ereignis_studie":
-        lines += ["## 5. Ereignisse und Vergleich", "", _bullets(spec["events"]), "", f"Vergleich: {spec['comparison']}", ""]
+        lines += ["## 5. Ereignisse und Vergleich", "", _bullets(spec["events"]), "", f"Vergleich: {_text(spec['comparison'])}", ""]
     else:
         window = spec["prospective_window"]
         lines += ["## 5. Modell, Merkmale, Zielwert", "", f"- Modell: {spec['model']}", f"- Merkmale: {spec['features']}",
                   f"- Zielwert: {spec['label']}",
                   f"- Prospektives Fenster: ab {window['start']} für {window['days']} Tage, genau einmal benutzt", ""]
-    lines += ["## 6. Messgröße und Entscheidung", "", f"- Messgröße: {spec['metric']}", f"- Kleinster Effekt: {spec['min_effect']}",
+    lines += ["## 6. Messgröße und Entscheidung", "", f"- Messgröße: {_text(spec['metric'])}", f"- Kleinster Effekt: {_text(spec['min_effect'])}",
               f"- Mindestzahl Fälle: {spec['min_cases']} (sonst „nicht prüfbar“; Zähllauf vor jeder Auswertung)",
-              f"- Stoppregel: {spec['stop_rule']}"]
+              f"- Stoppregel: {_text(spec['stop_rule'])}"]
     if snooping:
         lines.append(f"- Glückstest SPA/StepM Pflicht ({len(variants)} Varianten, ab {charter.SNOOPING_TEST_FROM_VARIANTS})")
     lines += ["", "## 7. Bekannte Grenzen", "", _bullets(spec["limits"]), "",

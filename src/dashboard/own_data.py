@@ -4,6 +4,7 @@ TIM collects data that cannot be fetched again later, or only for a short time:
 
 * Perp orderflow (Binance USD-M aggTrades as footprint rows), ``data/perp_flow/`` plus its archive,
 * open interest per hour (Binance keeps 30 days), ``data/perp_flow/oi-BTCUSDT-1h.jsonl``,
+* the same two for Monero (XMRUSDT perp, since 04.11.2026) in ``data/perp_flow/XMRUSDT/``,
 * options gamma walls and flip (Deribit snapshot every 5 min), ``data/options/gamma_levels.jsonl``,
 * real liquidations (Binance and Bybit streams, study S12), ``research-lab/liquidations/raw/``,
 * the daily copy of these files (``tim_db_backup.py files``), ``backup_files.json``.
@@ -73,15 +74,24 @@ def _mb(paths: list[Path]) -> float:
     return round(total / 1e6, 1)
 
 
-def perp_tile(data_root: Path, now: datetime) -> Tile:
-    directory = data_root / "perp_flow"
-    source = "data/perp_flow/state.json"
+def _perp_names(symbol: str) -> tuple[str, str, str]:
+    """Tile id suffix, label suffix and folder below data/ (BTC keeps its original names)."""
+    if symbol == "BTCUSDT":
+        return "", "", "perp_flow"
+    return f"_{symbol.removesuffix('USDT').lower()}", f" {symbol.removesuffix('USDT')}", f"perp_flow/{symbol}"
+
+
+def perp_tile(data_root: Path, now: datetime, symbol: str = "BTCUSDT") -> Tile:
+    suffix, label, folder = _perp_names(symbol)
+    tile_id, name = f"own_perp{suffix}", f"Perp-Orderflow{label}"
+    directory = data_root / folder
+    source = f"data/{folder}/state.json"
     try:
         state = json.loads((directory / "state.json").read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return unavailable("own_perp", "Perp-Orderflow", "Sammler hat noch nichts gespeichert (state.json fehlt)", source)
+        return unavailable(tile_id, name, "Sammler hat noch nichts gespeichert (state.json fehlt)", source)
     except (OSError, ValueError) as exc:
-        return make_tile("own_perp", "Perp-Orderflow", "—", state="fail", reason=f"state.json unlesbar: {type(exc).__name__}", source=source, now=now)
+        return make_tile(tile_id, name, "—", state="fail", reason=f"state.json unlesbar: {type(exc).__name__}", source=source, now=now)
     days = _days(directory)
     problems = []
     checks = [c for c in state.get("checks") or [] if isinstance(c, dict) and c.get("ok") is not None]
@@ -92,7 +102,7 @@ def perp_tile(data_root: Path, now: datetime) -> Tile:
     if recent:
         problems.append(f"{len(recent)} Lücke(n) in 24 h, zuletzt {recent[-1].get('reason', '')}")
     value = f"{len(days)} Tage seit {days[0]}" if days else "noch kein Tag"
-    return make_tile("own_perp", "Perp-Orderflow", value, "WARN" if problems else "PASS", reason=" · ".join(problems),
+    return make_tile(tile_id, name, value, "WARN" if problems else "PASS", reason=" · ".join(problems),
                      source=source, as_of=state.get("updated_at"), max_age_seconds=PERP_MAX_AGE, now=now,
                      extra={"days": len(days), "first_day": days[0] if days else None, "gaps_total": len(gaps),
                             "mb": _mb(list(directory.glob("perp-*.json.gz")) + list((directory / "archive").glob("perp-*.json.gz")))})
@@ -116,14 +126,16 @@ def _count_lines(path: Path) -> int:
         return 0
 
 
-def oi_tile(data_root: Path, now: datetime) -> Tile:
-    path = data_root / "perp_flow" / "oi-BTCUSDT-1h.jsonl"
-    source = "data/perp_flow/oi-BTCUSDT-1h.jsonl"
+def oi_tile(data_root: Path, now: datetime, symbol: str = "BTCUSDT") -> Tile:
+    suffix, label, folder = _perp_names(symbol)
+    tile_id, name = f"own_oi{suffix}", f"Open Interest 1h{label}"
+    path = data_root / folder / f"oi-{symbol}-1h.jsonl"
+    source = f"data/{folder}/oi-{symbol}-1h.jsonl"
     last = _last_json_line(path) if path.exists() else None
     if last is None:
-        return unavailable("own_oi", "Open Interest 1h", "Noch keine Stunde gespeichert", source)
+        return unavailable(tile_id, name, "Noch keine Stunde gespeichert", source)
     hours = _count_lines(path)
-    return make_tile("own_oi", "Open Interest 1h", f"{hours} Stunden", "PASS", source=source,
+    return make_tile(tile_id, name, f"{hours} Stunden", "PASS", source=source,
                      as_of=_iso(float(last.get("t") or 0)), max_age_seconds=OI_MAX_AGE, now=now, extra={"hours": hours})
 
 
@@ -177,7 +189,8 @@ def files_backup_tile(operational: Path, now: datetime) -> Tile:
 def status(data_root: Path, liq_root: Path, now: datetime | None = None) -> list[Tile]:
     """One tile per own data source, newest record against its freshness limit."""
     now = now or datetime.now(timezone.utc)
-    tiles = [perp_tile(data_root, now), oi_tile(data_root, now), gamma_tile(data_root, now)]
+    tiles = [perp_tile(data_root, now), oi_tile(data_root, now),
+             perp_tile(data_root, now, "XMRUSDT"), oi_tile(data_root, now, "XMRUSDT"), gamma_tile(data_root, now)]
     tiles += [liquidation_tile(liq_root, venue, now) for venue in LIQ_VENUES]
     tiles.append(files_backup_tile(data_root / "operational", now))
     return tiles

@@ -69,8 +69,29 @@ def test_sizing_fields_and_weight_clip():
 def test_weighted_sum_uses_only_entries_with_a_weight():
     rows = [{"net_r": 1.0, "vol_4h": {"weight": 2.0}}, {"net_r": -1.0, "vol_4h": {"weight": 0.5}}, {"net_r": 3.0}]
     w = vol_4h.weighted(rows)
-    assert w == {"closed": 2, "sum_net_r": 0.0, "sum_vol_net_r": 1.5, "mean_weight": 1.25}
+    assert w == {"closed": 2, "sum_net_r": 0.0, "sum_vol_net_r": 1.5, "sum_vol_net_r_norm": 1.2, "mean_weight": 1.25}
     assert vol_4h.weighted([])["mean_weight"] is None
+    assert vol_4h.weighted([])["sum_vol_net_r_norm"] == 0.0
+
+
+@pytest.mark.parametrize("weight", [0.5, 1.0, 1.5, 2.0])
+def test_constant_weights_normalise_to_the_plain_sum(weight):
+    # Issue #100: the level of the weights alone must not make a journal look better or worse.
+    rows = [{"net_r": r, "vol_4h": {"weight": weight}} for r in (1.2, -0.8, 2.5, -1.0, 0.3)]
+    w = vol_4h.weighted(rows)
+    assert w["sum_vol_net_r"] == pytest.approx(weight * w["sum_net_r"], abs=1e-3)
+    assert w["sum_vol_net_r_norm"] == w["sum_net_r"] == 2.2
+
+
+def test_normalised_sum_shows_only_redistribution():
+    # Same mean weight 1.0: more size on the winner, less on the loser -> better than plain.
+    rows = [{"net_r": 2.0, "vol_4h": {"weight": 1.5}}, {"net_r": -1.0, "vol_4h": {"weight": 0.5}}]
+    w = vol_4h.weighted(rows)
+    assert w["sum_net_r"] == 1.0 and w["mean_weight"] == 1.0
+    assert w["sum_vol_net_r_norm"] == 2.5
+    # Doubling every weight changes the raw sum but not the normalised one.
+    doubled = vol_4h.weighted([{**r, "vol_4h": {"weight": r["vol_4h"]["weight"] * 2}} for r in rows])
+    assert doubled["sum_vol_net_r"] == 5.0 and doubled["sum_vol_net_r_norm"] == 2.5
 
 
 def test_plan_journal_records_vol_fields_and_summary(tmp_path: Path):
@@ -113,5 +134,5 @@ def test_old_entries_without_the_field_still_render():
     from src.dashboard.pages.plan_journal import _plan_journal_page
     old = {"entries": [{"id": "a", "direction": "LONG", "status": "CLOSED", "gross_r": 1.0, "net_r": 0.9, "timeframe": "30m"}]}
     stats = pj.summary(old)
-    assert stats["vol_sizing"] == {"closed": 0, "sum_net_r": 0.0, "sum_vol_net_r": 0.0, "mean_weight": None}
+    assert stats["vol_sizing"] == {"closed": 0, "sum_net_r": 0.0, "sum_vol_net_r": 0.0, "sum_vol_net_r_norm": 0.0, "mean_weight": None}
     assert "Netto-R mit GARCH-Größe" in _plan_journal_page({}, old)
