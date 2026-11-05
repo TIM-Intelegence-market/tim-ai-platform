@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 from src.research_lab.protocol import MAX_REGISTER_ENTRIES, PROTOCOL_VERSION
 from src.research_lab.stats.register import HypothesisRegister
 from src.research_lab.workshop import charter
-from src.research_lab.workshop.check import HOLDOUT_START, _holdout, _local_month
+from src.research_lab.workshop.check import DATA_CATALOGUE, HOLDOUT_START, _holdout, _local_month
 from src.research_lab.workshop.ideas import IdeaQueue
 
 STUDIES_DIR = Path("docs/research_lab/studien")
@@ -39,6 +39,11 @@ USES_REGISTER = {"regel_backtest"}
 
 class DraftError(ValueError):
     pass
+
+
+# A stop rule that waits for significance is optional stopping: it must not depend on the result.
+RESULT_STOP_RE = re.compile(r"p[-\s]?wert|p[-\s]?value|\bp\s*[<≤=]|signifikan|significan", re.I)
+WORDS_RE = re.compile(r"[A-Za-zÄÖÜäöüß]{3,}")
 
 
 def _filled(value: Any) -> bool:
@@ -74,6 +79,15 @@ def validate(idea: Mapping[str, Any], spec: Mapping[str, Any]) -> list[str]:
     for field in REQUIRED[template]:
         if not _filled(spec.get(field)):
             problems.append(f"Pflichtfeld {field!r} fehlt")
+    if _filled(spec.get("stop_rule")) and RESULT_STOP_RE.search(_text(spec["stop_rule"])):
+        problems.append("stop_rule darf nicht vom Ergebnis abhängen (kein Stopp bei p-Wert oder Signifikanz); "
+                        "feste Fallzahl oder fester Zeitraum")
+    if isinstance(spec.get("min_effect"), (int, float)) and not isinstance(spec.get("min_effect"), bool):
+        problems.append("min_effect braucht eine Einheit als Text (z. B. '0,1 Prozentpunkte Median-Rendite' oder '0,05 R')")
+    limits = spec.get("limits")
+    for item in limits if isinstance(limits, (list, tuple)) else [limits] if _filled(limits) else []:
+        if not WORDS_RE.search(_text(item)):
+            problems.append(f"limits: jede Grenze ist ein Satz, keine bloße Zahl ({_text(item)[:40]!r})")
     if idea.get("derived_from") and not _filled(spec.get("prior_burden")):
         problems.append(f"Idee ist Ableitung von {idea['derived_from']}: Pflichtfeld 'prior_burden' (Vorbelastung) fehlt")
     for variant in spec.get("variants") or []:
@@ -104,12 +118,28 @@ def _register_line(template: str, n_variants: int, register: HypothesisRegister)
     return (f"{n_variants} Varianten im Holdout-Register: m = {m} → {after} von {MAX_REGISTER_ENTRIES}.", m, after)
 
 
+def _text(value: Any) -> str:
+    """One readable line for a model-written value; never Python's repr of a dict or list."""
+    if isinstance(value, dict):
+        return "; ".join(f"{k}: {_text(v)}" for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_text(item) for item in value)
+    return str(value)
+
+
 def _bullets(value: Any) -> str:
     if isinstance(value, (list, tuple)):
-        return "\n".join(f"- {item}" for item in value)
+        return "\n".join(f"- {_text(item)}" for item in value)
     if isinstance(value, dict):
-        return "\n".join(f"- {k}: {v}" for k, v in value.items())
+        return "\n".join(f"- {k}: {_text(v)}" for k, v in value.items())
     return str(value)
+
+
+def _data_bullets(value: Any) -> str:
+    """Data source keys with their catalogue label, so a reader sees that archive_usdm_klines includes funding."""
+    items = value if isinstance(value, (list, tuple)) else [value]
+    return "\n".join(f"- {_text(item)}" + (f" ({DATA_CATALOGUE[item].label})" if isinstance(item, str) and item in DATA_CATALOGUE else "")
+                     for item in items)
 
 
 def render(study_id: str, idea: Mapping[str, Any], spec: Mapping[str, Any], *, register_text: str,
@@ -139,7 +169,7 @@ def render(study_id: str, idea: Mapping[str, Any], spec: Mapping[str, Any], *, r
         lines += [f"Gegenargument: {idea['counterargument']}", ""]
     lines += ["## 3. Vorbelastung", "",
               str(spec.get("prior_burden") or "Keine bekannte Vorbelastung angegeben; Ideen-Prüfung fand keine ähnliche Studie."), "",
-              "## 4. Daten", "", _bullets(spec["data"]), ""]
+              "## 4. Daten", "", _data_bullets(spec["data"]), ""]
     if spec.get("period"):
         lines += [f"Zeitraum: {spec['period'][0]} bis {spec['period'][1]}.", ""]
     if template == "regel_backtest":
@@ -147,15 +177,15 @@ def render(study_id: str, idea: Mapping[str, Any], spec: Mapping[str, Any], *, r
         lines += [f"| {v['id']} | {v['rule']} | `{json.dumps(v['params'], sort_keys=True, ensure_ascii=False)}` |" for v in variants]
         lines += ["", f"Kosten: {spec['costs']}", "", f"Zufallsvergleich: {spec['random_baseline']}", ""]
     elif template == "ereignis_studie":
-        lines += ["## 5. Ereignisse und Vergleich", "", _bullets(spec["events"]), "", f"Vergleich: {spec['comparison']}", ""]
+        lines += ["## 5. Ereignisse und Vergleich", "", _bullets(spec["events"]), "", f"Vergleich: {_text(spec['comparison'])}", ""]
     else:
         window = spec["prospective_window"]
         lines += ["## 5. Modell, Merkmale, Zielwert", "", f"- Modell: {spec['model']}", f"- Merkmale: {spec['features']}",
                   f"- Zielwert: {spec['label']}",
                   f"- Prospektives Fenster: ab {window['start']} für {window['days']} Tage, genau einmal benutzt", ""]
-    lines += ["## 6. Messgröße und Entscheidung", "", f"- Messgröße: {spec['metric']}", f"- Kleinster Effekt: {spec['min_effect']}",
+    lines += ["## 6. Messgröße und Entscheidung", "", f"- Messgröße: {_text(spec['metric'])}", f"- Kleinster Effekt: {_text(spec['min_effect'])}",
               f"- Mindestzahl Fälle: {spec['min_cases']} (sonst „nicht prüfbar“; Zähllauf vor jeder Auswertung)",
-              f"- Stoppregel: {spec['stop_rule']}"]
+              f"- Stoppregel: {_text(spec['stop_rule'])}"]
     if snooping:
         lines.append(f"- Glückstest SPA/StepM Pflicht ({len(variants)} Varianten, ab {charter.SNOOPING_TEST_FROM_VARIANTS})")
     lines += ["", "## 7. Bekannte Grenzen", "", _bullets(spec["limits"]), "",

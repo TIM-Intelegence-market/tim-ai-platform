@@ -417,7 +417,7 @@ def _research_draft(pipeline: Pipeline, state_dir: Path, ledger: IssueLedger) ->
         pipeline.worktree_git(worktree, gitdir, "add", "--", relative)
         pipeline.worktree_git(worktree, gitdir, "-c", f"user.name={WORKER_LOGIN}",
                               "-c", f"user.email={WORKER_LOGIN}@users.noreply.github.com",
-                              "commit", "--no-verify", "-m", f"research({idea['id']}): Studien-Entwurf")
+                              "commit", "--no-verify", "--signoff", "-m", f"research({idea['id']}): Studien-Entwurf")
         pipeline.worktree_git(worktree, gitdir, "push", "--no-verify", "origin", branch)
         body = "\n".join([
             f"Closes #{number}", "",
@@ -832,7 +832,7 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
         pipeline.worktree_git(worktree, gitdir, "add", "--", *paths)
         pipeline.worktree_git(worktree, gitdir, "-c", f"user.name={WORKER_LOGIN}",
                               "-c", f"user.email={WORKER_LOGIN}@users.noreply.github.com",
-                              "commit", "--no-verify", "-m",
+                              "commit", "--no-verify", "--signoff", "-m",
                               f"fix(issue-{number}): {'Server' if lane == 'hard' else 'Mac'} Qwen repair")
         head = pipeline.worktree_git(worktree, gitdir, "rev-parse", "HEAD")
         pipeline.worktree_git(worktree, gitdir, "push", "--no-verify", "origin", branch)
