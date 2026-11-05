@@ -33,6 +33,9 @@ class DashboardState:
     # BTC perp trades in the footprint store's shape, and hourly open interest with its Z-score (src/dashboard/perp_flow.py).
     perp_flow: dict[str, Any] = field(default_factory=dict)
     open_interest: dict[str, Any] = field(default_factory=dict)
+    # The same per symbol (BTCUSDT, XMRUSDT; perp_flow.publish / chart_inputs).
+    perp_flows: dict[str, dict[str, Any]] = field(default_factory=dict)
+    open_interests: dict[str, dict[str, Any]] = field(default_factory=dict)
     system_health: dict[str, Any] = field(default_factory=lambda: {
         "database": "unknown",
         "stream": "unknown",
