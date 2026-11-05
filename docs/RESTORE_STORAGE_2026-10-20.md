@@ -61,3 +61,31 @@ ausreichend Platz besteht. Eine LV-Vergrößerung wird nicht automatisch verklei
 
 Weder Speicherreparatur noch Restore-PASS erteilt eine V2-, Qualifikations- oder
 Handelsfreigabe.
+
+## Nachtrag 05.11.2026: Scratch-Tablespace auf sda
+
+Bis Anfang November war die Datenbank auf etwa 54 GiB gewachsen (davon etwa
+27 GiB `ingestion_outbox`). Der Restore-Test hätte damit etwa 105 GiB frei auf
+`/srv` gebraucht, verfügbar waren etwa 66 GiB. Er schlug deshalb am 25.10. und
+am 01.11. mit `not enough restore space` fehl, ohne eine Testdatenbank anzulegen.
+
+Auf Owner-Freigabe läuft der Restore jetzt in einem eigenen Tablespace auf der
+zweiten SSD (`sda`, LUKS, eingehängt unter `/var/lib/warpgate`):
+
+- Verzeichnis `/var/lib/warpgate/tim-restore-scratch`, per Bind-Mount (`nofail`)
+  unter `/var/lib/tim-restore-scratch`, Eigentümer `postgres`, Modus 700.
+- `CREATE TABLESPACE tim_restore_scratch LOCATION '/var/lib/tim-restore-scratch'`,
+  `GRANT CREATE ON TABLESPACE tim_restore_scratch TO tim`.
+- Neue Option `--restore-tablespace`: `createdb --tablespace` legt die
+  Scratch-Datenbank dort an, `pg_restore` folgt dem Datenbank-Default.
+  `--restore-storage-path` zeigt dann auf das Tablespace-Dateisystem, die
+  Platzrechnung bleibt unverändert.
+- Drop-in `ops/systemd/tim-restore-test.service.d/scratch-tablespace.conf`.
+
+WAL und Katalog der Scratch-Datenbank bleiben auf `/srv`; bei `max_wal_size`
+8 GiB ist das durch die Reserve gedeckt. Erster Lauf am 05.11.2026: PASS,
+Dump `tim_20261105T031509Z.dump`, agg_trades 86 412 753 Zeilen identisch,
+Scratch-Datenbank gelöscht.
+
+Rückweg: Drop-in entfernen, `daemon-reload`, `DROP TABLESPACE tim_restore_scratch`
+(nur leer möglich), Bind-Zeile aus `/etc/fstab` entfernen.
