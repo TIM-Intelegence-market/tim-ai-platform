@@ -373,14 +373,28 @@ class Pipeline:
         self.command("git", "fetch", "--quiet", "origin", name)
         return f"origin/{name}"
 
+    def analysis_mcp_overrides(self) -> list[str]:
+        """`-c` options that switch off the configured servers in ANALYSIS_DISABLED_MCP_SERVERS.
+
+        Codex rejects an override for a server its config does not define ("invalid transport":
+        the override alone has neither `command` nor `url`), and `codex exec` then stops before
+        the analysis. A server that is not configured cannot start, so it needs no override.
+        An unreadable server list blocks the run instead of guessing."""
+        raw = self.command("codex", "mcp", "list", "--json", timeout=120)
+        try:
+            configured = {str(entry["name"]) for entry in json.loads(raw)}
+        except (ValueError, TypeError, KeyError) as error:
+            raise PipelineError("Codex MCP server list (`codex mcp list --json`) was not machine-readable.") from error
+        return [option for server in ANALYSIS_DISABLED_MCP_SERVERS if server in configured
+                for option in ("-c", f"mcp_servers.{server}.enabled=false")]
+
     def run_analysis(self, candidate: Candidate, run_id: str, base_ref: str) -> str:
         base_sha = self.command("git", "rev-parse", base_ref)
         output = self.state_dir / "runs" / f"{run_id}-analysis.md"
         output.parent.mkdir(parents=True, exist_ok=True)
         self.command("codex", "exec", "--model", self.codex_model,
                      "-C", str(self.repository), "--sandbox", "read-only",
-                     *[option for server in ANALYSIS_DISABLED_MCP_SERVERS
-                       for option in ("-c", f"mcp_servers.{server}.enabled=false")],
+                     *self.analysis_mcp_overrides(),
                      "--output-last-message", str(output), analysis_prompt(candidate, base_sha), timeout=1800)
         if not output.exists() or not output.read_text(encoding="utf-8").strip():
             raise PipelineError("Codex completed without a usable analysis artifact.")
