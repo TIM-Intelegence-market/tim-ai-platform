@@ -25,7 +25,9 @@ recorded, never later):
 - ``risk_usd`` = RISK_USD * weight and ``size`` = risk_usd / |entry - stop| (units of the coin).
 
 The plan journal multiplies a closed plan's net R with ``weight`` for the comparison
-"Netto-R mit GARCH-Größe". It changes no plan, stop, target or count, and places no order.
+"Netto-R mit GARCH-Größe" and divides the sum by the mean weight of those plans, so both sums are
+at the same average size and the difference shows only the redistribution between calm and wild
+periods (issue #100). It changes no plan, stop, target or count, and places no order.
 """
 from __future__ import annotations
 
@@ -125,12 +127,21 @@ def sizing(plan: Mapping[str, Any], candles_4h: Sequence[Mapping[str, Any]], at:
 
 
 def weighted(entries: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Net R of the closed entries that carry a weight: plain and with GARCH size, side by side."""
+    """Net R of the closed entries that carry a weight: plain and with GARCH size, side by side.
+
+    ``sum_vol_net_r`` is the raw sum of net R times weight. ``sum_vol_net_r_norm`` divides it by the
+    mean weight, so it is on the same scale as ``sum_net_r``: with constant weights the two are
+    equal, and the difference shows only how the sizing moves risk between calm and wild periods.
+    """
     rows = [e for e in entries if isinstance(e.get("vol_4h"), Mapping) and e.get("net_r") is not None
             and isinstance((e["vol_4h"]).get("weight"), (int, float))]
+    weights = [float(e["vol_4h"]["weight"]) for e in rows]
+    vol_sum = sum(float(e["net_r"]) * w for e, w in zip(rows, weights))
+    mean_weight = statistics.fmean(weights) if weights else None
     return {
         "closed": len(rows),
         "sum_net_r": round(sum(float(e["net_r"]) for e in rows), 3),
-        "sum_vol_net_r": round(sum(float(e["net_r"]) * float(e["vol_4h"]["weight"]) for e in rows), 3),
-        "mean_weight": round(statistics.fmean(float(e["vol_4h"]["weight"]) for e in rows), 3) if rows else None,
+        "sum_vol_net_r": round(vol_sum, 3),
+        "sum_vol_net_r_norm": round(vol_sum / mean_weight, 3) if mean_weight else 0.0,
+        "mean_weight": round(mean_weight, 3) if mean_weight is not None else None,
     }
