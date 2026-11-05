@@ -36,7 +36,14 @@ def test_section_matches_how_the_pipeline_starts_codex():
     assert "~/.codex/config.toml" in section
     # The analysis is posted as an issue comment; the leak risk must stay documented.
     assert "issue comment" in section and "public" in section
-    # The prompt does not mention the servers yet; the doc must not claim otherwise.
+
+def test_section_matches_which_servers_the_analysis_may_use():
+    from scripts.github_issue_pipeline import ANALYSIS_DISABLED_MCP_SERVERS
+    section = _section()
+    source = PIPELINE.read_text(encoding="utf-8")
     prompt = source.split("def analysis_prompt", 1)[1].split("\ndef ", 1)[0]
-    if "tim-ops" not in prompt:
-        assert "does not mention" in section
+    for server in ANALYSIS_DISABLED_MCP_SERVERS:
+        assert f"-c mcp_servers.{server}.enabled=false" in section
+        assert server not in prompt
+    assert "`tim-graph`" in prompt and "only `tim-graph`" in section
+    assert "does not mention" not in section

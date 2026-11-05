@@ -358,3 +358,28 @@ def test_unexpected_errors_block_instead_of_crashing_and_labels_still_move(tmp_p
     assert ["gh", "issue", "edit", "7", "--add-label", "agent:blocked"] in runner.calls
     assert ["gh", "issue", "edit", "7", "--remove-label", "agent:analyzing"] in runner.calls
     assert ["gh", "issue", "edit", "7", "--remove-label", "agent:claude-running"] in runner.calls
+
+
+def test_analysis_switches_tim_ops_off_and_points_only_at_tim_graph(tmp_path):
+    """Owner decision: the analysis is posted to a public issue, so tim-ops must be off for
+    this Codex call, not merely discouraged in the prompt."""
+    seen: list[list[str]] = []
+
+    class Runner(CommandRunner):
+        def run(self, args, **_):
+            if args[0] == "git":
+                return "abc123"
+            if args[0] == "codex":
+                seen.append(list(args))
+                output = Path(args[args.index("--output-last-message") + 1])
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text("## Problem\nTest", encoding="utf-8")
+            return ""
+
+    Pipeline(Path("."), tmp_path, Runner()).run_analysis(
+        Candidate(1, "Pilot", "", frozenset(), "", ""), "run", "origin/platform-main")
+    [args] = seen
+    overrides = [args[i + 1] for i, arg in enumerate(args[:-1]) if arg == "-c"]
+    assert "mcp_servers.tim-ops.enabled=false" in overrides
+    prompt = args[-1]
+    assert "tim-graph" in prompt and "tim-ops" not in prompt
