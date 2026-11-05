@@ -112,6 +112,11 @@ Current state:
   -c mcp_servers.tim-ops.enabled=false`. Codex loads the other servers from
   `~/.codex/config.toml` of the account the runner uses (`docs/mcp_clients.md`),
   so `tim-graph` stays available and `tim-ops` does not start.
+- The override is only sent when `codex mcp list --json` (run in the repository)
+  lists `tim-ops`. Codex rejects an override for a server it has no entry for
+  ("invalid transport": the override alone has neither `command` nor `url`), and
+  `codex exec` would stop before the analysis. A server that is not configured
+  cannot start, so it needs no override. An unreadable list blocks the run.
 - `analysis_prompt` points Codex at `tim-graph` for code and documentation
   context and does not name `tim-ops`.
 - The Claude worker stays without MCP tools (step 3 above); this does not change.
@@ -124,10 +129,8 @@ already public. Use `tim-ops` only in runs whose output is not posted publicly.
 
 Not verified yet (acceptance on the runner host, before merge):
 
-- How Codex treats the override when the runner's config does not define
-  `tim-ops` at all. If Codex rejects it, the analysis step fails closed and
-  nothing is posted; the fix is then to register `tim-ops` there or to drop the
-  override for that host.
+- That the runner's Codex version supports `codex mcp list --json`. If it does
+  not, the run blocks with an `Automation blocked` comment naming that command.
 - That a non-interactive `codex exec` run calls `tim-graph` without an approval prompt.
 
 Acceptance: `codex mcp list` on the runner account, then one pilot run on an
