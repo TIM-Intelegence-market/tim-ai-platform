@@ -270,7 +270,8 @@ def main(argv: list[str] | None = None) -> int:
             journals = {n: load_view(args.journal_dir / f"{n}.json") for n in JOURNALS if (args.journal_dir / f"{n}.json").exists()}
             log, now = self_improve.LearningLog(), datetime.now(timezone.utc)
             learning = self_improve.step(journals, ReflectionLog().records(), log, now, write=False)
-            week = weekly_report.build(journals, learning, log.events(), now)
+            from src.dashboard.exit_shadow import load as load_shadow
+            week = weekly_report.build(journals, learning, log.events(), now, load_shadow(args.journal_dir / "tim_exit_shadow_mid.json"))
             print(json.dumps(week, ensure_ascii=False, indent=2) if args.json else weekly_report.render(week))
         elif args.command == "entscheiden":
             from src.research_lab.workshop import self_improve, weekly_report

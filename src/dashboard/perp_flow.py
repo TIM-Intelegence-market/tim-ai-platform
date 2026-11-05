@@ -57,6 +57,13 @@ SAVE_SECONDS = 60
 CHECK_HOURS = 3  # full hours compared with Binance's 1h candle on every check
 CHECK_KEEP = 48
 CHECK_TOLERANCE = 0.01  # BTC: Binance rounds the candle volume to 3 decimals
+# An aggTrade carries the time of its first fill; Binance's candle counts every fill at its own time.
+# A taker order that starts just before an hour boundary and runs over it is all in the earlier hour
+# here (as in Binance's aggTrades archive) but split across both hours in the candle (checked against
+# the archive of 30.10.2026: fills up to 84 ms after the boundary). Multi-fill aggTrades this close
+# to a boundary widen the check of the two hours by their quantity, nothing else does.
+EDGE_MS = 1000
+EDGES_KEPT = 72
 BUBBLE_MIN_USD = 100_000.0  # same floor as the spot bubbles (footprint_data.BUBBLE_MIN_USD)
 BUBBLES_PER_DAY = 2000
 OI_PERIOD = "1h"
@@ -150,6 +157,8 @@ class PerpFlow:
         # state.json resumes from the older id; trades below a day's mark are in that file already.
         self.upto: dict[str, int] = {}
         self._order: list[float] | None = None  # running taker order [ms, side, quantity, notional]
+        # Hour boundary (epoch seconds) -> [buy, sell] quantity of multi-fill aggTrades in the last EDGE_MS before it.
+        self.edges: dict[int, list[float]] = {}
 
     # --- persistence -------------------------------------------------------------------------
 
@@ -164,6 +173,7 @@ class PerpFlow:
         self.segments = [list(map(int, s)) for s in state.get("segments") or []]
         self.gaps = list(state.get("gaps") or [])
         self.checks = list(state.get("checks") or [])
+        self.edges = {int(k): [float(v[0]), float(v[1])] for k, v in (state.get("edges") or {}).items()}
         self.updated_at = state.get("updated_at")
         for path in sorted(self.directory.glob("perp-*.json.gz")):
             try:
@@ -192,7 +202,8 @@ class PerpFlow:
                 archive.mkdir(parents=True, exist_ok=True)
                 os.replace(path, archive / path.name)
         state = {"symbol": self.symbol, "tick": self.spec.tick, "next_id": self.next_id, "segments": self.segments,
-                 "gaps": self.gaps[-50:], "checks": self.checks[-CHECK_KEEP:], "updated_at": self.updated_at}
+                 "gaps": self.gaps[-50:], "checks": self.checks[-CHECK_KEEP:], "updated_at": self.updated_at,
+                 "edges": {str(k): v for k, v in sorted(self.edges.items())[-EDGES_KEPT:]}}
         self._write(self.directory / "state.json", json.dumps(state).encode())
 
     @staticmethod
@@ -270,6 +281,13 @@ class PerpFlow:
         cell = self.days.setdefault(key, {}).setdefault((bucket, level), [0.0, 0.0])
         cell[0 if seller_aggressive else 1] += quantity
         self._dirty.add(key)
+        boundary = (ms // 3_600_000 + 1) * 3600
+        if boundary * 1000 - ms <= EDGE_MS and row.get("f") != row.get("l"):
+            edge = self.edges.setdefault(boundary, [0.0, 0.0])
+            edge[1 if seller_aggressive else 0] += quantity
+            if len(self.edges) > EDGES_KEPT:
+                for old in sorted(self.edges)[:-EDGES_KEPT]:
+                    del self.edges[old]
         side = -1.0 if seller_aggressive else 1.0
         if self._order and self._order[0] == ms and self._order[1] == side:
             self._order[2] += quantity
@@ -334,6 +352,7 @@ class PerpFlow:
         return {"since": datetime.fromtimestamp(since / 1000, tz=timezone.utc).isoformat() if since else None,
                 "next_id": self.next_id, "gaps": len(self.gaps), "last_gap": self.gaps[-1] if self.gaps else None,
                 "checks": len(checked), "checks_ok": sum(1 for c in checked if c["ok"]), "last_check": checked[-1] if checked else None,
+                "failed_hours": [c["hour"] for c in checked if not c["ok"]][-10:],
                 "calls": self.calls}
 
     def hour_totals(self, hour_start: int) -> tuple[float, float]:
@@ -368,9 +387,19 @@ class PerpFlow:
             k_volume, k_buy = float(by_time[hour][5]), float(by_time[hour][9])
             delta, k_delta = 2 * buy - volume, 2 * k_buy - k_volume
             tolerance = self.spec.check_tolerance
-            ok = abs(volume - k_volume) <= tolerance and abs(delta - k_delta) <= 2 * tolerance
-            results.append({"hour": datetime.fromtimestamp(hour, tz=timezone.utc).isoformat(), "volume": round(volume, 3),
-                            "binance_volume": k_volume, "delta": round(delta, 3), "binance_delta": round(k_delta, 3), "ok": ok})
+            exact = abs(volume - k_volume) <= tolerance and abs(delta - k_delta) <= 2 * tolerance
+            out_buy, out_sell = self.edges.get(hour + 3600, [0.0, 0.0])  # tails Binance moves into the next hour
+            in_buy, in_sell = self.edges.get(hour, [0.0, 0.0])  # tails Binance moves in from the previous hour
+            edge = out_buy + out_sell + in_buy + in_sell
+            # Binance volume = ours - moved out + moved in; its delta moves by -(out buy - out sell) + (in buy - in sell).
+            ok = exact or (edge > 0
+                           and volume - out_buy - out_sell - tolerance <= k_volume <= volume + in_buy + in_sell + tolerance
+                           and -out_buy - in_sell - 2 * tolerance <= k_delta - delta <= out_sell + in_buy + 2 * tolerance)
+            item = {"hour": datetime.fromtimestamp(hour, tz=timezone.utc).isoformat(), "volume": round(volume, 3),
+                    "binance_volume": k_volume, "delta": round(delta, 3), "binance_delta": round(k_delta, 3), "ok": ok}
+            if ok and not exact:
+                item["edge"] = round(edge, 3)  # equal once orders running over the hour boundary are counted
+            results.append(item)
         self.checks = (self.checks + results)[-CHECK_KEEP:]
         return results
 

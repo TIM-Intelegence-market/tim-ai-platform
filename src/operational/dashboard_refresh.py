@@ -312,6 +312,19 @@ def busy_processes(ps_output: str, patterns: dict[str, str]) -> list[str]:
     return found
 
 
+def timctl_reason(result: subprocess.CompletedProcess) -> dict[str, str]:
+    """The ``reason`` timctl prints with a BLOCKED result, so a rollback says why (empty when none)."""
+    if result.returncode == 0:
+        return {}
+    try:
+        payload = json.loads(result.stdout or "")
+    except ValueError:
+        tail = (result.stdout or "").strip().splitlines()[-1:] or [""]
+        return {"reason": tail[0][:300]} if tail[0] else {}
+    reason = payload.get("reason") if isinstance(payload, dict) else None
+    return {"reason": str(reason)[:300]} if reason else {}
+
+
 def launchd_pid(print_output: str) -> int | None:
     match = re.search(r"^\s*pid = (\d+)", print_output, re.MULTILINE)
     return int(match.group(1)) if match else None
@@ -635,13 +648,16 @@ class DashboardRefresh:
     def restart_runtime(self) -> dict[str, Any]:
         before = self.runtime_pid()
         restart = self.timctl("restart")
-        attempts = [{"command": "restart", "returncode": restart.returncode}]
+        attempts = [{"command": "restart", "returncode": restart.returncode, **timctl_reason(restart)}]
         if restart.returncode != 0:
             # Known: verify_running can probe the dashboard too early; one more start is the documented fix.
             self.sleep(10)
             start = self.timctl("start")
-            attempts.append({"command": "start", "returncode": start.returncode})
-        verified = self.timctl("verify-running", timeout=120).returncode == 0
+            attempts.append({"command": "start", "returncode": start.returncode, **timctl_reason(start)})
+        verify = self.timctl("verify-running", timeout=120)
+        verified = verify.returncode == 0
+        if not verified:
+            attempts.append({"command": "verify-running", "returncode": verify.returncode, **timctl_reason(verify)})
         after = self.runtime_pid()
         health = self.probe("http://127.0.0.1:8765/api/health", 10)
         # Pages served by the same runtime process (the public view on 8780) must answer too, or the deploy rolls back.

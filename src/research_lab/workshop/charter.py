@@ -37,7 +37,7 @@ TEMPLATES = {
 FIXED_LIMITS = (
     "Nur Papier, kein Echtgeld, keine echten Orders.",
     "Risikogrenzen und Kostenmodell ändern sich nie automatisch.",
-    "Holdout ab 2025-01-01 wird nie geladen; öffnen nur mit Uzis ausdrücklichem Wort.",
+    "Holdout ab 2025-01-01 wird nie geladen; öffnen nur mit Zustimmung von Uzi und Barti, Uzis ausdrückliches Wort bleibt Pflicht.",
     "Kein automatischer Merge; gemergt wird nur nach Uzis „merge“.",
     "Eine neue Strategie-Version zählt im Papier erst nach bestandenem prospektivem Test und Uzis Karte.",
 )

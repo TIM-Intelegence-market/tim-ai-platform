@@ -628,7 +628,7 @@ class Pipeline:
             self.validate_worker_diff(worktree, gitdir)
             self.worktree_git(worktree, gitdir, "diff", "HEAD", "--check")
             self.worktree_git(worktree, gitdir, "add", "--all")
-            self.worktree_git(worktree, gitdir, "commit", "--no-verify", "-m",
+            self.worktree_git(worktree, gitdir, "commit", "--no-verify", "--signoff", "-m",
                               f"fix(issue-{candidate.number}): {candidate.title[:60]}")
             stage = "committed"
             self.worktree_git(worktree, gitdir, "push", "--no-verify", "origin", branch)

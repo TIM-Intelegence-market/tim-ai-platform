@@ -707,6 +707,16 @@ class TIMApplication:
                 except Exception as error:  # noqa: BLE001 - a journal must not stop the runtime
                     log.warning("%s update failed: %s", name, type(error).__name__)
             try:
+                # Shadow of the MID journal: last third as a runner (Uzi 04.11.2026), reads the journal only.
+                from src.dashboard.exit_shadow import DEFAULT_PATH as exit_shadow_path, update as update_exit_shadow
+
+                await asyncio.to_thread(update_exit_shadow, exit_shadow_path, self.dashboard_state.plan_journal_mid_path,
+                                        series, footprint)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
+                log.warning("exit shadow update failed: %s", type(error).__name__)
+            try:
                 await asyncio.wait_for(self.worker_stop.wait(), timeout=PLAN_JOURNAL_INTERVAL_SECONDS)
             except TimeoutError:
                 pass

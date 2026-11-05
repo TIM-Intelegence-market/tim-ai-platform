@@ -132,3 +132,28 @@ def test_cli_draft_dry_run_writes_nothing(lab, tmp_path: Path, capsys) -> None:
                  "--spec", str(spec), "--studies-dir", str(lab["studies"]), "--register", str(lab["register"]), "--dry-run"]) == 0
     assert "# S12: POC-Retest London" in capsys.readouterr().out
     assert lab["queue"].path.read_text() == before and list(lab["studies"].glob("S12*")) == []
+
+
+@pytest.mark.parametrize("stop_rule", ["Stop bei Erreichen von min_cases oder bei p-Wert < 0.05",
+                                       "abbrechen, sobald signifikant", "stop when p < 0.01"])
+def test_stop_rule_must_not_depend_on_the_result(lab, stop_rule) -> None:
+    with pytest.raises(DraftError, match="stop_rule darf nicht vom Ergebnis abhängen"):
+        _draft(lab, _spec(stop_rule=stop_rule), write=False)
+
+
+def test_min_effect_needs_a_unit_and_limits_need_words(lab) -> None:
+    with pytest.raises(DraftError, match="min_effect braucht eine Einheit"):
+        _draft(lab, _spec(min_effect=0.1), write=False)
+    with pytest.raises(DraftError, match="limits: jede Grenze ist ein Satz"):
+        _draft(lab, _spec(limits=["nur 5m-Kerzen", 0.05, "0.2"]), write=False)
+
+
+def test_model_values_render_as_text_and_data_show_their_label(lab) -> None:
+    spec = _spec(template="ereignis_studie", variants=[], costs="", random_baseline="",
+                 events=[{"name": "Rendite", "type": "continuous"}],
+                 comparison={"group1": "oberstes Dezil", "group2": "Gesamtverteilung"})
+    _, text = _draft(lab, spec, write=False)
+    assert "{" not in text.split("## 4. Daten", 1)[1].split("## 8.", 1)[0]
+    assert "- name: Rendite; type: continuous" in text
+    assert "Vergleich: group1: oberstes Dezil; group2: Gesamtverteilung" in text
+    assert "- archive_usdm_klines (Binance USD-M-Kerzen und Funding (Archiv))" in text

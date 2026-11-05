@@ -12,7 +12,8 @@ daraus lernen. Ein bestandenes Ergebnis wird ein Update-Vorschlag. Es zählt ers
 
 - Nur Papier, kein Echtgeld, keine echten Orders.
 - Risikogrenzen und Kostenmodell ändern sich nie automatisch.
-- Holdout ab 2025-01-01 wird nie geladen, auch nicht auf einem Rechenhost. Öffnen nur mit Uzis ausdrücklichem Wort.
+- Holdout ab 2025-01-01 wird nie geladen, auch nicht auf einem Rechenhost. Öffnen nur mit Zustimmung von Uzi und Barti;
+  Uzis ausdrückliches Wort bleibt Pflicht.
 - Kein automatischer Merge. Gemergt wird nur nach Uzis „merge“.
 - Eine neue Strategie-Version zählt im Papier erst nach bestandenem prospektivem Test und Uzis Karte.
 - TIM läuft zu 100 % auf dem Mac. Chris' Server tim-core-01 ist höchstens Rechenhost für Archiv-Aufträge.
@@ -348,3 +349,4 @@ F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
 | 2026-10-31 | 1.0 | Selbst-Verbesserung aus den eigenen Trades (F11) |
 | 2026-10-31 | 1.0 | Regel-Anfrage (F10): Regel aus Bausteinen, Erkundung ohne Registerplatz, Weg zur Studie |
 | 2026-11-02 | 1.0 | Research-Spur des Issue-Workers (F12): bereite Ideen als Issues, Entwürfe vom Server-Modell als Draft-PR |
+| 2026-11-04 | 1.0 | Holdout öffnen nur mit Zustimmung von Uzi und Barti (Uzis Entscheidung C zum Antrag S7b mit Makro-Filtern, privater PR #460) |

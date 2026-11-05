@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import plistlib
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -68,6 +70,99 @@ def run(command: list[str], *, timeout: float = 15, env: dict[str, str] | None =
 
 
 SYSTEMD_UNIT = "tim-runtime.service"
+
+# Same file and env override as src/dashboard/security.py (read here directly so timctl does not
+# import the dashboard package). Present with a *.ts.net host = owner switched on phone access.
+REMOTE_VIEW_FILE_ENV = "TIM_DASHBOARD_REMOTE_VIEW_FILE"
+REMOTE_VIEW_FILE = Path.home() / "Library/Application Support/TIM/dashboard-remote-view.json"
+# Tailscale assigns 100.64.0.0/10 (CGNAT) and fd7a:115c:a1e0::/48 to tailnet devices.
+TAILNET_NETWORKS = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
+
+
+def _remote_view_raw() -> dict[str, Any]:
+    path = Path(os.environ.get(REMOTE_VIEW_FILE_ENV) or REMOTE_VIEW_FILE)
+    try:
+        if path.stat().st_size > 4096:
+            return {}
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def remote_view_hosts() -> frozenset[str]:
+    hosts = _remote_view_raw().get("hosts", [])
+    return frozenset(
+        host.strip().lower().rstrip(".")
+        for host in (hosts if isinstance(hosts, list) else [])
+        if isinstance(host, str) and host.strip().lower().rstrip(".").endswith(".ts.net")
+    )
+
+
+def remote_view_users() -> frozenset[str]:
+    """Tailscale logins the dashboard requires on every remote request (src/dashboard/security.py)."""
+    users = _remote_view_raw().get("users", [])
+    return frozenset(
+        user.strip().lower() for user in (users if isinstance(users, list) else []) if isinstance(user, str) and user.strip()
+    )
+
+
+TAILSCALE_CLI_CANDIDATES = (
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+    "/opt/homebrew/bin/tailscale",
+    "/usr/local/bin/tailscale",
+)
+
+
+SERVE_STATUS_UNREADABLE = "tailscale serve status is not JSON"
+FUNNEL_ON = "tailscale funnel is on"
+
+
+def parse_serve_status(text: str) -> dict[str, Any] | None:
+    """The JSON object in ``tailscale serve status --json`` output.
+
+    Run from a launchd agent, the Tailscale app can print a notice before the JSON (seen 04.11.,
+    Issue #108), so decoding starts at the first ``{``. None when no JSON object is found.
+    """
+    start = text.find("{")
+    if start < 0:
+        return None
+    try:
+        status, _ = json.JSONDecoder().raw_decode(text[start:])
+    except ValueError:
+        return None
+    return status if isinstance(status, dict) else None
+
+
+def tailscale_funnel_block_reason() -> str | None:
+    """None when ``tailscale serve status --json`` is readable and enables no Funnel (public) route."""
+    cli = next((path for path in TAILSCALE_CLI_CANDIDATES if Path(path).is_file()), None) or shutil.which("tailscale")
+    if cli is None:
+        return "tailscale cli not found"
+    result = run([cli, "serve", "status", "--json"], timeout=10)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip().splitlines()[-1:] or [""]
+        return f"tailscale serve status failed (exit {result.returncode}: {detail[0][:160]})"
+    status = parse_serve_status(result.stdout or "{}")
+    if status is None:
+        snippet = " ".join((result.stdout or "").split())[:160]
+        return f"{SERVE_STATUS_UNREADABLE} ({snippet})"
+    funnel = status.get("AllowFunnel") or {}
+    if not isinstance(funnel, dict) or any(funnel.values()):
+        return FUNNEL_ON
+    return None
+
+
+def tailscale_funnel_off() -> bool:
+    return tailscale_funnel_block_reason() is None
+
+
+def is_tailnet_address(host: str) -> bool:
+    try:
+        address = ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        return False
+    return any(address in network for network in TAILNET_NETWORKS)
 
 
 def parse_systemd_service(text: str) -> dict[str, str]:
@@ -273,6 +368,7 @@ class RuntimeControl:
             local = next((value for value in line.split() if value.endswith(f":{port}")), None)
             if local:
                 addresses.append(local)
+        lsof_addresses = list(addresses)
         if not addresses:
             addresses = [
                 f"{host}:{port}" if host == "127.0.0.1" else f"[{host}]:{port}"
@@ -290,11 +386,58 @@ class RuntimeControl:
             or bool(exposed)
             or any(address.startswith(("*:", "0.0.0.0:", "[::]:")) for address in addresses)
         )
-        return {
+        result: dict[str, Any] = {
             "status": "LISTENING" if addresses else "CLOSED",
             "addresses": sorted(set(addresses)),
             "unsafe": unsafe,
         }
+        if exposed:
+            result["exposure"] = {"exposed": sorted(set(exposed)), "lsof_bound": bool(lsof_addresses)}
+        return result
+
+    def tailnet_view_only(self, listener: dict[str, Any]) -> bool:
+        """True when the only outside path to the dashboard is the owner's ``tailscale serve`` proxy.
+
+        ``tailscale serve`` forwards the Mac's tailnet address to 127.0.0.1, so the TCP probe in
+        ``_launchd_listeners`` sees the dashboard port answer on that address. This is accepted only
+        on macOS, only while the owner's remote-view file (src/dashboard/security.py) names a
+        ``*.ts.net`` host, only when lsof shows the dashboard bound to loopback alone, and only when
+        every answering address is a Tailscale address, and only when ``tailscale serve status`` shows no
+        Funnel route. If the CLI is missing or its output unreadable, it is accepted only when the owner
+        file also lists Tailscale logins (the dashboard then refuses any request without one, which
+        Funnel traffic never has). A LAN, public, Funnel or wildcard exposure stays BLOCKED.
+        """
+        return self.tailnet_view_block_reason(listener) is None
+
+    def tailnet_view_block_reason(self, listener: dict[str, Any]) -> str | None:
+        """None when the exposure is the accepted tailnet view, else the first condition that failed."""
+        exposure = listener.get("exposure") or {}
+        exposed = exposure.get("exposed") or []
+        if self.service_manager != "launchd":
+            return "not macOS"
+        if not exposed:
+            return "exposure addresses unknown"
+        if not exposure.get("lsof_bound"):
+            return "dashboard binding not visible in lsof"
+        if not remote_view_hosts():
+            return "no remote-view file with a *.ts.net host"
+        if not listener.get("addresses") or not all(
+            address in {f"127.0.0.1:{self.dashboard_port}", f"[::1]:{self.dashboard_port}"}
+            for address in listener["addresses"]
+        ):
+            return f"dashboard bound beyond loopback ({', '.join(listener.get('addresses') or [])})"
+        outside = [host for host in exposed if not is_tailnet_address(host)]
+        if outside:
+            return f"answers on non-tailnet address ({', '.join(outside)})"
+        funnel = tailscale_funnel_block_reason()
+        if funnel is None:
+            return None
+        if funnel == FUNNEL_ON or not remote_view_users():
+            return funnel
+        # Funnel state unreadable (CLI unusable from this context): still accepted when the dashboard
+        # demands an allowed Tailscale login on every remote request. Funnel traffic from the internet
+        # carries no tailnet login, so src/dashboard/security.py refuses it either way.
+        return None
 
     def static_observe_gate(self) -> dict[str, Any]:
         try:
@@ -421,8 +564,12 @@ class RuntimeControl:
         if not service["loaded"] or service["state"] != "RUNNING":
             raise RuntimeControlError(f"TIM {self.service_manager} service is not running")
         dashboard_listener = self.listeners(self.dashboard_port)
-        if dashboard_listener["status"] != "LISTENING" or dashboard_listener["unsafe"]:
-            raise RuntimeControlError("TIM dashboard is not proven loopback-only")
+        if dashboard_listener["status"] != "LISTENING":
+            raise RuntimeControlError("TIM dashboard is not proven loopback-only (not listening)")
+        blocked = self.tailnet_view_block_reason(dashboard_listener) if dashboard_listener["unsafe"] else None
+        if blocked:
+            raise RuntimeControlError(f"TIM dashboard is not proven loopback-only ({blocked})")
+        tailnet_view = bool(dashboard_listener["unsafe"])
         if any(
             not any(token in address for token in ("127.0.0.1", "::1", "localhost"))
             for address in dashboard_listener["addresses"]
@@ -434,6 +581,7 @@ class RuntimeControl:
             "service": service["state"],
             "dashboard": health["status"],
             "dashboard_binding": dashboard_listener["addresses"],
+            "dashboard_tailnet_view": dashboard_listener["exposure"]["exposed"] if tailnet_view else [],
             "mode": "OBSERVE",
             "execution_enabled": False,
             "observe_gate": observe,
