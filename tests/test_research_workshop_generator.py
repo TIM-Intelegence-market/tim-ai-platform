@@ -132,3 +132,63 @@ def test_cli_draft_dry_run_writes_nothing(lab, tmp_path: Path, capsys) -> None:
                  "--spec", str(spec), "--studies-dir", str(lab["studies"]), "--register", str(lab["register"]), "--dry-run"]) == 0
     assert "# S12: POC-Retest London" in capsys.readouterr().out
     assert lab["queue"].path.read_text() == before and list(lab["studies"].glob("S12*")) == []
+
+
+def _event_spec(**extra) -> dict:
+    spec = {k: v for k, v in _spec().items() if k not in {"variants", "costs", "random_baseline"}}
+    spec.update({"template": "ereignis_studie", "events": ["Funding im obersten Dezil"],
+                 "comparison": "Gesamtverteilung gleicher Uhrzeit"}, **extra)
+    return spec
+
+
+def test_s16_style_spec_is_rejected_with_every_problem(lab) -> None:
+    """The first worker draft for I-0001: objects instead of text, bare numbers, p-value stop, S5 unnamed."""
+    queue = lab["queue"]
+    idea = queue.add(source="uzi", title="Funding-Extreme", hypothesis="Nicht Carry wie in S5.",
+                     data=["archive_usdm_klines"], template="ereignis_studie", at=NOW)
+    queue.set_status(idea, "ready", at=NOW)
+    spec = _event_spec(events=[{"name": "Rendite", "type": "continuous"}],
+                       comparison={"group1": "oberstes Dezil", "group2": "Gesamt"}, min_effect=0.1,
+                       stop_rule="Stop bei Erreichen von min_cases oder bei p-Wert < 0.05", limits=[0.05, "0.2"])
+    with pytest.raises(DraftError) as err:
+        create_draft(queue, idea, spec, now=NOW, studies_dir=lab["studies"], register_path=lab["register"],
+                     logbook_path=lab["logbook"])
+    message = str(err.value)
+    for needle in ("'events' muss eine Liste aus Texten", "'comparison' muss Text", "'min_effect' muss Text",
+                   "'limits' muss eine Liste aus Texten", "p-Wert", "nennt S5"):
+        assert needle in message, needle
+    assert list(lab["studies"].glob("S12*")) == [] and queue.ideas()[idea]["status"] == "ready"
+
+
+@pytest.mark.parametrize("min_effect", ["0.1", "R", 0.1])
+def test_min_effect_needs_number_and_unit(lab, min_effect) -> None:
+    with pytest.raises(DraftError, match="min_effect"):
+        _draft(lab, _spec(min_effect=min_effect), write=False)
+
+
+@pytest.mark.parametrize("stop_rule", ["Abbruch bei p < 0,05", "Stop sobald signifikant", "stop at p-value 0.01"])
+def test_p_value_stop_rule_is_optional_stopping(lab, stop_rule) -> None:
+    with pytest.raises(DraftError, match="p-Wert"):
+        _draft(lab, _spec(stop_rule=stop_rule), write=False)
+
+
+@pytest.mark.parametrize("field,value", [("data", "archive_usdm_klines"), ("data", ["archive", 3]),
+                                         ("limits", [{"x": 1}]), ("min_cases", "viele"), ("min_cases", 0), ("question", 42)])
+def test_wrong_types_are_rejected(lab, field, value) -> None:
+    with pytest.raises(DraftError, match=field):
+        _draft(lab, _spec(**{field: value}), write=False)
+
+
+def test_mentioned_study_must_appear_in_prior_burden(lab) -> None:
+    spec = _spec(question="Hält der POC-Retest besser als in S7?")
+    with pytest.raises(DraftError, match="nennt S7"):
+        _draft(lab, spec, write=False)
+    with pytest.raises(DraftError, match="S7 nennen"):
+        _draft(lab, {**spec, "prior_burden": "S4 hat Ähnliches gezeigt"}, write=False)
+    _, text = _draft(lab, {**spec, "prior_burden": "S7 lief auf denselben Daten 2020–2024"}, write=False)
+    assert "S7 lief auf denselben Daten" in text
+
+
+def test_clean_event_spec_still_renders_as_text(lab) -> None:
+    _, text = _draft(lab, _event_spec(), write=False)
+    assert "- Funding im obersten Dezil" in text and "{'" not in text

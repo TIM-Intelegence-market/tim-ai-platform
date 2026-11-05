@@ -206,6 +206,10 @@ def spec_prompt(idea: Mapping[str, Any], *, problems: Iterable[str] = ()) -> str
         f"Zeitraum (period, [Start, Ende]) muss vor {HOLDOUT_START.isoformat()} enden; der Holdout ist gesperrt.",
         "min_cases ist eine Zahl, min_effect und stop_rule sind konkret und vorher festgelegt, limits ist eine "
         "Liste ehrlicher Grenzen. Erfinde keine Datenquellen; nimm nur die Daten aus der Idee.",
+        "data, events und limits sind Listen aus Sätzen (keine Objekte, keine nackten Zahlen); comparison ist ein "
+        "Satz; min_effect hat Zahl und Einheit (z. B. \"0,05 R\", \"10 %\"). stop_rule bricht nie an einem "
+        "p-Wert oder bei Signifikanz ab (optionales Stoppen), nur an Fallzahl, Zähllauf oder Zeitgrenze. "
+        "Nennt die Idee eine Studie (S-Nummer), muss prior_burden sie nennen.",
     ]
     if idea.get("derived_from"):
         lines.append(f"Die Idee ist von {idea['derived_from']} abgeleitet: prior_burden (Vorbelastung) ist Pflicht.")
