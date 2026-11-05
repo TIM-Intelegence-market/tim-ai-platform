@@ -56,6 +56,46 @@ def _filled(value: Any) -> bool:
     return True
 
 
+# Fields that must be prose. events and comparison may be objects; render() turns them into text.
+TEXT_FIELDS = ("question", "metric", "costs", "random_baseline")
+STUDY_REF = re.compile(r"\bS(\d+)\b")
+
+
+def _is_text(value: Any) -> bool:
+    """Prose, not a bare number: needs at least one letter or a percent sign."""
+    return isinstance(value, str) and bool(re.search(r"[^\W\d_]|%", value))
+
+
+def _content_problems(idea: Mapping[str, Any], spec: Mapping[str, Any], template: str) -> list[str]:
+    """Checks beyond the result-dependent stop rule, the numeric min_effect and the limits in validate()."""
+    problems = []
+    for field in TEXT_FIELDS:
+        if field in REQUIRED[template] and _filled(spec.get(field)) and not _is_text(spec[field]):
+            problems.append(f"{field!r} muss Text sein ({str(spec[field])[:60]!r})")
+    data = spec.get("data")
+    if _filled(data) and (not isinstance(data, list) or not all(_is_text(item) for item in data)):
+        problems.append(f"'data' muss eine Liste von Datenquellen (Texten) sein ({str(data)[:80]!r})")
+    effect = spec.get("min_effect")
+    if isinstance(effect, str) and _filled(effect) and not (re.search(r"\d", effect) and _is_text(effect)):
+        problems.append(f"min_effect braucht Zahl und Einheit, z. B. '0,05 R' oder '10 %' ({effect!r})")
+    cases = spec.get("min_cases")
+    if _filled(cases) and not ((isinstance(cases, int) and not isinstance(cases, bool) and cases > 0)
+                               or (isinstance(cases, str) and re.search(r"\d", cases))):
+        problems.append(f"'min_cases' muss eine positive Zahl sein ({cases!r})")
+    mentioned = " ".join(str(idea.get(k) or "") for k in ("title", "hypothesis", "counterargument", "derived_from"))
+    mentioned += " " + str(spec.get("question") or "") + " " + str(spec.get("title") or "")
+    studies = sorted({f"S{n}" for n in STUDY_REF.findall(mentioned)}, key=lambda s: int(s[1:]))
+    burden = spec.get("prior_burden")
+    if studies:
+        if not _is_text(burden):
+            problems.append(f"Idee nennt {', '.join(studies)}: Pflichtfeld 'prior_burden' (Vorbelastung) fehlt")
+        else:
+            missing = [s for s in studies if not re.search(rf"\b{s}\b", burden)]
+            if missing:
+                problems.append(f"'prior_burden' muss {', '.join(missing)} nennen (in der Idee erwähnt)")
+    return problems
+
+
 def spec_hash(spec: Mapping[str, Any]) -> str:
     return hashlib.sha256(json.dumps(spec, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
@@ -88,6 +128,7 @@ def validate(idea: Mapping[str, Any], spec: Mapping[str, Any]) -> list[str]:
     for item in limits if isinstance(limits, (list, tuple)) else [limits] if _filled(limits) else []:
         if not WORDS_RE.search(_text(item)):
             problems.append(f"limits: jede Grenze ist ein Satz, keine bloße Zahl ({_text(item)[:40]!r})")
+    problems.extend(_content_problems(idea, spec, template))
     if idea.get("derived_from") and not _filled(spec.get("prior_burden")):
         problems.append(f"Idee ist Ableitung von {idea['derived_from']}: Pflichtfeld 'prior_burden' (Vorbelastung) fehlt")
     for variant in spec.get("variants") or []:

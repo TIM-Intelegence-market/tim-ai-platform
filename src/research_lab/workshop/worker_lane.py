@@ -209,6 +209,8 @@ def spec_prompt(idea: Mapping[str, Any], *, problems: Iterable[str] = ()) -> str
         "min_effect ist Text mit Einheit (z. B. \"0,1 Prozentpunkte Median-Rendite\"). stop_rule hängt nie vom "
         "Ergebnis ab: kein Stopp bei p-Wert oder Signifikanz, nur feste Fallzahl oder fester Zeitraum. limits sind "
         "ganze Sätze, keine bloßen Zahlen. events und comparison sind kurze Texte oder Listen von Texten.",
+        "data ist eine Liste von Datenquellen als Text. Nennt die Idee eine Studie (S-Nummer), muss prior_burden "
+        "sie nennen.",
     ]
     if idea.get("derived_from"):
         lines.append(f"Die Idee ist von {idea['derived_from']} abgeleitet: prior_burden (Vorbelastung) ist Pflicht.")

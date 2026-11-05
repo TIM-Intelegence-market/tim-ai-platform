@@ -134,6 +134,55 @@ def test_cli_draft_dry_run_writes_nothing(lab, tmp_path: Path, capsys) -> None:
     assert lab["queue"].path.read_text() == before and list(lab["studies"].glob("S12*")) == []
 
 
+def _event_spec(**extra) -> dict:
+    spec = {k: v for k, v in _spec().items() if k not in {"variants", "costs", "random_baseline"}}
+    spec.update({"template": "ereignis_studie", "events": ["Funding im obersten Dezil"],
+                 "comparison": "Gesamtverteilung gleicher Uhrzeit"}, **extra)
+    return spec
+
+
+def test_s16_style_spec_is_rejected_with_every_problem(lab) -> None:
+    """The first worker draft for I-0001: unitless effect, bare-number limits, p-value stop, S5 not in prior burden."""
+    queue = lab["queue"]
+    idea = queue.add(source="uzi", title="Funding-Extreme", hypothesis="Nicht Carry wie in S5.",
+                     data=["archive_usdm_klines"], template="ereignis_studie", at=NOW)
+    queue.set_status(idea, "ready", at=NOW)
+    spec = _event_spec(events=[{"name": "Rendite", "type": "continuous"}],
+                       comparison={"group1": "oberstes Dezil", "group2": "Gesamt"}, min_effect=0.1,
+                       stop_rule="Stop bei Erreichen von min_cases oder bei p-Wert < 0.05", limits=[0.05, "0.2"])
+    with pytest.raises(DraftError) as err:
+        create_draft(queue, idea, spec, now=NOW, studies_dir=lab["studies"], register_path=lab["register"],
+                     logbook_path=lab["logbook"])
+    message = str(err.value)
+    for needle in ("min_effect braucht eine Einheit", "limits: jede Grenze ist ein Satz", "stop_rule darf nicht",
+                   "nennt S5"):
+        assert needle in message, needle
+    assert list(lab["studies"].glob("S12*")) == [] and queue.ideas()[idea]["status"] == "ready"
+
+
+@pytest.mark.parametrize("min_effect", ["0.1", "R"])
+def test_text_min_effect_needs_number_and_unit(lab, min_effect) -> None:
+    with pytest.raises(DraftError, match="min_effect braucht"):
+        _draft(lab, _spec(min_effect=min_effect), write=False)
+
+
+@pytest.mark.parametrize("field,value", [("data", "archive_usdm_klines"), ("data", ["archive", 3]),
+                                         ("min_cases", "viele"), ("min_cases", 0), ("question", 42)])
+def test_wrong_types_are_rejected(lab, field, value) -> None:
+    with pytest.raises(DraftError, match=field):
+        _draft(lab, _spec(**{field: value}), write=False)
+
+
+def test_mentioned_study_must_appear_in_prior_burden(lab) -> None:
+    spec = _spec(question="Hält der POC-Retest besser als in S7?")
+    with pytest.raises(DraftError, match="nennt S7"):
+        _draft(lab, spec, write=False)
+    with pytest.raises(DraftError, match="S7 nennen"):
+        _draft(lab, {**spec, "prior_burden": "S4 hat Ähnliches gezeigt"}, write=False)
+    _, text = _draft(lab, {**spec, "prior_burden": "S7 lief auf denselben Daten 2020–2024"}, write=False)
+    assert "S7 lief auf denselben Daten" in text
+
+
 @pytest.mark.parametrize("stop_rule", ["Stop bei Erreichen von min_cases oder bei p-Wert < 0.05",
                                        "abbrechen, sobald signifikant", "stop when p < 0.01"])
 def test_stop_rule_must_not_depend_on_the_result(lab, stop_rule) -> None:
