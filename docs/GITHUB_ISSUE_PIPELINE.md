@@ -102,32 +102,36 @@ TIM's read-only MCP servers `tim-graph` (code and knowledge graph) and
 This file only documents the state; `scripts/github_issue_pipeline.py` is a
 protected path, so any change to it is an owner PR.
 
+Owner decision (5 Nov 2026): option 1, made stricter. The analysis uses
+only `tim-graph`; `tim-ops` is switched off for this Codex call, not just left
+out of the prompt, because a prompt rule is a request and not a lock.
+
 Current state:
 
-- The runner starts the analysis as `codex exec --model … -C <repo> --sandbox read-only`
-  without its own MCP options. Codex therefore loads the servers from
-  `~/.codex/config.toml` of the account the runner uses. On the Mac that config
-  carries `tim-graph` and `tim-ops` (`docs/mcp_clients.md`), so the servers are
-  available to the analysis run.
-- `analysis_prompt` does not mention the servers yet. Whether Codex calls them
-  is left to the model. Not verified yet: that a non-interactive
-  `codex exec` run calls MCP tools without an approval prompt.
+- The runner starts the analysis as `codex exec --model … -C <repo> --sandbox read-only
+  -c mcp_servers.tim-ops.enabled=false`. Codex loads the other servers from
+  `~/.codex/config.toml` of the account the runner uses (`docs/mcp_clients.md`),
+  so `tim-graph` stays available and `tim-ops` does not start.
+- `analysis_prompt` points Codex at `tim-graph` for code and documentation
+  context and does not name `tim-ops`.
 - The Claude worker stays without MCP tools (step 3 above); this does not change.
 
-Risk before pointing the prompt at `tim-ops`: the analysis is posted verbatim
-as an issue comment, and this repository is public. Task titles, Research Lab
-results or coverage numbers that Codex quotes from `tim-ops` would become
-public. `tim-graph` answers about code are already public. Options for the
-owner, in order of preference:
+Why `tim-ops` is off: the analysis is posted verbatim as an issue comment, and
+this repository is public. The issue text reaches the prompt unfiltered, so an
+issue could ask Codex to quote task titles, Research Lab results or coverage
+numbers, and they would become public. `tim-graph` answers about code are
+already public. Use `tim-ops` only in runs whose output is not posted publicly.
 
-1. Point the prompt only at `tim-graph`, and use `tim-ops` only in runs whose
-   analysis is not posted to a public issue.
-2. Allow `tim-ops` but add a rule to the prompt to cite counts and states
-   only, never task text or research results, and review the comment before
-   it is posted.
+Not verified yet (acceptance on the runner host, before merge):
 
-Acceptance once the owner decides: one pilot run on an `agent:pilot` issue
-with the Codex log showing `tim-graph`/`tim-ops` tool calls (or none) and the
+- How Codex treats the override when the runner's config does not define
+  `tim-ops` at all. If Codex rejects it, the analysis step fails closed and
+  nothing is posted; the fix is then to register `tim-ops` there or to drop the
+  override for that host.
+- That a non-interactive `codex exec` run calls `tim-graph` without an approval prompt.
+
+Acceptance: `codex mcp list` on the runner account, then one pilot run on an
+`agent:pilot` issue with the Codex log showing no `tim-ops` start and the
 posted comment checked for private content.
 
 ## Safety and recovery
