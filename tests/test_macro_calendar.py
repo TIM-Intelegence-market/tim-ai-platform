@@ -138,3 +138,13 @@ def test_export_from_the_fomc_fixture_round_trips_into_chart_markers(tmp_path: P
     path.write_text(json.dumps({"schema": EXPORT_SCHEMA, "events": rows}))
     events = load_calendar(path)
     assert len(events) == len(rows) and all(e["kind"] == "FOMC" and e["time"].tzinfo is not None for e in events)
+
+
+def test_chart_fits_a_phone_screen() -> None:
+    """Uzi 06.11.2026 (iPhone): the action buttons ran off the right edge and the page scrolled sideways;
+    a vertical swipe over the chart switched the automatic price scale off."""
+    css = Path("src/dashboard/assets/extra.css").read_text()
+    assert ".tc-live__actions{display:flex;flex-wrap:wrap" in css
+    script = Path("src/dashboard/assets/tim_chart.js").read_text()
+    assert "vertTouchDrag: false" in script
+    assert script.count("autoPrice()") == 2  # "Go to now" and "Show all" bring the price axis back to auto
