@@ -3,11 +3,11 @@
 | Feld | Wert |
 |---|---|
 | Studie | S16 |
-| Version | **Entwurf 0.2 – wartet auf Uzis Freigabe (Forschungsbereich Stufe 1); vorher werden keine Daten geladen** |
+| Version | **1.0 – freigegeben** von Uzi am 06.11.2026 um 20:37 Ortszeit („s16frei“); Regeln vor dem ersten Datenzugriff eingefroren |
 | Erzeugt | 2026-11-06 09:18 Ortszeit vom Studien-Generator (`src/research_lab/workshop/generator.py`) |
 | Idee | I-0001 aus Quelle „Wöchentliche KI-Runde“ (`data/research/IDEEN.jsonl` auf dem Mac) |
 | Vorlage | Ereignis-Studie (wie S1) |
-| Spezifikation | SHA-256 `25621adf840d848bc556da909d55b657f995c860fb7e08e6692e2d3b978e55a1` (gilt für Entwurf 0.1 vom Generator; die Ergänzungen in 0.2 sind von Hand und vom Hash **nicht** gedeckt) |
+| Spezifikation | SHA-256 `25621adf840d848bc556da909d55b657f995c860fb7e08e6692e2d3b978e55a1` (gilt für Entwurf 0.1 vom Generator; die Ergänzungen in 0.2 und 1.0 sind von Hand und vom Hash **nicht** gedeckt; maßgeblich für 1.0 ist der Commit dieser Datei) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Holdout | ab 2025-01-01, wird nur mit Uzis ausdrücklichem Wort geladen |
 | Register | Eigene Familie außerhalb des Holdout-Registers (wie S1/S8); belegt keine Registerplätze. |
@@ -62,8 +62,8 @@ Vergleich: Verteilung der nächsten 24-h-Rendite und des maximalen Rückschlags 
 ## 6. Messgröße und Entscheidung
 
 - Messgröße: Verteilung der 24-h-Rendite und des maximalen Rückschlags
-- Kleinster Effekt: 0,1 Prozentpunkte Median-Rendite
-- Mindestzahl Fälle: 500 (sonst „nicht prüfbar“; Zähllauf vor jeder Auswertung)
+- Kleinster Effekt: 0,1 Prozentpunkte, für beide Messgrößen (Median der 24-h-Rendite und Median des maximalen Rückschlags), Festlegung (c)
+- Mindestzahl Fälle: 500 entclusterte Ereignisse je Gruppe (oberstes und unterstes Dezil) über 2020–2024 gesamt, die Zahl je Abschnitt wird mit ausgewiesen (Festlegung (b)); sonst „nicht prüfbar“; Zähllauf vor jeder Auswertung
 - Stoppregel: Ausgewertet werden alle entclusterten Ereignisse im Zeitraum, es gibt keinen Abbruch bei 500. Hat eine Gruppe weniger als 500, lautet ihr Ergebnis „nicht prüfbar“. Es gibt keine Zwischenauswertung und keinen Abbruch nach dem Ergebnis.
 
 ### 6.1 Test
@@ -75,7 +75,21 @@ Vergleich: Verteilung der nächsten 24-h-Rendite und des maximalen Rückschlags 
 ### 6.2 Mehrfachtest
 
 - 2 Gruppen (oberstes und unterstes Dezil) × 2 Messgrößen (24-h-Rendite und maximaler Rückschlag) = 4 Vergleiche, Holm-Bonferroni mit α = 5 % (PROTOKOLL.md 7.2, hier als eigene Familie mit m = 4).
-- Ein Effekt gilt nur, wenn er nach Holm signifikant ist und |Δ| mindestens dem kleinsten Effekt entspricht. Für den maximalen Rückschlag gilt dieselbe Schwelle von 0,1 Prozentpunkten (Vorschlag in 0.2, Entscheid bei Uzis Freigabe).
+- Holm wird je Abschnitt getrennt über dieselben 4 Vergleiche angewandt.
+
+### 6.3 Urteil (Festlegung (a))
+
+- Ein Vergleich besteht, wenn er **in Training und Validierung** nach Holm signifikant ist, |Δ| ≥ 0,1 Prozentpunkte in beiden Abschnitten erreicht und Δ in beiden Abschnitten dasselbe Vorzeichen hat.
+- Studie: **BESTANDEN**, wenn mindestens ein Vergleich einer prüfbaren Gruppe besteht; **NICHT BESTANDEN**, wenn keiner besteht; **nicht prüfbar**, wenn keine Gruppe 500 entclusterte Ereignisse erreicht. Eine Gruppe unter 500 ist für sich „nicht prüfbar“ und wird nicht ausgewertet.
+
+### 6.4 Umsetzung (vor dem Datenzugriff festgelegt)
+
+- Code: `src/research_lab/studies/s16.py`, Seed 1616, Zähllauf und Auswertung getrennt aufrufbar.
+- Funding-Zeitstempel werden auf die Minute abgerundet; Start ist die 1h-Kerze, die zu dieser Minute oder danach öffnet.
+- Fehlt eine der 24 Stundenkerzen, zählt der Termin nicht (weder als Ereignis noch in der Gesamtverteilung); die Zahl wird berichtet.
+- Dezile nach `statistics.quantiles(n=10, method="inclusive")`; strenge Ungleichungen, Werte gleich der Grenze sind kein Ereignis.
+- Vorlauf 90 Tage ab Datenbeginn je Instrument: BTC/ETH Funding ab 2020-01-01, SOL ab 2020-10-01.
+- Bootstrap: gleitende Blöcke aus 10 aufeinanderfolgenden UTC-Tagen des Abschnitts, so viele Blöcke, bis die Tageszahl des Abschnitts erreicht ist.
 
 ## 7. Bekannte Grenzen
 
@@ -98,3 +112,4 @@ Vergleich: Verteilung der nächsten 24-h-Rendite und des maximalen Rückschlags 
 |---|---|---|
 | 2026-11-06 | 0.1 | Entwurf vom Studien-Generator aus Idee I-0001 |
 | 2026-11-06 | 0.2 | Von Hand ergänzt: Instrumente, Zeitraum und Datensplit (4.1), Ereignisdefinition (5.1), Entclusterung und n_eff (5.2), Test (6.1), Holm über 4 Vergleiche (6.2), Stoppregel ohne Abbruch bei 500, Leerformeln in 3 und 7 durch Verweise ersetzt. Spezifikations-Hash gilt nur für 0.1 |
+| 2026-11-06 | 1.0 | **Freigegeben von Uzi 06.11.2026 20:37 Ortszeit („s16frei“).** Festlegungen: (a) Training und Validierung müssen beide bestehen (6.3); (b) mindestens 500 entclusterte Ereignisse je Gruppe über 2020–2024 gesamt, je Abschnitt ausgewiesen; (c) kleinster Effekt 0,1 Prozentpunkte für beide Messgrößen. Umsetzung 6.4 vor dem Datenzugriff eingefroren |
