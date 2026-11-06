@@ -90,14 +90,15 @@ caption{text-align:left;padding:11px 13px;color:var(--muted);font-size:11px;back
 .tc-layer input{accent-color:currentColor}
 .tc-layer--day{color:#4c8dff}.tc-layer--week{color:#b07cff}.tc-layer--month{color:#ff9f43}.tc-layer--naked{color:#f5c542}
 .tc-layer--running,.tc-layer--tpo{color:#5ec8d8}.tc-layer--vp{color:#4c8dff}.tc-layer--fp{color:#26a69a}.tc-layer--session,.tc-layer--ib{color:#8a94a6}.tc-layer--structure{color:#35d39a}.tc-layer--trend{color:#e879c6}
-.tc-live__actions{display:flex;gap:6px}
-.tc-live__actions button{cursor:pointer;font:inherit}
+.tc-live__actions{display:flex;flex-wrap:wrap;gap:6px;min-width:0;max-width:100%}
+.tc-live__actions button{cursor:pointer;font:inherit;white-space:nowrap}
+.tc-market{display:inline-flex;gap:6px}
 .tc-live__frame{border:1px solid rgba(120,134,156,.25);border-radius:8px;overflow:hidden;background:#0b0f16}
 .tc-live__chart{height:min(72vh,720px);min-height:420px;width:100%}
 .tc-live__legend{margin:0;min-height:1.4em;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c3cad6;padding:6px 10px;border-bottom:1px solid rgba(120,134,156,.18)}
 .tc-live__status{min-height:1.2em}
 .tc-plan-view>summary{cursor:pointer;font-weight:600;margin:4px 0 10px}
-@media (max-width:640px){.tc-live__chart{height:62vh;min-height:340px}}
+@media (max-width:640px){.tc-live__chart{height:62vh;min-height:340px}.tc-live__actions .tc-tab{padding:6px 9px}}
 .archive-list{display:grid;gap:10px;margin-top:14px}.archive-list a{display:block;padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:#0b1119}.archive-list a b{display:block;color:var(--text)}.archive-list a span{color:var(--muted);font-size:13px}
 .note-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}.note-form{display:grid;gap:8px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:#0b1119}.note-form p{margin:0}.note-choices{display:flex;flex-wrap:wrap;gap:6px 16px}.note-choice{display:inline-flex;gap:6px;align-items:center;color:var(--text-soft)}.note-form button{justify-self:start}
 /* One header for every page (29.10.2026): five areas on top, the pages of the active area below. (only pages with body.cc; the public view keeps its own frame) */

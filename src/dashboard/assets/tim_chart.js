@@ -75,7 +75,11 @@
     rightPriceScale: { borderColor: 'rgba(120,134,156,0.35)', scaleMargins: { top: 0.06, bottom: 0.18 } },
     timeScale: { borderColor: 'rgba(120,134,156,0.35)', timeVisible: true, secondsVisible: false, rightOffset: 8, tickMarkFormatter: tickLabel },
     localization: { locale: LOCALE, priceFormatter: fmt, timeFormatter: t => FULL_FMT.format(asDate(t)) },
+    // Phone: a vertical swipe over the chart scrolls the page. Otherwise it moved the chart up or down and
+    // switched the automatic price scale off (Uzi 06.11.2026: price axis 68k-86k around 75k-81k candles).
+    handleScroll: { vertTouchDrag: false },
   });
+  const autoPrice = () => chart.priceScale('right').applyOptions({ autoScale: true });
   const candles = chart.addCandlestickSeries({
     upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
     priceLineColor: '#c3cad6',
@@ -1093,11 +1097,12 @@
       return;
     }
     if (action.dataset.action === 'now' && model) {  // the newest candle at the right edge, not the empty candles of upcoming dates
+      autoPrice();  // and the price axis back to the candles in view
       const count = model.candles.length, range = chart.timeScale().getVisibleLogicalRange();
       const width = range ? range.to - range.from : 168;
       chart.timeScale().setVisibleLogicalRange({ from: count + 8 - width, to: count + 8 });
     }
-    if (action.dataset.action === 'fit') chart.timeScale().fitContent();
+    if (action.dataset.action === 'fit') { autoPrice(); chart.timeScale().fitContent(); }
     if (action.dataset.action === 'plans') {
       // Only TIM's current paper plans (SHORT, MID, LONG) on the candles: levels and the 30m test versions off.
       const groups = new Set(Object.keys(model ? model.groups : {}).filter(key => key.startsWith('plans_') && key !== 'plans_old'));
