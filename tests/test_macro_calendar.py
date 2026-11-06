@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.dashboard.chart_live import DEFAULT_GROUPS, GROUP_NAMES, GROUP_STYLE, KlineCache, build_live_chart
-from src.dashboard.macro_calendar import SCHEMA, chart_markers, load_calendar, parse_calendar
+from src.dashboard.macro_calendar import (AHEAD_MAX_BARS, AHEAD_MIN_BARS, SCHEMA, ahead_bars, chart_markers, load_calendar,
+                                         parse_calendar, upcoming_markers)
 from src.dashboard.public_en import GROUPS_EN
 from tests.test_chart_live import NOW, fake_fetch
 
@@ -61,6 +62,41 @@ def test_markers_snap_to_the_candle_the_release_fell_in() -> None:
     assert chart_markers(events, [], hour, now) == []
 
 
+def test_upcoming_dates_after_the_last_candle_snap_to_future_candles() -> None:
+    half = 1800
+    times = [int(datetime(2026, 11, 6, 10, tzinfo=UTC).timestamp()) + i * half for i in range(8)]  # 10:00 .. 13:30
+    now = datetime(2026, 11, 6, 13, 52, tzinfo=UTC)
+    events = parse_calendar(_payload(
+        {"kind": "FOMC", "time": "2026-11-06T13:45:00+00:00"},  # inside the open candle: chart_markers, not ahead
+        {"kind": "CPI", "time": "2026-11-10T14:30:00+00:00"},
+        {"kind": "FOMC", "time": "2026-12-09T19:00:00+00:00"},  # more than 14 days ahead: left out
+    ))
+    ahead = upcoming_markers(events, times, half, now)
+    assert [(m["kind"], m["upcoming"]) for m in ahead] == [("CPI", True)]
+    cpi = int(datetime(2026, 11, 10, 14, 30, tzinfo=UTC).timestamp())
+    assert ahead[0]["time"] == cpi and (ahead[0]["time"] - times[-1]) % half == 0
+    off_grid = upcoming_markers(parse_calendar(_payload({"kind": "CPI", "time": "2026-11-10T14:40:00+00:00"})), times, half, now)
+    assert off_grid[0]["time"] == cpi  # 14:40 falls in the 14:30 candle
+    assert [m["kind"] for m in chart_markers(events, times, half, now)] == ["FOMC"]
+    assert upcoming_markers(events, [], half, now) == []
+    assert upcoming_markers(events, times, 2678400, now) == []  # 1M: months are not evenly spaced
+
+
+def test_ahead_window_stays_between_min_and_max_candles() -> None:
+    assert ahead_bars(1800) == 14 * 48
+    assert ahead_bars(300) == AHEAD_MAX_BARS
+    assert ahead_bars(86400) == AHEAD_MIN_BARS
+    assert AHEAD_MIN_BARS <= ahead_bars(14400) <= AHEAD_MAX_BARS
+
+
+def test_live_chart_carries_upcoming_dates_and_its_interval() -> None:
+    calendar = parse_calendar(_payload({"kind": "CPI", "time": (NOW + timedelta(days=3)).isoformat()}))
+    model = build_live_chart("BTCUSDT", "1h", None, cache=KlineCache(fake_fetch()), now=NOW, macro=calendar)
+    assert model["interval_seconds"] == 3600
+    assert [m["kind"] for m in model["macro_ahead"]] == ["CPI"] and model["macro"] == []
+    assert model["macro_ahead"][0]["time"] > model["candles"][-1]["time"]
+
+
 def test_live_chart_carries_macro_markers_as_their_own_layer() -> None:
     inside = NOW - timedelta(hours=10)
     calendar = parse_calendar(_payload({"kind": "FOMC", "time": inside.isoformat()},
@@ -85,6 +121,8 @@ def test_live_chart_reads_the_calendar_file(tmp_path: Path, monkeypatch) -> None
 def test_chart_script_draws_macro_markers_only_when_the_layer_is_on() -> None:
     script = Path("src/dashboard/assets/tim_chart.js").read_text()
     assert "groups.has('macro')" in script and "model.macro" in script
+    assert "model.macro_ahead" in script and "lineVisible: false" in script
+    assert "scrollToRealTime" not in script  # "now" must not jump to the empty candles of upcoming dates
 
 
 def test_export_from_the_fomc_fixture_round_trips_into_chart_markers(tmp_path: Path) -> None:

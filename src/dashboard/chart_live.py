@@ -977,7 +977,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
                              "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None,
                              "markets": {"names": MARKETS, "active": DEFAULT_MARKET, "available": []}, "cvd": None, "oi": None,
-                             "funding": None, "premium": None, "macro": []}
+                             "funding": None, "premium": None, "macro": [], "macro_ahead": [],
+                             "interval_seconds": INTERVAL_SECONDS.get(timeframe)}
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
     if symbol == "XMRUSDT":
@@ -1052,9 +1053,11 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model["drawings"] = place_drawings(drawings, times)
     model["fib"] = fib_retracement(candles, timeframe)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
-    from src.dashboard.macro_calendar import chart_markers, load_calendar
+    from src.dashboard.macro_calendar import chart_markers, load_calendar, upcoming_markers
 
-    model["macro"] = chart_markers(load_calendar() if macro is None else macro, times, INTERVAL_SECONDS[timeframe], now)
+    calendar = load_calendar() if macro is None else macro
+    model["macro"] = chart_markers(calendar, times, INTERVAL_SECONDS[timeframe], now)
+    model["macro_ahead"] = upcoming_markers(calendar, times, INTERVAL_SECONDS[timeframe], now)
     model["tpo"], model["volume_profile"], model["footprint"] = [], [], {"step": None, "bars": [], "note": None}
     model["bubbles"] = {"items": [], "min_usd": None, "max_usd": None, "note": None}
     if INTERVAL_SECONDS[timeframe] <= 14400:  # profiles per day only make sense on intraday views

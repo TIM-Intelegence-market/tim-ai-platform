@@ -16,6 +16,9 @@ ALFRED CPI V1.1): ``python -m src.research_lab.external.macro_calendar_export --
 FOMC modules stay inside the research lab. Only release instants that the source documents
 are used; nothing is guessed. Upcoming dates are not fetched yet: they can be added to the file by hand
 (``kind``, ``time`` in UTC, ``source``) until a calendar source is wired in.
+
+Upcoming dates after the last candle (``upcoming_markers``) are shown to the right of it, on the
+future candle they will fall in, so the next CPI or FOMC is visible before it happens.
 """
 from __future__ import annotations
 
@@ -32,6 +35,9 @@ DEFAULT_PATH = Path("data/macro/calendar.json")
 ENV_PATH = "TIM_MACRO_CALENDAR"
 KINDS = {"CPI": "US-CPI", "FOMC": "FOMC"}
 MAX_EVENTS = 5000
+AHEAD_DAYS = 14  # how far to the right of the last candle upcoming dates are shown
+AHEAD_MIN_BARS = 60  # at least this many future candles (1d and above: two months and more)
+AHEAD_MAX_BARS = 700  # never more empty candles than this (30m still sees 14 days, 5m and 15m fewer)
 
 
 def calendar_path() -> Path:
@@ -90,4 +96,31 @@ def chart_markers(events: Sequence[Mapping[str, Any]], times: Sequence[int], int
             continue
         markers.append({"time": times[bisect_right(times, moment) - 1], "kind": event["kind"], "label": event["label"],
                         "at": event["time"].isoformat(), "upcoming": event["time"] > now})
+    return markers
+
+
+def ahead_bars(interval_seconds: int) -> int:
+    """Future candles to the right of the last one that may carry an upcoming date."""
+    days = -(-AHEAD_DAYS * 86400 // max(1, int(interval_seconds)))
+    return max(AHEAD_MIN_BARS, min(AHEAD_MAX_BARS, days))
+
+
+def upcoming_markers(events: Sequence[Mapping[str, Any]], times: Sequence[int], interval_seconds: int, now: datetime) -> list[dict[str, Any]]:
+    """Release dates after the last candle, snapped to the future candle they will fall in.
+
+    Only dates still ahead of ``now`` and within ``ahead_bars`` candles of the last candle's end; the
+    chart draws them on empty (whitespace) candles to the right, so the time axis stays evenly spaced."""
+    step = int(interval_seconds)
+    if not times or step > 7 * 86400:  # months differ in length: no evenly spaced future candles on 1M
+        return []
+    last = times[-1]
+    end = last + step
+    limit = end + ahead_bars(step) * step
+    markers = []
+    for event in events:
+        moment = int(event["time"].timestamp())
+        if moment < end or moment >= limit or event["time"] <= now:
+            continue
+        markers.append({"time": last + ((moment - last) // step) * step, "kind": event["kind"], "label": event["label"],
+                        "at": event["time"].isoformat(), "upcoming": True})
     return markers
