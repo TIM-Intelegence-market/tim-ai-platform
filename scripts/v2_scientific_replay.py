@@ -108,10 +108,31 @@ async def replay_candidate(connection: asyncpg.Connection, row: asyncpg.Record) 
            (SELECT symbol,aggregate_trade_id,trade_time,price,quantity,buyer_is_maker
              FROM agg_trades WHERE symbol=$1 AND trade_time > $2 AND trade_time <= $3
              ORDER BY trade_time,aggregate_trade_id)""",
-        row["symbol"], observed_at, observed_at + timedelta(minutes=30),
+        # Two minutes past the target: the validation engine needs the first trade at or after
+        # the 30-minute target to prove the sequence reached it (gap check, 06.11.2026).
+        row["symbol"], observed_at, observed_at + timedelta(minutes=32),
     )
     metric_trades = [trade(item) for item in metric_rows]
     outcome_trades = [trade(item) for item in outcome_rows]
+    target = observed_at + timedelta(minutes=30)
+    validation_as_of = observed_at + timedelta(minutes=32)
+    if not any(item.event_time >= target for item in outcome_trades):
+        # Same as the live path (main.py): without a trade shortly after the target, the first
+        # later trade is the proof the engine needs to close the validation.
+        proof_row = await connection.fetchrow(
+            """SELECT symbol,aggregate_trade_id,trade_time,price,quantity,buyer_is_maker
+               FROM agg_trades WHERE symbol=$1 AND trade_time > $2
+               ORDER BY trade_time,aggregate_trade_id LIMIT 1""",
+            row["symbol"], validation_as_of,
+        )
+        if proof_row is not None:
+            outcome_trades.append(trade(proof_row))
+            validation_as_of = max(validation_as_of, trade(proof_row).event_time)
+    # Same cut as the validation engine: the first trade past the 30-minute target proves the
+    # window, later trades (and gaps among them) do not belong to the validation.
+    past_target = next((index for index, item in enumerate(outcome_trades) if item.event_time > target), None)
+    if past_target is not None:
+        outcome_trades = outcome_trades[: past_target + 1]
     if not contiguous(metric_trades + outcome_trades):
         return None
     metrics = OrderflowMetricsEngine().series(
@@ -143,8 +164,8 @@ async def replay_candidate(connection: asyncpg.Connection, row: asyncpg.Record) 
         "input_hash": match.input_hash,
     }
     engine = OrderflowValidationEngine()
-    validation = engine.validate(validation_input, outcome_trades, observed_at + timedelta(minutes=30))
-    reverse_validation = engine.validate(validation_input, list(reversed(outcome_trades)), observed_at + timedelta(minutes=30))
+    validation = engine.validate(validation_input, outcome_trades, validation_as_of)
+    reverse_validation = engine.validate(validation_input, list(reversed(outcome_trades)), validation_as_of)
     pre_cutoff = engine.validate(validation_input, outcome_trades, observed_at + timedelta(minutes=29))
     if validation is None:
         return None

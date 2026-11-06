@@ -41,6 +41,12 @@ class OrderflowValidationEngine:
             (item for item in trades if item.event_time<=as_of),
             key=lambda item:(item.event_time,item.trade_id if item.trade_id is not None else -1),
         )
+        # Trades behind the first one past the final horizon are irrelevant and must not count
+        # (a gap behind the target is not a gap in the window): the sequence is cut after that
+        # trade. Everything at or before the target stays, also several trades in the target ms.
+        final_target=observed_at+timedelta(minutes=HORIZONS[-1])
+        boundary=next((index for index,item in enumerate(ordered) if item.event_time>final_target),None)
+        if boundary is not None:ordered=ordered[:boundary+1]
         identities=[(item.symbol,item.trade_id) for item in ordered]
         if len(identities)!=len(set(identities)):raise ValueError("Duplicate aggTrade in validation input")
         symbol=str(observation["symbol"])
@@ -65,14 +71,21 @@ class OrderflowValidationEngine:
             and right.trade_id==left.trade_id+1
             for left,right in zip(ordered,ordered[1:])
         )
-        complete=set(HORIZONS).issubset(returned_horizons) and sequence_complete;outcome=None
+        # A gap after the last loaded trade is invisible to the pairwise check above, so the
+        # sequence must reach a trade at or after the final horizon: only then is it proven that
+        # no trade before the target is missing (the caller loads trades through ``as_of``).
+        reaches_final_target=bool(ordered) and ordered[-1].event_time>=final_target
+        complete=set(HORIZONS).issubset(returned_horizons) and sequence_complete and reaches_final_target;outcome=None
         if complete:
             final=next(item for item in results if item.minutes==30)
             outcome="PRICE_INCREASED" if final.price_change_percent>SIDEWAYS_THRESHOLD_PERCENT else "PRICE_DECREASED" if final.price_change_percent<-SIDEWAYS_THRESHOLD_PERCENT else "PRICE_SIDEWAYS"
         if not results:return None
         payload={"observation_id":observation["observation_id"],"version":VALIDATION_VERSION,"baseline_price":_s(baseline_price),"horizons":[item.to_dict() for item in results],"outcome":outcome}
         digest=hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(",",":")).encode()).hexdigest()
-        return OrderflowValidation(str(observation["observation_id"]),symbol,observed_at,baseline_price,tuple(results),complete,outcome,digest,results[-1].target_at)
+        # Not yet proven past the target: validated only through the last trade seen, so the
+        # observation stays pending and is validated again once later trades are stored.
+        validated_through=results[-1].target_at if reaches_final_target else min(results[-1].target_at,ordered[-1].event_time)
+        return OrderflowValidation(str(observation["observation_id"]),symbol,observed_at,baseline_price,tuple(results),complete,outcome,digest,validated_through)
 
     @staticmethod
     def apply_to_case(validation:OrderflowValidation,case:ResearchCase)->ResearchCase:
