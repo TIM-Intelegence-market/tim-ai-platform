@@ -49,6 +49,19 @@ Erwartet: eine JSON-Zeile mit `f5_sperre_long` und `f3_sperre_long` (`ja`, `nein
 mit der Zeile desselben Tages im Mac-Log vergleichen (`data/research/forward/S7b-makro/f35_log.csv`). Ein zweiter
 Aufruf am selben UTC-Tag meldet `schon geloggt` und schreibt nichts (gewollt).
 
+## Bestanden, wenn
+
+| Prüfung | Erwartet |
+|---|---|
+| Exit-Code beider Befehle | 0 |
+| Ausgabe | enthält den FRED-Schlüssel nirgends |
+| `f5_sperre_long`, `f3_sperre_long` | wie in der Mac-Zeile desselben Tages (Stand 05./06.11.2026: beide `ja`) |
+| `f3_wert_mrd` | Größenordnung einige Tausend Mrd. USD (Anfang November 2026 etwa 5.700–5.900). Ein Wert um eine Million heißt: Einheit falsch gelesen, nicht umschalten |
+| zweiter `log`-Lauf am selben UTC-Tag | `schon geloggt`, keine neue Zeile |
+| Barometer | gleiche Treiber und Richtungen wie die Mac-Datei derselben Woche |
+
+`--folder` darf vor oder nach `log`/`barometer` stehen.
+
 ## 4. Zeitplan
 
 Den Zeitplan auf der Konsole so einrichten wie auf dem Mac (täglich `log`, montags `barometer`), zunächst weiter mit
