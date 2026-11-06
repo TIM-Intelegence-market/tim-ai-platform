@@ -1,4 +1,4 @@
-# Einfluss-Messung: Wie andere Bereiche auf BTC wirken (Entwurf)
+# Einfluss-Barometer: Einflüsse auf BTC erkennen, messen und erklären (Entwurf)
 
 | Feld | Wert |
 |---|---|
@@ -10,14 +10,24 @@
 
 ## 1. Warum ein eigener Bereich
 
-Die Forschungswerkstatt (`FORSCHUNGSBEREICH.md`) prüft Handelsregeln an TIMs eigenen Trades: Idee, Anmeldung,
-Rechnung, Urteil, prospektiver Test. Die Einfluss-Messung fragt etwas anderes: **Welche Bereiche außerhalb des
+Die Forschungswerkstatt (`FORSCHUNGSBEREICH.md`) prüft Handelsregeln: Idee, Anmeldung, Rechnung auf historischen
+Marktdaten, Urteil, prospektiver Test. Die Reflexion von TIMs eigenen Trades ist nur ein Teil davon. Die Einfluss-Messung fragt etwas anderes: **Welche Bereiche außerhalb des
 Kryptomarkts bewegen BTC, wann und wie stark?** Beispiele sind Realzins, Dollar, Liquidität der Notenbank,
 CPI- und Fed-Termine, Wahlen und große Nachrichten.
 
 Beides wurde bisher vermischt. F1–F5 waren Filterfragen an S7b (Werkstatt-Art), das Barometer ist eine Beschreibung
 (Einfluss-Art). Dieser Entwurf trennt die beiden: Die Einfluss-Messung beschreibt und liefert Hypothesen, die
 Werkstatt prüft Regeln.
+
+Kurz gefasst:
+
+- **Ziel:** Einflüsse auf BTC erkennen, messen und erklären.
+- **Darf:** beschreiben, Treiber beobachten, Hypothesen formulieren.
+- **Darf nicht:** Handelssignale erzeugen oder Trades beeinflussen.
+- **Übergang:** Eine Hypothese, die zur Regel werden soll, geht als Idee in die Werkstatt, so wie F5 es getan hat.
+- **Zuordnung:** Der Bereich ist der Anfang von V2 der BTC Research Engine („Historical Relationship Analysis“:
+  Ereignisstudien, Vor- und Nachlauf, rollierende Zusammenhänge). V2 startet trotzdem erst nach der PRE-V2-Prüfung
+  in Abschnitt 6 und Bartis Go.
 
 ## 2. Was der Bereich darf und was nicht
 
@@ -89,10 +99,17 @@ deshalb der aufwendigere Teil und kommt zuletzt.
    (`KINDS` in `src/dashboard/macro_calendar.py`, auch die kommenden Termine aus #127). Vorschlag: weitere Arten
    `ELECTION` und `NFP` als erstes Paket, damit Ereignisse wie die Midterms vorher im Chart stehen.
 4. **Hypothesen-Liste:** Was auffällt, geht als Idee an die Werkstatt, mit Zahl der angeschauten Treiber.
+   Hypothesen, die BTC gar nicht berühren, bleiben hier und brauchen keinen Registerplatz. Beispiel: die
+   Öl-Hypothese Stufe 1 (Öl → Inflationserwartung → Realzins); erst eine Stufe mit BTC ginge an die Werkstatt.
 
 ## 6. PRE-V2-Prüfung der Datenfamilien
 
-V2 beginnt erst, wenn jede Datenfamilie einen Status hat und Barti sein Go gegeben hat. Vorschlag für die Tabelle:
+Regel von Barti (23.10.2026): V2 beginnt nie automatisch. Jede Datenfamilie bekommt nach Prüfung von Quelle, Lizenz,
+Historie und Point-in-Time einen Status IMPLEMENTED, DEFERRED oder REJECTED mit Begründung. DEFERRED und REJECTED
+gelten erst mit Bartis Zustimmung, eine offene Familie blockiert V2. Ohne Bartis Go danach gilt `V2_START_ALLOWED=NO`.
+
+Die Tabelle unten ist ein **Vorschlag** und noch nicht vollständig. Das Inventar aller Treiber-Familien liegt außerhalb
+des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2_START_ALLOWED=NO`.
 
 | Familie | Status | Begründung |
 |---|---|---|
@@ -112,12 +129,13 @@ V2 beginnt erst, wenn jede Datenfamilie einen Status hat und Barti sein Go gegeb
 ## 7. Reihenfolge
 
 1. Diesen Entwurf freigeben (Barti und Uzi).
-2. Chart-Kalender um `ELECTION` und `NFP` erweitern (Code-PR, mit Uzi abgestimmt, weil #127 von ihm ist).
-3. Beschreibende Ereignisstudie Wahlen und NFP mit BTC-Daten bis 2024.
-4. Danach ungeplante Nachrichten, erst nach Prüfung einer Quelle.
+2. PRE-V2-Prüfung vervollständigen (alle Familien aus dem Inventar), danach Bartis Go oder Nein.
+3. Chart-Kalender um `ELECTION` und `NFP` erweitern (Code-PR, mit Uzi abgestimmt, weil #127 von ihm ist).
+4. Beschreibende Ereignisstudie Wahlen und NFP mit BTC-Daten bis 2024.
+5. Danach ungeplante Nachrichten, erst nach Prüfung einer Quelle.
 
 ## Änderungsprotokoll
 
 | Datum | Änderung |
 |---|---|
-| 06.11.2026 | Entwurf angelegt (Barti: Bereich Einfluss-Messung abgrenzen, News und Wahlen aufnehmen) |
+| 06.11.2026 | Entwurf angelegt (Barti: Bereich abgrenzen, Barometer der Engine zuordnen, PRE-V2-Prüfung nachholen, News und Wahlen aufnehmen) |
