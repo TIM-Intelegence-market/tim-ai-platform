@@ -1,0 +1,219 @@
+{
+  "studie": "S16",
+  "version": "1.0",
+  "seed": 1616,
+  "datensatz_sha256": "38c92dce0d870ba4bc330e1a75d68483da434e18540c990c78eaaa112ecf7b8d",
+  "zaehllauf": {
+    "terms": {
+      "BTCUSDT": {
+        "training": 3016,
+        "validierung": 2191
+      },
+      "ETHUSDT": {
+        "training": 3016,
+        "validierung": 2191
+      },
+      "SOLUSDT": {
+        "training": 2250,
+        "validierung": 2191
+      }
+    },
+    "gaps_missing_candles": {
+      "BTCUSDT": 0,
+      "ETHUSDT": 0,
+      "SOLUSDT": 19
+    },
+    "events": {
+      "oben": {
+        "roh": 1129,
+        "entclustert": 523,
+        "je_instrument_abschnitt": {
+          "BTCUSDT": {
+            "training": 111,
+            "validierung": 68
+          },
+          "ETHUSDT": {
+            "training": 123,
+            "validierung": 69
+          },
+          "SOLUSDT": {
+            "training": 68,
+            "validierung": 84
+          }
+        },
+        "je_abschnitt": {
+          "training": 302,
+          "validierung": 221
+        },
+        "pruefbar": true
+      },
+      "unten": {
+        "roh": 1541,
+        "entclustert": 815,
+        "je_instrument_abschnitt": {
+          "BTCUSDT": {
+            "training": 157,
+            "validierung": 137
+          },
+          "ETHUSDT": {
+            "training": 153,
+            "validierung": 135
+          },
+          "SOLUSDT": {
+            "training": 97,
+            "validierung": 136
+          }
+        },
+        "je_abschnitt": {
+          "training": 407,
+          "validierung": 408
+        },
+        "pruefbar": true
+      }
+    }
+  },
+  "auswertung": {
+    "urteil": "NICHT BESTANDEN",
+    "bestandene_vergleiche": [],
+    "pruefbare_gruppen": [
+      "oben",
+      "unten"
+    ],
+    "abschnitte": {
+      "training": {
+        "n_gesamt": 8282,
+        "vergleiche": {
+          "oben/rendite_24h": {
+            "delta_pp": 0.09580629015925046,
+            "ci95_pp": [
+              -0.46826892156563993,
+              0.7360300365504946
+            ],
+            "p": 0.620937906209379,
+            "holm_signifikant": false
+          },
+          "oben/rueckschlag_max": {
+            "delta_pp": -0.47188492183445896,
+            "ci95_pp": [
+              -1.0540210374075154,
+              0.014920582958810602
+            ],
+            "p": 0.06259374062593741,
+            "holm_signifikant": false
+          },
+          "unten/rendite_24h": {
+            "delta_pp": 0.2095615226240577,
+            "ci95_pp": [
+              -0.3025542179817875,
+              0.535037096487101
+            ],
+            "p": 0.46055394460553944,
+            "holm_signifikant": false
+          },
+          "unten/rueckschlag_max": {
+            "delta_pp": -0.2081775456296342,
+            "ci95_pp": [
+              -0.7341367598400206,
+              0.17631363205359296
+            ],
+            "p": 0.38836116388361164,
+            "holm_signifikant": false
+          }
+        },
+        "n_eff": {
+          "oben": {
+            "rendite_24h": {
+              "n": 302,
+              "D": 1.1501983022832973,
+              "n_eff": 262
+            },
+            "rueckschlag_max": {
+              "n": 302,
+              "D": 1.36266136542769,
+              "n_eff": 221
+            }
+          },
+          "unten": {
+            "rendite_24h": {
+              "n": 407,
+              "D": 1.7366258913056725,
+              "n_eff": 234
+            },
+            "rueckschlag_max": {
+              "n": 407,
+              "D": 1.6128891086690569,
+              "n_eff": 252
+            }
+          }
+        }
+      },
+      "validierung": {
+        "n_gesamt": 6573,
+        "vergleiche": {
+          "oben/rendite_24h": {
+            "delta_pp": 0.07538207832638033,
+            "ci95_pp": [
+              -0.4819808434391337,
+              0.5665289155257991
+            ],
+            "p": 0.9275072492750724,
+            "holm_signifikant": false
+          },
+          "oben/rueckschlag_max": {
+            "delta_pp": -0.7426306423320539,
+            "ci95_pp": [
+              -1.360113700386506,
+              -0.448677615369808
+            ],
+            "p": 0.00019998000199980003,
+            "holm_signifikant": true
+          },
+          "unten/rendite_24h": {
+            "delta_pp": 0.13233855296017616,
+            "ci95_pp": [
+              -0.012554364398831286,
+              0.37426418443102794
+            ],
+            "p": 0.0755924407559244,
+            "holm_signifikant": false
+          },
+          "unten/rueckschlag_max": {
+            "delta_pp": 0.28290970458070275,
+            "ci95_pp": [
+              -0.03579071454905547,
+              0.4756664599303295
+            ],
+            "p": 0.08739126087391261,
+            "holm_signifikant": false
+          }
+        },
+        "n_eff": {
+          "oben": {
+            "rendite_24h": {
+              "n": 221,
+              "D": 1.271117631847148,
+              "n_eff": 173
+            },
+            "rueckschlag_max": {
+              "n": 221,
+              "D": 1.5545506899284869,
+              "n_eff": 142
+            }
+          },
+          "unten": {
+            "rendite_24h": {
+              "n": 408,
+              "D": 1.5278706303307135,
+              "n_eff": 267
+            },
+            "rueckschlag_max": {
+              "n": 408,
+              "D": 1.5293674321560198,
+              "n_eff": 266
+            }
+          }
+        }
+      }
+    }
+  }
+}
