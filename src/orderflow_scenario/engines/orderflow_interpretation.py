@@ -390,7 +390,11 @@ class OrderflowInterpretationEngine:
                         evidence_refs=("delta_series",),
                     )
                 )
+                # A refuted hypothesis cannot stay confirmed: an earlier footprint confirmation
+                # (finished auction, thin extreme) falls with it, else probability and confidence
+                # would still pay the bonus for "CONFIRMED_None".
                 exhaustion_hypothesis = None
+                exhaustion_confirmed = False
                 if flow_with_price:
                     reaction = "CONTINUATION"
             elif delta_series is None:

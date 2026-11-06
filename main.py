@@ -46,6 +46,7 @@ HEALTH_SNAPSHOT_INTERVAL_SECONDS = 5.0
 LIVE_EVIDENCE_INTERVAL_SECONDS = 60.0
 PLAN_JOURNAL_INTERVAL_SECONDS = 60  # paper journal of the Setup-Pfad plans
 FOOTPRINT_INTERVAL_SECONDS = 120  # chart footprint / volume profile from aggregated aggTrades
+VALIDATION_PROOF_MARGIN = timedelta(minutes=2)  # trades loaded past the 30-min validation target to prove the sequence reached it
 GAMMA_INTERVAL_SECONDS = 300  # options gamma from Deribit's public book (display and analysis context only)
 LIQUIDATION_INTERVAL_SECONDS = 300  # estimated liquidation heatmap from Binance futures open interest (display only)
 HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
@@ -269,8 +270,19 @@ class TIMApplication:
 
     async def validate_pending_orderflow(self,as_of:datetime)->None:
         for observation in await self.repository.pending_orderflow_observations(settings.symbol,as_of):
-            end=min(as_of,datetime.fromisoformat(observation["observed_at"])+timedelta(minutes=30))
-            trades=await self.repository.agg_trades_for_validation(settings.symbol,datetime.fromisoformat(observation["observed_at"]),end)
+            observed_at=datetime.fromisoformat(observation["observed_at"]);target=observed_at+timedelta(minutes=30)
+            # The validation needs one trade at or after the 30-minute target: it proves that the
+            # ID sequence did not break before the target (validation.py cuts the sequence there).
+            # At as_of == target no such trade can be stored yet, so the scan waits one candle.
+            if as_of<=target:continue
+            end=min(as_of,target+VALIDATION_PROOF_MARGIN)
+            trades=await self.repository.agg_trades_for_validation(settings.symbol,observed_at,end)
+            if as_of>end and not any(item.event_time>=target for item in trades):
+                # Nothing stored shortly after the target (outage): fetch the first later trade once,
+                # so the engine can prove the gap and close the validation instead of retrying for hours.
+                later=await self.repository.agg_trades_for_validation(settings.symbol,end,as_of)
+                proof=next((item for item in later if item.event_time>end),None)
+                if proof is not None:trades=list(trades)+[proof]
             validation=self.orderflow_validation.validate(observation,trades,as_of)
             if validation is None:continue
             case_id="ofcase_"+hashlib.sha256(str(observation["observation_id"]).encode()).hexdigest()[:20]
