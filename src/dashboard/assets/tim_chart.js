@@ -56,9 +56,9 @@
     return TIME_FMT.format(d);
   };
   const T = EN
-    ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of',
+    ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of', next: 'Next release',
         failed: m => `Loading failed (${m}). Retrying in 30 s.` }
-    : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand',
+    : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand', next: 'Nächster Termin',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
   const P = EN
     ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', oi: 'OI (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %',
@@ -99,6 +99,10 @@
                                                topLineColor: '#26a69a', topFillColor1: 'rgba(38,166,154,0.28)', topFillColor2: 'rgba(38,166,154,0.04)',
                                                bottomLineColor: '#ef5350', bottomFillColor1: 'rgba(239,83,80,0.04)', bottomFillColor2: 'rgba(239,83,80,0.28)',
                                                lineWidth: 1, priceFormat: { type: 'price', precision: 3, minMove: 0.001 } });
+  // Upcoming CPI/FOMC dates after the last candle: empty (whitespace) candles to the right keep the time
+  // axis evenly spaced, an invisible line carries the markers at the last price.
+  const ahead = chart.addLineSeries({ lineVisible: false, lastValueVisible: false, priceLineVisible: false,
+                                      crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
   const BAND = 0.15;
   const BAND_SCALES = { cvd: ['cvd_spot', 'cvd_perp'], oi: ['oi', 'oi_z'], funding: ['funding'], premium: ['premium'] };
   const bandHasData = key => {
@@ -928,11 +932,32 @@
     if (groups.has('macro')) {
       for (const ev of (model && model.macro) || []) {
         marks.push({ time: local(ev.time), position: 'aboveBar', color: ev.upcoming ? '#8491a3' : '#f0b429', shape: 'square', size: 0.6,
-                     text: ev.kind === 'CPI' ? 'CPI' : 'FOMC' });
+                     text: macroText(ev) });
       }
     }
     marks.sort((a, b) => a.time - b.time);
     candles.setMarkers(marks);
+    drawAhead(groups);
+  }
+
+  const macroText = ev => (ev.kind === 'CPI' ? 'CPI' : 'FOMC');
+  function drawAhead(groups) {
+    const events = groups.has('macro') && model ? model.macro_ahead || [] : [];
+    const step = model && model.interval_seconds;
+    const last = model && model.candles.length ? model.candles[model.candles.length - 1] : null;
+    if (!events.length || !step || !last) { ahead.setMarkers([]); ahead.setData([]); return; }
+    const at = new Set(events.map(ev => ev.time));
+    const points = [];
+    for (let t = last.time + step; t <= events[events.length - 1].time; t += step) {
+      points.push(at.has(t) ? { time: local(t), value: last.close } : { time: local(t) });
+    }
+    ahead.setData(points);
+    ahead.setMarkers(events.map(ev => ({ time: local(ev.time), position: 'aboveBar', color: '#8491a3', shape: 'square', size: 0.6,
+                                         text: macroText(ev) })));
+  }
+  function nextRelease() {
+    const ev = model && shownGroups().has('macro') && (model.macro_ahead || [])[0];
+    return ev ? `${T.next}: ${macroText(ev)} ${FULL_FMT.format(new Date(Date.parse(ev.at)))}` : '';
   }
 
   function applyVisibility(groups) {
@@ -1032,7 +1057,7 @@
       const h = model.perp_health;
       const health = h && h.checks ? ' · ' + P.health(h.checks_ok, h.checks, h.gaps) : '';
       const bandNotes = [model.cvd && model.cvd.note].filter(Boolean);
-      const allNotes = [notes, ...bandNotes].filter(Boolean).join(' · ');
+      const allNotes = [nextRelease(), notes, ...bandNotes].filter(Boolean).join(' · ');
       status.textContent = `${model.candles.length} ${T.candles} · Level: ${model.level_source || '–'}${trades}${health} · ${new Date().toLocaleTimeString(LOCALE)}` + (allNotes ? ' · ' + allNotes : '');
     } catch (error) {
       status.textContent = T.failed(error.message);
@@ -1067,7 +1092,11 @@
       load();
       return;
     }
-    if (action.dataset.action === 'now') chart.timeScale().scrollToRealTime();
+    if (action.dataset.action === 'now' && model) {  // the newest candle at the right edge, not the empty candles of upcoming dates
+      const count = model.candles.length, range = chart.timeScale().getVisibleLogicalRange();
+      const width = range ? range.to - range.from : 168;
+      chart.timeScale().setVisibleLogicalRange({ from: count + 8 - width, to: count + 8 });
+    }
     if (action.dataset.action === 'fit') chart.timeScale().fitContent();
     if (action.dataset.action === 'plans') {
       // Only TIM's current paper plans (SHORT, MID, LONG) on the candles: levels and the 30m test versions off.
