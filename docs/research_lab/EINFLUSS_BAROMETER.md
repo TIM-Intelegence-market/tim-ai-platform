@@ -3,9 +3,9 @@
 | Feld | Wert |
 |---|---|
 | Status | **Entwurf**, gilt erst nach Freigabe durch Barti und Uzi |
-| Stand | 06.11.2026 |
+| Stand | 07.11.2026 |
 | Gehört zu | BTC Research Engine, Stufe V2 „Historical Relationship Analysis“ (`EXTERNAL_DATA.md`, Abschnitt 12) |
-| Vorhandener Code | `src/research_lab/external/` (CPI, FOMC), `src/research_lab/forward/macro_filters.py` (Vorwärts-Log F3/F5, Barometer), `src/dashboard/macro_calendar.py` (Chart-Marker) |
+| Vorhandener Code | `src/research_lab/external/` (CPI, FOMC), `src/research_lab/forward/macro_filters.py` (Vorwärts-Log F3/F5, Barometer), `src/dashboard/macro_calendar.py` (Chart-Marker), `src/research_lab/influence/` (Treiber-Research 5a/5c, gebaut 07.11.2026, noch nicht mit echten Daten gerechnet) |
 | Verwandt | `FORSCHUNGSBEREICH.md` (Werkstatt), `studien/S7B_MAKRO_FILTER.md`, `studien/S1_CPI_VOLATILITAET.md` |
 
 ## 1. Warum ein eigener Bereich
@@ -157,6 +157,32 @@ Liquiditätszonen, Liquidations-Heatmap) bei Gegenwind seltener als bei Rückenw
 (auf dem Mac), mit Zahl der vorher angeschauten Treiber, Glückstest und eigenem Registerplatz. Voraussetzung sind die
 historischen Treiber-Zustände aus Punkt 1–3.
 
+## 5d. Umsetzung (07.11.2026)
+
+Uzi gab am 07.11.2026 Go für V2 mit der Bedingung: bauen ja, gemergt und mit echten Daten gerechnet wird erst nach
+Bartis Go. `V2_START_ALLOWED` bleibt bis dahin `NO`.
+
+| Teil | Datei | Was |
+|---|---|---|
+| Katalog (5a.1) | `influence/catalog.py` | 13 Treiber aus FRED mit Einheit, Veröffentlichungsverzug `lag_days`, Höchstalter, Vermerk „revidiert“ |
+| Zustände (3, 5a) | `influence/states.py` | Wochenraster ab Montag 2017-09-04 bis Woche 2024-12-23; Wert gilt erst ab Datum + Verzug; 13-Wochen-Zustand; BTC-Wochenrendite aus 1d-Schlusskursen, Daten ab 2025-01-01 werden abgewiesen |
+| Auswertung (5a.2, 5c.2) | `influence/analysis.py` | je Treiber: BTC nach „gestiegen“/„gefallen“ (mit grober Zahl unabhängiger Fälle), Gleichlauf, Vorlauf und Nachlauf 1–4 Wochen, „folgt dem Kurs“, rollierend 52 Wochen, je Jahr; alle Treiber gemeinsam: standardisierte Koeffizienten, R² und Beitrag je Treiber |
+| Bericht (5a.3) | `influence/report.py` | Markdown + JSON mit Datum, Zahl der angeschauten Treiber und SHA-256 der Eingaben |
+| Zuordnung (5c) | `influence/zuordnung.py` | Zustand heute, früheres BTC-Verhalten, Stabilität, Beitrag, Termine der nächsten 7 Tage |
+| Barometer | `forward/macro_filters.py` | `barometer --history BERICHT.json` liest die historischen Zahlen aus dem Bericht; ohne Angabe bleiben die festen Zahlen |
+
+Befehle (auf dem Mac oder später der PS5, FRED-Schlüssel über `TIM_FRED_SECRET_PROVIDER`):
+
+```sh
+python -m src.research_lab.influence fetch                       # FRED 2016-06-01..2024-12-31, roh mit SHA-256
+python -m src.research_lab.influence run                         # Bericht nach data/research/influence/berichte/
+python -m src.research_lab.influence zuordnung --report data/research/influence/berichte/einfluss_<Datum>.json
+```
+
+Bekannte Grenzen: FRED liefert für die Tagesreihen nur letzte Werte (Revisionen gering), M2 ist revidiert und als
+„nicht Point-in-Time“ markiert. Der High-Yield-Spread hat auf FRED nur drei Jahre Historie und fällt deshalb aus der
+gemeinsamen Rechnung (Mindestabdeckung 80 %). Krypto-Treiber (5b) sind noch nicht angebunden.
+
 ## 6. PRE-V2-Prüfung der Datenfamilien
 
 Regel von Barti (23.10.2026): V2 beginnt nie automatisch. Jede Datenfamilie bekommt nach Prüfung von Quelle, Lizenz,
@@ -208,6 +234,7 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 | Datum | Änderung |
 |---|---|
 | 06.11.2026 | Entwurf angelegt (Barti: Bereich abgrenzen, Barometer der Engine zuordnen, PRE-V2-Prüfung nachholen, News und Wahlen aufnehmen) |
+| 07.11.2026 | Abschnitt 5d: Treiber-Research gebaut (Uzis Go für V2; Merge und echter Lauf erst nach Bartis Go) |
 | 07.11.2026 | Vorschlag Uzi: Abschnitt 5c Zuordnung Treiber zu BTC-Verhalten, Werkstatt-Idee Preiszonen je nach Treiber-Lage |
 | 07.11.2026 | Vorschlag Uzi: Abschnitt 5b Krypto-Treiber im Barometer (Funding/OI/Liquidationen nur mit Vorlauf-Regel), ETF-Zuflüsse, Stablecoins, Yen, EZB/BoJ-Bilanzen, DVOL und On-Chain in Abschnitt 6 |
 | 07.11.2026 | Vorschlag Uzi: Abschnitt 5a Treiber-Research für alle vermuteten Treiber; S&P 500, Nasdaq, Gold, M2 und Spread in Abschnitt 6 aufgenommen |
