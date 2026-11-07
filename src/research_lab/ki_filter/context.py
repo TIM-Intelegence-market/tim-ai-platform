@@ -15,8 +15,10 @@ PLAN_FIELDS = (
     "id", "timeframe", "direction", "created_at", "close_at_record", "entry", "entry_low", "entry_high",
     "stop", "invalidation_level", "targets", "market_state", "scenario_type", "scenario_state", "entry_model",
     "setup_grade", "grade_reasons", "missing_confirmations", "data_quality", "plan_text", "score",
-    "pipeline_decision_reasons", "evidence_status",
 )
+# Left out on purpose: evidence_status, journal/pipeline decision and their reasons. They are fail-closed
+# labels (INSUFFICIENT_EVIDENCE, NO_TRADE) on nearly every plan, also on the ones the live test trades;
+# the first live probe (07.11.2026) only repeated them. The AI is to judge the market, not the label.
 HISTORY_LAST = 10
 TIMEFRAME_MINUTES = {"15m": 15, "1h": 60, "4h": 240, "1d": 1440}
 

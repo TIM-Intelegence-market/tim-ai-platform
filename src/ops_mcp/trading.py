@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src.graph_mcp.redaction import redact_text
+from src.graph_mcp.redaction import redact, redact_text
 from src.ops_mcp.readers import SourceError, bounded
 
 JOURNALS = {"15m": "tim_plan_journal_short.json", "1h": "tim_plan_journal_mid.json",
@@ -75,7 +75,7 @@ class TradingReader:
         except ValueError:
             raise SourceError("live status unreadable") from None
         age = datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
-        return {"age_seconds": round(age), "status": _clean(data)}
+        return {"age_seconds": round(age), "status": redact(data)}  # secret-named keys and secret-looking values
 
     def ki_filter(self, limit: int | None) -> dict[str, Any]:
         if self.ki_log is None or self.journal_dir is None:
@@ -90,8 +90,8 @@ class TradingReader:
             raise SourceError(str(error)) from None
         views = {tf: self._view(tf) for tf in ("15m", "1h", "1d") if (self.journal_dir / JOURNALS[tf]).exists()}
         return {"evaluation": evaluate(records, views),
-                "last": [_clean({k: v for k, v in r.items() if k not in ("hash", "prev_hash")})
-                         for r in records[-bounded(limit):]]}
+                "last": [{**_clean({k: v for k, v in r.items() if k not in ("hash", "prev_hash", "context", "context_hash")}),
+                          "context_hash": r.get("context_hash")} for r in records[-bounded(limit):]]}
 
     def market_snapshot(self, symbol: str, timeframe: str, candles: int) -> dict[str, Any]:
         if self.market is None or not self.market.configured:

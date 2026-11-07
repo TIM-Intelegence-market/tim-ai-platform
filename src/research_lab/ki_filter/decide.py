@@ -49,14 +49,49 @@ def read_log(path: Path) -> list[dict[str, Any]]:
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
-        record = json.loads(line)
+        try:
+            record = json.loads(line)
+        except ValueError:
+            raise LogError(f"ki filter log unreadable at line {number}") from None
+        if not isinstance(record, dict):
+            raise LogError(f"ki filter log unreadable at line {number}")
         claimed = record.pop("hash", None)
         if record.get("prev_hash") != previous or hashlib.sha256(_canonical(record).encode()).hexdigest() != claimed:
             raise LogError(f"ki filter log broken at line {number}")
         record["hash"] = claimed
         previous = claimed
         records.append(record)
+    _check_head(path, records)
     return records
+
+
+def head_path(path: Path) -> Path:
+    return path.with_name(path.name + ".head")
+
+
+def _check_head(path: Path, records: list[dict[str, Any]]) -> None:
+    """The head file names the last written record (count and hash). A shortened or replaced log no longer
+    contains it. It does not stop someone who rewrites log and head together; the run summary prints the
+    head so it can be kept elsewhere (evidence file)."""
+    head = head_path(path)
+    if not head.exists():
+        if records:
+            raise LogError("ki filter log without head file")
+        return
+    try:
+        data = json.loads(head.read_text(encoding="utf-8"))
+        count, digest = int(data["count"]), str(data["hash"])
+    except (ValueError, KeyError, TypeError):
+        raise LogError("ki filter head file unreadable") from None
+    if count > len(records) or (count and records[count - 1]["hash"] != digest) or (count == 0 and records):
+        raise LogError("ki filter log does not contain its recorded head (shortened or replaced)")
+
+
+def _write_head(path: Path, records: list[dict[str, Any]]) -> None:
+    head = head_path(path)
+    temporary = head.with_name(head.name + ".tmp")
+    temporary.write_text(json.dumps({"count": len(records), "hash": records[-1]["hash"]}) + "\n", encoding="utf-8")
+    os.replace(temporary, head)
 
 
 def append_log(path: Path, record: Mapping[str, Any], records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -69,6 +104,7 @@ def append_log(path: Path, record: Mapping[str, Any], records: list[dict[str, An
         handle.flush()
         os.fsync(handle.fileno())
     records.append(body)
+    _write_head(path, records)
     return body
 
 
@@ -108,7 +144,7 @@ def candidates(entries: Sequence[Mapping[str, Any]], decided: set[str], now: dat
 
 def run(journals: Mapping[str, Mapping[str, Any]], peers: Mapping[str, Mapping[str, Any]], log_path: Path,
         ask: Callable[[str], Any], model: str, market: Callable[[str, str, datetime], Sequence[Mapping[str, Any]]],
-        now: datetime | None = None) -> dict[str, Any]:
+        now: datetime | None = None, clock: Callable[[], datetime] | None = None) -> dict[str, Any]:
     """One pass. ``journals``: timeframe -> journal view to judge; ``peers``: name -> other journal views."""
     now = now or datetime.now(UTC)
     records = read_log(log_path)
@@ -136,8 +172,11 @@ def run(journals: Mapping[str, Mapping[str, Any]], peers: Mapping[str, Mapping[s
                 "timeframe": timeframe, "direction": entry.get("direction"), "plan_created_at": entry["created_at"],
                 "decided_at": now.isoformat().replace("+00:00", "Z"), "plan_status_at_decision": entry.get("status"),
                 "context_hash": hashlib.sha256(prompt.encode()).hexdigest(), "market_candles": context["market"].get("candles", 0),
-                "decision": decision, "confidence": round(confidence, 3), "reason": reason,
+                "decision": decision, "confidence": round(confidence, 3), "reason": reason, "context": context,
+                "written_at": (clock() if clock else datetime.now(UTC)).isoformat().replace("+00:00", "Z"),
             }, records)
             decided.add(entry["id"])
             summary["decided"] += 1
+    if records:
+        summary["head"] = {"count": len(records), "hash": records[-1]["hash"]}
     return summary

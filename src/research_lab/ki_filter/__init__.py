@@ -6,6 +6,6 @@ compares the rules alone with rules plus AI on the same plans (docs/research_lab
 KI1_KI_FILTER_PRAEREGISTRIERUNG_ENTWURF.md).
 """
 SCHEMA = "tim_ki_filter/1"
-PROMPT_VERSION = "ki1-prompt/1"
+PROMPT_VERSION = "ki1-prompt/2"  # /2: without evidence and decision labels
 NEHMEN, AUSLASSEN = "NEHMEN", "AUSLASSEN"
 DECISIONS = (NEHMEN, AUSLASSEN)

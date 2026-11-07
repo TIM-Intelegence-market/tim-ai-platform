@@ -33,9 +33,11 @@ def closed(pid, closed_at, net_r, **extra):
 
 def test_plan_context_has_no_outcome_fields():
     entry = plan(filled_at="x", closed_at="y", gross_r=2.0, net_r=1.8, exit_reason="TP3", tim_verdict="SICHERN",
-                 max_favorable_r=3.0)
+                 max_favorable_r=3.0, evidence_status="INSUFFICIENT_EVIDENCE", journal_decision="NO_TRADE",
+                 pipeline_decision_reasons=["NO_SCENARIO_CONFIRMED"])
     ctx = plan_context(entry)
-    for key in ("filled_at", "closed_at", "gross_r", "net_r", "exit_reason", "tim_verdict", "max_favorable_r", "status"):
+    for key in ("filled_at", "closed_at", "gross_r", "net_r", "exit_reason", "tim_verdict", "max_favorable_r", "status",
+                "evidence_status", "journal_decision", "pipeline_decision_reasons"):
         assert key not in ctx
     assert ctx["targets_r"] == [1.5, 2.0, 3.0] and ctx["risk_pct"] == 2.0
 
@@ -122,7 +124,7 @@ def test_tampered_log_is_refused(tmp_path: Path):
     lines = log.read_text().splitlines()
     record = json.loads(lines[0])
     record["decision"] = AUSLASSEN
-    log.write_text(json.dumps(record) + "\n" + lines[1] + "\n")
+    log.write_text(json.dumps(record) + "\n" + lines[1] + "\n")  # head file unchanged
     with pytest.raises(LogError):
         read_log(log)
     log.write_text(lines[1] + "\n")  # first line removed
@@ -132,15 +134,52 @@ def test_tampered_log_is_refused(tmp_path: Path):
 
 def test_evaluate_counts_only_timely_judgements():
     def rec(pid, decision, decided_at="2026-11-07T10:01:00Z"):
-        return {"plan_id": pid, "timeframe": "15m", "decision": decision, "decided_at": decided_at}
+        return {"plan_id": pid, "timeframe": "15m", "decision": decision, "decided_at": decided_at,
+                "model": "m", "prompt_version": "ki1-prompt/2"}
     entries = [closed("a", "2026-11-07T11:00:00Z", 2.0), closed("b", "2026-11-07T12:00:00Z", -1.0),
                closed("c", "2026-11-07T13:00:00Z", -1.0), closed("late", "2026-11-07T14:00:00Z", 5.0),
                {"id": "x", "status": "EXPIRED"}, {"id": "o", "status": "OPEN"}]
     records = [rec("a", NEHMEN), rec("b", AUSLASSEN), rec("c", NEHMEN), rec("late", NEHMEN, "2026-11-07T10:10:00Z"),
                rec("x", NEHMEN), rec("o", NEHMEN), rec("gone", NEHMEN)]
     result = evaluate(records, {"15m": {"entries": entries}})
-    assert result["counts"] == {"judged": 7, "late": 1, "missing_plan": 1, "pending": 1, "no_fill": 1, "excluded": 0}
+    assert result["counts"] == {"judged": 7, "late": 1, "missing_plan": 1, "pending": 1, "no_fill": 1, "excluded": 0,
+                                "other_model_or_prompt": 0, "duplicate": 0}
     assert result["rules_alone"]["sum_net_r"] == 0.0 and result["rules_alone"]["trades"] == 3
     assert result["rules_plus_ki"]["sum_net_r"] == 1.0 and result["ki_skipped"]["sum_net_r"] == -1.0
     assert result["rules_alone"]["max_drawdown_r"] == -2.0
     assert not result["ready"] and str(MIN_TRADES) in result["status"]
+
+
+def test_written_at_and_context_and_head(tmp_path: Path):
+    log = tmp_path / "log.jsonl"
+    ask = lambda prompt: {"entscheidung": NEHMEN, "vertrauen": 0.9, "grund": "x"}
+    later = NOW + timedelta(minutes=3)
+    summary = run({"15m": {"entries": [plan()]}}, {}, log, ask, "m", lambda s, tf, c: [], now=NOW, clock=lambda: later)
+    record = read_log(log)[0]
+    assert record["written_at"] == "2026-11-07T21:08:00Z" and record["context"]["plan"]["id"] == "p1"
+    assert summary["head"]["count"] == 1
+
+
+def test_head_detects_cut_log_and_torn_line(tmp_path: Path):
+    log = tmp_path / "log.jsonl"
+    ask = lambda prompt: {"entscheidung": NEHMEN, "vertrauen": 0.9, "grund": "x"}
+    run({"15m": {"entries": [plan(), plan(id="p2")]}}, {}, log, ask, "m", lambda s, tf, c: [], now=NOW)
+    full = log.read_text()
+    log.write_text(full.splitlines()[0] + "\n")  # chain still valid, but shorter than the head says
+    with pytest.raises(LogError):
+        read_log(log)
+    log.write_text(full + '{"schema": "tim_ki')  # torn last line
+    with pytest.raises(LogError):
+        read_log(log)
+
+
+def test_evaluate_dedupes_and_separates_models():
+    entries = [closed("a", "2026-11-07T11:00:00Z", 2.0)]
+    base = {"plan_id": "a", "timeframe": "15m", "decision": NEHMEN, "decided_at": "2026-11-07T10:01:00Z",
+            "prompt_version": "ki1-prompt/2"}
+    records = [{**base, "model": "qwen"}, {**base, "model": "qwen"}, {**base, "model": "other"}]
+    result = evaluate(records, {"15m": {"entries": entries}}, model="qwen")
+    assert result["rules_alone"]["trades"] == 1
+    assert result["counts"]["duplicate"] == 1 and result["counts"]["other_model_or_prompt"] == 1
+    late = {**base, "model": "qwen", "written_at": "2026-11-07T10:30:00Z"}
+    assert evaluate([late], {"15m": {"entries": entries}})["counts"]["late"] == 1

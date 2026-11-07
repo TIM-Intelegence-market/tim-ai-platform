@@ -58,8 +58,9 @@ def test_unknown_journal_and_symlink_refused(tmp_path: Path):
 
 def test_live_status_and_ki_filter(tmp_path: Path):
     status = tmp_path / "live_status.json"
-    status.write_text(json.dumps({"stopped": False, "balance": 57.64}))
+    status.write_text(json.dumps({"stopped": False, "balance": 57.64, "api_secret": "kQ9x/abcdEFGH+ijkl=="}))
     journal(tmp_path)
     instance = server(TradingReader(tmp_path, status, tmp_path / "ki.jsonl"))
-    assert call(instance, "live_status")["status"]["balance"] == 57.64
+    live = call(instance, "live_status")["status"]
+    assert live["balance"] == 57.64 and "kQ9x" not in json.dumps(live)
     assert call(instance, "ki_filter")["status"] == "no_decisions_yet"
