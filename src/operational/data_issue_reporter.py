@@ -298,6 +298,7 @@ class Reporter:
             except (ReporterError, subprocess.TimeoutExpired, OSError) as error:
                 errors.append(f"{provider}: {redact(str(error))}")
                 continue
+            text = text.replace(f"{repo}/", "").replace(str(repo), ".")  # no local home paths on GitHub
             if text.strip():
                 return provider, text.strip()
             errors.append(f"{provider}: leere Antwort")

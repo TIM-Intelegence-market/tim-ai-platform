@@ -53,7 +53,7 @@ class FakeGitHub:
             if self.fail_codex:
                 raise ReporterError("codex exit 1")
             output = Path(args[args.index("--output-last-message") + 1])
-            output.write_text("Ursache: Testantwort", encoding="utf-8")
+            output.write_text(f"Ursache: Testantwort [g]({cwd}/src/x.py:3)", encoding="utf-8")
             return ""
         if args[0] == "claude":
             if args[1:3] == ["auth", "status"]:
@@ -117,6 +117,7 @@ def test_grace_time_then_one_issue_with_analysis(tmp_path):
     assert later["analysed"] == [{"key": "gap_filler_error", "provider": "codex"}]
     assert "TIM_DATA_ISSUE key=gap_filler_error" in fake.issues[0][1]
     assert fake.comments[-1][0] == 200 and "Testantwort" in fake.comments[-1][1]
+    assert "(src/x.py:3)" in fake.comments[-1][1] and str(tmp_path) not in fake.comments[-1][1]
     again = make(tmp_path, gap, recovery_status(), fake, now=NOW + timedelta(minutes=90)).run()
     assert again["created"] == [] and again["analysed"] == [] and len(fake.issues) == 1
     assert all("GH_TOKEN" not in (env or {}) for env in fake.agent_envs)
