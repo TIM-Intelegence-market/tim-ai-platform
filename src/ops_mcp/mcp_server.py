@@ -13,6 +13,7 @@ from src.graph_mcp.mcp_server import PROTOCOL_VERSION, ToolError, _validate_argu
 from src.ops_mcp import SCHEMA_VERSION, SERVER_NAME
 from src.ops_mcp.coverage import MAX_HOURS, SYMBOL, TIMEFRAMES, CoverageReader
 from src.ops_mcp.readers import MAX_LIMIT, ResearchReader, SourceError, TaskReader
+from src.ops_mcp.trading import JOURNALS, TradingReader
 from src.task_engine.model import TaskState
 
 
@@ -47,6 +48,18 @@ TOOLS: list[dict[str, Any]] = [
                              "timeframe": {"type": "string", "enum": list(TIMEFRAMES)},
                              "hours": {"type": "integer", "minimum": 1, "maximum": MAX_HOURS},
                              **_LIMIT}, [])},
+    {"name": "plan_journal",
+     "description": "One TIM paper plan journal: summary and latest entries (read-only)",
+     "inputSchema": _schema({"journal": {"type": "string", "enum": list(JOURNALS)}, **_LIMIT}, ["journal"])},
+    {"name": "live_status", "description": "Public status file of the Kraken live test (read-only, no keys)",
+     "inputSchema": _schema({}, [])},
+    {"name": "ki_filter", "description": "KI1 shadow filter: rules alone vs rules plus AI, latest judgements",
+     "inputSchema": _schema({**_LIMIT}, [])},
+    {"name": "market_snapshot",
+     "description": "Latest closed candles with volume and delta from TIM's Postgres (read-only)",
+     "inputSchema": _schema({"symbol": {"type": "string", "minLength": 2},
+                             "timeframe": {"type": "string", "enum": ["15m", "1h", "4h", "1d"]},
+                             "candles": {"type": "integer", "minimum": 1, "maximum": 96}}, [])},
 ]
 
 
@@ -58,8 +71,10 @@ def _default_health() -> dict:
 class OpsMcpServer:
     def __init__(self, tasks: TaskReader, research: ResearchReader,
                  health: Callable[[], dict] = _default_health,
-                 coverage: CoverageReader | None = None) -> None:
+                 coverage: CoverageReader | None = None,
+                 trading: TradingReader | None = None) -> None:
         self.tasks = tasks
+        self.trading = trading or TradingReader(None, None, None)
         self.research = research
         self.coverage = coverage or CoverageReader(None)
         self.health = health
@@ -127,6 +142,18 @@ class OpsMcpServer:
                 raise ToolError("argument symbol must match [A-Z0-9]{2,20}")
             payload = self.coverage.coverage(symbol, arguments.get("timeframe", "1m"),
                                              arguments.get("hours", 24), arguments.get("limit"))
+        elif name == "plan_journal":
+            payload = self.trading.plan_journal(arguments["journal"], arguments.get("limit"))
+        elif name == "live_status":
+            payload = self.trading.live_status()
+        elif name == "ki_filter":
+            payload = self.trading.ki_filter(arguments.get("limit"))
+        elif name == "market_snapshot":
+            symbol = arguments.get("symbol", "BTCUSDT")
+            if not SYMBOL.fullmatch(symbol):
+                raise ToolError("argument symbol must match [A-Z0-9]{2,20}")
+            payload = self.trading.market_snapshot(symbol, arguments.get("timeframe", "15m"),
+                                                   arguments.get("candles", 24))
         else:
             payload = self.research.report(arguments["name"], arguments.get("limit"))
         return {"content": [{"type": "text",
@@ -159,8 +186,17 @@ class OpsMcpServer:
 def main() -> int:
     root = Path(os.environ.get("TIM_OPS_MCP_ROOT", ".")).resolve()
     task_db = os.environ.get("TIM_OPS_TASK_DB") or None
+    from src.research_lab.ki_filter.market import MarketReader
+
+    def _path(name: str) -> Path | None:
+        value = os.environ.get(name)
+        return Path(value).expanduser() if value else None
+
+    dsn = os.environ.get("TIM_OPS_COVERAGE_DSN")
+    trading = TradingReader(_path("TIM_OPS_JOURNAL_DIR"), _path("TIM_OPS_LIVE_STATUS"), _path("TIM_OPS_KI_LOG"),
+                            market=MarketReader(dsn))
     OpsMcpServer(TaskReader(Path(task_db) if task_db else None), ResearchReader(root),
-                 coverage=CoverageReader(os.environ.get("TIM_OPS_COVERAGE_DSN"))).serve()
+                 coverage=CoverageReader(dsn), trading=trading).serve()
     return 0
 
 
