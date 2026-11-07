@@ -77,7 +77,7 @@ Verkäufe) und in den Ask (aggressive Käufe). Quellen: Binance-aggTrades mit `b
 
 | Regel | Bedingung | Ergebnis |
 | --- | --- | --- |
-| F1 Imbalance | Ask auf Stufe p ≥ 4 × Bid auf p − 1 Tick (Kauf) bzw. Bid auf p ≥ 4 × Ask auf p + 1 Tick (Verkauf); eine Null auf der Gegenseite zählt | `buy_imbalances`, `sell_imbalances` |
+| F1 Imbalance | Ask auf Stufe p ≥ 4 × Bid auf p − 1 Tick (Kauf) bzw. Bid auf p ≥ 4 × Ask auf p + 1 Tick (Verkauf); eine Null auf der Gegenseite zählt, sofern die Nachbarstufe gehandelt wurde (fehlt die Stufe genau 1 Tick daneben, gibt es kein Flag). Der Chart (`src/dashboard/footprint_data.py`, `tim_chart.js`) rechnet anders: Diagonale über die angezeigte Zeilenbreite (Vielfaches des Ticks, zoomabhängig), leere Nachbarzeile = Null, Randzeilen nie markiert. Beide Lesarten sind bewusst getrennt (Prüfung 06.11.2026). | `buy_imbalances`, `sell_imbalances` |
 | F2 Stacked | ≥ 3 gleichseitige Imbalances auf aufeinanderfolgenden Stufen | `stacked_buy`/`stacked_sell`; Szenario A Beleg (Kauf) / Gegenbeleg (Verkauf), B Gegenbeleg (Verkauf), C Gegenbeleg (Kauf); **widerlegt** eine Exhaustion-Hypothese der Aggressorseite (`exhaustion_refuted_stacked_imbalances`) |
 | F3 Auktionsrand | Hoch oder Tief mit Null auf einer Seite = finished, beide > 0 = unfinished | `finished_high/low`; finished am Extrem in Bewegungsrichtung **bestätigt** Exhaustion (`exhaustion_supported_by_finished_auction`) |
 | F4 Cluster | Eine Stufe ≥ 3 × mittleres Stufenvolumen, in den äußeren 20 % der Range, Aggressor drückt hinein | `absorption_cluster` PASSIVE_SELLERS/PASSIVE_BUYERS; passend zur Hypothese **bestätigt** Absorption (`absorption_supported_by_footprint_cluster`) |
@@ -119,9 +119,11 @@ dient der Analyse aktueller Tage und trägt keine Forschungs-Evidenz.
   Websocket-Mitschnitt auf dem Mac lückenlos war; Lücken erscheinen als fehlende Kerzen,
   nicht als Fehler. Ältere Tage kommen aus den Binance-Archiven (2b), die erst am Folgetag
   bereitstehen.
-- Der Marktzustand `EXHAUSTION` in `engines/market_state.py` ist nur ein Kerzenbild (langer
-  Docht, Körper < 15 %, Volumen ≥ 1,3x). Das ist im Bootcamp-Sinn eher Excess/SFP-Docht und
-  wird von keinem Szenario genutzt; maßgeblich ist die Reaktion der Orderflow-Engine.
+- Der Marktzustand `EXHAUSTION` in `engines/market_state.py` ist nur ein Kerzenbild: Körper
+  < 15 % der Kerzenspanne und Körper-Volatilität der letzten drei Kerzen ≥ 1,3x der älteren
+  (`_volatility_ratio`). Kerzenvolumen, Delta und Dochtlänge werden dort nicht geprüft (Prüfung
+  06.11.2026). Das ist im Bootcamp-Sinn eher Excess/SFP-Docht und wird von keinem Szenario
+  genutzt; maßgeblich ist die Reaktion der Orderflow-Engine.
 - `src/analysis/bronxc_rules.py` nennt eine Kerze mit kleinem Körper und hohem Volumen
   `ABSORPTION_CONTEXT`. Das passt zu R1/R2 (Anstrengung ohne Fortschritt), kennt aber kein Delta.
 - Schwellen (1,2 / 0,7 / 0,8; 4x; 3x; 25 %) stammen aus den Quellen und sind nicht kalibriert.
@@ -146,6 +148,8 @@ dient der Analyse aktueller Tage und trägt keine Forschungs-Evidenz.
 
 `tests/test_orderflow_absorption_exhaustion.py` deckt R1-R4, Bestätigung, Widerlegung,
 Zwei-Kerzen-Rückfall, Adapter, Pipeline, Bericht und den Ausschluss beider Lesarten ab.
+Eine widerlegte Exhaustion-Hypothese (Stacked Imbalances oder wachsendes Delta) gilt nie mehr als bestätigt, auch wenn der Footprint sie vorher gestützt hat (`exhaustion_confirmed` fällt mit, Korrektur 06.11.2026).
+
 `tests/test_orderflow_footprint.py` deckt F1-F6, beide Builder, die Bestätigungen und
 Widerlegungen in der Engine, Szenario-Belege, JSON-Adapter, CLI aus Trades, Bericht und den
 OpenMarket-Adapter (Delta-Serie aus TRADE_AGG, Footprint aus VOLUME_PROFILE_AGG, gesperrt ohne
