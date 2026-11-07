@@ -4,7 +4,8 @@
     python -m src.research_lab.ki_filter report [--journal-dir ...] [--log PATH]
 
 ``decide`` judges new OPEN plans of the 15m, 1h and 1d journals with the local Ollama model.
-Market rows come from Postgres only if TIM_KI_MARKET_DSN names a read-only role; without it the
+Market rows come from Postgres only if TIM_KI_MARKET_DSN is set (a read-only role, or ``runtime`` for the
+runtime's own connection, read in read-only sessions); without it the
 AI sees plan, history and the other strategies only. ``--dry-run`` prints the prompts and writes nothing.
 """
 from __future__ import annotations
@@ -35,6 +36,18 @@ def _views(directory: Path, names: dict[str, str]) -> dict[str, dict]:
     return {key: plan_journal.load_view(directory / name) for key, name in names.items() if (directory / name).exists()}
 
 
+def market_dsn(value: str | None) -> str | None:
+    """``runtime``: the runtime's own connection from config/secrets.py (keychain, pgpass or file), resolved
+    in memory only and never printed. Every read still runs read-only (session setting, readonly transaction
+    and a check, src/research_lab/ki_filter/market.py). Anything else is used as given; empty means no market rows."""
+    if not value:
+        return None
+    if value.strip().lower() == "runtime":
+        from config.settings import settings
+        return settings.database_url
+    return value
+
+
 def _ask(url: str, model: str):
     from src.llm.ollama_client import OllamaClient
     client = OllamaClient(url, model, timeout=240, observation_only=False,
@@ -56,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(evaluate(decide_mod.read_log(args.log), journals), indent=2, ensure_ascii=False))
         return 0
     peers = {**journals, **_views(args.journal_dir, PEERS)}
-    reader = MarketReader(os.environ.get("TIM_KI_MARKET_DSN"))
+    reader = MarketReader(market_dsn(os.environ.get("TIM_KI_MARKET_DSN")))
     market = (lambda symbol, timeframe, cutoff: reader.candles(symbol, timeframe, cutoff)) if reader.configured \
         else (lambda symbol, timeframe, cutoff: [])
     if args.dry_run:
