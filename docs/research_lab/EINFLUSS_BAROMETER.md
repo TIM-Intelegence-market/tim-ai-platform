@@ -157,10 +157,13 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 | COT, 13F, ETF-Flüsse | DEFERRED | aus dem Plan vom 02.11., noch nicht angeschaut |
 | Aktienmarkt: S&P 500, Nasdaq | DEFERRED, Vorschlag Uzi 07.11. | Nasdaq (FRED `NASDAQCOM`) läuft schon in der Makro-Leiste, aber nicht im Barometer. S&P 500 auf FRED (`SP500`) reicht nur rund zehn Jahre zurück und steht unter Lizenz von S&P; Quelle und Historie ab 2017 prüfen. Handelszeiten beachten (Schluss 16:00 ET, Wochenende fehlt) |
 | Yen (USD/JPY, FRED `DEXJPUS`) | DEFERRED, Vorschlag | Auflösung von Yen-Carry-Trades fiel mit BTC-Einbrüchen zusammen (z. B. August 2024); Tageswerte, Zeitregel prüfen |
+| Globale Liquidität: Bilanzen EZB und Bank of Japan | DEFERRED, Vorschlag | FRED `ECBASSETSW` (wöchentlich), `JPNASSETS` (monatlich), in Landeswährung, Umrechnung und Veröffentlichungszeit prüfen |
 | Gold | DEFERRED, Vorschlag Uzi 07.11. | in der Makro-Leiste vorhanden (PAXG), Quelle für Historie bis 2017 prüfen |
 | Geldmenge M2, Kreditrisiko (High-Yield-Spread) | DEFERRED, Vorschlag | FRED `M2SL` (monatlich, Revisionen, Vintages in ALFRED) und `BAMLH0A0HYM2`; Lizenz des Spreads prüfen |
 | ETF-Zuflüsse (Spot-BTC-ETFs) | DEFERRED, Vorschlag Uzi 07.11. | vermutlich größter Treiber seit 2024; freie Quelle (Farside) war im Oktober gesperrt, Quelle mit Tageszeitstempel prüfen |
 | Stablecoin-Menge, BTC-Dominanz | DEFERRED, Vorschlag Uzi 07.11. | DefiLlama frei; Dominanz wird erst seit 27.10.2026 gesammelt, Historie fehlt |
+| Options-Volatilität (Deribit DVOL) | DEFERRED, nur mit Vorlauf-Regel (5b) | frei abrufbar, Historie ab 2021; Kryptomarkt-intern |
+| On-Chain (Börsenbestände, Hashrate, Miner-Abflüsse) | DEFERRED | Börsenbestände meist kostenpflichtig (Glassnode, CryptoQuant); Hashrate frei, aber geschätzt und nachträglich geglättet, Point-in-Time prüfen |
 | Funding, Open Interest, Liquidationen (Binance) | DEFERRED, nur mit Vorlauf-Regel (5b) | folgen oft dem Kurs selbst; als Handelsregel gehört Funding weiter in die Werkstatt (F2 nicht bestanden) |
 
 ## 7. Reihenfolge
@@ -177,5 +180,5 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 | Datum | Änderung |
 |---|---|
 | 06.11.2026 | Entwurf angelegt (Barti: Bereich abgrenzen, Barometer der Engine zuordnen, PRE-V2-Prüfung nachholen, News und Wahlen aufnehmen) |
-| 07.11.2026 | Vorschlag Uzi: Abschnitt 5b Krypto-Treiber im Barometer (Funding/OI/Liquidationen nur mit Vorlauf-Regel), ETF-Zuflüsse und Stablecoins in Abschnitt 6 |
+| 07.11.2026 | Vorschlag Uzi: Abschnitt 5b Krypto-Treiber im Barometer (Funding/OI/Liquidationen nur mit Vorlauf-Regel), ETF-Zuflüsse, Stablecoins, Yen, EZB/BoJ-Bilanzen, DVOL und On-Chain in Abschnitt 6 |
 | 07.11.2026 | Vorschlag Uzi: Abschnitt 5a Treiber-Research für alle vermuteten Treiber; S&P 500, Nasdaq, Gold, M2 und Spread in Abschnitt 6 aufgenommen |
