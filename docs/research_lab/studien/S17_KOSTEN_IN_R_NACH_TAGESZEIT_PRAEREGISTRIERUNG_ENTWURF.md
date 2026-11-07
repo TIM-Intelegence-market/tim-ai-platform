@@ -3,11 +3,11 @@
 | Feld | Wert |
 |---|---|
 | Studie | S17 |
-| Version | **Entwurf 0.2 – wartet auf Uzis Freigabe (Forschungsbereich Stufe 1); vorher werden keine Daten geladen** |
+| Version | **1.0 – freigegeben** von Uzi am 07.11.2026 um 13:29 Ortszeit („ja mach mal“); Regeln und Auswertungscode vor dem ersten Datenzugriff eingefroren |
 | Erzeugt | 2026-11-07 00:16 Ortszeit vom Studien-Generator (`src/research_lab/workshop/generator.py`) |
 | Idee | I-0002 aus Quelle „Wöchentliche KI-Runde“ (`data/research/IDEEN.jsonl` auf dem Mac) |
 | Vorlage | Ereignis-Studie (wie S1) |
-| Spezifikation | SHA-256 `2bc948fc2c70189c4c62b227f08542aac588d7af49fdfb05fe26b100fd1152ac` (gilt für Entwurf 0.1 vom Generator; die Ergänzungen in 0.2 sind von Hand und vom Hash **nicht** gedeckt) |
+| Spezifikation | SHA-256 `8b43439cbfdfcb3f04d1115a7614c7a90106f108e3d9f48540d355685d01c479` über den Regeltext 1.0 (Abschnitte 1 bis 8, von „## 1.“ bis vor „## Änderungsprotokoll“, UTF-8; `spec_digest` in `src/research_lab/studies/s17.py`). Der Generator-Hash `2bc948fc…52ac` galt nur für Entwurf 0.1 |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Holdout | ab 2025-01-01, wird nur mit Uzis ausdrücklichem Wort geladen |
 | Register | Eigene Familie außerhalb des Holdout-Registers (wie S1/S8); belegt keine Registerplätze. |
@@ -55,9 +55,9 @@ Vergleich: Vergleich der Kosten-in-R-Verteilung je Stunde und Wochentag
 - **Kostensatz** aus dem Protokoll-Kostenmodell (`src/research_lab/protocol.py`, `BASE_COSTS`, PROTOKOLL.md 4.4): Gebühr `fee` = 0,05 % je Seite (Taker), Slippage `slippage` = 0,03 % je Seite. Hin und zurück c = 2 × (0,05 % + 0,03 %) = **0,16 %** (wie der Kostenboden in S8 und der Gewinnfall in S4). Beschreibend zusätzlich: Stopfall mit `stop_slippage` 0,05 % beim Ausstieg (0,18 %) und `STRESS_COSTS` (0,32 %).
 - **Stop-Abstand** nach der Stop-Definition des Papier-Journals S7b (`src/research_lab/hypotheses/s7.py`, auch in `forward/s7b.py`): `ATR_FACTOR` 1,5 × ATR(14), ATR nach `src/research_lab/backtest/indicators.py` `atr()` = einfacher Mittelwert der True Range der letzten 14 **geschlossenen** Kerzen (kein Wilder-Glätten). In S17 wird die ATR zu Stundenbeginn aus den 14 vorher geschlossenen 1h-Kerzen berechnet (nur Vergangenheit).
 - **Kosten in R je Fall** (PROTOKOLL.md 4.3) = c × Eröffnungskurs der Stunde / Stop-Abstand.
-- **Abweichungen vom Papier, Vorschlag in 0.2, Entscheid bei Uzis Freigabe:**
-  1. Intervall: S7b rechnet die ATR auf 4h-Kerzen USD-M. Eine 4h-ATR ist innerhalb eines 4h-Blocks für alle Stunden gleich und glättet die Tagesstruktur weg, deshalb verwendet die Hauptmessung 1h-Kerzen. Die 4h-Variante (aus denselben Minutenbalken, 14 geschlossene 4h-Blöcke ab 00:00 UTC) wird beschreibend berichtet.
-  2. Mindestabstand: S7b setzt den Stop auf mindestens `MIN_STOP_DISTANCE` = 1 % des Kurses. Damit sind die Kosten auf höchstens 0,16 R gedeckelt; greift der Mindestabstand in vielen Stunden, verschwindet jeder Stundenunterschied. Die Hauptmessung rechnet deshalb **ohne** Mindestabstand. Beschreibend berichtet werden: Kosten in R mit Mindestabstand und der Anteil der Fälle je Stunde, in denen der Mindestabstand greift.
+- **Abweichungen vom Papier, mit der Freigabe 1.0 beschlossen (Uzi 07.11.2026):**
+  1. Intervall: S7b rechnet die ATR auf 4h-Kerzen USD-M. Eine 4h-ATR ist innerhalb eines 4h-Blocks für alle Stunden gleich und glättet die Tagesstruktur weg, deshalb verwendet die Hauptmessung 1h-Kerzen. Die 4h-Variante (aus denselben Minutenbalken, 14 geschlossene 4h-Blöcke ab 00:00 UTC) wird beschreibend berichtet. **Beschlossen.**
+  2. Mindestabstand: S7b setzt den Stop auf mindestens `MIN_STOP_DISTANCE` = 1 % des Kurses. Damit sind die Kosten auf höchstens 0,16 R gedeckelt; greift der Mindestabstand in vielen Stunden, verschwindet jeder Stundenunterschied. Die Hauptmessung rechnet deshalb **ohne** Mindestabstand. Beschreibend berichtet werden: Kosten in R mit Mindestabstand und der Anteil der Fälle je Stunde, in denen der Mindestabstand greift. **Beschlossen.**
 - **Ausschluss:** Ein Fall zählt nicht, wenn die Stunde selbst oder eine der 14 Vorlaufstunden keine Minute mit Handel hat oder wenn eine Minute laut Reduktionsbericht fehlerhaft ist. Ausschlüsse werden je Abschnitt und Grund gezählt.
 - **Aggressive Handelsaktivität** (Kaufanteil `buy_quote_e8 / (buy_quote_e8 + sell_quote_e8)` und Handelszahl `trade_count` je Stunde) und Minutenvolatilität (Standardabweichung der 1-Minuten-ln-Renditen je Stunde) werden je Stunde und Zelle **nur beschreibend** berichtet; sie gehen in keinen Test ein.
 - Anteil der Stunden mit Median Kosten in R unter 0,25 R (Schwelle aus der Hypothese und PR #408) wird beschreibend berichtet.
@@ -95,6 +95,15 @@ Vergleich: Vergleich der Kosten-in-R-Verteilung je Stunde und Wochentag
 - Sonst **NICHT BESTANDEN**; bei verfehlter Mindestzahl **nicht prüfbar**.
 - Auch ein BESTANDEN liefert nur einen Zeitfilter für Kosten, keine Richtung und keine Setup-Evidenz (Abschnitt 2).
 
+### 6.4 Umsetzung (vor dem Datenzugriff festgelegt)
+
+- Code: `src/research_lab/studies/s17.py`, Seed 1717 (Zellintervalle 1718), 10 000 Ziehungen, Tests `tests/test_research_lab_s17.py`. Schritte getrennt aufrufbar: `count` (nur Fallzahlen), `train` (liest nur Tage bis 2022-12-31, bestimmt und schreibt die Gruppen G/T und die Wochentage), `validate` (liest erst ab 2022-12-31, nur für den ATR-Vorlauf, und übernimmt die Gruppen aus der `train`-Datei), `describe` (Stabilität, Entscheidung, beschreibende Teile).
+- Eingang: S8-Tagesdateien `bars/BTCUSDT-<Tag>.csv` (Balkenversion 1.1.0) mit Prüfsumme gegen `bars_manifest.json`; ein Tag mit `id_gaps`, `time_regressions` oder `duplicate_rows` im Reduktionsbericht macht alle seine Stunden zu „fehlerhafte Minute“.
+- ATR(14) wie `backtest/indicators.py` `atr()`: 14 True Ranges brauchen die Schlusskurse von 15 geschlossenen Kerzen. Der Vorlauf ist deshalb 15 Stunden (bzw. 15 4h-Blöcke vor dem Block der Fallstunde); Lücken im Vorlauf zählen als „vorlauf_unvollständig“.
+- Kalenderwoche = ⌊(t − 1970-01-05 00:00 UTC) / 7 Tage⌋. Bootstrap je Abschnitt: so viele Wochen mit Zurücklegen ziehen, wie der Abschnitt hat (Randwochen kürzer).
+- Minutenvolatilität: Standardabweichung der ln-Renditen zwischen benachbarten Minuten mit Handel innerhalb der Stunde (letzter Preis).
+- Stabilität: Stundenmediane je Kalenderjahr über alle gültigen Fälle des Jahres.
+
 ## 7. Bekannte Grenzen
 
 - Die Studie betrachtet nur Daten bis 2024-12-31, da der Holdout-Zeitraum gesperrt ist.
@@ -119,3 +128,5 @@ Vergleich: Vergleich der Kosten-in-R-Verteilung je Stunde und Wochentag
 |---|---|---|
 | 2026-11-07 | 0.1 | Entwurf vom Studien-Generator aus Idee I-0002 |
 | 2026-11-07 | 0.2 | Von Hand ergänzt: Vorbelastung S4/S6/S8 begründet (3), Instrument, Zeitraum und Datensplit (4.1), Ereignisdefinition mit `BASE_COSTS` und S7b-Stop 1,5 × ATR(14) (5.1, zwei Abweichungen als Vorschlag), Wochenblock-Bootstrap und n_eff (5.2), Test (6.1), Holm über 2 Vergleiche (6.2), Entscheidung (6.3), kleinster Effekt von Prozentpunkten auf 0,05 R korrigiert, Stoppregel ohne vorzeitiges Stoppen. Spezifikations-Hash gilt nur für 0.1 |
+| 2026-11-07 | 1.0 | **Freigegeben von Uzi 07.11.2026 13:29 Ortszeit („ja mach mal“).** Beide Abweichungen aus 5.1 beschlossen (1h-ATR statt 4h, Hauptmessung ohne 1-%-Mindestabstand). Umsetzung 6.4 und Code mit Seed 1717 vor dem Datenzugriff eingefroren; Spezifikations-Hash über den Regeltext 1.0 neu berechnet |
+| 2026-11-07 | 1.0 | Zähllauf und Auswertung mit Code-Stand `e8a3d530`: **NICHT BESTANDEN** (Δ_h 0,015 R / 0,042 R unter 0,05 R; Holm und Stabilität erfüllt). Bericht `../reports/s17_result_2026-11-07.md`. Regeltext unverändert, Spezifikations-Hash gilt weiter |
