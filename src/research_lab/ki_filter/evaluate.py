@@ -86,6 +86,13 @@ def evaluate(records: Sequence[Mapping[str, Any]], journals: Mapping[str, Mappin
             arms["ki"].append(item)
         elif record.get("decision") == AUSLASSEN:
             skipped.append(item)
+    # Plans created since the first judgement of this count that never got one (filled too fast, AI down, ...).
+    start = min((parse_time(r.get("decided_at")) for r in records if parse_time(r.get("decided_at"))), default=None)
+    judged_keys = {(r.get("timeframe"), r.get("plan_id")) for r in records}
+    counts["missed"] = 0 if start is None else sum(
+        1 for key, entry in entries.items()
+        if key not in judged_keys and not entry.get("excluded")
+        and (parse_time(entry.get("created_at")) or start) >= start and entry.get("status") != "OPEN")
     ready = len(rules) >= MIN_TRADES
     return {
         "model": model, "prompt_version": prompt_version,

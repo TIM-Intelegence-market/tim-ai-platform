@@ -143,7 +143,7 @@ def test_evaluate_counts_only_timely_judgements():
                rec("x", NEHMEN), rec("o", NEHMEN), rec("gone", NEHMEN)]
     result = evaluate(records, {"15m": {"entries": entries}})
     assert result["counts"] == {"judged": 7, "late": 1, "missing_plan": 1, "pending": 1, "no_fill": 1, "excluded": 0,
-                                "other_model_or_prompt": 0, "duplicate": 0}
+                                "other_model_or_prompt": 0, "duplicate": 0, "missed": 0}
     assert result["rules_alone"]["sum_net_r"] == 0.0 and result["rules_alone"]["trades"] == 3
     assert result["rules_plus_ki"]["sum_net_r"] == 1.0 and result["ki_skipped"]["sum_net_r"] == -1.0
     assert result["rules_alone"]["max_drawdown_r"] == -2.0
@@ -183,3 +183,13 @@ def test_evaluate_dedupes_and_separates_models():
     assert result["counts"]["duplicate"] == 1 and result["counts"]["other_model_or_prompt"] == 1
     late = {**base, "model": "qwen", "written_at": "2026-11-07T10:30:00Z"}
     assert evaluate([late], {"15m": {"entries": entries}})["counts"]["late"] == 1
+
+
+def test_evaluate_reports_missed_plans():
+    base = {"timeframe": "15m", "decision": NEHMEN, "decided_at": "2026-11-07T10:01:00Z", "model": "m",
+            "prompt_version": "ki1-prompt/2"}
+    entries = [closed("a", "2026-11-07T11:00:00Z", 1.0, created_at="2026-11-07T10:00:00Z"),
+               closed("b", "2026-11-07T12:00:00Z", 1.0, created_at="2026-11-07T10:30:00Z"),
+               closed("old", "2026-11-07T09:00:00Z", 1.0, created_at="2026-11-06T10:00:00Z")]
+    result = evaluate([{**base, "plan_id": "a"}], {"15m": {"entries": entries}})
+    assert result["counts"]["missed"] == 1
