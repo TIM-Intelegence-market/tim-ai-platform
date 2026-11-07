@@ -342,6 +342,24 @@ async def test_max_minutes_bounds_one_run_oldest_first(database) -> None:
     assert rows[103]["status"] == "DEFERRED" and rows[104]["status"] == "DEFERRED"
 
 
+@database_only
+@pytest.mark.asyncio
+async def test_min_trade_id_skips_older_deferred_rows(database) -> None:
+    """The gap filler passes its lowest filled ID: older (legacy) DEFERRED minutes stay untouched."""
+    await seed(database)
+    async with database.acquire() as connection:
+        report = await rebuild_deferred_candles(
+            connection, SYMBOL, apply=True, min_trade_id=104, count_deferred=False,
+        )
+    assert report.deferred_by_worker == {}
+    assert [c["open_time"] for c in await candles(database)] == [BASE + timedelta(minutes=1)]
+    rows = await outbox_rows(database)
+    assert all(rows[i]["status"] == "DEFERRED" for i in (100, 101, 102))  # minute 0 lies below the floor
+    with pytest.raises(ValueError):
+        async with database.acquire() as connection:
+            await rebuild_deferred_candles(connection, SYMBOL, apply=False, min_trade_id=-1)
+
+
 # --- second scope: raw trades without any outbox work ----------------------
 
 async def seed_uncandled(database: Database) -> None:

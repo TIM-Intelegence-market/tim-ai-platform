@@ -168,8 +168,9 @@ WITH deferred AS (
     FROM ingestion_outbox o
     JOIN agg_trades t ON t.symbol=o.symbol AND t.aggregate_trade_id=o.aggregate_trade_id
     WHERE o.worker_name=$2 AND o.symbol=$1 AND o.status='DEFERRED'
+      AND ($5::bigint IS NULL OR o.aggregate_trade_id >= $5::bigint)
 ), minutes AS (
-    SELECT date_trunc('minute', trade_time) AS open_time, count(*) AS deferred_items
+    SELECT date_trunc('minute', trade_time) AS open_time
     FROM deferred GROUP BY 1 ORDER BY 1 LIMIT $4
 ), raw AS (
     SELECT m.open_time, count(*) AS raw_trades,
@@ -180,13 +181,14 @@ WITH deferred AS (
 ), work AS (
     SELECT m.open_time,
            count(*) FILTER (WHERE o.status = ANY($3::text[])) AS active_items,
-           count(*) FILTER (WHERE o.status='COMPLETED') AS completed_items
+           count(*) FILTER (WHERE o.status='COMPLETED') AS completed_items,
+           count(*) FILTER (WHERE o.status='DEFERRED') AS deferred_items
     FROM minutes m
     JOIN agg_trades t ON t.symbol=$1 AND t.trade_time >= m.open_time AND t.trade_time < m.open_time + interval '1 minute'
     JOIN ingestion_outbox o ON o.symbol=t.symbol AND o.aggregate_trade_id=t.aggregate_trade_id AND o.worker_name=$2
     GROUP BY m.open_time
 )
-SELECT m.open_time, m.deferred_items, r.raw_trades, r.min_trade_id, r.max_trade_id,
+SELECT m.open_time, COALESCE(w.deferred_items, 0) AS deferred_items, r.raw_trades, r.min_trade_id, r.max_trade_id,
        COALESCE(w.active_items, 0) AS active_items, COALESCE(w.completed_items, 0) AS completed_items,
        (SELECT count(*) FROM ingestion_gap_incidents g
          WHERE g.symbol=$1 AND g.status IN ('OPEN','CATCHING_UP')
@@ -254,12 +256,22 @@ async def inventory(
     now: datetime | None = None,
     safety_seconds: int = 120,
     max_minutes: int = 500,
+    min_trade_id: int | None = None,
 ) -> list[MinutePlan]:
-    """Oldest-first minutes with DEFERRED CANDLE_V1 rows and their verdicts. Read-only."""
+    """Oldest-first minutes with DEFERRED CANDLE_V1 rows and their verdicts. Read-only.
+
+    ``min_trade_id`` limits the scan to DEFERRED rows from that trade ID on (an
+    index range on ``ingestion_outbox_deferred_idx``). The background gap filler
+    uses it to rebuild only what it filled, not the millions of legacy rows.
+    """
     if not 1 <= max_minutes <= 10_000:
         raise ValueError("max_minutes must be between 1 and 10000")
+    if min_trade_id is not None and min_trade_id < 0:
+        raise ValueError("min_trade_id must not be negative")
     closed_through = closed_before(now or datetime.now(UTC), safety_seconds)
-    rows = await connection.fetch(_INVENTORY_SQL, symbol, FIRST_WORKER, list(ACTIVE_OUTBOX_STATUSES), max_minutes)
+    rows = await connection.fetch(
+        _INVENTORY_SQL, symbol, FIRST_WORKER, list(ACTIVE_OUTBOX_STATUSES), max_minutes, min_trade_id,
+    )
     return [
         classify_minute(
             symbol=symbol,
@@ -499,6 +511,8 @@ async def rebuild_deferred_candles(
     now: datetime | None = None,
     safety_seconds: int = 120,
     max_minutes: int = 500,
+    min_trade_id: int | None = None,
+    count_deferred: bool = True,
 ) -> RebuildReport:
     """Plan (and with ``apply`` execute) the rebuild for one symbol.
 
@@ -508,7 +522,10 @@ async def rebuild_deferred_candles(
     simply continues with what is still DEFERRED.
     """
     checked_at = now or datetime.now(UTC)
-    plans = await inventory(connection, symbol, now=checked_at, safety_seconds=safety_seconds, max_minutes=max_minutes)
+    plans = await inventory(
+        connection, symbol, now=checked_at, safety_seconds=safety_seconds, max_minutes=max_minutes,
+        min_trade_id=min_trade_id,
+    )
     report = RebuildReport(
         symbol=symbol,
         mode="OBSERVE",
@@ -517,7 +534,7 @@ async def rebuild_deferred_candles(
         checked_at_utc=checked_at.astimezone(UTC).isoformat(),
         closed_through_utc=closed_before(checked_at, safety_seconds).isoformat(),
         planned_minutes=len(plans),
-        deferred_by_worker=await deferred_counts(connection, symbol),
+        deferred_by_worker=await deferred_counts(connection, symbol) if count_deferred else {},
     )
     await _execute_plans(connection, plans, report, apply=apply, scope=SCOPE_DEFERRED)
     return report
