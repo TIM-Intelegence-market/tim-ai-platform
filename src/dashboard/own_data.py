@@ -7,7 +7,8 @@ TIM collects data that cannot be fetched again later, or only for a short time:
 * the same two for Monero (XMRUSDT perp, since 04.11.2026) in ``data/perp_flow/XMRUSDT/``,
 * options gamma walls and flip (Deribit snapshot every 5 min), ``data/options/gamma_levels.jsonl``,
 * real liquidations (Binance and Bybit streams, study S12), ``research-lab/liquidations/raw/``,
-* the daily copy of these files (``tim_db_backup.py files``), ``backup_files.json``.
+* the daily copy of these files (``tim_db_backup.py files``), ``backup_files.json``,
+* the background gap filler of TIM's own aggTrades (issue #82), ``gap_filler.json``.
 
 Every month of this history makes it more valuable, and a collector that stops quietly loses
 days that never come back. ``status`` reads only what the collectors already write and says per
@@ -31,6 +32,8 @@ OI_MAX_AGE = 3 * 3600  # one point per hour, Binance publishes it a few minutes 
 GAMMA_MAX_AGE = 20 * 60  # snapshot every 5 min
 LIQ_MAX_AGE = 5 * 60  # an "alive" line every 60 s even when nothing is liquidated
 FILES_BACKUP_MAX_AGE = 26 * 3600  # daily at 03:15 plus slack
+GAP_FILLER_MAX_AGE = 15 * 60  # a round at least every few minutes while the runtime runs
+GAP_STALL_SECONDS = 6 * 3600  # open gaps without progress this long: yellow
 LIQ_VENUES = ("binance", "bybit")
 TAIL_BYTES = 8192
 
@@ -186,6 +189,37 @@ def files_backup_tile(operational: Path, now: datetime) -> Tile:
                      as_of=report.get("completed_at"), max_age_seconds=FILES_BACKUP_MAX_AGE, now=now)
 
 
+def _thousands(value: Any) -> str:
+    return f"{int(value):,}".replace(",", ".") if isinstance(value, int) and not isinstance(value, bool) else "—"
+
+
+def gap_filler_tile(operational: Path, now: datetime) -> Tile:
+    """Background gap filler of the aggTrades (issue #82): open gaps and whether they shrink."""
+    tile_id, name, source = "own_gaps", "Datenlücken (Nachholer)", "data/operational/gap_filler.json"
+    try:
+        report = json.loads((operational / "gap_filler.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return unavailable(tile_id, name, "Nachholer hat noch keine Runde gemeldet", source)
+    except (OSError, ValueError) as exc:
+        return make_tile(tile_id, name, "—", state="fail", reason=f"Bericht unlesbar: {type(exc).__name__}", source=source, now=now)
+    open_gaps = report.get("open_gaps") if isinstance(report.get("open_gaps"), int) else 0
+    missing = report.get("missing_trades")
+    state = str(report.get("state") or "UNKNOWN").upper()
+    if state == "ERROR":
+        return make_tile(tile_id, name, f"{open_gaps} offen", state="fail", reason=str(report.get("last_error") or "Fehler"),
+                         source=source, as_of=report.get("checked_at_utc"), max_age_seconds=GAP_FILLER_MAX_AGE, now=now)
+    if not open_gaps:
+        return make_tile(tile_id, name, "keine Lücke offen", "PASS", source=source, as_of=report.get("checked_at_utc"),
+                         max_age_seconds=GAP_FILLER_MAX_AGE, now=now,
+                         detail=f"{_thousands(report.get('resolved_total'))} geschlossen seit Start")
+    progress = _age_of(report.get("last_progress_at_utc"), now)
+    stalled = progress is None or progress > GAP_STALL_SECONDS
+    reason = ("Seit über 6 h kein Fortschritt" + (f": {report.get('last_error')}" if report.get("last_error") else "")) if stalled else ""
+    return make_tile(tile_id, name, f"{open_gaps} offen, {_thousands(missing)} Trades", "WARN" if stalled else "PASS",
+                     reason=reason, source=source, as_of=report.get("checked_at_utc"), max_age_seconds=GAP_FILLER_MAX_AGE,
+                     now=now, detail="wird im Hintergrund nachgeholt")
+
+
 def status(data_root: Path, liq_root: Path, now: datetime | None = None) -> list[Tile]:
     """One tile per own data source, newest record against its freshness limit."""
     now = now or datetime.now(timezone.utc)
@@ -193,12 +227,13 @@ def status(data_root: Path, liq_root: Path, now: datetime | None = None) -> list
              perp_tile(data_root, now, "XMRUSDT"), oi_tile(data_root, now, "XMRUSDT"), gamma_tile(data_root, now)]
     tiles += [liquidation_tile(liq_root, venue, now) for venue in LIQ_VENUES]
     tiles.append(files_backup_tile(data_root / "operational", now))
+    tiles.append(gap_filler_tile(data_root / "operational", now))
     return tiles
 
 
 def summary_tile(tiles: list[Tile], now: datetime | None = None) -> Tile:
     """The one tile on the Lage page: worst source decides, the reason names the sources."""
-    collectors = [t for t in tiles if t.id != "own_backup"]
+    collectors = [t for t in tiles if t.id not in {"own_backup", "own_gaps"}]
     fresh = sum(t.state == "ok" for t in collectors)
     bad = [t for t in tiles if t.state in {"fail", "warn"}]
     state = worst([t.state for t in tiles if t.state != "unknown"]) if any(t.state != "unknown" for t in tiles) else "unknown"

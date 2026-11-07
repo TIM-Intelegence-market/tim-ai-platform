@@ -37,6 +37,9 @@ def _write_all(root: Path, liq: Path, *, age: timedelta = timedelta(0)) -> None:
     (root / "operational").mkdir()
     (root / "operational" / "backup_files.json").write_text(json.dumps({
         "status": "PASS", "completed_at": (NOW - timedelta(hours=10)).isoformat(), "bytes": 2_500_000, "mirror": "/Volumes/x"}))
+    (root / "operational" / "gap_filler.json").write_text(json.dumps({
+        "state": "IDLE", "checked_at_utc": (at - timedelta(minutes=1)).isoformat(), "open_gaps": 0, "missing_trades": 0,
+        "resolved_total": 2}))
 
 
 def _by_id(tiles) -> dict:
@@ -113,4 +116,27 @@ def test_cockpit_shows_the_summary_on_lage_and_every_source_on_betrieb(tmp_path:
     assert any(t["id"] == "own_data" for t in lage["attention"])
     betrieb = build_betrieb(state, now=NOW, sources=BudgetedSources(cache_seconds=0), budget=5)
     section = next(s for s in betrieb["sections"] if s["id"] == "own_data")
-    assert [t["id"] for t in section["tiles"]] == ["own_perp", "own_oi", "own_perp_xmr", "own_oi_xmr", "own_gamma", "own_liq_binance", "own_liq_bybit", "own_backup"]
+    assert [t["id"] for t in section["tiles"]] == ["own_perp", "own_oi", "own_perp_xmr", "own_oi_xmr", "own_gamma", "own_liq_binance", "own_liq_bybit", "own_backup", "own_gaps"]
+
+
+def _gap_report(root: Path, **fields) -> None:
+    (root / "operational").mkdir(parents=True, exist_ok=True)
+    (root / "operational" / "gap_filler.json").write_text(json.dumps({"checked_at_utc": NOW.isoformat(), **fields}))
+
+
+def test_gap_filler_tile_green_while_gaps_shrink_yellow_when_stuck(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    assert own_data.gap_filler_tile(root / "operational", NOW).state == "unknown"  # no report yet
+    _gap_report(root, state="IDLE", open_gaps=0, resolved_total=3)
+    tile = own_data.gap_filler_tile(root / "operational", NOW)
+    assert tile.state == "ok" and tile.value == "keine Lücke offen"
+    _gap_report(root, state="FILLING", open_gaps=2, missing_trades=2_900_000,
+                last_progress_at_utc=(NOW - timedelta(minutes=2)).isoformat())
+    tile = own_data.gap_filler_tile(root / "operational", NOW)
+    assert tile.state == "ok" and tile.value == "2 offen, 2.900.000 Trades"
+    _gap_report(root, state="BACKING_OFF", open_gaps=1, missing_trades=10, last_error="public REST source returned no data",
+                last_progress_at_utc=(NOW - timedelta(hours=7)).isoformat())
+    tile = own_data.gap_filler_tile(root / "operational", NOW)
+    assert tile.state == "warn" and "6 h" in tile.reason and "no data" in tile.reason
+    _gap_report(root, state="ERROR", open_gaps=1, last_error="OSError: db")
+    assert own_data.gap_filler_tile(root / "operational", NOW).state == "fail"
