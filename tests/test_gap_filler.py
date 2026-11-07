@@ -401,3 +401,66 @@ async def test_batch_backfill_is_fast_enough(database) -> None:
     rate = 100_000 / seconds
     print(f"batch backfill: {rate:,.0f} trades/s")
     assert rate > 2_000
+
+
+@pytest.mark.asyncio
+async def test_slow_candle_rebuild_does_not_stop_gap_filling() -> None:
+    """Live 07.11.: the DEFERRED inventory ran into the 30 s pool timeout and failed every round."""
+    now = [1000.0]
+    calls = []
+
+    async def rebuilder():
+        calls.append(now[0])
+        if len(calls) == 1:
+            raise TimeoutError()
+        return 0
+
+    filler = GapFiller(FillerStore([]), ScriptedCoordinator({}), "BTCUSDT", candle_rebuilder=rebuilder,
+                       status_path=None, clock=lambda: now[0], rebuild_idle_seconds=1800.0)
+    report = await filler.run_once()
+    assert filler.status.state == "IDLE" and filler.status.last_error is None
+    assert filler.status.candle_error.startswith("TimeoutError")
+    assert report.candles_rebuilt == 0
+    await filler.run_once()
+    assert len(calls) == 1  # backing off after the failure
+    now[0] += 700.0
+    await filler.run_once()
+    assert len(calls) == 2 and filler.status.candle_error is None
+    now[0] += 60.0
+    await filler.run_once()
+    assert len(calls) == 2  # nothing rebuilt last time: wait for the idle interval
+    now[0] += 1800.0
+    await filler.run_once()
+    assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_rebuilder_queries_get_long_timeout() -> None:
+    from src.data_ingestion.gap_filler import _LongQueries
+
+    seen = []
+
+    class Connection:
+        async def fetch(self, query, *args, timeout=None):
+            seen.append(("fetch", timeout))
+            return []
+
+        async def fetchrow(self, query, *args, timeout=None):
+            seen.append(("fetchrow", timeout))
+
+        async def fetchval(self, query, *args, timeout=None):
+            seen.append(("fetchval", timeout))
+
+        async def execute(self, query, *args, timeout=None):
+            seen.append(("execute", timeout))
+
+        def transaction(self):
+            return "tx"
+
+    view = _LongQueries(Connection(), 600.0)
+    await view.fetch("q", 1)
+    await view.fetchrow("q")
+    await view.fetchval("q")
+    await view.execute("q")
+    assert view.transaction() == "tx"
+    assert seen == [("fetch", 600.0), ("fetchrow", 600.0), ("fetchval", 600.0), ("execute", 600.0)]

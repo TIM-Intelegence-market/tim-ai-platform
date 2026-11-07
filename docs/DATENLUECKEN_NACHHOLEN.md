@@ -23,7 +23,10 @@ Jetzt gilt:
 4. **Kerzen nachbauen.** Nachgeholte Trades kommen als `DEFERRED` in die Outbox und stehen so nie vor der Live-Arbeit.
    Nach jeder Runde baut der Nachholer die geschlossenen 1m-Kerzen dieser Minuten aus den Rohdaten neu
    (`deferred_candles.rebuild_deferred_candles`, höchstens 500 Minuten je Runde). Minuten, die eine offene Lücke
-   noch berührt oder in denen Live-Arbeit liegt, wartet er ab.
+   noch berührt oder in denen Live-Arbeit liegt, wartet er ab. Der Neubau liest alle `DEFERRED`-Zeilen der Outbox
+   (auf dem Live-System Millionen alter Zeilen) und darf deshalb bis 600 s je Abfrage brauchen. Er läuft jede Runde nur,
+   solange er etwas baut oder neue Trades geschrieben wurden, sonst höchstens alle 30 Minuten. Scheitert er, steht der
+   Fehler als `candle_error` im Bericht, und das Nachholen der Lücken läuft trotzdem weiter.
 5. **Anzeige.** Control Center, Betrieb → Eigene Marktdaten → Kachel „Datenlücken (Nachholer)“ (liest
    `data/operational/gap_filler.json`). Grün: keine Lücke oder die Lücken werden kleiner. Gelb: seit über 6 h kein
    Fortschritt. Rot: Fehler im Nachholer.
