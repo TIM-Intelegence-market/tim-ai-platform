@@ -211,7 +211,8 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 | Gold | DEFERRED, Vorschlag Uzi 07.11. | in der Makro-Leiste vorhanden (PAXG), Quelle für Historie bis 2017 prüfen |
 | Geldmenge M2, Kreditrisiko (High-Yield-Spread) | DEFERRED, Vorschlag | FRED `M2SL` (monatlich, Revisionen, Vintages in ALFRED) und `BAMLH0A0HYM2`; Lizenz des Spreads prüfen |
 | ETF-Zuflüsse (Spot-BTC-ETFs) | DEFERRED, Vorschlag Uzi 07.11. | vermutlich größter Treiber seit 2024; freie Quelle (Farside) war im Oktober gesperrt, Quelle mit Tageszeitstempel prüfen |
-| Stablecoin-Menge, BTC-Dominanz | DEFERRED, Vorschlag Uzi 07.11. | DefiLlama frei; Dominanz wird erst seit 27.10.2026 gesammelt, Historie fehlt |
+| BTC-Dominanz, USDT-Dominanz | IM KATALOG (`BTCD`, `USDTD`), Uzi 07.11. | Ersatzreihe aus Coin Metrics Community (`CapMrktEstUSD`, rund 830 Assets, ab 2019-06-22, ohne Key), Befehl `python -m src.research_lab.influence dominanz`; Prüfung am Mac 07.11.: 06.11.2026 BTC 59,3 % / USDT 6,90 % gegen CoinGecko 59,30 % / 6,89 %. Krypto-intern: nur mit Vorlauf (5b), nicht in der gemeinsamen Rechnung. Makro-Leiste speichert beide CoinGecko-Werte täglich |
+| Stablecoin-Menge | DEFERRED, Vorschlag Uzi 07.11. | DefiLlama frei (ab Ende 2017) |
 | Options-Volatilität (Deribit DVOL) | DEFERRED, nur mit Vorlauf-Regel (5b) | frei abrufbar, Historie ab 2021; Kryptomarkt-intern |
 | On-Chain (Börsenbestände, Hashrate, Miner-Abflüsse) | DEFERRED | Börsenbestände meist kostenpflichtig (Glassnode, CryptoQuant); Hashrate frei, aber geschätzt und nachträglich geglättet, Point-in-Time prüfen |
 | Funding, Open Interest, Liquidationen (Binance) | DEFERRED, nur mit Vorlauf-Regel (5b) | folgen oft dem Kurs selbst; als Handelsregel gehört Funding weiter in die Werkstatt (F2 nicht bestanden) |

@@ -28,10 +28,12 @@ def build(data: Mapping[str, Series], btc: Mapping[date, float], *, now: datetim
         coverage = sum(1 for r in rows[d.key] if r.change_week is not None and r.week in btc) / max(1, len(btc))
         per_driver[d.key] = {"label": d.label, "familie": d.family, "einheit": d.change, "revidiert": d.revised,
                              "braucht_vorlauf": d.needs_lead, "hinweis": d.note, "abdeckung": coverage, **info}
-    in_joint = [d.key for d in drivers if per_driver[d.key]["abdeckung"] >= JOINT_MIN_COVERAGE]
+    # crypto-internal series (dominance holds the BTC price itself) stay out of the joint view (5b)
+    in_joint = [d.key for d in drivers if not d.needs_lead and per_driver[d.key]["abdeckung"] >= JOINT_MIN_COVERAGE]
     joint = analysis.joint({k: rows[k] for k in in_joint}, btc)
     joint["treiber"] = in_joint
-    joint["ausgelassen"] = [d.key for d in drivers if d.key not in in_joint]
+    joint["ausgelassen"] = [d.key for d in drivers if d.key not in in_joint and not d.needs_lead]
+    joint["krypto_getrennt"] = [d.key for d in drivers if d.needs_lead]
     return {"schema": SCHEMA, "erstellt_utc": now.replace(microsecond=0).isoformat(),
             "btc_wochen": len(btc), "erste_woche": grid[0].isoformat(), "letzte_woche": grid[-1].isoformat(),
             "angeschaute_treiber": len(drivers), "eingaben_sha256": dict(inputs or {}),
@@ -99,6 +101,9 @@ def markdown(report: Mapping) -> str:
         if j["ausgelassen"]:
             lines += ["", "Nicht in der gemeinsamen Rechnung (zu kurze Historie): "
                       + ", ".join(report["treiber"][k]["label"] for k in j["ausgelassen"]) + "."]
+    if j.get("krypto_getrennt"):
+        lines += ["", "Krypto-interne Reihen nur einzeln, nicht in der gemeinsamen Rechnung (sie enthalten den BTC-Kurs selbst): "
+                  + ", ".join(report["treiber"][k]["label"] for k in j["krypto_getrennt"]) + "."]
     lines += ["", "## Je Jahr (Gleichlauf)", "", "| Treiber | " + " | ".join(str(y) for y in _years(report)) + " |",
               "|---|" + "---:|" * len(_years(report))]
     for t in report["treiber"].values():

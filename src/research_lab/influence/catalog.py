@@ -15,13 +15,14 @@ LIQUIDITY_KEY = "NETLIQ"
 class Driver:
     key: str
     label: str
-    series: tuple[str, ...]  # FRED ids; NETLIQ combines WALCL - WTREGEN - RRPONTSYD
+    series: tuple[str, ...]  # FRED ids (or CM_* for source "coinmetrics"); NETLIQ combines WALCL - WTREGEN - RRPONTSYD
     change: str  # "bp" (rates in percent), "pct" (prices, indices), "diff" (levels)
     lag_days: int  # an observation dated d counts as known from d + lag_days 00:00 UTC
     family: str
     max_age_days: int = 14  # a known value older than this gives no state
     revised: bool = False  # True: FRED gives revised latest values, no vintages used here
     note: str = ""
+    source: str = "fred"  # "fred" or "coinmetrics" (dominance substitute, see dominance.py)
 
     @property
     def needs_lead(self) -> bool:
@@ -50,6 +51,10 @@ DRIVERS: tuple[Driver, ...] = (
            note="monatlich, rund vier Wochen nach Monatsende, wird revidiert"),
     Driver("ECBASSETSW", "Bilanz EZB", ("ECBASSETSW",), "pct", 8, "liquiditaet",
            note="wöchentlich, in Euro"),
+    Driver("BTCD", "BTC-Dominanz (Ersatz)", ("CM_BTC_DOMINANCE",), "diff", 1, "krypto", source="coinmetrics",
+           note="Prozentpunkte; Anteil BTC an rund 830 Coin-Metrics-Assets (CapMrktEstUSD) ab 2019-06, nicht TradingView BTC.D"),
+    Driver("USDTD", "USDT-Dominanz (Ersatz)", ("CM_USDT_DOMINANCE",), "diff", 1, "krypto", source="coinmetrics",
+           note="Prozentpunkte; Anteil Tether am selben Korb, steigt meist bei Risiko-aus"),
 )
 
 def by_key(key: str) -> Driver:
@@ -59,8 +64,9 @@ def by_key(key: str) -> Driver:
     raise KeyError(key)
 
 
-def all_series() -> tuple[str, ...]:
+def all_series(source: str = "fred") -> tuple[str, ...]:
+    """Series ids of one source; FRED is the default because ``fetch`` downloads those."""
     seen: list[str] = []
-    for driver in DRIVERS:
+    for driver in (d for d in DRIVERS if d.source == source):
         seen.extend(s for s in driver.series if s not in seen)
     return tuple(seen)
