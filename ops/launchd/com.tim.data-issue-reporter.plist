@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tim.data-issue-reporter</string>
+  <!-- Datenfehler, die Nachholer und History-Recovery nicht schließen, als GitHub-Issue mit Codex-Analyse
+       (docs/DATENLUECKEN_NACHHOLEN.md, Abschnitt "Melder"). Liest nur Statusdateien, ändert keinen Code. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/tim/TIM-live/.venv/bin/python</string>
+    <string>-m</string>
+    <string>src.operational.data_issue_reporter</string>
+    <string>--operational-dir</string>
+    <string>/Users/tim/TIM-live/data/operational</string>
+    <string>--repo-dir</string>
+    <string>/Users/tim/Documents/TIM/worktrees/data-issues/repo</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/tim/TIM-live</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>/Users/tim</string>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONDONTWRITEBYTECODE</key><string>1</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>900</integer>
+  <key>Nice</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/Users/tim/Library/Logs/TIM/data-issue-reporter.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Library/Logs/TIM/data-issue-reporter.err.log</string>
+</dict>
+</plist>
