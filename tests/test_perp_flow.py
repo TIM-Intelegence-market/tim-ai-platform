@@ -239,7 +239,12 @@ def test_live_chart_switches_trades_between_spot_and_perp() -> None:
     spot = _store("spot", 0.5, now - timedelta(hours=10), 10)
     spot["source"] = "spot-quelle"
     perp = {**_store("perp", -2.0, now - timedelta(hours=10), 10), "source": perp_flow.SOURCE, "health": {"checks": 3, "checks_ok": 3, "gaps": 0}}
-    common = {"cache": KlineCache(fake_fetch()), "now": now, "footprint": spot, "perp": perp}
+    spot_fetch = fake_fetch()
+
+    def perp_fetch(symbol: str, interval: str, limit: int) -> list[dict]:  # perp a basis of 35 USDT below spot
+        return [{**r, **{k: r[k] - 35.0 for k in ("open", "high", "low", "close")}} for r in spot_fetch(symbol, interval, limit)]
+
+    common = {"cache": KlineCache(spot_fetch), "perp_cache": KlineCache(perp_fetch), "now": now, "footprint": spot, "perp": perp}
     default = build_live_chart("BTCUSDT", "30m", **common)
     assert default["markets"]["active"] == "spot" and default["markets"]["available"] == ["spot", "perp"]
     assert default["trade_source"] == "spot-quelle" and default["perp_health"]["checks_ok"] == 3
@@ -247,6 +252,21 @@ def test_live_chart_switches_trades_between_spot_and_perp() -> None:
     switched = build_live_chart("BTCUSDT", "30m", market="perp", **common)
     assert switched["markets"]["active"] == "perp" and switched["trade_source"] == perp_flow.SOURCE
     assert switched["footprint"]["bars"][-1]["delta"] < 0 < default["footprint"]["bars"][-1]["delta"]
+    # Uzi 07.11.2026: perp cells sat ~35 USDT below the spot candles; with "Perp" the candles are perp too.
+    assert default["candle_market"] == "spot" and switched["candle_market"] == "perp"
+    assert [c["time"] for c in switched["candles"]] == [c["time"] for c in default["candles"]]
+    assert switched["candles"][-1]["close"] == pytest.approx(default["candles"][-1]["close"] - 35.0)
+    assert any(n.startswith("Kerzen, Footprint und Bubbles aus dem Perp") for n in switched["notes"])
+    assert {b["time"] for b in switched["footprint"]["bars"]} <= {c["time"] for c in switched["candles"]}
+
+    def offline(symbol: str, interval: str, limit: int) -> list[dict]:
+        raise OSError("no route")
+
+    fallback = build_live_chart("BTCUSDT", "30m", market="perp", **{**common, "perp_cache": KlineCache(offline)})
+    assert fallback["candle_market"] == "spot" and fallback["markets"]["active"] == "spot"
+    assert fallback["trade_source"] == "spot-quelle" and any(n.startswith("Perp-Kerzen nicht erreichbar") for n in fallback["notes"])
+    daily = build_live_chart("BTCUSDT", "1d", market="perp", **common)
+    assert daily["candle_market"] == "spot"
     missing = build_live_chart("BTCUSDT", "30m", market="perp", cache=KlineCache(fake_fetch()), now=now, footprint=spot)
     assert missing["markets"]["active"] == "spot" and any(n.startswith("Perp-Trades noch nicht da") for n in missing["notes"])
 

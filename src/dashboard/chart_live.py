@@ -137,12 +137,12 @@ def kline_url(symbol: str) -> str:
     return PERP_KLINES if symbol in PERP_ONLY else SPOT_KLINES
 
 
-def fetch_klines(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
-    """Public Binance klines (spot, USD-M perpetual for ``PERP_ONLY``), including the open candle (``closed`` False)."""
+def fetch_klines(symbol: str, interval: str, limit: int, perp: bool = False) -> list[dict[str, Any]]:
+    """Public Binance klines (spot, USD-M perpetual for ``PERP_ONLY`` or ``perp``), including the open candle (``closed`` False)."""
     if symbol not in SYMBOLS or interval not in INTERVAL_SECONDS:
         raise ValueError("Unsupported symbol or interval")
     query = urlencode({"symbol": symbol, "interval": interval, "limit": max(1, min(int(limit), VIEW_LIMIT))})
-    with urlopen(kline_url(symbol) + query, timeout=10) as response:
+    with urlopen((PERP_KLINES if perp else kline_url(symbol)) + query, timeout=10) as response:
         rows = json.load(response)
     if not isinstance(rows, list):
         raise ValueError("Invalid exchange candle response")
@@ -196,7 +196,13 @@ class KlineCache:
         return [], error
 
 
+def fetch_perp_klines(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
+    """USD-M perpetual klines: the candles under a perp footprint (Uzi 07.11.2026, footprint sat below spot candles)."""
+    return fetch_klines(symbol, interval, limit, perp=True)
+
+
 CACHE = KlineCache()
+PERP_CACHE = KlineCache(fetch_perp_klines)
 
 
 def _epoch(value: Any) -> int:
@@ -948,7 +954,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                      gamma: Mapping[str, Any] | None = None, liquidation: Mapping[str, Any] | None = None,
                      perp: Mapping[str, Any] | None = None, open_interest: Mapping[str, Any] | None = None,
                      market: str | None = None, context: Mapping[str, Any] | None = None,
-                     macro: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+                     macro: Sequence[Mapping[str, Any]] | None = None, perp_cache: KlineCache | None = None) -> dict[str, Any]:
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
@@ -961,7 +967,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     heat cells under model key ``liquidation`` and the strongest clusters as group "liq".
     ``perp`` is ``DashboardState.perp_flow`` (perp_flow.py, same shape as ``footprint``) and
     ``market`` ("spot" or "perp") picks which trades feed volume profile, footprint and bubbles;
-    the levels stay on spot. Both feed the CVD lines (group "cvd"). ``open_interest`` is
+    with "perp" the candles come from the perpetual too (``perp_cache``), so cells and bubbles sit on
+    the candles they belong to (perp trades a basis away from spot); the levels stay on spot. Both feed the CVD lines (group "cvd"). ``open_interest`` is
     ``DashboardState.open_interest``: hourly open interest with its 7.5-day Z-score (group "oi").
     ``context`` is ``market_context.CACHE.snapshot(symbol)``: funding rate (group "funding") and
     Coinbase premium (group "premium") for this symbol; both start hidden.
@@ -983,9 +990,27 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         model["notes"].append(GOLD_NOTE)
     if symbol == "XMRUSDT":
         model["notes"].append(XMR_NOTE)
-    rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
-    if error:
-        model["notes"].append(error)
+    intraday = INTERVAL_SECONDS[timeframe] <= 14400  # profiles, footprint and bubbles only on intraday views
+    spot_trades = footprint if footprint and footprint.get("symbol") == symbol and footprint.get("days") else None
+    perp_trades = perp if perp and perp.get("symbol") == symbol and perp.get("days") else None
+    available = [key for key, store in (("spot", spot_trades), ("perp", perp_trades)) if store]
+    active = market if market in available else (available[0] if available else DEFAULT_MARKET)
+    candle_market = "perp" if symbol in PERP_ONLY else "spot"
+    rows, error = [], None
+    if intraday and active == "perp" and symbol not in PERP_ONLY:
+        # Perp trades on spot candles sat a basis (~30 USD on BTC) away: candles from the same market.
+        rows, error = (perp_cache or PERP_CACHE).get(symbol, timeframe, VIEW_LIMIT)
+        if rows:
+            candle_market = "perp"
+            model["notes"].append("Kerzen, Footprint und Bubbles aus dem Perp; Level und TIM-Pläne bleiben auf Spot.")
+        else:
+            model["notes"].append(f"Perp-Kerzen nicht erreichbar ({error}): Spot-Kerzen mit Spot-Trades gezeigt.")
+            active = "spot" if spot_trades else active
+    model["candle_market"] = candle_market
+    if candle_market == "spot" or symbol in PERP_ONLY:
+        rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
+        if error:
+            model["notes"].append(error)
     candles = clean_candles(rows, timeframe)
     flags = {c["open_time"]: c.get("closed", True) for c in (dict(r, open_time=datetime.fromisoformat(str(r["open_time"]))) for r in rows)}
     if not candles and symbol == "BTCUSDT" and runtime_series and runtime_series.get(timeframe):
@@ -1060,17 +1085,13 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model["macro_ahead"] = upcoming_markers(calendar, times, INTERVAL_SECONDS[timeframe], now)
     model["tpo"], model["volume_profile"], model["footprint"] = [], [], {"step": None, "bars": [], "note": None}
     model["bubbles"] = {"items": [], "min_usd": None, "max_usd": None, "note": None}
-    if INTERVAL_SECONDS[timeframe] <= 14400:  # profiles per day only make sense on intraday views
+    if intraday:  # profiles per day only make sense on intraday views
         first_time = times[0]
         model["tpo"] = [p for p in tpo_profiles(level_source, now) if _epoch(p["end"]) > first_time]
         from src.dashboard.footprint_data import footprint_bars, volume_bubbles, volume_profiles
 
-        spot_trades = footprint if footprint and footprint.get("symbol") == symbol and footprint.get("days") else None
-        perp_trades = perp if perp and perp.get("symbol") == symbol and perp.get("days") else None
-        available = [key for key, store in (("spot", spot_trades), ("perp", perp_trades)) if store]
-        active = market if market in available else (available[0] if available else DEFAULT_MARKET)
         model["markets"] = {"names": MARKETS, "active": active, "available": available}
-        if market == "perp" and active != "perp":
+        if market == "perp" and not perp_trades:
             model["notes"].append("Perp-Trades noch nicht da (Sammler startet mit dem Vortag): Spot gezeigt.")
         trades_shown = perp_trades if active == "perp" else spot_trades
         if trades_shown:

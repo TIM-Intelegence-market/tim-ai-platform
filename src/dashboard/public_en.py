@@ -116,6 +116,8 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Keine großen Market Orders", "No large market orders in the shown window."),
     (r"^Noch keine Trades", "No trades from the TIM database yet (the runtime delivers them every 2 minutes)."),
     (r"^(Level \S+: )?Börse nicht erreichbar", r"\1Exchange not reachable, retrying shortly."),
+    (r"^Kerzen, Footprint und Bubbles aus dem Perp.*", "Candles, footprint and bubbles from the perp; levels and TIM's plans stay on spot."),
+    (r"^Perp-Kerzen nicht erreichbar.*", "Perp candles unreachable: spot candles with spot trades shown."),
     (r"^Perp-Trades noch nicht da", "Perp trades not there yet (the collector starts with the previous day): showing spot."),
     (r"^Open Interest: Binance-Stand älter", "Open interest: Binance data older than 3 h, hidden."),
     (r"^Funding Rate: Stand älter", "Funding rate: data older than 3 h, hidden."),
