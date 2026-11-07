@@ -102,6 +102,26 @@ deshalb der aufwendigere Teil und kommt zuletzt.
    Hypothesen, die BTC gar nicht berühren, bleiben hier und brauchen keinen Registerplatz. Beispiel: die
    Öl-Hypothese Stufe 1 (Öl → Inflationserwartung → Realzins); erst eine Stufe mit BTC ginge an die Werkstatt.
 
+## 5a. Treiber-Research (Wunsch Uzi, 07.11.2026)
+
+Das Barometer zeigt heute feste Zahlen je Treiber (`HISTORY` in `macro_filters.py`, einmal 2017–2024 gerechnet).
+Ziel ist, den Einfluss **jedes** vermuteten Treibers selbst untersuchen zu können, nicht nur die heute eingebauten.
+
+1. **Treiber-Katalog als Liste:** Jeder Treiber (Dollar, Realzins, 10J-Rendite, S&P 500, Nasdaq, Gold, Öl, VIX,
+   Liquidität, M2, Spread …) steht mit Quelle, Einheit, Zeitregel und Datenbeginn an einer Stelle. Ein neuer Treiber
+   ist ein neuer Eintrag, kein neuer Code.
+2. **Gleiche Auswertung für alle:** Für jeden Treiber dieselben beschreibenden Kennzahlen auf BTC bis 2024-12-31:
+   BTC-Rendite in Phasen „gestiegen“ und „gefallen“ (13 Wochen), Gleichlauf (Korrelation der Wochenrenditen),
+   Vorlauf/Nachlauf (1–4 Wochen) und rollierende Korrelation (52 Wochen), damit sichtbar wird, ob ein Zusammenhang
+   stabil ist oder nur in einem Regime (z. B. 2022) auftritt.
+3. **Ergebnis je Treiber** als Bericht mit Datum der Auswertung und Zahl der bis dahin angeschauten Treiber
+   (Mehrfachtests, Abschnitt 3 Punkt 5). Das Barometer liest seine historischen Zahlen dann aus diesen Berichten
+   statt aus fest eingetragenen Werten.
+4. **Grenze bleibt:** Die Auswertung beschreibt nur. Wer aus einem Treiber eine Handelsregel machen will, meldet sie
+   in der Werkstatt an, wie bei F5.
+
+Das ist Teil von V2 und startet erst nach Abschnitt 6 und Bartis Go.
+
 ## 6. PRE-V2-Prüfung der Datenfamilien
 
 Regel von Barti (23.10.2026): V2 beginnt nie automatisch. Jede Datenfamilie bekommt nach Prüfung von Quelle, Lizenz,
@@ -124,18 +144,23 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 | SEC-ETF-Fristen, Halving, Options-Verfall, Auszahlungen | DEFERRED | Quellen je Art noch zu prüfen |
 | Ungeplante Nachrichten (z. B. GDELT) | DEFERRED | braucht Zeitstempel-Regel und Prüfung der Quelle |
 | COT, 13F, ETF-Flüsse | DEFERRED | aus dem Plan vom 02.11., noch nicht angeschaut |
+| Aktienmarkt: S&P 500, Nasdaq | DEFERRED, Vorschlag Uzi 07.11. | Nasdaq (FRED `NASDAQCOM`) läuft schon in der Makro-Leiste, aber nicht im Barometer. S&P 500 auf FRED (`SP500`) reicht nur rund zehn Jahre zurück und steht unter Lizenz von S&P; Quelle und Historie ab 2017 prüfen. Handelszeiten beachten (Schluss 16:00 ET, Wochenende fehlt) |
+| Gold | DEFERRED, Vorschlag Uzi 07.11. | in der Makro-Leiste vorhanden (PAXG), Quelle für Historie bis 2017 prüfen |
+| Geldmenge M2, Kreditrisiko (High-Yield-Spread) | DEFERRED, Vorschlag | FRED `M2SL` (monatlich, Revisionen, Vintages in ALFRED) und `BAMLH0A0HYM2`; Lizenz des Spreads prüfen |
 | Funding (Binance) | REJECTED als Treiber hier | ist Kryptomarkt-intern und gehört in die Werkstatt (F2 nicht bestanden) |
 
 ## 7. Reihenfolge
 
 1. Diesen Entwurf freigeben (Barti und Uzi).
 2. PRE-V2-Prüfung vervollständigen (alle Familien aus dem Inventar), danach Bartis Go oder Nein.
-3. Chart-Kalender um `ELECTION` und `NFP` erweitern (Code-PR, mit Uzi abgestimmt, weil #127 von ihm ist).
-4. Beschreibende Ereignisstudie Wahlen und NFP mit BTC-Daten bis 2024.
-5. Danach ungeplante Nachrichten, erst nach Prüfung einer Quelle.
+3. Treiber-Research (Abschnitt 5a) für die freigegebenen Familien bauen.
+4. Chart-Kalender um `ELECTION` und `NFP` erweitern (Code-PR, mit Uzi abgestimmt, weil #127 von ihm ist).
+5. Beschreibende Ereignisstudie Wahlen und NFP mit BTC-Daten bis 2024.
+6. Danach ungeplante Nachrichten, erst nach Prüfung einer Quelle.
 
 ## Änderungsprotokoll
 
 | Datum | Änderung |
 |---|---|
 | 06.11.2026 | Entwurf angelegt (Barti: Bereich abgrenzen, Barometer der Engine zuordnen, PRE-V2-Prüfung nachholen, News und Wahlen aufnehmen) |
+| 07.11.2026 | Vorschlag Uzi: Abschnitt 5a Treiber-Research für alle vermuteten Treiber; S&P 500, Nasdaq, Gold, M2 und Spread in Abschnitt 6 aufgenommen |
