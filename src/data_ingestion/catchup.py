@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from src.data_ingestion.durable import DurableIngestionStore, QueueCapacityError
+from src.data_ingestion.durable import DurableIngestionStore, HistoricalBatchError, QueueCapacityError
 from src.models.market_data import Trade
 
 
@@ -169,6 +169,7 @@ class CatchUpCoordinator:
         *,
         max_pages: int = 100,
         page_limit: int = 1_000,
+        batch_below_cursor: bool = False,
     ) -> None:
         if not 1 <= max_pages <= 10_000:
             raise ValueError("max_pages must be between 1 and 10000")
@@ -178,6 +179,7 @@ class CatchUpCoordinator:
         self.client = client
         self.max_pages = max_pages
         self.page_limit = page_limit
+        self.batch_below_cursor = batch_below_cursor
 
     async def recover_before(
         self,
@@ -274,17 +276,19 @@ class CatchUpCoordinator:
                     reason = "public REST source returned no data for requested range"
                     break
                 inserted_before = persisted
+                page: list[Trade] = []
                 for trade in batch:
                     assert trade.trade_id is not None
                     if trade.trade_id > end_id:
                         break
-                    if trade.trade_id != expected:
-                        reason = f"authoritative response starts/continues at {trade.trade_id}, expected {expected}"
+                    if trade.trade_id != expected + len(page):
+                        reason = f"authoritative response starts/continues at {trade.trade_id}, expected {expected + len(page)}"
                         break
-                    result = await self.store.ingest_trade(trade)
-                    persisted += int(result.raw_inserted)
-                    duplicates += int(result.duplicate)
-                    expected += 1
+                    page.append(trade)
+                written, repeated = await self._persist_page(page)
+                persisted += written
+                duplicates += repeated
+                expected += len(page)
                 if reason:
                     break
                 # A page of pure duplicates means we are walking through an
@@ -343,6 +347,30 @@ class CatchUpCoordinator:
             "OPEN", symbol, start_id, end_id, persisted, duplicates, pages, reason,
             already_present=already_present,
         )
+
+    async def _persist_page(self, page: list[Trade]) -> tuple[int, int]:
+        """Write one contiguous page; returns (newly persisted, duplicates).
+
+        With ``batch_below_cursor`` a page that lies entirely behind the live
+        cursor (the background gap filler) goes through one transaction; any
+        other page, or a store without the batch path, is written trade by
+        trade so the cursor still advances contiguously.
+        """
+        if not page:
+            return 0, 0
+        batch_writer = getattr(self.store, "ingest_historical_batch", None) if self.batch_below_cursor else None
+        if batch_writer is not None:
+            try:
+                result = await batch_writer(page)
+                return int(result.raw_inserted), int(result.duplicates)
+            except HistoricalBatchError:
+                pass  # not below the cursor: the single path below handles it
+        persisted = duplicates = 0
+        for trade in page:
+            result = await self.store.ingest_trade(trade)
+            persisted += int(result.raw_inserted)
+            duplicates += int(result.duplicate)
+        return persisted, duplicates
 
     async def _mark_open(self, symbol: str, gap_id: str, reason: str | None) -> None:
         await self.store.set_gap_status(gap_id, "OPEN", error=reason)

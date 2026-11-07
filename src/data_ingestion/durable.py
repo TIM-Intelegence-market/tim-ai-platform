@@ -76,6 +76,16 @@ class IngestResult:
     cursor: CursorState
 
 
+class HistoricalBatchError(DurableIngestionError):
+    """A backfill page is not strictly below the cursor; use ingest_trade instead."""
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalBatchResult:
+    raw_inserted: int
+    duplicates: int
+
+
 @dataclass(frozen=True, slots=True)
 class OutboxItem:
     outbox_id: str
@@ -529,6 +539,109 @@ class DurableIngestionStore:
                 queue_depth=queue_depth,
                 cursor=CursorState.from_row(current),
             )
+
+    async def ingest_historical_batch(self, trades: list[Trade], *, first_worker: str = FIRST_WORKER) -> HistoricalBatchResult:
+        """Persist one page of backfilled trades that all lie below the live cursor.
+
+        The background gap filler fills holes behind the live cursor. One
+        transaction per trade (plus a queue count each time) managed about 25
+        trades per second; this writes a whole page in one transaction with the
+        same guarantees for the raw rows: an identical payload hash for every
+        duplicate, no cursor movement and no gap detection (the gap is already
+        on record). New outbox work goes straight to DEFERRED: the candles of a
+        filled range are rebuilt in bulk (``deferred_candles``), so historical
+        rows never sit in front of live work in the strict candle order.
+
+        Raises :class:`HistoricalBatchError` without writing anything when a
+        trade is not strictly below the cursor; the caller then falls back to
+        :meth:`ingest_trade`.
+        """
+        if first_worker not in PIPELINE_WORKERS:
+            raise ValueError("first_worker is not an approved OBSERVE pipeline stage")
+        if not trades:
+            return HistoricalBatchResult(0, 0)
+        symbol = trades[0].symbol
+        ids: list[int] = []
+        for trade in trades:
+            _validate_agg_trade_for_persistence(trade)
+            if trade.symbol != symbol or trade.trade_id is None:
+                raise ValueError("historical batch needs one symbol and aggregate IDs")
+            ids.append(trade.trade_id)
+        if len(set(ids)) != len(ids):
+            raise ValueError("historical batch contains duplicate aggregate IDs")
+        hashes = {trade.trade_id: agg_trade_hash(trade) for trade in trades}
+        async with self.database.acquire() as connection:
+            async with connection.transaction():
+                await connection.execute("SELECT pg_advisory_xact_lock($1)", self._QUEUE_LOCK_KEY)
+                cursor_row = await self._cursor_row(connection, symbol, lock=True)
+                cursor_id = cursor_row["last_aggregate_trade_id"] if cursor_row else None
+                if cursor_id is None or max(ids) >= cursor_id:
+                    raise HistoricalBatchError("historical batch must lie strictly below the durable cursor")
+                inserted_rows = await connection.fetch(
+                    """INSERT INTO agg_trades(symbol,aggregate_trade_id,trade_time,price,quantity,buyer_is_maker,source)
+                       SELECT $1,t.id,t.at,t.price,t.quantity,t.maker,$7
+                       FROM unnest($2::bigint[],$3::timestamptz[],$4::float8[],$5::float8[],$6::bool[])
+                            AS t(id,at,price,quantity,maker)
+                       ON CONFLICT(symbol,aggregate_trade_id) DO NOTHING
+                       RETURNING aggregate_trade_id""",
+                    symbol,
+                    ids,
+                    [trade.event_time for trade in trades],
+                    [trade.price for trade in trades],
+                    [trade.quantity for trade in trades],
+                    [trade.buyer_is_maker for trade in trades],
+                    AGG_TRADE_SOURCE,
+                )
+                inserted = {int(row["aggregate_trade_id"]) for row in inserted_rows}
+                duplicates = [trade_id for trade_id in ids if trade_id not in inserted]
+                if duplicates:
+                    rows = await connection.fetch(
+                        """SELECT symbol,aggregate_trade_id,trade_time,price,quantity,buyer_is_maker,source
+                           FROM agg_trades WHERE symbol=$1 AND aggregate_trade_id=ANY($2::bigint[])""",
+                        symbol,
+                        duplicates,
+                    )
+                    for existing in rows:
+                        stored = Trade(
+                            existing["symbol"], existing["price"], existing["quantity"],
+                            existing["trade_time"], existing["aggregate_trade_id"], existing["buyer_is_maker"],
+                        )
+                        if existing["source"] != AGG_TRADE_SOURCE or agg_trade_hash(stored) != hashes[stored.trade_id]:
+                            raise CursorConflictError("Conflicting payload for persisted aggregate_trade_id")
+                new_ids = [trade_id for trade_id in ids if trade_id in inserted]
+                if new_ids:
+                    identities = [outbox_identity(symbol, trade_id, first_worker) for trade_id in new_ids]
+                    await connection.execute(
+                        """INSERT INTO ingestion_outbox(
+                               outbox_id,worker_name,idempotency_key,source,market,symbol,data_type,
+                               aggregate_trade_id,input_hash,worker_version,max_attempts,status)
+                           SELECT t.outbox_id,$2,t.idempotency_key,$3,$4,$5,$6,t.id,t.input_hash,$7,$8,'DEFERRED'
+                           FROM unnest($1::text[],$9::text[],$10::bigint[],$11::text[])
+                                AS t(outbox_id,idempotency_key,id,input_hash)
+                           ON CONFLICT(worker_name,idempotency_key) DO NOTHING""",
+                        [outbox_id for outbox_id, _ in identities],
+                        first_worker,
+                        SOURCE,
+                        MARKET,
+                        symbol,
+                        DATA_TYPE,
+                        self.worker_version,
+                        self.max_attempts,
+                        [key for _, key in identities],
+                        new_ids,
+                        [hashes[trade_id] for trade_id in new_ids],
+                    )
+                await self._increment(connection, "received_total", len(ids))
+                if new_ids:
+                    await self._increment(connection, "raw_persisted_total", len(new_ids))
+                    await self._increment(connection, "out_of_order_total", len(new_ids))
+                    await self._increment(
+                        connection, "outbox_historical_deferred_total", len(new_ids),
+                        metadata={"worker": first_worker, "path": "historical_batch"},
+                    )
+                if duplicates:
+                    await self._increment(connection, "duplicate_total", len(duplicates))
+        return HistoricalBatchResult(len(new_ids), len(duplicates))
 
     async def get_cursor(self, symbol: str) -> CursorState | None:
         async with self.database.acquire() as connection:
@@ -1253,7 +1366,7 @@ class DurableIngestionStore:
             )
 
     async def open_gaps(
-        self, symbol: str, *, limit: int = 100, maximum_trade_ids: int | None = None,
+        self, symbol: str, *, limit: int = 100, maximum_trade_ids: int | None = None, newest_first: bool = False,
     ) -> list[dict[str, Any]]:
         if not 1 <= limit <= 1_000:
             raise ValueError("gap limit must be between 1 and 1000")
@@ -1270,7 +1383,8 @@ class DurableIngestionStore:
             rows = await connection.fetch(
                 """SELECT * FROM ingestion_gap_incidents
                    WHERE symbol=$1 AND status IN ('OPEN','CATCHING_UP')"""
-                + size_filter + " ORDER BY detected_at,gap_id LIMIT $2",
+                + size_filter + (" ORDER BY detected_at DESC,gap_id" if newest_first else " ORDER BY detected_at,gap_id")
+                + " LIMIT $2",
                 *arguments,
             )
         return [dict(row) for row in rows]

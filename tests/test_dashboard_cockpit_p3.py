@@ -122,7 +122,7 @@ def test_forschung_shows_cases_waiting_for_review_and_parks_human_steps(tmp_path
     assert tiles["cases_review"]["state"] == "warn" and tiles["cases_review"]["reason"] == "6 Fälle warten auf deine Prüfung"
     # 29.10.2026: the aborted V2 campaign left Forschung (it lives on /archiv); the logbook leads instead.
     assert "campaign" not in tiles and "human_review" not in tiles
-    assert model["sections"][0]["id"] == "logbook" and tiles["studies_confirmed"]["value"] == "S1"
+    assert model["sections"][0]["id"] == "logbook" and tiles["studies_confirmed"]["value"] == "S15, S1"  # S15 (GARCH-4h) confirmed 02.11.2026
     assert [t["id"] for t in model["attention"]] == ["cases_review"]
     assert model["overall"] == "warn" and model["headline"] == "Ein Punkt braucht einen Blick"
 

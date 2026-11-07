@@ -21,7 +21,7 @@ from src.dashboard.chart_model import _time
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import CSS, EXTRA_CSS
 from src.dashboard.pages.chart import APP_SRC, LIB_PATH
-from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RULE_TIM, summary
+from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RULE_TIM, RULE_VP, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
 DISCLAIMER = ("Research, not financial advice. Observation and paper tracking only: no orders, no recommendations. "
@@ -108,6 +108,9 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Volume Profile und Footprint aus echten Trades gibt es nur für (\w+)", r"Volume profile and footprint from real trades exist only for \1: TIM collects trades only there."),
     (r"^Gold über PAXG", "Gold via PAXG (tokenised gold, 1 PAXG = 1 troy ounce): trades around the clock, real gold does not; "
                          "weekend candles and thinner liquidity can shift levels against XAUUSD."),
+    (r"^Monero über den Binance-Perpetual", "Monero via the Binance perpetual XMRUSDT (USD-M futures): Binance ended XMR spot "
+                                            "in February 2024. The perp price can differ slightly from spot because of funding; "
+                                            "display only, no paper trading."),
     (r"^Gamma: Deribit-Stand ist (\d+) min alt", r"Gamma: Deribit data is \1 min old, levels hidden."),
     (r"^Liquidations-Heatmap: Binance-Stand ist (\d+) min alt", r"Liquidation heatmap: Binance data is \1 min old, hidden."),
     (r"^Keine großen Market Orders", "No large market orders in the shown window."),
@@ -174,7 +177,8 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     for key in ("level_source", "trade_source"):
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])
-    out["name"] = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "PAXGUSDT": "Gold (PAXG)"}.get(str(model.get("symbol")), model.get("name"))
+    out["name"] = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "XMRUSDT": "Monero (XMR perp)",
+                   "PAXGUSDT": "Gold (PAXG)"}.get(str(model.get("symbol")), model.get("name"))
     return out
 
 
@@ -216,7 +220,7 @@ def chart_page(symbol: str | None, timeframe: str | None, summary: str = "") -> 
         f"<a href='/chart?symbol={symbol}&amp;tf={item}' data-tf='{item}' class='tc-tab{' tc-tab--active' if item == view else ''}'"
         + (" aria-current='page'" if item == view else "") + f">{item}</a>"
         for item in VIEW_TIMEFRAMES)
-    body = _hero("TIM chart", "BTC, ETH, SOL and gold on every timeframe: zoom, pan, crosshair. "
+    body = _hero("TIM chart", "BTC, ETH, SOL, XMR and gold on every timeframe: zoom, pan, crosshair. "
                  "Levels are drawn as labelled segments from the moment they formed.")
     body += summary
     body += (
@@ -265,12 +269,13 @@ HORIZONS_EN = (
 EARLIER_EN = (
     ("tim", "TIM rule 30m", "first version: fixed stop, targets at 1.5 / 2 / 3 R"),
     ("struct", "Structure rule 30m", "stop behind the 30m swing, targets at liquidity"),
+    ("vp", "Volume profile rule 30m", "reaction at yesterday's value by today's context, stop behind the touch, target a naked POC"),
 )
 JOURNAL_KEYS = tuple(key for key, _, _ in HORIZONS_EN + EARLIER_EN)
 DEFAULT_JOURNAL = "mid"
-CHART_TF = {"short": "15m", "mid": "1h", "long": "1d", "tim": "30m", "struct": "30m", "level": "30m"}
-ALIASES = {RULE_TIM: "tim", RULE_STRUCT: "struct", RULE_LEVEL: "level"}  # older callers pass rule ids
-RULES_EN = tuple((rule, name, text) for rule, (_, name, text) in zip((RULE_TIM, RULE_STRUCT), EARLIER_EN))
+CHART_TF = {"short": "15m", "mid": "1h", "long": "1d", "tim": "30m", "struct": "30m", "level": "30m", "vp": "30m"}
+ALIASES = {RULE_TIM: "tim", RULE_STRUCT: "struct", RULE_LEVEL: "level", RULE_VP: "vp"}  # older callers pass rule ids
+RULES_EN = tuple((rule, name, text) for rule, (_, name, text) in zip((RULE_TIM, RULE_STRUCT, RULE_VP), EARLIER_EN))
 STATUS_EN = {"OPEN": "waiting for entry", "FILLED": "in trade", "CLOSED": "closed", "INVALIDATED": "invalidated before entry",
              "REPLACED": "replaced", "EXPIRED": "expired"}
 EXIT_EN = {"STOP": "stop", "BREAK_EVEN": "break-even after TP1", "BREAK_EVEN_COSTS": "break-even + costs after TP1",
@@ -285,6 +290,7 @@ SETUP_EN = {
     "BALANCE_ROTATION": "a rotation inside the range",
     "EXHAUSTION_REVERSAL": "an exhaustion reversal",
     "LEVEL_REACTION": "a reaction at a main level",
+    "VP_CONTEXT": "a reaction at yesterday's value (volume profile context)",
 }
 MARKET_EN = {"BALANCE": "range", "RANGE": "range", "TREND_UP": "uptrend", "TREND_DOWN": "downtrend", "IMBALANCE_UP": "push up",
              "IMBALANCE_DOWN": "push down"}
@@ -751,13 +757,32 @@ def _usd(value: Any) -> str:
     return f"{value:,.2f} $" if isinstance(value, (int, float)) else "–"
 
 
+# Which paper journals the live trader may open trades from (Uzi 03.11.2026: only MID 1h). The status file may
+# name them in "entry_timeframes" (or "timeframes"); without that field the page shows the current setting.
+LIVE_TIMEFRAMES = ("1h",)
+LIVE_JOURNAL_LINK = {"15m": "/journal?rule=short", "1h": "/journal", "1d": "/journal?rule=long"}
+
+
+def _live_timeframes(status: Mapping[str, Any] | None) -> tuple[str, ...]:
+    tfs = None
+    if isinstance(status, Mapping):
+        tfs = status.get("entry_timeframes", status.get("timeframes"))
+    if isinstance(tfs, (list, tuple)):
+        picked = tuple(tf for tf in LIVE_JOURNAL_LINK if tf in tfs)
+        if picked:
+            return picked
+    return LIVE_TIMEFRAMES
+
+
 def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:
     """The real-money test account: value, change since start, position, today's trades. Read from a small
     status file the live trader writes; no keys, no order ids, nothing that could move money."""
     from datetime import datetime, timezone
 
     now = now or datetime.now(timezone.utc)
-    body = _hero("Live account", "TIM trades its 15m paper plans on a small real-money futures account (BTC perpetual), "
+    tfs = _live_timeframes(status)
+    tf_text = " and ".join(tfs)
+    body = _hero("Live account", f"TIM trades its {tf_text} paper plans on a small real-money futures account (BTC perpetual), "
                  "automatically, with hard limits: at most 1 $ risk per trade including costs, 3 $ loss per day, 3 trades per day.")
     if not status or status.get("schema") != "tim-live-status/1":
         body += "<section class='cc-section'><p class='pj-empty'>No live data right now.</p></section>"
@@ -773,11 +798,11 @@ def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:
         pos_text = f"<strong>{_safe(side)}</strong>"
         pos_note = f"{pos.get('size_btc')} BTC at {_price(pos.get('entry'))}"
     else:
-        pos_text, pos_note = "<strong>none</strong>", "flat, waiting for a fresh 15m plan"
+        pos_text, pos_note = "<strong>none</strong>", f"flat, waiting for a fresh {tf_text} plan"
     if status.get("stopped"):
         auto, auto_note = "stopped", "emergency stop is set"
     elif status.get("auto_active"):
-        auto, auto_note = "running", "trades new 15m plans automatically"
+        auto, auto_note = "running", f"trades new {tf_text} plans automatically"
     else:
         auto, auto_note = "paused", "no valid release"
     tiles = (
@@ -794,6 +819,7 @@ def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:
             + (" The data is older than expected; the Mac or the status job may be down." if stale else ""))
     body += ("<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Real money</p>"
              f"<h2>Account now</h2><p class='cc-section__note'>{_safe(note)} "
-             "The trades follow the <a href='/journal'>15m paper journal</a>.</p></div></div>"
+             "The trades follow the " + " and ".join(f"<a href='{LIVE_JOURNAL_LINK[tf]}'>{tf} paper journal</a>" for tf in tfs)
+             + ".</p></div></div>"
              f"{kpis}</section>")
     return shell("Live account", "/live", body, extra_css=JOURNAL_CSS, disclaimer=LIVE_DISCLAIMER)

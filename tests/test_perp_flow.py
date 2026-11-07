@@ -154,7 +154,7 @@ def test_hourly_check_against_binance_candles(tmp_path) -> None:
     assert any(not r["ok"] for r in flow.check())
 
 
-def test_saved_files_are_gzip_json_per_day_and_old_days_go(tmp_path) -> None:
+def test_saved_files_are_gzip_json_per_day_and_old_days_move_to_the_archive(tmp_path) -> None:
     trades = make_trades()
     flow = PerpFlow(tmp_path, fetch=FakeBinance(trades), clock=lambda: NOW.timestamp())
     collect(flow)
@@ -165,6 +165,27 @@ def test_saved_files_are_gzip_json_per_day_and_old_days_go(tmp_path) -> None:
     flow.prune()
     flow.save()
     assert not list(tmp_path.glob("perp-2026-10-30*"))
+    # 04.11.2026: TIM's own history is never deleted, the day leaves only the chart's window
+    archived = tmp_path / "archive" / "perp-2026-10-30.json.gz"
+    assert json.loads(gzip.decompress(archived.read_bytes())) == payload
+    # a restart loads only the chart's window, the archive stays untouched
+    again = PerpFlow(tmp_path, fetch=FakeBinance(trades), clock=flow.clock)
+    again.load()
+    assert "2026-10-30" not in again.days and archived.exists()
+
+
+def test_open_interest_hours_are_appended_once_to_the_archive(tmp_path) -> None:
+    start = int((NOW - timedelta(hours=9)).timestamp())
+    rows = [{"timestamp": (start + i * 3600) * 1000, "sumOpenInterest": str(90_000 + i), "sumOpenInterestValue": "7.2e9"}
+            for i in range(10)]
+    path = perp_flow.oi_archive_path(tmp_path)
+    assert path.name == "oi-BTCUSDT-1h.jsonl"
+    assert perp_flow.append_oi_archive(open_interest(lambda p, q: rows[:6], now=NOW), path) == 6
+    assert perp_flow.append_oi_archive(open_interest(lambda p, q: rows, now=NOW), path) == 4
+    assert perp_flow.append_oi_archive(open_interest(lambda p, q: rows, now=NOW), path) == 0
+    lines = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [line["t"] for line in lines] == [start + i * 3600 for i in range(10)]
+    assert lines[-1] == {"t": start + 9 * 3600, "oi": 90_009.0, "oi_usd": 7.2e9}
 
 
 def test_zscore_uses_the_last_window_values() -> None:
@@ -270,3 +291,58 @@ def test_runtime_loop_publishes_and_saves(tmp_path) -> None:
     asyncio.run(go())
     assert state.perp_flow["market"] == "perp" and state.perp_flow["days"]
     assert state.open_interest["points"] and (tmp_path / "state.json").exists()
+    assert len((tmp_path / "oi-BTCUSDT-1h.jsonl").read_text().splitlines()) == 200
+
+
+def test_hourly_check_allows_an_order_running_over_the_hour_boundary(tmp_path) -> None:
+    """30.10.2026: aggTrade 3501682595 (1.713 BTC buy) had fills from 03:29:59.986 to 03:30:00.052.
+
+    The aggTrade (and Binance's archive) put it all in the earlier candle, Binance's candle splits it.
+    The check must call both hours ok when the difference is such an order, and still fail otherwise."""
+    trades = make_trades()
+    boundary_ms = int(datetime(2026, 10, 31, 10, 0, tzinfo=timezone.utc).timestamp() * 1000)
+    big_id = max(t["a"] for t in trades) + 1
+    # one buyer order of 3 fills, first fill 14 ms before 10:00, stored with the first fill's time
+    trades.append({"a": big_id, "p": "80000", "q": "1.5", "f": 900, "l": 902, "T": boundary_ms - 14, "m": False})
+    trades.sort(key=lambda t: t["T"])
+    for new_id, t in enumerate(trades, start=1000):
+        t["a"] = new_id
+
+    class SplitCandles(FakeBinance):
+        def __call__(self, path, params):
+            rows = super().__call__(path, params)
+            if path == "/fapi/v1/klines":
+                for row in rows:  # Binance: 0.6 BTC of the order filled after 10:00
+                    if row[0] == boundary_ms - 3_600_000:
+                        row[5], row[9] = f"{float(row[5]) - 0.6:.3f}", f"{float(row[9]) - 0.6:.3f}"
+                    if row[0] == boundary_ms:
+                        row[5], row[9] = f"{float(row[5]) + 0.6:.3f}", f"{float(row[9]) + 0.6:.3f}"
+            return rows
+
+    later = NOW + timedelta(minutes=5)
+    flow = PerpFlow(tmp_path, fetch=SplitCandles(trades), clock=lambda: later.timestamp())
+    collect(flow)
+    assert flow.edges[boundary_ms // 1000] == [1.5, 0.0]
+    results = {r["hour"]: r for r in flow.check()}
+    before, after = (datetime.fromtimestamp(t / 1000, tz=timezone.utc).isoformat() for t in (boundary_ms - 3_600_000, boundary_ms))
+    assert results[before]["ok"] and results[after]["ok"]
+    assert results[before]["edge"] == results[after]["edge"] == 1.5
+    assert flow.health()["failed_hours"] == []
+    # the edge survives a restart (state.json)
+    flow.save()
+    again = PerpFlow(tmp_path, fetch=SplitCandles(trades), clock=flow.clock)
+    again.load()
+    assert again.edges == flow.edges
+    # a difference larger than the order, or on the wrong side, still fails
+    flow.checks = []
+    flow.edges[boundary_ms // 1000] = [0.0, 1.5]  # seller order: Binance's delta would move the other way
+    flagged = {r["hour"]: r for r in flow.check()}
+    assert not flagged[before]["ok"] and not flagged[after]["ok"]
+    assert before in flow.health()["failed_hours"]
+
+
+def test_single_fill_trades_near_the_boundary_do_not_widen_the_check(tmp_path) -> None:
+    trades = make_trades()
+    flow = PerpFlow(tmp_path, fetch=FakeBinance(trades), clock=lambda: (NOW + timedelta(minutes=5)).timestamp())
+    collect(flow)
+    assert flow.edges == {}  # make_trades has f == l everywhere

@@ -26,11 +26,16 @@ class DashboardState:
     footprint: dict[str, Any] = field(default_factory=dict)
     # Options gamma snapshot per symbol from Deribit's public book (src/dashboard/gamma_data.py).
     gamma: dict[str, Any] = field(default_factory=dict)
+    # One line per gamma snapshot (walls, flip, regime) for later studies; Deribit keeps no history.
+    gamma_log_path: Path | None = field(default_factory=lambda: Path("data/options/gamma_levels.jsonl"))
     # Estimated liquidation heatmap per symbol from Binance's public futures data (src/dashboard/liquidation_data.py).
     liquidation: dict[str, Any] = field(default_factory=dict)
     # BTC perp trades in the footprint store's shape, and hourly open interest with its Z-score (src/dashboard/perp_flow.py).
     perp_flow: dict[str, Any] = field(default_factory=dict)
     open_interest: dict[str, Any] = field(default_factory=dict)
+    # The same per symbol (BTCUSDT, XMRUSDT; perp_flow.publish / chart_inputs).
+    perp_flows: dict[str, dict[str, Any]] = field(default_factory=dict)
+    open_interests: dict[str, dict[str, Any]] = field(default_factory=dict)
     system_health: dict[str, Any] = field(default_factory=lambda: {
         "database": "unknown",
         "stream": "unknown",
@@ -58,6 +63,8 @@ class DashboardState:
     plan_journal_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal.json"))
     plan_journal_struct_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_struct.json"))
     plan_journal_level_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_level.json"))
+    # Volume-profile context rule vp/1 (Uzi 03.11.2026), src/dashboard/vp_plans.py.
+    plan_journal_vp_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_vp.json"))
     # Horizon journals (Uzi 27.10.2026): TIM rule on 15m / 1h / 1d, see plan_journal.HORIZONS.
     plan_journal_short_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_short.json"))
     plan_journal_mid_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_mid.json"))
@@ -463,6 +470,6 @@ def plan_journal_paths(state: Any) -> dict[str, Path]:
     """Journal key -> file of TIM's paper journals: the three horizons, then the earlier 30m versions."""
     paths = {"short": getattr(state, "plan_journal_short_path", None), "mid": getattr(state, "plan_journal_mid_path", None),
              "long": getattr(state, "plan_journal_long_path", None), "tim": getattr(state, "plan_journal_path", None),
-             "struct": getattr(state, "plan_journal_struct_path", None)}
+             "struct": getattr(state, "plan_journal_struct_path", None), "vp": getattr(state, "plan_journal_vp_path", None)}
     # The level rule (level/1) is retired (Uzi 30.10.2026): no new plans, hidden from journals and chart; its file stays.
     return {key: Path(path) for key, path in paths.items() if path is not None}

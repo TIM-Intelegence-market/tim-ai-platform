@@ -1,0 +1,74 @@
+{
+  "study": "S15",
+  "commit": "a6dafaa4f011f3db980c5bc26608141d2fc4fe78",
+  "created": "2026-11-02T17:20:41+00:00",
+  "dataset_hash": "182b222e0fa12cae397ea4866ee619d6e5102854bf7658468d9cafdbb60844e2",
+  "burn_in_days": 365,
+  "rolling_days": 14,
+  "refit_days": 30,
+  "gate": {
+    "train": 500,
+    "validation": 250
+  },
+  "outcome_blind": true,
+  "symbols": {
+    "BTCUSDT": {
+      "first_month": "2020-01",
+      "bars_5m": 526176,
+      "S15-4h": 10962,
+      "S15-1d": 1827
+    },
+    "ETHUSDT": {
+      "first_month": "2020-01",
+      "bars_5m": 526176,
+      "S15-4h": 10962,
+      "S15-1d": 1827
+    },
+    "SOLUSDT": {
+      "first_month": "2020-09",
+      "bars_5m": 450636,
+      "S15-4h": 9388,
+      "S15-1d": 1564
+    }
+  },
+  "variants": {
+    "S15-4h": {
+      "by_symbol": {
+        "train": {
+          "BTCUSDT": 4386,
+          "ETHUSDT": 4386,
+          "SOLUSDT": 2812
+        },
+        "validation": {
+          "BTCUSDT": 4386,
+          "ETHUSDT": 4386,
+          "SOLUSDT": 4386
+        }
+      },
+      "pooled_periods": {
+        "train": 4386,
+        "validation": 4386
+      },
+      "passes_gate": true
+    },
+    "S15-1d": {
+      "by_symbol": {
+        "train": {
+          "BTCUSDT": 731,
+          "ETHUSDT": 731,
+          "SOLUSDT": 468
+        },
+        "validation": {
+          "BTCUSDT": 731,
+          "ETHUSDT": 731,
+          "SOLUSDT": 731
+        }
+      },
+      "pooled_periods": {
+        "train": 731,
+        "validation": 731
+      },
+      "passes_gate": true
+    }
+  }
+}

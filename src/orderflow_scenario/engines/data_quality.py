@@ -78,6 +78,19 @@ class DataQualityGate:
                 age = (observed_at - inputs.price_timestamp).total_seconds()
                 if age > self.max_price_age_seconds:
                     problems.append(f"stale_price({int(age)}s)")
+        # Closed-candle research cannot use prices/trades from after its cut-off.
+        # A boolean `closed` supplied by an adapter is not proof of availability.
+        temporal_problems: list[str] = []
+        if any(not candle.closed for candle in inputs.candles):
+            # A screenshot can describe a running candle as an explicit estimate.
+            (temporal_problems if inputs.structured else problems).append("unclosed_candle")
+        if any(candle.close_time > observed_at and (candle.closed or inputs.structured) for candle in inputs.candles):
+            temporal_problems.append("future_candle")
+        if any(trade.event_time > observed_at for trade in inputs.trades or ()):
+            temporal_problems.append("future_trade")
+        if inputs.price_timestamp is not None and inputs.price_timestamp > observed_at:
+            temporal_problems.append("future_price")
+        problems.extend(temporal_problems)
         if inputs.venue_mixed:
             problems.append("mixed_venues")
         if not inputs.delta_definition_verified:
@@ -109,7 +122,7 @@ class DataQualityGate:
 
         status = "PASS"
         # Without a price or without any candle there is nothing to analyse.
-        if len(missing) >= 3 or (inputs.price_now is None) or not inputs.candles:
+        if temporal_problems or len(missing) >= 3 or (inputs.price_now is None) or not inputs.candles:
             status = "INSUFFICIENT_DATA"
         elif missing or problems:
             status = "PARTIAL"

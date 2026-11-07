@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Read-only health and gap check for the host running TIM: Debian server or Mac mini (OBSERVE only).
 
-Each check is GREEN, AMBER or RED; the overall status is the worst of them. The
+Each check is GREEN, AMBER or RED (or NOT_APPLICABLE when this host cannot measure it,
+for example time sync on macOS); the overall status is the worst measured one. The
 report goes to stdout (journal) and data/operational/server_health.json. Exit code
 0 means no RED check, 2 means at least one RED check.
 
@@ -27,6 +28,8 @@ if str(ROOT) not in sys.path:
 UTC = timezone.utc
 REPORT_PATH = ROOT / "data/operational/server_health.json"
 ORDER = {"GREEN": 0, "AMBER": 1, "RED": 2}
+# A check that cannot be measured on this host; it is reported but left out of the overall status.
+NOT_APPLICABLE = "NOT_APPLICABLE"
 
 # Thresholds from the step 1 task package (P6).
 CANDLE_MAX_AGE_SECONDS = 180
@@ -114,7 +117,9 @@ def backup_check(directory: Path, now: datetime) -> dict[str, Any]:
 
 
 def overall(checks: dict[str, dict[str, Any]]) -> str:
-    return max((entry["status"] for entry in checks.values()), key=ORDER.__getitem__, default="RED")
+    """Worst status of all checks; NOT_APPLICABLE checks do not count. No measured check at all is RED."""
+    measured = [entry["status"] for entry in checks.values() if entry["status"] != NOT_APPLICABLE]
+    return max(measured, key=ORDER.__getitem__, default="RED")
 
 
 def command_output(command: list[str]) -> str | None:
@@ -175,7 +180,8 @@ def collect(backup_dir: Path, disk_path: Path) -> dict[str, Any]:
     checks["disk"] = disk_check(disk_path)
     if darwin:
         # macOS keeps time via timed; its sync state is not readable without admin rights.
-        checks["time_sync"] = check("AMBER", reason="time sync not measurable on macOS without admin rights")
+        # Not measurable is not a finding: marking it AMBER kept the overall status from ever being GREEN.
+        checks["time_sync"] = check(NOT_APPLICABLE, reason="time sync not measurable on macOS without admin rights")
     else:
         checks["time_sync"] = time_sync_check(
             command_output(["timedatectl", "show", "-p", "NTPSynchronized", "--value"]))

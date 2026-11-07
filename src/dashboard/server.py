@@ -23,7 +23,7 @@ from src.dashboard.api import _research_case_detail, _research_cases_collection
 from src.dashboard.chart_model import build_chart_model
 from src.dashboard.constants import HISTORY_LIMIT, MAX_RESPONSE_BYTES
 from src.dashboard.layout import _content_security_policy, _content_security_policy_for, _error_page
-from src.dashboard.security import _is_loopback_request_host, _require_loopback_host
+from src.dashboard.security import _is_loopback_request_host, _is_remote_view_request, _require_loopback_host
 from src.dashboard.pages.chart import CHART_SCRIPTS, render_chart_page
 from src.dashboard.pages.pilot import PILOT_CSP, render_pilot
 from src.dashboard.state import DashboardState, plan_journal_paths
@@ -71,7 +71,9 @@ class DashboardServer:
                 self.wfile.write(payload)
 
             def do_GET(self):
-                if not _is_loopback_request_host(self.headers.get("Host")):
+                host = self.headers.get("Host")
+                if not (_is_loopback_request_host(host)
+                        or _is_remote_view_request(host, self.headers.get("Tailscale-User-Login"))):
                     return self.respond(421, b'{"error":"loopback Host header required"}', "application/json")
                 parsed = urlparse(self.path)
                 path, query = parsed.path, parse_qs(parsed.query)
@@ -133,14 +135,14 @@ class DashboardServer:
                 if path == "/api/chart/live":
                     from src.dashboard.chart_live import build_live_chart
                     from src.dashboard.market_context import chart_context
+                    from src.dashboard.perp_flow import chart_inputs as perp_chart_inputs
 
                     try:
                         with outer.state.lock:
                             footprint = dict(outer.state.footprint)
                             gamma = dict(outer.state.gamma)
                             liquidation = dict(outer.state.liquidation)
-                            perp = dict(getattr(outer.state, "perp_flow", None) or {})
-                            open_interest = dict(getattr(outer.state, "open_interest", None) or {})
+                            perp, open_interest = perp_chart_inputs(outer.state, query.get("symbol", [None])[0])
                         from src.dashboard.chart_live import load_plan_journals
 
                         model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint,
@@ -232,7 +234,8 @@ class DashboardServer:
                     from src.dashboard.plan_journal import load_view as load_plan_journal
 
                     rule = query.get("rule", [""])[0]
-                    journal_path = {"struct": outer.state.plan_journal_struct_path, "level": outer.state.plan_journal_level_path}.get(rule, outer.state.plan_journal_path)
+                    journal_path = {"struct": outer.state.plan_journal_struct_path, "level": outer.state.plan_journal_level_path,
+                                    "vp": outer.state.plan_journal_vp_path}.get(rule, outer.state.plan_journal_path)
                     from src.dashboard.plan_cost_check import with_cost_check
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
                 if path in ("/", "/trades", "/forschung", "/system"):
@@ -553,6 +556,8 @@ class DashboardServer:
                 return self.respond(303, b"", "text/plain; charset=utf-8", location=f"/trader-journal?saved={entry['id']}")
 
             def do_POST(self):
+                if _is_remote_view_request(self.headers.get("Host"), self.headers.get("Tailscale-User-Login")):
+                    return self.respond(403, b'{"error":"remote view is read-only"}', "application/json")
                 if not _is_loopback_request_host(self.headers.get("Host")):
                     return self.respond(421, b'{"error":"loopback Host header required"}', "application/json")
                 path = urlparse(self.path).path

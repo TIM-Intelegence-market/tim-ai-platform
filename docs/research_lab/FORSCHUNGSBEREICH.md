@@ -12,7 +12,8 @@ daraus lernen. Ein bestandenes Ergebnis wird ein Update-Vorschlag. Es zählt ers
 
 - Nur Papier, kein Echtgeld, keine echten Orders.
 - Risikogrenzen und Kostenmodell ändern sich nie automatisch.
-- Holdout ab 2025-01-01 wird nie geladen, auch nicht auf einem Rechenhost. Öffnen nur mit Uzis ausdrücklichem Wort.
+- Holdout ab 2025-01-01 wird nie geladen, auch nicht auf einem Rechenhost. Öffnen nur mit Zustimmung von Uzi und Barti;
+  Uzis ausdrückliches Wort bleibt Pflicht.
 - Kein automatischer Merge. Gemergt wird nur nach Uzis „merge“.
 - Eine neue Strategie-Version zählt im Papier erst nach bestandenem prospektivem Test und Uzis Karte.
 - TIM läuft zu 100 % auf dem Mac. Chris' Server tim-core-01 ist höchstens Rechenhost für Archiv-Aufträge.
@@ -304,6 +305,31 @@ Rückblick am 31.10. auf 29 Trades: Trades gegen den Trend brachten zusammen +2,
 Trend“ hätte als Regel also geschadet. Trades mit Kosten über 0,15 R brachten −3,87 R (17 Trades). Grade C und
 fehlende Bestätigung betreffen alle 29 Trades und taugen deshalb nicht als Filter.
 
+## Research-Spur des Issue-Workers (F12)
+
+Uzi 02.11.: Die Issue-Worker arbeiten zuerst an Issues. Ist keins mehr da, schreiben sie Studien-Entwürfe.
+Code: `src/research_lab/workshop/worker_lane.py`, eingebunden in `scripts/run_mac_qwen_issue.py`.
+
+1. **Mac** (Spur easy): Das Repo ist öffentlich, die Ideen-Liste nicht. Deshalb wird nur eine Idee mit Status
+   „bereit“ ein GitHub-Issue mit Label `research:idea`, die Uzi ausdrücklich freigegeben hat:
+   `TIM_RESEARCH_PUBLIC_IDEAS` (kommagetrennte Ideen-IDs) in der LaunchAgent-plist. Dazu gilt das Monatsbudget
+   (4 Entwürfe), offene Research-Issues zählen mit. Vor jedem Export liest der Mac die Entwürfe direkt von
+   `origin/platform-main` und setzt gelandete Ideen auf „Studien-Entwurf angelegt“, unabhängig vom Stand des
+   Worker-Checkouts. Pfad der Ideen-Liste: `TIM_RESEARCH_IDEAS`.
+2. **Server** (Spur hard, qwen3-coder:30b auf tim-core-01): nimmt das älteste freie Research-Issue von einem
+   vertrauten Autor (wie bei der Triage: Worker-Konto und Uzi), setzt `research:in-progress`, lässt das Modell die
+   Spezifikation schreiben (höchstens eine Korrektur-Runde) und gibt sie durch denselben Generator wie
+   `workshop draft`. Nur ein vollständiger Entwurf wird ein **Draft-PR** (`codex/research-<Issue>`), der das Issue
+   beim Merge schließt. Es ist immer höchstens ein Research-PR offen, damit zwei Entwürfe nie dieselbe
+   Studiennummer bekommen. Nach zwei gescheiterten Versuchen: `research:blocked`; Label entfernen gibt zwei neue
+   Versuche frei.
+3. **Abgelehnt oder abgebrochen:** Schließt Uzi einen Entwurf ohne Merge, setzt der Server beim nächsten Lauf
+   `research:blocked` und kommentiert. Ein Claim ohne PR (abgebrochener Lauf) wird freigegeben.
+4. **Grenzen:** Der Worker rechnet nicht, lädt keine Daten, schreibt nicht ins Register, erteilt keine Freigabe und
+   merged keinen Research-PR. Das Modell schreibt nur Text; das ist nicht F8 (Server als Rechenhost).
+   Ein Entwurf wartet wie jeder andere auf Uzis Freigabe. Abschalten: `TIM_WORKER_RESEARCH=0`.
+   Research-Issues werden nie zu Code-Verträgen triagiert.
+
 ## Nächste Pakete
 
 F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
@@ -322,3 +348,5 @@ F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
 | 2026-10-31 | 1.0 | Anzeige im Forschung-Bildschirm (F9) |
 | 2026-10-31 | 1.0 | Selbst-Verbesserung aus den eigenen Trades (F11) |
 | 2026-10-31 | 1.0 | Regel-Anfrage (F10): Regel aus Bausteinen, Erkundung ohne Registerplatz, Weg zur Studie |
+| 2026-11-02 | 1.0 | Research-Spur des Issue-Workers (F12): bereite Ideen als Issues, Entwürfe vom Server-Modell als Draft-PR |
+| 2026-11-04 | 1.0 | Holdout öffnen nur mit Zustimmung von Uzi und Barti (Uzis Entscheidung C zum Antrag S7b mit Makro-Filtern, privater PR #460) |

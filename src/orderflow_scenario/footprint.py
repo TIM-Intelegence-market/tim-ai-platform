@@ -120,6 +120,8 @@ class FootprintBar:
     def to_dict(self) -> dict[str, Any]:
         return {
             "open_time": self.open_time.isoformat() if self.open_time else None,
+            "open": str(self.open) if self.open is not None else None,
+            "close": str(self.close) if self.close is not None else None,
             "levels": [[str(level.price), str(level.bid_volume), str(level.ask_volume)] for level in self.levels],
             "delta": str(self.delta),
             "total": str(self.total),
@@ -136,6 +138,8 @@ class FootprintSeries:
     def __post_init__(self) -> None:
         if not self.bars:
             raise ValueError("footprint series needs at least one bar")
+        if self.tick_size is not None and (not self.tick_size.is_finite() or self.tick_size <= ZERO):
+            raise ValueError("footprint tick_size must be finite and > 0")
 
     @property
     def delta_series(self) -> tuple[Decimal, ...]:
@@ -290,6 +294,7 @@ def analyze_footprint(
     refs = ("footprint",)
 
     # --- F1/F2 diagonal imbalances ---
+    tick = series.tick_size if series.tick_size is not None else _infer_tick(series.bars)
     buy_flags: list[bool] = []
     sell_flags: list[bool] = []
     for index, level in enumerate(levels):
@@ -297,9 +302,11 @@ def analyze_footprint(
         above = levels[index + 1] if index + 1 < len(levels) else None
         # Buyers lift the ask at this price against sellers hitting the bid one tick lower.
         # A zero on the opposite side counts as an imbalance, as footprint tools show it.
-        buy_flags.append(below is not None and level.ask_volume > ZERO and level.ask_volume >= imbalance_ratio * below.bid_volume)
+        buy_flags.append(below is not None and tick is not None and level.price - below.price == tick
+                         and level.ask_volume > ZERO and level.ask_volume >= imbalance_ratio * below.bid_volume)
         # Sellers hit the bid at this price against buyers lifting the ask one tick higher.
-        sell_flags.append(above is not None and level.bid_volume > ZERO and level.bid_volume >= imbalance_ratio * above.ask_volume)
+        sell_flags.append(above is not None and tick is not None and above.price - level.price == tick
+                          and level.bid_volume > ZERO and level.bid_volume >= imbalance_ratio * above.ask_volume)
     buy_imbalances = sum(buy_flags)
     sell_imbalances = sum(sell_flags)
     stacked_buy = _longest_run(buy_flags)

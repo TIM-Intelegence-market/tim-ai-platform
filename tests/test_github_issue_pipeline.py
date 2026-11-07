@@ -66,6 +66,8 @@ def test_analysis_command_uses_only_supported_exec_options(tmp_path):
         def run(self, args, **_):
             if args[0] == "git":
                 return "abc123"
+            if list(args[:2]) == ["codex", "mcp"]:
+                return "[]"
             if args[0] == "codex":
                 assert "-a" not in args
                 assert args[args.index("--model") + 1] == "gpt-5.6-luna"
@@ -260,6 +262,8 @@ class FlowRunner(CommandRunner):
             return "deadbeef"
         if args[:3] == ["git", "diff", "--name-only"]:
             return "src/a.py\0"
+        if args[:2] == ["codex", "mcp"]:
+            return "[]"
         if args[0] == "codex":
             out = Path(args[args.index("--output-last-message") + 1])
             out.parent.mkdir(parents=True, exist_ok=True)
@@ -358,3 +362,66 @@ def test_unexpected_errors_block_instead_of_crashing_and_labels_still_move(tmp_p
     assert ["gh", "issue", "edit", "7", "--add-label", "agent:blocked"] in runner.calls
     assert ["gh", "issue", "edit", "7", "--remove-label", "agent:analyzing"] in runner.calls
     assert ["gh", "issue", "edit", "7", "--remove-label", "agent:claude-running"] in runner.calls
+
+
+def test_analysis_switches_tim_ops_off_and_points_only_at_tim_graph(tmp_path):
+    """Owner decision: the analysis is posted to a public issue, so tim-ops must be off for
+    this Codex call, not merely discouraged in the prompt."""
+    seen: list[list[str]] = []
+
+    class Runner(CommandRunner):
+        def run(self, args, **_):
+            if args[0] == "git":
+                return "abc123"
+            if list(args[:2]) == ["codex", "mcp"]:
+                return json.dumps([{"name": "tim-graph"}, {"name": "tim-ops"}])
+            if args[0] == "codex":
+                seen.append(list(args))
+                output = Path(args[args.index("--output-last-message") + 1])
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text("## Problem\nTest", encoding="utf-8")
+            return ""
+
+    Pipeline(Path("."), tmp_path, Runner()).run_analysis(
+        Candidate(1, "Pilot", "", frozenset(), "", ""), "run", "origin/platform-main")
+    [args] = seen
+    overrides = [args[i + 1] for i, arg in enumerate(args[:-1]) if arg == "-c"]
+    assert "mcp_servers.tim-ops.enabled=false" in overrides
+    prompt = args[-1]
+    assert "tim-graph" in prompt and "tim-ops" not in prompt
+
+
+def _analysis_args(tmp_path, mcp_list: str) -> list[str]:
+    seen: list[list[str]] = []
+
+    class Runner(CommandRunner):
+        def run(self, args, **_):
+            if args[0] == "git":
+                return "abc123"
+            if list(args[:2]) == ["codex", "mcp"]:
+                return mcp_list
+            if args[0] == "codex":
+                seen.append(list(args))
+                output = Path(args[args.index("--output-last-message") + 1])
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text("## Problem\nTest", encoding="utf-8")
+            return ""
+
+    Pipeline(Path("."), tmp_path, Runner()).run_analysis(
+        Candidate(1, "Pilot", "", frozenset(), "", ""), "run", "origin/platform-main")
+    [args] = seen
+    return args
+
+
+def test_analysis_skips_the_override_when_tim_ops_is_not_configured(tmp_path):
+    """Codex rejects `mcp_servers.<name>.enabled=false` for an undefined server ("invalid
+    transport") and exec stops; an unconfigured tim-ops cannot start, so no override is sent."""
+    args = _analysis_args(tmp_path, json.dumps([{"name": "tim-graph", "enabled": True}]))
+    assert not any("tim-ops" in arg for arg in args[:-1])
+    assert "-c" not in args
+
+
+def test_analysis_blocks_when_the_mcp_list_is_unreadable(tmp_path):
+    for bad in ("", "not json", json.dumps({"name": "tim-ops"}), json.dumps([{"id": "tim-ops"}])):
+        with pytest.raises(PipelineError, match="codex mcp list"):
+            _analysis_args(tmp_path, bad)

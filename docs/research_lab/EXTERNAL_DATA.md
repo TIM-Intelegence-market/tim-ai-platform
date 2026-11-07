@@ -377,3 +377,5 @@ Reihenfolge der BTC Research Engine: **V1 (#128) → V1.1 (#139) → V1.2 → V2
   Zusammenhänge, mehrere Forschungshorizonte) folgt später. V2 beginnt erst, wenn
   die V1-Datenbasis ausreichend breit, sauber, reproduzierbar und
   Point-in-Time-sicher validiert ist.
+- **Einfluss-Barometer (Entwurf):** beschreibender Bereich als Anfang von V2,
+  mit PRE-V2-Prüfung der Datenfamilien, siehe `EINFLUSS_BAROMETER.md`.

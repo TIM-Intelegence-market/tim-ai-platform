@@ -29,6 +29,11 @@ TradePlanBuilder. Afterwards every plan is followed on 1m candles:
   invalidation level closes the rest at that close. Ends as CLOSED with a
   result in R.
 
+GARCH-4h paper sizing (Uzi 2026-11-02, "Dann für 4H morgen"): every plan recorded from then on
+carries ``vol_4h`` from src.research_lab.vol_4h (frozen S15-4h forecast from the closed 4h candles
+before the close: sigma, stop in sigma, weight, size at 1 $ risk). summary() adds net R multiplied
+with that weight next to the plain net R; plans, stops and counts are unchanged.
+
 Paper only. Nothing here places or suggests an order; it records what TIM's
 rules would have done. When a 1m candle touches the stop and a target, the
 stop counts first. No new entries inside the NY-open block.
@@ -87,6 +92,7 @@ DONE = {"CLOSED", "INVALIDATED", "REPLACED", "EXPIRED"}
 RULE_TIM = "tim/1"  # TradePlanBuilder: flat stop, targets 1.5R / 2R / 3R
 RULE_STRUCT = "struct/1"  # src/dashboard/structure_plan.py
 RULE_LEVEL = "level/1"  # src/dashboard/level_plans.py
+RULE_VP = "vp/1"  # src/dashboard/vp_plans.py (volume-profile context, Uzi 03.11.2026)
 NO_TRADE, PAPER_TRADE = "NO_TRADE", "PAPER_TRADE"
 PLAN_RECORDED, PLAN_UPDATED = "PLAN_RECORDED", "PLAN_UPDATED"
 CANDLE_CLOSE_PROCESSED, CANDLE_REVISION_OBSERVED = "CANDLE_CLOSE_PROCESSED", "CANDLE_REVISION_OBSERVED"
@@ -853,6 +859,11 @@ def counter_trend(direction: Any, market_state: Any) -> bool:
     return AGAINST_TREND.get(str(direction)) == str(market_state)
 
 
+def _vol_weighted(closed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    from src.research_lab import vol_4h
+    return vol_4h.weighted(closed)
+
+
 def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     """Counts and sums. Entries excluded by a reviewed correction are left out and counted separately."""
     every = list(journal.get("entries") or [])
@@ -882,6 +893,8 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
         "paper_trades": sum(e.get("journal_decision") == PAPER_TRADE for e in entries),
         "no_trade": sum(e.get("journal_decision") == NO_TRADE for e in entries),
         "by_direction": by_direction,
+        # Paper sizing from GARCH-4h (S15-4h): net R plain and multiplied with the plan's weight.
+        "vol_sizing": _vol_weighted(closed),
         # Horizon journals: stops judged after the next closes (wick = price back beyond the stop at once).
         "stop_reviews": {"reviewed": sum(bool(e.get("stop_review")) for e in closed),
                          "wick": sum(bool((e.get("stop_review") or {}).get("wick")) for e in closed)},
@@ -966,9 +979,46 @@ def _level(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, mode
     return plans, list(result["dropped"])
 
 
+def _vp(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, model: Mapping[str, Any],
+        footprint: Mapping[str, Any] | None, gamma: Mapping[str, Any] | None = None) -> tuple[list[dict[str, Any]], list[str]]:
+    """Rule version vp/1: reactions at the previous day's value by context (src/dashboard/vp_plans.py).
+
+    Uses only candles closed at ``at``; the footprint store gives the touch candle's delta."""
+    from src.dashboard.session_map import build_session_map
+    from src.dashboard.structure_plan import candles_until
+    from src.dashboard.vp_plans import build_vp_plans
+
+    closed = candles_until(series, at)
+    try:
+        prep = build_session_map(closed, at)
+    except Exception:  # noqa: BLE001 - without the map there is no value context
+        return [], ["keine Vorbereitungs-Karte"]
+    result = build_vp_plans(prep, closed["30m"], at, footprint, gamma)
+    analysis = model.get("analysis") or {}
+    plans = [{**item, "pipeline_decision": (analysis.get("decision") or {}).get("status"),
+              "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
+              "market_state": analysis.get("market_state"),
+              **{k: (analysis.get("market") or {}).get(k) for k in ("symbol", "venue", "market_type")},
+              "data_quality": (analysis.get("data_quality") or {}).get("status")} for item in result["plans"]]
+    return plans, list(result["dropped"])
+
+
 def _skip_key(reason: str) -> str:
     # "LONG: <Level>: nächstes Ziel nur 1.05 R entfernt" -> "nächstes Ziel"; numbers never split a key.
     return re.sub(r"\d+[.,]\d+|\b\d+(?= ?%)", "x", reason.rsplit(": ", 1)[-1].split(" nur ")[0])
+
+
+def with_vol_4h(plans: Sequence[Mapping[str, Any]], candles_4h: Sequence[Mapping[str, Any]], at: datetime) -> list[dict[str, Any]]:
+    """Paper sizing from the frozen GARCH-4h forecast (S15-4h, src.research_lab.vol_4h), fixed on the plan.
+
+    Only adds the field ``vol_4h`` (sigma, stop in sigma, weight, size at 1 $ risk); entry, stop,
+    targets and counting stay as they are. Without enough closed 4h candles the field is left out."""
+    from src.research_lab import vol_4h
+    out = []
+    for plan in plans:
+        fields = vol_4h.sizing(plan, candles_4h, at)
+        out.append({**plan, "vol_4h": fields} if fields else dict(plan))
+    return out
 
 
 def with_evidence(plans: Sequence[Mapping[str, Any]], timeframe: str = PLAN_TIMEFRAME, register_path: Path | str = DEFAULT_REGISTER_PATH) -> list[dict[str, Any]]:
@@ -1002,7 +1052,7 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         elif kind == CANDLE_CLOSE_PROCESSED:
             journal["last_plan_candle"] = payload["close_time"]
             journal["last_plan_candle_source_hash"] = payload["source_hash"]
-            if payload.get("rule") in (RULE_STRUCT, RULE_LEVEL):  # TIM-rule events carry no rule field
+            if payload.get("rule") in (RULE_STRUCT, RULE_LEVEL, RULE_VP):  # TIM-rule events carry no rule field
                 journal["rule"] = payload["rule"]
                 journal.setdefault("structure_skips", {})
                 journal["last_skips"] = []  # a STRUCTURE_PLANS_DROPPED event for this close follows it
@@ -1088,13 +1138,16 @@ def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
 
 
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
-           rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME) -> dict[str, Any]:
+           rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None,
+           gamma: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
 
     ``rule`` picks the rule version: TIM's flat stop and R targets, or
-    struct/1 (stop behind the swing, targets at liquidity) in its own file.
+    struct/1 (stop behind the swing, targets at liquidity) or vp/1 (volume-profile context,
+    ``footprint`` = the aggTrades store for the touch candle's delta, ``gamma`` = the options-gamma
+    snapshot for the wall distances) in its own file.
 
     A broken event log raises journal_log.LogError and nothing is written."""
     now = now or datetime.now(timezone.utc)
@@ -1127,6 +1180,8 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 plans, dropped = _structural(plans, series, latest)
             elif rule == RULE_LEVEL:
                 plans, dropped = _level(series, latest, model)
+            elif rule == RULE_VP:
+                plans, dropped = _vp(series, latest, model, footprint, gamma)
             plans, dead = drop_invalid_on_arrival(plans, closed_30m[-1].get("close"))
             dropped += dead
             plans, lost = drop_lost_levels(plans, journal.get("entries") or [], closed_30m, timeframe)
@@ -1137,6 +1192,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
                                    "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                    "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
+            plans = with_vol_4h(plans, series.get("4h") or [], latest)
             record_plans(journal, with_evidence(plans, timeframe, register_path), latest, timeframe)
             judge_trades(journal, model, closed_30m)
             journal["last_plan_candle"] = _iso(latest)

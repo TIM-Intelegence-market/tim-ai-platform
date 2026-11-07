@@ -7,6 +7,9 @@ restore-test  restore the newest verified dump into a scratch database, compare 
               counts with the live database up to the dump's newest timestamp, drop it.
 mirror        copy the newest verified dump to a second volume (external SSD), verify the
               copy's checksum, prune old copies there. Needs no database access.
+files         tar.gz of TIM's own collected market data (perp orderflow and its archive, open
+              interest, gamma levels, S12 liquidations) with sha256; also copied to the mirror
+              volume when it is mounted. Runs after every ``backup`` too. Needs no database access.
 
 The password comes from TIM's secret provider and reaches the PostgreSQL tools only
 through PGPASSWORD, never through argv or a log line.
@@ -38,6 +41,9 @@ DUMP_PATTERN = re.compile(r"^tim_(\d{8}T\d{6}Z)\.dump$")
 REPORT_PATH = ROOT / "data/operational/restore_test.json"
 BACKUP_REPORT_PATH = ROOT / "data/operational/backup_last_run.json"
 MIRROR_REPORT_PATH = ROOT / "data/operational/backup_mirror.json"
+FILES_REPORT_PATH = ROOT / "data/operational/backup_files.json"
+FILES_PATTERN = re.compile(r"^tim_files_(\d{8}T\d{6}Z)\.tar\.gz$")
+FILES_KEEP_COUNT = 7
 # Second copy: an external volume mounted on the Mac (APFS, encrypted), never the system disk.
 DEFAULT_MIRROR_TARGET = Path("/Volumes/TIM-Backup/live")
 # A new dump needs room for about the size of the previous one plus growth.
@@ -351,6 +357,7 @@ def restore_test(
     *,
     tools: dict[str, str] | None = None,
     storage_path: Path | None = None,
+    tablespace: str | None = None,
 ) -> dict[str, Any]:
     tools = {"dropdb": "dropdb", "createdb": "createdb", "pg_restore": "pg_restore", "psql": "psql", **(tools or {})}
     scratch = scratch_name(parts["database"], scratch)
@@ -361,7 +368,10 @@ def restore_test(
     maintenance = ["--maintenance-db", parts["database"]]
     try:
         run_pg([tools["dropdb"], "--if-exists", *maintenance, scratch], parts, timeout=300)
-        run_pg([tools["createdb"], *maintenance, scratch], parts, timeout=300)
+        # A dedicated scratch tablespace keeps the restored copy off the live data filesystem;
+        # storage_path must then be the tablespace's filesystem.
+        placement = ["--tablespace", tablespace] if tablespace else []
+        run_pg([tools["createdb"], *maintenance, *placement, scratch], parts, timeout=300)
     except BackupError as exc:
         exc.evidence["restore_space"] = space
         raise
@@ -509,9 +519,128 @@ def mirror(
     }
 
 
+def own_data_sources(root: Path = ROOT) -> dict[str, Path]:
+    """Archive name -> folder of TIM's own collected data. Missing folders are skipped."""
+    from src.research_lab.liquidations.store import data_root
+
+    return {
+        "perp_flow": root / "data/perp_flow",
+        "options": root / "data/options",
+        "liquidations": data_root(),
+    }
+
+
+def files_archives(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        return []
+    return sorted(path for path in directory.iterdir() if FILES_PATTERN.match(path.name))
+
+
+def _add_tree(archive: Any, folder: Path, arcname: str) -> int:
+    """Add the regular files below ``folder``; temporaries, locks and files that vanish meanwhile are skipped."""
+    added = 0
+    for path in sorted(folder.rglob("*")):
+        if path.name.endswith((".tmp", ".lock")) or path.is_symlink() or not path.is_file():
+            continue
+        try:
+            archive.add(path, arcname=f"{arcname}/{path.relative_to(folder).as_posix()}", recursive=False)
+        except FileNotFoundError:
+            continue  # replaced by its collector between listing and reading
+        added += 1
+    return added
+
+
+def files_backup(
+    directory: Path,
+    sources: dict[str, Path],
+    *,
+    keep_count: int = FILES_KEEP_COUNT,
+    mirror_target: Path | None = None,
+    diskutil: str | None = None,
+) -> dict[str, Any]:
+    """tar.gz of the own-data folders next to the dumps, sha256 beside it, keep the newest ``keep_count``.
+
+    The collectors keep writing while this runs; a day file caught mid-write is complete again in
+    the next day's copy. The newest copy also goes to ``mirror_target`` when that external volume
+    is mounted; without it the report says ``mirror: false`` instead of failing.
+    """
+    import tarfile
+
+    directory.mkdir(parents=True, exist_ok=True, mode=0o750)
+    started = utc_now()
+    stale = remove_stale_temporaries(directory, started, prefix=".tim_files.")
+    included = {name: str(path) for name, path in sources.items() if path.is_dir()}
+    if not included:
+        raise BackupError("no own-data folder found", evidence={"sources": {k: str(v) for k, v in sources.items()}})
+    target = directory / f"tim_files_{stamp(started)}.tar.gz"
+    descriptor, temporary = tempfile.mkstemp(prefix=".tim_files.", dir=directory)
+    os.close(descriptor)
+    try:
+        with tarfile.open(temporary, "w:gz") as archive:
+            counts = {name: _add_tree(archive, Path(path), name) for name, path in included.items()}
+        os.chmod(temporary, 0o640)
+        checksum = sha256_file(Path(temporary))
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    target.with_name(target.name + ".sha256").write_text(f"{checksum}  {target.name}\n", encoding="utf-8")
+    pruned = []
+    for old in files_archives(directory)[:-keep_count]:
+        remove_dump(old)
+        pruned.append(old.name)
+    mirrored: Any = False
+    mirror_reason = "mirror volume not mounted"
+    if mirror_target is not None:
+        try:
+            volume_check(mirror_target, directory, diskutil=diskutil)
+            mirror_target.mkdir(parents=True, exist_ok=True, mode=0o750)
+            copy = mirror_target / target.name
+            shutil.copyfile(target, copy)
+            if sha256_file(copy) != checksum:
+                copy.unlink()
+                raise BackupError(f"mirror copy of {target.name} does not match")
+            copy.with_name(copy.name + ".sha256").write_text(f"{checksum}  {copy.name}\n", encoding="utf-8")
+            for old in files_archives(mirror_target)[:-keep_count]:
+                remove_dump(old)
+            mirrored, mirror_reason = str(copy), ""
+        except BackupError as exc:
+            mirror_reason = str(exc)[:300]
+    return {
+        "status": "PASS",
+        "command": "files",
+        "started_at": started.isoformat(),
+        "completed_at": utc_now().isoformat(),
+        "archive": str(target),
+        "bytes": target.stat().st_size,
+        "sha256": checksum,
+        "sources": included,
+        "files": counts,
+        "pruned": pruned,
+        "removed_temporaries": stale,
+        "mirror": mirrored,
+        "mirror_reason": mirror_reason,
+        "trading_actions": 0,
+    }
+
+
+def run_files(directory: Path, target: Path | None, no_diskutil: bool) -> dict[str, Any]:
+    """``files_backup`` with its report written; never raises (the DB backup must not depend on it)."""
+    try:
+        diskutil = None if no_diskutil or sys.platform != "darwin" else shutil.which("diskutil")
+        payload = files_backup(directory, own_data_sources(), mirror_target=target, diskutil=diskutil)
+    except Exception as exc:  # noqa: BLE001 - leave evidence, never stop the caller
+        payload = {"status": "FAIL", "command": "files", "reason": f"{type(exc).__name__}: {exc}"[:500],
+                   "completed_at": utc_now().isoformat(), "trading_actions": 0}
+        if isinstance(exc, BackupError):
+            payload.update(exc.evidence)
+    atomic_json(FILES_REPORT_PATH, payload)
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="TIM PostgreSQL backup and restore test (OBSERVE only)")
-    parser.add_argument("command", choices=("backup", "restore-test", "mirror"))
+    parser.add_argument("command", choices=("backup", "restore-test", "mirror", "files"))
     parser.add_argument("--dir", type=Path, default=default_backup_directory())
     parser.add_argument("--keep-days", type=int, default=14)
     parser.add_argument("--keep-count", type=int, default=None,
@@ -519,6 +648,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scratch-db", default="tim_restore_test")
     parser.add_argument("--restore-storage-path", type=Path,
                         help="operator-confirmed local filesystem holding PostgreSQL data, indexes and temp files")
+    parser.add_argument("--restore-tablespace", default=None,
+                        help="restore-test: create the scratch database in this tablespace; "
+                             "--restore-storage-path must then point at its filesystem")
     parser.add_argument("--target", type=Path, default=DEFAULT_MIRROR_TARGET,
                         help="mirror: folder on the external backup volume (default /Volumes/TIM-Backup/live)")
     parser.add_argument("--no-diskutil", action="store_true",
@@ -526,6 +658,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.keep_count is not None and args.keep_count < 1:
         parser.error("--keep-count must be at least 1")
+    if args.command == "files":
+        payload = run_files(args.dir, args.target, args.no_diskutil)
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload["status"] == "PASS" else 2
     report_path = {"backup": BACKUP_REPORT_PATH, "restore-test": REPORT_PATH, "mirror": MIRROR_REPORT_PATH}[args.command]
     try:
         if args.command == "mirror":
@@ -541,13 +677,18 @@ def main(argv: list[str] | None = None) -> int:
                 payload = backup(args.dir, args.keep_days, parts, keep_count=args.keep_count)
             else:
                 payload = restore_test(args.dir, args.scratch_db, database_url, parts,
-                                       storage_path=args.restore_storage_path)
+                                       storage_path=args.restore_storage_path,
+                                       tablespace=args.restore_tablespace)
     except Exception as exc:  # fail closed and leave evidence, never a secret
         payload = {"status": "FAIL", "command": args.command, "reason": f"{type(exc).__name__}: {exc}"[:500],
                    "completed_at": utc_now().isoformat(), "trading_actions": 0}
         if isinstance(exc, BackupError):
             payload.update(exc.evidence)
     atomic_json(report_path, payload)
+    if args.command == "backup":
+        # The daily job also copies TIM's own collected data; its result has its own report.
+        files = run_files(args.dir, args.target, args.no_diskutil)
+        payload = {**payload, "files": {"status": files["status"], "report": str(FILES_REPORT_PATH)}}
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if payload["status"] == "PASS" else 2
 

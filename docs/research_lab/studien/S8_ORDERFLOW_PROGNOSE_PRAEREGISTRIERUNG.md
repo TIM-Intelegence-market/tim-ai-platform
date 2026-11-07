@@ -107,7 +107,7 @@ Handelsregeln (kein „POC-Magnet“ o. ä. als Hypothese).
 Qualitätsspalten je Zeile: `stale_ms` (Alter des letzten Trades bei t), `empty_minutes_60` (Minuten ohne Trade
 in den letzten 60), `warm`, `complete`.
 
-## 5. Zielwert (Label-Version 1.0.0)
+## 5. Zielwert (Label-Version 1.0.1)
 
 - Startpreis: letzter Trade bis t. Zielpreis: letzter Trade bis t + 5 Minuten.
 - Ist der Start- oder Zieltrade älter als 60 s, fehlt das Label mit Grund (`stale_start`, `stale_target`);
@@ -200,6 +200,7 @@ noch nicht erfolgt.
 | 2026-10-26 | 0.1 | Entwurf: Frage, Daten, Split, Merkmale 1.0.0, Label 1.0.0, Werkzeug, offene Entscheidungen | keine Archivdaten geladen, keine Outcomes; nur synthetische Testdaten |
 | 2026-10-26 | 0.2 | Merkmale 1.1.0 mit Volume Profile und TPO (Uzis Wunsch, 20:02 Ortszeit); Balkenversion 1.1.0 mit Profildatei; Abschnitt 7: Uzis Entscheid „Eigene Familie, prospektiv“ (Karte 20:49 Ortszeit), Protokoll-Einordnung; Registerstand 58/60 | unverändert: keine Archivdaten, keine Outcomes |
 | 2026-10-28 | Sequenzergänzung 1.2.0 | Uzi autorisiert drei Sequenzmerkmale und einen direkten historischen Vergleich, ausdrücklich ohne Holdout. Die bisherigen 35 Merkmale bleiben als feste Referenzliste erhalten. Eigener Laborplan und Ergebnisse; keine Änderung des Holdout-Registers oder der Runtime. | Definitionen und Vergleich vor Abruf der neuen Stichprobe festgelegt; kein trainiertes bisheriges S8-Modell vorhanden |
+| 2026-11-02 | 0.2.1 | Technisches Review vom 26.10.2026 (Entwurf #454 im alten Repo) nach platform-main übertragen: Quellenqualität und Balkenversion vor Nutzung prüfen, vollständigen Manifesteintrag (inkl. Qualitätsbelegen und Profil) in den Datensatzhash einbeziehen, bestehende Exporte vor Überschreiben schützen, Symbol abgleichen, endliche Labelparameter und ganze Zeitintervalle erzwingen (Label 1.0.1, Export 1.0.1), beim Replay keine gepurgten Zielbalken ausgeben und explizite Zeitzone verlangen. Forschungsfrage, Schwellen und Splits bleiben unverändert. Der Datensatzhash neuer Exporte unterscheidet sich dadurch von früheren Läufen (auch vom Sequenzvergleich 28.10.); dessen Ergebnis bleibt unberührt, weil er Tage mit Id-Lücken oder Zeitrücksprüngen schon vorher ausschloss. | nur synthetische Regressionen; keine neuen Archive oder Outcome-Auswertungen |
 
 ## 11. Autorisierter Sequenzvergleich (28.10.2026)
 
@@ -212,3 +213,17 @@ Regression. Derselbe Zeilenfilter, dasselbe Label, dieselben Train-/Validierungs
 Dies ist ein autorisierter explorativer Merkmalsvergleich. Die ursprüngliche prospektive S8-Bestätigung
 bleibt offen; dieses Ergebnis ist weder Setup-Freigabe noch Nettoertragsnachweis. Die Angaben zum früheren
 Bestand in Abschnitt 10 beschreiben den damaligen Ausgangsstand.
+
+## 12. Technische Nutzung nach Review 0.2.1
+
+Tage mit Id-Lücken oder Zeitrücksprüngen bleiben im eigenen Speicher zur Diagnose erhalten, werden aber beim
+Laden für Export/Replay abgelehnt: Die Reduktion zählt diese Fehler, rekonstruiert daraus keine fehlenden Trades
+und kann bei einem Zeitrücksprung den letzten Preis nicht zuverlässig der letzten Ereigniszeit zuordnen.
+Identische, eindeutig erkennbare Duplikate werden wie bisher gezählt und entfernt. Leere Minuten mit
+nachgewiesener Datenherkunft sind weiterhin von fehlenden Quelldaten zu unterscheiden.
+
+Jeder Export braucht ein neues Ausgabeverzeichnis (`--out`). Bereits vorhandene Konfigurationsverzeichnisse
+werden nicht überschrieben, auch nicht nach einem abgebrochenen Lauf. Das Split-Manifest kennzeichnet den
+vollständig abgeschlossenen Export; für einen erneuten Lauf ein neues Ausgabewurzelverzeichnis wählen.
+Die Standardparameter des Labels sind unverändert. NaN, Unendlich und ungültige Zeitintervalle sind
+Eingabefehler; eine unbekannte/ungültige Volatilität ergibt ein fehlendes Label statt „neutral“.

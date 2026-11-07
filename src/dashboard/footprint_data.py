@@ -203,8 +203,14 @@ def _imbalances(prices: Sequence[float], grouped: Mapping[float, Sequence[float]
     """Diagonal imbalances (F1): ask at a level against bid one step below, bid against ask one step above.
 
     The neighbour is the row one price step away, also when nothing traded there: an empty row counts
-    as zero, as in orderflow_scenario.footprint and common footprint tools. Comparing with the next row
-    that has trades instead would skip the gap and measure against a row two or more steps away.
+    as zero, as common footprint tools show it. Comparing with the next row that has trades instead
+    would skip the gap and measure against a row two or more steps away.
+
+    This is the chart's reading and differs from the scenario engine in two points (Prüfung
+    06.11.2026): orderflow_scenario.footprint compares over exactly one exchange tick and only
+    against a neighbour level that exists (has trades), while here the diagonal is the displayed
+    row width ``step`` (a whole number of ticks, zoom dependent) and a missing row counts as zero.
+    Rows at the top and bottom of a bar have no neighbour and are never marked.
     """
     found: list[list[Any]] = []
     empty = (0.0, 0.0)

@@ -47,6 +47,8 @@ TRIAGE_SKIP_LABELS = REJECT_LABELS | {
     "type:epic", "master", "ws:server", "observe-only", "status:roadmap", "ci-blocked",
     "external-action", "status:external-action", "archive", "duplicate", "agent:pilot",
     LABEL_READY, LABEL_HARD, LABEL_NOT_SUITABLE, LABEL_BLOCKED, LABEL_SPLIT,
+    # Research ideas are drafted by the research lane, never triaged into code contracts.
+    "research:idea",
 }
 DEFAULT_TRUSTED_AUTHORS = ("uezeyiraydin-cell", "tim-issue-worker-t330")
 MAX_TRIAGE_CALLS_PER_VERSION = 2

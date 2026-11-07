@@ -366,3 +366,21 @@ def test_openmarket_adapter_keeps_footprint_and_delta_out_while_sides_are_unprov
     assert adapted.footprint is None
     assert "footprint:VOLUME_PROFILE_AGG_side_semantics_unverified" in adapted.missing_fields
     assert adapted.profile is not None  # levels-only profile still works
+
+
+def test_refuted_exhaustion_drops_an_earlier_footprint_confirmation():
+    # Prüfung 06.11.2026: the footprint confirms first (finished auction at the high), then an
+    # expanding delta series refutes the hypothesis. The confirmation must fall with it.
+    thin = base_candles(99.0, 40.0)
+    finished_top = bar([("99", "3", "3"), ("99.5", "3", "3"), ("100", "0", "2")], open_="99", close="100")
+    result = ENGINE.evaluate(OrderflowInputs(
+        candles=thin, net_delta=D("120"), footprint=series(finished_top),
+        delta_series=(D("20"), D("40"), D("80")),
+    ))
+    assert result.exhaustion_hypothesis is None
+    assert result.exhaustion_confirmed is False
+    assert "exhaustion_refuted_delta_expanding" in texts(result, OrderflowStatementKind.REFUTATION)
+    confirmed = ENGINE.evaluate(OrderflowInputs(candles=thin, net_delta=D("120"), footprint=series(finished_top)))
+    assert confirmed.exhaustion_confirmed is True
+    assert result.confidence < confirmed.confidence  # no hypothesis and no confirmation bonus any more
+    assert result.to_dict()["exhaustion_confirmed"] is False

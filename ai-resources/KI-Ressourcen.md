@@ -148,6 +148,22 @@ ai-resources/
 
 Für jedes übernommene Skill-/Prompt-Paket Quelle, Commit/Version, Lizenz, Prüfdatum, unterstützte Plattformen, benötigte Rechte und Änderungen dokumentieren. Originalanleitungen können sich ändern; besonders Recht, Preise, Modellnamen und Plattformlimits vor Verwendung erneut prüfen.
 
+## Externe Connectoren (MCP), geprüft am 06.11.2026
+
+Grundlage: der Gratis-Guide "Five connectors for Claude Code" (PathionAI). Nichts davon ist installiert; die
+eigenen MCP-Server in `.mcp.json` (`tim-graph`, `tim-ops`) bleiben davon unberührt.
+
+| Connector | Urteil für TIM | Grund |
+|---|---|---|
+| Playwright | vorhanden | Cloud-Sitzungen haben Chromium und Playwright bereits; damit entstehen die Chart- und Control-Center-Screenshots. |
+| Firecrawl | Option, nur auf Wunsch | Liest öffentliche Webseiten als Text (z.B. Börsen-API-Doku, Research-Quellen). Basis ohne Konto; die aufgerufenen Seiten laufen über die Server von Firecrawl, daher nur öffentliche URLs, keine internen Adressen, Links mit Token oder TIM-Daten. |
+| Perplexity | nicht nötig | Websuche ist schon vorhanden; zusätzlicher API-Schlüssel mit Kosten pro Abfrage. |
+| PostHog | passt nicht | Misst Besucher einer Webseite; TIM hat keine Kundenbesucher. |
+| Composio | abgelehnt | Installation per fremdem Shell-Skript und dauerhafter Zugriff auf Gmail, Slack und weitere Konten über einen Drittanbieter; widerspricht den Regeln zu ungeprüften Installationsbefehlen und dauerhaften Zugriffen. |
+
+Vor einer späteren Einrichtung: Quelle und Version des Servers prüfen, Rechte so knapp wie möglich halten und die
+ausdrückliche Freigabe einholen.
+
 ## In Codex installierte Bibliothek-Skills
 
 Am 28.09.2026 wurden die folgenden drei geprüften Pakete aus den Original-ZIPs in den persönlichen Codex-Skillordner kopiert. Sie sind inhaltlich modellneutral; Skill-Aufruf/Auto-Discovery ist jedoch plattformspezifisch. Vollständige Quelldateien und Herkunftshinweise liegen an den Pfaden:

@@ -191,6 +191,16 @@ def judge(trades: Sequence[Mapping[str, Any]], window: Mapping[str, Any]) -> dic
     return {"verdict": verdict, "figures": figures}
 
 
+def decided(events: Sequence[Mapping[str, Any]]) -> dict[str, str]:
+    """Uzi's answer per filter (weekly report): "uebernommen" or "abgelehnt"; only for the filter's current hash."""
+    out = {}
+    for event in events:
+        if event.get("event") == "decision" and event.get("filter") in FILTERS \
+                and event.get("filter_hash") == filter_hash(event["filter"]):
+            out[event["filter"]] = "uebernommen" if event.get("answer") == "ja" else "abgelehnt"
+    return out
+
+
 VERDICT_WORDS = {"bestanden": "bestanden: bereit für Uzis Entscheidung", "nicht_bestanden": "nicht bestanden",
                  "zu_wenig": "zu wenige neue Trades, neues Fenster"}
 
@@ -201,6 +211,7 @@ def step(journals: Mapping[str, Mapping[str, Any]], reflections: Sequence[Mappin
     trades = closed(journals)
     events = log.events()
     open_windows = windows(events)
+    answers = decided(events)
     n_reflected, shares = lesson_shares(reflections)
     report: dict[str, Any] = {"at": _iso(now), "trades": len(trades), "reflected": n_reflected, "filters": {}}
     for key, rule in FILTERS.items():
@@ -239,6 +250,8 @@ def step(journals: Mapping[str, Mapping[str, Any]], reflections: Sequence[Mappin
             entry["started"] = True
         if entry["status"] == "beobachtet nicht" and look["dropped"] and look["dropped_net_r"] >= 0:
             entry["status"] = "rueckblick_dagegen"
+        if key in answers:
+            entry["status"] = answers[key]
         report["filters"][key] = entry
     return report
 
@@ -247,7 +260,8 @@ def status(journals: Mapping[str, Mapping[str, Any]], reflections: Sequence[Mapp
            now: datetime) -> dict[str, Any]:
     """Read-only view of the loop for the Forschung screen."""
     trades = closed(journals)
-    mine = windows(log.events())
+    events = log.events()
+    mine, answers = windows(events), decided(events)
     out = {"trades": len(trades), "filters": []}
     for key, rule in FILTERS.items():
         look = assess(trades, key)
@@ -266,6 +280,7 @@ def status(journals: Mapping[str, Mapping[str, Any]], reflections: Sequence[Mapp
             state = "trifft_fast_alle"
         elif state == "beobachtet nicht" and look["dropped_net_r"] >= 0 and look["dropped"]:
             state = "rueckblick_dagegen"
+        state = answers.get(key, state)
         out["filters"].append({"key": key, "text": rule.text, "state": state, "detail": detail,
                                "dropped": look["dropped"], "dropped_net_r": look["dropped_net_r"],
                                "window_end": last["end"] if last and last["verdict"] is None else None})

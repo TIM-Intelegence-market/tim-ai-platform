@@ -41,6 +41,8 @@ def test_backup_and_health_cli_directory_selection(command, platform_name, expli
 
         monkeypatch.setattr(backup, 'backup', create)
         monkeypatch.setattr(backup, 'BACKUP_REPORT_PATH', tmp_path / 'backup.json')
+        monkeypatch.setattr(backup, 'FILES_REPORT_PATH', tmp_path / 'backup_files.json')
+        monkeypatch.setattr(backup, 'own_data_sources', lambda: {})
         args = ['backup'] + (['--dir', str(custom)] if explicit else [])
         assert backup.main(args) == 0
     assert selected == [expected]

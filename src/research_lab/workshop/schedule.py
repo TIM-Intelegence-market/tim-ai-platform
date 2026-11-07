@@ -5,7 +5,8 @@ The agent wakes every 15 minutes and runs whatever is due:
 - ``trades``  hourly: reflect every newly closed paper trade of the plan journals and turn
   recurring loss patterns into ideas (source ``trade_reflexion``).
 - ``weekly``  once per week, from Sunday 02:00 local time: check all ideas (``check --record``),
-  run the self-improvement pass (F11: filters from trade lessons, watched 30 days) and run the AI round (Claude Code CLI without tools, at most three ideas with a counterargument,
+  run the self-improvement pass (F11: filters from trade lessons, watched 30 days), write the weekly
+  report for Uzi (``reports/woche_JJJJ-Www.md``, at most one yes/no question) and run the AI round (Claude Code CLI without tools, at most three ideas with a counterargument,
   source ``ki_runde``). The answer is untrusted: every idea is validated and goes through the queue's
   own limits. No study is drafted, approved or run here (stage 1: Uzi approves each study).
 - ``monthly`` once per month, from the 1st 03:00 local time: monthly reflection of the previous month.
@@ -44,7 +45,7 @@ LOCAL = ZoneInfo(charter.LOCAL_TIMEZONE)
 RESEARCH_DIR = Path("data/research")
 JOURNAL_DIR = Path("data/journal")
 JOURNALS = ("tim_plan_journal", "tim_plan_journal_struct", "tim_plan_journal_short",
-            "tim_plan_journal_mid", "tim_plan_journal_long")
+            "tim_plan_journal_mid", "tim_plan_journal_long", "tim_plan_journal_vp")
 TRADES_EVERY = timedelta(minutes=55)      # hourly, with slack for the 15-minute wake-up
 WEEKLY_AT = (6, 2)                        # Sunday (isoweekday 7 -> weekday 6), 02:00 local
 MONTHLY_AT = (1, 3)                       # 1st of the month, 03:00 local
@@ -268,14 +269,31 @@ class Workshop:
         return found
 
     def run_self_improve(self, now: datetime) -> dict[str, Any]:
-        """F11: filters from the trade lessons, look back, watch forward, judge once (changes nothing in TIM)."""
-        from src.research_lab.workshop import self_improve
+        """F11: filters from the trade lessons, look back, watch forward, judge once (changes nothing in TIM).
+
+        Also writes the weekly report for Uzi (at most one yes/no question), see ``weekly_report``.
+        """
+        from src.research_lab.workshop import self_improve, weekly_report
         try:
-            report = self_improve.step(self.journals(), self.reflections().records(),
-                                       self_improve.LearningLog(self.research / "self_improve/log.jsonl"), now)
+            journals = self.journals()
+            log = self_improve.LearningLog(self.research / "self_improve/log.jsonl")
+            report = self_improve.step(journals, self.reflections().records(), log, now)
         except Exception as exc:  # a broken journal must not stop the weekly round
             return {"error": f"{type(exc).__name__}: {exc}"[:200]}
-        return {key: value["status"] for key, value in report["filters"].items()}
+        result: dict[str, Any] = {key: value["status"] for key, value in report["filters"].items()}
+        try:
+            from src.dashboard.exit_shadow import DEFAULT_PATH as shadow_path, load as load_shadow
+            week = weekly_report.build(journals, report, log.events(), now, load_shadow(self.root / shadow_path))
+            folder = self.research / "reports"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"woche_{week['week']}.json").write_text(json.dumps(week, ensure_ascii=False, indent=2) + "\n",
+                                                                encoding="utf-8")
+            (folder / f"woche_{week['week']}.md").write_text(weekly_report.render(week), encoding="utf-8")
+            result["report"] = f"woche_{week['week']}"
+            result["decision"] = (week["proposal"] or {}).get("filter")
+        except Exception as exc:  # the report is a summary; its failure must not hide the round
+            result["report_error"] = f"{type(exc).__name__}: {exc}"[:200]
+        return result
 
     def evaluate_shadows(self, now: datetime) -> list[dict[str, Any]]:
         """F7: shadow candidates whose window has ended get their one evaluation; promoting stays Uzi's."""

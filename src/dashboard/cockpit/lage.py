@@ -146,7 +146,23 @@ def _jobs(state: DashboardState) -> dict[str, Any]:
         "today": today,
         "backup": lambda: _read_json(operational / "backup_last_run.json"),
         "server_health": lambda: _read_json(operational / "server_health.json"),
+        "own_data": lambda: own_data_tiles(state),
     }
+
+
+def own_data_tiles(state: DashboardState, now: datetime | None = None) -> list[Tile]:
+    """Freshness of TIM's own collectors (perp orderflow, open interest, gamma, liquidations, copy)."""
+    from src.dashboard import own_data
+
+    return own_data.status(state.operational_watchdog_path.parent.parent, own_data.default_liq_root(), now)
+
+
+def _own_data_tile(result: SourceResult, now: datetime) -> Tile:
+    from src.dashboard.own_data import summary_tile
+
+    if not result.ok or not isinstance(result.value, list):
+        return unavailable("own_data", "Eigene Daten", result.reason() or "Unerwartetes Format", "own_data.status", "/neu/betrieb")
+    return summary_tile(result.value, now)
 
 
 # --- system ---------------------------------------------------------------
@@ -432,6 +448,10 @@ def build_lage(state: DashboardState, now: datetime | None = None, budget: float
         system = _system_tiles(results["snapshot"], results["backup"], results["server_health"], now)
     except Exception as exc:  # noqa: BLE001 - unexpected data shape: grey tiles with the reason, not a broken page
         system = [unavailable(key, label, _broken(exc), "Kachelbau System", href) for key, label, href in SYSTEM_TILES]
+    try:
+        system.append(_own_data_tile(results["own_data"], now))
+    except Exception as exc:  # noqa: BLE001
+        system.append(unavailable("own_data", "Eigene Daten", _broken(exc), "Kachelbau Eigene Daten", "/neu/betrieb"))
     try:
         market, plans = _market_tiles(results["series"], results["chart"], results["prep"], now)
     except Exception as exc:  # noqa: BLE001

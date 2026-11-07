@@ -2,7 +2,7 @@
 
 Read-only display data, never research data and never orders:
 
-- candles of BTC, ETH, SOL or gold (PAXG) in every Binance interval (public klines, cached
+- candles of BTC, ETH, SOL, Monero (XMR) or gold (PAXG) in every Binance interval (public klines, cached
   briefly); the newest, still open candle is shown but flagged ``closed=False``
   and never enters a level,
 - drawings: every level as a labelled segment from the moment it formed to the
@@ -11,7 +11,8 @@ Read-only display data, never research data and never orders:
   confirmed swing highs and lows.
 
 Levels for BTC come from the runtime series (the same data the plan journals
-use); ETH, SOL and gold are display only and fetched on demand. The multi-coin
+use); ETH, SOL, XMR and gold are display only and fetched on demand. XMR comes from the
+USD-M perpetual (Binance ended XMR spot in February 2024), every other symbol from spot. The multi-coin
 runtime stays off: nothing here writes to a journal, the database or a plan.
 """
 
@@ -31,11 +32,20 @@ from src.dashboard.chart_model import _nice_step, analytical_series, clean_candl
 
 # PAXGUSDT = tokenised gold (1 PAXG = 1 troy ounce), the gold market Binance offers with the
 # same public klines (Uzi 27.10.2026: gold into the analysis). It trades 24/7, real gold does not.
-SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "PAXGUSDT")
-SYMBOL_NAMES = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "PAXGUSDT": "Gold (PAXG)"}
+# XMRUSDT = Monero (Barti 02.11.2026). Binance has no XMR spot market since 20.02.2024, so its
+# candles come from the USD-M perpetual (same kline format, /fapi/v1/klines); see XMR_NOTE.
+SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XMRUSDT", "PAXGUSDT")
+SYMBOL_NAMES = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "XMRUSDT": "Monero (XMR-Perp)",
+                "PAXGUSDT": "Gold (PAXG)"}
+# Symbols without a Binance spot market: klines from the USD-M perpetual instead.
+PERP_ONLY = frozenset({"XMRUSDT"})
+SPOT_KLINES = "https://api.binance.com/api/v3/klines?"
+PERP_KLINES = "https://fapi.binance.com/fapi/v1/klines?"
 SYMBOL_TABS = {"PAXGUSDT": "GOLD"}
 GOLD_NOTE = ("Gold über PAXG (tokenisiertes Gold, 1 PAXG = 1 Feinunze): handelt rund um die Uhr, echtes Gold nicht; "
              "Wochenend-Kerzen und dünnere Liquidität können Level gegenüber XAUUSD verschieben.")
+XMR_NOTE = ("Monero über den Binance-Perpetual XMRUSDT (USD-M Futures): Binance hat XMR-Spot im Februar 2024 "
+            "eingestellt. Perp-Preis kann durch Funding leicht vom Spotpreis abweichen; reine Anzeige, kein Papier-Trading.")
 DEFAULT_SYMBOL = "BTCUSDT"
 # Every interval Binance Spot offers, as on TradingView.
 VIEW_TIMEFRAMES = ("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "3d", "1w", "1M")
@@ -100,7 +110,8 @@ DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "struct
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
-                 "tim": ("plans_old", "TIM 30m"), "struct": ("plans_old", "Struktur 30m"), "level": ("plans_old", "Level 30m")}
+                 "tim": ("plans_old", "TIM 30m"), "struct": ("plans_old", "Struktur 30m"), "level": ("plans_old", "Level 30m"),
+                 "vp": ("plans_old", "VP 30m")}
 PLAN_LIMIT = 40  # newest plans drawn per chart
 PLAN_SHOWN = {"OPEN", "FILLED", "CLOSED"}
 # Fibonacci retracement of the newest swing leg, drawn like TradingView's Fib tool (Uzi 30.10.2026):
@@ -117,16 +128,21 @@ Fetch = Callable[[str, str, int], list[dict[str, Any]]]
 
 
 def tab_label(symbol: str) -> str:
-    """Short name on the coin tabs: BTC, ETH, SOL, GOLD."""
+    """Short name on the coin tabs: BTC, ETH, SOL, XMR, GOLD."""
     return SYMBOL_TABS.get(symbol, symbol.removesuffix("USDT"))
 
 
+def kline_url(symbol: str) -> str:
+    """Binance kline endpoint for a chart symbol (both answer in the same row format)."""
+    return PERP_KLINES if symbol in PERP_ONLY else SPOT_KLINES
+
+
 def fetch_klines(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
-    """Public Binance Spot klines, including the open candle (``closed`` False)."""
+    """Public Binance klines (spot, USD-M perpetual for ``PERP_ONLY``), including the open candle (``closed`` False)."""
     if symbol not in SYMBOLS or interval not in INTERVAL_SECONDS:
         raise ValueError("Unsupported symbol or interval")
     query = urlencode({"symbol": symbol, "interval": interval, "limit": max(1, min(int(limit), VIEW_LIMIT))})
-    with urlopen("https://api.binance.com/api/v3/klines?" + query, timeout=10) as response:
+    with urlopen(kline_url(symbol) + query, timeout=10) as response:
         rows = json.load(response)
     if not isinstance(rows, list):
         raise ValueError("Invalid exchange candle response")
@@ -961,9 +977,12 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
                              "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None,
                              "markets": {"names": MARKETS, "active": DEFAULT_MARKET, "available": []}, "cvd": None, "oi": None,
-                             "funding": None, "premium": None, "macro": []}
+                             "funding": None, "premium": None, "macro": [], "macro_ahead": [],
+                             "interval_seconds": INTERVAL_SECONDS.get(timeframe)}
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
+    if symbol == "XMRUSDT":
+        model["notes"].append(XMR_NOTE)
     rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
     if error:
         model["notes"].append(error)
@@ -1034,9 +1053,11 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model["drawings"] = place_drawings(drawings, times)
     model["fib"] = fib_retracement(candles, timeframe)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
-    from src.dashboard.macro_calendar import chart_markers, load_calendar
+    from src.dashboard.macro_calendar import chart_markers, load_calendar, upcoming_markers
 
-    model["macro"] = chart_markers(load_calendar() if macro is None else macro, times, INTERVAL_SECONDS[timeframe], now)
+    calendar = load_calendar() if macro is None else macro
+    model["macro"] = chart_markers(calendar, times, INTERVAL_SECONDS[timeframe], now)
+    model["macro_ahead"] = upcoming_markers(calendar, times, INTERVAL_SECONDS[timeframe], now)
     model["tpo"], model["volume_profile"], model["footprint"] = [], [], {"step": None, "bars": [], "note": None}
     model["bubbles"] = {"items": [], "min_usd": None, "max_usd": None, "note": None}
     if INTERVAL_SECONDS[timeframe] <= 14400:  # profiles per day only make sense on intraday views

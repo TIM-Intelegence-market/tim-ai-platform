@@ -131,8 +131,8 @@ def test_snapshot_rejects_bad_inputs() -> None:
 # --- Control Center ------------------------------------------------------------------------------
 
 
-def test_refresh_stores_snapshot_and_reads_two_public_endpoints() -> None:
-    state, calls = DashboardState(), []
+def test_refresh_stores_snapshot_and_reads_two_public_endpoints(tmp_path) -> None:
+    state, calls = DashboardState(gamma_log_path=tmp_path / "gamma_levels.jsonl"), []
     snap = gamma_data.refresh(state, "BTCUSDT", fetch=_fake_deribit(calls), now=AS_OF)
     assert state.gamma["BTCUSDT"] is snap and snap["spot"] == SPOT
     assert [method for method, _ in calls] == ["get_book_summary_by_currency", "get_index_price"]
@@ -189,9 +189,9 @@ def test_chart_draws_gamma_group_with_own_colours_also_in_the_public_view() -> N
     assert english_chart_model({"notes": [stale_note]})["notes"] == ["Gamma: Deribit data is 63 min old, levels hidden."]
 
 
-def test_server_serves_gamma_and_adds_it_to_prep(monkeypatch) -> None:
+def test_server_serves_gamma_and_adds_it_to_prep(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(chart_live, "CACHE", KlineCache(fake_fetch()))
-    state = DashboardState()
+    state = DashboardState(gamma_log_path=tmp_path / "gamma_levels.jsonl")
     server = DashboardServer(state, port=0)
     server.start()
     port = server.server.server_address[1]
@@ -263,3 +263,17 @@ def test_pipeline_carries_gamma_into_the_analysis_output() -> None:
     # Context only: decision and confidence do not move.
     assert gamma["decision"]["status"] == plain["decision"]["status"]
     assert gamma["orderflow"]["confidence"] == plain["orderflow"]["confidence"]
+
+
+def test_refresh_appends_one_level_line_per_snapshot(tmp_path) -> None:
+    """Deribit keeps no history of walls and flip: TIM logs them itself for later studies (Uzi 04.11.2026)."""
+    path = tmp_path / "options" / "gamma_levels.jsonl"
+    state = DashboardState(gamma_log_path=path)
+    snap = gamma_data.refresh(state, "BTCUSDT", fetch=_fake_deribit(), now=AS_OF)
+    gamma_data.refresh(state, "BTCUSDT", fetch=_fake_deribit(), now=AS_OF)  # same snapshot time: written once
+    gamma_data.refresh(state, "BTCUSDT", fetch=_fake_deribit(), now=AS_OF + timedelta(minutes=5))
+    lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert len(lines) == 2 and lines[0]["as_of"] == snap["as_of"] and lines[0]["symbol"] == "BTCUSDT"
+    assert lines[0]["call_wall"] == snap["all_expiries"]["call_wall"] and lines[0]["put_wall"] == snap["all_expiries"]["put_wall"]
+    assert {"gamma_flip", "regime", "max_pain", "main_call_wall", "oi_walls"} <= set(lines[0])
+    assert gamma_data.refresh(DashboardState(gamma_log_path=None), "BTCUSDT", fetch=_fake_deribit(), now=AS_OF)  # no log: still works

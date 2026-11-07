@@ -1,4 +1,4 @@
-"""TIM chart page: interactive chart (BTC/ETH/SOL, every timeframe) plus TIM's analysis for BTC.
+"""TIM chart page: interactive chart (BTC/ETH/SOL/XMR/gold, every timeframe) plus TIM's analysis for BTC.
 
 The top chart is TradingView Lightweight Charts (Apache 2.0, served locally) fed by
 /api/chart/live; every level is a labelled segment from the moment it formed. Below,
@@ -14,7 +14,7 @@ from typing import Any
 
 from pathlib import Path
 
-from src.dashboard.chart_live import DEFAULT_SYMBOL, GROUP_STYLE, SYMBOL_NAMES, SYMBOLS, VIEW_TIMEFRAMES, tab_label
+from src.dashboard.chart_live import DEFAULT_SYMBOL, GROUP_STYLE, PERP_ONLY, SYMBOL_NAMES, SYMBOLS, VIEW_TIMEFRAMES, tab_label
 from src.dashboard.chart_model import CHART_TIMEFRAMES, DEFAULT_TIMEFRAME, build_chart_model
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _content_security_policy, _hero, _layout, _strip_states
@@ -541,12 +541,12 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     view = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_TIMEFRAME
     data = state.snapshot()
-    body = _hero("TIM-Chart", "BTC, ETH, SOL und Gold in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
+    body = _hero("TIM-Chart", "BTC, ETH, SOL, XMR und Gold in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
     body += _summary_section(state)
     body += _live_section(symbol, view)
     if symbol != "BTCUSDT":
         body += ("<section class='cc-section'><p class='cc-note'>Steckbrief, Szenarien, Level-Pläne und Plan-Journale gibt es nur für BTC. "
-                 f"{_safe(SYMBOL_NAMES[symbol])} ist reine Anzeige aus öffentlichen Binance-Kerzen; die Multi-Coin-Runtime ist aus.</p></section>")
+                 f"{_safe(SYMBOL_NAMES[symbol])} ist reine Anzeige aus öffentlichen Binance-Kerzen{' (Perpetual)' if symbol in PERP_ONLY else ''}; die Multi-Coin-Runtime ist aus.</p></section>")
         return _layout("TIM-Chart", "Chart", body, strip=_strip_states(data))
 
     series, now = state.chart_series(), datetime.now(timezone.utc)

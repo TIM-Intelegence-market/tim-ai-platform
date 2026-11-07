@@ -1,4 +1,10 @@
-"""BTC perpetual (Binance USD-M futures) trades and open interest for the TIM chart (display only).
+"""Perpetual (Binance USD-M futures) trades and open interest for the TIM chart (display only).
+
+Symbols: BTCUSDT and, since 04.11.2026, XMRUSDT (Binance has no XMR spot market; Barti's choice).
+Each symbol has its own ``PerpSpec`` (price level, bubble floor, check tolerance) and its own folder:
+BTC keeps ``data/perp_flow/`` as before, every further symbol gets ``data/perp_flow/<SYMBOL>/``.
+All symbols share one call budget (``CALLS_PER_MINUTE``), so a second symbol never raises the load
+on Binance above what BTC alone used while catching up.
 
 Broncx reads orderflow on the perp: its volume is 8-12x the spot volume and its delta can run
 against the spot delta (Beirat 29.10.2026: +2534 BTC spot vs. -1844 BTC perp on 27.10.). TIM
@@ -11,10 +17,13 @@ stores spot trades in PostgreSQL; this module adds the perp side without touchin
   (5-minute buckets, 5 $ levels) plus large taker orders for the bubbles; no raw trade is kept.
 - The rows are saved per UTC day under ``data/perp_flow/`` together with the next id. After a
   restart the runtime goes on from that id and catches up, so a restart leaves no gap either.
+- The chart reads the last ``DAYS_KEPT`` days. Older day files are never deleted: they move to
+  ``data/perp_flow/archive/`` and stay there as TIM's own orderflow history (04.11.2026).
 - Once an hour the last full hours are compared with Binance's 1h perp candle (volume and taker
   buy volume). The result is shown on the chart, so a broken record cannot hide.
 - ``open_interest`` reads the hourly open interest history and adds the Z-score over 7.5 days
-  (180 hours), the window Broncx uses.
+  (180 hours), the window Broncx uses. Binance keeps only 30 days of it, so every new hour is
+  appended to ``oi-<SYMBOL>-1h.jsonl`` in the symbol's folder and kept for good (``append_oi_archive``).
 
 Nothing here trades, writes a plan or changes a score. Public endpoints only, no key, no account.
 """
@@ -29,6 +38,7 @@ import statistics
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -41,12 +51,19 @@ BUCKET_SECONDS = 300
 DAYS_KEPT = 14
 BATCH = 1000  # aggTrades per call (Binance maximum), request weight 20
 BACKFILL_DAYS = 1  # a fresh start reads from 00:00 UTC of the previous day, so yesterday's profile is complete
-CALLS_PER_MINUTE = 60  # 1200 of Binance's 2400 weight per minute at most, while catching up
+CALLS_PER_MINUTE = 60  # all symbols together: 1200 of Binance's 2400 weight per minute at most
 IDLE_SECONDS = 2.0  # pause after a call that brought less than a full batch (caught up)
 SAVE_SECONDS = 60
 CHECK_HOURS = 3  # full hours compared with Binance's 1h candle on every check
 CHECK_KEEP = 48
 CHECK_TOLERANCE = 0.01  # BTC: Binance rounds the candle volume to 3 decimals
+# An aggTrade carries the time of its first fill; Binance's candle counts every fill at its own time.
+# A taker order that starts just before an hour boundary and runs over it is all in the earlier hour
+# here (as in Binance's aggTrades archive) but split across both hours in the candle (checked against
+# the archive of 30.10.2026: fills up to 84 ms after the boundary). Multi-fill aggTrades this close
+# to a boundary widen the check of the two hours by their quantity, nothing else does.
+EDGE_MS = 1000
+EDGES_KEPT = 72
 BUBBLE_MIN_USD = 100_000.0  # same floor as the spot bubbles (footprint_data.BUBBLE_MIN_USD)
 BUBBLES_PER_DAY = 2000
 OI_PERIOD = "1h"
@@ -55,9 +72,35 @@ OI_WINDOW = 180  # 7.5 days of hours: the Z-score window Broncx uses
 OI_STALE_AFTER = timedelta(hours=3)
 TIMEOUT_SECONDS = 15
 MAX_BYTES = 8_000_000
-SOURCE = "Binance USD-M Perp aggTrades (BTCUSDT, öffentlich, TIM-Sammler)"
-OI_SOURCE = "Binance USD-M Open Interest (BTCUSDT, 1h, öffentlich)"
+SOURCE_TEMPLATE = "Binance USD-M Perp aggTrades ({symbol}, öffentlich, TIM-Sammler)"
+OI_SOURCE_TEMPLATE = "Binance USD-M Open Interest ({symbol}, 1h, öffentlich)"
+SOURCE = SOURCE_TEMPLATE.format(symbol=SYMBOL)
+OI_SOURCE = OI_SOURCE_TEMPLATE.format(symbol=SYMBOL)
 DATA_DIR = Path("data/perp_flow")
+ARCHIVE_NAME = "archive"  # sub folder of the data folder: day files older than DAYS_KEPT
+
+
+@dataclass(frozen=True, slots=True)
+class PerpSpec:
+    """What differs per symbol: price level of the footprint rows, bubble floor and check tolerance."""
+
+    tick: float
+    bubble_min_usd: float
+    check_tolerance: float
+
+
+SPECS: dict[str, PerpSpec] = {
+    "BTCUSDT": PerpSpec(tick=TICK, bubble_min_usd=BUBBLE_MIN_USD, check_tolerance=CHECK_TOLERANCE),
+    # XMR at ~600 $: 0.1 $ levels (BTC: 5 $ at ~100,000 $); a perp volume of a few hundred million $
+    # a day, so taker orders from 10,000 $ are already large. Binance rounds the volume to 3 decimals.
+    "XMRUSDT": PerpSpec(tick=0.1, bubble_min_usd=10_000.0, check_tolerance=0.01),
+}
+SYMBOLS = tuple(SPECS)
+
+
+def symbol_directory(symbol: str, root: Path | str = DATA_DIR) -> Path:
+    """BTC stays in the root folder (its files predate other symbols), every other symbol gets a sub folder."""
+    return Path(root) if symbol == SYMBOL else Path(root) / symbol
 
 Fetch = Callable[[str, Mapping[str, str]], Any]
 
@@ -97,7 +140,10 @@ class PerpFlow:
         self.directory = Path(directory)
         self.fetch = fetch or fetch_json
         self.clock = clock or time.time
+        if symbol not in SPECS:
+            raise ValueError(f"perp: no spec for {symbol}")
         self.symbol = symbol
+        self.spec = SPECS[symbol]
         self.days: dict[str, dict[tuple[int, float], list[float]]] = {}
         self.bubbles: dict[str, list[list[float]]] = {}
         self.next_id: int | None = None
@@ -111,6 +157,8 @@ class PerpFlow:
         # state.json resumes from the older id; trades below a day's mark are in that file already.
         self.upto: dict[str, int] = {}
         self._order: list[float] | None = None  # running taker order [ms, side, quantity, notional]
+        # Hour boundary (epoch seconds) -> [buy, sell] quantity of multi-fill aggTrades in the last EDGE_MS before it.
+        self.edges: dict[int, list[float]] = {}
 
     # --- persistence -------------------------------------------------------------------------
 
@@ -119,12 +167,13 @@ class PerpFlow:
         if not state_file.exists():
             return
         state = json.loads(state_file.read_text())
-        if state.get("symbol") != self.symbol or float(state.get("tick", TICK)) != TICK:
+        if state.get("symbol") != self.symbol or float(state.get("tick", self.spec.tick)) != self.spec.tick:
             return
         self.next_id = state.get("next_id")
         self.segments = [list(map(int, s)) for s in state.get("segments") or []]
         self.gaps = list(state.get("gaps") or [])
         self.checks = list(state.get("checks") or [])
+        self.edges = {int(k): [float(v[0]), float(v[1])] for k, v in (state.get("edges") or {}).items()}
         self.updated_at = state.get("updated_at")
         for path in sorted(self.directory.glob("perp-*.json.gz")):
             try:
@@ -141,16 +190,20 @@ class PerpFlow:
         for key in sorted(self._dirty):
             if key not in self.days:
                 continue
-            payload = {"day": key, "symbol": self.symbol, "tick": TICK, "bucket_seconds": BUCKET_SECONDS,
+            payload = {"day": key, "symbol": self.symbol, "tick": self.spec.tick, "bucket_seconds": BUCKET_SECONDS,
                        "rows": self.rows(key), "bubbles": self.bubbles.get(key, []), "upto": self.next_id}
             self._write(self.directory / f"perp-{key}.json.gz", gzip.compress(json.dumps(payload).encode()))
         self._dirty.clear()
         kept = set(self.days)
+        archive = self.directory / ARCHIVE_NAME
         for path in self.directory.glob("perp-*.json.gz"):
             if path.name[5:15] not in kept:
-                path.unlink(missing_ok=True)
-        state = {"symbol": self.symbol, "tick": TICK, "next_id": self.next_id, "segments": self.segments,
-                 "gaps": self.gaps[-50:], "checks": self.checks[-CHECK_KEEP:], "updated_at": self.updated_at}
+                # Out of the chart's window, but kept: TIM's own history is never deleted.
+                archive.mkdir(parents=True, exist_ok=True)
+                os.replace(path, archive / path.name)
+        state = {"symbol": self.symbol, "tick": self.spec.tick, "next_id": self.next_id, "segments": self.segments,
+                 "gaps": self.gaps[-50:], "checks": self.checks[-CHECK_KEEP:], "updated_at": self.updated_at,
+                 "edges": {str(k): v for k, v in sorted(self.edges.items())[-EDGES_KEPT:]}}
         self._write(self.directory / "state.json", json.dumps(state).encode())
 
     @staticmethod
@@ -223,10 +276,18 @@ class PerpFlow:
         if agg_id < self.upto.get(key, 0):
             return  # counted in the saved day file already
         bucket = ms // 1000 // BUCKET_SECONDS * BUCKET_SECONDS
-        level = round(math.floor(price / TICK) * TICK, 8)
+        tick = self.spec.tick
+        level = round(math.floor(price / tick) * tick, 8)
         cell = self.days.setdefault(key, {}).setdefault((bucket, level), [0.0, 0.0])
         cell[0 if seller_aggressive else 1] += quantity
         self._dirty.add(key)
+        boundary = (ms // 3_600_000 + 1) * 3600
+        if boundary * 1000 - ms <= EDGE_MS and row.get("f") != row.get("l"):
+            edge = self.edges.setdefault(boundary, [0.0, 0.0])
+            edge[1 if seller_aggressive else 0] += quantity
+            if len(self.edges) > EDGES_KEPT:
+                for old in sorted(self.edges)[:-EDGES_KEPT]:
+                    del self.edges[old]
         side = -1.0 if seller_aggressive else 1.0
         if self._order and self._order[0] == ms and self._order[1] == side:
             self._order[2] += quantity
@@ -238,7 +299,7 @@ class PerpFlow:
     def _flush_order(self) -> None:
         """A finished taker order (same ms and side) above the floor becomes a bubble."""
         order, self._order = self._order, None
-        if not order or order[3] < BUBBLE_MIN_USD:
+        if not order or order[3] < self.spec.bubble_min_usd:
             return
         ms, side, quantity, notional = order
         key = _day_key(int(ms))
@@ -280,9 +341,10 @@ class PerpFlow:
         """Same shape as ``DashboardState.footprint`` (footprint_data.refresh), plus the record's health."""
         keys = sorted(self.days)
         bubbles = {k: sorted(sorted(self.bubbles.get(k, []), key=lambda b: b[1] * b[2], reverse=True)[:BUBBLES_PER_DAY]) for k in keys}
-        return {"symbol": self.symbol, "market": "perp", "tick": TICK, "bucket_seconds": BUCKET_SECONDS, "source": SOURCE,
+        return {"symbol": self.symbol, "market": "perp", "tick": self.spec.tick, "bucket_seconds": BUCKET_SECONDS,
+                "source": SOURCE_TEMPLATE.format(symbol=self.symbol),
                 "updated_at": self.updated_at, "days": {k: self.rows(k) for k in keys}, "bubbles": bubbles,
-                "bubble_min_usd": BUBBLE_MIN_USD, "complete": self.complete_days(), "health": self.health()}
+                "bubble_min_usd": self.spec.bubble_min_usd, "complete": self.complete_days(), "health": self.health()}
 
     def health(self) -> dict[str, Any]:
         checked = [c for c in self.checks if c.get("ok") is not None]
@@ -290,6 +352,7 @@ class PerpFlow:
         return {"since": datetime.fromtimestamp(since / 1000, tz=timezone.utc).isoformat() if since else None,
                 "next_id": self.next_id, "gaps": len(self.gaps), "last_gap": self.gaps[-1] if self.gaps else None,
                 "checks": len(checked), "checks_ok": sum(1 for c in checked if c["ok"]), "last_check": checked[-1] if checked else None,
+                "failed_hours": [c["hour"] for c in checked if not c["ok"]][-10:],
                 "calls": self.calls}
 
     def hour_totals(self, hour_start: int) -> tuple[float, float]:
@@ -323,9 +386,20 @@ class PerpFlow:
             volume, buy = self.hour_totals(hour)
             k_volume, k_buy = float(by_time[hour][5]), float(by_time[hour][9])
             delta, k_delta = 2 * buy - volume, 2 * k_buy - k_volume
-            ok = abs(volume - k_volume) <= CHECK_TOLERANCE and abs(delta - k_delta) <= 2 * CHECK_TOLERANCE
-            results.append({"hour": datetime.fromtimestamp(hour, tz=timezone.utc).isoformat(), "volume": round(volume, 3),
-                            "binance_volume": k_volume, "delta": round(delta, 3), "binance_delta": round(k_delta, 3), "ok": ok})
+            tolerance = self.spec.check_tolerance
+            exact = abs(volume - k_volume) <= tolerance and abs(delta - k_delta) <= 2 * tolerance
+            out_buy, out_sell = self.edges.get(hour + 3600, [0.0, 0.0])  # tails Binance moves into the next hour
+            in_buy, in_sell = self.edges.get(hour, [0.0, 0.0])  # tails Binance moves in from the previous hour
+            edge = out_buy + out_sell + in_buy + in_sell
+            # Binance volume = ours - moved out + moved in; its delta moves by -(out buy - out sell) + (in buy - in sell).
+            ok = exact or (edge > 0
+                           and volume - out_buy - out_sell - tolerance <= k_volume <= volume + in_buy + in_sell + tolerance
+                           and -out_buy - in_sell - 2 * tolerance <= k_delta - delta <= out_sell + in_buy + 2 * tolerance)
+            item = {"hour": datetime.fromtimestamp(hour, tz=timezone.utc).isoformat(), "volume": round(volume, 3),
+                    "binance_volume": k_volume, "delta": round(delta, 3), "binance_delta": round(k_delta, 3), "ok": ok}
+            if ok and not exact:
+                item["edge"] = round(edge, 3)  # equal once orders running over the hour boundary are counted
+            results.append(item)
         self.checks = (self.checks + results)[-CHECK_KEEP:]
         return results
 
@@ -344,7 +418,7 @@ def zscores(values: Sequence[float], window: int = OI_WINDOW) -> list[float | No
 
 
 def open_interest(fetch: Fetch | None = None, symbol: str = SYMBOL, now: datetime | None = None) -> dict[str, Any]:
-    """Hourly open interest (BTC and USD) of the last ~20 days with its 7.5-day Z-score."""
+    """Hourly open interest (coins and USD) of the last ~20 days with its 7.5-day Z-score."""
     fetch = fetch or fetch_json
     rows = fetch("/futures/data/openInterestHist", {"symbol": symbol, "period": OI_PERIOD, "limit": str(OI_LIMIT)})
     if not isinstance(rows, list):
@@ -359,7 +433,7 @@ def open_interest(fetch: Fetch | None = None, symbol: str = SYMBOL, now: datetim
     if len(points) < 2:
         raise ValueError("open interest: fewer than two points")
     scores = zscores([p[1] for p in points])
-    return {"symbol": symbol, "period": OI_PERIOD, "window_hours": OI_WINDOW, "source": OI_SOURCE,
+    return {"symbol": symbol, "period": OI_PERIOD, "window_hours": OI_WINDOW, "source": OI_SOURCE_TEMPLATE.format(symbol=symbol),
             "as_of": (now or datetime.now(timezone.utc)).isoformat(),
             "points": [[t, round(oi, 3), round(usd, 0)] for t, oi, usd in points],
             "z": [[p[0], z] for p, z in zip(points, scores) if z is not None]}
@@ -378,66 +452,169 @@ def oi_chart(snapshot: Mapping[str, Any] | None, first_time: int, now: datetime 
             "window_hours": snapshot.get("window_hours", OI_WINDOW), "as_of": snapshot["as_of"], "stale": stale, "source": snapshot.get("source")}
 
 
-async def run(state: Any, stop: Any, directory: Path | str = DATA_DIR, log: Any = None,
-              flow: PerpFlow | None = None, oi_fetch: Fetch | None = None) -> None:
-    """Runtime loop (main.py): collect, check, save and publish to ``state.perp_flow`` / ``state.open_interest``.
+def oi_archive_path(directory: Path | str = DATA_DIR, symbol: str = SYMBOL) -> Path:
+    return Path(directory) / f"oi-{symbol}-{OI_PERIOD}.jsonl"
 
-    Display only, never on TIM's ingestion path: every failure is logged and retried later.
+
+def append_oi_archive(snapshot: Mapping[str, Any], path: Path) -> int:
+    """Append the hours of ``snapshot`` newer than the file's last line. Returns how many were added.
+
+    One JSON line per hour: ``{"t": epoch seconds, "oi": BTC, "oi_usd": USD}``. Binance keeps 30 days
+    of this history; the file keeps all of it from the first run on.
+    """
+    last = None
+    if path.exists():
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            handle.seek(max(0, handle.tell() - 4096))
+            for line in reversed(handle.read().decode("utf-8", "replace").splitlines()):
+                try:
+                    last = int(json.loads(line)["t"])
+                    break
+                except (ValueError, KeyError, TypeError):
+                    continue
+    lines = [json.dumps({"t": int(t), "oi": oi, "oi_usd": usd}, sort_keys=True)
+             for t, oi, usd in snapshot.get("points") or [] if last is None or int(t) > last]
+    if lines:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+    return len(lines)
+
+
+def publish(state: Any, symbol: str, *, store: Mapping[str, Any] | None = None, oi: Mapping[str, Any] | None = None) -> None:
+    """Put a symbol's store / open interest on the dashboard state (caller holds ``state.lock``).
+
+    ``state.perp_flows`` / ``state.open_interests`` hold every symbol; ``state.perp_flow`` and
+    ``state.open_interest`` keep BTC as before.
+    """
+    if store is not None:
+        flows = dict(getattr(state, "perp_flows", None) or {})
+        flows[symbol] = store
+        state.perp_flows = flows
+        if symbol == SYMBOL:
+            state.perp_flow = store
+    if oi is not None:
+        interests = dict(getattr(state, "open_interests", None) or {})
+        interests[symbol] = oi
+        state.open_interests = interests
+        if symbol == SYMBOL:
+            state.open_interest = oi
+
+
+def chart_inputs(state: Any, symbol: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Perp store and open interest for one chart request (caller holds ``state.lock``)."""
+    flows = getattr(state, "perp_flows", None) or {}
+    interests = getattr(state, "open_interests", None) or {}
+    if symbol in flows or symbol in interests:
+        return dict(flows.get(symbol) or {}), dict(interests.get(symbol) or {})
+    return dict(getattr(state, "perp_flow", None) or {}), dict(getattr(state, "open_interest", None) or {})
+
+
+class _Runner:
+    """Timers of one symbol inside the shared loop."""
+
+    def __init__(self, flow: PerpFlow) -> None:
+        self.flow = flow
+        self.due = 0.0  # monotonic time of the next aggTrades call
+        self.last_save = self.last_check = self.last_oi = 0.0
+        self.published = False
+
+
+async def run(state: Any, stop: Any, directory: Path | str = DATA_DIR, log: Any = None,
+              flow: PerpFlow | None = None, oi_fetch: Fetch | None = None,
+              flows: Sequence[PerpFlow] | None = None) -> None:
+    """Runtime loop (main.py): collect, check, save and publish every symbol (``publish``).
+
+    One call at a time for all symbols together, at most ``CALLS_PER_MINUTE``: a symbol that is
+    caught up waits ``IDLE_SECONDS`` before its next call, one that is catching up takes the next
+    free slot. Display only, never on TIM's ingestion path: every failure is logged and retried later.
     """
     import asyncio
 
-    flow = flow or PerpFlow(directory)
-    try:
-        await asyncio.to_thread(flow.load)
-    except Exception as error:  # noqa: BLE001 - a broken file means a fresh start, not a stopped runtime
-        if log:
-            log.warning("perp flow: saved state unreadable, starting fresh: %s: %s", type(error).__name__, error)
-    last_save = last_check = last_oi = 0.0
-    published = False
+    if flows is None:
+        flows = [flow] if flow is not None else [PerpFlow(symbol_directory(s, directory), symbol=s) for s in SYMBOLS]
+    runners = [_Runner(f) for f in flows]
+    for runner in runners:
+        try:
+            await asyncio.to_thread(runner.flow.load)
+        except Exception as error:  # noqa: BLE001 - a broken file means a fresh start, not a stopped runtime
+            if log:
+                log.warning("perp flow %s: saved state unreadable, starting fresh: %s: %s",
+                            runner.flow.symbol, type(error).__name__, error)
+    slot = 60.0 / CALLS_PER_MINUTE
+    turn = 0
     while not stop.is_set():
-        pause = 60.0 / CALLS_PER_MINUTE
+        now_mono = time.monotonic()
+        ready = [r for r in runners if r.due <= now_mono]
+        if ready:
+            runner = min(ready, key=lambda r: (r.due, (runners.index(r) - turn) % len(runners)))
+            turn = (runners.index(runner) + 1) % len(runners)
+            if await _turn(runner, state, log, oi_fetch, slot):
+                # Binance limits per IP: every symbol waits, not only the one that hit the limit.
+                for other in runners:
+                    other.due = max(other.due, runner.due)
+            wait = slot
+        else:
+            wait = min(r.due for r in runners) - now_mono
         try:
-            if await asyncio.to_thread(flow.step) < BATCH:
-                pause = IDLE_SECONDS
-                if not published:
-                    last_save = 0.0  # caught up for the first time: show it at once
-            now = flow.clock()
-            if now - last_check >= 600:
-                last_check = now
-                await asyncio.to_thread(flow.check)
-            if now - last_save >= SAVE_SECONDS:
-                last_save = now
-                await asyncio.to_thread(flow.save)
-                snapshot = await asyncio.to_thread(flow.store)
-                with state.lock:
-                    state.perp_flow = snapshot
-                published = published or pause == IDLE_SECONDS
-        except asyncio.CancelledError:
-            raise
-        except RateLimited as error:
-            pause = 60.0
-            if log:
-                log.warning("perp flow: %s, waiting 60 s", error)
-        except Exception as error:  # noqa: BLE001 - chart data must not stop the runtime
-            pause = 30.0
-            if log:
-                log.warning("perp flow failed: %s: %s", type(error).__name__, error)
-        if flow.clock() - last_oi >= 300:
-            last_oi = flow.clock()
-            try:
-                snapshot = await asyncio.to_thread(open_interest, oi_fetch)
-                with state.lock:
-                    state.open_interest = snapshot
-            except asyncio.CancelledError:
-                raise
-            except Exception as error:  # noqa: BLE001
-                if log:
-                    log.warning("open interest refresh failed: %s: %s", type(error).__name__, error)
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=pause)
+            await asyncio.wait_for(stop.wait(), timeout=max(wait, 0.0))
         except TimeoutError:
             pass
+    for runner in runners:
+        try:
+            await asyncio.to_thread(runner.flow.save)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _turn(runner: _Runner, state: Any, log: Any, oi_fetch: Fetch | None, slot: float) -> bool:
+    """One aggTrades call for one symbol, plus its due check, save, publish and open interest.
+
+    Returns True when Binance answered with its rate limit.
+    """
+    import asyncio
+
+    flow = runner.flow
+    pause = slot
+    limited = False
     try:
-        await asyncio.to_thread(flow.save)
-    except Exception:  # noqa: BLE001
-        pass
+        if await asyncio.to_thread(flow.step) < BATCH:
+            pause = IDLE_SECONDS
+            if not runner.published:
+                runner.last_save = 0.0  # caught up for the first time: show it at once
+        now = flow.clock()
+        if now - runner.last_check >= 600:
+            runner.last_check = now
+            await asyncio.to_thread(flow.check)
+        if now - runner.last_save >= SAVE_SECONDS:
+            runner.last_save = now
+            await asyncio.to_thread(flow.save)
+            snapshot = await asyncio.to_thread(flow.store)
+            with state.lock:
+                publish(state, flow.symbol, store=snapshot)
+            runner.published = runner.published or pause == IDLE_SECONDS
+    except asyncio.CancelledError:
+        raise
+    except RateLimited as error:
+        pause, limited = 60.0, True
+        if log:
+            log.warning("perp flow %s: %s, waiting 60 s", flow.symbol, error)
+    except Exception as error:  # noqa: BLE001 - chart data must not stop the runtime
+        pause = 30.0
+        if log:
+            log.warning("perp flow %s failed: %s: %s", flow.symbol, type(error).__name__, error)
+    if flow.clock() - runner.last_oi >= 300:
+        runner.last_oi = flow.clock()
+        try:
+            snapshot = await asyncio.to_thread(open_interest, oi_fetch, flow.symbol)
+            with state.lock:
+                publish(state, flow.symbol, oi=snapshot)
+            await asyncio.to_thread(append_oi_archive, snapshot, oi_archive_path(flow.directory, flow.symbol))
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001
+            if log:
+                log.warning("open interest %s refresh failed: %s: %s", flow.symbol, type(error).__name__, error)
+    runner.due = time.monotonic() + pause
+    return limited

@@ -63,3 +63,48 @@ def test_future_rows_cannot_change_a_validation_at_the_cutoff():
 def test_validation_has_no_prediction_probability_or_confidence():
     value=OrderflowValidationEngine().validate(OBS,[trade(0,0,100),trade(1,30,101)],AT+timedelta(minutes=30)).to_dict()
     assert not ({"prediction","probability","confidence"}&value.keys())
+
+
+def test_gap_after_the_last_loaded_trade_keeps_the_validation_incomplete():
+    # Prüfung 06.11.2026: trades end before the 30-minute target (outage), nothing after it is loaded.
+    # The pairwise ID check sees no gap, so the sequence must reach a trade at or after the target.
+    engine=OrderflowValidationEngine()
+    cut=engine.validate(OBS,[trade(0,0,100),trade(1,5,101),trade(2,15,102),trade(3,20,110)],AT+timedelta(minutes=31))
+    assert cut and [item.minutes for item in cut.horizons]==[5,15,30] and not cut.complete and cut.outcome is None
+    # A later trade with contiguous ID proves the stream continued past the target: complete.
+    proven=engine.validate(OBS,[trade(0,0,100),trade(1,5,101),trade(2,15,102),trade(3,20,110),trade(4,31,111)],AT+timedelta(minutes=31))
+    assert proven and proven.complete and proven.outcome=="PRICE_INCREASED" and proven.horizons[-1].price==110
+    # A later trade with a missing ID in between shows the gap: still incomplete.
+    gap=engine.validate(OBS,[trade(0,0,100),trade(1,5,101),trade(2,15,102),trade(3,20,110),trade(6,31,111)],AT+timedelta(minutes=31))
+    assert gap and not gap.complete
+
+
+def test_gap_behind_the_target_does_not_block_a_complete_window():
+    # Only trades up to the first one at or after the target count; a later gap is not a window gap.
+    engine=OrderflowValidationEngine()
+    value=engine.validate(OBS,[trade(0,0,100),trade(1,5,101),trade(2,15,102),trade(3,20,110),trade(4,31,111),trade(9,40,120)],AT+timedelta(minutes=40))
+    assert value and value.complete and value.outcome=="PRICE_INCREASED" and value.horizons[-1].price==110
+    assert value.validated_through==AT+timedelta(minutes=30)
+
+
+def test_unproven_target_keeps_the_observation_pending():
+    # validated_through stays before the target, so the pending query returns the observation again.
+    engine=OrderflowValidationEngine()
+    cut=engine.validate(OBS,[trade(0,0,100),trade(1,5,101),trade(2,15,102),trade(3,20,110)],AT+timedelta(minutes=30))
+    assert cut and not cut.complete and cut.validated_through==AT+timedelta(minutes=20)
+    exact=engine.validate(OBS,[trade(0,0,100),trade(1,5,101),trade(2,15,102),trade(3,30,110)],AT+timedelta(minutes=30))
+    assert exact and exact.complete and exact.validated_through==AT+timedelta(minutes=30)
+
+
+def test_all_trades_in_the_target_millisecond_belong_to_the_window():
+    # The cut happens after the first trade past the target; trades exactly at the target stay.
+    engine=OrderflowValidationEngine()
+    value=engine.validate(OBS,[trade(0,0,100),trade(1,5,101),trade(2,15,102),trade(3,30,110),trade(4,30,120),trade(5,30,130),trade(6,31,99)],AT+timedelta(minutes=31))
+    assert value and value.complete and value.horizons[-1].trade_count==5 and value.horizons[-1].price==130
+
+
+def test_gap_proven_by_a_late_trade_closes_the_validation():
+    # Outage after the target: the first later trade (ID 9) proves the gap; validated_through = target ends the retries.
+    engine=OrderflowValidationEngine()
+    value=engine.validate(OBS,[trade(0,0,100),trade(1,5,101),trade(2,15,102),trade(3,20,110),trade(9,45,120)],AT+timedelta(minutes=45))
+    assert value and not value.complete and value.outcome is None and value.validated_through==AT+timedelta(minutes=30)
