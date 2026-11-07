@@ -12,7 +12,7 @@
 
 Die Forschungswerkstatt (`FORSCHUNGSBEREICH.md`) prüft Handelsregeln: Idee, Anmeldung, Rechnung auf historischen
 Marktdaten, Urteil, prospektiver Test. Die Reflexion von TIMs eigenen Trades ist nur ein Teil davon. Die Einfluss-Messung fragt etwas anderes: **Welche Bereiche außerhalb des
-Kryptomarkts bewegen BTC, wann und wie stark?** Beispiele sind Realzins, Dollar, Liquidität der Notenbank,
+Kryptomarkts bewegen BTC, wann und wie stark?** (Treiber aus dem Kryptomarkt selbst: Abschnitt 5b.) Beispiele sind Realzins, Dollar, Liquidität der Notenbank,
 CPI- und Fed-Termine, Wahlen und große Nachrichten.
 
 Beides wurde bisher vermischt. F1–F5 waren Filterfragen an S7b (Werkstatt-Art), das Barometer ist eine Beschreibung
@@ -122,6 +122,17 @@ Ziel ist, den Einfluss **jedes** vermuteten Treibers selbst untersuchen zu könn
 
 Das ist Teil von V2 und startet erst nach Abschnitt 6 und Bartis Go.
 
+## 5b. Treiber aus dem Kryptomarkt (Vorschlag Uzi, 07.11.2026)
+
+Die Grenze zwischen diesem Bereich und der Werkstatt ist „beschreiben oder Regel“, nicht „außerhalb oder innerhalb
+des Kryptomarkts“. Treiber aus dem Kryptomarkt (ETF-Zuflüsse, Stablecoin-Menge, Dominanz, Funding, Open Interest,
+Liquidationen) dürfen deshalb hier beschrieben werden, unter denselben Regeln wie alle anderen.
+
+Zusatzregel für Reihen, die dem Kurs selbst folgen (Funding, Open Interest, Liquidationen): Sie gelten nur dann als
+Treiber, wenn sie sich messbar **vor** der BTC-Bewegung bewegen (Vorlauf, Abschnitt 5a Punkt 2). Ein reiner Gleichlauf
+wird als „folgt dem Kurs“ berichtet, nicht als Einfluss. Eine Handelsregel aus einer dieser Reihen geht weiter als
+Idee in die Werkstatt.
+
 ## 6. PRE-V2-Prüfung der Datenfamilien
 
 Regel von Barti (23.10.2026): V2 beginnt nie automatisch. Jede Datenfamilie bekommt nach Prüfung von Quelle, Lizenz,
@@ -145,9 +156,12 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 | Ungeplante Nachrichten (z. B. GDELT) | DEFERRED | braucht Zeitstempel-Regel und Prüfung der Quelle |
 | COT, 13F, ETF-Flüsse | DEFERRED | aus dem Plan vom 02.11., noch nicht angeschaut |
 | Aktienmarkt: S&P 500, Nasdaq | DEFERRED, Vorschlag Uzi 07.11. | Nasdaq (FRED `NASDAQCOM`) läuft schon in der Makro-Leiste, aber nicht im Barometer. S&P 500 auf FRED (`SP500`) reicht nur rund zehn Jahre zurück und steht unter Lizenz von S&P; Quelle und Historie ab 2017 prüfen. Handelszeiten beachten (Schluss 16:00 ET, Wochenende fehlt) |
+| Yen (USD/JPY, FRED `DEXJPUS`) | DEFERRED, Vorschlag | Auflösung von Yen-Carry-Trades fiel mit BTC-Einbrüchen zusammen (z. B. August 2024); Tageswerte, Zeitregel prüfen |
 | Gold | DEFERRED, Vorschlag Uzi 07.11. | in der Makro-Leiste vorhanden (PAXG), Quelle für Historie bis 2017 prüfen |
 | Geldmenge M2, Kreditrisiko (High-Yield-Spread) | DEFERRED, Vorschlag | FRED `M2SL` (monatlich, Revisionen, Vintages in ALFRED) und `BAMLH0A0HYM2`; Lizenz des Spreads prüfen |
-| Funding (Binance) | REJECTED als Treiber hier | ist Kryptomarkt-intern und gehört in die Werkstatt (F2 nicht bestanden) |
+| ETF-Zuflüsse (Spot-BTC-ETFs) | DEFERRED, Vorschlag Uzi 07.11. | vermutlich größter Treiber seit 2024; freie Quelle (Farside) war im Oktober gesperrt, Quelle mit Tageszeitstempel prüfen |
+| Stablecoin-Menge, BTC-Dominanz | DEFERRED, Vorschlag Uzi 07.11. | DefiLlama frei; Dominanz wird erst seit 27.10.2026 gesammelt, Historie fehlt |
+| Funding, Open Interest, Liquidationen (Binance) | DEFERRED, nur mit Vorlauf-Regel (5b) | folgen oft dem Kurs selbst; als Handelsregel gehört Funding weiter in die Werkstatt (F2 nicht bestanden) |
 
 ## 7. Reihenfolge
 
@@ -163,4 +177,5 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 | Datum | Änderung |
 |---|---|
 | 06.11.2026 | Entwurf angelegt (Barti: Bereich abgrenzen, Barometer der Engine zuordnen, PRE-V2-Prüfung nachholen, News und Wahlen aufnehmen) |
+| 07.11.2026 | Vorschlag Uzi: Abschnitt 5b Krypto-Treiber im Barometer (Funding/OI/Liquidationen nur mit Vorlauf-Regel), ETF-Zuflüsse und Stablecoins in Abschnitt 6 |
 | 07.11.2026 | Vorschlag Uzi: Abschnitt 5a Treiber-Research für alle vermuteten Treiber; S&P 500, Nasdaq, Gold, M2 und Spread in Abschnitt 6 aufgenommen |
