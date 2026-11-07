@@ -60,6 +60,7 @@ class GapFillerStatus:
     last_error: str | None = None
     waiting_gaps: int = 0  # in backoff or being caught up inline right now
     too_large_gaps: int = 0  # above max_gap_trades: left for a reviewed offline backfill
+    candle_error: str | None = None  # last failed candle rebuild; gap filling goes on regardless
     rounds: int = 0
 
     def as_dict(self) -> dict[str, Any]:
@@ -104,6 +105,7 @@ class GapFiller:
         catching_up_stale_seconds: float = 900.0,
         max_backoff_seconds: float = 6 * 3600.0,
         max_gap_trades: int = 20_000_000,
+        rebuild_idle_seconds: float = 1800.0,
         on_status: Callable[[dict[str, Any]], None] | None = None,
         status_path: Path | None = STATUS_PATH,
         clock: Callable[[], float] = time.monotonic,
@@ -122,6 +124,12 @@ class GapFiller:
         # About a week of BTCUSDT aggTrades. A larger row is an old evidence range, not an outage
         # the runtime should pull in on its own: it stays OPEN and is counted in the status.
         self.max_gap_trades = max_gap_trades
+        # The candle rebuild scans every DEFERRED outbox row (millions of legacy rows on
+        # the live database). Run it each round only while it rebuilds something or the
+        # filler wrote new trades; otherwise at most every rebuild_idle_seconds.
+        self.rebuild_idle_seconds = rebuild_idle_seconds
+        self._rebuild_due = 0.0
+        self._rebuild_failures = 0
         self.on_status = on_status
         self.status_path = status_path
         self.clock = clock
@@ -193,10 +201,7 @@ class GapFiller:
                 self.status.last_error = (result.reason or "no progress")[:300]
         if report.persisted or report.resolved:
             self.status.last_progress_at_utc = now.isoformat()
-        if self.candle_rebuilder is not None:
-            report.candles_rebuilt = int(await self.candle_rebuilder() or 0)
-            if report.candles_rebuilt:
-                report.work_left = True  # more DEFERRED minutes may wait
+        await self._rebuild_candles(report)
         self.status.resolved_total += report.resolved
         self.status.persisted_total += report.persisted
         self.status.candles_rebuilt_total += report.candles_rebuilt
@@ -210,6 +215,30 @@ class GapFiller:
             self.status.missing_trades = sum(_gap_size(gap) or 0 for gap in remaining)
         self._publish()
         return report
+
+    async def _rebuild_candles(self, report: RoundReport) -> None:
+        """Rebuild DEFERRED 1m candles; a failure here never stops the gap filling itself."""
+        if self.candle_rebuilder is None:
+            return
+        if not report.persisted and self.clock() < self._rebuild_due:
+            return
+        try:
+            report.candles_rebuilt = int(await self.candle_rebuilder() or 0)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            self._rebuild_failures += 1
+            self._rebuild_due = self.clock() + min(self.max_backoff_seconds, 300.0 * 2 ** min(self._rebuild_failures, 6))
+            self.status.candle_error = f"{type(error).__name__}: {error}"[:300]
+            log.warning("Candle rebuild failed (%s); gap filling continues", type(error).__name__)
+            return
+        self._rebuild_failures = 0
+        self.status.candle_error = None
+        if report.candles_rebuilt:
+            report.work_left = True  # more DEFERRED minutes may wait
+            self._rebuild_due = 0.0
+        else:
+            self._rebuild_due = self.clock() + self.rebuild_idle_seconds
 
     def _publish(self) -> None:
         payload = self.status.as_dict()
@@ -252,13 +281,44 @@ class GapFiller:
                 pass
 
 
-def deferred_candle_rebuilder(database: Any, symbol: str, *, max_minutes: int = 500) -> Callable[[], Any]:
+class _LongQueries:
+    """Connection view with a longer per-query timeout than the pool's 30 s command timeout.
+
+    The DEFERRED inventory reads the whole DEFERRED outbox (millions of legacy rows),
+    which takes longer than the runtime pool allows for one query.
+    """
+
+    def __init__(self, connection: Any, timeout: float) -> None:
+        self._connection = connection
+        self._timeout = timeout
+
+    async def fetch(self, query: str, *args: Any) -> Any:
+        return await self._connection.fetch(query, *args, timeout=self._timeout)
+
+    async def fetchrow(self, query: str, *args: Any) -> Any:
+        return await self._connection.fetchrow(query, *args, timeout=self._timeout)
+
+    async def fetchval(self, query: str, *args: Any) -> Any:
+        return await self._connection.fetchval(query, *args, timeout=self._timeout)
+
+    async def execute(self, query: str, *args: Any) -> Any:
+        return await self._connection.execute(query, *args, timeout=self._timeout)
+
+    def transaction(self, *args: Any, **kwargs: Any) -> Any:
+        return self._connection.transaction(*args, **kwargs)
+
+
+def deferred_candle_rebuilder(
+    database: Any, symbol: str, *, max_minutes: int = 500, query_timeout_seconds: float = 600.0,
+) -> Callable[[], Any]:
     """Callable for ``GapFiller``: rebuild closed DEFERRED minutes, return how many."""
     from src.data_ingestion.deferred_candles import rebuild_deferred_candles
 
     async def rebuild() -> int:
         async with database.acquire() as connection:
-            report = await rebuild_deferred_candles(connection, symbol, apply=True, max_minutes=max_minutes)
+            report = await rebuild_deferred_candles(
+                _LongQueries(connection, query_timeout_seconds), symbol, apply=True, max_minutes=max_minutes,
+            )
         return int(report.rebuilt_minutes)
 
     return rebuild
