@@ -199,11 +199,13 @@ async def test_filler_backs_off_a_gap_without_progress_and_continues_partial_one
 async def test_filler_rebuilds_candles_and_survives_errors(tmp_path) -> None:
     rebuilt = []
 
-    async def rebuilder():
+    async def rebuilder(min_trade_id):
+        assert min_trade_id == 7
         rebuilt.append(1)
         return 3 if len(rebuilt) == 1 else 0
 
     filler = GapFiller(FillerStore([]), ScriptedCoordinator({}), "BTCUSDT", candle_rebuilder=rebuilder, status_path=None)
+    filler.status.rebuild_from_trade_id = 7
     assert (await filler.run_once()).work_left  # three minutes rebuilt: look again soon
     assert not (await filler.run_once()).work_left
     assert filler.status.candles_rebuilt_total == 3 and filler.status.state == "IDLE"
@@ -409,7 +411,7 @@ async def test_slow_candle_rebuild_does_not_stop_gap_filling() -> None:
     now = [1000.0]
     calls = []
 
-    async def rebuilder():
+    async def rebuilder(_min_trade_id):
         calls.append(now[0])
         if len(calls) == 1:
             raise TimeoutError()
@@ -417,6 +419,7 @@ async def test_slow_candle_rebuild_does_not_stop_gap_filling() -> None:
 
     filler = GapFiller(FillerStore([]), ScriptedCoordinator({}), "BTCUSDT", candle_rebuilder=rebuilder,
                        status_path=None, clock=lambda: now[0], rebuild_idle_seconds=1800.0)
+    filler.status.rebuild_from_trade_id = 1
     report = await filler.run_once()
     assert filler.status.state == "IDLE" and filler.status.last_error is None
     assert filler.status.candle_error.startswith("TimeoutError")
@@ -464,3 +467,25 @@ async def test_rebuilder_queries_get_long_timeout() -> None:
     await view.execute("q")
     assert view.transaction() == "tx"
     assert seen == [("fetch", 600.0), ("fetchrow", 600.0), ("fetchval", 600.0), ("execute", 600.0)]
+
+
+@pytest.mark.asyncio
+async def test_rebuild_waits_for_filled_trades_and_starts_at_lowest_filled_id(tmp_path) -> None:
+    """Without filled trades there is nothing of the filler's to rebuild: no scan of legacy DEFERRED rows."""
+    seen = []
+
+    async def rebuilder(min_trade_id):
+        seen.append(min_trade_id)
+        return 0
+
+    filler = GapFiller(FillerStore([]), ScriptedCoordinator({}), "BTCUSDT", candle_rebuilder=rebuilder,
+                       status_path=tmp_path / "status.json")
+    await filler.run_once()
+    assert seen == [] and filler.status.rebuild_from_trade_id is None
+    filler._note_filled({"missing_from_id": 500, "missing_to_id": 900})
+    filler._note_filled({"missing_from_id": 200, "missing_to_id": 300})
+    filler._note_filled({"missing_from_id": None})
+    await filler.run_once()
+    assert seen == [200]
+    restored = GapFiller(FillerStore([]), ScriptedCoordinator({}), "BTCUSDT", status_path=tmp_path / "status.json")
+    assert restored.status.rebuild_from_trade_id == 200

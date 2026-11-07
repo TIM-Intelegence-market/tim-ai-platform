@@ -61,6 +61,7 @@ class GapFillerStatus:
     waiting_gaps: int = 0  # in backoff or being caught up inline right now
     too_large_gaps: int = 0  # above max_gap_trades: left for a reviewed offline backfill
     candle_error: str | None = None  # last failed candle rebuild; gap filling goes on regardless
+    rebuild_from_trade_id: int | None = None  # lowest trade ID the filler wrote; candles are rebuilt from here
     rounds: int = 0
 
     def as_dict(self) -> dict[str, Any]:
@@ -98,7 +99,7 @@ class GapFiller:
         coordinator: CatchUpCoordinator,
         symbol: str,
         *,
-        candle_rebuilder: Callable[[], Any] | None = None,
+        candle_rebuilder: Callable[[int], Any] | None = None,
         max_gaps_per_round: int = 20,
         idle_seconds: float = 60.0,
         busy_pause_seconds: float = 1.0,
@@ -149,7 +150,7 @@ class GapFiller:
             return
         if isinstance(previous.get("last_progress_at_utc"), str):
             self.status.last_progress_at_utc = previous["last_progress_at_utc"]
-        for name in ("resolved_total", "persisted_total", "candles_rebuilt_total"):
+        for name in ("resolved_total", "persisted_total", "candles_rebuilt_total", "rebuild_from_trade_id"):
             if isinstance(previous.get(name), int) and not isinstance(previous.get(name), bool):
                 setattr(self.status, name, previous[name])
 
@@ -188,6 +189,8 @@ class GapFiller:
             report.duplicates += result.duplicates
             report.results.append({"gap_id": gap_id, "status": result.status, "persisted": result.persisted,
                                    "reason": result.reason})
+            if result.persisted or result.duplicates or result.status == "COMPLETE":
+                self._note_filled(gap)
             if result.status == "COMPLETE":
                 report.resolved += 1
                 self._backoff.pop(gap_id, None)
@@ -216,14 +219,27 @@ class GapFiller:
         self._publish()
         return report
 
+    def _note_filled(self, gap: Mapping[str, Any]) -> None:
+        start = gap.get("missing_from_id")
+        if isinstance(start, int) and not isinstance(start, bool) and start >= 0:
+            floor = self.status.rebuild_from_trade_id
+            self.status.rebuild_from_trade_id = start if floor is None else min(floor, start)
+
     async def _rebuild_candles(self, report: RoundReport) -> None:
-        """Rebuild DEFERRED 1m candles; a failure here never stops the gap filling itself."""
-        if self.candle_rebuilder is None:
+        """Rebuild the DEFERRED 1m candles of what the filler wrote; a failure never stops the gap filling.
+
+        Only DEFERRED rows from the lowest filled trade ID on are scanned. The live
+        database holds millions of older DEFERRED rows from earlier cutovers; reading
+        them all took over ten minutes (07.11.) and they stay with the offline tool
+        (scripts/rebuild_deferred_candles.py).
+        """
+        floor = self.status.rebuild_from_trade_id
+        if self.candle_rebuilder is None or floor is None:
             return
         if not report.persisted and self.clock() < self._rebuild_due:
             return
         try:
-            report.candles_rebuilt = int(await self.candle_rebuilder() or 0)
+            report.candles_rebuilt = int(await self.candle_rebuilder(floor) or 0)
         except asyncio.CancelledError:
             raise
         except Exception as error:
@@ -309,15 +325,16 @@ class _LongQueries:
 
 
 def deferred_candle_rebuilder(
-    database: Any, symbol: str, *, max_minutes: int = 500, query_timeout_seconds: float = 600.0,
-) -> Callable[[], Any]:
-    """Callable for ``GapFiller``: rebuild closed DEFERRED minutes, return how many."""
+    database: Any, symbol: str, *, max_minutes: int = 500, query_timeout_seconds: float = 300.0,
+) -> Callable[[int], Any]:
+    """Callable for ``GapFiller``: rebuild closed DEFERRED minutes from a trade ID on, return how many."""
     from src.data_ingestion.deferred_candles import rebuild_deferred_candles
 
-    async def rebuild() -> int:
+    async def rebuild(min_trade_id: int) -> int:
         async with database.acquire() as connection:
             report = await rebuild_deferred_candles(
                 _LongQueries(connection, query_timeout_seconds), symbol, apply=True, max_minutes=max_minutes,
+                min_trade_id=min_trade_id, count_deferred=False,
             )
         return int(report.rebuilt_minutes)
 
