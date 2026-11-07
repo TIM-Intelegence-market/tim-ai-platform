@@ -193,3 +193,15 @@ def test_evaluate_reports_missed_plans():
                closed("old", "2026-11-07T09:00:00Z", 1.0, created_at="2026-11-06T10:00:00Z")]
     result = evaluate([{**base, "plan_id": "a"}], {"15m": {"entries": entries}})
     assert result["counts"]["missed"] == 1
+
+
+def test_market_dsn_runtime_uses_runtime_resolver(monkeypatch):
+    import sys
+    import types
+    from src.research_lab.ki_filter.__main__ import market_dsn
+    fake = types.ModuleType("config.settings")
+    fake.settings = types.SimpleNamespace(database_url="postgresql://tim:x@127.0.0.1:5432/tim")
+    monkeypatch.setitem(sys.modules, "config.settings", fake)
+    assert market_dsn("runtime") == "postgresql://tim:x@127.0.0.1:5432/tim"
+    assert market_dsn(None) is None and market_dsn("") is None
+    assert market_dsn("postgresql://ro@h/tim") == "postgresql://ro@h/tim"
