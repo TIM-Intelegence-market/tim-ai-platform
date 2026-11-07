@@ -199,6 +199,9 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 4. Chart-Kalender um `ELECTION` und `NFP` erweitern (Code-PR, mit Uzi abgestimmt, weil #127 von ihm ist).
 5. Beschreibende Ereignisstudie Wahlen und NFP mit BTC-Daten bis 2024.
 6. Danach ungeplante Nachrichten, erst nach Prüfung einer Quelle.
+7. Wunsch Uzi (07.11.2026): Treiber-Research, Zuordnung und Werkstatt-Studien danach auf der PS5 über den
+   Research-Worker laufen lassen, erst nach bestandenem Konsolen-Test (`KONSOLEN_TEST_VORWAERTS_LOG.md`). Auf die
+   Konsole kommen keine BTC-Daten ab 2025-01-01 (Holdout).
 
 ## Änderungsprotokoll
 
