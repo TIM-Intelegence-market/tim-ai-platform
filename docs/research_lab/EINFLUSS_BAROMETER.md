@@ -133,6 +133,30 @@ Treiber, wenn sie sich messbar **vor** der BTC-Bewegung bewegen (Vorlauf, Abschn
 wird als „folgt dem Kurs“ berichtet, nicht als Einfluss. Eine Handelsregel aus einer dieser Reihen geht weiter als
 Idee in die Werkstatt.
 
+## 5c. Zuordnung Treiber zu BTC-Verhalten (Vorschlag Uzi, 07.11.2026)
+
+Ziel: TIM soll einen Treiber dem BTC-Kaufverhalten zuordnen können. Dafür liefert eine gemeinsame Stelle je Treiber
+(statt fester Zahlen im Barometer-Code):
+
+1. **Zustand heute:** gestiegen, gefallen oder neutral (13 Wochen), mit Stand und Abrufzeit.
+2. **Stärke:** Anteil an der BTC-Bewegung, gemeinsam für alle Treiber gerechnet (mehrere Treiber gleichzeitig, damit
+   ein Treiber, der nur mitläuft, wie Realzins und Dollar, nicht doppelt zählt), rollierend, damit man sieht, ob die
+   Stärke stabil ist oder nur aus einem Regime kommt.
+3. **Früheres BTC-Verhalten im gleichen Zustand** (bis 2024-12-31): Rendite, Schwankung, Vorlauf.
+4. **Kommende Termine** aus `data/macro/calendar.json` mit dem früheren BTC-Verhalten am Termin (z. B. CPI-Stunde,
+   S1: Spanne 1,4×).
+
+Chart, Journal, Werkstatt und Control Center lesen nur aus dieser Stelle. Ein neuer Treiber ist ein neuer Eintrag.
+
+**Grenzen:** „Wie stark“ ist messbar, „warum“ nur plausibel (Vorlauf plus nachvollziehbarer Mechanismus), nie
+bewiesen. Wann ein Trend-Treiber wieder kippt, lässt sich nicht vorhersagen, nur erkennen, wenn der Zustand wieder da ist.
+
+**Idee für die Werkstatt: Preiszonen je nach Treiber-Lage.** Halten Zonen aus dem Chart (Volume Profile,
+Liquiditätszonen, Liquidations-Heatmap) bei Gegenwind seltener als bei Rückenwind? Werden Liquiditätszonen um CPI/FOMC
+öfter abgeholt? Das ist eine Regel-Frage und gehört in die Werkstatt: als Idee in `data/research/IDEEN.jsonl`
+(auf dem Mac), mit Zahl der vorher angeschauten Treiber, Glückstest und eigenem Registerplatz. Voraussetzung sind die
+historischen Treiber-Zustände aus Punkt 1–3.
+
 ## 6. PRE-V2-Prüfung der Datenfamilien
 
 Regel von Barti (23.10.2026): V2 beginnt nie automatisch. Jede Datenfamilie bekommt nach Prüfung von Quelle, Lizenz,
@@ -171,6 +195,7 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 1. Diesen Entwurf freigeben (Barti und Uzi).
 2. PRE-V2-Prüfung vervollständigen (alle Familien aus dem Inventar), danach Bartis Go oder Nein.
 3. Treiber-Research (Abschnitt 5a) für die freigegebenen Familien bauen.
+   Danach die Zuordnung (5c) und die Werkstatt-Idee „Preiszonen je nach Treiber-Lage“.
 4. Chart-Kalender um `ELECTION` und `NFP` erweitern (Code-PR, mit Uzi abgestimmt, weil #127 von ihm ist).
 5. Beschreibende Ereignisstudie Wahlen und NFP mit BTC-Daten bis 2024.
 6. Danach ungeplante Nachrichten, erst nach Prüfung einer Quelle.
@@ -180,5 +205,6 @@ des Repos; die übrigen Familien werden in der Prüfung ergänzt. Bis dahin: `V2
 | Datum | Änderung |
 |---|---|
 | 06.11.2026 | Entwurf angelegt (Barti: Bereich abgrenzen, Barometer der Engine zuordnen, PRE-V2-Prüfung nachholen, News und Wahlen aufnehmen) |
+| 07.11.2026 | Vorschlag Uzi: Abschnitt 5c Zuordnung Treiber zu BTC-Verhalten, Werkstatt-Idee Preiszonen je nach Treiber-Lage |
 | 07.11.2026 | Vorschlag Uzi: Abschnitt 5b Krypto-Treiber im Barometer (Funding/OI/Liquidationen nur mit Vorlauf-Regel), ETF-Zuflüsse, Stablecoins, Yen, EZB/BoJ-Bilanzen, DVOL und On-Chain in Abschnitt 6 |
 | 07.11.2026 | Vorschlag Uzi: Abschnitt 5a Treiber-Research für alle vermuteten Treiber; S&P 500, Nasdaq, Gold, M2 und Spread in Abschnitt 6 aufgenommen |
