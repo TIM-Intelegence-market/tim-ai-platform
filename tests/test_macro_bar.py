@@ -1,4 +1,4 @@
-"""Macro bar on the prep page: gold, dollar, Nasdaq, 10y yield, BTC dominance (display only)."""
+"""Macro bar on the prep page: gold, dollar, Nasdaq, 10y yield, BTC and USDT dominance (display only)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from src.dashboard import macro_bar
 from src.dashboard.helpers import _safe
 from src.dashboard.macro_bar import (MacroCache, build_macro_bar, correlation, describe, load_dominance, macro_rows_html,
-                                     parse_dominance, parse_fred, parse_klines, record_dominance, relation_text)
+                                     parse_dominance, parse_dominances, parse_fred, parse_klines, record_dominance, relation_text)
 from src.dashboard.pages.prep import _prep_page
 
 NOW = datetime(2026, 10, 27, 16, 0, tzinfo=timezone.utc)
@@ -47,7 +47,7 @@ def fake_fetch(url: str) -> bytes:
         assert "api_key=" + "k" * 32 in url and "file_type=json" in url
         return _fred(url.split("series_id=")[1].split("&")[0])
     if "coingecko" in url:
-        return json.dumps({"data": {"market_cap_percentage": {"btc": 58.4321, "eth": 12.1}}}).encode()
+        return json.dumps({"data": {"market_cap_percentage": {"btc": 58.4321, "eth": 12.1, "usdt": 6.8871}}}).encode()
     raise AssertionError(url)
 
 
@@ -78,9 +78,9 @@ def test_build_macro_bar_rows_and_dominance_history(tmp_path) -> None:
     path = tmp_path / "macro" / "btc_dominance.jsonl"
     bar = build_macro_bar(fake_fetch, NOW, path, key=KEY)
     keys = [r["key"] for r in bar["rows"]]
-    assert keys == ["btc", "gold", "dollar", "nasdaq", "us10y", "btc_dominance"]
+    assert keys == ["btc", "gold", "dollar", "nasdaq", "us10y", "btc_dominance", "usdt_dominance"]
     rows = {r["key"]: r for r in bar["rows"]}
-    assert all(rows[k]["status"] == "OK" for k in keys[:-1])
+    assert all(rows[k]["status"] == "OK" for k in keys)
     assert rows["dollar"]["corr_btc"] is not None and rows["dollar"]["corr_btc"] < -0.4  # built as the mirror of BTC
     assert rows["us10y"]["change_unit"] == "bp"
     assert rows["btc_dominance"]["last"] == 58.4321 and rows["btc_dominance"]["days_stored"] == 1
@@ -88,6 +88,8 @@ def test_build_macro_bar_rows_and_dominance_history(tmp_path) -> None:
     build_macro_bar(fake_fetch, NOW + timedelta(hours=3), path, key=KEY)
     build_macro_bar(fake_fetch, NOW + timedelta(days=1), path, key=KEY)
     assert [h["date"] for h in load_dominance(path)] == ["2026-10-27", "2026-10-28"]
+    assert rows["usdt_dominance"]["last"] == 6.8871 and rows["usdt_dominance"]["days_stored"] == 1
+    assert [h["usdt_dominance"] for h in load_dominance(path)] == [6.887, 6.887]
     assert bar["read_only"] is True and not bar["notes"]
 
 
@@ -123,7 +125,7 @@ def test_cache_builds_once_and_pauses_after_failure(monkeypatch) -> None:
 def test_prep_page_shows_macro_section_or_loading_line(tmp_path) -> None:
     bar = build_macro_bar(fake_fetch, NOW, tmp_path / "dom.jsonl", key=KEY)
     html = _prep_page({}, {"notes": ["Keine Daten."]}, macro=bar)
-    assert "Makro: Gold, Dollar, Aktien, Zinsen, BTC-Dominanz" in html and "BTC-Dominanz" in html
+    assert "Makro: Gold, Dollar, Aktien, Zinsen, BTC- und USDT-Dominanz" in html and "USDT-Dominanz" in html
     assert "werden geladen" in _prep_page({}, {"notes": []}, macro=None)
     assert "Makro" not in _prep_page({}, {"notes": []})
     assert macro_bar.DOMINANCE_PATH.as_posix() == "data/macro/btc_dominance.jsonl"
@@ -138,3 +140,43 @@ def test_without_fred_key_market_rows_stay_empty_and_key_never_leaks(tmp_path) -
     assert any("FRED-Key fehlt" in n for n in bar["notes"])
     with_key = build_macro_bar(fake_fetch, NOW, tmp_path / "dom2.jsonl", key=KEY)
     assert "k" * 32 not in json.dumps(with_key, default=str)
+
+
+def test_parse_dominances_reads_btc_and_usdt() -> None:
+    raw = b'{"data":{"market_cap_percentage":{"btc":59.3,"usdt":6.89}}}'
+    assert parse_dominances(raw) == {"btc": 59.3, "usdt": 6.89}
+    assert parse_dominances(b'{"data":{"market_cap_percentage":{"btc":59.3}}}') == {"btc": 59.3, "usdt": None}
+    assert parse_dominance(b'{"data":{"market_cap_percentage":{"usdt":true}}}', "usdt") is None
+
+
+def test_old_history_without_usdt_keeps_btc_row_and_starts_usdt(tmp_path) -> None:
+    path = tmp_path / "d.jsonl"
+    old = [{"date": (NOW.date() - timedelta(days=i)).isoformat(), "btc_dominance": 58.0 + i / 10} for i in range(3, 0, -1)]
+    path.write_text("".join(json.dumps(o) + "\n" for o in old), encoding="utf-8")
+    bar = build_macro_bar(fake_fetch, NOW, path, key=KEY)
+    rows = {r["key"]: r for r in bar["rows"]}
+    assert rows["btc_dominance"]["days_stored"] == 4 and rows["btc_dominance"]["change"] is not None
+    assert rows["usdt_dominance"]["days_stored"] == 1 and rows["usdt_dominance"]["relation"] == "Verlauf baut sich ab heute auf"
+    assert "USDT-Dominanz" in macro_rows_html(bar, _safe)
+
+
+def test_usdt_missing_today_line_already_written(tmp_path) -> None:
+    path = tmp_path / "d.jsonl"
+    path.write_text(json.dumps({"date": NOW.date().isoformat(), "btc_dominance": 58.0}) + "\n", encoding="utf-8")
+    bar = build_macro_bar(fake_fetch, NOW, path, key=KEY)
+    usdt = {r["key"]: r for r in bar["rows"]}["usdt_dominance"]
+    assert usdt["status"] == "OK" and usdt["last"] == 6.8871 and usdt["days_stored"] == 0
+    assert "heute" in macro_rows_html(bar, _safe)
+
+
+def test_coingecko_down_keeps_stored_history(tmp_path) -> None:
+    path = tmp_path / "d.jsonl"
+    record_dominance(path, 58.0, NOW - timedelta(days=1), 6.5)
+
+    def down(url: str) -> bytes:
+        if "coingecko" in url:
+            raise OSError("blocked")
+        return fake_fetch(url)
+
+    rows = {r["key"]: r for r in build_macro_bar(down, NOW, path, key=KEY)["rows"]}
+    assert rows["usdt_dominance"]["last"] == 6.5 and rows["btc_dominance"]["last"] == 58.0

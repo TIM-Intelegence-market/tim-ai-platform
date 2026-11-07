@@ -180,7 +180,7 @@ def test_catalog_unique_and_complete():
     assert len(keys) == len(set(keys))
     assert by_key("SP500").family == "aktien"
     assert {"WALCL", "WTREGEN", "RRPONTSYD", "SP500", "DEXJPUS"} <= set(all_series())
-    assert all(not d.needs_lead for d in DRIVERS)  # no crypto-internal source wired in yet
+    assert {d.key for d in DRIVERS if d.needs_lead} == {"BTCD", "USDTD"}  # crypto-internal: lead rule (5b)
 
 
 def test_stored_history_hash_checked(tmp_path):

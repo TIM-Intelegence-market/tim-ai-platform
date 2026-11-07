@@ -1,4 +1,4 @@
-"""Macro bar for the prep page: gold, US dollar, Nasdaq, 10-year yield and BTC dominance next to BTC.
+"""Macro bar for the prep page: gold, US dollar, Nasdaq, 10-year yield, BTC and USDT dominance next to BTC.
 
 Display only (Uzi 27.10.2026: gold and the big markets into the analysis). Nothing here
 feeds a score, a plan or an order. For every market the bar shows the latest daily value,
@@ -11,8 +11,10 @@ Sources (public, no key):
   key from TIM's FRED secret model (``research_lab.external.fred_secret``, keychain/file/env);
   without a key these rows stay empty with a note. FRED publishes with a delay (the broad
   dollar index about a week), so every row shows its own date.
-- BTC dominance: CoinGecko /global, a snapshot only. TIM stores one value per UTC day in
-  ``data/macro/btc_dominance.jsonl`` and builds its own history from there.
+- BTC and USDT dominance: CoinGecko /global (``market_cap_percentage``), a snapshot only. TIM stores
+  one line per UTC day in ``data/macro/btc_dominance.jsonl`` (``btc_dominance`` and, since 07.11.2026,
+  ``usdt_dominance``) and builds its own history from there. A rising USDT dominance means money
+  parked in the stablecoin, usually risk-off.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ MEAN_DAYS = 20
 CHANGE_STEPS = 5
 MIN_OVERLAP = 20  # common days needed for a correlation
 DOMINANCE_PATH = Path("data/macro/btc_dominance.jsonl")
+DOMINANCE_COINS = ("btc", "usdt")
 FRED_URL = "https://api.stlouisfed.org/fred/series/observations?series_id={series}&observation_start={start}&file_type=json&api_key={key}"
 COINGECKO_GLOBAL = "https://api.coingecko.com/api/v3/global"
 BINANCE_KLINES = "https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit=120"
@@ -108,12 +111,17 @@ def parse_klines(raw: bytes, now: datetime) -> Series:
     return out
 
 
-def parse_dominance(raw: bytes) -> float | None:
+def parse_dominance(raw: bytes, coin: str = "btc") -> float | None:
     try:
-        value = json.loads(raw)["data"]["market_cap_percentage"]["btc"]
+        value = json.loads(raw)["data"]["market_cap_percentage"][coin]
     except (KeyError, TypeError, ValueError):
         return None
-    return float(value) if isinstance(value, (int, float)) and 0 < value < 100 else None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < 100 else None
+
+
+def parse_dominances(raw: bytes) -> dict[str, float | None]:
+    """BTC and USDT share of the total crypto market cap in percent; a missing coin is None."""
+    return {coin: parse_dominance(raw, coin) for coin in DOMINANCE_COINS}
 
 
 def _changes(series: Series, unit: str) -> dict[date, float]:
@@ -166,12 +174,15 @@ def describe(series: Series, unit: str, btc_changes: Mapping[date, float] | None
             "relation": relation_text(corr) if btc_changes is not None else None}
 
 
-def record_dominance(path: Path, value: float, now: datetime) -> list[dict[str, Any]]:
-    """Append today's BTC dominance once per UTC day and return the stored history (oldest first)."""
+def record_dominance(path: Path, value: float, now: datetime, usdt: float | None = None) -> list[dict[str, Any]]:
+    """Append today's BTC (and USDT) dominance once per UTC day and return the stored history (oldest first)."""
     history = load_dominance(path)
     today = now.date().isoformat()
     if not history or history[-1]["date"] != today:
-        entry = {"date": today, "btc_dominance": round(value, 3), "observed_at": now.isoformat(), "source": "coingecko_global"}
+        entry: dict[str, Any] = {"date": today, "btc_dominance": round(value, 3)}
+        if usdt is not None:
+            entry["usdt_dominance"] = round(usdt, 3)
+        entry.update({"observed_at": now.isoformat(), "source": "coingecko_global"})
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry) + "\n")
@@ -190,6 +201,28 @@ def load_dominance(path: Path) -> list[dict[str, Any]]:
         except (ValueError, KeyError, TypeError):
             continue
     return out
+
+
+def _dominance_row(key: str, name: str, note: str, history: Sequence[Mapping[str, Any]], live: float | None,
+                   btc_changes: Mapping[date, float] | None) -> dict[str, Any]:
+    """One dominance row from the stored daily history; the change is in percentage points."""
+    row: dict[str, Any] = {"key": key, "name": name, "note": note, "status": "UNAVAILABLE"}
+    series = [(date.fromisoformat(h["date"]), float(h[key])) for h in history if isinstance(h.get(key), (int, float))]
+    if not series:
+        if live is not None:
+            row.update({"status": "OK", "last": live, "date": None, "change": None, "above_mean": None, "corr_btc": None,
+                        "relation": "Verlauf baut sich ab morgen auf", "days_stored": 0, "change_unit": "Prozentpunkte"})
+        return row
+    row.update(describe(series, "bp", btc_changes) if len(series) > 1 else
+               {"status": "OK", "last": series[-1][1], "date": series[-1][0].isoformat(), "change": None, "above_mean": None,
+                "corr_btc": None, "relation": "Verlauf baut sich ab heute auf"})
+    row["change_unit"] = "Prozentpunkte"
+    if row.get("change") is not None:
+        row["change"] = row["change"] / 100  # bp of a percentage -> percentage points
+    row["days_stored"] = len(series)
+    if live is not None:
+        row["last"] = live
+    return row
 
 
 def build_macro_bar(fetch: Fetch = _http, now: datetime | None = None, dominance_path: Path = DOMINANCE_PATH,
@@ -218,25 +251,16 @@ def build_macro_bar(fetch: Fetch = _http, now: datetime | None = None, dominance
     for market in MARKETS:
         rows.append({"key": market.key, "name": market.name, "note": market.note, **describe(load(market.source, market.ref), market.unit, btc_changes)})
 
-    dominance: dict[str, Any] = {"key": "btc_dominance", "name": "BTC-Dominanz", "note": "CoinGecko, TIM speichert einen Wert je Tag", "status": "UNAVAILABLE"}
     try:
-        value = parse_dominance(fetch(COINGECKO_GLOBAL))
+        live = parse_dominances(fetch(COINGECKO_GLOBAL))
     except Exception as exc:  # noqa: BLE001
-        value = None
-        notes.append(f"BTC-Dominanz: nicht erreichbar ({type(exc).__name__}).")
-    history = record_dominance(dominance_path, value, now) if value is not None else load_dominance(dominance_path)
-    if history:
-        series = [(date.fromisoformat(h["date"]), h["btc_dominance"]) for h in history]
-        dominance.update(describe(series, "bp", btc_changes) if len(series) > 1 else
-                         {"status": "OK", "last": series[-1][1], "date": series[-1][0].isoformat(), "change": None, "above_mean": None,
-                          "corr_btc": None, "relation": "Verlauf baut sich ab heute auf"})
-        dominance["change_unit"] = "Prozentpunkte"
-        if dominance.get("change") is not None:
-            dominance["change"] = dominance["change"] / 100  # bp of a percentage -> percentage points
-        dominance["days_stored"] = len(history)
-        if value is not None:
-            dominance["last"] = value
-    rows.append(dominance)
+        live = dict.fromkeys(DOMINANCE_COINS)
+        notes.append(f"BTC-/USDT-Dominanz: nicht erreichbar ({type(exc).__name__}).")
+    history = (record_dominance(dominance_path, live["btc"], now, live["usdt"]) if live["btc"] is not None
+               else load_dominance(dominance_path))
+    rows.append(_dominance_row("btc_dominance", "BTC-Dominanz", "CoinGecko, TIM speichert einen Wert je Tag", history, live["btc"], btc_changes))
+    rows.append(_dominance_row("usdt_dominance", "USDT-Dominanz", "CoinGecko, Anteil Tether am Kryptomarkt; steigt meist, wenn Geld aus Krypto in Tether geht",
+                               history, live["usdt"], btc_changes))
     return {"generated_at": now.isoformat(), "rows": rows, "notes": notes, "read_only": True,
             "provenance": "Binance klines, FRED CSV, CoinGecko global (display only)"}
 
@@ -291,7 +315,7 @@ def macro_rows_html(macro: Mapping[str, Any] | None, safe: Callable[[Any], str])
     """Section for the prep page; ``None`` = first bar still loading."""
     if macro is None:
         return ("<section class='cc-section'><p class='cc-section__eyebrow'>0 · Umfeld</p><h2>Makro</h2>"
-                "<p class='empty'>Makro-Daten werden geladen (Gold, Dollar, Nasdaq, Zinsen, BTC-Dominanz). Seite in einer Minute neu laden.</p></section>")
+                "<p class='empty'>Makro-Daten werden geladen (Gold, Dollar, Nasdaq, Zinsen, BTC- und USDT-Dominanz). Seite in einer Minute neu laden.</p></section>")
     def num(value: Any, digits: int = 2) -> str:
         return f"{value:,.{digits}f}".replace(",", " ").replace(".", ",") if isinstance(value, (int, float)) else "–"
 
@@ -306,12 +330,14 @@ def macro_rows_html(macro: Mapping[str, Any] | None, safe: Callable[[Any], str])
         corr = row.get("corr_btc")
         corr_text = "–" if row["key"] == "btc" else (f"{corr:+.2f}".replace(".", ",") + f" · {row.get('relation')}" if corr is not None else (row.get("relation") or "–"))
         stored = f" ({row['days_stored']} Tage gespeichert)" if row.get("days_stored") else ""
+        day = row.get("date") or ""
+        stand = f"{day[8:10]}.{day[5:7]}." if day else "heute"
         rows.append(f"<tr><td>{safe(row['name'])}<br><small>{safe(row.get('note'))}{safe(stored)}</small></td><td class='mono'>{safe(num(row.get('last')))}</td>"
-                    f"<td>{safe(row.get('date', '')[8:10])}.{safe(row.get('date', '')[5:7])}.</td><td class='mono'>{safe(change)}</td><td>{safe(trend)}</td><td>{safe(corr_text)}</td></tr>")
+                    f"<td>{safe(stand)}</td><td class='mono'>{safe(change)}</td><td>{safe(trend)}</td><td>{safe(corr_text)}</td></tr>")
     notes = "".join(f"<li>{safe(n)}</li>" for n in macro.get("notes") or [])
     return (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>0 · Umfeld</p>"
-        "<h2>Makro: Gold, Dollar, Aktien, Zinsen, BTC-Dominanz</h2><p class='cc-section__note'>Tageswerte. Änderung über 5 Werte, "
+        "<h2>Makro: Gold, Dollar, Aktien, Zinsen, BTC- und USDT-Dominanz</h2><p class='cc-section__note'>Tageswerte. Änderung über 5 Werte, "
         "Lage zum 20-Tage-Schnitt und Zusammenhang der Tagesänderungen mit BTC über 30 gemeinsame Tage (+1 = gleichläufig, −1 = gegenläufig). "
         "Nur Kontext, kein Signal.</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Markt</th><th>Wert</th><th>Stand</th><th>Änderung</th><th>Trend</th><th>Zusammenhang mit BTC</th></tr></thead>"

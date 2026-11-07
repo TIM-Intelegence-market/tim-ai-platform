@@ -2,6 +2,8 @@
 
     python -m src.research_lab.influence fetch [--folder data/research/influence]
         FRED history 2016-06-01..2024-12-31 for every catalog series, stored raw with SHA-256.
+    python -m src.research_lab.influence dominanz [--folder ...]
+        BTC/USDT dominance substitute 2019-06-22..2024-12-31 from Coin Metrics Community (no key), raw with SHA-256.
     python -m src.research_lab.influence run [--folder ...] [--btc-root data/research_lab]
         Weekly states, per-driver and joint description; writes einfluss_<date>.json/.md.
     python -m src.research_lab.influence zuordnung --report FILE [--calendar data/macro/calendar.json] [--folder ...]
@@ -26,6 +28,7 @@ from src.research_lab.forward.macro_filters import (
     parse_observations,
     scale_to_billions,
 )
+from src.research_lab.influence import dominance
 from src.research_lab.influence import report as report_mod
 from src.research_lab.influence import zuordnung
 from src.research_lab.influence.catalog import all_series
@@ -88,7 +91,7 @@ def load_btc_daily(root: Path) -> tuple[dict[date, float], str]:
 
 def main(argv: Sequence[str] | None = None, *, now: datetime | None = None) -> int:
     parser = argparse.ArgumentParser(description="Influence research (descriptive, BTC up to 2024)")
-    parser.add_argument("command", choices=("fetch", "run", "zuordnung"))
+    parser.add_argument("command", choices=("fetch", "dominanz", "run", "zuordnung"))
     parser.add_argument("--folder", type=Path, default=FOLDER)
     parser.add_argument("--btc-root", type=Path, default=Path("data/research_lab"))
     parser.add_argument("--report", type=Path)
@@ -100,10 +103,18 @@ def main(argv: Sequence[str] | None = None, *, now: datetime | None = None) -> i
         hashes = fetch_history(args.folder, fetch, key)
         print(f"{len(hashes)} Reihen gespeichert in {args.folder / 'roh'}")
         return 0
+    if args.command == "dominanz":
+        hashes = dominance.fetch_history(args.folder, dominance.http_fetcher())
+        print(f"{len(hashes)} Dateien gespeichert in {args.folder / 'roh' / 'dominanz'}")
+        return 0
     if args.command == "run":
         from src.research_lab.influence.states import btc_weekly_returns, weeks
 
         data, hashes = load_history(args.folder)
+        dom, dom_hashes = dominance.load_history(args.folder)
+        if not dom:
+            print("Hinweis: keine Dominanz-Historie (erst 'dominanz' ausführen), BTCD/USDTD bleiben leer")
+        data, hashes = {**data, **dom}, {**hashes, **dom_hashes}
         closes, btc_hash = load_btc_daily(args.btc_root)
         btc = btc_weekly_returns(closes, weeks())
         result = report_mod.build(data, btc, now=moment, inputs={**hashes, "btc_1d": btc_hash})
@@ -116,6 +127,10 @@ def main(argv: Sequence[str] | None = None, *, now: datetime | None = None) -> i
 
     key, fetch = _key_and_fetcher()
     data, _ = fetch_series(all_series(), moment.date(), fetch, key)
+    try:
+        data.update(dominance.recent(dominance.http_fetcher(), moment.date()))
+    except MacroDataError as exc:
+        print(f"Hinweis: Dominanz heute nicht abrufbar ({exc}), BTCD/USDTD ohne Zustand")
     result = zuordnung.build(data, json.loads(args.report.read_text()), load_calendar(args.calendar), moment.date())
     out = args.folder / "zuordnung" / f"zuordnung_{moment.date().isoformat()}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
