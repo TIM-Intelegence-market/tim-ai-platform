@@ -71,7 +71,7 @@ def make(tmp_path, gap=None, recovery=None, runner=None, now=NOW, dry_run=False,
         (operational / "history_recovery.json").write_text(json.dumps(recovery))
     return Reporter(operational_dir=operational, state_path=tmp_path / "state.json",
                     repo_dir=tmp_path / repo, github_repo="x/y", runner=runner or FakeGitHub(),
-                    dry_run=dry_run, now=now)
+                    dry_run=dry_run, now=now, which=lambda name: f"/bin/{name}")
 
 
 def test_healthy_status_reports_nothing():

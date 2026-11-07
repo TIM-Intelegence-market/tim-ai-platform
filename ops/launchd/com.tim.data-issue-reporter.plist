@@ -19,7 +19,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key><string>/Users/tim</string>
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PATH</key><string>/Users/tim/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>PYTHONDONTWRITEBYTECODE</key><string>1</string>
   </dict>
   <key>RunAtLoad</key><true/>

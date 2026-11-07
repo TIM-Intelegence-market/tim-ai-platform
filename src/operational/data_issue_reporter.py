@@ -209,7 +209,8 @@ def agent_env(source: Mapping[str, str] | None = None) -> dict[str, str]:
 class Reporter:
     def __init__(self, *, operational_dir: Path, state_path: Path, repo_dir: Path | None,
                  github_repo: str, runner: Runner = default_runner, dry_run: bool = False,
-                 now: datetime | None = None, providers: Sequence[str] = ("codex", "claude")) -> None:
+                 now: datetime | None = None, providers: Sequence[str] = ("codex", "claude"),
+                 which: Callable[[str], str | None] = shutil.which) -> None:
         self.operational_dir = operational_dir
         self.state_path = state_path
         self.repo_dir = repo_dir
@@ -218,6 +219,7 @@ class Reporter:
         self.dry_run = dry_run
         self.now = now or datetime.now(UTC)
         self.providers = tuple(providers)
+        self.which = which
         self.actions: list[str] = []
 
     # -- state ---------------------------------------------------------------------------
@@ -283,6 +285,9 @@ class Reporter:
         prompt = analysis_prompt(finding, body)
         errors: list[str] = []
         for provider in self.providers:
+            if self.which(provider) is None:
+                errors.append(f"{provider}: nicht im PATH")
+                continue
             try:
                 if provider == "codex":
                     text = self._codex(repo, prompt)
@@ -310,7 +315,10 @@ class Reporter:
             return output.read_text(encoding="utf-8") if output.exists() else ""
 
     def _claude(self, repo: Path, prompt: str) -> str:
-        status = json.loads(self.runner(["claude", "auth", "status"], repo, 60, agent_env()) or "{}")
+        try:  # `claude auth status` exits 1 when logged out
+            status = json.loads(self.runner(["claude", "auth", "status"], repo, 60, agent_env()) or "{}")
+        except (ReporterError, ValueError):
+            status = {}
         if not status.get("loggedIn"):
             raise ReporterError("Claude Code ist nicht angemeldet")
         raw = self.runner(["claude", "-p", prompt, "--output-format", "json", "--max-turns", "20",
