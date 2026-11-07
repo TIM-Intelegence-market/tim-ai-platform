@@ -58,7 +58,24 @@ class TIMApplication:
         self.repository = MarketRepository(self.database)
         self.durable_store = DurableIngestionStore(self.database)
         self.catchup = CatchUpCoordinator(self.durable_store, PublicBinanceAggTradeClient())
-        self.durable_ingress = DurableIngress(self.durable_store, catchup=self.catchup)
+        self.durable_ingress = DurableIngress(
+            self.durable_store, catchup=self.catchup,
+            defer_incomplete_gaps=settings.gap_background_fill,
+            inline_budget_seconds=float(settings.gap_inline_seconds),
+        )
+        self.gap_filler = None
+        if settings.gap_background_fill:
+            from src.data_ingestion.gap_filler import GapFiller, deferred_candle_rebuilder
+
+            # Own REST client and bounded pages: behind the live cursor, one transaction per page (issue #82).
+            self.gap_filler = GapFiller(
+                self.durable_store,
+                CatchUpCoordinator(self.durable_store, PublicBinanceAggTradeClient(minimum_interval=0.2),
+                                   max_pages=200, batch_below_cursor=True),
+                settings.symbol,
+                candle_rebuilder=deferred_candle_rebuilder(self.database, settings.symbol.upper()),
+                on_status=self._gap_filler_status,
+            )
         self.aggregator = CandleAggregator(settings.timeframes)
         self.observations = ObservationEngine()
         self.memory = MarketMemory()
@@ -114,6 +131,10 @@ class TIMApplication:
             recovery_handler=self.durable_ingress.recover_before_resume,
             recovery_on_connect=True,
         )
+
+    def _gap_filler_status(self, status: dict) -> None:
+        with self.dashboard_state.lock:
+            self.dashboard_state.system_health["gap_filler"] = status
 
     async def ingest_trade(self, trade: Trade) -> None:
         result = await self.durable_ingress(trade)
@@ -757,6 +778,8 @@ class TIMApplication:
         gamma_task = asyncio.create_task(self._gamma_loop(), name="tim-options-gamma")
         liquidation_task = asyncio.create_task(self._liquidation_loop(), name="tim-liquidation-heatmap")
         perp_task = asyncio.create_task(self._perp_flow_loop(), name="tim-perp-flow")
+        gap_task = (asyncio.create_task(self.gap_filler.run(self.worker_stop), name="tim-gap-filler")
+                    if self.gap_filler is not None else None)
         try:
             with self.dashboard_state.lock:
                 self.dashboard_state.system_health["stream"] = "running"
@@ -770,6 +793,8 @@ class TIMApplication:
             gamma_task.cancel()
             liquidation_task.cancel()
             perp_task.cancel()
+            if gap_task is not None:
+                gap_task.cancel()
             try:
                 # Stream shutdown takes at most ~15 s (session cleanup + close
                 # handshake); 20 s here keeps the total under systemd's

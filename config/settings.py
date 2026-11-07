@@ -47,6 +47,11 @@ class Settings:
     # per cycle). Order, retries and quarantine are identical for every value.
     outbox_batch_size: int = field(default_factory=lambda: _bounded_int("TIM_OUTBOX_BATCH_SIZE", 100, 1, 1_000))
     log_level: str = field(default_factory=lambda: os.getenv("TIM_LOG_LEVEL", "INFO").upper())
+    # Issue #82: a gap the inline catch-up cannot close within TIM_GAP_INLINE_SECONDS stays OPEN in the
+    # gap ledger and live trades flow again; the background gap filler closes it. "false" restores the
+    # old fail-closed behaviour (no live trade until the whole gap is caught up).
+    gap_background_fill: bool = field(default_factory=lambda: os.getenv("TIM_GAP_BACKGROUND_FILL", "true").lower() == "true")
+    gap_inline_seconds: int = field(default_factory=lambda: _bounded_int("TIM_GAP_INLINE_SECONDS", 60, 5, 110))
 
     @property
     def database_endpoint(self) -> DatabaseEndpoint:
