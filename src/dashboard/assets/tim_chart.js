@@ -949,15 +949,33 @@
     const events = groups.has('macro') && model ? model.macro_ahead || [] : [];
     const step = model && model.interval_seconds;
     const last = model && model.candles.length ? model.candles[model.candles.length - 1] : null;
-    if (!events.length || !step || !last) { ahead.setMarkers([]); ahead.setData([]); return; }
+    // Adding or removing the empty candles moves Lightweight Charts' right edge: keep the view where it was,
+    // otherwise ticking a layer (or "Untick all") jumps the chart days back.
+    const view = chart.timeScale().getVisibleLogicalRange();
+    const keepView = () => { if (view) chart.timeScale().setVisibleLogicalRange(view); };
+    if (!events.length || !step || !last) { ahead.setMarkers([]); ahead.setData([]); keepView(); return; }
     const at = new Set(events.map(ev => ev.time));
     const points = [];
     for (let t = last.time + step; t <= events[events.length - 1].time; t += step) {
       points.push(at.has(t) ? { time: local(t), value: last.close } : { time: local(t) });
     }
     ahead.setData(points);
+    keepView();
     ahead.setMarkers(events.map(ev => ({ time: local(ev.time), position: 'aboveBar', color: '#8491a3', shape: 'square', size: 0.6,
                                          text: macroText(ev) })));
+  }
+  // Right edge of the default view: the newest candle, or the next release date if it lies close enough
+  // (within a third of the view) that the candles stay readable. Farther dates are named in the status line.
+  function viewRange(width) {
+    const count = model.candles.length;
+    let to = count + 8;
+    const ev = shownGroups().has('macro') && (model.macro_ahead || [])[0];
+    const step = model.interval_seconds, last = count ? model.candles[count - 1] : null;
+    if (ev && step && last) {
+      const edge = count - 1 + Math.round((ev.time - last.time) / step) + 4;
+      if (edge > to && edge - to <= width / 3) to = edge;
+    }
+    return { from: Math.max(0, to - width), to };
   }
   function nextRelease() {
     const ev = model && shownGroups().has('macro') && (model.macro_ahead || [])[0];
@@ -1049,8 +1067,7 @@
       showMarket();
       { const groups = shownGroups(); layoutBands(groups); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); fib.visible = groups.has('fib'); bubbles.visible = groups.has('bubbles'); }
       if (first || !sameView) {
-        const count = model.candles.length;
-        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - 160), to: count + 8 });
+        chart.timeScale().setVisibleLogicalRange(viewRange(168));
         first = false;
       } else if (keep) {
         chart.timeScale().setVisibleLogicalRange(keep);
@@ -1096,11 +1113,10 @@
       load();
       return;
     }
-    if (action.dataset.action === 'now' && model) {  // the newest candle at the right edge, not the empty candles of upcoming dates
+    if (action.dataset.action === 'now' && model) {  // the newest candle at the right edge (or a release date close behind it)
       autoPrice();  // and the price axis back to the candles in view
-      const count = model.candles.length, range = chart.timeScale().getVisibleLogicalRange();
-      const width = range ? range.to - range.from : 168;
-      chart.timeScale().setVisibleLogicalRange({ from: count + 8 - width, to: count + 8 });
+      const range = chart.timeScale().getVisibleLogicalRange();
+      chart.timeScale().setVisibleLogicalRange(viewRange(range ? range.to - range.from : 168));
     }
     if (action.dataset.action === 'fit') { autoPrice(); chart.timeScale().fitContent(); }
     if (action.dataset.action === 'plans') {
