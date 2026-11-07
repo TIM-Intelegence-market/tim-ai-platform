@@ -254,7 +254,22 @@ def _pct(value: float | None) -> str:
     return "–" if value is None else f"{value:+.2f} %"
 
 
-def barometer_markdown(today: date, data: Mapping[str, Series]) -> str:
+def history_from_report(path: Path) -> Mapping[str, Mapping[str, float] | None]:
+    """Barometer history from an influence report (src.research_lab.influence) instead of the fixed HISTORY.
+
+    Drivers the report does not cover keep their fixed numbers."""
+    from src.research_lab.influence.catalog import LIQUIDITY_KEY
+    from src.research_lab.influence.report import history_for_barometer
+
+    found = history_for_barometer(json.loads(path.read_text()))
+    merged = dict(HISTORY)
+    for key, values in found.items():
+        merged[LIQUIDITY if key == LIQUIDITY_KEY else key] = values
+    return merged
+
+
+def barometer_markdown(today: date, data: Mapping[str, Series],
+                       history_table: Mapping[str, Mapping[str, float] | None] = HISTORY) -> str:
     year, week, _ = today.isocalendar()
     lines = [f"# Barometer live, Woche {year}-{week:02d} (Stand {today.isoformat()})", "",
              ("Rein beschreibend, keine Prognose, kein Handelssignal. Stand: Treiber über 13 Wochen, wie heute bei FRED "
@@ -267,12 +282,12 @@ def barometer_markdown(today: date, data: Mapping[str, Series]) -> str:
                                                                      data.get("RRPONTSYD", []))))
     for label, key, kind, series in rows:
         t = trend(series, today)
-        history = HISTORY.get(key)
+        history = history_table.get(key)
         if t is None:
             lines.append(f"| {label} | – | – | – | unbekannt | – | – | – |")
             continue
         direction, other = ("gestiegen", "gefallen") if t.rose else ("gefallen", "gestiegen")
-        if history is None:
+        if history is None or any(history.get(k) is None for k in ("gestiegen", "gefallen", "vorlauf")):
             hist_cells = "noch nicht ausgewertet | noch nicht ausgewertet | noch nicht ausgewertet"
         else:
             hist_cells = f"{_pct(history[direction])} | {_pct(history[other])} | {history['vorlauf']:+.2f}"
@@ -301,6 +316,7 @@ def main(argv: Sequence[str] | None = None, *, now: datetime | None = None) -> i
     parser = argparse.ArgumentParser(description="F3/F5 forward log and weekly barometer (observation only)")
     parser.add_argument("command", choices=("log", "barometer"))
     parser.add_argument("--folder", type=Path, default=FOLDER)
+    parser.add_argument("--history", type=Path, help="influence report JSON; replaces the fixed history numbers")
     args = parser.parse_args(argv)
     moment = now or datetime.now(timezone.utc)
     today = moment.date()
@@ -317,7 +333,8 @@ def main(argv: Sequence[str] | None = None, *, now: datetime | None = None) -> i
     data, _ = _download(tuple(sid for _, sid, _ in DRIVERS) + F3_SERIES, today, args.folder / "barometer")
     year, week, _ = today.isocalendar()
     out = args.folder / "barometer" / f"barometer_{year}-{week:02d}.md"
-    out.write_text(barometer_markdown(today, data))
+    table = HISTORY if args.history is None else history_from_report(args.history)
+    out.write_text(barometer_markdown(today, data, table))
     print(f"geschrieben: {out}")
     return 0
 
