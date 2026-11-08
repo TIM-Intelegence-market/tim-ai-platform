@@ -6,7 +6,15 @@ from datetime import date
 
 import pytest
 
-from src.research_lab.of2 import backtest, candles, compare, engine, levels, models
+from src.research_lab.of2 import (
+    backtest,
+    candles,
+    compare,
+    engine,
+    footprint,
+    levels,
+    models,
+)
 from src.research_lab.of2.config import DAY_MS, HOUR_MS, MINUTE_MS, Config
 from src.research_lab.orderflow_ml.bars import E8, DayProfile, MinuteBar
 from src.research_lab.protocol import BASE_COSTS
@@ -179,7 +187,8 @@ def test_sfp_needs_a_target_with_minimum_reward_risk():
 
 # -- tracker -------------------------------------------------------------------------------------------
 def sig(kind: str, direction: int, trigger: float | None, stop: float, target: float, t: int = DAY0, model: str = "M3") -> models.Signal:
-    return models.Signal(model, direction, t, kind, trigger, t + 30 * MINUTE_MS, stop, target, "L", trigger or 100.0, True, "ASIA")
+    tf = 15 if model in ("M3", "M4", "M5", "M6") else 30
+    return models.Signal(model, direction, t, kind, trigger, t + 30 * MINUTE_MS, stop, target, "L", trigger or 100.0, True, "ASIA", tf=tf)
 
 
 def test_market_fill_at_next_open_and_stop_before_target_in_same_minute():
@@ -220,9 +229,9 @@ def test_limit_fill_and_cancel_on_close():
     tr.add(sig(models.LIMIT, 1, 110.0, 107.0, 118.0, model="M2"))
     tr.pending[0] = models.Signal(**{**{n: getattr(tr.pending[0], n) for n in models.Signal.__slots__}, "cancel_beyond": 110.0})
     tr.push(bar(DAY0, 111, 111.5, 110.5, 111))       # not touched
-    tr.cancel_on_close(111.0)                        # close still above: keep
+    tr.cancel_on_close(111.0, 30)                        # close still above: keep
     assert tr.pending
-    tr.cancel_on_close(109.0)                        # close back below the edge: cancel
+    tr.cancel_on_close(109.0, 30)                        # close back below the edge: cancel
     assert not tr.pending and tr.cancelled == 1
     tr = backtest.Tracker(CFG)
     tr.add(sig(models.LIMIT, 1, 110.0, 107.0, 118.0, model="M2"))
@@ -281,7 +290,7 @@ def capture(eng: engine.Engine) -> list[models.Signal]:
     return seen
 
 
-def run_synthetic(seed: int, mutate_from: int | None = None) -> tuple[list[models.Signal], list[backtest.Trade]]:
+def run_synthetic(seed: int, mutate_from: int | None = None) -> tuple[list[models.Signal], list[backtest.Trade], engine.Engine]:
     rng = random.Random(seed)
     eng = engine.Engine(CFG)
     seen = capture(eng)
@@ -301,23 +310,27 @@ def run_synthetic(seed: int, mutate_from: int | None = None) -> tuple[list[model
                     new.append(b)
             bars = new
         trades += eng.run_day(bars, profile)
-    return seen, trades
+    return seen, trades, eng
 
 
 def test_engine_emits_signals_on_synthetic_days_and_is_deterministic():
-    seen_a, trades_a = run_synthetic(7)
-    seen_b, trades_b = run_synthetic(7)
+    seen_a, trades_a, eng_a = run_synthetic(7)
+    seen_b, trades_b, eng_b = run_synthetic(7)
     assert seen_a == seen_b and [t.as_dict() for t in trades_a] == [t.as_dict() for t in trades_b]
+    assert eng_a.stats.verworfen == eng_b.stats.verworfen
     assert seen_a, "the synthetic walk should trigger at least one model"
-    assert {s.model for s in seen_a} <= {"M1", "M2", "M3"}
+    assert {s.model for s in seen_a} <= {"M1", "M2", "M3", "M4", "M5", "M6"}
+    # the footprint models find candidates on the walk; with tiny stops most die at the cost gate, which is the point of it
+    touched = {k.split("_")[0] for k in eng_a.stats.verworfen} | {k.split("|")[0] for k in eng_a.stats.signale}
+    assert {"M4", "M5", "M6"} <= touched, touched
     assert all(s.session in {"ASIA", "LONDON", "NY", "SPAET"} for s in seen_a)
     assert all(s.reward_risk is not None and s.reward_risk >= CFG.min_rr for s in seen_a)
 
 
 def test_engine_signals_do_not_depend_on_future_minutes():
     cut = DAY0 + 11 * DAY_MS + 9 * HOUR_MS
-    seen, _ = run_synthetic(11)
-    mutated, _ = run_synthetic(11, mutate_from=cut)
+    seen, _, _ = run_synthetic(11)
+    mutated, _, _ = run_synthetic(11, mutate_from=cut)
     before = [s for s in seen if s.signal_ms <= cut]
     before_m = [s for s in mutated if s.signal_ms <= cut]
     assert before == before_m
@@ -383,6 +396,128 @@ def test_run_random_tracks_pseudo_trades_on_the_stream():
     trades = compare.run_random(lambda day: days[day], date(2021, 3, 1), date(2021, 3, 3), pseudo, CFG)
     assert trades and len(compare.strategy_means(trades)) <= 2
     assert all(t.reason in {"STOP", "TARGET", "TIME_STOP", "MAX_HOLD"} for t in trades)
+
+
+# -- footprint and models M4-M6 (P1b) --------------------------------------------------------------
+def fp(step: float, rows: list[tuple[int, int, int]]) -> footprint.Footprint:
+    return footprint.Footprint(DAY0, 15, step, tuple(rows))
+
+
+def test_day_footprints_merge_bins_and_read_only_the_candle_minutes():
+    width = int(0.0005 * 100.0 * E8)                 # S8 step 0,05 % -> merged x2 to 0,1 %
+    entries = tuple(sorted([(0, 2000, 5 * E8, 1 * E8), (1, 2001, 3 * E8, 2 * E8), (14, 2003, 0, 7 * E8), (15, 2000, 99 * E8, 99 * E8)]))
+    day = footprint.DayFootprints(DayProfile(DAY0, width, entries), 0.001, 100.0)
+    assert day.factor == 2 and abs(day.step - 0.1) < 1e-9
+    out = day.candle(DAY0, 15)
+    assert [b for b, _, _ in out.bins] == [1000, 1001]            # 2000/2001 -> 1000, 2003 -> 1001; minute 15 excluded
+    assert out.bins[0] == (1000, 8 * E8, 3 * E8) and out.bins[1] == (1001, 0, 7 * E8)
+    assert footprint.merge_factor(width, 100.0, 0.001) == 2 and footprint.merge_factor(0, 100.0, 0.001) == 1
+    assert day.candle(DAY0 + 30 * MINUTE_MS, 15).empty
+
+
+def test_imbalances_stacks_absorption_and_zeros():
+    f = fp(1.0, [(100, 1, 10), (101, 1, 9), (102, 2, 4), (103, 20, 2), (104, 15, 1), (105, 12, 0), (106, 9, 0)])
+    buys, sells = f.imbalances(4.0)
+    # buy at b against sell at b-1: 103 (20 vs 4), 104 (15 vs 2), 105 (12 vs 1); 106 has a zero below -> "ohne Null" -> no
+    # sell at b against buy at b+1: 100 (10 vs 1), 101 (9 vs 2); 102 (4 vs 20) no
+    assert buys == [103, 104, 105] and sells == [100, 101]
+    b_runs, s_runs = f.stacks(4.0, 3)
+    assert b_runs == [(103, 105)] and s_runs == []
+    assert f.stacks(4.0, 2)[1] == [(100, 101)]
+    assert f.absorption(1, 2, 2.0)                     # lowest two bins: sellers 10:1 and 9:1 into bids
+    assert not f.absorption(-1, 2, 2.0)                # top bins are one-sided: that is zeros, not absorption
+    assert f.zeros_at(-1, 2) and not f.zeros_at(1, 2)
+    assert f.unfinished(1) and not f.unfinished(-1)
+    assert footprint._runs([1, 2, 3, 7, 8, 9, 10], 3) == [(1, 3), (7, 10)] and footprint._runs([], 2) == []
+
+
+def fps(n: int, step: float = 0.1) -> list[footprint.Footprint]:
+    return [fp(step, [(1000 + i, 5, 5) for i in range(6)]) for _ in range(n)]
+
+
+def test_absorption_long_at_val_with_footprint_confirmation():
+    lv = day_levels(val=100.0, vah=110.0, poc=105.0, low=95.0, high=115.0)
+    prior = candle(DAY0, 101.0, 101.5, 100.3, 100.8, minutes=15)
+    touch = candle(DAY0 + 15 * MINUTE_MS, 100.8, 101.0, 100.0, 100.9, delta=-30, minutes=15)
+    confirm = candle(DAY0 + 30 * MINUTE_MS, 100.9, 101.4, 100.4, 101.2, minutes=15)
+    absorbed = fp(0.1, [(1000, 1, 10), (1001, 1, 8), (1002, 5, 5), (1003, 5, 5), (1004, 5, 5)])
+    s = models.absorption([prior, touch, confirm], [fps(1)[0], absorbed, fps(1)[0]], lv, CFG)
+    assert s is not None and s.model == "M4" and s.direction == 1 and s.confirmed and s.level_name == "VAL"
+    assert s.kind == models.MARKET and s.signal_ms == confirm.end and s.tf == 15
+    assert s.stop < touch.low and s.target == 105.0 and s.reward_risk is not None and s.reward_risk >= CFG.min_rr
+    # same price picture, no absorption in the footprint -> price-only signal
+    s2 = models.absorption([prior, touch, confirm], fps(3), lv, CFG)
+    assert s2 is not None and not s2.confirmed
+    # candle that closed through the level is not absorption
+    broke = candle(DAY0 + 15 * MINUTE_MS, 100.8, 101.0, 99.0, 99.5, minutes=15)
+    assert models.absorption([prior, broke, confirm], fps(3), lv, CFG) is None
+
+
+def test_stacked_retest_arms_limit_at_zone_top_and_confirms_with_stack():
+    lv = day_levels(val=100.0, vah=110.0, poc=105.0, low=95.0, high=115.0, npocs=(112.0,))
+    impulse = candle(DAY0, 100.0, 103.1, 99.9, 103.0, delta=40, minutes=15)      # body 3.0 of range 3.2
+    stacked = fp(0.1, [(999, 5, 1), (1000, 8, 1), (1001, 8, 1), (1002, 9, 1), (1003, 5, 5), (1010, 5, 5)])
+    s = models.stacked_retest([candle(DAY0 - 15 * MINUTE_MS, 99, 100, 98, 100, minutes=15), impulse], [fps(1)[0], stacked], lv, CFG)
+    assert s is not None and s.model == "M5" and s.direction == 1 and s.kind == models.LIMIT
+    assert abs(s.trigger - (99.9 + 3.2 / 3)) < 1e-9 and s.cancel_beyond == 99.9 and s.stop < 99.9
+    assert s.valid_until == impulse.end + CFG.fp_zone_candles * 15 * MINUTE_MS and s.confirmed
+    assert s.target == 105.0
+    plain = models.stacked_retest([impulse, impulse], fps(2), lv, CFG)
+    assert plain is not None and not plain.confirmed
+    doji = candle(DAY0, 100.0, 103.0, 99.0, 100.5, minutes=15)
+    assert models.stacked_retest([impulse, doji], fps(2), lv, CFG) is None
+    mid_move = candle(DAY0, 107.1, 110.2, 107.0, 110.1, minutes=15)          # no level at its origin (POC 105 too far)
+    assert models.stacked_retest([impulse, mid_move], fps(2), lv, CFG) is None
+
+
+def test_stop_run_fades_new_day_high_with_zeros():
+    lv = day_levels(val=100.0, vah=110.0, poc=105.0, low=95.0, high=115.0)
+    earlier = [candle(DAY0 + i * 15 * MINUTE_MS, 106, 108.0, 105, 107, minutes=15) for i in range(4)]
+    run = candle(DAY0 + 4 * 15 * MINUTE_MS, 107.0, 109.5, 106.8, 107.5, delta=25, minutes=15)
+    zeros = fp(0.1, [(1068 + i, 5, 5) for i in range(25)] + [(1093, 6, 0), (1094, 4, 0)])
+    s = models.stop_run(earlier + [run], fps(4) + [zeros], lv, CFG)
+    assert s is not None and s.model == "M6" and s.direction == -1 and s.confirmed and s.level == 108.0
+    assert s.kind == models.MARKET and s.stop > 109.5
+    assert s.target == 100.0            # POC 105 is only 1,2 R away from 107,5 with the stop at 109,55 -> next obstacle VAL
+    s2 = models.stop_run(earlier + [run], fps(5), lv, CFG)
+    assert s2 is not None and not s2.confirmed
+    accepted = candle(DAY0 + 4 * 15 * MINUTE_MS, 107.0, 109.5, 106.8, 109.2, minutes=15)   # closed above: no run failure
+    assert models.stop_run(earlier + [accepted], fps(5), lv, CFG) is None
+    assert models.stop_run(earlier[:2] + [run], fps(3), lv, CFG) is None                   # too few day candles
+
+
+def test_tracker_time_stop_uses_the_signal_time_frame_and_cancel_rule_is_per_frame():
+    tr = backtest.Tracker(CFG)
+    tr.add(sig(models.MARKET, 1, None, 99.0, 103.0, model="M1"))      # tf 30 -> 8 x 30 min
+    tr.push(bar(DAY0, 100, 100.2, 99.9, 100.1))
+    closed = []
+    for i in range(1, 8 * 15 + 1):
+        closed += tr.push(bar(DAY0 + i * MINUTE_MS, 100.1, 100.3, 99.9, 100.1))
+    assert not closed
+    for i in range(8 * 15 + 1, 8 * 30 + 1):
+        closed += tr.push(bar(DAY0 + i * MINUTE_MS, 100.1, 100.3, 99.9, 100.1))
+    assert len(closed) == 1 and closed[0].reason == "TIME_STOP"
+    tr = backtest.Tracker(CFG)
+    m5 = sig(models.LIMIT, 1, 110.0, 107.0, 118.0, model="M5")
+    tr.add(models.Signal(**{**{n: getattr(m5, n) for n in models.Signal.__slots__}, "cancel_beyond": 109.0}))
+    tr.cancel_on_close(108.0, 30)    # a 30-min close does not touch a 15-min signal
+    assert len(tr.pending) == 1
+    tr.cancel_on_close(108.0, 15)
+    assert not tr.pending and tr.cancelled == 1
+
+
+def test_footprint_models_pass_through_regime_gates_and_engine_stats():
+    eng = engine.Engine(CFG)
+    eng.session = levels.SessionState("ASIA", DAY0)
+    eng.ib_history["ASIA"].extend([10.0] * CFG.ib_history)
+    eng.session.ib_high, eng.session.ib_low, eng.session.ib_seen, eng.session.ib_done = 101.0, 100.0, True, True  # TREND
+    eng._consider(sig(models.MARKET, -1, None, 101.0, 97.0, model="M6"), DAY0, DAY0)
+    assert eng.stats.verworfen.get("M6_trendtag") == 1 and not eng.tracker.pending
+    eng._consider(sig(models.MARKET, 1, None, 98.0, 103.0, model="M4"), DAY0, DAY0)
+    assert len(eng.tracker.pending) == 1 and eng.tracker.pending[0].regime == "TREND"
+    eng.session.ib_high = 130.0                                                                                    # RANGE
+    eng._consider(sig(models.LIMIT, 1, 100.0, 98.0, 103.0, model="M5"), DAY0, DAY0)
+    assert eng.stats.verworfen.get("M5_rangetag") == 1
 
 
 def test_study_window_never_reaches_the_holdout():

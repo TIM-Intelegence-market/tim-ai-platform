@@ -79,7 +79,7 @@ def cmd_random(args: argparse.Namespace, cfg: Config) -> dict:
     real = []
     for row in run["trades"]:
         s = Signal(row["model"], row["direction"], row["signal_ms"], MARKET, None, row["signal_ms"], row["stop"], row["target"],
-                   row["level"], row["level_price"], row["confirmed"], row["session"], row["regime"])
+                   row["level"], row["level_price"], row["confirmed"], row["session"], row["regime"], tf=row.get("tf", 30))
         real.append(Trade(s, row["fill_ms"], row["entry"], row["exit_ms"], row["exit"], row["reason"], row["gross_r"],
                           row["fee_r"], row["slippage_r"], row["mfe_r"], row["mae_r"]))
     out = {"studie": "OF2", "version": VERSION, "config_digest": cfg.digest(), "abschnitt": args.section, "draws": args.draws,

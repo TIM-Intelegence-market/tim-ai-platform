@@ -43,7 +43,7 @@ class Trade:
         s = self.signal
         return {
             "model": s.model, "direction": s.direction, "session": s.session, "regime": s.regime, "confirmed": s.confirmed,
-            "level": s.level_name, "level_price": s.level, "relvol": s.relvol, "signal_ms": s.signal_ms,
+            "level": s.level_name, "level_price": s.level, "relvol": s.relvol, "signal_ms": s.signal_ms, "tf": s.tf,
             "fill_ms": self.fill_ms, "entry": self.entry, "stop": s.stop, "target": s.target, "exit_ms": self.exit_ms,
             "exit": self.exit, "reason": self.reason, "gross_r": self.gross_r, "fee_r": self.fee_r,
             "slippage_r": self.slippage_r, "net_r": self.net_r, "mfe_r": self.mfe_r, "mae_r": self.mae_r,
@@ -81,12 +81,13 @@ class Tracker:
     def add(self, signal: Signal) -> None:
         self.pending.append(signal)
 
-    def cancel_on_close(self, close: float, model: str = "M2") -> None:
-        """M2: a 30-min close back beyond the accepted edge withdraws the resting limit (acceptance failed)."""
+    def cancel_on_close(self, close: float, tf: int) -> None:
+        """A close of the signal's own time frame back beyond ``cancel_beyond`` withdraws the resting limit
+        (M2: acceptance failed; M5: the stacked zone died)."""
         keep = []
         for s in self.pending:
             beyond = s.cancel_beyond
-            if s.model == model and beyond is not None and (close < beyond if s.direction > 0 else close > beyond):
+            if s.tf == tf and beyond is not None and (close < beyond if s.direction > 0 else close > beyond):
                 self.cancelled += 1
             else:
                 keep.append(s)
@@ -147,7 +148,7 @@ class Tracker:
             hit_stop = l <= s.stop if d > 0 else h >= s.stop
             hit_target = h >= s.target if d > 0 else l <= s.target
             held = t - o.fill_ms
-            tf = self.cfg.tf_sfp if s.model == "M3" else self.cfg.tf_value
+            tf = s.tf
             exit_: float | None = None
             reason = ""
             if hit_stop:
