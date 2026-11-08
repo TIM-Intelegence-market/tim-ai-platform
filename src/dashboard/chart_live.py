@@ -95,6 +95,7 @@ GROUP_NAMES = {
     "liq": "Liquidations-Heatmap (Schätzung)",
     "cvd": "CVD Spot vs. Perp", "oi": "Open Interest + Z-Score (7,5 T)",
     "funding": "Funding Rate (Binance Perp)", "premium": "Coinbase-Premium (USD vs. USDT)",
+    "dominance": "BTC- und USDT-Dominanz (täglich)",
     "macro": "Termine (US-CPI, FOMC)",
 }
 # Footprint, volume profile, delta and bubbles from spot or perp trades (Beirat 29.10.2026, F5); levels stay on spot.
@@ -971,7 +972,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     the candles they belong to (perp trades a basis away from spot); the levels stay on spot. Both feed the CVD lines (group "cvd"). ``open_interest`` is
     ``DashboardState.open_interest``: hourly open interest with its 7.5-day Z-score (group "oi").
     ``context`` is ``market_context.CACHE.snapshot(symbol)``: funding rate (group "funding") and
-    Coinbase premium (group "premium") for this symbol; both start hidden.
+    Coinbase premium (group "premium") for this symbol, and the market-wide daily BTC/USDT dominance
+    (group "dominance", key "dominance" in ``context``); all three start hidden.
     ``macro`` is the macro calendar (``macro_calendar.load_calendar``; read from its file when
     None): US-CPI and FOMC release dates as markers on the candle they fall in (group "macro").
     """
@@ -984,7 +986,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
                              "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None,
                              "markets": {"names": MARKETS, "active": DEFAULT_MARKET, "available": []}, "cvd": None, "oi": None,
-                             "funding": None, "premium": None, "macro": [], "macro_ahead": [],
+                             "funding": None, "premium": None, "dominance": None, "macro": [], "macro_ahead": [],
                              "interval_seconds": INTERVAL_SECONDS.get(timeframe)}
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
@@ -1075,6 +1077,12 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
             if model[key] and model[key]["stale"]:
                 model["notes"].append(f"{label}: Stand älter als 3 h, ausgeblendet.")
                 model[key] = None
+        from src.dashboard.market_context import dominance_chart
+
+        model["dominance"] = dominance_chart(context.get("dominance"), times[0], now)
+        if model["dominance"] and model["dominance"]["stale"]:
+            model["notes"].append("Dominanz: letzter Tageswert älter als 3 Tage, ausgeblendet.")
+            model["dominance"] = None
     model["drawings"] = place_drawings(drawings, times)
     model["fib"] = fib_retracement(candles, timeframe)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
