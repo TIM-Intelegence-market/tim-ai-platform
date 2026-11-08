@@ -92,15 +92,17 @@ def test_small_cells_are_dropped_and_the_input_hash_is_stable() -> None:
 
 
 def _fake_binance(n: int = 20, calls: list | None = None):
+    LP = liquidation_data.PERIOD_SECONDS
+
     def fetch(path: str, params):
         if calls is not None:
             calls.append((path, dict(params)))
         if path == "/futures/data/openInterestHist":
-            assert params["period"] == "30m" and params["symbol"] in liquidation_data.SYMBOLS
+            assert params["period"] == liquidation_data.PERIOD and params["symbol"] in liquidation_data.SYMBOLS
             return [{"symbol": params["symbol"], "sumOpenInterest": str(80_000 + 50 * i), "sumOpenInterestValue": "0",
-                     "timestamp": (T0 + i * P) * 1000} for i in range(n + 1)]
-        assert path == "/fapi/v1/klines" and params["interval"] == "30m"
-        return [[(T0 + i * P) * 1000, "80000", str(80_100 + i), str(79_900 + i), str(80_000 + i), "1", (T0 + (i + 1) * P) * 1000 - 1]
+                     "timestamp": (T0 + i * LP) * 1000} for i in range(n + 1)]
+        assert path == "/fapi/v1/klines" and params["interval"] == liquidation_data.PERIOD
+        return [[(T0 + i * LP) * 1000, "80000", str(80_100 + i), str(79_900 + i), str(80_000 + i), "1", (T0 + (i + 1) * LP) * 1000 - 1]
                 for i in range(n)]
     return fetch
 

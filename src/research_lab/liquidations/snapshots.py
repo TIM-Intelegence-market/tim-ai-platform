@@ -1,9 +1,9 @@
 """Frozen heatmap states four times a day (S12, package L2; pre-registration 3.2, 4.2, 4.3).
 
 At each window start t (00:00, 06:00, 12:00, 18:00 UTC) the collector fetches, at t + 120 s,
-exactly what the Control Center fetches (``src.dashboard.liquidation_data``: Binance futures open
-interest history and 30 min klines, 500 periods) and stores the **raw answers**. Everything else
-is recomputed from them, so a stored state can be checked bit for bit (``verify``):
+what the Control Center fetched until 08.11.2026 (Binance futures open interest history and
+30 min klines, 500 periods; the chart now uses a 4h grid, this study stays on 30 min) and
+stores the **raw answers**. Everything else is recomputed from them, so a stored state can be checked bit for bit (``verify``):
 
 - candles opened after t - 1800 s (the running one) and OI stamps after t - 1800 s are dropped
   (the meaning of a stamp, state at that moment or at the end of its period, is not documented;
@@ -29,7 +29,11 @@ from src.liquidation_map.heatmap import Candle, build_heatmap
 
 FORMAT = "s12-snapshot/1"
 SYMBOL = "BTCUSDT"
-PERIOD_SECONDS = liquidation_data.PERIOD_SECONDS
+# Frozen by the pre-registration: 30 min grid, 500 periods. Not taken from liquidation_data,
+# whose chart grid moved to 4h on 08.11.2026.
+PERIOD = "30m"
+PERIOD_SECONDS = 1800
+LIMIT = 500
 WINDOW_HOURS = 6
 FETCH_DELAY = timedelta(seconds=120)
 MAX_FETCH_DELAY = timedelta(minutes=15)
@@ -137,10 +141,10 @@ def take(root: Path, t: datetime, fetch: Fetch | None = None, now: Callable[[], 
         return path
     fetch = fetch or liquidation_data._fetch_json
     now = now or (lambda: datetime.now(timezone.utc))
-    params = {"symbol": SYMBOL, "period": liquidation_data.PERIOD, "limit": str(liquidation_data.LIMIT)}
+    params = {"symbol": SYMBOL, "period": PERIOD, "limit": str(LIMIT)}
     raw_oi = fetch("/futures/data/openInterestHist", params)
-    raw_k = fetch("/fapi/v1/klines", {"symbol": SYMBOL, "interval": liquidation_data.PERIOD,
-                                       "limit": str(liquidation_data.LIMIT)})
+    raw_k = fetch("/fapi/v1/klines", {"symbol": SYMBOL, "interval": PERIOD,
+                                       "limit": str(LIMIT)})
     raw = {"format": FORMAT, "study": "S12", "t": t.isoformat(), "fetched_at": now().isoformat(),
            "source": liquidation_data.BINANCE_FUTURES, "params": params, "code_commit": code_commit(),
            "open_interest": raw_oi, "klines": raw_k}
