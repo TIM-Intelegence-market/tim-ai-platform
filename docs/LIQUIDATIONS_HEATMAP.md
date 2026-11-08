@@ -16,10 +16,15 @@ englisch „Liquidation heatmap (estimate)“). Vorbild: die Heatmap von Trading
 ## Wie gerechnet wird (`src/liquidation_map/heatmap.py`)
 
 Daten: Binance Futures, öffentlich, ohne Schlüssel. Die Runtime liest alle 5 Minuten für BTC, ETH und
-SOL die Open-Interest-Historie (`/futures/data/openInterestHist`, 30m, 500 Werte ≈ 10 Tage) und die
-30m-Kerzen (`/fapi/v1/klines`). Die Rechnung läuft in `src/dashboard/liquidation_data.py`.
+SOL die Open-Interest-Historie (`/futures/data/openInterestHist`, 4h) und die 4h-Kerzen
+(`/fapi/v1/klines`). Binance hält die OI-Historie 30 Tage, das sind etwa 180 4h-Perioden. Die Rechnung
+läuft in `src/dashboard/liquidation_data.py`.
 
-1. Steigt das Open Interest in einer 30m-Periode, wurden neue Positionen eröffnet, und zwar zum
+Seit 08.11.2026 rechnet die Anzeige im 4h-Raster (vorher 30m, Uzi: "TIM soll definitiv im 4h raster
+arbeiten"). Folge: Neue Positionen erscheinen erst, wenn ihre 4h-Kerze geschlossen ist. Die Studie S12
+(`src/research_lab/liquidations/snapshots.py`) bleibt wie vorregistriert bei 30m.
+
+1. Steigt das Open Interest in einer 4h-Periode, wurden neue Positionen eröffnet, und zwar zum
    typischen Preis der Kerze, also (Hoch + Tief + Schluss) / 3.
 2. **Annahmen:** Die Hälfte der neuen Positionen ist long, die andere Hälfte short. Für die Hebel
    gilt ein fester Mix: 10x 30 %, 25x 30 %, 50x 25 %, 100x 15 %.

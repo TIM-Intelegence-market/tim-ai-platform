@@ -25,9 +25,12 @@ from src.liquidation_map.heatmap import Candle, build_heatmap
 
 BINANCE_FUTURES = "https://fapi.binance.com"
 SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
-PERIOD = "30m"
-PERIOD_SECONDS = 1800
-LIMIT = 500  # about ten days of 30m periods (Binance keeps 30 days of open interest history)
+# 4h grid for the chart (Uzi 08.11.2026: "TIM soll definitiv im 4h raster arbeiten"). Binance keeps
+# 30 days of open interest history, so 500 asked periods give about 180 (30 days).
+# The S12 study keeps its own frozen 30m grid (src/research_lab/liquidations/snapshots.py).
+PERIOD = "4h"
+PERIOD_SECONDS = 4 * 3600
+LIMIT = 500
 REFRESH_SECONDS = 300
 STALE_AFTER = timedelta(minutes=20)
 TIMEOUT_SECONDS = 15
