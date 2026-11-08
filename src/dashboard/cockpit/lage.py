@@ -453,6 +453,13 @@ def build_lage(state: DashboardState, now: datetime | None = None, budget: float
     except Exception as exc:  # noqa: BLE001
         system.append(unavailable("own_data", "Eigene Daten", _broken(exc), "Kachelbau Eigene Daten", "/neu/betrieb"))
     try:
+        from src.dashboard import hermes_bridge
+        from src.dashboard.cockpit.hermes import tile as hermes_tile
+
+        system.append(hermes_tile(hermes_bridge.status(getattr(state, "hermes_log_path", None), now), now))
+    except Exception as exc:  # noqa: BLE001
+        system.append(unavailable("hermes", "TIM-KI (Hermes)", _broken(exc), "Kachelbau Hermes", "/neu/hermes"))
+    try:
         market, plans = _market_tiles(results["series"], results["chart"], results["prep"], now)
     except Exception as exc:  # noqa: BLE001
         market, plans = [_info(unavailable(key, label, _broken(exc), "Kachelbau Markt", href)) for key, label, href in MARKET_TILES], []

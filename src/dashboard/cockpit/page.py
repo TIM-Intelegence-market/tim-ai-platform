@@ -38,6 +38,8 @@ AREAS: list[dict[str, Any]] = [
      "pages": [("Worker-Dashboard", "http://127.0.0.1:8767/", "Volles Dashboard des Issue-Workers"),
                ("Health Center", "/health", "Watchdog und Gesundheitsprüfungen"),
                ("Zeitleiste", "/timeline", "Ereignisse von Watchdog, Backup und Kampagne")]},
+    {"key": "hermes", "label": "TIM-KI (Hermes)", "href": "/neu/hermes", "built": True,
+     "text": "Hermes-Agent mit DeepSeek: Status, Fragefeld und die letzten Antworten. Liest TIM nur über tim-ops und tim-graph."},
     {"key": "forschung", "label": "Forschung", "href": "/neu/forschung", "built": True,
      "text": "Research Cases, Signale, Orderflow, Analytics und Insights.",
      "pages": [("Research Cases", "/cases", "Alle Fälle mit Status und Beweislage"),

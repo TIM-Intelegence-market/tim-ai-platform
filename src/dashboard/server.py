@@ -418,6 +418,8 @@ class DashboardServer:
                     key = path.removeprefix("/neu").strip("/") or "lage"
                     if key not in cockpit.AREA_BY_KEY:
                         return self.respond(404, b'{"error":"not found"}', "application/json")
+                    if key == "hermes":
+                        return self.hermes_page(200, query)
                     fragment = query.get("fragment", [""])[0] == "1"
                     if key in cockpit.BUILT:
                         build, body, render = cockpit.BUILT[key]
@@ -428,6 +430,30 @@ class DashboardServer:
                     return self.respond(200, cockpit.render_area(key).encode(), "text/html; charset=utf-8", csp=cockpit.COCKPIT_CSP)
                 except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                     return self.respond(500, _error_page("Cockpit", exc).encode(), "text/html; charset=utf-8")
+
+            def hermes_page(self, status: int, query: dict[str, list[str]], error: str | None = None) -> None:
+                from src.dashboard import cockpit
+
+                remote = _is_remote_view_request(self.headers.get("Host"), self.headers.get("Tailscale-User-Login"))
+                try:
+                    model = cockpit.build_hermes(outer.state, token=outer.form_token, asked=query.get("asked", [None])[0], error=error,
+                                                 can_ask=not remote)
+                    page = cockpit.render_hermes(model)
+                except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                    return self.respond(500, _error_page("TIM-KI (Hermes)", exc).encode(), "text/html; charset=utf-8")
+                return self.respond(status, page.encode(), "text/html; charset=utf-8", csp=cockpit.HERMES_CSP, referrer="same-origin")
+
+            def hermes_post(self) -> None:
+                from src.dashboard import hermes_bridge
+
+                form = self.checked_form("/neu/hermes", max_fields=4)
+                if form is None:
+                    return None
+                try:
+                    entry = hermes_bridge.ask(form.get("question", ""), log_path=outer.state.hermes_log_path)
+                except hermes_bridge.QuestionError as exc:
+                    return self.hermes_page(400, {}, error=str(exc))
+                return self.respond(303, b"", "text/plain; charset=utf-8", location=f"/neu/hermes?asked={entry['id']}")
 
             def trader_journal_page(self, status: int, form: dict[str, str] | None = None, error: str | None = None, saved: str | None = None) -> None:
                 from src.dashboard import trader_journal
@@ -567,6 +593,8 @@ class DashboardServer:
                     return self.my_day_post()
                 if path == "/journal/note":
                     return self.plan_note_post()
+                if path == "/neu/hermes/ask":
+                    return self.hermes_post()
                 if path not in {"/api/research/quick", "/api/research/deep"}:
                     return self.respond(404, b'{"error":"not found"}', "application/json")
                 try:

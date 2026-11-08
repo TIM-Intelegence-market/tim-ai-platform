@@ -6,12 +6,22 @@ Display only: reads what TIM already writes, never writes data or starts work.
 from __future__ import annotations
 
 from src.dashboard.cockpit.areas import build_betrieb, build_forschung, build_system
+from src.dashboard.cockpit.hermes import HERMES_CSP, build_hermes, render_hermes
 from src.dashboard.cockpit.lage import build_lage
 from src.dashboard.cockpit.mac import build_mac
 from src.dashboard.cockpit.markt import build_markt
 from src.dashboard.cockpit.page import (
-    AREA_BY_KEY, COCKPIT_CSP, lage_body, mac_body, markt_body, render_area, render_lage, render_mac, render_markt,
-    render_sections, sections_body,
+    AREA_BY_KEY,
+    COCKPIT_CSP,
+    lage_body,
+    mac_body,
+    markt_body,
+    render_area,
+    render_lage,
+    render_mac,
+    render_markt,
+    render_sections,
+    sections_body,
 )
 
 # Areas with their own page: (model builder, refreshable body, full page).
@@ -24,5 +34,26 @@ BUILT = {
     "system": (build_system, sections_body, render_sections),
 }
 
-__all__ = ["AREA_BY_KEY", "BUILT", "COCKPIT_CSP", "build_betrieb", "build_forschung", "build_system", "build_lage", "build_mac", "build_markt", "lage_body", "mac_body", "markt_body",
-           "render_area", "render_lage", "render_mac", "render_markt", "render_sections", "sections_body"]
+__all__ = [
+    "AREA_BY_KEY",
+    "BUILT",
+    "COCKPIT_CSP",
+    "HERMES_CSP",
+    "build_betrieb",
+    "build_forschung",
+    "build_hermes",
+    "build_lage",
+    "build_mac",
+    "build_markt",
+    "build_system",
+    "lage_body",
+    "mac_body",
+    "markt_body",
+    "render_area",
+    "render_hermes",
+    "render_lage",
+    "render_mac",
+    "render_markt",
+    "render_sections",
+    "sections_body",
+]
