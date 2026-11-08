@@ -106,3 +106,59 @@ def test_tile_and_section():
     html = tile.section(lage("auf"))
     assert "Orderflow-Lage" in html and "Vortag VAL" in html and "Absorption" in html and "<script" not in html
     assert "noch keine Daten" in tile.section(None)
+
+
+def candles_30m(end: datetime, days: int = 3, base: float = 10.0, last: float = 20.0) -> list[dict]:
+    """30m candles up to ``end``; the half hour before ``end`` has ``base`` on earlier days and ``last`` on the final one."""
+    rows, start = [], end - timedelta(days=days)
+    moment = start
+    while moment < end:
+        volume = last if moment == end - timedelta(minutes=30) else base
+        rows.append({"timeframe": "30m", "open_time": moment.isoformat(),
+                     "close_time": (moment + timedelta(minutes=30) - timedelta(milliseconds=1)).isoformat(),
+                     "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": volume})
+        moment += timedelta(minutes=30)
+    return rows
+
+
+def test_session_and_weekend():
+    assert shadow.session_of(datetime(2026, 11, 8, 3, tzinfo=timezone.utc)) == "Asien"
+    assert shadow.session_of(datetime(2026, 11, 8, 7, tzinfo=timezone.utc)) == "London"
+    assert shadow.session_of(datetime(2026, 11, 8, 14, tzinfo=timezone.utc)) == "London+NY"
+    assert shadow.session_of(datetime(2026, 11, 8, 18, tzinfo=timezone.utc)) == "NY"
+    assert shadow.session_of(datetime(2026, 11, 8, 22, tzinfo=timezone.utc)) == "nach NY"
+    assert shadow.timing(T0, [])["weekend"] is True  # 08.11.2026 is a Sunday
+    assert shadow.timing(T0 + timedelta(days=1), [])["weekend"] is False
+
+
+def test_timing_uses_only_closed_candles():
+    from src.dashboard.chart_model import clean_candles
+
+    rows = clean_candles(candles_30m(T0), "30m")
+    t = shadow.timing(T0, rows)
+    assert t["volume_vs_hour"] == 2.0 and t["candle_30m"] == (T0 - timedelta(minutes=30)).isoformat()
+    # 10 minutes later the candle that is still running must not be used: same last closed candle.
+    assert shadow.timing(T0 + timedelta(minutes=10), rows + clean_candles(
+        [{"timeframe": "30m", "open_time": T0.isoformat(), "close_time": (T0 + timedelta(minutes=30)).isoformat(),
+          "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 999.0}], "30m"))["volume_vs_hour"] == 2.0
+    # No candle close to the moment: no ratio instead of a stale one.
+    assert shadow.timing(T0 + timedelta(hours=5), rows)["volume_vs_hour"] is None
+
+
+def test_update_records_timing_and_summary(tmp_path):
+    journal = tmp_path / "j.json"
+    write_journal(journal, plan("CLOSED", filled_at=T0.isoformat(), closed_at=(T0 + timedelta(hours=1)).isoformat(), net_r=1.5))
+    out = tmp_path / "shadow.json"
+    state = shadow.update(out, [journal], lage("auf"), now=T0 + timedelta(hours=2), series={"30m": candles_30m(T0)})
+    # started_at is now, so the plan created before it is skipped; restart with an earlier start.
+    data = json.loads(out.read_text())
+    data["started_at"] = (T0 - timedelta(hours=1)).isoformat()
+    out.write_text(json.dumps(data))
+    state = shadow.update(out, [journal], lage("auf"), now=T0 + timedelta(hours=2), series={"30m": candles_30m(T0)})
+    record = state["plans"]["p1"]
+    assert record["timing_at_plan"]["session"] == "London" and record["timing_at_plan"]["volume_vs_hour"] == 2.0
+    assert record["timing_at_fill"]["weekend"] is True
+    assert state["summary"]["by_session"]["London"] == {"n": 1, "sum_net_r": 1.5}
+    assert state["summary"]["by_volume"]["über Schnitt"]["n"] == 1
+    # Without series the shadow still runs, timing has no ratio.
+    assert shadow.timing(T0, [])["volume_vs_hour"] is None

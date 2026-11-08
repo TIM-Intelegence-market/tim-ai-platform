@@ -793,7 +793,7 @@ class TIMApplication:
                     lage = dict(self.dashboard_state.orderflow_live or {})
                 await asyncio.to_thread(update_of_shadow, of_shadow_path,
                                         (self.dashboard_state.plan_journal_short_path, self.dashboard_state.plan_journal_mid_path),
-                                        lage or None)
+                                        lage or None, series=series)
             except asyncio.CancelledError:
                 raise
             except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
