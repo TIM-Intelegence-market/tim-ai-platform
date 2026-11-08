@@ -119,8 +119,9 @@ def test_chart_context_is_off_in_tests_and_limited_to_chart_symbols(monkeypatch)
     seen = []
     monkeypatch.setenv("TIM_RUNTIME_ENV", "local")
     monkeypatch.setattr(mc.CACHE, "snapshot", lambda symbol: seen.append(symbol) or {})
+    monkeypatch.setattr(mc.DOMINANCE, "snapshot", lambda: {"points": []})  # no Coin Metrics request in tests
     mc.chart_context("../../evil")
-    mc.chart_context("ETHUSDT")
+    assert mc.chart_context("ETHUSDT") == {"dominance": {"points": []}}
     assert seen == ["BTCUSDT", "ETHUSDT"]
 
 
@@ -156,3 +157,68 @@ def test_live_chart_carries_funding_and_premium_hidden_by_default():
     assert english_note("Coinbase-Premium: Stand älter als 3 h, ausgeblendet.").startswith("Coinbase premium: data older")
     plain = build_live_chart("BTCUSDT", "1h", cache=_Cache(_candles()), now=NOW)
     assert plain["funding"] is None and plain["premium"] is None
+
+
+DAY0 = datetime(2026, 10, 1, tzinfo=timezone.utc)
+
+
+def _dominance_fetch(days: int = 31):
+    """Coin Metrics catalogue and one page with btc/usdt/eth caps per day (shares 60/7/33 % plus a drift)."""
+    import json
+
+    def fetch(url: str) -> bytes:
+        if "catalog-v2" in url:
+            daily = [{"metric": "CapMrktEstUSD", "frequencies": [{"frequency": "1d", "community": True}]}]
+            return json.dumps({"data": [{"asset": a, "metrics": daily} for a in ("btc", "usdt", "eth", "wbtc")]}).encode()
+        assert url.startswith("https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?")
+        rows = []
+        for i in range(days):
+            d = (DAY0 + timedelta(days=i)).date().isoformat() + "T00:00:00.000000000Z"
+            rows += [{"asset": "btc", "time": d, "CapMrktEstUSD": str(60.0 + i / 10)}, {"asset": "usdt", "time": d, "CapMrktEstUSD": "7"},
+                     {"asset": "eth", "time": d, "CapMrktEstUSD": str(33.0 - i / 10)}, {"asset": "wbtc", "time": d, "CapMrktEstUSD": "50"}]
+        return json.dumps({"data": rows}).encode()
+    return fetch
+
+
+def test_dominance_points_sit_at_the_next_midnight_and_skip_wrapped_tokens():
+    now = DAY0 + timedelta(days=31, hours=6)
+    snap = mc.dominance(_dominance_fetch(), now=now)
+    first = snap["points"][0]
+    assert first[0] == int((DAY0 + timedelta(days=1)).timestamp())  # day 1 known from day 2 00:00 UTC
+    assert first[1] == pytest.approx(60.0) and first[2] == pytest.approx(7.0)  # wbtc not counted twice
+    assert snap["last_day"] == (DAY0 + timedelta(days=30)).date().isoformat()
+    part = mc.dominance_chart(snap, int((DAY0 + timedelta(days=29)).timestamp()), now)
+    assert part["points"][0][0] == int((DAY0 + timedelta(days=28)).timestamp())  # one day before the first candle
+    assert part["stale"] is False and part["last_btc"] == pytest.approx(63.0)
+    assert mc.dominance_chart(snap, 0, now + timedelta(days=4))["stale"] is True
+    assert mc.dominance_chart(None, 0, now) is None
+
+
+def test_live_chart_carries_dominance_hidden_and_drops_stale():
+    snap = mc.dominance(_dominance_fetch(60), now=NOW)
+    model = build_live_chart("ETHUSDT", "1h", cache=_Cache(_candles()), now=NOW, context={"dominance": snap})
+    assert model["dominance"]["points"] and "dominance" in GROUP_NAMES and "dominance" in GROUPS_EN
+    assert "dominance" not in DEFAULT_GROUPS
+    old = build_live_chart("BTCUSDT", "1h", cache=_Cache(_candles()), now=NOW + timedelta(days=5), context={"dominance": snap})
+    assert old["dominance"] is None and any(n.startswith("Dominanz: letzter Tageswert") for n in old["notes"])
+    english = english_chart_model(model)
+    assert "about 830 assets" in english["dominance"]["source"]
+    assert english_note("Dominanz: letzter Tageswert älter als 3 Tage, ausgeblendet.").startswith("Dominance: last daily value")
+
+
+def test_dominance_cache_keeps_last_value_and_waits_after_failure():
+    calls, state = [], {"fail": False}
+
+    def build():
+        calls.append(1)
+        if state["fail"]:
+            raise OSError("down")
+        return {"points": [[1, 60.0, 7.0]]}
+
+    cache = mc.DominanceCache(build, ttl=0.0, fail_pause=3600.0)
+    assert cache.snapshot(background=False) == {"points": [[1, 60.0, 7.0]]}
+    state["fail"] = True
+    assert cache.snapshot(background=False) == {"points": [[1, 60.0, 7.0]]}  # failure keeps the last value
+    before = len(calls)
+    cache.snapshot(background=False)
+    assert len(calls) == before  # fail pause: no new request

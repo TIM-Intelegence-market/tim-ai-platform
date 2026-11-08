@@ -12,6 +12,10 @@ Two lower bands next to CVD and open interest:
   Without that correction the line would partly show the USDT price instead of US demand.
   An hour without all three closes is left out, never filled.
 
+A third band, ``dominance``, is market-wide (Uzi 08.11.2026): daily BTC and USDT dominance from the
+Coin Metrics Community API (``research_lab.influence.dominance``, about 830 assets, the same series as the
+influence research). A day's value is placed at the following 00:00 UTC, when the day is complete.
+
 Public endpoints only, no key, no account. Nothing here feeds a score, a plan or an order.
 Data is fetched in a background thread per symbol, so a chart request never waits for an exchange.
 """
@@ -247,6 +251,86 @@ class ContextCache:
 
 CACHE = ContextCache()
 
+DOMINANCE_DAYS = 400  # daily values; enough for the 1D view
+DOMINANCE_TTL = 6 * 3600.0  # Coin Metrics publishes once a day; one refresh takes about a minute
+DOMINANCE_FAIL_PAUSE = 1800.0
+DOMINANCE_STALE_AFTER = timedelta(days=3)
+DOMINANCE_SOURCE = "Coin Metrics Community, CapMrktEstUSD, rund 830 Assets (Ersatz für BTC.D/USDT.D, täglich)"
+
+
+def dominance(fetch: Callable[[str], bytes] | None = None, now: datetime | None = None) -> dict[str, Any]:
+    """BTC and USDT dominance per day as ``[time, btc %, usdt %]``; time = the next 00:00 UTC (day complete)."""
+    from src.research_lab.influence import dominance as dom
+
+    now = now or datetime.now(timezone.utc)
+    data = dom.recent(fetch or dom.http_fetcher(), now.date(), days=DOMINANCE_DAYS)
+    usdt = dict(data.get(dom.USDT_SERIES, []))
+    points = []
+    for day, btc in data.get(dom.BTC_SERIES, []):
+        if day in usdt:
+            stamp = int(datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp()) + 86400
+            if stamp > now.timestamp():
+                continue  # the running day is not complete yet
+            points.append([stamp, round(btc, 3), round(usdt[day], 3)])
+    if len(points) < 2:
+        raise ValueError("dominance: fewer than two days")
+    return {"source": DOMINANCE_SOURCE, "as_of": now.isoformat(), "points": points,
+            "last_day": datetime.fromtimestamp(points[-1][0] - 86400, timezone.utc).date().isoformat()}
+
+
+def dominance_chart(snapshot: Mapping[str, Any] | None, first_time: int, now: datetime | None = None) -> dict[str, Any] | None:
+    """Daily dominance from one day before the first candle on; None when the last day is older than 3 days."""
+    if not snapshot or not snapshot.get("points"):
+        return None
+    now = now or datetime.now(timezone.utc)
+    points = [p for p in snapshot["points"] if p[0] >= first_time - 86400]
+    if not points:
+        return None
+    stale = now - datetime.fromtimestamp(snapshot["points"][-1][0], timezone.utc) > DOMINANCE_STALE_AFTER
+    return {"points": points, "last_btc": points[-1][1], "last_usdt": points[-1][2], "last_day": snapshot.get("last_day"),
+            "as_of": snapshot["as_of"], "stale": stale, "source": snapshot.get("source")}
+
+
+class DominanceCache:
+    """One market-wide dominance series, refreshed in a background thread (not per symbol)."""
+
+    def __init__(self, build: Callable[[], dict[str, Any]] | None = None, ttl: float = DOMINANCE_TTL,
+                 fail_pause: float = DOMINANCE_FAIL_PAUSE) -> None:
+        self._build = build or dominance
+        self._ttl, self._fail_pause = ttl, fail_pause
+        self._lock = threading.Lock()
+        self._value: dict[str, Any] | None = None
+        self._at = -math.inf
+        self._failed = True
+        self._running = False
+
+    def refresh(self) -> None:
+        try:
+            value: dict[str, Any] | None = self._build()
+        except Exception:  # noqa: BLE001 - keep the last value, the chart marks it stale later
+            value = None
+        with self._lock:
+            if value is not None:
+                self._value = value
+            self._at, self._failed, self._running = time.monotonic(), value is None, False
+
+    def snapshot(self, background: bool = True) -> dict[str, Any] | None:
+        with self._lock:
+            pause = self._fail_pause if self._failed else self._ttl
+            start = time.monotonic() - self._at >= pause and not self._running
+            if start:
+                self._running = True
+        if start:
+            if background:
+                threading.Thread(target=self.refresh, name="tim-context-dominance", daemon=True).start()
+            else:
+                self.refresh()
+        with self._lock:
+            return self._value
+
+
+DOMINANCE = DominanceCache()
+
 
 def chart_context(symbol: Any) -> dict[str, Any] | None:
     """Funding and premium for one chart request; only TIM's chart symbols, never a free query value.
@@ -257,4 +341,4 @@ def chart_context(symbol: Any) -> dict[str, Any] | None:
 
     if os.environ.get("TIM_RUNTIME_ENV") == "test":
         return None
-    return CACHE.snapshot(symbol if symbol in SYMBOLS else DEFAULT_SYMBOL)
+    return {**CACHE.snapshot(symbol if symbol in SYMBOLS else DEFAULT_SYMBOL), "dominance": DOMINANCE.snapshot()}

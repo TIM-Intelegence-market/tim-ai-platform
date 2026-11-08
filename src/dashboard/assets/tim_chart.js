@@ -61,9 +61,9 @@
     : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand', next: 'Nächster Termin',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
   const P = EN
-    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', oi: 'OI (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %',
+    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', oi: 'OI (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp check: ${ok}/${n} h equal to Binance, ${gaps} gaps` }
-    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', oi: 'OI (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %',
+    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', oi: 'OI (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp-Prüfung: ${ok}/${n} h gleich mit Binance, ${gaps} Lücken` };
   const fmt = v => v == null ? '–' : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
 
@@ -103,19 +103,24 @@
                                                topLineColor: '#26a69a', topFillColor1: 'rgba(38,166,154,0.28)', topFillColor2: 'rgba(38,166,154,0.04)',
                                                bottomLineColor: '#ef5350', bottomFillColor1: 'rgba(239,83,80,0.04)', bottomFillColor2: 'rgba(239,83,80,0.28)',
                                                lineWidth: 1, priceFormat: { type: 'price', precision: 3, minMove: 0.001 } });
+  // BTC and USDT dominance (daily, market-wide), each on its own scale in one band; starts hidden.
+  const domBtc = chart.addLineSeries({ ...band, priceScaleId: 'dom_btc', color: '#f7931a', lineWidth: 2, title: P.domBtc, visible: false,
+                                       priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
+  const domUsdt = chart.addLineSeries({ ...band, priceScaleId: 'dom_usdt', color: '#26a17b', lineWidth: 2, title: P.domUsdt, visible: false,
+                                        priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
   // Upcoming CPI/FOMC dates after the last candle: empty (whitespace) candles to the right keep the time
   // axis evenly spaced, an invisible line carries the markers at the last price.
   const ahead = chart.addLineSeries({ lineVisible: false, lastValueVisible: false, priceLineVisible: false,
                                       crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
   const BAND = 0.15;
-  const BAND_SCALES = { cvd: ['cvd_spot', 'cvd_perp'], oi: ['oi', 'oi_z'], funding: ['funding'], premium: ['premium'] };
+  const BAND_SCALES = { cvd: ['cvd_spot', 'cvd_perp'], oi: ['oi', 'oi_z'], funding: ['funding'], premium: ['premium'], dominance: ['dom_btc', 'dom_usdt'] };
   const bandHasData = key => {
     const part = model && model[key];
     if (!part) return false;
     return key === 'cvd' ? part.spot.length || part.perp.length : part.points.length;
   };
   function layoutBands(groups) {
-    const shown = ['cvd', 'oi', 'funding', 'premium'].filter(key => groups.has(key) && bandHasData(key));
+    const shown = ['cvd', 'oi', 'funding', 'premium', 'dominance'].filter(key => groups.has(key) && bandHasData(key));
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.06, bottom: 0.18 + BAND * shown.length } });
     shown.forEach((key, index) => {
       const top = 0.82 - BAND * (shown.length - index) + 0.01;
@@ -128,6 +133,8 @@
     oiZ.applyOptions({ visible: shown.includes('oi') });
     fundingBars.applyOptions({ visible: shown.includes('funding') });
     premiumLine.applyOptions({ visible: shown.includes('premium') });
+    domBtc.applyOptions({ visible: shown.includes('dominance') });
+    domUsdt.applyOptions({ visible: shown.includes('dominance') });
   }
   function drawBands() {
     const cvd = (model && model.cvd) || { spot: [], perp: [] };
@@ -163,6 +170,16 @@
     }
     fundingBars.setData(fundingPoints);
     premiumLine.setData(premiumPoints);
+    // Dominance per day (placed at the next 00:00 UTC): each candle takes the last complete day.
+    const dom = model && model.dominance, btcD = [], usdtD = [];
+    if (dom && model.candles.length) {
+      for (const c of model.candles) {
+        const d = at(dom.points, c.time);
+        if (d) { btcD.push({ time: local(c.time), value: d[1] }); usdtD.push({ time: local(c.time), value: d[2] }); }
+      }
+    }
+    domBtc.setData(btcD);
+    domUsdt.setData(usdtD);
   }
   function showMarket() {
     const m = model && model.markets;

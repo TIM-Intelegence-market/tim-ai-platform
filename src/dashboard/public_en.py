@@ -41,6 +41,7 @@ GROUPS_EN = {
     "liq": "Liquidation heatmap (estimate)",
     "cvd": "CVD spot vs. perp", "oi": "Open interest + Z-score (7.5 d)",
     "funding": "Funding rate (Binance perp)", "premium": "Coinbase premium (USD vs. USDT)",
+    "dominance": "BTC and USDT dominance (daily)",
     "macro": "Release dates (US CPI, FOMC)",
 }
 # Ordered (pattern, replacement) pairs for labels, names and notes of the drawings.
@@ -122,6 +123,7 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Open Interest: Binance-Stand älter", "Open interest: Binance data older than 3 h, hidden."),
     (r"^Funding Rate: Stand älter", "Funding rate: data older than 3 h, hidden."),
     (r"^Coinbase-Premium: Stand älter", "Coinbase premium: data older than 3 h, hidden."),
+    (r"^Dominanz: letzter Tageswert", "Dominance: last daily value older than 3 days, hidden."),
     (r"^CVD nur Spot", "CVD spot only: no perp trades in the shown window yet."),
     (r"^CVD nur Perp", "CVD perp only: no spot trades in the shown window."),
     (r"^CVD ab (\d+)m", r"CVD from \1m."),
@@ -176,6 +178,8 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
         out["funding"] = {**model["funding"], "source": f"Binance USD-M funding ({symbol}, public)"}
     if isinstance(model.get("premium"), dict):
         out["premium"] = {**model["premium"], "source": f"Coinbase USD vs. Binance {symbol} × Coinbase USDT-USD (1h, public)"}
+    if isinstance(model.get("dominance"), dict):
+        out["dominance"] = {**model["dominance"], "source": "Coin Metrics Community, CapMrktEstUSD, about 830 assets (substitute for BTC.D/USDT.D, daily)"}
     for key in ("level_source", "trade_source"):
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])
