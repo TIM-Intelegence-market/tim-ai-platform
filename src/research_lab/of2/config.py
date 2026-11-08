@@ -5,7 +5,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 MINUTE_MS = 60_000
 HOUR_MS = 60 * MINUTE_MS
@@ -41,6 +41,18 @@ class Config:
     max_hold_minutes: int = 1440    # 24 h, then exit at the close of that minute
     time_stop_bars: int = 8         # R70: after 8 bars of the model's time frame without 0,5 R MFE -> exit
     time_stop_mfe_r: float = 0.5
+    # Footprint (P1b, models M4-M6 on 15-min candles). All PROVISORISCH: P0 measured 10-USD steps on 18 days, the S8
+    # profile has 0.05-0.1 % steps; bins are merged to ``fp_step_pct`` of price and recalibrated on training only.
+    fp_step_pct: float = 0.001        # merged bin width, share of price (0,1 %)
+    fp_min_bins: int = 4              # a candle needs at least this many merged bins to be read
+    fp_imbalance: float = 4.0         # diagonal ratio, both sides > 0 (P0: 6,18x on 10-USD steps at 15m; coarser bins -> 4x)
+    fp_stack: int = 3                 # consecutive imbalance bins for a stack (R02)
+    fp_absorb_levels: int = 2         # outermost bins read for absorption (R05)
+    fp_absorb_ratio: float = 2.0      # attacker volume >= ratio x defender volume on each of those bins
+    fp_zero_levels: int = 2           # outermost bins without opposite-side prints for the zeros trade (R13/M11)
+    fp_impulse_body: float = 0.6      # M5: impulse candle body >= 60 % of its range
+    fp_zone_candles: int = 5          # M5: the stacked zone stays valid for 5 candles (Valtos)
+    fp_min_day_candles: int = 4       # M6: the day needs this many closed 15-min candles before a "new day extreme" counts
     # Study window (UTC days, inclusive). Holdout 2025 is refused by the store before any byte is read.
     first_day: str = "2020-01-01"
     training_end: str = "2022-12-31"

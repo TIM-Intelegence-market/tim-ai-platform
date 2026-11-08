@@ -14,6 +14,20 @@ M3 SFP / gefangene Trader am HTF-Ort (Bootcamp p. 14/78/102): 15-min candle wick
    on the inside; market entry after that candle, stop beyond the wick, target the nearest opposing level.
    Orderflow confirmation: delta of the sweep candle against the trade and relative volume >= relvol_min.
 
+Footprint models (P1b, 15-min candles, footprint from the S8 day profile, see ``footprint.py``):
+M4 Absorption am Level (Bootcamp p. 67, Axia/Futex reloader): a candle touches a marked level without closing
+   through it and closes back in the direction of the level's defence; the next candle holds the extreme.
+   Orderflow confirmation: the outermost bins at the level show the attacking side >= fp_absorb_ratio x the
+   defending side (aggressive sellers into bids that held), and the candle's delta runs against the trade.
+M5 Stacked-Imbalance-Retest (Valtos, Bootcamp p. 82): an impulse candle (body >= 60 % of range) leaving a marked
+   level, zone = its origin third; limit entry at the zone top on the retest within fp_zone_candles candles,
+   cancelled by a close beyond the zone bottom; stop beyond the zone, target the nearest opposing level.
+   Orderflow confirmation: a stack of >= fp_stack imbalances in trade direction inside the zone.
+M6 Stop-Run-Fade / Zeros (DeepCharts, Axia, FH 15): a candle makes a new day extreme and closes back below
+   (above) the previous extreme; market entry against the run after that close, stop beyond the run.
+   Orderflow confirmation: the outermost bins print only the chasing side (zeros on the other side) and the
+   candle's delta is in the direction of the run (chasers trapped).
+
 Every detector returns the *same* signal with ``confirmed`` True or False, so one run yields both the
 orderflow rule and its price-only comparator (protocol N4: price rule against price rule + one filter).
 """
@@ -24,6 +38,7 @@ from dataclasses import dataclass, field
 
 from src.research_lab.of2.candles import Candle, relative_volume
 from src.research_lab.of2.config import MINUTE_MS, Config
+from src.research_lab.of2.footprint import Footprint
 from src.research_lab.of2.levels import Levels
 
 MARKET, STOP, LIMIT = "MARKET", "STOP", "LIMIT"
@@ -45,8 +60,9 @@ class Signal:
     session: str = ""
     regime: str = "UNBEKANNT"
     relvol: float | None = None
-    cancel_beyond: float | None = None  # M2: cancel the pending limit when a 30-min close falls back beyond this level
+    cancel_beyond: float | None = None  # M2/M5: cancel the pending limit when a close falls back beyond this level
     notes: tuple[str, ...] = field(default_factory=tuple)
+    tf: int = 30                        # time frame of the deciding candle (minutes); the time stop counts in it
 
     @property
     def reference_price(self) -> float:
@@ -150,5 +166,114 @@ def sfp(c15: Sequence[Candle], lv: Levels, cfg: Config) -> Signal | None:
             relvol = relative_volume(c15[:-2], sweep, cfg.relvol_bars)
             confirmed = (sweep.delta < 0 if direction > 0 else sweep.delta > 0) and relvol is not None and relvol >= cfg.relvol_min
             return Signal("M3", direction, confirm.end, MARKET, None, confirm.end + MINUTE_MS, stop, target, name, level,
-                          confirmed, relvol=relvol, notes=(f"sweep_delta={sweep.delta}", f"ziel={tname}"))
+                          confirmed, relvol=relvol, notes=(f"sweep_delta={sweep.delta}", f"ziel={tname}"), tf=cfg.tf_sfp)
     return None
+
+
+# -- footprint models (P1b) ---------------------------------------------------------------------------------
+def _first_target(lv: Levels, direction: int, entry_ref: float, stop: float, cfg: Config) -> tuple[str, float] | None:
+    dist = abs(entry_ref - stop)
+    if dist <= 0:
+        return None
+    for name, price in lv.targets(direction, entry_ref):
+        if abs(price - entry_ref) / dist >= cfg.min_rr:
+            return name, price
+    return None
+
+
+def absorption(c15: Sequence[Candle], fp15: Sequence[Footprint], lv: Levels, cfg: Config) -> Signal | None:
+    """M4: the candle before the last touched a level and held it; the last candle kept the extreme."""
+    if len(c15) < 3 or len(fp15) != len(c15) or not all(c.has_trades for c in c15[-3:]):
+        return None
+    confirm, touch, prior = c15[-1], c15[-2], c15[-3]
+    fp = fp15[-2]
+    if touch.range <= 0 or fp.empty:
+        return None
+    step = fp.step
+    for direction in (1, -1):
+        for name, level in lv.sweep_levels(direction):
+            if direction > 0:
+                touched = touch.low <= level + step and touch.low >= level - step and prior.low > level + step
+                held = touch.close > level and touch.close >= touch.open and confirm.low >= touch.low and confirm.close > level
+                ext = touch.low
+            else:
+                touched = touch.high >= level - step and touch.high <= level + step and prior.high < level - step
+                held = touch.close < level and touch.close <= touch.open and confirm.high <= touch.high and confirm.close < level
+                ext = touch.high
+            if not (touched and held):
+                continue
+            stop = ext - ext * cfg.stop_buffer * direction
+            entry_ref = confirm.close
+            target = _first_target(lv, direction, entry_ref, stop, cfg)
+            if target is None:
+                continue
+            readable = fp.n_bins >= cfg.fp_min_bins
+            absorbed = readable and fp.absorption(direction, cfg.fp_absorb_levels, cfg.fp_absorb_ratio)
+            against = (touch.delta < 0) if direction > 0 else (touch.delta > 0)
+            confirmed = absorbed and against
+            return Signal("M4", direction, confirm.end, MARKET, None, confirm.end + MINUTE_MS, stop, target[1], name, level,
+                          confirmed, notes=(f"touch_delta={touch.delta}", f"bins={fp.n_bins}", f"ziel={target[0]}"), tf=cfg.tf_sfp)
+    return None
+
+
+def stacked_retest(c15: Sequence[Candle], fp15: Sequence[Footprint], lv: Levels, cfg: Config) -> Signal | None:
+    """M5: the last closed candle is an impulse; arms a limit at the top (long) / bottom (short) of its origin third."""
+    if len(c15) < 2 or len(fp15) != len(c15):
+        return None
+    impulse, fp = c15[-1], fp15[-1]
+    if not impulse.has_trades or impulse.range <= 0 or fp.empty:
+        return None
+    if impulse.body < cfg.fp_impulse_body * impulse.range:
+        return None
+    direction = 1 if impulse.close > impulse.open else -1
+    third = impulse.range / 3
+    if direction > 0:
+        zone_lo, zone_hi = impulse.low, impulse.low + third
+        trigger, beyond = zone_hi, zone_lo
+    else:
+        zone_lo, zone_hi = impulse.high - third, impulse.high
+        trigger, beyond = zone_lo, zone_hi
+    # location first (Valtos: imbalances at the origin of a move at a level, never mid-move): the zone must hold
+    # or touch a marked level on the side the impulse came from
+    anchors = [p for _, p in lv.sweep_levels(direction)]
+    if not any(zone_lo - third <= p <= zone_hi + third for p in anchors):
+        return None
+    stop = beyond - beyond * cfg.stop_buffer * direction
+    target = _first_target(lv, direction, trigger, stop, cfg)
+    if target is None:
+        return None
+    readable = fp.n_bins >= cfg.fp_min_bins
+    buys, sells = fp.stacks(cfg.fp_imbalance, cfg.fp_stack) if readable else ([], [])
+    runs = buys if direction > 0 else sells
+    lo_bin, hi_bin = int(zone_lo // fp.step), int(zone_hi // fp.step)
+    in_zone = any(a <= hi_bin and b >= lo_bin for a, b in runs)
+    return Signal("M5", direction, impulse.end, LIMIT, trigger, impulse.end + cfg.fp_zone_candles * cfg.tf_sfp * MINUTE_MS,
+                  stop, target[1], "IMPULS", trigger, in_zone, cancel_beyond=beyond,
+                  notes=(f"impuls_delta={impulse.delta}", f"stacks={len(runs)}", f"ziel={target[0]}"), tf=cfg.tf_sfp)
+
+
+def stop_run(c15: Sequence[Candle], fp15: Sequence[Footprint], lv: Levels, cfg: Config) -> Signal | None:
+    """M6: the last candle ran the day's extreme so far and closed back inside; fade it at the next open."""
+    n = cfg.fp_min_day_candles
+    if len(c15) < n + 1 or len(fp15) != len(c15):
+        return None
+    run, fp = c15[-1], fp15[-1]
+    earlier = [c for c in c15[:-1] if c.has_trades]
+    if not run.has_trades or len(earlier) < n or fp.empty:
+        return None
+    day_high, day_low = max(c.high for c in earlier), min(c.low for c in earlier)
+    if run.high > day_high and run.close < day_high:
+        direction, ext, level, name = -1, run.high, day_high, "TAG_HOCH_LAUFEND"
+    elif run.low < day_low and run.close > day_low:
+        direction, ext, level, name = 1, run.low, day_low, "TAG_TIEF_LAUFEND"
+    else:
+        return None
+    stop = ext - ext * cfg.stop_buffer * direction
+    target = _first_target(lv, direction, run.close, stop, cfg)
+    if target is None:
+        return None
+    readable = fp.n_bins >= cfg.fp_min_bins
+    zeros = readable and fp.zeros_at(direction, cfg.fp_zero_levels)
+    chased = (run.delta > 0) if direction < 0 else (run.delta < 0)
+    return Signal("M6", direction, run.end, MARKET, None, run.end + MINUTE_MS, stop, target[1], name, level, zeros and chased,
+                  notes=(f"run_delta={run.delta}", f"bins={fp.n_bins}", f"ziel={target[0]}"), tf=cfg.tf_sfp)

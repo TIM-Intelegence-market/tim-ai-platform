@@ -41,7 +41,7 @@ def random_signals(trades: Sequence[Trade], first: date, last: date, cfg: Config
             stop_pct = abs(t.entry - s.stop) / t.entry
             target_r = abs(s.target - t.entry) / abs(t.entry - s.stop)
             out.append(Signal(s.model, s.direction, minute, MARKET, None, minute + MINUTE_MS, -stop_pct, target_r,
-                              "ZUFALL", float(draw), s.confirmed, s.session, s.regime, None, None, ("zufall",)))
+                              "ZUFALL", float(draw), s.confirmed, s.session, s.regime, None, None, ("zufall",), s.tf))
     return out
 
 
@@ -53,7 +53,8 @@ def _materialize(signal: Signal, open_price: float, fill_ms: int | None = None) 
     target = open_price + signal.direction * dist * target_r
     at = signal.signal_ms if fill_ms is None else fill_ms
     return Signal(signal.model, signal.direction, at, MARKET, None, at + MINUTE_MS, stop, target,
-                  signal.level_name, signal.level, signal.confirmed, signal.session, signal.regime, None, None, signal.notes)
+                  signal.level_name, signal.level, signal.confirmed, signal.session, signal.regime, None, None, signal.notes,
+                  signal.tf)
 
 
 def run_random(loader: DayLoader, first: date, last: date, pseudo: Sequence[Signal], cfg: Config,
