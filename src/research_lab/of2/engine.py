@@ -1,6 +1,9 @@
 """Streaming OF2 engine: consumes S8 days in order, keeps only completed-day and completed-session state,
 emits signals at candle closes and lets the tracker follow them minute by minute.
 
+M1/M2 decide on 30-min closes, M3-M6 on 15-min closes; M4-M6 also read the footprint of the closed 15-min candle
+(built from the day profile's minutes of that candle only).
+
 Section rule (protocol 3.2, strict): a trade belongs to the section its signal fell in, and only if its
 exit was known before the section ended; otherwise it is counted as "offen" and dropped from both sections.
 """
@@ -19,6 +22,7 @@ from src.research_lab.of2.candles import (
     session_start,
 )
 from src.research_lab.of2.config import DAY_MS, Config
+from src.research_lab.of2.footprint import DayFootprints, Footprint
 from src.research_lab.of2.levels import (
     DaySummary,
     Levels,
@@ -27,7 +31,15 @@ from src.research_lab.of2.levels import (
     naked_pocs,
     regime,
 )
-from src.research_lab.of2.models import Signal, acceptance, failed_auction, sfp
+from src.research_lab.of2.models import (
+    Signal,
+    absorption,
+    acceptance,
+    failed_auction,
+    sfp,
+    stacked_retest,
+    stop_run,
+)
 from src.research_lab.orderflow_ml.bars import DayProfile, MinuteBar
 from src.research_lab.protocol import BASE_COSTS, CostModel
 
@@ -90,6 +102,9 @@ class Engine:
         c30, c15 = CandleBuilder(cfg.tf_value), CandleBuilder(cfg.tf_sfp)
         hist30: list[Candle] = []
         hist15: list[Candle] = []
+        fp15: list[Footprint] = []
+        first_price = next((b.first_price_e8 / 1e8 for b in bars if b.has_trades), 0.0)
+        footprints = DayFootprints(profile, cfg.fp_step_pct, first_price)
         closed: list[Trade] = []
         for bar in bars:
             t = bar.window_start_ms
@@ -106,12 +121,18 @@ class Engine:
                                     levels.prev_session_high, levels.prev_session_low)
             if (c := c15.push(bar)) is not None:
                 hist15.append(c)
+                fp15.append(footprints.candle(c.start, c.minutes))  # minutes of the closed candle only
+                if c.has_trades:
+                    self.tracker.cancel_on_close(c.close, cfg.tf_sfp)
                 if levels is not None:
                     self._consider(sfp(hist15, levels, cfg), day_start, t)
+                    self._consider(absorption(hist15, fp15, levels, cfg), day_start, t)
+                    self._consider(stacked_retest(hist15, fp15, levels, cfg), day_start, t)
+                    self._consider(stop_run(hist15, fp15, levels, cfg), day_start, t)
             if (c := c30.push(bar)) is not None:
                 hist30.append(c)
                 if c.has_trades:
-                    self.tracker.cancel_on_close(c.close)
+                    self.tracker.cancel_on_close(c.close, cfg.tf_value)
                 if levels is not None:
                     self._consider(failed_auction(hist30, levels, cfg), day_start, t)
                     self._consider(acceptance(hist30, levels, cfg), day_start, t)
@@ -135,6 +156,12 @@ class Engine:
             return
         if signal.model == "M2" and reg == "RANGE":
             self.stats.hit(self.stats.verworfen, "M2_rangetag")
+            return
+        if signal.model == "M5" and reg == "RANGE":   # continuation needs imbalance, not a wide-IB range day
+            self.stats.hit(self.stats.verworfen, "M5_rangetag")
+            return
+        if signal.model == "M6" and reg == "TREND":   # never fade the run on a trend day (Axia)
+            self.stats.hit(self.stats.verworfen, "M6_trendtag")
             return
         rr = signal.reward_risk
         if rr is None or rr < cfg.min_rr:
