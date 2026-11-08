@@ -56,3 +56,37 @@ Der manuelle Cutover (`scripts/apply_live_cutover.py`) bleibt als Notweg erhalte
 `tests/test_gap_filler.py`: Aufschieben mit Zeitbudget, Nachholer-Regeln, und mit PostgreSQL
 (`TIM_DURABLE_TEST_DATABASE_URL`) der nachgestellte Ausfall: 40.000 fehlende Trades, Live nach Sekunden wieder da,
 Lücke danach zu, Zeiger unverändert, Kerzen neu gebaut. Dazu eine Messung des Batch-Schreibens (100.000 Trades).
+
+## Melder: was der Nachholer nicht schließt (KI1 Paket 3)
+
+Gegenstück auf dem Mac zum Server-Checkup (`docs/TIM_CHECKUP.md`, läuft nur auf tim-core-01 mit der GitHub App);
+der Melder hier nutzt das `gh`-Login des Macs.
+
+`python -m src.operational.data_issue_reporter` (Mac: `ops/launchd/com.tim.data-issue-reporter.plist`, alle 15 min)
+liest `gap_filler.json` und `history_recovery.json`. Bleibt ein Problem länger als seine Wartezeit, legt er ein
+GitHub-Issue mit Label `data:auto` an und lässt die Ursache von einer KI prüfen:
+
+| Problem (Schlüssel) | Bedingung | Wartezeit |
+|---|---|---|
+| `gap_filler_missing` | Statusdatei fehlt oder ist kein JSON | 60 min |
+| `gap_filler_stale` | `checked_at_utc` älter als 30 min | +30 min |
+| `gap_filler_error` | `state` = ERROR | 60 min |
+| `gap_too_large` | `too_large_gaps` > 0 | 30 min |
+| `gap_stuck` | offene Lücken (ohne zu große) und nicht FILLING | 6 h |
+| `candle_rebuild_error` | `candle_error` gesetzt | 2 h |
+| `history_recovery_attention` | `status` nicht PASS | 2 h |
+| `history_recovery_stale` | `checked_at` älter als 3 h | +30 min |
+
+- Ein Issue je Problem (Marker `<!-- TIM_DATA_ISSUE key=… -->`); ein offenes Issue mit demselben Marker wird
+  wiederverwendet. Höchstens 3 neue Issues in 24 h.
+- Analyse: zuerst Codex (`codex exec --sandbox read-only --ignore-user-config --ephemeral`), sonst Claude Code
+  (nur wenn angemeldet, nur Read/Grep/Glob). Beide laufen in einem eigenen Klon von `platform-main`
+  (`--repo-dir`, nie `~/TIM-live`) und ohne GitHub- oder Datenbank-Zugangsdaten in der Umgebung. Die Antwort kommt
+  als Kommentar ins Issue; nach 3 Fehlversuchen ein Kommentar „Analyse nicht möglich“.
+- Ins Issue und an die KI gehen nur freigegebene Statusfelder, geschwärzt (URL-Zugangsdaten, `password=`, lange
+  Schlüssel) und auf 300 Zeichen gekürzt.
+- Verschwindet das Problem, kommt ein Kommentar „Nicht mehr beobachtet“. Der Melder schließt keine Issues,
+  ändert keinen Code, schreibt nicht in die Datenbank und handelt nicht. Ein Fix kommt nur als PR mit normalem
+  Review und Merge auf Uzis Wort.
+- Zustand: `~/Library/Application Support/TIM/data-issues/state.json`. Probelauf ohne Schreiben: `--dry-run`.
+- Tests: `tests/test_data_issue_reporter.py`.
