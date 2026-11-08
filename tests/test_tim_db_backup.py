@@ -349,6 +349,7 @@ def test_mirror_replaces_a_damaged_copy_and_prunes_by_count(tmp_path: Path, monk
     stale = target / ".tim_mirror.abc"
     stale.write_bytes(b"half")
     os.utime(stale, (now.timestamp() - 7 * 3600,) * 2)
+    monkeypatch.setattr(backup, "utc_now", lambda: now)  # fixed clock: the age rule must not prune the copies
     result = backup.mirror(source, target, 14, keep_count=2)
     assert damaged.read_bytes() == b"good" and result["copied"] is True
     assert len(result["pruned"]) == 2 and not stale.exists() and result["removed_temporaries"] == [".tim_mirror.abc"]
