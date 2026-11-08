@@ -719,11 +719,11 @@ def test_red_or_diverged_target_is_not_loaded(live):
 
 
 def test_live_policy_intervals():
-    # Uzi 27.10.2026: the agent checks every 5 minutes and may restart the runtime after 5 minutes.
+    # Uzi 27.10.2026: the runtime may restart after 5 minutes; 08.11.2026: "der nachzug soll minutenweise geschehen".
     assert LIVE_POLICY["min_minutes_between_runtime_restarts"] == 5
     assert LIVE_POLICY["min_minutes_between_runtime_restarts_display_only"] == 5
     plist = plistlib.loads((ROOT / "ops/launchd/com.tim.dashboard-refresh.plist").read_bytes())
-    assert plist["StartInterval"] == 300
+    assert plist["StartInterval"] == 60
 
 
 PUBLIC_FLAG = "Library/Application Support/TIM/public-dashboard.enabled"

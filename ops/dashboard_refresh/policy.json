@@ -7,7 +7,7 @@
   "required_check": "test",
   "min_minutes_between_runtime_restarts": 5,
   "min_minutes_between_runtime_restarts_display_only": 5,
-  "min_minutes_note": "Uzi 27.10.2026: at most one runtime restart every 5 min, display-only or not (was 60/20). The agent itself runs every 5 min (StartInterval 300).",
+  "min_minutes_note": "Uzi 27.10.2026: at most one runtime restart every 5 min, display-only or not (was 60/20). The agent itself runs every minute (StartInterval 60, Uzi 08.11.2026: Nachzug minutenweise); the restart limit stays at 5 min.",
   "generated_tracked_files": [
     "docs/TIM_V1_LIVE_STATUS.md"
   ],
