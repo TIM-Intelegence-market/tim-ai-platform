@@ -103,7 +103,7 @@ Die Runtime darf nicht mehr Priorität 4 (gedrosselt) zeigen, CI-Prozesse zeigen
 ## Dashboards automatisch aktuell (`com.tim.dashboard-refresh`)
 
 Seit 23.10.2026 hält `scripts/dashboard_refresh.py` die Dashboards auf dem Mac aktuell. Der Agent läuft
-alle 10 Minuten aus `~/TIM-live` (eigener LaunchAgent, nicht in `LIVE_AGENTS`, damit die Start-Gates
+jede Minute aus `~/TIM-live` (eigener LaunchAgent, nicht in `LIVE_AGENTS`, damit die Start-Gates
 keinen Drift sehen). Regeln: `ops/dashboard_refresh/policy.json`.
 
 - **Control Center (8765):** neuer Stand von `platform-main` geht nur live, wenn der CI-Job `test` grün ist,

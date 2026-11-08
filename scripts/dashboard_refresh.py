@@ -2,7 +2,7 @@
 """Keep the Control Center (8765) and the worker dashboard (8767) on current platform-main.
 
 Runs from the live checkout (~/TIM-live) as LaunchAgent com.tim.dashboard-refresh every
-10 minutes. Rules: ops/dashboard_refresh/policy.json; logic: src/operational/dashboard_refresh.py.
+every minute (restart at most every 5 min). Rules: ops/dashboard_refresh/policy.json; logic: src/operational/dashboard_refresh.py.
 Status for the Control Center: data/operational/dashboard_refresh.json.
 
     .venv/bin/python scripts/dashboard_refresh.py --dry-run   # decide and probe only, change nothing
