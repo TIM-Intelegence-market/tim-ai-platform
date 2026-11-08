@@ -30,6 +30,7 @@ AREAS: list[Area] = [
         ("Vorbereitung", "/prep"),
         ("Mein Tag", "/my-day"),
         ("Setup-Pfad", "/setup-path"),
+        ("TIM-KI (Hermes)", "/neu/hermes"),
     ]},
     {"key": "journal", "label": "Journal", "href": "/trades", "pages": [
         ("Journal", "/trades"),
