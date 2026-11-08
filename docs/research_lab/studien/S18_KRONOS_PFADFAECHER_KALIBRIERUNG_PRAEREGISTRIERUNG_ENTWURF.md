@@ -3,12 +3,12 @@
 | Feld | Wert |
 |---|---|
 | Studie | S18 (nächste freie Nummer nach S17, 08.11.2026; vorläufig, falls ein offener PR S18 schon belegt) |
-| Version | **0.2, Entwurf.** Regeln als Code (`src/research_lab/studies/s18.py`, Skript `scripts/research_lab_s18.py`, Tests `tests/test_research_lab_s18.py`). Kronos am Mac eingerichtet, ein Technik-Probelauf ohne Bewertung (Abschnitt 9). Wird mit dem Merge auf Uzis Wort zu 1.0 eingefroren |
+| Version | **1.0, eingefroren mit dem Merge am 08.11.2026 (Uzi „merge“, 13:56 Uhr).** Vorher 0.2: Regeln als Code (`src/research_lab/studies/s18.py`, Skript `scripts/research_lab_s18.py`, Tests `tests/test_research_lab_s18.py`). Kronos am Mac eingerichtet, ein Technik-Probelauf ohne Bewertung (Abschnitt 9). Wird mit dem Merge auf Uzis Wort zu 1.0 eingefroren |
 | Anlass | Uzi 08.11.2026 („go“ auf den Vorschlag zum Reel DfcZrH2ijOS von @mykryptotime, Thread „Instagram-Reel für TIM prüfen“) |
 | Quelle | Kronos, Foundation Model für Kurskerzen: Paper arXiv 2508.02739 (02.08.2025), Code `github.com/shiyu-coder/Kronos` (MIT), Gewichte `NeoQuasar/Kronos-small` auf Hugging Face |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Holdout | ab 2025-01-01, kein Archiv wird geladen. S18 ist eine **prospektive** Familie wie S12 und KI1: nur Kerzen ab 32 Tage vor dem ersten Prognosezeitpunkt, vom Skript erzwungen (Abschnitt 3) |
-| Einordnung (Vorschlag) | **Prognosestudie ohne Registerplatz** wie S15: keine Trades, kein Handelssignal, nur die Güte einer Spannen-Prognose. Entscheidet Uzi vor 1.0 |
+| Einordnung | **Prognosestudie ohne Registerplatz** wie S15 (Uzi per Karte 08.11.2026, 13:56 Uhr): keine Trades, kein Handelssignal, nur die Güte einer Spannen-Prognose. Register bleibt unverändert |
 
 ## 1. Fragestellung
 
@@ -90,7 +90,7 @@ Ein bestandenes S18 ändert nichts automatisch. Ob TIM den Fächer für Stops, Z
 
 ## 8. Offene Punkte vor Version 1.0
 
-1. Einordnung als Prognosestudie ohne Registerplatz (Uzi, Karte vom 08.11.2026).
+1. ~~Einordnung~~ entschieden: Prognosestudie ohne Registerplatz (Uzi, Karte 08.11.2026, 13:56 Uhr).
 2. ~~Code- und Gewichteprüfung, Pins~~ erledigt (Abschnitt 9).
 3. ~~Einzelpfade und Laufzeit~~ erledigt (Abschnitt 9).
 4. ~~Auswertecode mit Tests~~ erledigt (16 Tests auf synthetischen Daten). Einfrieren mit dem Merge, danach Hintergrundjob am Mac stündlich (`forecast`, schreibt höchstens einmal je 4-Stunden-Slot).
@@ -105,3 +105,4 @@ Ein bestandenes S18 ändert nichts automatisch. Ob TIM den Fächer für Stops, Z
 
 - 0.1 (08.11.2026): Entwurf auf Uzis „go“. Nichts installiert, keine Kurse ausgewertet, keine Kronos-Ausgabe gesehen.
 - 0.2 (08.11.2026): Auf Uzis „merge geprüftes einrichten“: Kronos geprüft und eingerichtet, Pins eingetragen, Regeln als Code mit Tests. Präzisiert vor jedem Ergebnis: Batch statt 100 Einzelaufrufe (4.3), Vorlauf 745 Kerzen, Protokoll enthält nur Kronos-Pfade, Spät-Regel 2 Stunden, Forward-Start 2026-11-10, Rücktest 2024-Q4 gestrichen (Leck). Keine Kronos-Spanne und kein Zielwert gesehen.
+- 1.0 (08.11.2026): Einordnung ohne Registerplatz (Uzi), Regeln und Code mit dem Merge dieses Stands auf Uzis „merge“ eingefroren. Kein Ergebnis gesehen.
