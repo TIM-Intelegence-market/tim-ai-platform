@@ -20,6 +20,7 @@ Codex and Claude Desktop: `docs/mcp_clients.md`.
 | research_register | `docs/research_lab/REGISTER.jsonl` | hash chain verified, m, statuses, candidates |
 | research_reports | `docs/research_lab/reports/` | committed report files |
 | research_report | one report | per-variant train/validation trades, expectancy_r, drawdown, p |
+| orderflow_live | `data/orderflow/orderflow_lage.json` (`TIM_OPS_ORDERFLOW_LIVE`) | Live-Orderflow-Lage from `src/orderflow/live_state.py`: wave (direction, strength 0-3, phase, exhaustion), 1m/5m/15m windows, levels with absorption/imbalance, perp delta, German text; redacted, age in seconds |
 | data_coverage | Postgres `candles`, `ingestion_gap_incidents` | `symbol` (default BTCUSDT), `timeframe` 1m/5m/15m/1h, `hours` <= 168; expected vs. observed closed candles, ratio vs. 0.95, missing ranges, open gap incidents |
 
 ## Configuration
@@ -27,6 +28,7 @@ Codex and Claude Desktop: `docs/mcp_clients.md`.
 ```bash
 export TIM_OPS_TASK_DB=/path/to/engine.db   # optional; without it task tools answer not_configured
 export TIM_OPS_COVERAGE_DSN=<dsn of tim_ops_ro> # optional; without it data_coverage answers not_configured
+export TIM_OPS_ORDERFLOW_LIVE=<tim-live>/data/orderflow/orderflow_lage.json # optional; live orderflow state
 export TIM_OPS_MCP_ROOT=<tim worktree>       # default: current directory
 python -m src.ops_mcp.mcp_server
 ```

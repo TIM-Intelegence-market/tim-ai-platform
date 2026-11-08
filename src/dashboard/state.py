@@ -30,6 +30,8 @@ class DashboardState:
     gamma_log_path: Path | None = field(default_factory=lambda: Path("data/options/gamma_levels.jsonl"))
     # Estimated liquidation heatmap per symbol from Binance's public futures data (src/dashboard/liquidation_data.py).
     liquidation: dict[str, Any] = field(default_factory=dict)
+    # Live-Orderflow-Lage: wave, levels, perp delta from the newest spot trades (src/orderflow/live_state.py).
+    orderflow_live: dict[str, Any] = field(default_factory=dict)
     # BTC perp trades in the footprint store's shape, and hourly open interest with its Z-score (src/dashboard/perp_flow.py).
     perp_flow: dict[str, Any] = field(default_factory=dict)
     open_interest: dict[str, Any] = field(default_factory=dict)

@@ -34,7 +34,7 @@ def journal(tmp_path: Path) -> Path:
 
 def test_not_configured_is_reported():
     instance = server(TradingReader(None, None, None))
-    for name, args in (("plan_journal", {"journal": "15m"}), ("live_status", {}), ("ki_filter", {}), ("market_snapshot", {})):
+    for name, args in (("plan_journal", {"journal": "15m"}), ("live_status", {}), ("orderflow_live", {}), ("ki_filter", {}), ("market_snapshot", {})):
         assert call(instance, name, args)["status"] == "not_configured"
 
 
@@ -64,3 +64,13 @@ def test_live_status_and_ki_filter(tmp_path: Path):
     live = call(instance, "live_status")["status"]
     assert live["balance"] == 57.64 and "kQ9x" not in json.dumps(live)
     assert call(instance, "ki_filter")["status"] == "no_decisions_yet"
+
+
+def test_orderflow_live_reads_state_file(tmp_path: Path):
+    path = tmp_path / "orderflow_lage.json"
+    path.write_text(json.dumps({"schema": "orderflow-lage/1", "price": 75000.0, "api_key": "sk-supersecretvalue123",
+                                "wave": {"direction": "auf"}, "text": "Preis 75000."}))
+    instance = server(TradingReader(None, None, None, orderflow_live=path))
+    result = call(instance, "orderflow_live")
+    assert result["state"]["wave"]["direction"] == "auf" and result["age_seconds"] >= 0
+    assert "supersecretvalue123" not in json.dumps(result)
