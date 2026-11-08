@@ -117,3 +117,17 @@ def test_rejects_bad_parameters():
         ls.LiveOrderflowTracker(SYMBOL, 0)
     with pytest.raises(ValueError):
         ls.LiveOrderflowTracker(SYMBOL, 5.0, keep_seconds=600)
+
+
+def test_day_values_come_from_the_running_profile():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([trade(0, 75000, 1.0, True, 1), trade(1, 75010, 0.5, False, 2)])
+    profile = {"running": True, "step": 50.0, "delta": -120.5, "poc": 74800.0,
+               "rows": [{"price": 74000.0, "volume": 3.0}, {"price": 74500.0, "volume": 0.0}, {"price": 75500.0, "volume": 1.0}]}
+    state = tracker.snapshot(T0 + timedelta(seconds=2), day_profile=profile)
+    assert state["day"]["cvd"] == -120.5 and state["day"]["low"] == 74000.0 and state["day"]["high"] == 75550.0
+    assert "Tagesprofil" in state["day"]["source"]
+    names = {row["name"] for row in state["levels"]}
+    assert "Tages-Tief" not in names  # 1.3 % away, outside LEVEL_RANGE_PCT
+    without = tracker.snapshot(T0 + timedelta(seconds=2))
+    assert without["day"]["high"] == 75010 and without["day"]["source"] == "seit Start der Runtime"

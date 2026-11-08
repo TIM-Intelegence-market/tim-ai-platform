@@ -533,6 +533,18 @@ def _summary_section(state: Any) -> str:
         return f"<section class='cc-section tc-summary'><p class='cc-note'>Zusammenfassung nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
 
 
+def _orderflow_section(state: Any) -> str:
+    """Live-Orderflow-Lage (src/orderflow/live_state.py); never breaks the page."""
+    from src.dashboard.orderflow_tile import section
+
+    try:
+        with state.lock:
+            live = dict(getattr(state, "orderflow_live", None) or {})
+        return section(live or None)
+    except Exception as exc:  # noqa: BLE001
+        return f"<section class='cc-section tc-orderflow'><p class='cc-note'>Orderflow-Lage nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
+
+
 def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str | None = None, symbol: str | None = None) -> str:
     from datetime import timezone
 
@@ -543,6 +555,8 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     data = state.snapshot()
     body = _hero("TIM-Chart", "BTC, ETH, SOL, XMR und Gold in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
     body += _summary_section(state)
+    if symbol == "BTCUSDT":
+        body += _orderflow_section(state)
     body += _live_section(symbol, view)
     if symbol != "BTCUSDT":
         body += ("<section class='cc-section'><p class='cc-note'>Steckbrief, Szenarien, Level-Pläne und Plan-Journale gibt es nur für BTC. "

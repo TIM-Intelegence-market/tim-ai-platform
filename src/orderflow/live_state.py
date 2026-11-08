@@ -138,8 +138,15 @@ class LiveOrderflowTracker:
         return [self._window(bucket) for bucket in buckets]
 
     def snapshot(self, now: datetime, levels: Sequence[Mapping[str, Any]] = (),
-                 perp_store: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        """Describe the orderflow at ``now``. ``levels`` are ``{"name", "price"}``; ``perp_store`` is the perp footprint store."""
+                 perp_store: Mapping[str, Any] | None = None,
+                 day_profile: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Describe the orderflow at ``now``.
+
+        ``levels`` are ``{"name", "price"}``; ``perp_store`` is the perp footprint store; ``day_profile`` is the
+        running day's volume profile from the spot store (``footprint_data.volume_profiles``), which carries the whole
+        UTC day while the tracker itself only holds the last ``keep_seconds`` (the tracker's own day values start at
+        the runtime start, 1b fix 08.11.2026).
+        """
         moment = _epoch(now)
         self._prune(moment)
         windows = {name: self._window(self._since(moment - seconds)) for name, seconds in WINDOWS.items()}
@@ -149,9 +156,10 @@ class LiveOrderflowTracker:
         tempo = (last_three[-1]["volume"] / median(baseline)) if baseline and last_three else None
         price = self.last_price
         wave = _wave(windows, last_three, tempo)
+        day = _day_values(self, day_profile)
         own_levels = list(levels)
-        if self.day_high is not None:
-            own_levels += [{"name": "Tages-Hoch", "price": self.day_high}, {"name": "Tages-Tief", "price": self.day_low}]
+        if day["high"] is not None:
+            own_levels += [{"name": "Tages-Hoch", "price": day["high"]}, {"name": "Tages-Tief", "price": day["low"]}]
         level_rows = _levels(self._since(moment - WINDOWS["15m"]), own_levels, price, self.tick) if price else []
         perp = _perp(perp_store, moment)
         stale = self.last_trade_time is None or moment - _epoch(self.last_trade_time) > 120
@@ -159,11 +167,27 @@ class LiveOrderflowTracker:
             "schema": SCHEMA_VERSION, "symbol": self.symbol, "as_of": now.astimezone(timezone.utc).isoformat(),
             "price": price, "last_trade_at": self.last_trade_time.astimezone(timezone.utc).isoformat() if self.last_trade_time else None,
             "stale": stale, "windows": windows, "tempo": _round(tempo, 2) if tempo is not None else None,
-            "day": {"cvd": _round(self.day_cvd), "high": self.day_high, "low": self.day_low},
+            "day": day,
             "wave": wave, "levels": level_rows, "perp": perp, "thresholds": THRESHOLDS,
         }
         state["text"] = describe(state)
         return state
+
+
+def _day_values(tracker: LiveOrderflowTracker, profile: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Whole-day CVD/high/low from the running day profile when there is one, else the tracker's own since start."""
+    own = {"cvd": _round(tracker.day_cvd), "high": tracker.day_high, "low": tracker.day_low, "source": "seit Start der Runtime"}
+    if not profile or not profile.get("rows"):
+        return own
+    prices = [float(r["price"]) for r in profile["rows"] if r.get("volume")]
+    if not prices:
+        return own
+    step = float(profile.get("step") or 0.0)
+    high, low = max(prices) + step, min(prices)
+    if tracker.day_high is not None:
+        high, low = max(high, tracker.day_high), min(low, tracker.day_low)
+    return {"cvd": _round(float(profile.get("delta") or 0.0)), "high": high, "low": low,
+            "source": "Tagesprofil des Spot-Stores (bis 2 min alt) plus Trades seit Start"}
 
 
 def _wave(windows: Mapping[str, Mapping[str, Any]], last_three: Sequence[Mapping[str, Any]], tempo: float | None) -> dict[str, Any]:
