@@ -2,7 +2,7 @@
 
 Plan journals, the live trader's public status file, the KI1 shadow log and a market snapshot.
 Nothing here writes a file, sends an order or reaches an exchange. Paths come from the environment
-(TIM_OPS_JOURNAL_DIR, TIM_OPS_LIVE_STATUS, TIM_OPS_KI_LOG); a missing setting is reported, not guessed.
+(TIM_OPS_JOURNAL_DIR, TIM_OPS_LIVE_STATUS, TIM_OPS_KI_LOG, TIM_OPS_ORDERFLOW_LIVE); a missing setting is reported, not guessed.
 """
 from __future__ import annotations
 
@@ -44,11 +44,12 @@ def _clean(value: Any) -> Any:
 
 class TradingReader:
     def __init__(self, journal_dir: Path | None, live_status: Path | None, ki_log: Path | None,
-                 market=None) -> None:
+                 market=None, orderflow_live: Path | None = None) -> None:
         self.journal_dir = Path(journal_dir) if journal_dir else None
         self.live_status_path = Path(live_status) if live_status else None
         self.ki_log = Path(ki_log) if ki_log else None
         self.market = market
+        self.orderflow_live_path = Path(orderflow_live) if orderflow_live else None
 
     def _view(self, name: str) -> dict[str, Any]:
         from src.dashboard import plan_journal
@@ -76,6 +77,20 @@ class TradingReader:
             raise SourceError("live status unreadable") from None
         age = datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
         return {"age_seconds": round(age), "status": redact(data)}  # secret-named keys and secret-looking values
+
+    def orderflow_live(self) -> dict[str, Any]:
+        """The live orderflow state file (src/orderflow/live_state.py): wave, levels, perp delta, German text."""
+        if self.orderflow_live_path is None:
+            return {"status": "not_configured", "hint": "set TIM_OPS_ORDERFLOW_LIVE"}
+        path = _regular(self.orderflow_live_path, "orderflow live state")
+        if path.stat().st_size > MAX_STATUS_BYTES:
+            raise SourceError("orderflow live state too large")
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            raise SourceError("orderflow live state unreadable") from None
+        age = datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
+        return {"age_seconds": round(age), "state": redact(data)}
 
     def ki_filter(self, limit: int | None) -> dict[str, Any]:
         if self.ki_log is None or self.journal_dir is None:

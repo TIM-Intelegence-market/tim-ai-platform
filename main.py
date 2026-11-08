@@ -46,6 +46,7 @@ HEALTH_SNAPSHOT_INTERVAL_SECONDS = 5.0
 LIVE_EVIDENCE_INTERVAL_SECONDS = 60.0
 PLAN_JOURNAL_INTERVAL_SECONDS = 60  # paper journal of the Setup-Pfad plans
 FOOTPRINT_INTERVAL_SECONDS = 120  # chart footprint / volume profile from aggregated aggTrades
+ORDERFLOW_LIVE_INTERVAL_SECONDS = 10  # live orderflow state (src/orderflow/live_state.py) from new spot aggTrades
 VALIDATION_PROOF_MARGIN = timedelta(minutes=2)  # trades loaded past the 30-min validation target to prove the sequence reached it
 GAMMA_INTERVAL_SECONDS = 300  # options gamma from Deribit's public book (display and analysis context only)
 LIQUIDATION_INTERVAL_SECONDS = 300  # estimated liquidation heatmap from Binance futures open interest (display only)
@@ -659,6 +660,39 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _orderflow_live_loop(self) -> None:
+        # Live-Orderflow-Lage: the newest spot aggTrades (read-only from PostgreSQL) feed a rolling tracker that
+        # describes wave, levels and perp delta every few seconds; written to data/orderflow/orderflow_lage.json
+        # for chart, Control Center and the Hermes reader. Describes only; never plans or trades.
+        from src.dashboard.footprint_data import TICK_BY_SYMBOL, volume_profiles
+        from src.orderflow import live_state
+
+        tracker = live_state.LiveOrderflowTracker(settings.symbol, TICK_BY_SYMBOL.get(settings.symbol, 5.0))
+        since = datetime.now(timezone.utc) - timedelta(seconds=live_state.KEEP_SECONDS)
+        while not self.worker_stop.is_set():
+            try:
+                trades = await self.repository.agg_trades_since(settings.symbol, since)
+                tracker.ingest(trades)
+                if tracker.last_trade_time is not None:
+                    since = tracker.last_trade_time
+                now = datetime.now(timezone.utc)
+                with self.dashboard_state.lock:
+                    footprint = self.dashboard_state.footprint
+                    perp = self.dashboard_state.perp_flow
+                levels = live_state.levels_from_profiles(volume_profiles(footprint, now)) if footprint else []
+                state = tracker.snapshot(now, levels, perp)
+                await asyncio.to_thread(live_state.save, state, live_state.DEFAULT_PATH)
+                with self.dashboard_state.lock:
+                    self.dashboard_state.orderflow_live = state
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a description must not stop the runtime
+                log.warning("orderflow live state failed: %s: %s", type(error).__name__, error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=ORDERFLOW_LIVE_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
     async def _perp_flow_loop(self) -> None:
         # BTC and XMR perp trades (fromId, gapless, resumes after a restart) and open interest from Binance's
         # public futures endpoints for the chart, one shared call budget; display only, never on the ingestion path.
@@ -778,6 +812,7 @@ class TIMApplication:
         gamma_task = asyncio.create_task(self._gamma_loop(), name="tim-options-gamma")
         liquidation_task = asyncio.create_task(self._liquidation_loop(), name="tim-liquidation-heatmap")
         perp_task = asyncio.create_task(self._perp_flow_loop(), name="tim-perp-flow")
+        orderflow_live_task = asyncio.create_task(self._orderflow_live_loop(), name="tim-orderflow-live")
         gap_task = (asyncio.create_task(self.gap_filler.run(self.worker_stop), name="tim-gap-filler")
                     if self.gap_filler is not None else None)
         try:
@@ -793,6 +828,7 @@ class TIMApplication:
             gamma_task.cancel()
             liquidation_task.cancel()
             perp_task.cancel()
+            orderflow_live_task.cancel()
             if gap_task is not None:
                 gap_task.cancel()
             try:

@@ -53,6 +53,9 @@ TOOLS: list[dict[str, Any]] = [
      "inputSchema": _schema({"journal": {"type": "string", "enum": list(JOURNALS)}, **_LIMIT}, ["journal"])},
     {"name": "live_status", "description": "Public status file of the Kraken live test (read-only, no keys)",
      "inputSchema": _schema({}, [])},
+    {"name": "orderflow_live",
+     "description": "Live orderflow state: wave (direction, strength, phase), levels with absorption/imbalance, perp delta (read-only)",
+     "inputSchema": _schema({}, [])},
     {"name": "ki_filter", "description": "KI1 shadow filter: rules alone vs rules plus AI, latest judgements",
      "inputSchema": _schema({**_LIMIT}, [])},
     {"name": "market_snapshot",
@@ -146,6 +149,8 @@ class OpsMcpServer:
             payload = self.trading.plan_journal(arguments["journal"], arguments.get("limit"))
         elif name == "live_status":
             payload = self.trading.live_status()
+        elif name == "orderflow_live":
+            payload = self.trading.orderflow_live()
         elif name == "ki_filter":
             payload = self.trading.ki_filter(arguments.get("limit"))
         elif name == "market_snapshot":
@@ -194,7 +199,7 @@ def main() -> int:
 
     dsn = os.environ.get("TIM_OPS_COVERAGE_DSN")
     trading = TradingReader(_path("TIM_OPS_JOURNAL_DIR"), _path("TIM_OPS_LIVE_STATUS"), _path("TIM_OPS_KI_LOG"),
-                            market=MarketReader(dsn))
+                            market=MarketReader(dsn), orderflow_live=_path("TIM_OPS_ORDERFLOW_LIVE"))
     OpsMcpServer(TaskReader(Path(task_db) if task_db else None), ResearchReader(root),
                  coverage=CoverageReader(dsn), trading=trading).serve()
     return 0
