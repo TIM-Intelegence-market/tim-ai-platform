@@ -173,6 +173,14 @@ def build_markt(state: DashboardState, timeframe: str | None = None, now: dateti
     except Exception as exc:  # noqa: BLE001 - unexpected data shape: grey tiles with the reason, not a broken page
         market, plans = [_info(unavailable(key, label, _broken(exc), "Kachelbau Markt", href)) for key, label, href in MARKET_TILES], []
     try:
+        from src.dashboard.orderflow_tile import tile as orderflow_tile
+
+        with state.lock:
+            orderflow_live = dict(getattr(state, "orderflow_live", None) or {})
+        market.append(orderflow_tile(orderflow_live or None, now))
+    except Exception as exc:  # noqa: BLE001
+        market.append(unavailable("orderflow", "Orderflow", _broken(exc), "Kachelbau Orderflow", "/chart"))
+    try:
         journals = _journal_tiles(results["plan_journal"], results["trader_journal"], now)
     except Exception as exc:  # noqa: BLE001
         journals = [unavailable(key, label, _broken(exc), "Kachelbau Journale", href) for key, label, href in JOURNAL_TILES]

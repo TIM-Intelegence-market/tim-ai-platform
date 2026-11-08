@@ -679,8 +679,10 @@ class TIMApplication:
                 with self.dashboard_state.lock:
                     footprint = self.dashboard_state.footprint
                     perp = self.dashboard_state.perp_flow
-                levels = live_state.levels_from_profiles(volume_profiles(footprint, now)) if footprint else []
-                state = tracker.snapshot(now, levels, perp)
+                profiles = volume_profiles(footprint, now) if footprint else []
+                levels = live_state.levels_from_profiles(profiles)
+                running = next((p for p in profiles if p.get("running")), None)
+                state = tracker.snapshot(now, levels, perp, running)
                 await asyncio.to_thread(live_state.save, state, live_state.DEFAULT_PATH)
                 with self.dashboard_state.lock:
                     self.dashboard_state.orderflow_live = state
@@ -783,6 +785,19 @@ class TIMApplication:
                 raise
             except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
                 log.warning("exit shadow update failed: %s", type(error).__name__)
+            try:
+                # Orderflow-Schatten (Paket 2, 08.11.2026): gate and orderflow exit for the 15m/1h plans, reads only.
+                from src.dashboard.orderflow_shadow import DEFAULT_PATH as of_shadow_path, update as update_of_shadow
+
+                with self.dashboard_state.lock:
+                    lage = dict(self.dashboard_state.orderflow_live or {})
+                await asyncio.to_thread(update_of_shadow, of_shadow_path,
+                                        (self.dashboard_state.plan_journal_short_path, self.dashboard_state.plan_journal_mid_path),
+                                        lage or None)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
+                log.warning("orderflow shadow update failed: %s", type(error).__name__)
             try:
                 await asyncio.wait_for(self.worker_stop.wait(), timeout=PLAN_JOURNAL_INTERVAL_SECONDS)
             except TimeoutError:
