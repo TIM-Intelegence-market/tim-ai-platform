@@ -11,6 +11,8 @@ from __future__ import annotations
 import ipaddress
 import re
 import socket
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -80,6 +82,21 @@ def reachable(host: str, port: int, timeout: float = 2.0) -> bool:
             return True
     except OSError:
         return False
+
+
+def reachable_hosts(hosts: Sequence[str], port: int, timeout: float = 1.0) -> list[str]:
+    """The hosts (in input order) that accept a TCP connection on ``port``, probed in parallel.
+
+    A Mac with IPv6 privacy addresses has twenty or more interface addresses; probing them one
+    after another costs ``timeout`` seconds per unreachable address, which made ``timctl status``
+    take over 20 seconds and the watchdog (10-second budget) read the runtime as missing
+    (restart loop of 08./09.11.2026). All probes now run at once, so the wall time is one timeout.
+    """
+    if not hosts:
+        return []
+    with ThreadPoolExecutor(max_workers=min(32, len(hosts))) as pool:
+        results = list(pool.map(lambda host: reachable(host, port, timeout=timeout), hosts))
+    return [host for host, ok in zip(hosts, results) if ok]
 
 
 def log_rotation_evidence(operational: Path) -> tuple[dict[str, datetime], list[str]]:

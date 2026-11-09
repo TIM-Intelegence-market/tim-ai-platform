@@ -96,3 +96,17 @@ def test_runtime_check_reads_launchd_on_macos(monkeypatch) -> None:
     assert health.runtime_check(health.launchd_runtime_output())["status"] == "GREEN"
     monkeypatch.setattr(health, "command_output", lambda command: None)
     assert health.runtime_check(health.launchd_runtime_output())["status"] == "RED"
+
+
+def test_reachable_hosts_probes_in_parallel_and_keeps_input_order(monkeypatch) -> None:
+    import time
+
+    def slow_reachable(host: str, port: int, timeout: float = 2.0) -> bool:
+        time.sleep(0.3)
+        return host.endswith("2")
+
+    monkeypatch.setattr(mac_live, "reachable", slow_reachable)
+    started = time.monotonic()
+    assert mac_live.reachable_hosts(["10.0.0.1", "10.0.0.2", "10.0.0.3", "fd00::2"], 8765) == ["10.0.0.2", "fd00::2"]
+    assert time.monotonic() - started < 1.0  # four probes of 0.3 s run at once, not one after another
+    assert mac_live.reachable_hosts([], 8765) == []
