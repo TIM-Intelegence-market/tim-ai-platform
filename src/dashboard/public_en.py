@@ -39,7 +39,8 @@ GROUPS_EN = {
     "plans_old": "TIM plans, test versions 30m",
     "gamma": "Options gamma (Deribit)",
     "liq": "Liquidation heatmap (estimate)",
-    "cvd": "CVD spot vs. perp", "oi": "Open interest + Z-score (7.5 d)",
+    "liqev": "Liquidations (real, Binance + Bybit)",
+    "cvd": "CVD spot vs. perp", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d)",
     "funding": "Funding rate (Binance perp)", "premium": "Coinbase premium (USD vs. USDT)",
     "dominance": "BTC and USDT dominance (daily)",
     "macro": "Release dates (US CPI, FOMC)",
@@ -124,6 +125,11 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Perp-Kerzen nicht erreichbar.*", "Perp candles unreachable: spot candles with spot trades shown."),
     (r"^Perp-Trades noch nicht da", "Perp trades not there yet (the collector starts with the previous day): showing spot."),
     (r"^Open Interest: Binance-Stand älter", "Open interest: Binance data older than 3 h, hidden."),
+    (r"^Open Interest je Börse \((.+), BTC\); Z-Score auf Binance\.", r"Open interest per venue (\1, BTC); Z-score on Binance."),
+    (r"^Open Interest nur Binance", "Open interest Binance only (no Bybit data yet)."),
+    (r"^Liquidationen: kein Mitschnitt", "Liquidations: no record of the S12 collector found, layer empty."),
+    (r"^Liquidationen: nur (.+) im Mitschnitt, (.+) fehlt\.", r"Liquidations: only \1 in the record, \2 missing."),
+    (r"^Liquidationen: keine Ereignisse", "Liquidations: no events in the shown window."),
     (r"^Funding Rate: Stand älter", "Funding rate: data older than 3 h, hidden."),
     (r"^Coinbase-Premium: Stand älter", "Coinbase premium: data older than 3 h, hidden."),
     (r"^Dominanz: letzter Tageswert", "Dominance: last daily value older than 3 days, hidden."),
@@ -177,7 +183,12 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(model.get("cvd"), dict):
         out["cvd"] = {**model["cvd"], "note": english_note(model["cvd"].get("note"))}
     if isinstance(model.get("oi"), dict):
-        out["oi"] = {**model["oi"], "source": "Binance USD-M open interest (BTCUSDT, 1h, public)"}
+        venue_sources = {"binance": "Binance USD-M open interest (BTCUSDT, 1h, public)", "bybit": "Bybit linear open interest (BTCUSDT, 1h, public)"}
+        out["oi"] = {**model["oi"], "source": venue_sources["binance"],
+                     "venues": [{**v, "source": venue_sources.get(v.get("venue"), v.get("source"))} for v in model["oi"].get("venues") or []]}
+    if isinstance(model.get("liquidations"), dict):
+        out["liquidations"] = {**model["liquidations"], "note": english_note(model["liquidations"].get("note")),
+                               "source": "Binance forceOrder + Bybit allLiquidation (public, S12 collector, display only)"}
     symbol = str(model.get("symbol"))
     if isinstance(model.get("funding"), dict):
         out["funding"] = {**model["funding"], "source": f"Binance USD-M funding ({symbol}, public)"}

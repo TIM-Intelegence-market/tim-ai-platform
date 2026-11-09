@@ -32,6 +32,11 @@ TIM nur Spot. Alles hier ist Anzeige, nichts davon handelt, schreibt einen Plan 
 - Alle 10 Minuten vergleicht der Sammler die letzten drei vollen Stunden mit der 1h-Kerze von Binance
   (Volumen und Taker-Kaufvolumen, Toleranz 0,01 BTC).
 - Open Interest: `/futures/data/openInterestHist`, 1h, 500 Werte (etwa 20 Tage), alle 5 Minuten.
+- Zweite Börse (seit 09.11.2026, Issue #162): Bybit `GET /v5/market/open-interest` (`category=linear`,
+  `intervalTime=1h`, 200 Stunden), alle 5 Minuten im selben Takt, nur BTCUSDT. Der Chart zeigt im Band
+  „Open Interest“ je Börse eine Linie in BTC (Binance grau, Bybit orange) und die Summe als `total_last`;
+  der Z-Score bleibt auf Binance, dessen Historie länger ist. Archiv `data/perp_flow/oi-BTCUSDT-bybit-1h.jsonl`.
+  Fällt Bybit aus, bleibt Binance allein stehen (Hinweis „Open Interest nur Binance“).
   Älter als 3 Stunden wird es ausgeblendet.
 
 ## Nachweis vor dem Bau (F4, 29.10.2026)

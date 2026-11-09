@@ -24,6 +24,8 @@ stores spot trades in PostgreSQL; this module adds the perp side without touchin
 - ``open_interest`` reads the hourly open interest history and adds the Z-score over 7.5 days
   (180 hours), the window Broncx uses. Binance keeps only 30 days of it, so every new hour is
   appended to ``oi-<SYMBOL>-1h.jsonl`` in the symbol's folder and kept for good (``append_oi_archive``).
+- ``open_interest_bybit`` adds the Bybit linear perp as a second venue for BTC (Issue #162, 09.11.2026):
+  same hourly grid, own archive ``oi-<SYMBOL>-bybit-1h.jsonl``, shown per venue next to Binance.
 
 Nothing here trades, writes a plan or changes a score. Public endpoints only, no key, no account.
 """
@@ -74,6 +76,14 @@ TIMEOUT_SECONDS = 15
 MAX_BYTES = 8_000_000
 SOURCE_TEMPLATE = "Binance USD-M Perp aggTrades ({symbol}, öffentlich, TIM-Sammler)"
 OI_SOURCE_TEMPLATE = "Binance USD-M Open Interest ({symbol}, 1h, öffentlich)"
+# Second venue for the open interest (Issue #162, 09.11.2026): Bybit linear perp, public V5 endpoint,
+# same hourly grid. Shown per venue next to Binance; the Z-score stays on Binance (its history is longer).
+BINANCE = "binance"
+BYBIT = "bybit"
+BYBIT_API = "https://api.bybit.com"
+BYBIT_OI_LIMIT = 200  # Bybit's maximum per call: 200 hours, more than the 180-hour Z window
+BYBIT_OI_SYMBOLS = ("BTCUSDT",)
+BYBIT_OI_SOURCE_TEMPLATE = "Bybit Linear Open Interest ({symbol}, 1h, öffentlich)"
 SOURCE = SOURCE_TEMPLATE.format(symbol=SYMBOL)
 OI_SOURCE = OI_SOURCE_TEMPLATE.format(symbol=SYMBOL)
 DATA_DIR = Path("data/perp_flow")
@@ -121,6 +131,22 @@ def fetch_json(path: str, params: Mapping[str, str]) -> Any:
         raise
     if len(body) > MAX_BYTES:
         raise ValueError("binance response too large")
+    return json.loads(body)
+
+
+def fetch_bybit_json(path: str, params: Mapping[str, str]) -> Any:
+    """Public Bybit V5 call (no key). 403/429 is Bybit's rate limit answer."""
+    url = f"{BYBIT_API}{path}?{urlencode(params)}"
+    request = Request(url, headers={"User-Agent": "TIM-ControlCenter/1 (read-only)"})
+    try:
+        with urlopen(request, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310 - fixed https host
+            body = response.read(MAX_BYTES + 1)
+    except HTTPError as error:
+        if error.code in (403, 429):
+            raise RateLimited(f"bybit http {error.code}") from error
+        raise
+    if len(body) > MAX_BYTES:
+        raise ValueError("bybit response too large")
     return json.loads(body)
 
 
@@ -433,27 +459,74 @@ def open_interest(fetch: Fetch | None = None, symbol: str = SYMBOL, now: datetim
     if len(points) < 2:
         raise ValueError("open interest: fewer than two points")
     scores = zscores([p[1] for p in points])
-    return {"symbol": symbol, "period": OI_PERIOD, "window_hours": OI_WINDOW, "source": OI_SOURCE_TEMPLATE.format(symbol=symbol),
+    return {"symbol": symbol, "venue": BINANCE, "period": OI_PERIOD, "window_hours": OI_WINDOW,
+            "source": OI_SOURCE_TEMPLATE.format(symbol=symbol),
             "as_of": (now or datetime.now(timezone.utc)).isoformat(),
             "points": [[t, round(oi, 3), round(usd, 0)] for t, oi, usd in points],
             "z": [[p[0], z] for p, z in zip(points, scores) if z is not None]}
 
 
+def open_interest_bybit(fetch: Fetch | None = None, symbol: str = SYMBOL, now: datetime | None = None) -> dict[str, Any]:
+    """Hourly open interest of the Bybit linear perp (coins), newest 200 hours, same shape as ``open_interest``.
+
+    ``/v5/market/open-interest`` answers newest first; ``openInterest`` is in the base coin for USDT
+    perps. Bybit gives no USD value here, so the third column is ``None``. The Z-score is computed
+    too, so the snapshot can stand alone; the chart shows the Binance Z-score only.
+    """
+    fetch = fetch or fetch_bybit_json
+    answer = fetch("/v5/market/open-interest", {"category": "linear", "symbol": symbol, "intervalTime": OI_PERIOD,
+                                                 "limit": str(BYBIT_OI_LIMIT)})
+    if not isinstance(answer, Mapping) or answer.get("retCode") != 0:
+        raise ValueError(f"bybit open interest: {answer.get('retMsg') if isinstance(answer, Mapping) else 'no object'}")
+    rows = (answer.get("result") or {}).get("list")
+    if not isinstance(rows, list):
+        raise ValueError("bybit open interest: result.list missing")
+    points = []
+    for row in rows:
+        try:
+            points.append((int(row["timestamp"]) // 1000, float(row["openInterest"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+    points.sort()
+    if len(points) < 2:
+        raise ValueError("bybit open interest: fewer than two points")
+    scores = zscores([p[1] for p in points])
+    return {"symbol": symbol, "venue": BYBIT, "period": OI_PERIOD, "window_hours": OI_WINDOW,
+            "source": BYBIT_OI_SOURCE_TEMPLATE.format(symbol=symbol),
+            "as_of": (now or datetime.now(timezone.utc)).isoformat(),
+            "points": [[t, round(oi, 3), None] for t, oi in points],
+            "z": [[p[0], z] for p, z in zip(points, scores) if z is not None]}
+
+
 def oi_chart(snapshot: Mapping[str, Any] | None, first_time: int, now: datetime | None = None) -> dict[str, Any] | None:
-    """The part of the open interest the chart shows: from one hour before the first candle on."""
+    """The part of the open interest the chart shows: from one hour before the first candle on.
+
+    ``venues`` lists Binance first and every fresh second venue found under ``snapshot["venues"]``
+    (``chart_inputs`` puts them there), each with its own points and last value; ``total_last`` adds
+    the last values of the venues shown. The Z-score stays the Binance one.
+    """
     if not snapshot or not snapshot.get("points"):
         return None
     now = now or datetime.now(timezone.utc)
     stale = now - datetime.fromisoformat(str(snapshot["as_of"])) > OI_STALE_AFTER
     start = first_time - 3600
     last_z = snapshot["z"][-1][1] if snapshot.get("z") else None
-    return {"points": [[t, oi] for t, oi, _ in snapshot["points"] if t >= start], "z": [p for p in snapshot.get("z") or [] if p[0] >= start],
+    venues = [{"venue": snapshot.get("venue", BINANCE), "points": [[t, oi] for t, oi, _ in snapshot["points"] if t >= start],
+               "last": snapshot["points"][-1][1], "as_of": snapshot["as_of"], "source": snapshot.get("source")}]
+    for name, other in sorted((snapshot.get("venues") or {}).items()):
+        if not other or not other.get("points") or now - datetime.fromisoformat(str(other["as_of"])) > OI_STALE_AFTER:
+            continue
+        venues.append({"venue": name, "points": [[t, oi] for t, oi, _ in other["points"] if t >= start],
+                       "last": other["points"][-1][1], "as_of": other["as_of"], "source": other.get("source")})
+    return {"points": venues[0]["points"], "z": [p for p in snapshot.get("z") or [] if p[0] >= start],
             "last": snapshot["points"][-1][1], "last_usd": snapshot["points"][-1][2], "last_z": last_z,
-            "window_hours": snapshot.get("window_hours", OI_WINDOW), "as_of": snapshot["as_of"], "stale": stale, "source": snapshot.get("source")}
+            "window_hours": snapshot.get("window_hours", OI_WINDOW), "as_of": snapshot["as_of"], "stale": stale, "source": snapshot.get("source"),
+            "venues": venues, "total_last": round(sum(v["last"] for v in venues), 3)}
 
 
-def oi_archive_path(directory: Path | str = DATA_DIR, symbol: str = SYMBOL) -> Path:
-    return Path(directory) / f"oi-{symbol}-{OI_PERIOD}.jsonl"
+def oi_archive_path(directory: Path | str = DATA_DIR, symbol: str = SYMBOL, venue: str = BINANCE) -> Path:
+    suffix = "" if venue == BINANCE else f"-{venue}"
+    return Path(directory) / f"oi-{symbol}{suffix}-{OI_PERIOD}.jsonl"
 
 
 def append_oi_archive(snapshot: Mapping[str, Any], path: Path) -> int:
@@ -482,11 +555,17 @@ def append_oi_archive(snapshot: Mapping[str, Any], path: Path) -> int:
     return len(lines)
 
 
-def publish(state: Any, symbol: str, *, store: Mapping[str, Any] | None = None, oi: Mapping[str, Any] | None = None) -> None:
+def _venue_key(symbol: str, venue: str) -> str:
+    return symbol if venue == BINANCE else f"{symbol}@{venue}"
+
+
+def publish(state: Any, symbol: str, *, store: Mapping[str, Any] | None = None, oi: Mapping[str, Any] | None = None,
+            venue: str = BINANCE) -> None:
     """Put a symbol's store / open interest on the dashboard state (caller holds ``state.lock``).
 
     ``state.perp_flows`` / ``state.open_interests`` hold every symbol; ``state.perp_flow`` and
-    ``state.open_interest`` keep BTC as before.
+    ``state.open_interest`` keep BTC (Binance) as before. A second venue's open interest sits under
+    ``"<symbol>@<venue>"`` and is merged into the Binance snapshot by ``chart_inputs``.
     """
     if store is not None:
         flows = dict(getattr(state, "perp_flows", None) or {})
@@ -496,19 +575,28 @@ def publish(state: Any, symbol: str, *, store: Mapping[str, Any] | None = None, 
             state.perp_flow = store
     if oi is not None:
         interests = dict(getattr(state, "open_interests", None) or {})
-        interests[symbol] = oi
+        interests[_venue_key(symbol, venue)] = oi
         state.open_interests = interests
-        if symbol == SYMBOL:
+        if symbol == SYMBOL and venue == BINANCE:
             state.open_interest = oi
 
 
 def chart_inputs(state: Any, symbol: Any) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Perp store and open interest for one chart request (caller holds ``state.lock``)."""
+    """Perp store and open interest for one chart request (caller holds ``state.lock``).
+
+    The open interest is the Binance snapshot with every other venue's snapshot under ``"venues"``.
+    """
     flows = getattr(state, "perp_flows", None) or {}
     interests = getattr(state, "open_interests", None) or {}
     if symbol in flows or symbol in interests:
-        return dict(flows.get(symbol) or {}), dict(interests.get(symbol) or {})
-    return dict(getattr(state, "perp_flow", None) or {}), dict(getattr(state, "open_interest", None) or {})
+        store, oi = dict(flows.get(symbol) or {}), dict(interests.get(symbol) or {})
+    else:
+        store, oi = dict(getattr(state, "perp_flow", None) or {}), dict(getattr(state, "open_interest", None) or {})
+        symbol = oi.get("symbol") or SYMBOL
+    others = {key.split("@", 1)[1]: value for key, value in interests.items() if key.startswith(f"{symbol}@") and value}
+    if oi and others:
+        oi["venues"] = others
+    return store, oi
 
 
 class _Runner:
@@ -523,7 +611,7 @@ class _Runner:
 
 async def run(state: Any, stop: Any, directory: Path | str = DATA_DIR, log: Any = None,
               flow: PerpFlow | None = None, oi_fetch: Fetch | None = None,
-              flows: Sequence[PerpFlow] | None = None) -> None:
+              flows: Sequence[PerpFlow] | None = None, bybit_fetch: Fetch | None = None) -> None:
     """Runtime loop (main.py): collect, check, save and publish every symbol (``publish``).
 
     One call at a time for all symbols together, at most ``CALLS_PER_MINUTE``: a symbol that is
@@ -550,7 +638,7 @@ async def run(state: Any, stop: Any, directory: Path | str = DATA_DIR, log: Any 
         if ready:
             runner = min(ready, key=lambda r: (r.due, (runners.index(r) - turn) % len(runners)))
             turn = (runners.index(runner) + 1) % len(runners)
-            if await _turn(runner, state, log, oi_fetch, slot):
+            if await _turn(runner, state, log, oi_fetch, slot, bybit_fetch):
                 # Binance limits per IP: every symbol waits, not only the one that hit the limit.
                 for other in runners:
                     other.due = max(other.due, runner.due)
@@ -568,7 +656,8 @@ async def run(state: Any, stop: Any, directory: Path | str = DATA_DIR, log: Any 
             pass
 
 
-async def _turn(runner: _Runner, state: Any, log: Any, oi_fetch: Fetch | None, slot: float) -> bool:
+async def _turn(runner: _Runner, state: Any, log: Any, oi_fetch: Fetch | None, slot: float,
+                bybit_fetch: Fetch | None = None) -> bool:
     """One aggTrades call for one symbol, plus its due check, save, publish and open interest.
 
     Returns True when Binance answered with its rate limit.
@@ -616,5 +705,16 @@ async def _turn(runner: _Runner, state: Any, log: Any, oi_fetch: Fetch | None, s
         except Exception as error:  # noqa: BLE001
             if log:
                 log.warning("open interest %s refresh failed: %s: %s", flow.symbol, type(error).__name__, error)
+        if flow.symbol in BYBIT_OI_SYMBOLS:
+            try:
+                snapshot = await asyncio.to_thread(open_interest_bybit, bybit_fetch, flow.symbol)
+                with state.lock:
+                    publish(state, flow.symbol, oi=snapshot, venue=BYBIT)
+                await asyncio.to_thread(append_oi_archive, snapshot, oi_archive_path(flow.directory, flow.symbol, BYBIT))
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - the second venue never stops the first
+                if log:
+                    log.warning("open interest %s bybit refresh failed: %s: %s", flow.symbol, type(error).__name__, error)
     runner.due = time.monotonic() + pause
     return limited

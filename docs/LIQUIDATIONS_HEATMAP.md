@@ -52,5 +52,21 @@ Bands fallen weg, höchstens 400 Bänder werden gezeigt.
 - `/api/chart/live`: Schlüssel `liquidation` (Bänder) und Gruppe `liq` (Cluster-Linien), öffentlich auf
   Englisch.
 
-Nächster sinnvoller Schritt: echte Liquidationen von Binance (`forceOrder`-Stream) mitschreiben. Damit
-lässt sich prüfen, ob die geschätzten Bänder getroffen werden.
+## Echte Liquidationen (seit 09.11.2026, Issue #162)
+
+Die Ebene „Liquidationen (echt, Binance + Bybit)“ (Gruppe `liqev`, Schlüssel `liquidations`) zeigt die
+echten Ereignisse aus dem Mitschnitt des S12-Sammlers (`src/research_lab/liquidations`, Rohdaten unter
+`~/Library/Application Support/TIM/research-lab/liquidations/raw/<börse>/`): Binance `forceOrder` (nur
+`FILLED`) und Bybit `allLiquidation`. Lesen übernimmt `src/dashboard/liquidation_data.py`s Nachbar
+`src/dashboard/liquidation_events.py`: je Tagesdatei werden nur die seit der letzten Anfrage angehängten
+Zeilen geparst; Duplikate fallen weg (gleiche Regel wie in der Studie).
+
+- Dreieck nach unten, rot: Long liquidiert (Zwangsverkauf). Dreieck nach oben, grün: Short liquidiert.
+  Bybit-Ereignisse sind hohl gezeichnet. Größe nach USD-Gegenwert, Beschriftung ab 500 k$.
+- Gesendet werden die 300 größten Ereignisse des Fensters ab 5 000 $; `counts` und `usd` je Börse zählen
+  alle. Ein Hinweis nennt, wenn der Mitschnitt fehlt oder eine Börse nicht dabei ist.
+- Nur BTCUSDT (der Sammler schreibt nur BTC). Die Studie S12 liest denselben Mitschnitt; die Chart-Ebene
+  schreibt nichts und ändert kein Urteil.
+
+Damit lässt sich sehen, ob die geschätzten Bänder oben getroffen werden; ein Vergleich als Zahl ist
+Sache von S12 (Gate 16.11.2026), nicht der Anzeige.

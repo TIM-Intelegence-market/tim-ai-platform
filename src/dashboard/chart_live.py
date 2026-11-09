@@ -81,6 +81,7 @@ GROUP_STYLE = {
     "fib": ("#c9a227", "dotted"),
     "gamma": ("#ffb020", "solid"),  # each gamma level brings its own colour (gamma_data.LEVEL_STYLE)
     "liq": ("#ff6b3d", "dashed"),  # cluster levels bring their own colour (liquidation_data.LEVEL_COLOR)
+    "liqev": ("#ff3d7f", "solid"),  # real liquidations are markers (liquidation_events.py), no lines
 }
 GROUP_NAMES = {
     "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "quarter": "Quartal (1Q)", "year": "Jahr (1Y)",
@@ -93,7 +94,8 @@ GROUP_NAMES = {
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
     "liq": "Liquidations-Heatmap (Schätzung)",
-    "cvd": "CVD Spot vs. Perp", "oi": "Open Interest + Z-Score (7,5 T)",
+    "liqev": "Liquidationen (echt, Binance + Bybit)",
+    "cvd": "CVD Spot vs. Perp", "oi": "Open Interest je Börse (Binance, Bybit) + Z-Score (7,5 T)",
     "funding": "Funding Rate (Binance Perp)", "premium": "Coinbase-Premium (USD vs. USDT)",
     "dominance": "BTC- und USDT-Dominanz (täglich)",
     "macro": "Termine (US-CPI, FOMC)",
@@ -108,7 +110,7 @@ TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
 DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
-                  "plans_short", "plans_mid", "plans_long", "gamma", "liq", "cvd", "oi", "macro")
+                  "plans_short", "plans_mid", "plans_long", "gamma", "liq", "liqev", "cvd", "oi", "macro")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
@@ -958,7 +960,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                      gamma: Mapping[str, Any] | None = None, liquidation: Mapping[str, Any] | None = None,
                      perp: Mapping[str, Any] | None = None, open_interest: Mapping[str, Any] | None = None,
                      market: str | None = None, context: Mapping[str, Any] | None = None,
-                     macro: Sequence[Mapping[str, Any]] | None = None, perp_cache: KlineCache | None = None) -> dict[str, Any]:
+                     macro: Sequence[Mapping[str, Any]] | None = None, perp_cache: KlineCache | None = None,
+                     liquidation_root: Any = None) -> dict[str, Any]:
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
@@ -981,6 +984,9 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     (group "dominance", key "dominance" in ``context``); all three start hidden.
     ``macro`` is the macro calendar (``macro_calendar.load_calendar``; read from its file when
     None): US-CPI and FOMC release dates as markers on the candle they fall in (group "macro").
+    ``liquidation_root`` is the S12 collector's data folder (``liquidation_events.default_root`` when
+    None): real Binance and Bybit liquidations of the window under key ``liquidations`` (group "liqev");
+    ``False`` skips the read (tests without a record).
     """
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     timeframe = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
@@ -991,7 +997,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
                              "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None,
                              "markets": {"names": MARKETS, "active": DEFAULT_MARKET, "available": []}, "cvd": None, "oi": None,
-                             "funding": None, "premium": None, "dominance": None, "macro": [], "macro_ahead": [],
+                             "funding": None, "premium": None, "dominance": None, "macro": [], "macro_ahead": [], "liquidations": None,
                              "interval_seconds": INTERVAL_SECONDS.get(timeframe)}
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
@@ -1081,6 +1087,17 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         if model["oi"] and model["oi"]["stale"]:
             model["notes"].append("Open Interest: Binance-Stand älter als 3 h, ausgeblendet.")
             model["oi"] = None
+        elif model["oi"] and len(model["oi"]["venues"]) > 1:
+            names = " + ".join(v["venue"].capitalize() for v in model["oi"]["venues"])
+            model["notes"].append(f"Open Interest je Börse ({names}, BTC); Z-Score auf Binance.")
+        elif model["oi"]:
+            model["notes"].append("Open Interest nur Binance (Bybit noch ohne Stand).")
+    if liquidation_root is not False and symbol == "BTCUSDT":
+        from src.dashboard.liquidation_events import chart_items as liquidation_items
+
+        model["liquidations"] = liquidation_items(liquidation_root, symbol, times[0], now)
+        if model["liquidations"].get("note"):
+            model["notes"].append(model["liquidations"]["note"])
     if context:
         from src.dashboard.market_context import funding_chart, premium_chart
 
