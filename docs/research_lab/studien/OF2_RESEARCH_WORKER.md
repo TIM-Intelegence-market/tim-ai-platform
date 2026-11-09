@@ -82,9 +82,10 @@ Studie:
 Worker:
 
 - [ ] Code auf den für 1.0 festgelegten Commit bringen, inklusive M4 bis M6, und den Commit vor dem Lauf festhalten
-- [ ] Gemeinsamen Ablageordner für Uploads anlegen, das Upload-Konto und das Arbeitskonto können sich gegenseitig nicht lesen
-- [ ] Zugang des Servers auf den Worker einrichten und testen
-- [ ] Ersten echten Login und Upload mit Uzis eigenem Schlüssel bestätigen
+- [x] Gemeinsamen Ablageordner für Uploads anlegen
+- [x] Zugang des Servers auf den Worker einrichten und testen
+- [x] Ersten echten Login mit Uzis eigenem Schlüssel bestätigen
+- [ ] Ersten Upload mit Uzis eigenem Schlüssel bestätigen
 - [ ] `rsync` nachinstallieren, falls Daten doch vom Mac kommen sollen
 - [ ] Client-Schlüssel des Gateways tauschen
 
