@@ -406,3 +406,22 @@ def test_api_areas(server: str) -> None:
     with pytest.raises(HTTPError) as error:
         urlopen(server + "/api/cockpit?area=gibtsnicht", timeout=10)
     assert error.value.code == 404
+
+
+def test_plan_journal_tile_names_the_excluded_plans() -> None:
+    """Master-Analyse 09.11.2026 (P7): the cockpit R sum leaves reviewed corrections out and must say so."""
+    from src.dashboard.cockpit.lage import _journal_tiles
+    from src.dashboard.cockpit.sources import SourceResult
+
+    now = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
+    stats = {"plans": 46, "open": 1, "filled": 2, "closed": 22, "sum_net_r": 0.89,
+             "excluded": {"plans": 21, "sum_r": -28.0, "sum_net_r": -28.54}}
+    journal = {"integrity": "OK", "last_plan_candle": now.isoformat()}
+    plan = SourceResult("plan_journal", True, {"journal": journal, "summary": stats})
+    trader = SourceResult("trader_journal", False, None, "weg")
+    tile = next(t for t in _journal_tiles(plan, trader, now) if t.id == "plan_journal")
+    assert "21 ausgeschlossen (geprüfte Korrektur" in tile.detail and "Binance Spot" in tile.detail
+    plain = {**stats, "excluded": {"plans": 0, "sum_r": 0.0, "sum_net_r": 0.0}}
+    tile = next(t for t in _journal_tiles(SourceResult("plan_journal", True, {"journal": journal, "summary": plain}), trader, now)
+                if t.id == "plan_journal")
+    assert "ausgeschlossen" not in tile.detail

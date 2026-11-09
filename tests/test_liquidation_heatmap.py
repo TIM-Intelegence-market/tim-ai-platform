@@ -142,6 +142,7 @@ def test_chart_carries_heat_cells_and_cluster_levels_also_in_english() -> None:
     assert layer["cells"] and layer["step"] == heat["step"] and layer["max_usd"] == heat["max_usd"]
     liq = {d["name"]: d for d in model["drawings"] if d["group"] == "liq"}
     assert set(liq) == {"Liq-Cluster oben", "Liq-Cluster unten"}
+    assert any(n.startswith("Liquidations-Heatmap: Modell aus Open Interest") for n in model["notes"])  # P9: a model, never real liquidations
     assert liq["Liq-Cluster oben"]["price"] > 113_000 > liq["Liq-Cluster unten"]["price"]
     assert liq["Liq-Cluster oben"]["color"] == liquidation_data.LEVEL_COLOR["above"]
     assert "liq" in model["groups"] and "liq" in model["default_groups"]

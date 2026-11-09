@@ -355,6 +355,13 @@ def _chart_svg(model: dict[str, Any], show_all: bool = False) -> str:
     return f"<svg viewBox='0 0 {WIDTH} {HEIGHT}' role='img' aria-label='{_safe(title)}' class='tc-svg'>{''.join(parts)}</svg>"
 
 
+# Master-Analyse 09.11.2026 (P2a): the score is a hand-set weighting, never a measured hit rate.
+SCORE_TYPES = {"UNCALIBRATED_CONFIDENCE": "Heuristik, nicht kalibriert: Punktwert aus festen Zuschlägen, keine Trefferquote",
+               "HEURISTIC_SCORE": "Heuristik, nicht kalibriert: Punktwert aus festen Zuschlägen, keine Trefferquote",
+               "MODEL_BASED": "modellbasiert, teilweise kalibriert",
+               "EMPIRICALLY_CALIBRATED": "empirisch kalibriert (gemessene Trefferquote)"}
+
+
 def _scenario_rows(analysis: dict[str, Any]) -> str:
     rows = []
     for s in (analysis.get("scenarios") or []):
@@ -365,7 +372,8 @@ def _scenario_rows(analysis: dict[str, Any]) -> str:
             f"<tr><td><b>{_safe(s['id'])}</b></td><td><span class='tc-dir tc-dir--{_safe(s['direction'].lower())}'>{_safe(s['direction'])}</span></td>"
             f"<td>{_safe(SCENARIO_NAMES.get(s['type'], s['type']))}</td><td class='mono'>{_safe(zone)}</td><td class='mono'>{_safe(_price(s.get('trigger')))}</td>"
             f"<td class='mono'>{_safe(_price(preview.get('stop')))}</td><td class='mono'>{_safe(targets)}</td>"
-            f"<td>{_safe(s['state'])}</td><td class='mono'>{_safe(f'{s['score']:.2f}' if s.get('score') is not None else '–')}</td>"
+            f"<td>{_safe(s['state'])}</td><td class='mono' title='{_safe(SCORE_TYPES.get(s.get('score_type'), s.get('score_type') or 'Heuristik'))}'>"
+            f"{_safe(f'{s['score']:.2f}' if s.get('score') is not None else '–')}</td>"
             f"<td>{_safe(', '.join(s.get('missing_confirmations', [])[:3]))}</td></tr>"
         )
     return "".join(rows) or "<tr><td colspan='10' class='empty'>Keine Szenarien.</td></tr>"
@@ -615,7 +623,7 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Szenarien</p><h2>Was TIM aus diesen Kerzen ableitet</h2>"
         "<p class='cc-section__note'>Orderflow-Pipeline im OBSERVE-Modus, gleiche Regeln wie die CLI.</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>ID</th><th>Richtung</th><th>Szenario</th><th>Einstiegszone</th><th>Trigger</th><th>Stop (Vorschau)</th>"
-        f"<th>Ziele (Vorschau)</th><th>Status</th><th>Score</th><th>Fehlende Bestätigung</th></tr></thead><tbody>{_scenario_rows(analysis)}</tbody></table></div></section>"
+        f"<th>Ziele (Vorschau)</th><th>Status</th><th title='Heuristischer Punktwert der Szenario-Engine, keine gemessene Trefferquote'>Score (Heuristik)</th><th>Fehlende Bestätigung</th></tr></thead><tbody>{_scenario_rows(analysis)}</tbody></table></div></section>"
     )
     level_plans = model.get("level_plans") or {}
     dropped = "".join(f"<li>{_safe(reason)}</li>" for reason in level_plans.get("dropped") or [])

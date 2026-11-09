@@ -127,4 +127,4 @@ def chart_layer(heatmap: Mapping[str, Any] | None, first_time: int, now: datetim
         drawings.append({"group": "liq", "tf": "Liq", "name": name, "label": name,
                          "price": float(cluster["price"]), "start": start, "note": note,
                          "color": LEVEL_COLOR[where], "style": "dashed"})
-    return layer, drawings, []
+    return layer, drawings, ["Liquidations-Heatmap: Modell aus Open Interest und Preis, keine echten Liquidationen (echte Ereignisse: Issue #162)."]

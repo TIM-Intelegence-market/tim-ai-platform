@@ -265,6 +265,11 @@ def test_live_chart_switches_trades_between_spot_and_perp() -> None:
     from src.dashboard.public_en import english_chart_model
     public = english_chart_model(switched)
     assert any(n.endswith("(spot sits +35 USDT away).") for n in public["notes"]) and public["level_source"] == "Binance perp klines (display only)"
+    journals = {"short": [{"id": "p1", "direction": "LONG", "status": "FILLED", "entry": 80_000.0, "stop": 79_500.0, "targets": [80_500.0],
+                           "created_at": (now - timedelta(hours=2)).isoformat(), "filled_at": (now - timedelta(hours=1)).isoformat()}]}
+    with_plans = build_live_chart("BTCUSDT", "30m", market="perp", plan_journals=journals, **common)
+    assert with_plans["plans"] and all(p["label"].endswith("(Spot)") for p in with_plans["plans"])
+    assert all(p["label"].endswith("(spot)") for p in english_chart_model(with_plans)["plans"])
     spot_levels = {d["label"]: d["price"] for d in default["drawings"] if d["group"] in ("day", "week") and "price" in d}
     perp_levels = {d["label"]: d["price"] for d in switched["drawings"] if d["group"] in ("day", "week") and "price" in d}
     shared = sorted(k for k in set(spot_levels) & set(perp_levels) if "High" in k or "Low" in k)
