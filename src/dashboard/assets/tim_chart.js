@@ -3,8 +3,8 @@
 // Lightweight Charts 4.2.3 (Apache 2.0), served locally from /assets/chart/.
 (() => {
   'use strict';
-  const root = document.getElementById('tc-live');
-  if (!root || !window.LightweightCharts) return;
+  const host = document.getElementById('tc-live');
+  if (!host || !window.LightweightCharts) return;
   const LWC = window.LightweightCharts;
   // Version of this script as the page loaded it (?v= in the script tag). The API answer names the version
   // the server runs now; a tab left open across an update reloads itself once, otherwise it keeps drawing
@@ -21,21 +21,70 @@
     location.reload();
     return true;
   }
-  const box = document.getElementById('tc-live-chart');
-  const legend = document.getElementById('tc-live-legend');
-  const status = document.getElementById('tc-live-status');
-  const layers = document.getElementById('tc-live-layers');
-  const STORE = 'tim-chart-layers-v1';
+  // Two charts side by side (Uzi 09.11.2026): the page holds two panes, each one is a full chart of its own
+  // (coin, timeframe, market, layout). PANE is '' for the first and '-2' for the second; it is the suffix of
+  // the element ids and of the browser memory, so the two never overwrite each other. The first pane keeps
+  // coin and timeframe in the address, the second one in localStorage.
+  const SPLIT_STORE = 'tim-chart-split-v1';
+  const PANE2_STORE = 'tim-chart-pane2-v1';
+  let secondPane = null;
+  function setSplit(on) {
+    const pane = document.getElementById('tc-pane-2');
+    const wrap = document.getElementById('tc-split');
+    if (!pane || !wrap) return;
+    pane.hidden = !on;
+    wrap.classList.toggle('tc-split--on', on);
+    host.querySelectorAll("#tc-pane [data-action='split']").forEach(node => {
+      node.setAttribute('aria-pressed', on ? 'true' : 'false');
+      node.textContent = (on ? '✓ ' : '') + node.textContent.replace(/^✓ /, '');  // a tick, like Spot/Perp
+    });
+    try { localStorage.setItem(SPLIT_STORE, on ? '1' : '0'); } catch (error) { /* ignore */ }
+    if (on) { if (secondPane) secondPane.resume(); else secondPane = start('-2'); } else if (secondPane) secondPane.pause();
+  }
+  function start(PANE) {
+  const root = document.getElementById('tc-pane' + PANE);
+  if (!root) return null;
+  const box = document.getElementById('tc-live-chart' + PANE);
+  const legend = document.getElementById('tc-live-legend' + PANE);
+  const status = document.getElementById('tc-live-status' + PANE);
+  const layers = document.getElementById('tc-live-layers' + PANE);
+  const STORE = 'tim-chart-layers-v1' + PANE;
   const SHORT_BARS = 12;
   const STYLE = { solid: LWC.LineStyle.Solid, dotted: LWC.LineStyle.Dotted, dashed: LWC.LineStyle.Dashed };
-  let symbol = root.dataset.symbol, timeframe = root.dataset.tf, timer = null, model = null, first = true, request = 0;
+  let symbol = (PANE ? root : host).dataset.symbol, timeframe = (PANE ? root : host).dataset.tf;
+  let timer = null, model = null, first = true, request = 0, running = true;
+  function markTabs() {
+    root.querySelectorAll('a[data-tf]').forEach(node => {
+      const on = node.dataset.tf === timeframe;
+      node.classList.toggle('tc-tab--active', on);
+      if (on) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
+    });
+    if (!PANE) return;
+    root.querySelectorAll('a[data-symbol]').forEach(node => {
+      const on = node.dataset.symbol === symbol;
+      node.classList.toggle('tc-tab--active', on);
+      if (on) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
+    });
+  }
+  function rememberPane() {
+    if (!PANE) return;
+    try { localStorage.setItem(PANE2_STORE, JSON.stringify({ symbol, tf: timeframe })); } catch (error) { /* ignore */ }
+  }
+  if (PANE) {  // the second pane remembers its own coin and timeframe; only values the page offers count
+    try {
+      const saved = JSON.parse(localStorage.getItem(PANE2_STORE) || 'null') || {};
+      if (root.querySelector(`a[data-symbol='${CSS.escape(String(saved.symbol))}']`)) symbol = saved.symbol;
+      if (root.querySelector(`a[data-tf='${CSS.escape(String(saved.tf))}']`)) timeframe = saved.tf;
+    } catch (error) { /* ignore */ }
+    markTabs();
+  }
   // Spot or perp trades behind volume profile, footprint, delta and bubbles (Beirat 29.10.2026, F5).
-  const MARKET_STORE = 'tim-chart-market-v1';
+  const MARKET_STORE = 'tim-chart-market-v1' + PANE;
   let market = (() => { try { return localStorage.getItem(MARKET_STORE) || 'spot'; } catch (error) { return 'spot'; } })();
   let lines = [];
 
   // The public view (src/dashboard/public_en.py) sets data-lang='en'; the Control Center stays German.
-  const EN = root.dataset.lang === 'en';
+  const EN = host.dataset.lang === 'en';
   const LOCALE = EN ? 'en-US' : 'de-DE';
   // Times stay in UTC seconds on the axis (strictly ascending, also across the DST change); only the
   // labels show the viewer's local time, per point, so candles before and after the change both
@@ -527,7 +576,7 @@
   // Two ways to draw the footprint. 'delta' (Uzi 09.11.2026: "die perfekte Footprint-Darstellung"):
   // a slim candle and, per price row, one bar to the right, long = much delta, blue =
   // more market buys, red = more market sells. 'cells': heat columns and bid × ask numbers as before.
-  const FP_STYLE = 'tim-chart-fp-style-v1';
+  const FP_STYLE = 'tim-chart-fp-style-v1' + PANE;
   let fpStyle = (() => { try { return localStorage.getItem(FP_STYLE) === 'delta' ? 'delta' : 'cells'; } catch (error) { return 'cells'; } })();
   function setFpStyle(style) {
     fpStyle = style === 'delta' ? 'delta' : 'cells';
@@ -1031,7 +1080,7 @@
   // Layers added after a visitor saved a choice (e.g. TIM's plans, footprint) start visible: only keys the
   // visitor has seen before can be hidden by a saved choice. Saves from before this list existed knew
   // neither the plans nor volume profile and footprint.
-  const KNOWN = 'tim-chart-layers-known-v1';
+  const KNOWN = 'tim-chart-layers-known-v1' + PANE;
   const LEGACY_NEW = ['vp', 'fp'];
   function shownGroups() {
     try {
@@ -1059,8 +1108,8 @@
   // layers and, if it wants, coin, timeframe and spot/perp. TIM's layouts ship with the page; own layouts
   // live in this browser only (localStorage), like the ticks before.
   const LAYOUT_STORE = 'tim-chart-layouts-v1';
-  const LAYOUT_ACTIVE = 'tim-chart-layout-active-v1';
-  const layoutBox = document.getElementById('tc-live-layouts');
+  const LAYOUT_ACTIVE = 'tim-chart-layout-active-v1' + PANE;
+  const layoutBox = document.getElementById('tc-live-layouts' + PANE);
   const L = EN
     ? { label: 'Layout', tim: 'TIM layouts (each with levels and structure)', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
         ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
@@ -1126,7 +1175,7 @@
     const caption = document.createElement('label');
     caption.textContent = L.label + ' ';
     const select = document.createElement('select');
-    select.id = 'tc-live-layout';
+    select.id = 'tc-live-layout' + PANE;
     const add = (parent, value, text) => {
       const option = document.createElement('option');
       option.value = value; option.textContent = text; option.selected = value === active;
@@ -1169,18 +1218,22 @@
     if (layout.fp || !layout.id.startsWith('own:')) setFpStyle(layout.fp || 'cells');
     const nextMarket = layout.market && layout.market !== market ? layout.market : null;
     if (nextMarket) { market = nextMarket; try { localStorage.setItem(MARKET_STORE, market); } catch (error) { /* ignore */ } }
-    const url = new URL(location.href);
-    if (layout.symbol && layout.symbol !== symbol) {  // another coin is another page (the coin tabs are links)
-      url.searchParams.set('symbol', layout.symbol);
-      url.searchParams.set('tf', layout.tf || timeframe);
-      location.href = url.toString();
-      return;
+    let reload = !!nextMarket;
+    if (layout.symbol && layout.symbol !== symbol) {
+      if (!PANE) {  // first pane: another coin is another page (the coin tabs are links)
+        const url = new URL(location.href);
+        url.searchParams.set('symbol', layout.symbol);
+        url.searchParams.set('tf', layout.tf || timeframe);
+        location.href = url.toString();
+        return;
+      }
+      symbol = layout.symbol; markTabs(); rememberPane(); reload = true;  // second pane: the coin changes in place
     }
     layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
     applyVisibility(groups);
     buildLayouts();
     const tab = layout.tf && layout.tf !== timeframe ? root.querySelector(`a[data-tf='${layout.tf}']`) : null;
-    if (tab) tab.click(); else if (nextMarket) { showMarket(); load(); }
+    if (tab) tab.click(); else if (reload) { showMarket(); load(); }
   }
   function askName(preset) {
     const name = (window.prompt(L.ask, preset || '') || '').trim().slice(0, 40);
@@ -1420,6 +1473,7 @@
 
   async function load() {
     clearTimeout(timer);
+    if (!running) return;
     status.textContent = T.loading;
     try {
       const ticket = ++request;  // only the newest request may draw (a slow 1h answer must not overwrite 4h)
@@ -1456,7 +1510,7 @@
     } catch (error) {
       status.textContent = T.failed(error.message);
     } finally {
-      timer = setTimeout(load, 30000);
+      if (running) timer = setTimeout(load, 30000);
     }
   }
 
@@ -1465,20 +1519,26 @@
     if (tab) {
       event.preventDefault();
       timeframe = tab.dataset.tf;
-      root.dataset.tf = timeframe;
-      root.querySelectorAll('a[data-tf]').forEach(node => {
-        const active = node.dataset.tf === timeframe;
-        node.classList.toggle('tc-tab--active', active);
-        if (active) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
-      });
-      const url = new URL(location.href);
-      url.searchParams.set('tf', timeframe);
-      history.replaceState(null, '', url);
+      markTabs();
+      if (PANE) rememberPane();
+      else {
+        host.dataset.tf = timeframe;
+        const url = new URL(location.href);
+        url.searchParams.set('tf', timeframe);
+        history.replaceState(null, '', url);
+      }
       load();
+      return;
+    }
+    const coin = PANE && event.target.closest && event.target.closest('a[data-symbol]');
+    if (coin) {  // second pane: the coin changes in place, the page (and the first chart) stays
+      event.preventDefault();
+      if (coin.dataset.symbol !== symbol) { symbol = coin.dataset.symbol; markTabs(); rememberPane(); load(); }
       return;
     }
     const action = event.target.closest && event.target.closest('[data-action]');
     if (!action) return;
+    if (action.dataset.action === 'split') { setSplit(PANE ? false : !secondPane || !secondPane.shown()); return; }
     if (action.dataset.action === 'market' && action.dataset.market && action.dataset.market !== market) {
       market = action.dataset.market;
       try { localStorage.setItem(MARKET_STORE, market); } catch (error) { /* ignore */ }
@@ -1521,4 +1581,14 @@
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); else clearTimeout(timer); });
   load();
+  return {
+    shown: () => running,
+    pause() { running = false; request += 1; clearTimeout(timer); },
+    resume() { running = true; load(); },
+  };
+  }
+  start('');
+  let split = false;
+  try { split = localStorage.getItem(SPLIT_STORE) === '1'; } catch (error) { /* ignore */ }
+  if (split) setSplit(true);
 })();
