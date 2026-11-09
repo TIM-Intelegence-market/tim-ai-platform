@@ -1,6 +1,6 @@
 """OF2 command line (paper only; the holdout is refused by the S8 store).
 
-    python -m src.research_lab.of2 run    --bars <orderflow_ml root> --section training   --out training.json
+    python -m src.research_lab.of2 run    --bars <orderflow_ml root> --section training   --out training.json [--workers 16]
     python -m src.research_lab.of2 run    --bars <root> --section validierung --out validierung.json
     python -m src.research_lab.of2 random --bars <root> --section training --trades training.json --draws 1000 --out random_training.json [--workers 16]
 
@@ -25,7 +25,8 @@ from src.research_lab.of2.compare import (
     strategy_means,
 )
 from src.research_lab.of2.config import DEFAULT_CONFIG, VERSION, Config
-from src.research_lab.of2.engine import _ms, run_days, section_trades
+from src.research_lab.of2.engine import _ms, section_trades
+from src.research_lab.of2.parallel import run_days_parallel
 from src.research_lab.orderflow_ml.store import MinuteBarStore
 
 LEAD_DAYS = 25  # >= npoc_days + 1 and enough sessions for the IB history (20 sessions per name = 20 days)
@@ -58,7 +59,8 @@ def cmd_run(args: argparse.Namespace, cfg: Config) -> dict:
     days = [lead + timedelta(days=i) for i in range((last - lead).days + 1)]
     present = set(store.present_days())
     days = [d for d in days if d >= min(present)] if present else days
-    trades, engine = run_days(store_loader(store), days, cfg)
+    trades, engine = run_days_parallel(functools.partial(_store_loader_for, args.bars), days, cfg,
+                                       workers=args.workers)
     inside, open_at_end = section_trades(trades, _ms(first), _ms(last) + 86_400_000)
     return {
         "studie": "OF2", "version": VERSION, "config_digest": cfg.digest(), "config": cfg.as_dict(),
@@ -111,6 +113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--bars", required=True)
     run.add_argument("--section", required=True, choices=("training", "validierung"))
     run.add_argument("--out", required=True)
+    run.add_argument("--workers", type=int, default=1, help="processes, split by time (same result)")
     rnd = sub.add_parser("random")
     rnd.add_argument("--bars", required=True)
     rnd.add_argument("--section", required=True, choices=("training", "validierung"))

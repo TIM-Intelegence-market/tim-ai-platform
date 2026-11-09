@@ -438,6 +438,36 @@ def test_run_random_parallel_refuses_pending_orders():
         compare.run_random_parallel(_synthetic_loader_8, date(2021, 3, 1), date(2021, 3, 7), [s], CFG, workers=2)
 
 
+_LONG_DAYS: dict = {}
+
+
+def _long_loader():
+    if not _LONG_DAYS:
+        rng, price = random.Random(11), 30_000.0
+        for d in range(80):
+            bars, profile, price = synthetic_day(DAY0 + d * DAY_MS, rng, price)
+            _LONG_DAYS[date(2021, 3, 1) + timedelta(days=d)] = (bars, profile)
+    return lambda day: _LONG_DAYS[day]
+
+
+def test_engine_split_by_time_gives_the_same_trades_and_counters():
+    from src.research_lab.of2 import parallel
+    cfg = Config(max_cost_r=100.0)  # let the tiny synthetic stops through so there are trades to compare
+    days = [date(2021, 3, 1) + timedelta(days=d) for d in range(80)]
+    one, eng = engine.run_days(_long_loader(), days, cfg)
+    assert len(one) > 20
+    key = lambda tr: tr.as_dict()
+    for workers in (2, 3):
+        many, tot = parallel.run_days_parallel(_long_loader, days, cfg, workers=workers)
+        assert sorted(map(str, map(key, one))) == sorted(map(str, map(key, many))), workers
+        assert tot.stats.signale == eng.stats.signale and tot.stats.verworfen == eng.stats.verworfen
+        assert (tot.stats.tage, tot.stats.tage_ohne_level) == (eng.stats.tage, eng.stats.tage_ohne_level)
+        assert (tot.tracker.expired, tot.tracker.cancelled) == (eng.tracker.expired, eng.tracker.cancelled)
+    # too few days for a warm-up per range: falls back to one pass
+    short, _ = parallel.run_days_parallel(_long_loader, days[:30], cfg, workers=4)
+    assert [t.as_dict() for t in short] == [t.as_dict() for t in engine.run_days(_long_loader(), days[:30], cfg)[0]]
+
+
 # -- footprint and models M4-M6 (P1b) --------------------------------------------------------------
 def fp(step: float, rows: list[tuple[int, int, int]]) -> footprint.Footprint:
     return footprint.Footprint(DAY0, 15, step, tuple(rows))
