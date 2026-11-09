@@ -29,6 +29,11 @@ def _write_all(root: Path, liq: Path, *, age: timedelta = timedelta(0)) -> None:
     (xmr / "perp-2026-11-03.json.gz").write_bytes(b"x" * 500)
     (xmr / "state.json").write_text(json.dumps({"symbol": "XMRUSDT", "updated_at": at.isoformat(), "gaps": [], "checks": []}))
     (xmr / "oi-XMRUSDT-1h.jsonl").write_text("".join(json.dumps(h) + "\n" for h in hours[:2]))
+    bybit = root / "bybit_flow"  # second venue of the bubbles (09.11.2026)
+    bybit.mkdir()
+    (bybit / "bybit-2026-11-04.json.gz").write_bytes(b"x" * 400)
+    (bybit / "state.json").write_text(json.dumps({"symbol": "BTCUSDT", "updated_at": at.isoformat(), "sessions": 1, "trades": 5,
+                                                   "segments": [[int(at.timestamp() * 1000) - 3_600_000, int(at.timestamp() * 1000)]]}))
     (root / "options").mkdir()
     (root / "options" / "gamma_levels.jsonl").write_text(json.dumps({"as_of": at.isoformat()}) + "\n")
     for venue in own_data.LIQ_VENUES:
@@ -56,8 +61,9 @@ def test_fresh_collectors_are_green_and_name_their_history(tmp_path: Path) -> No
     assert tiles["own_oi_xmr"].value == "2 Stunden" and tiles["own_oi_xmr"].source == "data/perp_flow/XMRUSDT/oi-XMRUSDT-1h.jsonl"
     assert tiles["own_liq_bybit"].value == "1 Tage seit 2026-11-04"
     assert tiles["own_backup"].value == "2,5 MB"
+    assert tiles["own_bybit"].value == "1 Tage seit 2026-11-04" and tiles["own_bybit"].label == "Bybit-Orderflow (Bubbles)"
     summary = own_data.summary_tile(list(tiles.values()), NOW)
-    assert summary.state == "ok" and summary.value == "7/7 Sammler frisch"
+    assert summary.state == "ok" and summary.value == "8/8 Sammler frisch"
 
 
 def test_a_stopped_collector_turns_yellow_with_its_age(tmp_path: Path) -> None:
@@ -67,7 +73,7 @@ def test_a_stopped_collector_turns_yellow_with_its_age(tmp_path: Path) -> None:
     assert tiles["own_liq_binance"].state == "warn" and tiles["own_gamma"].state == "warn"
     assert tiles["own_oi"].state == "ok"  # hourly data, 3 h limit
     summary = own_data.summary_tile(list(tiles.values()), NOW)
-    assert summary.state == "warn" and summary.value == "2/7 Sammler frisch" and "Perp-Orderflow" in summary.reason
+    assert summary.state == "warn" and summary.value == "2/8 Sammler frisch" and "Perp-Orderflow" in summary.reason
 
 
 def test_gaps_failed_checks_and_disconnects_are_named(tmp_path: Path) -> None:
@@ -116,7 +122,7 @@ def test_cockpit_shows_the_summary_on_lage_and_every_source_on_betrieb(tmp_path:
     assert any(t["id"] == "own_data" for t in lage["attention"])
     betrieb = build_betrieb(state, now=NOW, sources=BudgetedSources(cache_seconds=0), budget=5)
     section = next(s for s in betrieb["sections"] if s["id"] == "own_data")
-    assert [t["id"] for t in section["tiles"]] == ["own_perp", "own_oi", "own_perp_xmr", "own_oi_xmr", "own_gamma", "own_liq_binance", "own_liq_bybit", "own_backup", "own_gaps"]
+    assert [t["id"] for t in section["tiles"]] == ["own_perp", "own_oi", "own_perp_xmr", "own_oi_xmr", "own_bybit", "own_gamma", "own_liq_binance", "own_liq_bybit", "own_backup", "own_gaps"]
 
 
 def _gap_report(root: Path, **fields) -> None:

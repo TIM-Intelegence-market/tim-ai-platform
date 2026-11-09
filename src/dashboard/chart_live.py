@@ -89,7 +89,8 @@ GROUP_NAMES = {
     "vwap_bands": "VWAP-Bänder Woche (±1σ, ±2σ)", "naked": "naked POC",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "fib": "Fibonacci (letzter Swing)", "tpo": "TPO (Tagesprofil)",
-    "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)", "bubbles": "Volume Bubbles (große Market Orders)",
+    "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
+    "bubbles": "Volume Bubbles (große Market Orders; Perp: Binance + Bybit)",
     "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
@@ -954,6 +955,28 @@ def plan_overlays(journals: Mapping[str, Sequence[Mapping[str, Any]]], times: Se
     return plans[-PLAN_LIMIT:]
 
 
+def merge_bubbles(first: dict[str, Any], second: dict[str, Any] | None, second_venue_present: bool) -> dict[str, Any]:
+    """Binance bubbles plus the Bybit ones (Issue #162): ``venue`` on every item, the largest ``MAX_BUBBLES_VIEW`` kept.
+
+    Without a second store the items get ``venue = "binance"`` and ``venues`` names Binance only, so the
+    chart says what it shows.
+    """
+    from src.dashboard.footprint_data import MAX_BUBBLES_VIEW
+
+    items = [{**item, "venue": "binance"} for item in first.get("items") or []]
+    venues = ["binance"]
+    if second_venue_present:
+        venues.append("bybit")
+        items += [{**item, "venue": "bybit"} for item in (second or {}).get("items") or []]
+    items = sorted(sorted(items, key=lambda i: i["usd"], reverse=True)[:MAX_BUBBLES_VIEW], key=lambda i: i["time"])
+    merged = {**first, "items": items, "venues": venues}
+    if items:
+        merged["min_usd"] = round(min(i["usd"] for i in items), 2)
+        merged["max_usd"] = round(max(i["usd"] for i in items), 2)
+        merged["note"] = None
+    return merged
+
+
 def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
                      cache: KlineCache | None = None, now: datetime | None = None, footprint: Mapping[str, Any] | None = None,
                      plan_journals: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
@@ -961,7 +984,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                      perp: Mapping[str, Any] | None = None, open_interest: Mapping[str, Any] | None = None,
                      market: str | None = None, context: Mapping[str, Any] | None = None,
                      macro: Sequence[Mapping[str, Any]] | None = None, perp_cache: KlineCache | None = None,
-                     liquidation_root: Any = None) -> dict[str, Any]:
+                     liquidation_root: Any = None, bybit: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
@@ -987,6 +1010,9 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     ``liquidation_root`` is the S12 collector's data folder (``liquidation_events.default_root`` when
     None): real Binance and Bybit liquidations of the window under key ``liquidations`` (group "liqev");
     ``False`` skips the read (tests without a record).
+    ``bybit`` is ``DashboardState.bybit_flow`` (bybit_flow.py): when the perp is shown, its large taker
+    orders join the Binance bubbles as a second venue (``venue`` on every item); footprint, CVD and
+    profiles stay Binance.
     """
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     timeframe = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
@@ -1142,6 +1168,9 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
             model["volume_profile"] = [p for p in volume_profiles(trades_shown, now) if _epoch(p["end"]) > first_time]
             model["footprint"] = footprint_bars(trades_shown, times, INTERVAL_SECONDS[timeframe])
             model["bubbles"] = volume_bubbles(trades_shown, times, INTERVAL_SECONDS[timeframe])
+            bybit_trades = bybit if active == "perp" and bybit and bybit.get("symbol") == symbol and bybit.get("days") else None
+            model["bubbles"] = merge_bubbles(model["bubbles"], volume_bubbles(bybit_trades, times, INTERVAL_SECONDS[timeframe]) if bybit_trades else None,
+                                             bybit_trades is not None)
             model["trade_source"] = trades_shown.get("source")
             model["trades_updated_at"] = trades_shown.get("updated_at")
         if spot_trades or perp_trades:

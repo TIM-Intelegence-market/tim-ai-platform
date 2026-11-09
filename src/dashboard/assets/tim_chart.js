@@ -663,11 +663,14 @@
                 const buy = item.side > 0;
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, Math.PI * 2);
-                ctx.fillStyle = buy ? 'rgba(38,200,140,0.30)' : 'rgba(239,83,80,0.30)';
+                const bybit = item.venue === 'bybit';  // second venue (issue #162): hollow, dashed ring
+                ctx.fillStyle = bybit ? 'rgba(11,15,22,0.35)' : buy ? 'rgba(38,200,140,0.30)' : 'rgba(239,83,80,0.30)';
                 ctx.fill();
                 ctx.lineWidth = 1.2;
+                ctx.setLineDash(bybit ? [3, 2] : []);
                 ctx.strokeStyle = buy ? 'rgba(38,220,150,0.95)' : 'rgba(255,92,88,0.95)';
                 ctx.stroke();
+                ctx.setLineDash([]);
                 if (r >= BUBBLE.labelR) {
                   ctx.fillStyle = '#e8edf5';
                   ctx.fillText(item.quantity >= 100 ? item.quantity.toFixed(0) : item.quantity.toFixed(1), x, y);

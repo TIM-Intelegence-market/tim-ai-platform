@@ -38,6 +38,8 @@ class DashboardState:
     # The same per symbol (BTCUSDT, XMRUSDT; perp_flow.publish / chart_inputs).
     perp_flows: dict[str, dict[str, Any]] = field(default_factory=dict)
     open_interests: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Bybit linear perp trades as a second venue for the bubbles (src/dashboard/bybit_flow.py, Issue #162).
+    bybit_flow: dict[str, Any] = field(default_factory=dict)
     system_health: dict[str, Any] = field(default_factory=lambda: {
         "database": "unknown",
         "stream": "unknown",

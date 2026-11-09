@@ -702,6 +702,13 @@ class TIMApplication:
 
         await run_perp_flow(self.dashboard_state, self.worker_stop, log=log)
 
+    async def _bybit_flow_loop(self) -> None:
+        # Bybit perp trades over the public websocket as the second venue of the chart's bubbles (Issue #162);
+        # display only, reconnects on its own, never on the ingestion path.
+        from src.dashboard.bybit_flow import run as run_bybit_flow
+
+        await run_bybit_flow(self.dashboard_state, self.worker_stop, log=log)
+
     async def _derived_candles_loop(self) -> None:
         # 4h and 1d candles from persisted 1h candles; research data only, never on the ingestion path.
         while not self.worker_stop.is_set():
@@ -842,6 +849,7 @@ class TIMApplication:
         gamma_task = asyncio.create_task(self._gamma_loop(), name="tim-options-gamma")
         liquidation_task = asyncio.create_task(self._liquidation_loop(), name="tim-liquidation-heatmap")
         perp_task = asyncio.create_task(self._perp_flow_loop(), name="tim-perp-flow")
+        bybit_task = asyncio.create_task(self._bybit_flow_loop(), name="tim-bybit-flow")
         orderflow_live_task = asyncio.create_task(self._orderflow_live_loop(), name="tim-orderflow-live")
         gap_task = (asyncio.create_task(self.gap_filler.run(self.worker_stop), name="tim-gap-filler")
                     if self.gap_filler is not None else None)
@@ -858,6 +866,7 @@ class TIMApplication:
             gamma_task.cancel()
             liquidation_task.cancel()
             perp_task.cancel()
+            bybit_task.cancel()
             orderflow_live_task.cancel()
             if gap_task is not None:
                 gap_task.cancel()
