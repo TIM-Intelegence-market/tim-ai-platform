@@ -286,8 +286,14 @@ def analyze_footprint(
     *,
     imbalance_ratio: Decimal = IMBALANCE_RATIO,
     stack_min: int = STACK_MIN,
+    cluster_ratio: Decimal = CLUSTER_RATIO,
+    thin_extreme_ratio: Decimal = THIN_EXTREME_RATIO,
 ) -> FootprintReading:
-    """Read the last bar: imbalances, stacks, auction edges, cluster, thin extreme, POC."""
+    """Read the last bar: imbalances, stacks, auction edges, cluster, thin extreme, POC.
+
+    The thresholds are parameters so a study (S19) can measure neighbouring values with the
+    same code; the engine always calls with the module constants.
+    """
     bar = series.last
     levels = bar.levels
     statements: list[OrderflowStatement] = []
@@ -356,19 +362,29 @@ def analyze_footprint(
     mean_level = bar.total / Decimal(len(levels)) if levels else ZERO
     absorption_cluster: str | None = None
     thin_extreme: str | None = None
+    cluster_side: str | None = None  # where a cluster would absorb, before the ratio test (S19 measures the ratio)
+    cluster_strength: Decimal | None = None  # heaviest level / mean level
+    extreme_ratio: Decimal | None = None  # edge level in the move direction / mean level
     if mean_level > ZERO and len(levels) >= 3:
         span = bar.high.price - bar.low.price
         edge = span * EDGE_FRACTION
         direction = bar.direction
         cluster = max(levels, key=lambda level: (level.total, -level.price))
-        if cluster.total >= CLUSTER_RATIO * mean_level and span > ZERO:
+        cluster_strength = cluster.total / mean_level
+        if span > ZERO:
             near_high = bar.high.price - cluster.price <= edge
             near_low = cluster.price - bar.low.price <= edge
             # Buyers pushing into a heavy level at the top: passive sellers absorb; and vice versa.
             if near_high and cluster.ask_volume >= cluster.bid_volume and direction != "DOWN":
-                absorption_cluster = "PASSIVE_SELLERS"
+                cluster_side = "PASSIVE_SELLERS"
             elif near_low and cluster.bid_volume >= cluster.ask_volume and direction != "UP":
-                absorption_cluster = "PASSIVE_BUYERS"
+                cluster_side = "PASSIVE_BUYERS"
+        if direction == "UP":
+            extreme_ratio = bar.high.total / mean_level
+        elif direction == "DOWN":
+            extreme_ratio = bar.low.total / mean_level
+        if cluster.total >= cluster_ratio * mean_level and span > ZERO:
+            absorption_cluster = cluster_side
             if absorption_cluster:
                 statements.append(
                     OrderflowStatement(
@@ -378,9 +394,9 @@ def analyze_footprint(
                         weight=Decimal("0.8"),
                     )
                 )
-        if direction == "UP" and bar.high.total <= THIN_EXTREME_RATIO * mean_level:
+        if direction == "UP" and bar.high.total <= thin_extreme_ratio * mean_level:
             thin_extreme = "BUYERS_THIN_AT_HIGH"
-        elif direction == "DOWN" and bar.low.total <= THIN_EXTREME_RATIO * mean_level:
+        elif direction == "DOWN" and bar.low.total <= thin_extreme_ratio * mean_level:
             thin_extreme = "SELLERS_THIN_AT_LOW"
         if thin_extreme:
             statements.append(
@@ -419,6 +435,9 @@ def analyze_footprint(
         "finished_low": finished_low,
         "absorption_cluster": absorption_cluster,
         "thin_extreme": thin_extreme,
+        "cluster_side": cluster_side,
+        "cluster_strength": str(cluster_strength) if cluster_strength is not None else None,
+        "extreme_ratio": str(extreme_ratio) if extreme_ratio is not None else None,
     }
     if series.tick_size is not None:
         summary["tick_size"] = str(series.tick_size)
