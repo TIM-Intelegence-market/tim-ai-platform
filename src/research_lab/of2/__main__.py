@@ -2,7 +2,7 @@
 
     python -m src.research_lab.of2 run    --bars <orderflow_ml root> --section training   --out training.json
     python -m src.research_lab.of2 run    --bars <root> --section validierung --out validierung.json
-    python -m src.research_lab.of2 random --bars <root> --section training --trades training.json --draws 1000 --out random_training.json
+    python -m src.research_lab.of2 random --bars <root> --section training --trades training.json --draws 1000 --out random_training.json [--workers 16]
 
 ``run`` streams the section's days plus ``npoc_days + ib_history`` lead days (lead days feed levels only; their
 trades are dropped). ``random`` builds the random comparator from a finished run. Every file carries the
@@ -11,6 +11,7 @@ config digest; a run with another config refuses to be compared.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 from collections.abc import Sequence
 from datetime import date, timedelta
@@ -20,7 +21,7 @@ from src.research_lab.of2.backtest import summarize
 from src.research_lab.of2.compare import (
     p_value,
     random_signals,
-    run_random,
+    run_random_parallel,
     strategy_means,
 )
 from src.research_lab.of2.config import DEFAULT_CONFIG, VERSION, Config
@@ -43,6 +44,11 @@ def store_loader(store: MinuteBarStore):
     def load(day: date):
         return store.load(day), store.load_profile(day)
     return load
+
+
+def _store_loader_for(root: str):
+    """Picklable loader factory for the worker processes of ``random --workers``."""
+    return store_loader(MinuteBarStore(root))
 
 
 def cmd_run(args: argparse.Namespace, cfg: Config) -> dict:
@@ -72,7 +78,6 @@ def cmd_random(args: argparse.Namespace, cfg: Config) -> dict:
     if run["config_digest"] != cfg.digest():
         raise SystemExit("config digest of the run differs from this code")
     first, last = section_bounds(cfg, args.section)
-    store = MinuteBarStore(args.bars)
     # rebuild lightweight Trade objects (only the fields the comparator needs)
     from src.research_lab.of2.backtest import Trade
     from src.research_lab.of2.models import MARKET, Signal
@@ -89,7 +94,8 @@ def cmd_random(args: argparse.Namespace, cfg: Config) -> dict:
             out["vergleiche"][label] = {"n": 0}
             continue
         pseudo = random_signals(subset, first, last, cfg, args.draws, cfg.seed)
-        rand = run_random(store_loader(store), first, last, pseudo, cfg)
+        rand = run_random_parallel(functools.partial(_store_loader_for, args.bars), first, last, pseudo, cfg,
+                                   workers=args.workers)
         means = list(strategy_means(rand).values())
         real_mean = sum(t.net_r for t in subset) / len(subset)
         out["vergleiche"][label] = {"n": len(subset), "echt_netto_r_mittel": round(real_mean, 4),
@@ -111,6 +117,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     rnd.add_argument("--trades", required=True)
     rnd.add_argument("--draws", type=int, default=1000)
     rnd.add_argument("--out", required=True)
+    rnd.add_argument("--workers", type=int, default=1, help="processes for the random comparator (same result)")
     args = parser.parse_args(argv)
     cfg = DEFAULT_CONFIG
     result = cmd_run(args, cfg) if args.cmd == "run" else cmd_random(args, cfg)
