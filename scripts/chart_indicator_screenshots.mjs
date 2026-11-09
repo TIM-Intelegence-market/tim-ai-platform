@@ -51,7 +51,8 @@ try {
   for (const [layer, tf] of SHOTS) {
     if (tf !== lastTf) {
       await page.goto(`${base}/chart?symbol=${symbol}&tf=${tf}`, { waitUntil: "load" });
-      await page.waitForSelector("#tc-live-layers input", { timeout: 30000 });
+      await page.waitForSelector("#tc-live-layers input", { timeout: 30000, state: 'attached' });
+      await page.evaluate(() => { const edit = document.querySelector('details.tc-live__edit'); if (edit) edit.open = true; });  // ticks sit folded under the layout menu
       await page.waitForTimeout(1500);
       await page.click("button[data-action='none']");
       await page.waitForTimeout(700);
