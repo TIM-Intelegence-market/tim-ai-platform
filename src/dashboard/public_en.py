@@ -42,7 +42,7 @@ GROUPS_EN = {
     "gamma": "Options gamma (Deribit)",
     "liq": "Liquidation heatmap (estimate)",
     "liqev": "Liquidations (real, Binance + Bybit)",
-    "cvd": "CVD spot vs. perp", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d)",
+    "cvd": "CVD spot vs. perp", "delta": "Delta volume per candle (chosen market)", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d)",
     "funding": "Funding rate (Binance perp)", "premium": "Coinbase premium (USD vs. USDT)",
     "dominance": "BTC and USDT dominance (daily)",
     "macro": "Release dates (US CPI, FOMC)",

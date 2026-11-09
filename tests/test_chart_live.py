@@ -380,6 +380,10 @@ def test_layers_are_sorted_in_named_layouts():
                                                           "tim:macro", "tim:trades", "tim:broncx", "tim:standard"]
     used = set(re.findall(r"'([a-z_]+)'", "".join(re.findall(r"groups: \[([^\]]*)\]", layouts))))
     assert used <= set(chart_live.GROUP_NAMES)
+    # The footprint layout follows Uzi's reference (MMT "Footprint Delta"): delta bars per price row, delta per candle, open interest.
+    assert "id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi']" in layouts
+    assert "if (fpStyle === 'delta') { drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep); return; }" in script
+    assert "delta" in chart_live.GROUP_NAMES and "delta" not in chart_live.DEFAULT_GROUPS
     assert "tim-chart-layouts-v1" in script and "saveGroups(now); applyVisibility(now); layoutChanged();" in script
     html = _live_section("BTCUSDT", "30m")
     assert "id='tc-live-layouts'" in html

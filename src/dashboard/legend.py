@@ -119,6 +119,10 @@ LAYERS: dict[str, list[Mark]] = {
         (("line", "#5ec8d8", "solid"), "CVD Spot (hellblau): laufende Summe des Deltas", "CVD spot (light blue): running sum of delta"),
         (("line", "#ffb020", "solid"), "CVD Perp (orange); Spot und Perp nie addiert", "CVD perp (orange); spot and perp never added"),
     ],
+    "delta": [
+        (("line", "#5b7cfa", "solid"), "Delta je Kerze: blau = mehr Marktkäufe, rot = mehr Marktverkäufe", "Delta per candle: blue = more market buys, red = more market sells"),
+        (("line", "#e8ecf3", "solid"), "weiße Linien = Schwelle für ungewöhnlich großes Delta (90 % der Kerzen liegen darunter)", "White lines = threshold for unusually large delta (90% of candles stay below)"),
+    ],
     "oi": [
         (("line", "#c3cad6", "solid"), "Open Interest Binance (grau), Band unter dem Chart", "Open interest Binance (grey), band below the chart"),
         (("line", "#f7a35c", "solid"), "Open Interest Bybit (orange), gleiche Skala in BTC", "Open interest Bybit (orange), same scale in BTC"),
