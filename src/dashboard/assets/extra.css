@@ -108,3 +108,13 @@ caption{text-align:left;padding:11px 13px;color:var(--muted);font-size:11px;back
 /* Analysis summary on the chart page (src/dashboard/analysis_summary.py) */
 .tc-summary p{margin:.35rem 0}.tc-summary__lead{font-size:1.05rem}
 .tc-summary__tf{display:flex;flex-wrap:wrap;gap:.3rem 1.2rem;margin:.2rem 0 .5rem;padding:0;list-style:none}
+
+/* Legende für Chart und Control Center (src/dashboard/legend.py, 09.11.2026) */
+.tc-lgd>summary{cursor:pointer;font-weight:600;padding:2px 0}.tc-lgd[open]>summary{margin-bottom:10px}
+.lg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px 22px}
+.lg-block h4{margin:0 0 4px;font-size:.85rem;color:var(--muted)}
+.lg-block ul,.lg-list{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.lg-block li,.lg-list li{display:flex;gap:8px;align-items:flex-start;font-size:.85rem;line-height:1.35}
+.lg-sw{flex:0 0 28px;margin-top:2px}
+@media (max-width:640px){.lg-grid{grid-template-columns:1fr}}
+.lg-tiles.table-wrap{max-height:none}

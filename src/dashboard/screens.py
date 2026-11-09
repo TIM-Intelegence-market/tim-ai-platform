@@ -255,7 +255,7 @@ def cockpit_body(state: Any) -> str:
     right = (_safe(lambda: _plans_card(data, model), "TIMs Pläne") + _safe(lambda: _result_card(data), "Papier-Ergebnis")
              + _safe(lambda: _today_card(model), "Heute zu tun"))
     return (f"<div class='scr'>{_lead(model)}<div class='two'>"
-            f"<div class='card chart-card'><h2>BTCUSDT · 30m <a href='/chart'>Großer Chart öffnen</a></h2>{chart}</div>"
+            f"<div class='card chart-card'><h2>BTCUSDT · 30m <a href='/chart'>Großer Chart öffnen</a> · <a href='/legende'>Legende</a></h2>{chart}</div>"
             f"<div class='stack'>{right}</div></div></div>")
 
 
@@ -510,7 +510,7 @@ def system_body(state: Any) -> str:
     pages = "".join(f"<a href='{_e(href)}'>{_e(label)}</a>" for label, href in SYSTEM_PAGES)
     stamp = local_time(datetime.now(timezone.utc))
     return (f"<div class='scr'><div class='card lead'><span class='lead__dot' data-s='{_e(worst)}'></span><div><h1>{_e(line)}</h1>"
-            f"<p>Was nicht grün ist, steht oben und ist aufgeklappt. Stand {_e(stamp)}.</p></div></div>"
+            f"<p>Was nicht grün ist, steht oben und ist aufgeklappt. Stand {_e(stamp)}. <a href='/legende'>Was bedeuten Farben und Kacheln?</a></p></div></div>"
             f"<div class='card'><h2>Ampel</h2><ul class='lights'>{lights}</ul></div>"
             f"<div class='card'><h2>Detailseiten</h2><div class='links'>{pages}</div></div>"
             "<div class='card'><h2>Archiv</h2><p class='mut'>V2-Kampagne, alte Übersicht und Pilotansicht: erreichbar, aber nicht mehr im Weg. "

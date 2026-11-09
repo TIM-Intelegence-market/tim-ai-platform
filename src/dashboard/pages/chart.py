@@ -18,6 +18,7 @@ from src.dashboard.chart_live import DEFAULT_SYMBOL, GROUP_STYLE, PERP_ONLY, SYM
 from src.dashboard.chart_model import CHART_TIMEFRAMES, DEFAULT_TIMEFRAME, build_chart_model
 from src.dashboard.helpers import _safe
 from src.dashboard.layout import _content_security_policy, _hero, _layout, _strip_states
+from src.dashboard.legend import chart_legend
 
 _ASSETS = Path(__file__).resolve().parent.parent / "assets"
 LIB_PATH = "/assets/chart/lightweight-charts-4.2.3.js"
@@ -509,6 +510,7 @@ def _live_section(symbol: str, view: str) -> str:
         "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
         "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interaktiver Kerzenchart'></div></div>"
         "<p id='tc-live-status' class='cc-note tc-live__status'>Chart lädt… (braucht JavaScript)</p>"
+        + chart_legend("de") +
         "<p class='cc-note'>Mausrad = zoomen, ziehen = verschieben, Preisachse ziehen = Höhe ändern, Doppelklick auf die Achse = zurücksetzen. "
         "Jede Linie beginnt dort, wo das Level entstanden ist (Hochs/Tiefs an ihrer Kerze, Profile am Beginn ihres Tages/ihrer Woche), "
         "und trägt Zeitrahmen und Namen, z. B. <b>1D VAH</b> oder <b>1W POC</b>. Ein ← heißt: Beginn liegt links außerhalb der geladenen Kerzen. "
