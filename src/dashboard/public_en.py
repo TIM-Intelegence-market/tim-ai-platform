@@ -236,29 +236,41 @@ def chart_page(symbol: str | None, timeframe: str | None, summary: str = "") -> 
 
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     view = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
-    symbols = "".join(
-        f"<a href='/chart?symbol={item}&amp;tf={view}' class='tc-tab{' tc-tab--active' if item == symbol else ''}'"
-        + (" aria-current='page'" if item == symbol else "") + f">{tab_label(item)}</a>"
-        for item in SYMBOLS)
-    frames = "".join(
-        f"<a href='/chart?symbol={symbol}&amp;tf={item}' data-tf='{item}' class='tc-tab{' tc-tab--active' if item == view else ''}'"
-        + (" aria-current='page'" if item == view else "") + f">{item}</a>"
-        for item in VIEW_TIMEFRAMES)
+    second = "15m" if view == "1h" else "1h"  # the second chart starts on another timeframe; the browser remembers its own
+
+    def pane(suffix: str, pane_view: str) -> str:
+        symbols = "".join(
+            f"<a href='/chart?symbol={item}&amp;tf={pane_view}' data-symbol='{item}' class='tc-tab{' tc-tab--active' if item == symbol else ''}'"
+            + (" aria-current='page'" if item == symbol else "") + f">{tab_label(item)}</a>"
+            for item in SYMBOLS)
+        frames = "".join(
+            f"<a href='/chart?symbol={symbol}&amp;tf={item}' data-tf='{item}' class='tc-tab{' tc-tab--active' if item == pane_view else ''}'"
+            + (" aria-current='page'" if item == pane_view else "") + f">{item}</a>"
+            for item in VIEW_TIMEFRAMES)
+        split = ("<button type='button' class='tc-tab' data-action='split' aria-pressed='false' title='Show a second chart next to this one (own coin, timeframe and layout)'>2 charts</button>"
+                 if not suffix else "<button type='button' class='tc-tab' data-action='split' title='Close the second chart'>Close chart 2</button>")
+        head = ("<div class='tc-pane' id='tc-pane'>" if not suffix else
+                f"<div class='tc-pane' id='tc-pane{suffix}' hidden data-symbol='{_safe(symbol)}' data-tf='{_safe(pane_view)}'>")
+        return (
+            head +
+            f"<nav class='tc-tabs' aria-label='Coin'>{symbols}<span class='tc-tabs__sep'>Timeframe:</span>{frames}</nav>"
+            f"<div class='tc-live__bar'><div class='tc-live__layoutbox'><div id='tc-live-layouts{suffix}' class='tc-live__layouts' aria-label='Choose layout'></div><details class='tc-live__edit'><summary>Edit layout (single layers)</summary><div id='tc-live-layers{suffix}' class='tc-live__layers' aria-label='Show or hide lines'></div></details></div>"
+            "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Go to now</button>"
+            "<button type='button' class='tc-tab' data-action='fit'>Show all</button><button type='button' class='tc-tab' data-action='footprint' title='Last candles large, footprint with numbers'>Footprint</button>"
+            "<span class='tc-market' role='group' aria-label='Trades behind volume profile, footprint and delta'><button type='button' class='tc-tab' data-action='market' data-market='spot' title='Volume profile, footprint, delta from spot trades'>Spot</button>"
+            "<button type='button' class='tc-tab' data-action='market' data-market='perp' title='Volume profile, footprint, delta from perp trades (Binance futures)'>Perp</button></span>"
+            f"<button type='button' class='tc-tab' data-action='plans'>Only TIM's trades</button><button type='button' class='tc-tab' data-action='none'>Untick all</button><button type='button' class='tc-tab' data-action='reset'>Reset lines</button>{split}</div></div>"
+            f"<div class='tc-live__frame'><p id='tc-live-legend{suffix}' class='tc-live__legend'></p>"
+            f"<div id='tc-live-chart{suffix}' class='tc-live__chart' role='img' aria-label='Interactive candlestick chart'></div></div>"
+            f"<p id='tc-live-status{suffix}' class='cc-note tc-live__status'>Chart loading… (needs JavaScript)</p></div>"
+        )
+
     body = _hero("TIM chart", "BTC, ETH, SOL, XMR and gold on every timeframe: zoom, pan, crosshair. "
                  "Levels are drawn as labelled segments from the moment they formed.")
     body += summary
     body += (
         f"<section class='cc-section tc-live' id='tc-live' data-lang='en' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
-        f"<nav class='tc-tabs' aria-label='Coin'>{symbols}<span class='tc-tabs__sep'>Timeframe:</span>{frames}</nav>"
-        "<div class='tc-live__bar'><div class='tc-live__layoutbox'><div id='tc-live-layouts' class='tc-live__layouts' aria-label='Choose layout'></div><details class='tc-live__edit'><summary>Edit layout (single layers)</summary><div id='tc-live-layers' class='tc-live__layers' aria-label='Show or hide lines'></div></details></div>"
-        "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Go to now</button>"
-        "<button type='button' class='tc-tab' data-action='fit'>Show all</button><button type='button' class='tc-tab' data-action='footprint' title='Last candles large, footprint with numbers'>Footprint</button>"
-        "<span class='tc-market' role='group' aria-label='Trades behind volume profile, footprint and delta'><button type='button' class='tc-tab' data-action='market' data-market='spot' title='Volume profile, footprint, delta from spot trades'>Spot</button>"
-        "<button type='button' class='tc-tab' data-action='market' data-market='perp' title='Volume profile, footprint, delta from perp trades (Binance futures)'>Perp</button></span>"
-        "<button type='button' class='tc-tab' data-action='plans'>Only TIM's trades</button><button type='button' class='tc-tab' data-action='none'>Untick all</button><button type='button' class='tc-tab' data-action='reset'>Reset lines</button></div></div>"
-        "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
-        "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interactive candlestick chart'></div></div>"
-        "<p id='tc-live-status' class='cc-note tc-live__status'>Chart loading… (needs JavaScript)</p>"
+        "<div class='tc-split' id='tc-split'>" + pane("", view) + pane("-2", second) + "</div>"
         + chart_legend("en") +
         "<p class='cc-note'>Mouse wheel = zoom, drag = pan, drag the price axis = change height, double-click the axis = reset. "
         "<b>BOS / MSS</b> count only on a close (a wick through the level is a sweep): BOS = break of the last swing in trend direction, "

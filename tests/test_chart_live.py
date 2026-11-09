@@ -394,3 +394,29 @@ def test_chart_script_names_no_third_party_trader():
     """Uzi 09.11.2026: the name must not show anywhere on /chart."""
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
     assert "broncx" not in script.lower() and "bronxc" not in script.lower()
+
+
+def test_two_charts_side_by_side_are_independent() -> None:
+    """Uzi 09.11.2026: a second chart next to the first, each with its own coin, timeframe and layout."""
+    from src.dashboard.pages.chart import _live_section
+    from src.dashboard.public_en import chart_page
+
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    # One start per pane; ids and browser memory carry the pane suffix, so the panes never overwrite each other.
+    assert "function start(PANE)" in script and "start('');" in script and "start('-2')" in script
+    for key in ("tim-chart-layers-v1", "tim-chart-market-v1", "tim-chart-fp-style-v1",
+                "tim-chart-layers-known-v1", "tim-chart-layout-active-v1"):
+        assert f"'{key}' + PANE" in script, key
+    for element in ("tc-live-chart", "tc-live-legend", "tc-live-status", "tc-live-layers", "tc-live-layouts"):
+        assert f"getElementById('{element}' + PANE)" in script, element
+    assert "'tim-chart-layouts-v1';" in script  # own layouts are shared by both panes
+    # The second pane never touches the address: only the first one writes ?tf= and navigates.
+    assert script.count("history.replaceState") == 1 and script.count("location.href = ") == 1
+    for page in (_live_section("BTCUSDT", "15m"), chart_page("BTCUSDT", "15m")):
+        assert page.count("data-action='split'") == 2
+        assert "id='tc-split'" in page and "id='tc-pane'" in page
+        assert "id='tc-pane-2' hidden data-symbol='BTCUSDT' data-tf='1h'" in page
+        for element in ("tc-live-chart", "tc-live-legend", "tc-live-status", "tc-live-layers", "tc-live-layouts"):
+            assert page.count(f"id='{element}'") == 1 and page.count(f"id='{element}-2'") == 1
+        assert page.count("<script src=") == 2  # the library and the chart script load once for both panes
+    assert "data-tf='15m'>" in _live_section("BTCUSDT", "1h").split("id='tc-pane-2'")[1].split(">", 1)[0] + ">"

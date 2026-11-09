@@ -490,26 +490,38 @@ def _card_section(card: dict[str, Any] | None) -> str:
 
 def _live_section(symbol: str, view: str) -> str:
     """Toolbar and container of the interactive chart; tim_chart.js fills it."""
-    symbols = "".join(
-        f"<a href='/chart?symbol={item}&amp;tf={view}' class='tc-tab{' tc-tab--active' if item == symbol else ''}'"
-        f"{' aria-current=\'page\'' if item == symbol else ''} title='{_safe(SYMBOL_NAMES[item])}'>{tab_label(item)}</a>"
-        for item in SYMBOLS)
-    frames = "".join(
-        f"<a href='/chart?symbol={symbol}&amp;tf={item}' data-tf='{item}' class='tc-tab{' tc-tab--active' if item == view else ''}'"
-        f"{' aria-current=\'page\'' if item == view else ''}>{item}</a>"
-        for item in VIEW_TIMEFRAMES)
+    second = "15m" if view == "1h" else "1h"  # the second chart starts on another timeframe; the browser remembers its own
+
+    def pane(suffix: str, pane_view: str) -> str:
+        symbols = "".join(
+            f"<a href='/chart?symbol={item}&amp;tf={pane_view}' data-symbol='{item}' class='tc-tab{' tc-tab--active' if item == symbol else ''}'"
+            f"{' aria-current=\'page\'' if item == symbol else ''} title='{_safe(SYMBOL_NAMES[item])}'>{tab_label(item)}</a>"
+            for item in SYMBOLS)
+        frames = "".join(
+            f"<a href='/chart?symbol={symbol}&amp;tf={item}' data-tf='{item}' class='tc-tab{' tc-tab--active' if item == pane_view else ''}'"
+            f"{' aria-current=\'page\'' if item == pane_view else ''}>{item}</a>"
+            for item in VIEW_TIMEFRAMES)
+        split = ("<button type='button' class='tc-tab' data-action='split' aria-pressed='false' title='Zweiten Chart daneben zeigen (eigener Coin, Zeitrahmen und Layout)'>2 Charts</button>"
+                 if not suffix else "<button type='button' class='tc-tab' data-action='split' title='Zweiten Chart schließen'>Chart 2 schließen</button>")
+        head = (f"<div class='tc-pane' id='tc-pane'>" if not suffix else
+                f"<div class='tc-pane' id='tc-pane{suffix}' hidden data-symbol='{_safe(symbol)}' data-tf='{_safe(pane_view)}'>")
+        return (
+            head +
+            f"<nav class='tc-tabs' aria-label='Coin'>{symbols}<span class='tc-tabs__sep'>Zeitrahmen:</span>{frames}</nav>"
+            f"<div class='tc-live__bar'><div class='tc-live__layoutbox'><div id='tc-live-layouts{suffix}' class='tc-live__layouts' aria-label='Layout wählen'></div><details class='tc-live__edit'><summary>Layout bearbeiten (einzelne Ebenen)</summary><div id='tc-live-layers{suffix}' class='tc-live__layers' aria-label='Linien ein- und ausblenden'></div></details></div>"
+            "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Zu jetzt</button>"
+            "<button type='button' class='tc-tab' data-action='fit'>Alles zeigen</button><button type='button' class='tc-tab' data-action='footprint' title='Letzte Kerzen groß, Footprint mit Zahlen'>Footprint</button>"
+            "<span class='tc-market' role='group' aria-label='Trades für Volume Profile, Footprint und Delta'><button type='button' class='tc-tab' data-action='market' data-market='spot' title='Volume Profile, Footprint, Delta aus Spot-Trades'>Spot</button>"
+            "<button type='button' class='tc-tab' data-action='market' data-market='perp' title='Volume Profile, Footprint, Delta aus Perp-Trades (Binance Futures)'>Perp</button></span>"
+            f"<button type='button' class='tc-tab' data-action='plans'>Nur TIMs Trades</button><button type='button' class='tc-tab' data-action='none'>Alle Haken weg</button><button type='button' class='tc-tab' data-action='reset'>Linien zurücksetzen</button>{split}</div></div>"
+            f"<div class='tc-live__frame'><p id='tc-live-legend{suffix}' class='tc-live__legend'></p>"
+            f"<div id='tc-live-chart{suffix}' class='tc-live__chart' role='img' aria-label='Interaktiver Kerzenchart'></div></div>"
+            f"<p id='tc-live-status{suffix}' class='cc-note tc-live__status'>Chart lädt… (braucht JavaScript)</p></div>"
+        )
+
     return (
         f"<section class='cc-section tc-live' id='tc-live' data-keep-view='chart' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
-        f"<nav class='tc-tabs' aria-label='Coin'>{symbols}<span class='tc-tabs__sep'>Zeitrahmen:</span>{frames}</nav>"
-        "<div class='tc-live__bar'><div class='tc-live__layoutbox'><div id='tc-live-layouts' class='tc-live__layouts' aria-label='Layout wählen'></div><details class='tc-live__edit'><summary>Layout bearbeiten (einzelne Ebenen)</summary><div id='tc-live-layers' class='tc-live__layers' aria-label='Linien ein- und ausblenden'></div></details></div>"
-        "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Zu jetzt</button>"
-        "<button type='button' class='tc-tab' data-action='fit'>Alles zeigen</button><button type='button' class='tc-tab' data-action='footprint' title='Letzte Kerzen groß, Footprint mit Zahlen'>Footprint</button>"
-        "<span class='tc-market' role='group' aria-label='Trades für Volume Profile, Footprint und Delta'><button type='button' class='tc-tab' data-action='market' data-market='spot' title='Volume Profile, Footprint, Delta aus Spot-Trades'>Spot</button>"
-        "<button type='button' class='tc-tab' data-action='market' data-market='perp' title='Volume Profile, Footprint, Delta aus Perp-Trades (Binance Futures)'>Perp</button></span>"
-        "<button type='button' class='tc-tab' data-action='plans'>Nur TIMs Trades</button><button type='button' class='tc-tab' data-action='none'>Alle Haken weg</button><button type='button' class='tc-tab' data-action='reset'>Linien zurücksetzen</button></div></div>"
-        "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
-        "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='Interaktiver Kerzenchart'></div></div>"
-        "<p id='tc-live-status' class='cc-note tc-live__status'>Chart lädt… (braucht JavaScript)</p>"
+        "<div class='tc-split' id='tc-split'>" + pane("", view) + pane("-2", second) + "</div>"
         + chart_legend("de") +
         "<p class='cc-note'>Mausrad = zoomen, ziehen = verschieben, Preisachse ziehen = Höhe ändern, Doppelklick auf die Achse = zurücksetzen. "
         "Jede Linie beginnt dort, wo das Level entstanden ist (Hochs/Tiefs an ihrer Kerze, Profile am Beginn ihres Tages/ihrer Woche), "
