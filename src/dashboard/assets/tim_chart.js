@@ -136,16 +136,59 @@
   const volume = chart.addHistogramSeries({ priceScaleId: 'vol', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
   chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
 
-  // Lower bands under the candles: CVD spot vs. perp (each on its own scale, perp volume is 8-12x spot)
-  // and open interest with its 7.5-day Z-score. Lightweight Charts 4 has no panes, so each band is a
-  // price scale with its own margins; the candles move up while a band is on.
+  // Indicator windows under the chart: CVD spot vs. perp (each on its own scale, perp volume is 8-12x spot),
+  // delta, open interest with its 7.5-day Z-score, funding, premium, dominance. Lightweight Charts 4 has no
+  // panes, so the windows live in a second chart below the first one (Uzi 10.11.2026: the lines across the
+  // candles were annoying; with a zoomed price axis the old bands lay on top of the candles). Both charts share
+  // the time axis: same time points, same visible range, same width of the price axis.
+  const subBox = document.createElement('div');
+  subBox.className = 'tc-live__sub';
+  subBox.hidden = true;
+  box.after(subBox);
+  const SUB_ROW = 120;  // px per indicator window
+  const sub = LWC.createChart(subBox, {
+    autoSize: true,
+    layout: { background: { type: 'solid', color: '#0b0f16' }, textColor: '#c3cad6', fontSize: 12, attributionLogo: false },
+    grid: { vertLines: { color: 'rgba(120,134,156,0.10)' }, horzLines: { visible: false } },
+    crosshair: { mode: LWC.CrosshairMode.Normal, horzLine: { visible: false, labelVisible: false } },
+    rightPriceScale: { borderColor: 'rgba(120,134,156,0.35)' },
+    timeScale: { visible: false, rightOffset: 8 },
+    localization: { locale: LOCALE, timeFormatter: t => FULL_FMT.format(asDate(t)) },
+    handleScroll: { vertTouchDrag: false },
+  });
+  // Carries every time point of the upper chart (candles and the empty ones ahead), so bar n is the same bar in both.
+  const subGrid = sub.addLineSeries({ priceScaleId: 'grid', lineVisible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+  let aheadTimes = [];
+  function syncSubTimes() {
+    subGrid.setData((model ? model.candles.map(c => ({ time: local(c.time), value: 0 })) : []).concat(aheadTimes.map(time => ({ time, value: 0 }))));
+  }
+  function alignSub() {
+    if (subBox.hidden) return;
+    const width = chart.priceScale('right').width();
+    if (width) sub.priceScale('right').applyOptions({ minimumWidth: width });
+    const range = chart.timeScale().getVisibleLogicalRange();
+    if (range) sub.timeScale().setVisibleLogicalRange(range);
+  }
+  let subTouched = false;  // only a hand on the lower chart may move the upper one
+  for (const name of ['pointerenter', 'pointerdown', 'touchstart']) subBox.addEventListener(name, () => { subTouched = true; }, { passive: true });
+  for (const name of ['pointerleave', 'touchend', 'touchcancel']) subBox.addEventListener(name, () => { subTouched = false; }, { passive: true });
+  chart.timeScale().subscribeVisibleLogicalRangeChange(range => { if (range && !subBox.hidden) sub.timeScale().setVisibleLogicalRange(range); });
+  sub.timeScale().subscribeVisibleLogicalRangeChange(range => {  // dragging or zooming in the lower chart moves the upper one
+    const upper = chart.timeScale().getVisibleLogicalRange();
+    if (!subTouched) { if (upper && !subBox.hidden) sub.timeScale().setVisibleLogicalRange(upper); return; }  // new data must not move the upper chart
+    if (range && !subBox.hidden && (!upper || Math.abs(upper.from - range.from) > 1e-6 || Math.abs(upper.to - range.to) > 1e-6)) chart.timeScale().setVisibleLogicalRange(range);
+  });
+  chart.subscribeCrosshairMove(param => {
+    if (subBox.hidden) return;
+    if (param && param.time) sub.setCrosshairPosition(0, param.time, subGrid); else sub.clearCrosshairPosition();
+  });
   const band = { lastValueVisible: true, priceLineVisible: false, crosshairMarkerVisible: false };
-  const cvdSpot = chart.addLineSeries({ ...band, priceScaleId: 'cvd_spot', color: '#5ec8d8', lineWidth: 2, title: P.cvdSpot, visible: false });
-  const cvdPerp = chart.addLineSeries({ ...band, priceScaleId: 'cvd_perp', color: '#ffb020', lineWidth: 2, title: P.cvdPerp, visible: false });
+  const cvdSpot = sub.addLineSeries({ ...band, priceScaleId: 'cvd_spot', color: '#5ec8d8', lineWidth: 2, title: P.cvdSpot, visible: false });
+  const cvdPerp = sub.addLineSeries({ ...band, priceScaleId: 'cvd_perp', color: '#ffb020', lineWidth: 2, title: P.cvdPerp, visible: false });
   // Delta per candle of the chosen market (difference of the CVD line), with a line at ± the size 90 % of the
   // candles stay below: the candles that stick out are the ones worth a look (Uzi 09.11.2026).
   let deltaMarks = [], deltaEdge = 0;
-  const deltaBars = chart.addHistogramSeries({
+  const deltaBars = sub.addHistogramSeries({
     ...band, priceScaleId: 'delta', title: P.delta, visible: false, priceFormat: { type: 'volume' },
     autoscaleInfoProvider: original => {  // the band always holds both threshold lines, also while only small candles are in view
       const info = original();
@@ -156,29 +199,46 @@
       return info;
     },
   });
-  const oiZ = chart.addHistogramSeries({ ...band, priceScaleId: 'oi_z', title: P.oiZ, visible: false, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
-  const oiLine = chart.addLineSeries({ ...band, priceScaleId: 'oi', color: '#c3cad6', lineWidth: 1, title: P.oi, visible: false,
+  const oiZ = sub.addHistogramSeries({ ...band, priceScaleId: 'oi_z', title: P.oiZ, visible: false, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
+  const oiLine = sub.addLineSeries({ ...band, priceScaleId: 'oi', color: '#c3cad6', lineWidth: 1, title: P.oi, visible: false,
                                        priceFormat: { type: 'volume' } });
   // Second venue (issue #162): Bybit linear open interest on the same scale, so the two lines compare in BTC.
-  const oiBybit = chart.addLineSeries({ ...band, priceScaleId: 'oi', color: '#f7a35c', lineWidth: 1, title: P.oiBybit, visible: false,
+  const oiBybit = sub.addLineSeries({ ...band, priceScaleId: 'oi', color: '#f7a35c', lineWidth: 1, title: P.oiBybit, visible: false,
                                         priceFormat: { type: 'volume' } });
   // Funding (scaled to 8 h so symbols compare) and Coinbase premium (Coinbase USD vs. Binance USDT in USD), both start hidden.
-  const fundingBars = chart.addHistogramSeries({ ...band, priceScaleId: 'funding', title: P.funding, visible: false,
+  const fundingBars = sub.addHistogramSeries({ ...band, priceScaleId: 'funding', title: P.funding, visible: false,
                                                  priceFormat: { type: 'price', precision: 4, minMove: 0.0001 } });
-  const premiumLine = chart.addBaselineSeries({ ...band, priceScaleId: 'premium', title: P.premium, visible: false, baseValue: { type: 'price', price: 0 },
+  const premiumLine = sub.addBaselineSeries({ ...band, priceScaleId: 'premium', title: P.premium, visible: false, baseValue: { type: 'price', price: 0 },
                                                topLineColor: '#26a69a', topFillColor1: 'rgba(38,166,154,0.28)', topFillColor2: 'rgba(38,166,154,0.04)',
                                                bottomLineColor: '#ef5350', bottomFillColor1: 'rgba(239,83,80,0.04)', bottomFillColor2: 'rgba(239,83,80,0.28)',
                                                lineWidth: 1, priceFormat: { type: 'price', precision: 3, minMove: 0.001 } });
   // BTC and USDT dominance (daily, market-wide), each on its own scale in one band; starts hidden.
-  const domBtc = chart.addLineSeries({ ...band, priceScaleId: 'dom_btc', color: '#f7931a', lineWidth: 2, title: P.domBtc, visible: false,
+  const domBtc = sub.addLineSeries({ ...band, priceScaleId: 'dom_btc', color: '#f7931a', lineWidth: 2, title: P.domBtc, visible: false,
                                        priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
-  const domUsdt = chart.addLineSeries({ ...band, priceScaleId: 'dom_usdt', color: '#26a17b', lineWidth: 2, title: P.domUsdt, visible: false,
+  const domUsdt = sub.addLineSeries({ ...band, priceScaleId: 'dom_usdt', color: '#26a17b', lineWidth: 2, title: P.domUsdt, visible: false,
                                         priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
   // Upcoming CPI/FOMC dates after the last candle: empty (whitespace) candles to the right keep the time
   // axis evenly spaced, an invisible line carries the markers at the last price.
   const ahead = chart.addLineSeries({ lineVisible: false, lastValueVisible: false, priceLineVisible: false,
                                       crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
-  const BAND = 0.15;
+  // Thin lines between the indicator windows of the lower chart.
+  const subLines = {
+    lines: 0,
+    updateAllViews() {},
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return { draw(target) {
+          target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+            ctx.fillStyle = 'rgba(120,134,156,0.35)';
+            for (let i = 0; i < subLines.lines; i += 1) ctx.fillRect(0, Math.round(i * mediaSize.height / subLines.lines), mediaSize.width, 1);
+          });
+        } };
+      },
+    },
+  };
+  subGrid.attachPrimitive(subLines);
   const BAND_SCALES = { cvd: ['cvd_spot', 'cvd_perp'], delta: ['delta'], oi: ['oi', 'oi_z'], funding: ['funding'], premium: ['premium'], dominance: ['dom_btc', 'dom_usdt'] };
   const bandHasData = key => {
     if (key === 'delta') return deltaSource().length > 1;
@@ -194,12 +254,16 @@
   };
   function layoutBands(groups) {
     const shown = ['delta', 'cvd', 'oi', 'funding', 'premium', 'dominance'].filter(key => groups.has(key) && bandHasData(key));
-    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.06, bottom: 0.18 + BAND * shown.length } });
+    // One window of SUB_ROW px per shown indicator, stacked in the lower chart; the candles keep their full height.
+    subBox.hidden = !shown.length;
+    subBox.style.height = shown.length * SUB_ROW + 'px';
+    const share = 1 / Math.max(1, shown.length);
     shown.forEach((key, index) => {
-      const top = 0.82 - BAND * (shown.length - index) + 0.01;
-      const margins = { top, bottom: 1 - top - BAND + 0.02 };
-      for (const id of BAND_SCALES[key]) chart.priceScale(id).applyOptions({ scaleMargins: margins, visible: false });
+      const margins = { top: index * share + 0.12 * share, bottom: 1 - (index + 1) * share + 0.08 * share };
+      for (const id of BAND_SCALES[key]) sub.priceScale(id).applyOptions({ scaleMargins: margins, visible: false });
     });
+    subLines.lines = shown.length;
+    setTimeout(alignSub, 0); setTimeout(alignSub, 120);  // after the lower chart took its new size
     deltaBars.applyOptions({ visible: shown.includes('delta') });
     cvdSpot.applyOptions({ visible: shown.includes('cvd') });
     cvdPerp.applyOptions({ visible: shown.includes('cvd') });
@@ -213,11 +277,13 @@
   }
   function drawBands() {
     const cvd = (model && model.cvd) || { spot: [], perp: [] };
-    cvdSpot.setData(cvd.spot.map(([t, v]) => ({ time: local(t), value: v })));
-    cvdPerp.setData(cvd.perp.map(([t, v]) => ({ time: local(t), value: v })));
+    // Only candle times: an extra time point would shift the bars of the lower chart against the upper one.
+    const known = new Set(model ? model.candles.map(c => c.time) : []);
+    cvdSpot.setData(cvd.spot.filter(([t]) => known.has(t)).map(([t, v]) => ({ time: local(t), value: v })));
+    cvdPerp.setData(cvd.perp.filter(([t]) => known.has(t)).map(([t, v]) => ({ time: local(t), value: v })));
     const source = deltaSource(), deltas = [];
     for (let i = 1; i < source.length; i += 1) deltas.push([source[i][0], source[i][1] - source[i - 1][1]]);
-    deltaBars.setData(deltas.map(([t, v]) => ({ time: local(t), value: v, color: v >= 0 ? 'rgba(91,124,250,0.9)' : 'rgba(244,122,106,0.9)' })));
+    deltaBars.setData(deltas.filter(([t]) => known.has(t)).map(([t, v]) => ({ time: local(t), value: v, color: v >= 0 ? 'rgba(91,124,250,0.9)' : 'rgba(244,122,106,0.9)' })));
     for (const mark of deltaMarks) deltaBars.removePriceLine(mark);
     deltaMarks = [];
     const sizes = deltas.map(([, v]) => Math.abs(v)).sort((a, b) => a - b);
@@ -576,10 +642,13 @@
   // Two ways to draw the footprint. 'delta' (Uzi 09.11.2026: "die perfekte Footprint-Darstellung"):
   // a slim candle and, per price row, one bar to the right, long = much delta, blue =
   // more market buys, red = more market sells. 'cells': heat columns and bid × ask numbers as before.
+  // 'profile' (Uzi 10.11.2026, "Footprint profile"): the same slim candle, but each bar is the volume
+  // traded at that price (a small volume profile per candle), red part = market sells, blue = market buys.
+  const FP_STYLES = ['cells', 'delta', 'profile'];
   const FP_STYLE = 'tim-chart-fp-style-v1' + PANE;
-  let fpStyle = (() => { try { return localStorage.getItem(FP_STYLE) === 'delta' ? 'delta' : 'cells'; } catch (error) { return 'cells'; } })();
+  let fpStyle = (() => { try { const saved = localStorage.getItem(FP_STYLE); return FP_STYLES.includes(saved) ? saved : 'cells'; } catch (error) { return 'cells'; } })();
   function setFpStyle(style) {
-    fpStyle = style === 'delta' ? 'delta' : 'cells';
+    fpStyle = FP_STYLES.includes(style) ? style : 'cells';
     try { localStorage.setItem(FP_STYLE, fpStyle); } catch (error) { /* ignore */ }
     if (fp.requestUpdate) fp.requestUpdate();
   }
@@ -590,7 +659,9 @@
       const x = scale.timeToCoordinate(local(bar.time));
       if (x === null || x < -barWidth || x > mediaSize.width + barWidth) continue;
       const { size, rows } = fpRows(bar, step, k);
+      const profile = fpStyle === 'profile';
       const maxDelta = Math.max(...rows.map(r => Math.abs(r.ask - r.bid)), 1e-12);
+      const maxVolume = Math.max(...rows.map(r => r.ask + r.bid), 1e-12);
       const candle = fp.byTime.get(bar.time);
       const up = candle ? candle.close >= candle.open : bar.delta >= 0;
       const left = x - half, room = 2 * half - 5;
@@ -613,9 +684,20 @@
         if (yTop === null || yBottom === null) continue;
         const delta = row.ask - row.bid;
         const height = Math.max(1, yBottom - yTop - (yBottom - yTop > 3 ? 1 : 0));
-        const share = Math.abs(delta) / maxDelta;
-        ctx.fillStyle = `rgba(${delta >= 0 ? '91,124,250' : '244,122,106'},${(0.35 + 0.65 * share).toFixed(3)})`;
-        ctx.fillRect(left + 5, yTop, Math.max(1, room * share), height);
+        if (profile) {  // length = volume at this price; sells (hit the bid) first, buys (lifted the ask) after
+          const total = row.ask + row.bid;
+          const width = Math.max(1, room * total / maxVolume);
+          const sells = total > 0 ? width * row.bid / total : 0;
+          const alpha = row.poc ? 1 : 0.7;
+          ctx.fillStyle = `rgba(244,122,106,${alpha})`;
+          ctx.fillRect(left + 5, yTop, sells, height);
+          ctx.fillStyle = `rgba(91,124,250,${alpha})`;
+          ctx.fillRect(left + 5 + sells, yTop, width - sells, height);
+        } else {
+          const share = Math.abs(delta) / maxDelta;
+          ctx.fillStyle = `rgba(${delta >= 0 ? '91,124,250' : '244,122,106'},${(0.35 + 0.65 * share).toFixed(3)})`;
+          ctx.fillRect(left + 5, yTop, Math.max(1, room * share), height);
+        }
         if (row.poc && barWidth >= 14) {  // most traded row: dotted line across the bar
           ctx.strokeStyle = 'rgba(195,202,214,0.7)'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
           ctx.beginPath(); ctx.moveTo(left + 5, yTop + height / 2); ctx.lineTo(left + 5 + room, yTop + height / 2); ctx.stroke();
@@ -656,7 +738,7 @@
               const y1 = fp.series.priceToCoordinate((model.last || model.footprint.bars[model.footprint.bars.length - 1].poc) + step);
               if (y0 === null || y1 === null) return;
               const perStep = Math.max(1e-6, Math.abs(y0 - y1));
-              if (fpStyle === 'delta') { drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep); return; }
+              if (fpStyle !== 'cells') { drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep); return; }
               const pick = need => FP.merges.find(k => k * perStep >= need) || FP.merges[FP.merges.length - 1];
               const numbers = barWidth >= FP.numberWidth;
               const k = pick(numbers ? FP.numberRow : FP.heatRow);
@@ -1113,12 +1195,12 @@
   const L = EN
     ? { label: 'Layout', tim: 'TIM layouts (each with levels and structure)', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
         ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
-        fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
+        fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', fpProfile: 'Footprint: profile', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
         standard: 'TIM standard', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
         vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades" }
     : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
-        fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
+        fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', fpProfile: 'Footprint: Profil', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
         standard: 'TIM Standard', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
         vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
@@ -1200,7 +1282,7 @@
       node.addEventListener('click', handler);
       layoutBox.append(node);
     };
-    button(fpStyle === 'delta' ? L.fpDelta : L.fpCells, () => { setFpStyle(fpStyle === 'delta' ? 'cells' : 'delta'); layoutChanged(); buildLayouts(); });
+    button({ delta: L.fpDelta, profile: L.fpProfile }[fpStyle] || L.fpCells, () => { setFpStyle(FP_STYLES[(FP_STYLES.indexOf(fpStyle) + 1) % FP_STYLES.length]); layoutChanged(); buildLayouts(); });
     button(L.save, saveLayoutAs);
     button(L.rename, renameLayout, active.startsWith('own:'));
     button(L.remove, removeLayout, active.startsWith('own:'));
@@ -1378,13 +1460,14 @@
     // otherwise ticking a layer (or "Untick all") jumps the chart days back.
     const view = chart.timeScale().getVisibleLogicalRange();
     const keepView = () => { if (view) chart.timeScale().setVisibleLogicalRange(view); };
-    if (!events.length || !step || !last) { ahead.setMarkers([]); ahead.setData([]); keepView(); return; }
+    if (!events.length || !step || !last) { ahead.setMarkers([]); ahead.setData([]); aheadTimes = []; syncSubTimes(); keepView(); return; }
     const at = new Set(events.map(ev => ev.time));
     const points = [];
     for (let t = last.time + step; t <= events[events.length - 1].time; t += step) {
       points.push(at.has(t) ? { time: local(t), value: last.close } : { time: local(t) });
     }
     ahead.setData(points);
+    aheadTimes = points.map(point => point.time); syncSubTimes();
     keepView();
     ahead.setMarkers(events.map(ev => ({ time: local(ev.time), position: 'aboveBar', color: '#8491a3', shape: 'square', size: 0.6,
                                          text: macroText(ev) })));
@@ -1489,6 +1572,7 @@
       buildLayers();
       candles.setData(model.candles.map(c => ({ time: local(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
       volume.setData(model.candles.map(c => ({ time: local(c.time), value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)' })));
+      syncSubTimes();
       drawLines();
       drawBands();
       showMarket();
