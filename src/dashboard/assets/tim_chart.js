@@ -955,6 +955,139 @@
     } catch (error) { /* ignore */ }
   }
 
+  // Layouts (Uzi 09.11.2026: indicators only sorted in named layouts, like a workspace). A layout names the
+  // layers and, if it wants, coin, timeframe and spot/perp. TIM's layouts ship with the page; own layouts
+  // live in this browser only (localStorage), like the ticks before.
+  const LAYOUT_STORE = 'tim-chart-layouts-v1';
+  const LAYOUT_ACTIVE = 'tim-chart-layout-active-v1';
+  const layoutBox = document.getElementById('tc-live-layouts');
+  const L = EN
+    ? { label: 'Layout', tim: 'TIM layouts', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
+        ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
+        standard: 'TIM standard', orderflow: 'Broncx orderflow (BTC 15m perp)', levels: 'Levels', structure: 'Structure', macro: 'Macro', trades: "Only TIM's trades" }
+    : { label: 'Layout', tim: 'TIM-Layouts', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
+        ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
+        standard: 'TIM Standard', orderflow: 'Broncx Orderflow (BTC 15m Perp)', levels: 'Level', structure: 'Struktur', macro: 'Makro', trades: 'Nur TIMs Trades' };
+  // groups: null = the server's default layers.
+  const TIM_LAYOUTS = [
+    { id: 'tim:standard', name: L.standard, groups: null },
+    { id: 'tim:orderflow', name: L.orderflow, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
+    { id: 'tim:levels', name: L.levels, groups: ['day', 'week', 'month', 'naked', 'vwap', 'vwap_bands'] },
+    { id: 'tim:structure', name: L.structure, groups: ['structure', 'trend', 'fib'] },
+    { id: 'tim:macro', name: L.macro, groups: ['funding', 'premium', 'dominance', 'macro'] },
+    { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
+  ];
+  function ownLayouts() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAYOUT_STORE) || '[]');
+      return Array.isArray(saved) ? saved.filter(item => item && typeof item.name === 'string' && Array.isArray(item.groups)) : [];
+    } catch (error) { return []; }
+  }
+  function storeOwn(list) { try { localStorage.setItem(LAYOUT_STORE, JSON.stringify(list)); } catch (error) { /* ignore */ } }
+  // Nothing stored yet: a first visit shows the standard layout, a visitor with ticks from before the layouts has "changed".
+  function activeLayout() {
+    try {
+      const id = localStorage.getItem(LAYOUT_ACTIVE);
+      if (id === null) return localStorage.getItem(STORE) === null ? 'tim:standard' : '';
+      return id === '-' ? '' : id;
+    } catch (error) { return 'tim:standard'; }
+  }
+  function setActiveLayout(id) { try { localStorage.setItem(LAYOUT_ACTIVE, id || '-'); } catch (error) { /* ignore */ } }
+  function findLayout(id) {
+    if (id.startsWith('own:')) { const own = ownLayouts().find(item => item.name === id.slice(4)); return own ? { ...own, id } : null; }
+    return TIM_LAYOUTS.find(item => item.id === id) || null;
+  }
+  function buildLayouts() {
+    if (!layoutBox) return;
+    const active = activeLayout();
+    layoutBox.textContent = '';
+    const caption = document.createElement('label');
+    caption.textContent = L.label + ' ';
+    const select = document.createElement('select');
+    select.id = 'tc-live-layout';
+    const add = (parent, value, text) => {
+      const option = document.createElement('option');
+      option.value = value; option.textContent = text; option.selected = value === active;
+      parent.append(option);
+    };
+    if (!findLayout(active)) add(select, '', '– ' + L.changed + ' –');
+    const tim = document.createElement('optgroup'); tim.label = L.tim;
+    for (const item of TIM_LAYOUTS) add(tim, item.id, item.name);
+    select.append(tim);
+    const own = ownLayouts();
+    if (own.length) {
+      const mine = document.createElement('optgroup'); mine.label = L.own;
+      for (const item of own) add(mine, 'own:' + item.name, item.name);
+      select.append(mine);
+    }
+    select.addEventListener('change', () => { if (select.value) applyLayout(select.value); });
+    caption.append(select);
+    layoutBox.append(caption);
+    const button = (text, handler, enabled = true) => {
+      const node = document.createElement('button');
+      node.type = 'button'; node.className = 'tc-tab'; node.textContent = text; node.disabled = !enabled;
+      node.addEventListener('click', handler);
+      layoutBox.append(node);
+    };
+    button(L.save, saveLayoutAs);
+    button(L.rename, renameLayout, active.startsWith('own:'));
+    button(L.remove, removeLayout, active.startsWith('own:'));
+  }
+  // A changed tick leaves the named layout: the menu then says so until the view is saved under a name.
+  function layoutChanged() { if (activeLayout()) { setActiveLayout(''); buildLayouts(); } }
+  function applyLayout(id) {
+    const layout = findLayout(id);
+    if (!layout || !model) return;
+    const all = new Set(Object.keys(model.groups));
+    const groups = new Set((layout.groups || model.default_groups).filter(key => all.has(key)));
+    saveGroups(groups);
+    setActiveLayout(id);
+    const nextMarket = layout.market && layout.market !== market ? layout.market : null;
+    if (nextMarket) { market = nextMarket; try { localStorage.setItem(MARKET_STORE, market); } catch (error) { /* ignore */ } }
+    const url = new URL(location.href);
+    if (layout.symbol && layout.symbol !== symbol) {  // another coin is another page (the coin tabs are links)
+      url.searchParams.set('symbol', layout.symbol);
+      url.searchParams.set('tf', layout.tf || timeframe);
+      location.href = url.toString();
+      return;
+    }
+    layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
+    applyVisibility(groups);
+    buildLayouts();
+    const tab = layout.tf && layout.tf !== timeframe ? root.querySelector(`a[data-tf='${layout.tf}']`) : null;
+    if (tab) tab.click(); else if (nextMarket) { showMarket(); load(); }
+  }
+  function askName(preset) {
+    const name = (window.prompt(L.ask, preset || '') || '').trim().slice(0, 40);
+    if (!name) return '';
+    if (TIM_LAYOUTS.some(item => item.name === name)) { window.alert(L.taken); return ''; }
+    return name;
+  }
+  function saveLayoutAs() {
+    const active = activeLayout();
+    const name = askName(active.startsWith('own:') ? active.slice(4) : '');
+    if (!name) return;
+    const layout = { name, symbol, tf: timeframe, market, groups: [...shownGroups()] };
+    storeOwn(ownLayouts().filter(item => item.name !== name).concat([layout]));
+    setActiveLayout('own:' + name);
+    buildLayouts();
+  }
+  function renameLayout() {
+    const old = activeLayout().slice(4);
+    const name = askName(old);
+    if (!name || name === old) return;
+    storeOwn(ownLayouts().filter(item => item.name !== name).map(item => (item.name === old ? { ...item, name } : item)));
+    setActiveLayout('own:' + name);
+    buildLayouts();
+  }
+  function removeLayout() {
+    const name = activeLayout().slice(4);
+    if (!window.confirm(L.confirm(name))) return;
+    storeOwn(ownLayouts().filter(item => item.name !== name));
+    setActiveLayout('');
+    buildLayouts();
+  }
+
   function buildLayers() {
     if (!model || layers.dataset.built) return;
     const groups = shownGroups();
@@ -965,12 +1098,13 @@
       input.type = 'checkbox'; input.value = key; input.checked = groups.has(key);
       input.addEventListener('change', () => {
         const now = new Set([...layers.querySelectorAll('input:checked')].map(node => node.value));
-        saveGroups(now); applyVisibility(now);
+        saveGroups(now); applyVisibility(now); layoutChanged();
       });
       label.append(input, document.createTextNode(' ' + name));
       layers.append(label);
     }
     layers.dataset.built = '1';
+    buildLayouts();
   }
 
   // TIM's paper plans. A running or waiting plan shows entry (blue, dashed while waiting), stop (red)
@@ -1225,20 +1359,20 @@
       // Only TIM's current paper plans (SHORT, MID, LONG) on the candles: levels and the 30m test versions off.
       const groups = new Set(Object.keys(model ? model.groups : {}).filter(key => key.startsWith('plans_') && key !== 'plans_old'));
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
-      saveGroups(groups); applyVisibility(groups);
+      saveGroups(groups); applyVisibility(groups); setActiveLayout('tim:trades'); buildLayouts();
     }
     if (action.dataset.action === 'none') {
       // Every tick off: only the candles stay.
       const groups = new Set();
       layers.querySelectorAll('input').forEach(node => { node.checked = false; });
-      saveGroups(groups); applyVisibility(groups);
+      saveGroups(groups); applyVisibility(groups); layoutChanged();
     }
     if (action.dataset.action === 'footprint' && model) {  // the last candles, about 70 px each: room for bid × ask numbers
       const count = model.candles.length;
       const shown = Math.max(3, Math.floor((box.clientWidth - 80) / 70));  // 80 px: price axis
       chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - shown), to: count + 1 });
       if (!fp.visible) {
-        const groups = shownGroups(); groups.add('fp'); saveGroups(groups); applyVisibility(groups);
+        const groups = shownGroups(); groups.add('fp'); saveGroups(groups); applyVisibility(groups); layoutChanged();
         const input = layers.querySelector("input[value='fp']"); if (input) input.checked = true;
       }
     }
@@ -1246,7 +1380,7 @@
       try { localStorage.removeItem(KNOWN); } catch (error) { /* ignore */ }
       const groups = new Set(model ? model.default_groups : []);
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
-      applyVisibility(groups); }
+      applyVisibility(groups); setActiveLayout('tim:standard'); buildLayouts(); }
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); else clearTimeout(timer); });
   load();

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError
@@ -359,3 +360,21 @@ def test_open_tab_reloads_once_when_the_server_runs_a_newer_script():
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
     assert "if (reloadOnNewVersion(next.app_version)) return;" in script
     assert "sessionStorage.getItem('tim-chart-reloaded') === version" in script  # one reload per version, no loop
+
+
+def test_layers_are_sorted_in_named_layouts():
+    """Uzi 09.11.2026: indicators only in named layouts. TIM's layouts name layers the server knows;
+    own layouts stay in the browser; the single ticks sit folded under the layout menu."""
+    from src.dashboard.pages.chart import _live_section
+
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    block = script[script.index("const TIM_LAYOUTS = ["):script.index("function ownLayouts()")]
+    ids = re.findall(r"id: '(tim:[a-z]+)'", block)
+    assert ids == ["tim:standard", "tim:orderflow", "tim:levels", "tim:structure", "tim:macro", "tim:trades"]
+    named = set(re.findall(r"'([a-z_]+)'", "".join(re.findall(r"groups: \[([^\]]*)\]", block))))
+    assert named and named <= set(chart_live.GROUP_NAMES)  # no layout names a layer the chart does not have
+    assert "symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi']" in block
+    assert "tim-chart-layouts-v1" in script and "saveGroups(now); applyVisibility(now); layoutChanged();" in script
+    html = _live_section("BTCUSDT", "30m")
+    assert "id='tc-live-layouts'" in html
+    assert html.index("<details class='tc-live__edit'>") < html.index("id='tc-live-layers'") < html.index("</details>")

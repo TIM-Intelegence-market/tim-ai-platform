@@ -501,7 +501,7 @@ def _live_section(symbol: str, view: str) -> str:
     return (
         f"<section class='cc-section tc-live' id='tc-live' data-keep-view='chart' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
         f"<nav class='tc-tabs' aria-label='Coin'>{symbols}<span class='tc-tabs__sep'>Zeitrahmen:</span>{frames}</nav>"
-        "<div class='tc-live__bar'><div id='tc-live-layers' class='tc-live__layers' aria-label='Linien ein- und ausblenden'></div>"
+        "<div class='tc-live__bar'><div class='tc-live__layoutbox'><div id='tc-live-layouts' class='tc-live__layouts' aria-label='Layout wählen'></div><details class='tc-live__edit'><summary>Layout bearbeiten (einzelne Ebenen)</summary><div id='tc-live-layers' class='tc-live__layers' aria-label='Linien ein- und ausblenden'></div></details></div>"
         "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Zu jetzt</button>"
         "<button type='button' class='tc-tab' data-action='fit'>Alles zeigen</button><button type='button' class='tc-tab' data-action='footprint' title='Letzte Kerzen groß, Footprint mit Zahlen'>Footprint</button>"
         "<span class='tc-market' role='group' aria-label='Trades für Volume Profile, Footprint und Delta'><button type='button' class='tc-tab' data-action='market' data-market='spot' title='Volume Profile, Footprint, Delta aus Spot-Trades'>Spot</button>"
