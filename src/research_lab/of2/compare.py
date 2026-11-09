@@ -6,11 +6,16 @@
    strategy, same direction, same session window, same stop distance in percent, same target in R and the
    same time frame for the time stop; entry minute drawn uniformly from the minutes of the section in that
    session. Tracked with the same Tracker on a second streaming pass. Fixed seed.
+
+``run_random_parallel`` splits the random strategies by draw across worker processes. Pseudo trades never
+interact (the Tracker keeps every signal on its own), so the per-strategy means are the same as one pass.
 """
 from __future__ import annotations
 
+import multiprocessing
 import random
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from datetime import date, timedelta
 
 from src.research_lab.of2.backtest import Tracker, Trade
@@ -82,6 +87,31 @@ def run_random(loader: DayLoader, first: date, last: date, pseudo: Sequence[Sign
             trades.extend(tracker.push(bar))
         day += timedelta(days=1)
     return trades
+
+
+def _run_chunk(loader_factory: Callable[[], DayLoader], first: date, last: date, pseudo: Sequence[Signal],
+               cfg: Config, costs: CostModel) -> list[Trade]:
+    return run_random(loader_factory(), first, last, pseudo, cfg, costs)
+
+
+def run_random_parallel(loader_factory: Callable[[], DayLoader], first: date, last: date, pseudo: Sequence[Signal],
+                        cfg: Config, workers: int = 1, costs: CostModel = BASE_COSTS) -> list[Trade]:
+    """``run_random`` with the draws spread over ``workers`` processes (draw d goes to chunk d % workers).
+
+    ``loader_factory`` must be picklable (a module-level function or a ``functools.partial`` of one); every
+    worker builds its own loader. ``workers <= 1`` runs in this process.
+    """
+    if workers <= 1:
+        return run_random(loader_factory(), first, last, pseudo, cfg, costs)
+    chunks: list[list[Signal]] = [[] for _ in range(workers)]
+    for s in pseudo:
+        chunks[int(s.level) % workers].append(s)
+    chunks = [c for c in chunks if c]
+    ctx = multiprocessing.get_context("fork" if "fork" in multiprocessing.get_all_start_methods() else "spawn")
+    with ProcessPoolExecutor(max_workers=len(chunks), mp_context=ctx) as pool:
+        parts = list(pool.map(_run_chunk, [loader_factory] * len(chunks), [first] * len(chunks), [last] * len(chunks),
+                              chunks, [cfg] * len(chunks), [costs] * len(chunks)))
+    return [t for part in parts for t in part]
 
 
 def strategy_means(trades: Iterable[Trade]) -> dict[int, float]:
