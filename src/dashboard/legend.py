@@ -93,6 +93,8 @@ LAYERS: dict[str, list[Mark]] = {
         (("dot", "rgba(38,200,140,0.30)", BUY, False), "große Market Order Käufer, Binance (grün gefüllt)", "Large market buy order, Binance (filled green)"),
         (("dot", "rgba(239,83,80,0.30)", SELL, False), "große Market Order Verkäufer, Binance (rot gefüllt)", "Large market sell order, Binance (filled red)"),
         (("dot", "none", BUY, True), "hohl mit gestricheltem Ring = Bybit (nur Perp)", "Hollow with dashed ring = Bybit (perp only)"),
+        (("dot", "rgba(38,200,140,0.55)", "#e8ecf3", False), "weißer Ring = absorbiert: die Kerze schloss gegen die Order (Kauf, Schluss darunter; Verkauf, Schluss darüber)",
+         "White ring = absorbed: the candle closed against the order (buy, close below; sell, close above)"),
         (("text", "#e8edf5", "12"), "Fläche = Größe gegenüber der größten im Bild, Zahl = Größe in BTC; ab 100.000 $", "Area = size against the largest in view, number = size in BTC; from 100,000 $"),
     ],
     "plans_short": [(("line", PLAN_ENTRY, "solid"), "Pläne der 15m-Regel (SHORT-Horizont), Zeichen wie unten", "Plans of the 15m rule (SHORT horizon), marks as below")],

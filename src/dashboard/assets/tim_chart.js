@@ -94,7 +94,7 @@
   const cvdSpot = chart.addLineSeries({ ...band, priceScaleId: 'cvd_spot', color: '#5ec8d8', lineWidth: 2, title: P.cvdSpot, visible: false });
   const cvdPerp = chart.addLineSeries({ ...band, priceScaleId: 'cvd_perp', color: '#ffb020', lineWidth: 2, title: P.cvdPerp, visible: false });
   // Delta per candle of the chosen market (difference of the CVD line), with a line at ± the size 90 % of the
-  // candles stay below: the candles that stick out are the ones worth a look (Uzi 09.11.2026, MMT "Delta Volume").
+  // candles stay below: the candles that stick out are the ones worth a look (Uzi 09.11.2026).
   let deltaMarks = [], deltaEdge = 0;
   const deltaBars = chart.addHistogramSeries({
     ...band, priceScaleId: 'delta', title: P.delta, visible: false, priceFormat: { type: 'volume' },
@@ -524,8 +524,8 @@
     }
     return { size, rows, stacks };
   }
-  // Two ways to draw the footprint. 'delta' (Uzi 09.11.2026: "die perfekte Footprint-Darstellung", MMT
-  // "Footprint Delta"): a slim candle and, per price row, one bar to the right, long = much delta, blue =
+  // Two ways to draw the footprint. 'delta' (Uzi 09.11.2026: "die perfekte Footprint-Darstellung"):
+  // a slim candle and, per price row, one bar to the right, long = much delta, blue =
   // more market buys, red = more market sells. 'cells': heat columns and bid × ask numbers as before.
   const FP_STYLE = 'tim-chart-fp-style-v1';
   let fpStyle = (() => { try { return localStorage.getItem(FP_STYLE) === 'delta' ? 'delta' : 'cells'; } catch (error) { return 'cells'; } })();
@@ -705,7 +705,15 @@
   // Volume bubbles: large market orders from TIM's trades (one taker order = aggTrades of the same
   // millisecond and side). Circle at the order's time inside its candle and its average price; area
   // follows the order size against the largest in view; green = aggressive buyer, red = aggressive seller.
-  const BUBBLE = { minR: 2.5, maxR: 22, labelR: 11, pxPer: 14, minCount: 20 };
+  // Absorbed (Uzi 09.11.2026: the bubbles were too large and did not show absorption): the candle closed
+  // against the order (a big buy, close below its price; a big sell, close above). Those get a white ring,
+  // the others stay faint. Only finished candles are judged; it is a reading of the candle, not a proof.
+  const BUBBLE = { minR: 2, maxR: 11, labelR: 9, pxPer: 14, minCount: 20 };
+  const absorbed = item => {
+    const candle = fp.byTime.get(item.bar);
+    if (!candle || !model || candle.time === model.candles[model.candles.length - 1].time) return false;
+    return item.side > 0 ? candle.close < item.price : candle.close > item.price;
+  };
   const bubbles = {
     chart: null, series: null, requestUpdate: null, visible: true,
     attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
@@ -751,13 +759,18 @@
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, Math.PI * 2);
                 const bybit = item.venue === 'bybit';  // second venue (issue #162): hollow, dashed ring
-                ctx.fillStyle = bybit ? 'rgba(11,15,22,0.35)' : buy ? 'rgba(38,200,140,0.30)' : 'rgba(239,83,80,0.30)';
+                const held = absorbed(item);
+                ctx.fillStyle = bybit ? 'rgba(11,15,22,0.35)' : buy ? `rgba(38,200,140,${held ? 0.55 : 0.18})` : `rgba(239,83,80,${held ? 0.55 : 0.18})`;
                 ctx.fill();
-                ctx.lineWidth = 1.2;
+                ctx.lineWidth = 1;
                 ctx.setLineDash(bybit ? [3, 2] : []);
-                ctx.strokeStyle = buy ? 'rgba(38,220,150,0.95)' : 'rgba(255,92,88,0.95)';
+                ctx.strokeStyle = buy ? `rgba(38,220,150,${held ? 0.95 : 0.55})` : `rgba(255,92,88,${held ? 0.95 : 0.55})`;
                 ctx.stroke();
                 ctx.setLineDash([]);
+                if (held) {  // white ring: the market took this order and closed against it
+                  ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+                  ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(232,236,243,0.95)'; ctx.stroke();
+                }
                 if (r >= BUBBLE.labelR) {
                   ctx.fillStyle = '#e8edf5';
                   ctx.fillText(item.quantity >= 100 ? item.quantity.toFixed(0) : item.quantity.toFixed(1), x, y);
@@ -1052,12 +1065,12 @@
     ? { label: 'Layout', tim: 'TIM layouts (each with levels and structure)', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
         ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
         fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
-        standard: 'TIM standard', broncx: 'Broncx orderflow (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
+        standard: 'TIM standard', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
         vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades" }
     : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
         fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
-        standard: 'TIM Standard', broncx: 'Broncx Orderflow (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
+        standard: 'TIM Standard', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
         vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
@@ -1083,7 +1096,7 @@
     { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
     { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
     { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
-    { id: 'tim:broncx', name: L.broncx, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
+    { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
     { id: 'tim:standard', name: L.standard, groups: null },
   ];
   function ownLayouts() {
