@@ -377,10 +377,20 @@ def test_layers_are_sorted_in_named_layouts():
     assert "layout.groups ? BASE.concat(layout.groups) : model.default_groups" in script
     layouts = script[script.index("const TIM_LAYOUTS = ["):script.index("function ownLayouts()")]
     assert re.findall(r"id: '(tim:[a-z]+)'", layouts) == ["tim:orderflow", "tim:footprint", "tim:tpo", "tim:vp", "tim:positioning",
-                                                          "tim:macro", "tim:trades", "tim:broncx", "tim:standard"]
+                                                          "tim:macro", "tim:trades", "tim:pro", "tim:standard"]
     used = set(re.findall(r"'([a-z_]+)'", "".join(re.findall(r"groups: \[([^\]]*)\]", layouts))))
     assert used <= set(chart_live.GROUP_NAMES)
+    # The footprint layout follows Uzi's reference (MMT "Footprint Delta"): delta bars per price row, delta per candle, open interest.
+    assert "id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi']" in layouts
+    assert "if (fpStyle === 'delta') { drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep); return; }" in script
+    assert "delta" in chart_live.GROUP_NAMES and "delta" not in chart_live.DEFAULT_GROUPS
     assert "tim-chart-layouts-v1" in script and "saveGroups(now); applyVisibility(now); layoutChanged();" in script
     html = _live_section("BTCUSDT", "30m")
     assert "id='tc-live-layouts'" in html
     assert html.index("<details class='tc-live__edit'>") < html.index("id='tc-live-layers'") < html.index("</details>")
+
+
+def test_chart_script_names_no_third_party_trader():
+    """Uzi 09.11.2026: the name must not show anywhere on /chart."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "broncx" not in script.lower() and "bronxc" not in script.lower()

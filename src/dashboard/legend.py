@@ -93,6 +93,8 @@ LAYERS: dict[str, list[Mark]] = {
         (("dot", "rgba(38,200,140,0.30)", BUY, False), "große Market Order Käufer, Binance (grün gefüllt)", "Large market buy order, Binance (filled green)"),
         (("dot", "rgba(239,83,80,0.30)", SELL, False), "große Market Order Verkäufer, Binance (rot gefüllt)", "Large market sell order, Binance (filled red)"),
         (("dot", "none", BUY, True), "hohl mit gestricheltem Ring = Bybit (nur Perp)", "Hollow with dashed ring = Bybit (perp only)"),
+        (("dot", "rgba(38,200,140,0.55)", "#e8ecf3", False), "weißer Ring = absorbiert: die Kerze schloss gegen die Order (Kauf, Schluss darunter; Verkauf, Schluss darüber)",
+         "White ring = absorbed: the candle closed against the order (buy, close below; sell, close above)"),
         (("text", "#e8edf5", "12"), "Fläche = Größe gegenüber der größten im Bild, Zahl = Größe in BTC; ab 100.000 $", "Area = size against the largest in view, number = size in BTC; from 100,000 $"),
     ],
     "plans_short": [(("line", PLAN_ENTRY, "solid"), "Pläne der 15m-Regel (SHORT-Horizont), Zeichen wie unten", "Plans of the 15m rule (SHORT horizon), marks as below")],
@@ -118,6 +120,10 @@ LAYERS: dict[str, list[Mark]] = {
     "cvd": [
         (("line", "#5ec8d8", "solid"), "CVD Spot (hellblau): laufende Summe des Deltas", "CVD spot (light blue): running sum of delta"),
         (("line", "#ffb020", "solid"), "CVD Perp (orange); Spot und Perp nie addiert", "CVD perp (orange); spot and perp never added"),
+    ],
+    "delta": [
+        (("line", "#5b7cfa", "solid"), "Delta je Kerze: blau = mehr Marktkäufe, rot = mehr Marktverkäufe", "Delta per candle: blue = more market buys, red = more market sells"),
+        (("line", "#e8ecf3", "solid"), "weiße Linien = Schwelle für ungewöhnlich großes Delta (90 % der Kerzen liegen darunter)", "White lines = threshold for unusually large delta (90% of candles stay below)"),
     ],
     "oi": [
         (("line", "#c3cad6", "solid"), "Open Interest Binance (grau), Band unter dem Chart", "Open interest Binance (grey), band below the chart"),

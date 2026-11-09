@@ -96,7 +96,7 @@ GROUP_NAMES = {
     "gamma": "Options-Gamma (Deribit)",
     "liq": "Liquidations-Heatmap (Schätzung)",
     "liqev": "Liquidationen (echt, Binance + Bybit)",
-    "cvd": "CVD Spot vs. Perp", "oi": "Open Interest je Börse (Binance, Bybit) + Z-Score (7,5 T)",
+    "cvd": "CVD Spot vs. Perp", "delta": "Delta Volume je Kerze (gewählter Markt)", "oi": "Open Interest je Börse (Binance, Bybit) + Z-Score (7,5 T)",
     "funding": "Funding Rate (Binance Perp)", "premium": "Coinbase-Premium (USD vs. USDT)",
     "dominance": "BTC- und USDT-Dominanz (täglich)",
     "macro": "Termine (US-CPI, FOMC)",

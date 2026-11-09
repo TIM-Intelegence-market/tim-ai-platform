@@ -61,9 +61,9 @@
     : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand', next: 'Nächster Termin',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
   const P = EN
-    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
+    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', delta: 'Delta volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp check: ${ok}/${n} h equal to Binance, ${gaps} gaps` }
-    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
+    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', delta: 'Delta Volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp-Prüfung: ${ok}/${n} h gleich mit Binance, ${gaps} Lücken` };
   const fmt = v => v == null ? '–' : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
 
@@ -93,6 +93,20 @@
   const band = { lastValueVisible: true, priceLineVisible: false, crosshairMarkerVisible: false };
   const cvdSpot = chart.addLineSeries({ ...band, priceScaleId: 'cvd_spot', color: '#5ec8d8', lineWidth: 2, title: P.cvdSpot, visible: false });
   const cvdPerp = chart.addLineSeries({ ...band, priceScaleId: 'cvd_perp', color: '#ffb020', lineWidth: 2, title: P.cvdPerp, visible: false });
+  // Delta per candle of the chosen market (difference of the CVD line), with a line at ± the size 90 % of the
+  // candles stay below: the candles that stick out are the ones worth a look (Uzi 09.11.2026).
+  let deltaMarks = [], deltaEdge = 0;
+  const deltaBars = chart.addHistogramSeries({
+    ...band, priceScaleId: 'delta', title: P.delta, visible: false, priceFormat: { type: 'volume' },
+    autoscaleInfoProvider: original => {  // the band always holds both threshold lines, also while only small candles are in view
+      const info = original();
+      if (info && info.priceRange && deltaEdge > 0) {
+        info.priceRange.minValue = Math.min(info.priceRange.minValue, -deltaEdge * 1.15);
+        info.priceRange.maxValue = Math.max(info.priceRange.maxValue, deltaEdge * 1.15);
+      }
+      return info;
+    },
+  });
   const oiZ = chart.addHistogramSeries({ ...band, priceScaleId: 'oi_z', title: P.oiZ, visible: false, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
   const oiLine = chart.addLineSeries({ ...band, priceScaleId: 'oi', color: '#c3cad6', lineWidth: 1, title: P.oi, visible: false,
                                        priceFormat: { type: 'volume' } });
@@ -116,20 +130,28 @@
   const ahead = chart.addLineSeries({ lineVisible: false, lastValueVisible: false, priceLineVisible: false,
                                       crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
   const BAND = 0.15;
-  const BAND_SCALES = { cvd: ['cvd_spot', 'cvd_perp'], oi: ['oi', 'oi_z'], funding: ['funding'], premium: ['premium'], dominance: ['dom_btc', 'dom_usdt'] };
+  const BAND_SCALES = { cvd: ['cvd_spot', 'cvd_perp'], delta: ['delta'], oi: ['oi', 'oi_z'], funding: ['funding'], premium: ['premium'], dominance: ['dom_btc', 'dom_usdt'] };
   const bandHasData = key => {
+    if (key === 'delta') return deltaSource().length > 1;
     const part = model && model[key];
     if (!part) return false;
     return key === 'cvd' ? part.spot.length || part.perp.length : part.points.length;
   };
+  const deltaSource = () => {  // the chosen market's CVD line; the other one if it has no trades yet
+    const cvd = model && model.cvd;
+    if (!cvd) return [];
+    const first = market === 'perp' ? cvd.perp : cvd.spot, second = market === 'perp' ? cvd.spot : cvd.perp;
+    return first.length > 1 ? first : second;
+  };
   function layoutBands(groups) {
-    const shown = ['cvd', 'oi', 'funding', 'premium', 'dominance'].filter(key => groups.has(key) && bandHasData(key));
+    const shown = ['delta', 'cvd', 'oi', 'funding', 'premium', 'dominance'].filter(key => groups.has(key) && bandHasData(key));
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.06, bottom: 0.18 + BAND * shown.length } });
     shown.forEach((key, index) => {
       const top = 0.82 - BAND * (shown.length - index) + 0.01;
       const margins = { top, bottom: 1 - top - BAND + 0.02 };
       for (const id of BAND_SCALES[key]) chart.priceScale(id).applyOptions({ scaleMargins: margins, visible: false });
     });
+    deltaBars.applyOptions({ visible: shown.includes('delta') });
     cvdSpot.applyOptions({ visible: shown.includes('cvd') });
     cvdPerp.applyOptions({ visible: shown.includes('cvd') });
     oiLine.applyOptions({ visible: shown.includes('oi') });
@@ -144,6 +166,19 @@
     const cvd = (model && model.cvd) || { spot: [], perp: [] };
     cvdSpot.setData(cvd.spot.map(([t, v]) => ({ time: local(t), value: v })));
     cvdPerp.setData(cvd.perp.map(([t, v]) => ({ time: local(t), value: v })));
+    const source = deltaSource(), deltas = [];
+    for (let i = 1; i < source.length; i += 1) deltas.push([source[i][0], source[i][1] - source[i - 1][1]]);
+    deltaBars.setData(deltas.map(([t, v]) => ({ time: local(t), value: v, color: v >= 0 ? 'rgba(91,124,250,0.9)' : 'rgba(244,122,106,0.9)' })));
+    for (const mark of deltaMarks) deltaBars.removePriceLine(mark);
+    deltaMarks = [];
+    const sizes = deltas.map(([, v]) => Math.abs(v)).sort((a, b) => a - b);
+    const edge = sizes.length >= 20 ? sizes[Math.floor(sizes.length * 0.9)] : 0;
+    deltaEdge = edge;
+    if (edge > 0) {
+      for (const price of [edge, -edge]) {
+        deltaMarks.push(deltaBars.createPriceLine({ price, color: '#e8ecf3', lineWidth: 1, lineStyle: LWC.LineStyle.Solid, axisLabelVisible: false, title: '' }));
+      }
+    }
     // Open interest is hourly: each candle takes the last hour that began at or before it.
     const oi = model && model.oi;
     const at = (points, t) => { let found = null; for (const p of points) { if (p[0] <= t) found = p; else break; } return found; };
@@ -489,6 +524,57 @@
     }
     return { size, rows, stacks };
   }
+  // Two ways to draw the footprint. 'delta' (Uzi 09.11.2026: "die perfekte Footprint-Darstellung"):
+  // a slim candle and, per price row, one bar to the right, long = much delta, blue =
+  // more market buys, red = more market sells. 'cells': heat columns and bid × ask numbers as before.
+  const FP_STYLE = 'tim-chart-fp-style-v1';
+  let fpStyle = (() => { try { return localStorage.getItem(FP_STYLE) === 'delta' ? 'delta' : 'cells'; } catch (error) { return 'cells'; } })();
+  function setFpStyle(style) {
+    fpStyle = style === 'delta' ? 'delta' : 'cells';
+    try { localStorage.setItem(FP_STYLE, fpStyle); } catch (error) { /* ignore */ }
+    if (fp.requestUpdate) fp.requestUpdate();
+  }
+  function drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep) {
+    const k = FP.merges.find(m => m * perStep >= 4) || FP.merges[FP.merges.length - 1];
+    const half = Math.max(3, Math.min(barWidth * 0.46, 60));
+    for (const bar of model.footprint.bars) {
+      const x = scale.timeToCoordinate(local(bar.time));
+      if (x === null || x < -barWidth || x > mediaSize.width + barWidth) continue;
+      const { size, rows } = fpRows(bar, step, k);
+      const maxDelta = Math.max(...rows.map(r => Math.abs(r.ask - r.bid)), 1e-12);
+      const candle = fp.byTime.get(bar.time);
+      const up = candle ? candle.close >= candle.open : bar.delta >= 0;
+      const left = x - half, room = 2 * half - 5;
+      const yTopAll = fp.series.priceToCoordinate(Math.max(rows[rows.length - 1].price + size, candle ? candle.high : -Infinity));
+      const yBottomAll = fp.series.priceToCoordinate(Math.min(rows[0].price, candle ? candle.low : Infinity));
+      if (yTopAll === null || yBottomAll === null) continue;
+      ctx.fillStyle = 'rgba(11,15,22,1)';  // hides the library's wide candle behind the slim one
+      ctx.fillRect(left - 1, yTopAll - 1, 2 * half + 2, yBottomAll - yTopAll + 2);
+      if (candle) {
+        const yH = fp.series.priceToCoordinate(candle.high), yL = fp.series.priceToCoordinate(candle.low);
+        const yO = fp.series.priceToCoordinate(candle.open), yC = fp.series.priceToCoordinate(candle.close);
+        if (yH !== null && yL !== null && yO !== null && yC !== null) {
+          ctx.fillStyle = up ? '#5b7cfa' : '#f47a6a';
+          ctx.fillRect(left + 1, yH, 1, yL - yH);
+          ctx.fillRect(left, Math.min(yO, yC), 3, Math.max(1, Math.abs(yC - yO)));
+        }
+      }
+      for (const row of rows) {
+        const yTop = fp.series.priceToCoordinate(row.price + size), yBottom = fp.series.priceToCoordinate(row.price);
+        if (yTop === null || yBottom === null) continue;
+        const delta = row.ask - row.bid;
+        const height = Math.max(1, yBottom - yTop - (yBottom - yTop > 3 ? 1 : 0));
+        const share = Math.abs(delta) / maxDelta;
+        ctx.fillStyle = `rgba(${delta >= 0 ? '91,124,250' : '244,122,106'},${(0.35 + 0.65 * share).toFixed(3)})`;
+        ctx.fillRect(left + 5, yTop, Math.max(1, room * share), height);
+        if (row.poc && barWidth >= 14) {  // most traded row: dotted line across the bar
+          ctx.strokeStyle = 'rgba(195,202,214,0.7)'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+          ctx.beginPath(); ctx.moveTo(left + 5, yTop + height / 2); ctx.lineTo(left + 5 + room, yTop + height / 2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+    }
+  }
   const fp = {
     chart: null, series: null, requestUpdate: null, visible: true, byTime: new Map(),
     attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
@@ -521,6 +607,7 @@
               const y1 = fp.series.priceToCoordinate((model.last || model.footprint.bars[model.footprint.bars.length - 1].poc) + step);
               if (y0 === null || y1 === null) return;
               const perStep = Math.max(1e-6, Math.abs(y0 - y1));
+              if (fpStyle === 'delta') { drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep); return; }
               const pick = need => FP.merges.find(k => k * perStep >= need) || FP.merges[FP.merges.length - 1];
               const numbers = barWidth >= FP.numberWidth;
               const k = pick(numbers ? FP.numberRow : FP.heatRow);
@@ -618,7 +705,15 @@
   // Volume bubbles: large market orders from TIM's trades (one taker order = aggTrades of the same
   // millisecond and side). Circle at the order's time inside its candle and its average price; area
   // follows the order size against the largest in view; green = aggressive buyer, red = aggressive seller.
-  const BUBBLE = { minR: 2.5, maxR: 22, labelR: 11, pxPer: 14, minCount: 20 };
+  // Absorbed (Uzi 09.11.2026: the bubbles were too large and did not show absorption): the candle closed
+  // against the order (a big buy, close below its price; a big sell, close above). Those get a white ring,
+  // the others stay faint. Only finished candles are judged; it is a reading of the candle, not a proof.
+  const BUBBLE = { minR: 2, maxR: 11, labelR: 9, pxPer: 14, minCount: 20 };
+  const absorbed = item => {
+    const candle = fp.byTime.get(item.bar);
+    if (!candle || !model || candle.time === model.candles[model.candles.length - 1].time) return false;
+    return item.side > 0 ? candle.close < item.price : candle.close > item.price;
+  };
   const bubbles = {
     chart: null, series: null, requestUpdate: null, visible: true,
     attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
@@ -664,13 +759,18 @@
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, Math.PI * 2);
                 const bybit = item.venue === 'bybit';  // second venue (issue #162): hollow, dashed ring
-                ctx.fillStyle = bybit ? 'rgba(11,15,22,0.35)' : buy ? 'rgba(38,200,140,0.30)' : 'rgba(239,83,80,0.30)';
+                const held = absorbed(item);
+                ctx.fillStyle = bybit ? 'rgba(11,15,22,0.35)' : buy ? `rgba(38,200,140,${held ? 0.55 : 0.18})` : `rgba(239,83,80,${held ? 0.55 : 0.18})`;
                 ctx.fill();
-                ctx.lineWidth = 1.2;
+                ctx.lineWidth = 1;
                 ctx.setLineDash(bybit ? [3, 2] : []);
-                ctx.strokeStyle = buy ? 'rgba(38,220,150,0.95)' : 'rgba(255,92,88,0.95)';
+                ctx.strokeStyle = buy ? `rgba(38,220,150,${held ? 0.95 : 0.55})` : `rgba(255,92,88,${held ? 0.95 : 0.55})`;
                 ctx.stroke();
                 ctx.setLineDash([]);
+                if (held) {  // white ring: the market took this order and closed against it
+                  ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+                  ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(232,236,243,0.95)'; ctx.stroke();
+                }
                 if (r >= BUBBLE.labelR) {
                   ctx.fillStyle = '#e8edf5';
                   ctx.fillText(item.quantity >= 100 ? item.quantity.toFixed(0) : item.quantity.toFixed(1), x, y);
@@ -964,18 +1064,18 @@
   const L = EN
     ? { label: 'Layout', tim: 'TIM layouts (each with levels and structure)', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
         ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
-        other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
-        standard: 'TIM standard', broncx: 'Broncx orderflow (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
+        fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
+        standard: 'TIM standard', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
         vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades" }
     : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
-        other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
-        standard: 'TIM Standard', broncx: 'Broncx Orderflow (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
+        fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
+        standard: 'TIM Standard', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
         vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
   const CATEGORIES = [
-    { name: L.orderflow, groups: ['fp', 'bubbles', 'cvd'] },
+    { name: L.orderflow, groups: ['fp', 'bubbles', 'delta', 'cvd'] },
     { name: L.profile, groups: ['vp', 'tpo', 'naked', 'running'] },
     { name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
     { name: L.vwap, groups: ['vwap', 'vwap_bands'] },
@@ -990,13 +1090,13 @@
   const BASE = ['day', 'week', 'month', 'naked', 'structure', 'trend'];
   const TIM_LAYOUTS = [
     { id: 'tim:orderflow', name: L.orderflow, market: 'perp', groups: ['fp', 'bubbles', 'cvd', 'oi', 'liqev', 'vwap'] },
-    { id: 'tim:footprint', name: L.footprint, market: 'perp', groups: ['fp', 'bubbles', 'cvd'] },
+    { id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi'] },
     { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'running', 'session', 'ib'] },
     { id: 'tim:vp', name: L.vp, groups: ['vp', 'running', 'vwap', 'vwap_bands'] },
     { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
     { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
     { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
-    { id: 'tim:broncx', name: L.broncx, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
+    { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
     { id: 'tim:standard', name: L.standard, groups: null },
   ];
   function ownLayouts() {
@@ -1051,6 +1151,7 @@
       node.addEventListener('click', handler);
       layoutBox.append(node);
     };
+    button(fpStyle === 'delta' ? L.fpDelta : L.fpCells, () => { setFpStyle(fpStyle === 'delta' ? 'cells' : 'delta'); layoutChanged(); buildLayouts(); });
     button(L.save, saveLayoutAs);
     button(L.rename, renameLayout, active.startsWith('own:'));
     button(L.remove, removeLayout, active.startsWith('own:'));
@@ -1065,6 +1166,7 @@
     const groups = new Set(wanted.filter(key => all.has(key)));
     saveGroups(groups);
     setActiveLayout(id);
+    if (layout.fp || !layout.id.startsWith('own:')) setFpStyle(layout.fp || 'cells');
     const nextMarket = layout.market && layout.market !== market ? layout.market : null;
     if (nextMarket) { market = nextMarket; try { localStorage.setItem(MARKET_STORE, market); } catch (error) { /* ignore */ } }
     const url = new URL(location.href);
@@ -1090,7 +1192,7 @@
     const active = activeLayout();
     const name = askName(active.startsWith('own:') ? active.slice(4) : '');
     if (!name) return;
-    const layout = { name, symbol, tf: timeframe, market, groups: [...shownGroups()] };
+    const layout = { name, symbol, tf: timeframe, market, fp: fpStyle, groups: [...shownGroups()] };
     storeOwn(ownLayouts().filter(item => item.name !== name).concat([layout]));
     setActiveLayout('own:' + name);
     buildLayouts();
