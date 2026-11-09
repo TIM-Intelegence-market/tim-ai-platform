@@ -786,6 +786,21 @@ class TIMApplication:
             except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
                 log.warning("exit shadow update failed: %s", type(error).__name__)
             try:
+                # Perp-Schatten (Master-Analyse 09.11.2026, P1c/P5): 15m and 1h rule on perp candles with a trade-based
+                # profile, own files; the spot journals and the live trader stay untouched.
+                from src.dashboard.chart_live import PERP_CACHE
+                from src.dashboard.perp_journal import update as update_perp_journal
+
+                with self.dashboard_state.lock:
+                    perp_store = self.dashboard_state.perp_flow
+                await asyncio.to_thread(update_perp_journal, PERP_CACHE, perp_store or None, None,
+                                        {"15m": self.dashboard_state.plan_journal_perp_short_path,
+                                         "1h": self.dashboard_state.plan_journal_perp_mid_path}, settings.symbol)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
+                log.warning("perp journal update failed: %s", type(error).__name__)
+            try:
                 # Orderflow-Schatten (Paket 2, 08.11.2026): gate and orderflow exit for the 15m/1h plans, reads only.
                 from src.dashboard.orderflow_shadow import DEFAULT_PATH as of_shadow_path, update as update_of_shadow
 
