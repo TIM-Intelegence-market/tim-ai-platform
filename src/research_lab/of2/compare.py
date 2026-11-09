@@ -7,8 +7,9 @@
    same time frame for the time stop; entry minute drawn uniformly from the minutes of the section in that
    session. Tracked with the same Tracker on a second streaming pass. Fixed seed.
 
-``run_random_parallel`` splits the random strategies by draw across worker processes. Pseudo trades never
-interact (the Tracker keeps every signal on its own), so the per-strategy means are the same as one pass.
+``run_random_parallel`` splits the section by time across worker processes. Pseudo trades never interact
+(the Tracker keeps every signal on its own) and close within ``max_hold_minutes``, so the trades are the same
+as one pass.
 """
 from __future__ import annotations
 
@@ -94,23 +95,47 @@ def _run_chunk(loader_factory: Callable[[], DayLoader], first: date, last: date,
     return run_random(loader_factory(), first, last, pseudo, cfg, costs)
 
 
+def _fill_day(signal: Signal) -> date:
+    """Day of the bar that fills a pseudo signal (the bar after its minute)."""
+    return date(1970, 1, 1) + timedelta(days=(signal.signal_ms + MINUTE_MS) // DAY_MS)
+
+
 def run_random_parallel(loader_factory: Callable[[], DayLoader], first: date, last: date, pseudo: Sequence[Signal],
                         cfg: Config, workers: int = 1, costs: CostModel = BASE_COSTS) -> list[Trade]:
-    """``run_random`` with the draws spread over ``workers`` processes (draw d goes to chunk d % workers).
+    """``run_random`` split by time over ``workers`` processes; same trades as one pass.
 
-    ``loader_factory`` must be picklable (a module-level function or a ``functools.partial`` of one); every
-    worker builds its own loader. ``workers <= 1`` runs in this process.
+    The section is cut into ``workers`` contiguous day ranges. Each process takes the pseudo signals that fill
+    inside its range and streams from the range start until ``max_hold_minutes`` (rounded up to days, plus one)
+    after the range end, never past ``last``. Every pseudo trade is a market order closed by
+    ``max_hold_minutes`` at the latest and never interacts with another one, so it ends inside its process's
+    window exactly as in one pass, and a trade still open at ``last`` is dropped the same way. Each process
+    reads only its own days, so the day loading is split too.
+
+    ``loader_factory`` must be picklable (a module-level function or a ``functools.partial`` of one).
+    ``workers <= 1`` runs in this process.
     """
+    n_days = (last - first).days + 1
+    workers = min(workers, n_days)
     if workers <= 1:
         return run_random(loader_factory(), first, last, pseudo, cfg, costs)
-    chunks: list[list[Signal]] = [[] for _ in range(workers)]
+    if any(s.kind != MARKET for s in pseudo):
+        raise ValueError("pseudo signals must be market orders")
+    spill = timedelta(days=-(-cfg.max_hold_minutes // (24 * 60)) + 1)
+    size = -(-n_days // workers)
+    ranges = [(first + timedelta(days=i), min(last, first + timedelta(days=i + size - 1)))
+              for i in range(0, n_days, size)]
+    parts_in: list[list[Signal]] = [[] for _ in ranges]
     for s in pseudo:
-        chunks[int(s.level) % workers].append(s)
-    chunks = [c for c in chunks if c]
+        day = _fill_day(s)
+        if first <= day <= last:
+            parts_in[(day - first).days // size].append(s)
+    jobs = [(lo, min(last, hi + spill), sigs) for (lo, hi), sigs in zip(ranges, parts_in) if sigs]
+    if not jobs:
+        return []
     ctx = multiprocessing.get_context("fork" if "fork" in multiprocessing.get_all_start_methods() else "spawn")
-    with ProcessPoolExecutor(max_workers=len(chunks), mp_context=ctx) as pool:
-        parts = list(pool.map(_run_chunk, [loader_factory] * len(chunks), [first] * len(chunks), [last] * len(chunks),
-                              chunks, [cfg] * len(chunks), [costs] * len(chunks)))
+    with ProcessPoolExecutor(max_workers=len(jobs), mp_context=ctx) as pool:
+        parts = list(pool.map(_run_chunk, [loader_factory] * len(jobs), [j[0] for j in jobs], [j[1] for j in jobs],
+                              [j[2] for j in jobs], [cfg] * len(jobs), [costs] * len(jobs)))
     return [t for part in parts for t in part]
 
 
