@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S19 (nächste freie Nummer nach S18, 09.11.2026) |
-| Version | **0.1, Entwurf.** Kein Code, keine Daten geladen. Vor 1.0: Regeln als Code (`src/research_lab/studies/s19.py`, Skript `scripts/research_lab_s19.py`, Tests), ergebnisblinder Zähllauf, dann Einfrieren auf Uzis Wort |
+| Version | **0.2, Entwurf.** Regeln als Code: `src/research_lab/studies/s19.py`, Skript `scripts/research_lab_s19.py`, Tests `tests/test_research_lab_s19.py`. Keine Daten geladen, kein Zähllauf. Vor 1.0: ergebnisblinder Zähllauf (5.1) auf der PS5, dann Einfrieren auf Uzis Wort |
 | Anlass | Master-Analyse 09.11.2026 aus Kundensicht (Broncx), Punkt P8: „Schwellen stammen aus Quellen, nie an BTC gemessen“; Glossar `../../knowledge/ORDERFLOW_BEGRIFFE.md` |
 | Geprüfter Code | `src/orderflow_scenario/footprint.py` (F1–F5) und `src/orderflow_scenario/engines/orderflow_interpretation.py` (R1–R4), Konstanten in Abschnitt 2 des Glossars; Regelstand = Commit beim Einfrieren |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
@@ -44,14 +44,20 @@ eine Strategie-Studie mit eigener Präregistrierung.
 
 ## 3. Daten
 
-- **Instrument:** BTCUSDT Spot, Binance-aggTrades aus den Tagesarchiven mit Prüfsumme
-  (`src/research_lab/data/aggtrades.py`, `AggTradeDayStore`, Holdout-Sperre im Lader). Spot, weil der
-  Archiv-Lader und die S8-Minutenbalken dafür bestehen. Der Perp (futures/um) ist beschreibend
-  vorgesehen, sobald der Lader ihn vor dem Einfrieren kann; sonst entfällt er, ohne Urteil.
-- **Kerzen:** 15m aus den Trades (Eröffnung erster Preis, Hoch/Tief Extrem, Schluss letzter Preis,
-  Volumen Summe), UTC. Gegenprobe mit Binance-Spot-Klines je Kerze (Abweichung wird berichtet).
-- **Footprint:** je 15m-Kerze Bid/Ask je 5-$-Stufe aus `footprint_from_trades` (derselbe Code wie die
-  Engine, Tick 5 $). Kerzen mit weniger als 20 gehandelten Stufen zählen nicht (zu dünn für F4/F5).
+- **Instrument und Quelle:** BTCUSDT Spot, der S8-Store (`src/research_lab/orderflow_ml`, Balkenversion
+  1.2.0): je UTC-Tag 1 440 Minutenbalken und ein Tagesprofil (aggressives Kauf-/Verkaufsvolumen je
+  Minute und Preisstufe), aus den Binance-aggTrades-Tagesarchiven mit Prüfsumme gebaut, Holdout-Sperre
+  im Store. Der Store liegt vollständig 2020–2024 auf der PS5 (`~/tim-research/data/orderflow_ml_120`),
+  deshalb läuft die Studie dort. Rohe aggTrades werden nicht erneut geladen. Der Perp (futures/um) ist
+  nicht im Store und entfällt in 0.2 ohne Urteil.
+- **Kerzen:** 15m aus den Minutenbalken (Eröffnung erster Preis, Hoch/Tief Extrem, Schluss letzter
+  Preis, Volumen Summe, Delta Summe), UTC, 96 je Tag. Keine Kline-Gegenprobe: der Store hält keine
+  Klines (wird im Bericht als „nicht gemessen“ geführt).
+- **Footprint:** je 15m-Kerze Bid/Ask je Preisstufe aus dem Tagesprofil, Stufe 0,1 % des ersten
+  Tagespreises (S8-Bins zusammengefasst wie in OF2, `DayFootprints`), gelesen mit dem Engine-Code
+  `analyze_footprint` (Tick = Stufe). Abweichung zu 0.1: nicht 5 $ fest, sondern relativ, damit 2020
+  (7 000 $) und 2024 (70 000 $) gleich viele Stufen je Kerze haben; die Chart-Engine liest live 5 $.
+  Kerzen mit weniger als 20 gehandelten Stufen zählen nicht (zu dünn für F4/F5).
 - **Zeiträume:** Training 2020-01-01 bis 2022-12-31 (156 Wochen), Validierung 2023-01-01 bis
   2024-12-31 (104 Wochen). Holdout 2025 bleibt zu.
 - Tage mit Archiv-Lücke werden ausgelassen und gezählt; eine Kerze zählt nur, wenn ihre h Folgekerzen
@@ -73,7 +79,15 @@ Kerzen davor stand (Entprellung: ein Ereignis je Lauf).
 | E Exhaustion (Anstrengung) | R3/R4 `EXHAUSTION` | dünn ∈ {0,6, **0,7**, 0,8} × schrumpfend ∈ {0,7, **0,8**, 0,9} | Umkehr gegen den Aggressor |
 
 Bewegungsrichtung = Vorzeichen von Schluss minus Schluss vier Kerzen davor; Aggressor = Vorzeichen
-des Kerzen-Deltas. Fehlt eines (Null), zählt die Kerze nicht.
+des Kerzen-Deltas. Fehlt eines (Null), zählt die Kerze nicht. Für T gilt wie in der Engine die Richtung
+der Kerze selbst (Eröffnung zu Schluss), für A und die Entprellung die Vier-Kerzen-Bewegung.
+
+Lesart der Anstrengungs-Familien im Code (0.2): H = Delta gegen den Schluss der Vorkerze (R1) oder
+Schluss unverändert unter 0,1 % (R2), jeweils **mit** Volumen ≥ schwer × Mittel der fünf Vorkerzen; die
+Engine stellt die Absorptions-Hypothese R1 auch ohne Volumen, die Studie misst nur die Variante mit
+Anstrengung, weil nur dort eine Zahl steht. E = Delta gegen den Schluss bei Volumen < dünn (R3) oder
+Delta mit dem Schluss bei Volumen < dünn und Range < schrumpfend (R4). Anstrengung wie
+`effort_context`: Mittel über die bis zu fünf Vorkerzen mit Volumen, mindestens zwei.
 
 Horizonte h ∈ {4, 16} Kerzen (1 h, 4 h). Treffer = Schluss nach h Kerzen liegt in Richtung R(K)
 gegenüber dem Schluss der Flag-Kerze; Gleichstand zählt als Fehlschlag.
@@ -133,11 +147,14 @@ testbar“ und ihr Raster wird nicht angesehen.
 
 ## 7. Ablauf bis 1.0
 
-1. Code: Flags aus `footprint_from_trades` und `OrderflowInterpretationEngine` auf 15m-Kerzen aus dem
-   Archiv, Raster als Parameter, Zähllauf (5.1) und Auswertung getrennt, Tests mit synthetischen Trades
-   (jedes Flag einmal ausgelöst, Entprellung, Basisrate, Holm-Zahl 112).
-2. Zähllauf auf dem Mac (Archive liegen dort, die Cloud erreicht `data.binance.vision` nicht), Bericht
-   `../reports/s19_count_<Zeit>.md` nur mit Zahlen.
+1. Code (0.2, erledigt): `analyze_footprint` mit Schwellen als Parameter (Engine-Aufruf unverändert),
+   Flags auf 15m-Kerzen aus dem S8-Store, Raster fest im Modul, `count` (5.1) und `evaluate` (5)
+   getrennt, Zeitaufteilung auf Prozesse (`--workers`), Tages-Cache (`--cache`), Tests mit
+   synthetischen Profilen (jedes Flag ausgelöst, Entprellung, Basisrate, Lücke, Holm-Zahl 112,
+   Urteilslogik, gleiche Ergebnisse mit 1 und 2 Prozessen).
+2. Zähllauf auf der PS5 (`python scripts/research_lab_s19.py count --bars ~/tim-research/data/orderflow_ml_120
+   --out ~/tim-research/results/s19 --workers 16 --cache ~/tim-research/results/s19/cache`), Bericht
+   `s19_count_<Zeit>.md` nur mit Zahlen; `evaluate` wird vor 1.0 nicht gestartet.
 3. Uzis Wort: Einfrieren als 1.0 mit Commit, Einordnung (Registerplatz ja/nein) ins Protokoll.
 4. Ergebnislauf Training, dann Validierung; Bericht nach Abschnitt 5; Glossar nachführen.
 
@@ -146,3 +163,4 @@ testbar“ und ihr Raster wird nicht angesehen.
 | Datum | Version | Änderung |
 |---|---|---|
 | 2026-11-09 | 0.1 | Entwurf aus der Master-Analyse (P8). Kein Code, keine Daten geladen, kein Registereintrag. |
+| 2026-11-09 | 0.2 | Code und Tests. Datenquelle S8-Store statt Roh-aggTrades, Stufe 0,1 % statt 5 $, keine Kline-Gegenprobe, Perp entfällt, Lesart H/E festgeschrieben. Noch kein Zähllauf. |
