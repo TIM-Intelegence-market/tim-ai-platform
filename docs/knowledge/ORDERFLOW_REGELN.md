@@ -127,6 +127,9 @@ dient der Analyse aktueller Tage und trägt keine Forschungs-Evidenz.
 - `src/analysis/bronxc_rules.py` nennt eine Kerze mit kleinem Körper und hohem Volumen
   `ABSORPTION_CONTEXT`. Das passt zu R1/R2 (Anstrengung ohne Fortschritt), kennt aber kein Delta.
 - Schwellen (1,2 / 0,7 / 0,8; 4x; 3x; 25 %) stammen aus den Quellen und sind nicht kalibriert.
+  Glossar mit einer Definition je Begriff und allen Konstanten: `ORDERFLOW_BEGRIFFE.md` (vom Test
+  `tests/test_orderflow_begriffe.py` gegen den Code geprüft). Messung an BTC: Studie S19
+  (`../research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG_ENTWURF.md`, Entwurf).
 
 ## 3. Weitere Bootcamp-Regeln (Status in TIM)
 
