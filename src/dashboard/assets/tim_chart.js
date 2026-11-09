@@ -962,34 +962,43 @@
   const LAYOUT_ACTIVE = 'tim-chart-layout-active-v1';
   const layoutBox = document.getElementById('tc-live-layouts');
   const L = EN
-    ? { label: 'Layout', tim: 'TIM layouts', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
+    ? { label: 'Layout', tim: 'TIM layouts (each with levels and structure)', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
         ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
-        cats: 'Categories', combos: 'Combinations', other: 'Other',
+        other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
         standard: 'TIM standard', broncx: 'Broncx orderflow (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
-        vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning (OI, funding, liquidations, gamma)', macro: 'Macro', trades: "TIM's trades" }
-    : { label: 'Layout', tim: 'TIM-Layouts', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
+        vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades" }
+    : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
-        cats: 'Kategorien', combos: 'Kombinationen', other: 'Sonstiges',
+        other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
         standard: 'TIM Standard', broncx: 'Broncx Orderflow (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
-        vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung (OI, Funding, Liquidationen, Gamma)', macro: 'Makro', trades: 'TIMs Trades' };
+        vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
   const CATEGORIES = [
-    { id: 'tim:orderflow', name: L.orderflow, groups: ['fp', 'bubbles', 'cvd'] },
-    { id: 'tim:profile', name: L.profile, groups: ['vp', 'tpo', 'naked', 'running'] },
-    { id: 'tim:levels', name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
-    { id: 'tim:vwap', name: L.vwap, groups: ['vwap', 'vwap_bands'] },
-    { id: 'tim:structure', name: L.structure, groups: ['structure', 'trend', 'fib'] },
+    { name: L.orderflow, groups: ['fp', 'bubbles', 'cvd'] },
+    { name: L.profile, groups: ['vp', 'tpo', 'naked', 'running'] },
+    { name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
+    { name: L.vwap, groups: ['vwap', 'vwap_bands'] },
+    { name: L.structure, groups: ['structure', 'trend', 'fib'] },
+    { name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { name: L.macro, groups: ['dominance', 'macro'] },
+    { name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long', 'plans_old'] },
+  ];
+  // The layouts are working views (Uzi 09.11.2026: one click for everything orderflow, TPO, footprint or
+  // volume profile needs, and the levels and the structure in every one of them): BASE joins each layout.
+  // groups: null = the server's default layers.
+  const BASE = ['day', 'week', 'month', 'naked', 'structure', 'trend'];
+  const TIM_LAYOUTS = [
+    { id: 'tim:orderflow', name: L.orderflow, market: 'perp', groups: ['fp', 'bubbles', 'cvd', 'oi', 'liqev', 'vwap'] },
+    { id: 'tim:footprint', name: L.footprint, market: 'perp', groups: ['fp', 'bubbles', 'cvd'] },
+    { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'running', 'session', 'ib'] },
+    { id: 'tim:vp', name: L.vp, groups: ['vp', 'running', 'vwap', 'vwap_bands'] },
     { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
-    { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro'] },
-    { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long', 'plans_old'] },
-  ];
-  // Layouts across categories. groups: null = the server's default layers.
-  const COMBOS = [
-    { id: 'tim:standard', name: L.standard, groups: null },
+    { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
+    { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
     { id: 'tim:broncx', name: L.broncx, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
+    { id: 'tim:standard', name: L.standard, groups: null },
   ];
-  const TIM_LAYOUTS = CATEGORIES.concat(COMBOS);
   function ownLayouts() {
     try {
       const saved = JSON.parse(localStorage.getItem(LAYOUT_STORE) || '[]');
@@ -1024,11 +1033,9 @@
       parent.append(option);
     };
     if (!findLayout(active)) add(select, '', '– ' + L.changed + ' –');
-    for (const [title, list] of [[L.cats, CATEGORIES], [L.combos, COMBOS]]) {
-      const part = document.createElement('optgroup'); part.label = title;
-      for (const item of list) add(part, item.id, item.name);
-      select.append(part);
-    }
+    const tim = document.createElement('optgroup'); tim.label = L.tim;
+    for (const item of TIM_LAYOUTS) add(tim, item.id, item.name);
+    select.append(tim);
     const own = ownLayouts();
     if (own.length) {
       const mine = document.createElement('optgroup'); mine.label = L.own;
@@ -1054,7 +1061,8 @@
     const layout = findLayout(id);
     if (!layout || !model) return;
     const all = new Set(Object.keys(model.groups));
-    const groups = new Set((layout.groups || model.default_groups).filter(key => all.has(key)));
+    const wanted = layout.id.startsWith('own:') ? layout.groups : layout.groups ? BASE.concat(layout.groups) : model.default_groups;
+    const groups = new Set(wanted.filter(key => all.has(key)));
     saveGroups(groups);
     setActiveLayout(id);
     const nextMarket = layout.market && layout.market !== market ? layout.market : null;
