@@ -30,6 +30,7 @@ try {
   await page.goto(`${base}/chart?tf=${timeframe}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1200);
   await page.click("button[data-action='none']");
+  await page.evaluate(() => { const edit = document.querySelector('details.tc-live__edit'); if (edit) edit.open = true; });  // ticks sit folded under the layout menu
   await page.check("#tc-live-layers input[value='bubbles']");
   await page.waitForTimeout(600);
   result.checked = await page.$$eval("#tc-live-layers input", nodes => nodes.filter(n => n.checked).map(n => n.value));

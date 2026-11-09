@@ -250,7 +250,7 @@ def chart_page(symbol: str | None, timeframe: str | None, summary: str = "") -> 
     body += (
         f"<section class='cc-section tc-live' id='tc-live' data-lang='en' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
         f"<nav class='tc-tabs' aria-label='Coin'>{symbols}<span class='tc-tabs__sep'>Timeframe:</span>{frames}</nav>"
-        "<div class='tc-live__bar'><div id='tc-live-layers' class='tc-live__layers' aria-label='Show or hide lines'></div>"
+        "<div class='tc-live__bar'><div class='tc-live__layoutbox'><div id='tc-live-layouts' class='tc-live__layouts' aria-label='Choose layout'></div><details class='tc-live__edit'><summary>Edit layout (single layers)</summary><div id='tc-live-layers' class='tc-live__layers' aria-label='Show or hide lines'></div></details></div>"
         "<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>Go to now</button>"
         "<button type='button' class='tc-tab' data-action='fit'>Show all</button><button type='button' class='tc-tab' data-action='footprint' title='Last candles large, footprint with numbers'>Footprint</button>"
         "<span class='tc-market' role='group' aria-label='Trades behind volume profile, footprint and delta'><button type='button' class='tc-tab' data-action='market' data-market='spot' title='Volume profile, footprint, delta from spot trades'>Spot</button>"

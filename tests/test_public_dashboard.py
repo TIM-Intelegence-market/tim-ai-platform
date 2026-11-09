@@ -51,6 +51,7 @@ def test_chart_page_is_english_with_disclaimer(server):
     assert "<html lang='en'>" in body and "Research, not financial advice. Observation and paper tracking only" in body and "research, not financial advice" in body
     assert "data-lang='en'" in body and "data-tf='4h'" in body and "data-symbol='ETHUSDT'" in body
     assert "data-action='none'>Untick all</button>" in body
+    assert "id='tc-live-layouts'" in body and "<summary>Edit layout (single layers)</summary>" in body
     assert "script-src 'self'" in headers["Content-Security-Policy"]
     assert headers["X-Robots-Tag"] == "noindex, nofollow"
     # No German UI words and no link into the internal Control Center.

@@ -955,22 +955,191 @@
     } catch (error) { /* ignore */ }
   }
 
+  // Layouts (Uzi 09.11.2026: indicators only sorted in named layouts, like a workspace). A layout names the
+  // layers and, if it wants, coin, timeframe and spot/perp. TIM's layouts ship with the page; own layouts
+  // live in this browser only (localStorage), like the ticks before.
+  const LAYOUT_STORE = 'tim-chart-layouts-v1';
+  const LAYOUT_ACTIVE = 'tim-chart-layout-active-v1';
+  const layoutBox = document.getElementById('tc-live-layouts');
+  const L = EN
+    ? { label: 'Layout', tim: 'TIM layouts (each with levels and structure)', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
+        ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
+        other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
+        standard: 'TIM standard', broncx: 'Broncx orderflow (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
+        vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades" }
+    : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
+        ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
+        other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
+        standard: 'TIM Standard', broncx: 'Broncx Orderflow (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
+        vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades' };
+  // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
+  // layout of its own, and the ticks under "edit layout" are sorted the same way.
+  const CATEGORIES = [
+    { name: L.orderflow, groups: ['fp', 'bubbles', 'cvd'] },
+    { name: L.profile, groups: ['vp', 'tpo', 'naked', 'running'] },
+    { name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
+    { name: L.vwap, groups: ['vwap', 'vwap_bands'] },
+    { name: L.structure, groups: ['structure', 'trend', 'fib'] },
+    { name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { name: L.macro, groups: ['dominance', 'macro'] },
+    { name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long', 'plans_old'] },
+  ];
+  // The layouts are working views (Uzi 09.11.2026: one click for everything orderflow, TPO, footprint or
+  // volume profile needs, and the levels and the structure in every one of them): BASE joins each layout.
+  // groups: null = the server's default layers.
+  const BASE = ['day', 'week', 'month', 'naked', 'structure', 'trend'];
+  const TIM_LAYOUTS = [
+    { id: 'tim:orderflow', name: L.orderflow, market: 'perp', groups: ['fp', 'bubbles', 'cvd', 'oi', 'liqev', 'vwap'] },
+    { id: 'tim:footprint', name: L.footprint, market: 'perp', groups: ['fp', 'bubbles', 'cvd'] },
+    { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'running', 'session', 'ib'] },
+    { id: 'tim:vp', name: L.vp, groups: ['vp', 'running', 'vwap', 'vwap_bands'] },
+    { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
+    { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
+    { id: 'tim:broncx', name: L.broncx, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
+    { id: 'tim:standard', name: L.standard, groups: null },
+  ];
+  function ownLayouts() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAYOUT_STORE) || '[]');
+      return Array.isArray(saved) ? saved.filter(item => item && typeof item.name === 'string' && Array.isArray(item.groups)) : [];
+    } catch (error) { return []; }
+  }
+  function storeOwn(list) { try { localStorage.setItem(LAYOUT_STORE, JSON.stringify(list)); } catch (error) { /* ignore */ } }
+  // Nothing stored yet: a first visit shows the standard layout, a visitor with ticks from before the layouts has "changed".
+  function activeLayout() {
+    try {
+      const id = localStorage.getItem(LAYOUT_ACTIVE);
+      if (id === null) return localStorage.getItem(STORE) === null ? 'tim:standard' : '';
+      return id === '-' ? '' : id;
+    } catch (error) { return 'tim:standard'; }
+  }
+  function setActiveLayout(id) { try { localStorage.setItem(LAYOUT_ACTIVE, id || '-'); } catch (error) { /* ignore */ } }
+  function findLayout(id) {
+    if (id.startsWith('own:')) { const own = ownLayouts().find(item => item.name === id.slice(4)); return own ? { ...own, id } : null; }
+    return TIM_LAYOUTS.find(item => item.id === id) || null;
+  }
+  function buildLayouts() {
+    if (!layoutBox) return;
+    const active = activeLayout();
+    layoutBox.textContent = '';
+    const caption = document.createElement('label');
+    caption.textContent = L.label + ' ';
+    const select = document.createElement('select');
+    select.id = 'tc-live-layout';
+    const add = (parent, value, text) => {
+      const option = document.createElement('option');
+      option.value = value; option.textContent = text; option.selected = value === active;
+      parent.append(option);
+    };
+    if (!findLayout(active)) add(select, '', '– ' + L.changed + ' –');
+    const tim = document.createElement('optgroup'); tim.label = L.tim;
+    for (const item of TIM_LAYOUTS) add(tim, item.id, item.name);
+    select.append(tim);
+    const own = ownLayouts();
+    if (own.length) {
+      const mine = document.createElement('optgroup'); mine.label = L.own;
+      for (const item of own) add(mine, 'own:' + item.name, item.name);
+      select.append(mine);
+    }
+    select.addEventListener('change', () => { if (select.value) applyLayout(select.value); });
+    caption.append(select);
+    layoutBox.append(caption);
+    const button = (text, handler, enabled = true) => {
+      const node = document.createElement('button');
+      node.type = 'button'; node.className = 'tc-tab'; node.textContent = text; node.disabled = !enabled;
+      node.addEventListener('click', handler);
+      layoutBox.append(node);
+    };
+    button(L.save, saveLayoutAs);
+    button(L.rename, renameLayout, active.startsWith('own:'));
+    button(L.remove, removeLayout, active.startsWith('own:'));
+  }
+  // A changed tick leaves the named layout: the menu then says so until the view is saved under a name.
+  function layoutChanged() { if (activeLayout()) { setActiveLayout(''); buildLayouts(); } }
+  function applyLayout(id) {
+    const layout = findLayout(id);
+    if (!layout || !model) return;
+    const all = new Set(Object.keys(model.groups));
+    const wanted = layout.id.startsWith('own:') ? layout.groups : layout.groups ? BASE.concat(layout.groups) : model.default_groups;
+    const groups = new Set(wanted.filter(key => all.has(key)));
+    saveGroups(groups);
+    setActiveLayout(id);
+    const nextMarket = layout.market && layout.market !== market ? layout.market : null;
+    if (nextMarket) { market = nextMarket; try { localStorage.setItem(MARKET_STORE, market); } catch (error) { /* ignore */ } }
+    const url = new URL(location.href);
+    if (layout.symbol && layout.symbol !== symbol) {  // another coin is another page (the coin tabs are links)
+      url.searchParams.set('symbol', layout.symbol);
+      url.searchParams.set('tf', layout.tf || timeframe);
+      location.href = url.toString();
+      return;
+    }
+    layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
+    applyVisibility(groups);
+    buildLayouts();
+    const tab = layout.tf && layout.tf !== timeframe ? root.querySelector(`a[data-tf='${layout.tf}']`) : null;
+    if (tab) tab.click(); else if (nextMarket) { showMarket(); load(); }
+  }
+  function askName(preset) {
+    const name = (window.prompt(L.ask, preset || '') || '').trim().slice(0, 40);
+    if (!name) return '';
+    if (TIM_LAYOUTS.some(item => item.name === name)) { window.alert(L.taken); return ''; }
+    return name;
+  }
+  function saveLayoutAs() {
+    const active = activeLayout();
+    const name = askName(active.startsWith('own:') ? active.slice(4) : '');
+    if (!name) return;
+    const layout = { name, symbol, tf: timeframe, market, groups: [...shownGroups()] };
+    storeOwn(ownLayouts().filter(item => item.name !== name).concat([layout]));
+    setActiveLayout('own:' + name);
+    buildLayouts();
+  }
+  function renameLayout() {
+    const old = activeLayout().slice(4);
+    const name = askName(old);
+    if (!name || name === old) return;
+    storeOwn(ownLayouts().filter(item => item.name !== name).map(item => (item.name === old ? { ...item, name } : item)));
+    setActiveLayout('own:' + name);
+    buildLayouts();
+  }
+  function removeLayout() {
+    const name = activeLayout().slice(4);
+    if (!window.confirm(L.confirm(name))) return;
+    storeOwn(ownLayouts().filter(item => item.name !== name));
+    setActiveLayout('');
+    buildLayouts();
+  }
+
   function buildLayers() {
     if (!model || layers.dataset.built) return;
     const groups = shownGroups();
-    for (const [key, name] of Object.entries(model.groups)) {
+    const tick = (parent, key) => {
       const label = document.createElement('label');
       label.className = 'tc-layer tc-layer--' + key;
       const input = document.createElement('input');
       input.type = 'checkbox'; input.value = key; input.checked = groups.has(key);
       input.addEventListener('change', () => {
         const now = new Set([...layers.querySelectorAll('input:checked')].map(node => node.value));
-        saveGroups(now); applyVisibility(now);
+        saveGroups(now); applyVisibility(now); layoutChanged();
       });
-      label.append(input, document.createTextNode(' ' + name));
-      layers.append(label);
+      label.append(input, document.createTextNode(' ' + model.groups[key]));
+      parent.append(label);
+    };
+    // One row per category; a layer no category names yet (new on the server) lands under "other".
+    const sorted = new Set(CATEGORIES.flatMap(item => item.groups));
+    const rest = Object.keys(model.groups).filter(key => !sorted.has(key));
+    for (const item of CATEGORIES.concat(rest.length ? [{ name: L.other, groups: rest }] : [])) {
+      const keys = item.groups.filter(key => key in model.groups);
+      if (!keys.length) continue;
+      const row = document.createElement('div'); row.className = 'tc-layercat';
+      const title = document.createElement('span'); title.className = 'tc-layercat__name'; title.textContent = item.name;
+      row.append(title);
+      for (const key of keys) tick(row, key);
+      layers.append(row);
     }
     layers.dataset.built = '1';
+    buildLayouts();
   }
 
   // TIM's paper plans. A running or waiting plan shows entry (blue, dashed while waiting), stop (red)
@@ -1225,20 +1394,20 @@
       // Only TIM's current paper plans (SHORT, MID, LONG) on the candles: levels and the 30m test versions off.
       const groups = new Set(Object.keys(model ? model.groups : {}).filter(key => key.startsWith('plans_') && key !== 'plans_old'));
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
-      saveGroups(groups); applyVisibility(groups);
+      saveGroups(groups); applyVisibility(groups); layoutChanged();
     }
     if (action.dataset.action === 'none') {
       // Every tick off: only the candles stay.
       const groups = new Set();
       layers.querySelectorAll('input').forEach(node => { node.checked = false; });
-      saveGroups(groups); applyVisibility(groups);
+      saveGroups(groups); applyVisibility(groups); layoutChanged();
     }
     if (action.dataset.action === 'footprint' && model) {  // the last candles, about 70 px each: room for bid × ask numbers
       const count = model.candles.length;
       const shown = Math.max(3, Math.floor((box.clientWidth - 80) / 70));  // 80 px: price axis
       chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - shown), to: count + 1 });
       if (!fp.visible) {
-        const groups = shownGroups(); groups.add('fp'); saveGroups(groups); applyVisibility(groups);
+        const groups = shownGroups(); groups.add('fp'); saveGroups(groups); applyVisibility(groups); layoutChanged();
         const input = layers.querySelector("input[value='fp']"); if (input) input.checked = true;
       }
     }
@@ -1246,7 +1415,7 @@
       try { localStorage.removeItem(KNOWN); } catch (error) { /* ignore */ }
       const groups = new Set(model ? model.default_groups : []);
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
-      applyVisibility(groups); }
+      applyVisibility(groups); setActiveLayout('tim:standard'); buildLayouts(); }
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); else clearTimeout(timer); });
   load();
