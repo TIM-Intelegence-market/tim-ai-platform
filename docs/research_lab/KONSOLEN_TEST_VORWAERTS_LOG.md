@@ -1,5 +1,10 @@
 # Test: Vorwärts-Log F3/F5 und Barometer auf den Konsolen (PS5/PS4)
 
+> **Stand 09.11.2026: Umzug des Vorwärts-Logs abgesagt.** Die PS4 fällt aus (Systemsoftware 13.02, dafür gibt es
+> keinen Jailbreak). Vorwärts-Log und Barometer bleiben auf dem Mac (cron als `chris`, unverändert). Die Anleitung
+> bleibt als Referenz, falls später ein anderer Host übernehmen soll; die Reihenfolge in Abschnitt 5 gilt dann weiter.
+> Die Research-Arbeit auf der PS5 (`EINFLUSS_BAROMETER.md`, Reihenfolge Punkt 7) ist davon nicht berührt.
+
 Stand 06.11.2026. Zweck: prüfen, ob `src/research_lab/forward/macro_filters.py` auf einer Konsole genauso rechnet
 wie auf dem Mac, **bevor** der Mac abgeschaltet wird. Bis zum Umschalten läuft das offizielle Log weiter auf dem Mac
 (cron als `chris`, täglich 09:00 `log`, montags 09:30 `barometer`). Die Tests unten schreiben nur in einen
