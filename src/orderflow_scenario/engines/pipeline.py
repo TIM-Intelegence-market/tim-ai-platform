@@ -109,9 +109,12 @@ class PipelineInputs:
 
 
 class Pipeline:
-    def __init__(self, config: OrderflowScenarioConfig | None = None) -> None:
+    def __init__(self, config: OrderflowScenarioConfig | None = None, max_price_age_seconds: float | None = None) -> None:
+        """``max_price_age_seconds``: how old ``price_timestamp`` may be before the gate flags
+        ``stale_price`` (default 90 s, the live-price case). Closed-candle callers pass about two
+        intervals, otherwise every 30m or 1W close counts as stale (Master-Analyse 09.11.2026, P10)."""
         self.config = config or default_config()
-        self.data_quality_gate = DataQualityGate()
+        self.data_quality_gate = DataQualityGate(max_price_age_seconds) if max_price_age_seconds else DataQualityGate()
         self.market_state_engine = MarketStateEngine()
         self.auction_state_engine = AuctionStateEngine()
         self.orderflow_engine = OrderflowInterpretationEngine()

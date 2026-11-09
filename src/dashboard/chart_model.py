@@ -335,7 +335,8 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
         last_price=Decimal(str(last.close)),
     )
     context = MarketContext(symbol=last.symbol, venue="BINANCE", market_type="SPOT", timeframe=timeframe, timestamp=now)
-    analysis = Pipeline().run(PipelineInputs(
+    # The price is the last closed candle's close: allow two intervals before it counts as stale.
+    analysis = Pipeline(max_price_age_seconds=max(90.0, 2.0 * TIMEFRAME_SECONDS.get(timeframe, 1800))).run(PipelineInputs(
         market_context=context, candles=model_candles, price_now=Decimal(str(last.close)), price_timestamp=last.close_time,
         levels=levels, structured=True, source_name="TIM_RUNTIME_CANDLES", observed_at=now,
     ))

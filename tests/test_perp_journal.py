@@ -87,3 +87,36 @@ def test_plan_journal_update_uses_the_external_profile(tmp_path: Path) -> None:
     journal = pj.update(tmp_path / "j.json", series, start + timedelta(minutes=30 * 90), profile_fn=profile_fn, source="Testquelle")
     assert seen and seen[0][0] <= pj.PLAN_VISIBLE and journal["source"] == "Testquelle"
     assert json.loads((tmp_path / "j.json").read_text(encoding="utf-8"))["source"] == "Testquelle"
+
+
+def test_score_reliability_table_and_verdict_threshold() -> None:
+    from src.dashboard.plan_journal import SCORE_MIN_PLANS, score_reliability
+
+    closed = [{"score": 0.35, "gross_r": -1.0, "net_r": -1.1}, {"score": 0.45, "gross_r": 1.5, "net_r": 1.4},
+              {"score": 0.55, "gross_r": 2.0, "net_r": 1.9}, {"score": 0.55, "gross_r": -1.0, "net_r": -1.1}, {"gross_r": 1.0}]
+    table = score_reliability(closed)
+    assert table["scored"] == 4 and table["unscored"] == 1 and table["verdict"] is None and table["score_type"] == "UNCALIBRATED_CONFIDENCE"
+    by = {r["bucket"]: r for r in table["buckets"]}
+    assert by["0.0-0.4"]["hit_rate"] == 0.0 and by["0.4-0.5"]["hit_rate"] == 1.0 and by["0.5-0.6"]["hit_rate"] == 0.5
+    assert by["0.5-0.6"]["mean_net_r"] == pytest.approx(0.4) and by["0.6-1.0"]["closed"] == 0
+    many = [{"score": 0.35, "gross_r": -1.0} for _ in range(SCORE_MIN_PLANS // 2)] + [{"score": 0.65, "gross_r": 1.0} for _ in range(SCORE_MIN_PLANS // 2)]
+    assert score_reliability(many)["verdict"] == "steigend"
+    assert score_reliability([{**e, "gross_r": -e["gross_r"]} for e in many])["verdict"] == "nicht steigend"
+
+
+def test_closed_candle_scenarios_are_not_flagged_stale_on_slow_timeframes() -> None:
+    from src.dashboard.chart_model import run_scenarios
+
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    candles = []
+    price = 100_000.0
+    for i in range(30):
+        opened = start + timedelta(days=i)
+        close = price + (300 if i % 2 else -300)
+        candles.append({"symbol": "BTCUSDT", "timeframe": "1d", "open_time": opened, "close_time": opened + timedelta(days=1) - timedelta(milliseconds=1),
+                        "open": price, "high": max(price, close) + 100, "low": min(price, close) - 100, "close": close, "volume": 10.0, "closed": True})
+        price = close
+    analysis = run_scenarios(candles, "1d", None, now=candles[-1]["close_time"] + timedelta(hours=20))
+    assert not any(p.startswith("stale_price") for p in analysis["data_quality"]["problems"])
+    quick = run_scenarios(candles, "1d", None, now=candles[-1]["close_time"] + timedelta(days=3))
+    assert any(p.startswith("stale_price") for p in quick["data_quality"]["problems"])
