@@ -18,6 +18,13 @@ COOPERATIVE_LOGS = (
     "data/operational/queue.jsonl",
     "data/operational/gap_incidents.jsonl",
 )
+# stdout/stderr of the long-running launchd services. launchd opens these paths with
+# O_APPEND before exec() (lsof shows R,W,AP on the runtime's fd 1 and 2), so after a
+# copy-and-truncate the writer continues at the new end of the same inode: no sparse
+# file, no handle to reopen. A line written during the copy can be lost, which is
+# acceptable: events.jsonl and watchdog.jsonl hold the durable record. Deferring these
+# until a safe stop (the rule until 2026-11-09) never rotated them in production, because
+# the runtime does not stop on its own; runtime_launchd.err.log grew to 14 MB.
 EXTERNAL_LOGS = (
     "data/operational/runtime_launchd.log",
     "data/operational/runtime_launchd.err.log",
@@ -32,6 +39,9 @@ EXTERNAL_LOGS = (
 SHORT_JOB_LOGS = (
     "data/operational/server_health_launchd.log",
     "data/operational/server_health_launchd.err.log",
+    # this job's own report output (one JSON report per run, ~3 KB every 15 min)
+    "data/operational/log_maintenance_launchd.log",
+    "data/operational/log_maintenance_launchd.err.log",
 )
 
 
@@ -44,7 +54,7 @@ def main() -> int:
     parser.add_argument(
         "--service-stopped",
         action="store_true",
-        help="permit rotation of launchd stdout/stderr after the owning service stopped",
+        help="accepted for compatibility (tim_maintenance.py); launchd logs rotate in place either way",
     )
     arguments = parser.parse_args()
     policy = RotationPolicy(
@@ -59,26 +69,13 @@ def main() -> int:
     for relative in SHORT_JOB_LOGS:
         reports.append(LogRotator(ROOT / relative, policy, preserve_inode=True).rotate_if_needed())
     for relative in EXTERNAL_LOGS:
-        path = ROOT / relative
-        if not arguments.service_stopped and path.exists() and path.stat().st_size > policy.max_bytes:
-            reports.append(
-                {
-                    "path": str(path),
-                    "rotated": None,
-                    "status": "DEFERRED_UNTIL_SAFE_STOP",
-                    "reason": "launchd stdout/stderr writer does not participate in the rotation lock",
-                }
-            )
-        else:
-            # launchd opens these paths before exec(). Keep the active inode so
-            # macOS access metadata (notably com.apple.macl in protected user
-            # folders) survives a safe-stop rotation.
-            reports.append(LogRotator(path, policy, preserve_inode=True).rotate_if_needed())
-    blocked = any(report.get("status") == "DEFERRED_UNTIL_SAFE_STOP" for report in reports)
+        # Keep the active inode: launchd's O_APPEND handle keeps writing to it, and
+        # macOS access metadata (com.apple.macl in protected user folders) survives.
+        reports.append(LogRotator(ROOT / relative, policy, preserve_inode=True).rotate_if_needed())
     print(
         json.dumps(
             {
-                "status": "BLOCKED_SAFE_STOP_REQUIRED" if blocked else "PASS",
+                "status": "PASS",
                 "mode": "OBSERVE",
                 "trading_actions": 0,
                 "logs": reports,
@@ -87,7 +84,7 @@ def main() -> int:
             sort_keys=True,
         )
     )
-    return 2 if blocked else 0
+    return 0
 
 
 if __name__ == "__main__":
