@@ -74,7 +74,7 @@ import os
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from src.dashboard import journal_log
 from src.dashboard.chart_model import _time, build_chart_model, clean_candles, ny_open_windows
@@ -1139,7 +1139,8 @@ def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
 
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
            rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None,
-           gamma: Mapping[str, Any] | None = None) -> dict[str, Any]:
+           gamma: Mapping[str, Any] | None = None, profile_fn: Callable[[Sequence[Mapping[str, Any]], datetime], Mapping[str, Any] | None] | None = None,
+           source: str | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
@@ -1149,6 +1150,10 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     ``footprint`` = the aggTrades store for the touch candle's delta, ``gamma`` = the options-gamma
     snapshot for the wall distances) in its own file.
 
+    ``profile_fn`` (perp shadow, 09.11.2026) returns an external volume profile (poc/vah/val from
+    real trades) for the plan candles of a close; without it the chart model estimates the profile
+    from candles. ``source`` names the journal's market in the view (default: Setup-Pfad on spot).
+
     A broken event log raises journal_log.LogError and nothing is written."""
     now = now or datetime.now(timezone.utc)
     from src.dashboard.chart_model import analytical_series
@@ -1157,6 +1162,8 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     state = journal_log.read(events_path)
     _check_anchor(path, state)
     journal = fold(state.events)
+    if source:
+        journal["source"] = source
     before = deepcopy(journal)
     source_hash, source_range, minutes, plan_candles = _source(series, now, timeframe)
     evaluate(journal, minutes, [*plan_candles, *series.get("15m", [])], now)
@@ -1173,7 +1180,8 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                                "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                "payload": {"close_time": _iso(latest), "reason": "stale_data", "age_seconds": int(age.total_seconds())}})
         elif journal.get("last_plan_candle") != _iso(latest):
-            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE)
+            profile = profile_fn(plan_candles[-PLAN_VISIBLE:], latest) if profile_fn else None
+            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile)
             plans = plans_from_model(model)
             dropped: list[str] = []
             if rule == RULE_STRUCT:
@@ -1219,6 +1227,8 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     journal["checked_at"] = _iso(now)
     journal["log_seq"] = len(events)
     journal["log_head"] = events[-1]["hash"] if events else journal_log.GENESIS
+    if source:
+        journal["source"] = source
     save(journal, path)
     return journal
 

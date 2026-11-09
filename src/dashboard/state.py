@@ -71,6 +71,9 @@ class DashboardState:
     plan_journal_short_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_short.json"))
     plan_journal_mid_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_mid.json"))
     plan_journal_long_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_long.json"))
+    # Perp shadow (09.11.2026): the 15m / 1h rule on perpetual candles with a trade-based profile, src/dashboard/perp_journal.py.
+    plan_journal_perp_short_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_perp_short.json"))
+    plan_journal_perp_mid_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_perp_mid.json"))
     trader_journal_path: Path = field(default_factory=lambda: Path("data/journal/trader_journal.json"))
     daily_prep_path: Path = field(default_factory=lambda: Path("data/journal/daily_prep.json"))
     hermes_log_path: Path = field(default_factory=lambda: Path("data/hermes/chat_log.json"))
