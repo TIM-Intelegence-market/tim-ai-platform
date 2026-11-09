@@ -398,6 +398,28 @@ def test_run_random_tracks_pseudo_trades_on_the_stream():
     assert all(t.reason in {"STOP", "TARGET", "TIME_STOP", "MAX_HOLD"} for t in trades)
 
 
+def _synthetic_loader():
+    rng = random.Random(3)
+    days = {}
+    price = 30_000.0
+    for d in range(4):
+        bars, profile, price = synthetic_day(DAY0 + d * DAY_MS, rng, price)
+        days[date(2021, 3, 1 + d)] = (bars, profile)
+    return lambda day: days[day]
+
+
+def test_run_random_parallel_gives_the_same_strategy_means():
+    s = sig(models.MARKET, 1, None, 99.0, 103.0)
+    t = backtest.Trade(s, DAY0, 100, DAY0 + HOUR_MS, 103, "TARGET", 3, 0.1, 0.05, 3, 0)
+    pseudo = compare.random_signals([t] * 5, date(2021, 3, 1), date(2021, 3, 3), CFG, draws=7, seed=5)
+    one = compare.run_random(_synthetic_loader(), date(2021, 3, 1), date(2021, 3, 3), pseudo, CFG)
+    inline = compare.run_random_parallel(_synthetic_loader, date(2021, 3, 1), date(2021, 3, 3), pseudo, CFG, workers=1)
+    many = compare.run_random_parallel(_synthetic_loader, date(2021, 3, 1), date(2021, 3, 3), pseudo, CFG, workers=3)
+    key = lambda tr: (int(tr.signal.level), tr.fill_ms, tr.exit_ms, tr.net_r)
+    assert one and sorted(map(key, one)) == sorted(map(key, many)) == sorted(map(key, inline))
+    assert compare.strategy_means(one) == compare.strategy_means(many)
+
+
 # -- footprint and models M4-M6 (P1b) --------------------------------------------------------------
 def fp(step: float, rows: list[tuple[int, int, int]]) -> footprint.Footprint:
     return footprint.Footprint(DAY0, 15, step, tuple(rows))
