@@ -98,7 +98,8 @@ GROUP_NAMES = {
     "dominance": "BTC- und USDT-Dominanz (täglich)",
     "macro": "Termine (US-CPI, FOMC)",
 }
-# Footprint, volume profile, delta and bubbles from spot or perp trades (Beirat 29.10.2026, F5); levels stay on spot.
+# Footprint, volume profile, delta and bubbles from spot or perp trades (Beirat 29.10.2026, F5); since 09.11.2026
+# the levels, value areas, TPO and VWAP follow the chosen market too (plans stay on spot).
 MARKETS = {"spot": "Spot", "perp": "Perp"}
 DEFAULT_MARKET = "spot"
 TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
@@ -865,9 +866,11 @@ def tpo_profiles(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetim
 
 
 def _level_series(symbol: str, runtime_series: Mapping[str, Sequence[Mapping[str, Any]]] | None,
-                  cache: KlineCache, now: datetime) -> tuple[dict[str, list[dict[str, Any]]], str, list[str]]:
+                  cache: KlineCache, now: datetime, perp: bool = False) -> tuple[dict[str, list[dict[str, Any]]], str, list[str]]:
+    """Candle series the level logic reads. With ``perp`` the series come from the perpetual
+    klines (``cache`` is then the perp cache) and never from the runtime, which holds spot."""
     notes: list[str] = []
-    if symbol == "BTCUSDT" and runtime_series and runtime_series.get("30m") and runtime_series.get("1h"):
+    if not perp and symbol == "BTCUSDT" and runtime_series and runtime_series.get("30m") and runtime_series.get("1h"):
         return dict(runtime_series), "TIM-Runtime (wie Plan-Journale)", notes
     raw: dict[str, list[dict[str, Any]]] = {}
     for tf in LEVEL_TIMEFRAMES:
@@ -877,7 +880,7 @@ def _level_series(symbol: str, runtime_series: Mapping[str, Sequence[Mapping[str
         raw[tf] = [r for r in rows if r.get("closed", True)]
     series = analytical_series(raw, now)
     return {tf: [{**c, "open_time": c["open_time"].isoformat(), "close_time": c["close_time"].isoformat()} for c in rows]
-            for tf, rows in series.items() if rows}, "Binance-Klines (nur Anzeige)", notes
+            for tf, rows in series.items() if rows}, "Binance-Perp-Klines (nur Anzeige)" if perp else "Binance-Klines (nur Anzeige)", notes
 
 
 def load_plan_journals(paths: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -969,7 +972,9 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     ``perp`` is ``DashboardState.perp_flow`` (perp_flow.py, same shape as ``footprint``) and
     ``market`` ("spot" or "perp") picks which trades feed volume profile, footprint and bubbles;
     with "perp" the candles come from the perpetual too (``perp_cache``), so cells and bubbles sit on
-    the candles they belong to (perp trades a basis away from spot); the levels stay on spot. Both feed the CVD lines (group "cvd"). ``open_interest`` is
+    the candles they belong to (perp trades a basis away from spot), and so do the levels, value
+    areas, TPO and VWAP (perp klines and perp trades); only TIM's paper plans stay on spot (``plans_market``),
+    ``basis`` tells how far spot sits from the perp. Both feed the CVD lines (group "cvd"). ``open_interest`` is
     ``DashboardState.open_interest``: hourly open interest with its 7.5-day Z-score (group "oi").
     ``context`` is ``market_context.CACHE.snapshot(symbol)``: funding rate (group "funding") and
     Coinbase premium (group "premium") for this symbol, and the market-wide daily BTC/USDT dominance
@@ -1004,7 +1009,6 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         rows, error = (perp_cache or PERP_CACHE).get(symbol, timeframe, VIEW_LIMIT)
         if rows:
             candle_market = "perp"
-            model["notes"].append("Kerzen, Footprint und Bubbles aus dem Perp; Level und TIM-Pläne bleiben auf Spot.")
         else:
             model["notes"].append(f"Perp-Kerzen nicht erreichbar ({error}): Spot-Kerzen mit Spot-Trades gezeigt.")
             active = "spot" if spot_trades else active
@@ -1029,14 +1033,25 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model["last"] = candles[-1]["close"]
     model["last_closed"] = next((c["close_time"].isoformat() for c in reversed(candles) if c["closed"]), None)
 
-    level_source, source_name, notes = _level_series(symbol, runtime_series, cache, now)
+    # Uzi 09.11.2026 (Broncx-Sicht): with "Perp" the levels, value areas, TPO and VWAP come from the
+    # perpetual too (klines and perp trades); spot and perp are different auctions and sit a basis apart.
+    level_perp = candle_market == "perp" and symbol not in PERP_ONLY
+    level_cache = (perp_cache or PERP_CACHE) if level_perp else cache
+    level_source, source_name, notes = _level_series(symbol, runtime_series, level_cache, now, perp=level_perp)
     model["notes"].extend(notes)
     model["level_source"] = source_name
-    trades = footprint if footprint and footprint.get("symbol") == symbol and footprint.get("days") else None
+    model["level_market"] = "perp" if level_perp else "spot"
+    trades = (perp_trades if level_perp else spot_trades)
+    if level_perp:
+        spot_rows, _ = cache.get(symbol, timeframe, 2)
+        basis = (float(spot_rows[-1]["close"]) - candles[-1]["close"]) if spot_rows else None
+        model["basis"] = round(basis, 2) if basis is not None else None
+        basis_text = f" (Spot liegt {basis:+.0f} USDT daneben)" if basis is not None else ""
+        model["notes"].append("Kerzen, Footprint, Bubbles, Level, VP und TPO aus dem Perp; TIM-Pläne bleiben auf Spot-Preisen" + basis_text + ".")
     tpo_series = None
     if trades:
         # Longer 30m history for the naked tPOC check than the runtime keeps (same Binance candles, cached).
-        longer, _ = cache.get(symbol, "30m", VIEW_LIMIT)
+        longer, _ = level_cache.get(symbol, "30m", VIEW_LIMIT)
         if len(longer) > len(level_source.get("30m") or []):
             tpo_series = {"30m": longer}
     drawings = level_drawings(level_source, now, trades, tpo_series)
@@ -1086,6 +1101,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model["drawings"] = place_drawings(drawings, times)
     model["fib"] = fib_retracement(candles, timeframe)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
+    model["plans_market"] = "spot"  # the paper journals price on Binance spot, whatever the chart shows
     from src.dashboard.macro_calendar import chart_markers, load_calendar, upcoming_markers
 
     calendar = load_calendar() if macro is None else macro

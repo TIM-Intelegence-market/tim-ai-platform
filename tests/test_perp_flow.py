@@ -256,8 +256,25 @@ def test_live_chart_switches_trades_between_spot_and_perp() -> None:
     assert default["candle_market"] == "spot" and switched["candle_market"] == "perp"
     assert [c["time"] for c in switched["candles"]] == [c["time"] for c in default["candles"]]
     assert switched["candles"][-1]["close"] == pytest.approx(default["candles"][-1]["close"] - 35.0)
-    assert any(n.startswith("Kerzen, Footprint und Bubbles aus dem Perp") for n in switched["notes"])
+    assert any(n.startswith("Kerzen, Footprint, Bubbles, Level, VP und TPO aus dem Perp") for n in switched["notes"])
     assert {b["time"] for b in switched["footprint"]["bars"]} <= {c["time"] for c in switched["candles"]}
+    # Uzi 09.11.2026 (Broncx-Sicht): levels, value areas, TPO and VWAP follow the perp too; plans stay on spot.
+    assert default["level_market"] == "spot" and switched["level_market"] == "perp"
+    assert switched["level_source"].startswith("Binance-Perp-Klines") and switched["basis"] == pytest.approx(35.0)
+    assert switched["plans_market"] == "spot" and "Spot liegt +35 USDT daneben" in " ".join(switched["notes"])
+    from src.dashboard.public_en import english_chart_model
+    public = english_chart_model(switched)
+    assert any(n.endswith("(spot sits +35 USDT away).") for n in public["notes"]) and public["level_source"] == "Binance perp klines (display only)"
+    spot_levels = {d["label"]: d["price"] for d in default["drawings"] if d["group"] in ("day", "week") and "price" in d}
+    perp_levels = {d["label"]: d["price"] for d in switched["drawings"] if d["group"] in ("day", "week") and "price" in d}
+    shared = sorted(k for k in set(spot_levels) & set(perp_levels) if "High" in k or "Low" in k)
+    assert shared and all(perp_levels[k] == pytest.approx(spot_levels[k] - 35.0) for k in shared)
+    # value levels are candle estimates on a 50/100 USDT grid here: they follow the perp series, not spot
+    values = [k for k in set(spot_levels) & set(perp_levels) if k not in shared]
+    assert values and any(perp_levels[k] != spot_levels[k] for k in values)
+    assert all(perp_levels[k] <= spot_levels[k] for k in values if k.startswith("1D"))
+    assert switched["tpo"] and 0 <= default["tpo"][-1]["poc"] - switched["tpo"][-1]["poc"] <= 100
+    assert switched["volume_profile"] and switched["trade_source"] == perp_flow.SOURCE
 
     def offline(symbol: str, interval: str, limit: int) -> list[dict]:
         raise OSError("no route")
@@ -265,6 +282,7 @@ def test_live_chart_switches_trades_between_spot_and_perp() -> None:
     fallback = build_live_chart("BTCUSDT", "30m", market="perp", **{**common, "perp_cache": KlineCache(offline)})
     assert fallback["candle_market"] == "spot" and fallback["markets"]["active"] == "spot"
     assert fallback["trade_source"] == "spot-quelle" and any(n.startswith("Perp-Kerzen nicht erreichbar") for n in fallback["notes"])
+    assert fallback["level_market"] == "spot" and "basis" not in fallback
     daily = build_live_chart("BTCUSDT", "1d", market="perp", **common)
     assert daily["candle_market"] == "spot"
     missing = build_live_chart("BTCUSDT", "30m", market="perp", cache=KlineCache(fake_fetch()), now=now, footprint=spot)

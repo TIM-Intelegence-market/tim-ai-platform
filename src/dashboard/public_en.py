@@ -117,7 +117,9 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Keine großen Market Orders", "No large market orders in the shown window."),
     (r"^Noch keine Trades", "No trades from the TIM database yet (the runtime delivers them every 2 minutes)."),
     (r"^(Level \S+: )?Börse nicht erreichbar", r"\1Exchange not reachable, retrying shortly."),
-    (r"^Kerzen, Footprint und Bubbles aus dem Perp.*", "Candles, footprint and bubbles from the perp; levels and TIM's plans stay on spot."),
+    (r"^Kerzen, Footprint, Bubbles, Level, VP und TPO aus dem Perp; TIM-Pläne bleiben auf Spot-Preisen \(Spot liegt ([+-]\d+) USDT daneben\)\.",
+     r"Candles, footprint, bubbles, levels, VP and TPO from the perp; TIM's plans stay on spot prices (spot sits \1 USDT away)."),
+    (r"^Kerzen, Footprint, Bubbles, Level, VP und TPO aus dem Perp.*", "Candles, footprint, bubbles, levels, VP and TPO from the perp; TIM's plans stay on spot prices."),
     (r"^Perp-Kerzen nicht erreichbar.*", "Perp candles unreachable: spot candles with spot trades shown."),
     (r"^Perp-Trades noch nicht da", "Perp trades not there yet (the collector starts with the previous day): showing spot."),
     (r"^Open Interest: Binance-Stand älter", "Open interest: Binance data older than 3 h, hidden."),
@@ -131,6 +133,7 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
 SOURCES_EN = {
     "TIM-Runtime (wie Plan-Journale)": "TIM runtime (same as the plan journals)",
     "Binance-Klines (nur Anzeige)": "Binance klines (display only)",
+    "Binance-Perp-Klines (nur Anzeige)": "Binance perp klines (display only)",
     "TIM agg_trades (Binance Spot aggTrades, eigene Datenbank)": "TIM agg_trades (Binance spot aggTrades, own database)",
     "Binance USD-M Perp aggTrades (BTCUSDT, öffentlich, TIM-Sammler)": "Binance USD-M perp aggTrades (BTCUSDT, public, TIM collector)",
 }
