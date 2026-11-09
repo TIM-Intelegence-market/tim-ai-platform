@@ -31,6 +31,7 @@ AREAS: list[Area] = [
         ("Mein Tag", "/my-day"),
         ("Setup-Pfad", "/setup-path"),
         ("TIM-KI (Hermes)", "/neu/hermes"),
+        ("Legende", "/legende"),
     ]},
     {"key": "journal", "label": "Journal", "href": "/trades", "pages": [
         ("Journal", "/trades"),
@@ -93,7 +94,7 @@ PAGE_PATHS = {
     "Plan Journal": "/journal", "Plan Journal Struct": "/journal", "Plan Journal Level": "/journal",
     "Chart": "/chart", "V2 Readiness": "/v2-readiness", "Security": "/security",
     "Audit & Evidence": "/audit-evidence", "Graphify & MCP": "/mcp", "Graphify-Graph": "/graphify",
-    "Research": "/research", "Pilotansicht": "/pilot", "Archiv": "/archiv",
+    "Research": "/research", "Pilotansicht": "/pilot", "Archiv": "/archiv", "Legende": "/legende",
 }
 
 _ARCHIVE_PATHS = {href for _, href, _ in ARCHIVE}

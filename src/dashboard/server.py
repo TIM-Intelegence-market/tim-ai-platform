@@ -252,6 +252,10 @@ class DashboardServer:
                 if path in JOURNAL_PAGES:
                     saved = query.get("saved", [""])[0]
                     return self.plan_journal_page(200, path, saved=saved if re.fullmatch(r"PN-\d{5}", saved or "") else None)
+                if path == "/legende":
+                    from src.dashboard.legend import render_legend_page
+
+                    return self.respond(200, render_legend_page().encode(), "text/html; charset=utf-8")
                 if path == "/archiv":
                     from src.dashboard.pages.archive import render_archive
 
