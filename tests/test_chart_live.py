@@ -368,12 +368,13 @@ def test_layers_are_sorted_in_named_layouts():
     from src.dashboard.pages.chart import _live_section
 
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
-    block = script[script.index("const TIM_LAYOUTS = ["):script.index("function ownLayouts()")]
-    ids = re.findall(r"id: '(tim:[a-z]+)'", block)
-    assert ids == ["tim:standard", "tim:orderflow", "tim:levels", "tim:structure", "tim:macro", "tim:trades"]
-    named = set(re.findall(r"'([a-z_]+)'", "".join(re.findall(r"groups: \[([^\]]*)\]", block))))
-    assert named and named <= set(chart_live.GROUP_NAMES)  # no layout names a layer the chart does not have
-    assert "symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi']" in block
+    block = script[script.index("const CATEGORIES = ["):script.index("const COMBOS = [")]
+    names = re.findall(r"'([a-z_]+)'", "".join(re.findall(r"groups: \[([^\]]*)\]", block)))
+    # Every layer of the chart sits in exactly one category; a category is a layout.
+    assert sorted(names) == sorted(chart_live.GROUP_NAMES) and len(names) == len(set(names))
+    assert re.findall(r"id: '(tim:[a-z]+)'", block) == ["tim:orderflow", "tim:profile", "tim:levels", "tim:vwap", "tim:structure",
+                                                        "tim:positioning", "tim:macro", "tim:trades"]
+    assert "id: 'tim:broncx', name: L.broncx, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi']" in script
     assert "tim-chart-layouts-v1" in script and "saveGroups(now); applyVisibility(now); layoutChanged();" in script
     html = _live_section("BTCUSDT", "30m")
     assert "id='tc-live-layouts'" in html

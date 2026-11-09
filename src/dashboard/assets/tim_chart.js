@@ -964,19 +964,32 @@
   const L = EN
     ? { label: 'Layout', tim: 'TIM layouts', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
         ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
-        standard: 'TIM standard', orderflow: 'Broncx orderflow (BTC 15m perp)', levels: 'Levels', structure: 'Structure', macro: 'Macro', trades: "Only TIM's trades" }
+        cats: 'Categories', combos: 'Combinations', other: 'Other',
+        standard: 'TIM standard', broncx: 'Broncx orderflow (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
+        vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning (OI, funding, liquidations, gamma)', macro: 'Macro', trades: "TIM's trades" }
     : { label: 'Layout', tim: 'TIM-Layouts', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
-        standard: 'TIM Standard', orderflow: 'Broncx Orderflow (BTC 15m Perp)', levels: 'Level', structure: 'Struktur', macro: 'Makro', trades: 'Nur TIMs Trades' };
-  // groups: null = the server's default layers.
-  const TIM_LAYOUTS = [
-    { id: 'tim:standard', name: L.standard, groups: null },
-    { id: 'tim:orderflow', name: L.orderflow, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
-    { id: 'tim:levels', name: L.levels, groups: ['day', 'week', 'month', 'naked', 'vwap', 'vwap_bands'] },
+        cats: 'Kategorien', combos: 'Kombinationen', other: 'Sonstiges',
+        standard: 'TIM Standard', broncx: 'Broncx Orderflow (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
+        vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung (OI, Funding, Liquidationen, Gamma)', macro: 'Makro', trades: 'TIMs Trades' };
+  // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
+  // layout of its own, and the ticks under "edit layout" are sorted the same way.
+  const CATEGORIES = [
+    { id: 'tim:orderflow', name: L.orderflow, groups: ['fp', 'bubbles', 'cvd'] },
+    { id: 'tim:profile', name: L.profile, groups: ['vp', 'tpo', 'naked', 'running'] },
+    { id: 'tim:levels', name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
+    { id: 'tim:vwap', name: L.vwap, groups: ['vwap', 'vwap_bands'] },
     { id: 'tim:structure', name: L.structure, groups: ['structure', 'trend', 'fib'] },
-    { id: 'tim:macro', name: L.macro, groups: ['funding', 'premium', 'dominance', 'macro'] },
-    { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
+    { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro'] },
+    { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long', 'plans_old'] },
   ];
+  // Layouts across categories. groups: null = the server's default layers.
+  const COMBOS = [
+    { id: 'tim:standard', name: L.standard, groups: null },
+    { id: 'tim:broncx', name: L.broncx, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
+  ];
+  const TIM_LAYOUTS = CATEGORIES.concat(COMBOS);
   function ownLayouts() {
     try {
       const saved = JSON.parse(localStorage.getItem(LAYOUT_STORE) || '[]');
@@ -1011,9 +1024,11 @@
       parent.append(option);
     };
     if (!findLayout(active)) add(select, '', '– ' + L.changed + ' –');
-    const tim = document.createElement('optgroup'); tim.label = L.tim;
-    for (const item of TIM_LAYOUTS) add(tim, item.id, item.name);
-    select.append(tim);
+    for (const [title, list] of [[L.cats, CATEGORIES], [L.combos, COMBOS]]) {
+      const part = document.createElement('optgroup'); part.label = title;
+      for (const item of list) add(part, item.id, item.name);
+      select.append(part);
+    }
     const own = ownLayouts();
     if (own.length) {
       const mine = document.createElement('optgroup'); mine.label = L.own;
@@ -1091,7 +1106,7 @@
   function buildLayers() {
     if (!model || layers.dataset.built) return;
     const groups = shownGroups();
-    for (const [key, name] of Object.entries(model.groups)) {
+    const tick = (parent, key) => {
       const label = document.createElement('label');
       label.className = 'tc-layer tc-layer--' + key;
       const input = document.createElement('input');
@@ -1100,8 +1115,20 @@
         const now = new Set([...layers.querySelectorAll('input:checked')].map(node => node.value));
         saveGroups(now); applyVisibility(now); layoutChanged();
       });
-      label.append(input, document.createTextNode(' ' + name));
-      layers.append(label);
+      label.append(input, document.createTextNode(' ' + model.groups[key]));
+      parent.append(label);
+    };
+    // One row per category; a layer no category names yet (new on the server) lands under "other".
+    const sorted = new Set(CATEGORIES.flatMap(item => item.groups));
+    const rest = Object.keys(model.groups).filter(key => !sorted.has(key));
+    for (const item of CATEGORIES.concat(rest.length ? [{ name: L.other, groups: rest }] : [])) {
+      const keys = item.groups.filter(key => key in model.groups);
+      if (!keys.length) continue;
+      const row = document.createElement('div'); row.className = 'tc-layercat';
+      const title = document.createElement('span'); title.className = 'tc-layercat__name'; title.textContent = item.name;
+      row.append(title);
+      for (const key of keys) tick(row, key);
+      layers.append(row);
     }
     layers.dataset.built = '1';
     buildLayouts();
@@ -1359,7 +1386,7 @@
       // Only TIM's current paper plans (SHORT, MID, LONG) on the candles: levels and the 30m test versions off.
       const groups = new Set(Object.keys(model ? model.groups : {}).filter(key => key.startsWith('plans_') && key !== 'plans_old'));
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
-      saveGroups(groups); applyVisibility(groups); setActiveLayout('tim:trades'); buildLayouts();
+      saveGroups(groups); applyVisibility(groups); layoutChanged();
     }
     if (action.dataset.action === 'none') {
       // Every tick off: only the candles stay.
