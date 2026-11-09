@@ -143,11 +143,12 @@ class DashboardServer:
                             gamma = dict(outer.state.gamma)
                             liquidation = dict(outer.state.liquidation)
                             perp, open_interest = perp_chart_inputs(outer.state, query.get("symbol", [None])[0])
+                            bybit = dict(getattr(outer.state, "bybit_flow", None) or {})
                         from src.dashboard.chart_live import load_plan_journals
 
                         model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint,
                                                  plan_journals=load_plan_journals(plan_journal_paths(outer.state)), gamma=gamma,
-                                                 liquidation=liquidation, perp=perp, open_interest=open_interest,
+                                                 liquidation=liquidation, perp=perp, open_interest=open_interest, bybit=bybit,
                                                  market=query.get("market", [None])[0],
                                                  context=chart_context(query.get("symbol", [None])[0]))
                         from src.dashboard.pages.chart import APP_VERSION

@@ -389,3 +389,46 @@ def test_single_fill_trades_near_the_boundary_do_not_widen_the_check(tmp_path) -
     flow = PerpFlow(tmp_path, fetch=FakeBinance(trades), clock=lambda: (NOW + timedelta(minutes=5)).timestamp())
     collect(flow)
     assert flow.edges == {}  # make_trades has f == l everywhere
+
+
+def test_bybit_open_interest_snapshot_sorted_oldest_first() -> None:
+    from src.dashboard.perp_flow import open_interest_bybit
+
+    start = int((NOW - timedelta(hours=199)).timestamp())
+    rows = [{"openInterest": str(50_000 + i), "timestamp": str((start + i * 3600) * 1000)} for i in range(200)]
+    rows.reverse()  # Bybit answers newest first
+    answer = {"retCode": 0, "retMsg": "OK", "result": {"category": "linear", "symbol": "BTCUSDT", "list": rows, "nextPageCursor": ""}}
+    calls = []
+    snapshot = open_interest_bybit(lambda path, params: calls.append((path, dict(params))) or answer, now=NOW)
+    assert calls == [("/v5/market/open-interest", {"category": "linear", "symbol": "BTCUSDT", "intervalTime": "1h", "limit": "200"})]
+    assert snapshot["venue"] == "bybit" and snapshot["points"][0][0] == start and snapshot["points"][-1][1] == 50_199
+    assert snapshot["points"][0][2] is None and len(snapshot["z"]) == 200 - 179 and "Bybit" in snapshot["source"]
+    with pytest.raises(ValueError):
+        open_interest_bybit(lambda path, params: {"retCode": 10001, "retMsg": "params error"}, now=NOW)
+
+
+def test_second_venue_is_published_apart_and_merged_for_the_chart() -> None:
+    from types import SimpleNamespace
+
+    from src.dashboard.perp_flow import chart_inputs, oi_archive_path, oi_chart, publish
+
+    start = int((NOW - timedelta(hours=299)).timestamp())
+    rows = [{"timestamp": (start + i * 3600) * 1000, "sumOpenInterest": str(90_000), "sumOpenInterestValue": "7e9"} for i in range(300)]
+    binance = open_interest(lambda path, params: rows, now=NOW)
+    bybit = {"symbol": "BTCUSDT", "venue": "bybit", "period": "1h", "window_hours": 180, "source": "Bybit", "as_of": NOW.isoformat(),
+             "points": [[start + i * 3600, 40_000.0, None] for i in range(300)], "z": []}
+    state = SimpleNamespace(perp_flows={}, open_interests={}, perp_flow={}, open_interest={})
+    publish(state, "BTCUSDT", oi=binance)
+    publish(state, "BTCUSDT", oi=bybit, venue="bybit")
+    assert set(state.open_interests) == {"BTCUSDT", "BTCUSDT@bybit"} and state.open_interest is binance
+    _, merged = chart_inputs(state, "BTCUSDT")
+    assert merged["venue"] == "binance" and merged["venues"]["bybit"] is bybit
+    part = oi_chart(merged, int(NOW.timestamp()) - 10 * 3600, NOW)
+    assert [v["venue"] for v in part["venues"]] == ["binance", "bybit"] and part["total_last"] == 130_000
+    assert len(part["venues"][1]["points"]) == 12 and part["last"] == 90_000
+    stale = dict(merged, venues={"bybit": dict(bybit, as_of=(NOW - timedelta(hours=4)).isoformat())})
+    assert [v["venue"] for v in oi_chart(stale, int(NOW.timestamp()) - 10 * 3600, NOW)["venues"]] == ["binance"]
+    _, fallback = chart_inputs(SimpleNamespace(perp_flows={}, open_interests={"BTCUSDT@bybit": bybit}, perp_flow={}, open_interest=binance), None)
+    assert fallback["venues"]["bybit"] is bybit
+    assert oi_archive_path("data/perp_flow", "BTCUSDT", "bybit").name == "oi-BTCUSDT-bybit-1h.jsonl"
+    assert oi_archive_path("data/perp_flow", "BTCUSDT").name == "oi-BTCUSDT-1h.jsonl"

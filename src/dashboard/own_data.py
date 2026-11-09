@@ -142,6 +142,27 @@ def oi_tile(data_root: Path, now: datetime, symbol: str = "BTCUSDT") -> Tile:
                      as_of=_iso(float(last.get("t") or 0)), max_age_seconds=OI_MAX_AGE, now=now, extra={"hours": hours})
 
 
+def bybit_tile(data_root: Path, now: datetime) -> Tile:
+    """Bybit perp trades over the websocket (src/dashboard/bybit_flow.py, Issue #162): second venue of the bubbles."""
+    tile_id, name = "own_bybit", "Bybit-Orderflow (Bubbles)"
+    directory = data_root / "bybit_flow"
+    source = "data/bybit_flow/state.json"
+    try:
+        state = json.loads((directory / "state.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return unavailable(tile_id, name, "Sammler hat noch nichts gespeichert (state.json fehlt)", source)
+    except (OSError, ValueError) as exc:
+        return make_tile(tile_id, name, "—", state="fail", reason=f"state.json unlesbar: {type(exc).__name__}", source=source, now=now)
+    days = sorted(p.name[6:16] for p in directory.glob("bybit-*.json.gz"))
+    segments = state.get("segments") or []
+    recent = [s for s in segments if isinstance(s, list) and len(s) == 2 and now.timestamp() * 1000 - s[1] <= 86_400_000]
+    reason = f"{len(recent) - 1} Neuverbindung(en) in 24 h" if len(recent) > 1 else ""
+    value = f"{len(days)} Tage seit {days[0]}" if days else "noch kein Tag"
+    return make_tile(tile_id, name, value, "WARN" if len(recent) > 3 else "PASS", reason=reason, source=source,
+                     as_of=state.get("updated_at"), max_age_seconds=PERP_MAX_AGE, now=now,
+                     extra={"days": len(days), "sessions": state.get("sessions"), "trades": state.get("trades")})
+
+
 def gamma_tile(data_root: Path, now: datetime) -> Tile:
     path = data_root / "options" / "gamma_levels.jsonl"
     source = "data/options/gamma_levels.jsonl"
@@ -224,7 +245,7 @@ def status(data_root: Path, liq_root: Path, now: datetime | None = None) -> list
     """One tile per own data source, newest record against its freshness limit."""
     now = now or datetime.now(timezone.utc)
     tiles = [perp_tile(data_root, now), oi_tile(data_root, now),
-             perp_tile(data_root, now, "XMRUSDT"), oi_tile(data_root, now, "XMRUSDT"), gamma_tile(data_root, now)]
+             perp_tile(data_root, now, "XMRUSDT"), oi_tile(data_root, now, "XMRUSDT"), bybit_tile(data_root, now), gamma_tile(data_root, now)]
     tiles += [liquidation_tile(liq_root, venue, now) for venue in LIQ_VENUES]
     tiles.append(files_backup_tile(data_root / "operational", now))
     tiles.append(gap_filler_tile(data_root / "operational", now))

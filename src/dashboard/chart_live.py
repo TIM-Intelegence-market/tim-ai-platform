@@ -81,6 +81,7 @@ GROUP_STYLE = {
     "fib": ("#c9a227", "dotted"),
     "gamma": ("#ffb020", "solid"),  # each gamma level brings its own colour (gamma_data.LEVEL_STYLE)
     "liq": ("#ff6b3d", "dashed"),  # cluster levels bring their own colour (liquidation_data.LEVEL_COLOR)
+    "liqev": ("#ff3d7f", "solid"),  # real liquidations are markers (liquidation_events.py), no lines
 }
 GROUP_NAMES = {
     "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "quarter": "Quartal (1Q)", "year": "Jahr (1Y)",
@@ -88,12 +89,14 @@ GROUP_NAMES = {
     "vwap_bands": "VWAP-Bänder Woche (±1σ, ±2σ)", "naked": "naked POC",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "fib": "Fibonacci (letzter Swing)", "tpo": "TPO (Tagesprofil)",
-    "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)", "bubbles": "Volume Bubbles (große Market Orders)",
+    "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
+    "bubbles": "Volume Bubbles (große Market Orders; Perp: Binance + Bybit)",
     "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
     "liq": "Liquidations-Heatmap (Schätzung)",
-    "cvd": "CVD Spot vs. Perp", "oi": "Open Interest + Z-Score (7,5 T)",
+    "liqev": "Liquidationen (echt, Binance + Bybit)",
+    "cvd": "CVD Spot vs. Perp", "oi": "Open Interest je Börse (Binance, Bybit) + Z-Score (7,5 T)",
     "funding": "Funding Rate (Binance Perp)", "premium": "Coinbase-Premium (USD vs. USDT)",
     "dominance": "BTC- und USDT-Dominanz (täglich)",
     "macro": "Termine (US-CPI, FOMC)",
@@ -108,7 +111,7 @@ TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
 DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
-                  "plans_short", "plans_mid", "plans_long", "gamma", "liq", "cvd", "oi", "macro")
+                  "plans_short", "plans_mid", "plans_long", "gamma", "liq", "liqev", "cvd", "oi", "macro")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
@@ -952,13 +955,36 @@ def plan_overlays(journals: Mapping[str, Sequence[Mapping[str, Any]]], times: Se
     return plans[-PLAN_LIMIT:]
 
 
+def merge_bubbles(first: dict[str, Any], second: dict[str, Any] | None, second_venue_present: bool) -> dict[str, Any]:
+    """Binance bubbles plus the Bybit ones (Issue #162): ``venue`` on every item, the largest ``MAX_BUBBLES_VIEW`` kept.
+
+    Without a second store the items get ``venue = "binance"`` and ``venues`` names Binance only, so the
+    chart says what it shows.
+    """
+    from src.dashboard.footprint_data import MAX_BUBBLES_VIEW
+
+    items = [{**item, "venue": "binance"} for item in first.get("items") or []]
+    venues = ["binance"]
+    if second_venue_present:
+        venues.append("bybit")
+        items += [{**item, "venue": "bybit"} for item in (second or {}).get("items") or []]
+    items = sorted(sorted(items, key=lambda i: i["usd"], reverse=True)[:MAX_BUBBLES_VIEW], key=lambda i: i["time"])
+    merged = {**first, "items": items, "venues": venues}
+    if items:
+        merged["min_usd"] = round(min(i["usd"] for i in items), 2)
+        merged["max_usd"] = round(max(i["usd"] for i in items), 2)
+        merged["note"] = None
+    return merged
+
+
 def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
                      cache: KlineCache | None = None, now: datetime | None = None, footprint: Mapping[str, Any] | None = None,
                      plan_journals: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
                      gamma: Mapping[str, Any] | None = None, liquidation: Mapping[str, Any] | None = None,
                      perp: Mapping[str, Any] | None = None, open_interest: Mapping[str, Any] | None = None,
                      market: str | None = None, context: Mapping[str, Any] | None = None,
-                     macro: Sequence[Mapping[str, Any]] | None = None, perp_cache: KlineCache | None = None) -> dict[str, Any]:
+                     macro: Sequence[Mapping[str, Any]] | None = None, perp_cache: KlineCache | None = None,
+                     liquidation_root: Any = None, bybit: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Everything the interactive chart draws, as JSON-ready data.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
@@ -981,6 +1007,12 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     (group "dominance", key "dominance" in ``context``); all three start hidden.
     ``macro`` is the macro calendar (``macro_calendar.load_calendar``; read from its file when
     None): US-CPI and FOMC release dates as markers on the candle they fall in (group "macro").
+    ``liquidation_root`` is the S12 collector's data folder (``liquidation_events.default_root`` when
+    None): real Binance and Bybit liquidations of the window under key ``liquidations`` (group "liqev");
+    ``False`` skips the read (tests without a record).
+    ``bybit`` is ``DashboardState.bybit_flow`` (bybit_flow.py): when the perp is shown, its large taker
+    orders join the Binance bubbles as a second venue (``venue`` on every item); footprint, CVD and
+    profiles stay Binance.
     """
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     timeframe = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
@@ -991,7 +1023,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                              "provenance": PROVENANCE, "candles": [], "drawings": [], "groups": GROUP_NAMES,
                              "default_groups": list(DEFAULT_GROUPS), "notes": [], "plans": [], "liquidation": None, "fib": None,
                              "markets": {"names": MARKETS, "active": DEFAULT_MARKET, "available": []}, "cvd": None, "oi": None,
-                             "funding": None, "premium": None, "dominance": None, "macro": [], "macro_ahead": [],
+                             "funding": None, "premium": None, "dominance": None, "macro": [], "macro_ahead": [], "liquidations": None,
                              "interval_seconds": INTERVAL_SECONDS.get(timeframe)}
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
@@ -1081,6 +1113,17 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         if model["oi"] and model["oi"]["stale"]:
             model["notes"].append("Open Interest: Binance-Stand älter als 3 h, ausgeblendet.")
             model["oi"] = None
+        elif model["oi"] and len(model["oi"]["venues"]) > 1:
+            names = " + ".join(v["venue"].capitalize() for v in model["oi"]["venues"])
+            model["notes"].append(f"Open Interest je Börse ({names}, BTC); Z-Score auf Binance.")
+        elif model["oi"]:
+            model["notes"].append("Open Interest nur Binance (Bybit noch ohne Stand).")
+    if liquidation_root is not False and symbol == "BTCUSDT":
+        from src.dashboard.liquidation_events import chart_items as liquidation_items
+
+        model["liquidations"] = liquidation_items(liquidation_root, symbol, times[0], now)
+        if model["liquidations"].get("note"):
+            model["notes"].append(model["liquidations"]["note"])
     if context:
         from src.dashboard.market_context import funding_chart, premium_chart
 
@@ -1125,6 +1168,9 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
             model["volume_profile"] = [p for p in volume_profiles(trades_shown, now) if _epoch(p["end"]) > first_time]
             model["footprint"] = footprint_bars(trades_shown, times, INTERVAL_SECONDS[timeframe])
             model["bubbles"] = volume_bubbles(trades_shown, times, INTERVAL_SECONDS[timeframe])
+            bybit_trades = bybit if active == "perp" and bybit and bybit.get("symbol") == symbol and bybit.get("days") else None
+            model["bubbles"] = merge_bubbles(model["bubbles"], volume_bubbles(bybit_trades, times, INTERVAL_SECONDS[timeframe]) if bybit_trades else None,
+                                             bybit_trades is not None)
             model["trade_source"] = trades_shown.get("source")
             model["trades_updated_at"] = trades_shown.get("updated_at")
         if spot_trades or perp_trades:

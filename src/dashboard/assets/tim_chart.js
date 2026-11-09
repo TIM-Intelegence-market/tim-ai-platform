@@ -61,9 +61,9 @@
     : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand', next: 'Nächster Termin',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
   const P = EN
-    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', oi: 'OI (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
+    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp check: ${ok}/${n} h equal to Binance, ${gaps} gaps` }
-    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', oi: 'OI (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
+    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp-Prüfung: ${ok}/${n} h gleich mit Binance, ${gaps} Lücken` };
   const fmt = v => v == null ? '–' : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
 
@@ -96,6 +96,9 @@
   const oiZ = chart.addHistogramSeries({ ...band, priceScaleId: 'oi_z', title: P.oiZ, visible: false, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
   const oiLine = chart.addLineSeries({ ...band, priceScaleId: 'oi', color: '#c3cad6', lineWidth: 1, title: P.oi, visible: false,
                                        priceFormat: { type: 'volume' } });
+  // Second venue (issue #162): Bybit linear open interest on the same scale, so the two lines compare in BTC.
+  const oiBybit = chart.addLineSeries({ ...band, priceScaleId: 'oi', color: '#f7a35c', lineWidth: 1, title: P.oiBybit, visible: false,
+                                        priceFormat: { type: 'volume' } });
   // Funding (scaled to 8 h so symbols compare) and Coinbase premium (Coinbase USD vs. Binance USDT in USD), both start hidden.
   const fundingBars = chart.addHistogramSeries({ ...band, priceScaleId: 'funding', title: P.funding, visible: false,
                                                  priceFormat: { type: 'price', precision: 4, minMove: 0.0001 } });
@@ -130,6 +133,7 @@
     cvdSpot.applyOptions({ visible: shown.includes('cvd') });
     cvdPerp.applyOptions({ visible: shown.includes('cvd') });
     oiLine.applyOptions({ visible: shown.includes('oi') });
+    oiBybit.applyOptions({ visible: shown.includes('oi') && oiBybit.data().length > 0 });
     oiZ.applyOptions({ visible: shown.includes('oi') });
     fundingBars.applyOptions({ visible: shown.includes('funding') });
     premiumLine.applyOptions({ visible: shown.includes('premium') });
@@ -143,15 +147,18 @@
     // Open interest is hourly: each candle takes the last hour that began at or before it.
     const oi = model && model.oi;
     const at = (points, t) => { let found = null; for (const p of points) { if (p[0] <= t) found = p; else break; } return found; };
-    const oiPoints = [], zPoints = [];
+    const oiPoints = [], zPoints = [], bybitPoints = [];
+    const bybit = oi && oi.venues ? oi.venues.find(v => v.venue === 'bybit') : null;
     if (oi && model.candles.length) {
       for (const c of model.candles) {
         const p = at(oi.points, c.time); if (p) oiPoints.push({ time: local(c.time), value: p[1] });
+        if (bybit) { const b = at(bybit.points, c.time); if (b) bybitPoints.push({ time: local(c.time), value: b[1] }); }
         const z = at(oi.z, c.time);
         if (z) zPoints.push({ time: local(c.time), value: z[1], color: z[1] >= 2 ? 'rgba(255,107,61,0.85)' : z[1] <= -2 ? 'rgba(63,182,255,0.85)' : 'rgba(132,145,163,0.45)' });
       }
     }
     oiLine.setData(oiPoints);
+    oiBybit.setData(bybitPoints);
     oiZ.setData(zPoints);
     // Funding per settlement and the hourly premium: each candle takes the last value that began at or before it.
     const fundingPoints = [], premiumPoints = [];
@@ -656,11 +663,14 @@
                 const buy = item.side > 0;
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, Math.PI * 2);
-                ctx.fillStyle = buy ? 'rgba(38,200,140,0.30)' : 'rgba(239,83,80,0.30)';
+                const bybit = item.venue === 'bybit';  // second venue (issue #162): hollow, dashed ring
+                ctx.fillStyle = bybit ? 'rgba(11,15,22,0.35)' : buy ? 'rgba(38,200,140,0.30)' : 'rgba(239,83,80,0.30)';
                 ctx.fill();
                 ctx.lineWidth = 1.2;
+                ctx.setLineDash(bybit ? [3, 2] : []);
                 ctx.strokeStyle = buy ? 'rgba(38,220,150,0.95)' : 'rgba(255,92,88,0.95)';
                 ctx.stroke();
+                ctx.setLineDash([]);
                 if (r >= BUBBLE.labelR) {
                   ctx.fillStyle = '#e8edf5';
                   ctx.fillText(item.quantity >= 100 ? item.quantity.toFixed(0) : item.quantity.toFixed(1), x, y);
@@ -674,6 +684,80 @@
     },
   };
   candles.attachPrimitive(bubbles);
+
+  // Real liquidations (issue #162): Binance forceOrder and Bybit allLiquidation from TIM's S12 record.
+  // A triangle at the event's time and price: pointing down and red when a long was liquidated (forced
+  // sell), up and green for a short (forced buy); Bybit events get a hollow shape. Size by USD against
+  // the largest in view, label from 500 k$. Only the largest events of the window are sent (300).
+  const LIQEV = { minR: 3, maxR: 14, labelUsd: 500000, pxPer: 10, minCount: 40 };
+  const liqev = {
+    chart: null, series: null, requestUpdate: null, visible: true,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'top'; },
+      renderer() {
+        return {
+          draw(target) {
+            const data = model && model.liquidations;
+            if (!liqev.visible || !liqev.chart || !data || !data.items || !data.items.length || model.candles.length < 2) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = liqev.chart.timeScale();
+              const range = scale.getVisibleLogicalRange();
+              if (!range) return;
+              const barWidth = mediaSize.width / Math.max(1, range.to - range.from);
+              const n = model.candles.length;
+              const seconds = Math.max(1, model.candles[n - 1].time - model.candles[n - 2].time);
+              const first = model.candles[0].time;
+              const placed = [];
+              for (const item of data.items) {
+                const bar = first + Math.floor((item.time - first) / seconds) * seconds;
+                const center = scale.timeToCoordinate(local(bar));
+                const y = liqev.series.priceToCoordinate(item.price);
+                if (center === null || y === null) continue;
+                const x = center + ((item.time - bar) / seconds - 0.5) * barWidth;
+                if (x < -LIQEV.maxR || x > mediaSize.width + LIQEV.maxR) continue;
+                placed.push({ item, x, y });
+              }
+              placed.sort((a, b) => b.item.usd - a.item.usd);
+              const order = placed.slice(0, Math.max(LIQEV.minCount, Math.round(mediaSize.width / LIQEV.pxPer)));
+              if (!order.length) return;
+              const max = Math.max(1, order[0].item.usd);
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'bottom';
+              ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
+              ctx.lineWidth = 1.4;
+              for (const { item, x, y } of order) {
+                const r = Math.max(LIQEV.minR, LIQEV.maxR * Math.sqrt(item.usd / max));
+                const long = item.side === 'long';  // long liquidated = forced sell, drawn pointing down
+                const dir = long ? 1 : -1;
+                ctx.beginPath();
+                ctx.moveTo(x, y + dir * r);
+                ctx.lineTo(x - r * 0.9, y - dir * r * 0.7);
+                ctx.lineTo(x + r * 0.9, y - dir * r * 0.7);
+                ctx.closePath();
+                ctx.strokeStyle = long ? 'rgba(255,92,88,0.95)' : 'rgba(38,220,150,0.95)';
+                ctx.fillStyle = item.venue === 'bybit' ? 'rgba(11,15,22,0.65)' : (long ? 'rgba(239,83,80,0.55)' : 'rgba(38,200,140,0.55)');
+                ctx.fill();
+                ctx.stroke();
+                if (item.usd >= LIQEV.labelUsd) {
+                  ctx.fillStyle = '#e8edf5';
+                  const usd = item.usd >= 1e6 ? `${(item.usd / 1e6).toFixed(1)}M` : `${Math.round(item.usd / 1e3)}k`;
+                  ctx.fillText(usd, x, y - dir * r - 2 * dir - (dir > 0 ? 0 : -12));
+                }
+              }
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'middle';
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(liqev);
 
   // TIM's trades as position boxes, like TradingView's long/short tool (Uzi 30.10.2026): green zone from
   // the entry to the last target, red zone from the entry to the original stop, entry line between them,
@@ -1006,6 +1090,7 @@
     vp.visible = groups.has('vp');
     fp.visible = groups.has('fp');
     liq.visible = groups.has('liq');
+    liqev.visible = groups.has('liqev');
     fib.visible = groups.has('fib');
     bubbles.visible = groups.has('bubbles');
     layoutBands(groups);
@@ -1082,7 +1167,7 @@
       drawLines();
       drawBands();
       showMarket();
-      { const groups = shownGroups(); layoutBands(groups); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); fib.visible = groups.has('fib'); bubbles.visible = groups.has('bubbles'); }
+      { const groups = shownGroups(); layoutBands(groups); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); liqev.visible = groups.has('liqev'); fib.visible = groups.has('fib'); bubbles.visible = groups.has('bubbles'); }
       if (first || !sameView) {
         chart.timeScale().setVisibleLogicalRange(viewRange(168));
         first = false;
