@@ -31,7 +31,7 @@ from src.v2_completion.mac_live import (
     launchctl_state,
     launchd_drift,
     log_rotation_evidence,
-    reachable,
+    reachable_hosts,
 )
 from src.v2_completion.start_gate_checks import (
     check_durable_cursor,
@@ -94,7 +94,9 @@ def postgresql_security_gate(listen_addresses: str | None):
     if not DARWIN:
         return check_postgresql_security(run(["ss", "-ltnH"]), listen_addresses, port=port)
     ifconfig = run(["/sbin/ifconfig"])
-    probes = None if ifconfig is None else {host: reachable(host, port) for host in interface_addresses(ifconfig)}
+    hosts = [] if ifconfig is None else interface_addresses(ifconfig)
+    open_hosts = set(reachable_hosts(hosts, port, timeout=2.0))
+    probes = None if ifconfig is None else {host: host in open_hosts for host in hosts}
     return check_postgresql_reachability(listen_addresses, probes, port=port)
 
 

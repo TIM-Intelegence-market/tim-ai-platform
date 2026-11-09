@@ -360,7 +360,7 @@ class RuntimeControl:
         counts as present when a loopback connect succeeds, and as unsafe when a connect
         to any non-loopback address of this Mac succeeds (or interfaces are unreadable).
         """
-        from src.v2_completion.mac_live import interface_addresses, reachable
+        from src.v2_completion.mac_live import interface_addresses, reachable, reachable_hosts
 
         addresses: list[str] = []
         listing = run([self.lsof, "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"])
@@ -377,7 +377,7 @@ class RuntimeControl:
             ]
         interfaces = run([self.ifconfig])
         exposed = (
-            [host for host in interface_addresses(interfaces.stdout) if reachable(host, port, timeout=1.0)]
+            reachable_hosts(interface_addresses(interfaces.stdout), port, timeout=1.0)  # parallel: one second, not one per address
             if interfaces.returncode == 0
             else None
         )
