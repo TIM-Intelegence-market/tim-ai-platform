@@ -114,6 +114,7 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
                                             "display only, no paper trading."),
     (r"^Gamma: Deribit-Stand ist (\d+) min alt", r"Gamma: Deribit data is \1 min old, levels hidden."),
     (r"^Liquidations-Heatmap: Binance-Stand ist (\d+) min alt", r"Liquidation heatmap: Binance data is \1 min old, hidden."),
+    (r"^Liquidations-Heatmap: Modell aus Open Interest", "Liquidation heatmap: a model from open interest and price, not real liquidations (real events: issue #162)."),
     (r"^Keine großen Market Orders", "No large market orders in the shown window."),
     (r"^Noch keine Trades", "No trades from the TIM database yet (the runtime delivers them every 2 minutes)."),
     (r"^(Level \S+: )?Börse nicht erreichbar", r"\1Exchange not reachable, retrying shortly."),
@@ -164,8 +165,9 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
     out["drawings"] = [{**d, "name": english_text(d.get("name")), "label": english_text(d.get("label")), "note": english_text(d.get("note"))}
                        for d in model.get("drawings") or []]
     out["notes"] = [english_note(n) for n in model.get("notes") or []]
-    plan_labels = {"Struktur 30m": "Structure 30m"}
-    out["plans"] = [{**p, "label": plan_labels.get(p.get("label"), p.get("label"))} for p in model.get("plans") or []]
+    plan_labels = {"Struktur 30m": "Structure 30m", "Struktur 30m (Spot)": "Structure 30m (spot)"}
+    out["plans"] = [{**p, "label": plan_labels.get(p.get("label"), (p.get("label") or "").replace(" (Spot)", " (spot)") or p.get("label"))}
+                    for p in model.get("plans") or []]
     if isinstance(model.get("footprint"), dict):
         out["footprint"] = {**model["footprint"], "note": english_note(model["footprint"].get("note"))}
     if isinstance(model.get("fib"), dict):

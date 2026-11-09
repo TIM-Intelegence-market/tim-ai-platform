@@ -1102,6 +1102,9 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model["fib"] = fib_retracement(candles, timeframe)
     model["plans"] = plan_overlays(plan_journals, times) if plan_journals and symbol == "BTCUSDT" else []
     model["plans_market"] = "spot"  # the paper journals price on Binance spot, whatever the chart shows
+    if level_perp:
+        for plan in model["plans"]:
+            plan["label"] = f"{plan['label']} (Spot)"
     from src.dashboard.macro_calendar import chart_markers, load_calendar, upcoming_markers
 
     calendar = load_calendar() if macro is None else macro

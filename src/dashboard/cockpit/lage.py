@@ -381,11 +381,14 @@ def _journal_tiles(plan: SourceResult, trader: SourceResult, now: datetime) -> l
         elif not stats["plans"] and not journal.get("last_plan_candle"):
             tiles.append(unavailable("plan_journal", "Plan-Journal", "Noch kein Plan festgehalten", "data/journal/tim_plan_journal.json", "/journal"))
         else:
+            excluded = stats.get("excluded") or {}
             tiles.append(make_tile(
                 "plan_journal", "Plan-Journal", f"{stats['open']} warten · {stats['filled']} im Trade", "PASS",
                 source="data/journal/tim_plan_journal.json", as_of=journal.get("last_plan_candle"),
                 max_age_seconds=PLAN_JOURNAL_MAX_AGE, href="/journal", now=now,
-                detail=f"{stats['closed']} geschlossen · netto {_r(stats['sum_net_r'])} · nur Papier",
+                detail=f"{stats['closed']} geschlossen · netto {_r(stats['sum_net_r'])}"
+                       + (f" · {excluded['plans']} ausgeschlossen (geprüfte Korrektur, {_r(excluded['sum_net_r'])})" if excluded.get("plans") else "")
+                       + " · nur Papier, Binance Spot",
             ))
     if not trader.ok:
         tiles.append(unavailable("trader_journal", "Trader-Journal", trader.reason(), "data/journal/trader_journal.json", "/trader-journal"))
