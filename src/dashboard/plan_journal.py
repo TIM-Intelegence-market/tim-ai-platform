@@ -864,6 +864,31 @@ def _vol_weighted(closed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     return vol_4h.weighted(closed)
 
 
+SCORE_BUCKETS = ((0.0, 0.4), (0.4, 0.5), (0.5, 0.6), (0.6, 1.01))
+SCORE_MIN_PLANS = 30  # below this the table is a picture, not a verdict
+
+
+def score_reliability(closed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Score at plan time against the outcome: per score bucket the closed plans, wins (gross R > 0),
+    hit rate and mean net R. The score is UNCALIBRATED_CONFIDENCE (probability.py); a calibrated
+    score would show a rising hit rate across the buckets. ``verdict`` stays None below SCORE_MIN_PLANS."""
+    rows = []
+    scored = [e for e in closed if isinstance(e.get("score"), (int, float))]
+    for low, high in SCORE_BUCKETS:
+        mine = [e for e in scored if low <= float(e["score"]) < high]
+        wins = sum(1 for e in mine if (e.get("gross_r") or 0.0) > 0)
+        rows.append({"bucket": f"{low:.1f}-{min(high, 1.0):.1f}", "closed": len(mine), "wins": wins,
+                     "hit_rate": round(wins / len(mine), 3) if mine else None,
+                     "mean_net_r": round(sum(e.get("net_r") or 0.0 for e in mine) / len(mine), 3) if mine else None})
+    filled = [r for r in rows if r["closed"]]
+    monotone = None
+    if len(scored) >= SCORE_MIN_PLANS and len(filled) >= 2:
+        rates = [r["hit_rate"] for r in filled]
+        monotone = all(a <= b for a, b in zip(rates, rates[1:]))
+    return {"scored": len(scored), "unscored": len(closed) - len(scored), "buckets": rows, "min_plans": SCORE_MIN_PLANS,
+            "score_type": "UNCALIBRATED_CONFIDENCE", "verdict": None if monotone is None else ("steigend" if monotone else "nicht steigend")}
+
+
 def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     """Counts and sums. Entries excluded by a reviewed correction are left out and counted separately."""
     every = list(journal.get("entries") or [])
@@ -900,6 +925,8 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
                          "wick": sum(bool((e.get("stop_review") or {}).get("wick")) for e in closed)},
         "excluded": {"plans": len(excluded), "sum_r": round(sum(e.get("gross_r") or 0.0 for e in excluded), 3),
                      "sum_net_r": round(sum(e.get("net_r") or 0.0 for e in excluded), 3)},
+        # Master-Analyse 09.11.2026 (P2b): the engine score is a heuristic; this table shows what it was worth.
+        "score_reliability": score_reliability(closed),
         "counter_trend": {
             "plans": sum(counter_trend(e.get("direction"), e.get("market_state")) for e in entries),
             "closed": len(against),
