@@ -1,8 +1,9 @@
 """OF2: candles, levels, the three detectors, the tracker, the streaming engine (no look-ahead) and comparators."""
 from __future__ import annotations
 
+import dataclasses
 import random
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -398,26 +399,73 @@ def test_run_random_tracks_pseudo_trades_on_the_stream():
     assert all(t.reason in {"STOP", "TARGET", "TIME_STOP", "MAX_HOLD"} for t in trades)
 
 
-def _synthetic_loader():
+def _synthetic_loader(n_days: int = 4):
     rng = random.Random(3)
     days = {}
     price = 30_000.0
-    for d in range(4):
+    for d in range(n_days):
         bars, profile, price = synthetic_day(DAY0 + d * DAY_MS, rng, price)
-        days[date(2021, 3, 1 + d)] = (bars, profile)
+        days[date(2021, 3, 1) + timedelta(days=d)] = (bars, profile)
     return lambda day: days[day]
 
 
-def test_run_random_parallel_gives_the_same_strategy_means():
+def _synthetic_loader_8():
+    return _synthetic_loader(8)
+
+
+def test_run_random_parallel_gives_the_same_trades():
     s = sig(models.MARKET, 1, None, 99.0, 103.0)
     t = backtest.Trade(s, DAY0, 100, DAY0 + HOUR_MS, 103, "TARGET", 3, 0.1, 0.05, 3, 0)
-    pseudo = compare.random_signals([t] * 5, date(2021, 3, 1), date(2021, 3, 3), CFG, draws=7, seed=5)
-    one = compare.run_random(_synthetic_loader(), date(2021, 3, 1), date(2021, 3, 3), pseudo, CFG)
-    inline = compare.run_random_parallel(_synthetic_loader, date(2021, 3, 1), date(2021, 3, 3), pseudo, CFG, workers=1)
-    many = compare.run_random_parallel(_synthetic_loader, date(2021, 3, 1), date(2021, 3, 3), pseudo, CFG, workers=3)
-    key = lambda tr: (int(tr.signal.level), tr.fill_ms, tr.exit_ms, tr.net_r)
-    assert one and sorted(map(key, one)) == sorted(map(key, many)) == sorted(map(key, inline))
-    assert compare.strategy_means(one) == compare.strategy_means(many)
+    first, last = date(2021, 3, 1), date(2021, 3, 7)
+    pseudo = compare.random_signals([t] * 5, first, last, CFG, draws=9, seed=5)
+    # one pseudo signal in the last minute of a day: it fills at 00:00 of the next range
+    edge = dataclasses.replace(pseudo[0], signal_ms=DAY0 + 2 * DAY_MS - MINUTE_MS, valid_until=DAY0 + 2 * DAY_MS,
+                               level=99.0)
+    pseudo = [*pseudo, edge]
+    one = compare.run_random(_synthetic_loader_8(), first, last, pseudo, CFG)
+    key = lambda tr: (int(tr.signal.level), tr.signal.signal_ms, tr.fill_ms, tr.exit_ms, tr.net_r)
+    for workers in (1, 2, 3, 7, 20):
+        many = compare.run_random_parallel(_synthetic_loader_8, first, last, pseudo, CFG, workers=workers)
+        assert one and sorted(map(key, one)) == sorted(map(key, many)), workers
+    assert 99 in compare.strategy_means(one)  # the day-edge signal really traded
+    assert compare.strategy_means(one) == compare.strategy_means(
+        compare.run_random_parallel(_synthetic_loader_8, first, last, pseudo, CFG, workers=3))
+
+
+def test_run_random_parallel_refuses_pending_orders():
+    s = sig(models.LIMIT, 1, 100.0, 99.0, 103.0)
+    with pytest.raises(ValueError):
+        compare.run_random_parallel(_synthetic_loader_8, date(2021, 3, 1), date(2021, 3, 7), [s], CFG, workers=2)
+
+
+_LONG_DAYS: dict = {}
+
+
+def _long_loader():
+    if not _LONG_DAYS:
+        rng, price = random.Random(11), 30_000.0
+        for d in range(80):
+            bars, profile, price = synthetic_day(DAY0 + d * DAY_MS, rng, price)
+            _LONG_DAYS[date(2021, 3, 1) + timedelta(days=d)] = (bars, profile)
+    return lambda day: _LONG_DAYS[day]
+
+
+def test_engine_split_by_time_gives_the_same_trades_and_counters():
+    from src.research_lab.of2 import parallel
+    cfg = Config(max_cost_r=100.0)  # let the tiny synthetic stops through so there are trades to compare
+    days = [date(2021, 3, 1) + timedelta(days=d) for d in range(80)]
+    one, eng = engine.run_days(_long_loader(), days, cfg)
+    assert len(one) > 20
+    key = lambda tr: tr.as_dict()
+    for workers in (2, 3):
+        many, tot = parallel.run_days_parallel(_long_loader, days, cfg, workers=workers)
+        assert sorted(map(str, map(key, one))) == sorted(map(str, map(key, many))), workers
+        assert tot.stats.signale == eng.stats.signale and tot.stats.verworfen == eng.stats.verworfen
+        assert (tot.stats.tage, tot.stats.tage_ohne_level) == (eng.stats.tage, eng.stats.tage_ohne_level)
+        assert (tot.tracker.expired, tot.tracker.cancelled) == (eng.tracker.expired, eng.tracker.cancelled)
+    # too few days for a warm-up per range: falls back to one pass
+    short, _ = parallel.run_days_parallel(_long_loader, days[:30], cfg, workers=4)
+    assert [t.as_dict() for t in short] == [t.as_dict() for t in engine.run_days(_long_loader(), days[:30], cfg)[0]]
 
 
 # -- footprint and models M4-M6 (P1b) --------------------------------------------------------------
