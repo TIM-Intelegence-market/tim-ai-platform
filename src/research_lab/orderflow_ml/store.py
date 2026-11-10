@@ -33,7 +33,12 @@ DEFAULT_ROOT = Path("data/research_lab/orderflow_ml")
 MANIFEST = "bars_manifest.json"
 SYMBOL = "BTCUSDT"
 HOLDOUT_DAY = date(2025, 1, 1)
-OFX_RELEASE = "OFX-Uzi-2026-11-10"  # the only accepted release of holdout days (OFX final test)
+OFX_RELEASE = "OFX-Uzi-2026-11-10"  # release of holdout days for the OFX final test
+# Paper journal of the orderflow engine (Uzi 10.11.2026, "go"): its own store may read days from PAPER_FIRST_DAY on
+# (lead days for the levels, then the days after the journal start). Nothing before that day.
+PAPER_RELEASE = "OF-Papier-Uzi-2026-11-10"
+PAPER_FIRST_DAY = date(2026, 10, 1)
+RELEASES = (OFX_RELEASE, PAPER_RELEASE)
 
 
 def day_start_ms(day: date) -> int:
@@ -52,8 +57,10 @@ def sha256_file(path: Path) -> str:
 
 def guard(day: date, release: str | None = None, *, today: date | None = None) -> None:
     if day >= HOLDOUT_DAY or day_start_ms(day) >= HOLDOUT_START_MS:
-        if release != OFX_RELEASE:
+        if release not in RELEASES:
             raise HoldoutLocked(f"{day} lies in the holdout; S8 reads no holdout day")
+        if release == PAPER_RELEASE and day < PAPER_FIRST_DAY:
+            raise HoldoutLocked(f"{day} lies before the paper journal's window")
         if day >= (today or datetime.now(timezone.utc).date()):
             raise HoldoutLocked(f"{day} is not complete yet; only days up to yesterday (UTC) are released")
 
@@ -61,7 +68,7 @@ def guard(day: date, release: str | None = None, *, today: date | None = None) -
 class MinuteBarStore:
     def __init__(self, root: Path | str = DEFAULT_ROOT, fetcher: Fetcher = http_fetch, symbol: str = SYMBOL,
                  release: str | None = None) -> None:
-        if release is not None and release != OFX_RELEASE:
+        if release is not None and release not in RELEASES:
             raise ValueError("unknown holdout release")
         self.release = release
         self.root = Path(root)

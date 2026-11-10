@@ -162,6 +162,16 @@ def parse_ki_answer(raw: str, dropped: list[str] | None = None) -> list[dict[str
     return clean
 
 
+def _of_paper_step(root: Path) -> Mapping[str, Any]:
+    """Orderflow paper journal, only where it was started (``python -m src.research_lab.forward of-start`` creates
+    the folder); elsewhere, and in tests, this does nothing."""
+    from src.research_lab.forward import of_paper
+
+    if not (Path(root) / of_paper.FOLDER / "start.json").exists():
+        return {"new_events": 0, "started": False}
+    return of_paper.step(root)
+
+
 @dataclass
 class Workshop:
     """IO side. ``root`` is the checkout the LaunchAgent runs from (on the Mac ~/TIM-live)."""
@@ -171,6 +181,7 @@ class Workshop:
     ps: Callable[[], str] = field(default=lambda: subprocess.run(["ps", "-axo", "command"], capture_output=True,
                                                                   text=True, check=False).stdout)
     forward: Callable[[Path], Mapping[str, Any]] | None = None
+    of_paper: Callable[[Path], Mapping[str, Any]] = _of_paper_step
 
     @property
     def research(self) -> Path:
@@ -368,10 +379,21 @@ class Workshop:
             result["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
             state["forward"] = {"last_run": _iso(now), "last_result": result}
             summary["forward"] = result  # in the history only when something happened (see below)
+            # Orderflow paper journal (Uzi 10.11.2026): same switch as the S7b journal; real work once per new day.
+            started = datetime.now(timezone.utc)
+            try:
+                status = self.of_paper(self.root)
+                paper = {"ok": True, "new_events": status.get("new_events", 0)}
+            except Exception as exc:  # shown in the status, retried next wake-up
+                paper = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:500]}
+            paper["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
+            state["of_paper"] = {"last_run": _iso(now), "last_result": paper}
+            if paper.get("new_events") or paper["ok"] is False:
+                summary["of_paper"] = paper
         if not dry_run:
             state["schema"], state["checked_at"] = SCHEMA, _iso(now)
             self.write_state(state)
             forward = summary.get("forward") or {}
-            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False:
+            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False or "of_paper" in summary:
                 self.log(summary)
         return summary
