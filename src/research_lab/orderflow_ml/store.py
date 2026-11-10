@@ -7,6 +7,10 @@ reduced to ``bars/<symbol>-<day>.csv``. The raw archive is not kept unless asked
 This store never reads ``data/research_lab/aggtrades/px/`` (the S2 price files
 stay unread, S2 section 8) and never touches the runtime database. Days from
 2025-01-01 on are the holdout and are refused before any byte is fetched.
+
+Exception (Uzi 10.11.2026, "die heutigen daten von diesem jahr ebenfalls nuzt bis 2020"): a store opened with
+``release=OFX_RELEASE`` may fetch and read days from 2025-01-01 up to yesterday (UTC) for the OFX final test.
+Every other caller (S8, OF2, export, sequence study) keeps the lock, and no store reads today or a future day.
 """
 from __future__ import annotations
 
@@ -29,6 +33,7 @@ DEFAULT_ROOT = Path("data/research_lab/orderflow_ml")
 MANIFEST = "bars_manifest.json"
 SYMBOL = "BTCUSDT"
 HOLDOUT_DAY = date(2025, 1, 1)
+OFX_RELEASE = "OFX-Uzi-2026-11-10"  # the only accepted release of holdout days (OFX final test)
 
 
 def day_start_ms(day: date) -> int:
@@ -45,13 +50,20 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def guard(day: date) -> None:
+def guard(day: date, release: str | None = None, *, today: date | None = None) -> None:
     if day >= HOLDOUT_DAY or day_start_ms(day) >= HOLDOUT_START_MS:
-        raise HoldoutLocked(f"{day} lies in the holdout; S8 reads no holdout day")
+        if release != OFX_RELEASE:
+            raise HoldoutLocked(f"{day} lies in the holdout; S8 reads no holdout day")
+        if day >= (today or datetime.now(timezone.utc).date()):
+            raise HoldoutLocked(f"{day} is not complete yet; only days up to yesterday (UTC) are released")
 
 
 class MinuteBarStore:
-    def __init__(self, root: Path | str = DEFAULT_ROOT, fetcher: Fetcher = http_fetch, symbol: str = SYMBOL) -> None:
+    def __init__(self, root: Path | str = DEFAULT_ROOT, fetcher: Fetcher = http_fetch, symbol: str = SYMBOL,
+                 release: str | None = None) -> None:
+        if release is not None and release != OFX_RELEASE:
+            raise ValueError("unknown holdout release")
+        self.release = release
         self.root = Path(root)
         self.fetcher = fetcher
         self.symbol = symbol
@@ -78,7 +90,7 @@ class MinuteBarStore:
     # -- ingest ---------------------------------------------------------------------------------
     def prepare(self, day: date, *, keep_raw: bool = False) -> dict:
         """Fetch, verify and reduce one day; write its bar file; return the manifest entry (not recorded)."""
-        guard(day)
+        guard(day, self.release)
         ref = BinanceArchiveRef(day, self.symbol)
         digest = parse_official_checksum(self.fetcher(ref.checksum_url).decode("utf-8"), expected_filename=ref.filename)
         payload = self.fetcher(ref.url)
@@ -121,13 +133,13 @@ class MinuteBarStore:
         return None
 
     def fetch(self, day: date, *, keep_raw: bool = False) -> dict:
-        guard(day)
+        guard(day, self.release)
         return self.cached(day) or self.record(day, self.prepare(day, keep_raw=keep_raw))
 
     # -- read -----------------------------------------------------------------------------------
     def load(self, day: date) -> list[MinuteBar]:
         """The 1440 bars of a day, verified against the manifest."""
-        guard(day)
+        guard(day, self.release)
         entry = self.manifest().get(day.isoformat())
         path = self.bar_path(day)
         if entry is None or not path.exists():
@@ -156,7 +168,7 @@ class MinuteBarStore:
 
     def load_profile(self, day: date) -> DayProfile:
         """Volume per minute and price bin of a day, verified against the manifest."""
-        guard(day)
+        guard(day, self.release)
         entry = self.manifest().get(day.isoformat())
         path = self.profile_path(day)
         if entry is None or not path.exists() or entry.get("bar_version") != BAR_VERSION:
