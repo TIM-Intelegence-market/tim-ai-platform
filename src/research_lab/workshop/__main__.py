@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     ok.add_argument("--register", action="store_true")
     sm = sub.add_parser("submit")
     sm.add_argument("--study", required=True)
-    sm.add_argument("--host", default="mac", choices=["mac", "server"])
+    sm.add_argument("--host", default="mac", choices=["mac", "server", "ps5"])
     sm.add_argument("--input", action="append", default=[])
     sm.add_argument("job_command", nargs=argparse.REMAINDER)
     rn = sub.add_parser("run")
@@ -98,6 +98,11 @@ def main(argv: list[str] | None = None) -> int:
     which.add_argument("--pending", action="store_true")
     rn.add_argument("--ssh", help="Rechenhost, z. B. tim-research@tim-core-01")
     rn.add_argument("--remote-dir")
+    rn.add_argument("--host", default="server", choices=["server", "ps5"], help="welcher Rechner (mit --ssh)")
+    rn.add_argument("--ssh-port", type=int, help="z. B. 2222 für Warpgate")
+    rn.add_argument("--ssh-key", help="Schlüsseldatei, z. B. ~/.ssh/tim_uzi (nur der Pfad, nie der Schlüssel)")
+    rn.add_argument("--remote-python", default="python3", help="z. B. ~/tim-research/.venv/bin/python")
+    rn.add_argument("--copy", default="rsync", choices=["rsync", "scp"], help="scp für Rechner ohne rsync (PS5)")
     vf = sub.add_parser("verify")
     vf.add_argument("--bundle", required=True, type=Path)
     sub.add_parser("jobs")
@@ -209,8 +214,9 @@ def main(argv: list[str] | None = None) -> int:
                 command = [c for c in args.job_command if c != "--"]
                 print(jobs.submit(args.study, command, host=args.host, inputs=args.input))
             elif args.command == "run":
-                targets = [args.job] if args.job else [j["job"] for j in jobs.pending("server" if args.ssh else "mac")]
-                executor = runner.ssh_executor(args.ssh, args.remote_dir) if args.ssh else None
+                targets = [args.job] if args.job else [j["job"] for j in jobs.pending(args.host if args.ssh else "mac")]
+                executor = runner.ssh_executor(args.ssh, args.remote_dir, port=args.ssh_port, identity=args.ssh_key,
+                                               python=args.remote_python, host=args.host, copy=args.copy) if args.ssh else None
                 for job_id in targets:
                     manifest = runner.run_job(jobs, job_id, executor=executor)
                     print(f"{job_id}: Exit {manifest['exit_code']}, Inhalt {manifest['content_hash'][:16]}")

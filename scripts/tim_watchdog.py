@@ -69,6 +69,8 @@ def restart_decision(
     current = time.time() if now is None else now
     last_attempt = state.get("last_restart_attempt_epoch")
     elapsed = current - last_attempt if isinstance(last_attempt, (int, float)) else None
+    if elapsed is not None and elapsed < 0:  # clock moved back: a restart "in the future" does not extend the cooldown
+        elapsed = None
     cooldown_remaining = max(0.0, cooldown_seconds - elapsed) if elapsed is not None else 0.0
     history = state.get("restart_attempt_epochs")
     recent = sorted(
