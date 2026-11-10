@@ -401,7 +401,43 @@ def _workshop_card(root: Path) -> str:
             f"<div class='card'><h2>Schattenbetrieb</h2>{shadows}</div>"
             f"<div class='card'><h2>Regel-Tests <span>Erkundung, kein Beleg</span></h2>{rule_tests}</div></div></div>"
             f"<div class='card'><h2>Selbst-Verbesserung <span>TIM lernt aus seinen Trades</span></h2>{learning}</div>"
-            f"{_forward_card(data.get('forward'))}")
+            f"{_forward_card(data.get('forward'))}{_of_paper_card(data.get('of_paper'))}")
+
+
+OF_STEPS = (("kandidat", "Kandidaten"), ("bestaetigt", "bestätigt"), ("frei", "Platz frei"), ("risiko_ok", "Risiko ok"),
+            ("geschlossen", "geschlossen"))
+OF_REASONS = {"STOP": "Stop", "TARGET": "Ziel", "TIME_STOP": "Zeitstopp", "MAX_HOLD": "Haltedauer"}
+
+
+def _of_paper_card(data: dict[str, Any] | None) -> str:
+    """Orderflow paper journal: OF2 with the orderflow gate on current data, read from data/research/forward/OF."""
+    intro = ("<p class='mut sm'>Die Orderflow-Engine (OF2 mit Orderflow-Tor) läuft auf aktuellen Daten mit: jede Nacht der "
+             "Vortag aus dem öffentlichen Binance-Archiv, derselbe Code wie im Backtest. Signale erscheinen mit bis zu einem "
+             "Tag Verzögerung. Nur Papier, keine Orders, zählt nirgends im Netto-R. Eine Aussage gibt es erst ab etwa 100 Trades.</p>")
+    title = "<h2>Orderflow-Papier-Journal <span>Papier, BTC</span></h2>"
+    if not data:
+        return f"<div class='card'>{title}{intro}<p class='mut'>Noch nicht gestartet.</p></div>"
+    head = (f"<p class='mut sm'>Zählt ab {_e(data.get('first_day'))} · Daten bis {_e(data.get('last_day') or '—')} · zuletzt geprüft "
+            f"{_e(local_time(data.get('checked_at'), with_date=True))}"
+            + (f" · wartet auf Archiv {_e(data['waiting_for'])}" if data.get("waiting_for") else "") + "</p>")
+    mean = "—" if data.get("mean_r") is None else f"{_signed(data['mean_r'])} R"
+    drawdown = f"{float(data.get('max_drawdown_r') or 0.0):.2f}".replace(".", ",")
+    line = (f"<div class='row'><span><b>{data.get('trades', 0)} von {data.get('min_trades', 100)} Trades</b> · zusammen "
+            f"{_e(_signed(data.get('net_r') or 0.0))} R · je Trade {_e(mean)} · größter Rückgang {_e(drawdown)} R")
+    for o in data.get("open") or []:
+        line += (f"<br><span class='sm'>Offen: {_e(o['model'])} {'Long' if o['direction'] > 0 else 'Short'} ab {_e(o['entry'])}, "
+                 f"Stop {_e(round(o['stop'], 1))}, Ziel {_e(round(o['target'], 1))}</span>")
+    for t in reversed(data.get("recent") or []):
+        line += (f"<br><span class='mut sm'>{_e(t['model'])} {'Long' if t['direction'] > 0 else 'Short'} · {_e(t['session'])} · "
+                 f"{_e(OF_REASONS.get(t['reason'], t['reason']))} {_e(_signed(t['net_r']))} R</span>")
+    line += "</span></div>"
+    funnel = ""
+    for model, row in sorted((data.get("trichter") or {}).items()):
+        steps = " → ".join(f"{row.get(key, 0)} {label}" for key, label in OF_STEPS)
+        funnel += f"<div class='row'><span class='sm'><b>{_e(model)}</b> {_e(steps)}</span></div>"
+    if funnel:
+        funnel = "<p class='mut sm'>Signaltrichter seit Start</p>" + funnel
+    return f"<div class='card'>{title}{intro}{head}{line}{funnel}</div>"
 
 
 FORWARD_REASONS = {"target": "Ziel", "target_gap": "Ziel (Lücke)", "stop": "Stop", "stop_gap": "Stop (Lücke)",
