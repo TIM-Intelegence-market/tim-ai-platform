@@ -102,7 +102,7 @@ Uzis Karte und „merge“.
 | Hermes-Zweitmeinung | Trefferquote DAFÜR/DAGEGEN nach 30 Plänen | reiner Kommentar |
 | Wöchentliche Reflexion | höchstens ein Vorschlag je Woche als Frage ans Research Lab | DB-Verbindung nur lesend, `automatic_rule_change` immer `false` |
 | Lernschleife L1 | Herausforderer gegen Champion, Wechsel nur bei `ELIGIBLE` und Karte, nur Papier | Lernregister rechnet das Urteil selbst |
-| Agenten-Tests (Hermes-Evals) | fester Fragenkatalog, Ergebnis je Prompt- oder Modellstand | **fehlt**, siehe Lücke 5 |
+| Agenten-Tests (Hermes-Evals) | fester Testkatalog, Ergebnis je Prompt- oder Modellstand | vorhanden am Mac, noch nicht im Repo, siehe Lücke 5 |
 | Abgebrochene Aufgaben | monatliche Liste „woran scheitern die Agenten“ als Issue-Vorschläge | PM schreibt nur Vorschläge |
 
 Agenten-Prompts und Modellwahl gelten wie Code: Änderung per PR, vorher Agenten-Test, danach „merge“.
@@ -134,7 +134,7 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 | 2 | Vorfall-Issue geht nicht von selbst an den Engineer. | Fehler werden gemeldet, aber erst nach Uzis Anstoß repariert |
 | 3 | Reviewer ist kein Pflichtschritt (Review-Pflicht aus, CODEOWNERS nur geplant). | „merge-fertig“ ohne unabhängige Prüfung möglich |
 | 4 | Kein gemeinsamer Versuchszähler. Die Pipeline kennt nur `agent:retry` (einmal). | Abbruchgrenzen aus Abschnitt 4 sind nicht durchgesetzt |
-| 5 | Hermes-Evals: im Repo nicht gefunden. | Prompt- oder Modellwechsel bei Hermes ist nicht messbar |
+| 5 | Hermes-Evals gibt es seit 10.11.2026 (14 Tests, laut Projekt-Thread alle grün, hier ungeprüft), aber nur am Mac unter `Documents/TIM/hermes-evals`, nicht im Repo und nicht an einen Ablauf gebunden. | Kein Lauf in CI, kein Pflichtlauf vor einem Prompt- oder Modellwechsel |
 | 6 | Rückweg PS5 → Bericht ist Handarbeit (Mac-Sitzung mit Auftragstext). | Durchlauf A hält nach dem Rechnen an |
 | 7 | Keine eine Stelle für „wartet auf Uzi“. | Offene Freigaben liegen in Threads, PRs und Karten verteilt |
 | 8 | Server-Worker (Qwen 30B) im Probelauf, wöchentliche Reflexion nicht installiert (ungeprüft, Stand Anfang November). | zwei gebaute Teile laufen nicht |
@@ -147,7 +147,7 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 | P2 | Versuchszähler und Abbruchgrenzen aus Abschnitt 4 im Worker. Geschützter Pfad, also Owner-PR. | Test: dritter Versuch wird abgewiesen und meldet |
 | P3 | Reviewer als Pflichtschritt vor „merge-fertig“ für kritische Pfade (Journal, Kostenmodell, `src/database/`). | PR ohne Befundliste gilt nicht als merge-fertig |
 | P4 | Vorfall-Issue bekommt bei Klasse Daten/Anzeige automatisch den Worker-Vertrag; Echtgeld und SAFETY nie. | Probelauf mit `checkup:selftest` |
-| P5 | Hermes-Evals: 20 feste Fragen (verweigert Kauf und Schlüssel, liest Lage richtig, erfindet nichts). | Lauf vor und nach einer Prompt-Änderung, Ergebnis als Datei |
+| P5 | Hermes-Evals ins Repo holen (ohne Schlüssel) und als Pflichtlauf vor jeder Prompt- oder Modelländerung festlegen. | Lauf vor und nach einer Prompt-Änderung, Ergebnis als Datei |
 | P6 | „Wartet auf Uzi“ als ein Abschnitt im Hermes-Tagesbericht (offene go, merge, Karten). | Bericht zeigt bekannte offene PRs |
 | P7 | PS5-Ergebnis kommt als Datei mit Hash zurück und wird vom Researcher abgeholt. | Ein Studienlauf ohne Mac-Sitzung |
 
