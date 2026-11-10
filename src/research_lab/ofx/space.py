@@ -10,11 +10,15 @@ import random
 from dataclasses import dataclass
 
 from src.research_lab.of2.config import DEFAULT_CONFIG, Config
+from src.research_lab.protocol import PRE_PERP_FUNDING
 
 # OFX base: OF2 1.0 with the new section split (training 2020-2023, validation 2024).
 # ``of_gate``: only confirmed signals trade and take the day's slot (in OF2 1.0 a price-only signal blocked a later
 # confirmed one of the same model and direction).
-BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", last_day="2024-12-31", of_gate=True)
+# ``funding_per_8h`` (10.11., with the swing track): 0,01 % per 8-h mark, the flat protocol rate, charged in both
+# directions. Trades that run for days must pay it; the intraday trades pay it too from then on.
+BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", last_day="2024-12-31", of_gate=True,
+                                  funding_per_8h=PRE_PERP_FUNDING)
 
 # Values per parameter, ordered; the OF2 1.0 value is always one of them (neighbours = one step left/right).
 # Time frames (Uzi 10.11.): the engine builds its candles anew every UTC day, so a time frame must divide the day
@@ -22,6 +26,10 @@ BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", las
 ENGINE_SPACE: dict[str, tuple] = {
     "tf_value": (5, 15, 30, 60),
     "tf_sfp": (1, 5, 15, 30, 60),
+    # Swing track: off, 4h or 1d candles across days; marks of the last week or month; hard holding limit in days.
+    "swing_tf": (0, 240, 1440),
+    "swing_level": ("W", "M"),
+    "swing_hold_days": (3, 7, 14),
     "relvol_min": (1.5, 2.0, 2.5, 3.0),
     "stop_buffer": (0.0005, 0.001, 0.002, 0.003),
     "min_rr": (1.0, 1.5, 2.0, 3.0),
@@ -38,7 +46,7 @@ ENGINE_SPACE: dict[str, tuple] = {
     "ib_minutes": (30, 60),
 }
 
-MODELS = ("M1", "M2", "M3", "M4", "M5", "M6", "M7")
+MODELS = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "S1", "S2", "S3")   # S = swing track
 SESSIONS = ("ASIA", "LONDON", "NY", "SPAET")
 REGIMES = ("TREND", "RANGE", "NEUTRAL", "UNBEKANNT")
 

@@ -9,10 +9,11 @@ exit was known before the section ended; otherwise it is counted as "offen" and 
 """
 from __future__ import annotations
 
+import dataclasses
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from src.research_lab.of2.backtest import Tracker, Trade, cost_gate
 from src.research_lab.of2.candles import (
@@ -25,10 +26,13 @@ from src.research_lab.of2.config import DAY_MS, Config
 from src.research_lab.of2.footprint import DayFootprints, Footprint
 from src.research_lab.of2.levels import (
     DaySummary,
+    DayVolume,
     Levels,
     SessionState,
     day_summary,
+    day_volume,
     naked_pocs,
+    period_summary,
     regime,
 )
 from src.research_lab.of2.models import (
@@ -73,6 +77,11 @@ class Engine:
         self.prev_session: SessionState | None = None
         self.session: SessionState | None = None
         self.fired: set[tuple[int, str, int]] = set()  # (day_start, model, direction): one signal per model, direction and day
+        # Swing track (off when ``swing_tf`` is 0): candles across days, marks of the last completed week or month.
+        self.swing_builder = CandleBuilder(cfg.swing_tf) if cfg.swing_tf else None
+        self.swing_hist: deque[Candle] = deque(maxlen=cfg.swing_history)
+        self.swing_days: deque[DayVolume] = deque(maxlen=70)
+        self.swing_cfg = dataclasses.replace(cfg, tf_value=cfg.swing_tf, tf_sfp=cfg.swing_tf) if cfg.swing_tf else cfg
 
     # -- levels -----------------------------------------------------------------------------------
     def _levels(self) -> Levels | None:
@@ -82,6 +91,21 @@ class Engine:
         npocs = tuple(naked_pocs(list(self.days), self.cfg.npoc_days))
         ps = self.prev_session
         return Levels(prev, npocs, ps.high if ps and ps.seen else None, ps.low if ps and ps.seen else None)
+
+    def _swing_levels(self, day_start: int) -> tuple[Levels | None, int]:
+        """Marks of the week or month that ended before ``day_start`` (complete periods only) and the start of the
+        running week (the slot key: one swing signal per model, direction and week)."""
+        today = datetime.fromtimestamp(day_start / 1000, tz=timezone.utc).date()
+        monday = today - timedelta(days=today.weekday())
+        if self.cfg.swing_level == "W":
+            first, last = monday - timedelta(days=7), monday - timedelta(days=1)
+        else:
+            last = today.replace(day=1) - timedelta(days=1)
+            first = last.replace(day=1)
+        lo, hi = _ms(first), _ms(last)
+        inside = [d for d in self.swing_days if lo <= d[0].day_start <= hi]
+        summary = period_summary(inside) if len(inside) == (last - first).days + 1 else None
+        return (Levels(summary) if summary is not None else None), _ms(monday)
 
     def _roll_session(self, t: int) -> None:
         start = session_start(t, self.cfg)
@@ -102,6 +126,7 @@ class Engine:
         if levels is None:
             self.stats.tage_ohne_level += 1
         c30, c15 = CandleBuilder(cfg.tf_value), CandleBuilder(cfg.tf_sfp)
+        swing_levels, week_start = self._swing_levels(day_start) if self.swing_builder is not None else (None, 0)
         hist30: list[Candle] = []
         hist15: list[Candle] = []
         fp15: list[Footprint] = []
@@ -139,9 +164,23 @@ class Engine:
                 if levels is not None:
                     self._consider(failed_auction(hist30, levels, cfg), day_start, t)
                     self._consider(acceptance(hist30, levels, cfg), day_start, t)
+            if self.swing_builder is not None and (c := self.swing_builder.push(bar)) is not None:
+                self.swing_hist.append(c)
+                if c.has_trades:
+                    self.tracker.cancel_on_close(c.close, cfg.swing_tf)
+                if swing_levels is not None:
+                    hist, scfg = list(self.swing_hist), self.swing_cfg
+                    for found in (failed_auction(_last_excursion(hist, swing_levels), swing_levels, scfg),
+                                  acceptance(hist, swing_levels, scfg),
+                                  sfp(hist, swing_levels, scfg)):
+                        if found is not None:
+                            swing = Signal(**{**_fields(found), "model": "S" + found.model[1:], "tf": cfg.swing_tf})
+                            self._consider(swing, week_start, t)
         summary = day_summary(bars, profile)
         if summary is not None:
             self.days.append(summary)
+            if self.swing_builder is not None:
+                self.swing_days.append(day_volume(summary, profile))
         self.stats.tage += 1
         return closed
 
@@ -189,6 +228,16 @@ class Engine:
         signal = Signal(**{**_fields(signal), "session": self.session.name, "regime": reg})
         self.stats.hit(self.stats.signale, f"{signal.model}|{signal.session}|{'OF' if signal.confirmed else 'PREIS'}")
         self.tracker.add(signal)
+
+
+def _last_excursion(hist: list[Candle], lv: Levels) -> list[Candle]:
+    """The swing history from the start of the last run of closes outside the value area (before the two closes
+    back inside). The intraday M1 reads the whole day; across weeks only the excursion that just failed counts."""
+    d = lv.prev_day
+    i = len(hist) - 2
+    while i > 0 and hist[i - 1].has_trades and not d.val <= hist[i - 1].close <= d.vah:
+        i -= 1
+    return hist[i:]
 
 
 def _fields(signal: Signal) -> dict:

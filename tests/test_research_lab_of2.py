@@ -706,3 +706,116 @@ def test_every_time_frame_of_the_search_space_runs_and_splits_the_same():
             # every trade carries the time frame its model decided on (time stop and cancel rule count in it)
             assert all(t.signal.tf == (tf_value if t.signal.model in ("M1", "M2") else tf_sfp) for t in one)
     assert seen >= {1, 5, 15, 30, 60}, seen
+
+
+# -- swing track: 4h and 1d candles across days, marks of the last week or month (Uzi 10.11.) ----------------------
+_SWING_DAYS: dict = {}
+SWING_FIRST = date(2021, 1, 4)   # a Monday
+
+
+def _swing_loader():
+    if not _SWING_DAYS:
+        rng, price = random.Random(23), 30_000.0
+        start = (SWING_FIRST - date(1970, 1, 1)).days * DAY_MS
+        for d in range(230):
+            bars, profile, price = synthetic_day(start + d * DAY_MS, rng, price)
+            _SWING_DAYS[SWING_FIRST + timedelta(days=d)] = (bars, profile)
+    return lambda day: _SWING_DAYS[day]
+
+
+def _swing_cfg(**kw) -> Config:
+    import dataclasses
+    return dataclasses.replace(Config(max_cost_r=100.0, min_rr=0.5), **kw)
+
+
+def test_swing_off_is_of2_one_and_the_fields_stay_out_of_the_digest():
+    assert "swing_tf" not in Config().as_dict() and "funding_per_8h" not in Config().as_dict()
+    assert _swing_cfg(swing_tf=240).as_dict()["swing_level"] == "W"
+    with pytest.raises(ValueError):
+        Config(swing_tf=60)
+    assert Config(swing_tf=1440, swing_hold_days=7).hold_limit_minutes(1440) == 7 * 1440
+    assert Config(swing_tf=1440).hold_limit_minutes(30) == Config().max_hold_minutes
+    assert Config().longest_hold_minutes == 1440 and Config(swing_tf=240, swing_hold_days=3).longest_hold_minutes == 3 * 1440
+
+
+def test_period_summary_merges_days_with_different_bin_widths():
+    from src.research_lab.of2.levels import DaySummary, period_summary
+    a = DaySummary(0, 110.0, 90.0, 100.0, 100.0, 95.0, 105.0)
+    b = DaySummary(DAY_MS, 130.0, 100.0, 120.0, 120.0, 110.0, 125.0)
+    # day a: width 10 (e8), volume at 100..110; day b: width 20 (e8), most volume at 120..140
+    week = period_summary([(a, 10 * E8, {10: 5}), (b, 20 * E8, {6: 50, 5: 1})])
+    assert week is not None
+    assert (week.high, week.low, week.close, week.day_start) == (130.0, 90.0, 120.0, 0)
+    assert week.poc == 130.0 and week.val == 120.0 and week.vah == 140.0   # the 20-wide bin 6 holds the volume
+    assert period_summary([]) is None
+
+
+def test_swing_levels_need_a_complete_week_or_month():
+    days = [SWING_FIRST + timedelta(days=d) for d in range(45)]
+    for level, first_with in (("W", 7), ("M", 28)):   # second Monday; 1 February (January is incomplete: starts on the 4th)
+        eng = engine.Engine(_swing_cfg(swing_tf=1440, swing_level=level))
+        seen = []
+        for i, day in enumerate(days):
+            lv, week = eng._swing_levels((day - date(1970, 1, 1)).days * DAY_MS)
+            seen.append(lv is not None)
+            assert week == ((day - timedelta(days=day.weekday())) - date(1970, 1, 1)).days * DAY_MS
+            eng.run_day(*_swing_loader()(day))
+        if level == "W":
+            assert seen.index(True) == first_with and all(seen[first_with:])
+        else:
+            assert not any(seen[:28]) and not any(seen[28:]), "January misses its first three days: no month marks"
+    eng = engine.Engine(_swing_cfg(swing_tf=1440, swing_level="M"))
+    month_days = [date(2021, 2, 1) + timedelta(days=d) for d in range(40)]
+    flags = []
+    for day in month_days:
+        flags.append(eng._swing_levels((day - date(1970, 1, 1)).days * DAY_MS)[0] is not None)
+        eng.run_day(*_swing_loader()(day))
+    assert flags.index(True) == 28 and all(flags[28:])   # 1 March: February is complete
+
+
+def test_swing_track_trades_hold_longer_and_split_runs_match():
+    from src.research_lab.of2 import parallel
+    days = [SWING_FIRST + timedelta(days=d) for d in range(230)]
+    total = 0
+    for tf, level in ((240, "W"), (1440, "W"), (240, "M")):
+        cfg = _swing_cfg(swing_tf=tf, swing_level=level, swing_hold_days=7)
+        one, eng = engine.run_days(_swing_loader(), days, cfg)
+        swing = [t for t in one if t.signal.model.startswith("S")]
+        intraday = [t for t in one if not t.signal.model.startswith("S")]
+        assert all(t.signal.tf == tf for t in swing) and all(t.signal.tf in (15, 30) for t in intraday)
+        assert all(t.exit_ms - t.fill_ms <= 1440 * 60_000 for t in intraday)
+        assert all(t.exit_ms - t.fill_ms <= 7 * 1440 * 60_000 for t in swing)
+        total += len(swing)
+        # the intraday track is untouched by the swing track
+        plain, _ = engine.run_days(_swing_loader(), days, _swing_cfg())
+        assert sorted(str(t.as_dict()) for t in intraday) == sorted(str(t.as_dict()) for t in plain)
+        # one swing signal per model, direction and week
+        slots = [(t.signal.model, t.signal.direction, (t.signal.signal_ms // DAY_MS + 3) // 7) for t in swing]
+        assert len(slots) == len(set(slots))
+        warm = parallel.warmup_days(cfg)
+        assert warm * 2 <= len(days), (tf, level, warm)
+        many, tot = parallel.run_days_parallel(_swing_loader, days, cfg, workers=2)
+        assert sorted(str(t.as_dict()) for t in one) == sorted(str(t.as_dict()) for t in many), (tf, level)
+        assert tot.stats.signale == eng.stats.signale and tot.stats.verworfen == eng.stats.verworfen
+    assert total >= 10, total
+
+
+def test_swing_signals_do_not_depend_on_later_days():
+    cfg = _swing_cfg(swing_tf=240, swing_level="W")
+    days = [SWING_FIRST + timedelta(days=d) for d in range(120)]
+    short, _ = engine.run_days(_swing_loader(), days[:100], cfg)
+    long_, _ = engine.run_days(_swing_loader(), days, cfg)
+    end = ((days[99] - date(1970, 1, 1)).days + 1) * DAY_MS
+    assert [t.as_dict() for t in short] == [t.as_dict() for t in long_ if t.exit_ms < end]
+    assert any(t.signal.model.startswith("S") for t in short)
+
+
+def test_funding_is_charged_per_eight_hour_mark_in_both_directions():
+    days = [SWING_FIRST + timedelta(days=d) for d in range(120)]
+    free, _ = engine.run_days(_swing_loader(), days, _swing_cfg(swing_tf=240))
+    paid, _ = engine.run_days(_swing_loader(), days, _swing_cfg(swing_tf=240, funding_per_8h=0.0001))
+    assert len(free) == len(paid) and any(t.exit_ms // (8 * 3_600_000) > t.fill_ms // (8 * 3_600_000) for t in free)
+    for a, b in zip(free, paid):
+        marks = a.exit_ms // (8 * 3_600_000) - a.fill_ms // (8 * 3_600_000)
+        extra = 0.0001 * marks * a.entry / abs(a.entry - a.signal.stop)
+        assert b.fee_r == pytest.approx(a.fee_r + extra) and b.net_r <= a.net_r

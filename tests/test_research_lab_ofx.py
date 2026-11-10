@@ -230,3 +230,13 @@ def test_random_signals_obey_the_selection_rule():
     assert len(pseudo) == 100 and all((s.signal_ms // 86_400_000) % 2 == 0 for s in pseudo)
     assert random_signals(trades, date(2021, 1, 1), date(2021, 12, 31), BASE_CONFIG, 3, 7) == \
         random_signals(trades, date(2021, 1, 1), date(2021, 12, 31), BASE_CONFIG, 3, 7, None)
+
+
+def test_search_space_has_the_swing_track_and_funding():
+    assert BASE_CONFIG.funding_per_8h == 0.0001 and BASE_CONFIG.swing_tf == 0
+    rng = random.Random(3)
+    from src.research_lab.ofx.space import sample_engine
+    drawn = [engine_config(sample_engine(rng)) for _ in range(60)]
+    assert {c.swing_tf for c in drawn} == {0, 240, 1440} and {c.swing_level for c in drawn} == {"W", "M"}
+    assert all(c.funding_per_8h == 0.0001 and c.of_gate for c in drawn)
+    assert {"S1", "S2", "S3"} <= set(TradeFilter().models)

@@ -78,6 +78,16 @@ class Config:
     # day's slot of its model and direction, so a later confirmed signal is ignored). True = only confirmed
     # signals trade and take the slot. Left out of ``as_dict`` while False, so the OF2 1.0 digest stays the same.
     of_gate: bool = False
+    # Swing track (Uzi 10.11.2026: 4h and 1d as signal time frames). 0 = off (OF2 1.0). The value-area models and the
+    # sweep run a second time on ``swing_tf`` candles that reach across days, against the value area and extremes
+    # of the last completed week ("W", Monday-Sunday UTC) or calendar month ("M"). Their trades are S1, S2, S3.
+    swing_tf: int = 0                # 240 or 1440 minutes
+    swing_level: str = "W"
+    swing_hold_days: int = 7         # hard limit for a swing trade (the intraday limit stays ``max_hold_minutes``)
+    swing_history: int = 40          # swing candles a model may look back on (bounded: the split run needs it)
+    # Funding per 8-h mark (00, 08, 16 UTC) a trade is open across, share of the entry price, charged in both
+    # directions (a short is never credited: stricter than reality). 0 = OF2 1.0 (trades there end within 24 h).
+    funding_per_8h: float = 0.0
     # Study window (UTC days, inclusive). Holdout 2025 is refused by the store before any byte is read.
     first_day: str = "2020-01-01"
     training_end: str = "2022-12-31"
@@ -101,7 +111,24 @@ class Config:
         d = asdict(self)
         if not d["of_gate"]:
             del d["of_gate"]
+        if not d["swing_tf"]:   # off: the frozen OF2 1.0 parameter set (and its digest) stays as it was
+            for name in ("swing_tf", "swing_level", "swing_hold_days", "swing_history"):
+                del d[name]
+        if not d["funding_per_8h"]:
+            del d["funding_per_8h"]
         return d
+
+    def hold_limit_minutes(self, tf: int) -> int:
+        """Hard holding limit of a trade whose model decided on ``tf``-minute candles."""
+        return self.swing_hold_days * 1440 if self.swing_tf and tf == self.swing_tf else self.max_hold_minutes
+
+    @property
+    def longest_hold_minutes(self) -> int:
+        return max(self.max_hold_minutes, self.swing_hold_days * 1440 if self.swing_tf else 0)
+
+    def __post_init__(self) -> None:
+        if self.swing_tf not in (0, 240, 1440) or self.swing_level not in ("W", "M"):
+            raise ValueError("swing_tf must be 0, 240 or 1440 and swing_level W or M")
 
     def digest(self) -> str:
         """SHA-256 over the frozen parameter set; written into every result file."""

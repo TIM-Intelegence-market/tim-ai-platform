@@ -131,7 +131,7 @@ def run_random_parallel(loader_factory: Callable[[], DayLoader], first: date, la
         return run_random(loader_factory(), first, last, pseudo, cfg, costs)
     if any(s.kind != MARKET for s in pseudo):
         raise ValueError("pseudo signals must be market orders")
-    spill = timedelta(days=-(-cfg.max_hold_minutes // (24 * 60)) + 1)
+    spill = timedelta(days=-(-cfg.longest_hold_minutes // (24 * 60)) + 1)
     size = -(-n_days // workers)
     ranges = [(first + timedelta(days=i), min(last, first + timedelta(days=i + size - 1)))
               for i in range(0, n_days, size)]

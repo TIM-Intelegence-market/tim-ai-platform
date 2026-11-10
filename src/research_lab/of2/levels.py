@@ -144,3 +144,31 @@ class Levels:
             pool.append(("SESSION_TIEF", self.prev_session_low))
         ahead = [(n, p) for n, p in pool if (p > price if direction > 0 else p < price)]
         return sorted(ahead, key=lambda item: abs(item[1] - price))
+
+
+# -- swing track: marks of a completed week or month ------------------------------------------------------------
+DayVolume = tuple[DaySummary, int, dict[int, int]]   # summary, bin width (e8), volume per bin of that day
+
+
+def day_volume(summary: DaySummary, profile: DayProfile) -> DayVolume:
+    return summary, profile.width_e8, volume_histogram(profile.entries)
+
+
+def period_summary(days: Sequence[DayVolume]) -> DaySummary | None:
+    """Value area and extremes of several completed days as one profile. The days have their own bin widths
+    (fixed per day from its first trade); every bin goes by its centre price into bins of the widest day."""
+    if not days:
+        return None
+    width = max(w for _, w, _ in days)
+    hist: dict[int, int] = {}
+    for _, w, day_hist in days:
+        for b, volume in day_hist.items():
+            target = (b * w + w // 2) // width
+            hist[target] = hist.get(target, 0) + volume
+    va = value_area(hist)
+    if va is None:
+        return None
+    poc_bin, lo_bin, hi_bin = va
+    return DaySummary(days[0][0].day_start, max(s.high for s, _, _ in days), min(s.low for s, _, _ in days),
+                      days[-1][0].close, (poc_bin * width + width // 2) / E8, lo_bin * width / E8,
+                      (hi_bin + 1) * width / E8)
