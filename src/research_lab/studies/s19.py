@@ -54,7 +54,7 @@ from src.research_lab.orderflow_ml.store import MinuteBarStore
 from src.research_lab.protocol import HOLDOUT_START_MS
 from src.research_lab.stats.inference import holm
 
-VERSION = "0.2"
+VERSION = "0.3"
 SEED = 19
 DRAWS = 9_999
 BLOCK_WEEKS = 4
@@ -64,8 +64,11 @@ CANDLE_MS = CANDLE_MINUTES * MINUTE_MS
 HORIZONS = (4, 16)
 MOVE_LOOKBACK = 4  # move direction = sign(close - close four candles earlier)
 DEBOUNCE = 3  # no event if today's value of the family fired in one of the three candles before
-MIN_LEVELS = 20  # traded price steps a candle needs for F4/F5
-FP_STEP_PCT = 0.001  # footprint step 0.1 % of the day's first price (S8 bins merged, as OF2 does)
+MIN_LEVELS = 10  # traded price steps a candle needs for F4/F5 (0.2: 20)
+# Footprint step as a fraction of the day's first price. The S8 profile bins are already about
+# 0.05-0.1 % wide (PROFILE_STEP_DIVISOR 1000, 1/2/5 rounding), and DayFootprints only merges bins,
+# so 0.05 % means "native bins, nothing merged": the finest footprint the store allows (0.2: 0.1 %).
+FP_STEP_PCT = 0.0005
 FLAT_FRACTION = 0.001  # engine: a close-to-close move below 0.1 % is FLAT
 MIN_EVENTS = 500
 MIN_WEEKS = 100
@@ -191,7 +194,7 @@ def effort(history: Sequence[Candle], candle: Candle) -> tuple[float | None, flo
     return volume_ratio, range_ratio
 
 
-def read_candle(history: Sequence[Candle], candle: Candle, bar: FootprintBar | None, step: float) -> Reading:
+def read_candle(history: Sequence[Candle], candle: Candle, bar: FootprintBar | None, step: float, min_levels: int = MIN_LEVELS) -> Reading:
     """Every flag of the grid on one closed candle. ``history`` holds the earlier candles, oldest first."""
     if not candle.has_trades:
         return Reading(candle.start, 0.0, False, 0, ())
@@ -200,7 +203,7 @@ def read_candle(history: Sequence[Candle], candle: Candle, bar: FootprintBar | N
     move = 0
     if len(history) >= MOVE_LOOKBACK and history[-MOVE_LOOKBACK].has_trades:
         move = _sign(candle.close - history[-MOVE_LOOKBACK].close)
-    if bar is not None and traded_levels >= MIN_LEVELS:
+    if bar is not None and traded_levels >= min_levels:
         series = FootprintSeries(bars=(bar,), source="s19", tick_size=Decimal(str(step)))
         base = None
         for factor in (3, 4, 5):
@@ -248,17 +251,17 @@ def read_candle(history: Sequence[Candle], candle: Candle, bar: FootprintBar | N
     return Reading(candle.start, candle.close, True, traded_levels, tuple(flags))
 
 
-def read_day(bars: Sequence[MinuteBar], profile: DayProfile | None, history: list[Candle]) -> list[Reading]:
+def read_day(bars: Sequence[MinuteBar], profile: DayProfile | None, history: list[Candle], *, step_pct: float = FP_STEP_PCT, min_levels: int = MIN_LEVELS) -> list[Reading]:
     """Readings of the 96 candles of one day; ``history`` is extended in place (keeps the last candles)."""
     day_start = bars[0].window_start_ms
     reference = next((b.first_price_e8 / E8 for b in bars if b.has_trades), 0.0)
-    footprints = DayFootprints(profile, FP_STEP_PCT, reference) if profile is not None and reference > 0 else None
+    footprints = DayFootprints(profile, step_pct, reference) if profile is not None and reference > 0 else None
     out: list[Reading] = []
     for k in range(CANDLES_PER_DAY):
         start = day_start + k * CANDLE_MS
         candle = candle_from_bars(bars[k * CANDLE_MINUTES:(k + 1) * CANDLE_MINUTES], start, CANDLE_MINUTES)
         bar = footprint_bar(footprints.candle(start, CANDLE_MINUTES), candle) if footprints is not None and candle.has_trades else None
-        out.append(read_candle(history, candle, bar, footprints.step if footprints is not None else 0.0))
+        out.append(read_candle(history, candle, bar, footprints.step if footprints is not None else 0.0, min_levels))
         history.append(candle)
         del history[:-EFFORT_BASELINE_CANDLES - MOVE_LOOKBACK]
     return out
@@ -273,7 +276,13 @@ def _tail(history: Sequence[Candle]) -> list[list]:
     return [[c.start, c.minutes, c.trades, c.open, c.high, c.low, c.close, c.volume, c.delta] for c in history]
 
 
-def read_days(root: Path | str, days: Sequence[date], warmup: int = 1, cache: Path | str | None = None) -> tuple[list[Reading], list[str]]:
+def cache_root(cache: Path | str | None, step_pct: float, min_levels: int) -> Path | None:
+    """Cache directory of one footprint geometry: readings of another step or level count are never reused."""
+    return Path(cache) / f"step{step_pct:g}_levels{min_levels}" if cache else None
+
+
+def read_days(root: Path | str, days: Sequence[date], warmup: int = 1, cache: Path | str | None = None, *,
+              step_pct: float = FP_STEP_PCT, min_levels: int = MIN_LEVELS) -> tuple[list[Reading], list[str]]:
     """Readings of ``days`` (contiguous, ascending); ``warmup`` earlier days only feed the candle history.
 
     A day the store refuses (missing, faulty, holdout) becomes 96 untraded candles and is listed as a gap.
@@ -281,7 +290,7 @@ def read_days(root: Path | str, days: Sequence[date], warmup: int = 1, cache: Pa
     same history as in a fresh run.
     """
     store = MinuteBarStore(root)
-    cache_dir = Path(cache) if cache else None
+    cache_dir = cache_root(cache, step_pct, min_levels)
     history: list[Candle] = []
     out: list[Reading] = []
     gaps: list[str] = []
@@ -305,7 +314,7 @@ def read_days(root: Path | str, days: Sequence[date], warmup: int = 1, cache: Pa
                 readings = _gap_day(day)
                 history.clear()
             else:
-                readings = read_day(bars, profile, history)
+                readings = read_day(bars, profile, history, step_pct=step_pct, min_levels=min_levels)
             if cached is not None and not gap:  # a gap is cheap to detect again and may be filled later
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 tmp = cached.with_suffix(".tmp")
@@ -320,13 +329,14 @@ def read_days(root: Path | str, days: Sequence[date], warmup: int = 1, cache: Pa
 
 
 def _read_chunk(args: tuple) -> tuple[list[list], list[str]]:
-    root, first, last, cache = args
+    root, first, last, cache, step_pct, min_levels = args
     days = [first + timedelta(days=i) for i in range((last - first).days + 1)]
-    readings, gaps = read_days(root, days, cache=cache)
+    readings, gaps = read_days(root, days, cache=cache, step_pct=step_pct, min_levels=min_levels)
     return [r.as_row() for r in readings], gaps
 
 
-def read_range(root: Path | str, first: date, last: date, *, workers: int = 1, cache: Path | str | None = None) -> tuple[list[Reading], list[str]]:
+def read_range(root: Path | str, first: date, last: date, *, workers: int = 1, cache: Path | str | None = None,
+               step_pct: float = FP_STEP_PCT, min_levels: int = MIN_LEVELS) -> tuple[list[Reading], list[str]]:
     """All readings of ``first..last`` in time order, read by ``workers`` processes on contiguous stretches."""
     if _ms(last) + DAY > HOLDOUT_START_MS or last > LAST_DAY:
         raise PermissionError("S19 reads no holdout day")
@@ -338,7 +348,7 @@ def read_range(root: Path | str, first: date, last: date, *, workers: int = 1, c
     for w in range(workers):
         a = first + timedelta(days=total * w // workers)
         b = first + timedelta(days=total * (w + 1) // workers - 1)
-        bounds.append((str(root), a, b, str(cache) if cache else None))
+        bounds.append((str(root), a, b, str(cache) if cache else None, step_pct, min_levels))
     if workers == 1:
         parts = [_read_chunk(bounds[0])]
     else:
@@ -406,7 +416,7 @@ def base_rates(readings: Sequence[Reading]) -> dict[tuple[int, int, str], float]
 
 
 # -- count (section 5.1) ------------------------------------------------------------------------------
-def count(readings: Sequence[Reading], gaps: Sequence[str]) -> dict:
+def count(readings: Sequence[Reading], gaps: Sequence[str], *, step_pct: float = FP_STEP_PCT, min_levels: int = MIN_LEVELS) -> dict:
     """Results-blind counts: events and weeks per flag, direction and section; no outcome is looked at."""
     events = events_of(readings)
     cells: dict[tuple[str, str, str], dict] = {}
@@ -433,18 +443,19 @@ def count(readings: Sequence[Reading], gaps: Sequence[str]) -> dict:
     for section, (lo, hi) in SECTIONS.items():
         inside = [r for r in readings if lo <= r.start < hi]
         per_section[section] = {"candles": len(inside), "traded": sum(r.traded for r in inside),
-                                "with_footprint": sum(r.levels >= MIN_LEVELS for r in inside),
+                                "with_footprint": sum(r.levels >= min_levels for r in inside),
                                 "with_today_flag": sum(any(f.split("|")[0] in TODAY_KEYS.values() for f in r.flags) for r in inside),
                                 "weeks": len({week_of(r.start) for r in inside})}
     return {"study": "S19", "version": VERSION, "mode": "count", "hypotheses": HYPOTHESES, "min_events": MIN_EVENTS, "min_weeks": MIN_WEEKS,
-            "sections": per_section, "gap_days": list(gaps), "flags": flags, "gate": gate}
+            "step_pct": step_pct, "min_levels": min_levels, "sections": per_section, "gap_days": list(gaps), "flags": flags, "gate": gate}
 
 
 def count_report(result: Mapping, *, stamp: str) -> str:
     lines = [f"# S19 Zähllauf {stamp} (ergebnisblind, Abschnitt 5.1)", "",
              f"Version {result['version']}, {result['hypotheses']} Hypothesen, Gate: ≥ {result['min_events']} Ereignisse und ≥ {result['min_weeks']} Wochen je Richtung und Zeitraum.",
+             f"Footprint-Stufe {result['step_pct'] * 100:g} % des ersten Tagespreises (Untergrenze: S8-Bin-Breite 0,05–0,1 %), Footprint ab {result['min_levels']} gehandelten Stufen.",
              f"Lückentage: {len(result['gap_days'])}", ""]
-    lines.append("| Zeitraum | Kerzen | gehandelt | mit Footprint (≥ 20 Stufen) | mit heutigem Flag | Wochen |")
+    lines.append(f"| Zeitraum | Kerzen | gehandelt | mit Footprint (≥ {result['min_levels']} Stufen) | mit heutigem Flag | Wochen |")
     lines.append("|---|---|---|---|---|---|")
     for section, s in result["sections"].items():
         lines.append(f"| {section} | {s['candles']} | {s['traded']} | {s['with_footprint']} | {s['with_today_flag']} | {s['weeks']} |")
@@ -700,13 +711,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         p.add_argument("--first", type=date.fromisoformat, default=FIRST_DAY)
         p.add_argument("--last", type=date.fromisoformat, default=LAST_DAY)
         p.add_argument("--workers", type=int, default=1)
-        p.add_argument("--cache", type=Path, default=None, help="per-day reading cache (reused by later runs)")
+        p.add_argument("--cache", type=Path, default=None, help="per-day reading cache (reused by later runs of the same geometry)")
+        p.add_argument("--step-pct", type=float, default=FP_STEP_PCT, help=f"footprint step as a fraction of the day's first price (default {FP_STEP_PCT:g})")
+        p.add_argument("--min-levels", type=int, default=MIN_LEVELS, help=f"traded steps a candle needs for a footprint reading (default {MIN_LEVELS})")
     args = parser.parse_args(argv)
     started = time.time()
-    readings, gaps = read_range(args.bars, args.first, args.last, workers=args.workers, cache=args.cache)
+    if args.step_pct <= 0 or args.min_levels < 1:
+        parser.error("--step-pct must be positive and --min-levels at least 1")
+    readings, gaps = read_range(args.bars, args.first, args.last, workers=args.workers, cache=args.cache,
+                                step_pct=args.step_pct, min_levels=args.min_levels)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")
     if args.mode == "count":
-        result = count(readings, gaps)
+        result = count(readings, gaps, step_pct=args.step_pct, min_levels=args.min_levels)
         report = count_report(result, stamp=stamp)
     else:
         result = evaluate(readings, gaps, workers=args.workers)

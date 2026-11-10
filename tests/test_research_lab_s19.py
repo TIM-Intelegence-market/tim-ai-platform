@@ -199,7 +199,7 @@ def test_read_range_is_the_same_with_one_or_two_workers_and_from_the_cache(tmp_p
     assert two == one  # the second worker warms its history up from the day before its stretch
     cache = tmp_path / "cache"
     cached_first, _ = s19.read_range(tmp_path, days[0], days[1], workers=1, cache=cache)
-    assert sorted(p.name for p in cache.glob("*.json")) == ["2021-03-01.json", "2021-03-02.json"]
+    assert sorted(p.name for p in s19.cache_root(cache, s19.FP_STEP_PCT, s19.MIN_LEVELS).glob("*.json")) == ["2021-03-01.json", "2021-03-02.json"]
     (tmp_path / "bars" / "BTCUSDT-2021-03-01.csv").write_text("broken")  # the cache is read, not the store
     again, _ = s19.read_range(tmp_path, days[0], days[-1], workers=1, cache=cache)
     assert again == one and cached_first == one[:2 * 96]
@@ -286,3 +286,21 @@ def test_cli_count_writes_json_and_markdown(tmp_path) -> None:
     assert len(written) == 2 and written[0].startswith("s19_count_") and written[0].endswith(".json")
     payload = json.loads((tmp_path / "out" / written[0]).read_text())
     assert payload["range"] == ["2021-03-01", "2021-03-02"] and len(payload["dataset_hash"]) == 64 and payload["mode"] == "count"
+
+
+def test_cache_is_split_by_footprint_geometry_and_cli_accepts_it(tmp_path) -> None:
+    days = [date(2021, 3, 1), date(2021, 3, 2), date(2021, 3, 3)]
+    write_store(tmp_path, days)
+    cache = tmp_path / "cache"
+    fine, _ = s19.read_range(tmp_path, days[0], days[-1], cache=cache, min_levels=5)
+    coarse, _ = s19.read_range(tmp_path, days[0], days[-1], cache=cache, min_levels=10_000)
+    assert {d.name for d in cache.iterdir()} == {f"step{s19.FP_STEP_PCT:g}_levels5", f"step{s19.FP_STEP_PCT:g}_levels10000"}
+    assert any(f.startswith("I:") for r in fine for f in r.flags)
+    assert not any(f.split("|")[0][0] in "IACT" for r in coarse for f in r.flags)  # footprint families need the levels
+    assert all(r.levels == c.levels for r, c in zip(fine, coarse, strict=True))  # the level count itself is geometry-free
+    out = tmp_path / "out"
+    assert s19.main(["count", "--bars", str(tmp_path), "--out", str(out), "--first", days[0].isoformat(), "--last", days[-1].isoformat(),
+                     "--cache", str(cache), "--min-levels", "5", "--step-pct", str(s19.FP_STEP_PCT)]) == 0
+    result = json.loads(next(out.glob("s19_count_*.json")).read_text())
+    assert result["min_levels"] == 5 and result["step_pct"] == s19.FP_STEP_PCT and result["version"] == "0.3"
+    assert "ab 5 gehandelten Stufen" in next(out.glob("s19_count_*.md")).read_text()

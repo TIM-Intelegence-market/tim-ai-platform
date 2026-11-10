@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S19 (nächste freie Nummer nach S18, 09.11.2026) |
-| Version | **0.2, Entwurf.** Regeln als Code: `src/research_lab/studies/s19.py`, Skript `scripts/research_lab_s19.py`, Tests `tests/test_research_lab_s19.py`. Keine Daten geladen, kein Zähllauf. Vor 1.0: ergebnisblinder Zähllauf (5.1) auf der PS5, dann Einfrieren auf Uzis Wort |
+| Version | **0.3, Entwurf.** Regeln als Code: `src/research_lab/studies/s19.py`, Skript `scripts/research_lab_s19.py`, Tests `tests/test_research_lab_s19.py`. Zähllauf 0.2 am 09.11. gelaufen (Footprint-Familien nicht testbar, Abschnitt 7); 0.3 ändert nur die Footprint-Geometrie, zweiter Zähllauf folgt. Vor 1.0: Einfrieren auf Uzis Wort |
 | Anlass | Master-Analyse 09.11.2026 aus Kundensicht (Broncx), Punkt P8: „Schwellen stammen aus Quellen, nie an BTC gemessen“; Glossar `../../knowledge/ORDERFLOW_BEGRIFFE.md` |
 | Geprüfter Code | `src/orderflow_scenario/footprint.py` (F1–F5) und `src/orderflow_scenario/engines/orderflow_interpretation.py` (R1–R4), Konstanten in Abschnitt 2 des Glossars; Regelstand = Commit beim Einfrieren |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
@@ -53,11 +53,14 @@ eine Strategie-Studie mit eigener Präregistrierung.
 - **Kerzen:** 15m aus den Minutenbalken (Eröffnung erster Preis, Hoch/Tief Extrem, Schluss letzter
   Preis, Volumen Summe, Delta Summe), UTC, 96 je Tag. Keine Kline-Gegenprobe: der Store hält keine
   Klines (wird im Bericht als „nicht gemessen“ geführt).
-- **Footprint:** je 15m-Kerze Bid/Ask je Preisstufe aus dem Tagesprofil, Stufe 0,1 % des ersten
-  Tagespreises (S8-Bins zusammengefasst wie in OF2, `DayFootprints`), gelesen mit dem Engine-Code
-  `analyze_footprint` (Tick = Stufe). Abweichung zu 0.1: nicht 5 $ fest, sondern relativ, damit 2020
-  (7 000 $) und 2024 (70 000 $) gleich viele Stufen je Kerze haben; die Chart-Engine liest live 5 $.
-  Kerzen mit weniger als 20 gehandelten Stufen zählen nicht (zu dünn für F4/F5).
+- **Footprint:** je 15m-Kerze Bid/Ask je Preisstufe aus dem Tagesprofil, Stufe = S8-Bin-Breite
+  (0,05–0,1 % des ersten Tagespreises, 1/2/5-gerundet; Ziel `--step-pct 0.0005`, nichts zusammengefasst),
+  gelesen mit dem Engine-Code `analyze_footprint` (Tick = Stufe). Abweichung zu 0.1: nicht 5 $ fest,
+  sondern relativ, damit 2020 (7 000 $) und 2024 (70 000 $) gleich viele Stufen je Kerze haben; die
+  Chart-Engine liest live 5 $. Kerzen mit weniger als 10 gehandelten Stufen zählen nicht (zu dünn für
+  F4/F5). 0.2 hatte Stufe 0,1 % (Bins zu zweit zusammengefasst) und 20 Stufen: damit hatten nur 2 % der
+  Kerzen ein Footprint (Spanne ≥ 2 % in 15 Minuten), und keine Footprint-Familie kam durch das Gate 5.1.
+  Feiner als die S8-Bins geht nicht; der Store wird nicht neu gebaut.
 - **Zeiträume:** Training 2020-01-01 bis 2022-12-31 (156 Wochen), Validierung 2023-01-01 bis
   2024-12-31 (104 Wochen). Holdout 2025 bleibt zu.
 - Tage mit Archiv-Lücke werden ausgelassen und gezählt; eine Kerze zählt nur, wenn ihre h Folgekerzen
@@ -155,6 +158,11 @@ testbar“ und ihr Raster wird nicht angesehen.
 2. Zähllauf auf der PS5 (`python scripts/research_lab_s19.py count --bars ~/tim-research/data/orderflow_ml_120
    --out ~/tim-research/results/s19 --workers 16 --cache ~/tim-research/results/s19/cache`), Bericht
    `s19_count_<Zeit>.md` nur mit Zahlen; `evaluate` wird vor 1.0 nicht gestartet.
+   Lauf 0.2 am 09.11.2026 22:06 (PS5, 1 827 Tage, 0 Lückentage, 8,8 s): H und E testbar, I/A/C/T nicht
+   (Training 2 333 und Validierung 528 Kerzen mit Footprint). Keine Trefferquote berechnet. Daraufhin 0.3:
+   Stufe auf S8-Bin-Breite, Mindeststufen 10; der Cache liegt je Geometrie getrennt
+   (`cache/step<…>_levels<…>`). Zweiter Zähllauf mit 0.3 folgt, danach keine weitere Geometrie-Änderung:
+   fällt eine Familie auch dann durch, bleibt sie „nicht testbar“.
 3. Uzis Wort: Einfrieren als 1.0 mit Commit, Einordnung (Registerplatz ja/nein) ins Protokoll.
 4. Ergebnislauf Training, dann Validierung; Bericht nach Abschnitt 5; Glossar nachführen.
 
@@ -164,3 +172,4 @@ testbar“ und ihr Raster wird nicht angesehen.
 |---|---|---|
 | 2026-11-09 | 0.1 | Entwurf aus der Master-Analyse (P8). Kein Code, keine Daten geladen, kein Registereintrag. |
 | 2026-11-09 | 0.2 | Code und Tests. Datenquelle S8-Store statt Roh-aggTrades, Stufe 0,1 % statt 5 $, keine Kline-Gegenprobe, Perp entfällt, Lesart H/E festgeschrieben. Noch kein Zähllauf. |
+| 2026-11-09 | 0.3 | Nach dem ergebnisblinden Zähllauf 0.2 (nur Ereignis- und Wochenzahlen gesehen): Footprint-Stufe = S8-Bin-Breite (0,05–0,1 %) statt 0,1 %, Mindeststufen 10 statt 20; `--step-pct`/`--min-levels` als Laufparameter, Cache je Geometrie, Geometrie im Bericht. Gate 5.1 (500 Ereignisse, 100 Wochen) unverändert. Letzte Geometrie-Änderung vor 1.0. |
