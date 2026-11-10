@@ -73,8 +73,11 @@ def test_live_chart_draws_labelled_segments_from_their_origin() -> None:
     assert model["symbol"] == "ETHUSDT" and model["timeframe"] == "4h" and len(model["candles"]) > 100
     assert model["candles"][-1]["closed"] is False and all(c["closed"] for c in model["candles"][:-1])
     labels = {d["label"] for d in model["drawings"]}
-    for expected in ("1D VAH", "1D POC", "1D VAL", "1W POC", "1W VAH", "1M High"):
+    for expected in ("1D VAH", "1D POC", "1D VAL", "1W POC", "1W VAH"):
         assert expected in labels, expected
+    # A prior period's extreme names its period, so a prior month's low above today's price reads right.
+    assert any(label.startswith("1M High · Vormonat ") for label in labels), labels
+    assert any(label.startswith("1M Low · Vormonat ") for label in labels), labels
     times = [c["time"] for c in model["candles"]]
     for d in model["drawings"]:
         assert d["label"].startswith(d["tf"]) and d["label"].strip()
