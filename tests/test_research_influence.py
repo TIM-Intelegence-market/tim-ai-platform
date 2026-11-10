@@ -131,6 +131,23 @@ def _report():
     return report.build(data, btc, now=NOW, drivers=(DAILY,), inputs={"X": "abc"})
 
 
+def test_joint_flags_exact_collinearity_and_catalog_avoids_it():
+    rng = random.Random(5)
+    grid = weeks(date(2018, 1, 1))
+    x = {w: rng.gauss(0, 1) for w in grid}
+    y = {w: rng.gauss(0, 1) for w in grid}
+    btc = {w: x[w] + rng.gauss(0, 1) for w in grid}
+    from src.research_lab.influence.states import WeekRow
+
+    rows = {"A": [WeekRow(w, None, None, x[w]) for w in grid], "B": [WeekRow(w, None, None, y[w]) for w in grid],
+            "A_B": [WeekRow(w, None, None, x[w] - y[w]) for w in grid]}  # like T10YIE = DGS10 - DFII10
+    out = analysis.joint(rows, btc)
+    assert out["ergebnis"] is None and out["grund"] == "linear_abhaengig"
+    assert analysis.joint({k: rows[k] for k in ("A", "B")}, btc)["ergebnis"]["r2"] > 0.3
+    assert by_key("T10YIE").joint is False
+    assert all(d.joint for d in DRIVERS if d.key != "T10YIE")
+
+
 def test_report_roundtrip_and_markdown(tmp_path):
     rep = _report()
     js, md = report.write(rep, tmp_path)

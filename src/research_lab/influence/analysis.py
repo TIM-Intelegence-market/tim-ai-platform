@@ -129,7 +129,7 @@ def joint(rows_by_driver: Mapping[str, Sequence[WeekRow]], btc: Mapping[date, fl
     weekly = {k: {r.week: r.change_week for r in rows if r.change_week is not None} for k, rows in rows_by_driver.items()}
     common = sorted(w for w in btc if all(w in weekly[k] for k in keys))
     if len(common) < 10 * max(1, len(keys)):
-        return {"wochen": len(common), "ergebnis": None}
+        return {"wochen": len(common), "ergebnis": None, "grund": "zu_wenig_wochen"}
     cols = {}
     for k in keys:
         vals = [weekly[k][w] for w in common]
@@ -141,8 +141,8 @@ def joint(rows_by_driver: Mapping[str, Sequence[WeekRow]], btc: Mapping[date, fl
     sy = math.sqrt(sum((y - my) ** 2 for y in ys) / len(ys)) or 1.0
     ys = [(y - my) / sy for y in ys]
     full = _r2([[cols[k][i] for k in keys] for i in range(len(common))], ys)
-    if full is None:
-        return {"wochen": len(common), "ergebnis": None}
+    if full is None:  # singular: one driver is an exact combination of others
+        return {"wochen": len(common), "ergebnis": None, "grund": "linear_abhaengig"}
     r2, beta = full
     added = {}
     for j, k in enumerate(keys):
