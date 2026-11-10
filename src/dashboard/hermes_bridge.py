@@ -133,21 +133,25 @@ def status(log_path: Path | None = None, now: datetime | None = None) -> dict[st
     }
 
 
-def clean_question(question: Any) -> str:
+def clean_question(question: Any, limit: int = MAX_QUESTION) -> str:
     text = str(question or "").replace("\r\n", "\n").strip()
     if not text:
         raise QuestionError("Bitte eine Frage eingeben.")
-    if len(text) > MAX_QUESTION:
-        raise QuestionError(f"Die Frage ist zu lang ({len(text)} Zeichen, höchstens {MAX_QUESTION}).")
+    if len(text) > limit:
+        raise QuestionError(f"Die Frage ist zu lang ({len(text)} Zeichen, höchstens {limit}).")
     if any(ord(ch) < 32 and ch not in "\n\t" for ch in text):
         raise QuestionError("Die Frage enthält Steuerzeichen.")
     return text
 
 
 def ask(question: Any, log_path: Path | None = None, binary: str | None = None, timeout: int = TIMEOUT_SECONDS,
-        now: datetime | None = None) -> dict[str, Any]:
-    """Eine Frage an Hermes; die Antwort (oder der Fehler) landet als Eintrag im Verlauf und wird zurückgegeben."""
-    text = clean_question(question)
+        now: datetime | None = None, limit: int = MAX_QUESTION, record: bool = True) -> dict[str, Any]:
+    """Eine Frage an Hermes; die Antwort (oder der Fehler) landet als Eintrag im Verlauf und wird zurückgegeben.
+
+    ``record=False`` und ein größeres ``limit`` sind für TIMs eigene Aufträge (Zweitmeinung, Tagesbericht): die
+    stehen in ihren eigenen Dateien und nicht im Frageverlauf der Seite.
+    """
+    text = clean_question(question, limit)
     now = now or datetime.now(timezone.utc)
     path = Path(log_path or DEFAULT_LOG)
     binary = binary or hermes_binary()
@@ -173,6 +177,8 @@ def ask(question: Any, log_path: Path | None = None, binary: str | None = None, 
         except OSError as exc:
             entry["error"] = f"Hermes ließ sich nicht starten: {exc}"
         entry["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 1)
+    if not record:
+        return entry
     with _LOCK:
         entries = load_log(path)
         entries.append(entry)

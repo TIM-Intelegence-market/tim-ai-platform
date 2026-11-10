@@ -56,9 +56,52 @@ def build_hermes(state: Any, now: datetime | None = None, token: str = "", asked
                   reason="" if status.get("mcp_servers") else "Hermes kennt tim-ops/tim-graph nicht", now=now, extra={"kind": "info"}),
     ]
     log = list(reversed(hermes_bridge.load_log(log_path)))
-    return {"schema": SCHEMA, "generated_at": now.isoformat(), "safety": SAFETY, "overall": main.state, "headline": main.value,
+    report, opinions = None, None
+    try:  # TIMs eigene Aufträge an Hermes; fehlt eine Datei, bleibt der Abschnitt leer
+        from src.dashboard import daily_report, plan_opinion
+
+        report = daily_report.latest(getattr(state, "daily_report_path", None))
+        stored = plan_opinion.load(getattr(state, "plan_opinion_path", None) or plan_opinion.DEFAULT_PATH) or {}
+        recent = sorted((p for p in (stored.get("plans") or {}).values() if p.get("opinion")),
+                        key=lambda p: str(p.get("created_at")), reverse=True)[:5]
+        opinions = {"summary": stored.get("summary") or plan_opinion.summary(stored), "recent": recent}
+    except Exception:  # noqa: BLE001, S110 - die Seite zeigt Status und Verlauf auch ohne diese Abschnitte
+        pass
+    return {"report": report, "opinions": opinions,"schema": SCHEMA, "generated_at": now.isoformat(), "safety": SAFETY, "overall": main.state, "headline": main.value,
             "status": {k: v for k, v in status.items() if k != "last"}, "tiles": [t.to_dict() for t in tiles], "log": log,
             "token": token, "asked": asked, "error": error, "can_ask": can_ask, "max_question": hermes_bridge.MAX_QUESTION}
+
+
+def _report_section(report: dict[str, Any] | None) -> str:
+    head = "<section aria-labelledby='h-report'><h2 id='h-report'>Tagesbericht</h2>"
+    if not report:
+        return head + "<p class='empty'>Noch kein Bericht. Der nächste kommt um 8 oder 22 Uhr.</p></section>"
+    text = (f"<p style='white-space:pre-wrap'>{_e(report.get('text'))}</p>" if report.get("text")
+            else f"<p class='note'>Hermes hat nicht geantwortet ({_e(report.get('error'))}); hier die Fakten.</p>")
+    facts = "".join(f"<li>{_e(line)}</li>" for line in report.get("facts") or [])
+    return (f"{head}{text}<details><summary>Fakten dazu</summary><ul>{facts}</ul></details>"
+            f"<p class='note'>Stand {_e(local_time(report.get('at'), with_date=True))} Uhr. Nur Papier-Journale und Marktdaten.</p></section>")
+
+
+def _opinion_section(opinions: dict[str, Any] | None) -> str:
+    head = "<section aria-labelledby='h-opinion'><h2 id='h-opinion'>Zweitmeinung zu den Plänen</h2>"
+    summary = (opinions or {}).get("summary") or {}
+    recent = (opinions or {}).get("recent") or []
+    if not recent:
+        return head + "<p class='empty'>Noch keine Zweitmeinung. Sie entsteht beim nächsten 15m- oder 1h-Plan.</p></section>"
+    items = []
+    for plan in recent:
+        opinion = plan.get("opinion") or {}
+        result = (plan.get("journal") or {}).get("net_r")
+        meta = f"{local_time(plan.get('created_at'), with_date=True)} Uhr" + (f", Ergebnis {float(result):+.2f} R" if result is not None else "")
+        items.append(f"<li><p><b>{_e(plan.get('direction'))} {_e(plan.get('timeframe'))}</b>, Urteil <b>{_e(opinion.get('verdict'))}</b></p>"
+                     f"<p><b>Dafür:</b> {_e(opinion.get('pro') or '—')}</p><p><b>Dagegen:</b> {_e(opinion.get('contra') or '—')}</p>"
+                     f"<p class='note'>{_e(meta)}</p></li>")
+    rows = "; ".join(f"{_e(name)}: {row.get('n')} Pläne, {float(row.get('sum_net_r') or 0):+.2f} R"
+                     for name, row in (summary.get("by_verdict") or {}).items()) or "noch kein geschlossener Plan"
+    return (f"{head}<p class='note'>Nur Kommentar, kein Eingriff. {summary.get('closed', 0)} von {summary.get('target', 30)} "
+            f"geschlossenen Plänen für das Urteil. Bisher: {rows}.</p>"
+            f"<ul class='hermes-log' style='list-style:none;padding:0'>{''.join(items)}</ul></section>")
 
 
 def hermes_body(model: dict[str, Any]) -> str:
@@ -75,6 +118,8 @@ def hermes_body(model: dict[str, Any]) -> str:
             "</section>")
     else:
         out.append("<p class='note'>Fragen stellen geht nur direkt am Mac; die öffentliche Ansicht ist nur lesend.</p>")
+    out.append(_report_section(model.get("report")))
+    out.append(_opinion_section(model.get("opinions")))
     items = []
     for entry in (model.get("log") or [])[:10]:
         mark = " class='hermes-new'" if model.get("asked") and entry.get("id") == model.get("asked") else ""
