@@ -1,6 +1,7 @@
 # Multi-Agenten-System für TIM (Entwurf)
 
-Stand 10.11.2026, **ENTWURF 0.1**, nichts davon ist gebaut oder eingeschaltet. Auftrag: Uzi, „Go“ am 10.11.2026.
+Stand 10.11.2026, **ENTWURF 0.1**. Gebaut ist nur Paket P1 (Übergabezettel mit Prüfer, Abschnitt 9), eingeschaltet
+ist nichts. Auftrag: Uzi, „Go“ am 10.11.2026, „go P1“ am selben Tag.
 Grundlage ist der Stand in diesem Repo (`platform-main`, 496f0a4) und die Projektnotizen. Der laufende Zustand
 auf Mac, Server und PS5 wurde für diesen Entwurf **nicht** neu gemessen; wo ein Stand nur aus Notizen stammt,
 steht „ungeprüft“ dabei.
@@ -130,7 +131,7 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 
 | # | Lücke | Folge heute |
 |---|---|---|
-| 1 | Kein einheitlicher Übergabezettel. Worker nutzt `TIM_QWEN_TASK_V1`, Bugfixer ein eigenes Modell, `agents/contract.py` ein drittes. | Übergaben zwischen Rollen laufen über Uzi oder den Koordinator |
+| 1 | Der Übergabezettel `TIM_HANDOVER_V1` ist gebaut (P1), aber noch kein Worker liest ihn. `TIM_QWEN_TASK_V1`, das Bugfixer-Modell und `agents/contract.py` bestehen daneben weiter. | Übergaben zwischen Rollen laufen über Uzi oder den Koordinator |
 | 2 | Vorfall-Issue geht nicht von selbst an den Engineer. | Fehler werden gemeldet, aber erst nach Uzis Anstoß repariert |
 | 3 | Reviewer ist kein Pflichtschritt (Review-Pflicht aus, CODEOWNERS nur geplant). | „merge-fertig“ ohne unabhängige Prüfung möglich |
 | 4 | Kein gemeinsamer Versuchszähler. Die Pipeline kennt nur `agent:retry` (einmal). | Abbruchgrenzen aus Abschnitt 4 sind nicht durchgesetzt |
@@ -143,7 +144,7 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 
 | Paket | Inhalt | Prüfung |
 |---|---|---|
-| P1 | Übergabezettel als ein Schema im Issue-Body (Rolle, Eingang, Ausgang, Nachweis, Versuchszähler). Nur Doku und Prüfer, kein Verhalten. | Test: gültiger und ungültiger Zettel |
+| P1 **gebaut** | Übergabezettel als ein Schema im Issue-Body (Rolle, Eingang, Ausgang, Nachweis, Versuchszähler). Nur Doku und Prüfer, kein Verhalten. | `pytest tests/agents/test_handover.py` |
 | P2 | Versuchszähler und Abbruchgrenzen aus Abschnitt 4 im Worker. Geschützter Pfad, also Owner-PR. | Test: dritter Versuch wird abgewiesen und meldet |
 | P3 | Reviewer als Pflichtschritt vor „merge-fertig“ für kritische Pfade (Journal, Kostenmodell, `src/database/`). | PR ohne Befundliste gilt nicht als merge-fertig |
 | P4 | Vorfall-Issue bekommt bei Klasse Daten/Anzeige automatisch den Worker-Vertrag; Echtgeld und SAFETY nie. | Probelauf mit `checkup:selftest` |
@@ -153,6 +154,44 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 
 Empfohlene Reihenfolge: P1, P2, P3 (machen die Kette sicher), dann P4 und P6 (machen sie selbstlaufend), zuletzt
 P5 und P7. P1 bis P3 sind klein und ändern nichts am Live-Betrieb.
+
+## 9. Übergabezettel `TIM_HANDOVER_V1` (P1)
+
+Code `src/agents/handover.py`, Tests `tests/agents/test_handover.py`. Der Zettel steht als ein Block im Issue- oder
+PR-Text. Der Prüfer liest ihn und sagt gültig oder ungültig. Kein Worker liest ihn bisher, es ändert sich also kein
+Verhalten.
+
+````text
+```json TIM_HANDOVER_V1
+{
+  "schema": "TIM_HANDOVER_V1",
+  "task_id": "github-issue-42",
+  "issue_number": 42,
+  "from_role": "ENGINEER",
+  "to_role": "TESTER",
+  "input": "Issue #42 mit Vertrag",
+  "output": "Draft-PR mit Reparatur",
+  "evidence": [{"kind": "link", "ref": "PR #43"}],
+  "attempt": 1,
+  "max_attempts": 3,
+  "gate": "NONE"
+}
+```
+````
+
+Regeln des Prüfers:
+
+- Genau diese elf Felder, kein weiteres. Genau ein Zettel je Text, höchstens 12 000 Zeichen.
+- Rollen: PM, RESEARCHER, DATA_STEWARD, ENGINEER, TESTER, REVIEWER, DEVOPS, SECURITY, DOCS. Absender und Empfänger
+  sind verschieden.
+- Nachweis: 1 bis 20 Einträge der Art `test`, `log`, `number`, `hash`, `link`, `file`. Pflichtart je Absender:
+  Researcher `file`, Data Steward `hash`, Engineer `link`, Tester `test`, Reviewer `link`, DevOps `log`.
+- Versuche: `attempt` höchstens `max_attempts`, `max_attempts` höchstens 3 (ein erster Versuch und zwei
+  Reparaturen). Ein Zettel über der Grenze ist ungültig. Durchgesetzt im Worker wird das erst mit P2.
+- `gate` nennt die Freigabe, die der Empfänger noch braucht: `NONE`, `F1_GO`, `F2_MERGE`, `F3_RULE_UPDATE`,
+  `F4_LIVE`, `F5_HOLDOUT`. Der Zettel erteilt nie selbst eine Freigabe; ein Feld wie `approved_by` wird abgewiesen.
+
+Prüfen einer Datei: `python -m src.agents.handover DATEI` (Ende 0 gültig, 1 ungültig).
 
 ## Nicht Teil dieses Entwurfs
 
