@@ -703,4 +703,6 @@ def test_every_time_frame_of_the_search_space_runs_and_splits_the_same():
             many, _ = parallel.run_days_parallel(_long_loader, days, cfg, workers=2)
             assert sorted(str(t.as_dict()) for t in one) == sorted(str(t.as_dict()) for t in many), (tf_value, tf_sfp)
             seen |= {t.signal.tf for t in one}
+            # every trade carries the time frame its model decided on (time stop and cancel rule count in it)
+            assert all(t.signal.tf == (tf_value if t.signal.model in ("M1", "M2") else tf_sfp) for t in one)
     assert seen >= {1, 5, 15, 30, 60}, seen

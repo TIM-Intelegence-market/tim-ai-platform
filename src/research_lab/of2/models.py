@@ -109,7 +109,7 @@ def failed_auction(c30: Sequence[Candle], lv: Levels, cfg: Config) -> Signal | N
     confirmed = (extreme.delta < 0) if direction > 0 else (extreme.delta > 0)
     return Signal("M1", direction, second.end, STOP, trigger, second.end + cfg.tf_value * MINUTE_MS, stop, target,
                   "VAL" if direction > 0 else "VAH", d.val if direction > 0 else d.vah, confirmed,
-                  notes=(f"extrem_delta={extreme.delta}",))
+                  notes=(f"extrem_delta={extreme.delta}",), tf=cfg.tf_value)
 
 
 def acceptance(c30: Sequence[Candle], lv: Levels, cfg: Config) -> Signal | None:
@@ -136,7 +136,7 @@ def acceptance(c30: Sequence[Candle], lv: Levels, cfg: Config) -> Signal | None:
     last = recent[-1]
     return Signal("M2", direction, last.end, LIMIT, edge, last.end + cfg.retest_candles * cfg.tf_value * MINUTE_MS,
                   stop, target, "VAH" if direction > 0 else "VAL", edge, confirmed, relvol=relvol, cancel_beyond=edge,
-                  notes=(f"akzeptanz_delta={delta}", f"ziele_voraus={len(ahead)}"))
+                  notes=(f"akzeptanz_delta={delta}", f"ziele_voraus={len(ahead)}"), tf=cfg.tf_value)
 
 
 def sfp(c15: Sequence[Candle], lv: Levels, cfg: Config) -> Signal | None:
