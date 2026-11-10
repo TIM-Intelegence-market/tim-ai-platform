@@ -124,3 +124,141 @@ def test_server_serves_page_and_answers_a_question(server) -> None:
     with pytest.raises(HTTPError) as err:
         urlopen(bad, timeout=10)
     assert err.value.code == 403
+
+
+# --- Zweitmeinung zu Plänen und Tagesbericht (Uzi 09.11.2026) ---
+
+LAGE = {"as_of": "2026-11-08T15:00:00+00:00", "price": 103000.0, "tempo": "schnell",
+        "wave": {"direction": "auf", "strength": 2, "phase": "Impuls", "exhaustion": False},
+        "windows": {"5m": {"delta": 12.5}}, "perp": {"delta_5m": 40.0},
+        "levels": [{"name": "POC", "distance_pct": 0.12, "absorption": "Käufer", "imbalance": 1.4}]}
+
+
+def _journal(path: Path, entries: list[dict]) -> Path:
+    from src.dashboard import plan_journal
+
+    plan_journal.save({**plan_journal.empty_journal(), "entries": entries}, path)
+    return path
+
+
+def _plan(plan_id: str, created: datetime, **extra) -> dict:
+    return {"id": plan_id, "timeframe": "15m", "direction": "LONG", "created_at": created.isoformat(), "entry": 103000.0,
+            "stop": 102500.0, "targets": [103750.0, 104000.0, 104500.0], "status": "OPEN", **extra}
+
+
+def test_plan_opinion_comments_new_plans_once_and_never_changes_the_journal(tmp_path: Path) -> None:
+    from datetime import timedelta
+
+    from src.dashboard import plan_opinion
+
+    store, journal = tmp_path / "opinion.json", tmp_path / "short.json"
+    _journal(journal, [_plan("old", NOW - timedelta(hours=1))])
+    asked: list[str] = []
+
+    def ask(text: str) -> dict:
+        asked.append(text)
+        return {"ok": True, "seconds": 2.0, "answer": "**DAFÜR:** Welle läuft mit.\nDAGEGEN: Stop liegt eng.\nURTEIL: Dafür."}
+
+    plan_opinion.update(store, [journal], LAGE, now=NOW, ask=ask)  # start: the old plan is before started_at
+    assert asked == []
+    _journal(journal, [_plan("old", NOW - timedelta(hours=1)), _plan("a", NOW), _plan("b", NOW)])
+    before = journal.read_bytes()
+    state = plan_opinion.update(store, [journal], LAGE, now=NOW + timedelta(minutes=1), ask=ask)
+    assert len(asked) == 1 and "old" not in state["plans"] and journal.read_bytes() == before
+    assert "Einstieg 103000.00" in asked[0] and "Welle auf" in asked[0] and "POC" in asked[0] and len(asked[0]) <= plan_opinion.MAX_PROMPT
+    assert state["plans"]["a"]["opinion"]["verdict"] == "DAFÜR" and state["plans"]["a"]["opinion"]["contra"] == "Stop liegt eng."
+    plan_opinion.update(store, [journal], None, now=NOW + timedelta(minutes=2), ask=ask)
+    state = plan_opinion.update(store, [journal], None, now=NOW + timedelta(minutes=3), ask=ask)
+    assert len(asked) == 2 and state["plans"]["b"]["lage_at_plan"]["price"] == 103000.0  # the Lage of the plan's moment
+    _journal(journal, [_plan("a", NOW, status="CLOSED", net_r=1.2, closed_at=NOW.isoformat()), _plan("b", NOW)])
+    summary = plan_opinion.update(store, [journal], None, now=NOW + timedelta(minutes=4), ask=ask)["summary"]
+    assert summary["by_verdict"] == {"DAFÜR": {"n": 1, "wins": 1, "sum_net_r": 1.2}} and summary["judgeable"] is False
+
+
+def test_plan_opinion_gives_up_after_failures_and_on_late_plans(tmp_path: Path) -> None:
+    from datetime import timedelta
+
+    from src.dashboard import plan_opinion
+
+    store, journal = tmp_path / "opinion.json", tmp_path / "short.json"
+    plan_opinion.update(store, [journal], None, now=NOW, ask=lambda text: {"ok": False})
+    _journal(journal, [_plan("a", NOW)])
+    calls: list[str] = []
+
+    def broken(text: str) -> dict:
+        calls.append(text)
+        raise RuntimeError("weg")
+
+    for minute in range(1, 5):
+        state = plan_opinion.update(store, [journal], None, now=NOW + timedelta(minutes=minute), ask=broken)
+    assert len(calls) == plan_opinion.MAX_ATTEMPTS and state["plans"]["a"]["skipped"] == "RuntimeError" and "opinion" not in state["plans"]["a"]
+    _journal(journal, [_plan("a", NOW), _plan("late", NOW + timedelta(minutes=5))])
+    state = plan_opinion.update(store, [journal], None, now=NOW + timedelta(hours=2), ask=broken)
+    assert len(calls) == plan_opinion.MAX_ATTEMPTS and "zu spät" in state["plans"]["late"]["skipped"]
+    assert plan_opinion.parse("irgendwas")["verdict"] == plan_opinion.UNCLEAR
+    assert plan_opinion.parse("Urteil: DAGEGEN")["verdict"] == "DAGEGEN"
+
+
+def test_daily_report_is_written_once_per_slot_with_facts(tmp_path: Path) -> None:
+    from datetime import timedelta
+
+    from src.dashboard import daily_report
+
+    store, journal = tmp_path / "reports.json", tmp_path / "short.json"
+    evening = datetime(2026, 11, 8, 21, 5, tzinfo=timezone.utc)  # 22:05 in Germany
+    _journal(journal, [_plan("a", evening - timedelta(hours=3), status="CLOSED", net_r=1.5, closed_at=(evening - timedelta(hours=1)).isoformat()),
+                       _plan("b", evening - timedelta(hours=2), status="FILLED"),
+                       _plan("x", evening - timedelta(days=3), status="CLOSED", net_r=-1.0, closed_at=(evening - timedelta(days=2)).isoformat())])
+    asked: list[str] = []
+
+    def ask(text: str) -> dict:
+        asked.append(text)
+        return {"ok": True, "answer": "Ruhiger Tag, ein Plan im Plus."}
+
+    assert daily_report.update(store, {"15m": journal}, LAGE, now=evening - timedelta(hours=1, minutes=10), ask=ask) is None  # 20:55
+    report = daily_report.update(store, {"15m": journal}, LAGE, lambda: [{"label": "Backup", "value": "alt", "reason": "3 Tage"}], now=evening, ask=ask)
+    assert report["slot"] == "2026-11-08-22" and report["text"] == "Ruhiger Tag, ein Plan im Plus." and "Abendbericht" in asked[0]
+    assert any("1 geschlossen (1 im Plus), Summe +1.50 R" in line for line in report["facts"])
+    assert any("LONG im Trade" in line for line in report["facts"]) and any("Backup: alt (3 Tage)" in line for line in report["facts"])
+    assert daily_report.update(store, {"15m": journal}, LAGE, now=evening + timedelta(minutes=5), ask=ask) is None and len(asked) == 1
+    morning = datetime(2026, 11, 9, 7, 1, tzinfo=timezone.utc)
+
+    def down() -> list:
+        raise OSError("zu")
+
+    second = daily_report.update(store, {"15m": journal}, None, down, now=morning, ask=lambda text: {"ok": False, "error": "Timeout"})
+    assert second["slot"] == "2026-11-09-08" and second["text"] is None and second["error"] == "Timeout"
+    assert "Control Center: Zustand nicht lesbar." in second["facts"] and second["since"] == report["until"]
+    assert daily_report.update(store, {"15m": journal}, None, now=morning + timedelta(hours=5), ask=ask) is None  # 13:01, 8 Uhr is done
+    assert daily_report.due_slot(datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc), []) is None  # 13:00, missed by too long
+    assert daily_report.latest(store)["slot"] == "2026-11-09-08"
+
+
+def test_hermes_page_shows_report_and_opinions(home: Path, tmp_path: Path) -> None:
+    from src.dashboard import daily_report, plan_opinion
+
+    journal = _journal(tmp_path / "short.json", [])
+
+    class State:
+        hermes_log_path = tmp_path / "log.json"
+        daily_report_path = tmp_path / "reports.json"
+        plan_opinion_path = tmp_path / "opinion.json"
+
+    empty = render_hermes(build_hermes(State(), NOW))
+    assert "Noch kein Bericht" in empty and "Noch keine Zweitmeinung" in empty
+    plan_opinion.update(State.plan_opinion_path, [journal], LAGE, now=NOW, ask=None)
+    _journal(journal, [_plan("a", NOW)])
+    plan_opinion.update(State.plan_opinion_path, [journal], LAGE, now=NOW, symbol="BTCUSDT",
+                        ask=lambda text: {"ok": True, "answer": "DAFÜR: <b>Welle</b>\nDAGEGEN: eng\nURTEIL: NEUTRAL"})
+    daily_report.update(State.daily_report_path, {"15m": journal}, LAGE, now=datetime(2026, 11, 8, 21, 5, tzinfo=timezone.utc),
+                        ask=lambda text: {"ok": True, "answer": "Alles ruhig."})
+    html = render_hermes(build_hermes(State(), NOW, can_ask=False))
+    assert "Alles ruhig." in html and "Urteil <b>NEUTRAL</b>" in html and "&lt;b&gt;Welle&lt;/b&gt;" in html and "<script" not in html
+
+
+def test_bridge_own_jobs_stay_out_of_the_chat_log(home: Path, tmp_path: Path) -> None:
+    log = tmp_path / "log.json"
+    entry = hb.ask("x" * 900, log_path=log, now=NOW, limit=1500, record=False)
+    assert entry["ok"] and hb.load_log(log) == []
+    with pytest.raises(hb.QuestionError):
+        hb.ask("x" * 900, log_path=log, now=NOW)
