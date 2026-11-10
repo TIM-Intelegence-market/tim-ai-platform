@@ -181,7 +181,7 @@ def _rows(signal: float, seed: int) -> list[Row]:
 
 def test_evaluate_refuses_while_the_rules_are_a_draft():
     with pytest.raises(PermissionError):
-        s20.evaluate(_rows(0.0, 1))
+        s20.evaluate(_rows(0.0, 1), version="0.2")
 
 
 def test_evaluate_passes_a_planted_signal_and_rejects_noise():
