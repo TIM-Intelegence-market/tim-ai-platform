@@ -12,7 +12,9 @@ from dataclasses import dataclass
 from src.research_lab.of2.config import DEFAULT_CONFIG, Config
 
 # OFX base: OF2 1.0 with the new section split (training 2020-2023, validation 2024).
-BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", last_day="2024-12-31")
+# ``of_gate``: only confirmed signals trade and take the day's slot (in OF2 1.0 a price-only signal blocked a later
+# confirmed one of the same model and direction).
+BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", last_day="2024-12-31", of_gate=True)
 
 # Values per parameter, ordered; the OF2 1.0 value is always one of them (neighbours = one step left/right).
 ENGINE_SPACE: dict[str, tuple] = {
