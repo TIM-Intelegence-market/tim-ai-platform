@@ -200,3 +200,92 @@ def test_distance_alone_does_not_pass_h1():
     out = s20.evaluate(rows, shift_draws=3, boot_draws=199, version="1.0")
     assert out["H1_gegen_mechanik"]["rel_gewinn_mechanik_gegen_basisrate"] > 0.1
     assert not out["H1_bestanden"]
+
+
+def test_orderflow_window_features_read_flow_into_the_break():
+    """cvd_anteil: aggressive buyers count for an up break; cvd_gleichlauf < 0 when flow falls while price rises."""
+    bars = _peak_then_break([112.0] + [113.0] * 30)
+    e = next(e for e in s20.find_events(bars)[0] if e.direction == UP)
+    names = s20.WINDOW_FEATURES
+    for k in range(e.index - 5, e.index + 1):  # buyers dominate, price rising
+        b = bars[k]
+        bars[k] = Kline(b.open_time, b.open, b.high, b.low, 100.0 + (k - e.index + 5) * 0.4 if k < e.index else b.close,
+                        b.volume, b.close_time, 8.0)
+    f = dict(zip(names, s20.window_features(bars, e, 5)))
+    assert f["cvd_anteil"] == pytest.approx(0.6) and f["cvd_gleichlauf"] > 0.5
+    for k in range(e.index - 5, e.index + 1):  # sellers dominate while price still rises: divergence
+        b = bars[k]
+        bars[k] = Kline(b.open_time, b.open, b.high, b.low, b.close, b.volume, b.close_time, 2.0)
+    f = dict(zip(names, s20.window_features(bars, e, 5)))
+    assert f["cvd_anteil"] == pytest.approx(-0.6) and f["cvd_gleichlauf"] < -0.5
+
+
+def test_volume_trend_is_positive_when_volume_rises_into_the_break():
+    bars = _peak_then_break([112.0] + [113.0] * 30)
+    e = next(e for e in s20.find_events(bars)[0] if e.direction == UP)
+    for j, k in enumerate(range(e.index - 10, e.index)):
+        b = bars[k]
+        bars[k] = Kline(b.open_time, b.open, b.high, b.low, b.close, 10.0 * (1 + j), b.close_time, 5.0 * (1 + j))
+    f = dict(zip(s20.WINDOW_FEATURES, s20.window_features(bars, e, 10)))
+    assert f["volumentrend"] > 1.0
+
+
+def test_footprint_features_count_todays_flags_with_and_against_the_break():
+    from src.research_lab.studies import s19
+    today = s19.TODAY_KEYS
+    t = START + 100 * HOUR
+    quarter = s20.FP_CANDLE_MS
+    readings = {t + (k - 4) * quarter: s19.Reading(t + (k - 4) * quarter, 100.0, True, 30, ()) for k in range(8)}
+    readings[t] = s19.Reading(t, 100.0, True, 30, (f"{today['I']}|up", f"{today['C']}|down", "I:3x2|up"))
+    readings[t - 4 * quarter] = s19.Reading(t - 4 * quarter, 100.0, True, 30, (f"{today['I']}|up",))
+    f = dict(zip(s20.FP_FEATURES, s20.footprint_features(readings, t, UP, today)))
+    assert f["fp_I"] == pytest.approx(2 / 8) and f["fp_C"] == pytest.approx(-1 / 8)  # grid neighbour I:3x2 ignored
+    assert s20.footprint_features(readings, t, DOWN, today)[0] == pytest.approx(-2 / 8)
+    readings[t + 3 * quarter] = s19.Reading(t + 3 * quarter, 0.0, False, 0, ())
+    assert s20.footprint_features(readings, t, UP, today) is None  # untraded candle: event leaves H3
+
+
+def test_footprint_h3_finds_planted_orderflow_and_counts_in_holm():
+    rows = _rows(0.0, 6)
+    rng = random.Random(11)
+    fp = {}
+    relabelled = []
+    for r in rows:
+        signal = rng.gauss(0, 1)
+        fp[r.time] = (signal, 0.0, 0.0, 0.0, 0.0, 0.0)
+        relabelled.append(s20._relabel(r, int(rng.random() < 1 / (1 + math.exp(-3 * signal)))))
+    # _rows starts 2017; keep only the part inside the footprint period
+    assert s20.HOLM_M == 4
+    out = s20.evaluate_footprint([r for r in relabelled if r.time >= s20.FP_START_MS] + [], fp, 5, boot_draws=199, shift_draws=3)
+    assert not out["gate"]  # 150 training events 2020-22 < 250: not testable, gate holds
+    many = []
+    for r in relabelled:
+        for k in range(3):  # three copies a week apart to pass the gate in this synthetic set
+            t = r.time + k * 7 * 24 * HOUR
+            many.append(Row(t, s20.week_of(t), r.year, s20.section_of(t), r.direction, r.y, r.candle, r.window))
+            fp[t] = fp[r.time]
+    out = s20.evaluate_footprint(many, fp, 5, boot_draws=199, shift_draws=3)
+    assert out["gate"] and out["rel_gewinn"] > 0.1 and out["p"] < 0.01
+
+
+def test_funding_uses_only_rates_known_at_the_break_close_and_mirrors_direction():
+    e = Event(500, START + 100 * 24 * HOUR, UP, 1.0, 0, 1.0, "training")
+    rates = [(START + k * 8 * HOUR, 0.0001) for k in range(299)]
+    rates.append((e.time + HOUR, 0.0005))  # published exactly at the break close: known
+    rates.append((e.time + HOUR + 8 * HOUR, 0.01))  # later: must not count
+    last, z = s20.funding_features(rates, e)
+    assert last == pytest.approx(5.0) and z == 0.0  # flat history has no spread
+    down = Event(e.index, e.time, DOWN, 1.0, 0, 1.0, "training")
+    assert s20.funding_features(rates, down)[0] == pytest.approx(-5.0)
+    assert s20.funding_features(rates[:50], e) is None
+
+
+def test_funding_h4_uses_the_same_addon_test_with_its_own_seed():
+    rows = []
+    for r in _rows(0.0, 7):
+        for k in range(3):
+            t = r.time + k * 7 * 24 * HOUR
+            rows.append(Row(t, s20.week_of(t), r.year, s20.section_of(t), r.direction, r.y, r.candle, r.window))
+    noise = {r.time: (random.Random(r.time).gauss(0, 1), 0.0) for r in rows}
+    out = s20.evaluate_footprint(rows, noise, 5, boot_draws=199, shift_draws=3, name="H4")
+    assert out["gate"] and out["p"] > 0.05
