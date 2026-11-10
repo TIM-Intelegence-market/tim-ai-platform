@@ -78,10 +78,19 @@ class TradeFilter:
     max_trades_day: int | None = None       # Uzi 10.11.: guide value, not a duty; skipping bad days is allowed
     stop_after_losses_day: int | None = None
     skip_weekend: bool = False
+    # Direction of the completed day / week / month at signal time (``trend.py``): None, "MIT" or "GEGEN".
+    trend_d: str | None = None
+    trend_w: str | None = None
+    trend_m: str | None = None
+
+    @property
+    def trends(self) -> tuple[tuple[str, str | None], ...]:
+        return (("d", self.trend_d), ("w", self.trend_w), ("m", self.trend_m))
 
     def key(self) -> str:
         return "|".join([",".join(self.models), ",".join(self.sessions), ",".join(self.regimes),
-                         str(self.max_trades_day), str(self.stop_after_losses_day), str(int(self.skip_weekend))])
+                         str(self.max_trades_day), str(self.stop_after_losses_day), str(int(self.skip_weekend)),
+                         *(str(mode) for _, mode in self.trends)])
 
 
 def _subset(rng: random.Random, items: tuple[str, ...]) -> tuple[str, ...]:
@@ -91,7 +100,19 @@ def _subset(rng: random.Random, items: tuple[str, ...]) -> tuple[str, ...]:
             return picked
 
 
-def sample_filter(rng: random.Random) -> TradeFilter:
+TREND_CHOICES = (None, None, None, "MIT", "GEGEN")
+
+
+def sample_filter(rng: random.Random, *, trend: bool = False) -> TradeFilter:
+    """``trend``: also draw the direction filters (only where the loop has the daily closes)."""
+    base = _sample_base(rng)
+    if not trend:
+        return base
+    return dataclasses.replace(base, trend_d=rng.choice(TREND_CHOICES), trend_w=rng.choice(TREND_CHOICES),
+                               trend_m=rng.choice(TREND_CHOICES))
+
+
+def _sample_base(rng: random.Random) -> TradeFilter:
     return TradeFilter(models=_subset(rng, MODELS), sessions=_subset(rng, SESSIONS),
                        regimes=_subset(rng, REGIMES) if rng.random() < 0.5 else REGIMES,
                        max_trades_day=rng.choice((None, None, 1, 2)), stop_after_losses_day=rng.choice((None, None, 1, 2)),

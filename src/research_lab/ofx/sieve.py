@@ -9,6 +9,7 @@ from statistics import NormalDist
 
 from src.research_lab.of2.backtest import Trade
 from src.research_lab.ofx.space import TradeFilter
+from src.research_lab.ofx.trend import Trend
 
 TRAIN_YEARS = (2020, 2021, 2022, 2023)
 
@@ -30,14 +31,20 @@ def _day(ms: int) -> datetime:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
 
 
-def apply_filter(trades: Sequence[Trade], f: TradeFilter) -> list[Trade]:
+def apply_filter(trades: Sequence[Trade], f: TradeFilter, trend: Trend | None = None) -> list[Trade]:
     """Confirmed trades the filter keeps, in fill order. Day rules count per UTC signal day; a loss only stops
-    later trades of that day whose fill comes after the losing exit (no look-ahead)."""
+    later trades of that day whose fill comes after the losing exit (no look-ahead). Direction filters need
+    ``trend`` (daily closes); they read completed days, weeks and months only."""
+    wanted = [(frame, mode) for frame, mode in f.trends if mode is not None]
+    if wanted and trend is None:
+        raise ValueError("this filter has a direction rule but no daily closes were given")
     kept: list[Trade] = []
     per_day: dict[str, list[Trade]] = {}
     for t in sorted(trades, key=lambda t: (t.fill_ms, t.signal.signal_ms)):
         s = t.signal
         if not s.confirmed or s.model not in f.models or s.session not in f.sessions or s.regime not in f.regimes:
+            continue
+        if trend is not None and not all(trend.allows(s.signal_ms, s.direction, frame, mode) for frame, mode in wanted):
             continue
         day = _day(s.signal_ms)
         if f.skip_weekend and day.weekday() >= 5:

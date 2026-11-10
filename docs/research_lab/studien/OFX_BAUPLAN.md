@@ -81,3 +81,17 @@ Uzi: Die Suche soll die Zeitrahmen 1m bis 1M mitrechnen. Eingebaut sind die, die
 Die Engine baut ihre Kerzen an jedem UTC-Tag neu auf. 4h, 1d, 1w und 1M brauchen Kerzen über Tagesgrenzen, längere
 Haltezeiten und Marken aus Vorwoche/Vormonat; das ist ein eigener Umbau und nicht Teil dieses Nachtrags.
 Die Zählung der Konfigurationen (Mehrfachtest) läuft im selben Lauf weiter.
+
+## Nachtrag 10.11.: Richtungsfilter Tag, Woche, Monat (Z5)
+
+Uzi "go" zum Zeitrahmen-Plan. Erstes Paket: Für jeden Trade wird beim Signal die Richtung von Tag, Woche und Monat
+bestimmt (`ofx/trend.py`), nur aus abgeschlossenen Kerzen: letzter Schluss gegen den Mittelwert der letzten
+20 Tage, 10 Wochen oder 3 Monate. Der Filter darf je Zeitrahmen "MIT", "GEGEN" oder nichts wählen. Ohne genug
+Vorgeschichte (Anfang 2020) gilt die Richtung als unbekannt und der Trade fällt bei aktivem Filter weg.
+Die Regel wurde festgelegt, bevor die Suche ein Ergebnis damit gesehen hat.
+
+Zufallsvergleich: Die Zufallseinstiege müssen dieselbe Richtungsregel einhalten. Sonst würde "nur Long im
+Aufwärtstrend" den Zufall allein durch die Drift des Marktes schlagen.
+
+Tagesschlüsse kommen aus dem Speicher ohne Freigabe (nur bis Trainingsende) und liegen als `tagesschluss.json`
+im Ergebnisordner.
