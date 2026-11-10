@@ -241,3 +241,35 @@ def test_search_space_stays_up_to_one_hour_with_funding():
     assert all(c.swing_tf == 0 and c.funding_per_8h == 0.0001 and c.of_gate for c in drawn)
     assert max(ENGINE_SPACE["tf_value"]) == max(ENGINE_SPACE["tf_sfp"]) == 60
     assert not any(m.startswith("S") for m in TradeFilter().models)
+
+
+# -- joint view over several machines -------------------------------------------------------------------------------
+from src.research_lab.ofx.gesamt import combine
+
+
+def _search_dir(path, seed, configs, ts):
+    path.mkdir()
+    (path / "state.json").write_text(json.dumps({"seed": seed, "configs_tried": configs, "kandidaten": len(ts)}))
+    rows = [{"status": "KANDIDAT", "metriken": {"t": t}, "nr": i} for i, t in enumerate(ts)]
+    rows.append({"status": "SIEB_2_NICHT", "metriken": {"t": 9.9}, "nr": 99})
+    (path / "kandidaten.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return path
+
+
+def test_combine_sums_configs_and_rechecks_candidates(tmp_path):
+    a = _search_dir(tmp_path / "ps5", 1, 1600, [4.5])
+    b = _search_dir(tmp_path / "ps4", 2, 400, [4.0])
+    joint = combine([a, b])
+    assert joint["configs_gesamt"] == 2000
+    assert joint["t_schwelle"] == round(t_threshold(2000, 0.05), 3)
+    # 4.0 passes the PS4 threshold alone (400 configs) but not the joint one (2000 configs)
+    assert t_threshold(400, 0.05) < 4.0 < t_threshold(2000, 0.05) < 4.5
+    assert [c["status_gemeinsam"] for c in joint["liste"]] == ["KANDIDAT", "MEHRFACHTEST_GEMEINSAM"]
+    assert joint["kandidaten"] == 1
+
+
+def test_combine_refuses_the_same_seed_twice(tmp_path):
+    a = _search_dir(tmp_path / "a", 7, 10, [])
+    b = _search_dir(tmp_path / "b", 7, 10, [])
+    with pytest.raises(SystemExit):
+        combine([a, b])

@@ -128,3 +128,11 @@ Uzi nach den ersten Zahlen der Swing-Spur (4h: 43 Trades, -0,10 R; 1d: 2 bis 8 T
 "nimm nur die low timeframes bis 1h". `swing_tf`, `swing_level` und `swing_hold_days` sind wieder aus dem
 Suchraum, S1 bis S3 aus der Modellauswahl. Der Code der Swing-Spur bleibt in der Engine, ausgeschaltet.
 Richtungsfilter (Tag, Woche, Monat) und Funding bleiben in der Suche.
+
+## PS4 als zweiter Sucher (Uzi 10.11. "go")
+
+Die PS4 (8 Kerne, 6,7 GB RAM, kein sudo, kein cron) sucht im selben Raum mit eigenem Seed (`--seed 20261111`,
+Ordner `results/ofx/lauf2-ps4`), gleicher Code wie lauf2 der PS5. Auf der PS4 liegen nur die Trainingstage
+2020–2023 (Validierung 2024 und Schlusstest 2025 nie). Jede Maschine zählt im Sieb nur ihre eigenen Konfigurationen;
+`python -m src.research_lab.ofx gesamt <lauf2> <lauf2-ps4>` summiert beide und prüft jeden Kandidaten gegen die
+gemeinsame Bonferroni-Schwelle. Nur Kandidaten, die dort bestehen, gehen in Validierung/Schlusstest.
