@@ -26,10 +26,8 @@ BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", las
 ENGINE_SPACE: dict[str, tuple] = {
     "tf_value": (5, 15, 30, 60),
     "tf_sfp": (1, 5, 15, 30, 60),
-    # Swing track: off, 4h or 1d candles across days; marks of the last week or month; hard holding limit in days.
-    "swing_tf": (0, 240, 1440),
-    "swing_level": ("W", "M"),
-    "swing_hold_days": (3, 7, 14),
+    # Uzi 10.11. (after the first numbers: 4h -0,10 R, 1d 2-8 trades in four years): only the time frames up to 1h.
+    # The swing track (``Config.swing_tf`` 240/1440, models S1-S3) stays in the engine, switched off, and is not searched.
     "relvol_min": (1.5, 2.0, 2.5, 3.0),
     "stop_buffer": (0.0005, 0.001, 0.002, 0.003),
     "min_rr": (1.0, 1.5, 2.0, 3.0),
@@ -46,7 +44,7 @@ ENGINE_SPACE: dict[str, tuple] = {
     "ib_minutes": (30, 60),
 }
 
-MODELS = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "S1", "S2", "S3")   # S = swing track
+MODELS = ("M1", "M2", "M3", "M4", "M5", "M6", "M7")
 SESSIONS = ("ASIA", "LONDON", "NY", "SPAET")
 REGIMES = ("TREND", "RANGE", "NEUTRAL", "UNBEKANNT")
 

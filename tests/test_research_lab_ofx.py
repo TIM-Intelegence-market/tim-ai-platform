@@ -232,11 +232,12 @@ def test_random_signals_obey_the_selection_rule():
         random_signals(trades, date(2021, 1, 1), date(2021, 12, 31), BASE_CONFIG, 3, 7, None)
 
 
-def test_search_space_has_the_swing_track_and_funding():
+def test_search_space_stays_up_to_one_hour_with_funding():
+    """Uzi 10.11.: only the low time frames up to 1h; the swing track is not searched."""
     assert BASE_CONFIG.funding_per_8h == 0.0001 and BASE_CONFIG.swing_tf == 0
     rng = random.Random(3)
     from src.research_lab.ofx.space import sample_engine
     drawn = [engine_config(sample_engine(rng)) for _ in range(60)]
-    assert {c.swing_tf for c in drawn} == {0, 240, 1440} and {c.swing_level for c in drawn} == {"W", "M"}
-    assert all(c.funding_per_8h == 0.0001 and c.of_gate for c in drawn)
-    assert {"S1", "S2", "S3"} <= set(TradeFilter().models)
+    assert all(c.swing_tf == 0 and c.funding_per_8h == 0.0001 and c.of_gate for c in drawn)
+    assert max(ENGINE_SPACE["tf_value"]) == max(ENGINE_SPACE["tf_sfp"]) == 60
+    assert not any(m.startswith("S") for m in TradeFilter().models)

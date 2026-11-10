@@ -121,3 +121,10 @@ Konfigurationen 1400 bis etwa 1450 von lauf2 (kein Kandidat darunter).
 
 1w und 1M sind kein Einstiegs-Zeitrahmen (208 Wochen- und 48 Monatskerzen in vier Jahren, das Sieb verlangt
 130 Trades); sie wirken über den Richtungsfilter und über die Marken.
+
+## Nachtrag 10.11. abends: Suche nur bis 1h
+
+Uzi nach den ersten Zahlen der Swing-Spur (4h: 43 Trades, -0,10 R; 1d: 2 bis 8 Trades in vier Jahren):
+"nimm nur die low timeframes bis 1h". `swing_tf`, `swing_level` und `swing_hold_days` sind wieder aus dem
+Suchraum, S1 bis S3 aus der Modellauswahl. Der Code der Swing-Spur bleibt in der Engine, ausgeschaltet.
+Richtungsfilter (Tag, Woche, Monat) und Funding bleiben in der Suche.
