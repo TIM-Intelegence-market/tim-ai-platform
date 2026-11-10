@@ -1217,7 +1217,8 @@
   ];
   // The layouts are working views (Uzi 09.11.2026: one click for everything orderflow, TPO, footprint or
   // volume profile needs, and the levels and the structure in every one of them): BASE joins each layout.
-  // groups: null = the server's default layers.
+  // groups: null = the server's default layers. fp: footprint style the layout sets (Orderflow Pro: profile,
+  // Uzi 10.11.2026 "footprint im OF Pro als Profil"); without fp a TIM layout shows bid × ask.
   const BASE = ['day', 'week', 'month', 'naked', 'structure', 'trend'];
   const TIM_LAYOUTS = [
     { id: 'tim:orderflow', name: L.orderflow, market: 'perp', groups: ['fp', 'bubbles', 'cvd', 'oi', 'liqev', 'vwap'] },
@@ -1227,7 +1228,7 @@
     { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
     { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
     { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
-    { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
+    { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', fp: 'profile', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
     { id: 'tim:standard', name: L.standard, groups: null },
   ];
   function ownLayouts() {
