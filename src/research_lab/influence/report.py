@@ -29,10 +29,12 @@ def build(data: Mapping[str, Series], btc: Mapping[date, float], *, now: datetim
         per_driver[d.key] = {"label": d.label, "familie": d.family, "einheit": d.change, "revidiert": d.revised,
                              "braucht_vorlauf": d.needs_lead, "hinweis": d.note, "abdeckung": coverage, **info}
     # crypto-internal series (dominance holds the BTC price itself) stay out of the joint view (5b)
-    in_joint = [d.key for d in drivers if not d.needs_lead and per_driver[d.key]["abdeckung"] >= JOINT_MIN_COVERAGE]
+    in_joint = [d.key for d in drivers
+                if d.joint and not d.needs_lead and per_driver[d.key]["abdeckung"] >= JOINT_MIN_COVERAGE]
     joint = analysis.joint({k: rows[k] for k in in_joint}, btc)
     joint["treiber"] = in_joint
-    joint["ausgelassen"] = [d.key for d in drivers if d.key not in in_joint and not d.needs_lead]
+    joint["ausgelassen"] = [d.key for d in drivers if d.key not in in_joint and not d.needs_lead and d.joint]
+    joint["abhaengig"] = [d.key for d in drivers if not d.joint and not d.needs_lead]
     joint["krypto_getrennt"] = [d.key for d in drivers if d.needs_lead]
     return {"schema": SCHEMA, "erstellt_utc": now.replace(microsecond=0).isoformat(),
             "btc_wochen": len(btc), "erste_woche": grid[0].isoformat(), "letzte_woche": grid[-1].isoformat(),
@@ -88,7 +90,8 @@ def markdown(report: Mapping) -> str:
     j = report["gemeinsam"]
     lines += ["", "## Alle Treiber gemeinsam", ""]
     if j.get("ergebnis") is None:
-        lines.append(f"Nicht berechenbar ({j['wochen']} gemeinsame Wochen).")
+        why = "Treiber linear abhängig" if j.get("grund") == "linear_abhaengig" else "zu wenige gemeinsame Wochen"
+        lines.append(f"Nicht berechenbar: {why} ({j['wochen']} gemeinsame Wochen).")
     else:
         res = j["ergebnis"]
         lines += [(f"Wochen {j['von']} bis {j['bis']} ({j['wochen']}), R² = {res['r2']:.3f}: Anteil der Schwankung der "
@@ -101,6 +104,9 @@ def markdown(report: Mapping) -> str:
         if j["ausgelassen"]:
             lines += ["", "Nicht in der gemeinsamen Rechnung (zu kurze Historie): "
                       + ", ".join(report["treiber"][k]["label"] for k in j["ausgelassen"]) + "."]
+        if j.get("abhaengig"):
+            lines += ["", "Nicht in der gemeinsamen Rechnung (aus anderen Treibern berechnet): "
+                      + ", ".join(report["treiber"][k]["label"] for k in j["abhaengig"]) + "."]
     if j.get("krypto_getrennt"):
         lines += ["", "Krypto-interne Reihen nur einzeln, nicht in der gemeinsamen Rechnung (sie enthalten den BTC-Kurs selbst): "
                   + ", ".join(report["treiber"][k]["label"] for k in j["krypto_getrennt"]) + "."]

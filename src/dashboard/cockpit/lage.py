@@ -475,6 +475,12 @@ def build_lage(state: DashboardState, now: datetime | None = None, budget: float
     except Exception as exc:  # noqa: BLE001
         market.append(unavailable("orderflow", "Orderflow", _broken(exc), "Kachelbau Orderflow", "/chart"))
     try:
+        from src.dashboard import barometer_tile
+
+        market.append(barometer_tile.tile(barometer_tile.load(), now))
+    except Exception as exc:  # noqa: BLE001
+        market.append(unavailable("barometer", "Makro-Barometer", _broken(exc), "Kachelbau Barometer", "/prep"))
+    try:
         journals = _journal_tiles(results["plan_journal"], results["trader_journal"], now)
     except Exception as exc:  # noqa: BLE001
         journals = [unavailable(key, label, _broken(exc), "Kachelbau Journale", href) for key, label, href in JOURNAL_TILES]

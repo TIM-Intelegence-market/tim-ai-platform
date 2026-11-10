@@ -178,6 +178,7 @@ TILES: list[tuple[str, str, str, str]] = [
     ("block", "Nächste Sperrzeit", "Markt", "Nächste Handelssperre um die NY-Eröffnung (15 min davor bis 30 min danach)."),
     ("bias", "Übergeordneter Bias", "Markt", "Richtung aus der Vorbereitung: 1h-Struktur, Tages- und Wochen-Value."),
     ("orderflow", "Orderflow", "Markt", "Live-Orderflow-Lage: Delta, Absorption, Imbalances der letzten Kerzen (nur Beobachtung)."),
+    ("barometer", "Makro-Barometer", "Markt", "Wochenlage der Makro-Treiber (Realzins, Dollar, Liquidität …): wie viele waren bis 2024 Rückenwind oder Gegenwind für BTC, dazu der nächste Termin (nur Beschreibung, kein Signal)."),
     ("plan_journal", "Plan-Journal", "Journale", "Papier-Pläne von TIM: offen, gefüllt, Ergebnis in R. Rot = Ereignislog beschädigt."),
     ("trader_journal", "Trader-Journal", "Journale", "Deine eigenen eingetragenen Trades."),
     ("own_data", "Eigene Daten", "System", "Zusammenfassung von TIMs eigener Datensammlung (Trades, OI, Gamma, Bybit)."),

@@ -28,9 +28,8 @@ from src.research_lab.forward.macro_filters import (
     parse_observations,
     scale_to_billions,
 )
-from src.research_lab.influence import dominance
+from src.research_lab.influence import dominance, zuordnung
 from src.research_lab.influence import report as report_mod
-from src.research_lab.influence import zuordnung
 from src.research_lab.influence.catalog import all_series
 
 FOLDER = Path("data/research/influence")

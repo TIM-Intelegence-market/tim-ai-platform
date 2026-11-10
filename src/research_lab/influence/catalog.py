@@ -23,6 +23,7 @@ class Driver:
     revised: bool = False  # True: FRED gives revised latest values, no vintages used here
     note: str = ""
     source: str = "fred"  # "fred" or "coinmetrics" (dominance substitute, see dominance.py)
+    joint: bool = True  # False: left out of the joint view because it is an exact combination of other drivers
 
     @property
     def needs_lead(self) -> bool:
@@ -33,7 +34,10 @@ class Driver:
 DRIVERS: tuple[Driver, ...] = (
     Driver("DFII10", "Realzins 10J", ("DFII10",), "bp", 1, "zinsen"),
     Driver("DGS10", "Rendite 10J", ("DGS10",), "bp", 1, "zinsen"),
-    Driver("T10YIE", "Inflationserwartung 10J", ("T10YIE",), "bp", 1, "zinsen"),
+    # FRED computes T10YIE as DGS10 - DFII10 (checked on the Mac 10.11.2026, max. deviation 9e-14): together with
+    # both it makes the joint regression singular, so it stays out of the joint view and is shown on its own.
+    Driver("T10YIE", "Inflationserwartung 10J", ("T10YIE",), "bp", 1, "zinsen", joint=False,
+           note="= Rendite 10J minus Realzins, deshalb nicht in der gemeinsamen Rechnung"),
     Driver("DTWEXBGS", "Dollar-Index (Fed Broad)", ("DTWEXBGS",), "pct", 8, "dollar",
            note="FRED veröffentlicht den Index mit etwa einer Woche Verzug"),
     Driver("DEXJPUS", "Yen je Dollar (USD/JPY)", ("DEXJPUS",), "pct", 8, "dollar",

@@ -170,6 +170,7 @@ Bartis Go. `V2_START_ALLOWED` bleibt bis dahin `NO`.
 | Bericht (5a.3) | `influence/report.py` | Markdown + JSON mit Datum, Zahl der angeschauten Treiber und SHA-256 der Eingaben |
 | Zuordnung (5c) | `influence/zuordnung.py` | Zustand heute, früheres BTC-Verhalten, Stabilität, Beitrag, Termine der nächsten 7 Tage |
 | Barometer | `forward/macro_filters.py` | `barometer --history BERICHT.json` liest die historischen Zahlen aus dem Bericht; ohne Angabe bleiben die festen Zahlen |
+| Termine, Kachel (10.11.) | `forward/macro_filters.py`, `dashboard/barometer_tile.py` | Barometer listet die Termine der nächsten 7 Tage (`--calendar`, Standard `data/macro/calendar.json`) und schreibt `barometer_latest.json`; das Control Center zeigt daraus die Kachel „Makro-Barometer“ (Rückenwind/Gegenwind, nächster Termin; Pfad über `TIM_BAROMETER_JSON`) |
 
 Befehle (auf dem Mac oder später der PS5, FRED-Schlüssel über `TIM_FRED_SECRET_PROVIDER`):
 

@@ -268,8 +268,66 @@ def history_from_report(path: Path) -> Mapping[str, Mapping[str, float] | None]:
     return merged
 
 
+SUMMARY_NAME = "barometer_latest.json"
+SUMMARY_SCHEMA = "tim_barometer/1"
+EVENT_DAYS = 7
+
+
+def _driver_rows(today: date, data: Mapping[str, Series]) -> list[tuple[str, str, str, Series]]:
+    rows = [(label, sid, kind, data.get(sid, [])) for label, sid, kind in DRIVERS]
+    rows.append((LIQUIDITY, LIQUIDITY, "diff", net_liquidity_series(data.get("WALCL", []), data.get("WTREGEN", []),
+                                                                     data.get("RRPONTSYD", []))))
+    return rows
+
+
+def _wind(history: Mapping[str, float] | None, direction: str) -> str:
+    """Tailwind when BTC did better in the current direction of the driver than in the opposite one (up to 2024)."""
+    other = "gefallen" if direction == "gestiegen" else "gestiegen"
+    if not history or history.get(direction) is None or history.get(other) is None:
+        return "unbekannt"
+    return "Rückenwind" if history[direction] > history[other] else "Gegenwind"
+
+
+def upcoming_events(events: Sequence[Mapping[str, Any]], now: datetime, days: int = EVENT_DAYS) -> list[dict[str, Any]]:
+    """Scheduled releases in the next ``days`` days with what the research lab knows about BTC around them."""
+    from src.research_lab.influence.zuordnung import EVENT_HISTORY
+
+    out = []
+    for event in events:
+        moment = event.get("time")
+        if isinstance(moment, str):
+            moment = datetime.fromisoformat(moment.replace("Z", "+00:00"))
+        if not isinstance(moment, datetime) or not now <= moment < now + timedelta(days=days):
+            continue
+        kind = str(event.get("kind"))
+        out.append({"kind": kind, "label": str(event.get("label") or kind), "time": moment.astimezone(timezone.utc).isoformat(),
+                    "historisch": EVENT_HISTORY.get(kind, "noch nicht ausgewertet")})
+    return sorted(out, key=lambda e: e["time"])
+
+
+def barometer_summary(today: date, data: Mapping[str, Series],
+                      history_table: Mapping[str, Mapping[str, float] | None] = HISTORY,
+                      events: Sequence[Mapping[str, Any]] = (), now: datetime | None = None) -> dict[str, Any]:
+    """Machine-readable barometer for the Control Center tile. Descriptive only, no signal."""
+    now = now or datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    drivers = []
+    for label, key, _kind, series in _driver_rows(today, data):
+        t = trend(series, today)
+        if t is None:
+            drivers.append({"label": label, "richtung": "unbekannt", "wind": "unbekannt"})
+            continue
+        direction = "gestiegen" if t.rose else "gefallen"
+        drivers.append({"label": label, "richtung": direction, "stichtag": t.day.isoformat(),
+                        "wind": _wind(history_table.get(key), direction)})
+    return {"schema": SUMMARY_SCHEMA, "stand": today.isoformat(), "erstellt_utc": now.replace(microsecond=0).isoformat(),
+            "treiber": drivers, "rueckenwind": sum(d["wind"] == "Rückenwind" for d in drivers),
+            "gegenwind": sum(d["wind"] == "Gegenwind" for d in drivers), "termine": upcoming_events(events, now),
+            "hinweis": "Rein beschreibend: BTC-Verhalten 2017–2024 in derselben Treiber-Lage, keine Prognose, kein Signal."}
+
+
 def barometer_markdown(today: date, data: Mapping[str, Series],
-                       history_table: Mapping[str, Mapping[str, float] | None] = HISTORY) -> str:
+                       history_table: Mapping[str, Mapping[str, float] | None] = HISTORY,
+                       events: Sequence[Mapping[str, Any]] = (), now: datetime | None = None) -> str:
     year, week, _ = today.isocalendar()
     lines = [f"# Barometer live, Woche {year}-{week:02d} (Stand {today.isoformat()})", "",
              ("Rein beschreibend, keine Prognose, kein Handelssignal. Stand: Treiber über 13 Wochen, wie heute bei FRED "
@@ -277,10 +335,7 @@ def barometer_markdown(today: date, data: Mapping[str, Series],
               "bzw. gefallen war, und Vorlauf-Korrelation auf die 4 Wochen danach (Barometer Teil 2)."), "",
              "| Treiber | Stand (Datum) | vor 13 W | Veränderung | Richtung | BTC/Woche hist. so | … Gegenrichtung | Vorlauf hist. |",
              "|---|---:|---:|---:|---|---:|---:|---:|"]
-    rows = [(label, sid, kind, data.get(sid, [])) for label, sid, kind in DRIVERS]
-    rows.append((LIQUIDITY, LIQUIDITY, "diff", net_liquidity_series(data.get("WALCL", []), data.get("WTREGEN", []),
-                                                                     data.get("RRPONTSYD", []))))
-    for label, key, kind, series in rows:
+    for label, key, kind, series in _driver_rows(today, data):
         t = trend(series, today)
         history = history_table.get(key)
         if t is None:
@@ -293,6 +348,12 @@ def barometer_markdown(today: date, data: Mapping[str, Series],
             hist_cells = f"{_pct(history[direction])} | {_pct(history[other])} | {history['vorlauf']:+.2f}"
         lines.append(f"| {label} | {t.value:.2f} ({t.day.isoformat()}) | {t.value_before:.2f} ({t.day_before.isoformat()}) | "
                      f"{_change(kind, t.value_before, t.value)} | {direction} | {hist_cells} |")
+    upcoming = upcoming_events(events, now or datetime(today.year, today.month, today.day, tzinfo=timezone.utc))
+    lines += ["", f"## Termine der nächsten {EVENT_DAYS} Tage", ""]
+    if not upcoming:
+        lines.append("Keine Termine im Kalender." if not events else "Keine Termine in den nächsten Tagen.")
+    for event in upcoming:
+        lines.append(f"- {event['time'][:16].replace('T', ' ')} UTC: {event['label']}. Früher: {event['historisch']}.")
     lines += ["", OIL_NOTE, "", "Keine BTC-Daten ab 2025 geladen; der Holdout bleibt unberührt."]
     return "\n".join(lines) + "\n"
 
@@ -317,6 +378,7 @@ def main(argv: Sequence[str] | None = None, *, now: datetime | None = None) -> i
     parser.add_argument("command", choices=("log", "barometer"))
     parser.add_argument("--folder", type=Path, default=FOLDER)
     parser.add_argument("--history", type=Path, help="influence report JSON; replaces the fixed history numbers")
+    parser.add_argument("--calendar", type=Path, help="macro calendar (tim_macro_calendar/1), default data/macro/calendar.json")
     args = parser.parse_args(argv)
     moment = now or datetime.now(timezone.utc)
     today = moment.date()
@@ -333,8 +395,13 @@ def main(argv: Sequence[str] | None = None, *, now: datetime | None = None) -> i
     data, _ = _download(tuple(sid for _, sid, _ in DRIVERS) + F3_SERIES, today, args.folder / "barometer")
     year, week, _ = today.isocalendar()
     out = args.folder / "barometer" / f"barometer_{year}-{week:02d}.md"
+    from src.dashboard.macro_calendar import load_calendar
+
     table = HISTORY if args.history is None else history_from_report(args.history)
-    out.write_text(barometer_markdown(today, data, table))
+    events = load_calendar(args.calendar)
+    out.write_text(barometer_markdown(today, data, table, events, moment))
+    (out.parent / SUMMARY_NAME).write_text(json.dumps(barometer_summary(today, data, table, events, moment),
+                                                      ensure_ascii=False, indent=2) + "\n")
     print(f"geschrieben: {out}")
     return 0
 
