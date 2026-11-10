@@ -230,3 +230,13 @@ Echtgeld (P4) nur nach bestandenem P3 und Uzis Wort, im Kraken-Test mit seinen L
   Holm m = 7. Kein Lauf auf Training oder Validierung bis hierher.
 - 1.0 (10.11.2026): Kalibrierung auf dem Training nach der Regel aus 0.3 eingetragen und eingefroren (`fp_imbalance` 4 → 3,
   `fp_zero_levels` 2 → 1, übrige unverändert). Danach Training-Lauf, Validierung erst nach dem Training-Bericht.
+
+## Ergebnis Training (10.11.2026)
+
+Lauf PS5, Code `aa853e1`, Config-Digest `6cb919a2a5c1…`, 1 096 Tage. Mit Orderflow-Bestätigung 56 Trades, im Mittel
++0,27 R netto (Zufall −0,09 R, p = 0,006); nur Preis-Regel 74 Trades, −0,22 R. **Urteil nach Abschnitt 6: „nicht prüfbar“**
+(56 < 100 bestätigte Trades). Das Kosten-Gate verwarf den Großteil der Signale (Stopps unter etwa 1,3 % sind bei Bitunix-Kosten
+teurer als 0,15 R). Hebel-Bericht: bei 10-facher Position Cross 0 Liquidationen, bei 200x isolated 128 von 130.
+**Validierung bleibt ungenutzt** (Uzi per Karte, 10.11.2026 11:42 Uhr): Ein Lauf könnte die Mindestzahl nicht erreichen und
+würde die letzten frischen Daten vor dem Holdout verbrauchen. Eine Folgestudie (zum Beispiel M1 allein) braucht eine eigene
+Präregistrierung.
