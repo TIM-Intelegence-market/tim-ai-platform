@@ -56,7 +56,13 @@ def build_hermes(state: Any, now: datetime | None = None, token: str = "", asked
                   reason="" if status.get("mcp_servers") else "Hermes kennt tim-ops/tim-graph nicht", now=now, extra={"kind": "info"}),
     ]
     log = list(reversed(hermes_bridge.load_log(log_path)))
-    report, opinions = None, None
+    report, opinions, critic = None, None, []
+    try:
+        from src.dashboard import daily_critic
+
+        critic = daily_critic.latest(getattr(state, "daily_critic_path", None), 14)
+    except Exception:  # noqa: BLE001, S110 - die Seite zeigt den Rest auch ohne die Kritik
+        pass
     try:  # TIMs eigene Aufträge an Hermes; fehlt eine Datei, bleibt der Abschnitt leer
         from src.dashboard import daily_report, plan_opinion
 
@@ -67,7 +73,7 @@ def build_hermes(state: Any, now: datetime | None = None, token: str = "", asked
         opinions = {"summary": stored.get("summary") or plan_opinion.summary(stored), "recent": recent}
     except Exception:  # noqa: BLE001, S110 - die Seite zeigt Status und Verlauf auch ohne diese Abschnitte
         pass
-    return {"report": report, "opinions": opinions,"schema": SCHEMA, "generated_at": now.isoformat(), "safety": SAFETY, "overall": main.state, "headline": main.value,
+    return {"report": report, "opinions": opinions, "critic": critic, "schema": SCHEMA, "generated_at": now.isoformat(), "safety": SAFETY, "overall": main.state, "headline": main.value,
             "status": {k: v for k, v in status.items() if k != "last"}, "tiles": [t.to_dict() for t in tiles], "log": log,
             "token": token, "asked": asked, "error": error, "can_ask": can_ask, "max_question": hermes_bridge.MAX_QUESTION}
 
@@ -81,6 +87,23 @@ def _report_section(report: dict[str, Any] | None) -> str:
     facts = "".join(f"<li>{_e(line)}</li>" for line in report.get("facts") or [])
     return (f"{head}{text}<details><summary>Fakten dazu</summary><ul>{facts}</ul></details>"
             f"<p class='note'>Stand {_e(local_time(report.get('at'), with_date=True))} Uhr. Nur Papier-Journale und Marktdaten.</p></section>")
+
+
+def _critic_section(reports: list[dict[str, Any]] | None) -> str:
+    head = "<section aria-labelledby='h-critic'><h2 id='h-critic'>Kritik</h2>"
+    if not reports:
+        return head + "<p class='empty'>Noch keine Kritik. Die erste kommt um 7 Uhr.</p></section>"
+
+    def one(report: dict[str, Any]) -> str:
+        text = (f"<p style='white-space:pre-wrap'>{_e(report.get('text'))}</p>" if report.get("text")
+                else f"<p class='note'>Hermes hat nicht geantwortet ({_e(report.get('error'))}); hier die Fakten.</p>")
+        facts = "".join(f"<li>{_e(line)}</li>" for line in report.get("facts") or [])
+        return f"{text}<details><summary>Fakten dazu</summary><ul>{facts}</ul></details>"
+
+    older = "".join(f"<details><summary>Kritik vom {_e(local_time(r.get('at'), with_date=True))} Uhr</summary>{one(r)}</details>"
+                    for r in reports[1:])
+    return (f"{head}{one(reports[0])}<p class='note'>Stand {_e(local_time(reports[0].get('at'), with_date=True))} Uhr. Projekt und Chart "
+            f"aus Nutzersicht, nur lesend; Hermes sieht Zahlen und Überschriften, kein Bild und keinen Code.</p>{older}</section>")
 
 
 def _opinion_section(opinions: dict[str, Any] | None) -> str:
@@ -119,6 +142,7 @@ def hermes_body(model: dict[str, Any]) -> str:
     else:
         out.append("<p class='note'>Fragen stellen geht nur direkt am Mac; die öffentliche Ansicht ist nur lesend.</p>")
     out.append(_report_section(model.get("report")))
+    out.append(_critic_section(model.get("critic")))
     out.append(_opinion_section(model.get("opinions")))
     items = []
     for entry in (model.get("log") or [])[:10]:

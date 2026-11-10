@@ -81,6 +81,7 @@ class DashboardState:
     hermes_log_path: Path = field(default_factory=lambda: Path("data/hermes/chat_log.json"))
     plan_opinion_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_opinion.json"))
     daily_report_path: Path = field(default_factory=lambda: Path("data/hermes/daily_reports.json"))
+    daily_critic_path: Path = field(default_factory=lambda: Path("data/hermes/daily_critic.json"))
     plan_notes_path: Path = field(default_factory=lambda: Path("data/journal/plan_notes.json"))
     qualification_root_path: Path = field(default_factory=lambda: Path("data/qualification"))
     live_cutover_path: Path = field(default_factory=lambda: Path("artifacts/operations/live_cutover.json"))

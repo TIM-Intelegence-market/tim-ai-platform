@@ -262,3 +262,80 @@ def test_bridge_own_jobs_stay_out_of_the_chat_log(home: Path, tmp_path: Path) ->
     assert entry["ok"] and hb.load_log(log) == []
     with pytest.raises(hb.QuestionError):
         hb.ask("x" * 900, log_path=log, now=NOW)
+
+
+# --- Täglicher Kritiker (Uzi 11.11.2026) ---
+
+def test_daily_critic_writes_once_a_day_from_facts_and_remembers_yesterday(tmp_path: Path) -> None:
+    from datetime import timedelta
+
+    from src.dashboard import daily_critic
+
+    store = tmp_path / "critic.json"
+    morning = datetime(2026, 11, 11, 6, 5, tzinfo=timezone.utc)  # 07:05 in Germany
+    asked: list[str] = []
+
+    def ask(text: str) -> dict:
+        asked.append(text)
+        return {"ok": True, "answer": f"PROJEKT: Schwäche {len(asked)}\nCHART AUS NUTZERSICHT: zu langsam"}
+
+    def broken() -> list[str]:
+        raise OSError("zu")
+
+    sources = {"Journale": lambda: ["Papier-Journal 15m: 7 Tage: 3 geschlossen."], "Chart": broken}
+    assert daily_critic.update(store, sources, now=morning - timedelta(minutes=10), ask=ask) is None  # 06:55
+    report = daily_critic.update(store, sources, now=morning, ask=ask)
+    assert report["slot"] == "2026-11-11" and "Schwäche 1" in report["text"]
+    assert report["facts"] == ["Papier-Journal 15m: 7 Tage: 3 geschlossen.", "Chart: nicht lesbar (OSError)."]
+    assert "CHART AUS NUTZERSICHT" in asked[0] and "Kritik von gestern:" not in asked[0] and len(asked[0]) <= daily_critic.MAX_PROMPT
+    assert daily_critic.update(store, sources, now=morning + timedelta(hours=1), ask=ask) is None and len(asked) == 1
+    daily_critic.update(store, sources, now=morning + timedelta(days=1), ask=ask)
+    assert "Kritik von gestern:\nPROJEKT: Schwäche 1" in asked[1]
+    silent = daily_critic.update(store, sources, now=morning + timedelta(days=2), ask=lambda text: {"ok": False, "error": "Timeout"})
+    assert silent["text"] is None and silent["error"] == "Timeout" and silent["facts"]
+    assert daily_critic.due_slot(morning + timedelta(hours=4), []) is None  # 11:05, missed by too long
+    assert [r["slot"] for r in daily_critic.latest(store, 14)] == ["2026-11-13", "2026-11-12", "2026-11-11"]
+
+
+def test_daily_critic_facts_come_from_journals_chart_and_cockpit(tmp_path: Path) -> None:
+    from datetime import timedelta
+
+    from src.dashboard import daily_critic
+
+    journal = _journal(tmp_path / "short.json", [
+        _plan("a", NOW - timedelta(days=3), status="CLOSED", net_r=1.5, closed_at=(NOW - timedelta(days=2)).isoformat()),
+        _plan("b", NOW - timedelta(days=21), status="CLOSED", net_r=-1.0, closed_at=(NOW - timedelta(days=20)).isoformat()),
+        _plan("c", NOW, status="OPEN")])
+    assert daily_critic.journal_facts({"15m": journal}, NOW) == [
+        "Papier-Journal 15m: 7 Tage: 1 geschlossen, 1 im Plus, +1.50 R netto; 30 Tage: 2 geschlossen, 1 im Plus, +0.50 R netto."]
+    shadow = tmp_path / "shadow.json"
+    shadow.write_text(json.dumps({"summary": {"closed": 4, "target": 30, "by_gate": {"GEGEN": {"n": 4, "sum_net_r": -2.0}}}}))
+    assert daily_critic.shadow_facts({"Orderflow-Schatten": shadow, "Zweitmeinung": tmp_path / "none.json"}) == [
+        "Orderflow-Schatten: 4 von 30 geschlossenen Plänen (GEGEN 4 Pläne -2.00 R).", "Zweitmeinung: noch keine Auswertung."]
+    chart = daily_critic.chart_facts({"symbol": "BTCUSDT", "timeframe": "30m", "candles": [{}] * 300, "last_closed": "2026-11-08T14:30:00+00:00",
+                                      "groups": {"day": "Tag", "vwap": "VWAP"}, "default_groups": ["day"],
+                                      "drawings": [{"group": "day"}, {"group": "day"}], "plans": [{}], "bubbles": {"items": []},
+                                      "footprint": {"bars": []}, "liquidation": None, "notes": ["Footprint: keine Trades"]}, 0.42)
+    assert "300 Kerzen" in chart[0] and "gebaut in 0.4 s" in chart[0] and "day 2" in chart[1]
+    assert "1 Pläne, 0 Volumen-Blasen" in chart[2] and "Liquidations-Karte fehlt" in chart[2] and chart[3] == "Hinweis im Chart: Footprint: keine Trades"
+    cockpit = daily_critic.cockpit_facts({"headline": "1 Fehler", "system": [{"state": "fail"}, {"state": "ok"}], "market": [{"state": "unknown"}],
+                                          "attention": [{"label": "Watchdog", "value": "rot", "reason": "runtime"}]})
+    assert cockpit == ["Control Center: 1 Fehler; 3 Kacheln, 1 rot, 0 gelb, 1 ohne Daten.", "Braucht einen Blick: Watchdog: rot (runtime)."]
+    assert daily_critic.merge_facts(tmp_path) == ["Merges: Git-Verlauf nicht lesbar."]
+
+
+def test_daily_critic_reads_the_running_state_and_shows_on_the_page(home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.dashboard import daily_critic
+
+    monkeypatch.chdir(tmp_path)
+    state = _live_state(tmp_path, datetime.now(timezone.utc).replace(microsecond=0))
+    state.hermes_log_path, state.daily_critic_path = tmp_path / "log.json", tmp_path / "critic.json"
+    state.plan_opinion_path, state.daily_report_path = tmp_path / "opinion.json", tmp_path / "reports.json"
+    lines = daily_critic.gather(daily_critic.state_sources(state, root=tmp_path))
+    assert any(line.startswith("Chart BTCUSDT 30m:") for line in lines) and any(line.startswith("Control Center:") for line in lines)
+    assert any(line.startswith("Papier-Journal 1h:") for line in lines)
+    assert "Noch keine Kritik" in render_hermes(build_hermes(state, NOW))
+    daily_critic.update(state.daily_critic_path, {"x": lambda: ["Fakt <eins>"]}, now=datetime(2026, 11, 11, 6, 5, tzinfo=timezone.utc),
+                        ask=lambda text: {"ok": True, "answer": "PROJEKT: <b>dünn</b>"})
+    html = render_hermes(build_hermes(state, NOW, can_ask=False))
+    assert "PROJEKT: &lt;b&gt;dünn&lt;/b&gt;" in html and "Fakt &lt;eins&gt;" in html and "id='h-critic'" in html
