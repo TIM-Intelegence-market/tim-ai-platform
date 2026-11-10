@@ -44,9 +44,10 @@ class EngineTotals:
     tracker: TrackerCounts = field(default_factory=TrackerCounts)
 
 
-def _snapshot(engine: Engine) -> tuple[dict[str, int], dict[str, int], int, int, int, int]:
+def _snapshot(engine: Engine) -> tuple[dict[str, int], dict[str, int], int, int, int, int, dict[str, int]]:
     s = engine.stats
-    return dict(s.signale), dict(s.verworfen), s.tage, s.tage_ohne_level, engine.tracker.expired, engine.tracker.cancelled
+    return (dict(s.signale), dict(s.verworfen), s.tage, s.tage_ohne_level, engine.tracker.expired,
+            engine.tracker.cancelled, dict(s.trichter))
 
 
 def _run_range(loader_factory: Callable[[], DayLoader], days: Sequence[date], lo: int, hi: int, warm: int,
@@ -70,6 +71,9 @@ def _run_range(loader_factory: Callable[[], DayLoader], days: Sequence[date], lo
     for k, v in after[1].items():
         if v - before[1].get(k, 0):
             totals.stats.verworfen[k] = v - before[1].get(k, 0)
+    for k, v in after[6].items():
+        if v - before[6].get(k, 0):
+            totals.stats.trichter[k] = v - before[6].get(k, 0)
     totals.stats.tage, totals.stats.tage_ohne_level = after[2] - before[2], after[3] - before[3]
     totals.tracker.expired, totals.tracker.cancelled = after[4] - before[4], after[5] - before[5]
     return trades, totals
@@ -107,6 +111,8 @@ def run_days_parallel(loader_factory: Callable[[], DayLoader], days: Sequence[da
             total.stats.signale[k] = total.stats.signale.get(k, 0) + v
         for k, v in part.stats.verworfen.items():
             total.stats.verworfen[k] = total.stats.verworfen.get(k, 0) + v
+        for k, v in part.stats.trichter.items():
+            total.stats.trichter[k] = total.stats.trichter.get(k, 0) + v
         total.stats.tage += part.stats.tage
         total.stats.tage_ohne_level += part.stats.tage_ohne_level
         total.tracker.expired += part.tracker.expired

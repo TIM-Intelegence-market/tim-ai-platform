@@ -25,7 +25,7 @@ from src.research_lab.of2.compare import (
     strategy_means,
 )
 from src.research_lab.of2.config import DEFAULT_CONFIG, VERSION, Config
-from src.research_lab.of2.engine import _ms, section_trades
+from src.research_lab.of2.engine import _ms, funnel, section_trades
 from src.research_lab.of2.parallel import run_days_parallel
 from src.research_lab.orderflow_ml.store import MinuteBarStore
 
@@ -68,6 +68,7 @@ def cmd_run(args: argparse.Namespace, cfg: Config) -> dict:
         "datensatz_hash": store.dataset_hash([d for d in days if d >= first]),
         "tage": engine.stats.tage, "tage_ohne_level": engine.stats.tage_ohne_level,
         "signale": engine.stats.signale, "verworfen": engine.stats.verworfen,
+        "trichter": funnel(engine.stats.trichter, inside),
         "abgelaufen": engine.tracker.expired, "storniert": engine.tracker.cancelled, "offen_am_ende": open_at_end,
         "zusammenfassung": summarize(inside, cfg),
         "zusammenfassung_nur_of": summarize([t for t in inside if t.signal.confirmed], cfg),

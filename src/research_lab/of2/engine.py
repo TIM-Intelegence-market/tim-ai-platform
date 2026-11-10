@@ -55,6 +55,7 @@ def _ms(day: date) -> int:
 class EngineStats:
     signale: dict[str, int] = field(default_factory=dict)
     verworfen: dict[str, int] = field(default_factory=dict)
+    trichter: dict[str, int] = field(default_factory=dict)  # per model: kandidat, bestaetigt, frei, risiko_ok
     tage: int = 0
     tage_ohne_level: int = 0
 
@@ -149,8 +150,15 @@ class Engine:
             return
         cfg = self.cfg
         key = (day_start, signal.model, signal.direction)
+        self.stats.hit(self.stats.trichter, f"{signal.model}|kandidat")
+        if signal.confirmed:
+            self.stats.hit(self.stats.trichter, f"{signal.model}|bestaetigt")
         if key in self.fired:
             return
+        if cfg.of_gate and not signal.confirmed:
+            self.stats.hit(self.stats.verworfen, f"{signal.model}_ohne_of")
+            return
+        self.stats.hit(self.stats.trichter, f"{signal.model}|frei")
         assert self.session is not None
         reg = regime(self.session.ib_range, list(self.ib_history[self.session.name]), cfg)
         if signal.model == "M1" and reg == "TREND":
@@ -177,6 +185,7 @@ class Engine:
             self.stats.hit(self.stats.verworfen, f"{signal.model}_kosten")
             return
         self.fired.add(key)
+        self.stats.hit(self.stats.trichter, f"{signal.model}|risiko_ok")
         signal = Signal(**{**_fields(signal), "session": self.session.name, "regime": reg})
         self.stats.hit(self.stats.signale, f"{signal.model}|{signal.session}|{'OF' if signal.confirmed else 'PREIS'}")
         self.tracker.add(signal)
@@ -184,6 +193,23 @@ class Engine:
 
 def _fields(signal: Signal) -> dict:
     return {name: getattr(signal, name) for name in Signal.__slots__}  # type: ignore[attr-defined]
+
+
+def funnel(trichter: dict[str, int], trades: Iterable[Trade]) -> dict[str, dict[str, int]]:
+    """Signal funnel per model: candidates -> confirmed -> slot free -> risk passed -> filled and closed.
+    ``bestaetigt`` counts every confirmed candidate (also after the slot was taken); with ``of_gate`` off the
+    later steps include price-only signals."""
+    out: dict[str, dict[str, int]] = {}
+    for key, n in sorted(trichter.items()):
+        model, step = key.split("|")
+        out.setdefault(model, {"kandidat": 0, "bestaetigt": 0, "frei": 0, "risiko_ok": 0, "geschlossen": 0,
+                               "geschlossen_bestaetigt": 0})[step] = n
+    for t in trades:
+        row = out.setdefault(t.signal.model, {"kandidat": 0, "bestaetigt": 0, "frei": 0, "risiko_ok": 0,
+                                              "geschlossen": 0, "geschlossen_bestaetigt": 0})
+        row["geschlossen"] += 1
+        row["geschlossen_bestaetigt"] += bool(t.signal.confirmed)
+    return out
 
 
 def run_days(loader: DayLoader, days: Iterable[date], cfg: Config, costs: CostModel | None = None) -> tuple[list[Trade], Engine]:

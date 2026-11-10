@@ -476,6 +476,7 @@ def test_engine_split_by_time_gives_the_same_trades_and_counters():
         many, tot = parallel.run_days_parallel(_long_loader, days, cfg, workers=workers)
         assert sorted(map(str, map(key, one))) == sorted(map(str, map(key, many))), workers
         assert tot.stats.signale == eng.stats.signale and tot.stats.verworfen == eng.stats.verworfen
+        assert tot.stats.trichter == eng.stats.trichter and eng.stats.trichter
         assert (tot.stats.tage, tot.stats.tage_ohne_level) == (eng.stats.tage, eng.stats.tage_ohne_level)
         assert (tot.tracker.expired, tot.tracker.cancelled) == (eng.tracker.expired, eng.tracker.cancelled)
     # too few days for a warm-up per range: falls back to one pass
@@ -649,3 +650,39 @@ def test_poor_volume_at_the_range_edge_fades_back_inside_m7():
     assert not models.poor_edge([*hist, touch], [*fps(16), full], lv, CFG).confirmed
     # POC is not a range edge; a close below the edge is no test
     assert models.poor_edge([*hist, candle(t0, 101.0, 101.2, 99.0, 99.5, volume=50, minutes=15)], [*fps(16), poor], lv, CFG) is None
+
+
+# -- orderflow gate and funnel (OFX, Uzi 10.11.2026) ------------------------------------------------
+def _gate_engine(cfg):
+    eng = engine.Engine(cfg)
+    eng.session = levels.SessionState("ASIA", DAY0)
+    eng.ib_history["ASIA"].extend([10.0] * cfg.ib_history)
+    eng.session.ib_high, eng.session.ib_low, eng.session.ib_seen, eng.session.ib_done = 110.0, 100.0, True, True
+    return eng
+
+
+def test_price_only_signal_blocks_a_later_confirmed_one_only_without_the_gate():
+    import dataclasses
+    loose = dataclasses.replace(CFG, max_cost_r=100.0)
+    price = dataclasses.replace(sig(models.MARKET, 1, None, 98.0, 103.0, model="M4"), confirmed=False)
+    flow = dataclasses.replace(price, confirmed=True)
+    old = _gate_engine(loose)                        # OF2 1.0: the price-only signal takes the day's slot
+    old._consider(price, DAY0, DAY0)
+    old._consider(flow, DAY0, DAY0)
+    assert [s.confirmed for s in old.tracker.pending] == [False]
+    new = _gate_engine(dataclasses.replace(loose, of_gate=True))
+    new._consider(price, DAY0, DAY0)
+    new._consider(flow, DAY0, DAY0)
+    new._consider(flow, DAY0, DAY0)                  # the confirmed one now holds the slot
+    assert [s.confirmed for s in new.tracker.pending] == [True]
+    assert new.stats.verworfen == {"M4_ohne_of": 1}
+    assert new.stats.trichter == {"M4|kandidat": 3, "M4|bestaetigt": 2, "M4|frei": 1, "M4|risiko_ok": 1}
+    assert engine.funnel(new.stats.trichter, [])["M4"] == {"kandidat": 3, "bestaetigt": 2, "frei": 1, "risiko_ok": 1,
+                                                            "geschlossen": 0, "geschlossen_bestaetigt": 0}
+
+
+def test_gate_keeps_the_frozen_digest_and_changes_it_when_on():
+    import dataclasses
+    assert "of_gate" not in CFG.as_dict()
+    on = dataclasses.replace(CFG, of_gate=True)
+    assert on.as_dict()["of_gate"] is True and on.digest() != CFG.digest()

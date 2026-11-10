@@ -74,6 +74,10 @@ class Config:
     # Uzi 10.11.: at most 0,5-5 % of the account as margin. In cross margin at 200x that is a position of 1-10x the
     # account; the report also counts liquidations for the upper end (10x, cross: about 10 % - MMR against the entry).
     report_cross_multiple: int = 10
+    # OFX (Uzi 10.11.2026): orderflow as an entry gate. False = OF2 1.0 (a price-only signal trades and takes the
+    # day's slot of its model and direction, so a later confirmed signal is ignored). True = only confirmed
+    # signals trade and take the slot. Left out of ``as_dict`` while False, so the OF2 1.0 digest stays the same.
+    of_gate: bool = False
     # Study window (UTC days, inclusive). Holdout 2025 is refused by the store before any byte is read.
     first_day: str = "2020-01-01"
     training_end: str = "2022-12-31"
@@ -94,7 +98,10 @@ class Config:
         return 1 / self.report_cross_multiple - self.report_mmr
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if not d["of_gate"]:
+            del d["of_gate"]
+        return d
 
     def digest(self) -> str:
         """SHA-256 over the frozen parameter set; written into every result file."""
