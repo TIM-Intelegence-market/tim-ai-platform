@@ -23,7 +23,7 @@ from datetime import date, timedelta
 from src.research_lab.of2.backtest import Trade
 from src.research_lab.of2.config import Config
 from src.research_lab.of2.engine import DayLoader, Engine, EngineStats
-from src.research_lab.protocol import BASE_COSTS, CostModel
+from src.research_lab.protocol import CostModel
 
 
 def warmup_days(cfg: Config) -> int:
@@ -76,7 +76,7 @@ def _run_range(loader_factory: Callable[[], DayLoader], days: Sequence[date], lo
 
 
 def run_days_parallel(loader_factory: Callable[[], DayLoader], days: Sequence[date], cfg: Config, workers: int = 1,
-                      costs: CostModel = BASE_COSTS) -> tuple[list[Trade], EngineTotals | Engine]:
+                      costs: CostModel | None = None) -> tuple[list[Trade], EngineTotals | Engine]:
     """``run_days`` over ``workers`` processes. Same closed trades (sorted by exit, then signal) and counters.
 
     ``loader_factory`` must be picklable (a module-level function or a ``functools.partial`` of one).

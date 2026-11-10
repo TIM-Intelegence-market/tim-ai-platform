@@ -1,9 +1,9 @@
-# OF2: Orderflow-Engine nach Broncx-Modellen, jede Session handelbar (Präregistrierung, Entwurf 0.2)
+# OF2: Orderflow-Engine nach Broncx-Modellen, jede Session handelbar (Präregistrierung, Entwurf 0.3)
 
 | Feld | Wert |
 |---|---|
 | Studie | OF2 |
-| Version | **0.2 – Entwurf** (08.11.2026; 0.1 vom 07.11., Uzi „go“ 18:24 Ortszeit für P0 und P1; P1b Footprint-Modelle auf Uzis Hinweis 08.11. 01:09). Freigabe 1.0 erst nach Abschluss der Kalibrierung P0 auf mehr als 40 Tagen, der Footprint-Kalibrierung auf dem Trainingsabschnitt und Uzis Wort; bis dahin kein Lauf auf Training oder Validierung |
+| Version | **0.3 – Entwurf** (10.11.2026: Bitunix-Kosten, Hebel-Bericht, Kalibrierregel; Uzi „s19 und of2 backtest starten“ 11:17 Uhr. 0.2 vom 08.11.2026; 0.1 vom 07.11., Uzi „go“ 18:24 Ortszeit für P0 und P1; P1b Footprint-Modelle auf Uzis Hinweis 08.11. 01:09). Freigabe 1.0 erst nach Abschluss der Kalibrierung P0 auf mehr als 40 Tagen, der Footprint-Kalibrierung auf dem Trainingsabschnitt und Uzis Wort; bis dahin kein Lauf auf Training oder Validierung |
 | Auftrag | Uzi 07.11.2026: „ich brauch für TIM eine neue und überarbeitete Orderflow-Engine, mir gefällt nicht wie er tradet, ein Orderflow-Trader kann theoretisch jede Session traden“ |
 | Grundlagen | Broncx-Bootcamp (193 S., vollständig gelesen 07.11.), MEGA-Bibliothek „Trading University“ (147 Dateien, Zusammenfassung `wissen/mega-orderflow-2026-11-07.md` im privaten Repo, 74 Regeln R01–R74), Orderflow-Kontrolle 06.11., S17 |
 | Code | `src/research_lab/of2/` (Config, Kerzen, Level, Footprint, Modelle, Tracker, Engine, Vergleiche, CLI); Tests `tests/test_research_lab_of2.py` |
@@ -110,11 +110,38 @@ aufeinanderfolgende Stufen derselben Seite.
 | Stopp | jenseits des Berührungs-Extrems + 0,05 % | jenseits der Zone + 0,05 % | jenseits des Run-Extrems + 0,05 % |
 | Ziel | nächstes Gegenlevel mit R:R ≥ 1,5 | nächstes Gegenlevel mit R:R ≥ 1,5 | nächstes Gegenlevel mit R:R ≥ 1,5 |
 
+**M7 Poor Volume am Range-Rand** (Uzi 10.11.2026: „die Range berechnen und traden, Sniper-Entries, wo das Volumen schwach
+wird“; AMT Poor High/Low, Bootcamp Unfinished Auction):
+
+| | M7 |
+|---|---|
+| Ort | Range-Ränder: Vortages-VAL/VAH, Vortages-Tief/-Hoch, Tief/Hoch der vorigen Session (kein POC, keine nPOCs) |
+| Auslöser | 15m-Kerze erreicht den Rand bis auf eine Footprint-Stufe und schließt wieder innen; die zwei Kerzen davor waren mehr als eine Stufe entfernt |
+| **Orderflow-Bestätigung** | schwaches Volumen: Relativvolumen der Kerze < `poor_relvol_max` 0,7 **und** die äußerste Stufe am Extrem trägt ≤ `poor_extreme_share` 0,25 × mittleres Stufenvolumen der Kerze (Poor Low/High, kein Exzess) |
+| Einstieg | Market zum Open der Minute nach der Kerze (kein Bestätigungskerzen-Abwarten) |
+| Stopp / Ziel | jenseits des Extrems + 0,05 % / nächstes Gegenlevel mit R:R ≥ 1,5 |
+| Regime | nicht an TREND-Tagen |
+
+0,7 und 0,25 sind die Engine-Werte für dünnes Volumen und dünnes Extrem; S19 fand beide allein ohne Richtung, M7 prüft sie nur
+am Range-Rand. Sie werden nicht kalibriert.
+
 Je Modell, Richtung und Tag höchstens ein Signal. Relativvolumen = Kerzenvolumen / Mittel der letzten 15 Kerzen
 derselben Zeitebene (R18; P0: 2,0 trifft 7–9 % der Bars). Die Footprint-Schwellen (`fp_imbalance` 4,0, `fp_stack` 3,
 `fp_absorb_ratio` 2,0, `fp_absorb_levels` 2, `fp_zero_levels` 2) sind PROVISORISCH: P0 maß mit 10-USD-Stufen 6,18x für 15m;
 auf den gröberen 0,1-%-Stufen gibt es noch keine Messung. Sie werden vor Freigabe 1.0 auf dem **Trainingsabschnitt**
 (2020–2022, nur Häufigkeiten, Ziel 5–15 % der Kerzen wie in P0) festgelegt und eingefroren; die Validierung bleibt unberührt.
+
+**Kalibrierregel (festgelegt in 0.3, vor dem Lauf; Code `src/research_lab/of2/calibrate.py`):** gezählt wird nur, wie oft
+ein Baustein auf einer 15m-Kerze des Trainings anschlägt, nie der Kursverlauf danach.
+- Stufe: `fp_step_pct` bleibt 0,1 %, wenn mindestens die Hälfte der gehandelten 15m-Kerzen lesbar ist (≥ `fp_min_bins`
+  Stufen); sonst die nativen S8-Stufen (0,05 %). S19 zeigte am 09.11., dass 0,1 % für 20 Stufen zu grob ist; für 4 Stufen
+  ist es offen.
+- Raster: Imbalance-Faktor {3, 4, 5, 6, 8} gemessen als Anteil der Kerzen mit Stapel ≥ `fp_stack`; Absorptions-Faktor
+  {1,5, 2, 3, 4}; Nullen-Stufen {1, 2, 3}. Gewählt wird der Wert, dessen Anteil an den lesbaren Kerzen in 5–15 % liegt und
+  10 % am nächsten ist; bei Gleichstand der strengere; liegt keiner im Band, der nächste zum Band (im Bericht vermerkt).
+- Relativvolumen: 2,0 bleibt, solange es auf 15m und 30m in 5–15 % der Kerzen liegt; sonst der Rasterwert {1,4, 2,0, 2,5}
+  nach derselben Regel.
+- IB 60 min, IB-Bänder und Stop-Puffer bleiben ohne Kalibrierung (Entscheidungen ohne Daten, Abschnitt 9).
 
 ### 5.4 Gates vor jedem Einstieg
 
@@ -128,8 +155,17 @@ zum Schluss der Minute. Maximal 24 h. Fill jenseits des eigenen Stopps = kein Tr
 
 ### 5.6 Kosten
 
-Protokoll 4.4 `BASE_COSTS`: Gebühr 0,05 % je Seite, Slippage 0,03 % je Seite, 0,05 % bei Stop-Ausführung;
-Kosten in R = Kosten in Preis / Stop-Distanz (4.3). Zusätzlich beschreibend `STRESS_COSTS` (doppelt).
+**Bitunix (Uzi 10.11.2026):** Gebühr 0,06 % je Seite (USDT-M Taker VIP0, Stand 10.11.2026), Slippage 0,03 % je Seite,
+0,05 % bei Stop-Ausführung (Protokoll 4.4). Strenger als `BASE_COSTS` (0,05 %). Die Maker-Gebühr 0,02 % wird nicht genutzt:
+Limit-Fills hier berühren den Preis, sie handeln nicht durch (Protokolleintrag 1.3 erlaubt Maker nur mit Durchhandel-Regel).
+Kosten in R = Kosten in Preis / Stop-Distanz (4.3). Werte in `Config` (`fee`, `slippage`, `stop_slippage`), im Digest.
+
+### 5.7 Hebel (nur Bericht, kein Filter)
+
+Uzi 10.11.2026: Bitunix 200x, **Cross-Margin**, höchstens 0,5–5 % des Kontos als Marge, also eine Position von 1- bis 10-mal
+dem Konto. Ergebnis in R hängt davon nicht ab (Risiko je Trade fest). Der Bericht zählt je Lauf: Trades, deren Gegenbewegung vor
+dem Ausstieg eine Cross-Liquidation bei 10-facher Position erreicht hätte (10 % − 0,3 % Erhaltungsmarge = 9,7 %), und zum
+Vergleich bei 200x isolated (0,5 % − 0,3 % = 0,2 %; Bitunix BTCUSDT Stufe 1 bis 100 000 USDT, live abgefragt 10.11.2026).
 
 ## 6. Messgröße und Entscheidung
 
@@ -139,7 +175,7 @@ Kosten in R = Kosten in Preis / Stop-Distanz (4.3). Zusätzlich beschreibend `ST
   sonst „nicht prüfbar“.
 - **BESTANDEN** nur, wenn in der Validierung alle drei gelten: (1) Mittel OF ≥ +0,10 R je Trade; (2) Mittel OF −
   Mittel PREIS ≥ +0,05 R (H1); (3) H2 (zwei Sessions einzeln ≥ 0 R) und H3 (p ≤ 0,05 gegen Zufall, Holm über die
-  drei Modelle, m = 3). Training ist notwendige Bedingung, nicht Beweis.
+  sieben Modelle, m = 7). Training ist notwendige Bedingung, nicht Beweis.
 - Sonst **NICHT BESTANDEN**. Auch ein BESTANDEN führt nur in P3 (Schatten-Journal, Papier), nie direkt zu Echtgeld.
 
 ## 7. Vergleiche
@@ -183,3 +219,6 @@ Echtgeld (P4) nur nach bestandenem P3 und Uzis Wort, im Kraken-Test mit seinen L
 - 0.1 (07.11.2026): Entwurf nach Bootcamp- und MEGA-Auswertung; P0-Werte eingetragen (Relativvolumen 2,0; IB-Bänder 0,5/1,5).
 - 0.2 (08.11.2026): Footprint aus dem S8-Tagesprofil (Stufen auf 0,1 % zusammengefasst); Modelle M4 Absorption, M5
   Stacked-Imbalance-Retest, M6 Stop-Run-Fade/Zeros; Regime-Sperren M5/M6; Zeitstopp je Signal-Zeitebene; Holm m = 6.
+- 0.3 (10.11.2026): Kosten nach Bitunix (Taker 0,06 % je Seite), Hebel-Bericht (Cross 10-fach, 200x isolated), Kalibrierregel
+  für Footprint und Relativvolumen auf dem Training (5.3), Kalibrier-Code, Modell M7 Poor Volume am Range-Rand (Uzis Wort),
+  Holm m = 7. Kein Lauf auf Training oder Validierung bis hierher.

@@ -202,9 +202,9 @@ def test_market_fill_at_next_open_and_stop_before_target_in_same_minute():
     assert len(closed) == 1 and closed[0].reason == "STOP" and closed[0].exit == 99.0
     t = closed[0]
     assert t.gross_r == pytest.approx(-1.0)
-    fee_r, slip_r = backtest.costs_r(100.0, 99.0, 1.0, True, BASE_COSTS)
+    fee_r, slip_r = backtest.costs_r(100.0, 99.0, 1.0, True, CFG.costs())
     assert t.fee_r == pytest.approx(fee_r) and t.slippage_r == pytest.approx(slip_r)
-    assert fee_r == pytest.approx(0.0005 * 199) and slip_r == pytest.approx(0.0003 * 100 + 0.0005 * 99)
+    assert fee_r == pytest.approx(0.0006 * 199) and slip_r == pytest.approx(0.0003 * 100 + 0.0005 * 99)
     assert t.mfe_r == pytest.approx(3.5) and t.mae_r == pytest.approx(1.1)
 
 
@@ -257,8 +257,23 @@ def test_fill_beyond_stop_is_no_trade_and_time_stop_exits_at_close():
 def test_cost_gate_in_r():
     s = sig(models.MARKET, 1, None, 99.0, 103.0)
     s = models.Signal(**{**{n: getattr(s, n) for n in models.Signal.__slots__}, "level": 100.0})
-    # stop distance 1 on price 100: (2*0.05 % + 0.03 % + 0.05 %) * 100 / 1 = 0.18 R
-    assert backtest.cost_gate(s, CFG) == pytest.approx(0.18)
+    # stop distance 1 on price 100, Bitunix taker: (2*0.06 % + 0.03 % + 0.05 %) * 100 / 1 = 0.20 R
+    assert backtest.cost_gate(s, CFG) == pytest.approx(0.20)
+    assert backtest.cost_gate(s, CFG, BASE_COSTS) == pytest.approx(0.18)  # protocol costs on request
+
+
+def test_bitunix_costs_and_200x_liquidation_report():
+    assert (CFG.fee, CFG.slippage, CFG.stop_slippage) == (0.0006, 0.0003, 0.0005)
+    assert backtest.Tracker(CFG).costs.fee == 0.0006
+    assert CFG.liquidation_pct == pytest.approx(0.002)  # 1/200 - 0,3 % MMR
+    s = sig(models.MARKET, 1, None, 99.0, 103.0)
+    wide = backtest.Trade(s, 0, 100.0, 1, 99.0, "STOP", -1.0, 0.1, 0.1, 0.0, 1.0)      # stop 1 % away, hit: liquidated
+    tight = backtest.Trade(models.Signal(**{**{n: getattr(s, n) for n in models.Signal.__slots__}, "stop": 99.9}),
+                           0, 100.0, 1, 101.0, "TARGET", 10.0, 0.1, 0.1, 10.0, 0.5)  # stop 0.1 %, MAE 0.05 %
+    rep = backtest.leverage_report([wide, tight], CFG)
+    assert rep["stopp_jenseits_liquidation"] == 1 and rep["liquidiert"] == 1 and rep["liquidiert_davon_sonst_gewinner"] == 0
+    assert rep["cross_liquidiert"] == 0 and CFG.cross_liquidation_pct == pytest.approx(0.097)
+    assert "hebel" in backtest.summarize([wide, tight], CFG)
 
 
 # -- engine: synthetic days, no look-ahead -------------------------------------------------------------
@@ -596,3 +611,41 @@ def test_study_window_never_reaches_the_holdout():
     assert section_bounds(CFG, "validierung") == (date(2023, 1, 1), date(2024, 12, 31))
     assert date.fromisoformat(CFG.last_day) < date(2025, 1, 1)
     assert len(CFG.digest()) == 64
+
+
+def test_calibration_counts_only_frequencies_and_picks_by_the_registered_rule():
+    from src.research_lab.of2 import calibrate
+
+    bars, profile, _ = synthetic_day(DAY0, random.Random(3), 30_000.0)
+    day = calibrate.count_day(bars, profile, CFG)
+    assert day["c15"] == 96 and day["c30"] == 48
+    for cell in day["steps"].values():
+        assert 0 <= cell["readable"] <= 96
+        assert all(0 <= v <= cell["readable"] for fam in ("stack", "absorb", "zeros") for v in cell[fam].values())
+    # stricter factor wins a tie, values inside 5-15 % beat the rest, nearest to 10 % wins
+    assert calibrate.pick({"3.0": 0.30, "4.0": 0.12, "5.0": 0.08, "6.0": 0.02}) == ("5.0", True)
+    assert calibrate.pick({"3.0": 0.12, "4.0": 0.08}) == ("4.0", True)
+    assert calibrate.pick({"1": 0.40, "2": 0.20, "3": 0.18}) == ("3", False)
+    totals = calibrate._add(calibrate._add({}, day), day)
+    result = calibrate.calibrate(totals, CFG)
+    assert result["chosen"]["fp_step_pct"] in calibrate.STEPS and "## Gewählt" in calibrate.report(result)
+
+
+def test_poor_volume_at_the_range_edge_fades_back_inside_m7():
+    lv = day_levels(val=100.0, vah=110.0, poc=105.0, low=95.0, high=115.0)
+    hist = [candle(DAY0 + i * 15 * MINUTE_MS, 101.5, 102.0, 101.0, 101.5, volume=100, minutes=15) for i in range(16)]
+    t0 = DAY0 + 16 * 15 * MINUTE_MS
+    touch = candle(t0, 101.0, 101.2, 99.95, 100.6, volume=50, minutes=15)          # tests VAL, closes back inside
+    poor = fp(0.1, [(999, 1, 0)] + [(1000 + i, 6, 6) for i in range(12)])         # extreme bin 1 vs mean ~11
+    s = models.poor_edge([*hist, touch], [*fps(16), poor], lv, CFG)
+    assert s is not None and s.model == "M7" and s.direction == 1 and s.level_name == "VAL" and s.confirmed
+    assert s.kind == models.MARKET and s.signal_ms == touch.end and s.stop < touch.low and s.target == 105.0
+    # same picture with normal volume -> price-only comparator
+    loud = candle(t0, 101.0, 101.2, 99.95, 100.6, volume=150, minutes=15)
+    s2 = models.poor_edge([*hist, loud], [*fps(16), poor], lv, CFG)
+    assert s2 is not None and not s2.confirmed
+    # weak volume but a full extreme bin (excess) -> not a poor low
+    full = fp(0.1, [(999, 30, 30)] + [(1000 + i, 6, 6) for i in range(12)])
+    assert not models.poor_edge([*hist, touch], [*fps(16), full], lv, CFG).confirmed
+    # POC is not a range edge; a close below the edge is no test
+    assert models.poor_edge([*hist, candle(t0, 101.0, 101.2, 99.0, 99.5, volume=50, minutes=15)], [*fps(16), poor], lv, CFG) is None

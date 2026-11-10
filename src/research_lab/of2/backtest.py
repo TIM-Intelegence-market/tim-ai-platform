@@ -18,7 +18,7 @@ from src.research_lab.of2.candles import session_of
 from src.research_lab.of2.config import MINUTE_MS, Config
 from src.research_lab.of2.models import LIMIT, MARKET, STOP, Signal
 from src.research_lab.orderflow_ml.bars import E8, MinuteBar
-from src.research_lab.protocol import BASE_COSTS, CostModel
+from src.research_lab.protocol import CostModel
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,9 +70,9 @@ def costs_r(entry: float, exit_: float, stop_dist: float, stopped: bool, costs: 
 class Tracker:
     """Holds pending signals and open paper trades; ``push`` consumes one minute bar and returns closed trades."""
 
-    def __init__(self, cfg: Config, costs: CostModel = BASE_COSTS) -> None:
+    def __init__(self, cfg: Config, costs: CostModel | None = None) -> None:
         self.cfg = cfg
-        self.costs = costs
+        self.costs = costs or cfg.costs()
         self.pending: list[Signal] = []
         self.open: list[_Open] = []
         self.expired = 0
@@ -169,8 +169,9 @@ class Tracker:
         return closed
 
 
-def cost_gate(signal: Signal, cfg: Config, costs: CostModel = BASE_COSTS) -> float | None:
+def cost_gate(signal: Signal, cfg: Config, costs: CostModel | None = None) -> float | None:
     """Estimated round-trip cost in R at the reference price; None when it cannot be computed."""
+    costs = costs or cfg.costs()
     dist = signal.stop_distance
     if dist <= 0:
         return None
@@ -193,7 +194,27 @@ def summarize(trades: Iterable[Trade], cfg: Config) -> dict:
         k = f"{t.signal.model}|{t.signal.session or session_of(t.fill_ms, cfg)}|{'OF' if t.signal.confirmed else 'PREIS'}"
         out["modell_session"].setdefault(k, []).append(t)
     out["modell_session"] = {k: _stats(v) for k, v in sorted(out["modell_session"].items())}
+    out["hebel"] = leverage_report(rows, cfg)
     return out
+
+
+def leverage_report(trades: Sequence[Trade], cfg: Config) -> dict:
+    """Descriptive only: how many trades an isolated position at ``report_leverage`` would not have survived.
+
+    ``stopp_jenseits_liquidation``: the stop lies farther from the entry than the liquidation distance.
+    ``liquidiert``: the adverse excursion before the exit reached the liquidation distance (the trade would have
+    ended there, losing the margin, whatever its later result).
+    """
+    liq = cfg.liquidation_pct
+    n = len(trades)
+    beyond = sum(1 for t in trades if t.entry > 0 and abs(t.entry - t.signal.stop) / t.entry > liq)
+    liquidated = [t for t in trades if t.entry > 0 and t.mae_r * abs(t.entry - t.signal.stop) / t.entry >= liq]
+    cross = cfg.cross_liquidation_pct
+    cross_liquidated = sum(1 for t in trades if t.entry > 0 and t.mae_r * abs(t.entry - t.signal.stop) / t.entry >= cross)
+    return {"cross_vielfaches": cfg.report_cross_multiple, "cross_liquidation_pct": round(cross, 6),
+            "cross_liquidiert": cross_liquidated,"hebel": cfg.report_leverage, "mmr": cfg.report_mmr, "liquidation_pct": round(liq, 6), "n": n,
+            "stopp_jenseits_liquidation": beyond, "liquidiert": len(liquidated),
+            "liquidiert_davon_sonst_gewinner": sum(1 for t in liquidated if t.net_r > 0)}
 
 
 def _stats(rows: Sequence[Trade]) -> dict:
