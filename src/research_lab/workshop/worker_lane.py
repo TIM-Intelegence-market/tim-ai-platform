@@ -97,9 +97,18 @@ def issue_idea_id(issue: Mapping[str, Any]) -> str | None:
         return None
 
 
+ALL_IDEAS = "*"
+
+
 def public_ideas(value: str | None) -> set[str]:
-    """Idea ids Uzi released for the public repository (TIM_RESEARCH_PUBLIC_IDEAS, comma separated)."""
-    return {item.strip() for item in (value or "").split(",") if IDEA_ID.fullmatch(item.strip())}
+    """Idea ids Uzi released for the public repository (TIM_RESEARCH_PUBLIC_IDEAS, comma separated).
+
+    ``*`` releases every ready idea (Uzi 11.11.2026: studies should run on their own); the monthly budget still holds.
+    """
+    items = {item.strip() for item in (value or "").split(",")}
+    if ALL_IDEAS in items:
+        return {ALL_IDEAS}
+    return {item for item in items if IDEA_ID.fullmatch(item)}
 
 
 def ideas_to_export(ideas: Mapping[str, Mapping[str, Any]], issues: Iterable[Mapping[str, Any]], *,
@@ -119,7 +128,7 @@ def ideas_to_export(ideas: Mapping[str, Mapping[str, Any]], issues: Iterable[Map
                   if status == "study_draft" and _local_month(at) == month)
     room = max(0, charter.MONTHLY_STUDY_BUDGET - drafted - open_issues)
     ready = [dict(idea) for idea in ideas.values()
-             if idea.get("status") == "ready" and idea.get("id") in public and idea.get("id") not in exported]
+             if idea.get("status") == "ready" and (ALL_IDEAS in public or idea.get("id") in public) and idea.get("id") not in exported]
     return sorted(ready, key=lambda idea: idea["id"])[:room]
 
 
