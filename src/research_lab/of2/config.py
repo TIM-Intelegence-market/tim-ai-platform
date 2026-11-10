@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 
 from src.research_lab.protocol import CostModel
 
-VERSION = "0.3.0"
+VERSION = "1.0.0"
 
 MINUTE_MS = 60_000
 HOUR_MS = 60 * MINUTE_MS
@@ -47,11 +47,11 @@ class Config:
     # profile has 0.05-0.1 % steps; bins are merged to ``fp_step_pct`` of price and recalibrated on training only.
     fp_step_pct: float = 0.001        # merged bin width, share of price (0,1 %)
     fp_min_bins: int = 4              # a candle needs at least this many merged bins to be read
-    fp_imbalance: float = 4.0         # diagonal ratio, both sides > 0 (P0: 6,18x on 10-USD steps at 15m; coarser bins -> 4x)
+    fp_imbalance: float = 3.0         # diagonal ratio, both sides > 0; calibrated 10.11.2026 (stack share 2,8 %, none of 3-8 reached 5 %)
     fp_stack: int = 3                 # consecutive imbalance bins for a stack (R02)
     fp_absorb_levels: int = 2         # outermost bins read for absorption (R05)
-    fp_absorb_ratio: float = 2.0      # attacker volume >= ratio x defender volume on each of those bins
-    fp_zero_levels: int = 2           # outermost bins without opposite-side prints for the zeros trade (R13/M11)
+    fp_absorb_ratio: float = 2.0      # attacker volume >= ratio x defender volume on each of those bins; calibrated 10.11.2026: 5,7 %
+    fp_zero_levels: int = 1           # outermost bins without opposite-side prints (R13/M11); calibrated 10.11.2026: 14,7 % (2 bins: 0,3 %)
     fp_impulse_body: float = 0.6      # M5: impulse candle body >= 60 % of its range
     fp_zone_candles: int = 5          # M5: the stacked zone stays valid for 5 candles (Valtos)
     fp_min_day_candles: int = 4       # M6: the day needs this many closed 15-min candles before a "new day extreme" counts

@@ -1,6 +1,6 @@
 """OF2: TIM's orderflow engine as a research study (paper only, no orders).
 
-Rules: docs/research_lab/studien/OF2_ORDERFLOW_ENGINE_PRAEREGISTRIERUNG_ENTWURF.md.
+Rules: docs/research_lab/studien/OF2_ORDERFLOW_ENGINE_PRAEREGISTRIERUNG.md.
 Input: S8 minute bars and day profiles (src.research_lab.orderflow_ml), BTCUSDT spot 2020–2024.
 The holdout from 2025-01-01 is never loaded (store.guard).
 

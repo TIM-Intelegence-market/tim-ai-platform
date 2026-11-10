@@ -1,9 +1,9 @@
-# OF2: Orderflow-Engine nach Broncx-Modellen, jede Session handelbar (Präregistrierung, Entwurf 0.3)
+# OF2: Orderflow-Engine nach Broncx-Modellen, jede Session handelbar (Präregistrierung 1.0)
 
 | Feld | Wert |
 |---|---|
 | Studie | OF2 |
-| Version | **0.3 – Entwurf** (10.11.2026: Bitunix-Kosten, Hebel-Bericht, Kalibrierregel; Uzi „s19 und of2 backtest starten“ 11:17 Uhr. 0.2 vom 08.11.2026; 0.1 vom 07.11., Uzi „go“ 18:24 Ortszeit für P0 und P1; P1b Footprint-Modelle auf Uzis Hinweis 08.11. 01:09). Freigabe 1.0 erst nach Abschluss der Kalibrierung P0 auf mehr als 40 Tagen, der Footprint-Kalibrierung auf dem Trainingsabschnitt und Uzis Wort; bis dahin kein Lauf auf Training oder Validierung |
+| Version | **1.0, eingefroren am 10.11.2026** nach der Kalibrierung auf dem Training (Abschnitt 5.3, nur Häufigkeiten), auf Uzis Wort „of2 backtest starten“; `Config` 1.0.0, Regelstand = Commit des Einfrierens. P0 auf mehr als 40 Tagen: Relativvolumen auf 1 096 Trainingstagen gemessen (unten); R29/R30 und IB-Bänder bleiben Entscheidungen ohne Daten. Davor 0.3 (10.11.2026: Bitunix-Kosten, Hebel-Bericht, Kalibrierregel; Uzi „s19 und of2 backtest starten“ 11:17 Uhr. 0.2 vom 08.11.2026; 0.1 vom 07.11., Uzi „go“ 18:24 Ortszeit für P0 und P1; P1b Footprint-Modelle auf Uzis Hinweis 08.11. 01:09). Freigabe 1.0 erst nach Abschluss der Kalibrierung P0 auf mehr als 40 Tagen, der Footprint-Kalibrierung auf dem Trainingsabschnitt und Uzis Wort; bis dahin kein Lauf auf Training oder Validierung |
 | Auftrag | Uzi 07.11.2026: „ich brauch für TIM eine neue und überarbeitete Orderflow-Engine, mir gefällt nicht wie er tradet, ein Orderflow-Trader kann theoretisch jede Session traden“ |
 | Grundlagen | Broncx-Bootcamp (193 S., vollständig gelesen 07.11.), MEGA-Bibliothek „Trading University“ (147 Dateien, Zusammenfassung `wissen/mega-orderflow-2026-11-07.md` im privaten Repo, 74 Regeln R01–R74), Orderflow-Kontrolle 06.11., S17 |
 | Code | `src/research_lab/of2/` (Config, Kerzen, Level, Footprint, Modelle, Tracker, Engine, Vergleiche, CLI); Tests `tests/test_research_lab_of2.py` |
@@ -143,6 +143,12 @@ ein Baustein auf einer 15m-Kerze des Trainings anschlägt, nie der Kursverlauf d
   nach derselben Regel.
 - IB 60 min, IB-Bänder und Stop-Puffer bleiben ohne Kalibrierung (Entscheidungen ohne Daten, Abschnitt 9).
 
+**Kalibrierung gelaufen (10.11.2026, PS5, Code `119a410`, 1 096 Trainingstage, 105 063 gehandelte 15m-Kerzen, Datensatz-Hash
+`e68bae01…`):** lesbar bei 0,1 %: 76,9 % (Stufe bleibt 0,1 %). Stapel ≥ 3: Faktor 3 → 2,8 %, 4 → 1,3 %, 5 → 0,7 %; keiner im
+Band, gewählt **3** (nächster zum Band). Absorption: 1,5 → 15,3 %, **2 → 5,7 %**, 3 → 1,9 %. Nullen: **1 Stufe → 14,7 %**,
+2 → 0,3 %. Relativvolumen ≥ 2,0: 15m 7,1 %, 30m 7,7 % (bleibt **2,0**). Eingefroren: `fp_imbalance` 3, `fp_absorb_ratio` 2,
+`fp_zero_levels` 1, `fp_step_pct` 0,1 %, `relvol_min` 2,0. Kein Kursverlauf angesehen.
+
 ### 5.4 Gates vor jedem Einstieg
 
 R:R zum Ziel ≥ 1,5 (R72). Kosten-Gate: (2 × Gebühr + Slippage + Stop-Slippage) × Preis / Stop-Distanz ≤ 0,15 R.
@@ -222,3 +228,5 @@ Echtgeld (P4) nur nach bestandenem P3 und Uzis Wort, im Kraken-Test mit seinen L
 - 0.3 (10.11.2026): Kosten nach Bitunix (Taker 0,06 % je Seite), Hebel-Bericht (Cross 10-fach, 200x isolated), Kalibrierregel
   für Footprint und Relativvolumen auf dem Training (5.3), Kalibrier-Code, Modell M7 Poor Volume am Range-Rand (Uzis Wort),
   Holm m = 7. Kein Lauf auf Training oder Validierung bis hierher.
+- 1.0 (10.11.2026): Kalibrierung auf dem Training nach der Regel aus 0.3 eingetragen und eingefroren (`fp_imbalance` 4 → 3,
+  `fp_zero_levels` 2 → 1, übrige unverändert). Danach Training-Lauf, Validierung erst nach dem Training-Bericht.
