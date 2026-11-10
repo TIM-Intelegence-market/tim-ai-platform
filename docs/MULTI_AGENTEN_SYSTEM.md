@@ -1,7 +1,7 @@
 # Multi-Agenten-System für TIM (Entwurf)
 
-Stand 10.11.2026, **ENTWURF 0.1**. Gebaut ist nur Paket P1 (Übergabezettel mit Prüfer, Abschnitt 9), eingeschaltet
-ist nichts. Auftrag: Uzi, „Go“ am 10.11.2026, „go P1“ am selben Tag.
+Stand 10.11.2026, **ENTWURF 0.1**. Gebaut sind P1 (Übergabezettel mit Prüfer, Abschnitt 9) und P2 (Neustart-Budget
+des Watchdogs, Abschnitt 10). Auftrag: Uzi, „Go“ am 10.11.2026, „go P1“ und „go p2“ am selben Tag.
 Grundlage ist der Stand in diesem Repo (`platform-main`, 496f0a4) und die Projektnotizen. Der laufende Zustand
 auf Mac, Server und PS5 wurde für diesen Entwurf **nicht** neu gemessen; wo ein Stand nur aus Notizen stammt,
 steht „ungeprüft“ dabei.
@@ -80,7 +80,7 @@ Uzi wird höchstens dreimal gebraucht: „go“, „merge“, Karte.
 | Infrastruktur (Runner weg, Netz) | Tester | niemand, ein erneuter Lauf | zweiter Fehlschlag: Meldung, kein dritter Lauf |
 | Reviewer findet bestätigten Fehler | Reviewer | Engineer | zweite Review-Runde mit bestätigtem Fehler: Meldung |
 | Gesperrter Pfad, Secret im Diff | Security (`PR gate`) | niemand automatisch | sofort |
-| Dienst steht | Watchdog | Watchdog (nur Neustart) | **3** Neustarts in 30 min ohne GREEN: keine weiteren Neustarts, Meldung |
+| Dienst steht | Watchdog | Watchdog (nur Neustart) | **3** Neustarts in 30 min, ein vierter wäre nötig: Halt ohne weitere Neustarts, bis eine Prüfung ohne neustartbaren Fehler kommt (gebaut, P2) |
 | Deploy scheitert | Nachzug-Agent | rollt zurück | sofort, mit `timctl`-Grund |
 | Datenlücke | Data Steward | Nachhol-Dienst | Lücke nach einem Nachhol-Lauf noch offen: Meldung; Studien auf dem Zeitraum ruhen |
 | Echtgeld: Lesefehler, fremde Position | Live-Trader | niemand | STOP-Datei wie heute; wieder ein nur auf Uzis Wort (**F4**) |
@@ -145,7 +145,7 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 | Paket | Inhalt | Prüfung |
 |---|---|---|
 | P1 **gebaut** | Übergabezettel als ein Schema im Issue-Body (Rolle, Eingang, Ausgang, Nachweis, Versuchszähler). Nur Doku und Prüfer, kein Verhalten. | `pytest tests/agents/test_handover.py` |
-| P2 | Versuchszähler und Abbruchgrenzen aus Abschnitt 4 im Worker. Geschützter Pfad, also Owner-PR. | Test: dritter Versuch wird abgewiesen und meldet |
+| P2 **gebaut** | Abbruchgrenze dort, wo sie fehlte: Neustart-Budget im Watchdog. Der Qwen-Worker hatte seine Grenze schon (Abschnitt 10). | `pytest tests/test_watchdog_restart_budget.py` |
 | P3 | Reviewer als Pflichtschritt vor „merge-fertig“ für kritische Pfade (Journal, Kostenmodell, `src/database/`). | PR ohne Befundliste gilt nicht als merge-fertig |
 | P4 | Vorfall-Issue bekommt bei Klasse Daten/Anzeige automatisch den Worker-Vertrag; Echtgeld und SAFETY nie. | Probelauf mit `checkup:selftest` |
 | P5 | Hermes-Evals ins Repo holen (ohne Schlüssel) und als Pflichtlauf vor jeder Prompt- oder Modelländerung festlegen. | Lauf vor und nach einer Prompt-Änderung, Ergebnis als Datei |
@@ -192,6 +192,32 @@ Regeln des Prüfers:
   `F4_LIVE`, `F5_HOLDOUT`. Der Zettel erteilt nie selbst eine Freigabe; ein Feld wie `approved_by` wird abgewiesen.
 
 Prüfen einer Datei: `python -m src.agents.handover DATEI` (Ende 0 gültig, 1 ungültig).
+
+## 10. Abbruchgrenzen im Bestand (P2)
+
+Bestandsaufnahme vor dem Bau, was schon durchgesetzt war:
+
+| Stelle | Grenze | Stand |
+|---|---|---|
+| Mac-Qwen-Worker (`src/local_first/issue_triage.py`) | 2 Versuche je Vertrag, Fehlertexte am Issue, dann `agent:blocked` mit Kommentar; erst Label entfernen gibt neue Versuche frei | **war schon da**, unverändert. Strenger als Abschnitt 4 (dort 1 + 2); bleibt so. |
+| Triage | 2 Aufrufe je Issue-Fassung, 30 je Tag | war schon da |
+| Issue-Pipeline (`agent:retry`) | ein erneuter Lauf je Freigabe durch einen Menschen | war schon da |
+| Watchdog (`scripts/tim_watchdog.py`) | 3 rote Prüfungen und 5 min Abkühlzeit je Neustart, **aber keine Obergrenze** | **gefehlt**, jetzt gebaut |
+
+Neu im Watchdog:
+
+- Höchstens 3 Neustarts in 30 Minuten (`--restart-max 3`, `--restart-window 1800`, das sind die Standardwerte;
+  die Plist bleibt unverändert).
+- Wäre ein vierter nötig, hält der Watchdog an: kein Neustart mehr, Ereignis `WATCHDOG_RESTART_HOLD` (ERROR) im
+  `watchdog.jsonl`, Feld `restart_hold: true` in `watchdog_status.json` und `watchdog_recovery_state.json`.
+- Der Halt endet nicht mit der Zeit, sondern erst, wenn eine Prüfung keinen neustartbaren Fehler mehr zeigt.
+  Danach gilt wieder das Budget aus dem 30-Minuten-Fenster.
+- Nebenbefund behoben: Die Abkühlzeit galt bisher nur eine Prüfung lang, weil der Zeitpunkt des letzten Neustarts
+  im nächsten Durchlauf nicht mehr gespeichert wurde. Er bleibt jetzt erhalten. Folge: höchstens ein Neustart je
+  5 Minuten, wie es in der Plist steht.
+
+Offen: Der Halt erscheint in den Watchdog-Dateien und im Log, aber noch nicht als eigene Meldung an Uzi (gehört zu
+P6, Abschnitt „wartet auf Uzi“ im Tagesbericht).
 
 ## Nicht Teil dieses Entwurfs
 
