@@ -73,3 +73,11 @@ Code kommt per PR ins Repo (merge nur auf Uzis "merge"), die PS5 holt ihn nachts
 ## Offene Entscheidung (Uzi)
 Validierung je Kandidat: automatisch (max. 2/Monat, alle gezählt) oder jedes Mal erst nach deinem Wort?
 Empfehlung: automatisch, Bericht danach.
+
+## Nachtrag 10.11.: Zeitrahmen im Suchraum
+
+Uzi: Die Suche soll die Zeitrahmen 1m bis 1M mitrechnen. Eingebaut sind die, die die Engine heute rechnen kann:
+`tf_value` (Wertbereich-Modelle) 5, 15, 30, 60 Minuten und `tf_sfp` (Sweep- und Footprint-Modelle) 1, 5, 15, 30, 60 Minuten.
+Die Engine baut ihre Kerzen an jedem UTC-Tag neu auf. 4h, 1d, 1w und 1M brauchen Kerzen über Tagesgrenzen, längere
+Haltezeiten und Marken aus Vorwoche/Vormonat; das ist ein eigener Umbau und nicht Teil dieses Nachtrags.
+Die Zählung der Konfigurationen (Mehrfachtest) läuft im selben Lauf weiter.
