@@ -81,3 +81,50 @@ Uzi: Die Suche soll die Zeitrahmen 1m bis 1M mitrechnen. Eingebaut sind die, die
 Die Engine baut ihre Kerzen an jedem UTC-Tag neu auf. 4h, 1d, 1w und 1M brauchen Kerzen über Tagesgrenzen, längere
 Haltezeiten und Marken aus Vorwoche/Vormonat; das ist ein eigener Umbau und nicht Teil dieses Nachtrags.
 Die Zählung der Konfigurationen (Mehrfachtest) läuft im selben Lauf weiter.
+
+## Nachtrag 10.11.: Richtungsfilter Tag, Woche, Monat (Z5)
+
+Uzi "go" zum Zeitrahmen-Plan. Erstes Paket: Für jeden Trade wird beim Signal die Richtung von Tag, Woche und Monat
+bestimmt (`ofx/trend.py`), nur aus abgeschlossenen Kerzen: letzter Schluss gegen den Mittelwert der letzten
+20 Tage, 10 Wochen oder 3 Monate. Der Filter darf je Zeitrahmen "MIT", "GEGEN" oder nichts wählen. Ohne genug
+Vorgeschichte (Anfang 2020) gilt die Richtung als unbekannt und der Trade fällt bei aktivem Filter weg.
+Die Regel wurde festgelegt, bevor die Suche ein Ergebnis damit gesehen hat.
+
+Zufallsvergleich: Die Zufallseinstiege müssen dieselbe Richtungsregel einhalten. Sonst würde "nur Long im
+Aufwärtstrend" den Zufall allein durch die Drift des Marktes schlagen.
+
+Tagesschlüsse kommen aus dem Speicher ohne Freigabe (nur bis Trainingsende) und liegen als `tagesschluss.json`
+im Ergebnisordner.
+
+## Nachtrag 10.11.: Swing-Spur 4h und 1d, Funding (Z1 bis Z4, Z6)
+
+- **Kerzen über Tagesgrenzen (Z1):** Mit `swing_tf` (240 oder 1440 Minuten, 0 = aus) führt die Engine eine zweite,
+  fortlaufende Kerzenreihe (höchstens `swing_history` = 40 Kerzen Rückblick).
+- **Marken aus Vorwoche und Vormonat (Z2):** `swing_level` "W" (Montag bis Sonntag UTC) oder "M" (Kalendermonat).
+  Wertbereich, POC, Hoch, Tief und Schluss aus den Tagesprofilen der abgeschlossenen Periode
+  (`levels.period_summary`; die Tage haben eigene Bin-Breiten und werden auf die breiteste umgelegt).
+  Ist die Periode nicht vollständig im Speicher, gibt es keine Marken und kein Signal.
+- **Swing-Spur (Z3):** M1, M2 und M3 laufen ein zweites Mal auf den Swing-Kerzen gegen diese Marken und heißen
+  dort S1, S2, S3. Ein Signal je Modell, Richtung und Woche. Haltezeit bis `swing_hold_days` (3, 7 oder 14 Tage).
+  Die Tagesregime-Sperren (Trend-/Range-Tag) gelten für S1 bis S3 nicht. Bei S1 zählt nur der letzte Ausflug aus
+  dem Wertbereich, nicht die ganze Kerzenreihe. Die Footprint-Modelle M4 bis M7 bleiben im Intraday.
+- **Funding (Z4):** `funding_per_8h`; die OFX-Basis rechnet 0,01 % je 8-Stunden-Marke (00, 08, 16 UTC), die der
+  Trade offen überquert, in beiden Richtungen als Kosten (ein Short bekommt nichts gutgeschrieben). Gilt ab jetzt
+  auch für die Intraday-Trades der Suche. OF2 1.0 und das Papier-Journal bleiben ohne Funding und bitgleich.
+- **Suche (Z6):** `swing_tf` (0, 240, 1440), `swing_level` (W, M), `swing_hold_days` (3, 7, 14) im Suchraum,
+  S1 bis S3 in der Modellauswahl der Filter. Der Vorlauf der Rechenstücke wächst mit der Swing-Spur
+  (`parallel.warmup_days`).
+
+Ebenfalls in diesem Nachtrag: M1 und M2 tragen ihren Zeitrahmen im Signal (vorher fest 30). Mit `tf_value`
+ungleich 30 zählte der Zeitstopp falsch und die Storno-Regel von M2 griff nicht; betroffen waren die
+Konfigurationen 1400 bis etwa 1450 von lauf2 (kein Kandidat darunter).
+
+1w und 1M sind kein Einstiegs-Zeitrahmen (208 Wochen- und 48 Monatskerzen in vier Jahren, das Sieb verlangt
+130 Trades); sie wirken über den Richtungsfilter und über die Marken.
+
+## Nachtrag 10.11. abends: Suche nur bis 1h
+
+Uzi nach den ersten Zahlen der Swing-Spur (4h: 43 Trades, -0,10 R; 1d: 2 bis 8 Trades in vier Jahren):
+"nimm nur die low timeframes bis 1h". `swing_tf`, `swing_level` und `swing_hold_days` sind wieder aus dem
+Suchraum, S1 bis S3 aus der Modellauswahl. Der Code der Swing-Spur bleibt in der Engine, ausgeschaltet.
+Richtungsfilter (Tag, Woche, Monat) und Funding bleiben in der Suche.

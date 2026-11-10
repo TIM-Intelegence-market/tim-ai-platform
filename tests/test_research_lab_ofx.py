@@ -36,7 +36,7 @@ def test_store_rejects_unknown_release_and_plain_store_stays_locked(tmp_path):
 # -- search loop ---------------------------------------------------------------------------------------------------
 import json
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from src.research_lab.of2.backtest import Trade
 from src.research_lab.of2.models import MARKET, Signal
@@ -55,6 +55,7 @@ from src.research_lab.ofx.space import (
     base_values,
     engine_config,
     neighbours,
+    sample_filter,
 )
 
 
@@ -154,3 +155,89 @@ def test_loop_finds_a_stable_edge_resumes_and_stops(tmp_path):
 def test_random_p_too_high_blocks_the_candidate(tmp_path):
     state = run_loop(tmp_path, _edge_trades, lambda trades, cfg: 0.2, configs=1, filters_per_config=3, log=lambda s: None)
     assert state["kandidaten"] == 0
+
+
+# -- direction filter: day / week / month (Uzi 10.11.) ----------------------------------------------
+def _closes(first: date, values: list[float]) -> dict:
+    return {first + timedelta(days=i): v for i, v in enumerate(values)}
+
+
+def test_trend_reads_completed_periods_only():
+    from src.research_lab.ofx.trend import Trend
+    first = date(2020, 1, 1)
+    rising = Trend(_closes(first, [100.0 + i for i in range(200)]))
+    assert rising.state(first + timedelta(days=19), "d") == 0      # 19 completed days: too short
+    assert rising.state(first + timedelta(days=20), "d") == 1
+    assert rising.state(date(2020, 3, 31), "m") == 0                # Jan, Feb complete, March still running
+    assert rising.state(date(2020, 4, 1), "m") == 1
+    assert rising.state(date(2020, 3, 16), "w") == 1                # 10 full weeks after the partial first one
+    # the future does not matter: change every close from the signal day on, the state stays
+    day = date(2020, 5, 13)
+    crash = {d: (v if d < day else 1.0) for d, v in _closes(first, [100.0 + i for i in range(200)]).items()}
+    for frame in ("d", "w", "m"):
+        assert Trend(crash).state(day, frame) == rising.state(day, frame) == 1
+    # the running week does not count before it is over: a crash on Monday and Tuesday is invisible on Wednesday
+    falling_week = Trend({d: (v if d < date(2020, 5, 11) else 1.0) for d, v in crash.items()})
+    assert falling_week.state(day, "w") == 1 and falling_week.state(day, "d") == -1
+    assert falling_week.state(date(2020, 5, 18), "w") == -1
+
+
+def test_direction_filter_with_and_against_and_unknown():
+    from src.research_lab.ofx.trend import Trend
+    trend = Trend(_closes(date(2020, 1, 1), [100.0 + i for i in range(200)]))
+    long_late = _trade(_ms(2020, 5, 13), 1.0)
+    long_early = _trade(_ms(2020, 1, 5), 1.0)   # no history yet: unknown, dropped by every direction rule
+    trades = [long_late, long_early]
+    assert len(apply_filter(trades, TradeFilter(), trend)) == 2
+    assert apply_filter(trades, TradeFilter(trend_d="MIT", trend_w="MIT", trend_m="MIT"), trend) == [long_late]
+    assert apply_filter(trades, TradeFilter(trend_w="GEGEN"), trend) == []
+    with pytest.raises(ValueError):
+        apply_filter(trades, TradeFilter(trend_d="MIT"))
+    assert TradeFilter(trend_w="MIT").key().endswith("|None|MIT|None")
+
+
+def test_sample_filter_draws_directions_only_with_closes():
+    rng_a, rng_b = random.Random(5), random.Random(5)
+    plain = [sample_filter(rng_a) for _ in range(50)]
+    assert all(f.trend_d is f.trend_w is f.trend_m is None for f in plain)
+    with_trend = [sample_filter(rng_b, trend=True) for _ in range(200)]
+    assert {f.trend_w for f in with_trend} == {None, "MIT", "GEGEN"}
+
+
+def test_loop_passes_the_direction_rule_to_the_random_comparator(tmp_path):
+    from src.research_lab.ofx.trend import Trend
+    trend = Trend(_closes(date(2019, 6, 1), [100.0 + i for i in range(1700)]))
+    seen = []
+
+    def rp(trades, cfg, allowed=None):
+        seen.append(allowed)
+        return 0.001
+
+    run_loop(tmp_path, _edge_trades, rp, configs=3, filters_per_config=40, log=lambda s: None, trend=trend)
+    rows = [json.loads(x) for x in (tmp_path / "kandidaten.jsonl").read_text().splitlines()]
+    with_rule = [r for r in rows if any(x in ("MIT", "GEGEN") for x in r["filter"].split("|")[-3:])]
+    assert len(seen) == len(rows) and sum(a is not None for a in seen) == len(with_rule)
+    for a in seen:
+        if a is not None:
+            assert isinstance(a(_ms(2021, 5, 13), 1), bool)
+
+
+def test_random_signals_obey_the_selection_rule():
+    from src.research_lab.of2.compare import random_signals
+    trades = [_trade(_ms(2021, 3, 1 + i), 1.0) for i in range(5)]
+    even = lambda ms, direction: (ms // 86_400_000) % 2 == 0
+    pseudo = random_signals(trades, date(2021, 1, 1), date(2021, 12, 31), BASE_CONFIG, 20, 7, even)
+    assert len(pseudo) == 100 and all((s.signal_ms // 86_400_000) % 2 == 0 for s in pseudo)
+    assert random_signals(trades, date(2021, 1, 1), date(2021, 12, 31), BASE_CONFIG, 3, 7) == \
+        random_signals(trades, date(2021, 1, 1), date(2021, 12, 31), BASE_CONFIG, 3, 7, None)
+
+
+def test_search_space_stays_up_to_one_hour_with_funding():
+    """Uzi 10.11.: only the low time frames up to 1h; the swing track is not searched."""
+    assert BASE_CONFIG.funding_per_8h == 0.0001 and BASE_CONFIG.swing_tf == 0
+    rng = random.Random(3)
+    from src.research_lab.ofx.space import sample_engine
+    drawn = [engine_config(sample_engine(rng)) for _ in range(60)]
+    assert all(c.swing_tf == 0 and c.funding_per_8h == 0.0001 and c.of_gate for c in drawn)
+    assert max(ENGINE_SPACE["tf_value"]) == max(ENGINE_SPACE["tf_sfp"]) == 60
+    assert not any(m.startswith("S") for m in TradeFilter().models)

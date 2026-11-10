@@ -67,6 +67,9 @@ def costs_r(entry: float, exit_: float, stop_dist: float, stopped: bool, costs: 
     return fee / stop_dist, slip / stop_dist
 
 
+FUNDING_MS = 8 * 3_600_000
+
+
 class Tracker:
     """Holds pending signals and open paper trades; ``push`` consumes one minute bar and returns closed trades."""
 
@@ -155,7 +158,7 @@ class Tracker:
                 exit_, reason = s.stop, "STOP"
             elif hit_target:
                 exit_, reason = s.target, "TARGET"
-            elif held >= self.cfg.max_hold_minutes * MINUTE_MS:
+            elif held >= self.cfg.hold_limit_minutes(tf) * MINUTE_MS:
                 exit_, reason = c, "MAX_HOLD"
             elif held >= self.cfg.time_stop_bars * tf * MINUTE_MS and o.mfe < self.cfg.time_stop_mfe_r:
                 exit_, reason = c, "TIME_STOP"
@@ -164,6 +167,9 @@ class Tracker:
                 continue
             gross = (exit_ - o.entry) * d / o.stop_dist
             fee_r, slip_r = costs_r(o.entry, exit_, o.stop_dist, reason == "STOP", self.costs)
+            if self.cfg.funding_per_8h:
+                marks = t // FUNDING_MS - o.fill_ms // FUNDING_MS   # 8-h marks in (fill, exit]
+                fee_r += self.cfg.funding_per_8h * marks * o.entry / o.stop_dist
             closed.append(Trade(s, o.fill_ms, o.entry, t, exit_, reason, gross, fee_r, slip_r, o.mfe, o.mae))
         self.open = remaining
         return closed

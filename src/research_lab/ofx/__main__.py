@@ -8,9 +8,18 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import timedelta
 from pathlib import Path
 
-from src.research_lab.ofx.loop import run_loop, store_engine_run, store_random_p
+from src.research_lab.ofx.loop import (
+    run_loop,
+    store_engine_run,
+    store_random_p,
+    training_bounds,
+)
+from src.research_lab.ofx.trend import store_trend
+
+TREND_LEAD_DAYS = 120
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,9 +33,14 @@ def main(argv: list[str] | None = None) -> int:
     lp.add_argument("--workers", type=int, default=16)
     lp.add_argument("--seed", type=int, default=2026_11_10)
     args = parser.parse_args(argv)
+    first, last = training_bounds()
+    args.out.mkdir(parents=True, exist_ok=True)
+    # daily closes for the direction filters: lead days before the first training day up to the training end, never later
+    trend = store_trend(args.bars, first - timedelta(days=TREND_LEAD_DAYS), last, args.out / "tagesschluss.json",
+                        workers=args.workers)
     state = run_loop(args.out, store_engine_run(args.bars, args.workers), store_random_p(args.bars, args.workers),
                      configs=args.configs, filters_per_config=args.filters, seed=args.seed,
-                     log=lambda s: print(s, flush=True))
+                     log=lambda s: print(s, flush=True), trend=trend)
     print(state, flush=True)
     return 0
 

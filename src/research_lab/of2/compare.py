@@ -33,8 +33,14 @@ def _session_window(name: str, cfg: Config) -> tuple[int, int]:
     raise KeyError(name)
 
 
-def random_signals(trades: Sequence[Trade], first: date, last: date, cfg: Config, draws: int, seed: int) -> list[Signal]:
-    """Pseudo signals for ``draws`` random strategies mirroring the real trades (section [first, last] inclusive)."""
+def random_signals(trades: Sequence[Trade], first: date, last: date, cfg: Config, draws: int, seed: int,
+                   allowed: Callable[[int, int], bool] | None = None) -> list[Signal]:
+    """Pseudo signals for ``draws`` random strategies mirroring the real trades (section [first, last] inclusive).
+
+    ``allowed(minute_ms, direction)``: a selection rule of the strategy that depends on the time alone (OFX direction
+    filter). Random entries are redrawn until they obey it too; otherwise a "long only in an uptrend" rule would beat
+    random entries by the drift of the market, not by its signals.
+    """
     rng = random.Random(seed)
     n_days = (last - first).days + 1
     out: list[Signal] = []
@@ -42,8 +48,13 @@ def random_signals(trades: Sequence[Trade], first: date, last: date, cfg: Config
         for t in trades:
             s = t.signal
             lo, hi = _session_window(s.session, cfg)
-            day_ms = _ms(first) + rng.randrange(n_days) * DAY_MS
-            minute = day_ms + lo * HOUR_MS + rng.randrange((hi - lo) * 60) * MINUTE_MS
+            for _ in range(1000):
+                day_ms = _ms(first) + rng.randrange(n_days) * DAY_MS
+                minute = day_ms + lo * HOUR_MS + rng.randrange((hi - lo) * 60) * MINUTE_MS
+                if allowed is None or allowed(minute, s.direction):
+                    break
+            else:
+                raise ValueError("no random minute obeys the selection rule")
             stop_pct = abs(t.entry - s.stop) / t.entry
             target_r = abs(s.target - t.entry) / abs(t.entry - s.stop)
             out.append(Signal(s.model, s.direction, minute, MARKET, None, minute + MINUTE_MS, -stop_pct, target_r,
@@ -120,7 +131,7 @@ def run_random_parallel(loader_factory: Callable[[], DayLoader], first: date, la
         return run_random(loader_factory(), first, last, pseudo, cfg, costs)
     if any(s.kind != MARKET for s in pseudo):
         raise ValueError("pseudo signals must be market orders")
-    spill = timedelta(days=-(-cfg.max_hold_minutes // (24 * 60)) + 1)
+    spill = timedelta(days=-(-cfg.longest_hold_minutes // (24 * 60)) + 1)
     size = -(-n_days // workers)
     ranges = [(first + timedelta(days=i), min(last, first + timedelta(days=i + size - 1)))
               for i in range(0, n_days, size)]

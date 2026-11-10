@@ -14,6 +14,7 @@ the last day are dropped exactly as ``run_days`` drops them.
 """
 from __future__ import annotations
 
+import math
 import multiprocessing
 from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor
@@ -28,7 +29,16 @@ from src.research_lab.protocol import CostModel
 
 def warmup_days(cfg: Config) -> int:
     order_days = -(-(cfg.max_hold_minutes + 24 * 60) // (24 * 60))  # one day pending + max hold
-    return max(cfg.npoc_days + 2, cfg.ib_history) + order_days + 1
+    base = max(cfg.npoc_days + 2, cfg.ib_history) + order_days + 1
+    if not cfg.swing_tf:
+        return base
+    # Swing track: candle history and the previous week/month must be complete (state exact from there on); then
+    # every order of an earlier, possibly different signal must be gone and one full week must pass so the
+    # one-signal-per-week slots are the same.
+    tf_days = cfg.swing_tf / 1440
+    state = max(math.ceil(cfg.swing_history * tf_days) + 1, 14 if cfg.swing_level == "W" else 62)
+    orders = math.ceil(max(cfg.retest_candles, 1) * tf_days) + cfg.swing_hold_days + 1
+    return max(base, state + max(orders, 7) + 1)
 
 
 @dataclass

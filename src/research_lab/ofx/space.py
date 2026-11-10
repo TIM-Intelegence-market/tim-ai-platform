@@ -10,11 +10,15 @@ import random
 from dataclasses import dataclass
 
 from src.research_lab.of2.config import DEFAULT_CONFIG, Config
+from src.research_lab.protocol import PRE_PERP_FUNDING
 
 # OFX base: OF2 1.0 with the new section split (training 2020-2023, validation 2024).
 # ``of_gate``: only confirmed signals trade and take the day's slot (in OF2 1.0 a price-only signal blocked a later
 # confirmed one of the same model and direction).
-BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", last_day="2024-12-31", of_gate=True)
+# ``funding_per_8h`` (10.11., with the swing track): 0,01 % per 8-h mark, the flat protocol rate, charged in both
+# directions. Trades that run for days must pay it; the intraday trades pay it too from then on.
+BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", last_day="2024-12-31", of_gate=True,
+                                  funding_per_8h=PRE_PERP_FUNDING)
 
 # Values per parameter, ordered; the OF2 1.0 value is always one of them (neighbours = one step left/right).
 # Time frames (Uzi 10.11.): the engine builds its candles anew every UTC day, so a time frame must divide the day
@@ -22,6 +26,8 @@ BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", las
 ENGINE_SPACE: dict[str, tuple] = {
     "tf_value": (5, 15, 30, 60),
     "tf_sfp": (1, 5, 15, 30, 60),
+    # Uzi 10.11. (after the first numbers: 4h -0,10 R, 1d 2-8 trades in four years): only the time frames up to 1h.
+    # The swing track (``Config.swing_tf`` 240/1440, models S1-S3) stays in the engine, switched off, and is not searched.
     "relvol_min": (1.5, 2.0, 2.5, 3.0),
     "stop_buffer": (0.0005, 0.001, 0.002, 0.003),
     "min_rr": (1.0, 1.5, 2.0, 3.0),
@@ -78,10 +84,19 @@ class TradeFilter:
     max_trades_day: int | None = None       # Uzi 10.11.: guide value, not a duty; skipping bad days is allowed
     stop_after_losses_day: int | None = None
     skip_weekend: bool = False
+    # Direction of the completed day / week / month at signal time (``trend.py``): None, "MIT" or "GEGEN".
+    trend_d: str | None = None
+    trend_w: str | None = None
+    trend_m: str | None = None
+
+    @property
+    def trends(self) -> tuple[tuple[str, str | None], ...]:
+        return (("d", self.trend_d), ("w", self.trend_w), ("m", self.trend_m))
 
     def key(self) -> str:
         return "|".join([",".join(self.models), ",".join(self.sessions), ",".join(self.regimes),
-                         str(self.max_trades_day), str(self.stop_after_losses_day), str(int(self.skip_weekend))])
+                         str(self.max_trades_day), str(self.stop_after_losses_day), str(int(self.skip_weekend)),
+                         *(str(mode) for _, mode in self.trends)])
 
 
 def _subset(rng: random.Random, items: tuple[str, ...]) -> tuple[str, ...]:
@@ -91,7 +106,19 @@ def _subset(rng: random.Random, items: tuple[str, ...]) -> tuple[str, ...]:
             return picked
 
 
-def sample_filter(rng: random.Random) -> TradeFilter:
+TREND_CHOICES = (None, None, None, "MIT", "GEGEN")
+
+
+def sample_filter(rng: random.Random, *, trend: bool = False) -> TradeFilter:
+    """``trend``: also draw the direction filters (only where the loop has the daily closes)."""
+    base = _sample_base(rng)
+    if not trend:
+        return base
+    return dataclasses.replace(base, trend_d=rng.choice(TREND_CHOICES), trend_w=rng.choice(TREND_CHOICES),
+                               trend_m=rng.choice(TREND_CHOICES))
+
+
+def _sample_base(rng: random.Random) -> TradeFilter:
     return TradeFilter(models=_subset(rng, MODELS), sessions=_subset(rng, SESSIONS),
                        regimes=_subset(rng, REGIMES) if rng.random() < 0.5 else REGIMES,
                        max_trades_day=rng.choice((None, None, 1, 2)), stop_after_losses_day=rng.choice((None, None, 1, 2)),

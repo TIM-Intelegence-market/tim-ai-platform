@@ -38,6 +38,7 @@ from src.research_lab.ofx.space import (
     sample_engine,
     sample_filter,
 )
+from src.research_lab.ofx.trend import Trend
 
 EngineRun = Callable[[dict], list[Trade]]
 RandomP = Callable[[Sequence[Trade], Config], float]
@@ -80,9 +81,9 @@ def store_random_p(root: str, workers: int, draws: int = 1000) -> RandomP:
         strategy_means,
     )
 
-    def rp(trades: Sequence[Trade], cfg: Config) -> float:
+    def rp(trades: Sequence[Trade], cfg: Config, allowed: Callable[[int, int], bool] | None = None) -> float:
         first, last = training_bounds(cfg)
-        pseudo = random_signals(trades, first, last, cfg, draws, cfg.seed)
+        pseudo = random_signals(trades, first, last, cfg, draws, cfg.seed, allowed)
         rand = run_random_parallel(functools.partial(_store_loader_for, root), first, last, pseudo, cfg, workers=workers)
         real = sum(t.net_r for t in trades) / len(trades)
         return p_value(real, list(strategy_means(rand).values()))
@@ -95,7 +96,8 @@ def _append(path: Path, row: dict) -> None:
 
 
 def run_loop(out: Path, run_engine: EngineRun, random_p: RandomP, *, configs: int, filters_per_config: int = 300,
-             seed: int = 2026_11_10, rules: Rules = DEFAULT_RULES, max_stage2: int = 3, log: Callable[[str], None] = print) -> dict:
+             seed: int = 2026_11_10, rules: Rules = DEFAULT_RULES, max_stage2: int = 3, log: Callable[[str], None] = print,
+             trend: Trend | None = None) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     state_path = out / "state.json"
     state = json.loads(state_path.read_text()) if state_path.exists() else {"configs_tried": 0, "seed": seed, "kandidaten": 0}
@@ -121,10 +123,10 @@ def run_loop(out: Path, run_engine: EngineRun, random_p: RandomP, *, configs: in
         t0 = time.time()
         trades = trades_for(values)
         state["configs_tried"] = k + 1
-        filters = [TradeFilter()] + [sample_filter(rng) for _ in range(filters_per_config - 1)]
+        filters = [TradeFilter()] + [sample_filter(rng, trend=trend is not None) for _ in range(filters_per_config - 1)]
         rows = []
         for f in filters:
-            m = metrics(apply_filter(trades, f))
+            m = metrics(apply_filter(trades, f, trend))
             ok, why = basic_pass(m, state["configs_tried"], rules)
             rows.append((ok, m, f, why))
         best = sorted(rows, key=lambda r: r[1]["t"], reverse=True)[:5]
@@ -135,9 +137,19 @@ def run_loop(out: Path, run_engine: EngineRun, random_p: RandomP, *, configs: in
             "beste": [{"filter": r[2].key(), **{x: r[1][x] for x in ("n", "mean", "t", "sum", "max_dd")}, "gruende": r[3]}
                       for r in best]})
         for ok, m, f, _ in sorted(passed, key=lambda r: r[1]["t"], reverse=True)[:max_stage2]:
-            means = [metrics(apply_filter(trades_for(v), f))["mean"] for v in neighbours(values)]
+            means = [metrics(apply_filter(trades_for(v), f, trend))["mean"] for v in neighbours(values)]
             stable = neighbours_pass(m["mean"], means, rules)
-            p = random_p(apply_filter(trades, f), engine_config(values)) if stable else None
+            p = None
+            if stable:
+                kept, cfg = apply_filter(trades, f, trend), engine_config(values)
+                rules_d = [(frame, mode) for frame, mode in f.trends if mode is not None]
+                if rules_d and trend is not None:
+                    # random entries obey the same direction rule (else the market's drift would count as edge)
+                    def allowed(ms: int, direction: int, tr: Trend = trend, rs: list = rules_d) -> bool:
+                        return all(tr.allows(ms, direction, frame, mode) for frame, mode in rs)
+                    p = random_p(kept, cfg, allowed=allowed)  # type: ignore[call-arg]
+                else:
+                    p = random_p(kept, cfg)
             status = "KANDIDAT" if stable and p is not None and p <= rules.random_p else "SIEB_2_NICHT"
             state["kandidaten"] += status == "KANDIDAT"
             _append(out / "kandidaten.jsonl", {"nr": k, "werte": values, "filter": f.key(), "metriken": m,
