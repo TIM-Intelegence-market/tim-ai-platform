@@ -48,7 +48,7 @@ def _money(value: Any) -> str:
 
 
 def facts(journals: Mapping[str, Path], lage: Mapping[str, Any] | None, attention: Sequence[Mapping[str, Any]] | None,
-          since: datetime, now: datetime) -> list[str]:
+          since: datetime, now: datetime, waiting: Sequence[str] | None = ()) -> list[str]:
     """Plain German lines. Everything the report may say comes from here."""
     from src.dashboard.plan_journal import load_view
 
@@ -84,6 +84,13 @@ def facts(journals: Mapping[str, Path], lage: Mapping[str, Any] | None, attentio
                          + (f" ({tile.get('reason')})" if tile.get("reason") else "") + ".")
     else:
         lines.append("Control Center: nichts hängt.")
+    # P6 (docs/MULTI_AGENTEN_SYSTEM.md): one place for everything that waits for Uzi.
+    if waiting is None:
+        lines.append("Wartet auf Uzi: nicht lesbar.")
+    elif waiting:
+        lines.extend(f"Wartet auf Uzi: {item}" for item in list(waiting)[:6])
+    else:
+        lines.append("Wartet auf Uzi: nichts.")
     return lines
 
 
@@ -106,7 +113,7 @@ def latest(path: Path | None) -> dict[str, Any] | None:
 
 def update(path: Path, journals: Mapping[str, Path], lage: Mapping[str, Any] | None,
            attention: Callable[[], Sequence[Mapping[str, Any]]] | None = None, now: datetime | None = None,
-           ask: Ask | None = None) -> dict[str, Any] | None:
+           ask: Ask | None = None, waiting: Callable[[], Sequence[str]] | None = None) -> dict[str, Any] | None:
     """Write the report of the due slot, once. Returns it, or None when nothing is due."""
     now = now or datetime.now(timezone.utc)
     path = Path(path)
@@ -122,7 +129,11 @@ def update(path: Path, journals: Mapping[str, Path], lage: Mapping[str, Any] | N
         needs: Sequence[Mapping[str, Any]] | None = attention() if attention else []
     except Exception:  # noqa: BLE001 - the report is written without the Control Center state
         needs = None
-    lines = facts(journals, lage, needs, since, now)
+    try:
+        open_items: Sequence[str] | None = waiting() if waiting else []
+    except Exception:  # noqa: BLE001 - the report is written without the waiting list
+        open_items = None
+    lines = facts(journals, lage, needs, since, now, open_items)
     try:
         reply = (ask or _hermes)(prompt(lines, slot))
     except Exception as error:  # noqa: BLE001 - the facts are the report then

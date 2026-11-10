@@ -1,10 +1,8 @@
 # Multi-Agenten-System für TIM (Entwurf)
 
-Stand 10.11.2026, **ENTWURF 0.1**. Gebaut sind P1 (Übergabezettel mit Prüfer, Abschnitt 9) und P2 (Neustart-Budget
-des Watchdogs, Abschnitt 10). Auftrag: Uzi, „Go“ am 10.11.2026, „go P1“ und „go p2“ am selben Tag.
-Grundlage ist der Stand in diesem Repo (`platform-main`, 496f0a4) und die Projektnotizen. Der laufende Zustand
-auf Mac, Server und PS5 wurde für diesen Entwurf **nicht** neu gemessen; wo ein Stand nur aus Notizen stammt,
-steht „ungeprüft“ dabei.
+Stand 10.11.2026, **ENTWURF 0.1**. Gebaut sind P1 (Übergabezettel, Abschnitt 9), P2 (Neustart-Budget des
+Watchdogs, Abschnitt 10), P3 (Review-Gate, Abschnitt 11), P5 (Hermes-Evals, Abschnitt 13) und P6 („Wartet auf Uzi“, Abschnitt 12). Auftrag: Uzi, „Go“,
+„go P1“, „go p2“ und „go mach alle ps fertig“ am 10.11.2026.
 
 Ziel: Eine Aufgabe läuft von der Idee bis zum fertigen Ergebnis durch, ohne dass Uzi eingreift. Er wird nur an
 den festen Freigabepunkten gebraucht, oder wenn das System abbricht und meldet.
@@ -133,11 +131,11 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 |---|---|---|
 | 1 | Der Übergabezettel `TIM_HANDOVER_V1` ist gebaut (P1), aber noch kein Worker liest ihn. `TIM_QWEN_TASK_V1`, das Bugfixer-Modell und `agents/contract.py` bestehen daneben weiter. | Übergaben zwischen Rollen laufen über Uzi oder den Koordinator |
 | 2 | Vorfall-Issue geht nicht von selbst an den Engineer. | Fehler werden gemeldet, aber erst nach Uzis Anstoß repariert |
-| 3 | Reviewer ist kein Pflichtschritt (Review-Pflicht aus, CODEOWNERS nur geplant). | „merge-fertig“ ohne unabhängige Prüfung möglich |
+| 3 | Reviewer-Pflicht gibt es jetzt als Check `Review gate` (P3), aber nicht als Pflicht-Check im Ruleset. | Ein PR ohne Zettel kann technisch weiter gemergt werden; der Check zeigt es rot |
 | 4 | Kein gemeinsamer Versuchszähler. Die Pipeline kennt nur `agent:retry` (einmal). | Abbruchgrenzen aus Abschnitt 4 sind nicht durchgesetzt |
-| 5 | Hermes-Evals gibt es seit 10.11.2026 (14 Tests, laut Projekt-Thread alle grün, hier ungeprüft), aber nur am Mac unter `Documents/TIM/hermes-evals`, nicht im Repo und nicht an einen Ablauf gebunden. | Kein Lauf in CI, kein Pflichtlauf vor einem Prompt- oder Modellwechsel |
+| 5 | Hermes-Evals liegen jetzt im Repo (P5, 14 Fälle, letzter Mac-Lauf 10.11. 11:17: 14/14). Der Lauf braucht Hermes am Mac und läuft nicht in CI; die Pflicht vor einer Änderung ist eine Regel, kein Schalter. | Ein Prompt-Wechsel ohne Lauf fällt nur im Review auf |
 | 6 | Rückweg PS5 → Bericht ist Handarbeit (Mac-Sitzung mit Auftragstext). | Durchlauf A hält nach dem Rechnen an |
-| 7 | Keine eine Stelle für „wartet auf Uzi“. | Offene Freigaben liegen in Threads, PRs und Karten verteilt |
+| 7 | „Wartet auf Uzi“ steht im Tagesbericht (P6), aber ohne offene PRs und Karten. | Offene PRs sieht Uzi weiter nur in GitHub und im Thread |
 | 8 | Server-Worker (Qwen 30B) im Probelauf, wöchentliche Reflexion nicht installiert (ungeprüft, Stand Anfang November). | zwei gebaute Teile laufen nicht |
 
 ## 8. Nächste Schritte (jeder wartet auf „go“)
@@ -146,10 +144,10 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 |---|---|---|
 | P1 **gebaut** | Übergabezettel als ein Schema im Issue-Body (Rolle, Eingang, Ausgang, Nachweis, Versuchszähler). Nur Doku und Prüfer, kein Verhalten. | `pytest tests/agents/test_handover.py` |
 | P2 **gebaut** | Abbruchgrenze dort, wo sie fehlte: Neustart-Budget im Watchdog. Der Qwen-Worker hatte seine Grenze schon (Abschnitt 10). | `pytest tests/test_watchdog_restart_budget.py` |
-| P3 | Reviewer als Pflichtschritt vor „merge-fertig“ für kritische Pfade (Journal, Kostenmodell, `src/database/`). | PR ohne Befundliste gilt nicht als merge-fertig |
+| P3 **gebaut** | Reviewer als Pflichtschritt vor „merge-fertig“ für kritische Pfade (Journal, Kostenmodell, `src/database/`). | Check `Review gate`, `pytest tests/agents/test_review_gate.py` |
 | P4 | Vorfall-Issue bekommt bei Klasse Daten/Anzeige automatisch den Worker-Vertrag; Echtgeld und SAFETY nie. | Probelauf mit `checkup:selftest` |
-| P5 | Hermes-Evals ins Repo holen (ohne Schlüssel) und als Pflichtlauf vor jeder Prompt- oder Modelländerung festlegen. | Lauf vor und nach einer Prompt-Änderung, Ergebnis als Datei |
-| P6 | „Wartet auf Uzi“ als ein Abschnitt im Hermes-Tagesbericht (offene go, merge, Karten). | Bericht zeigt bekannte offene PRs |
+| P5 **gebaut** | Hermes-Evals ins Repo holen (ohne Schlüssel) und als Pflichtlauf vor jeder Prompt- oder Modelländerung festlegen. | `pytest tests/agents/test_hermes_evals.py`; am Mac `python -m src.agents.hermes_evals` |
+| P6 **gebaut** | „Wartet auf Uzi“ als ein Abschnitt im Hermes-Tagesbericht. Offene PRs fehlen (kein Netz im Bericht), siehe Abschnitt 12. | `pytest tests/test_waiting_on_uzi.py` |
 | P7 | PS5-Ergebnis kommt als Datei mit Hash zurück und wird vom Researcher abgeholt. | Ein Studienlauf ohne Mac-Sitzung |
 
 Empfohlene Reihenfolge: P1, P2, P3 (machen die Kette sicher), dann P4 und P6 (machen sie selbstlaufend), zuletzt
@@ -218,6 +216,53 @@ Neu im Watchdog:
 
 Offen: Der Halt erscheint in den Watchdog-Dateien und im Log, aber noch nicht als eigene Meldung an Uzi (gehört zu
 P6, Abschnitt „wartet auf Uzi“ im Tagesbericht).
+
+## 11. Review-Gate (P3)
+
+Code `src/agents/review_gate.py`, Workflow `.github/workflows/review-gate.yml`, Tests `tests/agents/test_review_gate.py`.
+
+- Ändert ein PR einen kritischen Pfad, braucht sein Text einen gültigen Übergabezettel `TIM_HANDOVER_V1` mit
+  `from_role` REVIEWER und der PR-Nummer als `issue_number`. Sonst wird der Check `Review gate` rot.
+- Kritisch: `.github/`, `ops/`, `scripts/timctl`, `scripts/tim_watchdog.py`, `src/database/`, `src/tim_incident/`,
+  `src/task_governance/`, Journal-Logik `src/dashboard/plan_journal.py`, Kostenmodell `src/research_lab/exit_variants.py`,
+  Holdout-Sperre `src/research_lab/protocol.py`, Lernregister `src/research_lab/learning/`, `REGISTER.jsonl`,
+  `PROTOKOLL.md` und die beiden Agenten-Prüfer selbst.
+- Der Reviewer ist ein Agent, der die Änderung nicht geschrieben hat (Skill `adversariale-pruefung`). Eine zweite
+  Person wird nicht erzwungen, so hat Uzi es am 26.10.2026 entschieden (R2). Der Check ist deshalb kein
+  Pflicht-Check im Ruleset; Uzis „merge“ bleibt die einzige Freigabe.
+- Grenze: Der Check prüft nur, dass ein Zettel da ist, nicht wer ihn geschrieben hat.
+- Läuft auf einem GitHub-Rechner, nie auf dem Mac- oder Server-Runner, weil das Repo öffentlich ist. Der Prüfer
+  läuft aus dem Basis-Stand, damit ein PR den eigenen Check nicht abschwächen kann; umbenannte Dateien zählen mit
+  altem und neuem Pfad.
+
+## 12. Wartet auf Uzi (P6)
+
+Code `src/dashboard/waiting_on_uzi.py`, eingehängt in den Tagesbericht um 8 und 22 Uhr (`daily_report.facts`).
+Gelesen werden nur TIM-eigene Dateien:
+
+- Watchdog hat die Neustarts angehalten (P2, `watchdog_recovery_state.json`).
+- F11-Filter mit Urteil „bestanden“, bereit für Uzis Entscheidung (`data/research/self_improve/log.jsonl`); eine
+  gebrochene Hash-Kette wird ebenfalls gemeldet.
+- Orderflow-Schatten und Hermes-Zweitmeinung, sobald 30 Pläne geschlossen sind und das Urteil fällig ist.
+
+Eine unlesbare Datei wird genannt, nicht still ausgelassen. Offene PRs und Entscheidungskarten stehen nicht drin,
+weil der Bericht kein Netz nutzt und keinen GitHub-Zugang hat.
+
+## 13. Hermes-Evals (P5)
+
+Code `src/agents/hermes_evals.py`, Fälle `src/agents/hermes_eval_cases.json` (14: fünf Fakten, zwei fehlende Daten,
+sechs Ablehnungen inklusive Prompt-Injection, eine englische Frage), Tests `tests/agents/test_hermes_evals.py`.
+Übernommen vom Mac (`Documents/TIM/hermes-evals`, Lauf 10.11.2026 11:17: 14/14).
+
+- Lauf am Mac: `python -m src.agents.hermes_evals` (alle) oder mit Fall-Namen. Fragt Hermes per `hermes -z`, liest die
+  Werkzeug-Spur aus `~/.hermes/logs/agent.log` und vergleicht Zahlen mit `live_status.json`.
+- Berichte enthalten Antworten mit Kontozahlen. Das Repo ist öffentlich, deshalb schreibt der Lauf nach
+  `~/Library/Application Support/TIM/hermes-evals/reports` (oder `TIM_HERMES_EVAL_REPORTS`), nie ins Repo.
+- Regel: vor und nach jeder Änderung an Hermes (Prompt, SOUL.md, Modell, Werkzeuge) laufen lassen und beide
+  Berichte behalten. Weniger bestandene Fälle stoppen die Änderung, bis der Grund geklärt ist.
+- Gegenüber der Mac-Fassung behoben: Fehlt ein Wert in `live_status.json`, stürzte der Lauf ab (`None` formatiert);
+  jetzt ist es ein benannter Fehlschlag. Eine einzelne Zeile „OK“ mitten in einer Ablehnung zählt jetzt auch als
+  behauptete Aktion, vorher nur am Anfang der Antwort.
 
 ## Nicht Teil dieses Entwurfs
 

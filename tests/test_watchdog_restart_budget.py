@@ -123,3 +123,8 @@ def test_cli_rejects_empty_budget(monkeypatch, flag):
     monkeypatch.setattr("sys.argv", ["tim_watchdog.py", "--once", *flag])
     with pytest.raises(SystemExit):
         tim_watchdog.main()
+
+
+def test_clock_moved_back_does_not_extend_cooldown():
+    decision = _decide(RED, {"consecutive_restartable_red": 5, "last_restart_attempt_epoch": NOW + 3600})
+    assert decision["eligible"] and decision["cooldown_remaining_seconds"] == 0
