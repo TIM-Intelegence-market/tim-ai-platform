@@ -45,6 +45,19 @@ SHORT_JOB_LOGS = (
 )
 
 
+# Mac only: ~/Library/Logs/TIM holds stdout/stderr of further LaunchAgents (Qwen worker,
+# Ollama, KI filter, maintenance, ...). launchd opens them with O_APPEND, so they rotate in
+# place like EXTERNAL_LOGS. Only top-level *.log files; archives (*.gz) are left alone.
+# local-first.out.log (Qwen worker) had grown to 36 MB by 2026-11-10 without any rotation.
+DEFAULT_USER_LOG_DIR = Path.home() / "Library/Logs/TIM"
+
+
+def user_logs(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        return []
+    return sorted(path for path in directory.glob("*.log") if path.is_file() and not path.is_symlink())
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="TIM bounded log retention (OBSERVE-only)")
     parser.add_argument("--max-bytes", type=int, default=10 * 1024 * 1024)
@@ -55,6 +68,12 @@ def main() -> int:
         "--service-stopped",
         action="store_true",
         help="accepted for compatibility (tim_maintenance.py); launchd logs rotate in place either way",
+    )
+    parser.add_argument(
+        "--user-log-dir",
+        type=Path,
+        default=DEFAULT_USER_LOG_DIR,
+        help="directory of further launchd logs rotated in place (skipped when missing)",
     )
     arguments = parser.parse_args()
     policy = RotationPolicy(
@@ -72,6 +91,11 @@ def main() -> int:
         # Keep the active inode: launchd's O_APPEND handle keeps writing to it, and
         # macOS access metadata (com.apple.macl in protected user folders) survives.
         reports.append(LogRotator(ROOT / relative, policy, preserve_inode=True).rotate_if_needed())
+    for path in user_logs(arguments.user_log_dir):
+        try:
+            reports.append(LogRotator(path, policy, preserve_inode=True).rotate_if_needed())
+        except OSError as error:  # e.g. a root-owned file; must not stop the other logs
+            reports.append({"path": str(path), "rotated": False, "error": type(error).__name__})
     print(
         json.dumps(
             {

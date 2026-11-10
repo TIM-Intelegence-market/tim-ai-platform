@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,7 @@ def _run(root: Path, *arguments: str) -> tuple[int, dict]:
     result = subprocess.run(
         [sys.executable, str(root / "scripts/tim_log_maintenance.py"), *arguments],
         capture_output=True, text=True, timeout=60, cwd=root,
+        env={**os.environ, "HOME": str(root)},  # never touch the real ~/Library/Logs/TIM
     )
     return result.returncode, json.loads(result.stdout)
 
@@ -83,3 +85,37 @@ def test_log_maintenance_own_output_is_rotated(tmp_path: Path) -> None:
 
     assert code == 0 and own.stat().st_size == 0
     assert own.with_name(own.name + ".1.gz").exists()
+
+
+def test_user_log_dir_logs_rotate_in_place(tmp_path: Path) -> None:
+    """~/Library/Logs/TIM (Qwen worker, Ollama, ...) rotates like the other launchd logs."""
+    root = _copy_repo_parts(tmp_path)
+    logs = tmp_path / "Logs/TIM"
+    logs.mkdir(parents=True)
+    big = logs / "local-first.out.log"
+    content = b'{"TIM_GITHUB_INTAKE": "DONE"}\n' * 100
+    big.write_bytes(content)
+    inode = big.stat().st_ino
+    small = logs / "ki-filter.log"
+    small.write_bytes(b"ok\n")
+    old_archive = logs / "local-first.out.log.2026-11-10.gz"
+    old_archive.write_bytes(b"x" * 4096)
+
+    code, report = _run(root, "--max-bytes", "1024", "--user-log-dir", str(logs))
+
+    assert code == 0 and report["status"] == "PASS"
+    assert big.stat().st_ino == inode and big.stat().st_size == 0
+    with gzip.open(big.with_name(big.name + ".1.gz"), "rb") as archive:
+        assert archive.read() == content
+    assert small.read_bytes() == b"ok\n"
+    assert old_archive.stat().st_size == 4096  # archives are not log files
+    assert not (logs / "local-first.out.log.2026-11-10.gz.1.gz").exists()
+
+
+def test_missing_user_log_dir_is_skipped(tmp_path: Path) -> None:
+    root = _copy_repo_parts(tmp_path)
+
+    code, report = _run(root, "--max-bytes", "1024", "--user-log-dir", str(tmp_path / "missing"))
+
+    assert code == 0 and report["status"] == "PASS"
+    assert not (tmp_path / "missing").exists()
