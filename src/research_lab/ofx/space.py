@@ -17,7 +17,11 @@ from src.research_lab.of2.config import DEFAULT_CONFIG, Config
 BASE_CONFIG = dataclasses.replace(DEFAULT_CONFIG, training_end="2023-12-31", last_day="2024-12-31", of_gate=True)
 
 # Values per parameter, ordered; the OF2 1.0 value is always one of them (neighbours = one step left/right).
+# Time frames (Uzi 10.11.): the engine builds its candles anew every UTC day, so a time frame must divide the day
+# and leave enough candles inside one day; 4h and longer need candles that reach across days (not built yet).
 ENGINE_SPACE: dict[str, tuple] = {
+    "tf_value": (5, 15, 30, 60),
+    "tf_sfp": (1, 5, 15, 30, 60),
     "relvol_min": (1.5, 2.0, 2.5, 3.0),
     "stop_buffer": (0.0005, 0.001, 0.002, 0.003),
     "min_rr": (1.0, 1.5, 2.0, 3.0),

@@ -686,3 +686,21 @@ def test_gate_keeps_the_frozen_digest_and_changes_it_when_on():
     assert "of_gate" not in CFG.as_dict()
     on = dataclasses.replace(CFG, of_gate=True)
     assert on.as_dict()["of_gate"] is True and on.digest() != CFG.digest()
+
+
+def test_every_time_frame_of_the_search_space_runs_and_splits_the_same():
+    """OFX varies the time frames (Uzi 10.11.): every pair must run and give the same trades split by time."""
+    import dataclasses
+
+    from src.research_lab.of2 import parallel
+    from src.research_lab.ofx.space import ENGINE_SPACE
+    days = [date(2021, 3, 1) + timedelta(days=d) for d in range(40)]
+    seen = set()
+    for tf_value in ENGINE_SPACE["tf_value"]:
+        for tf_sfp in ENGINE_SPACE["tf_sfp"]:
+            cfg = dataclasses.replace(Config(max_cost_r=100.0), tf_value=tf_value, tf_sfp=tf_sfp)
+            one, _ = engine.run_days(_long_loader(), days, cfg)
+            many, _ = parallel.run_days_parallel(_long_loader, days, cfg, workers=2)
+            assert sorted(str(t.as_dict()) for t in one) == sorted(str(t.as_dict()) for t in many), (tf_value, tf_sfp)
+            seen |= {t.signal.tf for t in one}
+    assert seen >= {1, 5, 15, 30, 60}, seen
