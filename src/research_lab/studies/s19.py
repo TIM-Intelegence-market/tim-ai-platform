@@ -1,14 +1,15 @@
 """S19: orderflow thresholds measured on BTC (15m candles from the S8 store, spot 2020-2024).
 
-Rules: docs/research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG_ENTWURF.md (version 0.2,
-sections 3 to 5). Observation study without trades; the holdout from 2025-01-01 is never loaded.
+Rules: docs/research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG.md (version 1.0,
+frozen on Uzi's word 2026-11-10, sections 3 to 5). Observation study without trades; the holdout from 2025-01-01 is never loaded.
 
     python -m src.research_lab.studies.s19 count    --bars <orderflow_ml root> --out DIR [--workers N] [--cache DIR]
     python -m src.research_lab.studies.s19 evaluate --bars <root> --out DIR [--workers N] [--cache DIR]
 
 ``count`` is the results-blind feasibility gate (section 5.1): it writes event and week counts per family,
-grid value, direction and section, never a hit rate. ``evaluate`` (section 5, only after the rules are
-frozen as 1.0 on Uzi's word) adds outcomes, lift, block bootstrap, Holm and the verdict per family.
+grid value, direction and section, never a hit rate. ``evaluate`` (section 5) adds outcomes, lift, block
+bootstrap, Holm and the verdict, only for the families that passed the gate and only with the frozen
+footprint geometry; an untestable family's grid is never evaluated (5.1), Holm still counts all 112.
 
 Flags come from the engine's own reader (``analyze_footprint``) on a footprint built from the S8 day
 profile, and from the engine's effort rules (``effort_context`` thresholds) on 15m candles. Reading the
@@ -54,7 +55,7 @@ from src.research_lab.orderflow_ml.store import MinuteBarStore
 from src.research_lab.protocol import HOLDOUT_START_MS
 from src.research_lab.stats.inference import holm
 
-VERSION = "0.3"
+VERSION = "1.0"
 SEED = 19
 DRAWS = 9_999
 BLOCK_WEEKS = 4
@@ -540,9 +541,14 @@ def _evaluate_cell(args: tuple) -> tuple[str, dict]:
 
 
 def evaluate(readings: Sequence[Reading], gaps: Sequence[str], *, workers: int = 1) -> dict:
-    """Section 5: lift, block-bootstrap p, Holm over all 112 hypotheses per section, verdict per family."""
+    """Section 5: lift, block-bootstrap p, Holm over all 112 hypotheses per section, verdict per family.
+
+    Only families that passed gate 5.1 are evaluated; the others keep no lift, no p and no descriptive
+    number ("ihr Raster wird nicht angesehen"). Holm keeps m = 112, so a skipped hypothesis counts as p = 1.
+    """
     counted = count(readings, gaps)
-    events = events_of(readings)
+    testable = {family for family, g in counted["gate"].items() if g["testable"]}
+    events = [e for e in events_of(readings) if family_of(e.key) in testable]
     rates = base_rates(readings)
     jobs: list[tuple[str, dict]] = []
     for section, (lo, hi) in SECTIONS.items():
@@ -551,6 +557,8 @@ def evaluate(readings: Sequence[Reading], gaps: Sequence[str], *, workers: int =
         for event in inside:
             by_flag.setdefault((event.key, event.direction), []).append(event)
         for key in FLAG_KEYS:
+            if family_of(key) not in testable:
+                continue
             for direction in DIRECTIONS:
                 for h in HORIZONS:
                     cells = _week_cells(by_flag.get((key, direction), []), readings, rates, h)
@@ -567,8 +575,8 @@ def evaluate(readings: Sequence[Reading], gaps: Sequence[str], *, workers: int =
             if name.startswith(f"{section}/"):
                 r["holm_significant"] = name in rejected
     verdicts = {family: verdict(family, results, counted["gate"][family]["testable"]) for family in FAMILIES}
-    described = describe(readings, events, rates)
-    return {**counted, "mode": "evaluate", "draws": DRAWS, "block_weeks": BLOCK_WEEKS, "seed": SEED, "alpha": ALPHA,
+    described = describe(readings, events, rates, testable)
+    return {**counted, "mode": "evaluate", "evaluated_families": sorted(testable, key=FAMILIES.index), "draws": DRAWS, "block_weeks": BLOCK_WEEKS, "seed": SEED, "alpha": ALPHA,
             "results": results, "verdicts": verdicts, "descriptive": described}
 
 
@@ -619,8 +627,13 @@ def verdict(family: str, results: Mapping[str, Mapping], testable: bool) -> dict
     return out
 
 
-def describe(readings: Sequence[Reading], events: Sequence[Event], rates: Mapping) -> dict:
-    """Section 5.2: mean log return in bps, lift per year and UTC block (today's values, h = 4), flag share."""
+def describe(readings: Sequence[Reading], events: Sequence[Event], rates: Mapping, testable: Iterable[str] = FAMILIES) -> dict:
+    """Section 5.2: mean log return in bps, lift per year and UTC block (today's values, h = 4), flag share.
+
+    Only flags of the ``testable`` families are described; ``events`` must already be limited to them.
+    """
+    testable = set(testable)
+    today_keys = {TODAY_KEYS[f] for f in testable}
     log_return: dict[str, list[float]] = {}
     undebounced: dict[str, list[float]] = {}
     per_year: dict[str, dict[int, list[float]]] = {}
@@ -632,7 +645,7 @@ def describe(readings: Sequence[Reading], events: Sequence[Event], rates: Mappin
                 continue
             signed = math.log(readings[end].close / readings[event.index].close) * (1 if event.direction == UP else -1)
             log_return.setdefault(f"{event.key}/{event.direction}/h{h}", []).append(signed * 10_000)
-        if event.key in TODAY_KEYS.values():
+        if event.key in today_keys:
             result = outcome(readings, event.index, 4)
             base = rates.get((week_of(event.start), 4, event.direction))
             if result is None or base is None:
@@ -643,6 +656,8 @@ def describe(readings: Sequence[Reading], events: Sequence[Event], rates: Mappin
     for i, reading in enumerate(readings):
         for flag in reading.flags:
             key, direction = flag.split("|")
+            if family_of(key) not in testable:
+                continue
             for h in HORIZONS:
                 end = i + h
                 if outcome(readings, i, h) is None or reading.close <= 0 or readings[end].close <= 0:
@@ -658,7 +673,7 @@ def describe(readings: Sequence[Reading], events: Sequence[Event], rates: Mappin
                                 for k, v in sorted(log_return.items())},
         "lift_pp_per_year": {k: {str(y): {"lift_pp": mean(v) * 100 if v else None, "n": len(v)} for y, v in sorted(years.items())} for k, years in sorted(per_year.items())},
         "lift_pp_per_utc_block": {k: {str(b): {"lift_pp": mean(v) * 100 if v else None, "n": len(v)} for b, v in sorted(blocks.items())} for k, blocks in sorted(per_block.items())},
-        "share_of_candles_with_today_flag": (sum(any(f.split("|")[0] in TODAY_KEYS.values() for f in r.flags) for r in traded) / len(traded)) if traded else None,
+        "share_of_candles_with_today_flag": (sum(any(f.split("|")[0] in today_keys for f in r.flags) for r in traded) / len(traded)) if traded and today_keys else None,
         "perp": "nicht geladen (Abschnitt 3)", "kline_deviation": "nicht gemessen: der S8-Store hält keine Klines",
     }
 
@@ -681,7 +696,10 @@ def evaluate_report(result: Mapping, *, stamp: str) -> str:
         lines.append(f"| {family} {FAMILY_NAMES[family]} | `{v['today']}` | {v['status']} | {cell(dirs, UP)} | {cell(dirs, DOWN)} |")
     lines += ["", "## Lift je Flag (Prozentpunkte, h = 4 / h = 16; Holm-signifikant mit *)", "",
               "| Flag | Richtung | Training n | Training Lift | Validierung n | Validierung Lift |", "|---|---|---|---|---|---|"]
+    skipped = [f for f in FAMILIES if f not in result["evaluated_families"]]
     for key in FLAG_KEYS:
+        if family_of(key) in skipped:
+            continue
         for direction in DIRECTIONS:
             row = [f"`{key}`", direction]
             for section in SECTIONS:
@@ -689,6 +707,8 @@ def evaluate_report(result: Mapping, *, stamp: str) -> str:
                 long = result["results"][f"{section}/{key}/{direction}/h16"]
                 row += [str(short["events"]), f"{fmt(short)} / {fmt(long)}"]
             lines.append("| " + " | ".join(row) + " |")
+    if skipped:
+        lines += ["", f"Nicht ausgewertet (Gate 5.1, Raster nicht angesehen): {', '.join(skipped)}. Holm zählt trotzdem alle {result['hypotheses']} Hypothesen."]
     share = result["descriptive"]["share_of_candles_with_today_flag"]
     lines += ["", f"Anteil der Kerzen mit mindestens einem heutigen Flag: {share:.1%}" if share is not None else "", ""]
     return "\n".join(lines) + "\n"
@@ -718,6 +738,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     started = time.time()
     if args.step_pct <= 0 or args.min_levels < 1:
         parser.error("--step-pct must be positive and --min-levels at least 1")
+    if args.mode == "evaluate" and (args.step_pct != FP_STEP_PCT or args.min_levels != MIN_LEVELS):
+        parser.error(f"evaluate runs only with the frozen geometry of {VERSION} (--step-pct {FP_STEP_PCT:g}, --min-levels {MIN_LEVELS})")
+    if args.mode == "evaluate" and (args.first != FIRST_DAY or args.last != LAST_DAY):
+        parser.error(f"evaluate runs only on the full range {FIRST_DAY} to {LAST_DAY} (training and validation)")
     readings, gaps = read_range(args.bars, args.first, args.last, workers=args.workers, cache=args.cache,
                                 step_pct=args.step_pct, min_levels=args.min_levels)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")

@@ -9,7 +9,7 @@ und nirgends sonst anders. Die Zahlen in Abschnitt 2 werden von
 
 **Keine der Schwellen ist an BTC gemessen.** Sie stammen aus dem Broncx-Bootcamp, aus ATAS
 und aus Lehrtexten. Ob sie für BTC passen, prüft Studie S19
-(`../research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG_ENTWURF.md`),
+(`../research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG.md`),
 registriert vor dem ersten Datenzugriff; bis dahin bleiben sie, wie sie sind.
 
 ## 1. Begriffe

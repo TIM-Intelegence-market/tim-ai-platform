@@ -1,14 +1,14 @@
-# S19: Orderflow-Schwellen an BTC messen: Sagen Imbalance 400 %, Cluster 3x, dünnes Extrem 25 % und die Anstrengungs-Schwellen an BTC etwas über die nächste Stunde aus, und wäre ein anderer Wert besser? (Präregistrierung, Entwurf)
+# S19: Orderflow-Schwellen an BTC messen: Sagen Imbalance 400 %, Cluster 3x, dünnes Extrem 25 % und die Anstrengungs-Schwellen an BTC etwas über die nächste Stunde aus, und wäre ein anderer Wert besser? (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
 | Studie | S19 (nächste freie Nummer nach S18, 09.11.2026) |
-| Version | **0.3, Entwurf.** Regeln als Code: `src/research_lab/studies/s19.py`, Skript `scripts/research_lab_s19.py`, Tests `tests/test_research_lab_s19.py`. Zähllauf 0.2 am 09.11. gelaufen (Footprint-Familien nicht testbar, Abschnitt 7); 0.3 ändert nur die Footprint-Geometrie, zweiter Zähllauf folgt. Vor 1.0: Einfrieren auf Uzis Wort |
+| Version | **1.0, eingefroren am 10.11.2026 auf Uzis Wort** („s19 … starten“, 11:17 Uhr Ortszeit). Regeln als Code: `src/research_lab/studies/s19.py` (`VERSION = "1.0"`), Skript `scripts/research_lab_s19.py`, Tests `tests/test_research_lab_s19.py`; Regelstand = Commit dieses Einfrierens. Zähllauf 0.3 (10.11. 00:49): T, H, E testbar, I, A, C nicht testbar (Abschnitt 7) |
 | Anlass | Master-Analyse 09.11.2026 aus Kundensicht (Broncx), Punkt P8: „Schwellen stammen aus Quellen, nie an BTC gemessen“; Glossar `../../knowledge/ORDERFLOW_BEGRIFFE.md` |
 | Geprüfter Code | `src/orderflow_scenario/footprint.py` (F1–F5) und `src/orderflow_scenario/engines/orderflow_interpretation.py` (R1–R4), Konstanten in Abschnitt 2 des Glossars; Regelstand = Commit beim Einfrieren |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Holdout | ab 2025-01-01, wird nicht geladen. Training bis 2022-12-31, Validierung 2023-01-01 bis 2024-12-31 (Abschnitt 3 des Protokolls) |
-| Einordnung | **Beobachtungsstudie ohne Trades, ohne Registerplatz** (wie S15/S17, Entscheidung Uzi beim Einfrieren): sie misst nur, ob ein Flag eine Richtungsneigung hat. Kein Setup, kein Edge-Nachweis, keine Holdout-Erlaubnis |
+| Einordnung | **Beobachtungsstudie ohne Trades, ohne Registerplatz** (wie S15/S17; eingetragen im Änderungsprotokoll von `../PROTOKOLL.md`, 10.11.2026): sie misst nur, ob ein Flag eine Richtungsneigung hat. Kein Setup, kein Edge-Nachweis, keine Holdout-Erlaubnis |
 
 ## 1. Fragestellung
 
@@ -163,8 +163,15 @@ testbar“ und ihr Raster wird nicht angesehen.
    Stufe auf S8-Bin-Breite, Mindeststufen 10; der Cache liegt je Geometrie getrennt
    (`cache/step<…>_levels<…>`). Zweiter Zähllauf mit 0.3 folgt, danach keine weitere Geometrie-Änderung:
    fällt eine Familie auch dann durch, bleibt sie „nicht testbar“.
-3. Uzis Wort: Einfrieren als 1.0 mit Commit, Einordnung (Registerplatz ja/nein) ins Protokoll.
-4. Ergebnislauf Training, dann Validierung; Bericht nach Abschnitt 5; Glossar nachführen.
+   Lauf 0.3 am 10.11.2026 00:49 (PS5, 11 s): T, H, E bestehen das Gate; I, A, C bestehen das Training,
+   fallen aber in der Validierung 2023–24 durch (8 319 von 70 176 Kerzen mit Footprint) und bleiben
+   „nicht testbar“.
+3. Erledigt am 10.11.2026: Eingefroren als 1.0 auf Uzis Wort, Einordnung ohne Registerplatz im Protokoll.
+4. Ergebnislauf (`evaluate`, Training und Validierung in einem Lauf, nur die volle Spanne 2020–2024 und
+   nur mit der eingefrorenen Geometrie; der Code verweigert anderes): Bericht nach Abschnitt 5, danach
+   Glossar nachführen. Ausgewertet werden nur T, H und E; für I, A und C rechnet `evaluate` weder Lift
+   noch p noch beschreibende Zahlen (5.1: „ihr Raster wird nicht angesehen“). Holm zählt weiter alle
+   112 Hypothesen, nicht ausgewertete zählen als p = 1 (strenger, nicht lockerer).
 
 ## Änderungsprotokoll
 
@@ -173,3 +180,4 @@ testbar“ und ihr Raster wird nicht angesehen.
 | 2026-11-09 | 0.1 | Entwurf aus der Master-Analyse (P8). Kein Code, keine Daten geladen, kein Registereintrag. |
 | 2026-11-09 | 0.2 | Code und Tests. Datenquelle S8-Store statt Roh-aggTrades, Stufe 0,1 % statt 5 $, keine Kline-Gegenprobe, Perp entfällt, Lesart H/E festgeschrieben. Noch kein Zähllauf. |
 | 2026-11-09 | 0.3 | Nach dem ergebnisblinden Zähllauf 0.2 (nur Ereignis- und Wochenzahlen gesehen): Footprint-Stufe = S8-Bin-Breite (0,05–0,1 %) statt 0,1 %, Mindeststufen 10 statt 20; `--step-pct`/`--min-levels` als Laufparameter, Cache je Geometrie, Geometrie im Bericht. Gate 5.1 (500 Ereignisse, 100 Wochen) unverändert. Letzte Geometrie-Änderung vor 1.0. |
+| 2026-11-10 | 1.0 | Eingefroren auf Uzis Wort. Gegenüber 0.3 keine Regeländerung: Zähllauf 0.3 eingetragen (T/H/E testbar, I/A/C nicht), `evaluate` setzt 5.1 im Code um (nicht testbare Familien werden nicht ausgewertet, Holm-m bleibt 112) und läuft nur mit voller Spanne und eingefrorener Geometrie. Trefferquoten bis dahin nicht angesehen. |
