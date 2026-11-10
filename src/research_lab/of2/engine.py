@@ -36,12 +36,13 @@ from src.research_lab.of2.models import (
     absorption,
     acceptance,
     failed_auction,
+    poor_edge,
     sfp,
     stacked_retest,
     stop_run,
 )
 from src.research_lab.orderflow_ml.bars import DayProfile, MinuteBar
-from src.research_lab.protocol import BASE_COSTS, CostModel
+from src.research_lab.protocol import CostModel
 
 DayLoader = Callable[[date], tuple[Sequence[MinuteBar], DayProfile]]
 
@@ -62,7 +63,7 @@ class EngineStats:
 
 
 class Engine:
-    def __init__(self, cfg: Config, costs: CostModel = BASE_COSTS) -> None:
+    def __init__(self, cfg: Config, costs: CostModel | None = None) -> None:
         self.cfg = cfg
         self.tracker = Tracker(cfg, costs)
         self.stats = EngineStats()
@@ -129,6 +130,7 @@ class Engine:
                     self._consider(absorption(hist15, fp15, levels, cfg), day_start, t)
                     self._consider(stacked_retest(hist15, fp15, levels, cfg), day_start, t)
                     self._consider(stop_run(hist15, fp15, levels, cfg), day_start, t)
+                    self._consider(poor_edge(hist15, fp15, levels, cfg), day_start, t)
             if (c := c30.push(bar)) is not None:
                 hist30.append(c)
                 if c.has_trades:
@@ -163,6 +165,9 @@ class Engine:
         if signal.model == "M6" and reg == "TREND":   # never fade the run on a trend day (Axia)
             self.stats.hit(self.stats.verworfen, "M6_trendtag")
             return
+        if signal.model == "M7" and reg == "TREND":   # range edges hold on balance days, not in a trend
+            self.stats.hit(self.stats.verworfen, "M7_trendtag")
+            return
         rr = signal.reward_risk
         if rr is None or rr < cfg.min_rr:
             self.stats.hit(self.stats.verworfen, f"{signal.model}_rr")
@@ -181,7 +186,7 @@ def _fields(signal: Signal) -> dict:
     return {name: getattr(signal, name) for name in Signal.__slots__}  # type: ignore[attr-defined]
 
 
-def run_days(loader: DayLoader, days: Iterable[date], cfg: Config, costs: CostModel = BASE_COSTS) -> tuple[list[Trade], Engine]:
+def run_days(loader: DayLoader, days: Iterable[date], cfg: Config, costs: CostModel | None = None) -> tuple[list[Trade], Engine]:
     """Run the engine over consecutive days (lead days included by the caller). Missing days raise."""
     engine = Engine(cfg, costs)
     trades: list[Trade] = []

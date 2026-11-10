@@ -28,6 +28,13 @@ M6 Stop-Run-Fade / Zeros (DeepCharts, Axia, FH 15): a candle makes a new day ext
    Orderflow confirmation: the outermost bins print only the chasing side (zeros on the other side) and the
    candle's delta is in the direction of the run (chasers trapped).
 
+M7 Poor Volume am Range-Rand (Uzi 10.11.2026, AMT poor high/low, Bootcamp unfinished auction): a candle tests a
+   range edge (yesterday's VAH/VAL or high/low, the previous session's high/low) for the first time in three candles
+   and closes back inside; market entry back into the range at the next minute, stop beyond the extreme, target
+   the first opposing level with R:R >= 1.5. Not on trend days.
+   Orderflow confirmation: weak volume at the edge, i.e. relative volume of the touch candle < poor_relvol_max and
+   its extreme bin carries <= poor_extreme_share x the mean bin volume of the candle.
+
 Every detector returns the *same* signal with ``confirmed`` True or False, so one run yields both the
 orderflow rule and its price-only comparator (protocol N4: price rule against price rule + one filter).
 """
@@ -277,3 +284,47 @@ def stop_run(c15: Sequence[Candle], fp15: Sequence[Footprint], lv: Levels, cfg: 
     chased = (run.delta > 0) if direction < 0 else (run.delta < 0)
     return Signal("M6", direction, run.end, MARKET, None, run.end + MINUTE_MS, stop, target[1], name, level, zeros and chased,
                   notes=(f"run_delta={run.delta}", f"bins={fp.n_bins}", f"ziel={target[0]}"), tf=cfg.tf_sfp)
+
+
+RANGE_EDGES = {1: ("VAL", "TAG_TIEF", "SESSION_TIEF"), -1: ("VAH", "TAG_HOCH", "SESSION_HOCH")}
+
+
+def poor_edge(c15: Sequence[Candle], fp15: Sequence[Footprint], lv: Levels, cfg: Config) -> Signal | None:
+    """M7: the last closed candle tested a range edge with weak volume and closed back inside; fade at the next open."""
+    if len(c15) < 3 or len(fp15) != len(c15) or not all(c.has_trades for c in c15[-3:]):
+        return None
+    touch, fp = c15[-1], fp15[-1]
+    if touch.range <= 0 or fp.empty:
+        return None
+    step = fp.step
+    for direction in (1, -1):
+        for name, level in lv.sweep_levels(direction):
+            if name not in RANGE_EDGES[direction]:
+                continue
+            if direction > 0:
+                fresh = all(c.low > level + step for c in c15[-3:-1])
+                tested = touch.low <= level + step and touch.close > level
+                ext = touch.low
+            else:
+                fresh = all(c.high < level - step for c in c15[-3:-1])
+                tested = touch.high >= level - step and touch.close < level
+                ext = touch.high
+            if not (fresh and tested):
+                continue
+            stop = ext - ext * cfg.stop_buffer * direction
+            target = _first_target(lv, direction, touch.close, stop, cfg)
+            if target is None:
+                continue
+            relvol = relative_volume(c15[:-1], touch, cfg.relvol_bars)
+            readable = fp.n_bins >= cfg.fp_min_bins
+            poor = False
+            if readable:
+                volumes = [buy + sell for _, buy, sell in fp.bins]
+                mean = sum(volumes) / len(volumes)
+                edge = volumes[0] if direction > 0 else volumes[-1]
+                poor = mean > 0 and edge <= cfg.poor_extreme_share * mean
+            weak = relvol is not None and relvol < cfg.poor_relvol_max
+            return Signal("M7", direction, touch.end, MARKET, None, touch.end + MINUTE_MS, stop, target[1], name, level,
+                          weak and poor, relvol=relvol, notes=(f"bins={fp.n_bins}", f"poor={poor}", f"ziel={target[0]}"),
+                          tf=cfg.tf_sfp)
+    return None

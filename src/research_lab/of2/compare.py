@@ -23,7 +23,7 @@ from src.research_lab.of2.backtest import Tracker, Trade
 from src.research_lab.of2.config import DAY_MS, HOUR_MS, MINUTE_MS, Config
 from src.research_lab.of2.engine import DayLoader, _ms
 from src.research_lab.of2.models import MARKET, Signal
-from src.research_lab.protocol import BASE_COSTS, CostModel
+from src.research_lab.protocol import CostModel
 
 
 def _session_window(name: str, cfg: Config) -> tuple[int, int]:
@@ -64,7 +64,7 @@ def _materialize(signal: Signal, open_price: float, fill_ms: int | None = None) 
 
 
 def run_random(loader: DayLoader, first: date, last: date, pseudo: Sequence[Signal], cfg: Config,
-               costs: CostModel = BASE_COSTS) -> list[Trade]:
+               costs: CostModel | None = None) -> list[Trade]:
     """Second streaming pass: fills every pseudo signal at the open of its minute and follows it like a real trade.
 
     Streams exactly [first, last] like the real run; pseudo trades still open at the end are dropped the same way
@@ -101,7 +101,7 @@ def _fill_day(signal: Signal) -> date:
 
 
 def run_random_parallel(loader_factory: Callable[[], DayLoader], first: date, last: date, pseudo: Sequence[Signal],
-                        cfg: Config, workers: int = 1, costs: CostModel = BASE_COSTS) -> list[Trade]:
+                        cfg: Config, workers: int = 1, costs: CostModel | None = None) -> list[Trade]:
     """``run_random`` split by time over ``workers`` processes; same trades as one pass.
 
     The section is cut into ``workers`` contiguous day ranges. Each process takes the pseudo signals that fill
