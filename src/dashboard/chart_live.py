@@ -283,15 +283,16 @@ def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datet
         note = f"Vormonat {month['open_time'].strftime('%m.%Y')}"
         for key, name in (("high", "High"), ("low", "Low")):
             moment = _extreme_time(days, month["open_time"], month["close_time"], month[key], key) if days else month["open_time"]
-            add("month", "1M", name, month[key], moment, note)
+            # The label names the period: a prior month's low above today's price confused readers (Uzi 10.11.2026).
+            add("month", "1M", f"{name} · {note}", month[key], moment, note)
     for profile in (prep.get("htf_levels") or {}).get("profiles") or []:
         group = {"1M": "month", "1Q": "quarter", "1Y": "year"}[profile["tf"]]
         start = datetime.fromisoformat(profile["start"])
         for key, name in (("vah", "VAH"), ("poc", "POC"), ("val", "VAL")):
             add(group, profile["tf"], name, profile.get(key), start, f"{profile['name']}, {profile['estimate']}")
         if group != "month":  # the month's high/low is drawn above from the monthly candle
-            add(group, profile["tf"], "High", profile.get("high"), start, profile["name"])
-            add(group, profile["tf"], "Low", profile.get("low"), start, profile["name"])
+            add(group, profile["tf"], f"High · {profile['name']}", profile.get("high"), start, profile["name"])
+            add(group, profile["tf"], f"Low · {profile['name']}", profile.get("low"), start, profile["name"])
     prev_day = pd["day"] if pd else None
     for item in prep.get("naked_pocs") or []:
         if item["day"] == prev_day:
