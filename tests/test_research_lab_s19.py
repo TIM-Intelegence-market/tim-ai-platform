@@ -267,14 +267,51 @@ def test_evaluate_runs_end_to_end_on_a_small_store_and_reports_every_hypothesis(
     days = [date(2021, 3, 1), date(2021, 3, 2), date(2021, 3, 3)]
     write_store(tmp_path, days)
     readings, gaps = s19.read_range(tmp_path, days[0], days[-1])
+    blind = s19.evaluate(readings, gaps)  # a few days pass no gate: nothing is evaluated (5.1)
+    assert blind["results"] == {} and blind["evaluated_families"] == []
+    assert all(v["status"] == "nicht testbar" for v in blind["verdicts"].values())
+    assert blind["descriptive"]["mean_log_return_bps"] == {} and blind["descriptive"]["share_of_candles_with_today_flag"] is None
+    assert "Nicht ausgewertet (Gate 5.1" in s19.evaluate_report(blind, stamp="test")
+    monkeypatch.setattr(s19, "MIN_EVENTS", 0)
+    monkeypatch.setattr(s19, "MIN_WEEKS", 0)
     result = s19.evaluate(readings, gaps)
     assert len(result["results"]) == 2 * 112 and set(result["verdicts"]) == set(s19.FAMILIES)
-    assert all(v["status"] == "nicht testbar" for v in result["verdicts"].values())
+    assert result["evaluated_families"] == list(s19.FAMILIES)
     some = [r for r in result["results"].values() if r["events"] > 0]
     assert some and all(0 <= r["hit_rate"] <= 1 for r in some)
     assert "share_of_candles_with_today_flag" in result["descriptive"]
     report = s19.evaluate_report(result, stamp="test")
-    assert "## Urteil je Familie" in report and "| `I:4x3` | up |" in report
+    assert "## Urteil je Familie" in report and "| `I:4x3` | up |" in report and "Nicht ausgewertet" not in report
+
+
+def test_evaluate_skips_untestable_families_but_holm_keeps_all_112(monkeypatch) -> None:
+    monkeypatch.setattr(s19, "DRAWS", 99)
+    calls = {}
+
+    def fake_holm(pvalues, m, alpha):
+        calls.setdefault("m", set()).add(m)
+        calls.setdefault("families", set()).update(s19.family_of(name.split("/")[1]) for name in pvalues)
+        return set()
+
+    monkeypatch.setattr(s19, "holm", fake_holm)
+    gate = {f: {"today": s19.TODAY_KEYS[f], "testable": f in ("T", "H", "E")} for f in s19.FAMILIES}
+    monkeypatch.setattr(s19, "count", lambda readings, gaps: {"gate": gate, "version": s19.VERSION, "hypotheses": s19.HYPOTHESES})
+    start = s19._ms(date(2021, 3, 1))
+    readings = [s19.Reading(start + i * s19.CANDLE_MS, 100.0 + (i % 7), True, 12,
+                            ("I:4x3|up", "C:3|down", "T:0.25|down", "H:1.2|up") if i % 9 == 0 else ()) for i in range(400)]
+    result = s19.evaluate(readings, [])
+    assert result["evaluated_families"] == ["T", "H", "E"]
+    assert {s19.family_of(n.split("/")[1]) for n in result["results"]} == {"T", "H", "E"}
+    assert calls["m"] == {112} and calls.get("families", set()) <= {"T", "H", "E"}
+    assert all(not k.startswith(("I:", "A:", "C:")) for k in result["descriptive"]["mean_log_return_bps"])
+    assert {result["verdicts"][f]["status"] for f in "IAC"} == {"nicht testbar"}
+
+
+def test_cli_evaluate_refuses_other_geometry_and_partial_ranges(tmp_path) -> None:
+    for extra in (["--min-levels", "5"], ["--step-pct", "0.001"], ["--first", "2021-03-01", "--last", "2021-03-02"]):
+        with pytest.raises(SystemExit):
+            s19.main(["evaluate", "--bars", str(tmp_path), "--out", str(tmp_path / "out"), *extra])
+    assert s19.VERSION == "1.0"
 
 
 def test_cli_count_writes_json_and_markdown(tmp_path) -> None:
@@ -302,5 +339,5 @@ def test_cache_is_split_by_footprint_geometry_and_cli_accepts_it(tmp_path) -> No
     assert s19.main(["count", "--bars", str(tmp_path), "--out", str(out), "--first", days[0].isoformat(), "--last", days[-1].isoformat(),
                      "--cache", str(cache), "--min-levels", "5", "--step-pct", str(s19.FP_STEP_PCT)]) == 0
     result = json.loads(next(out.glob("s19_count_*.json")).read_text())
-    assert result["min_levels"] == 5 and result["step_pct"] == s19.FP_STEP_PCT and result["version"] == "0.3"
+    assert result["min_levels"] == 5 and result["step_pct"] == s19.FP_STEP_PCT and result["version"] == "1.0"
     assert "ab 5 gehandelten Stufen" in next(out.glob("s19_count_*.md")).read_text()

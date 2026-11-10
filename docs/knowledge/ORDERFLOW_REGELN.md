@@ -129,7 +129,7 @@ dient der Analyse aktueller Tage und trägt keine Forschungs-Evidenz.
 - Schwellen (1,2 / 0,7 / 0,8; 4x; 3x; 25 %) stammen aus den Quellen und sind nicht kalibriert.
   Glossar mit einer Definition je Begriff und allen Konstanten: `ORDERFLOW_BEGRIFFE.md` (vom Test
   `tests/test_orderflow_begriffe.py` gegen den Code geprüft). Messung an BTC: Studie S19
-  (`../research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG_ENTWURF.md`, Entwurf).
+  (`../research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG.md`, Version 1.0, eingefroren 10.11.2026).
 
 ## 3. Weitere Bootcamp-Regeln (Status in TIM)
 

@@ -3,7 +3,7 @@
     python scripts/research_lab_s19.py count    --bars <S8 root> --out DIR --workers 16 --cache DIR   # blind gate (5.1)
     python scripts/research_lab_s19.py evaluate --bars <S8 root> --out DIR --workers 16 --cache DIR   # only after 1.0
 
-Rules: docs/research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG_ENTWURF.md. Stdlib only; the
+Rules: docs/research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG.md. Stdlib only; the
 holdout from 2025-01-01 is refused before any file is read. Meant for the PS5 (16 threads) with the S8 store
 ``~/tim-research/data/orderflow_ml_120``; runs on the Mac the same way.
 """
