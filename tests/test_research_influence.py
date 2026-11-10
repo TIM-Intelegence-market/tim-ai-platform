@@ -200,3 +200,29 @@ def test_stored_history_hash_checked(tmp_path):
     (tmp_path / "roh" / "DFII10.json").write_bytes(raw + b" ")
     with pytest.raises(macro_filters.MacroDataError):
         cli.load_history(tmp_path)
+
+
+def test_barometer_summary_events_and_tile(tmp_path):
+    from src.dashboard import barometer_tile
+
+    today = date(2026, 11, 9)
+    now = datetime(2026, 11, 9, 9, 30, tzinfo=timezone.utc)
+    rising = sorted((today - timedelta(days=i), 2.0 - i / 100) for i in range(1, 120))
+    events = [{"kind": "CPI", "time": datetime(2026, 11, 12, 13, 30, tzinfo=timezone.utc), "label": "US-CPI"},
+              {"kind": "FOMC", "time": datetime(2026, 12, 9, 19, tzinfo=timezone.utc), "label": "FOMC"}]
+    summary = macro_filters.barometer_summary(today, {"DFII10": rising}, macro_filters.HISTORY, events, now)
+    real = next(d for d in summary["treiber"] if d["label"] == "Realzins 10J")
+    assert real["richtung"] == "gestiegen" and real["wind"] == "Gegenwind"  # -0.19 % after rising vs +1.49 % after falling
+    assert [e["kind"] for e in summary["termine"]] == ["CPI"]
+    text = macro_filters.barometer_markdown(today, {"DFII10": rising}, macro_filters.HISTORY, events, now)
+    assert "Termine der nächsten 7 Tage" in text and "US-CPI" in text and "1,40" in text
+
+    path = tmp_path / "barometer_latest.json"
+    path.write_text(json.dumps(summary))
+    t = barometer_tile.tile(barometer_tile.load(path), now)
+    assert t.value == "0 Rückenwind · 1 Gegenwind"
+    assert "Realzins 10J gestiegen" in t.detail and "US-CPI Do 12.11. 14:30" in t.detail
+    assert t.state == "ok"
+    old = barometer_tile.tile(barometer_tile.load(path), now + timedelta(days=9))
+    assert old.state == "warn"
+    assert barometer_tile.tile(barometer_tile.load(tmp_path / "missing.json"), now).state == "unknown"
