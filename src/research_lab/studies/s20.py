@@ -1,6 +1,6 @@
 """S20: flip probability from candle structure at a swing level (BTCUSDT spot, 1h, 2017-08 to 2024).
 
-Rules: docs/research_lab/studien/S20_FLIP_WAHRSCHEINLICHKEIT_PRAEREGISTRIERUNG_ENTWURF.md (version 0.3).
+Rules: docs/research_lab/studien/S20_FLIP_WAHRSCHEINLICHKEIT_PRAEREGISTRIERUNG_ENTWURF.md (version 0.2).
 Observation study without trades and without a register slot; the holdout from 2025-01-01 is never loaded.
 
     python -m src.research_lab.studies.s20 count    --root data/research_lab --out DIR [--fetch]
@@ -37,7 +37,7 @@ from src.research_lab.data.parse import Kline
 from src.research_lab.protocol import HOLDOUT_START_MS, VALIDATION_START_MS
 from src.research_lab.stats.inference import holm
 
-VERSION = "0.3"
+VERSION = "0.2"
 SEED = 20
 SYMBOL = "BTCUSDT"
 INTERVAL = "1h"
@@ -61,8 +61,7 @@ UP, DOWN = "up", "down"
 # -- model and tests (section 4 and 5) ----------------------------------------------------------------
 MECHANICS_FEATURE = 2  # index of "abstand_atr": under a random walk the hold chance depends on this distance alone
 CANDLE_FEATURES = ("koerper", "docht_gegen", "abstand_atr", "spanne_atr", "taker_saldo", "level_alter", "richtung_up")
-WINDOW_FEATURES = ("volumen_log", "beruehrungen", "momentum", "kompression", "abweisung",
-                   "cvd_anteil", "cvd_gleichlauf", "volumentrend")
+WINDOW_FEATURES = ("volumen_log", "beruehrungen", "momentum", "kompression", "abweisung")
 RIDGE = 1.0  # L2 penalty on standardised slopes, intercept free; fixed, never tuned
 NEWTON_STEPS = 25
 CV_YEARS = (2019, 2020, 2021, 2022)  # forward chaining: fit on everything before the year, score the year
@@ -73,7 +72,7 @@ MIN_REL_GAIN = 0.01  # validation log-loss at least 1 % below the mechanics mode
 MIN_AUC = 0.55
 MIN_QUINTILE_SPREAD_PP = 10.0
 ALPHA = 0.05
-HOLM_M = 4  # H1 mechanics, H2 window, H3 footprint, H4 funding; an untested one counts as p = 1
+HOLM_M = 2  # H1 (model against mechanics) and H2 (window against candle only)
 BOOT_DRAWS = 9_999
 BLOCK_WEEKS = 4
 SHIFT_DRAWS = 199
@@ -263,39 +262,13 @@ def window_features(bars: Sequence[Kline], event: Event, n: int) -> list[float]:
         touches = sum(1 for b in window if b.low <= event.level + TOUCH_ATR * a)
         rejection = sum(min(b.open, b.close) - b.low for b in window) / (n * a)
     root = math.sqrt(n)
-    span = bars[t - n:t + 1]  # window plus the break candle: flow into the break
-    total = sum(b.volume for b in span)
-    cvd_share = s * sum(b.delta for b in span) / total if total > 0 else 0.0
-    cvd_path: list[float] = []
-    running = 0.0
-    for b in span:
-        running += b.delta
-        cvd_path.append(running)
-    logs = [math.log(b.volume) if b.volume > 0 else 0.0 for b in window]
-    half = n // 2
-    trend = sum(logs[n - half:]) / half - sum(logs[:half]) / half if half else 0.0
     return [
         vol,
         touches / n,
         s * (bar.close - bars[t - n].close) / (a * root),
         (max(b.high for b in window) - min(b.low for b in window)) / (a * root),
         rejection,
-        cvd_share,
-        _correlation(cvd_path, [b.close for b in span]),
-        trend,
     ]
-
-
-def _correlation(xs: Sequence[float], ys: Sequence[float]) -> float:
-    """Pearson correlation; 0 when one side does not move. Below 0: flow and price diverge."""
-    n = len(xs)
-    mx, my = sum(xs) / n, sum(ys) / n
-    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
-    sxx = sum((x - mx) ** 2 for x in xs)
-    syy = sum((y - my) ** 2 for y in ys)
-    if sxx <= 1e-18 or syy <= 1e-18:
-        return 0.0
-    return sxy / math.sqrt(sxx * syy)
 
 
 @dataclass(frozen=True, slots=True)
@@ -580,112 +553,12 @@ def split(rows: Sequence[Row]) -> tuple[list[Row], list[Row]]:
     return [r for r in rows if r.section == "training"], [r for r in rows if r.section == "validierung"]
 
 
-# -- footprint orderflow at the line (section 4.3, H3) -------------------------------------------------
-FP_FAMILIES = ("I", "A", "C", "T", "H", "E")  # S19 families, each only with today's engine threshold
-FP_FEATURES = tuple(f"fp_{family}" for family in FP_FAMILIES)
-FP_CANDLE_MS = 15 * 60_000
-FP_CANDLES = 8  # the hour before the break and the break hour, as 15m candles (all closed at the break close)
-FP_START_MS = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)  # S8 store begins 2020
-MIN_FP_EVENTS = {"training": 250, "validierung": 150}
-
-
-def footprint_features(readings: Mapping[int, object], event_time: int, direction: str,
-                       today: Mapping[str, str]) -> tuple[float, ...] | None:
-    """Per S19 family: (flags pointing in the break direction - flags against it) / 8 over the eight 15m candles.
-
-    ``readings`` maps the 15m start to an S19 ``Reading``; ``today`` is ``s19.TODAY_KEYS``. None when a candle is
-    missing or untraded: such an event leaves H3, it is never filled."""
-    first = event_time - (FP_CANDLES - 4) * FP_CANDLE_MS
-    net = dict.fromkeys(FP_FAMILIES, 0)
-    for k in range(FP_CANDLES):
-        reading = readings.get(first + k * FP_CANDLE_MS)
-        if reading is None or not reading.traded:
-            return None
-        for flag in reading.flags:
-            key, flag_dir = flag.split("|")
-            family = key.split(":", 1)[0]
-            if family in net and key == today[family]:
-                net[family] += 1 if flag_dir == direction else -1
-    return tuple(net[f] / FP_CANDLES for f in FP_FAMILIES)
-
-
-def _fp_rows(rows: Sequence[Row], fp: Mapping[int, tuple[float, ...]]) -> tuple[list[Row], list[Row]]:
-    inside = [r for r in rows if r.time >= FP_START_MS and r.time in fp]
-    return split(inside)
-
-
-def _fp_fit_gain(train: Sequence[Row], valid: Sequence[Row], fp: Mapping[int, tuple[float, ...]], window: int,
-                 yt: Sequence[int], yv: Sequence[int]) -> tuple[list[float], list[float]]:
-    xa_t, xa_v = matrix(train, window), matrix(valid, window)
-    xb_t = [x + list(fp[r.time]) for x, r in zip(xa_t, train)]
-    xb_v = [x + list(fp[r.time]) for x, r in zip(xa_v, valid)]
-    a, b = fit(xa_t, yt), fit(xb_t, yt)
-    return [a.predict(x) for x in xa_v], [b.predict(x) for x in xb_v]
-
-
-def evaluate_footprint(rows: Sequence[Row], fp: Mapping[int, tuple[float, ...]], window: int, *,
-                       boot_draws: int = BOOT_DRAWS, shift_draws: int = SHIFT_DRAWS, name: str = "H3") -> dict:
-    """H3 (footprint) and H4 (funding): do extra features add to the S20 model (window from the main run)?
-
-    ``fp`` maps the event time to the extra features; events without an entry, or before 2020, stay out."""
-    train, valid = _fp_rows(rows, fp)
-    gate = len(train) >= MIN_FP_EVENTS["training"] and len(valid) >= MIN_FP_EVENTS["validierung"]
-    out: dict = {"ereignisse": {"training": len(train), "validierung": len(valid)}, "gate": gate, "p": None}
-    if not gate:
-        return out
-    yt, yv = [r.y for r in train], [r.y for r in valid]
-    pa, pb = _fp_fit_gain(train, valid, fp, window, yt, yv)
-    observed = rel_gain(yv, pb, pa)
-    diffs = [log_loss(y, a) - log_loss(y, b) for y, a, b in zip(yv, pa, pb)]
-    rng = random.Random(f"{SEED}:{name}-verschiebung")
-    at_or_above = 0
-    for _ in range(shift_draws):
-        ot = rng.randint(MIN_SHIFT, len(yt) - MIN_SHIFT)
-        ov = rng.randint(MIN_SHIFT // 2, len(yv) - MIN_SHIFT // 2)
-        st, sv = yt[-ot:] + yt[:-ot], yv[-ov:] + yv[:-ov]
-        qa, qb = _fp_fit_gain(train, valid, fp, window, st, sv)
-        at_or_above += rel_gain(sv, qb, qa) >= observed
-    out.update({"rel_gewinn": observed, "p": block_bootstrap_p([r.week for r in valid], diffs, seed=name, draws=boot_draws),
-                "glueckstest_p": (at_or_above + 1) / (shift_draws + 1), "auc_mit_footprint": auc(yv, pb),
-                "auc_ohne_footprint": auc(yv, pa)})
-    return out
-
-
-# -- funding (section 4.4, H4) ------------------------------------------------------------------------
-FUNDING_FEATURES = ("funding_letzt", "funding_z")
-FUNDING_LOOKBACK = 90  # 30 days of 8h funding rates
-
-
-def funding_features(rates: Sequence[tuple[int, float]], event: Event) -> tuple[float, ...] | None:
-    """Last published rate before the break close and its z-score over the 90 before, both in break direction.
-
-    Positive = the crowd already pays to sit on the side of the break (longs pay on an up break). ``rates`` is
-    (time, rate) in time order; only rates with time <= break close count. None without 90 earlier rates."""
-    close_time = event.time + HOUR
-    known = [r for t, r in rates if t <= close_time]
-    if len(known) < FUNDING_LOOKBACK + 1:
-        return None
-    last = known[-1]
-    hist = known[-FUNDING_LOOKBACK - 1:-1]
-    mean = sum(hist) / len(hist)
-    sd = math.sqrt(sum((r - mean) ** 2 for r in hist) / len(hist))
-    s = 1.0 if event.direction == UP else -1.0
-    return (s * last * 10_000, s * (last - mean) / sd if sd > 1e-9 else 0.0)  # rate in basis points; flat history: z = 0
-
-
 # -- count (5.1) and evaluate (5) ----------------------------------------------------------------------
 
 
-def count(events: Sequence[Event], drops: Mapping[str, int], fp: Mapping[int, tuple[float, ...]] | None = None,
-          funding: Mapping[int, tuple[float, ...]] | None = None) -> dict:
-    """Results-blind: numbers of events and weeks, no label. With ``fp``: events that have a full footprint (H3)."""
+def count(events: Sequence[Event], drops: Mapping[str, int]) -> dict:
+    """Results-blind: numbers of events and weeks, no label."""
     out: dict = {"abschnitte": {}, "verworfen": dict(sorted(drops.items()))}
-    if fp is not None:
-        covered = {name: sum(1 for e in events if e.section == name and e.time >= FP_START_MS and e.time in fp) for name in SECTIONS}
-        out["footprint"] = {"ereignisse": covered, "gate": all(covered[n] >= MIN_FP_EVENTS[n] for n in SECTIONS)}
-    if funding is not None:
-        covered = {name: sum(1 for e in events if e.section == name and e.time >= FP_START_MS and e.time in funding) for name in SECTIONS}
-        out["funding"] = {"ereignisse": covered, "gate": all(covered[n] >= MIN_FP_EVENTS[n] for n in SECTIONS)}
     for name in SECTIONS:
         evs = [e for e in events if e.section == name]
         weeks = {week_of(e.time) for e in evs}
@@ -699,12 +572,7 @@ def count(events: Sequence[Event], drops: Mapping[str, int], fp: Mapping[int, tu
     return out
 
 
-def _addon_ok(h: Mapping | None, name: str, holm_passed: set[str]) -> bool:
-    return bool(h and h.get("gate") and name in holm_passed and h["rel_gewinn"] >= MIN_REL_GAIN and h["glueckstest_p"] < ALPHA)
-
-
-def verdict(h1: Mapping, h2: Mapping, shift: Mapping, holm_passed: set[str], h3: Mapping | None = None,
-            h4: Mapping | None = None) -> dict:
+def verdict(h1: Mapping, h2: Mapping, shift: Mapping, holm_passed: set[str]) -> dict:
     h1_ok = ("H1" in holm_passed and h1["rel_gewinn"] >= MIN_REL_GAIN and (h1["auc"] or 0) >= MIN_AUC
              and (h1["quintil_spanne_pp"] or 0) >= MIN_QUINTILE_SPREAD_PP and shift["p"] < ALPHA)
     h2_ok = h1_ok and "H2" in holm_passed and h2["rel_gewinn"] > 0
@@ -715,19 +583,11 @@ def verdict(h1: Mapping, h2: Mapping, shift: Mapping, holm_passed: set[str], h3:
         text = "BESTANDEN (Kandidat): Flip-Wahrscheinlichkeit trägt, das gewählte Fenster bringt mehr als die Ausbruchskerze allein"
     else:
         text = "BESTANDEN (Kandidat), aber das Fenster bringt nichts über die Ausbruchskerze hinaus"
-    oks = {}
-    for name, label, h in (("H3", "Footprint-Orderflow", h3), ("H4", "Funding", h4)):
-        oks[name] = _addon_ok(h, name, holm_passed)
-        if h is None or not h.get("gate"):
-            text += f"; {label} ({name}) nicht geprüft"
-        else:
-            text += f"; {label} bringt " + (f"nachweislich mehr ({name} bestanden)" if oks[name] else f"keinen nachweisbaren Zusatz ({name} nicht bestanden)")
-    return {"urteil": text, "H1_bestanden": h1_ok, "H2_bestanden": h2_ok, "H3_bestanden": oks["H3"], "H4_bestanden": oks["H4"]}
+    return {"urteil": text, "H1_bestanden": h1_ok, "H2_bestanden": h2_ok}
 
 
 def evaluate(rows: Sequence[Row], *, workers: int = 1, shift_draws: int = SHIFT_DRAWS, boot_draws: int = BOOT_DRAWS,
-             version: str = VERSION, footprint: Mapping[int, tuple[float, ...]] | None = None,
-             funding: Mapping[int, tuple[float, ...]] | None = None) -> dict:
+             version: str = VERSION) -> dict:
     if not version.startswith("1."):
         raise PermissionError("evaluate runs only after the rules are frozen as 1.0 (section 7)")
     train, valid = split(rows)
@@ -745,11 +605,8 @@ def evaluate(rows: Sequence[Row], *, workers: int = 1, shift_draws: int = SHIFT_
     cand_loss = mean_log_loss(yv, run.p_candle)
     h2 = {"rel_gewinn": (cand_loss - mean_log_loss(yv, run.p_model)) / cand_loss,
           "p": block_bootstrap_p(weeks, d2, seed="H2", draws=boot_draws)}
-    h3 = evaluate_footprint(rows, footprint, run.window, boot_draws=boot_draws, shift_draws=shift_draws) if footprint is not None else None
-    h4 = (evaluate_footprint(rows, funding, run.window, boot_draws=boot_draws, shift_draws=shift_draws, name="H4")
-          if funding is not None else None)
-    pvalues = {"H1": h1["p"], "H2": h2["p"], "H3": h3["p"] if h3 else None, "H4": h4["p"] if h4 else None}
-    passed = holm({k: (v if v is not None else 1.0) for k, v in pvalues.items()}, HOLM_M, ALPHA)
+    passed = holm({"H1": h1["p"] if h1["p"] is not None else 1.0, "H2": h2["p"] if h2["p"] is not None else 1.0},
+                  HOLM_M, ALPHA)
     shift = shift_test(train, valid, h1["rel_gewinn"], draws=shift_draws, workers=workers)
     return {
         "fenster_gewaehlt": run.window,
@@ -757,7 +614,7 @@ def evaluate(rows: Sequence[Row], *, workers: int = 1, shift_draws: int = SHIFT_
         "cv_logloss_nur_kerze": cv_loss(train, None),
         "basisrate_training": run.base_rate,
         "H1_gegen_mechanik": h1, "H2_fenster_gegen_nur_kerze": h2, "holm_bestanden": sorted(passed),
-        "H3_footprint": h3, "H4_funding": h4, "glueckstest": shift, **verdict(h1, h2, shift, passed, h3, h4),
+        "glueckstest": shift, **verdict(h1, h2, shift, passed),
         "beschreibend": describe(train, valid, run),
     }
 
@@ -805,45 +662,6 @@ def load(root: Path, *, fetch: bool = False) -> tuple[list[Kline], str]:
     return bars, store.dataset_hash(rs)
 
 
-def load_footprint(root: Path, events: Sequence[Event], *, workers: int = 1, cache: Path | None = None) -> dict[int, tuple[float, ...]]:
-    """S19 readings (engine footprint flags on 15m candles, S8 store 2020-2024) turned into H3 features per event."""
-    from datetime import date
-
-    from src.research_lab.studies import s19
-    readings, _ = s19.read_range(root, date(2020, 1, 1), date(2024, 12, 31), workers=workers, cache=cache)
-    by_start = {r.start: r for r in readings}
-    out = {}
-    for e in events:
-        if e.time >= FP_START_MS:
-            feats = footprint_features(by_start, e.time, e.direction, s19.TODAY_KEYS)
-            if feats is not None:
-                out[e.time] = feats
-    return out
-
-
-def load_funding(root: Path, events: Sequence[Event], *, fetch: bool = False) -> dict[int, tuple[float, ...]]:
-    """USD-M BTCUSDT funding archives 2019-10 to 2024-12 (perpetual from 2019-09), H4 features per event from 2020."""
-    from bisect import bisect_right
-
-    from src.research_lab.data.archive import ArchiveRef, Dataset, Market
-    from src.research_lab.data.store import ArchiveStore, months
-    store = ArchiveStore(root)
-    rs = [ArchiveRef(Market.USDM, Dataset.FUNDING, y, m, symbol=SYMBOL) for y, m in months((2019, 10), LAST_MONTH)]
-    if fetch:
-        for ref in rs:
-            store.fetch(ref)
-    rates = [(f.time, f.rate) for f in store.load_funding(rs)]
-    times = [t for t, _ in rates]
-    out = {}
-    for e in events:
-        if e.time >= FP_START_MS:
-            cut = bisect_right(times, e.time + HOUR)
-            feats = funding_features(rates[max(0, cut - FUNDING_LOOKBACK - 1):cut], e)
-            if feats is not None:
-                out[e.time] = feats
-    return out
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="s20")
     parser.add_argument("step", choices=("count", "evaluate"))
@@ -851,19 +669,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--fetch", action="store_true", help="fehlende Monatsdateien von data.binance.vision laden (nur bis 2024-12)")
     parser.add_argument("--workers", type=int, default=1)
-    parser.add_argument("--footprint", type=Path, help="S8-Store (wie S19 --bars) für H3; ohne: H3 nicht geprüft")
-    parser.add_argument("--fp-cache", type=Path, help="Tages-Cache der S19-Lesungen (wird mit S19 geteilt)")
-    parser.add_argument("--funding", action="store_true", help="H4 mit Funding-Archiven (USD-M) prüfen")
     args = parser.parse_args(argv)
     bars, digest = load(args.root, fetch=args.fetch)
     events, drops = find_events(bars)
-    fp = load_footprint(args.footprint, events, workers=args.workers, cache=args.fp_cache) if args.footprint else None
-    funding = load_funding(args.root, events, fetch=args.fetch) if args.funding else None
     stamp = time.strftime("%Y-%m-%dT%H%MZ", time.gmtime())
     result = {"studie": "S20", "version": VERSION, "seed": SEED, "datensatz_sha256": digest, "kerzen": len(bars),
-              "zaehllauf": count(events, drops, fp, funding)}
+              "zaehllauf": count(events, drops)}
     if args.step == "evaluate":
-        result["auswertung"] = evaluate(build_rows(bars, events), workers=args.workers, footprint=fp, funding=funding)
+        result["auswertung"] = evaluate(build_rows(bars, events), workers=args.workers)
     args.out.mkdir(parents=True, exist_ok=True)
     path = args.out / f"s20_{args.step}_{stamp}.json"
     path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")

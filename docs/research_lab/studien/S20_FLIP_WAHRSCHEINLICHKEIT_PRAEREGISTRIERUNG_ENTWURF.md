@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S20 (nächste freie Nummer nach S19, 09.11.2026) |
-| Version | **0.3, Entwurf.** Regeln als Code: `src/research_lab/studies/s20.py`, Tests `tests/test_research_lab_s20.py`. Keine Daten geladen, kein Zähllauf. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt |
+| Version | **0.2, Entwurf.** Regeln als Code: `src/research_lab/studies/s20.py`, Tests `tests/test_research_lab_s20.py`. Keine Daten geladen, kein Zähllauf. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt |
 | Anlass | Barti 09.11.2026: „Kann man aus einer Kombination aus den Candles, also den Hochs, den Tiefs, auch den Dochten, eine Wahrscheinlichkeit für den Flip berechnen?“ und „wie viele berücksichtigte Kerzen liefern das beste Ergebnis?“ |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Daten | Binance Spot BTCUSDT, 1h-Kerzen aus dem öffentlichen Archiv (`data.binance.vision`), 2017-08 bis 2024-12, Prüfsumme je Monatsdatei (`ArchiveStore`) |
@@ -22,25 +22,12 @@ danach wieder auf der alten Seite.
    den Abstand des Schlusses zur Linie in ATR kennt. Begründung: Auch bei einem reinen Zufallspfad hält ein
    weit überschrittenes Level öfter als ein knapp überschrittenes. Das ist Mechanik, keine Kerzenstruktur.
    Ein Vergleich nur gegen die Basisrate würde diesen trivialen Effekt als Erfolg zählen (am synthetischen
-   Zufallspfad nachgeprüft, Abschnitt 7). Zu den Merkmalen gehören Volumen und Orderflow aus den Kerzen
-   (Taker-Saldo, CVD, CVD-Gleichlauf mit dem Preis, Volumentrend).
+   Zufallspfad nachgeprüft, Abschnitt 7).
 2. **H2: Bringen die Kerzen vor dem Bruch etwas über die Bruchkerze hinaus, und wie viele?** Raster
    N = 5, 10, 20, 50 Kerzen. Welches N gilt, entscheidet **nur das Training**; die Validierung sieht genau
    ein N und prüft, ob das Fenster-Modell besser ist als das Modell nur aus der Bruchkerze.
 
-3. **H3: Bringt echter Footprint-Orderflow an der Linie etwas über die Kerzen hinaus?** Die Footprint-Signale
-   der TIM-Engine (Imbalance-Stapel, Auktionsrand, Absorptions-Cluster, dünnes Extrem, Absorption mit
-   Anstrengung, Erschöpfung; je mit dem heutigen Schwellwert) in der Stunde vor dem Bruch und der Bruchstunde.
-   Die Footprint-Daten (S8-Store) gibt es erst ab 2020, deshalb nur auf Ereignissen 2020–2024.
-
-4. **H4: Bringt Funding etwas über die Kerzen hinaus?** Ob die Masse schon gehebelt auf der Seite des
-   Ausbruchs sitzt (Longs zahlen bei einem Ausbruch nach oben). Funding gibt es ab Perp-Start 2019-09, geprüft
-   wird wie H3 auf 2020–2024.
-
-Nicht geprüft: Einstieg, Stop, Ziel, Kosten, Gewinn in R, Kombination mit Makro-Treibern, Liquidationen.
-**Open Interest** ebenfalls nicht: Im öffentlichen Binance-Archiv gibt es OI (Datei „metrics“) nach meinem
-Stand erst ab Dezember 2021. Das Training hätte damit nur ein Jahr und käme nicht über das Gate. OI bleibt
-ein Kandidat für einen eigenen Vorwärtslauf (vor dem Lauf zu prüfen, ab wann die Daten wirklich da sind).
+Nicht geprüft: Einstieg, Stop, Ziel, Kosten, Gewinn in R, Kombination mit Makro-Treibern oder Orderflow.
 Das wäre eine eigene Studie mit eigener Präregistrierung (Abschnitt 8).
 
 ## 2. Vorbelastung
@@ -52,11 +39,7 @@ Das wäre eine eigene Studie mit eigener Präregistrierung (Abschnitt 8).
 - **S9** (CHoCH → Retest, 15m) und **S10** (IB-Ausbruch → POC-Retest): beide am Machbarkeits-Gate beendet,
   ohne Ergebnis. Lehre: Ereignisregeln mit vielen Bedingungen liefern zu wenige Fälle. S20 hält die Regel
   deshalb bewusst einfach (eine Pivot-Regel, eine Bruch-Schwelle, ein Haltefenster).
-- **S19** (Orderflow-Schwellen, Entwurf, kein Ergebnis gesehen): misst Richtungsneigung nach Flags, nicht
-  Halten eines Levels. S20 nutzt S19s Leser für H3, aber nur die heutigen Schwellen, nie das Raster. Sollte
-  S19 später eine Schwelle ändern, bleibt S20 bei den Werten zum Zeitpunkt des Einfrierens.
-- **S8** (lokale Orderflow-Prognose, kein praktischer Zusatznutzen): Die Minutenbalken 2020–2024, auf denen
-  H3 liest, sind für S8 schon ausgewertet worden (andere Merkmale, andere Frage).
+- **S19** (Orderflow-Schwellen, Entwurf): misst Richtungsneigung nach Flags, nicht Halten eines Levels.
 - **Gesehen vom Autor:** keine Statistik zu Flip-Quoten von Swing-Levels an BTC. Barti kennt Flips aus dem
   Chart (Lehrbuch-Wissen „Support wird Resistance“), das ist die Herkunft der Idee.
 
@@ -89,13 +72,9 @@ Bruchkerze (7, ohne Fenster): Körper/Spanne mit Vorzeichen; Docht gegen die Bru
 Schluss–Linie in ATR; Spanne in ATR; Taker-Saldo (Käufer minus Verkäufer durch Volumen); Alter der Linie;
 Richtung (oben = 1).
 
-Fenster der N Kerzen davor (8): Log-Volumenverhältnis Bruchkerze zu Fenstermittel; Anteil Kerzen, die die
+Fenster der N Kerzen davor (5): Log-Volumenverhältnis Bruchkerze zu Fenstermittel; Anteil Kerzen, die die
 Linie bis auf 0,25 ATR getestet haben; Momentum (Schluss heute minus Schluss vor N, in ATR·√N); Kompression
-(Fenster-Spanne in ATR·√N); mittlerer Abweisungsdocht auf der Seite der Linie in ATR; **CVD-Anteil** (Summe
-Taker-Delta über Fenster und Bruchkerze durch Volumen, in Bruchrichtung); **CVD-Gleichlauf** (Korrelation
-des kumulierten Deltas mit dem Schlusskurs über Fenster und Bruchkerze; negativ = Divergenz: Preis steigt,
-Käufer ziehen sich zurück); **Volumentrend** (mittleres Log-Volumen der zweiten Fensterhälfte minus der
-ersten).
+(Fenster-Spanne in ATR·√N); mittlerer Abweisungsdocht auf der Seite der Linie in ATR.
 
 Keine weiteren Merkmale, keine Interaktionen, keine Transformationen nach Sicht auf Ergebnisse.
 
@@ -112,31 +91,11 @@ Keine weiteren Merkmale, keine Interaktionen, keine Transformationen nach Sicht 
 - Danach **eine** Anpassung auf dem ganzen Training mit dem gewählten N und eine Anpassung des
   Nur-Kerze-Modells, dann **ein** Blick auf die Validierung.
 
-### 4.3 Footprint-Orderflow (H3)
-
-- Quelle: S8-Minutenbalken 2020–2024, gelesen mit `s19.read_range` (Footprint-Stufe 0,1 %, mindestens 20
-  gehandelte Stufen je Kerze, Engine-Regeln aus `analyze_footprint` und `effort_context`).
-- Je Familie (I, A, C, T, H, E) nur der **heutige** Schwellwert (`s19.TODAY_KEYS`). Merkmal = (Signale in
-  Bruchrichtung minus Signale dagegen) / 8 über die acht 15m-Kerzen von einer Stunde vor dem Bruch bis zum
-  Schluss der Bruchkerze. Alle acht sind beim Schluss der Bruchkerze abgeschlossen.
-- Fehlt eine der acht Kerzen oder ist sie ohne Handel, verlässt das Ereignis H3 (wird nicht aufgefüllt).
-- Modell A = S20-Modell mit dem in 4.2 gewählten N, Modell B = A plus die sechs Footprint-Merkmale, beide
-  nur auf 2020–2022 angepasst, ein Blick auf 2023–2024. Keine eigene Fensterwahl, kein Raster.
-
-### 4.4 Funding (H4)
-
-- Quelle: Binance USD-M Funding-Archiv BTCUSDT 2019-10 bis 2024-12 (`ArchiveStore`, Prüfsumme je Datei).
-- Merkmale am Schluss der Bruchkerze, nur aus Raten, die zu diesem Zeitpunkt veröffentlicht waren:
-  letzte Rate in Basispunkten und ihr z-Wert gegen die 90 Raten davor (30 Tage), beide in Bruchrichtung
-  gespiegelt (positiv = die Seite des Ausbruchs zahlt schon). Ohne 90 frühere Raten verlässt das Ereignis H4.
-- Prüfung wie H3: Modell A gegen A plus Funding, 2020–2022 angepasst, ein Blick auf 2023–2024, eigener
-  Glückstest, gleiches Gate (250/150).
-
 ## 5. Erfolgskriterien
 
 Statistik je Hypothese: mittlerer Unterschied des Log-Verlusts je Ereignis in der Validierung, p einseitig
 aus einem Block-Bootstrap über Ereignis-Wochen (Blocklänge 4 Wochen, 9 999 Ziehungen, Seed 20). Holm über
-H1 bis H4 zusammen (m = 4, ungeprüft zählt als p = 1), Familien-α = 5 %.
+H1 und H2 zusammen (m = 2), Familien-α = 5 %.
 
 **H1 gilt als bestanden**, wenn in der Validierung alles zugleich gilt:
 
@@ -153,19 +112,12 @@ H1 bis H4 zusammen (m = 4, ungeprüft zählt als p = 1), Familien-α = 5 %.
 Log-Verlust hat als das Nur-Kerze-Modell und das Holm-korrigierte p < 0,05 ist. Dann lautet die Antwort auf
 Bartis Frage „N Kerzen“; sonst „die Kerzen vor dem Bruch bringen nichts über die Bruchkerze hinaus“.
 
-**H3 gilt als bestanden**, wenn das Footprint-Gate (mindestens 250 Ereignisse mit vollem Footprint
-2020–2022 und 150 in 2023–2024) hält, Modell B den Log-Verlust von A in der Validierung um mindestens 1 %
-senkt, Holm-korrigiert p < 0,05 und der eigene Glückstest (Labels im Kreis verschoben, A und B neu
-angepasst, 199 Verschiebungen) p < 0,05 ergibt. H3 hängt nicht an H1: Orderflow kann tragen, auch wenn die
-Kerzen es nicht tun. **H4** gilt nach denselben Regeln mit den Funding-Merkmalen statt Footprint.
-
 Ergebnis: „BESTANDEN (Kandidat)“ mit oder ohne Fenster, oder „NICHT BESTANDEN“. Auch „bestanden“ heißt
 nur: Kandidat für einen Vorwärtslauf. Es wird nichts in die Engine übernommen (Abschnitt 8).
 
 ### 5.1 Machbarkeits-Gate (ergebnisblind, vor jedem Label)
 
-Zähllauf (`count`) nur mit Ereigniszahlen, Wochen, Richtungen, Jahren, Ausschlussgründen und (mit
-`--footprint`) der Zahl der Ereignisse mit vollem Footprint, ohne Label.
+Zähllauf (`count`) nur mit Ereigniszahlen, Wochen, Richtungen, Jahren und Ausschlussgründen, ohne Label.
 Mindestens 400 Ereignisse und 100 Wochen im Training, 150 Ereignisse und 50 Wochen in der Validierung.
 Das Gate wird nicht gelockert; fällt es durch, heißt das Ergebnis „nicht testbar“, und die Regeln in 3 werden
 **nicht** nachträglich gelockert, um mehr Ereignisse zu bekommen.
@@ -193,16 +145,11 @@ Kalibrierung in Zehnteln; Brier-Skill; standardisierte Koeffizienten. Daraus wir
    reiner Abstands-Effekt fällt durch. Gegenprobe am synthetischen Zufallspfad (BTC-ähnliche 1h-Kerzen
    2017-08 bis 2024, keine echten Daten): 602/223 Ereignisse, Fenster-Wahl 5, Gewinn gegen Mechanik −0,6 %,
    Urteil NICHT BESTANDEN, wie es bei Zufall sein muss. Laufzeit der Auswertung mit 19 Verschiebungen: 5 s.
-   Mit den Orderflow-Merkmalen (0.3) an acht Zufallspfaden (Seeds 1–8): H1 jedes Mal NICHT BESTANDEN
-   (Gewinn gegen Mechanik −3,7 % bis +0,7 %, Bootstrap-p 0,32 bis 0,98). Footprint-Merkmale, CVD-Anteil,
-   Gleichlauf, Volumentrend und Funding haben eigene Tests (Vorzeichen in Bruchrichtung, Divergenz, fehlende
-   Kerze, nur zum Bruchschluss bekannte Funding-Raten).
 2. Zähllauf auf PS5 oder Mac:
-   `python -m src.research_lab.studies.s20 count --root data/research_lab --out ~/tim-research/results/s20 --fetch --footprint ~/tim-research/data/orderflow_ml_120 --fp-cache ~/tim-research/results/s19/cache --funding --workers 16`
-   (der Footprint-Cache wird mit S19 geteilt; ohne `--footprint` bzw. `--funding` werden H3 bzw. H4 nicht geprüft)
+   `python -m src.research_lab.studies.s20 count --root data/research_lab --out ~/tim-research/results/s20 --fetch`
    Ergebnis nur mit Zahlen; `evaluate` ist vor 1.0 im Code gesperrt.
 3. Uzis Wort (und Bartis): Einfrieren als 1.0 mit Commit (`VERSION = "1.0"`), Einordnung ins Protokoll.
-4. Ergebnislauf: derselbe Befehl mit `evaluate` statt `count`.
+4. Ergebnislauf: `python -m src.research_lab.studies.s20 evaluate --root data/research_lab --out ... --workers 16`.
    Bericht nach Abschnitt 5.
 
 ## 8. Einordnung ins Gesamtsystem
@@ -223,4 +170,3 @@ Kalibrierung in Zehnteln; Brier-Skill; standardisierte Koeffizienten. Daraus wir
 |---|---|---|
 | 2026-11-09 | 0.1 | Entwurf aus Bartis Frage. Kein Code, keine Daten geladen, kein Registereintrag. |
 | 2026-11-09 | 0.2 | Code und Tests (`s20.py`, 19 Tests). Knapper Schluss lässt die Linie leben; H1 misst gegen das Mechanik-Modell statt gegen die Basisrate (Zufallspfad-Gegenprobe hatte gezeigt, dass schon der Abstand allein die Basisrate schlägt). Noch kein Zähllauf, keine echten Daten geladen. |
-| 2026-11-11 | 0.3 | Auf Bartis Wunsch (Volumen und Orderflow): drei Kerzen-Orderflow-Merkmale im Fenster (CVD-Anteil, CVD-Gleichlauf, Volumentrend) H3 Footprint-Orderflow an der Linie (S19-Leser, heutige Schwellen, 2020–2024) und H4 Funding (2020–2024), Holm m = 4. Open Interest bewusst nicht (Archiv erst ab 12/2021). Weiterhin keine echten Daten geladen, 25 Tests. |
