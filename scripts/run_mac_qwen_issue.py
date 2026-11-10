@@ -541,6 +541,14 @@ def _ensure_labels(pipeline: Pipeline) -> None:
             pipeline.github("label", "create", name, "--color", color, "--description", description)
 
 
+def _comment(pipeline: Pipeline, number: int, body: str) -> None:
+    """Best effort: a refused comment never changes the outcome of the attempt."""
+    try:
+        pipeline.github("issue", "comment", str(number), "--body", body)
+    except PipelineError as exc:
+        print(f"TIM_ISSUE_COMMENT_FAILED issue #{number}: {redact_diagnostic_secrets(str(exc))[:200]}", file=sys.stderr)
+
+
 def _block_issue(pipeline: Pipeline, ledger: IssueLedger, number: int, errors: list[str]) -> None:
     """Stop automation on one issue visibly; the local ledger also skips it if GitHub refuses."""
     try:
@@ -820,6 +828,10 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
     previous_attempts = copy.deepcopy(ledger.entry(number).get("attempts"))
     attempt = ledger.start_attempt(number, digest)
     try:
+        if attempt > issue_triage.MAX_ATTEMPTS_PER_CONTRACT:
+            # The ledger normally skips such an issue earlier; never start work above the limit.
+            raise ContractRejected(f"attempt {attempt} exceeds the limit of "
+                                   f"{issue_triage.MAX_ATTEMPTS_PER_CONTRACT}")
         _clear_leftovers(pipeline, state_dir, number, branch, worktree, attempt)
         worktree.parent.mkdir(parents=True, exist_ok=True)
         pipeline.command("git", "worktree", "add", "-b", branch, str(worktree), base)
@@ -873,7 +885,14 @@ def process_one(pipeline: Pipeline, state_dir: Path, *, pilot_issue: int | None,
             _block_issue(pipeline, ledger, number, ledger.errors(number))
         elif ledger.record_failure(number, digest, str(exc)):
             _block_issue(pipeline, ledger, number, ledger.errors(number))
+        else:
+            _comment(pipeline, number, issue_triage.attempt_failed_comment(attempt, ledger.errors(number)))
         raise
+    try:
+        slip = issue_triage.engineer_handover(number, attempt, url, str(outcome["acceptance"]["status"]))
+        _comment(pipeline, number, issue_triage.handover_comment(slip))
+    except ValueError as exc:  # the PR exists; a missing slip must not count as a failed attempt
+        print(f"TIM_HANDOVER_SKIPPED issue #{number}: {exc}", file=sys.stderr)
     if merge:
         try:
             _merge_when_ready(pipeline, int(match.group(1)), branch, head)

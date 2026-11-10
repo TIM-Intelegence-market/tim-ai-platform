@@ -1,7 +1,7 @@
 # Multi-Agenten-System für TIM (Entwurf)
 
 Stand 10.11.2026, **ENTWURF 0.1**. Gebaut sind P1 (Übergabezettel, Abschnitt 9), P2 (Neustart-Budget des
-Watchdogs, Abschnitt 10), P3 (Review-Gate, Abschnitt 11), P4 (Vorfall an Worker, Abschnitt 15, noch aus), P5 (Hermes-Evals, Abschnitt 13), P6 („Wartet auf Uzi“, Abschnitt 12) und P7 (PS5-Rückweg, Abschnitt 14). Auftrag: Uzi, „Go“,
+Watchdogs, Abschnitt 10), P3 (Review-Gate, Abschnitt 11), P4 (Vorfall an Worker, Abschnitt 15, noch aus), P5 (Hermes-Evals, Abschnitt 13), P6 („Wartet auf Uzi“, Abschnitt 12), P7 (PS5-Rückweg, Abschnitt 14) und B1 (Worker schreibt den Zettel, Abschnitt 16). Auftrag: Uzi, „Go“,
 „go P1“, „go p2“ und „go mach alle ps fertig“ am 10.11.2026.
 
 Ziel: Eine Aufgabe läuft von der Idee bis zum fertigen Ergebnis durch, ohne dass Uzi eingreift. Er wird nur an
@@ -129,10 +129,10 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 
 | # | Lücke | Folge heute |
 |---|---|---|
-| 1 | Der Übergabezettel `TIM_HANDOVER_V1` ist gebaut (P1), aber noch kein Worker liest ihn. `TIM_QWEN_TASK_V1`, das Bugfixer-Modell und `agents/contract.py` bestehen daneben weiter. | Übergaben zwischen Rollen laufen über Uzi oder den Koordinator |
+| 1 | Der Übergabezettel `TIM_HANDOVER_V1` ist gebaut (P1). Der Qwen-Worker schreibt ihn seit B1 (Engineer an Tester), aber noch niemand liest ihn; das Review-Gate liest nur den Zettel des Reviewers im PR-Text. `TIM_QWEN_TASK_V1`, das Bugfixer-Modell und `agents/contract.py` bestehen daneben weiter. | Übergaben zwischen Rollen laufen über Uzi oder den Koordinator |
 | 2 | Vorfall-Issues mit geprüfter Code-Diagnose können an den Worker gehen (P4), der Schalter ist aber aus, bis der Login der Reporter-App am Mac eingetragen ist. | Bis dahin werden Fehler gemeldet und erst nach Uzis Anstoß repariert |
 | 3 | Reviewer-Pflicht gibt es jetzt als Check `Review gate` (P3), aber nicht als Pflicht-Check im Ruleset. | Ein PR ohne Zettel kann technisch weiter gemergt werden; der Check zeigt es rot |
-| 4 | Kein gemeinsamer Versuchszähler. Die Pipeline kennt nur `agent:retry` (einmal). | Abbruchgrenzen aus Abschnitt 4 sind nicht durchgesetzt |
+| 4 | Versuchszähler nur teilweise gemeinsam: Der Qwen-Worker schreibt jeden Versuch ans Issue (B1), zählt aber weiter lokal am Mac. Die Pipeline kennt nur `agent:retry` (einmal). | Ein zweiter Worker sähe die Versuche, würde sie aber nicht mitzählen |
 | 5 | Hermes-Evals liegen jetzt im Repo (P5, 14 Fälle, letzter Mac-Lauf 10.11. 11:17: 14/14). Der Lauf braucht Hermes am Mac und läuft nicht in CI; die Pflicht vor einer Änderung ist eine Regel, kein Schalter. | Ein Prompt-Wechsel ohne Lauf fällt nur im Review auf |
 | 6 | Der Runner kann Jobs auf der PS5 rechnen und das Bündel mit Hash zurückholen (P7), aber kein Zeitplan startet das. | Durchlauf A braucht weiter einen Anstoß, aber keine Mac-Sitzung mit Auftragstext mehr |
 | 7 | „Wartet auf Uzi“ steht im Tagesbericht (P6), aber ohne offene PRs und Karten. | Offene PRs sieht Uzi weiter nur in GitHub und im Thread |
@@ -149,6 +149,7 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 | P5 **gebaut** | Hermes-Evals ins Repo holen (ohne Schlüssel) und als Pflichtlauf vor jeder Prompt- oder Modelländerung festlegen. | `pytest tests/agents/test_hermes_evals.py`; am Mac `python -m src.agents.hermes_evals` |
 | P6 **gebaut** | „Wartet auf Uzi“ als ein Abschnitt im Hermes-Tagesbericht. Offene PRs fehlen (kein Netz im Bericht), siehe Abschnitt 12. | `pytest tests/test_waiting_on_uzi.py` |
 | P7 **gebaut** | PS5-Ergebnis kommt als Bündel mit Hash zurück, der Researcher prüft es mit `verify`. | `pytest tests/test_research_runner_ps5.py` |
+| B1 **gebaut** | Qwen-Worker schreibt den Zettel ENGINEER an TESTER ans Issue und jeden fehlgeschlagenen Versuch dazu (Abschnitt 16). | `pytest tests/test_mac_qwen_issue_automation.py -k "handover or slip or limit"` |
 
 Empfohlene Reihenfolge: P1, P2, P3 (machen die Kette sicher), dann P4 und P6 (machen sie selbstlaufend), zuletzt
 P5 und P7. P1 bis P3 sind klein und ändern nichts am Live-Betrieb.
@@ -302,6 +303,25 @@ Vertrag, zwei Versuche, PR gate, Merge nur nach Uzis „merge“.
   Worker nicht an; dafür bleibt `agent:blocked` oder das Label entfernen. Teilaufgaben aus `agent:split` erbt der
   Filter nicht.
 - `gh` meldet die App als `app/<slug>`; das zählt nur mit `is_bot`, und wird zu `<slug>[bot]` umgeschrieben.
+
+## 16. Worker schreibt den Zettel (B1)
+
+Uzi, „go“ am 10.11.2026. Code `scripts/run_mac_qwen_issue.py` (`process_one`) und `src/local_first/issue_triage.py`
+(`engineer_handover`, `handover_comment`, `attempt_failed_comment`), Tests am Ende von
+`tests/test_mac_qwen_issue_automation.py`.
+
+- Nach einem angelegten PR schreibt der Qwen-Worker (Mac und Server-Spur) einen Kommentar ans **Issue** mit dem Zettel
+  ENGINEER an TESTER: PR-Link (`link`), lokale Abnahme (`test`), Versuch aus dem Ledger, `max_attempts` 2, `gate` NONE.
+  Der Zettel wird vor dem Schreiben mit demselben Prüfer wie in P1 geprüft.
+- Der Zettel steht bewusst nicht im PR-Text. Dort gehört nur der Zettel des Reviewers hin (P3), sonst fände das
+  Review-Gate zwei Zettel und würde rot.
+- Ein fehlgeschlagener Versuch vor dem letzten steht jetzt ebenfalls am Issue („Versuch 1 von 2“, Fehler ohne
+  Tokens und Passwort-Werte). Der letzte blockiert wie bisher mit `agent:blocked` und Kommentar.
+- Zeigt das Ledger einen Versuch über der Grenze, beginnt der Worker gar nicht erst, sondern blockiert das Issue.
+- Wird der Kommentar abgelehnt (Netz, Rechte), bleibt der PR, und der Versuch zählt nicht als fehlgeschlagen;
+  im Log steht `TIM_ISSUE_COMMENT_FAILED`.
+- Unverändert: Zähler und Grenze (2 je Vertrag) leben weiter im Ledger am Mac, die Research-Spur schreibt keinen
+  Zettel, und kein Worker liest Zettel. Wirkt am Mac erst nach dem Nachziehen von `platform-main`.
 
 ## Nicht Teil dieses Entwurfs
 
