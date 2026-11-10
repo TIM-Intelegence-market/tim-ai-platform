@@ -382,7 +382,7 @@ def test_layers_are_sorted_in_named_layouts():
     assert used <= set(chart_live.GROUP_NAMES)
     # The footprint layout follows Uzi's reference (MMT "Footprint Delta"): delta bars per price row, delta per candle, open interest.
     assert "id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi']" in layouts
-    assert "if (fpStyle === 'delta') { drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep); return; }" in script
+    assert "if (fpStyle !== 'cells') { drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep); return; }" in script
     assert "delta" in chart_live.GROUP_NAMES and "delta" not in chart_live.DEFAULT_GROUPS
     assert "tim-chart-layouts-v1" in script and "saveGroups(now); applyVisibility(now); layoutChanged();" in script
     html = _live_section("BTCUSDT", "30m")
@@ -420,3 +420,23 @@ def test_two_charts_side_by_side_are_independent() -> None:
             assert page.count(f"id='{element}'") == 1 and page.count(f"id='{element}-2'") == 1
         assert page.count("<script src=") == 2  # the library and the chart script load once for both panes
     assert "data-tf='15m'>" in _live_section("BTCUSDT", "1h").split("id='tc-pane-2'")[1].split(">", 1)[0] + ">"
+
+
+def test_footprint_has_a_profile_style() -> None:
+    """Uzi 10.11.2026: "Footprint profile" = volume per price next to a slim candle, as a third footprint view."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "const FP_STYLES = ['cells', 'delta', 'profile'];" in script
+    assert "fpProfile: 'Footprint: Profil'" in script and "fpProfile: 'Footprint: profile'" in script
+    assert "room * total / maxVolume" in script  # bar length is the volume at the price, not the delta
+
+
+def test_indicator_bands_live_in_their_own_window_below_the_chart() -> None:
+    """Uzi 10.11.2026: CVD, open interest and the like get a window of their own under the chart, not lines across the candles."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "const sub = LWC.createChart(subBox," in script
+    for scale in ("cvd_spot", "cvd_perp", "delta", "oi_z", "funding", "premium", "dom_btc", "dom_usdt"):
+        assert re.search(r"= sub\.add\w+Series\(\{[^;]*priceScaleId: '" + scale + "'", script), scale
+        assert not re.search(r"= chart\.add\w+Series\(\{[^;]*priceScaleId: '" + scale + "'", script), scale
+    # The candles keep their height: the price scale of the upper chart no longer shrinks per band.
+    assert "bottom: 0.18 + BAND" not in script
+    assert "subscribeVisibleLogicalRangeChange" in script and "function alignSub()" in script
