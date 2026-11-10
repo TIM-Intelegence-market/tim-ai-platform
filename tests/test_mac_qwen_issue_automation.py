@@ -681,3 +681,93 @@ def test_legacy_worker_contracts_and_prs_still_count_but_are_never_maintained(tm
                                           now=1_791_800_000.0)
     assert covered == {70, 71}
     assert [call[3] for call in _gh(pipeline, "pr", "merge")] == ["2"]
+
+
+# --- B1: the worker writes the handover slip and counts attempts on the issue ---------------------------
+
+class _PrPipeline(FakePipeline):
+    def github(self, *args):
+        result = super().github(*args)
+        if args[:2] == ("pr", "create"):
+            return "https://github.com/TIM-Intelegence-market/tim-ai-platform/pull/900\n"
+        if args[:2] == ("issue", "comment") and getattr(self, "refuse_comments", False):
+            raise PipelineError("comment refused")
+        return result
+
+    def worktree_git(self, *args):
+        self.calls.append(("git",) + args[2:])
+        return "abc123"
+
+
+def _succeed(monkeypatch):
+    monkeypatch.setattr(runner, "_run_local_task", lambda *a, **k: {
+        "acceptance": {"status": "FIXED"}, "result": {"provider": "qwen"}})
+    monkeypatch.setattr(runner, "_assert_task_diff", lambda *a: ["src/example.py"])
+    monkeypatch.setattr(runner, "_review_patch", lambda *a: None)
+    monkeypatch.setattr(runner, "_clear_leftovers", lambda *a, **k: None)
+
+
+def test_successful_attempt_posts_a_valid_handover_slip_on_the_issue(tmp_path, monkeypatch):
+    from src.agents.handover import Role, parse
+
+    _succeed(monkeypatch)
+    pipeline = _PrPipeline([_issue(70, READY, _contract(70))])
+    url = runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False, merge=False)
+    assert url.strip().endswith("/pull/900")
+    (comment,) = _gh(pipeline, "issue", "comment")
+    assert comment[3] == "70"
+    slip = parse(comment[-1], issue_number=70)
+    assert (slip.from_role, slip.to_role) == (Role.ENGINEER, Role.TESTER)
+    assert (slip.attempt, slip.max_attempts) == (1, issue_triage.MAX_ATTEMPTS_PER_CONTRACT)
+    assert slip.evidence[0].ref.endswith("/pull/900") and "FIXED" in slip.evidence[1].ref
+    assert slip.gate.value == "NONE"
+    # The PR text stays free of slips, so the reviewer's own slip remains the only one there (Review gate).
+    assert "TIM_HANDOVER_V1" not in (tmp_path / "runs" / "issue-70-pr.md").read_text(encoding="utf-8")
+
+
+def test_slip_carries_the_second_attempt_after_one_failure(tmp_path, monkeypatch):
+    from src.agents.handover import parse
+
+    monkeypatch.setattr(runner, "_clear_leftovers", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "_run_local_task",
+                        lambda *a, **k: (_ for _ in ()).throw(PipelineError("first try failed ghp_" + "a" * 36 + " password=hunter2")))
+    issues = [_issue(71, READY, _contract(71))]
+    first = _PrPipeline(issues)
+    with pytest.raises(PipelineError):
+        runner.process_one(first, tmp_path, pilot_issue=None, codex_fallback=False, merge=False)
+    (failed,) = _gh(first, "issue", "comment")
+    assert "Versuch 1 von 2" in failed[-1] and "first try failed" in failed[-1]
+    assert "ghp_" + "a" * 36 not in failed[-1] and "hunter2" not in failed[-1]
+    assert not _gh(first, "issue", "edit")  # not blocked yet
+    _succeed(monkeypatch)
+    second = _PrPipeline(issues)
+    runner.process_one(second, tmp_path, pilot_issue=None, codex_fallback=False, merge=False)
+    assert parse(_gh(second, "issue", "comment")[0][-1]).attempt == 2
+
+
+def test_refused_slip_comment_does_not_count_as_a_failed_attempt(tmp_path, monkeypatch, capsys):
+    _succeed(monkeypatch)
+    pipeline = _PrPipeline([_issue(72, READY, _contract(72))])
+    pipeline.refuse_comments = True
+    url = runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False, merge=False)
+    assert url.strip().endswith("/pull/900")
+    assert "TIM_ISSUE_COMMENT_FAILED" in capsys.readouterr().err
+    assert IssueLedger(tmp_path / "issue-ledger.json").errors(72) == []
+
+
+def test_work_never_starts_above_the_attempt_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_run_local_task", lambda *a, **k: pytest.fail("worked above the limit"))
+    monkeypatch.setattr(IssueLedger, "exhausted", lambda self, number, digest: False)  # a ledger that fails open
+    monkeypatch.setattr(IssueLedger, "start_attempt", lambda self, number, digest: 3)
+    pipeline = _PrPipeline([_issue(73, READY, _contract(73))])
+    with pytest.raises(PipelineError, match="exceeds the limit"):
+        runner.process_one(pipeline, tmp_path, pilot_issue=None, codex_fallback=False, merge=False)
+    assert _gh(pipeline, "issue", "edit")[0][-1] == "agent:blocked"
+    assert not _gh(pipeline, "pr", "create")
+
+
+def test_slip_above_the_limit_cannot_be_built():
+    from src.agents.handover import HandoverError
+
+    with pytest.raises(HandoverError):
+        issue_triage.engineer_handover(74, 3, "https://github.com/o/r/pull/1", "FIXED")

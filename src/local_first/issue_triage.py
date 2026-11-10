@@ -20,7 +20,8 @@ from typing import Any
 from src.local_first.github_issue_queue import (
     PROTECTED_PREFIXES, REJECT_LABELS, TASK_BLOCK, build_task,
 )
-from src.local_first.patch_executor import redact_tokens
+from src.agents.handover import Handover, validate as validate_handover
+from src.local_first.patch_executor import redact_diagnostic_secrets, redact_tokens
 
 TRIAGE_MARKER = "<!-- TIM_QWEN_TRIAGE_V1 -->"
 LABEL_READY = "agent:qwen-ready"
@@ -415,6 +416,34 @@ def blocked_comment(errors: list[str]) -> str:
     return (f"Der Mac-Qwen-Worker hat dieses Issue nach {MAX_ATTEMPTS_PER_CONTRACT} Versuchen "
             f"gestoppt, damit derselbe Fehler nicht endlos wiederholt wird.\n\nLetzte Fehler:\n{lines}\n\n"
             f"Label `{LABEL_BLOCKED}` entfernen gibt zwei neue Versuche frei.\n")
+
+
+def engineer_handover(number: int, attempt: int, pr_url: str, acceptance: str) -> Handover:
+    """The worker's slip ENGINEER -> TESTER (``TIM_HANDOVER_V1``) with the attempt count from the ledger.
+
+    Raises ``HandoverError`` when the count is above this worker's limit: such a slip must not exist.
+    """
+    return validate_handover({
+        "schema": "TIM_HANDOVER_V1", "task_id": f"github-issue-{number}", "issue_number": number,
+        "from_role": "ENGINEER", "to_role": "TESTER",
+        "input": f"Issue #{number} mit Vertrag TIM_QWEN_TASK_V1",
+        "output": "Pull Request mit Reparatur, lokale Abnahme gelaufen",
+        "evidence": [{"kind": "link", "ref": pr_url.strip()[:500]},
+                     {"kind": "test", "ref": f"Lokale Abnahme: {acceptance}"[:500]}],
+        "attempt": attempt, "max_attempts": MAX_ATTEMPTS_PER_CONTRACT, "gate": "NONE"})
+
+
+def handover_comment(slip: Handover) -> str:
+    """Issue comment that carries the slip. It grants nothing; merging stays with Uzi and the ruleset."""
+    return (f"Übergabe {slip.from_role.value} an {slip.to_role.value}, "
+            f"Versuch {slip.attempt} von {slip.max_attempts}.\n\n{slip.render()}")
+
+
+def attempt_failed_comment(attempt: int, errors: list[str]) -> str:
+    """Counts a failed attempt on the issue itself, not only in the worker's local ledger."""
+    reason = f"\n\n- `{redact_diagnostic_secrets(errors[-1])}`" if errors else ""
+    return (f"Versuch {attempt} von {MAX_ATTEMPTS_PER_CONTRACT} des Qwen-Workers ist fehlgeschlagen. "
+            f"Nach dem letzten Versuch hält er mit `{LABEL_BLOCKED}` an.{reason}")
 
 
 def ask_claude(prompt: str, repo_root: Path, *, timeout: int = 600) -> str:
