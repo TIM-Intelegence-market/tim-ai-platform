@@ -114,7 +114,21 @@
         health: (ok, n, gaps) => `Perp check: ${ok}/${n} h equal to Binance, ${gaps} gaps` }
     : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', delta: 'Delta Volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp-Prüfung: ${ok}/${n} h gleich mit Binance, ${gaps} Lücken` };
-  const fmt = v => v == null ? '–' : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 4 : v < 1000 ? 2 : 1 });
+  // The chart library calls this for every price label on every frame: toLocaleString with options builds a new
+  // formatter each call (Uzi 10.11.2026 "chart zu langsam": ~90 % of the frame time on a phone), so build them once.
+  const NUM_FMT = [4, 2, 1].map(digits => new Intl.NumberFormat(LOCALE, { maximumFractionDigits: digits }));
+  const FMT_CACHE = new Map();  // the same prices come back every frame
+  const fmt = v => {
+    if (v == null) return '–';
+    const n = Number(v);
+    let text = FMT_CACHE.get(n);
+    if (text === undefined) {
+      if (FMT_CACHE.size > 5000) FMT_CACHE.clear();
+      text = NUM_FMT[n < 10 ? 0 : n < 1000 ? 1 : 2].format(n);
+      FMT_CACHE.set(n, text);
+    }
+    return text;
+  };
 
   const chart = LWC.createChart(box, {
     autoSize: true,
