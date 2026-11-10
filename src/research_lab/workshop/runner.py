@@ -36,7 +36,7 @@ GENESIS = "0" * 64
 SCRIPT_PATTERN = re.compile(r"^scripts/research_lab_[a-z0-9_]+\.py$")
 MODULE_PATTERN = re.compile(r"^src\.research_lab\.[a-z0-9_.]+$")
 DATE_PATTERN = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
-HOSTS = {"mac", "server"}
+HOSTS = {"mac", "server", "ps5"}
 NICE = 15
 
 
@@ -186,23 +186,59 @@ def local_executor(command: Sequence[str], workdir: Path, outdir: Path) -> RunRe
     return RunResult(done.returncode, done.stdout, done.stderr, host="mac")
 
 
-def ssh_executor(target: str, remote_dir: str) -> Executor:
+def ssh_executor(target: str, remote_dir: str, *, port: int | None = None, identity: str | None = None,
+                 python: str = "python3", host: str = "server", copy: str = "rsync") -> Executor:
     """Runs on the compute host over ssh. The Mac opens the connection; the host never reaches the Mac.
 
     The remote checkout must be at the same commit; the runner checks it before starting.
+    ``port``/``identity`` reach a host behind a jump service (the PS5 through Warpgate, port 2222, user
+    ``uzi:ps5-research``). ``copy="scp"`` fetches the outputs with ``scp -r`` for hosts without rsync.
+    ``remote_dir`` may start with ``~/``; it is expanded by the remote shell, everything else is quoted.
     """
+    if copy not in {"rsync", "scp"}:
+        raise JobError(f"unbekannte Kopierart {copy}")
+    if host not in HOSTS - {"mac"}:
+        raise JobError(f"unbekannter Rechner {host}")
+
+    def remote_path(path: str) -> str:
+        # "~/x" must stay unquoted at the start or the remote shell does not expand it.
+        return "~/" + shlex.quote(path[2:]) if path.startswith("~/") else shlex.quote(path)
+
+    ssh_options = ["-o", "BatchMode=yes"]
+    # The Warpgate user contains a colon ("uzi:ps5-research"); scp would read "uzi" as the host. Pass it as an option.
+    if "@" in target:
+        user, target = target.rsplit("@", 1)
+        ssh_options += ["-o", f"User={user}"]
+    if port is not None:
+        ssh_options += ["-p", str(port)]
+    if identity:
+        ssh_options += ["-i", identity]
+
     def run(command: Sequence[str], workdir: Path, outdir: Path) -> RunResult:
-        remote_out = f"{remote_dir}/out/{outdir.name}"
-        script = (f"cd {shlex.quote(remote_dir)} && git rev-parse HEAD && mkdir -p {shlex.quote(remote_out)} && "
-                  f"TIM_RESEARCH_OUT={shlex.quote(remote_out)} TIM_RESEARCH_NO_HOLDOUT=1 nice -n {NICE} "
-                  f"python3 {' '.join(shlex.quote(c) for c in command)}")
-        done = subprocess.run(["ssh", "-o", "BatchMode=yes", target, script], capture_output=True, text=True)
+        remote_out = f"{remote_dir.rstrip('/')}/out/{outdir.name}"
+        expected = git_commit(workdir)
+        # Refuse on the host before anything runs when its checkout is at another commit (exit 97).
+        guard = (f'[ "$(git rev-parse HEAD)" = {shlex.quote(expected)} ] || {{ echo "commit-mismatch" >&2; exit 97; }} && '
+                 if expected != "unknown" else "")
+        script = (f"cd {remote_path(remote_dir)} && git rev-parse HEAD && {guard}mkdir -p {remote_path(remote_out)} && "
+                  f"TIM_RESEARCH_OUT={remote_path(remote_out)} TIM_RESEARCH_NO_HOLDOUT=1 nice -n {NICE} "
+                  f"{remote_path(python)} {' '.join(shlex.quote(c) for c in command)}")
+        done = subprocess.run(["ssh", *ssh_options, target, script], capture_output=True, text=True)
         remote_commit = done.stdout.splitlines()[0].strip() if done.stdout else ""
         if done.returncode == 0:
-            pull = subprocess.run(["rsync", "-a", f"{target}:{remote_out}/", f"{outdir}/"], capture_output=True, text=True)
+            if copy == "rsync":
+                shell = " ".join(shlex.quote(part) for part in ["ssh", *ssh_options])
+                pull_argv = ["rsync", "-a", "-e", shell, f"{target}:{remote_out}/", f"{outdir}/"]
+            else:
+                scp_options = ["-r", *("-P" if item == "-p" else item for item in ssh_options)]  # scp spells port -P
+                # scp paths without a leading "/" start in the home directory, in both scp and SFTP mode; "~" needs neither.
+                source = remote_out[2:] if remote_out.startswith("~/") else remote_out
+                pull_argv = ["scp", *scp_options, f"{target}:{source}/.", f"{outdir}/"]
+            pull = subprocess.run(pull_argv, capture_output=True, text=True)
             if pull.returncode != 0:
-                return RunResult(pull.returncode, done.stdout, done.stderr + pull.stderr, host="server")
-        return RunResult(done.returncode, done.stdout, done.stderr, host="server", extra={"remote_commit": remote_commit})
+                return RunResult(pull.returncode, done.stdout, done.stderr + pull.stderr, host=host,
+                                 extra={"remote_commit": remote_commit})
+        return RunResult(done.returncode, done.stdout, done.stderr, host=host, extra={"remote_commit": remote_commit})
     return run
 
 

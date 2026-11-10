@@ -51,6 +51,14 @@ TRIAGE_SKIP_LABELS = REJECT_LABELS | {
     "research:idea",
 }
 DEFAULT_TRUSTED_AUTHORS = ("uezeyiraydin-cell", "tim-issue-worker-t330")
+# Incident issues of the checkup reporter app (P4): only a verified code diagnosis may become a worker task.
+# The app login is not in the repo; TIM_TRIAGE_INCIDENT_AUTHORS names it ("<app-slug>[bot]"), empty = off.
+INCIDENT_REQUIRED_LABELS = frozenset({"incident", "incident:code"})
+INCIDENT_BLOCK_LABELS = frozenset({
+    "incident:safety", "incident:ops", "incident:network", "incident:unknown",
+    "selftest", "checkup:pause-qwen", "checkup:silence",
+})
+_BOT_LOGIN = re.compile(r"^[a-z0-9][a-z0-9-]{0,38}\[bot\]$")
 MAX_TRIAGE_CALLS_PER_VERSION = 2
 MAX_TRIAGE_CALLS_PER_DAY = 30
 MAX_ATTEMPTS_PER_CONTRACT = 2
@@ -73,6 +81,26 @@ def trusted_authors() -> set[str]:
     extra = os.getenv("TIM_TRIAGE_TRUSTED_AUTHORS", "")
     return {name.strip().casefold() for name in (*DEFAULT_TRUSTED_AUTHORS, *extra.split(","))
             if name.strip()}
+
+
+def incident_authors() -> set[str]:
+    """Reporter app logins whose incident issues may be triaged; only "<slug>[bot]" logins count."""
+    names = {name.strip().casefold() for name in os.getenv("TIM_TRIAGE_INCIDENT_AUTHORS", "").split(",")}
+    return {name for name in names if _BOT_LOGIN.match(name)}
+
+
+def incident_ready(issue: dict[str, Any], reporters: set[str]) -> bool:
+    """An incident issue goes to the worker only with a verified code diagnosis and no safety/ops label."""
+    labels = _label_names(issue)
+    author = issue.get("author")
+    login = author.get("login") if isinstance(author, dict) else None
+    # gh issue list reports an app as "app/<slug>" (is_bot true), the REST API as "<slug>[bot]".
+    if isinstance(login, str) and login.startswith("app/") and author.get("is_bot") is True:
+        name = f"{login[4:]}[bot]".casefold()
+    else:
+        name = _author(issue)
+    return (name in reporters and INCIDENT_REQUIRED_LABELS <= labels
+            and not labels & INCIDENT_BLOCK_LABELS)
 
 
 def _author(issue: dict[str, Any]) -> str:
@@ -209,9 +237,11 @@ class IssueLedger:
 
 
 def triage_candidates(issues: list[dict[str, Any]], ledger: IssueLedger,
-                      authors: set[str] | None = None) -> list[dict[str, Any]]:
-    """Open issues from trusted authors that nobody has prepared or excluded yet."""
+                      authors: set[str] | None = None,
+                      reporters: set[str] | None = None) -> list[dict[str, Any]]:
+    """Open issues from trusted authors (or code incidents of the reporter app) not yet prepared or excluded."""
     authors = trusted_authors() if authors is None else authors
+    reporters = incident_authors() if reporters is None else reporters
     ranked: list[tuple[int, int, dict[str, Any]]] = []
     for issue in issues:
         if not isinstance(issue, dict) or str(issue.get("state", "")).lower() != "open":
@@ -221,7 +251,8 @@ def triage_candidates(issues: list[dict[str, Any]], ledger: IssueLedger,
             continue
         labels = _label_names(issue)
         body = issue.get("body") if isinstance(issue.get("body"), str) else ""
-        if (labels & TRIAGE_SKIP_LABELS or _author(issue) not in authors
+        trusted = _author(issue) in authors or incident_ready(issue, reporters)
+        if (labels & TRIAGE_SKIP_LABELS or not trusted
                 or TASK_BLOCK.search(body) or not ledger.triage_allowed(issue)):
             continue
         priority = 0 if "priority:p0" in labels else 1 if "priority:p1" in labels else 2

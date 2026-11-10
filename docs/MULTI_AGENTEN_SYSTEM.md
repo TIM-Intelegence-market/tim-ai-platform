@@ -1,7 +1,7 @@
 # Multi-Agenten-System für TIM (Entwurf)
 
 Stand 10.11.2026, **ENTWURF 0.1**. Gebaut sind P1 (Übergabezettel, Abschnitt 9), P2 (Neustart-Budget des
-Watchdogs, Abschnitt 10), P3 (Review-Gate, Abschnitt 11), P5 (Hermes-Evals, Abschnitt 13) und P6 („Wartet auf Uzi“, Abschnitt 12). Auftrag: Uzi, „Go“,
+Watchdogs, Abschnitt 10), P3 (Review-Gate, Abschnitt 11), P4 (Vorfall an Worker, Abschnitt 15, noch aus), P5 (Hermes-Evals, Abschnitt 13), P6 („Wartet auf Uzi“, Abschnitt 12) und P7 (PS5-Rückweg, Abschnitt 14). Auftrag: Uzi, „Go“,
 „go P1“, „go p2“ und „go mach alle ps fertig“ am 10.11.2026.
 
 Ziel: Eine Aufgabe läuft von der Idee bis zum fertigen Ergebnis durch, ohne dass Uzi eingreift. Er wird nur an
@@ -130,11 +130,11 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 | # | Lücke | Folge heute |
 |---|---|---|
 | 1 | Der Übergabezettel `TIM_HANDOVER_V1` ist gebaut (P1), aber noch kein Worker liest ihn. `TIM_QWEN_TASK_V1`, das Bugfixer-Modell und `agents/contract.py` bestehen daneben weiter. | Übergaben zwischen Rollen laufen über Uzi oder den Koordinator |
-| 2 | Vorfall-Issue geht nicht von selbst an den Engineer. | Fehler werden gemeldet, aber erst nach Uzis Anstoß repariert |
+| 2 | Vorfall-Issues mit geprüfter Code-Diagnose können an den Worker gehen (P4), der Schalter ist aber aus, bis der Login der Reporter-App am Mac eingetragen ist. | Bis dahin werden Fehler gemeldet und erst nach Uzis Anstoß repariert |
 | 3 | Reviewer-Pflicht gibt es jetzt als Check `Review gate` (P3), aber nicht als Pflicht-Check im Ruleset. | Ein PR ohne Zettel kann technisch weiter gemergt werden; der Check zeigt es rot |
 | 4 | Kein gemeinsamer Versuchszähler. Die Pipeline kennt nur `agent:retry` (einmal). | Abbruchgrenzen aus Abschnitt 4 sind nicht durchgesetzt |
 | 5 | Hermes-Evals liegen jetzt im Repo (P5, 14 Fälle, letzter Mac-Lauf 10.11. 11:17: 14/14). Der Lauf braucht Hermes am Mac und läuft nicht in CI; die Pflicht vor einer Änderung ist eine Regel, kein Schalter. | Ein Prompt-Wechsel ohne Lauf fällt nur im Review auf |
-| 6 | Rückweg PS5 → Bericht ist Handarbeit (Mac-Sitzung mit Auftragstext). | Durchlauf A hält nach dem Rechnen an |
+| 6 | Der Runner kann Jobs auf der PS5 rechnen und das Bündel mit Hash zurückholen (P7), aber kein Zeitplan startet das. | Durchlauf A braucht weiter einen Anstoß, aber keine Mac-Sitzung mit Auftragstext mehr |
 | 7 | „Wartet auf Uzi“ steht im Tagesbericht (P6), aber ohne offene PRs und Karten. | Offene PRs sieht Uzi weiter nur in GitHub und im Thread |
 | 8 | Server-Worker (Qwen 30B) im Probelauf, wöchentliche Reflexion nicht installiert (ungeprüft, Stand Anfang November). | zwei gebaute Teile laufen nicht |
 
@@ -145,10 +145,10 @@ Hermes-Zweitmeinung und Tagesbericht, Agenten-Vertrag `src/agents/contract.py`.
 | P1 **gebaut** | Übergabezettel als ein Schema im Issue-Body (Rolle, Eingang, Ausgang, Nachweis, Versuchszähler). Nur Doku und Prüfer, kein Verhalten. | `pytest tests/agents/test_handover.py` |
 | P2 **gebaut** | Abbruchgrenze dort, wo sie fehlte: Neustart-Budget im Watchdog. Der Qwen-Worker hatte seine Grenze schon (Abschnitt 10). | `pytest tests/test_watchdog_restart_budget.py` |
 | P3 **gebaut** | Reviewer als Pflichtschritt vor „merge-fertig“ für kritische Pfade (Journal, Kostenmodell, `src/database/`). | Check `Review gate`, `pytest tests/agents/test_review_gate.py` |
-| P4 | Vorfall-Issue bekommt bei Klasse Daten/Anzeige automatisch den Worker-Vertrag; Echtgeld und SAFETY nie. | Probelauf mit `checkup:selftest` |
+| P4 **gebaut, aus** | Vorfall-Issue mit geprüfter Code-Diagnose (`incident:code`) geht in die Worker-Triage; SAFETY, Betrieb, Netz, Selbsttest nie. | `pytest tests/test_triage_incidents.py` |
 | P5 **gebaut** | Hermes-Evals ins Repo holen (ohne Schlüssel) und als Pflichtlauf vor jeder Prompt- oder Modelländerung festlegen. | `pytest tests/agents/test_hermes_evals.py`; am Mac `python -m src.agents.hermes_evals` |
 | P6 **gebaut** | „Wartet auf Uzi“ als ein Abschnitt im Hermes-Tagesbericht. Offene PRs fehlen (kein Netz im Bericht), siehe Abschnitt 12. | `pytest tests/test_waiting_on_uzi.py` |
-| P7 | PS5-Ergebnis kommt als Datei mit Hash zurück und wird vom Researcher abgeholt. | Ein Studienlauf ohne Mac-Sitzung |
+| P7 **gebaut** | PS5-Ergebnis kommt als Bündel mit Hash zurück, der Researcher prüft es mit `verify`. | `pytest tests/test_research_runner_ps5.py` |
 
 Empfohlene Reihenfolge: P1, P2, P3 (machen die Kette sicher), dann P4 und P6 (machen sie selbstlaufend), zuletzt
 P5 und P7. P1 bis P3 sind klein und ändern nichts am Live-Betrieb.
@@ -263,6 +263,45 @@ sechs Ablehnungen inklusive Prompt-Injection, eine englische Frage), Tests `test
 - Gegenüber der Mac-Fassung behoben: Fehlt ein Wert in `live_status.json`, stürzte der Lauf ab (`None` formatiert);
   jetzt ist es ein benannter Fehlschlag. Eine einzelne Zeile „OK“ mitten in einer Ablehnung zählt jetzt auch als
   behauptete Aktion, vorher nur am Anfang der Antwort.
+
+## 14. PS5-Rückweg (P7)
+
+Die Forschungswerkstatt (`src/research_lab/workshop/runner.py`) hatte schon einen SSH-Weg zum Server. Er kann jetzt
+auch die PS5 hinter Warpgate: eigener Port, Schlüsseldatei (nur der Pfad), Python aus dem venv, Kopie per `scp`
+(die PS5 hat kein `rsync`). Ein Job wird mit `submit --host ps5` angelegt und gerechnet mit
+
+`python -m src.research_lab.workshop run --pending --host ps5 --ssh uzi:ps5-research@<warpgate-host> --ssh-port 2222
+--ssh-key ~/.ssh/tim_uzi --remote-dir ~/tim-research/code --remote-python ~/tim-research/.venv/bin/python --copy scp`
+
+Das Ergebnis kommt als Bündel mit Manifest und Inhalts-Hash in die Werkstatt, `verify --bundle` prüft es.
+
+- Nebenfund behoben: Ob die PS5 denselben Code-Stand hat wie der Auftrag, wurde erst nach dem Rechnen verglichen.
+  Jetzt bricht der Lauf vorher ab (Exit 97, „commit-mismatch“), statt Stunden auf altem Code zu rechnen.
+- Der Warpgate-Nutzer enthält einen Doppelpunkt (`uzi:ps5-research`). `scp` hätte `uzi` als Rechner gelesen; der
+  Nutzer geht deshalb als `-o User=…` an ssh, rsync und scp.
+- Noch nicht an der echten PS5 geprüft: der erste Lauf mit `scp` (Pfad wird ohne `~` relativ zum Home-Verzeichnis
+  geholt). Kennt der Mac seinen eigenen Code-Stand nicht, fällt die Vorab-Prüfung weg; die Prüfung nach dem Lauf
+  bleibt.
+- Nicht gebaut: ein Zeitplan, der das selbst startet. Ein langer Lauf würde den 15-Minuten-Agenten am Mac blockieren,
+  und ein neuer LaunchAgent ist eine Änderung am Betrieb. Beides nur mit Uzis Wort.
+
+## 15. Vorfall an Worker (P4)
+
+`src/local_first/issue_triage.py`: Ein Vorfall-Issue der Reporter-App kommt in die Worker-Triage nur, wenn es
+`incident` und `incident:code` trägt und keins von `incident:safety`, `incident:ops`, `incident:network`,
+`incident:unknown`, `selftest`, `checkup:pause-qwen`, `checkup:silence`. `incident:code` setzt der Checkup nur
+nach einer geprüften Diagnose, deren Stellen alle unter `src/` liegen und nicht in `src/tim_incident/` oder
+`src/database/` (`code_label` in `src/tim_incident/github.py`). Danach gilt alles wie bei jedem Issue: Triage,
+Vertrag, zwei Versuche, PR gate, Merge nur nach Uzis „merge“.
+
+- Aus, bis `TIM_TRIAGE_INCIDENT_AUTHORS` den Login der Reporter-App (`<app-slug>[bot]`) nennt. Der Login steht
+  absichtlich nicht im Repo. Andere Logins als `…[bot]` zählen dort nicht. Einschalten ist eine Änderung am Mac und
+  braucht Uzis Wort.
+- Ungeprüft: ob der Mac-Worker die Vorfall-Issues in seiner Issue-Liste sieht (gleiches Repo angenommen).
+- Die Labels werden nur bei der Triage geprüft. Kommt `incident:safety` erst nach `status:ready` dazu, hält das den
+  Worker nicht an; dafür bleibt `agent:blocked` oder das Label entfernen. Teilaufgaben aus `agent:split` erbt der
+  Filter nicht.
+- `gh` meldet die App als `app/<slug>`; das zählt nur mit `is_bot`, und wird zu `<slug>[bot]` umgeschrieben.
 
 ## Nicht Teil dieses Entwurfs
 
