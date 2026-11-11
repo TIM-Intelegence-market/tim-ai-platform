@@ -155,7 +155,7 @@ def test_cli_add_check_list(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
                  "Retest am Vortags-POC hält öfter als Zufall"]) == 2
 
 
-def test_repository_logbook_loads_and_charter_is_stage_one() -> None:
+def test_repository_logbook_loads_and_charter_stage_needs_uzis_word() -> None:
     assert any(e["id"] == "S8" for e in load_logbook())
-    assert charter.STAGE <= charter.MAX_STAGE_WITHOUT_UZI
+    assert charter.STAGE <= charter.MAX_STAGE_WITHOUT_UZI or charter.STAGE_DECISION.startswith("Uzi ")
     assert charter.MONTHLY_STUDY_BUDGET == 4

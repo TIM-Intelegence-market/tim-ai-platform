@@ -42,7 +42,9 @@ def test_allowed_commands_pass() -> None:
     check_command(["scripts/research_lab_run.py", "--commit-register"], allow_register=True)
 
 
-def test_stage_one_needs_uzis_approval(tmp_path: Path) -> None:
+def test_stage_one_needs_uzis_approval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.research_lab.workshop import charter
+    monkeypatch.setattr(charter, "STAGE", 1)
     q = JobQueue(tmp_path / "jobs.jsonl")
     with pytest.raises(JobError, match="nicht freigegeben"):
         q.submit("S13", ["scripts/research_lab_s4.py"], at=AT)

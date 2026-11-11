@@ -23,10 +23,14 @@ daraus lernen. Ein bestandenes Ergebnis wird ein Update-Vorschlag. Es zählt ers
 | Stufe | TIM macht allein | Uzi macht |
 |---|---|---|
 | 0 Werkzeug | nichts | alles |
-| **1 Vorschlagen und Rechnen (aktuell)** | Ideen sammeln und prüfen, Studien-Entwurf, nach Freigabe rechnen, Bericht, Logbuch, Monats-Reflexion | Freigabe je Studie, Update-Karte |
-| 2 Selbst forschen im Rahmen | Studien aus freigegebenen Vorlagen innerhalb des Budgets anmelden und rechnen | Vorlagen, Budget, Updates |
+| 1 Vorschlagen und Rechnen | Ideen sammeln und prüfen, Studien-Entwurf, nach Freigabe rechnen, Bericht, Logbuch, Monats-Reflexion | Freigabe je Studie, Update-Karte |
+| **2 Selbst forschen im Rahmen (aktuell, Uzi 11.11.2026)** | Studien aus freigegebenen Vorlagen innerhalb des Budgets anmelden und rechnen | Vorlagen, Budget, Updates |
 
-Stufe 2 frühestens 3 Monate nach Stufe 1 ohne Regelbruch, nur auf Uzis Wort. Bei einem Regelbruch (abgewiesener
+Stufe 2 frühestens 3 Monate nach Stufe 1 ohne Regelbruch, nur auf Uzis Wort. Uzi hat das am 11.11.2026 vorgezogen:
+Codex CLI prüft jeden Studien-Entwurf (erste Zeile genau `OK`, sonst `PROBLEM`). Bei `OK` und grünen Pflicht-Checks
+(`test`, `PR gate`, `DCO sign-off`) merged der Mac den Entwurf (nur eine Datei unter `docs/research_lab/studien/`) als
+Freigabe; bei `PROBLEM` wird der Entwurfs-PR geschlossen und das Issue `research:blocked`. Ein Codex-Aufruf je
+Entwurfs-Stand (`src/research_lab/workshop/codex_review.py`). Bei einem Regelbruch (abgewiesener
 Holdout-Zugriff, gebrochene Hash-Kette) fällt TIM selbst auf Stufe 0 zurück und meldet es.
 
 ## Zahlen (E2–E6)
@@ -351,3 +355,4 @@ F8 Server als Rechenhost (zurückgestellt, Uzi 31.10.: erst alles auf dem Mac).
 | 2026-10-31 | 1.0 | Regel-Anfrage (F10): Regel aus Bausteinen, Erkundung ohne Registerplatz, Weg zur Studie |
 | 2026-11-02 | 1.0 | Research-Spur des Issue-Workers (F12): bereite Ideen als Issues, Entwürfe vom Server-Modell als Draft-PR |
 | 2026-11-04 | 1.0 | Holdout öffnen nur mit Zustimmung von Uzi und Barti (Uzis Entscheidung C zum Antrag S7b mit Makro-Filtern, privater PR #460) |
+| 2026-11-11 | 1.1 | Stufe 2 auf Uzis Wort: Codex prüft Entwürfe, OK-Entwürfe werden automatisch gemergt |

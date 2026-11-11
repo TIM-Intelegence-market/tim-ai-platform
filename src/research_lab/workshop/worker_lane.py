@@ -11,7 +11,7 @@ The issue worker works on code issues first. Only when none is left does it turn
    research PR is open at a time, so two drafts never take the same study number.
 
 Nothing here computes a study, loads data, writes the register, approves or merges. A draft still waits for
-Uzi's approval (charter stage 1); the pull request is never merged by the worker.
+approval: at stage 2 Codex reviews it on the Mac and only an OK draft with green checks is merged (Uzi 11.11.2026).
 """
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def idea_issue(idea: Mapping[str, Any]) -> tuple[str, str]:
         f"**Hypothese:** {payload['hypothesis']}",
         "",
         "Der Server-Worker schreibt dazu die Studien-Spezifikation und öffnet einen PR mit dem "
-        "Präregistrierungs-Entwurf. Gerechnet wird erst nach Uzis Freigabe (Forschungsbereich Stufe 1).",
+        "Präregistrierungs-Entwurf. Gerechnet wird erst nach der Freigabe (Forschungsbereich Stufe 2: Codex-Prüfung).",
         "",
         f"```json {BLOCK}",
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
