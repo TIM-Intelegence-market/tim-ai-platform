@@ -21,7 +21,7 @@ from typing import Any, Iterable, Mapping
 
 from src.research_lab.workshop import charter
 from src.research_lab.workshop.check import HOLDOUT_START, _local_month
-from src.research_lab.workshop.generator import REQUIRED
+from src.research_lab.workshop.generator import REQUIRED, is_journal_study
 
 LABEL_IDEA = "research:idea"
 LABEL_CLAIMED = "research:in-progress"
@@ -209,7 +209,8 @@ VARIANTS_EXAMPLE = json.dumps([
      "params": {"puffer_prozent": 0.2, "bestaetigung_kerzen": 2}},
 ], ensure_ascii=False)
 
-def spec_prompt(idea: Mapping[str, Any], *, problems: Iterable[str] = (), previous: str = "") -> str:
+def spec_prompt(idea: Mapping[str, Any], *, problems: Iterable[str] = (), previous: str = "",
+                register_free: int | None = None) -> str:
     """Prompt for the server model; the idea is data, the rules come from the charter."""
     template = idea.get("template") or "regel_backtest"
     fields = ", ".join(REQUIRED.get(template, REQUIRED["regel_backtest"]))
@@ -233,6 +234,14 @@ def spec_prompt(idea: Mapping[str, Any], *, problems: Iterable[str] = (), previo
         "data ist eine Liste von Datenquellen als Text. Nennt die Idee eine Studie (S-Nummer), muss prior_burden "
         "sie nennen.",
     ]
+    if template == "regel_backtest":
+        if is_journal_study(idea, {}):
+            lines.append("Diese Idee rechnet auf Trades aus TIMs Papier-Plan-Journalen (prospektive Daten ab 2026, außerhalb "
+                         "des Registers): höchstens 2 Varianten, V1 Basis und V2 eine Änderung, wegen der kleinen "
+                         "Fallzahl. Setze keinen Archiv-Zeitraum vor 2026; Archivkurse nur als Kurs-Kontext der Trades.")
+        elif register_free is not None:
+            lines.append(f"Im Holdout-Register sind noch {register_free} Plätze frei: höchstens "
+                         f"{max(register_free, 0)} Varianten.")
     if idea.get("derived_from"):
         lines.append(f"Die Idee ist von {idea['derived_from']} abgeleitet: prior_burden (Vorbelastung) ist Pflicht.")
     problems = [str(problem) for problem in problems]

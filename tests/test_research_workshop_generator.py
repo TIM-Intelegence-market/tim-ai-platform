@@ -206,3 +206,42 @@ def test_model_values_render_as_text_and_data_show_their_label(lab) -> None:
     assert "- name: Rendite; type: continuous" in text
     assert "Vergleich: group1: oberstes Dezil; group2: Gesamtverteilung" in text
     assert "- archive_usdm_klines (Binance USD-M-Kerzen und Funding (Archiv))" in text
+
+
+def _journal_lab(lab):
+    idea = lab["queue"].add(source="trade_reflexion", title="Trade-Reflexion tim_plan_journal: INVALIDATED",
+                            hypothesis="Plan endet oft jenseits der Ungültigkeitsmarke",
+                            data=["archive_spot_klines", "plan_journal"], template="regel_backtest", at=NOW)
+    lab["queue"].set_status(idea, "ready", at=NOW)
+    return idea
+
+
+def _fill_register(lab, n=59):
+    register = HypothesisRegister(lab["register"], limit=100)
+    for i in range(n):
+        register.register(f"X{i}", "h", {})
+
+
+def test_journal_study_runs_outside_a_full_register(lab) -> None:
+    _fill_register(lab)
+    idea = _journal_lab(lab)
+    spec = _spec(data=["plan_journal", "archive_spot_klines"], period=None)
+    path, text = create_draft(lab["queue"], idea, spec, now=NOW, studies_dir=lab["studies"],
+                              register_path=lab["register"], logbook_path=lab["logbook"], write=False)
+    assert "Außerhalb des Registers (prospektive Papier-Journal-Daten" in text and "PR #214" in text
+    assert "von 60" not in text
+
+
+def test_archive_study_with_full_register_is_still_refused(lab) -> None:
+    _fill_register(lab)
+    with pytest.raises(DraftError, match="Register voll"):
+        _draft(lab, _spec())
+
+
+def test_journal_source_with_archive_period_before_2026_keeps_the_register(lab) -> None:
+    _fill_register(lab)
+    idea = _journal_lab(lab)
+    spec = _spec(data=["plan_journal", "archive_spot_klines"], period=["2020-01-01", "2024-12-31"])
+    with pytest.raises(DraftError, match="Register voll"):
+        create_draft(lab["queue"], idea, spec, now=NOW, studies_dir=lab["studies"],
+                     register_path=lab["register"], logbook_path=lab["logbook"], write=False)
