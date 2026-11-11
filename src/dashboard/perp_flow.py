@@ -1,6 +1,8 @@
 """Perpetual (Binance USD-M futures) trades and open interest for the TIM chart (display only).
 
-Symbols: BTCUSDT and, since 04.11.2026, XMRUSDT (Binance has no XMR spot market; Barti's choice).
+Symbols: BTCUSDT, since 04.11.2026 XMRUSDT (Binance has no XMR spot market; Barti's choice) and,
+since 11.11.2026, ETHUSDT and SOLUSDT (Uzi: layouts and indicators were empty on ETH/SOL, TIM collects
+spot trades only for BTC).
 Each symbol has its own ``PerpSpec`` (price level, bubble floor, check tolerance) and its own folder:
 BTC keeps ``data/perp_flow/`` as before, every further symbol gets ``data/perp_flow/<SYMBOL>/``.
 All symbols share one call budget (``CALLS_PER_MINUTE``), so a second symbol never raises the load
@@ -104,6 +106,10 @@ SPECS: dict[str, PerpSpec] = {
     # XMR at ~600 $: 0.1 $ levels (BTC: 5 $ at ~100,000 $); a perp volume of a few hundred million $
     # a day, so taker orders from 10,000 $ are already large. Binance rounds the volume to 3 decimals.
     "XMRUSDT": PerpSpec(tick=0.1, bubble_min_usd=10_000.0, check_tolerance=0.01),
+    # Same price levels as the spot store (footprint_data.TICK_BY_SYMBOL). ETH and SOL perps trade a few
+    # billion $ a day, a fraction of BTC: lower bubble floors so large taker orders still show.
+    "ETHUSDT": PerpSpec(tick=0.5, bubble_min_usd=50_000.0, check_tolerance=0.01),
+    "SOLUSDT": PerpSpec(tick=0.05, bubble_min_usd=25_000.0, check_tolerance=0.01),
 }
 SYMBOLS = tuple(SPECS)
 
@@ -303,7 +309,7 @@ class PerpFlow:
             return  # counted in the saved day file already
         bucket = ms // 1000 // BUCKET_SECONDS * BUCKET_SECONDS
         tick = self.spec.tick
-        level = round(math.floor(price / tick) * tick, 8)
+        level = round(math.floor(price / tick + 1e-9) * tick, 8)  # 84.15 / 0.05 = 1682.999… stays on 84.15
         cell = self.days.setdefault(key, {}).setdefault((bucket, level), [0.0, 0.0])
         cell[0 if seller_aggressive else 1] += quantity
         self._dirty.add(key)

@@ -730,7 +730,7 @@ class TIMApplication:
                 pass
 
     async def _perp_flow_loop(self) -> None:
-        # BTC and XMR perp trades (fromId, gapless, resumes after a restart) and open interest from Binance's
+        # BTC, XMR, ETH and SOL perp trades (fromId, gapless, resumes after a restart) and open interest from Binance's
         # public futures endpoints for the chart, one shared call budget; display only, never on the ingestion path.
         from src.dashboard.perp_flow import run as run_perp_flow
 

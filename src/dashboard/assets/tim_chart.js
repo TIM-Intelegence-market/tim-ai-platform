@@ -323,6 +323,10 @@
     }
     oiLine.setData(oiPoints);
     oiBybit.setData(bybitPoints);
+    // The unit is the coin of the chart (ETH, SOL ...), not always BTC.
+    const coin = model && model.symbol ? String(model.symbol).replace(/USDT$/, '') : 'BTC';
+    oiLine.applyOptions({ title: P.oi.replace('(BTC)', `(${coin})`) });
+    oiBybit.applyOptions({ title: P.oiBybit.replace('(BTC)', `(${coin})`) });
     oiZ.setData(zPoints);
     // Funding per settlement and the hourly premium: each candle takes the last value that began at or before it.
     const fundingPoints = [], premiumPoints = [];

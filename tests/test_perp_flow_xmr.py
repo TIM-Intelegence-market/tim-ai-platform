@@ -37,7 +37,7 @@ class TwoSymbols:
 
 
 def test_specs_and_folders_per_symbol(tmp_path) -> None:
-    assert perp_flow.SYMBOLS == ("BTCUSDT", "XMRUSDT")
+    assert perp_flow.SYMBOLS == ("BTCUSDT", "XMRUSDT", "ETHUSDT", "SOLUSDT")
     assert SPECS["BTCUSDT"].tick == perp_flow.TICK and SPECS["BTCUSDT"].bubble_min_usd == perp_flow.BUBBLE_MIN_USD
     assert SPECS["XMRUSDT"].tick == 0.1 and SPECS["XMRUSDT"].bubble_min_usd == 10_000.0
     assert symbol_directory("BTCUSDT", tmp_path) == tmp_path  # BTC keeps its existing files
@@ -163,3 +163,25 @@ def test_xmr_chart_shows_perp_footprint_and_open_interest(tmp_path) -> None:
     assert model["trade_source"].startswith("Binance USD-M Perp aggTrades (XMRUSDT")
     assert model["oi"] is not None
     assert BATCH == 1000
+
+
+def test_eth_and_sol_are_collected_with_the_spot_store_ticks(tmp_path) -> None:
+    """Uzi 11.11.2026: layouts and indicators were empty on ETH/SOL; their perp now feeds the chart."""
+    from src.dashboard.footprint_data import TICK_BY_SYMBOL
+
+    for symbol in ("ETHUSDT", "SOLUSDT"):
+        assert SPECS[symbol].tick == TICK_BY_SYMBOL[symbol]
+        assert SPECS[symbol].bubble_min_usd < SPECS["BTCUSDT"].bubble_min_usd
+        assert symbol_directory(symbol, tmp_path) == tmp_path / symbol
+
+
+def test_sol_price_on_a_level_stays_on_that_level(tmp_path) -> None:
+    """84.15 / 0.05 is 1682.999… in floating point: the trade must sit on 84.15, not 84.10."""
+    rows = make_trades()
+    for i, row in enumerate(rows):
+        row["p"] = ("84.15", "84.20", "84.35")[i % 3]
+        row["q"] = "3"
+    flow = PerpFlow(tmp_path / "SOLUSDT", fetch=FakeBinance(rows), clock=lambda: NOW.timestamp(), symbol="SOLUSDT")
+    collect(flow)
+    levels = {row[1] for rows_ in flow.store()["days"].values() for row in rows_}
+    assert levels == {84.15, 84.2, 84.35}
