@@ -855,6 +855,20 @@ class TIMApplication:
             except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
                 log.warning("orderflow shadow update failed: %s", type(error).__name__)
             try:
+                # Chart-Urteil (Uzi 11.11.2026): the whole chart weighed for every 15m/1h plan, shadow only, reads only.
+                from src.dashboard.chart_verdict import DEFAULT_PATH as verdict_path, update as update_verdict
+
+                with self.dashboard_state.lock:
+                    lage = dict(self.dashboard_state.orderflow_live or {})
+                    footprint = self.dashboard_state.footprint
+                await asyncio.to_thread(update_verdict, verdict_path,
+                                        (self.dashboard_state.plan_journal_short_path, self.dashboard_state.plan_journal_mid_path),
+                                        series, lage or None, trades=footprint or None)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
+                log.warning("chart verdict update failed: %s", type(error).__name__)
+            try:
                 await asyncio.wait_for(self.worker_stop.wait(), timeout=PLAN_JOURNAL_INTERVAL_SECONDS)
             except TimeoutError:
                 pass
