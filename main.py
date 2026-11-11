@@ -842,6 +842,21 @@ class TIMApplication:
             except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
                 log.warning("perp journal update failed: %s", type(error).__name__)
             try:
+                # Monero (Barti 11.11.2026): the same 15m/1h rule on the XMR perp with the XMR perp trades, own files.
+                # Its own step: a failure here is logged and never reaches a BTC journal.
+                from src.dashboard.chart_live import PERP_CACHE
+                from src.dashboard.perp_journal import XMR, update as update_perp_journal
+
+                with self.dashboard_state.lock:
+                    xmr_store = (self.dashboard_state.perp_flows or {}).get(XMR)
+                await asyncio.to_thread(update_perp_journal, PERP_CACHE, xmr_store or None, None,
+                                        {"15m": self.dashboard_state.plan_journal_xmr_15m_path,
+                                         "1h": self.dashboard_state.plan_journal_xmr_1h_path}, XMR)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a journal must not stop the runtime
+                log.warning("xmr journal update failed: %s", type(error).__name__)
+            try:
                 # Orderflow-Schatten (Paket 2, 08.11.2026): gate and orderflow exit for the 15m/1h plans, reads only.
                 from src.dashboard.orderflow_shadow import DEFAULT_PATH as of_shadow_path, update as update_of_shadow
 

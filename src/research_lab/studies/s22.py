@@ -1,6 +1,6 @@
 """S22: does the Chart-Urteil sort trades? Candle rules R1-R5 of chart-urteil/1.0 on BTCUSDT 1h, 2020 to 2024.
 
-Rules: docs/research_lab/studien/S22_CHART_URTEIL_RUECKBLICK_PRAEREGISTRIERUNG_ENTWURF.md (version 0.2).
+Rules: docs/research_lab/studien/S22_CHART_URTEIL_RUECKBLICK_PRAEREGISTRIERUNG.md (version 1.0, frozen 2026-11-11).
 Observation study on hypothetical standard trades, no register slot; the holdout from 2025-01-01 is never loaded.
 
     python -m src.research_lab.studies.s22 count    --root data/research_lab --out DIR [--fetch] [--workers N]
@@ -38,7 +38,7 @@ from src.research_lab.protocol import HOLDOUT_START_MS, VALIDATION_START_MS
 from src.research_lab.stats.inference import holm
 from src.research_lab.studies.s20 import HOUR, atr_series, week_of
 
-VERSION = "0.2"
+VERSION = "1.0"
 SEED = 22
 SYMBOL = "BTCUSDT"
 FIRST_MONTH = (2019, 10)  # warm-up: 60 days of 1h candles before the first moment

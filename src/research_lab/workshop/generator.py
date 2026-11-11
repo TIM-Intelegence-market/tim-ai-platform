@@ -148,9 +148,32 @@ def validate(idea: Mapping[str, Any], spec: Mapping[str, Any]) -> list[str]:
     return problems
 
 
-def _register_line(template: str, n_variants: int, register: HypothesisRegister) -> tuple[str, int, int]:
+# Paper plan journals start in 2026; their trades are prospective data, not archive holdout (PR #214).
+JOURNAL_SOURCES = {"plan_journal"}
+JOURNAL_START = date(2026, 1, 1)
+JOURNAL_REGISTER_TEXT = ("Außerhalb des Registers (prospektive Papier-Journal-Daten, Uzis Entscheidung 11.11.2026, "
+                         "PR #214); belegt keine Registerplätze.")
+
+
+def is_journal_study(idea: Mapping[str, Any], spec: Mapping[str, Any]) -> bool:
+    """The trades come from a paper plan journal: a journal source is named and no archive period before 2026 is set.
+
+    Archive candles may still appear as price context for the journal trades; a period that reaches back before the
+    journals existed makes it an archive backtest, which keeps its register slots.
+    """
+    data = [*(spec.get("data") or []), *(idea.get("data") or [])]
+    if not JOURNAL_SOURCES.intersection(d for d in data if isinstance(d, str)):
+        return False
+    period = spec.get("period") or idea.get("period")
+    return not period or date.fromisoformat(str(period[0])) >= JOURNAL_START
+
+
+def _register_line(template: str, n_variants: int, register: HypothesisRegister, *,
+                   journal: bool = False) -> tuple[str, int, int]:
     if template not in USES_REGISTER:
         return ("Eigene Familie außerhalb des Holdout-Registers (wie S1/S8); belegt keine Registerplätze.", -1, -1)
+    if journal:
+        return (JOURNAL_REGISTER_TEXT, -1, -1)
     m = register.m
     after = m + n_variants
     if after > MAX_REGISTER_ENTRIES:
@@ -254,7 +277,8 @@ def render_draft(idea: Mapping[str, Any], spec: Mapping[str, Any], *, now: str,
     if problems:
         raise DraftError("Entwurf unvollständig:\n- " + "\n- ".join(problems))
     template = spec.get("template") or idea["template"]
-    register_text, _, _ = _register_line(template, len(spec.get("variants") or []), HypothesisRegister(register_path))
+    register_text, _, _ = _register_line(template, len(spec.get("variants") or []), HypothesisRegister(register_path),
+                                         journal=is_journal_study(idea, spec))
     study_id = spec.get("study_id") or next_study_id(studies_dir, logbook_path)
     if int(study_id.lstrip("S")) in used_study_ids(studies_dir, logbook_path):
         raise DraftError(f"Studien-Name {study_id} ist schon vergeben")
