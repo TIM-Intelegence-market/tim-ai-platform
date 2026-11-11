@@ -56,7 +56,9 @@ DAYS_KEPT = 14
 BATCH = 1000  # aggTrades per call (Binance maximum), request weight 20
 BACKFILL_DAYS = 1  # a fresh start reads from 00:00 UTC of the previous day, so yesterday's profile is complete
 CALLS_PER_MINUTE = 60  # all symbols together: 1200 of Binance's 2400 weight per minute at most
-IDLE_SECONDS = 2.0  # pause after a call that brought less than a full batch (caught up)
+IDLE_SECONDS = 8.0  # pause after a call that brought less than a full batch (caught up); 2 s left a catching-up
+# symbol only ~15 of the 60 calls a minute once three others were caught up (ETH 11.11.2026). The chart
+# sees the store once a minute (SAVE_SECONDS), so 8 s costs no freshness; 1000 trades in 8 s still fit.
 SAVE_SECONDS = 60
 CHECK_HOURS = 3  # full hours compared with Binance's 1h candle on every check
 CHECK_KEEP = 48
