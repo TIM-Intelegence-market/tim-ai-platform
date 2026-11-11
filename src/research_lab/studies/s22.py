@@ -1,6 +1,6 @@
 """S22: does the Chart-Urteil sort trades? Candle rules R1-R5 of chart-urteil/1.0 on BTCUSDT 1h, 2020 to 2024.
 
-Rules: docs/research_lab/studien/S22_CHART_URTEIL_RUECKBLICK_PRAEREGISTRIERUNG_ENTWURF.md (version 0.1).
+Rules: docs/research_lab/studien/S22_CHART_URTEIL_RUECKBLICK_PRAEREGISTRIERUNG_ENTWURF.md (version 0.2).
 Observation study on hypothetical standard trades, no register slot; the holdout from 2025-01-01 is never loaded.
 
     python -m src.research_lab.studies.s22 count    --root data/research_lab --out DIR [--fetch] [--workers N]
@@ -38,7 +38,7 @@ from src.research_lab.protocol import HOLDOUT_START_MS, VALIDATION_START_MS
 from src.research_lab.stats.inference import holm
 from src.research_lab.studies.s20 import HOUR, atr_series, week_of
 
-VERSION = "0.1"
+VERSION = "0.2"
 SEED = 22
 SYMBOL = "BTCUSDT"
 FIRST_MONTH = (2019, 10)  # warm-up: 60 days of 1h candles before the first moment
@@ -47,6 +47,8 @@ EVENT_START_MS = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 100
 HALF = HOUR // 2
 WINDOW_1H = 60 * 24  # candles handed to the chart functions: 60 days of 1h ...
 WINDOW_30M = 30 * 48  # ... and 30 days of 30m (previous day and week, naked POCs)
+MAX_WARMUP_GAPS = 24  # missing 1h candles allowed in the 60 days before a moment (exchange outages), none in the last day
+RECENT = 24
 STOP_ATR = 1.0
 TARGET_ATR = 2.0
 HORIZON = 48  # hours; then the trade leaves at the close
@@ -111,7 +113,7 @@ def outcome(bars: Sequence[Kline], i: int, direction: str, atr: float) -> float 
 
 
 def moments(bars: Sequence[Kline], atrs: Sequence[float | None]) -> list[int]:
-    """Indices of the 1h candles that open a trade: inside a section, full warm-up without a gap, horizon inside
+    """Indices of the 1h candles that open a trade: inside a section, warm-up with few gaps, horizon inside
     the same section (no trade of the training runs into the validation, none into the holdout)."""
     out = []
     for i in range(WINDOW_1H - 1, len(bars)):
@@ -121,7 +123,11 @@ def moments(bars: Sequence[Kline], atrs: Sequence[float | None]) -> list[int]:
             continue
         if close_time + HORIZON * HOUR > SECTIONS[section][1]:
             continue
-        if bars[i].open_time - bars[i - WINDOW_1H + 1].open_time != (WINDOW_1H - 1) * HOUR:
+        # 0.2: a few missing candles in the warm-up are allowed, otherwise every exchange outage would lock the
+        # 60 days after it (the first count lost half of the training). The last day must be complete (ATR).
+        if bars[i].open_time - bars[i - WINDOW_1H + 1].open_time > (WINDOW_1H - 1 + MAX_WARMUP_GAPS) * HOUR:
+            continue
+        if bars[i].open_time - bars[i - RECENT].open_time != RECENT * HOUR:
             continue
         if i + HORIZON >= len(bars) or bars[i + HORIZON].open_time - bars[i].open_time != HORIZON * HOUR:
             continue  # the 48 candles after it are not all there (times only, no price is read)

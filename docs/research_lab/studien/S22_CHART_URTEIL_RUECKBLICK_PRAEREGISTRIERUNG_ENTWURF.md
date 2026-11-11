@@ -3,7 +3,7 @@
 | Feld | Wert |
 |---|---|
 | Studie | S22 (nächste freie Nummer nach S21, 11.11.2026) |
-| Version | **0.1, Entwurf.** Regeln als Code: `src/research_lab/studies/s22.py`, Tests `tests/test_research_lab_s22.py`. Keine Daten geladen, kein Zähllauf. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt |
+| Version | **0.2, Entwurf.** Regeln als Code: `src/research_lab/studies/s22.py`, Tests `tests/test_research_lab_s22.py`. Ein Zähllauf mit 0.1 (ergebnisblind, Abschnitt 5.1), kein Ergebnis gelesen. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt |
 | Anlass | Uzi 11.11.2026: „TIM soll den ganzen Chart beurteilen“, „go“ auf Paket 3 (Rückblick). Der Live-Schatten `src/dashboard/chart_verdict.py` (PR #217) braucht 30 geschlossene Pläne und 28 Tage; S22 stellt dieselbe Frage auf der Historie |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Regelwerk | `chart-urteil/1.0`, eingefroren am 11.11.2026 vor jedem Blick auf Ergebnisse. S22 ruft `chart_verdict.chart_lage` und `chart_verdict.judge` unverändert auf |
@@ -48,7 +48,8 @@ beginnt 2026), andere Stops/Ziele, andere Coins.
 
 ## 3. Momente und Ausschluss
 
-- Ein Moment zählt nur mit 60 Tagen lückenloser 1h-Kerzen davor und 48 lückenlosen Kerzen danach.
+- Ein Moment zählt nur, wenn in den 60 Tagen davor höchstens 24 Stundenkerzen fehlen, die letzten 24 Kerzen
+  lückenlos sind und die 48 Kerzen danach lückenlos sind. (0.1 verlangte 60 lückenlose Tage; siehe 5.1.)
 - Ein Trade muss ganz in seinem Abschnitt liegen: Momente in den letzten 48 Stunden vor 2023-01-01 und vor
   2025-01-01 entfallen (kein Trade des Trainings läuft in die Validierung, keiner in den Holdout).
 - Es wird nichts aufgefüllt.
@@ -84,6 +85,13 @@ Abschnitten.
 
 `count` zählt Momente, Trades und Entscheidungen je Abschnitt. Es liest kein Ergebnis. Das Gate wird nicht gelockert.
 
+Zähllauf mit 0.1 auf der PS5 am 11.11.2026 (Commit ee464491, Datensatz `9083b6ae…4826`, 46 021 Stundenkerzen,
+35 fehlen): Training 13 283 Momente (NEHMEN 2 986, AUSLASSEN 9 716, 84 Wochen), Validierung 16 009 Momente
+(NEHMEN 4 024, AUSLASSEN 12 436, 98 Wochen), Gate erfüllt. Im Training fehlte die Hälfte der Momente: Jede
+fehlende Stundenkerze sperrte die 60 Tage danach, also gerade die Phasen nach Börsenausfällen. 0.2 erlaubt
+deshalb bis zu 24 fehlende Kerzen im Vorlauf. Die Änderung fiel ohne Kenntnis eines Ergebnisses: `count` liest
+keine Ergebnisse, `evaluate` war gesperrt.
+
 ## 6. Was nicht geändert wird
 
 Regelwerk `chart-urteil/1.0`, Stop/Ziel/Laufzeit/Kosten, Fensterlängen, Kriterien. Kein zweiter Lauf mit anderen
@@ -111,3 +119,4 @@ Frist, weil er auch R6–R8 und TIMs echte Pläne prüft.
 | Datum | Version | Änderung |
 |---|---|---|
 | 2026-11-11 | 0.1 | Entwurf mit Code und Tests. Keine Daten geladen. |
+| 2026-11-11 | 0.2 | Vorlauf: bis zu 24 fehlende Stundenkerzen in 60 Tagen erlaubt, letzte 24 Kerzen lückenlos (vorher 60 lückenlose Tage). Anlass: Zähllauf 0.1 verlor die Hälfte des Trainings. Regelwerk, Trades, Kriterien unverändert; kein Ergebnis gelesen. |
