@@ -359,6 +359,20 @@ def test_trades_are_drawn_as_position_boxes_and_the_moved_stop_stays_a_step_line
     assert "positions.groups = groups;" in script  # the box follows the plan layer's checkbox
 
 
+def test_lines_on_the_same_spot_share_one_name_and_one_axis_box():
+    """Uzi 11.11.2026: "1h Trend lows" and "1h BOS target" started at the same swing low and their names
+    lay on top of each other; "1D Low" and "1h BOS target" had two axis boxes with the same price; two
+    bubble numbers covered each other. Names merge, the axis box merges only at the same price."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    block = script[script.index("function labelLines(groups) {"):script.index("function setLegend(bar)")]
+    assert "twin.marker.text += ' · ' + text;" in block
+    assert "boxes.find(b => samePrice(value, b.value))" in block  # a merged box shows one number: same price only
+    assert "lastValueVisible: false, title: ''" in block
+    assert script.count("labelLines(groups);") == 2  # after drawing and after a layer tick changes
+    bubbles = script[script.index("const bubbles = {"):script.index("candles.attachPrimitive(bubbles);")]
+    assert "if (!texts.some(b =>" in bubbles
+
+
 def test_open_tab_reloads_once_when_the_server_runs_a_newer_script():
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
     assert "if (reloadOnNewVersion(next.app_version)) return;" in script
