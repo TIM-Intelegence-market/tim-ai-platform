@@ -30,7 +30,10 @@ Stufe 2 frühestens 3 Monate nach Stufe 1 ohne Regelbruch, nur auf Uzis Wort. Uz
 Codex CLI prüft jeden Studien-Entwurf (erste Zeile genau `OK`, sonst `PROBLEM`). Bei `OK` und grünen Pflicht-Checks
 (`test`, `PR gate`, `DCO sign-off`) merged der Mac den Entwurf (nur eine Datei unter `docs/research_lab/studien/`) als
 Freigabe; bei `PROBLEM` wird der Entwurfs-PR geschlossen und das Issue `research:blocked`. Ein Codex-Aufruf je
-Entwurfs-Stand (`src/research_lab/workshop/codex_review.py`). Bei einem Regelbruch (abgewiesener
+Entwurfs-Stand (`src/research_lab/workshop/codex_review.py`).
+Trades aus den Papier-Plan-Journalen (ab 2026) sind prospektive Daten und kein Holdout (Uzi 11.11.2026, Karte;
+`PROTOKOLL.md`): Codex prüft dort statt der Zeittrennung, ob die Bewertungsregel vor dem Einfrieren feststand.
+Solche Studien laufen außerhalb des Registers wie S8/L1/F11. Bei einem Regelbruch (abgewiesener
 Holdout-Zugriff, gebrochene Hash-Kette) fällt TIM selbst auf Stufe 0 zurück und meldet es.
 
 ## Zahlen (E2–E6)

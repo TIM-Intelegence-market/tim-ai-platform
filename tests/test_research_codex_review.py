@@ -33,3 +33,8 @@ def test_draft_mergeable_needs_single_draft_green_checks_and_ok():
     assert not review.draft_mergeable(["src/research_lab/x.py"], GREEN, "OK")
     assert not review.draft_mergeable([DRAFT], {**GREEN, "test": "FAILURE"}, "OK")
     assert not review.draft_mergeable([DRAFT], {"PR gate": "SUCCESS"}, "OK")
+
+
+def test_draft_prompt_treats_journal_trades_as_prospective():
+    assert "Papier-Plan-Journalen sind" in review.DRAFT_PROMPT and "kein Holdout" in review.DRAFT_PROMPT
+    assert "Bewertungsregel vor dem Einfrieren" in review.DRAFT_PROMPT
