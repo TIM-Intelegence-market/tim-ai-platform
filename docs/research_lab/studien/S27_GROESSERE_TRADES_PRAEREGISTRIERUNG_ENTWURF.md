@@ -40,6 +40,8 @@ am Risiko, nicht mit einem Blick auf Ergebnisse bei anderen Stops. Andere Weiten
 
 1. `count` (ergebnisblind): Zeilen mit allen Familien je Abschnitt und Richtung. Gate wie S24: je Richtung und
    Abschnitt mindestens 300 vollständige Zeilen, Validierung mindestens 50 Wochen.
+   Zähllauf 0.1 (PS5, 12.11.2026 00:07, Code 079170d, ergebnisblind): Training 45.764 vollständige Zeilen
+   (22.882 je Richtung, 149 Wochen), Validierung 34.368 (17.184 je Richtung, 105 Wochen). Gate bestanden.
 2. Einfrieren als 1.0 auf Uzis Wort.
 3. `evaluate` auf der PS5.
 
