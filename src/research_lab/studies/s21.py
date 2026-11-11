@@ -1,6 +1,6 @@
 """S21: does order flow or funding tell whether a broken swing level flips? (BTCUSDT, 1h, 2017-08 to 2024).
 
-Rules: docs/research_lab/studien/S21_ORDERFLOW_FUNDING_AM_FLIP_PRAEREGISTRIERUNG_ENTWURF.md (version 0.1).
+Rules: docs/research_lab/studien/S21_ORDERFLOW_FUNDING_AM_FLIP_PRAEREGISTRIERUNG_ENTWURF.md (version 1.0, frozen 2026-11-11).
 Observation study without trades and without a register slot; the holdout from 2025-01-01 is never loaded.
 
     python -m src.research_lab.studies.s21 count    --root data/research_lab --out DIR [--fetch] [--footprint S8_ROOT --fp-cache DIR]
@@ -36,7 +36,7 @@ from src.research_lab.stats.inference import holm
 from src.research_lab.studies import s20
 from src.research_lab.studies.s20 import HOUR, UP, Event
 
-VERSION = "0.1"
+VERSION = "1.0"
 SEED = 21
 WINDOW = 10  # fixed: the window S20 chose inside its training data (S20 report, section 3); no new choice here
 FP_START_MS = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)  # S8 store and funding history

@@ -37,7 +37,7 @@ def _replace(bars: list[Kline], k: int, **kw) -> None:
 def test_s20_events_and_rules_are_reused_unchanged():
     _, e = _break_series()
     assert e.index == 161 and e.level == 110.0
-    assert s21.WINDOW == 10 and s20.VERSION != s21.VERSION
+    assert s21.WINDOW == 10 and s20.VERSION == "1.0"  # S20 stays frozen; S21 only imports it
 
 
 def test_cvd_share_and_divergence():
@@ -139,7 +139,7 @@ def test_count_is_results_blind():
 
 def test_evaluate_refuses_while_draft():
     with pytest.raises(PermissionError):
-        s21.evaluate(_rows(None, 4))
+        s21.evaluate(_rows(None, 4), version="0.1")
 
 
 def test_funding_months_start_where_the_archive_starts():

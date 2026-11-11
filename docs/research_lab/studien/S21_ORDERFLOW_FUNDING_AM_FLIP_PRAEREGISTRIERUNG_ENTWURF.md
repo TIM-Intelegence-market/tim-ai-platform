@@ -1,9 +1,9 @@
-# S21: Orderflow und Funding am Flip: Sagen CVD, Footprint oder Funding voraus, ob eine gebrochene Swing-Linie hält, besser als der Abstand zur Linie allein? (Präregistrierung, Entwurf)
+# S21: Orderflow und Funding am Flip: Sagen CVD, Footprint oder Funding voraus, ob eine gebrochene Swing-Linie hält, besser als der Abstand zur Linie allein? (Präregistrierung 1.0)
 
 | Feld | Wert |
 |---|---|
 | Studie | S21 (nächste freie Nummer nach S20, 11.11.2026) |
-| Version | **0.1, Entwurf.** Regeln als Code: `src/research_lab/studies/s21.py`, Tests `tests/test_research_lab_s21.py`. Keine Daten geladen, kein Zähllauf. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt |
+| Version | **1.0, eingefroren am 11.11.2026** auf Bartis schriftliches Go (11.11.2026 15:19) und Uzis Wort (11.11.2026 15:37). Regeln, Konstanten und Kriterien unverändert gegenüber 0.1 (mit Funding-Fix aus PR #215); geändert wurde nur `VERSION`. Regeln als Code: `src/research_lab/studies/s21.py`, Tests `tests/test_research_lab_s21.py`. Zähllauf bestanden (Abschnitt 5.1). Der Dateiname behält „ENTWURF“, damit Verweise nicht brechen |
 | Anlass | Barti 11.11.2026, nach dem S20-Ergebnis: Die Flip-Signale sollen auch Volumen und Orderflow umfassen (CVD und Divergenz, Volumentrend, Footprint an der Linie, Funding). Entscheidungskarte „Neue Studie S21“ |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Ereignisse | **unverändert aus S20** (`s20.find_events`, `s20.label`, S20 eingefroren als 1.0): erster Stundenschluss mindestens 0,25 ATR14 jenseits eines bestätigten Swing-Hochs/-Tiefs (24 Kerzen je Seite), Flip = 24 Stunden kein Schluss zurück |
@@ -108,3 +108,5 @@ vorab festgelegter Vorwärtslauf (wie das F3/F5-Log) oder der Holdout nach Freig
 |---|---|---|
 | 2026-11-11 | 0.1 | Entwurf mit Code und Tests aus dem zurückgezogenen S20-0.3-Vorschlag (PR #207), umgestellt auf drei Familien gegen das Mechanik-Modell. Keine Daten geladen. |
 | 2026-11-11 | 0.1 | Funding-Daten ab 2020-01 statt 2019-10: Das Binance-Archiv hat vorher keine Monatsdateien (404), der Zähllauf brach ab. Merkmale, Lookback und Kriterien unverändert; vor jedem Zähl- oder Ergebnislauf. |
+| 2026-11-11 | 0.1 | Zähllauf (ergebnisblind, ohne Label) auf der PS5, Code cb12cef: Binance Spot BTCUSDT 1h 2017-08 bis 2024-12, 64 525 Kerzen, Datensatz-Hash a9f525df…4826fa9 (wie S20). Verworfen: 313 entprellt, 21 Lücke oder Rand, 325 mitgenommen. K 561/216, F 318/216, G 308/216 (Training/Validierung). Alle drei Gates bestanden. |
+| 2026-11-11 | 1.0 | Eingefroren auf Bartis schriftliches Go und Uzis Wort. Keine Regel, keine Konstante, kein Kriterium geändert. |
