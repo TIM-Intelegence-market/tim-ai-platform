@@ -191,8 +191,12 @@ def _note_section(journal: Mapping[str, Any], notes: Mapping[str, Any], token: s
 def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account_risk_percent: float = 0.5,
                        other: Mapping[str, Any] | None = None, level_journal: Mapping[str, Any] | None = None,
                        notes: Mapping[str, Any] | None = None, token: str | None = None, page_path: str = "/journal",
-                       error: str | None = None, saved: str | None = None) -> str:
+                       error: str | None = None, saved: str | None = None, hero: tuple[str, str] | None = None,
+                       with_notes: bool = True, links: str | None = None, extra_rule: str = "") -> str:
     """``journal`` is the shown rule version; ``other`` and ``level_journal`` the parallel ones for the comparison.
+
+    ``hero``, ``with_notes``, ``links`` and ``extra_rule`` serve the XMR journals (11.11.2026): own title, no note
+    forms (notes are keyed to the BTC journals), own links and one extra line under "So wird gezählt".
 
     ``notes`` are the trader's plan notes (latest per plan); with a form ``token`` the page offers the note forms.
     """
@@ -207,7 +211,9 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         body += f"<section class='state-banner state-banner--crit'><div class='state-banner__primary'><span class='sev sev--crit'>GESPERRT</span><h2 class='state-banner__state'>Journal gesperrt</h2><p class='state-banner__sub'>Das Ereignislog ist beschädigt; es wird nichts geschrieben und nichts gezählt, bis es geprüft ist. {_safe(integrity)}</p></div></section>"
     evidence = (f"Nur Papier, keine Empfehlung: {GRADE_NOTE}. Jeder Plan trägt getrennt Grade, Evidenzstatus und Entscheidung; "
                 "ohne belegte Evidenz ist die Entscheidung NO_TRADE (RESEARCH_ONLY).")
-    if level:
+    if hero:
+        body += _hero(hero[0], hero[1] + " " + evidence)
+    elif level:
         body += _hero("Plan-Journal: Level-Regel", "Eigene Pläne an den Hauptleveln (Vortag, Vorwoche, naked POC) aus dem TIM-Chart, mit Stop hinter dem 30m-Swing und Zielen an den nächsten Leveln. "
                       "Hier misst TIM, ob diese Analysen aufgehen. " + evidence)
     elif struct:
@@ -218,7 +224,8 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         body += f"<section class='state-banner state-banner--fail'><div class='state-banner__primary'><h2 class='state-banner__state'>Notiz nicht gespeichert</h2><p class='state-banner__sub'>{_safe(error)}</p></div></section>"
     elif saved:
         body += f"<section class='state-banner state-banner--ok'><div class='state-banner__primary'><h2 class='state-banner__state'>Notiz gespeichert: {_safe(saved)}</h2></div></section>"
-    body += _note_section(journal, notes, token, page_path)
+    if with_notes:
+        body += _note_section(journal, notes, token, page_path)
     journals = {str(j.get("rule") or RULE_TIM): j for j in (journal, other, level_journal) if j is not None}
     if len(journals) > 1:
         body += _compare(journals)
@@ -253,7 +260,8 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Journal</p>"
         f"<h2>Alle Pläne (neueste zuerst)</h2><p class='cc-section__note'>Zeiten in deutscher Ortszeit. Zuletzt aktualisiert {_safe(updated)}. "
         "<a href='/setup-path'>Setup-Pfad</a> · <a href='/chart'>TIM-Chart</a> · "
-        + ("<a href='/journal'>TIM-Regel</a> · <a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal?rule=level'>JSON</a>" if level
+        + (links if links is not None
+           else "<a href='/journal'>TIM-Regel</a> · <a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal?rule=level'>JSON</a>" if level
            else "<a href='/journal'>TIM-Regel</a> · <a href='/api/plan-journal?rule=struct'>JSON</a>" if struct
            else "<a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal'>JSON</a>") + "</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Angelegt</th><th>Plan</th><th>Grade</th><th>Evidenz</th><th>Entscheidung</th><th>Zone</th><th>Einstieg</th><th>Stop</th><th>Kosten (Schätzung)</th>"
@@ -270,6 +278,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         + ("<li>Level-Regel (level/1): je Richtung ein Plan am nächsten Hauptlevel innerhalb 3 % (Vortag/Vorwoche VAH, VAL, POC, Hoch, Tief, naked POC; Level innerhalb 0,15 % zählen als ein Ort). "
            "Limit am ersten Kontakt, Stop 0,05 % hinter dem nächsten 30m-Swing (höchstens 2 %), TP1–TP3 an den nächsten Leveln und Swings, erstes Ziel mindestens 1,5 R. "
            "Ungültig bei einem 30m-Schluss jenseits dieses Swings. Gekennzeichnet mit oder gegen den 1D/4h-Trend.</li>" if level else "")
+        + extra_rule
         + "<li>Im Trade nach TIMs Management: je ein Drittel an TP1, TP2 und TP3 (TIM-Regel: 1,5 R, 2 R, 3 R). Stop-Regel be_cost/1 (seit 26.10.): nach TP1 Stop auf Einstieg plus Kosten; "
         "vor TP1 urteilt TIM an jedem 30m-Schluss (HALTEN oder SICHERN) und zieht den Stop auf Einstieg plus Kosten, wenn der Schluss weit genug darüber liegt; "
         "danach folgt der Stop der letzten bestätigten 30m-Swing-Marke, nie zurück. Ältere Einträge ohne Stop-Regel: Stop nach TP1 auf Einstand.</li>"
@@ -314,11 +323,38 @@ def journal_page_for(state: Any, data: dict[str, Any], page: str, token: str | N
     tim.setdefault("rule", RULE_TIM)
     notes = plan_notes.latest(plan_notes.load(state.plan_notes_path))
     kwargs = {"notes": notes, "token": token, "error": error, "saved": saved}
+    if page in XMR_PAGES:
+        return xmr_journal_page(state, data, page)
     if page == "Plan Journal Level":
         return _plan_journal_page(data, level, other=tim, level_journal=struct, page_path="/journal/level", **kwargs)
     if page == "Plan Journal Struct":
         return _plan_journal_page(data, struct, other=tim, level_journal=level, page_path="/journal/struct", **kwargs)
     return _plan_journal_page(data, tim, other=struct, level_journal=level, page_path="/journal", **kwargs)
+
+
+# Monero (Barti 11.11.2026): TIM's 15m/1h rule on the XMR perp, own files (src/dashboard/perp_journal.py).
+XMR_PAGES = {"Plan Journal XMR 15m": ("15m", "/journal/xmr-15m"), "Plan Journal XMR 1h": ("1h", "/journal/xmr-1h")}
+XMR_LINKS = ("<a href='/journal/xmr-15m'>XMR 15m</a> · <a href='/journal/xmr-1h'>XMR 1h</a> · "
+             "<a href='/journal'>BTC-Journal</a> · <a href='/chart?symbol=XMRUSDT'>XMR-Chart</a>")
+XMR_RULE = ("<li>Monero: dieselbe TIM-Regel wie bei BTC, aber auf dem Binance-Perpetual XMRUSDT (Binance hat kein XMR-Spot mehr). "
+            "Kerzen vom Perp, Volumenprofil aus den echten XMR-Perp-Trades. Instrument BINANCE/USDM/XMRUSDT mit Tick 0,01; "
+            "auf dem Perp ist ein Short ausführbar. Das Hypothesenregister enthält nur BTC-Forschung, deshalb trägt jeder XMR-Plan "
+            "„keine Evidenz“ (SYMBOL_NOT_RESEARCHED). Eigene Dateien, eigene Logs: XMR berührt kein BTC-Journal. "
+            "Kosten wie bei BTC nach Protokoll 1.1; der XMR-Spread ist breiter, die echten Kosten können höher liegen.</li>")
+
+
+def xmr_journal_page(state: Any, data: dict[str, Any], page: str) -> str:
+    """One XMR journal (15m or 1h), read-only: no note forms, no comparison with the BTC rules."""
+    from src.dashboard.plan_journal import load_view as load_plan_journal
+
+    timeframe, page_path = XMR_PAGES[page]
+    path = state.plan_journal_xmr_15m_path if timeframe == "15m" else state.plan_journal_xmr_1h_path
+    journal = load_plan_journal(path)
+    journal.setdefault("rule", RULE_TIM)
+    hero = (f"Plan-Journal Monero ({timeframe})",
+            f"TIMs Long- und Short-Pläne für XMRUSDT auf dem {timeframe}-Zeitrahmen, nach denselben Regeln wie bei BTC festgehalten und verfolgt.")
+    return _plan_journal_page(data, journal, page_path=page_path, hero=hero, with_notes=False,
+                              links=XMR_LINKS + f" · <a href='/api/plan-journal?rule=xmr-{timeframe}'>JSON</a>", extra_rule=XMR_RULE)
 
 
 def known_plan_keys(state: Any) -> set[str]:

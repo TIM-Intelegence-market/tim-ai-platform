@@ -118,7 +118,13 @@ PAPER_APPROVED = "PAPER_APPROVED"  # no code path sets this yet; a human approva
 INSTRUMENT_SPEC_VERSION = "instrument/1"
 INSTRUMENT_SPECS = {
     ("BINANCE", "SPOT", "BTCUSDT"): {"tick_size": 0.01, "lot_step": 0.00001, "short_executable": False},
+    # Monero on the Binance USD-M perpetual (Barti 11.11.2026, XMR journals in perp_journal.py): a perp can be
+    # shorted without borrowing. Tick 0.01 USDT and lot 0.001 XMR as Binance lists XMRUSDT; check exchangeInfo before trusting it live.
+    ("BINANCE", "USDM", "XMRUSDT"): {"tick_size": 0.01, "lot_step": 0.001, "short_executable": True},
 }
+# The hypothesis register holds BTC research only. A plan on another symbol never borrows a BTC verdict.
+EVIDENCE_SYMBOLS = frozenset({"BTCUSDT"})
+SYMBOL_NOT_RESEARCHED = "SYMBOL_NOT_RESEARCHED"
 STALE_AFTER = timedelta(minutes=60)  # two 30m intervals without a new close: no new plans
 # Three horizons (Uzi 27.10.2026: "TIM soll in drei verschiedenen Zeitfenstern laufen", card: SHORT 15m · MID 1h · LONG 1D).
 # Same TIM rule (tim/1) and cost limit, one journal file per horizon. Waiting and holding times
@@ -1049,8 +1055,19 @@ def with_vol_4h(plans: Sequence[Mapping[str, Any]], candles_4h: Sequence[Mapping
 
 
 def with_evidence(plans: Sequence[Mapping[str, Any]], timeframe: str = PLAN_TIMEFRAME, register_path: Path | str = DEFAULT_REGISTER_PATH) -> list[dict[str, Any]]:
-    """Plans with their evidence fields from the hypothesis register (fail closed)."""
-    return [{**dict(plan), **evidence_fields(str(plan.get("scenario_type")), timeframe, register_path)} for plan in plans]
+    """Plans with their evidence fields from the hypothesis register (fail closed).
+
+    The register is BTC research: a plan on another symbol (XMR) gets INSUFFICIENT_EVIDENCE without a lookup."""
+    out = []
+    for plan in plans:
+        symbol = plan.get("symbol")
+        if symbol is not None and str(symbol) not in EVIDENCE_SYMBOLS:
+            out.append({**dict(plan), "evidence_status": INSUFFICIENT_EVIDENCE, "execution_status": RESEARCH_ONLY,
+                        "evidence_ref": {"scenario_type": str(plan.get("scenario_type")), "timeframe": str(timeframe), "variant_ids": [],
+                                         "symbol": str(symbol), "reason": SYMBOL_NOT_RESEARCHED}})
+            continue
+        out.append({**dict(plan), **evidence_fields(str(plan.get("scenario_type")), timeframe, register_path)})
+    return out
 
 
 def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -1167,7 +1184,7 @@ def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
            rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None,
            gamma: Mapping[str, Any] | None = None, profile_fn: Callable[[Sequence[Mapping[str, Any]], datetime], Mapping[str, Any] | None] | None = None,
-           source: str | None = None) -> dict[str, Any]:
+           source: str | None = None, market_type: str | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
@@ -1180,6 +1197,8 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     ``profile_fn`` (perp shadow, 09.11.2026) returns an external volume profile (poc/vah/val from
     real trades) for the plan candles of a close; without it the chart model estimates the profile
     from candles. ``source`` names the journal's market in the view (default: Setup-Pfad on spot).
+    ``market_type`` (XMR journals, 11.11.2026) sets the market type of new plans, e.g. "USDM" for a perp; the
+    chart model always says SPOT. Without it nothing changes (BTC journals).
 
     A broken event log raises journal_log.LogError and nothing is written."""
     now = now or datetime.now(timezone.utc)
@@ -1227,6 +1246,8 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 new_events.append({"event_id": journal_log.event_id(STRUCTURE_PLANS_DROPPED, _iso(latest), close_hash), "kind": STRUCTURE_PLANS_DROPPED,
                                    "aggregate_id": "journal", "recorded_at": _iso(now), "source_hash": close_hash, "source_range": source_range,
                                    "payload": {"close_time": _iso(latest), "rule": rule, "reasons": dropped}})
+            if market_type:
+                plans = [{**plan, "market_type": market_type} for plan in plans]
             plans = with_vol_4h(plans, series.get("4h") or [], latest)
             record_plans(journal, with_evidence(plans, timeframe, register_path), latest, timeframe)
             judge_trades(journal, model, closed_30m)
