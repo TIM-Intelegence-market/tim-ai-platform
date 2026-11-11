@@ -3,14 +3,14 @@
 | Feld | Wert |
 |---|---|
 | Studie | S21 |
-| Version | **Entwurf 0.2 – wartet auf Uzis Freigabe (Forschungsbereich Stufe 1); vorher werden keine Daten geladen** |
+| Version | **Entwurf 0.3 – wartet auf Uzis Freigabe (Stufe 1); vorher werden keine Daten geladen** |
 | Erzeugt | 2026-11-11 01:06 Ortszeit vom Studien-Generator (`src/research_lab/workshop/generator.py`) |
 | Idee | I-0003 aus Quelle „Reflexion jedes Papier-Trades“ (`data/research/IDEEN.jsonl` auf dem Mac) |
 | Vorlage | Generator: Regel-Backtest auf dem Archiv. **0.2: prospektive Prüfung auf den Papier-Plan-Journalen** (Abschnitt 4; ein Archiv-Backtest ist nicht machbar) |
-| Spezifikation | SHA-256 `7bf6c79e589158fa36e09e3bdaf9ddfab5de0ee518ba11368fde34f322102332` (gilt für Entwurf 0.1 vom Generator; die Änderungen in 0.2 sind von Hand und vom Hash **nicht** gedeckt) |
+| Spezifikation | SHA-256 `7bf6c79e589158fa36e09e3bdaf9ddfab5de0ee518ba11368fde34f322102332` (gilt für Entwurf 0.1 vom Generator; die Änderungen in 0.2 und 0.3 sind von Hand und vom Hash **nicht** gedeckt) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
-| Holdout | Wird nicht berührt. S21 liest nur Papier-Trades, die nach dem Einfrieren von Version 1.0 geplant werden (alle nach 2025-01-01, aber keine Archivdaten). |
-| Register | **Vorschlag: außerhalb des Registers (0 von 60), Uzis Entscheidung offen.** S21 läuft wie S8/S13/S14/S15/S19/OF2 als eigene prospektive Familie und belegt keinen Registerplatz (Register bleibt bei m = 58 von 60). Der Generator-Entwurf 0.1 hätte 2 Plätze belegt (m = 58 → 60, Obergrenze PROTOKOLL.md Abschnitt 10). |
+| Holdout | Wird nicht berührt. Die Papier-Plan-Journal-Trades (ab 2026) sind prospektive Live-Daten, keine Archiv-Holdout-Daten; die Sperre ab 2025-01-01 gilt für Archivkurse (Uzis Entscheidung 11.11.2026 11:30 Ortszeit). Es werden nur Trades gezählt, die nach dem Einfrieren von 1.0 geplant werden. |
+| Register | Außerhalb des Registers (0 von 60), wie S8/L1/F11. Uzis Entscheidung 11.11.2026 11:30 Ortszeit per Entscheidungskarte. |
 
 ## 1. Fragestellung
 
@@ -131,3 +131,4 @@ F11 (`self_improve.py`) beobachtet `MIT_TREND` in 30-Tage-Fenstern mit Bonferron
 |---|---|---|
 | 2026-11-11 | 0.1 | Entwurf vom Studien-Generator aus Idee I-0003 |
 | 2026-11-11 | 0.2 | Von Hand ergänzt: Register als Vorschlag außerhalb des Holdout-Registers (0 von 60, Uzis Entscheidung offen); Holdout wird nicht berührt; Archiv-Backtest gestrichen (Marktzustand nur im Plan-Journal), Daten nur Plan-Journale (4); genau eine Regel `MIT_TREND` ohne Parameter statt zweier bedeutungsloser Varianten (2, 5); Vorbelastung mit In-Sample-Herkunft, Befund 31.10. (+2,50 R) und Rückblick 11.11. (3); prospektive Methode mit Fall, Gruppen, Tages-Cluster-Bootstrap, Seed 2121, Mindestzahlen 40/10, Zeitgrenze 120 Tage, Holm m = 2 (5, 6); Messgröße und kleinster Effekt in R statt Prozentpunkten; Abgrenzung zu F11 (6.5); Umsetzungsplan (6.6). Spezifikations-Hash gilt nur für 0.1 |
+| 2026-11-11 | 0.3 | Register- und Holdout-Einordnung nach Uzis Entscheidung 11.11.2026 11:30 Ortszeit (Entscheidungskarte): außerhalb des Registers (0 von 60); Plan-Journal-Trades sind prospektive Live-Daten, die Holdout-Sperre ab 2025-01-01 gilt für Archivkurse. Methode unverändert. |
