@@ -76,6 +76,9 @@ class DashboardState:
     # Perp shadow (09.11.2026): the 15m / 1h rule on perpetual candles with a trade-based profile, src/dashboard/perp_journal.py.
     plan_journal_perp_short_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_perp_short.json"))
     plan_journal_perp_mid_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_perp_mid.json"))
+    # Monero on the perp, TIM's 15m/1h rule, own files (perp_journal.XMR_PATHS, Barti 11.11.2026).
+    plan_journal_xmr_15m_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_xmr_15m.json"))
+    plan_journal_xmr_1h_path: Path = field(default_factory=lambda: Path("data/journal/tim_plan_journal_xmr_1h.json"))
     trader_journal_path: Path = field(default_factory=lambda: Path("data/journal/trader_journal.json"))
     daily_prep_path: Path = field(default_factory=lambda: Path("data/journal/daily_prep.json"))
     hermes_log_path: Path = field(default_factory=lambda: Path("data/hermes/chat_log.json"))

@@ -68,7 +68,17 @@ def render(state: DashboardState, page: str = "Overview", selected_id: str | Non
             note = f"Vorbereitung: {summary_line(build_session_map(state.chart_series()))}. {note}"
         except Exception:  # noqa: BLE001 - the setup page renders without the preparation line
             pass
-        return _setup_path_page(data, chart, note)
+        xmr_line = None
+        try:  # Monero journals (11.11.2026): one line with links, never a reason for the page to fail
+            from src.dashboard.plan_journal import summary as journal_summary
+
+            counts = [(tf, journal_summary(load_plan_journal(path))) for tf, path in
+                      (("15m", state.plan_journal_xmr_15m_path), ("1h", state.plan_journal_xmr_1h_path))]
+            xmr_line = "Monero (XMR-Perp, gleiche TIM-Regel): " + ", ".join(
+                f"{tf} {s['plans']} Pläne, {s['closed']} geschlossen" for tf, s in counts) + "."
+        except Exception:  # noqa: BLE001
+            xmr_line = None
+        return _setup_path_page(data, chart, note, xmr_line)
     if page == "Prep":
         from src.dashboard.pages.prep import _prep_page
         from src.dashboard.session_map import build_session_map

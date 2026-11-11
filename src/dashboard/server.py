@@ -29,7 +29,8 @@ from src.dashboard.pages.pilot import PILOT_CSP, render_pilot
 from src.dashboard.state import DashboardState, plan_journal_paths
 from src.dashboard.views import render
 
-JOURNAL_PAGES = {"/journal": "Plan Journal", "/journal/struct": "Plan Journal Struct", "/journal/level": "Plan Journal Level"}
+JOURNAL_PAGES = {"/journal": "Plan Journal", "/journal/struct": "Plan Journal Struct", "/journal/level": "Plan Journal Level",
+                 "/journal/xmr-15m": "Plan Journal XMR 15m", "/journal/xmr-1h": "Plan Journal XMR 1h"}
 
 
 class DashboardServer:
@@ -236,7 +237,8 @@ class DashboardServer:
 
                     rule = query.get("rule", [""])[0]
                     journal_path = {"struct": outer.state.plan_journal_struct_path, "level": outer.state.plan_journal_level_path,
-                                    "vp": outer.state.plan_journal_vp_path}.get(rule, outer.state.plan_journal_path)
+                                    "vp": outer.state.plan_journal_vp_path, "xmr-15m": outer.state.plan_journal_xmr_15m_path,
+                                    "xmr-1h": outer.state.plan_journal_xmr_1h_path}.get(rule, outer.state.plan_journal_path)
                     from src.dashboard.plan_cost_check import with_cost_check
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
                 if path in ("/", "/trades", "/forschung", "/system"):
