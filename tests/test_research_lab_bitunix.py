@@ -1,6 +1,7 @@
 import asyncio
 import json
 import math
+import re
 from pathlib import Path
 
 import pytest
@@ -265,18 +266,50 @@ def test_restart_writes_gap_from_status(tmp_path):
     assert st["state"] == "stopped" and st["last_recv_ms"] > 1_762_819_000_000
 
 
-PRIVATE_ORDER_MARKERS = ("/api/v1/futures/trade/", "/api/v1/futures/tp_sl/", "/api/v1/futures/account/change",
-                         "fapi.bitunix.com/private")
+# Inverted gate (review 11.11.2026): every Bitunix futures REST path in src/ must be a known read path or public market
+# data. Anything else - a new write endpoint, a path missing from a list, a fragment glued together at run time -
+# fails unless the file calls require_authorized().
+PUBLIC_BITUNIX = frozenset({"/api/v1/futures/position/get_position_tiers"})
+PUBLIC_PREFIXES = ("/api/v1/futures/market/",)
+FULL_PATH = re.compile(r"/api/v1/futures/[A-Za-z0-9_/]+")
+FRAGMENT = re.compile(r"futures/(?:trade|tp_sl|tpsl|account/|position/|leverage|margin)[A-Za-z0-9_/]*|fapi\.bitunix\.com/private")
+
+
+def gate_offenders(text: str) -> list[str]:
+    from src.research_lab.bitunix import readonly
+
+    allowed = readonly.READ_PATHS | PUBLIC_BITUNIX
+    found = []
+    for m in FULL_PATH.finditer(text):
+        path = m.group(0).rstrip("/")
+        if path not in allowed and not path.startswith(PUBLIC_PREFIXES):
+            found.append(path)
+    for m in FRAGMENT.finditer(text):
+        frag = m.group(0)
+        if not any(a.endswith(frag) for a in allowed):
+            found.append(frag)
+    return found
+
+
+def test_gate_scanner_flags_unknown_paths():
+    assert gate_offenders('GET = "/api/v1/futures/account"; T = "/api/v1/futures/market/tickers"') == []
+    assert gate_offenders('"/api/v1/futures/trade/place_order"')  # known write endpoint
+    assert gate_offenders('"/api/v1/futures/trade/some_new_endpoint"')  # endpoint nobody listed yet
+    assert gate_offenders('BASE + "futures/trade/" + name')  # glued at run time
+    assert gate_offenders('"/api/v1/futures/account/change_leverage"')
+    assert gate_offenders('"wss://fapi.bitunix.com/private/"')
+    assert gate_offenders('"https://fapi.binance.com/futures/data/openInterestHist"') == []  # other venue
 
 
 def test_no_bitunix_order_path_without_gate():
-    """Any module that talks to a private Bitunix trading endpoint must call require_authorized()."""
-    offenders = []
+    """Any module with a Bitunix futures path that is not a read path or public data must call require_authorized()."""
+    offenders = {}
     for py in SRC.rglob("*.py"):
         text = py.read_text(encoding="utf-8", errors="ignore")
-        if any(m in text for m in PRIVATE_ORDER_MARKERS) and "require_authorized(" not in text:
-            offenders.append(str(py.relative_to(SRC)))
-    assert offenders == []
+        bad = gate_offenders(text)
+        if bad and "require_authorized(" not in text:
+            offenders[str(py.relative_to(SRC))] = bad
+    assert offenders == {}
 
 
 def test_report_is_reproducible():
@@ -314,3 +347,106 @@ def test_each_run_gets_its_own_segment(tmp_path):
     b.close()
     names = sorted(p.name for p in (tmp_path / "BTCUSDT").glob("*.gz"))
     assert names == ["2025-11-11.1.jsonl.gz", "2025-11-11.2.jsonl.gz"]
+
+
+# --- read-only client --------------------------------------------------------------------------------------------
+
+from src.research_lab.bitunix import readonly
+
+
+def test_sign_matches_docs_example():
+    creds = readonly.Credentials("yourApiKey", "yourSecretKey")
+    body = '{"uid":"2899","arr":[{"id":1,"name":"maple"},{"id":2,"name":"lily"}]}'
+    import hashlib
+
+    digest = hashlib.sha256(("123456" + "20241120123045" + "yourApiKey" + "id1uid200" + body).encode()).hexdigest()
+    expected = hashlib.sha256((digest + "yourSecretKey").encode()).hexdigest()
+    assert readonly.sign(creds, "123456", "20241120123045", {"uid": 200, "id": 1}, body) == expected
+    # Fixed value: the docs show the algorithm (Go/Java code) but print no result. This pins today's output, which the
+    # server accepted on the real read run (11.11.2026), against any later change of the formula.
+    assert expected == "00397cd1e52c7dce3258067324363b6361fabc9178a0912b330c138db8745655"
+    assert readonly.query_string_for_sign({"uid": 200, "id": 1}) == "id1uid200"
+
+
+def test_client_refuses_non_read_paths():
+    c = readonly.ReadOnlyClient(readonly.Credentials("k", "s"), opener=lambda req: pytest.fail("no request"))
+    for path in ("/api/v1/futures/trade/place_order", "/api/v1/futures/trade/cancel_orders",
+                 "/api/v1/futures/account/change_leverage", "/api/v1/futures/tp_sl/place_tp_sl_order"):
+        with pytest.raises(PermissionError):
+            c.get(path)
+
+
+class _Resp:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return json.dumps(self.payload).encode()
+
+
+def test_client_sends_signed_get_and_never_secret():
+    seen = []
+
+    def opener(req):
+        seen.append(req)
+        return _Resp({"code": 0, "data": {"tradeList": [], "total": 0}})
+
+    c = readonly.ReadOnlyClient(readonly.Credentials("KEY1", "SECRET1"), opener=opener, clock=lambda: 1.0)
+    assert c.history_trades(symbol="BTCUSDT") == []
+    req = seen[0]
+    assert req.get_method() == "GET"
+    headers = {k.lower(): v for k, v in req.header_items()}
+    assert headers["api-key"] == "KEY1" and headers["timestamp"] == "1000" and len(headers["sign"]) == 64
+    assert "SECRET1" not in req.full_url and "SECRET1" not in json.dumps(headers)
+    assert "SECRET1" not in repr(readonly.Credentials("KEY1", "SECRET1"))
+
+
+def test_keychain_loader_parses_account_and_password():
+    def run(cmd):
+        if "-w" in cmd:
+            return "SECRET\n"
+        return 'keychain: "x"\nattributes:\n    "acct"<blob>="APIKEY123"\n    "svce"<blob>="com.tim.bitunix-read"\n'
+
+    creds = readonly.load_from_keychain(run=run)
+    assert creds.api_key == "APIKEY123" and creds.secret == "SECRET"
+
+
+def test_fee_rates_by_role():
+    trades = [
+        {"qty": "0.01", "price": "100000", "fee": "-0.6", "roleType": "TAKER"},
+        {"qty": "0.01", "price": "100000", "fee": "-0.2", "roleType": "MAKER"},
+        {"qty": "bad", "price": "1", "fee": "1"},
+    ]
+    r = readonly.fee_rates(trades)
+    assert r["TAKER"]["rate"] == pytest.approx(0.0006)
+    assert r["MAKER"]["rate"] == pytest.approx(0.0002)
+
+
+def test_history_positions_pages():
+    pages = [[{"positionId": str(i)} for i in range(100)], [{"positionId": "x"}]]
+    calls = []
+
+    def opener(req):
+        calls.append(req.full_url)
+        return _Resp({"code": 0, "data": {"positionList": pages[len(calls) - 1]}})
+
+    c = readonly.ReadOnlyClient(readonly.Credentials("k", "s"), opener=opener)
+    assert len(readonly.history_positions(c)) == 101
+    assert "skip=100" in calls[1]
+
+
+def test_history_warns_when_pages_run_out():
+    def opener(req):
+        return _Resp({"code": 0, "data": {"positionList": [{"positionId": "p"}] * 100, "tradeList": [{"id": "t"}] * 100}})
+
+    c = readonly.ReadOnlyClient(readonly.Credentials("k", "s"), opener=opener)
+    with pytest.warns(UserWarning, match="older entries are missing"):
+        assert len(readonly.history_positions(c, max_pages=2)) == 200
+    with pytest.warns(UserWarning, match="older entries are missing"):
+        assert len(c.history_trades(max_pages=3)) == 300
