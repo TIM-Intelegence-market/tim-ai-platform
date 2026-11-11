@@ -1,6 +1,6 @@
 """S20: flip probability from candle structure at a swing level (BTCUSDT spot, 1h, 2017-08 to 2024).
 
-Rules: docs/research_lab/studien/S20_FLIP_WAHRSCHEINLICHKEIT_PRAEREGISTRIERUNG_ENTWURF.md (version 0.2).
+Rules: docs/research_lab/studien/S20_FLIP_WAHRSCHEINLICHKEIT_PRAEREGISTRIERUNG_ENTWURF.md (version 1.0, frozen 2026-11-11).
 Observation study without trades and without a register slot; the holdout from 2025-01-01 is never loaded.
 
     python -m src.research_lab.studies.s20 count    --root data/research_lab --out DIR [--fetch]
@@ -37,7 +37,7 @@ from src.research_lab.data.parse import Kline
 from src.research_lab.protocol import HOLDOUT_START_MS, VALIDATION_START_MS
 from src.research_lab.stats.inference import holm
 
-VERSION = "0.2"
+VERSION = "1.0"
 SEED = 20
 SYMBOL = "BTCUSDT"
 INTERVAL = "1h"

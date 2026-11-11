@@ -1,8 +1,17 @@
 {
   "schema": "tim_research_logbook/1",
   "purpose": "Ein Eintrag je Studie: was geprüft wurde, was herauskam und warum sie beendet ist. Damit keine tote Idee unbemerkt zweimal getestet wird. Quelle der Wahrheit bleiben Präregistrierung und Bericht; dieses Logbuch fasst sie nur zusammen.",
-  "updated": "2026-11-02",
+  "updated": "2026-11-11",
   "entries": [
+    {
+      "id": "S20",
+      "title": "Flip-Wahrscheinlichkeit aus der Kerzenstruktur, BTC 1h, Bruch von Swing-Linien",
+      "started": "2026-11-09",
+      "status": "failed",
+      "result": "Nicht bestanden: Das Modell aus 12 Kerzenmerkmalen ist in der Validierung 2023–2024 8,3 % schlechter als das Mechanik-Modell, das nur den Abstand des Schlusses zur Linie kennt (p 0,999, Glückstest p 1,0). Die Kerzen vor dem Bruch bringen nichts über die Bruchkerze hinaus (H2, −3,9 %). 561/216 Ereignisse.",
+      "lesson": "Beobachtungsstudie ohne Trades und ohne Registerplatz. Nur etwa ein Drittel der klaren Brüche hält 24 Stunden. Einzig der Abstand zur Linie sortiert (Mechanik, auch bei Zufallspfad). Kerze allein ist für diese Frage ausgeschöpft; neue Versuche nur mit anderer Informationsquelle (z. B. Orderflow) als eigene Studie. Holdout nie geladen.",
+      "doc": "docs/research_lab/reports/s20_ergebnis_2026-11-11.md"
+    },
     {
       "id": "S15",
       "title": "GARCH(1,1)-Volatilitätsprognose gegen 14-Tage-Varianz, BTC/ETH/SOL, 4h und 1d",

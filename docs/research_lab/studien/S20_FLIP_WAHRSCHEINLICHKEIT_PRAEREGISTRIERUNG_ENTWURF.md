@@ -1,9 +1,9 @@
-# S20: Flip-Wahrscheinlichkeit aus der Kerzenstruktur: Sagen Körper, Dochte, Spanne und die Kerzen davor voraus, ob eine gebrochene Linie als neues Level hält, und wie viele Kerzen braucht man dafür? (Präregistrierung, Entwurf)
+# S20: Flip-Wahrscheinlichkeit aus der Kerzenstruktur: Sagen Körper, Dochte, Spanne und die Kerzen davor voraus, ob eine gebrochene Linie als neues Level hält, und wie viele Kerzen braucht man dafür? (Präregistrierung 1.0)
 
 | Feld | Wert |
 |---|---|
 | Studie | S20 (nächste freie Nummer nach S19, 09.11.2026) |
-| Version | **0.2, Entwurf.** Regeln als Code: `src/research_lab/studies/s20.py`, Tests `tests/test_research_lab_s20.py`. Keine Daten geladen, kein Zähllauf. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt |
+| Version | **1.0, eingefroren am 11.11.2026** auf Uzis Wort („komplett durchrechnen“, 11.11.2026 00:40). Regeln, Konstanten und Kriterien unverändert gegenüber 0.2; geändert wurde nur `VERSION`. Regeln als Code: `src/research_lab/studies/s20.py`, Tests `tests/test_research_lab_s20.py`. Zähllauf bestanden (Abschnitt 5.1). Der Dateiname behält „ENTWURF“, damit Verweise nicht brechen |
 | Anlass | Barti 09.11.2026: „Kann man aus einer Kombination aus den Candles, also den Hochs, den Tiefs, auch den Dochten, eine Wahrscheinlichkeit für den Flip berechnen?“ und „wie viele berücksichtigte Kerzen liefern das beste Ergebnis?“ |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Daten | Binance Spot BTCUSDT, 1h-Kerzen aus dem öffentlichen Archiv (`data.binance.vision`), 2017-08 bis 2024-12, Prüfsumme je Monatsdatei (`ArchiveStore`) |
@@ -170,3 +170,5 @@ Kalibrierung in Zehnteln; Brier-Skill; standardisierte Koeffizienten. Daraus wir
 |---|---|---|
 | 2026-11-09 | 0.1 | Entwurf aus Bartis Frage. Kein Code, keine Daten geladen, kein Registereintrag. |
 | 2026-11-09 | 0.2 | Code und Tests (`s20.py`, 19 Tests). Knapper Schluss lässt die Linie leben; H1 misst gegen das Mechanik-Modell statt gegen die Basisrate (Zufallspfad-Gegenprobe hatte gezeigt, dass schon der Abstand allein die Basisrate schlägt). Noch kein Zähllauf, keine echten Daten geladen. |
+| 2026-11-10 | 0.2 | Zähllauf (ergebnisblind, ohne Label) auf Binance Spot BTCUSDT 1h 2017-08 bis 2024-12, 89 Monatsdateien mit Prüfsumme, 64 525 Kerzen, Datensatz-Hash a9f525df…: Training 561 Ereignisse in 271 Wochen (297 oben, 264 unten), Validierung 216 Ereignisse in 100 Wochen (129 oben, 87 unten). Verworfen: 313 entprellt, 21 Lücke oder Rand, 325 mitgenommene Linien. Gate bestanden. |
+| 2026-11-11 | 1.0 | Eingefroren auf Uzis Wort. Keine Regel, keine Konstante, kein Kriterium geändert. Bartis Zustimmung zum Einfrieren liegt nicht schriftlich vor (Abschnitt 7 nennt sie); im Bericht vermerkt. |

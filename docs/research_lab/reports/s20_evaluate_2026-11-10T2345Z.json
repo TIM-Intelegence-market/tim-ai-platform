@@ -1,0 +1,173 @@
+{
+  "studie": "S20",
+  "version": "1.0",
+  "seed": 20,
+  "datensatz_sha256": "a9f525df83b3c5b8681fabd43b1e0fa87af4010e69c55f4174d0ea83f4826fa9",
+  "kerzen": 64525,
+  "zaehllauf": {
+    "abschnitte": {
+      "training": {
+        "ereignisse": 561,
+        "wochen": 271,
+        "je_richtung": {
+          "up": 297,
+          "down": 264
+        },
+        "je_jahr": {
+          "2017": 40,
+          "2018": 103,
+          "2019": 100,
+          "2020": 104,
+          "2021": 108,
+          "2022": 106
+        },
+        "gate": true
+      },
+      "validierung": {
+        "ereignisse": 216,
+        "wochen": 100,
+        "je_richtung": {
+          "up": 129,
+          "down": 87
+        },
+        "je_jahr": {
+          "2023": 103,
+          "2024": 113
+        },
+        "gate": true
+      }
+    },
+    "verworfen": {
+      "entprellt": 313,
+      "luecke_oder_rand": 21,
+      "mitgenommen": 325
+    },
+    "gate_bestanden": true
+  },
+  "auswertung": {
+    "fenster_gewaehlt": 10,
+    "cv_logloss_je_fenster": {
+      "5": 0.641341110761622,
+      "10": 0.6223418703210445,
+      "20": 0.6279731135151652,
+      "50": 0.6273838787052424
+    },
+    "cv_logloss_nur_kerze": 0.624520973163682,
+    "basisrate_training": 0.37254901960784315,
+    "H1_gegen_mechanik": {
+      "rel_gewinn": -0.08338722007886876,
+      "auc": 0.6158585858585859,
+      "quintil_spanne_pp": 25.581395348837212,
+      "p": 0.9991,
+      "rel_gewinn_gegen_basisrate": -0.020959048499378855,
+      "rel_gewinn_mechanik_gegen_basisrate": 0.0576231382671703
+    },
+    "H2_fenster_gegen_nur_kerze": {
+      "rel_gewinn": -0.039357529169025775,
+      "p": 0.9664
+    },
+    "holm_bestanden": [],
+    "glueckstest": {
+      "ziehungen": 199,
+      "p": 1.0,
+      "q95_zufall": 0.010513017174819823
+    },
+    "urteil": "NICHT BESTANDEN: Kerzenstruktur sagt den Flip in der Validierung nicht verlässlich besser voraus als der Abstand zur Linie allein",
+    "H1_bestanden": false,
+    "H2_bestanden": false,
+    "beschreibend": {
+      "flip_anteil": {
+        "training": 0.37254901960784315,
+        "validierung": 0.3055555555555556
+      },
+      "flip_anteil_je_jahr": {
+        "2017": 0.4,
+        "2018": 0.4077669902912621,
+        "2019": 0.39,
+        "2020": 0.4230769230769231,
+        "2021": 0.3611111111111111,
+        "2022": 0.27358490566037735,
+        "2023": 0.30097087378640774,
+        "2024": 0.30973451327433627
+      },
+      "flip_anteil_je_richtung": {
+        "up": {
+          "training": 0.4107744107744108,
+          "validierung": 0.3023255813953488
+        },
+        "down": {
+          "training": 0.32954545454545453,
+          "validierung": 0.3103448275862069
+        }
+      },
+      "kalibrierung_validierung": [
+        {
+          "vorhersage": 0.11527486419000985,
+          "flip_anteil": 0.19047619047619047,
+          "n": 21
+        },
+        {
+          "vorhersage": 0.19223069684302654,
+          "flip_anteil": 0.22727272727272727,
+          "n": 22
+        },
+        {
+          "vorhersage": 0.24169129911565387,
+          "flip_anteil": 0.2857142857142857,
+          "n": 21
+        },
+        {
+          "vorhersage": 0.2920142763223579,
+          "flip_anteil": 0.18181818181818182,
+          "n": 22
+        },
+        {
+          "vorhersage": 0.3435487030828605,
+          "flip_anteil": 0.36363636363636365,
+          "n": 22
+        },
+        {
+          "vorhersage": 0.4022836144052801,
+          "flip_anteil": 0.23809523809523808,
+          "n": 21
+        },
+        {
+          "vorhersage": 0.45649978510390005,
+          "flip_anteil": 0.2727272727272727,
+          "n": 22
+        },
+        {
+          "vorhersage": 0.5382534708981842,
+          "flip_anteil": 0.38095238095238093,
+          "n": 21
+        },
+        {
+          "vorhersage": 0.6203638784029608,
+          "flip_anteil": 0.36363636363636365,
+          "n": 22
+        },
+        {
+          "vorhersage": 0.7832063017732257,
+          "flip_anteil": 0.5454545454545454,
+          "n": 22
+        }
+      ],
+      "koeffizienten_standardisiert": {
+        "achsenabschnitt": -0.5963936868819043,
+        "koerper": 0.4745156063776473,
+        "docht_gegen": 0.15771327456830286,
+        "abstand_atr": 0.3635378616139988,
+        "spanne_atr": -0.12087919924730324,
+        "taker_saldo": -0.29747779352432496,
+        "level_alter": -0.011357909745234575,
+        "richtung_up": 0.17573801103777748,
+        "volumen_log": 0.4825719756149625,
+        "beruehrungen": -0.05396404652916322,
+        "momentum": 0.18197492598991405,
+        "kompression": 0.007996396754760786,
+        "abweisung": 0.0814186551658362
+      },
+      "brier_skill_validierung": -0.027005820610924047
+    }
+  }
+}

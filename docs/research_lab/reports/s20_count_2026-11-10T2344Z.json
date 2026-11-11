@@ -1,0 +1,47 @@
+{
+  "studie": "S20",
+  "version": "0.2",
+  "seed": 20,
+  "datensatz_sha256": "a9f525df83b3c5b8681fabd43b1e0fa87af4010e69c55f4174d0ea83f4826fa9",
+  "kerzen": 64525,
+  "zaehllauf": {
+    "abschnitte": {
+      "training": {
+        "ereignisse": 561,
+        "wochen": 271,
+        "je_richtung": {
+          "up": 297,
+          "down": 264
+        },
+        "je_jahr": {
+          "2017": 40,
+          "2018": 103,
+          "2019": 100,
+          "2020": 104,
+          "2021": 108,
+          "2022": 106
+        },
+        "gate": true
+      },
+      "validierung": {
+        "ereignisse": 216,
+        "wochen": 100,
+        "je_richtung": {
+          "up": 129,
+          "down": 87
+        },
+        "je_jahr": {
+          "2023": 103,
+          "2024": 113
+        },
+        "gate": true
+      }
+    },
+    "verworfen": {
+      "entprellt": 313,
+      "luecke_oder_rand": 21,
+      "mitgenommen": 325
+    },
+    "gate_bestanden": true
+  }
+}
