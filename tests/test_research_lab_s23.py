@@ -4,9 +4,13 @@ from __future__ import annotations
 import gzip
 import json
 import math
+import random
 from datetime import datetime, timezone
 
+import pytest
+
 from src.research_lab.data.parse import Kline
+from src.research_lab.protocol import VALIDATION_START_MS
 from src.research_lab.studies import s22, s23
 from src.research_lab.studies.s20 import HOUR, UP
 
@@ -120,3 +124,109 @@ def test_no_holdout_and_no_live_only_family_in_the_table():
     names = {n for f in s23.FAMILIES for n in s23.FEATURES[f]}
     assert not any("liquid" in n or "orderbuch" in n or "gamma" in n for n in names)
     assert set(s23.SHADOW_ONLY) and all(isinstance(v, str) for v in s23.SHADOW_ONLY.values())
+
+
+# -- package 2: outcome, models, evaluation -------------------------------------------------------------
+
+
+def _flat(n: int, price: float = 100.0) -> list[Kline]:
+    return [Kline(START + i * HOUR, price, price + 0.5, price - 0.5, price, 1.0, START + (i + 1) * HOUR - 1, 0.5) for i in range(n)]
+
+
+def _set(bars: list[Kline], k: int, *, high: float | None = None, low: float | None = None) -> None:
+    b = bars[k]
+    bars[k] = Kline(b.open_time, b.open, b.high if high is None else high, b.low if low is None else low, b.close,
+                    b.volume, b.close_time, b.taker_buy_volume)
+
+
+def test_outcome_costs_stop_slippage_and_funding():
+    from src.research_lab.bitunix.contract import FEE_TAKER
+    from src.research_lab.bitunix.leverage import SLIPPAGE, STOP_SLIPPAGE
+
+    no_rates = ([], [])
+    bars = _flat(60)
+    _set(bars, 3, high=103.0)  # target (2 ATR = 2.0 at atr 1.0) hit in the third candle after the entry
+    net = s23.outcome(bars, 0, "LONG", 1.0, no_rates)
+    assert net == pytest.approx(2.0 - (100 * (FEE_TAKER + SLIPPAGE) + 102 * (FEE_TAKER + SLIPPAGE)) / 1.0)
+    bars = _flat(60)
+    _set(bars, 2, low=98.5)  # stop
+    net = s23.outcome(bars, 0, "LONG", 1.0, no_rates)
+    assert net == pytest.approx(-1.0 - (100 * (FEE_TAKER + SLIPPAGE) + 99 * (FEE_TAKER + SLIPPAGE + STOP_SLIPPAGE)))
+    # funding inside the holding time: long pays a positive rate, short receives it; after the exit it does not count
+    bars = _flat(60)
+    rates = ([START + 5 * HOUR, START + 55 * HOUR], [0.001, 0.5])
+    flat_long = s23.outcome(bars, 0, "LONG", 1.0, no_rates)
+    assert s23.outcome(bars, 0, "LONG", 1.0, rates) == pytest.approx(flat_long - 0.1)
+    assert s23.outcome(bars, 0, "SHORT", 1.0, rates) == pytest.approx(s23.outcome(bars, 0, "SHORT", 1.0, no_rates) + 0.1)
+    assert s23.outcome(bars, 20, "LONG", 1.0, no_rates) is None  # 48 candles not there
+
+
+def _row(t: int, section: str, feats: dict, net_r: float, direction: str = "LONG") -> s23.Row:
+    return s23.Row(t, section, direction, feats, net_r)
+
+
+def _feats(c: float = 0.0, k: float = 0.0, g: float = 0.0) -> dict:
+    return {"C": (c,) * 5, "K": (k, 0.7, -0.3), "F": (0.0,) * 6, "G": (g, g), "T": (0.0,) * 3, "V": (0.0, 0.0)}
+
+
+def test_m1_votes_signs_and_thresholds():
+    from src.dashboard.chart_verdict import NEUTRAL, SKIP, TAKE
+
+    assert s23.m1_score(_row(0, "training", _feats(c=1.0), 0.0)) == 5
+    assert s23.m1_score(_row(0, "training", _feats(k=0.2), 0.0)) == 1  # co-movement and volume trend stay silent
+    assert s23.m1_score(_row(0, "training", _feats(g=0.3), 0.0)) == -2  # the paying side votes against
+    assert s23.m1_decision(_row(0, "training", _feats(c=1.0), 0.0)) == TAKE
+    assert s23.m1_decision(_row(0, "training", _feats(c=-1.0), 0.0)) == SKIP
+    assert s23.m1_decision(_row(0, "training", _feats(k=1.0, g=-1.0), 0.0)) == NEUTRAL  # 1 + 2 = 3 < 4
+
+
+def test_logit_learns_a_planted_feature():
+    rng = random.Random(3)
+    rows = []
+    for j in range(3000):
+        x = rng.gauss(0, 1)
+        feats = _feats()
+        feats["V"] = (x, rng.gauss(0, 1))
+        rows.append(_row(j, "training", feats, 1.0 if x + rng.gauss(0, 0.5) > 0 else -1.0))
+    model, take_at, skip_at = s23.m2_rule(rows)
+    names = ["achse"] + [n for f in s23.FAMILIES for n in s23.FEATURES[f]]
+    weights = dict(zip(names, model.weights))
+    assert weights["vwap_24h_atr"] > 1.0 and abs(weights["vwap_woche_atr"]) < 0.3
+    assert skip_at < take_at
+    hi = _feats()
+    hi["V"] = (2.0, 0.0)
+    assert model.prob(_row(0, "x", hi, 0.0)) > take_at
+
+
+def _planted(n_weeks: int, effect: float, seed: int) -> list[s23.Row]:
+    """Two moments a day; the chart rules (C) carry ``effect`` R, everything else is noise."""
+    rng = random.Random(seed)
+    rows = []
+    for section, start in (("training", START), ("validierung", VALIDATION_START_MS)):
+        for j in range(n_weeks * 14):
+            t = start + j * 12 * HOUR
+            for direction in s22.DIRECTIONS:
+                c = rng.choice((-1.0, 0.0, 1.0))
+                feats = {"C": (c,) * 5, "K": tuple(rng.gauss(0, 1) for _ in range(3)), "F": tuple(rng.gauss(0, 0.2) for _ in range(6)),
+                         "G": (rng.gauss(0, 1), rng.gauss(0, 1)), "T": tuple(rng.choice((-1.0, 1.0)) for _ in range(3)),
+                         "V": (rng.gauss(0, 1), rng.gauss(0, 1))}
+                rows.append(s23.Row(t, section, direction, feats, effect * c + rng.gauss(0, 1.0)))
+    return rows
+
+
+def test_planted_effect_passes_and_noise_fails(monkeypatch):
+    monkeypatch.setattr(s23, "MIN_TRADES", 50)
+    monkeypatch.setattr(s23, "MIN_WEEKS", 20)
+    good = s23.evaluate(_planted(60, 0.5, 1), list(s23.FAMILIES), boot_draws=199, shift_draws=49)
+    assert good["urteil_je_modell"]["M1"].startswith("BESTANDEN") and good["urteil"].startswith("BESTANDEN")
+    noise = s23.evaluate(_planted(60, 0.0, 2), list(s23.FAMILIES), boot_draws=199, shift_draws=49)
+    assert noise["urteil"] == "NO ROBUST EDGE PROVEN"
+    assert set(noise["familien"]["validierung"]) == set(s23.FAMILIES)
+
+
+def test_evaluate_refuses_a_draft_and_missing_families(monkeypatch):
+    with pytest.raises(SystemExit):
+        s23.evaluate([], ["C", "K"])
+    monkeypatch.setattr(s23, "VERSION", "0.9")
+    with pytest.raises(SystemExit):
+        s23.evaluate([], list(s23.FAMILIES))

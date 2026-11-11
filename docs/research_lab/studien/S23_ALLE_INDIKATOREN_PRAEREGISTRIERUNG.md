@@ -1,9 +1,9 @@
-# S23: Alle Indikatoren zusammen: Sortiert ein Gesamt-Urteil aus allen Indikatoren mit Historie Standard-Trades nach ihrem Ergebnis? (Präregistrierung, Entwurf)
+# S23: Alle Indikatoren zusammen: Sortiert ein Gesamt-Urteil aus allen Indikatoren mit Historie Standard-Trades nach ihrem Ergebnis? (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
 | Studie | S23 (nächste freie Nummer nach S22, 11.11.2026) |
-| Version | **0.1, Entwurf.** Merkmal-Tabelle als Code: `src/research_lab/studies/s23.py`, Tests `tests/test_research_lab_s23.py`. Bisher nur `count` und `export` (ergebnisblind, kein Ergebnis wird berechnet). Das Modell (Abschnitt 4) kommt erst nach dem Einfrieren als 1.0 in den Code |
+| Version | **1.0, eingefroren am 11.11.2026 auf Uzis Wort („ok“), vor jedem Blick auf Ergebnisse.** Regeln als Code: `src/research_lab/studies/s23.py`, Tests `tests/test_research_lab_s23.py`. Vorher ein Zähllauf mit 0.1 (ergebnisblind, Abschnitt 5). Jede Änderung braucht eine neue Version |
 | Anlass | Uzi 11.11.2026: „richte TIM auf jeden Fall so ein, dass er wirklich alle Indikatoren nutzt, die wir haben“, „go“ auf den 4-Paket-Plan (Merkmal-Tabelle, Gesamt-Urteil, Live-Schatten, Schlusstest) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Daten | Binance Spot BTCUSDT 1h und 30m (wie S22), USD-M Funding-Archiv, S8-Footprint-Speicher; 2019-10 bis 2024-12 |
@@ -36,17 +36,20 @@ Bitunix-Trades (Recorder seit 11.11.2026).
 ## 3. Kosten
 
 Bitunix-Taker 0,06 % je Seite plus Schlupf 0,03 % je Seite und 0,05 % zusätzlich beim Stop (wie OF2 und die
-Bitunix-Rechnung aus PR #226). Funding wird über die Haltedauer mit der jeweils veröffentlichten Rate verrechnet.
+Bitunix-Rechnung aus PR #226). Funding: jede veröffentlichte Rate nach dem Einstieg bis zur Ausstiegskerze wird
+verrechnet, Long zahlt bei positiver Rate, Short erhält (Binance-USD-M-Raten als Näherung für Bitunix).
 Netto-R = Brutto-R minus Kosten geteilt durch das Risiko (1 ATR).
 
-## 4. Modelle (vor dem Einfrieren festzulegen, hier der Vorschlag)
+## 4. Modelle (eingefroren)
 
 Zwei Modelle, beide nur mit vollständigen Zeilen (alle geladenen Familien vorhanden):
 
 - **M1 Stimmen (nichts angepasst):** Jedes Merkmal gibt eine Stimme mit seinem Vorzeichen, nach vorher
   festgelegter Lesart: C, K-Anteil, F, T, V mit dem Trade; G gegen den Trade (zahlende Seite = überfüllt).
-  Gleichlauf und Volumentrend stimmen nicht ab. Score = Summe; NEHMEN ab +4, AUSLASSEN ab −4, sonst NEUTRAL.
-- **M2 Logistische Regression:** Ziel Netto-R > 0. Merkmale auf dem Training standardisiert, L2-Strafe λ = 1,
+  Gleichlauf und Volumentrend stimmen nicht ab (19 Stimmen). Score = Summe; NEHMEN ab +4, AUSLASSEN ab −4, sonst
+  NEUTRAL.
+- **M2 Logistische Regression:** Ziel Netto-R > 0, alle 21 Merkmale. Merkmale auf dem Training standardisiert,
+  L2-Strafe λ = 1 auf der Summe der Log-Verluste (Achsenabschnitt frei), Newton-Schritte bis zur Konvergenz,
   einmal auf dem Training geschätzt, danach eingefroren. NEHMEN = vorhergesagte Wahrscheinlichkeit im obersten
   Drittel der Trainingswerte, AUSLASSEN = unterstes Drittel. Die Schwellen kommen aus dem Training.
 
@@ -54,8 +57,11 @@ Zwei Modelle, beide nur mit vollständigen Zeilen (alle geladenen Familien vorha
 
 1. `count` (ergebnisblind): Abdeckung je Familie und Abschnitt. Gate: je Abschnitt und Richtung mindestens 300
    vollständige Zeilen, Validierung mindestens 50 Wochen.
-2. Einfrieren als 1.0 auf Uzis Wort (Modelle, Schwellen, Kosten, Tests unverändert danach).
-3. `evaluate` auf der PS5: M2 einmal auf dem Training geschätzt, beide Modelle auf der Validierung bewertet.
+   Ergebnis 0.1 (PS5, 11.11.2026 19:46): Training 48.998 vollständige Zeilen (153 Wochen), Validierung 34.848
+   (106 Wochen), alle sechs Familien geladen, Gate erfüllt.
+2. Einfrieren als 1.0 auf Uzis Wort (11.11.2026; Modelle, Schwellen, Kosten danach unverändert).
+3. `evaluate` auf der PS5 auf dem Merge-Commit: M2 einmal auf dem Training geschätzt, beide Modelle auf der
+   Validierung bewertet. Ergebnis wird so berichtet, wie es fällt.
 
 ## 6. Hypothesen und Entscheidung (nur Validierung 2023–2024)
 
