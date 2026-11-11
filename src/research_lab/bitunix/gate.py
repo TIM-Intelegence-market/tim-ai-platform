@@ -1,4 +1,11 @@
-"""Global trading authorization gate (Phase 9).
+"""PROTOTYPE trading authorization gate for a future Bitunix order path (Phase 9). Not wired, not global.
+
+Status: prototype. No Bitunix order path exists in this repository, so nothing calls this yet. The scenario
+pipeline has its own governance (``src/orderflow_scenario/governance.py``: modes, kill switch); the Kraken live
+trader runs outside the repo with its own STOP file. Before any Bitunix order path is built, one central gate must
+be chosen (this one merged into the existing governance, or the reverse); until then
+``tests/test_research_lab_bitunix.py::test_no_bitunix_order_path_without_gate`` fails any module that talks to a
+private Bitunix trading endpoint without calling :func:`require_authorized`.
 
 Fail-closed: trading is allowed only if the environment says exactly ``TRADING_AUTHORIZED=YES`` AND no kill-switch
 file exists. Anything else (unset, ``NO``, ``yes``, ``1``, whitespace, unreadable kill path) means NO. Signal code

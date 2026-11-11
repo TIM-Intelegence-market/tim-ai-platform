@@ -1,0 +1,361 @@
+{
+ "source": {
+  "host": "PS5",
+  "path": "~/tim-research/results/of2/run_aa853e1/training.json",
+  "sha256": "91eda09436fff64e9e32c7945d88d298743ee7cfb7df7787d16257aa6ab754e8",
+  "code_commit": "aa853e1",
+  "filter": "confirmed == true (OF-Trades)",
+  "extracted": "2026-11-11"
+ },
+ "studie": "OF2",
+ "version": "1.0.0",
+ "config_digest": "6cb919a2a5c1b3805edde6f0ef8a40fa27f573e029e16c64d911601e32ed796a",
+ "abschnitt": "training",
+ "erster_tag": "2020-01-01",
+ "letzter_tag": "2022-12-31",
+ "datensatz_hash": "e68bae01f61116db722bae491601dac6d19e51e37a438883f907b31a048be987",
+ "tage": 1096,
+ "cost": {
+  "fee": 0.0006,
+  "slippage": 0.0003,
+  "stop_slippage": 0.0005
+ },
+ "of_trades": [
+  {
+   "day": 18276,
+   "net_r": -1.09946,
+   "stop_dist": 0.020333,
+   "reason": "STOP"
+  },
+  {
+   "day": 18334,
+   "net_r": -1.101851,
+   "stop_dist": 0.019427,
+   "reason": "STOP"
+  },
+  {
+   "day": 18336,
+   "net_r": -0.559635,
+   "stop_dist": 0.057509,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18338,
+   "net_r": -0.506194,
+   "stop_dist": 0.039067,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18341,
+   "net_r": 1.933839,
+   "stop_dist": 0.039361,
+   "reason": "TARGET"
+  },
+  {
+   "day": 18343,
+   "net_r": 1.894697,
+   "stop_dist": 0.015599,
+   "reason": "TARGET"
+  },
+  {
+   "day": 18344,
+   "net_r": 2.528833,
+   "stop_dist": 0.020745,
+   "reason": "TARGET"
+  },
+  {
+   "day": 18356,
+   "net_r": 0.03231,
+   "stop_dist": 0.014277,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18393,
+   "net_r": -1.143946,
+   "stop_dist": 0.013789,
+   "reason": "STOP"
+  },
+  {
+   "day": 18394,
+   "net_r": 1.266014,
+   "stop_dist": 0.017382,
+   "reason": "MAX_HOLD"
+  },
+  {
+   "day": 18416,
+   "net_r": 0.010528,
+   "stop_dist": 0.018157,
+   "reason": "MAX_HOLD"
+  },
+  {
+   "day": 18453,
+   "net_r": -0.189723,
+   "stop_dist": 0.0139,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18470,
+   "net_r": -0.275319,
+   "stop_dist": 0.018814,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18574,
+   "net_r": 2.792877,
+   "stop_dist": 0.014601,
+   "reason": "MAX_HOLD"
+  },
+  {
+   "day": 18575,
+   "net_r": -1.102158,
+   "stop_dist": 0.019791,
+   "reason": "STOP"
+  },
+  {
+   "day": 18593,
+   "net_r": 1.474656,
+   "stop_dist": 0.021706,
+   "reason": "TARGET"
+  },
+  {
+   "day": 18619,
+   "net_r": -1.124296,
+   "stop_dist": 0.01595,
+   "reason": "STOP"
+  },
+  {
+   "day": 18632,
+   "net_r": 3.830879,
+   "stop_dist": 0.018351,
+   "reason": "TARGET"
+  },
+  {
+   "day": 18635,
+   "net_r": -1.10053,
+   "stop_dist": 0.019679,
+   "reason": "STOP"
+  },
+  {
+   "day": 18637,
+   "net_r": 9.682203,
+   "stop_dist": 0.013779,
+   "reason": "TARGET"
+  },
+  {
+   "day": 18642,
+   "net_r": -0.43227,
+   "stop_dist": 0.024625,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18655,
+   "net_r": -1.08809,
+   "stop_dist": 0.022991,
+   "reason": "STOP"
+  },
+  {
+   "day": 18656,
+   "net_r": -1.061754,
+   "stop_dist": 0.032974,
+   "reason": "STOP"
+  },
+  {
+   "day": 18657,
+   "net_r": -0.069576,
+   "stop_dist": 0.045027,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18666,
+   "net_r": -1.149676,
+   "stop_dist": 0.013461,
+   "reason": "STOP"
+  },
+  {
+   "day": 18667,
+   "net_r": -0.542183,
+   "stop_dist": 0.037208,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18669,
+   "net_r": 1.47277,
+   "stop_dist": 0.025325,
+   "reason": "TARGET"
+  },
+  {
+   "day": 18683,
+   "net_r": -1.140458,
+   "stop_dist": 0.014352,
+   "reason": "STOP"
+  },
+  {
+   "day": 18683,
+   "net_r": -1.144424,
+   "stop_dist": 0.013743,
+   "reason": "STOP"
+  },
+  {
+   "day": 18688,
+   "net_r": 0.024001,
+   "stop_dist": 0.027196,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18755,
+   "net_r": -1.140888,
+   "stop_dist": 0.014307,
+   "reason": "STOP"
+  },
+  {
+   "day": 18764,
+   "net_r": -0.353874,
+   "stop_dist": 0.051766,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18765,
+   "net_r": -1.074048,
+   "stop_dist": 0.026614,
+   "reason": "STOP"
+  },
+  {
+   "day": 18801,
+   "net_r": -0.207965,
+   "stop_dist": 0.049976,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 18803,
+   "net_r": 2.331205,
+   "stop_dist": 0.020147,
+   "reason": "TARGET"
+  },
+  {
+   "day": 18808,
+   "net_r": -1.116036,
+   "stop_dist": 0.017074,
+   "reason": "STOP"
+  },
+  {
+   "day": 18821,
+   "net_r": -1.107357,
+   "stop_dist": 0.018441,
+   "reason": "STOP"
+  },
+  {
+   "day": 18864,
+   "net_r": 1.786647,
+   "stop_dist": 0.015082,
+   "reason": "TARGET"
+  },
+  {
+   "day": 18929,
+   "net_r": -1.137964,
+   "stop_dist": 0.014382,
+   "reason": "STOP"
+  },
+  {
+   "day": 18971,
+   "net_r": 2.633075,
+   "stop_dist": 0.013345,
+   "reason": "TARGET"
+  },
+  {
+   "day": 19016,
+   "net_r": -1.138421,
+   "stop_dist": 0.014335,
+   "reason": "STOP"
+  },
+  {
+   "day": 19062,
+   "net_r": -1.123761,
+   "stop_dist": 0.016018,
+   "reason": "STOP"
+  },
+  {
+   "day": 19083,
+   "net_r": 1.599549,
+   "stop_dist": 0.024124,
+   "reason": "TARGET"
+  },
+  {
+   "day": 19089,
+   "net_r": 0.121803,
+   "stop_dist": 0.015206,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 19096,
+   "net_r": 2.207393,
+   "stop_dist": 0.014074,
+   "reason": "TARGET"
+  },
+  {
+   "day": 19103,
+   "net_r": -0.277654,
+   "stop_dist": 0.015558,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 19109,
+   "net_r": 1.664668,
+   "stop_dist": 0.01515,
+   "reason": "MAX_HOLD"
+  },
+  {
+   "day": 19124,
+   "net_r": -1.064495,
+   "stop_dist": 0.03049,
+   "reason": "STOP"
+  },
+  {
+   "day": 19127,
+   "net_r": -1.128125,
+   "stop_dist": 0.015745,
+   "reason": "STOP"
+  },
+  {
+   "day": 19131,
+   "net_r": -0.590174,
+   "stop_dist": 0.018308,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 19162,
+   "net_r": 2.243054,
+   "stop_dist": 0.026005,
+   "reason": "TARGET"
+  },
+  {
+   "day": 19162,
+   "net_r": -1.052678,
+   "stop_dist": 0.038776,
+   "reason": "STOP"
+  },
+  {
+   "day": 19162,
+   "net_r": 1.417032,
+   "stop_dist": 0.033301,
+   "reason": "MAX_HOLD"
+  },
+  {
+   "day": 19224,
+   "net_r": 0.224024,
+   "stop_dist": 0.016703,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 19264,
+   "net_r": -0.421999,
+   "stop_dist": 0.017987,
+   "reason": "TIME_STOP"
+  },
+  {
+   "day": 19308,
+   "net_r": -0.353019,
+   "stop_dist": 0.015979,
+   "reason": "TIME_STOP"
+  }
+ ]
+}

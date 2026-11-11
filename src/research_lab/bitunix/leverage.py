@@ -11,6 +11,11 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 from src.research_lab.bitunix.contract import BTCUSDT, FEE_TAKER, Contract
+from src.research_lab.of2.config import DEFAULT_CONFIG as _OF2
+
+# Same slippage as the OF2 spec (protocol 4.4): 0,03 % on a normal fill, 0,05 % when the stop fills.
+SLIPPAGE = _OF2.slippage
+STOP_SLIPPAGE = _OF2.stop_slippage
 
 LEVERAGES = (1, 2, 5, 10, 25, 50, 100, 200)
 
@@ -26,7 +31,7 @@ class Scenario:
     liq_distance: float  # fraction of entry
     stop_distance: float
     liq_before_stop: bool
-    cost_per_trade: float  # USDT, taker both sides + slippage both sides
+    cost_per_trade: float  # USDT for a trade that ends at the stop: taker both sides, entry slippage, stop slippage
     cost_in_r: float
     loss_at_stop: float  # USDT incl. costs
     funding_per_8h: float  # USDT at the given funding rate
@@ -48,7 +53,8 @@ def scenario(
     leverage: int,
     contract: Contract = BTCUSDT,
     fee: float = FEE_TAKER,
-    slippage: float = 0.0002,
+    slippage: float = SLIPPAGE,
+    stop_slippage: float = STOP_SLIPPAGE,
     funding_rate: float = 0.0001,
     safety: float = 1.5,
 ) -> Scenario:
@@ -58,14 +64,14 @@ def scenario(
     """
     if equity <= 0 or risk_fraction <= 0 or stop_distance <= 0:
         raise ValueError("equity, risk_fraction and stop_distance must be > 0")
-    side_cost = fee + slippage
+    stop_costs = 2 * fee + slippage + stop_slippage  # worst normal case: the trade ends at the stop
     risk_usd = equity * risk_fraction
-    # Loss at the stop = notional * (stop + both sides' costs) = risk_usd.
-    notional = risk_usd / (stop_distance + 2 * side_cost)
+    # Loss at the stop = notional * (stop + costs of a stopped trade) = risk_usd.
+    notional = risk_usd / (stop_distance + stop_costs)
     tier = contract.tier_for(notional)
     margin = notional / leverage
     liq = liquidation_distance(leverage, tier.mmr)
-    cost = notional * 2 * side_cost
+    cost = notional * stop_costs
     liq_before_stop = liq <= stop_distance
     allowed = contract.leverage_allowed(leverage, notional)
     if not allowed:
@@ -90,7 +96,7 @@ def scenario(
         liq_before_stop=liq_before_stop,
         cost_per_trade=round(cost, 4),
         cost_in_r=round(cost / risk_usd, 4),
-        loss_at_stop=round(notional * (stop_distance + 2 * side_cost), 4),
+        loss_at_stop=round(notional * (stop_distance + stop_costs), 4),
         funding_per_8h=round(notional * funding_rate, 4),
         verdict=verdict,
     )

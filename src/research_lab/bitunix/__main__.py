@@ -3,6 +3,7 @@
     python -m src.research_lab.bitunix leverage --equity 1000 --risk 0.0025 --stop 0.013
     python -m src.research_lab.bitunix target --win-rate 0.39 --win-r 2.4 --trades-per-day 0.2
     python -m src.research_lab.bitunix record --root ~/TIM-research/bitunix [--symbols BTCUSDT] [--seconds 600]
+    python -m src.research_lab.bitunix report --trades docs/research_lab/reports/bitunix/of2_training_of_trades_aa853e1.json --out <file>
     python -m src.research_lab.bitunix gate
 """
 from __future__ import annotations
@@ -32,6 +33,9 @@ def main(argv: list[str] | None = None) -> int:
     rc.add_argument("--root", type=Path, required=True)
     rc.add_argument("--symbols", default="BTCUSDT")
     rc.add_argument("--seconds", type=float)
+    rp = sub.add_parser("report")
+    rp.add_argument("--trades", type=Path, required=True)
+    rp.add_argument("--out", type=Path, required=True)
     sub.add_parser("gate")
     a = p.parse_args(argv)
     if a.cmd == "leverage":
@@ -44,8 +48,16 @@ def main(argv: list[str] | None = None) -> int:
         for eq in a.equity or [500, 1000, 2500, 5000, 10000, 25000]:
             out["sims"].append(target.simulate(equity=eq, edge=edge, risk_fraction=a.risk).as_dict())
         print(json.dumps(out, indent=1))
+    elif a.cmd == "report":
+        rep = target.build_report(json.loads(a.trades.read_text()))
+        a.out.write_text(json.dumps(rep, indent=1, ensure_ascii=False) + "\n")
+        print(rep["verdict"])
     elif a.cmd == "record":
-        counts = asyncio.run(recorder.record(a.root.expanduser(), a.symbols.split(","), stop_after=a.seconds))
+        try:
+            counts = asyncio.run(recorder.record(a.root.expanduser(), a.symbols.split(","), stop_after=a.seconds))
+        except recorder.StorageError as exc:
+            print(json.dumps({"state": "failed", "error": str(exc)}), flush=True)
+            return 2
         print(json.dumps(counts))
     else:
         ok, why = gate.authorization_status()
