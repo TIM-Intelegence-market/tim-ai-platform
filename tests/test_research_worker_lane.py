@@ -48,7 +48,7 @@ def _quiet(monkeypatch):
 
 def test_idea_issue_round_trip_and_rejects_bad_blocks():
     title, body = research.idea_issue(_idea())
-    assert title.startswith("[Research] I-0001:") and "Uzis Freigabe" in body
+    assert title.startswith("[Research] I-0001:") and "Codex-Prüfung" in body
     assert research.parse_idea_issue(body) == _idea()
     for bad in ("", "no block", body.replace('"I-0001"', '"X-1"'), body.replace('"ki_runde"', '"unbekannt"')):
         with pytest.raises(research.ResearchLaneError):
@@ -224,6 +224,7 @@ def test_research_runs_only_when_no_issue_is_left(tmp_path, monkeypatch):
 def test_step_splits_sync_and_draft_by_lane(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "_research_sync", lambda *a: "sync")
     monkeypatch.setattr(runner, "_research_draft", lambda *a: "draft")
+    monkeypatch.setattr(runner, "_research_review", lambda *a: None)
     assert runner._research_step(None, tmp_path, None, "easy") == "sync"
     assert runner._research_step(None, tmp_path, None, "hard") == "draft"
     assert runner._research_step(None, tmp_path, None, "all") == "sync | draft"
@@ -274,3 +275,46 @@ def test_draft_waits_while_a_research_pr_is_open_and_settles_closed_drafts(tmp_p
     assert ("issue", "edit", "11", "--remove-label", research.LABEL_CLAIMED) in edits
     assert ("issue", "edit", "11", "--add-label", research.LABEL_BLOCKED) in edits
     assert ledger.exhausted(11, issue_triage.body_hash(_issue(11, labels=claimed)))
+
+
+DRAFT_NAME = "S21_X_PRAEREGISTRIERUNG_ENTWURF.md"
+GREEN_ROLLUP = [{"name": n, "conclusion": "SUCCESS"} for n in ("test", "PR gate", "DCO sign-off")]
+
+
+def _draft_pr(files=(f"docs/research_lab/studien/{DRAFT_NAME}",), rollup=GREEN_ROLLUP):
+    return {"number": 212, "headRefName": "codex/research-209", "headRefOid": "abc123",
+            "files": [{"path": f} for f in files], "statusCheckRollup": list(rollup)}
+
+
+def test_stage_two_review_merges_codex_ok_draft_once(tmp_path, monkeypatch):
+    asked = []
+    monkeypatch.setattr(runner.codex_review, "ask", lambda kind, text: asked.append(text) or ("OK", "passt"))
+    pipeline = FakePipeline([], tmp_path, drafts={DRAFT_NAME: "Entwurf"}, prs=[_draft_pr()])
+    (tmp_path / "state").mkdir()
+    assert "merged" in runner._research_review(pipeline, tmp_path / "state")
+    assert asked == ["Entwurf"]
+    assert ("pr", "merge", "212", "--squash", "--match-head-commit", "abc123") in pipeline.calls
+    runner._research_review(pipeline, tmp_path / "state")
+    assert asked == ["Entwurf"]  # one Codex call per head commit
+
+
+def test_stage_two_review_waits_for_green_checks_and_closes_problem(tmp_path, monkeypatch):
+    (tmp_path / "state").mkdir()
+    monkeypatch.setattr(runner.codex_review, "ask", lambda kind, text: ("OK", ""))
+    pending = FakePipeline([], tmp_path, drafts={DRAFT_NAME: "E"}, prs=[_draft_pr(rollup=[])])
+    assert runner._research_review(pending, tmp_path / "state") is None
+    assert not [c for c in pending.calls if c[:2] == ("pr", "merge")]
+    monkeypatch.setattr(runner.codex_review, "ask", lambda kind, text: ("PROBLEM", "Stoppregel fehlt"))
+    bad = FakePipeline([], tmp_path, drafts={DRAFT_NAME: "E"}, prs=[{**_draft_pr(), "headRefOid": "def456"}])
+    assert "PROBLEM" in runner._research_review(bad, tmp_path / "state")
+    assert ("pr", "close", "212", "--comment", "Geschlossen nach Codex-PROBLEM; die nächste Idee kann folgen.") in bad.calls
+    assert ("issue", "edit", "209", "--add-label", research.LABEL_BLOCKED) in bad.calls
+    assert not [c for c in bad.calls if c[:2] == ("pr", "merge")]
+
+
+def test_stage_two_review_never_merges_a_pr_touching_code(tmp_path, monkeypatch):
+    (tmp_path / "state").mkdir()
+    monkeypatch.setattr(runner.codex_review, "ask", lambda kind, text: pytest.fail("no Codex call for code PRs"))
+    pipeline = FakePipeline([], tmp_path, prs=[_draft_pr(files=("src/x.py",))])
+    assert "PROBLEM" in runner._research_review(pipeline, tmp_path / "state")
+    assert not [c for c in pipeline.calls if c[:2] == ("pr", "merge")]

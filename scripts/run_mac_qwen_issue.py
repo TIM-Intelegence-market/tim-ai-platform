@@ -26,6 +26,7 @@ from src.local_first import issue_triage
 from src.local_first.issue_triage import IssueLedger, attach_worker_contract, contract_hash
 from src.local_first.patch_executor import redact_diagnostic_secrets
 from src.local_first.server_residency import configured_server, SERVER_OPTIONS
+from src.research_lab.workshop import codex_review
 from src.research_lab.workshop import worker_lane as research
 from src.research_lab.workshop.generator import DraftError, LOGBOOK_PATH, REGISTER_PATH, STUDIES_DIR, render_draft
 
@@ -424,8 +425,9 @@ def _research_draft(pipeline: Pipeline, state_dir: Path, ledger: IssueLedger) ->
             f"Präregistrierungs-Entwurf für Idee {idea['id']}, geschrieben vom Research-Spur-Worker "
             f"({backend[1]} auf tim-server) und vom Studien-Generator geprüft.", "",
             f"Datei: `{relative}`", "",
-            "Wartet auf Uzis Freigabe (Forschungsbereich Stufe 1). Der Worker merged diesen PR nie; "
-            "vor der Freigabe wird nichts gerechnet und nichts registriert.", ""])
+            "Forschungsbereich Stufe 2: Codex prüft den Entwurf; nur bei OK und grünen Checks merged der Mac "
+            "ihn als Freigabe, sonst wird er geschlossen. Vor der Freigabe wird nichts gerechnet und nichts registriert.",
+            ""])
         body_path = state_dir / "runs" / f"research-{number}-pr.md"
         body_path.parent.mkdir(parents=True, exist_ok=True)
         body_path.write_text(body, encoding="utf-8")
@@ -444,10 +446,60 @@ def _research_draft(pipeline: Pipeline, state_dir: Path, ledger: IssueLedger) ->
     return url.strip()
 
 
+def _research_review(pipeline: Pipeline, state_dir: Path) -> str | None:
+    """Mac side, charter stage 2: Codex reviews each open study draft once per head commit.
+
+    OK and green required checks: the draft is marked ready and merged, which is its approval (Uzi 11.11.2026).
+    PROBLEM: the draft PR is closed with Codex's notes, so the next idea can follow; the issue is blocked.
+    """
+    if research.charter.STAGE < 2:
+        return None
+    listed = json.loads(pipeline.github("pr", "list", "--state", "open", "--limit", "50", "--json",
+                                        "number,headRefName,headRefOid,files,statusCheckRollup") or "[]")
+    seen_path = state_dir / "research-codex-reviews.json"
+    try:
+        seen = json.loads(seen_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        seen = {}
+    for pr in listed if isinstance(listed, list) else []:
+        match = research.RESEARCH_BRANCH.fullmatch(str(pr.get("headRefName", "")))
+        if not match:
+            continue
+        number, head = int(pr["number"]), str(pr.get("headRefOid", ""))
+        files = [str(item.get("path", "")) for item in pr.get("files") or ()]
+        checks = {str(c.get("name")): str(c.get("conclusion") or "") for c in pr.get("statusCheckRollup") or ()
+                  if isinstance(c, dict)}
+        key = f"{number}:{head}"
+        if key not in seen:
+            if len(files) != 1 or not codex_review.DRAFT_PATH.fullmatch(files[0]):
+                verdict, notes = "PROBLEM", "PR ändert mehr als einen Studien-Entwurf"
+            else:
+                pipeline.command("git", "fetch", "--quiet", "origin", str(pr["headRefName"]))
+                text = pipeline.command("git", "show", f"{head}:{files[0]}") if head else ""
+                verdict, notes = codex_review.ask("draft", text)
+            seen[key] = {"verdict": verdict, "notes": notes, "at": _now_utc()}
+            seen_path.write_text(json.dumps(seen, ensure_ascii=False, indent=1), encoding="utf-8")
+            pipeline.github("pr", "comment", str(number), "--body",
+                            f"Codex-Prüfung (Forschungsbereich Stufe 2): **{verdict}**\n\n{notes or '-'}")
+            if verdict != "OK":
+                pipeline.github("pr", "close", str(number), "--comment",
+                                "Geschlossen nach Codex-PROBLEM; die nächste Idee kann folgen.")
+                pipeline.github("issue", "edit", match.group(1), "--add-label", research.LABEL_BLOCKED)
+                return f"Research review: draft PR #{number} PROBLEM, closed"
+        if seen[key]["verdict"] == "OK" and codex_review.draft_mergeable(files, checks, "OK"):
+            pipeline.github("pr", "ready", str(number))
+            pipeline.github("pr", "merge", str(number), "--squash", "--match-head-commit", head)
+            return f"Research review: draft PR #{number} Codex OK, merged (stage 2)"
+    return None
+
+
 def _research_step(pipeline: Pipeline, state_dir: Path, ledger: IssueLedger, lane: str) -> str | None:
     """Idle work after the issue queue: Mac syncs ideas, the server (or a single worker) drafts studies."""
     messages = []
     if lane != "hard":
+        reviewed = _research_review(pipeline, state_dir)
+        if reviewed:
+            messages.append(reviewed)
         synced = _research_sync(pipeline, state_dir)
         if synced:
             messages.append(synced)
