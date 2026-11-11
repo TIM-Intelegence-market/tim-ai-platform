@@ -354,3 +354,15 @@ def test_research_spec_round_two_sends_first_answer(monkeypatch, tmp_path):
     with pytest.raises(PipelineError, match="two rounds"):
         runner._research_spec(_idea(template="regel_backtest"), ("http://127.0.0.1:11434", "m"), tmp_path)
     assert len(prompts) == 2 and first not in prompts[0] and first in prompts[1]
+
+
+def test_prompt_names_free_register_slots_for_archive_studies():
+    prompt = research.spec_prompt(_idea(template="regel_backtest"), register_free=2)
+    assert "noch 2 Plätze frei" in prompt and "höchstens 2 Varianten" in prompt
+
+
+def test_prompt_limits_journal_studies_to_two_variants_outside_the_register():
+    idea = _idea(template="regel_backtest", source="trade_reflexion", data=["archive_spot_klines", "plan_journal"])
+    prompt = research.spec_prompt(idea, register_free=0)
+    assert "außerhalb des Registers" in prompt and "höchstens 2 Varianten, V1 Basis" in prompt
+    assert "Plätze frei" not in prompt
