@@ -177,8 +177,9 @@ def test_archive_refs_cover_both_intervals_and_stop_before_the_holdout():
         assert rs[0].period == "2019-10" and rs[-1].period == "2024-12" and all(r.interval == interval for r in rs)
 
 
-def test_draft_refuses_to_evaluate(tmp_path):
-    assert s22.VERSION.startswith("0")
+def test_frozen_version_and_draft_guard(tmp_path, monkeypatch):
+    assert s22.VERSION == "1.0"
+    monkeypatch.setattr(s22, "VERSION", "0.9")  # a later draft must lock evaluate again
     with pytest.raises(SystemExit):
         s22.evaluate([])
     with pytest.raises(SystemExit):

@@ -1,9 +1,9 @@
-# S22: Chart-Urteil im Rückblick: Sortieren die Kerzen-Regeln R1–R5 von `chart-urteil/1.0` Standard-Trades nach ihrem Ergebnis? (Präregistrierung, Entwurf)
+# S22: Chart-Urteil im Rückblick: Sortieren die Kerzen-Regeln R1–R5 von `chart-urteil/1.0` Standard-Trades nach ihrem Ergebnis? (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
 | Studie | S22 (nächste freie Nummer nach S21, 11.11.2026) |
-| Version | **0.2, Entwurf.** Regeln als Code: `src/research_lab/studies/s22.py`, Tests `tests/test_research_lab_s22.py`. Ein Zähllauf mit 0.1 (ergebnisblind, Abschnitt 5.1), kein Ergebnis gelesen. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt |
+| Version | **1.0, eingefroren am 11.11.2026.** Regeln als Code: `src/research_lab/studies/s22.py`, Tests `tests/test_research_lab_s22.py`. Zwei Zählläufe (0.1 und 0.2, ergebnisblind, Abschnitt 5.1), vor dem Einfrieren kein Ergebnis gelesen. Inhaltlich gleich 0.2 |
 | Anlass | Uzi 11.11.2026: „TIM soll den ganzen Chart beurteilen“, „go“ auf Paket 3 (Rückblick). Der Live-Schatten `src/dashboard/chart_verdict.py` (PR #217) braucht 30 geschlossene Pläne und 28 Tage; S22 stellt dieselbe Frage auf der Historie |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Regelwerk | `chart-urteil/1.0`, eingefroren am 11.11.2026 vor jedem Blick auf Ergebnisse. S22 ruft `chart_verdict.chart_lage` und `chart_verdict.judge` unverändert auf |
@@ -92,6 +92,11 @@ fehlende Stundenkerze sperrte die 60 Tage danach, also gerade die Phasen nach B�
 deshalb bis zu 24 fehlende Kerzen im Vorlauf. Die Änderung fiel ohne Kenntnis eines Ergebnisses: `count` liest
 keine Ergebnisse, `evaluate` war gesperrt.
 
+Zähllauf mit 0.2 auf der PS5 am 11.11.2026 (Commit 08d31af9, inhaltsgleich mit dem Merge 8320ca15, derselbe
+Datensatz `9083b6ae…4826`): Training 25 219 Momente (NEHMEN 5 989, NEUTRAL 25 733, AUSLASSEN 18 716, 157 Wochen),
+Validierung 17 424 Momente (NEHMEN 4 228, NEUTRAL 17 325, AUSLASSEN 13 295, 106 Wochen), Gate erfüllt. Mit diesem
+Stand wird eingefroren.
+
 ## 6. Was nicht geändert wird
 
 Regelwerk `chart-urteil/1.0`, Stop/Ziel/Laufzeit/Kosten, Fensterlängen, Kriterien. Kein zweiter Lauf mit anderen
@@ -104,7 +109,8 @@ Stops, Zeitrahmen oder Coins als „zweiter Versuch“. Ändert sich das Regelwe
    Gepflanzter Effekt besteht, reines Rauschen besteht nicht.
 2. Zähllauf auf der PS5:
    `python -m src.research_lab.studies.s22 count --root data/research_lab --out ~/tim-research/results/s22 --fetch --workers 16`
-3. Einfrieren als 1.0 auf Uzis Wort.
+   (erledigt, Abschnitt 5.1)
+3. Einfrieren als 1.0 auf Uzis Wort (erledigt mit dieser Fassung).
 4. Ergebnislauf: derselbe Befehl mit `evaluate`. Bericht nach Abschnitt 5.
 
 ## 8. Einordnung ins Gesamtsystem
@@ -120,3 +126,4 @@ Frist, weil er auch R6–R8 und TIMs echte Pläne prüft.
 |---|---|---|
 | 2026-11-11 | 0.1 | Entwurf mit Code und Tests. Keine Daten geladen. |
 | 2026-11-11 | 0.2 | Vorlauf: bis zu 24 fehlende Stundenkerzen in 60 Tagen erlaubt, letzte 24 Kerzen lückenlos (vorher 60 lückenlose Tage). Anlass: Zähllauf 0.1 verlor die Hälfte des Trainings. Regelwerk, Trades, Kriterien unverändert; kein Ergebnis gelesen. |
+| 2026-11-11 | 1.0 | Eingefroren auf Uzis Wort nach dem Zähllauf 0.2 (Gate erfüllt). Inhalt unverändert gegenüber 0.2; `evaluate` ist freigegeben. |
