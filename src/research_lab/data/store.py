@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from src.research_lab.data.archive import ArchiveRef, Dataset, checked_digest
+from src.research_lab.data.metrics import MetricsRef, OpenInterest, parse_metrics
 from src.research_lab.data.parse import FundingRate, Kline, parse_funding, parse_klines, read_single_csv
 from src.research_lab.protocol import HOLDOUT_START_MS
 
@@ -61,7 +62,7 @@ class ArchiveStore:
         self.root = Path(root)
         self.fetcher = fetcher
 
-    def _guard(self, ref: ArchiveRef, permission: HoldoutPermission | None) -> None:
+    def _guard(self, ref: ArchiveRef | MetricsRef, permission: HoldoutPermission | None) -> None:
         if ref.touches_holdout and permission is None:
             raise HoldoutLocked(f"{ref.filename} lies in the holdout period; loading needs the R6 permission")
 
@@ -73,7 +74,7 @@ class ArchiveStore:
         self.root.mkdir(parents=True, exist_ok=True)
         (self.root / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
-    def fetch(self, ref: ArchiveRef, permission: HoldoutPermission | None = None) -> Path:
+    def fetch(self, ref: ArchiveRef | MetricsRef, permission: HoldoutPermission | None = None) -> Path:
         """Download, verify against the official checksum, and store one archive."""
         self._guard(ref, permission)
         target = self.root / ref.local_path
@@ -90,7 +91,7 @@ class ArchiveStore:
         self._write_manifest(manifest)
         return target
 
-    def _verified_csv(self, ref: ArchiveRef, permission: HoldoutPermission | None) -> str:
+    def _verified_csv(self, ref: ArchiveRef | MetricsRef, permission: HoldoutPermission | None) -> str:
         self._guard(ref, permission)
         target = self.root / ref.local_path
         known = self._manifest().get(ref.local_path)
@@ -121,7 +122,15 @@ class ArchiveStore:
             result = [f for f in result if f.time < HOLDOUT_START_MS]
         return sorted(result, key=lambda f: f.time)
 
-    def dataset_hash(self, refs: Iterable[ArchiveRef]) -> str:
+    def load_open_interest(self, refs: Iterable[MetricsRef], permission: HoldoutPermission | None = None) -> list[OpenInterest]:
+        result: list[OpenInterest] = []
+        for ref in refs:
+            result.extend(o for o in parse_metrics(self._verified_csv(ref, permission)) if ref.start_ms <= o.time < ref.end_ms)
+        if permission is None:
+            result = [o for o in result if o.time < HOLDOUT_START_MS]
+        return sorted(result, key=lambda o: o.time)
+
+    def dataset_hash(self, refs: Iterable[ArchiveRef | MetricsRef]) -> str:
         """Stable hash over the verified files of a dataset version (Band 8)."""
         manifest = self._manifest()
         entries = sorted((ref.local_path, manifest[ref.local_path]["sha256"]) for ref in refs)
