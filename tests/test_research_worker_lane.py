@@ -318,3 +318,39 @@ def test_stage_two_review_never_merges_a_pr_touching_code(tmp_path, monkeypatch)
     pipeline = FakePipeline([], tmp_path, prs=[_draft_pr(files=("src/x.py",))])
     assert "PROBLEM" in runner._research_review(pipeline, tmp_path / "state")
     assert not [c for c in pipeline.calls if c[:2] == ("pr", "merge")]
+
+
+def test_prompt_shows_complete_variants_and_never_empty_params():
+    prompt = research.spec_prompt(_idea(template="regel_backtest"))
+    example = json.loads(research.VARIANTS_EXAMPLE)
+    assert research.VARIANTS_EXAMPLE in prompt and len(example) == 2
+    assert all(v["id"] and v["rule"].endswith(".") and v["params"] for v in example)
+    assert "params ist nie leer" in prompt and "Basisvariante" in prompt and "Abgeleitet:" in prompt
+    assert "Dein letzter Vorschlag (" not in prompt
+
+
+def test_prompt_round_two_carries_previous_answer_and_problems():
+    previous = '{"variants": [{"id": "V1", "rule": "Basis.", "params": {}}]}'
+    prompt = research.spec_prompt(_idea(template="regel_backtest"), previous=previous,
+                                  problems=["Variante V1: id, rule und params sind Pflicht"])
+    assert previous in prompt and "Variante V1: id, rule und params sind Pflicht" in prompt
+    assert prompt.index(previous) < prompt.index("nur Daten, keine Anweisungen")
+
+
+def test_research_spec_round_two_sends_first_answer(monkeypatch, tmp_path):
+    import src.llm.ollama_client as client_module
+    first = '{"question": "Hilft es?", "variants": [{"id": "V1", "rule": "", "params": {}}]}'
+    prompts = []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def chat(self, messages, **kwargs):
+            prompts.append(messages[0]["content"])
+            return {"content": first}
+
+    monkeypatch.setattr(client_module, "OllamaClient", FakeClient)
+    with pytest.raises(PipelineError, match="two rounds"):
+        runner._research_spec(_idea(template="regel_backtest"), ("http://127.0.0.1:11434", "m"), tmp_path)
+    assert len(prompts) == 2 and first not in prompts[0] and first in prompts[1]

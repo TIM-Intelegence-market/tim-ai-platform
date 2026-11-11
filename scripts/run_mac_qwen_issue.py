@@ -339,12 +339,14 @@ def _research_spec(idea: dict, backend: tuple[str, str], worktree: Path) -> tupl
     # A cold 30B load on the server's four Ollama cores alone can take five minutes.
     client = OllamaClient(backend[0], backend[1], timeout=1500, observation_only=False, keep_alive=-1)
     problems: list[str] = []
+    previous = ""
     for _round in range(2):
         message = asyncio.run(client.chat(
-            [{"role": "user", "content": research.spec_prompt(idea, problems=problems)}],
+            [{"role": "user", "content": research.spec_prompt(idea, problems=problems, previous=previous)}],
             options={**SERVER_OPTIONS, "num_predict": 3000, "temperature": 0}))
+        previous = str(message.get("content") or "")
         try:
-            spec = research.parse_spec(str(message.get("content") or ""))
+            spec = research.parse_spec(previous)
             path, text, _digest = render_draft(idea, spec, now=_now_utc(), studies_dir=worktree / STUDIES_DIR,
                                                register_path=worktree / REGISTER_PATH,
                                                logbook_path=worktree / LOGBOOK_PATH)
