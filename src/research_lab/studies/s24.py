@@ -1,15 +1,15 @@
-"""S23: all indicators TIM has history for, as one feature table per 1h moment (BTCUSDT, 2020 to 2024).
+"""S24: all indicators TIM has history for, as one feature table per 1h moment (BTCUSDT, 2020 to 2024).
 
 Packages 1 and 2 of "TIM soll alle Indikatoren nutzen" (Uzi, 11.11.2026). Rules:
-docs/research_lab/studien/S23_ALLE_INDIKATOREN_PRAEREGISTRIERUNG.md (version 1.0, frozen 2026-11-11). The holdout from 2025-01-01 is never
+docs/research_lab/studien/S24_ALLE_INDIKATOREN_PRAEREGISTRIERUNG.md (version 1.0, frozen 2026-11-11). The holdout from 2025-01-01 is never
 loaded.
 
-    python -m src.research_lab.studies.s23 count  --root data/research_lab --out DIR [--fetch] [--workers N] [--footprint S8_ROOT --fp-cache DIR]
-    python -m src.research_lab.studies.s23 export --root data/research_lab --out DIR [--fetch] [--workers N] [--footprint S8_ROOT --fp-cache DIR]
-    python -m src.research_lab.studies.s23 evaluate --root data/research_lab --out DIR --workers N --footprint S8_ROOT --fp-cache DIR
+    python -m src.research_lab.studies.s24 count  --root data/research_lab --out DIR [--fetch] [--workers N] [--footprint S8_ROOT --fp-cache DIR]
+    python -m src.research_lab.studies.s24 export --root data/research_lab --out DIR [--fetch] [--workers N] [--footprint S8_ROOT --fp-cache DIR]
+    python -m src.research_lab.studies.s24 evaluate --root data/research_lab --out DIR --workers N --footprint S8_ROOT --fp-cache DIR
 
 Moments and trades are S22's, unchanged: every closed 1h candle with enough warm-up, a Long and a Short at the close,
-stop 1 ATR14, target 2 ATR14, at most 48 h (``s22.moments``; the outcome here adds Bitunix costs and funding). Per moment and direction S23 records
+stop 1 ATR14, target 2 ATR14, at most 48 h (``s22.moments``; the outcome here adds Bitunix costs and funding). Per moment and direction S24 records
 every indicator family that can be rebuilt from history with only what was known at the close. Every value is
 signed so that above 0 speaks for the trade's direction (funding: above 0 = this side already pays):
 
@@ -47,7 +47,7 @@ from src.research_lab.studies.s20 import DOWN, HOUR, UP, atr_series, week_of
 from src.research_lab.studies.s21 import _correlation
 
 VERSION = "1.0"  # frozen 2026-11-11 on Uzi's word ("ok"); a change needs a new version
-SEED = 23
+SEED = 24
 FAMILIES = ("C", "K", "F", "G", "T", "V")
 FAMILY_NAMES = {"C": "Chart-Urteil R1-R5", "K": "Kerzen-Orderflow", "F": "Footprint-Orderflow", "G": "Funding",
                 "T": "Richtung Tag/Woche/Monat", "V": "VWAP-Abstand"}
@@ -446,9 +446,9 @@ def evaluate(rows: Sequence[Row], loaded: Sequence[str], *, boot_draws: int = s2
     from src.research_lab.stats.inference import holm
 
     if VERSION.startswith("0"):
-        raise SystemExit(f"S23 {VERSION} ist ein Entwurf: erst nach dem Einfrieren als 1.0 auswerten")
+        raise SystemExit(f"S24 {VERSION} ist ein Entwurf: erst nach dem Einfrieren als 1.0 auswerten")
     if set(loaded) != set(FAMILIES):
-        raise SystemExit(f"S23 braucht alle Familien, geladen: {loaded}")
+        raise SystemExit(f"S24 braucht alle Familien, geladen: {loaded}")
     full = [r for r in rows if complete(r, FAMILIES) and r.net_r is not None]
     train = [r for r in full if r.section == "training"]
     valid = [r for r in full if r.section == "validierung"]
@@ -473,7 +473,7 @@ def evaluate(rows: Sequence[Row], loaded: Sequence[str], *, boot_draws: int = s2
     for name, decide in models.items():
         t, v = as_s22(train, decide), as_s22(valid, decide)
         h = s22.diff(v, TAKE, SKIP)
-        p[name] = s22.diff_bootstrap_p(v, TAKE, SKIP, seed=f"S23:{name}", draws=boot_draws) if h is not None else None
+        p[name] = s22.diff_bootstrap_p(v, TAKE, SKIP, seed=f"S24:{name}", draws=boot_draws) if h is not None else None
         per[name] = {"training": describe(t), "validierung": describe(v), "abstand_r": None if h is None else round(h, 4),
                      "abstand_training_r": s22.diff(t, TAKE, SKIP), "p": p[name],
                      "glueckstest": s22.shift_test(v, h, draws=shift_draws) if h is not None else {"getestet": False}}
@@ -534,7 +534,7 @@ def export(rows: Sequence[Row], path: Path) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="s23")
+    parser = argparse.ArgumentParser(prog="s24")
     parser.add_argument("step", choices=("count", "export", "evaluate"))
     parser.add_argument("--root", type=Path, default=Path("data/research_lab"))
     parser.add_argument("--out", type=Path, required=True)
@@ -545,7 +545,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-funding", action="store_true")
     args = parser.parse_args(argv)
     if args.step == "evaluate" and VERSION.startswith("0"):
-        raise SystemExit(f"S23 {VERSION} ist ein Entwurf: erst nach dem Einfrieren als 1.0 auswerten")
+        raise SystemExit(f"S24 {VERSION} ist ein Entwurf: erst nach dem Einfrieren als 1.0 auswerten")
     bars_1h, bars_30m, digest = s22.load(args.root, fetch=args.fetch)
     events = moment_events(bars_1h)
     rates = None if args.no_funding else load_rates(args.root, fetch=args.fetch)
@@ -556,15 +556,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                       rates=rates if args.step == "evaluate" else None)
     stamp = time.strftime("%Y-%m-%dT%H%MZ", time.gmtime())
     args.out.mkdir(parents=True, exist_ok=True)
-    result = {"studie": "S23", "version": VERSION, "seed": SEED, "datensatz_sha256": digest,
+    result = {"studie": "S24", "version": VERSION, "seed": SEED, "datensatz_sha256": digest,
               "merkmale": {f: list(FEATURES[f]) for f in FAMILIES}, "nur_schatten": SHADOW_ONLY,
               "zaehllauf": count(rows, loaded)}
     if args.step == "export":
-        table = args.out / f"s23_merkmale_{stamp}.jsonl.gz"
+        table = args.out / f"s24_merkmale_{stamp}.jsonl.gz"
         result["tabelle"] = {"datei": table.name, "zeilen": export(rows, table)}
     if args.step == "evaluate":
         result["auswertung"] = evaluate(rows, loaded)
-    path = args.out / f"s23_{args.step}_{stamp}.json"
+    path = args.out / f"s24_{args.step}_{stamp}.json"
     path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     print(path)
     print(json.dumps(result["zaehllauf"], ensure_ascii=False))

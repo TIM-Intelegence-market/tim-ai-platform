@@ -1,20 +1,20 @@
-# S23: Alle Indikatoren zusammen: Sortiert ein Gesamt-Urteil aus allen Indikatoren mit Historie Standard-Trades nach ihrem Ergebnis? (Präregistrierung)
+# S24: Alle Indikatoren zusammen: Sortiert ein Gesamt-Urteil aus allen Indikatoren mit Historie Standard-Trades nach ihrem Ergebnis? (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
-| Studie | S23 (nächste freie Nummer nach S22, 11.11.2026) |
-| Version | **1.0, eingefroren am 11.11.2026 auf Uzis Wort („ok“), vor jedem Blick auf Ergebnisse.** Regeln als Code: `src/research_lab/studies/s23.py`, Tests `tests/test_research_lab_s23.py`. Vorher ein Zähllauf mit 0.1 (ergebnisblind, Abschnitt 5). Jede Änderung braucht eine neue Version |
+| Studie | S24 (11.11.2026; als S23 begonnen, umbenannt, weil S23 inzwischen "Open Interest am Flip" ist. Der Zähllauf 0.1 lief noch unter dem Namen S23) |
+| Version | **1.0, eingefroren am 11.11.2026 auf Uzis Wort („ok“), vor jedem Blick auf Ergebnisse.** Regeln als Code: `src/research_lab/studies/s24.py`, Tests `tests/test_research_lab_s24.py`. Vorher ein Zähllauf mit 0.1 (ergebnisblind, Abschnitt 5). Jede Änderung braucht eine neue Version |
 | Anlass | Uzi 11.11.2026: „richte TIM auf jeden Fall so ein, dass er wirklich alle Indikatoren nutzt, die wir haben“, „go“ auf den 4-Paket-Plan (Merkmal-Tabelle, Gesamt-Urteil, Live-Schatten, Schlusstest) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Daten | Binance Spot BTCUSDT 1h und 30m (wie S22), USD-M Funding-Archiv, S8-Footprint-Speicher; 2019-10 bis 2024-12 |
 | Holdout | ab 2025-01-01, wird nicht geladen. Training 2020–2022, Validierung 2023–2024 (Protokoll). Schlusstest 2025 nur einmal und nur mit Uzis ausdrücklichem Wort |
 | Einordnung | Beobachtungsstudie mit hypothetischen Standard-Trades. Auch bei Bestehen kein Filter für Engine, Journale oder Echtgeld; nächster Schritt wäre nur der Live-Schatten (Abschnitt 7) |
-| Abgrenzung | Momente und Trades sind die von S22, unverändert. S22 prüft nur R1–R5; S23 fragt, ob **alle** Familien zusammen mehr sortieren. S21 (K/F/G am Flip) und OFX (Einstiegsmodelle) werden nicht wiederholt, ihre Merkmale werden nur wiederverwendet |
+| Abgrenzung | Momente und Trades sind die von S22, unverändert. S22 prüft nur R1–R5; S24 fragt, ob **alle** Familien zusammen mehr sortieren. S21 (K/F/G am Flip) und OFX (Einstiegsmodelle) werden nicht wiederholt, ihre Merkmale werden nur wiederverwendet |
 
 ## 1. Fragestellung
 
 Jede geschlossene 1h-Kerze ist ein Moment; je Moment ein Long und ein Short zum Schlusskurs, Stop 1 ATR14, Ziel
-2 ATR14, höchstens 48 Stunden (S22, Abschnitt 1). Für jeden Trade hält S23 alle Indikatoren fest, die sich mit dem
+2 ATR14, höchstens 48 Stunden (S22, Abschnitt 1). Für jeden Trade hält S24 alle Indikatoren fest, die sich mit dem
 Stand zum Schlusszeitpunkt aus der Historie bauen lassen. Frage: Trennt ein Gesamt-Urteil daraus gute von
 schlechten Trades, und zwar nach realistischen Bitunix-Kosten?
 
@@ -80,7 +80,7 @@ Zwei Modelle, beide nur mit vollständigen Zeilen (alle geladenen Familien vorha
 
 ## 8. Grenzen
 
-- Standard-Trades (1 ATR / 2 ATR / 48 h) sind kein OF2-Einstieg; S23 prüft, ob die Indikatoren sortieren, nicht
+- Standard-Trades (1 ATR / 2 ATR / 48 h) sind kein OF2-Einstieg; S24 prüft, ob die Indikatoren sortieren, nicht
   eine fertige Strategie.
 - Footprint und Funding gibt es erst ab 2020; der Vorlauf vor dem ersten Moment liegt in 2019.
 - Indikatoren ohne Historie können hier nicht geprüft werden (Abschnitt 2).
