@@ -37,7 +37,7 @@ def _plan_lines(scenario: dict[str, Any], market_state: Any = None) -> list[str]
     return lines
 
 
-def _plan_chart_section(chart: dict[str, Any], journal_line: str | None = None) -> str:
+def _plan_chart_section(chart: dict[str, Any], journal_line: str | None = None, xmr_line: str | None = None) -> str:
     from src.dashboard.pages.chart import _chart_svg
 
     analysis = chart.get("analysis") or {}
@@ -58,6 +58,8 @@ def _plan_chart_section(chart: dict[str, Any], journal_line: str | None = None) 
         f"<p class='cc-note'>{_safe(block)}Rund um die NY-Eröffnung (15 min davor bis 30 min danach) keine neuen Einstiege; das Fenster ist im Chart gelb markiert. "
         "Stop und Ziele sind eine Vorschau nach TIMs Regeln für unbestätigte Szenarien, keine Order und keine Anlageberatung.</p>"
         + (f"<p class='cc-note'>{_safe(journal_line)} <a href='/journal'>Zum Plan-Journal</a></p>" if journal_line else "")
+        + (f"<p class='cc-note'>{_safe(xmr_line)} <a href='/journal/xmr-15m'>XMR 15m</a> · <a href='/journal/xmr-1h'>XMR 1h</a> · "
+           "<a href='/chart?symbol=XMRUSDT'>XMR-Chart</a></p>" if xmr_line else "")
         + "</section>"
     )
 
@@ -150,7 +152,8 @@ def _pipeline_stages(chart: dict[str, Any] | None) -> dict[str, tuple[str, str, 
     }
 
 
-def _setup_path_page(data: dict[str, Any], chart: dict[str, Any] | None = None, journal_line: str | None = None) -> str:
+def _setup_path_page(data: dict[str, Any], chart: dict[str, Any] | None = None, journal_line: str | None = None,
+                     xmr_line: str | None = None) -> str:
     candles = [item for item in data.get("candles", []) if isinstance(item, dict)]
     health = data.get("operational_health", {})
     fresh, enough = health.get("status") == "GREEN", len(candles) >= 20
@@ -182,7 +185,7 @@ def _setup_path_page(data: dict[str, Any], chart: dict[str, Any] | None = None, 
     body += f"<section class='state-banner state-banner--{status}'><div class='state-banner__primary'><span class='sev sev--{status}'>{gate}</span><h2 class='state-banner__state'>Analyse-Gate</h2><p class='state-banner__sub'>{_safe(gate_reason)}</p></div><dl class='state-banner__metrics'><div class='state-banner__metric'><dt>Provenance</dt><dd>{_safe(data.get('provenance'))}</dd></div><div class='state-banner__metric'><dt>Data age</dt><dd>{_safe(health.get('data_age_seconds'))}<small>Sekunden</small></dd></div><div class='state-banner__metric'><dt>Quality</dt><dd>{_safe(quality_status)}<small>{_safe(quality_source)}</small></dd></div></dl></section>"
     body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Zeitkontext</p><h2>Short, Mid und Long Term</h2><p class='cc-section__note'>Die Horizonte werden nicht zu einem unqualifizierten Score zusammengezogen.</p></div></div><div class='hgroup'><article class='horizon'><div class='horizon__head'><div><p class='horizon__key'>SHORT</p><h3>Aktuelle Reaktion</h3></div><span class='sev sev--{status}'>{gate}</span></div><table><tr><td>Letzter Schluss</td><td>{_safe(f'{latest:,.2f}' if latest is not None else 'UNAVAILABLE')}</td></tr><tr><td>Belege</td><td>Struktur, Delta/Footprint falls vorhanden</td></tr></table></article><article class='horizon'><div class='horizon__head'><div><p class='horizon__key'>MID</p><h3>Range &amp; Location</h3></div><span class='sev sev--{'ok' if enough else 'unknown'}'>{'PASS' if enough else 'UNKNOWN'}</span></div><table><tr><td>20-Candle-Range</td><td>{_safe(rng(candles[-20:]))}</td></tr><tr><td>Belege</td><td>Support, Resistance, Fib, Value</td></tr></table></article><article class='horizon'><div class='horizon__head'><div><p class='horizon__key'>LONG</p><h3>Übergeordneter Kontext</h3></div><span class='sev sev--{ctx[1]}'>{_safe(ctx[0])}</span></div><table><tr><td>Sichtbare Range</td><td>{_safe(rng(candles))}</td></tr><tr><td>Belege</td><td>{_safe(ctx[2] if stages else 'HTF-Struktur, Value-Migration, Regime')}</td></tr></table></article></div></section>"
     if chart and chart.get("candles"):
-        body += _plan_chart_section(chart, journal_line)
+        body += _plan_chart_section(chart, journal_line, xmr_line)
     else:
         body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Erklärtes Chartbild</p><h2>Beobachtete Schlusskurse</h2><p class='cc-section__note'>Jüngste {len(candles[-30:])} gespeicherte Candles. Keine Zukunftswerte.</p></div></div><div class='cc-surface setup-chart'>{_setup_chart(candles)}</div></section>"
     body += f"<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Setup-Pfad</p><h2>Von Daten zu einer überprüfbaren Hypothese</h2></div></div><div class='pipeline'><div class='pipeline__stage'><b>1 · Governance</b><span class='sev sev--{status}'>{gate}</span><span class='pipeline__value'>Quelle, Frische, Vollständigkeit</span></div>{stage_html}<div class='pipeline__stage'><b>5 · Reflexion</b><span class='sev sev--info'>LOGGED</span><span class='pipeline__value'>Outcome, Fehlerkategorie, Review</span></div></div>{stage_note}<p class='cc-note'>Absorption wird nur nach belegter aggressiver Ausführung und fehlendem Preisfortschritt angezeigt. Ohne Footprint-, Delta- oder Value-Profile-Daten bleibt die Aussage UNAVAILABLE.</p></section>"
