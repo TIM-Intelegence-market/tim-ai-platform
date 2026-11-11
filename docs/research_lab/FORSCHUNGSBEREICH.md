@@ -312,7 +312,8 @@ Code: `src/research_lab/workshop/worker_lane.py`, eingebunden in `scripts/run_ma
 
 1. **Mac** (Spur easy): Das Repo ist öffentlich, die Ideen-Liste nicht. Deshalb wird nur eine Idee mit Status
    „bereit“ ein GitHub-Issue mit Label `research:idea`, die Uzi ausdrücklich freigegeben hat:
-   `TIM_RESEARCH_PUBLIC_IDEAS` (kommagetrennte Ideen-IDs) in der LaunchAgent-plist. Dazu gilt das Monatsbudget
+   `TIM_RESEARCH_PUBLIC_IDEAS` (kommagetrennte Ideen-IDs, oder `*` für alle bereiten Ideen, Uzi 11.11.) in der
+   LaunchAgent-plist. Dazu gilt das Monatsbudget
    (4 Entwürfe), offene Research-Issues zählen mit. Vor jedem Export liest der Mac die Entwürfe direkt von
    `origin/platform-main` und setzt gelandete Ideen auf „Studien-Entwurf angelegt“, unabhängig vom Stand des
    Worker-Checkouts. Pfad der Ideen-Liste: `TIM_RESEARCH_IDEAS`.

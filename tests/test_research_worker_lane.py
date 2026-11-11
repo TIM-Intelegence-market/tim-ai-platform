@@ -77,6 +77,13 @@ def test_only_ideas_released_for_the_public_repo_are_exported():
     assert research.public_ideas(None) == set()
 
 
+def test_star_releases_every_ready_idea_within_budget():
+    ideas = {f"I-000{n}": {**_idea(f"I-000{n}"), "status": "ready", "history": []} for n in range(1, 7)}
+    assert research.public_ideas("I-0001, *") == {"*"}
+    exported = research.ideas_to_export(ideas, [], now=NOW, public=research.public_ideas("*"))
+    assert [i["id"] for i in exported] == ["I-0001", "I-0002", "I-0003", "I-0004"]
+
+
 def test_select_takes_oldest_free_issue_only():
     issues = [_issue(9, labels=(research.LABEL_IDEA, research.LABEL_CLAIMED)),
               _issue(12), _issue(11), _issue(8, labels=(research.LABEL_IDEA, research.LABEL_BLOCKED)),
