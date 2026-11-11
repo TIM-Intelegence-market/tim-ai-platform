@@ -109,8 +109,25 @@ class ReadOnlyClient:
         return out
 
 
+def history_positions(client: ReadOnlyClient, *, start_ms: int | None = None, max_pages: int = 50) -> list[dict]:
+    out: list[dict] = []
+    for page in range(max_pages):
+        data = client.get("/api/v1/futures/position/get_history_positions",
+                          {"startTime": start_ms, "skip": page * 100, "limit": 100})
+        batch = data.get("positionList") or []
+        out.extend(batch)
+        if len(batch) < 100:
+            break
+    return out
+
+
 def fee_rates(trades: list[dict]) -> dict:
-    """Effective fee rate per role from real fills: sum(|fee|) / sum(qty x price)."""
+    """Effective fee rate per ``roleType`` from real fills: sum(|fee|) / sum(qty x price).
+
+    Uzi's account 11.11.2026: fills tagged MAKER paid ~0,054 %, TAKER ~0,026 % - the reverse of the published 0,06 % /
+    0,02 %. The docs' own field description is garbled ("TAKER: maker MAKER: maker"), so the tag is reported as
+    delivered and the rate, not the tag, is what counts.
+    """
     acc: dict[str, list[float]] = {}
     for t in trades:
         try:

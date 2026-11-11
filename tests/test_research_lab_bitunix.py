@@ -395,3 +395,16 @@ def test_fee_rates_by_role():
     r = readonly.fee_rates(trades)
     assert r["TAKER"]["rate"] == pytest.approx(0.0006)
     assert r["MAKER"]["rate"] == pytest.approx(0.0002)
+
+
+def test_history_positions_pages():
+    pages = [[{"positionId": str(i)} for i in range(100)], [{"positionId": "x"}]]
+    calls = []
+
+    def opener(req):
+        calls.append(req.full_url)
+        return _Resp({"code": 0, "data": {"positionList": pages[len(calls) - 1]}})
+
+    c = readonly.ReadOnlyClient(readonly.Credentials("k", "s"), opener=opener)
+    assert len(readonly.history_positions(c)) == 101
+    assert "skip=100" in calls[1]

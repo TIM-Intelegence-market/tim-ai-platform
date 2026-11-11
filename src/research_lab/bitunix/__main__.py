@@ -62,8 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         client = readonly.ReadOnlyClient(readonly.load_from_keychain())
         start = int((time.time() - a.days * 86400) * 1000)
         trades = client.history_trades(start_ms=start)
-        positions = client.get("/api/v1/futures/position/get_history_positions", {"startTime": start, "limit": 100})
-        plist = positions.get("positionList") or []
+        plist = readonly.history_positions(client, start_ms=start)
         print(json.dumps({
             "days": a.days,
             "fills": len(trades),
