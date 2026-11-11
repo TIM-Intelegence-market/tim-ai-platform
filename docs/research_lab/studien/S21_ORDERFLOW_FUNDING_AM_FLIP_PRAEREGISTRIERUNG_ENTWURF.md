@@ -7,7 +7,7 @@
 | Anlass | Barti 11.11.2026, nach dem S20-Ergebnis: Die Flip-Signale sollen auch Volumen und Orderflow umfassen (CVD und Divergenz, Volumentrend, Footprint an der Linie, Funding). Entscheidungskarte „Neue Studie S21“ |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Ereignisse | **unverändert aus S20** (`s20.find_events`, `s20.label`, S20 eingefroren als 1.0): erster Stundenschluss mindestens 0,25 ATR14 jenseits eines bestätigten Swing-Hochs/-Tiefs (24 Kerzen je Seite), Flip = 24 Stunden kein Schluss zurück |
-| Daten | Binance Spot BTCUSDT 1h 2017-08 bis 2024-12 (wie S20, Datensatz-Hash `a9f525df…6fa9`); S8-Minutenbalken 2020–2024 (Footprint, wie S19); Binance USD-M Funding BTCUSDT 2019-10 bis 2024-12 |
+| Daten | Binance Spot BTCUSDT 1h 2017-08 bis 2024-12 (wie S20, Datensatz-Hash `a9f525df…6fa9`); S8-Minutenbalken 2020–2024 (Footprint, wie S19); Binance USD-M Funding BTCUSDT 2020-01 bis 2024-12 (das Archiv beginnt 2020-01; Ereignisse im ersten Monat 2020 haben noch keine 90 Raten und verlassen nur G, Abschnitt 3) |
 | Holdout | ab 2025-01-01, wird nicht geladen. Training bis 2022-12-31, Validierung 2023–2024 |
 | Einordnung | Beobachtungsstudie ohne Trades, ohne Registerplatz. Kein Filter für Engine, S7b oder Chart, auch bei Bestehen nicht (Abschnitt 8) |
 
@@ -107,3 +107,4 @@ vorab festgelegter Vorwärtslauf (wie das F3/F5-Log) oder der Holdout nach Freig
 | Datum | Version | Änderung |
 |---|---|---|
 | 2026-11-11 | 0.1 | Entwurf mit Code und Tests aus dem zurückgezogenen S20-0.3-Vorschlag (PR #207), umgestellt auf drei Familien gegen das Mechanik-Modell. Keine Daten geladen. |
+| 2026-11-11 | 0.1 | Funding-Daten ab 2020-01 statt 2019-10: Das Binance-Archiv hat vorher keine Monatsdateien (404), der Zähllauf brach ab. Merkmale, Lookback und Kriterien unverändert; vor jedem Zähl- oder Ergebnislauf. |
