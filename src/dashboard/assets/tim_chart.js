@@ -898,6 +898,7 @@
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
+              const texts = [];  // number boxes already drawn: a number that would cover one is left out (Uzi 11.11.2026)
               for (const { item, x, y } of order) {
                 const r = Math.max(BUBBLE.minR, BUBBLE.maxR * Math.sqrt(item.usd / max));
                 const buy = item.side > 0;
@@ -917,8 +918,14 @@
                   ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(232,236,243,0.95)'; ctx.stroke();
                 }
                 if (r >= BUBBLE.labelR) {
-                  ctx.fillStyle = '#e8edf5';
-                  ctx.fillText(item.quantity >= 100 ? item.quantity.toFixed(0) : item.quantity.toFixed(1), x, y);
+                  const text = item.quantity >= 100 ? item.quantity.toFixed(0) : item.quantity.toFixed(1);
+                  const w = ctx.measureText(text).width + 2, h = 11;
+                  const box = { x: x - w / 2, y: y - h / 2, w, h };
+                  if (!texts.some(b => box.x < b.x + b.w && b.x < box.x + box.w && box.y < b.y + b.h && b.y < box.y + box.h)) {
+                    texts.push(box);
+                    ctx.fillStyle = '#e8edf5';
+                    ctx.fillText(text, x, y);
+                  }
                 }
               }
               ctx.textAlign = 'left';
@@ -1508,6 +1515,7 @@
   function applyVisibility(groups) {
     planMarkers(groups);
     for (const item of lines) item.series.applyOptions({ visible: groups.has(item.group) });
+    labelLines(groups);
     tpo.visible = groups.has('tpo');
     vp.visible = groups.has('vp');
     fp.visible = groups.has('fp');
@@ -1539,22 +1547,68 @@
       const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
       if (mid) points.splice(1, 0, { time: local(d.tm), value: d.p1 });  // BOS/MSS: horizontal, label in the middle
       series.setData(points);
-      // Name at the start of the segment (BOS/MSS: in the middle, above a break up, below a break down);
-      // short segments (a level from the last few candles) keep only the label on the price axis,
-      // otherwise the texts pile up at the right edge.
-      const structure = d.group === 'structure';
-      series.setMarkers([{
-        time: local(mid ? d.tm : d.t1),
-        position: structure ? (d.direction === 'UP' ? 'aboveBar' : 'belowBar') : (d.p2 >= model.last ? 'aboveBar' : 'belowBar'),
-        color: d.color, shape: structure ? (d.direction === 'UP' ? 'arrowUp' : 'arrowDown') : 'circle', size: structure ? 0.6 : 0.4,
-        text: d.bars >= SHORT_BARS || d.finished ? d.label + (d.clipped ? ' ←' : '') : '',
-      }]);
       lines.push({ series, group: d.group, drawing: d });
     }
+    labelLines(groups);
     positions.groups = groups;
     drawPlans(groups);
     planMarkers(groups);
   }
+
+  // Names of the level lines, with shown lines that sit on the same spot merged into one text
+  // (Uzi 11.11.2026: "1h Trend lows" and "1h BOS target" started at the same swing low and their
+  // names lay on top of each other; "1D Low" and "1h BOS target" had two boxes with the same price).
+  // Names at the line start: closer than 0.05 % counts as the same spot (the texts would cover each other).
+  // Price-axis boxes: only the same price (a merged box shows one number, it must be right for every name).
+  const near = (a, b) => Math.abs(a - b) <= Math.abs(b) * 0.0005;
+  const samePrice = (a, b) => Math.abs(a - b) <= Math.max(1e-9, Math.abs(b) * 1e-6);
+  function labelLines(groups) {
+    const shown = lines.filter(item => item.drawing && groups.has(item.group));
+    for (const item of lines) {
+      if (item.drawing && !groups.has(item.group)) item.series.setMarkers([]);
+    }
+    // Name at the start of the segment (BOS/MSS: in the middle, above a break up, below a break down);
+    // short segments (a level from the last few candles) keep only the label on the price axis,
+    // otherwise the texts pile up at the right edge.
+    const markers = [];
+    for (const item of shown) {
+      const d = item.drawing;
+      const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
+      const structure = d.group === 'structure';
+      const position = structure ? (d.direction === 'UP' ? 'aboveBar' : 'belowBar') : (d.p2 >= model.last ? 'aboveBar' : 'belowBar');
+      const text = d.bars >= SHORT_BARS || d.finished ? d.label + (d.clipped ? ' ←' : '') : '';
+      const marker = {
+        time: local(mid ? d.tm : d.t1), position,
+        color: d.color, shape: structure ? (d.direction === 'UP' ? 'arrowUp' : 'arrowDown') : 'circle', size: structure ? 0.6 : 0.4,
+        text,
+      };
+      const twin = text && markers.find(m => m.text && m.marker.time === marker.time && m.marker.position === position && near(d.p1, m.price));
+      if (twin) {
+        twin.marker.text += ' · ' + text;
+        twin.series.setMarkers([twin.marker]);
+        marker.text = '';
+      }
+      item.series.setMarkers([marker]);
+      markers.push({ marker, series: item.series, price: d.p1, text: marker.text });
+    }
+    // One box on the price axis per spot: the first line takes all names, the others hide theirs.
+    const boxes = [];
+    for (const item of shown) {
+      const d = item.drawing;
+      if (d.finished) continue;
+      const value = d.curve && d.curve.length ? d.curve[d.curve.length - 1][1] : d.p2;
+      const twin = boxes.find(b => samePrice(value, b.value));
+      if (twin) {
+        twin.names.push(d.label);
+        twin.series.applyOptions({ title: twin.names.join(' · ') });
+        item.series.applyOptions({ lastValueVisible: false, title: '' });
+      } else {
+        item.series.applyOptions({ lastValueVisible: true, title: d.label });
+        boxes.push({ value, series: item.series, names: [d.label] });
+      }
+    }
+  }
+
 
   function setLegend(bar) {
     if (!model) return;
