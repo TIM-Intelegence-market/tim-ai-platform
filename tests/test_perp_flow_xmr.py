@@ -185,3 +185,10 @@ def test_sol_price_on_a_level_stays_on_that_level(tmp_path) -> None:
     collect(flow)
     levels = {row[1] for rows_ in flow.store()["days"].values() for row in rows_}
     assert levels == {84.15, 84.2, 84.35}
+
+
+def test_caught_up_symbols_leave_most_calls_to_one_catching_up() -> None:
+    """Three caught-up symbols poll every IDLE_SECONDS; the fourth (catching up) keeps most of the budget."""
+    idle_calls_per_minute = 3 * 60.0 / perp_flow.IDLE_SECONDS
+    assert idle_calls_per_minute <= perp_flow.CALLS_PER_MINUTE / 2
+    assert perp_flow.IDLE_SECONDS <= perp_flow.SAVE_SECONDS / 4  # the chart still sees every minute
