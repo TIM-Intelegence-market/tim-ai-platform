@@ -140,6 +140,12 @@ def test_describe_reports_rules_and_scores():
     assert d["score"]["2"]["n"] == 1 and d["entscheidung"][chart_verdict.SKIP]["mittel_netto_r"] == -1.0
 
 
+def test_archive_refs_cover_both_intervals_and_stop_before_the_holdout():
+    for interval in ("1h", "30m"):  # the first PS5 count run stopped here: 30m was not an archive interval
+        rs = s22.refs(interval)
+        assert rs[0].period == "2019-10" and rs[-1].period == "2024-12" and all(r.interval == interval for r in rs)
+
+
 def test_draft_refuses_to_evaluate(tmp_path):
     assert s22.VERSION.startswith("0")
     with pytest.raises(SystemExit):
