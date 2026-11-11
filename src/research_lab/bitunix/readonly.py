@@ -17,6 +17,7 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
+import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
@@ -105,7 +106,8 @@ class ReadOnlyClient:
             batch = data.get("tradeList") or []
             out.extend(batch)
             if len(batch) < 100:
-                break
+                return out
+        _truncated("trade history", max_pages)
         return out
 
 
@@ -117,16 +119,22 @@ def history_positions(client: ReadOnlyClient, *, start_ms: int | None = None, ma
         batch = data.get("positionList") or []
         out.extend(batch)
         if len(batch) < 100:
-            break
+            return out
+    _truncated("position history", max_pages)
     return out
+
+
+def _truncated(what: str, max_pages: int) -> None:
+    """``skip`` is a row offset ("skip order count", docs 11.11.2026); a full last page means more rows exist."""
+    warnings.warn(f"{what}: stopped after {max_pages} pages of 100, older entries are missing", stacklevel=3)
 
 
 def fee_rates(trades: list[dict]) -> dict:
     """Effective fee rate per ``roleType`` from real fills: sum(|fee|) / sum(qty x price).
 
-    Uzi's account 11.11.2026: fills tagged MAKER paid ~0,054 %, TAKER ~0,026 % - the reverse of the published 0,06 % /
-    0,02 %. The docs' own field description is garbled ("TAKER: maker MAKER: maker"), so the tag is reported as
-    delivered and the rate, not the tag, is what counts.
+    On a real account the rates per tag came out the reverse of the published taker / maker fees, and the docs' own
+    field description is garbled ("TAKER: maker MAKER: maker"), so the tag is reported as delivered and the rate, not
+    the tag, is what counts.
     """
     acc: dict[str, list[float]] = {}
     for t in trades:

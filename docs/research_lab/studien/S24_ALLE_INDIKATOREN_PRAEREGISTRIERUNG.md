@@ -40,6 +40,14 @@ Bitunix-Rechnung aus PR #226). Funding: jede veröffentlichte Rate nach dem Eins
 verrechnet, Long zahlt bei positiver Rate, Short erhält (Binance-USD-M-Raten als Näherung für Bitunix).
 Netto-R = Brutto-R minus Kosten geteilt durch das Risiko (1 ATR).
 
+**Warum 0,06 % (Review 11.11.2026):** Bitunix veröffentlicht 0,06 % Taker / 0,02 % Maker. Die Gebühr-Auswertung
+echter Fills (`bitunix.readonly.fee_rates`) ergab je Fill-Kennzeichen effektive Sätze, die zu den veröffentlichten
+Sätzen vertauscht passen: der große Teil der Fills lag knapp unter 0,06 %, der kleine Teil nahe 0,02 %. Das Kennzeichen
+der API ist laut Doku selbst unklar beschrieben. Die Standard-Trades dieser Studie sind Markt-Einstiege und
+Stop-/Ziel-Ausstiege, also Taker. 0,06 % ist der veröffentlichte Taker-Satz und liegt leicht über dem gemessenen
+effektiven Satz; die Rechnung ist damit eher zu streng als zu günstig. Ein besseres Ergebnis durch einen niedrigeren
+Satz wird nicht nachgerechnet.
+
 ## 4. Modelle (eingefroren)
 
 Zwei Modelle, beide nur mit vollständigen Zeilen (alle geladenen Familien vorhanden):
