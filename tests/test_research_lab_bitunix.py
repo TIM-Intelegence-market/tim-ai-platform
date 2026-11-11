@@ -265,8 +265,13 @@ def test_restart_writes_gap_from_status(tmp_path):
     assert st["state"] == "stopped" and st["last_recv_ms"] > 1_762_819_000_000
 
 
-PRIVATE_ORDER_MARKERS = ("/api/v1/futures/trade/", "/api/v1/futures/tp_sl/", "/api/v1/futures/account/change",
-                         "fapi.bitunix.com/private")
+# Write endpoints only (docs 11.11.2026); the read client may use GET history paths under /trade/.
+PRIVATE_ORDER_MARKERS = (
+    "/futures/trade/place_order", "/futures/trade/batch_order", "/futures/trade/cancel", "/futures/trade/modify_order",
+    "/futures/trade/close_all_position", "/futures/trade/flash_close_position", "/futures/tp_sl/place",
+    "/futures/tp_sl/modify", "/futures/tp_sl/cancel", "/futures/account/change", "/futures/account/adjust",
+    "fapi.bitunix.com/private",
+)
 
 
 def test_no_bitunix_order_path_without_gate():
@@ -314,3 +319,79 @@ def test_each_run_gets_its_own_segment(tmp_path):
     b.close()
     names = sorted(p.name for p in (tmp_path / "BTCUSDT").glob("*.gz"))
     assert names == ["2025-11-11.1.jsonl.gz", "2025-11-11.2.jsonl.gz"]
+
+
+# --- read-only client --------------------------------------------------------------------------------------------
+
+from src.research_lab.bitunix import readonly
+
+
+def test_sign_matches_docs_example():
+    creds = readonly.Credentials("yourApiKey", "yourSecretKey")
+    body = '{"uid":"2899","arr":[{"id":1,"name":"maple"},{"id":2,"name":"lily"}]}'
+    import hashlib
+
+    digest = hashlib.sha256(("123456" + "20241120123045" + "yourApiKey" + "id1uid200" + body).encode()).hexdigest()
+    expected = hashlib.sha256((digest + "yourSecretKey").encode()).hexdigest()
+    assert readonly.sign(creds, "123456", "20241120123045", {"uid": 200, "id": 1}, body) == expected
+    assert readonly.query_string_for_sign({"uid": 200, "id": 1}) == "id1uid200"
+
+
+def test_client_refuses_non_read_paths():
+    c = readonly.ReadOnlyClient(readonly.Credentials("k", "s"), opener=lambda req: pytest.fail("no request"))
+    for path in ("/api/v1/futures/trade/place_order", "/api/v1/futures/trade/cancel_orders",
+                 "/api/v1/futures/account/change_leverage", "/api/v1/futures/tp_sl/place_tp_sl_order"):
+        with pytest.raises(PermissionError):
+            c.get(path)
+
+
+class _Resp:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return json.dumps(self.payload).encode()
+
+
+def test_client_sends_signed_get_and_never_secret():
+    seen = []
+
+    def opener(req):
+        seen.append(req)
+        return _Resp({"code": 0, "data": {"tradeList": [], "total": 0}})
+
+    c = readonly.ReadOnlyClient(readonly.Credentials("KEY1", "SECRET1"), opener=opener, clock=lambda: 1.0)
+    assert c.history_trades(symbol="BTCUSDT") == []
+    req = seen[0]
+    assert req.get_method() == "GET"
+    headers = {k.lower(): v for k, v in req.header_items()}
+    assert headers["api-key"] == "KEY1" and headers["timestamp"] == "1000" and len(headers["sign"]) == 64
+    assert "SECRET1" not in req.full_url and "SECRET1" not in json.dumps(headers)
+    assert "SECRET1" not in repr(readonly.Credentials("KEY1", "SECRET1"))
+
+
+def test_keychain_loader_parses_account_and_password():
+    def run(cmd):
+        if "-w" in cmd:
+            return "SECRET\n"
+        return 'keychain: "x"\nattributes:\n    "acct"<blob>="APIKEY123"\n    "svce"<blob>="com.tim.bitunix-read"\n'
+
+    creds = readonly.load_from_keychain(run=run)
+    assert creds.api_key == "APIKEY123" and creds.secret == "SECRET"
+
+
+def test_fee_rates_by_role():
+    trades = [
+        {"qty": "0.01", "price": "100000", "fee": "-0.6", "roleType": "TAKER"},
+        {"qty": "0.01", "price": "100000", "fee": "-0.2", "roleType": "MAKER"},
+        {"qty": "bad", "price": "1", "fee": "1"},
+    ]
+    r = readonly.fee_rates(trades)
+    assert r["TAKER"]["rate"] == pytest.approx(0.0006)
+    assert r["MAKER"]["rate"] == pytest.approx(0.0002)

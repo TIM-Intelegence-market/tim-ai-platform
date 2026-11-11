@@ -4,6 +4,7 @@
     python -m src.research_lab.bitunix target --win-rate 0.39 --win-r 2.4 --trades-per-day 0.2
     python -m src.research_lab.bitunix record --root ~/TIM-research/bitunix [--symbols BTCUSDT] [--seconds 600]
     python -m src.research_lab.bitunix report --trades docs/research_lab/reports/bitunix/of2_training_of_trades_aa853e1.json --out <file>
+    python -m src.research_lab.bitunix account [--days 90]   (key from the macOS keychain, read only)
     python -m src.research_lab.bitunix gate
 """
 from __future__ import annotations
@@ -14,7 +15,7 @@ import json
 import signal
 from pathlib import Path
 
-from src.research_lab.bitunix import gate, leverage, recorder, target
+from src.research_lab.bitunix import gate, leverage, readonly, recorder, target
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
     rp = sub.add_parser("report")
     rp.add_argument("--trades", type=Path, required=True)
     rp.add_argument("--out", type=Path, required=True)
+    ac = sub.add_parser("account")
+    ac.add_argument("--days", type=int, default=90)
     sub.add_parser("gate")
     a = p.parse_args(argv)
     if a.cmd == "leverage":
@@ -53,6 +56,25 @@ def main(argv: list[str] | None = None) -> int:
         rep = target.build_report(json.loads(a.trades.read_text()))
         a.out.write_text(json.dumps(rep, indent=1, ensure_ascii=False) + "\n")
         print(rep["verdict"])
+    elif a.cmd == "account":
+        import time
+
+        client = readonly.ReadOnlyClient(readonly.load_from_keychain())
+        start = int((time.time() - a.days * 86400) * 1000)
+        trades = client.history_trades(start_ms=start)
+        positions = client.get("/api/v1/futures/position/get_history_positions", {"startTime": start, "limit": 100})
+        plist = positions.get("positionList") or []
+        print(json.dumps({
+            "days": a.days,
+            "fills": len(trades),
+            "fee_rates": readonly.fee_rates(trades),
+            "closed_positions": len(plist),
+            "leverage_used": sorted({p.get("leverage") for p in plist if p.get("leverage") is not None}),
+            # Separate on purpose: the docs do not state the sign convention of ``funding``.
+            "realized_pnl_usdt_before_fees": round(sum(float(p.get("realizedPNL") or 0) for p in plist), 2),
+            "fees_usdt": round(sum(abs(float(p.get("fee") or 0)) for p in plist), 2),
+            "funding_usdt_raw": round(sum(float(p.get("funding") or 0) for p in plist), 2),
+        }, indent=1))
     elif a.cmd == "record":
         def _term(*_):  # launchd/kill send SIGTERM: stop like Ctrl-C so every segment is closed cleanly
             raise KeyboardInterrupt
