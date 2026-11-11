@@ -38,3 +38,5 @@ def test_draft_mergeable_needs_single_draft_green_checks_and_ok():
 def test_draft_prompt_treats_journal_trades_as_prospective():
     assert "Papier-Plan-Journalen sind" in review.DRAFT_PROMPT and "kein Holdout" in review.DRAFT_PROMPT
     assert "Bewertungsregel vor dem Einfrieren" in review.DRAFT_PROMPT
+    assert "Archivdaten ab 2025-01-01" in review.DRAFT_PROMPT
+    assert "Archivkurse ab 2025-01-01 bleiben auch in solchen" in review.DRAFT_PROMPT
