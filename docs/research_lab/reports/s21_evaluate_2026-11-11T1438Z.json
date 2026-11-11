@@ -1,0 +1,107 @@
+{
+    "studie": "S21",
+    "version": "1.0",
+    "seed": 21,
+    "datensatz_sha256": "a9f525df83b3c5b8681fabd43b1e0fa87af4010e69c55f4174d0ea83f4826fa9",
+    "kerzen": 64525,
+    "zaehllauf": {
+        "verworfen": {
+            "entprellt": 313,
+            "luecke_oder_rand": 21,
+            "mitgenommen": 325
+        },
+        "familien": {
+            "K": {
+                "name": "Kerzen-Orderflow",
+                "ereignisse": {
+                    "training": 561,
+                    "validierung": 216
+                },
+                "gate": true
+            },
+            "F": {
+                "name": "Footprint-Orderflow",
+                "ereignisse": {
+                    "training": 318,
+                    "validierung": 216
+                },
+                "gate": true
+            },
+            "G": {
+                "name": "Funding",
+                "ereignisse": {
+                    "training": 308,
+                    "validierung": 216
+                },
+                "gate": true
+            }
+        }
+    },
+    "auswertung": {
+        "familien": {
+            "K": {
+                "familie": "Kerzen-Orderflow",
+                "merkmale": [
+                    "cvd_anteil",
+                    "cvd_gleichlauf",
+                    "volumentrend"
+                ],
+                "ereignisse": {
+                    "training": 561,
+                    "validierung": 216
+                },
+                "gate": true,
+                "p": 0.9021,
+                "rel_gewinn": -0.0047399243836097745,
+                "glueckstest_p": 0.735,
+                "auc_mechanik": 0.652020202020202,
+                "auc_mit_familie": 0.648989898989899
+            },
+            "F": {
+                "familie": "Footprint-Orderflow",
+                "merkmale": [
+                    "fp_I",
+                    "fp_A",
+                    "fp_C",
+                    "fp_T",
+                    "fp_H",
+                    "fp_E"
+                ],
+                "ereignisse": {
+                    "training": 318,
+                    "validierung": 216
+                },
+                "gate": true,
+                "p": 0.7797,
+                "rel_gewinn": -0.013416425488959893,
+                "glueckstest_p": 0.645,
+                "auc_mechanik": 0.652020202020202,
+                "auc_mit_familie": 0.6313131313131313
+            },
+            "G": {
+                "familie": "Funding",
+                "merkmale": [
+                    "funding_letzt",
+                    "funding_z"
+                ],
+                "ereignisse": {
+                    "training": 308,
+                    "validierung": 216
+                },
+                "gate": true,
+                "p": 0.6561,
+                "rel_gewinn": -0.006540642096305689,
+                "glueckstest_p": 0.785,
+                "auc_mechanik": 0.652020202020202,
+                "auc_mit_familie": 0.6486868686868686
+            }
+        },
+        "holm_bestanden": [],
+        "urteile": {
+            "K": "NICHT BESTANDEN",
+            "F": "NICHT BESTANDEN",
+            "G": "NICHT BESTANDEN"
+        },
+        "urteil": "NICHT BESTANDEN: keine Familie sagt den Flip besser voraus als der Abstand zur Linie allein"
+    }
+}

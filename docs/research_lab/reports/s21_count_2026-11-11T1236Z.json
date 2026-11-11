@@ -1,0 +1,40 @@
+{
+    "studie": "S21",
+    "version": "0.1",
+    "seed": 21,
+    "datensatz_sha256": "a9f525df83b3c5b8681fabd43b1e0fa87af4010e69c55f4174d0ea83f4826fa9",
+    "kerzen": 64525,
+    "zaehllauf": {
+        "verworfen": {
+            "entprellt": 313,
+            "luecke_oder_rand": 21,
+            "mitgenommen": 325
+        },
+        "familien": {
+            "K": {
+                "name": "Kerzen-Orderflow",
+                "ereignisse": {
+                    "training": 561,
+                    "validierung": 216
+                },
+                "gate": true
+            },
+            "F": {
+                "name": "Footprint-Orderflow",
+                "ereignisse": {
+                    "training": 318,
+                    "validierung": 216
+                },
+                "gate": true
+            },
+            "G": {
+                "name": "Funding",
+                "ereignisse": {
+                    "training": 308,
+                    "validierung": 216
+                },
+                "gate": true
+            }
+        }
+    }
+}
