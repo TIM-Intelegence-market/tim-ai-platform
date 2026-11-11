@@ -316,6 +316,8 @@ def journal_page_for(state: Any, data: dict[str, Any], page: str, token: str | N
     """The plan journal page of one rule, with the trader's notes."""
     from src.dashboard.plan_journal import load_view as load_plan_journal
 
+    if page in XMR_PAGES:  # read-only, never loads the BTC journals or notes
+        return xmr_journal_page(state, data, page)
     tim, struct = load_plan_journal(state.plan_journal_path), load_plan_journal(state.plan_journal_struct_path)
     struct.setdefault("rule", RULE_STRUCT)
     level = load_plan_journal(state.plan_journal_level_path)
@@ -323,8 +325,6 @@ def journal_page_for(state: Any, data: dict[str, Any], page: str, token: str | N
     tim.setdefault("rule", RULE_TIM)
     notes = plan_notes.latest(plan_notes.load(state.plan_notes_path))
     kwargs = {"notes": notes, "token": token, "error": error, "saved": saved}
-    if page in XMR_PAGES:
-        return xmr_journal_page(state, data, page)
     if page == "Plan Journal Level":
         return _plan_journal_page(data, level, other=tim, level_journal=struct, page_path="/journal/level", **kwargs)
     if page == "Plan Journal Struct":

@@ -120,6 +120,23 @@ def test_with_evidence_never_lends_btc_evidence_to_xmr(tmp_path: Path) -> None:
     assert btc["evidence_ref"].get("reason") != pj.SYMBOL_NOT_RESEARCHED
 
 
+def test_perp_journal_passes_source_and_market_type_per_symbol(tmp_path: Path, monkeypatch) -> None:
+    """The fake perp candles give no plans, so the plumbing is checked at the call into plan_journal.update."""
+    seen: list[dict] = []
+
+    def capture(path, series, now, **kwargs):
+        seen.append({"path": path, "symbols": {r.get("symbol") for r in series["1m"]}, **kwargs})
+        return {"entries": [], "last_plan_candle": None}
+
+    monkeypatch.setattr(pj, "update", capture)
+    perp_journal.update(_perp_cache(), None, NOW, {"15m": tmp_path / "b.json"})
+    perp_journal.update(_xmr_cache(), None, NOW, {"15m": tmp_path / "x.json"}, symbol="XMRUSDT")
+    btc, xmr = seen
+    assert btc["market_type"] is None and btc["source"] == perp_journal.SOURCE and btc["symbols"] == {"BTCUSDT"}
+    assert xmr["market_type"] == "USDM" and xmr["source"] == perp_journal.XMR_SOURCE and xmr["symbols"] == {"XMRUSDT"}
+    assert xmr["path"] == tmp_path / "x.json"
+
+
 def test_xmr_journal_pages_render_read_only(tmp_path: Path) -> None:
     from src.dashboard.pages.plan_journal import journal_page_for
     from src.dashboard.state import DashboardState
@@ -127,10 +144,12 @@ def test_xmr_journal_pages_render_read_only(tmp_path: Path) -> None:
     state = DashboardState()
     state.plan_journal_xmr_15m_path = tmp_path / "xmr_15m.json"
     state.plan_journal_xmr_1h_path = tmp_path / "xmr_1h.json"
-    perp_journal.update(_xmr_cache(), _xmr_store(NOW - timedelta(days=6), 24 * 6), NOW,
-                        {"15m": state.plan_journal_xmr_15m_path, "1h": state.plan_journal_xmr_1h_path}, symbol="XMRUSDT")
+    start = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+    journal = pj.update(state.plan_journal_xmr_15m_path, _xmr_series(start), start + timedelta(minutes=30 * 90), market_type="USDM")
+    assert journal["entries"]
     page = journal_page_for(state, state.snapshot(), "Plan Journal XMR 15m", token="tok")
     assert "Monero" in page and "XMRUSDT" in page
+    assert "Noch keine Pläne" not in page  # the table shows the recorded XMR plans
     assert "/journal/note" not in page  # no note forms: notes are keyed to the BTC journals
     other = journal_page_for(state, state.snapshot(), "Plan Journal XMR 1h", token="tok")
     assert "1h" in other and "Monero" in other
