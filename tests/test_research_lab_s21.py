@@ -140,3 +140,7 @@ def test_count_is_results_blind():
 def test_evaluate_refuses_while_draft():
     with pytest.raises(PermissionError):
         s21.evaluate(_rows(None, 4))
+
+
+def test_funding_months_start_where_the_archive_starts():
+    assert s21.FUNDING_FIRST_MONTH == (2020, 1)

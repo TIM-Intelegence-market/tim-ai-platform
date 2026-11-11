@@ -60,6 +60,7 @@ FP_CANDLE_MS = 15 * 60_000
 FP_CANDLES = 8
 FP_FAMILIES = ("I", "A", "C", "T", "H", "E")
 FUNDING_LOOKBACK = 90
+FUNDING_FIRST_MONTH = (2020, 1)  # first month in the USD-M fundingRate archive (2019 answers 404)
 
 
 # -- K: candle order flow -----------------------------------------------------------------------------
@@ -257,7 +258,7 @@ def load_funding(root: Path, events: Sequence[Event], *, fetch: bool = False) ->
     from src.research_lab.data.archive import ArchiveRef, Dataset, Market
     from src.research_lab.data.store import ArchiveStore, months
     store = ArchiveStore(root)
-    refs = [ArchiveRef(Market.USDM, Dataset.FUNDING, y, m, symbol=s20.SYMBOL) for y, m in months((2019, 10), s20.LAST_MONTH)]
+    refs = [ArchiveRef(Market.USDM, Dataset.FUNDING, y, m, symbol=s20.SYMBOL) for y, m in months(FUNDING_FIRST_MONTH, s20.LAST_MONTH)]
     if fetch:
         for ref in refs:
             store.fetch(ref)
