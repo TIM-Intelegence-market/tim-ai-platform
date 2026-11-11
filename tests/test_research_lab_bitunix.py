@@ -1,5 +1,4 @@
 import asyncio
-import gzip
 import json
 import math
 from pathlib import Path
@@ -17,8 +16,9 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 def _rows(folder):
     out = []
     for f in sorted(folder.glob("*.gz")):
-        with gzip.open(f) as fh:
-            out.extend(json.loads(x) for x in fh.read().decode().splitlines())
+        rows, complete = recorder.read_segment(f)
+        assert complete
+        out.extend(rows)
     return out
 
 
@@ -110,7 +110,7 @@ def test_recorder_handle_and_day_files(tmp_path):
     assert recorder.handle("not json", w, 1) is None
     w.close()
     files = list((tmp_path / "BTCUSDT").glob("*.jsonl.gz"))
-    assert [f.name for f in files] == ["2025-11-11.jsonl.gz"]
+    assert [f.name for f in files] == ["2025-11-11.0.jsonl.gz"]
     row = _rows(tmp_path / "BTCUSDT")[0]
     assert row["kind"] == "trade" and row["msg"] == trade and row["recv_ms"] == 1_762_819_200_000
 
@@ -286,3 +286,31 @@ def test_report_is_reproducible():
     assert committed["trades"]["n"] == 56
     assert committed["inputs"]["source"]["sha256"].startswith("91eda094")
     assert committed["verdict"] == "TARGET NOT PROVEN"
+
+
+def test_read_segment_survives_cut_tail(tmp_path):
+    w = recorder.DayWriter(tmp_path, ["BTCUSDT"], run_id=7)
+    for i in range(50):
+        w.write("BTCUSDT", {"kind": "trade", "i": i}, 1_762_819_200_000)
+    w.flush()
+    path = next((tmp_path / "BTCUSDT").glob("*.gz"))
+    for i in range(50, 60):
+        w.write("BTCUSDT", {"kind": "trade", "i": i}, 1_762_819_200_000)
+    w.flush()
+    full = path.read_bytes()  # flushed, but no gzip trailer: like a hard kill
+    path.write_bytes(full[:-7])
+    rows, complete = recorder.read_segment(path)
+    assert not complete
+    assert [r["i"] for r in rows][:50] == list(range(50))
+    w._open.clear()
+
+
+def test_each_run_gets_its_own_segment(tmp_path):
+    a = recorder.DayWriter(tmp_path, ["BTCUSDT"], run_id=1)
+    b = recorder.DayWriter(tmp_path, ["BTCUSDT"], run_id=2)
+    a.write("BTCUSDT", {"x": 1}, 1_762_819_200_000)
+    b.write("BTCUSDT", {"x": 2}, 1_762_819_200_000)
+    a.close()
+    b.close()
+    names = sorted(p.name for p in (tmp_path / "BTCUSDT").glob("*.gz"))
+    assert names == ["2025-11-11.1.jsonl.gz", "2025-11-11.2.jsonl.gz"]

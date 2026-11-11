@@ -2,8 +2,9 @@
 
 Bitunix has no public REST endpoint for historic trades, so a Bitunix footprint can only come from recording the
 public WebSocket ``trade`` channel ourselves. Each message is stored unchanged with the local receive time
-(processing time) next to the exchange time (event time), one gzip JSONL file per UTC day and symbol:
-``<root>/<symbol>/<YYYY-MM-DD>.jsonl.gz``.
+(processing time) next to the exchange time (event time), one gzip JSONL segment per UTC day, symbol and run:
+``<root>/<symbol>/<YYYY-MM-DD>.<run_start_ms>.jsonl.gz``. A run never appends to another run's file, so a hard
+kill can only cut the tail of its own segment; :func:`read_segment` reads every segment up to such a cut.
 
 Safety and health (review PR #226):
 - Only symbols from the subscribed allowlist are written, and every target path must resolve inside ``root``.
@@ -58,23 +59,55 @@ def subscribe_message(symbols: Iterable[str], channels: Iterable[str] = CHANNELS
     return {"op": "subscribe", "args": [{"symbol": s, "ch": c} for s in symbols for c in channels]}
 
 
-def day_path(root: Path, symbol: str, ts_ms: int) -> Path:
+def day_path(root: Path, symbol: str, ts_ms: int, run_id: int) -> Path:
     day = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
-    return root / symbol / f"{day}.jsonl.gz"
+    return root / symbol / f"{day}.{run_id}.jsonl.gz"
+
+
+def read_segment(path: Path) -> tuple[list[dict], bool]:
+    """All complete JSON rows of one segment and whether the file ended cleanly.
+
+    Tolerates a cut tail (hard kill, power loss): rows up to the last flush are returned, ``complete`` is False.
+    """
+    data = path.read_bytes()
+    out = bytearray()
+    complete = True
+    while data:
+        d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        try:
+            out += d.decompress(data)
+        except zlib.error:
+            complete = False
+            break
+        if not d.eof:
+            complete = False
+            break
+        data = d.unused_data
+    rows = []
+    lines = bytes(out).split(b"\n")
+    if lines and lines[-1]:
+        complete = False  # half-written last line
+    for line in lines[:-1]:
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            complete = False
+    return rows, complete
 
 
 class DayWriter:
     """Append-only gzip writer, one open file per allowed symbol, rolled at UTC midnight."""
 
-    def __init__(self, root: Path, symbols: Iterable[str]) -> None:
+    def __init__(self, root: Path, symbols: Iterable[str], run_id: int = 0) -> None:
         self.root = root.resolve()
+        self.run_id = run_id
         self.allowed = frozenset(validate_symbols(symbols))
         self._open: dict[str, tuple[Path, gzip.GzipFile]] = {}
 
     def write(self, symbol: str, row: dict, recv_ms: int) -> None:
         if symbol not in self.allowed:
             raise ValueError(f"symbol {symbol!r} not in allowlist")
-        path = day_path(self.root, symbol, recv_ms)
+        path = day_path(self.root, symbol, recv_ms, self.run_id)
         if not path.resolve().is_relative_to(self.root):
             raise ValueError(f"path {path} leaves {self.root}")
         try:
@@ -83,7 +116,7 @@ class DayWriter:
                 if current is not None:
                     current[1].close()
                 path.parent.mkdir(parents=True, exist_ok=True)
-                current = (path, gzip.open(path, "ab"))  # noqa: SIM115 - long-lived, closed in close()
+                current = (path, gzip.open(path, "xb"))  # noqa: SIM115 - long-lived, closed in close()
                 self._open[symbol] = current
             current[1].write((json.dumps(row, separators=(",", ":")) + "\n").encode())
         except (OSError, zlib.error, EOFError) as exc:
@@ -166,8 +199,8 @@ async def record(
         connect = websockets.connect
     symbols = list(validate_symbols(symbols))
     root.mkdir(parents=True, exist_ok=True)
-    writer = DayWriter(root, symbols)
     status = Status(root)
+    writer = DayWriter(root, symbols, run_id=int(clock() * 1000))
     counts = {c: 0 for c in CHANNELS} | {"rejected": 0, "gaps": 0, "reconnects": 0}
     started = clock()
     backoff = 1.0

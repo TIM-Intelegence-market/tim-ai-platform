@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import signal
 from pathlib import Path
 
 from src.research_lab.bitunix import gate, leverage, recorder, target
@@ -53,11 +54,18 @@ def main(argv: list[str] | None = None) -> int:
         a.out.write_text(json.dumps(rep, indent=1, ensure_ascii=False) + "\n")
         print(rep["verdict"])
     elif a.cmd == "record":
+        def _term(*_):  # launchd/kill send SIGTERM: stop like Ctrl-C so every segment is closed cleanly
+            raise KeyboardInterrupt
+
+        signal.signal(signal.SIGTERM, _term)
         try:
             counts = asyncio.run(recorder.record(a.root.expanduser(), a.symbols.split(","), stop_after=a.seconds))
         except recorder.StorageError as exc:
             print(json.dumps({"state": "failed", "error": str(exc)}), flush=True)
             return 2
+        except KeyboardInterrupt:
+            print(json.dumps({"state": "stopped by signal"}), flush=True)
+            return 0
         print(json.dumps(counts))
     else:
         ok, why = gate.authorization_status()
