@@ -74,6 +74,23 @@ def test_moments_need_warmup_and_stay_inside_their_section():
     assert all(t + s22.HORIZON * HOUR <= bars[-1].open_time + HOUR for t in closes)
 
 
+def test_one_missing_candle_does_not_lock_sixty_days():
+    hours = s22.WINDOW_1H + 300
+    bars, _ = _series(hours)
+    full = set(s22.moments(bars, atr_series(bars)))
+    gone = s22.WINDOW_1H + 50
+    holed = bars[:gone] + bars[gone + 1:]
+    kept = s22.moments(holed, atr_series(holed))
+    times = {holed[i].open_time for i in kept}
+    lost = {bars[i].open_time for i in full} - times
+    # Lost: the 48 moments whose horizon holds the hole, the hole itself and the day after it (ATR needs it complete).
+    assert 0 < len(lost) <= s22.HORIZON + 1 + s22.RECENT
+    assert max(times) == max(bars[i].open_time for i in full)
+    many = bars[:gone] + bars[gone + s22.MAX_WARMUP_GAPS + 1:]  # more than 24 candles missing: locked as before
+    after = [many[i].open_time for i in s22.moments(many, atr_series(many)) if many[i].open_time > bars[gone].open_time]
+    assert not after or min(after) - bars[gone + s22.MAX_WARMUP_GAPS + 1].open_time >= (s22.WINDOW_1H - 2) * HOUR
+
+
 def test_verdict_uses_only_candles_closed_by_then():
     hours = s22.WINDOW_1H + 120
     bars, half = _series(hours)
