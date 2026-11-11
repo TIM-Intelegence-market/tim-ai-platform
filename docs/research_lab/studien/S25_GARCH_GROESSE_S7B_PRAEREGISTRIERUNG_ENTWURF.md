@@ -1,8 +1,8 @@
-# S24: Positionsgröße nach GARCH-Prognose für S7b (Präregistrierung, Entwurf 0.1)
+# S25: Positionsgröße nach GARCH-Prognose für S7b (Präregistrierung, Entwurf 0.1)
 
 | Feld | Wert |
 |---|---|
-| Studie | S24 |
+| Studie | S25 |
 | Version | **0.1 Entwurf**, nicht eingefroren. Einfrieren (1.0) erst nach dem ergebnisblinden Zähllauf (6.1) und Uzis Wort |
 | Auftrag | Studien-Ideen 11.11.2026, Punkt 1; Uzis „go“ 11.11.2026, 20:45 Ortszeit |
 | Bezug | S7b (`S7B_EINE_POSITION_PRAEREGISTRIERUNG.md`, Kandidatin S7b-D20-T3), S15-4h (`S15_GARCH_VOLATILITAET_PRAEREGISTRIERUNG.md`, bestanden), `src/research_lab/vol_4h.py` (Papier-Gewicht seit 03.11.) |
@@ -82,10 +82,10 @@ Ein Drawdown ist ein einzelner Pfadwert und schwankt stark; deshalb das Placebo.
 | Paket | Inhalt | Stand |
 |---|---|---|
 | P0 | Dieser Entwurf | erledigt (0.1) |
-| P1 | `src/research_lab/studies/s24.py` + Tests: Gewichte aus S15-Prognosen, Normierung, Placebo, Bericht; liest die S7b-Tradeliste, rechnet nichts vor dem Zähllauf | offen |
+| P1 | `src/research_lab/studies/s25.py` + Tests: Gewichte aus S15-Prognosen, Normierung, Placebo, Bericht; liest die S7b-Tradeliste, rechnet nichts vor dem Zähllauf | offen |
 | 6.1 | Zähllauf, ergebnisblind: nur Zahl der Trades mit Prognose je Abschnitt und Instrument, keine R | offen (Mac, Daten der S7b-Läufe) |
 | P2 | Einfrieren 1.0 auf Uzis Wort | offen |
-| P3 | Ein Lauf Training, dann Validierung, Bericht `../reports/s24_<stamp>.md` | offen |
+| P3 | Ein Lauf Training, dann Validierung, Bericht `../reports/s25_<stamp>.md` | offen |
 
 ## 7. Was ein Ergebnis bedeutet
 
@@ -98,4 +98,4 @@ Ein Drawdown ist ein einzelner Pfadwert und schwankt stark; deshalb das Placebo.
 
 | Datum | Version | Änderung |
 |---|---|---|
-| 2026-11-11 | 0.1 | Erstfassung |
+| 2026-11-11 | 0.1 | Erstfassung (zuerst als S24 angelegt, umbenannt, weil S24 schon an die Indikator-Studie in #229 vergeben ist) |
