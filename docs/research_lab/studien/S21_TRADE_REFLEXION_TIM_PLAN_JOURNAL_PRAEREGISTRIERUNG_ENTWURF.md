@@ -3,11 +3,11 @@
 | Feld | Wert |
 |---|---|
 | Studie | S21 |
-| Version | **Entwurf 0.3 – wartet auf Uzis Freigabe (Stufe 1); vorher werden keine Daten geladen** |
+| Version | **Entwurf 0.4 – wartet auf Codex-Prüfung und Uzis Einfrieren; vorher werden keine Daten geladen** |
 | Erzeugt | 2026-11-11 01:06 Ortszeit vom Studien-Generator (`src/research_lab/workshop/generator.py`) |
 | Idee | I-0003 aus Quelle „Reflexion jedes Papier-Trades“ (`data/research/IDEEN.jsonl` auf dem Mac) |
 | Vorlage | Generator: Regel-Backtest auf dem Archiv. **0.2: prospektive Prüfung auf den Papier-Plan-Journalen** (Abschnitt 4; ein Archiv-Backtest ist nicht machbar) |
-| Spezifikation | SHA-256 `7bf6c79e589158fa36e09e3bdaf9ddfab5de0ee518ba11368fde34f322102332` (gilt für Entwurf 0.1 vom Generator; die Änderungen in 0.2 und 0.3 sind von Hand und vom Hash **nicht** gedeckt) |
+| Spezifikation | SHA-256 `7bf6c79e589158fa36e09e3bdaf9ddfab5de0ee518ba11368fde34f322102332` (gilt für Entwurf 0.1 vom Generator; die Änderungen in 0.2 bis 0.4 sind von Hand und vom Hash **nicht** gedeckt) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Holdout | Wird nicht berührt. Die Papier-Plan-Journal-Trades (ab 2026) sind prospektive Live-Daten, keine Archiv-Holdout-Daten; die Sperre ab 2025-01-01 gilt für Archivkurse (Uzis Entscheidung 11.11.2026 11:30 Ortszeit). Es werden nur Trades gezählt, die nach dem Einfrieren von 1.0 geplant werden. |
 | Register | Außerhalb des Registers (0 von 60), wie S8/L1/F11. Uzis Entscheidung 11.11.2026 11:30 Ortszeit per Entscheidungskarte. |
@@ -45,8 +45,20 @@ Gegenargument: Muster aus wenigen, überlappenden Papier-Trades; die Abhilfe mus
 
 ### 4.1 Quellen und Felder
 
-- Journale: die sechs Journale der Wochenrunde (`JOURNALS` in `src/research_lab/workshop/schedule.py`): `tim_plan_journal` (30m, früher auch 15m), `tim_plan_journal_short` (15m), `tim_plan_journal_mid` (1h), `tim_plan_journal_long` (1d), `tim_plan_journal_struct`, `tim_plan_journal_vp`, jeweils `~/TIM-live/data/journal/<name>.json`, geladen mit `load_view`. Journale, die es nicht gibt oder deren Log gebrochen ist, zählen mit null Trades und werden im Bericht genannt. Perp- und Level-Journale gehören nicht dazu (wie F11).
-- Gelesene Felder: `status`, `direction`, `market_state`, `net_r`, `created_at`, `closed_at`, `excluded`, `data_gap`.
+- Journale: die sechs Journale der Wochenrunde (`JOURNALS` in `src/research_lab/workshop/schedule.py`): `tim_plan_journal` (30m, früher auch 15m), `tim_plan_journal_short` (15m), `tim_plan_journal_mid` (1h), `tim_plan_journal_long` (1d), `tim_plan_journal_struct`, `tim_plan_journal_vp`, jeweils `~/TIM-live/data/journal/<name>.json`, geladen mit `load_view`. Fehlt ein Journal oder ist es gebrochen, zählt es **nicht** als null Trades; die Prüfung steht in 6.2. Perp- und Level-Journale gehören nicht dazu (wie F11).
+- Gelesene Felder: `status`, `direction`, `market_state`, `net_r`, `gross_r`, `fee_r`, `slippage_r`, `cost_model_version`, `created_at`, `closed_at`, `excluded`, `data_gap`; dazu das Ereignis-Log `<name>.events.jsonl` (Ereignisse `PLAN_RECORDED`, `PLAN_UPDATED`) für 4.3.
+
+### 4.2 Kosten
+
+- `net_r` ist das Ergebnis nach Kosten, wie es das Plan-Journal beim Schließen bucht (`src/dashboard/plan_journal.py`, Stand a1c36b8: Kostenmodell Zeilen 96–104, `costs_r` ab Zeile 561, Buchung Zeilen 738–745): `net_r = gross_r − fee_r − slippage_r`.
+- Kostenregel `protocol/1.1` (PROTOKOLL.md 4.3/4.4): Gebühr 0,05 % je Seite (`FEE_PER_SIDE`), Slippage 0,03 % je Seite (`SLIPPAGE_PER_SIDE`), 0,05 % Slippage bei Stop-Ausführungen (`STOP_SLIPPAGE`). Kosten in R = Kosten im Preis / Stop-Abstand. Gebühr und Slippage fallen auf die ganze Größe beim Einstieg, auf jedes Drittel an seinem Ziel und auf den Rest beim Ausstieg an. Für einen ausgestoppten Trade sind das zusammen 0,18 % des Kurses, wie `ROUND_TRIP_COST` in `self_improve.py`.
+- Nachweis je Fall: `cost_model_version = protocol/1.1` und `net_r = gross_r − fee_r − slippage_r` (Toleranz 0,001 R). Ein Fall mit anderer Kostenversion oder Abweichung zählt nicht; Zahl und Grund stehen im Bericht. S21 setzt keine eigenen Kosten an und ändert das Kostenmodell nicht.
+
+### 4.3 Kein Blick in die Zukunft
+
+- Der Filter liest nur `direction` und `market_state`. Beide werden beim Anlegen des Plans gesetzt: `market_state` aus der Analyse zur Planzeit (`plans_from_model`, Zeile 250, Stand a1c36b8), der Eintrag mit `created_at` in `record_plans` (Zeilen 349–373). Ergebnisse (`net_r`, `closed_at`) gehen nicht in die Gruppenzuordnung ein.
+- Der Code sperrt die beiden Felder nicht ausdrücklich (sie stehen nicht in `DECISION_FIELDS`, Zeile 137). Deshalb wird vor der Auswertung jeder gezählte Fall am Ereignis-Log geprüft: `direction` und `market_state` im Ereignis `PLAN_RECORDED` sind gleich den Werten im Journal, und kein `PLAN_UPDATED` ändert eines der beiden Felder. Verletzt ein Fall das, ist das ganze Urteil **NICHT PRÜFBAR** (Hinweis auf einen Fehler im Journal), und der Fall wird gemeldet.
+- Annahme, die S21 nicht prüfen kann: dass die Analyse zur Planzeit selbst nur geschlossene Kerzen gelesen hat. Das ist Sache der Analyse und des Journals, nicht dieser Studie.
 - Zugriff nur lesend; Auswertung auf einer Kopie der Journale mit Zeitstempel und SHA-256 je Datei im Bericht.
 
 ## 5. Fälle, Gruppen und Vergleich
@@ -67,6 +79,12 @@ Ein Fall ist ein Trade mit `status = CLOSED`, nicht `excluded`, mit `net_r` und 
 - Cluster-Bootstrap: 10 000 Ziehungen, je Ziehung werden die Tage mit Zurücklegen gezogen (so viele wie Tage mit Fällen), alle Fälle eines gezogenen Tages kommen mit. Fester Seed **2121**, im Code vor dem Laden der Daten eingefroren. Ziehungen ohne Fall in Gruppe A werden neu gezogen; ihre Zahl wird berichtet.
 - Mittel = Summe Netto-R / Zahl der Trades der Gruppe in der Ziehung (Mittel je Trade, nicht Mittel der Tagesmittel).
 
+### 5.4 Zufalls-Basislinie (Glückstest)
+
+- Ein Zufallsfilter lässt genau so viele Fälle weg wie `MIT_TREND` (k = Zahl der Fälle in A), gezogen gleichverteilt ohne Zurücklegen aus allen Fällen. 10 000 Ziehungen, Seed 2121 (eigener Zufallsgenerator, getrennt vom Cluster-Bootstrap), im Code eingefroren.
+- Je Ziehung: Δ_Zufall = Mittel(behaltene) − Mittel(weggelassene).
+- Berichtsgröße: Anteil der Zufallsfilter mit Δ_Zufall ≥ beobachtetem Mittel(B) − Mittel(A). Ein kleiner Anteil heißt: Der Filter trennt besser als Zufall.
+
 ## 6. Messgröße und Entscheidung
 
 - Messgröße: mittleres Netto-R je Trade in Gruppe A (was der Filter je ausgelassenem Trade gespart hätte) und die Differenz Mittel(B) − Mittel(A), beide in R nach Kosten (wie `net_r` im Journal)
@@ -80,6 +98,7 @@ Vor jeder Auswertung, auch wöchentlich, darf ein Zähllauf laufen. Er gibt nur 
 
 ### 6.2 Zeitpunkt der einen Auswertung
 
+- Vor Zähllauf und Auswertung wird jedes der sechs Journale geprüft: Datei vorhanden, gültiges JSON, Ereignis-Log lesbar und Hash-Kette intakt (`load`, nicht `load_view`), und jeder gezählte Fall hat die Pflichtfelder aus 4.1. Fehlt ein Journal oder bricht eine Prüfung, lautet das Urteil **NICHT PRÜFBAR**, nicht „null Trades“. Ausnahme: `tim_plan_journal_long` und `tim_plan_journal_vp`, falls sie beim Einfrieren noch keine Einträge haben, dürfen fehlen; das wird beim Einfrieren festgehalten.
 - Stichtag ist der erste Zähllauf, der die Mindestzahlen erreicht, spätestens Tag 120.
 - Gezählt werden nur Trades, die bis zum Stichtag geplant wurden. Damit lang laufende Trades nicht wegfallen, wartet die Auswertung, bis diese Trades geschlossen sind, höchstens 7 Tage. Danach noch offene Trades fehlen; ihre Zahl je Gruppe wird berichtet. Fallen die Mindestzahlen dadurch unter die Grenze, lautet das Ergebnis „nicht prüfbar“.
 
@@ -87,11 +106,11 @@ Vor jeder Auswertung, auch wöchentlich, darf ein Zähllauf laufen. Er gibt nur 
 
 - Vergleich 1 (Hauptvergleich): Mittel(A) < 0. Einseitiges 95-%-Cluster-Bootstrap-Intervall (Obergrenze = 95-%-Quantil der Ziehungen) und p₁ = (1 + #{Mittel*(A) ≥ 0}) / (1 + 10 000).
 - Vergleich 2: Mittel(B) − Mittel(A) > 0. In denselben Ziehungen, p₂ = (1 + #{Δ* ≤ 0}) / (1 + 10 000).
-- Mehrfachtest: Holm über die beiden Vergleiche, m = 2, α = 5 %, eigene Familie (kein Holdout-Register).
+- Mehrfachtest: Holm über die beiden Vergleiche, m = 2, α = 5 %, eigene Familie (kein Holdout-Register). Der Glückstest (5.4) und das F11-Urteil (6.5) zählen nicht in Holm.
 
 ### 6.4 Entscheidung
 
-- **BESTANDEN** nur, wenn alles gilt: (1) Mindestzahlen erfüllt, (2) einseitiges 95-%-Intervall von Mittel(A) liegt ganz unter 0 und Vergleich 1 ist nach Holm signifikant, (3) Punktwert Mittel(A) ≤ −0,2 R.
+- **BESTANDEN** nur, wenn alles gilt: (1) Mindestzahlen erfüllt, (2) einseitiges 95-%-Intervall von Mittel(A) liegt ganz unter 0 und Vergleich 1 ist nach Holm signifikant, (3) Punktwert Mittel(A) ≤ −0,2 R, (4) Glückstest aus 5.4: Anteil der Zufallsfilter ≤ 5 %, (5) Prüfungen aus 4.2, 4.3 und 6.2 bestanden.
 - Vergleich 2 zählt für Holm und wird berichtet, ist aber keine Bedingung: Der Filter spart Geld, wenn A verliert, auch wenn B ebenfalls schwach ist.
 - Dann heißt es „bereit für Uzis Entscheidung“. Die Regel in TIM ändert sich nur per PR nach Uzis Ja.
 - Sonst **NICHT BESTANDEN**; bei verfehlten Mindestzahlen oder abgelaufener Zeitgrenze **nicht prüfbar**.
@@ -99,13 +118,15 @@ Vor jeder Auswertung, auch wöchentlich, darf ein Zähllauf laufen. Er gibt nur 
 
 ### 6.5 Abgrenzung zu F11
 
-F11 (`self_improve.py`) beobachtet `MIT_TREND` in 30-Tage-Fenstern mit Bonferroni über vier Filter, ab 20 neuen Trades und 5 weggefallenen. S21 ist die präregistrierte Prüfung **desselben** Filters mit festen Mindestzahlen (40/10), Tages-Clustern, kleinstem Effekt und genau einer Auswertung. F11 läuft unverändert weiter, S21 greift nicht in sein Lernprotokoll ein. Beide können dieselben Trades lesen; im Bericht stehen beide Urteile nebeneinander, und Uzi entscheidet.
+F11 (`self_improve.py`) beobachtet `MIT_TREND` in 30-Tage-Fenstern mit Bonferroni über vier Filter, ab 20 neuen Trades und 5 weggefallenen. S21 ist die präregistrierte Prüfung **desselben** Filters mit festen Mindestzahlen (40/10), Tages-Clustern, kleinstem Effekt und genau einer Auswertung. F11 läuft unverändert weiter, S21 greift nicht in sein Lernprotokoll ein. Ein F11-Fenster für `MIT_TREND` darf parallel laufen und dieselben Trades lesen. Es hat keinen Einfluss auf S21: kein Start, keine Frist, keine Schwelle und kein Fall von S21 hängt davon ab, und S21 liest `data/research/self_improve/log.jsonl` nur für den Bericht. Das S21-Urteil steht allein nach 6.4. Das F11-Ergebnis wird im Bericht nur beschreibend genannt und zählt nicht in Holm (m = 2 bleibt A und B − A).
 
 ### 6.6 Umsetzung (zum Einfrieren in 1.0)
 
+Die Regeln oben gelten erst als vor den Daten festgelegt, wenn Version 1.0 eingefroren ist. 1.0 entsteht nur auf Uzis ausdrückliches Wort; bis dahin werden keine Daten geladen.
+
 - `src/research_lab/studies/s21.py` mit `count(journals, frozen_at)` (Zähllauf, nur Zahlen) und `evaluate(journals, frozen_at, cutoff)` (Abschnitte 5–6); Seed 2121, 10 000 Ziehungen, Mindestzahlen und Grenzen als Konstanten.
 - Gruppe A über `self_improve.FILTERS["MIT_TREND"].drops`, Fälle über `self_improve.closed`. Es gibt keine eigene Kopie der Regel.
-- Tests mit kleinen künstlichen Journalen: Zeitgrenze `created_at` nach dem Einfrieren, Ausschlüsse (`excluded`, `data_gap`, ohne `net_r`, offen), Gruppenzuordnung, Tages-Cluster, Zähllauf ohne R, feste Ziehungen bei festem Seed, Entscheidungsregeln.
+- Tests mit kleinen künstlichen Journalen: Zeitgrenze `created_at` nach dem Einfrieren, Ausschlüsse (`excluded`, `data_gap`, ohne `net_r`, offen), Journalprüfung (fehlend, kaputtes JSON, gebrochene Kette), Kostenprüfung, nachträglich geänderter `market_state`, Glückstest, Gruppenzuordnung, Tages-Cluster, Zähllauf ohne R, feste Ziehungen bei festem Seed, Entscheidungsregeln.
 - Nur lesender Journalzugriff, kein Schreiben unter `~/TIM-live`.
 
 ## 7. Bekannte Grenzen
@@ -132,3 +153,4 @@ F11 (`self_improve.py`) beobachtet `MIT_TREND` in 30-Tage-Fenstern mit Bonferron
 | 2026-11-11 | 0.1 | Entwurf vom Studien-Generator aus Idee I-0003 |
 | 2026-11-11 | 0.2 | Von Hand ergänzt: Register als Vorschlag außerhalb des Holdout-Registers (0 von 60, Uzis Entscheidung offen); Holdout wird nicht berührt; Archiv-Backtest gestrichen (Marktzustand nur im Plan-Journal), Daten nur Plan-Journale (4); genau eine Regel `MIT_TREND` ohne Parameter statt zweier bedeutungsloser Varianten (2, 5); Vorbelastung mit In-Sample-Herkunft, Befund 31.10. (+2,50 R) und Rückblick 11.11. (3); prospektive Methode mit Fall, Gruppen, Tages-Cluster-Bootstrap, Seed 2121, Mindestzahlen 40/10, Zeitgrenze 120 Tage, Holm m = 2 (5, 6); Messgröße und kleinster Effekt in R statt Prozentpunkten; Abgrenzung zu F11 (6.5); Umsetzungsplan (6.6). Spezifikations-Hash gilt nur für 0.1 |
 | 2026-11-11 | 0.3 | Register- und Holdout-Einordnung nach Uzis Entscheidung 11.11.2026 11:30 Ortszeit (Entscheidungskarte): außerhalb des Registers (0 von 60); Plan-Journal-Trades sind prospektive Live-Daten, die Holdout-Sperre ab 2025-01-01 gilt für Archivkurse. Methode unverändert. |
+| 2026-11-11 | 0.4 | Codex-Befunde zu 0.3 eingearbeitet: Kostenregel `protocol/1.1` mit Nachweis je Fall (4.2); Look-ahead-Prüfung von `direction`/`market_state` am Ereignis-Log (4.3); Zufalls-Basislinie mit Glückstest, Seed 2121, als zusätzliche Bedingung (5.4, 6.4); Journalprüfung, fehlendes oder gebrochenes Journal = NICHT PRÜFBAR statt null Trades (4.1, 6.2); F11 unabhängig und nur beschreibend (6.5); Hinweis, dass 1.0 nur auf Uzis Wort entsteht (6.6). Methode, Schwellen und Mindestzahlen sonst unverändert. |
