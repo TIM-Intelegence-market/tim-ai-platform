@@ -33,6 +33,12 @@ andere Richtung. Die Wahrheit liegt vermutlich zwischen den Spalten.
 
 Daten: S7b-Tradeliste vom Mac (`s7b_train_2026-10-26T1305Z_trades.json`, Lauf 26.10., Training 2020–2022,
 Validierung 2023–2024) und OF2-Trainingstrades (`of2_training_of_trades.json`, 2020–2022). Kein Holdout berührt.
+Die Dateien liegen nicht im Repo; SHA-256 zum Nachprüfen:
+
+- `s7b_train_2026-10-26T1305Z_trades.json` (Mac, Worktree `s7-gate/reports/`):
+  `fa45d740da405a2fc96737a1a61d3fde151d81f68695f1951587ae0e85b88b26`
+- `of2_training_of_trades.json` (Mac, `bitunix-check/`):
+  `8bfcb8da8ead6e9aa5aeb4d9b525fd24350f0afd9c420d3b40dc1f93b67524ee`
 
 | Reihe | n | E[R] | Sharpe/Trade | Schiefe | Kurtosis | PSR(0) | DSR N=58 | **N=64** | N=100 | N=200 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
