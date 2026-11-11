@@ -1,0 +1,101 @@
+{
+  "study": "S25",
+  "commit": "289b16dd54a569cd658b8d3b584a11e4926a9f29",
+  "created": "2026-11-11T20:59:16+00:00",
+  "trades_file": "s7b_train_2026-10-26T1305Z_trades.json",
+  "trades_sha256": "fa45d740da405a2fc96737a1a61d3fde151d81f68695f1951587ae0e85b88b26",
+  "dataset_hash": "182b222e0fa12cae397ea4866ee619d6e5102854bf7658468d9cafdbb60844e2",
+  "variant": "S7b-D20-T3",
+  "reported": [
+    "S7b-D20-T4"
+  ],
+  "ref_days": 365,
+  "ref_min_days": 90,
+  "w_bounds": [
+    0.5,
+    2.0
+  ],
+  "frozen": false,
+  "count": {
+    "S7b-D20-T3": {
+      "train": {
+        "trades": 292,
+        "with_weight": 139,
+        "by_symbol": {
+          "BTCUSDT": {
+            "trades": 145,
+            "with_weight": 80
+          },
+          "ETHUSDT": {
+            "trades": 75,
+            "with_weight": 34
+          },
+          "SOLUSDT": {
+            "trades": 72,
+            "with_weight": 25
+          }
+        }
+      },
+      "validation": {
+        "trades": 207,
+        "with_weight": 207,
+        "by_symbol": {
+          "BTCUSDT": {
+            "trades": 97,
+            "with_weight": 97
+          },
+          "ETHUSDT": {
+            "trades": 47,
+            "with_weight": 47
+          },
+          "SOLUSDT": {
+            "trades": 63,
+            "with_weight": 63
+          }
+        }
+      }
+    },
+    "S7b-D20-T4": {
+      "train": {
+        "trades": 266,
+        "with_weight": 131,
+        "by_symbol": {
+          "BTCUSDT": {
+            "trades": 125,
+            "with_weight": 73
+          },
+          "ETHUSDT": {
+            "trades": 75,
+            "with_weight": 34
+          },
+          "SOLUSDT": {
+            "trades": 66,
+            "with_weight": 24
+          }
+        }
+      },
+      "validation": {
+        "trades": 189,
+        "with_weight": 189,
+        "by_symbol": {
+          "BTCUSDT": {
+            "trades": 85,
+            "with_weight": 85
+          },
+          "ETHUSDT": {
+            "trades": 45,
+            "with_weight": 45
+          },
+          "SOLUSDT": {
+            "trades": 59,
+            "with_weight": 59
+          }
+        }
+      }
+    }
+  },
+  "gate": {
+    "min_validation_with_weight": 80,
+    "passes": true
+  }
+}

@@ -88,7 +88,7 @@ Ein Drawdown ist ein einzelner Pfadwert und schwankt stark; deshalb das Placebo.
 |---|---|---|
 | P0 | Dieser Entwurf | erledigt (0.1) |
 | P1 | `src/research_lab/studies/s25.py` + `tests/test_research_lab_s25.py`: Gewichte aus S15-Prognosen, Normierung, Placebo, Urteil. `count` liest nur Symbol und Einstiegszeit, nie R; `run` ist gesperrt, bis `FROZEN` gesetzt ist und die Tradeliste den eingefrorenen Hash hat | erledigt (0.2) |
-| 6.1 | Zähllauf, ergebnisblind: `python -m src.research_lab.studies.s25 count --trades <S7b-Tradeliste> --root <Labor-Daten> --out <Ordner>`; nur Zahl der Trades mit Gewicht je Abschnitt und Instrument; Gate ≥ 80 in der Validierung | offen (Mac, 5m-Klines aus S15) |
+| 6.1 | Zähllauf, ergebnisblind: `python -m src.research_lab.studies.s25 count --trades <S7b-Tradeliste> --root <Labor-Daten> --out <Ordner>`; nur Zahl der Trades mit Gewicht je Abschnitt und Instrument; Gate ≥ 80 in der Validierung | **erledigt 11.11. 21:59 Ortszeit, Gate bestanden**: Validierung 207/207 mit Gewicht, Training 139/292 (Anlaufzeit). `../reports/s25_count_2026-11-11T2059Z.md` |
 | P2 | Einfrieren 1.0 auf Uzis Wort | offen |
 | P3 | Ein Lauf Training, dann Validierung, Bericht `../reports/s25_<stamp>.md` | offen |
 
@@ -105,3 +105,4 @@ Ein Drawdown ist ein einzelner Pfadwert und schwankt stark; deshalb das Placebo.
 |---|---|---|
 | 2026-11-11 | 0.1 | Erstfassung (zuerst als S24 angelegt, umbenannt, weil S24 schon an die Indikator-Studie in #229 vergeben ist) |
 | 2026-11-11 | 0.2 | Code und Tests (P1). Präzisiert vor jedem Ergebnis: Prognose der Einstiegsperiode, Referenz braucht 90 Tage Vorlauf, Stress als Näherung R − cost_r |
+| 2026-11-11 | 0.2 | Zähllauf 6.1 eingetragen (ergebnisblind, Gate bestanden). Nächster Schritt: Einfrieren 1.0 auf Uzis Wort |
