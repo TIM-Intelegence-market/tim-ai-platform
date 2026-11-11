@@ -555,6 +555,20 @@ def _summary_section(state: Any) -> str:
         return f"<section class='cc-section tc-summary'><p class='cc-note'>Zusammenfassung nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
 
 
+def _verdict_section(state: Any) -> str:
+    """Chart-Urteil for a Long and a Short right now, plus the shadow's progress (src/dashboard/chart_verdict.py)."""
+    from src.dashboard import chart_verdict
+
+    try:
+        with state.lock:
+            lage = dict(getattr(state, "orderflow_live", None) or {})
+            trades = getattr(state, "footprint", None)
+        view = chart_verdict.current(state.chart_series(), lage or None, trades=trades or None)
+        return chart_verdict.render_de(view, chart_verdict.load(chart_verdict.DEFAULT_PATH))
+    except Exception as exc:  # noqa: BLE001 - the chart must still render
+        return f"<section class='cc-section tc-verdict'><p class='cc-note'>Chart-Urteil nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
+
+
 def _orderflow_section(state: Any) -> str:
     """Live-Orderflow-Lage (src/orderflow/live_state.py); never breaks the page."""
     from src.dashboard.orderflow_tile import section
@@ -578,6 +592,7 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     body = _hero("TIM-Chart", "BTC, ETH, SOL, XMR und Gold in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
     body += _summary_section(state)
     if symbol == "BTCUSDT":
+        body += _verdict_section(state)
         body += _orderflow_section(state)
     body += _live_section(symbol, view)
     if symbol != "BTCUSDT":
