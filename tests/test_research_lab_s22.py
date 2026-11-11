@@ -104,6 +104,20 @@ def test_count_is_results_blind_and_rows_carry_both_directions():
     assert len(with_r) == len(rows) and all(r.net_r is not None for r in with_r)
 
 
+def test_workers_get_the_data_whatever_the_default_start_method():
+    import multiprocessing
+
+    bars, half = _series(s22.WINDOW_1H + 80)
+    single = s22.build_rows(bars, half, with_outcome=True)
+    before = multiprocessing.get_start_method()
+    # Python 3.14 on the PS5 starts workers with forkserver: a plain Pool would see an empty module state.
+    multiprocessing.set_start_method("forkserver", force=True)
+    try:
+        assert s22.build_rows(bars, half, with_outcome=True, workers=2) == single
+    finally:
+        multiprocessing.set_start_method(before, force=True)
+
+
 def _rows(n_weeks: int, effect: float, seed: int = 1, start: int = VALIDATION_START_MS) -> list[Row]:
     """Synthetic rows: decisions in runs of two days, outcome = noise + effect for NEHMEN, - effect for AUSLASSEN."""
     rng = random.Random(seed)

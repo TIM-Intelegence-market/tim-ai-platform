@@ -30,7 +30,7 @@ from bisect import bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from multiprocessing import Pool
+import multiprocessing
 from pathlib import Path
 
 from src.research_lab.data.parse import Kline
@@ -188,7 +188,9 @@ def build_rows(bars_1h: Sequence[Kline], bars_30m: Sequence[Kline], *, with_outc
                   opens_30m=[b.open_time for b in bars_30m], atrs=atrs, with_outcome=with_outcome)
     todo = moments(bars_1h, atrs)
     if workers > 1:
-        with Pool(workers) as pool:  # fork: the workers read _STATE
+        # The workers read _STATE, so they must be forked: Python 3.14 starts them with forkserver by default
+        # (empty module state; the first PS5 count run ended with KeyError 'bars_1h').
+        with multiprocessing.get_context("fork").Pool(workers) as pool:
             parts = pool.map(_rows_for, todo, chunksize=200)
     else:
         parts = [_rows_for(i) for i in todo]
