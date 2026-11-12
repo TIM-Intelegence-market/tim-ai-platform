@@ -34,19 +34,36 @@ def test_absorption_marks_the_zone_it_was_seen_in():
     assert out[0]["absorption"] and not out[1]["absorption"]
 
 
-def test_watch_prefers_the_nearest_zone_of_medium_weight():
-    weak, medium = {"weight": 1}, {"weight": lo.MEDIUM}
+def test_watch_prefers_the_nearest_zone_of_medium_weight_within_reach():
+    weak, medium = {"weight": 1, "distance_pct": -0.5}, {"weight": lo.MEDIUM, "distance_pct": -2.0}
+    far = {"weight": lo.STRONG, "distance_pct": -10.0}
     assert lo._watch([weak, medium]) is medium and lo._watch([weak]) is weak and lo._watch([]) is None
+    assert lo._watch([weak, far]) is weak  # a strong zone 10 % away is no range edge: the nearest zone is watched
 
 
 def test_reading_runs_from_edge_to_edge_with_the_stop_behind_the_zone():
-    lower = {"low": 99.0, "high": 100.0}
+    lower = {"low": 97.0, "high": 100.0}
     upper = {"low": 110.0, "high": 111.0}
     long = lo._reading("LONG", lower, upper, 1.0, "aufwärts")
-    assert (long["entry"], long["stop"], long["target"], long["rr"], long["structure"]) == (100.0, 98.0, 110.0, 5.0, "mit der Struktur")
+    assert (long["entry"], long["stop"], long["target"], long["rr"], long["structure"]) == (100.0, 96.0, 110.0, 2.5, "mit der Struktur")
+    assert not long["stop_widened"] and long["cost_r"] == 0.07 and long["rr_net"] == 2.27 and long["worth"]
     short = lo._reading("SHORT", upper, lower, 1.0, "aufwärts")
-    assert (short["entry"], short["stop"], short["target"], short["structure"]) == (110.0, 112.0, 100.0, "gegen die Struktur")
+    assert (short["entry"], short["target"], short["structure"]) == (110.0, 100.0, "gegen die Struktur")
     assert lo._reading("LONG", None, upper, 1.0, "gemischt") is None
+
+
+def test_a_tight_stop_is_widened_to_the_minimum_and_the_reading_says_when_it_does_not_pay():
+    lower, upper = {"low": 99.9, "high": 100.0}, {"low": 103.0, "high": 104.0}
+    long = lo._reading("LONG", lower, upper, 0.1, "gemischt")  # zone stop would be 0.2 %: eaten by the costs
+    assert long["stop_widened"] and long["stop"] == 98.0 and long["stop_pct"] == 2.0
+    assert long["rr"] == 1.5 and long["rr_net"] < lo.MIN_RR and not long["worth"]
+    assert "auf Mindestweite gesetzt" in lo._reading_text(long, "Long") and "lohnt so nicht" in lo._reading_text(long, "Long")
+
+
+def test_zone_width_never_falls_below_the_share_of_the_price():
+    series = _trending_series()
+    v = lo.build(series, NOW)
+    assert v["tolerance"] >= round(lo.ZONE_PCT * v["price"], 2) - 0.01 and v["near"] <= v["zones"]
 
 
 def test_build_uses_only_closed_candles_and_renders():
@@ -90,3 +107,9 @@ def test_update_writes_its_own_file_only(tmp_path):
     assert state["schema"] == lo.SCHEMA and lo.load(path)["ruleset"] == lo.RULESET
     assert sorted(p.name for p in tmp_path.iterdir()) == ["watch.json"]
     assert lo.update(tmp_path / "none.json", {}, None, NOW) is None
+
+
+def test_a_chain_of_lines_cannot_grow_into_one_endless_zone():
+    lines = [line(f"l{i}", 100.0 + 0.4 * i) for i in range(10)]  # each within tolerance of the one before
+    out = lo.zones(lines, 90.0, tolerance=0.5)
+    assert len(out) > 1 and all(z["high"] - z["low"] <= lo.ZONE_MAX * 0.5 for z in out)
