@@ -884,6 +884,18 @@ class TIMApplication:
             except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
                 log.warning("chart verdict update failed: %s", type(error).__name__)
             try:
+                # Level-Übersicht (Uzi 12.11.2026): shadow log of visits to the watched zones, reads only.
+                from src.dashboard.level_overview import DEFAULT_PATH as watch_path, update as update_watch
+
+                with self.dashboard_state.lock:
+                    lage = dict(self.dashboard_state.orderflow_live or {})
+                    footprint = self.dashboard_state.footprint
+                await asyncio.to_thread(update_watch, watch_path, series, lage or None, trades=footprint or None)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
+                log.warning("level watch update failed: %s", type(error).__name__)
+            try:
                 # V2.9 Schatten (Uzi 12.11.2026): the 15m/1h plans on the isolated V2.8 paper adapter, no order path.
                 from src.tim_v2.shadow import DEFAULT_PATH as v2_shadow_path, update as update_v2_shadow
 
