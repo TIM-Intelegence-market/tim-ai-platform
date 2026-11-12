@@ -25,9 +25,10 @@ from src.research_lab.s31.models import b6_divergence, b7_oi_sweep
 
 VERSION = "1.0.0"
 MODELS = ("B6", "B7")
+ALL_MODELS = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "B6", "B7")
 
 
-def run_pass(bars_root: str, metrics: Metrics, cfg: Config, days: list[date]):
+def run_pass(bars_root: str, metrics: Metrics, cfg: Config, days: list[date], models=MODELS):
     store = MinuteBarStore(bars_root)
     load = store_loader(store)
     engine = Engine(cfg)
@@ -35,7 +36,7 @@ def run_pass(bars_root: str, metrics: Metrics, cfg: Config, days: list[date]):
     trades = []
     for day in days:
         trades.extend(engine.run_day(*load(day)))
-    return [t for t in trades if t.signal.model in MODELS], engine
+    return [t for t in trades if t.signal.model in models], engine
 
 
 def main(argv=None) -> int:
@@ -45,28 +46,33 @@ def main(argv=None) -> int:
     ap.add_argument("--metrics", required=True)
     ap.add_argument("--section", required=True, choices=("training", "validierung"))
     ap.add_argument("--out", required=True)
+    ap.add_argument("--tf", type=int, default=15, help="candle minutes for the 15-min models and B6/B7 (S31b: 60 or 240; 15 = S31 1.0)")
+    ap.add_argument("--all-models", action="store_true", help="count OF2 models M1-M7 as well (S31b)")
     args = ap.parse_args(argv)
     base = DEFAULT_CONFIG
+    models = ALL_MODELS if args.all_models else MODELS
+    if args.tf != 15:
+        base = dataclasses.replace(base, tf_value=args.tf, tf_sfp=args.tf)
     first, last = section_bounds(base, args.section)
     lead = max(first - timedelta(days=LEAD_DAYS), date.fromisoformat(base.first_day) - timedelta(days=LEAD_DAYS))
     present = set(MinuteBarStore(args.bars).present_days())
     days = [lead + timedelta(days=i) for i in range((last - lead).days + 1)]
     days = [d for d in days if d >= min(present)]
     metrics = Metrics.load(args.metrics, first - timedelta(days=2), last)
-    out = {"studie": "S31", "version": VERSION, "abschnitt": args.section, "erster_tag": first.isoformat(),
+    out = {"studie": "S31", "version": VERSION, "abschnitt": args.section, "tf": args.tf, "erster_tag": first.isoformat(),
            "letzter_tag": last.isoformat(), "metrics_erster_stand": metrics.times[0] if metrics.times else None,
            "metrics_snapshots": len(metrics.times), "ergebnisse": {}}
     for label, gate in (("OF", True), ("PREIS_ZWILLING_ALLE", False)):
         cfg = dataclasses.replace(base, of_gate=gate)
-        trades, engine = run_pass(args.bars, metrics, cfg, days)
+        trades, engine = run_pass(args.bars, metrics, cfg, days, models)
         inside, open_end = section_trades(trades, _ms(first), _ms(last) + 86_400_000)
-        by_model = {m: [t for t in inside if t.signal.model == m] for m in MODELS}
+        by_model = {m: [t for t in inside if t.signal.model == m] for m in models}
         block = {"config_digest": cfg.digest(), "n": {m: len(v) for m, v in by_model.items()},
                  "n_je_jahr": {m: {str(y): sum(1 for t in v if date.fromtimestamp(t.signal.signal_ms / 1000).year == y)
                                    for y in range(first.year, last.year + 1)} for m, v in by_model.items()},
                  "offen_am_ende": open_end,
-                 "signale": {k: v for k, v in engine.stats.signale.items() if k[:2] in MODELS},
-                 "verworfen": {k: v for k, v in engine.stats.verworfen.items() if k[:2] in MODELS}}
+                 "signale": {k: v for k, v in engine.stats.signale.items() if k[:2] in models},
+                 "verworfen": {k: v for k, v in engine.stats.verworfen.items() if k[:2] in models}}
         if args.cmd == "run":
             block["zusammenfassung"] = {m: summarize(v, cfg) if v else {"n": 0} for m, v in by_model.items()}
             block["trades"] = [t.as_dict() for t in inside]
