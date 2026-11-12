@@ -1,9 +1,9 @@
-# S25: Positionsgröße nach GARCH-Prognose für S7b (Präregistrierung, Entwurf 0.1)
+# S25: Positionsgröße nach GARCH-Prognose für S7b (Präregistrierung 1.0)
 
 | Feld | Wert |
 |---|---|
 | Studie | S25 |
-| Version | **0.2 Entwurf** (Code und Tests, Regeln präzisiert, noch vor jedem Ergebnis), nicht eingefroren. Einfrieren (1.0) erst nach dem ergebnisblinden Zähllauf (6.1) und Uzis Wort |
+| Version | **1.0, eingefroren am 12.11.2026** auf Uzis Wort „Merge einfrieren“ (10:25 Ortszeit), nach dem bestandenen Zähllauf (6.1). Eingefrorener Code: `src/research_lab/studies/s25.py` mit `FROZEN = True`, Commit siehe Ergebnisabschnitt. Ab jetzt keine Regeländerung |
 | Auftrag | Studien-Ideen 11.11.2026, Punkt 1; Uzis „go“ 11.11.2026, 20:45 Ortszeit |
 | Bezug | S7b (`S7B_EINE_POSITION_PRAEREGISTRIERUNG.md`, Kandidatin S7b-D20-T3), S15-4h (`S15_GARCH_VOLATILITAET_PRAEREGISTRIERUNG.md`, bestanden), `src/research_lab/vol_4h.py` (Papier-Gewicht seit 03.11.) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
@@ -89,7 +89,7 @@ Ein Drawdown ist ein einzelner Pfadwert und schwankt stark; deshalb das Placebo.
 | P0 | Dieser Entwurf | erledigt (0.1) |
 | P1 | `src/research_lab/studies/s25.py` + `tests/test_research_lab_s25.py`: Gewichte aus S15-Prognosen, Normierung, Placebo, Urteil. `count` liest nur Symbol und Einstiegszeit, nie R; `run` ist gesperrt, bis `FROZEN` gesetzt ist und die Tradeliste den eingefrorenen Hash hat | erledigt (0.2) |
 | 6.1 | Zähllauf, ergebnisblind: `python -m src.research_lab.studies.s25 count --trades <S7b-Tradeliste> --root <Labor-Daten> --out <Ordner>`; nur Zahl der Trades mit Gewicht je Abschnitt und Instrument; Gate ≥ 80 in der Validierung | **erledigt 11.11. 21:59 Ortszeit, Gate bestanden**: Validierung 207/207 mit Gewicht, Training 139/292 (Anlaufzeit). `../reports/s25_count_2026-11-11T2059Z.md` |
-| P2 | Einfrieren 1.0 auf Uzis Wort | offen |
+| P2 | Einfrieren 1.0 auf Uzis Wort | erledigt 12.11.2026 |
 | P3 | Ein Lauf Training, dann Validierung, Bericht `../reports/s25_<stamp>.md` | offen |
 
 ## 7. Was ein Ergebnis bedeutet
@@ -106,3 +106,4 @@ Ein Drawdown ist ein einzelner Pfadwert und schwankt stark; deshalb das Placebo.
 | 2026-11-11 | 0.1 | Erstfassung (zuerst als S24 angelegt, umbenannt, weil S24 schon an die Indikator-Studie in #229 vergeben ist) |
 | 2026-11-11 | 0.2 | Code und Tests (P1). Präzisiert vor jedem Ergebnis: Prognose der Einstiegsperiode, Referenz braucht 90 Tage Vorlauf, Stress als Näherung R − cost_r |
 | 2026-11-11 | 0.2 | Zähllauf 6.1 eingetragen (ergebnisblind, Gate bestanden). Nächster Schritt: Einfrieren 1.0 auf Uzis Wort |
+| 2026-11-12 | 1.0 | Eingefroren auf Uzis Wort, keine Regeländerung gegenüber 0.2 |
