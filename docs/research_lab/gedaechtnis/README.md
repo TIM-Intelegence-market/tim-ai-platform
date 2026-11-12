@@ -41,3 +41,10 @@ Liste der Aussagen, auf die sich TIM stützt, mit Status, Nutzung, Beleg und Cod
 
 Eine Aussage bekommt einen neuen Status nur mit Beleg und Datum (`geprueft`). Neue Studien tragen ihre Aussagen hier
 ein, bevor sie als abgeschlossen gelten. Ein Statuswechsel ist ein Commit.
+
+## Feinliste v0 (Mac, 12.11.2026)
+
+`v0/belief_register_v0.jsonl` ist die feinere Mac-Liste mit 253 Aussagen (eigene Nummern, eigenes Schema),
+dazu Zusammenfassung, Mac-Inventur und die erste lesende Journal-Prüfung. Sie ist Rohmaterial für G2/G3
+und wird nicht von `gedaechtnis.py --pruefen` geprüft. Die 52 Aussagen in `aussagen.jsonl` bleiben die
+geprüfte Hauptliste; Abgleich beider Listen folgt in G3.
