@@ -79,11 +79,16 @@ class KillSwitch:
         except OSError:
             return True  # unreadable path: fail closed
 
+    def poll_file(self, at: datetime) -> bool:
+        """Engage if the kill file exists; returns True if engaged afterwards."""
+        if self._file_present():
+            self.engage(at, f"kill file present: {self.kill_file}", "FILE")
+        return self._engaged
+
     def check(self, at: datetime, *, day_start_equity: Decimal, equity: Decimal, peak_equity: Decimal,
               consecutive_rejects: int) -> bool:
         """Evaluate all automatic triggers; returns True if engaged afterwards."""
-        if self._file_present():
-            self.engage(at, f"kill file present: {self.kill_file}", "FILE")
+        self.poll_file(at)
         if day_start_equity > 0 and (day_start_equity - equity) / day_start_equity >= self.limits.max_daily_loss_fraction:
             self.engage(at, "daily loss limit reached", "DAILY_LOSS")
         if peak_equity > 0 and (peak_equity - equity) / peak_equity >= self.limits.max_drawdown_fraction:

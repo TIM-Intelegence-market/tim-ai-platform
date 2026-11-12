@@ -59,3 +59,27 @@ zusammengesetztem Namen. Darum gibt es die Laufzeitprüfung, und Änderungen an 
   nächste Schritt (V2.9 Schatten). Bis dahin läuft er auf eingelesenen Kerzen.
 - Keine Freigabe von V2. Laut `docs/v2_readiness/authoritative_readiness_definition.md` dürfen Software und KI V2
   nicht selbst freigeben.
+
+## V2.9 Schatten (ab 12.11.2026)
+
+`src/tim_v2/shadow.py`, aufgerufen in der Runtime (`main.py`, Plan-Journal-Schleife) neben Orderflow-Schatten und
+Chart-Urteil. Er liest die 15m- und 1h-Plan-Journale und die geschlossenen 5m-Kerzen der Runtime und spielt jeden neuen
+Plan auf einem eigenen Papier-Adapter durch:
+
+- Order zum Zeitpunkt `created_at`, Limit oder Stop am Einstieg, Stop-Loss am Plan-Stop, Risiko 0,25 % von
+  1.000 USD Papier.
+- Das Ende bestimmt das Journal. Schließt das Journal, wird auf Papier zur nächsten Kerze glattgestellt. Endet ein Plan
+  ohne Füllung (EXPIRED, INVALIDATED, REPLACED), wird die Order storniert. Teilziele werden nicht nachgebildet.
+- Ergebnis in `data/journal/tim_v2_shadow.json`:
+  - Füll-Übereinstimmung mit dem Journal
+  - Einstiegsabweichung in bp
+  - Papier-R gegen Journal-R
+  - Verzögerung von der Planerstellung bis der Schatten den Plan sieht und bis zur Füllung
+  - Isolationsnachweis je Schritt
+  - `orders_sent_to_exchange: 0`
+- Fällt die Isolationsprüfung durch, hält der Schatten an (`halted`) und simuliert nichts mehr.
+- Kerzen werden nur angehängt, nie überschrieben. Die gespeicherten Kerzen sind bei 20.000 gedeckelt; Kerzen, die
+  ein offener Plan noch braucht, bleiben erhalten.
+
+Ausgang V2.9 laut Meilenstein: dauerhafter Nachweis von null Orders **und Freigabe durch Menschen**. Den Nachweis
+liefert der Schatten, die Freigabe bleibt bei Uzi und Chris.

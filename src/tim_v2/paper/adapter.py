@@ -115,7 +115,8 @@ class FakeExecutionAdapter:
             if not position.quantity or (position.quantity > 0) == (request.side is Side.BUY):
                 return self._reject(request, at, "reduce_only_without_position")
         else:
-            if self.kill.engaged:
+            if self.kill.poll_file(at):
+                self._after_kill(at)
                 return self._reject(request, at, "kill_switch_engaged")
             ref = request.price if request.price is not None else self.marks.get(request.symbol)
             if ref is None:
@@ -163,6 +164,8 @@ class FakeExecutionAdapter:
         if last is not None and bar.opened_at <= last:
             raise ValueError(f"bars must be strictly increasing in time for {bar.symbol}")
         self._roll_day(bar.opened_at)
+        if self.kill.poll_file(bar.opened_at):
+            self._after_kill(bar.opened_at)
         new_fills: list[Fill] = []
         for order in list(self.open_orders()):
             if order.request.symbol != bar.symbol or order.submitted_at > bar.opened_at:
