@@ -426,7 +426,10 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
 
 
 def _shadow_scores(model_candles: Sequence[Any], context: Any, levels: Any, trades: Sequence[Any], now: datetime) -> dict[str, dict[str, Any]]:
-    """Score per scenario id from a second pipeline run with trades and the footprint made from them."""
+    """Score per scenario id from a second pipeline run with trades and the footprint made from them.
+
+    The trades cover only the last hours before the plan (journal window), so the footprint is partial: it reaches
+    back 2 to 4 candles, not the whole chart window. Positioning, funding and Broncx are not part of it yet."""
     from src.dashboard.footprint_data import TICK_BY_SYMBOL
     from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
     from src.orderflow_scenario.footprint import footprint_from_trades

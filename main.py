@@ -808,7 +808,12 @@ class TIMApplication:
             repository = self.repository
 
             def trades_fn(start, end):
-                return asyncio.run_coroutine_threadsafe(repository.agg_trades_between(settings.symbol, start, end), loop).result(timeout=90)
+                future = asyncio.run_coroutine_threadsafe(repository.agg_trades_between(settings.symbol, start, end), loop)
+                try:
+                    return future.result(timeout=90)
+                except BaseException:
+                    future.cancel()  # a late database answer must not keep a connection busy
+                    raise
 
             for name, step, path in (("plan journal", partial(update_plan_journal, trades_fn=trades_fn), self.dashboard_state.plan_journal_path),
                                      ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),

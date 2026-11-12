@@ -67,6 +67,7 @@ fee 0.05 % and slippage 0.03 % per side, 0.05 % on stop executions, costs in R
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import json
 import math
@@ -104,6 +105,7 @@ SLIPPAGE_PER_SIDE = 0.0003
 STOP_SLIPPAGE = 0.0005
 # Stop rule of an entry, fixed when it is recorded. Entries without one keep the old rule.
 STOP_RULE_COST = "be_cost/1"
+SHADOW_MAX_TRADES = 150_000  # Schatten-Score: measured 2 s of pipeline time at this size
 COST_STOP_MIN_GAP_R = 0.1  # the 30m close must be at least this far beyond the new stop
 VERDICT_RULESET = "verdict/1"
 FALLBACK_HOURS = 4.0  # safety net: in the trade this long, the stop may move without a structure reason
@@ -1237,8 +1239,11 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 try:  # Schatten-Score: trades up to the moment of the plan only, the window is bounded
                     window = min(timedelta(hours=2), 4 * timedelta(seconds=TIMEFRAME_SECONDS.get(timeframe, 1800)))
                     trades = list(trades_fn(latest - window, latest)) or None
-                except Exception:  # noqa: BLE001 - the shadow must never stop a journal step
+                    if trades and len(trades) > SHADOW_MAX_TRADES:
+                        trades = trades[-SHADOW_MAX_TRADES:]  # the newest ones; keeps the pipeline's run time bounded
+                except Exception as error:  # noqa: BLE001 - the shadow must never stop a journal step
                     trades = None
+                    logging.getLogger(__name__).warning("score shadow: no trades (%s)", type(error).__name__)
             model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile, trades=trades)
             plans = plans_from_model(model)
             dropped: list[str] = []
