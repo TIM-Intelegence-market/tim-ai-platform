@@ -90,7 +90,7 @@ Ein Drawdown ist ein einzelner Pfadwert und schwankt stark; deshalb das Placebo.
 | P1 | `src/research_lab/studies/s25.py` + `tests/test_research_lab_s25.py`: Gewichte aus S15-Prognosen, Normierung, Placebo, Urteil. `count` liest nur Symbol und Einstiegszeit, nie R; `run` ist gesperrt, bis `FROZEN` gesetzt ist und die Tradeliste den eingefrorenen Hash hat | erledigt (0.2) |
 | 6.1 | Zähllauf, ergebnisblind: `python -m src.research_lab.studies.s25 count --trades <S7b-Tradeliste> --root <Labor-Daten> --out <Ordner>`; nur Zahl der Trades mit Gewicht je Abschnitt und Instrument; Gate ≥ 80 in der Validierung | **erledigt 11.11. 21:59 Ortszeit, Gate bestanden**: Validierung 207/207 mit Gewicht, Training 139/292 (Anlaufzeit). `../reports/s25_count_2026-11-11T2059Z.md` |
 | P2 | Einfrieren 1.0 auf Uzis Wort | erledigt 12.11.2026 |
-| P3 | Ein Lauf Training, dann Validierung, Bericht `../reports/s25_<stamp>.md` | offen |
+| P3 | Ein Lauf Training, dann Validierung, Bericht `../reports/s25_<stamp>.md` | erledigt 12.11.2026: **NICHT BESTANDEN** (`../reports/s25_run_2026-11-12T0926Z.md`) |
 
 ## 7. Was ein Ergebnis bedeutet
 
@@ -98,6 +98,13 @@ Ein Drawdown ist ein einzelner Pfadwert und schwankt stark; deshalb das Placebo.
   Übernahme in den Kraken-Test oder einen S7b-Holdout wäre ein eigener Schritt mit Uzis Freigabe.
 - NICHT BESTANDEN: Der ATR-Stop reicht; das Papier-Gewicht bleibt eine Beobachtung.
 - Beides ändert nichts an S7b selbst, an der Kandidatin oder am Register.
+
+## 8. Ergebnis (12.11.2026)
+
+Ein Lauf auf Commit `9eeb08e`, Bericht `../reports/s25_run_2026-11-12T0926Z.md`. **S7b-D20-T3: NICHT BESTANDEN.**
+Drawdown in der Validierung 11,63 R mit GARCH gegen 10,95 R fest, Placebo p = 0,67, im Training ebenfalls höher
+(14,59 gegen 13,21 R). Nur „E/Drawdown nicht schlechter“ ist erfüllt. D20-T4 (nur berichtet) zeigt dasselbe. Die GARCH-Größe
+senkt das Risiko von S7b nicht über den ATR-Stop hinaus. Nichts wird übernommen.
 
 ## Änderungsprotokoll
 
