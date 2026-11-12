@@ -66,5 +66,7 @@ offen berichten, keine weiteren Varianten auf denselben Daten.
 - Top-Trader-Verhältnis und Taker-Verhältnis sind Binance-Zahlen, nicht Bitunix.
 - Die Dateien von 2020-09 bis 2021-11 wiederholen Zeilen und sind laut Datensatz-Hinweis nachträglich ergänzt worden; gleiche
   Wiederholungen werden zusammengefasst, widersprüchliche Zeilen brechen den Lauf ab.
+- Einzelne Felder der Dateien sind leer (am 12.11. im ersten Zähllauf entdeckt). Ein leeres Feld gilt als fehlender Wert,
+  nichts wird ersetzt oder geschätzt. Ein Moment, der dafür einen Wert braucht, fällt aus der vollständigen Menge.
 - Familie O ist neu und wurde noch nie gegen Ergebnisse gelesen. Die Wahl der drei Merkmale beruht auf dem Spaltenaufbau
   der Datei, nicht auf einem Blick auf die Ergebnisse.

@@ -34,6 +34,16 @@ def test_parse_collapses_identical_repeats_and_rejects_conflicts():
         s28.parse_snapshots("\n".join([head, "2022-06-01 00:00:00,BTCUSDT,100"]))
 
 
+def test_empty_fields_are_missing_not_guessed():
+    head = ",".join(s28.COLUMNS)
+    row = "2022-06-01 00:00:00,BTCUSDT,100,1,1,,1,1.5"
+    parsed = s28.parse_snapshots("\n".join([head, row, row]))
+    assert math.isnan(parsed[next(iter(parsed))][1])
+    b = bars()
+    snap = snapshots(T0 - 3 * 24 * HOUR, b[30].open_time + HOUR, top=float("nan"))
+    assert s28.features(snap, b, 30, 1.0) is None
+
+
 def test_features_sign_and_values():
     b = bars(slope=1.0)  # price rises
     snap = snapshots(T0 - 3 * 24 * HOUR, T0 + 60 * HOUR, oi=lambda t: 100.0 + (t - T0) / HOUR)

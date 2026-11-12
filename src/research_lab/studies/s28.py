@@ -67,18 +67,28 @@ def _to_ms(value: str) -> int:
     return int(datetime.strptime(value.strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
+def _num(text: str) -> float:
+    """An empty field is a missing value (NaN), never a guess."""
+    text = text.strip()
+    return float(text) if text else math.nan
+
+
+def _same(a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    return all(x == y or (math.isnan(x) and math.isnan(y)) for x, y in zip(a, b, strict=True))
+
+
 def parse_snapshots(text: str) -> dict[int, tuple[float, float, float]]:
     """time -> (open interest in BTC, top-trader position ratio, taker volume ratio). Identical repeats collapse, two
-    different rows for one time are an error (nothing is guessed)."""
+    different rows for one time are an error (nothing is guessed). Empty fields stay missing (NaN)."""
     out: dict[int, tuple[float, float, float]] = {}
     for row in csv.reader(io.StringIO(text)):
         if not row or row[0].strip() == COLUMNS[0]:
             continue
         if len(row) < len(COLUMNS):
             raise ValueError("metrics row has fewer columns than the header")
-        values = (float(row[2]), float(row[5]), float(row[7]))
+        values = (_num(row[2]), _num(row[5]), _num(row[7]))
         t = _to_ms(row[0])
-        if t in out and out[t] != values:
+        if t in out and not _same(out[t], values):
             raise ValueError(f"two different metrics rows for one snapshot ({row[0]})")
         out[t] = values
     return out
@@ -115,7 +125,8 @@ def features(snap: Snapshots, bars: Sequence[Kline], i: int, sign: float) -> tup
     window = snap.taker[k - TAKER_SNAPSHOTS + 1:k + 1]
     if snap.times[k] - snap.times[k - TAKER_SNAPSHOTS + 1] > (TAKER_SNAPSHOTS + 2) * STEP_MS:
         return None
-    if snap.oi[back] <= 0 or snap.top[k] <= 0 or min(window) <= 0:
+    needed = (snap.oi[k], snap.oi[back], snap.top[k], *window)
+    if not all(math.isfinite(x) for x in needed) or snap.oi[back] <= 0 or snap.top[k] <= 0 or min(window) <= 0:
         return None
     change = bars[i].close - bars[i - 24].close
     direction = (change > 0) - (change < 0)
