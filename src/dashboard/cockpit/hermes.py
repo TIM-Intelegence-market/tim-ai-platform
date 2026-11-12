@@ -122,7 +122,8 @@ def _opinion_section(opinions: dict[str, Any] | None) -> str:
                      f"<p class='note'>{_e(meta)}</p></li>")
     rows = "; ".join(f"{_e(name)}: {row.get('n')} Pläne, {float(row.get('sum_net_r') or 0):+.2f} R"
                      for name, row in (summary.get("by_verdict") or {}).items()) or "noch kein geschlossener Plan"
-    return (f"{head}<p class='note'>Nur Kommentar, kein Eingriff. {summary.get('closed', 0)} von {summary.get('target', 30)} "
+    return (f"{head}<p class='note'>Nur Kommentar, kein Eingriff. Abdeckung: {summary.get('with_opinion', 0)} von {summary.get('plans', 0)} Plänen "
+            f"haben eine Zweitmeinung. {summary.get('closed', 0)} von {summary.get('target', 30)} "
             f"geschlossenen Plänen für das Urteil. Bisher: {rows}.</p>"
             f"<ul class='hermes-log' style='list-style:none;padding:0'>{''.join(items)}</ul></section>")
 

@@ -504,7 +504,7 @@ def markt_body(model: dict[str, Any]) -> str:
         rate = stats.get("win_rate")
         pj_html = (
             f"<p class='note'>{_e(stats.get('plans', 0))} Pläne · {_e(stats.get('closed', 0))} geschlossen · Trefferquote "
-            f"{_e(f'{rate * 100:.0f} %' if isinstance(rate, (int, float)) else '—')} · netto {_e(_rtext(stats.get('sum_net_r')))} · nur Papier</p>"
+            f"{_e(f'{rate * 100:.0f} %' if isinstance(rate, (int, float)) else '—')} · {_e('netto ' + _rtext(stats.get('sum_net_r')) if stats.get('closed') else 'noch keine Evidenz (kein Plan geschlossen)')} · nur Papier</p>"
             f"<h3 class='sub'>Offen</h3><div class='scroll'><table class='tbl'>{head}<tbody>{active}</tbody></table></div>"
             f"<h3 class='sub'>Zuletzt geschlossen</h3><div class='scroll'><table class='tbl'>{head}<tbody>{closed}</tbody></table></div>"
             "<p class='note'><a href='/journal'>Ganzes Plan-Journal</a> · <a href='/journal/struct'>Struktur-Regel</a></p>"

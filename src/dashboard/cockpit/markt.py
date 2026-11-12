@@ -11,7 +11,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any
 
-from src.dashboard.cockpit.lage import SETUP_CANDLES, _broken, _info, _journal_tiles, _market_tiles, _r, MARKET_TILES, JOURNAL_TILES
+from src.dashboard.cockpit.lage import SETUP_CANDLES, _broken, _info, _journal_tiles, _market_tiles, net_evidence, MARKET_TILES, JOURNAL_TILES
 from src.dashboard.cockpit.sources import BudgetedSources, SourceResult
 from src.dashboard.cockpit.tiles import unavailable
 from src.dashboard.state import DashboardState
@@ -205,7 +205,7 @@ def build_markt(state: DashboardState, timeframe: str | None = None, now: dateti
         "plans": plans,
         "journals": [t.to_dict() for t in journals],
         "plan_journal_line": (f"Plan-Journal: {stats.get('open', 0)} warten, {stats.get('filled', 0)} im Trade, {stats.get('closed', 0)} geschlossen, "
-                              f"netto {_r(stats.get('sum_net_r'))}") if stats else "",
+                              f"{net_evidence(stats.get('closed'), stats.get('sum_net_r'))}") if stats else "",
         **sections,
         "sources": {name: {"ok": r.ok, "seconds": r.seconds, "error": r.error, "stale_seconds": r.stale_seconds} for name, r in results.items()},
     }
