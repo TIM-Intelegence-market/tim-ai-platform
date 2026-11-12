@@ -97,3 +97,50 @@ def test_journal_step_asks_for_trades_only_up_to_the_plan_moment(tmp_path) -> No
     now = datetime(2026, 10, 22, tzinfo=timezone.utc) + timedelta(minutes=30 * 90)
     pj.update(tmp_path / "j.json", series, now, trades_fn=source)
     assert len(asked) == 1 and asked[0][1] <= now and asked[0][1] - asked[0][0] <= timedelta(hours=2)
+
+
+def _fake_fetch(at: datetime, funding_time_offset: timedelta = timedelta(hours=-3)):
+    def fetch(url: str):
+        if "fundingRate" in url:
+            return [{"symbol": "BTCUSDT", "fundingTime": int((at + funding_time_offset).timestamp() * 1000), "fundingRate": "0.00010000"}]
+        if "openInterestHist" in url:
+            return [{"timestamp": int((at + timedelta(hours=h)).timestamp() * 1000), "sumOpenInterest": str(1000 + 10 * h)} for h in range(-5, 3)]
+        raise AssertionError(url)
+    return fetch
+
+
+def test_positioning_uses_only_data_up_to_the_plan_moment() -> None:
+    from src.dashboard.shadow_positioning import positioning_at
+
+    at = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+    result = positioning_at("BTCUSDT", at, _fake_fetch(at))
+    assert result is not None and float(result.funding_rate) == 0.0001
+    assert result.open_interest and max(t for t, _ in result.open_interest) <= at
+    future = positioning_at("BTCUSDT", at, _fake_fetch(at, timedelta(hours=2)))
+    assert future is not None and future.funding_rate is None  # a settlement after the plan is not used
+
+
+def test_positioning_survives_failures_and_empty_answers() -> None:
+    from src.dashboard.shadow_positioning import positioning_at
+
+    at = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+
+    def broken(url: str):
+        raise TimeoutError(url)
+
+    assert positioning_at("BTCUSDT", at, broken) is None
+    assert positioning_at("BTCUSDT", at, lambda url: []) is None
+
+
+def test_shadow_score_records_positioning_when_given() -> None:
+    from src.dashboard.shadow_positioning import positioning_at
+
+    candles = _candles()
+    now = candles[-1]["close_time"] + timedelta(seconds=1)
+    positioning = positioning_at("BTCUSDT", now, _fake_fetch(now))
+    base = run_scenarios(candles, "30m", None, now, _trades(candles))
+    with_pos = run_scenarios(candles, "30m", None, now, _trades(candles), positioning)
+    strip = lambda a: [{k: v for k, v in s.items() if k != "score_schatten"} for s in a["scenarios"]]
+    assert strip(base) == strip(with_pos)  # the live result stays as it is
+    found = [s["score_schatten"] for s in with_pos["scenarios"] if "score_schatten" in s]
+    assert found and all("positioning" in f["daten"] and f["positionierung"]["funding"] == 0.0001 for f in found)
