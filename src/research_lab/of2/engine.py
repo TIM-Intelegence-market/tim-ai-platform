@@ -76,6 +76,7 @@ class Engine:
         self.ib_history: dict[str, deque[float]] = {name: deque(maxlen=cfg.ib_history) for name, _, _ in cfg.sessions}
         self.prev_session: SessionState | None = None
         self.session: SessionState | None = None
+        self.extra_15m: tuple = ()  # extra detectors (hist15, levels, cfg) -> Signal | None; empty = OF2 1.0 unchanged
         self.fired: set[tuple[int, str, int]] = set()  # (day_start, model, direction): one signal per model, direction and day
         # Swing track (off when ``swing_tf`` is 0): candles across days, marks of the last completed week or month.
         self.swing_builder = CandleBuilder(cfg.swing_tf) if cfg.swing_tf else None
@@ -157,6 +158,8 @@ class Engine:
                     self._consider(stacked_retest(hist15, fp15, levels, cfg), day_start, t)
                     self._consider(stop_run(hist15, fp15, levels, cfg), day_start, t)
                     self._consider(poor_edge(hist15, fp15, levels, cfg), day_start, t)
+                    for extra in self.extra_15m:
+                        self._consider(extra(hist15, levels, cfg), day_start, t)
             if (c := c30.push(bar)) is not None:
                 hist30.append(c)
                 if c.has_trades:
