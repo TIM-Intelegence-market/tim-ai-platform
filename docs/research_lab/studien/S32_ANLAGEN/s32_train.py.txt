@@ -1,0 +1,149 @@
+"""S32 basket trend following, TRAINING 2020-07..2022-12 only. S7b-D20-T3 (s7.breakout) unchanged, run per symbol with the
+project's backtest engine (run_backtest), 1 position per symbol (engine rule), symbol active only in months it is in the
+point-in-time universe (top 25 by 30-day quote volume, BTC/ETH/SOL excluded). Costs Bitunix as S27 (FEE_TAKER, SLIPPAGE,
+STOP_SLIPPAGE) plus the symbol's own published funding. Gross = same trades with zero costs and no funding (abort when the trade
+sets differ). Bars >= 2023-01-01 are never read. One run, no re-search.
+Run from code-s23: PYTHONPATH=. ../.venv/bin/python s32_train.py --perp ../data/perp_klines --fund ../data/perp_funding --uni ../results/s32/universe_train.json --out OUT.json"""
+import argparse, csv, io, json, random, statistics, zipfile
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+END = int(datetime(2023, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+DAY = 86_400_000
+
+
+def ms(ym):
+    y, m = map(int, ym.split("-")); return int(datetime(y, m, 1, tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def next_month(ym):
+    y, m = map(int, ym.split("-")); return f"{y + (m == 12)}-{m % 12 + 1:02d}"
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    for k in ("perp", "fund", "uni", "out"): ap.add_argument(f"--{k}", type=Path, required=True)
+    a = ap.parse_args()
+    from src.research_lab.backtest.engine import run_backtest
+    from src.research_lab.bitunix.contract import FEE_TAKER
+    from src.research_lab.bitunix.leverage import SLIPPAGE, STOP_SLIPPAGE
+    from src.research_lab.data.parse import FundingRate, Kline
+    from src.research_lab.hypotheses import s7, s7b
+    from src.research_lab.backtest.engine import Signal
+    from src.research_lab.protocol import CostModel
+    costs = CostModel(fee=FEE_TAKER, slippage=SLIPPAGE, stop_slippage=STOP_SLIPPAGE)
+    zero = CostModel(0.0, 0.0, 0.0)
+    var = next(v for v in s7b.S7B_VARIANTS if v.variant_id == "S7b-D20-T3")
+    uni = json.load(open(a.uni)); months = sorted(uni)
+    sym_months = defaultdict(list); rank = defaultdict(list)
+    for m in months:
+        for i, s in enumerate(uni[m]): sym_months[s].append(m); rank[s].append(i)
+    tercile = {}
+    ordered = sorted(rank, key=lambda s: statistics.mean(rank[s]))
+    for i, s in enumerate(ordered): tercile[s] = "G1 liquide" if i < len(ordered) / 3 else "G2" if i < 2 * len(ordered) / 3 else "G3 weniger liquide"
+    def bars_of(sym):
+        out = []
+        for z in sorted((a.perp / "4h" / sym).glob("*.zip")):
+            if z.stem.split("-4h-")[1] >= "2023-01": continue
+            with zipfile.ZipFile(z) as f:
+                for n in f.namelist():
+                    for row in csv.reader(io.TextIOWrapper(f.open(n))):
+                        if row and row[0].isdigit(): out.append(Kline(int(row[0]), float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5]), int(row[6]), float(row[9])))
+        return sorted({k.open_time: k for k in out}.values(), key=lambda k: k.open_time)
+    def funding_of(sym):
+        out = []
+        for z in sorted((a.fund / sym).glob("*.zip")) if (a.fund / sym).exists() else []:
+            with zipfile.ZipFile(z) as f:
+                for n in f.namelist():
+                    for row in csv.reader(io.TextIOWrapper(f.open(n))):
+                        if row and row[0].isdigit() and int(row[0]) < END: out.append(FundingRate(time=int(row[0]), rate=float(row[2])))
+        return sorted(out, key=lambda x: x.time)
+    def windows(sym):
+        ms_ = sorted(sym_months[sym]); w = []
+        for m in ms_:
+            if w and w[-1][1] == ms(m): w[-1][1] = ms(next_month(m))
+            else: w.append([ms(m), ms(next_month(m))])
+        return w
+    all_trades, no_fund, aborted = [], [], []
+    per_sym_bars = {}
+    for sym in sorted(sym_months):
+        bars = bars_of(sym)
+        if len(bars) < 300: continue
+        fund = funding_of(sym)
+        if not fund: no_fund.append(sym)
+        per_sym_bars[sym] = (bars, fund)
+        for (s, e) in windows(sym):
+            net = run_backtest(bars, s7.breakout(var), s7.INTERVAL_MS, costs=costs, funding=fund, start_ms=s, end_ms=e).trades
+            grs = run_backtest(bars, s7.breakout(var), s7.INTERVAL_MS, costs=zero, funding=(), start_ms=s, end_ms=e).trades
+            gl = {g.signal_time: g.r for g in grs}  # costs shift the 1-position lock slightly: trade sets differ in a few cases; match by signal time
+            if [t.signal_time for t in net] != [t.signal_time for t in grs]: aborted.append((sym, s))
+            for n in net:
+                g = gl.get(n.signal_time)
+                all_trades.append(dict(sym=sym, entry=n.entry_time, exit=n.exit_time, side=n.side, reason=n.reason, net=n.r, gross=g, cost=None if g is None else g - n.r,
+                                       width=abs(n.entry_price - n.stop) / n.entry_price * 100))
+    def week(t): return datetime.fromtimestamp(t / 1000, timezone.utc).isocalendar()[:2]
+    def summ(ts):
+        n = len(ts)
+        if not n: return {"n": 0}
+        m = lambda k: round(sum(t[k] for t in ts) / n, 4)
+        ok = [t for t in ts if t["gross"] is not None]
+        mg = lambda k: round(sum(t[k] for t in ok) / len(ok), 4) if ok else None
+        return {"n": n, "n_mit_brutto_paarung": len(ok), "brutto_mittel_r_gepaart": mg("gross"), "kosten_mittel_r_gepaart": mg("cost"), "netto_mittel_r": m("net"), "stopweite_mittel_pct": round(sum(t["width"] for t in ts) / n, 3),
+                "ziel_anteil": round(sum(t["reason"] == "target" for t in ts) / n, 4), "stop_anteil": round(sum(t["reason"] == "stop" for t in ts) / n, 4)}
+    def boot(ts, draws=10000, seed=32):
+        wk = defaultdict(list)
+        for t in ts: wk[week(t["entry"])].append(t["net"])
+        keys = list(wk); rng = random.Random(seed); means = []
+        tot_n = len(ts)
+        for _ in range(draws):
+            pick = [wk[rng.choice(keys)] for _ in keys]
+            s = sum(sum(p) for p in pick); c = sum(len(p) for p in pick)
+            means.append(s / c if c else 0.0)
+        means.sort()
+        return {"wochen": len(keys), "netto_mittel_ci95": [round(means[int(0.025 * draws)], 4), round(means[int(0.975 * draws)], 4)], "anteil_gezogener_mittel_ueber_0": round(sum(x > 0 for x in means) / draws, 4)}
+    out = {"studie": "S32 Training 2020-07..2022-12 (kein Urteil ueber das Training hinaus)", "symbole_im_universum": len(sym_months), "symbole_ohne_funding_datei": no_fund,
+           "fenster_mit_abweichender_trade_menge_nicht_abgebrochen": len(aborted), "je_symbol_1_position": summ(all_trades)}
+    out["je_symbol_1_position"]["cluster_bootstrap_woche"] = boot(all_trades)
+    by_sym = defaultdict(list)
+    for t in all_trades: by_sym[t["sym"]].append(t)
+    sums = sorted(((sum(x["net"] for x in v), s) for s, v in by_sym.items()), reverse=True)
+    total = sum(x["net"] for x in all_trades)
+    out["traeger"] = {"symbole_mit_trades": len(by_sym), "summe_netto_r": round(total, 2), "top3_symbole": [(s, round(v, 2)) for v, s in sums[:3]], "top3_summe_r": round(sum(v for v, _ in sums[:3]), 2),
+                      "top3_anteil_an_summe": round(sum(v for v, _ in sums[:3]) / total, 3) if total > 0 else None,
+                      "mittel_ohne_top1": summ([t for t in all_trades if t["sym"] != sums[0][1]]).get("netto_mittel_r"),
+                      "mittel_ohne_top2": summ([t for t in all_trades if t["sym"] not in {sums[0][1], sums[1][1]}]).get("netto_mittel_r"),
+                      "mittel_ohne_top3": summ([t for t in all_trades if t["sym"] not in {s for _, s in sums[:3]}]).get("netto_mittel_r")}
+    out["je_symbolgruppe"] = {g: summ([t for t in all_trades if tercile[t["sym"]] == g]) for g in ("G1 liquide", "G2", "G3 weniger liquide")}
+    out["je_jahr"] = {y: summ([t for t in all_trades if datetime.fromtimestamp(t["entry"] / 1000, timezone.utc).year == y]) for y in (2020, 2021, 2022)}
+    # descriptive: 1 slot over the basket (a trade is taken only if the last taken one has exited) -- approximation of S7b
+    slot, free = [], 0
+    for t in sorted(all_trades, key=lambda t: t["entry"]):
+        if t["entry"] >= free: slot.append(t); free = t["exit"]
+    out["korb_ein_slot_beschreibend_naeherung"] = summ(slot)
+    # random entries: same count and stop widths per symbol, same side, target 3R, time stop 30, same costs
+    rng = random.Random(3232); null_means = []
+    for d in range(100):
+        tot, cnt = 0.0, 0
+        for sym, ts in by_sym.items():
+            bars, fund = per_sym_bars[sym]; ws = windows(sym)
+            idxs = [i for i, b in enumerate(bars) if i >= 250 and any(s <= b.open_time < e for s, e in ws)]
+            if len(idxs) < len(ts): continue
+            chosen = {i: (t["side"], t["width"] / 100) for i, t in zip(rng.sample(idxs, len(ts)), ts)}
+            def strat(h, chosen=chosen):
+                i = len(h) - 1
+                if i in chosen:
+                    side, frac = chosen[i]; px = h[-1].close
+                    return Signal(side, px - side * frac * px, target_r=var.target_r, time_stop_bars=s7.TIME_STOP_BARS)
+                return None
+            tr = run_backtest(bars, strat, s7.INTERVAL_MS, costs=costs, funding=fund).trades
+            tot += sum(x.r for x in tr); cnt += len(tr)
+        null_means.append(tot / cnt if cnt else 0.0)
+    obs = out["je_symbol_1_position"]["netto_mittel_r"]
+    out["zufalls_entries"] = {"ziehungen": len(null_means), "netto_mittel_r_mittel": round(statistics.mean(null_means), 4), "netto_mittel_r_sd": round(statistics.pstdev(null_means), 4),
+                              "anteil_zufall_ueber_beobachtet": round(sum(x >= obs for x in null_means) / len(null_means), 4), "p": round((1 + sum(x >= obs for x in null_means)) / (len(null_means) + 1), 4)}
+    out["holm"] = "eine Variante (S7b-D20-T3), Holm-Korrektur trivial: p_holm = p"
+    a.out.parent.mkdir(parents=True, exist_ok=True); a.out.write_text(json.dumps(out, indent=1, ensure_ascii=False)); print(json.dumps(out, indent=1, ensure_ascii=False))
+
+
+if __name__ == "__main__": main()
