@@ -425,3 +425,16 @@ def test_analysis_blocks_when_the_mcp_list_is_unreadable(tmp_path):
     for bad in ("", "not json", json.dumps({"name": "tim-ops"}), json.dumps([{"id": "tim-ops"}])):
         with pytest.raises(PipelineError, match="codex mcp list"):
             _analysis_args(tmp_path, bad)
+
+
+def test_claude_worker_runs_on_bounded_model_and_turns(tmp_path, monkeypatch):
+    runner = FlowRunner()
+    assert run_flow(tmp_path, monkeypatch, runner) == 0
+    call = runner.issued("claude", "-p")[0]
+    assert call[call.index("--model") + 1] == "sonnet"
+    assert call[call.index("--max-turns") + 1] == "15"
+
+
+def test_invalid_claude_model_is_rejected(tmp_path):
+    with pytest.raises(PipelineError):
+        Pipeline(Path("."), tmp_path, FlowRunner(), claude_model="bad model;rm")
