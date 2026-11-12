@@ -569,6 +569,20 @@ def _verdict_section(state: Any) -> str:
         return f"<section class='cc-section tc-verdict'><p class='cc-note'>Chart-Urteil nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
 
 
+def _levels_section(state: Any) -> str:
+    """Level-Übersicht: all chart levels as a few zones, the range and the watched zones (src/dashboard/level_overview.py)."""
+    from src.dashboard import level_overview
+
+    try:
+        with state.lock:
+            lage = dict(getattr(state, "orderflow_live", None) or {})
+            trades = getattr(state, "footprint", None)
+        view = level_overview.build(state.chart_series(), trades=trades or None, lage=lage or None)
+        return level_overview.render_de(view, level_overview.load())
+    except Exception as exc:  # noqa: BLE001 - the chart must still render
+        return f"<section class='cc-section tc-levels'><p class='cc-note'>Level-Übersicht nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
+
+
 def _orderflow_section(state: Any) -> str:
     """Live-Orderflow-Lage (src/orderflow/live_state.py); never breaks the page."""
     from src.dashboard.orderflow_tile import section
@@ -592,6 +606,7 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     body = _hero("TIM-Chart", "BTC, ETH, SOL, XMR und Gold in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
     body += _summary_section(state)
     if symbol == "BTCUSDT":
+        body += _levels_section(state)
         body += _verdict_section(state)
         body += _orderflow_section(state)
     body += _live_section(symbol, view)
