@@ -48,3 +48,9 @@ ein, bevor sie als abgeschlossen gelten. Ein Statuswechsel ist ein Commit.
 dazu Zusammenfassung, Mac-Inventur und die erste lesende Journal-Prüfung. Sie ist Rohmaterial für G2/G3
 und wird nicht von `gedaechtnis.py --pruefen` geprüft. Die 52 Aussagen in `aussagen.jsonl` bleiben die
 geprüfte Hauptliste; Abgleich beider Listen folgt in G3.
+
+## Begründung je Plan (G3)
+
+Neue Journaleinträge tragen das Feld `begruendung`: die Aussagen (Nummer, Status, Nutzung zum Zeitpunkt des Plans),
+auf die sich der Plan stützt (`src/research_lab/begruendung.py`). Nur eine Notiz, sie ändert keinen Plan, keine Regel
+und keinen Score. Der Fehlerfinder (G4) liest sie, um Pläne zu finden, die auf Widerlegtem oder Ungeprüftem standen.
