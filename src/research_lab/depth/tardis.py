@@ -96,17 +96,22 @@ class DayCheck:
         return out
 
 
-def check(book_csv: Path, trades_csv: Path, day: date) -> DayCheck:
-    """Merge book and trade rows by local receive time and check each trade against the book before it."""
+def check(book_csv: Path, trades_csv: Path, day: date, tick: str = "0.1") -> DayCheck:
+    """Merge book and trade rows by local receive time and check each trade against the book before it.
+
+    ``tick`` is the instrument tick on that day: BTCUSDT perpetual traded with 0.01 in 2020 (P2 report
+    ``depth_p2_tardis_2020-06-01.md``: one-cent spread in 83 % of seconds), today 0.1. It is the tolerance of the
+    trade check and the step of ``seconds_spread_one_tick``.
+    """
     check_day(day)
     started = time.monotonic()
-    res = DayCheck(day=day.isoformat(), file_bytes={"book": book_csv.stat().st_size,
+    res = DayCheck(day=day.isoformat(), trade_check=TradeCheck(tolerance_units=to_units(tick)), file_bytes={"book": book_csv.stat().st_size,
                                                      "trades": trades_csv.stat().st_size})
     book = LocalBook()
     in_snapshot = False
     valid = False
     last_sec: int | None = None
-    tick = to_units("0.1")
+    tick_units = to_units(tick)
 
     def tagged(path: Path, tag: int) -> Iterator[tuple[int, int, dict]]:
         for r in _rows(path):
@@ -121,7 +126,7 @@ def check(book_csv: Path, trades_csv: Path, day: date) -> DayCheck:
                 res.seconds_crossed += 1
             else:
                 b, a = book.best_bid(), book.best_ask()
-                if b is not None and a is not None and a - b == tick:
+                if b is not None and a is not None and a - b == tick_units:
                     res.seconds_spread_one_tick += 1
         last_sec = sec
         if tag == 0:

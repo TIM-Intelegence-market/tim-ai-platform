@@ -1,6 +1,6 @@
 # Bauplan: Orderbuch-Recorder (Binance USDⓈ-M BTCUSDT)
 
-**Status: Plan, noch kein Code.** Anlass: Barti 12.11.2026, „bauen wir erstmal diesen Orderbuchrekorder und dann
+**Status: P1 (Code, Tests) und P2 (Tardis-Abgleich, `reports/depth_p2_tardis_2020-06-01.md`) erledigt; P3 wartet auf Uzis Freigabe.** Anlass: Barti 12.11.2026, „bauen wir erstmal diesen Orderbuchrekorder und dann
 machen wir die Studie“. Grundlage: `studien/S8_DEPTH_DATENVERTRAG_ENTWURF.md` (Entwurf 0.1).
 
 ## Warum

@@ -36,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     tc.add_argument("--day", type=date.fromisoformat, required=True)
     tc.add_argument("--dir", type=Path, required=True)
     tc.add_argument("--out", type=Path)
+    tc.add_argument("--tick", default="0.1", help="instrument tick on that day (0.01 in 2020)")
     a = p.parse_args(argv)
     if a.cmd == "record":
         def _term(*_):  # launchd/systemd send SIGTERM: stop like Ctrl-C so every segment is closed cleanly
@@ -59,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     folder = a.dir.expanduser()
     book = tardis.download("incremental_book_L2", a.day, folder)
     trades = tardis.download("trades", a.day, folder)
-    _emit(tardis.check(book, trades, a.day).as_dict(), a.out)
+    _emit(tardis.check(book, trades, a.day, tick=a.tick).as_dict(), a.out)
     return 0
 
 
