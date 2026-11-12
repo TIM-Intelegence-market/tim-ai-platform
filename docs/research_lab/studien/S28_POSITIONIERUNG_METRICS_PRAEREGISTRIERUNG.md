@@ -1,9 +1,9 @@
-# S28: Positionierung aus dem Binance-Metrics-Archiv: Erklärt sie etwas, was die bisherigen Indikatoren nicht erklären? (Präregistrierung, Entwurf)
+# S28: Positionierung aus dem Binance-Metrics-Archiv: Erklärt sie etwas, was die bisherigen Indikatoren nicht erklären? (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
 | Studie | S28 (12.11.2026; S24 = alle Indikatoren, S26 = Aufwand gegen Ergebnis, S27 = größere Trades) |
-| Version | **0.1, Entwurf.** Zähllauf als Code: `src/research_lab/studies/s28.py`, Tests `tests/test_research_lab_s28.py`. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt und ist noch nicht gebaut: es entsteht mit dem Einfrieren |
+| Version | **1.0, eingefroren am 12.11.2026 auf Uzis Wort („einfrieren“), vor jedem Blick auf Ergebnisse.** Regeln als Code: `src/research_lab/studies/s28.py`, Tests `tests/test_research_lab_s28.py`. Vorher ein Zähllauf mit 0.1 (ergebnisblind, siehe Abschnitt 4). Jede Änderung braucht eine neue Version |
 | Anlass | S24, S26 und S27 haben mit den vorhandenen Indikatoren auf BTC 1h keinen Edge gefunden. Uzi am 12.11.2026: „wie können wir diese Daten kriegen?“ und danach „S28“. Das Metrics-Archiv ist Gratis-Historie, die TIM bisher nur für Open Interest nutzt |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Daten | Binance USD-M `futures/um/daily/metrics` BTCUSDT, alle 5 Minuten, 2020-09-01 bis 2024-12-31; Kerzen wie S24 |
@@ -43,8 +43,12 @@ Varianten (m = 4).
 1. `count` (ergebnisblind): vollständige Zeilen je Abschnitt und Richtung, Wochen. Gate wie S24: mindestens 300 je Richtung
    und Abschnitt, Validierung mindestens 50 Wochen. Der Zähllauf braucht die Tagesdateien (rund 1.580 kleine
    Downloads) und läuft auf der PS5.
-2. Einfrieren als 1.0 auf Uzis Wort. Mit dem Einfrieren kommt `evaluate`.
-3. `evaluate` auf der PS5.
+   **Ergebnis des Zähllaufs (12.11.2026, PS5):** Gate bestanden. Training 23.900 vollständige Momente je Richtung 11.950 (82 Wochen),
+   Validierung 17.369 je Richtung (106 Wochen).
+2. Einfrieren als 1.0 auf Uzis Wort, am 12.11.2026 erfolgt. Mit dem Einfrieren kam `evaluate`.
+3. `evaluate` auf der PS5 (`s28 evaluate --footprint ... --fp-cache ...`, wie S27). Die Familien der Varianten werden zur Laufzeit in den
+   S24/S27-Code eingesetzt (Variante A nur O, B alle sieben); S24 und S27 bleiben unverändert. Holm läuft mit m = 4 über beide Modelle in
+   beiden Varianten, die übrigen fünf Bedingungen je Variante und Modell wie in S27.
 
 ## 5. Entscheidung (nur Validierung)
 
@@ -66,5 +70,7 @@ offen berichten, keine weiteren Varianten auf denselben Daten.
 - Top-Trader-Verhältnis und Taker-Verhältnis sind Binance-Zahlen, nicht Bitunix.
 - Die Dateien von 2020-09 bis 2021-11 wiederholen Zeilen und sind laut Datensatz-Hinweis nachträglich ergänzt worden; gleiche
   Wiederholungen werden zusammengefasst, widersprüchliche Zeilen brechen den Lauf ab.
+- Einzelne Felder der Dateien sind leer (am 12.11. im ersten Zähllauf entdeckt). Ein leeres Feld gilt als fehlender Wert,
+  nichts wird ersetzt oder geschätzt. Ein Moment, der dafür einen Wert braucht, fällt aus der vollständigen Menge.
 - Familie O ist neu und wurde noch nie gegen Ergebnisse gelesen. Die Wahl der drei Merkmale beruht auf dem Spaltenaufbau
   der Datei, nicht auf einem Blick auf die Ergebnisse.

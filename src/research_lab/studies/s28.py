@@ -1,13 +1,14 @@
 """S28 (draft): positioning from the Binance "metrics" archive (open interest, top-trader ratio, taker ratio) on the S27 trade.
 
-Rules: docs/research_lab/studien/S28_POSITIONIERUNG_METRICS_PRAEREGISTRIERUNG_ENTWURF.md (version 0.1). Source: S24, S26 and S27 found no edge
+Rules: docs/research_lab/studien/S28_POSITIONIERUNG_METRICS_PRAEREGISTRIERUNG.md (version 1.0). Source: S24, S26 and S27 found no edge
 in the indicators TIM had on 1h BTC; the next try needs data TIM never used. Uzi said "S28" on 12.11.2026 after the
 data question. The holdout from 2025-01-01 is never loaded (the metrics refs are fetched only up to 2024-12-31).
 
     python -m src.research_lab.studies.s28 count --root data/research_lab --out DIR [--fetch] [--workers N]
 
-This step is results-blind: moments, feature coverage and complete rows per section. No outcome is read. ``evaluate`` is
-not built yet; it is added together with the freeze (version 1.0) and refuses a draft.
+``count`` is results-blind: moments, feature coverage and complete rows per section. ``evaluate`` (version 1.0) is the S27
+procedure with family O added: variant A = O alone, variant B = O with the six S24 families; Holm over both models in both
+variants (m = 4); the six S27 criteria per model. The trade is S27's (stop 3 ATR14, target 6 ATR14, 168 h), nothing is searched.
 
 Family O (one new family, three features, sign = +1 for LONG, -1 for SHORT, read at the close of the 1h candle):
 
@@ -29,6 +30,7 @@ import time
 from bisect import bisect_right
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -36,10 +38,10 @@ from pathlib import Path
 from src.research_lab.data.metrics import FIRST_DAY, MetricsRef, days
 from src.research_lab.data.parse import Kline, read_single_csv
 from src.research_lab.protocol import HOLDOUT_START_MS
-from src.research_lab.studies import s22, s24
+from src.research_lab.studies import s22, s24, s27
 from src.research_lab.studies.s20 import HOUR, atr_series, week_of
 
-VERSION = "0.1"
+VERSION = "1.0"  # frozen 2026-11-12 on Uzi's word ("einfrieren"); a change needs a new version
 SEED = 28
 FAMILY = "O"
 FEATURES = ("oi_preis", "top_ls", "taker_ls")
@@ -67,18 +69,28 @@ def _to_ms(value: str) -> int:
     return int(datetime.strptime(value.strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
+def _num(text: str) -> float:
+    """An empty field is a missing value (NaN), never a guess."""
+    text = text.strip()
+    return float(text) if text else math.nan
+
+
+def _same(a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    return all(x == y or (math.isnan(x) and math.isnan(y)) for x, y in zip(a, b, strict=True))
+
+
 def parse_snapshots(text: str) -> dict[int, tuple[float, float, float]]:
     """time -> (open interest in BTC, top-trader position ratio, taker volume ratio). Identical repeats collapse, two
-    different rows for one time are an error (nothing is guessed)."""
+    different rows for one time are an error (nothing is guessed). Empty fields stay missing (NaN)."""
     out: dict[int, tuple[float, float, float]] = {}
     for row in csv.reader(io.StringIO(text)):
         if not row or row[0].strip() == COLUMNS[0]:
             continue
         if len(row) < len(COLUMNS):
             raise ValueError("metrics row has fewer columns than the header")
-        values = (float(row[2]), float(row[5]), float(row[7]))
+        values = (_num(row[2]), _num(row[5]), _num(row[7]))
         t = _to_ms(row[0])
-        if t in out and out[t] != values:
+        if t in out and not _same(out[t], values):
             raise ValueError(f"two different metrics rows for one snapshot ({row[0]})")
         out[t] = values
     return out
@@ -115,7 +127,8 @@ def features(snap: Snapshots, bars: Sequence[Kline], i: int, sign: float) -> tup
     window = snap.taker[k - TAKER_SNAPSHOTS + 1:k + 1]
     if snap.times[k] - snap.times[k - TAKER_SNAPSHOTS + 1] > (TAKER_SNAPSHOTS + 2) * STEP_MS:
         return None
-    if snap.oi[back] <= 0 or snap.top[k] <= 0 or min(window) <= 0:
+    needed = (snap.oi[k], snap.oi[back], snap.top[k], *window)
+    if not all(math.isfinite(x) for x in needed) or snap.oi[back] <= 0 or snap.top[k] <= 0 or min(window) <= 0:
         return None
     change = bars[i].close - bars[i - 24].close
     direction = (change > 0) - (change < 0)
@@ -150,6 +163,69 @@ def count(rows: Sequence[s24.Row]) -> dict:
     return out
 
 
+FAMILY_NAME = "Positionierung (Metrics-Archiv)"
+VARIANTS = ("A", "B")
+
+
+@contextmanager
+def family_set(variant: str):
+    """Run S24/S27 code with family O: A = O alone, B = the six S24 families plus O. Restores the S24 globals."""
+    saved = (s24.FAMILIES, s24.FEATURES, s24.FAMILY_NAMES)
+    s24.FAMILIES = (FAMILY,) if variant == "A" else (*saved[0], FAMILY)
+    s24.FEATURES = {**saved[1], FAMILY: FEATURES}
+    s24.FAMILY_NAMES = {**saved[2], FAMILY: FAMILY_NAME}
+    try:
+        yield s24.FAMILIES
+    finally:
+        s24.FAMILIES, s24.FEATURES, s24.FAMILY_NAMES = saved
+
+
+def with_family_o(rows: Sequence[s24.Row], snap: Snapshots, bars_1h: Sequence[Kline]) -> list[s24.Row]:
+    from dataclasses import replace
+
+    index = {b.open_time: k for k, b in enumerate(bars_1h)}
+    out = []
+    for r in rows:
+        sign = 1.0 if r.direction == "LONG" else -1.0
+        out.append(replace(r, features={**r.features, FAMILY: features(snap, bars_1h, index[r.time - HOUR], sign)}))
+    return out
+
+
+def evaluate(rows: Sequence[s24.Row], loaded: Sequence[str], exits, *, boot_draws: int = s22.BOOT_DRAWS,
+             shift_draws: int = s22.SHIFT_DRAWS) -> dict:
+    """S27's evaluation in both variants, then Holm over all four (variant, model) tests."""
+    from src.research_lab.stats.inference import holm
+
+    if VERSION.startswith("0"):
+        raise SystemExit(f"S28 {VERSION} ist ein Entwurf: erst nach dem Einfrieren als 1.0 auswerten")
+    out: dict = {"varianten": {}}
+    pvalues: dict[str, float] = {}
+    for variant in VARIANTS:
+        with family_set(variant) as fams:
+            if not set(fams) <= {*loaded, FAMILY}:
+                raise SystemExit(f"S28 Variante {variant} braucht {fams}, geladen: {loaded}")
+            res = s27.evaluate(rows, list(fams), exits, boot_draws=boot_draws, shift_draws=shift_draws)
+        out["varianten"][variant] = res
+        for name, info in res.get("modelle", {}).items():
+            if info.get("p") is not None:
+                pvalues[f"{variant}:{name}"] = info["p"]
+    passed = holm(pvalues, 4, s22.ALPHA)
+    verdicts = {}
+    for variant, res in out["varianten"].items():
+        for name, info in res.get("modelle", {}).items():
+            info["kriterien"]["holm"] = f"{variant}:{name}" in passed
+            ok = all(info["kriterien"].values())
+            verdicts[f"{variant}:{name}"] = "BESTANDEN (Kandidat)" if ok else "NICHT BESTANDEN"
+        res["urteil_je_modell"] = {k.split(":")[1]: v for k, v in verdicts.items() if k.startswith(variant)}
+        res["urteil"] = ("BESTANDEN (Kandidat für den Live-Schatten)" if "BESTANDEN (Kandidat)" in res["urteil_je_modell"].values()
+                         else "NO ROBUST EDGE PROVEN")
+    out["holm"] = {"m": 4, "p": pvalues, "verworfen": sorted(passed)}
+    out["urteil_je_modell"] = verdicts
+    out["urteil"] = ("BESTANDEN (Kandidat für den Live-Schatten)" if "BESTANDEN (Kandidat)" in verdicts.values()
+                     else "NO ROBUST EDGE PROVEN")
+    return out
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="s28")
     parser.add_argument("step", choices=("count", "evaluate"))
@@ -157,22 +233,39 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--fetch", action="store_true", help="fehlende Tagesdateien laden (nur bis 2024-12-31)")
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--footprint", type=Path, help="S8-Speicher; Variante B braucht Familie F")
+    parser.add_argument("--fp-cache", type=Path)
     args = parser.parse_args(argv)
-    if args.step == "evaluate":
-        raise SystemExit(f"S28 {VERSION} ist ein Entwurf: evaluate entsteht mit dem Einfrieren als 1.0")
-    bars_1h, _bars_30m, digest = s22.load(args.root, fetch=args.fetch)
+    bars_1h, bars_30m, digest = s22.load(args.root, fetch=args.fetch)
     snap = load_snapshots(args.root, fetch=args.fetch, workers=args.workers)
-    rows = build_rows(snap, bars_1h)
+    evaluating = args.step == "evaluate"
+    if evaluating:
+        if args.footprint is None:
+            raise SystemExit("S28 evaluate braucht --footprint (Variante B nutzt Familie F)")
+        events = s24.moment_events(bars_1h)
+        rates = s24.load_rates(args.root, fetch=args.fetch)
+        funding = s24.load_funding(rates, events)
+        footprint = s24.load_footprint(args.footprint, events, workers=args.workers, cache=args.fp_cache)
+        s27_rows, exits = s27.build_rows(bars_1h, bars_30m, footprint=footprint, funding=funding,
+                                         workers=args.workers, rates=rates)
+        eval_rows = with_family_o(s27_rows, snap, bars_1h)
+        rows = eval_rows
+    else:
+        rows = build_rows(snap, bars_1h)
     result = {"studie": "S28", "version": VERSION, "seed": SEED, "datensatz_sha256": digest,
               "merkmale": {FAMILY: list(FEATURES)}, "snapshots": len(snap.times),
               "erster_stand": snap.times[0] if snap.times else None, "letzter_stand": snap.times[-1] if snap.times else None,
               "zaehllauf": count(rows)}
+    if evaluating:
+        result["auswertung"] = evaluate(eval_rows, [f for f in s24.FAMILIES], exits)
     assert max(snap.times, default=0) < HOLDOUT_START_MS, "holdout data loaded"
     args.out.mkdir(parents=True, exist_ok=True)
-    path = args.out / f"s28_count_{time.strftime('%Y-%m-%dT%H%MZ', time.gmtime())}.json"
+    path = args.out / f"s28_{args.step}_{time.strftime('%Y-%m-%dT%H%MZ', time.gmtime())}.json"
     path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     print(path)
     print(json.dumps(result["zaehllauf"], ensure_ascii=False))
+    if evaluating:
+        print(result["auswertung"]["urteil"])
     return 0
 
 
