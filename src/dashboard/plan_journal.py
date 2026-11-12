@@ -77,7 +77,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from src.dashboard import journal_log
-from src.dashboard.chart_model import _time, build_chart_model, clean_candles, ny_open_windows
+from src.dashboard.chart_model import TIMEFRAME_SECONDS, _time, build_chart_model, clean_candles, ny_open_windows
 from src.research_lab import begruendung
 from src.research_lab.setup_evidence import DEFAULT_REGISTER_PATH, INSUFFICIENT_EVIDENCE, PASSED_HOLDOUT, RESEARCH_ONLY, evidence_fields
 
@@ -252,6 +252,7 @@ def plans_from_model(model: Mapping[str, Any]) -> list[dict[str, Any]]:
             "scenario_state": scenario.get("state"),
             "score": scenario.get("score"),
             "score_parts": scenario.get("score_parts"),
+            "score_schatten": scenario.get("score_schatten"),
             "missing_confirmations": list(scenario.get("missing_confirmations") or []),
             "pipeline_decision": (analysis.get("decision") or {}).get("status"),
             "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
@@ -1187,7 +1188,8 @@ def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
            rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None,
            gamma: Mapping[str, Any] | None = None, profile_fn: Callable[[Sequence[Mapping[str, Any]], datetime], Mapping[str, Any] | None] | None = None,
-           source: str | None = None, market_type: str | None = None) -> dict[str, Any]:
+           source: str | None = None, market_type: str | None = None,
+           trades_fn: Callable[[datetime, datetime], Sequence[Any]] | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
@@ -1230,7 +1232,14 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                                "payload": {"close_time": _iso(latest), "reason": "stale_data", "age_seconds": int(age.total_seconds())}})
         elif journal.get("last_plan_candle") != _iso(latest):
             profile = profile_fn(plan_candles[-PLAN_VISIBLE:], latest) if profile_fn else None
-            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile)
+            trades = None
+            if trades_fn is not None:
+                try:  # Schatten-Score: trades up to the moment of the plan only, the window is bounded
+                    window = min(timedelta(hours=2), 4 * timedelta(seconds=TIMEFRAME_SECONDS.get(timeframe, 1800)))
+                    trades = list(trades_fn(latest - window, latest)) or None
+                except Exception:  # noqa: BLE001 - the shadow must never stop a journal step
+                    trades = None
+            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile, trades=trades)
             plans = plans_from_model(model)
             dropped: list[str] = []
             if rule == RULE_STRUCT:
