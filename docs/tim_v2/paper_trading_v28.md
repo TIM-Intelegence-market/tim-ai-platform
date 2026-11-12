@@ -55,8 +55,7 @@ zusammengesetztem Namen. Darum gibt es die Laufzeitprüfung, und Änderungen an 
 
 - **Kein Edge-Nachweis.** S24, S26 und S27 haben nach Kosten keinen robusten Edge gezeigt. Der Adapter misst die
   Ausführung, nicht die Strategie.
-- **Noch nicht an Live-Pläne angeschlossen.** Die Anbindung an Plan-Journal und OF-Schatten mit Live-Kerzen ist der
-  nächste Schritt (V2.9 Schatten). Bis dahin läuft er auf eingelesenen Kerzen.
+- Der Adapter allein kennt keine Live-Pläne. Die Anbindung übernimmt der V2.9-Schatten (unten).
 - Keine Freigabe von V2. Laut `docs/v2_readiness/authoritative_readiness_definition.md` dürfen Software und KI V2
   nicht selbst freigeben.
 
