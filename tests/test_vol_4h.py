@@ -122,7 +122,7 @@ def test_plan_journal_records_vol_fields_and_summary(tmp_path: Path):
         assert v["model"] == vol_4h.MODEL and vol_4h.W_MIN <= v["weight"] <= vol_4h.W_MAX and v["periods"] >= vol_4h.WARMUP
     plain = pj.update(tmp_path / "p.json", series, now)
     assert all("vol_4h" not in e for e in plain["entries"])  # no 4h history: field left out, plan unchanged
-    strip = lambda e: {k: v for k, v in e.items() if k != "vol_4h"}
+    strip = lambda e: {k: v for k, v in e.items() if k not in {"vol_4h", "begruendung"}}
     assert [strip(e) for e in journal["entries"]] == [strip(e) for e in plain["entries"]]
     assert pj.summary(journal)["vol_sizing"]["closed"] == 0
     again = pj.update(tmp_path / "j.json", with_four, now + timedelta(minutes=1))

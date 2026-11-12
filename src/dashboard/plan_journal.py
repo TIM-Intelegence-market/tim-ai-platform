@@ -78,6 +78,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from src.dashboard import journal_log
 from src.dashboard.chart_model import _time, build_chart_model, clean_candles, ny_open_windows
+from src.research_lab import begruendung
 from src.research_lab.setup_evidence import DEFAULT_REGISTER_PATH, INSUFFICIENT_EVIDENCE, PASSED_HOLDOUT, RESEARCH_ONLY, evidence_fields
 
 SCHEMA = "tim_plan_journal/2"
@@ -366,6 +367,7 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
             "last_seen_at": _iso(at),
             **payload,
             **decision_fields(plan),
+            "begruendung": begruendung.fuer_plan(plan),
             "status": OPEN,
             **_arming(plan),
             "stop_rule": STOP_RULE_COST,
