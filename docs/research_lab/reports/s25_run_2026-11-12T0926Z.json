@@ -1,0 +1,203 @@
+{
+  "study": "S25",
+  "commit": "9eeb08ea7e15b177d55a417049e21426f959984d",
+  "created": "2026-11-12T09:26:30+00:00",
+  "trades_file": "s7b_train_2026-10-26T1305Z_trades.json",
+  "trades_sha256": "fa45d740da405a2fc96737a1a61d3fde151d81f68695f1951587ae0e85b88b26",
+  "dataset_hash": "182b222e0fa12cae397ea4866ee619d6e5102854bf7658468d9cafdbb60844e2",
+  "variant": "S7b-D20-T3",
+  "reported": [
+    "S7b-D20-T4"
+  ],
+  "ref_days": 365,
+  "ref_min_days": 90,
+  "w_bounds": [
+    0.5,
+    2.0
+  ],
+  "frozen": true,
+  "results": {
+    "S7b-D20-T3": {
+      "train": {
+        "missing": 153,
+        "fixed": {
+          "n": 139,
+          "expectancy": 0.10270275097796314,
+          "drawdown": 13.213403044576438,
+          "r_per_risk": 0.007772619258754725,
+          "worst_trade": -1.2519045917836022
+        },
+        "garch": {
+          "n": 139,
+          "expectancy": 0.02526395051205189,
+          "drawdown": 14.59309570811064,
+          "r_per_risk": 0.0017312262605123968,
+          "worst_trade": -1.8262661478239863
+        },
+        "placebo_p": 0.7166416791604198,
+        "stress": {
+          "fixed": {
+            "n": 139,
+            "expectancy": 0.07386266277593254,
+            "drawdown": 13.780346516895502,
+            "r_per_risk": 0.005360000395154987,
+            "worst_trade": -1.2781704285827509
+          },
+          "garch": {
+            "n": 139,
+            "expectancy": -0.005678375547300541,
+            "drawdown": 15.330565406503238,
+            "r_per_risk": -0.0003703957027502567,
+            "worst_trade": -1.8850042017702817
+          }
+        },
+        "weights": {
+          "mean": 1.0349217717559702,
+          "at_min": 0,
+          "at_max": 0,
+          "corr_w_r": -0.185903053017159
+        }
+      },
+      "validation": {
+        "missing": 0,
+        "fixed": {
+          "n": 207,
+          "expectancy": 0.2722986795455722,
+          "drawdown": 10.948151671109322,
+          "r_per_risk": 0.024871657584369353,
+          "worst_trade": -1.165183520346881
+        },
+        "garch": {
+          "n": 207,
+          "expectancy": 0.3390458618116903,
+          "drawdown": 11.632382878700426,
+          "r_per_risk": 0.02914672473792993,
+          "worst_trade": -1.729283908424006
+        },
+        "placebo_p": 0.6691654172913544,
+        "stress": {
+          "fixed": {
+            "n": 207,
+            "expectancy": 0.23073273235667555,
+            "drawdown": 11.458432309415052,
+            "r_per_risk": 0.02013650088652087,
+            "worst_trade": -1.2322837880845394
+          },
+          "garch": {
+            "n": 207,
+            "expectancy": 0.2940120476352494,
+            "drawdown": 12.172373386627946,
+            "r_per_risk": 0.02415404443296478,
+            "worst_trade": -1.876708551131168
+          }
+        },
+        "weights": {
+          "mean": 0.966629908923011,
+          "at_min": 6,
+          "at_max": 0,
+          "corr_w_r": 0.13693077350887042
+        }
+      },
+      "verdict": {
+        "verdict": "NICHT BESTANDEN",
+        "checks": {
+          "dd_10pct_lower": false,
+          "placebo": false,
+          "r_per_risk_not_worse": true,
+          "train_same_direction": false
+        }
+      }
+    },
+    "S7b-D20-T4": {
+      "train": {
+        "missing": 135,
+        "fixed": {
+          "n": 131,
+          "expectancy": 0.08438507275931091,
+          "drawdown": 11.760590781070498,
+          "r_per_risk": 0.007175240966222092,
+          "worst_trade": -1.2300087524639045
+        },
+        "garch": {
+          "n": 131,
+          "expectancy": 0.020791906789184435,
+          "drawdown": 13.187112757590468,
+          "r_per_risk": 0.0015766837799439206,
+          "worst_trade": -1.8139198524613198
+        },
+        "placebo_p": 0.7106446776611695,
+        "stress": {
+          "fixed": {
+            "n": 131,
+            "expectancy": 0.05511975556558586,
+            "drawdown": 12.278342895143108,
+            "r_per_risk": 0.004489185229334925,
+            "worst_trade": -1.2695694268720266
+          },
+          "garch": {
+            "n": 131,
+            "expectancy": -0.010617813828367443,
+            "drawdown": 14.43950101959874,
+            "r_per_risk": -0.0007353310764655842,
+            "worst_trade": -1.8936315221101487
+          }
+        },
+        "weights": {
+          "mean": 1.0537911729138494,
+          "at_min": 0,
+          "at_max": 0,
+          "corr_w_r": -0.1416985427975626
+        }
+      },
+      "validation": {
+        "missing": 0,
+        "fixed": {
+          "n": 189,
+          "expectancy": 0.25053524384655806,
+          "drawdown": 12.00534357365401,
+          "r_per_risk": 0.020868644225756534,
+          "worst_trade": -1.2186885479115308
+        },
+        "garch": {
+          "n": 189,
+          "expectancy": 0.3387038186613569,
+          "drawdown": 12.52954526937583,
+          "r_per_risk": 0.027032411103474124,
+          "worst_trade": -1.7280993291487803
+        },
+        "placebo_p": 0.5887056471764118,
+        "stress": {
+          "fixed": {
+            "n": 189,
+            "expectancy": 0.20916880851443195,
+            "drawdown": 12.553966538119518,
+            "r_per_risk": 0.016661571295359192,
+            "worst_trade": -1.272307367938245
+          },
+          "garch": {
+            "n": 189,
+            "expectancy": 0.29375343375935853,
+            "drawdown": 13.20277754854284,
+            "r_per_risk": 0.022249366292760073,
+            "worst_trade": -1.8754229842878758
+          }
+        },
+        "weights": {
+          "mean": 0.967292515370227,
+          "at_min": 7,
+          "at_max": 0,
+          "corr_w_r": 0.16078006523588986
+        }
+      },
+      "verdict": {
+        "verdict": "NICHT BESTANDEN",
+        "checks": {
+          "dd_10pct_lower": false,
+          "placebo": false,
+          "r_per_risk_not_worse": true,
+          "train_same_direction": false
+        }
+      }
+    }
+  }
+}

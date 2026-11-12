@@ -38,7 +38,7 @@ from src.research_lab.backtest.metrics import max_drawdown_r
 from src.research_lab.protocol import HOLDOUT_START_MS
 from src.research_lab.studies import s15
 
-FROZEN = False  # set to True only with the freeze of version 1.0 on Uzi's word
+FROZEN = True  # version 1.0 frozen on Uzi's word "einfrieren" (12.11.2026)
 FROZEN_TRADES_SHA256 = "fa45d740da405a2fc96737a1a61d3fde151d81f68695f1951587ae0e85b88b26"  # s7b_train_2026-10-26T1305Z_trades.json
 VARIANT = "S7b-D20-T3"
 REPORTED = ("S7b-D20-T4",)  # reported only, decides nothing
