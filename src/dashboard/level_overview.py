@@ -27,10 +27,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-RULESET = "level-uebersicht/1.0"
+RULESET = "level-uebersicht/1.1"
 ATR_PERIOD = 14
-ZONE_ATR = 0.25  # lines closer than this share of the 1h ATR(14) form one zone
-ZONE_PCT = 0.0015  # fallback width without an ATR: 0.15 % of the price
+ZONE_ATR = 0.5  # lines closer than this share of the 1h ATR(14) form one zone ...
+ZONE_PCT = 0.0025  # ... and never closer than 0.25 % of the price (1.0 used 0.25 ATR: 49 lines stayed 30 zones)
+ZONE_MAX = 3  # a zone is never wider than this many widths, so a chain of lines cannot swallow the chart
+REACH_PCT = 0.05  # zones within 5 % of the price count as "in Reichweite"; a watch zone is looked for there first
+# Costs of one round trip as a share of the price: study E0 (12.11.2026) measured 0.14 R at a 2.0 % stop with
+# Bitunix fees, slippage and funding (S27), so about 0.28 %. A reading is given no stop tighter than MIN_STOP_PCT.
+COST_PCT = 0.0028
+MIN_STOP_PCT = 0.02
+MIN_RR = 2.0  # net reward per risk below which a reading is called "lohnt nicht"
 STOP_ATR = 0.5  # "wrong beyond the zone": zone edge plus this share of the ATR
 STRUCTURE_TFS = ("1h", "4h")
 TREND_TFS = ("1h", "4h")
@@ -131,7 +138,7 @@ def zones(lines: Sequence[Mapping[str, Any]], price: float, tolerance: float,
     absorbed = [level["price"] for level in (orderflow or {}).get("levels") or [] if level.get("absorption")]
     out: list[dict[str, Any]] = []
     for line in sorted(lines, key=lambda item: item["price"]):
-        if out and line["price"] - out[-1]["high"] <= tolerance:
+        if out and line["price"] - out[-1]["high"] <= tolerance and line["price"] - out[-1]["low"] <= ZONE_MAX * tolerance:
             zone = out[-1]
             zone["high"] = line["price"]
             if line["label"] not in zone["labels"]:
@@ -164,20 +171,26 @@ def _reading(side: str, start: Mapping[str, Any] | None, aim: Mapping[str, Any] 
     long = side == "LONG"
     entry = start["high"] if long else start["low"]  # the zone's edge facing the price
     stop = start["low"] - pad if long else start["high"] + pad
+    widened = abs(entry - stop) < MIN_STOP_PCT * entry  # a stop this tight is eaten by the costs
+    if widened:
+        stop = entry * (1 - MIN_STOP_PCT) if long else entry * (1 + MIN_STOP_PCT)
     target = aim["low"] if long else aim["high"]
-    risk, reward = abs(entry - stop), abs(target - entry)
+    risk, reward, cost = abs(entry - stop), abs(target - entry), COST_PCT * entry
     if risk <= 0 or reward <= 0:
         return None
     with_structure = (bias == "aufwärts" and long) or (bias == "abwärts" and not long)
     against = (bias == "aufwärts" and not long) or (bias == "abwärts" and long)
+    net = (reward - cost) / (risk + cost)  # what is left per unit lost, costs paid on both outcomes
     return {"side": side, "zone": start, "entry": round(entry, 2), "stop": round(stop, 2), "target": round(target, 2),
-            "stop_pct": round(risk / entry * 100, 2), "rr": round(reward / risk, 2), "aim": aim,
+            "stop_pct": round(risk / entry * 100, 2), "stop_widened": widened, "rr": round(reward / risk, 2),
+            "cost_r": round(cost / risk, 2), "rr_net": round(net, 2), "worth": net >= MIN_RR, "aim": aim,
             "structure": "mit der Struktur" if with_structure else "gegen die Struktur" if against else "Struktur gemischt"}
 
 
 def _watch(side_zones: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
-    """The zone to watch on one side: the nearest of at least medium weight, else the nearest."""
-    return next((zone for zone in side_zones if zone["weight"] >= MEDIUM), side_zones[0] if side_zones else None)
+    """The zone to watch on one side: the nearest of at least medium weight within reach, else the nearest zone."""
+    near = [zone for zone in side_zones if abs(zone.get("distance_pct", 0.0)) <= REACH_PCT * 100]
+    return next((zone for zone in near if zone["weight"] >= MEDIUM), side_zones[0] if side_zones else None)
 
 
 def build(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None,
@@ -188,7 +201,7 @@ def build(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | Non
     if not data:
         return None
     price = data["price"]
-    tolerance = ZONE_ATR * data["atr"] if data["atr"] else ZONE_PCT * price
+    tolerance = max(ZONE_ATR * data["atr"] if data["atr"] else 0.0, ZONE_PCT * price)
     pad = STOP_ATR * data["atr"] if data["atr"] else 2 * tolerance
     all_zones = zones(data["lines"], price, tolerance, data["orderflow"])
     here = next((zone for zone in all_zones if zone["side"] == "am Kurs"), None)
@@ -203,7 +216,8 @@ def build(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | Non
                 "width_pct": round(width / price * 100, 2), "position": round((price - lower["high"]) / width, 2)}
     flow = data["orderflow"]
     return {"ruleset": RULESET, "as_of": data["as_of"], "price": price, "atr": data["atr"], "tolerance": round(tolerance, 2),
-            "pad": round(pad, 2), "lines": len(data["lines"]), "zones": len(all_zones), "here": here,
+            "pad": round(pad, 2), "lines": len(data["lines"]), "zones": len(all_zones),
+            "near": sum(1 for zone in all_zones if abs(zone["distance_pct"]) <= REACH_PCT * 100), "here": here,
             "above": above[:SHOWN], "below": below[:SHOWN], "watch": {"upper": upper, "lower": lower}, "range": span,
             "structure": data["structure"], "bias": bias, "source": data["source"],
             "orderflow": {"direction": flow.get("direction"), "strength": flow.get("strength")} if flow else None,
@@ -231,12 +245,12 @@ def _range_text(view: Mapping[str, Any]) -> str:
 
 def _reading_text(reading: Mapping[str, Any] | None, side: str) -> str:
     if not reading:
-        return f"{side}: keine Zone auf dieser Seite."
-    return (f"{side} an {_p(reading['entry'])}, falsch unter {_p(reading['stop'])}, Ziel {_p(reading['target'])} "
-            f"(Stop {reading['stop_pct']:.2f} %, {reading['rr']:.1f} R, {reading['structure']})"
-            if side == "Long" else
-            f"{side} an {_p(reading['entry'])}, falsch über {_p(reading['stop'])}, Ziel {_p(reading['target'])} "
-            f"(Stop {reading['stop_pct']:.2f} %, {reading['rr']:.1f} R, {reading['structure']})")
+        return f"{side}: keine Zone mit Ziel auf dieser Seite."
+    wrong = "unter" if side == "Long" else "über"
+    stop = f"Stop {reading['stop_pct']:.2f} %" + (" (auf Mindestweite gesetzt)" if reading.get("stop_widened") else "")
+    verdict = "" if reading.get("worth") else ", lohnt so nicht"
+    return (f"{side} an {_p(reading['entry'])}, falsch {wrong} {_p(reading['stop'])}, Ziel {_p(reading['target'])} "
+            f"({stop}, Kosten ca. {reading['cost_r']:.2f} R, nach Kosten {reading['rr_net']:.1f} R{verdict}, {reading['structure']})")
 
 
 def text(view: Mapping[str, Any] | None) -> str:
@@ -245,7 +259,7 @@ def text(view: Mapping[str, Any] | None) -> str:
         return "Level-Übersicht: keine Kerzen."
     rows = [f"Kurs {_p(view['price'])}, Struktur {view['bias']} "
             f"({', '.join(f'{tf} {state}' for tf, state in view['structure'].items()) or 'keine Daten'}). "
-            f"{view['lines']} Linien in {view['zones']} Zonen."]
+            f"{view['lines']} Linien in {view['zones']} Zonen, {view['near']} davon in Reichweite."]
     rows.append(_range_text(view))
     if view.get("here"):
         rows.append("Am Kurs: " + _zone_text(view["here"]))
@@ -264,7 +278,8 @@ def render_de(view: Mapping[str, Any] | None, state: Mapping[str, Any] | None = 
         return head + "<p class='empty'>Keine Kerzen: keine Level-Übersicht.</p></section>"
     structure = ", ".join(f"{tf} {state}" for tf, state in view["structure"].items()) or "keine Daten"
     out = [head, f"<p><b>Kurs {_safe(_p(view['price']))}</b>, Struktur <b>{_safe(view['bias'])}</b> ({_safe(structure)}). "
-                 f"{view['lines']} Linien zu {view['zones']} Zonen zusammengefasst.</p>",
+                 f"{view['lines']} Linien zu {view['zones']} Zonen zusammengefasst, {view['near']} davon innerhalb von "
+                 f"{REACH_PCT * 100:.0f} %.</p>",
            f"<p>{_safe(_range_text(view))}</p>"]
     if view.get("orderflow") and view["orderflow"].get("direction"):
         out.append(f"<p class='cc-note'>Orderflow-Welle: {_safe(str(view['orderflow']['direction']))}"
@@ -288,7 +303,8 @@ def render_de(view: Mapping[str, Any] | None, state: Mapping[str, Any] | None = 
         out.append(f"<p class='cc-note'>Beobachtet seit {_safe(str(state.get('started_at', ''))[:10])}: {counts['closed']} Besuche an "
                    f"beobachteten Zonen, {counts['rejected']} abgelehnt, {counts['accepted']} akzeptiert, {counts['open']} offen.</p>")
     out.append("<p class='cc-note'>Nur Analyse und Anzeige (" + RULESET + "): keine Order, kein Plan wird geändert. Zonen = Linien näher als "
-               f"{ZONE_ATR} × 1h-ATR; Gewicht nach Zeitrahmen fest von Hand gesetzt, nicht aus Daten gelernt. "
+               f"{ZONE_ATR} × 1h-ATR, mindestens {ZONE_PCT * 100:.2f} % vom Kurs; Gewicht nach Zeitrahmen fest von Hand gesetzt, nicht "
+               f"aus Daten gelernt. Stop nie enger als {MIN_STOP_PCT * 100:.0f} %, Kosten mit {COST_PCT * 100:.2f} % je Trade gerechnet (Studie E0). "
                "Level-Reaktionen haben in den Studien S22 bis S30 nach Kosten keinen belegten Vorteil gezeigt. "
                f"Level aus {_safe(view.get('source', ''))}. Nicht enthalten: {_safe(', '.join(MISSING))}.</p>")
     return "".join(out) + "</section>"
