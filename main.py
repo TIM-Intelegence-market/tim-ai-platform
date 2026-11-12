@@ -803,11 +803,23 @@ class TIMApplication:
             with self.dashboard_state.lock:
                 footprint = self.dashboard_state.footprint
                 gamma = self.dashboard_state.gamma.get(settings.symbol)
-            for name, step, path in (("plan journal", update_plan_journal, self.dashboard_state.plan_journal_path),
+            # Schatten-Score: the journal asks for trades only when a plan candle closes, up to the moment of the plan.
+            loop = asyncio.get_running_loop()
+            repository = self.repository
+
+            def trades_fn(start, end):
+                future = asyncio.run_coroutine_threadsafe(repository.agg_trades_between(settings.symbol, start, end), loop)
+                try:
+                    return future.result(timeout=90)
+                except BaseException:
+                    future.cancel()  # a late database answer must not keep a connection busy
+                    raise
+
+            for name, step, path in (("plan journal", partial(update_plan_journal, trades_fn=trades_fn), self.dashboard_state.plan_journal_path),
                                      ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
                                      ("plan journal vp", partial(update_plan_journal, rule=RULE_VP, footprint=footprint, gamma=gamma), self.dashboard_state.plan_journal_vp_path),
-                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"]), self.dashboard_state.plan_journal_short_path),
-                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"]), self.dashboard_state.plan_journal_mid_path),
+                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"], trades_fn=trades_fn), self.dashboard_state.plan_journal_short_path),
+                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"], trades_fn=trades_fn), self.dashboard_state.plan_journal_mid_path),
                                      ("plan journal long", partial(update_plan_journal, timeframe=HORIZONS["LONG"]), self.dashboard_state.plan_journal_long_path),
                                      ("trader journal", update_trader_journal, self.dashboard_state.trader_journal_path)):
                 try:

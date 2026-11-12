@@ -67,6 +67,7 @@ fee 0.05 % and slippage 0.03 % per side, 0.05 % on stop executions, costs in R
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import json
 import math
@@ -77,7 +78,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from src.dashboard import journal_log
-from src.dashboard.chart_model import _time, build_chart_model, clean_candles, ny_open_windows
+from src.dashboard.chart_model import TIMEFRAME_SECONDS, _time, build_chart_model, clean_candles, ny_open_windows
 from src.research_lab import begruendung
 from src.research_lab.setup_evidence import DEFAULT_REGISTER_PATH, INSUFFICIENT_EVIDENCE, PASSED_HOLDOUT, RESEARCH_ONLY, evidence_fields
 
@@ -104,6 +105,7 @@ SLIPPAGE_PER_SIDE = 0.0003
 STOP_SLIPPAGE = 0.0005
 # Stop rule of an entry, fixed when it is recorded. Entries without one keep the old rule.
 STOP_RULE_COST = "be_cost/1"
+SHADOW_MAX_TRADES = 150_000  # Schatten-Score: measured 2 s of pipeline time at this size
 COST_STOP_MIN_GAP_R = 0.1  # the 30m close must be at least this far beyond the new stop
 VERDICT_RULESET = "verdict/1"
 FALLBACK_HOURS = 4.0  # safety net: in the trade this long, the stop may move without a structure reason
@@ -252,6 +254,7 @@ def plans_from_model(model: Mapping[str, Any]) -> list[dict[str, Any]]:
             "scenario_state": scenario.get("state"),
             "score": scenario.get("score"),
             "score_parts": scenario.get("score_parts"),
+            "score_schatten": scenario.get("score_schatten"),
             "missing_confirmations": list(scenario.get("missing_confirmations") or []),
             "pipeline_decision": (analysis.get("decision") or {}).get("status"),
             "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
@@ -1187,7 +1190,8 @@ def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
            rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None,
            gamma: Mapping[str, Any] | None = None, profile_fn: Callable[[Sequence[Mapping[str, Any]], datetime], Mapping[str, Any] | None] | None = None,
-           source: str | None = None, market_type: str | None = None) -> dict[str, Any]:
+           source: str | None = None, market_type: str | None = None,
+           trades_fn: Callable[[datetime, datetime], Sequence[Any]] | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
@@ -1230,7 +1234,17 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                                "payload": {"close_time": _iso(latest), "reason": "stale_data", "age_seconds": int(age.total_seconds())}})
         elif journal.get("last_plan_candle") != _iso(latest):
             profile = profile_fn(plan_candles[-PLAN_VISIBLE:], latest) if profile_fn else None
-            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile)
+            trades = None
+            if trades_fn is not None:
+                try:  # Schatten-Score: trades up to the moment of the plan only, the window is bounded
+                    window = min(timedelta(hours=2), 4 * timedelta(seconds=TIMEFRAME_SECONDS.get(timeframe, 1800)))
+                    trades = list(trades_fn(latest - window, latest)) or None
+                    if trades and len(trades) > SHADOW_MAX_TRADES:
+                        trades = trades[-SHADOW_MAX_TRADES:]  # the newest ones; keeps the pipeline's run time bounded
+                except Exception as error:  # noqa: BLE001 - the shadow must never stop a journal step
+                    trades = None
+                    logging.getLogger(__name__).warning("score shadow: no trades (%s)", type(error).__name__)
+            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile, trades=trades)
             plans = plans_from_model(model)
             dropped: list[str] = []
             if rule == RULE_STRUCT:
