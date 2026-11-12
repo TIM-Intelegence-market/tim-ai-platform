@@ -1,4 +1,4 @@
-"""S28 (draft): family O from the metrics archive. No look-ahead, strict parsing, results-blind count."""
+"""S28 1.0: family O from the metrics archive. No look-ahead, strict parsing, results-blind count."""
 from __future__ import annotations
 
 import math
@@ -94,6 +94,32 @@ def json_dump(obj):
     return json.dumps(obj)
 
 
-def test_evaluate_refuses_a_draft(tmp_path):
+def test_family_set_patches_and_restores_s24():
+    from src.research_lab.studies import s24
+
+    before = (s24.FAMILIES, dict(s24.FEATURES), dict(s24.FAMILY_NAMES))
+    with s28.family_set("A") as fams:
+        assert fams == ("O",) and s24.FEATURES["O"] == s28.FEATURES
+    with s28.family_set("B") as fams:
+        assert fams == (*before[0], "O") and s24.FAMILY_NAMES["O"] == s28.FAMILY_NAME
+    assert (s24.FAMILIES, s24.FEATURES, s24.FAMILY_NAMES) == before
+
+
+def test_holm_runs_over_both_variants(monkeypatch):
+    def fake(rows, fams, exits, **_):
+        p = 0.001 if fams == ["O"] else 0.2
+        crit = {"holm": False, "abstand": True}
+        return {"modelle": {"M1": {"p": p, "kriterien": dict(crit)}, "M2": {"p": 0.5, "kriterien": dict(crit)}}}
+
+    monkeypatch.setattr(s28.s27, "evaluate", fake)
+    out = s28.evaluate([], ["C", "K", "F", "G", "T", "V"], {})
+    assert out["holm"]["m"] == 4 and out["holm"]["verworfen"] == ["A:M1"]
+    assert out["urteil_je_modell"]["A:M1"] == "BESTANDEN (Kandidat)"
+    assert out["urteil_je_modell"]["B:M1"] == "NICHT BESTANDEN" and out["urteil"].startswith("BESTANDEN")
+
+
+def test_evaluate_needs_footprint(tmp_path, monkeypatch):
+    monkeypatch.setattr(s28.s22, "load", lambda *a, **k: ([], [], "x"))
+    monkeypatch.setattr(s28, "load_snapshots", lambda *a, **k: s28.Snapshots([], [], [], []))
     with pytest.raises(SystemExit):
         s28.main(["evaluate", "--out", str(tmp_path)])
