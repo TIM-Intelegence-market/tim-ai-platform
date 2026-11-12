@@ -1,6 +1,6 @@
-"""S26 (draft): effort against result per 1h candle. Does absorption, initiative or a book sweep sort trades?
+"""S26: effort against result per 1h candle. Does absorption, initiative or a book sweep sort trades?
 
-Rules: docs/research_lab/studien/S26_AUFWAND_GEGEN_ERGEBNIS_PRAEREGISTRIERUNG_ENTWURF.md (version 0.1). Source: the
+Rules: docs/research_lab/studien/S26_AUFWAND_GEGEN_ERGEBNIS_PRAEREGISTRIERUNG.md (version 1.0, frozen 2026-11-12). Source: the
 order flow video summary Uzi posted on 11.11.2026 ("Effort vs Result"), "go" the same evening. The holdout from
 2025-01-01 is never loaded.
 
@@ -23,7 +23,7 @@ Patterns, each read for the trade's direction (Long; mirrored for Short):
     SWEEP       large range (>= 1.5 ATR) on low effort (vol_rel <= 0.8), body in the trade's direction: the book was
                 thin there, continuation
 
-Nothing is fitted. ``count`` is results-blind (how often each pattern fires), ``evaluate`` refuses a draft.
+Nothing is fitted. ``count`` is results-blind (how often each pattern fires), ``evaluate`` refuses a draft (a version starting with 0).
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ from src.research_lab.data.parse import Kline
 from src.research_lab.studies import s22
 from src.research_lab.studies.s20 import HOUR, atr_series, week_of
 
-VERSION = "0.1"
+VERSION = "1.0"  # frozen 2026-11-12 on Uzi's word ("Starte die Auswertung"); a change needs a new version
 SEED = 26
 PATTERNS = ("ABSORPTION", "INITIATIVE", "SWEEP")
 BASE_HOURS = 24

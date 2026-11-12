@@ -1,9 +1,9 @@
-# S26: Aufwand gegen Ergebnis: Sortieren Absorption, Initiative und Book Sweep einer 1h-Kerze Standard-Trades? (Präregistrierung, Entwurf)
+# S26: Aufwand gegen Ergebnis: Sortieren Absorption, Initiative und Book Sweep einer 1h-Kerze Standard-Trades? (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
 | Studie | S26 (11.11.2026; S23 = Open Interest am Flip, S24 = alle Indikatoren, S25 = GARCH-Größe) |
-| Version | **0.1, Entwurf.** Regeln als Code: `src/research_lab/studies/s26.py`, Tests `tests/test_research_lab_s26.py`. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt |
+| Version | **1.0, eingefroren am 12.11.2026 auf Uzis Wort („Starte die Auswertung“), vor jedem Blick auf Ergebnisse.** Regeln als Code: `src/research_lab/studies/s26.py`, Tests `tests/test_research_lab_s26.py`. Vorher ein Zähllauf mit 0.1 (ergebnisblind). Jede Änderung braucht eine neue Version |
 | Anlass | Uzi 11.11.2026: Zusammenfassung des Videos „The Only Orderflow Guide You'll Ever Need“ (Aufwand gegen Ergebnis), „go“ auf den Vorschlag, das als eigene Kennzahl zu prüfen |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Daten | Binance Spot BTCUSDT 1h (Taker-Kaufvolumen je Kerze), USD-M Funding-Archiv; 2019-10 bis 2024-12 |
@@ -36,7 +36,7 @@ Die Schwellen sind vor jedem Blick auf Daten gesetzt (runde Werte aus der Beschr
    Training und Validierung, Validierung mindestens 50 Wochen. Ein Muster unter dem Gate wird nicht getestet.
    Zähllauf 0.1 (PS5, 11.11.2026 22:30, ergebnisblind): Training ABSORPTION 307, INITIATIVE 616, SWEEP 11;
    Validierung 307 / 666 / 19 (106 Wochen). SWEEP liegt weit unter dem Gate und wird mit diesen Regeln nicht getestet.
-2. Einfrieren als 1.0 auf Uzis Wort.
+2. Eingefroren als 1.0 am 12.11.2026 auf Uzis Wort.
 3. `evaluate` auf der PS5.
 
 ## 4. Hypothesen und Entscheidung (nur Validierung)

@@ -1,9 +1,9 @@
-# S27: Alle Indikatoren auf größeren Trades: Bleibt nach Bitunix-Kosten ein Edge? (Präregistrierung, Entwurf)
+# S27: Alle Indikatoren auf größeren Trades: Bleibt nach Bitunix-Kosten ein Edge? (Präregistrierung)
 
 | Feld | Wert |
 |---|---|
 | Studie | S27 (11.11.2026; S24 = alle Indikatoren, S25 = GARCH-Größe, S26 = Aufwand gegen Ergebnis) |
-| Version | **0.1, Entwurf.** Regeln als Code: `src/research_lab/studies/s27.py`, Tests `tests/test_research_lab_s27.py`. `evaluate` verweigert den Lauf, solange die Version mit 0 beginnt |
+| Version | **1.0, eingefroren am 12.11.2026 auf Uzis Wort („Starte die Auswertung“), vor jedem Blick auf Ergebnisse.** Regeln als Code: `src/research_lab/studies/s27.py`, Tests `tests/test_research_lab_s27.py`. Vorher ein Zähllauf mit 0.1 (ergebnisblind). Jede Änderung braucht eine neue Version |
 | Anlass | S24 1.0 ist am 11.11.2026 gescheitert: M2 sortierte echt (Abstand 0,135 R, p 0,004), aber auch die genommenen Trades verloren nach Kosten im Mittel 0,38 R. Uzi am selben Abend: „go“ für eine neue Studie mit weniger, größeren Trades |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Daten | wie S24: Binance Spot BTCUSDT 1h/30m, S8-Footprint, USD-M Funding-Archiv; 2019-10 bis 2024-12 |
@@ -42,7 +42,7 @@ am Risiko, nicht mit einem Blick auf Ergebnisse bei anderen Stops. Andere Weiten
    Abschnitt mindestens 300 vollständige Zeilen, Validierung mindestens 50 Wochen.
    Zähllauf 0.1 (PS5, 12.11.2026 00:07, Code 079170d, ergebnisblind): Training 45.764 vollständige Zeilen
    (22.882 je Richtung, 149 Wochen), Validierung 34.368 (17.184 je Richtung, 105 Wochen). Gate bestanden.
-2. Einfrieren als 1.0 auf Uzis Wort.
+2. Eingefroren als 1.0 am 12.11.2026 auf Uzis Wort.
 3. `evaluate` auf der PS5.
 
 ## 4. Entscheidung (nur Validierung)
