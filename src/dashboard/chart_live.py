@@ -94,7 +94,7 @@ GROUP_NAMES = {
     "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
-    "liq": "Liquidations-Heatmap (Schätzung)",
+    "liq": "Liquidations-Heatmap (Modell, keine echten Liquidationen)",
     "liqev": "Liquidationen (echt, Binance + Bybit)",
     "cvd": "CVD Spot vs. Perp", "delta": "Delta Volume je Kerze (gewählter Markt)", "oi": "Open Interest je Börse (Binance, Bybit) + Z-Score (7,5 T)",
     "funding": "Funding Rate (Binance Perp)", "premium": "Coinbase-Premium (USD vs. USDT)",

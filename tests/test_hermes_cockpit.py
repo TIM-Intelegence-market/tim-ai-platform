@@ -287,7 +287,7 @@ def test_daily_critic_writes_once_a_day_from_facts_and_remembers_yesterday(tmp_p
     report = daily_critic.update(store, sources, now=morning, ask=ask)
     assert report["slot"] == "2026-11-11" and "Schwäche 1" in report["text"]
     assert report["facts"] == ["Papier-Journal 15m: 7 Tage: 3 geschlossen.", "Chart: nicht lesbar (OSError)."]
-    assert "CHART AUS NUTZERSICHT" in asked[0] and "Kritik von gestern:" not in asked[0] and len(asked[0]) <= daily_critic.MAX_PROMPT
+    assert "CHART AUS NUTZERSICHT" in asked[0] and "Kritik von gestern:" not in asked[0] and "erwähne das nicht" in asked[0] and len(asked[0]) <= daily_critic.MAX_PROMPT
     assert daily_critic.update(store, sources, now=morning + timedelta(hours=1), ask=ask) is None and len(asked) == 1
     daily_critic.update(store, sources, now=morning + timedelta(days=1), ask=ask)
     assert "Kritik von gestern:\nPROJEKT: Schwäche 1" in asked[1]
@@ -307,20 +307,25 @@ def test_daily_critic_facts_come_from_journals_chart_and_cockpit(tmp_path: Path)
         _plan("b", NOW - timedelta(days=21), status="CLOSED", net_r=-1.0, closed_at=(NOW - timedelta(days=20)).isoformat()),
         _plan("c", NOW, status="OPEN")])
     assert daily_critic.journal_facts({"15m": journal}, NOW) == [
-        "Papier-Journal 15m: 7 Tage: 1 geschlossen, 1 im Plus, +1.50 R netto; 30 Tage: 2 geschlossen, 1 im Plus, +0.50 R netto."]
+        ("Papier-Journal 15m: 7 Tage: 1 geschlossen, 1 im Plus, +1.50 R netto (kleine Stichprobe, unter 30); "
+         "30 Tage: 2 geschlossen, 1 im Plus, +0.50 R netto (kleine Stichprobe, unter 30).")]
+    empty = _journal(tmp_path / "long.json", [_plan("d", NOW, status="OPEN")])
+    assert daily_critic.journal_facts({"1d": empty}, NOW) == [
+        "Papier-Journal 1d: 7 Tage: kein Plan geschlossen, keine Evidenz; 30 Tage: kein Plan geschlossen, keine Evidenz."]
     shadow = tmp_path / "shadow.json"
-    shadow.write_text(json.dumps({"summary": {"closed": 4, "target": 30, "by_gate": {"GEGEN": {"n": 4, "sum_net_r": -2.0}}}}))
+    shadow.write_text(json.dumps({"summary": {"plans": 9, "with_lage": 6, "closed": 4, "target": 30, "by_gate": {"GEGEN": {"n": 4, "sum_net_r": -2.0}}}}))
     assert daily_critic.shadow_facts({"Orderflow-Schatten": shadow, "Zweitmeinung": tmp_path / "none.json"}) == [
-        "Orderflow-Schatten: 4 von 30 geschlossenen Plänen (GEGEN 4 Pläne -2.00 R).", "Zweitmeinung: noch keine Auswertung."]
+        ("Orderflow-Schatten: Abdeckung 6 von 9 Plänen mit Daten; Urteil braucht 30 geschlossene Pläne, bisher 4, noch nicht belastbar "
+         "(GEGEN 4 Pläne -2.00 R)."), "Zweitmeinung: noch keine Auswertung."]
     chart = daily_critic.chart_facts({"symbol": "BTCUSDT", "timeframe": "30m", "candles": [{}] * 300, "last_closed": "2026-11-08T14:30:00+00:00",
                                       "groups": {"day": "Tag", "vwap": "VWAP"}, "default_groups": ["day"],
                                       "drawings": [{"group": "day"}, {"group": "day"}], "plans": [{}], "bubbles": {"items": []},
                                       "footprint": {"bars": []}, "liquidation": None, "notes": ["Footprint: keine Trades"]}, 0.42)
     assert "300 Kerzen" in chart[0] and "gebaut in 0.4 s" in chart[0] and "day 2" in chart[1]
     assert "1 Pläne, 0 Volumen-Blasen" in chart[2] and "Liquidations-Karte fehlt" in chart[2] and chart[3] == "Hinweis im Chart: Footprint: keine Trades"
-    cockpit = daily_critic.cockpit_facts({"headline": "1 Fehler", "system": [{"state": "fail"}, {"state": "ok"}], "market": [{"state": "unknown"}],
+    cockpit = daily_critic.cockpit_facts({"headline": "1 Fehler", "system": [{"state": "fail"}, {"state": "ok"}], "market": [{"state": "unknown", "label": "Bias", "reason": "keine 1d-Kerzen"}],
                                           "attention": [{"label": "Watchdog", "value": "rot", "reason": "runtime"}]})
-    assert cockpit == ["Control Center: 1 Fehler; 3 Kacheln, 1 rot, 0 gelb, 1 ohne Daten.", "Braucht einen Blick: Watchdog: rot (runtime)."]
+    assert cockpit == ["Control Center: 1 Fehler; 3 Kacheln, 1 rot, 0 gelb, 1 ohne Daten.", "Kachel ohne Daten: Bias: keine 1d-Kerzen.", "Braucht einen Blick: Watchdog: rot (runtime)."]
     assert daily_critic.merge_facts(tmp_path) == ["Merges: Git-Verlauf nicht lesbar."]
 
 
@@ -339,3 +344,20 @@ def test_daily_critic_reads_the_running_state_and_shows_on_the_page(home: Path, 
                         ask=lambda text: {"ok": True, "answer": "PROJEKT: <b>dünn</b>"})
     html = render_hermes(build_hermes(state, NOW, can_ask=False))
     assert "PROJEKT: &lt;b&gt;dünn&lt;/b&gt;" in html and "Fakt &lt;eins&gt;" in html and "id='h-critic'" in html
+
+
+# --- Kritikpunkte von Hermes umgesetzt (Uzi 12.11.2026) ---
+
+def test_empty_journals_read_as_no_evidence_and_small_samples_are_named(tmp_path: Path) -> None:
+    from src.dashboard import daily_report, orderflow_shadow
+    from src.dashboard.chart_live import GROUP_NAMES
+    from src.dashboard.cockpit.lage import MIN_SAMPLE, net_evidence
+
+    assert net_evidence(0, 0.0) == "noch keine Evidenz (kein Plan geschlossen)" and "0,00" not in net_evidence(None, 0.0)
+    assert net_evidence(5, 1.5) == f"netto +1,50 R (kleine Stichprobe, unter {MIN_SAMPLE})" and net_evidence(MIN_SAMPLE, -2) == "netto -2,00 R"
+    journal = _journal(tmp_path / "long.json", [_plan("a", NOW, status="OPEN")])
+    lines = daily_report.facts({"1d": journal}, None, [], NOW.replace(hour=0), NOW)
+    assert "Papier-Journal 1d: 1 neue Pläne, keiner geschlossen, also kein Ergebnis." in lines and not any("+0.00 R" in line for line in lines)
+    assert "Modell" in GROUP_NAMES["liq"] and "keine echten" in GROUP_NAMES["liq"]
+    summary = orderflow_shadow.summary({"plans": {"a": {"lage_at_plan": {"price": 1}}, "b": {"lage_at_plan": None}}})
+    assert summary["plans"] == 2 and summary["with_lage"] == 1

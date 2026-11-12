@@ -150,7 +150,7 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
             row["n"] += 1
             row["sum_net_r"] = round(row["sum_net_r"] + float(plan["journal"]["net_r"]), 4)
     with_exit = [p for p in closed if p.get("of_exit")]
-    return {"plans": len(plans), "closed": len(closed), "target": TARGET_TRADES, "judgeable": len(closed) >= TARGET_TRADES,
+    return {"plans": len(plans), "with_lage": sum(bool(p.get("lage_at_plan")) for p in plans), "closed": len(closed), "target": TARGET_TRADES, "judgeable": len(closed) >= TARGET_TRADES,
             "by_gate": by_gate, "by_session": by_session, "by_volume": by_volume,
             "of_exit": {"n": len(with_exit),
                         "sum_shadow_net_r": round(sum(float(p["of_exit"]["net_r"]) for p in with_exit), 4),
