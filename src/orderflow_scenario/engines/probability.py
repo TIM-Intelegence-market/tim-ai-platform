@@ -37,65 +37,75 @@ class ProbabilityEngine:
     def evaluate(self, inputs: Sequence[ProbabilityEngineInput]) -> tuple[Scenario, ...]:
         scored: list[Scenario] = []
         for item in inputs:
-            raw = self._score(item)
-            scored.append(_replace(item.scenario, raw, item))
+            raw, parts = self._score_parts(item)
+            scored.append(_replace(item.scenario, raw, item, parts))
         return tuple(scored)
 
     def _score(self, item: ProbabilityEngineInput) -> Decimal:
+        return self._score_parts(item)[0]
+
+    def _score_parts(self, item: ProbabilityEngineInput) -> tuple[Decimal, dict[str, float]]:
+        """Score plus the single contributions (journal only, so hints can be tested against outcomes)."""
         if item.empirical_hit_rate is not None and item.historical_similarity is not None:
             # Empirical calibration present for this exact scenario type.
             score = item.empirical_hit_rate * Decimal("0.6") + item.historical_similarity * Decimal("0.4")
-            return _bounded(score)
+            return _bounded(score), {"empirical": float(score)}
 
         # Heuristic weighting.
-        score = Decimal("0.30")
+        parts: dict[str, Decimal] = {"basis": Decimal("0.30")}
         scenario = item.scenario
         ms = item.market_state
         of = item.orderflow
 
         if scenario.direction.value == "LONG":
             if ms.primary.value in {"TREND_UP", "BREAKOUT_ATTEMPT", "ACCEPTANCE_ABOVE_VALUE", "LIQUIDITY_SWEEP_LOW"}:
-                score += Decimal("0.12")
+                parts["marktzustand"] = Decimal("0.12")
             if of.aggressive_side == "BUYERS":
-                score += Decimal("0.08")
+                parts["aggressor"] = Decimal("0.08")
             if of.aggressive_side == "SELLERS":
-                score -= Decimal("0.06")
+                parts["aggressor"] = Decimal("-0.06")
         elif scenario.direction.value == "SHORT":
             if ms.primary.value in {"TREND_DOWN", "BREAKDOWN_ATTEMPT", "ACCEPTANCE_BELOW_VALUE", "REJECTION_ABOVE_VALUE"}:
-                score += Decimal("0.12")
+                parts["marktzustand"] = Decimal("0.12")
             if of.aggressive_side == "SELLERS":
-                score += Decimal("0.08")
+                parts["aggressor"] = Decimal("0.08")
             if of.aggressive_side == "BUYERS":
-                score -= Decimal("0.06")
+                parts["aggressor"] = Decimal("-0.06")
 
         if scenario.evidence_for:
-            score += Decimal("0.04") * min(len(scenario.evidence_for), 3)
+            parts["belege_dafuer"] = Decimal("0.04") * min(len(scenario.evidence_for), 3)
         if scenario.evidence_against:
-            score -= Decimal("0.05") * min(len(scenario.evidence_against), 2)
+            parts["belege_dagegen"] = -Decimal("0.05") * min(len(scenario.evidence_against), 2)
         if of.absorption_confirmed or of.exhaustion_confirmed:
-            score += Decimal("0.06")
+            parts["absorption"] = Decimal("0.06")
         if of.open_interest_interpretation and "accumulation" in of.open_interest_interpretation:
-            score += Decimal("0.03")
+            parts["oi"] = Decimal("0.03")
         # Positioning hints (positioning._bias_hints): small, heuristic, never a confirmation.
         direction = scenario.direction.value
+        hint_sum = ZERO
         for hint in of.positioning.get("bias_hints", ()):
             relation, _, _ = hint.partition(":")
             if relation == f"with_{direction.lower()}":
-                score += Decimal("0.03")
+                hint_sum += Decimal("0.03")
             elif relation == f"against_{direction.lower()}":
-                score -= Decimal("0.03")
+                hint_sum -= Decimal("0.03")
+        if hint_sum:
+            parts["positionierung"] = hint_sum
 
+        score = sum(parts.values(), ZERO)
         if item.data_quality_confidence is not None:
-            score *= item.data_quality_confidence * Decimal("0.5") + Decimal("0.5")
+            factor = item.data_quality_confidence * Decimal("0.5") + Decimal("0.5")
+            score *= factor
+            parts["datenqualitaet_faktor"] = factor
 
-        return _bounded(score)
+        return _bounded(score), {k: float(v) for k, v in parts.items()}
 
 
 def _bounded(value: Decimal) -> Decimal:
     return max(ZERO, min(Decimal("1"), value))
 
 
-def _replace(scenario: Scenario, score: Decimal, item: ProbabilityEngineInput) -> Scenario:
+def _replace(scenario: Scenario, score: Decimal, item: ProbabilityEngineInput, parts: dict[str, float] | None = None) -> Scenario:
     probability_type = ProbabilityType.UNCALIBRATED_CONFIDENCE
     if item.empirical_hit_rate is not None and item.historical_similarity is not None:
         probability_type = ProbabilityType.EMPIRICALLY_CALIBRATED
@@ -118,5 +128,5 @@ def _replace(scenario: Scenario, score: Decimal, item: ProbabilityEngineInput) -
         score_type=probability_type,
         state=scenario.state,
         confirmation=scenario.confirmation,
-        trade_template=scenario.trade_template,
+        trade_template={**scenario.trade_template, "score_parts": parts} if parts else scenario.trade_template,
     )

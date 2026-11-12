@@ -394,6 +394,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
             "state": scenario.state.value,
             "score": _flt(scenario.score),
             "score_type": scenario.score_type.value,
+            "score_parts": {**(scenario.trade_template.get("score_parts") or {}), **({"broncx": float(scenario.trade_template["external_weight"])} if scenario.trade_template.get("external_weight") else {})} or None,
             "trigger": _flt(scenario.trigger_level),
             "entry_low": _flt(scenario.entry_zone_low),
             "entry_high": _flt(scenario.entry_zone_high),

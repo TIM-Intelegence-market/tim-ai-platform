@@ -250,6 +250,7 @@ def plans_from_model(model: Mapping[str, Any]) -> list[dict[str, Any]]:
             "invalidation_side": invalid.get("side"),
             "scenario_state": scenario.get("state"),
             "score": scenario.get("score"),
+            "score_parts": scenario.get("score_parts"),
             "missing_confirmations": list(scenario.get("missing_confirmations") or []),
             "pipeline_decision": (analysis.get("decision") or {}).get("status"),
             "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
