@@ -4,20 +4,22 @@ Rules: docs/research_lab/studien/S32_ORDERBUCH_UNGLEICHGEWICHT_PRAEREGISTRIERUNG
 Data: Tardis.dev ``incremental_book_L2`` for Binance USDⓈ-M BTCUSDT, only the free first day of each month,
 2020-06 to 2024-12 (``depth.tardis`` refuses other days and the holdout from 2025-01-01).
 
-The trader's chain, all parameters fixed in :class:`Config` (no search):
+The trader's chain, all parameters fixed in :class:`Config`:
 
 1. per second: mid and the book quantity within ±5 bp of the mid on each side (``LocalBook.band_qty``);
 2. range: high and low of the mid over the last 15 minutes, width 20–60 bp;
 3. both edges defended: each edge touched and left again by at least a quarter of the width, at least three
    touches in total;
-4. trigger: mid in the lower quarter (long) or upper quarter (short) of the range and the opposite side of the
-   book at most half as large as the own side, without interruption for 3 seconds;
-5. outcome: entry one second later at the mid, target the middle of the range, stop 5 bp beyond the edge,
+4. position: mid in the lower quarter (long) or upper quarter (short) of the range;
+5. book: the ratio own side / opposite side (bid/ask for long), as the lowest value of the last 3 seconds. There is
+   no threshold: every ratio is recorded (Barti 13.11.2026: "alle Schiefwinkel ausprobieren");
+6. outcome: entry one second later at the mid, target the middle of the range, stop 5 bp beyond the edge,
    at most 300 seconds.
 
-Control events ("range position alone") are the same chain with the book condition NOT met. H1 asks whether the
-book adds to the range: does the chain reach the target first more often than the control? H2 asks whether the
-chain is positive after TIM costs (protocol 1.3: taker fee and slippage).
+H1 uses all ratios in ONE test: does the chance to reach the target first rise with the ratio (slope over the log
+ratio)? One trend test instead of one test per threshold keeps the number of trials at one. H2 asks whether events
+with a ratio of at least 2 (the video's range, fixed in advance) are positive after TIM costs. The table per ratio
+bin is descriptive only.
 
 ``count`` is results-blind (event counts only). ``evaluate`` refuses to run while ``VERSION`` is a draft.
 Stdlib only, plus the order book package.
@@ -32,21 +34,26 @@ import csv
 import gzip
 import hashlib
 import json
+import math
 import random
 from collections import deque
 from collections.abc import Iterator, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
+from itertools import pairwise
 from pathlib import Path
 
 from src.research_lab.depth import tardis
 from src.research_lab.depth.book import ASK, BID, SCALE, LocalBook
 from src.research_lab.protocol import BASE_COSTS, STRESS_COSTS, CostModel
 
-VERSION = "0.2"
+VERSION = "0.3"
 SEED = 32
 TRAINING_END = date(2022, 12, 31)
-MIN_EVENTS = 100  # per section and group (chain, control), else "nicht prüfbar"
+MIN_EVENTS = 300  # per section, all ratios, else "nicht prüfbar"
+MIN_H2 = 100  # per section, ratio >= Config.ratio
+RATIO_CAP = 100.0  # an empty opposite side counts as 100:1
+BINS = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, float("inf"))
 BOOT_DRAWS = 9_999
 ALPHA = 0.05
 
@@ -54,7 +61,7 @@ ALPHA = 0.05
 @dataclass(frozen=True)
 class Config:
     band_bp: int = 5  # P1: book quantity within ±5 bp of the mid
-    ratio: float = 2.0  # P2: own side at least twice the opposite side
+    ratio: float = 2.0  # H2 group: own side at least twice the opposite side (bins are descriptive)
     hold_s: int = 3  # P3: imbalance held without interruption
     window_s: int = 900  # P4: range window, 15 minutes
     width_min_bp: float = 20.0  # P5
@@ -67,7 +74,7 @@ class Config:
     entry_delay_s: int = 1  # P9
     stop_bp: float = 5.0  # P9: beyond the edge
     horizon_s: int = 300  # P9
-    cooldown_s: int = 300  # one event per 300 s and group, so outcome windows do not overlap
+    cooldown_s: int = 300  # one event per 300 s, so outcome windows do not overlap
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
@@ -88,7 +95,7 @@ class Event:
     day: str
     i: int  # second of the day (UTC)
     side: int  # +1 long, -1 short
-    chain: bool  # True: book condition met; False: control (range position alone)
+    ratio: float  # own side / opposite side, lowest value of the last hold_s seconds
     lo: float
     hi: float
 
@@ -163,23 +170,21 @@ def defended(window: Sequence[float], lo: float, hi: float, cfg: Config = CONFIG
     return r_lo >= 1 and r_hi >= 1 and t_lo + t_hi >= cfg.min_touches
 
 
-def book_side(s: Second, cfg: Config = CONFIG) -> int:
-    """+1 if the ask side is thin (bid ≥ ratio × ask), −1 if the bid side is thin, 0 otherwise."""
-    if s.bid_q >= cfg.ratio * s.ask_q and s.bid_q > 0:
-        return 1
-    if s.ask_q >= cfg.ratio * s.bid_q and s.ask_q > 0:
-        return -1
-    return 0
+def side_ratio(s: Second, side: int) -> float | None:
+    """Own side / opposite side (bid/ask for long, ask/bid for short); None for an empty book in the band."""
+    own, opp = (s.bid_q, s.ask_q) if side > 0 else (s.ask_q, s.bid_q)
+    if own <= 0 and opp <= 0:
+        return None
+    return RATIO_CAP if opp <= 0 else min(own / opp, RATIO_CAP)
 
 
 def find_events(secs: Sequence[Second | None], day: str, cfg: Config = CONFIG) -> list[Event]:
-    """Chain and control events of one day. The first ``window_s`` seconds of a day are warm-up."""
+    """Events of one day, every ratio. The first ``window_s`` seconds of a day are warm-up."""
     events: list[Event] = []
-    last = {True: -10**9, False: -10**9}
+    last = -10**9
     lo_q: deque[tuple[int, float]] = deque()
     hi_q: deque[tuple[int, float]] = deque()
     valid_in_window = 0
-    run_side, run_len = 0, 0
     for i, s in enumerate(secs):
         if i - cfg.window_s >= 0 and secs[i - cfg.window_s] is not None:
             valid_in_window -= 1
@@ -188,7 +193,6 @@ def find_events(secs: Sequence[Second | None], day: str, cfg: Config = CONFIG) -
         while hi_q and hi_q[0][0] <= i - cfg.window_s:
             hi_q.popleft()
         if s is None:
-            run_side, run_len = 0, 0
             continue
         valid_in_window += 1
         while lo_q and lo_q[-1][1] >= s.mid:
@@ -197,10 +201,7 @@ def find_events(secs: Sequence[Second | None], day: str, cfg: Config = CONFIG) -
         while hi_q and hi_q[-1][1] <= s.mid:
             hi_q.pop()
         hi_q.append((i, s.mid))
-        side = book_side(s, cfg)
-        run_len = run_len + 1 if side == run_side and side != 0 else (1 if side != 0 else 0)
-        run_side = side
-        if i < cfg.window_s or valid_in_window < cfg.min_valid_share * cfg.window_s:
+        if i < cfg.window_s or i - last < cfg.cooldown_s or valid_in_window < cfg.min_valid_share * cfg.window_s:
             continue
         lo, hi = lo_q[0][1], hi_q[0][1]
         width_bp = (hi - lo) / s.mid * 10_000
@@ -210,18 +211,25 @@ def find_events(secs: Sequence[Second | None], day: str, cfg: Config = CONFIG) -
         want = 1 if pos <= cfg.position else (-1 if pos >= 1 - cfg.position else 0)
         if want == 0:
             continue
-        chain = run_side == want and run_len >= cfg.hold_s
-        control = side != want  # range position alone: the book does not point the same way at t
-        if not chain and not control:
+        recent = secs[i - cfg.hold_s + 1: i + 1]
+        if any(x is None for x in recent):
             continue
-        if i - last[chain] < cfg.cooldown_s:
+        ratios = [side_ratio(x, want) for x in recent]
+        if any(r is None for r in ratios):
             continue
         window = [x.mid for x in secs[i - cfg.window_s + 1: i + 1] if x is not None]
         if not defended(window, lo, hi, cfg):
             continue
-        last[chain] = i
-        events.append(Event(day=day, i=i, side=want, chain=chain, lo=lo, hi=hi))
+        last = i
+        events.append(Event(day=day, i=i, side=want, ratio=min(ratios), lo=lo, hi=hi))
     return events
+
+
+def bin_label(r: float) -> str:
+    for lo, hi in pairwise(BINS):
+        if lo <= r < hi:
+            return f"{lo:g}-{hi:g}" if hi != float("inf") else f">={lo:g}"
+    return f">={BINS[-2]:g}"
 
 
 # -- outcome -----------------------------------------------------------------------------------------------
@@ -289,25 +297,41 @@ def load_day(folder: Path, day: date, *, fetch: bool) -> list[Second | None]:
     return seconds_from_book_csv(path, day)
 
 
-def count(events_by_day: dict[date, list[Event]]) -> dict:
-    """Results-blind: number of chain and control events per section, side and day. No outcome is computed."""
+def count(events_by_day: dict[date, list[Event]], cfg: Config = CONFIG) -> dict:
+    """Results-blind: events per section, ratio bin and side, and per day. No outcome is computed."""
     out: dict = {"training": {}, "validierung": {}, "je_tag": {}}
     for day, evs in sorted(events_by_day.items()):
         sec = out[section(day)]
         for e in evs:
-            key = f"{'kette' if e.chain else 'kontrolle'}_{'long' if e.side > 0 else 'short'}"
+            key = f"{bin_label(e.ratio)}_{'long' if e.side > 0 else 'short'}"
             sec[key] = sec.get(key, 0) + 1
-        out["je_tag"][day.isoformat()] = {"kette": sum(e.chain for e in evs),
-                                         "kontrolle": sum(not e.chain for e in evs)}
+        out["je_tag"][day.isoformat()] = len(evs)
     for name in ("training", "validierung"):
-        sec = out[name]
-        k = sec.get("kette_long", 0) + sec.get("kette_short", 0)
-        c = sec.get("kontrolle_long", 0) + sec.get("kontrolle_short", 0)
-        sec["pruefbar"] = k >= MIN_EVENTS and c >= MIN_EVENTS
+        evs = [e for d, es in events_by_day.items() if section(d) == name for e in es]
+        out[name]["alle"] = len(evs)
+        out[name]["ab_schwelle"] = sum(e.ratio >= cfg.ratio for e in evs)
+        out[name]["pruefbar"] = len(evs) >= MIN_EVENTS and out[name]["ab_schwelle"] >= MIN_H2
     return out
 
 
-def _boot_lower(days: list[list[tuple[bool, float]]], stat, draws: int, rng: random.Random) -> float:
+def _log_ratio(r: float) -> float:
+    return math.log(min(max(r, 0.1), 10.0))  # clipped to 1:10 ... 10:1 so a few extremes do not dominate
+
+
+def slope(rows: Sequence[tuple[float, Outcome]]) -> float | None:
+    """OLS slope of "target first" (0/1) on the clipped log ratio."""
+    if len(rows) < 3:
+        return None
+    xs = [_log_ratio(r) for r, _ in rows]
+    ys = [1.0 if o.exit == "target" else 0.0 for _, o in rows]
+    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+    sxx = sum((x - mx) ** 2 for x in xs)
+    if sxx <= 0:
+        return None
+    return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx
+
+
+def _boot_lower(days: list[list[tuple[float, Outcome]]], stat, draws: int, rng: random.Random) -> float:
     """One-sided lower (1 − ALPHA/2) bound of ``stat``, days resampled with replacement (block bootstrap)."""
     vals = []
     for _ in range(draws):
@@ -320,37 +344,36 @@ def _boot_lower(days: list[list[tuple[bool, float]]], stat, draws: int, rng: ran
 
 
 def evaluate(results: dict[date, list[tuple[Event, Outcome]]], *, version: str = VERSION,
-             draws: int = BOOT_DRAWS) -> dict:
+             draws: int = BOOT_DRAWS, cfg: Config = CONFIG) -> dict:
     if not version.startswith("1."):
         raise PermissionError("evaluate runs only after the rules are frozen as 1.0 (section 8)")
     rng = random.Random(SEED)
     out: dict = {}
     for name in ("training", "validierung"):
-        days = [[(e.chain, o) for e, o in rs if o.exit in ("target", "stop", "time")]
+        days = [[(e.ratio, o) for e, o in rs if o.exit in ("target", "stop", "time")]
                 for d, rs in sorted(results.items()) if section(d) == name]
         days = [d for d in days if d]
         flat = [r for d in days for r in d]
 
-        def rate(rows, chain):
-            xs = [o.exit == "target" for c, o in rows if c is chain]
-            return sum(xs) / len(xs) if xs else None
-
-        def diff(rows):
-            a, b = rate(rows, True), rate(rows, False)
-            return None if a is None or b is None else a - b
-
         def mean_net(rows, costs=BASE_COSTS):
-            xs = [net_r(o, costs) for c, o in rows if c]
+            xs = [net_r(o, costs) for r, o in rows if r >= cfg.ratio]
             return sum(xs) / len(xs) if xs else None
 
-        n_chain = sum(c for c, _ in flat)
+        bins: dict[str, dict] = {}
+        for r, o in flat:
+            b = bins.setdefault(bin_label(r), {"n": 0, "ziel": 0, "netto_r": 0.0})
+            b["n"] += 1
+            b["ziel"] += o.exit == "target"
+            b["netto_r"] += net_r(o)
+        for b in bins.values():
+            b["ziel_zuerst"] = b.pop("ziel") / b["n"]
+            b["netto_r"] /= b["n"]
+        n_h2 = sum(r >= cfg.ratio for r, _ in flat)
         out[name] = {
-            "kette": n_chain, "kontrolle": len(flat) - n_chain,
-            "pruefbar": n_chain >= MIN_EVENTS and len(flat) - n_chain >= MIN_EVENTS,
-            "ziel_zuerst_kette": rate(flat, True), "ziel_zuerst_kontrolle": rate(flat, False),
-            "h1_differenz": diff(flat), "h1_untere_grenze": _boot_lower(days, diff, draws, rng),
+            "alle": len(flat), "ab_schwelle": n_h2, "pruefbar": len(flat) >= MIN_EVENTS and n_h2 >= MIN_H2,
+            "h1_steigung": slope(flat), "h1_untere_grenze": _boot_lower(days, slope, draws, rng),
             "h2_netto_r": mean_net(flat), "h2_untere_grenze": _boot_lower(days, mean_net, draws, rng),
-            "h2_netto_r_stress": mean_net(flat, STRESS_COSTS),
+            "h2_netto_r_stress": mean_net(flat, STRESS_COSTS), "je_verhaeltnis": dict(sorted(bins.items())),
         }
     t, v = out["training"], out["validierung"]
     ok = t["pruefbar"] and v["pruefbar"]

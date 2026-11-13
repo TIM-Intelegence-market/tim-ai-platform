@@ -27,6 +27,11 @@ def _range_path(lo=100_000.0, hi=100_300.0, n=900):
     return out
 
 
+def _empty(path):
+    """Mid path with an empty band book: no event can fire before the tail."""
+    return [_sec(m, bid=0, ask=0) for m in path]
+
+
 def test_defended_needs_both_edges_and_three_touches():
     lo, hi = 100.0, 110.0
     assert s32.defended([100, 108, 101, 109, 100.5], lo, hi)
@@ -34,31 +39,32 @@ def test_defended_needs_both_edges_and_three_touches():
     assert not s32.defended([100, 110, 105], lo, hi)  # only two touches
 
 
-def test_book_side():
-    assert s32.book_side(_sec(1, bid=4, ask=2)) == 1
-    assert s32.book_side(_sec(1, bid=1, ask=2)) == -1
-    assert s32.book_side(_sec(1, bid=3, ask=2)) == 0
-    assert s32.book_side(_sec(1, bid=0, ask=0)) == 0
+def test_side_ratio():
+    assert s32.side_ratio(_sec(1, bid=4, ask=2), 1) == pytest.approx(2.0)
+    assert s32.side_ratio(_sec(1, bid=4, ask=2), -1) == pytest.approx(0.5)
+    assert s32.side_ratio(_sec(1, bid=3, ask=0), 1) == s32.RATIO_CAP
+    assert s32.side_ratio(_sec(1, bid=0, ask=0), 1) is None
 
 
-def test_find_events_chain_and_control():
+def test_find_events_records_every_ratio():
     path = _range_path()
-    secs = [_sec(m) for m in path]
-    # last 3 seconds: bid side twice the ask side -> ask thin -> long chain
-    secs += [_sec(path[-1], bid=3, ask=1) for _ in range(3)]
-    evs = s32.find_events(secs, "2020-06-01")
-    chain = [e for e in evs if e.chain]
-    assert chain and chain[-1].side == 1 and chain[-1].i == len(secs) - 1
-    assert chain[-1].lo == pytest.approx(100_000.0) and chain[-1].hi == pytest.approx(100_300.0)
-    # without the book condition only control events
-    plain = s32.find_events([_sec(m) for m in path] + [_sec(path[-1])] * 3, "2020-06-01")
-    assert plain and not any(e.chain for e in plain)
+    for bid, ask in ((3, 1), (1, 1), (1, 4)):
+        secs = _empty(path) + [_sec(path[-1], bid=bid, ask=ask) for _ in range(3)]
+        evs = s32.find_events(secs, "2020-06-01")
+        assert evs and evs[-1].side == 1 and evs[-1].i == len(secs) - 1
+        assert evs[-1].ratio == pytest.approx(bid / ask)  # no threshold: weak and inverted books count too
+        assert evs[-1].lo == pytest.approx(100_000.0) and evs[-1].hi == pytest.approx(100_300.0)
 
 
-def test_imbalance_must_hold_three_seconds():
+def test_ratio_is_lowest_of_last_three_seconds():
     path = _range_path()
-    secs = [_sec(m) for m in path] + [_sec(path[-1], bid=3, ask=1)] * 2
-    assert not any(e.chain for e in s32.find_events(secs, "d"))
+    tail = [_sec(path[-1], bid=b, ask=1) for b in (5, 2, 4)]
+    assert s32.find_events(_empty(path) + tail, "d")[-1].ratio == pytest.approx(2.0)
+
+
+def test_bin_label():
+    assert s32.bin_label(0.3) == "0-0.5" and s32.bin_label(2.0) == "2-3" and s32.bin_label(7) == ">=5"
+    assert s32.bin_label(s32.RATIO_CAP) == ">=5"
 
 
 def test_range_width_limits():
@@ -67,11 +73,10 @@ def test_range_width_limits():
     assert s32.find_events(narrow, "d") == [] and s32.find_events(wide, "d") == []
 
 
-def test_cooldown_per_group():
+def test_cooldown():
     path = _range_path()
     secs = [_sec(m) for m in path] + [_sec(path[-1], bid=3, ask=1)] * 60
-    chain = [e for e in s32.find_events(secs, "d") if e.chain]
-    assert len(chain) == 1
+    assert len(s32.find_events(secs, "d")) == 1
 
 
 def test_window_needs_valid_book():
@@ -81,8 +86,8 @@ def test_window_needs_valid_book():
     assert s32.find_events(secs, "d") == []
 
 
-def _ev(side=1):
-    return Event(day="d", i=0, side=side, chain=True, lo=100.0, hi=110.0)
+def _ev(side=1, ratio=2.5):
+    return Event(day="d", i=0, side=side, ratio=ratio, lo=100.0, hi=110.0)
 
 
 def test_outcome_target_stop_time():
@@ -125,16 +130,36 @@ def test_holdout_and_non_free_days_refused(tmp_path):
 
 def test_evaluate_locked_while_draft():
     with pytest.raises(PermissionError):
-        s32.evaluate({}, version="0.2")
+        s32.evaluate({}, version="0.3")
     assert s32.VERSION.startswith("0.")
 
 
 def test_count_is_results_blind():
-    evs = {date(2020, 6, 1): [_ev(), Event("d", 5, -1, False, 1.0, 2.0)]}
+    evs = {date(2020, 6, 1): [_ev(), Event("d", 5, -1, 0.7, 1.0, 2.0)]}
     c = s32.count(evs)
-    assert c["training"]["kette_long"] == 1 and c["training"]["kontrolle_short"] == 1
+    assert c["training"]["2-3_long"] == 1 and c["training"]["0.5-1_short"] == 1
+    assert c["training"]["alle"] == 2 and c["training"]["ab_schwelle"] == 1
     assert c["training"]["pruefbar"] is False
     assert "ziel" not in str(c)
+
+
+def test_slope_rises_with_ratio():
+    hit, miss = Outcome("target", 10.0, 10.0), Outcome("stop", -10.0, 10.0)
+    rows = [(0.5, miss), (0.5, miss), (1.0, miss), (1.0, hit), (3.0, hit), (3.0, hit)]
+    assert s32.slope(rows) > 0
+    assert s32.slope([(r, hit) for r, _ in rows]) == pytest.approx(0.0)
+    assert s32.slope([(2.0, hit)] * 5) is None  # no spread in the ratio
+
+
+def test_evaluate_runs_once_frozen():
+    hit, miss = Outcome("target", 30.0, 10.0), Outcome("stop", -10.0, 10.0)
+    res = {}
+    for d in (date(2020, 6, 1), date(2020, 7, 1), date(2023, 6, 1), date(2023, 7, 1)):
+        res[d] = [(_ev(ratio=r), o) for r, o in ((0.5, miss), (1.0, miss), (3.0, hit), (4.0, hit))]
+    out = s32.evaluate(res, version="1.0", draws=200)
+    assert out["training"]["h1_steigung"] > 0 and out["training"]["pruefbar"] is False
+    assert out["h1_bestanden"] is False  # too few events: never passes
+    assert set(out["training"]["je_verhaeltnis"]) == {"0.5-1", "1-1.5", "3-5"}
 
 
 def test_seconds_from_book_csv(tmp_path):
