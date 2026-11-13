@@ -97,3 +97,106 @@ def test_journal_step_asks_for_trades_only_up_to_the_plan_moment(tmp_path) -> No
     now = datetime(2026, 10, 22, tzinfo=timezone.utc) + timedelta(minutes=30 * 90)
     pj.update(tmp_path / "j.json", series, now, trades_fn=source)
     assert len(asked) == 1 and asked[0][1] <= now and asked[0][1] - asked[0][0] <= timedelta(hours=2)
+
+
+def _fake_fetch(at: datetime, funding_time_offset: timedelta = timedelta(hours=-3)):
+    def fetch(url: str):
+        if "fundingRate" in url:
+            return [{"symbol": "BTCUSDT", "fundingTime": int((at + funding_time_offset).timestamp() * 1000), "fundingRate": "0.00010000"},
+                    {"symbol": "BTCUSDT", "fundingTime": int((at - timedelta(hours=8, minutes=5)).timestamp() * 1000), "fundingRate": "0.00050000"}]
+        if "openInterestHist" in url:
+            return [{"timestamp": int((at + timedelta(hours=h)).timestamp() * 1000), "sumOpenInterest": str(1000 + 10 * h)} for h in range(-5, 3)]
+        raise AssertionError(url)
+    return fetch
+
+
+def test_positioning_uses_only_data_up_to_the_plan_moment() -> None:
+    from src.dashboard.shadow_positioning import positioning_at
+
+    at = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+    result = positioning_at("BTCUSDT", at, _fake_fetch(at))
+    assert result is not None and float(result.funding_rate) == 0.0001
+    assert result.open_interest and max(t for t, _ in result.open_interest) <= at
+    future = positioning_at("BTCUSDT", at, _fake_fetch(at, timedelta(hours=2)))
+    assert future is not None and float(future.funding_rate) == 0.0005  # the settlement after the plan is skipped, the older one counts
+
+
+def test_positioning_survives_failures_and_empty_answers() -> None:
+    from src.dashboard.shadow_positioning import positioning_at
+
+    at = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+
+    def broken(url: str):
+        raise TimeoutError(url)
+
+    assert positioning_at("BTCUSDT", at, broken) is None
+    assert positioning_at("BTCUSDT", at, lambda url: []) is None
+
+
+def test_shadow_score_records_positioning_when_given() -> None:
+    from src.dashboard.shadow_positioning import positioning_at
+
+    candles = _candles()
+    now = candles[-1]["close_time"] + timedelta(seconds=1)
+    positioning = positioning_at("BTCUSDT", now, _fake_fetch(now))
+    base = run_scenarios(candles, "30m", None, now, _trades(candles))
+    with_pos = run_scenarios(candles, "30m", None, now, _trades(candles), positioning)
+    strip = lambda a: [{k: v for k, v in s.items() if k != "score_schatten"} for s in a["scenarios"]]
+    assert strip(base) == strip(with_pos)  # the live result stays as it is
+    found = [s["score_schatten"] for s in with_pos["scenarios"] if "score_schatten" in s]
+    assert found and all("positioning" in f["daten"] and f["positionierung"]["funding"] == 0.0001 for f in found)
+
+
+def test_positioning_takes_the_newest_settlement_up_to_the_plan_and_survives_bad_rows() -> None:
+    from src.dashboard.shadow_positioning import positioning_at
+
+    at = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+
+    def fetch(url: str):
+        if "fundingRate" in url:
+            return [{"fundingTime": "x", "fundingRate": "0.1"}, {"fundingTime": int((at - timedelta(hours=3)).timestamp() * 1000), "fundingRate": "NaN"},
+                    {"fundingTime": int((at - timedelta(hours=1)).timestamp() * 1000), "fundingRate": "0.0002"}, {"nonsense": 1}]
+        return [{"timestamp": int(at.timestamp() * 1000), "sumOpenInterest": "-1"}]
+
+    result = positioning_at("BTCUSDT", at, fetch)
+    assert result is not None and float(result.funding_rate) == 0.0002 and result.open_interest == ()
+
+
+def test_rate_limit_pauses_further_calls(monkeypatch) -> None:
+    from urllib.error import HTTPError
+
+    from src.dashboard import shadow_positioning as sp
+
+    calls = []
+
+    def limited(url: str):
+        calls.append(url)
+        raise HTTPError(url, 429, "slow down", None, None)
+
+    monkeypatch.setattr(sp, "fetch_json", limited)
+    monkeypatch.setattr(sp, "_blocked_until", 0.0)
+    monkeypatch.setattr(sp, "_cache", {})
+    at = datetime(2026, 11, 12, 13, 0, tzinfo=timezone.utc)
+    assert sp.positioning_at("BTCUSDT", at) is None
+    first = len(calls)
+    assert sp.positioning_at("BTCUSDT", at + timedelta(hours=1)) is None
+    assert first >= 1 and len(calls) == first  # no new call during the pause
+
+
+def test_positioning_is_cached_per_plan_moment(monkeypatch) -> None:
+    from src.dashboard import shadow_positioning as sp
+
+    calls = []
+    at = datetime(2026, 11, 12, 14, 0, tzinfo=timezone.utc)
+    inner = _fake_fetch(at)
+
+    def counting(url: str):
+        calls.append(url)
+        return inner(url)
+
+    monkeypatch.setattr(sp, "fetch_json", counting)
+    monkeypatch.setattr(sp, "_blocked_until", 0.0)
+    monkeypatch.setattr(sp, "_cache", {})
+    first = sp.positioning_at("BTCUSDT", at)
+    again = sp.positioning_at("BTCUSDT", at)
+    assert first is not None and again is first and len(calls) == 2

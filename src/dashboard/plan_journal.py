@@ -1191,7 +1191,8 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
            rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None,
            gamma: Mapping[str, Any] | None = None, profile_fn: Callable[[Sequence[Mapping[str, Any]], datetime], Mapping[str, Any] | None] | None = None,
            source: str | None = None, market_type: str | None = None,
-           trades_fn: Callable[[datetime, datetime], Sequence[Any]] | None = None) -> dict[str, Any]:
+           trades_fn: Callable[[datetime, datetime], Sequence[Any]] | None = None,
+           positioning_fn: Callable[[datetime], Any] | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
@@ -1244,7 +1245,14 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 except Exception as error:  # noqa: BLE001 - the shadow must never stop a journal step
                     trades = None
                     logging.getLogger(__name__).warning("score shadow: no trades (%s)", type(error).__name__)
-            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile, trades=trades)
+            positioning = None
+            if trades and positioning_fn is not None:
+                try:  # funding and open interest as of the plan moment (Schatten-Score only)
+                    positioning = positioning_fn(latest)
+                except Exception as error:  # noqa: BLE001
+                    logging.getLogger(__name__).warning("score shadow: no positioning (%s)", type(error).__name__)
+            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile, trades=trades,
+                                      positioning=positioning)
             plans = plans_from_model(model)
             dropped: list[str] = []
             if rule == RULE_STRUCT:

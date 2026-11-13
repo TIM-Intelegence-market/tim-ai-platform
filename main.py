@@ -815,11 +815,16 @@ class TIMApplication:
                     future.cancel()  # a late database answer must not keep a connection busy
                     raise
 
-            for name, step, path in (("plan journal", partial(update_plan_journal, trades_fn=trades_fn), self.dashboard_state.plan_journal_path),
+            from src.dashboard.shadow_positioning import positioning_at
+
+            def positioning_fn(at):
+                return positioning_at(settings.symbol, at)
+
+            for name, step, path in (("plan journal", partial(update_plan_journal, trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_path),
                                      ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
                                      ("plan journal vp", partial(update_plan_journal, rule=RULE_VP, footprint=footprint, gamma=gamma), self.dashboard_state.plan_journal_vp_path),
-                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"], trades_fn=trades_fn), self.dashboard_state.plan_journal_short_path),
-                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"], trades_fn=trades_fn), self.dashboard_state.plan_journal_mid_path),
+                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_short_path),
+                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_mid_path),
                                      ("plan journal long", partial(update_plan_journal, timeframe=HORIZONS["LONG"]), self.dashboard_state.plan_journal_long_path),
                                      ("trader journal", update_trader_journal, self.dashboard_state.trader_journal_path)):
                 try:
