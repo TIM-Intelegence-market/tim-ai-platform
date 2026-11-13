@@ -31,8 +31,8 @@ Regeln; jede Zeile ist **ein** Wert.
 **Kontrolle („Range-Lage allein“):** dieselben Schritte P4–P7, aber das Buch zeigt im Auslösemoment **nicht** zur
 dünnen Seite. Sie misst, was Range und Rand ohne das Buch leisten.
 
-Bartis Wahl: **P2 = 2:1, bestätigt am 13.11.2026.** Noch offen: P5 (20–60 bp) und P9 (Mitte oder
-gegenüberliegender Rand). Ohne Änderung gelten die Werte oben. Jede Änderung nur **vor** dem Einfrieren.
+Offene Wahl von Barti (12.11.): P2 (2 oder 3), P5 (20–60 bp), P9 (Mitte oder gegenüberliegender Rand). Ohne
+Änderung gelten die Werte oben. Jede Änderung nur **vor** dem Einfrieren.
 
 ## 2. Kosten vorab (Arithmetik, keine Messung)
 
