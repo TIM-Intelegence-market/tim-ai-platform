@@ -75,5 +75,5 @@ def render(ergebnis: Mapping[str, Any]) -> list[str]:
         zeilen.append(f"- Weitere {rest} Auffälligkeiten in der Liste.")
     if ergebnis["plaene_ohne_begruendung"]:
         zeilen.append(f"- {ergebnis['plaene_ohne_begruendung']} von {ergebnis['plaene']} geschlossenen Plänen haben "
-                      "keine Begründung (vor G3): unbekannt.")
+                      "keine zuordenbare Begründung (älter als G3 oder ohne passende Aussage): unbekannt.")
     return zeilen

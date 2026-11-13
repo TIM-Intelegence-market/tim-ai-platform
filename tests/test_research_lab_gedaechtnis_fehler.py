@@ -46,3 +46,15 @@ def test_wochenbericht_hat_abschnitt():
     report = wr.build({}, {"filters": {}}, [], datetime(2026, 11, 15, tzinfo=timezone.utc))
     assert report["gedaechtnis"] is not None
     assert "Fehler im Gedächtnis" in wr.render(report)
+
+
+def test_fehler_im_finder_wird_gemeldet(monkeypatch):
+    from datetime import datetime, timezone
+    from src.research_lab.workshop import weekly_report as wr
+    monkeypatch.setattr(gedaechtnis, "laden", lambda *a, **k: (_ for _ in ()).throw(ValueError("kaputt")))
+    report = wr.build({}, {"filters": {}}, [], datetime(2026, 11, 15, tzinfo=timezone.utc))
+    assert "kaputt" in report["gedaechtnis"]["fehler"]
+    assert "nicht gelaufen" in wr.render(report)
+    report["gedaechtnis"] = None
+    assert "Fehler im Gedächtnis" not in wr.render(report)
+

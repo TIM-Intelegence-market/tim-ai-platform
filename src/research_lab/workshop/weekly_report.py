@@ -107,8 +107,8 @@ def _gedaechtnis(trades: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     try:
         from src.research_lab import gedaechtnis, gedaechtnis_fehler
         return gedaechtnis_fehler.finde(gedaechtnis.laden(), trades)
-    except Exception:
-        return None
+    except Exception as exc:  # sichtbar machen statt still verschwinden
+        return {"fehler": f"{type(exc).__name__}: {exc}"[:120]}
 
 
 def build(journals: Mapping[str, Mapping[str, Any]], learning: Mapping[str, Any], events: Sequence[Mapping[str, Any]],
@@ -186,7 +186,10 @@ def render(report: Mapping[str, Any]) -> str:
                      f"Läufer gegen festen TP3 {_r(shadow['LAEUFER']['vs_fest'])}, mit Orderflow-Filter "
                      f"{_r(shadow['OF_LAEUFER']['vs_fest'])}, weiter Stop {_r(shadow['LAEUFER_WEIT']['vs_fest'])}.")
     fehler = report.get("gedaechtnis")
-    if fehler:
+    if fehler and fehler.get("fehler"):
+        lines.append("")
+        lines.append(f"Fehler im Gedächtnis: Fehlerfinder nicht gelaufen ({fehler['fehler']}).")
+    elif fehler:
         from src.research_lab import gedaechtnis_fehler
         lines.append("")
         lines.extend(gedaechtnis_fehler.render(fehler))
