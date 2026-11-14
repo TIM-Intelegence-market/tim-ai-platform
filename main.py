@@ -913,6 +913,17 @@ class TIMApplication:
             except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
                 log.warning("level watch update failed: %s", type(error).__name__)
             try:
+                # Muster-Schatten (Uzi 14.11.2026): QM, OB and SFP tracked on paper, reads only.
+                from src.dashboard.pattern_shadow import DEFAULT_PATH as pattern_path, update as update_patterns
+
+                with self.dashboard_state.lock:
+                    footprint = self.dashboard_state.footprint
+                await asyncio.to_thread(update_patterns, pattern_path, series, None, trades=footprint or None)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
+                log.warning("pattern shadow update failed: %s", type(error).__name__)
+            try:
                 # V2.9 Schatten (Uzi 12.11.2026): the 15m/1h plans on the isolated V2.8 paper adapter, no order path.
                 from src.tim_v2.shadow import DEFAULT_PATH as v2_shadow_path, update as update_v2_shadow
 
