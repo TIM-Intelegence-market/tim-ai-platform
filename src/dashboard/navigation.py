@@ -1,6 +1,6 @@
 """The one navigation of the Control Center.
 
-Four screens (new Control Center, 31.10.2026): Cockpit, Journal, Forschung,
+Four screens (new Control Center, 31.10.2026; start page is the Überblick since 14.11.2026): Cockpit, Journal, Forschung,
 System. Each screen is one page of its own; the first entry of an area is that
 screen. The older detail pages stay reachable as further entries of their area
 and show a row with a way back to the screen. Pages of the aborted V2 campaign
@@ -24,8 +24,8 @@ class Area(TypedDict):
 
 AREAS: list[Area] = [
     {"key": "cockpit", "label": "Cockpit", "href": "/", "pages": [
-        ("Cockpit", "/"),
-        ("Überblick", "/neu/ueberblick"),
+        ("Überblick", "/"),
+        ("Cockpit", "/cockpit"),
         ("TIM-Chart", "/chart"),
         ("Markt & Pläne", "/neu/markt"),
         ("Vorbereitung", "/prep"),

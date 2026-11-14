@@ -245,7 +245,9 @@ class DashboardServer:
                                     "xmr-1h": outer.state.plan_journal_xmr_1h_path}.get(rule, outer.state.plan_journal_path)
                     from src.dashboard.plan_cost_check import with_cost_check
                     return self.respond(200, json.dumps(with_cost_check(load_plan_journal(journal_path)), default=str).encode(), "application/json")
-                if path in ("/", "/trades", "/forschung", "/system"):
+                if path == "/":
+                    return self.cockpit("/neu/ueberblick", query)  # Startseite: Überblick (Uzi 14.11.2026)
+                if path in ("/cockpit", "/trades", "/forschung", "/system"):
                     from src.dashboard.screens import SCREEN_CSP, render as render_screen
 
                     try:
@@ -253,7 +255,7 @@ class DashboardServer:
                     except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                         return self.respond(500, _error_page("Control Center", exc).encode(), "text/html; charset=utf-8")
                     return self.respond(200, page.encode(), content_type, csp=SCREEN_CSP)
-                if path in ("/neu", "/neu/", "/neu/lage"):
+                if path in ("/neu", "/neu/", "/neu/lage", "/neu/ueberblick"):
                     return self.respond(303, b"", "text/plain; charset=utf-8", location="/")
                 if path in JOURNAL_PAGES:
                     saved = query.get("saved", [""])[0]
