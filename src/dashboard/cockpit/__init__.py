@@ -10,6 +10,7 @@ from src.dashboard.cockpit.hermes import HERMES_CSP, build_hermes, render_hermes
 from src.dashboard.cockpit.lage import build_lage
 from src.dashboard.cockpit.mac import build_mac
 from src.dashboard.cockpit.markt import build_markt
+from src.dashboard.cockpit.ueberblick import build_ueberblick
 from src.dashboard.cockpit.page import (
     AREA_BY_KEY,
     COCKPIT_CSP,
@@ -29,6 +30,7 @@ BUILT = {
     "lage": (build_lage, lage_body, render_lage),
     "markt": (build_markt, markt_body, render_markt),
     "mac": (build_mac, mac_body, render_mac),
+    "ueberblick": (build_ueberblick, sections_body, render_sections),
     "forschung": (build_forschung, sections_body, render_sections),
     "betrieb": (build_betrieb, sections_body, render_sections),
     "system": (build_system, sections_body, render_sections),
@@ -46,6 +48,7 @@ __all__ = [
     "build_mac",
     "build_markt",
     "build_system",
+    "build_ueberblick",
     "lage_body",
     "mac_body",
     "markt_body",
