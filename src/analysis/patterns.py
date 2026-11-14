@@ -152,28 +152,36 @@ def quasimodos(candles: Sequence[Mapping[str, Any]], tf: str, structure: Mapping
 
 
 def sfps(candles: Sequence[Mapping[str, Any]], tf: str, width: int = 3) -> list[dict[str, Any]]:
-    """HTF swing failures: wick beyond an untaken confirmed swing, close back inside."""
-    swings = structure_swings(candles, width)
+    """HTF swing failures: wick beyond an untaken confirmed swing, close back inside.
+
+    Keeps the list of swings nobody has traded through yet; a candle that wicks through one and closes back is the SFP,
+    a candle that closes beyond it takes it out of the list.
+    """
+    by_ready: dict[int, list[dict[str, Any]]] = {}
+    for s in structure_swings(candles, width):
+        by_ready.setdefault(s["index"] + width + 1, []).append(s)  # usable from the candle after its confirmation
+    open_swings: list[dict[str, Any]] = []
+    confirmed: dict[str, list[dict[str, Any]]] = {"HIGH": [], "LOW": []}
     out = []
     for j, c in enumerate(candles):
-        for s in swings:
-            if s["index"] + width >= j:
-                continue  # the swing must be confirmed before the sweep candle
-            short = s["kind"] == "HIGH"
-            level = s["price"]
-            if short and not (c["high"] > level and c["close"] < level):
+        for s in by_ready.get(j, []):
+            open_swings.append(s)
+            confirmed[s["kind"]].append(s)
+        keep = []
+        for s in open_swings:
+            short, level = s["kind"] == "HIGH", s["price"]
+            beyond = c["high"] > level if short else c["low"] < level
+            if not beyond:
+                keep.append(s)
                 continue
-            if not short and not (c["low"] < level and c["close"] > level):
-                continue
-            if any((x["high"] > level) if short else (x["low"] < level) for x in candles[s["index"] + 1:j]):
-                continue  # already taken earlier
-            opposite = [x for x in swings if x["kind"] == ("LOW" if short else "HIGH") and x["index"] + width < j and ((x["price"] < c["close"]) if short else (x["price"] > c["close"]))]
-            target = opposite[-1]["price"] if opposite else None
-            if target is None:
-                continue
-            wick = c["high"] if short else c["low"]
-            low, high = (level, wick) if short else (wick, level)
-            out.append(_setup("SFP", SHORT if short else LONG, tf, candles, j, low, high, wick, target, valid=True, reason=None, swing=level))
+            if (c["close"] < level) if short else (c["close"] > level):
+                opposite = [x for x in confirmed["LOW" if short else "HIGH"] if x["index"] + width < j and ((x["price"] < c["close"]) if short else (x["price"] > c["close"]))]
+                if opposite:
+                    wick = c["high"] if short else c["low"]
+                    low, high = (level, wick) if short else (wick, level)
+                    out.append(_setup("SFP", SHORT if short else LONG, tf, candles, j, low, high, wick, opposite[-1]["price"], valid=True, reason=None, swing=level))
+            # a wick through the swing, whether it closed back or beyond, ends its life as an untaken level
+        open_swings = keep
     seen: set[str] = set()
     return [x for x in out if not (x["id"] in seen or seen.add(x["id"]))]
 
@@ -183,12 +191,13 @@ def htf_setups(candles: Sequence[Mapping[str, Any]], tf: str) -> list[dict[str, 
     return order_blocks(candles, tf, structure) + quasimodos(candles, tf, structure) + sfps(candles, tf)
 
 
-def exec_blocks(setup: Mapping[str, Any], exec_candles: Sequence[Mapping[str, Any]], exec_tf: str, htf_atr: float) -> list[dict[str, Any]]:
+def exec_blocks(setup: Mapping[str, Any], exec_candles: Sequence[Mapping[str, Any]], exec_tf: str, htf_atr: float,
+                blocks: Sequence[Mapping[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Clean exec order blocks in the setup's direction, formed after the setup and near its zone."""
     if not setup["valid"]:
         return []
     low, high = setup["zone_low"] - PROXIMITY_ATR * htf_atr, setup["zone_high"] + PROXIMITY_ATR * htf_atr
-    return [ob for ob in order_blocks(exec_candles, exec_tf)
+    return [ob for ob in (blocks if blocks is not None else order_blocks(exec_candles, exec_tf))
             if ob["valid"] and ob["direction"] == setup["direction"] and ob["created"] >= setup["created"]
             and ob["zone_low"] <= high and ob["zone_high"] >= low]
 
@@ -218,7 +227,9 @@ def confluences(direction: str, exec_candles: Sequence[Mapping[str, Any]], origi
     """Valid orderflow confluences at the retest: RVOL at the origin, RVOL at the retest, trapped traders (delta against the trade)."""
     c = exec_candles[retest_index]
     rv = relvol(exec_candles, retest_index)
-    share = delta_share(trades, c["open_time"], c["close_time"])
+    share = c.get("delta_share")  # studies hand the candle its own delta share; the live shadow reads the footprint store
+    if share is None:
+        share = delta_share(trades, c["open_time"], c["close_time"])
     found = {"rvol_origin": bool(origin_rvol is not None and origin_rvol >= RELVOL_MIN),
              "rvol_retest": bool(rv is not None and rv >= RELVOL_MIN),
              "trapped": bool(share is not None and ((share <= -DELTA_SHARE_MIN) if direction == LONG else (share >= DELTA_SHARE_MIN)))}

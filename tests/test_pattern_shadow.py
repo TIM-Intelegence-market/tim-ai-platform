@@ -157,3 +157,29 @@ def test_update_is_prospective_idempotent_and_renders(tmp_path):
     html = S.render_de(S.current(series), second)
     assert "Muster: QM, OB, SFP" in html and P.RULESET in html
     assert "keine Order" in S.render_de(None, None)
+
+
+def test_s36_candle_builder_and_count_on_a_synthetic_minute_grid(tmp_path):
+    from array import array
+
+    from src.research_lab.studies import s36
+
+    class Grid:
+        t0 = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        n = 14 * 1440
+        valid = bytearray([1]) * n
+        open = array("d", [100.0 + (i // 60) % 7 for i in range(n)])
+        high = array("d", [x + 1 for x in open])
+        low = array("d", [x - 1 for x in open])
+        close = open
+        buy_q = array("d", [3.0]) * n
+        sell_q = array("d", [1.0]) * n
+        base = array("d", [0.1]) * n
+
+    hourly = s36.build_candles(Grid, "1h")
+    assert len(hourly) == 14 * 24 and hourly[0]["delta_share"] == 0.5 and abs(hourly[0]["volume"] - 6.0) < 1e-9
+    weekly = s36.build_candles(Grid, "1w")  # 2020-01-01 is a Wednesday: only the one full Monday-week fits
+    assert len(weekly) == 1 and weekly[0]["open_time"].weekday() == 0
+    quarter = s36.build_candles(Grid, "15m")
+    assert quarter[1]["open_time"] - quarter[0]["open_time"] == timedelta(minutes=15)
+    assert len(s36.CONFIGS) == 15
