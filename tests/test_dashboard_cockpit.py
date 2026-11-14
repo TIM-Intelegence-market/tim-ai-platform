@@ -261,21 +261,19 @@ def server(tmp_path: Path):
 
 def test_neu_leads_to_the_new_cockpit_fast(server: str) -> None:
     # 31.10.2026: the start page is the new Cockpit; /neu forwards there.
-    from src.dashboard.screens import SCREEN_CSP
-
     began = time.monotonic()
     with urlopen(server + "/neu", timeout=10) as response:
         body = response.read().decode()
         assert response.status == 200
-        assert response.headers["Content-Security-Policy"] == SCREEN_CSP
+        assert response.headers["Content-Security-Policy"] == COCKPIT_CSP
     assert time.monotonic() - began < 3.0
-    assert "<title>Cockpit · TIM</title>" in body and "Heute zu tun" in body
+    assert "<title>Überblick · TIM</title>" in body and "Neu gebaut" in body
     page = render_lage(build_lage(DashboardState(), budget=0.5))  # the Lage model still renders on its own
     assert "<h1>Lage</h1>" in page and "BTC-Preis" in page and "Braucht dich" in page
 
 
 def test_fragment_and_api(server: str) -> None:
-    with urlopen(server + "/?fragment=1", timeout=10) as response:
+    with urlopen(server + "/cockpit?fragment=1", timeout=10) as response:
         assert "Heute zu tun" in json.loads(response.read())["html"]
     with urlopen(server + "/api/cockpit", timeout=10) as response:
         model = json.loads(response.read())

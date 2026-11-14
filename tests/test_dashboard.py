@@ -56,9 +56,9 @@ def test_dashboard_serves_html_and_json() -> None:
         with urlopen(f"http://127.0.0.1:{port}/uebersicht-alt", timeout=2) as response:
             assert response.status == 200
             assert b'TIM Research-Dashboard' in response.read()
-        with urlopen(f"http://127.0.0.1:{port}/", timeout=10) as response:  # the start page is the Cockpit
+        with urlopen(f"http://127.0.0.1:{port}/", timeout=10) as response:  # the start page is the Überblick
             assert response.status == 200
-            assert b"<title>Cockpit \xc2\xb7 TIM</title>" in response.read()
+            assert b"<title>\xc3\x9cberblick \xc2\xb7 TIM</title>" in response.read()
         with urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as response:
             assert response.status == 200
             assert response.headers["Cache-Control"] == "no-cache, no-store, must-revalidate"

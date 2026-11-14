@@ -556,7 +556,7 @@ def system_body(state: Any) -> str:
 # --- routing -----------------------------------------------------------------------
 
 SCREENS: dict[str, tuple[str, Callable[[Any], str]]] = {
-    "/": ("Cockpit", cockpit_body),
+    "/cockpit": ("Cockpit", cockpit_body),
     "/trades": ("Journal", journal_body),
     "/forschung": ("Forschung", forschung_body),
     "/system": ("System", system_body),
