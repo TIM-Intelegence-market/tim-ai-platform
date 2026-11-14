@@ -279,6 +279,26 @@ def worker_tiles(result: SourceResult, now: datetime) -> tuple[list[Tile], dict[
         tiles.append(make_tile("model", "Lokales Modell", str(ollama.get("model") or "—"), "PASS" if ok else "WARN",
                                reason="" if ok else ("Ollama nicht erreichbar" if ollama.get("reachable") is not True else "Modell nicht installiert"),
                                source="Ollama auf dem Mac", href=href, now=now))
+    server = worker.get("server") if isinstance(worker.get("server"), dict) else {}
+    server_ollama = server.get("ollama") if isinstance(server.get("ollama"), dict) else {}
+    tunnel = server.get("tunnel") if isinstance(server.get("tunnel"), dict) else {}
+    if server_ollama:
+        name = str(server_ollama.get("model") or "—")
+        if server_ollama.get("reachable") is not True:
+            tiles.append(make_tile("server_model", "Server-Modell", "nicht abrufbar", "WARN", reason="Server-Modellstatus nicht abrufbar (Tunnel oder Server)",
+                                   source="Qwen auf tim-core-01 über Tunnel", href=href, now=now))
+        elif server_ollama.get("model_installed") is not True:
+            tiles.append(make_tile("server_model", "Server-Modell", name, "FAIL", reason=f"{name} fehlt auf dem Server",
+                                   source="Qwen auf tim-core-01 über Tunnel", href=href, now=now))
+        else:
+            warm = server_ollama.get("warm")
+            tiles.append(make_tile("server_model", "Server-Modell", f"{name} {'geladen' if warm is True else 'kalt' if warm is False else 'Ladestatus unbekannt'}",
+                                   "PASS", source="Qwen auf tim-core-01 über Tunnel", href=href, now=now, extra={"kind": "info"},
+                                   detail="Tunnel läuft" if tunnel.get("running") else "Tunnel-Dienst geladen, kein Prozess" if tunnel.get("loaded") else "Tunnel-Dienst nicht geladen"))
+    triage = data.get("triage") if isinstance(data.get("triage"), dict) else {}
+    if isinstance(triage.get("calls_last_24h"), int):
+        tiles.append(make_tile("triage", "Triage-Aufrufe (24 h)", str(triage["calls_last_24h"]), "PASS", source=source, href=href, now=now,
+                               detail="Claude prüft offene Issues, wenn nichts bereit ist (höchstens 30 pro Tag)", extra={"kind": "info"}))
 
     events = []
     if current:

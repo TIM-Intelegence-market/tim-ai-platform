@@ -200,3 +200,22 @@ def test_positioning_is_cached_per_plan_moment(monkeypatch) -> None:
     first = sp.positioning_at("BTCUSDT", at)
     again = sp.positioning_at("BTCUSDT", at)
     assert first is not None and again is first and len(calls) == 2
+
+
+def test_shadow_reliability_and_journal_page_show_the_shadow_score() -> None:
+    from src.dashboard.pages.plan_journal import _plan_journal_page
+    from src.dashboard.plan_journal import SCORE_MIN_PLANS, summary
+
+    def entry(shadow: float | None, gross: float) -> dict:
+        return {"id": f"p{shadow}{gross}", "status": "CLOSED", "direction": "LONG", "gross_r": gross, "net_r": gross - 0.1, "score": 0.5,
+                "score_schatten": None if shadow is None else {"score": shadow, "daten": ["trades"], "n_trades": 10,
+                                                               "datenqualitaet": {"status": "PARTIAL"}}}
+
+    entries = [entry(0.35, -1.0) for _ in range(SCORE_MIN_PLANS // 2)] + [entry(0.65, 1.0) for _ in range(SCORE_MIN_PLANS // 2)] + [entry(None, 1.0)]
+    stats = summary({"entries": entries})
+    from src.dashboard.pages.plan_journal import _shadow_reliability
+
+    table, planned = _shadow_reliability({"entries": entries})
+    assert planned == SCORE_MIN_PLANS and table["unscored"] == 1 and table["verdict"] == "steigend" and stats["closed"] == SCORE_MIN_PLANS + 1
+    html = _plan_journal_page({}, {"rule": "tim/1", "entries": entries})
+    assert "Schatten-Score gegen Ergebnis" in html and "0,65" in html

@@ -25,6 +25,7 @@ class Area(TypedDict):
 AREAS: list[Area] = [
     {"key": "cockpit", "label": "Cockpit", "href": "/", "pages": [
         ("Cockpit", "/"),
+        ("Überblick", "/neu/ueberblick"),
         ("TIM-Chart", "/chart"),
         ("Markt & Pläne", "/neu/markt"),
         ("Vorbereitung", "/prep"),

@@ -195,6 +195,8 @@ TILES: list[tuple[str, str, str, str]] = [
     ("worker", "Issue-Worker", "Mac", "Der Mac-Worker, der GitHub-Issues abarbeitet: frei, arbeitet, hängt."),
     ("ci_runner", "CI-Runner", "Mac", "Ob auf dem Mac gerade ein Testlauf läuft."),
     ("queue", "Warteschlange", "Mac", "Issues, die bereit sind, und alle offenen."),
+    ("server_model", "Server-Modell", "Mac", "Qwen-Modell auf dem Server: erreichbar, installiert, geladen (warm) oder kalt, mit Tunnel-Zustand."),
+    ("triage", "Triage-Aufrufe (24 h)", "Mac", "Wie oft Claude in den letzten 24 Stunden offene Issues geprüft hat (höchstens 30 pro Tag)."),
     ("last_done", "Zuletzt erledigt", "Mac", "Letztes vom Worker erledigtes Issue mit PR."),
     ("model", "Lokales Modell", "Mac", "Lokales Sprachmodell (Ollama) des Workers."),
     ("trading_team", "Trading-Team", "Mac", "Papier-Trading-Team: offene Papier-Trades und Schatten-Einträge."),
