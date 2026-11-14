@@ -37,8 +37,7 @@ AREAS: list[dict[str, Any]] = [
                ("Trader-Journal", "/trader-journal", "Eigene Papier-Trades eintragen und reviewen")]},
     {"key": "mac", "label": "Mac jetzt", "href": "/neu/mac", "built": True,
      "text": "Woran der Mac gerade arbeitet: CI-Lauf, Issue-Worker und die TIM-Dienste im Hintergrund.",
-     "pages": [("Worker-Dashboard", "http://127.0.0.1:8767/", "Volles Dashboard des Issue-Workers"),
-               ("Health Center", "/health", "Watchdog und Gesundheitsprüfungen"),
+     "pages": [("Health Center", "/health", "Watchdog und Gesundheitsprüfungen"),
                ("Zeitleiste", "/timeline", "Ereignisse von Watchdog, Backup und Kampagne")]},
     {"key": "hermes", "label": "TIM-KI (Hermes)", "href": "/neu/hermes", "built": True,
      "text": "Hermes-Agent mit DeepSeek: Status, Fragefeld und die letzten Antworten. Liest TIM nur über tim-ops und tim-graph."},
@@ -609,7 +608,7 @@ def mac_body(model: dict[str, Any]) -> str:
         + f"<section aria-labelledby='h-now'><h2 id='h-now'>Gerade jetzt</h2><div class='need now'><ul>{now_rows}</ul></div></section>"
         + f"<section id='worker' aria-labelledby='h-worker'><h2 id='h-worker'>Issue-Worker</h2>{_grid(model.get('worker') or [])}"
         + "".join(worker_extra) + lists
-        + "<p class='note'><a href='http://127.0.0.1:8767/'>Volles Worker-Dashboard</a> (Link funktioniert nur direkt am Mac)</p></section>"
+        + "<p class='note'>Das frühere eigene Worker-Dashboard (Port 8767) ist hier vollständig enthalten und muss nicht mehr einzeln geöffnet werden.</p></section>"
         + f"<section id='dienste' aria-labelledby='h-svc'><h2 id='h-svc'>Dienste im Hintergrund</h2>{_grid(model.get('services') or [])}"
         + "<p class='note'>Jede Kachel zeigt das letzte Lebenszeichen des Dienstes aus seiner Statusdatei. Ist es älter als sein Takt erlaubt, wird die Kachel gelb.</p></section>"
         + _more_pages("mac")

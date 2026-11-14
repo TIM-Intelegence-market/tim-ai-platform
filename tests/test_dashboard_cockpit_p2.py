@@ -425,3 +425,14 @@ def test_plan_journal_tile_names_the_excluded_plans() -> None:
     tile = next(t for t in _journal_tiles(SourceResult("plan_journal", True, {"journal": journal, "summary": plain}), trader, now)
                 if t.id == "plan_journal")
     assert "ausgeschlossen" not in tile.detail
+
+
+def test_server_model_and_triage_tiles_replace_the_separate_worker_page() -> None:
+    data = _worker()
+    data["worker"]["server"] = {"ollama": {"reachable": True, "model_installed": True, "model": "qwen3-coder:30b", "warm": True}, "tunnel": {"loaded": True, "running": True}}
+    data["triage"] = {"calls_last_24h": 4}
+    tiles = _by_id(worker_tiles(_ok(data), NOW)[0])
+    assert tiles["server_model"].value == "qwen3-coder:30b geladen" and tiles["server_model"].state == "ok"
+    assert tiles["triage"].value == "4"
+    data["worker"]["server"]["ollama"]["reachable"] = False
+    assert _by_id(worker_tiles(_ok(data), NOW)[0])["server_model"].state == "warn"
