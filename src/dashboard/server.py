@@ -131,6 +131,10 @@ class DashboardServer:
                     except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                         return self.respond(500, _error_page("Chart", exc).encode(), "text/html; charset=utf-8")
                     return self.respond(200, page.encode(), "text/html; charset=utf-8", csp=CHART_CSP)
+                from src.dashboard.pwa import assets as pwa_assets
+
+                if path in pwa_assets():
+                    return self.respond(200, pwa_assets()[path][0], pwa_assets()[path][1])
                 if path in CHART_SCRIPTS:
                     return self.respond(200, CHART_SCRIPTS[path], "text/javascript; charset=utf-8")
                 if path == "/api/chart/live":

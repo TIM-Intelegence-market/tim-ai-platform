@@ -148,6 +148,11 @@ class PublicDashboardServer:
                 if path == "/robots.txt":
                     return self.respond(200, b"User-agent: *\nDisallow: /\n", "text/plain; charset=utf-8", head=head)
                 from src.dashboard.pages.chart import CHART_CSP, CHART_SCRIPTS
+                from src.dashboard.pwa import assets as pwa_assets
+
+                if path in pwa_assets():
+                    body, kind = pwa_assets()[path]
+                    return self.respond(200, body, kind, head=head)
 
                 if path in CHART_SCRIPTS:
                     return self.respond(200, CHART_SCRIPTS[path], "text/javascript; charset=utf-8", head=head)
