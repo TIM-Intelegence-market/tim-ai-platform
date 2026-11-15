@@ -182,4 +182,4 @@ def test_s36_candle_builder_and_count_on_a_synthetic_minute_grid(tmp_path):
     assert len(weekly) == 1 and weekly[0]["open_time"].weekday() == 0
     quarter = s36.build_candles(Grid, "15m")
     assert quarter[1]["open_time"] - quarter[0]["open_time"] == timedelta(minutes=15)
-    assert len(s36.CONFIGS) == 15
+    assert s36.CONFIGS == ["SFP-alle"]

@@ -1,6 +1,13 @@
-# S36 – QM, OB und SFP mit Orderflow-Konfluenz, HTF→Exec, BTC (Präregistrierung, Entwurf 0.1, 14.11.2026)
+# S36 – SFP mit Orderflow-Konfluenz, HTF→Exec, BTC/ETH/SOL (Präregistrierung, Entwurf 0.2, 15.11.2026)
 
 Auftrag Uzi (14.11.): "TIM sollte die Pattern auch tracken", dann "p4". Grundlage: GOAT-Handelsmodell (Bild im Thread) und der Muster-Schatten `muster-schatten/1.0` (PR #265, `src/analysis/patterns.py`). Diese Studie fragt rückwirkend, ob die Regeln des Schattens nach Kosten einen Vorteil haben. Entwurf: **nichts gelaufen, kein Ergebnis gesehen.** Mit **[Ergänzung]** markiert sind Festlegungen, die das Modell offenließ; sie gelten ab dem Einfrieren (1.0) und ändern sich danach nicht mehr.
+
+## Änderung 0.2 (15.11.2026, nach dem ergebnisblinden Zähllauf, Uzis Wort "sfp")
+Der Zähllauf von 0.1 (nur Anzahlen, keine R; Datei `~/tim-research/results/s36/count.json` auf der PS5) ergab: alle 15 Konfigurationen liegen im Training (2020–2023) unter n = 60 (Maximum day-SFP mit 46, QM/OB 0 bis 5 je Profil). Daraufhin wird die Studie **vor jedem Blick auf Ergebnisse in R** verengt:
+- Nur **SFP**. QM und OB bleiben im Vorwärts-Schatten (#265) und werden nicht zurückgeblickt (n zu klein).
+- **Eine** Konfiguration `SFP-alle`: die fünf Profile gepoolt, **BTCUSDT, ETHUSDT, SOLUSDT** (S35a-Infrastruktur, SOL erst ab 01.09.2020). Holm entfällt (m = 1). Je Profil und je Markt wird nur beschreibend gezählt und später nur beschreibend gezeigt, nicht getestet.
+- Tages- und Sperrregel gelten je Markt und Profil-Strom wie in der Plan-Mechanik des Schattens, nicht über Märkte hinweg [Ergänzung].
+- Kriterium Training n ≥ 60 über alle Märkte und Profile, sonst "nicht testbar" und Ablage. Alles Weitere unten gilt für diese eine Konfiguration; die Abschnitte "Konfigurationen" und "Erfolgskriterium" sind entsprechend zu lesen (15 → 1, m = 15 → 1, ETH/SOL zusätzlich zu BTC).
 
 ## Fragestellung
 Haben QM, OB und SFP auf einem höheren Zeitrahmen, mit Einstieg über einen sauberen OB im Exec-Zeitrahmen und mindestens einer Orderflow-Konfluenz, für BTCUSDT nach allen Kosten einen positiven Erwartungswert, der sich von zufälligen Einstiegen gleicher Geometrie unterscheidet?

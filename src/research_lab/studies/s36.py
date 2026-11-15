@@ -22,7 +22,7 @@ TRAIN = (date(2020, 1, 1), date(2023, 12, 31))
 VALID = (date(2024, 1, 1), date(2024, 12, 31))
 TF_MIN = {"15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080}
 WEEK_OFFSET_MIN = 4 * 1440  # the epoch is a Thursday, the first Monday is 4 days later
-CONFIGS = [f"{name}-{kind}" for name, _h, _e in P.PROFILES for kind in ("QM", "OB", "SFP")]  # 15
+CONFIGS = ["SFP-alle"]  # Entwurf 0.2: one pooled configuration (0.1 had 15, all below n=60 in the blind count)
 SLICE_LEAD = 30  # exec candles before the arm time, for ATR(14) and the 20-bar RVOL
 
 
@@ -85,28 +85,42 @@ def run_config(setups: Sequence[dict[str, Any]], ex: list[dict[str, Any]], exec_
     return {**funnel, "trades": len(entered), "skipped": skipped, "unresolved": sum(p["status"] in ("ARMED", "OPEN") for p in plans.values())}
 
 
-def count(bars_root: str, out: Path) -> dict[str, Any]:
-    m = Minutes(bars_root, "BTCUSDT", date(2020, 1, 1), VALID[1])
-    candles = {tf: build_candles(m, tf) for tf in TF_MIN}
-    res: dict[str, Any] = {"studie": "S36", "phase": "count", "ergebnisblind": True, "configs": {}}
-    for name, htf_tf, exec_tf in P.PROFILES:
-        htf, ex = candles[htf_tf], candles[exec_tf]
-        htf_ends = [c["close_time"] for c in htf]
-        seconds = TF_MIN[htf_tf] * 60
+SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
+SOL_START = date(2020, 9, 1)  # perpetual funding exists from Sep 2020, as in S35a
+POOLED = "SFP-alle"
 
-        def atr_at(moment: datetime, htf=htf, htf_ends=htf_ends) -> float | None:
-            i = bisect.bisect_right(htf_ends, moment) - 1
-            return P.atr_at(htf, i) if i >= 0 else None
 
-        setups = [{**s, "tf_seconds": seconds} for s in P.htf_setups(htf, htf_tf)]
-        exec_obs = P.order_blocks(ex, exec_tf)  # once per profile, not per setup
-        for kind in ("QM", "OB", "SFP"):
-            mine = [s for s in setups if s["kind"] == kind]
-            res["configs"][f"{name}-{kind}"] = {
-                abschnitt: run_config(mine, ex, exec_tf, atr_at, (datetime(a.year, a.month, a.day, tzinfo=timezone.utc),
-                                                                  datetime(b.year, b.month, b.day, tzinfo=timezone.utc) + timedelta(days=1)), exec_obs)
-                for abschnitt, (a, b) in (("training", TRAIN), ("validierung", VALID))}
-    res["nicht_testbar_training_n_unter_60"] = [c for c, v in res["configs"].items() if v["training"]["trades"] < 60]
+def count(roots: dict[str, str], out: Path) -> dict[str, Any]:
+    """Entwurf 0.2: only SFP, the five profiles pooled, BTC/ETH/SOL. Per-profile and per-market counts are descriptive only."""
+    res: dict[str, Any] = {"studie": "S36", "phase": "count", "version": "0.2", "ergebnisblind": True, "pooled": POOLED,
+                           "je_profil_und_markt": {}, "configs": {POOLED: {"training": {"trades": 0}, "validierung": {"trades": 0}}}}
+    skipped_total: dict[str, dict[str, int]] = {"training": {}, "validierung": {}}
+    for sym in SYMBOLS:
+        first = date(2020, 8, 11) if sym == "SOLUSDT" else date(2020, 1, 1)
+        m = Minutes(roots[sym], sym, first, VALID[1])
+        candles = {tf: build_candles(m, tf) for tf in TF_MIN}
+        for name, htf_tf, exec_tf in P.PROFILES:
+            htf, ex = candles[htf_tf], candles[exec_tf]
+            htf_ends = [c["close_time"] for c in htf]
+            seconds = TF_MIN[htf_tf] * 60
+
+            def atr_at(moment: datetime, htf=htf, htf_ends=htf_ends) -> float | None:
+                i = bisect.bisect_right(htf_ends, moment) - 1
+                return P.atr_at(htf, i) if i >= 0 else None
+
+            setups = [{**x, "tf_seconds": seconds} for x in P.htf_setups(htf, htf_tf) if x["kind"] == "SFP"]
+            exec_obs = P.order_blocks(ex, exec_tf)
+            for abschnitt, (a, b) in (("training", TRAIN), ("validierung", VALID)):
+                a = max(a, SOL_START) if sym == "SOLUSDT" else a
+                r = run_config(setups, ex, exec_tf, atr_at, (datetime(a.year, a.month, a.day, tzinfo=timezone.utc),
+                                                             datetime(b.year, b.month, b.day, tzinfo=timezone.utc) + timedelta(days=1)), exec_obs)
+                res["je_profil_und_markt"].setdefault(f"{name}-{sym}", {})[abschnitt] = r
+                res["configs"][POOLED][abschnitt]["trades"] += r["trades"]
+                for reason, n in r["skipped"].items():
+                    skipped_total[abschnitt][reason] = skipped_total[abschnitt].get(reason, 0) + n
+    for abschnitt in ("training", "validierung"):
+        res["configs"][POOLED][abschnitt]["skipped"] = skipped_total[abschnitt]
+    res["nicht_testbar_training_n_unter_60"] = [POOLED] if res["configs"][POOLED]["training"]["trades"] < 60 else []
     out.write_text(json.dumps(res, indent=1, default=str))
     return res
 
@@ -114,12 +128,16 @@ def count(bars_root: str, out: Path) -> dict[str, Any]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("phase", choices=("count",))
-    ap.add_argument("--btc-root", required=True, help="S8 store root (bars/, bars_manifest.json)")
+    ap.add_argument("--btc-root", required=True, help="S8 store root (bars/, bars_manifest.json) of BTCUSDT")
+    ap.add_argument("--multi-root", required=True, help="dir with ETHUSDT/ and SOLUSDT/ bar roots, as for S35a")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
-    res = count(a.btc_root, Path(a.out))
-    for c, v in res["configs"].items():
-        print(c, {k: (v[k]["setups"], v[k]["valid"], v[k]["plans"], v[k]["trades"]) for k in v})
+    roots = {"BTCUSDT": a.btc_root, "ETHUSDT": f"{a.multi_root}/ETHUSDT", "SOLUSDT": f"{a.multi_root}/SOLUSDT"}
+    res = count(roots, Path(a.out))
+    for key, v in res["je_profil_und_markt"].items():
+        print(key, {k: (v[k]["setups"], v[k]["valid"], v[k]["plans"], v[k]["trades"]) for k in v})
+    pooled = res["configs"][POOLED]
+    print(POOLED, "Training:", pooled["training"], "Validierung:", pooled["validierung"])
     print("nicht testbar (Training n<60):", res["nicht_testbar_training_n_unter_60"])
     return 0
 
