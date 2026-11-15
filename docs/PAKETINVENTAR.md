@@ -126,3 +126,19 @@ solange die Pakete ruhen oder archiviert werden; ein Zusammenlegen ohne Nutzer w
 
 Bis V2.8 kein neues Top-Level-Paket unter `src/` ohne Eintrag in dieser Tabelle mit Verantwortlichem, Einstufung und
 Bezug zu einem Schritt V1 bis V10 des Gesamtplans. Das PR-Gate kann das prüfen (neue Verzeichnisse unter `src/`).
+
+## Nachweis vom 15.11.2026 (Thread „Entwirren der Codebase“, U3)
+
+Statische Suche im Repo (Stand `077ff43`) plus Suche auf dem Mac (Crontab, `~/Library/LaunchAgents`, Skripte unter
+`~/Documents/TIM` außer `tim/` und `worktrees/`, `~/TIM-live/scripts|ops|main.py`, Hermes, `~/Library/Logs/TIM`).
+PS5/PS4 wurden nicht durchsucht. Nichts entfernt.
+
+| Paket | Zeilen | Aufrufer im Repo (ohne Tests) | Mac (Cron, launchd, Skripte, Logs) | Einstufung | Empfehlung |
+|---|---:|---|---|---|---|
+| `research_intelligence` | 670 | keiner (nur Bereichsliste in `src/tim_graph_view/build.py`) | keiner | WERKZEUG, ungenutzt | `expansion.volume_profile` wird von `tests/test_mid_replay_proof.py` gebraucht. Vor einem Archiv diese Funktion nach `src/research_lab` verschieben, dann Paket per Zweig sichern und entfernen (Frist 30.11. bleibt). |
+| `reflection` | 593 | keiner (nur CLI `python -m src.reflection.cli`) | keiner, kein Log | WERKZEUG, ruhend | Wochenbericht aus `docs/TIM_REFLEXION.md` läuft nirgends. Entweder als Wochen-Job anschließen oder archivieren; nicht mit `research_lab/workshop/trade_reflection.py` verwechseln. |
+| `multi_symbol` | 656 | keiner (absichtlich, Test prüft das) | keiner | PROTOTYP, aus | Bleibt als isolierter Prototyp laut `docs/MULTI_SYMBOL_ARCHITEKTUR.md`; neu einstufen, wenn Mehr-Symbol (S32-Korb) gebaut wird. |
+
+Die übrigen am 15.11. geprüften kleinen Pakete (`control_portal`, `orchestration`, `ops_mcp`, `acceptance`,
+`tim_graph_view`, `paper`, `news`, `benchmark`, `analytics`, `assistant`, `liquidation_map`, `repair_repro`) haben
+mindestens einen Aufrufer im Repo oder eine Anbindung (`.mcp.json`, Skripte). Kein Handlungsbedarf aus dieser Prüfung.
