@@ -64,14 +64,27 @@ def journal_report(journal: Mapping[str, Any], until: datetime, days: int = 7) -
             "all_time": window_stats(entries, datetime.min.replace(tzinfo=timezone.utc), until) | {"days_without_close": None}}
 
 
-def report(journal_paths: Sequence[Path], shadow_path: Path | None, until: datetime, days: int = 7) -> dict[str, Any]:
-    from src.dashboard.plan_journal import load_view
+def _one_journal(path: Path, until: datetime, days: int) -> dict[str, Any]:
+    """A present but broken journal (no valid document, no event log) is named, never shown as healthy and empty."""
+    from src.dashboard.plan_journal import SCHEMA, events_path_for, load_view
 
+    if not path.exists():
+        return {"readable": False, "integrity": "FILE_MISSING"}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    valid = isinstance(data, dict) and data.get("schema") == SCHEMA and isinstance(data.get("entries"), list)
+    if not valid and not events_path_for(path).exists():
+        return {"readable": False, "integrity": "UNREADABLE_OR_WRONG_SCHEMA"}
+    return journal_report(load_view(path), until, days)
+
+
+def report(journal_paths: Sequence[Path], shadow_path: Path | None, until: datetime, days: int = 7) -> dict[str, Any]:
     out: dict[str, Any] = {"schema": "TIM_JOURNAL_WEEK_V1", "until": until.isoformat(), "days": days,
                            "min_trades_for_verdict": MIN_TRADES, "journals": {}, "shadow": None}
     for path in journal_paths:
-        out["journals"][str(path)] = ({"readable": False, "integrity": "FILE_MISSING"} if not Path(path).exists()
-                                      else journal_report(load_view(Path(path)), until, days))
+        out["journals"][str(path)] = _one_journal(Path(path), until, days)
     if shadow_path is not None:
         state = load_shadow(Path(shadow_path))
         out["shadow"] = {"readable": False} if state is None else {"readable": True, **shadow_summary(state)}
