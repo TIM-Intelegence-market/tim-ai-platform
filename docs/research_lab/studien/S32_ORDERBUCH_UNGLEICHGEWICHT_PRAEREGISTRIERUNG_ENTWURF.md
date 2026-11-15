@@ -110,3 +110,7 @@ Börsen, Maker-Einstieg, Echtgeld, Live-Orders.
 - Besteht nur H1, kann TIM die Situation im Chart **anzeigen** (Barti 12.11.: „erkennen, wann man die Regel
   anwenden könnte“), als Hinweis, nicht als Signal.
 - Fällt H1 durch, bringt das Buch in dieser Form nichts; dann auch keine Anzeige.
+- Fällt eine Breitengruppe oder Verhältnisstufe auf (positiv oder negativ), wird sie danach beschreibend
+  zerlegt: Sitzung, Long/Short, Spread, Range-Breite, Tageszeit, Lage im Tagestrend (Barti 15.11.: „analysieren,
+  warum und wie die Umstände dort waren, um den Kreis zu schließen“). Das liefert Ideen für eine neue Studie, aber
+  keinen Beleg; bestätigt wird nur mit frischen Daten.
