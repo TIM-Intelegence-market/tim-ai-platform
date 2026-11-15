@@ -1,5 +1,7 @@
 # Mission 08 — Verified history expansion and missing feature completion
 
+> **Archiviert am 15.11.2026:** `src/research_intelligence/` wurde aus `platform-main` entfernt (kein Aufrufer im Repo, auf dem Mac, in Cron oder launchd; siehe `docs/PAKETINVENTAR.md`). Stand gesichert im Zweig `archiv/research-intelligence-2026-11-15`.
+
 Status: implementation and bounded research run delivered; full Mission 08
 acceptance NOT achieved. Sufficient new SHORT live history has NOT been collected.
 Research only; execution and live trading disabled. No old collection, legacy
