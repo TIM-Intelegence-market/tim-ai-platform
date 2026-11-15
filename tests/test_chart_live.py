@@ -391,10 +391,10 @@ def test_layers_are_sorted_in_named_layouts():
     assert sorted(names) == sorted(chart_live.GROUP_NAMES) and len(names) == len(set(names))
     # Working layouts: one click each, and the levels and the structure join every one of them.
     assert "const BASE = ['day', 'week', 'month', 'naked', 'structure', 'trend'];" in script
-    assert "layout.groups ? BASE.concat(layout.groups) : model.default_groups" in script
+    assert "layout.groups ? (layout.clean ? layout.groups : BASE.concat(layout.groups)) : model.default_groups" in script
     layouts = script[script.index("const TIM_LAYOUTS = ["):script.index("function ownLayouts()")]
     assert re.findall(r"id: '(tim:[a-z]+)'", layouts) == ["tim:orderflow", "tim:footprint", "tim:tpo", "tim:vp", "tim:positioning",
-                                                          "tim:macro", "tim:trades", "tim:pro", "tim:standard"]
+                                                          "tim:macro", "tim:trades", "tim:pro", "tim:exo", "tim:exovp", "tim:exotpo", "tim:standard"]
     used = set(re.findall(r"'([a-z_]+)'", "".join(re.findall(r"groups: \[([^\]]*)\]", layouts))))
     assert used <= set(chart_live.GROUP_NAMES)
     # The footprint layout follows Uzi's reference (MMT "Footprint Delta"): delta bars per price row, delta per candle, open interest.
@@ -402,6 +402,12 @@ def test_layers_are_sorted_in_named_layouts():
     assert "id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', fp: 'profile', groups:" in layouts
     assert "if (fpStyle !== 'cells') { drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep); return; }" in script
     assert "delta" in chart_live.GROUP_NAMES and "delta" not in chart_live.DEFAULT_GROUPS
+    # Exo layouts (PDF Resources_PDF, 15.11.2026): the trader's settings are kept as shown, and the new layers start hidden.
+    assert "bubbles: { small: 2, medium: 3, large: 4.5 }" in script
+    assert "vp: { lookback: 240, valueArea: 0.7, placement: 'right', rows: 130, width: 40, offset: 13" in script
+    assert "vpoc: { threshold: 0.5" in script
+    assert {"bubbles_exo", "vp_range", "vpoc"} <= set(chart_live.GROUP_NAMES)
+    assert not {"bubbles_exo", "vp_range", "vpoc"} & set(chart_live.DEFAULT_GROUPS)
     assert "tim-chart-layouts-v1" in script and "saveGroups(now); applyVisibility(now); layoutChanged();" in script
     html = _live_section("BTCUSDT", "30m")
     assert "id='tc-live-layouts'" in html

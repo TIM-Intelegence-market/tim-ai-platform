@@ -864,7 +864,7 @@
     return item.side > 0 ? candle.close < item.price : candle.close > item.price;
   };
   const bubbles = {
-    chart: null, series: null, requestUpdate: null, visible: true,
+    chart: null, series: null, requestUpdate: null, visible: true, exo: false,
     attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
     detached() { this.chart = null; this.series = null; },
     updateAllViews() {},
@@ -896,7 +896,11 @@
                 placed.push({ item, x, y });
               }
               placed.sort((a, b) => b.item.usd - a.item.usd);  // biggest first, small ones drawn on top stay visible
-              const order = placed.slice(0, Math.max(BUBBLE.minCount, Math.round(mediaSize.width / BUBBLE.pxPer)));
+              // Exo style (PDF "Market Order Bubbles", Leviathan): sizes are multiples of the average order in view;
+              // only medium (x3) and large (x4.5) are drawn, small (x2) is off, colour strength follows the multiple.
+              const mean = placed.length ? placed.reduce((sum, p) => sum + p.item.usd, 0) / placed.length : 1;
+              const order = bubbles.exo ? placed.filter(p => p.item.usd >= EXO.bubbles.medium * mean)
+                : placed.slice(0, Math.max(BUBBLE.minCount, Math.round(mediaSize.width / BUBBLE.pxPer)));
               if (!order.length) return;
               const max = Math.max(1, order[0].item.usd);
               ctx.textAlign = 'center';
@@ -904,12 +908,15 @@
               ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
               const texts = [];  // number boxes already drawn: a number that would cover one is left out (Uzi 11.11.2026)
               for (const { item, x, y } of order) {
-                const r = Math.max(BUBBLE.minR, BUBBLE.maxR * Math.sqrt(item.usd / max));
+                const multiple = item.usd / mean;
+                const large = multiple >= EXO.bubbles.large;
+                const r = bubbles.exo ? (large ? BUBBLE.maxR : 6) * (0.85 + 0.15 * Math.min(1, multiple / (2 * EXO.bubbles.large)))
+                  : Math.max(BUBBLE.minR, BUBBLE.maxR * Math.sqrt(item.usd / max));
                 const buy = item.side > 0;
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, Math.PI * 2);
                 const bybit = item.venue === 'bybit';  // second venue (issue #162): hollow, dashed ring
-                const held = absorbed(item);
+                const held = bubbles.exo ? Math.min(1, 0.35 + 0.65 * (multiple - EXO.bubbles.medium) / (EXO.bubbles.large * 1.5 - EXO.bubbles.medium)) > 0.6 : absorbed(item);
                 ctx.fillStyle = bybit ? 'rgba(11,15,22,0.35)' : buy ? `rgba(38,200,140,${held ? 0.55 : 0.18})` : `rgba(239,83,80,${held ? 0.55 : 0.18})`;
                 ctx.fill();
                 ctx.lineWidth = 1;
@@ -917,7 +924,7 @@
                 ctx.strokeStyle = buy ? `rgba(38,220,150,${held ? 0.95 : 0.55})` : `rgba(255,92,88,${held ? 0.95 : 0.55})`;
                 ctx.stroke();
                 ctx.setLineDash([]);
-                if (held) {  // white ring: the market took this order and closed against it
+                if (held && !bubbles.exo) {  // white ring: the market took this order and closed against it
                   ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2);
                   ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(232,236,243,0.95)'; ctx.stroke();
                 }
@@ -940,6 +947,214 @@
     },
   };
   candles.attachPrimitive(bubbles);
+
+  // ExoCharts workspace from the PDF (Resources_PDF, 15.11.2026): the settings the trader shows, one place.
+  // Source and limits: docs/dashboard/EXO_LAYOUT_ABGLEICH.md (what TIM can show with its own Binance/Bybit data).
+  // vwap: weekly VWAP with shaded ±1σ/±2σ. bubbles: Leviathan thresholds, multiples of the average order.
+  // vp: "Volume Profile with node detection" display settings. vpoc: quantifytools "Time & volume point of control".
+  const EXO = {
+    bubbles: { small: 2, medium: 3, large: 4.5 },
+    vp: { lookback: 240, valueArea: 0.7, placement: 'right', rows: 130, width: 40, offset: 13, nodeRadius: 3, hvn: 0.55, lvn: 0.3 },
+    vpoc: { threshold: 0.5, buy: '#1e5cff', sell: '#ff3d8f', exceeded: '#ff9800', trapped: '#ef5350' },
+    vwap: { fill2: 'rgba(63,208,201,0.06)', fill1: 'rgba(63,208,201,0.07)' },
+  };
+  const barPixels = (scale, width) => {
+    const range = scale.getVisibleLogicalRange();
+    return range ? width / Math.max(1, range.to - range.from) : 8;
+  };
+
+  // Shaded area between the weekly VWAP's ±1σ and ±2σ curves (layer "vwap_bands"), as on the ExoCharts screenshot.
+  const vwapFill = {
+    chart: null, series: null, requestUpdate: null, visible: false,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!vwapFill.visible || !vwapFill.chart || !model || !model.drawings) return;
+            const curve = suffix => { const d = model.drawings.find(x => x.group === 'vwap_bands' && x.curve && x.name.endsWith(suffix)); return d ? d.curve : null; };
+            const pairs = [[curve('+2σ'), curve('−2σ'), EXO.vwap.fill2], [curve('+1σ'), curve('−1σ'), EXO.vwap.fill1]];
+            target.useMediaCoordinateSpace(({ context: ctx }) => {
+              const scale = vwapFill.chart.timeScale();
+              for (const [upper, lower, color] of pairs) {
+                if (!upper || !lower || upper.length < 2 || upper.length !== lower.length) continue;
+                const top = [], bottom = [];
+                for (let i = 0; i < upper.length; i++) {
+                  const x = scale.timeToCoordinate(local(upper[i][0]));
+                  const yu = vwapFill.series.priceToCoordinate(upper[i][1]), yl = vwapFill.series.priceToCoordinate(lower[i][1]);
+                  if (x === null || yu === null || yl === null) continue;
+                  top.push([x, yu]); bottom.push([x, yl]);
+                }
+                if (top.length < 2) continue;
+                ctx.beginPath();
+                top.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+                for (let i = bottom.length - 1; i >= 0; i--) ctx.lineTo(bottom[i][0], bottom[i][1]);
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(vwapFill);
+
+  // Volume profile of the last N candles (EXO.vp: lookback 240, rows 130, value area 70 %, width 40, offset 13, right)
+  // with node detection: high-volume nodes (local peaks) brighter, low-volume nodes (troughs) as dotted lines.
+  // Built from the footprint rows of the shown candles, so it needs TIM's trades (5m and above) like the footprint.
+  function rangeProfile() {
+    const fpData = model && model.footprint;
+    if (!fpData || !fpData.bars || !fpData.bars.length) return null;
+    const cfg = EXO.vp;
+    const bars = fpData.bars.slice(-cfg.lookback);
+    let low = Infinity, high = -Infinity;
+    for (const bar of bars) for (const [price] of bar.levels) { low = Math.min(low, price); high = Math.max(high, price + fpData.step); }
+    if (!(high > low)) return null;
+    const size = Math.max((high - low) / cfg.rows, fpData.step);
+    const count = Math.max(1, Math.ceil((high - low) / size - 1e-9));
+    const volume = new Array(count).fill(0), delta = new Array(count).fill(0);
+    for (const bar of bars) for (const [price, bid, ask] of bar.levels) {
+      const index = Math.min(count - 1, Math.floor((price - low) / size + 1e-9));
+      volume[index] += bid + ask; delta[index] += ask - bid;
+    }
+    const total = volume.reduce((a, b) => a + b, 0);
+    if (!(total > 0)) return null;
+    let poc = 0;
+    volume.forEach((v, i) => { if (v > volume[poc]) poc = i; });
+    let lo = poc, hi = poc, inside = volume[poc];
+    while (inside < total * cfg.valueArea && (lo > 0 || hi < count - 1)) {  // grow toward the larger neighbour row
+      const down = lo > 0 ? volume[lo - 1] : -1, up = hi < count - 1 ? volume[hi + 1] : -1;
+      if (up >= down) { hi++; inside += volume[hi]; } else { lo--; inside += volume[lo]; }
+    }
+    const max = volume[poc];
+    const hvn = [], lvn = [];
+    for (let i = 0; i < count; i++) {
+      let peak = volume[i] >= cfg.hvn * max, trough = volume[i] > 0 && volume[i] <= cfg.lvn * max;
+      for (let k = Math.max(0, i - cfg.nodeRadius); k <= Math.min(count - 1, i + cfg.nodeRadius); k++) {
+        if (volume[k] > volume[i]) peak = false;
+        if (volume[k] < volume[i]) trough = false;
+      }
+      if (peak && i !== poc) hvn.push(i);
+      if (trough && i > lo && i < hi) lvn.push(i);
+    }
+    return { low, size, count, volume, delta, poc, lo, hi, max, hvn: new Set(hvn), lvn, bars: bars.length, total };
+  }
+  const vpr = {
+    chart: null, series: null, requestUpdate: null, visible: false,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!vpr.visible || !vpr.chart || !model || !model.candles.length) return;
+            const profile = rangeProfile();
+            if (!profile) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = vpr.chart.timeScale();
+              const lastX = scale.timeToCoordinate(local(model.candles[model.candles.length - 1].time));
+              if (lastX === null) return;
+              const barW = barPixels(scale, mediaSize.width);
+              const x0 = lastX + EXO.vp.offset * barW, maxWidth = EXO.vp.width * barW;
+              if (x0 > mediaSize.width) return;
+              const unit = maxWidth / profile.max;
+              for (let i = 0; i < profile.count; i++) {
+                const price = profile.low + i * profile.size;
+                const yTop = vpr.series.priceToCoordinate(price + profile.size), yBottom = vpr.series.priceToCoordinate(price);
+                if (yTop === null || yBottom === null || !profile.volume[i]) continue;
+                const inValue = i >= profile.lo && i <= profile.hi;
+                ctx.fillStyle = i === profile.poc ? 'rgba(245,197,66,0.85)' : profile.hvn.has(i) ? 'rgba(120,175,255,0.75)'
+                  : inValue ? 'rgba(76,141,255,0.45)' : 'rgba(76,141,255,0.2)';
+                ctx.fillRect(x0, yTop + 0.5, Math.max(1, profile.volume[i] * unit), Math.max(1, yBottom - yTop - 0.5));
+              }
+              ctx.save();
+              ctx.setLineDash([2, 3]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(160,170,190,0.7)';
+              for (const i of profile.lvn) {
+                const y = vpr.series.priceToCoordinate(profile.low + (i + 0.5) * profile.size);
+                if (y === null) continue;
+                ctx.beginPath(); ctx.moveTo(x0 - 12, y); ctx.lineTo(x0 + maxWidth * 0.6, y); ctx.stroke();
+              }
+              ctx.restore();
+              const yPoc = vpr.series.priceToCoordinate(profile.low + (profile.poc + 0.5) * profile.size);
+              if (yPoc !== null) {
+                ctx.strokeStyle = 'rgba(245,197,66,0.9)'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(Math.max(0, x0 - 40), yPoc); ctx.lineTo(x0 + maxWidth, yPoc); ctx.stroke();
+              }
+              const yTop = vpr.series.priceToCoordinate(profile.low + (profile.hi + 1) * profile.size);
+              const yBot = vpr.series.priceToCoordinate(profile.low + profile.lo * profile.size);
+              if (yTop !== null && yBot !== null) {
+                ctx.fillStyle = 'rgba(140,180,255,0.95)'; ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.textBaseline = 'bottom';
+                ctx.fillText(`VP ${profile.bars} · POC ${fmt(profile.low + (profile.poc + 0.5) * profile.size)} · VA ${Math.round(EXO.vp.valueArea * 100)} %`, Math.min(x0, mediaSize.width - 190), Math.max(12, yTop - 3));
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(vpr);
+
+  // VPOC per candle (quantifytools "Time & volume point of control", Show VPOC as: "VPOC with delta indication"):
+  // a short line at the candle's most traded row; blue = buyers were the aggressor there, pink = sellers (delta of
+  // that row). Orange = the row holds at least EXO.vpoc.threshold of the candle's volume. Red ring = trapped:
+  // the candle closed against the side of its VPOC (buy side but close below it, sell side but close above).
+  // The time POC (TPOC) needs the time spent per price and is not drawn: the stored trades are 5-minute buckets.
+  const vpoc = {
+    chart: null, series: null, requestUpdate: null, visible: false,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'top'; },
+      renderer() {
+        return {
+          draw(target) {
+            const data = model && model.footprint;
+            if (!vpoc.visible || !vpoc.chart || !data || !data.bars || !data.bars.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = vpoc.chart.timeScale();
+              const barW = barPixels(scale, mediaSize.width);
+              const half = Math.max(2, barW * 0.45);
+              for (const bar of data.bars) {
+                const x = scale.timeToCoordinate(local(bar.time));
+                if (x === null || x < -half || x > mediaSize.width + half) continue;
+                const row = bar.levels.find(level => level[0] === bar.poc);
+                if (!row || !(bar.total > 0)) continue;
+                const share = (row[1] + row[2]) / bar.total;
+                const buySide = row[2] >= row[1];
+                const y = vpoc.series.priceToCoordinate(bar.poc + data.step / 2);
+                if (y === null) continue;
+                const exceeded = share >= EXO.vpoc.threshold;
+                ctx.strokeStyle = exceeded ? EXO.vpoc.exceeded : buySide ? EXO.vpoc.buy : EXO.vpoc.sell;
+                ctx.lineWidth = exceeded ? 3 : 2;
+                ctx.beginPath(); ctx.moveTo(x - half, y); ctx.lineTo(x + half, y); ctx.stroke();
+                const candle = fp.byTime.get(bar.time);
+                const midPrice = bar.poc + data.step / 2;
+                if (candle && candle !== model.candles[model.candles.length - 1] && (buySide ? candle.close < midPrice : candle.close > midPrice)) {
+                  ctx.beginPath(); ctx.arc(x + half + 3, y, 3, 0, Math.PI * 2);
+                  ctx.lineWidth = 1.5; ctx.strokeStyle = EXO.vpoc.trapped; ctx.stroke();
+                }
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(vpoc);
 
   // Real liquidations (issue #162): Binance forceOrder and Bybit allLiquidation from TIM's S12 record.
   // A triangle at the event's time and price: pointing down and red when a long was liquidated (forced
@@ -1222,17 +1437,19 @@
         ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
         fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', fpProfile: 'Footprint: profile', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
         standard: 'TIM standard', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
-        vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades" }
+        vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades",
+        exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles' }
     : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
         fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', fpProfile: 'Footprint: Profil', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
         standard: 'TIM Standard', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
-        vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades' };
+        vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades',
+        exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
   const CATEGORIES = [
-    { name: L.orderflow, groups: ['fp', 'bubbles', 'delta', 'cvd'] },
-    { name: L.profile, groups: ['vp', 'tpo', 'naked', 'running'] },
+    { name: L.orderflow, groups: ['fp', 'bubbles', 'bubbles_exo', 'vpoc', 'delta', 'cvd'] },
+    { name: L.profile, groups: ['vp', 'vp_range', 'tpo', 'naked', 'running'] },
     { name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
     { name: L.vwap, groups: ['vwap', 'vwap_bands'] },
     { name: L.structure, groups: ['structure', 'trend', 'fib'] },
@@ -1254,6 +1471,10 @@
     { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
     { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
     { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', fp: 'profile', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
+    // The three Exo layouts copy the PDF's workspaces (Uzi 15.11.2026: "1 zu 1"). clean: no TIM base levels, like the PDF.
+    { id: 'tim:exo', name: L.exo, symbol: 'BTCUSDT', tf: '15m', market: 'perp', clean: true, groups: ['vwap', 'vwap_bands', 'bubbles_exo', 'liqev', 'oi', 'delta', 'cvd'] },
+    { id: 'tim:exovp', name: L.exoVp, symbol: 'BTCUSDT', tf: '15m', market: 'perp', clean: true, fp: 'profile', groups: ['vwap', 'vwap_bands', 'vp_range', 'vpoc', 'bubbles_exo', 'delta'] },
+    { id: 'tim:exotpo', name: L.exoTpo, symbol: 'BTCUSDT', tf: '30m', market: 'perp', clean: true, groups: ['tpo', 'session', 'running', 'naked', 'vp'] },
     { id: 'tim:standard', name: L.standard, groups: null },
   ];
   function ownLayouts() {
@@ -1319,7 +1540,7 @@
     const layout = findLayout(id);
     if (!layout || !model) return;
     const all = new Set(Object.keys(model.groups));
-    const wanted = layout.id.startsWith('own:') ? layout.groups : layout.groups ? BASE.concat(layout.groups) : model.default_groups;
+    const wanted = layout.id.startsWith('own:') ? layout.groups : layout.groups ? (layout.clean ? layout.groups : BASE.concat(layout.groups)) : model.default_groups;
     const groups = new Set(wanted.filter(key => all.has(key)));
     saveGroups(groups);
     setActiveLayout(id);
@@ -1503,6 +1724,7 @@
   function viewRange(width) {
     const count = model.candles.length;
     let to = count + 8;
+    if (shownGroups().has('vp_range')) to = count + EXO.vp.offset + EXO.vp.width + 3;  // room for the profile right of the last candle
     const ev = shownGroups().has('macro') && (model.macro_ahead || [])[0];
     const step = model.interval_seconds, last = count ? model.candles[count - 1] : null;
     if (ev && step && last) {
@@ -1516,6 +1738,18 @@
     return ev ? `${T.next}: ${macroText(ev)} ${FULL_FMT.format(new Date(Date.parse(ev.at)))}` : '';
   }
 
+  // Bubbles (classic or Exo style), the shaded VWAP bands, the range profile and the VPOC lines.
+  function setExoLayers(groups) {
+    bubbles.visible = groups.has('bubbles') || groups.has('bubbles_exo');
+    bubbles.exo = groups.has('bubbles_exo') && !groups.has('bubbles');
+    vwapFill.visible = groups.has('vwap_bands');
+    const rangeOn = groups.has('vp_range');
+    const openRange = rangeOn && !vpr.visible && model && model.candles.length;  // newly switched on: make room right of the candles
+    vpr.visible = rangeOn;
+    if (openRange) chart.timeScale().setVisibleLogicalRange(viewRange(168));
+    vpoc.visible = groups.has('vpoc');
+    for (const layer of [bubbles, vwapFill, vpr, vpoc]) if (layer.requestUpdate) layer.requestUpdate();
+  }
   function applyVisibility(groups) {
     planMarkers(groups);
     for (const item of lines) item.series.applyOptions({ visible: groups.has(item.group) });
@@ -1526,7 +1760,7 @@
     liq.visible = groups.has('liq');
     liqev.visible = groups.has('liqev');
     fib.visible = groups.has('fib');
-    bubbles.visible = groups.has('bubbles');
+    setExoLayers(groups);
     layoutBands(groups);
     positions.groups = groups;
     if (positions.requestUpdate) positions.requestUpdate();
@@ -1649,7 +1883,7 @@
       drawLines();
       drawBands();
       showMarket();
-      { const groups = shownGroups(); layoutBands(groups); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); liqev.visible = groups.has('liqev'); fib.visible = groups.has('fib'); bubbles.visible = groups.has('bubbles'); }
+      { const groups = shownGroups(); layoutBands(groups); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); liqev.visible = groups.has('liqev'); fib.visible = groups.has('fib'); setExoLayers(groups); }
       if (first || !sameView) {
         chart.timeScale().setVisibleLogicalRange(viewRange(168));
         first = false;

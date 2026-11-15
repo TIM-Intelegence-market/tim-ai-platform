@@ -56,7 +56,7 @@ LAYERS: dict[str, list[Mark]] = {
     "quarter": [(_line("quarter"), "Vorquartal: Hoch, Tief, POC, VAH, VAL (dunkleres Orange)", "Prior quarter: high, low, POC, VAH, VAL (darker orange)")],
     "year": [(_line("year"), "Vorjahr: Hoch, Tief, POC, VAH, VAL (pink)", "Prior year: high, low, POC, VAH, VAL (pink)")],
     "vwap": [(_line("vwap"), "VWAP der laufenden Woche, des Monats, Quartals und Jahres (türkis)", "VWAP of the running week, month, quarter and year (teal)")],
-    "vwap_bands": [(_line("vwap_bands"), "Bänder um den Wochen-VWAP: ±1σ und ±2σ (türkis gepunktet)", "Bands around the weekly VWAP: ±1σ and ±2σ (teal, dotted)")],
+    "vwap_bands": [(_line("vwap_bands"), "Bänder um den Wochen-VWAP: ±1σ und ±2σ (türkis gepunktet), dazwischen schattiert", "Bands around the weekly VWAP: ±1σ and ±2σ (teal, dotted), shaded in between")],
     "naked": [(_line("naked"), "naked POC: alter POC, den der Kurs seitdem nicht berührt hat (gelb gestrichelt, Magnet)", "Naked POC: an old POC price has not touched since (yellow, dashed; a magnet)")],
     "running": [(_line("running"), "laufender POC von Tag und Woche, wandert noch (hellblau gepunktet)", "Running POC of day and week, still moving (light blue, dotted)")],
     "session": [(_line("session"), "Hoch und Tief der Sessions Asien, London, New York (grau gepunktet)", "High and low of the Asia, London and New York sessions (grey, dotted)")],
@@ -96,6 +96,19 @@ LAYERS: dict[str, list[Mark]] = {
         (("dot", "rgba(38,200,140,0.55)", "#e8ecf3", False), "weißer Ring = absorbiert: die Kerze schloss gegen die Order (Kauf, Schluss darunter; Verkauf, Schluss darüber)",
          "White ring = absorbed: the candle closed against the order (buy, close below; sell, close above)"),
         (("text", "#e8edf5", "12"), "Fläche = Größe gegenüber der größten im Bild, Zahl = Größe in BTC; ab 100.000 $", "Area = size against the largest in view, number = size in BTC; from 100,000 $"),
+    ],
+    "bubbles_exo": [
+        (("dot", "rgba(38,200,140,0.55)", BUY, False), "Käufer-Bubble grün, Stärke als Farbverlauf: je größer gegenüber dem Schnitt, desto kräftiger", "Buy bubble green, strength as a gradient: the larger against the average, the stronger"),
+        (("dot", "rgba(239,83,80,0.55)", SELL, False), "Verkäufer-Bubble rot; nur Medium (ab 3× Schnitt) und Large (ab 4,5×), Small aus", "Sell bubble red; only medium (3× average and up) and large (4.5×), small is off"),
+    ],
+    "vp_range": [
+        (("box", "rgba(76,141,255,0.42)", "none"), "Volume Profile der letzten 240 Kerzen rechts neben der letzten Kerze (130 Zeilen, Breite 40, Abstand 13), Value Area 70 % kräftiger", "Volume profile of the last 240 candles right of the last candle (130 rows, width 40, offset 13), value area 70 % stronger"),
+        (("box", "rgba(245,197,66,0.75)", "none"), "POC gelb; HVN-Spitzen hell, LVN-Täler als gepunktete Linie", "POC yellow; HVN peaks bright, LVN troughs as a dotted line"),
+    ],
+    "vpoc": [
+        (("line", "#1e5cff", "solid"), "VPOC der Kerze: blau = Käuferseite, pink = Verkäuferseite (Delta der POC-Zeile)", "Candle VPOC: blue = buy side, pink = sell side (delta of the POC row)"),
+        (("line", "#ff9800", "solid"), "orange = Schwelle überschritten (POC-Zeile hat mind. 50 % des Kerzenvolumens)", "Orange = threshold exceeded (POC row holds at least 50 % of the candle volume)"),
+        (("dot", "none", "#ef5350", False), "roter Ring = Trapped VPOC: die Kerze schloss gegen die Seite des VPOC", "Red ring = trapped VPOC: the candle closed against the VPOC's side"),
     ],
     "plans_short": [(("line", PLAN_ENTRY, "solid"), "Pläne der 15m-Regel (SHORT-Horizont), Zeichen wie unten", "Plans of the 15m rule (SHORT horizon), marks as below")],
     "plans_mid": [(("line", PLAN_ENTRY, "solid"), "Pläne der 1h-Regel (MID-Horizont)", "Plans of the 1h rule (MID horizon)")],
