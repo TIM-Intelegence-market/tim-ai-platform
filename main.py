@@ -803,11 +803,28 @@ class TIMApplication:
             with self.dashboard_state.lock:
                 footprint = self.dashboard_state.footprint
                 gamma = self.dashboard_state.gamma.get(settings.symbol)
-            for name, step, path in (("plan journal", update_plan_journal, self.dashboard_state.plan_journal_path),
+            # Schatten-Score: the journal asks for trades only when a plan candle closes, up to the moment of the plan.
+            loop = asyncio.get_running_loop()
+            repository = self.repository
+
+            def trades_fn(start, end):
+                future = asyncio.run_coroutine_threadsafe(repository.agg_trades_between(settings.symbol, start, end), loop)
+                try:
+                    return future.result(timeout=90)
+                except BaseException:
+                    future.cancel()  # a late database answer must not keep a connection busy
+                    raise
+
+            from src.dashboard.shadow_positioning import positioning_at
+
+            def positioning_fn(at):
+                return positioning_at(settings.symbol, at)
+
+            for name, step, path in (("plan journal", partial(update_plan_journal, trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_path),
                                      ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
                                      ("plan journal vp", partial(update_plan_journal, rule=RULE_VP, footprint=footprint, gamma=gamma), self.dashboard_state.plan_journal_vp_path),
-                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"]), self.dashboard_state.plan_journal_short_path),
-                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"]), self.dashboard_state.plan_journal_mid_path),
+                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_short_path),
+                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_mid_path),
                                      ("plan journal long", partial(update_plan_journal, timeframe=HORIZONS["LONG"]), self.dashboard_state.plan_journal_long_path),
                                      ("trader journal", update_trader_journal, self.dashboard_state.trader_journal_path)):
                 try:
@@ -895,6 +912,17 @@ class TIMApplication:
                 raise
             except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
                 log.warning("level watch update failed: %s", type(error).__name__)
+            try:
+                # Muster-Schatten (Uzi 14.11.2026): QM, OB and SFP tracked on paper, reads only.
+                from src.dashboard.pattern_shadow import DEFAULT_PATH as pattern_path, update as update_patterns
+
+                with self.dashboard_state.lock:
+                    footprint = self.dashboard_state.footprint
+                await asyncio.to_thread(update_patterns, pattern_path, series, None, trades=footprint or None)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
+                log.warning("pattern shadow update failed: %s", type(error).__name__)
             try:
                 # V2.9 Schatten (Uzi 12.11.2026): the 15m/1h plans on the isolated V2.8 paper adapter, no order path.
                 from src.tim_v2.shadow import DEFAULT_PATH as v2_shadow_path, update as update_v2_shadow

@@ -583,6 +583,16 @@ def _levels_section(state: Any) -> str:
         return f"<section class='cc-section tc-levels'><p class='cc-note'>Level-Übersicht nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
 
 
+def _patterns_section(state: Any) -> str:
+    """QM/OB/SFP found now plus the paper shadow's progress (src/dashboard/pattern_shadow.py)."""
+    from src.dashboard import pattern_shadow
+
+    try:
+        return pattern_shadow.render_de(pattern_shadow.current(state.chart_series()), pattern_shadow.load(pattern_shadow.DEFAULT_PATH))
+    except Exception as exc:  # noqa: BLE001 - the chart must still render
+        return f"<section class='cc-section tc-patterns'><p class='cc-note'>Muster nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
+
+
 def _orderflow_section(state: Any) -> str:
     """Live-Orderflow-Lage (src/orderflow/live_state.py); never breaks the page."""
     from src.dashboard.orderflow_tile import section
@@ -608,6 +618,7 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     if symbol == "BTCUSDT":
         body += _levels_section(state)
         body += _verdict_section(state)
+        body += _patterns_section(state)
         body += _orderflow_section(state)
     body += _live_section(symbol, view)
     if symbol != "BTCUSDT":

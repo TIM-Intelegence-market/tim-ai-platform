@@ -205,6 +205,8 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
                    "PAXGUSDT": "Gold (PAXG)"}.get(str(model.get("symbol")), model.get("name"))
     return out
 
+from src.dashboard.pwa import HEAD_TAGS as PWA_HEAD_TAGS  # noqa: E402
+
 
 # --- pages -------------------------------------------------------------------
 
@@ -216,6 +218,7 @@ def shell(title: str, active: str, body: str, extra_css: str = "", disclaimer: s
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<meta name='color-scheme' content='dark'><meta name='robots' content='noindex,nofollow'>"
+        f"{PWA_HEAD_TAGS}"
         f"<title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}{extra_css}</style></head><body>"
         "<a class='skip-link' href='#main-content'>Skip to content</a>"
         "<header class='topbar'><div class='topbar__inner'><a class='brand' href='/chart' aria-label='TIM home'>TIM"
@@ -414,7 +417,7 @@ def journal_csp() -> str:
     """The journal pages have their own style block (no script at all), so they get their own hash."""
     style_hash = base64.b64encode(hashlib.sha256(JOURNAL_STYLE.encode()).digest()).decode()
     return (f"default-src 'none'; style-src 'sha256-{style_hash}'; script-src 'none'; connect-src 'none'; img-src 'self' data:; "
-            "font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+            "font-src 'none'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 
 def _tone(value: Any) -> str:
