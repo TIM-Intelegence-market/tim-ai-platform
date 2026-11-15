@@ -191,7 +191,7 @@ klar und der Verbrauch sichtbar.
 4. Erst nach erfolgreichem Probelauf Zeitpläne (Journal-Auswerter, Wächter) vorschlagen.
 
 Prüfbefehl für den PR: `python -m pytest tests/test_journal_week.py -q` (das neue Wochen-Skript) und das Lesen der
-fünf Dateien auf Frontmatter (`name`, `description`, `tools`, `model`). Die Agent-Dateien selbst prüft kein Test;
+sechs Dateien auf Frontmatter (`name`, `description`, `tools`, `model`). Die Agent-Dateien selbst prüft kein Test;
 ihr Nachweis ist der Probelauf aus Schritt 2.
 
 ## 11. Änderungen in 0.2 (Prüfung vom 15.11.2026)
