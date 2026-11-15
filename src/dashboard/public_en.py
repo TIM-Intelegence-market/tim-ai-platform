@@ -32,11 +32,14 @@ REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
     "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "quarter": "Quarter (1Q)", "year": "Year (1Y)",
-    "vwap": "VWAP (week, month, quarter, year)", "vwap_bands": "VWAP bands week (±1σ, ±2σ)", "naked": "naked POC",
+    "vwap": "VWAP (week, month, quarter, year)", "vwap_bands": "VWAP bands week (±1σ, ±2σ, shaded)", "naked": "naked POC",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trend lines", "fib": "Fibonacci (last swing)", "tpo": "TPO (day profile)",
     "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
     "bubbles": "Volume bubbles (large market orders; perp: Binance + Bybit)",
+    "bubbles_exo": "Market order bubbles, Exo style (medium ×3, large ×4.5)",
+    "vp_range": "Volume profile range (240 candles, 130 rows, VA 70 %, nodes)",
+    "vpoc": "VPOC per candle (delta side, 50 % threshold, trapped)",
     "plans_short": "TIM plans SHORT 15m", "plans_mid": "TIM plans MID 1h", "plans_long": "TIM plans LONG 1D",
     "plans_old": "TIM plans, test versions 30m",
     "gamma": "Options gamma (Deribit)",
