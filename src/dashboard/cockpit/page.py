@@ -24,7 +24,7 @@ REFRESH_SECONDS = 30
 # The areas of the new dashboard. Areas not built yet list the old pages
 # that hold their content, so no area is an empty page.
 AREAS: list[dict[str, Any]] = [
-    {"key": "ueberblick", "label": "Überblick", "href": "/neu/ueberblick", "built": True,
+    {"key": "ueberblick", "label": "Überblick", "href": "/", "built": True,
      "text": "Was wartet auf dich, was ist neu gebaut, wie stehen die Studien, was machen Mac und Worker."},
     {"key": "lage", "label": "Lage", "href": "/neu", "built": True,
      "text": "Läuft TIM, sind die Daten frisch, was sagt TIM zum Markt, was braucht dich."},
