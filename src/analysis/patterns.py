@@ -41,6 +41,10 @@ DELTA_SHARE_MIN = 0.1
 HTF_MAX_AGE = 20  # HTF bars a setup stays alive
 WAIT_BARS = 24  # exec bars an armed plan waits for its retest
 HOLD_BARS = 96
+FILL_THROUGH = 0.0001  # limit entry: the price must trade 0.01 % through the limit to count as filled
+MAKER_PCT = 0.0002  # limit entry and limit target
+TAKER_STOP_PCT = 0.0006 + 0.0005  # stop: taker fee plus 0.05 % slippage
+TAKER_TIME_PCT = 0.0006 + 0.0003  # time exit: taker fee plus 0.03 % slippage
 COST_PCT = 0.0014  # Bitunix taker both ways 0.12 % + 0.02 % slippage, deliberately pessimistic
 LONG, SHORT = "LONG", "SHORT"
 
@@ -179,7 +183,8 @@ def sfps(candles: Sequence[Mapping[str, Any]], tf: str, width: int = 3) -> list[
                 if opposite:
                     wick = c["high"] if short else c["low"]
                     low, high = (level, wick) if short else (wick, level)
-                    out.append(_setup("SFP", SHORT if short else LONG, tf, candles, j, low, high, wick, opposite[-1]["price"], valid=True, reason=None, swing=level))
+                    out.append(_setup("SFP", SHORT if short else LONG, tf, candles, j, low, high, wick, opposite[-1]["price"], valid=True, reason=None, swing=level,
+                                      sweep_rvol=relvol(candles, j), sweep_delta=c.get("delta_share")))
             # a wick through the swing, whether it closed back or beyond, ends its life as an untaken level
         open_swings = keep
     seen: set[str] = set()
@@ -240,3 +245,14 @@ def risk_multiplier(count: int, htf: str) -> float:
     """0.7R with one confluence, 1R with two or more, doubled from 4h up (the model's own sizing)."""
     base = 0.7 if count == 1 else 1.0
     return base * (2.0 if htf in ("4h", "1d", "1w") else 1.0)
+
+
+def prior_confluences(plan: Mapping[str, Any], setup_extra: Mapping[str, Any]) -> dict[str, Any]:
+    """Confluences known BEFORE the limit order is placed (variant L): RVOL at the exec order block's origin and, for an SFP,
+    RVOL and trapped traders (delta against the trade) of the HTF sweep candle."""
+    direction = plan["direction"]
+    sweep_delta = setup_extra.get("sweep_delta")
+    found = {"rvol_origin": bool(plan.get("rvol_origin") is not None and plan["rvol_origin"] >= RELVOL_MIN),
+             "sweep_rvol": bool(setup_extra.get("sweep_rvol") is not None and setup_extra["sweep_rvol"] >= RELVOL_MIN),
+             "sweep_trapped": bool(sweep_delta is not None and ((sweep_delta <= -DELTA_SHARE_MIN) if direction == LONG else (sweep_delta >= DELTA_SHARE_MIN)))}
+    return {"count": sum(found.values()), "found": found}

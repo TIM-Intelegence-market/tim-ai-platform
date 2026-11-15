@@ -182,4 +182,45 @@ def test_s36_candle_builder_and_count_on_a_synthetic_minute_grid(tmp_path):
     assert len(weekly) == 1 and weekly[0]["open_time"].weekday() == 0
     quarter = s36.build_candles(Grid, "15m")
     assert quarter[1]["open_time"] - quarter[0]["open_time"] == timedelta(minutes=15)
-    assert s36.CONFIGS == ["SFP-alle"]
+    assert s36.CONFIGS == ["SFP-alle-M", "SFP-alle-L"]
+
+
+def _limit_plan(**over):
+    return plan(mode="L", setup_extra={"sweep_rvol": 2.0, "sweep_delta": -0.3}, rvol_origin=None, **over)
+
+
+def test_limit_variant_fills_only_when_traded_through_and_pays_maker_fees():
+    ex = flat(30)
+    armed = ex[29]["close_time"].isoformat()
+    ex.append(candle(ex, 102, 103, 101.5, 102.5))  # first candle: the order is fixed, price stays above the limit at 101
+    p = _limit_plan(armed_at=armed)
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "ARMED" and p["limit"] == 101.0 and p["confluence"]["count"] == 2  # sweep RVOL and trapped traders
+    ex.append(candle(ex, 102, 102.0, 100.95, 101.5))  # 0.05 % through 101: filled
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "OPEN" and p["entry"] == 101.0 and p["risk_mult"] == 1.0
+    ex.append(candle(ex, 101.5, 111.0, 101.0, 110.0))
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "CLOSED" and p["how"] == "ZIEL"
+    assert abs(p["cost_r"] - 2 * P.MAKER_PCT * 101.0 / p["risk"]) < 1e-9 and p["cost_r"] < P.COST_PCT * 101.0 / p["risk"]
+
+
+def test_limit_variant_touch_without_trading_through_is_no_fill_and_fill_stop_candle_loses():
+    ex = flat(30)
+    armed = ex[29]["close_time"].isoformat()
+    ex.append(candle(ex, 102, 103, 101.5, 102.5))
+    ex.append(candle(ex, 102, 102.0, 100.995, 101.5))  # touches 101 by 0.005 %: not through by 0.01 %
+    p = _limit_plan(armed_at=armed)
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "ARMED"
+    ex.append(candle(ex, 101.5, 112.0, 90.0, 100.0))  # fills and dumps through the stop in one candle
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "CLOSED" and p["how"] == "STOP" and p["net_r"] < -1.0
+
+
+def test_limit_variant_needs_a_confluence_known_before_the_order():
+    ex = flat(30)
+    ex.append(candle(ex, 102, 103, 101.5, 102.5))
+    p = plan(mode="L", setup_extra={}, rvol_origin=1.0, armed_at=ex[29]["close_time"].isoformat())
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "SKIPPED" and p["reason"] == "keine Konfluenz"

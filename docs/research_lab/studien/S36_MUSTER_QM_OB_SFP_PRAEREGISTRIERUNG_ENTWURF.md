@@ -1,6 +1,13 @@
-# S36 – SFP mit Orderflow-Konfluenz, HTF→Exec, BTC/ETH/SOL (Präregistrierung, Entwurf 0.2, 15.11.2026)
+# S36 – SFP mit Orderflow-Konfluenz, HTF→Exec, BTC/ETH/SOL (Präregistrierung, Entwurf 0.3, 15.11.2026)
 
 Auftrag Uzi (14.11.): "TIM sollte die Pattern auch tracken", dann "p4". Grundlage: GOAT-Handelsmodell (Bild im Thread) und der Muster-Schatten `muster-schatten/1.0` (PR #265, `src/analysis/patterns.py`). Diese Studie fragt rückwirkend, ob die Regeln des Schattens nach Kosten einen Vorteil haben. Entwurf: **nichts gelaufen, kein Ergebnis gesehen.** Mit **[Ergänzung]** markiert sind Festlegungen, die das Modell offenließ; sie gelten ab dem Einfrieren (1.0) und ändern sich danach nicht mehr.
+
+## Änderung 0.3 (15.11.2026, vor jedem R-Wert, Uzis Wort "limit")
+Die Zählung 0.2 (425 Trades Training, 123 Validierung, gepoolt) bleibt Grundlage. Neu: **zwei Einstiegsvarianten**, beide mit denselben Setups und Exec-OBs, Holm über m = 2:
+- **M (Markt):** wie bisher, Einstieg zum Schlusskurs der Retest-Kerze, Taker-Kosten 0,14 % pro Runde im Schatten, in der Studie die strengere Rechnung. Konfluenzen dürfen an der Retest-Kerze gemessen werden.
+- **L (Limit):** Limit-Order an der Kante des Exec-OB (Long: Oberkante, Short: Unterkante), platziert mit der ersten Kerze nach dem Armieren. Es zählen nur Konfluenzen, die **vor** der Order feststehen: RVOL am Ursprungs-OB und beim SFP zusätzlich RVOL und gefangene Trader (Delta gegen die Richtung, ≥ 0,10) der HTF-Sweep-Kerze. Mindestens eine. **Fill nur, wenn der Kurs das Limit um mindestens 0,01 % durchhandelt**; Berühren allein zählt nicht. In der Fill-Kerze wird nur der Stop geprüft (Stop gewinnt), das Ziel zählt erst ab der nächsten Kerze. Kosten: Einstieg und Ziel als Maker 0,02 %, Stop als Taker 0,06 % plus 0,05 % Slippage, Zeitausstieg als Taker 0,06 % plus 0,03 %. Der Kostenfilter (≤ 0,25 R) rechnet mit dem Stop-Fall.
+- R:R ≥ 1,5, Stop, Ziel, Tages- und Sperrregel unverändert. Der Limit-Schatten im Live-Betrieb (#265) bleibt vorerst Variante M; L läuft nur im Rückblick.
+- Das Kriterium (Training n ≥ 60, Netto > +0,15 R, Bootstrap-Untergrenze > 0, Zufallskontrolle) gilt je Variante; Holm über beide.
 
 ## Änderung 0.2 (15.11.2026, nach dem ergebnisblinden Zähllauf, Uzis Wort "sfp")
 Der Zähllauf von 0.1 (nur Anzahlen, keine R; Datei `~/tim-research/results/s36/count.json` auf der PS5) ergab: alle 15 Konfigurationen liegen im Training (2020–2023) unter n = 60 (Maximum day-SFP mit 46, QM/OB 0 bis 5 je Profil). Daraufhin wird die Studie **vor jedem Blick auf Ergebnisse in R** verengt:
