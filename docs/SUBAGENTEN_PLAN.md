@@ -38,6 +38,7 @@ Grenze der Technik: Die Werkzeugliste in der Definition (`tools:`) begrenzt, was
 | 3 | `mac-server-waechter` | Sonnet, niedrig | Read, Grep, Glob, Bash (nur Lesen) | in einer Mac-Sitzung, nach Anstoß, höchstens alle 30 Minuten; nach jedem Merge einmal |
 | 4 | `daten-steward` | Sonnet, mittel | Read, Grep, Glob (Bericht von `scripts/data_quality_report.py`) | vor jeder Studie (Datensatz-Hash) und bei Verdacht |
 | 5 | `journal-auswerter` | Sonnet, niedrig | Read, Grep, Glob (Ausgabe von `src.dashboard.journal_week`) | wöchentlich (Sonntag Abend) |
+| 6 | `quellen-abgleicher` | Sonnet, mittel | Read, Grep, Glob (Quelle aus dem Eingang) | bei neuer Datei im Eingang oder auf Anfrage |
 
 Die Werte „Modell“ und „Effort“ sind Vorgaben für den Aufrufer: In `.claude/agents/*.md` steht das Modell
 (`model:`), der Effort wird beim Aufruf gesetzt.
@@ -150,12 +151,25 @@ Die Werte „Modell“ und „Effort“ sind Vorgaben für den Aufrufer: In `.cl
 - **Wann:** Sonntag Abend, einmal pro Woche. Kein Zeitplan wird ohne Uzis „go“ eingerichtet; bis dahin auf Anfrage.
 - **Nicht-Ziele:** Trades bewerten wie ein Urteil, Regeln ändern, Echtgeld-Empfehlungen.
 
+## 7a. Quellen-Abgleicher (ergänzt 15.11.2026)
+
+- **Ziel:** Neue Quellen (PDFs, Bilder, Datendateien), die Uzi in `~/Documents/TIM/eingang-quellen/` ablegt, mit dem
+  dokumentierten TIM-Wissen abgleichen.
+- **Scope:** Aussagen der Quelle mit Seite gegen `docs/knowledge/` und `docs/research_lab/` (Präregistrierungen,
+  Protokoll, Register); Klassen `deckt sich`, `widerspricht`, `neu`, `unklar`.
+- **Berechtigung:** nur lesend (Read, Grep, Glob). Kein Regel-Update (F3), keine Studie, kein Holdout.
+- **Akzeptanzkriterien:** jede Aussage mit Seite und TIM-Fundstelle; unlesbare Seiten als "nicht geprüft";
+  höchstens drei Vorschläge, jeder "wartet auf Uzi".
+- **Abschlussnachweis:** Bericht im Ausgang der Master-Sitzung (`docs/SUBAGENTEN_MASTER_AUFTRAG.md`
+  beschreibt Ausgang und Eingang).
+
 ## 8. Zusammenspiel
 
 ```text
 Idee -> [Daten-Steward] -> Präregistrierung -> [Studien-Prüfer] -> F1 "go" (Uzi)
 PR grün -> [PR-Reviewer] -> F2 "merge" (Uzi) -> [Wächter] Mac-Stand + /chart
 Woche -> [Journal-Auswerter] -> Uzi
+neue Quelle -> [Quellen-Abgleicher] -> Vorschlag -> Uzi ("go" für Studie oder Regel-Update)
 ```
 
 Kein Subagent ruft einen anderen auf. Der Aufrufer (Thread oder Koordinator) verbindet sie. So bleibt Dateibesitz
