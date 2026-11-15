@@ -1,5 +1,7 @@
 # Mission 07 — deterministic offline research baseline
 
+> **Archiviert am 15.11.2026:** `src/research_intelligence/` wurde aus `platform-main` entfernt (kein Aufrufer im Repo, auf dem Mac, in Cron oder launchd; siehe `docs/PAKETINVENTAR.md`). Stand gesichert im Zweig `archiv/research-intelligence-2026-11-15`.
+
 Implementation: `src/research_intelligence/engine.py` and `runner.py`.
 Run: `.venv/bin/python -m src.research_intelligence.runner --collection verified-btcusdt-20260906T115023Z`.
 

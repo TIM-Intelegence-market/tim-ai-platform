@@ -56,7 +56,7 @@ PACKAGE_LAYER = {
     "daten": ("data_ingestion", "database", "market_data", "multi_symbol", "observation",
               "quality", "sources", "news", "models"),
     "research": ("analysis", "analytics", "insights", "orderflow", "orderflow_scenario",
-                 "options_gamma", "research", "research_intelligence", "research_lab",
+                 "options_gamma", "research", "research_lab",
                  "research_ops", "benchmark"),
     "trading": ("paper",),
     "v2": ("tim_v2", "v2_completion", "v2_readiness"),
