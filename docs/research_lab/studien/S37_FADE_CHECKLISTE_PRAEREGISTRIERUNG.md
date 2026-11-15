@@ -1,13 +1,13 @@
-# S36 – Fade-Checkliste (Flowread) auf BTC/ETH/SOL, Teil a ohne Gamma (Präregistrierung 1.0, 15.11.2026)
+# S37 – Fade-Checkliste (Flowread) auf BTC/ETH/SOL, Teil a ohne Gamma (Präregistrierung 1.0, 15.11.2026)
 
 Auftrag Uzi 15.11.: Studie aus dem Flowread-Guide "The Fade Checklist", Rechnung auf PS4/PS5. Quelle ist Marketing ohne Zahlen: nur Hypothese.
-Eingefroren auf Uzis Wort (15.11.2026, "Bau s36") vor jedem Blick auf Ergebnisse. Nach dem ersten Ergebnis wird nichts mehr geändert. Protokoll PROTOKOLL.md 1.3. Aufbau wie S34/S35a (gleiche Kosten, Bootstrap, Zufallskontrolle).
+Eingefroren auf Uzis Wort (15.11.2026, "Bau s37") vor jedem Blick auf Ergebnisse. Nach dem ersten Ergebnis wird nichts mehr geändert. Protokoll PROTOKOLL.md 1.3. Aufbau wie S34/S35a (gleiche Kosten, Bootstrap, Zufallskontrolle).
 
 ## Hypothese
 Ein Fade zum Tages-VWAP gelingt nur, wenn alle Checks zugleich erfüllt sind (Kontext vor Auslöser). Frage: Bringt die Konjunktion nach Kosten mehr als jeder Einzelfilter (S34/S35a)?
 
 ## Abbildung der 5 Checks auf Krypto
-| Guide | S36 Teil a | Status |
+| Guide | S37 Teil a | Status |
 |---|---|---|
 | 1 Gamma positiv | **nicht testbar**: keine kostenlose Options-Historie 2020–2024 | nur Vorwärts-Schatten (S33/A1), Teil b |
 | 2 Level (Gamma-Strike + DEX) | Ersatz: Vortags-VAL (Long) / Vortags-VAH (Short), Profil wie S35a Klasse P, Berührung ±0,05 % | Ersatz, keine Gamma-Aussage |
@@ -30,7 +30,7 @@ Training 2020–2022. Validierung 2023–2024 (nur Konfigurationen, die das Trai
 Wie S34/S35a: Taker 0,06 %/Seite, Slippage 0,03 % (Stop 0,05 %), echte Binance-Funding-Raten.
 
 ## Erfolgskriterium (je Konfiguration, alle zugleich)
-Training: n ≥ 100, Netto > +0,15 R, 90-%-Bootstrap-Untergrenze > 0 (iid, 10 000, Seed 36), Zufallskontrolle (gleiche Zahl/Richtung/Stop-Ziel-Abstände, 1000 Ziehungen) Holm-p ≤ 0,01, Leave-one-year-out > 0, kein Jahr > 60 % der R.
+Training: n ≥ 100, Netto > +0,15 R, 90-%-Bootstrap-Untergrenze > 0 (iid, 10 000, Seed 37), Zufallskontrolle (gleiche Zahl/Richtung/Stop-Ziel-Abstände, 1000 Ziehungen) Holm-p ≤ 0,01, Leave-one-year-out > 0, kein Jahr > 60 % der R.
 Validierung: n ≥ 60, Netto > +0,15 R, Untergrenze > 0, gleiches Vorzeichen.
 Zusatz: vaOn muss vaOff in Netto-R schlagen, sonst gilt Check 3 als wirkungslos (Ausweis, keine Bestehensbedingung).
 n < Mindestzahl = "nicht prüfbar".
@@ -39,7 +39,7 @@ n < Mindestzahl = "nicht prüfbar".
 Checks 1+2 als Schatten-Filter auf die Trades von Teil a, sobald S33 (A1-Aufzeichnung) 60 Tage hat. Keine Mischung mit Teil a. Kein Beleg ohne neue Präregistrierung.
 
 ## Ablauf
-1. Einfrieren per PR (Spezifikation + Tests, Modul `studies/s36.py` auf Basis s34/s35a). 2. Zähllauf Training auf PS5: `python -m src.research_lab.studies.s36 --phase train`; PS4 nur für Zufallskontrolle (Training 2020–23 ist dort vorhanden). 3. Validierung nur bei bestandenem Training. 4. Bericht aller Läufe.
+1. Einfrieren per PR (Spezifikation + Tests, Modul `studies/s37.py` auf Basis s34/s35a). 2. Zähllauf Training auf PS5: `python -m src.research_lab.studies.s37 --phase train`; PS4 nur für Zufallskontrolle (Training 2020–23 ist dort vorhanden). 3. Validierung nur bei bestandenem Training. 4. Bericht aller Läufe.
 
 ## Erwartung
 Kosten ≈ 0,4 R gegen 0,5 % Risiko; S30 und S34 deuten auf kein Edge. Fünf Filter zusammen ergeben wahrscheinlich n < 100 = "nicht prüfbar".

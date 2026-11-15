@@ -1,6 +1,6 @@
-"""S36 - Fade-Checkliste (Flowread), Teil a ohne Gamma, BTC/ETH/SOL (Praeregistrierung 1.0).
+"""S37 - Fade-Checkliste (Flowread), Teil a ohne Gamma, BTC/ETH/SOL (Praeregistrierung 1.0).
 
-Rules frozen in docs/research_lab/studien/S36_FADE_CHECKLISTE_PRAEREGISTRIERUNG.md. Gamma/DEX is not part of this study.
+Rules frozen in docs/research_lab/studien/S37_FADE_CHECKLISTE_PRAEREGISTRIERUNG.md. Gamma/DEX is not part of this study.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ MIN_RISK = 0.005
 TIME_STOP_MIN = 240
 TFS = (5, 15)
 CONFIGS = [f"F-{t}m-{v}" for t in TFS for v in ("vaOn", "vaOff")]   # 4
-SEED = 36
+SEED = 37
 
 
 def find_signals(m: Minutes, first: date, last: date, tf: int) -> dict[str, list[dict]]:
@@ -155,7 +155,7 @@ def run(phase: str, bars_roots, funding_root, out: Path, train_result: Path | No
             print("Validierung gesperrt: keine Konfiguration hat das Training bestanden.", file=sys.stderr)
             return 2
     trades, skipped = collect(bars_roots, funding_root, first, last)
-    res: dict = {"studie": "S36", "phase": phase, "von": first.isoformat(), "bis": last.isoformat(), "configs": {}}
+    res: dict = {"studie": "S37", "phase": phase, "von": first.isoformat(), "bis": last.isoformat(), "configs": {}}
     total_days = (last - first).days + 1
     for c in CONFIGS:
         ts = trades[c]

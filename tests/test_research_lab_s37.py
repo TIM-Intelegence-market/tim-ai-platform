@@ -1,28 +1,28 @@
-"""S36: Konfigurationen, Absorptions-/Eröffnungsregel auf synthetischen Minuten."""
+"""S37: Konfigurationen, Absorptions-/Eröffnungsregel auf synthetischen Minuten."""
 from __future__ import annotations
 
 from datetime import date
 
-from src.research_lab.studies import s36
+from src.research_lab.studies import s37
 
 
 def test_configs_and_constants():
-    assert s36.CONFIGS == ["F-5m-vaOn", "F-5m-vaOff", "F-15m-vaOn", "F-15m-vaOff"]
-    assert s36.SIGMA == 2.0 and s36.TIME_STOP_MIN == 240
+    assert s37.CONFIGS == ["F-5m-vaOn", "F-5m-vaOff", "F-15m-vaOn", "F-15m-vaOff"]
+    assert s37.SIGMA == 2.0 and s37.TIME_STOP_MIN == 240
 
 
 def test_signal_none_without_data():
     class M:
         first = date(2024, 1, 1)
         n = 1440
-    assert s36.find_signals(M(), date(2024, 1, 1), date(2024, 1, 1), 5) == {"vaOn": [], "vaOff": []}
+    assert s37.find_signals(M(), date(2024, 1, 1), date(2024, 1, 1), 5) == {"vaOn": [], "vaOff": []}
 
 
 def test_no_validation_without_training(tmp_path):
     import json
     p = tmp_path / "t.json"
-    p.write_text(json.dumps({"configs": {c: {"training_passed": False} for c in s36.CONFIGS}}))
-    assert s36.run("valid", {}, "x", tmp_path / "o.json", p) == 2
+    p.write_text(json.dumps({"configs": {c: {"training_passed": False} for c in s37.CONFIGS}}))
+    assert s37.run("valid", {}, "x", tmp_path / "o.json", p) == 2
 
 
 class _Syn:
@@ -48,7 +48,7 @@ class _Syn:
 
 def test_absorption_long_signal_and_vaon_filter():
     m = _Syn()
-    lv = s36.profile_levels(m, date(2024, 1, 2))
+    lv = s37.profile_levels(m, date(2024, 1, 2))
     val = lv[2]
     # candle k = minutes 240..244 (5m): big volume, tiny range at VAL, sellers dominate; k+1 = 245..249: buyers, close >= open
     for i in range(1440 + 240, 1440 + 245):
@@ -59,10 +59,10 @@ def test_absorption_long_signal_and_vaon_filter():
         m.open[i], m.low[i] = val, val
         m.close[i] = m.high[i] = val + 0.05
         m.buy_q[i], m.sell_q[i], m.base[i] = 200.0, 20.0, 2.0
-    out = s36.find_signals(m, date(2024, 1, 2), date(2024, 1, 2), 5)
+    out = s37.find_signals(m, date(2024, 1, 2), date(2024, 1, 2), 5)
     assert len(out["vaOff"]) == 1 and out["vaOff"][0]["direction"] == 1
     assert out["vaOn"] == out["vaOff"]            # open 100 inside the value area
     assert out["vaOff"][0]["i_entry"] == 1440 + 250
     m.open[1440] = 150.0                          # open outside the value area -> vaOn drops
-    out2 = s36.find_signals(m, date(2024, 1, 2), date(2024, 1, 2), 5)
+    out2 = s37.find_signals(m, date(2024, 1, 2), date(2024, 1, 2), 5)
     assert out2["vaOn"] == [] and len(out2["vaOff"]) == 1
