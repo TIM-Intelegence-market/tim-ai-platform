@@ -1,12 +1,12 @@
 # Subagenten-Plan für TIM
 
 Stand 15.11.2026, **ENTWURF 0.2** (Auftrag: Uzi, 15.11.2026; 0.2 nach eigener Prüfung, Uzis „Go“ 20:27 Ortszeit, Änderungen in Abschnitt 11). Ergänzt `docs/MULTI_AGENTEN_SYSTEM.md`: Dort stehen die
-Rollen der ganzen Kette, hier stehen fünf konkrete Subagenten mit Grenzen, die man in einer Sitzung aufrufen kann.
+Rollen der ganzen Kette, hier stehen sechs konkrete Subagenten (der sechste, `quellen-abgleicher`, seit 15.11. spät) mit Grenzen, die man in einer Sitzung aufrufen kann.
 Die Definitionen liegen unter `.claude/agents/`.
 
 ## 1. Grundsätze
 
-- **Nur prüfen und berichten.** Alle fünf Subagenten sind lesend. Keiner baut Code, rechnet Studien, merged, schreibt
+- **Nur prüfen und berichten.** Alle sechs Subagenten sind lesend. Keiner baut Code, rechnet Studien, merged, schreibt
   Register oder greift in den Live-Betrieb ein. Studien und neuer Code bleiben in Threads (F1 „go“).
 - **Eine Freigabe erteilt nie ein Subagent.** „go“, „merge“, Regel-Update, Live-Eingriff und Holdout bleiben bei Uzi
   (F1 bis F5, `MULTI_AGENTEN_SYSTEM.md` Abschnitt 1). Ein Bericht eines Subagenten ist keine Freigabe.
@@ -38,6 +38,7 @@ Grenze der Technik: Die Werkzeugliste in der Definition (`tools:`) begrenzt, was
 | 3 | `mac-server-waechter` | Sonnet, niedrig | Read, Grep, Glob, Bash (nur Lesen) | in einer Mac-Sitzung, nach Anstoß, höchstens alle 30 Minuten; nach jedem Merge einmal |
 | 4 | `daten-steward` | Sonnet, mittel | Read, Grep, Glob (Bericht von `scripts/data_quality_report.py`) | vor jeder Studie (Datensatz-Hash) und bei Verdacht |
 | 5 | `journal-auswerter` | Sonnet, niedrig | Read, Grep, Glob (Ausgabe von `src.dashboard.journal_week`) | wöchentlich (Sonntag Abend) |
+| 6 | `quellen-abgleicher` | Sonnet, mittel | Read, Grep, Glob (Quelle aus dem Eingang) | bei neuer Datei im Eingang oder auf Anfrage |
 
 Die Werte „Modell“ und „Effort“ sind Vorgaben für den Aufrufer: In `.claude/agents/*.md` steht das Modell
 (`model:`), der Effort wird beim Aufruf gesetzt.
@@ -150,12 +151,25 @@ Die Werte „Modell“ und „Effort“ sind Vorgaben für den Aufrufer: In `.cl
 - **Wann:** Sonntag Abend, einmal pro Woche. Kein Zeitplan wird ohne Uzis „go“ eingerichtet; bis dahin auf Anfrage.
 - **Nicht-Ziele:** Trades bewerten wie ein Urteil, Regeln ändern, Echtgeld-Empfehlungen.
 
+## 7a. Quellen-Abgleicher (ergänzt 15.11.2026)
+
+- **Ziel:** Neue Quellen (PDFs, Bilder, Datendateien), die Uzi in `~/Documents/TIM/eingang-quellen/` ablegt, mit dem
+  dokumentierten TIM-Wissen abgleichen.
+- **Scope:** Aussagen der Quelle mit Seite gegen `docs/knowledge/` und `docs/research_lab/` (Präregistrierungen,
+  Protokoll, Register); Klassen `deckt sich`, `widerspricht`, `neu`, `unklar`.
+- **Berechtigung:** nur lesend (Read, Grep, Glob). Kein Regel-Update (F3), keine Studie, kein Holdout.
+- **Akzeptanzkriterien:** jede Aussage mit Seite und TIM-Fundstelle; unlesbare Seiten als "nicht geprüft";
+  höchstens drei Vorschläge, jeder "wartet auf Uzi".
+- **Abschlussnachweis:** Bericht im Ausgang der Master-Sitzung (`docs/SUBAGENTEN_MASTER_AUFTRAG.md`
+  beschreibt Ausgang und Eingang).
+
 ## 8. Zusammenspiel
 
 ```text
 Idee -> [Daten-Steward] -> Präregistrierung -> [Studien-Prüfer] -> F1 "go" (Uzi)
 PR grün -> [PR-Reviewer] -> F2 "merge" (Uzi) -> [Wächter] Mac-Stand + /chart
 Woche -> [Journal-Auswerter] -> Uzi
+neue Quelle -> [Quellen-Abgleicher] -> Vorschlag -> Uzi ("go" für Studie oder Regel-Update)
 ```
 
 Kein Subagent ruft einen anderen auf. Der Aufrufer (Thread oder Koordinator) verbindet sie. So bleibt Dateibesitz
@@ -169,7 +183,7 @@ klar und der Verbrauch sichtbar.
 
 ## 10. Einführung und Prüfung
 
-1. Merge dieses PR (Uzi „merge“). Danach stehen die fünf Definitionen in `.claude/agents/`.
+1. Merge dieses PR (Uzi „merge“). Danach stehen die Definitionen in `.claude/agents/`.
 2. Probelauf je Agent an einem bekannten Fall (zum Beispiel Studien-Prüfer an S36, PR-Reviewer an einem
    gemergten Doku-PR, Wächter einmal am Mac). Maßstab: findet er einen absichtlich eingebauten Fehler, bleibt er in
    seinen Grenzen (kein Schreiben), nennt er Unerreichbares als „nicht geprüft“.
@@ -177,7 +191,7 @@ klar und der Verbrauch sichtbar.
 4. Erst nach erfolgreichem Probelauf Zeitpläne (Journal-Auswerter, Wächter) vorschlagen.
 
 Prüfbefehl für den PR: `python -m pytest tests/test_journal_week.py -q` (das neue Wochen-Skript) und das Lesen der
-fünf Dateien auf Frontmatter (`name`, `description`, `tools`, `model`). Die Agent-Dateien selbst prüft kein Test;
+sechs Dateien auf Frontmatter (`name`, `description`, `tools`, `model`). Die Agent-Dateien selbst prüft kein Test;
 ihr Nachweis ist der Probelauf aus Schritt 2.
 
 ## 11. Änderungen in 0.2 (Prüfung vom 15.11.2026)
@@ -188,10 +202,18 @@ ihr Nachweis ist der Probelauf aus Schritt 2.
 | Daten-Steward kann ohne Werkzeug nicht zählen | bewertet den Bericht von `scripts/data_quality_report.py`, zählt nicht selbst |
 | Journal-Auswerter rechnet ohne Skript | neues nur lesendes `src/dashboard/journal_week.py` mit Tests |
 | Reviewer liest fremden Text mit Bash | Bash entfernt, Diff kommt als Datei vom Aufrufer |
-| Fremder Text kann Anweisungen enthalten | Satz dazu in allen fünf Prompts |
+| Fremder Text kann Anweisungen enthalten | Satz dazu in allen Prompts |
 | Prüfbefehl passte nicht | ersetzt |
 
 Nicht geändert, weil ungeprüft: Effort fest in der Definition; Auto-Merge-Stand in GitHub.
+
+## 12. Ergänzung 15.11.2026 abends (nach Probelauf)
+
+| Befund | Änderung |
+|---|---|
+| Uzi will PDFs und Quellen abgleichen | sechster Agent `quellen-abgleicher` (Abschnitt 7a) |
+| Betrieb braucht eine steuernde Sitzung | Master-Auftrag `docs/SUBAGENTEN_MASTER_AUFTRAG.md` (lokal in `~/TIM-live`, Eingang/Ausgang, Zeitpläne erst nach „Zeitplan an“) |
+| Review #275: Bash-Liste zu weit, Schreibwege unklar | abschließende Bash-Liste, Schreiben nur per Write auf feste Ziele, Zeitplan-Läufe mit engerer Werkzeugliste |
 
 ## Herkunft
 
