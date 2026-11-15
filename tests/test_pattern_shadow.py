@@ -157,3 +157,96 @@ def test_update_is_prospective_idempotent_and_renders(tmp_path):
     html = S.render_de(S.current(series), second)
     assert "Muster: QM, OB, SFP" in html and P.RULESET in html
     assert "keine Order" in S.render_de(None, None)
+
+
+def test_s36_candle_builder_and_count_on_a_synthetic_minute_grid(tmp_path):
+    from array import array
+
+    from src.research_lab.studies import s36
+
+    class Grid:
+        t0 = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        n = 14 * 1440
+        valid = bytearray([1]) * n
+        open = array("d", [100.0 + (i // 60) % 7 for i in range(n)])
+        high = array("d", [x + 1 for x in open])
+        low = array("d", [x - 1 for x in open])
+        close = open
+        buy_q = array("d", [3.0]) * n
+        sell_q = array("d", [1.0]) * n
+        base = array("d", [0.1]) * n
+
+    hourly = s36.build_candles(Grid, "1h")
+    assert len(hourly) == 14 * 24 and hourly[0]["delta_share"] == 0.5 and abs(hourly[0]["volume"] - 6.0) < 1e-9
+    weekly = s36.build_candles(Grid, "1w")  # 2020-01-01 is a Wednesday: only the one full Monday-week fits
+    assert len(weekly) == 1 and weekly[0]["open_time"].weekday() == 0
+    quarter = s36.build_candles(Grid, "15m")
+    assert quarter[1]["open_time"] - quarter[0]["open_time"] == timedelta(minutes=15)
+    assert s36.CONFIGS == ["SFP-alle-M", "SFP-alle-L"]
+
+
+def _limit_plan(**over):
+    return plan(mode="L", setup_extra={"sweep_rvol": 2.0, "sweep_delta": -0.3}, rvol_origin=None, **over)
+
+
+def test_limit_variant_fills_only_when_traded_through_and_pays_maker_fees():
+    ex = flat(30)
+    armed = ex[29]["close_time"].isoformat()
+    ex.append(candle(ex, 102, 103, 101.5, 102.5))  # first candle: the order is fixed, price stays above the limit at 101
+    p = _limit_plan(armed_at=armed)
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "ARMED" and p["limit"] == 101.0 and p["confluence"]["count"] == 2  # sweep RVOL and trapped traders
+    ex.append(candle(ex, 102, 102.0, 100.95, 101.5))  # 0.05 % through 101: filled
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "OPEN" and p["entry"] == 101.0 and p["risk_mult"] == 1.0
+    ex.append(candle(ex, 101.5, 111.0, 101.0, 110.0))
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "CLOSED" and p["how"] == "ZIEL"
+    assert abs(p["cost_r"] - 2 * P.MAKER_PCT * 101.0 / p["risk"]) < 1e-9 and p["cost_r"] < P.COST_PCT * 101.0 / p["risk"]
+
+
+def test_limit_variant_touch_without_trading_through_is_no_fill_and_fill_stop_candle_loses():
+    ex = flat(30)
+    armed = ex[29]["close_time"].isoformat()
+    ex.append(candle(ex, 102, 103, 101.5, 102.5))
+    ex.append(candle(ex, 102, 102.0, 100.995, 101.5))  # touches 101 by 0.005 %: not through by 0.01 %
+    p = _limit_plan(armed_at=armed)
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "ARMED"
+    ex.append(candle(ex, 101.5, 112.0, 90.0, 100.0))  # fills and dumps through the stop in one candle
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "CLOSED" and p["how"] == "STOP" and p["net_r"] < -1.0
+
+
+def test_limit_variant_needs_a_confluence_known_before_the_order():
+    ex = flat(30)
+    ex.append(candle(ex, 102, 103, 101.5, 102.5))
+    p = plan(mode="L", setup_extra={}, rvol_origin=1.0, armed_at=ex[29]["close_time"].isoformat())
+    S.advance(p, ex, {"p1": p})
+    assert p["status"] == "SKIPPED" and p["reason"] == "keine Konfluenz"
+
+
+def test_s36_evaluation_helpers():
+    from src.research_lab.studies import s36
+
+    class F:
+        def cost(self, d, a, b):
+            return 0.0001 * d
+
+    pl = {"mode": "L", "direction": P.LONG, "how": "ZIEL", "entry": 100.0, "risk": 1.0, "gross_r": 2.0, "profile": "day", "exec": "15m", "target": 102.0,
+          "entry_time": "2021-03-01T00:00:00+00:00", "closed_at": "2021-03-01T06:00:00+00:00"}
+    t = s36.study_trade(pl, "BTCUSDT", F())
+    assert abs(t["cost_r"] - 2 * 0.0002 * 100) < 1e-9 and abs(t["fund_r"] - 0.01) < 1e-9 and abs(t["net_r"] - (2.0 - 0.04 - 0.01)) < 1e-9
+    m = s36.study_trade({**pl, "mode": "M", "how": "STOP"}, "BTCUSDT", F())
+    assert abs(m["cost_r"] - (0.0009 + 0.0011) * 100) < 1e-9  # taker + slippage in, stop taker + 0.05 % slippage out
+    assert s36.holm_adjusted({"a": 0.004, "b": 0.02}, 2) == {"a": 0.008, "b": 0.02}
+    winners = [{"entry_ms": 1_600_000_000_000 + i * 700_000_000, "net_r": 0.5} for i in range(40)]
+    assert s36.cluster_bootstrap_lower(winners) == 0.5 and s36.leave_one_year_out_ok(winners)["ok"]
+    one_year = [{"entry_ms": 1_600_000_000_000 + i * 1_000_000, "net_r": 0.5} for i in range(10)]
+    assert not s36.leave_one_year_out_ok(one_year)["ok"]  # a single year cannot be left out
+    ex = flat(400)
+    series = {("BTCUSDT", "day"): ex}
+    trade = {**t, "symbol": "BTCUSDT", "profile": "day", "stop_frac": 0.01, "target_frac": 0.02, "direction": 1, "mode": "M"}
+    s36.CTRL_DRAWS = 20
+    r = s36.random_control([trade] * 5, series, {"BTCUSDT": F()}, (T0, T0 + timedelta(days=30)))
+    assert r["draws"] == 20 and 0 < r["p"] <= 1 and r["random_mean"] < 0  # flat prices: every random trade runs to the time exit and pays costs

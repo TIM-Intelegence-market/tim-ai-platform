@@ -92,6 +92,50 @@ def _skip(plan: dict[str, Any], reason: str, at: datetime) -> None:
     plan.update(status="SKIPPED", reason=reason, closed_at=_iso(at))
 
 
+def _close(plan: dict[str, Any], exit_price: float, how: str, end: datetime, long: bool) -> None:
+    gross = ((exit_price - plan["entry"]) if long else (plan["entry"] - exit_price)) / plan["risk"]
+    if plan.get("mode") == "L":  # limit variant: maker entry, maker target, taker stop / time exit
+        exit_pct = {"ZIEL": P.MAKER_PCT, "STOP": P.TAKER_STOP_PCT}.get(how, P.TAKER_TIME_PCT)
+        plan["cost_r"] = (P.MAKER_PCT + exit_pct) * plan["entry"] / plan["risk"]
+    net = gross - plan["cost_r"]
+    plan.update(status="CLOSED", exit=exit_price, how=how, gross_r=round(gross, 3), net_r=round(net, 3),
+                weighted_r=round(net * plan["risk_mult"], 3), closed_at=_iso(end))
+
+
+def _limit_step(plan: dict[str, Any], ex: Sequence[Mapping[str, Any]], j: int, c: Mapping[str, Any], end: datetime,
+                plans: Mapping[str, Mapping[str, Any]], long: bool) -> None:
+    """Variant L: a limit order at the exec zone edge, placed with the confluences known before it; filled when the price trades through."""
+    if "limit" not in plan:  # first candle after arming: fix the order from what was known at arming
+        atr = P.atr_at(ex, j - 1) if j >= 1 else None
+        if atr is None:
+            return
+        conf = P.prior_confluences(plan, plan.get("setup_extra") or {})
+        limit = plan["zone_high"] if long else plan["zone_low"]
+        stop = plan["zone_low"] - P.ZONE_PAD_ATR * atr if long else plan["zone_high"] + P.ZONE_PAD_ATR * atr
+        risk = abs(limit - stop)
+        reward = (plan["target"] - limit) if long else (limit - plan["target"])
+        plan.update(limit=limit, stop=stop, risk=risk, confluence=conf)
+        if conf["count"] < 1:
+            _skip(plan, "keine Konfluenz", end)
+        elif risk <= 0 or reward / risk < P.MIN_RR:
+            _skip(plan, "R:R unter 1,5", end)
+        elif (P.MAKER_PCT + P.TAKER_STOP_PCT) * limit / risk > P.MAX_COST_R:
+            _skip(plan, "Kosten über 0,25 R", end)
+        return
+    through = (c["low"] <= plan["limit"] * (1 - P.FILL_THROUGH)) if long else (c["high"] >= plan["limit"] * (1 + P.FILL_THROUGH))
+    if not through:
+        return
+    ctx = _ctx_for(plans, plan["id"], end)
+    if ctx["shots"] >= MAX_SHOTS_PER_DAY or ctx["lost"] >= MAX_DAY_LOSS_R:
+        _skip(plan, "Tageslimit", end)
+    elif ctx["last_event"] and datetime.fromisoformat(plan["setup_created"]) <= ctx["last_event"]:
+        _skip(plan, "Sperre nach Verlust/verpasst", end)
+    else:
+        plan.update(status="OPEN", entry=plan["limit"], entry_time=_iso(end), risk_mult=P.risk_multiplier(plan["confluence"]["count"], plan["htf"]))
+        if (c["low"] <= plan["stop"]) if long else (c["high"] >= plan["stop"]):
+            _close(plan, plan["stop"], "STOP", end, long)  # filled and stopped in one candle: the stop wins, the target is not credited
+
+
 def advance(plan: dict[str, Any], ex: Sequence[Mapping[str, Any]], plans: Mapping[str, Mapping[str, Any]],
             trades: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """One step of a plan over the closed exec candles, pure apart from the plan dict. Causal: candle j decides at its close."""
@@ -109,6 +153,9 @@ def advance(plan: dict[str, Any], ex: Sequence[Mapping[str, Any]], plans: Mappin
                 continue
             if (end - armed).total_seconds() / seconds > P.WAIT_BARS:
                 _skip(plan, "abgelaufen", end)
+                continue
+            if plan.get("mode") == "L":
+                _limit_step(plan, ex, j, c, end, plans, long)
                 continue
             touch = (c["low"] <= plan["zone_high"] and c["close"] >= plan["zone_low"]) if long else (c["high"] >= plan["zone_low"] and c["close"] <= plan["zone_high"])
             atr = P.atr_at(ex, j)
@@ -146,10 +193,7 @@ def advance(plan: dict[str, Any], ex: Sequence[Mapping[str, Any]], plans: Mappin
             elif (end - datetime.fromisoformat(plan["entry_time"])).total_seconds() / seconds >= P.HOLD_BARS:
                 exit_price, how = c["close"], "ZEIT"
             if exit_price is not None:
-                gross = ((exit_price - plan["entry"]) if long else (plan["entry"] - exit_price)) / plan["risk"]
-                net = gross - plan["cost_r"]
-                plan.update(status="CLOSED", exit=exit_price, how=how, gross_r=round(gross, 3), net_r=round(net, 3),
-                            weighted_r=round(net * plan["risk_mult"], 3), closed_at=_iso(end))
+                _close(plan, exit_price, how, end, long)
     return plan
 
 
