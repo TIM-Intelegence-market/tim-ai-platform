@@ -1,12 +1,12 @@
 # Subagenten-Plan für TIM
 
-Stand 15.11.2026, **ENTWURF 0.2** (Auftrag: Uzi, 15.11.2026; 0.2 nach eigener Prüfung, Uzis „Go“ 20:27 Ortszeit, Änderungen in Abschnitt 11). Ergänzt `docs/MULTI_AGENTEN_SYSTEM.md`: Dort stehen die
-Rollen der ganzen Kette, hier stehen sechs konkrete Subagenten (der sechste, `quellen-abgleicher`, seit 15.11. spät) mit Grenzen, die man in einer Sitzung aufrufen kann.
+Stand 15.11.2026, **ENTWURF 0.3** (Auftrag: Uzi, 15.11.2026; 0.3: zwei UI-Prüfer ergänzt, Änderungen in Abschnitt 13). Ergänzt `docs/MULTI_AGENTEN_SYSTEM.md`: Dort stehen die
+Rollen der ganzen Kette, hier stehen acht konkrete Subagenten mit Grenzen, die man in einer Sitzung aufrufen kann.
 Die Definitionen liegen unter `.claude/agents/`.
 
 ## 1. Grundsätze
 
-- **Nur prüfen und berichten.** Alle sechs Subagenten sind lesend. Keiner baut Code, rechnet Studien, merged, schreibt
+- **Nur prüfen und berichten.** Alle acht Subagenten sind lesend. Keiner baut Code, rechnet Studien, merged, schreibt
   Register oder greift in den Live-Betrieb ein. Studien und neuer Code bleiben in Threads (F1 „go“).
 - **Eine Freigabe erteilt nie ein Subagent.** „go“, „merge“, Regel-Update, Live-Eingriff und Holdout bleiben bei Uzi
   (F1 bis F5, `MULTI_AGENTEN_SYSTEM.md` Abschnitt 1). Ein Bericht eines Subagenten ist keine Freigabe.
@@ -39,6 +39,8 @@ Grenze der Technik: Die Werkzeugliste in der Definition (`tools:`) begrenzt, was
 | 4 | `daten-steward` | Sonnet, mittel | Read, Grep, Glob (Bericht von `scripts/data_quality_report.py`) | vor jeder Studie (Datensatz-Hash) und bei Verdacht |
 | 5 | `journal-auswerter` | Sonnet, niedrig | Read, Grep, Glob (Ausgabe von `src.dashboard.journal_week`) | wöchentlich (Sonntag Abend) |
 | 6 | `quellen-abgleicher` | Sonnet, mittel | Read, Grep, Glob (Quelle aus dem Eingang) | bei neuer Datei im Eingang oder auf Anfrage |
+| 7 | `chart-ui-pruefer` | Sonnet, mittel | Read, Grep, Glob | nach jedem Merge mit Chart-Änderungen |
+| 8 | `control-center-pruefer` | Sonnet, mittel | Read, Grep, Glob | nach jedem Merge mit CC-Änderungen |
 
 Die Werte „Modell“ und „Effort“ sind Vorgaben für den Aufrufer: In `.claude/agents/*.md` steht das Modell
 (`model:`), der Effort wird beim Aufruf gesetzt.
@@ -163,11 +165,54 @@ Die Werte „Modell“ und „Effort“ sind Vorgaben für den Aufrufer: In `.cl
 - **Abschlussnachweis:** Bericht im Ausgang der Master-Sitzung (`docs/SUBAGENTEN_MASTER_AUFTRAG.md`
   beschreibt Ausgang und Eingang).
 
+## 7b. Chart-UI-Prüfer (ergänzt 15.11.2026)
+
+- **Ziel:** Nach Code-Änderungen am Chart prüfen, ob Layouts laden, SVG-Zeichnungen vollständig sind,
+  Testdaten korrekt angezeigt werden und die CSP stimmt.
+- **Scope:** `src/dashboard/pages/chart.py`, `src/dashboard/chart_live.py`, `src/dashboard/chart_model.py`,
+  `src/dashboard/assets/tim_chart.js`, `src/dashboard/legend.py` und die Chart-Tests unter `tests/test_chart_*.py`
+  und `tests/test_dashboard_chart.py`. Geprüft: Konstanten und Exporte vorhanden, CSP konsistent (kein `unsafe-inline`),
+  Asset-Dateien existent, SVG-Erzeugung vollständig (Levels, Szenarien, Profile), Symbole und Zeitrahmen definiert,
+  Tests decken Symbole/Zeitrahmen/Randfälle ab, Legende vorhanden.
+- **Berechtigung:** nur lesend (Read, Grep, Glob). Kein Bash, kein Schreiben, kein Netzwerk.
+- **Modell:** Sonnet, mittlerer Effort.
+- **Akzeptanzkriterien:** Je Prüfpunkt OK, WARNUNG oder FEHLER mit Datei:Zeile. Gesamturteil genau eines von:
+  `UNAUFFÄLLIG`, `NACHSEHEN`, `FEHLER`. Was nicht prüfbar ist, steht als „nicht geprüft".
+- **Abschlussnachweis:** Bericht von höchstens 20 Zeilen im Thread.
+- **Wann:** Nach jedem Merge, der Chart-Dateien berührt (`src/dashboard/pages/chart.py`, `src/dashboard/chart_*`,
+  `src/dashboard/assets/tim_chart.js`, `tests/test_chart_*`, `tests/test_dashboard_chart.py`).
+- **Nicht-Ziele:** Code reparieren, Daten laden, Chart rendern, Netzwerk-Anfragen.
+
+## 7c. Control-Center-Prüfer (ergänzt 15.11.2026)
+
+- **Ziel:** Nach Code-Änderungen am Control Center prüfen, ob alle vier Bildschirme (Cockpit, Journal,
+  Forschung, System) bauen, Widgets Daten zeigen, die CSP stimmt und kein XSS-Muster entsteht.
+- **Scope:** `src/dashboard/screens.py` (CSS, SCRIPT, SCREEN_CSP, render, Body-Funktionen),
+  `src/dashboard/cockpit/` (page, tiles, areas, ueberblick, lage, markt, mac, hermes, sources),
+  `src/dashboard/shell.py` (compute_facts, header_pills, frame), `src/dashboard/server.py`
+  (Routen, CSP-Header, Fragment-Antwort) und die Tests `tests/test_control_center_screens.py`,
+  `tests/test_dashboard_cockpit*.py`. Geprüft: alle Body-Funktionen und Routen vorhanden,
+  CSP-Hashes korrekt, Cockpit-Bereiche vollständig, Shell-Funktionen mit Fallback,
+  Server bedient alle Routen mit Fragment-Support, Journal überlebt kaputte Dateien,
+  System sortiert Ampeln korrekt, Forschung zeigt Werkstatt, Tests decken Bildschirme und
+  Randfälle ab, XSS-Schutz (html.escape).
+- **Berechtigung:** nur lesend (Read, Grep, Glob). Kein Bash, kein Schreiben, kein Netzwerk.
+- **Modell:** Sonnet, mittlerer Effort.
+- **Akzeptanzkriterien:** Je Prüfpunkt OK, WARNUNG oder FEHLER mit Datei:Zeile. Gesamturteil genau eines von:
+  `UNAUFFÄLLIG`, `NACHSEHEN`, `FEHLER`. Was nicht prüfbar ist, steht als „nicht geprüft".
+- **Abschlussnachweis:** Bericht von höchstens 25 Zeilen im Thread.
+- **Wann:** Nach jedem Merge, der CC-Dateien berührt (`src/dashboard/screens.py`, `src/dashboard/cockpit/`,
+  `src/dashboard/shell.py`, `src/dashboard/server.py`, `tests/test_control_center_screens.py`,
+  `tests/test_dashboard_cockpit*.py`).
+- **Nicht-Ziele:** Code reparieren, Server starten, Netzwerk-Anfragen, Daten laden.
+
 ## 8. Zusammenspiel
 
 ```text
 Idee -> [Daten-Steward] -> Präregistrierung -> [Studien-Prüfer] -> F1 "go" (Uzi)
 PR grün -> [PR-Reviewer] -> F2 "merge" (Uzi) -> [Wächter] Mac-Stand + /chart
+                                              -> [Chart-UI-Prüfer] bei Chart-Änderungen
+                                              -> [CC-Prüfer] bei CC-Änderungen
 Woche -> [Journal-Auswerter] -> Uzi
 neue Quelle -> [Quellen-Abgleicher] -> Vorschlag -> Uzi ("go" für Studie oder Regel-Update)
 ```
@@ -191,7 +236,7 @@ klar und der Verbrauch sichtbar.
 4. Erst nach erfolgreichem Probelauf Zeitpläne (Journal-Auswerter, Wächter) vorschlagen.
 
 Prüfbefehl für den PR: `python -m pytest tests/test_journal_week.py -q` (das neue Wochen-Skript) und das Lesen der
-sechs Dateien auf Frontmatter (`name`, `description`, `tools`, `model`). Die Agent-Dateien selbst prüft kein Test;
+acht Dateien auf Frontmatter (`name`, `description`, `tools`, `model`). Die Agent-Dateien selbst prüft kein Test;
 ihr Nachweis ist der Probelauf aus Schritt 2.
 
 ## 11. Änderungen in 0.2 (Prüfung vom 15.11.2026)
@@ -214,6 +259,15 @@ Nicht geändert, weil ungeprüft: Effort fest in der Definition; Auto-Merge-Stan
 | Uzi will PDFs und Quellen abgleichen | sechster Agent `quellen-abgleicher` (Abschnitt 7a) |
 | Betrieb braucht eine steuernde Sitzung | Master-Auftrag `docs/SUBAGENTEN_MASTER_AUFTRAG.md` (lokal in `~/TIM-live`, Eingang/Ausgang, Zeitpläne erst nach „Zeitplan an“) |
 | Review #275: Bash-Liste zu weit, Schreibwege unklar | abschließende Bash-Liste, Schreiben nur per Write auf feste Ziele, Zeitplan-Läufe mit engerer Werkzeugliste |
+
+## 13. Ergänzung 15.11.2026: zwei UI-Prüfer (0.3)
+
+| Befund | Änderung |
+|---|---|
+| Nach Merges keine automatische UI-Prüfung von Chart und Control Center | `chart-ui-pruefer` (Abschnitt 7b) und `control-center-pruefer` (Abschnitt 7c) |
+| Plan stand auf sechs Agenten | aktualisiert auf acht |
+| Zusammenspiel-Diagramm ohne UI-Prüfer | ergänzt |
+| Master-Auftrag ohne UI-Prüfer | Tabelle und Verbindungen ergänzt |
 
 ## Herkunft
 
