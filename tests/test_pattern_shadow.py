@@ -224,3 +224,29 @@ def test_limit_variant_needs_a_confluence_known_before_the_order():
     p = plan(mode="L", setup_extra={}, rvol_origin=1.0, armed_at=ex[29]["close_time"].isoformat())
     S.advance(p, ex, {"p1": p})
     assert p["status"] == "SKIPPED" and p["reason"] == "keine Konfluenz"
+
+
+def test_s36_evaluation_helpers():
+    from src.research_lab.studies import s36
+
+    class F:
+        def cost(self, d, a, b):
+            return 0.0001 * d
+
+    pl = {"mode": "L", "direction": P.LONG, "how": "ZIEL", "entry": 100.0, "risk": 1.0, "gross_r": 2.0, "profile": "day", "exec": "15m", "target": 102.0,
+          "entry_time": "2021-03-01T00:00:00+00:00", "closed_at": "2021-03-01T06:00:00+00:00"}
+    t = s36.study_trade(pl, "BTCUSDT", F())
+    assert abs(t["cost_r"] - 2 * 0.0002 * 100) < 1e-9 and abs(t["fund_r"] - 0.01) < 1e-9 and abs(t["net_r"] - (2.0 - 0.04 - 0.01)) < 1e-9
+    m = s36.study_trade({**pl, "mode": "M", "how": "STOP"}, "BTCUSDT", F())
+    assert abs(m["cost_r"] - (0.0009 + 0.0011) * 100) < 1e-9  # taker + slippage in, stop taker + 0.05 % slippage out
+    assert s36.holm_adjusted({"a": 0.004, "b": 0.02}, 2) == {"a": 0.008, "b": 0.02}
+    winners = [{"entry_ms": 1_600_000_000_000 + i * 700_000_000, "net_r": 0.5} for i in range(40)]
+    assert s36.cluster_bootstrap_lower(winners) == 0.5 and s36.leave_one_year_out_ok(winners)["ok"]
+    one_year = [{"entry_ms": 1_600_000_000_000 + i * 1_000_000, "net_r": 0.5} for i in range(10)]
+    assert not s36.leave_one_year_out_ok(one_year)["ok"]  # a single year cannot be left out
+    ex = flat(400)
+    series = {("BTCUSDT", "day"): ex}
+    trade = {**t, "symbol": "BTCUSDT", "profile": "day", "stop_frac": 0.01, "target_frac": 0.02, "direction": 1, "mode": "M"}
+    s36.CTRL_DRAWS = 20
+    r = s36.random_control([trade] * 5, series, {"BTCUSDT": F()}, (T0, T0 + timedelta(days=30)))
+    assert r["draws"] == 20 and 0 < r["p"] <= 1 and r["random_mean"] < 0  # flat prices: every random trade runs to the time exit and pays costs

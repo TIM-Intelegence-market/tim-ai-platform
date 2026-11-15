@@ -1,6 +1,18 @@
-# S36 – SFP mit Orderflow-Konfluenz, HTF→Exec, BTC/ETH/SOL (Präregistrierung, Entwurf 0.3, 15.11.2026)
+# S36 – SFP mit Orderflow-Konfluenz, HTF→Exec, BTC/ETH/SOL (Präregistrierung 1.0, eingefroren 15.11.2026)
 
 Auftrag Uzi (14.11.): "TIM sollte die Pattern auch tracken", dann "p4". Grundlage: GOAT-Handelsmodell (Bild im Thread) und der Muster-Schatten `muster-schatten/1.0` (PR #265, `src/analysis/patterns.py`). Diese Studie fragt rückwirkend, ob die Regeln des Schattens nach Kosten einen Vorteil haben. Entwurf: **nichts gelaufen, kein Ergebnis gesehen.** Mit **[Ergänzung]** markiert sind Festlegungen, die das Modell offenließ; sie gelten ab dem Einfrieren (1.0) und ändern sich danach nicht mehr.
+
+## Version 1.0 – eingefroren (15.11.2026, Uzis Wort "einfrieren")
+Ab hier ändert sich nichts mehr; was unten steht und im Entwurf davor, gilt in der Fassung der Änderungen 0.2 und 0.3. **Es wurde bis hierher kein R-Wert gerechnet**, nur Trade-Anzahlen (Variante M 425 / 123, Variante L 438 / 158, Training / Validierung, gepoolt BTC/ETH/SOL). Festlegungen der Auswertung (Phasen `train`, `valid` in `src/research_lab/studies/s36.py`):
+- **Konfigurationen:** `SFP-alle-M` und `SFP-alle-L`, Holm über m = 2 (nicht Getestete zählen als p = 1).
+- **Kosten der Auswertung:** M: Einstieg Taker 0,06 % plus 0,03 % Slippage, Ziel Taker plus 0,03 %, Stop Taker plus 0,05 %, Zeitausstieg Taker plus 0,03 %. L: Einstieg und Ziel Maker 0,02 %, Stop und Zeitausstieg wie M. Dazu die tatsächlichen Funding-Raten je Markt (Binance USD-M, `Funding`). Die Kostenrechnung des Schattens (0,14 % pauschal) wird in der Studie nicht verwendet.
+- **Netto-R je Trade** = Brutto-R minus Kosten in R minus Funding in R; Bestehen wird an dieser **ungewichteten** Größe gemessen.
+- **Bootstrap:** Block nach ISO-Woche, 10 000 Ziehungen, Seed 36, einseitig 90 % (10-%-Quantil des Mittels).
+- **Zufallskontrolle** (nur für Konfigurationen, die n, Netto und Bootstrap bestehen): gleiche Trade-Zahl, Richtung, Stop- und Zielabstand als Bruchteil des Einstiegs; Einstieg zum Schluss einer zufälligen Exec-Kerze desselben Marktes und Profils im Abschnitt; gleiche Ausstiege (Stop zuerst, 96 Kerzen Haltezeit) und Kosten wie die Variante; 1000 Ziehungen, Seed 36; p = Anteil der Ziehungen mit Mittel ≥ real.
+- **Leave-one-year-out:** Mittel-Netto-R bleibt > 0, wenn ein beliebiges Jahr weggelassen wird (mindestens zwei Jahre).
+- **Training (2020–2023, SOL ab 09/2020) besteht,** wenn gleichzeitig n ≥ 60, Netto > +0,15 R, Bootstrap-Untergrenze > 0, Holm-adjustiertes p ≤ 0,01, Leave-one-year-out ok. **Validierung (2024)** nur für bestandene Konfigurationen, einmal: n ≥ 30, Netto > +0,15 R, Bootstrap-Untergrenze > 0.
+- **Gestrichen gegenüber dem Entwurf:** Die Zusatzfragen (mit gegen ohne Konfluenz, gültiger gegen ungültiger OB) werden nicht gerechnet. Je Profil und Markt gibt es nur beschreibende Zahlen (Anzahl, Netto-Mittel).
+- **Bericht:** alle Läufe, auch ein Fehlschlag. Holdout 2025 bleibt gesperrt (nur Uzis ausdrückliches Wort, genau einmal). Kein neuer Lauf mit geänderten Regeln auf denselben Daten; eine Variante wäre eine neue Studie.
 
 ## Änderung 0.3 (15.11.2026, vor jedem R-Wert, Uzis Wort "limit")
 Die Zählung 0.2 (425 Trades Training, 123 Validierung, gepoolt) bleibt Grundlage. Neu: **zwei Einstiegsvarianten**, beide mit denselben Setups und Exec-OBs, Holm über m = 2:
