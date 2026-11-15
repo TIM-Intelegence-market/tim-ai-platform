@@ -1,12 +1,12 @@
 # Subagenten-Plan für TIM
 
 Stand 15.11.2026, **ENTWURF 0.2** (Auftrag: Uzi, 15.11.2026; 0.2 nach eigener Prüfung, Uzis „Go“ 20:27 Ortszeit, Änderungen in Abschnitt 11). Ergänzt `docs/MULTI_AGENTEN_SYSTEM.md`: Dort stehen die
-Rollen der ganzen Kette, hier stehen fünf konkrete Subagenten mit Grenzen, die man in einer Sitzung aufrufen kann.
+Rollen der ganzen Kette, hier stehen sechs konkrete Subagenten (der sechste, `quellen-abgleicher`, seit 15.11. spät) mit Grenzen, die man in einer Sitzung aufrufen kann.
 Die Definitionen liegen unter `.claude/agents/`.
 
 ## 1. Grundsätze
 
-- **Nur prüfen und berichten.** Alle fünf Subagenten sind lesend. Keiner baut Code, rechnet Studien, merged, schreibt
+- **Nur prüfen und berichten.** Alle sechs Subagenten sind lesend. Keiner baut Code, rechnet Studien, merged, schreibt
   Register oder greift in den Live-Betrieb ein. Studien und neuer Code bleiben in Threads (F1 „go“).
 - **Eine Freigabe erteilt nie ein Subagent.** „go“, „merge“, Regel-Update, Live-Eingriff und Holdout bleiben bei Uzi
   (F1 bis F5, `MULTI_AGENTEN_SYSTEM.md` Abschnitt 1). Ein Bericht eines Subagenten ist keine Freigabe.
@@ -183,7 +183,7 @@ klar und der Verbrauch sichtbar.
 
 ## 10. Einführung und Prüfung
 
-1. Merge dieses PR (Uzi „merge“). Danach stehen die fünf Definitionen in `.claude/agents/`.
+1. Merge dieses PR (Uzi „merge“). Danach stehen die Definitionen in `.claude/agents/`.
 2. Probelauf je Agent an einem bekannten Fall (zum Beispiel Studien-Prüfer an S36, PR-Reviewer an einem
    gemergten Doku-PR, Wächter einmal am Mac). Maßstab: findet er einen absichtlich eingebauten Fehler, bleibt er in
    seinen Grenzen (kein Schreiben), nennt er Unerreichbares als „nicht geprüft“.
@@ -202,10 +202,18 @@ ihr Nachweis ist der Probelauf aus Schritt 2.
 | Daten-Steward kann ohne Werkzeug nicht zählen | bewertet den Bericht von `scripts/data_quality_report.py`, zählt nicht selbst |
 | Journal-Auswerter rechnet ohne Skript | neues nur lesendes `src/dashboard/journal_week.py` mit Tests |
 | Reviewer liest fremden Text mit Bash | Bash entfernt, Diff kommt als Datei vom Aufrufer |
-| Fremder Text kann Anweisungen enthalten | Satz dazu in allen fünf Prompts |
+| Fremder Text kann Anweisungen enthalten | Satz dazu in allen Prompts |
 | Prüfbefehl passte nicht | ersetzt |
 
 Nicht geändert, weil ungeprüft: Effort fest in der Definition; Auto-Merge-Stand in GitHub.
+
+## 12. Ergänzung 15.11.2026 abends (nach Probelauf)
+
+| Befund | Änderung |
+|---|---|
+| Uzi will PDFs und Quellen abgleichen | sechster Agent `quellen-abgleicher` (Abschnitt 7a) |
+| Betrieb braucht eine steuernde Sitzung | Master-Auftrag `docs/SUBAGENTEN_MASTER_AUFTRAG.md` (lokal in `~/TIM-live`, Eingang/Ausgang, Zeitpläne erst nach „Zeitplan an“) |
+| Review #275: Bash-Liste zu weit, Schreibwege unklar | abschließende Bash-Liste, Schreiben nur per Write auf feste Ziele, Zeitplan-Läufe mit engerer Werkzeugliste |
 
 ## Herkunft
 
