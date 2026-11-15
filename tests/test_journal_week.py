@@ -56,3 +56,13 @@ def test_cli_reads_files_and_writes_nothing(tmp_path, capsys):
 
 def test_cli_rejects_time_without_zone(tmp_path):
     assert journal_week.main([str(tmp_path / "x.json"), "--until", "2026-11-15T12:00:00"]) == 2
+
+
+def test_broken_journal_without_log_is_named_not_empty(tmp_path):
+    bad = tmp_path / "kaputt.json"
+    bad.write_text("{nicht json", encoding="utf-8")
+    wrong = tmp_path / "schema.json"
+    wrong.write_text(json.dumps({"schema": "anderes/1", "entries": [_entry(14, 0.5)]}), encoding="utf-8")
+    result = journal_week.report([bad, wrong], None, UNTIL)
+    assert result["journals"][str(bad)] == {"readable": False, "integrity": "UNREADABLE_OR_WRONG_SCHEMA"}
+    assert result["journals"][str(wrong)] == {"readable": False, "integrity": "UNREADABLE_OR_WRONG_SCHEMA"}
