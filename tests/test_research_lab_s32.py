@@ -67,10 +67,17 @@ def test_bin_label():
     assert s32.bin_label(s32.RATIO_CAP) == ">=5"
 
 
-def test_range_width_limits():
-    narrow = [_sec(m) for m in _range_path(100_000.0, 100_100.0)]  # 10 bp
-    wide = [_sec(m) for m in _range_path(100_000.0, 101_000.0)]  # 100 bp
-    assert s32.find_events(narrow, "d") == [] and s32.find_events(wide, "d") == []
+def test_range_width_groups():
+    def last_event(lo, hi):
+        evs = s32.find_events(_empty(_range_path(lo, hi)) + [_sec(lo + 0.05 * (hi - lo), bid=3, ask=1)] * 3, "d")
+        return evs[-1] if evs else None
+
+    assert last_event(100_000.0, 100_050.0) is None  # 5 bp: too narrow for every group
+    assert last_event(100_000.0, 102_000.0) is None  # 200 bp: too wide for every group
+    for hi, group in ((100_150.0, "10-20"), (100_300.0, "20-60"), (100_800.0, "60-100"), (101_200.0, "100-150")):
+        e = last_event(100_000.0, hi)
+        assert e is not None and s32.width_group(e.width_bp) == group
+    assert s32.width_group(20.0) == s32.width_group(60.0) == "20-60"
 
 
 def test_cooldown():
@@ -86,8 +93,8 @@ def test_window_needs_valid_book():
     assert s32.find_events(secs, "d") == []
 
 
-def _ev(side=1, ratio=2.5):
-    return Event(day="d", i=0, side=side, ratio=ratio, lo=100.0, hi=110.0)
+def _ev(side=1, ratio=2.5, width=40.0):
+    return Event(day="d", i=0, side=side, ratio=ratio, lo=100.0, hi=110.0, width_bp=width)
 
 
 def test_outcome_target_stop_time():
@@ -130,15 +137,15 @@ def test_holdout_and_non_free_days_refused(tmp_path):
 
 def test_evaluate_locked_while_draft():
     with pytest.raises(PermissionError):
-        s32.evaluate({}, version="0.3")
+        s32.evaluate({}, version="0.4")
     assert s32.VERSION.startswith("0.")
 
 
 def test_count_is_results_blind():
-    evs = {date(2020, 6, 1): [_ev(), Event("d", 5, -1, 0.7, 1.0, 2.0)]}
+    evs = {date(2020, 6, 1): [_ev(), Event("d", 5, -1, 0.7, 1.0, 2.0, 80.0)]}
     c = s32.count(evs)
-    assert c["training"]["2-3_long"] == 1 and c["training"]["0.5-1_short"] == 1
-    assert c["training"]["alle"] == 2 and c["training"]["ab_schwelle"] == 1
+    assert c["training"]["20-60"]["2-3_long"] == 1 and c["training"]["60-100"]["0.5-1_short"] == 1
+    assert c["training"]["alle"] == 1 and c["training"]["ab_schwelle"] == 1  # main width group only
     assert c["training"]["pruefbar"] is False
     assert "ziel" not in str(c)
 
@@ -160,6 +167,14 @@ def test_evaluate_runs_once_frozen():
     assert out["training"]["h1_steigung"] > 0 and out["training"]["pruefbar"] is False
     assert out["h1_bestanden"] is False  # too few events: never passes
     assert set(out["training"]["je_verhaeltnis"]) == {"0.5-1", "1-1.5", "3-5"}
+    assert set(out["training"]["je_breite"]) == {"20-60"}
+
+
+def test_evaluate_main_test_ignores_other_widths():
+    hit, miss = Outcome("target", 30.0, 10.0), Outcome("stop", -10.0, 10.0)
+    res = {date(2020, 6, 1): [(_ev(ratio=0.5), miss), (_ev(ratio=3.0), hit), (_ev(ratio=3.0, width=120.0), miss)]}
+    out = s32.evaluate(res, version="1.0", draws=50)
+    assert out["training"]["alle"] == 2 and out["training"]["je_breite"]["100-150"]["n"] == 1
 
 
 def test_seconds_from_book_csv(tmp_path):

@@ -1,9 +1,9 @@
-# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.3)
+# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.4)
 
 | Feld | Wert |
 |---|---|
 | Studie | S32 (nächste freie Nummer nach S31/S31b) |
-| Version | **0.3, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
+| Version | **0.4, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
 | Anlass | Barti 12./13.11.2026: Setup aus dem Video „The Only Orderflow Guide You'll Ever Need“ (6:22–9:55, S&P-Future) prüfen und, falls es trägt, in TIM einbauen. Beschreibung der Kette: `/mnt/project-files/s32-orderbuch/Was-der-Trader-macht-2026-11-12.md` (Projektdateien) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kosten aus `src/research_lab/protocol.py` |
 | Daten | Binance USDⓈ-M BTCUSDT, Tardis.dev `incremental_book_L2`, **nur die kostenlosen Tage (1. jedes Monats)**. Buchnachbau `src/research_lab/depth/` (PR #251), geprüft in `../reports/depth_p2_tardis_2020-06-01.md` |
@@ -22,18 +22,23 @@ bei jedem Ereignis gemessen (Barti 13.11.: „alle Schiefwinkel ausprobieren, St
 | P2 | „deutlich dünner“ | **jedes Verhältnis** eigene Seite / Gegenseite (Bid/Ask für Long) wird aufgezeichnet, auch unter 1. Leere Gegenseite zählt als 100:1. Video: 1,7 bis 2,8 |
 | P3 | hält an | gezählt wird der **niedrigste** Wert der letzten **3 Sekunden** (gegen kurz aufblitzende Orders) |
 | P4 | Range-Fenster | Hoch und Tief der Mitte in den letzten **15 Minuten** |
-| P5 | Range-Breite | **20–60 bp** |
+| P5 | Range-Breite | Hauptgruppe **20–60 bp** (H1, H2). Im selben Lauf mitgeschrieben, nur beschreibend: 10–20, 60–100, 100–150 bp |
 | P6 | verteidigt | Berührung = Mitte höchstens 10 % der Breite vom Rand; Abprall = danach mindestens 25 % der Breite weg. Jeder Rand mindestens **1 Abprall**, zusammen mindestens **3 Berührungen** |
 | P7 | nahe am Rand | Mitte im **unteren Viertel** (Long) oder **oberen Viertel** (Short) |
 | P8 | Marktorders (Video: 53 aggressive Verkäufe) | nicht Teil der Regel, spart Versuche |
 | P9 | Ziel, Stop, Zeit | Einstieg 1 s später zur Mitte; Ziel **Range-Mitte**; Stop **5 bp jenseits des Rands**; höchstens **300 s** |
-| – | Abstand | höchstens ein Ereignis je 300 s; die ersten 15 Minuten jedes Tages sind Anlauf; mindestens 95 % gültige Sekunden im Fenster |
+| – | Abstand | höchstens ein Ereignis je 300 s und Breitengruppe; die ersten 15 Minuten jedes Tages sind Anlauf; mindestens 95 % gültige Sekunden im Fenster |
 
 **Kein Kontrollpaar mehr:** Die Kontrolle steckt in den Ereignissen selbst. Ereignisse mit ausgeglichenem oder
 umgekehrtem Buch (Verhältnis um 1 oder darunter) sind die Range-Lage ohne Buchhilfe.
 
-Offene Wahl von Barti (12.11.): P5 (20–60 bp) und P9 (Mitte oder gegenüberliegender Rand). P2 ist durch die
-Messung aller Verhältnisse erledigt. Ohne Änderung gelten die Werte oben. Jede Änderung nur **vor** dem Einfrieren.
+Offene Wahl von Barti: P9 (Mitte oder gegenüberliegender Rand). P2 ist durch die Messung aller Verhältnisse
+erledigt, P5 durch die Breitengruppen (Barti 15.11.: „noch ein paar Studien mit anderen Ranges“).
+
+**Andere Range-Breiten:** Sie laufen im selben Zähl- und Auswertungslauf mit, bekommen aber keine eigene
+Grenze und kein Bestanden. Sonst wären es vier Versuche, und die beste Breite fände man auch im Zufall. Sieht eine
+andere Breite klar besser aus, wird sie eine **eigene neue Studie** mit frischen Daten (eigener Recorder, Issue
+#253), nicht nachträglich die Regel von S32. Ohne Änderung gelten die Werte oben. Jede Änderung nur **vor** dem Einfrieren.
 
 ## 2. Kosten vorab (Arithmetik, keine Messung)
 
@@ -60,7 +65,7 @@ Treffer bringt. Das ist **ein** Versuch. Die Tabelle je Verhältnisstufe (unter 
 - Gezählt werden nur Ausgänge Ziel, Stop, Zeit. „Kein Platz“ (Einstieg schon hinter dem Ziel) und „fehlt“ (Tag
   endet im Horizont, Buch ungültig beim Einstieg) werden ausgewiesen, nicht gewertet.
 - Deflated Sharpe: H2 zählt als **1 neuer Versuch** (N 64 → 65).
-- Nur beschreibend: Tabelle je Verhältnisstufe (Anzahl, Anteil Ziel zuerst, Netto-R), Long/Short getrennt, Sitzungen (Asien 00–07, London 07–13:30, New York 13:30–20 UTC), Spread.
+- Nur beschreibend: je Breitengruppe Anzahl, Steigung, Netto-R ab 2:1 und Stufentabelle; Tabelle je Verhältnisstufe (Anzahl, Anteil Ziel zuerst, Netto-R), Long/Short getrennt, Sitzungen (Asien 00–07, London 07–13:30, New York 13:30–20 UTC), Spread.
 
 ## 4. Vorbelastung
 
@@ -69,6 +74,7 @@ Treffer bringt. Das ist **ein** Versuch. Die Tabelle je Verhältnisstufe (unter 
 - Gesehen ist **ein** Trainingstag (2020-06-01), technisch: Buchnachbau gegen Trades (P2-Bericht) und die
   **Ereigniszahl** dieses Tages: in 0.2 Kette 53, Kontrolle 129; in 0.3 131 Ereignisse, davon 6 mit Verhältnis
   ab 2 (Stufen: unter 0,5 17, 0,5–1 58, 1–1,5 36, 1,5–2 14, 2–3 6). Kein Ergebnis, kein Ausgang, keine Rendite.
+  In 0.4 zusätzlich 10–20 bp 100 (7 ab 2:1), 60–100 bp 13, 100–150 bp 3; Hauptgruppe unverändert 131.
   Folge: Ab 2:1 über drei Sekunden ist selten; ob 100 Ereignisse je Abschnitt zusammenkommen, zeigt erst der Zähllauf.
 - Die Parameter stammen aus dem Video und aus Überlegungen zu den Kosten, nicht aus Daten.
 - Der 1. eines Monats ist kein zufälliger Tag; das wird als Grenze berichtet.
@@ -90,7 +96,7 @@ Klausel 9.2), nur Zählungen und Ergebnisse. Die Preisstufe war 2020 0,01 USDT, 
 
 ## 7. Nicht Teil von S32
 
-Eine nachträglich gewählte Schwelle, andere Bänder, Fenster oder Ziele (wären neue Versuche), Marktorder-Bestätigung (P8), Spot-Buch, andere
+Eine nachträglich gewählte Schwelle oder Breite als Regel, andere Bänder, Fenster oder Ziele (wären neue Versuche), Marktorder-Bestätigung (P8), Spot-Buch, andere
 Börsen, Maker-Einstieg, Echtgeld, Live-Orders.
 
 ## 8. Sperre

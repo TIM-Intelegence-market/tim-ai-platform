@@ -7,7 +7,8 @@ Data: Tardis.dev ``incremental_book_L2`` for Binance USDⓈ-M BTCUSDT, only the 
 The trader's chain, all parameters fixed in :class:`Config`:
 
 1. per second: mid and the book quantity within ±5 bp of the mid on each side (``LocalBook.band_qty``);
-2. range: high and low of the mid over the last 15 minutes, width 20–60 bp;
+2. range: high and low of the mid over the last 15 minutes, width 20–60 bp (other widths 10–150 bp are recorded
+   in the same run and shown descriptively);
 3. both edges defended: each edge touched and left again by at least a quarter of the width, at least three
    touches in total;
 4. position: mid in the lower quarter (long) or upper quarter (short) of the range;
@@ -47,13 +48,17 @@ from src.research_lab.depth import tardis
 from src.research_lab.depth.book import ASK, BID, SCALE, LocalBook
 from src.research_lab.protocol import BASE_COSTS, STRESS_COSTS, CostModel
 
-VERSION = "0.3"
+VERSION = "0.4"
 SEED = 32
 TRAINING_END = date(2022, 12, 31)
 MIN_EVENTS = 300  # per section, all ratios, else "nicht prüfbar"
 MIN_H2 = 100  # per section, ratio >= Config.ratio
 RATIO_CAP = 100.0  # an empty opposite side counts as 100:1
 BINS = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, float("inf"))
+# Range widths in bp. H1/H2 use only the main group Config.width_min_bp..width_max_bp (20-60, as in the video);
+# the other groups are recorded in the same run and shown descriptively (Barti 15.11.2026: "andere Ranges").
+WIDTH_GROUPS = ((10.0, 20.0), (20.0, 60.0), (60.0, 100.0), (100.0, 150.0))
+MAIN_WIDTH = "20-60"
 BOOT_DRAWS = 9_999
 ALPHA = 0.05
 
@@ -64,7 +69,7 @@ class Config:
     ratio: float = 2.0  # H2 group: own side at least twice the opposite side (bins are descriptive)
     hold_s: int = 3  # P3: imbalance held without interruption
     window_s: int = 900  # P4: range window, 15 minutes
-    width_min_bp: float = 20.0  # P5
+    width_min_bp: float = 20.0  # P5: main group (H1, H2); other widths only descriptive, see WIDTH_GROUPS
     width_max_bp: float = 60.0
     touch_zone: float = 0.10  # P6: a touch = mid within 10 % of the width from the edge
     rebound: float = 0.25  # P6: left again = moved at least 25 % of the width away from the edge
@@ -98,6 +103,7 @@ class Event:
     ratio: float  # own side / opposite side, lowest value of the last hold_s seconds
     lo: float
     hi: float
+    width_bp: float  # range width at the event
 
 
 # -- per-second book ---------------------------------------------------------------------------------------
@@ -181,7 +187,7 @@ def side_ratio(s: Second, side: int) -> float | None:
 def find_events(secs: Sequence[Second | None], day: str, cfg: Config = CONFIG) -> list[Event]:
     """Events of one day, every ratio. The first ``window_s`` seconds of a day are warm-up."""
     events: list[Event] = []
-    last = -10**9
+    last: dict[str, int] = {}  # cooldown per width group
     lo_q: deque[tuple[int, float]] = deque()
     hi_q: deque[tuple[int, float]] = deque()
     valid_in_window = 0
@@ -201,11 +207,12 @@ def find_events(secs: Sequence[Second | None], day: str, cfg: Config = CONFIG) -
         while hi_q and hi_q[-1][1] <= s.mid:
             hi_q.pop()
         hi_q.append((i, s.mid))
-        if i < cfg.window_s or i - last < cfg.cooldown_s or valid_in_window < cfg.min_valid_share * cfg.window_s:
+        if i < cfg.window_s or valid_in_window < cfg.min_valid_share * cfg.window_s:
             continue
         lo, hi = lo_q[0][1], hi_q[0][1]
         width_bp = (hi - lo) / s.mid * 10_000
-        if not cfg.width_min_bp <= width_bp <= cfg.width_max_bp:
+        group = width_group(width_bp, cfg)
+        if group is None or i - last.get(group, -10**9) < cfg.cooldown_s:
             continue
         pos = (s.mid - lo) / (hi - lo)
         want = 1 if pos <= cfg.position else (-1 if pos >= 1 - cfg.position else 0)
@@ -220,9 +227,19 @@ def find_events(secs: Sequence[Second | None], day: str, cfg: Config = CONFIG) -
         window = [x.mid for x in secs[i - cfg.window_s + 1: i + 1] if x is not None]
         if not defended(window, lo, hi, cfg):
             continue
-        last = i
-        events.append(Event(day=day, i=i, side=want, ratio=min(ratios), lo=lo, hi=hi))
+        last[group] = i
+        events.append(Event(day=day, i=i, side=want, ratio=min(ratios), lo=lo, hi=hi, width_bp=width_bp))
     return events
+
+
+def width_group(width_bp: float, cfg: Config = CONFIG) -> str | None:
+    """Label of the width group; the main group includes both of its limits."""
+    if cfg.width_min_bp <= width_bp <= cfg.width_max_bp:
+        return MAIN_WIDTH
+    for lo, hi in WIDTH_GROUPS:
+        if lo <= width_bp < hi:
+            return f"{lo:g}-{hi:g}"
+    return None
 
 
 def bin_label(r: float) -> str:
@@ -298,16 +315,18 @@ def load_day(folder: Path, day: date, *, fetch: bool) -> list[Second | None]:
 
 
 def count(events_by_day: dict[date, list[Event]], cfg: Config = CONFIG) -> dict:
-    """Results-blind: events per section, ratio bin and side, and per day. No outcome is computed."""
+    """Results-blind: events per section, width group, ratio bin and side, and per day. No outcome is computed."""
     out: dict = {"training": {}, "validierung": {}, "je_tag": {}}
     for day, evs in sorted(events_by_day.items()):
         sec = out[section(day)]
         for e in evs:
+            grp = sec.setdefault(width_group(e.width_bp, cfg), {})
             key = f"{bin_label(e.ratio)}_{'long' if e.side > 0 else 'short'}"
-            sec[key] = sec.get(key, 0) + 1
+            grp[key] = grp.get(key, 0) + 1
         out["je_tag"][day.isoformat()] = len(evs)
     for name in ("training", "validierung"):
-        evs = [e for d, es in events_by_day.items() if section(d) == name for e in es]
+        evs = [e for d, es in events_by_day.items() if section(d) == name for e in es
+               if width_group(e.width_bp, cfg) == MAIN_WIDTH]
         out[name]["alle"] = len(evs)
         out[name]["ab_schwelle"] = sum(e.ratio >= cfg.ratio for e in evs)
         out[name]["pruefbar"] = len(evs) >= MIN_EVENTS and out[name]["ab_schwelle"] >= MIN_H2
@@ -343,6 +362,19 @@ def _boot_lower(days: list[list[tuple[float, Outcome]]], stat, draws: int, rng: 
     return vals[int(ALPHA / 2 * len(vals))] if vals else float("nan")  # Bonferroni over H1, H2 (m = 2)
 
 
+def _table(rows: Sequence[tuple[float, Outcome]]) -> dict[str, dict]:
+    bins: dict[str, dict] = {}
+    for r, o in rows:
+        b = bins.setdefault(bin_label(r), {"n": 0, "ziel": 0, "netto_r": 0.0})
+        b["n"] += 1
+        b["ziel"] += o.exit == "target"
+        b["netto_r"] += net_r(o)
+    for b in bins.values():
+        b["ziel_zuerst"] = b.pop("ziel") / b["n"]
+        b["netto_r"] /= b["n"]
+    return dict(sorted(bins.items()))
+
+
 def evaluate(results: dict[date, list[tuple[Event, Outcome]]], *, version: str = VERSION,
              draws: int = BOOT_DRAWS, cfg: Config = CONFIG) -> dict:
     if not version.startswith("1."):
@@ -350,31 +382,29 @@ def evaluate(results: dict[date, list[tuple[Event, Outcome]]], *, version: str =
     rng = random.Random(SEED)
     out: dict = {}
     for name in ("training", "validierung"):
-        days = [[(e.ratio, o) for e, o in rs if o.exit in ("target", "stop", "time")]
-                for d, rs in sorted(results.items()) if section(d) == name]
-        days = [d for d in days if d]
-        flat = [r for d in days for r in d]
+        rows = [(d, e, o) for d, rs in sorted(results.items()) if section(d) == name
+                for e, o in rs if o.exit in ("target", "stop", "time")]
+        main_days = [[(e.ratio, o) for d2, e, o in rows if d2 == d and width_group(e.width_bp, cfg) == MAIN_WIDTH]
+                     for d in sorted({d for d, _, _ in rows})]
+        main_days = [d for d in main_days if d]
+        flat = [r for d in main_days for r in d]
 
         def mean_net(rows, costs=BASE_COSTS):
             xs = [net_r(o, costs) for r, o in rows if r >= cfg.ratio]
             return sum(xs) / len(xs) if xs else None
 
-        bins: dict[str, dict] = {}
-        for r, o in flat:
-            b = bins.setdefault(bin_label(r), {"n": 0, "ziel": 0, "netto_r": 0.0})
-            b["n"] += 1
-            b["ziel"] += o.exit == "target"
-            b["netto_r"] += net_r(o)
-        for b in bins.values():
-            b["ziel_zuerst"] = b.pop("ziel") / b["n"]
-            b["netto_r"] /= b["n"]
         n_h2 = sum(r >= cfg.ratio for r, _ in flat)
         out[name] = {
             "alle": len(flat), "ab_schwelle": n_h2, "pruefbar": len(flat) >= MIN_EVENTS and n_h2 >= MIN_H2,
-            "h1_steigung": slope(flat), "h1_untere_grenze": _boot_lower(days, slope, draws, rng),
-            "h2_netto_r": mean_net(flat), "h2_untere_grenze": _boot_lower(days, mean_net, draws, rng),
-            "h2_netto_r_stress": mean_net(flat, STRESS_COSTS), "je_verhaeltnis": dict(sorted(bins.items())),
+            "h1_steigung": slope(flat), "h1_untere_grenze": _boot_lower(main_days, slope, draws, rng),
+            "h2_netto_r": mean_net(flat), "h2_untere_grenze": _boot_lower(main_days, mean_net, draws, rng),
+            "h2_netto_r_stress": mean_net(flat, STRESS_COSTS), "je_verhaeltnis": _table(flat),
+            "je_breite": {},  # descriptive only, no bound, no pass/fail
         }
+        for grp in sorted({width_group(e.width_bp, cfg) for _, e, _ in rows}):
+            g = [(e.ratio, o) for _, e, o in rows if width_group(e.width_bp, cfg) == grp]
+            out[name]["je_breite"][grp] = {"n": len(g), "steigung": slope(g), "netto_r_ab_schwelle": mean_net(g),
+                                          "je_verhaeltnis": _table(g)}
     t, v = out["training"], out["validierung"]
     ok = t["pruefbar"] and v["pruefbar"]
     out["h1_bestanden"] = bool(ok and t["h1_untere_grenze"] > 0 and v["h1_untere_grenze"] > 0)
