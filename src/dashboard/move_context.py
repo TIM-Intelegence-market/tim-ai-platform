@@ -46,6 +46,7 @@ import json
 import os
 import statistics
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -125,35 +126,52 @@ def _last_before(points: Sequence[Sequence[Any]], limit: int, offset: int = 0) -
 # --- P1: detection -----------------------------------------------------------------------------------------------
 
 
-def _flags(candles: Sequence[Mapping[str, Any]], tf: str) -> list[dict[str, Any]]:
-    flags = []
+@dataclass(frozen=True)
+class Thresholds:
+    """The detection thresholds; the defaults are the rules ``MOVE_RULES``. The calibration varies them."""
+
+    h1_ratio: float = H1_RATIO
+    h1_floor: float = H1_FLOOR
+    h4_sigma: float = H4_SIGMA
+
+
+def scores(candles: Sequence[Mapping[str, Any]], tf: str) -> list[tuple[int, float, float]]:
+    """``(index, return, score)`` per candle with enough history before it: 1h score = |return| / median
+    |return| of the candles before it, 4h score = |return| / standard deviation of the returns before it."""
     rets = [_ret(c) for c in candles]
-    for i, c in enumerate(candles):
-        r = rets[i]
+    out = []
+    for i, r in enumerate(rets):
         if tf == "1h":
             prior = [abs(x) for x in rets[max(0, i - H1_PRIOR):i]]
             if len(prior) < H1_MIN_PRIOR:
                 continue
             base = statistics.median(prior)
-            if base > 0 and abs(r) >= max(H1_RATIO * base, H1_FLOOR):
-                flags.append({"tf": tf, "start": c["open_time"], "end": c["close_time"], "ret": r, "score": abs(r) / base, "unit": "x Median"})
         else:
             prior = rets[max(0, i - H4_PRIOR):i]
             if len(prior) < H4_MIN_PRIOR:
                 continue
-            sigma = statistics.pstdev(prior)
-            if sigma > 0 and abs(r) >= H4_SIGMA * sigma:
-                flags.append({"tf": tf, "start": c["open_time"], "end": c["close_time"], "ret": r, "score": abs(r) / sigma, "unit": "σ"})
+            base = statistics.pstdev(prior)
+        if base > 0:
+            out.append((i, r, abs(r) / base))
+    return out
+
+
+def flags_from(candles: Sequence[Mapping[str, Any]], tf: str, scored: Sequence[tuple[int, float, float]],
+               limits: Thresholds = Thresholds()) -> list[dict[str, Any]]:
+    flags = []
+    for i, r, score in scored:
+        hit = (score >= limits.h1_ratio and abs(r) >= limits.h1_floor) if tf == "1h" else score >= limits.h4_sigma
+        if hit:
+            c = candles[i]
+            flags.append({"tf": tf, "start": c["open_time"], "end": c["close_time"], "ret": r, "score": score,
+                          "unit": "x Median" if tf == "1h" else "σ"})
     return flags
 
 
-def detect(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime, lookback: timedelta = LOOKBACK) -> list[dict[str, Any]]:
-    """Large moves that ended within ``lookback`` before ``now``, oldest first (pure)."""
-    h1 = _closed(series, "1h", now)
-    h4 = _closed(series, "4h", now)
-    flags = sorted(_flags(h1, "1h") + _flags(h4, "4h"), key=lambda f: (f["start"], f["end"]))
+def merge(flags: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Flags closer than ``MERGE_GAP`` are one move; its window is the span of its 1h flags, else of its 4h flags."""
     merged: list[dict[str, Any]] = []
-    for f in flags:
+    for f in sorted(flags, key=lambda f: (f["start"], f["end"])):
         if merged and f["start"] <= merged[-1]["end"] + MERGE_GAP:
             m = merged[-1]
             m["end"] = max(m["end"], f["end"])
@@ -165,6 +183,15 @@ def detect(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime, loo
         hourly = [f for f in m["triggers"] if f["tf"] == "1h"]
         if hourly:
             m["start"], m["end"] = min(f["start"] for f in hourly), max(f["end"] for f in hourly)
+    return merged
+
+
+def detect(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime, lookback: timedelta = LOOKBACK,
+           limits: Thresholds = Thresholds()) -> list[dict[str, Any]]:
+    """Large moves that ended within ``lookback`` before ``now``, oldest first (pure)."""
+    h1 = _closed(series, "1h", now)
+    h4 = _closed(series, "4h", now)
+    merged = merge(flags_from(h1, "1h", scores(h1, "1h"), limits) + flags_from(h4, "4h", scores(h4, "4h"), limits))
     events = []
     by_open = {c["open_time"]: c for c in h1}
     for m in merged:
