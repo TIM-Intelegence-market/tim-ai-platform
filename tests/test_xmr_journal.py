@@ -132,7 +132,7 @@ def test_perp_journal_passes_source_and_market_type_per_symbol(tmp_path: Path, m
     perp_journal.update(_perp_cache(), None, NOW, {"15m": tmp_path / "b.json"})
     perp_journal.update(_xmr_cache(), None, NOW, {"15m": tmp_path / "x.json"}, symbol="XMRUSDT")
     btc, xmr = seen
-    assert btc["market_type"] is None and btc["source"] == perp_journal.SOURCE and btc["symbols"] == {"BTCUSDT"}
+    assert btc["market_type"] == "USDM" and btc["source"] == perp_journal.SOURCE and btc["symbols"] == {"BTCUSDT"}
     assert xmr["market_type"] == "USDM" and xmr["source"] == perp_journal.XMR_SOURCE and xmr["symbols"] == {"XMRUSDT"}
     assert xmr["path"] == tmp_path / "x.json"
 

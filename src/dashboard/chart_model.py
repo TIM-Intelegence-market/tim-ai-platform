@@ -314,7 +314,7 @@ def _flt(value: Any) -> float | None:
 
 
 def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile: Mapping[str, Any] | None, now: datetime | None = None,
-                  trades: Sequence[Any] | None = None, positioning: Any = None) -> dict[str, Any]:
+                  trades: Sequence[Any] | None = None, positioning: Any = None, market_type: str = "SPOT") -> dict[str, Any]:
     """Run TIM's orderflow pipeline (OBSERVE, no orders) and add preview stops/targets."""
     from src.orderflow_scenario.domain import ConfirmationState, MarketContext
     from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
@@ -335,7 +335,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
         point_of_control=_dec(profile.get("poc")) if profile else None,
         last_price=Decimal(str(last.close)),
     )
-    context = MarketContext(symbol=last.symbol, venue="BINANCE", market_type="SPOT", timeframe=timeframe, timestamp=now)
+    context = MarketContext(symbol=last.symbol, venue="BINANCE", market_type=market_type, timeframe=timeframe, timestamp=now)
     # The price is the last closed candle's close: allow two intervals before it counts as stale.
     analysis = Pipeline(max_price_age_seconds=max(90.0, 2.0 * TIMEFRAME_SECONDS.get(timeframe, 1800))).run(PipelineInputs(
         market_context=context, candles=model_candles, price_now=Decimal(str(last.close)), price_timestamp=last.close_time,
@@ -350,7 +350,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
             try:
                 plan = builder.build(TradePlanInputs(
                     scenario=replace(scenario, state=ConfirmationState.CONFIRMED), market_state=analysis.market_state,
-                    symbol=last.symbol, venue="BINANCE", market_type="SPOT", timeframe=timeframe,
+                    symbol=last.symbol, venue="BINANCE", market_type=market_type, timeframe=timeframe,
                     last_price=Decimal(str(last.close)), timestamp=now,
                 ))
             except (ValueError, ArithmeticError):
@@ -479,7 +479,7 @@ def _risk_note() -> dict[str, Any]:
 
 
 def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timeframe: str = DEFAULT_TIMEFRAME, now: datetime | None = None, visible: int = CHART_VISIBLE, profile: Mapping[str, Any] | None = None, card: bool = False,
-                      trades: Sequence[Any] | None = None, positioning: Any = None) -> dict[str, Any]:
+                      trades: Sequence[Any] | None = None, positioning: Any = None, market_type: str = "SPOT") -> dict[str, Any]:
     """Everything the chart page draws, as plain JSON-ready data.
 
     ``series`` maps timeframe -> candle dicts as kept by the runtime. ``profile``
@@ -552,7 +552,7 @@ def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timefra
 
     if len(candles) >= 5:
         try:
-            model["analysis"] = run_scenarios(candles, timeframe, model["profile"], now, trades, positioning)
+            model["analysis"] = run_scenarios(candles, timeframe, model["profile"], now, trades, positioning, market_type)
         except Exception as exc:  # noqa: BLE001 - the chart must still render
             model["notes"].append(f"Szenario-Analyse nicht verfügbar: {type(exc).__name__}")
     if card:
