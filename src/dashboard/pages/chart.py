@@ -555,6 +555,16 @@ def _summary_section(state: Any) -> str:
         return f"<section class='cc-section tc-summary'><p class='cc-note'>Zusammenfassung nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
 
 
+def _moves_section(state: Any) -> str:
+    """Large BTC moves of the last 7 days with context and explanation (src/dashboard/move_context.py)."""
+    from src.dashboard import move_context
+
+    try:
+        return move_context.render_de(move_context.shown(state.chart_series(), move_context.sources_from_state(state)))
+    except Exception as exc:  # noqa: BLE001 - the chart must still render
+        return f"<section class='cc-section tc-moves'><p class='cc-note'>Bewegungs-Erklärung nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
+
+
 def _verdict_section(state: Any) -> str:
     """Chart-Urteil for a Long and a Short right now, plus the shadow's progress (src/dashboard/chart_verdict.py)."""
     from src.dashboard import chart_verdict
@@ -616,6 +626,7 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     body = _hero("TIM-Chart", "BTC, ETH, SOL, XMR und Gold in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
     body += _summary_section(state)
     if symbol == "BTCUSDT":
+        body += _moves_section(state)
         body += _levels_section(state)
         body += _verdict_section(state)
         body += _patterns_section(state)

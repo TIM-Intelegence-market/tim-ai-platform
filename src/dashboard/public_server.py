@@ -208,9 +208,16 @@ class PublicDashboardServer:
         from src.dashboard.chart_live import load_plan_journals
 
         try:
-            return render_en(build_summary(self.state.chart_series(), load_plan_journals(self.journal_paths())))
+            text = render_en(build_summary(self.state.chart_series(), load_plan_journals(self.journal_paths())))
         except Exception:  # noqa: BLE001 - the public chart must still render
             return ""
+        try:
+            from src.dashboard import move_context
+
+            text += move_context.render_en(move_context.shown(self.state.chart_series(), move_context.sources_from_state(self.state)))
+        except Exception:  # noqa: BLE001 - the move explanation only hides itself
+            pass
+        return text
 
     def live_status(self) -> dict[str, Any] | None:
         """The live trader's status file; missing, too big or broken means "no live data"."""
