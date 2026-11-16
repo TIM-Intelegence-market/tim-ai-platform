@@ -2,7 +2,7 @@
 
 Perp journals (``*perp*``, ``*xmr*``) must say USDM, the others SPOT. Entries written before 16.11.2026 keep their old
 label (the journal is never rewritten); pass ``--since`` to look only at newer entries.
-Usage: python scripts/journal_market_check.py [DIR] [--since ISO_TIME]. Exit 1 on a mismatch."""
+Usage: python -m src.dashboard.journal_market_check [DIR] [--since ISO_TIME]. Exit 1 on a mismatch."""
 from __future__ import annotations
 
 import argparse

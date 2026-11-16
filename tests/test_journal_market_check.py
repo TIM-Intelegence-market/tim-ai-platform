@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from scripts.journal_market_check import check
+from src.dashboard.journal_market_check import check
 
 
 def _write(path: Path, market: str) -> None:
