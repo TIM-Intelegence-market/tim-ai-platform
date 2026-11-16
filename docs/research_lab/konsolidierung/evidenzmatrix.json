@@ -15,7 +15,7 @@
    "nr": "E1",
    "erkenntnis": "Die Trendregel S7b-D20-T3 (Donchian-20-Ausbruch in Richtung SMA200, 4h, Ziel 3 R, ATR-Stop, höchstens eine Position) hatte 2020–2024 auf BTC, ETH und SOL nach Kosten eine positive Erwartung.",
    "richtung": "positiv (Hypothese)",
-   "unterstuetzend": "Eigene Nachrechnung: gespeicherte Handelslisten bit-genau reproduziert (T1). Netto je Trade (K1) Training +0,221 R (n 292), Validierung +0,264 R (n 207), gepoolt +0,239 R, 95-%-Band 0,080 bis 0,415 R, Newey-West t 2,92. Bleibt positiv unter dreifachen Kosten (K3 +0,154 / +0,182 R), Bruchstelle bei 4,4-fachen K1-Kosten. Zufallseinstiege in SMA200-Richtung schlagen die Regel selten (p 0,035 / 0,001). 97,5 % / 100,0 % der 81 Nachbarzellen positiv; Weglassen eines Jahres oder Instruments kippt das Vorzeichen nicht; Long +0,22 R, Short +0,27 R.",
+   "unterstuetzend": "Eigene Nachrechnung: gespeicherte Handelslisten bit-genau reproduziert (T1). Netto je Trade (K1) Training +0,221 R (n 292), Validierung +0,264 R (n 207), gepoolt +0,239 R, 95-%-Band 0,080 bis 0,415 R, Newey-West t 2,92. Bleibt positiv unter K2 (konservativ: +0,207 / +0,237 R) und K3 (pessimistisch: +0,154 / +0,182 R); Gebühr und Schlupf müssten auf das 4,4-Fache von K1 steigen, bis die Erwartung null erreicht. Zufallseinstiege in SMA200-Richtung schlagen die Regel selten (p 0,035 / 0,001). 97,5 % / 100,0 % der 81 Nachbarzellen positiv; Weglassen eines Jahres oder Instruments kippt das Vorzeichen nicht; Long +0,22 R, Short +0,27 R.",
    "unterstuetzende_ids": [
     "S7",
     "S7b",

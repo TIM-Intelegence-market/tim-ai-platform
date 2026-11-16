@@ -121,7 +121,7 @@ def zeilen(z: dict) -> list[dict]:
             "positiv (Hypothese)",
             f"Eigene Nachrechnung: gespeicherte Handelslisten bit-genau reproduziert (T1). Netto je Trade (K1) Training {de(z['K1_train'], 3, True)} R (n {z['n_train']}), "
             f"Validierung {de(z['K1_valid'], 3, True)} R (n {z['n_valid']}), gepoolt {de(z['K1_pooled'], 3, True)} R, 95-%-Band {de(z['ci_lo'])} bis {de(z['ci_hi'])} R, Newey-West t {de(z['nw_t'], 2)}. "
-            f"Bleibt positiv unter dreifachen Kosten (K3 {de(z['K3_train'], 3, True)} / {de(z['K3_valid'], 3, True)} R), Bruchstelle bei {de(z['bruch_mult'], 1)}-fachen K1-Kosten. "
+            f"Bleibt positiv unter K2 (konservativ: {de(z['K2_train'], 3, True)} / {de(z['K2_valid'], 3, True)} R) und K3 (pessimistisch: {de(z['K3_train'], 3, True)} / {de(z['K3_valid'], 3, True)} R); Gebühr und Schlupf müssten auf das {de(z['bruch_mult'], 1)}-Fache von K1 steigen, bis die Erwartung null erreicht. "
             f"Zufallseinstiege in SMA200-Richtung schlagen die Regel selten (p {de(z['zufall_p_train'])} / {de(z['zufall_p_valid'])}). {pct(z['nachbarn_train'])} / {pct(z['nachbarn_valid'])} der 81 Nachbarzellen positiv; "
             f"Weglassen eines Jahres oder Instruments kippt das Vorzeichen nicht; Long {de(z['long_e'], 2, True)} R, Short {de(z['short_e'], 2, True)} R.",
             ["S7", "S7b", "K-C1"],
