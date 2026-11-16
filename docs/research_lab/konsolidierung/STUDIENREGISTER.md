@@ -5,7 +5,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 
 ## Zählung
 
-- Einträge gesamt: **73**, davon gefundene Studien und Berichte: **69**, eigene Nachrechnungen dieser Konsolidierung: 4.
+- Einträge gesamt: **74**, davon gefundene Studien und Berichte: **69**, eigene Nachrechnungen dieser Konsolidierung: 5.
 - Klassen (gefundene Studien): BELASTBAR 4, BEDINGT VERWERTBAR 31, EXPLORATIV 30, UNGÜLTIG 0, NICHT REPRODUZIERBAR 4.
 - Prüftiefe (gefundene Studien): A 2, B 8, C+ 23, C 27, D 9.
 - Art (gefundene Studien): Carry 1; Filterstudie 8; Handelsregel oder Regelfamilie (gerechnet) 23; Plattform, Prüfbericht, Meta 7; Prognose-, Beobachtungs- oder Kalibrierstudie 18; Prospektive oder reale Beobachtung 8; Sonstiges (Entwurf, Gate, Zähllauf) 4.
@@ -40,7 +40,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - **OPTIONEN**: Deribit-Optionen/Gamma: Entwürfe, nur vorwärts; keine Historie. Einträge: S33, GEX-Wand.
 - **PROGNOSE**: Prognose-, Verteilungs- und KI-Studien ohne oder mit Papiertrades: Risiko- und Anzeigebausteine, keine Gewinnaussage. Einträge: S15, L1, S12, S16, S17, S18, KI1, T07, Move-Kalibrierung, S39.
 - **INFRA**: Plattform-, Daten- und Software-Abnahmen: prüfen Pipeline und Governance, nicht Profitabilität. Einträge: V2, F4, V1-Juli, tim-master-P1, Prüfberichte-Chart, Überzeugungsregister.
-- **EIGEN**: Eigene Nachrechnungen dieser Konsolidierung (Protokoll 1.0, eingefroren). Einträge: K-C1, K-Carry, K-Ref, K-Bitunix.
+- **EIGEN**: Eigene Nachrechnungen dieser Konsolidierung (Protokoll 1.0, eingefroren). Einträge: K-C1, K-Carry, K-Ref, K-Bitunix, K-T15.
 
 ## Übersicht
 
@@ -119,6 +119,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 | K-Carry | Konsolidierung T11: Funding-Carry BTC+ETH (Spot long, Perp short) nach Protokoll, plus Se… | EIGEN | reported | A | BEDINGT VERWERTBAR | positiv aber Kapitalrendite (nicht Edge) | 2 Instrumente |
 | K-Ref | Konsolidierung T10: risikogleiche einfache Referenzen R1 (Korb Buy&Hold) und R2 (SMA200 l… | EIGEN | reported | A | BEDINGT VERWERTBAR | kein Vorsprung gegen einfache Referenz | Tagesreihen 2020–2024 |
 | K-Bitunix | Konsolidierung T13: Bitunix-Kerzen und Kontraktdaten gegen Binance (Übertragbarkeit) | EIGEN | reported | A | BEDINGT VERWERTBAR | kein Unterschied zu Binance | 269 gegen 264 Trades, 252 gemeinsame Signale |
+| K-T15 | Konsolidierung T15: Trendregel C3 (S7b-D20-T3 auf BTC/ETH) außerhalb des Entwicklungszeit… | EIGEN | reported | A | BEDINGT VERWERTBAR | positiv, nicht signifikant | 157 Trades (K2) |
 
 ## Einträge
 
@@ -1362,6 +1363,23 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Mängel: Gebühren unbestätigt; Funding-Einheit unklar (Prozent?)
 - Aussagen: Δ E[R] −0,027 R [VERIFIZIERT]; Gebühren [ANNAHME]
 - Verwendung in der Konsolidierung: Abschnitt 9 (Bitunix).
+
+### K-T15: Konsolidierung T15: Trendregel C3 (S7b-D20-T3 auf BTC/ETH) außerhalb des Entwicklungszeitraums, Binance Spot 4h 2017-08 bis 2019-12 (ein Lauf)
+
+- Cluster / Art / Beginn: EIGEN / Eigene Nachrechnung (Zusatzprotokoll 1.1-T15) / 2026-11-16
+- Quellen: `docs/research_lab/konsolidierung/ergebnisse/t15_datenaudit.json`; `docs/research_lab/konsolidierung/ergebnisse/t15_ausserhalb.json`
+- Daten: Binance Spot 4h BTCUSDT/ETHUSDT 2017-08 bis 2019-12 (data.binance.vision, Prüfsummen belegt)
+- Aufteilung: ein Zeitraum vor Training, Validierung und Holdout
+- Kosten: K2 primär (Funding aus, keine Historie), K1 und K0 berichtet
+- Register: Zusatzprotokoll 1.1-T15 (Commit ceed9f9) vor dem Laden der Daten, Code und Datenbericht vor dem Lauf festgehalten
+- Stichprobe: 157 Trades (K2)
+- Ergebnis: K2: E[R] +0,154 R (95-%-Band −0,056 bis +0,391), einseitiges p 0,079 (Schwelle 0,05): nicht bestätigt, Richtung positiv. K1 +0,146, K0 +0,152. Zufallseinstiege in SMA200-Richtung im Mittel +0,177 R (p 0,595). Je Jahr 2017 −0,03 / 2018 +0,15 / 2019 +0,24 R. Größter Rückgang 12,5 R. Nach Abzug des Funding-Anteils aus 2020–2024 (0,031 R) +0,123 R.
+- Urteil des Labors: reported
+- **Prüftiefe A, Klasse BEDINGT VERWERTBAR, Richtung: positiv, nicht signifikant**
+- Begründung: Vorab festgelegter Einzellauf außerhalb des Entwicklungszeitraums mit demselben Code (T1 reproduziert die Laborlisten bit-genau). Aussagekraft begrenzt (n 157, Power etwa 50 %), Spot statt Perpetual, Funding fehlt, nur BTC/ETH.
+- Mängel: Spot statt Perpetual, kein Funding; Nur BTC/ETH, im Nachhinein gewählt; Acht Datenlücken verkürzen den Zeitraum mit Signalmöglichkeit auf etwa 19,8 Monate; Marktregime 2017–2019 anders
+- Aussagen: E[R] K2 +0,154 R, n 157, p 0,079 [VERIFIZIERT]; Zufallseinstiege im Mittel +0,177 R, p 0,595 [VERIFIZIERT]; Datenbericht: 5.185 Kerzen je Symbol, 0,31 % fehlen, Prüfsummen stimmen [VERIFIZIERT]
+- Verwendung in der Konsolidierung: Evidenzzeile E1b; die Stufe „außerhalb der Entwicklung bestätigt“ ist nicht erreicht.
 
 ## Nicht zugängliche oder nicht durchgesehene Quellen
 

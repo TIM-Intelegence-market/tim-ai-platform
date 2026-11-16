@@ -95,6 +95,22 @@ def lade_zahlen(ordner: Path = ERGEBNISSE) -> dict:
     g8 = kr["G8_berichtet"]
     z["s32_e"], z["s32_n"], z["s32_p"] = g8["netto_e_r"], g8["n_trades"], g8["zufall_p"]
     z["s32_ci_lo"], z["s32_ci_hi"] = g8["bootstrap_ci95"]
+    t15 = j("t15_ausserhalb.json")["ergebnis"]
+    z["t15_n"], z["t15_e_k2"], z["t15_p"] = t15["p1"]["n"], t15["p1"]["e_r"], t15["p1"]["p_monatsblock_bootstrap_einseitig"]
+    z["t15_ci_lo"], z["t15_ci_hi"] = t15["p1"]["ci95_bootstrap"]
+    z["t15_e_k1"], z["t15_e_k0"] = t15["p2"]["K1"]["e_r"], t15["p2"]["K0"]["e_r"]
+    z["t15_kand_k1"], z["t15_zufall_e"], z["t15_zufall_p"] = t15["p3"]["kandidat_e_r"], t15["p3"]["e_r_zufall_mittel"], t15["p3"]["p_einseitig"]
+    z["t15_dd"], z["t15_dd_tage"] = t15["p5"]["max_drawdown_r"], t15["p5"]["max_drawdown_dauer_tage"]
+    z["t15_funding"], z["t15_e_nach_funding"] = t15["p6"]["funding_kostenanteil_je_trade_r"], t15["p6"]["e_r_nach_funding_abzug"]
+    z["t15_p_funding"] = t15["p6"]["ergaenzend_bootstrap_nach_abzug"]["p_einseitig"]
+    z["t15_top5"] = t15["p7"]["anteil_beste_5_prozent_an_summe"]
+    z["t15_mde"] = t15["aussagekraft_nachtraeglich"]["kleinste_bei_80_prozent_power_nachweisbare_erwartung_r"]
+    for jahr in ("2017", "2018", "2019"):
+        z[f"t15_{jahr}_n"], z[f"t15_{jahr}_e"] = t15["p4"]["je_jahr"][jahr]["n"], t15["p4"]["je_jahr"][jahr]["e_r"]
+    for sym, kurz in (("BTCUSDT", "btc"), ("ETHUSDT", "eth")):
+        z[f"t15_{kurz}_n"], z[f"t15_{kurz}_e"] = t15["p8"]["je_symbol"][sym]["n"], t15["p8"]["je_symbol"][sym]["e_r"]
+    z["t15_long_n"], z["t15_long_e"] = t15["p8"]["je_seite"]["1"]["n"], t15["p8"]["je_seite"]["1"]["e_r"]
+    z["t15_short_n"], z["t15_short_e"] = t15["p8"]["je_seite"]["-1"]["n"], t15["p8"]["je_seite"]["-1"]["e_r"]
     kb1 = kapitalbedarf(z["K1_pooled"], z["trades_pro_monat"], 0.01)
     kb2 = kapitalbedarf(z["ci_lo"], z["trades_pro_monat"], 0.01)
     z["jahres_r"] = kb1["jahres_r"]
@@ -124,17 +140,37 @@ def zeilen(z: dict) -> list[dict]:
             f"Bleibt positiv unter K2 (konservativ: {de(z['K2_train'], 3, True)} / {de(z['K2_valid'], 3, True)} R) und K3 (pessimistisch: {de(z['K3_train'], 3, True)} / {de(z['K3_valid'], 3, True)} R); Gebühr und Schlupf müssten auf das {de(z['bruch_mult'], 1)}-Fache von K1 steigen, bis die Erwartung null erreicht. "
             f"Zufallseinstiege in SMA200-Richtung schlagen die Regel selten (p {de(z['zufall_p_train'])} / {de(z['zufall_p_valid'])}). {pct(z['nachbarn_train'])} / {pct(z['nachbarn_valid'])} der 81 Nachbarzellen positiv; "
             f"Weglassen eines Jahres oder Instruments kippt das Vorzeichen nicht; Long {de(z['long_e'], 2, True)} R, Short {de(z['short_e'], 2, True)} R.",
-            ["S7", "S7b", "K-C1"],
+            ["S7", "S7b", "K-C1", "K-T15"],
             f"S32: dieselbe Regel auf 137 anderen Coins (Punkt-in-Zeit-Universum), Validierung: {de(z['s32_e'], 4, True)} R bei n {ganz(z['s32_n'])}, Zufalls-p {de(z['s32_p'])}, 95-%-Band {de(z['s32_ci_lo'], 3)} bis {de(z['s32_ci_hi'], 3, True)} R. "
             f"Deflated Sharpe bei N = 64: Training {de(z['dsr_n64_train'], 2)}, Validierung {de(z['dsr_n64_valid'], 2)}, gepoolt {de(z['dsr_n64_pooled'], 2)} (Schwelle 0,95; bei N = 26.707 {de(z['dsr_nmax_pooled'], 2)}). "
             f"Eine Kerze Verzögerung: Training {de(z['L1_train'], 3, True)} R, Validierung {de(z['L1_valid'], 3, True)} R. Sondenlauf Juli–Oktober 2026 (S7b-Sonde, zufällig gesehen): 35 Trades, −5,8 R. "
-            f"Einfache Referenz R2 (SMA200 lang/flat, gleiche Schwankung): Sharpe {de(z['r2_sharpe'], 2)} gegen {de(z['c1_sharpe'], 2)}. S25: GARCH-Größe bringt keinen Vorteil.",
-            ["S32", "S7b-Sonde", "S25", "K-Ref"],
+            f"Einfache Referenz R2 (SMA200 lang/flat, gleiche Schwankung): Sharpe {de(z['r2_sharpe'], 2)} gegen {de(z['c1_sharpe'], 2)}. S25: GARCH-Größe bringt keinen Vorteil. "
+            f"T15 (E1b, BTC/ETH 2017–2019, ein Lauf): {de(z['t15_e_k2'], 3, True)} R unter K2, p {de(z['t15_p'], 3)} (Schwelle 0,05 verfehlt); Zufallseinstiege in SMA200-Richtung erreichen dort im Mittel {de(z['t15_zufall_e'], 3, True)} R.",
+            ["S32", "S7b-Sonde", "S25", "K-Ref", "K-T15"],
             "Ein Datencluster (TREND-4H): dieselben Binance-4h-Kerzen BTC/ETH/SOL 2020–2024, Validierung 2023–2024 mehrfach verbraucht (S7b, S25, S7b-Makro). S7, S7b und die eigene Nachrechnung sind eine Evidenzquelle, nicht drei.",
             f"Coins im Nachhinein gewählt (Survivorship). Beste 5 % der Trades = {pct(z['top5_anteil'])} der Summe; 2020 liefert {de(z['jahr2020_r'], 0)} von {de(z['summe_r_pooled'], 0)} R, 2021 {de(z['jahr2021_e'], 2, True)} R je Trade; "
             f"Drawdown {de(z['dd_r_pooled'], 1)} R (ca. 21 % bei 1 % Risiko); im oberen Volatilitäts-Terzil {de(z['terzil_hoch_e'], 2, True)} R je Trade (n 99). Zufallseinstiege in Trendrichtung erreichen im Training schon {de(z['zufall_e_train'], 3, True)} R, ein Teil des Vorteils ist Trendseite plus Auszahlungsgeometrie.",
             "Nur als Hypothese für den Vorwärts-Papiertest (S7b-Forward). Keine Live-Aktivierung, keine Skalierung. Stufe 4 braucht mindestens 30 geschlossene Papier-Trades unter K2 oder einen freigegebenen Holdout-Lauf.",
-            "historisch gut ausgesehen: ja. Korrigiert reproduziert: ja (Prüftiefe A). Außerhalb der Entwicklung bestätigt: nein (S32 negativ, kein ungesehener Abschlusstest). Prospektiv beobachtet: 7 geschlossene Papier-Trades, zu wenig.",
+            "historisch gut ausgesehen: ja. Korrigiert reproduziert: ja (Prüftiefe A). Außerhalb der Entwicklung bestätigt: nein (S32 negativ; T15 auf BTC/ETH 2017–2019 positiv, aber p 0,079, siehe E1b; kein ungesehener Abschlusstest). Prospektiv beobachtet: 7 geschlossene Papier-Trades, zu wenig.",
+        ),
+        zeile(
+            "E1b",
+            "Außerhalb des Entwicklungszeitraums (BTC/ETH Spot, 2017-08 bis 2019-12, T15) zeigt die Trendregel C3 eine positive, aber nicht belegte Erwartung nach Kosten.",
+            "positiv, nicht signifikant",
+            f"Vorab eingefrorener Einzellauf (Zusatzprotokoll 1.1-T15), derselbe Code wie T1–T13: n {z['t15_n']} Trades, E[R] unter K2 {de(z['t15_e_k2'], 3, True)} R (95-%-Band {de(z['t15_ci_lo'])} bis {de(z['t15_ci_hi'], 3, True)} R), "
+            f"einseitiges Monatsblock-p {de(z['t15_p'], 4)} (Schwelle 0,05; P1 nicht erfüllt). K1 {de(z['t15_e_k1'], 3, True)} R, K0 {de(z['t15_e_k0'], 3, True)} R. "
+            f"Je Jahr: 2017 {de(z['t15_2017_e'], 2, True)} R (n {z['t15_2017_n']}), 2018 {de(z['t15_2018_e'], 2, True)} R (n {z['t15_2018_n']}), 2019 {de(z['t15_2019_e'], 2, True)} R (n {z['t15_2019_n']}). "
+            f"BTC {de(z['t15_btc_e'], 2, True)} R (n {z['t15_btc_n']}), ETH {de(z['t15_eth_e'], 2, True)} R (n {z['t15_eth_n']}); Long {de(z['t15_long_e'], 2, True)} R (n {z['t15_long_n']}), Short {de(z['t15_short_e'], 2, True)} R (n {z['t15_short_n']}).",
+            ["K-T15"],
+            f"Zufallseinstiege in SMA200-Richtung (gleiche Kosten K1, gleiche Häufigkeit und Positionsgrenze) erreichen im selben Zeitraum im Mittel {de(z['t15_zufall_e'], 3, True)} R, die Regel {de(z['t15_kand_k1'], 3, True)} R (p {de(z['t15_zufall_p'], 2)}): "
+            f"der Donchian-Einstieg bringt dort nichts über die Trendseite hinaus. Nach Abzug des Funding-Kostenanteils aus 2020–2024 ({de(z['t15_funding'], 3)} R je Trade) bleiben {de(z['t15_e_nach_funding'], 3, True)} R (ergänzend p {de(z['t15_p_funding'], 2)}). "
+            f"Beste 5 % der Trades = {pct(z['t15_top5'])} der Summe; größter Rückgang {de(z['t15_dd'], 1)} R über {ganz(z['t15_dd_tage'])} Tage.",
+            ["K-Ref", "S32"],
+            "Neue Daten (Spot 2017–2019, nicht Teil des Laborarchivs, das 2020-01 beginnt): kein zeitlicher Überlapp mit den Entwicklungsdaten, aber dieselben Instrumente BTC und ETH (Überlebensauswahl, hohe Wechselkorrelation) und nicht auszuschließendes Vorwissen über die Preisgeschichte.",
+            f"Aussagekraft begrenzt: n {z['t15_n']}, nur etwa 19,8 Monate mit Signalmöglichkeit (acht Datenlücken setzen den 200er-Vorlauf zurück), Power etwa 50 % bei +0,24 R, kleinste bei 80 % Power nachweisbare Erwartung {de(z['t15_mde'], 2, True)} R. "
+            "Das Band enthält 0 und zugleich den Wert aus 2020–2024. Spot statt Perpetual; Funding, Basis, Leerverkauf und Liquidation sind nicht abgebildet.",
+            "Kein Nachweis und keine Widerlegung. Die positive Richtung außerhalb der Entwicklung stützt die Hypothese nur schwach; der fehlende Vorsprung gegenüber Zufallseinstiegen in Trendrichtung spricht dafür, dass ein Vorteil, falls vorhanden, vor allem aus der Trendseite und der Auszahlungsgeometrie kommt. Das Gesamturteil bleibt Stufe 2.",
+            "Außerhalb der Entwicklung getestet: ja (T15 und S32). Bestätigt: nein (P1 nicht erfüllt); das Merkmal „außerhalb der Entwicklung bestätigt“ bleibt unbesetzt.",
         ),
         zeile(
             "E2",

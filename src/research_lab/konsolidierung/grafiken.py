@@ -372,11 +372,55 @@ def g7_ofx(ordner: Path, erg: Path = ERGEBNISSE) -> Path:
     return speichern(fig, ordner, "g7_ofx_suche.png")
 
 
+def g8_t15(ordner: Path, erg: Path = ERGEBNISSE) -> Path:
+    """T15 (außerhalb der Entwicklung): kumulierte Netto-R-Summe der Trades 2017–2019 (K2) und Zufallsvergleich (K1)."""
+    import matplotlib.dates as mdates
+    d = lade("t15_ausserhalb.json", erg)["ergebnis"]
+    tr = sorted(d["trades_k2"], key=lambda x: x["ausstieg_ms"])
+    zeit = np.array([x["ausstieg_ms"] for x in tr], dtype="int64").astype("datetime64[ms]")
+    kum = np.cumsum([x["r"] for x in tr])
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(9.8, 4.2), gridspec_kw={"width_ratios": [1.2, 1]})
+    a1.axvspan(np.datetime64("2018-01-01"), np.datetime64("2019-01-01"), color=GITTER, alpha=0.55, lw=0, zorder=0)
+    a1.step(zeit, kum, where="post", color=BLAU, lw=1.7)
+    a1.axhline(0, color=ACHSE, lw=0.9)
+    spitze = np.maximum.accumulate(np.concatenate([[0.0], kum]))[1:]
+    tal = int(np.argmax(spitze - kum))
+    gipfel = int(np.argmax(kum[: tal + 1]))
+    a1.plot([zeit[gipfel], zeit[tal]], [kum[gipfel], kum[tal]], "o", color=ORANGE, ms=4.5, zorder=5)
+    a1.text(zeit[tal] + np.timedelta64(12, "D"), kum[tal] - 1.0, f"größter Rückgang {eins(d['p5']['max_drawdown_r'])} R", fontsize=7.8, color=TEXT2, ha="left", va="top")
+    a1.set_ylim(-9, 33)
+    a1.set_ylabel("kumulierte Summe in R (netto, K2)")
+    a1.set_title(f"Handelsverlauf 2017–2019 (Spot): {d['p1']['n']} Trades, Summe {eins(kum[-1])} R")
+    for jahr, mitte in ((2017, "2017-11-20"), (2018, "2018-07-02"), (2019, "2019-07-02")):
+        je = d["p4"]["je_jahr"][str(jahr)]
+        a1.text(np.datetime64(mitte), 32.2, f"{jahr}: n {je['n']}\nE[R] {komma(round(je['e_r'], 2))}", fontsize=7.4, color=TEXT2, ha="center", va="top")
+    a1.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 7)))
+    a1.xaxis.set_major_formatter(mdates.DateFormatter("%m/%Y"))
+    p3 = d["p3"]
+    w = np.asarray(p3["e_r_zufall_werte"], float)
+    a2.hist(w, bins=np.linspace(-0.2, 0.6, 40), color=GRAU, alpha=0.55, edgecolor=FLAECHE, linewidth=0.8)
+    a2.axvline(p3["kandidat_e_r"], color=BLAU, lw=1.4, ls=(0, (4, 3)))
+    p_zufall = f"{p3['p_einseitig']:.2f}".replace(".", ",")
+    a2.text(0.03, 0.97, f"gestrichelt: C3 {komma(round(p3['kandidat_e_r'], 3))} R\nZufall im Mittel {komma(round(p3['e_r_zufall_mittel'], 3))} R\nEinseitiges p {p_zufall}",
+            transform=a2.transAxes, color=TEXT2, fontsize=7.8, va="top", ha="left")
+    a2.set_xlabel("E[R] je Trade (netto, K1)")
+    a2.set_ylabel("Anzahl von 1.000 Ziehungen")
+    a2.xaxis.set_major_formatter(FuncFormatter(komma))
+    a2.set_title("Zufallseinstiege in SMA200-Richtung")
+    p = d["p1"]["p_monatsblock_bootstrap_einseitig"]
+    kopf(fig, "T15: Trendregel C3 außerhalb der Entwicklung (BTC/ETH Spot, 2017-10 bis 2019-12)", f"nicht bestätigt, Richtung positiv: E[R] {komma(round(d['p1']['e_r'], 3))} R, p {komma(round(p, 3))} (Schwelle 0,05)")
+    fuss(fig, "Quelle: ergebnisse/t15_ausserhalb.json. Funding aus (keine Historie vor 09.2019). Zufallseinstiege mit gleichen Kosten, Häufigkeit und Positionsgrenze.")
+    fig.subplots_adjust(left=0.07, right=0.985, top=0.80, bottom=0.18, wspace=0.22)
+    return speichern(fig, ordner, "g8_t15_ausserhalb.png")
+
+
 def alle(ordner: Path = AUSGABE, erg: Path = ERGEBNISSE) -> list[Path]:
     stil()
     out = [g1_verlauf(ordner, erg), g2_drawdown(ordner, erg), g3_kosten(ordner, erg), g4_stabilitaet(ordner, erg), g5_zufall_raster(ordner, erg), g6_register(ordner)]
     if (erg / "ofx_bestenlisten_aggregat.json").exists():
         out.append(g7_ofx(ordner, erg))
+    if (erg / "t15_ausserhalb.json").exists():
+        out.append(g8_t15(ordner, erg))
     return out
 
 

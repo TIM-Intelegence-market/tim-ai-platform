@@ -1,9 +1,9 @@
 {
  "stand": "2026-11-16",
  "zusammenfassung": {
-  "eintraege_gesamt": 73,
+  "eintraege_gesamt": 74,
   "gefundene_studien_und_berichte": 69,
-  "eigene_nachrechnungen": 4,
+  "eigene_nachrechnungen": 5,
   "nach_klasse": {
    "BEDINGT VERWERTBAR": 31,
    "EXPLORATIV": 30,
@@ -2669,6 +2669,49 @@
     }
    ],
    "verwendung": "Abschnitt 9 (Bitunix)."
+  },
+  {
+   "id": "K-T15",
+   "titel": "Konsolidierung T15: Trendregel C3 (S7b-D20-T3 auf BTC/ETH) außerhalb des Entwicklungszeitraums, Binance Spot 4h 2017-08 bis 2019-12 (ein Lauf)",
+   "cluster": "EIGEN",
+   "typ": "Eigene Nachrechnung (Zusatzprotokoll 1.1-T15)",
+   "datum": "2026-11-16",
+   "quellen": [
+    "docs/research_lab/konsolidierung/ergebnisse/t15_datenaudit.json",
+    "docs/research_lab/konsolidierung/ergebnisse/t15_ausserhalb.json"
+   ],
+   "daten": "Binance Spot 4h BTCUSDT/ETHUSDT 2017-08 bis 2019-12 (data.binance.vision, Prüfsummen belegt)",
+   "aufteilung": "ein Zeitraum vor Training, Validierung und Holdout",
+   "kosten": "K2 primär (Funding aus, keine Historie), K1 und K0 berichtet",
+   "register": "Zusatzprotokoll 1.1-T15 (Commit ceed9f9) vor dem Laden der Daten, Code und Datenbericht vor dem Lauf festgehalten",
+   "stichprobe": "157 Trades (K2)",
+   "ergebnis": "K2: E[R] +0,154 R (95-%-Band −0,056 bis +0,391), einseitiges p 0,079 (Schwelle 0,05): nicht bestätigt, Richtung positiv. K1 +0,146, K0 +0,152. Zufallseinstiege in SMA200-Richtung im Mittel +0,177 R (p 0,595). Je Jahr 2017 −0,03 / 2018 +0,15 / 2019 +0,24 R. Größter Rückgang 12,5 R. Nach Abzug des Funding-Anteils aus 2020–2024 (0,031 R) +0,123 R.",
+   "laborurteil": "reported",
+   "pruefung": "A",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "positiv, nicht signifikant",
+   "begruendung": "Vorab festgelegter Einzellauf außerhalb des Entwicklungszeitraums mit demselben Code (T1 reproduziert die Laborlisten bit-genau). Aussagekraft begrenzt (n 157, Power etwa 50 %), Spot statt Perpetual, Funding fehlt, nur BTC/ETH.",
+   "maengel": [
+    "Spot statt Perpetual, kein Funding",
+    "Nur BTC/ETH, im Nachhinein gewählt",
+    "Acht Datenlücken verkürzen den Zeitraum mit Signalmöglichkeit auf etwa 19,8 Monate",
+    "Marktregime 2017–2019 anders"
+   ],
+   "aussagen": [
+    {
+     "text": "E[R] K2 +0,154 R, n 157, p 0,079",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Zufallseinstiege im Mittel +0,177 R, p 0,595",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Datenbericht: 5.185 Kerzen je Symbol, 0,31 % fehlen, Prüfsummen stimmen",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Evidenzzeile E1b; die Stufe „außerhalb der Entwicklung bestätigt“ ist nicht erreicht."
   }
  ]
 }
