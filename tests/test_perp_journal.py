@@ -58,6 +58,8 @@ def test_update_writes_both_perp_journals_with_their_source(tmp_path: Path) -> N
         assert status["journals"][timeframe]["plans"] == len(view["entries"])
         for entry in view["entries"]:  # perp prices, never spot
             assert entry["entry"] < 200_000
+            # R1 (16.11.2026): a perp journal never carries the spot label
+            assert entry["market_type"] == "USDM" and entry["instrument"]["market_type"] == "USDM"
     # a second step with the same candles changes nothing
     again = perp_journal.update(_perp_cache(), store, NOW + timedelta(minutes=1), paths)
     assert again["journals"]["15m"]["plans"] == status["journals"]["15m"]["plans"]
@@ -120,3 +122,14 @@ def test_closed_candle_scenarios_are_not_flagged_stale_on_slow_timeframes() -> N
     assert not any(p.startswith("stale_price") for p in analysis["data_quality"]["problems"])
     quick = run_scenarios(candles, "1d", None, now=candles[-1]["close_time"] + timedelta(days=3))
     assert any(p.startswith("stale_price") for p in quick["data_quality"]["problems"])
+
+
+def test_run_scenarios_names_the_market_it_was_given() -> None:
+    """R1: the analysis carries the market type of its candles; the default stays SPOT."""
+    from src.dashboard.chart_model import build_chart_model
+
+    series, _ = perp_journal.perp_series(_perp_cache())
+    for market_type, expected in ((None, "SPOT"), ("USDM", "USDM")):
+        kwargs = {} if market_type is None else {"market_type": market_type}
+        model = build_chart_model(series, "15m", now=NOW, **kwargs)
+        assert model["analysis"]["market"]["market_type"] == expected

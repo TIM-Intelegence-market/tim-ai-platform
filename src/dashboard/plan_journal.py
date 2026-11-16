@@ -124,6 +124,9 @@ INSTRUMENT_SPECS = {
     # Monero on the Binance USD-M perpetual (Barti 11.11.2026, XMR journals in perp_journal.py): a perp can be
     # shorted without borrowing. Tick 0.01 USDT and lot 0.001 XMR as Binance lists XMRUSDT; check exchangeInfo before trusting it live.
     ("BINANCE", "USDM", "XMRUSDT"): {"tick_size": 0.01, "lot_step": 0.001, "short_executable": True},
+    # BTC perp shadow journals (perp_journal.py) are now labelled USDM instead of SPOT (R1, 16.11.2026). short_executable
+    # stays False on purpose: the label changes, the behaviour of these journals does not. Uzi decides about shorts later.
+    ("BINANCE", "USDM", "BTCUSDT"): {"tick_size": 0.01, "lot_step": 0.00001, "short_executable": False},
 }
 # The hypothesis register holds BTC research only. A plan on another symbol never borrows a BTC verdict.
 EVIDENCE_SYMBOLS = frozenset({"BTCUSDT"})
@@ -1273,7 +1276,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 except Exception as error:  # noqa: BLE001
                     logging.getLogger(__name__).warning("score shadow: no positioning (%s)", type(error).__name__)
             model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile, trades=trades,
-                                      positioning=positioning)
+                                      positioning=positioning, market_type=market_type or "SPOT")
             plans = plans_from_model(model)
             dropped: list[str] = []
             if rule == RULE_STRUCT:
