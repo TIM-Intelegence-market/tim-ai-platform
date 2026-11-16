@@ -137,7 +137,7 @@ def test_holdout_and_non_free_days_refused(tmp_path):
 
 def test_evaluate_locked_while_draft():
     with pytest.raises(PermissionError):
-        s32.evaluate({}, version="0.7")
+        s32.evaluate({}, version="0.8")
     assert s32.VERSION.startswith("0.")
 
 
@@ -169,7 +169,7 @@ def test_evaluate_runs_once_frozen():
     assert g["h1_steigung"] > 0 and g["pruefbar"] is False and g["h1_untere_grenze"] is None
     assert out["ergebnis"]["20-60"]["h1_bestanden"] is False  # too few events: never passes
     assert set(g["je_verhaeltnis"]) == {"0.5-1", "1-1.5", "3-5"}
-    assert set(out["ergebnis"]) == {"10-20", "20-60", "60-100", "100-150"}
+    assert set(out["ergebnis"]) == set(s32.GROUPS) and len(s32.GROUPS) == 20
 
 
 def test_evaluate_keeps_width_groups_apart():
@@ -211,3 +211,13 @@ def test_h2_checks_every_ratio_bin():
     assert out["ergebnis"]["20-60"]["h2_bestandene_stufen"] == ["1-1.5"]
     assert out["ergebnis"]["20-60"]["h2_bestanden"] is True and out["ergebnis"]["10-20"]["h2_bestanden"] is False
     assert s32.ALPHA_H1 + s32.H2_BINS * s32.ALPHA_H2 == pytest.approx(s32.ALPHA)  # per width group
+
+
+def test_sessions():
+    assert s32.session_of(0) == "asien" and s32.session_of(7 * 3600) == "london"
+    assert s32.session_of(13 * 3600 + 1799) == "london" and s32.session_of(13 * 3600 + 1800) == "newyork"
+    assert s32.session_of(86_399) == "spaet"
+    e = Event("d", 15 * 3600, 1, 2.0, 1.0, 2.0, 40.0)
+    assert s32.in_group(e, "20-60") and s32.in_group(e, "20-60|newyork") and not s32.in_group(e, "20-60|london")
+    c = s32.count({date(2020, 6, 1): [e]})
+    assert c["training"]["20-60|newyork"]["alle"] == 1 and c["training"]["20-60|asien"]["alle"] == 0
