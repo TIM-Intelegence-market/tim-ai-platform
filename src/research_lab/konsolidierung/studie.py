@@ -94,6 +94,7 @@ def abschnitt1(d: dict) -> list[str]:
          "> **Gesamturteil: INTERESSANTE HYPOTHESE, EVIDENZ UNZUREICHEND.** Das gilt für genau eine Familie: die Trendregel S7b-D20-T3 "
          "(Donchian-20-Ausbruch in Richtung SMA200, 4h-Kerzen, ATR-Stop, Ziel 3 R; Kandidaten C1 = BTC/ETH/SOL und C3 = BTC/ETH). "
          "Für alle übrigen untersuchten Familien (Orderflow, Indikator-Merkmale, Level-Reaktion, frühe Regelfamilien, Plan-Journale, Carry als Handelsvorteil) gilt: **KEIN BELASTBARER VORTEIL**. "
+         "Bei Orderflow heißt das: auf den vorhandenen Daten nicht belegt, und nach Uzis Hinweis vom 16.11.2026 (NUR BERICHTET) rückwirkend nicht mehr prüfbar, weil Daten fehlen; Orderflow wird nur noch live getestet (Abschnitte 10 und 12.4). "
          "Keines dieser Urteile autorisiert Echtgeldhandel oder eine Live-Aktivierung.", "",
          "Warum nicht mehr: C1 besteht die Reproduktion, die Kostenprüfung, den Zufallsvergleich, das Parameter-Plateau, die Konzentrations- und die Unsicherheitsprüfung (G1 bis G6, G11); "
          f"C3 (ohne SOL) verfehlt zusätzlich den Zufallsvergleich im Training (G3: p {de(z['c3_zufall_p_train'], 3)}). "
@@ -129,7 +130,8 @@ def abschnitt1(d: dict) -> list[str]:
           f"Die Streuung je Trade ist etwa {de(d['t7']['pooled']['kennzahlen']['sd_r'], 2)} R: Bei einer wahren Erwartung von 0,24 R wären für einen Nachweis (einseitig 5 %, Power 80 %) rund {n_trades_bis_power(0.24, 1.72)} Trades nötig, bei 0,20 R rund {n_trades_bis_power(0.20, 1.72)} (Abschnitt 10).",
           f"7. **Was fehlt bis zu einem belastbaren prospektiven Nachweis?** Mindestens eine unabhängige Stichprobe ohne Versuchsverbrauch: der einmalige Holdout 2025-01 bis 2026-06 (nur mit Uzis ausdrücklichem Wort und Bartis Zustimmung; etwa {holdout_trades(z['trades_pro_monat'])} Trades, Power nur etwa "
           f"{pct(power(0.24, 1.72, holdout_trades(z['trades_pro_monat'])), 0)}) und/oder rund {n_trades_bis_power(0.24, 1.72)} vorwärts beobachtete Trades (etwa {de(n_trades_bis_power(0.24, 1.72) / z['trades_pro_monat'] / 12, 1)} Jahre). "
-          "Außerdem Bitunix-Gebühren, Funding und Ausführung als bestätigte Zahlen (Abschnitt 10, offene Voraussetzungen).",
+          "Außerdem Bitunix-Gebühren, Funding und Ausführung als bestätigte Zahlen (Abschnitt 10, offene Voraussetzungen). "
+          "Für Orderflow gibt es nach Uzis Hinweis vom 16.11.2026 keinen Backtest-Weg mehr (Daten fehlen, NUR BERICHTET); dort bleibt nur die Vorwärtsbeobachtung (Abschnitt 12.4).",
           "8. **Wo liegen Studie und Artefakte?** `docs/research_lab/konsolidierung/` im Repo `tim-ai-platform` (Branch `claude/project-thread-iky0o0`): `KONSOLIDIERTE_STUDIE.md` (dieses Dokument), `STUDIENREGISTER.md`, `EVIDENZMATRIX.md`, `ergebnisse/` (JSON je Test), "
           "`grafiken/` (8 Bilder, reproduzierbar aus den JSON), `TESTLOG.md`, `TESTLOG_T15.md`, `README.md` (Reproduktion), Code in `src/research_lab/konsolidierung/`. Die Originalstudien bleiben unverändert.", "",
           "Die gewünschte Trefferquote von 75 % ist keine Anforderung und kein Beleg für Profitabilität: Die Trendregel gewinnt nur etwa "
@@ -565,7 +567,9 @@ def abschnitt10(d: dict) -> list[str]:
         ["Kerzen und Kontrakte", f"E[R] auf Bitunix-Kerzen {r(z['bx_e'], 4)} gegen Binance {r(z['bn_e'], 4)}; Mindestkontrakt bei 1.000 USDT und 1 % Risiko ausführbar. Kerzen vor dem Kontraktstart (2024-06-26) vermutlich Index-Kerzen (ANNAHME)."],
         ["Ausführung", "Spread und Marktorder-Schlupf nur aus einer Momentaufnahme von etwa 90 Sekunden in ruhigem Markt (BTC 0,016 bp, ETH 0,056 bp, SOL 1,41 bp). Keine Messung zu Nachrichtenzeiten, Nacht, Wochenende, Stop-Marktorder bei Spitzen; Orderarten, Latenz, Teilfüllung und Reduce-only nicht geprüft. Da eine Kerze Verzögerung die Erwartung vernichtet, ist das die kritischste offene Frage."],
         ["Regime und Auswahl", "Alle Instrumente im Nachhinein gewählt (BTC, ETH, SOL überlebten); BTC und ETH sind stark korreliert; 2021 negativ; 2020 trägt fast die Hälfte der Summe."],
-        ["Spot gegen Perpetual (T15)", "T15 läuft auf Spot-Kerzen; Basis, Funding, Leerverkauf und Liquidation sind nicht abgebildet."]])
+        ["Spot gegen Perpetual (T15)", "T15 läuft auf Spot-Kerzen; Basis, Funding, Leerverkauf und Liquidation sind nicht abgebildet."],
+        ["Orderflow-Daten", "Uzi am 16.11.2026 (16:46 UTC): Orderflow kann nicht mehr per Backtest geprüft werden, weil Daten fehlen; Regel (16:47 UTC): Orderflow wird immer live getestet. **NUR BERICHTET:** Welche Daten fehlen, wurde für diese Studie nicht geprüft. "
+         "Folge: Die Orderflow-Befunde (E3: OF2, OFX-Suche, S19, S31/S31b, S2) gelten nur für den bisher getesteten Zeitraum und die damals vorhandenen Daten; sie lassen sich rückwirkend weder erweitern noch bestätigen noch widerlegen. Neue Evidenz entsteht nur vorwärts (Abschnitt 12.4)."]])
     return o
 
 
@@ -623,10 +627,16 @@ def abschnitt12(d: dict) -> list[str]:
           "weniger Freiheitsgrade und ein kleineres N für den Mehrfachtest. Sie muss auf Daten laufen, die weder zur Entwicklung noch zu T15 gehören (Holdout oder Vorwärtsjournal), und kann dort gemeinsam mit C1/C3 geprüft werden; "
           "auf den schon gesehenen Daten wäre sie nur eine weitere Auswahl nach Ergebnis. "
           "Parallel: Bitunix-Gebühren, Funding und Ausführung aus dem eigenen Konto und dem laufenden Recorder messen (kritisch, weil eine Kerze Verzögerung die Erwartung vernichtet), und eine **fortlaufende Versuchszählung** einführen, ohne die keine Signifikanzaussage glaubwürdig ist.", "",
+          "### 12.4 Orderflow: nur vorwärts beobachten", "",
+          "Uzi hat am 16.11.2026 festgehalten (16:46 und 16:47 UTC, **NUR BERICHTET**): Orderflow kann nicht mehr per Backtest geprüft werden, weil Daten fehlen, und soll immer live getestet werden. Für diese Studie folgt daraus (Empfehlung): "
+          "(1) Es gibt keinen weiteren Backtest-Schritt für Orderflow; die Befunde in E3 bleiben auf den bisher getesteten Zeitraum und die damals vorhandenen Daten beschränkt und sind weder Beleg noch Gegenbeleg für neue Daten. "
+          "(2) Eine Orderflow-Regel zählt erst als Evidenz, wenn sie vorab eingefroren ist und ihre Stichprobe ab dem Einfrieren live wächst (Papier oder Schatten, mit Hash-Kette wie in Abschnitt 11); Rückschau-Läufe und Regeln, die nach Ansicht von Zwischenständen geschrieben wurden (OF-Schatten, Abschnitt 4), zählen nicht. "
+          "(3) Die Trendregel (Abschnitt 11) enthält keinen Orderflow-Filter und bleibt unberührt. "
+          "(4) Wie viele Live-Trades für einen Nachweis nötig sind, hängt von der erwarteten Erwartung und Streuung ab und wird vor dem Start festgelegt (Abschnitt 10, Stichprobengröße).", "",
           "## Abschlussurteil und nächste Entscheidung", "",
           "**INTERESSANTE HYPOTHESE, EVIDENZ UNZUREICHEND** (Trendregel S7b-D20-T3, Kandidaten C1/C2/C3). Alle anderen Familien: **KEIN BELASTBARER VORTEIL**. Keine Echtgeld-Freigabe.", "",
           "- **Welche Annahme ist gescheitert?** Die Annahme, dass der Donchian-Ausbruch in SMA200-Richtung einen eigenständigen, übertragbaren Einstiegsvorteil trägt. Er überträgt sich nicht auf andere Coins (S32), schlägt in 2017 bis 2019 den Zufall nicht (T15) und übersteht weder die Mehrfachtest-Korrektur noch eine Kerze Verzögerung. "
-          "Ebenso gescheitert: die Annahme, dass Orderflow-, Indikator- oder Level-Merkmale kurzfristiger Regeln nach Kosten tragen, und dass hohe Trefferquoten ein Qualitätsmerkmal sind.",
+          "Ebenso gescheitert: die Annahme, dass Orderflow-, Indikator- oder Level-Merkmale kurzfristiger Regeln nach Kosten tragen, und dass hohe Trefferquoten ein Qualitätsmerkmal sind. Bei Orderflow gilt das nur für die vorhandenen Daten; weitere Rückschau ist nach Uzis Hinweis vom 16.11.2026 nicht mehr möglich (Abschnitt 10).",
           "- **Welche Ergebnisse bleiben nutzbar?** Die Trendseite plus Auszahlungsgeometrie als Hypothese mit positiver Richtung in zwei Zeiträumen; die unabhängige Nachrechnung, das eingefrorene Protokoll, der Datencluster-Ansatz und die Kostenarithmetik; belastbare Negativbefunde (S34 bis S36, OFX, S24, frühe Familien), die künftige Suchen sparen; die Kerzen- und Kontraktgleichheit von Bitunix; "
           "Anzeige- und Risikobausteine (GARCH, Kalibrierung).",
           "- **Nächste Entscheidung (Uzi):** (1) Journal unverändert weiterlaufen lassen (kostet nichts, kein Echtgeld) – empfohlen; (2) den einmaligen Holdout-Lauf freigeben oder nicht (braucht auch Barti); (3) Bitunix-Gebühren und Funding aus dem Konto bestätigen lassen; (4) die vorab festzulegende Prüfung der einfachen Trendseiten-Regel beauftragen.", ""]

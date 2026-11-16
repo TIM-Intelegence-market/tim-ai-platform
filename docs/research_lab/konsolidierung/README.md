@@ -194,6 +194,7 @@ Die Tests prüfen Rechenwege und innere Stimmigkeit. Sie beweisen nicht, dass di
 5. **Bitunix:** Kerzen, Orderbuch und Funding-Rate sind Momentaufnahmen vom 2026-11-16 (Orderbuch: 45 Schnappschüsse über rund 90 Sekunden in ruhigem Markt). Eine spätere Abfrage liefert andere Werte; für die Wiederholung gelten die Dateien in `eingaben/bitunix/`. Gebühren, Funding-Einheit und Verhalten bei Stress sind unbestätigt, die Kostenstufen K1 bis K3 nehmen Annahmen. Unbekannte Gebühren wurden nie als null gerechnet.
 6. **Geldmarkt-Vergleichswert** des Carry-Tests (Jahreszinsen 2020 bis 2024) ist eine Annahme und als solche gekennzeichnet.
 7. **Zeitlich nach dem Register** liegende Arbeiten im Repo (siehe Abschnitt 2, Abdeckung) sind nicht bewertet.
+8. **Orderflow-Daten:** Nach Uzis Hinweis vom 16.11.2026 (NUR BERICHTET) kann Orderflow nicht mehr per Backtest geprüft werden, weil Daten fehlen; Orderflow soll immer live getestet werden. Welche Daten fehlen, wurde für diese Konsolidierung nicht geprüft. Die Orderflow-Befunde der Studie (Evidenzzeile E3) lassen sich deshalb weder erweitern noch auf neuen Daten wiederholen; neue Evidenz entsteht nur vorwärts (Studie, Abschnitte 10 und 12.4).
 
 ## 8 Schranken dieses Auftrags
 
