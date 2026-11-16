@@ -1,9 +1,9 @@
-# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.4)
+# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.5)
 
 | Feld | Wert |
 |---|---|
 | Studie | S32 (nächste freie Nummer nach S31/S31b) |
-| Version | **0.4, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
+| Version | **0.5, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.; 0.5: Kostenfrage H2 für jede Verhältnisstufe statt nur ab 2:1, Barti 16.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
 | Anlass | Barti 12./13.11.2026: Setup aus dem Video „The Only Orderflow Guide You'll Ever Need“ (6:22–9:55, S&P-Future) prüfen und, falls es trägt, in TIM einbauen. Beschreibung der Kette: `/mnt/project-files/s32-orderbuch/Was-der-Trader-macht-2026-11-12.md` (Projektdateien) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kosten aus `src/research_lab/protocol.py` |
 | Daten | Binance USDⓈ-M BTCUSDT, Tardis.dev `incremental_book_L2`, **nur die kostenlosen Tage (1. jedes Monats)**. Buchnachbau `src/research_lab/depth/` (PR #251), geprüft in `../reports/depth_p2_tardis_2020-06-01.md` |
@@ -52,20 +52,23 @@ deckt gerade die Kosten. Ehrliche Erwartung: H1 vielleicht, H2 kaum.
 | | Frage | Messung | Bestehen |
 |---|---|---|---|
 | H1 | Steigt die Trefferquote mit dem Verhältnis? | Steigung von „Ziel zuerst“ (0/1) über dem Logarithmus des Verhältnisses, begrenzt auf 1:10 bis 10:1 | untere Grenze > 0 in Training **und** Validierung |
-| H2 | Bleibt nach Kosten etwas? | mittleres Netto-R der Ereignisse mit Verhältnis **mindestens 2** (Bereich des Videos, vorab fest; R = Abstand zum Stop, Basiskosten) | untere Grenze > 0 in Training **und** Validierung; Stress berichtet |
+| H2 | Bleibt nach Kosten etwas? | mittleres Netto-R **je Verhältnisstufe** (unter 0,5 / 0,5–1 / 1–1,5 / 1,5–2 / 2–3 / 3–5 / ab 5; R = Abstand zum Stop, Basiskosten). Keine Stufe vorab ausgewählt | bestanden, wenn mindestens eine Stufe in Training **und** Validierung eine untere Grenze > 0 hat; Stress berichtet |
 
 **Warum ein Trendtest statt vieler Schwellen:** Jede Schwelle (1,5, 2, 3, 5 …) einzeln zu prüfen wären viele
 Versuche, und die beste fände man auch im Zufall. H1 fragt einmal über alle Verhältnisse, ob mehr Schiefe mehr
-Treffer bringt. Das ist **ein** Versuch. Die Tabelle je Verhältnisstufe (unter 0,5 / 0,5–1 / 1–1,5 / 1,5–2 / 2–3 /
-3–5 / ab 5) wird nur gezeigt, nicht bewertet; eine Stufe daraus wird nicht nachträglich zur Regel.
+Treffer bringt. Das ist **ein** Versuch. H2 prüft jede Stufe für sich, weil „bleibt Gewinn?“ eine Gruppe von Trades braucht. Dafür
+wird die Fehlergrenze durch sieben geteilt (siehe unten), damit sieben Stufen nicht mehr Glückstreffer erlauben
+als ein einzelner Test.
 
-- Untere Grenze: einseitig, Block-Bootstrap über Tage (9 999 Ziehungen, Seed 32), Bonferroni über H1 und H2
-  (je α/2 = 0,025).
-- Mindestmenge je Abschnitt: 300 Ereignisse insgesamt und 100 mit Verhältnis ab 2, sonst „nicht prüfbar“.
+- Untere Grenze: einseitig, Block-Bootstrap über Tage (9 999 Ziehungen, Seed 32), Bonferroni: H1 bekommt α/2 = 0,025,
+  H2 die andere Hälfte, geteilt durch die sieben Stufen (je etwa 0,0036).
+- Mindestmenge je Abschnitt: 300 Ereignisse insgesamt für H1; für H2 100 je Stufe, sonst ist diese Stufe „nicht
+  prüfbar“. Laut Zähllauf (15.11.) sind in beiden Abschnitten prüfbar: unter 0,5, 0,5–1, 1–1,5, 1,5–2. Die
+  Stufe 2–3 hat in der Validierung nur 48 Fälle, 3–5 und ab 5 sind überall zu klein; sie werden nur gezeigt.
 - Gezählt werden nur Ausgänge Ziel, Stop, Zeit. „Kein Platz“ (Einstieg schon hinter dem Ziel) und „fehlt“ (Tag
   endet im Horizont, Buch ungültig beim Einstieg) werden ausgewiesen, nicht gewertet.
-- Deflated Sharpe: H2 zählt als **1 neuer Versuch** (N 64 → 65).
-- Nur beschreibend: je Breitengruppe Anzahl, Steigung, Netto-R ab 2:1 und Stufentabelle; Tabelle je Verhältnisstufe (Anzahl, Anteil Ziel zuerst, Netto-R), Long/Short getrennt, Sitzungen (Asien 00–07, London 07–13:30, New York 13:30–20 UTC), Spread.
+- Deflated Sharpe: H2 zählt als **7 neue Versuche** (N 64 → 71).
+- Nur beschreibend: je Breitengruppe Anzahl, Steigung und Stufentabelle; Tabelle je Verhältnisstufe (Anzahl, Anteil Ziel zuerst, Netto-R), Long/Short getrennt, Sitzungen (Asien 00–07, London 07–13:30, New York 13:30–20 UTC), Spread.
 
 ## 4. Vorbelastung
 

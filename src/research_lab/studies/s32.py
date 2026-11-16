@@ -18,9 +18,10 @@ The trader's chain, all parameters fixed in :class:`Config`:
    at most 300 seconds.
 
 H1 uses all ratios in ONE test: does the chance to reach the target first rise with the ratio (slope over the log
-ratio)? One trend test instead of one test per threshold keeps the number of trials at one. H2 asks whether events
-with a ratio of at least 2 (the video's range, fixed in advance) are positive after TIM costs. The table per ratio
-bin is descriptive only.
+ratio)? One trend test instead of one test per threshold keeps the number of trials at one. H2 asks, for every ratio
+bin (below 0.5 ... 5 and more), whether its events are positive after TIM costs; no bin is picked in advance
+(Barti 16.11.2026: all ratios). Bonferroni: half of alpha for H1, the other half split over the seven bins. A bin
+with fewer than 100 events in a section is "nicht prüfbar". H2 passes if one bin passes in training and validation.
 
 ``count`` is results-blind (event counts only). ``evaluate`` refuses to run while ``VERSION`` is a draft.
 Stdlib only, plus the order book package.
@@ -48,11 +49,11 @@ from src.research_lab.depth import tardis
 from src.research_lab.depth.book import ASK, BID, SCALE, LocalBook
 from src.research_lab.protocol import BASE_COSTS, STRESS_COSTS, CostModel
 
-VERSION = "0.4"
+VERSION = "0.5"
 SEED = 32
 TRAINING_END = date(2022, 12, 31)
 MIN_EVENTS = 300  # per section, all ratios, else "nicht prüfbar"
-MIN_H2 = 100  # per section, ratio >= Config.ratio
+MIN_H2 = 100  # per section and ratio bin, else that bin is "nicht prüfbar" for H2
 RATIO_CAP = 100.0  # an empty opposite side counts as 100:1
 BINS = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, float("inf"))
 # Range widths in bp. H1/H2 use only the main group Config.width_min_bp..width_max_bp (20-60, as in the video);
@@ -66,7 +67,6 @@ ALPHA = 0.05
 @dataclass(frozen=True)
 class Config:
     band_bp: int = 5  # P1: book quantity within ±5 bp of the mid
-    ratio: float = 2.0  # H2 group: own side at least twice the opposite side (bins are descriptive)
     hold_s: int = 3  # P3: imbalance held without interruption
     window_s: int = 900  # P4: range window, 15 minutes
     width_min_bp: float = 20.0  # P5: main group (H1, H2); other widths only descriptive, see WIDTH_GROUPS
@@ -328,8 +328,11 @@ def count(events_by_day: dict[date, list[Event]], cfg: Config = CONFIG) -> dict:
         evs = [e for d, es in events_by_day.items() if section(d) == name for e in es
                if width_group(e.width_bp, cfg) == MAIN_WIDTH]
         out[name]["alle"] = len(evs)
-        out[name]["ab_schwelle"] = sum(e.ratio >= cfg.ratio for e in evs)
-        out[name]["pruefbar"] = len(evs) >= MIN_EVENTS and out[name]["ab_schwelle"] >= MIN_H2
+        out[name]["pruefbar"] = len(evs) >= MIN_EVENTS
+        per_bin: dict[str, int] = {}
+        for e in evs:
+            per_bin[bin_label(e.ratio)] = per_bin.get(bin_label(e.ratio), 0) + 1
+        out[name]["h2_pruefbare_stufen"] = sorted(b for b, n in per_bin.items() if n >= MIN_H2)
     return out
 
 
@@ -350,8 +353,14 @@ def slope(rows: Sequence[tuple[float, Outcome]]) -> float | None:
     return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx
 
 
-def _boot_lower(days: list[list[tuple[float, Outcome]]], stat, draws: int, rng: random.Random) -> float:
-    """One-sided lower (1 − ALPHA/2) bound of ``stat``, days resampled with replacement (block bootstrap)."""
+H2_BINS = len(BINS) - 1
+ALPHA_H1 = ALPHA / 2  # Bonferroni: half for H1 ...
+ALPHA_H2 = ALPHA / 2 / H2_BINS  # ... half for H2, split over the ratio bins
+
+
+def _boot_lower(days: list[list[tuple[float, Outcome]]], stat, draws: int, rng: random.Random,
+                alpha: float = ALPHA_H1) -> float:
+    """One-sided lower (1 − alpha) bound of ``stat``, days resampled with replacement (block bootstrap)."""
     vals = []
     for _ in range(draws):
         sample = [r for _ in days for r in days[rng.randrange(len(days))]]
@@ -359,7 +368,7 @@ def _boot_lower(days: list[list[tuple[float, Outcome]]], stat, draws: int, rng: 
         if v is not None:
             vals.append(v)
     vals.sort()
-    return vals[int(ALPHA / 2 * len(vals))] if vals else float("nan")  # Bonferroni over H1, H2 (m = 2)
+    return vals[int(alpha * len(vals))] if vals else float("nan")
 
 
 def _table(rows: Sequence[tuple[float, Outcome]]) -> dict[str, dict]:
@@ -389,26 +398,37 @@ def evaluate(results: dict[date, list[tuple[Event, Outcome]]], *, version: str =
         main_days = [d for d in main_days if d]
         flat = [r for d in main_days for r in d]
 
-        def mean_net(rows, costs=BASE_COSTS):
-            xs = [net_r(o, costs) for r, o in rows if r >= cfg.ratio]
-            return sum(xs) / len(xs) if xs else None
+        def net_in(label, costs=BASE_COSTS):
+            def stat(sample):
+                xs = [net_r(o, costs) for r, o in sample if bin_label(r) == label]
+                return sum(xs) / len(xs) if xs else None
+            return stat
 
-        n_h2 = sum(r >= cfg.ratio for r, _ in flat)
+        h2: dict[str, dict] = {}
+        for label in sorted({bin_label(r) for r, _ in flat}):
+            n = sum(bin_label(r) == label for r, _ in flat)
+            h2[label] = {"n": n, "pruefbar": n >= MIN_H2, "netto_r": net_in(label)(flat),
+                         "netto_r_stress": net_in(label, STRESS_COSTS)(flat),
+                         "untere_grenze": _boot_lower(main_days, net_in(label), draws, rng, ALPHA_H2)
+                         if n >= MIN_H2 else None}
         out[name] = {
-            "alle": len(flat), "ab_schwelle": n_h2, "pruefbar": len(flat) >= MIN_EVENTS and n_h2 >= MIN_H2,
+            "alle": len(flat), "pruefbar": len(flat) >= MIN_EVENTS,
             "h1_steigung": slope(flat), "h1_untere_grenze": _boot_lower(main_days, slope, draws, rng),
-            "h2_netto_r": mean_net(flat), "h2_untere_grenze": _boot_lower(main_days, mean_net, draws, rng),
-            "h2_netto_r_stress": mean_net(flat, STRESS_COSTS), "je_verhaeltnis": _table(flat),
+            "h2_je_verhaeltnis": h2, "je_verhaeltnis": _table(flat),
             "je_breite": {},  # descriptive only, no bound, no pass/fail
         }
         for grp in sorted({width_group(e.width_bp, cfg) for _, e, _ in rows}):
             g = [(e.ratio, o) for _, e, o in rows if width_group(e.width_bp, cfg) == grp]
-            out[name]["je_breite"][grp] = {"n": len(g), "steigung": slope(g), "netto_r_ab_schwelle": mean_net(g),
-                                          "je_verhaeltnis": _table(g)}
+            out[name]["je_breite"][grp] = {"n": len(g), "steigung": slope(g), "je_verhaeltnis": _table(g)}
     t, v = out["training"], out["validierung"]
-    ok = t["pruefbar"] and v["pruefbar"]
-    out["h1_bestanden"] = bool(ok and t["h1_untere_grenze"] > 0 and v["h1_untere_grenze"] > 0)
-    out["h2_bestanden"] = bool(ok and t["h2_untere_grenze"] > 0 and v["h2_untere_grenze"] > 0)
+    out["h1_bestanden"] = bool(t["pruefbar"] and v["pruefbar"]
+                               and t["h1_untere_grenze"] > 0 and v["h1_untere_grenze"] > 0)
+    passed = [lb for lb, b in t["h2_je_verhaeltnis"].items()
+              if b["pruefbar"] and b["untere_grenze"] > 0
+              and v["h2_je_verhaeltnis"].get(lb, {}).get("pruefbar")
+              and v["h2_je_verhaeltnis"][lb]["untere_grenze"] > 0]
+    out["h2_bestandene_stufen"] = passed
+    out["h2_bestanden"] = bool(passed)
     return out
 
 

@@ -137,7 +137,7 @@ def test_holdout_and_non_free_days_refused(tmp_path):
 
 def test_evaluate_locked_while_draft():
     with pytest.raises(PermissionError):
-        s32.evaluate({}, version="0.4")
+        s32.evaluate({}, version="0.5")
     assert s32.VERSION.startswith("0.")
 
 
@@ -145,7 +145,7 @@ def test_count_is_results_blind():
     evs = {date(2020, 6, 1): [_ev(), Event("d", 5, -1, 0.7, 1.0, 2.0, 80.0)]}
     c = s32.count(evs)
     assert c["training"]["20-60"]["2-3_long"] == 1 and c["training"]["60-100"]["0.5-1_short"] == 1
-    assert c["training"]["alle"] == 1 and c["training"]["ab_schwelle"] == 1  # main width group only
+    assert c["training"]["alle"] == 1 and c["training"]["h2_pruefbare_stufen"] == []  # main width group only
     assert c["training"]["pruefbar"] is False
     assert "ziel" not in str(c)
 
@@ -193,3 +193,17 @@ def test_seconds_from_book_csv(tmp_path):
     assert secs[2] == secs[1]  # no row in second 2: carried forward
     assert secs[3].mid == pytest.approx(9500.10) and secs[3].ask_q == pytest.approx(3)
     assert secs[4] is None  # nothing after the last row's second
+
+
+def test_h2_checks_every_ratio_bin():
+    win, loss = Outcome("target", 40.0, 10.0), Outcome("stop", -10.0, 10.0)
+    res = {}
+    for k in range(4):
+        for d in (date(2020, 6 + k, 1), date(2023, 6 + k, 1)):
+            # 1-1.5 always wins after costs, 0.5-1 always loses; 40 events per bin and day
+            res[d] = [(_ev(ratio=1.2), win) for _ in range(40)] + [(_ev(ratio=0.7), loss) for _ in range(40)]
+    out = s32.evaluate(res, version="1.0", draws=200)
+    t = out["training"]["h2_je_verhaeltnis"]
+    assert t["1-1.5"]["pruefbar"] and t["1-1.5"]["untere_grenze"] > 0 and t["0.5-1"]["untere_grenze"] < 0
+    assert out["h2_bestandene_stufen"] == ["1-1.5"] and out["h2_bestanden"] is True
+    assert s32.ALPHA_H1 + s32.H2_BINS * s32.ALPHA_H2 == pytest.approx(s32.ALPHA)
