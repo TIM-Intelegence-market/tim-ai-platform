@@ -50,7 +50,7 @@ def test_ndx_chart_has_candles_note_and_no_trades() -> None:
     model = build_live_chart("NDX", "30m", cache=cache, now=NOW)
     assert model["symbol"] == "NDX" and model["name"] == "Nasdaq-100"
     assert model["candles"] and model["plans"] == [] and model["funding"] is None
-    assert model["level_source"] == "Yahoo-Finance-Kerzen (nur Anzeige)"
+    assert model["level_source"] == "Yahoo-Finance-Kerzen (nur Anzeige)" and model["index_source"] == "yahoo"
     assert any(n.startswith("Nasdaq-100 (^NDX)") for n in model["notes"])
     english = english_chart_model(model)
     assert english["name"] == "Nasdaq-100"

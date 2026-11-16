@@ -54,7 +54,10 @@ GOLD_NOTE = ("Gold über PAXG (tokenisiertes Gold, 1 PAXG = 1 Feinunze): handelt
              "Wochenend-Kerzen und dünnere Liquidität können Level gegenüber XAUUSD verschieben.")
 XMR_NOTE = ("Monero über den Binance-Perpetual XMRUSDT (USD-M Futures): Binance hat XMR-Spot im Februar 2024 "
             "eingestellt. Perp-Preis kann durch Funding leicht vom Spotpreis abweichen; reine Anzeige, kein Papier-Trading.")
-INDEX_NOTE = ("Nasdaq-100 (^NDX) von Yahoo Finance (öffentlich, inoffiziell, teils verzögert): Kerzen nur zu US-Handelszeiten "
+INDEX_KEY_NOTE = ("Nasdaq-100 über Twelve Data (eigener API-Key): Kerzen nur zu US-Handelszeiten "
+                  "(Mo-Fr 15:30-22:00 deutsche Zeit), Wochenende und Nacht ohne Kerzen. Keine Trades, kein Footprint, "
+                  "kein Papier-Trading; reine Anzeige zum Vergleich mit BTC.")
+INDEX_NOTE = ("Nasdaq-100 (^NDX) von Yahoo Finance (öffentlich, inoffiziell, teils verzögert; kein Twelve-Data-Key hinterlegt): Kerzen nur zu US-Handelszeiten "
               "(Mo-Fr 15:30-22:00 deutsche Zeit), Wochenende und Nacht ohne Kerzen. Volumen des Index ist 0, keine Trades, kein Footprint, "
               "kein Papier-Trading; reine Anzeige zum Vergleich mit BTC.")
 DEFAULT_SYMBOL = "BTCUSDT"
@@ -220,8 +223,8 @@ def parse_yahoo_klines(payload: Any, symbol: str, interval: str, limit: int, now
     return rows
 
 
-def fetch_index_klines(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
-    """Index candles (Nasdaq-100) from the public Yahoo Finance chart endpoint; only the frames in ``YAHOO_FRAMES``."""
+def fetch_yahoo_index(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
+    """Index candles (Nasdaq-100) from the public Yahoo Finance chart endpoint: fallback without a Twelve Data key."""
     from urllib.parse import quote
     from urllib.request import Request
 
@@ -235,6 +238,15 @@ def fetch_index_klines(symbol: str, interval: str, limit: int) -> list[dict[str,
     if len(raw) > 3_000_000:
         raise ValueError("answer too large")
     return parse_yahoo_klines(json.loads(raw), symbol, interval, limit)
+
+
+def fetch_index_klines(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
+    """Index candles: Twelve Data with TIM's API key when one is stored (Uzi 16.11.2026), else Yahoo."""
+    from src.dashboard import index_data
+
+    if index_data.has_key():
+        return index_data.fetch(symbol, interval, limit)
+    return fetch_yahoo_index(symbol, interval, limit)
 
 
 class KlineCache:
@@ -283,7 +295,18 @@ def fetch_perp_klines(symbol: str, interval: str, limit: int) -> list[dict[str, 
 
 CACHE = KlineCache()
 PERP_CACHE = KlineCache(fetch_perp_klines)
-INDEX_CACHE = KlineCache()  # own failure pause: a Yahoo outage must not pause Binance (and the other way round)
+class IndexCache(KlineCache):
+    """Own failure pause (an index outage must not pause Binance) and longer keep times: the
+    Twelve Data key allows 800 requests a day."""
+
+    @staticmethod
+    def ttl(interval: str) -> float:
+        from src.dashboard.index_data import INDEX_TTL
+
+        return INDEX_TTL.get(interval, 900.0)
+
+
+INDEX_CACHE = IndexCache()
 
 
 def _epoch(value: Any) -> int:
@@ -960,7 +983,7 @@ def _level_series(symbol: str, runtime_series: Mapping[str, Sequence[Mapping[str
         raw[tf] = [r for r in rows if r.get("closed", True)]
     series = analytical_series(raw, now)
     return {tf: [{**c, "open_time": c["open_time"].isoformat(), "close_time": c["close_time"].isoformat()} for c in rows]
-            for tf, rows in series.items() if rows}, ("Yahoo-Finance-Kerzen (nur Anzeige)" if symbol in INDEX_SYMBOLS else "Binance-Perp-Klines (nur Anzeige)" if perp else "Binance-Klines (nur Anzeige)"), notes
+            for tf, rows in series.items() if rows}, (("Twelve-Data-Kerzen (nur Anzeige)" if any(r.get("provenance") == "TWELVEDATA_API_CHART_DISPLAY" for rows in raw.values() for r in rows[-1:]) else "Yahoo-Finance-Kerzen (nur Anzeige)") if symbol in INDEX_SYMBOLS else "Binance-Perp-Klines (nur Anzeige)" if perp else "Binance-Klines (nur Anzeige)"), notes
 
 
 def load_plan_journals(paths: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -1107,8 +1130,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     if symbol == "XMRUSDT":
         model["notes"].append(XMR_NOTE)
     if symbol in INDEX_SYMBOLS:
-        model["notes"].append(INDEX_NOTE)
         if timeframe not in YAHOO_FRAMES:
+            model["notes"].append(INDEX_NOTE)
             model["notes"].append(f"Nasdaq-100: Zeitrahmen {timeframe} gibt es nicht (Quelle liefert 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M).")
             return model
     intraday = INTERVAL_SECONDS[timeframe] <= 14400  # profiles, footprint and bubbles only on intraday views
@@ -1131,6 +1154,11 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
         if error:
             model["notes"].append(error)
+    if symbol in INDEX_SYMBOLS:
+        from src.dashboard.index_data import PROVENANCE as KEYED
+
+        model["index_source"] = "twelvedata" if rows and rows[-1].get("provenance") == KEYED else "yahoo"
+        model["notes"].append(INDEX_KEY_NOTE if model["index_source"] == "twelvedata" else INDEX_NOTE)
     candles = clean_candles(rows, timeframe)
     flags = {c["open_time"]: c.get("closed", True) for c in (dict(r, open_time=datetime.fromisoformat(str(r["open_time"]))) for r in rows)}
     if not candles and symbol == "BTCUSDT" and runtime_series and runtime_series.get(timeframe):

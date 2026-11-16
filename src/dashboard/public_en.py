@@ -118,7 +118,10 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Monero über den Binance-Perpetual", "Monero via the Binance perpetual XMRUSDT (USD-M futures): Binance ended XMR spot "
                                             "in February 2024. The perp price can differ slightly from spot because of funding; "
                                             "display only, no paper trading."),
-    (r"^Nasdaq-100 \(\^NDX\) von Yahoo", "Nasdaq-100 (^NDX) from Yahoo Finance (public, unofficial, partly delayed): candles only in US trading hours "
+    (r"^Nasdaq-100 über Twelve Data", "Nasdaq-100 via Twelve Data (TIM's own API key): candles only in US trading hours "
+                                     "(Mon-Fri 9:30-16:00 New York), none at weekends and overnight. No trades, no footprint, "
+                                     "no paper trading; display only, for comparison with BTC."),
+    (r"^Nasdaq-100 \(\^NDX\) von Yahoo", "Nasdaq-100 (^NDX) from Yahoo Finance (public, unofficial, partly delayed; no Twelve Data key stored): candles only in US trading hours "
                                          "(Mon-Fri 9:30-16:00 New York), none at weekends and overnight. Index volume is 0, no trades, no footprint, "
                                          "no paper trading; display only, for comparison with BTC."),
     (r"^Nasdaq-100: Zeitrahmen (\w+) gibt es nicht", r"Nasdaq-100: timeframe \1 is not available (the source offers 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M)."),
@@ -150,6 +153,7 @@ SOURCES_EN = {
     "TIM-Runtime (wie Plan-Journale)": "TIM runtime (same as the plan journals)",
     "Binance-Klines (nur Anzeige)": "Binance klines (display only)",
     "Yahoo-Finance-Kerzen (nur Anzeige)": "Yahoo Finance candles (display only)",
+    "Twelve-Data-Kerzen (nur Anzeige)": "Twelve Data candles (display only)",
     "Binance-Perp-Klines (nur Anzeige)": "Binance perp klines (display only)",
     "TIM agg_trades (Binance Spot aggTrades, eigene Datenbank)": "TIM agg_trades (Binance spot aggTrades, own database)",
     "Binance USD-M Perp aggTrades (BTCUSDT, öffentlich, TIM-Sammler)": "Binance USD-M perp aggTrades (BTCUSDT, public, TIM collector)",
