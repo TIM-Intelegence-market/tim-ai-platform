@@ -169,3 +169,48 @@ class PaperJournal:
 def step(root: Path | str = ".") -> dict[str, Any]:
     """Entry for the research workshop: one step of the journal under ``root``."""
     return PaperJournal(Path(root) / FOLDER).step()
+
+
+# -- Shadow of the Fabervaale models (Uzi 16.11.2026: "live Test im Schatten damit") --------------------------------
+# A second journal next to the OF one: the same OFX base plus model M8 (transition candle + retest, plan P3). It shares
+# the OF journal's day store (no second download) and adds the paired management variants of plan P5 (FEST, TEIL,
+# NACHZIEHEN, AUFBAU) on its closed trades. Started automatically by the workshop where the OF journal runs; signals
+# count from the first full UTC day after that start. Paper only, as above.
+M8_FOLDER = Path("data/research/forward/OF_M8")
+M8_CONFIG = dataclasses.replace(PAPER_CONFIG, m8=True)
+
+
+def management_summary(journal: PaperJournal, rows: list[dict], last: date) -> dict:
+    """Replay every closed journal trade with the P5 variants on the store's minutes (days up to ``last``)."""
+    from src.research_lab.of2 import management
+
+    out_rows = []
+    for row in rows:
+        first = datetime.fromtimestamp(row["fill_ms"] / 1000, tz=timezone.utc).date()
+        bars: list = []
+        for i in range(journal.cfg.longest_hold_minutes // 1440 + 2):
+            day = first + timedelta(days=i)
+            if day > last:
+                break
+            bars += list(journal.store.load(day))
+        out_rows.append({"model": row["model"], "confirmed": row["confirmed"],
+                         **{v: management.replay(row, bars, v, journal.cfg) for v in management.VARIANTS}})
+    return {"alle": management.summarize(out_rows),
+            "m8": management.summarize([r for r in out_rows if r["model"] == "M8"])}
+
+
+def m8_journal(root: Path | str = ".", **kwargs: Any) -> PaperJournal:
+    root = Path(root)
+    store = kwargs.pop("store", None) or MinuteBarStore(root / FOLDER / "store", release=PAPER_RELEASE)
+    return PaperJournal(root / M8_FOLDER, cfg=kwargs.pop("cfg", M8_CONFIG), store=store, **kwargs)
+
+
+def step_m8(root: Path | str = ".", **kwargs: Any) -> dict[str, Any]:
+    """Entry for the research workshop: one step of the M8 shadow journal, plus the P5 variants on its trades."""
+    journal = m8_journal(root, **kwargs)
+    status = journal.step()
+    data = journal._read("journal.json")
+    if data is not None and status.get("last_day"):
+        data["positionsfuehrung"] = management_summary(journal, data["trades"], date.fromisoformat(status["last_day"]))
+        _write(journal.folder / "journal.json", data)
+    return status
