@@ -1,9 +1,9 @@
-# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.6)
+# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.7)
 
 | Feld | Wert |
 |---|---|
 | Studie | S32 (nächste freie Nummer nach S31/S31b) |
-| Version | **0.6, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.; 0.5: Kostenfrage H2 für jede Verhältnisstufe statt nur ab 2:1, Barti 16.11.; 0.6: jede Range-Breite mit eigenem Test, Barti 16.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
+| Version | **0.7, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.; 0.5: Kostenfrage H2 für jede Verhältnisstufe statt nur ab 2:1, Barti 16.11.; 0.6: jede Range-Breite mit eigenem Test; 0.7: Breiten logisch getrennt, je eigenes α, Barti 16.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
 | Anlass | Barti 12./13.11.2026: Setup aus dem Video „The Only Orderflow Guide You'll Ever Need“ (6:22–9:55, S&P-Future) prüfen und, falls es trägt, in TIM einbauen. Beschreibung der Kette: `/mnt/project-files/s32-orderbuch/Was-der-Trader-macht-2026-11-12.md` (Projektdateien) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kosten aus `src/research_lab/protocol.py` |
 | Daten | Binance USDⓈ-M BTCUSDT, Tardis.dev `incremental_book_L2`, **nur die kostenlosen Tage (1. jedes Monats)**. Buchnachbau `src/research_lab/depth/` (PR #251), geprüft in `../reports/depth_p2_tardis_2020-06-01.md` |
@@ -35,8 +35,10 @@ umgekehrtem Buch (Verhältnis um 1 oder darunter) sind die Range-Lage ohne Buchh
 Offene Wahl von Barti: P9 (Mitte oder gegenüberliegender Rand). P2 ist durch die Messung aller Verhältnisse
 erledigt, P5 durch die Breitengruppen (Barti 15.11.: „noch ein paar Studien mit anderen Ranges“).
 
-**Alle Range-Breiten** (Barti 16.11.: „wir machen alle nacheinander“): Jede der vier Gruppen bekommt H1 und H2
-und wird einzeln ausgewiesen. Damit vier Gruppen nicht viermal so viel Glück erlauben, wird α durch vier geteilt.
+**Alle Range-Breiten** (Barti 16.11.: „wir machen alle nacheinander“): Jede der vier Gruppen ist eine eigene
+Frage mit eigenem H1, H2 und eigenem α = 0,05 (Barti 16.11.: „das ist dem Trader überlassen, vielleicht möchte man
+nur eine bestimmte Range traden … logisch trennen“). Bedingungen dafür: Alle vier Ergebnisse werden immer berichtet,
+auch die schlechten; keine Gruppe wird nachträglich als „die beste“ ausgewählt; das Register zählt alle Versuche.
 Das Ergebnis jeder Gruppe wird vor dem nächsten Schritt (Vorwärtstest mit eigenem Recorder, Issue #253) bestätigt. Ohne Änderung gelten die Werte oben. Jede Änderung nur **vor** dem Einfrieren.
 
 ## 2. Kosten vorab (Arithmetik, keine Messung)
@@ -59,9 +61,8 @@ Treffer bringt. Das ist **ein** Versuch. H2 prüft jede Stufe für sich, weil �
 wird die Fehlergrenze durch sieben geteilt (siehe unten), damit sieben Stufen nicht mehr Glückstreffer erlauben
 als ein einzelner Test.
 
-- Untere Grenze: einseitig, Block-Bootstrap über Tage (9 999 Ziehungen, Seed 32), Bonferroni: α wird auf die vier
-  Breitengruppen verteilt (je 0,0125). Davon bekommt H1 die Hälfte (0,00625), H2 die andere Hälfte, geteilt durch
-  die sieben Stufen (je etwa 0,0009).
+- Untere Grenze: einseitig, Block-Bootstrap über Tage (9 999 Ziehungen, Seed 32), je Breitengruppe α = 0,05:
+  H1 bekommt die Hälfte (0,025), H2 die andere Hälfte, geteilt durch die sieben Stufen (je etwa 0,0036).
 - Mindestmenge je Abschnitt und Breitengruppe: 300 Ereignisse für H1; für H2 100 je Stufe, sonst „nicht prüfbar“.
   Laut Zähllauf (15.11.), in **beiden** Abschnitten prüfbar:
 

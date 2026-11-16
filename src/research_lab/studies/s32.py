@@ -20,8 +20,8 @@ The trader's chain, all parameters fixed in :class:`Config`:
 H1 uses all ratios in ONE test: does the chance to reach the target first rise with the ratio (slope over the log
 ratio)? One trend test instead of one test per threshold keeps the number of trials at one. H2 asks, for every ratio
 bin (below 0.5 ... 5 and more), whether its events are positive after TIM costs; no bin is picked in advance
-(Barti 16.11.2026: all ratios). Bonferroni: alpha is split over the four width groups, then half for H1 and half
-for H2, the H2 half split over the seven bins. A bin
+(Barti 16.11.2026: all ratios). Each width group is its own question with alpha 0.05; inside a group half for H1 and
+half for H2, the H2 half split over the seven bins. All four groups are always reported. A bin
 with fewer than 100 events in a section is "nicht prüfbar". H2 passes if one bin passes in training and validation.
 
 ``count`` is results-blind (event counts only). ``evaluate`` refuses to run while ``VERSION`` is a draft.
@@ -50,7 +50,7 @@ from src.research_lab.depth import tardis
 from src.research_lab.depth.book import ASK, BID, SCALE, LocalBook
 from src.research_lab.protocol import BASE_COSTS, STRESS_COSTS, CostModel
 
-VERSION = "0.6"
+VERSION = "0.7"
 SEED = 32
 TRAINING_END = date(2022, 12, 31)
 MIN_EVENTS = 300  # per section, all ratios, else "nicht prüfbar"
@@ -358,10 +358,11 @@ def slope(rows: Sequence[tuple[float, Outcome]]) -> float | None:
 
 
 H2_BINS = len(BINS) - 1
-# Bonferroni over the four width groups (Barti 16.11.2026: "alle Ranges nacheinander"), then half for H1 and
-# half for H2, the H2 half split over the ratio bins.
-ALPHA_H1 = ALPHA / len(WIDTH_LABELS) / 2
-ALPHA_H2 = ALPHA / len(WIDTH_LABELS) / 2 / H2_BINS
+# Each width group is its own question with its own alpha (Barti 16.11.2026: a trader picks the range he trades,
+# keep the widths apart). Inside a group: half for H1, half for H2, the H2 half split over the ratio bins.
+# All four groups are always reported; no group is picked afterwards.
+ALPHA_H1 = ALPHA / 2
+ALPHA_H2 = ALPHA / 2 / H2_BINS
 
 
 def _boot_lower(days: list[list[tuple[float, Outcome]]], stat, draws: int, rng: random.Random,

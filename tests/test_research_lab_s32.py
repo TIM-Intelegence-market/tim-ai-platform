@@ -137,7 +137,7 @@ def test_holdout_and_non_free_days_refused(tmp_path):
 
 def test_evaluate_locked_while_draft():
     with pytest.raises(PermissionError):
-        s32.evaluate({}, version="0.6")
+        s32.evaluate({}, version="0.7")
     assert s32.VERSION.startswith("0.")
 
 
@@ -210,4 +210,4 @@ def test_h2_checks_every_ratio_bin():
     assert t["1-1.5"]["pruefbar"] and t["1-1.5"]["untere_grenze"] > 0 and t["0.5-1"]["untere_grenze"] < 0
     assert out["ergebnis"]["20-60"]["h2_bestandene_stufen"] == ["1-1.5"]
     assert out["ergebnis"]["20-60"]["h2_bestanden"] is True and out["ergebnis"]["10-20"]["h2_bestanden"] is False
-    assert 4 * (s32.ALPHA_H1 + s32.H2_BINS * s32.ALPHA_H2) == pytest.approx(s32.ALPHA)
+    assert s32.ALPHA_H1 + s32.H2_BINS * s32.ALPHA_H2 == pytest.approx(s32.ALPHA)  # per width group
