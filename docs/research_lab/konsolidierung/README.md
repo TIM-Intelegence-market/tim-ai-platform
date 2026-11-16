@@ -18,8 +18,8 @@ Alle Uhrzeiten in dieser Datei sind UTC (Commit-Zeiten im Container). Alle Befeh
 | `ergebnisse/` | je Test eine JSON-Datei mit `meta` (Befehl, Code-Commit, Seed, Zeitraum, Grenzen) und `ergebnis`; `kriterien.json` (mechanische Auswertung der Kriterien); `nachtrag_gegenpruefung.json` |
 | `grafiken/` | acht Bilder, aus den Ergebnisdateien gezeichnet |
 | `eingaben/` | Manifeste der Binance-Archive, Prüfsummenlisten, Kopien der Laborlisten S7/S7b, Bitunix-Rohdateien (Abschnitt 4) |
-| `src/research_lab/konsolidierung/` | Code der Konsolidierung; die ursprünglichen Studien und ihr Code bleiben unverändert |
-| `tests/test_konsolidierung_*.py` | 118 Tests (Abschnitt 6) |
+| `src/research_lab/konsolidierung/` (vom Repo-Wurzelordner aus) | Code der Konsolidierung; die ursprünglichen Studien und ihr Code bleiben unverändert |
+| `tests/test_konsolidierung_*.py` (vom Repo-Wurzelordner aus) | 118 Tests (Abschnitt 6) |
 
 ## 2 Festgehaltener Stand und Reihenfolge
 
@@ -64,7 +64,7 @@ Weitere Stände: Protokoll-Hash und Commit des Einfrierens stehen in `ergebnisse
 
 | Eingabe | Wo | Prüfsumme | Im Repo? |
 |---|---|---|---|
-| Binance-Archive USD-M Futures und Spot, 2020-01 bis 2024-12 (BTCUSDT, ETHUSDT; SOLUSDT ab 2020-09, Spot ab 2020-08) | `eingaben/manifest_binance_archiv_2020_2024.json` (1.093 Einträge, davon 861 benötigt: Kerzen 1h, 4h, 1d, Funding 8h; die 1m- und 15m-Serien braucht die 4h-Konsolidierung nicht) | SHA-256 je Datei im Manifest; Manifest selbst `13740b65231b30b0f09297bc159bf1f3220b4892796a2a7ea7d514d6ce7ccea1` | nein (Download) |
+| Binance-Archive USD-M Futures und Spot, 2020-01 bis 2024-12 (BTCUSDT und ETHUSDT ab 2020-01; SOLUSDT: Futures ab 2020-09, Spot ab 2020-08) | `eingaben/manifest_binance_archiv_2020_2024.json` (1.093 Einträge, davon 861 benötigt: Kerzen 1h, 4h, 1d, Funding 8h; die 1m- und 15m-Serien braucht die 4h-Konsolidierung nicht) | SHA-256 je Datei im Manifest; Manifest selbst `13740b65231b30b0f09297bc159bf1f3220b4892796a2a7ea7d514d6ce7ccea1` | nein (Download) |
 | Binance Spot 4h, BTCUSDT und ETHUSDT, 2017-08 bis 2019-12 (T15) | `eingaben/manifest_t15.json` (58 Dateien) | SHA-256 je Datei im Manifest und laut `.CHECKSUM`-Datei von Binance; Manifest selbst `bd51d844a15efbbc38144cea0f372b664e1cc9be00fe24a875e0567d725dc0c4` | nein (Download) |
 | Laborlisten von S7 und S7b (Trainingsläufe des Labors; T1 vergleicht damit 4.879 Trades) | `eingaben/laborlisten/` | `eingaben/SHA256_laborlisten.txt` | ja (2,2 MB, unverändert kopiert; die Originale liegen im Labor) |
 | Bitunix: Kerzen 4h (BTC, ETH, SOL), Orderbuch-Schnappschüsse (45 im Abstand von etwa 2 s), Funding-Rate, Handelspaare | `eingaben/bitunix/` | `eingaben/SHA256_bitunix.txt` | ja (2,8 MB Kerzen und 0,3 MB Orderbuch; öffentliche Marktdaten vom 2026-11-16) |
@@ -154,7 +154,7 @@ Die Tests prüfen Rechenwege und innere Stimmigkeit. Sie beweisen nicht, dass di
 
 1. **PS5-Dateien** (Handelslisten S34 bis S38, OFX-Bestenlisten mit 8,1 Mio. Varianten): nicht im Repo, nur über die festgehaltenen Prüfsummen an die Rechnung gebunden. Die Neuberechnung der Studienläufe selbst ist nicht Teil dieser Konsolidierung; sie bräuchte die Laborcodes und die PS5-Daten.
 2. **S32 (137 Coins, Übertragung der Regel):** nur berichtet. Rohdaten und Handelsliste liegen nicht vor; die Aussage ist in der Studie mit NUR BERICHTET gekennzeichnet.
-3. **S7b-Sonde Juli bis Oktober 2026 (35 Trades, −5,8 R)** und das Vorwärts-Journal (4 geschlossene Papier-Trades der Regel D20-T3): versehentlich gesehen beziehungsweise nicht aufbewahrt; nicht reproduzierbar, nur berichtet.
+3. **S7b-Sonde Juli bis Oktober 2026 (35 Trades, −5,8 R):** versehentlich gesehen, nicht aufbewahrt, nicht reproduzierbar, nur berichtet. **Vorwärts-Journal der Regel D20-T3 (4 geschlossene Papier-Trades):** eine Kopie des Journals (`journal.jsonl`, SHA-256 `852cfb98…`) wurde geprüft (Hash-Kette lückenlos, Zahlen nachgerechnet), liegt aber nicht im Repo.
 4. **Register und Evidenzmatrix** sind von Hand geführt (`register_daten_a.py`, `register_daten_b.py`, `register_daten_c.py`, `evidenz.py`). Die Tests prüfen Schema, Zählungen und Verweise, nicht die Richtigkeit der Einordnung. Jede Aussage trägt ihre Kennzeichnung und Quelle; die Prüftiefe (A bis D) sagt, wie weit sie nachgerechnet wurde.
 5. **Bitunix:** Kerzen, Orderbuch und Funding-Rate sind Momentaufnahmen vom 2026-11-16 (Orderbuch: 45 Schnappschüsse über rund 90 Sekunden in ruhigem Markt). Eine spätere Abfrage liefert andere Werte; für die Wiederholung gelten die Dateien in `eingaben/bitunix/`. Gebühren, Funding-Einheit und Verhalten bei Stress sind unbestätigt, die Kostenstufen K1 bis K3 nehmen Annahmen. Unbekannte Gebühren wurden nie als null gerechnet.
 6. **Geldmarkt-Vergleichswert** des Carry-Tests (Jahreszinsen 2020 bis 2024) ist eine Annahme und als solche gekennzeichnet.
