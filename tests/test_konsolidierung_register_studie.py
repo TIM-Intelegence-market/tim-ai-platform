@@ -95,7 +95,7 @@ def test_zusammenfassung_trennt_gefundene_studien_von_eigenen_nachrechnungen(ein
     assert sum(z["nach_klasse"].values()) == 69
     assert sum(z["nach_pruefung"].values()) == 69
     assert sum(z["nach_cluster"].values()) == 69 and "EIGEN" not in z["nach_cluster"]
-    assert z["nach_pruefung"] == {"A": 2, "B": 8, "C+": 23, "C": 27, "D": 9}
+    assert z["nach_pruefung"] == {"A": 2, "B": 8, "C+": 23, "C": 29, "D": 7}      # S9 und K1: Bericht gelesen (C), nicht nur die Logbuchzeile
     assert z["nach_klasse"] == {"BEDINGT VERWERTBAR": 31, "EXPLORATIV": 30, "NICHT REPRODUZIERBAR": 4, "BELASTBAR": 4}
     assert [x["id"] for x in eintraege if x["cluster"] == "EIGEN"] == ["K-C1", "K-Carry", "K-Ref", "K-Bitunix", "K-T15"]
 
@@ -293,3 +293,83 @@ def test_studie_zahlen_stimmen_mit_den_ergebnisdateien_und_dem_register(studient
     reg = json.loads((KONS / "studienregister.json").read_text(encoding="utf-8"))["zusammenfassung"]
     assert (f"{reg['eintraege_gesamt']} Einträge: {reg['gefundene_studien_und_berichte']} gefundene Studien und Berichte, "
             f"{reg['eigene_nachrechnungen']} eigene Nachrechnungen") in studientext
+
+
+# --- Korrekturen nach der Gegenprüfung ------------------------------------------------------------------------------------------------
+
+def test_trefferquote_von_s4_stammt_aus_dem_bericht_und_wird_nicht_s6_zugeschrieben(studientext) -> None:
+    bericht = (WURZEL / "docs" / "research_lab" / "reports" / "s4_explore_2026-10-25T1630Z.md").read_text(encoding="utf-8")
+    quoten = [float(m.replace(",", ".")) for m in re.findall(r"\|\s*S4-[^|]+\|[^|]+\|\s*([\d,]+) %", bericht)]
+    assert len(quoten) == 10 and max(quoten) == 52.5            # die zehn Varianten des Erkundungsberichts, höchste Trefferquote 52,5 %
+    assert "höchstens 52,5 %" in studientext
+    assert "S4 und S6 Trefferquoten von 72 bis 82 %" not in studientext
+    s6 = (WURZEL / "docs" / "research_lab" / "reports" / "s6_train_2026-10-25T2338Z.md").read_text(encoding="utf-8")
+    assert "71.7 %" in s6 and "81.9 %" in s6 and "71,7" in " ".join(x["ergebnis"] for x in register.alle_eintraege() if x["id"] == "S6")
+
+
+def test_stichprobengroesse_gilt_fuer_die_genannte_erwartung(studientext) -> None:
+    # (1,6449 + 0,8416) × 1,72 / 0,20 = 21,38; 21,38² = 457,3 → 458 Trades (bei 0,24 R: 318)
+    assert studie.n_trades_bis_power(0.20, 1.72) == 458
+    assert "Bei einer wahren Erwartung von 0,24 R" in studientext and "bei 0,20 R rund 458" in studientext
+
+
+def test_zufallsvergleich_wird_auf_gleicher_basis_berichtet(studientext) -> None:
+    t3c3 = json.loads((ERG / "t03_zufall_C3.json").read_text(encoding="utf-8"))["ergebnis"]["sektionen"]
+    t15 = json.loads((ERG / "t15_ausserhalb.json").read_text(encoding="utf-8"))["ergebnis"]["p3"]
+    for sec in ("train", "validation"):
+        assert evidenz.de(t3c3[sec]["e_r_zufall_mittel"], 3, vz=True) in studientext
+    assert t3c3["train"]["p_einseitig"] > 0.05                  # G3 für C3 im Training nicht bestanden
+    assert f"p {evidenz.de(t3c3['train']['p_einseitig'], 3)}" in studientext
+    assert evidenz.de(t15["e_r_zufall_mittel"], 3, vz=True) in studientext and evidenz.de(t15["kandidat_e_r"], 3, vz=True) in studientext
+
+
+def test_zahlen_des_nachtrags_stehen_in_der_studie(studientext) -> None:
+    n = json.loads((ERG / "nachtrag_gegenpruefung.json").read_text(encoding="utf-8"))["ergebnis"]
+    alle = n["N1"]["C1_pooled"]["alle_monate"]
+    assert alle["monate"] == 60 and alle["monate_mit_trade"] == 59
+    assert alle["e_r"]["ci95"][0] > 0                           # G6 bleibt auch über alle Kalendermonate bestanden
+    assert evidenz.de(alle["e_r"]["ci95"][0], 3, vz=True) in studientext and evidenz.de(alle["max_drawdown_r"]["p95"], 1) in studientext
+    assert evidenz.de(n["N2"]["C1_K2_pooled"]["streng"]["e_r"], 3, vz=True) in studientext
+    assert evidenz.de(n["N4"]["produkt_der_mittel_bp"], 0) + " bp" in studientext and evidenz.de(n["N3"]["C1_K1"]["validierung_2024"]["e_r"], 3, vz=True) in studientext
+
+
+def test_kennzeichnung_der_aussagen_in_der_studie_stimmt_mit_dem_register(studientext, eintraege) -> None:
+    zaehler: dict[str, int] = {}
+    for x in eintraege:
+        if x["cluster"] != "EIGEN":
+            for a in x["aussagen"]:
+                zaehler[a["status"]] = zaehler.get(a["status"], 0) + 1
+    erwartet = (f"Zählung der {sum(zaehler.values())} Aussagen zu den gefundenen Studien: VERIFIZIERT {zaehler['VERIFIZIERT']}, "
+                f"NUR BERICHTET {zaehler['NUR BERICHTET']}, ANNAHME {zaehler['ANNAHME']}, NICHT PRÜFBAR {zaehler['NICHT PRÜFBAR']}")
+    assert erwartet in studientext
+    for status in schema.AUSSAGE_STATUS:                        # die Tabelle der tragenden Aussagen verwendet alle vier Kennzeichnungen
+        assert f"| {status}" in studientext
+
+
+def test_evidenzmatrix_zaehlt_t15_nur_in_e1b_und_nennt_die_papier_trades_richtig(zeilen) -> None:
+    e1 = next(r for r in zeilen if r["nr"] == "E1")
+    e1b = next(r for r in zeilen if r["nr"] == "E1b")
+    assert "K-T15" not in e1["unterstuetzende_ids"] + e1["gegenbeleg_ids"]
+    assert e1b["unterstuetzende_ids"] == ["K-T15"]
+    assert "4 geschlossene Papier-Trades" in e1["evidenzstand"] and "7 geschlossene" not in e1["evidenzstand"]
+
+
+def test_stufe_4_wird_im_wortlaut_des_protokolls_wiedergegeben(studientext, zeilen) -> None:
+    protokoll = (KONS / "PROTOKOLL_KONSOLIDIERUNG.md").read_text(encoding="utf-8")
+    satz = "mindestens 30 geschlossene Papier-Trades mit E[R] > 0 unter K2 und Zahl der Stopps im erwarteten Bereich"
+    assert satz in protokoll and satz in studientext
+    assert satz in next(r for r in zeilen if r["nr"] == "E1")["konsequenz"]
+
+
+def test_s32_universum_wird_nicht_als_survivorship_frei_dargestellt(studientext, zeilen) -> None:
+    assert "Punkt-in-Zeit" not in studientext and all("Punkt-in-Zeit" not in r["erkenntnis"] + r["unterstuetzend"] + r["ueberschneidung"] for r in zeilen)
+    e2 = next(r for r in zeilen if r["nr"] == "E2")
+    assert "Survivorship" in e2["ueberschneidung"] and "nur teilweise unabhängig" in e2["ueberschneidung"].lower()
+
+
+def test_register_korrekturen_s7_s7b_s9_k1(eintraege) -> None:
+    nach = {x["id"]: x for x in eintraege}
+    assert "+0,232" in nach["S7"]["ergebnis"] and "+0,190" in nach["S7"]["ergebnis"]          # Training und Validierung getrennt (Laborbericht s7_train)
+    assert any("+0,097" in m for m in nach["S7b"]["maengel"]) and not any("0,095" in m for m in nach["S7b"]["maengel"])
+    assert nach["S9"]["pruefung"] == "C" and "BTCUSDT 15m" in nach["S9"]["daten"] and "175.392" in nach["S9"]["daten"]
+    assert nach["K1"]["pruefung"] == "C"

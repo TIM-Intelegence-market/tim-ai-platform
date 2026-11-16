@@ -19,21 +19,19 @@
    "unterstuetzende_ids": [
     "S7",
     "S7b",
-    "K-C1",
-    "K-T15"
+    "K-C1"
    ],
-   "gegenbelege": "S32: dieselbe Regel auf 137 anderen Coins (Punkt-in-Zeit-Universum), Validierung: −0,0255 R bei n 3.311, Zufalls-p 0,547, 95-%-Band −0,150 bis +0,101 R. Deflated Sharpe bei N = 64: Training 0,42, Validierung 0,43, gepoolt 0,78 (Schwelle 0,95; bei N = 26.707 0,15). Eine Kerze Verzögerung: Training +0,181 R, Validierung −0,007 R. Sondenlauf Juli–Oktober 2026 (S7b-Sonde, zufällig gesehen): 35 Trades, −5,8 R. Einfache Referenz R2 (SMA200 lang/flat, gleiche Schwankung): Sharpe 1,55 gegen 1,36. S25: GARCH-Größe bringt keinen Vorteil. T15 (E1b, BTC/ETH 2017–2019, ein Lauf): +0,154 R unter K2, p 0,079 (Schwelle 0,05 verfehlt); Zufallseinstiege in SMA200-Richtung erreichen dort im Mittel +0,177 R.",
+   "gegenbelege": "S32: dieselbe Regel auf anderen Coins (je Monat die 25 Perps mit dem höchsten Handelsvolumen der 30 Vortage ohne BTC/ETH/SOL, 137 verschiedene Symbole, nur Symbole mit Archivdateien), Validierung: −0,0255 R bei n 3.311, Zufalls-p 0,547, 95-%-Band −0,150 bis +0,101 R. Deflated Sharpe bei N = 64: Training 0,42, Validierung 0,43, gepoolt 0,78 (Schwelle 0,95; schon bei N = 58 nur 0,44 / 0,45; bei N = 26.707 gepoolt 0,15). Eine Kerze Verzögerung: Training +0,181 R (−18 % gegen K1), Validierung −0,007 R. Sondenlauf Juli–Oktober 2026 (S7b-Sonde, zufällig gesehen, nicht aufbewahrt): 35 Trades, −5,8 R. Einfache Referenz R2 (SMA200 lang/flat, gleiche Schwankung): Sharpe 1,55 gegen 1,36. S25: GARCH-Größe bringt keinen Vorteil. Außerhalb der Entwicklung (T15) siehe E1b: positiv, aber nicht belegt, und ohne Vorsprung gegenüber zufälligen Einstiegen in Trendrichtung.",
    "gegenbeleg_ids": [
     "S32",
     "S7b-Sonde",
     "S25",
-    "K-Ref",
-    "K-T15"
+    "K-Ref"
    ],
    "ueberschneidung": "Ein Datencluster (TREND-4H): dieselben Binance-4h-Kerzen BTC/ETH/SOL 2020–2024, Validierung 2023–2024 mehrfach verbraucht (S7b, S25, S7b-Makro). S7, S7b und die eigene Nachrechnung sind eine Evidenzquelle, nicht drei.",
    "unsicherheit": "Coins im Nachhinein gewählt (Survivorship). Beste 5 % der Trades = 62,6 % der Summe; 2020 liefert 49 von 119 R, 2021 −0,03 R je Trade; Drawdown 21,0 R (ca. 21 % bei 1 % Risiko); im oberen Volatilitäts-Terzil +0,00 R je Trade (n 99). Zufallseinstiege in Trendrichtung erreichen im Training schon +0,097 R, ein Teil des Vorteils ist Trendseite plus Auszahlungsgeometrie.",
-   "konsequenz": "Nur als Hypothese für den Vorwärts-Papiertest (S7b-Forward). Keine Live-Aktivierung, keine Skalierung. Stufe 4 braucht mindestens 30 geschlossene Papier-Trades unter K2 oder einen freigegebenen Holdout-Lauf.",
-   "evidenzstand": "historisch gut ausgesehen: ja. Korrigiert reproduziert: ja (Prüftiefe A). Außerhalb der Entwicklung bestätigt: nein (S32 negativ; T15 auf BTC/ETH 2017–2019 positiv, aber p 0,079, siehe E1b; kein ungesehener Abschlusstest). Prospektiv beobachtet: 7 geschlossene Papier-Trades, zu wenig."
+   "konsequenz": "Nur als Hypothese für den Vorwärts-Papiertest (S7b-Forward). Keine Live-Aktivierung, keine Skalierung. Stufe 4 verlangt nach Protokoll 1.0 Stufe 3 und eine vorab festgelegte Vorwärts-Mindestzahl (mindestens 30 geschlossene Papier-Trades mit E[R] > 0 unter K2 und Zahl der Stopps im erwarteten Bereich) oder einen einmaligen, von Uzi und Barti freigegebenen Holdout-Lauf mit vorab festgelegten Kriterien.",
+   "evidenzstand": "historisch gut ausgesehen: ja. Korrigiert reproduziert: ja (Prüftiefe A). Außerhalb der Entwicklung bestätigt: nein (S32 negativ; T15 auf BTC/ETH 2017–2019 positiv, aber p 0,079, siehe E1b; kein ungesehener Abschlusstest). Prospektiv beobachtet: 4 geschlossene Papier-Trades der Regel D20-T3 (alle Short; die Variante D20-T4 ist kein Kandidat), zu wenig."
   },
   {
    "nr": "E1b",
@@ -55,7 +53,7 @@
   },
   {
    "nr": "E2",
-   "erkenntnis": "Die Trendregel überträgt sich nicht auf andere Coins: Auf dem einzigen unabhängigen Universum (137 Coins, Punkt-in-Zeit) ist die Erwartung nach Kosten nicht von null verschieden.",
+   "erkenntnis": "Die Trendregel überträgt sich nicht auf andere Coins: Auf dem einzigen Universum außerhalb von BTC/ETH/SOL (137 Coins, monatlich nach Handelsvolumen neu bestimmt) ist die Erwartung nach Kosten nicht von null verschieden.",
    "richtung": "negativ",
    "unterstuetzend": "S32 (ein Lauf, Validierung 2023–2024): −0,0255 R je Trade bei n 3.311, Zufalls-p 0,547, 95-%-Band −0,150 bis +0,101 R. Ergebnisdatei gelesen und mit SHA-256 festgehalten; nicht neu gerechnet (Kerzen der 137 Coins liegen nicht im Container).",
    "unterstuetzende_ids": [
@@ -65,7 +63,7 @@
    "gegenbeleg_ids": [
     "S7b"
    ],
-   "ueberschneidung": "Gleiche Regel, gleiche Zeit (2023–2024), anderes Universum (Top-25 je Monat nach Punkt-in-Zeit, ohne BTC/ETH/SOL). Training 2020-07 bis 2022 lag im Altcoin-Aufwärtsmarkt; ob delistete Märkte fehlen (Survivorship), ist nicht geprüft.",
+   "ueberschneidung": "Gleiche Regel, gleiche Zeit (2023–2024), anderes Universum (je Monat die 25 Perps mit dem höchsten Handelsvolumen der 30 Vortage, ohne BTC/ETH/SOL). Nur teilweise unabhängig: dieselben Jahre und stark korrelierte Märkte. Das Universum enthält nur Symbole mit Archivdateien: Survivorship ist möglich und nicht geprüft. Training 2020-07 bis 2022 lag im Altcoin-Aufwärtsmarkt.",
    "unsicherheit": "Die Zahlen sind NUR BERICHTET: Die Handelsliste lag nicht vor, nur Aggregate wurden gelesen. Der Lauf ist einmalig und vorab eingefroren; er zählt als Gegenbeleg, nicht als Beweis für das Fehlen eines Vorteils.",
    "konsequenz": "Nicht annehmen, dass die Regel allgemein „Trend verfolgt“. Wirkung bleibt an BTC/ETH/SOL gebunden; das ist ohne unabhängige Bestätigung ein Zeichen für Auswahl im Nachhinein.",
    "evidenzstand": "Außerhalb der Entwicklung getestet: ja (negativ). Korrigiert reproduziert: nein (nur berichtet)."
@@ -147,7 +145,7 @@
    "nr": "E6",
    "erkenntnis": "Frühe Regelfamilien (R4: 48 Varianten, S4, S6, S13, S14) haben keinen Vorteil; S9 und S10 sind am Zähl-Gate gescheitert.",
    "richtung": "negativ",
-   "unterstuetzend": "R4: 42 Varianten scheitern schon im Training, 6 in der Validierung, SPA p 0,46 / 0,43, StepM wählt keine. S4: alle Varianten −0,12 bis −0,23 R. S6: Treffer 72–82 %, Erwartung −0,07 bis −0,11 R. S13: Training −0,044 / −0,042 R. S14: −0,19 bis −0,36 R. S9: höchstens 11 Signale statt 500; S10: 241 von 500.",
+   "unterstuetzend": "R4: 42 Varianten scheitern schon im Training, 6 in der Validierung, SPA p 0,46 / 0,43, StepM wählt keine. S4: alle Varianten −0,12 bis −0,23 R bei einer Trefferquote von höchstens 52,5 % (das Ziel von 75 % wurde nicht annähernd erreicht). S6: Treffer 72–82 %, Erwartung −0,07 bis −0,11 R. S13: Training −0,044 / −0,042 R. S14: −0,19 bis −0,36 R. S9: höchstens 11 Signale statt 500; S10: 241 von 500.",
    "unterstuetzende_ids": [
     "R4",
     "S4",
@@ -163,7 +161,7 @@
    ],
    "ueberschneidung": "Ein Datencluster (FRÜH): BTC/ETH/SOL 2020–2024 mit Protokoll 1.x. 6 von 48 Varianten bestanden das Training und scheiterten erst in der Validierung: Die Trennung von Training und Validierung entfernt Scheintreffer des Trainings.",
    "unsicherheit": "Prüftiefe C+ (Ergebnisdateien gelesen, nicht neu gerechnet); Studien vor Protokoll 1.3 mit weniger strenger Mehrfachtestkorrektur.",
-   "konsequenz": "Verworfen. Die hohe Trefferquote allein (S4, S6) ist kein Profitabilitätsnachweis: 72–82 % bei negativer Erwartung.",
+   "konsequenz": "Verworfen. Eine hohe Trefferquote allein ist kein Profitabilitätsnachweis (S6: 72–82 % bei negativer Erwartung; Zufallseinstiege mit gleicher Geometrie treffen genauso oft). S4 zeigt das Gegenstück: Das 75-%-Ziel war mit diesen Regeln gar nicht erreichbar (höchstens 52,5 %).",
    "evidenzstand": "Außerhalb der Entwicklung: Validierungsabschnitt (negativ). Prospektiv: nein."
   },
   {
@@ -379,7 +377,7 @@
    "gegenbeleg_ids": [],
    "ueberschneidung": "Eigenbewertung des Labors; deckt sich mit dieser Konsolidierung.",
    "unsicherheit": "Das Überzeugungsregister ist selbst eine Inventur des Labors, keine unabhängige Prüfung.",
-   "konsequenz": "Die Zählung „mehr als 150 Prüfungen“ ist die Grundlage für die Mehrfachtest-Rechnung (E1: N = 64 bis 26.707). Eine fortlaufende Versuchszählung ist eine Vorbedingung für jede künftige Aussage über Signifikanz.",
+   "konsequenz": "Die Zählung „mehr als 150 Prüfungen“ ist NUR BERICHTET (Überzeugungsregister, nicht nachgezählt). Die Mehrfachtest-Rechnung (E1) hängt nicht von ihr ab: G7 gilt bei N = 64 (Konvention des Labors) und scheitert schon bei N = 58; N = 100, 200 und 26.707 (OFX-Konfigurationen beim Einfrieren des Protokolls; die Kopie vom 16.11. zählt 27.023) sind Sensitivität. Eine fortlaufende Versuchszählung ist eine Vorbedingung für jede künftige Aussage über Signifikanz.",
    "evidenzstand": "Keine Evidenzstufe; Verfahren."
   }
  ]

@@ -14,8 +14,8 @@
    "A": 2,
    "B": 8,
    "C+": 23,
-   "C": 27,
-   "D": 9
+   "C": 29,
+   "D": 7
   },
   "nach_cluster": {
    "FRÜH": 8,
@@ -249,21 +249,25 @@
    "pruefung": "C+",
    "klasse": "BEDINGT VERWERTBAR",
    "richtung": "negativ",
-   "begruendung": "Zeigt für die Winrate-Frage: Eine feste kleine Zielmarke (0,75 R) ergibt hohe Trefferquoten nur über die Geometrie, nicht über den Einstieg. Die Erkundung ist ausdrücklich keine bestandene Studie.",
+   "begruendung": "Zeigt für die Winrate-Frage: Das Ziel von 75 % wurde mit diesen Regeln nicht annähernd erreicht (höchste Trefferquote 52,5 %, obere Intervallgrenze überall unter 54 %), und jede Variante verliert nach Kosten. Die Erkundung ist ausdrücklich keine bestandene Studie.",
    "maengel": [
     "Erkundung nach dem Gate-Scheitern, nicht vorab festgelegt"
    ],
    "aussagen": [
     {
-     "text": "Erkundung: E[R] −0,12 bis −0,23 R je Trade",
-     "status": "NUR BERICHTET"
+     "text": "Erkundung: E[R] −0,12 bis −0,23 R je Trade, Profit Factor 0,58 bis 0,74",
+     "status": "VERIFIZIERT"
     },
     {
-     "text": "Zahlen im Erkundungsbericht",
+     "text": "Höchste Trefferquote 52,5 % (H1-N24, n 4.795; Wilson-Obergrenze unter 54 %)",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Zahlen im Erkundungsbericht gelesen, Rohdaten nicht neu gerechnet",
      "status": "VERIFIZIERT"
     }
    ],
-   "verwendung": "Beleg gegen die Annahme, eine hohe Trefferquote allein sei ein Vorteil (zählt für Aussage Winrate ≠ Edge)."
+   "verwendung": "Beleg, dass 75 % Trefferquote mit diesen Regeln nicht erreichbar war und die erreichbaren Quoten (um 50 %) nach Kosten verlieren. Die Aussage „hohe Trefferquote ≠ Vorteil“ stützt S6, nicht S4."
   },
   {
    "id": "S5",
@@ -314,7 +318,7 @@
    "kosten": "Protokoll 1.x, Maker-Gebühren",
    "register": "6 Registerplätze (S6)",
    "stichprobe": "Trades siehe Bericht",
-   "ergebnis": "Nicht bestanden: Treffer 72–82 %, Erwartung −0,07 bis −0,11 R; Zufallseinstiege mit gleicher Geometrie treffen genauso oft.",
+   "ergebnis": "Nicht bestanden: Treffer 71,7–81,9 % (Training), Erwartung −0,07 bis −0,11 R; Zufallseinstiege mit gleicher Geometrie treffen genauso oft (82,0 % gegen 81,9 % bei k = 2, T = 0,15).",
    "laborurteil": "failed",
    "pruefung": "C+",
    "klasse": "BEDINGT VERWERTBAR",
@@ -356,7 +360,7 @@
    "kosten": "Protokoll 1.3 (Gebühr 5 bp, Schlupf 3 bp, Stop-Schlupf 5 bp je Seite) plus Funding",
    "register": "2 Registerplätze (S7)",
    "stichprobe": "Training und Validierung: z. B. D20-T3 557 / 420 Trades",
-   "ergebnis": "Nicht bestanden: Erwartung positiv (+0,19 / +0,24 R), Drawdown 30 R über der Grenze von 20 R.",
+   "ergebnis": "Nicht bestanden: Erwartung positiv (D20-T3 / D20-T4: Training +0,232 / +0,284 R, Validierung +0,190 / +0,243 R), Drawdown in der Validierung 30,2 / 30,8 R über der Grenze von 20 R.",
    "laborurteil": "failed",
    "pruefung": "A",
    "klasse": "BEDINGT VERWERTBAR",
@@ -372,7 +376,7 @@
      "status": "VERIFIZIERT"
     },
     {
-     "text": "Erwartung +0,19 / +0,24 R, Drawdown 30 R",
+     "text": "Erwartung D20-T3 / D20-T4: Training +0,232 / +0,284 R, Validierung +0,190 / +0,243 R; Drawdown Validierung 30,2 / 30,8 R",
      "status": "VERIFIZIERT"
     }
    ],
@@ -404,7 +408,7 @@
    "maengel": [
     "Mehrfach verbrauchte Validierung 2023–2024 (S7b, S25, S32, S7b-Makro verwenden dieselbe Handelsliste)",
     "Survivorship: BTC/ETH/SOL erst 2026 gewählt",
-    "Zufallseinstiege in SMA200-Richtung erzielen im Training schon +0,095 R",
+    "Zufallseinstiege in SMA200-Richtung erzielen im Training schon +0,097 R (eigene Rechnung T3, K1)",
     "Kein ungesehener Abschlusstest"
    ],
    "aussagen": [
@@ -595,7 +599,8 @@
    "begruendung": "Gleiche Regel, andere Märkte, vorab eingefroren, ein einziger Validierungslauf: die einzige Teilprüfung der S7b-Regel mit unabhängigen Märkten. Ergebnis: kein Übertrag.",
    "maengel": [
     "Training im Altcoin-Aufwärtsmarkt",
-    "Survivorship möglich (Top-25 heute)",
+    "Universum je Monat nach Handelsvolumen der 30 Vortage bestimmt, aber nur aus Symbolen mit Archivdateien: Survivorship möglich",
+    "Nur teilweise unabhängig von BTC/ETH/SOL (gleiche Jahre, korrelierte Märkte)",
     "Handelsliste lag nicht vor (nur Aggregate gelesen)"
    ],
    "aussagen": [
@@ -658,24 +663,29 @@
     "docs/research_lab/reports/s9_count_2026-10-27T1849Z.md",
     "docs/research_lab/studien/S9_CHOCH_RETEST_PRAEREGISTRIERUNG.md"
    ],
-   "daten": "BTC/ETH/SOL 15m",
+   "daten": "BTCUSDT 15m (175.392 Kerzen bis 2024-12)",
    "aufteilung": "Zähllauf Training",
    "kosten": "—",
    "register": "kein Registerplatz",
    "stichprobe": "höchstens 11 Signale statt 500",
-   "ergebnis": "Am Machbarkeits-Gate gescheitert: höchstens 11 Signale im Training statt 500.",
+   "ergebnis": "Am Machbarkeits-Gate gescheitert: höchstens 11 Signale im Training statt 500 (Validierung höchstens 6 statt 250).",
    "laborurteil": "not_testable",
-   "pruefung": "D",
+   "pruefung": "C",
    "klasse": "EXPLORATIV",
    "richtung": "keine Aussage",
    "begruendung": "Mechanisch übersetzte Lernheft-Regeln erzeugen zu wenige Fälle; kein Beleg in irgendeine Richtung.",
    "maengel": [
-    "Zu wenige Fälle"
+    "Zu wenige Fälle",
+    "Zählfehler in der Diagnosetabelle (Spalten CHoCH bis R:R in der Validierung zählen ab 2020), vom Labor im Nachtrag vom 27.10. benannt und im Code behoben; Signalzahlen und Gate sind nicht betroffen"
    ],
    "aussagen": [
     {
-     "text": "Gate gescheitert",
+     "text": "Gate gescheitert (11 / 6 Signale statt 500 / 250)",
      "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zählfehler der Diagnosetabelle im Bericht selbst benannt, Gate unberührt",
+     "status": "VERIFIZIERT"
     }
    ],
    "verwendung": "Kein Beitrag."
@@ -804,16 +814,20 @@
    "stichprobe": "2 geschlossene Pläne, 30 nötig",
    "ergebnis": "Zu wenige Fälle (2 geschlossene, 30 nötig); in etwa vier Wochen erneut auswerten.",
    "laborurteil": "waiting",
-   "pruefung": "D",
+   "pruefung": "C",
    "klasse": "EXPLORATIV",
    "richtung": "keine Aussage",
-   "begruendung": "Keine Auswertung möglich. Die Studie legt Varianten vorab fest und wählt keine Grenze aus den Daten.",
+   "begruendung": "Keine Auswertung möglich. Die Studie legt Varianten vorab fest und wählt keine Grenze aus den Daten. Der Bericht enthält nur Formelrechnung (Mindest-Stopabstand je Grenze, Stressfall 1,43 % für 0,25 R) und die Prüfung der Anzeige, keine Marktdaten.",
    "maengel": [
     "Zu wenige Fälle"
    ],
    "aussagen": [
     {
-     "text": "Zu wenige Fälle",
+     "text": "Zu wenige Fälle (2 geschlossene, 30 nötig)",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Mindest-Stopabstand für 0,25 R: 0,72 % (Basis) bzw. 1,43 % (doppelte Kosten), reine Formelrechnung des Berichts",
      "status": "NUR BERICHTET"
     }
    ],

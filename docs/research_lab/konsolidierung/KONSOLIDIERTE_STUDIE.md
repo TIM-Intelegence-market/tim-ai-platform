@@ -8,20 +8,22 @@ Protokolle: `PROTOKOLL_KONSOLIDIERUNG.md` 1.0 (eingefroren im Commit `1e9270a`, 
 
 > **Gesamturteil: INTERESSANTE HYPOTHESE, EVIDENZ UNZUREICHEND.** Das gilt für genau eine Familie: die Trendregel S7b-D20-T3 (Donchian-20-Ausbruch in Richtung SMA200, 4h-Kerzen, ATR-Stop, Ziel 3 R; Kandidaten C1 = BTC/ETH/SOL und C3 = BTC/ETH). Für alle übrigen untersuchten Familien (Orderflow, Indikator-Merkmale, Level-Reaktion, frühe Regelfamilien, Plan-Journale, Carry als Handelsvorteil) gilt: **KEIN BELASTBARER VORTEIL**. Keines dieser Urteile autorisiert Echtgeldhandel oder eine Live-Aktivierung.
 
-Warum nicht mehr: Die Trendregel besteht die Reproduktion, die Kostenprüfung, den Zufallsvergleich, das Parameter-Plateau, die Konzentrations- und die Unsicherheitsprüfung (G1 bis G6, G11). Sie scheitert an der Mehrfachtest-Korrektur (G7: Deflated Sharpe 0,42 / 0,43 bei Schwelle 0,95) und an der Übertragung auf andere Coins (G8: −0,0255 R bei n 3.311). Der einzige Test außerhalb des Entwicklungszeitraums (T15, BTC/ETH 2017 bis 2019, ein Lauf, vorab eingefroren) ging in die richtige Richtung, verfehlte aber die Schwelle: +0,154 R je Trade, p 0,079 (Schwelle 0,05); zufällige Einstiege in SMA200-Richtung mit gleicher Ausstiegsregel erreichten im selben Zeitraum unter denselben Kosten (K1) im Mittel +0,177 R gegen +0,146 R der Regel. Ein positiver Netto-Erwartungswert ist damit **plausibel, aber nicht nachgewiesen**.
+Warum nicht mehr: C1 besteht die Reproduktion, die Kostenprüfung, den Zufallsvergleich, das Parameter-Plateau, die Konzentrations- und die Unsicherheitsprüfung (G1 bis G6, G11); C3 (ohne SOL) verfehlt zusätzlich den Zufallsvergleich im Training (G3: p 0,087). Beide scheitern an der Mehrfachtest-Korrektur (G7: Deflated Sharpe 0,42 / 0,43 bei Schwelle 0,95; schon bei N = 58 nur 0,44 / 0,45) und an der Übertragung auf andere Coins (G8: −0,0255 R bei n 3.311). Der einzige Test außerhalb des Entwicklungszeitraums (T15, C3 auf BTC/ETH 2017 bis 2019, ein Lauf, vorab eingefroren) ging in die richtige Richtung, verfehlte aber die Schwelle: +0,154 R je Trade, p 0,079 (Schwelle 0,05). Zufällige Einstiege in SMA200-Richtung mit gleicher Ausstiegsregel erreichten dort unter denselben Kosten (K1) im Mittel +0,177 R gegen +0,146 R der Regel (p 0,60). Gleiche Basis im Entwicklungszeitraum (C3, K1): Zufall +0,116 / −0,017 R gegen +0,203 / +0,271 R der Regel (Training / Validierung, p 0,087 / 0,001). Ein positiver Netto-Erwartungswert ist damit **plausibel, aber nicht nachgewiesen**.
+
+Der stärkste Einwand gegen die Regel: Ein Vorteil, falls es ihn gibt, kommt vor allem aus der Trendseite (SMA200-Richtung) und der Auszahlungsgeometrie (Ziel 3 R), nicht aus dem Ausbruchszeitpunkt. Dafür sprechen T15 (kein Vorsprung gegenüber zufälligen Einstiegen), der kleine und im Training nicht signifikante Abstand bei C3 und die einfache Referenz R2 (SMA200 lang/flat) mit dem höheren Sharpe (1,55 gegen 1,36). Dagegen spricht, dass T15 wenig Aussagekraft hat (n 157, kleinste bei 80 % Power nachweisbare Erwartung +0,35 R): p 0,079 und der fehlende Vorsprung vor dem Zufall sind dort keine Widerlegung. Beide Lesarten bleiben offen (Abschnitt 9.3).
 
 ### Die acht Fragen des Auftrags
 
-1. **Wie viele Studien wurden gefunden und geprüft?** 69 Studien und Berichte im durchsuchten Umfang (dazu 5 eigene Nachrechnungen, Register: 74 Einträge). Prüftiefe: A (Regelcode und Rohdaten unabhängig neu gerechnet) 2, B (Handelsliste neu ausgewertet) 8, C+ (Zahlen in der Ergebnisdatei wiedergefunden) 23, C (Bericht gelesen) 27, D (nur Logbuchzeile) 9. Tatsächlich nachgerechnet sind also 10 Studien; die übrigen sind nur auf Konsistenz geprüft oder gelesen und tragen entsprechend weniger Gewicht (Abschnitt 2).
-2. **Was besteht nach der Prüfung?** (a) Eine Hypothese: Trendfolge mit Ausbruchseinstieg in SMA200-Richtung hatte 2020 bis 2024 nach Kosten eine positive Erwartung (+0,239 R je Trade unter K1, 95-%-Band +0,080 bis +0,415 R), reproduziert bit-genau aus den Laborlisten. (b) Belastbare Negativbefunde: Level-, Orderflow- und Indikatorfamilien tragen nach Kosten keine Regel (S34, S35a, S36 mit Prüftiefe B; OFX: 0 von 8,1 Mio. Varianten). (c) Die Kostenarithmetik: Je enger der Stop, desto mehr verbrauchen Kosten den Vorteil (E5).
-3. **Welche vermeintlichen Erfolge waren methodisch nicht belastbar?** Unter anderem: das Carry-Ergebnis mit verdecktem Hebel, das OF2-Training (n 56, beste 5 % der Trades = 108 % der Summe), der S7b-Makrofilter F5 (nach fünf Versuchen, Glückstest p 0,066), der Sortiereffekt von S24 (verliert nach Kosten), die Plan-Journale (Vorzeichen hängt an 27 Ausschlüssen), der OF-Schatten (Regel nach Ansicht der Zwischenstände) und hohe Trefferquoten ohne Vorteil (S4, S6). Tabelle in Abschnitt 4.
-4. **Was lässt sich zusammenführen?** Alle Studien zur Trendregel sind **eine** Evidenzquelle (derselbe Datencluster TREND-4H), nicht fünf; die Negativbefunde der Level-, Orderflow- und Indikatorfamilien bilden gemeinsam das Bild „Kosten schlucken den Vorteil kurzer Regeln“; Trefferquote ist Auszahlungsgeometrie, nicht Qualität des Einstiegs (S4, S6). Ergebnis: drei vollständig spezifizierte Kandidaten (Abschnitt 7), davon ein Beobachtungskandidat (Abschnitt 11).
+1. **Wie viele Studien wurden gefunden und geprüft?** 69 Studien und Berichte im durchsuchten Umfang (dazu 5 eigene Nachrechnungen, Register: 74 Einträge). Prüftiefe: A (Regelcode und Rohdaten unabhängig neu gerechnet) 2, B (Handelsliste neu ausgewertet) 8, C+ (Zahlen in der Ergebnisdatei wiedergefunden) 23, C (Bericht gelesen) 29, D (nur Logbuchzeile) 7. Aus Rohdaten neu gerechnet sind 2 Studien (die Trendregel S7 und S7b); weitere 8 wurden aus den Handelslisten oder Rohergebnissen des Labors neu ausgewertet, darunter Fälle mit sehr kleinem n (S7b-Forward 4 Trades, S37 höchstens 5 je Variante). Alle übrigen sind nur auf Konsistenz geprüft oder gelesen und tragen entsprechend weniger Gewicht (Abschnitt 2). „Gefunden“ gilt nur für den durchsuchten Umfang.
+2. **Was besteht nach der Prüfung?** (a) Eine Hypothese: Trendfolge mit Ausbruchseinstieg in SMA200-Richtung hatte 2020 bis 2024 nach Kosten eine positive Erwartung (+0,239 R je Trade unter K1, 95-%-Band +0,080 bis +0,415 R), reproduziert bit-genau aus den Laborlisten. (b) Belastbare Negativbefunde: Level-, Orderflow- und Indikatorfamilien tragen nach Kosten keine Regel (S34, S35a, S36, S38 aus den Handelslisten neu ausgewertet; OFX: 0 von 8,1 Mio. Varianten nach den Bestenlisten des Labors). (c) Die Kostenarithmetik: Je enger der Stop, desto mehr verbrauchen Kosten den Vorteil (E5).
+3. **Welche vermeintlichen Erfolge waren methodisch nicht belastbar?** Unter anderem: das Carry-Ergebnis mit verdecktem Hebel, das OF2-Training (n 56, beste 5 % der Trades = 108 % der Summe), der S7b-Makrofilter F5 (nach fünf Versuchen, Glückstest p 0,066), der Sortiereffekt von S24 (verliert nach Kosten), die Plan-Journale (Vorzeichen hängt an 27 Ausschlüssen), der OF-Schatten (Regel nach Ansicht der Zwischenstände) und hohe Trefferquoten ohne Vorteil (S6: 72 bis 82 % bei negativer Erwartung; S4 erreichte sein 75-%-Ziel nicht einmal, höchstens 52,5 %). Tabelle in Abschnitt 4.
+4. **Was lässt sich zusammenführen?** Alle Studien zur Trendregel sind **eine** Evidenzquelle (derselbe Datencluster TREND-4H), nicht fünf; die Negativbefunde der Level-, Orderflow- und Indikatorfamilien bilden gemeinsam das Bild „Kosten schlucken den Vorteil kurzer Regeln“; Trefferquote ist Auszahlungsgeometrie, nicht Qualität des Einstiegs (S6). Ergebnis: drei im Protokoll festgelegte Kandidaten C1, C2, C3 (Abschnitt 7); als Beobachtungsportfolios für das Papier-Vorwärtsjournal werden C1 und C3 vollständig spezifiziert (Abschnitt 11), C2 (Carry-Anteil) wird nicht weiterverfolgt.
 5. **Ist ein positiver Netto-Erwartungswert nachgewiesen?** Nein. Für die Trendregel ist er **plausibel** (reproduziert, kosten- und parameterrobust im Entwicklungszeitraum, gleiche Richtung in T15), aber **nicht nachgewiesen** (G7, G8, T15 p > 0,05, keine unabhängige prospektive Bestätigung). Für alle anderen Familien ist er **nicht erkennbar** (negativ oder nicht testbar).
-6. **Unsicherheit und Drawdown?** C1 gepoolt 2020 bis 2024: größter Rückgang 21,0 R (etwa 21 % bei 1 % Risiko je Trade); im Monatsblock-Bootstrap Median 19,3 R, 95. Perzentil 33,3 R. C3 in T15: 12,5 R über 316 Tage. Die Streuung je Trade ist etwa 1,72 R bei einer Erwartung von 0,2 R: für einen Nachweis wären rund 318 Trades nötig (Abschnitt 10).
+6. **Unsicherheit und Drawdown?** C1 gepoolt 2020 bis 2024: größter Rückgang 21,0 R (etwa 21 % bei 1 % Risiko je Trade); im Monatsblock-Bootstrap Median 19,3 R, 95. Perzentil 33,3 R. C3 in T15: 12,5 R über 316 Tage. Die Streuung je Trade ist etwa 1,72 R: Bei einer wahren Erwartung von 0,24 R wären für einen Nachweis (einseitig 5 %, Power 80 %) rund 318 Trades nötig, bei 0,20 R rund 458 (Abschnitt 10).
 7. **Was fehlt bis zu einem belastbaren prospektiven Nachweis?** Mindestens eine unabhängige Stichprobe ohne Versuchsverbrauch: der einmalige Holdout 2025-01 bis 2026-06 (nur mit Uzis ausdrücklichem Wort und Bartis Zustimmung; etwa 153 Trades, Power nur etwa 53 %) und/oder rund 318 vorwärts beobachtete Trades (etwa 3,1 Jahre). Außerdem Bitunix-Gebühren, Funding und Ausführung als bestätigte Zahlen (Abschnitt 10, offene Voraussetzungen).
 8. **Wo liegen Studie und Artefakte?** `docs/research_lab/konsolidierung/` im Repo `tim-ai-platform` (Branch `claude/project-thread-iky0o0`): `KONSOLIDIERTE_STUDIE.md` (dieses Dokument), `STUDIENREGISTER.md`, `EVIDENZMATRIX.md`, `ergebnisse/` (JSON je Test), `grafiken/` (8 Bilder, reproduzierbar aus den JSON), `TESTLOG.md`, `TESTLOG_T15.md`, `README.md` (Reproduktion), Code in `src/research_lab/konsolidierung/`. Die Originalstudien bleiben unverändert.
 
-Die gewünschte Trefferquote von 75 % ist keine Anforderung und kein Beleg für Profitabilität: Die Trendregel gewinnt nur etwa 38 % ihrer Trades und verdient dennoch über asymmetrische Gewinne (Ø +2,28 gegen −1,03 R). Umgekehrt erreichten S4 und S6 Trefferquoten von 72 bis 82 % bei negativer Erwartung.
+Die gewünschte Trefferquote von 75 % ist keine Anforderung und kein Beleg für Profitabilität: Die Trendregel gewinnt nur etwa 38 % ihrer Trades und verdient dennoch über asymmetrische Gewinne (Ø +2,28 gegen −1,03 R). Umgekehrt erreichte S6 im Training Trefferquoten von 72 bis 82 % bei negativer Erwartung (−0,07 bis −0,11 R), während S4 sein Ziel von 75 % mit höchstens 52,5 % nicht annähernd erreichte und ebenfalls nach Kosten verlor.
 
 ### Die vier Evidenzstufen der Trendregel
 
@@ -30,7 +32,7 @@ Die gewünschte Trefferquote von 75 % ist keine Anforderung und kein Beleg für 
 | Historisch gut ausgesehen | **ja** | 2020 bis 2024: +0,239 R je Trade (K1), n 499; S7 und S7b im Labor. |
 | Korrigiert reproduziert | **ja** | Unabhängige Nachrechnung reproduziert 4.879 gespeicherte Trades ohne Abweichung (T1); Kostenpuffer, Plateau, Bootstrap-Band über 0. |
 | Außerhalb der Entwicklung bestätigt | **nein** (getestet) | T15 (BTC/ETH 2017 bis 2019): +0,154 R, p 0,079, nicht bestätigt, Richtung positiv. S32 (137 andere Coins): −0,0255 R, nicht bestanden. Der Holdout ab 2025-01-01 ist unberührt. |
-| Prospektiv beobachtet | **zu wenig** | S7b-Forward: 4 bzw. 3 geschlossene Papier-Trades (alle Short). S7b-Sonde Juli bis Oktober 2026: 35 Trades, −5,8 R, versehentlich gesehen und nicht aufbewahrt. |
+| Prospektiv beobachtet | **zu wenig** | S7b-Forward: 4 geschlossene Papier-Trades der Regel D20-T3 (alle Short; die Variante D20-T4 mit 3 Trades ist kein Kandidat). S7b-Sonde Juli bis Oktober 2026: 35 Trades, −5,8 R, versehentlich gesehen, nicht aufbewahrt und nicht vorab ausgewertet (NUR BERICHTET). |
 
 ### Kriterien des eingefrorenen Protokolls (Ergebnis je Kandidat)
 
@@ -49,11 +51,13 @@ Die gewünschte Trefferquote von 75 % ist keine Anforderung und kein Beleg für 
 | CG2 | – | bestanden | – |
 | G10 | – | bestanden | – |
 
-Stufe nach Protokoll: C1, C2 und C3 jeweils Stufe 2 (G1 und G2 bestanden, mindestens eines von G3 bis G8, G11 nicht erfüllt). Das Gesamturteil ist die höchste erreichte Stufe: **Stufe 2**. T15 ändert weder ein Kriterium noch die Stufe (Zusatzprotokoll Abschnitt 1 und 6).
+Stufe nach Protokoll: C1, C2 und C3 jeweils Stufe 2. Das Protokoll verlangt dafür: G1 und G2 bestanden, aber nicht alle Kriterien von G3 bis G8 und G11 erfüllt (für C2 zusätzlich CG1, CG2, G10). Nicht bestanden sind bei C1 G7, G8, bei C2 G7, G8, bei C3 G3, G7, G8. Das Gesamturteil ist die höchste erreichte Stufe: **Stufe 2**. T15 ändert weder ein Kriterium noch die Stufe (Zusatzprotokoll Abschnitt 1 und 6).
+
+Zu G11: Das Teilergebnis zu den Bitunix-Kerzen (Abweichung des E[R] −0,027 R gegen die Toleranz von 0,05 R) lag vor dem Einfrieren vor; das Protokoll weist es selbst als berichtet, nicht als vorab festgelegt aus. Die Stufe hängt nicht daran, denn G7 und G8 scheitern unabhängig davon.
 
 ## 2. Suchumfang und vollständiges Studienregister
 
-**Durchsucht wurden:** das Studienarchiv des Labors im Repo (`docs/research_lab/`: Logbuch, Präregistrierungen, Berichte, Ergebnisdateien), die Ergebnisordner unter `/mnt/project-files/analysen/` (die studienrelevanten Unterordner), Kopien der PS5/PS4-Ergebnisse (S19 bis S38, OF2, OFX), die Berichte in `tim-master` und im privaten Repo, das Überzeugungsregister (12.11.2026) und die Papier-Journale. **Vollständigkeit gilt nur für diesen Umfang.** Nicht zugänglich oder nicht auswertbar waren:
+**Durchsucht wurden:** das Studienarchiv des Labors im Repo (`docs/research_lab/`: Logbuch, Präregistrierungen, Berichte, Ergebnisdateien), die Ergebnisordner unter `/mnt/project-files/analysen/` (die studienrelevanten Unterordner), Kopien der PS5/PS4-Ergebnisse (S19 bis S38, OF2, OFX), die Berichte in `tim-master` und im privaten Repo, das Überzeugungsregister (12.11.2026) und die Papier-Journale. Stand des durchsuchten Repos: `platform-main` am 16.11.2026 um 12:46 UTC (Commit `3799781`, Merge von PR #282). Danach sind weitere Änderungen gemergt worden (Orderbuch-Anzeige im Dashboard, Twelve-Data-Schlüssel, OF2-Bausteine bis zum Modell M8); sie enthalten Programmcode und Tests, keine neuen Studienergebnisse, und sind nicht im Register. **Vollständigkeit gilt nur für diesen Umfang.** Nicht zugänglich oder nicht auswertbar waren:
 
 | Quelle | Grund |
 |---|---|
@@ -78,14 +82,18 @@ Wo Daten, Rechenleistung oder Zugriff fehlten, wurde das als Grenze der jeweilig
 
 **Klassen:** BELASTBAR (Rechnung unabhängig bestätigt, Regel vorab festgelegt; sagt nichts über die Richtung), BEDINGT VERWERTBAR (Methode im Kern sauber, benannte Einschränkung), EXPLORATIV (Hinweis ohne vorab festgelegte Bestehensregel oder zu wenige Fälle), UNGÜLTIG (methodischer Fehler), NICHT REPRODUZIERBAR (Ergebnis nicht nachvollziehbar). Ein fehlerhaftes Ergebnis zählt nie als positive Evidenz.
 
-| Klasse | Anzahl |
+| Klasse | Anzahl (gefundene Studien und Berichte) |
 |---|---:|
 | BEDINGT VERWERTBAR | 31 |
 | EXPLORATIV | 30 |
 | NICHT REPRODUZIERBAR | 4 |
 | BELASTBAR | 4 |
 
-Keine Studie ist als UNGÜLTIG eingestuft: Das Labor kennzeichnet eigene Mängel (Gate gescheitert, Regel nach Ansicht geschrieben) selbst im Bericht; solche Studien sind EXPLORATIV oder nicht bestanden. Kein Eintrag ist **BELASTBAR und positiv** (`belastbar_positiv` ist leer): Die vier BELASTBAREN Einträge (S34, S35a, S36, S38) sind Negativ- oder Nullbefunde.
+Die Zählung gilt für die 69 gefundenen Studien und Berichte; die 5 eigenen Nachrechnungen sind nicht mitgezählt (mit ihnen: BEDINGT VERWERTBAR 36, EXPLORATIV 30, NICHT REPRODUZIERBAR 4, BELASTBAR 4). Keine Studie ist als UNGÜLTIG eingestuft: Das Labor kennzeichnet eigene Mängel (Gate gescheitert, Regel nach Ansicht geschrieben) selbst im Bericht; solche Studien sind EXPLORATIV oder nicht bestanden. Kein Eintrag ist **BELASTBAR und positiv** (`belastbar_positiv` ist leer): Die vier BELASTBAREN Einträge (S34, S35a, S36, S38) sind Negativ- oder Nullbefunde.
+
+BELASTBAR heißt hier nur: Die Kennzahlen wurden aus den Handelslisten des Labors neu berechnet (Prüftiefe B, nicht aus Rohdaten neu erzeugt), die Regel war vorab festgelegt, und die Richtung ist eindeutig. Zwei Einschränkungen: S34 hatte mit n 53 weniger als die vorab verlangten 60 Trades; sein „nicht bestanden“ beruht deshalb auf der Kostenarithmetik (Kosten 1,2 R je Trade bei einem mittleren Stop von 0,20 %), nicht auf einem Test mit ausreichender Fallzahl. Bei S36 wurden Konfigurationen nach dem ergebnisblinden Zähllauf und vor jedem R-Wert angepasst (Änderungen 0.2 und 0.3 der Präregistrierung). Beide Befunde sagen nichts über andere Regeln.
+
+**Kennzeichnung der Aussagen:** Jede Aussage im Register trägt eine von vier Kennzeichnungen: VERIFIZIERT (in einer eigenen Rechnung oder im gelesenen Bericht wiedergefunden), NUR BERICHTET (Zahl aus einem Bericht übernommen, nicht nachgerechnet), ANNAHME (für die Rechnung gesetzt, nicht belegt) und NICHT PRÜFBAR (Quelle oder Daten nicht zugänglich). Zählung der 106 Aussagen zu den gefundenen Studien: VERIFIZIERT 57, NUR BERICHTET 39, ANNAHME 2, NICHT PRÜFBAR 8; mit den eigenen Nachrechnungen insgesamt 115: VERIFIZIERT 64, NUR BERICHTET 39, ANNAHME 4, NICHT PRÜFBAR 8. VERIFIZIERT bedeutet bei Prüftiefe C+ und C nur, dass die Zahl im Bericht steht, nicht dass sie neu berechnet wurde; die Prüftiefe je Eintrag steht in der Tabelle unten. Die tragenden Aussagen dieser Studie stehen mit Kennzeichnung in Abschnitt 3.
 
 | Datencluster | Einträge | Beschreibung (gleiche Daten: keine unabhängige Evidenz) |
 |---|---:|---|
@@ -119,11 +127,11 @@ Keine Studie ist als UNGÜLTIG eingestuft: Das Labor kennzeichnet eigene Mängel
 | S25 | Positionsgröße nach GARCH-4h-Prognose für S7b-D20-T3 | TREND-4H | C+ | Bedingt verwertbar | negativ |
 | S32 | Korb-Trendfolge: S7b-D20-T3 unverändert auf Top-25-Perps ohne BTC/ETH/SOL, 4h | TREND-4H | C+ | Bedingt verwertbar | negativ |
 | S15 | GARCH(1,1)-Volatilitätsprognose gegen 14-Tage-Varianz, BTC/ETH/SOL, 4h und 1d | PROGNOSE | C+ | Bedingt verwertbar | keine Handelsaussage (Risikoschicht) |
-| S9 | CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft) | FRÜH | D | Explorativ | keine Aussage |
+| S9 | CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft) | FRÜH | C | Explorativ | keine Aussage |
 | S10 | IB-Ausbruch New York mit Retest an POC/Value-Kante | FRÜH | C+ | Explorativ | keine Aussage |
 | S13 | Noise-Band-Ausbruch (Intraday-Momentum nach Zarattini/Aziz/Barbon 2024), NY-Si… | FRÜH | C+ | Bedingt verwertbar | negativ |
 | S14 | Paar-Handel (Statistical Arbitrage) ETH/BTC, SOL/BTC, SOL/ETH, 1h | FRÜH | C+ | Bedingt verwertbar | negativ |
-| K1 | Kosten-Schwelle 0,25 R für Plan-Journal-Pläne | PROSPEKTIV | D | Explorativ | keine Aussage |
+| K1 | Kosten-Schwelle 0,25 R für Plan-Journal-Pläne | PROSPEKTIV | C | Explorativ | keine Aussage |
 | V2 | V2-Qualifizierungskampagne (1000 unabhängige Fälle) | INFRA | D | Nicht Reproduzierbar | keine Aussage |
 | F4 | Perp-Daten: 48-h-Probe der Futures-Trades neben Spot | INFRA | D | Explorativ | keine Aussage |
 | S20 | Flip-Wahrscheinlichkeit aus der Kerzenstruktur, BTC 1h, Bruch von Swing-Linien | BTC-1H | C+ | Bedingt verwertbar | negativ |
@@ -182,6 +190,8 @@ Keine Studie ist als UNGÜLTIG eingestuft: Das Labor kennzeichnet eigene Mängel
 
 ## 3. Daten- und Methodikprüfung
 
+**Geltungsbereich der eigenen Rechnungen:** Eigene Rechnungen verwenden ausschließlich Daten vor 2025-01-01 (Binance-USD-M-Archiv 2020 bis 2024; die Bitunix-Kerzen für G11 reichen von 2022-04-17 bis 2024-12-31) und für T15 Binance-Spot-Kerzen 2017-08 bis 2019-12. Der Holdout ab 2025-01-01 wurde nie geladen (der Lader verweigert ihn, das Datenaudit hält `holdout_geladen` als falsch fest). Informationen aus der Zeit danach (S7b-Sonde Juli bis Oktober 2026, Vorwärtsjournal ab 2026-11-01) stammen aus Berichten des Labors und sind **NUR BERICHTET**; sie fließen in keines der Kriterien G1 bis G11 ein. Die Bitunix-Orderbuch-Momentaufnahme von 2026 dient nur der Ausführungsrealität (Abschnitt 10).
+
 ### Daten
 
 | Prüfpunkt | Ergebnis | Beleg |
@@ -199,15 +209,55 @@ Keine Studie ist als UNGÜLTIG eingestuft: Das Labor kennzeichnet eigene Mängel
 
 | Prüfpunkt | Vorgehen und Ergebnis |
 |---|---|
-| Rechenkern | Eigene, vom Laborcode unabhängige Nachrechnung der Regel (`s7b_nachrechnung.py`). Reproduktion der gespeicherten S7- und S7b-Handelslisten: 4.879 Trades, 4.879 gemeinsam, größte Abweichung 0,0 R (T1, bestanden). |
-| Look-ahead | Signale nur aus geschlossenen Kerzen; Einstieg zur Eröffnung der Folgekerze; Stop gewinnt vor Ziel innerhalb derselben Kerze; Lücken füllen zum Eröffnungskurs. Eine Kerze Einstiegsverzögerung (L1) wird als Stress gerechnet. |
-| Aufteilung und Holdout | Training bis 2022, Validierung 2023 bis 2024, Holdout ab 2025 versiegelt. Handelsabschnitte nach Regel 1.2 (Signal im Abschnitt, Ausstieg spätestens am Abschnittsende). Die Validierung wurde vom Labor schon mehrfach verbraucht und ist **keine** unberührte Schlussprüfung. |
-| Mehrfachtest | Deflated Sharpe nach Bailey und López de Prado, eigene Rechnung, für N = 58, 64, 100, 200 und 26.707 Versuche (inklusive OFX-Suche); Gegenprobe mit der Streuung der Sharpes im Parameter-Raster (T4, 600 Zellen). |
+| Rechenkern | Eigene, vom Laborcode unabhängige Nachrechnung der Regel (`s7b_nachrechnung.py`). Reproduktion der gespeicherten S7- und S7b-Handelslisten: 4.879 Trades, 4.879 gemeinsam, größte Abweichung 0,0 R (T1, bestanden). T1 zeigt die Übereinstimmung zweier Rechenwege mit derselben Regelbeschreibung, nicht die Richtigkeit der Beschreibung selbst: Ein gemeinsamer Fehler in der Spezifikation würde T1 nicht finden. Deshalb prüfen Einheitstests den Simulationskern zusätzlich an handgerechneten Beispielen (Reihenfolge innerhalb der Kerze, Lücken, Zeitstopp, Kosten; `tests/test_konsolidierung_simulation.py`). |
+| Look-ahead | Signale nur aus geschlossenen Kerzen; Einstieg zur Eröffnung der Folgekerze; Stop gewinnt vor Ziel innerhalb derselben Kerze; Lücken füllen zum Eröffnungskurs. Eine Kerze Einstiegsverzögerung (L1) wird als Stress gerechnet. T9 ordnet jeden Trade über die Eröffnungszeit der Signalkerze der BTC-Schwankung am Schluss genau dieser Kerze zu (kein Blick nach vorn); das setzt lückenlose BTC-4h-Kerzen voraus, die das Datenaudit bestätigt (eine Lücke würde die Zuordnung verschieben). |
+| Aufteilung und Holdout | Das Protokoll folgt der Aufteilung des Labors: Training bis 2022, Validierung 2023 bis 2024, Holdout ab 2025 versiegelt. Handelsabschnitte nach Regel 1.2 (Signal im Abschnitt, Ausstieg spätestens am Abschnittsende). Die Validierung wurde vom Labor schon mehrfach verbraucht und ist **keine** unberührte Schlussprüfung. Der Auftrag nennt Training 2020 bis 2023 und Validierung 2024; diese Aufteilung ist im Nachtrag N3 (unten) als zusätzliche Ansicht gerechnet und ändert kein Urteil. |
+| Mehrfachtest | Deflated Sharpe nach Bailey und López de Prado, eigene Rechnung mit der vereinfachten Nullfall-Varianz 1/(n−1) (Protokoll, wie im Laborbericht), für N = 58, 64 (G7, Konvention des Labors), 100, 200 und 26.707 Versuche. 26.707 ist die Zahl der OFX-Konfigurationen beim Einfrieren des Protokolls; die später kopierte Ergebnisdatei zählt 27.023. Gegenprobe mit der empirischen Streuung der Sharpes im Parameter-Raster (T4, 600 Zellen): DSR bei N = 64 dann 0,28 / 0,71 / 0,66 (Training / Validierung / gepoolt). G7 scheitert schon bei N = 58 (0,44 / 0,45); das Urteil hängt an keiner der genannten Zahlen. |
 | Kosten | Szenarien K0 (Protokoll), K1 (Bitunix-Basis, Gebühr 0,06 % je Seite, unbestätigt), K2 (konservativ: Schlupf 0,06 %, Stop-Schlupf 0,10 %, Funding ohne Gutschrift), K3 (pessimistisch), K4 (Maker-Ziel, optimistisch), L1 (eine Kerze Verzögerung). Unbekannte Gebühren sind nie null. |
-| Statistik | Monatsblock-Bootstrap (10.000 Ziehungen, Seed 20261116, Trades gehören dem Monat ihres Signals), Newey-West für Wochenreihen, Wilson-Intervalle, Zufallseinstiege in SMA200-Richtung (1.000 Ziehungen), Parameter-Raster nur als Stabilitätsprüfung (Optimierungsbudget null). |
+| Statistik | Monatsblock-Bootstrap (10.000 Ziehungen, Seed 20261116, Trades gehören dem Monat ihres Signals), Newey-West für Wochenreihen, Wilson-Intervalle, Zufallseinstiege in SMA200-Richtung (1.000 Ziehungen), Parameter-Raster nur als Stabilitätsprüfung (Optimierungsbudget null). Der Bootstrap zieht nur Monate mit Trades (Abweichung und Größe: Nachtrag N1); das Perzentil des größten Rückgangs wird aus 2.000 der Ziehungen berechnet. In T15 ist p der Anteil der 10.000 Ziehungen mit Mittel ≤ 0 (vorab so festgelegt, ein Perzentil-Bootstrap, kein Test gegen eine Nullverteilung). Das Raster (8 × 5 × 5 × 3 = 600 Zellen) ist im Code festgelegt; das Protokoll nennt die Werte der 81 Nachbarzellen von C1, die übrigen Werte sind eine beschreibende Erweiterung im Code. |
 | Gemeinsame Kennzahlenbasis | Alle Handelslisten werden gleich gemessen (Abschnitt 5): E[R] netto, Trefferquote mit Wilson-Intervall, Ø Gewinn und Verlust, Profitfaktor, größter Rückgang in R und Tagen, Rendite mit ausdrücklicher Kapital- und Risikobasis. Nicht berechenbare Kennzahlen stehen als Strich, nie als Ersatzwert; unvereinbare Kennzahlen werden nicht gemittelt. |
 | Logbuch gegen Ergebnisdateien | Von 168 Zahlen im Logbuch (29 Studien) wurden 159 in den Ergebnisdateien wiedergefunden; der Rest (Rundung, Textverweise, nicht kopierte Datei) ist in `logbuch_abgleich.json` einzeln benannt. |
 | Unabhängigkeit der Studien | Studien mit denselben Daten gelten als eine Evidenzquelle (Cluster, Abschnitt 2); es gibt keine Doppelzählung in der Evidenzmatrix. |
+
+### Kennzeichnung der tragenden Aussagen
+
+Jede Aussage, auf der das Urteil beruht, mit ihrer Kennzeichnung: VERIFIZIERT (eigene Rechnung oder im gelesenen Bericht wiedergefunden), NUR BERICHTET (übernommen, nicht nachgerechnet), ANNAHME (für die Rechnung gesetzt, nicht belegt), NICHT PRÜFBAR (nicht zugänglich).
+
+| Aussage | Kennzeichnung | Grundlage |
+|---|---|---|
+| Die gespeicherten Handelslisten von S7 und S7b (4.879 Trades) lassen sich aus Rohkerzen ohne Abweichung reproduzieren | VERIFIZIERT | T1, eigene Rechnung; Rohdaten gegen das Manifest geprüft |
+| Erwartung nach Kosten, Bänder, Kostenszenarien, Zufallsvergleich, Raster, Konzentration, Regime und Referenzen von C1 und C3 (2020 bis 2024) | VERIFIZIERT | T2 bis T10, eigene Rechnung auf den Rohdaten |
+| Alle bereitgestellten Archivdateien stimmen mit den Prüfsummen des Manifests überein; BTC/ETH-4h-Kerzen sind lückenlos, SOL hat wenige Lücken | VERIFIZIERT | `datenaudit.json`, `t15_datenaudit.json` |
+| T15 wurde vor dem Laden der Daten eingefroren und einmal gerechnet | VERIFIZIERT (Commit-Reihenfolge); Einmaligkeit nur verfahrensmäßig | Protokoll-Commit `ceed9f9` vor dem Datenbericht, dem Code und dem Lauf (siehe Grenzen der Prüfung) |
+| S32: Übertragung auf andere Coins −0,0255 R bei n 3.311 | NUR BERICHTET | Ergebnisdatei gelesen, SHA-256 festgehalten; Kerzen der 137 Coins nicht im Container, nicht neu gerechnet |
+| Laborbericht Deflated Sharpe 0,81 (N = 64, beide Abschnitte gemeinsam) | NUR BERICHTET | `deflated_sharpe_2026-11-11.md`; die eigene Rechnung (gepoolt 0,78, VERIFIZIERT) ersetzt den Wert |
+| Mehr als 150 Prüfungen auf BTC 2020 bis 2024 ohne Gesamtzähler | NUR BERICHTET | Überzeugungsregister vom 12.11.2026, nicht nachgezählt; das Urteil hängt nicht daran (G7 scheitert schon bei N = 58) |
+| OFX: 27.023 Konfigurationen × 300 Filter, 0 Varianten bestehen das Sieb | NUR BERICHTET | Suchumfang und Siebergebnis aus den Laborfassungen; die Bestenlisten (135.100 Einträge) wurden neu ausgewertet (Prüftiefe B) |
+| S7b-Sonde Juli bis Oktober 2026: 35 Trades, −5,8 R | NUR BERICHTET | versehentlich gesehen, nicht aufbewahrt, nicht reproduzierbar |
+| S7b-Vorwärtsjournal: 4 geschlossene Trades der Regel D20-T3 | VERIFIZIERT | Hash-Kette lückenlos, Zahlen nachgerechnet (Kopie des Journals mit SHA-256) |
+| Bitunix-Gebühren VIP0: Taker 0,06 %, Maker 0,02 % | ANNAHME | von Uzi genannt, im Code `FEES_VERIFIED = False`; ohne Konto nicht prüfbar. K1 und K2 rechnen mit 0,06 % je Seite |
+| Bitunix-Funding entspricht dem Binance-Funding | ANNAHME | keine öffentliche Funding-Historie von Bitunix; Einheit der Rate unklar |
+| Bitunix-Kerzen vor dem Kontraktstart (2024-06-26) sind Index-Kerzen | ANNAHME | Vermutung aus dem Kerzenvergleich |
+| Geldmarktzins im Carry-Vergleich | ANNAHME | aus dem Gedächtnis gesetzt, nicht aus TIM-Daten |
+| Spread und Marktorder-Schlupf von Bitunix | VERIFIZIERT für eine Momentaufnahme von etwa 90 Sekunden in ruhigem Markt; nicht repräsentativ | Rohproben in `eingaben/bitunix/bitunix_depth_samples.json` (Abschnitt 10) |
+| Kraken-Echtgeldtest, Bitunix-Konto, V2-Archiv, Mac-Journale | NICHT PRÜFBAR | nicht zugänglich (Abschnitt 2) |
+
+### Nachtrag: Gegenprüfung nach dem Einfrieren
+
+Nach einer unabhängigen Gegenprüfung wurden vier Fragen nachgerechnet (`nachtrag_gegenpruefung.py`, `ergebnisse/nachtrag_gegenpruefung.json`; Holdout nicht geladen). Das ist Diagnose: Sie ändert kein Kriterium und kein Urteil, die ursprünglichen Ergebnisse stehen unverändert daneben.
+
+| Nr | Frage | Ergebnis | Wirkung |
+|---|---|---|---|
+| N1 | Der Monatsblock-Bootstrap des Protokolls zieht nur Monate mit Trades. Was ändert sich, wenn alle 60 Kalendermonate ein Los bekommen (C1 gepoolt; 59 haben Trades)? | Untere 95-%-Grenze von E[R] +0,080 → +0,071 R, obere +0,415 → +0,414 R; 95. Perzentil des größten Rückgangs 33,3 → 34,2 R | G6 bleibt bestanden (untere Grenze über 0) |
+| N2 | Das Labor belastet Funding-Abrechnungen ab dem Einstiegszeitpunkt (bei 226 von 497 Trades fällt der Einstieg mit einer Abrechnung zusammen). Was ändert sich, wenn nur spätere Abrechnungen zählen? | C1 K2 gepoolt +0,220 → +0,222 R (Training +0,207 → +0,210, Validierung +0,237 → +0,238) | Die Laborkonvention ist die vorsichtigere; kein Urteil ändert sich |
+| N3 | Aufteilung des Auftrags (Training 2020 bis 2023, Validierung 2024) statt der Aufteilung des Protokolls | C1 K1: +0,243 R (n 394) / +0,224 R (n 105); C1 K2: +0,225 / +0,200 R; C3 K1: +0,234 (n 341) / +0,213 R (n 84); C3 K2: +0,216 / +0,186 R | Gleiches Bild: positiv in beiden Abschnitten. Zufalls- und Mehrfachtest-Prüfungen wurden für diese Aufteilung nicht wiederholt |
+| N4 | T15: Warum ist der Nettoertrag auf das Nominal (7,7 bp je Trade) so viel kleiner als E[R] mal mittlerer Stop-Abstand (64 bp)? | Mittlerer Stop-Abstand 4,18 %; Mittel von R × Stop 7,1 bp; Korrelation von R und Stop-Abstand −0,13. Je Jahr: 2017 −204 bp bei Stop 5,9 %, 2018 54 bp, 2019 51 bp. Stop unter 4 %: n 95, E[R] +0,33; ab 4 %: n 62, E[R] −0,12 | Weite Stopps verlieren, enge gewinnen: Die Erwartung in R lässt sich nicht einfach auf das Nominal übertragen (nachträglich, beschreibend) |
+
+### Grenzen der Prüfung
+
+- **Einmaligkeit von T15:** Der Lauf verweigert den Start, wenn eine Vorbedingung fehlt oder schon ein Ergebnis vorliegt. Das ist eine Schranke im Code, kein technischer Zwang. Dass es genau einen Lauf mit echten Daten gab, belegen die Reihenfolge der Commits (Protokoll, Datenbericht, Code, Lauf) und der Zeitpunkt der Daten; davor liefen nur Tests mit künstlichen Daten.
+- **Seltene Zweige im Simulationskern:** Der Zweig „Stop vor dem Einstieg“ kam in der Hauptrechnung (C1 gepoolt, K1) nicht vor (Ausstiegsgründe nur Stop, Ziel und Zeitstopp); er ist nur durch Einheitstests abgedeckt.
+- **Art der Gegenprüfung:** Sie erfolgte durch zwei nur lesende Prüfer (KI-Subagenten mit frischem Kontext), die Code und Text gelesen haben; ihre Befunde wurden einzeln gegen die Quellen geprüft, bestätigte Fehler korrigiert und Fehlalarme verworfen. Eine Prüfung durch Dritte oder mit unabhängig von Dritten geschriebenem Code gab es nicht.
 
 ## 4. Fehler, ausgeschlossene Ergebnisse und Begründungen
 
@@ -222,7 +272,7 @@ Keine Studie ist als UNGÜLTIG eingestuft: Das Labor kennzeichnet eigene Mängel
 | S7b-Makro: Filter F5 besteht | Fünf Filter getestet, nur F5 besteht; Glückstest über fünf Filter p = 0,066, F1 bis F4 bestehen nicht. | Nicht an die Regel hängen; als Vorwärts-Log beobachten. |
 | Plan-Journale (84 Pläne): ohne das Level-Journal +8,39 R | Gesamt −9,32 R; laut Überzeugungsregister kippen 27 Ausschlüsse das Vorzeichen des Hauptjournals von −27,6 R auf +0,9 R; alle Pläne Grade C, Score streut nicht, vier Wochen. | Keine Aussage; Auswahl bestimmt das Vorzeichen. |
 | OF-Schatten: Orderflow-Ausstieg −0,23 R gegen Journal −11,44 R | Regel nach Ansicht von 25 Zwischenständen geschrieben, nur Long in fallendem Markt, Pläne überlappen, Kosten ungleich. | Nur Beobachtung. |
-| Hohe Trefferquoten (S4: 75 %-Ziel, S6: 72 bis 82 %) | Erwartung negativ (−0,07 bis −0,23 R); Zufallseinstiege mit gleicher Geometrie treffen genauso oft: Trefferquote kommt aus Ziel zu Stop, nicht aus dem Einstieg. | Trefferquote ist kein Gütekriterium; maßgeblich ist E[R] nach Kosten. |
+| Hohe Trefferquoten (S6: 72 bis 82 % im Training; S4 verfehlte sein 75-%-Ziel) | S6: Erwartung −0,07 bis −0,11 R; Zufallseinstiege mit gleicher Geometrie treffen genauso oft (82,0 % gegen 81,9 %): Die Trefferquote kommt aus dem Verhältnis von Ziel zu Stop, nicht aus dem Einstieg. S4: höchste Trefferquote 52,5 %, Erwartung −0,12 bis −0,23 R. | Trefferquote ist kein Gütekriterium; maßgeblich ist E[R] nach Kosten. |
 | S7b-Forward: 4 und 3 Trades, +3,8 R und +6,8 R | n viel zu klein, alle Short, ein Marktabschnitt; die Summe liegt im Rahmen von Glück. Die S7b-Sonde Juli bis Oktober 2026 (35 Trades, −5,8 R) wurde versehentlich gesehen, nicht aufbewahrt und nicht vorab ausgewertet. | Weder Beleg noch Gegenbeleg; beide zählen nicht. |
 | Trendregel unter K1: +0,239 R, Band über 0 | Nach der Zählung der Versuche kein Nachweis: DSR 0,42 / 0,43 (N = 64), Beste 5 % der Trades = 62,6 % der Summe, 2020 liefert 49 von 119 R, 2021 −0,03 R je Trade; eine Kerze Verzögerung ergibt in der Validierung −0,007 R. | Plausible Hypothese, kein Nachweis (Stufe 2). |
 | T15: +0,154 R außerhalb der Entwicklung | p 0,079 (Schwelle 0,05 verfehlt); Zufallseinstiege in SMA200-Richtung im Mittel +0,177 R gegen +0,146 R der Regel (beide K1, p 0,60); beste 5 % der Trades = 98,3 % der Summe. | Positive Richtung, aber kein Nachweis und kein Vorsprung des Einstiegs gegenüber der Trendseite. |
@@ -233,6 +283,17 @@ Keine Studie ist als UNGÜLTIG eingestuft: Das Labor kennzeichnet eigene Mängel
 - **S32 (Übertragung auf 137 Coins):** nur berichtet (Ergebnisdatei gelesen, SHA-256 festgehalten); die Kerzen liegen nicht im Container und konnten nicht neu gerechnet werden.
 - **T15:** Der Zeitraum mit Signalmöglichkeit ist wegen acht Datenlücken kürzer als im Zusatzprotokoll geschätzt (etwa 19,8 statt 27 Monate); das wurde vor dem Lauf festgehalten (`T15_DATENBERICHT.md`), Regel und Kriterien blieben unverändert.
 - **Logbuch-Zahlen:** Wo das Logbuch Zahlen nennt, die in den Ergebnisdateien nicht stehen, steht das einzeln in `logbuch_abgleich.json`; keine dieser Zahlen wird als Evidenz verwendet.
+
+### Korrekturen an dieser Studie nach der Gegenprüfung
+
+Die unabhängige Gegenprüfung hat in einer ersten Fassung dieser Studie Fehler gefunden; sie wurden einzeln gegen die Quellen geprüft und vor der Abgabe korrigiert (die Fehlalarme sind hier nicht aufgeführt):
+
+- Die Trefferquoten von 72 bis 82 % gehören zu S6, nicht zu S4 (S4: höchstens 52,5 %).
+- Die Stichprobengröße 318 gilt für eine wahre Erwartung von 0,24 R (bei 0,20 R sind es 458), nicht für 0,2 R.
+- Eine Kerze Verzögerung halbiert die Erwartung im Training nicht (+0,221 → +0,181 R, etwa −18 %); sie löscht sie in der Validierung (+0,264 → −0,007 R).
+- Der Zufallsvergleich in T15 (C3) wurde zuerst mit den Zahlen von C1 verglichen; verglichen wird jetzt mit C3 auf derselben Basis (Abschnitt 1 und 9.3).
+- Evidenzmatrix E1: T15 wurde doppelt gezählt (als Beleg und als Gegenbeleg) und „7 geschlossene Papier-Trades“ stimmte nicht (4 der Regel D20-T3).
+- Register: S7-Werte (Training / Validierung getrennt), S9 (nur BTCUSDT 15m, Prüftiefe C), K1 (Prüftiefe C) und der Zufallswert von S7b (+0,097 R eigene Rechnung statt eines nicht auffindbaren Laborwerts +0,095 R).
 
 ## 5. Vergleichbare neu berechnete Resultate
 
@@ -262,6 +323,8 @@ Alle Zahlen aus der eigenen Nachrechnung, in R-Vielfachen des Anfangsrisikos je 
 
 C1 enthält SOL, C3 nicht; K1 und K2 sind Kostenszenarien (Abschnitt 3). T15 läuft ohne Funding (keine Historie) auf Spot-Kerzen; die Spalten sind deshalb nicht streng vergleichbar. Aufteilung nach Instrument und Jahr: Abschnitt 9.
 
+Zur Zeile „Netto je Trade in Basispunkten des Nominals“: Sie ist der Mittelwert von R × Stop-Abstand je Trade, nicht E[R] mal mittlerer Stop-Abstand. Bei T15 liegt sie mit 7,7 bp weit unter dem Produkt der Mittelwerte (64 bp), weil weite Stopps verlieren und enge gewinnen (Korrelation von R und Stop-Abstand −0,13; 2017 bei mittlerem Stop 5,9 % −204 bp, 2019 bei 3,0 % 51 bp; Nachtrag N4, nachträglich und beschreibend). Das passt zum Befund aus T9, dass C1 im oberen Schwankungsterzil (weite Stopps) nur +0,00 R je Trade bringt.
+
 ### 5.2 Kostenempfindlichkeit (E[R] je Trade, Training / Validierung)
 
 | Szenario | C1 | C3 |
@@ -273,7 +336,7 @@ C1 enthält SOL, C3 nicht; K1 und K2 sind Kostenszenarien (Abschnitt 3). T15 lä
 | K4 Maker-Ziel (optimistisch) | +0,226 / +0,273 | +0,209 / +0,282 |
 | L1 eine Kerze Verzögerung | +0,181 / −0,007 | +0,142 / −0,043 |
 
-Die Erwartung von C1 erreicht null erst bei etwa dem 4,4-Fachen der K1-Kosten (Gebühr und Schlupf skaliert); die Empfindlichkeit liegt woanders: eine Kerze Verzögerung des Einstiegs halbiert die Erwartung im Training und löscht sie in der Validierung.
+Die Erwartung von C1 erreicht null erst bei etwa dem 4,4-Fachen der K1-Kosten (Gebühr und Schlupf skaliert); die Empfindlichkeit liegt woanders: eine Kerze Verzögerung des Einstiegs senkt die Erwartung im Training um 18 % (von +0,221 auf +0,181 R) und löscht sie in der Validierung (+0,264 → −0,007 R).
 
 ### 5.3 Andere Handelslisten (Training, einheitliche Kennzahlen)
 
@@ -309,9 +372,9 @@ Erzeugt aus den Ergebnisdateien und dem Register: 18 Erkenntnisse, alle 69 gefun
 
 | Nr | Erkenntnis | Richtung | Evidenzstand |
 |---|---|---|---|
-| E1 | Die Trendregel S7b-D20-T3 (Donchian-20-Ausbruch in Richtung SMA200, 4h, Ziel 3 R, ATR-Stop, höchstens eine Position) hatte 2020–2024 auf BTC, ETH und SOL nach Kosten eine positive Erwartung. | positiv (Hypothese) | historisch gut ausgesehen: ja. Korrigiert reproduziert: ja (Prüftiefe A). Außerhalb der Entwicklung bestätigt: nein (S32 negativ; T15 auf BTC/ETH 2017–2019 positiv, aber p 0,079, siehe E1b; kein ungesehener Abschlusstest). Prospektiv beobachtet: 7 geschlossene Papier-Trades, zu wenig. |
+| E1 | Die Trendregel S7b-D20-T3 (Donchian-20-Ausbruch in Richtung SMA200, 4h, Ziel 3 R, ATR-Stop, höchstens eine Position) hatte 2020–2024 auf BTC, ETH und SOL nach Kosten eine positive Erwartung. | positiv (Hypothese) | historisch gut ausgesehen: ja. Korrigiert reproduziert: ja (Prüftiefe A). Außerhalb der Entwicklung bestätigt: nein (S32 negativ; T15 auf BTC/ETH 2017–2019 positiv, aber p 0,079, siehe E1b; kein ungesehener Abschlusstest). Prospektiv beobachtet: 4 geschlossene Papier-Trades der Regel D20-T3 (alle Short; die Variante D20-T4 ist kein Kandidat), zu wenig. |
 | E1b | Außerhalb des Entwicklungszeitraums (BTC/ETH Spot, 2017-08 bis 2019-12, T15) zeigt die Trendregel C3 eine positive, aber nicht belegte Erwartung nach Kosten. | positiv, nicht signifikant | Außerhalb der Entwicklung getestet: ja (T15 und S32). Bestätigt: nein (P1 nicht erfüllt); das Merkmal „außerhalb der Entwicklung bestätigt“ bleibt unbesetzt. |
-| E2 | Die Trendregel überträgt sich nicht auf andere Coins: Auf dem einzigen unabhängigen Universum (137 Coins, Punkt-in-Zeit) ist die Erwartung nach Kosten nicht von null verschieden. | negativ | Außerhalb der Entwicklung getestet: ja (negativ). Korrigiert reproduziert: nein (nur berichtet). |
+| E2 | Die Trendregel überträgt sich nicht auf andere Coins: Auf dem einzigen Universum außerhalb von BTC/ETH/SOL (137 Coins, monatlich nach Handelsvolumen neu bestimmt) ist die Erwartung nach Kosten nicht von null verschieden. | negativ | Außerhalb der Entwicklung getestet: ja (negativ). Korrigiert reproduziert: nein (nur berichtet). |
 | E3 | Orderflow-Regeln (OF2, OFX-Suche, S19, S31/S31b, S2) haben keinen belegten Vorteil. | negativ / nicht belegt | historisch gut ausgesehen: OF2 ja (n 56). Korrigiert reproduziert: Kennzahlen ja (Prüftiefe B), Vorteil nein. Außerhalb der Entwicklung: nein. Prospektiv: OF-Schatten n 25, Regel nachträglich, keine Aussage. |
 | E4 | Indikator-Merkmale (Kerzen, Orderflow, Funding, Open Interest, Positionierung) sortieren BTC-1h-Trades zum Teil, tragen aber nach Kosten keine Handelsregel. | negativ | historisch gut ausgesehen: Sortiereffekt ja, Gewinn nein. Korrigiert reproduziert: Zahlen im Logbuch in den Ergebnisdateien gefunden (Prüftiefe C+). Außerhalb der Entwicklung: nein. |
 | E5 | Kosten dominieren kurzfristige Regeln mit engen Stops: Je kleiner der Stop-Abstand, desto größer die Kosten in R, bis sie jeden Brutto-Vorteil verbrauchen. | negativ | Korrigiert reproduziert: Prüftiefe B (S34–S38) und C+ (Rest). Außerhalb der Entwicklung: nein (gleiche Daten, gleiche Kostenannahme). |
@@ -354,7 +417,7 @@ Lesehilfe: Die einzige Erkenntnis mit positiver Richtung und eigener Nachrechnun
 | Optimierungsbudget | null; kein Parameter wird angepasst. |
 | Kosten | K0 bis K4 und L1; G2 prüft K2. |
 | Kriterien | G1 Reproduktion; G2 E[R] > 0 unter K2 in Training und Validierung; G3 Zufallsvergleich p ≤ 0,05 in beiden; G4 mindestens 70 % der 81 Nachbarzellen positiv; G5 positiv bei Weglassen jedes Jahres und Instruments; G6 untere 95-%-Grenze des gepoolten Monatsblock-Bootstraps über 0; G7 Deflated Sharpe (N = 64) mindestens 0,95; G8 Übertragung auf unabhängiges Universum (S32); G11 Bitunix-Übertragbarkeit; für C2 CG1, CG2, G10. |
-| Stufen | 1 Kein belastbarer Vorteil; 2 Interessante Hypothese, Evidenz unzureichend; 3 Historisch robust, prospektiver Test ausstehend; 4 Für begrenztes Paper-Trading geeignet (Stufe 3 und vorwärts beobachtete 30 Papier-Trades mit E[R] > 0 unter K2 oder ein freigegebener Holdout-Lauf). |
+| Stufen | 1 Kein belastbarer Vorteil; 2 Interessante Hypothese, Evidenz unzureichend; 3 Historisch robust, prospektiver Test ausstehend; 4 Für begrenztes Paper-Trading geeignet: Stufe 3 und eine vorab festgelegte Vorwärts-Mindestzahl (mindestens 30 geschlossene Papier-Trades mit E[R] > 0 unter K2 und Zahl der Stopps im erwarteten Bereich) oder ein einmaliger, von Uzi und Barti freigegebener Holdout-Lauf mit vorab festgelegten Kriterien (so im Wortlaut des Protokolls). |
 | Statistik | Monatsblock-Bootstrap 10.000 Ziehungen, Seed 20261116; Zufallsvergleich 1.000 Ziehungen; eigene DSR-Rechnung; keine p-Wert-Korrektur über T2 bis T14, weil die Kriterien eine Schnittmenge bilden. |
 | Abbruch | Reproduktion weicht ab oder Datenintegritätsfehler: Auswertung der betroffenen Reihe stoppt, Befund wird berichtet. Ein Test, der den Holdout bräuchte, wird nicht gerechnet. |
 | Nicht entfernt | Fehlgeschlagene Studien und Varianten bleiben im Register und in der Matrix. |
@@ -371,7 +434,7 @@ Lesehilfe: Die einzige Erkenntnis mit positiver Richtung und eigener Nachrechnun
 |---|---|---|
 | T1 Reproduktion | 4.879 Trades, Abweichung 0,0 R | positiv, G1 bestanden |
 | T2 Kosten | K2 Training +0,207 / Validierung +0,237; K3 +0,154 / +0,182; Nullpunkt beim 4,4-Fachen der K1-Kosten | positiv, G2 bestanden |
-| T3 Zufallseinstiege (C1) | p 0,035 / 0,001; Zufallsmittel Training +0,097 R (Regel +0,221), Validierung +0,006 R (Regel +0,264), alle unter K1. **C3:** Training p 0,087 | positiv für C1, G3 für C3 nicht bestanden |
+| T3 Zufallseinstiege (C1) | p 0,035 / 0,001; Zufallsmittel Training +0,097 R (Regel +0,221), Validierung +0,006 R (Regel +0,264), alle unter K1. **C3:** Training Zufall +0,116 R gegen Regel +0,203 R, p 0,087; Validierung −0,017 R gegen +0,271 R, p 0,001 | positiv für C1; für C3 G3 im Training nicht bestanden |
 | T4 Raster | 97,5 % / 100,0 % der Nachbarzellen positiv, 94,5 % aller 600 Zellen; C1 liegt bei Rang 86 %, nicht an der Spitze | positiv, G4 bestanden |
 | T5 Komponenten | Ohne SMA200-Filter +0,177 R (n 594), nur long +0,197, nur short +0,237, nur SOL +0,154, gespiegelte Reihenfolge der Instrumente +0,180 | gemischt: der Ausbruch trägt allein, die Positionsreihenfolge verschiebt das Ergebnis um 0,06 R |
 | T6 Konzentration | Beste 5 % der Trades = 62,6 % der Summe; ohne die besten 10 Trades +0,182, ohne die besten 25 +0,094 R; 2020 liefert 49 von 119 R, 2021 −3,5 R; 38 von 59 Monaten positiv | G5 bestanden (jedes Jahr und Instrument weglassbar), aber stark konzentriert |
@@ -424,7 +487,8 @@ Lesehilfe: Die einzige Erkenntnis mit positiver Richtung und eigener Nachrechnun
 
 ### 9.3 Widersprüche und wie sie zu lesen sind
 
-- **Positiv gegen negativ:** Im Entwicklungszeitraum schlägt C1 zufällige Einstiege in SMA200-Richtung mit gleicher Ausstiegsregel deutlich (p 0,035 / 0,001; Zufallsmittel +0,097 / +0,006 R gegen +0,221 / +0,264 R der Regel, alle unter K1). In T15 ist es umgekehrt: Zufall +0,177 R, Regel +0,146 R (K1). Mit den Daten vereinbar sind drei Lesarten: (a) der Wert des Ausbruchszeitpunkts hängt vom Marktabschnitt ab; (b) ein Teil des Entwicklungsvorteils ist Auswahl im Nachhinein (Coins, Zeitraum und Regelfamilie waren bekannt); (c) 2017 bis 2019 trugen Trendseite und Auszahlungsgeometrie allein, weil die Märkte stark trendeten. Die Daten entscheiden nicht zwischen ihnen; jede Lesart ist eine Hypothese, kein Beweis.
+- **Positiv gegen negativ:** Im Entwicklungszeitraum schlägt C1 zufällige Einstiege in SMA200-Richtung mit gleicher Ausstiegsregel (p 0,035 / 0,001; Zufallsmittel +0,097 / +0,006 R gegen +0,221 / +0,264 R der Regel, alle unter K1). Auf derselben Basis wie T15 (C3, BTC/ETH): Training Zufall +0,116 R gegen Regel +0,203 R (p 0,087, knapp nicht signifikant), Validierung −0,017 R gegen +0,271 R (p 0,001). In T15 ist es umgekehrt: Zufall +0,177 R, Regel +0,146 R (K1, p 0,60). Mit den Daten vereinbar sind drei Lesarten: (a) der Wert des Ausbruchszeitpunkts hängt vom Marktabschnitt ab; (b) ein Teil des Entwicklungsvorteils ist Auswahl im Nachhinein (Coins, Zeitraum und Regelfamilie waren bekannt); (c) 2017 bis 2019 trugen Trendseite und Auszahlungsgeometrie allein, weil die Märkte stark trendeten. Die Daten entscheiden nicht zwischen ihnen; jede Lesart ist eine Hypothese, kein Beweis.
+- **Stärkster Einwand und Gegenargument:** Die einfache Referenz R2 (SMA200 lang/flat) hat den höheren Sharpe (1,55 gegen 1,36 für C1): Die Trendseite allein erklärt auf Tagesbasis mindestens so viel wie die Regel, und in T15 liegt der Zufall vorn. Das spricht dafür, dass ein Vorteil vor allem Trendseite und Auszahlungsgeometrie ist. Dagegen steht die geringe Aussagekraft von T15: n 157, die 90-%-Spanne der Zufallsmittel reicht von +0,012 bis +0,354 R und enthält den Wert der Regel; die kleinste bei 80 % Power nachweisbare Erwartung ist +0,35 R. p 0,079 und der fehlende Vorsprung sind daher kein Beleg gegen die Regel; T15 hat zu wenig Aussagekraft, um zwischen den Lesarten zu entscheiden.
 - **Plateau gegen Verzögerung:** Die Regel ist gegen Parameteränderungen robust, aber empfindlich gegen eine Kerze Verzögerung (Validierung −0,007 R). Für die Ausführung bedeutet das: Latenz und Schlupf beim Einstieg sind wichtiger als die Wahl der Parameter.
 - **Mehrere Studien, eine Quelle:** S7, S7b, S25, S7b-Makro, S32 und T1 bis T15 nutzen denselben Trend-Datencluster; ihre Übereinstimmung ist keine unabhängige Bestätigung.
 - **Gegen alle Erwartung nicht gefunden:** Weder bei Orderflow (OF2/OFX/S19/S31), Indikator-Merkmalen (S20 bis S28), Level-Regeln (S30, S34 bis S38) noch bei frühen Familien (R4, S4, S6, S13, S14) gab es nach Kosten einen belegten Vorteil. OF2 (n 56, +0,27 R) und S38 (+0,09 R, n 191) sind die einzigen positiven Zahlen und beide nicht von null unterscheidbar.
@@ -436,14 +500,14 @@ Lesehilfe: Die einzige Erkenntnis mit positiver Richtung und eigener Nachrechnun
 - **Erwartung je Trade:** C1 +0,239 R (95-%-Band +0,080 bis +0,415 R, K1); T15 +0,154 R (Band −0,056 bis +0,391 R, K2). Die Bänder überlappen zwischen +0,08 und +0,39 R: Eine gemeinsame wahre Erwartung in diesem Bereich ist mit beiden Stichproben vereinbar, für T15 allein auch eine Erwartung nahe null. (Die Stichproben unterscheiden sich in Daten, Kosten und Funding und sind nur bedingt vergleichbar.)
 - **Stichprobengröße für einen Nachweis:** Bei Streuung 1,72 R je Trade braucht ein einseitiger Test zum Niveau 5 % mit 80 % Power für eine wahre Erwartung von +0,24 R rund 318 Trades (bei 8,5 Trades im Monat etwa 3,1 Jahre); für die in T15 beobachteten +0,15 R wären es rund 800 Trades (etwa 8 Jahre). 30 Trades haben nur etwa 19 % Power: die Mindestzahl 30 für Stufe 4 ist eine Plausibilitätsschranke, kein Nachweis.
 - **Holdout:** Das Protokoll sieht 2025-01-01 bis 2026-09 vor; für die Aussagekraft zählt nur der bis dahin ungesehene Teil 2025-01 bis 2026-06 (18 Monate). Er ergäbe etwa 153 Trades (C1) und damit eine Power von nur etwa 53 % bei +0,24 R und 29 % bei +0,15 R; die kleinste bei 80 % Power nachweisbare Erwartung wäre etwa +0,35 R. Juli bis Oktober 2026 ist durch die S7b-Sonde schon gesehen und müsste getrennt ausgewiesen werden. Ein Fehlschlag widerlegte also kleinere Vorteile nicht.
-- **Mehrfachtest:** Laut Überzeugungsregister (nur berichtet) mehr als 150 Prüfungen auf BTC 2020 bis 2024 ohne fortlaufenden Gesamtzähler, dazu 26.707 Orderflow-Konfigurationen und die mehrfach verbrauchte Validierung: Das macht jede p-Aussage optimistisch; die Deflated-Sharpe-Werte bei N = 64 (0,42 / 0,43) sind die ehrlichere Zahl.
+- **Mehrfachtest:** Laut Überzeugungsregister (NUR BERICHTET, nicht nachgezählt) mehr als 150 Prüfungen auf BTC 2020 bis 2024 ohne fortlaufenden Gesamtzähler, dazu die Orderflow-Suche (26.707 Konfigurationen beim Einfrieren des Protokolls, 27.023 in der Kopie vom 16.11.) und die mehrfach verbrauchte Validierung: Das macht jede p-Aussage optimistisch; die Deflated-Sharpe-Werte bei N = 64 (0,42 / 0,43) sind die ehrlichere Zahl, und G7 scheitert schon bei N = 58 (0,44 / 0,45).
 
 ### Drawdown-Risiko
 
 | Größe | Wert |
 |---|---|
 | C1 gepoolt 2020–24, größter Rückgang | 21,0 R, Dauer 239 Tage |
-| C1 Monatsblock-Bootstrap | Median 19,3 R, 95. Perzentil 33,3 R |
+| C1 Monatsblock-Bootstrap | Median 19,3 R, 95. Perzentil 33,3 R (2.000 Ziehungen; wenn alle Kalendermonate ein Los bekommen: Median 19,8 R, 95. Perzentil 34,2 R, Nachtrag N1) |
 | C3 T15 2017–19 | 12,5 R über 316 Tage; Bootstrap 95. Perzentil 24,3 R |
 | In Prozent des Kontos bei 1 % Risiko je Trade | etwa 21 % historisch, etwa 33 % im 95. Perzentil |
 | Verlustserien | Trefferquote nur 38 %: lange Serien von Stopps sind normal; der schlechteste Monat kostete 8,5 R |
@@ -502,12 +566,12 @@ Kein Kandidat erreicht Stufe 4. Deshalb ist der Plan **kein Eignungsurteil**, so
 | Baustein | Festlegung |
 |---|---|
 | Strategieversion | unverändert S7b-D20-T3 (C1) und C3 als zweites virtuelles Portfolio (Abschnitt 11); kein Parameter, keine Kosten, kein Kriterium ändert sich während der Beobachtung |
-| Datenumfang und Dauer | Auswertung genau einmal bei **318 geschlossenen Trades je Portfolio** (Power 80 % für +0,24 R bei Streuung 1,72 R), das sind bei 8,5 Trades im Monat (C1) etwa 3,1 Jahre, bei C3 (7,2 im Monat) etwa 3,7 Jahre. Zwischenstände dienen nur der Überwachung, nicht dem Urteil. Die Schranke von 30 Trades aus Protokoll 1.0 gilt als Plausibilitätsprüfung (Stufe 4 braucht außerdem Stufe 3). |
+| Datenumfang und Dauer | **Empfehlung für ein Zusatzprotokoll, das vor der ersten Auswertung einzufrieren ist** (nicht Teil von Protokoll 1.0): Auswertung genau einmal bei **318 geschlossenen Trades je Portfolio** (Power 80 % für +0,24 R bei Streuung 1,72 R), das sind bei 8,5 Trades im Monat (C1) etwa 3,1 Jahre, bei C3 (7,2 im Monat) etwa 3,7 Jahre. Zwischenstände dienen nur der Überwachung, nicht dem Urteil. Die Zahlen von Protokoll 1.0 (mindestens 30 Trades für Stufe 4) und der S7b-Präregistrierung (100 Trades für das endgültige Urteil) bleiben bestehen; sie sind Plausibilitätsschranken, keine Nachweisgrenzen (Stufe 4 braucht außerdem Stufe 3). |
 | Warum nicht weniger | Mit 30 Trades beträgt die Power nur 19 %, mit 100 Trades (Mindestzahl der S7b-Präregistrierung für das endgültige Urteil) 40 %; für die in T15 beobachtete Erwartung wären rund 800 Trades nötig. Eine kürzere Beobachtung kann Vorteile weder belegen noch widerlegen. |
 | Kostenmodell | K1 und K2 parallel; zusätzlich wird je Trade der tatsächlich gemessene Schlupf zwischen Signalkurs und Fill-Modell (Orderbuch des Handelsplatzes zum Zeitpunkt) festgehalten, um die Annahmen zu prüfen |
 | Monitoring (wöchentlich, nur lesend) | Trades, E[R] mit Band, Rückgang, Kosten in R je Trade, Anzahl Stopps gegen Ziel gegen Zeitstopp, Lücken in den Kerzen, Journal-Hash-Kette; Abgleich der Signale mit der Nachrechnung (`s7b_nachrechnung.py`) auf denselben Kerzen |
 | Abbruchregeln | (1) Abweichung zwischen Journal und Nachrechnung (Integritätsfehler); (2) tatsächlicher Kostenanteil über dem Doppelten der K1-Kosten (0,08 R je Trade; der Nullpunkt der Erwartung läge beim 4,4-Fachen) auf mindestens 20 Trades; (3) größter Rückgang über dem 95. Perzentil des Bootstraps (33 R): Stopp und Ursachenprüfung, kein Weiterlaufen mit geänderter Regel; (4) Datenlücken über 5 % der erwarteten Kerzen. |
-| Abschlusskriterien | Nach der festgelegten Trade-Zahl einmalige Auswertung: E[R] unter K2 > 0 und einseitiges Monatsblock-p ≤ 0,05 und Zufallsvergleich in SMA200-Richtung p ≤ 0,05; Ergebnis wird berichtet wie ein Erfolg, auch bei Fehlschlag. Echtgeld bleibt ausgeschlossen, bis Uzi ausdrücklich anders entscheidet. |
+| Abschlusskriterien (Vorschlag für das Zusatzprotokoll) | Nach der festgelegten Trade-Zahl einmalige Auswertung: E[R] unter K2 > 0 und einseitiges Monatsblock-p ≤ 0,05 und Zufallsvergleich in SMA200-Richtung p ≤ 0,05; Ergebnis wird berichtet wie ein Erfolg, auch bei Fehlschlag. Echtgeld bleibt ausgeschlossen, bis Uzi ausdrücklich anders entscheidet. |
 
 ### 12.2 Einmaliger Holdout-Lauf (braucht Uzis ausdrückliches Wort und Bartis Zustimmung)
 
@@ -515,7 +579,7 @@ Der einzige schnelle Weg zu neuen, unberührten Daten ist der Holdout (Protokoll
 
 ### 12.3 Höchster Erkenntniswert der nächsten Untersuchung
 
-Die Daten widersprechen sich an genau einer Stelle: Der Einstiegszeitpunkt (Donchian-Ausbruch) schlug zufällige Einstiege in Trendrichtung im Entwicklungszeitraum deutlich (+0,097 / +0,006 R gegen +0,221 / +0,264 R, Training / Validierung), in 2017 bis 2019 aber nicht (+0,177 R gegen +0,146 R). Die nächste Untersuchung mit dem höchsten Erkenntniswert ist deshalb, **vorab festzulegen und einmal zu prüfen, ob die Trendseite mit der Auszahlungsgeometrie allein (SMA200-Richtung, feste Ausstiegsregel, keine Einstiegssuche) denselben Vorteil trägt wie C1/C3**: weniger Freiheitsgrade und ein kleineres N für den Mehrfachtest. Sie muss auf Daten laufen, die weder zur Entwicklung noch zu T15 gehören (Holdout oder Vorwärtsjournal), und kann dort gemeinsam mit C1/C3 geprüft werden; auf den schon gesehenen Daten wäre sie nur eine weitere Auswahl nach Ergebnis. Parallel: Bitunix-Gebühren, Funding und Ausführung aus dem eigenen Konto und dem laufenden Recorder messen (kritisch, weil eine Kerze Verzögerung die Erwartung vernichtet), und eine **fortlaufende Versuchszählung** einführen, ohne die keine Signifikanzaussage glaubwürdig ist.
+Die Daten widersprechen sich an genau einer Stelle: Der Einstiegszeitpunkt (Donchian-Ausbruch) schlug zufällige Einstiege in Trendrichtung im Entwicklungszeitraum bei C1 deutlich (+0,097 / +0,006 R gegen +0,221 / +0,264 R, Training / Validierung) und bei C3 (der Variante aus T15) in der Validierung (−0,017 gegen +0,271 R), im Training aber nur knapp und nicht signifikant (+0,116 gegen +0,203 R, p 0,087) und in 2017 bis 2019 (C3) nicht (+0,177 R gegen +0,146 R). Die nächste Untersuchung mit dem höchsten Erkenntniswert ist deshalb, **vorab festzulegen und einmal zu prüfen, ob die Trendseite mit der Auszahlungsgeometrie allein (SMA200-Richtung, feste Ausstiegsregel, keine Einstiegssuche) denselben Vorteil trägt wie C1/C3**: weniger Freiheitsgrade und ein kleineres N für den Mehrfachtest. Sie muss auf Daten laufen, die weder zur Entwicklung noch zu T15 gehören (Holdout oder Vorwärtsjournal), und kann dort gemeinsam mit C1/C3 geprüft werden; auf den schon gesehenen Daten wäre sie nur eine weitere Auswahl nach Ergebnis. Parallel: Bitunix-Gebühren, Funding und Ausführung aus dem eigenen Konto und dem laufenden Recorder messen (kritisch, weil eine Kerze Verzögerung die Erwartung vernichtet), und eine **fortlaufende Versuchszählung** einführen, ohne die keine Signifikanzaussage glaubwürdig ist.
 
 ## Abschlussurteil und nächste Entscheidung
 

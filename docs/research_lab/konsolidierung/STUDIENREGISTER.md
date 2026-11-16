@@ -7,7 +7,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 
 - Einträge gesamt: **74**, davon gefundene Studien und Berichte: **69**, eigene Nachrechnungen dieser Konsolidierung: 5.
 - Klassen (gefundene Studien): BELASTBAR 4, BEDINGT VERWERTBAR 31, EXPLORATIV 30, UNGÜLTIG 0, NICHT REPRODUZIERBAR 4.
-- Prüftiefe (gefundene Studien): A 2, B 8, C+ 23, C 27, D 9.
+- Prüftiefe (gefundene Studien): A 2, B 8, C+ 23, C 29, D 7.
 - Art (gefundene Studien): Carry 1; Filterstudie 8; Handelsregel oder Regelfamilie (gerechnet) 23; Plattform, Prüfbericht, Meta 7; Prognose-, Beobachtungs- oder Kalibrierstudie 18; Prospektive oder reale Beobachtung 8; Sonstiges (Entwurf, Gate, Zähllauf) 4.
 - Urteil des Labors laut Logbuch (erstes Wort): aborted 1, candidate 2, confirmed 2, failed 22, no_proof 1, not_proven 1, not_testable 8, reported 13, running 11, stopped 1, waiting 7.
 
@@ -60,11 +60,11 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 | S25 | Positionsgröße nach GARCH-4h-Prognose für S7b-D20-T3 | TREND-4H | failed | C+ | BEDINGT VERWERTBAR | negativ | n 139 / 207 |
 | S32 | Korb-Trendfolge: S7b-D20-T3 unverändert auf Top-25-Perps ohne BTC/ETH/SOL, 4h | TREND-4H | failed | C+ | BEDINGT VERWERTBAR | negativ | Training 4.682, Validierung 3.311 Trades |
 | S15 | GARCH(1,1)-Volatilitätsprognose gegen 14-Tage-Varianz, BTC/ETH/SOL, 4h und 1d | PROGNOSE | confirmed | C+ | BEDINGT VERWERTBAR | keine Handelsaussage (Risikoschicht) | mehrere Jahre, drei Coins |
-| S9 | CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft) | FRÜH | not_testable | D | EXPLORATIV | keine Aussage | höchstens 11 Signale statt 500 |
+| S9 | CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft) | FRÜH | not_testable | C | EXPLORATIV | keine Aussage | höchstens 11 Signale statt 500 |
 | S10 | IB-Ausbruch New York mit Retest an POC/Value-Kante | FRÜH | not_testable | C+ | EXPLORATIV | keine Aussage | S10-P 241 von 500, S10-O 15 |
 | S13 | Noise-Band-Ausbruch (Intraday-Momentum nach Zarattini/Aziz/Barbon 2024), NY-Sitzung und U… | FRÜH | failed | C+ | BEDINGT VERWERTBAR | negativ | S13-NY 1.732, S13-UTC 9.554 Trades (Training) |
 | S14 | Paar-Handel (Statistical Arbitrage) ETH/BTC, SOL/BTC, SOL/ETH, 1h | FRÜH | failed | C+ | BEDINGT VERWERTBAR | negativ | W168: 750 / 620 Trades, W720: 232 / 195 |
-| K1 | Kosten-Schwelle 0,25 R für Plan-Journal-Pläne | PROSPEKTIV | waiting | D | EXPLORATIV | keine Aussage | 2 geschlossene Pläne, 30 nötig |
+| K1 | Kosten-Schwelle 0,25 R für Plan-Journal-Pläne | PROSPEKTIV | waiting | C | EXPLORATIV | keine Aussage | 2 geschlossene Pläne, 30 nötig |
 | V2 | V2-Qualifizierungskampagne (1000 unabhängige Fälle) | INFRA | aborted | D | NICHT REPRODUZIERBAR | keine Aussage | 54 von 1000 Fällen |
 | F4 | Perp-Daten: 48-h-Probe der Futures-Trades neben Spot | INFRA | running | D | EXPLORATIV | keine Aussage | 48 Stunden |
 | S20 | Flip-Wahrscheinlichkeit aus der Kerzenstruktur, BTC 1h, Bruch von Swing-Linien | BTC-1H | failed | C+ | BEDINGT VERWERTBAR | negativ | 561 / 216 Ereignisse |
@@ -186,10 +186,10 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Ergebnis: Gate gescheitert (keine der 10 Varianten genug Trades). Erkundung: alle Varianten verlieren nach Kosten (E[R] −0,12 bis −0,23 R), Trefferquote unter 54 %.
 - Urteil des Labors: not_testable
 - **Prüftiefe C+, Klasse BEDINGT VERWERTBAR, Richtung: negativ**
-- Begründung: Zeigt für die Winrate-Frage: Eine feste kleine Zielmarke (0,75 R) ergibt hohe Trefferquoten nur über die Geometrie, nicht über den Einstieg. Die Erkundung ist ausdrücklich keine bestandene Studie.
+- Begründung: Zeigt für die Winrate-Frage: Das Ziel von 75 % wurde mit diesen Regeln nicht annähernd erreicht (höchste Trefferquote 52,5 %, obere Intervallgrenze überall unter 54 %), und jede Variante verliert nach Kosten. Die Erkundung ist ausdrücklich keine bestandene Studie.
 - Mängel: Erkundung nach dem Gate-Scheitern, nicht vorab festgelegt
-- Aussagen: Erkundung: E[R] −0,12 bis −0,23 R je Trade [NUR BERICHTET]; Zahlen im Erkundungsbericht [VERIFIZIERT]
-- Verwendung in der Konsolidierung: Beleg gegen die Annahme, eine hohe Trefferquote allein sei ein Vorteil (zählt für Aussage Winrate ≠ Edge).
+- Aussagen: Erkundung: E[R] −0,12 bis −0,23 R je Trade, Profit Factor 0,58 bis 0,74 [VERIFIZIERT]; Höchste Trefferquote 52,5 % (H1-N24, n 4.795; Wilson-Obergrenze unter 54 %) [VERIFIZIERT]; Zahlen im Erkundungsbericht gelesen, Rohdaten nicht neu gerechnet [VERIFIZIERT]
+- Verwendung in der Konsolidierung: Beleg, dass 75 % Trefferquote mit diesen Regeln nicht erreichbar war und die erreichbaren Quoten (um 50 %) nach Kosten verlieren. Die Aussage „hohe Trefferquote ≠ Vorteil“ stützt S6, nicht S4.
 
 ### S5: Trefferquote 95 % mit Funding-Carry (Perp-Wechsel)
 
@@ -217,7 +217,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Kosten: Protokoll 1.x, Maker-Gebühren
 - Register: 6 Registerplätze (S6)
 - Stichprobe: Trades siehe Bericht
-- Ergebnis: Nicht bestanden: Treffer 72–82 %, Erwartung −0,07 bis −0,11 R; Zufallseinstiege mit gleicher Geometrie treffen genauso oft.
+- Ergebnis: Nicht bestanden: Treffer 71,7–81,9 % (Training), Erwartung −0,07 bis −0,11 R; Zufallseinstiege mit gleicher Geometrie treffen genauso oft (82,0 % gegen 81,9 % bei k = 2, T = 0,15).
 - Urteil des Labors: failed
 - **Prüftiefe C+, Klasse BEDINGT VERWERTBAR, Richtung: negativ**
 - Begründung: Das Zufallsvergleichsverfahren zeigt, dass die Trefferquote aus dem Verhältnis von Ziel zu Stop kommt. Das ist die methodisch wichtigste Lehre für die Winrate-Frage.
@@ -234,12 +234,12 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Kosten: Protokoll 1.3 (Gebühr 5 bp, Schlupf 3 bp, Stop-Schlupf 5 bp je Seite) plus Funding
 - Register: 2 Registerplätze (S7)
 - Stichprobe: Training und Validierung: z. B. D20-T3 557 / 420 Trades
-- Ergebnis: Nicht bestanden: Erwartung positiv (+0,19 / +0,24 R), Drawdown 30 R über der Grenze von 20 R.
+- Ergebnis: Nicht bestanden: Erwartung positiv (D20-T3 / D20-T4: Training +0,232 / +0,284 R, Validierung +0,190 / +0,243 R), Drawdown in der Validierung 30,2 / 30,8 R über der Grenze von 20 R.
 - Urteil des Labors: failed
 - **Prüftiefe A, Klasse BEDINGT VERWERTBAR, Richtung: positiv (Erwartung), Risikokriterium verfehlt**
 - Begründung: Die gespeicherten Handelslisten wurden aus Rohkerzen exakt neu erzeugt (T1). Die Erwartung ist rechnerisch belegt, aber der Drawdown überschritt die vorab gesetzte Grenze.
 - Mängel: Mehrere Positionen gleichzeitig (Drawdown 30 R); Gleiche Kerzendaten wie S7b, S25, S32 (Datenüberschneidung)
-- Aussagen: Handelsliste exakt reproduziert (4.879 Trades S7/S7b, max. Abweichung 0 R) [VERIFIZIERT]; Erwartung +0,19 / +0,24 R, Drawdown 30 R [VERIFIZIERT]
+- Aussagen: Handelsliste exakt reproduziert (4.879 Trades S7/S7b, max. Abweichung 0 R) [VERIFIZIERT]; Erwartung D20-T3 / D20-T4: Training +0,232 / +0,284 R, Validierung +0,190 / +0,243 R; Drawdown Validierung 30,2 / 30,8 R [VERIFIZIERT]
 - Verwendung in der Konsolidierung: Mechanik-Nachweis; führte zu S7b.
 
 ### S7b: Trendfolge-Ausbruch 3–4 R mit höchstens einer Position (BTC > ETH > SOL)
@@ -255,7 +255,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Urteil des Labors: candidate
 - **Prüftiefe A, Klasse BEDINGT VERWERTBAR, Richtung: positiv (Kandidat)**
 - Begründung: Rechnung unabhängig reproduziert und gegen Kosten, Raster, Zufallseinstiege und Konzentration geprüft (T1–T9). Offen bleiben Mehrfachtest (DSR 0,78 gepoolt), Übertragung auf andere Coins (S32 negativ), Verzögerungsempfindlichkeit (Validierung −0,007 R bei einer Kerze Verzögerung) und die Auswahl der drei Coins im Nachhinein.
-- Mängel: Mehrfach verbrauchte Validierung 2023–2024 (S7b, S25, S32, S7b-Makro verwenden dieselbe Handelsliste); Survivorship: BTC/ETH/SOL erst 2026 gewählt; Zufallseinstiege in SMA200-Richtung erzielen im Training schon +0,095 R; Kein ungesehener Abschlusstest
+- Mängel: Mehrfach verbrauchte Validierung 2023–2024 (S7b, S25, S32, S7b-Makro verwenden dieselbe Handelsliste); Survivorship: BTC/ETH/SOL erst 2026 gewählt; Zufallseinstiege in SMA200-Richtung erzielen im Training schon +0,097 R (eigene Rechnung T3, K1); Kein ungesehener Abschlusstest
 - Aussagen: Handelsliste reproduziert (T1) [VERIFIZIERT]; Nettoerwartung K1 Training +0,22 / Validierung +0,26 R [VERIFIZIERT]; Zufalls-p gepoolt 0,002 [VERIFIZIERT]; DSR (N=64) gepoolt 0,78 unter 0,95 [VERIFIZIERT]; Bestätigung außerhalb der Entwicklung fehlt [VERIFIZIERT]
 - Verwendung in der Konsolidierung: Kernkandidat C1 (und C3, C2) der Konsolidierung.
 
@@ -340,7 +340,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Urteil des Labors: failed
 - **Prüftiefe C+, Klasse BEDINGT VERWERTBAR, Richtung: negativ**
 - Begründung: Gleiche Regel, andere Märkte, vorab eingefroren, ein einziger Validierungslauf: die einzige Teilprüfung der S7b-Regel mit unabhängigen Märkten. Ergebnis: kein Übertrag.
-- Mängel: Training im Altcoin-Aufwärtsmarkt; Survivorship möglich (Top-25 heute); Handelsliste lag nicht vor (nur Aggregate gelesen)
+- Mängel: Training im Altcoin-Aufwärtsmarkt; Universum je Monat nach Handelsvolumen der 30 Vortage bestimmt, aber nur aus Symbolen mit Archivdateien: Survivorship möglich; Nur teilweise unabhängig von BTC/ETH/SOL (gleiche Jahre, korrelierte Märkte); Handelsliste lag nicht vor (nur Aggregate gelesen)
 - Aussagen: netto −0,026 R, Bootstrap [−0,150, +0,101], Zufalls-p 0,55 [VERIFIZIERT]; Zahlen in Ergebnisdatei [VERIFIZIERT]
 - Verwendung in der Konsolidierung: Gegenbeleg G8 gegen die Übertragbarkeit der S7b-Regel.
 
@@ -365,17 +365,17 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 
 - Cluster / Art / Beginn: FRÜH / Regelfamilie (Gate) / 2026-10-27
 - Quellen: `docs/research_lab/reports/s9_count_2026-10-27T1849Z.md`; `docs/research_lab/studien/S9_CHOCH_RETEST_PRAEREGISTRIERUNG.md`
-- Daten: BTC/ETH/SOL 15m
+- Daten: BTCUSDT 15m (175.392 Kerzen bis 2024-12)
 - Aufteilung: Zähllauf Training
 - Kosten: —
 - Register: kein Registerplatz
 - Stichprobe: höchstens 11 Signale statt 500
-- Ergebnis: Am Machbarkeits-Gate gescheitert: höchstens 11 Signale im Training statt 500.
+- Ergebnis: Am Machbarkeits-Gate gescheitert: höchstens 11 Signale im Training statt 500 (Validierung höchstens 6 statt 250).
 - Urteil des Labors: not_testable
-- **Prüftiefe D, Klasse EXPLORATIV, Richtung: keine Aussage**
+- **Prüftiefe C, Klasse EXPLORATIV, Richtung: keine Aussage**
 - Begründung: Mechanisch übersetzte Lernheft-Regeln erzeugen zu wenige Fälle; kein Beleg in irgendeine Richtung.
-- Mängel: Zu wenige Fälle
-- Aussagen: Gate gescheitert [NUR BERICHTET]
+- Mängel: Zu wenige Fälle; Zählfehler in der Diagnosetabelle (Spalten CHoCH bis R:R in der Validierung zählen ab 2020), vom Labor im Nachtrag vom 27.10. benannt und im Code behoben; Signalzahlen und Gate sind nicht betroffen
+- Aussagen: Gate gescheitert (11 / 6 Signale statt 500 / 250) [NUR BERICHTET]; Zählfehler der Diagnosetabelle im Bericht selbst benannt, Gate unberührt [VERIFIZIERT]
 - Verwendung in der Konsolidierung: Kein Beitrag.
 
 ### S10: IB-Ausbruch New York mit Retest an POC/Value-Kante
@@ -440,10 +440,10 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Stichprobe: 2 geschlossene Pläne, 30 nötig
 - Ergebnis: Zu wenige Fälle (2 geschlossene, 30 nötig); in etwa vier Wochen erneut auswerten.
 - Urteil des Labors: waiting
-- **Prüftiefe D, Klasse EXPLORATIV, Richtung: keine Aussage**
-- Begründung: Keine Auswertung möglich. Die Studie legt Varianten vorab fest und wählt keine Grenze aus den Daten.
+- **Prüftiefe C, Klasse EXPLORATIV, Richtung: keine Aussage**
+- Begründung: Keine Auswertung möglich. Die Studie legt Varianten vorab fest und wählt keine Grenze aus den Daten. Der Bericht enthält nur Formelrechnung (Mindest-Stopabstand je Grenze, Stressfall 1,43 % für 0,25 R) und die Prüfung der Anzeige, keine Marktdaten.
 - Mängel: Zu wenige Fälle
-- Aussagen: Zu wenige Fälle [NUR BERICHTET]
+- Aussagen: Zu wenige Fälle (2 geschlossene, 30 nötig) [NUR BERICHTET]; Mindest-Stopabstand für 0,25 R: 0,72 % (Basis) bzw. 1,43 % (doppelte Kosten), reine Formelrechnung des Berichts [NUR BERICHTET]
 - Verwendung in der Konsolidierung: Kein Beitrag.
 
 ### V2: V2-Qualifizierungskampagne (1000 unabhängige Fälle)

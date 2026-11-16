@@ -66,6 +66,12 @@ def lade_zahlen(ordner: Path = ERGEBNISSE) -> dict:
     z["bruch_mult"] = sz["bruchstelle"]["null_durchgang_multiplikator"]["pooled"]
     z["zufall_p_train"], z["zufall_p_valid"], z["zufall_p_pooled"] = (t3[a]["p_einseitig"] for a in ("train", "validation", "pooled"))
     z["zufall_e_train"], z["zufall_e_valid"] = t3["train"]["e_r_zufall_mittel"], t3["validation"]["e_r_zufall_mittel"]
+    # C3 (BTC/ETH) wie in T15: gleiche Basis für den Vergleich mit dem Zufall außerhalb der Entwicklung
+    sz3 = j("t02_kosten.json")["ergebnis"]["C3"]["szenarien"]
+    t3c3 = j("t03_zufall_C3.json")["ergebnis"]["sektionen"]
+    z["c3_K1_train"], z["c3_K1_valid"] = (sz3["K1"][a]["e_r"] for a in ("train", "validation"))
+    z["c3_zufall_e_train"], z["c3_zufall_e_valid"] = t3c3["train"]["e_r_zufall_mittel"], t3c3["validation"]["e_r_zufall_mittel"]
+    z["c3_zufall_p_train"], z["c3_zufall_p_valid"] = t3c3["train"]["p_einseitig"], t3c3["validation"]["p_einseitig"]
     z["nachbarn_train"], z["nachbarn_valid"] = t4["anteil_positiv_nachbarn"]["train"], t4["anteil_positiv_nachbarn"]["validation"]
     z["raster_pooled"] = t4["anteil_positiv_raster"]["pooled"]
     z["rang_pooled"] = t4["c1_rang_prozent"]["pooled"]
@@ -79,6 +85,7 @@ def lade_zahlen(ordner: Path = ERGEBNISSE) -> dict:
     z["kosten_r_je_trade"] = pool["kennzahlen"]["kosten_r_je_trade"]
     z["dsr_n64_train"], z["dsr_n64_valid"], z["dsr_n64_pooled"] = (t8[a]["nullfall"]["64"]["dsr"] for a in ("train", "validation", "pooled"))
     z["dsr_nmax_pooled"] = t8["pooled"]["nullfall"]["26707"]["dsr"]
+    z["dsr_n58_train"], z["dsr_n58_valid"] = (t8[a]["nullfall"]["58"]["dsr"] for a in ("train", "validation"))
     z["jahr2020_r"], z["jahr2021_e"] = t9["je_jahr"]["2020"]["summe_r"], t9["je_jahr"]["2021"]["e_r"]
     z["terzil_hoch_e"] = t9["je_volatilitaets_terzil"]["hoch"]["e_r"]
     z["long_e"], z["short_e"] = t9["je_seite"]["long"]["e_r"], t9["je_seite"]["short"]["e_r"]
@@ -140,18 +147,18 @@ def zeilen(z: dict) -> list[dict]:
             f"Bleibt positiv unter K2 (konservativ: {de(z['K2_train'], 3, True)} / {de(z['K2_valid'], 3, True)} R) und K3 (pessimistisch: {de(z['K3_train'], 3, True)} / {de(z['K3_valid'], 3, True)} R); Gebühr und Schlupf müssten auf das {de(z['bruch_mult'], 1)}-Fache von K1 steigen, bis die Erwartung null erreicht. "
             f"Zufallseinstiege in SMA200-Richtung schlagen die Regel selten (p {de(z['zufall_p_train'])} / {de(z['zufall_p_valid'])}). {pct(z['nachbarn_train'])} / {pct(z['nachbarn_valid'])} der 81 Nachbarzellen positiv; "
             f"Weglassen eines Jahres oder Instruments kippt das Vorzeichen nicht; Long {de(z['long_e'], 2, True)} R, Short {de(z['short_e'], 2, True)} R.",
-            ["S7", "S7b", "K-C1", "K-T15"],
-            f"S32: dieselbe Regel auf 137 anderen Coins (Punkt-in-Zeit-Universum), Validierung: {de(z['s32_e'], 4, True)} R bei n {ganz(z['s32_n'])}, Zufalls-p {de(z['s32_p'])}, 95-%-Band {de(z['s32_ci_lo'], 3)} bis {de(z['s32_ci_hi'], 3, True)} R. "
-            f"Deflated Sharpe bei N = 64: Training {de(z['dsr_n64_train'], 2)}, Validierung {de(z['dsr_n64_valid'], 2)}, gepoolt {de(z['dsr_n64_pooled'], 2)} (Schwelle 0,95; bei N = 26.707 {de(z['dsr_nmax_pooled'], 2)}). "
-            f"Eine Kerze Verzögerung: Training {de(z['L1_train'], 3, True)} R, Validierung {de(z['L1_valid'], 3, True)} R. Sondenlauf Juli–Oktober 2026 (S7b-Sonde, zufällig gesehen): 35 Trades, −5,8 R. "
+            ["S7", "S7b", "K-C1"],
+            f"S32: dieselbe Regel auf anderen Coins (je Monat die 25 Perps mit dem höchsten Handelsvolumen der 30 Vortage ohne BTC/ETH/SOL, 137 verschiedene Symbole, nur Symbole mit Archivdateien), Validierung: {de(z['s32_e'], 4, True)} R bei n {ganz(z['s32_n'])}, Zufalls-p {de(z['s32_p'])}, 95-%-Band {de(z['s32_ci_lo'], 3)} bis {de(z['s32_ci_hi'], 3, True)} R. "
+            f"Deflated Sharpe bei N = 64: Training {de(z['dsr_n64_train'], 2)}, Validierung {de(z['dsr_n64_valid'], 2)}, gepoolt {de(z['dsr_n64_pooled'], 2)} (Schwelle 0,95; schon bei N = 58 nur {de(z['dsr_n58_train'], 2)} / {de(z['dsr_n58_valid'], 2)}; bei N = 26.707 gepoolt {de(z['dsr_nmax_pooled'], 2)}). "
+            f"Eine Kerze Verzögerung: Training {de(z['L1_train'], 3, True)} R ({de(100 * (z['L1_train'] / z['K1_train'] - 1), 0)} % gegen K1), Validierung {de(z['L1_valid'], 3, True)} R. Sondenlauf Juli–Oktober 2026 (S7b-Sonde, zufällig gesehen, nicht aufbewahrt): 35 Trades, −5,8 R. "
             f"Einfache Referenz R2 (SMA200 lang/flat, gleiche Schwankung): Sharpe {de(z['r2_sharpe'], 2)} gegen {de(z['c1_sharpe'], 2)}. S25: GARCH-Größe bringt keinen Vorteil. "
-            f"T15 (E1b, BTC/ETH 2017–2019, ein Lauf): {de(z['t15_e_k2'], 3, True)} R unter K2, p {de(z['t15_p'], 3)} (Schwelle 0,05 verfehlt); Zufallseinstiege in SMA200-Richtung erreichen dort im Mittel {de(z['t15_zufall_e'], 3, True)} R.",
-            ["S32", "S7b-Sonde", "S25", "K-Ref", "K-T15"],
+            "Außerhalb der Entwicklung (T15) siehe E1b: positiv, aber nicht belegt, und ohne Vorsprung gegenüber zufälligen Einstiegen in Trendrichtung.",
+            ["S32", "S7b-Sonde", "S25", "K-Ref"],
             "Ein Datencluster (TREND-4H): dieselben Binance-4h-Kerzen BTC/ETH/SOL 2020–2024, Validierung 2023–2024 mehrfach verbraucht (S7b, S25, S7b-Makro). S7, S7b und die eigene Nachrechnung sind eine Evidenzquelle, nicht drei.",
             f"Coins im Nachhinein gewählt (Survivorship). Beste 5 % der Trades = {pct(z['top5_anteil'])} der Summe; 2020 liefert {de(z['jahr2020_r'], 0)} von {de(z['summe_r_pooled'], 0)} R, 2021 {de(z['jahr2021_e'], 2, True)} R je Trade; "
             f"Drawdown {de(z['dd_r_pooled'], 1)} R (ca. 21 % bei 1 % Risiko); im oberen Volatilitäts-Terzil {de(z['terzil_hoch_e'], 2, True)} R je Trade (n 99). Zufallseinstiege in Trendrichtung erreichen im Training schon {de(z['zufall_e_train'], 3, True)} R, ein Teil des Vorteils ist Trendseite plus Auszahlungsgeometrie.",
-            "Nur als Hypothese für den Vorwärts-Papiertest (S7b-Forward). Keine Live-Aktivierung, keine Skalierung. Stufe 4 braucht mindestens 30 geschlossene Papier-Trades unter K2 oder einen freigegebenen Holdout-Lauf.",
-            "historisch gut ausgesehen: ja. Korrigiert reproduziert: ja (Prüftiefe A). Außerhalb der Entwicklung bestätigt: nein (S32 negativ; T15 auf BTC/ETH 2017–2019 positiv, aber p 0,079, siehe E1b; kein ungesehener Abschlusstest). Prospektiv beobachtet: 7 geschlossene Papier-Trades, zu wenig.",
+            "Nur als Hypothese für den Vorwärts-Papiertest (S7b-Forward). Keine Live-Aktivierung, keine Skalierung. Stufe 4 verlangt nach Protokoll 1.0 Stufe 3 und eine vorab festgelegte Vorwärts-Mindestzahl (mindestens 30 geschlossene Papier-Trades mit E[R] > 0 unter K2 und Zahl der Stopps im erwarteten Bereich) oder einen einmaligen, von Uzi und Barti freigegebenen Holdout-Lauf mit vorab festgelegten Kriterien.",
+            "historisch gut ausgesehen: ja. Korrigiert reproduziert: ja (Prüftiefe A). Außerhalb der Entwicklung bestätigt: nein (S32 negativ; T15 auf BTC/ETH 2017–2019 positiv, aber p 0,079, siehe E1b; kein ungesehener Abschlusstest). Prospektiv beobachtet: 4 geschlossene Papier-Trades der Regel D20-T3 (alle Short; die Variante D20-T4 ist kein Kandidat), zu wenig.",
         ),
         zeile(
             "E1b",
@@ -174,13 +181,13 @@ def zeilen(z: dict) -> list[dict]:
         ),
         zeile(
             "E2",
-            "Die Trendregel überträgt sich nicht auf andere Coins: Auf dem einzigen unabhängigen Universum (137 Coins, Punkt-in-Zeit) ist die Erwartung nach Kosten nicht von null verschieden.",
+            "Die Trendregel überträgt sich nicht auf andere Coins: Auf dem einzigen Universum außerhalb von BTC/ETH/SOL (137 Coins, monatlich nach Handelsvolumen neu bestimmt) ist die Erwartung nach Kosten nicht von null verschieden.",
             "negativ",
             f"S32 (ein Lauf, Validierung 2023–2024): {de(z['s32_e'], 4, True)} R je Trade bei n {ganz(z['s32_n'])}, Zufalls-p {de(z['s32_p'])}, 95-%-Band {de(z['s32_ci_lo'], 3)} bis {de(z['s32_ci_hi'], 3, True)} R. Ergebnisdatei gelesen und mit SHA-256 festgehalten; nicht neu gerechnet (Kerzen der 137 Coins liegen nicht im Container).",
             ["S32"],
             "Das Band schließt auch +0,10 R ein: ein kleiner Vorteil ist nicht ausgeschlossen, nur nicht gezeigt. E1 spricht für BTC/ETH/SOL, nicht für den Korb.",
             ["S7b"],
-            "Gleiche Regel, gleiche Zeit (2023–2024), anderes Universum (Top-25 je Monat nach Punkt-in-Zeit, ohne BTC/ETH/SOL). Training 2020-07 bis 2022 lag im Altcoin-Aufwärtsmarkt; ob delistete Märkte fehlen (Survivorship), ist nicht geprüft.",
+            "Gleiche Regel, gleiche Zeit (2023–2024), anderes Universum (je Monat die 25 Perps mit dem höchsten Handelsvolumen der 30 Vortage, ohne BTC/ETH/SOL). Nur teilweise unabhängig: dieselben Jahre und stark korrelierte Märkte. Das Universum enthält nur Symbole mit Archivdateien: Survivorship ist möglich und nicht geprüft. Training 2020-07 bis 2022 lag im Altcoin-Aufwärtsmarkt.",
             "Die Zahlen sind NUR BERICHTET: Die Handelsliste lag nicht vor, nur Aggregate wurden gelesen. Der Lauf ist einmalig und vorab eingefroren; er zählt als Gegenbeleg, nicht als Beweis für das Fehlen eines Vorteils.",
             "Nicht annehmen, dass die Regel allgemein „Trend verfolgt“. Wirkung bleibt an BTC/ETH/SOL gebunden; das ist ohne unabhängige Bestätigung ein Zeichen für Auswahl im Nachhinein.",
             "Außerhalb der Entwicklung getestet: ja (negativ). Korrigiert reproduziert: nein (nur berichtet).",
@@ -231,14 +238,14 @@ def zeilen(z: dict) -> list[dict]:
             "E6",
             "Frühe Regelfamilien (R4: 48 Varianten, S4, S6, S13, S14) haben keinen Vorteil; S9 und S10 sind am Zähl-Gate gescheitert.",
             "negativ",
-            "R4: 42 Varianten scheitern schon im Training, 6 in der Validierung, SPA p 0,46 / 0,43, StepM wählt keine. S4: alle Varianten −0,12 bis −0,23 R. S6: Treffer 72–82 %, Erwartung −0,07 bis −0,11 R. S13: Training −0,044 / −0,042 R. S14: −0,19 bis −0,36 R. "
+            "R4: 42 Varianten scheitern schon im Training, 6 in der Validierung, SPA p 0,46 / 0,43, StepM wählt keine. S4: alle Varianten −0,12 bis −0,23 R bei einer Trefferquote von höchstens 52,5 % (das Ziel von 75 % wurde nicht annähernd erreicht). S6: Treffer 72–82 %, Erwartung −0,07 bis −0,11 R. S13: Training −0,044 / −0,042 R. S14: −0,19 bis −0,36 R. "
             "S9: höchstens 11 Signale statt 500; S10: 241 von 500.",
             ["R4", "S4", "S6", "S13", "S14", "S9", "S10"],
             "S13-NY Validierung +0,030 R, aber Drawdown über der Grenze und Walk-Forward −0,021 R. Sonst keine Gegenbelege.",
             ["S13"],
             "Ein Datencluster (FRÜH): BTC/ETH/SOL 2020–2024 mit Protokoll 1.x. 6 von 48 Varianten bestanden das Training und scheiterten erst in der Validierung: Die Trennung von Training und Validierung entfernt Scheintreffer des Trainings.",
             "Prüftiefe C+ (Ergebnisdateien gelesen, nicht neu gerechnet); Studien vor Protokoll 1.3 mit weniger strenger Mehrfachtestkorrektur.",
-            "Verworfen. Die hohe Trefferquote allein (S4, S6) ist kein Profitabilitätsnachweis: 72–82 % bei negativer Erwartung.",
+            "Verworfen. Eine hohe Trefferquote allein ist kein Profitabilitätsnachweis (S6: 72–82 % bei negativer Erwartung; Zufallseinstiege mit gleicher Geometrie treffen genauso oft). S4 zeigt das Gegenstück: Das 75-%-Ziel war mit diesen Regeln gar nicht erreichbar (höchstens 52,5 %).",
             "Außerhalb der Entwicklung: Validierungsabschnitt (negativ). Prospektiv: nein.",
         ),
         zeile(
@@ -386,7 +393,7 @@ def zeilen(z: dict) -> list[dict]:
             [],
             "Eigenbewertung des Labors; deckt sich mit dieser Konsolidierung.",
             "Das Überzeugungsregister ist selbst eine Inventur des Labors, keine unabhängige Prüfung.",
-            "Die Zählung „mehr als 150 Prüfungen“ ist die Grundlage für die Mehrfachtest-Rechnung (E1: N = 64 bis 26.707). Eine fortlaufende Versuchszählung ist eine Vorbedingung für jede künftige Aussage über Signifikanz.",
+            "Die Zählung „mehr als 150 Prüfungen“ ist NUR BERICHTET (Überzeugungsregister, nicht nachgezählt). Die Mehrfachtest-Rechnung (E1) hängt nicht von ihr ab: G7 gilt bei N = 64 (Konvention des Labors) und scheitert schon bei N = 58; N = 100, 200 und 26.707 (OFX-Konfigurationen beim Einfrieren des Protokolls; die Kopie vom 16.11. zählt 27.023) sind Sensitivität. Eine fortlaufende Versuchszählung ist eine Vorbedingung für jede künftige Aussage über Signifikanz.",
             "Keine Evidenzstufe; Verfahren.",
         ),
     ]
