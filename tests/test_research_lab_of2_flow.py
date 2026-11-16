@@ -150,3 +150,60 @@ def test_engine_rejects_a_fade_against_the_imbalance():
     e._consider(signal("M4", 1), 0, 0)
     assert e.stats.verworfen.get("M4_gegen_imbalance") == 1
     assert not e.tracker.pending
+
+
+# -- P3 M8 transition candle + retest ------------------------------------------------------------------------------
+from src.research_lab.of2.candles import Candle  # noqa: E402
+
+M8CFG = dataclasses.replace(CFG, m8=True)
+
+
+def c15(i: int, o: float, h: float, l: float, c: float, volume: int = 10, delta: int = 0) -> Candle:
+    return Candle(i * 15 * MINUTE_MS, 15, 10, o, h, l, c, volume, delta)
+
+
+def _balance(n: int = 16) -> tuple[list[Candle], list[Footprint]]:
+    candles = [c15(i, 100.0, 101.0, 99.0, 100.0 + (0.5 if i % 2 else -0.5)) for i in range(n)]
+    fps = [Footprint(c.start, 15, 0.1, tuple((b, 5, 5) for b in range(990, 1010))) for c in candles]
+    return candles, fps
+
+
+def _lv() -> levels.Levels:
+    return levels.Levels(levels.DaySummary(0, 120.0, 80.0, 100.0, 100.0, 95.0, 110.0))
+
+
+def test_m8_long_breakout_arms_limit_at_the_delta_peak():
+    candles, fps = _balance()
+    candles.append(c15(16, 100.5, 103.0, 100.4, 102.8, volume=100, delta=60))
+    fps.append(Footprint(candles[-1].start, 15, 0.1, ((1005, 2, 2), (1015, 40, 2), (1025, 30, 30))))
+    s = models.transition(candles, fps, _lv(), M8CFG)
+    assert s is not None and s.model == "M8" and s.direction == 1 and s.kind == models.LIMIT
+    assert s.trigger == pytest.approx(101.55)            # delta peak bin 1015 above the edge 101
+    assert s.stop < 101.0 and s.stop > 99.0               # back inside the range
+    assert s.cancel_beyond == 101.0
+    assert s.target == 110.0                              # yesterday's VAH, first level with R:R >= 1.5
+    assert s.confirmed                                    # POC 102.55 above the balance VAH, nothing traded up to 110
+
+
+def test_m8_needs_a_close_beyond_the_range_and_relative_volume():
+    candles, fps = _balance()
+    candles.append(c15(16, 100.0, 101.0, 99.5, 100.8, volume=100))
+    fps.append(fps[-1])
+    assert models.transition(candles, fps, _lv(), M8CFG) is None      # no close beyond
+    candles[-1] = c15(16, 100.5, 103.0, 100.4, 102.8, volume=10)
+    assert models.transition(candles, fps, _lv(), M8CFG) is None      # no volume
+
+
+def test_m8_rejects_a_wide_range_and_short_history():
+    candles, fps = _balance()
+    candles[3] = c15(3, 100.0, 110.0, 99.0, 100.0)                   # range 11 % > 3 %
+    candles.append(c15(16, 100.5, 112.0, 100.4, 111.0, volume=100))
+    fps.append(fps[-1])
+    assert models.transition(candles, fps, _lv(), M8CFG) is None
+    short_c, short_f = _balance(10)
+    assert models.transition(short_c, short_f, _lv(), M8CFG) is None
+
+
+def test_m8_off_keeps_the_of2_digest():
+    assert not any(k.startswith("m8") for k in CFG.as_dict())
+    assert M8CFG.as_dict()["m8"] is True and M8CFG.digest() != CFG.digest()

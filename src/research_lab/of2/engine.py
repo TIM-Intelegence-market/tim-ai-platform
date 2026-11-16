@@ -46,6 +46,7 @@ from src.research_lab.of2.models import (
     sfp,
     stacked_retest,
     stop_run,
+    transition,
 )
 from src.research_lab.orderflow_ml.bars import DayProfile, MinuteBar
 from src.research_lab.protocol import CostModel
@@ -167,6 +168,8 @@ class Engine:
                     self._consider(stacked_retest(hist15, fp15, levels, cfg), day_start, t)
                     self._consider(stop_run(hist15, fp15, levels, cfg), day_start, t)
                     self._consider(poor_edge(hist15, fp15, levels, cfg), day_start, t)
+                    if cfg.m8:
+                        self._consider(transition(hist15, fp15, levels, cfg), day_start, t)
                     for extra in self.extra_15m:
                         self._consider(extra(hist15, levels, cfg), day_start, t)
             if (c := c30.push(bar)) is not None:
@@ -246,7 +249,7 @@ class Engine:
 
 
 FADE_MODELS = frozenset({"M1", "M3", "M4", "M6", "M7"})
-CONTINUATION_MODELS = frozenset({"M2", "M5"})
+CONTINUATION_MODELS = frozenset({"M2", "M5", "M8"})
 
 
 def _balance_block(signal: Signal, balance: str, bias: str) -> str | None:
