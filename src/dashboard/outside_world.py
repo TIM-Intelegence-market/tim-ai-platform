@@ -24,6 +24,7 @@ import re
 import threading
 import time
 import xml.etree.ElementTree as ET
+import xml.parsers.expat as pyexpat
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -57,7 +58,7 @@ _TAGS = re.compile(r"<[^>]*>")
 
 def fetch_bytes(url: str) -> bytes:
     request = Request(url, headers={"User-Agent": "Mozilla/5.0 (TIM-dashboard/1.0)", "Accept": "*/*"})
-    with urlopen(request, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310 - fixed public https endpoints above
+    with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
         raw = response.read(MAX_BYTES + 1)
     if len(raw) > MAX_BYTES:
         raise ValueError("answer too large")
@@ -90,12 +91,35 @@ def _safe_link(link: str) -> str:
     return link if urlparse(link).scheme == "https" else ""
 
 
+def _refuse(*_args: Any) -> None:
+    raise ValueError("DTD or entity in feed refused")
+
+
+def _parse_xml(raw: bytes) -> ET.Element:
+    """Parse with pyexpat into an ElementTree, refusing any DOCTYPE or entity declaration in any encoding."""
+    builder = ET.TreeBuilder()
+    parser = pyexpat.ParserCreate(namespace_separator="}")
+
+    def tag(name: str) -> str:
+        return "{" + name if "}" in name else name
+
+    parser.StartElementHandler = lambda name, attrs: builder.start(tag(name), {tag(k): v for k, v in attrs.items()})
+    parser.EndElementHandler = lambda name: builder.end(tag(name))
+    parser.CharacterDataHandler = builder.data
+    parser.StartDoctypeDeclHandler = _refuse
+    parser.EntityDeclHandler = _refuse
+    parser.UnparsedEntityDeclHandler = _refuse
+    parser.ExternalEntityRefHandler = _refuse
+    try:
+        parser.Parse(raw, True)
+    except pyexpat.ExpatError as error:
+        raise ValueError(str(error)) from error
+    return builder.close()
+
+
 def parse_feed(raw: bytes, feed: str) -> list[dict[str, Any]]:
-    """Items of an RSS 2.0 or Atom feed: title, link, time (UTC), feed. Entities and DTDs are refused."""
-    head = raw[:4096].lower()
-    if b"<!doctype" in head or b"<!entity" in raw.lower():
-        raise ValueError(f"{feed}: DTD or entity in feed refused")
-    root = ET.fromstring(raw)  # noqa: S314 - no DTD/entities (checked above), size capped in fetch_bytes
+    """Items of an RSS 2.0 or Atom feed: title, link, time (UTC), feed. DOCTYPE and entity declarations are refused."""
+    root = _parse_xml(raw)
     items = []
     atom = "{http://www.w3.org/2005/Atom}"
     nodes = root.findall(".//item") or root.findall(f".//{atom}entry")
@@ -132,8 +156,8 @@ def fetch_headlines(fetch: Fetch | None = None) -> list[dict[str, Any]]:
 
 
 def append_log(items: Sequence[Mapping[str, Any]], path: Path = HEADLINE_LOG) -> int:
-    """Append items not yet in the log; returns how many were new."""
-    known = {row["id"] for row in read_log(path, days=None)}
+    """Append items not yet in the log; returns how many were new (ids of the last ``LOG_READ_DAYS`` days count)."""
+    known = {row["id"] for row in read_log(path)}
     new = [dict(item) for item in items if item.get("id") not in known]
     if new:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,12 +167,25 @@ def append_log(items: Sequence[Mapping[str, Any]], path: Path = HEADLINE_LOG) ->
     return len(new)
 
 
-def read_log(path: Path = HEADLINE_LOG, days: int | None = LOG_READ_DAYS, now: datetime | None = None) -> list[dict[str, Any]]:
+_LOG_CACHE: dict[Path, tuple[tuple[int, int], list[dict[str, Any]]]] = {}
+_LOG_LOCK = threading.Lock()
+
+
+def _all_rows(path: Path) -> list[dict[str, Any]]:
+    """Every valid line of the log, parsed once per file version (size and mtime); never raises."""
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        stat = path.stat()
     except OSError:
         return []
-    since = None if days is None else (now or datetime.now(timezone.utc)) - timedelta(days=days)
+    key = (stat.st_size, stat.st_mtime_ns)
+    with _LOG_LOCK:
+        cached = _LOG_CACHE.get(path)
+        if cached and cached[0] == key:
+            return cached[1]
+    try:
+        lines = path.read_bytes().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
     rows = []
     for line in lines:
         try:
@@ -156,9 +193,22 @@ def read_log(path: Path = HEADLINE_LOG, days: int | None = LOG_READ_DAYS, now: d
             moment = datetime.fromisoformat(row["time"])
         except (ValueError, KeyError, TypeError):
             continue
-        if isinstance(row.get("id"), str) and isinstance(row.get("title"), str) and (since is None or moment >= since):
-            rows.append(row)
+        if moment.tzinfo is None or not isinstance(row, dict) or not isinstance(row.get("id"), str) or not isinstance(row.get("title"), str):
+            continue
+        row["time"] = moment.astimezone(timezone.utc).isoformat()
+        rows.append(row)
+    with _LOG_LOCK:
+        _LOG_CACHE[path] = (key, rows)
     return rows
+
+
+def read_log(path: Path = HEADLINE_LOG, days: int | None = LOG_READ_DAYS, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Valid log lines (times always UTC), of the last ``days`` days; a broken file never raises."""
+    rows = _all_rows(path)
+    if days is None:
+        return list(rows)
+    since = (now or datetime.now(timezone.utc)) - timedelta(days=days)
+    return [r for r in rows if datetime.fromisoformat(r["time"]) >= since]
 
 
 def headlines_between(items: Sequence[Mapping[str, Any]], start: datetime, end: datetime) -> list[dict[str, Any]]:
@@ -240,19 +290,21 @@ class Cache:
 
     def refresh(self) -> None:
         values, failed = {}, False
-        for key, build in (("headlines", self._headlines), ("stocks", self._stocks)):
-            try:
-                values[key] = build()
-            except Exception:  # noqa: BLE001 - keep the last value
-                failed = True
-        if values.get("headlines"):
-            try:
-                append_log(values["headlines"], self._log_path or HEADLINE_LOG)
-            except OSError:
-                pass
-        with self._lock:
-            self._values.update(values)
-            self._at, self._failed, self._running = time.monotonic(), failed, False
+        try:
+            for key, build in (("headlines", self._headlines), ("stocks", self._stocks)):
+                try:
+                    values[key] = build()
+                except Exception:  # noqa: BLE001 - keep the last value
+                    failed = True
+            if values.get("headlines"):
+                try:
+                    append_log(values["headlines"], self._log_path or HEADLINE_LOG)
+                except Exception:  # noqa: BLE001 - the log is a convenience, the cache still updates
+                    failed = True
+        finally:  # a refresh that dies must never block every later one
+            with self._lock:
+                self._values.update(values)
+                self._at, self._failed, self._running = time.monotonic(), failed, False
 
     def snapshot(self, background: bool = True) -> dict[str, Any]:
         with self._lock:

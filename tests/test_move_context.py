@@ -297,7 +297,8 @@ def test_stock_bar_counts_only_after_its_hour():
 
 
 def test_closed_market_is_not_missing():
-    closed = {"source": "t", "series": {"^NDX": {"name": "Nasdaq-100", "bars": [[int((CRASH - timedelta(days=2)).timestamp()), 1.0, 1.0]]}}}
+    bars = [[int((CRASH - timedelta(days=2)).timestamp()), 1.0, 1.0], [int((CRASH + timedelta(hours=20)).timestamp()), 1.0, 1.0]]
+    closed = {"source": "t", "series": {"^NDX": {"name": "Nasdaq-100", "bars": bars}}}
     row = M.build(_series(), {"stocks": closed}, END + timedelta(minutes=1))[0]
     assert row["context"]["stocks"]["status"] == "geschlossen"
     html = M.render_de([row])
@@ -320,3 +321,14 @@ def test_headlines_in_window_are_only_a_guess_and_relevant_first():
 def test_headline_log_younger_than_window_is_missing():
     items = [{"id": "a", "feed": "x", "title": "t", "link": "", "time": (CRASH + timedelta(minutes=5)).isoformat()}]
     assert M.build(_series(), {"headlines": items}, END + timedelta(minutes=1))[0]["context"]["news"]["status"] == M.FEHLT
+
+
+def test_stale_stock_feed_is_missing_not_closed():
+    stale = {"source": "t", "series": {"^NDX": {"name": "Nasdaq-100", "bars": [[int((CRASH - timedelta(days=2)).timestamp()), 1.0, 1.0]]}}}
+    row = M.build(_series(), {"stocks": stale}, END + timedelta(minutes=1))[0]
+    assert row["context"]["stocks"]["status"] == M.FEHLT
+
+
+def test_relevance_matches_word_starts_only():
+    assert M._relevant("Bitcoin liquidations spike") and M._relevant("SEC sues exchange")
+    assert not M._relevant("A second warning on whether federal rates separate")

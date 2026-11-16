@@ -345,6 +345,7 @@ NEWS_WORDS = ("bitcoin", "btc", "crypto", "krypto", "ether", "fed", "powell", "f
 STOCK_SAME = 0.8  # % move of the Nasdaq-100 / S&P 500 in the same direction
 STOCK_CALM = 0.3  # % : stocks hardly moved
 SINGLE_SAME = 2.5  # % move of NVIDIA in the same direction
+STOCK_MIN_BARS = 1  # an index needs at least this many hour bars that ended in the window
 
 
 def _stocks(event: Mapping[str, Any], stocks: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -359,7 +360,11 @@ def _stocks(event: Mapping[str, Any], stocks: Mapping[str, Any] | None) -> dict[
         if move is not None:
             moves[symbol] = {"name": item.get("name") or symbol, **move}
     if not moves:
-        return {"status": "geschlossen", "note": "US-Börse im Zeitfenster geschlossen"}
+        # "closed" only when the series runs past the move (so the gap is the market's, not a stale feed)
+        last_end = max((int(b[0]) + 3600 for item in series.values() for b in item.get("bars") or []), default=0)
+        if last_end >= int(event["end"].timestamp()):
+            return {"status": "geschlossen", "note": "US-Börse im Zeitfenster geschlossen"}
+        return {"status": FEHLT, "note": "Aktienkurse reichen nicht bis zum Ende der Bewegung"}
     return {"status": OK, "moves": moves, "source": (stocks or {}).get("source")}
 
 
@@ -369,11 +374,19 @@ def _news(event: Mapping[str, Any], headlines: Sequence[Mapping[str, Any]] | Non
     if not headlines:
         return {"status": FEHLT}
     start = event["start"] - NEWS_BEFORE
-    if min(datetime.fromisoformat(h["time"]) for h in headlines) > start:
+    if min(datetime.fromisoformat(h["time"]) for h in headlines) > start:  # times are UTC-aware (outside_world.read_log)
         return {"status": FEHLT, "note": "Schlagzeilen-Log beginnt erst nach diesem Zeitfenster"}
     found = headlines_between(headlines, start, event["end"])
-    found.sort(key=lambda h: (not any(w in h["title"].lower() for w in NEWS_WORDS), h["time"]))
+    found.sort(key=lambda h: (not _relevant(h["title"]), h["time"]))
     return {"status": OK, "count": len(found), "items": found[:NEWS_SHOWN], "source": "RSS-Allowlist (outside_world.FEEDS)"}
+
+
+def _relevant(title: str) -> bool:
+    """A listed word at the start of a word ("liquidat" matches "liquidations", "sec" does not match "second")."""
+    import re
+
+    words = re.findall(r"[a-z0-9-]+", title.lower())
+    return any(w == k or (len(k) >= 6 and w.startswith(k)) for w in words for k in NEWS_WORDS)
 
 
 def _when_short(value: str) -> str:
@@ -386,9 +399,9 @@ def _stock_findings(stocks: Mapping[str, Any], event: Mapping[str, Any], down: b
 
     def ev(symbols: Sequence[str], de: bool) -> str:
         parts = [f"{moves[s]['name']} {_n(moves[s]['change_pct'], '+.2f', de)}{' %' if de else '%'}" for s in symbols if s in moves]
-        return ", ".join(parts) + (" (Yahoo, 1h, gleiches Fenster)" if de else " (Yahoo, 1h, same window)")
+        return ", ".join(parts) + (" (Yahoo, 1h-Kerzen ab :30 ET, die im Fenster endeten)" if de else " (Yahoo, 1h bars from :30 ET that ended in the window)")
     out = []
-    index = [s for s in ("^NDX", "^GSPC") if s in moves]
+    index = [s for s in ("^NDX", "^GSPC") if s in moves and moves[s]["bars"] >= STOCK_MIN_BARS]
     if index:
         same = [s for s in index if moves[s]["change_pct"] * sign >= STOCK_SAME]
         if same:
@@ -397,9 +410,9 @@ def _stock_findings(stocks: Mapping[str, Any], event: Mapping[str, Any], down: b
                                 "Stocks " + ("fell" if down else "rose") + " at the same time: broad risk-" + ("off" if down else "on") + ", not only crypto.",
                                 ev(index, True), ev(index, False)))
         elif all(abs(moves[s]["change_pct"]) <= STOCK_CALM for s in index):
-            out.append(_finding("stocks_calm", "BELEGT", "Aktien blieben ruhig: die Bewegung kam aus dem Kryptomarkt selbst.",
+            out.append(_finding("stocks_calm", "WAHRSCHEINLICH", "Aktien blieben ruhig: die Bewegung kam aus dem Kryptomarkt selbst.",
                                 "Stocks stayed calm: the move came from the crypto market itself.", ev(index, True), ev(index, False)))
-    if "NVDA" in moves and moves["NVDA"]["change_pct"] * sign >= SINGLE_SAME:
+    if "NVDA" in moves and moves["NVDA"]["change_pct"] * sign >= SINGLE_SAME and moves["NVDA"]["bars"] >= STOCK_MIN_BARS:
         out.append(_finding("nvda", "VERMUTUNG", "NVIDIA " + ("fiel" if down else "stieg") + " gleichzeitig deutlich: Tech-Stimmung könnte mitgezogen haben.",
                             "NVIDIA " + ("fell" if down else "rose") + " sharply at the same time: tech sentiment may have pulled along.",
                             ev(["NVDA"], True), ev(["NVDA"], False)))

@@ -101,3 +101,35 @@ def test_cache_refresh_writes_log_and_keeps_last_value(tmp_path):
 def test_sources_are_empty_in_tests(monkeypatch):
     monkeypatch.setenv("TIM_RUNTIME_ENV", "test")
     assert W.sources() == {}
+
+
+def test_utf16_doctype_is_refused_too():
+    raw = '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE r [<!ENTITY a "x">]><rss><channel/></rss>'.encode("utf-16")
+    with pytest.raises(ValueError):
+        W.parse_feed(raw, "X")
+    late = b"<?xml version='1.0'?><!--" + b"x" * 5000 + b"--><!DOCTYPE rss><rss><channel/></rss>"
+    with pytest.raises(ValueError):
+        W.parse_feed(late, "X")
+
+
+def test_broken_log_never_raises(tmp_path):
+    path = tmp_path / "h.jsonl"
+    good = {"id": "1", "feed": "a", "title": "ok", "time": "2026-11-13T13:00:00+00:00"}
+    naive = {"id": "2", "feed": "a", "title": "naive", "time": "2026-11-13T13:00:00"}
+    path.write_bytes(json.dumps(good).encode() + b"\n" + json.dumps(naive).encode() + b"\n\xff\xfe broken\n[1, 2]\n")
+    rows = W.read_log(path, now=datetime(2026, 11, 14, tzinfo=timezone.utc))
+    assert [r["id"] for r in rows] == ["1"]
+    assert W.append_log([{**good, "id": "3"}], path) == 1
+
+
+def test_refresh_after_a_crash_still_runs(tmp_path, monkeypatch):
+    calls = {"n": 0}
+
+    def headlines():
+        calls["n"] += 1
+        return W.parse_feed(RSS, "CoinDesk")
+    monkeypatch.setattr(W, "append_log", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    cache = W.Cache(headlines=headlines, stocks=lambda: {"series": {}}, log_path=tmp_path / "h.jsonl", ttl=0, fail_pause=0)
+    cache.snapshot(background=False)
+    cache.snapshot(background=False)
+    assert calls["n"] == 2
