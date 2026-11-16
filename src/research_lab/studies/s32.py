@@ -20,9 +20,10 @@ The trader's chain, all parameters fixed in :class:`Config`:
 H1 uses all ratios in ONE test: does the chance to reach the target first rise with the ratio (slope over the log
 ratio)? One trend test instead of one test per threshold keeps the number of trials at one. H2 asks, for every ratio
 bin (below 0.5 ... 5 and more), whether its events are positive after TIM costs; no bin is picked in advance
-(Barti 16.11.2026: all ratios). Each width group is its own question with alpha 0.05; inside a group half for H1 and
-half for H2, the H2 half split over the seven bins. All four groups are always reported. A bin
-with fewer than 100 events in a section is "nicht prüfbar". H2 passes if one bin passes in training and validation.
+(Barti 16.11.2026: all ratios). Each width group, and each width group within one session (Asia, London, New York,
+late), is its own question with alpha 0.05; inside a group half for H1 and
+half for H2, the H2 half split over the seven bins. All four groups are always reported. A field
+with fewer than 30 events in a section is shown without a verdict ("zu wenig Fälle"). H2 passes if one bin passes in training and validation.
 
 ``count`` is results-blind (event counts only). ``evaluate`` refuses to run while ``VERSION`` is a draft.
 Stdlib only, plus the order book package.
@@ -50,11 +51,14 @@ from src.research_lab.depth import tardis
 from src.research_lab.depth.book import ASK, BID, SCALE, LocalBook
 from src.research_lab.protocol import BASE_COSTS, STRESS_COSTS, CostModel
 
-VERSION = "0.7"
+VERSION = "0.9"
 SEED = 32
 TRAINING_END = date(2022, 12, 31)
-MIN_EVENTS = 300  # per section, all ratios, else "nicht prüfbar"
-MIN_H2 = 100  # per section and ratio bin, else that bin is "nicht prüfbar" for H2
+# Everything is collected and evaluated, however few cases (Barti 16.11.2026); the bootstrap bound is the luck test.
+# Only below MIN_CASES per section does the bootstrap itself become unreliable: shown, no verdict ("zu wenig Fälle").
+MIN_CASES = 30
+MIN_EVENTS = MIN_CASES
+MIN_H2 = MIN_CASES
 RATIO_CAP = 100.0  # an empty opposite side counts as 100:1
 BINS = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, float("inf"))
 # Range widths in bp. H1/H2 use only the main group Config.width_min_bp..width_max_bp (20-60, as in the video);
@@ -62,6 +66,10 @@ BINS = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, float("inf"))
 WIDTH_GROUPS = ((10.0, 20.0), (20.0, 60.0), (60.0, 100.0), (100.0, 150.0))
 MAIN_WIDTH = "20-60"
 WIDTH_LABELS = ("10-20", "20-60", "60-100", "100-150")
+# Sessions in UTC (start second of the day). A trader often trades only one session, so every width is also asked
+# per session as its own question (Barti 16.11.2026); the all-day question per width stays.
+SESSIONS = (("asien", 0), ("london", 7 * 3600), ("newyork", 13 * 3600 + 1800), ("spaet", 20 * 3600))
+GROUPS = WIDTH_LABELS + tuple(f"{w}|{name}" for w in WIDTH_LABELS for name, _ in SESSIONS)
 BOOT_DRAWS = 9_999
 ALPHA = 0.05
 
@@ -244,6 +252,15 @@ def width_group(width_bp: float, cfg: Config = CONFIG) -> str | None:
     return None
 
 
+def session_of(i: int) -> str:
+    return [name for name, start in SESSIONS if i >= start][-1]
+
+
+def in_group(e: Event, grp: str, cfg: Config = CONFIG) -> bool:
+    width, _, ses = grp.partition("|")
+    return width_group(e.width_bp, cfg) == width and (not ses or session_of(e.i) == ses)
+
+
 def bin_label(r: float) -> str:
     for lo, hi in pairwise(BINS):
         if lo <= r < hi:
@@ -327,9 +344,8 @@ def count(events_by_day: dict[date, list[Event]], cfg: Config = CONFIG) -> dict:
             grp[key] = grp.get(key, 0) + 1
         out["je_tag"][day.isoformat()] = len(evs)
     for name in ("training", "validierung"):
-        for grp in WIDTH_LABELS:
-            evs = [e for d, es in events_by_day.items() if section(d) == name for e in es
-                   if width_group(e.width_bp, cfg) == grp]
+        for grp in GROUPS:
+            evs = [e for d, es in events_by_day.items() if section(d) == name for e in es if in_group(e, grp, cfg)]
             g = out[name].setdefault(grp, {})
             g["alle"] = len(evs)
             g["pruefbar"] = len(evs) >= MIN_EVENTS
@@ -401,13 +417,13 @@ def evaluate(results: dict[date, list[tuple[Event, Outcome]]], *, version: str =
         rows = [(d, e, o) for d, rs in sorted(results.items()) if section(d) == name
                 for e, o in rs if o.exit in ("target", "stop", "time")]
         out[name] = {}
-        for grp in WIDTH_LABELS:
-            g_days = [[(e.ratio, o) for d2, e, o in rows if d2 == d and width_group(e.width_bp, cfg) == grp]
+        for grp in GROUPS:
+            g_days = [[(e.ratio, o) for d2, e, o in rows if d2 == d and in_group(e, grp, cfg)]
                       for d in sorted({d for d, _, _ in rows})]
             g_days = [d for d in g_days if d]
             out[name][grp] = _evaluate_group(g_days, draws, rng)
     out["ergebnis"] = {}
-    for grp in WIDTH_LABELS:
+    for grp in GROUPS:
         t, v = out["training"][grp], out["validierung"][grp]
         passed = [lb for lb, b in t["h2_je_verhaeltnis"].items()
                   if b["pruefbar"] and b["untere_grenze"] > 0

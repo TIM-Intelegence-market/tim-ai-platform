@@ -1,9 +1,9 @@
-# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.7)
+# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.9)
 
 | Feld | Wert |
 |---|---|
 | Studie | S32 (nächste freie Nummer nach S31/S31b) |
-| Version | **0.7, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.; 0.5: Kostenfrage H2 für jede Verhältnisstufe statt nur ab 2:1, Barti 16.11.; 0.6: jede Range-Breite mit eigenem Test; 0.7: Breiten logisch getrennt, je eigenes α, Barti 16.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
+| Version | **0.9, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.; 0.5: Kostenfrage H2 für jede Verhältnisstufe statt nur ab 2:1, Barti 16.11.; 0.6: jede Range-Breite mit eigenem Test; 0.7: Breiten logisch getrennt, je eigenes α; 0.8: zusätzlich je Sitzung; 0.9: alles sammeln, Glückstest entscheidet, nur unter 30 Fällen kein Urteil, Barti 16.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
 | Anlass | Barti 12./13.11.2026: Setup aus dem Video „The Only Orderflow Guide You'll Ever Need“ (6:22–9:55, S&P-Future) prüfen und, falls es trägt, in TIM einbauen. Beschreibung der Kette: `/mnt/project-files/s32-orderbuch/Was-der-Trader-macht-2026-11-12.md` (Projektdateien) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kosten aus `src/research_lab/protocol.py` |
 | Daten | Binance USDⓈ-M BTCUSDT, Tardis.dev `incremental_book_L2`, **nur die kostenlosen Tage (1. jedes Monats)**. Buchnachbau `src/research_lab/depth/` (PR #251), geprüft in `../reports/depth_p2_tardis_2020-06-01.md` |
@@ -22,7 +22,7 @@ bei jedem Ereignis gemessen (Barti 13.11.: „alle Schiefwinkel ausprobieren, St
 | P2 | „deutlich dünner“ | **jedes Verhältnis** eigene Seite / Gegenseite (Bid/Ask für Long) wird aufgezeichnet, auch unter 1. Leere Gegenseite zählt als 100:1. Video: 1,7 bis 2,8 |
 | P3 | hält an | gezählt wird der **niedrigste** Wert der letzten **3 Sekunden** (gegen kurz aufblitzende Orders) |
 | P4 | Range-Fenster | Hoch und Tief der Mitte in den letzten **15 Minuten** |
-| P5 | Range-Breite | vier Gruppen **10–20, 20–60, 60–100, 100–150 bp**, jede mit eigenem H1 und H2 (20–60 = Video) |
+| P5 | Range-Breite | vier Gruppen **10–20, 20–60, 60–100, 100–150 bp**, jede mit eigenem H1 und H2 (20–60 = Video); jede Breite zusätzlich je Sitzung (Asien 00–07, London 07–13:30, New York 13:30–20, spät 20–24 UTC) als eigene Frage |
 | P6 | verteidigt | Berührung = Mitte höchstens 10 % der Breite vom Rand; Abprall = danach mindestens 25 % der Breite weg. Jeder Rand mindestens **1 Abprall**, zusammen mindestens **3 Berührungen** |
 | P7 | nahe am Rand | Mitte im **unteren Viertel** (Long) oder **oberen Viertel** (Short) |
 | P8 | Marktorders (Video: 53 aggressive Verkäufe) | nicht Teil der Regel, spart Versuche |
@@ -63,19 +63,33 @@ als ein einzelner Test.
 
 - Untere Grenze: einseitig, Block-Bootstrap über Tage (9 999 Ziehungen, Seed 32), je Breitengruppe α = 0,05:
   H1 bekommt die Hälfte (0,025), H2 die andere Hälfte, geteilt durch die sieben Stufen (je etwa 0,0036).
-- Mindestmenge je Abschnitt und Breitengruppe: 300 Ereignisse für H1; für H2 100 je Stufe, sonst „nicht prüfbar“.
-  Laut Zähllauf (15.11.), in **beiden** Abschnitten prüfbar:
+- **Alles wird gesammelt und ausgewertet**, egal wie viele Fälle (Barti 16.11.: „erstmal sammeln egal wie viele
+  Fälle, dann eine Auswertung, ob es Glück ist“). Der Glückstest ist die untere Grenze: Bei wenigen Fällen liegt sie
+  automatisch tief, ein Feld besteht dann nur bei sehr großem Effekt. Einzige Ausnahme: unter **30 Fällen** je
+  Abschnitt ist der Bootstrap selbst nicht verlässlich; solche Felder werden gezeigt, Markierung „zu wenig Fälle“.
+  Nach dem Zähllauf (ergebnisblind) steht damit vorab fest, welche Felder ein Urteil bekommen (Fälle Training /
+  Validierung):
 
-  | Breite | H1 | H2-Stufen |
-  |---|---|---|
-  | 10–20 bp | ja | unter 0,5, 0,5–1, 1–1,5, 1,5–2 |
-  | 20–60 bp | ja | unter 0,5, 0,5–1, 1–1,5, 1,5–2 (2–3 nur im Training) |
-  | 60–100 bp | ja | 0,5–1 |
-  | 100–150 bp | nein (278 / 106 Fälle) | keine |
+  | Frage | Fälle | H1 | H2-Stufen mit Urteil |
+  |---|---|---|---|
+  | 10–20 bp, ganzer Tag | 1263 / 1835 | ja | unter 0,5 bis 2–3 (5) |
+  | 20–60 bp, ganzer Tag | 4392 / 2341 | ja | unter 0,5 bis 2–3 (5) |
+  | 60–100 bp, ganzer Tag | 1196 / 337 | ja | unter 0,5, 0,5–1, 1–1,5 |
+  | 100–150 bp, ganzer Tag | 278 / 106 | ja | unter 0,5, 0,5–1 |
+  | 10–20 bp Asien, London | 390 / 591, 382 / 674 | ja | unter 0,5 bis 1,5–2 (je 4) |
+  | 10–20 bp New York, spät | 266 / 336, 225 / 234 | ja | 0,5–1, 1–1,5 |
+  | 20–60 bp Asien, London, New York | 1277 / 623, 1202 / 518, 1200 / 775 | ja | unter 0,5 bis 1,5–2 (je 4) |
+  | 20–60 bp spät | 713 / 425 | ja | unter 0,5, 0,5–1, 1–1,5 |
+  | 60–100 bp New York | 439 / 193 | ja | unter 0,5, 0,5–1, 1–1,5 |
+  | 60–100 bp Asien, London, spät | 264 / 42, 285 / 32, 208 / 70 | ja | keine |
+  | 100–150 bp New York | 121 / 54 | ja | keine |
+  | 100–150 bp Asien, London, spät | 59 / 9, 65 / 16, 33 / 27 | zu wenig Fälle | keine |
+
+  Zusammen 17 H1-Fragen und 45 H2-Felder mit Urteil. Hinterher wird nichts ausgesiebt oder nachgebessert.
 - Gezählt werden nur Ausgänge Ziel, Stop, Zeit. „Kein Platz“ (Einstieg schon hinter dem Ziel) und „fehlt“ (Tag
   endet im Horizont, Buch ungültig beim Einstieg) werden ausgewiesen, nicht gewertet.
-- Deflated Sharpe: 4 Breiten × 7 Stufen = **28 neue Versuche** (N 64 → 92).
-- Nur beschreibend: Tabelle je Verhältnisstufe (Anzahl, Anteil Ziel zuerst, Netto-R), Long/Short getrennt, Sitzungen (Asien 00–07, London 07–13:30, New York 13:30–20 UTC), Spread.
+- Deflated Sharpe: zählt jedes H2-Feld mit Urteil als Versuch, **45 neue Versuche** (N 64 → 109).
+- Nur beschreibend: Tabelle je Verhältnisstufe (Anzahl, Anteil Ziel zuerst, Netto-R), Long/Short getrennt, Spread.
 
 ## 4. Vorbelastung
 
