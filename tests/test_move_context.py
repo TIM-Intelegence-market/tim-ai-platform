@@ -254,3 +254,69 @@ def test_four_hour_move_is_flagged_on_4h_too():
         price = close
     events = M.detect({"1h": rows}, END + timedelta(minutes=1))
     assert events and any(t["tf"] == "4h" for t in events[-1]["triggers"])
+
+
+# --- P3: stocks and headlines ------------------------------------------------------------------------------------
+
+
+def _bars(changes: dict[datetime, float]) -> list[list[float]]:
+    """Hourly bars from 10 h before the crash to 2 h after; ``changes`` sets a bar's return by its start."""
+    out, price = [], 20000.0
+    t = CRASH - timedelta(hours=10)
+    while t <= CRASH + timedelta(hours=2):
+        close = price * (1 + changes.get(t, 0.0))
+        out.append([int(t.timestamp()), price, close])
+        price, t = close, t + timedelta(hours=1)
+    return out
+
+
+def _stock_source(ndx: float, nvda: float) -> dict:
+    return {"source": "test", "series": {"^NDX": {"name": "Nasdaq-100", "bars": _bars({CRASH: ndx})},
+                                         "NVDA": {"name": "NVIDIA", "bars": _bars({CRASH: nvda})}}}
+
+
+def test_stocks_falling_together_explain_the_move():
+    row = M.build(_series(), {"stocks": _stock_source(-0.015, -0.05)}, END + timedelta(minutes=1))[0]
+    keys = {f["key"]: f for f in row["findings"]}
+    assert keys["stocks"]["level"] == "WAHRSCHEINLICH" and "Risiko-Aus" in keys["stocks"]["de"]
+    assert keys["nvda"]["level"] == "VERMUTUNG" and "-5,00 %" in keys["nvda"]["evidence"]
+    assert row["explained"] is True
+
+
+def test_calm_stocks_say_crypto_own_move_but_do_not_explain_it():
+    row = M.build(_series(), {"stocks": _stock_source(0.001, 0.0)}, END + timedelta(minutes=1))[0]
+    assert any(f["key"] == "stocks_calm" for f in row["findings"])
+    assert row["explained"] is False
+
+
+def test_stock_bar_counts_only_after_its_hour():
+    # the bar that opens at the end of the move is not used, even if it crashes
+    late = {"source": "t", "series": {"^NDX": {"name": "Nasdaq-100", "bars": _bars({CRASH + timedelta(hours=1): -0.05})}}}
+    row = M.build(_series(), {"stocks": late}, END + timedelta(minutes=1))[0]
+    assert row["context"]["stocks"]["moves"]["^NDX"]["change_pct"] == 0.0
+
+
+def test_closed_market_is_not_missing():
+    closed = {"source": "t", "series": {"^NDX": {"name": "Nasdaq-100", "bars": [[int((CRASH - timedelta(days=2)).timestamp()), 1.0, 1.0]]}}}
+    row = M.build(_series(), {"stocks": closed}, END + timedelta(minutes=1))[0]
+    assert row["context"]["stocks"]["status"] == "geschlossen"
+    html = M.render_de([row])
+    assert "US-Börse geschlossen" in html and "Aktien," not in html.split("Fehlt:")[1].split("</p>")[0]
+
+
+def test_headlines_in_window_are_only_a_guess_and_relevant_first():
+    def h(minutes: int, title: str) -> dict:
+        t = CRASH + timedelta(minutes=minutes)
+        return {"id": title, "feed": "CoinDesk", "title": title, "link": "", "time": t.isoformat()}
+    items = [h(-600, "old"), h(-30, "Weather report"), h(10, "Nvidia CEO scandal hits stocks"), h(20, "Bitcoin slides"), h(200, "later")]
+    row = M.build(_series(), {"headlines": items}, END + timedelta(minutes=1))[0]
+    news = row["context"]["news"]
+    assert news["count"] == 3 and news["items"][0]["title"] == "Nvidia CEO scandal hits stocks"
+    finding = next(f for f in row["findings"] if f["key"] == "news")
+    assert finding["level"] == "VERMUTUNG" and "Bitcoin slides" in finding["evidence"]
+    assert row["explained"] is False
+
+
+def test_headline_log_younger_than_window_is_missing():
+    items = [{"id": "a", "feed": "x", "title": "t", "link": "", "time": (CRASH + timedelta(minutes=5)).isoformat()}]
+    assert M.build(_series(), {"headlines": items}, END + timedelta(minutes=1))[0]["context"]["news"]["status"] == M.FEHLT

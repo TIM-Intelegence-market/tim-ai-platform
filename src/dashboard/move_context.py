@@ -11,8 +11,12 @@ and writes a few sentences, each with its evidence and an honest level:
 A move counts as explained only by liquidations, open interest, taker flow or the Coinbase premium; volume,
 funding, a calendar date or gamma add context but never explain a move on their own.
 
-"Aus den vorhandenen Daten nicht erklärbar" is a valid result. Headlines and intraday stock prices are
-not wired in yet (package P3); the text says so instead of guessing.
+"Aus den vorhandenen Daten nicht erklärbar" is a valid result.
+
+P3 (Uzi 16.11.2026, "Feed und Aktien ja", ``outside_world.py``): hourly Nasdaq-100, S&P 500 and NVIDIA bars give
+the stock move in the same window (a bar counts from the end of its hour); headlines from an allowlist of RSS
+feeds published from two hours before the move to its end are listed as VERMUTUNG, never as an explanation:
+a headline at the same time is not a proven cause.
 
 P1 detection (``detect``), rules version ``MOVE_RULES`` (0.1, preliminary: the thresholds are set by hand
 and still have to be calibrated on the training years 2020-2023; validation 2024; the 2025 holdout is never used):
@@ -157,7 +161,8 @@ def scores(candles: Sequence[Mapping[str, Any]], tf: str) -> list[tuple[int, flo
 
 
 def flags_from(candles: Sequence[Mapping[str, Any]], tf: str, scored: Sequence[tuple[int, float, float]],
-               limits: Thresholds = Thresholds()) -> list[dict[str, Any]]:
+               limits: Thresholds | None = None) -> list[dict[str, Any]]:
+    limits = limits or Thresholds()
     flags = []
     for i, r, score in scored:
         hit = (score >= limits.h1_ratio and abs(r) >= limits.h1_floor) if tf == "1h" else score >= limits.h4_sigma
@@ -187,10 +192,11 @@ def merge(flags: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
 
 
 def detect(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime, lookback: timedelta = LOOKBACK,
-           limits: Thresholds = Thresholds()) -> list[dict[str, Any]]:
+           limits: Thresholds | None = None) -> list[dict[str, Any]]:
     """Large moves that ended within ``lookback`` before ``now``, oldest first (pure)."""
     h1 = _closed(series, "1h", now)
     h4 = _closed(series, "4h", now)
+    limits = limits or Thresholds()
     merged = merge(flags_from(h1, "1h", scores(h1, "1h"), limits) + flags_from(h4, "4h", scores(h4, "4h"), limits))
     events = []
     by_open = {c["open_time"]: c for c in h1}
@@ -332,6 +338,74 @@ def _gamma(event: Mapping[str, Any], gamma: Mapping[str, Any] | None) -> dict[st
             "net_gex": inp.get("net_gex"), "below_flip": None if flip is None else float(event["close"]) < float(flip), "source": inp.get("source")}
 
 
+NEWS_BEFORE = timedelta(hours=2)
+NEWS_SHOWN = 3
+NEWS_WORDS = ("bitcoin", "btc", "crypto", "krypto", "ether", "fed", "powell", "fomc", "cpi", "inflation", "rate", "tariff",
+              "nvidia", "nvda", "nasdaq", "stocks", "equities", "sell-off", "selloff", "liquidat", "etf", "sec", "hack", "war")
+STOCK_SAME = 0.8  # % move of the Nasdaq-100 / S&P 500 in the same direction
+STOCK_CALM = 0.3  # % : stocks hardly moved
+SINGLE_SAME = 2.5  # % move of NVIDIA in the same direction
+
+
+def _stocks(event: Mapping[str, Any], stocks: Mapping[str, Any] | None) -> dict[str, Any]:
+    from src.dashboard.outside_world import stock_move
+
+    series = (stocks or {}).get("series") or {}
+    if not series:
+        return {"status": FEHLT}
+    moves = {}
+    for symbol, item in series.items():
+        move = stock_move(item.get("bars") or [], event["start"], event["end"])
+        if move is not None:
+            moves[symbol] = {"name": item.get("name") or symbol, **move}
+    if not moves:
+        return {"status": "geschlossen", "note": "US-Börse im Zeitfenster geschlossen"}
+    return {"status": OK, "moves": moves, "source": (stocks or {}).get("source")}
+
+
+def _news(event: Mapping[str, Any], headlines: Sequence[Mapping[str, Any]] | None) -> dict[str, Any]:
+    from src.dashboard.outside_world import headlines_between
+
+    if not headlines:
+        return {"status": FEHLT}
+    start = event["start"] - NEWS_BEFORE
+    if min(datetime.fromisoformat(h["time"]) for h in headlines) > start:
+        return {"status": FEHLT, "note": "Schlagzeilen-Log beginnt erst nach diesem Zeitfenster"}
+    found = headlines_between(headlines, start, event["end"])
+    found.sort(key=lambda h: (not any(w in h["title"].lower() for w in NEWS_WORDS), h["time"]))
+    return {"status": OK, "count": len(found), "items": found[:NEWS_SHOWN], "source": "RSS-Allowlist (outside_world.FEEDS)"}
+
+
+def _when_short(value: str) -> str:
+    return datetime.fromisoformat(value).astimezone(LOCAL).strftime("%d.%m. %H:%M")
+
+
+def _stock_findings(stocks: Mapping[str, Any], event: Mapping[str, Any], down: bool) -> list[dict[str, str]]:
+    sign = -1 if down else 1
+    moves = stocks["moves"]
+
+    def ev(symbols: Sequence[str], de: bool) -> str:
+        parts = [f"{moves[s]['name']} {_n(moves[s]['change_pct'], '+.2f', de)}{' %' if de else '%'}" for s in symbols if s in moves]
+        return ", ".join(parts) + (" (Yahoo, 1h, gleiches Fenster)" if de else " (Yahoo, 1h, same window)")
+    out = []
+    index = [s for s in ("^NDX", "^GSPC") if s in moves]
+    if index:
+        same = [s for s in index if moves[s]["change_pct"] * sign >= STOCK_SAME]
+        if same:
+            out.append(_finding("stocks", "WAHRSCHEINLICH",
+                                "Aktien " + ("fielen" if down else "stiegen") + " gleichzeitig: breites Risiko-" + ("Aus" if down else "An") + ", nicht nur Krypto.",
+                                "Stocks " + ("fell" if down else "rose") + " at the same time: broad risk-" + ("off" if down else "on") + ", not only crypto.",
+                                ev(index, True), ev(index, False)))
+        elif all(abs(moves[s]["change_pct"]) <= STOCK_CALM for s in index):
+            out.append(_finding("stocks_calm", "BELEGT", "Aktien blieben ruhig: die Bewegung kam aus dem Kryptomarkt selbst.",
+                                "Stocks stayed calm: the move came from the crypto market itself.", ev(index, True), ev(index, False)))
+    if "NVDA" in moves and moves["NVDA"]["change_pct"] * sign >= SINGLE_SAME:
+        out.append(_finding("nvda", "VERMUTUNG", "NVIDIA " + ("fiel" if down else "stieg") + " gleichzeitig deutlich: Tech-Stimmung könnte mitgezogen haben.",
+                            "NVIDIA " + ("fell" if down else "rose") + " sharply at the same time: tech sentiment may have pulled along.",
+                            ev(["NVDA"], True), ev(["NVDA"], False)))
+    return out
+
+
 def context(event: Mapping[str, Any], sources: Mapping[str, Any]) -> dict[str, Any]:
     """Every context value for one move; ``sources`` keys may be missing (then "fehlt")."""
     return {
@@ -344,8 +418,8 @@ def context(event: Mapping[str, Any], sources: Mapping[str, Any]) -> dict[str, A
         "spot_delta": _delta(event, sources.get("spot"), "Spot"),
         "macro": _macro(event, sources.get("calendar")),
         "gamma": _gamma(event, sources.get("gamma")),
-        "stocks": {"status": FEHLT, "note": "Aktien-Gleichlauf kommt mit P3"},
-        "news": {"status": FEHLT, "note": "Schlagzeilen kommen mit P3"},
+        "stocks": _stocks(event, sources.get("stocks")),
+        "news": _news(event, sources.get("headlines")),
     }
 
 
@@ -366,7 +440,7 @@ def _finding(key: str, level: str, de: str, en: str, evidence: str, evidence_en:
     return {"key": key, "level": level, "de": de, "en": en, "evidence": evidence, "evidence_en": evidence_en}
 
 
-CAUSES = ("liq", "oi", "flow", "premium")  # findings that can explain a move; volume, funding, macro and gamma only add context
+CAUSES = ("liq", "oi", "flow", "premium", "stocks")  # findings that can explain a move; the rest only adds context
 
 
 def explain(event: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[dict[str, str]]:
@@ -459,6 +533,16 @@ def explain(event: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[dict[str, 
                             f"{m['label']} lag im Zeitfenster: Zeitpunkt belegt, Wirkung nur aus der Gleichzeitigkeit geschlossen.",
                             f"{m['label']} fell into the window: the timing is a fact, its effect is inferred from timing only.",
                             f"{m['label']} {m['time']} (Kalender)", f"{m['label']} {m['time']} (calendar)"))
+
+    stocks = ctx.get("stocks") or {}
+    if stocks.get("status") == OK:
+        out.extend(_stock_findings(stocks, event, down))
+
+    news = ctx.get("news") or {}
+    if news.get("status") == OK and news.get("items"):
+        titles = "; ".join(f"{_when_short(i['time'])} {i['feed']}: {i['title']}" for i in news["items"])
+        out.append(_finding("news", "VERMUTUNG", f"{len(news['items'])} Schlagzeile(n) im Zeitfenster, Zusammenhang nicht belegt.",
+                            f"{len(news['items'])} headline(s) in the window, connection not shown.", titles, titles))
 
     gamma = ctx.get("gamma") or {}
     if gamma.get("status") == OK and gamma.get("below_flip"):
@@ -599,6 +683,9 @@ def sources_from_state(state: Any) -> dict[str, Any]:
         return liquidation_events.window_events(root, start, end)
 
     sources["liquidations_for"] = liquidations_for
+    from src.dashboard import outside_world
+
+    sources.update(outside_world.sources())
     return sources
 
 
@@ -609,6 +696,8 @@ LEVEL_EN = {"BELEGT": "SHOWN", "WAHRSCHEINLICH": "LIKELY", "VERMUTUNG": "GUESS"}
 MISSING_DE = {"liquidations": "Liquidationen", "open_interest": "Open Interest", "funding": "Funding", "premium": "Coinbase-Premium",
               "perp_delta": "Perp-Delta", "spot_delta": "Spot-Delta", "macro": "Makro-Kalender", "gamma": "Gamma",
               "stocks": "Aktien", "news": "Schlagzeilen", "volume": "Volumen"}
+CLOSED_DE = {"stocks": "US-Börse geschlossen"}
+CLOSED_EN = {"stocks": "US market closed"}
 MISSING_EN = {"liquidations": "liquidations", "open_interest": "open interest", "funding": "funding", "premium": "Coinbase premium",
               "perp_delta": "perp delta", "spot_delta": "spot delta", "macro": "macro calendar", "gamma": "gamma",
               "stocks": "stocks", "news": "headlines", "volume": "volume"}
@@ -637,9 +726,13 @@ def _event_html(row: Mapping[str, Any], de: bool) -> str:
         items.append("<li>" + ("Aus den vorhandenen Daten nicht erklärbar. Ursache liegt vermutlich außerhalb dessen, was TIM misst (z. B. Nachrichten)."
                                if de else "Not explained by the data TIM has. The cause probably lies outside what TIM measures (e.g. news).") + "</li>")
     missing = [(MISSING_DE if de else MISSING_EN)[k] for k, v in (row.get("context") or {}).items() if (v or {}).get("status") == FEHLT]
+    closed = [(CLOSED_DE if de else CLOSED_EN)[k] for k, v in (row.get("context") or {}).items()
+              if (v or {}).get("status") == "geschlossen" and k in CLOSED_DE]
     gap = ""
     if missing:
         gap = ("<p class='cc-note'>Fehlt: " if de else "<p class='cc-note'>Missing: ") + _safe(", ".join(missing)) + "</p>"
+    if closed:
+        gap += "<p class='cc-note'>" + _safe(", ".join(closed)) + "</p>"
     return f"<li class='tc-moves__item'><p><b>{_safe(head)}</b></p><ul>{''.join(items)}</ul>{gap}</li>"
 
 

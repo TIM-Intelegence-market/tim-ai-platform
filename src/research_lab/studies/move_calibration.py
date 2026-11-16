@@ -117,9 +117,9 @@ def report(result: Mapping[str, Any]) -> str:
                 f"{block['training']['per_year']} ({block['training']['by_year']}) | {block['validation']['moves']} |")
     return "\n".join([
         "# Kalibrierung Bewegungs-Detektor (move-context)", "",
-        f"Training {result['training'][0]} bis {result['training'][1]}, Validierung {result['validation'][0]} bis {result['validation'][1]}, "
-        f"Holdout 2025 nicht gelesen. Ziel {result['target_per_year']:.0f} Bewegungen je Jahr (Bereich {result['target_range'][0]:.0f}–{result['target_range'][1]:.0f}), "
-        "Wahl nur auf Training. Gezählt wird nur, wie oft der Detektor anschlägt, keine Rendite, kein Trade.", "",
+        (f"Training {result['training'][0]} bis {result['training'][1]}, Validierung {result['validation'][0]} bis {result['validation'][1]}, "
+         f"Holdout 2025 nicht gelesen. Ziel {result['target_per_year']:.0f} Bewegungen je Jahr (Bereich {result['target_range'][0]:.0f}–{result['target_range'][1]:.0f}), "
+         "Wahl nur auf Training. Gezählt wird nur, wie oft der Detektor anschlägt, keine Rendite, kein Trade."), "",
         f"Stunden: {result['hours']}, 4h-Kerzen: {result['four_hours']}.", "",
         "| Regeln | 1h | 4h | Training je Jahr (je Jahr) | Validierung 2024 |", "|---|---|---|---|---|",
         line("bisher 0.1", cur), line("gewählt", ch), "",
