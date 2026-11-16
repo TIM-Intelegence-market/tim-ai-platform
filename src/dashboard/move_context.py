@@ -662,7 +662,41 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], source
         with path.open("a", encoding="utf-8") as handle:
             for row in new:
                 handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+    beat(path, now)
     return new
+
+
+def heartbeat_path(path: Path) -> Path:
+    return path.with_name(path.stem + ".heartbeat.jsonl")
+
+
+def beat(path: Path, now: datetime) -> None:
+    """One line per hour in which the recorder ran (move_label labels trades only across hours without a long gap)."""
+    hour = _iso(now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0))
+    beats = heartbeat_path(path)
+    try:
+        last = beats.read_text(encoding="utf-8").rstrip("\n").rsplit("\n", 1)[-1]
+    except OSError:
+        last = ""
+    if last.strip('"') != hour:
+        beats.parent.mkdir(parents=True, exist_ok=True)
+        with beats.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(hour) + "\n")
+
+
+def beats(path: Path) -> list[datetime]:
+    """Hours in which the recorder ran, sorted; unreadable lines are skipped."""
+    try:
+        lines = heartbeat_path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            out.append(datetime.fromisoformat(json.loads(line)))
+        except (TypeError, ValueError):
+            continue
+    return sorted(out)
 
 
 def shown(series: Mapping[str, Sequence[Mapping[str, Any]]], sources: Mapping[str, Any], path: Path = DEFAULT_PATH,
