@@ -664,7 +664,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], source
             for row in new:
                 handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
     hours = _closed(series, "1h", now)
-    if len(hours) >= H1_MIN_PRIOR and now - hours[-1]["close_time"] <= FRESH:
+    if len(hours) > H1_MIN_PRIOR and now - hours[-1]["close_time"] <= FRESH:
         beat(path, now)  # only a recorder that sees fresh candles counts as watching (a dead feed finds no move)
     return new
 
@@ -681,8 +681,11 @@ def beat(path: Path, now: datetime) -> None:
         last = beats.read_text(encoding="utf-8", errors="replace").rstrip("\n").rsplit("\n", 1)[-1]
     except OSError:
         last = ""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch()  # the record exists once the recorder watched: a lost record is then told apart from "no move"
+    if not beats.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()  # first watch: the record exists from now on, so a lost record is told apart from "no move"
+    elif not path.exists():
+        return  # record lost while the heartbeat stays: no more beats, move_label gives no label
     if last.strip('"') != hour:
         with beats.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(hour) + "\n")

@@ -151,6 +151,8 @@ def test_lost_record_or_broken_bytes_never_read_as_calm_or_crash(tmp_path: Path)
     path = _write(tmp_path / "moves.jsonl", [], now)
     path.unlink()  # heartbeat stays, record lost
     assert ml.labels(journal, path, now) == []
+    move_context.beat(path, now + timedelta(hours=1))  # the recorder runs on: it must not recreate the record
+    assert not path.exists() and ml.labels(journal, path, now + timedelta(hours=1)) == []
     broken = _write(tmp_path / "broken.jsonl", [_move(T + timedelta(hours=1), findings=[{"key": "liq", "level": "BELEGT"}])], now)
     with broken.open("ab") as handle:
         handle.write(b'{"id": "\xc3')  # cut multi-byte tail

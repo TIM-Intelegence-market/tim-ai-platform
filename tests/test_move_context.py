@@ -354,3 +354,7 @@ def test_heartbeat_only_while_candles_are_fresh(tmp_path):
     assert len(M.beats(path)) == 1
     M.update(path, series, {}, last + timedelta(hours=5))  # feed stalled for hours: no beat
     assert len(M.beats(path)) == 1
+    short = {tf: rows[-M.H1_MIN_PRIOR:] for tf, rows in series.items()}  # newest hour not yet scorable
+    other = tmp_path / "short.jsonl"
+    M.update(other, short, {}, last + timedelta(minutes=30))
+    assert M.beats(other) == []
