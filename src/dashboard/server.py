@@ -131,6 +131,18 @@ class DashboardServer:
                     except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                         return self.respond(500, _error_page("Chart", exc).encode(), "text/html; charset=utf-8")
                     return self.respond(200, page.encode(), "text/html; charset=utf-8", csp=CHART_CSP)
+                if path == "/orderbuch":
+                    from src.dashboard.pages.orderbook import ORDERBOOK_CSP, render_orderbook_page
+
+                    try:
+                        page = render_orderbook_page(outer.state)
+                    except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                        return self.respond(500, _error_page("Orderbuch", exc).encode(), "text/html; charset=utf-8")
+                    return self.respond(200, page.encode(), "text/html; charset=utf-8", csp=ORDERBOOK_CSP)
+                from src.dashboard.pages.orderbook import ORDERBOOK_SCRIPTS
+
+                if path in ORDERBOOK_SCRIPTS:
+                    return self.respond(200, ORDERBOOK_SCRIPTS[path], "text/javascript; charset=utf-8")
                 from src.dashboard.pwa import assets as pwa_assets
 
                 if path in pwa_assets():
