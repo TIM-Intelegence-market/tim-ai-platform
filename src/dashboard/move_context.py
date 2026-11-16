@@ -350,6 +350,24 @@ SINGLE_SAME = 2.5  # % move of NVIDIA in the same direction
 STOCK_MIN_BARS = 1  # an index needs at least this many hour bars that ended in the window
 
 
+US_EAST = ZoneInfo("America/New_York")
+US_OPEN, US_CLOSE = (9, 30), (16, 0)
+
+
+def us_session_overlap(start: datetime, end: datetime) -> bool:
+    """True when ``start..end`` touches a regular US session (Mon-Fri 9:30-16:00 New York); holidays are not known."""
+    day = start.astimezone(US_EAST).date() - timedelta(days=1)
+    last = end.astimezone(US_EAST).date()
+    while day <= last:
+        if day.weekday() < 5:
+            open_ = datetime(day.year, day.month, day.day, *US_OPEN, tzinfo=US_EAST)
+            close = datetime(day.year, day.month, day.day, *US_CLOSE, tzinfo=US_EAST)
+            if start < close and end > open_:
+                return True
+        day += timedelta(days=1)
+    return False
+
+
 def _stocks(event: Mapping[str, Any], stocks: Mapping[str, Any] | None) -> dict[str, Any]:
     from src.dashboard.outside_world import stock_move
 
@@ -364,7 +382,7 @@ def _stocks(event: Mapping[str, Any], stocks: Mapping[str, Any] | None) -> dict[
     if not moves:
         # "closed" only when the series runs past the move (so the gap is the market's, not a stale feed)
         last_end = max((int(b[0]) + 3600 for item in series.values() for b in item.get("bars") or []), default=0)
-        if last_end >= int(event["end"].timestamp()):
+        if last_end >= int(event["end"].timestamp()) or not us_session_overlap(event["start"], event["end"]):
             return {"status": "geschlossen", "note": "US-Börse im Zeitfenster geschlossen"}
         return {"status": FEHLT, "note": "Aktienkurse reichen nicht bis zum Ende der Bewegung"}
     return {"status": OK, "moves": moves, "source": (stocks or {}).get("source")}
