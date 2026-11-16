@@ -13,8 +13,9 @@ import io
 import zipfile
 from pathlib import Path
 
-import numpy as np
 import pytest
+
+np = pytest.importorskip("numpy")  # numpy steht nicht in requirements.txt: ohne numpy wird das Modul übersprungen (wie bei den anderen research_lab-Tests)
 
 from src.research_lab.konsolidierung import daten
 from src.research_lab.konsolidierung import s7b_nachrechnung as s7b

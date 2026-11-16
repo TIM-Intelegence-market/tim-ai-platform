@@ -12,8 +12,9 @@ import json
 import re
 from pathlib import Path
 
-import numpy as np
 import pytest
+
+np = pytest.importorskip("numpy")  # numpy steht nicht in requirements.txt: ohne numpy wird das Modul übersprungen (wie bei den anderen research_lab-Tests)
 
 from src.research_lab.konsolidierung import evidenz, logbuch_abgleich as lb, register, register_schema as schema, studie
 
