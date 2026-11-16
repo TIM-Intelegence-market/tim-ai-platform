@@ -18,8 +18,10 @@ the stock move in the same window (a bar counts from the end of its hour); headl
 feeds published from two hours before the move to its end are listed as VERMUTUNG, never as an explanation:
 a headline at the same time is not a proven cause.
 
-P1 detection (``detect``), rules version ``MOVE_RULES`` (0.1, preliminary: the thresholds are set by hand
-and still have to be calibrated on the training years 2020-2023; validation 2024; the 2025 holdout is never used):
+P1 detection (``detect``), rules version ``MOVE_RULES`` (0.2, calibrated 16.11.2026 on the PS5 with
+``research_lab.studies.move_calibration``: training 2020-2023 20.0 moves a year (12 to 32), validation 2024 13 moves,
+the 2025 holdout never read; report in ``docs/research_lab/MOVE_CONTEXT_KALIBRIERUNG.md``; 0.1 had 3x / 0.6 % / 3 σ
+and fired 388 times a year):
 
 - a closed 1h candle whose absolute return is at least ``H1_RATIO`` times the median absolute 1h return of
   the candles before it (at least ``H1_MIN_PRIOR`` of them, at most ``H1_PRIOR``) and at least ``H1_FLOOR``,
@@ -59,15 +61,15 @@ from zoneinfo import ZoneInfo
 from src.dashboard.helpers import _safe
 
 SCHEMA = "tim_move_event/1"
-MOVE_RULES = "move-context/0.1"
+MOVE_RULES = "move-context/0.2"
 DEFAULT_PATH = Path("data/journal/tim_move_events.jsonl")
 LOCAL = ZoneInfo("Europe/Berlin")
 
-H1_RATIO = 3.0
-H1_FLOOR = 0.006  # 0.6 %: quiet weeks would otherwise flag ordinary candles
+H1_RATIO = 15.0
+H1_FLOOR = 0.015  # 1.5 %: quiet weeks would otherwise flag ordinary candles
 H1_PRIOR = 480  # the runtime keeps 500 candles per timeframe, so about 20 days
 H1_MIN_PRIOR = 168  # one week
-H4_SIGMA = 3.0
+H4_SIGMA = 5.0
 H4_PRIOR = 540
 H4_MIN_PRIOR = 90
 MERGE_GAP = timedelta(hours=4)
@@ -756,10 +758,12 @@ def render(rows: Sequence[Mapping[str, Any]], de: bool = True) -> str:
                 else "<p class='empty'>No large move in the last 7 days.</p>")
     else:
         body = "<ul class='tc-moves'>" + "".join(_event_html(r, de) for r in rows) + "</ul>"
-    note = ("Große Bewegung = 1h-Kerze mindestens 3-mal so groß wie üblich oder 4h-Kerze über 3 σ (Regeln move-context/0.1, vorläufig). "
+    note = ("Große Bewegung = 1h-Kerze mindestens 15-mal so groß wie üblich und mindestens 1,5 % oder 4h-Kerze über 5 σ "
+            "(Regeln move-context/0.2, kalibriert auf 2020–2023: etwa 20 Bewegungen im Jahr). "
             "BELEGT = Daten zeigen es, WAHRSCHEINLICH = mehrere Hinweise, VERMUTUNG = nur der Zeitpunkt passt. Nur Beobachtung, keine Order, keine Empfehlung."
             if de else
-            "Large move = 1h candle at least 3x its usual size or 4h candle beyond 3σ (rules move-context/0.1, preliminary). "
+            "Large move = 1h candle at least 15x its usual size and at least 1.5%, or 4h candle beyond 5σ "
+            "(rules move-context/0.2, calibrated on 2020-2023: about 20 moves a year). "
             "SHOWN = the data shows it, LIKELY = several hints agree, GUESS = only the timing fits. Observation only: no orders, not advice.")
     return f"<section class='cc-section tc-moves' data-moves='{SCHEMA}'><p class='cc-section__eyebrow'>{eyebrow}</p>{body}<p class='cc-note'>{note}</p></section>"
 
