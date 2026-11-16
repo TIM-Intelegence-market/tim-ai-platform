@@ -29,6 +29,8 @@ from src.research_lab.of2.levels import (
     DayVolume,
     Levels,
     SessionState,
+    acceptance_bias,
+    balance_state,
     day_summary,
     day_volume,
     naked_pocs,
@@ -83,6 +85,9 @@ class Engine:
         self.swing_hist: deque[Candle] = deque(maxlen=cfg.swing_history)
         self.swing_days: deque[DayVolume] = deque(maxlen=70)
         self.swing_cfg = dataclasses.replace(cfg, tf_value=cfg.swing_tf, tf_sfp=cfg.swing_tf) if cfg.swing_tf else cfg
+        # Multi-day balance state and acceptance bias of the completed days (``balance_filter``; set per day).
+        self.balance = "UNBEKANNT"
+        self.bias = "UNBEKANNT"
 
     # -- levels -----------------------------------------------------------------------------------
     def _levels(self) -> Levels | None:
@@ -126,6 +131,10 @@ class Engine:
         levels = self._levels()
         if levels is None:
             self.stats.tage_ohne_level += 1
+        if cfg.balance_filter:
+            self.balance = balance_state(list(self.days), cfg.balance_days, cfg.balance_overlap)
+            self.bias = acceptance_bias(list(self.days), cfg.bias_days)
+            self.stats.hit(self.stats.verworfen, f"tag_{self.balance}")   # day count per state (not a rejection)
         c30, c15 = CandleBuilder(cfg.tf_value), CandleBuilder(cfg.tf_sfp)
         swing_levels, week_start = self._swing_levels(day_start) if self.swing_builder is not None else (None, 0)
         hist30: list[Candle] = []
@@ -218,6 +227,9 @@ class Engine:
         if signal.model == "M7" and reg == "TREND":   # range edges hold on balance days, not in a trend
             self.stats.hit(self.stats.verworfen, "M7_trendtag")
             return
+        if cfg.balance_filter and (why := _balance_block(signal, self.balance, self.bias)) is not None:
+            self.stats.hit(self.stats.verworfen, f"{signal.model}_{why}")
+            return
         rr = signal.reward_risk
         if rr is None or rr < cfg.min_rr:
             self.stats.hit(self.stats.verworfen, f"{signal.model}_rr")
@@ -231,6 +243,24 @@ class Engine:
         signal = Signal(**{**_fields(signal), "session": self.session.name, "regime": reg})
         self.stats.hit(self.stats.signale, f"{signal.model}|{signal.session}|{'OF' if signal.confirmed else 'PREIS'}")
         self.tracker.add(signal)
+
+
+FADE_MODELS = frozenset({"M1", "M3", "M4", "M6", "M7"})
+CONTINUATION_MODELS = frozenset({"M2", "M5"})
+
+
+def _balance_block(signal: Signal, balance: str, bias: str) -> str | None:
+    """Reason a signal is blocked by the multi-day filter (plan package P4), else None. Swing and extra models pass."""
+    d = signal.direction
+    against_imbalance = (balance == "IMBALANCE_TIEF" and d > 0) or (balance == "IMBALANCE_HOCH" and d < 0)
+    if signal.model in FADE_MODELS:
+        if against_imbalance:
+            return "gegen_imbalance"
+        if (bias == "TIEFER" and d > 0) or (bias == "HOEHER" and d < 0):
+            return "gegen_akzeptanz"
+    elif signal.model in CONTINUATION_MODELS and against_imbalance:
+        return "gegen_imbalance"
+    return None
 
 
 def _last_excursion(hist: list[Candle], lv: Levels) -> list[Candle]:
