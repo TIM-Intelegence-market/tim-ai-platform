@@ -31,10 +31,10 @@ TRAINING = (date(2020, 1, 1), date(2023, 12, 31))
 VALIDATION = (date(2024, 1, 1), date(2024, 12, 31))
 TARGET_PER_YEAR = 20.0
 TARGET_RANGE = (10.0, 30.0)
-GRID = {
-    "h1_ratio": (2.5, 3.0, 3.5, 4.0, 5.0, 6.0),
-    "h1_floor": (0.004, 0.006, 0.008, 0.010, 0.015),
-    "h4_sigma": (2.5, 3.0, 3.5, 4.0, 5.0),
+GRID = {  # widened 16.11.2026: the first run on the PS5 still found 117 moves a year at the old upper edge (6x, 1.5 %, 4 sigma)
+    "h1_ratio": (3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0),
+    "h1_floor": (0.006, 0.010, 0.015, 0.020, 0.025, 0.030, 0.040, 0.050),
+    "h4_sigma": (3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0),
 }
 CURRENT = M.Thresholds()
 
@@ -123,6 +123,11 @@ def report(result: Mapping[str, Any]) -> str:
         f"Stunden: {result['hours']}, 4h-Kerzen: {result['four_hours']}.", "",
         "| Regeln | 1h | 4h | Training je Jahr (je Jahr) | Validierung 2024 |", "|---|---|---|---|---|",
         line("bisher 0.1", cur), line("gewählt", ch), "",
+        f"Davon nur über 4h ausgelöst (Training): bisher {cur['training']['only_4h']}, gewählt {ch['training']['only_4h']}.", "",
+        "Die fünf Gitterpunkte am nächsten am Ziel (Training je Jahr):", "",
+        *[f"- {g['limits']['h1_ratio']} x Median, mind. {g['limits']['h1_floor'] * 100:.1f} %, {g['limits']['h4_sigma']} σ: {g['training']['per_year']}"
+          for g in sorted(result["grid"], key=lambda g: abs(g["training"]["per_year"] - result["target_per_year"]))[:5]],
+        "",
     ])
 
 
