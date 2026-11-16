@@ -779,6 +779,7 @@ class TIMApplication:
         # Paper journal only: a failed step is logged and retried, never fatal.
         from functools import partial
 
+        from src.dashboard.move_context import DEFAULT_PATH as moves_path
         from src.dashboard.plan_journal import HORIZONS, RULE_STRUCT, RULE_VP, update as update_plan_journal
         from src.dashboard.trader_journal import update as update_trader_journal
         from src.dashboard.chart_history import JOURNAL_TIMEFRAMES, TIMEFRAMES, fetch_history
@@ -820,12 +821,12 @@ class TIMApplication:
             def positioning_fn(at):
                 return positioning_at(settings.symbol, at)
 
-            for name, step, path in (("plan journal", partial(update_plan_journal, trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_path),
-                                     ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
-                                     ("plan journal vp", partial(update_plan_journal, rule=RULE_VP, footprint=footprint, gamma=gamma), self.dashboard_state.plan_journal_vp_path),
-                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_short_path),
-                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_mid_path),
-                                     ("plan journal long", partial(update_plan_journal, timeframe=HORIZONS["LONG"]), self.dashboard_state.plan_journal_long_path),
+            for name, step, path in (("plan journal", partial(update_plan_journal, moves_path=moves_path, trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_path),
+                                     ("plan journal struct", partial(update_plan_journal, moves_path=moves_path, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
+                                     ("plan journal vp", partial(update_plan_journal, moves_path=moves_path, rule=RULE_VP, footprint=footprint, gamma=gamma), self.dashboard_state.plan_journal_vp_path),
+                                     ("plan journal short", partial(update_plan_journal, moves_path=moves_path, timeframe=HORIZONS["SHORT"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_short_path),
+                                     ("plan journal mid", partial(update_plan_journal, moves_path=moves_path, timeframe=HORIZONS["MID"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_mid_path),
+                                     ("plan journal long", partial(update_plan_journal, moves_path=moves_path, timeframe=HORIZONS["LONG"]), self.dashboard_state.plan_journal_long_path),
                                      ("trader journal", update_trader_journal, self.dashboard_state.trader_journal_path)):
                 try:
                     await asyncio.to_thread(step, path, series)

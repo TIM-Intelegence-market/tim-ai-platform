@@ -78,6 +78,7 @@ MAX_SHOWN = 5
 RECORD_AFTER = timedelta(minutes=15)  # let hourly OI / premium points arrive
 RECORD_UNTIL = timedelta(hours=6)  # older moves are not recorded later (their gamma would be missing anyway)
 
+FRESH = timedelta(hours=2)  # heartbeat only while the last closed 1h candle is at most this old
 LIQ_BEFORE = timedelta(hours=1)
 LIQ_STRONG_USD = 10_000_000.0
 LIQ_SOME_USD = 2_000_000.0
@@ -618,7 +619,7 @@ def build(series: Mapping[str, Sequence[Mapping[str, Any]]], sources: Mapping[st
 
 def load(path: Path = DEFAULT_PATH) -> list[dict[str, Any]]:
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()  # a cut multi-byte tail never blocks
     except OSError:
         return []
     rows = []
@@ -662,7 +663,49 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], source
         with path.open("a", encoding="utf-8") as handle:
             for row in new:
                 handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+    hours = _closed(series, "1h", now)
+    if len(hours) > H1_MIN_PRIOR and now - hours[-1]["close_time"] <= FRESH:
+        beat(path, now)  # only a recorder that sees fresh candles counts as watching (a dead feed finds no move)
     return new
+
+
+def heartbeat_path(path: Path) -> Path:
+    return path.with_name(path.stem + ".heartbeat.jsonl")
+
+
+def beat(path: Path, now: datetime) -> None:
+    """One line per hour in which the recorder ran (move_label labels trades only across hours without a long gap)."""
+    hour = _iso(now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0))
+    beats = heartbeat_path(path)
+    try:
+        last = beats.read_text(encoding="utf-8", errors="replace").rstrip("\n").rsplit("\n", 1)[-1]
+    except OSError:
+        last = ""
+    if not beats.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()  # first watch: the record exists from now on, so a lost record is told apart from "no move"
+    elif not path.exists():
+        return  # record lost while the heartbeat stays: no more beats, move_label gives no label
+    if last.strip('"') != hour:
+        with beats.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(hour) + "\n")
+
+
+def beats(path: Path) -> list[datetime]:
+    """Hours in which the recorder ran, sorted; unreadable lines are skipped."""
+    try:
+        lines = heartbeat_path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            moment = datetime.fromisoformat(json.loads(line))
+        except (TypeError, ValueError):
+            continue
+        if moment.tzinfo is not None:  # beat() writes UTC with offset; anything else is not ours
+            out.append(moment)
+    return sorted(out)
 
 
 def shown(series: Mapping[str, Sequence[Mapping[str, Any]]], sources: Mapping[str, Any], path: Path = DEFAULT_PATH,
