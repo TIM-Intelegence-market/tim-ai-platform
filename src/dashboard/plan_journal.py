@@ -1317,7 +1317,12 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     if moves_path is not None:
         from src.dashboard.move_label import labels as market_event_labels
 
-        for label in market_event_labels(journal, moves_path, now):
+        try:  # a look back after the close: it must never stop a journal step
+            due = market_event_labels(journal, moves_path, now)
+        except Exception as error:  # noqa: BLE001
+            due = []
+            logging.getLogger(__name__).warning("market event label skipped (%s)", type(error).__name__)
+        for label in due:
             new_events.append({"event_id": journal_log.event_id(MARKET_EVENT_LABELED, label["id"]), "kind": MARKET_EVENT_LABELED,
                                "aggregate_id": label["id"], "recorded_at": _iso(now), "source_hash": source_hash,
                                "source_range": source_range, "payload": label})

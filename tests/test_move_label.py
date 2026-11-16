@@ -138,4 +138,36 @@ def test_heartbeat_writes_one_line_per_hour(tmp_path: Path) -> None:
     for minutes in (0, 10, 59, 61):
         move_context.beat(path, T + timedelta(minutes=minutes))
     assert move_context.beats(path) == [T, T + timedelta(hours=1)]
-    assert not path.exists()  # the move record itself is only written when there is a move
+    assert path.exists() and path.read_text() == ""  # the record exists, empty: watched, no move
+    # A naive or broken line (not written by beat) is skipped, never a crash.
+    with move_context.heartbeat_path(path).open("a") as handle:
+        handle.write('"2026-11-17T15:00:00"\n{broken\n')
+    assert move_context.beats(path) == [T, T + timedelta(hours=1)]
+
+
+def test_lost_record_or_broken_bytes_never_read_as_calm_or_crash(tmp_path: Path) -> None:
+    journal = {"entries": [_trade()]}
+    now = T + timedelta(days=2)
+    path = _write(tmp_path / "moves.jsonl", [], now)
+    path.unlink()  # heartbeat stays, record lost
+    assert ml.labels(journal, path, now) == []
+    broken = _write(tmp_path / "broken.jsonl", [_move(T + timedelta(hours=1), findings=[{"key": "liq", "level": "BELEGT"}])], now)
+    with broken.open("ab") as handle:
+        handle.write(b'{"id": "\xc3')  # cut multi-byte tail
+    assert ml.labels(journal, broken, now)[0]["label"] == "liquidations_kaskade"
+
+
+def test_a_label_error_never_stops_the_journal_step(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*_args, **_kwargs):
+        raise TypeError("bad record")
+
+    monkeypatch.setattr(ml, "labels", boom)
+    journal = pj.update(tmp_path / "journal.json", {"30m": [], "1m": []}, T, moves_path=tmp_path / "moves.jsonl")
+    assert journal["entries"] == [] and journal["checked_at"]
+
+
+def test_gap_of_exactly_max_gap_is_covered_one_hour_more_is_not() -> None:
+    first, last = T, T + timedelta(hours=10)
+    beats = [T, T + ml.MAX_GAP, T + timedelta(hours=8), last]
+    assert ml.covered(beats, first, last)
+    assert not ml.covered([T, T + ml.MAX_GAP + timedelta(hours=1), last], first, last)

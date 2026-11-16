@@ -619,7 +619,7 @@ def build(series: Mapping[str, Sequence[Mapping[str, Any]]], sources: Mapping[st
 
 def load(path: Path = DEFAULT_PATH) -> list[dict[str, Any]]:
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()  # a cut multi-byte tail never blocks
     except OSError:
         return []
     rows = []
@@ -664,7 +664,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], source
             for row in new:
                 handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
     hours = _closed(series, "1h", now)
-    if hours and now - hours[-1]["close_time"] <= FRESH:
+    if len(hours) >= H1_MIN_PRIOR and now - hours[-1]["close_time"] <= FRESH:
         beat(path, now)  # only a recorder that sees fresh candles counts as watching (a dead feed finds no move)
     return new
 
@@ -678,11 +678,12 @@ def beat(path: Path, now: datetime) -> None:
     hour = _iso(now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0))
     beats = heartbeat_path(path)
     try:
-        last = beats.read_text(encoding="utf-8").rstrip("\n").rsplit("\n", 1)[-1]
+        last = beats.read_text(encoding="utf-8", errors="replace").rstrip("\n").rsplit("\n", 1)[-1]
     except OSError:
         last = ""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()  # the record exists once the recorder watched: a lost record is then told apart from "no move"
     if last.strip('"') != hour:
-        beats.parent.mkdir(parents=True, exist_ok=True)
         with beats.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(hour) + "\n")
 
@@ -690,15 +691,17 @@ def beat(path: Path, now: datetime) -> None:
 def beats(path: Path) -> list[datetime]:
     """Hours in which the recorder ran, sorted; unreadable lines are skipped."""
     try:
-        lines = heartbeat_path(path).read_text(encoding="utf-8").splitlines()
+        lines = heartbeat_path(path).read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
     out = []
     for line in lines:
         try:
-            out.append(datetime.fromisoformat(json.loads(line)))
+            moment = datetime.fromisoformat(json.loads(line))
         except (TypeError, ValueError):
             continue
+        if moment.tzinfo is not None:  # beat() writes UTC with offset; anything else is not ours
+            out.append(moment)
     return sorted(out)
 
 

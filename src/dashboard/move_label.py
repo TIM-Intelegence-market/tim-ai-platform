@@ -102,6 +102,8 @@ def labels(journal: Mapping[str, Any], moves_path: Path, now: datetime) -> list[
             due.append(entry)
     if not due:
         return []  # nothing to label: the record is not read
+    if not moves_path.exists():
+        return []  # the recorder creates the record when it first watches: without it, no evidence of calm
     hours = move_context.beats(moves_path)
     moves = list(move_context.latest(moves_path).values())
     out = []
