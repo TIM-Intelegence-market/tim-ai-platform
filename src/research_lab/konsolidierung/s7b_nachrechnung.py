@@ -40,6 +40,7 @@ class Kosten:
     funding: str = "hist"          # "hist" | "hist_ohne_gutschrift" | "aus"
     funding_faktor: float = 1.0
     verzoegerung_kerzen: int = 0   # zusätzliche Verzögerung des Einstiegs (Latenzstress), in 4h-Kerzen
+    gebuehr_ziel: float | None = None  # Gebühr für Ausstiege am Ziel (Maker-Szenario K4); None = wie ``gebuehr``
 
     def streng(self, faktor: float = 2.0) -> "Kosten":
         """Protokoll-Stress: Gebühr und Slippage verdoppelt, Funding ohne Gutschrift."""
@@ -58,10 +59,17 @@ class Variante:
     zeitstop: int = 30
     atr_faktor: float = 1.5
     mindest_risiko: float = 0.01
+    sma_filter: bool = True   # False = Ausbruch in beide Richtungen ohne SMA200-Filter (nur T5)
+    seiten: int = 0           # 0 = long und short, 1 = nur long, -1 = nur short (nur T5)
 
     @property
     def name(self) -> str:
         return f"D{self.kanal}-T{int(self.ziel_r)}"
+
+    @property
+    def beschreibung(self) -> str:
+        return (f"Kanal {self.kanal}, Ziel {self.ziel_r:g}R, ATR-Faktor {self.atr_faktor:g}, Zeitstopp {self.zeitstop}, "
+                f"Mindestrisiko {self.mindest_risiko:g}, SMA-Filter {'ja' if self.sma_filter else 'nein'}, Seiten {self.seiten}")
 
 
 @dataclass
@@ -95,6 +103,9 @@ class _Reihe:
     sig: np.ndarray
     stop_signal: np.ndarray
     atr: np.ndarray
+    r0: np.ndarray           # Anfangsrisiko je Kerze (max(ATR-Faktor x ATR, Mindestrisiko x Schluss))
+    vorlauf: np.ndarray      # Kerze hat lückenlosen Vorlauf, ATR und SMA200 verfügbar
+    sma_seite: np.ndarray    # +1 Schluss über SMA200, -1 darunter, 0 sonst
 
 
 def _rolling_max(x: np.ndarray, n: int) -> np.ndarray:
@@ -138,13 +149,30 @@ def bereite_vor(k: Kerzen, v: Variante) -> _Reihe:
     kont = np.zeros(n, dtype=bool)
     if n >= laenge:
         kont[laenge - 1:] = (t[laenge - 1:] - t[: n - laenge + 1]) == (laenge - 1) * MS_4H
-    gueltig = kont & ~np.isnan(atr) & ~np.isnan(sma) & ~np.isnan(hh) & ~np.isnan(ll)
-    lang = gueltig & (c > hh) & (c > sma)
-    kurz = gueltig & (c < ll) & (c < sma)
+    vorlauf = kont & ~np.isnan(atr) & ~np.isnan(sma)
+    gueltig = vorlauf & ~np.isnan(hh) & ~np.isnan(ll)
+    if v.sma_filter:
+        lang = gueltig & (c > hh) & (c > sma)
+        kurz = gueltig & (c < ll) & (c < sma)
+    else:
+        lang = gueltig & (c > hh)
+        kurz = gueltig & (c < ll)
+    if v.seiten == 1:
+        kurz = np.zeros(n, dtype=bool)
+    elif v.seiten == -1:
+        lang = np.zeros(n, dtype=bool)
     sig = np.where(lang, 1, np.where(kurz, -1, 0)).astype(np.int8)
     r0 = np.maximum(v.atr_faktor * atr, v.mindest_risiko * c)
     stop_sig = np.where(sig == 1, c - r0, np.where(sig == -1, c + r0, np.nan))
-    return _Reihe(k.symbol, t, o, h, l, c, {int(x): i for i, x in enumerate(t)}, sig, stop_sig, atr)
+    sma_seite = np.where(vorlauf, np.sign(c - np.where(np.isnan(sma), 0.0, sma)), 0).astype(np.int8)
+    return _Reihe(k.symbol, t, o, h, l, c, {int(x): i for i, x in enumerate(t)}, sig, stop_sig, atr, r0, vorlauf, sma_seite)
+
+
+def mit_signalen(r: _Reihe, sig: np.ndarray) -> _Reihe:
+    """Gleiche Kerzenreihe mit vorgegebenen Signalen (+1/-1/0) und dem dazu passenden Anfangsstop (Zufallsvergleich T3)."""
+    sig = np.asarray(sig, dtype=np.int8)
+    stop_sig = np.where(sig == 1, r.c - r.r0, np.where(sig == -1, r.c + r.r0, np.nan))
+    return replace(r, sig=sig, stop_signal=stop_sig)
 
 
 def _funding_summe(ft: np.ndarray, fr: np.ndarray, von: int, bis: int) -> tuple[float, float]:
@@ -156,10 +184,14 @@ def _funding_summe(ft: np.ndarray, fr: np.ndarray, von: int, bis: int) -> tuple[
 
 
 def simuliere(kerzen: dict[str, Kerzen], funding: dict[str, Funding | None], v: Variante, kosten: Kosten = BASIS,
-              portfolio: bool = True, bis_ms: int | None = None) -> list[Trade]:
+              portfolio: bool = True, bis_ms: int | None = None, reihenfolge: tuple[str, ...] = SYMBOLE,
+              reihen: dict[str, _Reihe] | None = None) -> list[Trade]:
     """Chronologische Simulation. ``portfolio=True``: höchstens eine Position über alle Symbole (S7b),
-    sonst eine Position je Symbol (S7). Gibt alle geschlossenen Trades zurück (zwangsgeschlossene werden nicht gebucht)."""
-    reihen = {s: bereite_vor(kerzen[s], v) for s in SYMBOLE if s in kerzen}
+    sonst eine Position je Symbol (S7). Gibt alle geschlossenen Trades zurück (zwangsgeschlossene werden nicht gebucht).
+    ``reihenfolge`` = Vorrang bei gleichem Zeitstempel (Standard BTC > ETH > SOL). ``reihen`` = vorbereitete Reihen
+    (für Zufallsvergleich mit vorgegebenen Signalen); sonst werden sie aus ``kerzen`` und ``v`` berechnet."""
+    if reihen is None:
+        reihen = {s: bereite_vor(kerzen[s], v) for s in reihenfolge if s in kerzen}
     zeiten = np.unique(np.concatenate([r.t for r in reihen.values()]))
     if bis_ms is not None:
         zeiten = zeiten[zeiten < bis_ms]
@@ -171,7 +203,7 @@ def simuliere(kerzen: dict[str, Kerzen], funding: dict[str, Funding | None], v: 
     for T0 in zeiten:
         T0 = int(T0)
         # Phase A: Einstiege füllen, Ausstiege prüfen (alle Symbole in fester Reihenfolge)
-        for s in SYMBOLE:
+        for s in reihenfolge:
             r = reihen.get(s)
             if r is None:
                 continue
@@ -232,7 +264,7 @@ def simuliere(kerzen: dict[str, Kerzen], funding: dict[str, Funding | None], v: 
             else:
                 q["letzter_schluss"] = c
         # Phase B: Signale auf der soeben geschlossenen Kerze
-        for s in SYMBOLE:
+        for s in reihenfolge:
             r = reihen.get(s)
             if r is None:
                 continue
@@ -256,7 +288,8 @@ def _schliesse(trades: list[Trade], pos: dict, s: str, q: dict, ausstieg: float,
     seite = q["seite"]
     risiko = q["risiko"]
     brutto = seite * (ausstieg - q["einstieg"]) / risiko
-    kost = kosten.gebuehr * (q["einstieg"] + ausstieg) / risiko
+    geb_aus = kosten.gebuehr_ziel if (grund == "target" and kosten.gebuehr_ziel is not None) else kosten.gebuehr
+    kost = (kosten.gebuehr * q["einstieg"] + geb_aus * ausstieg) / risiko
     f_r = 0.0
     if fund is not None and kosten.funding != "aus":
         summe, summe_pos = _funding_summe(fund.t, fund.rate, q["einstieg_zeit"], ausstieg_zeit)
