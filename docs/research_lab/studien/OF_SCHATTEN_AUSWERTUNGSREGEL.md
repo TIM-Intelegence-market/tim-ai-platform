@@ -23,7 +23,7 @@ Die Regel ist also nicht blind. Deshalb: keine Schwelle, kein Filter und kein Ze
 Zahlen gewählt, die Vergleiche sind die zwei, die der Schatten seit dem Start vorsieht, und jedes
 positive Ergebnis führt höchstens zu "im Papier weiter beobachten", nie zu einem Einbau.
 
-Stand beim Einfrieren (beim Merge eintragen): ___ geschlossene Pläne, Zeitpunkt ___.
+Stand beim Einfrieren: 25 geschlossene Pläne (29 erfasst), Schatten zuletzt geprüft 16.11.2026 13:34 Ortszeit.
 
 ## Stichprobe
 
