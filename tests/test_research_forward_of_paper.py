@@ -135,3 +135,26 @@ def test_card_shows_the_journal():
                                {"model": "M1", "direction": 1, "session": "LONDON", "reason": "TARGET", "net_r": 1.6, "exit_ms": 0}],
                            "trichter": {"M1": {"kandidat": 9, "bestaetigt": 4, "frei": 3, "risiko_ok": 2, "geschlossen": 2}}})
     assert "2 von 100 Trades" in html and "9 Kandidaten" in html and "wartet auf Archiv 2026-11-21" in html and "Ziel" in html
+
+
+def test_m8_shadow_journal_has_its_own_folder_start_and_management(tmp_path):
+    now = [START]
+    store = FakeStore()
+    cfg = dataclasses.replace(of_paper.M8_CONFIG, max_cost_r=100.0)
+    j = of_paper.m8_journal(tmp_path, cfg=cfg, store=store, clock=lambda: now[0])
+    assert j.folder == tmp_path / of_paper.M8_FOLDER
+    assert j.start()["config"]["m8"] is True
+    now[0] = START + timedelta(days=30)
+    status = of_paper.step_m8(tmp_path, cfg=cfg, store=store, clock=lambda: now[0])
+    assert status["last_day"] == (now[0].date() - timedelta(days=1)).isoformat()
+    data = json.loads((j.folder / "journal.json").read_text())
+    pf = data["positionsfuehrung"]
+    assert set(pf["alle"]) == {"FEST", "TEIL", "NACHZIEHEN", "AUFBAU"}
+    assert pf["alle"]["FEST"].get("n", 0) == status["trades"]
+    if status["trades"]:   # the replay reproduces the engine's own exit
+        assert pf["alle"]["FEST"]["summe"] == pytest.approx(status["net_r"], abs=0.01)
+
+
+def test_m8_config_only_adds_the_model():
+    assert of_paper.M8_CONFIG.of_gate and of_paper.M8_CONFIG.m8
+    assert dataclasses.replace(of_paper.M8_CONFIG, m8=False).digest() == of_paper.PAPER_CONFIG.digest()

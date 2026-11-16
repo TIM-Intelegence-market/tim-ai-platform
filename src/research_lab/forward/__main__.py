@@ -9,6 +9,10 @@ Orderflow paper journal (OF2 with the orderflow gate on current data, paper only
     python -m src.research_lab.forward of-start  # fix the start (signals count from the next full UTC day)
     python -m src.research_lab.forward of-step   # fetch finished days and re-run the engine (the workshop does this)
     python -m src.research_lab.forward of-status # last status (read only)
+
+M8 shadow journal (Fabervaale model M8 + management variants, shares the OF store; the workshop starts it):
+
+    python -m src.research_lab.forward of-m8-step | of-m8-status
 """
 from __future__ import annotations
 
@@ -21,9 +25,18 @@ from src.research_lab.forward.s7b import FOLDER, ForwardJournal
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("step", "status", "verify", "of-start", "of-step", "of-status"))
+    parser.add_argument("command", choices=("step", "status", "verify", "of-start", "of-step", "of-status",
+                                                "of-m8-step", "of-m8-status"))
     parser.add_argument("--folder")
     args = parser.parse_args(argv)
+    if args.command.startswith("of-m8-"):
+        from src.research_lab.forward import of_paper
+
+        root = args.folder or "."
+        out = of_paper.step_m8(root) if args.command == "of-m8-step" else (
+            of_paper.m8_journal(root).status() or {"status": "noch kein Lauf"})
+        print(json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
     if args.command.startswith("of-"):
         from src.research_lab.forward.of_paper import FOLDER as OF_FOLDER
         from src.research_lab.forward.of_paper import PaperJournal

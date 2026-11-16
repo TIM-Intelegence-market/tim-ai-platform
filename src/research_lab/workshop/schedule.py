@@ -172,6 +172,16 @@ def _of_paper_step(root: Path) -> Mapping[str, Any]:
     return of_paper.step(root)
 
 
+def _of_m8_step(root: Path) -> Mapping[str, Any]:
+    """M8 shadow journal (Uzi 16.11.2026): runs wherever the orderflow paper journal runs; its first step fixes the
+    start (prospective, from the next full UTC day)."""
+    from src.research_lab.forward import of_paper
+
+    if not (Path(root) / of_paper.FOLDER / "start.json").exists():
+        return {"new_events": 0, "started": False}
+    return of_paper.step_m8(root)
+
+
 @dataclass
 class Workshop:
     """IO side. ``root`` is the checkout the LaunchAgent runs from (on the Mac ~/TIM-live)."""
@@ -182,6 +192,7 @@ class Workshop:
                                                                   text=True, check=False).stdout)
     forward: Callable[[Path], Mapping[str, Any]] | None = None
     of_paper: Callable[[Path], Mapping[str, Any]] = _of_paper_step
+    of_m8: Callable[[Path], Mapping[str, Any]] = _of_m8_step
 
     @property
     def research(self) -> Path:
@@ -390,10 +401,20 @@ class Workshop:
             state["of_paper"] = {"last_run": _iso(now), "last_result": paper}
             if paper.get("new_events") or paper["ok"] is False:
                 summary["of_paper"] = paper
+            started = datetime.now(timezone.utc)
+            try:
+                status = self.of_m8(self.root)
+                m8 = {"ok": True, "new_events": status.get("new_events", 0)}
+            except Exception as exc:  # shown in the status, retried next wake-up
+                m8 = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:500]}
+            m8["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
+            state["of_m8"] = {"last_run": _iso(now), "last_result": m8}
+            if m8.get("new_events") or m8["ok"] is False:
+                summary["of_m8"] = m8
         if not dry_run:
             state["schema"], state["checked_at"] = SCHEMA, _iso(now)
             self.write_state(state)
             forward = summary.get("forward") or {}
-            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False or "of_paper" in summary:
+            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False or "of_paper" in summary or "of_m8" in summary:
                 self.log(summary)
         return summary
