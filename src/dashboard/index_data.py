@@ -30,6 +30,7 @@ FILE_ENV = "TIM_TWELVEDATA_SECRET_FILE"
 SYMBOL_ENV = "TIM_NASDAQ_SYMBOL"  # NDX (index) by default; QQQ if the plan has no indices
 DEFAULT_SECRET_FILE = "~/Library/Application Support/TIM/twelvedata-api-key"
 KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT = "com.tim.twelvedata", "tim"
+KEYCHAIN_SERVICES = (KEYCHAIN_SERVICE, "twelvedata")  # Uzi stored the key as "twelvedata" (16.11.2026): both count
 KEY_SHAPE = re.compile(r"[A-Za-z0-9]{16,64}")
 DEFAULT_SYMBOL = "NDX"
 ALLOWED_SYMBOLS = ("NDX", "QQQ")
@@ -52,7 +53,17 @@ class IndexSecretError(RuntimeError):
 
 
 def _keychain(env: Mapping[str, str]) -> str:
-    service = _safe_identifier(env.get("TIM_TWELVEDATA_KEYCHAIN_SERVICE", KEYCHAIN_SERVICE), label="Keychain service")
+    chosen = env.get("TIM_TWELVEDATA_KEYCHAIN_SERVICE")
+    for service in ((chosen,) if chosen else KEYCHAIN_SERVICES):
+        try:
+            return _keychain_item(env, service)
+        except SecretProviderError:
+            continue
+    raise SecretProviderError("macOS Keychain Twelve Data secret is unavailable")
+
+
+def _keychain_item(env: Mapping[str, str], service: str) -> str:
+    service = _safe_identifier(service, label="Keychain service")
     account = _safe_identifier(env.get("TIM_TWELVEDATA_KEYCHAIN_ACCOUNT", KEYCHAIN_ACCOUNT), label="Keychain account")
     completed = None
     try:

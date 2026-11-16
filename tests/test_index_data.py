@@ -93,3 +93,19 @@ def test_without_key_the_index_falls_back_to_yahoo(monkeypatch) -> None:
 
 def test_index_cache_keeps_answers_longer() -> None:
     assert chart_live.INDEX_CACHE.ttl("1h") >= 900 and chart_live.CACHE.ttl("1h") == 30.0
+
+
+def test_keychain_accepts_both_service_names(monkeypatch) -> None:
+    asked = []
+
+    class Done:
+        def __init__(self, ok: bool) -> None:
+            self.returncode, self.stdout = (0, KEY.encode()) if ok else (44, b"")
+
+    def run(cmd, **kwargs):
+        asked.append(cmd[cmd.index("-s") + 1])
+        return Done(cmd[cmd.index("-s") + 1] == "twelvedata")
+
+    monkeypatch.setattr(index_data.subprocess, "run", run)
+    assert index_data.api_key({index_data.PROVIDER_ENV: "keychain"}).reveal() == KEY
+    assert asked == ["com.tim.twelvedata", "twelvedata"]
