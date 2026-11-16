@@ -1,0 +1,3040 @@
+{
+ "quellen": {
+  "S34": {
+   "datei": "s34_train_2026-11-14.json",
+   "sha256": "828cd209f286c28bbb6d4ed9ccc0b4bb0b0cdab11afe884031ff7d93b01f13e6"
+  },
+  "S35a": {
+   "datei": "s35a_train_2026-11-14.trades.json",
+   "sha256": "d7d42eff8cdd5ddbc8539fbbdb252ee8d3abc0ae13204461287be6cc7c062542"
+  },
+  "S36": {
+   "datei": "train.trades.json",
+   "sha256": "98a05a770f0cdcdc58ab7af6f6341d84e5a1c342df64ab0f415073f61a435656"
+  },
+  "S37": {
+   "datei": "s37_train_2026-11-15.trades.json",
+   "sha256": "7a9be035ead32cbbee67b7448829221a4b42db7da1fa3897877af2e417730734"
+  },
+  "S38": {
+   "datei": "s38_train_2026-11-15.trades.json",
+   "sha256": "8fd6605d698dc5beb582c4c750020825df98d3f2d86dbb0c7ef1e488ef62b73d"
+  },
+  "OF2": {
+   "datei": "of2_training_of_trades_aa853e1.json",
+   "sha256": "8857b0002875cfd4bcf4ee32e2caa3dd1e812f2a4eea77a321f15bbc66459b89"
+  }
+ },
+ "studien": {
+  "S34": {
+   "S34": {
+    "n": 53,
+    "signal_wochen": 41,
+    "monate_mit_trade": 28,
+    "e_r": -1.2131259228644602,
+    "median_r": -2.095094647302615,
+    "sd_r": 2.1319454023149356,
+    "summe_r": -64.2956739118164,
+    "trefferquote": 0.24528301886792453,
+    "trefferquote_ci95_wilson": [
+     0.14932762711854577,
+     0.3756681506217008
+    ],
+    "mittel_gewinn_r": 2.0491272453247626,
+    "mittel_verlust_r": -2.2733582025259578,
+    "profit_faktor": 0.29294387219338514,
+    "max_drawdown_r": 65.16975211442215,
+    "max_drawdown_dauer_tage": 1378.9958333333334,
+    "bester_trade_r": 6.2560957059709965,
+    "schlechtester_trade_r": -3.000000000000144,
+    "trades_pro_monat": 1.1268243063306649,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -64.2956739118164,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -48.24750911993119,
+    "mittlere_haltedauer_h": 0.8525157232704403,
+    "zeit_im_markt_anteil": 0.0013150382457360699,
+    "kosten_r_je_trade": 1.1974419902479414,
+    "brutto_r_je_trade": -0.01568393261651875,
+    "netto_bp_je_trade_auf_nominal": -16.36733163683969,
+    "mittlerer_stop_abstand_prozent": 0.19622177659544449,
+    "kosten_bp_je_trade_auf_nominal": 19.31432830188679,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 53,
+      "e_r": -1.2131259228644602,
+      "summe_r": -64.2956739118164
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 26,
+      "e_r": -1.0034808891121338,
+      "summe_r": -26.09050311691548
+     },
+     "1": {
+      "n": 27,
+      "e_r": -1.4150063257370713,
+      "summe_r": -38.20517079490092
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 40,
+      "e_r": -2.2733582025259578,
+      "summe_r": -90.9343281010383
+     },
+     "target": {
+      "n": 11,
+      "e_r": 1.910595210086599,
+      "summe_r": 21.01654731095259
+     },
+     "time": {
+      "n": 2,
+      "e_r": 2.811053439134663,
+      "summe_r": 5.622106878269326
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 12,
+      "e_r": -1.7390232501060368,
+      "summe_r": -20.86827900127244
+     },
+     "2021": {
+      "n": 5,
+      "e_r": -0.32243910784776064,
+      "summe_r": -1.6121955392388032
+     },
+     "2022": {
+      "n": 12,
+      "e_r": -0.5955384301349295,
+      "summe_r": -7.146461161619154
+     },
+     "2023": {
+      "n": 24,
+      "e_r": -1.4445307587369165,
+      "summe_r": -34.668738209686
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 28,
+     "e_r": {
+      "ci95": [
+       -1.8325541459675772,
+       -0.41737073472357805
+      ],
+      "ci90": [
+       -1.7475426056093408,
+       -0.5634912229354219
+      ],
+      "anteil_positiv": 0.0025
+     },
+     "summe_r": {
+      "ci95": [
+       -112.14801112878591,
+       -18.364926977107043
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.09963216902999716,
+       0.6887352767547389
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 67.24825285223992,
+      "p95": 107.77261966861454,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 1.6252273957018115e-05,
+    "zu_wenige_trades_unter_30": false,
+    "abgleich_logbuch": {
+     "berichtet_n": 53,
+     "berichtet_netto_e_r": -1.21,
+     "nachgerechnet_n": 53,
+     "nachgerechnet_netto_e_r": -1.2131259228644602,
+     "stimmt": true
+    }
+   }
+  },
+  "S35a": {
+   "E-bounce-5m": {
+    "n": 3367,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.3299379775265998,
+    "median_r": -1.33990814929144,
+    "sd_r": 1.398369673492771,
+    "summe_r": -1110.9011703320616,
+    "trefferquote": 0.3436293436293436,
+    "trefferquote_ci95_wilson": [
+     0.3277738644878592,
+     0.35984124029784176
+    ],
+    "mittel_gewinn_r": 1.563033906619776,
+    "mittel_verlust_r": -1.3209644345208789,
+    "profit_faktor": 0.6194672621884338,
+    "max_drawdown_r": 1113.6897734518661,
+    "max_drawdown_dauer_tage": 1093.7923611111112,
+    "bester_trade_r": 1.9536703563188589,
+    "schlechtester_trade_r": -1.7925279999999988,
+    "trades_pro_monat": 93.60252311907753,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1110.9011703320616,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.99894209329608,
+    "mittlere_haltedauer_h": 1.3571478071478071,
+    "zeit_im_markt_anteil": 0.17389795892478846,
+    "kosten_r_je_trade": 0.35098571810336476,
+    "brutto_r_je_trade": 0.021047740576764923,
+    "netto_bp_je_trade_auf_nominal": -17.953585714807463,
+    "mittlerer_stop_abstand_prozent": 0.6075065986486353,
+    "kosten_bp_je_trade_auf_nominal": 19.325710543510542,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1151,
+      "e_r": -0.3272008178062672,
+      "summe_r": -376.6081412950135
+     },
+     "ETHUSDT": {
+      "n": 1195,
+      "e_r": -0.3134417648658177,
+      "summe_r": -374.5629090146522
+     },
+     "SOLUSDT": {
+      "n": 1021,
+      "e_r": -0.35233116554593136,
+      "summe_r": -359.7301200223959
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 1708,
+      "e_r": -0.3188406662225922,
+      "summe_r": -544.5798579081875
+     },
+     "1": {
+      "n": 1659,
+      "e_r": -0.3413630575189115,
+      "summe_r": -566.3213124238741
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 2108,
+      "e_r": -1.3654417452848042,
+      "summe_r": -2878.3511990603674
+     },
+     "target": {
+      "n": 1051,
+      "e_r": 1.671195566485579,
+      "summe_r": 1756.4265403763436
+     },
+     "time": {
+      "n": 208,
+      "e_r": 0.052997540153664875,
+      "summe_r": 11.023488351962294
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 821,
+      "e_r": -0.2416901650875926,
+      "summe_r": -198.42762553691352
+     },
+     "2021": {
+      "n": 1328,
+      "e_r": -0.360561422872358,
+      "summe_r": -478.8255695744914
+     },
+     "2022": {
+      "n": 1218,
+      "e_r": -0.3560328203782074,
+      "summe_r": -433.6479752206566
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.37197469148640966,
+       -0.286945482715871
+      ],
+      "ci90": [
+       -0.36480216816449496,
+       -0.29394045110420486
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1290.2391013179877,
+       -928.9763143135266
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.5784369337582507,
+       0.6630041989439857
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1113.5827714686357,
+      "p95": 1266.9668937737588,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "E-bounce-15m": {
+    "n": 2218,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.3379424115526199,
+    "median_r": -1.2335866122725703,
+    "sd_r": 1.3647830603382523,
+    "summe_r": -749.556268823711,
+    "trefferquote": 0.33047790802524796,
+    "trefferquote_ci95_wilson": [
+     0.31120952341261565,
+     0.3503325055060976
+    ],
+    "mittel_gewinn_r": 1.5494159242670675,
+    "mittel_verlust_r": -1.2695475699067147,
+    "profit_faktor": 0.6024160825933669,
+    "max_drawdown_r": 751.1283725936183,
+    "max_drawdown_dauer_tage": 1094.3229166666667,
+    "bester_trade_r": 1.9688269431666112,
+    "schlechtester_trade_r": -1.7857758875063123,
+    "trades_pro_monat": 61.6773665527841,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -749.556268823711,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.9553805271685,
+    "mittlere_haltedauer_h": 1.7395626690712354,
+    "zeit_im_markt_anteil": 0.1468742565117673,
+    "kosten_r_je_trade": 0.3094563935427288,
+    "brutto_r_je_trade": -0.028486018009891145,
+    "netto_bp_je_trade_auf_nominal": -20.33078526456913,
+    "mittlerer_stop_abstand_prozent": 0.7773773111222639,
+    "kosten_bp_je_trade_auf_nominal": 19.32538106402164,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 671,
+      "e_r": -0.3124517879659689,
+      "summe_r": -209.65514972516513
+     },
+     "ETHUSDT": {
+      "n": 801,
+      "e_r": -0.322418522319421,
+      "summe_r": -258.2572363778562
+     },
+     "SOLUSDT": {
+      "n": 746,
+      "e_r": -0.37753871678376627,
+      "summe_r": -281.64388272068965
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 1173,
+      "e_r": -0.25566188161467984,
+      "summe_r": -299.89138713401945
+     },
+     "1": {
+      "n": 1045,
+      "e_r": -0.43030132219109235,
+      "summe_r": -449.6648816896915
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 1395,
+      "e_r": -1.3253928242874342,
+      "summe_r": -1848.9229898809708
+     },
+     "target": {
+      "n": 635,
+      "e_r": 1.707806845921091,
+      "summe_r": 1084.4573471598928
+     },
+     "time": {
+      "n": 188,
+      "e_r": 0.07930518030514314,
+      "summe_r": 14.909373897366908
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 564,
+      "e_r": -0.3290941389849327,
+      "summe_r": -185.60909438750207
+     },
+     "2021": {
+      "n": 883,
+      "e_r": -0.31385139788359667,
+      "summe_r": -277.13078433121586
+     },
+     "2022": {
+      "n": 771,
+      "e_r": -0.37200569404019856,
+      "summe_r": -286.8163901049931
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.38860542045708807,
+       -0.28796034887228117
+      ],
+      "ci90": [
+       -0.38084020908297755,
+       -0.2957133739130691
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -879.7653816186083,
+       -624.9507484987503
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.5545960844276534,
+       0.6515860285368702
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 754.6919317590457,
+      "p95": 854.6598339119993,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "E-break-5m": {
+    "n": 4024,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.2892115835073127,
+    "median_r": -1.317015824283641,
+    "sd_r": 1.4191551955781756,
+    "summe_r": -1163.7874120334263,
+    "trefferquote": 0.35636182902584496,
+    "trefferquote_ci95_wilson": [
+     0.34170757160125975,
+     0.37129007954768334
+    ],
+    "mittel_gewinn_r": 1.5883565546896758,
+    "mittel_verlust_r": -1.328760892454989,
+    "profit_faktor": 0.661836247833358,
+    "max_drawdown_r": 1166.6607604669325,
+    "max_drawdown_dauer_tage": 1094.017361111111,
+    "bester_trade_r": 1.9736601101781015,
+    "schlechtester_trade_r": -1.6127160000000038,
+    "trades_pro_monat": 111.86639858432227,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1163.7874120334263,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.99942129734161,
+    "mittlere_haltedauer_h": 1.180504473161034,
+    "zeit_im_markt_anteil": 0.18077862275866882,
+    "kosten_r_je_trade": 0.3449596671356056,
+    "brutto_r_je_trade": 0.05574808362829293,
+    "netto_bp_je_trade_auf_nominal": -15.169524791815052,
+    "mittlerer_stop_abstand_prozent": 0.6331530767005903,
+    "kosten_bp_je_trade_auf_nominal": 19.224151540755464,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1371,
+      "e_r": -0.25894656009071576,
+      "summe_r": -355.01573388437134
+     },
+     "ETHUSDT": {
+      "n": 1458,
+      "e_r": -0.277015653346233,
+      "summe_r": -403.8888225788078
+     },
+     "SOLUSDT": {
+      "n": 1195,
+      "e_r": -0.33881410507970483,
+      "summe_r": -404.8828555702473
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 2006,
+      "e_r": -0.2913449687826056,
+      "summe_r": -584.4380073779067
+     },
+     "1": {
+      "n": 2018,
+      "e_r": -0.2870908843684439,
+      "summe_r": -579.3494046555197
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 2502,
+      "e_r": -1.3605598952508282,
+      "summe_r": -3404.1208579175723
+     },
+     "target": {
+      "n": 1329,
+      "e_r": 1.6740052951341728,
+      "summe_r": 2224.753037233316
+     },
+     "time": {
+      "n": 193,
+      "e_r": 0.08072750596284838,
+      "summe_r": 15.580408650829735
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 985,
+      "e_r": -0.24064367924572605,
+      "summe_r": -237.03402405704017
+     },
+     "2021": {
+      "n": 1591,
+      "e_r": -0.30325935242900726,
+      "summe_r": -482.48562971455056
+     },
+     "2022": {
+      "n": 1448,
+      "e_r": -0.30681475018082577,
+      "summe_r": -444.2677582618357
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.33191104977157226,
+       -0.24445507550979542
+      ],
+      "ci90": [
+       -0.3255623705074215,
+       -0.25104097491251115
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1373.7344366203424,
+       -950.8374301931766
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.6196569004148401,
+       0.7077941103706945
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1165.3040528003603,
+      "p95": 1346.9480111437692,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "E-break-15m": {
+    "n": 3353,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.2529089632764952,
+    "median_r": -1.2253870700862812,
+    "sd_r": 1.4049113960533866,
+    "summe_r": -848.0037538660885,
+    "trefferquote": 0.35878317924246944,
+    "trefferquote_ci95_wilson": [
+     0.3427180714748243,
+     0.37517150663335935
+    ],
+    "mittel_gewinn_r": 1.5815399425287742,
+    "mittel_verlust_r": -1.2793471184782343,
+    "profit_faktor": 0.6917018493741186,
+    "max_drawdown_r": 852.339577725697,
+    "max_drawdown_dauer_tage": 1094.625,
+    "bester_trade_r": 1.9959902426430847,
+    "schlechtester_trade_r": -1.5736020000000066,
+    "trades_pro_monat": 93.21332343874872,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -848.0037538660885,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.9852464598886,
+    "mittlere_haltedauer_h": 1.4385475693408887,
+    "zeit_im_markt_anteil": 0.18356166990143472,
+    "kosten_r_je_trade": 0.31533515572005116,
+    "brutto_r_je_trade": 0.062426192443555954,
+    "netto_bp_je_trade_auf_nominal": -13.822343553886814,
+    "mittlerer_stop_abstand_prozent": 0.753304775460878,
+    "kosten_bp_je_trade_auf_nominal": 19.2125558604235,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1107,
+      "e_r": -0.2838967066481992,
+      "summe_r": -314.2736542595565
+     },
+     "ETHUSDT": {
+      "n": 1214,
+      "e_r": -0.18295241664425543,
+      "summe_r": -222.1042338061261
+     },
+     "SOLUSDT": {
+      "n": 1032,
+      "e_r": -0.3019630482562073,
+      "summe_r": -311.6258658004059
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 1684,
+      "e_r": -0.2433850166288932,
+      "summe_r": -409.8603680030561
+     },
+     "1": {
+      "n": 1669,
+      "e_r": -0.26251850560996554,
+      "summe_r": -438.14338586303245
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 2022,
+      "e_r": -1.3348388061702077,
+      "summe_r": -2699.04406607616
+     },
+     "target": {
+      "n": 1081,
+      "e_r": 1.6981276092594686,
+      "summe_r": 1835.6759456094856
+     },
+     "time": {
+      "n": 250,
+      "e_r": 0.06145746640234365,
+      "summe_r": 15.364366600585912
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 824,
+      "e_r": -0.21512296297906222,
+      "summe_r": -177.26132149474728
+     },
+     "2021": {
+      "n": 1365,
+      "e_r": -0.262253754599077,
+      "summe_r": -357.9763750277401
+     },
+     "2022": {
+      "n": 1164,
+      "e_r": -0.2686993619790387,
+      "summe_r": -312.76605734360106
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.3006451621503989,
+       -0.2026399871976733
+      ],
+      "ci90": [
+       -0.293568181287334,
+       -0.2114500904777424
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1027.4739775924245,
+       -663.7450737464319
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.6423538032464856,
+       0.7464987341889836
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 856.9026078062827,
+      "p95": 1006.2837413117463,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false,
+    "abgleich_logbuch": {
+     "berichtet_n": null,
+     "berichtet_netto_e_r": -0.25,
+     "nachgerechnet_n": 3353,
+     "nachgerechnet_netto_e_r": -0.2529089632764952,
+     "stimmt": true
+    }
+   },
+   "V-bounce-5m": {
+    "n": 4817,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.41442849266834464,
+    "median_r": -1.3797006838280912,
+    "sd_r": 1.3593146470043243,
+    "summe_r": -1996.302049183416,
+    "trefferquote": 0.3159642931285032,
+    "trefferquote_ci95_wilson": [
+     0.30298652553349975,
+     0.32923536700908035
+    ],
+    "mittel_gewinn_r": 1.537747225127961,
+    "mittel_verlust_r": -1.3161618591284285,
+    "profit_faktor": 0.5396782110492323,
+    "max_drawdown_r": 1999.1072751834793,
+    "max_drawdown_dauer_tage": 1091.9395833333333,
+    "bester_trade_r": 2.243874000000001,
+    "schlechtester_trade_r": -1.606018000000004,
+    "trades_pro_monat": 133.90272303208846,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1996.302049183416,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.99999986856794,
+    "mittlere_haltedauer_h": 1.5456542799806243,
+    "zeit_im_markt_anteil": 0.2833228158187648,
+    "kosten_r_je_trade": 0.3563233193006544,
+    "brutto_r_je_trade": -0.05810517336769017,
+    "netto_bp_je_trade_auf_nominal": -22.4239965223556,
+    "mittlerer_stop_abstand_prozent": 0.5919055768652247,
+    "kosten_bp_je_trade_auf_nominal": 19.26272478721196,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1708,
+      "e_r": -0.43390952693393187,
+      "summe_r": -741.1174720031556
+     },
+     "ETHUSDT": {
+      "n": 1730,
+      "e_r": -0.3970790852050399,
+      "summe_r": -686.946817404719
+     },
+     "SOLUSDT": {
+      "n": 1379,
+      "e_r": -0.41206509048262596,
+      "summe_r": -568.2377597755412
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 2436,
+      "e_r": -0.4340013212025177,
+      "summe_r": -1057.2272184493331
+     },
+     "1": {
+      "n": 2381,
+      "e_r": -0.39440354083749796,
+      "summe_r": -939.0748307340826
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 3111,
+      "e_r": -1.3684646845499773,
+      "summe_r": -4257.293633634979
+     },
+     "target": {
+      "n": 1354,
+      "e_r": 1.6675979219503403,
+      "summe_r": 2257.927586320761
+     },
+     "time": {
+      "n": 352,
+      "e_r": 0.00870454014432724,
+      "summe_r": 3.0639981308031885
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 1405,
+      "e_r": -0.4481531237750438,
+      "summe_r": -629.6551389039365
+     },
+     "2021": {
+      "n": 1711,
+      "e_r": -0.4167213148337849,
+      "summe_r": -713.0101696806059
+     },
+     "2022": {
+      "n": 1701,
+      "e_r": -0.38426616143378794,
+      "summe_r": -653.6367405988733
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.45276279188803453,
+       -0.37849941905955253
+      ],
+      "ci90": [
+       -0.44642225399228996,
+       -0.38409671789092154
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -2199.266711639609,
+       -1807.7611243971821
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.5066895015391257,
+       0.5722689759717158
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1995.173641251869,
+      "p95": 2161.4808373585233,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "V-bounce-15m": {
+    "n": 3114,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.36503093349887666,
+    "median_r": -1.2317741562243758,
+    "sd_r": 1.343605628222347,
+    "summe_r": -1136.706326915502,
+    "trefferquote": 0.3217726396917148,
+    "trefferquote_ci95_wilson": [
+     0.30559275523613716,
+     0.3383917242832841
+    ],
+    "mittel_gewinn_r": 1.518746474380666,
+    "mittel_verlust_r": -1.2587548741690004,
+    "profit_faktor": 0.5724241200442856,
+    "max_drawdown_r": 1136.7063269154976,
+    "max_drawdown_dauer_tage": 1094.3736111111111,
+    "bester_trade_r": 1.9706929030865432,
+    "schlechtester_trade_r": -1.5895387276526565,
+    "trades_pro_monat": 86.60620770394905,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1136.706326915502,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.99914447945173,
+    "mittlere_haltedauer_h": 1.9441126097195462,
+    "zeit_im_markt_anteil": 0.23048900818239218,
+    "kosten_r_je_trade": 0.3142020968966183,
+    "brutto_r_je_trade": -0.05082883660225828,
+    "netto_bp_je_trade_auf_nominal": -21.657106256514556,
+    "mittlerer_stop_abstand_prozent": 0.751422795922993,
+    "kosten_bp_je_trade_auf_nominal": 19.283430956968527,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1039,
+      "e_r": -0.3797271053857182,
+      "summe_r": -394.5364624957612
+     },
+     "ETHUSDT": {
+      "n": 1120,
+      "e_r": -0.36975919504372123,
+      "summe_r": -414.1302984489678
+     },
+     "SOLUSDT": {
+      "n": 955,
+      "e_r": -0.3434969277180867,
+      "summe_r": -328.0395659707728
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 1642,
+      "e_r": -0.3401747901713827,
+      "summe_r": -558.5670054614104
+     },
+     "1": {
+      "n": 1472,
+      "e_r": -0.392757691205225,
+      "summe_r": -578.1393214540913
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 1951,
+      "e_r": -1.3299804870590743,
+      "summe_r": -2594.791930252254
+     },
+     "target": {
+      "n": 840,
+      "e_r": 1.707854121043031,
+      "summe_r": 1434.597461676146
+     },
+     "time": {
+      "n": 323,
+      "e_r": 0.07271870483159923,
+      "summe_r": 23.48814166060655
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 962,
+      "e_r": -0.3807045485127519,
+      "summe_r": -366.2377756692673
+     },
+     "2021": {
+      "n": 1055,
+      "e_r": -0.3220746670796056,
+      "summe_r": -339.7887737689839
+     },
+     "2022": {
+      "n": 1097,
+      "e_r": -0.39259779168391107,
+      "summe_r": -430.67977747725047
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.41345399395922117,
+       -0.3141142095520809
+      ],
+      "ci90": [
+       -0.406602160088219,
+       -0.3217805044173403
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1307.2461267851004,
+       -960.2346404919041
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.5269854780726556,
+       0.6221505867927342
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1143.0887450232208,
+      "p95": 1284.7235611954109,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "V-break-5m": {
+    "n": 5248,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.32213290410700846,
+    "median_r": -1.3720863853072638,
+    "sd_r": 1.4042173609079678,
+    "summe_r": -1690.5534807535803,
+    "trefferquote": 0.3471798780487805,
+    "trefferquote_ci95_wilson": [
+     0.3344153748398846,
+     0.36016794998849555
+    ],
+    "mittel_gewinn_r": 1.5649317786782682,
+    "mittel_verlust_r": -1.325703205343078,
+    "profit_faktor": 0.6277838186534767,
+    "max_drawdown_r": 1691.0756062235312,
+    "max_drawdown_dauer_tage": 1094.7097222222221,
+    "bester_trade_r": 1.9783623224604618,
+    "schlechtester_trade_r": -1.5933119999999905,
+    "trades_pro_monat": 145.91140135812765,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1690.5534807535805,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.99999736121552,
+    "mittlere_haltedauer_h": 1.4062087144308943,
+    "zeit_im_markt_anteil": 0.28087869147792327,
+    "kosten_r_je_trade": 0.35604301938190847,
+    "brutto_r_je_trade": 0.03391011527490004,
+    "netto_bp_je_trade_auf_nominal": -15.949551402709906,
+    "mittlerer_stop_abstand_prozent": 0.5890893576011185,
+    "kosten_bp_je_trade_auf_nominal": 19.218913300304877,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1838,
+      "e_r": -0.3672202961689968,
+      "summe_r": -674.9509043586162
+     },
+     "ETHUSDT": {
+      "n": 1873,
+      "e_r": -0.3124863344127371,
+      "summe_r": -585.2869043550565
+     },
+     "SOLUSDT": {
+      "n": 1537,
+      "e_r": -0.2799711594273959,
+      "summe_r": -430.31567203990755
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 2683,
+      "e_r": -0.33548279070859294,
+      "summe_r": -900.1003274711549
+     },
+     "1": {
+      "n": 2565,
+      "e_r": -0.30816887067540955,
+      "summe_r": -790.4531532824254
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 3253,
+      "e_r": -1.3726071521223775,
+      "summe_r": -4465.091065854094
+     },
+     "target": {
+      "n": 1664,
+      "e_r": 1.6691185382701395,
+      "summe_r": 2777.413247681512
+     },
+     "time": {
+      "n": 331,
+      "e_r": -0.00868780235951177,
+      "summe_r": -2.8756625809983962
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 1477,
+      "e_r": -0.3363733487290261,
+      "summe_r": -496.8234360727715
+     },
+     "2021": {
+      "n": 1915,
+      "e_r": -0.3113140025631388,
+      "summe_r": -596.1663149084108
+     },
+     "2022": {
+      "n": 1856,
+      "e_r": -0.3219632164721972,
+      "summe_r": -597.563729772398
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.36435347524334905,
+       -0.28043614437568165
+      ],
+      "ci90": [
+       -0.35803531253286686,
+       -0.2868762445918466
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1939.9939423923863,
+       -1452.7561170610154
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.5884750814810824,
+       0.6688317388037713
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1691.2469672764198,
+      "p95": 1895.607721108519,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "V-break-15m": {
+    "n": 4342,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.2800239840392005,
+    "median_r": -1.2436427076214651,
+    "sd_r": 1.4015935101397412,
+    "summe_r": -1215.8641386982085,
+    "trefferquote": 0.3535237217871948,
+    "trefferquote_ci95_wilson": [
+     0.33943899283656137,
+     0.367867412440612
+    ],
+    "mittel_gewinn_r": 1.5701230928414793,
+    "mittel_verlust_r": -1.291771673035226,
+    "profit_faktor": 0.6646819901168082,
+    "max_drawdown_r": 1221.4886222361706,
+    "max_drawdown_dauer_tage": 1088.2840277777777,
+    "bester_trade_r": 1.9644479815991291,
+    "schlechtester_trade_r": -1.549676000000003,
+    "trades_pro_monat": 120.72013473267552,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1215.8641386982085,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.99966347695387,
+    "mittlere_haltedauer_h": 1.5561645938891449,
+    "zeit_im_markt_anteil": 0.257166871239585,
+    "kosten_r_je_trade": 0.3256373348437962,
+    "brutto_r_je_trade": 0.0456133508045957,
+    "netto_bp_je_trade_auf_nominal": -13.679252542741152,
+    "mittlerer_stop_abstand_prozent": 0.7081737687272451,
+    "kosten_bp_je_trade_auf_nominal": 19.269395877475816,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1414,
+      "e_r": -0.33032458168200135,
+      "summe_r": -467.07895849834995
+     },
+     "ETHUSDT": {
+      "n": 1590,
+      "e_r": -0.25928319115072707,
+      "summe_r": -412.260273929656
+     },
+     "SOLUSDT": {
+      "n": 1338,
+      "e_r": -0.25151338286263275,
+      "summe_r": -336.5249062702026
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 2255,
+      "e_r": -0.2930925667919999,
+      "summe_r": -660.9237381159598
+     },
+     "1": {
+      "n": 2087,
+      "e_r": -0.26590340229144643,
+      "summe_r": -554.9404005822487
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 2634,
+      "e_r": -1.345704874461683,
+      "summe_r": -3544.5866393320734
+     },
+     "target": {
+      "n": 1369,
+      "e_r": 1.696996603425943,
+      "summe_r": 2323.188350090116
+     },
+     "time": {
+      "n": 339,
+      "e_r": 0.016324927857666403,
+      "summe_r": 5.53415054374891
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 1248,
+      "e_r": -0.2715261489058274,
+      "summe_r": -338.86463383447256
+     },
+     "2021": {
+      "n": 1594,
+      "e_r": -0.2675885614944623,
+      "summe_r": -426.5361670221729
+     },
+     "2022": {
+      "n": 1500,
+      "e_r": -0.3003088918943755,
+      "summe_r": -450.4633378415632
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.3284274713124066,
+       -0.23097321809118226
+      ],
+      "ci90": [
+       -0.3209576478634411,
+       -0.23896977650818083
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1451.2560636413261,
+       -987.362395582244
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.6167658466831126,
+       0.7159640042643963
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1215.896917778729,
+      "p95": 1422.480609930944,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "P-bounce-5m": {
+    "n": 4680,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.36716288401671826,
+    "median_r": -1.3800000000000097,
+    "sd_r": 1.3695732149771442,
+    "summe_r": -1718.3222971982414,
+    "trefferquote": 0.3326923076923077,
+    "trefferquote_ci95_wilson": [
+     0.3193348727015814,
+     0.346324188014733
+    ],
+    "mittel_gewinn_r": 1.5189098223281532,
+    "mittel_verlust_r": -1.3074815531742479,
+    "profit_faktor": 0.5791793226127817,
+    "max_drawdown_r": 1723.0596785107768,
+    "max_drawdown_dauer_tage": 1091.8402777777778,
+    "bester_trade_r": 1.949937016349672,
+    "schlechtester_trade_r": -1.6258740000000047,
+    "trades_pro_monat": 130.08945360684172,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1718.3222971982414,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.9999978475424,
+    "mittlere_haltedauer_h": 1.6376851851851852,
+    "zeit_im_markt_anteil": 0.2916434920202055,
+    "kosten_r_je_trade": 0.3628028614895936,
+    "brutto_r_je_trade": -0.004360022527124682,
+    "netto_bp_je_trade_auf_nominal": -19.653182507494872,
+    "mittlerer_stop_abstand_prozent": 0.5653023668916922,
+    "kosten_bp_je_trade_auf_nominal": 19.27330899572649,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1691,
+      "e_r": -0.3406758244503338,
+      "summe_r": -576.0828191455145
+     },
+     "ETHUSDT": {
+      "n": 1701,
+      "e_r": -0.41959019546980436,
+      "summe_r": -713.7229224941373
+     },
+     "SOLUSDT": {
+      "n": 1288,
+      "e_r": -0.33269918909828405,
+      "summe_r": -428.51655555858986
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 2374,
+      "e_r": -0.3473572386205881,
+      "summe_r": -824.6260844852761
+     },
+     "1": {
+      "n": 2306,
+      "e_r": -0.38755256405592603,
+      "summe_r": -893.6962127129655
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 2893,
+      "e_r": -1.3762197023948712,
+      "summe_r": -3981.403599028363
+     },
+     "target": {
+      "n": 1375,
+      "e_r": 1.660547341514718,
+      "summe_r": 2283.2525945827374
+     },
+     "time": {
+      "n": 412,
+      "e_r": -0.048959448428679865,
+      "summe_r": -20.171292752616104
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 1431,
+      "e_r": -0.33843617331707215,
+      "summe_r": -484.3021640167302
+     },
+     "2021": {
+      "n": 1616,
+      "e_r": -0.3913982827133203,
+      "summe_r": -632.4996248647255
+     },
+     "2022": {
+      "n": 1633,
+      "e_r": -0.3683530363238125,
+      "summe_r": -601.5205083167858
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.4102133260452529,
+       -0.32304926218307783
+      ],
+      "ci90": [
+       -0.40358497844731844,
+       -0.3306904612544027
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1939.7166634594469,
+       -1500.1301209390406
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.5396153524248797,
+       0.6216856101772205
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1719.186097143405,
+      "p95": 1907.0861153409246,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "P-bounce-15m": {
+    "n": 3494,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.35393643154299115,
+    "median_r": -1.2387388181130543,
+    "sd_r": 1.3443956415272744,
+    "summe_r": -1236.653891811211,
+    "trefferquote": 0.3268460217515741,
+    "trefferquote_ci95_wilson": [
+     0.31149024131688896,
+     0.34258214435088963
+    ],
+    "mittel_gewinn_r": 1.5063025276365325,
+    "mittel_verlust_r": -1.2571647016888314,
+    "profit_faktor": 0.5817666383719157,
+    "max_drawdown_r": 1248.1594546935041,
+    "max_drawdown_dauer_tage": 1077.5402777777779,
+    "bester_trade_r": 1.9628879929720409,
+    "schlechtester_trade_r": -1.6813340000000168,
+    "trades_pro_monat": 97.12572776741885,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1236.653891811211,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.99969618858357,
+    "mittlere_haltedauer_h": 1.9362955542835334,
+    "zeit_im_markt_anteil": 0.25744574248132224,
+    "kosten_r_je_trade": 0.32406399999423363,
+    "brutto_r_je_trade": -0.02987243154875756,
+    "netto_bp_je_trade_auf_nominal": -21.530087133864022,
+    "mittlerer_stop_abstand_prozent": 0.6983145069606687,
+    "kosten_bp_je_trade_auf_nominal": 19.163498082427015,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1191,
+      "e_r": -0.3671415977525204,
+      "summe_r": -437.2656429232518
+     },
+     "ETHUSDT": {
+      "n": 1279,
+      "e_r": -0.3648266484450506,
+      "summe_r": -466.6132833612197
+     },
+     "SOLUSDT": {
+      "n": 1024,
+      "e_r": -0.32497555227220654,
+      "summe_r": -332.7749655267395
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 1827,
+      "e_r": -0.329285056133214,
+      "summe_r": -601.603797555382
+     },
+     "1": {
+      "n": 1667,
+      "e_r": -0.3809538657803414,
+      "summe_r": -635.0500942558291
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 2143,
+      "e_r": -1.3367026374523894,
+      "summe_r": -2864.5537520604703
+     },
+     "target": {
+      "n": 966,
+      "e_r": 1.6954011491987202,
+      "summe_r": 1637.7575101259638
+     },
+     "time": {
+      "n": 385,
+      "e_r": -0.025604285394037352,
+      "summe_r": -9.85764987670438
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 1161,
+      "e_r": -0.3225220101379186,
+      "summe_r": -374.44805377012347
+     },
+     "2021": {
+      "n": 1176,
+      "e_r": -0.3568743326081995,
+      "summe_r": -419.68421514724264
+     },
+     "2022": {
+      "n": 1157,
+      "e_r": -0.38247331278638275,
+      "summe_r": -442.52162289384484
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.3992947377002211,
+       -0.3057157291802237
+      ],
+      "ci90": [
+       -0.39250228541754306,
+       -0.3138523231031691
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1420.0814847457482,
+       -1053.846065959887
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.5375655876140357,
+       0.6303291009223227
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1241.8329191048833,
+      "p95": 1386.7187812505417,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "P-break-5m": {
+    "n": 4836,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.31302590735001834,
+    "median_r": -1.3880417903536375,
+    "sd_r": 1.4082220782727684,
+    "summe_r": -1513.7932879446887,
+    "trefferquote": 0.35049627791563276,
+    "trefferquote_ci95_wilson": [
+     0.3371721392613647,
+     0.3640577522292989
+    ],
+    "mittel_gewinn_r": 1.5657853128277408,
+    "mittel_verlust_r": -1.3269020672358196,
+    "profit_faktor": 0.6367883515653388,
+    "max_drawdown_r": 1513.7932879447073,
+    "max_drawdown_dauer_tage": 1094.6631944444443,
+    "bester_trade_r": 1.9631231211279179,
+    "schlechtester_trade_r": -1.708605999999996,
+    "trades_pro_monat": 134.43599980972618,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1513.7932879446887,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.99998389111396,
+    "mittlere_haltedauer_h": 1.4130445271574303,
+    "zeit_im_markt_anteil": 0.26004661708976173,
+    "kosten_r_je_trade": 0.36439820249593863,
+    "brutto_r_je_trade": 0.05137229514592025,
+    "netto_bp_je_trade_auf_nominal": -15.679015006609966,
+    "mittlerer_stop_abstand_prozent": 0.5566963424884348,
+    "kosten_bp_je_trade_auf_nominal": 19.22223169975186,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1684,
+      "e_r": -0.3467378335214539,
+      "summe_r": -583.9065116501283
+     },
+     "ETHUSDT": {
+      "n": 1779,
+      "e_r": -0.2688932478641206,
+      "summe_r": -478.36108795027053
+     },
+     "SOLUSDT": {
+      "n": 1373,
+      "e_r": -0.3288606615763219,
+      "summe_r": -451.5256883442899
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 2428,
+      "e_r": -0.2812799705452841,
+      "summe_r": -682.9477684839497
+     },
+     "1": {
+      "n": 2408,
+      "e_r": -0.34503551472622057,
+      "summe_r": -830.8455194607391
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 2965,
+      "e_r": -1.38005991175324,
+      "summe_r": -4091.8776383483564
+     },
+     "target": {
+      "n": 1563,
+      "e_r": 1.6606491696769998,
+      "summe_r": 2595.594652205151
+     },
+     "time": {
+      "n": 308,
+      "e_r": -0.05685162922559454,
+      "summe_r": -17.510301801483116
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 1413,
+      "e_r": -0.2824716475066653,
+      "summe_r": -399.1324379269181
+     },
+     "2021": {
+      "n": 1736,
+      "e_r": -0.30063258365975154,
+      "summe_r": -521.8981652333287
+     },
+     "2022": {
+      "n": 1687,
+      "e_r": -0.3513708860607243,
+      "summe_r": -592.762684784442
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.3513200182601308,
+       -0.276410037020707
+      ],
+      "ci90": [
+       -0.3448754699972998,
+       -0.28253533870959924
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1709.1397053131377,
+       -1325.8662051820095
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.5988541615844445,
+       0.6742583405276942
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1516.689727584328,
+      "p95": 1676.7388581136202,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   },
+   "P-break-15m": {
+    "n": 4177,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": -0.2974516260982765,
+    "median_r": -1.273528200001317,
+    "sd_r": 1.3900196751226606,
+    "summe_r": -1242.455442212501,
+    "trefferquote": 0.35025137658606653,
+    "trefferquote_ci95_wilson": [
+     0.33592770267552374,
+     0.36485024595567994
+    ],
+    "mittel_gewinn_r": 1.5460386195784344,
+    "mittel_verlust_r": -1.2911974733440497,
+    "profit_faktor": 0.6454493288139624,
+    "max_drawdown_r": 1246.199505682676,
+    "max_drawdown_dauer_tage": 1080.8548611111112,
+    "bester_trade_r": 1.995956801325623,
+    "schlechtester_trade_r": -1.6288220000000044,
+    "trades_pro_monat": 116.11056251605355,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1242.455442212501,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -99.99973648019929,
+    "mittlere_haltedauer_h": 1.6334849573058814,
+    "zeit_im_markt_anteil": 0.2596370393624881,
+    "kosten_r_je_trade": 0.3366669164387444,
+    "brutto_r_je_trade": 0.0392152903404679,
+    "netto_bp_je_trade_auf_nominal": -16.464219169483613,
+    "mittlerer_stop_abstand_prozent": 0.6612222218675748,
+    "kosten_bp_je_trade_auf_nominal": 19.20357756763227,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1369,
+      "e_r": -0.2909184553186185,
+      "summe_r": -398.26736533118867
+     },
+     "ETHUSDT": {
+      "n": 1548,
+      "e_r": -0.3163186433696878,
+      "summe_r": -489.6612599362767
+     },
+     "SOLUSDT": {
+      "n": 1260,
+      "e_r": -0.28137048963891725,
+      "summe_r": -354.52681694503576
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 2121,
+      "e_r": -0.2778332154097768,
+      "summe_r": -589.2842498841366
+     },
+     "1": {
+      "n": 2056,
+      "e_r": -0.3176902686422007,
+      "summe_r": -653.1711923283646
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 2530,
+      "e_r": -1.35237832755855,
+      "summe_r": -3421.5171687231314
+     },
+     "target": {
+      "n": 1293,
+      "e_r": 1.6820946103897743,
+      "summe_r": 2174.948331233978
+     },
+     "time": {
+      "n": 354,
+      "e_r": 0.011619760668507447,
+      "summe_r": 4.113395276651636
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 1276,
+      "e_r": -0.3079314195610871,
+      "summe_r": -392.92049135994716
+     },
+     "2021": {
+      "n": 1496,
+      "e_r": -0.3180386446355734,
+      "summe_r": -475.78581237481785
+     },
+     "2022": {
+      "n": 1405,
+      "e_r": -0.2660136216923389,
+      "summe_r": -373.7491384777361
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.33881191490333734,
+       -0.25662741914343146
+      ],
+      "ci90": [
+       -0.33194029586311863,
+       -0.2627549012472334
+      ],
+      "anteil_positiv": 0.0
+     },
+     "summe_r": {
+      "ci95": [
+       -1438.3705302630942,
+       -1058.6881989955598
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.6040833640930825,
+       0.6882170334142479
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 1245.6525446512387,
+      "p95": 1406.9112398238692,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0,
+    "zu_wenige_trades_unter_30": false
+   }
+  },
+  "S36": {
+   "SFP-alle-M": {
+    "n": 425,
+    "signal_wochen": 148,
+    "monate_mit_trade": 47,
+    "e_r": -0.050797250258195197,
+    "median_r": -1.105530124537192,
+    "sd_r": 2.306412903097956,
+    "summe_r": -21.588831359732957,
+    "trefferquote": 0.26823529411764707,
+    "trefferquote_ci95_wilson": [
+     0.2283275427754454,
+     0.3122953818661939
+    ],
+    "mittel_gewinn_r": 2.8482608215260794,
+    "mittel_verlust_r": -1.1134744855746177,
+    "profit_faktor": 0.9376568883449696,
+    "max_drawdown_r": 73.64565605625167,
+    "max_drawdown_dauer_tage": 1120.5729166666667,
+    "bester_trade_r": 17.281385509964423,
+    "schlechtester_trade_r": -1.3627085957125495,
+    "trades_pro_monat": 8.922554084250006,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -21.588831359732957,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -27.652907802369732,
+    "mittlere_haltedauer_h": 12.712352941176471,
+    "zeit_im_markt_anteil": 0.15527263060331511,
+    "kosten_r_je_trade": 0.15043254437584228,
+    "brutto_r_je_trade": 0.09963529411764709,
+    "netto_bp_je_trade_auf_nominal": -15.324280625713676,
+    "mittlerer_stop_abstand_prozent": 1.8684755290257986,
+    "kosten_bp_je_trade_auf_nominal": 18.825390352941177,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 89,
+      "e_r": -0.4358272241360676,
+      "summe_r": -38.78862294811002
+     },
+     "ETHUSDT": {
+      "n": 135,
+      "e_r": 0.16322093405570298,
+      "summe_r": 22.034826097519904
+     },
+     "SOLUSDT": {
+      "n": 201,
+      "e_r": -0.024054898055437035,
+      "summe_r": -4.835034509142844
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 218,
+      "e_r": -0.11721394210916614,
+      "summe_r": -25.55263937979822
+     },
+     "1": {
+      "n": 207,
+      "e_r": 0.019148831014808028,
+      "summe_r": 3.9638080200652617
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 292,
+      "e_r": -1.163233386895796,
+      "summe_r": -339.6641489735724
+     },
+     "zeit": {
+      "n": 82,
+      "e_r": 1.5633956552429882,
+      "summe_r": 128.19844372992503
+     },
+     "ziel": {
+      "n": 51,
+      "e_r": 3.723075958508124,
+      "summe_r": 189.87687388391433
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 73,
+      "e_r": 0.4165458995690201,
+      "summe_r": 30.40785066853847
+     },
+     "2021": {
+      "n": 146,
+      "e_r": -0.20183551612268674,
+      "summe_r": -29.467985353912265
+     },
+     "2022": {
+      "n": 133,
+      "e_r": -0.08354207515417196,
+      "summe_r": -11.11109599550487
+     },
+     "2023": {
+      "n": 73,
+      "e_r": -0.15640548875142865,
+      "summe_r": -11.417600678854292
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 47,
+     "e_r": {
+      "ci95": [
+       -0.29434647180868667,
+       0.20352239910042208
+      ],
+      "ci90": [
+       -0.2594574872295482,
+       0.16128622130952228
+      ],
+      "anteil_positiv": 0.3403
+     },
+     "summe_r": {
+      "ci95": [
+       -123.20703966620938,
+       86.34944343273452
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.6562933791252049,
+       1.2637523703832227
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 67.02300940296855,
+      "p95": 131.79824252031227,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.003209865360279174,
+    "zu_wenige_trades_unter_30": false,
+    "abgleich_logbuch": {
+     "berichtet_n": 425,
+     "berichtet_netto_e_r": -0.05,
+     "nachgerechnet_n": 425,
+     "nachgerechnet_netto_e_r": -0.050797250258195197,
+     "stimmt": true
+    }
+   },
+   "SFP-alle-L": {
+    "n": 438,
+    "signal_wochen": 159,
+    "monate_mit_trade": 47,
+    "e_r": -0.09397178486861933,
+    "median_r": -1.0774211400403653,
+    "sd_r": 2.2166489775171647,
+    "summe_r": -41.15964177245527,
+    "trefferquote": 0.23972602739726026,
+    "trefferquote_ci95_wilson": [
+     0.20211716668585133,
+     0.2818608018893123
+    ],
+    "mittel_gewinn_r": 3.0449038861646365,
+    "mittel_verlust_r": -1.083707356816042,
+    "profit_faktor": 0.885944736770674,
+    "max_drawdown_r": 77.56130552762299,
+    "max_drawdown_dauer_tage": 1138.5416666666667,
+    "bester_trade_r": 17.51176983196217,
+    "schlechtester_trade_r": -1.3208209187112867,
+    "trades_pro_monat": 9.195479268003535,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -41.15964177245527,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -40.22031633378519,
+    "mittlere_haltedauer_h": 11.912100456621005,
+    "zeit_im_markt_anteil": 0.14994862804549472,
+    "kosten_r_je_trade": 0.09969552916085676,
+    "brutto_r_je_trade": 0.00572374429223743,
+    "netto_bp_je_trade_auf_nominal": -32.97747170201413,
+    "mittlerer_stop_abstand_prozent": 1.6886875856050512,
+    "kosten_bp_je_trade_auf_nominal": 11.456205707762557,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 101,
+      "e_r": -0.403314973689412,
+      "summe_r": -40.73481234263061
+     },
+     "ETHUSDT": {
+      "n": 139,
+      "e_r": -0.01377880500976275,
+      "summe_r": -1.9152538963570223
+     },
+     "SOLUSDT": {
+      "n": 198,
+      "e_r": 0.0075273962956180305,
+      "summe_r": 1.49042446653237
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 218,
+      "e_r": -0.14773148855165766,
+      "summe_r": -32.20546450426137
+     },
+     "1": {
+      "n": 220,
+      "e_r": -0.04070080576451767,
+      "summe_r": -8.954177268193888
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 319,
+      "e_r": -1.1135212936602734,
+      "summe_r": -355.21329267762724
+     },
+     "zeit": {
+      "n": 72,
+      "e_r": 1.8868177717254564,
+      "summe_r": 135.85087956423286
+     },
+     "ziel": {
+      "n": 47,
+      "e_r": 3.79154832640296,
+      "summe_r": 178.2027713409391
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 74,
+      "e_r": 0.08926286119376153,
+      "summe_r": 6.605451728338354
+     },
+     "2021": {
+      "n": 138,
+      "e_r": -0.16766854643810045,
+      "summe_r": -23.138259408457863
+     },
+     "2022": {
+      "n": 139,
+      "e_r": -0.12914784267730178,
+      "summe_r": -17.95155013214495
+     },
+     "2023": {
+      "n": 87,
+      "e_r": -0.07672740184127369,
+      "summe_r": -6.675283960190812
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 47,
+     "e_r": {
+      "ci95": [
+       -0.32267269825959966,
+       0.15159262062990894
+      ],
+      "ci90": [
+       -0.28498406433558715,
+       0.10996088954364826
+      ],
+      "anteil_positiv": 0.2147
+     },
+     "summe_r": {
+      "ci95": [
+       -143.65960665947634,
+       66.07342202712628
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.6285473673428053,
+       1.1978640658953361
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 77.36760151698553,
+      "p95": 142.25724410603195,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0011924397405518872,
+    "zu_wenige_trades_unter_30": false,
+    "abgleich_logbuch": {
+     "berichtet_n": 438,
+     "berichtet_netto_e_r": -0.09,
+     "nachgerechnet_n": 438,
+     "nachgerechnet_netto_e_r": -0.09397178486861933,
+     "stimmt": true
+    }
+   }
+  },
+  "S37": {
+   "F-5m-vaOn": {
+    "n": 4,
+    "signal_wochen": 4,
+    "monate_mit_trade": 4,
+    "e_r": 0.3641901029543109,
+    "median_r": -1.400000000000012,
+    "sd_r": 3.5417260880732684,
+    "summe_r": 1.4567604118172437,
+    "trefferquote": 0.25,
+    "trefferquote_ci95_wilson": [
+     0.045586062644636216,
+     0.6993639475573634
+    ],
+    "mittel_gewinn_r": 5.676760411817267,
+    "mittel_verlust_r": -1.4066666666666745,
+    "profit_faktor": 1.3452038890562168,
+    "max_drawdown_r": 4.220000000000023,
+    "max_drawdown_dauer_tage": 477.8569444444444,
+    "bester_trade_r": 5.676760411817267,
+    "schlechtester_trade_r": -1.4200000000000002,
+    "trades_pro_monat": 0.25471969501050434,
+    "anteil_beste_5_prozent_an_summe": 3.896838742848429,
+    "netto_rendite_nicht_aufgezinst_prozent": 1.4567604118172437,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": 1.2796367278594234,
+    "mittlere_haltedauer_h": 1.0541666666666667,
+    "zeit_im_markt_anteil": 0.00036757975608976506,
+    "kosten_r_je_trade": 0.35555230152162154,
+    "brutto_r_je_trade": 0.7197424044759324,
+    "netto_bp_je_trade_auf_nominal": 73.5816460589583,
+    "mittlerer_stop_abstand_prozent": 0.5975417965429188,
+    "kosten_bp_je_trade_auf_nominal": 19.750000000000014,
+    "je_symbol": {
+     "ETHUSDT": {
+      "n": 1,
+      "e_r": -1.4200000000000002,
+      "summe_r": -1.4200000000000002
+     },
+     "SOLUSDT": {
+      "n": 3,
+      "e_r": 0.9589201372724148,
+      "summe_r": 2.8767604118172443
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 3,
+      "e_r": 0.9589201372724148,
+      "summe_r": 2.8767604118172443
+     },
+     "1": {
+      "n": 1,
+      "e_r": -1.4200000000000002,
+      "summe_r": -1.4200000000000002
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 3,
+      "e_r": -1.4066666666666745,
+      "summe_r": -4.220000000000024
+     },
+     "target": {
+      "n": 1,
+      "e_r": 5.676760411817267,
+      "summe_r": 5.676760411817267
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 1,
+      "e_r": 5.676760411817267,
+      "summe_r": 5.676760411817267
+     },
+     "2021": {
+      "n": 1,
+      "e_r": -1.4000000000000106,
+      "summe_r": -1.4000000000000106
+     },
+     "2022": {
+      "n": 2,
+      "e_r": -1.4100000000000066,
+      "summe_r": -2.820000000000013
+     }
+    },
+    "dsr_n64_nullfall": 0.01009030922487325,
+    "zu_wenige_trades_unter_30": true
+   },
+   "F-5m-vaOff": {
+    "n": 5,
+    "signal_wochen": 5,
+    "monate_mit_trade": 5,
+    "e_r": 0.011352082363449024,
+    "median_r": -1.4000000000000106,
+    "sd_r": 3.167071376852197,
+    "summe_r": 0.056760411817245116,
+    "trefferquote": 0.2,
+    "trefferquote_ci95_wilson": [
+     0.03622316096978745,
+     0.6244717358814613
+    ],
+    "mittel_gewinn_r": 5.676760411817267,
+    "mittel_verlust_r": -1.4050000000000056,
+    "profit_faktor": 1.0100997174052038,
+    "max_drawdown_r": 5.620000000000022,
+    "max_drawdown_dauer_tage": 477.8569444444444,
+    "bester_trade_r": 5.676760411817267,
+    "schlechtester_trade_r": -1.4200000000000002,
+    "trades_pro_monat": 0.31839961876313044,
+    "anteil_beste_5_prozent_an_summe": 100.01267133323611,
+    "netto_rendite_nicht_aufgezinst_prozent": 0.056760411817245116,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -0.1382781863306093,
+    "mittlere_haltedauer_h": 0.9633333333333335,
+    "zeit_im_markt_anteil": 0.00041988359490095697,
+    "kosten_r_je_trade": 0.36444184121729695,
+    "brutto_r_je_trade": 0.3757939235807459,
+    "netto_bp_je_trade_auf_nominal": 44.8653168471666,
+    "mittlerer_stop_abstand_prozent": 0.5780334372343353,
+    "kosten_bp_je_trade_auf_nominal": 19.80000000000001,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 1,
+      "e_r": -1.3999999999999986,
+      "summe_r": -1.3999999999999986
+     },
+     "ETHUSDT": {
+      "n": 1,
+      "e_r": -1.4200000000000002,
+      "summe_r": -1.4200000000000002
+     },
+     "SOLUSDT": {
+      "n": 3,
+      "e_r": 0.9589201372724148,
+      "summe_r": 2.8767604118172443
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 3,
+      "e_r": 0.9589201372724148,
+      "summe_r": 2.8767604118172443
+     },
+     "1": {
+      "n": 2,
+      "e_r": -1.4099999999999993,
+      "summe_r": -2.8199999999999985
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 4,
+      "e_r": -1.4050000000000056,
+      "summe_r": -5.620000000000022
+     },
+     "target": {
+      "n": 1,
+      "e_r": 5.676760411817267,
+      "summe_r": 5.676760411817267
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 1,
+      "e_r": 5.676760411817267,
+      "summe_r": 5.676760411817267
+     },
+     "2021": {
+      "n": 2,
+      "e_r": -1.4000000000000046,
+      "summe_r": -2.800000000000009
+     },
+     "2022": {
+      "n": 2,
+      "e_r": -1.4100000000000066,
+      "summe_r": -2.820000000000013
+     }
+    },
+    "dsr_n64_nullfall": 0.00893039065391249,
+    "zu_wenige_trades_unter_30": true
+   },
+   "F-15m-vaOn": {
+    "n": 1,
+    "signal_wochen": 1,
+    "monate_mit_trade": 1,
+    "e_r": -1.400000000000009,
+    "median_r": -1.400000000000009,
+    "sd_r": null,
+    "summe_r": -1.400000000000009,
+    "trefferquote": 0.0,
+    "trefferquote_ci95_wilson": [
+     0.0,
+     0.7934567085261071
+    ],
+    "mittel_gewinn_r": null,
+    "mittel_verlust_r": -1.400000000000009,
+    "profit_faktor": 0.0,
+    "max_drawdown_r": 1.400000000000009,
+    "max_drawdown_dauer_tage": 0.0,
+    "bester_trade_r": -1.400000000000009,
+    "schlechtester_trade_r": -1.400000000000009,
+    "trades_pro_monat": 2306.842105263158,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1.400000000000009,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -1.4000000000000234,
+    "mittlere_haltedauer_h": 0.31666666666666665,
+    "zeit_im_markt_anteil": 1.0,
+    "kosten_r_je_trade": 0.400000000000009,
+    "brutto_r_je_trade": -1.0,
+    "netto_bp_je_trade_auf_nominal": -69.99999999999888,
+    "mittlerer_stop_abstand_prozent": 0.49999999999998873,
+    "kosten_bp_je_trade_auf_nominal": 20.0,
+    "je_symbol": {
+     "SOLUSDT": {
+      "n": 1,
+      "e_r": -1.400000000000009,
+      "summe_r": -1.400000000000009
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 1,
+      "e_r": -1.400000000000009,
+      "summe_r": -1.400000000000009
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 1,
+      "e_r": -1.400000000000009,
+      "summe_r": -1.400000000000009
+     }
+    },
+    "je_jahr": {
+     "2022": {
+      "n": 1,
+      "e_r": -1.400000000000009,
+      "summe_r": -1.400000000000009
+     }
+    },
+    "dsr_n64_nullfall": null,
+    "zu_wenige_trades_unter_30": true
+   },
+   "F-15m-vaOff": {
+    "n": 1,
+    "signal_wochen": 1,
+    "monate_mit_trade": 1,
+    "e_r": -1.400000000000009,
+    "median_r": -1.400000000000009,
+    "sd_r": null,
+    "summe_r": -1.400000000000009,
+    "trefferquote": 0.0,
+    "trefferquote_ci95_wilson": [
+     0.0,
+     0.7934567085261071
+    ],
+    "mittel_gewinn_r": null,
+    "mittel_verlust_r": -1.400000000000009,
+    "profit_faktor": 0.0,
+    "max_drawdown_r": 1.400000000000009,
+    "max_drawdown_dauer_tage": 0.0,
+    "bester_trade_r": -1.400000000000009,
+    "schlechtester_trade_r": -1.400000000000009,
+    "trades_pro_monat": 2306.842105263158,
+    "anteil_beste_5_prozent_an_summe": null,
+    "netto_rendite_nicht_aufgezinst_prozent": -1.400000000000009,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": -1.4000000000000234,
+    "mittlere_haltedauer_h": 0.31666666666666665,
+    "zeit_im_markt_anteil": 1.0,
+    "kosten_r_je_trade": 0.400000000000009,
+    "brutto_r_je_trade": -1.0,
+    "netto_bp_je_trade_auf_nominal": -69.99999999999888,
+    "mittlerer_stop_abstand_prozent": 0.49999999999998873,
+    "kosten_bp_je_trade_auf_nominal": 20.0,
+    "je_symbol": {
+     "SOLUSDT": {
+      "n": 1,
+      "e_r": -1.400000000000009,
+      "summe_r": -1.400000000000009
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 1,
+      "e_r": -1.400000000000009,
+      "summe_r": -1.400000000000009
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 1,
+      "e_r": -1.400000000000009,
+      "summe_r": -1.400000000000009
+     }
+    },
+    "je_jahr": {
+     "2022": {
+      "n": 1,
+      "e_r": -1.400000000000009,
+      "summe_r": -1.400000000000009
+     }
+    },
+    "dsr_n64_nullfall": null,
+    "zu_wenige_trades_unter_30": true
+   }
+  },
+  "S38": {
+   "T-045": {
+    "n": 191,
+    "signal_wochen": 85,
+    "monate_mit_trade": 34,
+    "e_r": 0.08655841750087344,
+    "median_r": -0.07377482970218918,
+    "sd_r": 1.1060570795918383,
+    "summe_r": 16.532657742666828,
+    "trefferquote": 0.4816753926701571,
+    "trefferquote_ci95_wilson": [
+     0.4118751476055555,
+     0.5521982330277384
+    ],
+    "mittel_gewinn_r": 1.070048700106197,
+    "mittel_verlust_r": -0.8273921481525582,
+    "profit_faktor": 1.2018348170551276,
+    "max_drawdown_r": 13.627706940408203,
+    "max_drawdown_dauer_tage": 490.86805555555554,
+    "bester_trade_r": 1.9642818685807477,
+    "schlechtester_trade_r": -1.2946351221654955,
+    "trades_pro_monat": 5.518393590604758,
+    "anteil_beste_5_prozent_an_summe": 1.1800756918234838,
+    "netto_rendite_nicht_aufgezinst_prozent": 16.532657742666828,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": 16.613253266026163,
+    "mittlere_haltedauer_h": 18.695462478184993,
+    "zeit_im_markt_anteil": 0.1412305548432687,
+    "kosten_r_je_trade": 0.0767456492460562,
+    "brutto_r_je_trade": 0.16330406674692965,
+    "netto_bp_je_trade_auf_nominal": 38.01171916556556,
+    "mittlerer_stop_abstand_prozent": 3.3950375936001205,
+    "kosten_bp_je_trade_auf_nominal": 19.220783246073307,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 74,
+      "e_r": 0.04351735404851897,
+      "summe_r": 3.2202841995904037
+     },
+     "ETHUSDT": {
+      "n": 72,
+      "e_r": 0.14195501327389673,
+      "summe_r": 10.220760955720564
+     },
+     "SOLUSDT": {
+      "n": 45,
+      "e_r": 0.06870250194124136,
+      "summe_r": 3.0916125873558613
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 97,
+      "e_r": 0.09265587428850879,
+      "summe_r": 8.987619805985352
+     },
+     "1": {
+      "n": 94,
+      "e_r": 0.08026636102852641,
+      "summe_r": 7.545037936681482
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 62,
+      "e_r": -1.0885770411042615,
+      "summe_r": -67.49177654846422
+     },
+     "target": {
+      "n": 32,
+      "e_r": 1.922607519066954,
+      "summe_r": 61.52344061014253
+     },
+     "time": {
+      "n": 97,
+      "e_r": 0.2319690070205001,
+      "summe_r": 22.50099368098851
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 58,
+      "e_r": 0.29165144750169686,
+      "summe_r": 16.91578395509842
+     },
+     "2021": {
+      "n": 45,
+      "e_r": -0.10199385803909816,
+      "summe_r": -4.589723611759418
+     },
+     "2022": {
+      "n": 88,
+      "e_r": 0.04780224317417987,
+      "summe_r": 4.206597399327829
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 34,
+     "e_r": {
+      "ci95": [
+       -0.13885074142451817,
+       0.30755336304697867
+      ],
+      "ci90": [
+       -0.10570436266358804,
+       0.27456915247424335
+      ],
+      "anteil_positiv": 0.7787
+     },
+     "summe_r": {
+      "ci95": [
+       -27.056112065601667,
+       57.92667704101598
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.7346737063057316,
+       1.8922274593535704
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 17.03514659987337,
+      "p95": 38.11305711164703,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.09478989013117439,
+    "zu_wenige_trades_unter_30": false,
+    "abgleich_logbuch": {
+     "berichtet_n": 191,
+     "berichtet_netto_e_r": 0.09,
+     "nachgerechnet_n": 191,
+     "nachgerechnet_netto_e_r": 0.08655841750087344,
+     "stimmt": true
+    }
+   },
+   "T-060": {
+    "n": 584,
+    "signal_wochen": 134,
+    "monate_mit_trade": 36,
+    "e_r": 0.04529228556563726,
+    "median_r": -0.09360741380986076,
+    "sd_r": 0.9968353082552427,
+    "summe_r": 26.45069477033216,
+    "trefferquote": 0.476027397260274,
+    "trefferquote_ci95_wilson": [
+     0.4358102772613839,
+     0.5165578436745961
+    ],
+    "mittel_gewinn_r": 0.9219014258463214,
+    "mittel_verlust_r": -0.7511042536436118,
+    "profit_faktor": 1.1150841292253262,
+    "max_drawdown_r": 21.366126328105853,
+    "max_drawdown_dauer_tage": 209.45138888888889,
+    "bester_trade_r": 1.998907123376994,
+    "schlechtester_trade_r": -1.2946351221654955,
+    "trades_pro_monat": 16.532582726791833,
+    "anteil_beste_5_prozent_an_summe": 2.1443324163119044,
+    "netto_rendite_nicht_aufgezinst_prozent": 26.450694770332163,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": 26.567663900869753,
+    "mittlere_haltedauer_h": 19.638470319634703,
+    "zeit_im_markt_anteil": 0.4444553527542872,
+    "kosten_r_je_trade": 0.06277616698979586,
+    "brutto_r_je_trade": 0.10806845255543315,
+    "netto_bp_je_trade_auf_nominal": 23.271592982331104,
+    "mittlerer_stop_abstand_prozent": 4.013472723893276,
+    "kosten_bp_je_trade_auf_nominal": 19.145502397260277,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 227,
+      "e_r": 0.01762572522489659,
+      "summe_r": 4.001039626051526
+     },
+     "ETHUSDT": {
+      "n": 221,
+      "e_r": 0.08624791888189565,
+      "summe_r": 19.06079007289894
+     },
+     "SOLUSDT": {
+      "n": 136,
+      "e_r": 0.02491812552486549,
+      "summe_r": 3.388865071381707
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 302,
+      "e_r": 0.022565331375796187,
+      "summe_r": 6.8147300754904485
+     },
+     "1": {
+      "n": 282,
+      "e_r": 0.0696310804781621,
+      "summe_r": 19.635964694841714
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 163,
+      "e_r": -1.0754820792779995,
+      "summe_r": -175.30357892231393
+     },
+     "target": {
+      "n": 67,
+      "e_r": 1.9324595617743558,
+      "summe_r": 129.47479063888184
+     },
+     "time": {
+      "n": 354,
+      "e_r": 0.20417933066035096,
+      "summe_r": 72.27948305376424
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 168,
+      "e_r": 0.08237825280500902,
+      "summe_r": 13.839546471241515
+     },
+     "2021": {
+      "n": 191,
+      "e_r": 0.015176044529620816,
+      "summe_r": 2.8986245051575756
+     },
+     "2022": {
+      "n": 225,
+      "e_r": 0.04316677241748034,
+      "summe_r": 9.712523793933077
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.07787139152403486,
+       0.16388275054901344
+      ],
+      "ci90": [
+       -0.05701952833756025,
+       0.14622190077394595
+      ],
+      "anteil_positiv": 0.7745
+     },
+     "summe_r": {
+      "ci95": [
+       -46.64939299132774,
+       93.65962996088167
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.8259259006938302,
+       1.480408460124119
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 29.358885861114224,
+      "p95": 65.0533855390861,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.09910232687160514,
+    "zu_wenige_trades_unter_30": false,
+    "abgleich_logbuch": {
+     "berichtet_n": 584,
+     "berichtet_netto_e_r": 0.05,
+     "nachgerechnet_n": 584,
+     "nachgerechnet_netto_e_r": 0.04529228556563726,
+     "stimmt": true
+    }
+   },
+   "T-075": {
+    "n": 982,
+    "signal_wochen": 145,
+    "monate_mit_trade": 36,
+    "e_r": 0.019765437721178333,
+    "median_r": -0.09990496273474439,
+    "sd_r": 0.9343866703332855,
+    "summe_r": 19.409659842197122,
+    "trefferquote": 0.46334012219959264,
+    "trefferquote_ci95_wilson": [
+     0.4323545921371645,
+     0.4946113626369086
+    ],
+    "mittel_gewinn_r": 0.8493818649418963,
+    "mittel_verlust_r": -0.6965068096894985,
+    "profit_faktor": 1.0528788427787008,
+    "max_drawdown_r": 30.434880677267838,
+    "max_drawdown_dauer_tage": 481.96319444444447,
+    "bester_trade_r": 1.998907123376994,
+    "schlechtester_trade_r": -1.2946351221654955,
+    "trades_pro_monat": 27.799651091968464,
+    "anteil_beste_5_prozent_an_summe": 4.942927433817683,
+    "netto_rendite_nicht_aufgezinst_prozent": 19.409659842197122,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": 16.3489394219988,
+    "mittlere_haltedauer_h": 20.26031907671419,
+    "zeit_im_markt_anteil": 0.7710195774737948,
+    "kosten_r_je_trade": 0.054215873207475625,
+    "brutto_r_je_trade": 0.07398131092865395,
+    "netto_bp_je_trade_auf_nominal": 6.561246636101789,
+    "mittlerer_stop_abstand_prozent": 4.734531402229005,
+    "kosten_bp_je_trade_auf_nominal": 19.56867138492872,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 369,
+      "e_r": -0.0047467127107942925,
+      "summe_r": -1.751536990283094
+     },
+     "ETHUSDT": {
+      "n": 358,
+      "e_r": 0.07381399532204355,
+      "summe_r": 26.425410325291594
+     },
+     "SOLUSDT": {
+      "n": 255,
+      "e_r": -0.020643974481613224,
+      "summe_r": -5.264213492811372
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 503,
+      "e_r": -0.0044957083516273645,
+      "summe_r": -2.2613413008685646
+     },
+     "1": {
+      "n": 479,
+      "e_r": 0.04524217357633755,
+      "summe_r": 21.671001143065688
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 248,
+      "e_r": -1.0655127937714917,
+      "summe_r": -264.24717285532995
+     },
+     "target": {
+      "n": 91,
+      "e_r": 1.9377744422978902,
+      "summe_r": 176.337474249108
+     },
+     "time": {
+      "n": 643,
+      "e_r": 0.16690413444544175,
+      "summe_r": 107.31935844841904
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 232,
+      "e_r": 0.061473339158908076,
+      "summe_r": 14.261814684866673
+     },
+     "2021": {
+      "n": 382,
+      "e_r": -0.0495696943572281,
+      "summe_r": -18.935623244461134
+     },
+     "2022": {
+      "n": 368,
+      "e_r": 0.06544420761356406,
+      "summe_r": 24.083468401791578
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.06366421904963299,
+       0.10162664705597602
+      ],
+      "ci90": [
+       -0.05022651796543931,
+       0.08764800214671477
+      ],
+      "anteil_positiv": 0.6859
+     },
+     "summe_r": {
+      "ci95": [
+       -63.69395837211694,
+       97.82259775149545
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.8456194665765223,
+       1.2996729020245343
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 35.94267614510462,
+      "p95": 79.28499033551495,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.04297192138766476,
+    "zu_wenige_trades_unter_30": false,
+    "abgleich_logbuch": {
+     "berichtet_n": 982,
+     "berichtet_netto_e_r": 0.02,
+     "nachgerechnet_n": 982,
+     "nachgerechnet_netto_e_r": 0.019765437721178333,
+     "stimmt": true
+    }
+   },
+   "T-alle": {
+    "n": 2399,
+    "signal_wochen": 157,
+    "monate_mit_trade": 36,
+    "e_r": 0.004743040935484165,
+    "median_r": -0.08322664958976152,
+    "sd_r": 0.7876436877006816,
+    "summe_r": 11.378555204226513,
+    "trefferquote": 0.4493538974572739,
+    "trefferquote_ci95_wilson": [
+     0.4295451962373992,
+     0.4693245419925365
+    ],
+    "mittel_gewinn_r": 0.6833250767991993,
+    "mittel_verlust_r": -0.549012776370409,
+    "profit_faktor": 1.0156892380307092,
+    "max_drawdown_r": 61.78532481414446,
+    "max_drawdown_dauer_tage": 689.6638888888889,
+    "bester_trade_r": 2.012204518545302,
+    "schlechtester_trade_r": -1.2946351221654955,
+    "trades_pro_monat": 66.6896495735657,
+    "anteil_beste_5_prozent_an_summe": 20.597595902962443,
+    "netto_rendite_nicht_aufgezinst_prozent": 11.378555204226513,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": 4.047019330572388,
+    "mittlere_haltedauer_h": 21.57918577184938,
+    "zeit_im_markt_anteil": 1.9700319468959757,
+    "kosten_r_je_trade": 0.039631043015027984,
+    "brutto_r_je_trade": 0.04437408395051214,
+    "netto_bp_je_trade_auf_nominal": -11.625036045677627,
+    "mittlerer_stop_abstand_prozent": 7.458542606178018,
+    "kosten_bp_je_trade_auf_nominal": 20.98467619841601,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 865,
+      "e_r": -0.010628705636782882,
+      "summe_r": -9.193830375817193
+     },
+     "ETHUSDT": {
+      "n": 883,
+      "e_r": 0.03128575755978996,
+      "summe_r": 27.625323925294538
+     },
+     "SOLUSDT": {
+      "n": 651,
+      "e_r": -0.010834006674732449,
+      "summe_r": -7.0529383452508245
+     }
+    },
+    "je_seite": {
+     "-1": {
+      "n": 1130,
+      "e_r": -0.013222819287865928,
+      "summe_r": -14.941785795288498
+     },
+     "1": {
+      "n": 1269,
+      "e_r": 0.0207410094558826,
+      "summe_r": 26.32034099951502
+     }
+    },
+    "je_grund": {
+     "stop": {
+      "n": 402,
+      "e_r": -1.0541246868952763,
+      "summe_r": -423.75812413190107
+     },
+     "target": {
+      "n": 137,
+      "e_r": 1.9447017010980723,
+      "summe_r": 266.4241330504359
+     },
+     "time": {
+      "n": 1860,
+      "e_r": 0.09070567004607086,
+      "summe_r": 168.7125462856918
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 585,
+      "e_r": 0.07183011438500193,
+      "summe_r": 42.02061691522613
+     },
+     "2021": {
+      "n": 914,
+      "e_r": -0.028742046273232208,
+      "summe_r": -26.270230293734237
+     },
+     "2022": {
+      "n": 900,
+      "e_r": -0.0048575904636281916,
+      "summe_r": -4.371831417265373
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 36,
+     "e_r": {
+      "ci95": [
+       -0.041602928397127564,
+       0.05290115031237187
+      ],
+      "ci90": [
+       -0.0336220555941181,
+       0.04493153398907999
+      ],
+      "anteil_positiv": 0.5791
+     },
+     "summe_r": {
+      "ci95": [
+       -100.79624711749292,
+       124.51680756126596
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.8716035190997106,
+       1.1877153220924972
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 56.635727217904034,
+      "p95": 114.11265834885499,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.0188169856285052,
+    "zu_wenige_trades_unter_30": false,
+    "abgleich_logbuch": {
+     "berichtet_n": 2399,
+     "berichtet_netto_e_r": 0.005,
+     "nachgerechnet_n": 2399,
+     "nachgerechnet_netto_e_r": 0.004743040935484165,
+     "stimmt": true
+    }
+   }
+  },
+  "OF2": {
+   "OF2": {
+    "n": 56,
+    "signal_wochen": 38,
+    "monate_mit_trade": 25,
+    "e_r": 0.26878671428571427,
+    "median_r": -0.3534465,
+    "sd_r": 1.8719806090340565,
+    "summe_r": 15.052055999999999,
+    "trefferquote": 0.39285714285714285,
+    "trefferquote_ci95_wilson": [
+     0.27580225617512844,
+     0.523668346215182
+    ],
+    "mittel_gewinn_r": 1.9623662272727274,
+    "mittel_verlust_r": -0.8270588529411764,
+    "profit_faktor": 1.5352793550754142,
+    "max_drawdown_r": 7.908434999999997,
+    "max_drawdown_dauer_tage": 671.0,
+    "bester_trade_r": 9.682203,
+    "schlechtester_trade_r": -1.149676,
+    "trades_pro_monat": 1.6515806047882433,
+    "anteil_beste_5_prozent_an_summe": 1.0833044336268747,
+    "netto_rendite_nicht_aufgezinst_prozent": 15.052056,
+    "kapitalbasis_usdt": 10000.0,
+    "risiko_je_trade": 0.01,
+    "netto_rendite_aufgezinst_prozent": 15.144143297934033,
+    "netto_bp_je_trade_auf_nominal": 36.57911592339285,
+    "mittlerer_stop_abstand_prozent": 2.24645,
+    "je_symbol": {
+     "BTCUSDT": {
+      "n": 56,
+      "e_r": 0.26878671428571427,
+      "summe_r": 15.052055999999999
+     }
+    },
+    "je_grund": {
+     "max_hold": {
+      "n": 5,
+      "e_r": 1.4302237999999998,
+      "summe_r": 7.151119
+     },
+     "stop": {
+      "n": 21,
+      "e_r": -1.111448380952381,
+      "summe_r": -23.340416
+     },
+     "target": {
+      "n": 13,
+      "e_r": 2.739907692307692,
+      "summe_r": 35.6188
+     },
+     "time_stop": {
+      "n": 17,
+      "e_r": -0.2574968823529411,
+      "summe_r": -4.377446999999999
+     }
+    },
+    "je_jahr": {
+     "2020": {
+      "n": 17,
+      "e_r": 0.28418658823529414,
+      "summe_r": 4.8311720000000005
+     },
+     "2021": {
+      "n": 23,
+      "e_r": 0.34320378260869566,
+      "summe_r": 7.893687
+     },
+     "2022": {
+      "n": 16,
+      "e_r": 0.14544981250000003,
+      "summe_r": 2.3271970000000004
+     }
+    },
+    "monatsblock_bootstrap": {
+     "ziehungen": 10000,
+     "seed": 20261116,
+     "monate": 25,
+     "e_r": {
+      "ci95": [
+       -0.19891669775943396,
+       0.6601674606680158
+      ],
+      "ci90": [
+       -0.1273672245098039,
+       0.6057382652875357
+      ],
+      "anteil_positiv": 0.8648
+     },
+     "summe_r": {
+      "ci95": [
+       -9.39017295,
+       43.63010597499996
+      ]
+     },
+     "profit_faktor": {
+      "ci95": [
+       0.6692804044064793,
+       2.6209048276926112
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 7.7619995,
+      "p95": 15.094905549999998,
+      "ziehungen": 2000
+     }
+    },
+    "dsr_n64_nullfall": 0.059807109026843,
+    "zu_wenige_trades_unter_30": false,
+    "abgleich_logbuch": {
+     "berichtet_n": 56,
+     "berichtet_netto_e_r": 0.2688,
+     "nachgerechnet_n": 56,
+     "nachgerechnet_netto_e_r": 0.26878671428571427,
+     "stimmt": true
+    },
+    "hinweis": "Tradeliste enthält nur Tag, Netto-R und Stopp-Abstand: kein Brutto/Kosten, keine Uhrzeit, keine Seite; Haltedauer, Marktbeteiligung und Rückgang nur tagesgenau"
+   }
+  }
+ }
+}

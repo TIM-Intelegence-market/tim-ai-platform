@@ -1,0 +1,1567 @@
+{
+ "meta": {
+  "test": "T11",
+  "erzeugt_utc": "2026-11-16T13:34Z",
+  "konfiguration": {
+   "symbole": [
+    "BTCUSDT",
+    "ETHUSDT"
+   ],
+   "kosten": "4 Füllungen 0,06 % + 0,03 %",
+   "margen": [
+    1.0,
+    0.5,
+    0.2
+   ],
+   "geldmarkt": {
+    "2020": 0.4,
+    "2021": 0.05,
+    "2022": 2.0,
+    "2023": 5.1,
+    "2024": 5.0
+   }
+  },
+  "befehl": "python3 -m src.research_lab.konsolidierung.lauf /home/user/work/data docs/research_lab/konsolidierung/ergebnisse s7b_train_2026-10-26T1305Z_trades.json s7_train_2026-10-26T1049Z_trades.json /home/user/work/bitunix",
+  "zeitraum": "Signale 2020-01 bis 2024-12 (Training < 2023-01-01, Validierung 2023-01-01 bis 2024-12-31); Holdout nicht geladen; Carry-Läufe: 2020-01-01 bis 2024-12-31",
+  "status": "abgeschlossen",
+  "grenzen": [
+   "Geldmarkt-Vergleichswert ist ANNAHME",
+   "Konstante Stückzahl: Notional wächst mit dem Kurs (BTC bis ca. 14-fach, ETH ca. 37-fach), verdeckter Hebel auf das Anfangskapital",
+   "Funding aus Binance-Historie",
+   "Spot-Gebühr Bitunix unbestätigt"
+  ],
+  "seed": 20261116,
+  "kandidat": "C2 (Carry-Anteil)",
+  "code_commit": "f1c39402a7cf360816b08cf871e7b2559cd5f4a9",
+  "code_unsauber": false,
+  "daten_version_sha256_datenaudit": "56b44a7f89643eafb7de1b163157a5eaf906203bb3432f625e14dd344a5eb2d2",
+  "dauer_s": 1.7
+ },
+ "ergebnis": {
+  "annahmen": {
+   "geldmarkt_prozent_je_jahr": {
+    "2020": 0.4,
+    "2021": 0.05,
+    "2022": 2.0,
+    "2023": 5.1,
+    "2024": 5.0
+   },
+   "hinweis_geldmarkt": "ANNAHME aus dem Gedächtnis, nicht aus TIM-Daten",
+   "kapital": "Spot-Notional + Perp-Marge (Standard 100 %, wie S33 'beide Beine voll')",
+   "kosten": "4 Füllungen, je Füllung Gebühr + Schlupf 0,03 %; Perp 0,06 %, Spot 0,06 % (Standard) bzw. 0,10 % (Sensitivität); Bitunix-Spot-Gebühr unbestätigt"
+  },
+  "lauf": {
+   "basis_marge100": {
+    "train": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 1.311385,
+       "preis_basis_anteil_kapital": -7e-05,
+       "kosten_anteil_kapital": 0.002969,
+       "netto_rendite_gesamt": 1.308346,
+       "netto_rendite_je_jahr": 0.435718,
+       "max_rueckgang_anteil_kapital": 0.061552,
+       "basis_bp": {
+        "mittel": 0.532778,
+        "sd": 8.189566,
+        "p01": -9.702008,
+        "p99": 20.101061,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000158,
+       "funding_anteil_positiv": 0.854319,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.152251,
+        "2021": 1.069004,
+        "2022": 0.087091
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 8.625061,
+        "nachschussbedarf_anteil_notional": 8.625061,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T12:00Z",
+         "tage_nach_einstieg": 13.5
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-07-27T16:00Z",
+         "tage_nach_einstieg": 208.666667
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-11-05T06:00Z",
+         "tage_nach_einstieg": 309.25
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 3.771985,
+       "preis_basis_anteil_kapital": -3.9e-05,
+       "kosten_anteil_kapital": 0.009235,
+       "netto_rendite_gesamt": 3.762712,
+       "netto_rendite_je_jahr": 1.253093,
+       "max_rueckgang_anteil_kapital": 0.17587,
+       "basis_bp": {
+        "mittel": 1.75989,
+        "sd": 8.965169,
+        "p01": -9.826303,
+        "p99": 27.371694,
+        "min": -132.590331,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.0002,
+       "funding_anteil_positiv": 0.863747,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.365865,
+        "2021": 3.274028,
+        "2022": 0.12282
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 36.775248,
+        "nachschussbedarf_anteil_notional": 36.775248,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T14:00Z",
+         "tage_nach_einstieg": 13.583333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-02-02T12:00Z",
+         "tage_nach_einstieg": 32.5
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-02-12T11:00Z",
+         "tage_nach_einstieg": 42.458333
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 2.535529,
+     "paar_netto_rendite_je_jahr": 0.844405,
+     "paar_max_rueckgang_tagesbasis": 0.054738,
+     "paar_schwankung_jahr": 0.095934,
+     "geldmarkt_je_jahr_annahme": 0.008167
+    },
+    "validation": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 0.321725,
+       "preis_basis_anteil_kapital": 0.00069,
+       "kosten_anteil_kapital": 0.00599,
+       "netto_rendite_gesamt": 0.316425,
+       "netto_rendite_je_jahr": 0.157996,
+       "max_rueckgang_anteil_kapital": 0.015464,
+       "basis_bp": {
+        "mittel": -1.336475,
+        "sd": 4.947924,
+        "p01": -6.59797,
+        "p99": 11.14116,
+        "min": -185.754986,
+        "max": 28.880516
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9e-05,
+       "funding_anteil_positiv": 0.907433,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.072629,
+        "2024": 0.243796
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 5.552792,
+        "nachschussbedarf_anteil_notional": 5.552792,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2023-01-13T21:00Z",
+         "tage_nach_einstieg": 12.875
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2023-02-16T00:00Z",
+         "tage_nach_einstieg": 46.0
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2023-10-23T22:00Z",
+         "tage_nach_einstieg": 295.916667
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 0.242037,
+       "preis_basis_anteil_kapital": 0.000493,
+       "kosten_anteil_kapital": 0.003411,
+       "netto_rendite_gesamt": 0.239119,
+       "netto_rendite_je_jahr": 0.119396,
+       "max_rueckgang_anteil_kapital": 0.018611,
+       "basis_bp": {
+        "mittel": -1.112829,
+        "sd": 5.420976,
+        "p01": -6.611717,
+        "p99": 11.144181,
+        "min": -252.246412,
+        "max": 29.91453
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9.7e-05,
+       "funding_anteil_positiv": 0.933425,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.063465,
+        "2024": 0.175654
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 2.436159,
+        "nachschussbedarf_anteil_notional": 2.436159,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2023-01-12T17:00Z",
+         "tage_nach_einstieg": 11.708333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2023-03-17T23:00Z",
+         "tage_nach_einstieg": 75.958333
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2023-12-08T04:00Z",
+         "tage_nach_einstieg": 341.166667
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 0.277772,
+     "paar_netto_rendite_je_jahr": 0.138696,
+     "paar_max_rueckgang_tagesbasis": 0.003369,
+     "paar_schwankung_jahr": 0.011182,
+     "geldmarkt_je_jahr_annahme": 0.0505
+    },
+    "pooled": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 2.051028,
+       "preis_basis_anteil_kapital": 0.001479,
+       "kosten_anteil_kapital": 0.012603,
+       "netto_rendite_gesamt": 2.039905,
+       "netto_rendite_je_jahr": 0.407534,
+       "max_rueckgang_anteil_kapital": 0.061552,
+       "basis_bp": {
+        "mittel": -0.215128,
+        "sd": 7.132193,
+        "p01": -8.761969,
+        "p99": 18.095468,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000131,
+       "funding_anteil_positiv": 0.87557,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.152251,
+        "2021": 1.069004,
+        "2022": 0.08916,
+        "2023": 0.169005,
+        "2024": 0.560485
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 14.073073,
+        "nachschussbedarf_anteil_notional": 14.073073,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T12:00Z",
+         "tage_nach_einstieg": 13.5
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-07-27T16:00Z",
+         "tage_nach_einstieg": 208.666667
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-11-05T06:00Z",
+         "tage_nach_einstieg": 309.25
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 6.013448,
+       "preis_basis_anteil_kapital": 0.004529,
+       "kosten_anteil_kapital": 0.024154,
+       "netto_rendite_gesamt": 5.993824,
+       "netto_rendite_je_jahr": 1.197452,
+       "max_rueckgang_anteil_kapital": 0.17587,
+       "basis_bp": {
+        "mittel": 0.610488,
+        "sd": 7.871121,
+        "p01": -8.882199,
+        "p99": 23.576348,
+        "min": -252.246412,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000159,
+       "funding_anteil_positiv": 0.891626,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.365865,
+        "2021": 3.274028,
+        "2022": 0.131154,
+        "2023": 0.596077,
+        "2024": 1.626701
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 36.775248,
+        "nachschussbedarf_anteil_notional": 36.775248,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T14:00Z",
+         "tage_nach_einstieg": 13.583333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-02-02T12:00Z",
+         "tage_nach_einstieg": 32.5
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-02-12T11:00Z",
+         "tage_nach_einstieg": 42.458333
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 4.016864,
+     "paar_netto_rendite_je_jahr": 0.802493,
+     "paar_max_rueckgang_tagesbasis": 0.054738,
+     "paar_schwankung_jahr": 0.082726,
+     "geldmarkt_je_jahr_annahme": 0.0251
+    }
+   },
+   "spot_gebuehr_10bp": {
+    "train": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 1.311385,
+       "preis_basis_anteil_kapital": -7e-05,
+       "kosten_anteil_kapital": 0.003628,
+       "netto_rendite_gesamt": 1.307687,
+       "netto_rendite_je_jahr": 0.435498,
+       "max_rueckgang_anteil_kapital": 0.061552,
+       "basis_bp": {
+        "mittel": 0.532778,
+        "sd": 8.189566,
+        "p01": -9.702008,
+        "p99": 20.101061,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000158,
+       "funding_anteil_positiv": 0.854319,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.152051,
+        "2021": 1.069004,
+        "2022": 0.086631
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 8.625061,
+        "nachschussbedarf_anteil_notional": 8.625061,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T12:00Z",
+         "tage_nach_einstieg": 13.5
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-07-27T16:00Z",
+         "tage_nach_einstieg": 208.666667
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-11-05T06:00Z",
+         "tage_nach_einstieg": 309.25
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 3.771985,
+       "preis_basis_anteil_kapital": -3.9e-05,
+       "kosten_anteil_kapital": 0.011287,
+       "netto_rendite_gesamt": 3.76066,
+       "netto_rendite_je_jahr": 1.25241,
+       "max_rueckgang_anteil_kapital": 0.17587,
+       "basis_bp": {
+        "mittel": 1.75989,
+        "sd": 8.965169,
+        "p01": -9.826303,
+        "p99": 27.371694,
+        "min": -132.590331,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.0002,
+       "funding_anteil_positiv": 0.863747,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.365665,
+        "2021": 3.274028,
+        "2022": 0.120968
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 36.775248,
+        "nachschussbedarf_anteil_notional": 36.775248,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T14:00Z",
+         "tage_nach_einstieg": 13.583333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-02-02T12:00Z",
+         "tage_nach_einstieg": 32.5
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-02-12T11:00Z",
+         "tage_nach_einstieg": 42.458333
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 2.534173,
+     "paar_netto_rendite_je_jahr": 0.843954,
+     "paar_max_rueckgang_tagesbasis": 0.054738,
+     "paar_schwankung_jahr": 0.095968,
+     "geldmarkt_je_jahr_annahme": 0.008167
+    },
+    "validation": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 0.321725,
+       "preis_basis_anteil_kapital": 0.00069,
+       "kosten_anteil_kapital": 0.007322,
+       "netto_rendite_gesamt": 0.315094,
+       "netto_rendite_je_jahr": 0.157331,
+       "max_rueckgang_anteil_kapital": 0.015464,
+       "basis_bp": {
+        "mittel": -1.336475,
+        "sd": 4.947924,
+        "p01": -6.59797,
+        "p99": 11.14116,
+        "min": -185.754986,
+        "max": 28.880516
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9e-05,
+       "funding_anteil_positiv": 0.907433,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.072429,
+        "2024": 0.242665
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 5.552792,
+        "nachschussbedarf_anteil_notional": 5.552792,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2023-01-13T21:00Z",
+         "tage_nach_einstieg": 12.875
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2023-02-16T00:00Z",
+         "tage_nach_einstieg": 46.0
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2023-10-23T22:00Z",
+         "tage_nach_einstieg": 295.916667
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 0.242037,
+       "preis_basis_anteil_kapital": 0.000493,
+       "kosten_anteil_kapital": 0.004169,
+       "netto_rendite_gesamt": 0.238361,
+       "netto_rendite_je_jahr": 0.119017,
+       "max_rueckgang_anteil_kapital": 0.018611,
+       "basis_bp": {
+        "mittel": -1.112829,
+        "sd": 5.420976,
+        "p01": -6.611717,
+        "p99": 11.144181,
+        "min": -252.246412,
+        "max": 29.91453
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9.7e-05,
+       "funding_anteil_positiv": 0.933425,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.063265,
+        "2024": 0.175096
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 2.436159,
+        "nachschussbedarf_anteil_notional": 2.436159,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2023-01-12T17:00Z",
+         "tage_nach_einstieg": 11.708333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2023-03-17T23:00Z",
+         "tage_nach_einstieg": 75.958333
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2023-12-08T04:00Z",
+         "tage_nach_einstieg": 341.166667
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 0.276727,
+     "paar_netto_rendite_je_jahr": 0.138174,
+     "paar_max_rueckgang_tagesbasis": 0.004214,
+     "paar_schwankung_jahr": 0.011349,
+     "geldmarkt_je_jahr_annahme": 0.0505
+    },
+    "pooled": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 2.051028,
+       "preis_basis_anteil_kapital": 0.001479,
+       "kosten_anteil_kapital": 0.015404,
+       "netto_rendite_gesamt": 2.037103,
+       "netto_rendite_je_jahr": 0.406975,
+       "max_rueckgang_anteil_kapital": 0.061552,
+       "basis_bp": {
+        "mittel": -0.215128,
+        "sd": 7.132193,
+        "p01": -8.761969,
+        "p99": 18.095468,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000131,
+       "funding_anteil_positiv": 0.87557,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.152051,
+        "2021": 1.069004,
+        "2022": 0.08916,
+        "2023": 0.169005,
+        "2024": 0.557884
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 14.073073,
+        "nachschussbedarf_anteil_notional": 14.073073,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T12:00Z",
+         "tage_nach_einstieg": 13.5
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-07-27T16:00Z",
+         "tage_nach_einstieg": 208.666667
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-11-05T06:00Z",
+         "tage_nach_einstieg": 309.25
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 6.013448,
+       "preis_basis_anteil_kapital": 0.004529,
+       "kosten_anteil_kapital": 0.029522,
+       "netto_rendite_gesamt": 5.988455,
+       "netto_rendite_je_jahr": 1.19638,
+       "max_rueckgang_anteil_kapital": 0.17587,
+       "basis_bp": {
+        "mittel": 0.610488,
+        "sd": 7.871121,
+        "p01": -8.882199,
+        "p99": 23.576348,
+        "min": -252.246412,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000159,
+       "funding_anteil_positiv": 0.891626,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.365665,
+        "2021": 3.274028,
+        "2022": 0.131154,
+        "2023": 0.596077,
+        "2024": 1.621532
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 36.775248,
+        "nachschussbedarf_anteil_notional": 36.775248,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T14:00Z",
+         "tage_nach_einstieg": 13.583333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-02-02T12:00Z",
+         "tage_nach_einstieg": 32.5
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-02-12T11:00Z",
+         "tage_nach_einstieg": 42.458333
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 4.012779,
+     "paar_netto_rendite_je_jahr": 0.801677,
+     "paar_max_rueckgang_tagesbasis": 0.054738,
+     "paar_schwankung_jahr": 0.082915,
+     "geldmarkt_je_jahr_annahme": 0.0251
+    }
+   },
+   "marge50": {
+    "train": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 1.5,
+       "marge": 0.5,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 1.748513,
+       "preis_basis_anteil_kapital": -9.4e-05,
+       "kosten_anteil_kapital": 0.003958,
+       "netto_rendite_gesamt": 1.744462,
+       "netto_rendite_je_jahr": 0.580957,
+       "max_rueckgang_anteil_kapital": 0.082069,
+       "basis_bp": {
+        "mittel": 0.532778,
+        "sd": 8.189566,
+        "p01": -9.702008,
+        "p99": 20.101061,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000158,
+       "funding_anteil_positiv": 0.854319,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.203001,
+        "2021": 1.425339,
+        "2022": 0.116122
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 8.625061,
+        "nachschussbedarf_anteil_notional": 8.625061,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T12:00Z",
+         "tage_nach_einstieg": 13.5
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-07-27T16:00Z",
+         "tage_nach_einstieg": 208.666667
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-11-05T06:00Z",
+         "tage_nach_einstieg": 309.25
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 1.5,
+       "marge": 0.5,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 5.029314,
+       "preis_basis_anteil_kapital": -5.2e-05,
+       "kosten_anteil_kapital": 0.012313,
+       "netto_rendite_gesamt": 5.016949,
+       "netto_rendite_je_jahr": 1.670791,
+       "max_rueckgang_anteil_kapital": 0.234493,
+       "basis_bp": {
+        "mittel": 1.75989,
+        "sd": 8.965169,
+        "p01": -9.826303,
+        "p99": 27.371694,
+        "min": -132.590331,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.0002,
+       "funding_anteil_positiv": 0.863747,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.487819,
+        "2021": 4.36537,
+        "2022": 0.16376
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 36.775248,
+        "nachschussbedarf_anteil_notional": 36.775248,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T14:00Z",
+         "tage_nach_einstieg": 13.583333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-02-02T12:00Z",
+         "tage_nach_einstieg": 32.5
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-02-12T11:00Z",
+         "tage_nach_einstieg": 42.458333
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 3.380706,
+     "paar_netto_rendite_je_jahr": 1.125874,
+     "paar_max_rueckgang_tagesbasis": 0.072984,
+     "paar_schwankung_jahr": 0.127912,
+     "geldmarkt_je_jahr_annahme": 0.008167
+    },
+    "validation": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 1.5,
+       "marge": 0.5,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 0.428967,
+       "preis_basis_anteil_kapital": 0.00092,
+       "kosten_anteil_kapital": 0.007987,
+       "netto_rendite_gesamt": 0.4219,
+       "netto_rendite_je_jahr": 0.210661,
+       "max_rueckgang_anteil_kapital": 0.020619,
+       "basis_bp": {
+        "mittel": -1.336475,
+        "sd": 4.947924,
+        "p01": -6.59797,
+        "p99": 11.14116,
+        "min": -185.754986,
+        "max": 28.880516
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9e-05,
+       "funding_anteil_positiv": 0.907433,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.096838,
+        "2024": 0.325062
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 5.552792,
+        "nachschussbedarf_anteil_notional": 5.552792,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2023-01-13T21:00Z",
+         "tage_nach_einstieg": 12.875
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2023-02-16T00:00Z",
+         "tage_nach_einstieg": 46.0
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2023-10-23T22:00Z",
+         "tage_nach_einstieg": 295.916667
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 1.5,
+       "marge": 0.5,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 0.322716,
+       "preis_basis_anteil_kapital": 0.000658,
+       "kosten_anteil_kapital": 0.004548,
+       "netto_rendite_gesamt": 0.318825,
+       "netto_rendite_je_jahr": 0.159195,
+       "max_rueckgang_anteil_kapital": 0.024815,
+       "basis_bp": {
+        "mittel": -1.112829,
+        "sd": 5.420976,
+        "p01": -6.611717,
+        "p99": 11.144181,
+        "min": -252.246412,
+        "max": 29.91453
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9.7e-05,
+       "funding_anteil_positiv": 0.933425,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.08462,
+        "2024": 0.234205
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 2.436159,
+        "nachschussbedarf_anteil_notional": 2.436159,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2023-01-12T17:00Z",
+         "tage_nach_einstieg": 11.708333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2023-03-17T23:00Z",
+         "tage_nach_einstieg": 75.958333
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2023-12-08T04:00Z",
+         "tage_nach_einstieg": 341.166667
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 0.370363,
+     "paar_netto_rendite_je_jahr": 0.184928,
+     "paar_max_rueckgang_tagesbasis": 0.004492,
+     "paar_schwankung_jahr": 0.014909,
+     "geldmarkt_je_jahr_annahme": 0.0505
+    },
+    "pooled": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 1.5,
+       "marge": 0.5,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 2.734704,
+       "preis_basis_anteil_kapital": 0.001973,
+       "kosten_anteil_kapital": 0.016804,
+       "netto_rendite_gesamt": 2.719873,
+       "netto_rendite_je_jahr": 0.543379,
+       "max_rueckgang_anteil_kapital": 0.082069,
+       "basis_bp": {
+        "mittel": -0.215128,
+        "sd": 7.132193,
+        "p01": -8.761969,
+        "p99": 18.095468,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000131,
+       "funding_anteil_positiv": 0.87557,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.203001,
+        "2021": 1.425339,
+        "2022": 0.11888,
+        "2023": 0.225339,
+        "2024": 0.747313
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 14.073073,
+        "nachschussbedarf_anteil_notional": 14.073073,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T12:00Z",
+         "tage_nach_einstieg": 13.5
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-07-27T16:00Z",
+         "tage_nach_einstieg": 208.666667
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-11-05T06:00Z",
+         "tage_nach_einstieg": 309.25
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 1.5,
+       "marge": 0.5,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 8.017931,
+       "preis_basis_anteil_kapital": 0.006039,
+       "kosten_anteil_kapital": 0.032205,
+       "netto_rendite_gesamt": 7.991765,
+       "netto_rendite_je_jahr": 1.596603,
+       "max_rueckgang_anteil_kapital": 0.234493,
+       "basis_bp": {
+        "mittel": 0.610488,
+        "sd": 7.871121,
+        "p01": -8.882199,
+        "p99": 23.576348,
+        "min": -252.246412,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000159,
+       "funding_anteil_positiv": 0.891626,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.487819,
+        "2021": 4.36537,
+        "2022": 0.174873,
+        "2023": 0.794769,
+        "2024": 2.168934
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 36.775248,
+        "nachschussbedarf_anteil_notional": 36.775248,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T14:00Z",
+         "tage_nach_einstieg": 13.583333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-02-02T12:00Z",
+         "tage_nach_einstieg": 32.5
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-02-12T11:00Z",
+         "tage_nach_einstieg": 42.458333
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 5.355819,
+     "paar_netto_rendite_je_jahr": 1.069991,
+     "paar_max_rueckgang_tagesbasis": 0.072984,
+     "paar_schwankung_jahr": 0.110301,
+     "geldmarkt_je_jahr_annahme": 0.0251
+    }
+   },
+   "marge20": {
+    "train": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 1.2,
+       "marge": 0.2,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 2.185642,
+       "preis_basis_anteil_kapital": -0.000117,
+       "kosten_anteil_kapital": 0.004948,
+       "netto_rendite_gesamt": 2.180577,
+       "netto_rendite_je_jahr": 0.726196,
+       "max_rueckgang_anteil_kapital": 0.102586,
+       "basis_bp": {
+        "mittel": 0.532778,
+        "sd": 8.189566,
+        "p01": -9.702008,
+        "p99": 20.101061,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000158,
+       "funding_anteil_positiv": 0.854319,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.253752,
+        "2021": 1.781673,
+        "2022": 0.145152
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 8.625061,
+        "nachschussbedarf_anteil_notional": 8.625061,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T12:00Z",
+         "tage_nach_einstieg": 13.5
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-07-27T16:00Z",
+         "tage_nach_einstieg": 208.666667
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-11-05T06:00Z",
+         "tage_nach_einstieg": 309.25
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 1.2,
+       "marge": 0.2,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 6.286642,
+       "preis_basis_anteil_kapital": -6.5e-05,
+       "kosten_anteil_kapital": 0.015391,
+       "netto_rendite_gesamt": 6.271187,
+       "netto_rendite_je_jahr": 2.088488,
+       "max_rueckgang_anteil_kapital": 0.293116,
+       "basis_bp": {
+        "mittel": 1.75989,
+        "sd": 8.965169,
+        "p01": -9.826303,
+        "p99": 27.371694,
+        "min": -132.590331,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.0002,
+       "funding_anteil_positiv": 0.863747,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.609774,
+        "2021": 5.456713,
+        "2022": 0.2047
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 36.775248,
+        "nachschussbedarf_anteil_notional": 36.775248,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T14:00Z",
+         "tage_nach_einstieg": 13.583333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-02-02T12:00Z",
+         "tage_nach_einstieg": 32.5
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-02-12T11:00Z",
+         "tage_nach_einstieg": 42.458333
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 4.225882,
+     "paar_netto_rendite_je_jahr": 1.407342,
+     "paar_max_rueckgang_tagesbasis": 0.09123,
+     "paar_schwankung_jahr": 0.159891,
+     "geldmarkt_je_jahr_annahme": 0.008167
+    },
+    "validation": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 1.2,
+       "marge": 0.2,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 0.536209,
+       "preis_basis_anteil_kapital": 0.00115,
+       "kosten_anteil_kapital": 0.009984,
+       "netto_rendite_gesamt": 0.527375,
+       "netto_rendite_je_jahr": 0.263327,
+       "max_rueckgang_anteil_kapital": 0.025774,
+       "basis_bp": {
+        "mittel": -1.336475,
+        "sd": 4.947924,
+        "p01": -6.59797,
+        "p99": 11.14116,
+        "min": -185.754986,
+        "max": 28.880516
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9e-05,
+       "funding_anteil_positiv": 0.907433,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.121048,
+        "2024": 0.406327
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 5.552792,
+        "nachschussbedarf_anteil_notional": 5.552792,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2023-01-13T21:00Z",
+         "tage_nach_einstieg": 12.875
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2023-02-16T00:00Z",
+         "tage_nach_einstieg": 46.0
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2023-10-23T22:00Z",
+         "tage_nach_einstieg": 295.916667
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 1.2,
+       "marge": 0.2,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 0.403395,
+       "preis_basis_anteil_kapital": 0.000822,
+       "kosten_anteil_kapital": 0.005685,
+       "netto_rendite_gesamt": 0.398532,
+       "netto_rendite_je_jahr": 0.198993,
+       "max_rueckgang_anteil_kapital": 0.031019,
+       "basis_bp": {
+        "mittel": -1.112829,
+        "sd": 5.420976,
+        "p01": -6.611717,
+        "p99": 11.144181,
+        "min": -252.246412,
+        "max": 29.91453
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9.7e-05,
+       "funding_anteil_positiv": 0.933425,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.105776,
+        "2024": 0.292756
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 2.436159,
+        "nachschussbedarf_anteil_notional": 2.436159,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2023-01-12T17:00Z",
+         "tage_nach_einstieg": 11.708333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2023-03-17T23:00Z",
+         "tage_nach_einstieg": 75.958333
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2023-12-08T04:00Z",
+         "tage_nach_einstieg": 341.166667
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 0.462953,
+     "paar_netto_rendite_je_jahr": 0.23116,
+     "paar_max_rueckgang_tagesbasis": 0.005615,
+     "paar_schwankung_jahr": 0.018637,
+     "geldmarkt_je_jahr_annahme": 0.0505
+    },
+    "pooled": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 1.2,
+       "marge": 0.2,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 3.41838,
+       "preis_basis_anteil_kapital": 0.002466,
+       "kosten_anteil_kapital": 0.021004,
+       "netto_rendite_gesamt": 3.399841,
+       "netto_rendite_je_jahr": 0.679224,
+       "max_rueckgang_anteil_kapital": 0.102586,
+       "basis_bp": {
+        "mittel": -0.215128,
+        "sd": 7.132193,
+        "p01": -8.761969,
+        "p99": 18.095468,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000131,
+       "funding_anteil_positiv": 0.87557,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.253752,
+        "2021": 1.781673,
+        "2022": 0.1486,
+        "2023": 0.281674,
+        "2024": 0.934141
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 14.073073,
+        "nachschussbedarf_anteil_notional": 14.073073,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T12:00Z",
+         "tage_nach_einstieg": 13.5
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-07-27T16:00Z",
+         "tage_nach_einstieg": 208.666667
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-11-05T06:00Z",
+         "tage_nach_einstieg": 309.25
+        }
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 1.2,
+       "marge": 0.2,
+       "nachjustieren": "nie",
+       "funding_summe_anteil_kapital": 10.022414,
+       "preis_basis_anteil_kapital": 0.007549,
+       "kosten_anteil_kapital": 0.040256,
+       "netto_rendite_gesamt": 9.989706,
+       "netto_rendite_je_jahr": 1.995754,
+       "max_rueckgang_anteil_kapital": 0.293116,
+       "basis_bp": {
+        "mittel": 0.610488,
+        "sd": 7.871121,
+        "p01": -8.882199,
+        "p99": 23.576348,
+        "min": -252.246412,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000159,
+       "funding_anteil_positiv": 0.891626,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.609774,
+        "2021": 5.456713,
+        "2022": 0.218591,
+        "2023": 0.993461,
+        "2024": 2.711168
+       },
+       "liquidationsabstand": {
+        "max_anstieg_perp_seit_einstieg": 36.775248,
+        "nachschussbedarf_anteil_notional": 36.775248,
+        "marge_20": {
+         "erstmals_erreicht_utc": "2020-01-14T14:00Z",
+         "tage_nach_einstieg": 13.583333
+        },
+        "marge_50": {
+         "erstmals_erreicht_utc": "2020-02-02T12:00Z",
+         "tage_nach_einstieg": 32.5
+        },
+        "marge_100": {
+         "erstmals_erreicht_utc": "2020-02-12T11:00Z",
+         "tage_nach_einstieg": 42.458333
+        }
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 6.694774,
+     "paar_netto_rendite_je_jahr": 1.337489,
+     "paar_max_rueckgang_tagesbasis": 0.09123,
+     "paar_schwankung_jahr": 0.137877,
+     "geldmarkt_je_jahr_annahme": 0.0251
+    }
+   },
+   "monatlich_nachjustiert": {
+    "train": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "monat",
+       "funding_summe_anteil_kapital": 0.29675,
+       "preis_basis_anteil_kapital": -0.001978,
+       "kosten_anteil_kapital": 0.00787,
+       "netto_rendite_gesamt": 0.286902,
+       "netto_rendite_je_jahr": 0.095547,
+       "max_rueckgang_anteil_kapital": 0.015558,
+       "basis_bp": {
+        "mittel": 0.532778,
+        "sd": 8.189566,
+        "p01": -9.702008,
+        "p99": 20.101061,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000158,
+       "funding_anteil_positiv": 0.854319,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.092661,
+        "2021": 0.175205,
+        "2022": 0.019036
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1672531200000,
+       "stunden": 26304,
+       "spot_luecken_stunden": 30,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "monat",
+       "funding_summe_anteil_kapital": 0.401507,
+       "preis_basis_anteil_kapital": -0.001742,
+       "kosten_anteil_kapital": 0.009613,
+       "netto_rendite_gesamt": 0.390152,
+       "netto_rendite_je_jahr": 0.129932,
+       "max_rueckgang_anteil_kapital": 0.009631,
+       "basis_bp": {
+        "mittel": 1.75989,
+        "sd": 8.965169,
+        "p01": -9.826303,
+        "p99": 27.371694,
+        "min": -132.590331,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 3288,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.0002,
+       "funding_anteil_positiv": 0.863747,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.15299,
+        "2021": 0.234109,
+        "2022": 0.003053
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 0.338527,
+     "paar_netto_rendite_je_jahr": 0.112739,
+     "paar_max_rueckgang_tagesbasis": 0.004424,
+     "paar_schwankung_jahr": 0.012092,
+     "geldmarkt_je_jahr_annahme": 0.008167
+    },
+    "validation": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "monat",
+       "funding_summe_anteil_kapital": 0.106605,
+       "preis_basis_anteil_kapital": -0.000307,
+       "kosten_anteil_kapital": 0.004262,
+       "netto_rendite_gesamt": 0.102036,
+       "netto_rendite_je_jahr": 0.050948,
+       "max_rueckgang_anteil_kapital": 0.009041,
+       "basis_bp": {
+        "mittel": -1.336475,
+        "sd": 4.947924,
+        "p01": -6.59797,
+        "p99": 11.14116,
+        "min": -185.754986,
+        "max": 28.880516
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9e-05,
+       "funding_anteil_positiv": 0.907433,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.038895,
+        "2024": 0.063141
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1672531200000,
+       "bis_ms": 1735689600000,
+       "stunden": 17544,
+       "spot_luecken_stunden": 1,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "monat",
+       "funding_summe_anteil_kapital": 0.115192,
+       "preis_basis_anteil_kapital": -0.000203,
+       "kosten_anteil_kapital": 0.004346,
+       "netto_rendite_gesamt": 0.110643,
+       "netto_rendite_je_jahr": 0.055246,
+       "max_rueckgang_anteil_kapital": 0.012274,
+       "basis_bp": {
+        "mittel": -1.112829,
+        "sd": 5.420976,
+        "p01": -6.611717,
+        "p99": 11.144181,
+        "min": -252.246412,
+        "max": 29.91453
+       },
+       "funding_abrechnungen": 2193,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 9.7e-05,
+       "funding_anteil_positiv": 0.933425,
+       "je_jahr_anteil_kapital": {
+        "2023": 0.041554,
+        "2024": 0.069089
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 0.106339,
+     "paar_netto_rendite_je_jahr": 0.053097,
+     "paar_max_rueckgang_tagesbasis": 0.000723,
+     "paar_schwankung_jahr": 0.00392,
+     "geldmarkt_je_jahr_annahme": 0.0505
+    },
+    "pooled": {
+     "je_instrument": {
+      "BTCUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "monat",
+       "funding_summe_anteil_kapital": 0.40331,
+       "preis_basis_anteil_kapital": -0.002277,
+       "kosten_anteil_kapital": 0.010328,
+       "netto_rendite_gesamt": 0.390706,
+       "netto_rendite_je_jahr": 0.078056,
+       "max_rueckgang_anteil_kapital": 0.015558,
+       "basis_bp": {
+        "mittel": -0.215128,
+        "sd": 7.132193,
+        "p01": -8.761969,
+        "p99": 18.095468,
+        "min": -257.305551,
+        "max": 243.485426
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000131,
+       "funding_anteil_positiv": 0.87557,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.092661,
+        "2021": 0.175205,
+        "2022": 0.019923,
+        "2023": 0.039775,
+        "2024": 0.063141
+       }
+      },
+      "ETHUSDT": {
+       "von_ms": 1577836800000,
+       "bis_ms": 1735689600000,
+       "stunden": 43848,
+       "spot_luecken_stunden": 31,
+       "kapitalbasis": 2.0,
+       "marge": 1.0,
+       "nachjustieren": "monat",
+       "funding_summe_anteil_kapital": 0.516617,
+       "preis_basis_anteil_kapital": -0.002005,
+       "kosten_anteil_kapital": 0.012152,
+       "netto_rendite_gesamt": 0.50246,
+       "netto_rendite_je_jahr": 0.100382,
+       "max_rueckgang_anteil_kapital": 0.012274,
+       "basis_bp": {
+        "mittel": 0.610488,
+        "sd": 7.871121,
+        "p01": -8.882199,
+        "p99": 23.576348,
+        "min": -252.246412,
+        "max": 181.979583
+       },
+       "funding_abrechnungen": 5481,
+       "funding_nicht_zugeordnet": 0,
+       "funding_mittel_je_abrechnung": 0.000159,
+       "funding_anteil_positiv": 0.891626,
+       "je_jahr_anteil_kapital": {
+        "2020": 0.15299,
+        "2021": 0.234109,
+        "2022": 0.003936,
+        "2023": 0.042336,
+        "2024": 0.069089
+       }
+      }
+     },
+     "paar_netto_rendite_gesamt": 0.446583,
+     "paar_netto_rendite_je_jahr": 0.089219,
+     "paar_max_rueckgang_tagesbasis": 0.004424,
+     "paar_schwankung_jahr": 0.009787,
+     "geldmarkt_je_jahr_annahme": 0.0251
+    }
+   }
+  },
+  "cg1_bestanden": true,
+  "cg2_bestanden": true,
+  "cg1_vergleich": {
+   "train": {
+    "carry_je_jahr": 0.844405,
+    "geldmarkt_je_jahr_annahme": 0.008167
+   },
+   "validation": {
+    "carry_je_jahr": 0.138696,
+    "geldmarkt_je_jahr_annahme": 0.0505
+   }
+  }
+ }
+}

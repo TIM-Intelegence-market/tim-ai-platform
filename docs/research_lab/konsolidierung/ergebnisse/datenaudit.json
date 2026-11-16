@@ -1,0 +1,889 @@
+{
+ "holdout_geladen": false,
+ "manifest": {
+  "manifest_eintraege": 1093,
+  "geprueft_ok": 861,
+  "geprueft_abweichend": 0,
+  "nicht_bereitgestellt": 232,
+  "nicht_bereitgestellt_nach_serie": {
+   "futures_um/klines/15m": 60,
+   "futures_um/klines/1m": 172
+  },
+  "abweichende_dateien": [],
+  "hinweis": "Nicht bereitgestellt = 1m/15m-Serien, für die 4h-Konsolidierung nicht benötigt. Das Manifest enthält keine Monate ab 2025."
+ },
+ "kerzen_futures_4h": [
+  {
+   "symbol": "BTCUSDT",
+   "intervall": "4h",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T20:00Z",
+   "kerzen": 10962,
+   "erwartet_im_Bereich": 10962,
+   "roh_zeilen": 10962,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [],
+   "fehlende_kerzen": 0,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 0,
+   "flache_kerzen": 0,
+   "rendite_absolut_ueber_15_prozent": 2,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2020-03-13T00:00Z",
+     "log_hoch_tief": 0.4232
+    },
+    {
+     "zeit": "2020-03-12T08:00Z",
+     "log_hoch_tief": 0.3624
+    },
+    {
+     "zeit": "2020-03-12T20:00Z",
+     "log_hoch_tief": 0.3322
+    }
+   ]
+  },
+  {
+   "symbol": "ETHUSDT",
+   "intervall": "4h",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T20:00Z",
+   "kerzen": 10962,
+   "erwartet_im_Bereich": 10962,
+   "roh_zeilen": 10962,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [],
+   "fehlende_kerzen": 0,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 0,
+   "flache_kerzen": 0,
+   "rendite_absolut_ueber_15_prozent": 4,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2020-03-13T00:00Z",
+     "log_hoch_tief": 1.3441
+    },
+    {
+     "zeit": "2021-05-19T12:00Z",
+     "log_hoch_tief": 0.6855
+    },
+    {
+     "zeit": "2020-03-12T20:00Z",
+     "log_hoch_tief": 0.3813
+    }
+   ]
+  },
+  {
+   "symbol": "SOLUSDT",
+   "intervall": "4h",
+   "von": "2020-09-14T04:00Z",
+   "bis": "2024-12-31T20:00Z",
+   "kerzen": 9389,
+   "erwartet_im_Bereich": 9419,
+   "roh_zeilen": 9389,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [
+    {
+     "nach": "2022-02-25T20:00Z",
+     "vor": "2022-03-01T00:00Z",
+     "fehlend": 18
+    },
+    {
+     "nach": "2022-03-31T20:00Z",
+     "vor": "2022-04-03T00:00Z",
+     "fehlend": 12
+    }
+   ],
+   "fehlende_kerzen": 30,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 0,
+   "flache_kerzen": 0,
+   "rendite_absolut_ueber_15_prozent": 17,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2021-05-19T12:00Z",
+     "log_hoch_tief": 0.6367
+    },
+    {
+     "zeit": "2022-11-08T16:00Z",
+     "log_hoch_tief": 0.5499
+    },
+    {
+     "zeit": "2020-09-14T04:00Z",
+     "log_hoch_tief": 0.4281
+    }
+   ]
+  }
+ ],
+ "kerzen_futures_1h": [
+  {
+   "symbol": "BTCUSDT",
+   "intervall": "1h",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T23:00Z",
+   "kerzen": 43848,
+   "erwartet_im_Bereich": 43848,
+   "roh_zeilen": 43848,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [],
+   "fehlende_kerzen": 0,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 1,
+   "flache_kerzen": 1,
+   "rendite_absolut_ueber_15_prozent": 3,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2020-03-13T02:00Z",
+     "log_hoch_tief": 0.3671
+    },
+    {
+     "zeit": "2020-03-12T10:00Z",
+     "log_hoch_tief": 0.3487
+    },
+    {
+     "zeit": "2020-03-12T23:00Z",
+     "log_hoch_tief": 0.2883
+    }
+   ]
+  },
+  {
+   "symbol": "ETHUSDT",
+   "intervall": "1h",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T23:00Z",
+   "kerzen": 43848,
+   "erwartet_im_Bereich": 43848,
+   "roh_zeilen": 43848,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [],
+   "fehlende_kerzen": 0,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 1,
+   "flache_kerzen": 1,
+   "rendite_absolut_ueber_15_prozent": 3,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2020-03-13T02:00Z",
+     "log_hoch_tief": 1.3441
+    },
+    {
+     "zeit": "2021-05-19T13:00Z",
+     "log_hoch_tief": 0.6254
+    },
+    {
+     "zeit": "2021-05-19T12:00Z",
+     "log_hoch_tief": 0.3475
+    }
+   ]
+  },
+  {
+   "symbol": "SOLUSDT",
+   "intervall": "1h",
+   "von": "2020-09-14T07:00Z",
+   "bis": "2024-12-31T23:00Z",
+   "kerzen": 37553,
+   "erwartet_im_Bereich": 37673,
+   "roh_zeilen": 37553,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [
+    {
+     "nach": "2022-02-25T23:00Z",
+     "vor": "2022-03-01T00:00Z",
+     "fehlend": 72
+    },
+    {
+     "nach": "2022-03-31T23:00Z",
+     "vor": "2022-04-03T00:00Z",
+     "fehlend": 48
+    }
+   ],
+   "fehlende_kerzen": 120,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 1,
+   "flache_kerzen": 1,
+   "rendite_absolut_ueber_15_prozent": 10,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2021-05-19T12:00Z",
+     "log_hoch_tief": 0.5621
+    },
+    {
+     "zeit": "2020-09-14T07:00Z",
+     "log_hoch_tief": 0.4281
+    },
+    {
+     "zeit": "2022-11-09T18:00Z",
+     "log_hoch_tief": 0.3399
+    }
+   ]
+  }
+ ],
+ "kerzen_futures_1d": [
+  {
+   "symbol": "BTCUSDT",
+   "intervall": "1d",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T00:00Z",
+   "kerzen": 1827,
+   "erwartet_im_Bereich": 1827,
+   "roh_zeilen": 1827,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [],
+   "fehlende_kerzen": 0,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 0,
+   "flache_kerzen": 0,
+   "rendite_absolut_ueber_15_prozent": 6,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2020-03-12T00:00Z",
+     "log_hoch_tief": 0.6061
+    },
+    {
+     "zeit": "2020-03-13T00:00Z",
+     "log_hoch_tief": 0.4999
+    },
+    {
+     "zeit": "2021-05-19T00:00Z",
+     "log_hoch_tief": 0.4189
+    }
+   ]
+  },
+  {
+   "symbol": "ETHUSDT",
+   "intervall": "1d",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T00:00Z",
+   "kerzen": 1827,
+   "erwartet_im_Bereich": 1827,
+   "roh_zeilen": 1827,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [],
+   "fehlende_kerzen": 0,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 0,
+   "flache_kerzen": 0,
+   "rendite_absolut_ueber_15_prozent": 17,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2020-03-13T00:00Z",
+     "log_hoch_tief": 1.3441
+    },
+    {
+     "zeit": "2021-05-19T00:00Z",
+     "log_hoch_tief": 0.9003
+    },
+    {
+     "zeit": "2020-03-12T00:00Z",
+     "log_hoch_tief": 0.7233
+    }
+   ]
+  },
+  {
+   "symbol": "SOLUSDT",
+   "intervall": "1d",
+   "von": "2020-09-14T00:00Z",
+   "bis": "2024-12-31T00:00Z",
+   "kerzen": 1565,
+   "erwartet_im_Bereich": 1570,
+   "roh_zeilen": 1565,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [
+    {
+     "nach": "2022-02-25T00:00Z",
+     "vor": "2022-03-01T00:00Z",
+     "fehlend": 3
+    },
+    {
+     "nach": "2022-03-31T00:00Z",
+     "vor": "2022-04-03T00:00Z",
+     "fehlend": 2
+    }
+   ],
+   "fehlende_kerzen": 5,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 0,
+   "flache_kerzen": 0,
+   "rendite_absolut_ueber_15_prozent": 45,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2022-11-09T00:00Z",
+     "log_hoch_tief": 0.9274
+    },
+    {
+     "zeit": "2021-05-19T00:00Z",
+     "log_hoch_tief": 0.8258
+    },
+    {
+     "zeit": "2022-11-10T00:00Z",
+     "log_hoch_tief": 0.5714
+    }
+   ]
+  }
+ ],
+ "kerzen_spot_1h": [
+  {
+   "symbol": "BTCUSDT",
+   "intervall": "1h",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T23:00Z",
+   "kerzen": 43817,
+   "erwartet_im_Bereich": 43848,
+   "roh_zeilen": 43817,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [
+    {
+     "nach": "2020-02-09T01:00Z",
+     "vor": "2020-02-09T03:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2020-02-19T11:00Z",
+     "vor": "2020-02-19T17:00Z",
+     "fehlend": 5
+    },
+    {
+     "nach": "2020-03-04T09:00Z",
+     "vor": "2020-03-04T11:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2020-04-25T01:00Z",
+     "vor": "2020-04-25T04:00Z",
+     "fehlend": 2
+    },
+    {
+     "nach": "2020-06-28T01:00Z",
+     "vor": "2020-06-28T05:00Z",
+     "fehlend": 3
+    },
+    {
+     "nach": "2020-11-30T05:00Z",
+     "vor": "2020-11-30T07:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2020-12-21T14:00Z",
+     "vor": "2020-12-21T18:00Z",
+     "fehlend": 3
+    },
+    {
+     "nach": "2020-12-25T01:00Z",
+     "vor": "2020-12-25T03:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2021-02-11T03:00Z",
+     "vor": "2021-02-11T05:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2021-03-06T01:00Z",
+     "vor": "2021-03-06T03:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2021-04-20T01:00Z",
+     "vor": "2021-04-20T04:00Z",
+     "fehlend": 2
+    },
+    {
+     "nach": "2021-04-25T04:00Z",
+     "vor": "2021-04-25T08:00Z",
+     "fehlend": 3
+    },
+    {
+     "nach": "2021-08-13T01:00Z",
+     "vor": "2021-08-13T06:00Z",
+     "fehlend": 4
+    },
+    {
+     "nach": "2021-09-29T06:00Z",
+     "vor": "2021-09-29T09:00Z",
+     "fehlend": 2
+    },
+    {
+     "nach": "2023-03-24T12:00Z",
+     "vor": "2023-03-24T14:00Z",
+     "fehlend": 1
+    }
+   ],
+   "fehlende_kerzen": 31,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 3,
+   "flache_kerzen": 3,
+   "rendite_absolut_ueber_15_prozent": 3,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2020-03-13T02:00Z",
+     "log_hoch_tief": 0.3331
+    },
+    {
+     "zeit": "2020-03-12T10:00Z",
+     "log_hoch_tief": 0.2832
+    },
+    {
+     "zeit": "2020-03-12T23:00Z",
+     "log_hoch_tief": 0.2744
+    }
+   ]
+  },
+  {
+   "symbol": "ETHUSDT",
+   "intervall": "1h",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T23:00Z",
+   "kerzen": 43817,
+   "erwartet_im_Bereich": 43848,
+   "roh_zeilen": 43817,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [
+    {
+     "nach": "2020-02-09T01:00Z",
+     "vor": "2020-02-09T03:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2020-02-19T11:00Z",
+     "vor": "2020-02-19T17:00Z",
+     "fehlend": 5
+    },
+    {
+     "nach": "2020-03-04T09:00Z",
+     "vor": "2020-03-04T11:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2020-04-25T01:00Z",
+     "vor": "2020-04-25T04:00Z",
+     "fehlend": 2
+    },
+    {
+     "nach": "2020-06-28T01:00Z",
+     "vor": "2020-06-28T05:00Z",
+     "fehlend": 3
+    },
+    {
+     "nach": "2020-11-30T05:00Z",
+     "vor": "2020-11-30T07:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2020-12-21T14:00Z",
+     "vor": "2020-12-21T18:00Z",
+     "fehlend": 3
+    },
+    {
+     "nach": "2020-12-25T01:00Z",
+     "vor": "2020-12-25T03:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2021-02-11T03:00Z",
+     "vor": "2021-02-11T05:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2021-03-06T01:00Z",
+     "vor": "2021-03-06T03:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2021-04-20T01:00Z",
+     "vor": "2021-04-20T04:00Z",
+     "fehlend": 2
+    },
+    {
+     "nach": "2021-04-25T04:00Z",
+     "vor": "2021-04-25T08:00Z",
+     "fehlend": 3
+    },
+    {
+     "nach": "2021-08-13T01:00Z",
+     "vor": "2021-08-13T06:00Z",
+     "fehlend": 4
+    },
+    {
+     "nach": "2021-09-29T06:00Z",
+     "vor": "2021-09-29T09:00Z",
+     "fehlend": 2
+    },
+    {
+     "nach": "2023-03-24T12:00Z",
+     "vor": "2023-03-24T14:00Z",
+     "fehlend": 1
+    }
+   ],
+   "fehlende_kerzen": 31,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 3,
+   "flache_kerzen": 3,
+   "rendite_absolut_ueber_15_prozent": 2,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2021-05-19T12:00Z",
+     "log_hoch_tief": 0.3472
+    },
+    {
+     "zeit": "2020-03-13T02:00Z",
+     "log_hoch_tief": 0.3348
+    },
+    {
+     "zeit": "2021-05-19T13:00Z",
+     "log_hoch_tief": 0.3196
+    }
+   ]
+  },
+  {
+   "symbol": "SOLUSDT",
+   "intervall": "1h",
+   "von": "2020-08-11T06:00Z",
+   "bis": "2024-12-31T23:00Z",
+   "kerzen": 38471,
+   "erwartet_im_Bereich": 38490,
+   "roh_zeilen": 38471,
+   "duplikate_entfernt": 0,
+   "unsortiert_roh": 0,
+   "luecken": [
+    {
+     "nach": "2020-11-30T05:00Z",
+     "vor": "2020-11-30T07:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2020-12-21T14:00Z",
+     "vor": "2020-12-21T18:00Z",
+     "fehlend": 3
+    },
+    {
+     "nach": "2020-12-25T01:00Z",
+     "vor": "2020-12-25T03:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2021-02-11T03:00Z",
+     "vor": "2021-02-11T05:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2021-03-06T01:00Z",
+     "vor": "2021-03-06T03:00Z",
+     "fehlend": 1
+    },
+    {
+     "nach": "2021-04-20T01:00Z",
+     "vor": "2021-04-20T04:00Z",
+     "fehlend": 2
+    },
+    {
+     "nach": "2021-04-25T04:00Z",
+     "vor": "2021-04-25T08:00Z",
+     "fehlend": 3
+    },
+    {
+     "nach": "2021-08-13T01:00Z",
+     "vor": "2021-08-13T06:00Z",
+     "fehlend": 4
+    },
+    {
+     "nach": "2021-09-29T06:00Z",
+     "vor": "2021-09-29T09:00Z",
+     "fehlend": 2
+    },
+    {
+     "nach": "2023-03-24T12:00Z",
+     "vor": "2023-03-24T14:00Z",
+     "fehlend": 1
+    }
+   ],
+   "fehlende_kerzen": 19,
+   "ausserhalb_raster": 0,
+   "ohlc_ungueltig": 0,
+   "preis_nichtpositiv": 0,
+   "volumen_negativ": 0,
+   "taker_gt_volumen": 0,
+   "volumen_null": 3,
+   "flache_kerzen": 3,
+   "rendite_absolut_ueber_15_prozent": 7,
+   "groesste_spannen_log": [
+    {
+     "zeit": "2021-05-19T12:00Z",
+     "log_hoch_tief": 0.5184
+    },
+    {
+     "zeit": "2021-05-19T13:00Z",
+     "log_hoch_tief": 0.3986
+    },
+    {
+     "zeit": "2020-09-09T14:00Z",
+     "log_hoch_tief": 0.3588
+    }
+   ]
+  }
+ ],
+ "vergleich_4h_gegen_1h": {
+  "BTCUSDT": {
+   "verglichen": 10962,
+   "ohne_vollstaendige_1h": 0,
+   "abweichend_open": 1,
+   "abweichend_high": 0,
+   "abweichend_low": 0,
+   "abweichend_close": 1,
+   "abweichend_volumen": 2,
+   "max_relative_abweichung": {
+    "o": 0.001205,
+    "h": 0.0,
+    "l": 0.0,
+    "c": 0.0006951,
+    "v": 0.1765
+   }
+  },
+  "ETHUSDT": {
+   "verglichen": 10962,
+   "ohne_vollstaendige_1h": 0,
+   "abweichend_open": 1,
+   "abweichend_high": 0,
+   "abweichend_low": 1,
+   "abweichend_close": 0,
+   "abweichend_volumen": 1,
+   "max_relative_abweichung": {
+    "o": 0.006014,
+    "h": 0.0,
+    "l": 0.005074,
+    "c": 0.0,
+    "v": 0.000141
+   }
+  },
+  "SOLUSDT": {
+   "verglichen": 9388,
+   "ohne_vollstaendige_1h": 1,
+   "abweichend_open": 1,
+   "abweichend_high": 0,
+   "abweichend_low": 1,
+   "abweichend_close": 0,
+   "abweichend_volumen": 1,
+   "max_relative_abweichung": {
+    "o": 0.002209,
+    "h": 0.0,
+    "l": 0.0002837,
+    "c": 0.0,
+    "v": 0.0001461
+   }
+  }
+ },
+ "funding": [
+  {
+   "symbol": "BTCUSDT",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T16:00Z",
+   "zeilen": 5481,
+   "roh_zeilen": 5481,
+   "duplikate_entfernt": 0,
+   "unregelmaessige_abstaende": 0,
+   "beispiele_unregelmaessig": [],
+   "jitter_ms_min": 0,
+   "jitter_ms_max": 47,
+   "negativer_jitter_anzahl": 0,
+   "rate_min": -0.003,
+   "rate_max": 0.003,
+   "rate_mittel": 0.0001310630578361613,
+   "rate_median": 0.0001,
+   "anteil_positiv": 0.8755701514322204,
+   "rate_ueber_0_5_prozent": 0
+  },
+  {
+   "symbol": "ETHUSDT",
+   "von": "2020-01-01T00:00Z",
+   "bis": "2024-12-31T16:00Z",
+   "zeilen": 5481,
+   "roh_zeilen": 5481,
+   "duplikate_entfernt": 0,
+   "unregelmaessige_abstaende": 0,
+   "beispiele_unregelmaessig": [],
+   "jitter_ms_min": 0,
+   "jitter_ms_max": 47,
+   "negativer_jitter_anzahl": 0,
+   "rate_min": -0.00356332,
+   "rate_max": 0.00375,
+   "rate_mittel": 0.0001588595037401934,
+   "rate_median": 0.0001,
+   "anteil_positiv": 0.8916256157635468,
+   "rate_ueber_0_5_prozent": 0
+  },
+  {
+   "symbol": "SOLUSDT",
+   "von": "2020-09-13T16:00Z",
+   "bis": "2024-12-31T16:00Z",
+   "zeilen": 4786,
+   "roh_zeilen": 4786,
+   "duplikate_entfernt": 0,
+   "unregelmaessige_abstaende": 101,
+   "beispiele_unregelmaessig": [
+    {
+     "nach": "2022-11-09T16:00Z",
+     "vor": "2022-11-09T20:00Z",
+     "abstand_h": 4.0
+    },
+    {
+     "nach": "2022-11-09T20:00Z",
+     "vor": "2022-11-10T00:00Z",
+     "abstand_h": 4.0
+    },
+    {
+     "nach": "2022-11-10T00:00Z",
+     "vor": "2022-11-10T04:00Z",
+     "abstand_h": 4.0
+    },
+    {
+     "nach": "2022-11-10T04:00Z",
+     "vor": "2022-11-10T06:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-10T06:00Z",
+     "vor": "2022-11-10T08:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-10T08:00Z",
+     "vor": "2022-11-10T10:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-10T10:00Z",
+     "vor": "2022-11-10T12:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-10T12:00Z",
+     "vor": "2022-11-10T14:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-10T14:00Z",
+     "vor": "2022-11-10T16:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-10T16:00Z",
+     "vor": "2022-11-10T18:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-10T18:00Z",
+     "vor": "2022-11-10T20:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-10T20:00Z",
+     "vor": "2022-11-10T22:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-10T22:00Z",
+     "vor": "2022-11-11T00:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-11T00:00Z",
+     "vor": "2022-11-11T02:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-11T02:00Z",
+     "vor": "2022-11-11T04:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-11T04:00Z",
+     "vor": "2022-11-11T06:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-11T06:00Z",
+     "vor": "2022-11-11T08:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-11T08:00Z",
+     "vor": "2022-11-11T10:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-11T10:00Z",
+     "vor": "2022-11-11T12:00Z",
+     "abstand_h": 2.0
+    },
+    {
+     "nach": "2022-11-11T12:00Z",
+     "vor": "2022-11-11T14:00Z",
+     "abstand_h": 2.0
+    }
+   ],
+   "jitter_ms_min": -14400000,
+   "jitter_ms_max": 14400000,
+   "negativer_jitter_anzahl": 47,
+   "rate_min": -0.02,
+   "rate_max": 0.00332469,
+   "rate_mittel": 3.762647304638525e-06,
+   "rate_median": 0.0001,
+   "anteil_positiv": 0.7716255745925616,
+   "rate_ueber_0_5_prozent": 26
+  }
+ ]
+}

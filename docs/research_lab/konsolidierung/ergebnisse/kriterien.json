@@ -1,0 +1,88 @@
+{
+ "meta": {
+  "code_commit": "f1c39402a7cf360816b08cf871e7b2559cd5f4a9",
+  "code_unsauber": false,
+  "protokoll": "PROTOKOLL_KONSOLIDIERUNG.md 1.0"
+ },
+ "kriterien": {
+  "G8_berichtet": {
+   "quelle": "S32 1.0 Validierung 2023-24 (ein Lauf, 14.11.2026): Regel S7b-D20-T3 auf 137 Coins (Punkt-in-Zeit-Top-25 je Monat ohne BTC/ETH/SOL)",
+   "ergebnisdatei_sha256": "dc00bd4a3d686931e5f627b556ff254a519d57bbb0aa2f6b520bde76c49f028c",
+   "n_trades": 3311,
+   "netto_e_r": -0.0255,
+   "zufall_p": 0.5475,
+   "bootstrap_ci95": [
+    -0.15,
+    0.101
+   ],
+   "status": "NUR BERICHTET (nicht neu gerechnet: Kerzen der 137 Coins liegen nicht im Container)",
+   "bestanden": false
+  },
+  "C1": {
+   "kriterien": {
+    "G1": true,
+    "G2": true,
+    "G3": true,
+    "G4": true,
+    "G5": true,
+    "G6": true,
+    "G7": false,
+    "G8": false,
+    "G11": true
+   },
+   "nicht_bestanden": [
+    "G7",
+    "G8"
+   ],
+   "stufe_ohne_vorwaertsbeleg": 2
+  },
+  "C3": {
+   "kriterien": {
+    "G1": true,
+    "G2": true,
+    "G3": false,
+    "G4": true,
+    "G5": true,
+    "G6": true,
+    "G7": false,
+    "G8": false,
+    "G11": true
+   },
+   "nicht_bestanden": [
+    "G3",
+    "G7",
+    "G8"
+   ],
+   "stufe_ohne_vorwaertsbeleg": 2
+  },
+  "C2": {
+   "kriterien": {
+    "G1": true,
+    "G2": true,
+    "G3": true,
+    "G4": true,
+    "G5": true,
+    "G6": true,
+    "G7": false,
+    "G8": false,
+    "G11": true,
+    "CG1": true,
+    "CG2": true,
+    "G10": true
+   },
+   "nicht_bestanden": [
+    "G7",
+    "G8"
+   ],
+   "stufe_ohne_vorwaertsbeleg": 2,
+   "hinweis": "Trendanteil = C1; G7/G8 gelten für den Trendanteil. CG1/CG2/G10 formal nach Protokoll (konstante Stückzahl); Sensitivität mit konstantem Notional in t11/t12"
+  },
+  "gesamt_stufe_ohne_vorwaertsbeleg": 2,
+  "stufen_text": {
+   "1": "KEIN BELASTBARER VORTEIL",
+   "2": "INTERESSANTE HYPOTHESE, EVIDENZ UNZUREICHEND",
+   "3": "HISTORISCH ROBUST, PROSPEKTIVER TEST AUSSTEHEND",
+   "4": "FÜR BEGRENZTES PAPER-TRADING GEEIGNET (braucht Vorwärtsbeleg oder freigegebenen Holdout, hier nicht vorhanden)"
+  }
+ }
+}
