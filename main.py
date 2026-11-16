@@ -913,6 +913,15 @@ class TIMApplication:
             except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
                 log.warning("level watch update failed: %s", type(error).__name__)
             try:
+                # Preisbewegungen erklären (Uzi 16.11.2026, P1+P2): large moves with context, recorded once, reads only.
+                from src.dashboard.move_context import DEFAULT_PATH as moves_path, sources_from_state, update as update_moves
+
+                await asyncio.to_thread(update_moves, moves_path, series, sources_from_state(self.dashboard_state))
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - an explanation must not stop the runtime
+                log.warning("move context update failed: %s", type(error).__name__)
+            try:
                 # Muster-Schatten (Uzi 14.11.2026): QM, OB and SFP tracked on paper, reads only.
                 from src.dashboard.pattern_shadow import DEFAULT_PATH as pattern_path, update as update_patterns
 
