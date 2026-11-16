@@ -19,12 +19,13 @@ KAPITAL_STUFEN = (1_000.0, 5_000.0, 10_000.0)
 RISIKO = 0.01
 
 
-def t13_kerzen(kerzen: dict, fund: dict, bitunix_ordner: str) -> dict:
-    bx = {s: lade_bitunix(f"{bitunix_ordner}/bitunix_{s}_4h.json", s) for s in SYMBOLE}
-    start = int(min(bx[s].t[0] for s in SYMBOLE))
-    bn = {s: beschneide(kerzen[s], start) for s in SYMBOLE}
-    tr_n = simuliere(bn, fund, V_C1, K1, portfolio=True)
-    tr_x = simuliere(bx, fund, V_C1, K1, portfolio=True)
+def t13_kerzen(kerzen: dict, fund: dict, bitunix_ordner: str, symbole: tuple[str, ...] = SYMBOLE) -> dict:
+    sym = tuple(s for s in SYMBOLE if s in symbole)
+    bx = {s: lade_bitunix(f"{bitunix_ordner}/bitunix_{s}_4h.json", s) for s in sym}
+    start = int(min(bx[s].t[0] for s in sym))
+    bn = {s: beschneide(kerzen[s], start) for s in sym}
+    tr_n = simuliere(bn, fund, V_C1, K1, portfolio=True, reihenfolge=sym)
+    tr_x = simuliere(bx, fund, V_C1, K1, portfolio=True, reihenfolge=sym)
     kn = {(t.symbol, t.signal_zeit): t for t in tr_n}
     kx = {(t.symbol, t.signal_zeit): t for t in tr_x}
     gem = set(kn) & set(kx)
@@ -35,7 +36,7 @@ def t13_kerzen(kerzen: dict, fund: dict, bitunix_ordner: str) -> dict:
            "gemeinsame_signale": len(gem), "nur_binance": len(set(kn) - set(kx)), "nur_bitunix": len(set(kx) - set(kn)),
            "max_abw_r_gemeinsam": float(d.max()) if len(d) else None, "mittel_abw_r_gemeinsam": float(d.mean()) if len(d) else None,
            "anteil_gleicher_ausstiegsgrund": float(np.mean([kn[c].grund == kx[c].grund for c in gem])) if gem else None,
-           "kerzenvergleich": {s: abgleich(kerzen[s], bx[s]) for s in SYMBOLE}}
+           "kerzenvergleich": {s: abgleich(kerzen[s], bx[s]) for s in sym}}
     # nach Kontraktstart (nur kurzer Abschnitt, wegen Kerzenmenge nur Bericht)
     for name, tr in (("binance", tr_n), ("bitunix", tr_x)):
         spaet = [t for t in tr if t.signal_zeit >= KONTRAKTSTART_MS]
@@ -78,10 +79,11 @@ def t13_kontrakt(kerzen: dict, fund: dict, ordner: str) -> dict:
 
 
 def t13_gesamt(kerzen: dict, fund: dict, ordner: str, tiefe_json: str) -> dict:
-    out = {"kerzen": t13_kerzen(kerzen, fund, ordner), "kontrakt": t13_kontrakt(kerzen, fund, ordner),
+    out = {"kerzen": t13_kerzen(kerzen, fund, ordner), "kerzen_c3": t13_kerzen(kerzen, fund, ordner, KANDIDATEN["C3"]), "kontrakt": t13_kontrakt(kerzen, fund, ordner),
            "buch_momentaufnahme": json.loads(Path(tiefe_json).read_text())}
     out["funding_momentaufnahme"] = {s: json.loads(Path(f"{ordner}/funding_rate_{s}.json").read_text())["data"] for s in SYMBOLE}
     out["g11_bestanden"] = bool(out["kerzen"]["g11_kerzen_bestanden"] and out["kontrakt"]["g11_kontrakt_bestanden"])
+    out["g11_bestanden_c3"] = bool(out["kerzen_c3"]["g11_kerzen_bestanden"] and out["kontrakt"]["g11_kontrakt_bestanden"])
     out["offene_voraussetzungen"] = [
         "Gebühren: VIP0 taker 0,06 % / maker 0,02 % stammen von Uzi (10.11.2026), im Code FEES_VERIFIED = False; keine Kontoprüfung möglich (kein Schlüssel)",
         "Funding-Historie: Bitunix bietet keine öffentliche Historie in diesen Daten; Binance dient als Stellvertreter. Aktuelle Momentaufnahme: Intervall 8 h, Einheit der Rate in der API unklar (Dezimal oder Prozent)",

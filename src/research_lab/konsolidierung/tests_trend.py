@@ -105,9 +105,19 @@ def meta(test: str, konfig: dict, befehl: str, zeitraum: str, status: str, grenz
             "zeitraum": zeitraum, "status": status, "grenzen": grenzen, "seed": SEED}
 
 
+def _runde(o, stellen: int = 6):
+    if isinstance(o, dict):
+        return {k: _runde(v, stellen) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_runde(v, stellen) for v in o]
+    if isinstance(o, (float, np.floating)):
+        return None if not np.isfinite(o) else round(float(o), stellen)
+    return o
+
+
 def schreibe(pfad: Path, obj: dict) -> None:
     pfad.parent.mkdir(parents=True, exist_ok=True)
-    pfad.write_text(json.dumps(obj, indent=1, ensure_ascii=False, default=_json_default), encoding="utf-8")
+    pfad.write_text(json.dumps(_runde(obj), indent=1, ensure_ascii=False, default=_json_default), encoding="utf-8")
 
 
 def _json_default(o):  # numpy-Typen
@@ -233,7 +243,7 @@ def t3_zufall(kerzen: dict, fund: dict, symbole: tuple[str, ...], ziehungen: int
     for sec in e_z:
         x = e_z[sec][~np.isnan(e_z[sec])]
         p = (1 + int((x >= e_kand[sec]).sum())) / (1 + len(x))
-        out["sektionen"][sec] = {"e_r_zufall_mittel": float(x.mean()), "e_r_zufall_median": float(np.median(x)), "e_r_zufall_ci90": [float(np.percentile(x, 5)), float(np.percentile(x, 95))],
+        out["sektionen"][sec] = {"e_r_zufall_werte": [round(float(v), 5) for v in x], "e_r_zufall_mittel": float(x.mean()), "e_r_zufall_median": float(np.median(x)), "e_r_zufall_ci90": [float(np.percentile(x, 5)), float(np.percentile(x, 95))],
                                  "e_r_zufall_max": float(x.max()), "anteil_ziehungen_positiv": float((x > 0).mean()), "n_zufall_mittel": float(np.nanmean(n_z[sec])),
                                  "p_einseitig": p, "gueltige_ziehungen": int(len(x))}
     out["g3_bestanden"] = bool(out["sektionen"]["train"]["p_einseitig"] <= 0.05 and out["sektionen"]["validation"]["p_einseitig"] <= 0.05)
