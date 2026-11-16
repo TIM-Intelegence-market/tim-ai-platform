@@ -128,3 +128,14 @@ def test_runtime_key_is_read_at_most_every_ten_minutes(monkeypatch) -> None:
     clock[0] += 2
     monkeypatch.setattr(index_data, "api_key", lambda: calls.append(1) or SecretValue(KEY))
     assert index_data.runtime_key(lambda: clock[0]).reveal() == KEY and len(calls) == 2
+
+
+def test_mac_prefers_the_private_key_file_over_the_keychain(monkeypatch, tmp_path) -> None:
+    import os
+
+    path = tmp_path / "twelvedata-api-key"
+    path.write_text(KEY)
+    os.chmod(path, 0o600)
+    monkeypatch.setattr(index_data.sys, "platform", "darwin")
+    monkeypatch.setattr(index_data.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no keychain")))
+    assert index_data.api_key({index_data.FILE_ENV: str(path)}).reveal() == KEY
