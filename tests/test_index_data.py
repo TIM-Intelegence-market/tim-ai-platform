@@ -53,7 +53,7 @@ def test_fetch_sends_key_and_never_leaks_it_in_errors() -> None:
         return io.BytesIO(json.dumps(answer(5)).encode())
 
     rows = index_data.fetch("NDX", "30m", 5, key=lambda: SecretValue(KEY), opener=opener)
-    assert len(rows) == 5 and "apikey=" + KEY in seen[0] and "symbol=NDX" in seen[0] and "interval=30min" in seen[0]
+    assert len(rows) == 5 and "apikey=" + KEY in seen[0] and "symbol=QQQ" in seen[0] and "interval=30min" in seen[0]
 
     def broken(request, timeout):
         raise OSError(f"failed {request.full_url}")
@@ -72,8 +72,8 @@ def test_key_shape_and_env_provider() -> None:
 
 
 def test_symbol_only_from_allowlist() -> None:
-    assert index_data.symbol({}) == "NDX" and index_data.symbol({index_data.SYMBOL_ENV: "qqq"}) == "QQQ"
-    assert index_data.symbol({index_data.SYMBOL_ENV: "AAPL&apikey=x"}) == "NDX"
+    assert index_data.symbol({}) == "QQQ" and index_data.symbol({index_data.SYMBOL_ENV: "ndx"}) == "NDX"
+    assert index_data.symbol({index_data.SYMBOL_ENV: "AAPL&apikey=x"}) == "QQQ"
 
 
 def test_chart_says_twelve_data_when_rows_come_from_the_key() -> None:

@@ -54,7 +54,8 @@ GOLD_NOTE = ("Gold über PAXG (tokenisiertes Gold, 1 PAXG = 1 Feinunze): handelt
              "Wochenend-Kerzen und dünnere Liquidität können Level gegenüber XAUUSD verschieben.")
 XMR_NOTE = ("Monero über den Binance-Perpetual XMRUSDT (USD-M Futures): Binance hat XMR-Spot im Februar 2024 "
             "eingestellt. Perp-Preis kann durch Funding leicht vom Spotpreis abweichen; reine Anzeige, kein Papier-Trading.")
-INDEX_KEY_NOTE = ("Nasdaq-100 über Twelve Data (eigener API-Key): Kerzen nur zu US-Handelszeiten "
+INDEX_KEY_NOTE = ("Nasdaq-100 über Twelve Data (eigener API-Key) als ETF QQQ (folgt dem Nasdaq-100, Preis etwa ein Vierzigstel des Index; "
+                  "der Gratis-Plan liefert den Index NDX nicht): Kerzen nur zu US-Handelszeiten "
                   "(Mo-Fr 15:30-22:00 deutsche Zeit), Wochenende und Nacht ohne Kerzen. Keine Trades, kein Footprint, "
                   "kein Papier-Trading; reine Anzeige zum Vergleich mit BTC.")
 INDEX_NOTE = ("Nasdaq-100 (^NDX) von Yahoo Finance (öffentlich, inoffiziell, teils verzögert; kein Twelve-Data-Key hinterlegt): Kerzen nur zu US-Handelszeiten "

@@ -118,7 +118,8 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Monero über den Binance-Perpetual", "Monero via the Binance perpetual XMRUSDT (USD-M futures): Binance ended XMR spot "
                                             "in February 2024. The perp price can differ slightly from spot because of funding; "
                                             "display only, no paper trading."),
-    (r"^Nasdaq-100 über Twelve Data", "Nasdaq-100 via Twelve Data (TIM's own API key): candles only in US trading hours "
+    (r"^Nasdaq-100 über Twelve Data", "Nasdaq-100 via Twelve Data (TIM's own API key) as the ETF QQQ (tracks the Nasdaq-100, price about a fortieth of the index; "
+                                     "the free plan does not deliver the NDX index): candles only in US trading hours "
                                      "(Mon-Fri 9:30-16:00 New York), none at weekends and overnight. No trades, no footprint, "
                                      "no paper trading; display only, for comparison with BTC."),
     (r"^Nasdaq-100 \(\^NDX\) von Yahoo", "Nasdaq-100 (^NDX) from Yahoo Finance (public, unofficial, partly delayed; no Twelve Data key stored): candles only in US trading hours "

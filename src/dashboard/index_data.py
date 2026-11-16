@@ -27,12 +27,12 @@ from config.secrets import SecretProviderError, SecretValue, _require_private_re
 PROVIDER_ENV = "TIM_TWELVEDATA_SECRET_PROVIDER"
 KEY_ENV = "TIM_TWELVEDATA_API_KEY"
 FILE_ENV = "TIM_TWELVEDATA_SECRET_FILE"
-SYMBOL_ENV = "TIM_NASDAQ_SYMBOL"  # NDX (index) by default; QQQ if the plan has no indices
+SYMBOL_ENV = "TIM_NASDAQ_SYMBOL"  # QQQ by default: the free plan answers NDX with an HTTP error (Mac probe 16.11.2026)
 DEFAULT_SECRET_FILE = "~/Library/Application Support/TIM/twelvedata-api-key"
 KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT = "com.tim.twelvedata", "tim"
 KEYCHAIN_SERVICES = (KEYCHAIN_SERVICE, "twelvedata")  # Uzi stored the key as "twelvedata" (16.11.2026): both count
 KEY_SHAPE = re.compile(r"[A-Za-z0-9]{16,64}")
-DEFAULT_SYMBOL = "NDX"
+DEFAULT_SYMBOL = "QQQ"
 ALLOWED_SYMBOLS = ("NDX", "QQQ")
 URL = "https://api.twelvedata.com/time_series?"
 SOURCE = "Twelve Data (API-Key)"
