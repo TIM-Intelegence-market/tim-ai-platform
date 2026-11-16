@@ -2,7 +2,7 @@
 
 Diese Datei erklärt, wie die Ergebnisse der konsolidierten Studie aus ihren Eingaben neu erzeugt werden, in welcher Reihenfolge sie entstanden sind und was Dritte **nicht** nachrechnen können. Die Studie selbst steht in [`KONSOLIDIERTE_STUDIE.md`](KONSOLIDIERTE_STUDIE.md). Ihr Abschlussurteil lautet **INTERESSANTE HYPOTHESE, EVIDENZ UNZUREICHEND** (Stufe 2 von 4). Nichts hier erlaubt Echtgeld: `TRADING_AUTHORIZED=NO` bleibt unverändert, der Holdout (ab 2025-01-01) wurde nie geladen, an der Produktion wurde nichts geändert.
 
-Alle Uhrzeiten in dieser Datei sind UTC (Commit-Zeiten im Container). Alle Befehle werden aus dem Wurzelordner des Repos gestartet.
+Alle Uhrzeiten in dieser Datei sind UTC (Commit-Zeiten im Container). Alle Befehle werden aus dem Wurzelordner des Repos gestartet. Commit-IDs: Die Studie, das Register, die Testlogs und die Ergebnisdateien nennen die IDs von vor dem Sign-off-Umschreiben der Historie; die Zuordnung zu den heutigen IDs steht in Abschnitt 2.1.
 
 ## 1 Inhalt des Ordners
 
@@ -23,32 +23,67 @@ Alle Uhrzeiten in dieser Datei sind UTC (Commit-Zeiten im Container). Alle Befeh
 
 ## 2 Festgehaltener Stand und Reihenfolge
 
-Die Protokolle wurden eingefroren, bevor die Ergebnisse vorlagen, die sie bewerten. Das lässt sich nachprüfen:
+Die Protokolle wurden eingefroren, bevor die Ergebnisse vorlagen, die sie bewerten. Das lässt sich nachprüfen (die IDs in diesem Abschnitt sind die heutigen, siehe Abschnitt 2.1):
 
 ```bash
-git show 1e9270a:docs/research_lab/konsolidierung/PROTOKOLL_KONSOLIDIERUNG.md | sha256sum      # e82a31f060c20651d9502f390b8fa317c03e0687b9baf234ee912262f6d759a2
-git show ceed9f9:docs/research_lab/konsolidierung/PROTOKOLL_KONSOLIDIERUNG_T15.md | sha256sum  # 8f57c81e4907a52847a53cb15fdd62e1302ede39eb7f11167070e5c8eea134f2
-git diff 1e9270a HEAD -- docs/research_lab/konsolidierung/PROTOKOLL_KONSOLIDIERUNG.md          # leer: Protokoll 1.0 ist seit dem Einfrieren unverändert
+git show e8cc946:docs/research_lab/konsolidierung/PROTOKOLL_KONSOLIDIERUNG.md | sha256sum      # e82a31f060c20651d9502f390b8fa317c03e0687b9baf234ee912262f6d759a2
+git show 941ec31:docs/research_lab/konsolidierung/PROTOKOLL_KONSOLIDIERUNG_T15.md | sha256sum  # 8f57c81e4907a52847a53cb15fdd62e1302ede39eb7f11167070e5c8eea134f2
+git diff e8cc946 HEAD -- docs/research_lab/konsolidierung/PROTOKOLL_KONSOLIDIERUNG.md          # leer: Protokoll 1.0 ist seit dem Einfrieren unverändert
 ```
 
 | Schritt | Commit | Zeit (UTC) | Bedeutung |
 |---|---|---|---|
-| Datenaudit, unabhängige Nachrechnung S7/S7b, Bitunix-Abgleich | `08c67f6` | 13:12:54 | vor dem Einfrieren gerechnet, deshalb in der Studie als „berichtet“, nicht als vorab festgelegt ausgewiesen |
-| Prüfprotokoll 1.0 eingefroren | `1e9270a` | 13:16:21 | Kriterien G1 bis G11 und Urteilsstufen stehen fest |
-| Code der Tests T1 bis T13 | `f586d5c`, `f1c3940` | 13:31:30 / 13:32:50 | vor den Läufen festgehalten |
-| Ergebnisse T1 bis T13, Kriterienauswertung | `9d40bdd` | 13:34:47 | `code_commit` `f1c3940`, `code_unsauber: false` |
-| Kennzahlenbasis der Handelslisten-Studien, Abgleich der Logbuchzahlen | `277f723`, `d1ea465` | 13:39:02 / 13:43:52 | Konsistenzprüfung, keine neue Simulation |
-| Studienregister, Evidenzmatrix, Grafiken | `0d10a07`, `d7e91fd`, `bcc6c2c` | 13:55:59 / 14:02:53 / 14:07:59 | |
-| Zusatzprotokoll T15 eingefroren | `ceed9f9` | 14:10:49 | vor dem Laden der Daten (Dateizeit im Container 14:13:18) |
-| T15-Code | `b0e8575` | 14:21:49 | vor Datenbericht und Lauf |
-| T15-Datenbericht | `3fb2198` | 14:22:59 | vor dem Handelslauf; keine Abbruchbedingung erfüllt |
-| T15-Ergebnis (ein Lauf) | `f1cdd73` | 14:23:47 | `code_commit` `3fb2198`, `code_unsauber: false` |
-| T15 in Register, Matrix und Grafik; Studie; Tests | `5b8c425`, `13185c8`, `41df1a6` | 14:27:09 / 14:41:14 / 14:54:44 | |
-| Eingabe-Manifeste, Download-Hilfe, Code des Nachtrags | `d5f0066` | 15:09:30 | |
-| Nachtrag der Gegenprüfung (Diagnose, ändert keine Stufe) | `61d5715` | 15:09:37 | nach dem Einfrieren gerechnet, in der Studie als Nachtrag ausgewiesen |
-| Korrekturen nach der unabhängigen Gegenprüfung | `ba311e3` | 15:25:55 | Studie, Register, Matrix, Tests; Liste in Abschnitt 4 der Studie |
+| Datenaudit, unabhängige Nachrechnung S7/S7b, Bitunix-Abgleich | `78c2510` | 13:12:54 | vor dem Einfrieren gerechnet, deshalb in der Studie als „berichtet“, nicht als vorab festgelegt ausgewiesen |
+| Prüfprotokoll 1.0 eingefroren | `e8cc946` | 13:16:21 | Kriterien G1 bis G11 und Urteilsstufen stehen fest |
+| Code der Tests T1 bis T13 | `5ecf4a9`, `bc307b6` | 13:31:30 / 13:32:50 | vor den Läufen festgehalten |
+| Ergebnisse T1 bis T13, Kriterienauswertung | `2ac5077` | 13:34:47 | `code_commit` `f1c3940` (alte ID, jetzt `bc307b6`), `code_unsauber: false` |
+| Kennzahlenbasis der Handelslisten-Studien, Abgleich der Logbuchzahlen | `9dca282`, `86cfb8d` | 13:39:02 / 13:43:52 | Konsistenzprüfung, keine neue Simulation |
+| Studienregister, Evidenzmatrix, Grafiken | `045afe1`, `2ec5876`, `eb3c0d1` | 13:55:59 / 14:02:53 / 14:07:59 | |
+| Zusatzprotokoll T15 eingefroren | `941ec31` | 14:10:49 | vor dem Laden der Daten (Dateizeit im Container 14:13:18) |
+| T15-Code | `7f9d273` | 14:21:49 | vor Datenbericht und Lauf |
+| T15-Datenbericht | `822e7eb` | 14:22:59 | vor dem Handelslauf; keine Abbruchbedingung erfüllt |
+| T15-Ergebnis (ein Lauf) | `6e88d21` | 14:23:47 | `code_commit` `3fb2198` (alte ID, jetzt `822e7eb`), `code_unsauber: false` |
+| T15 in Register, Matrix und Grafik; Studie; Tests | `25af6d2`, `694552e`, `7a64ac4` | 14:27:09 / 14:41:14 / 14:54:44 | |
+| Eingabe-Manifeste, Download-Hilfe, Code des Nachtrags | `d153a4d` | 15:09:30 | |
+| Nachtrag der Gegenprüfung (Diagnose, ändert keine Stufe) | `1f1359f` | 15:09:37 | nach dem Einfrieren gerechnet, in der Studie als Nachtrag ausgewiesen |
+| Korrekturen nach der unabhängigen Gegenprüfung | `62141d6` | 15:25:55 | Studie, Register, Matrix, Tests; Liste in Abschnitt 4 der Studie |
 
-Weitere Stände: Protokoll-Hash und Commit des Einfrierens stehen in `ergebnisse/PROTOKOLL_STAND.json`. Der Datenbericht von T15 hat die SHA-256 `afefae25ba6530fbd53b3bd3b74a7446035e8c113ac995ece9317b4ca3c53b6d` (`ergebnisse/t15_datenaudit.json`), der Datenaudit der Laborarchive `56b44a7f89643eafb7de1b163157a5eaf906203bb3432f625e14dd344a5eb2d2` (`ergebnisse/datenaudit.json`).
+### 2.1 Zuordnung der Commit-IDs vor und nach dem Sign-off
+
+Der Check „DCO sign-off“ verlangt in jedem Commit ein `Signed-off-by`, das zum Autor passt. Deshalb wurde die Historie dieses Branches am 16.11.2026, nach den Läufen und nach der Gegenprüfung, mit `git rebase --signoff --committer-date-is-author-date` auf `platform-main` (Stand `eb3a6cf`) neu geschrieben. Der Inhalt blieb gleich: an der Spitze (Nr. 24) derselbe Dateibaum (`12ded309bc62…`), je Commit dieselbe `patch-id`, dieselbe Betreffzeile und dieselbe Autor-Zeit. Neu sind die Commit-IDs und die Zeile `Signed-off-by` in jeder Commit-Nachricht. Der Merge-Commit `173dcfa` (Einmischen von `platform-main` am Stand `eb3a6cf`) entfällt, weil die Commits jetzt direkt auf `eb3a6cf` aufbauen.
+
+Die Studie, das Register, die Testlogs und die Ergebnisdateien (`meta.code_commit`, `PROTOKOLL_STAND.json`) sind festgehaltene Läufe und nennen weiter die **alten** IDs. Die Tabelle ordnet sie zu. Die Unveränderlichkeit der Protokolle belegen die SHA-256-Summen ihrer Dateien (Befehle oben), nicht die Commit-IDs. Eine Abweichung bei den Zeiten: Beim Commit Nr. 22 lag die Committer-Zeit ursprünglich 43 Sekunden nach der Autor-Zeit (15:34:49 gegen 15:34:06 UTC); sie ist jetzt gleich der Autor-Zeit. Alle anderen Zeiten sind unverändert.
+
+| Nr. | Zeit (UTC) | alte ID | neue ID | Betreff |
+|---|---|---|---|---|
+| 1 | 13:12:54 | `08c67f6` | `78c2510` | Konsolidierung: Datenaudit, unabhängige S7/S7b-Nachrechnung, Bitunix-Abgleich (Zwischenstand) |
+| 2 | 13:16:21 | `1e9270a` | `e8cc946` | Konsolidierung: Prüfprotokoll 1.0 eingefroren (vor Bewertung neuer Kandidaten) |
+| 3 | 13:16:21 | `de878d8` | `c1bea5d` | Konsolidierung: Protokollstand (Commit-Hash und SHA-256 des eingefrorenen Protokolls) |
+| 4 | 13:31:30 | `f586d5c` | `5ecf4a9` | Konsolidierung: Kennzahlenbasis, Trendtests T1-T9, Carry, Referenzen, Kombination, … |
+| 5 | 13:32:50 | `f1c3940` | `bc307b6` | Konsolidierung: Gesamtlauf T1-T13 mit Kriterienauswertung und Testlog (Code, vor den … |
+| 6 | 13:34:47 | `9d40bdd` | `2ac5077` | Konsolidierung: Ergebnisse T1-T13 (Lauf nach eingefrorenem Protokoll), Kriterienauswertung, … |
+| 7 | 13:39:02 | `277f723` | `9dca282` | Konsolidierung: einheitliche Kennzahlen der Handelslisten-Studien (S34-S38, OF2), Abgleich mit … |
+| 8 | 13:43:52 | `d1ea465` | `86cfb8d` | Konsolidierung: Abgleich der Logbuch-Zahlen mit den Ergebnisdateien (159 von 168 Zahlen … |
+| 9 | 13:55:59 | `0d10a07` | `045afe1` | Konsolidierung: Studienregister (73 Einträge: 69 gefundene Studien und Berichte, 4 eigene … |
+| 10 | 14:02:53 | `d7e91fd` | `2ec5876` | Konsolidierung: Evidenzmatrix (17 Erkenntnisse, alle 69 gefundenen Studien zugeordnet, Zahlen … |
+| 11 | 14:07:59 | `bcc6c2c` | `eb3c0d1` | Konsolidierung: Grafiken (Netto-Verlauf, Drawdowns, Kostensensitivität, zeitliche Stabilität, … |
+| 12 | 14:10:49 | `ceed9f9` | `941ec31` | Konsolidierung: Zusatzprotokoll T15 (Test außerhalb der Entwicklung, BTC/ETH Spot 2017-08 bis … |
+| 13 | 14:21:49 | `b0e8575` | `7f9d273` | Konsolidierung: T15-Code (Datenbericht und einmaliger Handelslauf), festgehalten vor dem … |
+| 14 | 14:22:59 | `3fb2198` | `822e7eb` | Konsolidierung: T15-Datenbericht (keine Abbruchbedingung, 5 185 Kerzen je Symbol, 8 Lücken), … |
+| 15 | 14:23:47 | `f1cdd73` | `6e88d21` | Konsolidierung: Ergebnis T15 (BTC/ETH Spot 2017-2019, ein Lauf): nicht bestätigt, Richtung … |
+| 16 | 14:27:09 | `5b8c425` | `25af6d2` | Konsolidierung: T15 in Register (74 Einträge), Evidenzmatrix (E1b) und Grafik g8 eingearbeitet |
+| 17 | 14:41:14 | `13185c8` | `694552e` | Konsolidierung: konsolidierte Studie (12 Abschnitte, Generator studie.py aus Ergebnisdateien, … |
+| 18 | 14:54:44 | `41df1a6` | `7a64ac4` | Konsolidierung: 92 Tests (Kennzahlen, Simulationskern, Datenschranke, T15, Register, … |
+| 19 | 15:09:30 | `d5f0066` | `d153a4d` | Konsolidierung: Eingabe-Manifeste und Bitunix-Rohproben ins Repo, Download-Hilfe mit … |
+| 20 | 15:09:37 | `61d5715` | `1f1359f` | Konsolidierung: Nachtrag der Gegenprüfung (Diagnose nach dem Einfrieren): Bootstrap über alle … |
+| 21 | 15:25:55 | `ba311e3` | `62141d6` | Konsolidierung: Korrekturen nach der unabhängigen Gegenprüfung (Trefferquoten S4/S6, … |
+| 22 | 15:34:06 | `0dc8373` | `5211d8f` | Konsolidierung: README mit Reproduktionsanleitung und Prüfspur, Laborlisten und Bitunix-Kerzen … |
+| 23 | 15:37:00 | `9666c67` | `dde8ad5` | Konsolidierung: Tests überspringen sich ohne numpy (numpy steht nicht in requirements.txt, wie … |
+| 24 | 15:42:11 | `787f98d` | `e6603c5` | Konsolidierung: README präzisiert (Pfadangaben, SOL-Beginn, Vorwärts-Journal) |
+
+Die Reihenfolge der Commits ist unverändert (Nr. 2 und 3 tragen dieselbe Sekunde). Der Commit, der diesen Abschnitt enthält, folgt auf Nr. 24 und hat deshalb selbst keine Zeile.
+
+Weitere Stände: Protokoll-Hash und Commit des Einfrierens stehen in `ergebnisse/PROTOKOLL_STAND.json` (dort mit der alten Commit-ID, Zuordnung in Abschnitt 2.1). Der Datenbericht von T15 hat die SHA-256 `afefae25ba6530fbd53b3bd3b74a7446035e8c113ac995ece9317b4ca3c53b6d` (`ergebnisse/t15_datenaudit.json`), der Datenaudit der Laborarchive `56b44a7f89643eafb7de1b163157a5eaf906203bb3432f625e14dd344a5eb2d2` (`ergebnisse/datenaudit.json`).
 
 **Abdeckung des Registers:** Das Register bildet den Stand von `platform-main` am Commit `3799781` (2026-11-16 12:46 UTC) ab. Danach kamen vier Pull Requests hinzu (#283, #284, #286, #287: Zugriff auf den Twelve-Data-Schlüssel, Orderbuch-Dashboard, OF2-Modell M8 mit Kerzenprofil, Flow-Wechsel und Positionsführung). Sie ändern nur Code und Tests unter `src/dashboard/` und `src/research_lab/of2/` sowie `docs/ORDERBUCH_LIVE.md`; Ergebnisdateien oder Berichte enthalten sie nicht (`git diff --stat 3799781 eb3a6cf`). Sie sind nicht bewertet. „Alle auffindbaren Studien“ gilt nur im durchsuchten Umfang (Studienordner, Logbuch, Berichte, Ergebnisdateien und Zählungen in diesem Stand).
 
