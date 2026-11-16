@@ -86,7 +86,7 @@ def test_chart_says_twelve_data_when_rows_come_from_the_key() -> None:
 
 def test_without_key_the_index_falls_back_to_yahoo(monkeypatch) -> None:
     called = []
-    monkeypatch.setattr(index_data, "has_key", lambda env=None: False)
+    monkeypatch.setattr(index_data, "runtime_key", lambda: None)
     monkeypatch.setattr(chart_live, "fetch_yahoo_index", lambda s, i, n: called.append(i) or [])
     assert chart_live.fetch_index_klines("NDX", "1h", 10) == [] and called == ["1h"]
 
@@ -109,3 +109,22 @@ def test_keychain_accepts_both_service_names(monkeypatch) -> None:
     monkeypatch.setattr(index_data.subprocess, "run", run)
     assert index_data.api_key({index_data.PROVIDER_ENV: "keychain"}).reveal() == KEY
     assert asked == ["com.tim.twelvedata", "twelvedata"]
+
+
+def test_runtime_key_is_read_at_most_every_ten_minutes(monkeypatch) -> None:
+    calls = []
+    clock = [1000.0]
+    monkeypatch.delenv("TIM_RUNTIME_ENV", raising=False)
+    monkeypatch.setattr(index_data, "_KEY_STATE", {"at": None, "value": None})
+
+    def missing():
+        calls.append(1)
+        raise index_data.IndexSecretError("unavailable")
+
+    monkeypatch.setattr(index_data, "api_key", missing)
+    assert index_data.runtime_key(lambda: clock[0]) is None
+    clock[0] += 599
+    assert index_data.runtime_key(lambda: clock[0]) is None and len(calls) == 1
+    clock[0] += 2
+    monkeypatch.setattr(index_data, "api_key", lambda: calls.append(1) or SecretValue(KEY))
+    assert index_data.runtime_key(lambda: clock[0]).reveal() == KEY and len(calls) == 2

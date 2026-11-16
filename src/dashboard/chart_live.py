@@ -245,8 +245,9 @@ def fetch_index_klines(symbol: str, interval: str, limit: int) -> list[dict[str,
     """Index candles: Twelve Data with TIM's API key when one is stored (Uzi 16.11.2026), else Yahoo."""
     from src.dashboard import index_data
 
-    if index_data.has_key():
-        return index_data.fetch(symbol, interval, limit)
+    key = index_data.runtime_key()
+    if key is not None:
+        return index_data.fetch(symbol, interval, limit, key=lambda: key)
     return fetch_yahoo_index(symbol, interval, limit)
 
 
