@@ -96,6 +96,13 @@ class Config:
     balance_days: int = 3            # value areas compared for BALANCE
     balance_overlap: float = 0.5     # minimum overlap of consecutive value areas (share of the narrower one)
     bias_days: int = 2               # days whose value areas form the joint value for the acceptance bias
+    # M8 transition candle + retest (plan package P3). False = OF2 1.0. All values PROVISORISCH, training only.
+    m8: bool = False
+    m8_balance: int = 16             # closed 15m candles that form the balance (4 h)
+    m8_range_max: float = 0.03       # balance range <= 3 % of price (wider than intraday noise, stop must pass the cost gate)
+    m8_stop_depth: float = 0.5       # stop this share of the range back inside (0 = at the edge)
+    m8_retest: int = 8               # the limit rests for 8 candles (2 h)
+    m8_void_max: float = 0.5         # volume per bin between entry and target <= 0,5 x the day's mean
     # Study window (UTC days, inclusive). Holdout 2025 is refused by the store before any byte is read.
     first_day: str = "2020-01-01"
     training_end: str = "2022-12-31"
@@ -126,6 +133,9 @@ class Config:
             del d["funding_per_8h"]
         if not d["balance_filter"]:   # off: OF2 1.0 digest unchanged
             for name in ("balance_filter", "balance_days", "balance_overlap", "bias_days"):
+                del d[name]
+        if not d["m8"]:   # off: OF2 1.0 digest unchanged
+            for name in [k for k in d if k.startswith("m8")]:
                 del d[name]
         return d
 
