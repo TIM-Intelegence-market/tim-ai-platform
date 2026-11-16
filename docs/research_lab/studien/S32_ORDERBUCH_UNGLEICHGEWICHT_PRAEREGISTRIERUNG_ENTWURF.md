@@ -1,9 +1,9 @@
-# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.5)
+# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.6)
 
 | Feld | Wert |
 |---|---|
 | Studie | S32 (nächste freie Nummer nach S31/S31b) |
-| Version | **0.5, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.; 0.5: Kostenfrage H2 für jede Verhältnisstufe statt nur ab 2:1, Barti 16.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
+| Version | **0.6, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.; 0.5: Kostenfrage H2 für jede Verhältnisstufe statt nur ab 2:1, Barti 16.11.; 0.6: jede Range-Breite mit eigenem Test, Barti 16.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
 | Anlass | Barti 12./13.11.2026: Setup aus dem Video „The Only Orderflow Guide You'll Ever Need“ (6:22–9:55, S&P-Future) prüfen und, falls es trägt, in TIM einbauen. Beschreibung der Kette: `/mnt/project-files/s32-orderbuch/Was-der-Trader-macht-2026-11-12.md` (Projektdateien) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kosten aus `src/research_lab/protocol.py` |
 | Daten | Binance USDⓈ-M BTCUSDT, Tardis.dev `incremental_book_L2`, **nur die kostenlosen Tage (1. jedes Monats)**. Buchnachbau `src/research_lab/depth/` (PR #251), geprüft in `../reports/depth_p2_tardis_2020-06-01.md` |
@@ -22,7 +22,7 @@ bei jedem Ereignis gemessen (Barti 13.11.: „alle Schiefwinkel ausprobieren, St
 | P2 | „deutlich dünner“ | **jedes Verhältnis** eigene Seite / Gegenseite (Bid/Ask für Long) wird aufgezeichnet, auch unter 1. Leere Gegenseite zählt als 100:1. Video: 1,7 bis 2,8 |
 | P3 | hält an | gezählt wird der **niedrigste** Wert der letzten **3 Sekunden** (gegen kurz aufblitzende Orders) |
 | P4 | Range-Fenster | Hoch und Tief der Mitte in den letzten **15 Minuten** |
-| P5 | Range-Breite | Hauptgruppe **20–60 bp** (H1, H2). Im selben Lauf mitgeschrieben, nur beschreibend: 10–20, 60–100, 100–150 bp |
+| P5 | Range-Breite | vier Gruppen **10–20, 20–60, 60–100, 100–150 bp**, jede mit eigenem H1 und H2 (20–60 = Video) |
 | P6 | verteidigt | Berührung = Mitte höchstens 10 % der Breite vom Rand; Abprall = danach mindestens 25 % der Breite weg. Jeder Rand mindestens **1 Abprall**, zusammen mindestens **3 Berührungen** |
 | P7 | nahe am Rand | Mitte im **unteren Viertel** (Long) oder **oberen Viertel** (Short) |
 | P8 | Marktorders (Video: 53 aggressive Verkäufe) | nicht Teil der Regel, spart Versuche |
@@ -35,10 +35,9 @@ umgekehrtem Buch (Verhältnis um 1 oder darunter) sind die Range-Lage ohne Buchh
 Offene Wahl von Barti: P9 (Mitte oder gegenüberliegender Rand). P2 ist durch die Messung aller Verhältnisse
 erledigt, P5 durch die Breitengruppen (Barti 15.11.: „noch ein paar Studien mit anderen Ranges“).
 
-**Andere Range-Breiten:** Sie laufen im selben Zähl- und Auswertungslauf mit, bekommen aber keine eigene
-Grenze und kein Bestanden. Sonst wären es vier Versuche, und die beste Breite fände man auch im Zufall. Sieht eine
-andere Breite klar besser aus, wird sie eine **eigene neue Studie** mit frischen Daten (eigener Recorder, Issue
-#253), nicht nachträglich die Regel von S32. Ohne Änderung gelten die Werte oben. Jede Änderung nur **vor** dem Einfrieren.
+**Alle Range-Breiten** (Barti 16.11.: „wir machen alle nacheinander“): Jede der vier Gruppen bekommt H1 und H2
+und wird einzeln ausgewiesen. Damit vier Gruppen nicht viermal so viel Glück erlauben, wird α durch vier geteilt.
+Das Ergebnis jeder Gruppe wird vor dem nächsten Schritt (Vorwärtstest mit eigenem Recorder, Issue #253) bestätigt. Ohne Änderung gelten die Werte oben. Jede Änderung nur **vor** dem Einfrieren.
 
 ## 2. Kosten vorab (Arithmetik, keine Messung)
 
@@ -60,15 +59,22 @@ Treffer bringt. Das ist **ein** Versuch. H2 prüft jede Stufe für sich, weil �
 wird die Fehlergrenze durch sieben geteilt (siehe unten), damit sieben Stufen nicht mehr Glückstreffer erlauben
 als ein einzelner Test.
 
-- Untere Grenze: einseitig, Block-Bootstrap über Tage (9 999 Ziehungen, Seed 32), Bonferroni: H1 bekommt α/2 = 0,025,
-  H2 die andere Hälfte, geteilt durch die sieben Stufen (je etwa 0,0036).
-- Mindestmenge je Abschnitt: 300 Ereignisse insgesamt für H1; für H2 100 je Stufe, sonst ist diese Stufe „nicht
-  prüfbar“. Laut Zähllauf (15.11.) sind in beiden Abschnitten prüfbar: unter 0,5, 0,5–1, 1–1,5, 1,5–2. Die
-  Stufe 2–3 hat in der Validierung nur 48 Fälle, 3–5 und ab 5 sind überall zu klein; sie werden nur gezeigt.
+- Untere Grenze: einseitig, Block-Bootstrap über Tage (9 999 Ziehungen, Seed 32), Bonferroni: α wird auf die vier
+  Breitengruppen verteilt (je 0,0125). Davon bekommt H1 die Hälfte (0,00625), H2 die andere Hälfte, geteilt durch
+  die sieben Stufen (je etwa 0,0009).
+- Mindestmenge je Abschnitt und Breitengruppe: 300 Ereignisse für H1; für H2 100 je Stufe, sonst „nicht prüfbar“.
+  Laut Zähllauf (15.11.), in **beiden** Abschnitten prüfbar:
+
+  | Breite | H1 | H2-Stufen |
+  |---|---|---|
+  | 10–20 bp | ja | unter 0,5, 0,5–1, 1–1,5, 1,5–2 |
+  | 20–60 bp | ja | unter 0,5, 0,5–1, 1–1,5, 1,5–2 (2–3 nur im Training) |
+  | 60–100 bp | ja | 0,5–1 |
+  | 100–150 bp | nein (278 / 106 Fälle) | keine |
 - Gezählt werden nur Ausgänge Ziel, Stop, Zeit. „Kein Platz“ (Einstieg schon hinter dem Ziel) und „fehlt“ (Tag
   endet im Horizont, Buch ungültig beim Einstieg) werden ausgewiesen, nicht gewertet.
-- Deflated Sharpe: H2 zählt als **7 neue Versuche** (N 64 → 71).
-- Nur beschreibend: je Breitengruppe Anzahl, Steigung und Stufentabelle; Tabelle je Verhältnisstufe (Anzahl, Anteil Ziel zuerst, Netto-R), Long/Short getrennt, Sitzungen (Asien 00–07, London 07–13:30, New York 13:30–20 UTC), Spread.
+- Deflated Sharpe: 4 Breiten × 7 Stufen = **28 neue Versuche** (N 64 → 92).
+- Nur beschreibend: Tabelle je Verhältnisstufe (Anzahl, Anteil Ziel zuerst, Netto-R), Long/Short getrennt, Sitzungen (Asien 00–07, London 07–13:30, New York 13:30–20 UTC), Spread.
 
 ## 4. Vorbelastung
 

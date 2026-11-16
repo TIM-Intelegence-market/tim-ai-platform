@@ -137,7 +137,7 @@ def test_holdout_and_non_free_days_refused(tmp_path):
 
 def test_evaluate_locked_while_draft():
     with pytest.raises(PermissionError):
-        s32.evaluate({}, version="0.5")
+        s32.evaluate({}, version="0.6")
     assert s32.VERSION.startswith("0.")
 
 
@@ -145,8 +145,9 @@ def test_count_is_results_blind():
     evs = {date(2020, 6, 1): [_ev(), Event("d", 5, -1, 0.7, 1.0, 2.0, 80.0)]}
     c = s32.count(evs)
     assert c["training"]["20-60"]["2-3_long"] == 1 and c["training"]["60-100"]["0.5-1_short"] == 1
-    assert c["training"]["alle"] == 1 and c["training"]["h2_pruefbare_stufen"] == []  # main width group only
-    assert c["training"]["pruefbar"] is False
+    assert c["training"]["20-60"]["alle"] == 1 and c["training"]["60-100"]["alle"] == 1
+    assert c["training"]["10-20"]["alle"] == 0 and c["training"]["20-60"]["h2_pruefbare_stufen"] == []
+    assert c["training"]["20-60"]["pruefbar"] is False
     assert "ziel" not in str(c)
 
 
@@ -164,17 +165,19 @@ def test_evaluate_runs_once_frozen():
     for d in (date(2020, 6, 1), date(2020, 7, 1), date(2023, 6, 1), date(2023, 7, 1)):
         res[d] = [(_ev(ratio=r), o) for r, o in ((0.5, miss), (1.0, miss), (3.0, hit), (4.0, hit))]
     out = s32.evaluate(res, version="1.0", draws=200)
-    assert out["training"]["h1_steigung"] > 0 and out["training"]["pruefbar"] is False
-    assert out["h1_bestanden"] is False  # too few events: never passes
-    assert set(out["training"]["je_verhaeltnis"]) == {"0.5-1", "1-1.5", "3-5"}
-    assert set(out["training"]["je_breite"]) == {"20-60"}
+    g = out["training"]["20-60"]
+    assert g["h1_steigung"] > 0 and g["pruefbar"] is False and g["h1_untere_grenze"] is None
+    assert out["ergebnis"]["20-60"]["h1_bestanden"] is False  # too few events: never passes
+    assert set(g["je_verhaeltnis"]) == {"0.5-1", "1-1.5", "3-5"}
+    assert set(out["ergebnis"]) == {"10-20", "20-60", "60-100", "100-150"}
 
 
-def test_evaluate_main_test_ignores_other_widths():
+def test_evaluate_keeps_width_groups_apart():
     hit, miss = Outcome("target", 30.0, 10.0), Outcome("stop", -10.0, 10.0)
     res = {date(2020, 6, 1): [(_ev(ratio=0.5), miss), (_ev(ratio=3.0), hit), (_ev(ratio=3.0, width=120.0), miss)]}
     out = s32.evaluate(res, version="1.0", draws=50)
-    assert out["training"]["alle"] == 2 and out["training"]["je_breite"]["100-150"]["n"] == 1
+    assert out["training"]["20-60"]["alle"] == 2 and out["training"]["100-150"]["alle"] == 1
+    assert out["training"]["10-20"]["alle"] == 0
 
 
 def test_seconds_from_book_csv(tmp_path):
@@ -203,7 +206,8 @@ def test_h2_checks_every_ratio_bin():
             # 1-1.5 always wins after costs, 0.5-1 always loses; 40 events per bin and day
             res[d] = [(_ev(ratio=1.2), win) for _ in range(40)] + [(_ev(ratio=0.7), loss) for _ in range(40)]
     out = s32.evaluate(res, version="1.0", draws=200)
-    t = out["training"]["h2_je_verhaeltnis"]
+    t = out["training"]["20-60"]["h2_je_verhaeltnis"]
     assert t["1-1.5"]["pruefbar"] and t["1-1.5"]["untere_grenze"] > 0 and t["0.5-1"]["untere_grenze"] < 0
-    assert out["h2_bestandene_stufen"] == ["1-1.5"] and out["h2_bestanden"] is True
-    assert s32.ALPHA_H1 + s32.H2_BINS * s32.ALPHA_H2 == pytest.approx(s32.ALPHA)
+    assert out["ergebnis"]["20-60"]["h2_bestandene_stufen"] == ["1-1.5"]
+    assert out["ergebnis"]["20-60"]["h2_bestanden"] is True and out["ergebnis"]["10-20"]["h2_bestanden"] is False
+    assert 4 * (s32.ALPHA_H1 + s32.H2_BINS * s32.ALPHA_H2) == pytest.approx(s32.ALPHA)
