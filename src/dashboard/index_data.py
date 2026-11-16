@@ -41,7 +41,7 @@ SOURCE = "Twelve Data (API-Key)"
 PROVENANCE = "TWELVEDATA_API_CHART_DISPLAY"
 TIMEOUT_SECONDS = 10
 MAX_BYTES = 3_000_000
-MAX_OUTPUT = 1000
+MAX_OUTPUT = 5000  # Twelve Data's maximum; the chart asks 1000, the candle footprint 1m history 5000
 # view timeframe -> Twelve Data interval (3m, 6h, 12h and 3d do not exist there)
 INTERVALS = {"1m": "1min", "5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h", "2h": "2h", "4h": "4h",
              "1d": "1day", "1w": "1week", "1M": "1month"}
@@ -203,3 +203,49 @@ def fetch(chart_symbol: str, interval: str, limit: int, key: Callable[[], Secret
     if len(raw) > MAX_BYTES:
         raise ValueError("answer too large")
     return parse(json.loads(raw), chart_symbol, interval, limit)
+
+
+# --- footprint, volume profile and CVD from 1m candles (Uzi 16.11.2026: "Layouts für Nasdaq, Footprint und so") ---
+# Twelve Data's free plan has no single trades, so TIM cannot show a real footprint for QQQ. This builds an
+# approximation in the shape of the trade store (``footprint_data``): every 1m candle spreads its volume evenly
+# over the ticks between its low and high; the buy share is where the close sits in the range (close at the high =
+# all buying). Labelled everywhere as approximation; nothing here feeds a plan, a score or an order.
+CANDLE_HISTORY = 5000  # 1m candles: about 13 US sessions
+CANDLE_SOURCE = "Näherung aus 1m-Kerzen (keine Einzeltrades): Volumen gleich über die Kerzenspanne verteilt, Käuferanteil = Lage des Schlusses"
+CANDLE_BUCKET_SECONDS = 60
+CANDLE_ROWS = 20  # price steps a 1m candle is spread over at most
+
+
+def candle_store(rows: list[dict[str, Any]], chart_symbol: str, now: datetime | None = None) -> dict[str, Any] | None:
+    """Trade-store shaped approximation (``footprint_data`` format) from 1m candle rows; None without volume."""
+    from src.dashboard.chart_model import _nice_step
+
+    candles = []
+    for r in rows:
+        try:
+            opened = datetime.fromisoformat(str(r["open_time"]))
+            o, h, lo, c, v = (float(r[k]) for k in ("open", "high", "low", "close", "volume"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if v > 0 and h >= lo > 0:
+            candles.append((opened, o, h, lo, c, v))
+    if not candles:
+        return None
+    price = candles[-1][4]
+    tick = _nice_step(max(price, 1e-9) * 0.0001, 1)
+    days: dict[str, list[list[float]]] = {}
+    for opened, _o, h, lo, c, v in candles:
+        first, last = int(round(lo / tick)), int(round(h / tick))
+        count = last - first + 1
+        stride = max(1, -(-count // CANDLE_ROWS))
+        levels = [round(i * tick, 8) for i in range(first, last + 1, stride)]
+        buy = 0.5 if h == lo else (c - lo) / (h - lo)
+        share = v / len(levels)
+        bucket = int(opened.timestamp()) // CANDLE_BUCKET_SECONDS * CANDLE_BUCKET_SECONDS
+        day = days.setdefault(opened.astimezone(timezone.utc).date().isoformat(), [])
+        for level in levels:
+            day.append([bucket, level, round(share * (1 - buy), 4), round(share * buy, 4)])
+    today = (now or datetime.now(timezone.utc)).date().isoformat()
+    return {"symbol": chart_symbol, "tick": tick, "bucket_seconds": CANDLE_BUCKET_SECONDS, "source": CANDLE_SOURCE,
+            "updated_at": (now or datetime.now(timezone.utc)).isoformat(), "days": days,
+            "complete": {k: 0 for k in days if k != today}, "approximation": True}

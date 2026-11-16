@@ -58,6 +58,8 @@ INDEX_KEY_NOTE = ("Nasdaq-100 über Twelve Data (eigener API-Key) als ETF QQQ (f
                   "der Gratis-Plan liefert den Index NDX nicht): Kerzen nur zu US-Handelszeiten "
                   "(Mo-Fr 15:30-22:00 deutsche Zeit), Wochenende und Nacht ohne Kerzen. Keine Trades, kein Footprint, "
                   "kein Papier-Trading; reine Anzeige zum Vergleich mit BTC.")
+INDEX_FOOTPRINT_NOTE = ("Nasdaq: Footprint, Volume Profile und CVD sind eine Näherung aus 1m-Kerzen, keine echten Trades "
+                        "(Volumen gleich über die Kerzenspanne verteilt, Käuferanteil nach Lage des Schlusses). Bubbles, OI und Funding gibt es nicht.")
 INDEX_NOTE = ("Nasdaq-100 (^NDX) von Yahoo Finance (öffentlich, inoffiziell, teils verzögert; kein Twelve-Data-Key hinterlegt): Kerzen nur zu US-Handelszeiten "
               "(Mo-Fr 15:30-22:00 deutsche Zeit), Wochenende und Nacht ohne Kerzen. Volumen des Index ist 0, keine Trades, kein Footprint, "
               "kein Papier-Trading; reine Anzeige zum Vergleich mit BTC.")
@@ -215,7 +217,7 @@ def parse_yahoo_klines(payload: Any, symbol: str, interval: str, limit: int, now
                 for start, g in sorted(grouped.items())]
     now = now or datetime.now(timezone.utc)
     rows = []
-    for t, o, h, lo, c, vol in bars[-max(1, min(int(limit), VIEW_LIMIT)):]:
+    for t, o, h, lo, c, vol in bars[-max(1, min(int(limit), 5000)):]:
         opened = datetime.fromtimestamp(t, timezone.utc)
         end = opened + timedelta(seconds=INTERVAL_SECONDS[interval] if interval != "1M" else seconds)
         rows.append(dict(symbol=symbol, timeframe=interval, open_time=opened.isoformat(), close_time=end.isoformat(),
@@ -1138,6 +1140,14 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
             return model
     intraday = INTERVAL_SECONDS[timeframe] <= 14400  # profiles, footprint and bubbles only on intraday views
     spot_trades = footprint if footprint and footprint.get("symbol") == symbol and footprint.get("days") else None
+    if symbol in INDEX_SYMBOLS and intraday and timeframe in YAHOO_FRAMES:
+        # No single trades for the index: footprint, profiles and CVD from 1m candles, marked as approximation.
+        from src.dashboard.index_data import CANDLE_HISTORY, candle_store
+
+        minute_rows, _ = cache.get(symbol, "1m", CANDLE_HISTORY)
+        spot_trades = candle_store(minute_rows, symbol, now)
+        if spot_trades:
+            model["notes"].append(INDEX_FOOTPRINT_NOTE)
     perp_trades = perp if perp and perp.get("symbol") == symbol and perp.get("days") else None
     available = [key for key, store in (("spot", spot_trades), ("perp", perp_trades)) if store]
     active = market if market in available else (available[0] if available else DEFAULT_MARKET)
