@@ -16,6 +16,8 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -85,7 +87,11 @@ def _keychain_item(env: Mapping[str, str], service: str) -> str:
 
 def api_key(env: Mapping[str, str] | None = None) -> SecretValue:
     env = dict(os.environ if env is None else env)
-    provider = env.get(PROVIDER_ENV, "").strip().lower() or ("keychain" if sys.platform == "darwin" else "")
+    provider = env.get(PROVIDER_ENV, "").strip().lower()
+    if not provider and sys.platform == "darwin":
+        # Uzi 16.11.2026: the Keychain item kept asking (access dialog the runtime cannot answer). A private
+        # key file written once (0600, outside the repo) needs no dialog, so it wins when it is there.
+        provider = "file" if Path(env.get(FILE_ENV, DEFAULT_SECRET_FILE)).expanduser().is_file() else "keychain"
     if provider not in ("keychain", "file", "env"):
         raise IndexSecretError(f"{PROVIDER_ENV} is not set or names an unsupported provider")
     failure, raw = None, ""
@@ -117,6 +123,27 @@ def has_key(env: Mapping[str, str] | None = None) -> bool:
     except Exception:  # noqa: BLE001 - no key = Yahoo fallback
         return False
     return True
+
+
+KEY_RECHECK_SECONDS = 600.0  # a Keychain read can wait 5 s on an open access dialog: at most once per 10 minutes
+_KEY_LOCK = threading.Lock()
+_KEY_STATE: dict[str, Any] = {"at": None, "value": None}
+
+
+def runtime_key(now: Callable[[], float] = time.monotonic) -> SecretValue | None:
+    """The key for the running chart, read at most every ``KEY_RECHECK_SECONDS`` (also when missing)."""
+    if os.environ.get("TIM_RUNTIME_ENV") == "test":
+        return None  # tests never reach the Keychain or the network
+    with _KEY_LOCK:
+        at = _KEY_STATE["at"]
+        if at is not None and now() - at < KEY_RECHECK_SECONDS:
+            return _KEY_STATE["value"]
+        try:
+            value: SecretValue | None = api_key()
+        except Exception:  # noqa: BLE001 - no key = Yahoo fallback
+            value = None
+        _KEY_STATE.update(at=now(), value=value)
+        return value
 
 
 def symbol(env: Mapping[str, str] | None = None) -> str:
