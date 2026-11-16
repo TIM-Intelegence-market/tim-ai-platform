@@ -1,6 +1,6 @@
 """Datenaudit der Binance-Archive (Lücken, Duplikate, Reihenfolge, OHLC, 4h gegen 1h, Funding).
 
-Aufruf: ``python -I -m src.research_lab.konsolidierung.datenaudit <archiv-wurzel> <ausgabe.json>``
+Aufruf (aus dem Repo-Wurzelordner): ``python3 -m src.research_lab.konsolidierung.datenaudit <archiv-wurzel> <ausgabe.json>``
 Liest nur Zeiträume vor dem Holdout (siehe ``daten``).
 """
 from __future__ import annotations

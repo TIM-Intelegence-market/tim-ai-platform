@@ -128,3 +128,19 @@ def _schreibe(tmp_path: Path, m: dict) -> Path:
     p = tmp_path / "manifest.json"
     p.write_text(json.dumps(m), encoding="utf-8")
     return p
+
+
+def test_eingaben_im_repo_stimmen_mit_den_festgehaltenen_pruefsummen() -> None:
+    """Die Kopien der Laborlisten und der Bitunix-Rohdateien im Repo sind unverändert (SHA-256 gegen die Listen unter ``eingaben/``)."""
+    eingaben = Path(__file__).resolve().parents[1] / "docs" / "research_lab" / "konsolidierung" / "eingaben"
+    geprueft = 0
+    for liste, ordner in (("SHA256_laborlisten.txt", "laborlisten"), ("SHA256_bitunix.txt", "bitunix")):
+        for zeile in (eingaben / liste).read_text(encoding="utf-8").splitlines():
+            summe, name = zeile.split(maxsplit=1)
+            datei = eingaben / ordner / name.strip()
+            if not datei.exists():
+                assert name.strip() == "lab_klines_funding.tar", name      # das Archiv des Labors (18 MB) liegt nicht im Repo, die Daten kommen aus daten_holen
+                continue
+            assert dh.sha256_datei(datei) == summe, name
+            geprueft += 1
+    assert geprueft == 4 + 8
