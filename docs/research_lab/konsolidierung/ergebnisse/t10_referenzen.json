@@ -1,0 +1,129 @@
+{
+ "meta": {
+  "test": "T10",
+  "erzeugt_utc": "2026-11-16T13:34Z",
+  "konfiguration": {
+   "skalierung": "Tagesschwankung des Kandidaten, Hebel höchstens 3",
+   "kosten_seite": 0.0009
+  },
+  "befehl": "python3 -m src.research_lab.konsolidierung.lauf /home/user/work/data docs/research_lab/konsolidierung/ergebnisse s7b_train_2026-10-26T1305Z_trades.json s7_train_2026-10-26T1049Z_trades.json /home/user/work/bitunix",
+  "zeitraum": "Signale 2020-01 bis 2024-12 (Training < 2023-01-01, Validierung 2023-01-01 bis 2024-12-31); Holdout nicht geladen",
+  "status": "abgeschlossen",
+  "grenzen": [
+   "nur Bericht",
+   "R1 ohne Neugewichtungskosten (optimistisch für die Referenz)",
+   "gleiche Hindsight-Instrumente wie der Kandidat"
+  ],
+  "seed": 20261116,
+  "kandidat": "C1 gegen R1/R2/R3",
+  "code_commit": "f1c39402a7cf360816b08cf871e7b2559cd5f4a9",
+  "code_unsauber": false,
+  "daten_version_sha256_datenaudit": "56b44a7f89643eafb7de1b163157a5eaf906203bb3432f625e14dd344a5eb2d2",
+  "dauer_s": 0.0
+ },
+ "ergebnis": {
+  "kandidat": {
+   "train": {
+    "tage": 1096,
+    "summe_prozent": 64.478909,
+    "je_jahr_prozent": 21.473359,
+    "schwankung_jahr_prozent": 17.283646,
+    "sharpe_jahr": 1.242409,
+    "max_rueckgang_prozent": 20.870482,
+    "schlechtester_tag_prozent": -3.125446
+   },
+   "validation": {
+    "tage": 731,
+    "summe_prozent": 54.644996,
+    "je_jahr_prozent": 27.285121,
+    "schwankung_jahr_prozent": 17.692352,
+    "sharpe_jahr": 1.542199,
+    "max_rueckgang_prozent": 11.460218,
+    "schlechtester_tag_prozent": -2.30857
+   },
+   "pooled": {
+    "tage": 1827,
+    "summe_prozent": 119.123906,
+    "je_jahr_prozent": 23.7987,
+    "schwankung_jahr_prozent": 17.444136,
+    "sharpe_jahr": 1.364281,
+    "max_rueckgang_prozent": 20.870482,
+    "schlechtester_tag_prozent": -3.125446
+   }
+  },
+  "sigma_kandidat_tag_prozent": 0.920623,
+  "referenzen": {
+   "R1": {
+    "hebel": 0.218869,
+    "kennzahlen": {
+     "train": {
+      "tage": 1096,
+      "summe_prozent": 65.365133,
+      "je_jahr_prozent": 21.768498,
+      "schwankung_jahr_prozent": 20.138455,
+      "sharpe_jahr": 1.080942,
+      "max_rueckgang_prozent": 33.758562,
+      "schlechtester_tag_prozent": -9.335803
+     },
+     "validation": {
+      "tage": 731,
+      "summe_prozent": 47.532997,
+      "je_jahr_prozent": 23.733986,
+      "schwankung_jahr_prozent": 12.847008,
+      "sharpe_jahr": 1.847433,
+      "max_rueckgang_prozent": 7.673091,
+      "schlechtester_tag_prozent": -2.353347
+     },
+     "pooled": {
+      "tage": 1827,
+      "summe_prozent": 112.89813,
+      "je_jahr_prozent": 22.554908,
+      "schwankung_jahr_prozent": 17.58368,
+      "sharpe_jahr": 1.282718,
+      "max_rueckgang_prozent": 33.758562,
+      "schlechtester_tag_prozent": -9.335803
+     }
+    }
+   },
+   "R2": {
+    "hebel": 0.34822,
+    "kennzahlen": {
+     "train": {
+      "tage": 1096,
+      "summe_prozent": 87.737315,
+      "je_jahr_prozent": 29.219088,
+      "schwankung_jahr_prozent": 18.92704,
+      "sharpe_jahr": 1.543775,
+      "max_rueckgang_prozent": 24.96752,
+      "schlechtester_tag_prozent": -7.472616
+     },
+     "validation": {
+      "tage": 731,
+      "summe_prozent": 48.578202,
+      "je_jahr_prozent": 24.255874,
+      "schwankung_jahr_prozent": 15.362262,
+      "sharpe_jahr": 1.578926,
+      "max_rueckgang_prozent": 13.421272,
+      "schlechtester_tag_prozent": -3.744167
+     },
+     "pooled": {
+      "tage": 1827,
+      "summe_prozent": 136.315517,
+      "je_jahr_prozent": 27.233259,
+      "schwankung_jahr_prozent": 17.58369,
+      "sharpe_jahr": 1.54878,
+      "max_rueckgang_prozent": 24.96752,
+      "schlechtester_tag_prozent": -7.472616
+     }
+    }
+   }
+  },
+  "bargeld_je_jahr_prozent_annahme": {
+   "2020": 0.4,
+   "2021": 0.05,
+   "2022": 2.0,
+   "2023": 5.1,
+   "2024": 5.0
+  }
+ }
+}

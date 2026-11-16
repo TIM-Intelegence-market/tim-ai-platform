@@ -1,0 +1,660 @@
+{
+ "meta": {
+  "test": "T13",
+  "erzeugt_utc": "2026-11-16T13:34Z",
+  "konfiguration": {
+   "bitunix_kerzen": "4h, öffentliche API, bis 2024-12-31",
+   "kapitalstufen": [
+    1000.0,
+    5000.0,
+    10000.0
+   ]
+  },
+  "befehl": "python3 -m src.research_lab.konsolidierung.lauf /home/user/work/data docs/research_lab/konsolidierung/ergebnisse s7b_train_2026-10-26T1305Z_trades.json s7_train_2026-10-26T1049Z_trades.json /home/user/work/bitunix",
+  "zeitraum": "Bitunix-Kerzen 2022-04-17 bis 2024-12-31",
+  "status": "abgeschlossen",
+  "grenzen": [
+   "Gebühren: VIP0 taker 0,06 % / maker 0,02 % stammen von Uzi (10.11.2026), im Code FEES_VERIFIED = False; keine Kontoprüfung möglich (kein Schlüssel)",
+   "Funding-Historie: Bitunix bietet keine öffentliche Historie in diesen Daten; Binance dient als Stellvertreter. Aktuelle Momentaufnahme: Intervall 8 h, Einheit der Rate in der API unklar (Dezimal oder Prozent)",
+   "Ausführung: Spread und Marktorder-Schlupf nur aus einer ca. 90-Sekunden-Momentaufnahme (ruhiger Markt); keine Messung zu Nachrichtenzeiten, Nacht, Wochenende, Stop-Marktorder bei Spitzen",
+   "Kerzen vor dem Kontraktstart (2024-06-26) sind vermutlich Index-Kerzen und keine gehandelten Preise (ANNAHME)",
+   "Orderarten, Latenz und Stop-Verhalten auf Bitunix (Stop-Market, Reduce-only, Teilfüllung) nicht geprüft"
+  ],
+  "seed": 20261116,
+  "kandidat": "C1, C3",
+  "code_commit": "f1c39402a7cf360816b08cf871e7b2559cd5f4a9",
+  "code_unsauber": false,
+  "daten_version_sha256_datenaudit": "56b44a7f89643eafb7de1b163157a5eaf906203bb3432f625e14dd344a5eb2d2",
+  "dauer_s": 0.2
+ },
+ "ergebnis": {
+  "kerzen": {
+   "fenster_ab_ms": 1650211200000,
+   "fenster_ab_utc": "2022-04-17T16:00Z",
+   "binance": {
+    "n": 264,
+    "e_r": 0.246038,
+    "summe_r": 64.953939,
+    "sd_r": 1.706325,
+    "profit_faktor": 1.398907,
+    "trefferquote": 0.386364,
+    "max_drawdown_r": 11.050208
+   },
+   "bitunix": {
+    "n": 269,
+    "e_r": 0.219424,
+    "summe_r": 59.025166,
+    "sd_r": 1.701168,
+    "profit_faktor": 1.350207,
+    "trefferquote": 0.379182,
+    "max_drawdown_r": 11.466277
+   },
+   "differenz_e_r": -0.026613,
+   "gemeinsame_signale": 252,
+   "nur_binance": 12,
+   "nur_bitunix": 17,
+   "max_abw_r_gemeinsam": 4.013649,
+   "mittel_abw_r_gemeinsam": 0.018934,
+   "anteil_gleicher_ausstiegsgrund": 0.996032,
+   "kerzenvergleich": {
+    "BTCUSDT": {
+     "symbol": "BTCUSDT",
+     "gemeinsame_kerzen": 5936,
+     "binance_kerzen_im_bereich": 5936,
+     "bitunix_kerzen": 5936,
+     "von": 1650211200000,
+     "bis": 1735675200000,
+     "open": {
+      "mittel_bp": 0.026,
+      "streuung_bp": 1.382,
+      "median_abs_bp": 0.016,
+      "p95_abs_bp": 0.961,
+      "p99_abs_bp": 2.059,
+      "max_abs_bp": 96.87
+     },
+     "high": {
+      "mittel_bp": -0.544,
+      "streuung_bp": 7.343,
+      "median_abs_bp": 0.0,
+      "p95_abs_bp": 3.342,
+      "p99_abs_bp": 9.643,
+      "max_abs_bp": 378.582
+     },
+     "low": {
+      "mittel_bp": 0.924,
+      "streuung_bp": 4.965,
+      "median_abs_bp": 0.0,
+      "p95_abs_bp": 4.482,
+      "p99_abs_bp": 15.144,
+      "max_abs_bp": 136.608
+     },
+     "close": {
+      "mittel_bp": 0.027,
+      "streuung_bp": 1.383,
+      "median_abs_bp": 0.0,
+      "p95_abs_bp": 0.947,
+      "p99_abs_bp": 2.027,
+      "max_abs_bp": 96.87
+     },
+     "korrelation_4h_renditen": 0.999842,
+     "spanne_mittel_bp": {
+      "binance": 157.82,
+      "bitunix": 156.36
+     }
+    },
+    "ETHUSDT": {
+     "symbol": "ETHUSDT",
+     "gemeinsame_kerzen": 5936,
+     "binance_kerzen_im_bereich": 5936,
+     "bitunix_kerzen": 5936,
+     "von": 1650211200000,
+     "bis": 1735675200000,
+     "open": {
+      "mittel_bp": 0.035,
+      "streuung_bp": 1.669,
+      "median_abs_bp": 0.04,
+      "p95_abs_bp": 1.158,
+      "p99_abs_bp": 2.739,
+      "max_abs_bp": 106.233
+     },
+     "high": {
+      "mittel_bp": -0.577,
+      "streuung_bp": 24.269,
+      "median_abs_bp": 0.026,
+      "p95_abs_bp": 4.393,
+      "p99_abs_bp": 11.236,
+      "max_abs_bp": 1855.365
+     },
+     "low": {
+      "mittel_bp": 1.456,
+      "streuung_bp": 10.033,
+      "median_abs_bp": 0.025,
+      "p95_abs_bp": 7.06,
+      "p99_abs_bp": 26.917,
+      "max_abs_bp": 566.928
+     },
+     "close": {
+      "mittel_bp": 0.046,
+      "streuung_bp": 1.531,
+      "median_abs_bp": 0.0,
+      "p95_abs_bp": 1.128,
+      "p99_abs_bp": 2.787,
+      "max_abs_bp": 106.233
+     },
+     "korrelation_4h_renditen": 0.999883,
+     "spanne_mittel_bp": {
+      "binance": 197.88,
+      "bitunix": 195.86
+     }
+    },
+    "SOLUSDT": {
+     "symbol": "SOLUSDT",
+     "gemeinsame_kerzen": 5936,
+     "binance_kerzen_im_bereich": 5936,
+     "bitunix_kerzen": 5936,
+     "von": 1650211200000,
+     "bis": 1735675200000,
+     "open": {
+      "mittel_bp": 0.023,
+      "streuung_bp": 2.292,
+      "median_abs_bp": 0.452,
+      "p95_abs_bp": 3.163,
+      "p99_abs_bp": 5.287,
+      "max_abs_bp": 110.211
+     },
+     "high": {
+      "mittel_bp": -1.842,
+      "streuung_bp": 7.345,
+      "median_abs_bp": 0.054,
+      "p95_abs_bp": 7.946,
+      "p99_abs_bp": 21.57,
+      "max_abs_bp": 274.352
+     },
+     "low": {
+      "mittel_bp": 2.896,
+      "streuung_bp": 13.489,
+      "median_abs_bp": 0.32,
+      "p95_abs_bp": 12.698,
+      "p99_abs_bp": 40.639,
+      "max_abs_bp": 485.921
+     },
+     "close": {
+      "mittel_bp": 0.033,
+      "streuung_bp": 2.09,
+      "median_abs_bp": 0.0,
+      "p95_abs_bp": 2.307,
+      "p99_abs_bp": 5.131,
+      "max_abs_bp": 110.307
+     },
+     "korrelation_4h_renditen": 0.999912,
+     "spanne_mittel_bp": {
+      "binance": 320.55,
+      "bitunix": 315.86
+     }
+    }
+   },
+   "binance_nach_kontraktstart": {
+    "n": 55,
+    "e_r": 0.042484
+   },
+   "bitunix_nach_kontraktstart": {
+    "n": 56,
+    "e_r": 0.02342
+   },
+   "g11_kerzen_bestanden": true
+  },
+  "kerzen_c3": {
+   "fenster_ab_ms": 1650211200000,
+   "fenster_ab_utc": "2022-04-17T16:00Z",
+   "binance": {
+    "n": 215,
+    "e_r": 0.234017,
+    "summe_r": 50.313559,
+    "sd_r": 1.704233,
+    "profit_faktor": 1.378766,
+    "trefferquote": 0.386047,
+    "max_drawdown_r": 11.291457
+   },
+   "bitunix": {
+    "n": 216,
+    "e_r": 0.237351,
+    "summe_r": 51.267848,
+    "sd_r": 1.713379,
+    "profit_faktor": 1.382307,
+    "trefferquote": 0.384259,
+    "max_drawdown_r": 11.296367
+   },
+   "differenz_e_r": 0.003335,
+   "gemeinsame_signale": 203,
+   "nur_binance": 12,
+   "nur_bitunix": 13,
+   "max_abw_r_gemeinsam": 4.013649,
+   "mittel_abw_r_gemeinsam": 0.049111,
+   "anteil_gleicher_ausstiegsgrund": 0.985222,
+   "kerzenvergleich": {
+    "BTCUSDT": {
+     "symbol": "BTCUSDT",
+     "gemeinsame_kerzen": 5936,
+     "binance_kerzen_im_bereich": 5936,
+     "bitunix_kerzen": 5936,
+     "von": 1650211200000,
+     "bis": 1735675200000,
+     "open": {
+      "mittel_bp": 0.026,
+      "streuung_bp": 1.382,
+      "median_abs_bp": 0.016,
+      "p95_abs_bp": 0.961,
+      "p99_abs_bp": 2.059,
+      "max_abs_bp": 96.87
+     },
+     "high": {
+      "mittel_bp": -0.544,
+      "streuung_bp": 7.343,
+      "median_abs_bp": 0.0,
+      "p95_abs_bp": 3.342,
+      "p99_abs_bp": 9.643,
+      "max_abs_bp": 378.582
+     },
+     "low": {
+      "mittel_bp": 0.924,
+      "streuung_bp": 4.965,
+      "median_abs_bp": 0.0,
+      "p95_abs_bp": 4.482,
+      "p99_abs_bp": 15.144,
+      "max_abs_bp": 136.608
+     },
+     "close": {
+      "mittel_bp": 0.027,
+      "streuung_bp": 1.383,
+      "median_abs_bp": 0.0,
+      "p95_abs_bp": 0.947,
+      "p99_abs_bp": 2.027,
+      "max_abs_bp": 96.87
+     },
+     "korrelation_4h_renditen": 0.999842,
+     "spanne_mittel_bp": {
+      "binance": 157.82,
+      "bitunix": 156.36
+     }
+    },
+    "ETHUSDT": {
+     "symbol": "ETHUSDT",
+     "gemeinsame_kerzen": 5936,
+     "binance_kerzen_im_bereich": 5936,
+     "bitunix_kerzen": 5936,
+     "von": 1650211200000,
+     "bis": 1735675200000,
+     "open": {
+      "mittel_bp": 0.035,
+      "streuung_bp": 1.669,
+      "median_abs_bp": 0.04,
+      "p95_abs_bp": 1.158,
+      "p99_abs_bp": 2.739,
+      "max_abs_bp": 106.233
+     },
+     "high": {
+      "mittel_bp": -0.577,
+      "streuung_bp": 24.269,
+      "median_abs_bp": 0.026,
+      "p95_abs_bp": 4.393,
+      "p99_abs_bp": 11.236,
+      "max_abs_bp": 1855.365
+     },
+     "low": {
+      "mittel_bp": 1.456,
+      "streuung_bp": 10.033,
+      "median_abs_bp": 0.025,
+      "p95_abs_bp": 7.06,
+      "p99_abs_bp": 26.917,
+      "max_abs_bp": 566.928
+     },
+     "close": {
+      "mittel_bp": 0.046,
+      "streuung_bp": 1.531,
+      "median_abs_bp": 0.0,
+      "p95_abs_bp": 1.128,
+      "p99_abs_bp": 2.787,
+      "max_abs_bp": 106.233
+     },
+     "korrelation_4h_renditen": 0.999883,
+     "spanne_mittel_bp": {
+      "binance": 197.88,
+      "bitunix": 195.86
+     }
+    }
+   },
+   "binance_nach_kontraktstart": {
+    "n": 44,
+    "e_r": -0.044257
+   },
+   "bitunix_nach_kontraktstart": {
+    "n": 45,
+    "e_r": -0.068195
+   },
+   "g11_kerzen_bestanden": true
+  },
+  "kontrakt": {
+   "kontrakte": {
+    "BTCUSDT": {
+     "minTradeVolume": "0.0001",
+     "basePrecision": 4,
+     "quotePrecision": 1,
+     "maxLeverage": 200,
+     "maxMarketOrderVolume": "120",
+     "symbolStatus": "OPEN",
+     "launchTime": "1719403200000"
+    },
+    "ETHUSDT": {
+     "minTradeVolume": "0.003",
+     "basePrecision": 3,
+     "quotePrecision": 2,
+     "maxLeverage": 200,
+     "maxMarketOrderVolume": "10000",
+     "symbolStatus": "OPEN",
+     "launchTime": "1719403200000"
+    },
+    "SOLUSDT": {
+     "minTradeVolume": "0.1",
+     "basePrecision": 2,
+     "quotePrecision": 2,
+     "maxLeverage": 100,
+     "maxMarketOrderVolume": "10000",
+     "symbolStatus": "OPEN",
+     "launchTime": "1719403200000"
+    }
+   },
+   "kapital": {
+    "1000": {
+     "BTCUSDT": {
+      "trades": 242,
+      "anteil_mindestmenge_erfuellt": 1.0,
+      "mittlere_menge": 0.018462,
+      "kleinste_menge_soll": 0.002371,
+      "risiko_ist_median_prozent": 0.996745,
+      "risiko_abweichung_durch_mengenrundung_max_prozent": 3.001355,
+      "hebel_median": 0.382992,
+      "hebel_max": 0.971256,
+      "tick_relativ_zum_stop_max": 0.001041,
+      "tick_relativ_zum_stop_max_ab_2024": 0.000154
+     },
+     "ETHUSDT": {
+      "trades": 122,
+      "anteil_mindestmenge_erfuellt": 1.0,
+      "mittlere_menge": 0.444811,
+      "kleinste_menge_soll": 0.02692,
+      "risiko_ist_median_prozent": 0.997602,
+      "risiko_abweichung_durch_mengenrundung_max_prozent": 3.416347,
+      "hebel_median": 0.29721,
+      "hebel_max": 0.969772,
+      "tick_relativ_zum_stop_max": 0.003706,
+      "tick_relativ_zum_stop_max_ab_2024": 0.000215
+     },
+     "SOLUSDT": {
+      "trades": 135,
+      "anteil_mindestmenge_erfuellt": 1.0,
+      "mittlere_menge": 15.097333,
+      "kleinste_menge_soll": 0.614435,
+      "risiko_ist_median_prozent": 0.999191,
+      "risiko_abweichung_durch_mengenrundung_max_prozent": 1.295634,
+      "hebel_median": 0.200665,
+      "hebel_max": 0.61332,
+      "tick_relativ_zum_stop_max": 0.14241,
+      "tick_relativ_zum_stop_max_ab_2024": 0.002806
+     }
+    },
+    "5000": {
+     "BTCUSDT": {
+      "trades": 242,
+      "anteil_mindestmenge_erfuellt": 1.0,
+      "mittlere_menge": 0.09251,
+      "kleinste_menge_soll": 0.011856,
+      "risiko_ist_median_prozent": 0.999373,
+      "risiko_abweichung_durch_mengenrundung_max_prozent": 0.470955,
+      "hebel_median": 0.384024,
+      "hebel_max": 0.971599,
+      "tick_relativ_zum_stop_max": 0.001041,
+      "tick_relativ_zum_stop_max_ab_2024": 0.000154
+     },
+     "ETHUSDT": {
+      "trades": 122,
+      "anteil_mindestmenge_erfuellt": 1.0,
+      "mittlere_menge": 2.226074,
+      "kleinste_menge_soll": 0.134598,
+      "risiko_ist_median_prozent": 0.999567,
+      "risiko_abweichung_durch_mengenrundung_max_prozent": 0.444543,
+      "hebel_median": 0.298288,
+      "hebel_max": 0.970502,
+      "tick_relativ_zum_stop_max": 0.003706,
+      "tick_relativ_zum_stop_max_ab_2024": 0.000215
+     },
+     "SOLUSDT": {
+      "trades": 135,
+      "anteil_mindestmenge_erfuellt": 1.0,
+      "mittlere_menge": 75.506741,
+      "kleinste_menge_soll": 3.072177,
+      "risiko_ist_median_prozent": 0.99981,
+      "risiko_abweichung_durch_mengenrundung_max_prozent": 0.242787,
+      "hebel_median": 0.200758,
+      "hebel_max": 0.613427,
+      "tick_relativ_zum_stop_max": 0.14241,
+      "tick_relativ_zum_stop_max_ab_2024": 0.002806
+     }
+    },
+    "10000": {
+     "BTCUSDT": {
+      "trades": 242,
+      "anteil_mindestmenge_erfuellt": 1.0,
+      "mittlere_menge": 0.185072,
+      "kleinste_menge_soll": 0.023712,
+      "risiko_ist_median_prozent": 0.999717,
+      "risiko_abweichung_durch_mengenrundung_max_prozent": 0.310414,
+      "hebel_median": 0.384228,
+      "hebel_max": 0.971599,
+      "tick_relativ_zum_stop_max": 0.001041,
+      "tick_relativ_zum_stop_max_ab_2024": 0.000154
+     },
+     "ETHUSDT": {
+      "trades": 122,
+      "anteil_mindestmenge_erfuellt": 1.0,
+      "mittlere_menge": 4.452672,
+      "kleinste_menge_soll": 0.269197,
+      "risiko_ist_median_prozent": 0.999752,
+      "risiko_abweichung_durch_mengenrundung_max_prozent": 0.185691,
+      "hebel_median": 0.298463,
+      "hebel_max": 0.970502,
+      "tick_relativ_zum_stop_max": 0.003706,
+      "tick_relativ_zum_stop_max_ab_2024": 0.000215
+     },
+     "SOLUSDT": {
+      "trades": 135,
+      "anteil_mindestmenge_erfuellt": 1.0,
+      "mittlere_menge": 151.019111,
+      "kleinste_menge_soll": 6.144354,
+      "risiko_ist_median_prozent": 0.999911,
+      "risiko_abweichung_durch_mengenrundung_max_prozent": 0.111182,
+      "hebel_median": 0.200781,
+      "hebel_max": 0.613441,
+      "tick_relativ_zum_stop_max": 0.14241,
+      "tick_relativ_zum_stop_max_ab_2024": 0.002806
+     }
+    }
+   },
+   "g11_kontrakt_bestanden": true
+  },
+  "buch_momentaufnahme": {
+   "BTCUSDT": {
+    "schnappschuesse": 45,
+    "spread_bp": {
+     "median": 0.016,
+     "mittel": 0.016,
+     "p95": 0.016,
+     "max": 0.016
+    },
+    "tiefe_50_stufen_usdt_median": {
+     "ask": 7287200.0,
+     "bid": 7362099.0
+    },
+    "schlupf_marktorder_bp_gegen_mitte": {
+     "1000": {
+      "kauf_median": 0.008,
+      "verkauf_median": 0.008,
+      "kauf_p95": 0.008,
+      "verkauf_p95": 0.008,
+      "nicht_gedeckt_von_50_stufen": 0
+     },
+     "5000": {
+      "kauf_median": 0.008,
+      "verkauf_median": 0.008,
+      "kauf_p95": 0.008,
+      "verkauf_p95": 0.008,
+      "nicht_gedeckt_von_50_stufen": 0
+     },
+     "20000": {
+      "kauf_median": 0.008,
+      "verkauf_median": 0.008,
+      "kauf_p95": 0.008,
+      "verkauf_p95": 0.008,
+      "nicht_gedeckt_von_50_stufen": 0
+     },
+     "100000": {
+      "kauf_median": 0.008,
+      "verkauf_median": 0.008,
+      "kauf_p95": 0.011,
+      "verkauf_p95": 0.011,
+      "nicht_gedeckt_von_50_stufen": 0
+     }
+    }
+   },
+   "ETHUSDT": {
+    "schnappschuesse": 45,
+    "spread_bp": {
+     "median": 0.056,
+     "mittel": 0.056,
+     "p95": 0.056,
+     "max": 0.056
+    },
+    "tiefe_50_stufen_usdt_median": {
+     "ask": 4959066.0,
+     "bid": 5069976.0
+    },
+    "schlupf_marktorder_bp_gegen_mitte": {
+     "1000": {
+      "kauf_median": 0.028,
+      "verkauf_median": 0.028,
+      "kauf_p95": 0.028,
+      "verkauf_p95": 0.028,
+      "nicht_gedeckt_von_50_stufen": 0
+     },
+     "5000": {
+      "kauf_median": 0.028,
+      "verkauf_median": 0.028,
+      "kauf_p95": 0.028,
+      "verkauf_p95": 0.028,
+      "nicht_gedeckt_von_50_stufen": 0
+     },
+     "20000": {
+      "kauf_median": 0.028,
+      "verkauf_median": 0.028,
+      "kauf_p95": 0.028,
+      "verkauf_p95": 0.028,
+      "nicht_gedeckt_von_50_stufen": 0
+     },
+     "100000": {
+      "kauf_median": 0.054,
+      "verkauf_median": 0.046,
+      "kauf_p95": 0.085,
+      "verkauf_p95": 0.077,
+      "nicht_gedeckt_von_50_stufen": 0
+     }
+    }
+   },
+   "SOLUSDT": {
+    "schnappschuesse": 45,
+    "spread_bp": {
+     "median": 1.411,
+     "mittel": 1.411,
+     "p95": 1.412,
+     "max": 1.412
+    },
+    "tiefe_50_stufen_usdt_median": {
+     "ask": 11074589.0,
+     "bid": 11115874.0
+    },
+    "schlupf_marktorder_bp_gegen_mitte": {
+     "1000": {
+      "kauf_median": 0.706,
+      "verkauf_median": 0.706,
+      "kauf_p95": 0.706,
+      "verkauf_p95": 0.706,
+      "nicht_gedeckt_von_50_stufen": 0
+     },
+     "5000": {
+      "kauf_median": 0.706,
+      "verkauf_median": 0.706,
+      "kauf_p95": 0.706,
+      "verkauf_p95": 0.706,
+      "nicht_gedeckt_von_50_stufen": 0
+     },
+     "20000": {
+      "kauf_median": 0.706,
+      "verkauf_median": 0.706,
+      "kauf_p95": 0.706,
+      "verkauf_p95": 0.706,
+      "nicht_gedeckt_von_50_stufen": 0
+     },
+     "100000": {
+      "kauf_median": 0.706,
+      "verkauf_median": 0.706,
+      "kauf_p95": 0.706,
+      "verkauf_p95": 0.706,
+      "nicht_gedeckt_von_50_stufen": 0
+     }
+    }
+   }
+  },
+  "funding_momentaufnahme": {
+   "BTCUSDT": {
+    "symbol": "BTCUSDT",
+    "markPrice": "64342.9",
+    "lastPrice": "64338.1",
+    "indexPrice": "64365.6",
+    "fundingRate": "0.000633",
+    "fundingInterval": 8,
+    "nextFundingTime": "1794844800000",
+    "maxFundingRate": "0.3",
+    "minFundingRate": "-0.3"
+   },
+   "ETHUSDT": {
+    "symbol": "ETHUSDT",
+    "markPrice": "1805.33",
+    "lastPrice": "1804.45",
+    "indexPrice": "1805.34",
+    "fundingRate": "-0.002613",
+    "fundingInterval": 8,
+    "nextFundingTime": "1794844800000",
+    "maxFundingRate": "0.3",
+    "minFundingRate": "-0.3"
+   },
+   "SOLUSDT": {
+    "symbol": "SOLUSDT",
+    "markPrice": "71.13",
+    "lastPrice": "71.11",
+    "indexPrice": "71.15",
+    "fundingRate": "0.003948",
+    "fundingInterval": 8,
+    "nextFundingTime": "1794844800000",
+    "maxFundingRate": "0.375",
+    "minFundingRate": "-0.375"
+   }
+  },
+  "g11_bestanden": true,
+  "g11_bestanden_c3": true,
+  "offene_voraussetzungen": [
+   "Gebühren: VIP0 taker 0,06 % / maker 0,02 % stammen von Uzi (10.11.2026), im Code FEES_VERIFIED = False; keine Kontoprüfung möglich (kein Schlüssel)",
+   "Funding-Historie: Bitunix bietet keine öffentliche Historie in diesen Daten; Binance dient als Stellvertreter. Aktuelle Momentaufnahme: Intervall 8 h, Einheit der Rate in der API unklar (Dezimal oder Prozent)",
+   "Ausführung: Spread und Marktorder-Schlupf nur aus einer ca. 90-Sekunden-Momentaufnahme (ruhiger Markt); keine Messung zu Nachrichtenzeiten, Nacht, Wochenende, Stop-Marktorder bei Spitzen",
+   "Kerzen vor dem Kontraktstart (2024-06-26) sind vermutlich Index-Kerzen und keine gehandelten Preise (ANNAHME)",
+   "Orderarten, Latenz und Stop-Verhalten auf Bitunix (Stop-Market, Reduce-only, Teilfüllung) nicht geprüft"
+  ]
+ }
+}
