@@ -1,6 +1,6 @@
 # Orderflow-Schatten: Auswertungsregel (eingefroren vor Plan 30)
 
-Version 1.1, Entwurf 16.11.2026 (1.0 nach Prüfung durch studien-pruefer nachgebessert). Gilt ab Merge.
+Version 1.2, Entwurf 16.11.2026 (nach zwei Prüfungen durch studien-pruefer nachgebessert). Gilt ab Merge.
 Wochenplan 16.–22.11., Paket W2.
 
 Der Orderflow-Schatten (`src/dashboard/orderflow_shadow.py`, Datei `data/journal/tim_orderflow_shadow.json`)
@@ -60,7 +60,10 @@ Gate je Plan, in dieser Reihenfolge (die Lage muss vor oder sehr kurz nach dem F
 3. sonst UNBEKANNT. Fehlende Lage (`lage_at_*` = null) heißt immer UNBEKANNT, nie NEUTRAL, auch wenn der
    Code dort NEUTRAL schreibt. UNBEKANNT-Pläne fallen aus Vergleich A heraus.
 
-Die Zahl der Pläne je Stufe steht im Bericht. Nur beschreibend: dasselbe mit 35 Minuten statt 5 Minuten.
+Die 5 Minuten sind eine Minute Taktung des Schattens plus Spielraum; sie wurden festgelegt, ohne die Werte von
+`lage_at_*.as_of` der bisherigen Pläne anzusehen. Die Zahl der Pläne je Stufe steht im Bericht und in jeder
+Frage an Uzi. Nur beschreibend: dasselbe mit 35 Minuten statt 5 Minuten; diese Variante ist kein Beleg und
+wird weder für das Urteil noch für eine Frage an Uzi verwendet.
 
 - Größe: Mittelwert Netto-R (BESTÄTIGT) minus Mittelwert Netto-R (GEGEN). NEUTRAL wird berichtet, entscheidet nicht.
 - Mindestgröße: je Gruppe mindestens 8 Pläne und mindestens 5 Cluster.
@@ -93,8 +96,10 @@ Journals neu gebildet:
 Vorab-Prüfung je Plan (vor dem Urteil, durch studien-pruefer):
 
 1. `of_exit.at` liegt nach `journal.filled_at` und vor `journal.closed_at`.
-2. Bei LONG liegt `of_exit.price` über dem Stop, der laut `stop_path` zur Zeit `of_exit.at` aktiv war
-   (bei SHORT darunter). Sonst war der Stop in derselben Minute schon gefallen.
+2. Bei LONG liegt `of_exit.price` über dem Stop, der zur Zeit `of_exit.at` aktiv war (bei SHORT darunter).
+   Sonst war der Stop in derselben Minute schon gefallen. Aktiver Stop: der letzte Eintrag in `stop_path`,
+   dessen Zeit `at` vor der 1m-Kerze von `of_exit.at` liegt (ein Eintrag gilt wie im Journal erst ab der
+   nächsten 1m-Kerze); ist `stop_path` leer oder liegt `of_exit.at` vor dem ersten Eintrag, gilt `stop`.
 
 Ein Plan, der eine Prüfung nicht besteht, zählt mit Differenz 0 (als ob es keinen `of_exit` gegeben hätte) und
 wird im Bericht einzeln genannt. Bei mehr als 3 solchen Plänen gibt es kein Urteil, erst wird der Fehler behoben.
