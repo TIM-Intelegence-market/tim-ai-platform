@@ -34,18 +34,33 @@ from src.dashboard.chart_model import _nice_step, analytical_series, clean_candl
 # same public klines (Uzi 27.10.2026: gold into the analysis). It trades 24/7, real gold does not.
 # XMRUSDT = Monero (Barti 02.11.2026). Binance has no XMR spot market since 20.02.2024, so its
 # candles come from the USD-M perpetual (same kline format, /fapi/v1/klines); see XMR_NOTE.
-SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XMRUSDT", "PAXGUSDT")
+# NDX = Nasdaq-100 index (Uzi 16.11.2026: "den NASDAQ auch im Chart"). Binance has no index market, so its
+# candles come from the public Yahoo Finance chart endpoint (^NDX, same source as the P3 stock bars), see INDEX_NOTE.
+SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XMRUSDT", "PAXGUSDT", "NDX")
 SYMBOL_NAMES = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "XMRUSDT": "Monero (XMR-Perp)",
-                "PAXGUSDT": "Gold (PAXG)"}
+                "PAXGUSDT": "Gold (PAXG)", "NDX": "Nasdaq-100"}
+INDEX_SYMBOLS = {"NDX": "^NDX"}  # chart symbol -> Yahoo symbol
+YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval={interval}&range={range}"
+# view timeframe -> (Yahoo interval, Yahoo range, aggregate N source bars); others (3m, 6h, 12h, 3d) are not offered for the index
+YAHOO_FRAMES = {"1m": ("1m", "7d", 1), "5m": ("5m", "60d", 1), "15m": ("15m", "60d", 1), "30m": ("30m", "60d", 1),
+                "1h": ("60m", "2y", 1), "2h": ("60m", "2y", 2), "4h": ("60m", "2y", 4), "1d": ("1d", "10y", 1),
+                "1w": ("1wk", "10y", 1), "1M": ("1mo", "max", 1)}
 # Symbols without a Binance spot market: klines from the USD-M perpetual instead.
 PERP_ONLY = frozenset({"XMRUSDT"})
 SPOT_KLINES = "https://api.binance.com/api/v3/klines?"
 PERP_KLINES = "https://fapi.binance.com/fapi/v1/klines?"
-SYMBOL_TABS = {"PAXGUSDT": "GOLD"}
+SYMBOL_TABS = {"PAXGUSDT": "GOLD", "NDX": "NASDAQ"}
 GOLD_NOTE = ("Gold über PAXG (tokenisiertes Gold, 1 PAXG = 1 Feinunze): handelt rund um die Uhr, echtes Gold nicht; "
              "Wochenend-Kerzen und dünnere Liquidität können Level gegenüber XAUUSD verschieben.")
 XMR_NOTE = ("Monero über den Binance-Perpetual XMRUSDT (USD-M Futures): Binance hat XMR-Spot im Februar 2024 "
             "eingestellt. Perp-Preis kann durch Funding leicht vom Spotpreis abweichen; reine Anzeige, kein Papier-Trading.")
+INDEX_KEY_NOTE = ("Nasdaq-100 über Twelve Data (eigener API-Key) als ETF QQQ (folgt dem Nasdaq-100, Preis etwa ein Vierzigstel des Index; "
+                  "der Gratis-Plan liefert den Index NDX nicht): Kerzen nur zu US-Handelszeiten "
+                  "(Mo-Fr 15:30-22:00 deutsche Zeit), Wochenende und Nacht ohne Kerzen. Keine Trades, kein Footprint, "
+                  "kein Papier-Trading; reine Anzeige zum Vergleich mit BTC.")
+INDEX_NOTE = ("Nasdaq-100 (^NDX) von Yahoo Finance (öffentlich, inoffiziell, teils verzögert; kein Twelve-Data-Key hinterlegt): Kerzen nur zu US-Handelszeiten "
+              "(Mo-Fr 15:30-22:00 deutsche Zeit), Wochenende und Nacht ohne Kerzen. Volumen des Index ist 0, keine Trades, kein Footprint, "
+              "kein Papier-Trading; reine Anzeige zum Vergleich mit BTC.")
 DEFAULT_SYMBOL = "BTCUSDT"
 # Every interval Binance Spot offers, as on TradingView.
 VIEW_TIMEFRAMES = ("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "3d", "1w", "1M")
@@ -149,6 +164,8 @@ def fetch_klines(symbol: str, interval: str, limit: int, perp: bool = False) -> 
     """Public Binance klines (spot, USD-M perpetual for ``PERP_ONLY`` or ``perp``), including the open candle (``closed`` False)."""
     if symbol not in SYMBOLS or interval not in INTERVAL_SECONDS:
         raise ValueError("Unsupported symbol or interval")
+    if symbol in INDEX_SYMBOLS:
+        return fetch_index_klines(symbol, interval, limit)
     query = urlencode({"symbol": symbol, "interval": interval, "limit": max(1, min(int(limit), VIEW_LIMIT))})
     with urlopen((PERP_KLINES if perp else kline_url(symbol)) + query, timeout=10) as response:
         rows = json.load(response)
@@ -163,6 +180,74 @@ def fetch_klines(symbol: str, interval: str, limit: int, perp: bool = False) -> 
                            open=float(row[1]), high=float(row[2]), low=float(row[3]), close=float(row[4]),
                            volume=float(row[5]), provenance=PROVENANCE, closed=end <= now))
     return result
+
+
+def parse_yahoo_klines(payload: Any, symbol: str, interval: str, limit: int, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Candles of one Yahoo chart answer in the Binance row format; ``interval`` is the view timeframe.
+
+    2h and 4h are built from hourly bars (floor of the epoch, so the first and last bar of a session can be short).
+    A bar is closed once its end has passed; empty bars are dropped.
+    """
+    frame = YAHOO_FRAMES.get(interval)
+    result = ((payload or {}).get("chart") or {}).get("result") or []
+    if frame is None or not result:
+        raise ValueError(f"{symbol}: no chart result")
+    block = result[0]
+    quote_ = ((block.get("indicators") or {}).get("quote") or [{}])[0]
+    bars = []
+    for i, t in enumerate(block.get("timestamp") or []):
+        try:
+            o, h, lo, c = (float(quote_[k][i]) for k in ("open", "high", "low", "close"))
+            vol = quote_.get("volume", [])[i] if i < len(quote_.get("volume") or []) else 0
+        except (TypeError, ValueError, KeyError, IndexError):
+            continue
+        if not all(math.isfinite(v) and v > 0 for v in (o, h, lo, c)):
+            continue
+        bars.append([int(t), o, h, lo, c, float(vol or 0)])
+    bars.sort()
+    seconds = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "60m": 3600, "1d": 86400, "1wk": 604800, "1mo": 2678400}[frame[0]]
+    size = seconds * frame[2]
+    if frame[2] > 1:
+        grouped: dict[int, list[list[float]]] = {}
+        for bar in bars:
+            grouped.setdefault(bar[0] // size * size, []).append(bar)
+        bars = [[start, g[0][1], max(b[2] for b in g), min(b[3] for b in g), g[-1][4], sum(b[5] for b in g)]
+                for start, g in sorted(grouped.items())]
+    now = now or datetime.now(timezone.utc)
+    rows = []
+    for t, o, h, lo, c, vol in bars[-max(1, min(int(limit), VIEW_LIMIT)):]:
+        opened = datetime.fromtimestamp(t, timezone.utc)
+        end = opened + timedelta(seconds=INTERVAL_SECONDS[interval] if interval != "1M" else seconds)
+        rows.append(dict(symbol=symbol, timeframe=interval, open_time=opened.isoformat(), close_time=end.isoformat(),
+                         open=o, high=max(h, o, c), low=min(lo, o, c), close=c, volume=vol,
+                         provenance="YAHOO_PUBLIC_CHART_DISPLAY", closed=end <= now))
+    return rows
+
+
+def fetch_yahoo_index(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
+    """Index candles (Nasdaq-100) from the public Yahoo Finance chart endpoint: fallback without a Twelve Data key."""
+    from urllib.parse import quote
+    from urllib.request import Request
+
+    frame = YAHOO_FRAMES.get(interval)
+    if frame is None:
+        raise ValueError("Timeframe not offered for the index")
+    url = YAHOO_CHART.format(symbol=quote(INDEX_SYMBOLS[symbol]), interval=frame[0], range=frame[1])
+    request = Request(url, headers={"User-Agent": "Mozilla/5.0 (TIM-dashboard/1.0)", "Accept": "application/json"})
+    with urlopen(request, timeout=10) as response:
+        raw = response.read(3_000_001)
+    if len(raw) > 3_000_000:
+        raise ValueError("answer too large")
+    return parse_yahoo_klines(json.loads(raw), symbol, interval, limit)
+
+
+def fetch_index_klines(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
+    """Index candles: Twelve Data with TIM's API key when one is stored (Uzi 16.11.2026), else Yahoo."""
+    from src.dashboard import index_data
+
+    if index_data.has_key():
+        return index_data.fetch(symbol, interval, limit)
+    return fetch_yahoo_index(symbol, interval, limit)
 
 
 class KlineCache:
@@ -211,6 +296,18 @@ def fetch_perp_klines(symbol: str, interval: str, limit: int) -> list[dict[str, 
 
 CACHE = KlineCache()
 PERP_CACHE = KlineCache(fetch_perp_klines)
+class IndexCache(KlineCache):
+    """Own failure pause (an index outage must not pause Binance) and longer keep times: the
+    Twelve Data key allows 800 requests a day."""
+
+    @staticmethod
+    def ttl(interval: str) -> float:
+        from src.dashboard.index_data import INDEX_TTL
+
+        return INDEX_TTL.get(interval, 900.0)
+
+
+INDEX_CACHE = IndexCache()
 
 
 def _epoch(value: Any) -> int:
@@ -887,7 +984,7 @@ def _level_series(symbol: str, runtime_series: Mapping[str, Sequence[Mapping[str
         raw[tf] = [r for r in rows if r.get("closed", True)]
     series = analytical_series(raw, now)
     return {tf: [{**c, "open_time": c["open_time"].isoformat(), "close_time": c["close_time"].isoformat()} for c in rows]
-            for tf, rows in series.items() if rows}, "Binance-Perp-Klines (nur Anzeige)" if perp else "Binance-Klines (nur Anzeige)", notes
+            for tf, rows in series.items() if rows}, (("Twelve-Data-Kerzen (nur Anzeige)" if any(r.get("provenance") == "TWELVEDATA_API_CHART_DISPLAY" for rows in raw.values() for r in rows[-1:]) else "Yahoo-Finance-Kerzen (nur Anzeige)") if symbol in INDEX_SYMBOLS else "Binance-Perp-Klines (nur Anzeige)" if perp else "Binance-Klines (nur Anzeige)"), notes
 
 
 def load_plan_journals(paths: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -1020,7 +1117,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     """
     symbol = symbol if symbol in SYMBOLS else DEFAULT_SYMBOL
     timeframe = timeframe if timeframe in VIEW_TIMEFRAMES else DEFAULT_VIEW
-    cache = cache or CACHE
+    cache = cache or (INDEX_CACHE if symbol in INDEX_SYMBOLS else CACHE)
     now = now or datetime.now(timezone.utc)
     model: dict[str, Any] = {"symbol": symbol, "name": SYMBOL_NAMES[symbol], "timeframe": timeframe, "symbols": list(SYMBOLS),
                              "timeframes": list(VIEW_TIMEFRAMES), "generated_at": now.isoformat(), "read_only": True,
@@ -1033,6 +1130,11 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         model["notes"].append(GOLD_NOTE)
     if symbol == "XMRUSDT":
         model["notes"].append(XMR_NOTE)
+    if symbol in INDEX_SYMBOLS:
+        if timeframe not in YAHOO_FRAMES:
+            model["notes"].append(INDEX_NOTE)
+            model["notes"].append(f"Nasdaq-100: Zeitrahmen {timeframe} gibt es nicht (Quelle liefert 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M).")
+            return model
     intraday = INTERVAL_SECONDS[timeframe] <= 14400  # profiles, footprint and bubbles only on intraday views
     spot_trades = footprint if footprint and footprint.get("symbol") == symbol and footprint.get("days") else None
     perp_trades = perp if perp and perp.get("symbol") == symbol and perp.get("days") else None
@@ -1053,6 +1155,11 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         rows, error = cache.get(symbol, timeframe, VIEW_LIMIT)
         if error:
             model["notes"].append(error)
+    if symbol in INDEX_SYMBOLS:
+        from src.dashboard.index_data import PROVENANCE as KEYED
+
+        model["index_source"] = "twelvedata" if rows and rows[-1].get("provenance") == KEYED else "yahoo"
+        model["notes"].append(INDEX_KEY_NOTE if model["index_source"] == "twelvedata" else INDEX_NOTE)
     candles = clean_candles(rows, timeframe)
     flags = {c["open_time"]: c.get("closed", True) for c in (dict(r, open_time=datetime.fromisoformat(str(r["open_time"]))) for r in rows)}
     if not candles and symbol == "BTCUSDT" and runtime_series and runtime_series.get(timeframe):
