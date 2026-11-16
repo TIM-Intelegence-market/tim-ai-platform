@@ -15,7 +15,7 @@ Evidence first: a cause (BELEGT/WAHRSCHEINLICH) beats a date or headline, which 
 moves: the first of that order wins (``ORDER``). The label is set only ``WAIT`` after the close, so a move that
 started during the trade and ended later is recorded too (``move_context`` records up to ``RECORD_UNTIL`` after a
 move's end; the newest record of a grown move counts), and only when the recorder's hourly heartbeat
-(``move_context.beat``) has no gap longer than ``MAX_GAP`` from the fill to the due time: a longer gap could hide a
+(``move_context.beat``, written only while the recorder sees fresh candles) has no gap longer than ``MAX_GAP`` from the fill to the due time: a longer gap could hide a
 move, so no label. Trades filled before ``RECORDING_SINCE`` get no label: no recording means no evidence of calm.
 
 The label is written after the trade and is never an input for an entry, a plan, a score or a risk limit
@@ -35,7 +35,7 @@ from src.dashboard import move_context
 RULE = "market-event/1"
 RECORDING_SINCE = datetime(2026, 11, 16, 3, 0, tzinfo=timezone.utc)  # move recorder live on the Mac after #277
 WAIT = timedelta(hours=30)  # a move that started in the trade may last a day (4 h merge gap) plus RECORD_UNTIL
-MAX_GAP = move_context.RECORD_UNTIL - timedelta(hours=1)  # the recorder catches a move up to 6 h after its end
+MAX_GAP = timedelta(hours=4)  # the recorder catches a move up to 6 h after its end; hourly beats, room for a late step
 MIN_GROUP = 30
 CALM = "ruhig"
 ORDER = ("liquidations_kaskade", "markt_druck", "makro_termin", "news_notiz", "unerklaert")

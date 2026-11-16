@@ -343,3 +343,14 @@ def test_weekend_move_is_closed_even_before_monday_bars():
     friday_bar = [[int(datetime(2026, 11, 13, 20, 30, tzinfo=timezone.utc).timestamp()), 1.0, 1.0]]
     event = {"start": sunday, "end": sunday + timedelta(hours=1)}
     assert M._stocks(event, {"series": {"^NDX": {"name": "Nasdaq-100", "bars": friday_bar}}})["status"] == "geschlossen"
+
+
+def test_heartbeat_only_while_candles_are_fresh(tmp_path):
+    """P4 review: a dead feed finds no move, so it must not count as a watching recorder."""
+    path = tmp_path / "moves.jsonl"
+    series = _series()
+    last = M._closed(series, "1h", END + timedelta(days=30))[-1]["close_time"]
+    M.update(path, series, {}, last + timedelta(minutes=30))
+    assert len(M.beats(path)) == 1
+    M.update(path, series, {}, last + timedelta(hours=5))  # feed stalled for hours: no beat
+    assert len(M.beats(path)) == 1

@@ -78,6 +78,7 @@ MAX_SHOWN = 5
 RECORD_AFTER = timedelta(minutes=15)  # let hourly OI / premium points arrive
 RECORD_UNTIL = timedelta(hours=6)  # older moves are not recorded later (their gamma would be missing anyway)
 
+FRESH = timedelta(hours=2)  # heartbeat only while the last closed 1h candle is at most this old
 LIQ_BEFORE = timedelta(hours=1)
 LIQ_STRONG_USD = 10_000_000.0
 LIQ_SOME_USD = 2_000_000.0
@@ -662,7 +663,9 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], source
         with path.open("a", encoding="utf-8") as handle:
             for row in new:
                 handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
-    beat(path, now)
+    hours = _closed(series, "1h", now)
+    if hours and now - hours[-1]["close_time"] <= FRESH:
+        beat(path, now)  # only a recorder that sees fresh candles counts as watching (a dead feed finds no move)
     return new
 
 
