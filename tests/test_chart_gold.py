@@ -9,7 +9,7 @@ from tests.test_chart_live import NOW, fake_fetch
 
 
 def test_gold_is_a_display_symbol_with_its_own_tab() -> None:
-    assert SYMBOLS[-1] == "PAXGUSDT" and SYMBOLS[0] == "BTCUSDT"  # BTC stays the default
+    assert SYMBOLS.index("PAXGUSDT") == len(SYMBOLS) - 2 and SYMBOLS[0] == "BTCUSDT"  # BTC stays the default
     assert tab_label("PAXGUSDT") == "GOLD" and tab_label("ETHUSDT") == "ETH"
 
 
