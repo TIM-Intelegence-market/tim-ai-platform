@@ -35,7 +35,7 @@ from src.research_lab.orderflow_ml.bars import (
     MinuteBar,
 )
 
-RULE = "R-ABS-2/0.2-entwurf"
+RULE = "R-ABS-2/0.3-entwurf"
 FOLDER = Path("data/research/forward/ABS_ENTRY")
 WARMUP_DAYS = 2
 
