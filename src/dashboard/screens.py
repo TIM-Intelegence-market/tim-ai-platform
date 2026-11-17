@@ -459,7 +459,7 @@ def _of_live_card(data: dict[str, Any] | None) -> str:
              + (f" · wartet auf {_e(data['waiting_for'])}" if data.get("waiting_for") else "") + "</p>")
     check = mirror.get("abgleich") or {}
     if check.get("ok") is True:
-        abgleich = (f"<p class='sm'><span class='tag up'>Abgleich gleich</span> {check.get('gleich', 0)} Trades "
+        abgleich = (f"<p class='sm'><span class='tag up'>Abgleich gleich</span> {_e(check.get('gleich', 0))} Trades "
                     f"{_e(check.get('ab'))} bis {_e(check.get('bis'))} identisch mit dem Papier-Journal</p>")
     elif check.get("ok") is False:
         abgleich = (f"<p class='sm'><span class='tag dn'>Abweichung</span> nur live {len(check.get('nur_live') or [])}, "
@@ -467,7 +467,7 @@ def _of_live_card(data: dict[str, Any] | None) -> str:
     else:
         abgleich = f"<p class='mut sm'>Abgleich: {_e(check.get('grund') or 'noch keiner')}</p>"
     mean = "—" if data.get("mean_r") is None else f"{_signed(data['mean_r'])} R"
-    line = (f"<div class='row'><span><b>{data.get('trades', 0)} von {data.get('min_trades', 100)} Trades</b> · zusammen "
+    line = (f"<div class='row'><span><b>{_e(data.get('trades', 0))} von {_e(data.get('min_trades', 100))} Trades</b> · zusammen "
             f"{_e(_signed(data.get('net_r') or 0.0))} R · je Trade {_e(mean)}")
     for o in data.get("open") or []:
         line += (f"<br><span class='sm'>Offen: {_e(o['model'])} {'Long' if o['direction'] > 0 else 'Short'} ab {_e(o['entry'])}, "

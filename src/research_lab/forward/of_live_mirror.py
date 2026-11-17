@@ -13,7 +13,7 @@ key). Without that file nothing is pulled.
 from __future__ import annotations
 
 import json
-import shlex
+import re
 import subprocess
 from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta, timezone
@@ -28,12 +28,17 @@ FILES = ("status.json", "journal.json")
 Run = Callable[[Sequence[str]], subprocess.CompletedProcess]
 
 
+SAFE_PATH = re.compile(r"[A-Za-z0-9_./~-]+")
+
+
 def _run(argv: Sequence[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(list(argv), capture_output=True, text=True, timeout=120)
+    return subprocess.run(list(argv), capture_output=True, text=True, timeout=60)
 
 
 def scp_argv(cfg: dict[str, Any], name: str, dest: Path) -> list[str]:
     target = str(cfg["ssh"])
+    if target.startswith("-") or not target:
+        raise ValueError("ssh target must not start with '-'")
     options = ["-o", "BatchMode=yes"]
     if "@" in target:   # the Warpgate user has a colon ("uzi:ps5-research"); scp would take "uzi" as the host
         user, target = target.rsplit("@", 1)
@@ -43,8 +48,10 @@ def scp_argv(cfg: dict[str, Any], name: str, dest: Path) -> list[str]:
     if cfg.get("identity"):
         options += ["-i", str(cfg["identity"])]
     remote = str(cfg["remote_folder"]).rstrip("/")
+    if not SAFE_PATH.fullmatch(remote) or ".." in remote:
+        raise ValueError("remote_folder may only hold letters, digits and _ . / ~ -")   # no quoting in SFTP mode
     remote = remote[2:] if remote.startswith("~/") else remote   # scp paths without "/" start in the home folder
-    return ["scp", *options, f"{target}:{shlex.quote(remote + '/' + name)}", str(dest)]
+    return ["scp", *options, f"{target}:{remote}/{name}", str(dest)]
 
 
 def pull(root: Path | str = ".", *, run: Run = _run, clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
@@ -57,7 +64,11 @@ def pull(root: Path | str = ".", *, run: Run = _run, clock: Callable[[], datetim
     errors = []
     for name in FILES:
         tmp = folder / (name + ".pull")
-        done = run(scp_argv(cfg, name, tmp))
+        try:
+            done = run(scp_argv(cfg, name, tmp))
+        except Exception as exc:  # noqa: BLE001 - timeout, missing scp, bad config: recorded, the old copy stays
+            errors.append(f"{name}: {type(exc).__name__}: {exc}"[:200])
+            continue
         if done.returncode != 0:
             errors.append(f"{name}: {(done.stderr or '').strip()[:200]}")
             continue
@@ -70,7 +81,8 @@ def pull(root: Path | str = ".", *, run: Run = _run, clock: Callable[[], datetim
     result: dict[str, Any] = {"pulled": not errors, "pulled_at": _iso(clock()), "errors": errors}
     previous = _read(folder / "mirror.json") or {}
     result["last_ok"] = result["pulled_at"] if not errors else previous.get("last_ok")
-    result["abgleich"] = compare(_read(folder / "journal.json"), _read(Path(root) / STAGE_A_FOLDER / "journal.json"))
+    result["abgleich"] = (compare(_read(folder / "journal.json"), _read(Path(root) / STAGE_A_FOLDER / "journal.json"))
+                          if not errors else {"ok": None, "grund": "Spiegel veraltet (Abholen fehlgeschlagen)"})
     _write(folder / "mirror.json", result)
     return result
 
@@ -101,7 +113,10 @@ def compare(live: dict | None, stage_a: dict | None) -> dict[str, Any]:
     if not live or not stage_a:
         return {"ok": None, "grund": "Journal fehlt"}
     live_status, a_status = live.get("status") or {}, stage_a.get("status") or {}
-    first, last = live_status.get("first_day"), a_status.get("last_day")
+    first = live_status.get("first_day")
+    # only days both have finished: a stale copy of the live journal must not look like a data error
+    last = min((d for d in (a_status.get("last_day"), live_status.get("last_day")) if d), default=None) \
+        if a_status.get("last_day") and live_status.get("last_day") else None
     if not first or not last or last < first:
         return {"ok": None, "grund": "noch kein gemeinsamer Tag", "ab": first, "bis": last}
     lo, hi = _start_ms(first), _end_ms(last)

@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import subprocess
 
+import pytest
+
 from src.research_lab.forward import of_live_mirror
 from src.research_lab.forward.of_paper import FOLDER as STAGE_A
 
@@ -31,7 +33,7 @@ def test_compare_only_looks_at_days_both_have_finished():
 
 
 def test_compare_waits_for_a_common_day():
-    out = of_live_mirror.compare(journal("2026-11-18", None, []), journal("2026-11-11", "2026-11-17", []))
+    out = of_live_mirror.compare(journal("2026-11-18", "2026-11-17", []), journal("2026-11-11", "2026-11-17", []))
     assert out["ok"] is None and out["grund"] == "noch kein gemeinsamer Tag"
     assert of_live_mirror.compare(None, None)["ok"] is None
 
@@ -41,6 +43,17 @@ def test_scp_command_keeps_the_warpgate_user_out_of_the_host():
                                     "remote_folder": "~/tim-research/of-live/journal"}, "status.json", "/tmp/x")
     assert argv[:3] == ["scp", "-o", "BatchMode=yes"] and "User=uzi:ps5-research" in argv
     assert argv[-2] == "gate.example:tim-research/of-live/journal/status.json" and "-P" in argv
+    for bad in ({"ssh": "-oProxyCommand=x", "remote_folder": "~/j"}, {"ssh": "u@h", "remote_folder": "~/a b"},
+                {"ssh": "u@h", "remote_folder": "~/a;rm"}, {"ssh": "u@h", "remote_folder": "~/../x"}):
+        with pytest.raises(ValueError):
+            of_live_mirror.scp_argv(bad, "status.json", "/tmp/x")
+
+
+def test_a_stale_live_copy_is_not_a_data_error():
+    a = journal("2026-11-11", "2026-11-20", [trade(T0 + 1000), trade(T0 + 2 * DAY + 10)])
+    live = journal("2026-11-18", "2026-11-18", [trade(T0 + 1000)])   # copy stopped after the 18th
+    out = of_live_mirror.compare(live, a)
+    assert out["ok"] is True and out["bis"] == "2026-11-18"
 
 
 def test_pull_copies_compares_and_keeps_the_old_copy_on_failure(tmp_path):
@@ -61,13 +74,22 @@ def test_pull_copies_compares_and_keeps_the_old_copy_on_failure(tmp_path):
 
     out = of_live_mirror.pull(tmp_path, run=ok)
     assert out["pulled"] and out["abgleich"]["ok"] is True and out["last_ok"] == out["pulled_at"]
-    assert all(a[0] == "scp" for a in calls)   # read only: copies from the PS5, never writes there
+    # read only: every call copies from the PS5 to a local file, nothing is sent there
+    assert all(a[0] == "scp" and ":" in a[-2] and ":" not in a[-1] and len(calls) == 2 for a in calls)
 
     def fail(argv):
         return subprocess.CompletedProcess(argv, 1, "", "Connection refused")
 
     out = of_live_mirror.pull(tmp_path, run=fail)
     assert out["pulled"] is False and out["errors"] and out["last_ok"] is not None
+    assert out["abgleich"]["ok"] is None   # no alarm from a stale copy
+
+    def hang(argv):
+        raise subprocess.TimeoutExpired(argv, 60)
+
+    out = of_live_mirror.pull(tmp_path, run=hang)
+    assert out["pulled"] is False and "TimeoutExpired" in out["errors"][0]
+    assert json.loads((folder / "mirror.json").read_text())["errors"]
     assert json.loads((folder / "status.json").read_text()) == {"first_day": "2026-11-18"}   # old copy kept
 
 
