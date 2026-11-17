@@ -296,3 +296,12 @@ def test_a_partly_stored_past_day_keeps_the_estimate() -> None:
     partial = [{"day": "2026-10-23", "complete": False, "running": False, "poc": 9.0, "vah": 9.5, "val": 8.5, "step": 0.1}]
     assert real_day_profiles(days, partial) == [] and days[0]["profile"]["poc"] == 1.0
     assert real_day_profiles(days, None) == []
+
+
+def test_only_todays_trades_do_not_label_the_prior_day_as_real() -> None:
+    from src.dashboard.session_map import build_session_map
+    from tests.test_structure_plan import _runtime_series
+
+    now = datetime(2026, 10, 24, 14, 0, 30, tzinfo=timezone.utc)
+    today = [{"day": "2026-10-24", "complete": False, "running": True, "poc": 80200.0, "poc_mid": 80205.0, "vah": 80400.0, "val": 80000.0, "step": 10.0}]
+    assert build_session_map(_runtime_series(), now, profiles=today)["profile_source"] == "Kerzen-Schätzung"

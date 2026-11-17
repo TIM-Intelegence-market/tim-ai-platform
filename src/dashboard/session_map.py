@@ -392,7 +392,9 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
 
     days = _periods(quarter, lambda moment: _utc(moment).date(), 48 if base_tf == "30m" else 96)
     real_days = real_day_profiles(days, profiles)
-    model["profile_source"] = "echte Trades" if real_days else "Kerzen-Schätzung"
+    # "echte Trades" only when the prior day, which the value area and the location read, came from the store.
+    prior_key = (_utc(now).date() - timedelta(days=1)).isoformat()
+    model["profile_source"] = "echte Trades" if prior_key in real_days else "Kerzen-Schätzung"
     if real_days:
         model["provenance"] = "PUBLIC_MARKET_DATA (Binance Spot, TIM-Runtime); Tagesprofile aus TIMs Trades, Wochenprofile aus Kerzen geschätzt"
     today_date = _utc(now).date()

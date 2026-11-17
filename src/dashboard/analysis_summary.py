@@ -164,7 +164,11 @@ def build_summary(series: Mapping[str, Sequence[Mapping[str, Any]]], journals: M
         return result
     last = closes[-1]
     age = max(0, int((now - last["close_time"]).total_seconds()))
-    prep = build_session_map(clean, now, profiles=volume_profiles(trades, now) if trades else None)
+    try:
+        profiles = volume_profiles(trades, now) if trades else None
+    except (KeyError, TypeError, ValueError):  # a broken store falls back to the candle estimate
+        profiles = None
+    prep = build_session_map(clean, now, profiles=profiles)
     result.update(
         profile_source=prep.get("profile_source", "Kerzen-Schätzung"),
         available=True, last=float(last["close"]), last_close_time=_iso(last["close_time"]), age_seconds=age,
