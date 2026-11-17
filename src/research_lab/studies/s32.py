@@ -14,8 +14,8 @@ The trader's chain, all parameters fixed in :class:`Config`:
 4. position: mid in the lower quarter (long) or upper quarter (short) of the range;
 5. book: the ratio own side / opposite side (bid/ask for long), as the lowest value of the last 3 seconds. There is
    no threshold: every ratio is recorded (Barti 13.11.2026: "alle Schiefwinkel ausprobieren");
-6. outcome: entry one second later at the mid, target the middle of the range, stop 5 bp beyond the edge,
-   at most 300 seconds.
+6. outcome: entry one second later at the mid, stop 5 bp beyond the edge, at most 300 seconds; two targets, each
+   its own question: the middle of the range (video) and the opposite edge.
 
 H1 uses all ratios in ONE test: does the chance to reach the target first rise with the ratio (slope over the log
 ratio)? One trend test instead of one test per threshold keeps the number of trials at one. H2 asks, for every ratio
@@ -51,7 +51,7 @@ from src.research_lab.depth import tardis
 from src.research_lab.depth.book import ASK, BID, SCALE, LocalBook
 from src.research_lab.protocol import BASE_COSTS, STRESS_COSTS, CostModel
 
-VERSION = "0.9"
+VERSION = "0.10"
 SEED = 32
 TRAINING_END = date(2022, 12, 31)
 # Everything is collected and evaluated, however few cases (Barti 16.11.2026); the bootstrap bound is the luck test.
@@ -278,12 +278,20 @@ class Outcome:
     risk_bp: float
 
 
-def outcome(secs: Sequence[Second | None], ev: Event, cfg: Config = CONFIG) -> Outcome:
+TARGETS = ("mitte", "rand")  # range middle (video) and the opposite edge; each its own question (Barti 17.11.2026)
+
+
+def outcome(secs: Sequence[Second | None], ev: Event, cfg: Config = CONFIG, target_kind: str = "mitte") -> Outcome:
     j0 = ev.i + cfg.entry_delay_s
     if j0 >= len(secs) or secs[j0] is None:
         return Outcome("missing", 0.0, 0.0)
     entry = secs[j0].mid
-    target = (ev.lo + ev.hi) / 2
+    if target_kind == "mitte":
+        target = (ev.lo + ev.hi) / 2
+    elif target_kind == "rand":
+        target = ev.hi if ev.side > 0 else ev.lo
+    else:
+        raise ValueError(target_kind)
     stop = ev.lo * (1 - cfg.stop_bp / 10_000) if ev.side > 0 else ev.hi * (1 + cfg.stop_bp / 10_000)
     if (target - entry) * ev.side <= 0 or (entry - stop) * ev.side <= 0:
         return Outcome("no_room", 0.0, 0.0)
@@ -472,18 +480,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if a.step == "evaluate" and not VERSION.startswith("1."):
         raise SystemExit("evaluate is locked while S32 is a draft (section 8)")
     events: dict[date, list[Event]] = {}
-    results: dict[date, list[tuple[Event, Outcome]]] = {}
+    results: dict[str, dict[date, list[tuple[Event, Outcome]]]] = {t: {} for t in TARGETS}
     for day in study_days():
         secs = load_day(folder, day, fetch=a.fetch)
         evs = find_events(secs, day.isoformat())
         events[day] = evs
         if a.step == "evaluate":
-            results[day] = [(e, outcome(secs, e)) for e in evs]
+            for t in TARGETS:
+                results[t][day] = [(e, outcome(secs, e, target_kind=t)) for e in evs]
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%MZ")
     report = {"studie": "S32", "version": VERSION, "config_sha256": CONFIG.digest(), "config": asdict(CONFIG),
               "tage": len(events)}
     report["zaehlung" if a.step == "count" else "auswertung"] = (
-        count(events) if a.step == "count" else evaluate(results))
+        count(events) if a.step == "count" else {f"ziel_{t}": evaluate(results[t]) for t in TARGETS})
     path = out_dir / f"s32_{a.step}_{stamp}.json"
     path.write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n")
     print(path)

@@ -1,9 +1,9 @@
-# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.9)
+# S32: Orderbuch-Ungleichgewicht in einer verteidigten Range („Pfad des geringsten Widerstands“) (Präregistrierung, Entwurf 0.10)
 
 | Feld | Wert |
 |---|---|
 | Studie | S32 (nächste freie Nummer nach S31/S31b) |
-| Version | **0.9, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.; 0.5: Kostenfrage H2 für jede Verhältnisstufe statt nur ab 2:1, Barti 16.11.; 0.6: jede Range-Breite mit eigenem Test; 0.7: Breiten logisch getrennt, je eigenes α; 0.8: zusätzlich je Sitzung; 0.9: alles sammeln, Glückstest entscheidet, nur unter 30 Fällen kein Urteil, Barti 16.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
+| Version | **0.10, Entwurf** (0.3: alle Verhältnisse statt fester Schwelle, Barti 13.11.; 0.4: andere Range-Breiten beschreibend, Barti 15.11.; 0.5: Kostenfrage H2 für jede Verhältnisstufe statt nur ab 2:1, Barti 16.11.; 0.6: jede Range-Breite mit eigenem Test; 0.7: Breiten logisch getrennt, je eigenes α; 0.8: zusätzlich je Sitzung; 0.9: alles sammeln, Glückstest entscheidet, nur unter 30 Fällen kein Urteil, Barti 16.11.; 0.10: beide Ziele, Mitte und anderer Rand, Barti 17.11.). Regeln als Code: `src/research_lab/studies/s32.py` (`Config`, SHA-256 in jeder Ergebnisdatei), Tests `tests/test_research_lab_s32.py`. `evaluate` ist gesperrt, bis die Version 1.x ist |
 | Anlass | Barti 12./13.11.2026: Setup aus dem Video „The Only Orderflow Guide You'll Ever Need“ (6:22–9:55, S&P-Future) prüfen und, falls es trägt, in TIM einbauen. Beschreibung der Kette: `/mnt/project-files/s32-orderbuch/Was-der-Trader-macht-2026-11-12.md` (Projektdateien) |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kosten aus `src/research_lab/protocol.py` |
 | Daten | Binance USDⓈ-M BTCUSDT, Tardis.dev `incremental_book_L2`, **nur die kostenlosen Tage (1. jedes Monats)**. Buchnachbau `src/research_lab/depth/` (PR #251), geprüft in `../reports/depth_p2_tardis_2020-06-01.md` |
@@ -26,13 +26,13 @@ bei jedem Ereignis gemessen (Barti 13.11.: „alle Schiefwinkel ausprobieren, St
 | P6 | verteidigt | Berührung = Mitte höchstens 10 % der Breite vom Rand; Abprall = danach mindestens 25 % der Breite weg. Jeder Rand mindestens **1 Abprall**, zusammen mindestens **3 Berührungen** |
 | P7 | nahe am Rand | Mitte im **unteren Viertel** (Long) oder **oberen Viertel** (Short) |
 | P8 | Marktorders (Video: 53 aggressive Verkäufe) | nicht Teil der Regel, spart Versuche |
-| P9 | Ziel, Stop, Zeit | Einstieg 1 s später zur Mitte; Ziel **Range-Mitte**; Stop **5 bp jenseits des Rands**; höchstens **300 s** |
+| P9 | Ziel, Stop, Zeit | Einstieg 1 s später zur Mitte; **zwei Ziele, jedes eine eigene Frage: Range-Mitte** (Video) **und anderer Rand**; Stop **5 bp jenseits des Rands**; höchstens **300 s** |
 | – | Abstand | höchstens ein Ereignis je 300 s und Breitengruppe; die ersten 15 Minuten jedes Tages sind Anlauf; mindestens 95 % gültige Sekunden im Fenster |
 
 **Kein Kontrollpaar mehr:** Die Kontrolle steckt in den Ereignissen selbst. Ereignisse mit ausgeglichenem oder
 umgekehrtem Buch (Verhältnis um 1 oder darunter) sind die Range-Lage ohne Buchhilfe.
 
-Offene Wahl von Barti: P9 (Mitte oder gegenüberliegender Rand). P2 ist durch die Messung aller Verhältnisse
+P2 ist durch die Messung aller Verhältnisse
 erledigt, P5 durch die Breitengruppen (Barti 15.11.: „noch ein paar Studien mit anderen Ranges“).
 
 **Alle Range-Breiten** (Barti 16.11.: „wir machen alle nacheinander“): Jede der vier Gruppen ist eine eigene
@@ -85,10 +85,10 @@ als ein einzelner Test.
   | 100–150 bp New York | 121 / 54 | ja | keine |
   | 100–150 bp Asien, London, spät | 59 / 9, 65 / 16, 33 / 27 | zu wenig Fälle | keine |
 
-  Zusammen 17 H1-Fragen und 45 H2-Felder mit Urteil. Hinterher wird nichts ausgesiebt oder nachgebessert.
+  Zusammen je Ziel 17 H1-Fragen und 45 H2-Felder mit Urteil, bei zwei Zielen also 34 und 90. Hinterher wird nichts ausgesiebt oder nachgebessert.
 - Gezählt werden nur Ausgänge Ziel, Stop, Zeit. „Kein Platz“ (Einstieg schon hinter dem Ziel) und „fehlt“ (Tag
   endet im Horizont, Buch ungültig beim Einstieg) werden ausgewiesen, nicht gewertet.
-- Deflated Sharpe: zählt jedes H2-Feld mit Urteil als Versuch, **45 neue Versuche** (N 64 → 109).
+- Deflated Sharpe: zählt jedes H2-Feld mit Urteil als Versuch, je Ziel 45, zusammen **90 neue Versuche** (N 64 → 154).
 - Nur beschreibend: Tabelle je Verhältnisstufe (Anzahl, Anteil Ziel zuerst, Netto-R), Long/Short getrennt, Spread.
 
 ## 4. Vorbelastung

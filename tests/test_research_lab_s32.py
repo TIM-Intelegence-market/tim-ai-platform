@@ -137,7 +137,7 @@ def test_holdout_and_non_free_days_refused(tmp_path):
 
 def test_evaluate_locked_while_draft():
     with pytest.raises(PermissionError):
-        s32.evaluate({}, version="0.9")
+        s32.evaluate({}, version="0.10")
     assert s32.VERSION.startswith("0.")
 
 
@@ -221,3 +221,16 @@ def test_sessions():
     assert s32.in_group(e, "20-60") and s32.in_group(e, "20-60|newyork") and not s32.in_group(e, "20-60|london")
     c = s32.count({date(2020, 6, 1): [e]})
     assert c["training"]["20-60|newyork"]["alle"] == 1 and c["training"]["20-60|asien"]["alle"] == 0
+
+
+def test_outcome_opposite_edge_target():
+    up = [_sec(101.0), _sec(101.0)] + [_sec(101.0 + k * 0.5) for k in range(1, 30)]
+    o = s32.outcome(up, _ev(), target_kind="rand")
+    assert o.exit == "target" and o.gross_bp == pytest.approx((110 - 101) / 101 * 1e4)
+    to_mid = [_sec(101.0), _sec(101.0)] + [_sec(min(105.5, 101.0 + k * 0.5)) for k in range(1, 400)]
+    assert s32.outcome(to_mid, _ev()).exit == "target"  # middle reached
+    assert s32.outcome(to_mid, _ev(), target_kind="rand").exit == "time"  # edge not reached
+    down = [_sec(109.0), _sec(109.0)] + [_sec(109.0 - k * 0.5) for k in range(1, 30)]
+    assert s32.outcome(down, _ev(-1), target_kind="rand").gross_bp == pytest.approx((109 - 100) / 109 * 1e4)
+    with pytest.raises(ValueError):
+        s32.outcome(up, _ev(), target_kind="x")
