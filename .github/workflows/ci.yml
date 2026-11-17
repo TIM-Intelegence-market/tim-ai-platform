@@ -48,8 +48,9 @@ jobs:
       # numpy is not in requirements.txt (the application does not use it, so requirements.lock stays as it is).
       # The research tests (tests/test_konsolidierung_*.py, parts of test_research_lab_s2.py and
       # test_research_lab_s8_sequences.py) call pytest.importorskip("numpy") and skip themselves without it,
-      # so it is installed here with the other test-only tools. Same results with numpy 2.1 to 2.5 on
-      # Python 3.13; pandas is not needed.
+      # so it is installed here with the other test-only tools; pandas is not needed. The range is open like
+      # the other tools: if `test` turns red without a change in the repo, look at the numpy version in this
+      # step's log first and pin it for the time being.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
