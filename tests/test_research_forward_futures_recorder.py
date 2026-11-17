@@ -4,7 +4,11 @@ from __future__ import annotations
 import json
 
 from src.research_lab.forward import abs_entry
-from src.research_lab.forward.futures_recorder import FuturesRecorder, context, read_rows
+from src.research_lab.forward.futures_recorder import (
+    FuturesRecorder,
+    context,
+    read_rows,
+)
 from src.research_lab.liquidations import store
 
 T0 = 1_795_000_000_000 // 60_000 * 60_000   # a minute in Nov 2026

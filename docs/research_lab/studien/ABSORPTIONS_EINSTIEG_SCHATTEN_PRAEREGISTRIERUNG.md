@@ -1,4 +1,4 @@
-# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.3, ENTWURF, nicht eingefroren)
+# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.4, ENTWURF, nicht eingefroren)
 
 Auftrag Uzi 17.11.2026 ("Die Absorption könnte doch getradet werden"). Anlass: BTCUSDT 1h, 17.11. (Handy-Screenshot). Bei ~65.200 (1D-VAH-Bereich) zeigt der Chart eine Kauf-Absorption (Kreis "500"), danach fällt der Preis bis ~63.300 nahe der Opt Put Wall 63.000; unten steht ein Kreis nahe 63.600. Uzi: Absorption als Einstieg ist "auf jeden Fall ein guter Ansatz"; **bei der nächsten Absorption werden je nach Long/Short die Gewinne realisiert**; wichtige Zonen und vor allem **Akkumulation** sollen erkennbar sein. **Nichts gerechnet, kein Ergebnis gesehen. Ob der Fall vom 17.11. von den unten definierten Schwellen überhaupt erfasst würde, ist ungeprüft.**
 
@@ -9,6 +9,13 @@ Uzi: Im Orderflow ist es normal, solche Preisbewegungen **mitzunehmen**; dahinte
 - **Einstieg zu spät:** 0.1 wartete auf Schluss der Absorptionskerze plus Bestätigungskerze im Zeitrahmen 15m/1h. Im Beispiel vom 17.11. lief der Fall im Wesentlichen in einer 1h-Kerze. Neu: Zone aus dem hohen Zeitrahmen, Erkennung und Einstieg im **1m/5m-Orderflow**.
 - **Ausstieg zu früh:** 0.1 schloss am nächsten Level und nach 48 Kerzen. Neu: Position läuft, bis die Gegen-Absorption kommt; Level und Zeitstopp sind nur noch Vergleichsvarianten.
 - **Eine Zahl statt vieler:** 0.1 erkannte Absorption nur über Volumen und Range. Neu: je Ereignis werden alle Orderflow-Zahlen mitgeschrieben (Baustein 1a).
+
+## Änderung 0.4 (Uzi 17.11. "go Stop" und "go Futures")
+- **Stop:** weiter hinter dem Docht, aber mindestens 0,5 % vom Einstieg entfernt (der weitere von beiden gilt).
+- **Einstieg per Limit-Order:** Nach dem Auslöser liegt ein Limit am Schluss des Absorptionsfensters (Retest), gültig 15 Minuten; gefüllt nur, wenn der Preis es durchhandelt (oder darüber/darunter eröffnet). Maker-Gebühr 0,02 %, keine Einstiegs-Slippage. Nicht gefüllt = "Limit nicht gefüllt", kein Trade.
+- **Kostengrenze:** Trades mit Kosten bis 0,30 R zählen (vorher 0,15 R).
+- **Futures-Zahlen** (nur Kontext, nicht in der Regel): Perp-Volumen und Perp-Delta je Fenster, OI-Änderung 60 min, letzte Funding-Rate (neuer Recorder `forward/futures_recorder.py`, REST, nur Standardbibliothek), Liquidationen long/short in USD je Fenster (bestehender S12-Collector). OI und Funding gibt es nur für live abgefragte Minuten.
+- Die Zählung beginnt mit 0.4 neu (neuer Ordner, neuer Digest); 0.3 lief nur am 17.11. ab 18:52 ohne Signal.
 
 ## Stand 0.3 (gebaut, Uzi 17.11. "Go")
 Code: `src/research_lab/forward/abs_entry.py`, Tests `tests/test_research_forward_abs_entry.py`. Aufruf: `python -m src.research_lab.forward abs-step --trades <Recorder-Ordner>` bzw. `abs-status`. Eigener Ordner `data/research/forward/ABS_ENTRY`, liest den Recorder nur. Die Parameter stehen in `Params` und gehen als Digest in `start.json`; ändert sich ein Parameter, verweigert der Lauf und braucht einen neuen Ordner. Die Umsetzung legt die Entwurfs-Schwellen so fest:
