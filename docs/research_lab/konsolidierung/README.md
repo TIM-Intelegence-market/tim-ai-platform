@@ -183,6 +183,8 @@ python3 -m pytest tests/test_konsolidierung_*.py -q      # 118 passed in rund 2 
 | `test_konsolidierung_nachtrag.py` | 7 | Hilfsfunktionen des Nachtrags; Abgleich der festgehaltenen Nachtragsdatei mit den Ergebnissen von T1 bis T13 |
 | `test_konsolidierung_register_studie.py` | 39 | Register (Schema, Zählung, Kennzeichnung), Evidenzmatrix (Abdeckung 69 von 69), Studie (zwölf Abschnitte, Zahlen aus den Ergebnisdateien, keine Platzhalter), Korrekturen nach der Gegenprüfung |
 
+**In der CI:** `ci.yml` installiert numpy, damit die fünf Dateien mit numpy (108 der 118 Tests) im Job `test` mitlaufen. Ohne numpy überspringen sie sich selbst; `test_konsolidierung_daten_holen.py` (10 Tests) braucht kein numpy.
+
 Die Tests prüfen Rechenwege und innere Stimmigkeit. Sie beweisen nicht, dass die Beschreibung der Regel richtig ist: T1 zeigt, dass zwei unabhängige Rechenwege mit derselben Regelbeschreibung dieselben 4.879 Trades erzeugen; ein gemeinsamer Fehler in der Beschreibung würde T1 nicht finden.
 
 ## 7 Was Dritte nicht nachrechnen können
