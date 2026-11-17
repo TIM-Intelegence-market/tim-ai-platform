@@ -649,7 +649,8 @@ class TIMApplication:
                                         attention, waiting=waiting_on_uzi.items)
                 # Täglicher Kritiker (Uzi 11.11.2026): 7 Uhr, Projekt und Chart aus Nutzersicht, nur lesend.
                 await asyncio.to_thread(daily_critic.update, state.daily_critic_path,
-                                        daily_critic.state_sources(state, symbol=settings.symbol))
+                                        daily_critic.state_sources(state, symbol=settings.symbol),
+                                        backlog=state.critic_backlog_path)
                 # Störungs-Diagnose (Uzi 17.11.2026): bei neuer Störung erklärt Hermes sie, nur lesend.
                 fault_lines = await asyncio.to_thread(fault_diagnosis.state_lines, attention)
                 await asyncio.to_thread(fault_diagnosis.update, state.fault_diagnosis_path, fault_lines)
