@@ -135,8 +135,17 @@ def attention_facts(attention: Sequence[Mapping[str, Any]]) -> list[str]:
 
 
 def signature(lines: Sequence[str]) -> list[str]:
-    """The identity of a fault set: the head line of each fault, without log lines."""
-    return sorted(line for line in lines if line.startswith(("Dienst ", "Control Center meldet: ")))
+    """The identity of a fault set: one key per fault, without log lines and without changing numbers.
+
+    A Control Center item is keyed by its label only: "Bybit-Orderflow: 10 Neuverbindungen" and "... 11 ..." are the same fault.
+    """
+    keys = set()
+    for line in lines:
+        if line.startswith("Dienst "):
+            keys.add(line)
+        elif line.startswith("Control Center meldet: "):
+            keys.add("Control Center meldet: " + line.removeprefix("Control Center meldet: ").split(": ", 1)[0])
+    return sorted(keys)
 
 
 def prompt(lines: Sequence[str]) -> str:
