@@ -21,6 +21,11 @@ Orderflow paper journal on live trades (stage B, own folder OF_LIVE; recorder an
     python -m src.research_lab.forward of-live-run   --trades DIR [--folder DIR] [--every 300]
     python -m src.research_lab.forward of-live-status [--folder DIR]
     python -m src.research_lab.forward of-live-pull   # Mac: copy the PS5 journal and compare with stage A
+
+R-ABS-2 absorption entry shadow (paper only, own folder ABS_ENTRY, reads the stage-B recorder):
+
+    python -m src.research_lab.forward abs-step   --trades DIR [--folder DIR]
+    python -m src.research_lab.forward abs-status [--folder DIR]
 """
 from __future__ import annotations
 
@@ -61,12 +66,29 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("step", "status", "verify", "of-start", "of-step", "of-status",
                                                 "of-m8-step", "of-m8-status", "of-record", "of-live-step",
-                                                "of-live-run", "of-live-status", "of-live-pull"))
+                                                "of-live-run", "of-live-status", "of-live-pull",
+                                                "abs-step", "abs-status"))
     parser.add_argument("--folder")
     parser.add_argument("--trades", help="recorder root (stage B)")
     parser.add_argument("--seconds", type=float)
     parser.add_argument("--every", type=float)
     args = parser.parse_args(argv)
+    if args.command.startswith("abs-"):
+        from datetime import datetime, timezone
+
+        from src.research_lab.forward import abs_entry
+
+        folder = args.folder or str(abs_entry.FOLDER)
+        if args.command == "abs-status":
+            out = abs_entry.status(folder) or {"status": "noch kein Lauf"}
+        elif not args.trades:
+            print("--trades fehlt", file=sys.stderr)
+            return 2
+        else:
+            load_day, partial = abs_entry.live_loaders(folder, args.trades)
+            out = abs_entry.step(folder, load_day, datetime.now(timezone.utc).date(), partial=partial)
+        print(json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
     if args.command == "of-live-pull":
         from src.research_lab.forward import of_live_mirror
 

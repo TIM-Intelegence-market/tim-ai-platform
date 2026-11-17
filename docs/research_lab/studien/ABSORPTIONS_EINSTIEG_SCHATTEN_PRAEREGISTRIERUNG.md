@@ -1,4 +1,4 @@
-# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.2, ENTWURF, nicht eingefroren)
+# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.3, ENTWURF, nicht eingefroren)
 
 Auftrag Uzi 17.11.2026 ("Die Absorption könnte doch getradet werden"). Anlass: BTCUSDT 1h, 17.11. (Handy-Screenshot). Bei ~65.200 (1D-VAH-Bereich) zeigt der Chart eine Kauf-Absorption (Kreis "500"), danach fällt der Preis bis ~63.300 nahe der Opt Put Wall 63.000; unten steht ein Kreis nahe 63.600. Uzi: Absorption als Einstieg ist "auf jeden Fall ein guter Ansatz"; **bei der nächsten Absorption werden je nach Long/Short die Gewinne realisiert**; wichtige Zonen und vor allem **Akkumulation** sollen erkennbar sein. **Nichts gerechnet, kein Ergebnis gesehen. Ob der Fall vom 17.11. von den unten definierten Schwellen überhaupt erfasst würde, ist ungeprüft.**
 
@@ -9,6 +9,16 @@ Uzi: Im Orderflow ist es normal, solche Preisbewegungen **mitzunehmen**; dahinte
 - **Einstieg zu spät:** 0.1 wartete auf Schluss der Absorptionskerze plus Bestätigungskerze im Zeitrahmen 15m/1h. Im Beispiel vom 17.11. lief der Fall im Wesentlichen in einer 1h-Kerze. Neu: Zone aus dem hohen Zeitrahmen, Erkennung und Einstieg im **1m/5m-Orderflow**.
 - **Ausstieg zu früh:** 0.1 schloss am nächsten Level und nach 48 Kerzen. Neu: Position läuft, bis die Gegen-Absorption kommt; Level und Zeitstopp sind nur noch Vergleichsvarianten.
 - **Eine Zahl statt vieler:** 0.1 erkannte Absorption nur über Volumen und Range. Neu: je Ereignis werden alle Orderflow-Zahlen mitgeschrieben (Baustein 1a).
+
+## Stand 0.3 (gebaut, Uzi 17.11. "Go")
+Code: `src/research_lab/forward/abs_entry.py`, Tests `tests/test_research_forward_abs_entry.py`. Aufruf: `python -m src.research_lab.forward abs-step --trades <Recorder-Ordner>` bzw. `abs-status`. Eigener Ordner `data/research/forward/ABS_ENTRY`, liest den Recorder nur. Die Parameter stehen in `Params` und gehen als Digest in `start.json`; ändert sich ein Parameter, verweigert der Lauf und braucht einen neuen Ordner. Die Umsetzung legt die Entwurfs-Schwellen so fest:
+- Fenster 5 Minuten; Volumen ≥ 3× Median der letzten 24 h (mindestens 8 h Vorlauf); Delta-Anteil ≥ 25 % auf der absorbierten Seite; Schluss ≥ 60 % der Spanne vom absorbierten Extrem entfernt.
+- Zonen: Vortag POC/VAH/VAL (70 % Value Area aus dem Tagesprofil), Vortageshoch/-tief, bestätigte 1h-Swings (3 Stunden links/rechts, 72 h gültig). **Opt-Walls fehlen** (liegen nicht auf der PS5).
+- Einstieg: 1m-Schluss über (Long) bzw. unter (Short) dem Schluss des Absorptionsfensters innerhalb von 15 Minuten, Fill zum nächsten 1m-Open plus 3 bps; bricht vorher das Extrem, verfällt das Ereignis.
+- Stop: Extrem ∓ 0,1 × ATR(14) der 5m-Fenster; ab +1 R Einstand. Ausstieg: erste Gegen-Absorption (ohne Zonen-Pflicht), Fill zum nächsten 1m-Open.
+- Kosten: Bitunix-Taker 0,06 % je Seite, Slippage 3 bps Einstieg, 5 bps Stop (`bitunix/contract.py`, `of2/config.py`). Kosten > 0,15 R ⇒ "kostenblockiert", eigene Gruppe. Funding wird **nicht** eingerechnet, nur die gekreuzten 8h-Intervalle gezählt (Spot-Daten).
+- Eine Position zur Zeit. Referenz fixes 2R (ursprünglicher Stop) läuft mit, nicht im Urteil.
+- Erfasst je Ereignis: Volumenfaktor, Delta, Delta-Anteil, große Trades (≥ 1 BTC), größter Trade, Tempo, CVD 60 min und Divergenz, Kauf/Verkauf im Preis-Bin des Extrems (Footprint am Docht), Kontext AKKUMULATION/DISTRIBUTION. **Perp-Delta, Open Interest, Funding und Liquidationen kommen auf der PS5 nicht live an** (Prüfung 17.11. 18:42: dort läuft nur der Binance-Spot-Recorder); sie fehlen in 0.3.
 
 ## Abgrenzung
 - R-ABS-1 (eingefroren) **blockiert** Pläne, die in ein absorbierendes Level laufen. R-ABS-2 **handelt** gegen die Absorption. Eigene Hypothese, eigene Pläne, eigenes Urteil; R-ABS-1 bleibt unberührt.
@@ -39,4 +49,4 @@ Der Orderflow-Schatten speichert nur 3 nächste Level. R-ABS-2 braucht je Ereign
 - Erwartung ehrlich: 15m/1h an Zonen ergibt wenige Ereignisse pro Woche; 30 Trades können Monate dauern. Seit 11.11. verwirft das OF-/Kostentor im alten Pfad fast alles, deshalb eigenes Journal.
 
 ## Offen vor dem Einfrieren
-Schwellen (Zone ±0,15 %, Stop-Puffer, Einstand-Regel), Pflichtzahlen aus 1a, Bitunix-Kostensätze, Chart-Definition des Kreises, Akkumulations-Parameter, Ort der Ausführung (PS5-Dienst neben `OF_LIVE` vs. Mac). Alles Uzis Entscheidung bzw. aus Code zu belegen.
+Schwellen wie in Stand 0.3, ob Kosten > 0,15 R wirklich ausgeschlossen bleiben (enge Docht-Stops sind oft teurer), Live-Quelle für Perp/OI/Funding/Liquidationen, Bitunix-Kostensätze, Chart-Definition des Kreises, Akkumulations-Parameter, Ort der Ausführung (PS5-Dienst neben `OF_LIVE` vs. Mac). Alles Uzis Entscheidung bzw. aus Code zu belegen.
