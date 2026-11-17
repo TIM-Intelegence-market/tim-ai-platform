@@ -144,3 +144,16 @@ def test_launchd_template_is_background_and_niced() -> None:
     assert plist["StartInterval"] == 900
     assert plist["ProgramArguments"][-1].endswith("scripts/research_workshop_schedule.py")
     assert plist["StandardOutPath"].startswith("/Users/tim/Documents/TIM/tim/data/research/")
+
+
+def test_weekly_round_writes_absorption_report_when_shadow_exists(tmp_path: Path) -> None:
+    import json
+
+    workshop = _workshop(tmp_path)
+    shadow = tmp_path / "data/journal/tim_orderflow_shadow.json"
+    shadow.parent.mkdir(parents=True, exist_ok=True)
+    shadow.write_text(json.dumps({"plans": {}}), encoding="utf-8")
+    learned = workshop.run_once(_utc("2026-11-01T02:30:00Z"))["ran"]["weekly"]["self_improve"]
+    assert learned["absorption"] == "NOCH_NICHT_BEURTEILBAR"
+    out = json.loads((tmp_path / "data/research/reports/absorption_2026-W44.json").read_text(encoding="utf-8"))
+    assert out["rule"] == "R-ABS-1/1.0"

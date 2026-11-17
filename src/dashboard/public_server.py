@@ -208,7 +208,9 @@ class PublicDashboardServer:
         from src.dashboard.chart_live import load_plan_journals
 
         try:
-            text = render_en(build_summary(self.state.chart_series(), load_plan_journals(self.journal_paths())))
+            with self.state.lock:
+                trades = dict(getattr(self.state, "footprint", None) or {})
+            text = render_en(build_summary(self.state.chart_series(), load_plan_journals(self.journal_paths()), trades=trades or None))
         except Exception:  # noqa: BLE001 - the public chart must still render
             return ""
         try:
