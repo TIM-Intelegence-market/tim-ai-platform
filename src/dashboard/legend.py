@@ -115,11 +115,13 @@ LAYERS: dict[str, list[Mark]] = {
     "plans_long": [(("line", PLAN_ENTRY, "solid"), "Pläne der 1D-Regel (LONG-Horizont)", "Plans of the 1D rule (LONG horizon)")],
     "plans_old": [(("line", PLAN_ENTRY, "dashed"), "frühere Testversionen auf 30m (TIM-, Struktur-, VP-Regel)", "Earlier test versions on 30m (TIM, structure, VP rule)")],
     "gamma": [
-        (("line", *GAMMA["call_wall"]), "Call Wall (grün): größter Call-Bestand, oft Widerstand", "Call wall (green): largest call open interest, often resistance"),
-        (("line", *GAMMA["put_wall"]), "Put Wall (rot): größter Put-Bestand, oft Unterstützung", "Put wall (red): largest put open interest, often support"),
-        (("line", *GAMMA["flip"]), "Gamma Flip (gelb): darüber dämpfen Händler, darunter verstärken sie", "Gamma flip (yellow): above it dealers dampen moves, below they amplify"),
+        (("line", *GAMMA["call_wall"]), "Call Wall (grün): größtes Call-Gamma über dem Preis; wandert mit dem Preis", "Call wall (green): largest call gamma above the price; moves with the price"),
+        (("line", *GAMMA["put_wall"]), "Put Wall (rot): größtes Put-Gamma unter dem Preis; wandert mit dem Preis", "Put wall (red): largest put gamma below the price; moves with the price"),
+        (("line", *GAMMA["oi_call"]), "Call-/Put-OI-Wand (grün/rot gestrichelt): Strike mit dem größten offenen Bestand je Seite, ändert sich selten", "Call/put OI wall (green/red, dashed): strike with the largest open interest per side, changes rarely"),
+        (("line", *GAMMA["flip"]), "Gamma Flip (gelb): darüber dämpfen Händler eher, darunter verstärken sie; hängt stark an den Annahmen", "Gamma flip (yellow): above it dealers tend to dampen moves, below to amplify; depends strongly on the assumptions"),
         (("line", *GAMMA["max_pain"]), "Max Pain (grau gestrichelt)", "Max pain (grey, dashed)"),
         (("line", *GAMMA["em_high"]), "erwartete Spanne oben/unten aus den Optionspreisen (gepunktet)", "Expected move up/down from option prices (dotted)"),
+        (("line", *GAMMA["flip"]), "Alles Schätzung aus Deribit (Annahme: Händler long Calls, short Puts); Wirkung auf den BTC-Preis ungetestet. Jede Linie beginnt dort, wo das Level seinen jetzigen Wert bekam", "All estimates from Deribit (assumption: dealers long calls, short puts); effect on the BTC price untested. Each line starts where the level reached its current value"),
     ],
     "liq": [
         (("line", LIQ["above"], "dashed"), "Schätzung: Liquidations-Cluster über dem Kurs (Shorts), orange", "Estimate: liquidation cluster above price (shorts), orange"),
