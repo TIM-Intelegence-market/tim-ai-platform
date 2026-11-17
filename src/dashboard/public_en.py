@@ -118,6 +118,8 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Monero über den Binance-Perpetual", "Monero via the Binance perpetual XMRUSDT (USD-M futures): Binance ended XMR spot "
                                             "in February 2024. The perp price can differ slightly from spot because of funding; "
                                             "display only, no paper trading."),
+    (r"^Nasdaq: Footprint, Volume Profile und CVD sind eine Näherung", "Nasdaq: footprint, volume profile and CVD are an approximation from 1m candles, not real trades "
+                                                                       "(volume spread evenly over the candle range, buy share from where the close sits). No bubbles, OI or funding."),
     (r"^Nasdaq-100 über Twelve Data", "Nasdaq-100 via Twelve Data (TIM's own API key) as the ETF QQQ (tracks the Nasdaq-100, price about a fortieth of the index; "
                                      "the free plan does not deliver the NDX index): candles only in US trading hours "
                                      "(Mon-Fri 9:30-16:00 New York), none at weekends and overnight. No trades, no footprint, "
@@ -155,6 +157,8 @@ SOURCES_EN = {
     "Binance-Klines (nur Anzeige)": "Binance klines (display only)",
     "Yahoo-Finance-Kerzen (nur Anzeige)": "Yahoo Finance candles (display only)",
     "Twelve-Data-Kerzen (nur Anzeige)": "Twelve Data candles (display only)",
+    "Näherung aus 1m-Kerzen (keine Einzeltrades): Volumen gleich über die Kerzenspanne verteilt, Käuferanteil = Lage des Schlusses":
+        "Approximation from 1m candles (no single trades): volume spread evenly over the candle range, buy share = where the close sits",
     "Binance-Perp-Klines (nur Anzeige)": "Binance perp klines (display only)",
     "TIM agg_trades (Binance Spot aggTrades, eigene Datenbank)": "TIM agg_trades (Binance spot aggTrades, own database)",
     "Binance USD-M Perp aggTrades (BTCUSDT, öffentlich, TIM-Sammler)": "Binance USD-M perp aggTrades (BTCUSDT, public, TIM collector)",

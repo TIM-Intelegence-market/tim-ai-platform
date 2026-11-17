@@ -139,3 +139,42 @@ def test_mac_prefers_the_private_key_file_over_the_keychain(monkeypatch, tmp_pat
     monkeypatch.setattr(index_data.sys, "platform", "darwin")
     monkeypatch.setattr(index_data.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no keychain")))
     assert index_data.api_key({index_data.FILE_ENV: str(path)}).reveal() == KEY
+
+
+def minute_rows(n: int = 600) -> list[dict]:
+    start = datetime(2026, 11, 8, 14, 30, tzinfo=timezone.utc).timestamp()  # inside the 30m candles of answer(300)
+    rows = []
+    for i in range(n):
+        opened = datetime.fromtimestamp(start + i * 60, timezone.utc)
+        b = 600 + (i % 30) * 0.1
+        rows.append({"open_time": opened.isoformat(), "open": b, "high": b + 0.3, "low": b - 0.2, "close": b + 0.3 if i % 2 else b - 0.2,
+                     "volume": 1000.0})
+    return rows
+
+
+def test_candle_store_spreads_volume_and_splits_by_close() -> None:
+    store = index_data.candle_store(minute_rows(2), "NDX", now=NOW)
+    rows = [r for day in store["days"].values() for r in day]
+    assert store["approximation"] and store["bucket_seconds"] == 60
+    assert round(sum(r[2] + r[3] for r in rows)) == 2000  # all volume kept
+    first = [r for r in rows if r[0] == rows[0][0]]
+    assert sum(r[2] for r in first) > sum(r[3] for r in first)  # first candle closes at its low: sellers
+    assert index_data.candle_store([{**minute_rows(1)[0], "volume": 0}], "NDX") is None
+
+
+def test_ndx_chart_gets_approximate_footprint_profile_and_cvd() -> None:
+    def fetch(symbol, interval, limit):
+        if interval == "1m":
+            return minute_rows()
+        return index_data.parse(answer(300), symbol, interval, limit, now=NOW)
+
+    model = build_live_chart("NDX", "30m", cache=KlineCache(fetch), now=NOW)
+    assert model["footprint"]["bars"] and model["volume_profile"] and model["cvd"]["spot"]
+    assert model["trade_source"].startswith("Näherung aus 1m-Kerzen")
+    assert any(n.startswith("Nasdaq: Footprint, Volume Profile und CVD sind eine Näherung") for n in model["notes"])
+    assert model["bubbles"]["items"] == []
+    from src.dashboard.public_en import english_chart_model
+
+    english = english_chart_model(model)
+    assert english["trade_source"].startswith("Approximation from 1m candles")
+    assert any(n.startswith("Nasdaq: footprint, volume profile and CVD are an approximation") for n in english["notes"])
