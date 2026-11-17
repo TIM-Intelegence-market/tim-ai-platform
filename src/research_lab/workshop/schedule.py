@@ -323,6 +323,18 @@ class Workshop:
             result["decision"] = (week["proposal"] or {}).get("filter")
         except Exception as exc:  # the report is a summary; its failure must not hide the round
             result["report_error"] = f"{type(exc).__name__}: {exc}"[:200]
+        try:  # R-ABS-1 (absorption shadow, frozen 17.11.2026): read only, one file per week, changes nothing
+            from src.dashboard import absorption_shadow, orderflow_shadow
+            state = orderflow_shadow.load(self.root / orderflow_shadow.DEFAULT_PATH)
+            if state is not None:
+                folder = self.research / "reports"
+                folder.mkdir(parents=True, exist_ok=True)
+                out = absorption_shadow.evaluate(state)
+                (folder / f"absorption_{now.astimezone(LOCAL).strftime('%G-W%V')}.json").write_text(
+                    json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                result["absorption"] = out["verdict"]
+        except Exception as exc:
+            result["absorption_error"] = f"{type(exc).__name__}: {exc}"[:200]
         return result
 
     def evaluate_shadows(self, now: datetime) -> list[dict[str, Any]]:
