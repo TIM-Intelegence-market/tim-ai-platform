@@ -896,11 +896,13 @@
                 placed.push({ item, x, y });
               }
               placed.sort((a, b) => b.item.usd - a.item.usd);  // biggest first, small ones drawn on top stay visible
-              // Exo style (PDF "Market Order Bubbles", Leviathan): sizes are multiples of the average order in view;
-              // only medium (x3) and large (x4.5) are drawn, small (x2) is off, colour strength follows the multiple.
-              const mean = placed.length ? placed.reduce((sum, p) => sum + p.item.usd, 0) / placed.length : 1;
-              const order = bubbles.exo ? placed.filter(p => p.item.usd >= EXO.bubbles.medium * mean)
-                : placed.slice(0, Math.max(BUBBLE.minCount, Math.round(mediaSize.width / BUBBLE.pxPer)));
+              // Exo style (PDF "Market Order Bubbles", Leviathan): medium (x3) and large (x4.5) are multiples of a reference order.
+              // TIM keeps only orders above a floor (floor_usd), so the true average order is unknown; the floor is the reference.
+              // (Before, the reference was the mean of the kept big orders: only ~5 of 400 passed x3 and the layer looked empty, 18.11.2026.)
+              const ref = Math.max(1, data.floor_usd || 100000);
+              const cap = Math.max(BUBBLE.minCount, Math.round(mediaSize.width / BUBBLE.pxPer));
+              const order = bubbles.exo ? placed.filter(p => p.item.usd >= EXO.bubbles.medium * ref).slice(0, cap)
+                : placed.slice(0, cap);
               if (!order.length) return;
               const max = Math.max(1, order[0].item.usd);
               ctx.textAlign = 'center';
@@ -908,15 +910,15 @@
               ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
               const texts = [];  // number boxes already drawn: a number that would cover one is left out (Uzi 11.11.2026)
               for (const { item, x, y } of order) {
-                const multiple = item.usd / mean;
-                const large = multiple >= EXO.bubbles.large;
-                const r = bubbles.exo ? (large ? BUBBLE.maxR : 6) * (0.85 + 0.15 * Math.min(1, multiple / (2 * EXO.bubbles.large)))
+                const multiple = item.usd / (bubbles.exo ? ref : 1);
+                const large = item.usd / ref >= EXO.bubbles.large;
+                const r = bubbles.exo ? Math.max(large ? 7 : 5, BUBBLE.maxR * Math.sqrt(item.usd / max))
                   : Math.max(BUBBLE.minR, BUBBLE.maxR * Math.sqrt(item.usd / max));
                 const buy = item.side > 0;
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, Math.PI * 2);
                 const bybit = item.venue === 'bybit';  // second venue (issue #162): hollow, dashed ring
-                const held = bubbles.exo ? Math.min(1, 0.35 + 0.65 * (multiple - EXO.bubbles.medium) / (EXO.bubbles.large * 1.5 - EXO.bubbles.medium)) > 0.6 : absorbed(item);
+                const held = bubbles.exo ? item.usd >= 0.4 * max : absorbed(item);
                 ctx.fillStyle = bybit ? 'rgba(11,15,22,0.35)' : buy ? `rgba(38,200,140,${held ? 0.55 : 0.18})` : `rgba(239,83,80,${held ? 0.55 : 0.18})`;
                 ctx.fill();
                 ctx.lineWidth = 1;
