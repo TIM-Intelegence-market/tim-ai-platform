@@ -60,7 +60,15 @@ def pull(root: Path | str = ".", *, run: Run = _run, clock: Callable[[], datetim
     cfg_path = folder / "pull.json"
     if not cfg_path.exists():
         return {"pulled": False, "reason": "kein pull.json"}
-    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        cfg = {}
+        result = {"pulled": False, "pulled_at": _iso(clock()), "errors": [f"pull.json: {type(exc).__name__}"],
+                  "last_ok": (_read(folder / "mirror.json") or {}).get("last_ok"),
+                  "abgleich": {"ok": None, "grund": "pull.json unlesbar"}}
+        _write(folder / "mirror.json", result)
+        return result
     errors = []
     for name in FILES:
         tmp = folder / (name + ".pull")
