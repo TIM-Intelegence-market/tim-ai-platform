@@ -182,6 +182,13 @@ def _of_m8_step(root: Path) -> Mapping[str, Any]:
     return of_paper.step_m8(root)
 
 
+def _of_live_pull(root: Path) -> Mapping[str, Any]:
+    """Copy of the PS5 live journal (plan P4) and its comparison with stage A; only where ``pull.json`` exists."""
+    from src.research_lab.forward import of_live_mirror
+
+    return of_live_mirror.pull(root)
+
+
 @dataclass
 class Workshop:
     """IO side. ``root`` is the checkout the LaunchAgent runs from (on the Mac ~/TIM-live)."""
@@ -193,6 +200,7 @@ class Workshop:
     forward: Callable[[Path], Mapping[str, Any]] | None = None
     of_paper: Callable[[Path], Mapping[str, Any]] = _of_paper_step
     of_m8: Callable[[Path], Mapping[str, Any]] = _of_m8_step
+    of_live_pull: Callable[[Path], Mapping[str, Any]] = _of_live_pull
 
     @property
     def research(self) -> Path:
@@ -411,10 +419,19 @@ class Workshop:
             state["of_m8"] = {"last_run": _iso(now), "last_result": m8}
             if m8.get("new_events") or m8["ok"] is False:
                 summary["of_m8"] = m8
+            try:
+                mirror = dict(self.of_live_pull(self.root))
+                live = {"ok": True, "pulled": mirror.get("pulled"), "abgleich": (mirror.get("abgleich") or {}).get("ok")}
+            except Exception as exc:  # shown in the status, retried next wake-up
+                live = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:500]}
+            state["of_live"] = {"last_run": _iso(now), "last_result": live}
+            if live["ok"] is False or live.get("abgleich") is False:
+                summary["of_live"] = live
         if not dry_run:
             state["schema"], state["checked_at"] = SCHEMA, _iso(now)
             self.write_state(state)
             forward = summary.get("forward") or {}
-            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False or "of_paper" in summary or "of_m8" in summary:
+            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False or "of_paper" in summary or "of_m8" in summary \
+                    or "of_live" in summary:
                 self.log(summary)
         return summary
