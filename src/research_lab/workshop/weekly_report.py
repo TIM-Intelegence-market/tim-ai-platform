@@ -106,7 +106,11 @@ def _gedaechtnis(trades: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     """G4: Fehler im Gedächtnis. Nur lesen; ein Fehler hier darf den Wochenbericht nie stoppen."""
     try:
         from src.research_lab import gedaechtnis, gedaechtnis_fehler
-        return gedaechtnis_fehler.finde(gedaechtnis.laden(), trades)
+        aussagen = gedaechtnis.laden()
+        return {**gedaechtnis_fehler.finde(aussagen, trades),
+                "tabelle": gedaechtnis_fehler.ergebnistabelle(aussagen, trades),
+                "score": gedaechtnis_fehler.score_vergleich(trades),
+                "bausteine": gedaechtnis_fehler.bausteine(trades)}
     except Exception as exc:  # sichtbar machen statt still verschwinden
         return {"fehler": f"{type(exc).__name__}: {exc}"[:120]}
 
@@ -193,6 +197,12 @@ def render(report: Mapping[str, Any]) -> str:
         from src.research_lab import gedaechtnis_fehler
         lines.append("")
         lines.extend(gedaechtnis_fehler.render(fehler))
+        for block in (gedaechtnis_fehler.render_tabelle(fehler.get("tabelle") or []),
+                      gedaechtnis_fehler.render_score(fehler["score"]) if fehler.get("score") else [],
+                      gedaechtnis_fehler.render_bausteine(fehler.get("bausteine") or [])):
+            if block:
+                lines.append("")
+                lines.extend(block)
     lines.append("")
     lines.append("Nur Papier. TIM ändert nichts ohne dein Ja; Holdout 2025 bleibt gesperrt.")
     return "\n".join(lines) + "\n"

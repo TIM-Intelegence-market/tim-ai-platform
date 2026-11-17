@@ -39,5 +39,5 @@ def test_cli_lists_groups_and_checks(capsys):
     assert g.main([]) == 0
     assert "gesamt:" in capsys.readouterr().out
     assert g.main(["--pruefen"]) == 0
-    assert g.main(["--gruppe", "1"]) == 0
+    assert g.main(["--gruppe", "4"]) == 0
     assert "C22" in capsys.readouterr().out
