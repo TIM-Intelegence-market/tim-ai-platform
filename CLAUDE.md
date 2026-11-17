@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+@AGENTS.md
+
+Wissensindex für Claude und Codex: `docs/WISSEN_FUER_AGENTEN.md`.
+
 Gemeinsame, modellübergreifende Arbeitsgrundlage: `ai-resources/KI-Ressourcen.md`
 (Arbeitsregeln, Katalog der 45 Bibliothekseinträge, Playbook-Prompts, Baupläne).
 Bei Planung, Review, Übergaben oder neuen Playbooks dort nachlesen.
