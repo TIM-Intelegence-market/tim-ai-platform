@@ -105,7 +105,10 @@ und `get_index_price`, kein Key, kein Konto; `src/dashboard/gamma_data.py`) und 
 - **Gamma Flip**: der Preis, an dem das geschätzte Händler-Gamma das Vorzeichen wechselt, der
   Schnittpunkt nächst am aktuellen Preis (Suche ±15 %).
 - **Call Wall / Put Wall**: größtes Call-Gamma über dem Preis, größtes Put-Gamma unter dem Preis.
-  Zusätzlich die drei größten Open-Interest-Strikes je Seite.
+  Sie liegen von der Rechnung her nah am Preis und wandern mit ihm (04.–17.11.2026: Put Wall in 49 % der
+  Stände höchstens 1,6 % unter dem Preis, 11 Wechsel am Tag).
+- **Call-OI-Wand / Put-OI-Wand**: Strike mit dem größten offenen Bestand je Seite, ändert sich selten.
+  Im Schnappschuss stehen zusätzlich die drei größten Open-Interest-Strikes je Seite.
 - **Max Pain** und **Expected Move** (ATM-IV × √Zeit) des Hauptverfalls, das ist der Verfall mit
   dem meisten Open Interest in den nächsten 7 Tagen.
 
@@ -114,7 +117,9 @@ Wo es auftaucht:
 - `/api/gamma?symbol=BTCUSDT`: ganzer Schnappschuss mit Alter (`stale` nach 20 Minuten).
 - `/api/prep` → `gamma`: Regime, Level, `analysis_input`.
 - Chart `/chart`: Gruppe „Options-Gamma (Deribit)“ (Flip orange, Call Wall grün, Put Wall rot,
-  Max Pain grau gestrichelt, Expected Move gepunktet). Nicht in der öffentlichen englischen Ansicht.
+  OI-Wände grün/rot gestrichelt, Max Pain grau gestrichelt, Expected Move gepunktet). Jede Linie beginnt
+  dort, wo das Level seinen jetzigen Wert bekam (Toleranz 0,25 %), nie früher; nach einem Neustart
+  werden die Anfänge aus dem Level-Log gelesen. Nicht in der öffentlichen englischen Ansicht.
 - Orderflow-Analyse: Eingabefeld `gamma` (der `analysis_input`-Block). Daraus werden Aussagen
   wie `above_gamma_flip_dealer_hedging_dampens_moves`, ohne Punkte, ohne Einfluss auf
   Konfidenz oder Entscheidung.
