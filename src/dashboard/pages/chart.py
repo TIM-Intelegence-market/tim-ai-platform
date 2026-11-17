@@ -166,6 +166,11 @@ def _chart_svg(model: dict[str, Any], show_all: bool = False) -> str:
 
     # Levels widen the price axis when they are close; far ones are named at the edge instead.
     candidates = [profile.get("vah"), profile.get("val"), profile.get("poc")] + [b["level"] for b in model.get("bos", [])]
+    # Main reference levels (prior day, prior week, naked POC) close to the window widen it too, so one just
+    # outside the candles is drawn instead of named at the edge.
+    # Only those within a quarter of the candle range, so the candles do not flatten for a level further out.
+    candidates += [r["price"] for r in model.get("reference_levels", []) if r.get("price") is not None
+                   and level_kind(r.get("source")) != "minor" and low - span * 0.25 <= r["price"] <= high + span * 0.25]
     level_plans = (model.get("level_plans") or {}).get("plans") or []
     for scenario in [*(analysis.get("scenarios") or []), *level_plans]:
         candidates += [scenario.get("entry_low"), scenario.get("entry_high"), scenario.get("trigger")]
@@ -272,7 +277,7 @@ def _chart_svg(model: dict[str, Any], show_all: bool = False) -> str:
         plan_text = scenario.get("plan_text") or f"Plan {sid} {direction}"
         if lo is not None and hi is not None:
             lo, hi = min(lo, hi), max(lo, hi)
-            if visible(lo) or visible(hi):
+            if hi >= y_low and lo <= y_high:  # overlaps the window, also when it covers all of it
                 top_price, bottom_price = min(hi, y_high), max(lo, y_low)
                 parts.append(f"<rect x='{zone_x:.1f}' y='{y(top_price):.1f}' width='{zone_w:.1f}' height='{max(2.0, y(bottom_price) - y(top_price)):.1f}' class='tc-zone tc-zone--{kind}'/>")
                 plan_texts.append(f"<text x='{zone_x + 4:.1f}' y='{y(top_price) + 12:.1f}' class='tc-zone-text tc-zone-text--{kind}'><title>{_safe(plan_text)}</title>{_safe(cut(plan_text))}</text>")
