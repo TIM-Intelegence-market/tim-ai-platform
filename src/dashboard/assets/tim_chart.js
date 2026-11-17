@@ -1497,7 +1497,7 @@
       const id = localStorage.getItem(LAYOUT_ACTIVE);
       if (id === null) return localStorage.getItem(STORE) === null ? 'tim:read' : '';
       return id === '-' ? '' : id;
-    } catch (error) { return 'tim:standard'; }
+    } catch (error) { return 'tim:read'; }  // no storage: shownGroups shows the Lesen layers
   }
   function setActiveLayout(id) { try { localStorage.setItem(LAYOUT_ACTIVE, id || '-'); } catch (error) { /* ignore */ } }
   function findLayout(id) {
@@ -1980,9 +1980,9 @@
         const input = layers.querySelector("input[value='fp']"); if (input) input.checked = true;
       }
     }
-    if (action.dataset.action === 'reset') { try { localStorage.removeItem(STORE); } catch (error) { /* ignore */ }
-      try { localStorage.removeItem(KNOWN); } catch (error) { /* ignore */ }
+    if (action.dataset.action === 'reset') {  // back to TIM Standard, saved: an empty store would mean the Lesen start view
       const groups = new Set(model ? model.default_groups : []);
+      saveGroups(groups);
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
       applyVisibility(groups); setActiveLayout('tim:standard'); buildLayouts(); }
   });

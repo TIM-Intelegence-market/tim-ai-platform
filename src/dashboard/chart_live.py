@@ -1196,7 +1196,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     model["last_closed"] = next((c["close_time"].isoformat() for c in reversed(candles) if c["closed"]), None)
     # Freshness in the chart head (Hermes 17.11.2026): the newest closed candle is normally younger than one
     # interval; five minutes more and the supply has likely stopped.
-    model["stale_after_seconds"] = INTERVAL_SECONDS.get(timeframe, 0) + 300
+    # The Nasdaq index is delayed and has no candles outside US trading hours: no warning there.
+    model["stale_after_seconds"] = None if symbol in INDEX_SYMBOLS else INTERVAL_SECONDS.get(timeframe, 0) + 300
 
     # Uzi 09.11.2026 (Broncx-Sicht): with "Perp" the levels, value areas, TPO and VWAP come from the
     # perpetual too (klines and perp trades); spot and perp are different auctions and sit a basis apart.

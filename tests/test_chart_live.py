@@ -482,3 +482,11 @@ def test_a_first_visit_starts_in_the_lesen_layout_with_few_layers() -> None:
     base = re.search(r"const BASE = \[([^\]]*)\]", script).group(1).count("'") // 2
     read = re.search(r"const READ = \[([^\]]*)\]", script).group(1).count("'") // 2
     assert base + read <= 9
+
+
+def test_the_nasdaq_index_gets_no_stale_warning_and_reset_keeps_tim_standard() -> None:
+    """Prüfung 17.11.2026: the delayed index has no candles after the US close; "Zurücksetzen" must stay on TIM Standard."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    reset = script[script.index("action.dataset.action === 'reset'"):]
+    assert "saveGroups(groups);" in reset[:400] and "removeItem(STORE)" not in reset[:400]
+    assert "return 'tim:read'; }  // no storage" in script
