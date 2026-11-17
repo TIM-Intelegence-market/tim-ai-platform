@@ -85,3 +85,18 @@ def test_hermes_page_shows_the_faults(tmp_path: Path) -> None:
     fd.update(state.fault_diagnosis_path, ["Dienst com.tim.a läuft nicht, Rückgabecode 1."], NOW, lambda t: {"ok": True, "answer": "Dienst a ist weg."})
     html = render_hermes(build_hermes(state, NOW))
     assert "Störungen" in html and "Dienst a ist weg." in html
+
+
+def test_a_changing_number_in_a_control_center_item_is_not_a_new_fault(tmp_path: Path) -> None:
+    path = tmp_path / "f.json"
+    asked: list[str] = []
+
+    def ask(text: str) -> dict:
+        asked.append(text)
+        return {"ok": True, "answer": "x"}
+
+    first = ["Control Center meldet: Eigene Daten: 7/8 Sammler frisch (Bybit-Orderflow: 10 Neuverbindungen/24h)."]
+    second = ["Control Center meldet: Eigene Daten: 7/8 Sammler frisch (Bybit-Orderflow: 11 Neuverbindungen/24h)."]
+    assert fd.update(path, first, NOW, ask)
+    assert fd.update(path, second, NOW + timedelta(hours=1), ask) is None and len(asked) == 1
+    assert fd.signature(first) == ["Control Center meldet: Eigene Daten"]
