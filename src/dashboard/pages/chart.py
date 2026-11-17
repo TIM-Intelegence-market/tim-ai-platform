@@ -555,7 +555,9 @@ def _summary_section(state: Any) -> str:
     from src.dashboard.state import plan_journal_paths
 
     try:
-        return render_de(build_summary(state.chart_series(), load_plan_journals(plan_journal_paths(state))))
+        with state.lock:
+            trades = getattr(state, "footprint", None)
+        return render_de(build_summary(state.chart_series(), load_plan_journals(plan_journal_paths(state)), trades=trades or None))
     except Exception as exc:  # noqa: BLE001 - the chart must still render
         return f"<section class='cc-section tc-summary'><p class='cc-note'>Zusammenfassung nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
 

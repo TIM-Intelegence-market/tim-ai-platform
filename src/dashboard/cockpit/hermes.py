@@ -56,12 +56,24 @@ def build_hermes(state: Any, now: datetime | None = None, token: str = "", asked
                   reason="" if status.get("mcp_servers") else "Hermes kennt tim-ops/tim-graph nicht", now=now, extra={"kind": "info"}),
     ]
     log = list(reversed(hermes_bridge.load_log(log_path)))
-    report, opinions, critic = None, None, []
+    report, opinions, critic, faults, backlog = None, None, [], [], None
     try:
         from src.dashboard import daily_critic
 
         critic = daily_critic.latest(getattr(state, "daily_critic_path", None), 14)
     except Exception:  # noqa: BLE001, S110 - die Seite zeigt den Rest auch ohne die Kritik
+        pass
+    try:
+        from src.dashboard import critic_backlog
+
+        backlog = critic_backlog.summary(getattr(state, "critic_backlog_path", None), now)
+    except Exception:  # noqa: BLE001, S110 - ohne Backlog zeigt die Seite den Rest
+        pass
+    try:
+        from src.dashboard import fault_diagnosis
+
+        faults = fault_diagnosis.latest(getattr(state, "fault_diagnosis_path", None), 5)
+    except Exception:  # noqa: BLE001, S110 - ohne die Diagnose zeigt die Seite den Rest
         pass
     try:  # TIMs eigene Aufträge an Hermes; fehlt eine Datei, bleibt der Abschnitt leer
         from src.dashboard import daily_report, plan_opinion
@@ -73,7 +85,7 @@ def build_hermes(state: Any, now: datetime | None = None, token: str = "", asked
         opinions = {"summary": stored.get("summary") or plan_opinion.summary(stored), "recent": recent}
     except Exception:  # noqa: BLE001, S110 - die Seite zeigt Status und Verlauf auch ohne diese Abschnitte
         pass
-    return {"report": report, "opinions": opinions, "critic": critic, "schema": SCHEMA, "generated_at": now.isoformat(), "safety": SAFETY, "overall": main.state, "headline": main.value,
+    return {"report": report, "opinions": opinions, "critic": critic, "faults": faults, "backlog": backlog, "schema": SCHEMA, "generated_at": now.isoformat(), "safety": SAFETY, "overall": main.state, "headline": main.value,
             "status": {k: v for k, v in status.items() if k != "last"}, "tiles": [t.to_dict() for t in tiles], "log": log,
             "token": token, "asked": asked, "error": error, "can_ask": can_ask, "max_question": hermes_bridge.MAX_QUESTION}
 
@@ -104,6 +116,37 @@ def _critic_section(reports: list[dict[str, Any]] | None) -> str:
                     for r in reports[1:])
     return (f"{head}{one(reports[0])}<p class='note'>Stand {_e(local_time(reports[0].get('at'), with_date=True))} Uhr. Projekt und Chart "
             f"aus Nutzersicht, nur lesend; Hermes sieht Zahlen und Überschriften, kein Bild und keinen Code.</p>{older}</section>")
+
+
+def _backlog_section(backlog: dict[str, Any] | None) -> str:
+    head = "<section aria-labelledby='h-backlog'><h2 id='h-backlog'>Kritik-Backlog</h2>"
+    open_points = (backlog or {}).get("open") or []
+    counts = (backlog or {}).get("counts") or {}
+    if not open_points:
+        return head + "<p class='empty'>Noch keine offenen Punkte. Sie entstehen aus der täglichen Kritik um 7 Uhr.</p></section>"
+    rows = "".join(f"<li><b>{_e(p.get('area'))}:</b> {_e(p.get('title'))} <span class='note'>offen seit {int(p.get('days') or 0)} Tag(en), "
+                   f"{int(p.get('times_seen') or 1)}x genannt</span><br><span class='note'>{_e(p.get('proposal'))}</span></li>" for p in open_points)
+    return (f"{head}<ul>{rows}</ul><p class='note'>{counts.get('offen', 0)} offen, {counts.get('erledigt', 0)} vom Kritiker als erledigt "
+            f"gemeldet, {counts.get('nicht mehr genannt', 0)} seit einer Woche nicht mehr genannt. Ob ein Punkt wirklich erledigt ist, "
+            "prüfst du.</p></section>")
+
+
+def _fault_section(entries: list[dict[str, Any]] | None) -> str:
+    head = "<section aria-labelledby='h-fault'><h2 id='h-fault'>Störungen</h2>"
+    if not entries:
+        return head + "<p class='empty'>Keine Störung festgehalten. Bei einer neuen Störung erklärt Hermes sie hier.</p></section>"
+
+    def one(entry: dict[str, Any]) -> str:
+        when = _e(local_time(entry.get("at"), with_date=True))
+        if entry.get("resolved"):
+            return f"<p><b class='s-ok'>Behoben</b> <span class='note'>{when} Uhr: keine Störung mehr.</span></p>"
+        text = (f"<p style='white-space:pre-wrap'>{_e(entry.get('text'))}</p>" if entry.get("text")
+                else f"<p class='note'>Hermes hat nicht geantwortet ({_e(entry.get('error'))}); hier die Fakten.</p>")
+        facts = "".join(f"<li>{_e(line)}</li>" for line in entry.get("facts") or [])
+        return f"<p class='note'>{when} Uhr</p>{text}<details><summary>Fakten dazu</summary><ul>{facts}</ul></details>"
+
+    older = "".join(f"<details><summary>Früher: {_e(local_time(e.get('at'), with_date=True))} Uhr</summary>{one(e)}</details>" for e in entries[1:])
+    return f"{head}{one(entries[0])}<p class='note'>Nur lesend: Hermes sieht Dienstnamen, Codes und bereinigte Fehlerzeilen, startet nichts neu.</p>{older}</section>"
 
 
 def _opinion_section(opinions: dict[str, Any] | None) -> str:
@@ -143,7 +186,9 @@ def hermes_body(model: dict[str, Any]) -> str:
     else:
         out.append("<p class='note'>Fragen stellen geht nur direkt am Mac; die öffentliche Ansicht ist nur lesend.</p>")
     out.append(_report_section(model.get("report")))
+    out.append(_fault_section(model.get("faults")))
     out.append(_critic_section(model.get("critic")))
+    out.append(_backlog_section(model.get("backlog")))
     out.append(_opinion_section(model.get("opinions")))
     items = []
     for entry in (model.get("log") or [])[:10]:

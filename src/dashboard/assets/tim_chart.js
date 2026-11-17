@@ -105,14 +105,14 @@
     return TIME_FMT.format(d);
   };
   const T = EN
-    ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of', next: 'Next release',
+    ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', lastCandle: (at, min) => `last candle ${at}, ${min} min ago`, stale: 'data stale', asOf: 'as of', next: 'Next release',
         failed: m => `Loading failed (${m}). Retrying in 30 s.` }
-    : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand', next: 'Nächster Termin',
+    : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', lastCandle: (at, min) => `letzte Kerze ${at}, vor ${min} min`, stale: 'Daten veraltet', asOf: 'Stand', next: 'Nächster Termin',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
   const P = EN
-    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', delta: 'Delta volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
+    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', delta: 'Delta volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7.5d (Binance only)', funding: 'Funding % / 8h', premium: 'Coinbase premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp check: ${ok}/${n} h equal to Binance, ${gaps} gaps` }
-    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', delta: 'Delta Volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
+    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', delta: 'Delta Volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI-Z 7,5 T (nur Binance)', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp-Prüfung: ${ok}/${n} h gleich mit Binance, ${gaps} Lücken` };
   // The chart library calls this for every price label on every frame: toLocaleString with options builds a new
   // formatter each call (Uzi 10.11.2026 "chart zu langsam": ~90 % of the frame time on a phone), so build them once.
@@ -1417,7 +1417,10 @@
         return groups;
       }
     } catch (error) { /* private window: defaults */ }
-    return new Set(model ? model.default_groups : []);
+    if (!model) return new Set();
+    // First visit (nothing saved): the Lesen layout, not every default layer.
+    const all = new Set(Object.keys(model.groups));
+    return new Set(BASE.concat(READ).filter(key => all.has(key)));
   }
   function saveGroups(groups) {
     try {
@@ -1436,13 +1439,13 @@
     ? { label: 'Layout', tim: 'TIM layouts (each with levels and structure)', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
         ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
         fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', fpProfile: 'Footprint: profile', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
-        standard: 'TIM standard', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
+        standard: 'TIM standard (all default layers)', read: 'Read (few layers, start)', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
         vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades",
         exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles' }
     : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
         fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', fpProfile: 'Footprint: Profil', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
-        standard: 'TIM Standard', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
+        standard: 'TIM Standard (alle Standard-Ebenen)', read: 'Lesen (wenige Ebenen, Start)', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
         vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades',
         exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
@@ -1462,7 +1465,11 @@
   // groups: null = the server's default layers. fp: footprint style the layout sets (Orderflow Pro: profile,
   // Uzi 10.11.2026 "footprint im OF Pro als Profil"); without fp a TIM layout shows bid × ask.
   const BASE = ['day', 'week', 'month', 'naked', 'structure', 'trend'];
+  // Lesen (Hermes 17.11.2026: 21 of 35 layers were on at the first visit): the base levels, sessions, VWAP and
+  // TIM's mid-term plans, about nine layers. A first visit starts here; "TIM Standard" keeps every default layer.
+  const READ = ['session', 'vwap', 'plans_mid'];
   const TIM_LAYOUTS = [
+    { id: 'tim:read', name: L.read, groups: READ },
     { id: 'tim:orderflow', name: L.orderflow, market: 'perp', groups: ['fp', 'bubbles', 'cvd', 'oi', 'liqev', 'vwap'] },
     { id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi'] },
     { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'running', 'session', 'ib'] },
@@ -1488,9 +1495,9 @@
   function activeLayout() {
     try {
       const id = localStorage.getItem(LAYOUT_ACTIVE);
-      if (id === null) return localStorage.getItem(STORE) === null ? 'tim:standard' : '';
+      if (id === null) return localStorage.getItem(STORE) === null ? 'tim:read' : '';
       return id === '-' ? '' : id;
-    } catch (error) { return 'tim:standard'; }
+    } catch (error) { return 'tim:read'; }  // no storage: shownGroups shows the Lesen layers
   }
   function setActiveLayout(id) { try { localStorage.setItem(LAYOUT_ACTIVE, id || '-'); } catch (error) { /* ignore */ } }
   function findLayout(id) {
@@ -1897,7 +1904,16 @@
       const health = h && h.checks ? ' · ' + P.health(h.checks_ok, h.checks, h.gaps) : '';
       const bandNotes = [model.cvd && model.cvd.note].filter(Boolean);
       const allNotes = [nextRelease(), notes, ...bandNotes].filter(Boolean).join(' · ');
-      status.textContent = `${model.candles.length} ${T.candles} · Level: ${model.level_source || '–'}${trades}${health} · ${new Date().toLocaleTimeString(LOCALE)}` + (allNotes ? ' · ' + allNotes : '');
+      let fresh = '';
+      status.classList.remove('tc-live-status--stale');
+      if (model.last_closed) {
+        const closed = new Date(model.last_closed);
+        const age = Math.max(0, Math.round((Date.now() - closed.getTime()) / 60000));
+        const stale = model.stale_after_seconds && age * 60 > model.stale_after_seconds;
+        fresh = T.lastCandle(closed.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' }), age) + (stale ? ' · ' + T.stale : '') + ' · ';
+        if (stale) status.classList.add('tc-live-status--stale');
+      }
+      status.textContent = fresh + `${model.candles.length} ${T.candles} · Level: ${model.level_source || '–'}${trades}${health} · ${new Date().toLocaleTimeString(LOCALE)}` + (allNotes ? ' · ' + allNotes : '');
     } catch (error) {
       status.textContent = T.failed(error.message);
     } finally {
@@ -1964,9 +1980,9 @@
         const input = layers.querySelector("input[value='fp']"); if (input) input.checked = true;
       }
     }
-    if (action.dataset.action === 'reset') { try { localStorage.removeItem(STORE); } catch (error) { /* ignore */ }
-      try { localStorage.removeItem(KNOWN); } catch (error) { /* ignore */ }
+    if (action.dataset.action === 'reset') {  // back to TIM Standard, saved: an empty store would mean the Lesen start view
       const groups = new Set(model ? model.default_groups : []);
+      saveGroups(groups);
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
       applyVisibility(groups); setActiveLayout('tim:standard'); buildLayouts(); }
   });

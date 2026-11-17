@@ -275,7 +275,14 @@ def render_de(live: Sequence[Mapping[str, Any]] | None, state: Mapping[str, Any]
     out = [f"<section class='cc-section tc-patterns' data-patterns='{P.RULESET}'><p class='cc-section__eyebrow'>Muster: QM, OB, SFP</p>"]
     if live:
         out.append("<p><b>Gerade lebendig:</b></p><ul>")
-        for s in list(live)[:8]:
+        seen: set[tuple[Any, ...]] = set()
+        unique = []
+        for s in live:  # two profiles can share a higher timeframe and find the same setup there
+            key = (s["tf"], s["kind"], s["direction"], s["zone_low"], s["zone_high"])
+            if key not in seen:
+                seen.add(key)
+                unique.append(s)
+        for s in unique[:8]:
             side = "Long" if s["direction"] == P.LONG else "Short"
             note = "" if s["valid"] else f" (ungültig: {s['reason']})"
             out.append(f"<li>{_safe(s['tf'])} {_safe(s['kind'])} {side} {_safe(_p(s['zone_low']))}–{_safe(_p(s['zone_high']))}, "

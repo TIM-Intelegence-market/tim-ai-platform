@@ -629,7 +629,7 @@ class TIMApplication:
     async def _hermes_notes_loop(self) -> None:
         # DeepSeek über Hermes (Uzi 09.11.2026): Zweitmeinung zu neuen 15m/1h-Plänen und Tagesbericht um 8 und 22 Uhr.
         # Reads journals and the Lage, writes its own two files. Own loop: a slow answer never delays a journal.
-        from src.dashboard import daily_critic, daily_report, plan_opinion, waiting_on_uzi
+        from src.dashboard import daily_critic, daily_report, fault_diagnosis, plan_opinion, waiting_on_uzi
 
         def attention() -> list:
             from src.dashboard.cockpit.lage import build_lage
@@ -649,7 +649,11 @@ class TIMApplication:
                                         attention, waiting=waiting_on_uzi.items)
                 # Täglicher Kritiker (Uzi 11.11.2026): 7 Uhr, Projekt und Chart aus Nutzersicht, nur lesend.
                 await asyncio.to_thread(daily_critic.update, state.daily_critic_path,
-                                        daily_critic.state_sources(state, symbol=settings.symbol))
+                                        daily_critic.state_sources(state, symbol=settings.symbol),
+                                        backlog=state.critic_backlog_path)
+                # Störungs-Diagnose (Uzi 17.11.2026): bei neuer Störung erklärt Hermes sie, nur lesend.
+                fault_lines = await asyncio.to_thread(fault_diagnosis.state_lines, attention)
+                await asyncio.to_thread(fault_diagnosis.update, state.fault_diagnosis_path, fault_lines)
             except asyncio.CancelledError:
                 raise
             except Exception as error:  # noqa: BLE001 - a comment must not stop the runtime

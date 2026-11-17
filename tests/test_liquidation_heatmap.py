@@ -141,10 +141,10 @@ def test_chart_carries_heat_cells_and_cluster_levels_also_in_english() -> None:
     layer = model["liquidation"]
     assert layer["cells"] and layer["step"] == heat["step"] and layer["max_usd"] == heat["max_usd"]
     liq = {d["name"]: d for d in model["drawings"] if d["group"] == "liq"}
-    assert set(liq) == {"Liq-Cluster oben", "Liq-Cluster unten"}
+    assert set(liq) == {"Liq-Cluster oben (Modell)", "Liq-Cluster unten (Modell)"}
     assert any(n.startswith("Liquidations-Heatmap: Modell aus Open Interest") for n in model["notes"])  # P9: a model, never real liquidations
-    assert liq["Liq-Cluster oben"]["price"] > 113_000 > liq["Liq-Cluster unten"]["price"]
-    assert liq["Liq-Cluster oben"]["color"] == liquidation_data.LEVEL_COLOR["above"]
+    assert liq["Liq-Cluster oben (Modell)"]["price"] > 113_000 > liq["Liq-Cluster unten (Modell)"]["price"]
+    assert liq["Liq-Cluster oben (Modell)"]["color"] == liquidation_data.LEVEL_COLOR["above"]
     assert "liq" in model["groups"] and "liq" in model["default_groups"]
     # Other coins without an estimate carry none.
     assert build_live_chart("ETHUSDT", "30m", None, cache=KlineCache(fake_fetch()), now=CHART_NOW,
@@ -152,7 +152,7 @@ def test_chart_carries_heat_cells_and_cluster_levels_also_in_english() -> None:
     public = english_chart_model(model)
     assert public["groups"]["liq"] == "Liquidation heatmap (estimate)"
     names = {d["name"] for d in public["drawings"] if d["group"] == "liq"}
-    assert names == {"Liq cluster above", "Liq cluster below"}
+    assert names == {"Liq cluster above (model)", "Liq cluster below (model)"}
     for d in public["drawings"]:
         if d["group"] == "liq":
             assert not re.search(r"[äöüß]|oben|unten|geschätzt", f"{d['name']} {d['label']} {d['note']}"), d
