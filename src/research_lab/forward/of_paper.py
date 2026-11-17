@@ -52,6 +52,7 @@ def _write(path: Path, payload: Any) -> None:
 
 
 class PaperJournal:
+    recompute_each_step = False   # stage A: the engine runs only when a new day arrived
     def __init__(self, folder: Path | str = FOLDER, *, cfg: Config = PAPER_CONFIG, store: MinuteBarStore | None = None,
                  clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> None:
         self.folder = Path(folder)
@@ -115,7 +116,7 @@ class PaperJournal:
                                   "last_day": last.isoformat() if last else None, "waiting_for": None}
         if waiting:
             status["waiting_for"], status["last_attempt"], status["waiting_error"] = waiting.split("|", 2)
-        if last is None or last.isoformat() == previous.get("last_day"):
+        if last is None or (not self.recompute_each_step and last.isoformat() == previous.get("last_day")):
             for key in ("trades", "net_r", "mean_r", "max_drawdown_r", "recent", "open", "trichter"):
                 if key in previous:
                     status[key] = previous[key]
@@ -132,6 +133,10 @@ class PaperJournal:
             trades.extend(engine.run_day(self.store.load(day), self.store.load_profile(day)))
         if last < first:
             before = dict(engine.stats.trichter)
+        extra, engine, until = self._today(engine, last)
+        trades.extend(extra)
+        if until is not None:
+            status["live_until"] = _iso(datetime.fromtimestamp(until / 1000, tz=timezone.utc))
         counted = [t for t in trades if t.signal.signal_ms >= _ms(first)]
         steps = {k: v - before.get(k, 0) for k, v in engine.stats.trichter.items() if v - before.get(k, 0)}
         rows = [t.as_dict() for t in counted]
@@ -158,6 +163,10 @@ class PaperJournal:
         _write(self.folder / "journal.json", {"status": status, "zusammenfassung": summarize(counted, self.cfg), "trades": rows})
         _write(self.folder / "status.json", status)
         return status
+
+    def _today(self, engine: Engine, last: date) -> tuple[list[Trade], Engine, int | None]:
+        """Stage A has no today; the live journal runs the closed minutes of today on a copy of the engine."""
+        return [], engine, None
 
     def _events(self) -> list[dict]:
         path = self.folder / "events.jsonl"
