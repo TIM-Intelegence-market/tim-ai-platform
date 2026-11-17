@@ -45,7 +45,7 @@ GROUPS_EN = {
     "gamma": "Options gamma (Deribit)",
     "liq": "Liquidation heatmap (estimate)",
     "liqev": "Liquidations (real, Binance + Bybit)",
-    "cvd": "CVD spot vs. perp", "delta": "Delta volume per candle (chosen market)", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d)",
+    "cvd": "CVD spot vs. perp", "delta": "Delta volume per candle (chosen market)", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d, Binance only)",
     "funding": "Funding rate (Binance perp)", "premium": "Coinbase premium (USD vs. USDT)",
     "dominance": "BTC and USDT dominance (daily)",
     "macro": "Release dates (US CPI, FOMC)",
@@ -107,8 +107,8 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^Hauptverfall (\S+) \((\d+) % des OI\)$", r"main expiry \1 (\2 % of open interest)"),
     (r"^erwartete Bewegung bis Verfall, ATM-IV ([\d.]+) %$", r"expected move until expiry, ATM IV \1 %"),
     # Estimated liquidation clusters (liquidation_data.py).
-    (r"^Liq-Cluster oben$", "Liq cluster above"),
-    (r"^Liq-Cluster unten$", "Liq cluster below"),
+    (r"^Liq-Cluster oben \(Modell\)$", "Liq cluster above (model)"),
+    (r"^Liq-Cluster unten \(Modell\)$", "Liq cluster below (model)"),
     (r"^stärkste geschätzte Short-Liquidationen über dem Preis$", "strongest estimated short liquidations above the price"),
     (r"^stärkste geschätzte Long-Liquidationen unter dem Preis$", "strongest estimated long liquidations below the price"),
 )

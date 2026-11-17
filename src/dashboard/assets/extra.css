@@ -130,3 +130,4 @@ caption{text-align:left;padding:11px 13px;color:var(--muted);font-size:11px;back
 .ob-row{position:relative;display:flex;justify-content:space-between;padding:1px 6px}.ob-row i{position:absolute;right:0;top:0;bottom:0;opacity:.22}.ob-row span{position:relative}
 .ob-ask i{background:#ff6b6b}.ob-ask span:first-of-type{color:#ff6b6b}.ob-bid i{background:#35d39a}.ob-bid span:first-of-type{color:#35d39a}
 .ob-midrow{display:flex;justify-content:space-between;padding:4px 6px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:2px 0}
+.tc-live-status--stale{color:var(--red);font-weight:600}

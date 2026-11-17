@@ -119,7 +119,7 @@ GROUP_NAMES = {
     "gamma": "Options-Gamma (Deribit)",
     "liq": "Liquidations-Heatmap (Modell, keine echten Liquidationen)",
     "liqev": "Liquidationen (echt, Binance + Bybit)",
-    "cvd": "CVD Spot vs. Perp", "delta": "Delta Volume je Kerze (gewählter Markt)", "oi": "Open Interest je Börse (Binance, Bybit) + Z-Score (7,5 T)",
+    "cvd": "CVD Spot vs. Perp", "delta": "Delta Volume je Kerze (gewählter Markt)", "oi": "Open Interest je Börse (Binance, Bybit) + Z-Score (7,5 T, nur Binance)",
     "funding": "Funding Rate (Binance Perp)", "premium": "Coinbase-Premium (USD vs. USDT)",
     "dominance": "BTC- und USDT-Dominanz (täglich)",
     "macro": "Termine (US-CPI, FOMC)",
@@ -1194,6 +1194,10 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                          "close": c["close"], "volume": c["volume"], "closed": bool(c["closed"])} for c in candles]
     model["last"] = candles[-1]["close"]
     model["last_closed"] = next((c["close_time"].isoformat() for c in reversed(candles) if c["closed"]), None)
+    # Freshness in the chart head (Hermes 17.11.2026): the newest closed candle is normally younger than one
+    # interval; five minutes more and the supply has likely stopped.
+    # The Nasdaq index is delayed and has no candles outside US trading hours: no warning there.
+    model["stale_after_seconds"] = None if symbol in INDEX_SYMBOLS else INTERVAL_SECONDS.get(timeframe, 0) + 300
 
     # Uzi 09.11.2026 (Broncx-Sicht): with "Perp" the levels, value areas, TPO and VWAP come from the
     # perpetual too (klines and perp trades); spot and perp are different auctions and sit a basis apart.

@@ -393,7 +393,7 @@ def test_layers_are_sorted_in_named_layouts():
     assert "const BASE = ['day', 'week', 'month', 'naked', 'structure', 'trend'];" in script
     assert "layout.groups ? (layout.clean ? layout.groups : BASE.concat(layout.groups)) : model.default_groups" in script
     layouts = script[script.index("const TIM_LAYOUTS = ["):script.index("function ownLayouts()")]
-    assert re.findall(r"id: '(tim:[a-z]+)'", layouts) == ["tim:orderflow", "tim:footprint", "tim:tpo", "tim:vp", "tim:positioning",
+    assert re.findall(r"id: '(tim:[a-z]+)'", layouts) == ["tim:read", "tim:orderflow", "tim:footprint", "tim:tpo", "tim:vp", "tim:positioning",
                                                           "tim:macro", "tim:trades", "tim:pro", "tim:exo", "tim:exovp", "tim:exotpo", "tim:standard"]
     used = set(re.findall(r"'([a-z_]+)'", "".join(re.findall(r"groups: \[([^\]]*)\]", layouts))))
     assert used <= set(chart_live.GROUP_NAMES)
@@ -464,3 +464,29 @@ def test_indicator_bands_live_in_their_own_window_below_the_chart() -> None:
     # The candles keep their height: the price scale of the upper chart no longer shrinks per band.
     assert "bottom: 0.18 + BAND" not in script
     assert "subscribeVisibleLogicalRangeChange" in script and "function alignSub()" in script
+
+
+def test_the_chart_head_names_the_age_of_the_last_candle_and_warns_when_stale() -> None:
+    """Hermes 17.11.2026: a 30m candle looks the same with a stopped supply as in a calm market."""
+    model = _model("BTCUSDT", "30m")
+    assert model["last_closed"] and model["stale_after_seconds"] == INTERVAL_SECONDS["30m"] + 300
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "letzte Kerze ${at}, vor ${min} min" in script and "tc-live-status--stale" in script
+
+
+def test_a_first_visit_starts_in_the_lesen_layout_with_few_layers() -> None:
+    """Hermes 17.11.2026: 21 of 35 layers were on at the first visit; Lesen shows the base levels, sessions, VWAP, plans."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "{ id: 'tim:read', name: L.read, groups: READ }" in script
+    assert "=== null ? 'tim:read' : ''" in script
+    base = re.search(r"const BASE = \[([^\]]*)\]", script).group(1).count("'") // 2
+    read = re.search(r"const READ = \[([^\]]*)\]", script).group(1).count("'") // 2
+    assert base + read <= 9
+
+
+def test_the_nasdaq_index_gets_no_stale_warning_and_reset_keeps_tim_standard() -> None:
+    """Prüfung 17.11.2026: the delayed index has no candles after the US close; "Zurücksetzen" must stay on TIM Standard."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    reset = script[script.index("action.dataset.action === 'reset'"):]
+    assert "saveGroups(groups);" in reset[:400] and "removeItem(STORE)" not in reset[:400]
+    assert "return 'tim:read'; }  // no storage" in script
