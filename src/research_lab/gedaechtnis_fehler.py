@@ -33,9 +33,8 @@ def _nutzung_plaene(plaene: Sequence[Mapping[str, Any]]) -> tuple[dict[str, list
         if not begruendung:
             unbekannt += 1
             continue
-        for punkt in begruendung:
-            if isinstance(punkt, Mapping) and punkt.get("id"):
-                je_id[str(punkt["id"])].append(float(net))
+        for kennung in {str(p["id"]) for p in begruendung if isinstance(p, Mapping) and p.get("id")}:
+            je_id[kennung].append(float(net))
     return je_id, unbekannt
 
 
@@ -137,11 +136,16 @@ def _score_zeile(paare: Sequence[tuple[float, float]]) -> dict[str, Any]:
     zeile: dict[str, Any] = {"plaene": len(paare), "werte": len(set(scores)), "rang_korrelation": _spearman(scores, netto),
                              "oben_r": None, "unten_r": None}
     if len(paare) >= 2:
-        sortiert = sorted(paare)
-        halb = len(sortiert) // 2
-        unten, oben = sortiert[:halb], sortiert[len(sortiert) - halb:]
-        zeile["unten_r"] = round(sum(p[1] for p in unten) / len(unten), 3)
-        zeile["oben_r"] = round(sum(p[1] for p in oben) / len(oben), 3)
+        # Teilung am Median des Scores; Pläne genau auf dem Median zählen in keiner Hälfte, damit gleiche
+        # Scores nie nach ihrem Ergebnis auf die Hälften verteilt werden.
+        geordnet = sorted(scores)
+        mitte = (geordnet[(len(geordnet) - 1) // 2] + geordnet[len(geordnet) // 2]) / 2
+        unten = [n for s, n in paare if s < mitte]
+        oben = [n for s, n in paare if s > mitte]
+        if unten and oben:
+            zeile["unten_r"] = round(sum(unten) / len(unten), 3)
+            zeile["oben_r"] = round(sum(oben) / len(oben), 3)
+            zeile["unten_n"], zeile["oben_n"] = len(unten), len(oben)
     zeile["urteil_moeglich"] = len(paare) >= SCORE_MIN_PLAENE
     return zeile
 
@@ -154,11 +158,15 @@ def score_vergleich(plaene: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     for plan in plaene:
         net, score = plan.get("net_r"), plan.get("score")
         zweiter = (plan.get("score_schatten") or {}).get("score") if isinstance(plan.get("score_schatten"), Mapping) else None
-        if net is None or not isinstance(score, (int, float)) or not isinstance(zweiter, (int, float)):
+        if not _ist_zahl(net) or not _ist_zahl(score) or not _ist_zahl(zweiter):
             continue
         live.append((float(score), float(net)))
         schatten.append((float(zweiter), float(net)))
     return {"live": _score_zeile(live), "schatten": _score_zeile(schatten), "min_plaene": SCORE_MIN_PLAENE}
+
+
+def _ist_zahl(wert: Any) -> bool:
+    return isinstance(wert, (int, float)) and not isinstance(wert, bool) and wert == wert  # kein bool, kein NaN
 
 
 def _zahl(wert: float | None) -> str:
@@ -199,7 +207,7 @@ def bausteine(plaene: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         gruppen: dict[str, list[float]] = {"dafuer": [], "dagegen": [], "ohne": []}
         for teile, net in faelle:
             wert = teile.get(name)
-            wert = float(wert) if isinstance(wert, (int, float)) else 0.0
+            wert = float(wert) if _ist_zahl(wert) else 0.0
             gruppen["dafuer" if wert > 0 else "dagegen" if wert < 0 else "ohne"].append(net)
         if not gruppen["dafuer"] and not gruppen["dagegen"]:
             continue
@@ -235,7 +243,7 @@ def render_score(vergleich: Mapping[str, Any]) -> list[str]:
     live, schatten = vergleich["live"], vergleich["schatten"]
     zeile = (f"Score gegen Ergebnis ({n} Pläne): Live-Score {live['werte']} verschiedene Werte, Rangkorrelation "
              f"{_zahl(live['rang_korrelation'])}; Schatten-Score {schatten['werte']} Werte, Rangkorrelation "
-             f"{_zahl(schatten['rang_korrelation'])}, obere Hälfte {_zahl(schatten['oben_r'])} R gegen untere "
+             f"{_zahl(schatten['rang_korrelation'])}, über dem Median {_zahl(schatten['oben_r'])} R gegen darunter "
              f"{_zahl(schatten['unten_r'])} R.")
     if not schatten["urteil_moeglich"]:
         zeile += f" Noch kein Urteil (unter {vergleich['min_plaene']} Plänen)."

@@ -104,6 +104,20 @@ def test_score_vergleich_konstanter_live_score_hat_keine_korrelation():
     assert "Noch kein Urteil" in gf.render_score(v)[0]
 
 
+def test_gleiche_scores_werden_nicht_nach_ergebnis_geteilt():
+    plaene = [_sp(n, 0.2363, 0.25) for n in (-1.0, 1.0, -0.5, 2.0)] + [_sp(0.3, 0.2295, 0.40)]
+    v = gf.score_vergleich(plaene)
+    assert v["schatten"]["oben_r"] is None and v["schatten"]["unten_r"] is None  # Median-Gruppe zählt in keiner Hälfte
+    v = gf.score_vergleich([_sp(-1.0, 0.2, 0.2), _sp(-1.0, 0.2, 0.2), _sp(1.0, 0.2, 0.4), _sp(1.0, 0.2, 0.4)])
+    assert (v["schatten"]["unten_r"], v["schatten"]["oben_r"]) == (-1.0, 1.0) and v["live"]["oben_r"] is None
+
+
+def test_doppelte_id_und_bool_zaehlen_nicht():
+    t = gf.ergebnistabelle([A("A", "belegt", "papier")], [plan(1.0, ["A", "A"])])
+    assert t[0]["plaene"] == 1
+    assert gf.score_vergleich([{"net_r": 1.0, "score": True, "score_schatten": {"score": 0.3}}])["live"]["plaene"] == 0
+
+
 def test_score_vergleich_nur_plaene_mit_beiden_scores():
     plaene = [{"net_r": 1.0, "score": 0.3}, {"net_r": None, "score": 0.3, "score_schatten": {"score": 0.4}},
               {"net_r": 1.0, "score": 0.3, "score_schatten": None}]
