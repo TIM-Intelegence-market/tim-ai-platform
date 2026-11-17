@@ -13,7 +13,7 @@ Uzi hat am 17.11.2026 um 01:18 Ortszeit mit "Go" zugestimmt (Thread "16.11. TIM-
 | **Mac mini** (`~/TIM-live`) | einziger Produktionsknoten | Datenaufnahme (Spot-aggTrades → PostgreSQL, Perp/Bybit/Gamma/Liquidationen), Plan-Journale, Schatten, Chart, Control Center, Dashboard-Agent | kein zweiter Schreiber für dieselben Ströme |
 | **PS5** (Warpgate `uzi:ps5-research`) | Zeuge und Rechenknoten | geplant: zweiter Spot-Recorder und Orderflow-Papierbetrieb live (Bauplan `of-live-ps5-2026-11-17`, Pakete P1–P5); Trend- und Preisstudien ohne Orderflow | keine Orderflow-Rückschau mehr (OFX am 16.11. gestoppt, Uzi: OF nur vorwärts), kein Holdout ohne Uzis Wort, keine Secrets |
 | **Server tim-core-01** (Debian) | Archiv und Sicherung | Backups (Issue #285, Chris), Kopie der nicht wiederholbaren eigenen Daten (Perp-Orderflow-Archiv, OI, Liquidationen), Qwen, Warpgate | kein Live-Dienst (Uzi 22.10.: "TIM soll 100 % auf dem Mac laufen") |
-| **PS4** | keine | – | Vorschlag: abschalten und den Mac-LaunchAgent `com.tim.ps4-ofx-waechter` entladen. Erst nach Uzis "PS4 aus". Bis dahin bleibt alles, wie es ist (OFX dort per STOP-Datei beendet) |
+| **PS4** | Backup-Ablage und Restore-Test (Vorschlag 17.11., wartet auf Uzis Zeitplan-Wort) | Kopie der nächtlichen Mac-Sicherung (`scripts/tim_offsite_upload.py`, Dump nur verschlüsselt, solange Zugangsdaten im Dump ungeprüft sind), Prüfsummenkontrolle, Test-Restore in eigenem Postgres | keine Live-Daten, kein Recorder, kein KI-Modell, nichts, das ohne Lücken laufen muss (nach Neustart von Hand hochfahren). Fällt sie aus, geht nichts verloren |
 
 ## Begründung
 
