@@ -266,3 +266,33 @@ def test_build_session_map_has_a_value_context() -> None:
     assert context["state"] == value_context(context["today"], model["previous_day"], 100)
     assert "Absorption" in context["confirmation"]
     json.dumps(model, default=str)
+
+
+def test_real_trade_profiles_replace_the_candle_estimate_for_display_only() -> None:
+    from src.dashboard.session_map import build_session_map
+    from tests.test_structure_plan import _runtime_series
+
+    now = datetime(2026, 10, 24, 14, 0, 30, tzinfo=timezone.utc)
+    series = _runtime_series()
+    estimated = build_session_map(series, now)
+    assert estimated["profile_source"] == "Kerzen-Schätzung"
+    day = estimated["previous_day"]["day"]
+    real = [{"day": day, "complete": True, "running": False, "poc": 80100.0, "poc_mid": 80105.0, "vah": 80300.0, "val": 79900.0, "step": 10.0},
+            {"day": "2026-10-24", "complete": False, "running": True, "poc": 80200.0, "poc_mid": 80205.0, "vah": 80400.0, "val": 80000.0, "step": 10.0}]
+    shown = build_session_map(series, now, profiles=real)
+    assert shown["profile_source"] == "echte Trades"
+    assert (shown["previous_day"]["vah"], shown["previous_day"]["val"], shown["previous_day"]["poc"]) == (80300.0, 79900.0, 80105.0)
+    assert shown["value_context"]["today"] == {"poc": 80205.0, "vah": 80400.0, "val": 80000.0}
+    labels = {level["label"]: level["price"] for level in shown["levels"]}
+    assert any(label.startswith("Vortag VAL") and price == 79900.0 for label, price in labels.items()) or 79900.0 in labels.values()
+    # Without profiles (the plan journals' call) nothing changes.
+    assert build_session_map(series, now)["previous_day"] == estimated["previous_day"]
+
+
+def test_a_partly_stored_past_day_keeps_the_estimate() -> None:
+    from src.dashboard.session_map import real_day_profiles
+
+    days = [{"period": date(2026, 10, 23), "profile": {"poc": 1.0, "vah": 2.0, "val": 0.5, "step": 0.1}}]
+    partial = [{"day": "2026-10-23", "complete": False, "running": False, "poc": 9.0, "vah": 9.5, "val": 8.5, "step": 0.1}]
+    assert real_day_profiles(days, partial) == [] and days[0]["profile"]["poc"] == 1.0
+    assert real_day_profiles(days, None) == []
