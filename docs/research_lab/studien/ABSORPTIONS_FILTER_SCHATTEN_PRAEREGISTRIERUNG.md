@@ -1,6 +1,9 @@
-# Absorptions-Filter als Schattenregel R-ABS-1 (Präregistrierung 0.1 – Entwurf, NICHT eingefroren)
+# Absorptions-Filter als Schattenregel R-ABS-1 (Präregistrierung 1.0 – eingefroren 17.11.2026)
 
-Auftrag Uzi 17.11.2026 ("Go"), Anlass: BTCUSDT-15m-Chart vom 17.11. (Handy). TIM zeigte ein Short-Dreieck unter dem 1D VAL (~64.150) genau dort, wo große Absorption (344, 1,6M) einen Sweep zeigte; das Long-Dreieck kam erst bei ~65.000 direkt unter dem 1D VAH (65.100). **Nichts gerechnet, kein Ergebnis gesehen.** Einfrieren (Version 1.0) erst auf Uzis Wort "einfrieren".
+Auftrag Uzi 17.11.2026 ("Go"), Anlass: BTCUSDT-15m-Chart vom 17.11. (Handy). TIM zeigte ein Short-Dreieck unter dem 1D VAL (~64.150) genau dort, wo große Absorption (344, 1,6M) einen Sweep zeigte; das Long-Dreieck kam erst bei ~65.000 direkt unter dem 1D VAH (65.100). **Nichts gerechnet, kein Ergebnis gesehen.**
+
+## Version 1.0 – eingefroren (17.11.2026, Uzis Wort "Go, einfrieren")
+Ab hier ändern sich Regel, Schwellen (Band 0,30 % voraus, 0,05 % dahinter), Mindestzahl (30 blockierte Pläne) und Kriterium nicht mehr. Geprüft werden nur Pläne, die nach diesem Zeitpunkt im Orderflow-Schatten entstehen. Ein Fehlschlag wird berichtet; andere Schwellen oder Footprint-Cluster (Version 2.0) wären eine neue Version mit neuen Plänen. Ein Zeitplan läuft erst auf Uzis "Zeitplan an".
 
 ## Hypothese H1 (neu, ungeprüft)
 Ein Plan, der **in Richtung seiner Fahrt auf ein Level mit Absorption trifft**, ist ein Ausbruchssignal in ein gehaltenes Level und hat im Mittel negatives Netto-R. Die Umkehr-Variante (Gegenrichtung handeln) ist **nicht** Teil dieser Regel; sie wäre eine eigene Hypothese.
@@ -14,7 +17,7 @@ Nur live, nur vorwärts, Papier. Orderflow wird nicht per Backtest geprüft (Dat
 - Keine frische Lage = "nicht lesbar", zählt weder als blockiert noch als durchgelassen (eigene Gruppe).
 - Nur Information des Planzeitpunkts, kein Look-ahead.
 
-## Auswertung (Kriterium, ab Einfrieren fest)
+## Auswertung (Kriterium, fest)
 - Beurteilbar bei **≥ 30 geschlossenen blockierten Plänen** (Netto-R aus dem Journal, Kosten wie der Orderflow-Schatten: 5 bps je Seite).
 - **Bestanden**, wenn das Mittel Netto-R der blockierten Pläne ≤ −0,10 R **und** die einseitige obere 95-%-Bootstrap-Grenze des Mittels < 0 (10.000 Ziehungen, Seed 17).
 - Sonst nicht bestanden. Gezeigt werden immer alle drei Gruppen (blockiert, durchgelassen, nicht lesbar) mit n, Mittel und Summe. Ein Fehlschlag wird berichtet, die Regel danach nicht mit anderen Schwellen auf denselben Plänen nachgezogen (neue Schwellen = neue Version, neue Pläne).
