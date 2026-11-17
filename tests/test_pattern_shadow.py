@@ -250,3 +250,10 @@ def test_s36_evaluation_helpers():
     s36.CTRL_DRAWS = 20
     r = s36.random_control([trade] * 5, series, {"BTCUSDT": F()}, (T0, T0 + timedelta(days=30)))
     assert r["draws"] == 20 and 0 < r["p"] <= 1 and r["random_mean"] < 0  # flat prices: every random trade runs to the time exit and pays costs
+
+
+def test_the_same_setup_found_by_two_profiles_is_listed_once():
+    setup = {"tf": "1d", "kind": "SFP", "direction": S.P.LONG, "zone_low": 62006.0, "zone_high": 62275.0, "target": 81196.0,
+             "invalid_beyond": 62006.0, "valid": True, "reason": ""}
+    html = S.render_de([{**setup, "profile": "a"}, {**setup, "profile": "b"}], None)
+    assert html.count("1d SFP Long") == 1
