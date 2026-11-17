@@ -37,7 +37,7 @@ Liste der Aussagen, auf die sich TIM stützt, mit Status, Nutzung, Beleg und Cod
 - Ein Status „widerlegt“ aus einer einzelnen Studie ist vorläufig.
 - C23 (CPI-Sperre): geklärt am 17.11., der Makro-Kalender wird nur angezeigt, es gibt keine Sperrzeit im Plan-Journal.
 - C22 (GARCH-Gewicht): Einordnung am 17.11. korrigiert, nur Vergleichszahl (Schatten), entscheidet nichts.
-- Die Begründung je Plan ist bisher für fast jeden Plan gleich und trennt nichts. Der Wochenbericht wertet deshalb zusätzlich die Bausteine des Schatten-Scores gegen das Ergebnis aus (`gedaechtnis_fehler.bausteine`).
+- Die Begründung je Plan hatte bis 17.11. für fast jeden Plan dieselbe Liste. Seitdem kommen Aussagen dazu, die nur bei diesem Plan zutreffen (Feld `rolle`: `gegen_trend` für C38, `schatten` mit `richtung` für C09, C11, C32); sie entscheiden nichts. Ältere Pläne tragen nur die feste Liste. Der Wochenbericht wertet deshalb zusätzlich die Bausteine des Schatten-Scores gegen das Ergebnis aus (`gedaechtnis_fehler.bausteine`).
 
 ## Pflege
 
