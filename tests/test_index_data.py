@@ -178,3 +178,47 @@ def test_ndx_chart_gets_approximate_footprint_profile_and_cvd() -> None:
     english = english_chart_model(model)
     assert english["trade_source"].startswith("Approximation from 1m candles")
     assert any(n.startswith("Nasdaq: footprint, volume profile and CVD are an approximation") for n in english["notes"])
+
+
+def daily(closes: dict[str, float]) -> dict:
+    ts = [int(datetime.fromisoformat(d).replace(tzinfo=timezone.utc).timestamp()) + 21 * 3600 for d in closes]
+    return {"chart": {"result": [{"timestamp": ts, "indicators": {"quote": [{"close": list(closes.values())}]}}]}}
+
+
+def test_ratio_uses_last_common_daily_close_and_rejects_nonsense() -> None:
+    ndx = daily({"2026-11-12": 25_800.0, "2026-11-13": 26_000.0})
+    qqq = daily({"2026-11-12": 630.0, "2026-11-13": 634.0, "2026-11-14": 999.0})
+    assert round(index_data.ratio_from(ndx, qqq), 3) == round(26_000 / 634, 3)
+    assert index_data.ratio_from(ndx, daily({"2026-11-13": 26_000.0})) is None  # factor 1: broken answer
+
+
+def test_index_ratio_is_cached_and_survives_failures(monkeypatch) -> None:
+    monkeypatch.setattr(index_data, "_RATIO_STATE", {"at": None, "value": None, "failed": False})
+    clock, calls = [0.0], []
+    pages = {"%5ENDX": daily({"2026-11-13": 26_000.0}), "QQQ": daily({"2026-11-13": 634.0})}
+
+    def fetch(url):
+        calls.append(url)
+        return pages["%5ENDX" if "%5ENDX" in url else "QQQ"]
+
+    first = index_data.index_ratio(fetch, lambda: clock[0])
+    assert first and len(calls) == 2
+    clock[0] += 3600
+    assert index_data.index_ratio(fetch, lambda: clock[0]) == first and len(calls) == 2
+    clock[0] += 6 * 3600
+
+    def broken(url):
+        raise OSError("down")
+
+    assert index_data.index_ratio(broken, lambda: clock[0]) == first  # last factor kept
+
+
+def test_scaled_rows_and_chart_note(monkeypatch) -> None:
+    rows = index_data.scale_to_index(index_data.parse(answer(300), "NDX", "30m", 1000, now=NOW), ratio=41.0)
+    assert rows[0]["open"] == 25_000 * 41.0 and rows[0]["index_ratio"] == 41.0
+    model = build_live_chart("NDX", "30m", cache=KlineCache(lambda s, i, n: [dict(r) for r in rows]), now=NOW)
+    assert model["index_ratio"] == 41.0 and model["candles"][0]["open"] > 1_000_000
+    assert any(n.startswith("Nasdaq-100 in Indexpunkten") and "41,00" in n for n in model["notes"])
+    from src.dashboard.public_en import english_chart_model
+
+    assert any(n.startswith("Nasdaq-100 in index points") for n in english_chart_model(model)["notes"])
