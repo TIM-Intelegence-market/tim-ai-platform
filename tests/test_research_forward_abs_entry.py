@@ -160,3 +160,30 @@ def test_verdict_rule():
     assert abs_entry.evaluate(flat)["urteil"] == "NICHT_BESTANDEN"
     costly = [{"closed_at": "x", "net_r": 0.5, "exit_reason": "Stop", "kostenblockiert": True, "ref_fix": {}}] * 30
     assert abs_entry.evaluate(costly)["urteil"] == "NOCH_NICHT_BEURTEILBAR"
+
+
+def test_comparison_next_level_is_recorded_but_not_the_rule():
+    out = abs_entry.simulate(days(scenario()), STARTED)
+    trade = out["trades"][0]
+    assert "ref_level" in trade and trade["exit_reason"] == "Gegen-Absorption"
+    lvl = trade["ref_level"]
+    assert lvl["target"] is None or lvl["target"] > trade["fill"]
+
+
+def test_ref_level_picks_nearest_zone_in_trade_direction():
+    assert abs_entry._ref_level(True, 100.0, 2.0, [95.0, 104.0, 110.0]) == {"target": 104.0, "target_r": 2.0}
+    assert abs_entry._ref_level(False, 100.0, 2.0, [95.0, 97.0, 104.0]) == {"target": 97.0, "target_r": 1.5}
+    assert abs_entry._ref_level(True, 100.0, 2.0, [90.0]) == {"target": None, "target_r": None}
+
+
+def test_comparison_rows_in_verdict_and_old_trades_unchanged():
+    t = {"closed_at": "x", "net_r": 0.5, "exit_reason": "Stop", "ref_fix": {},
+         "ref_level": {"target": 1.0, "target_r": 2.5, "net_r": 1.2}}
+    short = {**t, "ref_level": {"target": 1.0, "target_r": 0.8, "net_r": 0.6}}
+    out = abs_entry.evaluate([t, short])
+    assert out["vergleich_naechstes_level"]["n"] == 2
+    assert out["vergleich_naechstes_level_ab_2r"]["n"] == 1
+    assert out["urteil"] == "NOCH_NICHT_BEURTEILBAR"
+    old = {"id": "L-1", "closed_at": "x", "net_r": 0.5, "hash": "h"}
+    kept, dev = abs_entry.chain([old], [{"id": "L-1", "closed_at": "x", "net_r": 0.5, "ref_level": {"target": None}}])
+    assert dev == [] and kept == [old]

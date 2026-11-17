@@ -364,7 +364,8 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
                 event["ergebnis"] = f"Ausstieg Trade {pos['id']}"
             elif zone and pos is None and pending is None and atr and event["zaehlt"]:
                 pending = {"event": event, "direction": hit["direction"], "extreme": hit["extreme"], "close": hit["close"],
-                           "atr": atr, "waited": 0, "zone": event["zone"], "kontext": event["kontext"]}
+                           "atr": atr, "waited": 0, "zone": event["zone"], "kontext": event["kontext"],
+                           "levels": sorted({round(lv, 2) for _, lv in zones.all(end_ms, p.swing_keep_h)})}
                 event["ergebnis"] = "wartet auf Auslöser"
             else:
                 event["ergebnis"] = ("ohne Zone" if not zone else "Position offen" if pos is not None
@@ -399,9 +400,23 @@ def _open(pending: dict[str, Any], fill: float, entry_fee: float, at_ms: int, p:
              "event": {k: event[k] for k in ("vol_ratio", "delta_btc", "delta_share", "large_trades", "largest_btc",
                                              "tempo", "cvd_60m_btc", "cvd_divergenz", "footprint_extrem")},
              "futures": event.get("futures"),
-             "ref_fix": {"target": round(fill + p.fix_r * risk if pending["direction"] == "LONG" else fill - p.fix_r * risk, 2)}}
+             "ref_fix": {"target": round(fill + p.fix_r * risk if pending["direction"] == "LONG" else fill - p.fix_r * risk, 2)},
+             "ref_level": _ref_level(long, fill, risk, pending.get("levels", []))}
     event["trade"] = trade["id"]
     return trade
+
+
+def _ref_level(long: bool, fill: float, risk: float, levels: Sequence[float]) -> dict[str, Any]:
+    """Comparison variant (Uzi "Vergleich an", 17.11.): exit at the next known zone in trade direction, original stop.
+
+    Sources: Valtos OFTC L11 p.11 / L12 p.9 (trade from one level to the next), Broncx bootcamp (targets at VAH/VAL,
+    HVN). Never part of the verdict; the counter-absorption exit stays the rule.
+    """
+    ahead = [lv for lv in levels if (lv > fill if long else lv < fill)]
+    if not ahead:
+        return {"target": None, "target_r": None}
+    target = min(ahead) if long else max(ahead)
+    return {"target": target, "target_r": round(abs(target - fill) / risk, 4)}
 
 
 def _manage(pos: dict[str, Any], high: float, low: float, at_ms: int, p: Params) -> None:
@@ -414,6 +429,12 @@ def _manage(pos: dict[str, Any], high: float, low: float, at_ms: int, p: Params)
             ref["net_r"] = _net(long, fill, start * (1 - p.stop_slippage if long else 1 + p.stop_slippage), risk, p, pos.get("entry_fee"))
         elif (long and high >= ref["target"]) or (not long and low <= ref["target"]):
             ref["net_r"] = _net(long, fill, ref["target"], risk, p, pos.get("entry_fee"))
+    lvl = pos.get("ref_level")
+    if lvl is not None and "net_r" not in lvl:   # comparison: original stop and next zone, stop first in one minute
+        if (long and low <= start) or (not long and high >= start):
+            lvl["net_r"] = _net(long, fill, start * (1 - p.stop_slippage if long else 1 + p.stop_slippage), risk, p, pos.get("entry_fee"))
+        elif lvl["target"] is not None and ((long and high >= lvl["target"]) or (not long and low <= lvl["target"])):
+            lvl["net_r"] = _net(long, fill, lvl["target"], risk, p, pos.get("entry_fee"))
     stop = pos["stop"]
     if (long and low <= stop) or (not long and high >= stop):
         price = stop * (1 - p.stop_slippage if long else 1 + p.stop_slippage)
@@ -448,6 +469,7 @@ def evaluate(trades: Iterable[dict[str, Any]], p: Params = PARAMS) -> dict[str, 
     counted = [float(t["net_r"]) for t in closed if not t.get("kostenblockiert")]
     blocked = [float(t["net_r"]) for t in closed if t.get("kostenblockiert")]
     ref = [float(t["ref_fix"]["net_r"]) for t in closed if not t.get("kostenblockiert") and "net_r" in t.get("ref_fix", {})]
+    lvl = [t["ref_level"] for t in closed if not t.get("kostenblockiert") and "net_r" in (t.get("ref_level") or {})]
     verdict, lower = "NOCH_NICHT_BEURTEILBAR", None
     if len(counted) >= p.min_trades:
         rng = random.Random(p.bootstrap_seed)
@@ -460,6 +482,8 @@ def evaluate(trades: Iterable[dict[str, Any]], p: Params = PARAMS) -> dict[str, 
     def row(values: list[float]) -> dict[str, Any]:
         return {"n": len(values), "mittel_r": round(mean(values), 4) if values else None, "summe_r": round(sum(values), 4)}
     return {"rule": RULE, "gezaehlt": row(counted), "kostenblockiert": row(blocked), "referenz_fix_2r": row(ref),
+            "vergleich_naechstes_level": row([float(x["net_r"]) for x in lvl]),
+            "vergleich_naechstes_level_ab_2r": row([float(x["net_r"]) for x in lvl if (x.get("target_r") or 0) >= p.fix_r]),
             "ausstiege": reasons, "mit_kontext": row([float(t["net_r"]) for t in closed if t.get("kontext") and not t.get("kostenblockiert")]),
             "noetig": p.min_trades, "untere_grenze_r": lower, "urteil": verdict,
             "hinweis": "Papier, Spot-Daten, Funding nicht eingerechnet (nur Intervalle gezählt). Kein Filter aktiv."}
@@ -485,6 +509,8 @@ def chain(previous: Sequence[dict[str, Any]], fresh: Sequence[dict[str, Any]]) -
         body = {k: v for k, v in trade.items() if k != "hash"}
         if trade["id"] in known:
             old = {k: v for k, v in known[trade["id"]].items() if k != "hash"}
+            if "ref_level" not in old:   # closed before the comparison variant existed (Uzi "Vergleich an")
+                body = {k: v for k, v in body.items() if k != "ref_level"}
             if json.dumps(old, sort_keys=True, default=str) != json.dumps(body, sort_keys=True, default=str):
                 deviations.append(trade["id"])
             continue
