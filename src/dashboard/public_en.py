@@ -103,8 +103,8 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^Hauptverfall (\S+) \((\d+) % des OI\)$", r"main expiry \1 (\2 % of open interest)"),
     (r"^erwartete Bewegung bis Verfall, ATM-IV ([\d.]+) %$", r"expected move until expiry, ATM IV \1 %"),
     # Estimated liquidation clusters (liquidation_data.py).
-    (r"^Liq-Cluster oben$", "Liq cluster above"),
-    (r"^Liq-Cluster unten$", "Liq cluster below"),
+    (r"^Liq-Cluster oben \(Modell\)$", "Liq cluster above (model)"),
+    (r"^Liq-Cluster unten \(Modell\)$", "Liq cluster below (model)"),
     (r"^stärkste geschätzte Short-Liquidationen über dem Preis$", "strongest estimated short liquidations above the price"),
     (r"^stärkste geschätzte Long-Liquidationen unter dem Preis$", "strongest estimated long liquidations below the price"),
 )
