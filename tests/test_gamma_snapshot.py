@@ -90,7 +90,7 @@ def test_snapshot_from_real_deribit_excerpt() -> None:
     years = (datetime(2026, 10, 30, 8, tzinfo=timezone.utc) - AS_OF).total_seconds() / (365 * 86400)
     assert move["move"] == pytest.approx(SPOT * 0.3506 * math.sqrt(years), abs=0.01)
     assert move["low"] == pytest.approx(77385.24, abs=0.01) and move["high"] == pytest.approx(82360.22, abs=0.01)
-    assert [item["key"] for item in snap["levels"]] == ["flip", "call_wall", "put_wall", "max_pain", "em_high", "em_low"]
+    assert [item["key"] for item in snap["levels"]] == ["flip", "call_wall", "put_wall", "max_pain", "em_high", "em_low", "oi_call", "oi_put"]
     assert snap["analysis_input"]["gamma_flip"] == overall["gamma_flip"]
     assert snap["skipped"]["no_open_interest"] == 4
     assert len(snap["input_hash"]) == 64 and _snapshot()["input_hash"] == snap["input_hash"]
@@ -166,9 +166,15 @@ def test_prep_block_status_and_staleness() -> None:
 
 def test_chart_draws_gamma_group_with_own_colours_also_in_the_public_view() -> None:
     snap = _snapshot(as_of=CHART_NOW - timedelta(minutes=3))
+    # The flip has stood at this price for six hours, every other level is new with this snapshot.
+    snap["level_since"] = {"flip": {"since": (CHART_NOW - timedelta(hours=6)).isoformat(), "price": 0.0}}
     model = build_live_chart("BTCUSDT", "30m", None, cache=KlineCache(fake_fetch()), now=CHART_NOW, gamma={"BTCUSDT": snap})
     gamma = [d for d in model["drawings"] if d["group"] == "gamma"]
-    assert {d["label"] for d in gamma} >= {"Opt Gamma Flip", "Opt Call Wall", "Opt Put Wall"}
+    assert {d["label"] for d in gamma} >= {"Opt Gamma Flip", "Opt Call Wall", "Opt Put Wall", "Opt Call-OI-Wand", "Opt Put-OI-Wand"}
+    # No line reaches back before its level existed: a new level is one candle long, not a day.
+    wall = next(d for d in gamma if d["name"] == "Call Wall")
+    assert wall["bars"] == 1 and wall["start"] == snap["as_of"] and "wandert mit dem Preis" in wall["note"]
+    assert next(d for d in gamma if d["name"] == "Gamma Flip")["bars"] == 12
     flip = next(d for d in gamma if d["name"] == "Gamma Flip")
     assert flip["color"] == gamma_data.LEVEL_STYLE["flip"][0] and flip["p1"] == flip["p2"] == flip["price"]
     assert flip["t2"] == model["candles"][-1]["time"] and flip["bars"] > 1
@@ -181,10 +187,10 @@ def test_chart_draws_gamma_group_with_own_colours_also_in_the_public_view() -> N
     assert public["groups"]["gamma"] == "Options gamma (Deribit)" and "gamma" in public["default_groups"]
     public_gamma = [d for d in public["drawings"] if d["group"] == "gamma"]
     labels = {d["label"] for d in public_gamma}
-    assert {"Opt Gamma Flip", "Opt Call Wall", "Opt Put Wall"} <= labels
+    assert {"Opt Gamma Flip", "Opt Call Wall", "Opt Put Wall", "Opt Call OI wall", "Opt Put OI wall"} <= labels
     assert any(label.startswith("Opt EM high ") for label in labels) and any(label.startswith("Opt EM low ") for label in labels)
     for d in public_gamma:
-        assert not re.search(r"[äöüß]|hoch|tief|Händler|Verfall", f"{d['name']} {d['label']} {d['note']}"), d
+        assert not re.search(r"[äöüß]|hoch|tief|Händler|Verfall|Wand|Bestand|wandert", f"{d['name']} {d['label']} {d['note']}"), d
     stale_note = gamma_data.chart_drawings(snap, CHART_NOW + timedelta(hours=1))[1][0]
     assert english_chart_model({"notes": [stale_note]})["notes"] == ["Gamma: Deribit data is 63 min old, levels hidden."]
 
@@ -277,3 +283,58 @@ def test_refresh_appends_one_level_line_per_snapshot(tmp_path) -> None:
     assert lines[0]["call_wall"] == snap["all_expiries"]["call_wall"] and lines[0]["put_wall"] == snap["all_expiries"]["put_wall"]
     assert {"gamma_flip", "regime", "max_pain", "main_call_wall", "oi_walls"} <= set(lines[0])
     assert gamma_data.refresh(DashboardState(gamma_log_path=None), "BTCUSDT", fetch=_fake_deribit(), now=AS_OF)  # no log: still works
+
+
+def test_oi_walls_are_levels_of_their_own() -> None:
+    snap = _snapshot()
+    levels = {item["key"]: item for item in snap["levels"]}
+    walls = snap["all_expiries"]["oi_walls"]
+    assert levels["oi_call"]["price"] == walls["calls"][0][0] >= SPOT and levels["oi_put"]["price"] == walls["puts"][0][0] <= SPOT
+    assert levels["oi_call"]["name"] == "Call-OI-Wand" and "größter offener Call-Bestand über dem Preis" in levels["oi_call"]["note"]
+    assert levels["oi_put"]["note"].endswith(f"({walls['puts'][0][1]:.0f} BTC)")
+    assert snap["levels"][0]["key"] == "flip" and {"oi_call", "oi_put"} <= set(gamma_data.LEVEL_STYLE)
+
+
+def test_level_since_is_kept_while_the_price_stands_and_reset_when_it_moves(tmp_path) -> None:
+    state = DashboardState(gamma_log_path=None)
+    first = gamma_data.refresh(state, "BTCUSDT", fetch=_fake_deribit(), now=AS_OF)
+    assert set(first["level_since"]) == {item["key"] for item in first["levels"]}
+    assert {entry["since"] for entry in first["level_since"].values()} == {AS_OF.isoformat()}
+    later = AS_OF + timedelta(minutes=5)
+    second = gamma_data.refresh(state, "BTCUSDT", fetch=_fake_deribit(), now=later)
+    since = {key: entry["since"] for key, entry in second["level_since"].items()}
+    assert since["call_wall"] == since["oi_put"] == since["flip"] == AS_OF.isoformat()
+    # A level that left its anchor by more than 0.25 % starts anew; slow drift is measured against the anchor.
+    third = {**second, "as_of": (later + timedelta(minutes=5)).isoformat(),
+             "levels": [{**item, "price": item["price"] * (1.004 if item["key"] == "put_wall" else 1.002)} for item in second["levels"]]}
+    moved = gamma_data.level_since(third, second)
+    assert moved["put_wall"] == {"since": third["as_of"], "price": third["levels"][2]["price"]}
+    assert moved["call_wall"] == second["level_since"]["call_wall"]
+    fourth = {**third, "as_of": (later + timedelta(minutes=10)).isoformat(),
+              "levels": [{**item, "price": item["price"] * 1.002} for item in third["levels"]]}
+    assert gamma_data.level_since(fourth, {**third, "level_since": moved})["call_wall"]["since"] == fourth["as_of"]
+    # The chart starts each line at that moment, and at the snapshot time when nothing is known.
+    drawings, _ = gamma_data.chart_drawings(second, later)
+    assert {d["start"] for d in drawings if d["name"] in ("Call Wall", "Put-OI-Wand")} == {AS_OF.isoformat()}
+    assert all(d["start"] == first["as_of"] for d in gamma_data.chart_drawings(_snapshot(), AS_OF)[0])
+
+
+def test_level_starts_survive_a_restart_through_the_level_log(tmp_path) -> None:
+    path = tmp_path / "gamma_levels.jsonl"
+    old = DashboardState(gamma_log_path=path)
+    for minutes in (0, 5, 10):
+        gamma_data.refresh(old, "BTCUSDT", fetch=_fake_deribit(), now=AS_OF + timedelta(minutes=minutes))
+    lines = path.read_text().splitlines()
+    record = json.loads(lines[1])
+    record["put_wall"] += 1000  # the put wall stood elsewhere at minute 5
+    path.write_text("\n".join([lines[0], json.dumps(record), lines[2]]) + "\n")
+    fresh = DashboardState(gamma_log_path=path)  # restart: no snapshot in memory
+    snap = gamma_data.refresh(fresh, "BTCUSDT", fetch=_fake_deribit(), now=AS_OF + timedelta(minutes=15))
+    since = {key: entry["since"] for key, entry in snap["level_since"].items()}
+    assert since["call_wall"] == since["oi_call"] == since["flip"] == since["max_pain"] == AS_OF.isoformat()
+    assert since["put_wall"] == (AS_OF + timedelta(minutes=10)).isoformat()
+    assert since["em_high"] == snap["as_of"]  # not in the log
+    # A gap in the log longer than the stale limit ends the walk back; a broken log gives no starts.
+    late = gamma_data.refresh(DashboardState(gamma_log_path=path), "BTCUSDT", fetch=_fake_deribit(), now=AS_OF + timedelta(hours=2))
+    assert late["level_since"]["call_wall"]["since"] == late["as_of"]
+    assert gamma_data.since_from_log(snap, "BTCUSDT", tmp_path / "missing.jsonl") == {}

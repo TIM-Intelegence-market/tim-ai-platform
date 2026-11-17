@@ -187,13 +187,20 @@ def build_gamma_snapshot(rows: Sequence[Mapping[str, Any]], spot: float, as_of: 
             levels.append({"key": key, "name": name, "price": float(price), "note": note})
 
     level("flip", "Gamma Flip", overall["gamma_flip"], "darüber dämpfen Händler eher, darunter verstärken sie Bewegungen")
-    level("call_wall", "Call Wall", overall["call_wall"], "größtes Call-Gamma über dem Preis")
-    level("put_wall", "Put Wall", overall["put_wall"], "größtes Put-Gamma unter dem Preis")
+    level("call_wall", "Call Wall", overall["call_wall"], "größtes Call-Gamma über dem Preis, wandert mit dem Preis")
+    level("put_wall", "Put Wall", overall["put_wall"], "größtes Put-Gamma unter dem Preis, wandert mit dem Preis")
     expiry_label = main_expiry.strftime("%d.%m.")
     level("max_pain", f"Max Pain {expiry_label}", main["max_pain"], f"Hauptverfall {expiry_label} ({main['share_of_open_interest'] * 100:.0f} % des OI)")
     if move is not None:
         level("em_high", f"EM hoch {expiry_label}", move["high"], f"erwartete Bewegung bis Verfall, ATM-IV {move['atm_iv'] * 100:.1f} %")
         level("em_low", f"EM tief {expiry_label}", move["low"], f"erwartete Bewegung bis Verfall, ATM-IV {move['atm_iv'] * 100:.1f} %")
+
+    # Open-interest walls: the strike with the most open contracts per side. They change far less often than the
+    # gamma walls, which sit near the price by construction (gamma peaks at the money).
+    for key, kind, side, where in (("oi_call", "Call", "calls", "über"), ("oi_put", "Put", "puts", "unter")):
+        top = overall["oi_walls"][side]
+        if top:
+            level(key, f"{kind}-OI-Wand", top[0][0], f"größter offener {kind}-Bestand {where} dem Preis ({top[0][1]:.0f} {currency})")
 
     analysis_input = {
         "as_of": as_of.isoformat(), "source": SOURCE, "spot": spot,
