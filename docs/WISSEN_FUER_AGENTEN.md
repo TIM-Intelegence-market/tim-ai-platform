@@ -25,6 +25,7 @@ beiden Einstiege nicht auseinander.
 |---|---|
 | Issues und Pipeline | `docs/ISSUE_WORKFLOW.md`, `docs/GITHUB_ISSUE_PIPELINE.md` |
 | Subagenten und Master-Auftrag | `docs/SUBAGENTEN_PLAN.md`, `docs/SUBAGENTEN_MASTER_AUFTRAG.md`, `.claude/agents/` |
+| Modell-Router (billig zuerst, hochstufen bei Bedarf) | `docs/MODELL_ROUTER.md`, `src/llm/model_router.py` |
 | Multi-Agenten-System | `docs/MULTI_AGENTEN_SYSTEM.md` |
 | Kontext vor dem Coden (Graph, Serena) | `docs/tooling/agent-context-preflight.md`, `docs/tooling/tool-router.md`, `docs/tooling/serena.md` |
 | Forschung und Studien | `docs/research_lab/` (Register, Logbuch, Protokolle) |
