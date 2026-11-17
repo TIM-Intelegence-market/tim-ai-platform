@@ -35,7 +35,7 @@ from src.research_lab.orderflow_ml.bars import (
     MinuteBar,
 )
 
-RULE = "R-ABS-2/0.3-entwurf"
+RULE = "R-ABS-2/0.4-entwurf"
 FOLDER = Path("data/research/forward/ABS_ENTRY")
 WARMUP_DAYS = 2
 
@@ -61,9 +61,12 @@ class Params:
     accu_atr_mult: float = 3.0
     accu_min_events: int = 2
     fee: float = 0.0006              # Bitunix taker per side (bitunix/contract.FEE_TAKER)
+    fee_maker: float = 0.0002        # Bitunix maker (bitunix/contract.FEE_MAKER), limit entry
+    entry_limit: bool = True         # Uzi "go Stop": entry by limit order at the trigger level (retest)
+    min_stop_pct: float = 0.5        # Uzi "go Stop": stop at least 0.5 % from the entry
     slippage: float = 0.0003         # entry and counter-absorption exit (of2 config)
     stop_slippage: float = 0.0005    # stop exit (of2 config)
-    max_cost_r: float = 0.15         # above: trade is kept but counted as "kostenblockiert"
+    max_cost_r: float = 0.30         # above: trade is kept but counted as "kostenblockiert" (Uzi "go Stop")
     fix_r: float = 2.0               # reference variant only (not in the verdict)
     min_trades: int = 30
     min_mean_r: float = 0.10
@@ -263,8 +266,11 @@ def _swings(hours: Sequence[Window], side: int) -> list[tuple[int, str, float]]:
     return out
 
 
+Futures = Callable[[int, int], "dict[str, Any] | None"]
+
+
 def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]], started_ms: int,
-             p: Params = PARAMS) -> dict[str, Any]:
+             p: Params = PARAMS, futures: Futures | None = None) -> dict[str, Any]:
     """Run the rule over consecutive days (oldest first; the last may be today's closed minutes)."""
     bars: list[MinuteBar] = []
     profiles: dict[int, DayProfile | None] = {}
@@ -298,8 +304,21 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
             trades.append(pos)
             pos, exit_next = None, None
         if pending is not None and pending.get("fill_next") and pos is None:
-            pos = _open(pending, o, bar.window_start_ms, p)
-            pending = None
+            long = pending["direction"] == "LONG"
+            if not p.entry_limit:
+                pos = _open(pending, o * (1 + p.slippage if long else 1 - p.slippage), p.fee, bar.window_start_ms, p)
+                pending = None
+            else:
+                limit = pending["close"]
+                if (long and (o <= limit or l < limit)) or (not long and (o >= limit or h > limit)):
+                    price = min(o, limit) if long else max(o, limit)
+                    pos = _open(pending, price, p.fee_maker, bar.window_start_ms, p)
+                    pending = None
+                else:
+                    pending["limit_wait"] = pending.get("limit_wait", 0) + 1
+                    if pending["limit_wait"] >= p.trigger_minutes:
+                        pending["event"]["ergebnis"] = "Limit nicht gefüllt"
+                        pending = None
         # 2) the open position against this minute
         if pos is not None:
             _manage(pos, h, l, bar.window_start_ms, p)
@@ -336,6 +355,8 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
                      "zone": {"name": zone[0], "price": round(zone[1], 2)} if zone else None,
                      "footprint_extrem": extreme_imbalance(profiles.get(win.start_ms // DAY_MS * DAY_MS), win, hit["extreme"]),
                      "kontext": accumulation(hours, events, end_ms, p), "zaehlt": end_ms >= started_ms}
+            if futures is not None and event["zaehlt"]:
+                event["futures"] = futures(win.start_ms, end_ms)   # context only, never part of the rule
             atr = _atr(windows + [win], p.atr_len)
             # counter-absorption ends the open trade (fill at the next minute's open)
             if pos is not None and hit["direction"] != pos["direction"] and (zone or not p.exit_needs_zone):
@@ -356,24 +377,28 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
             "last_minute": _iso(bars[-1].window_start_ms + MINUTE_MS) if bars else None}
 
 
-def _open(pending: dict[str, Any], open_price: float, at_ms: int, p: Params) -> dict[str, Any] | None:
+def _open(pending: dict[str, Any], fill: float, entry_fee: float, at_ms: int, p: Params) -> dict[str, Any] | None:
     long = pending["direction"] == "LONG"
-    fill = open_price * (1 + p.slippage if long else 1 - p.slippage)
-    stop = pending["extreme"] - p.stop_atr_mult * pending["atr"] if long else pending["extreme"] + p.stop_atr_mult * pending["atr"]
+    if long:
+        stop = min(pending["extreme"] - p.stop_atr_mult * pending["atr"], fill * (1 - p.min_stop_pct / 100))
+    else:
+        stop = max(pending["extreme"] + p.stop_atr_mult * pending["atr"], fill * (1 + p.min_stop_pct / 100))
     risk = (fill - stop) if long else (stop - fill)
     event = pending["event"]
     if risk <= 0:
         event["ergebnis"] = "Fill schon hinter dem Stop"
         return None
-    cost_r = (2 * p.fee * fill + p.slippage * fill + p.stop_slippage * stop) / risk
+    entry_slip = 0.0 if entry_fee == p.fee_maker and p.entry_limit else p.slippage
+    cost_r = (entry_fee * fill + p.fee * stop + entry_slip * fill + p.stop_slippage * stop) / risk
     event["ergebnis"] = "Einstieg"
     trade = {"id": f"{pending['direction'][0]}-{_iso(at_ms)}", "direction": pending["direction"],
              "event_at": event["at"], "zone": pending["zone"], "kontext": pending["kontext"],
-             "filled_at": _iso(at_ms), "fill": round(fill, 2), "stop": round(stop, 2), "stop_start": round(stop, 2),
+             "filled_at": _iso(at_ms), "fill": round(fill, 2), "entry_fee": entry_fee, "stop": round(stop, 2), "stop_start": round(stop, 2),
              "risk_pct": round(risk / fill * 100, 4), "cost_r": round(cost_r, 4),
              "kostenblockiert": cost_r > p.max_cost_r, "breakeven": False,
              "event": {k: event[k] for k in ("vol_ratio", "delta_btc", "delta_share", "large_trades", "largest_btc",
                                              "tempo", "cvd_60m_btc", "cvd_divergenz", "footprint_extrem")},
+             "futures": event.get("futures"),
              "ref_fix": {"target": round(fill + p.fix_r * risk if pending["direction"] == "LONG" else fill - p.fix_r * risk, 2)}}
     event["trade"] = trade["id"]
     return trade
@@ -386,9 +411,9 @@ def _manage(pos: dict[str, Any], high: float, low: float, at_ms: int, p: Params)
     ref = pos["ref_fix"]
     if "net_r" not in ref:   # reference: original stop and fixed target, stop first when both lie in one minute
         if (long and low <= start) or (not long and high >= start):
-            ref["net_r"] = _net(long, fill, start * (1 - p.stop_slippage if long else 1 + p.stop_slippage), risk, p)
+            ref["net_r"] = _net(long, fill, start * (1 - p.stop_slippage if long else 1 + p.stop_slippage), risk, p, pos.get("entry_fee"))
         elif (long and high >= ref["target"]) or (not long and low <= ref["target"]):
-            ref["net_r"] = _net(long, fill, ref["target"], risk, p)
+            ref["net_r"] = _net(long, fill, ref["target"], risk, p, pos.get("entry_fee"))
     stop = pos["stop"]
     if (long and low <= stop) or (not long and high >= stop):
         price = stop * (1 - p.stop_slippage if long else 1 + p.stop_slippage)
@@ -400,15 +425,16 @@ def _manage(pos: dict[str, Any], high: float, low: float, at_ms: int, p: Params)
         pos["stop"] = fill   # active from the next minute on
 
 
-def _net(long: bool, fill: float, exit_price: float, risk: float, p: Params) -> float:
+def _net(long: bool, fill: float, exit_price: float, risk: float, p: Params, entry_fee: float | None = None) -> float:
     gross = ((exit_price - fill) if long else (fill - exit_price)) / risk
-    return round(gross - p.fee * (fill + exit_price) / risk, 4)
+    fee_in = p.fee if entry_fee is None else entry_fee
+    return round(gross - (fee_in * fill + p.fee * exit_price) / risk, 4)
 
 
 def _close(pos: dict[str, Any], price: float, at_ms: int, reason: str, p: Params) -> None:
     long = pos["direction"] == "LONG"
     risk = (pos["fill"] - pos["stop_start"]) if long else (pos["stop_start"] - pos["fill"])
-    pos.update(closed_at=_iso(at_ms), exit=round(price, 2), exit_reason=reason, net_r=_net(long, pos["fill"], price, risk, p))
+    pos.update(closed_at=_iso(at_ms), exit=round(price, 2), exit_reason=reason, net_r=_net(long, pos["fill"], price, risk, p, pos.get("entry_fee")))
     filled = datetime.fromisoformat(pos["filled_at"])
     closed = datetime.fromisoformat(pos["closed_at"])
     pos["funding_intervalle"] = sum(1 for k in range(int((closed - filled).total_seconds() // 3600) + 2)
@@ -472,7 +498,7 @@ Loader = Callable[[date], tuple[Sequence[MinuteBar], DayProfile | None] | None]
 
 def step(folder: Path | str, load_day: Loader, today: date, *, now: datetime | None = None,
          partial: Callable[[date], tuple[Sequence[MinuteBar], DayProfile | None] | None] | None = None,
-         p: Params = PARAMS) -> dict[str, Any]:
+         p: Params = PARAMS, futures: Futures | None = None) -> dict[str, Any]:
     """One run: load warm-up days, all days since the start and today's closed minutes; recompute; append."""
     folder = Path(folder)
     now = now or datetime.now(timezone.utc)
@@ -500,7 +526,7 @@ def step(folder: Path | str, load_day: Loader, today: date, *, now: datetime | N
         part = partial(today)
         if part is not None:
             days.append((today, part[0], part[1]))
-    result = simulate(days, int(started.timestamp() * 1000), p)
+    result = simulate(days, int(started.timestamp() * 1000), p, futures)
     journal_path = folder / "journal.json"
     old = json.loads(journal_path.read_text(encoding="utf-8")) if journal_path.exists() else {}
     closed, deviations = chain(old.get("trades", []), result["trades"])
@@ -537,6 +563,14 @@ def live_loaders(folder: Path | str, trades_root: Path | str):
         return (part[0], part[1]) if part else None
 
     return load_day, partial
+
+
+def futures_context(futures_root: Path | str | None, liq_root: Path | str | None) -> Futures | None:
+    if futures_root is None and liq_root is None:
+        return None
+    from src.research_lab.forward.futures_recorder import context
+
+    return lambda start_ms, end_ms: context(futures_root, liq_root, start_ms, end_ms)
 
 
 def status(folder: Path | str) -> dict[str, Any] | None:

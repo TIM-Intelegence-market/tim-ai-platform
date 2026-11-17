@@ -44,7 +44,8 @@ def scenario(exit_absorption: bool = True) -> list[MinuteBar]:
     price = 64_120.0
     for k in range(120):
         price += 7.5
-        bars.append(bar(t + k * MINUTE_MS, price - 7.5, price + 3, price - 10, price))
+        low = 64_100.0 if k == 1 else price - 10   # minute 2: retest of the trigger level fills the limit
+        bars.append(bar(t + k * MINUTE_MS, price - 7.5, price + 3, low, price))
     t += 120 * MINUTE_MS
     if exit_absorption:
         # buy absorption at the top (aligned window): buyers hammer, price closes lower
@@ -76,7 +77,10 @@ def test_long_on_sell_absorption_exits_on_counter_absorption():
     assert trade["exit_reason"] == "Gegen-Absorption"
     assert trade["net_r"] > 1.0          # the move was ridden, not cut at a level
     assert trade["breakeven"] is True
-    assert trade["stop_start"] < 64_001  # behind the wick
+    assert trade["stop_start"] < 64_001  # behind the wick ...
+    assert trade["stop_start"] <= trade["fill"] * 0.995 + 0.01   # ... and at least 0.5 % away (Uzi "go Stop")
+    assert trade["fill"] == 64_120.0 and trade["entry_fee"] == 0.0002   # limit at the trigger level, maker
+    assert trade["kostenblockiert"] is False
     absorbed = [e for e in out["events"] if e["side"] == "VERKAUF"]
     assert absorbed and absorbed[0]["vol_ratio"] >= 3 and absorbed[0]["delta_share"] <= -0.25
 
@@ -137,6 +141,16 @@ def test_step_refuses_changed_parameters(tmp_path):
     with pytest.raises(RuntimeError):
         abs_entry.step(tmp_path, lambda d: data.get(d), DAY1 + timedelta(days=3), now=now,
                        p=abs_entry.Params(vol_factor=4.0))
+
+
+def test_limit_not_filled_without_retest():
+    bars = scenario()
+    for i, b in enumerate(bars):   # remove the retest minute
+        if b.low_price_e8 == round(64_100.0 * E8):
+            bars[i] = bar(b.window_start_ms, b.first_price_e8 / E8, b.high_price_e8 / E8, b.last_price_e8 / E8 - 10, b.last_price_e8 / E8)
+    out = abs_entry.simulate(days(bars), STARTED)
+    assert out["trades"] == [] and out["open"] is None
+    assert any(e["ergebnis"] == "Limit nicht gefüllt" for e in out["events"])
 
 
 def test_verdict_rule():
