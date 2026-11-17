@@ -202,7 +202,74 @@ def fetch(chart_symbol: str, interval: str, limit: int, key: Callable[[], Secret
         raise ConnectionError(f"Twelve Data not reachable ({name})")
     if len(raw) > MAX_BYTES:
         raise ValueError("answer too large")
-    return parse(json.loads(raw), chart_symbol, interval, limit)
+    return scale_to_index(parse(json.loads(raw), chart_symbol, interval, limit))
+
+
+# --- QQQ in Nasdaq-100 points (Uzi 17.11.2026: "Nasdaq ist doch mit 26.000 Punkten und nicht mit 680") ---
+# QQQ tracks the Nasdaq-100 at about 1/41 of its level. The factor is the last common daily close
+# ^NDX / QQQ from the public Yahoo chart endpoint (one read every 6 hours); the candles are multiplied by it.
+# The factor moves slowly (fees, dividends): the chart shows it, and without it the candles stay in QQQ dollars.
+RATIO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=10d"
+RATIO_TTL = 6 * 3600.0
+RATIO_FAIL_PAUSE = 900.0
+RATIO_RANGE = (20.0, 80.0)  # plausible ^NDX / QQQ factor; anything else is a broken answer
+_RATIO_LOCK = threading.Lock()
+_RATIO_STATE: dict[str, Any] = {"at": None, "value": None, "failed": False}
+
+
+def _daily_closes(payload: Any) -> dict[str, float]:
+    block = (((payload or {}).get("chart") or {}).get("result") or [{}])[0]
+    closes = (((block.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+    out = {}
+    for t, c in zip(block.get("timestamp") or [], closes):
+        if c is not None and c > 0:
+            out[datetime.fromtimestamp(int(t), timezone.utc).date().isoformat()] = float(c)
+    return out
+
+
+def ratio_from(index_payload: Any, fund_payload: Any) -> float | None:
+    index, fund = _daily_closes(index_payload), _daily_closes(fund_payload)
+    common = sorted(set(index) & set(fund))
+    if not common:
+        return None
+    ratio = index[common[-1]] / fund[common[-1]]
+    return ratio if RATIO_RANGE[0] < ratio < RATIO_RANGE[1] else None
+
+
+def _fetch_json(url: str) -> Any:
+    request = Request(url, headers={"User-Agent": "Mozilla/5.0 (TIM-dashboard/1.0)", "Accept": "application/json"})
+    with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        return json.loads(response.read(MAX_BYTES))
+
+
+def index_ratio(fetch_json: Callable[[str], Any] = _fetch_json, now: Callable[[], float] = time.monotonic) -> float | None:
+    """^NDX / QQQ from the last common daily close, cached ``RATIO_TTL``; None when unknown (tests: always None)."""
+    if os.environ.get("TIM_RUNTIME_ENV") == "test" and fetch_json is _fetch_json:
+        return None
+    with _RATIO_LOCK:
+        at, value, failed = _RATIO_STATE["at"], _RATIO_STATE["value"], _RATIO_STATE["failed"]
+        if at is not None and now() - at < (RATIO_FAIL_PAUSE if failed else RATIO_TTL):
+            return value
+        try:
+            fresh = ratio_from(fetch_json(RATIO_URL.format(symbol="%5ENDX")), fetch_json(RATIO_URL.format(symbol="QQQ")))
+        except Exception:  # noqa: BLE001 - keep the last factor
+            fresh = None
+        _RATIO_STATE.update(at=now(), value=fresh or value, failed=fresh is None)
+        return fresh or value
+
+
+def scale_to_index(rows: list[dict[str, Any]], ratio: float | None = None) -> list[dict[str, Any]]:
+    """QQQ rows in Nasdaq-100 points (``index_ratio`` on each row); other symbols and unknown factor unchanged."""
+    if symbol() != "QQQ":
+        return rows
+    ratio = ratio if ratio is not None else index_ratio()
+    if not ratio:
+        return rows
+    for row in rows:
+        for k in ("open", "high", "low", "close"):
+            row[k] = round(row[k] * ratio, 2)
+        row["index_ratio"] = round(ratio, 4)
+    return rows
 
 
 # --- footprint, volume profile and CVD from 1m candles (Uzi 16.11.2026: "Layouts für Nasdaq, Footprint und so") ---

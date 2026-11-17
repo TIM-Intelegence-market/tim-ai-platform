@@ -120,6 +120,10 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
                                             "display only, no paper trading."),
     (r"^Nasdaq: Footprint, Volume Profile und CVD sind eine Näherung", "Nasdaq: footprint, volume profile and CVD are an approximation from 1m candles, not real trades "
                                                                        "(volume spread evenly over the candle range, buy share from where the close sits). No bubbles, OI or funding."),
+    (r"^Nasdaq-100 in Indexpunkten: Kerzen von QQQ über Twelve Data \(eigener API-Key\) mal ([\d,]+)",
+     r"Nasdaq-100 in index points: QQQ candles via Twelve Data (TIM's own API key) times \1 (last common daily close ^NDX/QQQ, "
+     r"renewed every 6 h); usually within 0.1 % of the real index. Candles only in US trading hours (Mon-Fri 9:30-16:00 New York). "
+     r"Display only, for comparison with BTC."),
     (r"^Nasdaq-100 über Twelve Data", "Nasdaq-100 via Twelve Data (TIM's own API key) as the ETF QQQ (tracks the Nasdaq-100, price about a fortieth of the index; "
                                      "the free plan does not deliver the NDX index): candles only in US trading hours "
                                      "(Mon-Fri 9:30-16:00 New York), none at weekends and overnight. No trades, no footprint, "

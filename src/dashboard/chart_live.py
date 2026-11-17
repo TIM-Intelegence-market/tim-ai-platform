@@ -60,6 +60,9 @@ INDEX_KEY_NOTE = ("Nasdaq-100 über Twelve Data (eigener API-Key) als ETF QQQ (f
                   "kein Papier-Trading; reine Anzeige zum Vergleich mit BTC.")
 INDEX_FOOTPRINT_NOTE = ("Nasdaq: Footprint, Volume Profile und CVD sind eine Näherung aus 1m-Kerzen, keine echten Trades "
                         "(Volumen gleich über die Kerzenspanne verteilt, Käuferanteil nach Lage des Schlusses). Bubbles, OI und Funding gibt es nicht.")
+INDEX_SCALED_NOTE = ("Nasdaq-100 in Indexpunkten: Kerzen von QQQ über Twelve Data (eigener API-Key) mal {ratio} "
+                     "(letzter gemeinsamer Tagesschluss ^NDX/QQQ, alle 6 h neu); Abweichung zum echten Index meist unter 0,1 %. "
+                     "Kerzen nur zu US-Handelszeiten (Mo-Fr 15:30-22:00 deutsche Zeit). Reine Anzeige zum Vergleich mit BTC.")
 INDEX_NOTE = ("Nasdaq-100 (^NDX) von Yahoo Finance (öffentlich, inoffiziell, teils verzögert; kein Twelve-Data-Key hinterlegt): Kerzen nur zu US-Handelszeiten "
               "(Mo-Fr 15:30-22:00 deutsche Zeit), Wochenende und Nacht ohne Kerzen. Volumen des Index ist 0, keine Trades, kein Footprint, "
               "kein Papier-Trading; reine Anzeige zum Vergleich mit BTC.")
@@ -1170,7 +1173,12 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         from src.dashboard.index_data import PROVENANCE as KEYED
 
         model["index_source"] = "twelvedata" if rows and rows[-1].get("provenance") == KEYED else "yahoo"
-        model["notes"].append(INDEX_KEY_NOTE if model["index_source"] == "twelvedata" else INDEX_NOTE)
+        ratio = rows[-1].get("index_ratio") if rows else None
+        if ratio:
+            model["index_ratio"] = ratio
+            model["notes"].append(INDEX_SCALED_NOTE.format(ratio=f"{ratio:.2f}".replace(".", ",")))
+        else:
+            model["notes"].append(INDEX_KEY_NOTE if model["index_source"] == "twelvedata" else INDEX_NOTE)
     candles = clean_candles(rows, timeframe)
     flags = {c["open_time"]: c.get("closed", True) for c in (dict(r, open_time=datetime.fromisoformat(str(r["open_time"]))) for r in rows)}
     if not candles and symbol == "BTCUSDT" and runtime_series and runtime_series.get(timeframe):
