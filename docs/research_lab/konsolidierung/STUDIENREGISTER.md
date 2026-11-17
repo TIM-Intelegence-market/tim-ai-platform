@@ -1092,6 +1092,23 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Aussagen: Zwischenstände von 25 Plänen gelesen [NUR BERICHTET]
 - Verwendung in der Konsolidierung: Beobachtung; zählt nicht.
 
+### OF-Live: Orderflow-Papierjournal Stufe B (OF2 1.0 mit OF-Tor auf Live-Trades, PS5)
+
+- Cluster / Art / Beginn: PROSPEKTIV / Papier-Journal vorwärts / Zählbeginn 2026-11-18
+- Quellen: `docs/research_lab/studien/OF_LIVE_AUSWERTUNGSREGEL.md`
+- Daten: Binance Spot BTCUSDT aggTrades live (Recorder PS5), Archiv sobald veröffentlicht
+- Aufteilung: vorwärts
+- Kosten: Engine-Modell (0,06 % Gebühr, 0,03 % Schlupf je Seite, 0,05 % Stop-Schlupf), Funding 0
+- Register: Auswertungsregel 1.0 vor dem ersten zählenden Tag eingefroren (17.11.2026)
+- Stichprobe: 0 zählende Trades beim Einfrieren
+- Ergebnis: noch keins
+- Urteil des Labors: running
+- **Prüftiefe C, Klasse EXPLORATIV, Richtung: unklar (n 0)**
+- Begründung: Gleiche Regel wie Stufe A (Kontrollspur), nur andere Datenquelle; Stufe A hatte 11.–16.11. 0 Trades.
+- Mängel: Regel verwirft bisher alles (OF-Tor, Kostentor); Deflated Sharpe OF2 0,06; Spot-Daten mit Perp-Gebühren, ohne Funding
+- Aussagen: keine
+- Verwendung in der Konsolidierung: Beobachtung; zählt nicht.
+
 ### Exit-Schatten: Läufer statt festem TP3 (Schatten-Journal Exit-Varianten), Papier
 
 - Cluster / Art / Beginn: PROSPEKTIV / Prospektives Schatten-Journal / 2026-11-04
