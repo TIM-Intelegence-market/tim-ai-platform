@@ -401,7 +401,8 @@ def _workshop_card(root: Path) -> str:
             f"<div class='card'><h2>Schattenbetrieb</h2>{shadows}</div>"
             f"<div class='card'><h2>Regel-Tests <span>Erkundung, kein Beleg</span></h2>{rule_tests}</div></div></div>"
             f"<div class='card'><h2>Selbst-Verbesserung <span>TIM lernt aus seinen Trades</span></h2>{learning}</div>"
-            f"{_forward_card(data.get('forward'))}{_of_paper_card(data.get('of_paper'))}")
+            f"{_forward_card(data.get('forward'))}{_of_paper_card(data.get('of_paper'))}"
+            f"{_of_live_card(data.get('of_live'))}")
 
 
 OF_STEPS = (("kandidat", "Kandidaten"), ("bestaetigt", "bestätigt"), ("frei", "Platz frei"), ("risiko_ok", "Risiko ok"),
@@ -438,6 +439,41 @@ def _of_paper_card(data: dict[str, Any] | None) -> str:
     if funnel:
         funnel = "<p class='mut sm'>Signaltrichter seit Start</p>" + funnel
     return f"<div class='card'>{title}{intro}{head}{line}{funnel}</div>"
+
+
+def _of_live_card(data: dict[str, Any] | None) -> str:
+    """Live orderflow journal on the PS5 (stage B), copied to the Mac by the workshop, with the stage-A comparison."""
+    title = "<h2>Orderflow live <span>PS5, Papier, BTC</span></h2>"
+    intro = ("<p class='mut sm'>Dieselbe eingefrorene Regel wie im Papier-Journal oben, aber auf Live-Trades: Die PS5 "
+             "zeichnet die Binance-Trades lückenlos auf und rechnet alle 5 Minuten. Signale erscheinen nach Minuten statt "
+             "nach einem Tag. Fertige Tage müssen genau die Trades des Papier-Journals ergeben; eine Abweichung ist ein "
+             "Datenfehler. Nur Papier, keine Orders.</p>")
+    if not data:
+        return f"<div class='card'>{title}{intro}<p class='mut'>Noch keine Daten von der PS5.</p></div>"
+    mirror = data.get("mirror") or {}
+    stand = (f"<p class='mut sm'>Zählt ab {_e(data.get('first_day'))} · live gerechnet bis "
+             f"{_e(local_time(data.get('live_until'), with_date=True) if data.get('live_until') else '—')} · Recorder "
+             f"{_e(local_time(data.get('recorder_stand'), with_date=True) if data.get('recorder_stand') else '—')} · "
+             f"abgeholt {_e(local_time(mirror.get('last_ok'), with_date=True) if mirror.get('last_ok') else '—')}"
+             + (" · <span class='dn'>Abholen fehlgeschlagen</span>" if mirror.get("errors") else "")
+             + (f" · wartet auf {_e(data['waiting_for'])}" if data.get("waiting_for") else "") + "</p>")
+    check = mirror.get("abgleich") or {}
+    if check.get("ok") is True:
+        abgleich = (f"<p class='sm'><span class='tag up'>Abgleich gleich</span> {check.get('gleich', 0)} Trades "
+                    f"{_e(check.get('ab'))} bis {_e(check.get('bis'))} identisch mit dem Papier-Journal</p>")
+    elif check.get("ok") is False:
+        abgleich = (f"<p class='sm'><span class='tag dn'>Abweichung</span> nur live {len(check.get('nur_live') or [])}, "
+                    f"nur Archiv {len(check.get('nur_archiv') or [])} ({_e(check.get('ab'))} bis {_e(check.get('bis'))})</p>")
+    else:
+        abgleich = f"<p class='mut sm'>Abgleich: {_e(check.get('grund') or 'noch keiner')}</p>"
+    mean = "—" if data.get("mean_r") is None else f"{_signed(data['mean_r'])} R"
+    line = (f"<div class='row'><span><b>{data.get('trades', 0)} von {data.get('min_trades', 100)} Trades</b> · zusammen "
+            f"{_e(_signed(data.get('net_r') or 0.0))} R · je Trade {_e(mean)}")
+    for o in data.get("open") or []:
+        line += (f"<br><span class='sm'>Offen: {_e(o['model'])} {'Long' if o['direction'] > 0 else 'Short'} ab {_e(o['entry'])}, "
+                 f"Stop {_e(round(o['stop'], 1))}, Ziel {_e(round(o['target'], 1))}</span>")
+    line += "</span></div>"
+    return f"<div class='card'>{title}{intro}{stand}{abgleich}{line}</div>"
 
 
 FORWARD_REASONS = {"target": "Ziel", "target_gap": "Ziel (Lücke)", "stop": "Stop", "stop_gap": "Stop (Lücke)",

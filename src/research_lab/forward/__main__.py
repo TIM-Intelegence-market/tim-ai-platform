@@ -20,6 +20,7 @@ Orderflow paper journal on live trades (stage B, own folder OF_LIVE; recorder an
     python -m src.research_lab.forward of-live-step  --trades DIR [--folder DIR]
     python -m src.research_lab.forward of-live-run   --trades DIR [--folder DIR] [--every 300]
     python -m src.research_lab.forward of-live-status [--folder DIR]
+    python -m src.research_lab.forward of-live-pull   # Mac: copy the PS5 journal and compare with stage A
 """
 from __future__ import annotations
 
@@ -60,12 +61,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("step", "status", "verify", "of-start", "of-step", "of-status",
                                                 "of-m8-step", "of-m8-status", "of-record", "of-live-step",
-                                                "of-live-run", "of-live-status"))
+                                                "of-live-run", "of-live-status", "of-live-pull"))
     parser.add_argument("--folder")
     parser.add_argument("--trades", help="recorder root (stage B)")
     parser.add_argument("--seconds", type=float)
     parser.add_argument("--every", type=float)
     args = parser.parse_args(argv)
+    if args.command == "of-live-pull":
+        from src.research_lab.forward import of_live_mirror
+
+        print(json.dumps(of_live_mirror.pull(args.folder or "."), ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
     if args.command == "of-record" or args.command.startswith("of-live-"):
         return _stage_b(args)
     if args.command.startswith("of-m8-"):
