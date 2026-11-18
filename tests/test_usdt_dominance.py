@@ -96,3 +96,19 @@ def test_unoffered_timeframe() -> None:
 def test_english_model_keeps_working() -> None:
     model = build_live_chart("USDTD", "30m", context={"usdtd": {"samples": wave_samples(), "daily": None, "error": None}}, now=NOW)
     assert english_chart_model(model)["symbol"] == "USDTD"
+
+
+def test_recorder_starts_with_the_process_not_with_the_chart() -> None:
+    """18.11.2026: the recorder only started on the first USDT.D chart call and left a 30-minute gap after a restart."""
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+    assert "usdt_dominance_recorder.start()" in source
+    assert source.index("self.dashboard.start()") < source.index("usdt_dominance_recorder.start()")
+
+
+def test_recorder_start_is_a_noop_in_tests_and_idempotent(tmp_path) -> None:
+    rec = ud.Recorder(tmp_path / "s.jsonl", fetch=lambda url: (_ for _ in ()).throw(OSError("no network in tests")))
+    rec.start()
+    rec.start()
+    assert rec._thread is None and not (tmp_path / "s.jsonl").exists()
