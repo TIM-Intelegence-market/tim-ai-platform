@@ -31,6 +31,8 @@ NAV = (("/chart", "Chart"), ("/journal", "Paper journal"), ("/live", "Live accou
 REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
+    "usdtd_swing": "USDT.D: swing highs and lows with value", "usdtd_sr": "USDT.D: latest support and resistance",
+    "usdtd_ema": "USDT.D: EMA 20 and EMA 50",
     "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "quarter": "Quarter (1Q)", "year": "Year (1Y)",
     "vwap": "VWAP (week, month, quarter, year)", "vwap_bands": "VWAP bands week (±1σ, ±2σ, shaded)", "naked": "naked POC",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
@@ -227,7 +229,7 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])
     out["name"] = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "XMRUSDT": "Monero (XMR perp)",
-                   "PAXGUSDT": "Gold (PAXG)", "NDX": "Nasdaq-100"}.get(str(model.get("symbol")), model.get("name"))
+                   "PAXGUSDT": "Gold (PAXG)", "NDX": "Nasdaq-100", "USDTD": "USDT dominance (USDT.D)"}.get(str(model.get("symbol")), model.get("name"))
     return out
 
 from src.dashboard.pwa import HEAD_TAGS as PWA_HEAD_TAGS  # noqa: E402
