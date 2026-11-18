@@ -6,14 +6,14 @@
 | Version | **0.1, Entwurf, nicht eingefroren.** Einfrieren (1.0) nur auf Uzis Wort und vor jedem Blick auf das Testfenster |
 | Anlass | Plan `../SELBSTVERBESSERNDE_KI_PLAN.md`, Uzi am 13.11.2026: „Mehr Daten und Regeln sammeln, dann testen“ |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
-| Regeln | `OPTIONSFLOW_REGELKATALOG.md`: R1–R6 (Richtung, Filter), V1–V2 (Volatilität), zusammen 8 Tests |
+| Regeln | `OPTIONSFLOW_REGELKATALOG.md`: R1–R6 (Richtung, Filter), V1–V3 (Volatilität), zusammen 9 Tests |
 | Daten | Eigene Aufzeichnung (A1, `src/research_lab/options_flow`), BTC, ab Dienststart; Kerzen und Trades wie S27 |
 
 ## 1. Fragestellung
 
 Haben Optionsflow-Merkmale einen Zusammenhang mit dem Ergebnis der S27-Trades (Stop 3 ATR14, Ziel 6 ATR14, höchstens 168 h)
 nach Bitunix-Kosten mit Funding, so dass der Filter „nehmen“ im Mittel **positiv** ist und besser als „auslassen“?
-V1/V2: Sagen sie die Spanne der nächsten 24 h (ATR-normiert) besser voraus als die Spanne der letzten 24 h allein?
+V1–V3: Sagen sie die Spanne der nächsten 4 h und 24 h (ATR-normiert) besser voraus als die Spanne der letzten 24 h allein?
 
 ## 2. Daten und Fenster
 
@@ -40,10 +40,10 @@ Eine R-Regel gilt als **bestanden**, wenn im Testfenster alle Punkte erfüllt si
 
 1. n „nehmen“ ≥ 100,
 2. Mittel netto „nehmen“ > 0 R, Bootstrap-Intervall 95 % über 0,
-3. Abstand „nehmen“ − „auslassen“ > 0 mit Holm-korrigiertem p < 0,05 über alle 8 Tests dieser Version,
+3. Abstand „nehmen“ − „auslassen“ > 0 mit Holm-korrigiertem p < 0,05 über alle 9 Tests dieser Version,
 4. Vorzeichen im Kalibrierfenster gleich.
 
-V-Regeln: Holm-korrigiertes p < 0,05 für den Zuwachs gegenüber der Basis (Spanne der letzten 24 h).
+V-Regeln (V3 zusätzlich gegen V1 als Basis): Holm-korrigiertes p < 0,05 für den Zuwachs gegenüber der Basis (Spanne der letzten 24 h).
 Sonst: „nicht bestanden“ oder bei n < 100 „nicht prüfbar“. Keine Nachbesserung im selben Fenster.
 
 ## 5. Ablauf
