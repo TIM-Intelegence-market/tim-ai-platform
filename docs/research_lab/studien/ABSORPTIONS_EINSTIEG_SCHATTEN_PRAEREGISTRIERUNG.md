@@ -1,8 +1,33 @@
-# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.4, ENTWURF, nicht eingefroren)
+# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.5, ENTWURF, nicht eingefroren)
 
 Auftrag Uzi 17.11.2026 ("Die Absorption könnte doch getradet werden"). Anlass: BTCUSDT 1h, 17.11. (Handy-Screenshot). Bei ~65.200 (1D-VAH-Bereich) zeigt der Chart eine Kauf-Absorption (Kreis "500"), danach fällt der Preis bis ~63.300 nahe der Opt Put Wall 63.000; unten steht ein Kreis nahe 63.600. Uzi: Absorption als Einstieg ist "auf jeden Fall ein guter Ansatz"; **bei der nächsten Absorption werden je nach Long/Short die Gewinne realisiert**; wichtige Zonen und vor allem **Akkumulation** sollen erkennbar sein. **Nichts gerechnet, kein Ergebnis gesehen. Ob der Fall vom 17.11. von den unten definierten Schwellen überhaupt erfasst würde, ist ungeprüft.**
 
 Status: Entwurf. Einfrieren (1.0) erst auf Uzis "einfrieren", Zeitplan erst auf "Zeitplan an", Merge nur auf "merge". Nur Papier/Schatten, kein Echtgeld, Holdout 2025 tabu, kein Backtest (Orderflow nur vorwärts).
+
+## Änderung 0.5 (Uzi 19.11., "Pass es an")
+
+Anlass: Abgleich mit den Valtos-Folien (L11, L12, L15 bis L18) und Uzis Wort: Zonen, die der TIM-Chart zeigt
+("geschätzt, aber belegt geschätzt"), die Reaktion dort für 2 bis 3 R nutzen, Stop "am sichersten Punkt der Statistik".
+
+- **Zonen aus dem TIM-Chart.** Ein Recorder (`forward/chart_zones.py`) schreibt alle 5 Minuten die Zonen der
+  Level-Übersicht (`src/dashboard/level_overview.py`, öffentliche Binance-Kerzen wie der Chart) mit Zeitstempel weg.
+  Ein Ereignis zählt, wenn sein Extrem in einer Chart-Zone ab Gewicht 3 ("mittel") liegt, Toleranz wie bisher 0,15 %.
+  Benutzt wird nur der jüngste Schnappschuss, der vor dem Ereignis geschrieben wurde und höchstens 30 Minuten alt ist.
+  Fehlt er (Recorder aus), gelten die bisherigen eigenen Zonen; die Quelle steht je Trade unter `zone.quelle`.
+  Damit sind auch Wochen- und Monatshoch/-tief und die Initial Balance dabei (Valtos L18 S.7).
+- **Ziel 2 bis 3 R.** Die halbe Position geht bei +2 R, der Rest bei +3 R raus. Stop, Einstand ab +1 R und die
+  Gegen-Absorption beenden den Trade weiterhin vorher. Der frühere Lauf ohne Ziel entfällt im Urteil.
+- **Stop.** Unverändert (hinter dem Docht, mindestens 0,5 %). Die Folien nennen keine Zahl ("tight stops", L15 S.4).
+  Neu wird je Ereignis 240 Minuten lang gemessen, wie weit der Preis über das Extrem hinausging (`nachlauf`,
+  Zusammenfassung `stop_messung` im Journal). Erst mit diesen Zahlen kann der Stop "am sichersten Punkt" gesetzt
+  werden; das braucht Uzis Wort und einen neuen Ordner. Die Messung fließt in keine Entscheidung.
+- **Zweiter Test.** Je Ereignis wird notiert, ob der Preis ab dem dritten Fenster danach wieder am Extrem war, mit
+  wie viel Volumen im Vergleich zum Ereignis und ob er gehalten hat (Valtos L11 S.9). Nur mitgeschrieben, kein Filter.
+- Regelname `R-ABS-2/0.5-entwurf`, neuer Parameter-Digest, daher neuer Journal-Ordner; 0.4 hatte 0 Trades.
+
+Offen: "Stochastik" ist als Statistik gelesen (wie im Thread zu S30). Ist der Stochastik-Indikator gemeint, ändert
+sich der Stop-Baustein. Die Level-Übersicht hat nach S22 bis S30 keinen belegten Vorteil; "belegt" heißt hier nur,
+dass die Zone vor dem Ereignis im Chart stand.
 
 ## Änderung 0.2 (Uzi 17.11., "Überprüf nochmal dein Angehen")
 Uzi: Im Orderflow ist es normal, solche Preisbewegungen **mitzunehmen**; dahinter stehen viele Zahlen. Geopolitik bleibt vorerst außen vor. Entwurf 0.1 hätte die Bewegung an drei Stellen abgeschnitten oder verpasst, das ist korrigiert:

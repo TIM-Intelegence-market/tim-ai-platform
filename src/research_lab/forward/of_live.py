@@ -30,7 +30,12 @@ from src.research_lab.of2.backtest import Trade
 from src.research_lab.of2.config import Config
 from src.research_lab.of2.engine import Engine
 from src.research_lab.orderflow_ml.bars import DayProfile, MinuteBar
-from src.research_lab.orderflow_ml.store import PAPER_FIRST_DAY, PAPER_RELEASE, MinuteBarStore, guard
+from src.research_lab.orderflow_ml.store import (
+    PAPER_FIRST_DAY,
+    PAPER_RELEASE,
+    MinuteBarStore,
+    guard,
+)
 
 FOLDER = Path("data/research/forward/OF_LIVE")
 ARCHIVE_RETRY_SECONDS = 3600

@@ -74,8 +74,8 @@ def test_long_on_sell_absorption_exits_on_counter_absorption():
     trade = out["trades"][0]
     assert trade["direction"] == "LONG"
     assert trade["zone"]["name"] == "VT Tief"
-    assert trade["exit_reason"] == "Gegen-Absorption"
-    assert trade["net_r"] > 1.0          # the move was ridden, not cut at a level
+    assert trade["ziel_1_erreicht"] is True and trade["exit_reason"] == "Ziel 3R"   # Uzi 19.11.: 2-3 R
+    assert 2.3 < trade["net_r"] < 2.5    # half at +2 R, half at +3 R, minus costs
     assert trade["breakeven"] is True
     assert trade["stop_start"] < 64_001  # behind the wick ...
     assert trade["stop_start"] <= trade["fill"] * 0.995 + 0.01   # ... and at least 0.5 % away (Uzi "go Stop")
@@ -95,7 +95,8 @@ def test_no_look_ahead_cutting_the_future_does_not_change_the_past():
     cut = full[: 600 + 5 + 3]   # three minutes after the absorption window
     early = abs_entry.simulate(days(cut), STARTED)
     late = abs_entry.simulate(days(full), STARTED)
-    assert early["events"][0] == {**late["events"][0], "ergebnis": early["events"][0]["ergebnis"]}
+    assert early["events"][0] == {**late["events"][0], "ergebnis": early["events"][0]["ergebnis"],
+                                  "nachlauf": early["events"][0]["nachlauf"]}   # the follow-up is measured later
     assert early["open"]["fill"] == late["trades"][0]["fill"]
 
 
@@ -165,7 +166,7 @@ def test_verdict_rule():
 def test_comparison_next_level_is_recorded_but_not_the_rule():
     out = abs_entry.simulate(days(scenario()), STARTED)
     trade = out["trades"][0]
-    assert "ref_level" in trade and trade["exit_reason"] == "Gegen-Absorption"
+    assert "ref_level" in trade and trade["exit_reason"] == "Ziel 3R"
     lvl = trade["ref_level"]
     assert lvl["target"] is None or lvl["target"] > trade["fill"]
 
@@ -187,3 +188,35 @@ def test_comparison_rows_in_verdict_and_old_trades_unchanged():
     old = {"id": "L-1", "closed_at": "x", "net_r": 0.5, "hash": "h"}
     kept, dev = abs_entry.chain([old], [{"id": "L-1", "closed_at": "x", "net_r": 0.5, "ref_level": {"target": None}}])
     assert dev == [] and kept == [old]
+
+
+def test_counter_absorption_before_the_target_still_ends_the_trade():
+    out = abs_entry.simulate(days(scenario()), STARTED, abs_entry.Params(target_r_1=5.0, target_r_2=6.0))
+    trade = out["trades"][0]
+    assert trade["exit_reason"] == "Gegen-Absorption" and trade["ziel_1_erreicht"] is False and trade["net_r"] > 1.0
+
+
+def test_chart_zone_decides_when_a_snapshot_exists():
+    zone = {"low": 63_950.0, "high": 64_020.0, "mid": 63_985.0, "weight": 5, "labels": ["1W Tief", "1D VAL"]}
+    weak = {**zone, "weight": 2}
+    seen = []
+    out = abs_entry.simulate(days(scenario()), STARTED, chart=lambda at: seen.append(at) or [zone])
+    assert out["trades"][0]["zone"]["quelle"] == "chart" and out["trades"][0]["zone"]["name"].startswith("TIM-Chart: 1W Tief")
+    assert seen and all(at % (5 * MINUTE_MS) == 0 for at in seen)
+    assert abs_entry.simulate(days(scenario()), STARTED, chart=lambda at: [weak])["trades"] == []   # own zone does not rescue
+    assert abs_entry.simulate(days(scenario()), STARTED, chart=lambda at: None)["trades"][0]["zone"]["quelle"] == "eigen"
+
+
+def test_follow_up_measures_piercing_and_second_test():
+    bars = scenario(exit_absorption=False)
+    t = bars[-1].window_start_ms + MINUTE_MS
+    for k in range(10):   # back to the absorbed low with little volume, 4 dollars through it, closing above
+        bars.append(bar(t + k * MINUTE_MS, 64_010, 64_030, 63_997 if k == 7 else 64_005, 64_020, buy=0.2, sell=0.2))
+    for k in range(10, 260):
+        bars.append(bar(t + k * MINUTE_MS, 64_020, 64_030, 64_010, 64_020))
+    out = abs_entry.simulate(days(bars), STARTED)
+    follow = out["events"][0]["nachlauf"]
+    assert follow["fertig"] is True and follow["ueber_extrem_pct"] == pytest.approx(4 / 64_001 * 100, abs=1e-3)
+    assert follow["zweiter_test"]["weniger_volumen"] is True and follow["zweiter_test"]["gehalten"] is True
+    stats = abs_entry.stop_messung(out["events"])
+    assert stats["ereignisse"] == 1 and stats["zweiter_test_weniger_volumen"] == 1
