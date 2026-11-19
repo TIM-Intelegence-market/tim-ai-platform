@@ -76,7 +76,7 @@ class ForwardError(RuntimeError):
 def fetch_json(path: str, params: Mapping[str, str]) -> Any:
     request = Request(f"{FAPI}{path}?{urlencode(params)}", headers={"User-Agent": "TIM-research-forward/1 (read-only)"})
     try:
-        with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        with urlopen(request, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310 - fixed public https host
             body = response.read(MAX_BYTES + 1)
     except HTTPError as error:
         raise ForwardError(f"binance http {error.code}") from error

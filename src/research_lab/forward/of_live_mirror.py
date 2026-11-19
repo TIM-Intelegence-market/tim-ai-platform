@@ -50,7 +50,7 @@ def scp_argv(cfg: dict[str, Any], name: str, dest: Path) -> list[str]:
     remote = str(cfg["remote_folder"]).rstrip("/")
     if not SAFE_PATH.fullmatch(remote) or ".." in remote:
         raise ValueError("remote_folder may only hold letters, digits and _ . / ~ -")   # no quoting in SFTP mode
-    remote = remote.removeprefix("~/")   # scp paths without "/" start in the home folder
+    remote = remote[2:] if remote.startswith("~/") else remote   # scp paths without "/" start in the home folder
     return ["scp", *options, f"{target}:{remote}/{name}", str(dest)]
 
 

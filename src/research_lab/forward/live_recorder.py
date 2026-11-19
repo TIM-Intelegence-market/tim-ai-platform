@@ -25,14 +25,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from src.research_lab.orderflow_ml.bars import (
-    MINUTE_MS,
-    DayProfile,
-    MinuteBar,
-    ReductionQuality,
-    reduce_trades_with_profile,
-    ticks_from_rows,
-)
+from src.research_lab.orderflow_ml.bars import (MINUTE_MS, DayProfile, MinuteBar, ReductionQuality,
+                                                reduce_trades_with_profile, ticks_from_rows)
 
 SYMBOL = "BTCUSDT"
 REST = "https://api.binance.com/api/v3/aggTrades?symbol={symbol}&fromId={from_id}&limit=1000"
@@ -49,7 +43,7 @@ class ChainError(RuntimeError):
 
 
 def http_json(url: str, timeout: float = 15.0) -> Any:
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
+    with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 - fixed https host
         return json.loads(resp.read())
 
 
