@@ -4,6 +4,15 @@ Ziel: Andere sehen über einen öffentlichen Link, was TIM auf dem Chart zeigt, 
 Control Center. Die Ansicht ist englisch und trägt auf jeder Seite den Hinweis
 „Research, not financial advice“.
 
+## Anmeldung (seit 21.11.)
+
+`/journal`, `/journal/trade`, `/live` und `/api/plan-journal` verlangen Anmeldung (HTTP Basic über den
+HTTPS-Tunnel). Chart, Chart-Daten und `/robots.txt` bleiben offen. Das Passwort steht nur als gesalzener
+Hash in `~/Library/Application Support/TIM/public-auth.json` (Modus 0600, nicht im Repo). Fehlt die Datei oder
+ist sie kaputt, bleiben die drei Seiten zu (503). Nach 5 falschen Versuchen je Besucher 5 Minuten Pause (429).
+Neues Passwort erzeugen (zeigt es einmal an): `python -m src.dashboard.public_auth init`.
+Der Dashboard-Agent prüft nach einem Neustart `/chart` und `/robots.txt` (nicht mehr `/journal`).
+
 ## Was öffentlich ist
 
 `src/dashboard/public_server.py` läuft im Runtime-Prozess auf **127.0.0.1:8780** (nur Loopback) und

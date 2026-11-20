@@ -98,8 +98,8 @@
       "after_restart": true
     },
     {
-      "name": "public_journal",
-      "url": "http://127.0.0.1:8780/journal",
+      "name": "public_robots",
+      "url": "http://127.0.0.1:8780/robots.txt",
       "timeout_seconds": 20,
       "when_file": "Library/Application Support/TIM/public-dashboard.enabled",
       "after_restart": true

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from pathlib import Path
@@ -10,7 +11,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from src.dashboard import chart_live
+from src.dashboard import chart_live, public_auth
 from src.dashboard.public_en import DISCLAIMER, english_chart_model, english_note, journal_page
 from src.dashboard.public_server import PublicDashboardServer, RateLimiter, clean_query
 from src.dashboard.state import DashboardState
@@ -25,13 +26,24 @@ def server(tmp_path, monkeypatch):
     state.plan_journal_path = tmp_path / "tim.json"
     state.plan_journal_struct_path = tmp_path / "struct.json"
     state.plan_journal_level_path = tmp_path / "level.json"
+    monkeypatch.setenv(public_auth.AUTH_FILE_ENV, str(tmp_path / "auth.json"))
+    PASSWORD[0] = public_auth.init_login(tmp_path / "auth.json")
     public = PublicDashboardServer(state, "127.0.0.1", 0)
     public.start()
     yield public, f"http://127.0.0.1:{public.httpd.server_address[1]}"
     public.stop()
 
 
+PASSWORD = [""]
+
+
+def _login(password: str | None = None, user: str = "uzi") -> dict:
+    return {"Authorization": "Basic " + base64.b64encode(f"{user}:{password or PASSWORD[0]}".encode()).decode()}
+
+
 def _get(url: str, method: str = "GET", headers: dict | None = None):
+    # Private pages need the login; the chart ignores it.
+    headers = {**_login(), **(headers or {})} if "/chart" not in url else (headers or {})
     try:
         with urlopen(Request(url, method=method, headers=headers or {}), timeout=10) as response:
             return response.status, dict(response.headers), response.read().decode()
@@ -366,3 +378,49 @@ def test_live_page_names_the_traded_timeframes():
     assert "fresh 1h plan" in live_page(_live_status(timeframes="15m"), now=now)
     three = live_page(_live_status(entry_timeframes=["1d", "1h", "15m"]), now=now)
     assert "15m and 1h and 1d paper plans" in three and "href='/journal?rule=long'>1d paper journal" in three
+
+
+def test_private_pages_need_login_and_chart_stays_open(server, tmp_path):
+    public, base = server
+    for path in ("/live", "/journal", "/journal?rule=mid", "/journal/trade?rule=mid&id=abc", "/api/plan-journal"):
+        status, headers, body = _get(base + path, headers={"Authorization": ""})
+        assert status == 401 and "WWW-Authenticate" in headers and "Basic" in headers["WWW-Authenticate"], path
+        assert "No live data" not in body and "Paper" not in body
+        assert headers["Cache-Control"] == "no-store"
+    assert _get(base + "/chart")[0] == 200
+    assert _get(base + "/api/chart/live?symbol=BTCUSDT&tf=1h")[0] == 200
+    assert _get(base + "/robots.txt")[0] == 200
+    assert _get(base + "/live", headers=_login())[0] == 200
+    assert _get(base + "/journal", headers=_login())[0] == 200
+
+
+def test_wrong_login_is_refused_and_guessing_is_paused(server):
+    public, base = server
+    for _ in range(5):
+        assert _get(base + "/live", headers=_login("wrong"))[0] == 401
+    assert _get(base + "/live", headers=_login("wrong"))[0] == 429
+    assert _get(base + "/live", headers=_login())[0] == 429  # the pause holds even for the right password
+    assert _get(base + "/chart")[0] == 200
+
+
+def test_wrong_user_and_odd_headers_are_refused(server):
+    public, base = server
+    assert _get(base + "/live", headers=_login(user="admin"))[0] == 401
+    assert _get(base + "/live", headers={"Authorization": "Bearer abc"})[0] == 401
+    assert _get(base + "/live", headers={"Authorization": "Basic !!!notbase64"})[0] == 401
+
+
+def test_without_login_file_private_pages_stay_shut(server, tmp_path, monkeypatch):
+    public, base = server
+    monkeypatch.setenv(public_auth.AUTH_FILE_ENV, str(tmp_path / "missing.json"))
+    assert _get(base + "/live", headers=_login())[0] == 503
+    (tmp_path / "broken.json").write_text("{nope")
+    monkeypatch.setenv(public_auth.AUTH_FILE_ENV, str(tmp_path / "broken.json"))
+    assert _get(base + "/journal", headers=_login())[0] == 503
+    assert _get(base + "/chart")[0] == 200
+
+
+def test_login_file_holds_no_plain_password(tmp_path):
+    password = public_auth.init_login(tmp_path / "a.json")
+    text = (tmp_path / "a.json").read_text()
+    assert password not in text and oct((tmp_path / "a.json").stat().st_mode & 0o777) == "0o600"

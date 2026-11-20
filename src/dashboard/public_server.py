@@ -25,6 +25,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from src.dashboard.constants import MAX_RESPONSE_BYTES
+from src.dashboard import public_auth
 from src.dashboard.layout import _content_security_policy
 from src.dashboard.security import _require_loopback_host
 
@@ -40,6 +41,10 @@ MAX_URL = 512
 # Written every few minutes by the local live trader (outside the repo, read-only key, no secrets inside).
 LIVE_STATUS_FILE = Path(os.environ.get("TIM_LIVE_STATUS_FILE", Path.home() / "Library/Application Support/TIM/live_status.json"))
 MAX_LIVE_STATUS_BYTES = 16_384
+
+
+def path_is_private(raw_path: str) -> bool:
+    return (urlparse(raw_path).path.rstrip("/") or "/") in public_auth.PROTECTED
 
 
 def clean_query(path: str, query: dict[str, list[str]]) -> dict[str, str]:
@@ -98,6 +103,7 @@ class PublicDashboardServer:
         self.state, self.host, self.port = state, host, port
         self.live_status_file = LIVE_STATUS_FILE
         self.limiter, self.cache = limiter or RateLimiter(), cache or TTLCache()
+        self.login_failures = public_auth.FailureLimiter()
         self.busy = threading.BoundedSemaphore(MAX_BUSY)
         outer = self
 
@@ -106,13 +112,15 @@ class PublicDashboardServer:
             sys_version = ""
 
             def respond(self, status: int, payload: bytes, content_type: str, csp: str | None = None,
-                        location: str | None = None, head: bool = False) -> None:
+                        location: str | None = None, head: bool = False, challenge: bool = False) -> None:
                 if len(payload) > MAX_RESPONSE_BYTES:
                     status, payload, content_type = 413, b'{"error":"too large"}', "application/json"
                 self.send_response(status)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(payload)))
-                self.send_header("Cache-Control", "public, max-age=5" if status == 200 else "no-store")
+                self.send_header("Cache-Control", "no-store" if path_is_private(self.path) else "public, max-age=5" if status == 200 else "no-store")
+                if challenge:
+                    self.send_header("WWW-Authenticate", f'Basic realm="{public_auth.REALM}", charset="UTF-8"')
                 self.send_header("Content-Security-Policy", csp or _content_security_policy())
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("X-Frame-Options", "DENY")
@@ -158,6 +166,11 @@ class PublicDashboardServer:
                     return self.respond(200, CHART_SCRIPTS[path], "text/javascript; charset=utf-8", head=head)
                 if path not in QUERY_KEYS:
                     return self.respond(404, b'{"error":"not found"}', "application/json", head=head)
+                if path in public_auth.PROTECTED:
+                    denied = outer.login_gate(self.client(), self.headers.get("Authorization"))
+                    if denied:
+                        return self.respond(denied, b'{"error":"login required"}', "application/json", head=head,
+                                            challenge=denied == 401)
                 query = clean_query(path, parse_qs(parsed.query))
                 if not outer.busy.acquire(blocking=False):
                     return self.respond(503, b'{"error":"busy"}', "application/json", head=head)
@@ -189,6 +202,19 @@ class PublicDashboardServer:
         self.httpd = ThreadingHTTPServer((host, port), Handler)
         self.httpd.daemon_threads = True
         self.thread = threading.Thread(target=self.httpd.serve_forever, name="tim-public-dashboard", daemon=True)
+
+    def login_gate(self, client: str, authorization: str | None) -> int | None:
+        """None when the visitor may pass; 401 asks for the login, 429 pauses a guesser, 503 means no login is set up."""
+        credentials = public_auth.load_credentials()
+        if credentials is None:
+            return 503  # fail closed: without a login file the private pages stay shut
+        if self.login_failures.blocked(client):
+            return 429
+        if public_auth.check_login(authorization, credentials):
+            return None
+        if authorization:
+            self.login_failures.record(client)
+        return 401
 
     def journal_paths(self) -> dict[str, Any]:
         """Public journal key -> journal file (the three horizons first, then the earlier 30m versions)."""
