@@ -208,12 +208,13 @@ class PublicDashboardServer:
         credentials = public_auth.load_credentials()
         if credentials is None:
             return 503  # fail closed: without a login file the private pages stay shut
-        if self.login_failures.blocked(client):
+        if not authorization:
+            return 401  # no password sent: nothing to check, nothing to count
+        if not self.login_failures.reserve(client):
             return 429
         if public_auth.check_login(authorization, credentials):
+            self.login_failures.release(client)
             return None
-        if authorization:
-            self.login_failures.record(client)
         return 401
 
     def journal_paths(self) -> dict[str, Any]:

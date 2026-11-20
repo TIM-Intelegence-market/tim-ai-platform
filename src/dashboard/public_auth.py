@@ -31,6 +31,7 @@ MAX_AUTH_FILE_BYTES = 4096
 MAX_HEADER = 512
 REALM = "TIM private pages"
 FAIL_LIMIT, FAIL_WINDOW = 5, 300  # failed logins per client in this many seconds, then a pause
+GLOBAL_FAIL_LIMIT = 20  # the same, over all clients together
 
 
 def auth_file() -> Path:
@@ -74,24 +75,38 @@ def check_login(authorization: str | None, credentials: dict | None) -> bool:
 
 
 class FailureLimiter:
-    """After FAIL_LIMIT wrong logins a client waits until the window is over (no password guessing)."""
+    """Pauses password guessing. Each attempt is counted before the slow check, under one lock (no burst gets past it).
+
+    Per client, and also over all clients together: the client name comes from tunnel headers a guesser may
+    forge, so the global limit is the one that cannot be dodged. It can pause the owner too; that is the safe side."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self.clock, self.lock = clock, threading.Lock()
         self.fails: dict[str, list[float]] = {}
+        self.all_fails: list[float] = []
 
-    def blocked(self, key: str) -> bool:
+    def reserve(self, key: str) -> bool:
+        """Count one attempt; False when the client or the whole view is over its limit."""
         now = self.clock()
         with self.lock:
+            self.all_fails = [t for t in self.all_fails if now - t < FAIL_WINDOW]
             recent = [t for t in self.fails.get(key, []) if now - t < FAIL_WINDOW]
-            self.fails[key] = recent
-            return len(recent) >= FAIL_LIMIT
-
-    def record(self, key: str) -> None:
-        with self.lock:
+            if len(recent) >= FAIL_LIMIT or len(self.all_fails) >= GLOBAL_FAIL_LIMIT:
+                self.fails[key] = recent
+                return False
             if len(self.fails) > 10_000:
                 self.fails.clear()
-            self.fails.setdefault(key, []).append(self.clock())
+            self.fails[key] = recent + [now]
+            self.all_fails.append(now)
+            return True
+
+    def release(self, key: str) -> None:
+        """A correct login does not count."""
+        with self.lock:
+            if self.fails.get(key):
+                self.fails[key].pop()
+            if self.all_fails:
+                self.all_fails.pop()
 
 
 def init_login(path: Path | None = None, user: str = "uzi") -> str:

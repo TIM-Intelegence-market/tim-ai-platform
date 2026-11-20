@@ -424,3 +424,24 @@ def test_login_file_holds_no_plain_password(tmp_path):
     password = public_auth.init_login(tmp_path / "a.json")
     text = (tmp_path / "a.json").read_text()
     assert password not in text and oct((tmp_path / "a.json").stat().st_mode & 0o777) == "0o600"
+
+
+def test_forged_client_header_does_not_dodge_the_pause(server):
+    public, base = server
+    codes = [_get(base + "/live", headers={**_login("wrong"), "CF-Connecting-IP": f"10.0.0.{i}"})[0] for i in range(25)]
+    assert codes[:20] == [401] * 20 and codes[20:] == [429] * 5  # the global limit holds
+    assert _get(base + "/live", headers={**_login(), "CF-Connecting-IP": "10.9.9.9"})[0] == 429
+
+
+def test_burst_cannot_pass_the_limit():
+    from src.dashboard.public_auth import FailureLimiter
+
+    limiter = FailureLimiter()
+    assert [limiter.reserve("a") for _ in range(7)] == [True] * 5 + [False] * 2
+
+
+def test_variants_of_the_private_paths_are_shut(server):
+    public, base = server
+    for path in ("/live/", "/live//", "/journal/", "/api/plan-journal/"):
+        assert _get(base + path, headers={"Authorization": ""})[0] == 401, path
+    assert _get(base + "/live", method="HEAD", headers={"Authorization": ""})[0] == 401
