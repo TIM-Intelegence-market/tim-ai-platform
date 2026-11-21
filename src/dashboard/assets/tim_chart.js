@@ -50,6 +50,7 @@
   const layers = document.getElementById('tc-live-layers' + PANE);
   const STORE = 'tim-chart-layers-v1' + PANE;
   const SHORT_BARS = 12;
+  const NAME_SHIFT = 20;  // candles a level's name sits inside its line (not centred on the line start)
   const STYLE = { solid: LWC.LineStyle.Solid, dotted: LWC.LineStyle.Dotted, dashed: LWC.LineStyle.Dashed };
   let symbol = (PANE ? root : host).dataset.symbol, timeframe = (PANE ? root : host).dataset.tf;
   let timer = null, model = null, first = true, request = 0, running = true;
@@ -1842,6 +1843,14 @@
         : [{ time: local(d.t1), value: d.p1 }, { time: local(d.t2), value: d.p2 }];
       const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
       if (mid) points.splice(1, 0, { time: local(d.tm), value: d.p1 });  // BOS/MSS: horizontal, label in the middle
+      // Uzi 21.11.2026 "schreib die einfach auf den Chart": a name centred on the line start stood half outside the
+      // chart when the line began at the left edge. Flat levels carry their name a few candles into the line instead.
+      d.tl = null;
+      const step = model.interval_seconds || 0;
+      if (!mid && !d.curve && step && d.p1 === d.p2 && d.t2 - d.t1 >= 2 * NAME_SHIFT * step) {
+        d.tl = d.t1 + NAME_SHIFT * step;
+        points.splice(1, 0, { time: local(d.tl), value: d.p1 });
+      }
       series.setData(points);
       lines.push({ series, group: d.group, drawing: d });
     }
@@ -1874,14 +1883,14 @@
       const position = structure ? (d.direction === 'UP' ? 'aboveBar' : 'belowBar') : (d.p2 >= model.last ? 'aboveBar' : 'belowBar');
       const text = d.bars >= SHORT_BARS || d.finished ? d.label + (d.clipped ? ' ←' : '') : '';
       const marker = {
-        time: local(mid ? d.tm : d.t1), position,
+        time: local(mid ? d.tm : d.tl || d.t1), position,
         color: d.color, shape: structure ? (d.direction === 'UP' ? 'arrowUp' : 'arrowDown') : 'circle', size: structure ? 0.6 : 0.4,
         text,
       };
       // Uzi 21.11.2026 "Namen": on a phone "1D VAH" and "1D High" (0,02 % apart, one candle apart) lay on top of each other.
-      // Names whose marker sits within 4 candles and 0,3 % of an earlier one share its text.
-      const gap = 4 * (model.interval_seconds || 1800);
-      const twin = text && markers.find(m => m.text && Math.abs(m.marker.time - marker.time) <= gap && m.marker.position === position && Math.abs(d.p1 - m.price) <= Math.abs(m.price) * 0.003);
+      // Names within 0,3 % of an earlier one (same side) share its text, wherever on the time axis they start:
+      // their texts sit at about the same height and cover each other once the names move into the lines.
+      const twin = text && markers.find(m => m.text && m.marker.position === position && Math.abs(d.p1 - m.price) <= Math.abs(m.price) * 0.003);
       if (twin) {
         twin.marker.text += ' · ' + text;
         twin.series.setMarkers([twin.marker]);
