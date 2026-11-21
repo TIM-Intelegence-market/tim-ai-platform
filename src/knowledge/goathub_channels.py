@@ -29,7 +29,7 @@ from typing import Any, Iterable, Sequence
 from zoneinfo import ZoneInfo
 
 from .broncx_feed import BroncxGuidance, BroncxLevel
-from .goathub_feed import ROLE_CALLS, SOURCE_SCREEN, CommunityCall, GoatHubMessage, extract_call
+from .goathub_feed import ROLE_CALLS, ROLE_KNOWLEDGE, SOURCE_SCREEN, CommunityCall, GoatHubMessage, extract_call
 
 __all__ = [
     "BOARD_LIMIT_CHARS",
@@ -70,6 +70,10 @@ class ChannelProfile:
     authors: tuple[str, ...]  # only these authors' posts are calls (bots and guests are skipped)
     horizon: timedelta  # how long a call stays open before it counts as expired
     default_symbol: str | None = None
+    # Mixed chat channels (jokes, chart-bot commands, trade calls): the channel stays "knowledge" for everyone else, but
+    # these authors' posts are read as calls, and only when they name a coin and a level or stop (grade A/B).
+    read_knowledge_channel: bool = False
+    min_grade: str = "C"
 
 
 PROFILES: dict[str, ChannelProfile] = {
@@ -80,6 +84,9 @@ PROFILES: dict[str, ChannelProfile] = {
         "spot_goatfather", "goatfather spot", ("goatfather-channel",), ("goatfather",), timedelta(days=30)),
     "gold_eydu": ChannelProfile(
         "gold_eydu", "EyDu gold", ("xau-xag",), ("eydu",), timedelta(hours=72), default_symbol="XAU"),
+    "chat_altcoins": ChannelProfile(
+        "chat_altcoins", "Crypto chat altcoins", ("crypto-chat",), ("goatfather", "broncx"), timedelta(days=7),
+        read_knowledge_channel=True, min_grade="B"),
 }
 
 _SILVER = re.compile(r"\b(silver|xag)\b", re.IGNORECASE)
@@ -285,7 +292,11 @@ def read_call(message: GoatHubMessage, profile: ChannelProfile, reference_price:
     """
     if _author_key(message.author_name) not in profile.authors or _RESULT_POST.search(message.content):
         return None
+    if profile.read_knowledge_channel and message.channel_role == ROLE_KNOWLEDGE:
+        message = replace(message, channel_role=ROLE_CALLS)
     call = extract_call(message, reference_price=reference_price)
+    if call is not None and profile.min_grade == "B" and call.grade not in ("A", "B"):
+        return None
     if profile.key == "spot_goatfather" and call is not None:
         tags = {tag.upper() for tag in _CASHTAG.findall(message.content)}
         if len(tags) == 1 and call.guidance.symbol not in tags:
@@ -305,10 +316,32 @@ def read_call(message: GoatHubMessage, profile: ChannelProfile, reference_price:
     return TrackedCall(profile.key, call, extras)
 
 
+FOLLOW_UP_WINDOW = timedelta(minutes=3)
+# "Target 77$", "SL 0.012", "TP 85": a short post that only adds a level to the call just before it.
+_LEVEL_ONLY = re.compile(r"^\s*(?:tps?|targets?|sl|stop(?:\s?loss)?|entry)\b[^\n]{0,30}$", re.IGNORECASE)
+
+
+def _join_follow_ups(messages: Sequence[GoatHubMessage]) -> list[GoatHubMessage]:
+    """Merge a level-only post ("Target 77$") into the same author's call posted up to 3 minutes before it.
+
+    The merged message keeps the first message's id and time, so the call is dated when it was first posted.
+    """
+    joined: list[GoatHubMessage] = []
+    for message in messages:
+        previous = joined[-1] if joined else None
+        if (previous is not None and _LEVEL_ONLY.match(message.content) and previous.channel_id == message.channel_id
+                and _author_key(previous.author_name) == _author_key(message.author_name)
+                and timedelta(0) <= message.posted_at - previous.posted_at <= FOLLOW_UP_WINDOW):
+            joined[-1] = replace(previous, content=f"{previous.content}\n{message.content}")
+            continue
+        joined.append(message)
+    return joined
+
+
 def read_calls(messages: Iterable[GoatHubMessage]) -> dict[str, list[TrackedCall]]:
     """Calls per profile, oldest first. Messages from other channels are ignored."""
     result: dict[str, list[TrackedCall]] = {key: [] for key in PROFILES}
-    for message in sorted(messages, key=lambda item: item.posted_at):
+    for message in _join_follow_ups(sorted(messages, key=lambda item: (item.posted_at, bool(_LEVEL_ONLY.match(item.content))))):
         profile = profile_for(message)
         if profile is None:
             continue

@@ -38,6 +38,7 @@ __all__ = [
     "extract_call",
     "good_calls",
     "import_screen_readings",
+    "is_trade_report_or_chatter",
     "render_channel_markdown",
     "render_summary_markdown",
     "write_memory_export",
@@ -253,9 +254,22 @@ _NOT_TICKERS = {
     "from", "here", "now", "the", "it", "this", "that", "more", "before", "after", "on", "at", "with", "and", "or",
     "position", "positions", "weekly", "daily", "spot", "futures", "dip", "dips", "every", "all", "some", "zone",
     "breakout", "entry", "only", "again", "too", "back", "what", "whatever", "when", "if", "is", "in", "for", "you",
+    # Words that follow "short"/"long" in chart talk and are no coin ("short under 3865", "took short sl @3755",
+    # "sell imbal at 62.1", "long reaction", "longing will have to see", "banks keep buying physicall").
+    "under", "above", "below", "over", "sl", "tp", "stop", "target", "reaction", "imbal", "imbalance", "will", "would",
+    "physicall", "physical", "bullish", "bearish", "range", "level", "levels", "support", "resistance", "near", "around",
+    "up", "down", "higher", "lower", "high", "low", "again", "stuff", "everything", "anything", "something", "nothing",
+    "now", "then", "today", "tomorrow", "soon", "later", "first", "second", "next", "last", "just", "still", "also",
+    "can", "could", "should", "gonna", "wanna", "not", "no", "yes", "do", "did", "dont", "we", "i", "my", "our", "your",
+    "a", "an", "to", "of", "by", "as", "so", "be", "are", "was", "were", "am", "has", "have", "had", "get", "got",
+    "trade", "trades", "setup", "setups", "idea", "plan", "bounce", "pump", "dump", "wick", "sweep", "bos", "mss", "ob",
 }
+# Chart words and market terms in capitals ("IMBAL", "SL") are never a coin; a coin written in lowercase is at most six letters.
+_MAX_LOWERCASE_TICKER = 6
 # "2-5% of account", "0.5-1% each 5% dip": sizes and percentages, never price levels.
 _PERCENT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:-|to)\s*\d+(?:[.,]\d+)?\s*%|\d+(?:[.,]\d+)?\s*%")
+# "round 2", "9:30", "10am", "3 smalls": counts and clock times, never price levels.
+_NOT_A_LEVEL = re.compile(r"\bround\s+\d+\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}\s?(?:am|pm)\b", re.IGNORECASE)
 # "SL on 1.5$" means the same as "SL at 1.5".
 _SL_ON = re.compile(r"\b(sl|stop(?:\s?loss)?)\s+on\b", re.IGNORECASE)
 # "Pull SL little lower to 0.48" moves the stop; the number is a stop, not a target.
@@ -265,15 +279,44 @@ _SL_TO = re.compile(r"\b(sl|stop(?:\s?loss)?)\b[^\n.\d]{0,30}?\bto\s+(?=\d)", re
 def _community_symbol(text: str) -> str | None:
     """One coin the call is about; a list of several coins names no single symbol."""
     found = {match.group(1).upper() for pattern in (_TICKER_AFTER_DIRECTION, _TICKER_PAIR) for match in pattern.finditer(text)
-             if match.group(1).lower() not in _NOT_TICKERS}
+             if _plausible_ticker(match.group(1), pair=pattern is _TICKER_PAIR)}
     return found.pop() if len(found) == 1 else None
+
+
+def _plausible_ticker(word: str, *, pair: bool) -> bool:
+    if word.lower() in _NOT_TICKERS:
+        return False
+    # "ETF/USDT" names a pair; after a direction word a long lowercase word is conversation, not a coin.
+    return pair or word.isupper() and len(word) <= 10 or len(word) <= _MAX_LOWERCASE_TICKER
+
+
+# Posts that report on a trade already open ("closed 75% of ake short and moved SL to breakeven", "taking profits on
+# swing shorts", "SL close out longs"), wish for one ("imagine now we long ake") or ask a question are not new calls.
+_NOT_A_CALL = re.compile(
+    r"\b(?:tps?|targets?)\s+(?:\d\s+)?hit\b|\bstopped\s+out\b|\bgot\s+stopped\b"
+    r"|\b(?:closed|closing|close\s+out|trimmed|trimming|taking\s+profits?|took\s+profits?|secure(?:d)?\s+(?:more\s+)?partials?|"
+    r"moved\s+(?:my\s+)?(?:sl|stop)|move\s+(?:your\s+)?(?:sl|stop)\s+to\s+(?:be|breakeven))\b"
+    r"|\bimagine\b|\bwhat\s+if\b|\bshould\s+we\b|\?",
+    re.IGNORECASE,
+)
+
+
+_REPLY_QUOTE = re.compile(r"\(Antwort auf[^()]*\)")
+
+
+def is_trade_report_or_chatter(text: str) -> bool:
+    """True for status reports, wishes and questions: they mention a direction but open no new trade."""
+    return bool(_NOT_A_CALL.search(text))
 
 
 def extract_call(message: GoatHubMessage, reference_price: Decimal | None = None) -> CommunityCall | None:
     """A call is a message that states a current direction; anything else is conversation."""
     if message.channel_role == ROLE_KNOWLEDGE or not message.content.strip():
         return None  # knowledge channels hold teaching material, not calls
-    text = _SL_TO.sub(r"\1 at ", _SL_ON.sub(r"\1 at", _PERCENT.sub(" ", message.content)))
+    own_text = _REPLY_QUOTE.sub(" ", message.content)  # what a reply quotes is another post's direction, not this one's
+    if is_trade_report_or_chatter(own_text):
+        return None
+    text = _SL_TO.sub(r"\1 at ", _SL_ON.sub(r"\1 at", _NOT_A_LEVEL.sub(" ", _PERCENT.sub(" ", own_text))))
     guidance = parse_guidance(text, reference_price)
     if guidance.bias not in {"SHORT", "LONG"} or guidance.direction_withdrawn:
         return None
