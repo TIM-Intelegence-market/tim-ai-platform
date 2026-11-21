@@ -433,11 +433,23 @@ def test_login_file_holds_no_plain_password(tmp_path):
     assert password not in text and oct((tmp_path / "a.json").stat().st_mode & 0o777) == "0o600"
 
 
-def test_forged_client_header_does_not_dodge_the_pause(server):
+def test_guessers_cannot_shut_the_owner_out(server):
     public, base = server
     codes = [_get(base + "/live", headers={**_login("wrong"), "CF-Connecting-IP": f"10.0.0.{i}"})[0] for i in range(25)]
-    assert codes[:20] == [401] * 20 and codes[20:] == [429] * 5  # the global limit holds
-    assert _get(base + "/live", headers={**_login(), "CF-Connecting-IP": "10.9.9.9"})[0] == 429
+    assert codes == [401] * 25
+    assert _get(base + "/live", headers={**_login(), "CF-Connecting-IP": "10.9.9.9"})[0] == 200
+
+
+def test_only_one_slow_check_runs_at_a_time(server, monkeypatch):
+    public, base = server
+    monkeypatch.setattr(public_auth, "CHECK_WAIT", 0.05)
+    public.check_slot.acquire()
+    try:
+        assert _get(base + "/live", headers=_login("wrong"))[0] == 429
+    finally:
+        public.check_slot.release()
+    assert public.login_failures.fails.get("127.0.0.1") == []  # a check that never ran is not counted
+    assert _get(base + "/live", headers=_login())[0] == 200
 
 
 def test_burst_cannot_pass_the_limit():
@@ -454,10 +466,20 @@ def test_variants_of_the_private_paths_are_shut(server):
     assert _get(base + "/live", method="HEAD", headers={"Authorization": ""})[0] == 401
 
 
-def test_chart_page_text_names_plans_only_after_login(server, tmp_path):
+def test_chart_page_text_names_plans_only_after_login(server, monkeypatch):
+    from src.dashboard import analysis_summary
+
     public, base = server
-    assert "paper plans" not in _get(base + "/chart")[2].split("<main")[1].split("tc-tab")[0].lower()
-    assert _get(base + "/chart", headers=_login())[0] == 200
+    # The summary needs runtime candles; here only the hand-over counts: journals reach it only for a member.
+    monkeypatch.setattr(analysis_summary, "build_summary", lambda series, journals, trades=None: {"journals": journals})
+    monkeypatch.setattr(analysis_summary, "render_en", lambda summary: "<p>Paper plans: 1 running.</p>" if summary["journals"]
+                        else "<p>Value area today.</p><p>No open paper plans: TIM is waiting.</p>")
+    status, headers, page = _get(base + "/chart")
+    assert status == 200 and "Value area today." in page and "paper plans" not in page.lower()
+    assert "no-store" not in headers["Cache-Control"]
+    status, headers, member = _get(base + "/chart", headers=_login())
+    assert status == 200 and "Paper plans: 1 running." in member and headers["Cache-Control"] == "no-store"
+    assert "paper plans" not in _get(base + "/chart")[2].lower()  # the member's page is not reused
 
 
 def test_plan_guessing_through_the_chart_is_paused_too(server):

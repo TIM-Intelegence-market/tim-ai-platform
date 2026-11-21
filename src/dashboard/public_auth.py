@@ -31,7 +31,7 @@ MAX_AUTH_FILE_BYTES = 4096
 MAX_HEADER = 512
 REALM = "TIM private pages"
 FAIL_LIMIT, FAIL_WINDOW = 5, 300  # failed logins per client in this many seconds, then a pause
-GLOBAL_FAIL_LIMIT = 20  # the same, over all clients together
+CHECK_WAIT = 2.0  # seconds a login waits for the single slow-check slot before it is told to retry
 
 
 def auth_file() -> Path:
@@ -75,38 +75,35 @@ def check_login(authorization: str | None, credentials: dict | None) -> bool:
 
 
 class FailureLimiter:
-    """Pauses password guessing. Each attempt is counted before the slow check, under one lock (no burst gets past it).
+    """Pauses password guessing per client. Each attempt is counted before the slow check, under one lock, so a
+    burst cannot get past the limit.
 
-    Per client, and also over all clients together: the client name comes from tunnel headers a guesser may
-    forge, so the global limit is the one that cannot be dodged. It can pause the owner too; that is the safe side."""
+    There is no lock-out over all clients: anybody could trigger it and shut the owner out. Instead the server
+    runs one slow check at a time (``check_slot`` in the public server), which bounds both the CPU and the number
+    of guesses per second however a guesser names itself; the generated password is far too long for that rate."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self.clock, self.lock = clock, threading.Lock()
         self.fails: dict[str, list[float]] = {}
-        self.all_fails: list[float] = []
 
     def reserve(self, key: str) -> bool:
-        """Count one attempt; False when the client or the whole view is over its limit."""
+        """Count one attempt; False when this client is over its limit."""
         now = self.clock()
         with self.lock:
-            self.all_fails = [t for t in self.all_fails if now - t < FAIL_WINDOW]
             recent = [t for t in self.fails.get(key, []) if now - t < FAIL_WINDOW]
-            if len(recent) >= FAIL_LIMIT or len(self.all_fails) >= GLOBAL_FAIL_LIMIT:
+            if len(recent) >= FAIL_LIMIT:
                 self.fails[key] = recent
                 return False
             if len(self.fails) > 10_000:
-                self.fails.clear()
+                self.fails = {k: v for k, v in self.fails.items() if v and now - v[-1] < FAIL_WINDOW}
             self.fails[key] = recent + [now]
-            self.all_fails.append(now)
             return True
 
     def release(self, key: str) -> None:
-        """A correct login does not count."""
+        """A correct login, or a check that never ran, does not count."""
         with self.lock:
             if self.fails.get(key):
                 self.fails[key].pop()
-            if self.all_fails:
-                self.all_fails.pop()
 
 
 class KnownLogins:

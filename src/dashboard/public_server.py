@@ -106,6 +106,7 @@ class PublicDashboardServer:
         self.limiter, self.cache = limiter or RateLimiter(), cache or TTLCache()
         self.login_failures = public_auth.FailureLimiter()
         self.known_logins = public_auth.KnownLogins()
+        self.check_slot = threading.Lock()  # one slow password check at a time
         self.busy = threading.BoundedSemaphore(MAX_BUSY)
         outer = self
 
@@ -221,7 +222,14 @@ class PublicDashboardServer:
             return None  # checked a moment ago: an open chart asks every few seconds, the slow check runs once
         if not self.login_failures.reserve(client):
             return 429
-        if public_auth.check_login(authorization, credentials):
+        if not self.check_slot.acquire(timeout=public_auth.CHECK_WAIT):
+            self.login_failures.release(client)  # the check never ran
+            return 429
+        try:
+            passed = public_auth.check_login(authorization, credentials)
+        finally:
+            self.check_slot.release()
+        if passed:
             self.login_failures.release(client)
             self.known_logins.add(authorization, credentials)
             return None
