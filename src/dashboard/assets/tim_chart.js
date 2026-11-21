@@ -49,7 +49,6 @@
   const status = document.getElementById('tc-live-status' + PANE);
   const layers = document.getElementById('tc-live-layers' + PANE);
   const STORE = 'tim-chart-layers-v1' + PANE;
-  const SHORT_BARS = 12;
   const NAME_SHIFT = 20;  // candles a level's name sits inside its line (not centred on the line start)
   const STYLE = { solid: LWC.LineStyle.Solid, dotted: LWC.LineStyle.Dotted, dashed: LWC.LineStyle.Dashed };
   let symbol = (PANE ? root : host).dataset.symbol, timeframe = (PANE ? root : host).dataset.tf;
@@ -1835,7 +1834,7 @@
         color: d.color, lineWidth: ['trend', 'week', 'month', 'quarter', 'year', 'vwap'].includes(d.group) ? 2 : 1,
         // Finished segments (BOS/MSS, broken trend lines) get no label on the price axis: they are history, not a live level.
         lineStyle: STYLE[d.style] ?? LWC.LineStyle.Solid, lastValueVisible: !d.finished, priceLineVisible: false,
-        crosshairMarkerVisible: false, title: d.finished ? '' : d.label, visible: groups.has(d.group),
+        crosshairMarkerVisible: false, title: '', visible: groups.has(d.group),
         autoscaleInfoProvider: () => null,  // levels never squeeze the candles
       });
       // A running line (VWAP) brings its own points; levels and segments have two.
@@ -1881,7 +1880,8 @@
       const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
       const structure = d.group === 'structure';
       const position = structure ? (d.direction === 'UP' ? 'aboveBar' : 'belowBar') : (d.p2 >= model.last ? 'aboveBar' : 'belowBar');
-      const text = d.bars >= SHORT_BARS || d.finished ? d.label + (d.clipped ? ' ←' : '') : '';
+      // Uzi 21.11.2026: the names stand on the chart only; the price axis keeps the number without a name.
+      const text = d.label + (d.clipped ? ' ←' : '');
       const marker = {
         time: local(mid ? d.tm : d.tl || d.t1), position,
         color: d.color, shape: structure ? (d.direction === 'UP' ? 'arrowUp' : 'arrowDown') : 'circle', size: structure ? 0.6 : 0.4,
@@ -1892,28 +1892,24 @@
       // their texts sit at about the same height and cover each other once the names move into the lines.
       const twin = text && markers.find(m => m.text && m.marker.position === position && Math.abs(d.p1 - m.price) <= Math.abs(m.price) * 0.003);
       if (twin) {
-        twin.marker.text += ' · ' + text;
+        // At most two names in one text (a phone has no room for more): the rest as "+N".
+        twin.names.push(text);
+        twin.marker.text = twin.names.slice(0, 2).join(' · ') + (twin.names.length > 2 ? ` +${twin.names.length - 2}` : '');
         twin.series.setMarkers([twin.marker]);
         marker.text = '';
       }
       item.series.setMarkers([marker]);
-      markers.push({ marker, series: item.series, price: d.p1, text: marker.text });
+      markers.push({ marker, series: item.series, price: d.p1, text: marker.text, names: marker.text ? [marker.text] : [] });
     }
-    // One box on the price axis per spot: the first line takes all names, the others hide theirs.
+    // One number on the price axis per spot, without the name (the name stands on the line in the chart).
     const boxes = [];
     for (const item of shown) {
       const d = item.drawing;
       if (d.finished) continue;
       const value = d.curve && d.curve.length ? d.curve[d.curve.length - 1][1] : d.p2;
       const twin = boxes.find(b => samePrice(value, b.value));
-      if (twin) {
-        twin.names.push(d.label);
-        twin.series.applyOptions({ title: twin.names.join(' · ') });
-        item.series.applyOptions({ lastValueVisible: false, title: '' });
-      } else {
-        item.series.applyOptions({ lastValueVisible: true, title: d.label });
-        boxes.push({ value, series: item.series, names: [d.label] });
-      }
+      item.series.applyOptions({ lastValueVisible: !twin, title: '' });
+      if (!twin) boxes.push({ value });
     }
   }
 
