@@ -156,4 +156,4 @@ def test_call_with_a_chart_image_but_no_stop_is_marked_for_manual_check() -> Non
 
 
 def test_stop_far_from_the_price_is_not_a_trade() -> None:
-    assert check_market(tracked("Short ake SL 1.6"), snapshot(FLAT)).code == "stop_too_far"
+    assert check_market(tracked("Long ake SL 0.55"), snapshot(FLAT)).code == "stop_too_far"
