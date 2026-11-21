@@ -1878,7 +1878,10 @@
         color: d.color, shape: structure ? (d.direction === 'UP' ? 'arrowUp' : 'arrowDown') : 'circle', size: structure ? 0.6 : 0.4,
         text,
       };
-      const twin = text && markers.find(m => m.text && m.marker.time === marker.time && m.marker.position === position && near(d.p1, m.price));
+      // Uzi 21.11.2026 "Namen": on a phone "1D VAH" and "1D High" (0,02 % apart, one candle apart) lay on top of each other.
+      // Names whose marker sits within 4 candles and 0,3 % of an earlier one share its text.
+      const gap = 4 * (model.interval_seconds || 1800);
+      const twin = text && markers.find(m => m.text && Math.abs(m.marker.time - marker.time) <= gap && m.marker.position === position && Math.abs(d.p1 - m.price) <= Math.abs(m.price) * 0.003);
       if (twin) {
         twin.marker.text += ' · ' + text;
         twin.series.setMarkers([twin.marker]);
