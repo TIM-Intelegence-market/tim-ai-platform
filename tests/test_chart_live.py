@@ -366,9 +366,8 @@ def test_lines_on_the_same_spot_share_one_name_and_one_axis_box():
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
     block = script[script.index("function labelLines(groups) {"):script.index("function setLegend(bar)")]
     assert "twin.marker.text = twin.names.slice(0, 2).join(' · ')" in block
-    assert "boxes.find(b => samePrice(value, b.value))" in block  # a merged box shows one number: same price only
-    # Uzi 21.11.2026: names only on the chart, the price axis shows the number alone (one per price).
-    assert "applyOptions({ lastValueVisible: !twin, title: '' })" in block
+    # Uzi 21.11.2026: names only on the chart, no level boxes on the price axis (neither name nor number).
+    assert "item.series.applyOptions({ lastValueVisible: false, title: '' })" in block
     assert script.count("labelLines(groups);") == 2  # after drawing and after a layer tick changes
     bubbles = script[script.index("const bubbles = {"):script.index("candles.attachPrimitive(bubbles);")]
     assert "if (!texts.some(b =>" in bubbles

@@ -1833,7 +1833,7 @@
       const series = chart.addLineSeries({
         color: d.color, lineWidth: ['trend', 'week', 'month', 'quarter', 'year', 'vwap'].includes(d.group) ? 2 : 1,
         // Finished segments (BOS/MSS, broken trend lines) get no label on the price axis: they are history, not a live level.
-        lineStyle: STYLE[d.style] ?? LWC.LineStyle.Solid, lastValueVisible: !d.finished, priceLineVisible: false,
+        lineStyle: STYLE[d.style] ?? LWC.LineStyle.Solid, lastValueVisible: false, priceLineVisible: false,
         crosshairMarkerVisible: false, title: '', visible: groups.has(d.group),
         autoscaleInfoProvider: () => null,  // levels never squeeze the candles
       });
@@ -1863,9 +1863,7 @@
   // (Uzi 11.11.2026: "1h Trend lows" and "1h BOS target" started at the same swing low and their
   // names lay on top of each other; "1D Low" and "1h BOS target" had two boxes with the same price).
   // Names at the line start: closer than 0.05 % counts as the same spot (the texts would cover each other).
-  // Price-axis boxes: only the same price (a merged box shows one number, it must be right for every name).
   const near = (a, b) => Math.abs(a - b) <= Math.abs(b) * 0.0005;
-  const samePrice = (a, b) => Math.abs(a - b) <= Math.max(1e-9, Math.abs(b) * 1e-6);
   function labelLines(groups) {
     const shown = lines.filter(item => item.drawing && groups.has(item.group));
     for (const item of lines) {
@@ -1901,16 +1899,8 @@
       item.series.setMarkers([marker]);
       markers.push({ marker, series: item.series, price: d.p1, text: marker.text, names: marker.text ? [marker.text] : [] });
     }
-    // One number on the price axis per spot, without the name (the name stands on the line in the chart).
-    const boxes = [];
-    for (const item of shown) {
-      const d = item.drawing;
-      if (d.finished) continue;
-      const value = d.curve && d.curve.length ? d.curve[d.curve.length - 1][1] : d.p2;
-      const twin = boxes.find(b => samePrice(value, b.value));
-      item.series.applyOptions({ lastValueVisible: !twin, title: '' });
-      if (!twin) boxes.push({ value });
-    }
+    // Uzi 21.11.2026: no level boxes on the price axis at all (no name, no number); the names stand on the chart.
+    for (const item of shown) item.series.applyOptions({ lastValueVisible: false, title: '' });
   }
 
 
